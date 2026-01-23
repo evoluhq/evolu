@@ -5,9 +5,8 @@
  */
 
 import {
-  createArray,
+  arrayFrom,
   emptyArray,
-  ensureArray,
   isNonEmptyArray,
   mapArray,
   type NonEmptyReadonlyArray,
@@ -29,7 +28,7 @@ import {
 import type { Random, RandomDep } from "./Random.js";
 import { createRandom } from "./Random.js";
 import { type Ref } from "./Ref.js";
-import type { Done, Err, NextResult, Result } from "./Result.js";
+import type { Done, NextResult, Ok, Result } from "./Result.js";
 import { err, ok, tryAsync } from "./Result.js";
 import type { Schedule, ScheduleStep } from "./Schedule.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
@@ -137,16 +136,21 @@ import {
  *
  * ## Composition
  *
- * Tasks are lazy — just functions — so they can be wrapped and combined before
- * running with helpers like:
+ * Compose tasks with:
  *
+ * - {@link yieldNow} — yield to event loop
+ * - {@link sleep} — pause execution
  * - {@link timeout} — time-bounded execution
  * - {@link retry} — retry with backoff
- * - {@link all} — run tasks concurrently, fail fast
+ * - {@link repeat} — repeat with schedule
+ * - {@link all} — values, fail fast
+ * - {@link forEach} — side effects, fail fast
+ * - {@link allSettled} — results
+ * - {@link forEachSettled} — ignore results
+ * - {@link any} — first success wins
+ * - {@link race} — first to complete wins
  *
- * Composition helpers add typed errors to the error union (e.g.,
- * {@link TimeoutError}, `RetryError`). These are for business logic — callers
- * can pattern match on `error.type` to handle specific failures.
+ * Sequential by default (except race); use {@link withConcurrency} for parallel.
  *
  * Add timeout to prevent hanging:
  *
@@ -154,7 +158,9 @@ import {
  * const fetchWithTimeout = (url: string) => timeout(fetch(url), "30s");
  *
  * expectTypeOf(fetchWithTimeout).toEqualTypeOf<
- *   (url: string) => Task<Response, TimeoutError | FetchError>
+ *   (
+ *     url: string,
+ *   ) => Task<Response, FetchError | TimeoutError, NativeFetchDep>
  * >();
  * ```
  *
@@ -168,13 +174,13 @@ import {
  *     jitter(1)(maxDelay("20s")(take(2)(exponential("100ms")))),
  *   );
  *
- * // RetryError wraps the original error as `cause` when all attempts fail
  * expectTypeOf(fetchWithRetry).toEqualTypeOf<
  *   (
  *     url: string,
  *   ) => Task<
  *     Response,
- *     TimeoutError | FetchError | RetryError<TimeoutError | FetchError>
+ *     FetchError | TimeoutError | RetryError<FetchError | TimeoutError>,
+ *     NativeFetchDep
  *   >
  * >();
  * ```
@@ -198,8 +204,11 @@ import {
  *
  * expectTypeOf(result).toEqualTypeOf<
  *   Result<
- *     ReadonlyArray<Response>,
- *     TimeoutError | FetchError | RetryError<TimeoutError | FetchError>
+ *     readonly Response[],
+ *     | TimeoutError
+ *     | FetchError
+ *     | AbortError
+ *     | RetryError<TimeoutError | FetchError>
  *   >
  * >();
  * ```
@@ -257,12 +266,6 @@ import {
  * function argument. Instead of writing `task(deps)(args)` (curried DI), we
  * write `createRunner<AppDeps>(deps)` once and the runner passes `deps` to
  * every task as a second argument. This removes repetitive plumbing.
- *
- * ### How does it work?
- *
- * Some libraries represent computations as data structures that a runtime
- * interprets later. Evolu is simpler — it uses wrapped promises. Check the
- * source code; it's short and readable.
  *
  * @group Core Types
  */
@@ -388,9 +391,14 @@ export interface Runner<D = unknown> extends AsyncDisposable {
   /**
    * Registers a callback to run when abort is requested.
    *
-   * Shorthand for `signal.addEventListener("abort", ..., { once: true })`.
+   * The callback receives the abort cause (extracted from {@link AbortError}).
+   * If already aborted, the callback is invoked immediately. For
+   * {@link unabortable} tasks, the callback is never invoked.
+   *
+   * Intentionally synchronous — abort is signal propagation, not cleanup. Use
+   * {@link Runner.defer} for async cleanup that must run regardless of abort.
    */
-  readonly onAbort: (fn: (cause: unknown) => void) => void;
+  readonly onAbort: (callback: Callback<unknown>) => void;
 
   /** Returns the current {@link FiberState}. */
   readonly getState: () => FiberState;
@@ -476,7 +484,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    * // connection[Symbol.asyncDispose] is now defined
    * ```
    */
-  readonly defer: (onDisposeAsync: Task<void, any, D>) => AsyncDisposable;
+  readonly defer: (onDisposeAsync: Task<void, never, D>) => AsyncDisposable;
 
   /**
    * Creates an {@link AsyncDisposableStack} bound to the root runner.
@@ -624,7 +632,7 @@ export class Fiber<T = unknown, E = unknown, D = unknown>
    */
   readonly run: Runner<D>;
 
-  constructor(run: Runner<D>, promise: Promise<Result<T, E | AbortError>>) {
+  constructor(run: Runner<D>, promise: Promise<Result<T, E>>) {
     this.then = promise.then.bind(promise);
     this.run = run;
   }
@@ -713,14 +721,14 @@ export type FiberState<T = unknown, E = unknown> =
        * completed successfully — see `outcome` for what the task actually
        * returned.
        */
-      readonly result: Result<T, E | AbortError>;
+      readonly result: Result<T, E>;
 
       /**
        * What the task actually returned.
        *
        * Unlike `result`, not overridden by abort.
        */
-      readonly outcome: Result<T, E | AbortError>;
+      readonly outcome: Result<T, E>;
     };
 
 /**
@@ -852,7 +860,7 @@ export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
   use<T extends AsyncDisposable | Disposable | null | undefined>(value: T): T;
   use<T extends AsyncDisposable | Disposable | null | undefined, E>(
     acquire: Task<T, E, D>,
-  ): PromiseLike<Result<T, E | AbortError>>;
+  ): PromiseLike<Result<T, E>>;
   use<T extends AsyncDisposable | Disposable | null | undefined, E>(
     valueOrAcquire: T | Task<T, E, D>,
   ): T | PromiseLike<Result<T, E | AbortError>> {
@@ -1084,8 +1092,8 @@ const createRunnerInternal =
 
     const requestAbort = (reason: unknown) => {
       assertType(AbortError, reason);
-      requestController.abort(reason);
       if (abortMask === isAbortable) signalController.abort(reason);
+      requestController.abort(reason);
     };
 
     if (parent) {
@@ -1125,6 +1133,7 @@ const createRunnerInternal =
         task = () => err(signalController.signal.reason);
       }
 
+      // Evolu polyfills `Promise.try`
       const promise = Promise.try(task, runner, deps)
         .then((taskOutcome) => {
           const taskResult = runner.signal.aborted
@@ -1162,14 +1171,19 @@ const createRunnerInternal =
       run.signal = signalController.signal;
       run.abortMask = abortMask;
       run.onAbort = (callback) => {
-        signalController.signal.addEventListener(
-          "abort",
-          () => {
-            const error = signalController.signal.reason as AbortError;
-            callback(error.cause);
-          },
-          { once: true },
-        );
+        if (abortMask !== isAbortable) return;
+        const handleAbort = () => {
+          assertType(AbortError, signalController.signal.reason);
+          callback(signalController.signal.reason.cause);
+        };
+        if (signalController.signal.aborted) {
+          handleAbort();
+          return;
+        }
+        signalController.signal.addEventListener("abort", handleAbort, {
+          once: true,
+          signal: requestController.signal,
+        });
       };
 
       run.getState = () => state;
@@ -1366,35 +1380,36 @@ const getConcurrencyBehavior = (
 /**
  * Sets the {@link Concurrency} level for a {@link Task}.
  *
- * When called with only a task, uses {@link maxPositiveInt} (practically
- * unlimited).
+ * By default, tasks run sequentially (one at a time) to encourage thinking
+ * about concurrency explicitly — unlike `Promise.all` which runs everything in
+ * parallel.
+ *
+ * For tuple-based calls like `all([taskA, taskB, taskC])` with a known small
+ * number of tasks, use `withConcurrency` without a number for unlimited
+ * parallelism. For arrays of unknown length, always specify a concurrency
+ * limit.
+ *
+ * Concurrency is inherited by child tasks and can be overridden at any level.
+ * Composition helpers should respect inherited concurrency — they should not
+ * override it with a fixed number unless semantically required (like
+ * {@link race} which needs unlimited concurrency). If a helper has a recommended
+ * concurrency, it should expose it as a const for users to apply with
+ * `withConcurrency`.
  *
  * ### Example
  *
  * ```ts
- * // All tasks in this task use at most 2 concurrent operations
- * const bounded = withConcurrency(2, async (run) => {
- *   // These all() calls inherit concurrency: 2
- *   await run(all(tasks1));
- *   await run(all(tasks2));
- *   return ok();
- * });
+ * // Tuple with known tasks — unlimited concurrency is fine
+ * const result = await run(withConcurrency(all([fetchA, fetchB, fetchC])));
  *
- * // Override for a specific task
- * const mixed = withConcurrency(5, async (run) => {
- *   // Inherits 5 concurrent
- *   await run(all(tasksA));
+ * // Array of unknown length — always limit concurrency
+ * const processAll = withConcurrency(10, all(items.map(processItem)));
  *
- *   // Inner task with different concurrency
- *   await run(
- *     withConcurrency(2, async (run) => {
- *       // Inherits 2 concurrent
- *       await run(all(tasksB));
- *       return ok();
- *     }),
- *   );
- *
- *   return ok();
+ * // Inherited concurrency — inner all() uses parent's limit
+ * const pipeline = withConcurrency(5, async (run) => {
+ *   const users = await run(all(userIds.map(fetchUser))); // uses 5
+ *   if (!users.ok) return users;
+ *   return run(all(users.value.map(enrichUser))); // also uses 5
  * });
  * ```
  *
@@ -1409,10 +1424,10 @@ export function withConcurrency<T, E, D = unknown>(
 ): Task<T, E, D>;
 export function withConcurrency<T, E, D = unknown>(
   concurrencyOrTask: Concurrency | Task<T, E, D>,
-  taskOrFoo?: Task<T, E, D>,
+  taskOrFallback?: Task<T, E, D>,
 ): Task<T, E, D> {
   const isTask = isFunction(concurrencyOrTask);
-  const task = isTask ? concurrencyOrTask : taskOrFoo!;
+  const task = isTask ? concurrencyOrTask : taskOrFallback!;
   return Object.assign((run: Runner<D>) => run(task), {
     [concurrencyBehaviorSymbol]: isTask ? maxPositiveInt : concurrencyOrTask,
   });
@@ -1523,26 +1538,25 @@ export const sleep =
  * Like
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/race | Promise.race},
  * the first task to complete (whether success or failure) wins. All other tasks
- * are aborted.
+ * are aborted. Use {@link any} if you need the first task to succeed instead.
  *
- * Unlike `Promise.race`, this requires a non-empty array instead of an
- * `Iterable`. This enables compile-time enforcement that at least one task is
- * provided — `Promise.race([])` hangs forever, which is rarely intended. For
- * tasks from an `Iterable`, spread and use {@link isNonEmptyArray}:
+ * Requires a non-empty array — racing zero tasks has no meaningful result
+ * (there's no "first to complete" without participants). This is enforced at
+ * compile time for non-empty tuple types. For other arrays, guard with
+ * {@link isNonEmptyArray}:
  *
  * ```ts
- * const tasksArray = [...tasksIterable];
- * if (isNonEmptyArray(tasksArray)) {
- *   await run(race(tasksArray));
+ * if (isNonEmptyArray(tasks)) {
+ *   await run(race(tasks));
  * }
  * ```
  *
  * ### Example
  *
  * ```ts
- * const fast: Task<string, never> = async () => ok("fast");
- * const slow: Task<string, never> = async () => {
- *   await new Promise((r) => setTimeout(r, 10));
+ * const fast: Task<string> = () => ok("fast");
+ * const slow: Task<string> = async (run) => {
+ *   await run(sleep("10ms"));
  *   return ok("slow");
  * };
  *
@@ -1550,38 +1564,36 @@ export const sleep =
  * const result = await run(race([fast, slow])); // ok("fast")
  * ```
  *
+ * Always runs with unlimited concurrency — a sequential race makes no sense
+ * since the first task would always "win".
+ *
  * @group Composition
  */
-export const race =
-  <
-    T extends readonly [
-      Task<any, any, any>,
-      ...ReadonlyArray<Task<any, any, any>>,
-    ],
-  >(
-    tasks: T,
-    {
-      abortCause = raceLostError,
-    }: {
-      /** Abort cause for losing tasks. Defaults to {@link raceLostError}. */
-      abortCause?: unknown;
-    } = {},
-  ): Task<
-    InferTaskOk<T[number]>,
-    InferTaskErr<T[number]>,
-    InferTaskDeps<T[number]>
-  > =>
-  async (run) => {
-    const fibers = tasks.map(run.daemon);
-    const abortPending = (cause: unknown) => {
-      for (const fiber of fibers) fiber.abort(cause);
-      return ok();
-    };
-    run.onAbort(abortPending);
-    await using _ = run.defer(() => abortPending(abortCause));
-    return await Promise.race(fibers);
-  };
-
+export const race = <
+  T extends readonly [
+    Task<any, any, any>,
+    ...ReadonlyArray<Task<any, any, any>>,
+  ],
+>(
+  tasks: T,
+  {
+    abortCause = raceLostError,
+  }: {
+    /** Abort cause for losing tasks. Defaults to {@link raceLostError}. */
+    abortCause?: unknown;
+  } = {},
+): Task<
+  InferTaskOk<T[number]>,
+  InferTaskErr<T[number]>,
+  InferTaskDeps<T[number]>
+> =>
+  withConcurrency(
+    concurrent(tasks, {
+      stopOn: "first",
+      collect: false,
+      abortCause,
+    }),
+  );
 /**
  * Abort reason for tasks that lose a {@link race}.
  *
@@ -2260,9 +2272,9 @@ export const createMutex = (): Mutex => {
  * Sequential (one by one) by default. Use {@link withConcurrency} to run tasks
  * concurrently. If any task fails, remaining tasks are aborted.
  *
- * Supports iterables, tuples, and structs.
+ * Supports arrays, tuples, and structs.
  *
- * ### Iterable (returns readonly array)
+ * ### Array (returns readonly array)
  *
  * ```ts
  * const result = await run(all(urls.map(fetch)));
@@ -2313,10 +2325,14 @@ export function all<
 export function all<T extends Readonly<Record<string, AnyTask>>>(
   tasks: T,
 ): Task<
-  { -readonly [P in keyof T]: InferTaskOk<T[P]> },
+  { [P in keyof T]: InferTaskOk<T[P]> },
   [keyof T] extends [never] ? never : InferTaskErr<T[keyof T]>,
   [keyof T] extends [never] ? unknown : InferTaskDeps<T[keyof T]>
 >;
+
+export function all<T, E, D>(
+  tasks: NonEmptyReadonlyArray<Task<T, E, D>>,
+): Task<NonEmptyReadonlyArray<T>, E, D>;
 
 export function all<T, E, D>(
   tasks: Iterable<Task<T, E, D>>,
@@ -2325,10 +2341,225 @@ export function all<T, E, D>(
 export function all(
   tasks: Iterable<Task<unknown, unknown>> | Readonly<Record<string, AnyTask>>,
 ): Task<unknown, unknown> {
+  return collect("all", tasks);
+}
+
+/**
+ * Abort cause used by {@link all} when aborting remaining tasks.
+ *
+ * Used when a task fails and other tasks need to be aborted.
+ *
+ * @group Composition
+ */
+export const AllAbortError = typed("AllAbortError");
+export interface AllAbortError extends InferType<typeof AllAbortError> {}
+
+/**
+ * {@link AllAbortError} used as abort cause in {@link all}.
+ *
+ * @group Composition
+ */
+export const allAbortError: AllAbortError = { type: "AllAbortError" };
+
+/**
+ * Runs multiple {@link Task}s and collects all results.
+ *
+ * Like
+ * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/allSettled | Promise.allSettled},
+ * all tasks run to completion regardless of individual failures. Returns an
+ * array of {@link Result}s preserving the original order.
+ *
+ * Sequential by default. Use {@link withConcurrency} for parallel execution.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const results = await run(
+ *   allSettled([fetchUser, fetchPosts, fetchComments]),
+ * );
+ * if (!results.ok) return results; // Only AbortError
+ *
+ * for (const result of results.value) {
+ *   if (result.ok) {
+ *     console.log("Success:", result.value);
+ *   } else {
+ *     console.log("Failed:", result.error);
+ *   }
+ * }
+ * ```
+ *
+ * @group Composition
+ */
+export function allSettled<
+  const T extends readonly [AnyTask, ...ReadonlyArray<AnyTask>],
+>(
+  tasks: T,
+): Task<
+  {
+    [K in keyof T]: Result<InferTaskOk<T[K]>, InferTaskErr<T[K]> | AbortError>;
+  },
+  never,
+  InferTaskDeps<T[number]>
+>;
+
+export function allSettled<T extends Readonly<Record<string, AnyTask>>>(
+  tasks: T,
+): Task<
+  {
+    [P in keyof T]: Result<InferTaskOk<T[P]>, InferTaskErr<T[P]> | AbortError>;
+  },
+  never,
+  [keyof T] extends [never] ? unknown : InferTaskDeps<T[keyof T]>
+>;
+
+export function allSettled<T, E, D>(
+  tasks: NonEmptyReadonlyArray<Task<T, E, D>>,
+): Task<NonEmptyReadonlyArray<Result<T, E | AbortError>>, never, D>;
+
+export function allSettled<T, E, D>(
+  tasks: Iterable<Task<T, E, D>>,
+): Task<ReadonlyArray<Result<T, E | AbortError>>, never, D>;
+
+export function allSettled(
+  tasks: Iterable<Task<unknown, unknown>> | Readonly<Record<string, AnyTask>>,
+): Task<unknown> {
+  return collect("allSettled", tasks);
+}
+
+/**
+ * Abort cause used by {@link allSettled} when aborted externally.
+ *
+ * @group Composition
+ */
+export const AllSettledAbortError = typed("AllSettledAbortError");
+export interface AllSettledAbortError extends InferType<
+  typeof AllSettledAbortError
+> {}
+
+/**
+ * {@link AllSettledAbortError} used as abort cause in {@link allSettled}.
+ *
+ * @group Composition
+ */
+export const allSettledAbortError: AllSettledAbortError = {
+  type: "AllSettledAbortError",
+};
+
+/**
+ * Runs multiple {@link Task}s for side effects only.
+ *
+ * Like {@link all}, stops on first error and aborts remaining tasks. Unlike
+ * {@link all}, doesn't collect results — use for fire-and-forget operations.
+ *
+ * Tasks must return `void` to enforce side-effect-only usage. If you need
+ * return values, use {@link all} instead.
+ *
+ * Sequential by default. Use {@link withConcurrency} for parallel execution.
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Send notifications sequentially
+ * const result = await run(forEach(users.map(sendNotification)));
+ * if (!result.ok) return result;
+ *
+ * // Send notifications concurrently (at most 5 at a time)
+ * const result = await run(
+ *   withConcurrency(5, forEach(users.map(sendNotification))),
+ * );
+ * ```
+ *
+ * @group Composition
+ */
+export const forEach = <E, D>(
+  tasks: Iterable<Task<void, E, D>>,
+): Task<void, E, D> =>
+  concurrent(tasks, {
+    stopOn: "error",
+    collect: false,
+    abortCause: forEachAbortError,
+  });
+
+/**
+ * Runs multiple {@link Task}s for side effects and ignores their results.
+ *
+ * All tasks run to completion (unless aborted). Unlike {@link forEach}, this
+ * does not stop on the first error.
+ *
+ * Returns `ok()` unless aborted externally.
+ *
+ * @group Composition
+ */
+export const forEachSettled = <T, E, D>(
+  tasks: Iterable<Task<T, E, D>>,
+): Task<void, never, D> =>
+  concurrent(tasks, {
+    stopOn: null,
+    collect: false,
+    abortCause: forEachSettledAbortError,
+  });
+
+/**
+ * Abort cause used by {@link forEach} when aborting remaining tasks.
+ *
+ * @group Composition
+ */
+export const ForEachAbortError = typed("ForEachAbortError");
+export interface ForEachAbortError extends InferType<
+  typeof ForEachAbortError
+> {}
+
+/**
+ * {@link ForEachAbortError} used as abort cause in {@link forEach}.
+ *
+ * @group Composition
+ */
+export const forEachAbortError: ForEachAbortError = {
+  type: "ForEachAbortError",
+};
+
+/**
+ * Abort cause used by {@link forEachSettled}.
+ *
+ * Used only when remaining tasks must be aborted (for example because the
+ * caller aborted the parent fiber).
+ *
+ * @group Composition
+ */
+export const ForEachSettledAbortError = typed("ForEachSettledAbortError");
+export interface ForEachSettledAbortError extends InferType<
+  typeof ForEachSettledAbortError
+> {}
+
+/**
+ * {@link ForEachSettledAbortError} used as abort cause in {@link forEachSettled}.
+ *
+ * @group Composition
+ */
+export const forEachSettledAbortError: ForEachSettledAbortError = {
+  type: "ForEachSettledAbortError",
+};
+
+/** Shared implementation for {@link all} and {@link allSettled}. */
+function collect(
+  type: "all",
+  tasks: Iterable<Task<unknown, unknown>> | Readonly<Record<string, AnyTask>>,
+): Task<unknown, unknown>;
+
+function collect(
+  type: "allSettled",
+  tasks: Iterable<Task<unknown, unknown>> | Readonly<Record<string, AnyTask>>,
+): Task<unknown>;
+
+function collect(
+  type: "all" | "allSettled",
+  tasks: Iterable<Task<unknown, unknown>> | Readonly<Record<string, AnyTask>>,
+): Task<unknown, unknown> {
+  const stopOn = (type === "all" ? "error" : null) as StopOn;
+  const abortCause = type === "all" ? allAbortError : allSettledAbortError;
+
   if (isIterable(tasks)) {
-    const taskArray = ensureArray(tasks);
-    if (!isNonEmptyArray(taskArray)) return () => ok(emptyArray);
-    return workerPool(taskArray, { failFast: true });
+    return concurrent(tasks, { stopOn, collect: true, abortCause });
   }
 
   const entries = objectToEntries(tasks);
@@ -2336,7 +2567,9 @@ export function all(
   const taskArray = mapArray(entries, ([, task]) => task);
 
   return async (run) => {
-    const result = await run(workerPool(taskArray, { failFast: true }));
+    const result = await run(
+      concurrent(taskArray, { stopOn, collect: true, abortCause }),
+    );
     if (!result.ok) return result;
     return ok(
       objectFromEntries(entries.map(([key], i) => [key, result.value[i]])),
@@ -2344,94 +2577,252 @@ export function all(
   };
 }
 
-// Fail-fast mode: returns first error, aborts remaining tasks
-function workerPool(
-  tasks: NonEmptyReadonlyArray<Task<unknown, unknown>>,
-  options: { readonly failFast: true },
-): Task<NonEmptyReadonlyArray<unknown>, unknown>;
+/**
+ * When to stop processing tasks in {@link concurrent}.
+ *
+ * - `"first"` — stop on first result (success or error), used by {@link race}
+ * - `"error"` — stop on first error, used by {@link all} and {@link forEach}
+ * - `"success"` — stop on first success, used by {@link any}
+ * - `null` — never stop early, used by {@link allSettled} and
+ *   {@link forEachSettled}
+ */
+type StopOn = "first" | "error" | "success";
 
-// Collect-all mode: runs all tasks to completion, returns all results
-function workerPool(
-  tasks: NonEmptyReadonlyArray<Task<unknown, unknown>>,
-  options: { readonly failFast: false },
-): Task<NonEmptyReadonlyArray<Result<unknown, unknown>>>;
+/**
+ * Runs tasks concurrently.
+ *
+ * Implemented as a worker pool respecting {@link Runner.concurrency} — spawns
+ * only as many workers as allowed, avoiding idle fibers waiting for permits.
+ *
+ * Workers run as daemons so callers don't block on unabortable tasks. When
+ * abort is requested, concurrent returns immediately. Structured concurrency is
+ * preserved because the root {@link Runner} still waits for all daemons.
+ *
+ * The `stopOn` option determines when to stop:
+ *
+ * - `"first"` — stop on any result
+ * - `"error"` — stop on first error
+ * - `"success"` — stop on first success
+ * - `null` — never stop early
+ */
+function concurrent<T, E, D>(
+  tasks: Iterable<Task<T, E, D>>,
+  options: {
+    stopOn: StopOn;
+    collect: true;
+    abortCause: unknown;
+  },
+): Task<ReadonlyArray<T>, E, D>;
 
-function workerPool(
-  tasks: NonEmptyReadonlyArray<Task<unknown, unknown>>,
-  { failFast }: { readonly failFast: boolean },
-): Task<NonEmptyReadonlyArray<unknown>, unknown> {
+function concurrent<T, E, D>(
+  tasks: Iterable<Task<T, E, D>>,
+  options: {
+    stopOn: StopOn;
+    collect: false;
+    abortCause: unknown;
+    allFailed?: AnyAllFailed;
+  },
+): Task<T, E, D>;
+
+function concurrent<T, E, D>(
+  tasks: Iterable<Task<T, E, D>>,
+  options: {
+    stopOn: null;
+    collect: true;
+    abortCause: unknown;
+  },
+): Task<ReadonlyArray<Result<T, E>>, never, D>;
+
+function concurrent<D>(
+  tasks: Iterable<Task<unknown, unknown, D>>,
+  options: {
+    stopOn: null;
+    collect: false;
+    abortCause: unknown;
+  },
+): Task<void, never, D>;
+
+function concurrent<T, E>(
+  tasksIterable: Iterable<AnyTask>,
+  {
+    stopOn = null,
+    collect,
+    abortCause,
+    allFailed,
+  }: {
+    stopOn?: StopOn | null;
+    collect: boolean;
+    abortCause: unknown;
+    allFailed?: AnyAllFailed;
+  },
+): Task<ReadonlyArray<unknown> | T | void, E> {
+  const tasks = arrayFrom(tasksIterable);
   const { length } = tasks;
+  if (length === 0) return () => ok(emptyArray);
 
   return async (run) => {
-    const results = new Array<unknown>(length);
-    let index = 0;
-    let error = null as Err<unknown> | null;
+    const results = collect ? new Array<unknown>(length) : null;
+    const aborted = Promise.withResolvers<void>();
+    const stopSignal = stopOn ? Promise.withResolvers<void>() : null;
 
-    const failWith = (result: Err<unknown>, abortCause: unknown) => {
-      if (error !== null) return;
-      error = result;
-      for (const worker of workers) worker.abort(abortCause);
-    };
+    let index = 0;
+    let stopped = null as Result<T, E> | null;
+    let lastResult = null as Result<T, E> | null;
+    let lastIndexResult = null as Result<T, E> | null;
 
     const worker: Task<void> = async (run) => {
-      while (index < length && (failFast ? error === null : true)) {
+      while (index < length && (stopOn ? !stopped : true)) {
         const i = index++;
 
-        let result: Result<unknown, unknown>;
-        try {
-          result = await run(tasks[i]);
-        } catch (cause) {
-          if (failFast) {
-            failWith(allFailedErr, allFailedError);
-            throw cause;
-          }
-          result = allFailedErr;
+        const result = (await run(tasks[i])) as Result<T, E>;
+        lastResult = result;
+        if (i === length - 1) lastIndexResult = result;
+
+        if (!stopOn) {
+          if (results) results[i] = result;
+          continue;
         }
 
-        if (failFast) {
-          if (!result.ok) {
-            failWith(
-              result,
-              AbortError.is(result.error) ? result.error.cause : allFailedError,
-            );
-            break;
-          }
-          results[i] = result.value;
-        } else {
-          results[i] = result;
+        const stop =
+          stopOn === "first" ||
+          (stopOn === "error" && !result.ok) ||
+          (stopOn === "success" && result.ok);
+
+        if (!stop) {
+          if (results) results[i] = (result as Ok<T>).value;
+          continue;
         }
+
+        if (!stopped) {
+          stopped = result;
+          abortWorkers(
+            !result.ok && AbortError.is(result.error)
+              ? result.error.cause
+              : abortCause,
+          );
+          stopSignal?.resolve();
+        }
+        break;
       }
       return ok();
     };
 
-    const workerCount = Math.min(run.concurrency, length);
-    const workers = createArray(workerCount, () => run(worker));
-    await Promise.all(workers);
+    let workersAborted = false;
 
-    return failFast ? (error ?? ok(results as never)) : ok(results as never);
+    const abortWorkers = (cause: unknown) => {
+      if (workersAborted) return;
+      workersAborted = true;
+      for (const worker of workers) worker.abort(cause);
+    };
+
+    const workerCount = Math.min(run.concurrency, length);
+    const workers = arrayFrom(workerCount, () => run.daemon(worker));
+
+    await using _ = run.defer(() => {
+      abortWorkers(abortCause);
+      return ok();
+    });
+
+    run.onAbort((cause) => {
+      abortWorkers(cause);
+      aborted.resolve();
+    });
+
+    const waitFor = [Promise.all(workers), aborted.promise];
+    if (stopSignal) waitFor.push(stopSignal.promise);
+    await Promise.race(waitFor);
+
+    if (run.signal.aborted) {
+      assertType(AbortError, run.signal.reason);
+      return err(run.signal.reason);
+    }
+
+    if (!stopOn) return results ? ok(results) : ok();
+    if (stopped) return stopped;
+    if (results) return ok(results);
+
+    return allFailed === "completion" ? lastResult! : lastIndexResult!;
   };
 }
 
 /**
- * Error used as abort cause when a task in {@link all} fails.
+ * Returns the first {@link Task} that succeeds.
+ *
+ * Like
+ * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/any | Promise.any},
+ * the first task to succeed wins. All other tasks are aborted. If all tasks
+ * fail, returns the last error (by input order).
+ *
+ * Sequential by default. Use {@link withConcurrency} for parallel execution.
+ *
+ * Think of it like `Array.prototype.some()` — it stops on the first success.
+ * This is in contrast to {@link race}, which returns the first task to complete
+ * (whether success or failure).
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Try multiple endpoints concurrently, first success wins
+ * const result = await run(
+ *   withConcurrency(
+ *     any([fetchFromPrimary, fetchFromSecondary, fetchFromTertiary]),
+ *   ),
+ * );
+ * ```
  *
  * @group Composition
  */
-export const AllFailedError = typed("AllFailedError");
-export interface AllFailedError extends InferType<typeof AllFailedError> {}
+export const any = <T, E, D>(
+  tasks: NonEmptyReadonlyArray<Task<T, E, D>>,
+  {
+    allFailed = "input",
+  }: {
+    /** How to choose an error if all tasks fail. */
+    allFailed?: AnyAllFailed;
+  } = {},
+): Task<T, E, D> =>
+  concurrent(tasks, {
+    stopOn: "success",
+    collect: false,
+    abortCause: anyAbortError,
+    allFailed,
+  });
 
 /**
- * {@link AllFailedError} used as abort cause in {@link all}.
+ * Tie-breaker for {@link any} when all tasks fail.
+ *
+ * Used only when no task succeeds.
+ *
+ * - `"input"` returns the error from the last task in the input array. This is
+ *   stable under concurrency and generally produces deterministic tests.
+ * - `"completion"` returns the error from the task that finished last. This
+ *   reflects timing but can vary across runs when task timing varies.
+ *
+ * ### Example
+ *
+ * ```ts
+ * await using run = createRunner();
+ * const result = await run(
+ *   withConcurrency(any([a, b, c], { allFailed: "completion" })),
+ * );
+ * ```
+ */
+export type AnyAllFailed = "input" | "completion";
+
+/**
+ * Abort cause used by {@link any} when aborting remaining tasks.
  *
  * @group Composition
  */
-export const allFailedError: AllFailedError = { type: "AllFailedError" };
+export const AnyAbortError = typed("AnyAbortError");
+export interface AnyAbortError extends InferType<typeof AnyAbortError> {}
 
-const allFailedErr: Err<unknown> = { ok: false, error: allFailedError };
-
-// TODO: Implement `any`:
-//   any(tasks) // First to succeed wins, others aborted (like Promise.any)
-// race stays array-only (bounded race doesn't make sense).
+/**
+ * {@link AnyAbortError} used as abort cause in {@link any}.
+ *
+ * @group Composition
+ */
+export const anyAbortError: AnyAbortError = { type: "AnyAbortError" };
 
 // TODO: Implement `fetch` - Task wrapper around globalThis.fetch.
 // Add once retry is implemented to show composition (fetch + timeout + retry).
