@@ -5,27 +5,27 @@ import clsx from "clsx";
 import { forwardRef, useState } from "react";
 
 const CheckIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
-    <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
-      <circle cx="10" cy="10" r="10" strokeWidth="0" />
-      <path
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.5"
-        d="m6.75 10.813 2.438 2.437c1.218-4.469 4.062-6.5 4.062-6.5"
-      />
-    </svg>
-  );
+  <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
+    <circle cx="10" cy="10" r="10" strokeWidth="0" />
+    <path
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.5"
+      d="m6.75 10.813 2.438 2.437c1.218-4.469 4.062-6.5 4.062-6.5"
+    />
+  </svg>
+);
 
 const FeedbackButton = (
   props: Omit<React.ComponentPropsWithoutRef<"button">, "type" | "className">,
 ) => (
-    <button
-      type="submit"
-      className="px-3 text-sm font-medium text-zinc-600 transition hover:bg-zinc-900/2.5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white"
-      {...props}
-    />
-  );
+  <button
+    type="submit"
+    className="px-3 text-sm font-medium text-zinc-600 transition hover:bg-zinc-900/2.5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-white"
+    {...props}
+  />
+);
 
 const FeedbackForm = forwardRef<
   React.ComponentRef<"form">,

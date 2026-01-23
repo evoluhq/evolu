@@ -41,46 +41,46 @@ const TopLevelNavItem = ({
   target?: string;
   children: React.ReactNode;
 }) => (
-    <li>
-      <Link
-        href={href}
-        target={target}
-        className="flex items-center text-sm leading-5 text-zinc-600 transition hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white [&>svg]:ml-0.5 [&>svg]:size-3 [&>svg]:stroke-1 [&>svg]:text-gray-400"
-      >
-        {children}
-      </Link>
-    </li>
-  );
+  <li>
+    <Link
+      href={href}
+      target={target}
+      className="flex items-center text-sm leading-5 text-zinc-600 transition hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white [&>svg]:ml-0.5 [&>svg]:size-3 [&>svg]:stroke-1 [&>svg]:text-gray-400"
+    >
+      {children}
+    </Link>
+  </li>
+);
 
 const MenuIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
-    <svg
-      viewBox="0 0 10 9"
-      fill="none"
-      strokeLinecap="round"
-      aria-hidden="true"
-      {...props}
-    >
-      <path d="M.5 1h9M.5 8h9M.5 4.5h9" />
-    </svg>
-  );
+  <svg
+    viewBox="0 0 10 9"
+    fill="none"
+    strokeLinecap="round"
+    aria-hidden="true"
+    {...props}
+  >
+    <path d="M.5 1h9M.5 8h9M.5 4.5h9" />
+  </svg>
+);
 
 const XIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
-    <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
-      <path d="M11.1527 8.92804L16.2525 3H15.044L10.6159 8.14724L7.07919 3H3L8.34821 10.7835L3 17H4.20855L8.88474 11.5643L12.6198 17H16.699L11.1524 8.92804H11.1527ZM9.49748 10.8521L8.95559 10.077L4.644 3.90978H6.50026L9.97976 8.88696L10.5216 9.66202L15.0446 16.1316H13.1883L9.49748 10.8524V10.8521Z" />
-    </svg>
-  );
+  <svg viewBox="0 0 20 20" aria-hidden="true" {...props}>
+    <path d="M11.1527 8.92804L16.2525 3H15.044L10.6159 8.14724L7.07919 3H3L8.34821 10.7835L3 17H4.20855L8.88474 11.5643L12.6198 17H16.699L11.1524 8.92804H11.1527ZM9.49748 10.8521L8.95559 10.077L4.644 3.90978H6.50026L9.97976 8.88696L10.5216 9.66202L15.0446 16.1316H13.1883L9.49748 10.8524V10.8521Z" />
+  </svg>
+);
 
 const XCloseIcon = (props: React.ComponentPropsWithoutRef<"svg">) => (
-    <svg
-      viewBox="0 0 10 9"
-      fill="none"
-      strokeLinecap="round"
-      aria-hidden="true"
-      {...props}
-    >
-      <path d="m1.5 1 7 7M8.5 1l-7 7" />
-    </svg>
-  );
+  <svg
+    viewBox="0 0 10 9"
+    fill="none"
+    strokeLinecap="round"
+    aria-hidden="true"
+    {...props}
+  >
+    <path d="m1.5 1 7 7M8.5 1l-7 7" />
+  </svg>
+);
 
 const MobileNavigationDialog = ({
   isOpen,

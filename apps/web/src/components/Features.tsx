@@ -269,10 +269,10 @@ export const FeatureIcon = ({
 }: {
   icon: Feature["icon"];
 }): React.ReactElement => (
-    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white ring-1 ring-zinc-900/25 backdrop-blur-[2px] transition duration-300 group-hover:bg-white/50 group-hover:ring-zinc-900/50 dark:bg-white/10 dark:ring-white/15 dark:group-hover:bg-zinc-300/10 dark:group-hover:ring-zinc-400">
-      <Icon className="h-5 w-5 stroke-zinc-700 transition-colors duration-300 group-hover:stroke-zinc-900 dark:stroke-zinc-400 dark:group-hover:stroke-zinc-400" />
-    </div>
-  );
+  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white ring-1 ring-zinc-900/25 backdrop-blur-[2px] transition duration-300 group-hover:bg-white/50 group-hover:ring-zinc-900/50 dark:bg-white/10 dark:ring-white/15 dark:group-hover:bg-zinc-300/10 dark:group-hover:ring-zinc-400">
+    <Icon className="h-5 w-5 stroke-zinc-700 transition-colors duration-300 group-hover:stroke-zinc-900 dark:stroke-zinc-400 dark:group-hover:stroke-zinc-400" />
+  </div>
+);
 
 const FeaturePattern = ({
   mouseX,
@@ -355,11 +355,11 @@ const Feature = ({ feature }: { feature: Feature }) => {
 };
 
 export const Features = (): React.ReactElement => (
-    <div className="xl:max-w-none">
-      <div className="not-prose mt-4 grid grid-cols-1 gap-2 pt-10 sm:grid-cols-2 lg:gap-8 xl:grid-cols-4">
-        {features.map((feature) => (
-          <Feature key={feature.id} feature={feature} />
-        ))}
-      </div>
+  <div className="xl:max-w-none">
+    <div className="not-prose mt-4 grid grid-cols-1 gap-2 pt-10 sm:grid-cols-2 lg:gap-8 xl:grid-cols-4">
+      {features.map((feature) => (
+        <Feature key={feature.id} feature={feature} />
+      ))}
     </div>
-  );
+  </div>
+);
