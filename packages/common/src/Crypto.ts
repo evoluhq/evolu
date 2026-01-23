@@ -16,7 +16,7 @@ import type { RandomLibDep } from "./Random.js";
 import type { Result } from "./Result.js";
 import { trySync } from "./Result.js";
 import { brand, length, NonNegativeInt, Uint8Array } from "./Type.js";
-import { createArray } from "./Array.js";
+import { arrayFrom } from "./Array.js";
 
 export interface RandomBytes {
   /**
@@ -81,7 +81,7 @@ export const createRandomBytes = (): RandomBytes => ({
 export const testCreateRandomBytes = (deps: RandomLibDep): RandomBytes =>
   ({
     create: (bytesLength: number) => {
-      const array = createArray(bytesLength, () => deps.randomLib.int(0, 255));
+      const array = arrayFrom(bytesLength, () => deps.randomLib.int(0, 255));
       return new globalThis.Uint8Array(array);
     },
   }) as RandomBytes;

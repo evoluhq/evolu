@@ -29,8 +29,7 @@ if (isNonEmptyArray(mutableArr)) { ... }
 
 ### New Functions
 
-- **`createArray`** — creates a readonly array of specified length using a function to produce each element
-- **`ensureArray`** — converts an Iterable to a readonly array, returning input unchanged if already an array
+- **`arrayFrom`** — creates a readonly array from an iterable or by generating elements with a length and mapper
 - **`flatMapArray`** — maps each element to an array and flattens the result, preserving non-empty type when applicable
 - **`concatArrays`** — concatenates two arrays, returning non-empty when at least one input is non-empty
 - **`sortArray`** — returns a new sorted array (wraps `toSorted`), preserving non-empty type

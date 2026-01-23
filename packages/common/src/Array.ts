@@ -147,36 +147,46 @@ export type NonEmptyReadonlyArray<T> = readonly [T, ...ReadonlyArray<T>];
 export const emptyArray: ReadonlyArray<never> = [];
 
 /**
- * Creates a readonly array of the specified length using a function to produce
- * each element.
+ * Better `Array.from`.
+ *
+ * - Returns readonly arrays
+ * - Accepts length directly: `arrayFrom(3, fn)` instead of `Array.from({ length:
+ *   3 }, fn)`
+ * - Skips copying if iterable is already an array (safe because readonly)
  *
  * ### Example
  *
  * ```ts
- * // Create array of indices
- * createArray(3, identity); // [0, 1, 2]
- *
- * // Create array of objects (each is a unique instance)
- * createArray(2, () => ({ count: 0 })); // [{ count: 0 }, { count: 0 }]
+ * arrayFrom(new Set([1, 2, 3])); // ReadonlyArray<number>
+ * arrayFrom(3, (i) => i * 10); // [0, 10, 20]
+ * arrayFrom(iterableMaybeArray); // no unnecessary copy
  * ```
  *
+ * Unlike `Array.from`, there's no map parameter for iterables — use
+ * {@link mapArray} instead, or
+ * {@link https://web.dev/blog/baseline-iterator-helpers | iterator helpers}
+ * directly on iterables.
+ *
  * @group Constructors
  */
-export const createArray = <T>(
+export function arrayFrom<T>(iterable: Iterable<T>): ReadonlyArray<T>;
+export function arrayFrom<T>(
   length: number,
   map: (index: number) => T,
-): ReadonlyArray<T> => Array.from({ length }, (_, i) => map(i));
-
-/**
- * Converts an {@link Iterable} to a readonly array.
- *
- * Returns the input unchanged if it's already an array, avoiding unnecessary
- * allocation.
- *
- * @group Constructors
- */
-export const ensureArray = <T>(iterable: Iterable<T>): ReadonlyArray<T> =>
-  Array.isArray(iterable) ? (iterable as ReadonlyArray<T>) : [...iterable];
+): ReadonlyArray<T>;
+export function arrayFrom<T>(
+  iterableOrLength: Iterable<T> | number,
+  map?: (index: number) => T,
+): ReadonlyArray<T> {
+  if (typeof iterableOrLength === "number") {
+    return Array.from({ length: iterableOrLength }, (_, i) =>
+      (map as (index: number) => T)(i),
+    );
+  }
+  return Array.isArray(iterableOrLength)
+    ? (iterableOrLength as ReadonlyArray<T>)
+    : [...iterableOrLength];
+}
 
 /**
  * Checks if an array is non-empty and narrows its type to {@link NonEmptyArray}

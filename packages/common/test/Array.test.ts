@@ -1,8 +1,8 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
 import {
   appendToArray,
+  arrayFrom,
   concatArrays,
-  createArray,
   dedupeArray,
   emptyArray,
   filterArray,
@@ -65,19 +65,30 @@ describe("Constants", () => {
     });
   });
 
-  describe("createArray", () => {
+  describe("arrayFrom", () => {
+    test("creates array from iterable", () => {
+      const result = arrayFrom(new Set([1, 2, 3]));
+      expect(result).toEqual([1, 2, 3]);
+    });
+
+    test("returns input unchanged if already an array", () => {
+      const input = [1, 2, 3];
+      const result = arrayFrom(input);
+      expect(result).toBe(input);
+    });
+
     test("creates array with specified length", () => {
-      const result = createArray(3, identity);
+      const result = arrayFrom(3, identity);
       expect(result).toEqual([0, 1, 2]);
     });
 
     test("returns readonly array", () => {
-      const result = createArray(2, () => "x");
+      const result = arrayFrom(2, () => "x");
       expectTypeOf(result).toEqualTypeOf<ReadonlyArray<string>>();
     });
 
     test("passes index to callback", () => {
-      const result = createArray(4, (i) => i * 10);
+      const result = arrayFrom(4, (i) => i * 10);
       expect(result).toEqual([0, 10, 20, 30]);
     });
   });
