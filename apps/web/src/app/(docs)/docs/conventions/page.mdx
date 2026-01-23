@@ -192,9 +192,9 @@ Why arrow functions?
 - **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
 - **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
 
-**Exception: function overloads.** TypeScript requires the `function` keyword for overloaded signatures:
+**Exception: function overloads.** While overloading with arrow functions is possible (using a type with multiple call signatures), it can be hard to type properly because the implementation must satisfy all overloads at once, which TypeScript often can't verify without assertions. Use the `function` keyword instead:
 
-```ts
+````ts
 function mapArray<T, U>(
   array: NonEmptyReadonlyArray<T>,
   mapper: (item: T) => U,
@@ -209,7 +209,6 @@ function mapArray<T, U>(
 ): ReadonlyArray<U> {
   return array.map(mapper) as ReadonlyArray<U>;
 }
-```
 
 **In interfaces too.** Use arrow function syntax for interface methods—otherwise ESLint won't allow passing them as references due to JavaScript's `this` binding issues.
 
@@ -225,7 +224,7 @@ interface FooAvoid {
   bar(value: string): void;
   baz(): number;
 }
-```
+````
 
 ## Function options
 
