@@ -41,7 +41,7 @@
     "prettier": "^3.8.0",
     "prettier-plugin-embed": "^0.5.1",
     "prettier-plugin-jsdoc": "^1.8.0",
-    "prettier-plugin-sql-cst": "^0.17.4",
+    "prettier-plugin-sql-cst": "^0.18.0",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "rimraf": "^6.1.2",
     "turbo": "^2.7.5",
