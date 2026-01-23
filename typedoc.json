@@ -8,10 +8,7 @@
     "entryPoints": ["src/**/*.ts"],
     "exclude": ["src/**/index.ts"]
   },
-  "plugin": [
-    "typedoc-plugin-markdown",
-    "./scripts/typedoc-plugin-evolu-type.mts"
-  ],
+  "plugin": ["typedoc-plugin-markdown", "./scripts/typedoc-plugin-evolu.mts"],
   "publicPath": "/docs/api-reference",
   "fileExtension": ".mdx",
   "githubPages": false,

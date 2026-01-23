@@ -1,7 +1,7 @@
 /**
- * TypeDoc plugin that improves documentation for Evolu Type patterns.
+ * TypeDoc plugin for Evolu documentation.
  *
- * Handles three patterns:
+ * Handles Evolu Type patterns:
  *
  * 1. `interface X extends InferType<typeof X>` - copies comment from `const X`
  * 2. `type X = typeof X.Type` - copies comment and resolves the type
