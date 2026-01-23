@@ -222,6 +222,7 @@ import {
   NonNegativeInt,
   Number,
   PositiveInt,
+  type Typed,
   uint8ArrayToBase64Url,
 } from "../Type.js";
 import type { Predicate } from "../Types.js";
@@ -386,32 +387,29 @@ export type ProtocolError =
  * Represents a version mismatch in the Evolu Protocol. Occurs when the
  * initiator and non-initiator are using incompatible protocol versions.
  */
-export interface ProtocolVersionError extends OwnerError {
-  readonly type: "ProtocolVersionError";
+export interface ProtocolVersionError
+  extends OwnerError, Typed<"ProtocolVersionError"> {
   readonly version: NonNegativeInt;
   /** Indicates which side is obsolete and should update. */
   readonly isInitiator: boolean;
 }
 
 /** Error for invalid or corrupted protocol message data. */
-export interface ProtocolInvalidDataError {
-  readonly type: "ProtocolInvalidDataError";
+export interface ProtocolInvalidDataError extends Typed<"ProtocolInvalidDataError"> {
   readonly data: globalThis.Uint8Array;
   readonly error: unknown;
 }
 
 /** Error when a {@link OwnerWriteKey} is invalid, missing, or fails validation. */
-export interface ProtocolWriteKeyError extends OwnerError {
-  readonly type: "ProtocolWriteKeyError";
-}
+export interface ProtocolWriteKeyError
+  extends OwnerError, Typed<"ProtocolWriteKeyError"> {}
 
 /**
  * Error indicating a serious relay-side write failure. Clients should log this
  * error and show a generic sync error to the user.
  */
-export interface ProtocolWriteError extends OwnerError {
-  readonly type: "ProtocolWriteError";
-}
+export interface ProtocolWriteError
+  extends OwnerError, Typed<"ProtocolWriteError"> {}
 
 /**
  * Error when storage or billing quota is exceeded.
@@ -426,25 +424,22 @@ export interface ProtocolWriteError extends OwnerError {
  * plan. Quota monitoring and management is the relay provider's
  * responsibility.
  */
-export interface ProtocolQuotaError extends OwnerError {
-  readonly type: "ProtocolQuotaError";
-}
+export interface ProtocolQuotaError
+  extends OwnerError, Typed<"ProtocolQuotaError"> {}
 
 /**
  * Error indicating a serious relay-side synchronization failure. Clients should
  * log this error and show a generic sync error to the user.
  */
-export interface ProtocolSyncError extends OwnerError {
-  readonly type: "ProtocolSyncError";
-}
+export interface ProtocolSyncError
+  extends OwnerError, Typed<"ProtocolSyncError"> {}
 
 /**
  * Error when embedded timestamp doesn't match expected timestamp in
  * EncryptedDbChange. Indicates potential tampering or corruption of CRDT
  * messages.
  */
-export interface ProtocolTimestampMismatchError {
-  readonly type: "ProtocolTimestampMismatchError";
+export interface ProtocolTimestampMismatchError extends Typed<"ProtocolTimestampMismatchError"> {
   readonly expected: Timestamp;
   readonly timestamp: Timestamp;
 }
@@ -897,10 +892,18 @@ export interface ApplyProtocolMessageAsClientOptions {
  * Result type for {@link applyProtocolMessageAsClient} that distinguishes
  * between responses to client requests and broadcast messages.
  */
+export interface ApplyProtocolMessageAsClientResponse extends Typed<"response"> {
+  readonly message: ProtocolMessage;
+}
+
+export interface ApplyProtocolMessageAsClientNoResponse extends Typed<"no-response"> {}
+
+export interface ApplyProtocolMessageAsClientBroadcast extends Typed<"broadcast"> {}
+
 export type ApplyProtocolMessageAsClientResult =
-  | { readonly type: "response"; readonly message: ProtocolMessage }
-  | { readonly type: "no-response" }
-  | { readonly type: "broadcast" };
+  | ApplyProtocolMessageAsClientResponse
+  | ApplyProtocolMessageAsClientNoResponse
+  | ApplyProtocolMessageAsClientBroadcast;
 
 export const applyProtocolMessageAsClient =
   (deps: StorageDep) =>
@@ -1046,8 +1049,7 @@ export interface ApplyProtocolMessageAsRelayOptions {
  * to sync. Clients may choose not to respond in certain cases (like when they
  * receive broadcast messages or when they lack a write key for syncing).
  */
-export interface ApplyProtocolMessageAsRelayResult {
-  readonly type: "response";
+export interface ApplyProtocolMessageAsRelayResult extends Typed<"response"> {
   readonly message: ProtocolMessage;
 }
 

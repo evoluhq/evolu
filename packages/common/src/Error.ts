@@ -6,6 +6,7 @@
 
 import { assert } from "./Assert.js";
 import type { tryAsync, trySync } from "./Result.js";
+import type { Typed } from "./Type.js";
 
 /**
  * A wrapper for unknown errors caught at runtime.
@@ -19,8 +20,7 @@ import type { tryAsync, trySync } from "./Result.js";
  *
  * Use {@link createUnknownError} to create instances.
  */
-export interface UnknownError {
-  readonly type: "UnknownError";
+export interface UnknownError extends Typed<"UnknownError"> {
   readonly error: unknown;
 }
 

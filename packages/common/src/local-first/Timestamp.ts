@@ -14,7 +14,7 @@ import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { TimeDep } from "../Time.js";
 import { Millis, minMillis } from "../Time.js";
-import type { DateIso, InferType } from "../Type.js";
+import type { DateIso, InferType, Typed } from "../Type.js";
 import {
   brand,
   length,
@@ -47,19 +47,14 @@ export type TimestampError =
   | TimestampCounterOverflowError
   | TimestampTimeOutOfRangeError;
 
-export interface TimestampDriftError {
-  readonly type: "TimestampDriftError";
+export interface TimestampDriftError extends Typed<"TimestampDriftError"> {
   readonly next: Millis;
   readonly now: Millis;
 }
 
-export interface TimestampCounterOverflowError {
-  readonly type: "TimestampCounterOverflowError";
-}
+export interface TimestampCounterOverflowError extends Typed<"TimestampCounterOverflowError"> {}
 
-export interface TimestampTimeOutOfRangeError {
-  readonly type: "TimestampTimeOutOfRangeError";
-}
+export interface TimestampTimeOutOfRangeError extends Typed<"TimestampTimeOutOfRangeError"> {}
 
 export const Counter = brand(
   "Counter",

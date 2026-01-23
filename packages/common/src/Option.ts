@@ -26,18 +26,18 @@
  */
 
 /** Optional value. */
+import type { Typed } from "./Type.js";
+
+/** Optional value. */
 export type Option<T> = Some<T> | None;
 
 /** Present value in an {@link Option}. */
-export interface Some<out T> {
-  readonly type: "Some";
+export interface Some<out T> extends Typed<"Some"> {
   readonly value: T;
 }
 
 /** Absent value in an {@link Option}. */
-export interface None {
-  readonly type: "None";
-}
+export interface None extends Typed<"None"> {}
 
 /**
  * Extracts the value type from an {@link Option} or {@link Some}.

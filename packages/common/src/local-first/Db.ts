@@ -230,83 +230,68 @@
 // }
 
 // export type DbWorkerInput =
-//   | {
-//       readonly type: "init";
+//   | (Typed<"init"> & {
 //       readonly config: DbConfig;
 //       readonly dbSchema: DbSchema;
-//     }
-//   | {
-//       readonly type: "getAppOwner";
-//     }
-//   | {
-//       readonly type: "mutate";
+//     })
+//   | Typed<"getAppOwner">
+//   | (Typed<"mutate"> & {
 //       readonly tabId: Id;
 //       readonly changes: NonEmptyReadonlyArray<MutationChange>;
 //       readonly onCompleteIds: ReadonlyArray<CallbackId>;
 //       readonly subscribedQueries: ReadonlyArray<Query>;
-//     }
-//   | {
-//       readonly type: "query";
+//     })
+//   | (Typed<"query"> & {
 //       readonly tabId: Id;
 //       readonly queries: NonEmptyReadonlyArray<Query>;
-//     }
-//   | {
-//       readonly type: "reset";
+//     })
+//   | (Typed<"reset"> & {
 //       readonly onCompleteId: CallbackId;
 //       readonly reload: boolean;
 //       readonly restore?: {
 //         readonly dbSchema: DbSchema;
 //         readonly mnemonic: Mnemonic;
 //       };
-//     }
-//   | {
-//       readonly type: "ensureDbSchema";
+//     })
+//   | (Typed<"ensureDbSchema"> & {
 //       readonly dbSchema: DbSchema;
-//     }
-//   | {
-//       readonly type: "export";
+//     })
+//   | (Typed<"export"> & {
 //       readonly onCompleteId: CallbackId;
-//     }
-//   | {
-//       readonly type: "useOwner";
+//     })
+//   | (Typed<"useOwner"> & {
 //       readonly use: boolean;
 //       readonly owner: SyncOwner;
-//     };
+//     });
 
 // export type DbWorkerOutput =
-//   | {
-//       readonly type: "onError";
+//   | (Typed<"onError"> & {
 //       readonly error:
 //         | ProtocolError
 //         | SqliteError
 //         | DecryptWithXChaCha20Poly1305Error
 //         | TimestampError
 //         | UnknownError;
-//     }
-//   | {
-//       readonly type: "onGetAppOwner";
+//     })
+//   | (Typed<"onGetAppOwner"> & {
 //       readonly appOwner: AppOwner;
-//     }
-//   | {
-//       readonly type: "onQueryPatches";
+//     })
+//   | (Typed<"onQueryPatches"> & {
 //       readonly tabId: Id;
 //       readonly queryPatches: ReadonlyArray<QueryPatches>;
 //       readonly onCompleteIds: ReadonlyArray<CallbackId>;
-//     }
-//   | {
-//       readonly type: "refreshQueries";
+//     })
+//   | (Typed<"refreshQueries"> & {
 //       readonly tabId?: Id;
-//     }
-//   | {
-//       readonly type: "onReset";
+//     })
+//   | (Typed<"onReset"> & {
 //       readonly onCompleteId: CallbackId;
 //       readonly reload: boolean;
-//     }
-//   | {
-//       readonly type: "onExport";
+//     })
+//   | (Typed<"onExport"> & {
 //       readonly onCompleteId: CallbackId;
 //       readonly file: Uint8Array;
-//     };
+//     });
 
 // export type DbWorkerPlatformDeps = ConsoleDep &
 //   CreateSqliteDriverDep &

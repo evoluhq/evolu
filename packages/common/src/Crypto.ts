@@ -15,7 +15,13 @@ import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import type { RandomLibDep } from "./Random.js";
 import type { Result } from "./Result.js";
 import { trySync } from "./Result.js";
-import { brand, length, NonNegativeInt, Uint8Array } from "./Type.js";
+import {
+  brand,
+  length,
+  NonNegativeInt,
+  Uint8Array,
+  type Typed,
+} from "./Type.js";
 import { arrayFrom } from "./Array.js";
 
 export interface RandomBytes {
@@ -175,8 +181,7 @@ export const encryptWithXChaCha20Poly1305 =
     return [ciphertext, nonce];
   };
 
-export interface DecryptWithXChaCha20Poly1305Error {
-  readonly type: "DecryptWithXChaCha20Poly1305Error";
+export interface DecryptWithXChaCha20Poly1305Error extends Typed<"DecryptWithXChaCha20Poly1305Error"> {
   readonly error: unknown;
 }
 

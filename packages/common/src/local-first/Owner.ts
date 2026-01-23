@@ -23,6 +23,7 @@ import {
   idToIdBytes,
   Mnemonic,
   NonNegativeInt,
+  type Typed,
 } from "../Type.js";
 import type { EncryptedDbChange, Storage } from "./Storage.js";
 import { TimestampBytes } from "./Timestamp.js";
@@ -185,9 +186,7 @@ const createOwner = (secret: OwnerSecret): Owner => ({
  * {@link SharedReadonlyOwner} instead, which are designed specifically for
  * collaborative access.
  */
-export interface AppOwner extends Owner {
-  readonly type: "AppOwner";
-
+export interface AppOwner extends Owner, Typed<"AppOwner"> {
   /**
    * The mnemonic that was used to derive the AppOwner keys. Optional when the
    * AppOwner is created from external keys to avoid sharing the mnemonic with
@@ -220,9 +219,7 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
  * deterministically derived from {@link AppOwner} using
  * {@link deriveShardOwner}.
  */
-export interface ShardOwner extends Owner {
-  readonly type: "ShardOwner";
-}
+export interface ShardOwner extends Owner, Typed<"ShardOwner"> {}
 
 /** Creates a {@link ShardOwner} from an {@link OwnerSecret}. */
 export const createShardOwner = (secret: OwnerSecret): ShardOwner => ({
@@ -261,9 +258,7 @@ export const deriveShardOwner = (
 };
 
 /** An {@link Owner} for collaborative data with write access. */
-export interface SharedOwner extends Owner {
-  readonly type: "SharedOwner";
-}
+export interface SharedOwner extends Owner, Typed<"SharedOwner"> {}
 
 /**
  * Creates a {@link SharedOwner} from an {@link OwnerSecret} for collaborative
@@ -282,9 +277,8 @@ export const createSharedOwner = (secret: OwnerSecret): SharedOwner => ({
  * {@link OwnerId} and {@link EncryptionKey} needed for others to read the shared
  * data without write access.
  */
-export interface SharedReadonlyOwner extends ReadonlyOwner {
-  readonly type: "SharedReadonlyOwner";
-}
+export interface SharedReadonlyOwner
+  extends ReadonlyOwner, Typed<"SharedReadonlyOwner"> {}
 
 /** Creates a {@link SharedReadonlyOwner} from a {@link SharedOwner}. */
 export const createSharedReadonlyOwner = (
@@ -329,8 +323,7 @@ export type OwnerTransport = OwnerWebSocketTransport;
  * @see {@link createOwnerWebSocketTransport}
  * @see {@link parseOwnerIdFromOwnerWebSocketTransportUrl}
  */
-export interface OwnerWebSocketTransport {
-  readonly type: "WebSocket";
+export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
   readonly url: string;
 }
 

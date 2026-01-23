@@ -32,7 +32,7 @@ import {
   SqliteValue,
 } from "../Sqlite.js";
 import type { Millis, TimeDep } from "../Time.js";
-import type { DateIso } from "../Type.js";
+import type { DateIso, Typed } from "../Type.js";
 import { Id, IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type {
@@ -917,36 +917,25 @@ export type SyncState =
  * The initial synchronization state when the app starts. In this state, the app
  * needs to determine whether the data is synced.
  */
-export interface SyncStateInitial {
-  readonly type: "SyncStateInitial";
-}
+export interface SyncStateInitial extends Typed<"SyncStateInitial"> {}
 
-export interface SyncStateIsSyncing {
-  readonly type: "SyncStateIsSyncing";
-}
+export interface SyncStateIsSyncing extends Typed<"SyncStateIsSyncing"> {}
 
-export interface SyncStateIsSynced {
-  readonly type: "SyncStateIsSynced";
+export interface SyncStateIsSynced extends Typed<"SyncStateIsSynced"> {
   readonly time: Millis;
 }
 
-export interface SyncStateIsNotSynced {
-  readonly type: "SyncStateIsNotSynced";
+export interface SyncStateIsNotSynced extends Typed<"SyncStateIsNotSynced"> {
   readonly error: NetworkError | ServerError | PaymentRequiredError;
 }
 
-export interface NetworkError {
-  readonly type: "NetworkError";
-}
+export interface NetworkError extends Typed<"NetworkError"> {}
 
-export interface ServerError {
-  readonly type: "ServerError";
+export interface ServerError extends Typed<"ServerError"> {
   readonly status: number;
 }
 
-export interface PaymentRequiredError {
-  readonly type: "PaymentRequiredError";
-}
+export interface PaymentRequiredError extends Typed<"PaymentRequiredError"> {}
 
 export const initialSyncState: SyncStateInitial = { type: "SyncStateInitial" };
 

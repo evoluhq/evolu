@@ -14,7 +14,7 @@ import type { UnknownError } from "./Error.js";
 import { createUnknownError } from "./Error.js";
 import type { Result } from "./Result.js";
 import { err, ok, tryAsync, trySync } from "./Result.js";
-import type { SimpleName } from "./Type.js";
+import type { SimpleName, Typed } from "./Type.js";
 import {
   Null,
   Number,
@@ -139,8 +139,7 @@ export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
 }
 
 /** Represents an error that occurred during a SQLite operation. */
-export interface SqliteError {
-  readonly type: "SqliteError";
+export interface SqliteError extends Typed<"SqliteError"> {
   readonly error: UnknownError;
   readonly rollbackError?: UnknownError;
 }
@@ -309,13 +308,11 @@ export const createPreparedStatementsCache = <P>(
   };
 };
 
-export interface SqlIdentifier {
-  readonly type: "SqlIdentifier";
+export interface SqlIdentifier extends Typed<"SqlIdentifier"> {
   readonly sql: SafeSql;
 }
 
-export interface RawSql {
-  readonly type: "RawSql";
+export interface RawSql extends Typed<"RawSql"> {
   readonly sql: string;
 }
 

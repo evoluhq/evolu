@@ -10,6 +10,7 @@ import { retryOld } from "./OldTask.js";
 import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
 import { maxPositiveInt } from "./Type.js";
+import type { Typed } from "./Type.js";
 
 /** WebSocket with auto-reconnect and offline support. */
 export interface WebSocket extends Disposable {
@@ -33,9 +34,7 @@ export interface WebSocket extends Disposable {
  *
  * https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/send
  */
-export interface WebSocketSendError {
-  readonly type: "WebSocketSendError";
-}
+export interface WebSocketSendError extends Typed<"WebSocketSendError"> {}
 
 /** WebSocket connection states. */
 export type WebSocketReadyState = "connecting" | "open" | "closing" | "closed";
@@ -91,8 +90,7 @@ export type WebSocketError =
  * An error that occurs when a connection cannot be established due to a network
  * error.
  */
-export interface WebSocketConnectError {
-  readonly type: "WebSocketConnectError";
+export interface WebSocketConnectError extends Typed<"WebSocketConnectError"> {
   readonly event: Event;
 }
 
@@ -102,8 +100,7 @@ export interface WebSocketConnectError {
  *
  * https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/error_event
  */
-export interface WebSocketConnectionError {
-  readonly type: "WebSocketConnectionError";
+export interface WebSocketConnectionError extends Typed<"WebSocketConnectionError"> {
   readonly event: Event;
 }
 
@@ -111,8 +108,7 @@ export type WebSocketRetryError =
   | WebSocketConnectError
   | WebSocketConnectionCloseError;
 
-export interface WebSocketConnectionCloseError {
-  readonly type: "WebSocketConnectionCloseError";
+export interface WebSocketConnectionCloseError extends Typed<"WebSocketConnectionCloseError"> {
   readonly event: CloseEvent;
 }
 

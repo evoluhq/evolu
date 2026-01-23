@@ -17,7 +17,7 @@ import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { SqliteDep, SqliteError } from "../Sqlite.js";
 import { sql, SqliteValue } from "../Sqlite.js";
-import type { InferType, Int64String, TypeError } from "../Type.js";
+import type { InferType, Int64String, TypeError, Typed } from "../Type.js";
 import {
   Boolean,
   brand,
@@ -171,14 +171,12 @@ export interface StorageDep {
 }
 
 /** Error indicating a serious write failure. */
-export interface StorageWriteError extends OwnerError {
-  readonly type: "StorageWriteError";
-}
+export interface StorageWriteError
+  extends OwnerError, Typed<"StorageWriteError"> {}
 
 /** Error when storage or billing quota is exceeded. */
-export interface StorageQuotaError extends OwnerError {
-  readonly type: "StorageQuotaError";
-}
+export interface StorageQuotaError
+  extends OwnerError, Typed<"StorageQuotaError"> {}
 
 /**
  * A cryptographic hash used for efficiently comparing collections of

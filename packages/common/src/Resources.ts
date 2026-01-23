@@ -6,7 +6,7 @@
 
 import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
-import { PositiveInt } from "./Type.js";
+import { PositiveInt, type Typed } from "./Type.js";
 
 /**
  * A generic resource manager that handles reference counting and delayed
@@ -64,8 +64,9 @@ export interface Resources<
 }
 
 /** Error when trying to remove a consumer from a resource that doesn't exist. */
-export interface ResourceNotFoundError<TResourceKey extends string = string> {
-  readonly type: "ResourceNotFoundError";
+export interface ResourceNotFoundError<
+  TResourceKey extends string = string,
+> extends Typed<"ResourceNotFoundError"> {
   readonly resourceKey: TResourceKey;
 }
 
@@ -73,8 +74,7 @@ export interface ResourceNotFoundError<TResourceKey extends string = string> {
 export interface ConsumerNotFoundError<
   TConsumerId extends string = string,
   TResourceKey extends string = string,
-> {
-  readonly type: "ConsumerNotFoundError";
+> extends Typed<"ConsumerNotFoundError"> {
   readonly consumerId: TConsumerId;
   readonly resourceKey: TResourceKey;
 }

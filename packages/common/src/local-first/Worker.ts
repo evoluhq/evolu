@@ -12,6 +12,7 @@ import type {
   MessagePort,
   NativeMessagePort,
 } from "../Worker.js";
+import type { Typed } from "../Type.js";
 import type { EvoluError } from "./Error.js";
 
 export type EvoluWorker = CommonSharedWorker<EvoluWorkerInput>;
@@ -20,15 +21,15 @@ export interface EvoluWorkerDep {
   readonly evoluWorker: EvoluWorker;
 }
 
-export type EvoluWorkerInput =
-  | {
-      readonly type: "initErrorStore";
-      readonly port: NativeMessagePort;
-    }
-  | {
-      readonly type: "initEvolu";
-      readonly port: NativeMessagePort;
-    };
+export interface InitErrorStoreMessage extends Typed<"initErrorStore"> {
+  readonly port: NativeMessagePort;
+}
+
+export interface InitEvoluMessage extends Typed<"initEvolu"> {
+  readonly port: NativeMessagePort;
+}
+
+export type EvoluWorkerInput = InitErrorStoreMessage | InitEvoluMessage;
 
 export const runEvoluWorkerScope =
   (deps: CreateMessagePortDep) =>
