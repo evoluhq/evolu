@@ -37,4 +37,13 @@ export const installPolyfills = (): void => {
       return { promise, resolve, reject };
     };
   }
+
+  // @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/try
+  if (typeof Promise.try === "undefined") {
+    // @ts-expect-error This is OK.
+    Promise.try = (
+      func: (...args: ReadonlyArray<unknown>) => unknown,
+      ...args: ReadonlyArray<unknown>
+    ): Promise<unknown> => new Promise((resolve) => resolve(func(...args)));
+  }
 };
