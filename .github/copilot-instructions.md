@@ -151,34 +151,6 @@ type TimeoutId = Brand<"TimeoutId">;
 type NativeMessagePort = Brand<"NativeMessagePort">;
 ```
 
-## Object enums
-
-- **Use PascalCase for keys** - all keys in constant objects should use PascalCase
-- **String values match keys** - when using strings, make values match the key names
-- **Numeric values for wire protocols** - use numbers for serialization efficiency
-- **Export with `as const`** - ensure TypeScript treats values as literals
-
-```ts
-// String values matching PascalCase keys
-export const TaskScopeState = {
-  Open: "Open",
-  Closing: "Closing",
-  Closed: "Closed",
-} as const;
-
-export type TaskScopeState =
-  (typeof TaskScopeState)[keyof typeof TaskScopeState];
-
-// Numeric values for wire protocols
-export const MessageType = {
-  Request: 0,
-  Response: 1,
-  Broadcast: 2,
-} as const;
-
-export type MessageType = (typeof MessageType)[keyof typeof MessageType];
-```
-
 ## Documentation style
 
 - **Be direct and technical** - state facts, avoid conversational style
@@ -234,6 +206,8 @@ export interface CreateMessageChannelDep {
  *
  * @example
  *   ```ts
+ *
+ *
  *   const user = createUser({ name: "John", email: "john@example.com" });
  *   ```;
  *
