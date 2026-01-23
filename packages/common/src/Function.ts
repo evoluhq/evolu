@@ -165,7 +165,22 @@ export function readonly<T, K extends keyof any, V>(
  */
 export type Lazy<T> = () => T;
 
-/** Creates a {@link Lazy} from a value. Useful for defining constant thunks. */
+/**
+ * Creates a {@link Lazy} from a precomputed value.
+ *
+ * Use when the value is expensive to compute and want to compute it once at
+ * definition time rather than on every call.
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Computed once at definition, returned on every call
+ * const getConfig = lazy(parseConfig(rawConfig));
+ *
+ * // vs. computed on every call
+ * const getConfig = () => parseConfig(rawConfig);
+ * ```
+ */
 export const lazy =
   <T>(value: T): Lazy<T> =>
   () =>
