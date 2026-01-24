@@ -6,6 +6,7 @@ import {
 } from "../src/Array.js";
 import { testCreateConsole } from "../src/Console.js";
 import { exhaustiveCheck, lazyVoid } from "../src/Function.js";
+import { emptyRecord } from "../src/Object.js";
 import { testCreateRandom } from "../src/Random.js";
 import { createRef } from "../src/Ref.js";
 import type { Done, Result } from "../src/Result.js";
@@ -48,10 +49,9 @@ import {
   createSemaphore,
   deferredDisposedError,
   DeferredDisposedError,
-  forEach,
-  ForEachAbortError,
-  forEachSettled,
-  ForEachSettledAbortError,
+  map,
+  MapAbortError,
+  mapSettled,
   race,
   RaceLostError,
   repeat,
@@ -4660,13 +4660,22 @@ describe("all", () => {
     ]);
   });
 
-  test("returns empty array for empty input", async () => {
+  test("returns emptyArray for empty array", async () => {
     await using run = createRunner();
 
     const emptyTasks: Array<Task<number>> = [];
     const result = await run(all(emptyTasks));
 
-    expect(result).toEqual(ok(emptyArray));
+    expect(result).toStrictEqual(ok(emptyArray));
+  });
+
+  test("returns emptyRecord for empty record", async () => {
+    await using run = createRunner();
+
+    const emptyTasks: Record<string, Task<number>> = {};
+    const result = await run(all(emptyTasks));
+
+    expect(result).toStrictEqual(ok(emptyRecord));
   });
 
   test("fails fast on first error", async () => {
@@ -4981,9 +4990,69 @@ describe("all", () => {
     expect(taskResult).toEqual(err({ type: "AbortError", cause: "cancelled" }));
     expect(unabortableCompleted).toBe(false);
   });
+
+  test("collect: false discards results", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const task =
+      (id: number): Task<number> =>
+      () => {
+        events.push(`task ${id}`);
+        return ok(id);
+      };
+
+    const result = await run(
+      all([task(1), task(2), task(3)], { collect: false }),
+    );
+
+    expect(result).toEqual(ok(undefined));
+    if (result.ok) expectTypeOf(result.value).toEqualTypeOf<void>();
+    expect(events).toEqual(["task 1", "task 2", "task 3"]);
+  });
+
+  test("collect: false struct discards results", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const task =
+      (id: string): Task<string> =>
+      () => {
+        events.push(`task ${id}`);
+        return ok(id);
+      };
+
+    const result = await run(
+      all({ a: task("a"), b: task("b") }, { collect: false }),
+    );
+
+    expect(result).toEqual(ok(undefined));
+    if (result.ok) expectTypeOf(result.value).toEqualTypeOf<void>();
+    expect(events).toEqual(["task a", "task b"]);
+  });
 });
 
 describe("allSettled", () => {
+  test("returns emptyArray for empty array", async () => {
+    await using run = createRunner();
+
+    const emptyTasks: Array<Task<number>> = [];
+    const result = await run(allSettled(emptyTasks));
+
+    expect(result).toStrictEqual(ok(emptyArray));
+  });
+
+  test("returns emptyRecord for empty record", async () => {
+    await using run = createRunner();
+
+    const emptyTasks: Record<string, Task<number>> = {};
+    const result = await run(allSettled(emptyTasks));
+
+    expect(result).toStrictEqual(ok(emptyRecord));
+  });
+
   test("runs tasks sequentially by default", async () => {
     await using run = createRunner();
 
@@ -5051,15 +5120,6 @@ describe("allSettled", () => {
         NonEmptyReadonlyArray<Result<number, MyError | AbortError>>
       >();
     }
-  });
-
-  test("returns empty array for empty input", async () => {
-    await using run = createRunner();
-
-    const emptyTasks: Array<Task<number>> = [];
-    const result = await run(allSettled(emptyTasks));
-
-    expect(result).toEqual(ok(emptyArray));
   });
 
   test("supports struct input", async () => {
@@ -5244,82 +5304,153 @@ describe("allSettled", () => {
     assert(AbortError.is(slowAbortReason));
     expect(AllSettledAbortError.is(slowAbortReason.cause)).toBe(true);
   });
-});
 
-describe("forEach", () => {
-  test("runs tasks sequentially by default", async () => {
+  test("collect: false discards results", async () => {
     await using run = createRunner();
 
     const events: Array<string> = [];
-    const createTask =
-      (id: number): Task<void> =>
+
+    const task =
+      (id: number): Task<number, MyError> =>
+      () => {
+        events.push(`task ${id}`);
+        return id === 2 ? err({ type: "MyError" }) : ok(id);
+      };
+
+    const result = await run(
+      allSettled([task(1), task(2), task(3)], { collect: false }),
+    );
+
+    expect(result).toEqual(ok(undefined));
+    if (result.ok) expectTypeOf(result.value).toEqualTypeOf<void>();
+    expect(events).toEqual(["task 1", "task 2", "task 3"]);
+  });
+
+  test("collect: false struct discards results", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const task =
+      (id: string): Task<string, MyError> =>
+      () => {
+        events.push(`task ${id}`);
+        return id === "b" ? err({ type: "MyError" }) : ok(id);
+      };
+
+    const result = await run(
+      allSettled({ a: task("a"), b: task("b") }, { collect: false }),
+    );
+
+    expect(result).toEqual(ok(undefined));
+    if (result.ok) expectTypeOf(result.value).toEqualTypeOf<void>();
+    expect(events).toEqual(["task a", "task b"]);
+  });
+});
+
+describe("map", () => {
+  test("returns emptyArray for empty array", async () => {
+    await using run = createRunner();
+
+    const result = await run(
+      map(
+        [] as Array<number>,
+        (n): Task<number> =>
+          () =>
+            ok(n * 2),
+      ),
+    );
+
+    expect(result).toStrictEqual(ok(emptyArray));
+  });
+
+  test("returns emptyRecord for empty record", async () => {
+    await using run = createRunner();
+
+    const result = await run(
+      map(
+        {} as Record<string, number>,
+        (n): Task<number> =>
+          () =>
+            ok(n * 2),
+      ),
+    );
+
+    expect(result).toStrictEqual(ok(emptyRecord));
+  });
+
+  test("maps items to tasks and collects results", async () => {
+    await using run = createRunner();
+
+    const items = [1, 2, 3];
+    const double =
+      (n: number): Task<number> =>
+      () =>
+        ok(n * 2);
+
+    const result = await run(map(items, double));
+
+    expect(result).toEqual(ok([2, 4, 6]));
+  });
+
+  test("runs sequentially by default", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const trackingTask =
+      (id: number): Task<number> =>
       async () => {
         events.push(`start ${id}`);
         await Promise.resolve();
         events.push(`end ${id}`);
-        return ok();
+        return ok(id);
       };
 
-    const result = await run(forEach([createTask(1), createTask(2)]));
+    await run(map([1, 2, 3], trackingTask));
 
-    expect(result).toEqual(ok());
-    expect(events).toEqual(["start 1", "end 1", "start 2", "end 2"]);
-  });
-
-  test("fails fast on first error", async () => {
-    await using run = createRunner();
-
-    const events: Array<string> = [];
-    const tasks: NonEmptyReadonlyArray<Task<void, MyError>> = [
-      () => {
-        events.push("task 1");
-        return ok();
-      },
-      () => {
-        events.push("task 2");
-        return err({ type: "MyError" });
-      },
-      () => {
-        events.push("task 3");
-        return ok();
-      },
-    ];
-
-    const result = await run(forEach(tasks));
-
-    expect(result).toEqual(err({ type: "MyError" }));
-    expect(events).toEqual(["task 1", "task 2"]);
+    expect(events).toEqual([
+      "start 1",
+      "end 1",
+      "start 2",
+      "end 2",
+      "start 3",
+      "end 3",
+    ]);
   });
 
   test("respects withConcurrency", async () => {
     await using run = createRunner();
 
     const events: Array<string> = [];
-    const canFinish = Promise.withResolvers<void>();
 
-    const createTask =
-      (id: number): Task<void> =>
+    const trackingTask =
+      (id: number): Task<number> =>
       async () => {
         events.push(`start ${id}`);
-        await canFinish.promise;
+        await Promise.resolve();
         events.push(`end ${id}`);
-        return ok();
+        return ok(id);
       };
 
-    const fiber = run(
-      withConcurrency(
-        2,
-        forEach([createTask(1), createTask(2), createTask(3)]),
-      ),
-    );
+    await run(withConcurrency(2, map([1, 2, 3], trackingTask)));
 
-    // Only 2 tasks should start
-    expect(events).toEqual(["start 1", "start 2"]);
+    // With concurrency 2, tasks 1 and 2 start together
+    expect(events[0]).toBe("start 1");
+    expect(events[1]).toBe("start 2");
+  });
 
-    canFinish.resolve();
-    const result = await fiber;
+  test("fails fast on first error", async () => {
+    await using run = createRunner();
 
-    expect(result).toEqual(ok());
+    const mayFail =
+      (n: number): Task<number, MyError> =>
+      () =>
+        n === 2 ? err({ type: "MyError" }) : ok(n);
+
+    const result = await run(map([1, 2, 3], mayFail));
+
+    expect(result).toEqual(err({ type: "MyError" }));
   });
 
   test("aborts others when a task fails", async () => {
@@ -5327,102 +5458,235 @@ describe("forEach", () => {
 
     const slowObservedAbort = Promise.withResolvers<unknown>();
 
-    const slowTask: Task<void> = async (run) => {
-      await new Promise<void>((resolve) => {
-        run.onAbort(() => resolve());
-      });
-      slowObservedAbort.resolve(run.signal.reason);
-      return ok();
-    };
+    const slowTask =
+      (_n: number): Task<number> =>
+      async (run) => {
+        await new Promise<void>((resolve) => {
+          run.onAbort(() => resolve());
+        });
+        slowObservedAbort.resolve(run.signal.reason);
+        return ok(0);
+      };
 
-    const failingTask: Task<void, MyError> = () => err({ type: "MyError" });
+    const failingTask =
+      (n: number): Task<number, MyError> =>
+      () =>
+        n === 2 ? err({ type: "MyError" }) : ok(n);
 
-    const result = await run(withConcurrency(forEach([slowTask, failingTask])));
+    const result = await run(
+      withConcurrency(
+        map([1, 2], (n) => (n === 1 ? slowTask(n) : failingTask(n))),
+      ),
+    );
 
     expect(result).toEqual(err({ type: "MyError" }));
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
-    expect(ForEachAbortError.is(slowAbortReason.cause)).toBe(true);
+    expect(MapAbortError.is(slowAbortReason.cause)).toBe(true);
   });
 
-  test("aborts others when a task throws", async () => {
+  test("supports struct input and returns object with same keys", async () => {
     await using run = createRunner();
 
-    const slowObservedAbort = Promise.withResolvers<unknown>();
+    const double =
+      (n: number): Task<number> =>
+      () =>
+        ok(n * 2);
 
-    const slowTask: Task<void> = async (run) => {
-      await new Promise<void>((resolve) => {
-        run.onAbort(() => resolve());
-      });
-      slowObservedAbort.resolve(run.signal.reason);
-      return ok();
-    };
+    const result = await run(map({ a: 1, b: 2, c: 3 }, double));
 
-    const throwingTask: Task<void> = () => {
-      throw new Error("boom");
-    };
-
-    await expect(
-      run(withConcurrency(forEach([slowTask, throwingTask]))),
-    ).rejects.toThrow("boom");
-
-    const slowAbortReason = await slowObservedAbort.promise;
-    assert(AbortError.is(slowAbortReason));
-    expect(ForEachAbortError.is(slowAbortReason.cause)).toBe(true);
+    expect(result).toEqual(ok({ a: 2, b: 4, c: 6 }));
   });
-});
 
-describe("forEachSettled", () => {
-  test("runs all tasks even if some fail", async () => {
+  test("collect: false discards results", async () => {
     await using run = createRunner();
 
     const events: Array<string> = [];
-    const tasks: NonEmptyReadonlyArray<Task<void, MyError>> = [
-      () => {
-        events.push("task 1");
-        return ok();
-      },
-      () => {
-        events.push("task 2");
-        return err({ type: "MyError" });
-      },
-      () => {
-        events.push("task 3");
-        return ok();
-      },
-    ];
 
-    const result = await run(forEachSettled(tasks));
+    const task =
+      (id: number): Task<number> =>
+      () => {
+        events.push(`task ${id}`);
+        return ok(id);
+      };
 
-    expect(result).toEqual(ok());
+    const result = await run(map([1, 2, 3], task, { collect: false }));
+
+    expect(result).toEqual(ok(undefined));
+    if (result.ok) expectTypeOf(result.value).toEqualTypeOf<void>();
     expect(events).toEqual(["task 1", "task 2", "task 3"]);
   });
 
-  test("aborts others when a task throws", async () => {
+  test("collect: false struct discards results", async () => {
     await using run = createRunner();
 
-    const slowObservedAbort = Promise.withResolvers<unknown>();
+    const events: Array<string> = [];
 
-    const slowTask: Task<void> = async (run) => {
-      await new Promise<void>((resolve) => {
-        run.onAbort(() => resolve());
-      });
-      slowObservedAbort.resolve(run.signal.reason);
-      return ok();
-    };
+    const task =
+      (id: string): Task<string> =>
+      () => {
+        events.push(`task ${id}`);
+        return ok(id);
+      };
 
-    const throwingTask: Task<void> = () => {
-      throw new Error("boom");
-    };
+    const result = await run(map({ a: "a", b: "b" }, task, { collect: false }));
 
-    await expect(
-      run(withConcurrency(forEachSettled([slowTask, throwingTask]))),
-    ).rejects.toThrow("boom");
+    expect(result).toEqual(ok(undefined));
+    if (result.ok) expectTypeOf(result.value).toEqualTypeOf<void>();
+    expect(events).toEqual(["task a", "task b"]);
+  });
+});
 
-    const slowAbortReason = await slowObservedAbort.promise;
-    assert(AbortError.is(slowAbortReason));
-    expect(ForEachSettledAbortError.is(slowAbortReason.cause)).toBe(true);
+describe("mapSettled", () => {
+  test("returns emptyArray for empty array", async () => {
+    await using run = createRunner();
+
+    const result = await run(
+      mapSettled(
+        [] as Array<number>,
+        (n): Task<number> =>
+          () =>
+            ok(n * 2),
+      ),
+    );
+
+    expect(result).toStrictEqual(ok(emptyArray));
+  });
+
+  test("returns emptyRecord for empty record", async () => {
+    await using run = createRunner();
+
+    const result = await run(
+      mapSettled(
+        {} as Record<string, number>,
+        (n): Task<number> =>
+          () =>
+            ok(n * 2),
+      ),
+    );
+
+    expect(result).toStrictEqual(ok(emptyRecord));
+  });
+
+  test("maps items and collects all results even if some fail", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+    const items = [1, 2, 3];
+    const mayFail =
+      (n: number): Task<number, MyError> =>
+      () => {
+        events.push(`task ${n}`);
+        return n === 2 ? err({ type: "MyError" }) : ok(n * 10);
+      };
+
+    const result = await run(mapSettled(items, mayFail));
+
+    expect(result).toEqual(ok([ok(10), err({ type: "MyError" }), ok(30)]));
+    expect(events).toEqual(["task 1", "task 2", "task 3"]);
+  });
+
+  test("supports struct input and returns object with same keys", async () => {
+    await using run = createRunner();
+
+    const mayFail =
+      (n: number): Task<number, MyError> =>
+      () =>
+        n === 2 ? err({ type: "MyError" }) : ok(n * 10);
+
+    const result = await run(mapSettled({ a: 1, b: 2, c: 3 }, mayFail));
+
+    expect(result).toEqual(
+      ok({ a: ok(10), b: err({ type: "MyError" }), c: ok(30) }),
+    );
+  });
+
+  test("runs sequentially by default", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const trackingTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await Promise.resolve();
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    await run(mapSettled([1, 2, 3], trackingTask));
+
+    expect(events).toEqual([
+      "start 1",
+      "end 1",
+      "start 2",
+      "end 2",
+      "start 3",
+      "end 3",
+    ]);
+  });
+
+  test("respects withConcurrency", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const trackingTask =
+      (id: number): Task<number> =>
+      async () => {
+        events.push(`start ${id}`);
+        await Promise.resolve();
+        events.push(`end ${id}`);
+        return ok(id);
+      };
+
+    await run(withConcurrency(2, mapSettled([1, 2, 3], trackingTask)));
+
+    // With concurrency 2, tasks 1 and 2 start together
+    expect(events[0]).toBe("start 1");
+    expect(events[1]).toBe("start 2");
+  });
+
+  test("collect: false discards results", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const task =
+      (id: number): Task<number, MyError> =>
+      () => {
+        events.push(`task ${id}`);
+        return id === 2 ? err({ type: "MyError" }) : ok(id);
+      };
+
+    const result = await run(mapSettled([1, 2, 3], task, { collect: false }));
+
+    expect(result).toEqual(ok(undefined));
+    if (result.ok) expectTypeOf(result.value).toEqualTypeOf<void>();
+    expect(events).toEqual(["task 1", "task 2", "task 3"]);
+  });
+
+  test("collect: false struct discards results", async () => {
+    await using run = createRunner();
+
+    const events: Array<string> = [];
+
+    const task =
+      (id: string): Task<string, MyError> =>
+      () => {
+        events.push(`task ${id}`);
+        return id === "b" ? err({ type: "MyError" }) : ok(id);
+      };
+
+    const result = await run(
+      mapSettled({ a: "a", b: "b" }, task, { collect: false }),
+    );
+
+    expect(result).toEqual(ok(undefined));
+    if (result.ok) expectTypeOf(result.value).toEqualTypeOf<void>();
+    expect(events).toEqual(["task a", "task b"]);
   });
 });
 
@@ -5683,9 +5947,7 @@ describe("examples TODO", () => {
       ];
 
       // At most 2 concurrent requests
-      const _result = await run(
-        withConcurrency(2, all(urls.map(fetchWithRetry))),
-      );
+      const _result = await run(withConcurrency(2, map(urls, fetchWithRetry)));
     });
 
     test("all with NonEmptyReadonlyArray returns NonEmptyReadonlyArray", () => {
