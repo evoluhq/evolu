@@ -1,16 +1,21 @@
 /**
  * A utility interface for creating branded types.
  *
- * Branded types enhance type safety by differentiating otherwise identical base
- * types, such as `number` or `string`, to enforce stricter type checks.
- *
- * Supports multiple brands, allowing types to act like flags.
- *
  * @module
  */
 
 /**
- * ### Example 1: Single Brand
+ * An interface for creating branded types.
+ *
+ * Branded types enhance type safety by distinguishing otherwise identical
+ * types, such as `number` or `string`, to enforce stricter type checks. For
+ * example, instead of a plain `number`, use `PositiveInt`. Instead of a plain
+ * `string`, use `TrimmedString`.
+ *
+ * Avoid primitive types in domain code—brand everything. Evolu Type provides
+ * many brand helpers.
+ *
+ * ### Single Brand
  *
  * ```ts
  * // A branded type definition
@@ -34,7 +39,7 @@
  * getUser("123"); // TypeScript error
  * ```
  *
- * ### Example 2: Multiple Brands
+ * ### Multiple Brands (to act like flags)
  *
  * ```ts
  * // Define branded types
@@ -60,7 +65,7 @@
  * requiresMax100(min1Max100Value); // Valid: Min1Max100 satisfies Max100
  * ```
  *
- * ### Example 3: Standalone Brand
+ * ### Standalone Brand
  *
  * Brand can be used alone without a base type for purely nominal typing. This
  * is useful for opaque values where the internal structure is hidden and type
