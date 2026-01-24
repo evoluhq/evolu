@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import {
   appendToArray,
@@ -224,6 +225,56 @@ describe("Transformations", () => {
       const mutableArr: Array<number> = [1, 2, 3];
       const result = mapArray(mutableArr, (x) => x * 2);
       expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+    });
+
+    test("benchmarks mapArray vs for loop (informational)", () => {
+      const mapArrayForLoop = <T, U>(
+        array: ReadonlyArray<T>,
+        mapper: (item: T, index: number) => U,
+      ): ReadonlyArray<U> => {
+        const length = array.length;
+        const result = new Array<U>(length);
+        for (let i = 0; i < length; i++) {
+          result[i] = mapper(array[i], i);
+        }
+        return result as ReadonlyArray<U>;
+      };
+
+      const size = 20_000;
+      const iterations = 200;
+      const data = Array.from({ length: size }, (_, i) => i);
+      const mapper = (value: number) => value * 2;
+
+      for (let i = 0; i < 20; i++) {
+        mapArray(data, mapper);
+        mapArrayForLoop(data, mapper);
+      }
+
+      const mapStart = performance.now();
+      for (let i = 0; i < iterations; i++) {
+        mapArray(data, mapper);
+      }
+      const _mapDuration = performance.now() - mapStart;
+
+      const loopStart = performance.now();
+      for (let i = 0; i < iterations; i++) {
+        mapArrayForLoop(data, mapper);
+      }
+      const _loopDuration = performance.now() - loopStart;
+
+      const mapResult = mapArray(data, mapper);
+      const loopResult = mapArrayForLoop(data, mapper);
+
+      expect(mapResult.length).toBe(loopResult.length);
+      expect(mapResult[0]).toBe(loopResult[0]);
+      expect(mapResult[mapResult.length - 1]).toBe(
+        loopResult[loopResult.length - 1],
+      );
+
+      // mapArray: 29.11ms, for-loop: 7.97ms
+      // console.info(
+      //   `mapArray: ${mapDuration.toFixed(2)}ms, for-loop: ${loopDuration.toFixed(2)}ms`,
+      // );
     });
   });
 

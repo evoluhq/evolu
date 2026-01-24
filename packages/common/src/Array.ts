@@ -55,7 +55,7 @@
  * {@link shiftFromArray} and {@link popFromArray} — but only because they improve
  * type safety by returning a guaranteed `T` rather than an optional value.
  *
- * ### Example
+ * ## Examples
  *
  * ```ts
  * // Types - compile-time guarantee of at least one element
@@ -109,13 +109,15 @@
  * const latestDone = lastInArray(filterArray(jobs, isCompletedJob));
  * ```
  *
- * For more operations, extract to a well-named function like
- * `getOldestActiveUser` or `getUniqueActiveEmails`.
+ * For more operations, create a function like `getOldestActiveUser` or a
+ * generic helper.
  *
  * Some libraries provide dual APIs with data-last for pipe-based composition.
- * Evolu prefers a simple API (in Latin, simplex means "one") — no need to
- * choose between seemingly equivalent options, and pipes would not help anyway;
- * well-named functions communicate intent better.
+ * Evolu prefers simplicity (in Latin, simplex means "one") so we don't have to
+ * choose between seemingly equivalent options (Buridan's ass dilemma).
+ *
+ * Evolu doesn't provide `pipe` because few operations compose well without it,
+ * and for more operations, well-named functions communicate intent better.
  *
  * @module
  */
@@ -170,6 +172,7 @@ export const emptyArray: ReadonlyArray<never> = [];
  * @group Constructors
  */
 export function arrayFrom<T>(iterable: Iterable<T>): ReadonlyArray<T>;
+/** From length and map function. */
 export function arrayFrom<T>(
   length: number,
   map: (index: number) => T,
@@ -215,6 +218,7 @@ export function arrayFrom<T>(
  * @group Types
  */
 export function isNonEmptyArray<T>(array: Array<T>): array is NonEmptyArray<T>;
+/** Readonly array overload. */
 export function isNonEmptyArray<T>(
   array: ReadonlyArray<T>,
 ): array is NonEmptyReadonlyArray<T>;
@@ -274,6 +278,7 @@ export function mapArray<T, U>(
   array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
   mapper: (item: T, index: number) => U,
 ): NonEmptyReadonlyArray<U>;
+/** Possibly empty array. */
 export function mapArray<T, U>(
   array: ReadonlyArray<T> | Array<T>,
   mapper: (item: T, index: number) => U,
@@ -282,7 +287,11 @@ export function mapArray<T, U>(
   array: ReadonlyArray<T> | Array<T>,
   mapper: (item: T, index: number) => U,
 ): ReadonlyArray<U> {
-  return array.map(mapper) as ReadonlyArray<U>;
+  // For loop is faster than array.map.
+  const length = array.length;
+  const result = new Array<U>(length);
+  for (let i = 0; i < length; i++) result[i] = mapper(array[i], i);
+  return result as ReadonlyArray<U>;
 }
 
 /**
@@ -321,11 +330,13 @@ export function flatMapArray<T>(
     | NonEmptyReadonlyArray<NonEmptyReadonlyArray<T> | NonEmptyArray<T>>
     | NonEmptyArray<NonEmptyReadonlyArray<T> | NonEmptyArray<T>>,
 ): NonEmptyReadonlyArray<T>;
+/** Possibly empty nested arrays. */
 export function flatMapArray<T>(
   array:
     | ReadonlyArray<ReadonlyArray<T> | Array<T>>
     | Array<ReadonlyArray<T> | Array<T>>,
 ): ReadonlyArray<T>;
+/** Non-empty with mapper returning non-empty. */
 export function flatMapArray<T, U>(
   array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
   mapper: (
@@ -333,6 +344,7 @@ export function flatMapArray<T, U>(
     index: number,
   ) => NonEmptyReadonlyArray<U> | NonEmptyArray<U>,
 ): NonEmptyReadonlyArray<U>;
+/** With mapper function. */
 export function flatMapArray<T, U>(
   array: ReadonlyArray<T> | Array<T>,
   mapper: (item: T, index: number) => ReadonlyArray<U> | Array<U>,
@@ -369,10 +381,12 @@ export function concatArrays<T>(
   first: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
   second: ReadonlyArray<T> | Array<T>,
 ): NonEmptyReadonlyArray<T>;
+/** Second non-empty. */
 export function concatArrays<T>(
   first: ReadonlyArray<T> | Array<T>,
   second: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
 ): NonEmptyReadonlyArray<T>;
+/** Both possibly empty. */
 export function concatArrays<T>(
   first: ReadonlyArray<T> | Array<T>,
   second: ReadonlyArray<T> | Array<T>,
@@ -417,6 +431,7 @@ export function filterArray<T, S extends T>(
   array: ReadonlyArray<T>,
   refinement: RefinementWithIndex<T, S>,
 ): ReadonlyArray<S>;
+/** With predicate. */
 export function filterArray<T>(
   array: ReadonlyArray<T>,
   predicate: PredicateWithIndex<T>,
@@ -459,6 +474,7 @@ export function dedupeArray<T>(
   array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
   by?: (item: T) => unknown,
 ): NonEmptyReadonlyArray<T>;
+/** Possibly empty array. */
 export function dedupeArray<T>(
   array: ReadonlyArray<T> | Array<T>,
   by?: (item: T) => unknown,
@@ -522,6 +538,7 @@ export function partitionArray<T, S extends T>(
   array: ReadonlyArray<T>,
   refinement: RefinementWithIndex<T, S>,
 ): readonly [ReadonlyArray<S>, ReadonlyArray<Exclude<T, S>>];
+/** With predicate. */
 export function partitionArray<T>(
   array: ReadonlyArray<T>,
   predicate: PredicateWithIndex<T>,
@@ -561,6 +578,7 @@ export function sortArray<T>(
   array: NonEmptyReadonlyArray<T>,
   compareFn?: (a: T, b: T) => number,
 ): NonEmptyReadonlyArray<T>;
+/** Possibly empty array. */
 export function sortArray<T>(
   array: ReadonlyArray<T>,
   compareFn?: (a: T, b: T) => number,
@@ -588,6 +606,7 @@ export function sortArray<T>(
 export function reverseArray<T>(
   array: NonEmptyReadonlyArray<T>,
 ): NonEmptyReadonlyArray<T>;
+/** Possibly empty array. */
 export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T>;
 export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T> {
   return array.toReversed() as ReadonlyArray<T>;
