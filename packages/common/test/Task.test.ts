@@ -548,7 +548,7 @@ describe("Runner", () => {
 
       const result = await fiber;
 
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
       expect(events).toEqual(["work started", "cleanup"]);
     });
   });
@@ -689,7 +689,7 @@ describe("Runner", () => {
       expect(unabortableFiber.run.getState().type).toBe("completed");
       expect(unabortableMaskFiber.run.getState().type).toBe("completed");
 
-      const expected = err({ type: "AbortError", cause: runnerClosingError });
+      const expected = err({ type: "AbortError", reason: runnerClosingError });
       expect(regularResult).toEqual(expected);
       expect(unabortableResult).toEqual(expected);
       expect(unabortableMaskResult).toEqual(expected);
@@ -734,7 +734,7 @@ describe("Runner", () => {
       expect(unabortableFiber.run.getState().type).toBe("completed");
       expect(unabortableMaskFiber.run.getState().type).toBe("completed");
 
-      const expected = err({ type: "AbortError", cause: runnerClosingError });
+      const expected = err({ type: "AbortError", reason: runnerClosingError });
       expect(regularResult).toEqual(expected);
       expect(unabortableResult).toEqual(expected);
       expect(unabortableMaskResult).toEqual(expected);
@@ -967,9 +967,9 @@ describe("Fiber", () => {
       expect(taskRan).toBe(false);
       assert(innerFiberState?.type === "completed");
       expect(innerFiberState.result).toEqual(
-        err({ type: "AbortError", cause: "stop" }),
+        err({ type: "AbortError", reason: "stop" }),
       );
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
     });
 
     test("during run signals abort via AbortSignal", async () => {
@@ -1006,7 +1006,7 @@ describe("Fiber", () => {
       expect(result).toEqual(
         err({
           type: "AbortError",
-          cause: "test abort",
+          reason: "test abort",
         }),
       );
     });
@@ -1045,13 +1045,13 @@ describe("Fiber", () => {
       expect(await fiber).toEqual(
         err({
           type: "AbortError",
-          cause: "cancelled",
+          reason: "cancelled",
         }),
       );
 
       expect(await errorCapture.promise).toEqual({
         type: "AbortError",
-        cause: "cancelled",
+        reason: "cancelled",
       });
     });
   });
@@ -1139,7 +1139,7 @@ describe("Fiber", () => {
     const state = fiber.getState();
     assert(state.type === "completed");
     // result returns AbortError
-    expect(state.result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    expect(state.result).toEqual(err({ type: "AbortError", reason: "stop" }));
     // outcome preserves what the task actually returned
     expect(state.outcome).toEqual(ok("data"));
   });
@@ -1403,7 +1403,7 @@ describe("unabortable", () => {
     // Inner unabortable task completed successfully
     expect(innerResult).toEqual(ok());
     // But outer abortable task was aborted
-    expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
     // Outcome preserves what the task actually returned
     const state = fiber.getState();
     assert(state.type === "completed");
@@ -1498,7 +1498,7 @@ describe("unabortableMask", () => {
     // acquire and release ran, use was skipped (abortable sees the abort)
     expect(events).toEqual(["acquire", "release"]);
     // Outer fiber result is AbortError because outer task was aborted
-    expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
   });
 
   test("with abort during run masks signal, skips abortable", async () => {
@@ -1761,7 +1761,7 @@ describe("AsyncDisposableStack", () => {
 
       const result = await fiber;
 
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
       expect(events).toEqual(["work started", "cleanup"]);
     });
   });
@@ -1966,7 +1966,7 @@ describe("AsyncDisposableStack", () => {
 
       const result = await fiber;
 
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
       expect(events).toEqual([
         "acquire started, aborted: false",
         "acquire completed, aborted: false",
@@ -2188,7 +2188,7 @@ describe("AsyncDisposableStack", () => {
 
       const result = await fiber;
 
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
       expect(events).toEqual(["work started", "h1 released"]);
     });
 
@@ -2314,7 +2314,7 @@ describe("AsyncDisposableStack", () => {
 
       const result = await fiber;
 
-      expect(result).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "cancelled" }));
       // 'a' was acquired then cleaned up when scope exited
       expect(events).toEqual(["a acquired", "a released"]);
     });
@@ -2495,7 +2495,7 @@ describe("AsyncDisposableStack", () => {
 
       const result = await fiber;
 
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
       expect(events).toEqual([
         "acquired",
         "work started",
@@ -2584,11 +2584,11 @@ describe("sleep", () => {
     const result = await fiber;
     const elapsed = Date.now() - start;
 
-    expect(result).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+    expect(result).toEqual(err({ type: "AbortError", reason: "cancelled" }));
     const state = fiber.getState();
     assert(state.type === "completed");
     expect(state.outcome).toEqual(
-      err({ type: "AbortError", cause: "cancelled" }),
+      err({ type: "AbortError", reason: "cancelled" }),
     );
     expect(elapsed).toBeLessThan(50);
   });
@@ -2614,7 +2614,7 @@ describe("race", () => {
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
-    expect(RaceLostError.is(slowAbortReason.cause)).toBe(true);
+    expect(RaceLostError.is(slowAbortReason.reason)).toBe(true);
   });
 
   test("returns first task to fail and aborts others", async () => {
@@ -2640,7 +2640,7 @@ describe("race", () => {
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
-    expect(RaceLostError.is(slowAbortReason.cause)).toBe(true);
+    expect(RaceLostError.is(slowAbortReason.reason)).toBe(true);
   });
 
   test("aborts others when one throws", async () => {
@@ -2661,7 +2661,7 @@ describe("race", () => {
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
-    expect(RaceLostError.is(slowAbortReason.cause)).toBe(true);
+    expect(RaceLostError.is(slowAbortReason.reason)).toBe(true);
   });
 
   test("infers union of Ok and Err types from heterogeneous tasks", async () => {
@@ -2753,7 +2753,7 @@ describe("race", () => {
     const result = await fiber;
 
     expect(result).toEqual(
-      err({ type: "AbortError", cause: "external abort" }),
+      err({ type: "AbortError", reason: "external abort" }),
     );
 
     // Both tasks should have observed the abort
@@ -2762,8 +2762,8 @@ describe("race", () => {
 
     assert(AbortError.is(task1Reason));
     assert(AbortError.is(task2Reason));
-    expect(task1Reason.cause).toBe("external abort");
-    expect(task2Reason.cause).toBe("external abort");
+    expect(task1Reason.reason).toBe("external abort");
+    expect(task2Reason.reason).toBe("external abort");
   });
 
   test("uses custom abortReason for losing tasks", async () => {
@@ -2779,13 +2779,13 @@ describe("race", () => {
     };
 
     const customReason = { type: "CustomAbort", message: "you lost" };
-    const result = await run(race([fast, slow], { abortCause: customReason }));
+    const result = await run(race([fast, slow], { abortReason: customReason }));
 
     expect(result).toEqual(ok("fast"));
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
-    expect(slowAbortReason.cause).toEqual(customReason);
+    expect(slowAbortReason.reason).toEqual(customReason);
   });
 });
 
@@ -2858,7 +2858,7 @@ describe("timeout", () => {
       return ok();
     };
 
-    const fiber = run(timeout(slow, "10ms", { abortCause: customReason }));
+    const fiber = run(timeout(slow, "10ms", { abortReason: customReason }));
     time.advance("10ms");
 
     await fiber;
@@ -3034,7 +3034,7 @@ describe("retry", () => {
     let attempts = 0;
     const task = () => {
       attempts++;
-      return err<AbortError>({ type: "AbortError", cause: "test" });
+      return err<AbortError>({ type: "AbortError", reason: "test" });
     };
 
     const result = await run(retry(task, take(3)(spaced("1ms"))));
@@ -3339,7 +3339,7 @@ describe("repeat", () => {
 
     const result = await fiber;
 
-    expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+    expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
     expect(count).toBe(1);
   });
 
@@ -3880,7 +3880,7 @@ describe("concurrency", () => {
       fiber.abort("stop");
 
       const result = await fiber;
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
     });
 
     test("resolve returns true only on first call", () => {
@@ -3920,7 +3920,7 @@ describe("concurrency", () => {
       // fiber2 should get AbortError
       const result2 = await fiber2;
       expect(result2).toEqual(
-        err({ type: "AbortError", cause: "stop fiber2" }),
+        err({ type: "AbortError", reason: "stop fiber2" }),
       );
 
       // fiber1 and fiber3 should still be pending, resolve them
@@ -4075,7 +4075,7 @@ describe("concurrency", () => {
       fiber.abort("cancelled");
 
       const result = await fiber;
-      expect(result).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "cancelled" }));
     });
 
     test("preserves deps type", () => {
@@ -4354,7 +4354,7 @@ describe("concurrency", () => {
       fiber2.abort("cancelled");
 
       const result2 = await fiber2;
-      expect(result2).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+      expect(result2).toEqual(err({ type: "AbortError", reason: "cancelled" }));
 
       // Third task should proceed when permit is released
       const fiber3 = run(
@@ -4383,7 +4383,7 @@ describe("concurrency", () => {
             new Promise<Result<void, AbortError>>((resolve) => {
               signal.addEventListener("abort", () => {
                 abortReceived = true;
-                resolve(err({ type: "AbortError", cause: signal.reason }));
+                resolve(err({ type: "AbortError", reason: signal.reason }));
               });
             }),
         ),
@@ -4393,7 +4393,7 @@ describe("concurrency", () => {
       const result = await fiber;
 
       expect(abortReceived).toBe(true);
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
     });
 
     test("dispose aborts running tasks", async () => {
@@ -4411,7 +4411,7 @@ describe("concurrency", () => {
           return new Promise<Result<void, AbortError>>((resolve) => {
             signal.addEventListener("abort", () => {
               events.push("task aborted");
-              resolve(err({ type: "AbortError", cause: signal.reason }));
+              resolve(err({ type: "AbortError", reason: signal.reason }));
             });
           });
         }),
@@ -4426,7 +4426,7 @@ describe("concurrency", () => {
       expect(result).toEqual(
         err({
           type: "AbortError",
-          cause: { type: "SemaphoreDisposedError" },
+          reason: { type: "SemaphoreDisposedError" },
         }),
       );
     });
@@ -4444,7 +4444,7 @@ describe("concurrency", () => {
           task1Started.resolve();
           return new Promise<Result<void, AbortError>>((resolve) => {
             signal.addEventListener("abort", () => {
-              resolve(err({ type: "AbortError", cause: signal.reason }));
+              resolve(err({ type: "AbortError", reason: signal.reason }));
             });
           });
         }),
@@ -4463,7 +4463,7 @@ describe("concurrency", () => {
       expect(result1).toEqual(
         err({
           type: "AbortError",
-          cause: { type: "SemaphoreDisposedError" },
+          reason: { type: "SemaphoreDisposedError" },
         }),
       );
 
@@ -4471,7 +4471,7 @@ describe("concurrency", () => {
       expect(result2).toEqual(
         err({
           type: "AbortError",
-          cause: { type: "SemaphoreDisposedError" },
+          reason: { type: "SemaphoreDisposedError" },
         }),
       );
     });
@@ -4489,7 +4489,7 @@ describe("concurrency", () => {
       expect(result).toEqual(
         err({
           type: "AbortError",
-          cause: { type: "SemaphoreDisposedError" },
+          reason: { type: "SemaphoreDisposedError" },
         }),
       );
     });
@@ -4744,7 +4744,7 @@ describe("all", () => {
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
-    expect(AllAbortError.is(slowAbortReason.cause)).toBe(true);
+    expect(AllAbortError.is(slowAbortReason.reason)).toBe(true);
   });
 
   test("propagates abort cause to other tasks", async () => {
@@ -4755,14 +4755,14 @@ describe("all", () => {
 
     const waitForAbort: Task<void> = (run) =>
       new Promise((resolve) => {
-        run.onAbort((cause) => {
-          causes.push(cause);
+        run.onAbort((reason) => {
+          causes.push(reason);
           resolve(ok());
         });
       });
 
     const abortingTask: Task<void, AbortError> = () =>
-      err({ type: "AbortError", cause: abortCause });
+      err({ type: "AbortError", reason: abortCause });
 
     const fiber = run(
       withConcurrency(3, all([waitForAbort, abortingTask, waitForAbort])),
@@ -4770,7 +4770,7 @@ describe("all", () => {
 
     const result = await fiber;
 
-    expect(result).toEqual(err({ type: "AbortError", cause: abortCause }));
+    expect(result).toEqual(err({ type: "AbortError", reason: abortCause }));
     expect(causes).toEqual([abortCause, abortCause]);
   });
 
@@ -4987,7 +4987,9 @@ describe("all", () => {
     expect(result).not.toBe("timeout");
 
     const taskResult = result as Result<ReadonlyArray<void>, AbortError>;
-    expect(taskResult).toEqual(err({ type: "AbortError", cause: "cancelled" }));
+    expect(taskResult).toEqual(
+      err({ type: "AbortError", reason: "cancelled" }),
+    );
     expect(unabortableCompleted).toBe(false);
   });
 
@@ -5302,7 +5304,7 @@ describe("allSettled", () => {
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
-    expect(AllSettledAbortError.is(slowAbortReason.cause)).toBe(true);
+    expect(AllSettledAbortError.is(slowAbortReason.reason)).toBe(true);
   });
 
   test("collect: false discards results", async () => {
@@ -5483,7 +5485,7 @@ describe("map", () => {
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
-    expect(MapAbortError.is(slowAbortReason.cause)).toBe(true);
+    expect(MapAbortError.is(slowAbortReason.reason)).toBe(true);
   });
 
   test("supports struct input and returns object with same keys", async () => {
@@ -6067,7 +6069,7 @@ describe("examples TODO", () => {
       fiber.abort("stop");
       const result = await fiber;
 
-      expect(result).toEqual(err({ type: "AbortError", cause: "stop" }));
+      expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
       const state = fiber.getState();
       assert(state.type === "completed");
       expect(state.outcome).toEqual(ok("data"));

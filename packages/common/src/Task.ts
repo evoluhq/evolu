@@ -332,13 +332,13 @@ export type InferTaskDone<T extends Task<any, any, any>> =
  * Error returned when a {@link Task} is aborted via
  * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
  *
- * The `cause` field is `unknown` by design — use typed errors for business
- * logic. If you need to inspect the cause, use type guards like
- * `RaceLostError.is(cause)`.
+ * The `reason` field is `unknown` by design — use typed errors for business
+ * logic. If you need to inspect the reason, use type guards like
+ * `RaceLostError.is(reason)`.
  *
  * @group Core Types
  */
-export const AbortError = typed("AbortError", { cause: Unknown });
+export const AbortError = typed("AbortError", { reason: Unknown });
 export interface AbortError extends InferType<typeof AbortError> {}
 
 /**
@@ -387,7 +387,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
   /**
    * Registers a callback to run when abort is requested.
    *
-   * The callback receives the abort cause (extracted from {@link AbortError}).
+   * The callback receives the abort reason (extracted from {@link AbortError}).
    * If already aborted, the callback is invoked immediately. For
    * {@link unabortable} tasks, the callback is never invoked.
    *
@@ -648,16 +648,17 @@ export class Fiber<T = unknown, E = unknown, D = unknown>
    * if the task completed successfully. This keeps behavior predictable —
    * calling `abort()` always yields `AbortError`.
    *
-   * The optional cause is stored in `AbortError.cause`. Since any value can be
-   * passed, abort causes are `unknown` — use typed errors for business logic.
-   * To inspect the cause, use type guards like `RaceLostError.is(cause)`.
+   * The optional reason is stored in `AbortError.reason`. Since any value can
+   * be passed, abort reasons are `unknown` — use typed errors for business
+   * logic. To inspect the reason, use type guards like
+   * `RaceLostError.is(reason)`.
    *
    * Abort is idempotent — calling multiple times has no additional effect
    * beyond the first call.
    */
-  abort(cause?: unknown): void {
+  abort(reason?: unknown): void {
     (this.run as RunnerInternal<RunnerDeps & D>).requestAbort(
-      createAbortError(cause),
+      createAbortError(reason),
     );
   }
 
@@ -1178,7 +1179,7 @@ const createRunnerInternal =
         if (abortMask !== isAbortable) return;
         const handleAbort = () => {
           assertType(AbortError, signalController.signal.reason);
-          callback(signalController.signal.reason.cause);
+          callback(signalController.signal.reason.reason);
         };
         if (signalController.signal.aborted) {
           handleAbort();
@@ -1261,7 +1262,7 @@ const createRunnerInternal =
 const running: FiberState = { type: "running" };
 
 /**
- * Error used as {@link AbortError} cause when a {@link Runner} is disposed.
+ * Error used as {@link AbortError} reason when a {@link Runner} is disposed.
  *
  * @group Creating Runners
  */
@@ -1274,7 +1275,7 @@ export interface RunnerClosingError extends InferType<
  * The {@link RunnerClosingError} used when a {@link Runner} is disposed.
  *
  * Tasks run on a disposing or disposed runner receive this error as
- * {@link AbortError} cause.
+ * {@link AbortError} reason.
  *
  * @group Creating Runners
  */
@@ -1282,9 +1283,9 @@ export const runnerClosingError: RunnerClosingError = {
   type: "RunnerClosingError",
 };
 
-const createAbortError = (cause: unknown): AbortError => ({
+const createAbortError = (reason: unknown): AbortError => ({
   type: "AbortError",
-  cause,
+  reason,
 });
 
 const runnerClosingAbortError: AbortError =
@@ -1497,7 +1498,7 @@ export function withConcurrency<T, E, D = unknown>(
 export const yieldNow: Task<void> = () =>
   tryAsync(
     () => yieldImpl(), // TODO: yieldImpl(run.signal)
-    (cause): AbortError => createAbortError(cause),
+    (reason): AbortError => createAbortError(reason),
   );
 
 const yieldImpl: () => Promise<void> =
@@ -1531,9 +1532,9 @@ export const sleep =
         resolve(ok());
       }, durationToMillis(duration));
 
-      run.onAbort((cause) => {
+      run.onAbort((reason) => {
         run.time.clearTimeout(id);
-        resolve(err(createAbortError(cause)));
+        resolve(err(createAbortError(reason)));
       });
     });
 
@@ -1582,10 +1583,10 @@ export const race = <
 >(
   tasks: T,
   {
-    abortCause = raceLostError,
+    abortReason = raceLostError,
   }: {
-    /** Abort cause for losing tasks. Defaults to {@link raceLostError}. */
-    abortCause?: unknown;
+    /** Abort reason for losing tasks. Defaults to {@link raceLostError}. */
+    abortReason?: unknown;
   } = {},
 ): Task<
   InferTaskOk<T[number]>,
@@ -1593,7 +1594,7 @@ export const race = <
   InferTaskDeps<T[number]>
 > =>
   withConcurrency(
-    concurrent(tasks, { stopOn: "first", collect: false, abortCause }),
+    concurrent(tasks, { stopOn: "first", collect: false, abortReason }),
   );
 /**
  * Abort reason for tasks that lose a {@link race}.
@@ -1633,13 +1634,13 @@ export const timeout = <T, E, D = unknown>(
   task: Task<T, E, D>,
   duration: Duration,
   {
-    abortCause = timeoutError,
+    abortReason = timeoutError,
   }: {
     /**
-     * Abort cause for the task when timeout fires. Defaults to
+     * Abort reason for the task when timeout fires. Defaults to
      * {@link timeoutError}.
      */
-    abortCause?: unknown;
+    abortReason?: unknown;
   } = {},
 ): Task<T, E | TimeoutError, D> =>
   race(
@@ -1650,7 +1651,7 @@ export const timeout = <T, E, D = unknown>(
         return err(timeoutError);
       },
     ],
-    { abortCause },
+    { abortReason },
   );
 
 /**
@@ -1971,8 +1972,8 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
 
         resolvers.add(resolve);
 
-        run.onAbort((cause) => {
-          resolve(err(createAbortError(cause)));
+        run.onAbort((reason) => {
+          resolve(err(createAbortError(reason)));
         });
       });
     },
@@ -2167,9 +2168,9 @@ export const createSemaphore = (permits: Concurrency): Semaphore => {
           const acquired = await new Promise<Result<void, AbortError>>(
             (resolve) => {
               queue.add(resolve);
-              run.onAbort((cause) => {
+              run.onAbort((reason) => {
                 queue.delete(resolve);
-                resolve(err(createAbortError(cause)));
+                resolve(err(createAbortError(reason)));
               });
             },
           );
@@ -2281,11 +2282,11 @@ export interface CollectOptions<Collect extends boolean = true> {
   readonly collect?: Collect;
 
   /**
-   * Custom cause for aborting remaining tasks on failure.
+   * Custom reason for aborting remaining tasks on failure.
    *
    * By default, uses the helper's default abort error.
    */
-  readonly abortCause?: unknown;
+  readonly abortReason?: unknown;
 }
 
 /**
@@ -2387,7 +2388,7 @@ export function all(
 }
 
 /**
- * Abort cause used by {@link all} when aborting remaining tasks.
+ * Abort reason used by {@link all} when aborting remaining tasks.
  *
  * Used when a task fails and other tasks need to be aborted.
  *
@@ -2397,7 +2398,7 @@ export const AllAbortError = typed("AllAbortError");
 export interface AllAbortError extends InferType<typeof AllAbortError> {}
 
 /**
- * {@link AllAbortError} used as abort cause in {@link all}.
+ * {@link AllAbortError} used as abort reason in {@link all}.
  *
  * @group Composition
  */
@@ -2522,7 +2523,7 @@ export function allSettled(
 }
 
 /**
- * Abort cause used by {@link allSettled} when aborted externally.
+ * Abort reason used by {@link allSettled} when aborted externally.
  *
  * @group Composition
  */
@@ -2532,7 +2533,7 @@ export interface AllSettledAbortError extends InferType<
 > {}
 
 /**
- * {@link AllSettledAbortError} used as abort cause in {@link allSettled}.
+ * {@link AllSettledAbortError} used as abort reason in {@link allSettled}.
  *
  * @group Composition
  */
@@ -2610,20 +2611,20 @@ export function map<A, T, E, D>(
 export function map<A, T, E, D>(
   items: MapInput<A>,
   fn: (a: A) => Task<T, E, D>,
-  { abortCause = mapAbortError, ...options }: CollectOptions<boolean> = {},
+  { abortReason = mapAbortError, ...options }: CollectOptions<boolean> = {},
 ): Task<ReadonlyArray<T> | Record<string, T> | void, E, D> {
   const mapped = mapItems(items, fn);
   return all(
     mapped as Iterable<Task<T, E, D>>,
     {
       ...options,
-      abortCause,
+      abortReason,
     } as CollectOptions,
   );
 }
 
 /**
- * Abort cause used by {@link map} when aborting remaining tasks.
+ * Abort reason used by {@link map} when aborting remaining tasks.
  *
  * @group Composition
  */
@@ -2631,7 +2632,7 @@ export const MapAbortError = typed("MapAbortError");
 export interface MapAbortError extends InferType<typeof MapAbortError> {}
 
 /**
- * {@link MapAbortError} used as abort cause in {@link map}.
+ * {@link MapAbortError} used as abort reason in {@link map}.
  *
  * @group Composition
  */
@@ -2779,7 +2780,7 @@ export function any<T, E, D>(
   return concurrent(tasks, {
     stopOn: "success",
     collect: false,
-    abortCause: anyAbortError,
+    abortReason: anyAbortError,
     allFailed,
   });
 }
@@ -2806,7 +2807,7 @@ export function any<T, E, D>(
 export type AnyAllFailed = "input" | "completion";
 
 /**
- * Abort cause used by {@link any} when aborting remaining tasks.
+ * Abort reason used by {@link any} when aborting remaining tasks.
  *
  * @group Composition
  */
@@ -2814,7 +2815,7 @@ export const AnyAbortError = typed("AnyAbortError");
 export interface AnyAbortError extends InferType<typeof AnyAbortError> {}
 
 /**
- * {@link AnyAbortError} used as abort cause in {@link any}.
+ * {@link AnyAbortError} used as abort reason in {@link any}.
  *
  * @group Composition
  */
@@ -2830,7 +2831,7 @@ const collect = (
   input: CollectInput,
   {
     collect = true,
-    abortCause = type === "all" ? allAbortError : allSettledAbortError,
+    abortReason = type === "all" ? allAbortError : allSettledAbortError,
   }: CollectOptions<boolean> = {},
 ): Task<unknown, unknown> => {
   const stopOn = type === "all" ? ("error" as const) : null;
@@ -2842,7 +2843,7 @@ const collect = (
     return concurrent(array as ReadonlyArray<Task<unknown, unknown>>, {
       stopOn,
       collect,
-      abortCause,
+      abortReason,
     });
   }
 
@@ -2856,7 +2857,7 @@ const collect = (
 
   return async (run) => {
     const result = await run(
-      concurrent(taskArray, { stopOn, collect, abortCause }),
+      concurrent(taskArray, { stopOn, collect, abortReason }),
     );
     if (!result.ok) return result;
     if (!collect) return ok();
@@ -2908,7 +2909,7 @@ function concurrent<T, E, D>(
   options: {
     stopOn: StopOn;
     collect: true;
-    abortCause: unknown;
+    abortReason: unknown;
   },
 ): Task<ReadonlyArray<T>, E, D>;
 
@@ -2917,7 +2918,7 @@ function concurrent<T, E, D>(
   options: {
     stopOn: StopOn;
     collect: false;
-    abortCause: unknown;
+    abortReason: unknown;
     allFailed?: AnyAllFailed;
   },
 ): Task<T, E, D>;
@@ -2927,7 +2928,7 @@ function concurrent<T, E, D>(
   options: {
     stopOn: null;
     collect: true;
-    abortCause: unknown;
+    abortReason: unknown;
   },
 ): Task<ReadonlyArray<Result<T, E>>, never, D>;
 
@@ -2936,7 +2937,7 @@ function concurrent<D>(
   options: {
     stopOn: null;
     collect: false;
-    abortCause: unknown;
+    abortReason: unknown;
   },
 ): Task<void, never, D>;
 
@@ -2946,7 +2947,7 @@ function concurrent(
   options: {
     stopOn: StopOn | null;
     collect: boolean;
-    abortCause: unknown;
+    abortReason: unknown;
   },
 ): Task<unknown, unknown>;
 
@@ -2955,12 +2956,12 @@ function concurrent<T, E>(
   {
     stopOn = null,
     collect,
-    abortCause,
+    abortReason,
     allFailed,
   }: {
     stopOn?: StopOn | null;
     collect: boolean;
-    abortCause: unknown;
+    abortReason: unknown;
     allFailed?: AnyAllFailed;
   },
 ): Task<ReadonlyArray<unknown> | T | void, E> {
@@ -3005,8 +3006,8 @@ function concurrent<T, E>(
           stopped = result;
           abortWorkers(
             !result.ok && AbortError.is(result.error)
-              ? result.error.cause
-              : abortCause,
+              ? result.error.reason
+              : abortReason,
           );
           stopSignal?.resolve();
         }
@@ -3017,22 +3018,22 @@ function concurrent<T, E>(
 
     let workersAborted = false;
 
-    const abortWorkers = (cause: unknown) => {
+    const abortWorkers = (reason: unknown) => {
       if (workersAborted) return;
       workersAborted = true;
-      for (const worker of workers) worker.abort(cause);
+      for (const worker of workers) worker.abort(reason);
     };
 
     const workerCount = Math.min(run.concurrency, length);
     const workers = arrayFrom(workerCount, () => run.daemon(worker));
 
     await using _ = run.defer(() => {
-      abortWorkers(abortCause);
+      abortWorkers(abortReason);
       return ok();
     });
 
-    run.onAbort((cause) => {
-      abortWorkers(cause);
+    run.onAbort((reason) => {
+      abortWorkers(reason);
       aborted.resolve();
     });
 
