@@ -105,13 +105,15 @@ export const objectFromEntries = <K extends string, V>(
 export const mapObject = <K extends string, V, U>(
   record: ReadonlyRecord<K, V>,
   fn: (value: V, key: K) => U,
-): ReadonlyRecord<K, U> =>
-  Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [
-      key,
-      fn(value as V, key as K),
-    ]),
-  ) as ReadonlyRecord<K, U>;
+): ReadonlyRecord<K, U> => {
+  const out = Object.create(null) as Record<K, U>;
+
+  for (const key in record) {
+    out[key as K] = fn(record[key as K], key as K);
+  }
+
+  return out as ReadonlyRecord<K, U>;
+};
 
 /** Conditionally excludes a property from an object. */
 export const excludeProp = <T extends object, K extends keyof T>(
