@@ -30,13 +30,13 @@
     "examples:vue-vite-pwa:dev": "turbo --filter @example/vue-vite-pwa dev"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.11",
+    "@biomejs/biome": "2.3.12",
     "@changesets/cli": "^2.29.8",
     "@eslint/js": "^9.39.2",
     "@types/inquirer": "^9.0.9",
     "@typescript-eslint/parser": "^8.53.0",
     "eslint": "^9.39.2",
-    "eslint-plugin-jsdoc": "^62.1.0",
+    "eslint-plugin-jsdoc": "^62.4.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "prettier": "^3.8.0",
     "prettier-plugin-embed": "^0.5.1",
