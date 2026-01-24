@@ -154,6 +154,7 @@ export function mapSet<T, U>(
   set: NonEmptyReadonlySet<T>,
   mapper: (item: T) => U,
 ): NonEmptyReadonlySet<U>;
+/** Possibly empty set. */
 export function mapSet<T, U>(
   set: ReadonlySet<T>,
   mapper: (item: T) => U,
@@ -188,6 +189,7 @@ export function filterSet<T, S extends T>(
   set: ReadonlySet<T>,
   refinement: RefinementWithIndex<T, S>,
 ): ReadonlySet<S>;
+/** With predicate. */
 export function filterSet<T>(
   set: ReadonlySet<T>,
   predicate: PredicateWithIndex<T>,

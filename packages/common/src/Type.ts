@@ -1058,6 +1058,7 @@ export function brand<
   refine: (value: Parent) => Result<Parent, RefineError>,
 ): BrandType<ParentType, Name, RefineError, InferErrors<ParentType>>;
 
+/** Without refine function. */
 export function brand<Name extends TypeName, ParentType extends AnyType>(
   name: Name,
   parent: ParentType,
@@ -2949,6 +2950,7 @@ export function object<Props extends Record<string, AnyType>>(
   props: Props,
 ): ObjectType<Props>;
 
+/** With additional record properties. */
 export function object<
   Props extends Record<string, AnyType>,
   KeyName extends TypeName,
@@ -3471,6 +3473,7 @@ export interface Typed<T extends string> {
  * @see {@link Typed} for type-only discrimination.
  */
 export function typed<Tag extends string>(tag: Tag): TypedType<Tag>;
+/** With additional properties. */
 export function typed<
   Tag extends string,
   Props extends Record<string, AnyType>,
@@ -3518,6 +3521,7 @@ export function union<
   Members extends [AnyType, AnyType, ...ReadonlyArray<AnyType>],
 >(...members: Members): UnionType<Members>;
 
+/** With literal values. */
 export function union<
   Literals extends [Literal, Literal, ...ReadonlyArray<Literal>],
 >(

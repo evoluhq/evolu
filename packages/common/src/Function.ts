@@ -118,9 +118,13 @@ export const identity = <A>(a: A): A => a;
  * ```
  */
 export function readonly<T>(array: NonEmptyArray<T>): NonEmptyReadonlyArray<T>;
+/** Array overload. */
 export function readonly<T>(array: Array<T>): ReadonlyArray<T>;
+/** Set overload. */
 export function readonly<T>(set: Set<T>): ReadonlySet<T>;
+/** Map overload. */
 export function readonly<K, V>(map: Map<K, V>): ReadonlyMap<K, V>;
+/** Record overload. */
 export function readonly<K extends keyof any, V>(
   record: Record<K, V>,
 ): ReadonlyRecord<K, V>;
