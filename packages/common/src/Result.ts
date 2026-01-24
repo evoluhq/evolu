@@ -4,9 +4,16 @@
  * @module
  */
 
+import {
+  arrayFrom,
+  emptyArray,
+  isNonEmptyArray,
+  type NonEmptyReadonlyArray,
+} from "./Array.js";
 import type { UnknownError } from "./Error.js";
 import type { Lazy } from "./Function.js";
 import { exhaustiveCheck } from "./Function.js";
+import { createRecord, emptyRecord, isIterable } from "./Object.js";
 import type { Typed } from "./Type.js";
 
 /**
@@ -60,11 +67,11 @@ import type { Typed } from "./Type.js";
  * }
  * ```
  *
- * ### Example
+ * ## Example
  *
  * ```ts
- * interface ParseJsonError {
- *   readonly type: "ParseJsonError";
+ * // Typed<T> adds { type: T } for discriminated unions
+ * interface ParseJsonError extends Typed<"ParseJsonError"> {
  *   readonly message: string;
  * }
  *
@@ -84,8 +91,9 @@ import type { Typed } from "./Type.js";
  * ```
  *
  * The caller doesn't need `try/catch`, just `if (!json.ok)`, and the error is
- * `ParseJsonError`, not `unknown`. To avoid `try/catch` inside `parseJson` too,
- * use {@link trySync}:
+ * `ParseJsonError`, not `unknown`.
+ *
+ * To avoid `try/catch` inside `parseJson` too, use {@link trySync}:
  *
  * ```ts
  * const parseJson = (value: string): Result<unknown, ParseJsonError> =>
@@ -97,6 +105,49 @@ import type { Typed } from "./Type.js";
  *
  * `trySync` makes synchronous code that can throw safe. For asynchronous code,
  * use {@link tryAsync}.
+ *
+ * Since `Result` is a plain object, imperative code works naturally:
+ *
+ * ### Stop on error, map on success
+ *
+ * ```ts
+ * const users = getActiveUsers();
+ * if (!users.ok) return users;
+ * const usernames = mapArray(users.value, (u) => u.username);
+ * ```
+ *
+ * ### Iterate array, stop on first error
+ *
+ * ```ts
+ * for (const user of users) {
+ *   const result = validateUser(user); // Result<ValidUser, ValidateUserError>
+ *   if (!result.ok) return result;
+ * }
+ * ```
+ *
+ * ## Composition
+ *
+ * Some patterns are common enough that deserve helpers. The previous example
+ * can be written with {@link mapResult}:
+ *
+ * ```ts
+ * const result = mapResult(users, validateUser);
+ * // Result<ValidUser[], ValidateUserError>
+ * ```
+ *
+ * For an array of results, {@link allResult} extracts all values or returns the
+ * first error:
+ *
+ * ```ts
+ * const result = allResult(validationResults);
+ * ```
+ *
+ * For the first success, {@link anyResult} returns the first Ok or the last
+ * error if all fail:
+ *
+ * ```ts
+ * const result = anyResult(parserResults);
+ * ```
  *
  * ## Naming convention
  *
@@ -124,43 +175,6 @@ import type { Typed } from "./Type.js";
  * };
  * ```
  *
- * ## Examples
- *
- * ### Map on success
- *
- * ```ts
- * const users = getActiveUsers();
- * if (!users.ok) return users;
- * const usernames = mapArray(users.value, (u) => u.username);
- * ```
- *
- * ### Stop on the first error
- *
- * ```ts
- * for (const item of items) {
- *   const result = process(item);
- *   if (!result.ok) return result;
- * }
- * ```
- *
- * ### Collect successes
- *
- * ```ts
- * const values = flatMapArray(fields, (field) => {
- *   const result = validate(field);
- *   return result.ok ? [result.value] : [];
- * });
- * ```
- *
- * ### Collect errors
- *
- * ```ts
- * const errors = flatMapArray(fields, (field) => {
- *   const result = validate(field);
- *   return result.ok ? [] : [result.error];
- * });
- * ```
- *
  * ## Unrecoverable errors
  *
  * Some errors can't be handled locally — they must propagate to the top level.
@@ -170,8 +184,7 @@ import type { Typed } from "./Type.js";
  * ```ts
  * type AppError = SqliteError | SyncError | UnknownError;
  *
- * interface SqliteError {
- *   readonly type: "SqliteError";
+ * interface SqliteError extends Typed<"SqliteError"> {
  *   readonly error: UnknownError;
  * }
  * ```
@@ -225,6 +238,13 @@ import type { Typed } from "./Type.js";
  */
 export type Result<T, E = never> = Ok<T> | Err<E>;
 
+/**
+ * Shorthand for a {@link Result} with `any` type parameters.
+ *
+ * @group Utilities
+ */
+export type AnyResult = Result<any, any>;
+
 /** A successful {@link Result}. */
 export interface Ok<out T> {
   readonly ok: true;
@@ -240,8 +260,7 @@ export interface Ok<out T> {
  * ### Example
  *
  * ```ts
- * interface NotFoundError {
- *   readonly type: "NotFoundError";
+ * interface NotFoundError extends Typed<"NotFoundError"> {
  *   readonly id: string;
  * }
  *
@@ -294,11 +313,11 @@ export function ok(): Result<void>;
 /** Creates an {@link Ok} result with a specified value. */
 export function ok<T>(value: T): Result<T>;
 export function ok<T>(value?: T): Result<T> {
-  if (arguments.length === 0) return okVoid as Result<T>;
+  if (value === undefined) return okVoid as Result<T>;
   return { ok: true, value: value as T };
 }
 
-/** Cache ok() to avoid repeated allocations (ok(undefined) stays distinct). */
+/** Cache ok() and ok(undefined) to avoid repeated allocations. */
 const okVoid: Result<void> = { ok: true, value: undefined };
 
 /** Creates an {@link Err} result. */
@@ -444,6 +463,7 @@ export interface Done<out D = unknown> extends Typed<"Done"> {
  * - `done(value)` creates a `Done<D>` containing the specified value.
  */
 export function done(): Done<void>;
+/** With a done value. */
 export function done<D>(value: D): Done<D>;
 export function done<D>(value?: D): Done<D> {
   return {
@@ -483,3 +503,245 @@ export type InferDone<R extends Result<any, any>> =
       ? D
       : never
     : never;
+
+/**
+ * Extracts all values from an array of {@link Result}s.
+ *
+ * Returns the first error if any result fails.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const results = [ok(1), ok(2), ok(3)];
+ * const all = allResult(results);
+ * // ok([1, 2, 3])
+ *
+ * const withError = [ok(1), err("fail"), ok(3)];
+ * const failed = allResult(withError);
+ * // err("fail")
+ * ```
+ *
+ * @group Composition
+ */
+export function allResult<
+  const T extends readonly [AnyResult, ...ReadonlyArray<AnyResult>],
+>(results: T): Result<{ [K in keyof T]: InferOk<T[K]> }, InferErr<T[number]>>;
+
+/**
+ * Returns object with same keys.
+ *
+ * ```ts
+ * const result = allResult({ a: ok(1), b: ok(2) });
+ * // ok({ a: 1, b: 2 })
+ * ```
+ */
+export function allResult<T extends Readonly<Record<string, AnyResult>>>(
+  results: T,
+): Result<
+  { [P in keyof T]: InferOk<T[P]> },
+  [keyof T] extends [never] ? never : InferErr<T[keyof T]>
+>;
+
+/**
+ * For dynamic or generated result lists.
+ *
+ * ```ts
+ * const results: ReadonlyArray<Result<number, Error>> = getResults();
+ * const all = allResult(results);
+ * // Result<ReadonlyArray<number>, Error>
+ * ```
+ */
+export function allResult<T, E>(
+  results: Iterable<Result<T, E>>,
+): Result<ReadonlyArray<T>, E>;
+
+/**
+ * Guarantees non-empty result.
+ *
+ * ```ts
+ * const results: NonEmptyReadonlyArray<Result<number, Error>> = [
+ *   ok(1),
+ *   ok(2),
+ * ];
+ * const all = allResult(results);
+ * // Result<NonEmptyReadonlyArray<number>, Error>
+ * ```
+ */
+export function allResult<T, E>(
+  results: NonEmptyReadonlyArray<Result<T, E>>,
+): Result<NonEmptyReadonlyArray<T>, E>;
+
+export function allResult(
+  input: Iterable<AnyResult> | Readonly<Record<string, AnyResult>>,
+): AnyResult {
+  if (isIterable(input)) {
+    const array = arrayFrom(input);
+    if (!isNonEmptyArray(array)) return ok(emptyArray);
+
+    const length = array.length;
+    const values = new Array<unknown>(length);
+    for (let i = 0; i < length; i++) {
+      const result = array[i];
+      if (!result.ok) return result;
+      values[i] = result.value;
+    }
+    return ok(values);
+  }
+
+  const length = Object.keys(input).length;
+  if (length === 0) return ok(emptyRecord);
+
+  const keys = new Array<string>(length);
+  const results = new Array<AnyResult>(length);
+  let index = 0;
+  for (const key in input) {
+    keys[index] = key;
+    results[index] = (input as Record<string, AnyResult>)[key];
+    index++;
+  }
+
+  const record = createRecord();
+  for (let i = 0; i < length; i++) {
+    const result = results[i];
+    if (!result.ok) return result;
+    record[keys[i]] = result.value;
+  }
+  return ok(record);
+}
+
+/**
+ * Maps items to {@link Result}s and extracts all values.
+ *
+ * Returns the first error if any result fails.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const users = [{ id: 1 }, { id: 2 }];
+ * const result = mapResult(users, validateUser);
+ * // Result<ReadonlyArray<ValidUser>, ValidateUserError>
+ * ```
+ *
+ * @group Composition
+ */
+export function mapResult<
+  const A extends readonly [unknown, ...Array<unknown>],
+  T,
+  E,
+>(
+  items: A,
+  fn: (a: A[number]) => Result<T, E>,
+): Result<{ [K in keyof A]: T }, E>;
+
+/**
+ * For dynamic or generated item lists.
+ *
+ * ```ts
+ * const users = [{ id: 1 }, { id: 2 }];
+ * const result = mapResult(users, validateUser);
+ * // Result<ReadonlyArray<ValidUser>, ValidateUserError>
+ * ```
+ */
+export function mapResult<A, T, E>(
+  items: Iterable<A>,
+  fn: (a: A) => Result<T, E>,
+): Result<ReadonlyArray<T>, E>;
+
+/**
+ * Returns object with same keys.
+ *
+ * ```ts
+ * const result = mapResult({ a: 1, b: 2 }, double);
+ * // Result<{ a: number, b: number }, DoubleError>
+ * ```
+ */
+export function mapResult<A, T, E, K extends string>(
+  items: Readonly<Record<K, A>>,
+  fn: (a: A) => Result<T, E>,
+): Result<Readonly<Record<K, T>>, E>;
+
+export function mapResult(
+  input: Iterable<unknown> | Readonly<Record<string, unknown>>,
+  fn: (a: unknown) => AnyResult,
+): AnyResult {
+  if (isIterable(input)) {
+    const array = arrayFrom(input);
+    if (!isNonEmptyArray(array)) return ok(emptyArray);
+
+    const length = array.length;
+    const values = new Array<unknown>(length);
+    for (let i = 0; i < length; i++) {
+      const result = fn(array[i]);
+      if (!result.ok) return result;
+      values[i] = result.value;
+    }
+    return ok(values);
+  }
+
+  const length = Object.keys(input).length;
+  if (length === 0) return ok(emptyRecord);
+
+  const keys = new Array<string>(length);
+  const items = new Array<unknown>(length);
+  let index = 0;
+  for (const key in input) {
+    keys[index] = key;
+    items[index] = (input as Record<string, unknown>)[key];
+    index++;
+  }
+
+  const record = createRecord();
+  for (let i = 0; i < length; i++) {
+    const result = fn(items[i]);
+    if (!result.ok) return result;
+    record[keys[i]] = result.value;
+  }
+  return ok(record);
+}
+
+/**
+ * Returns the first successful {@link Result}.
+ *
+ * If all results fail, returns the last error.
+ *
+ * Requires a non-empty array — there's no "first success" with zero
+ * participants. Use {@link isNonEmptyArray} to guard:
+ *
+ * ```ts
+ * if (isNonEmptyArray(results)) {
+ *   const result = anyResult(results);
+ * }
+ * ```
+ *
+ * ### Example
+ *
+ * ```ts
+ * const results = [err("fail1"), ok(42), err("fail2")];
+ * if (isNonEmptyArray(results)) {
+ *   const result = anyResult(results);
+ *   // ok(42)
+ * }
+ *
+ * const allFailed = [err("a"), err("b"), err("c")];
+ * if (isNonEmptyArray(allFailed)) {
+ *   const result = anyResult(allFailed);
+ *   // err("c") — last error
+ * }
+ * ```
+ *
+ * @group Composition
+ */
+export function anyResult<
+  const T extends readonly [AnyResult, ...ReadonlyArray<AnyResult>],
+>(results: T): Result<InferOk<T[number]>, InferErr<T[number]>>;
+
+export function anyResult(
+  results: NonEmptyReadonlyArray<AnyResult>,
+): AnyResult {
+  let lastError: Err<unknown> | null = null;
+  for (const result of results) {
+    if (result.ok) return result;
+    lastError = result;
+  }
+  return lastError!;
+}

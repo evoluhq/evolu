@@ -1,10 +1,14 @@
 import { describe, expect, expectTypeOf, it, test } from "vitest";
+import type { NonEmptyReadonlyArray } from "../src/Array.js";
 import {
+  allResult,
+  anyResult,
   done,
   err,
   getOrThrow,
   isErr,
   isOk,
+  mapResult,
   ok,
   tryAsync,
   trySync,
@@ -30,9 +34,9 @@ describe("ok", () => {
     expect(ok()).toStrictEqual({ ok: true, value: undefined });
   });
 
-  it("distinguishes ok() from ok(undefined)", () => {
+  it("caches ok() and ok(undefined)", () => {
     expect(ok()).toBe(ok());
-    expect(ok(undefined)).not.toBe(ok());
+    expect(ok(undefined)).toBe(ok());
   });
 
   it("rejects Ok<void> when Result expects a value", () => {
@@ -1431,5 +1435,162 @@ describe("generator-based composition", () => {
     expect(runGen(program("-5"))).toStrictEqual(
       err({ type: "ValidationError" }),
     );
+  });
+});
+
+describe("allResult", () => {
+  it("returns emptyArray for empty array", () => {
+    const result = allResult([]);
+    expect(result).toStrictEqual(ok([]));
+  });
+
+  it("returns emptyRecord for empty record", () => {
+    const result = allResult({});
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toEqual({});
+  });
+
+  it("extracts all values from array of Ok results", () => {
+    const results = [ok(1), ok(2), ok(3)];
+    expect(allResult(results)).toStrictEqual(ok([1, 2, 3]));
+  });
+
+  it("returns first error from array", () => {
+    interface E1 {
+      readonly type: "E1";
+    }
+    interface E2 {
+      readonly type: "E2";
+    }
+    const results: NonEmptyReadonlyArray<Result<number, E1 | E2>> = [
+      ok(1),
+      err({ type: "E1" }),
+      err({ type: "E2" }),
+    ];
+    expect(allResult(results)).toStrictEqual(err({ type: "E1" }));
+  });
+
+  it("extracts all values from struct", () => {
+    const result = allResult({ a: ok(1), b: ok("two") });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toEqual({ a: 1, b: "two" });
+  });
+
+  it("returns first error from struct", () => {
+    const result = allResult({ a: ok(1), b: err("fail"), c: ok(3) });
+    expect(result).toStrictEqual(err("fail"));
+  });
+
+  it("tuple preserves types", () => {
+    const result = allResult([ok(1), ok("two"), ok(true)]);
+    if (result.ok) {
+      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
+      expectTypeOf(result.value[1]).toEqualTypeOf<string>();
+      expectTypeOf(result.value[2]).toEqualTypeOf<boolean>();
+    }
+  });
+
+  it("struct preserves types", () => {
+    const result = allResult({ a: ok(1), b: ok("two") });
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<{ a: number; b: string }>();
+    }
+  });
+
+  it("non-empty arrays preserve types", () => {
+    const result = allResult([ok(1), ok(2)]);
+    if (result.ok) {
+      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
+      expectTypeOf(result.value[1]).toEqualTypeOf<number>();
+    }
+  });
+
+  it("works with Iterable", () => {
+    const set = new Set([ok(1), ok(2), ok(3)]);
+    const result = allResult(set);
+    expect(result).toStrictEqual(ok([1, 2, 3]));
+  });
+});
+
+describe("mapResult", () => {
+  it("returns emptyArray for empty array", () => {
+    const result = mapResult([], (x: number) => ok(x * 2));
+    expect(result).toStrictEqual(ok([]));
+  });
+
+  it("returns emptyRecord for empty record", () => {
+    const result = mapResult({}, (x: number) => ok(x * 2));
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toEqual({});
+  });
+
+  it("maps items and collects results", () => {
+    const result = mapResult([1, 2, 3], (x) => ok(x * 2));
+    expect(result).toStrictEqual(ok([2, 4, 6]));
+  });
+
+  it("returns first error", () => {
+    const result = mapResult([1, 2, 3], (x) =>
+      x === 2 ? err("fail") : ok(x * 2),
+    );
+    expect(result).toStrictEqual(err("fail"));
+  });
+
+  it("maps struct and collects results", () => {
+    const result = mapResult({ a: 1, b: 2 }, (x) => ok(x * 2));
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toEqual({ a: 2, b: 4 });
+  });
+
+  it("returns first error from struct", () => {
+    const result = mapResult({ a: 1, b: 2, c: 3 }, (x) =>
+      x === 2 ? err("fail") : ok(x * 2),
+    );
+    expect(result).toStrictEqual(err("fail"));
+  });
+
+  it("struct preserves types", () => {
+    const result = mapResult({ a: 1, b: 2 }, (x) => ok(String(x)));
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<
+        Readonly<Record<"a" | "b", string>>
+      >();
+    }
+  });
+
+  it("non-empty arrays preserve types", () => {
+    const result = mapResult([1, 2, 3], (x) => ok(x * 2));
+    if (result.ok) {
+      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
+      expectTypeOf(result.value[1]).toEqualTypeOf<number>();
+      expectTypeOf(result.value[2]).toEqualTypeOf<number>();
+    }
+  });
+
+  it("works with Iterable", () => {
+    const set = new Set([1, 2, 3]);
+    const result = mapResult(set, (x) => ok(x * 2));
+    expect(result).toStrictEqual(ok([2, 4, 6]));
+  });
+});
+
+describe("anyResult", () => {
+  it("returns first success", () => {
+    expect(anyResult([err("a"), ok(42), err("b")])).toStrictEqual(ok(42));
+  });
+
+  it("returns last error when all fail", () => {
+    expect(anyResult([err("a"), err("b"), err("c")])).toStrictEqual(err("c"));
+  });
+
+  it("returns first Ok even if it's first", () => {
+    expect(anyResult([ok(1), ok(2), ok(3)])).toStrictEqual(ok(1));
+  });
+
+  it("preserves types", () => {
+    const result = anyResult([err({ type: "E1" as const }), ok(42)]);
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<number>();
+    }
   });
 });
