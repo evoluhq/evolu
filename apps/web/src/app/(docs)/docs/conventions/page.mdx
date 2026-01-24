@@ -8,10 +8,11 @@ Conventions minimize decision-making and improve consistency.
 
 ## Imports and exports
 
-Use named imports.
+Use named exports and named imports.
 
 ```ts
 import { bar, baz } from "Foo.ts";
+export { bar, baz };
 ```
 
 Avoid namespaces. Use unique names because Evolu re-exports everything through a single `index.ts`.
@@ -189,7 +190,6 @@ function createUser(data: UserData): User {
 Why arrow functions?
 
 - **Consistency** - One way to define functions means less cognitive overhead
-- **No hoisting** - Combined with `const`, arrow functions aren't hoisted, which enforces top-down code organization
 - **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
 
 **Exception: function overloads.** While overloading with arrow functions is possible (using a type with multiple call signatures), it can be hard to type properly because the implementation must satisfy all overloads at once, which TypeScript often can't verify without assertions. Use the `function` keyword instead:
