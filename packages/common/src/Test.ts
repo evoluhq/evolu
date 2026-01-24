@@ -80,6 +80,7 @@ export const createTestDeps = (options?: {
  * ```
  */
 export function createTestRunner(): Runner<TestDeps>;
+/** With custom dependencies. */
 export function createTestRunner<D extends TestDeps>(
   deps: Partial<TestDeps> & Partial<RunnerConfigDep> & Omit<D, keyof TestDeps>,
 ): Runner<D>;
