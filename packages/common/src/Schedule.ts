@@ -802,9 +802,7 @@ export const compensate =
  * ### Example
  *
  * ```ts
- * interface MyError {
- *   readonly type: "Transient" | "Fatal";
- * }
+ * interface MyError extends Typed<"Transient" | "Fatal"> {}
  *
  * // Only retry transient errors
  * const retryTransient = whileScheduleInput(
@@ -834,9 +832,7 @@ export const whileScheduleInput =
  * ### Example
  *
  * ```ts
- * interface MyError {
- *   readonly type: "Transient" | "Fatal";
- * }
+ * interface MyError extends Typed<"Transient" | "Fatal"> {}
  *
  * // Stop retrying on fatal errors
  * const stopOnFatal = untilScheduleInput(
@@ -1359,9 +1355,7 @@ export const unionSchedules =
  * ### Example
  *
  * ```ts
- * interface MyError {
- *   readonly type: "Throttled" | "NetworkError";
- * }
+ * interface MyError extends Typed<"Throttled" | "NetworkError"> {}
  *
  * const awsWithThrottling = whenInput<MyError, Millis>(
  *   (error) => error.type === "Throttled",
@@ -1431,9 +1425,7 @@ export const tapScheduleOutput =
  * ### Example
  *
  * ```ts
- * interface MyError {
- *   readonly type: string;
- * }
+ * interface MyError extends Typed<string> {}
  *
  * const retrySchedule: Schedule<Millis, MyError> = exponential("100ms");
  *
