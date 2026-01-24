@@ -9,7 +9,7 @@ import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
 import type { Duration } from "./Time.js";
 import { durationToMillis, Millis } from "./Time.js";
-import { minPositiveInt, PositiveInt } from "./Type.js";
+import { minPositiveInt, PositiveInt, type Typed } from "./Type.js";
 
 /**
  * `Task` is a function that creates and returns an optionally cancellable
@@ -42,8 +42,7 @@ import { minPositiveInt, PositiveInt } from "./Type.js";
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
+ * interface FetchError extends Typed<"FetchError"> {
  *   readonly error: unknown;
  * }
  *
@@ -164,8 +163,7 @@ export interface TaskOld<T, E> {
    * ### Example
    *
    * ```ts
-   * interface FetchError {
-   *   readonly type: "FetchError";
+   * interface FetchError extends Typed<"FetchError"> {
    *   readonly error: unknown;
    * }
    *
@@ -221,8 +219,7 @@ export interface TaskContext {
  * Error returned when a {@link TaskOld} is cancelled via
  * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
  */
-export interface AbortErrorOld {
-  readonly type: "AbortError";
+export interface AbortErrorOld extends Typed<"AbortError"> {
   readonly reason?: unknown;
 }
 
@@ -253,8 +250,7 @@ const combineSignal = (
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
+ * interface FetchError extends Typed<"FetchError"> {
  *   readonly error: unknown;
  * }
  *
@@ -357,8 +353,7 @@ export const wait = (duration: Duration): TaskOld<void, never> =>
   );
 
 /** Error returned when {@link timeoutOld} exceeds the specified duration. */
-export interface TimeoutErrorOld {
-  readonly type: "TimeoutError";
+export interface TimeoutErrorOld extends Typed<"TimeoutError"> {
   readonly timeoutMs: number;
 }
 
@@ -368,8 +363,7 @@ export interface TimeoutErrorOld {
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
+ * interface FetchError extends Typed<"FetchError"> {
  *   readonly error: unknown;
  * }
  *
@@ -452,8 +446,7 @@ export interface RetryOptionsOld<E> {
 }
 
 /** Error returned when {@link retryOld} exhausts all retry attempts. */
-export interface RetryErrorOld<E> {
-  readonly type: "RetryError";
+export interface RetryErrorOld<E> extends Typed<"RetryError"> {
   readonly cause: E;
   readonly attempts: number;
 }
@@ -464,8 +457,7 @@ export interface RetryErrorOld<E> {
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
+ * interface FetchError extends Typed<"FetchError"> {
  *   readonly error: unknown;
  * }
  *
