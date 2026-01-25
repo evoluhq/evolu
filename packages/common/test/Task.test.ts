@@ -258,6 +258,131 @@ describe("Runner", () => {
     });
   });
 
+  describe("addDeps", () => {
+    interface Db {
+      readonly query: (sql: string) => string;
+    }
+
+    interface DbDep {
+      readonly db: Db;
+    }
+
+    const createDb = (): Db => ({ query: (sql) => `result:${sql}` });
+
+    test("extends runner with additional deps for one-shot usage", async () => {
+      await using run = createRunner();
+
+      const db = createDb();
+
+      const task: Task<string, never, DbDep> = (_, deps) =>
+        ok(deps.db.query("SELECT 1"));
+
+      const result = await run.addDeps({ db })(task);
+
+      expect(result).toEqual(ok("result:SELECT 1"));
+    });
+
+    test("extends runner with additional deps for reusable usage", async () => {
+      await using _run = createRunner();
+
+      const db = createDb();
+      const run: Runner<DbDep> = _run.addDeps({ db });
+
+      const task1: Task<string, never, DbDep> = (_, deps) =>
+        ok(deps.db.query("SELECT 1"));
+
+      const task2: Task<string, never, DbDep> = (_, deps) =>
+        ok(deps.db.query("SELECT 2"));
+
+      const result1 = await run(task1);
+      const result2 = await run(task2);
+
+      expect(result1).toEqual(ok("result:SELECT 1"));
+      expect(result2).toEqual(ok("result:SELECT 2"));
+    });
+
+    test("child tasks inherit extended deps", async () => {
+      await using run = createRunner();
+
+      const db = createDb();
+
+      const parentTask: Task<string, never, DbDep> = async (run) => {
+        const childResult = await run(childTask);
+        if (!childResult.ok) return childResult;
+        return ok(`parent(${childResult.value})`);
+      };
+
+      const childTask: Task<string, never, DbDep> = (_, deps) =>
+        ok(deps.db.query("child"));
+
+      const result = await run.addDeps({ db })(parentTask);
+
+      expect(result).toEqual(ok("parent(result:child)"));
+    });
+
+    test("supports multiple deps at once", async () => {
+      await using run = createRunner();
+
+      interface CacheDep {
+        readonly cache: { get: (key: string) => string };
+      }
+
+      const db = createDb();
+      const cache = { get: () => "cache" };
+
+      const task: Task<string, never, DbDep & CacheDep> = (_, deps) =>
+        ok(`${deps.db.query("db")}-${deps.cache.get("")}`);
+
+      const result = await run.addDeps({ db, cache })(task);
+
+      expect(result).toEqual(ok("result:db-cache"));
+    });
+
+    test("returns same runner instance", async () => {
+      await using run = createRunner();
+
+      const db = createDb();
+      const runWithDb = run.addDeps({ db });
+
+      expect(runWithDb).toBe(run);
+    });
+
+    test("type error when overriding existing dep", async () => {
+      await using run = createRunner();
+
+      const db = createDb();
+      const runWithDb = run.addDeps({ db });
+
+      // @ts-expect-error - cannot override existing dep
+      runWithDb.addDeps({ db: { query: () => "new" } });
+    });
+
+    test("type error when overriding RunnerDeps", async () => {
+      await using run = createRunner();
+
+      // @ts-expect-error - cannot override built-in time dep
+      run.addDeps({ time: { now: () => 0 } });
+    });
+
+    test("runner with more deps is assignable to runner with fewer deps", async () => {
+      await using run = createRunner();
+
+      const runWithBoth = run.addDeps({
+        createDb,
+        db: createDb(),
+      });
+
+      const runWithDb: Runner<DbDep> = runWithBoth;
+
+      const task: Task<string, never, DbDep> = (_, deps) =>
+        ok(deps.db.query("SELECT 1"));
+
+      const result = await runWithDb(task);
+
+      expect(result).toEqual(ok("result:SELECT 1"));
+    });
+  });
+
   describe("onEvent", () => {
     test("emits childAdded when child is added", async () => {
       const deps = createTestDeps();
@@ -928,7 +1053,7 @@ describe("Fiber", () => {
     const task: Task<number> = () => Promise.resolve(ok(42));
     const fiber = run(task);
 
-    expectTypeOf(fiber).toEqualTypeOf<Fiber<number, never>>();
+    expectTypeOf(fiber).toEqualTypeOf<Fiber<number, never, RunnerDeps>>();
 
     const result = await fiber;
 
@@ -2953,6 +3078,25 @@ describe("retry", () => {
     expect(attempts).toBe(3);
   });
 
+  test("returns RetryError not raw error (type test)", async () => {
+    await using run = createRunner();
+
+    const task: Task<string, MyError> = () => err({ type: "MyError" });
+    const retried = retry(task, take(1)(spaced("1ms")));
+
+    // Error type is RetryError<MyError>, not MyError | RetryError<MyError>
+    expectTypeOf(retried).toEqualTypeOf<Task<string, RetryError<MyError>>>();
+
+    const result = await run(retried);
+    if (!result.ok) {
+      // Can only be RetryError or AbortError, never raw MyError
+      expectTypeOf(result.error).toEqualTypeOf<
+        RetryError<MyError> | AbortError
+      >();
+      expect(result.error.type).toBe("RetryError");
+    }
+  });
+
   test("calls onRetry before each retry", async () => {
     await using run = createRunner();
 
@@ -3465,7 +3609,7 @@ describe("DI", () => {
     await using run = createRunner(customDeps);
 
     // Type is inferred from argument
-    expectTypeOf(run).toEqualTypeOf<Runner<typeof customDeps>>();
+    expectTypeOf(run).toEqualTypeOf<Runner<RunnerDeps & typeof customDeps>>();
 
     const task: Task<string, never, ConfigDep> = (_run, deps) =>
       ok(deps.config.apiUrl);
@@ -3478,7 +3622,7 @@ describe("DI", () => {
   test("createRunner without args returns Runner<RunnerDeps>", async () => {
     await using run = createRunner();
 
-    expectTypeOf(run).toEqualTypeOf<Runner>();
+    expectTypeOf(run).toEqualTypeOf<Runner<RunnerDeps>>();
   });
 
   test("runner rejects task with missing deps", async () => {
@@ -5919,21 +6063,21 @@ describe("examples TODO", () => {
       >();
     });
 
-    test("retry adds RetryError to error union", async () => {
+    test("retry wraps errors in RetryError", async () => {
       const fetchWithTimeout = (url: string) => timeout(fetch(url), "30s");
 
       const fetchWithRetry = (url: string) =>
         retry(fetchWithTimeout(url), take(2)(exponential("100ms")));
 
-      type Expected = (
-        url: string,
-      ) => Task<
-        Response,
-        FetchError | TimeoutError | RetryError<FetchError | TimeoutError>,
-        NativeFetchDep
-      >;
-
-      expectTypeOf(fetchWithRetry).toEqualTypeOf<Expected>();
+      expectTypeOf(fetchWithRetry).toEqualTypeOf<
+        (
+          url: string,
+        ) => Task<
+          Response,
+          RetryError<FetchError | TimeoutError>,
+          NativeFetchDep
+        >
+      >();
 
       const deps: RunnerDeps & NativeFetchDep = {
         ...createTestDeps(),

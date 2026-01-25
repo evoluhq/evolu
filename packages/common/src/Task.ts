@@ -56,6 +56,7 @@ import {
   type Callback,
   type Int1To100,
   type Mutable,
+  type NewKeys,
   type Predicate,
 } from "./Types.js";
 
@@ -73,7 +74,7 @@ import {
  *
  * Evolu implements structured concurrency with these types:
  *
- * - **{@link Task}** — a function that takes {@link Runner} and deps, returning
+ * - **{@link Task}** — a function that takes {@link Runner} and `deps`, returning
  *   {@link Awaitable} (sync or async) {@link Result}
  * - **{@link Runner}** — runs tasks, creates {@link Fiber}s, monitors and aborts
  *   them
@@ -178,7 +179,7 @@ import {
  *     url: string,
  *   ) => Task<
  *     Response,
- *     FetchError | TimeoutError | RetryError<FetchError | TimeoutError>,
+ *     RetryError<FetchError | TimeoutError>,
  *     NativeFetchDep
  *   >
  * >();
@@ -201,10 +202,7 @@ import {
  * expectTypeOf(result).toEqualTypeOf<
  *   Result<
  *     readonly Response[],
- *     | TimeoutError
- *     | FetchError
- *     | AbortError
- *     | RetryError<TimeoutError | FetchError>
+ *     AbortError | RetryError<TimeoutError | FetchError>
  *   >
  * >();
  * ```
@@ -214,7 +212,7 @@ import {
  * Evolu uses standard JavaScript
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management | resource management}.
  *
- * For task-based disposal, Evolu provides {@link AsyncDisposableStack}: a
+ * For task-based disposal, Evolu provides {@link AsyncDisposableStack} — a
  * wrapper around the native
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack | AsyncDisposableStack}
  * where methods accept {@link Task} for acquisition. All operations run
@@ -236,8 +234,9 @@ import {
  * type Awaitable<T> = T | PromiseLike<T>;
  * ```
  *
- * While {@link Task} returns {@link Awaitable} (allowing sync or async results),
- * {@link Runner} is always async. This is a deliberate design choice:
+ * Even though {@link Task} returns {@link Awaitable} (allowing sync or async
+ * results), the {@link Runner} itself is always async. This is a deliberate
+ * design choice:
  *
  * - **Sync** → {@link Result}, native `using` / `DisposableStack`
  * - **Async** → {@link Task}, {@link Runner}, {@link Fiber}, `await using` /
@@ -248,13 +247,17 @@ import {
  * - **No API ambiguity** — Task means async, Result means sync
  * - **Zero overhead** — sync code stays with zero overhead
  *
- * Even though a unified sync/async API is technically possible - with
- * `isPromiseLike` detection and two-phase disposal (sync first, async if
- * needed, and a flag for callers) - Evolu prefers plain functions for sync code
- * because almost anything can be async anyway, and when we need sync, it's for
- * simplicity (no dependencies) and performance (zero abstraction).
+ * While a unified sync/async API is technically possible — with `isPromiseLike`
+ * detection and two-phase disposal (sync first, async if needed, and a flag for
+ * callers) — Evolu prefers plain functions for sync code because almost
+ * anything can be async anyway, and when we need sync, it's for simplicity (no
+ * dependencies) and performance (zero abstraction).
  *
  * ## FAQ
+ *
+ * ### What about runtime-created dependencies?
+ *
+ * Use {@link Runner.addDeps} to extend deps at runtime.
  *
  * ### Is `Task<T, E, D>` still Pure DI? Isn't Runner a DI container?
  *
@@ -522,6 +525,60 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    * @see {@link withConcurrency}
    */
   readonly concurrency: Concurrency;
+
+  /**
+   * Adds additional dependencies to this runner and returns it.
+   *
+   * Use for runtime-created dependencies — dependencies that cannot be created
+   * in the composition root (e.g., app start).
+   *
+   * ### Example
+   *
+   * ```ts
+   * // One-shot
+   * await run.addDeps({ db })(getUser(123));
+   *
+   * // Multiple deps at once
+   * await run.addDeps({ db, cache })(task);
+   *
+   * // Reusable — config comes from outside (message, file, etc.)
+   * type DbWorkerDeps = DbDep; // or DbDep & CacheDep & ...
+   *
+   * const initDbWorker =
+   *   (config: Config): Task<void, InitError, CreateDbDep> =>
+   *   async (_run, deps) => {
+   *     const db = await _run(deps.createDb(config.connectionString));
+   *     if (!db.ok) return db;
+   *
+   *     const run: Runner<DbWorkerDeps> = _run.addDeps({ db: db.value });
+   *
+   *     await run(getUser(123));
+   *     await run(insertUser(user));
+   *     return ok();
+   *   };
+   * ```
+   *
+   * The `_run` naming convention reserves `run` for the extended runner.
+   *
+   * ## FAQ
+   *
+   * ### How does it work?
+   *
+   * This is the whole implementation:
+   *
+   * ```ts
+   * run.addDeps = <E extends NewKeys<E, D>>(
+   *   extraDeps: E,
+   * ): Runner<D & E> => {
+   *   deps = { ...deps, ...extraDeps };
+   *   return self as unknown as Runner<D & E>;
+   * };
+   * ```
+   *
+   * {@link NewKeys}`<E, D>` rejects keys already in `D`, so `addDeps` can't
+   * override existing deps.
+   */
+  readonly addDeps: <E extends NewKeys<E, D>>(extraDeps: E) => Runner<D & E>;
 }
 
 /**
@@ -1046,11 +1103,11 @@ const defaultDeps: RunnerDeps = {
  *
  * @group Creating Runners
  */
-export function createRunner(): Runner;
-/** With custom dependencies. */
-export function createRunner<D extends RunnerDeps>(deps: D): Runner<D>;
-export function createRunner<D extends RunnerDeps>(deps?: D): Runner<D> {
-  const mergedDeps = { ...defaultDeps, ...deps } as D;
+export function createRunner(): Runner<RunnerDeps>;
+/** With custom or partial dependencies (merged with defaults). */
+export function createRunner<D>(deps: D): Runner<RunnerDeps & D>;
+export function createRunner<D>(deps?: D): Runner<RunnerDeps & D> {
+  const mergedDeps = { ...defaultDeps, ...deps } as RunnerDeps & D;
   return createRunnerInternal(mergedDeps)();
 }
 
@@ -1227,6 +1284,11 @@ const createRunnerInternal =
 
       run.concurrency =
         concurrencyBehavior ?? parent?.concurrency ?? defaultConcurrency;
+
+      run.addDeps = <E extends NewKeys<E, D>>(extraDeps: E): Runner<D & E> => {
+        deps = { ...deps, ...extraDeps };
+        return self as unknown as Runner<D & E>;
+      };
 
       run[Symbol.asyncDispose] = () => {
         if (disposingPromise) return disposingPromise;
@@ -1708,13 +1770,22 @@ export interface RetryError<E> extends Typed<"RetryError"> {
 }
 
 /**
- * Wraps a {@link Task} with retry logic controlled by a {@link Schedule}.
+ * Wraps a {@link Task} with retry logic.
  *
- * Retries the task according to the schedule's timing and termination rules.
- * The schedule receives the error as input, enabling error-aware retry
- * strategies.
+ * Retries the task according to the {@link Schedule}'s timing and termination
+ * rules. Use {@link RetryOptions.retryable} to filter which errors should
+ * trigger retries.
  *
- * {@link AbortError} is never retried — abort always propagates immediately.
+ * All non-abort errors are wrapped in {@link RetryError}:
+ *
+ * - Task succeeds → `ok(value)`
+ * - Task returns {@link AbortError} → `err(AbortError)` — passed through, no
+ *   retry, no wrapping
+ * - Task returns any other error → retry until schedule exhausted or `retryable`
+ *   returns false → `err(RetryError)` with `cause` = the last error
+ *
+ * The `RetryError` is informative: "I tried N times, here's why I finally gave
+ * up" — and `cause` contains the actual underlying error.
  *
  * ### Example
  *
@@ -1734,12 +1805,34 @@ export interface RetryError<E> extends Typed<"RetryError"> {
  * );
  *
  * const result = await run(fetchWithRetry);
- * if (!result.ok && result.error.type === "RetryError") {
- *   console.log(`Failed after ${result.error.attempts} attempts`);
+ * if (!result.ok) {
+ *   if (AbortError.is(result.error)) {
+ *     // Was aborted externally
+ *   } else {
+ *     // RetryError — failed after retrying
+ *     console.log(`Failed after ${result.error.attempts} attempts`);
+ *     console.log(`Last error:`, result.error.cause);
+ *   }
  * }
  * ```
  *
+ * The schedule receives the error as input, enabling error-aware strategies
+ * like stopping on fatal errors:
+ *
+ * ```ts
+ * import { whileScheduleInput } from "@evolu/common";
+ *
+ * // Don't retry fatal errors
+ * const smartRetry = retry(
+ *   fetchData,
+ *   whileScheduleInput((e: FetchError) => e.type !== "FatalError")(
+ *     take(5)(spaced("1s")),
+ *   ),
+ * );
+ * ```
+ *
  * @group Composition
+ * @see {@link RetryOptions}
  */
 export const retry =
   <T, E, D = unknown, Output = unknown>(
@@ -1749,7 +1842,7 @@ export const retry =
       retryable = lazyTrue as Predicate<E>,
       onRetry,
     }: RetryOptions<E, Output> = {},
-  ): Task<T, E | RetryError<E>, D> =>
+  ): Task<T, RetryError<E>, D> =>
   async (run) => {
     const step = schedule(run);
     let attempt = minPositiveInt;
@@ -1782,7 +1875,7 @@ export const retry =
       const result = await run(task);
       if (result.ok) return result;
 
-      if (AbortError.is(result.error)) return result;
+      if (AbortError.is(result.error)) return err(result.error);
 
       error = result.error;
       if (!retryable(error)) {
@@ -2613,7 +2706,7 @@ export function map<A, T, E, D>(
   fn: (a: A) => Task<T, E, D>,
   { abortReason = mapAbortError, ...options }: CollectOptions<boolean> = {},
 ): Task<ReadonlyArray<T> | Record<string, T> | void, E, D> {
-  const mapped = mapItems(items, fn);
+  const mapped = mapInput(items, fn);
   return all(
     mapped as Iterable<Task<T, E, D>>,
     {
@@ -2728,7 +2821,7 @@ export function mapSettled<A, T, E, D>(
   never,
   D
 > {
-  const mapped = mapItems(items, task);
+  const mapped = mapInput(items, task);
   return allSettled(
     mapped as Iterable<Task<T, E, D>>,
     options as CollectOptions,
@@ -2881,11 +2974,11 @@ type StopOn = "first" | "error" | "success";
 
 type MapInput<A> = Iterable<A> | Readonly<Record<string, A>>;
 
-const mapItems = <A, T, E, D>(
-  items: MapInput<A>,
+const mapInput = <A, T, E, D>(
+  input: MapInput<A>,
   fn: (a: A) => Task<T, E, D>,
 ): ReadonlyArray<Task<T, E, D>> | Readonly<Record<string, Task<T, E, D>>> =>
-  isIterable(items) ? mapArray(arrayFrom(items), fn) : mapObject(items, fn);
+  isIterable(input) ? mapArray(arrayFrom(input), fn) : mapObject(input, fn);
 
 /**
  * Runs tasks concurrently.
