@@ -304,3 +304,12 @@ export type UnionToIntersection<U> = (
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
   ? Omit<T, K>
   : never;
+
+/**
+ * Constrains `T` to only contain keys not present in `Existing`.
+ *
+ * Use as a generic constraint to prevent overriding existing properties.
+ */
+export type NewKeys<T, Existing> = {
+  [K in keyof T]: K extends keyof Existing ? never : T[K];
+};
