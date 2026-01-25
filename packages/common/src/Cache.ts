@@ -11,8 +11,11 @@ import { PositiveInt } from "./Type.js";
  *
  * Keys are compared by reference (standard Map semantics).
  *
- * Note: Cache does not extend Map because eviction policies (like in LRU)
- * violate the Liskov Substitution Principle.
+ * Note: Cache has a Map-like API but does not extend Map because it behaves
+ * differently. Eviction policies (like LRU) can remove entries implicitly, and
+ * code that accepts a Map can assume values remain until deleted explicitly. An
+ * evicting cache is not a safe substitute for Map (Liskov Substitution
+ * Principle).
  */
 export interface Cache<K, V> {
   /** Checks if a key exists in the cache. */
