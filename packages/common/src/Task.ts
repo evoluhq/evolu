@@ -266,6 +266,13 @@ import {
  * write `createRunner<AppDeps>(deps)` once and the runner passes `deps` to
  * every task as a second argument. This removes repetitive plumbing.
  *
+ * ### Where is fork and join?
+ *
+ * For those familiar with other structured concurrency implementations:
+ *
+ * - **Fork** — `run(task)` creates a {@link Fiber}
+ * - **Join** — `await fiber` waits for completion
+ *
  * @group Core Types
  */
 export type Task<T, E = never, D = unknown> = (
@@ -1474,9 +1481,9 @@ const getConcurrencyBehavior = (
  *
  * // Inherited concurrency — inner all() uses parent's limit
  * const pipeline = withConcurrency(5, async (run) => {
- *   const users = await run(all(userIds.map(fetchUser))); // uses 5
+ *   const users = await run(map(userIds, fetchUser)); // uses 5
  *   if (!users.ok) return users;
- *   return run(all(users.value.map(enrichUser))); // also uses 5
+ *   return run(map(users.value, enrichUser)); // also uses 5
  * });
  * ```
  *
@@ -2432,7 +2439,7 @@ export function all<T extends Readonly<Record<string, AnyTask>>>(
  *
  * ```ts
  * const urls: ReadonlyArray<string> = getUrls();
- * const result = await run(all(urls.map((url) => fetchUrl(url))));
+ * const result = await run(map(urls, fetchUrl));
  * if (!result.ok) return result;
  * // result.value: ReadonlyArray<Response>
  * ```
@@ -2567,7 +2574,7 @@ export function allSettled<T extends Readonly<Record<string, AnyTask>>>(
  *
  * ```ts
  * const urls: ReadonlyArray<string> = getUrls();
- * const results = await run(allSettled(urls.map((url) => fetchUrl(url))));
+ * const results = await run(allSettled(tasks));
  * if (!results.ok) return results;
  * // results.value: ReadonlyArray<Result<Response, FetchError | AbortError>>
  * ```
