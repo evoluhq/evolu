@@ -1,20 +1,25 @@
 /**
- * Manages disposable instances by key, ensuring exactly one instance per key.
+ * A multiton for disposable instances.
  *
  * @module
  */
 
 /**
+ * A multiton for disposable instances.
+ *
+ * A multiton guarantees exactly one instance per key.
+ *
  * Use cases:
  *
- * - One mutex per key to prevent concurrent writes
+ * - One Mutex per key to prevent concurrent writes
  * - Preserving state during hot module reloading
  *
- * **Important:** Do not use this as global shared state. Use it locally or pass
- * it as a dependency instead. The only exception is for hot reloading support,
- * where Evolu uses it to ensure only one instance exists across module reloads
- * (having two Evolu instances with the same name would mean two SQLite
- * connections to the same file, which could corrupt data).
+ * Note: Do not use this as global shared state. Use it locally or pass it as a
+ * dependency instead. The only exception is hot reloading, where Evolu uses
+ * this to keep a single instance across module reloads. Bundler hot-reload APIs
+ * are not consistent across environments, so this is a portable fallback.
+ * Having two Evolu instances with the same name would mean two SQLite
+ * connections to the same file, which could corrupt data.
  */
 export interface Instances<
   K extends string,
@@ -72,8 +77,10 @@ export const createInstances = <
     delete: (key) => {
       const instance = instances.get(key);
       if (instance == null) return false;
+
       instances.delete(key);
       instance[Symbol.dispose]();
+
       return true;
     },
 
@@ -86,7 +93,9 @@ export const createInstances = <
           errors.push(error);
         }
       }
+
       instances.clear();
+
       if (errors.length === 1) throw errors[0];
       if (errors.length > 1) {
         throw new AggregateError(errors, "Multiple disposal errors occurred");
