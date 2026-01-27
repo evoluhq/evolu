@@ -151,7 +151,12 @@ import {
  * - {@link any} — first success wins
  * - {@link fetch} — HTTP requests with abort handling
  *
- * Sequential by default (except race); use {@link withConcurrency} for parallel.
+ * Helpers that accept multiple tasks ({@link all}, {@link map}, etc.) run them
+ * sequentially by default. Use {@link parallel} to run tasks in parallel. The
+ * exception is {@link race}, which always runs tasks concurrently since racing
+ * sequential tasks would be pointless.
+ *
+ * ### Building a better fetch
  *
  * Use {@link timeout} to prevent hanging:
  *
@@ -186,7 +191,7 @@ import {
  * >();
  * ```
  *
- * Run composed tasks with {@link withConcurrency} and {@link map}:
+ * Run composed tasks with {@link parallel} and {@link map}:
  *
  * ```ts
  * await using run = createRunner();
@@ -198,7 +203,7 @@ import {
  * ];
  *
  * // At most 2 concurrent requests
- * const result = await run(withConcurrency(2, map(urls, fetchWithRetry)));
+ * const result = await run(parallel(2, map(urls, fetchWithRetry)));
  *
  * expectTypeOf(result).toEqualTypeOf<
  *   Result<
@@ -531,7 +536,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
 
   /**
    * @see {@link Concurrency}
-   * @see {@link withConcurrency}
+   * @see {@link parallel}
    */
   readonly concurrency: Concurrency;
 
@@ -621,7 +626,7 @@ export type AbortMask = typeof AbortMask.Type;
  * larger values.
  *
  * @group Concurrency Primitives
- * @see {@link withConcurrency}
+ * @see {@link parallel}
  * @see {@link createSemaphore}
  */
 export type Concurrency = Int1To100 | PositiveInt;
@@ -948,16 +953,32 @@ export class TaskDisposableStack<D = unknown> implements AsyncDisposable {
   }
 
   /**
-   * Adopts a value with a {@link Task}-based disposal.
+   * Acquires a resource and registers a custom release {@link Task}.
    *
-   * For values that don't implement {@link AsyncDisposable} and need disposal.
-   * If the value is already disposable, use {@link use} instead.
+   * Runs `acquire` to get a resource and registers `release` to run when the
+   * stack is disposed. Use for resources that need cleanup but don't implement
+   * {@link Disposable} or {@link AsyncDisposable}. If the resource is disposable,
+   * use {@link use} instead.
+   *
+   * ### Example
+   *
+   * ```ts
+   * await using stack = run.stack();
+   *
+   * const session = await stack.adopt(login(credentials), (session) =>
+   *   logout(session),
+   * );
+   * if (!session.ok) return session;
+   *
+   * // Use session.value...
+   * // logout(session.value) runs automatically when stack is disposed
+   * ```
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/adopt
    */
   async adopt<T, E = never>(
     acquire: Task<T, E, D>,
-    release: (value: T) => Task<void, any, D>,
+    release: (resource: T) => Task<void, any, D>,
   ): Promise<Result<T, E | AbortError>> {
     const result = await this.#run(acquire);
     if (result.ok) {
@@ -1454,35 +1475,37 @@ const getConcurrencyBehavior = (
 ): Concurrency | undefined => (task as never)[concurrencyBehaviorSymbol];
 
 /**
- * Sets the {@link Concurrency} level for a {@link Task}.
+ * Runs tasks in parallel instead of sequentially.
+ *
+ * Sets the {@link Concurrency} level for a {@link Task}, which helpers like
+ * {@link all}, {@link map}, etc. use to control how many tasks run at once.
  *
  * By default, tasks run sequentially (one at a time) to encourage thinking
  * about concurrency explicitly — unlike `Promise.all` which runs everything in
  * parallel.
  *
  * For tuple-based calls like `all([taskA, taskB, taskC])` with a known small
- * number of tasks, use `withConcurrency` without a number for unlimited
- * parallelism. For arrays of unknown length, always specify a concurrency
- * limit.
+ * number of tasks, omit the limit (runs unlimited). For arrays of unknown
+ * length, always specify a limit.
  *
  * Concurrency is inherited by child tasks and can be overridden at any level.
  * Composition helpers should respect inherited concurrency — they should not
  * override it with a fixed number unless semantically required (like
  * {@link race}). Helpers with a recommended concurrency should export it for use
- * with `withConcurrency`.
+ * with `parallel`.
  *
  * ### Example
  *
  * ```ts
- * // Unlimited concurrency (tuple with known tasks)
- * run(withConcurrency(all([fetchA, fetchB, fetchC])));
+ * // Unlimited (omit the limit)
+ * run(parallel(all([fetchA, fetchB, fetchC])));
  *
- * // Limited concurrency — at most 5 tasks run at a time
- * run(withConcurrency(5, all(tasks)));
- * run(withConcurrency(5, map(userIds, fetchUser)));
+ * // Limited — at most 5 tasks run at a time
+ * run(parallel(5, all(tasks)));
+ * run(parallel(5, map(userIds, fetchUser)));
  *
- * // Inherited concurrency — inner all() uses parent's limit
- * const pipeline = withConcurrency(5, async (run) => {
+ * // Inherited — inner all() uses parent's limit
+ * const pipeline = parallel(5, async (run) => {
  *   const users = await run(map(userIds, fetchUser)); // uses 5
  *   if (!users.ok) return users;
  *   return run(map(users.value, enrichUser)); // also uses 5
@@ -1491,15 +1514,13 @@ const getConcurrencyBehavior = (
  *
  * @group Composition
  */
-export function withConcurrency<T, E, D = unknown>(
+export function parallel<T, E, D = unknown>(
   concurrency: Concurrency,
   task: Task<T, E, D>,
 ): Task<T, E, D>;
-/** Unlimited concurrency. */
-export function withConcurrency<T, E, D = unknown>(
-  task: Task<T, E, D>,
-): Task<T, E, D>;
-export function withConcurrency<T, E, D = unknown>(
+/** Unlimited. */
+export function parallel<T, E, D = unknown>(task: Task<T, E, D>): Task<T, E, D>;
+export function parallel<T, E, D = unknown>(
   concurrencyOrTask: Concurrency | Task<T, E, D>,
   taskOrFallback?: Task<T, E, D>,
 ): Task<T, E, D> {
@@ -1663,10 +1684,7 @@ export const race = <
   InferTaskOk<T[number]>,
   InferTaskErr<T[number]>,
   InferTaskDeps<T[number]>
-> =>
-  withConcurrency(
-    concurrent(tasks, { stopOn: "first", collect: false, abortReason }),
-  );
+> => parallel(pool(tasks, { stopOn: "first", collect: false, abortReason }));
 /**
  * Abort reason for tasks that lose a {@link race}.
  *
@@ -2398,7 +2416,7 @@ export interface CollectOptions<Collect extends boolean = true> {
 /**
  * Fails fast on first error across multiple {@link Task}s.
  *
- * Sequential by default — use {@link withConcurrency} to run concurrently.
+ * Sequential by default — use {@link parallel} to run concurrently.
  *
  * ### Example
  *
@@ -2518,7 +2536,7 @@ export const allAbortError: AllAbortError = { type: "AllAbortError" };
  * all tasks run to completion regardless of individual failures. Returns an
  * array of {@link Result}s preserving the original order.
  *
- * Sequential by default. Use {@link withConcurrency} for parallel execution.
+ * Sequential by default. Use {@link parallel} for parallel execution.
  *
  * ### Example
  *
@@ -2650,7 +2668,7 @@ export const allSettledAbortError: AllSettledAbortError = {
 /**
  * Maps values to {@link Task}s, failing fast on first error.
  *
- * Sequential by default — use {@link withConcurrency} for parallel execution.
+ * Sequential by default — use {@link parallel} for parallel execution.
  *
  * ### Example
  *
@@ -2750,7 +2768,7 @@ export const mapAbortError: MapAbortError = {
  * Maps values to {@link Task}s, completing all regardless of failures.
  *
  * Returns an array of {@link Result}s preserving the original order. Sequential
- * by default — use {@link withConcurrency} for parallel execution.
+ * by default — use {@link parallel} for parallel execution.
  *
  * ### Example
  *
@@ -2849,7 +2867,7 @@ export function mapSettled<A, T, E, D>(
  * the first task to succeed wins. All other tasks are aborted. If all tasks
  * fail, returns the last error (by input order).
  *
- * Sequential by default. Use {@link withConcurrency} for parallel execution.
+ * Sequential by default. Use {@link parallel} for parallel execution.
  *
  * Think of it like `Array.prototype.some()` — it stops on the first success.
  * This is in contrast to {@link race}, which returns the first task to complete
@@ -2860,7 +2878,7 @@ export function mapSettled<A, T, E, D>(
  * ```ts
  * // Try multiple endpoints concurrently, first success wins
  * const result = await run(
- *   withConcurrency(
+ *   parallel(
  *     any([fetchFromPrimary, fetchFromSecondary, fetchFromTertiary]),
  *   ),
  * );
@@ -2883,7 +2901,7 @@ export function any<T, E, D>(
   },
 ): Task<T, E, D> {
   const { allFailed = "input" } = options ?? {};
-  return concurrent(tasks, {
+  return pool(tasks, {
     stopOn: "success",
     collect: false,
     abortReason: anyAbortError,
@@ -2906,7 +2924,7 @@ export function any<T, E, D>(
  * ```ts
  * await using run = createRunner();
  * const result = await run(
- *   withConcurrency(any([a, b, c], { allFailed: "completion" })),
+ *   parallel(any([a, b, c], { allFailed: "completion" })),
  * );
  * ```
  */
@@ -2946,7 +2964,7 @@ const collect = (
     const array = arrayFrom(input as Iterable<unknown>);
     if (!isNonEmptyArray(array)) return () => ok(emptyArray);
 
-    return concurrent(array as ReadonlyArray<Task<unknown, unknown>>, {
+    return pool(array as ReadonlyArray<Task<unknown, unknown>>, {
       stopOn,
       collect,
       abortReason,
@@ -2962,9 +2980,7 @@ const collect = (
   if (keys.length === 0) return () => ok(emptyRecord);
 
   return async (run) => {
-    const result = await run(
-      concurrent(taskArray, { stopOn, collect, abortReason }),
-    );
+    const result = await run(pool(taskArray, { stopOn, collect, abortReason }));
     if (!result.ok) return result;
     if (!collect) return ok();
     const record = createRecord();
@@ -2976,7 +2992,7 @@ const collect = (
 };
 
 /**
- * When to stop processing tasks in {@link concurrent}.
+ * When to stop processing tasks in {@link pool}.
  *
  * - `"first"` — stop on first result (success or error), used by {@link race}
  * - `"error"` — stop on first error, used by {@link all} and {@link map}
@@ -2994,13 +3010,13 @@ const mapInput = <A, T, E, D>(
   isIterable(input) ? mapArray(arrayFrom(input), fn) : mapObject(input, fn);
 
 /**
- * Runs tasks concurrently.
+ * Worker pool respecting {@link Runner.concurrency}.
  *
- * Implemented as a worker pool respecting {@link Runner.concurrency} — spawns
- * only as many workers as allowed, avoiding idle fibers waiting for permits.
+ * Spawns only as many workers as allowed, avoiding idle fibers waiting for
+ * permits.
  *
  * Workers run as daemons so callers don't block on unabortable tasks. When
- * abort is requested, concurrent returns immediately. Structured concurrency is
+ * abort is requested, pool returns immediately. Structured concurrency is
  * preserved because the root {@link Runner} still waits for all daemons.
  *
  * The `stopOn` option determines when to stop:
@@ -3010,7 +3026,7 @@ const mapInput = <A, T, E, D>(
  * - `"success"` — stop on first success
  * - `null` — never stop early
  */
-function concurrent<T, E, D>(
+function pool<T, E, D>(
   tasks: Iterable<Task<T, E, D>>,
   options: {
     stopOn: StopOn;
@@ -3019,7 +3035,7 @@ function concurrent<T, E, D>(
   },
 ): Task<ReadonlyArray<T>, E, D>;
 
-function concurrent<T, E, D>(
+function pool<T, E, D>(
   tasks: Iterable<Task<T, E, D>>,
   options: {
     stopOn: StopOn;
@@ -3029,7 +3045,7 @@ function concurrent<T, E, D>(
   },
 ): Task<T, E, D>;
 
-function concurrent<T, E, D>(
+function pool<T, E, D>(
   tasks: Iterable<Task<T, E, D>>,
   options: {
     stopOn: null;
@@ -3038,7 +3054,7 @@ function concurrent<T, E, D>(
   },
 ): Task<ReadonlyArray<Result<T, E>>, never, D>;
 
-function concurrent<D>(
+function pool<D>(
   tasks: Iterable<Task<unknown, unknown, D>>,
   options: {
     stopOn: null;
@@ -3048,7 +3064,7 @@ function concurrent<D>(
 ): Task<void, never, D>;
 
 /** Internal overload for {@link collect} with dynamic stopOn/collect. */
-function concurrent(
+function pool(
   tasks: Iterable<Task<unknown, unknown>>,
   options: {
     stopOn: StopOn | null;
@@ -3057,7 +3073,7 @@ function concurrent(
   },
 ): Task<unknown, unknown>;
 
-function concurrent<T, E>(
+function pool<T, E>(
   tasksIterable: Iterable<AnyTask>,
   {
     stopOn = null,

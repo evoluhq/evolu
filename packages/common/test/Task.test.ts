@@ -64,7 +64,7 @@ import {
   TimeoutError,
   unabortable,
   unabortableMask,
-  withConcurrency,
+  parallel,
   yieldNow,
 } from "../src/Task.js";
 import { createTestDeps, createTestRunner } from "../src/Test.js";
@@ -3754,7 +3754,7 @@ describe("DI", () => {
 });
 
 describe("concurrency", () => {
-  describe("withConcurrency", () => {
+  describe("parallel", () => {
     test("defaults to max concurrency when passed only a task", async () => {
       await using run = createRunner();
 
@@ -3771,7 +3771,7 @@ describe("concurrency", () => {
         };
 
       const fiber = run(
-        withConcurrency(all([createTask(1), createTask(2), createTask(3)])),
+        parallel(all([createTask(1), createTask(2), createTask(3)])),
       );
 
       expect(events).toEqual(["start 1", "start 2", "start 3"]);
@@ -3798,7 +3798,7 @@ describe("concurrency", () => {
         };
 
       const fiber = run(
-        withConcurrency(2, (run) =>
+        parallel(2, (run) =>
           run(
             all([createTask(1), createTask(2), createTask(3), createTask(4)]),
           ),
@@ -3815,7 +3815,7 @@ describe("concurrency", () => {
       expect(result).toEqual(ok([1, 2, 3, 4]));
     });
 
-    test("nested withConcurrency overrides parent", async () => {
+    test("nested parallel overrides parent", async () => {
       await using run = createRunner();
 
       const events: Array<string> = [];
@@ -3831,9 +3831,9 @@ describe("concurrency", () => {
         };
 
       const fiber = run(
-        withConcurrency(5, (run) =>
+        parallel(5, (run) =>
           run(
-            withConcurrency(1, (run) =>
+            parallel(1, (run) =>
               run(all([createTask(1), createTask(2), createTask(3)])),
             ),
           ),
@@ -3898,7 +3898,7 @@ describe("concurrency", () => {
         };
 
       const fiber = run(
-        withConcurrency(all([createTask(1), createTask(2), createTask(3)])),
+        parallel(all([createTask(1), createTask(2), createTask(3)])),
       );
 
       await Promise.resolve();
@@ -3936,7 +3936,7 @@ describe("concurrency", () => {
 
       const start = Date.now();
       const result = await run(
-        withConcurrency(all([unabortableTask, failingTask])),
+        parallel(all([unabortableTask, failingTask])),
       );
       const elapsed = Date.now() - start;
 
@@ -4808,7 +4808,7 @@ describe("all", () => {
       return err({ type: "MyError" });
     };
 
-    const fiber = run(withConcurrency(all([slowTask, failingTask])));
+    const fiber = run(parallel(all([slowTask, failingTask])));
 
     expect(events).toEqual(["slow start", "fail start"]);
 
@@ -4840,7 +4840,7 @@ describe("all", () => {
     };
 
     await expect(
-      run(withConcurrency(all([slowTask, throwingTask]))),
+      run(parallel(all([slowTask, throwingTask]))),
     ).rejects.toThrow("boom");
 
     const slowAbortReason = await slowObservedAbort.promise;
@@ -4866,7 +4866,7 @@ describe("all", () => {
       err({ type: "AbortError", reason: abortCause });
 
     const fiber = run(
-      withConcurrency(3, all([waitForAbort, abortingTask, waitForAbort])),
+      parallel(3, all([waitForAbort, abortingTask, waitForAbort])),
     );
 
     const result = await fiber;
@@ -4891,7 +4891,7 @@ describe("all", () => {
       };
 
     const fiber = run(
-      withConcurrency(
+      parallel(
         2,
         all([createTask(1), createTask(2), createTask(3), createTask(4)]),
       ),
@@ -4959,7 +4959,7 @@ describe("all", () => {
       return err({ type: "MyError" });
     };
 
-    const fiber = run(withConcurrency(all({ good: goodTask, bad: badTask })));
+    const fiber = run(parallel(all({ good: goodTask, bad: badTask })));
 
     expect(events).toEqual(["good start", "bad start"]);
 
@@ -4977,7 +4977,7 @@ describe("all", () => {
     expect(result).toEqual(ok({}));
   });
 
-  test("struct respects withConcurrency", async () => {
+  test("struct respects parallel", async () => {
     await using run = createRunner();
 
     const events: Array<string> = [];
@@ -4993,7 +4993,7 @@ describe("all", () => {
       };
 
     const fiber = run(
-      withConcurrency(
+      parallel(
         minPositiveInt,
         all({ a: createTask("a"), b: createTask("b"), c: createTask("c") }),
       ),
@@ -5288,7 +5288,7 @@ describe("allSettled", () => {
     }
   });
 
-  test("struct respects withConcurrency", async () => {
+  test("struct respects parallel", async () => {
     await using run = createRunner();
 
     const events: Array<string> = [];
@@ -5304,7 +5304,7 @@ describe("allSettled", () => {
       };
 
     const fiber = run(
-      withConcurrency(
+      parallel(
         minPositiveInt,
         allSettled({
           a: createTask("a"),
@@ -5329,7 +5329,7 @@ describe("allSettled", () => {
     );
   });
 
-  test("respects withConcurrency", async () => {
+  test("respects parallel", async () => {
     await using run = createRunner();
 
     const events: Array<string> = [];
@@ -5345,7 +5345,7 @@ describe("allSettled", () => {
       };
 
     const fiber = run(
-      withConcurrency(
+      parallel(
         2,
         allSettled([createTask(1), createTask(2), createTask(3)]),
       ),
@@ -5400,7 +5400,7 @@ describe("allSettled", () => {
     };
 
     await expect(
-      run(withConcurrency(allSettled([slowTask, throwingTask]))),
+      run(parallel(allSettled([slowTask, throwingTask]))),
     ).rejects.toThrow("boom");
 
     const slowAbortReason = await slowObservedAbort.promise;
@@ -5522,7 +5522,7 @@ describe("map", () => {
     ]);
   });
 
-  test("respects withConcurrency", async () => {
+  test("respects parallel", async () => {
     await using run = createRunner();
 
     const events: Array<string> = [];
@@ -5536,7 +5536,7 @@ describe("map", () => {
         return ok(id);
       };
 
-    await run(withConcurrency(2, map([1, 2, 3], trackingTask)));
+    await run(parallel(2, map([1, 2, 3], trackingTask)));
 
     // With concurrency 2, tasks 1 and 2 start together
     expect(events[0]).toBe("start 1");
@@ -5577,7 +5577,7 @@ describe("map", () => {
         n === 2 ? err({ type: "MyError" }) : ok(n);
 
     const result = await run(
-      withConcurrency(
+      parallel(
         map([1, 2], (n) => (n === 1 ? slowTask(n) : failingTask(n))),
       ),
     );
@@ -5731,7 +5731,7 @@ describe("mapSettled", () => {
     ]);
   });
 
-  test("respects withConcurrency", async () => {
+  test("respects parallel", async () => {
     await using run = createRunner();
 
     const events: Array<string> = [];
@@ -5745,7 +5745,7 @@ describe("mapSettled", () => {
         return ok(id);
       };
 
-    await run(withConcurrency(2, mapSettled([1, 2, 3], trackingTask)));
+    await run(parallel(2, mapSettled([1, 2, 3], trackingTask)));
 
     // With concurrency 2, tasks 1 and 2 start together
     expect(events[0]).toBe("start 1");
@@ -5820,7 +5820,7 @@ describe("any", () => {
       return ok("fast");
     };
 
-    const fiber = run(withConcurrency(any([slow, fast])));
+    const fiber = run(parallel(any([slow, fast])));
     await Promise.resolve();
     canFinish.resolve();
 
@@ -5865,7 +5865,7 @@ describe("any", () => {
       };
 
     const result = await run(
-      withConcurrency(
+      parallel(
         any([createFailingTask(1), createFailingTask(2), createFailingTask(3)]),
       ),
     );
@@ -5894,7 +5894,7 @@ describe("any", () => {
     const fast: Task<never, MyError> = () =>
       err({ type: "MyError", id: "fast" });
 
-    const fiber = run(withConcurrency(any([slow, fast])));
+    const fiber = run(parallel(any([slow, fast])));
     await Promise.resolve();
     canFinish.resolve();
 
@@ -5921,7 +5921,7 @@ describe("any", () => {
       err({ type: "MyError", id: "fast" });
 
     const fiber = run(
-      withConcurrency(any([slow, fast], { allFailed: "completion" })),
+      parallel(any([slow, fast], { allFailed: "completion" })),
     );
     await Promise.resolve();
     canFinish.resolve();
@@ -5947,7 +5947,7 @@ describe("any", () => {
 
     const fast: Task<string> = () => ok("fast");
 
-    const result = await run(withConcurrency(any([slow, fast])));
+    const result = await run(parallel(any([slow, fast])));
 
     expect(result).toEqual(ok("fast"));
     const cause = await slowAbortReason.promise;
@@ -6066,7 +6066,7 @@ describe("examples TODO", () => {
       ];
 
       // At most 2 concurrent requests
-      const _result = await run(withConcurrency(2, map(urls, fetchWithRetry)));
+      const _result = await run(parallel(2, map(urls, fetchWithRetry)));
     });
 
     test("all with NonEmptyReadonlyArray returns NonEmptyReadonlyArray", () => {
