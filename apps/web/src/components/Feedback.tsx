@@ -77,7 +77,7 @@ const FeedbackThanks = forwardRef<
 export const Feedback = (): React.ReactElement => {
   const [submitted, setSubmitted] = useState(false);
 
-  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const onSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     // event.nativeEvent.submitter.dataset.response
