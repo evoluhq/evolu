@@ -14,7 +14,7 @@
   "repository": "evoluhq/evolu",
   "license": "MIT",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
-  "sideEffects": [],
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {

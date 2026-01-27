@@ -42,7 +42,7 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/tsconfig": "workspace:*",
-    "@types/sharedworker": "^0.0.209",
+    "@types/sharedworker": "^0.0.210",
     "@types/web-locks-api": "^0.0.5",
     "typescript": "^5.9.3",
     "user-agent-data-types": "^0.4.2",
@@ -57,5 +57,5 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "sideEffects": []
+  "sideEffects": false
 }

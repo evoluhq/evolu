@@ -12,7 +12,7 @@
   },
   "repository": "evoluhq/evolu",
   "license": "MIT",
-  "sideEffects": [],
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
