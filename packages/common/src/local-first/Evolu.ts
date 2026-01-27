@@ -27,13 +27,7 @@ import {
 } from "../Sqlite.js";
 import type { ReadonlyStore, Store } from "../Store.js";
 import { createStore } from "../Store.js";
-import type {
-  InferErrors,
-  InferInput,
-  ObjectType,
-  ValidMutationSize,
-  ValidMutationSizeError,
-} from "../Type.js";
+import type { InferErrors, InferInput, ObjectType } from "../Type.js";
 import { createId, Id, SimpleName } from "../Type.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
@@ -59,6 +53,8 @@ import type {
   MutationMapping,
   MutationOptions,
   ValidateSchema,
+  ValidMutationSize,
+  ValidMutationSizeError,
 } from "./Schema.js";
 import {
   insertable,

@@ -5,6 +5,7 @@
  */
 
 import * as Kysely from "kysely";
+import { pack } from "msgpackr";
 import { readonly } from "../Function.js";
 import {
   createRecord,
@@ -12,7 +13,7 @@ import {
   mapObject,
   type ReadonlyRecord,
 } from "../Object.js";
-import { ok, type Result } from "../Result.js";
+import { err, ok, type Result } from "../Result.js";
 import {
   type SafeSql,
   sql,
@@ -26,13 +27,15 @@ import {
 import {
   type AnyType,
   array,
+  brand,
+  type BrandType,
   createIdFromString,
+  createTypeErrorFormatter,
   DateIso,
   IdBytes,
   type InferErrors,
   type InferInput,
   type InferType,
-  maxMutationSize,
   type MergeObjectTypeErrors,
   nullableToOptional,
   type NullableToOptionalProps,
@@ -47,9 +50,7 @@ import {
   String,
   type TableId,
   type Type,
-  type ValidMutationSize,
-  validMutationSize,
-  type ValidMutationSizeError,
+  type TypeError,
 } from "../Type.js";
 import type { Simplify } from "../Types.js";
 import type { AppOwner } from "./Owner.js";
@@ -640,3 +641,35 @@ export const kysely = new Kysely.Kysely({
 });
 
 const createIndex = kysely.schema.createIndex.bind(kysely.schema);
+
+export const maxMutationSize = 655360;
+
+/**
+ * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
+ * the `maxProtocolMessageRangesSize`. The max size is 640KB in bytes, measured
+ * via JSON (conservative estimate, actual MessagePack will be smaller).
+ */
+export const validMutationSize = <T extends AnyType>(
+  type: T,
+): BrandType<T, "ValidMutationSize", ValidMutationSizeError, InferErrors<T>> =>
+  brand("ValidMutationSize", type, (value) =>
+    pack(value).byteLength <= maxMutationSize
+      ? ok(value)
+      : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
+  );
+
+export interface ValidMutationSizeError extends TypeError<"ValidMutationSize"> {}
+
+export const formatValidMutationSizeError =
+  createTypeErrorFormatter<ValidMutationSizeError>(
+    (error) =>
+      `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
+  );
+
+export type ValidMutationSize<Props extends Record<string, AnyType>> =
+  BrandType<
+    ObjectType<Props>,
+    "ValidMutationSize",
+    ValidMutationSizeError,
+    InferErrors<ObjectType<Props>>
+  >;
