@@ -21,9 +21,9 @@ import {
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../src/Array.js";
+import { identity } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
 import { NonEmptyString, PositiveInt } from "../src/Type.js";
-import { identity } from "../src/Function.js";
 
 describe("Types", () => {
   test("NonEmptyArray requires at least one element", () => {
