@@ -10,7 +10,7 @@ import { emptyRecord } from "../src/Object.js";
 import { testCreateRandom } from "../src/Random.js";
 import { createRef } from "../src/Ref.js";
 import type { Done, Result } from "../src/Result.js";
-import { done, err, ok, tryAsync } from "../src/Result.js";
+import { done, err, ok } from "../src/Result.js";
 import {
   exponential,
   fixed,
@@ -41,7 +41,6 @@ import {
   AllSettledAbortError,
   any,
   AnyAbortError,
-  AsyncDisposableStack,
   createDeferred,
   createGate,
   createMutex,
@@ -49,6 +48,7 @@ import {
   createSemaphore,
   deferredDisposedError,
   DeferredDisposedError,
+  fetch,
   map,
   MapAbortError,
   mapSettled,
@@ -59,6 +59,7 @@ import {
   runnerClosingError,
   RunnerEvent,
   sleep,
+  TaskDisposableStack,
   timeout,
   TimeoutError,
   unabortable,
@@ -1135,50 +1136,6 @@ describe("Fiber", () => {
         }),
       );
     });
-
-    /**
-     * Native APIs like fetch throw signal.reason when aborted. To properly
-     * propagate the Task's AbortError and distinguish abort from other errors,
-     * wrap the native API with tryAsync and check signal.aborted in the error
-     * handler to return signal.reason (the AbortError) instead of wrapping it
-     * as a domain error.
-     */
-    test("propagates to native APIs", async () => {
-      interface FetchError extends Typed<"FetchError"> {
-        readonly error: unknown;
-      }
-
-      const errorCapture = Promise.withResolvers<unknown>();
-
-      const fetchTask =
-        (url: string): Task<Response, FetchError> =>
-        ({ signal }) =>
-          tryAsync(
-            () => fetch(url, { signal }),
-            (error): FetchError | AbortError => {
-              errorCapture.resolve(error);
-              if (AbortError.is(error)) return error;
-              return { type: "FetchError", error };
-            },
-          );
-
-      await using run = createRunner();
-
-      const fiber = run(fetchTask("https://example.com"));
-      fiber.abort("cancelled");
-
-      expect(await fiber).toEqual(
-        err({
-          type: "AbortError",
-          reason: "cancelled",
-        }),
-      );
-
-      expect(await errorCapture.promise).toEqual({
-        type: "AbortError",
-        reason: "cancelled",
-      });
-    });
   });
 
   describe("dispose", () => {
@@ -1790,7 +1747,7 @@ describe("AsyncDisposableStack", () => {
       const task: Task<void> = async (run) => {
         await using stack = run.stack();
 
-        expectTypeOf(stack).toEqualTypeOf<AsyncDisposableStack>();
+        expectTypeOf(stack).toEqualTypeOf<TaskDisposableStack>();
 
         stack.defer(() => {
           events.push("cleanup");
@@ -6030,6 +5987,22 @@ describe("any", () => {
 
     expect(result).toEqual(ok("winner"));
     expect(events).toEqual(["fail 1", "fail 2", "success"]);
+  });
+});
+
+describe("fetch", () => {
+  test("returns AbortError when aborted", async () => {
+    await using run = createRunner();
+
+    const fiber = run(fetch("https://example.com"));
+    fiber.abort("cancelled");
+
+    expect(await fiber).toEqual(
+      err({
+        type: "AbortError",
+        reason: "cancelled",
+      }),
+    );
   });
 });
 

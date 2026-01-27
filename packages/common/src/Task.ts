@@ -79,7 +79,7 @@ import {
  * - **{@link Runner}** — runs tasks, creates {@link Fiber}s, monitors and aborts
  *   them
  * - **{@link Fiber}** — awaitable, abortable/disposable handle to a running task
- * - **{@link AsyncDisposableStack}** — task-aware resource management that
+ * - **{@link TaskDisposableStack}** — task-aware resource management that
  *   completes even when aborted
  *
  * Evolu's structured concurrency core is minimal — one function with a few
@@ -149,6 +149,7 @@ import {
  * - {@link map} — values to tasks, fail-fast
  * - {@link mapSettled} — values to tasks, complete all
  * - {@link any} — first success wins
+ * - {@link fetch} — HTTP requests with abort handling
  *
  * Sequential by default (except race); use {@link withConcurrency} for parallel.
  *
@@ -212,7 +213,7 @@ import {
  * Evolu uses standard JavaScript
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management | resource management}.
  *
- * For task-based disposal, Evolu provides {@link AsyncDisposableStack} — a
+ * For task-based disposal, Evolu provides {@link TaskDisposableStack} — a
  * wrapper around the native
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack | AsyncDisposableStack}
  * where methods accept {@link Task} for acquisition. All operations run
@@ -348,7 +349,9 @@ export type InferTaskDone<T extends Task<any, any, any>> =
  *
  * @group Core Types
  */
-export const AbortError = typed("AbortError", { reason: Unknown });
+export const AbortError = /*#__PURE__*/ typed("AbortError", {
+  reason: Unknown,
+});
 export interface AbortError extends InferType<typeof AbortError> {}
 
 /**
@@ -369,7 +372,6 @@ export interface AbortError extends InferType<typeof AbortError> {}
  * - `PromiseLike` as the async primitive
  * - `AbortSignal` for cancellation
  * - `await using` for resource management
- * - `SuppressedError` for error aggregation
  *
  * This makes Runner idiomatic to JavaScript, tiny with minimal overhead, and
  * easy to debug (native stack traces).
@@ -493,7 +495,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
   readonly defer: (onDisposeAsync: Task<void, never, D>) => AsyncDisposable;
 
   /**
-   * Creates an {@link AsyncDisposableStack} bound to the root runner.
+   * Creates an {@link TaskDisposableStack} bound to the root runner.
    *
    * ### Example
    *
@@ -503,7 +505,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    * const conn = await stack.use(openConnection);
    * ```
    */
-  readonly stack: () => AsyncDisposableStack<D>;
+  readonly stack: () => TaskDisposableStack<D>;
 
   /** {@link Time}. */
   readonly time: Time;
@@ -609,7 +611,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
  *
  * @group Abort Masking
  */
-export const AbortMask = brand("AbortMask", NonNegativeInt);
+export const AbortMask = /*#__PURE__*/ brand("AbortMask", NonNegativeInt);
 export type AbortMask = typeof AbortMask.Type;
 
 /**
@@ -804,7 +806,7 @@ export type FiberState<T = unknown, E = unknown> =
  *
  * @group Monitoring
  */
-export const FiberSnapshotState = union(
+export const FiberSnapshotState = /*#__PURE__*/ union(
   typed("running"),
   typed("completing"),
   typed("completed", { result: UnknownResult, outcome: UnknownResult }),
@@ -842,7 +844,7 @@ export interface FiberSnapshot {
  *
  * @group Monitoring
  */
-export const RunnerEventData = union(
+export const RunnerEventData = /*#__PURE__*/ union(
   typed("childAdded", { childId: Id }),
   typed("childRemoved", { childId: Id }),
   typed("stateChanged", { state: FiberSnapshotState }),
@@ -857,7 +859,7 @@ export type RunnerEventData = typeof RunnerEventData.Type;
  *
  * @group Monitoring
  */
-export const RunnerEvent = object({
+export const RunnerEvent = /*#__PURE__*/ object({
   id: Id,
   timestamp: Millis,
   data: RunnerEventData,
@@ -893,7 +895,7 @@ export interface RunnerEvent extends InferType<typeof RunnerEvent> {}
  *
  * @group Resource Management
  */
-export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
+export class TaskDisposableStack<D = unknown> implements AsyncDisposable {
   readonly #stack = new globalThis.AsyncDisposableStack();
   readonly #daemon: Runner<D>["daemon"];
 
@@ -1282,7 +1284,7 @@ const createRunnerInternal =
         [Symbol.asyncDispose]: () =>
           run.daemon(unabortable(task)).then(lazyVoid),
       });
-      run.stack = () => new AsyncDisposableStack(self);
+      run.stack = () => new TaskDisposableStack(self);
 
       run.time = deps.time;
       run.console = deps.console;
@@ -1335,7 +1337,7 @@ const running: FiberState = { type: "running" };
  *
  * @group Creating Runners
  */
-export const RunnerClosingError = typed("RunnerClosingError");
+export const RunnerClosingError = /*#__PURE__*/ typed("RunnerClosingError");
 export interface RunnerClosingError extends InferType<
   typeof RunnerClosingError
 > {}
@@ -1421,7 +1423,7 @@ const abortBehavior =
  *
  * @group Abort Masking
  */
-export const unabortable = abortBehavior("unabortable");
+export const unabortable = /*#__PURE__*/ abortBehavior("unabortable");
 
 /**
  * Like {@link unabortable}, but provides `restore` to restore abortability for
@@ -1670,7 +1672,7 @@ export const race = <
  *
  * @group Composition
  */
-export const RaceLostError = typed("RaceLostError");
+export const RaceLostError = /*#__PURE__*/ typed("RaceLostError");
 export interface RaceLostError extends InferType<typeof RaceLostError> {}
 
 /**
@@ -1728,7 +1730,7 @@ export const timeout = <T, E, D = unknown>(
  *
  * @group Composition
  */
-export const TimeoutError = typed("TimeoutError");
+export const TimeoutError = /*#__PURE__*/ typed("TimeoutError");
 export interface TimeoutError extends InferType<typeof TimeoutError> {}
 
 /**
@@ -2091,7 +2093,9 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
  *
  * @group Concurrency Primitives
  */
-export const DeferredDisposedError = typed("DeferredDisposedError");
+export const DeferredDisposedError = /*#__PURE__*/ typed(
+  "DeferredDisposedError",
+);
 export interface DeferredDisposedError extends InferType<
   typeof DeferredDisposedError
 > {}
@@ -2323,7 +2327,9 @@ export const createSemaphore = (permits: Concurrency): Semaphore => {
  *
  * @group Concurrency Primitives
  */
-export const SemaphoreDisposedError = typed("SemaphoreDisposedError");
+export const SemaphoreDisposedError = /*#__PURE__*/ typed(
+  "SemaphoreDisposedError",
+);
 export interface SemaphoreDisposedError extends InferType<
   typeof SemaphoreDisposedError
 > {}
@@ -2494,7 +2500,7 @@ export function all(
  *
  * @group Composition
  */
-export const AllAbortError = typed("AllAbortError");
+export const AllAbortError = /*#__PURE__*/ typed("AllAbortError");
 export interface AllAbortError extends InferType<typeof AllAbortError> {}
 
 /**
@@ -2627,7 +2633,7 @@ export function allSettled(
  *
  * @group Composition
  */
-export const AllSettledAbortError = typed("AllSettledAbortError");
+export const AllSettledAbortError = /*#__PURE__*/ typed("AllSettledAbortError");
 export interface AllSettledAbortError extends InferType<
   typeof AllSettledAbortError
 > {}
@@ -2728,7 +2734,7 @@ export function map<A, T, E, D>(
  *
  * @group Composition
  */
-export const MapAbortError = typed("MapAbortError");
+export const MapAbortError = /*#__PURE__*/ typed("MapAbortError");
 export interface MapAbortError extends InferType<typeof MapAbortError> {}
 
 /**
@@ -2911,7 +2917,7 @@ export type AnyAllFailed = "input" | "completion";
  *
  * @group Composition
  */
-export const AnyAbortError = typed("AnyAbortError");
+export const AnyAbortError = /*#__PURE__*/ typed("AnyAbortError");
 export interface AnyAbortError extends InferType<typeof AnyAbortError> {}
 
 /**
@@ -3156,8 +3162,59 @@ function concurrent<T, E>(
   };
 }
 
-// TODO: Implement `fetch` - Task wrapper around globalThis.fetch.
-// Add once retry is implemented to show composition (fetch + timeout + retry).
+/**
+ * Error returned when a {@link fetch} {@link Task} fails.
+ *
+ * @group Composition
+ */
+export const FetchError = typed("FetchError", { error: Unknown });
+export interface FetchError extends InferType<typeof FetchError> {}
+
+/**
+ * Creates a {@link Task} that wraps the native
+ * {@link https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API | Fetch API}.
+ *
+ * Handles cross-browser abort behavior — WebKit throws a `DOMException` with
+ * message "Fetch is aborted" instead of propagating `signal.reason`. This
+ * helper normalizes the behavior to always return {@link AbortError}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * await using run = createRunner();
+ *
+ * const result = await run(fetch("https://api.example.com/users"));
+ *
+ * if (!result.ok) {
+ *   // Handle FetchError or AbortError
+ * }
+ *
+ * // Compose with timeout and retry
+ * const fetchWithRetry = (url: string) =>
+ *   retry(timeout(fetch(url), "10s"), retryStrategyAws);
+ * ```
+ *
+ * @group Composition
+ */
+export const fetch =
+  (input: RequestInfo | URL, init?: RequestInit): Task<Response, FetchError> =>
+  ({ signal }) =>
+    tryAsync(
+      () => globalThis.fetch(input, { ...init, signal }),
+      (error): FetchError | AbortError => {
+        if (AbortError.is(error)) return error;
+        // WebKit throws DOMException with message "Fetch is aborted" instead of
+        // propagating signal.reason. Detect this and create AbortError.
+        if (
+          signal.aborted &&
+          error instanceof Error &&
+          error.message === "Fetch is aborted"
+        ) {
+          return createAbortError(signal.reason);
+        }
+        return { type: "FetchError", error };
+      },
+    );
 
 // TODO: Prioritized Task Scheduling API integration
 // https://developer.mozilla.org/en-US/docs/Web/API/Prioritized_Task_Scheduling_API
