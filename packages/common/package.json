@@ -57,7 +57,6 @@
     "@noble/hashes": "^2.0.1",
     "@scure/bip39": "^2.0.1",
     "disposablestack": "^1.1.7",
-    "es-aggregate-error": "^1.0.14",
     "kysely": "^0.28.10",
     "msgpackr": "^1.11.8",
     "random": "^5.4.1"
@@ -66,7 +65,6 @@
     "@bokuweb/zstd-wasm": "0.0.27",
     "@evolu/tsconfig": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/es-aggregate-error": "^1.0.6",
     "@types/ws": "^8.18.1",
     "@vitest/browser": "^4.0.17",
     "@vitest/browser-playwright": "^4.0.17",
