@@ -17,3 +17,5 @@ storybook-static
 out
 test-identicons
 coverage
+tmp
+__screenshots__
