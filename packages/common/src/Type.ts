@@ -8,7 +8,6 @@ import { utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import { pack } from "msgpackr";
 import type { Brand } from "./Brand.js";
 import type { RandomBytesDep } from "./Crypto.js";
 import { exhaustiveCheck } from "./Function.js";
@@ -736,13 +735,16 @@ export const createBaseTypeErrorFormatter = <
   );
 
 /** @group Base Types */
-export const Unknown = base<"Unknown", unknown, never>("Unknown", ok);
+export const Unknown = /*#__PURE__*/ base<"Unknown", unknown, never>(
+  "Unknown",
+  ok,
+);
 
 /**
  * @group Base Types
  * @group String
  */
-export const String = base("String", (value) =>
+export const String = /*#__PURE__*/ base("String", (value) =>
   typeof value === "string"
     ? ok(value)
     : err<StringError>({ type: "String", value }),
@@ -750,10 +752,11 @@ export const String = base("String", (value) =>
 
 export interface StringError extends TypeError<"String"> {}
 
-export const formatStringError = createBaseTypeErrorFormatter<StringError>();
+export const formatStringError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<StringError>();
 
 /** @group Base Types */
-export const Number = base("Number", (value) =>
+export const Number = /*#__PURE__*/ base("Number", (value) =>
   typeof value === "number"
     ? ok(value)
     : err<NumberError>({ type: "Number", value }),
@@ -761,10 +764,11 @@ export const Number = base("Number", (value) =>
 
 export interface NumberError extends TypeError<"Number"> {}
 
-export const formatNumberError = createBaseTypeErrorFormatter<NumberError>();
+export const formatNumberError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<NumberError>();
 
 /** @group Base Types */
-export const BigInt = base("BigInt", (value) =>
+export const BigInt = /*#__PURE__*/ base("BigInt", (value) =>
   typeof value === "bigint"
     ? ok(value)
     : err<BigIntError>({ type: "BigInt", value }),
@@ -772,10 +776,11 @@ export const BigInt = base("BigInt", (value) =>
 
 export interface BigIntError extends TypeError<"BigInt"> {}
 
-export const formatBigIntError = createBaseTypeErrorFormatter<BigIntError>();
+export const formatBigIntError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<BigIntError>();
 
 /** @group Base Types */
-export const Boolean = base("Boolean", (value) =>
+export const Boolean = /*#__PURE__*/ base("Boolean", (value) =>
   typeof value === "boolean"
     ? ok(value)
     : err<BooleanError>({ type: "Boolean", value }),
@@ -783,10 +788,11 @@ export const Boolean = base("Boolean", (value) =>
 
 export interface BooleanError extends TypeError<"Boolean"> {}
 
-export const formatBooleanError = createBaseTypeErrorFormatter<BooleanError>();
+export const formatBooleanError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<BooleanError>();
 
 /** @group Base Types */
-export const Undefined = base("Undefined", (value) =>
+export const Undefined = /*#__PURE__*/ base("Undefined", (value) =>
   value === undefined
     ? ok(value)
     : err<UndefinedError>({ type: "Undefined", value }),
@@ -795,19 +801,20 @@ export const Undefined = base("Undefined", (value) =>
 export interface UndefinedError extends TypeError<"Undefined"> {}
 
 export const formatUndefinedError =
-  createBaseTypeErrorFormatter<UndefinedError>();
+  /*#__PURE__*/ createBaseTypeErrorFormatter<UndefinedError>();
 
 /** @group Base Types */
-export const Null = base("Null", (value) =>
+export const Null = /*#__PURE__*/ base("Null", (value) =>
   value === null ? ok(value) : err<NullError>({ type: "Null", value }),
 );
 
 export interface NullError extends TypeError<"Null"> {}
 
-export const formatNullError = createBaseTypeErrorFormatter<NullError>();
+export const formatNullError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<NullError>();
 
 /** @group Base Types */
-export const Function = base("Function", (value) =>
+export const Function = /*#__PURE__*/ base("Function", (value) =>
   isFunction(value)
     ? ok(value)
     : err<FunctionError>({ type: "Function", value }),
@@ -816,10 +823,10 @@ export const Function = base("Function", (value) =>
 export interface FunctionError extends TypeError<"Function"> {}
 
 export const formatFunctionError =
-  createBaseTypeErrorFormatter<FunctionError>();
+  /*#__PURE__*/ createBaseTypeErrorFormatter<FunctionError>();
 
 /** @group Base Types */
-export const Uint8Array = base("Uint8Array", (value) =>
+export const Uint8Array = /*#__PURE__*/ base("Uint8Array", (value) =>
   value instanceof globalThis.Uint8Array
     ? ok(value)
     : err<Uint8ArrayError>({ type: "Uint8Array", value }),
@@ -828,7 +835,7 @@ export const Uint8Array = base("Uint8Array", (value) =>
 export interface Uint8ArrayError extends TypeError<"Uint8Array"> {}
 
 export const formatUint8ArrayError =
-  createBaseTypeErrorFormatter<Uint8ArrayError>();
+  /*#__PURE__*/ createBaseTypeErrorFormatter<Uint8ArrayError>();
 
 /**
  * `instanceof` {@link Type}.
@@ -876,16 +883,17 @@ export interface InstanceOfType<
   ctor: T;
 }
 
-export const formatInstanceOfError = createTypeErrorFormatter<InstanceOfError>(
-  (error) => `The value ${error.value} is not an instance of ${error.ctor}.`,
-);
+export const formatInstanceOfError =
+  /*#__PURE__*/ createTypeErrorFormatter<InstanceOfError>(
+    (error) => `The value ${error.value} is not an instance of ${error.ctor}.`,
+  );
 
 /**
  * JavaScript Date.
  *
  * @group Base Types
  */
-export const Date = instanceOf(globalThis.Date);
+export const Date = /*#__PURE__*/ instanceOf(globalThis.Date);
 
 /**
  * Validates that an unknown value is an Evolu {@link Type} (i.e., satisfies
@@ -899,7 +907,7 @@ export const Date = instanceOf(globalThis.Date);
  * ```
  */
 // TODO: Rename to TypeInstance or something like that.
-export const EvoluType = base("EvoluType", (value) =>
+export const EvoluType = /*#__PURE__*/ base("EvoluType", (value) =>
   isType(value)
     ? ok(value)
     : err<EvoluTypeError>({
@@ -910,9 +918,10 @@ export const EvoluType = base("EvoluType", (value) =>
 
 export interface EvoluTypeError extends TypeError<"EvoluType"> {}
 
-export const formatIsTypeError = createTypeErrorFormatter<EvoluTypeError>(
-  (error) => `Value ${error.value} is not a valid Evolu Type.`,
-);
+export const formatIsTypeError =
+  /*#__PURE__*/ createTypeErrorFormatter<EvoluTypeError>(
+    (error) => `Value ${error.value} is not a valid Evolu Type.`,
+  );
 
 /**
  * Branded {@link Type}.
@@ -1134,10 +1143,13 @@ export interface BrandWithoutRefineError<
  *
  * @group String
  */
-export const CurrencyCode = brand("CurrencyCode", String, (value) =>
-  /^[A-Z]{3}$/.test(value)
-    ? ok(value)
-    : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
+export const CurrencyCode = /*#__PURE__*/ brand(
+  "CurrencyCode",
+  String,
+  (value) =>
+    /^[A-Z]{3}$/.test(value)
+      ? ok(value)
+      : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
 );
 
 export type CurrencyCode = typeof CurrencyCode.Type;
@@ -1145,7 +1157,7 @@ export type CurrencyCode = typeof CurrencyCode.Type;
 export interface CurrencyCodeError extends TypeError<"CurrencyCode"> {}
 
 export const formatCurrencyCodeError =
-  createTypeErrorFormatter<CurrencyCodeError>(
+  /*#__PURE__*/ createTypeErrorFormatter<CurrencyCodeError>(
     (error) => `Invalid currency code: ${error.value}.`,
   );
 
@@ -1170,7 +1182,7 @@ export const formatCurrencyCodeError =
  *
  * @group String
  */
-export const DateIso = brand("DateIso", String, (value) => {
+export const DateIso = /*#__PURE__*/ brand("DateIso", String, (value) => {
   if (value.length !== 24) {
     return err<DateIsoError>({ type: "DateIso", value });
   }
@@ -1190,9 +1202,10 @@ export type DateIso = typeof DateIso.Type;
 
 export interface DateIsoError extends TypeError<"DateIso"> {}
 
-export const formatDateIsoError = createTypeErrorFormatter<DateIsoError>(
-  (error) => `The value ${error.value} is not a valid ISO 8601 date string.`,
-);
+export const formatDateIsoError =
+  /*#__PURE__*/ createTypeErrorFormatter<DateIsoError>(
+    (error) => `The value ${error.value} is not a valid ISO 8601 date string.`,
+  );
 
 export const dateToDateIso = (value: Date): Result<DateIso, DateIsoError> =>
   DateIso.fromParent(value.toISOString());
@@ -1276,9 +1289,10 @@ export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
 
 export interface TrimmedError extends TypeError<"Trimmed"> {}
 
-export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
-  (error) => `The value ${error.value} must be trimmed.`,
-);
+export const formatTrimmedError =
+  /*#__PURE__*/ createTypeErrorFormatter<TrimmedError>(
+    (error) => `The value ${error.value} must be trimmed.`,
+  );
 
 /**
  * Trimmed string
@@ -1288,7 +1302,7 @@ export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
  *
  * @group String
  */
-export const TrimmedString = trimmed(String);
+export const TrimmedString = /*#__PURE__*/ trimmed(String);
 export type TrimmedString = typeof TrimmedString.Type;
 
 export const trim = (value: string): TrimmedString =>
@@ -1323,10 +1337,11 @@ export interface MinLengthError<
   readonly min: Min;
 }
 
-export const formatMinLengthError = createTypeErrorFormatter<MinLengthError>(
-  (error) =>
-    `The value ${error.value} does not meet the minimum length of ${error.min}.`,
-);
+export const formatMinLengthError =
+  /*#__PURE__*/ createTypeErrorFormatter<MinLengthError>(
+    (error) =>
+      `The value ${error.value} does not meet the minimum length of ${error.min}.`,
+  );
 
 /**
  * Maximum length.
@@ -1357,10 +1372,11 @@ export interface MaxLengthError<
   readonly max: Max;
 }
 
-export const formatMaxLengthError = createTypeErrorFormatter<MaxLengthError>(
-  (error) =>
-    `The value ${error.value} exceeds the maximum length of ${error.max}.`,
-);
+export const formatMaxLengthError =
+  /*#__PURE__*/ createTypeErrorFormatter<MaxLengthError>(
+    (error) =>
+      `The value ${error.value} exceeds the maximum length of ${error.max}.`,
+  );
 
 /**
  * Exact length.
@@ -1393,49 +1409,52 @@ export interface LengthError<
   readonly exact: Exact;
 }
 
-export const formatLengthError = createTypeErrorFormatter<LengthError>(
-  (error) =>
-    `The value ${error.value} does not have the required length of ${error.exact}.`,
-);
+export const formatLengthError =
+  /*#__PURE__*/ createTypeErrorFormatter<LengthError>(
+    (error) =>
+      `The value ${error.value} does not have the required length of ${error.exact}.`,
+  );
 
 /** @group String */
-export const NonEmptyString = minLength(1)(String);
+export const NonEmptyString = /*#__PURE__*/ minLength(1)(String);
 export type NonEmptyString = typeof NonEmptyString.Type;
 
 /** @group String */
-export const String100 = maxLength(100)(String);
+export const String100 = /*#__PURE__*/ maxLength(100)(String);
 export type String100 = typeof String100.Type;
 
 /** @group String */
-export const String1000 = maxLength(1000)(String);
+export const String1000 = /*#__PURE__*/ maxLength(1000)(String);
 export type String1000 = typeof String1000.Type;
 
 /** @group String */
-export const NonEmptyString100 = minLength(1)(String100);
+export const NonEmptyString100 = /*#__PURE__*/ minLength(1)(String100);
 export type NonEmptyString100 = typeof NonEmptyString100.Type;
 
 /** @group String */
-export const NonEmptyString1000 = minLength(1)(String1000);
+export const NonEmptyString1000 = /*#__PURE__*/ minLength(1)(String1000);
 export type NonEmptyString1000 = typeof NonEmptyString1000.Type;
 
 /** @group String */
-export const NonEmptyTrimmedString = minLength(1)(TrimmedString);
+export const NonEmptyTrimmedString = /*#__PURE__*/ minLength(1)(TrimmedString);
 export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Type;
 
 /** @group String */
-export const TrimmedString100 = maxLength(100)(TrimmedString);
+export const TrimmedString100 = /*#__PURE__*/ maxLength(100)(TrimmedString);
 export type TrimmedString100 = typeof TrimmedString100.Type;
 
 /** @group String */
-export const TrimmedString1000 = maxLength(1000)(TrimmedString);
+export const TrimmedString1000 = /*#__PURE__*/ maxLength(1000)(TrimmedString);
 export type TrimmedString1000 = typeof TrimmedString1000.Type;
 
 /** @group String */
-export const NonEmptyTrimmedString100 = minLength(1)(TrimmedString100);
+export const NonEmptyTrimmedString100 =
+  /*#__PURE__*/ minLength(1)(TrimmedString100);
 export type NonEmptyTrimmedString100 = typeof NonEmptyTrimmedString100.Type;
 
 /** @group String */
-export const NonEmptyTrimmedString1000 = minLength(1)(TrimmedString1000);
+export const NonEmptyTrimmedString1000 =
+  /*#__PURE__*/ minLength(1)(TrimmedString1000);
 export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Type;
 
 /**
@@ -1447,18 +1466,22 @@ export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Type;
  *
  * @group String
  */
-export const Mnemonic = brand("Mnemonic", NonEmptyTrimmedString, (value) =>
-  bip39.validateMnemonic(value, wordlist)
-    ? ok(value)
-    : err<MnemonicError>({ type: "Mnemonic", value }),
+export const Mnemonic = /*#__PURE__*/ brand(
+  "Mnemonic",
+  NonEmptyTrimmedString,
+  (value) =>
+    bip39.validateMnemonic(value, wordlist)
+      ? ok(value)
+      : err<MnemonicError>({ type: "Mnemonic", value }),
 );
 export type Mnemonic = typeof Mnemonic.Type;
 
 export interface MnemonicError extends TypeError<"Mnemonic"> {}
 
-export const formatMnemonicError = createTypeErrorFormatter<MnemonicError>(
-  (error) => `Invalid BIP39 mnemonic: ${error.value}.`,
-);
+export const formatMnemonicError =
+  /*#__PURE__*/ createTypeErrorFormatter<MnemonicError>(
+    (error) => `Invalid BIP39 mnemonic: ${error.value}.`,
+  );
 
 /**
  * String matching a regular expression.
@@ -1495,10 +1518,11 @@ export interface RegexError<
   readonly pattern: RegExp;
 }
 
-export const formatRegexError = createTypeErrorFormatter<RegexError>(
-  (error) =>
-    `The value ${error.value} does not match the pattern for ${error.name}: ${error.pattern}.`,
-);
+export const formatRegexError =
+  /*#__PURE__*/ createTypeErrorFormatter<RegexError>(
+    (error) =>
+      `The value ${error.value} does not match the pattern for ${error.name}: ${error.pattern}.`,
+  );
 
 /**
  * URL-safe string.
@@ -1527,7 +1551,10 @@ export const formatRegexError = createTypeErrorFormatter<RegexError>(
  *
  * @group String
  */
-export const UrlSafeString = regex("UrlSafeString", /^[A-Za-z0-9_-]+$/)(String);
+export const UrlSafeString = /*#__PURE__*/ regex(
+  "UrlSafeString",
+  /^[A-Za-z0-9_-]+$/,
+)(String);
 export type UrlSafeString = typeof UrlSafeString.Type;
 export type UrlSafeStringError = typeof UrlSafeString.Error;
 
@@ -1539,7 +1566,7 @@ export type UrlSafeStringError = typeof UrlSafeString.Error;
  *
  * @group String
  */
-export const Base64Url = brand(
+export const Base64Url = /*#__PURE__*/ brand(
   "Base64Url",
   String,
   (value: string): Result<string, Base64UrlError> => {
@@ -1562,9 +1589,10 @@ export const Base64Url = brand(
 export type Base64Url = typeof Base64Url.Type;
 export interface Base64UrlError extends TypeError<"Base64Url"> {}
 
-export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
-  (error) => `The value ${error.value} is not a valid Base64Url string.`,
-);
+export const formatBase64UrlError =
+  /*#__PURE__*/ createTypeErrorFormatter<Base64UrlError>(
+    (error) => `The value ${error.value} is not a valid Base64Url string.`,
+  );
 
 const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
 
@@ -1636,10 +1664,13 @@ export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
  *
  * @group String
  */
-export const SimpleName = brand("SimpleName", UrlSafeString, (value) =>
-  value.length >= 1 && value.length <= 64
-    ? ok(value)
-    : err<SimpleNameError>({ type: "SimpleName", value }),
+export const SimpleName = /*#__PURE__*/ brand(
+  "SimpleName",
+  UrlSafeString,
+  (value) =>
+    value.length >= 1 && value.length <= 64
+      ? ok(value)
+      : err<SimpleNameError>({ type: "SimpleName", value }),
 );
 export type SimpleName = typeof SimpleName.Type;
 export interface SimpleNameError extends TypeError<"SimpleName"> {}
@@ -1668,7 +1699,7 @@ export interface SimpleNameError extends TypeError<"SimpleName"> {}
  *
  * @group String
  */
-export const SimplePassword = brand(
+export const SimplePassword = /*#__PURE__*/ brand(
   "SimplePassword",
   minLength(8)(maxLength(64)(TrimmedString)),
 );
@@ -1710,7 +1741,7 @@ export const formatSimplePasswordError = (
  *
  * @group String
  */
-export const Id = brand("Id", String, (value) =>
+export const Id = /*#__PURE__*/ brand("Id", String, (value) =>
   value.length === 22 && Base64Url.fromParent(value).ok
     ? ok(value)
     : err<IdError>({ type: "Id", value }),
@@ -1719,7 +1750,7 @@ export type Id = typeof Id.Type;
 
 export interface IdError extends TypeError<"Id"> {}
 
-export const formatIdError = createTypeErrorFormatter<IdError>(
+export const formatIdError = /*#__PURE__*/ createTypeErrorFormatter<IdError>(
   (error) => `The value ${error.value} is not a valid Id.`,
 );
 
@@ -1875,12 +1906,13 @@ export interface TableIdError<
   readonly table: Table;
 }
 
-export const formatTableIdError = createTypeErrorFormatter<TableIdError>(
-  (error) => `Invalid Id for table ${error.table}: ${error.value}.`,
-);
+export const formatTableIdError =
+  /*#__PURE__*/ createTypeErrorFormatter<TableIdError>(
+    (error) => `Invalid Id for table ${error.table}: ${error.value}.`,
+  );
 
 /** Binary representation of an {@link Id}. */
-export const IdBytes = brand("IdBytes", length(16)(Uint8Array));
+export const IdBytes = /*#__PURE__*/ brand("IdBytes", length(16)(Uint8Array));
 export type IdBytes = typeof IdBytes.Type;
 
 export const idBytesTypeValueLength = 16 as NonNegativeInt;
@@ -1916,9 +1948,10 @@ export const positive: BrandFactory<"Positive", number, PositiveError> = (
 
 export interface PositiveError extends TypeError<"Positive"> {}
 
-export const formatPositiveError = createTypeErrorFormatter<PositiveError>(
-  (error) => `The value ${error.value} must be positive (> 0).`,
-);
+export const formatPositiveError =
+  /*#__PURE__*/ createTypeErrorFormatter<PositiveError>(
+    (error) => `The value ${error.value} must be positive (> 0).`,
+  );
 
 /**
  * Negative number (< 0).
@@ -1940,9 +1973,10 @@ export const negative: BrandFactory<"Negative", number, NegativeError> = (
 
 export interface NegativeError extends TypeError<"Negative"> {}
 
-export const formatNegativeError = createTypeErrorFormatter<NegativeError>(
-  (error) => `The value ${error.value} must be negative (< 0).`,
-);
+export const formatNegativeError =
+  /*#__PURE__*/ createTypeErrorFormatter<NegativeError>(
+    (error) => `The value ${error.value} must be negative (< 0).`,
+  );
 
 /**
  * Non-positive number (≤ 0).
@@ -1969,7 +2003,7 @@ export const nonPositive: BrandFactory<
 export interface NonPositiveError extends TypeError<"NonPositive"> {}
 
 export const formatNonPositiveError =
-  createTypeErrorFormatter<NonPositiveError>(
+  /*#__PURE__*/ createTypeErrorFormatter<NonPositiveError>(
     (error) => `The value ${error.value} must be non-positive (≤ 0).`,
   );
 
@@ -1998,7 +2032,7 @@ export const nonNegative: BrandFactory<
 export interface NonNegativeError extends TypeError<"NonNegative"> {}
 
 export const formatNonNegativeError =
-  createTypeErrorFormatter<NonNegativeError>(
+  /*#__PURE__*/ createTypeErrorFormatter<NonNegativeError>(
     (error) => `The value ${error.value} must be non-negative (≥ 0).`,
   );
 
@@ -2007,7 +2041,7 @@ export const formatNonNegativeError =
  *
  * @group Number
  */
-export const NonNegativeNumber = nonNegative(Number);
+export const NonNegativeNumber = /*#__PURE__*/ nonNegative(Number);
 export type NonNegativeNumber = typeof NonNegativeNumber.Type;
 
 /**
@@ -2015,7 +2049,7 @@ export type NonNegativeNumber = typeof NonNegativeNumber.Type;
  *
  * @group Number
  */
-export const PositiveNumber = positive(NonNegativeNumber);
+export const PositiveNumber = /*#__PURE__*/ positive(NonNegativeNumber);
 export type PositiveNumber = typeof PositiveNumber.Type;
 
 /**
@@ -2023,7 +2057,7 @@ export type PositiveNumber = typeof PositiveNumber.Type;
  *
  * @group Number
  */
-export const NonPositiveNumber = nonPositive(Number);
+export const NonPositiveNumber = /*#__PURE__*/ nonPositive(Number);
 export type NonPositiveNumber = typeof NonPositiveNumber.Type;
 
 /**
@@ -2031,7 +2065,7 @@ export type NonPositiveNumber = typeof NonPositiveNumber.Type;
  *
  * @group Number
  */
-export const NegativeNumber = negative(NonPositiveNumber);
+export const NegativeNumber = /*#__PURE__*/ negative(NonPositiveNumber);
 export type NegativeNumber = typeof NegativeNumber.Type;
 
 /**
@@ -2054,7 +2088,7 @@ export const int: BrandFactory<"Int", number, IntError> = (parent) =>
 
 export interface IntError extends TypeError<"Int"> {}
 
-export const formatIntError = createTypeErrorFormatter<IntError>(
+export const formatIntError = /*#__PURE__*/ createTypeErrorFormatter<IntError>(
   (error) => `The value ${error.value} must be an integer.`,
 );
 
@@ -2063,7 +2097,7 @@ export const formatIntError = createTypeErrorFormatter<IntError>(
  *
  * @group Number
  */
-export const Int = int(Number);
+export const Int = /*#__PURE__*/ int(Number);
 export type Int = typeof Int.Type;
 
 /**
@@ -2071,7 +2105,7 @@ export type Int = typeof Int.Type;
  *
  * @group Number
  */
-export const NonNegativeInt = nonNegative(Int);
+export const NonNegativeInt = /*#__PURE__*/ nonNegative(Int);
 export type NonNegativeInt = typeof NonNegativeInt.Type;
 
 /**
@@ -2079,14 +2113,14 @@ export type NonNegativeInt = typeof NonNegativeInt.Type;
  *
  * @group Number
  */
-export const PositiveInt = positive(NonNegativeInt);
+export const PositiveInt = /*#__PURE__*/ positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
 
 /** Minimum {@link PositiveInt} value (1). */
-export const minPositiveInt = PositiveInt.orThrow(1);
+export const minPositiveInt = /*#__PURE__*/ PositiveInt.orThrow(1);
 
 /** Maximum {@link PositiveInt} value (MAX_SAFE_INTEGER). */
-export const maxPositiveInt = PositiveInt.orThrow(
+export const maxPositiveInt = /*#__PURE__*/ PositiveInt.orThrow(
   globalThis.Number.MAX_SAFE_INTEGER,
 );
 
@@ -2095,7 +2129,7 @@ export const maxPositiveInt = PositiveInt.orThrow(
  *
  * @group Number
  */
-export const NonPositiveInt = nonPositive(Int);
+export const NonPositiveInt = /*#__PURE__*/ nonPositive(Int);
 export type NonPositiveInt = typeof NonPositiveInt.Type;
 
 /**
@@ -2103,7 +2137,7 @@ export type NonPositiveInt = typeof NonPositiveInt.Type;
  *
  * @group Number
  */
-export const NegativeInt = negative(NonPositiveInt);
+export const NegativeInt = /*#__PURE__*/ negative(NonPositiveInt);
 export type NegativeInt = typeof NegativeInt.Type;
 
 /**
@@ -2128,7 +2162,7 @@ export interface GreaterThanError<
 }
 
 export const formatGreaterThanError =
-  createTypeErrorFormatter<GreaterThanError>(
+  /*#__PURE__*/ createTypeErrorFormatter<GreaterThanError>(
     (error) => `The value ${error.value} is not > ${error.min}.`,
   );
 
@@ -2153,9 +2187,10 @@ export interface LessThanError<
   readonly max: Max;
 }
 
-export const formatLessThanError = createTypeErrorFormatter<LessThanError>(
-  (error) => `The value ${error.value} is not < ${error.max}.`,
-);
+export const formatLessThanError =
+  /*#__PURE__*/ createTypeErrorFormatter<LessThanError>(
+    (error) => `The value ${error.value} is not < ${error.max}.`,
+  );
 
 /**
  * Number ≥ a specified value.
@@ -2184,7 +2219,7 @@ export interface GreaterThanOrEqualToError<
 }
 
 export const formatGreaterThanOrEqualToError =
-  createTypeErrorFormatter<GreaterThanOrEqualToError>(
+  /*#__PURE__*/ createTypeErrorFormatter<GreaterThanOrEqualToError>(
     (error) => `The value ${error.value} is not >= ${error.min}.`,
   );
 
@@ -2213,7 +2248,7 @@ export interface LessThanOrEqualToError<
 }
 
 export const formatLessThanOrEqualToError =
-  createTypeErrorFormatter<LessThanOrEqualToError>(
+  /*#__PURE__*/ createTypeErrorFormatter<LessThanOrEqualToError>(
     (error) => `The value ${error.value} is not <= ${error.max}.`,
   );
 
@@ -2231,12 +2266,13 @@ export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
 
 export interface NonNaNError extends TypeError<"NonNaN"> {}
 
-export const formatNonNaNError = createTypeErrorFormatter<NonNaNError>(
-  () => `The value must not be NaN.`,
-);
+export const formatNonNaNError =
+  /*#__PURE__*/ createTypeErrorFormatter<NonNaNError>(
+    () => `The value must not be NaN.`,
+  );
 
 /** @group Number */
-export const NonNaNNumber = nonNaN(Number);
+export const NonNaNNumber = /*#__PURE__*/ nonNaN(Number);
 export type NonNaNNumber = typeof NonNaNNumber.Type;
 
 /**
@@ -2253,9 +2289,10 @@ export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
 
 export interface FiniteError extends TypeError<"Finite"> {}
 
-export const formatFiniteError = createTypeErrorFormatter<FiniteError>(
-  (error) => `The value ${error.value} must be finite.`,
-);
+export const formatFiniteError =
+  /*#__PURE__*/ createTypeErrorFormatter<FiniteError>(
+    (error) => `The value ${error.value} must be finite.`,
+  );
 
 /**
  * Finite number.
@@ -2270,7 +2307,7 @@ export const formatFiniteError = createTypeErrorFormatter<FiniteError>(
  *
  * @group Number
  */
-export const FiniteNumber = finite(Number);
+export const FiniteNumber = /*#__PURE__*/ finite(Number);
 export type FiniteNumber = typeof FiniteNumber.Type;
 
 /**
@@ -2296,9 +2333,11 @@ export interface MultipleOfError<
   readonly divisor: Divisor;
 }
 
-export const formatMultipleOfError = createTypeErrorFormatter<MultipleOfError>(
-  (error) => `The value ${error.value} is not a multiple of ${error.divisor}.`,
-);
+export const formatMultipleOfError =
+  /*#__PURE__*/ createTypeErrorFormatter<MultipleOfError>(
+    (error) =>
+      `The value ${error.value} is not a multiple of ${error.divisor}.`,
+  );
 
 /**
  * Number within a range, inclusive.
@@ -2334,10 +2373,11 @@ export interface BetweenError<
   readonly max: Max;
 }
 
-export const formatBetweenError = createTypeErrorFormatter<BetweenError>(
-  (error) =>
-    `The value ${error.value} is not between ${error.min} and ${error.max}, inclusive.`,
-);
+export const formatBetweenError =
+  /*#__PURE__*/ createTypeErrorFormatter<BetweenError>(
+    (error) =>
+      `The value ${error.value} is not between ${error.min} and ${error.max}, inclusive.`,
+  );
 
 /**
  * Literal {@link Type}.
@@ -2386,12 +2426,13 @@ export interface LiteralError<
   readonly expected: T;
 }
 
-export const formatLiteralError = createTypeErrorFormatter<LiteralError>(
-  (error) =>
-    `The value ${error.value} is not strictly equal to the expected literal: ${globalThis.String(
-      error.expected,
-    )}.`,
-);
+export const formatLiteralError =
+  /*#__PURE__*/ createTypeErrorFormatter<LiteralError>(
+    (error) =>
+      `The value ${error.value} is not strictly equal to the expected literal: ${globalThis.String(
+        error.expected,
+      )}.`,
+  );
 
 /**
  * Array of a specific {@link Type}.
@@ -3653,7 +3694,7 @@ export const result = <OkType extends AnyType, ErrType extends AnyType>(
  *
  * @group Composite Factories
  */
-export const UnknownResult = result(Unknown, Unknown);
+export const UnknownResult = /*#__PURE__*/ result(Unknown, Unknown);
 export type UnknownResult = typeof UnknownResult.Type;
 
 /**
@@ -3708,7 +3749,11 @@ export const nextResult = <
  *
  * @group Composite Factories
  */
-export const UnknownNextResult = nextResult(Unknown, Unknown, Unknown);
+export const UnknownNextResult = /*#__PURE__*/ nextResult(
+  Unknown,
+  Unknown,
+  Unknown,
+);
 export type UnknownNextResult = typeof UnknownNextResult.Type;
 
 /**
@@ -4003,7 +4048,7 @@ export const formatTupleError = <Error extends TypeError>(
  *
  * @group Number
  */
-export const Int64 = brand("Int64", BigInt, (value) =>
+export const Int64 = /*#__PURE__*/ brand("Int64", BigInt, (value) =>
   value >= -9223372036854775808n && value <= 9223372036854775807n
     ? ok(value)
     : err<Int64Error>({ type: "Int64", value }),
@@ -4011,25 +4056,29 @@ export const Int64 = brand("Int64", BigInt, (value) =>
 export type Int64 = typeof Int64.Type;
 export interface Int64Error extends TypeError<"Int64"> {}
 
-export const formatInt64Error = createTypeErrorFormatter<Int64Error>(
-  (error) =>
-    `The value ${error.value} is not a valid 64-bit signed integer (Int64).`,
-);
+export const formatInt64Error =
+  /*#__PURE__*/ createTypeErrorFormatter<Int64Error>(
+    (error) =>
+      `The value ${error.value} is not a valid 64-bit signed integer (Int64).`,
+  );
 
 /**
  * Stringified {@link Int64}.
  *
  * @group String
  */
-export const Int64String = brand("Int64", NonEmptyTrimmedString, (value) =>
-  trySync(
-    () => {
-      const maybeInt = globalThis.BigInt(value);
-      Int64.orThrow(maybeInt);
-      return value;
-    },
-    (): Int64StringError => ({ type: "Int64String", value }),
-  ),
+export const Int64String = /*#__PURE__*/ brand(
+  "Int64",
+  NonEmptyTrimmedString,
+  (value) =>
+    trySync(
+      () => {
+        const maybeInt = globalThis.BigInt(value);
+        Int64.orThrow(maybeInt);
+        return value;
+      },
+      (): Int64StringError => ({ type: "Int64String", value }),
+    ),
 );
 
 export type Int64String = typeof Int64String.Type;
@@ -4037,7 +4086,7 @@ export type Int64String = typeof Int64String.Type;
 export interface Int64StringError extends TypeError<"Int64String"> {}
 
 export const formatInt64StringError =
-  createTypeErrorFormatter<Int64StringError>(
+  /*#__PURE__*/ createTypeErrorFormatter<Int64StringError>(
     (error) => `The value ${error.value} is not a valid Int64 string.`,
   );
 
@@ -4084,7 +4133,7 @@ export type JsonArrayInput = ReadonlyArray<JsonValueInput>;
  *
  * @group Base Types
  */
-export const JsonValue = recursive(
+export const JsonValue = /*#__PURE__*/ recursive(
   (): UnionType<
     [
       typeof String,
@@ -4126,14 +4175,14 @@ export const JsonValue = recursive(
  *
  * @group Array
  */
-export const JsonArray = array(JsonValue);
+export const JsonArray = /*#__PURE__*/ array(JsonValue);
 
 /**
  * JSON-compatible object with string keys and {@link JsonValue} values.
  *
  * @group Object
  */
-export const JsonObject = record(String, JsonValue);
+export const JsonObject = /*#__PURE__*/ record(String, JsonValue);
 
 export const parseJson = (value: string): Result<JsonValue, JsonError> =>
   trySync(
@@ -4157,7 +4206,7 @@ export const parseJson = (value: string): Result<JsonValue, JsonError> =>
  *
  * @group String
  */
-export const Json = brand("Json", String, (value) => {
+export const Json = /*#__PURE__*/ brand("Json", String, (value) => {
   const result = parseJson(value);
   if (!result.ok) return result;
   return ok(value);
@@ -4169,9 +4218,10 @@ export interface JsonError extends TypeError<"Json"> {
   readonly message: string;
 }
 
-export const formatJsonError = createTypeErrorFormatter<JsonError>(
-  (error) => `Invalid JSON: ${error.value}. Error: ${error.message}`,
-);
+export const formatJsonError =
+  /*#__PURE__*/ createTypeErrorFormatter<JsonError>(
+    (error) => `Invalid JSON: ${error.value}. Error: ${error.message}`,
+  );
 
 export const jsonValueToJson = (value: JsonValue): Json =>
   JSON.stringify(value) as Json;
@@ -4395,39 +4445,6 @@ export const omit = <T extends ObjectType<any>, Keys extends keyof T["props"]>(
   return object(newProps);
 };
 
-export const maxMutationSize = 655360;
-
-/**
- * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
- * the `maxProtocolMessageRangesSize`. The max size is 640KB in bytes, measured
- * via MessagePack. Evolu Protocol DbChange will be smaller thanks to various
- * optimizations.
- */
-export const validMutationSize = <T extends AnyType>(
-  type: T,
-): BrandType<T, "ValidMutationSize", ValidMutationSizeError, InferErrors<T>> =>
-  brand("ValidMutationSize", type, (value) =>
-    pack(value).byteLength <= maxMutationSize
-      ? ok(value)
-      : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
-  );
-
-export interface ValidMutationSizeError extends TypeError<"ValidMutationSize"> {}
-
-export const formatValidMutationSizeError =
-  createTypeErrorFormatter<ValidMutationSizeError>(
-    (error) =>
-      `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
-  );
-
-export type ValidMutationSize<Props extends Record<string, AnyType>> =
-  BrandType<
-    ObjectType<Props>,
-    "ValidMutationSize",
-    ValidMutationSizeError,
-    InferErrors<ObjectType<Props>>
-  >;
-
 /**
  * Union of all `TypeError`s defined in the `Type.ts` file, including base type
  * errors (e.g., `StringError`, `NumberError`), composite type errors
@@ -4480,7 +4497,6 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | Int64Error
   | Int64StringError
   | JsonError
-  | ValidMutationSizeError
   | ExtraErrors
   // Composite errors
   | ArrayError<TypeErrors<ExtraErrors>>
@@ -4662,8 +4678,6 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatInt64StringError(error);
       case "Json":
         return formatJsonError(error);
-      case "ValidMutationSize":
-        return formatValidMutationSizeError(error);
       // Composite Types
       case "SimplePassword":
         return formatSimplePasswordError(formatTypeError)(error);
