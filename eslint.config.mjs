@@ -14,6 +14,7 @@ export default defineConfig(
       "**/.turbo/",
       "**/dist/",
       "**/out/",
+      "**/tmp/",
       "**/*.d.ts",
       // To validate examples, uncomment apps/** and packages/** otherwise
       // FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory

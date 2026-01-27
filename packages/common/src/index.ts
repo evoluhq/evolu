@@ -4,10 +4,6 @@
  * @module
  */
 
-import { ensurePolyfills } from "./Polyfills.js";
-
-ensurePolyfills();
-
 export * from "./Array.js";
 export * from "./Assert.js";
 export * from "./BigInt.js";
@@ -29,6 +25,7 @@ export * from "./OldTask.js";
 export * from "./Option.js";
 export * from "./Order.js";
 export * from "./Platform.js";
+export * from "./Polyfills.js";
 export * from "./Random.js";
 export * from "./Redacted.js";
 export * from "./Ref.js";
