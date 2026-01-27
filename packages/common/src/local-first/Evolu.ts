@@ -27,7 +27,7 @@ import {
 } from "../Sqlite.js";
 import type { ReadonlyStore, Store } from "../Store.js";
 import { createStore } from "../Store.js";
-import type { InferErrors, InferInput, ObjectType } from "../Type.js";
+import type { AnyType, InferErrors, InferInput, ObjectType } from "../Type.js";
 import { createId, Id, SimpleName } from "../Type.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
@@ -53,8 +53,6 @@ import type {
   MutationMapping,
   MutationOptions,
   ValidateSchema,
-  ValidMutationSize,
-  ValidMutationSizeError,
 } from "./Schema.js";
 import {
   insertable,
@@ -814,7 +812,7 @@ export const createEvolu =
 
     const mutationTypesCache = new Map<
       MutationKind,
-      Map<string, ValidMutationSize<any>>
+      Map<string, ObjectType<Record<string, AnyType>>>
     >();
 
     // Lazy create mutation Types like this: `insertable(Schema.todo)`
@@ -851,8 +849,7 @@ export const createEvolu =
         options?: MutationOptions,
       ): Result<
         { readonly id: S[TableName]["id"]["Type"] },
-        | ValidMutationSizeError
-        | InferErrors<ObjectType<MutationMapping<S[TableName], Kind>>>
+        InferErrors<ObjectType<MutationMapping<S[TableName], Kind>>>
       > => {
         const result = getMutationType(table as string, kind).fromUnknown(
           props,
@@ -900,9 +897,9 @@ export const createEvolu =
           return ok({ id } as { readonly id: S[TableName]["id"]["Type"] });
 
         return err(
-          result.error as
-            | ValidMutationSizeError
-            | InferErrors<ObjectType<MutationMapping<S[TableName], Kind>>>,
+          result.error as InferErrors<
+            ObjectType<MutationMapping<S[TableName], Kind>>
+          >,
         );
       };
 

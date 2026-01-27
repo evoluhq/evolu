@@ -27,7 +27,6 @@ export const formatTypeError = createFormatTypeError<
 /*
 // Note: We only need to specify the errors actually used in the app.
 type AppErrors =
-  | ValidMutationSizeError
   | StringError
   | MinLengthError
   | MaxLengthError

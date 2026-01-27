@@ -5,7 +5,6 @@
  */
 
 import * as Kysely from "kysely";
-import { pack } from "msgpackr";
 import { readonly } from "../Function.js";
 import {
   createRecord,
@@ -13,7 +12,7 @@ import {
   mapObject,
   type ReadonlyRecord,
 } from "../Object.js";
-import { err, ok, type Result } from "../Result.js";
+import { ok, type Result } from "../Result.js";
 import {
   type SafeSql,
   sql,
@@ -27,10 +26,7 @@ import {
 import {
   type AnyType,
   array,
-  brand,
-  type BrandType,
   createIdFromString,
-  createTypeErrorFormatter,
   DateIso,
   IdBytes,
   type InferErrors,
@@ -50,7 +46,6 @@ import {
   String,
   type TableId,
   type Type,
-  type TypeError,
 } from "../Type.js";
 import type { Simplify } from "../Types.js";
 import type { AppOwner } from "./Owner.js";
@@ -268,8 +263,7 @@ export type Mutation<S extends EvoluSchema, Kind extends MutationKind> = <
   options?: MutationOptions,
 ) => Result<
   { readonly id: S[TableName]["id"]["Type"] },
-  | ValidMutationSizeError
-  | MergeObjectTypeErrors<ObjectType<MutationMapping<S[TableName], Kind>>>
+  MergeObjectTypeErrors<ObjectType<MutationMapping<S[TableName], Kind>>>
 >;
 
 export type MutationMapping<
@@ -338,8 +332,7 @@ export interface MutationChange extends DbChange {
 
 /**
  * Type Factory to create insertable {@link Type}. It makes nullable Types
- * optional (so they are not required), omits Id, and ensures the
- * {@link maxMutationSize}.
+ * optional (so they are not required) and omits Id.
  *
  * ### Example
  *
@@ -352,10 +345,9 @@ export interface MutationChange extends DbChange {
  */
 export const insertable = <Props extends Record<string, AnyType>>(
   props: Props,
-): ValidMutationSize<InsertableProps<Props>> => {
+): ObjectType<InsertableProps<Props>> => {
   const optionalNullable = nullableToOptional(props);
-  const withoutId = omit(optionalNullable, "id");
-  return validMutationSize(withoutId);
+  return omit(optionalNullable, "id");
 };
 
 export type InsertableProps<Props extends Record<string, AnyType>> = Omit<
@@ -369,8 +361,7 @@ export type Insertable<Props extends Record<string, AnyType>> = InferInput<
 
 /**
  * Type Factory to create updateable {@link Type}. It makes everything except for
- * the `id` column optional (so they are not required) and ensures the
- * {@link maxMutationSize}.
+ * the `id` column optional (so they are not required).
  *
  * ### Example
  *
@@ -388,12 +379,12 @@ export type Insertable<Props extends Record<string, AnyType>> = InferInput<
  */
 export const updateable = <Props extends Record<string, AnyType>>(
   props: Props,
-): ValidMutationSize<UpdateableProps<Props>> => {
+): ObjectType<UpdateableProps<Props>> => {
   const propsWithIsDeleted = { ...props, isDeleted: SqliteBoolean };
   const updateableProps = mapObject(propsWithIsDeleted, (value, key) =>
     key === "id" ? value : optional(value),
   ) as UpdateableProps<Props>;
-  return validMutationSize(object(updateableProps));
+  return object(updateableProps);
 };
 
 export type UpdateableProps<Props extends Record<string, AnyType>> = {
@@ -406,7 +397,7 @@ export type Updateable<Props extends Record<string, AnyType>> = InferInput<
 
 /**
  * Type Factory to create an upsertable Type. It makes nullable Types optional
- * (so they are not required) and ensures the {@link maxMutationSize}.
+ * (so they are not required).
  *
  * Upsert is like insert, except it requires an ID. It's useful for inserting
  * rows with external ID via {@link createIdFromString}.
@@ -432,12 +423,12 @@ export type Updateable<Props extends Record<string, AnyType>> = InferInput<
  */
 export const upsertable = <Props extends Record<string, AnyType>>(
   props: Props,
-): ValidMutationSize<UpsertableProps<Props>> => {
+): ObjectType<UpsertableProps<Props>> => {
   const propsWithDefaults = {
     ...props,
     isDeleted: optional(SqliteBoolean),
   };
-  return validMutationSize(nullableToOptional(propsWithDefaults));
+  return nullableToOptional(propsWithDefaults);
 };
 
 export type UpsertableProps<Props extends Record<string, AnyType>> =
@@ -642,34 +633,34 @@ export const kysely = new Kysely.Kysely({
 
 const createIndex = kysely.schema.createIndex.bind(kysely.schema);
 
-export const maxMutationSize = 655360;
+// export const maxMutationSize = 655360;
 
-/**
- * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
- * the `maxProtocolMessageRangesSize`. The max size is 640KB in bytes, measured
- * via JSON (conservative estimate, actual MessagePack will be smaller).
- */
-export const validMutationSize = <T extends AnyType>(
-  type: T,
-): BrandType<T, "ValidMutationSize", ValidMutationSizeError, InferErrors<T>> =>
-  brand("ValidMutationSize", type, (value) =>
-    pack(value).byteLength <= maxMutationSize
-      ? ok(value)
-      : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
-  );
+// /**
+//  * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
+//  * the `maxProtocolMessageRangesSize`. The max size is 640KB in bytes, measured
+//  * via JSON (conservative estimate, actual MessagePack will be smaller).
+//  */
+// export const validMutationSize = <T extends AnyType>(
+//   type: T,
+// ): BrandType<T, "ValidMutationSize", ValidMutationSizeError, InferErrors<T>> =>
+//   brand("ValidMutationSize", type, (value) =>
+//     pack(value).byteLength <= maxMutationSize
+//       ? ok(value)
+//       : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
+//   );
 
-export interface ValidMutationSizeError extends TypeError<"ValidMutationSize"> {}
+// export interface ValidMutationSizeError extends TypeError<"ValidMutationSize"> {}
 
-export const formatValidMutationSizeError =
-  createTypeErrorFormatter<ValidMutationSizeError>(
-    (error) =>
-      `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
-  );
+// export const formatValidMutationSizeError =
+//   createTypeErrorFormatter<ValidMutationSizeError>(
+//     (error) =>
+//       `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
+//   );
 
-export type ValidMutationSize<Props extends Record<string, AnyType>> =
-  BrandType<
-    ObjectType<Props>,
-    "ValidMutationSize",
-    ValidMutationSizeError,
-    InferErrors<ObjectType<Props>>
-  >;
+// export type ValidMutationSize<Props extends Record<string, AnyType>> =
+//   BrandType<
+//     ObjectType<Props>,
+//     "ValidMutationSize",
+//     ValidMutationSizeError,
+//     InferErrors<ObjectType<Props>>
+//   >;
