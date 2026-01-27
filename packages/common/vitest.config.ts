@@ -1,6 +1,9 @@
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
+// Coverage with v8 only works with a single browser instance
+const isCoverage = process.argv.includes("--coverage");
+
 export default defineConfig({
   test: {
     exclude: ["**/node_modules/**", "**/dist/**"],
@@ -36,7 +39,6 @@ export default defineConfig({
             "test/Sqlite.test.ts", // needs SQLite
             "test/TreeShaking.test.ts", // needs esbuild
             "test/Identicon.test.ts", // needs canvas
-            "test/Array.test.ts", // uses node:perf_hooks
             "test/Redacted.test.ts", // uses node:util
           ],
           name: "browser",
@@ -45,11 +47,13 @@ export default defineConfig({
             enabled: true,
             provider: playwright(),
             headless: true,
-            instances: [
-              { browser: "chromium" },
-              { browser: "firefox" },
-              { browser: "webkit" },
-            ],
+            instances: isCoverage
+              ? [{ browser: "chromium" }]
+              : [
+                  { browser: "chromium" },
+                  { browser: "firefox" },
+                  { browser: "webkit" },
+                ],
           },
         },
       },
