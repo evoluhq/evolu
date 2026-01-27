@@ -1752,6 +1752,7 @@ export const encodeAndEncryptDbChange =
 
     encodeFlags(buffer, [
       message.change.isInsert,
+      // Encode nullable boolean as two flags: presence + value.
       message.change.isDelete != null,
       message.change.isDelete ?? false,
     ]);
