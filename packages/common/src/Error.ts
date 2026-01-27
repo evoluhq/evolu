@@ -24,7 +24,13 @@ export interface UnknownError extends Typed<"UnknownError"> {
   readonly error: unknown;
 }
 
-/** Creates an {@link UnknownError} from an unknown error. */
+/**
+ * Creates an {@link UnknownError} from an unknown error.
+ *
+ * Error objects cannot be directly structured-cloned (for worker messaging) or
+ * JSON-serialized because their properties (`message`, `stack`, `cause`) are
+ * non-enumerable. This function extracts those properties into a plain object.
+ */
 export const createUnknownError = (error: unknown): UnknownError => {
   const convertError = (err: Error): Record<string, unknown> => {
     const result: Record<string, unknown> = Object.getOwnPropertyNames(
@@ -39,6 +45,11 @@ export const createUnknownError = (error: unknown): UnknownError => {
       }
       return acc;
     }, {});
+    // Firefox defines `stack` as a getter on Error.prototype, not as an own
+    // property, so getOwnPropertyNames misses it. Explicitly include it.
+    if (err.stack !== undefined && !("stack" in result)) {
+      result.stack = err.stack;
+    }
     return result;
   };
 

@@ -7,6 +7,7 @@ describe("createUnknownError", () => {
     const result = createUnknownError(error);
 
     expect(result.type).toBe("UnknownError");
+
     expect(result.error).toMatchObject({
       message: "Test error",
       stack: expect.any(String),

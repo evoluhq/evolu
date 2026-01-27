@@ -26,14 +26,30 @@ export default defineConfig({
         },
       },
       {
+        // Transpile `using`/`await using` for WebKit which doesn't support it yet
+        esbuild: { supported: { using: false } },
         test: {
-          include: ["test/Task.test.ts"],
+          snapshotSerializers: ["./test/local-first/_uint8ArraySerializer.ts"],
+          include: ["test/*.test.ts"],
+          exclude: [
+            "test/WebSocket.test.ts", // needs server
+            "test/Sqlite.test.ts", // needs SQLite
+            "test/TreeShaking.test.ts", // needs esbuild
+            "test/Identicon.test.ts", // needs canvas
+            "test/Array.test.ts", // uses node:perf_hooks
+            "test/Redacted.test.ts", // uses node:util
+          ],
           name: "browser",
+          setupFiles: ["./test/_browserSetup.ts"],
           browser: {
             enabled: true,
             provider: playwright(),
             headless: true,
-            instances: [{ browser: "chromium" }],
+            instances: [
+              { browser: "chromium" },
+              { browser: "firefox" },
+              { browser: "webkit" },
+            ],
           },
         },
       },

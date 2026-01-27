@@ -2304,13 +2304,11 @@ test("Json", () => {
   expect(Json.from(`true`)).toEqual(ok(`true`));
   expect(Json.from(`false`)).toEqual(ok(`false`));
 
-  expect(Json.from(`{"key":}`)).toEqual(
-    err({
-      type: "Json",
-      value: `{"key":}`,
-      message: `SyntaxError: Unexpected token '}', "{"key":}" is not valid JSON`,
-    }),
-  );
+  const jsonError = Json.from(`{"key":}`);
+  assert(!jsonError.ok);
+  assert(jsonError.error.type === "Json");
+  expect(jsonError.error.value).toBe(`{"key":}`);
+  expect(jsonError.error.message).toMatch(/SyntaxError/);
 
   expect(Json.is("{}")).toBe(true);
   expect(Json.is(`{"key":"value"}`)).toBe(true);
@@ -2755,13 +2753,17 @@ test("json Type Factory", () => {
   );
 
   // Test JsonError: invalid JSON string
-  expect(PersonJson.fromUnknown('{"invalid": json}')).toEqual(
-    err({
-      type: "Json",
-      value: '{"invalid": json}',
-      message: `SyntaxError: Unexpected token 'j', "{"invalid": json}" is not valid JSON`,
-    }),
-  );
+  const jsonError = PersonJson.fromUnknown('{"invalid": json}');
+  expect(jsonError.ok).toBe(false);
+  if (!jsonError.ok) {
+    expect(jsonError.error.type).toBe("Json");
+    expect((jsonError.error as { value: string }).value).toBe(
+      '{"invalid": json}',
+    );
+    expect((jsonError.error as { message: string }).message).toMatch(
+      /SyntaxError/,
+    );
+  }
 
   // Test Object validation error: valid JSON but invalid Person
   expect(PersonJson.fromUnknown('{"name": "", "age": -1}')).toEqual(
