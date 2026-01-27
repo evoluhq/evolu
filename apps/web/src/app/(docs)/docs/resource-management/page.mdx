@@ -188,7 +188,14 @@ Without `move()`, the stack would dispose files when `openFiles` returns—even 
 
 ## Ready to use
 
-Evolu [polyfills](/docs/api-reference/common/Polyfills#resource-management) `Symbol.dispose`, `Symbol.asyncDispose`, `DisposableStack`, and `AsyncDisposableStack` in environments without native support (for example, Safari).
+[TypeScript 5.2+](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management) supports the `using` keyword. For runtime environments without native support (for example, Safari), Evolu provides [polyfills](/docs/api-reference/common/Polyfills).
+
+Call `installPolyfills` early in your app:
+
+```ts
+import { installPolyfills } from "@evolu/common";
+installPolyfills();
+```
 
 ## Learn more
 
