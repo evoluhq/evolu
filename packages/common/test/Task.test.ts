@@ -41,6 +41,7 @@ import {
   AllSettledAbortError,
   any,
   AnyAbortError,
+  callback,
   createDeferred,
   createGate,
   createMutex,
@@ -2643,6 +2644,102 @@ describe("yieldNow", () => {
   });
 });
 
+describe("callback", () => {
+  test("resolves with ok value", async () => {
+    await using run = createRunner();
+
+    const task = callback<string>(({ ok }) => {
+      ok("hello");
+    });
+
+    const result = await run(task);
+    expect(result).toEqual(ok("hello"));
+  });
+
+  test("resolves with err value", async () => {
+    interface MyError extends Typed<"MyError"> {}
+
+    await using run = createRunner();
+
+    const task = callback<string, MyError>(({ err }) => {
+      err({ type: "MyError" });
+    });
+
+    const result = await run(task);
+    expect(result).toEqual(err({ type: "MyError" }));
+  });
+
+  test("runs cleanup on abort", async () => {
+    await using run = createRunner();
+
+    let cleanedUp = false;
+
+    const task = callback<void>(({ ok }) => {
+      const id = setTimeout(() => ok(), 1000);
+      return () => {
+        clearTimeout(id);
+        cleanedUp = true;
+      };
+    });
+
+    const fiber = run(task);
+    fiber.abort("cancelled");
+
+    const result = await fiber;
+    expect(result).toEqual(err({ type: "AbortError", reason: "cancelled" }));
+    expect(cleanedUp).toBe(true);
+  });
+
+  test("provides signal for abort-aware APIs", async () => {
+    await using run = createRunner();
+
+    let signalAbortedDuringTask = true;
+
+    const task = callback<void>(({ ok, signal }) => {
+      signalAbortedDuringTask = signal.aborted;
+      ok();
+    });
+
+    await run(task);
+    expect(signalAbortedDuringTask).toBe(false);
+  });
+
+  test("provides RunnerDeps for testable time", async () => {
+    const time = testCreateTime();
+    await using run = createTestRunner({ time });
+
+    const task = callback<void>(({ ok }, { time }) => {
+      const id = time.setTimeout(ok, "100ms");
+      return () => time.clearTimeout(id);
+    });
+
+    const fiber = run(task);
+    time.advance("100ms");
+
+    const result = await fiber;
+    expect(result).toEqual(ok());
+  });
+
+  test("abort resolves immediately without waiting", async () => {
+    await using run = createRunner();
+
+    const start = Date.now();
+
+    const task = callback<void>(() => {
+      // Never resolves
+    });
+
+    const fiber = run(task);
+    fiber.abort("cancelled");
+
+    const result = await fiber;
+    const elapsed = Date.now() - start;
+
+    expect(result).toEqual(err({ type: "AbortError", reason: "cancelled" }));
+    expect(elapsed).toBeLessThan(50);
+  });
+});
+
 describe("sleep", () => {
   test("completes after duration", async () => {
     const time = testCreateTime();
@@ -3935,9 +4032,7 @@ describe("concurrency", () => {
       });
 
       const start = Date.now();
-      const result = await run(
-        parallel(all([unabortableTask, failingTask])),
-      );
+      const result = await run(parallel(all([unabortableTask, failingTask])));
       const elapsed = Date.now() - start;
 
       // all returns promptly with error, doesn't wait for unabortable task
@@ -4839,9 +4934,9 @@ describe("all", () => {
       throw new Error("boom");
     };
 
-    await expect(
-      run(parallel(all([slowTask, throwingTask]))),
-    ).rejects.toThrow("boom");
+    await expect(run(parallel(all([slowTask, throwingTask])))).rejects.toThrow(
+      "boom",
+    );
 
     const slowAbortReason = await slowObservedAbort.promise;
     assert(AbortError.is(slowAbortReason));
@@ -5345,10 +5440,7 @@ describe("allSettled", () => {
       };
 
     const fiber = run(
-      parallel(
-        2,
-        allSettled([createTask(1), createTask(2), createTask(3)]),
-      ),
+      parallel(2, allSettled([createTask(1), createTask(2), createTask(3)])),
     );
 
     // Only 2 tasks should start
@@ -5577,9 +5669,7 @@ describe("map", () => {
         n === 2 ? err({ type: "MyError" }) : ok(n);
 
     const result = await run(
-      parallel(
-        map([1, 2], (n) => (n === 1 ? slowTask(n) : failingTask(n))),
-      ),
+      parallel(map([1, 2], (n) => (n === 1 ? slowTask(n) : failingTask(n)))),
     );
 
     expect(result).toEqual(err({ type: "MyError" }));
@@ -5920,9 +6010,7 @@ describe("any", () => {
     const fast: Task<never, MyError> = () =>
       err({ type: "MyError", id: "fast" });
 
-    const fiber = run(
-      parallel(any([slow, fast], { allFailed: "completion" })),
-    );
+    const fiber = run(parallel(any([slow, fast], { allFailed: "completion" })));
     await Promise.resolve();
     canFinish.resolve();
 

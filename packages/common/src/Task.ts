@@ -136,25 +136,25 @@ import {
  *
  * ## Composition
  *
- * Compose tasks with:
+ * | Category   | Helper             | Description                         |
+ * | ---------- | ------------------ | ----------------------------------- |
+ * | Collection | {@link all}        | fail-fast on first error            |
+ * |            | {@link allSettled} | complete all regardless of failures |
+ * |            | {@link map}        | values to tasks, fail-fast          |
+ * |            | {@link mapSettled} | values to tasks, complete all       |
+ * | Timing     | {@link sleep}      | pause execution                     |
+ * |            | {@link timeout}    | time-bounded execution              |
+ * |            | {@link repeat}     | repeat with schedule                |
+ * |            | {@link yieldNow}   | yield to event loop                 |
+ * | Racing     | {@link race}       | first to complete wins              |
+ * |            | {@link any}        | first success wins                  |
+ * | Resilience | {@link retry}      | retry with backoff                  |
+ * | Interop    | {@link callback}   | wrap callback APIs                  |
+ * |            | {@link fetch}      | HTTP requests with abort handling   |
  *
- * - {@link yieldNow} — yield to event loop
- * - {@link sleep} — pause execution
- * - {@link race} — first to complete wins
- * - {@link timeout} — time-bounded execution
- * - {@link retry} — retry with backoff
- * - {@link repeat} — repeat with schedule
- * - {@link all} — fail-fast on first error
- * - {@link allSettled} — complete all regardless of failures
- * - {@link map} — values to tasks, fail-fast
- * - {@link mapSettled} — values to tasks, complete all
- * - {@link any} — first success wins
- * - {@link fetch} — HTTP requests with abort handling
- *
- * Helpers that accept multiple tasks ({@link all}, {@link map}, etc.) run them
- * sequentially by default. Use {@link parallel} to run tasks in parallel. The
- * exception is {@link race}, which always runs tasks concurrently since racing
- * sequential tasks would be pointless.
+ * Collection helpers run sequentially by default. Use {@link parallel} to run
+ * tasks in parallel. Note helpers like {@link race} always run in parallel —
+ * sequential execution wouldn't make sense for their semantics.
  *
  * ### Building a better fetch
  *
@@ -1601,6 +1601,69 @@ const yieldImpl: () => Promise<void> =
       : () => new Promise<void>((r) => setTimeout(r, 0)); // Safari
 
 /**
+ * Creates a {@link Task} from a callback-based API.
+ *
+ * Use this to wrap callback-style APIs (event listeners, Node.js callbacks,
+ * etc.) into Tasks with proper abort handling.
+ *
+ * Optionally return a cleanup function that runs on abort.
+ *
+ * ### Example
+ *
+ * ```ts
+ * // The sleep helper is implemented using callback:
+ * const sleep = (duration: Duration): Task<void> =>
+ *   callback(({ ok }, { time }) => {
+ *     const id = time.setTimeout(ok, durationToMillis(duration));
+ *     return () => time.clearTimeout(id);
+ *   });
+ *
+ * // Wrap an event listener — use signal directly
+ * const waitForClick = (element: HTMLElement): Task<MouseEvent> =>
+ *   callback(({ ok, signal }) => {
+ *     element.addEventListener("click", ok, { once: true, signal });
+ *   });
+ *
+ * // Wrap Node.js callback API
+ * const readFile = (path: string): Task<string, NodeJS.ErrnoException> =>
+ *   callback(({ ok, err }) => {
+ *     fs.readFile(path, "utf8", (error, data) => {
+ *       if (error) err(error);
+ *       else ok(data);
+ *     });
+ *   });
+ * ```
+ *
+ * @group Composition
+ */
+export const callback =
+  <T, E = never>(
+    fn: (
+      callbacks: {
+        readonly ok: (value: T) => void;
+        readonly err: (error: E) => void;
+        readonly signal: AbortSignal;
+      },
+      deps: RunnerDeps,
+    ) => void | (() => void),
+  ): Task<T, E> =>
+  (run) =>
+    new Promise((resolve) => {
+      const cleanup = fn(
+        {
+          ok: (value) => resolve(ok(value)),
+          err: (error) => resolve(err(error)),
+          signal: run.signal,
+        },
+        run,
+      );
+      run.onAbort((reason) => {
+        if (cleanup) cleanup();
+        resolve(err(createAbortError(reason)));
+      });
+    });
+
+/**
  * Pauses execution for a specified duration.
  *
  * ### Example
@@ -1616,19 +1679,11 @@ const yieldImpl: () => Promise<void> =
  *
  * @group Composition
  */
-export const sleep =
-  (duration: Duration): Task<void> =>
-  (run) =>
-    new Promise((resolve) => {
-      const id = run.time.setTimeout(() => {
-        resolve(ok());
-      }, durationToMillis(duration));
-
-      run.onAbort((reason) => {
-        run.time.clearTimeout(id);
-        resolve(err(createAbortError(reason)));
-      });
-    });
+export const sleep = (duration: Duration): Task<void> =>
+  callback(({ ok }, { time }) => {
+    const id = time.setTimeout(ok, durationToMillis(duration));
+    return () => time.clearTimeout(id);
+  });
 
 /**
  * Returns a {@link Task} that completes first.
