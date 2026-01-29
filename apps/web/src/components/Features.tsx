@@ -9,12 +9,12 @@ import {
 
 import { GridPattern } from "@/components/GridPattern";
 import {
-  IconBolt,
   IconBrandJavascript,
   IconBrandOpenSource,
   IconBrandTypescript,
   IconCode,
   IconDevices,
+  IconFeather,
   IconFilter,
   IconLayersIntersect2,
   IconLibrary,
@@ -33,13 +33,15 @@ interface Feature {
   name: string;
   description: string;
   icon: React.ComponentType<IconProps>;
-  pattern: Omit<
-    React.ComponentPropsWithoutRef<typeof GridPattern>,
-    "width" | "height"
-  >;
 }
 
-const patterns: Array<Feature["pattern"]> = [
+interface Pattern {
+  y: number;
+  x: number;
+  squares: Array<[number, number]>;
+}
+
+const patterns: Array<Pattern> = [
   {
     y: 16,
     x: 4,
@@ -155,112 +157,97 @@ const features: Array<Feature> = [
     name: "Standard library",
     description: "A tree-shakable TypeScript library that fits in your head.",
     icon: IconLibrary,
-    pattern: patterns[0],
   },
   {
-    id: "#safe-async",
-    name: "Safe async",
-    description: "Structured concurrency built on JavaScript Promises.",
-    icon: IconSubtask,
-    pattern: patterns[1],
-  },
-  {
-    id: "#automatic-cleanup",
-    name: "Automatic cleanup",
-    description: "Resource Management with the new JS using keyword.",
-    icon: IconTrash,
-    pattern: patterns[2],
+    id: "#lightweight",
+    name: "Lightweight",
+    description: "Runtime types with structured concurrency: 5.6KB gzipped.",
+    icon: IconFeather,
   },
   {
     id: "#idiomatic-javascript",
     name: "Idiomatic JavaScript",
-    description: "No runtime overhead, native stack traces, debug-friendly.",
+    description: "Minimal abstractions, native stack traces, debug-friendly.",
     icon: IconBrandJavascript,
-    pattern: patterns[3],
-  },
-  {
-    id: "#batteries-included",
-    name: "Batteries included",
-    description: "Array, Set, and other helpers. Eq, Order, Time, and more.",
-    icon: IconPackage,
-    pattern: patterns[6],
-  },
-  {
-    id: "#typed-errors",
-    name: "Typed errors",
-    description: "No try/catch needed, exhaustive error handling.",
-    icon: IconShieldCheck,
-    pattern: patterns[7],
   },
   {
     id: "#universal",
     name: "Universal",
     description: "Web, React Native, Electron, Solid, Vue, Svelte, and more.",
     icon: IconDevices,
-    pattern: patterns[5],
   },
   {
+    id: "#batteries-included",
+    name: "Batteries included",
+    description: "Helpers for Array, Object, etc. Eq, Order, Time, and more.",
+    icon: IconPackage,
+  },
+  {
+    id: "#typed-errors",
+    name: "Typed errors",
+    description: "Result type. No try/catch. Exhaustive error handling.",
+    icon: IconShieldCheck,
+  },
+  {
+    id: "#automatic-cleanup",
+    name: "Automatic cleanup",
+    description: "Resource management with the new JS using keyword.",
+    icon: IconTrash,
+  },
+  {
+    id: "#safe-async",
+    name: "Safe async",
+    description: "Structured concurrency built on JavaScript Promises.",
+    icon: IconSubtask,
+  },
+
+  {
     id: "#developer-experience",
-    name: "Developer Experience",
+    name: "Developer experience",
     description: "Readable source code, tests, DX-first API.",
     icon: IconCode,
-    pattern: patterns[4],
   },
   {
     id: "#runtime-validation",
-    name: "Runtime validation",
-    description: "Typed errors and formatters. All refinements branded.",
+    name: "Runtime types",
+    description: "Typed parsing, errors, and formatters. Branded types.",
     icon: IconFilter,
-    pattern: patterns[8],
   },
   {
     id: "#sqlite",
-    name: "SQLite",
-    description: "Local-first storage with SQLite on all platforms.",
+    name: "Reactive SQLite",
+    description: "Local-first with reactive queries and React Suspense.",
     icon: IconSql,
-    pattern: patterns[9],
   },
   {
     id: "#private-by-design",
     name: "Private by design",
     description: "E2E encrypted sync and backup. Post-quantum safe.",
     icon: IconShieldLock,
-    pattern: patterns[10],
-  },
-  {
-    id: "#reactive",
-    name: "Reactive",
-    description: "Reactive queries with React Suspense support.",
-    icon: IconBolt,
-    pattern: patterns[11],
   },
   {
     id: "#realtime",
     name: "Real-time",
     description: "WebSocket by default, other transports possible.",
     icon: IconLivePhoto,
-    pattern: patterns[12],
   },
   {
     id: "#type-safe-sql",
     name: "Type-safe SQL",
     description: "Typed database schema and SQL with Kysely.",
     icon: IconBrandTypescript,
-    pattern: patterns[13],
   },
   {
     id: "#crdt",
     name: "CRDT",
     description: "Merging changes without conflicts. History preserved.",
     icon: IconLayersIntersect2,
-    pattern: patterns[14],
   },
   {
     id: "#free",
     name: "Free",
     description: "MIT License, self-hostable Relay server.",
     icon: IconBrandOpenSource,
-    pattern: patterns[15],
   },
 ];
 
@@ -277,10 +264,11 @@ export const FeatureIcon = ({
 const FeaturePattern = ({
   mouseX,
   mouseY,
-  ...gridProps
-}: Feature["pattern"] & {
+  pattern,
+}: {
   mouseX: MotionValue<number>;
   mouseY: MotionValue<number>;
+  pattern: (typeof patterns)[number];
 }) => {
   const maskImage = useMotionTemplate`radial-gradient(180px at ${mouseX}px ${mouseY}px, white, transparent)`;
   const style = { maskImage, WebkitMaskImage: maskImage };
@@ -292,7 +280,7 @@ const FeaturePattern = ({
           width={72}
           height={56}
           className="absolute inset-x-0 inset-y-[-30%] h-[160%] w-full skew-y-18 fill-black/2 stroke-black/5 dark:fill-white/1 dark:stroke-white/2.5"
-          {...gridProps}
+          {...pattern}
         />
       </div>
       <motion.div
@@ -307,14 +295,14 @@ const FeaturePattern = ({
           width={72}
           height={56}
           className="absolute inset-x-0 inset-y-[-30%] h-[160%] w-full skew-y-18 fill-black/50 stroke-black/70 dark:fill-white/2.5 dark:stroke-white/10"
-          {...gridProps}
+          {...pattern}
         />
       </motion.div>
     </div>
   );
 };
 
-const Feature = ({ feature }: { feature: Feature }) => {
+const Feature = ({ feature, index }: { feature: Feature; index: number }) => {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
@@ -334,7 +322,11 @@ const Feature = ({ feature }: { feature: Feature }) => {
       onMouseMove={onMouseMove}
       className="group relative flex rounded-2xl bg-zinc-50 transition-shadow hover:shadow-md hover:shadow-zinc-900/5 dark:bg-white/2.5 dark:hover:shadow-black/5"
     >
-      <FeaturePattern {...feature.pattern} mouseX={mouseX} mouseY={mouseY} />
+      <FeaturePattern
+        pattern={patterns[index]}
+        mouseX={mouseX}
+        mouseY={mouseY}
+      />
       <div className="absolute inset-0 rounded-2xl ring-1 ring-zinc-900/7.5 ring-inset group-hover:ring-zinc-900/10 dark:ring-white/10 dark:group-hover:ring-white/20" />
       <div className="relative rounded-2xl p-4 pt-4 pb-4">
         <div className="mb-2 flex items-center gap-3">
@@ -357,8 +349,8 @@ const Feature = ({ feature }: { feature: Feature }) => {
 export const Features = (): React.ReactElement => (
   <div className="xl:max-w-none">
     <div className="not-prose mt-4 grid grid-cols-1 gap-2 pt-10 sm:grid-cols-2 lg:gap-8 xl:grid-cols-4">
-      {features.map((feature) => (
-        <Feature key={feature.id} feature={feature} />
+      {features.map((feature, index) => (
+        <Feature key={feature.id} feature={feature} index={index} />
       ))}
     </div>
   </div>
