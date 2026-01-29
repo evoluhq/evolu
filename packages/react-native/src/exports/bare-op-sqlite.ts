@@ -20,9 +20,11 @@ const reloadApp: ReloadApp = () => {
   }
 };
 
+// eslint-disable-next-line evolu/require-pure-annotation
 export const evoluReactNativeDeps = createSharedEvoluDeps({
   createSqliteDriver: createOpSqliteDriver,
   reloadApp,
 });
 
+// eslint-disable-next-line evolu/require-pure-annotation
 export const localAuth = createSharedLocalAuth(SensitiveInfo);

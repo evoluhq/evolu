@@ -76,11 +76,11 @@ export interface Owner extends ReadonlyOwner {
 }
 
 /** OwnerId is a branded {@link Id} that uniquely identifies an {@link Owner}. */
-export const OwnerId = brand("OwnerId", Id);
+export const OwnerId = /*#__PURE__*/ brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
 
 /** Bytes representation of {@link OwnerId}. */
-export const OwnerIdBytes = brand("OwnerIdBytes", IdBytes);
+export const OwnerIdBytes = /*#__PURE__*/ brand("OwnerIdBytes", IdBytes);
 export type OwnerIdBytes = typeof OwnerIdBytes.Type;
 
 /** Converts {@link OwnerId} to {@link OwnerIdBytes}. */
@@ -91,17 +91,20 @@ export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
 export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
   idBytesToId(ownerIdBytes as IdBytes) as OwnerId;
 
-export const ownerWriteKeyLength = NonNegativeInt.orThrow(16);
+export const ownerWriteKeyLength = /*#__PURE__*/ NonNegativeInt.orThrow(16);
 
 /** Symmetric encryption key for {@link Owner} data protection. */
-export const OwnerEncryptionKey = brand("OwnerEncryptionKey", EncryptionKey);
+export const OwnerEncryptionKey = /*#__PURE__*/ brand(
+  "OwnerEncryptionKey",
+  EncryptionKey,
+);
 export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Type;
 
 /**
  * A secure token for write operations. It's derived from {@link OwnerSecret} by
  * default and can be rotated via {@link createOwnerWriteKey}.
  */
-export const OwnerWriteKey = brand("OwnerWriteKey", Entropy16);
+export const OwnerWriteKey = /*#__PURE__*/ brand("OwnerWriteKey", Entropy16);
 export type OwnerWriteKey = typeof OwnerWriteKey.Type;
 
 /**
@@ -120,7 +123,7 @@ export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
  * Can be created using {@link createOwnerSecret} or converted from a
  * {@link Mnemonic} using {@link mnemonicToOwnerSecret}.
  */
-export const OwnerSecret = brand("OwnerSecret", Entropy32);
+export const OwnerSecret = /*#__PURE__*/ brand("OwnerSecret", Entropy32);
 export type OwnerSecret = typeof OwnerSecret.Type;
 
 /** Creates a {@link OwnerSecret}. */

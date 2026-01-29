@@ -64,19 +64,19 @@ export interface RandomBytesDep {
   readonly randomBytes: RandomBytes;
 }
 
-const Entropy = brand("Entropy", Uint8Array);
+const Entropy = /*#__PURE__*/ brand("Entropy", Uint8Array);
 type Entropy = typeof Entropy.Type;
 
-export const Entropy16 = length(16)(Entropy);
+export const Entropy16 = /*#__PURE__*/ length(16)(Entropy);
 export type Entropy16 = typeof Entropy16.Type;
 
-export const Entropy24 = length(24)(Entropy);
+export const Entropy24 = /*#__PURE__*/ length(24)(Entropy);
 export type Entropy24 = typeof Entropy24.Type;
 
-export const Entropy32 = length(32)(Entropy);
+export const Entropy32 = /*#__PURE__*/ length(32)(Entropy);
 export type Entropy32 = typeof Entropy32.Type;
 
-export const Entropy64 = length(64)(Entropy);
+export const Entropy64 = /*#__PURE__*/ length(64)(Entropy);
 export type Entropy64 = typeof Entropy64.Type;
 
 export const createRandomBytes = (): RandomBytes => ({
@@ -132,7 +132,7 @@ export const deriveSlip21Node = (
 };
 
 /** The encryption key for symmetric encryption. */
-export const EncryptionKey = brand("EncryptionKey", Entropy32);
+export const EncryptionKey = /*#__PURE__*/ brand("EncryptionKey", Entropy32);
 export type EncryptionKey = typeof EncryptionKey.Type;
 
 /** The nonce length for XChaCha20-Poly1305 encryption. */
@@ -143,7 +143,7 @@ export const xChaCha20Poly1305NonceLength = 24;
  *
  * @see {@link encryptWithXChaCha20Poly1305}
  */
-export const XChaCha20Poly1305Ciphertext = brand(
+export const XChaCha20Poly1305Ciphertext = /*#__PURE__*/ brand(
   "XChaCha20Poly1305Ciphertext",
   Uint8Array,
 );

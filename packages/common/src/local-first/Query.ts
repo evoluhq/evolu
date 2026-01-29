@@ -328,7 +328,7 @@ export const applyPatches = (
  *
  * See: https://github.com/kysely-org/kysely/issues/1372#issuecomment-2702773948
  */
-export const kyselyJsonIdentifier = createId({
+export const kyselyJsonIdentifier = /*#__PURE__*/ createId({
   randomBytes: createRandomBytes(),
 });
 

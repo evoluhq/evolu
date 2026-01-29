@@ -172,7 +172,7 @@ export const MobileNavigation = (): React.ReactElement => {
   );
 };
 
-export const Header = forwardRef<
+export const Header = /*#__PURE__*/ forwardRef<
   React.ComponentRef<"div">,
   React.ComponentPropsWithoutRef<typeof motion.div> & {
     variant?: "landing" | "docs";

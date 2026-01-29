@@ -56,7 +56,7 @@ export interface TimestampCounterOverflowError extends Typed<"TimestampCounterOv
 
 export interface TimestampTimeOutOfRangeError extends Typed<"TimestampTimeOutOfRangeError"> {}
 
-export const Counter = brand(
+export const Counter = /*#__PURE__*/ brand(
   "Counter",
   lessThanOrEqualTo(65535)(NonNegativeInt),
 );
@@ -90,7 +90,7 @@ export const maxCounter = 65535 as Counter;
  * yet they will think they are synced. This is extremely rare and can be
  * resolved by resetting one device to generate a new NodeId.
  */
-export const NodeId = regex("NodeId", /^[a-f0-9]{16}$/)(String);
+export const NodeId = /*#__PURE__*/ regex("NodeId", /^[a-f0-9]{16}$/)(String);
 export type NodeId = typeof NodeId.Type;
 
 export const minNodeId = "0000000000000000" as NodeId;
@@ -156,7 +156,7 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * real usage patterns. This preserves real-time collaboration but increases
  * storage and bandwidth usage.
  */
-export const Timestamp = object({
+export const Timestamp = /*#__PURE__*/ object({
   millis: Millis,
   counter: Counter,
   nodeId: NodeId,
@@ -164,7 +164,7 @@ export const Timestamp = object({
 export interface Timestamp extends InferType<typeof Timestamp> {}
 
 /** Equality function for comparing {@link Timestamp}. */
-export const eqTimestamp = createEqObject<Timestamp>({
+export const eqTimestamp = /*#__PURE__*/ createEqObject<Timestamp>({
   millis: eqNumber,
   counter: eqNumber,
   nodeId: eqString,
@@ -267,10 +267,13 @@ export const receiveTimestamp =
   };
 
 /** Sortable bytes representation of {@link Timestamp}. */
-export const TimestampBytes = brand("TimestampBytes", length(16)(Uint8Array));
+export const TimestampBytes = /*#__PURE__*/ brand(
+  "TimestampBytes",
+  length(16)(Uint8Array),
+);
 export type TimestampBytes = typeof TimestampBytes.Type;
 
-export const timestampBytesLength = NonNegativeInt.orThrow(16);
+export const timestampBytesLength = /*#__PURE__*/ NonNegativeInt.orThrow(16);
 
 export const timestampToTimestampBytes = (
   timestamp: Timestamp,

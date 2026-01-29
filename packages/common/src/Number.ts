@@ -103,7 +103,7 @@ export const computeBalancedBuckets = (
  *
  * Limited to 78 because F(79) exceeds JavaScript's `MAX_SAFE_INTEGER`.
  */
-export const FibonacciIndex = brand(
+export const FibonacciIndex = /*#__PURE__*/ brand(
   "FibonacciIndex",
   lessThanOrEqualTo(78)(PositiveInt),
 );

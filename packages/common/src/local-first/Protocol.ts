@@ -290,7 +290,7 @@ const maxProtocolMessageMaxSize = 100_000_000;
  * Increasing this value on the client side would break compatibility with
  * relays that enforce smaller limits.
  */
-export const ProtocolMessageMaxSize = between(
+export const ProtocolMessageMaxSize = /*#__PURE__*/ between(
   minProtocolMessageMaxSize,
   maxProtocolMessageMaxSize,
 )(Int);
@@ -317,7 +317,7 @@ export const defaultProtocolMessageMaxSize =
  * {@link defaultProtocolMessageMaxSize}, maintaining compatibility between all
  * clients and relays.
  */
-export const ProtocolMessageRangesMaxSize = between(3_000, 100_000)(Int);
+export const ProtocolMessageRangesMaxSize = /*#__PURE__*/ between(3_000, 100_000)(Int);
 export type ProtocolMessageRangesMaxSize =
   typeof ProtocolMessageRangesMaxSize.Type;
 
@@ -334,7 +334,7 @@ export const defaultProtocolMessageRangesMaxSize =
 export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
 
 /** Evolu Protocol version. */
-export const protocolVersion = NonNegativeInt.orThrow(1);
+export const protocolVersion = /*#__PURE__*/ NonNegativeInt.orThrow(1);
 
 export const MessageType = {
   /** Request message from initiator (client) to non-initiator (relay). */

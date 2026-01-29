@@ -191,16 +191,16 @@ export const lazy =
     value;
 
 /** A {@link Lazy} that returns `true`. */
-export const lazyTrue: Lazy<true> = lazy(true);
+export const lazyTrue: Lazy<true> = /*#__PURE__*/ lazy(true);
 
 /** A {@link Lazy} that returns `false`. */
-export const lazyFalse: Lazy<false> = lazy(false);
+export const lazyFalse: Lazy<false> = /*#__PURE__*/ lazy(false);
 
 /** A {@link Lazy} that returns `null`. */
-export const lazyNull: Lazy<null> = lazy(null);
+export const lazyNull: Lazy<null> = /*#__PURE__*/ lazy(null);
 
 /** A {@link Lazy} that returns `undefined`. */
-export const lazyUndefined: Lazy<undefined> = lazy(undefined);
+export const lazyUndefined: Lazy<undefined> = /*#__PURE__*/ lazy(undefined);
 
 /** A {@link Lazy} that returns `undefined` for void callbacks. */
 export const lazyVoid: Lazy<void> = lazyUndefined;

@@ -9,6 +9,7 @@
 import { createExpoDeps } from "../createExpoDeps.js";
 import { createOpSqliteDriver } from "../sqlite-drivers/createOpSqliteDriver.js";
 
+// eslint-disable-next-line evolu/require-pure-annotation
 export const { evoluReactNativeDeps, localAuth } = createExpoDeps({
   createSqliteDriver: createOpSqliteDriver,
 });

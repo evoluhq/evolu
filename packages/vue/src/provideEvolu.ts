@@ -17,7 +17,7 @@ export const evoluInstanceMap = new WeakMap<
 
 /** The injection key for providing Evolu. */
 export const EvoluContext: InjectionKey<Evolu<any> | null> =
-  Symbol("EvoluContext");
+  /*#__PURE__*/ Symbol("EvoluContext");
 
 /** Provide the Evolu instance to components via Vue's provide/inject system. */
 export const provideEvolu = (evolu: Evolu<any> | (() => Evolu<any>)): void => {

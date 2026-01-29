@@ -15,6 +15,7 @@ import type {
 import { createEvoluDeps } from "@evolu/web";
 
 // just in case we need to add some svelte specific deps
+// eslint-disable-next-line evolu/require-pure-annotation
 export const evoluSvelteDeps = createEvoluDeps();
 
 /**

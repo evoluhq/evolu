@@ -1464,6 +1464,6 @@ export const tapScheduleInput =
  * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/StandardRetryStrategy.java
  * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/DefaultRetryStrategy.java
  */
-export const retryStrategyAws: Schedule<Millis> = jitter(1)(
+export const retryStrategyAws: Schedule<Millis> = /*#__PURE__*/ jitter(1)(
   maxDelay("20s")(take(2)(exponential("100ms"))),
 );

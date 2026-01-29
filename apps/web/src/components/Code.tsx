@@ -318,7 +318,7 @@ const usePreventLayoutShift = () => {
   };
 };
 
-export const usePreferredLanguageStore = create<{
+export const usePreferredLanguageStore = /*#__PURE__*/ create<{
   preferredLanguages: Array<string>;
   addPreferredLanguage: (language: string) => void;
 }>()((set) => ({

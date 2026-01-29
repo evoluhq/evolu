@@ -239,7 +239,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
  *   mark rows as deleted.
  * - `ownerId`: Represents ownership and logically partitions the database.
  */
-export const SystemColumns = object({
+export const SystemColumns = /*#__PURE__*/ object({
   createdAt: DateIso,
   updatedAt: DateIso,
   isDeleted: nullOr(SqliteBoolean),
@@ -247,11 +247,11 @@ export const SystemColumns = object({
 });
 export interface SystemColumns extends InferType<typeof SystemColumns> {}
 
-export const systemColumns = readonly(
+export const systemColumns = /*#__PURE__*/ readonly(
   new Set(Object.keys(SystemColumns.props)),
 );
 
-export const systemColumnsWithId = readonly([...systemColumns, "id"]);
+export const systemColumnsWithId = /*#__PURE__*/ readonly([...systemColumns, "id"]);
 
 export type MutationKind = "insert" | "update" | "upsert";
 
@@ -460,10 +460,10 @@ export type InferColumnErrors<
   >;
 }[keyof MutationMapping<T, M>];
 
-export const DbIndex = object({ name: String, sql: String });
+export const DbIndex = /*#__PURE__*/ object({ name: String, sql: String });
 export interface DbIndex extends InferType<typeof DbIndex> {}
 
-export const DbSchema = object({
+export const DbSchema = /*#__PURE__*/ object({
   tables: record(String, set(String)),
   indexes: array(DbIndex),
 });

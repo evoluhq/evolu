@@ -76,7 +76,7 @@ export const createEqArrayLike =
  * eqArrayStrict([a], [b]); // false (different references, even if equal values)
  * ```
  */
-export const eqArrayStrict = createEqArrayLike(eqStrict);
+export const eqArrayStrict = /*#__PURE__*/ createEqArrayLike(eqStrict);
 
 /**
  * Compares two array-like structures of numbers for equality.
@@ -89,7 +89,7 @@ export const eqArrayStrict = createEqArrayLike(eqStrict);
  * eqArrayNumber([1, 2, 3], [1, 2, 4]); // false
  * ```
  */
-export const eqArrayNumber = createEqArrayLike(eqNumber);
+export const eqArrayNumber = /*#__PURE__*/ createEqArrayLike(eqNumber);
 
 /**
  * Creates an equivalence function for objects based on an equivalence for their
