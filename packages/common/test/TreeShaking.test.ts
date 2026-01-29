@@ -18,7 +18,7 @@ const fixturesDir = resolve(
   "../dist/test/__fixtures__/tree-shaking",
 );
 const distDir = resolve(__dirname, "../dist/src/index.js");
-const tmpDir = resolve(__dirname, "../tmp/tree-shaking");
+const tmpDir = resolve(__dirname, "../test/tmp/tree-shaking");
 
 interface BundleSize {
   readonly raw: number;
@@ -128,9 +128,6 @@ describe("tree-shaking", () => {
       results[name] = await bundleSize(fixture);
     }
 
-    // Results without Standard Schema issues formatting in Type.ts:
-    // - task-example: gzip 5331, raw 14250
-    // - type-object: gzip 1321, raw 3551
     expect(results).toMatchInlineSnapshot(`
       {
         "result-all": {
@@ -138,12 +135,12 @@ describe("tree-shaking", () => {
           "raw": 1602,
         },
         "task-example": {
-          "gzip": 7070,
-          "raw": 20885,
+          "gzip": 5633,
+          "raw": 15323,
         },
         "type-object": {
-          "gzip": 3052,
-          "raw": 10080,
+          "gzip": 1577,
+          "raw": 4805,
         },
       }
     `);
