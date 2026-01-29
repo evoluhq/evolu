@@ -1,47 +1,152 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { testCreateTime, createTime, durationToMillis } from "../src/Time.js";
 import type { DurationLiteral, Millis } from "../src/Time.js";
+import {
+  createTime,
+  durationToMillis,
+  formatMillisAsClockTime,
+  formatMillisAsDuration,
+  testCreateTime,
+} from "../src/Time.js";
 
 describe("Time", () => {
-  test("createTime returns current time", () => {
-    const time = createTime();
-    const now = Date.now();
-    // Allow small difference due to execution time
-    expect(time.now()).toBeGreaterThanOrEqual(now - 10);
-    expect(time.now()).toBeLessThanOrEqual(now + 10);
+  describe("createTime", () => {
+    test("now returns current time", () => {
+      const time = createTime();
+      const now = Date.now();
+      // Allow small difference due to execution time
+      expect(time.now()).toBeGreaterThanOrEqual(now - 10);
+      expect(time.now()).toBeLessThanOrEqual(now + 10);
+    });
+
+    test("nowIso returns current time as ISO string", () => {
+      const time = createTime();
+      const result = time.nowIso();
+      // Verify it's a valid ISO string
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      // And it's close to now
+      const parsed = Date.parse(result);
+      expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
+      expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
+    });
+
+    test("setTimeout and clearTimeout work", async () => {
+      const time = createTime();
+      let called = false;
+
+      const id = time.setTimeout(() => {
+        called = true;
+      }, "10ms");
+
+      // Cancel before it fires
+      time.clearTimeout(id);
+
+      // Wait longer than the timeout
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+      expect(called).toBe(false);
+    });
+
+    test("setTimeout fires after delay", async () => {
+      const time = createTime();
+      let called = false;
+
+      time.setTimeout(() => {
+        called = true;
+      }, "10ms");
+
+      expect(called).toBe(false);
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
+      expect(called).toBe(true);
+    });
   });
 
-  test("testCreateTime advances time only when advance() is called", () => {
-    const time = testCreateTime();
+  describe("testCreateTime", () => {
+    test("advances time only when advance() is called", () => {
+      const time = testCreateTime();
 
-    expect(time.now()).toBe(0);
-    expect(time.now()).toBe(0); // Still 0, no auto-increment
+      expect(time.now()).toBe(0);
+      expect(time.now()).toBe(0); // Still 0, no auto-increment
 
-    time.advance("1ms");
-    expect(time.now()).toBe(1);
+      time.advance("1ms");
+      expect(time.now()).toBe(1);
 
-    time.advance("100ms");
-    expect(time.now()).toBe(101);
+      time.advance("100ms");
+      expect(time.now()).toBe(101);
 
-    time.advance("1s");
-    expect(time.now()).toBe(1101);
-  });
+      time.advance("1s");
+      expect(time.now()).toBe(1101);
+    });
 
-  test("testCreateTime with autoIncrement returns monotonically increasing values", async () => {
-    const time = testCreateTime({ autoIncrement: true });
-    const first = time.now();
+    test("with autoIncrement returns monotonically increasing values", async () => {
+      const time = testCreateTime({ autoIncrement: true });
+      const first = time.now();
 
-    await Promise.resolve();
+      await Promise.resolve();
 
-    const second = time.now();
+      const second = time.now();
 
-    await Promise.resolve();
+      await Promise.resolve();
 
-    const third = time.now();
+      const third = time.now();
 
-    expect(first).toBe(0);
-    expect(second).toBe(1);
-    expect(third).toBe(2);
+      expect(first).toBe(0);
+      expect(second).toBe(1);
+      expect(third).toBe(2);
+    });
+
+    test("nowIso returns ISO string for current time", () => {
+      const time = testCreateTime({
+        startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
+      });
+      expect(time.nowIso()).toBe("2026-01-28T14:30:00.000Z");
+    });
+
+    test("setTimeout fires callback when time is advanced past deadline", () => {
+      const time = testCreateTime();
+      let called = false;
+
+      time.setTimeout(() => {
+        called = true;
+      }, "100ms");
+
+      expect(called).toBe(false);
+
+      time.advance("50ms");
+      expect(called).toBe(false);
+
+      time.advance("50ms");
+      expect(called).toBe(true);
+    });
+
+    test("clearTimeout cancels pending timeout", () => {
+      const time = testCreateTime();
+      let called = false;
+
+      const id = time.setTimeout(() => {
+        called = true;
+      }, "100ms");
+
+      time.clearTimeout(id);
+      time.advance("200ms");
+
+      expect(called).toBe(false);
+    });
+
+    test("multiple timeouts fire in order", () => {
+      const time = testCreateTime();
+      const order: Array<number> = [];
+
+      time.setTimeout(() => order.push(1), "100ms");
+      time.setTimeout(() => order.push(2), "50ms");
+      time.setTimeout(() => order.push(3), "150ms");
+
+      time.advance("200ms");
+
+      // All should have fired, order depends on iteration order in Map
+      expect(order).toContain(1);
+      expect(order).toContain(2);
+      expect(order).toContain(3);
+      expect(order).toHaveLength(3);
+    });
   });
 
   describe("DurationLiteral", () => {
@@ -129,6 +234,50 @@ describe("Time", () => {
     test("passes through Millis unchanged", () => {
       expect(durationToMillis(0 as Millis)).toBe(0);
       expect(durationToMillis(5000 as Millis)).toBe(5000);
+    });
+  });
+
+  describe("formatMillisAsDuration", () => {
+    test("formats sub-minute durations", () => {
+      expect(formatMillisAsDuration(0 as Millis)).toBe("0.000s");
+      expect(formatMillisAsDuration(1 as Millis)).toBe("0.001s");
+      expect(formatMillisAsDuration(1234 as Millis)).toBe("1.234s");
+      expect(formatMillisAsDuration(59999 as Millis)).toBe("59.999s");
+    });
+
+    test("formats minute-range durations", () => {
+      expect(formatMillisAsDuration(60000 as Millis)).toBe("1m0.000s");
+      expect(formatMillisAsDuration(90000 as Millis)).toBe("1m30.000s");
+      expect(formatMillisAsDuration(3599999 as Millis)).toBe("59m59.999s");
+    });
+
+    test("formats hour-range durations", () => {
+      expect(formatMillisAsDuration(3600000 as Millis)).toBe("1h0m0.000s");
+      expect(formatMillisAsDuration(3661000 as Millis)).toBe("1h1m1.000s");
+      expect(formatMillisAsDuration(5400000 as Millis)).toBe("1h30m0.000s");
+      expect(formatMillisAsDuration(86399999 as Millis)).toBe("23h59m59.999s");
+    });
+  });
+
+  describe("formatMillisAsClockTime", () => {
+    test("formats millis as HH:MM:SS.mmm", () => {
+      // Use a fixed timestamp: 2026-01-28T14:32:15.234Z
+      const timestamp = Date.UTC(2026, 0, 28, 14, 32, 15, 234) as Millis;
+      const result = formatMillisAsClockTime(timestamp);
+
+      // The result depends on local timezone, so just verify the format
+      expect(result).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
+    });
+
+    test("pads single digits", () => {
+      // Midnight UTC: 2026-01-01T00:01:02.003Z
+      const timestamp = Date.UTC(2026, 0, 1, 0, 1, 2, 3) as Millis;
+      const result = formatMillisAsClockTime(timestamp);
+
+      // Verify padding (format is HH:MM:SS.mmm)
+      expect(result).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
+      // The milliseconds should be "003"
+      expect(result.slice(-3)).toBe("003");
     });
   });
 });

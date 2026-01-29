@@ -147,7 +147,7 @@ const maxMillisWithInfinity = 281474976710655;
  * If a system clock exceeds this range, operations will throw. This is
  * intentional — there's no reasonable fallback for a misconfigured clock.
  */
-export const Millis = brand(
+export const Millis = /*#__PURE__*/ brand(
   "Millis",
   lessThan(maxMillisWithInfinity)(NonNegativeInt),
 );
@@ -321,3 +321,52 @@ export const ms120fps = 8 as Millis;
  * @see https://web.dev/articles/optimize-long-tasks
  */
 export const msLongTask = 50 as Millis;
+
+/**
+ * Formats {@link Millis} as a human-readable duration string.
+ *
+ * - Under 1 minute: `1.234s`
+ * - Under 1 hour: `1m30.000s`
+ * - 1 hour or more: `1h30m45.000s`
+ *
+ * ### Example
+ *
+ * ```ts
+ * formatMillisAsDuration(1234 as Millis); // "1.234s"
+ * formatMillisAsDuration(90000 as Millis); // "1m30.000s"
+ * formatMillisAsDuration(3661000 as Millis); // "1h1m1.000s"
+ * ```
+ */
+export const formatMillisAsDuration = (millis: Millis): string => {
+  const elapsed = millis / 1000;
+  if (elapsed < 60) {
+    return `${elapsed.toFixed(3)}s`;
+  } else if (elapsed < 3600) {
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = (elapsed % 60).toFixed(3);
+    return `${minutes}m${seconds}s`;
+  } else {
+    const hours = Math.floor(elapsed / 3600);
+    const minutes = Math.floor((elapsed % 3600) / 60);
+    const seconds = ((elapsed % 3600) % 60).toFixed(3);
+    return `${hours}h${minutes}m${seconds}s`;
+  }
+};
+
+/**
+ * Formats {@link Millis} as `HH:MM:SS.mmm`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * formatMillisAsClockTime(Millis.orThrow(Date.now())); // "14:32:15.234"
+ * ```
+ */
+export const formatMillisAsClockTime = (millis: Millis): string => {
+  const date = new globalThis.Date(millis);
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+  const ms = date.getMilliseconds().toString().padStart(3, "0");
+  return `${hours}:${minutes}:${seconds}.${ms}`;
+};
