@@ -1,331 +1,599 @@
 /**
- * Platform-agnostic Console.
+ * Platform-agnostic console with structured logging.
  *
  * @module
  */
 
+import { objectFrom } from "./Object.js";
+import {
+  formatMillisAsClockTime,
+  formatMillisAsDuration,
+  type Millis,
+  type TimeDep,
+} from "./Time.js";
+
 /**
- * Includes methods guaranteed to be available in these environments and
- * expected to remain compatible in future versions. Output formatting may vary
- * (e.g., interactive UI in browsers vs. text in Node.js/React Native), but
- * functionality is consistent across platforms.
+ * Platform-agnostic console with structured logging.
  *
- * **Convention**: Use a tag (e.g., `[db]`) as the first argument for log
- * filtering.
+ * Captures structured log entries and routes them to configurable outputs.
+ * Provides methods guaranteed to be available across browsers, Node.js, and
+ * React Native.
+ *
+ * Key features:
+ *
+ * - Structured entries — logs are captured as {@link ConsoleEntry} objects with
+ *   method, path, and args
+ * - Pluggable outputs — route logs to console, files, arrays, or custom
+ *   destinations via {@link ConsoleOutput}
+ * - Child consoles — use {@link Console.child} to create derived consoles
+ * - Async support — buffer logs for high-throughput scenarios
+ *
+ * Log levels are ordered by severity: trace < debug < log < info < warn <
+ * error. Setting a level enables all logs at that level and above. Use
+ * `"silent"` to disable all logging.
  *
  * ### Example
  *
  * ```ts
- * deps.console.log("[evolu]", "createEvoluInstance", { name });
- * ```
- *
- * **Tip**: In browser dev tools, we can filter logs by tag (e.g., `[db]`) to
- * quickly find relevant messages. In Node.js, use `grep` to filter output:
- *
- * ```bash
- * node app.js | grep "\[relay\]"         # Show only relay logs
- * node app.js | grep -E "\[db\]|\[sql\]" # Show db and sql logs
- * node app.js | grep -v "\[debug\]"      # Hide debug logs
- * ```
- *
- * Or add to package.json scripts:
- *
- * ```json
- * {
- *   "scripts": {
- *     "dev:relay": "node app.js | grep \"\\[relay\\]\"",
- *     "dev:db": "node app.js | grep -E \"\\[db\\]|\\[sql\\]\""
- *   }
- * }
+ * const console = createConsole();
+ * const relayConsole = console.child("relay");
+ * relayConsole.info("Started on port", 443); // logs
+ * relayConsole.debug("Connection details", conn); // filtered out (debug < info)
  * ```
  */
 export interface Console {
-  /** Controls whether console methods produce output (default: true) */
-  enabled?: boolean;
+  /** Name of this console. Empty for root. */
+  readonly name: string;
 
-  /** Outputs a message to the console */
-  log: (...args: Array<any>) => void;
+  /** Child consoles created via {@link Console.child}. */
+  readonly children: ReadonlySet<Console>;
 
-  /** Outputs an informational message (often same as log) */
-  info: (...args: Array<any>) => void;
+  /**
+   * Returns the effective log level.
+   *
+   * If this console has its own level set via {@link Console.setLevel}, returns
+   * that. Otherwise returns the inherited level from creation time.
+   */
+  readonly getLevel: () => ConsoleLevel;
 
-  /** Outputs a warning message */
-  warn: (...args: Array<any>) => void;
+  /**
+   * Sets the log level for this console.
+   *
+   * Pass a level to override the inherited level, or `null` to revert to the
+   * inherited level.
+   */
+  readonly setLevel: (level: ConsoleLevel | null) => void;
 
-  /** Outputs an error message */
-  error: (...args: Array<any>) => void;
+  /** Returns true if this console has its own level set (not inherited). */
+  readonly hasOwnLevel: () => boolean;
 
-  /** Outputs a debug message */
-  debug: (...args: Array<any>) => void;
+  /**
+   * Creates a child console with the given name added to the path.
+   *
+   * Child inherits the parent's configured level (not any runtime override).
+   * Use {@link Console.children} to access all children for batch operations.
+   */
+  readonly child: (name: string) => Console;
 
-  /** Starts a timer with an optional label */
-  time: (label?: string) => void;
+  /** Outputs a stack trace. */
+  readonly trace: (...args: ReadonlyArray<unknown>) => void;
 
-  /** Logs the elapsed time for a timer without ending it */
-  timeLog: (label?: string, ...data: Array<any>) => void;
+  /** Development diagnostics. */
+  readonly debug: (...args: ReadonlyArray<unknown>) => void;
 
-  /** Ends a timer and logs the elapsed time */
-  timeEnd: (label?: string) => void;
+  /** Starts a timer with the given label. Level: debug. */
+  readonly time: (label: string) => void;
 
-  /** Displays an object's properties in a detailed format */
-  dir: (object: any, options?: any) => void;
+  /** Logs elapsed time for a timer. Level: debug. */
+  readonly timeLog: (label: string, ...args: ReadonlyArray<unknown>) => void;
 
-  /** Displays tabular data as a table */
-  table: (tabularData: any, properties?: Array<string>) => void;
+  /** Ends a timer and logs elapsed time. Level: debug. */
+  readonly timeEnd: (label: string) => void;
 
-  /** Logs the number of times this has been called with the given label */
-  count: (label?: string) => void;
+  /** Displays an object with expandable properties. Level: debug. */
+  readonly dir: (item: unknown) => void;
 
-  /** Resets the counter for the given label */
-  countReset: (label?: string) => void;
+  /** Displays tabular data. Level: debug. */
+  readonly table: (data: unknown) => void;
 
-  /** Writes a message if the value is falsy, otherwise does nothing */
-  assert: (value: any, message?: string, ...optionalParams: Array<any>) => void;
+  /** Increments and logs a counter. Level: debug. */
+  readonly count: (label?: string) => void;
 
-  /** Prints a stack trace with an optional message */
-  trace: (message?: any, ...optionalParams: Array<any>) => void;
+  /** Resets a counter. Level: debug. */
+  readonly countReset: (label?: string) => void;
+
+  /** General-purpose messages. */
+  readonly log: (...args: ReadonlyArray<unknown>) => void;
+
+  /** Operational milestones (startup, shutdown). */
+  readonly info: (...args: ReadonlyArray<unknown>) => void;
+
+  /** Recoverable issues that may need attention. */
+  readonly warn: (...args: ReadonlyArray<unknown>) => void;
+
+  /** Failures requiring immediate attention. */
+  readonly error: (...args: ReadonlyArray<unknown>) => void;
 }
 
-/** Dependency interface for injecting a Console instance. */
+/**
+ * Log level controlling which messages are output.
+ *
+ * Levels are ordered by severity: trace < debug < log < info < warn < error.
+ * Setting a level enables all logs at that level and above.
+ *
+ * - `"trace"` — Stack traces and detailed execution flow
+ * - `"debug"` — Development diagnostics, timers, counters
+ * - `"log"` — General-purpose messages
+ * - `"info"` — Operational milestones (startup, shutdown)
+ * - `"warn"` — Recoverable issues that may need attention
+ * - `"error"` — Failures requiring immediate attention
+ * - `"silent"` — Disables all logging
+ */
+export type ConsoleLevel =
+  | "trace"
+  | "debug"
+  | "log"
+  | "info"
+  | "warn"
+  | "error"
+  | "silent";
+
+/** Dependency wrapper for {@link Console}. */
 export interface ConsoleDep {
   readonly console: Console;
 }
 
+/** Configuration for {@link createConsole}. */
 export interface ConsoleConfig {
+  /** Name of this console. Defaults to empty string. */
+  readonly name?: string;
+
   /**
-   * Enable or disable console logging (default: false). When true, logs are
-   * output to the {@link Console}; when false, logging is disabled for all
-   * methods except `error`, which always outputs to ensure critical issues are
-   * not missed.
-   */
-  readonly enableLogging?: boolean;
-}
-
-/** Creates a {@link Console} for logging with configurable output. */
-export const createConsole = (config: ConsoleConfig = {}): Console => {
-  const instance: Console = {
-    enabled: config.enableLogging ?? false,
-
-    log: (...args) => {
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      if (instance.enabled) console.log(...args);
-    },
-    info: (...args) => {
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      if (instance.enabled) console.info(...args);
-    },
-    warn: (...args) => {
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      if (instance.enabled) console.warn(...args);
-    },
-    error: (...args) => {
-      // Always log errors, even if disabled
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      console.error(...args);
-    },
-    debug: (...args) => {
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      if (instance.enabled) console.debug(...args);
-    },
-    time: (label) => {
-      // eslint-disable-next-line no-console
-      if (instance.enabled) console.time(label);
-    },
-    timeLog: (label, ...data) => {
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      if (instance.enabled) console.timeLog(label, ...data);
-    },
-    timeEnd: (label) => {
-      // eslint-disable-next-line no-console
-      if (instance.enabled) console.timeEnd(label);
-    },
-    dir: (object, options) => {
-      // eslint-disable-next-line no-console
-      if (instance.enabled) console.dir(object, options);
-    },
-    table: (tabularData, properties) => {
-      // eslint-disable-next-line no-console
-      if (instance.enabled) console.table(tabularData, properties);
-    },
-    count: (label) => {
-      // eslint-disable-next-line no-console
-      if (instance.enabled) console.count(label);
-    },
-    countReset: (label) => {
-      // eslint-disable-next-line no-console
-      if (instance.enabled) console.countReset(label);
-    },
-    assert: (value, message, ...optionalParams) => {
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      if (instance.enabled) console.assert(value, message, ...optionalParams);
-    },
-    trace: (message, ...optionalParams) => {
-      // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-argument
-      if (instance.enabled) console.trace(message, ...optionalParams);
-    },
-  };
-
-  return instance;
-};
-
-export interface ConsoleWithTimeConfig extends ConsoleConfig {
-  /**
-   * Type of timestamp to prepend to log messages.
+   * Initial log level.
    *
-   * - 'absolute': Shows actual time (e.g., "14:32:15.234")
-   * - 'relative': Shows time since console creation (e.g., "+1.234s")
+   * Levels: trace < debug < log < info < warn < error < silent. Setting a level
+   * enables all logs at that level and above.
+   *
+   * Defaults to `"log"`.
    */
-  readonly timestampType: "absolute" | "relative";
-}
+  readonly level?: ConsoleLevel;
 
-/** Creates a console instance with timestamp prefixes. */
-export const createConsoleWithTime = (
-  config: ConsoleWithTimeConfig = { timestampType: "relative" },
-): Console => {
-  const console = createConsole(config);
-  const startTime = performance.now();
+  /**
+   * Output destination for log entries. Defaults to
+   * {@link createNativeConsoleOutput}.
+   */
+  readonly output?: ConsoleOutput;
 
-  const getTimestamp = (): string => {
-    if (config.timestampType === "relative") {
-      const elapsed = (performance.now() - startTime) / 1000;
+  /** Path prefix for this console. Defaults to `[]`. */
+  readonly path?: ReadonlyArray<string>;
 
-      // Format for better readability at different time scales
-      if (elapsed < 60) {
-        // Under 1 minute: show seconds with millisecond precision
-        return `+${elapsed.toFixed(3)}s`;
-      } else if (elapsed < 3600) {
-        // 1 minute to 1 hour: show minutes and seconds with millisecond precision
-        const minutes = Math.floor(elapsed / 60);
-        const seconds = (elapsed % 60).toFixed(3);
-        return `+${minutes}m${seconds}s`;
-      } else {
-        // Over 1 hour: show hours, minutes, and seconds with millisecond precision
-        const hours = Math.floor(elapsed / 3600);
-        const minutes = Math.floor((elapsed % 3600) / 60);
-        const seconds = ((elapsed % 3600) % 60).toFixed(3);
-        return `+${hours}h${minutes}m${seconds}s`;
-      }
-    } else {
-      // Absolute time - format as HH:MM:SS.mmm
-      const now = new Date();
-      const hours = now.getHours().toString().padStart(2, "0");
-      const minutes = now.getMinutes().toString().padStart(2, "0");
-      const seconds = now.getSeconds().toString().padStart(2, "0");
-      const milliseconds = now.getMilliseconds().toString().padStart(3, "0");
-      return `${hours}:${minutes}:${seconds}.${milliseconds}`;
-    }
-  };
-
-  const withTimestamp =
-    (fn: (...args: Array<any>) => void) =>
-    (...args: Array<any>) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      fn(`[${getTimestamp()}]`, ...args);
-    };
-
-  // Override methods that should have timestamps
-  console.log = withTimestamp(console.log);
-  console.info = withTimestamp(console.info);
-  console.warn = withTimestamp(console.warn);
-  console.error = withTimestamp(console.error);
-  console.debug = withTimestamp(console.debug);
-  console.trace = withTimestamp(console.trace);
-
-  return console;
-};
-
-/**
- * A test console that captures all console output for snapshot testing.
- *
- * Use this as a drop-in replacement for `createConsole` in tests where you want
- * to capture and verify console output.
- */
-export interface TestConsole extends Console {
-  /** Gets all captured console logs. Clears the captured logs after returning. */
-  readonly getLogsSnapshot: () => ReadonlyArray<Array<unknown>>;
-
-  /** Clears all captured logs. */
-  readonly clearLogs: () => void;
+  /**
+   * Transforms entry args before writing (e.g., adds timestamps, path
+   * prefixes).
+   *
+   * Receives the entry and returns modified args. Use
+   * {@link createConsoleEntryFormatter} for common formatting options.
+   */
+  readonly formatEntry?: (entry: ConsoleEntry) => ReadonlyArray<unknown>;
 }
 
 /**
- * Creates a test console that captures all console output for testing.
+ * Creates a {@link Console} with structured logging and pluggable outputs.
  *
  * ### Example
  *
  * ```ts
- * test("console output", () => {
- *   const testConsole = testCreateConsole();
+ * // Basic usage - defaults to "log"
+ * const console = createConsole();
  *
- *   // Use it in place of createConsole()
- *   const deps = { console: testConsole };
+ * // With formatting (timestamps and path prefixes)
+ * const console = createConsole({
+ *   level: "info",
+ *   formatEntry: createConsoleEntryFormatter({ time })({
+ *     timestampFormat: "relative",
+ *   }),
+ * });
  *
- *   // ... run code that logs to console
+ * // Children inherit level at creation, then are independent
+ * const relay = console.child("relay");
+ * console.setLevel("silent"); // only console, relay keeps inherited level
  *
- *   expect(testConsole.getLogsSnapshot()).toMatchInlineSnapshot();
+ * // Batch update via children
+ * const setLevelRecursive = (c: Console, level: ConsoleLevel): void => {
+ *   c.setLevel(level);
+ *   for (const child of c.children) setLevelRecursive(child, level);
+ * };
+ * ```
+ */
+export const createConsole = ({
+  name = "",
+  level = "log",
+  output = createNativeConsoleOutput(),
+  path = [],
+  formatEntry,
+}: ConsoleConfig = {}): Console => {
+  const childrenSet = new Set<Console>();
+  let ownLevel: ConsoleLevel | null = null;
+
+  const getLevel = (): ConsoleLevel => ownLevel ?? level;
+
+  const write =
+    (method: ConsoleMethod, methodLevel: ConsoleLevel, useFormatter: boolean) =>
+    (...args: ReadonlyArray<unknown>): void => {
+      if (levelOrder[methodLevel] >= levelOrder[getLevel()])
+        output.write(
+          { method, path, args },
+          useFormatter ? formatEntry : undefined,
+        );
+    };
+
+  const levelMethod = (method: ConsoleLevel & ConsoleMethod) =>
+    write(method, method, true);
+
+  const debugMethod = (method: ConsoleMethod) => write(method, "debug", false);
+
+  return {
+    name,
+    children: childrenSet,
+    getLevel,
+    setLevel: (level) => {
+      ownLevel = level;
+    },
+    hasOwnLevel: () => ownLevel !== null,
+
+    child: (name) => {
+      const childConsole = createConsole({
+        name,
+        level,
+        output,
+        path: [...path, name],
+        ...(formatEntry && { formatEntry }),
+      });
+      childrenSet.add(childConsole);
+      return childConsole;
+    },
+
+    ...objectFrom(
+      ["trace", "debug", "log", "info", "warn", "error"],
+      levelMethod,
+    ),
+    ...objectFrom(
+      ["dir", "table", "time", "timeLog", "timeEnd", "count", "countReset"],
+      debugMethod,
+    ),
+  };
+};
+
+const levelOrder: Record<ConsoleLevel, number> = {
+  trace: 0,
+  debug: 1,
+  log: 2,
+  info: 3,
+  warn: 4,
+  error: 5,
+  silent: 6,
+};
+
+/**
+ * Output destination for {@link Console}.
+ *
+ * Implement this interface to create custom log destinations (file, network,
+ * array for testing, etc.).
+ *
+ * Use {@link createNativeConsoleOutput} for native console output.
+ */
+export interface ConsoleOutput {
+  /** Write a log entry to this output. */
+  readonly write: (
+    entry: ConsoleEntry,
+    formatEntry?: (entry: ConsoleEntry) => ReadonlyArray<unknown>,
+  ) => void;
+
+  /** Flush buffered entries. For async outputs that buffer for performance. */
+  readonly flush?: () => Promise<void>;
+}
+
+/**
+ * Structured log entry captured by {@link Console}.
+ *
+ * Contains all information needed for outputs route the log: method for
+ * routing, path for context, and the original arguments.
+ */
+export interface ConsoleEntry {
+  /** The console method that was called. */
+  readonly method: ConsoleMethod;
+
+  /** Hierarchical path from {@link Console.child} calls (e.g., ["relay", "db"]). */
+  readonly path: ReadonlyArray<string>;
+
+  /** Original arguments passed to the console method. */
+  readonly args: ReadonlyArray<unknown>;
+}
+
+/**
+ * Console method being called.
+ *
+ * Used in {@link ConsoleEntry} to identify which console method was invoked.
+ * Outputs can route or format differently based on the method.
+ */
+export type ConsoleMethod =
+  | "log"
+  | "info"
+  | "warn"
+  | "error"
+  | "debug"
+  | "trace"
+  | "time"
+  | "timeLog"
+  | "timeEnd"
+  | "dir"
+  | "table"
+  | "count"
+  | "countReset";
+
+/**
+ * Creates a {@link ConsoleOutput} that writes to `globalThis.console`.
+ *
+ * Pure transport - just calls the native console method with the entry args.
+ * Use {@link createConsoleEntryFormatter} with {@link ConsoleConfig.formatEntry}
+ * for timestamps and path prefixes.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const output = createNativeConsoleOutput();
+ * ```
+ */
+export const createNativeConsoleOutput = (): ConsoleOutput => ({
+  write: (entry, formatEntry) => {
+    const args = formatEntry ? formatEntry(entry) : entry.args;
+    const fn = globalThis.console[entry.method] as (
+      ...args: Array<unknown>
+    ) => void;
+    fn(...args);
+  },
+});
+
+/** Configuration for {@link createConsoleEntryFormatter}. */
+export interface ConsoleEntryFormatterConfig {
+  /**
+   * Timestamp format to prepend to log messages.
+   *
+   * - `"relative"`: Time since first entry (e.g., `+1.234s`)
+   * - `"absolute"`: Clock time (e.g., `[14:32:15.234]`)
+   * - `"iso"`: ISO 8601 format (e.g., `[2026-01-28T14:32:15.234Z]`)
+   * - `"none"`: No timestamp (default)
+   */
+  readonly timestampFormat?: ConsoleEntryTimestampFormat;
+
+  /**
+   * Start time for relative timestamps. Defaults to first entry timestamp.
+   *
+   * Pass a {@link Millis} value to use a custom start time, useful when multiple
+   * consoles should share the same relative timeline.
+   */
+  readonly startTime?: Millis;
+}
+
+/** Timestamp format for {@link ConsoleEntryFormatterConfig}. */
+export type ConsoleEntryTimestampFormat =
+  | "relative"
+  | "absolute"
+  | "iso"
+  | "none";
+
+/**
+ * Creates a formatter for {@link ConsoleConfig.formatEntry}.
+ *
+ * Prepends timestamps and path prefixes to entry args.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const console = createConsole({
+ *   level: "info",
+ *   formatEntry: createConsoleEntryFormatter({ time })({
+ *     timestampFormat: "relative",
+ *   }),
  * });
  * ```
  */
-export const testCreateConsole = (): TestConsole => {
-  const logs: Array<Array<unknown>> = [];
+export const createConsoleEntryFormatter =
+  (deps: TimeDep) =>
+  (
+    config: ConsoleEntryFormatterConfig = {},
+  ): ((entry: ConsoleEntry) => ReadonlyArray<unknown>) => {
+    const format = config.timestampFormat ?? "none";
+    let startTime = config.startTime;
 
-  return {
-    enabled: true,
+    return (entry) => {
+      const now = deps.time.now();
+      startTime ??= now;
 
-    log: (...args) => {
-      logs.push(args);
-    },
-    info: (...args) => {
-      logs.push(args);
-    },
-    warn: (...args) => {
-      logs.push(args);
-    },
-    error: (...args) => {
-      logs.push(args);
-    },
-    debug: (...args) => {
-      logs.push(args);
-    },
-    time: (label) => {
-      logs.push(["time", label]);
-    },
-    timeLog: (label, ...data) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      logs.push(["timeLog", label, ...data]);
-    },
-    timeEnd: (label) => {
-      logs.push(["timeEnd", label]);
-    },
-    dir: (object, options) => {
-      logs.push(["dir", object, options]);
-    },
-    table: (tabularData, properties) => {
-      logs.push(["table", tabularData, properties]);
-    },
-    count: (label) => {
-      logs.push(["count", label]);
-    },
-    countReset: (label) => {
-      logs.push(["countReset", label]);
-    },
-    assert: (value, message, ...optionalParams) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      logs.push(["assert", value, message, ...optionalParams]);
-    },
-    trace: (message, ...optionalParams) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      logs.push(["trace", message, ...optionalParams]);
-    },
+      let timestamp: string;
+      switch (format) {
+        case "none":
+          timestamp = "";
+          break;
+        case "relative":
+          timestamp = `+${formatMillisAsDuration((now - startTime) as Millis)}`;
+          break;
+        case "absolute":
+          timestamp = formatMillisAsClockTime(now);
+          break;
+        case "iso":
+          timestamp = new globalThis.Date(now).toISOString();
+          break;
+      }
 
-    getLogsSnapshot: () => {
-      const snapshot = [...logs];
-      logs.length = 0;
-      return snapshot;
-    },
+      const path =
+        entry.path.length > 0 ? entry.path.map((p) => `[${p}]`).join(" ") : "";
 
-    clearLogs: () => {
-      logs.length = 0;
-    },
+      const prefix = [timestamp, path].filter(Boolean).join(" ");
+      return prefix ? [prefix, ...entry.args] : entry.args;
+    };
   };
+
+/**
+ * A test console that captures all output for assertions.
+ *
+ * Use as a drop-in replacement for {@link Console} in tests.
+ */
+export interface TestConsole extends Console {
+  /** Gets all captured entries and clears the internal buffer. */
+  readonly getEntriesSnapshot: () => ReadonlyArray<ConsoleEntry>;
+
+  /** Clears all captured entries. */
+  readonly clearEntries: () => void;
+}
+
+/**
+ * Creates a {@link TestConsole} that captures all output for testing.
+ *
+ * Unlike {@link createConsole}, this doesn't require dependencies and uses a
+ * simple incrementing counter for timestamps (starting at 0).
+ *
+ * ### Example
+ *
+ * ```ts
+ * test("logging", () => {
+ *   const console = testCreateConsole();
+ *   console.info("Hello");
+ *
+ *   expect(console.getEntriesSnapshot()).toMatchInlineSnapshot(`
+ *     [
+ *       {
+ *         "method": "info",
+ *         "path": [],
+ *         "args": ["Hello"]
+ *       }
+ *     ]
+ *   `);
+ * });
+ *
+ * test("level filtering", () => {
+ *   const console = testCreateConsole({ level: "warn" });
+ *   console.debug("ignored");
+ *   console.warn("logged");
+ *   expect(console.getEntriesSnapshot()).toHaveLength(1);
+ * });
+ * ```
+ */
+export const testCreateConsole = (config?: {
+  readonly level?: ConsoleLevel;
+}): TestConsole => {
+  const entries: Array<ConsoleEntry> = [];
+  const initialLevel = config?.level ?? "trace";
+
+  const getEntriesSnapshot = (): ReadonlyArray<ConsoleEntry> => {
+    const snapshot = [...entries];
+    entries.length = 0;
+    return snapshot;
+  };
+
+  const clearEntries = (): void => {
+    entries.length = 0;
+  };
+
+  const createInstance = (
+    path: ReadonlyArray<string>,
+    instanceName: string,
+    inheritedLevel: ConsoleLevel,
+  ): TestConsole => {
+    let ownLevel: ConsoleLevel | null = null;
+    const childrenSet = new Set<Console>();
+
+    const getLevel = (): ConsoleLevel => ownLevel ?? inheritedLevel;
+    const setLevel = (level: ConsoleLevel | null): void => {
+      ownLevel = level;
+    };
+    const hasOwnLevel = (): boolean => ownLevel !== null;
+
+    const write = (
+      method: ConsoleMethod,
+      args: ReadonlyArray<unknown>,
+    ): void => {
+      entries.push({
+        method,
+        path,
+        args,
+      });
+    };
+
+    const writeIfLevel =
+      (method: ConsoleMethod, methodLevel: ConsoleLevel) =>
+      (...args: ReadonlyArray<unknown>): void => {
+        if (levelOrder[methodLevel] >= levelOrder[getLevel()])
+          write(method, args);
+      };
+
+    const writeRawDebug = (method: ConsoleMethod) =>
+      writeIfLevel(method, "debug");
+
+    const testConsole: TestConsole = {
+      name: instanceName,
+      children: childrenSet,
+      getLevel,
+      setLevel,
+      hasOwnLevel,
+
+      child: (childName) => {
+        const childConsole = createInstance(
+          [...path, childName],
+          childName,
+          inheritedLevel,
+        );
+        childrenSet.add(childConsole);
+        return childConsole;
+      },
+
+      trace: writeIfLevel("trace", "trace"),
+      debug: writeIfLevel("debug", "debug"),
+      log: writeIfLevel("log", "log"),
+      info: writeIfLevel("info", "info"),
+      warn: writeIfLevel("warn", "warn"),
+      error: writeIfLevel("error", "error"),
+
+      time: writeRawDebug("time"),
+      timeLog: writeRawDebug("timeLog"),
+      timeEnd: writeRawDebug("timeEnd"),
+      dir: writeRawDebug("dir"),
+      table: writeRawDebug("table"),
+      count: writeRawDebug("count"),
+      countReset: writeRawDebug("countReset"),
+
+      getEntriesSnapshot,
+      clearEntries,
+    };
+
+    return testConsole;
+  };
+
+  return createInstance([], "", initialLevel);
 };
+
+/**
+ * Creates a {@link ConsoleOutput} that captures entries to an array.
+ *
+ * Useful for testing. Pass your own array to inspect captured entries.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const entries: Array<ConsoleEntry> = [];
+ * const output = createConsoleArrayOutput(entries);
+ *
+ * // After logging...
+ * expect(entries).toMatchInlineSnapshot();
+ * ```
+ */
+export const createConsoleArrayOutput = (
+  entries: Array<ConsoleEntry>,
+): ConsoleOutput => ({
+  write: (entry) => {
+    entries.push(entry);
+  },
+});
+
+// TODO: multiOutput - routes entries to different outputs by method
+// TODO: asyncOutput - buffers entries for better performance

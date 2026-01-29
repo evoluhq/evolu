@@ -1,279 +1,617 @@
-import { expect, test, vi } from "vitest";
-import { createConsole, createConsoleWithTime } from "../src/Console.js";
+import { describe, expect, test, vi } from "vitest";
+import {
+  createConsole,
+  createConsoleArrayOutput,
+  createConsoleEntryFormatter,
+  createNativeConsoleOutput,
+  testCreateConsole,
+  type ConsoleEntry,
+  type ConsoleOutput,
+} from "../src/Console.js";
+import { testCreateTime, type Millis } from "../src/Time.js";
 
-// Mock console to capture calls
-const mockConsole = {
-  log: vi.fn(),
-  info: vi.fn(),
-  warn: vi.fn(),
-  error: vi.fn(),
-  debug: vi.fn(),
-  time: vi.fn(),
-  timeEnd: vi.fn(),
-  dir: vi.fn(),
-  table: vi.fn(),
-  count: vi.fn(),
-  countReset: vi.fn(),
-  assert: vi.fn(),
-  timeLog: vi.fn(),
-  trace: vi.fn(),
+const createTimeDep = (startAt?: Millis) => ({
+  time: testCreateTime(startAt != null ? { startAt } : undefined),
+});
+
+const createTestOutput = (): ConsoleOutput & {
+  entries: Array<{
+    entry: ConsoleEntry;
+    formattedArgs: ReadonlyArray<unknown>;
+  }>;
+} => {
+  const entries: Array<{
+    entry: ConsoleEntry;
+    formattedArgs: ReadonlyArray<unknown>;
+  }> = [];
+  return {
+    entries,
+    write: (entry, formatEntry) => {
+      entries.push({
+        entry,
+        formattedArgs: formatEntry ? formatEntry(entry) : entry.args,
+      });
+    },
+  };
 };
 
-// Mock global console
-vi.stubGlobal("console", mockConsole);
+describe("createConsole", () => {
+  test("logs at default level (log)", () => {
+    const output = createTestOutput();
+    const console = createConsole({ output });
 
-// Mock performance.now for deterministic timestamps
-const mockPerformanceNow = vi.fn();
-vi.stubGlobal("performance", { now: mockPerformanceNow });
+    console.trace("trace");
+    console.debug("debug");
+    console.log("log");
+    console.info("info");
+    console.warn("warn");
+    console.error("error");
 
-// Mock Date for deterministic absolute timestamps
-const mockDate = vi.fn();
-vi.stubGlobal(
-  "Date",
-  vi.fn().mockImplementation(function (this: any) {
-    return mockDate();
-  }),
-);
-
-test("createConsole with enableLogging: false (default)", () => {
-  const console = createConsole();
-
-  expect(console.enabled).toBe(false);
-
-  console.log("test message");
-  console.info("test info");
-  console.warn("test warning");
-  console.debug("test debug");
-
-  // Should not call underlying console methods when disabled
-  expect(mockConsole.log).not.toHaveBeenCalled();
-  expect(mockConsole.info).not.toHaveBeenCalled();
-  expect(mockConsole.warn).not.toHaveBeenCalled();
-  expect(mockConsole.debug).not.toHaveBeenCalled();
-});
-
-test("createConsole with enableLogging: true", () => {
-  vi.clearAllMocks();
-  const console = createConsole({ enableLogging: true });
-
-  expect(console.enabled).toBe(true);
-
-  console.log("test message", { data: "value" });
-  console.info("test info");
-  console.warn("test warning");
-  console.debug("test debug");
-
-  // Should call underlying console methods when enabled
-  expect(mockConsole.log).toHaveBeenCalledWith("test message", {
-    data: "value",
-  });
-  expect(mockConsole.info).toHaveBeenCalledWith("test info");
-  expect(mockConsole.warn).toHaveBeenCalledWith("test warning");
-  expect(mockConsole.debug).toHaveBeenCalledWith("test debug");
-});
-
-test("createConsole error method always logs", () => {
-  vi.clearAllMocks();
-  const console = createConsole({ enableLogging: false });
-
-  console.error("critical error", { details: "something went wrong" });
-
-  // Error should always log, even when disabled
-  expect(mockConsole.error).toHaveBeenCalledWith("critical error", {
-    details: "something went wrong",
-  });
-});
-
-test("createConsole enabled property can be changed", () => {
-  vi.clearAllMocks();
-  const console = createConsole({ enableLogging: false });
-
-  console.log("should not log");
-  expect(mockConsole.log).not.toHaveBeenCalled();
-
-  // Enable logging
-  console.enabled = true;
-  console.log("should log now");
-  expect(mockConsole.log).toHaveBeenCalledWith("should log now");
-
-  // Disable logging again
-  console.enabled = false;
-  console.log("should not log again");
-  expect(mockConsole.log).toHaveBeenCalledTimes(1); // Still only one call
-});
-
-test("createConsole other methods", () => {
-  vi.clearAllMocks();
-  const console = createConsole({ enableLogging: true });
-
-  console.time("timer");
-  console.timeEnd("timer");
-  console.dir({ obj: "value" });
-  console.table([{ a: 1, b: 2 }]);
-  console.count("counter");
-  console.countReset("counter");
-  console.assert(true, "assertion message");
-  console.timeLog("timer", "data");
-  console.trace("trace message");
-
-  expect(mockConsole.time).toHaveBeenCalledWith("timer");
-  expect(mockConsole.timeEnd).toHaveBeenCalledWith("timer");
-  expect(mockConsole.dir).toHaveBeenCalledWith({ obj: "value" }, undefined);
-  expect(mockConsole.table).toHaveBeenCalledWith([{ a: 1, b: 2 }], undefined);
-  expect(mockConsole.count).toHaveBeenCalledWith("counter");
-  expect(mockConsole.countReset).toHaveBeenCalledWith("counter");
-  expect(mockConsole.assert).toHaveBeenCalledWith(true, "assertion message");
-  expect(mockConsole.timeLog).toHaveBeenCalledWith("timer", "data");
-  expect(mockConsole.trace).toHaveBeenCalledWith("trace message");
-});
-
-test("createConsoleWithTime default config", () => {
-  mockPerformanceNow.mockReturnValue(1000); // Start time
-  const console = createConsoleWithTime();
-
-  expect(console.enabled).toBe(false); // Default is disabled
-
-  // Enable for testing
-  console.enabled = true;
-
-  mockPerformanceNow.mockReturnValue(1234); // 234ms later
-  vi.clearAllMocks();
-
-  console.log("test message");
-
-  // Should add relative timestamp by default
-  expect(mockConsole.log).toHaveBeenCalledWith("[+0.234s]", "test message");
-});
-
-test("createConsoleWithTime relative timestamps", () => {
-  mockPerformanceNow.mockReturnValue(0); // Start time
-  const console = createConsoleWithTime({
-    enableLogging: true,
-    timestampType: "relative",
+    expect(output.entries.map((e) => e.entry.method)).toEqual([
+      "log",
+      "info",
+      "warn",
+      "error",
+    ]);
   });
 
-  vi.clearAllMocks();
+  test("respects level filtering", () => {
+    const output = createTestOutput();
+    const console = createConsole({
+      output,
+      level: "warn",
+    });
 
-  // Test different time scales
-  mockPerformanceNow.mockReturnValue(1234); // 1.234 seconds
-  console.log("message 1");
-  expect(mockConsole.log).toHaveBeenCalledWith("[+1.234s]", "message 1");
+    console.debug("debug");
+    console.log("log");
+    console.info("info");
+    console.warn("warn");
+    console.error("error");
 
-  mockPerformanceNow.mockReturnValue(65000); // 1 minute 5 seconds
-  console.info("message 2");
-  expect(mockConsole.info).toHaveBeenCalledWith("[+1m5.000s]", "message 2");
-
-  mockPerformanceNow.mockReturnValue(3665000); // 1 hour 1 minute 5 seconds
-  console.warn("message 3");
-  expect(mockConsole.warn).toHaveBeenCalledWith("[+1h1m5.000s]", "message 3");
-});
-
-test("createConsoleWithTime absolute timestamps", () => {
-  const mockDateInstance = {
-    getHours: vi.fn().mockReturnValue(14),
-    getMinutes: vi.fn().mockReturnValue(32),
-    getSeconds: vi.fn().mockReturnValue(15),
-    getMilliseconds: vi.fn().mockReturnValue(234),
-  };
-  mockDate.mockReturnValue(mockDateInstance);
-
-  const console = createConsoleWithTime({
-    enableLogging: true,
-    timestampType: "absolute",
+    expect(output.entries.map((e) => e.entry.method)).toEqual([
+      "warn",
+      "error",
+    ]);
   });
 
-  vi.clearAllMocks();
+  test("silent level disables all logging", () => {
+    const output = createTestOutput();
+    const console = createConsole({
+      output,
+      level: "silent",
+    });
 
-  console.log("test message");
+    console.trace("trace");
+    console.debug("debug");
+    console.log("log");
+    console.info("info");
+    console.warn("warn");
+    console.error("error");
 
-  expect(mockConsole.log).toHaveBeenCalledWith(
-    "[14:32:15.234]",
-    "test message",
-  );
-});
-
-test("createConsoleWithTime enabled property synchronization", () => {
-  mockPerformanceNow.mockReturnValue(0);
-  const console = createConsoleWithTime({
-    enableLogging: false,
-    timestampType: "relative",
+    expect(output.entries).toHaveLength(0);
   });
 
-  vi.clearAllMocks();
-  mockPerformanceNow.mockReturnValue(1000);
+  test("level can be changed at runtime", () => {
+    const output = createTestOutput();
+    const console = createConsole({ output });
 
-  // Should not log when disabled
-  console.log("should not log");
-  expect(mockConsole.log).not.toHaveBeenCalled();
+    console.debug("before");
+    console.setLevel("debug");
+    console.debug("after");
 
-  // Enable and test
-  console.enabled = true;
-  console.log("should log");
-  expect(mockConsole.log).toHaveBeenCalledWith("[+1.000s]", "should log");
-
-  // Disable and test
-  console.enabled = false;
-  console.log("should not log again");
-  expect(mockConsole.log).toHaveBeenCalledTimes(1); // Still only one call
-});
-
-test("createConsoleWithTime error always logs with timestamp", () => {
-  mockPerformanceNow.mockReturnValue(0);
-  const console = createConsoleWithTime({
-    enableLogging: false, // Disabled
-    timestampType: "relative",
+    expect(output.entries.map((e) => e.entry.args[0])).toEqual(["after"]);
   });
 
-  vi.clearAllMocks();
-  mockPerformanceNow.mockReturnValue(500);
+  test("child inherits level at creation (static)", () => {
+    const output = createTestOutput();
+    const console = createConsole({ output, level: "info" });
+    const child = console.child("relay");
 
-  console.error("critical error");
+    // Child inherits "info" level
+    child.debug("ignored");
+    child.info("logged");
 
-  // Error should always log with timestamp, even when disabled
-  expect(mockConsole.error).toHaveBeenCalledWith("[+0.500s]", "critical error");
-});
+    // Parent change doesn't affect child (static inheritance)
+    console.setLevel("debug");
+    child.debug("still ignored");
 
-test("createConsoleWithTime preserves non-timestamped methods", () => {
-  const console = createConsoleWithTime({
-    enableLogging: true,
-    timestampType: "relative",
+    expect(output.entries.map((e) => e.entry.args[0])).toEqual(["logged"]);
   });
 
-  vi.clearAllMocks();
+  test("child can override level independently", () => {
+    const output = createTestOutput();
+    const console = createConsole({ output, level: "info" });
+    const child = console.child("relay");
 
-  // These methods should not get timestamps
-  console.time("timer");
-  console.timeEnd("timer");
-  console.dir({ obj: "value" });
-  console.table([{ a: 1 }]);
-  console.count("counter");
-  console.countReset("counter");
-  console.assert(true, "assertion");
-  console.timeLog("timer", "data");
+    child.setLevel("debug");
+    child.debug("logged");
+    console.debug("ignored"); // parent still at "info"
 
-  expect(mockConsole.time).toHaveBeenCalledWith("timer");
-  expect(mockConsole.timeEnd).toHaveBeenCalledWith("timer");
-  expect(mockConsole.dir).toHaveBeenCalledWith({ obj: "value" }, undefined);
-  expect(mockConsole.table).toHaveBeenCalledWith([{ a: 1 }], undefined);
-  expect(mockConsole.count).toHaveBeenCalledWith("counter");
-  expect(mockConsole.countReset).toHaveBeenCalledWith("counter");
-  expect(mockConsole.assert).toHaveBeenCalledWith(true, "assertion");
-  expect(mockConsole.timeLog).toHaveBeenCalledWith("timer", "data");
-});
-
-test("createConsoleWithTime trace gets timestamp", () => {
-  mockPerformanceNow.mockReturnValue(0);
-  const console = createConsoleWithTime({
-    enableLogging: true,
-    timestampType: "relative",
+    expect(output.entries.map((e) => e.entry.args[0])).toEqual(["logged"]);
   });
 
-  vi.clearAllMocks();
-  mockPerformanceNow.mockReturnValue(1500);
+  test("setLevel(null) reverts to inherited level", () => {
+    const output = createTestOutput();
+    const console = createConsole({ output, level: "info" });
+    const child = console.child("relay");
 
-  console.trace("trace message", { extra: "data" });
+    child.setLevel("debug");
+    expect(child.hasOwnLevel()).toBe(true);
 
-  expect(mockConsole.trace).toHaveBeenCalledWith("[+1.500s]", "trace message", {
-    extra: "data",
+    child.setLevel(null);
+    expect(child.hasOwnLevel()).toBe(false);
+    expect(child.getLevel()).toBe("info");
+  });
+
+  test("child adds path", () => {
+    const output = createTestOutput();
+    const console = createConsole({ output });
+    const child = console.child("relay").child("db");
+
+    child.info("message");
+
+    expect(output.entries[0].entry.path).toEqual(["relay", "db"]);
+  });
+
+  test("child inherits formatEntry", () => {
+    const output = createTestOutput();
+    const formatEntry = (entry: ConsoleEntry) => ["prefix", ...entry.args];
+    const console = createConsole({
+      output,
+      formatEntry,
+    });
+    const child = console.child("relay");
+
+    child.info("message");
+
+    expect(output.entries[0].formattedArgs).toEqual(["prefix", "message"]);
+  });
+
+  test("debug-level methods use debug level", () => {
+    const output = createTestOutput();
+    const console = createConsole({
+      output,
+      level: "log",
+    });
+
+    console.time("timer");
+    console.timeLog("timer");
+    console.timeEnd("timer");
+    console.dir({ foo: 1 });
+    console.table([1, 2, 3]);
+    console.count("counter");
+    console.countReset("counter");
+
+    expect(output.entries).toHaveLength(0);
+
+    console.setLevel("debug");
+
+    console.time("timer");
+    console.dir({ foo: 1 });
+
+    expect(output.entries.map((e) => e.entry.method)).toEqual(["time", "dir"]);
+  });
+
+  test("debug-level methods skip formatter", () => {
+    const output = createTestOutput();
+    const formatEntry = vi.fn((entry: ConsoleEntry) => [
+      "formatted",
+      ...entry.args,
+    ]);
+    const console = createConsole({
+      output,
+      level: "debug",
+      formatEntry,
+    });
+
+    console.info("info message");
+    console.dir({ foo: 1 });
+
+    expect(output.entries[0].formattedArgs).toEqual([
+      "formatted",
+      "info message",
+    ]);
+    expect(output.entries[1].formattedArgs).toEqual([{ foo: 1 }]);
+  });
+
+  test("children tracking", () => {
+    const console = createConsole();
+    const child1 = console.child("a");
+    const child2 = console.child("b");
+    const grandchild = child1.child("c");
+
+    expect(console.children.size).toBe(2);
+    expect(console.children.has(child1)).toBe(true);
+    expect(console.children.has(child2)).toBe(true);
+    expect(child1.children.size).toBe(1);
+    expect(child1.children.has(grandchild)).toBe(true);
+  });
+
+  test("name property", () => {
+    const console = createConsole({ name: "root" });
+    const child = console.child("relay");
+
+    expect(console.name).toBe("root");
+    expect(child.name).toBe("relay");
+  });
+});
+
+describe("createConsoleEntryFormatter", () => {
+  test("formats path", () => {
+    const formatter = createConsoleEntryFormatter(createTimeDep())();
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: ["relay", "db"],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toEqual(["[relay] [db]", "message"]);
+  });
+
+  test("with no path returns args unchanged", () => {
+    const formatter = createConsoleEntryFormatter(createTimeDep())();
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message", 123],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toEqual(["message", 123]);
+  });
+
+  test("relative timestamp", () => {
+    const time = testCreateTime({ startAt: 1000 as Millis });
+    const formatter = createConsoleEntryFormatter({ time })({
+      timestampFormat: "relative",
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["first"],
+    };
+
+    const result1 = formatter(entry);
+    time.advance("1.5s");
+    const result2 = formatter({ ...entry, args: ["second"] });
+
+    expect(result1).toMatchInlineSnapshot(`
+      [
+        "+0.000s",
+        "first",
+      ]
+    `);
+    expect(result2).toMatchInlineSnapshot(`
+      [
+        "+1.500s",
+        "second",
+      ]
+    `);
+  });
+
+  test("relative timestamp with custom start time", () => {
+    const time = testCreateTime({ startAt: 1500 as Millis });
+    const formatter = createConsoleEntryFormatter({ time })({
+      timestampFormat: "relative",
+      startTime: 500 as Millis,
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toMatchInlineSnapshot(`
+      [
+        "+1.000s",
+        "message",
+      ]
+    `);
+  });
+
+  test("iso timestamp", () => {
+    const time = testCreateTime({
+      startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 123) as Millis,
+    });
+    const formatter = createConsoleEntryFormatter({ time })({
+      timestampFormat: "iso",
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toEqual(["2026-01-28T14:30:00.123Z", "message"]);
+  });
+
+  test("absolute timestamp", () => {
+    const time = testCreateTime({
+      startAt: Date.UTC(2026, 0, 28, 14, 30, 15, 123) as Millis,
+    });
+    const formatter = createConsoleEntryFormatter({ time })({
+      timestampFormat: "absolute",
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    // Result includes local time formatted as HH:MM:SS.mmm
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
+    expect(result[1]).toBe("message");
+  });
+
+  test("combines timestamp and path", () => {
+    const formatter = createConsoleEntryFormatter(createTimeDep())({
+      timestampFormat: "relative",
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: ["relay"],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toMatchInlineSnapshot(`
+      [
+        "+0.000s [relay]",
+        "message",
+      ]
+    `);
+  });
+});
+
+describe("createNativeConsoleOutput", () => {
+  test("calls native console", () => {
+    const logSpy = vi
+      .spyOn(globalThis.console, "info")
+      .mockImplementation(() => undefined);
+    const output = createNativeConsoleOutput();
+
+    output.write({
+      method: "info",
+      path: [],
+      args: ["hello", "world"],
+    });
+
+    expect(logSpy).toHaveBeenCalledWith("hello", "world");
+    logSpy.mockRestore();
+  });
+
+  test("applies formatter", () => {
+    const logSpy = vi
+      .spyOn(globalThis.console, "info")
+      .mockImplementation(() => undefined);
+    const output = createNativeConsoleOutput();
+    const formatter = (entry: ConsoleEntry) => ["prefix", ...entry.args];
+
+    output.write(
+      {
+        method: "info",
+        path: [],
+        args: ["message"],
+      },
+      formatter,
+    );
+
+    expect(logSpy).toHaveBeenCalledWith("prefix", "message");
+    logSpy.mockRestore();
+  });
+});
+
+describe("testCreateConsole", () => {
+  test("captures entries", () => {
+    const console = testCreateConsole();
+
+    console.info("first");
+    console.info("second");
+
+    expect(console.getEntriesSnapshot()).toMatchInlineSnapshot(`
+      [
+        {
+          "args": [
+            "first",
+          ],
+          "method": "info",
+          "path": [],
+        },
+        {
+          "args": [
+            "second",
+          ],
+          "method": "info",
+          "path": [],
+        },
+      ]
+    `);
+  });
+
+  test("defaults to trace level (logs everything)", () => {
+    const console = testCreateConsole();
+
+    console.trace("trace");
+    console.debug("debug");
+    console.log("log");
+    console.info("info");
+    console.warn("warn");
+    console.error("error");
+
+    expect(console.getEntriesSnapshot().map((e) => e.method)).toEqual([
+      "trace",
+      "debug",
+      "log",
+      "info",
+      "warn",
+      "error",
+    ]);
+  });
+
+  test("respects configured level", () => {
+    const console = testCreateConsole({ level: "warn" });
+
+    console.debug("ignored");
+    console.info("ignored");
+    console.warn("logged");
+    console.error("logged");
+
+    expect(console.getEntriesSnapshot().map((e) => e.method)).toEqual([
+      "warn",
+      "error",
+    ]);
+  });
+
+  test("getEntriesSnapshot clears entries", () => {
+    const console = testCreateConsole();
+
+    console.info("first");
+    expect(console.getEntriesSnapshot()).toHaveLength(1);
+    expect(console.getEntriesSnapshot()).toHaveLength(0);
+  });
+
+  test("clearEntries clears without returning", () => {
+    const console = testCreateConsole();
+
+    console.info("message");
+    console.clearEntries();
+
+    expect(console.getEntriesSnapshot()).toHaveLength(0);
+  });
+
+  test("child adds path", () => {
+    const console = testCreateConsole();
+    const child = console.child("relay").child("db");
+
+    child.info("message");
+
+    expect(console.getEntriesSnapshot()[0].path).toEqual(["relay", "db"]);
+  });
+
+  test("child inherits level at creation (static)", () => {
+    const console = testCreateConsole({ level: "info" });
+    const child = console.child("relay");
+
+    // Child inherits "info" level
+    child.debug("ignored");
+    child.info("logged");
+
+    // Parent change doesn't affect child
+    console.setLevel("debug");
+    child.debug("still ignored");
+
+    expect(console.getEntriesSnapshot().map((e) => e.args[0])).toEqual([
+      "logged",
+    ]);
+  });
+
+  test("child can override level independently", () => {
+    const console = testCreateConsole({ level: "info" });
+    const child = console.child("relay");
+
+    child.setLevel("debug");
+    child.debug("logged");
+
+    expect(console.getEntriesSnapshot().map((e) => e.args[0])).toEqual([
+      "logged",
+    ]);
+  });
+
+  test("debug-level methods use debug level", () => {
+    const console = testCreateConsole({ level: "log" });
+
+    console.time("timer");
+    console.dir({ foo: 1 });
+    console.table([1, 2]);
+    console.count("counter");
+
+    expect(console.getEntriesSnapshot()).toHaveLength(0);
+
+    console.setLevel("debug");
+
+    console.time("timer");
+    console.timeLog("timer", "extra");
+    console.timeEnd("timer");
+    console.dir({ foo: 1 });
+    console.table([1, 2]);
+    console.count("counter");
+    console.countReset("counter");
+
+    expect(console.getEntriesSnapshot().map((e) => e.method)).toEqual([
+      "time",
+      "timeLog",
+      "timeEnd",
+      "dir",
+      "table",
+      "count",
+      "countReset",
+    ]);
+  });
+
+  test("children tracking", () => {
+    const console = testCreateConsole();
+    const child1 = console.child("a");
+    const child2 = console.child("b");
+
+    expect(console.children.size).toBe(2);
+    expect(console.children.has(child1)).toBe(true);
+    expect(console.children.has(child2)).toBe(true);
+  });
+
+  test("name property", () => {
+    const console = testCreateConsole();
+    const child = console.child("relay");
+
+    expect(console.name).toBe("");
+    expect(child.name).toBe("relay");
+  });
+});
+
+describe("createConsoleArrayOutput", () => {
+  test("captures entries to array", () => {
+    const entries: Array<ConsoleEntry> = [];
+    const output = createConsoleArrayOutput(entries);
+
+    output.write({
+      method: "info",
+      path: ["relay"],
+      args: ["message", 123],
+    });
+
+    expect(entries).toEqual([
+      {
+        method: "info",
+        path: ["relay"],
+        args: ["message", 123],
+      },
+    ]);
+  });
+
+  test("works with createConsole", () => {
+    const entries: Array<ConsoleEntry> = [];
+    const output = createConsoleArrayOutput(entries);
+    const console = createConsole({ output });
+
+    console.info("hello");
+    console.warn("world");
+
+    expect(entries.map((e) => e.method)).toEqual(["info", "warn"]);
+    expect(entries.map((e) => e.args[0])).toEqual(["hello", "world"]);
   });
 });
