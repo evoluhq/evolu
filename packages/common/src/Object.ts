@@ -98,6 +98,28 @@ export const objectFromEntries = <K extends string, V>(
 ): ReadonlyRecord<K, V> => Object.fromEntries(entries) as ReadonlyRecord<K, V>;
 
 /**
+ * Creates an object by mapping keys to values.
+ *
+ * The inverse of `Object.keys` — instead of extracting keys from an object,
+ * builds an object from keys with a mapper function.
+ *
+ * ### Example
+ *
+ * ```ts
+ * objectFrom(["en", "fr", "de"], loadTranslations);
+ * // { en: Translations, fr: Translations, de: Translations }
+ *
+ * objectFrom(["trace", "debug", "log"], (level) => createHandler(level));
+ * // { trace: Handler, debug: Handler, log: Handler }
+ * ```
+ */
+export const objectFrom = <K extends string, V>(
+  keys: ReadonlyArray<K>,
+  getValue: (key: K) => V,
+): ReadonlyRecord<K, V> =>
+  Object.fromEntries(keys.map((k) => [k, getValue(k)])) as ReadonlyRecord<K, V>;
+
+/**
  * Maps a `ReadonlyRecord<K, V>` to a new `ReadonlyRecord<K, U>`, preserving
  * branded key types (e.g., `type Id = 'id' & string`) lost by `Object.entries`.
  * Uses `K extends string` for precision.
@@ -154,7 +176,7 @@ export const createRecord = <K extends string = string, V = unknown>(): Record<
  *
  * @group Constants
  */
-export const emptyRecord: Readonly<Record<string, never>> = createRecord();
+export const emptyRecord: Readonly<Record<string, never>> = /*#__PURE__*/ createRecord();
 
 /**
  * Safely gets a property from a record, returning `undefined` if the key

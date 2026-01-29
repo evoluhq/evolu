@@ -10,6 +10,7 @@ import {
   isIterable,
   isPlainObject,
   mapObject,
+  objectFrom,
   objectFromEntries,
   objectToEntries,
 } from "../src/Object.js";
@@ -82,6 +83,21 @@ test("objectFromEntries", () => {
   expectTypeOf(users).toEqualTypeOf<ReadonlyRecord<UserId, string>>();
 
   expect(users).toEqual({ u1: "Alice" });
+});
+
+test("objectFrom", () => {
+  const result = objectFrom(["a", "b", "c"], (key) => key.toUpperCase());
+  expect(result).toEqual({ a: "A", b: "B", c: "C" });
+
+  // Key is available in the mapper
+  const indexed = objectFrom(["x", "y"], (key) => `value-${key}`);
+  expect(indexed).toEqual({ x: "value-x", y: "value-y" });
+
+  // Preserves key types
+  type Lang = "en" | "fr" | "de";
+  const langs: ReadonlyArray<Lang> = ["en", "fr", "de"];
+  const translations = objectFrom(langs, (lang) => `Hello in ${lang}`);
+  expectTypeOf(translations).toEqualTypeOf<ReadonlyRecord<Lang, string>>();
 });
 
 test("mapObject", () => {
