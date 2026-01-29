@@ -5,6 +5,7 @@ import jsdoc from "eslint-plugin-jsdoc";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+// import { configs as evoluConfigs } from "./scripts/eslint-plugin-evolu.mjs";
 
 export default defineConfig(
   {
@@ -31,6 +32,7 @@ export default defineConfig(
       tseslint.configs.stylisticTypeChecked,
       jsdoc.configs["flat/recommended"],
       reactHooksPlugin.configs.flat.recommended,
+      // evoluConfigs.recommended,
     ],
     languageOptions: {
       parserOptions: {
