@@ -49,6 +49,7 @@
     "typescript": {
       "AsyncDisposable": "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management",
       "AsyncDisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack",
+      "Disposable": "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management",
       "DisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack",
       "Iterable": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterable_protocol",
       "Omit": "https://www.typescriptlang.org/docs/handbook/utility-types.html#omittype-keys",
