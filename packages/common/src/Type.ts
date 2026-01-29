@@ -636,11 +636,9 @@ const createType = <
       if (result.ok) {
         return { value: result.value };
       }
-      cachedStandardSchemaFormatTypeError ??= createFormatTypeError();
       return {
         issues: typeErrorToStandardSchemaIssues(
           result.error as TypeErrors<Error>,
-          cachedStandardSchemaFormatTypeError,
         ),
       };
     },
@@ -4710,7 +4708,9 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
  * Converts an Evolu {@link TypeError} to Standard Schema V1 issues format.
  *
  * This function recursively converts Evolu's typed errors into the Standard
- * Schema issue format with proper path tracking for nested structures.
+ * Schema issue format with proper path tracking for nested structures. The
+ * `message` field contains the JSON-serialized typed error, which users can
+ * deserialize and format using appropriate {@link TypeErrorFormatter}s.
  *
  * @group Utilities
  */
@@ -4718,17 +4718,15 @@ export const typeErrorToStandardSchemaIssues = <
   ExtraErrors extends TypeError = never,
 >(
   error: TypeErrors<ExtraErrors>,
-  formatTypeError: TypeErrorFormatter<TypeErrors<ExtraErrors>>,
   path: ReadonlyArray<PropertyKey> = [],
 ): ReadonlyArray<StandardSchemaV1.Issue> => {
   if (error.type === "Array") {
     const arrayError = error as ArrayError;
     if (arrayError.reason.kind === "NotArray") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     return typeErrorToStandardSchemaIssues(
       arrayError.reason.error as TypeErrors<ExtraErrors>,
-      formatTypeError,
       [...path, arrayError.reason.index],
     );
   }
@@ -4736,11 +4734,10 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "Set") {
     const setError = error as SetError;
     if (setError.reason.kind === "NotSet") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     return typeErrorToStandardSchemaIssues(
       setError.reason.error as TypeErrors<ExtraErrors>,
-      formatTypeError,
       [...path, setError.reason.index],
     );
   }
@@ -4751,14 +4748,13 @@ export const typeErrorToStandardSchemaIssues = <
       objectError.reason.kind === "NotObject" ||
       objectError.reason.kind === "ExtraKeys"
     ) {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     const issues: Array<StandardSchemaV1.Issue> = [];
     for (const [key, propError] of Object.entries(objectError.reason.errors)) {
       issues.push(
         ...typeErrorToStandardSchemaIssues(
           propError as TypeErrors<ExtraErrors>,
-          formatTypeError,
           [...path, key],
         ),
       );
@@ -4769,7 +4765,7 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "ObjectWithRecord") {
     const objectWithRecordError = error as ObjectWithRecordError;
     if (objectWithRecordError.reason.kind === "NotObject") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     if (
       objectWithRecordError.reason.kind === "IndexKey" ||
@@ -4777,7 +4773,6 @@ export const typeErrorToStandardSchemaIssues = <
     ) {
       return typeErrorToStandardSchemaIssues(
         objectWithRecordError.reason.error as TypeErrors<ExtraErrors>,
-        formatTypeError,
         [...path, objectWithRecordError.reason.key as PropertyKey],
       );
     }
@@ -4788,7 +4783,6 @@ export const typeErrorToStandardSchemaIssues = <
       issues.push(
         ...typeErrorToStandardSchemaIssues(
           propError as TypeErrors<ExtraErrors>,
-          formatTypeError,
           [...path, key],
         ),
       );
@@ -4799,11 +4793,10 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "Record") {
     const recordError = error as RecordError;
     if (recordError.reason.kind === "NotRecord") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     return typeErrorToStandardSchemaIssues(
       recordError.reason.error as TypeErrors<ExtraErrors>,
-      formatTypeError,
       [...path, recordError.reason.key as PropertyKey],
     );
   }
@@ -4811,11 +4804,10 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "Tuple") {
     const tupleError = error as TupleError;
     if (tupleError.reason.kind === "InvalidLength") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     return typeErrorToStandardSchemaIssues(
       tupleError.reason.error as TypeErrors<ExtraErrors>,
-      formatTypeError,
       [...path, tupleError.reason.index],
     );
   }
@@ -4823,11 +4815,7 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "Union") {
     const unionError = error as UnionError;
     return unionError.errors.flatMap((err) =>
-      typeErrorToStandardSchemaIssues(
-        err as TypeErrors<ExtraErrors>,
-        formatTypeError,
-        path,
-      ),
+      typeErrorToStandardSchemaIssues(err as TypeErrors<ExtraErrors>, path),
     );
   }
 
@@ -4836,14 +4824,13 @@ export const typeErrorToStandardSchemaIssues = <
     if ("parentError" in brandError) {
       return typeErrorToStandardSchemaIssues(
         brandError.parentError as TypeErrors<ExtraErrors>,
-        formatTypeError,
         path,
       );
     }
-    return [{ message: formatTypeError(error), path }];
+    return [{ message: JSON.stringify(error), path }];
   }
 
-  return [{ message: formatTypeError(error), path }];
+  return [{ message: JSON.stringify(error), path }];
 };
 
 /** The Standard Schema interface. */
@@ -4917,10 +4904,3 @@ export declare namespace StandardSchemaV1 {
     Schema["~standard"]["types"]
   >["output"];
 }
-
-/**
- * Shared formatter cache for Standard Schema integration - avoids circular
- * dependency by lazily creating the formatter on first use rather than during
- * module initialization.
- */
-let cachedStandardSchemaFormatTypeError: TypeErrorFormatter<any> | undefined;

@@ -2841,7 +2841,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value 123 is not a string.",
+            "message": "{"type":"String","value":123}",
             "path": [],
           },
         ],
@@ -2858,7 +2858,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "The value "" does not meet the minimum length of 1.",
+            "message": "{"type":"MinLength","value":"","min":1}",
             "path": [],
           },
         ],
@@ -2880,7 +2880,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value undefined is not a number.",
+            "message": "{"type":"Number"}",
             "path": [
               "age",
             ],
@@ -2897,7 +2897,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value "not a number" is not a number.",
+            "message": "{"type":"Number","value":"not a number"}",
             "path": [
               "age",
             ],
@@ -2911,7 +2911,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "The value "" does not meet the minimum length of 1.",
+            "message": "{"type":"MinLength","value":"","min":1}",
             "path": [
               "name",
             ],
@@ -2932,7 +2932,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value "two" is not a number.",
+            "message": "{"type":"Number","value":"two"}",
             "path": [
               1,
             ],
@@ -2956,11 +2956,11 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value true is not a string.",
+            "message": "{"type":"String","value":true}",
             "path": [],
           },
           {
-            "message": "A value true is not a number.",
+            "message": "{"type":"Number","value":true}",
             "path": [],
           },
         ],
@@ -2985,7 +2985,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value 123 is not a string.",
+            "message": "{"type":"String","value":123}",
             "path": [
               "baz",
             ],
@@ -3010,7 +3010,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value "30" is not a number.",
+            "message": "{"type":"Number","value":"30"}",
             "path": [
               1,
             ],
@@ -3024,7 +3024,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "Expected a tuple of length 3, but received ["Alice",30].",
+            "message": "{"type":"Tuple","value":["Alice",30],"reason":{"kind":"InvalidLength","expected":3}}",
             "path": [],
           },
         ],
@@ -3046,11 +3046,11 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value 123 is not a undefined.",
+            "message": "{"type":"Undefined","value":123}",
             "path": [],
           },
           {
-            "message": "A value 123 is not a string.",
+            "message": "{"type":"String","value":123}",
             "path": [],
           },
         ],
@@ -3069,7 +3069,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "The value "inactive" is not strictly equal to the expected literal: active.",
+            "message": "{"type":"Literal","value":"inactive","expected":"active"}",
             "path": [],
           },
         ],
@@ -3101,7 +3101,7 @@ describe("Standard Schema V1", () => {
       {
         "issues": [
           {
-            "message": "A value "invalid" is not valid for type CustomType.",
+            "message": "{"type":"CustomType","value":"invalid","customProperty":"extra data"}",
             "path": [],
           },
         ],
