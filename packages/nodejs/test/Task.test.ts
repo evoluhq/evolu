@@ -1,6 +1,6 @@
-import { ok } from "@evolu/common";
+import { ok, testCreateConsole, type MainTask } from "@evolu/common";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { runMain, type MainTask } from "../src/Task.js";
+import { runMain } from "../src/Task.js";
 
 describe("runMain", () => {
   beforeEach(() => {
@@ -8,6 +8,9 @@ describe("runMain", () => {
     process.removeAllListeners("SIGINT");
     process.removeAllListeners("SIGTERM");
     process.removeAllListeners("SIGHUP");
+    process.removeAllListeners("uncaughtException");
+    process.removeAllListeners("unhandledRejection");
+    process.exitCode = undefined;
   });
 
   afterEach(() => {
@@ -15,13 +18,16 @@ describe("runMain", () => {
     process.removeAllListeners("SIGINT");
     process.removeAllListeners("SIGTERM");
     process.removeAllListeners("SIGHUP");
+    process.removeAllListeners("uncaughtException");
+    process.removeAllListeners("unhandledRejection");
+    process.exitCode = undefined;
   });
 
   test("executes main task", async () => {
     let called = false;
     const executed = Promise.withResolvers<void>();
 
-    runMain(() => {
+    runMain({})(() => {
       called = true;
       executed.resolve();
       return ok();
@@ -32,7 +38,7 @@ describe("runMain", () => {
     process.emit("SIGINT");
   });
 
-  test("curried form passes custom deps", async () => {
+  test("passes custom deps", async () => {
     const depsValue = Promise.withResolvers<number>();
     const customDep = { myValue: 42 };
 
@@ -55,7 +61,7 @@ describe("runMain", () => {
     let taskRan = false;
     const taskCompleted = Promise.withResolvers<void>();
 
-    runMain(async (run) => {
+    runMain({})(async (run) => {
       taskRan = true;
       // Dispose the runner, which triggers abort
       await run[Symbol.asyncDispose]();
@@ -74,7 +80,7 @@ describe("runMain", () => {
     const taskStarted = Promise.withResolvers<void>();
     const disposeCalled = Promise.withResolvers<void>();
 
-    runMain(() => {
+    runMain({})(() => {
       taskStarted.resolve();
       return ok({
         [Symbol.dispose]: () => {
@@ -96,10 +102,11 @@ describe("runMain", () => {
     const taskStarted = Promise.withResolvers<void>();
     const disposeCalled = Promise.withResolvers<void>();
 
-    runMain(() => {
+    runMain({})(() => {
       taskStarted.resolve();
       return ok({
-        [Symbol.asyncDispose]: () => {
+        // eslint-disable-next-line @typescript-eslint/require-await
+        [Symbol.asyncDispose]: async () => {
           disposed = true;
           disposeCalled.resolve();
         },
@@ -117,7 +124,7 @@ describe("runMain", () => {
     let called = false;
     const taskStarted = Promise.withResolvers<void>();
 
-    runMain(() => {
+    runMain({})(() => {
       called = true;
       taskStarted.resolve();
       return ok();
@@ -134,7 +141,7 @@ describe("runMain", () => {
     const taskStarted = Promise.withResolvers<void>();
     const disposeCalled = Promise.withResolvers<void>();
 
-    runMain(() => {
+    runMain({})(() => {
       taskStarted.resolve();
       return ok({
         [Symbol.dispose]: () => {
@@ -156,7 +163,7 @@ describe("runMain", () => {
     const taskStarted = Promise.withResolvers<void>();
     const disposeCalled = Promise.withResolvers<void>();
 
-    runMain(() => {
+    runMain({})(() => {
       taskStarted.resolve();
       return ok({
         [Symbol.dispose]: () => {
@@ -177,7 +184,7 @@ describe("runMain", () => {
     const taskCompleted = Promise.withResolvers<void>();
     const initialSigintCount = process.listenerCount("SIGINT");
 
-    runMain(() =>
+    runMain({})(() =>
       ok({
         [Symbol.asyncDispose]: async () => {
           await Promise.resolve();
@@ -196,5 +203,70 @@ describe("runMain", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(process.listenerCount("SIGINT")).toBe(initialSigintCount);
+  });
+
+  test("sets exitCode to 1 on uncaughtException", async () => {
+    const disposed = Promise.withResolvers<void>();
+    const taskStarted = Promise.withResolvers<void>();
+    const console = testCreateConsole();
+
+    runMain({ console })(() => {
+      taskStarted.resolve();
+      return ok({
+        [Symbol.dispose]: () => {
+          disposed.resolve();
+        },
+      });
+    });
+
+    await taskStarted.promise;
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(process.exitCode).toBeUndefined();
+    process.emit("uncaughtException", new Error("test error"));
+    await disposed.promise;
+    expect(process.exitCode).toBe(1);
+
+    const entries = console.getEntriesSnapshot();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].method).toBe("error");
+    expect(entries[0].args[0]).toMatchObject({
+      type: "UnknownError",
+      error: expect.objectContaining({ message: "test error" }),
+    });
+  });
+
+  test("sets exitCode to 1 on unhandledRejection", async () => {
+    const disposed = Promise.withResolvers<void>();
+    const taskStarted = Promise.withResolvers<void>();
+    const console = testCreateConsole();
+
+    runMain({ console })(() => {
+      taskStarted.resolve();
+      return ok({
+        [Symbol.dispose]: () => {
+          disposed.resolve();
+        },
+      });
+    });
+
+    await taskStarted.promise;
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(process.exitCode).toBeUndefined();
+    (process as NodeJS.EventEmitter).emit(
+      "unhandledRejection",
+      new Error("test rejection"),
+    );
+    await disposed.promise;
+    expect(process.exitCode).toBe(1);
+
+    const entries = console.getEntriesSnapshot();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].method).toBe("error");
+    expect(entries[0].args[0]).toMatchObject({
+      type: "UnknownError",
+      error: expect.objectContaining({ message: "test rejection" }),
+    });
   });
 });

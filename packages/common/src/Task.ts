@@ -345,6 +345,22 @@ export type InferTaskDone<T extends Task<any, any, any>> =
     : never;
 
 /**
+ * A {@link Task} suitable for use with platform-specific `runMain` functions.
+ *
+ * Returns `Disposable`, `AsyncDisposable`, or `void`. Returning a disposable
+ * (typically via `stack.move()`) transfers resource ownership to `runMain`,
+ * which disposes after a termination signal. The error type is `never` because
+ * main tasks must handle all errors internally.
+ *
+ * @group Core Types
+ */
+export type MainTask<D> = Task<
+  Disposable | AsyncDisposable | void,
+  never,
+  RunnerDeps & D
+>;
+
+/**
  * Error returned when a {@link Task} is aborted via
  * {@link https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal | AbortSignal}.
  *
