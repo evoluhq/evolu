@@ -1,6 +1,7 @@
 import {
   allResult,
   callback,
+  createRandom,
   createRelation,
   createSqlite,
   type CreateSqliteDriverDep,
@@ -28,41 +29,50 @@ import {
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
+import { createBetterSqliteDriver } from "../BetterSqliteDriver.js";
+import { createTimingSafeEqual } from "../Crypto.js";
 
 export interface NodeJsRelayConfig extends RelayConfig {
   /** The port number for the HTTP server. */
   readonly port?: number;
 }
 
-// /**
-//  * Creates an Evolu relay server.
-//  *
-//  * This implementation uses Node.js and better-sqlite3. Additional relay
-//  * implementations will be provided for other platforms (Bun, Deno, Cloudflare
-//  * Workers, Vercel Edge, etc.).
-//  */
-// export const createNodeJsRelay =
-//   (deps: ConsoleDep) =>
-//   (config: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> =>
-//     createNodeJsRelayWithSqliteDriver({
-//       ...deps,
-//       createSqliteDriver: createBetterSqliteDriver,
-//     })(config);
+/** Dependencies for {@link createNodeJsRelay} using better-sqlite3. */
+export const createNodeJsRelayBetterSqliteDeps = (): CreateSqliteDriverDep &
+  RandomDep &
+  TimingSafeEqualDep => ({
+  createSqliteDriver: createBetterSqliteDriver,
+  random: createRandom(),
+  timingSafeEqual: createTimingSafeEqual(),
+});
 
-// /**
-//  * Creates an Evolu relay server with a custom SQLite driver.
-//  *
-//  * Use this when you need to provide a different SQLite driver implementation.
-//  */
-// export const createNodeJsRelayWithSqliteDriver =
-//   (deps: ConsoleDep & CreateSqliteDriverDep) =>
-//   (config: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> =>
-//     createNodeJsRelayWithDeps({
-//       ...deps,
-//       random: createRandom(),
-//       timingSafeEqual: createTimingSafeEqual(),
-//     })(config);
-
+/**
+ * Creates an Evolu relay server using Node.js.
+ *
+ * Use {@link createNodeJsRelayBetterSqliteDeps} to create dependencies for
+ * better-sqlite3, or provide a custom SQLite driver implementation.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const deps = {
+ *   console: createConsole(),
+ *   ...createNodeJsRelayBetterSqliteDeps(),
+ * };
+ *
+ * runMain(deps)(async (run) => {
+ *   await using stack = run.stack();
+ *
+ *   const relay = await stack.use(createNodeJsRelay({ port: 4000 }));
+ *   if (!relay.ok) {
+ *     run.console.error(relay.error);
+ *     return ok();
+ *   }
+ *
+ *   return ok(stack.move());
+ * });
+ * ```
+ */
 export const createNodeJsRelay =
   ({
     port = 443,
@@ -248,17 +258,3 @@ export const createNodeJsRelay =
 
     return ok(stack.move());
   };
-
-// (_deps: ConsoleDep & CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep) =>
-//   async ({
-//     port = 443,
-//     name = SimpleName.orThrow("evolu-relay"),
-//     isOwnerAllowed,
-//     isOwnerWithinQuota,
-//   }: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> => {
-//     const run = createRunner({
-//       ..._deps,
-//       console: _deps.console.child("relay"),
-//     });
-
-//   };

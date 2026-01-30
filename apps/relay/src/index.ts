@@ -5,9 +5,8 @@ import {
   ok,
 } from "@evolu/common";
 import {
-  createBetterSqliteDriver,
   createNodeJsRelay,
-  createTimingSafeEqual,
+  createNodeJsRelayBetterSqliteDeps,
   runMain,
 } from "@evolu/nodejs";
 import { mkdirSync } from "fs";
@@ -17,15 +16,15 @@ mkdirSync("data", { recursive: true });
 process.chdir("data");
 
 const console = createConsole({
+  // level: "debug",
   formatEntry: createConsoleEntryFormatter({ time: createTime() })({
     timestampFormat: "relative",
   }),
 });
 
 const deps = {
+  ...createNodeJsRelayBetterSqliteDeps(),
   console,
-  createSqliteDriver: createBetterSqliteDriver,
-  timingSafeEqual: createTimingSafeEqual(),
 };
 
 runMain(deps)(async (run) => {
