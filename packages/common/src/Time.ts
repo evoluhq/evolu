@@ -7,7 +7,7 @@
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { yieldNow } from "./Task.js";
-import { brand, DateIso, lessThan, NonNegativeInt } from "./Type.js";
+import { brand, type DateIso, lessThan, NonNegativeInt } from "./Type.js";
 import type {
   Digit,
   Digit1To23,
@@ -22,9 +22,6 @@ import type {
 export interface Time {
   /** Returns current time in milliseconds. */
   readonly now: () => Millis;
-
-  /** Returns current time as ISO string. */
-  readonly nowIso: () => DateIso;
 
   /** Schedules a callback after the specified delay. */
   readonly setTimeout: (fn: () => void, delay: Duration) => TimeoutId;
@@ -52,8 +49,6 @@ export type TimeoutId = Brand<"TimeoutId">;
  */
 export const createTime = (): Time => ({
   now: () => Millis.orThrow(globalThis.Date.now()),
-
-  nowIso: () => DateIso.orThrow(new globalThis.Date().toISOString()),
 
   setTimeout: (callback, delay) =>
     globalThis.setTimeout(
@@ -107,7 +102,6 @@ export const testCreateTime = (options?: {
       }
       return result;
     },
-    nowIso: () => DateIso.orThrow(new globalThis.Date(now).toISOString()),
 
     setTimeout: (callback, delay) => {
       const id = nextId++;
@@ -158,6 +152,15 @@ export const minMillis = 0 as Millis;
 
 /** Maximum {@link Millis} value. */
 export const maxMillis = (maxMillisWithInfinity - 1) as Millis;
+
+/**
+ * Converts {@link Millis} to {@link DateIso}.
+ *
+ * This is a safe cast because {@link Millis} guarantees a valid timestamp range
+ * that always produces a valid ISO string.
+ */
+export const millisToDateIso = (value: Millis): DateIso =>
+  new globalThis.Date(value).toISOString() as DateIso;
 
 /**
  * Duration can be either a {@link DurationLiteral} or milliseconds as

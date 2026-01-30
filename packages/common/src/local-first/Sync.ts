@@ -32,7 +32,8 @@ import {
   SqliteValue,
 } from "../Sqlite.js";
 import type { Millis, TimeDep } from "../Time.js";
-import type { DateIso, Typed } from "../Type.js";
+import { millisToDateIso } from "../Time.js";
+import type { Typed } from "../Type.js";
 import { Id, IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
 import type {
@@ -90,7 +91,6 @@ import {
   receiveTimestamp,
   sendTimestamp,
   timestampBytesToTimestamp,
-  timestampToDateIso,
   timestampToTimestampBytes,
 } from "./Timestamp.js";
 
@@ -643,13 +643,13 @@ type TransportKey = string & Brand<"TransportKey">;
 const createTransportKey = (transport: OwnerTransport): TransportKey =>
   `${transport.type}:${transport.url}` as TransportKey;
 
-const dbChangeToColumns = (change: DbChange, now: DateIso) => {
+const dbChangeToColumns = (change: DbChange, now: Millis) => {
   let values = objectToEntries(change.values);
 
   // SystemColumns are not encoded in change.values.
   values = appendToArray(values, [
     change.isInsert ? "createdAt" : "updatedAt",
-    now,
+    millisToDateIso(now),
   ]);
   if (change.isDelete != null) {
     values = appendToArray(values, [
@@ -672,7 +672,7 @@ export const applyLocalOnlyChange =
       if (!result.ok) return result;
     } else {
       const ownerId = deps.appOwner.id;
-      const columns = dbChangeToColumns(change, deps.time.nowIso());
+      const columns = dbChangeToColumns(change, deps.time.now());
 
       for (const [column, value] of columns) {
         const result = deps.sqlite.exec(sql.prepared`
@@ -706,7 +706,7 @@ const applyMessages =
     let { firstTimestamp, lastTimestamp } = usage.value;
 
     for (const { timestamp, change } of messages) {
-      const columns = dbChangeToColumns(change, timestampToDateIso(timestamp));
+      const columns = dbChangeToColumns(change, timestamp.millis);
       const idBytes = idToIdBytes(change.id);
       const timestampBytes = timestampToTimestampBytes(timestamp);
 

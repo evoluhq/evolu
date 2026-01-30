@@ -9,7 +9,7 @@ Refactored Time module for type safety, consistency, and better abstractions.
 - Changed `Time.now()` return type from `number` to `Millis`
 - Added `Millis` branded type with efficient 6-byte serialization (max value: year 10889)
 - Added `minMillis` and `maxMillis` constants
-- Both `now()` and `nowIso()` now throw on invalid values for consistent error handling
+- `now()` now throw on invalid values for consistent error handling
 
 **Timer abstraction:**
 

@@ -5,6 +5,7 @@ import {
   durationToMillis,
   formatMillisAsClockTime,
   formatMillisAsDuration,
+  millisToDateIso,
   testCreateTime,
 } from "../src/Time.js";
 
@@ -18,9 +19,9 @@ describe("Time", () => {
       expect(time.now()).toBeLessThanOrEqual(now + 10);
     });
 
-    test("nowIso returns current time as ISO string", () => {
+    test("millisToDateIso returns current time as ISO string", () => {
       const time = createTime();
-      const result = time.nowIso();
+      const result = millisToDateIso(time.now());
       // Verify it's a valid ISO string
       expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       // And it's close to now
@@ -93,11 +94,11 @@ describe("Time", () => {
       expect(third).toBe(2);
     });
 
-    test("nowIso returns ISO string for current time", () => {
+    test("millisToDateIso returns ISO string for current time", () => {
       const time = testCreateTime({
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
       });
-      expect(time.nowIso()).toBe("2026-01-28T14:30:00.000Z");
+      expect(millisToDateIso(time.now())).toBe("2026-01-28T14:30:00.000Z");
     });
 
     test("setTimeout fires callback when time is advanced past deadline", () => {
