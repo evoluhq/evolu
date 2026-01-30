@@ -6,6 +6,7 @@ import { createMessageChannel, createSharedWorker } from "../Worker.js";
 import { createWebAuthnStore } from "./LocalAuth.js";
 
 // TODO: Redesign.
+// eslint-disable-next-line evolu/require-pure-annotation
 export const localAuth = createLocalAuth({
   randomBytes: createRandomBytes(),
   secureStorage: createWebAuthnStore({ randomBytes: createRandomBytes() }),
