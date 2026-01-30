@@ -38,9 +38,7 @@ Web build notes
 
 Start dev
 
-> **Warning**: Run `pnpm build` before running dev. Packages must be built first.
-
-- `pnpm dev` - Dev server for web
+- `pnpm dev` - Start development mode (builds packages, starts web and relay)
 - `pnpm ios` - Run iOS example (requires `pnpm dev` running)
 - `pnpm android` - Run Android example (requires `pnpm dev` running)
 

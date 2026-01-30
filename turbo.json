@@ -12,7 +12,14 @@
       "dependsOn": ["^build"]
     },
     "dev": {
-      "cache": false,
+      "dependsOn": ["^dev"],
+      "cache": false
+    },
+    "relay#dev": {
+      "persistent": true,
+      "interruptible": true
+    },
+    "web#dev": {
       "persistent": true
     },
     "start": {

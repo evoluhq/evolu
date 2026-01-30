@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --experimental-strip-types --watch src/index.ts",
+    "dev": "node --experimental-strip-types src/index.ts",
     "build": "rimraf dist && tsc",
     "start": "node dist/index.js",
     "clean": "rimraf .turbo node_modules dist data/evolu-relay.db"

@@ -43,11 +43,11 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "tsc --watch",
+    "dev": "tsc",
     "build": "rimraf dist && tsc",
-    "test": "vitest run --disableConsoleIntercept",
-    "test:watch": "vitest --disableConsoleIntercept",
-    "test:coverage": "vitest run --coverage --disableConsoleIntercept",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "clean": "rimraf .turbo node_modules dist coverage test/tmp test/__screenshots__",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "bench": "vitest bench"

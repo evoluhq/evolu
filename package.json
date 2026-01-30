@@ -2,7 +2,7 @@
   "private": true,
   "name": "@evolu/monorepo",
   "scripts": {
-    "dev": "turbo --filter @evolu/* dev --filter web --concurrency=11",
+    "dev": "turbo watch dev --filter @evolu/* --filter web --concurrency=11",
     "build": "turbo --filter @evolu/* build",
     "build:web": "pnpm build:docs && turbo --filter web build",
     "build:docs": "typedoc && pnpm --filter=web run fix:docs",

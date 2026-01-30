@@ -31,7 +31,7 @@
     "build": "rimraf dist && tsc && pnpm run package",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "clean": "rimraf .turbo .svelte-kit node_modules dist",
-    "dev": "tsc --watch",
+    "dev": "tsc",
     "package": "svelte-package",
     "prepublishOnly": "pnpm run package",
     "preview": "vite preview"

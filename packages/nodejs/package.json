@@ -20,7 +20,7 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "tsc --watch",
+    "dev": "tsc",
     "build": "rimraf dist && tsc",
     "clean": "rimraf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""

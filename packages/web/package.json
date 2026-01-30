@@ -28,7 +28,7 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "tsc --watch",
+    "dev": "tsc",
     "build": "rimraf dist && tsc",
     "_test": "vitest run",
     "test:watch": "vitest",
