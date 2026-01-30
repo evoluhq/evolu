@@ -50,6 +50,16 @@ export const runMain =
     void (async () => {
       await using run = createRunner(deps);
 
+      /**
+       * "The correct use of 'uncaughtException' is to perform synchronous
+       * cleanup of allocated resources (e.g. file descriptors, handles, etc)
+       * before shutting down the process."
+       *
+       * https://nodejs.org/api/process.html#event-uncaughtexception
+       * https://nodejs.org/api/process.html#event-unhandledrejection
+       *
+       * We log and initiate graceful shutdown.
+       */
       const handleError = (error: unknown): void => {
         run.console.error(createUnknownError(error));
         // https://nodejs.org/api/process.html#processexitcode
