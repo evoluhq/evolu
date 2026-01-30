@@ -156,15 +156,16 @@ export const createSqlite =
   (
     name: SimpleName,
     options?: SqliteDriverOptions,
-  ): Task<Sqlite, SqliteError, CreateSqliteDriverDep & Partial<ConsoleDep>> =>
-  async (_, deps) =>
+  ): Task<Sqlite, SqliteError, CreateSqliteDriverDep> =>
+  async (run, deps) =>
     tryAsync(async () => {
+      const console = run.console.child("sql");
       const driver = await deps.createSqliteDriver(name, options);
       let isDisposed = false;
 
       const doRollback = () =>
         trySync(() => {
-          deps.console?.log("[sql] rollback");
+          console.debug("rollback");
           driver.exec(sql`rollback;`, true);
         }, createSqliteError);
 
@@ -172,13 +173,13 @@ export const createSqlite =
         exec: (query) =>
           trySync(
             () => {
-              deps.console?.log("[sql]", { query });
+              console.debug({ query });
 
               const result = maybeLogSqliteQueryExecutionTime(query, () =>
                 driver.exec(query, isSqlMutation(query.sql)),
               );
 
-              deps.console?.log("[sql]", { result });
+              console.debug({ result });
 
               return result as never;
             },
@@ -190,13 +191,13 @@ export const createSqlite =
 
         transaction: (callback) => {
           const transactionResult = trySync(() => {
-            deps.console?.log("[sql] begin");
+            console.debug("begin");
             driver.exec(sql`begin;`, true);
 
             const result = callback();
             if (!result.ok) return result;
 
-            deps.console?.log("[sql] commit");
+            console.debug("commit");
             driver.exec(sql`commit;`, true);
 
             return result;
@@ -205,7 +206,7 @@ export const createSqlite =
           if (!transactionResult.ok) {
             const rollback = doRollback();
             if (!rollback.ok) {
-              deps.console?.log("[sql] rollback failed", rollback.error);
+              console.debug("rollback failed", rollback.error);
               return err({
                 type: "SqliteError",
                 error: transactionResult.error.error,
@@ -218,7 +219,7 @@ export const createSqlite =
           if (!transactionResult.value.ok) {
             const rollback = doRollback();
             if (!rollback.ok) {
-              deps.console?.log("[sql] rollback failed", rollback.error);
+              console.debug("rollback failed", rollback.error);
               return err({
                 type: "SqliteError",
                 error: createUnknownError(transactionResult.value.error),
