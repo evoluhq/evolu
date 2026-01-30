@@ -22,6 +22,7 @@
   "scripts": {
     "dev": "tsc",
     "build": "rimraf dist && tsc",
+    "test": "vitest run",
     "clean": "rimraf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
