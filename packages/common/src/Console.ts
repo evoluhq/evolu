@@ -5,6 +5,7 @@
  */
 
 import { objectFrom } from "./Object.js";
+import type { Runner, Task } from "./Task.js";
 import {
   formatMillisAsClockTime,
   formatMillisAsDuration,
@@ -40,6 +41,10 @@ import {
  * relayConsole.info("Started on port", 443); // logs
  * relayConsole.debug("Connection details", conn); // filtered out (debug < info)
  * ```
+ *
+ * Console intentionally does not use {@link Task} or {@link Runner}. Logging must
+ * be as fast as possible and always work, even during error handling or
+ * shutdown when tasks may not be available.
  */
 export interface Console {
   /** Name of this console. Empty for root. */
