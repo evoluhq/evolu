@@ -144,8 +144,6 @@ export interface Storage {
    *
    * Must use a mutex per ownerId to ensure sequential processing and proper
    * protocol logic handling during sync operations.
-   *
-   * TODO: Use MaybeAsync
    */
   readonly writeMessages: (
     ownerIdBytes: OwnerIdBytes,
@@ -187,7 +185,7 @@ export interface StorageQuotaError
  */
 export type Fingerprint = Uint8Array & Brand<"Fingerprint">;
 
-export const fingerprintSize = NonNegativeInt.orThrow(12);
+export const fingerprintSize = /*#__PURE__*/ NonNegativeInt.orThrow(12);
 
 /** A fingerprint of an empty range. */
 export const zeroFingerprint = new Uint8Array(fingerprintSize) as Fingerprint;
@@ -202,7 +200,7 @@ export interface BaseRange {
  */
 export type RangeUpperBound = TimestampBytes | InfiniteUpperBound;
 
-export const InfiniteUpperBound = Symbol(
+export const InfiniteUpperBound = /*#__PURE__*/ Symbol(
   "evolu.local-first.Storage.InfiniteUpperBound",
 );
 export type InfiniteUpperBound = typeof InfiniteUpperBound;
@@ -252,10 +250,10 @@ export interface CrdtMessage {
   readonly change: DbChange;
 }
 
-export const DbChangeValues = record(String, SqliteValue);
+export const DbChangeValues = /*#__PURE__*/ record(String, SqliteValue);
 export type DbChangeValues = typeof DbChangeValues.Type;
 
-export const ValidDbChangeValues = brand(
+export const ValidDbChangeValues = /*#__PURE__*/ brand(
   "ValidDbChangeValues",
   DbChangeValues,
   (value) => {
@@ -280,7 +278,7 @@ export interface ValidDbChangeValuesError extends TypeError<"ValidDbChangeValues
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
  */
-export const DbChange = object({
+export const DbChange = /*#__PURE__*/ object({
   table: String,
   id: Id,
   values: ValidDbChangeValues,

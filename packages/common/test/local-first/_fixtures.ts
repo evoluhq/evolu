@@ -1,3 +1,4 @@
+/* eslint-disable evolu/require-pure-annotation */
 import {
   createAppOwner,
   createOwnerSecret,
