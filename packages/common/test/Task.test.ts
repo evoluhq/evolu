@@ -356,14 +356,18 @@ describe("Runner", () => {
       const runWithDb = run.addDeps({ db });
 
       // @ts-expect-error - cannot override existing dep
-      runWithDb.addDeps({ db: { query: () => "new" } });
+      expect(() => runWithDb.addDeps({ db: { query: () => "new" } })).toThrow(
+        "Dependency 'db' already added",
+      );
     });
 
     test("type error when overriding RunnerDeps", async () => {
       await using run = createRunner();
 
       // @ts-expect-error - cannot override built-in time dep
-      run.addDeps({ time: { now: () => 0 } });
+      expect(() => run.addDeps({ time: { now: () => 0 } })).toThrow(
+        "Dependency 'time' already added",
+      );
     });
 
     test("runner with more deps is assignable to runner with fewer deps", async () => {
@@ -1428,6 +1432,32 @@ describe("Fiber", () => {
         "parent completed",
         "daemon completed",
       ]);
+    });
+
+    test("addDeps propagates to daemon tasks via shared depsRef", async () => {
+      interface CustomDep {
+        readonly custom: { readonly value: string };
+      }
+
+      await using run = createRunner();
+
+      let receivedValue: string | undefined;
+
+      const daemonTask: Task<void, never, CustomDep> = (_, deps) => {
+        receivedValue = deps.custom.value;
+        return ok();
+      };
+
+      // Parent task adds deps and spawns daemon
+      const parentTask: Task<void> = async (_run) => {
+        const run = _run.addDeps({ custom: { value: "from-addDeps" } });
+        await run.daemon(daemonTask);
+        return ok();
+      };
+
+      await run(parentTask);
+
+      expect(receivedValue).toBe("from-addDeps");
     });
   });
 

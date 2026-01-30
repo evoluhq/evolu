@@ -27,7 +27,7 @@ import {
 } from "./Object.js";
 import type { Random, RandomDep } from "./Random.js";
 import { createRandom } from "./Random.js";
-import { type Ref } from "./Ref.js";
+import { createRef, type Ref } from "./Ref.js";
 import type { Done, NextResult, Ok, Result } from "./Result.js";
 import { err, ok, tryAsync } from "./Result.js";
 import type { Schedule, ScheduleStep } from "./Schedule.js";
@@ -261,16 +261,16 @@ import {
  *
  * ## FAQ
  *
- * ### What about runtime-created dependencies?
- *
- * Use {@link Runner.addDeps} to extend deps at runtime.
- *
  * ### Is `Task<T, E, D>` still Pure DI? Isn't Runner a DI container?
  *
  * Yes, it's still Pure DI. `D` is just a deps object passed as a normal
  * function argument. Instead of writing `task(deps)(args)` (curried DI), we
  * write `createRunner<AppDeps>(deps)` once and the runner passes `deps` to
  * every task as a second argument. This removes repetitive plumbing.
+ *
+ * ### What about runtime-created dependencies?
+ *
+ * Use {@link Runner.addDeps} to extend deps at runtime.
  *
  * ### Where is fork and join?
  *
@@ -515,17 +515,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
   /** {@link Time}. */
   readonly time: Time;
 
-  /**
-   * {@link Console}.
-   *
-   * Logging is disabled by default.
-   *
-   * ### Example
-   *
-   * ```ts
-   * run.console.enabled = true;
-   * ```
-   */
+  /** {@link Console}. */
   readonly console: Console;
 
   /** {@link Random}. */
@@ -581,16 +571,21 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    * This is the whole implementation:
    *
    * ```ts
-   * run.addDeps = <E extends NewKeys<E, D>>(
-   *   extraDeps: E,
-   * ): Runner<D & E> => {
-   *   deps = { ...deps, ...extraDeps };
+   * run.addDeps = <E extends NewKeys<E, D>>(newDeps: E): Runner<D & E> => {
+   *   depsRef.modify((currentDeps) => {
+   *     const duplicate = Object.keys(newDeps).find(
+   *       (k) => k in currentDeps,
+   *     );
+   *     assert(!duplicate, `Dependency '${duplicate}' already added.`);
+   *     return { ...currentDeps, ...newDeps };
+   *   });
    *   return self as unknown as Runner<D & E>;
    * };
    * ```
    *
-   * {@link NewKeys}`<E, D>` rejects keys already in `D`, so `addDeps` can't
-   * override existing deps.
+   * Dependencies are stored in a shared `Ref`, so `addDeps` propagates to all
+   * runners. The runtime assertion ensures dependencies are created once —
+   * automatic deduplication would mask buggy code.
    */
   readonly addDeps: <E extends NewKeys<E, D>>(extraDeps: E) => Runner<D & E>;
 }
@@ -1138,7 +1133,7 @@ export function createRunner(): Runner<RunnerDeps>;
 export function createRunner<D>(deps: D): Runner<RunnerDeps & D>;
 export function createRunner<D>(deps?: D): Runner<RunnerDeps & D> {
   const mergedDeps = { ...defaultDeps, ...deps } as RunnerDeps & D;
-  return createRunnerInternal(mergedDeps)();
+  return createRunnerInternal(createRef(mergedDeps))();
 }
 
 /** Internal Runner properties, hidden from public API via TypeScript types. */
@@ -1149,7 +1144,7 @@ interface RunnerInternal<D extends RunnerDeps = RunnerDeps> extends Runner<D> {
 }
 
 const createRunnerInternal =
-  <D extends RunnerDeps>(deps: D) =>
+  <D extends RunnerDeps>(depsRef: Ref<D>) =>
   (
     parent?: RunnerInternal<D>,
     daemon?: RunnerInternal<D>,
@@ -1200,6 +1195,7 @@ const createRunnerInternal =
     }
 
     const emitEvent = (data: RunnerEventData) => {
+      const deps = depsRef.get();
       if (!deps.runnerConfig?.eventsEnabled.get()) return;
       const e: RunnerEvent = { id: self.id, timestamp: deps.time.now(), data };
       for (let node: Runner<D> | null = self; node; node = node.parent)
@@ -1207,7 +1203,7 @@ const createRunnerInternal =
     };
 
     const run = <T, E>(task: Task<T, E, D>): Fiber<T, E, D> => {
-      const runner = createRunnerInternal(deps)(
+      const runner = createRunnerInternal(depsRef)(
         self,
         daemon ?? self,
         getAbortBehavior(task),
@@ -1226,7 +1222,7 @@ const createRunnerInternal =
       }
 
       // Evolu polyfills `Promise.try`
-      const promise = Promise.try(task, runner, deps)
+      const promise = Promise.try(task, runner, depsRef.get())
         .then((taskOutcome) => {
           const taskResult = runner.signal.aborted
             ? err(runner.signal.reason)
@@ -1252,7 +1248,7 @@ const createRunnerInternal =
 
     {
       const run = self as Mutable<RunnerInternal<D>>;
-      const id = createId(deps);
+      const id = createId(depsRef.get());
 
       let snapshot: FiberSnapshot | null = null;
       let disposingPromise: Promise<void> | null = null;
@@ -1307,6 +1303,7 @@ const createRunnerInternal =
       });
       run.stack = () => new TaskDisposableStack(self);
 
+      const deps = depsRef.get();
       run.time = deps.time;
       run.console = deps.console;
       run.random = deps.random;
@@ -1315,8 +1312,17 @@ const createRunnerInternal =
       run.concurrency =
         concurrencyBehavior ?? parent?.concurrency ?? defaultConcurrency;
 
-      run.addDeps = <E extends NewKeys<E, D>>(extraDeps: E): Runner<D & E> => {
-        deps = { ...deps, ...extraDeps };
+      run.addDeps = <E extends NewKeys<E, D>>(newDeps: E): Runner<D & E> => {
+        depsRef.modify((currentDeps) => {
+          const duplicate = Object.keys(newDeps).find((k) => k in currentDeps);
+          assert(
+            !duplicate,
+            `Dependency '${duplicate}' already added. ` +
+              `This assert ensures dependencies are created once. ` +
+              `Automatic deduplication would mask bugs.`,
+          );
+          return { ...currentDeps, ...newDeps };
+        });
         return self as unknown as Runner<D & E>;
       };
 
@@ -3238,7 +3244,7 @@ function pool<T, E>(
  *
  * @group Composition
  */
-export const FetchError = typed("FetchError", { error: Unknown });
+export const FetchError = /*#__PURE__*/ typed("FetchError", { error: Unknown });
 export interface FetchError extends InferType<typeof FetchError> {}
 
 /**
