@@ -10,9 +10,9 @@
   },
   "homepage": "https://evolu.dev",
   "type": "module",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/src/index.d.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/src/index.js"
   },
   "files": [
     "dist/**",
@@ -23,7 +23,9 @@
     "dev": "tsc",
     "build": "rimraf dist && tsc",
     "test": "vitest run",
-    "clean": "rimraf .turbo node_modules dist",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rimraf .turbo node_modules dist coverage",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {

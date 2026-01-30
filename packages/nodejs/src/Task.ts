@@ -73,10 +73,9 @@ const runMainInternal = <D>(main: MainTask<D>, deps?: D): void => {
     // TODO: Listen for global errors and route to run.console
 
     const result = await run(main);
-    if (!result.ok) return; // No need to handle abort.
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    await using _stack = result.value ?? undefined;
+    await using _stack = result.ok ? (result.value ?? undefined) : undefined;
 
     await run(
       callback(({ ok }) => {

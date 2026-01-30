@@ -51,6 +51,24 @@ describe("runMain", () => {
     process.emit("SIGINT");
   });
 
+  test("handles aborted runner", async () => {
+    let taskRan = false;
+    const taskCompleted = Promise.withResolvers<void>();
+
+    runMain(async (run) => {
+      taskRan = true;
+      // Dispose the runner, which triggers abort
+      await run[Symbol.asyncDispose]();
+      taskCompleted.resolve();
+      return ok();
+    });
+
+    await taskCompleted.promise;
+    expect(taskRan).toBe(true);
+    // No need to emit signal - the runMain should still complete
+    // because it waits for the callback which gets aborted
+  });
+
   test("disposes returned Disposable after signal", async () => {
     let disposed = false;
     const taskStarted = Promise.withResolvers<void>();
