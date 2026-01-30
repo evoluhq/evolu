@@ -14,6 +14,7 @@ import type { UnknownError } from "./Error.js";
 import { createUnknownError } from "./Error.js";
 import type { Result } from "./Result.js";
 import { err, ok, tryAsync, trySync } from "./Result.js";
+import type { Task } from "./Task.js";
 import type { SimpleName, Typed } from "./Type.js";
 import {
   Null,
@@ -93,7 +94,12 @@ export type SafeSql = string & Brand<"SafeSql">;
  * Note that Evolu can't support Int64 because expo-sqlite (and some others) do
  * not support it.
  */
-export const SqliteValue = union(Null, String, Number, Uint8Array);
+export const SqliteValue = /*#__PURE__*/ union(
+  Null,
+  String,
+  Number,
+  Uint8Array,
+);
 export type SqliteValue = typeof SqliteValue.Type;
 
 export const eqSqliteValue: Eq<SqliteValue> = (x, y) => {
@@ -146,11 +152,106 @@ export interface SqliteError extends Typed<"SqliteError"> {
 
 export type SqliteRow = Record<string, SqliteValue>;
 
-/**
- * Creates a fully featured {@link Sqlite} instance from a {@link SqliteDriver}
- * implementation.
- */
 export const createSqlite =
+  (
+    name: SimpleName,
+    options?: SqliteDriverOptions,
+  ): Task<Sqlite, SqliteError, CreateSqliteDriverDep & Partial<ConsoleDep>> =>
+  async (_, deps) =>
+    tryAsync(async () => {
+      const driver = await deps.createSqliteDriver(name, options);
+      let isDisposed = false;
+
+      const doRollback = () =>
+        trySync(() => {
+          deps.console?.log("[sql] rollback");
+          driver.exec(sql`rollback;`, true);
+        }, createSqliteError);
+
+      const sqlite: Sqlite = {
+        exec: (query) =>
+          trySync(
+            () => {
+              deps.console?.log("[sql]", { query });
+
+              const result = maybeLogSqliteQueryExecutionTime(query, () =>
+                driver.exec(query, isSqlMutation(query.sql)),
+              );
+
+              deps.console?.log("[sql]", { result });
+
+              return result as never;
+            },
+            (error): SqliteError => ({
+              type: "SqliteError",
+              error: createUnknownError(error),
+            }),
+          ),
+
+        transaction: (callback) => {
+          const transactionResult = trySync(() => {
+            deps.console?.log("[sql] begin");
+            driver.exec(sql`begin;`, true);
+
+            const result = callback();
+            if (!result.ok) return result;
+
+            deps.console?.log("[sql] commit");
+            driver.exec(sql`commit;`, true);
+
+            return result;
+          }, createSqliteError);
+
+          if (!transactionResult.ok) {
+            const rollback = doRollback();
+            if (!rollback.ok) {
+              deps.console?.log("[sql] rollback failed", rollback.error);
+              return err({
+                type: "SqliteError",
+                error: transactionResult.error.error,
+                rollbackError: rollback.error.error,
+              });
+            }
+            return transactionResult;
+          }
+
+          if (!transactionResult.value.ok) {
+            const rollback = doRollback();
+            if (!rollback.ok) {
+              deps.console?.log("[sql] rollback failed", rollback.error);
+              return err({
+                type: "SqliteError",
+                error: createUnknownError(transactionResult.value.error),
+                rollbackError: rollback.error.error,
+              });
+            }
+            return transactionResult.value;
+          }
+
+          return ok(transactionResult.value.value);
+        },
+
+        export: () =>
+          trySync(
+            () => driver.export(),
+            (error): SqliteError => ({
+              type: "SqliteError",
+              error: createUnknownError(error),
+            }),
+          ),
+
+        [Symbol.dispose]: () => {
+          if (isDisposed) return;
+          isDisposed = true;
+          driver[Symbol.dispose]();
+        },
+      };
+
+      return sqlite;
+    }, createSqliteError);
+
+/** Creates a {@link Sqlite} instance from a {@link SqliteDriver}. */
+export const createSqliteOld =
   (deps: CreateSqliteDriverDep & Partial<ConsoleDep>) =>
   async (
     name: SimpleName,
@@ -200,7 +301,6 @@ export const createSqlite =
             return result;
           }, createSqliteError);
 
-          // There was an SqliteError during begin, callback, or commit
           if (!transactionResult.ok) {
             const rollback = doRollback();
             if (!rollback.ok) {
@@ -214,7 +314,6 @@ export const createSqlite =
             return transactionResult;
           }
 
-          // Callback returned an error
           if (!transactionResult.value.ok) {
             const rollback = doRollback();
             if (!rollback.ok) {
@@ -535,7 +634,7 @@ const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
  * - Use {@link booleanToSqliteBoolean} and {@link sqliteBooleanToBoolean} for
  *   converting between JavaScript booleans and SQLite boolean values.
  */
-export const SqliteBoolean = union(0, 1);
+export const SqliteBoolean = /*#__PURE__*/ union(0, 1);
 export type SqliteBoolean = typeof SqliteBoolean.Type;
 
 /**

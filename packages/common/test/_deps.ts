@@ -1,3 +1,4 @@
+/* eslint-disable evolu/require-pure-annotation */
 import type { TimingSafeEqual } from "../src/Crypto.js";
 import { lazyTrue, lazyVoid } from "../src/Function.js";
 import {
@@ -15,7 +16,10 @@ import type {
   SqliteDriver,
   SqliteRow,
 } from "../src/Sqlite.js";
-import { createPreparedStatementsCache, createSqlite } from "../src/Sqlite.js";
+import {
+  createPreparedStatementsCache,
+  createSqliteOld,
+} from "../src/Sqlite.js";
 import { SimpleName } from "../src/Type.js";
 
 /**
@@ -68,7 +72,7 @@ export const testCreateSqliteDriver: CreateSqliteDriver = async () => {
 export const testSimpleName = SimpleName.orThrow("Test");
 
 export const testCreateSqlite = async (): Promise<Sqlite> => {
-  const sqlite = await createSqlite({
+  const sqlite = await createSqliteOld({
     createSqliteDriver: testCreateSqliteDriver,
   })(testSimpleName);
   return getOrThrow(sqlite);

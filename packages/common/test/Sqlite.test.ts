@@ -1,18 +1,18 @@
 import BetterSQLite from "better-sqlite3";
 import { existsSync, unlinkSync } from "fs";
 import { assert, describe, expect, test } from "vitest";
+import { testCreateConsole, type TestConsole } from "../src/Console.js";
 import { lazyVoid } from "../src/Function.js";
 import { err, getOrThrow } from "../src/Result.js";
-import { createSqlite, isSqlMutation, sql } from "../src/Sqlite.js";
+import { createSqliteOld, isSqlMutation, sql } from "../src/Sqlite.js";
 import type { SqliteDriver } from "../src/Sqlite.js";
 import { testCreateSqliteDriver, testSimpleName } from "./_deps.js";
 
-const createTestSqlite = async (consoleArgs?: Array<any>) => {
-  const sqlite = await createSqlite({
+const createTestSqlite = async (testConsole?: TestConsole) => {
+  const console = testConsole ?? testCreateConsole();
+  const sqlite = await createSqliteOld({
     createSqliteDriver: testCreateSqliteDriver,
-    console: {
-      log: (...args) => consoleArgs?.push(args),
-    } as Console,
+    console,
   })(testSimpleName, { memory: true });
   return getOrThrow(sqlite);
 };
@@ -29,8 +29,8 @@ test("basic DDL/DML works", async () => {
 });
 
 test("transaction fails and rolls back on SQL error", async () => {
-  const consoleArgs: Array<any> = [];
-  const sqlite = await createTestSqlite(consoleArgs);
+  const testConsole = testCreateConsole();
+  const sqlite = await createTestSqlite(testConsole);
   sqlite.exec(sql`create table a (data);`);
   const result = sqlite.transaction(() =>
     sqlite.exec(sql`insert into notexisting (data) values (${"foo"});`),
@@ -47,7 +47,8 @@ test("transaction fails and rolls back on SQL error", async () => {
       },
     }),
   );
-  expect(consoleArgs).toMatchInlineSnapshot(`
+  expect(testConsole.getEntriesSnapshot().map((e) => e.args))
+    .toMatchInlineSnapshot(`
     [
       [
         "[sql]",
@@ -89,8 +90,8 @@ test("transaction fails and rolls back on SQL error", async () => {
 });
 
 test("transaction fails and rolls back on callback error", async () => {
-  const consoleArgs: Array<any> = [];
-  const sqlite = await createTestSqlite(consoleArgs);
+  const testConsole = testCreateConsole();
+  const sqlite = await createTestSqlite(testConsole);
   sqlite.exec(sql`create table a (data);`);
   const result = sqlite.transaction(() =>
     err({ type: "CallbackError", message: "Something went wrong" }),
@@ -98,7 +99,8 @@ test("transaction fails and rolls back on callback error", async () => {
   expect(result).toEqual(
     err({ type: "CallbackError", message: "Something went wrong" }),
   );
-  expect(consoleArgs).toMatchInlineSnapshot(`
+  expect(testConsole.getEntriesSnapshot().map((e) => e.args))
+    .toMatchInlineSnapshot(`
     [
       [
         "[sql]",
@@ -175,7 +177,7 @@ test("transaction callback error and rollback fails", async () => {
     [Symbol.dispose]: lazyVoid,
   };
   const sqlite = getOrThrow(
-    await createSqlite({
+    await createSqliteOld({
       createSqliteDriver: () => Promise.resolve(driver),
     })(testSimpleName),
   );
