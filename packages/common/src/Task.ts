@@ -914,6 +914,25 @@ export class TaskDisposableStack<D = unknown> implements AsyncDisposable {
   /**
    * Registers a {@link Task} to run when the stack is disposed.
    *
+   * Deferred tasks run in LIFO order and are unabortable.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const task: Task<void> = async (run) => {
+   *   await using stack = run.stack();
+   *
+   *   stack.defer(() => {
+   *     console.log("cleanup");
+   *     return ok();
+   *   });
+   *
+   *   // ... do work
+   *   return ok();
+   * };
+   * // "cleanup" logs when stack is disposed
+   * ```
+   *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/defer
    */
   defer(onDisposeAsync: Task<void, any, D>): void {
@@ -924,6 +943,25 @@ export class TaskDisposableStack<D = unknown> implements AsyncDisposable {
    * Registers a disposable resource and returns it.
    *
    * Accepts either a direct value (sync) or a {@link Task} (async acquisition).
+   * Resources are disposed in LIFO order. Acquisition is unabortable.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const task: Task<void> = async (run) => {
+   *   await using stack = run.stack();
+   *
+   *   const db = await stack.use(createDatabase());
+   *   if (!db.ok) return db;
+   *
+   *   const conn = await stack.use(createConnection(db.value));
+   *   if (!conn.ok) return conn;
+   *
+   *   // Use conn.value...
+   *   return ok();
+   * };
+   * // conn and db disposed automatically in LIFO order
+   * ```
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/use
    */
