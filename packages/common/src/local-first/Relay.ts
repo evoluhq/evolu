@@ -10,9 +10,7 @@ import {
   isNonEmptyArray,
   mapArray,
 } from "../Array.js";
-import type { ConsoleConfig, ConsoleDep } from "../Console.js";
 import type { TimingSafeEqualDep } from "../Crypto.js";
-import type { Lazy } from "../Function.js";
 import { createInstances } from "../Instances.js";
 import type { MaybeAsync, MutexOld } from "../OldTask.js";
 import { createMutexOld, isAsync } from "../OldTask.js";
@@ -27,7 +25,6 @@ import {
   // OwnerTransport,
   OwnerWriteKey,
 } from "./Owner.js";
-import type { ProtocolInvalidDataError } from "./Protocol.js";
 import type {
   CreateBaseSqliteStorageConfig,
   EncryptedDbChange,
@@ -44,7 +41,7 @@ import {
 } from "./Storage.js";
 import { timestampToTimestampBytes } from "./Timestamp.js";
 
-export interface RelayConfig extends ConsoleConfig, StorageConfig {
+export interface RelayConfig extends StorageConfig {
   /**
    * The relay name.
    *
@@ -108,20 +105,14 @@ export interface RelayConfig extends ConsoleConfig, StorageConfig {
  * decentralization and infinite horizontal scalability with minimal
  * infrastructure.
  */
-export interface Relay extends Disposable {}
+export interface Relay extends AsyncDisposable {}
 
 export const createRelaySqliteStorage =
   (deps: SqliteStorageDeps & TimingSafeEqualDep) =>
   (config: CreateBaseSqliteStorageConfig): Storage => {
     const sqliteStorageBase = createBaseSqliteStorage(deps)(config);
 
-    /**
-     * Mutex instances are cached per OwnerId to prevent concurrent writes for
-     * the same owner. Instances are never evicted, causing a memory leak
-     * proportional to unique owner count. However, per-instance overhead should
-     * be small. Monitor production memory usage to determine if
-     * eviction/cleanup is needed.
-     */
+    /** Mutex instances cached per OwnerId to prevent concurrent writes. */
     const ownerMutexes = createInstances<OwnerId, MutexOld>();
 
     return {
@@ -188,6 +179,10 @@ export const createRelaySqliteStorage =
           timestamp: timestampToTimestampBytes(m.timestamp),
           change: m.change,
         }));
+
+        // ta fn uz async je, tak je to fuk
+        // ale jinej problem, jak mam pouzit teda ted task?
+        // writeMessages je teda task, jasny
 
         const result = await ownerMutexes
           .ensure(ownerId, createMutexOld)
@@ -366,128 +361,3 @@ export const createRelayStorageTables = (
 
   return ok();
 };
-
-export interface RelayLogger {
-  readonly started: (enableLogging: boolean, port: number) => void;
-  readonly storageError: (error: unknown) => void;
-  readonly upgradeSocketError: (error: Error) => void;
-  readonly invalidOrMissingOwnerIdInUrl: (url: string | undefined) => void;
-  readonly unauthorizedOwner: (ownerId: OwnerId) => void;
-  readonly connectionEstablished: (totalConnectionCount: number) => void;
-  readonly connectionWebSocketError: (error: Error) => void;
-  readonly relayOptionSubscribe: (
-    ownerId: OwnerId,
-    getSubscriberCount: Lazy<number>,
-  ) => void;
-  readonly relayOptionUnsubscribe: (
-    ownerId: OwnerId,
-    getSubscriberCount: Lazy<number>,
-  ) => void;
-  readonly relayOptionBroadcast: (
-    ownerId: OwnerId,
-    broadcastCount: number,
-    subscriberCount: number,
-  ) => void;
-  readonly messageLength: (messageLength: number) => void;
-  readonly applyProtocolMessageAsRelayError: (
-    error: ProtocolInvalidDataError,
-  ) => void;
-  readonly responseLength: (responseLength: number) => void;
-  readonly applyProtocolMessageAsRelayUnknownError: (error: unknown) => void;
-  readonly connectionClosed: (totalConnectionCount: number) => void;
-  readonly shuttingDown: () => void;
-  readonly webSocketServerDisposed: () => void;
-  readonly httpServerDisposed: () => void;
-}
-
-export const createRelayLogger = (deps: ConsoleDep): RelayLogger => ({
-  started: (enableLogging, port) => {
-    deps.console.enabled = true;
-    deps.console.log(`Evolu Relay started on port ${port}`);
-    deps.console.enabled = enableLogging;
-  },
-
-  storageError: (error) => {
-    deps.console.error("[relay]", "storage", error);
-  },
-
-  upgradeSocketError: (error) => {
-    deps.console.warn("[relay]", "socket error", { error });
-  },
-
-  invalidOrMissingOwnerIdInUrl: (url) => {
-    deps.console.warn("[relay]", "invalid or missing ownerId in URL", { url });
-  },
-
-  unauthorizedOwner: (ownerId) => {
-    deps.console.warn("[relay]", "unauthorized owner", { ownerId });
-  },
-
-  connectionEstablished: (totalConnectionCount) => {
-    deps.console.log("[relay]", "connection", { totalConnectionCount });
-  },
-
-  connectionWebSocketError: (error) => {
-    deps.console.error("[relay]", "error", { error });
-  },
-
-  relayOptionSubscribe: (ownerId, getSubscriberCount) => {
-    if (deps.console.enabled)
-      deps.console.log("[relay]", "subscribe", {
-        ownerId,
-        subscriberCount: getSubscriberCount(),
-      });
-  },
-
-  relayOptionUnsubscribe: (ownerId, getSubscriberCount) => {
-    if (deps.console.enabled)
-      deps.console.log("[relay]", "unsubscribe", {
-        ownerId,
-        subscriberCount: getSubscriberCount(),
-      });
-  },
-
-  relayOptionBroadcast: (ownerId, broadcastCount, totalSubscribers) => {
-    deps.console.log("[relay]", "broadcast", {
-      ownerId,
-      broadcastCount,
-      totalSubscribers,
-    });
-  },
-
-  messageLength: (messageLength) => {
-    deps.console.log("[relay]", "on message", { messageLength });
-  },
-
-  applyProtocolMessageAsRelayError: (error) => {
-    deps.console.error("[relay]", "applyProtocolMessageAsRelay", error);
-  },
-
-  responseLength: (responseLength) => {
-    deps.console.log("[relay]", "responseLength", { responseLength });
-  },
-
-  applyProtocolMessageAsRelayUnknownError: (error) => {
-    deps.console.error(
-      "[relay]",
-      "applyProtocolMessageAsRelayUnknownError",
-      error,
-    );
-  },
-
-  connectionClosed: (totalConnectionCount) => {
-    deps.console.log("[relay]", "close", { totalConnectionCount });
-  },
-
-  shuttingDown: () => {
-    deps.console.log("Shutting down Evolu Relay...");
-  },
-
-  webSocketServerDisposed: () => {
-    deps.console.log("Evolu Relay WebSocketServer disposed");
-  },
-
-  httpServerDisposed: () => {
-    deps.console.log("Evolu Relay HTTP server disposed");
-  },
-});

@@ -1,16 +1,16 @@
 import {
-  type ConsoleDep,
+  allResult,
+  callback,
   createRelation,
-  createRandom,
   createSqlite,
   type CreateSqliteDriverDep,
   isAsync,
   ok,
   OwnerId,
   type RandomDep,
-  type Result,
   SimpleName,
   type SqliteError,
+  type Task,
   type TimingSafeEqualDep,
   Uint8Array,
 } from "@evolu/common";
@@ -18,7 +18,6 @@ import {
   applyProtocolMessageAsRelay,
   type ApplyProtocolMessageAsRelayOptions,
   createBaseSqliteStorageTables,
-  createRelayLogger,
   createRelaySqliteStorage,
   createRelayStorageTables,
   defaultProtocolMessageMaxSize,
@@ -29,80 +28,77 @@ import {
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import { createBetterSqliteDriver } from "../BetterSqliteDriver.js";
-import { createTimingSafeEqual } from "../Crypto.js";
 
 export interface NodeJsRelayConfig extends RelayConfig {
   /** The port number for the HTTP server. */
   readonly port?: number;
 }
 
-/**
- * Creates an Evolu relay server.
- *
- * This implementation uses Node.js and better-sqlite3. Additional relay
- * implementations will be provided for other platforms (Bun, Deno, Cloudflare
- * Workers, Vercel Edge, etc.).
- */
+// /**
+//  * Creates an Evolu relay server.
+//  *
+//  * This implementation uses Node.js and better-sqlite3. Additional relay
+//  * implementations will be provided for other platforms (Bun, Deno, Cloudflare
+//  * Workers, Vercel Edge, etc.).
+//  */
+// export const createNodeJsRelay =
+//   (deps: ConsoleDep) =>
+//   (config: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> =>
+//     createNodeJsRelayWithSqliteDriver({
+//       ...deps,
+//       createSqliteDriver: createBetterSqliteDriver,
+//     })(config);
+
+// /**
+//  * Creates an Evolu relay server with a custom SQLite driver.
+//  *
+//  * Use this when you need to provide a different SQLite driver implementation.
+//  */
+// export const createNodeJsRelayWithSqliteDriver =
+//   (deps: ConsoleDep & CreateSqliteDriverDep) =>
+//   (config: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> =>
+//     createNodeJsRelayWithDeps({
+//       ...deps,
+//       random: createRandom(),
+//       timingSafeEqual: createTimingSafeEqual(),
+//     })(config);
+
 export const createNodeJsRelay =
-  (deps: ConsoleDep) =>
-  (config: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> =>
-    createNodeJsRelayWithSqliteDriver({
-      ...deps,
-      createSqliteDriver: createBetterSqliteDriver,
-    })(config);
-
-/**
- * Creates an Evolu relay server with a custom SQLite driver.
- *
- * Use this when you need to provide a different SQLite driver implementation
- * (e.g., using alternative SQLite libraries).
- */
-export const createNodeJsRelayWithSqliteDriver =
-  (deps: ConsoleDep & CreateSqliteDriverDep) =>
-  (config: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> =>
-    createNodeJsRelayWithDeps({
-      ...deps,
-      random: createRandom(),
-      timingSafeEqual: createTimingSafeEqual(),
-    })(config);
-
-const createNodeJsRelayWithDeps =
-  (deps: ConsoleDep & CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep) =>
-  async ({
+  ({
     port = 443,
     name = SimpleName.orThrow("evolu-relay"),
-    enableLogging = false,
     isOwnerAllowed,
     isOwnerWithinQuota,
-  }: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> => {
-    const log = createRelayLogger(deps);
-    log.started(enableLogging, port);
+  }: NodeJsRelayConfig): Task<
+    Relay,
+    SqliteError,
+    CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep
+  > =>
+  async (run, _deps) => {
+    await using stack = run.stack();
+    const console = run.console.child("relay");
 
     const dbFileExists = existsSync(`${name}.db`);
 
-    const sqlite = await createSqlite(deps)(name);
+    const sqlite = await stack.use(createSqlite(name));
     if (!sqlite.ok) return sqlite;
-
-    const depsWithSqlite = { ...deps, sqlite: sqlite.value };
+    const deps = { ..._deps, sqlite: sqlite.value };
 
     if (!dbFileExists) {
-      {
-        const result = createBaseSqliteStorageTables(depsWithSqlite);
-        if (!result.ok) return result;
-      }
-      {
-        const result = createRelayStorageTables(depsWithSqlite);
-        if (!result.ok) return result;
-      }
+      const result = allResult([
+        createBaseSqliteStorageTables(deps),
+        createRelayStorageTables(deps),
+      ]);
+      if (!result.ok) return result;
     }
 
-    const storage = createRelaySqliteStorage(depsWithSqlite)({
-      onStorageError: log.storageError,
+    const storage = createRelaySqliteStorage(deps)({
+      onStorageError: console.error,
       isOwnerWithinQuota,
     });
 
     const server = createServer();
+
     const wss = new WebSocketServer({
       maxPayload: defaultProtocolMessageMaxSize,
       noServer: true,
@@ -111,10 +107,11 @@ const createNodeJsRelayWithDeps =
     const ownerSocketRelation = createRelation<OwnerId, WebSocket>();
 
     server.on("upgrade", (request, socket, head) => {
-      socket.on("error", log.upgradeSocketError);
+      socket.on("error", console.debug);
 
       const completeUpgrade = () => {
-        socket.removeListener("error", log.upgradeSocketError);
+        socket.removeListener("error", console.debug);
+
         wss.handleUpgrade(request, socket, head, (ws) => {
           wss.emit("connection", ws, request);
         });
@@ -130,7 +127,7 @@ const createNodeJsRelayWithDeps =
       );
 
       if (!ownerId) {
-        log.invalidOrMissingOwnerIdInUrl(request.url);
+        console.debug("invalid or missing ownerId in URL", request.url);
         socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
         socket.destroy();
         return;
@@ -140,7 +137,7 @@ const createNodeJsRelayWithDeps =
         const result = isOwnerAllowed(ownerId);
         const isAllowed = isAsync(result) ? await result : result;
         if (!isAllowed) {
-          log.unauthorizedOwner(ownerId);
+          console.debug("unauthorized owner", ownerId);
           socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
           socket.destroy();
           return;
@@ -150,26 +147,24 @@ const createNodeJsRelayWithDeps =
     });
 
     wss.on("connection", (ws) => {
-      log.connectionEstablished(wss.clients.size);
-
-      ws.on("error", (error) => {
-        log.connectionWebSocketError(error);
-      });
+      console.debug("on connection", wss.clients.size);
 
       const options: ApplyProtocolMessageAsRelayOptions = {
         subscribe: (ownerId) => {
           ownerSocketRelation.add(ownerId, ws);
-          log.relayOptionSubscribe(
+          console.debug(
+            "subscribe",
             ownerId,
-            () => ownerSocketRelation.getB(ownerId)?.size ?? 0,
+            ownerSocketRelation.getB(ownerId)?.size ?? 0,
           );
         },
 
         unsubscribe: (ownerId) => {
           ownerSocketRelation.remove(ownerId, ws);
-          log.relayOptionUnsubscribe(
+          console.debug(
+            "unsubscribe",
             ownerId,
-            () => ownerSocketRelation.getB(ownerId)?.size ?? 0,
+            ownerSocketRelation.getB(ownerId)?.size ?? 0,
           );
         },
 
@@ -185,62 +180,85 @@ const createNodeJsRelayWithDeps =
             }
           }
 
-          log.relayOptionBroadcast(ownerId, broadcastCount, sockets.size);
+          console.debug("broadcast", ownerId, broadcastCount, sockets.size);
         },
       };
 
       ws.on("message", (message) => {
         if (!Uint8Array.is(message)) return;
-        log.messageLength(message.length);
 
+        // TODO: Task.
         applyProtocolMessageAsRelay({ storage })(message, options)
           .then((response) => {
             if (!response.ok) {
-              log.applyProtocolMessageAsRelayError(response.error);
+              console.error(response);
               return;
             }
             ws.send(response.value.message, { binary: true });
-            log.responseLength(response.value.message.length);
           })
-          .catch(log.applyProtocolMessageAsRelayUnknownError);
+          .catch(console.error);
       });
 
       ws.on("close", () => {
         ownerSocketRelation.deleteB(ws);
-        log.connectionClosed(wss.clients.size);
+        console.debug("ws close", wss.clients.size);
       });
     });
 
-    server.listen(port);
+    // Cleanup runs in LIFO order: clients → WebSocketServer → HTTP server
+    stack.defer(() => {
+      console.info("Shutdown complete");
+      return ok();
+    });
 
-    const dispose = () => {
-      log.shuttingDown();
+    stack.defer(
+      callback(({ ok }) => {
+        server.close(() => {
+          console.info("HTTP server closed");
+          ok();
+        });
+      }),
+    );
 
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.close(1000, "Evolu Relay shutting down");
+    stack.defer(
+      callback(({ ok }) => {
+        // wss.close() emits 'close' when all clients have disconnected
+        // https://github.com/websockets/ws/blob/master/doc/ws.md#serverclosecallback
+        wss.close(() => {
+          console.info("WebSocketServer closed");
+          ok();
+        });
+      }),
+    );
+
+    stack.defer(
+      callback(({ ok }) => {
+        console.info("Shutting down...");
+        for (const client of wss.clients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.close(1000, "Evolu Relay shutting down");
+          }
         }
-      });
+        ok();
+      }),
+    );
 
-      wss.close(() => {
-        log.webSocketServerDisposed();
-      });
+    server.listen(port);
+    console.info(`Started on port ${port}`);
 
-      server.close(() => {
-        log.httpServerDisposed();
-      });
-    };
-
-    let isDisposed = false;
-
-    const relay: Relay = {
-      [Symbol.dispose]: () => {
-        if (isDisposed) return;
-        isDisposed = true;
-        sqlite.value[Symbol.dispose]();
-        dispose();
-      },
-    };
-
-    return ok(relay);
+    return ok(stack.move());
   };
+
+// (_deps: ConsoleDep & CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep) =>
+//   async ({
+//     port = 443,
+//     name = SimpleName.orThrow("evolu-relay"),
+//     isOwnerAllowed,
+//     isOwnerWithinQuota,
+//   }: NodeJsRelayConfig): Promise<Result<Relay, SqliteError>> => {
+//     const run = createRunner({
+//       ..._deps,
+//       console: _deps.console.child("relay"),
+//     });
+
+//   };
