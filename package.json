@@ -11,7 +11,7 @@
     "test:watch": "turbo run test:watch",
     "start": "turbo start",
     "//lint": "No --cache: typescript-eslint doesn't recommend it due to cross-file dependencies",
-    "lint": "eslint",
+    "lint": "NODE_OPTIONS='--max-old-space-size-percentage=75' eslint",
     "biome": "biome check",
     "lint-monorepo": "pnpm dlx sherif@latest",
     "verify": "pnpm build && pnpm test && pnpm test:coverage && pnpm lint && pnpm biome && pnpm lint-monorepo && pnpm build:docs && pnpm vitest run scripts/typedoc-plugin-evolu.test.mts",
