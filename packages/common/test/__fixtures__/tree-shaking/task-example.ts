@@ -19,9 +19,9 @@ interface FetchError extends Typed<"FetchError"> {
 // A Task wrapping native fetch — adds abortability.
 const fetch =
   (url: string): Task<Response, FetchError, NativeFetchDep> =>
-  ({ signal }, deps) =>
+  ({ deps: { fetch }, signal }) =>
     tryAsync(
-      () => deps.fetch(url, { signal }),
+      () => fetch(url, { signal }),
       (error): FetchError | AbortError => {
         if (AbortError.is(error)) return error;
         return { type: "FetchError", error };
