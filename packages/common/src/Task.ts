@@ -25,13 +25,14 @@ import {
   isIterable,
   mapObject,
 } from "./Object.js";
-import type { Random, RandomDep } from "./Random.js";
+import type { Random, RandomDep, RandomNumber } from "./Random.js";
 import { createRandom } from "./Random.js";
 import { createRef, type Ref } from "./Ref.js";
 import type { Done, NextResult, Ok, Result } from "./Result.js";
 import { err, ok, tryAsync } from "./Result.js";
 import type { Schedule, ScheduleStep } from "./Schedule.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
+import type { createTestDeps } from "./Test.js";
 import type { Duration, Time, TimeDep } from "./Time.js";
 import { createTime, durationToMillis, Millis } from "./Time.js";
 import type { TracerConfigDep, TracerDep } from "./Tracer.js";
@@ -55,6 +56,7 @@ import type { isPromiseLike } from "./Types.js";
 import {
   type Awaitable,
   type Callback,
+  type CallbackWithCleanup,
   type Int1To100,
   type Mutable,
   type NewKeys,
@@ -75,7 +77,7 @@ import {
  *
  * Evolu implements structured concurrency with these types:
  *
- * - **{@link Task}** — a function that takes {@link Runner} and `deps`, returning
+ * - **{@link Task}** — a function that takes {@link Runner} and returns
  *   {@link Awaitable} (sync or async) {@link Result}
  * - **{@link Runner}** — runs tasks, creates {@link Fiber}s, monitors and aborts
  *   them
@@ -85,10 +87,6 @@ import {
  *
  * Evolu's structured concurrency core is minimal — one function with a few
  * flags and helper methods using native APIs.
- *
- * Task's `deps` argument is for dependency injection — dependencies are defined
- * as interfaces, wrapped to avoid clashes, and passed to every task
- * automatically by the runner.
  *
  * ### Example
  *
@@ -105,7 +103,7 @@ import {
  * // A Task wrapping native fetch — adds abortability.
  * const fetch =
  *   (url: string): Task<Response, FetchError, NativeFetchDep> =>
- *   ({ signal }, deps) =>
+ *   ({ deps, signal }) =>
  *     tryAsync(
  *       () => deps.fetch(url, { signal }),
  *       (error): FetchError | AbortError => {
@@ -119,7 +117,7 @@ import {
  *   fetch: globalThis.fetch.bind(globalThis),
  * };
  *
- * // Create runner with deps (passed to every task automatically).
+ * // Create runner with dependencies.
  * await using run = createRunner(deps);
  *
  * // Running a task returns a fiber that can be awaited.
@@ -154,7 +152,7 @@ import {
  * |            | {@link fetch}      | HTTP requests with abort handling   |
  *
  * Collection helpers run sequentially by default. Use {@link parallel} to run
- * tasks in parallel. Note helpers like {@link race} always run in parallel —
+ * tasks in parallel. Note helpers like {@link race} always run in parallel;
  * sequential execution wouldn't make sense for their semantics.
  *
  * ### Building a better fetch
@@ -214,6 +212,79 @@ import {
  * >();
  * ```
  *
+ * ## Dependency Injection
+ *
+ * Assumes familiarity with
+ * {@link https://www.evolu.dev/docs/dependency-injection | Evolu Pure DI}. Task
+ * DI is the same but without manually passing deps.
+ *
+ * Tasks declare dependencies via the `D` type parameter and access them via
+ * `run.deps`:
+ *
+ * ```ts
+ * const fetchUser =
+ *   (id: UserId): Task<User, FetchUserError, FetchDep> =>
+ *   async (run) => {
+ *     const { fetch } = run.deps;
+ *     // ...
+ *   };
+ * ```
+ *
+ * Provide dependencies when creating a runner:
+ *
+ * ```ts
+ * const deps: FetchDep = {
+ *   fetch: globalThis.fetch.bind(globalThis),
+ * };
+ *
+ * await using run = createRunner(deps);
+ * await run(fetchUser(123));
+ * ```
+ *
+ * For runtime-created dependencies, use {@link Runner.addDeps}.
+ *
+ * ### Built-in dependencies
+ *
+ * {@link createRunner} provides default {@link RunnerDeps} available to all tasks
+ * without declaring `D`:
+ *
+ * - {@link Console} — logging with hierarchical context via `child()`
+ * - {@link Time} — current time
+ * - {@link Random} — random number generation
+ * - {@link RandomBytes} — cryptographic random bytes
+ *
+ * For example, using `Console`:
+ *
+ * ```ts
+ * const myTask: Task<void> = async (run) => {
+ *   const { console } = run.deps;
+ *   console.log("started");
+ *   // ...
+ * };
+ * ```
+ *
+ * Custom Console with formatted output:
+ *
+ * ```ts
+ * const deps = {
+ *   console: createConsole({
+ *     formatEntry: createConsoleEntryFormatter({ time: createTime() })({
+ *       timestampFormat: "absolute",
+ *     }),
+ *   }),
+ * };
+ *
+ * await using run = createRunner(deps);
+ *
+ * const console = run.deps.console.child("main");
+ *
+ * console.log("started");
+ * // 21:20:25.588 [main] started
+ * ```
+ *
+ * For testing, use {@link createTestDeps} to get deterministic, controllable
+ * implementations of all RunnerDeps.
+ *
  * ## Resource management
  *
  * Evolu uses standard JavaScript
@@ -257,21 +328,25 @@ import {
  * While a unified sync/async API is technically possible — with
  * {@link isPromiseLike} detection and two-phase disposal (sync first, async if
  * needed, and a flag for callers) — Evolu prefers plain functions for sync code
- * because almost anything can be async anyway, and when we need sync, it's for
- * simplicity (no dependencies) and performance (zero abstraction).
+ * because most operations involve I/O, which is inherently async, and when we
+ * need sync, it's for simplicity (no dependencies) and performance (zero
+ * abstraction).
+ *
+ * Sync functions should be fast, so there's no need to monitor them. They
+ * should take values, not dependencies — following the
+ * {@link https://blog.ploeh.dk/2017/02/02/dependency-rejection/ | impure/pure/impure sandwich}
+ * pattern where impure code gathers data, pure functions process it, and impure
+ * code performs effects with the result. Sync functions taking deps often
+ * indicate a design that could be improved — for example, a function taking
+ * {@link Random} could instead accept {@link RandomNumber} as a value.
+ *
+ * Slow sync operations (parsing large JSON, sorting millions of items, complex
+ * cryptography) belong in workers. The async boundary to the worker is a
+ * {@link Task} with full monitoring — timeout, cancellation, tracing. The sync
+ * code inside the worker needs no monitoring; the async call to the worker
+ * provides it.
  *
  * ## FAQ
- *
- * ### Is `Task<T, E, D>` still Pure DI? Isn't Runner a DI container?
- *
- * Yes, it's still Pure DI. `D` is just a deps object passed as a normal
- * function argument. Instead of writing `task(deps)(args)` (curried DI), we
- * write `createRunner<AppDeps>(deps)` once and the runner passes `deps` to
- * every task as a second argument. This removes repetitive plumbing.
- *
- * ### What about runtime-created dependencies?
- *
- * Use {@link Runner.addDeps} to extend deps at runtime.
  *
  * ### Where is fork and join?
  *
@@ -284,7 +359,6 @@ import {
  */
 export type Task<T, E = never, D = unknown> = (
   run: Runner<D>,
-  deps: D,
 ) => Awaitable<Result<T, E | AbortError>>;
 
 /**
@@ -505,7 +579,9 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    *
    * // Spread to make any object disposable with Task
    * const connection = {
-   *   send: (data: Data) => { ... },
+   *   send: (data: Data) => {
+   *     //
+   *   },
    *   ...run.defer(async (run) => {
    *     await run(notifyPeers);
    *     return ok();
@@ -529,17 +605,8 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    */
   readonly stack: () => TaskDisposableStack<D>;
 
-  /** {@link Time}. */
-  readonly time: Time;
-
-  /** {@link Console}. */
-  readonly console: Console;
-
-  /** {@link Random}. */
-  readonly random: Random;
-
-  /** {@link RandomBytes}. */
-  readonly randomBytes: RandomBytes;
+  /** Returns the dependencies passed to {@link createRunner}. */
+  readonly deps: RunnerDeps & D;
 
   /**
    * @see {@link Concurrency}
@@ -565,13 +632,16 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    * // Reusable — config comes from outside (message, file, etc.)
    * type DbWorkerDeps = DbDep; // or DbDep & CacheDep & ...
    *
-   * const initDbWorker =
+   * const init =
    *   (config: Config): Task<void, InitError, CreateDbDep> =>
-   *   async (_run, deps) => {
-   *     const db = await _run(deps.createDb(config.connectionString));
+   *   async (_run) => {
+   *     const { createDb } = _run.deps;
+   *     await using stack = _run.stack();
+   *
+   *     const db = await stack.use(createDb(config.connectionString));
    *     if (!db.ok) return db;
    *
-   *     const run: Runner<DbWorkerDeps> = _run.addDeps({ db: db.value });
+   *     const run = _run.addDeps({ db: db.value });
    *
    *     await run(getUser(123));
    *     await run(insertUser(user));
@@ -600,9 +670,10 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    * };
    * ```
    *
-   * Dependencies are stored in a shared `Ref`, so `addDeps` propagates to all
-   * runners. The runtime assertion ensures dependencies are created once —
-   * automatic deduplication would mask buggy code.
+   * Dependencies are stored in a shared {@link Ref}, so `addDeps` propagates to
+   * all runners. The runtime assertion ensures dependencies are created once —
+   * automatic deduplication would mask poor design (dependencies should have a
+   * single, clear point of creation).
    */
   readonly addDeps: <E extends NewKeys<E, D>>(extraDeps: E) => Runner<D & E>;
 }
@@ -1132,8 +1203,6 @@ const defaultDeps: RunnerDeps = {
  * - {@link Random}
  * - {@link RandomBytes}
  *
- * Console logging is disabled by default.
- *
  * ### Example
  *
  * ```ts
@@ -1158,8 +1227,9 @@ const defaultDeps: RunnerDeps = {
  * // Task declares its dependencies via the D type parameter
  * const fetchUser =
  *   (id: string): Task<User, FetchError, ConfigDep> =>
- *   async (run, deps) => {
- *     const response = await fetch(`${deps.config.apiUrl}/users/${id}`);
+ *   async (run) => {
+ *     const { config } = run.deps;
+ *     const response = await fetch(`${config.apiUrl}/users/${id}`);
  *     // ...
  *   };
  *
@@ -1184,8 +1254,10 @@ const defaultDeps: RunnerDeps = {
  * @group Creating Runners
  */
 export function createRunner(): Runner<RunnerDeps>;
-/** With custom or partial dependencies (merged with defaults). */
+
+/** With custom dependencies merged into {@link RunnerDeps}. */
 export function createRunner<D>(deps: D): Runner<RunnerDeps & D>;
+
 export function createRunner<D>(deps?: D): Runner<RunnerDeps & D> {
   const mergedDeps = { ...defaultDeps, ...deps } as RunnerDeps & D;
   return createRunnerInternal(createRef(mergedDeps))();
@@ -1277,7 +1349,7 @@ const createRunnerInternal =
       }
 
       // Evolu polyfills `Promise.try`
-      const promise = Promise.try(task, runner, depsRef.get())
+      const promise = Promise.try(task, runner)
         .then((taskOutcome) => {
           const taskResult = runner.signal.aborted
             ? err(runner.signal.reason)
@@ -1358,11 +1430,7 @@ const createRunnerInternal =
       });
       run.stack = () => new TaskDisposableStack(self);
 
-      const deps = depsRef.get();
-      run.time = deps.time;
-      run.console = deps.console;
-      run.random = deps.random;
-      run.randomBytes = deps.randomBytes;
+      Object.defineProperty(run, "deps", { get: depsRef.get });
 
       run.concurrency =
         concurrencyBehavior ?? parent?.concurrency ?? defaultConcurrency;
@@ -1523,8 +1591,8 @@ export const unabortableMask = <T, E, D = unknown>(
     restore: <T2, E2>(task: Task<T2, E2, D>) => Task<T2, E2, D>,
   ) => Task<T, E, D>,
 ): Task<T, E, D> =>
-  unabortable((run, deps) =>
-    fn(abortBehavior(AbortMask.orThrow(decrement(run.abortMask))))(run, deps),
+  unabortable((run) =>
+    fn(abortBehavior(AbortMask.orThrow(decrement(run.abortMask))))(run),
   );
 
 const defaultConcurrency: Concurrency = 1;
@@ -1607,16 +1675,17 @@ export function parallel<T, E, D = unknown>(
  *
  * ```ts
  * const processLargeArray: Task<void, never> = async (run) => {
- *   let lastYield = run.time.now();
+ *   const { time } = run.deps;
+ *   let lastYield = time.now();
  *
  *   for (const item of largeArray) {
  *     processItem(item);
  *
  *     // Yield periodically to keep UI responsive
- *     if (run.time.now() - lastYield > msLongTask) {
+ *     if (time.now() - lastYield > msLongTask) {
  *       const r = await run(yieldNow);
  *       if (!r.ok) return r;
- *       lastYield = run.time.now();
+ *       lastYield = time.now();
  *     }
  *   }
  *
@@ -1674,7 +1743,7 @@ const yieldImpl: () => Promise<void> =
  * ```ts
  * // The sleep helper is implemented using callback:
  * const sleep = (duration: Duration): Task<void> =>
- *   callback(({ ok }, { time }) => {
+ *   callback(({ ok, deps: { time } }) => {
  *     const id = time.setTimeout(ok, durationToMillis(duration));
  *     return () => time.clearTimeout(id);
  *   });
@@ -1699,25 +1768,22 @@ const yieldImpl: () => Promise<void> =
  */
 export const callback =
   <T, E = never>(
-    fn: (
-      callbacks: {
-        readonly ok: (value: T) => void;
-        readonly err: (error: E) => void;
-        readonly signal: AbortSignal;
-      },
-      deps: RunnerDeps,
-    ) => void | (() => void),
+    callback: CallbackWithCleanup<{
+      ok: Callback<T>;
+      err: Callback<E>;
+      signal: AbortSignal;
+      deps: RunnerDeps;
+    }>,
   ): Task<T, E> =>
   (run) =>
     new Promise((resolve) => {
-      const cleanup = fn(
-        {
-          ok: (value) => resolve(ok(value)),
-          err: (error) => resolve(err(error)),
-          signal: run.signal,
-        },
-        run,
-      );
+      const cleanup = callback({
+        ok: (value) => resolve(ok(value)),
+        err: (error) => resolve(err(error)),
+        signal: run.signal,
+        deps: run.deps,
+      });
+
       run.onAbort((reason) => {
         if (cleanup) cleanup();
         resolve(err(createAbortError(reason)));
@@ -1741,7 +1807,7 @@ export const callback =
  * @group Composition
  */
 export const sleep = (duration: Duration): Task<void> =>
-  callback(({ ok }, { time }) => {
+  callback(({ ok, deps: { time } }) => {
     const id = time.setTimeout(ok, durationToMillis(duration));
     return () => time.clearTimeout(id);
   });
@@ -1987,7 +2053,7 @@ export const retry =
     }: RetryOptions<E, Output> = {},
   ): Task<T, RetryError<E>, D> =>
   async (run) => {
-    const step = schedule(run);
+    const step = schedule(run.deps);
     let attempt = minPositiveInt;
     let error: E | undefined;
 
@@ -2107,7 +2173,7 @@ export const repeat =
     }: RepeatOptions<T, Output> = {},
   ): Task<T, E, D> =>
   async (run) => {
-    const step = schedule(run);
+    const step = schedule(run.deps);
     let lastResult: Result<T, E>;
     let attempt = minPositiveInt;
 
@@ -2352,17 +2418,17 @@ export interface Semaphore extends Disposable {
  *
  * ```ts
  * await using run = createRunner();
- * run.console.enabled = true;
  *
  * const semaphore = createSemaphore(PositiveInt.orThrow(2));
  *
  * const fetchUser =
  *   (id: string): Task<string> =>
  *   async (run) => {
- *     run.console.log("[demo]", "start", id);
+ *     const { console } = run.deps;
+ *     console.log("[demo]", "start", id);
  *     const slept = await run(sleep("10ms"));
  *     if (!slept.ok) return slept;
- *     run.console.log("[demo]", "end", id);
+ *     console.log("[demo]", "end", id);
  *     return ok(`user:${id}`);
  *   };
  *
@@ -2486,6 +2552,34 @@ const semaphoreDisposedAbortError: AbortError = createAbortError(
  *
  * This is a specialized version of a {@link Semaphore} with a permit count of 1.
  *
+ * ### Example
+ *
+ * ```ts
+ * await using run = createRunner();
+ *
+ * const mutex = createMutex();
+ *
+ * const task =
+ *   (id: string): Task<void> =>
+ *   async (run) => {
+ *     const { console } = run.deps;
+ *     console.log("start", id);
+ *     await run(sleep("10ms"));
+ *     console.log("end", id);
+ *     return ok();
+ *   };
+ *
+ * await Promise.all([
+ *   run(mutex.withLock(task("1"))),
+ *   run(mutex.withLock(task("2"))),
+ * ]);
+ *
+ * // start 1
+ * // end 1
+ * // start 2
+ * // end 2
+ * ```
+ *
  * @group Concurrency Primitives
  */
 export interface Mutex extends Disposable {
@@ -2498,7 +2592,11 @@ export interface Mutex extends Disposable {
   readonly withLock: <T, E, D>(task: Task<T, E, D>) => Task<T, E, D>;
 }
 
-/** @group Concurrency Primitives */
+/**
+ * Creates a {@link Mutex}.
+ *
+ * @group Concurrency Primitives
+ */
 export const createMutex = (): Mutex => {
   const semaphore = createSemaphore(minPositiveInt);
 

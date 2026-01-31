@@ -157,10 +157,11 @@ export const createSqlite =
     name: SimpleName,
     options?: SqliteDriverOptions,
   ): Task<Sqlite, SqliteError, CreateSqliteDriverDep> =>
-  async (run, deps) =>
-    tryAsync(async () => {
-      const console = run.console.child("sql");
-      const driver = await deps.createSqliteDriver(name, options);
+  async (run) => {
+    const { createSqliteDriver } = run.deps;
+    const console = run.deps.console.child("sql");
+    return tryAsync(async () => {
+      const driver = await createSqliteDriver(name, options);
       let isDisposed = false;
 
       const doRollback = () =>
@@ -250,6 +251,7 @@ export const createSqlite =
 
       return sqlite;
     }, createSqliteError);
+  };
 
 /** Creates a {@link Sqlite} instance from a {@link SqliteDriver}. */
 export const createSqliteOld =

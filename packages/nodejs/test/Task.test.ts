@@ -46,8 +46,9 @@ describe("runMain", () => {
       readonly myValue: number;
     }
 
-    const main: MainTask<MyDep> = (_run, deps) => {
-      depsValue.resolve(deps.myValue);
+    const main: MainTask<MyDep> = (run) => {
+      const { myValue } = run.deps;
+      depsValue.resolve(myValue);
       return ok();
     };
 

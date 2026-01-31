@@ -53,6 +53,7 @@ import {
   map,
   MapAbortError,
   mapSettled,
+  parallel,
   race,
   RaceLostError,
   repeat,
@@ -65,7 +66,6 @@ import {
   TimeoutError,
   unabortable,
   unabortableMask,
-  parallel,
   yieldNow,
 } from "../src/Task.js";
 import { createTestDeps, createTestRunner } from "../src/Test.js";
@@ -235,28 +235,28 @@ describe("Runner", () => {
       const time = testCreateTime();
       await using run = createTestRunner({ time });
 
-      expect(run.time).toBe(time);
+      expect(run.deps.time).toBe(time);
     });
 
     test("exposes injected console", async () => {
       const console = testCreateConsole();
       await using run = createTestRunner({ console });
 
-      expect(run.console).toBe(console);
+      expect(run.deps.console).toBe(console);
     });
 
     test("exposes injected random", async () => {
       const random = testCreateRandom();
       await using run = createTestRunner({ random });
 
-      expect(run.random).toBe(random);
+      expect(run.deps.random).toBe(random);
     });
 
     test("exposes injected randomBytes", async () => {
       const deps = createTestDeps();
       await using run = createTestRunner(deps);
 
-      expect(run.randomBytes).toBe(deps.randomBytes);
+      expect(run.deps.randomBytes).toBe(deps.randomBytes);
     });
   });
 
@@ -276,8 +276,8 @@ describe("Runner", () => {
 
       const db = createDb();
 
-      const task: Task<string, never, DbDep> = (_, deps) =>
-        ok(deps.db.query("SELECT 1"));
+      const task: Task<string, never, DbDep> = (run) =>
+        ok(run.deps.db.query("SELECT 1"));
 
       const result = await run.addDeps({ db })(task);
 
@@ -290,11 +290,11 @@ describe("Runner", () => {
       const db = createDb();
       const run: Runner<DbDep> = _run.addDeps({ db });
 
-      const task1: Task<string, never, DbDep> = (_, deps) =>
-        ok(deps.db.query("SELECT 1"));
+      const task1: Task<string, never, DbDep> = (run) =>
+        ok(run.deps.db.query("SELECT 1"));
 
-      const task2: Task<string, never, DbDep> = (_, deps) =>
-        ok(deps.db.query("SELECT 2"));
+      const task2: Task<string, never, DbDep> = (run) =>
+        ok(run.deps.db.query("SELECT 2"));
 
       const result1 = await run(task1);
       const result2 = await run(task2);
@@ -314,8 +314,8 @@ describe("Runner", () => {
         return ok(`parent(${childResult.value})`);
       };
 
-      const childTask: Task<string, never, DbDep> = (_, deps) =>
-        ok(deps.db.query("child"));
+      const childTask: Task<string, never, DbDep> = (run) =>
+        ok(run.deps.db.query("child"));
 
       const result = await run.addDeps({ db })(parentTask);
 
@@ -332,8 +332,10 @@ describe("Runner", () => {
       const db = createDb();
       const cache = { get: () => "cache" };
 
-      const task: Task<string, never, DbDep & CacheDep> = (_, deps) =>
-        ok(`${deps.db.query("db")}-${deps.cache.get("")}`);
+      const task: Task<string, never, DbDep & CacheDep> = (run) => {
+        const { db, cache } = run.deps;
+        return ok(`${db.query("db")}-${cache.get("")}`);
+      };
 
       const result = await run.addDeps({ db, cache })(task);
 
@@ -380,8 +382,8 @@ describe("Runner", () => {
 
       const runWithDb: Runner<DbDep> = runWithBoth;
 
-      const task: Task<string, never, DbDep> = (_, deps) =>
-        ok(deps.db.query("SELECT 1"));
+      const task: Task<string, never, DbDep> = (run) =>
+        ok(run.deps.db.query("SELECT 1"));
 
       const result = await runWithDb(task);
 
@@ -1443,8 +1445,8 @@ describe("Fiber", () => {
 
       let receivedValue: string | undefined;
 
-      const daemonTask: Task<void, never, CustomDep> = (_, deps) => {
-        receivedValue = deps.custom.value;
+      const daemonTask: Task<void, never, CustomDep> = (run) => {
+        receivedValue = run.deps.custom.value;
         return ok();
       };
 
@@ -2738,7 +2740,7 @@ describe("callback", () => {
     const time = testCreateTime();
     await using run = createTestRunner({ time });
 
-    const task = callback<void>(({ ok }, { time }) => {
+    const task = callback<void>(({ ok, deps: { time } }) => {
       const id = time.setTimeout(ok, "100ms");
       return () => time.clearTimeout(id);
     });
@@ -3646,16 +3648,20 @@ describe("DI", () => {
   // Custom deps must extend RunnerDeps
   type AppDeps = RunnerDeps & HttpDep & DbDep;
 
-  // Tasks declare deps in type parameter D, receive as second arg
+  // Tasks declare deps in type parameter D, access via run.deps
   const fetchUser =
     (id: string): Task<string, never, HttpDep> =>
-    (run, deps) =>
-      run(deps.http.get(`/users/${id}`));
+    (run) => {
+      const { http } = run.deps;
+      return run(http.get(`/users/${id}`));
+    };
 
   const saveUser =
     (data: string): Task<void, never, DbDep> =>
-    (run, deps) =>
-      run(deps.db.save(data));
+    (run) => {
+      const { db } = run.deps;
+      return run(db.save(data));
+    };
 
   // Composition - deps flow through Runner automatically
   const syncUser =
@@ -3695,8 +3701,8 @@ describe("DI", () => {
     // Type is inferred from argument
     expectTypeOf(run).toEqualTypeOf<Runner<RunnerDeps & typeof customDeps>>();
 
-    const task: Task<string, never, ConfigDep> = (_run, deps) =>
-      ok(deps.config.apiUrl);
+    const task: Task<string, never, ConfigDep> = (run) =>
+      ok(run.deps.config.apiUrl);
 
     const result = await run(task);
 
@@ -3772,10 +3778,11 @@ describe("DI", () => {
         label: string,
         task: Task<T, E, D>,
       ): Task<T, E, D & LoggerDep> =>
-      async (run, deps) => {
-        deps.logger.log(`${label}: start`);
+      async (run) => {
+        const { logger } = run.deps;
+        logger.log(`${label}: start`);
         const result = await run(task);
-        deps.logger.log(`${label}: ${result.ok ? "ok" : "err"}`);
+        logger.log(`${label}: ${result.ok ? "ok" : "err"}`);
         return result;
       };
 
@@ -3868,8 +3875,10 @@ describe("DI", () => {
 
     const fetchUserWithError =
       (id: string): Task<string, NetworkError, HttpWithErrorDep> =>
-      (run, deps) =>
-        run(deps.http.get(`/users/${id}`));
+      (run) => {
+        const { http } = run.deps;
+        return run(http.get(`/users/${id}`));
+      };
 
     const result = await run(
       retry(fetchUserWithError("Alice"), take(3)(spaced("1ms"))),
@@ -6208,17 +6217,17 @@ describe("examples TODO", () => {
   describe("createSemaphore", () => {
     test("limits concurrency with sleep helper", async () => {
       await using run = createRunner();
-      // run.console.enabled = true;
 
       const semaphore = createSemaphore(2);
 
       const fetchUser =
         (id: string): Task<string> =>
         async (run) => {
-          run.console.log("[demo]", "start", id);
+          const { console } = run.deps;
+          console.log("[demo]", "start", id);
           const slept = await run(sleep("5ms"));
           if (!slept.ok) return slept;
-          run.console.log("[demo]", "end", id);
+          console.log("[demo]", "end", id);
           return ok(`user:${id}`);
         };
 
@@ -6241,16 +6250,17 @@ describe("examples TODO", () => {
       let processedCount = 0;
 
       const processLargeArray: Task<number> = async (run) => {
-        let lastYield = run.time.now();
+        const { time } = run.deps;
+        let lastYield = time.now();
 
         for (const item of largeArray) {
           processedCount += item;
 
           // Yield periodically to keep UI responsive
-          if (run.time.now() - lastYield > msLongTask) {
+          if (time.now() - lastYield > msLongTask) {
             const r = await run(yieldNow);
             if (!r.ok) return r;
-            lastYield = run.time.now();
+            lastYield = time.now();
           }
         }
 
@@ -6271,7 +6281,7 @@ describe("examples TODO", () => {
       // yield periodically so the recursion stays stack-safe.
       const processLargeCount =
         (count: number, index: number, sum: number): Task<number> =>
-        async (run, deps) => {
+        async (run) => {
           if (index >= count) return ok(sum);
 
           // Yield periodically to break synchronous call chains.
@@ -6281,11 +6291,7 @@ describe("examples TODO", () => {
           }
 
           // Direct tail-call: no fiber overhead, stack-safe thanks to yieldNow.
-          return await processLargeCount(
-            count,
-            index + 1,
-            sum + index,
-          )(run, deps);
+          return await processLargeCount(count, index + 1, sum + index)(run);
         };
 
       const count = 50_000;

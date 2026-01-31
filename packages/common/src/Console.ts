@@ -36,7 +36,7 @@ import {
  * ### Example
  *
  * ```ts
- * const console = run.console.child("relay");
+ * const console = run.deps.console.child("relay");
  *
  * console.info("Started on port", 443); // logs
  * console.debug("Connection details", conn); // filtered out (debug < info)

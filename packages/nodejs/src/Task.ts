@@ -27,11 +27,12 @@ import {
  * };
  *
  * runMain(deps)(async (run) => {
+ *   const console = run.deps.console.child("main");
  *   await using stack = run.stack();
  *
  *   const server = await stack.use(startServer({ port: 4000 }));
  *   if (!server.ok) {
- *     run.console.error(server.error);
+ *     console.error(server.error);
  *     return ok();
  *   }
  *
@@ -49,6 +50,7 @@ export const runMain =
   (main: MainTask<D>): void => {
     void (async () => {
       await using run = createRunner(deps);
+      const console = run.deps.console.child("process");
 
       /**
        * "The correct use of 'uncaughtException' is to perform synchronous
@@ -61,7 +63,7 @@ export const runMain =
        * We log and initiate graceful shutdown.
        */
       const handleError = (error: unknown): void => {
-        run.console.error(createUnknownError(error));
+        console.error(createUnknownError(error));
         // https://nodejs.org/api/process.html#processexitcode
         process.exitCode = 1;
         void run[Symbol.asyncDispose]();
