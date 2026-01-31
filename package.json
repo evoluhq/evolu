@@ -44,7 +44,7 @@
     "prettier-plugin-sql-cst": "^0.18.0",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "rimraf": "^6.1.2",
-    "turbo": "^2.7.5",
+    "turbo": "^2.8.1",
     "typedoc": "^0.28.16",
     "typedoc-plugin-markdown": "^4.9.0",
     "typescript": "^5.9.3",

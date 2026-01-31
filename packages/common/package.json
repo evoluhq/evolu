@@ -71,7 +71,7 @@
     "@vitest/coverage-v8": "^4.0.17",
     "better-sqlite3": "^12.6.2",
     "fast-check": "^4.5.3",
-    "playwright": "^1.57.0",
+    "playwright": "^1.58.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17",
     "webpack": "^5.98.0",

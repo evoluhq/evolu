@@ -47,7 +47,7 @@
     "remark-gfm": "^4.0.1",
     "remark-mdx": "^3.1.1",
     "rss": "^1.2.2",
-    "shiki": "^3.21.0",
+    "shiki": "^3.22.0",
     "simple-functional-loader": "^1.2.1",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
