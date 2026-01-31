@@ -24,7 +24,7 @@ This turns `db` into a [service locator](https://blog.ploeh.dk/2010/02/03/Servic
 
 The alternative is to pass dependencies explicitly to where they're needed. But where do we create and wire them together? In a [Composition Root](https://blog.ploeh.dk/2011/07/28/CompositionRoot/)—a single place (typically your app's entry point) where all dependencies are instantiated and composed. From there, dependencies flow down through function arguments.
 
-Some frameworks use sophisticated DI Containers (Inversion of Control containers) to manage dependencies automatically. Evolu prefers [Pure DI](https://blog.ploeh.dk/2014/06/10/pure-di/)—Dependency Injection using plain, idiomatic JavaScript without a container. All we need is a convention.
+This guide explains [Pure DI](https://blog.ploeh.dk/2014/06/10/pure-di/) conventions Evolu uses for sync code. For async code, see [Task dependency injection](/docs/api-reference/common/Task/type-aliases/Task#dependency-injection).
 
 Imagine we have a function that does something with time:
 
@@ -119,7 +119,7 @@ And we even haven’t yet addressed creating dependencies or making them optiona
 
 ## Example
 
-The example demonstrates a simple yet robust approach to Dependency Injection (DI) in TypeScript without relying on a DI Container. It calculates the time remaining until a given event timestamp using a `Time` dependency, with an optional `Logger` for logging. Dependencies are defined as interfaces (`Time` and `Logger`) and wrapped in distinct types (`TimeDep` and `LoggerDep`) to avoid clashes.
+The example calculates the time remaining until a given event timestamp using a `Time` dependency, with an optional `Logger` for logging. Dependencies are defined as interfaces (`Time` and `Logger`) and wrapped in distinct types (`TimeDep` and `LoggerDep`) to avoid clashes.
 
 Factory functions (`createTime` and `createLogger`) instantiate these dependencies, and they’re passed as a single deps object to the `timeUntilEvent` function. The use of `Partial<LoggerDep>` makes the logger optional.
 
@@ -175,8 +175,6 @@ const deps: TimeDep & Partial<LoggerDep> = {
 
 timeUntilEvent(deps)(1742329310767);
 ```
-
-As you can see, we don't need a framework with a DI Container (like Effect for example)—all we need is a convention.
 
 Note that passing `deps` manually isn't as verbose as you might think:
 
@@ -271,7 +269,7 @@ runApp(appDeps);
 <Note>
   Never export a global instance from a shared module (e.g., `export const
   logger = createLogger()`). Other modules might import it directly instead of
-  receiving it through proper DI, turning it into a [service
+  receiving it through proper dependency injection, turning it into a [service
   locator](https://blog.ploeh.dk/2010/02/03/ServiceLocatorisanAnti-Pattern/)—a
   pattern that's hard to test and refactor. Creating instances at module scope
   is fine in the [Composition
@@ -487,5 +485,3 @@ By hiding the generic, the `Storage` interface becomes implementation-agnostic. 
 - **Decoupling:** Code remains agnostic to underlying implementation (SQLite, IndexedDB, in-memory, etc.)
 - **Simplicity:** Consumers don't need to know implementation-specific types
 - **Testability:** Easy to mock without matching generic parameters
-
-See also [Error Handling](#error-handling) for related guidance on hiding implementation errors.
