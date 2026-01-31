@@ -28,6 +28,7 @@ const deps = {
 };
 
 runMain(deps)(async (run) => {
+  const console = run.deps.console.child("main");
   await using stack = run.stack();
 
   const relay = await stack.use(
@@ -45,7 +46,7 @@ runMain(deps)(async (run) => {
   );
 
   if (!relay.ok) {
-    run.console.error(relay.error);
+    console.error(relay.error);
     return ok();
   }
 
