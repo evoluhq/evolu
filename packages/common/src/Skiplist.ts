@@ -1,5 +1,5 @@
 /**
- * Skiplist level generation for probabilistic data structures.
+ * Skiplist data structure with probabilistic level generation.
  *
  * @module
  */
