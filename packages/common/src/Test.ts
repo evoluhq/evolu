@@ -23,7 +23,7 @@ export type TestDeps = ConsoleDep &
   TimeDep;
 
 /**
- * Creates test deps for proper isolation.
+ * Creates test dependencies for proper isolation.
  *
  * Each call creates fresh instances, so tests don't share state.
  *
@@ -31,7 +31,7 @@ export type TestDeps = ConsoleDep &
  *
  * ```ts
  * test("my test", async () => {
- *   const deps = testCreateDeps();
+ *   const deps = createTestDeps();
  *   await using run = testCreateRunner(deps);
  *
  *   const fiber = run(sleep("1s"));
