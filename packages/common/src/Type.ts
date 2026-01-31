@@ -45,12 +45,6 @@ import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
  * Evolu Type supports [Standard Schema](https://standardschema.dev/) for
  * interoperability with 40+ validation-compatible tools and frameworks.
  *
- * ### Example
- *
- * Examples are shown below. For a complete list of all types and utilities
- * Evolu Type provides, see the [API
- * reference](/docs/api-reference/common/Type).
- *
  * ## Base types
  *
  * ```ts
@@ -231,9 +225,9 @@ import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
  *
  * ### How do I create a generic interface like `FooState<T>`?
  *
- * TypeScript's {@link InferType} extracts a concrete type, not a generic one.
- * You cannot write `interface FooState<T> extends InferType<typeof
- * fooState<T>>` because `InferType` needs a concrete Type instance.
+ * TypeScript's {@link InferType} extracts a concrete type, not a generic one. We
+ * cannot write `interface FooState<T> extends InferType<typeof fooState<T>>`
+ * because `InferType` needs a concrete Type instance.
  *
  * The recommended approach is to define the generic interface manually, then
  * create a Type factory that produces structurally compatible Types:
