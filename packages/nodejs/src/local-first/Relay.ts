@@ -65,7 +65,7 @@ export const createNodeJsRelayBetterSqliteDeps = (): CreateSqliteDriverDep &
  *
  *   const relay = await stack.use(createNodeJsRelay({ port: 4000 }));
  *   if (!relay.ok) {
- *     run.console.error(relay.error);
+ *     run.deps.console.error(relay.error);
  *     return ok();
  *   }
  *
@@ -84,15 +84,15 @@ export const createNodeJsRelay =
     SqliteError,
     CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep
   > =>
-  async (run, _deps) => {
-    await using stack = run.stack();
-    const console = run.console.child("relay");
+  async (_run) => {
+    await using stack = _run.stack();
+    const console = _run.deps.console.child("relay");
 
     const dbFileExists = existsSync(`${name}.db`);
 
     const sqlite = await stack.use(createSqlite(name));
     if (!sqlite.ok) return sqlite;
-    const deps = { ..._deps, sqlite: sqlite.value };
+    const deps = { ..._run.deps, sqlite: sqlite.value };
 
     if (!dbFileExists) {
       const result = allResult([
@@ -107,13 +107,13 @@ export const createNodeJsRelay =
       isOwnerWithinQuota,
     });
 
-    const server = createServer();
+    const run = _run.addDeps({ storage });
 
+    const server = createServer();
     const wss = new WebSocketServer({
       maxPayload: defaultProtocolMessageMaxSize,
       noServer: true,
     });
-
     const ownerSocketRelation = createRelation<OwnerId, WebSocket>();
 
     server.on("upgrade", (request, socket, head) => {
@@ -197,16 +197,16 @@ export const createNodeJsRelay =
       ws.on("message", (message) => {
         if (!Uint8Array.is(message)) return;
 
-        // TODO: Task.
-        applyProtocolMessageAsRelay({ storage })(message, options)
-          .then((response) => {
-            if (!response.ok) {
-              console.error(response);
-              return;
-            }
-            ws.send(response.value.message, { binary: true });
-          })
-          .catch(console.error);
+        void (async () => {
+          const response = await run(
+            applyProtocolMessageAsRelay(message, options),
+          );
+          if (!response.ok) {
+            console.error(response);
+            return;
+          }
+          ws.send(response.value.message, { binary: true });
+        })();
       });
 
       ws.on("close", () => {

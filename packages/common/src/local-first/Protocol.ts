@@ -205,6 +205,7 @@ import { computeBalancedBuckets } from "../Number.js";
 import { createRecord, objectToEntries } from "../Object.js";
 import { err, ok, type Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
+import type { Task } from "../Task.js";
 import { Millis } from "../Time.js";
 import {
   Base64Url,
@@ -317,7 +318,10 @@ export const defaultProtocolMessageMaxSize =
  * {@link defaultProtocolMessageMaxSize}, maintaining compatibility between all
  * clients and relays.
  */
-export const ProtocolMessageRangesMaxSize = /*#__PURE__*/ between(3_000, 100_000)(Int);
+export const ProtocolMessageRangesMaxSize = /*#__PURE__*/ between(
+  3_000,
+  100_000,
+)(Int);
 export type ProtocolMessageRangesMaxSize =
   typeof ProtocolMessageRangesMaxSize.Type;
 
@@ -906,21 +910,21 @@ export type ApplyProtocolMessageAsClientResult =
   | ApplyProtocolMessageAsClientBroadcast;
 
 export const applyProtocolMessageAsClient =
-  (deps: StorageDep) =>
-  async (
+  (
     inputMessage: Uint8Array,
     options: ApplyProtocolMessageAsClientOptions = {},
-  ): Promise<
-    Result<
-      ApplyProtocolMessageAsClientResult,
-      | ProtocolInvalidDataError
-      | ProtocolSyncError
-      | ProtocolVersionError
-      | ProtocolWriteError
-      | ProtocolWriteKeyError
-      | ProtocolQuotaError
-    >
-  > => {
+  ): Task<
+    ApplyProtocolMessageAsClientResult,
+    | ProtocolInvalidDataError
+    | ProtocolSyncError
+    | ProtocolVersionError
+    | ProtocolWriteError
+    | ProtocolWriteKeyError
+    | ProtocolQuotaError,
+    StorageDep
+  > =>
+  async (run) => {
+    const { storage } = run.deps;
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
@@ -978,7 +982,7 @@ export const applyProtocolMessageAsClient =
       const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
       if (isNonEmptyArray(messages)) {
-        const result = await deps.storage.writeMessages(ownerIdBytes, messages);
+        const result = await run(storage.writeMessages(ownerIdBytes, messages));
         // Errors are handled by the Storage. Here we just stop syncing.
         if (!result.ok) return ok({ type: "no-response" });
       }
@@ -1009,7 +1013,7 @@ export const applyProtocolMessageAsClient =
         rangesMaxSize: options.rangesMaxSize,
       });
 
-      const result = sync(deps)(ranges, output, ownerIdBytes);
+      const result = sync(run.deps)(ranges, output, ownerIdBytes);
 
       // Client sync error (handled via Storage) or no changes.
       if (!result.ok || !result.value) {
@@ -1054,15 +1058,18 @@ export interface ApplyProtocolMessageAsRelayResult extends Typed<"response"> {
 }
 
 export const applyProtocolMessageAsRelay =
-  (deps: StorageDep) =>
-  async (
+  (
     inputMessage: Uint8Array,
     options: ApplyProtocolMessageAsRelayOptions = {},
     /** For tests only. */
     version = protocolVersion,
-  ): Promise<
-    Result<ApplyProtocolMessageAsRelayResult, ProtocolInvalidDataError>
-  > => {
+  ): Task<
+    ApplyProtocolMessageAsRelayResult,
+    ProtocolInvalidDataError,
+    StorageDep
+  > =>
+  async (run) => {
+    const { storage } = run.deps;
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
@@ -1103,7 +1110,7 @@ export const applyProtocolMessageAsRelay =
       }
 
       if (writeKey) {
-        const isValid = deps.storage.validateWriteKey(ownerIdBytes, writeKey);
+        const isValid = storage.validateWriteKey(ownerIdBytes, writeKey);
         if (!isValid) {
           return ok({
             type: "response",
@@ -1128,7 +1135,7 @@ export const applyProtocolMessageAsRelay =
           });
         }
 
-        const result = await deps.storage.writeMessages(ownerIdBytes, messages);
+        const result = await run(storage.writeMessages(ownerIdBytes, messages));
 
         if (!result.ok) {
           const errorCode =
@@ -1188,7 +1195,7 @@ export const applyProtocolMessageAsRelay =
         return ok({ type: "response", message: output.unwrap() });
       }
 
-      const result = sync(deps)(ranges, output, ownerIdBytes);
+      const result = sync(run.deps)(ranges, output, ownerIdBytes);
 
       const message = result.ok
         ? output.unwrap()

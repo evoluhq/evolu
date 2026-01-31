@@ -12,12 +12,14 @@ import {
 } from "../Array.js";
 import type { TimingSafeEqualDep } from "../Crypto.js";
 import { createInstances } from "../Instances.js";
-import type { MaybeAsync, MutexOld } from "../OldTask.js";
-import { createMutexOld, isAsync } from "../OldTask.js";
+import type { MaybeAsync } from "../OldTask.js";
+import { isAsync } from "../OldTask.js";
 import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { SqliteDep, SqliteError } from "../Sqlite.js";
 import { sql } from "../Sqlite.js";
+import type { Mutex } from "../Task.js";
+import { createMutex } from "../Task.js";
 import { PositiveInt, SimpleName } from "../Type.js";
 import {
   OwnerId,
@@ -113,7 +115,7 @@ export const createRelaySqliteStorage =
     const sqliteStorageBase = createBaseSqliteStorage(deps)(config);
 
     /** Mutex instances cached per OwnerId to prevent concurrent writes. */
-    const ownerMutexes = createInstances<OwnerId, MutexOld>();
+    const ownerMutexes = createInstances<OwnerId, Mutex>();
 
     return {
       ...sqliteStorageBase,
@@ -173,101 +175,110 @@ export const createRelaySqliteStorage =
         return true;
       },
 
-      writeMessages: async (ownerIdBytes, messages) => {
+      writeMessages: (ownerIdBytes, messages) => async (run) => {
         const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
         const messagesWithTimestampBytes = mapArray(messages, (m) => ({
           timestamp: timestampToTimestampBytes(m.timestamp),
           change: m.change,
         }));
 
-        // ta fn uz async je, tak je to fuk
-        // ale jinej problem, jak mam pouzit teda ted task?
-        // writeMessages je teda task, jasny
+        const result = await run(
+          ownerMutexes
+            .ensure(ownerId, createMutex)
+            .withLock(
+              async (): Promise<
+                Result<void, SqliteError | StorageQuotaError>
+              > => {
+                const existingTimestampsResult =
+                  sqliteStorageBase.getExistingTimestamps(
+                    ownerIdBytes,
+                    mapArray(messagesWithTimestampBytes, (m) => m.timestamp),
+                  );
+                if (!existingTimestampsResult.ok)
+                  return existingTimestampsResult;
 
-        const result = await ownerMutexes
-          .ensure(ownerId, createMutexOld)
-          .withLock<void, SqliteError | StorageQuotaError>(async () => {
-            const existingTimestampsResult =
-              sqliteStorageBase.getExistingTimestamps(
-                ownerIdBytes,
-                mapArray(messagesWithTimestampBytes, (m) => m.timestamp),
-              );
-            if (!existingTimestampsResult.ok) return existingTimestampsResult;
+                const existingTimestampsSet = new Set(
+                  existingTimestampsResult.value.map((t) => t.toString()),
+                );
+                const newMessages = filterArray(
+                  messagesWithTimestampBytes,
+                  (m) => !existingTimestampsSet.has(m.timestamp.toString()),
+                );
 
-            const existingTimestampsSet = new Set(
-              existingTimestampsResult.value.map((t) => t.toString()),
-            );
-            const newMessages = filterArray(
-              messagesWithTimestampBytes,
-              (m) => !existingTimestampsSet.has(m.timestamp.toString()),
-            );
+                // Nothing to write
+                if (!isNonEmptyArray(newMessages)) {
+                  return ok();
+                }
 
-            // Nothing to write
-            if (!isNonEmptyArray(newMessages)) {
-              return ok();
-            }
+                const usage = getOwnerUsage(deps)(
+                  ownerIdBytes,
+                  firstInArray(newMessages).timestamp,
+                );
+                if (!usage.ok) return usage;
 
-            const usage = getOwnerUsage(deps)(
-              ownerIdBytes,
-              firstInArray(newMessages).timestamp,
-            );
-            if (!usage.ok) return usage;
+                const { storedBytes } = usage.value;
 
-            const { storedBytes } = usage.value;
+                const incomingBytes = newMessages.reduce(
+                  (sum, m) => sum + m.change.length,
+                  0,
+                );
+                const newStoredBytes = PositiveInt.orThrow(
+                  (storedBytes ?? 0) + incomingBytes,
+                );
 
-            const incomingBytes = newMessages.reduce(
-              (sum, m) => sum + m.change.length,
-              0,
-            );
-            const newStoredBytes = PositiveInt.orThrow(
-              (storedBytes ?? 0) + incomingBytes,
-            );
+                const quotaResult = config.isOwnerWithinQuota(
+                  ownerId,
+                  newStoredBytes,
+                );
+                const isWithinQuota = isAsync(quotaResult)
+                  ? await quotaResult
+                  : quotaResult;
+                if (!isWithinQuota) {
+                  return err({ type: "StorageQuotaError", ownerId });
+                }
 
-            const result = config.isOwnerWithinQuota(ownerId, newStoredBytes);
-            const isWithinQuota = isAsync(result) ? await result : result;
-            if (!isWithinQuota) {
-              return err({ type: "StorageQuotaError", ownerId });
-            }
+                let { firstTimestamp, lastTimestamp } = usage.value;
 
-            let { firstTimestamp, lastTimestamp } = usage.value;
+                return deps.sqlite.transaction(() => {
+                  for (const { timestamp, change } of newMessages) {
+                    let strategy;
+                    [strategy, firstTimestamp, lastTimestamp] =
+                      getTimestampInsertStrategy(
+                        timestamp,
+                        firstTimestamp,
+                        lastTimestamp,
+                      );
 
-            return deps.sqlite.transaction(() => {
-              for (const { timestamp, change } of newMessages) {
-                let strategy;
-                [strategy, firstTimestamp, lastTimestamp] =
-                  getTimestampInsertStrategy(
-                    timestamp,
+                    {
+                      const result = sqliteStorageBase.insertTimestamp(
+                        ownerIdBytes,
+                        timestamp,
+                        strategy,
+                      );
+                      if (!result.ok) return result;
+                    }
+
+                    {
+                      const result = deps.sqlite.exec(sql`
+                        insert into evolu_message
+                          ("ownerId", "timestamp", "change")
+                        values (${ownerIdBytes}, ${timestamp}, ${change})
+                        on conflict do nothing;
+                      `);
+                      if (!result.ok) return result;
+                    }
+                  }
+
+                  return updateOwnerUsage(deps)(
+                    ownerIdBytes,
+                    newStoredBytes,
                     firstTimestamp,
                     lastTimestamp,
                   );
-
-                {
-                  const result = sqliteStorageBase.insertTimestamp(
-                    ownerIdBytes,
-                    timestamp,
-                    strategy,
-                  );
-                  if (!result.ok) return result;
-                }
-
-                {
-                  const result = deps.sqlite.exec(sql`
-                    insert into evolu_message ("ownerId", "timestamp", "change")
-                    values (${ownerIdBytes}, ${timestamp}, ${change})
-                    on conflict do nothing;
-                  `);
-                  if (!result.ok) return result;
-                }
-              }
-
-              return updateOwnerUsage(deps)(
-                ownerIdBytes,
-                newStoredBytes,
-                firstTimestamp,
-                lastTimestamp,
-              );
-            });
-          })();
+                });
+              },
+            ),
+        );
 
         if (!result.ok && result.error.type !== "AbortError") {
           switch (result.error.type) {

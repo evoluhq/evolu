@@ -11,13 +11,13 @@ import { assert } from "../Assert.js";
 import type { Brand } from "../Brand.js";
 import { concatBytes } from "../Buffer.js";
 import { decrement } from "../Number.js";
-import type { MaybeAsync } from "../OldTask.js";
 import type { RandomDep } from "../Random.js";
 import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { SqliteDep, SqliteError } from "../Sqlite.js";
 import { sql, SqliteValue } from "../Sqlite.js";
-import type { InferType, Int64String, TypeError, Typed } from "../Type.js";
+import type { Task } from "../Task.js";
+import type { InferType, Int64String, Typed, TypeError } from "../Type.js";
 import {
   Boolean,
   brand,
@@ -29,6 +29,7 @@ import {
   record,
   String,
 } from "../Type.js";
+import type { Awaitable } from "../Types.js";
 import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.js";
 import { OwnerId, OwnerWriteKey } from "./Owner.js";
 import { systemColumnsWithId } from "./Schema.js";
@@ -41,7 +42,7 @@ export interface StorageConfig {
    *
    * The callback receives the {@link OwnerId} and the total bytes that would be
    * stored after the write (current stored bytes plus incoming bytes), and
-   * returns a {@link MaybeAsync} boolean: `true` to allow the write, or `false`
+   * returns a {@link Awaitable} boolean: `true` to allow the write, or `false`
    * to deny it due to quota limits.
    *
    * The callback can be synchronous (for SQLite or in-memory checks) or
@@ -67,7 +68,7 @@ export interface StorageConfig {
   readonly isOwnerWithinQuota: (
     ownerId: OwnerId,
     requiredBytes: PositiveInt,
-  ) => MaybeAsync<boolean>;
+  ) => Awaitable<boolean>;
 }
 
 /**
@@ -148,7 +149,7 @@ export interface Storage {
   readonly writeMessages: (
     ownerIdBytes: OwnerIdBytes,
     messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
-  ) => MaybeAsync<Result<void, StorageWriteError | StorageQuotaError>>;
+  ) => Task<void, StorageWriteError | StorageQuotaError>;
 
   /** Read encrypted {@link DbChange}s from storage. */
   readonly readDbChange: (

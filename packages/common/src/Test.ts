@@ -80,13 +80,11 @@ export const testCreateDeps = (options?: {
  * ```
  */
 export function testCreateRunner(): Runner<TestDeps>;
-/** With custom dependencies. */
-export function testCreateRunner<D extends TestDeps>(
-  deps: Partial<TestDeps> & Partial<RunnerConfigDep> & Omit<D, keyof TestDeps>,
-): Runner<D>;
-export function testCreateRunner<D extends TestDeps>(
-  deps?: Partial<TestDeps> & Partial<RunnerConfigDep> & Omit<D, keyof TestDeps>,
-): Runner<D> {
+
+/** With custom dependencies merged into {@link TestDeps}. */
+export function testCreateRunner<D>(deps: D): Runner<TestDeps & D>;
+
+export function testCreateRunner<D>(deps?: D): Runner<TestDeps & D> {
   const defaults = testCreateDeps();
-  return createRunner<D>({ ...defaults, ...deps } as D);
+  return createRunner<TestDeps & D>({ ...defaults, ...deps } as TestDeps & D);
 }

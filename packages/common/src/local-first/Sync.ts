@@ -14,11 +14,8 @@ import type {
   RandomBytesDep,
 } from "../Crypto.js";
 import type { UnknownError } from "../Error.js";
-import { createUnknownError } from "../Error.js";
 import { lazyFalse, lazyTrue } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
-import type { AbortErrorOld } from "../OldTask.js";
-import { createMutexOld } from "../OldTask.js";
 import type { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
 import type { Result } from "../Result.js";
@@ -31,6 +28,7 @@ import {
   sqliteBooleanToBoolean,
   SqliteValue,
 } from "../Sqlite.js";
+import { createMutex } from "../Task.js";
 import type { Millis, TimeDep } from "../Time.js";
 import { millisToDateIso } from "../Time.js";
 import type { Typed } from "../Type.js";
@@ -55,7 +53,6 @@ import type {
   ProtocolTimestampMismatchError,
 } from "./Protocol.js";
 import {
-  applyProtocolMessageAsClient,
   createProtocolMessageForSync,
   createProtocolMessageForUnsubscribe,
   createProtocolMessageFromCrdtMessages,
@@ -244,31 +241,31 @@ export const createSync =
             message: input,
           });
 
-          applyProtocolMessageAsClient({ storage })(input, {
-            // No write key, no sync (for a case when an owner was unused).
-            getWriteKey: (ownerId) => getSyncOwner(ownerId)?.writeKey ?? null,
-          })
-            .then((message) => {
-              if (!message.ok) {
-                config.onError(message.error);
-                return;
-              }
+          // applyProtocolMessageAsClient({ storage })(input, {
+          //   // No write key, no sync (for a case when an owner was unused).
+          //   getWriteKey: (ownerId) => getSyncOwner(ownerId)?.writeKey ?? null,
+          // })
+          //   .then((message) => {
+          //     if (!message.ok) {
+          //       config.onError(message.error);
+          //       return;
+          //     }
 
-              switch (message.value.type) {
-                case "response":
-                  webSocket.send(message.value.message);
-                  break;
-                case "no-response":
-                  // Sync complete, no response needed
-                  break;
-                case "broadcast":
-                  // This was a broadcast message, don't affect sync counter
-                  break;
-              }
-            })
-            .catch((error: unknown) => {
-              config.onError(createUnknownError(error));
-            });
+          //     switch (message.value.type) {
+          //       case "response":
+          //         webSocket.send(message.value.message);
+          //         break;
+          //       case "no-response":
+          //         // Sync complete, no response needed
+          //         break;
+          //       case "broadcast":
+          //         // This was a broadcast message, don't affect sync counter
+          //         break;
+          //     }
+          //   })
+          //   .catch((error: unknown) => {
+          //     config.onError(createUnknownError(error));
+          //   });
         },
       });
     };
@@ -475,8 +472,8 @@ const createClientStorage =
       isOwnerWithinQuota: lazyTrue, // Clients don't have quota limits
     });
 
-    // TODO: Mutex per OwnerId
-    const mutex = createMutexOld();
+    // TODO: Mutex per OwnerId like in Relay to support more owners.
+    const mutex = createMutex();
 
     const storage: ClientStorage = {
       ...sqliteStorageBase,
@@ -485,76 +482,77 @@ const createClientStorage =
       validateWriteKey: lazyFalse,
       setWriteKey: lazyFalse,
 
-      writeMessages: async (ownerIdBytes, encryptedMessages) => {
+      writeMessages: (ownerIdBytes, encryptedMessages) => async (run) => {
         const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
 
-        // Everything is sync now, but we will need async crypto in the future.
-        const result = await mutex.withLock<
-          boolean,
-          | AbortErrorOld
-          | ProtocolInvalidDataError
-          | ProtocolTimestampMismatchError
-          | SqliteError
-          | DecryptWithXChaCha20Poly1305Error
-          | TimestampCounterOverflowError
-          | TimestampDriftError
-          | TimestampTimeOutOfRangeError
-          // eslint-disable-next-line @typescript-eslint/require-await
-        >(async () => {
-          const owner = deps.getSyncOwner(ownerId);
-          // Owner can be removed during syncing.
-          // `ok(true)` means success, we just skipped the write.
-          if (!owner) return ok(true);
+        const result = await run(
+          mutex.withLock(
+            (): Result<
+              boolean,
+              | ProtocolInvalidDataError
+              | ProtocolTimestampMismatchError
+              | SqliteError
+              | DecryptWithXChaCha20Poly1305Error
+              | TimestampCounterOverflowError
+              | TimestampDriftError
+              | TimestampTimeOutOfRangeError
+            > => {
+              const owner = deps.getSyncOwner(ownerId);
+              // Owner can be removed during syncing.
+              // `ok(true)` means success, we just skipped the write.
+              if (!owner) return ok(true);
 
-          // TODO: Add quota checking for collaborative scenarios.
-          // When receiving messages from other owners via relay broadcast,
-          // check if this owner is within quota before accepting the data.
-          // This prevents an owner from exceeding storage limits when receiving
-          // data shared by other collaborators.
+              // TODO: Add quota checking for collaborative scenarios.
+              // When receiving messages from other owners via relay broadcast,
+              // check if this owner is within quota before accepting the data.
+              // This prevents an owner from exceeding storage limits when receiving
+              // data shared by other collaborators.
 
-          const messages: Array<CrdtMessage> = [];
+              const messages: Array<CrdtMessage> = [];
 
-          for (const message of encryptedMessages) {
-            const change = decryptAndDecodeDbChange(
-              message,
-              owner.encryptionKey,
-            );
-            if (!change.ok) return change;
+              for (const message of encryptedMessages) {
+                const change = decryptAndDecodeDbChange(
+                  message,
+                  owner.encryptionKey,
+                );
+                if (!change.ok) return change;
 
-            messages.push({
-              timestamp: message.timestamp,
-              change: change.value,
-            });
-          }
+                messages.push({
+                  timestamp: message.timestamp,
+                  change: change.value,
+                });
+              }
 
-          const transaction = deps.sqlite.transaction(() => {
-            let clockTimestamp = deps.clock.get();
+              const transaction = deps.sqlite.transaction(() => {
+                let clockTimestamp = deps.clock.get();
 
-            for (const message of messages) {
-              const nextTimestamp = receiveTimestamp(deps)(
-                clockTimestamp,
-                message.timestamp,
-              );
-              if (!nextTimestamp.ok) return nextTimestamp;
+                for (const message of messages) {
+                  const nextTimestamp = receiveTimestamp(deps)(
+                    clockTimestamp,
+                    message.timestamp,
+                  );
+                  if (!nextTimestamp.ok) return nextTimestamp;
 
-              clockTimestamp = nextTimestamp.value;
-            }
+                  clockTimestamp = nextTimestamp.value;
+                }
 
-            if (isNonEmptyArray(messages)) {
-              const result = applyMessages({ ...deps, storage })(
-                owner.id,
-                messages,
-              );
-              if (!result.ok) return result;
-            }
+                if (isNonEmptyArray(messages)) {
+                  const result = applyMessages({ ...deps, storage })(
+                    owner.id,
+                    messages,
+                  );
+                  if (!result.ok) return result;
+                }
 
-            return deps.clock.save(clockTimestamp);
-          });
+                return deps.clock.save(clockTimestamp);
+              });
 
-          if (!transaction.ok) return transaction;
+              if (!transaction.ok) return transaction;
 
-          return ok(true);
-        })();
+              return ok(true);
+            },
+          ),
+        );
 
         if (!result.ok) {
           if (result.error.type !== "AbortError") {
