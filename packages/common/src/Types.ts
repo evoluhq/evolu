@@ -222,6 +222,19 @@ export type Awaitable<T> = T | PromiseLike<T>;
  *
  * Use with {@link Awaitable} to conditionally `await` only when necessary,
  * avoiding microtask overhead for synchronous values.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const validate = (id: string): Awaitable<boolean> => {
+ *   const cached = cache.get(id);
+ *   if (cached !== undefined) return cached; // Sync path
+ *   return fetchValidation(id); // Async path
+ * };
+ *
+ * const result = validate(id);
+ * const isValid = isPromiseLike(result) ? await result : result;
+ * ```
  */
 export const isPromiseLike = <T>(
   value: Awaitable<T>,

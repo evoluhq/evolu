@@ -51,6 +51,7 @@ import {
   Unknown,
   UnknownResult,
 } from "./Type.js";
+import type { isPromiseLike } from "./Types.js";
 import {
   type Awaitable,
   type Callback,
@@ -253,11 +254,11 @@ import {
  * - **No API ambiguity** — Task means async, Result means sync
  * - **Zero overhead** — sync code stays with zero overhead
  *
- * While a unified sync/async API is technically possible — with `isPromiseLike`
- * detection and two-phase disposal (sync first, async if needed, and a flag for
- * callers) — Evolu prefers plain functions for sync code because almost
- * anything can be async anyway, and when we need sync, it's for simplicity (no
- * dependencies) and performance (zero abstraction).
+ * While a unified sync/async API is technically possible — with
+ * {@link isPromiseLike} detection and two-phase disposal (sync first, async if
+ * needed, and a flag for callers) — Evolu prefers plain functions for sync code
+ * because almost anything can be async anyway, and when we need sync, it's for
+ * simplicity (no dependencies) and performance (zero abstraction).
  *
  * ## FAQ
  *
