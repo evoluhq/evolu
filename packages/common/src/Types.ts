@@ -21,6 +21,22 @@ import * as Kysely from "kysely";
 export type Callback<T> = (value: T) => void;
 
 /**
+ * A function that receives a value and optionally returns a cleanup function.
+ *
+ * Use for subscriptions or resources that may need cleanup when done.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const subscribe: CallbackWithCleanup<EventSource> = (source) => {
+ *   source.start();
+ *   return () => source.stop();
+ * };
+ * ```
+ */
+export type CallbackWithCleanup<T> = (value: T) => void | (() => void);
+
+/**
  * Checks a condition on a value and returns a boolean.
  *
  * A predicate starts with an 'is' prefix, e.g., `isEven`.
