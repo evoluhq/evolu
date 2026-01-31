@@ -13,10 +13,10 @@ import {
   orderTimestampBytes,
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
-import { createTestDeps } from "../../src/Test.js";
+import { testCreateDeps } from "../../src/Test.js";
 import { maxMillis, Millis } from "../../src/Time.js";
 
-const deps = createTestDeps();
+const deps = testCreateDeps();
 
 // Random numbers are unique only for a few thousand iterations.
 // We leverage this behavior to generate counters.

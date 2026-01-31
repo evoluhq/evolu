@@ -49,12 +49,12 @@ import {
   whileScheduleOutput,
   windowed,
 } from "../src/Schedule.js";
-import { createTestDeps } from "../src/Test.js";
+import { testCreateDeps } from "../src/Test.js";
 import { maxMillis, Millis, minMillis, testCreateTime } from "../src/Time.js";
 
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const time = testCreateTime({ startAt: startAt as Millis });
   return { ...deps, time };
 };

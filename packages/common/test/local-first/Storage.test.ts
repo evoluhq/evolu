@@ -28,7 +28,7 @@ import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
 import type { SqliteDep } from "../../src/Sqlite.js";
 import { sql } from "../../src/Sqlite.js";
-import { createTestDeps } from "../../src/Test.js";
+import { testCreateDeps } from "../../src/Test.js";
 import type { Millis } from "../../src/Time.js";
 import { createId, NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import { testCreateSqlite } from "../_deps.js";
@@ -489,7 +489,7 @@ test.skip(
 );
 
 test("DbChange", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const id = createId(deps);
 
   // Valid

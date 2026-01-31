@@ -26,7 +26,7 @@ import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
 import type { Result } from "../../src/Result.js";
 import { ok } from "../../src/Result.js";
-import { createTestDeps } from "../../src/Test.js";
+import { testCreateDeps } from "../../src/Test.js";
 import type { TimeDep } from "../../src/Time.js";
 import {
   maxMillis,
@@ -68,7 +68,7 @@ test("createTimestamp", () => {
 });
 
 test("createInitialTimestamp", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const timestamp = createInitialTimestamp(deps);
   expect(timestamp).toMatchInlineSnapshot(`
     {
@@ -314,7 +314,7 @@ describe("receiveTimestamp", () => {
   });
 
   test("timestampToTimestampBytes/timestampBytesToTimestamp", () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
     const decodeFromEncoded = (t: TimestampBytes) =>
       timestampBytesToTimestamp(t);
 

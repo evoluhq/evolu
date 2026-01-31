@@ -386,13 +386,13 @@ return ok("success");
 
 ## Testing
 
-Create fresh deps per test for isolation using `createTestDeps()`. Each call returns independent instances, preventing shared state between tests.
+Create fresh deps per test for isolation using `testCreateDeps()`. Each call returns independent instances, preventing shared state between tests.
 
 ```ts
-import { createTestDeps, createId } from "@evolu/common";
+import { testCreateDeps, createId } from "@evolu/common";
 
 test("creates unique IDs", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const id1 = createId(deps);
   const id2 = createId(deps);
   expect(id1).not.toBe(id2);

@@ -68,7 +68,7 @@ import {
   unabortableMask,
   yieldNow,
 } from "../src/Task.js";
-import { createTestDeps, createTestRunner } from "../src/Test.js";
+import { testCreateDeps, testCreateRunner } from "../src/Test.js";
 import { createTime, Millis, msLongTask, testCreateTime } from "../src/Time.js";
 import type { Typed } from "../src/Type.js";
 import { Id, minPositiveInt, PositiveInt } from "../src/Type.js";
@@ -233,28 +233,28 @@ describe("Runner", () => {
   describe("deps", () => {
     test("exposes injected time", async () => {
       const time = testCreateTime();
-      await using run = createTestRunner({ time });
+      await using run = testCreateRunner({ time });
 
       expect(run.deps.time).toBe(time);
     });
 
     test("exposes injected console", async () => {
       const console = testCreateConsole();
-      await using run = createTestRunner({ console });
+      await using run = testCreateRunner({ console });
 
       expect(run.deps.console).toBe(console);
     });
 
     test("exposes injected random", async () => {
       const random = testCreateRandom();
-      await using run = createTestRunner({ random });
+      await using run = testCreateRunner({ random });
 
       expect(run.deps.random).toBe(random);
     });
 
     test("exposes injected randomBytes", async () => {
-      const deps = createTestDeps();
-      await using run = createTestRunner(deps);
+      const deps = testCreateDeps();
+      await using run = testCreateRunner(deps);
 
       expect(run.deps.randomBytes).toBe(deps.randomBytes);
     });
@@ -393,8 +393,8 @@ describe("Runner", () => {
 
   describe("onEvent", () => {
     test("emits childAdded when child is added", async () => {
-      const deps = createTestDeps();
-      await using run = createTestRunner({ ...deps, ...eventsEnabled });
+      const deps = testCreateDeps();
+      await using run = testCreateRunner({ ...deps, ...eventsEnabled });
 
       const events: Array<RunnerEvent> = [];
       const taskComplete = Promise.withResolvers<Result<void>>();
@@ -418,7 +418,7 @@ describe("Runner", () => {
     });
 
     test("emits completing, completed, childRemoved when child completes", async () => {
-      await using run = createTestRunner(eventsEnabled);
+      await using run = testCreateRunner(eventsEnabled);
 
       const events: Array<RunnerEvent> = [];
       const taskComplete = Promise.withResolvers<Result<void>>();
@@ -454,7 +454,7 @@ describe("Runner", () => {
     });
 
     test("bubbles up through parent chain", async () => {
-      await using run = createTestRunner(eventsEnabled);
+      await using run = testCreateRunner(eventsEnabled);
 
       const events: Array<{ level: string; event: RunnerEvent }> = [];
 
@@ -2738,7 +2738,7 @@ describe("callback", () => {
 
   test("provides RunnerDeps for testable time", async () => {
     const time = testCreateTime();
-    await using run = createTestRunner({ time });
+    await using run = testCreateRunner({ time });
 
     const task = callback<void>(({ ok, deps: { time } }) => {
       const id = time.setTimeout(ok, "100ms");
@@ -2775,7 +2775,7 @@ describe("callback", () => {
 describe("sleep", () => {
   test("completes after duration", async () => {
     const time = testCreateTime();
-    await using run = createTestRunner({ time });
+    await using run = testCreateRunner({ time });
 
     const fiber = run(sleep("100ms"));
 
@@ -3016,7 +3016,7 @@ describe("timeout", () => {
 
   test("returns TimeoutError when task exceeds duration", async () => {
     const time = testCreateTime();
-    await using run = createTestRunner({ time });
+    await using run = testCreateRunner({ time });
 
     const slow = sleep("100ms");
 
@@ -3030,7 +3030,7 @@ describe("timeout", () => {
 
   test("aborts task when timeout fires", async () => {
     const time = testCreateTime();
-    await using run = createTestRunner({ time });
+    await using run = testCreateRunner({ time });
 
     const abortReasonCapture = Promise.withResolvers<unknown>();
 
@@ -3055,7 +3055,7 @@ describe("timeout", () => {
 
   test("uses custom abortReason when provided", async () => {
     const time = testCreateTime();
-    await using run = createTestRunner({ time });
+    await using run = testCreateRunner({ time });
 
     const customReason = { type: "CustomTimeout" };
     const abortReasonCapture = Promise.withResolvers<unknown>();
@@ -3080,7 +3080,7 @@ describe("timeout", () => {
 
   test("returns TimeoutError immediately when unabortable task exceeds duration", async () => {
     const time = testCreateTime();
-    await using run = createTestRunner({ time });
+    await using run = testCreateRunner({ time });
 
     let taskCompleted = false;
     const completionCapture = Promise.withResolvers<void>();
@@ -3539,7 +3539,7 @@ describe("repeat", () => {
 
   test("does not sleep when delay is zero", async () => {
     const time = testCreateTime();
-    await using run = createTestRunner({ time });
+    await using run = testCreateRunner({ time });
 
     let count = 0;
     const task = () => {
@@ -3555,7 +3555,7 @@ describe("repeat", () => {
 
   test("aborts while waiting between repeats", async () => {
     const time = testCreateTime();
-    await using run = createTestRunner({ time });
+    await using run = testCreateRunner({ time });
 
     let count = 0;
     const task = () => {
@@ -3673,7 +3673,7 @@ describe("DI", () => {
     };
 
   test("simple task with deps", async () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
     const http = createTestHttp({ "/users/1": "Alice" });
 
     await using run = createRunner<RunnerDeps & HttpDep>({ ...deps, http });
@@ -3692,7 +3692,7 @@ describe("DI", () => {
       readonly config: Config;
     }
 
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
     const config: Config = { apiUrl: "https://api.example.com" };
     const customDeps = { ...deps, config };
 
@@ -3724,7 +3724,7 @@ describe("DI", () => {
   });
 
   test("fiber.run preserves deps type", async () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
     const http = createTestHttp({ "/users/1": "Alice" });
 
     await using run = createRunner<RunnerDeps & HttpDep>({ ...deps, http });
@@ -3741,7 +3741,7 @@ describe("DI", () => {
   });
 
   test("composed tasks with deps", async () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
     const http = createTestHttp({ "/users/1": "Alice" });
     const db = createTestDb();
 
@@ -3754,7 +3754,7 @@ describe("DI", () => {
   });
 
   test("larger composition with multiple operations", async () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
 
     interface Logger {
       readonly log: (msg: string) => void;
@@ -3813,7 +3813,7 @@ describe("DI", () => {
   });
 
   test("timeout with deps", async () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
     const http = createTestHttp({ "/users/1": "Alice" });
 
     await using run = createRunner<RunnerDeps & HttpDep>({ ...deps, http });
@@ -3826,7 +3826,7 @@ describe("DI", () => {
   });
 
   test("race with deps", async () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
     const http = createTestHttp({
       "/users/1": "Alice",
       "/users/2": "Bob",
@@ -3842,7 +3842,7 @@ describe("DI", () => {
   });
 
   test("retry with deps", async () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
 
     interface NetworkError {
       readonly type: "NetworkError";
@@ -6180,7 +6180,7 @@ describe("examples TODO", () => {
       >();
 
       const deps: RunnerDeps & NativeFetchDep = {
-        ...createTestDeps(),
+        ...testCreateDeps(),
         fetch: globalThis.fetch,
       };
 

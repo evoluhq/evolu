@@ -15,7 +15,7 @@ import {
 import { createRunner, type Runner, type RunnerConfigDep } from "./Task.js";
 import { testCreateTime, type TimeDep } from "./Time.js";
 
-/** Test deps created by {@link createTestDeps}. */
+/** Test deps created by {@link testCreateDeps}. */
 export type TestDeps = ConsoleDep &
   RandomBytesDep &
   RandomDep &
@@ -31,7 +31,7 @@ export type TestDeps = ConsoleDep &
  *
  * ```ts
  * test("my test", async () => {
- *   const deps = createTestDeps();
+ *   const deps = testCreateDeps();
  *   await using run = testCreateRunner(deps);
  *
  *   const fiber = run(sleep("1s"));
@@ -40,7 +40,7 @@ export type TestDeps = ConsoleDep &
  * });
  * ```
  */
-export const createTestDeps = (options?: {
+export const testCreateDeps = (options?: {
   readonly seed?: string;
 }): TestDeps => {
   const seed = options?.seed ?? "evolu";
@@ -66,27 +66,27 @@ export const createTestDeps = (options?: {
  *
  * ```ts
  * // Basic usage with TestDeps
- * await using run = createTestRunner();
+ * await using run = testCreateRunner();
  *
  * // Override specific deps
- * await using run = createTestRunner({ time: customTime });
+ * await using run = testCreateRunner({ time: customTime });
  *
  * // Add custom deps
  * interface HttpDep {
  *   readonly http: Http;
  * }
- * await using run = createTestRunner({ http });
+ * await using run = testCreateRunner({ http });
  * // run is Runner<TestDeps & HttpDep>
  * ```
  */
-export function createTestRunner(): Runner<TestDeps>;
+export function testCreateRunner(): Runner<TestDeps>;
 /** With custom dependencies. */
-export function createTestRunner<D extends TestDeps>(
+export function testCreateRunner<D extends TestDeps>(
   deps: Partial<TestDeps> & Partial<RunnerConfigDep> & Omit<D, keyof TestDeps>,
 ): Runner<D>;
-export function createTestRunner<D extends TestDeps>(
+export function testCreateRunner<D extends TestDeps>(
   deps?: Partial<TestDeps> & Partial<RunnerConfigDep> & Omit<D, keyof TestDeps>,
 ): Runner<D> {
-  const defaults = createTestDeps();
+  const defaults = testCreateDeps();
   return createRunner<D>({ ...defaults, ...deps } as D);
 }

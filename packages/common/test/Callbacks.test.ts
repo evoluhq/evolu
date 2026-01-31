@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
 import { createCallbacks } from "../src/Callbacks.js";
-import { createTestDeps } from "../src/Test.js";
+import { testCreateDeps } from "../src/Test.js";
 
 test("Callbacks with no argument", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const callbacks = createCallbacks(deps);
 
   let called = false;
@@ -20,7 +20,7 @@ test("Callbacks with no argument", () => {
 });
 
 test("Callbacks with string type", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const callbacks = createCallbacks<string>(deps);
 
   let receivedValue: string | null = null;
@@ -37,7 +37,7 @@ test("Callbacks with string type", () => {
 });
 
 test("Callbacks with Promise.withResolvers pattern", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const callbacks = createCallbacks<string>(deps);
 
   const { promise, resolve } = Promise.withResolvers<string>();

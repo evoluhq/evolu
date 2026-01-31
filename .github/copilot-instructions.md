@@ -435,7 +435,7 @@ const result = await sleep("1s")(run);
 
 ## Testing
 
-- **Create deps per test** - use `createTestDeps()` from `@evolu/common` for test isolation
+- **Create deps per test** - use `testCreateDeps()` from `@evolu/common` for test isolation
 - **Naming convention** - test factories follow `testCreateX` pattern (e.g., `testCreateTime`, `testCreateRandom`)
 - Mock dependencies using the same interfaces
 - Never rely on global state or shared mutable deps between tests
@@ -445,17 +445,17 @@ const result = await sleep("1s")(run);
 Create fresh deps at the start of each test for isolation. Each call creates independent instances, preventing shared state between tests.
 
 ```ts
-import { createTestDeps, createId } from "@evolu/common";
+import { testCreateDeps, createId } from "@evolu/common";
 
 test("creates unique IDs", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const id1 = createId(deps);
   const id2 = createId(deps);
   expect(id1).not.toBe(id2);
 });
 
 test("with custom seed for reproducibility", () => {
-  const deps = createTestDeps({ seed: "my-test" });
+  const deps = testCreateDeps({ seed: "my-test" });
   const id = createId(deps);
   expect(id).toMatchInlineSnapshot(`"..."`);
 });

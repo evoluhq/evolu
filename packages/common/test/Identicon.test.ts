@@ -6,10 +6,10 @@ import {
   createIdenticon,
   createOwnerSecret,
 } from "../src/index.js";
-import { createTestDeps } from "../src/Test.js";
+import { testCreateDeps } from "../src/Test.js";
 
 test.skip("generates visually distinct identicons", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const ids = [];
   for (let i = 0; i < 10; i++) {
     const secret = createOwnerSecret(deps);

@@ -2,7 +2,7 @@ import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
 import { exhaustiveCheck, lazyVoid } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
-import { createTestDeps } from "../src/Test.js";
+import { testCreateDeps } from "../src/Test.js";
 import type {
   AnyType,
   ArrayError,
@@ -898,7 +898,7 @@ test("SimplePassword", () => {
 });
 
 test("id", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
 
   const UserId = id("User");
   type UserId = typeof UserId.Type;
@@ -941,7 +941,7 @@ test("id", () => {
 });
 
 test("createId", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const id = createId(deps);
   expect(id).toMatchInlineSnapshot(`"IGNl5t4ulaaQpdnwDhgoCA"`);
 
@@ -987,7 +987,7 @@ test("createIdFromString", () => {
 });
 
 test("IdBytes/idToIdBytes/idBytesToId", () => {
-  const deps = createTestDeps();
+  const deps = testCreateDeps();
   const originalId = createId(deps);
   const idBytes = idToIdBytes(originalId);
   expect(IdBytes.is(idBytes)).toBe(true);
@@ -3406,7 +3406,7 @@ describe("typed", () => {
   });
 
   test("typed with branded types", () => {
-    const deps = createTestDeps();
+    const deps = testCreateDeps();
 
     const User = typed("User", {
       id: Id,

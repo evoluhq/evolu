@@ -32,7 +32,7 @@ import type { Done, NextResult, Ok, Result } from "./Result.js";
 import { err, ok, tryAsync } from "./Result.js";
 import type { Schedule, ScheduleStep } from "./Schedule.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
-import type { createTestDeps } from "./Test.js";
+import type { testCreateRunner } from "./Test.js";
 import type { Duration, Time, TimeDep } from "./Time.js";
 import { createTime, durationToMillis, Millis } from "./Time.js";
 import type { TracerConfigDep, TracerDep } from "./Tracer.js";
@@ -282,7 +282,7 @@ import {
  * // 21:20:25.588 [main] started
  * ```
  *
- * For testing, use {@link createTestDeps} to get deterministic, controllable
+ * For testing, use {@link testCreateRunner} to get deterministic, controllable
  * implementations of all RunnerDeps.
  *
  * ## Resource management
@@ -1237,7 +1237,7 @@ const defaultDeps: RunnerDeps = {
  * type AppDeps = RunnerDeps & ConfigDep;
  *
  * const appDeps: AppDeps = {
- *   ...createTestDeps(), // or spread individual deps
+ *   ...testCreateDeps(), // or spread individual deps
  *   config: { apiUrl: "https://api.example.com" },
  * };
  *
