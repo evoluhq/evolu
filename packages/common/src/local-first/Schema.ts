@@ -251,7 +251,10 @@ export const systemColumns = /*#__PURE__*/ readonly(
   new Set(Object.keys(SystemColumns.props)),
 );
 
-export const systemColumnsWithId = /*#__PURE__*/ readonly([...systemColumns, "id"]);
+export const systemColumnsWithId = /*#__PURE__*/ readonly([
+  ...systemColumns,
+  "id",
+]);
 
 export type MutationKind = "insert" | "update" | "upsert";
 

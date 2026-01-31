@@ -176,7 +176,8 @@ export const createRecord = <K extends string = string, V = unknown>(): Record<
  *
  * @group Constants
  */
-export const emptyRecord: Readonly<Record<string, never>> = /*#__PURE__*/ createRecord();
+export const emptyRecord: Readonly<Record<string, never>> =
+  /*#__PURE__*/ createRecord();
 
 /**
  * Safely gets a property from a record, returning `undefined` if the key

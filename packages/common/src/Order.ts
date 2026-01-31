@@ -67,7 +67,9 @@ export const reverseOrder =
  * ["c", "b", "a"].toSorted(orderString); // ["a", "b", "c"]
  * ```
  */
-export const orderString: Order<string> = /*#__PURE__*/ createOrder((a, b) => a < b);
+export const orderString: Order<string> = /*#__PURE__*/ createOrder(
+  (a, b) => a < b,
+);
 
 /**
  * An order for numbers in ascending order.
