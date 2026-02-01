@@ -217,12 +217,14 @@ export const lazyVoid: Lazy<void> = lazyUndefined;
  * ```ts
  * // Type inferred from return type annotation
  * const fetchUser = (id: UserId): Result<User, FetchError> => todo();
+ *
  * expectTypeOf(fetchUser).returns.toEqualTypeOf<
  *   Result<User, FetchError>
  * >();
  *
  * // Explicit generic when no return type
  * const getConfig = () => todo<Config>();
+ *
  * expectTypeOf(getConfig).returns.toEqualTypeOf<Config>();
  * ```
  */
