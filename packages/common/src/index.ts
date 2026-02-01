@@ -21,7 +21,6 @@ export * from "./Instances.js";
 export * from "./Listeners.js";
 export * from "./Number.js";
 export * from "./Object.js";
-export * from "./OldTask.js";
 export * from "./Option.js";
 export * from "./Order.js";
 export * from "./Platform.js";
