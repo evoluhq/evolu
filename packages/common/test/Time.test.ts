@@ -6,6 +6,7 @@ import {
   formatMillisAsClockTime,
   formatMillisAsDuration,
   millisToDateIso,
+  setTimeout,
   testCreateTime,
 } from "../src/Time.js";
 
@@ -57,6 +58,20 @@ describe("Time", () => {
       expect(called).toBe(false);
       await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
       expect(called).toBe(true);
+    });
+  });
+
+  describe("setTimeout", () => {
+    test("resolves asynchronously", async () => {
+      let resolved = false;
+
+      const promise = setTimeout("1ms").then(() => {
+        resolved = true;
+      });
+
+      expect(resolved).toBe(false);
+      await promise;
+      expect(resolved).toBe(true);
     });
   });
 

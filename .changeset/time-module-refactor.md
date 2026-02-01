@@ -17,6 +17,7 @@ Refactored Time module for type safety, consistency, and better abstractions.
 - Added `TimeoutId` opaque type for timeout handles
 - Added `TestTime` interface with `advance()` for controllable time in tests
 - Added `testCreateTime` with `startAt` and `autoIncrement` options
+- Added `setTimeout(duration)` helper that returns a Promise
 
 **Duration literals:**
 
@@ -32,3 +33,9 @@ Refactored Time module for type safety, consistency, and better abstractions.
 - `ms60fps` (16ms frame budget at 60fps)
 - `ms120fps` (8ms frame budget at 120fps)
 - `msLongTask` (50ms long task threshold for use with `yieldNow`)
+
+**Formatting utilities:**
+
+- Added `formatMillisAsDuration(millis)` - formats as human-readable duration (`1.234s`, `1m30.000s`, `1h30m45.000s`)
+- Added `formatMillisAsClockTime(millis)` - formats as clock time (`HH:MM:SS.mmm`)
+- Added `/*#__PURE__*/` annotation to `Millis` for better tree-shaking

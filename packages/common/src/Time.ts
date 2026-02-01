@@ -291,6 +291,22 @@ export const durationToMillis = (duration: Duration): Millis => {
   );
 };
 
+/**
+ * Returns a Promise that resolves after the specified duration.
+ *
+ * Uses {@link Duration} parsing and `globalThis.setTimeout`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * await setTimeout("1ms");
+ * ```
+ */
+export const setTimeout = (duration: Duration): Promise<void> =>
+  new Promise((resolve) => {
+    globalThis.setTimeout(resolve, durationToMillis(duration));
+  });
+
 const durationUnits = {
   ms: 1,
   s: 1000,
