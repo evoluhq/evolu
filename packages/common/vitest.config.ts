@@ -6,7 +6,12 @@ const isCoverage = process.argv.includes("--coverage");
 
 export default defineConfig({
   test: {
-    exclude: ["**/node_modules/**", "**/dist/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/coverage/**",
+      "**/__snapshots__/**",
+    ],
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
@@ -35,7 +40,6 @@ export default defineConfig({
           snapshotSerializers: ["./test/local-first/_uint8ArraySerializer.ts"],
           include: ["test/*.test.ts"],
           exclude: [
-            "test/WebSocket.test.ts", // needs server
             "test/Sqlite.test.ts", // needs SQLite
             "test/TreeShaking.test.ts", // needs esbuild
             "test/Identicon.test.ts", // needs canvas
@@ -47,6 +51,18 @@ export default defineConfig({
             enabled: true,
             provider: playwright(),
             headless: true,
+            // Sequential execution is faster than parallel for some reason.
+            fileParallelism: false,
+            commands: {
+              startWsServer: async () => {
+                const { createServer } = await import("./test/_globalSetup.js");
+                return createServer();
+              },
+              stopWsServer: async (_, port: number) => {
+                const { closeServer } = await import("./test/_globalSetup.js");
+                await closeServer(port);
+              },
+            },
             instances: isCoverage
               ? [{ browser: "chromium" }]
               : [
