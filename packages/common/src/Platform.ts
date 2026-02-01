@@ -4,12 +4,11 @@
  * @module
  */
 
-/** Detects if the code is running in React Native environment. */
-export const isReactNative =
-  typeof navigator !== "undefined" &&
-  "product" in navigator &&
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  (navigator as any).product === "ReactNative";
+/** Returns true if running in React Native with Hermes engine. */
+export const isHermes = "HermesInternal" in globalThis;
+
+/** Returns true if running in a server environment (no DOM). */
+export const isServer = typeof document === "undefined";
 
 /**
  * Detects if Node.js Buffer is available and should be used.
@@ -23,7 +22,7 @@ export const isReactNative =
  * @see https://github.com/craftzdog/react-native-quick-base64#installation
  */
 export const hasNodeBuffer =
-  !isReactNative && typeof globalThis.Buffer !== "undefined";
+  !isHermes && typeof globalThis.Buffer !== "undefined";
 
 /**
  * FlushSync is for libraries like React to flush updates synchronously inside
