@@ -859,14 +859,14 @@ export type InferFiberDeps<F extends Fiber<any, any, any>> =
  *
  * @group Core Types
  */
-export interface FiberStateRunning extends Typed<"running"> {}
+export interface FiberStateRunning extends Typed<"Running"> {}
 
-export interface FiberStateCompleting extends Typed<"completing"> {}
+export interface FiberStateCompleting extends Typed<"Completing"> {}
 
 export interface FiberStateCompleted<
   T = unknown,
   E = unknown,
-> extends Typed<"completed"> {
+> extends Typed<"Completed"> {
   /**
    * The fiber's completion value.
    *
@@ -895,9 +895,9 @@ export type FiberState<T = unknown, E = unknown> =
  * @group Monitoring
  */
 export const FiberSnapshotState = /*#__PURE__*/ union(
-  typed("running"),
-  typed("completing"),
-  typed("completed", { result: UnknownResult, outcome: UnknownResult }),
+  typed("Running"),
+  typed("Completing"),
+  typed("Completed", { result: UnknownResult, outcome: UnknownResult }),
 );
 export type FiberSnapshotState = typeof FiberSnapshotState.Type;
 
@@ -920,7 +920,7 @@ export interface FiberSnapshot {
   /** The current lifecycle state. */
   readonly state: FiberSnapshotState;
 
-  /** Child snapshots in spawn (start) order. */
+  /** Child snapshots in run order. */
   readonly children: ReadonlyArray<FiberSnapshot>;
 
   /** The abort mask depth. `0` means abortable, `>= 1` means unabortable. */
@@ -933,9 +933,9 @@ export interface FiberSnapshot {
  * @group Monitoring
  */
 export const RunnerEventData = /*#__PURE__*/ union(
-  typed("childAdded", { childId: Id }),
-  typed("childRemoved", { childId: Id }),
-  typed("stateChanged", { state: FiberSnapshotState }),
+  typed("ChildAdded", { childId: Id }),
+  typed("ChildRemoved", { childId: Id }),
+  typed("StateChanged", { state: FiberSnapshotState }),
 );
 export type RunnerEventData = typeof RunnerEventData.Type;
 
@@ -1360,13 +1360,13 @@ const createRunnerInternal =
         .finally(runner[Symbol.asyncDispose])
         .finally(() => {
           children = deleteFromSet(children, fiber);
-          emitEvent({ type: "childRemoved", childId: runner.id });
+          emitEvent({ type: "ChildRemoved", childId: runner.id });
         });
 
       const fiber = new Fiber<T, E, D>(runner, promise);
 
       children = addToSet(children, fiber);
-      emitEvent({ type: "childAdded", childId: runner.id });
+      emitEvent({ type: "ChildAdded", childId: runner.id });
 
       return fiber;
     };
@@ -1452,8 +1452,8 @@ const createRunnerInternal =
       run[Symbol.asyncDispose] = () => {
         if (disposingPromise) return disposingPromise;
 
-        state = { type: "completing" };
-        emitEvent({ type: "stateChanged", state });
+        state = { type: "Completing" };
+        emitEvent({ type: "StateChanged", state });
 
         requestAbort(runnerClosingAbortError);
 
@@ -1461,8 +1461,8 @@ const createRunnerInternal =
           .then(lazyVoid)
           .finally(() => {
             [result, outcome] = [result ?? ok(), outcome ?? ok()];
-            state = { type: "completed", result, outcome };
-            emitEvent({ type: "stateChanged", state });
+            state = { type: "Completed", result, outcome };
+            emitEvent({ type: "StateChanged", state });
           });
 
         return disposingPromise;
@@ -1480,7 +1480,7 @@ const createRunnerInternal =
     return self;
   };
 
-const running: FiberState = { type: "running" };
+const running: FiberState = { type: "Running" };
 
 /**
  * Error used as {@link AbortError} reason when a {@link Runner} is disposed.

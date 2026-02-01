@@ -896,13 +896,13 @@ export interface ApplyProtocolMessageAsClientOptions {
  * Result type for {@link applyProtocolMessageAsClient} that distinguishes
  * between responses to client requests and broadcast messages.
  */
-export interface ApplyProtocolMessageAsClientResponse extends Typed<"response"> {
+export interface ApplyProtocolMessageAsClientResponse extends Typed<"Response"> {
   readonly message: ProtocolMessage;
 }
 
-export interface ApplyProtocolMessageAsClientNoResponse extends Typed<"no-response"> {}
+export interface ApplyProtocolMessageAsClientNoResponse extends Typed<"NoResponse"> {}
 
-export interface ApplyProtocolMessageAsClientBroadcast extends Typed<"broadcast"> {}
+export interface ApplyProtocolMessageAsClientBroadcast extends Typed<"Broadcast"> {}
 
 export type ApplyProtocolMessageAsClientResult =
   | ApplyProtocolMessageAsClientResponse
@@ -984,7 +984,7 @@ export const applyProtocolMessageAsClient =
       if (isNonEmptyArray(messages)) {
         const result = await run(storage.writeMessages(ownerIdBytes, messages));
         // Errors are handled by the Storage. Here we just stop syncing.
-        if (!result.ok) return ok({ type: "no-response" });
+        if (!result.ok) return ok({ type: "NoResponse" });
       }
 
       // Now: No writeKey, no sync.
@@ -994,17 +994,17 @@ export const applyProtocolMessageAsClient =
       // the sync will stop.
       const writeKey = options.getWriteKey?.(ownerId);
       if (writeKey == null) {
-        return ok({ type: "no-response" });
+        return ok({ type: "NoResponse" });
       }
 
       if (messageType === MessageType.Broadcast) {
-        return ok({ type: "broadcast" });
+        return ok({ type: "Broadcast" });
       }
 
       const ranges = decodeRanges(input);
 
       if (!isNonEmptyArray(ranges)) {
-        return ok({ type: "no-response" });
+        return ok({ type: "NoResponse" });
       }
 
       const output = createProtocolMessageBuffer(ownerId, {
@@ -1017,10 +1017,10 @@ export const applyProtocolMessageAsClient =
 
       // Client sync error (handled via Storage) or no changes.
       if (!result.ok || !result.value) {
-        return ok({ type: "no-response" });
+        return ok({ type: "NoResponse" });
       }
 
-      return ok({ type: "response", message: output.unwrap() });
+      return ok({ type: "Response", message: output.unwrap() });
     } catch (error) {
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
@@ -1053,7 +1053,7 @@ export interface ApplyProtocolMessageAsRelayOptions {
  * to sync. Clients may choose not to respond in certain cases (like when they
  * receive broadcast messages or when they lack a write key for syncing).
  */
-export interface ApplyProtocolMessageAsRelayResult extends Typed<"response"> {
+export interface ApplyProtocolMessageAsRelayResult extends Typed<"Response"> {
   readonly message: ProtocolMessage;
 }
 
@@ -1081,7 +1081,7 @@ export const applyProtocolMessageAsRelay =
         encodeNonNegativeInt(output, version);
         output.extend(ownerIdBytes);
         return ok({
-          type: "response",
+          type: "Response",
           message: output.unwrap() as ProtocolMessage,
         });
       }
@@ -1113,7 +1113,7 @@ export const applyProtocolMessageAsRelay =
         const isValid = storage.validateWriteKey(ownerIdBytes, writeKey);
         if (!isValid) {
           return ok({
-            type: "response",
+            type: "Response",
             message: createProtocolMessageBuffer(ownerId, {
               messageType: MessageType.Response,
               errorCode: ProtocolErrorCode.WriteKeyError,
@@ -1127,7 +1127,7 @@ export const applyProtocolMessageAsRelay =
       if (isNonEmptyArray(messages)) {
         if (!writeKey) {
           return ok({
-            type: "response",
+            type: "Response",
             message: createProtocolMessageBuffer(ownerId, {
               messageType: MessageType.Response,
               errorCode: ProtocolErrorCode.WriteKeyError,
@@ -1146,7 +1146,7 @@ export const applyProtocolMessageAsRelay =
             messageType: MessageType.Response,
             errorCode,
           }).unwrap();
-          return ok({ type: "response", message });
+          return ok({ type: "Response", message });
         }
 
         /**
@@ -1192,7 +1192,7 @@ export const applyProtocolMessageAsRelay =
       // Non-initiators always respond to provide sync completion feedback,
       // even when there's nothing to sync.
       if (!isNonEmptyArray(ranges)) {
-        return ok({ type: "response", message: output.unwrap() });
+        return ok({ type: "Response", message: output.unwrap() });
       }
 
       const result = sync(run.deps)(ranges, output, ownerIdBytes);
@@ -1205,7 +1205,7 @@ export const applyProtocolMessageAsRelay =
           }).unwrap();
 
       // Non-initiators always respond to provide sync completion feedback,
-      return ok({ type: "response", message });
+      return ok({ type: "Response", message });
     } catch (error) {
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",

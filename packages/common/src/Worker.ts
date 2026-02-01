@@ -117,7 +117,7 @@ export interface CreateMessagePortDep {
  * const errorStore = createStore<UnknownError | null>(null);
  *
  * sharedWorker.port.postMessage(
- *   { type: "initErrorStore", port: errorChannel.port1.native },
+ *   { type: "InitErrorStore", port: errorChannel.port1.native },
  *   [errorChannel.port1.native], // transfer ownership to worker
  * );
  *

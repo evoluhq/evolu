@@ -21,11 +21,11 @@ export interface EvoluWorkerDep {
   readonly evoluWorker: EvoluWorker;
 }
 
-export interface InitErrorStoreMessage extends Typed<"initErrorStore"> {
+export interface InitErrorStoreMessage extends Typed<"InitErrorStore"> {
   readonly port: NativeMessagePort;
 }
 
-export interface InitEvoluMessage extends Typed<"initEvolu"> {
+export interface InitEvoluMessage extends Typed<"InitEvolu"> {
   readonly port: NativeMessagePort;
 }
 
@@ -43,13 +43,13 @@ export const runEvoluWorkerScope =
     self.onConnect = (port) => {
       port.onMessage = (message) => {
         switch (message.type) {
-          case "initErrorStore": {
+          case "InitErrorStore": {
             errorStorePorts.add(
               deps.createMessagePort<EvoluError>(message.port),
             );
             break;
           }
-          case "initEvolu":
+          case "InitEvolu":
             // TODO:
             break;
           default:

@@ -406,11 +406,11 @@ describe("Runner", () => {
       const fiber = run(() => taskComplete.promise);
 
       const childAddedEvents = events.filter(
-        (e) => e.data.type === "childAdded",
+        (e) => e.data.type === "ChildAdded",
       );
       expect(childAddedEvents.length).toBe(1);
       expect(childAddedEvents[0].id).toBe(run.id);
-      assert(childAddedEvents[0].data.type === "childAdded");
+      assert(childAddedEvents[0].data.type === "ChildAdded");
       expect(childAddedEvents[0].data.childId).toBe(fiber.run.id);
 
       taskComplete.resolve(ok());
@@ -433,23 +433,23 @@ describe("Runner", () => {
       await fiber;
 
       expect(events.map((e) => e.data.type)).toEqual([
-        "stateChanged",
-        "stateChanged",
-        "childRemoved",
+        "StateChanged",
+        "StateChanged",
+        "ChildRemoved",
       ]);
 
       const [completing, completed, childRemoved] = events;
 
-      assert(completing.data.type === "stateChanged");
-      expect(completing.data.state.type).toBe("completing");
+      assert(completing.data.type === "StateChanged");
+      expect(completing.data.state.type).toBe("Completing");
 
-      assert(completed.data.type === "stateChanged");
-      expect(completed.data.state.type).toBe("completed");
-      assert(completed.data.state.type === "completed");
+      assert(completed.data.type === "StateChanged");
+      expect(completed.data.state.type).toBe("Completed");
+      assert(completed.data.state.type === "Completed");
       expect(completed.data.state.result).toEqual(ok());
       expect(completed.data.state.outcome).toEqual(ok());
 
-      assert(childRemoved.data.type === "childRemoved");
+      assert(childRemoved.data.type === "ChildRemoved");
       expect(childRemoved.data.childId).toBe(fiber.run.id);
     });
 
@@ -729,7 +729,7 @@ describe("Runner", () => {
       const run = createRunner();
 
       expectTypeOf(run.getState()).toEqualTypeOf<FiberState>();
-      expect(run.getState().type).toBe("running");
+      expect(run.getState().type).toBe("Running");
 
       const taskStarted = Promise.withResolvers<void>();
       const taskCanFinish = Promise.withResolvers<void>();
@@ -751,14 +751,14 @@ describe("Runner", () => {
       await taskStarted.promise;
 
       const disposePromise = run[Symbol.asyncDispose]();
-      expect(run.getState().type).toBe("completing");
+      expect(run.getState().type).toBe("Completing");
 
       taskCanFinish.resolve();
       await disposePromise;
 
-      expect(stateInAbortHandler!.type).toBe("completing");
-      expect(stateAfterAwait!.type).toBe("completing");
-      expect(run.getState().type).toBe("completed");
+      expect(stateInAbortHandler!.type).toBe("Completing");
+      expect(stateAfterAwait!.type).toBe("Completing");
+      expect(run.getState().type).toBe("Completed");
     });
 
     test("defaults completed result and outcome to ok", async () => {
@@ -768,7 +768,7 @@ describe("Runner", () => {
 
       const state = run.getState();
       expect(state).toEqual({
-        type: "completed",
+        type: "Completed",
         result: ok(),
         outcome: ok(),
       });
@@ -787,7 +787,7 @@ describe("Runner", () => {
       const run = createRunner();
       run[Symbol.asyncDispose]();
 
-      expect(run.getState().type).toBe("completing");
+      expect(run.getState().type).toBe("Completing");
 
       let regularRan = false;
       let unabortableRan = false;
@@ -818,9 +818,9 @@ describe("Runner", () => {
       expect(unabortableRan).toBe(false);
       expect(unabortableMaskRan).toBe(false);
 
-      expect(regularFiber.run.getState().type).toBe("completed");
-      expect(unabortableFiber.run.getState().type).toBe("completed");
-      expect(unabortableMaskFiber.run.getState().type).toBe("completed");
+      expect(regularFiber.run.getState().type).toBe("Completed");
+      expect(unabortableFiber.run.getState().type).toBe("Completed");
+      expect(unabortableMaskFiber.run.getState().type).toBe("Completed");
 
       const expected = err({ type: "AbortError", reason: runnerClosingError });
       expect(regularResult).toEqual(expected);
@@ -832,7 +832,7 @@ describe("Runner", () => {
       const run = createRunner();
       await run[Symbol.asyncDispose]();
 
-      expect(run.getState().type).toBe("completed");
+      expect(run.getState().type).toBe("Completed");
 
       let regularRan = false;
       let unabortableRan = false;
@@ -863,9 +863,9 @@ describe("Runner", () => {
       expect(unabortableRan).toBe(false);
       expect(unabortableMaskRan).toBe(false);
 
-      expect(regularFiber.run.getState().type).toBe("completed");
-      expect(unabortableFiber.run.getState().type).toBe("completed");
-      expect(unabortableMaskFiber.run.getState().type).toBe("completed");
+      expect(regularFiber.run.getState().type).toBe("Completed");
+      expect(unabortableFiber.run.getState().type).toBe("Completed");
+      expect(unabortableMaskFiber.run.getState().type).toBe("Completed");
 
       const expected = err({ type: "AbortError", reason: runnerClosingError });
       expect(regularResult).toEqual(expected);
@@ -1098,7 +1098,7 @@ describe("Fiber", () => {
 
       expect(signalAbortedBeforeInnerRun).toBe(true);
       expect(taskRan).toBe(false);
-      assert(innerFiberState?.type === "completed");
+      assert(innerFiberState?.type === "Completed");
       expect(innerFiberState.result).toEqual(
         err({ type: "AbortError", reason: "stop" }),
       );
@@ -1190,14 +1190,14 @@ describe("Fiber", () => {
 
     const fiber = run(() => taskComplete.promise);
 
-    expect(fiber.getState().type).toBe("running");
+    expect(fiber.getState().type).toBe("Running");
 
     taskComplete.resolve(ok(42));
     await fiber;
 
     const state = fiber.getState();
     expectTypeOf(state).toEqualTypeOf<FiberState<number, MyError>>();
-    assert(state.type === "completed");
+    assert(state.type === "Completed");
     expect(state.result).toEqual(ok(42));
   });
 
@@ -1208,13 +1208,13 @@ describe("Fiber", () => {
 
     const fiber = run(() => taskComplete.promise);
 
-    expect(fiber.getState().type).toBe("running");
+    expect(fiber.getState().type).toBe("Running");
 
     taskComplete.resolve(ok(42));
     await fiber;
 
     const state = fiber.getState();
-    assert(state.type === "completed");
+    assert(state.type === "Completed");
     expect(state.outcome).toEqual(state.result);
   });
 
@@ -1226,7 +1226,7 @@ describe("Fiber", () => {
     await fiber;
 
     const state = fiber.getState();
-    assert(state.type === "completed");
+    assert(state.type === "Completed");
     // result returns AbortError
     expect(state.result).toEqual(err({ type: "AbortError", reason: "stop" }));
     // outcome preserves what the task actually returned
@@ -1266,12 +1266,12 @@ describe("Fiber", () => {
       const taskComplete = Promise.withResolvers<Result<number>>();
 
       const fiber = run(() => taskComplete.promise);
-      expect(fiber.run.snapshot().state.type).toBe("running");
+      expect(fiber.run.snapshot().state.type).toBe("Running");
 
       taskComplete.resolve(ok(42));
       await fiber;
       const snapshotState = fiber.run.snapshot().state;
-      assert(snapshotState.type === "completed");
+      assert(snapshotState.type === "Completed");
       expect(snapshotState.result).toEqual(ok(42));
     });
   });
@@ -1521,7 +1521,7 @@ describe("unabortable", () => {
     expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
     // Outcome preserves what the task actually returned
     const state = fiber.getState();
-    assert(state.type === "completed");
+    assert(state.type === "Completed");
     expect(state.outcome).toEqual(innerResult);
   });
 
@@ -2198,8 +2198,8 @@ describe("AsyncDisposableStack", () => {
       const result = await run(task);
 
       expect(result).toEqual(ok());
-      expect(stateWhileWorking!.type).toBe("running");
-      expect(childRunner!.getState().type).toBe("completed");
+      expect(stateWhileWorking!.type).toBe("Running");
+      expect(childRunner!.getState().type).toBe("Completed");
     });
 
     test("accepts moved native stack", async () => {
@@ -2797,7 +2797,7 @@ describe("sleep", () => {
 
     expect(result).toEqual(err({ type: "AbortError", reason: "cancelled" }));
     const state = fiber.getState();
-    assert(state.type === "completed");
+    assert(state.type === "Completed");
     expect(state.outcome).toEqual(
       err({ type: "AbortError", reason: "cancelled" }),
     );
@@ -6312,7 +6312,7 @@ describe("examples TODO", () => {
 
       expect(result).toEqual(err({ type: "AbortError", reason: "stop" }));
       const state = fiber.getState();
-      assert(state.type === "completed");
+      assert(state.type === "Completed");
       expect(state.outcome).toEqual(ok("data"));
     });
 
@@ -6325,7 +6325,7 @@ describe("examples TODO", () => {
 
       expect(result).toEqual(ok("data"));
       const state = fiber.getState();
-      assert(state.type === "completed");
+      assert(state.type === "Completed");
       expect(state.outcome).toEqual(ok("data"));
     });
   });

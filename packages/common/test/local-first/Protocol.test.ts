@@ -5,6 +5,7 @@ import { createBuffer } from "../../src/Buffer.js";
 import { lazyFalse, lazyTrue } from "../../src/Function.js";
 import type { NonEmptyReadonlyArray } from "../../src/index.js";
 import { assertNonEmptyArray, EncryptionKey } from "../../src/index.js";
+import type { OwnerIdBytes } from "../../src/local-first/Owner.js";
 import type { TimestampsRangeWithTimestampsBuffer } from "../../src/local-first/Protocol.js";
 import {
   applyProtocolMessageAsClient,
@@ -38,7 +39,6 @@ import {
   protocolVersion,
   SubscriptionFlags,
 } from "../../src/local-first/Protocol.js";
-import type { OwnerIdBytes } from "../../src/local-first/Owner.js";
 import type {
   CrdtMessage,
   EncryptedCrdtMessage,
@@ -1096,8 +1096,8 @@ describe("E2E sync", () => {
         );
       }
 
-      if (!result.ok || result.value.type === "no-response") break;
-      assert(result.value.type !== "broadcast");
+      if (!result.ok || result.value.type === "NoResponse") break;
+      assert(result.value.type !== "Broadcast");
       message = result.value.message;
 
       turn = turn === "relay" ? "client" : "relay";

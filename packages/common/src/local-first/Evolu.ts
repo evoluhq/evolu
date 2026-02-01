@@ -624,7 +624,7 @@ const createErrorStore = (
   );
 
   deps.evoluWorker.port.postMessage(
-    { type: "initErrorStore", port: errorChannel.port1.native },
+    { type: "InitErrorStore", port: errorChannel.port1.native },
     [errorChannel.port1.native],
   );
 

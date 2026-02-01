@@ -3468,7 +3468,7 @@ export const formatObjectWithRecordError = <Error extends TypeError>(
  * @see {@link exhaustiveCheck} to ensure all cases are handled in void functions.
  * @see {@link typed} for runtime-validated typed objects.
  */
-export interface Typed<T extends string> {
+export interface Typed<T extends Capitalize<string>> {
   readonly type: T;
 }
 
@@ -3505,14 +3505,14 @@ export interface Typed<T extends string> {
  *
  * @see {@link Typed} for type-only discrimination.
  */
-export function typed<Tag extends string>(tag: Tag): TypedType<Tag>;
+export function typed<Tag extends Capitalize<string>>(tag: Tag): TypedType<Tag>;
 /** With additional properties. */
 export function typed<
-  Tag extends string,
+  Tag extends Capitalize<string>,
   Props extends Record<string, AnyType>,
 >(tag: Tag, props: Props): TypedType<Tag, Props>;
 export function typed<
-  Tag extends string,
+  Tag extends Capitalize<string>,
   Props extends Record<string, AnyType>,
 >(tag: Tag, props?: Props): ObjectType<{ type: LiteralType<Tag> } & Props> {
   return object({ type: literal(tag), ...props } as {
@@ -3522,9 +3522,11 @@ export function typed<
 
 /** Return type of {@link typed}. */
 export type TypedType<
-  Tag extends string,
+  Tag extends Capitalize<string>,
   Props extends Record<string, AnyType> = Record<never, never>,
 > = ObjectType<{ type: LiteralType<Tag> } & Props>;
+
+// TODO: TypeError with "Error" suffix.
 
 /**
  * Union {@link Type}.
