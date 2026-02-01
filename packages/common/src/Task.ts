@@ -1023,7 +1023,7 @@ export class TaskDisposableStack<D = unknown> implements AsyncDisposable {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/defer
    */
-  defer(onDisposeAsync: Task<void, any, D>): void {
+  defer(onDisposeAsync: Task<void, never, D>): void {
     this.#stack.defer(() => this.#runVoid(onDisposeAsync));
   }
 
@@ -1099,7 +1099,7 @@ export class TaskDisposableStack<D = unknown> implements AsyncDisposable {
    */
   async adopt<T, E = never>(
     acquire: Task<T, E, D>,
-    release: (resource: T) => Task<void, any, D>,
+    release: (resource: T) => Task<void, never, D>,
   ): Promise<Result<T, E | AbortError>> {
     const result = await this.#run(acquire);
     if (result.ok) {

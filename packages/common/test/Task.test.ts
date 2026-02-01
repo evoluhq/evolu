@@ -1822,6 +1822,26 @@ describe("AsyncDisposableStack", () => {
       expect(events).toEqual(["work", "cleanup"]);
     });
 
+    test("requires cleanup task without domain errors", async () => {
+      await using run = createRunner();
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+
+        const cleanupOk: Task<void> = () => ok();
+        stack.defer(cleanupOk);
+
+        const cleanupWithError: Task<void, MyError> = () =>
+          err({ type: "MyError" });
+        // @ts-expect-error cleanup task must not return domain errors
+        stack.defer(cleanupWithError);
+
+        return ok();
+      };
+
+      expect(await run(task)).toEqual(ok());
+    });
+
     test("runs multiple deferred tasks in LIFO order", async () => {
       await using run = createRunner();
 
@@ -2266,6 +2286,35 @@ describe("AsyncDisposableStack", () => {
 
       expect(result).toEqual(ok());
       expect(events).toEqual(["h1 acquired", "using h1", "h1 released"]);
+    });
+
+    test("requires release task without domain errors", async () => {
+      await using run = createRunner();
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+
+        const acquire: Task<{ readonly id: string }> = () => ok({ id: "h1" });
+
+        const releaseOk =
+          (_: { readonly id: string }): Task<void> =>
+          () =>
+            ok();
+
+        const result = await stack.adopt(acquire, releaseOk);
+        if (!result.ok) return result;
+
+        const releaseWithError =
+          (_: { readonly id: string }): Task<void, MyError> =>
+          () =>
+            err({ type: "MyError" });
+        // @ts-expect-error release task must not return domain errors
+        await stack.adopt(acquire, releaseWithError);
+
+        return ok();
+      };
+
+      expect(await run(task)).toEqual(ok());
     });
 
     test("disposal is unabortable", async () => {
@@ -6216,7 +6265,9 @@ describe("examples TODO", () => {
 
   describe("createSemaphore", () => {
     test("limits concurrency with sleep helper", async () => {
-      await using run = createRunner();
+      await using run = createRunner({
+        console: testCreateConsole({ level: "silent" }),
+      });
 
       const semaphore = createSemaphore(2);
 
