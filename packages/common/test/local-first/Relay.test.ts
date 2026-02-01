@@ -7,9 +7,9 @@ import type {
 import {
   err,
   lazyFalse,
+  setTimeout,
   sql,
   timestampBytesToTimestamp,
-  wait,
 } from "../../src/index.js";
 import type {
   EncryptedCrdtMessage,
@@ -148,7 +148,7 @@ describe("writeMessages", () => {
         if (activeWrites > 1) {
           concurrentAccess = true;
         }
-        await wait("1ms")();
+        await setTimeout("1ms");
         activeWrites--;
         return true;
       },
@@ -175,7 +175,7 @@ describe("writeMessages", () => {
       isOwnerWithinQuota: async (_ownerId, _requiredBytes) => {
         activeWrites++;
         maxConcurrentWrites = Math.max(maxConcurrentWrites, activeWrites);
-        await wait("1ms")();
+        await setTimeout("1ms");
         activeWrites--;
         return true;
       },
@@ -261,7 +261,7 @@ describe("writeMessages", () => {
 
       await using run = await testCreateRunnerWithRelayStorage({
         isOwnerWithinQuota: async (ownerId, requiredBytes) => {
-          await wait("1ms")();
+          await setTimeout("1ms");
           quotaCheckCalled = true;
           receivedOwnerId = ownerId;
           receivedBytes = requiredBytes;
@@ -298,7 +298,7 @@ describe("writeMessages", () => {
     test("fails when async isOwnerWithinQuota returns false", async () => {
       await using run = await testCreateRunnerWithRelayStorage({
         isOwnerWithinQuota: async () => {
-          await wait("1ms")();
+          await setTimeout("1ms");
           return false;
         },
       });
