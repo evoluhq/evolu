@@ -14,7 +14,7 @@ import type {
   RandomBytesDep,
 } from "../Crypto.js";
 import type { UnknownError } from "../Error.js";
-import { lazyFalse, lazyTrue } from "../Function.js";
+import { lazyFalse, lazyTrue, todo } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import type { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
@@ -192,82 +192,84 @@ export const createSync =
         url: transport.url,
       });
 
-      return deps.createWebSocket(transport.url, {
-        binaryType: "arraybuffer",
+      return todo();
 
-        onOpen: () => {
-          if (isDisposed) return;
+      // return deps.createWebSocket(transport.url, {
+      //   binaryType: "arraybuffer",
 
-          const webSocket = resources.getResource(transportKey);
-          if (!webSocket) return;
+      //   onOpen: () => {
+      //     if (isDisposed) return;
 
-          const ownerIds = resources.getConsumersForResource(transportKey);
-          deps.console.log("[sync]", "onOpen", { transportKey, ownerIds });
+      //     const webSocket = resources.getResource(transportKey);
+      //     if (!webSocket) return;
 
-          for (const ownerId of ownerIds) {
-            const message = createProtocolMessageForSync({ storage })(
-              ownerId,
-              SubscriptionFlags.Subscribe,
-            );
-            if (!message) continue;
-            deps.console.log("[sync]", "send", { message });
-            webSocket.send(message);
-          }
-        },
+      //     const ownerIds = resources.getConsumersForResource(transportKey);
+      //     deps.console.log("[sync]", "onOpen", { transportKey, ownerIds });
 
-        onClose: (event) => {
-          deps.console.log("[sync]", "onClose", {
-            transportKey,
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean,
-          });
-        },
+      //     for (const ownerId of ownerIds) {
+      //       const message = createProtocolMessageForSync({ storage })(
+      //         ownerId,
+      //         SubscriptionFlags.Subscribe,
+      //       );
+      //       if (!message) continue;
+      //       deps.console.log("[sync]", "send", { message });
+      //       webSocket.send(message);
+      //     }
+      //   },
 
-        onError: (error) => {
-          deps.console.warn("[sync]", "onError", { transportKey, error });
-        },
+      //   onClose: (event) => {
+      //     deps.console.log("[sync]", "onClose", {
+      //       transportKey,
+      //       code: event.code,
+      //       reason: event.reason,
+      //       wasClean: event.wasClean,
+      //     });
+      //   },
 
-        onMessage: (data: string | ArrayBuffer | Blob) => {
-          // Only handle ArrayBuffer data for sync messages
-          if (isDisposed || !(data instanceof ArrayBuffer)) return;
+      //   onError: (error) => {
+      //     deps.console.warn("[sync]", "onError", { transportKey, error });
+      //   },
 
-          const webSocket = resources.getResource(transportKey);
-          if (!webSocket) return;
+      //   onMessage: (data: string | ArrayBuffer | Blob) => {
+      //     // Only handle ArrayBuffer data for sync messages
+      //     if (isDisposed || !(data instanceof ArrayBuffer)) return;
 
-          const input = new Uint8Array(data);
-          deps.console.log("[sync]", "onMessage", {
-            transportKey,
-            message: input,
-          });
+      //     const webSocket = resources.getResource(transportKey);
+      //     if (!webSocket) return;
 
-          // applyProtocolMessageAsClient({ storage })(input, {
-          //   // No write key, no sync (for a case when an owner was unused).
-          //   getWriteKey: (ownerId) => getSyncOwner(ownerId)?.writeKey ?? null,
-          // })
-          //   .then((message) => {
-          //     if (!message.ok) {
-          //       config.onError(message.error);
-          //       return;
-          //     }
+      //     const input = new Uint8Array(data);
+      //     deps.console.log("[sync]", "onMessage", {
+      //       transportKey,
+      //       message: input,
+      //     });
 
-          //     switch (message.value.type) {
-          //       case "response":
-          //         webSocket.send(message.value.message);
-          //         break;
-          //       case "no-response":
-          //         // Sync complete, no response needed
-          //         break;
-          //       case "broadcast":
-          //         // This was a broadcast message, don't affect sync counter
-          //         break;
-          //     }
-          //   })
-          //   .catch((error: unknown) => {
-          //     config.onError(createUnknownError(error));
-          //   });
-        },
-      });
+      //     // applyProtocolMessageAsClient({ storage })(input, {
+      //     //   // No write key, no sync (for a case when an owner was unused).
+      //     //   getWriteKey: (ownerId) => getSyncOwner(ownerId)?.writeKey ?? null,
+      //     // })
+      //     //   .then((message) => {
+      //     //     if (!message.ok) {
+      //     //       config.onError(message.error);
+      //     //       return;
+      //     //     }
+
+      //     //     switch (message.value.type) {
+      //     //       case "response":
+      //     //         webSocket.send(message.value.message);
+      //     //         break;
+      //     //       case "no-response":
+      //     //         // Sync complete, no response needed
+      //     //         break;
+      //     //       case "broadcast":
+      //     //         // This was a broadcast message, don't affect sync counter
+      //     //         break;
+      //     //     }
+      //     //   })
+      //     //   .catch((error: unknown) => {
+      //     //     config.onError(createUnknownError(error));
+      //     //   });
+      //   },
+      // });
     };
 
     const resources = createResources<
