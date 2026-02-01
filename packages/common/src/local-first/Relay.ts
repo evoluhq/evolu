@@ -12,8 +12,6 @@ import {
 } from "../Array.js";
 import type { TimingSafeEqualDep } from "../Crypto.js";
 import { createInstances } from "../Instances.js";
-import type { MaybeAsync } from "../OldTask.js";
-import { isAsync } from "../OldTask.js";
 import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { SqliteDep, SqliteError } from "../Sqlite.js";
@@ -21,6 +19,7 @@ import { sql } from "../Sqlite.js";
 import type { Mutex } from "../Task.js";
 import { createMutex } from "../Task.js";
 import { PositiveInt, SimpleName } from "../Type.js";
+import { isPromiseLike, type Awaitable } from "../Types.js";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
@@ -56,7 +55,7 @@ export interface RelayConfig extends StorageConfig {
    * Optional callback to check if an {@link OwnerId} is allowed to access the
    * relay. If this callback is not provided, all owners are allowed.
    *
-   * The callback receives the {@link OwnerId} and returns a {@link MaybeAsync}
+   * The callback receives the {@link OwnerId} and returns a {@link Awaitable}
    * boolean: `true` to allow access, or `false` to deny.
    *
    * The callback can be synchronous (for SQLite or in-memory checks) or
@@ -95,7 +94,7 @@ export interface RelayConfig extends StorageConfig {
    *   Promise.resolve(ownerId === "6jy_2F4RT5qqeLgJ14_dnQ"),
    * ```
    */
-  readonly isOwnerAllowed?: (ownerId: OwnerId) => MaybeAsync<boolean>;
+  readonly isOwnerAllowed?: (ownerId: OwnerId) => Awaitable<boolean>;
 }
 
 /**
@@ -230,7 +229,7 @@ export const createRelaySqliteStorage =
                   ownerId,
                   newStoredBytes,
                 );
-                const isWithinQuota = isAsync(quotaResult)
+                const isWithinQuota = isPromiseLike(quotaResult)
                   ? await quotaResult
                   : quotaResult;
                 if (!isWithinQuota) {

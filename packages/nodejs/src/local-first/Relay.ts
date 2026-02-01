@@ -5,7 +5,7 @@ import {
   createRelation,
   createSqlite,
   type CreateSqliteDriverDep,
-  isAsync,
+  isPromiseLike,
   ok,
   OwnerId,
   type RandomDep,
@@ -145,7 +145,7 @@ export const createNodeJsRelay =
 
       void (async () => {
         const result = isOwnerAllowed(ownerId);
-        const isAllowed = isAsync(result) ? await result : result;
+        const isAllowed = isPromiseLike(result) ? await result : result;
         if (!isAllowed) {
           console.debug("unauthorized owner", ownerId);
           socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
