@@ -260,11 +260,6 @@ export const createWebSocket: CreateWebSocket =
           : { type: "WebSocketConnectError", event };
         onError?.(error);
 
-        /**
-         * Trigger retry only on connect error. For errors on open connections,
-         * onclose always fires afterward and will trigger retry — calling err()
-         * here would cause double-retry.
-         */
         if (error.type === "WebSocketConnectError") err(error);
       };
 
