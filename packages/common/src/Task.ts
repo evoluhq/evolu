@@ -11,7 +11,7 @@ import {
   mapArray,
   type NonEmptyReadonlyArray,
 } from "./Array.js";
-import { assert, assertType } from "./Assert.js";
+import { assert } from "./Assert.js";
 import { type Console, type ConsoleDep, createConsole } from "./Console.js";
 import type { RandomBytes, RandomBytesDep } from "./Crypto.js";
 import { createRandomBytes } from "./Crypto.js";
@@ -1299,20 +1299,17 @@ const createRunnerInternal =
     let children: ReadonlySet<Fiber<any, any, D>> = emptySet;
 
     const requestAbort = (reason: unknown) => {
-      assertType(AbortError, reason);
-      if (abortMask === isAbortable) signalController.abort(reason);
-      requestController.abort(reason);
+      const abortError = reason as AbortError;
+      if (abortMask === isAbortable) signalController.abort(abortError);
+      requestController.abort(abortError);
     };
 
     if (parent) {
-      const handleAbort = () => requestAbort(parent.requestSignal.reason);
-      if (parent.requestSignal.aborted) {
-        handleAbort();
-      } else {
-        parent.requestSignal.addEventListener("abort", handleAbort, {
-          signal: requestController.signal,
-        });
-      }
+      subscribeToAbort(
+        parent.requestSignal,
+        () => requestAbort(parent.requestSignal.reason),
+        { signal: requestController.signal },
+      );
     }
 
     const emitEvent = (data: RunnerEventData) => {
@@ -1381,18 +1378,11 @@ const createRunnerInternal =
       run.abortMask = abortMask;
       run.onAbort = (callback) => {
         if (abortMask !== isAbortable) return;
-        const handleAbort = () => {
-          assertType(AbortError, signalController.signal.reason);
-          callback(signalController.signal.reason.reason);
-        };
-        if (signalController.signal.aborted) {
-          handleAbort();
-          return;
-        }
-        signalController.signal.addEventListener("abort", handleAbort, {
-          once: true,
-          signal: requestController.signal,
-        });
+        subscribeToAbort(
+          signalController.signal,
+          () => callback((signalController.signal.reason as AbortError).reason),
+          { once: true, signal: requestController.signal },
+        );
       };
 
       run.getState = () => state;
@@ -1501,6 +1491,15 @@ const createAbortError = (reason: unknown): AbortError => ({
   type: "AbortError",
   reason,
 });
+
+const subscribeToAbort = (
+  signal: AbortSignal,
+  handler: () => void,
+  options: AddEventListenerOptions,
+): void => {
+  if (signal.aborted) handler();
+  else signal.addEventListener("abort", handler, options);
+};
 
 const runnerClosingAbortError: AbortError =
   createAbortError(runnerClosingError);
@@ -3364,8 +3363,7 @@ function pool<T, E>(
     await Promise.race(waitFor);
 
     if (run.signal.aborted) {
-      assertType(AbortError, run.signal.reason);
-      return err(run.signal.reason);
+      return err(run.signal.reason as AbortError);
     }
 
     if (!stopOn) return results ? ok(results) : ok();

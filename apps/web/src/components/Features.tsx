@@ -161,7 +161,7 @@ const features: Array<Feature> = [
   {
     id: "#lightweight",
     name: "Lightweight",
-    description: "The complete Hello World example is 5.7 kB gzipped.",
+    description: "The complete Hello World example is 5.6 kB gzipped.",
     icon: IconFeather,
   },
   {
