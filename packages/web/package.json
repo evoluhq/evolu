@@ -14,25 +14,26 @@
   },
   "homepage": "https://evolu.dev",
   "type": "module",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "browser": "./dist/index.js"
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "browser": "./dist/src/index.js"
     }
   },
   "files": [
-    "dist/**",
+    "dist/src/**",
     "src/**",
     "README.md"
   ],
   "scripts": {
     "dev": "tsc",
     "build": "rimraf dist && tsc",
-    "_test": "vitest run",
+    "test": "vitest run",
     "test:watch": "vitest",
-    "clean": "rimraf .turbo node_modules dist",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rimraf .turbo node_modules dist coverage",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
@@ -44,6 +45,8 @@
     "@evolu/tsconfig": "workspace:*",
     "@types/sharedworker": "^0.0.211",
     "@types/web-locks-api": "^0.0.5",
+    "@vitest/browser": "^4.0.17",
+    "@vitest/browser-playwright": "^4.0.17",
     "typescript": "^5.9.3",
     "user-agent-data-types": "^0.4.2",
     "vitest": "^4.0.17"
