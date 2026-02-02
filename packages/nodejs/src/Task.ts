@@ -5,95 +5,86 @@
  */
 
 import {
-  callback,
-  createRunner,
+  createRunner as createCommonRunner,
   createUnknownError,
-  type MainTask,
+  type CreateRunner,
+  type Runner,
+  type RunnerDeps,
 } from "@evolu/common";
 
 /**
- * Runs a main task with proper Node.js signal handling.
+ * A promise that resolves when a termination signal is received.
  *
- * Creates a root runner, executes the main task, waits for termination signals,
- * then disposes. Global errors (uncaught exceptions and unhandled rejections)
- * are logged and trigger graceful shutdown.
+ * Resolves on `SIGINT` (Ctrl-C), `SIGTERM` (OS/k8s/Docker termination),
+ * `SIGHUP` (console close/terminal disconnect), or `SIGBREAK` (Windows
+ * Ctrl-Break).
+ *
+ * @group Node.js Runner
+ */
+export type Shutdown = Promise<void>;
+
+export interface ShutdownDep {
+  readonly shutdown: Shutdown;
+}
+
+/**
+ * Creates a Node.js {@link Runner} with process signal and error handling.
+ *
+ * - Global error handlers (`uncaughtException`, `unhandledRejection`) that log
+ *   errors and initiate graceful shutdown
+ * - A `shutdown` promise in deps that resolves on termination signals (`SIGINT`,
+ *   `SIGTERM`, `SIGHUP`)
  *
  * ### Example
  *
  * ```ts
- * const deps = {
- *   console: createConsole(),
- *   ...createNodeJsRelayBetterSqliteDeps(),
- * };
+ * const deps = createRelayDeps();
+ * await using run = createRunner(deps);
+ * await using stack = run.stack();
+ * await stack.use(startRelay({ port: 4000 }));
  *
- * runMain(deps)(async (run) => {
- *   const console = run.deps.console.child("main");
- *   await using stack = run.stack();
- *
- *   const server = await stack.use(startServer({ port: 4000 }));
- *   if (!server.ok) {
- *     console.error(server.error);
- *     return ok();
- *   }
- *
- *   return ok(stack.move());
- * });
+ * await run.deps.shutdown;
  * ```
  *
- * The `stack.move()` pattern transfers ownership of resources from the main
- * function to `runMain`. Without it, resources would be disposed when main
- * returns — but we want them to stay alive until a signal arrives. By returning
- * `ok(stack.move())`, the stack is disposed after the signal, not before.
+ * @group Node.js Runner
  */
-export const runMain =
-  <D>(deps: D) =>
-  (main: MainTask<D>): void => {
-    void (async () => {
-      await using run = createRunner(deps);
-      const console = run.deps.console.child("process");
+export const createRunner: CreateRunner<RunnerDeps & ShutdownDep> = <D>(
+  deps?: D,
+): Runner<RunnerDeps & ShutdownDep & D> => {
+  const { promise: shutdown, resolve: resolveShutdown } =
+    Promise.withResolvers<void>();
 
-      /**
-       * "The correct use of 'uncaughtException' is to perform synchronous
-       * cleanup of allocated resources (e.g. file descriptors, handles, etc)
-       * before shutting down the process."
-       *
-       * https://nodejs.org/api/process.html#event-uncaughtexception
-       * https://nodejs.org/api/process.html#event-unhandledrejection
-       *
-       * We log and initiate graceful shutdown.
-       */
-      const handleError = (error: unknown): void => {
-        console.error(createUnknownError(error));
-        // https://nodejs.org/api/process.html#processexitcode
-        process.exitCode = 1;
-        void run[Symbol.asyncDispose]();
-      };
+  const run = createCommonRunner({ ...deps, shutdown } as D & ShutdownDep);
 
-      process.on("uncaughtException", handleError);
-      process.on("unhandledRejection", handleError);
+  const console = run.deps.console.child("global");
 
-      const _ = await run(main);
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      await using _stack = _.ok ? (_.value ?? undefined) : undefined;
+  const handleError = (source: string) => (error: unknown) => {
+    console.error(source, createUnknownError(error));
+    process.exitCode = 1;
 
-      await run(
-        callback(({ ok }) => {
-          // https://nodejs.org/api/process.html#signal-events
-          process.on("SIGINT", ok); // Ctrl-C (all platforms)
-          process.on("SIGTERM", ok); // OS/k8s/Docker termination (Unix)
-          process.on("SIGHUP", ok); // Console close (Windows), terminal disconnect (Unix)
-
-          // TODO: Explain why it's important to use run.onAbort and not
-          // unregister sooner (cli shows gracefull shutdown was terminated.)
-          run.onAbort(() => {
-            process.off("SIGINT", ok);
-            process.off("SIGTERM", ok);
-            process.off("SIGHUP", ok);
-          });
-        }),
-      );
-
-      process.off("uncaughtException", handleError);
-      process.off("unhandledRejection", handleError);
-    })();
+    // Resolve shutdown so `await run.deps.shutdown` unblocks
+    // and allows the stack to be disposed.
+    resolveShutdown();
   };
+
+  const handleUncaughtException = handleError("uncaughtException");
+  const handleUnhandledRejection = handleError("unhandledRejection");
+
+  process.on("uncaughtException", handleUncaughtException);
+  process.on("unhandledRejection", handleUnhandledRejection);
+  process.on("SIGINT", resolveShutdown); // Ctrl-C (all platforms)
+  process.on("SIGTERM", resolveShutdown); // OS/k8s/Docker termination (Unix)
+  process.on("SIGHUP", resolveShutdown); // Console close (Windows), terminal disconnect (Unix)
+  process.on("SIGBREAK", resolveShutdown); // Ctrl-Break (Windows)
+
+  run.onAbort(() => {
+    process.off("uncaughtException", handleUncaughtException);
+    process.off("unhandledRejection", handleUnhandledRejection);
+    process.off("SIGINT", resolveShutdown);
+    process.off("SIGTERM", resolveShutdown);
+    process.off("SIGHUP", resolveShutdown);
+    process.off("SIGBREAK", resolveShutdown);
+  });
+
+  return run;
+};

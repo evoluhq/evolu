@@ -373,7 +373,7 @@ export type AnyTask = Task<any, any, any>;
  *
  * @group Type Utilities
  */
-export type InferTaskOk<R extends Task<any, any, any>> =
+export type InferTaskOk<R extends AnyTask> =
   R extends Task<infer T, any, any> ? T : never;
 
 /**
@@ -381,7 +381,7 @@ export type InferTaskOk<R extends Task<any, any, any>> =
  *
  * @group Type Utilities
  */
-export type InferTaskErr<R extends Task<any, any, any>> =
+export type InferTaskErr<R extends AnyTask> =
   R extends Task<any, infer E, any> ? E : never;
 
 /**
@@ -389,7 +389,7 @@ export type InferTaskErr<R extends Task<any, any, any>> =
  *
  * @group Type Utilities
  */
-export type InferTaskDeps<R extends Task<any, any, any>> =
+export type InferTaskDeps<R extends AnyTask> =
   R extends Task<any, any, infer D> ? D : never;
 
 /**
@@ -412,28 +412,12 @@ export type NextTask<T, E = never, D = void> = Task<T, E | Done<D>>;
  *
  * @group Type Utilities
  */
-export type InferTaskDone<T extends Task<any, any, any>> =
+export type InferTaskDone<T extends AnyTask> =
   InferTaskErr<T> extends infer Errors
     ? Errors extends Done<infer D>
       ? D
       : never
     : never;
-
-/**
- * A {@link Task} suitable for use with platform-specific `runMain` functions.
- *
- * Returns `Disposable`, `AsyncDisposable`, or `void`. Returning a disposable
- * (typically via `stack.move()`) transfers resource ownership to `runMain`,
- * which disposes after a termination signal. The error type is `never` because
- * main tasks must handle all errors internally.
- *
- * @group Core Types
- */
-export type MainTask<D> = Task<
-  Disposable | AsyncDisposable | void,
-  never,
-  RunnerDeps & D
->;
 
 /**
  * Error returned when a {@link Task} is aborted via
@@ -1191,6 +1175,19 @@ const defaultDeps: RunnerDeps = {
 };
 
 /**
+ * Factory type for creating root {@link Runner} instances.
+ *
+ * @group Creating Runners
+ */
+export interface CreateRunner<BaseDeps> {
+  /** With default dependencies only. */
+  (): Runner<BaseDeps>;
+
+  /** With custom dependencies merged into base deps. */
+  <D>(deps: D): Runner<BaseDeps & D>;
+}
+
+/**
  * Creates a root {@link Runner}.
  *
  * Call once per entry point (main thread, worker, etc.) and dispose on
@@ -1253,15 +1250,12 @@ const defaultDeps: RunnerDeps = {
  *
  * @group Creating Runners
  */
-export function createRunner(): Runner<RunnerDeps>;
-
-/** With custom dependencies merged into {@link RunnerDeps}. */
-export function createRunner<D>(deps: D): Runner<RunnerDeps & D>;
-
-export function createRunner<D>(deps?: D): Runner<RunnerDeps & D> {
+export const createRunner: CreateRunner<RunnerDeps> = <D>(
+  deps?: D,
+): Runner<RunnerDeps & D> => {
   const mergedDeps = { ...defaultDeps, ...deps } as RunnerDeps & D;
   return createRunnerInternal(createRef(mergedDeps))();
-}
+};
 
 /** Internal Runner properties, hidden from public API via TypeScript types. */
 interface RunnerInternal<D extends RunnerDeps = RunnerDeps> extends Runner<D> {
@@ -1421,7 +1415,6 @@ const createRunnerInternal =
         }
         return snapshot;
       };
-      run.onEvent = undefined;
 
       run.daemon = (task) => (daemon ?? self)(task);
       run.defer = (task) => ({
@@ -1516,9 +1509,8 @@ const isAbortable = AbortMask.orThrow(0);
 type AbortBehavior = "unabortable" | AbortMask;
 const abortBehaviorSymbol = Symbol("evolu.Task.abortBehavior");
 
-const getAbortBehavior = (
-  task: Task<any, any, any>,
-): AbortBehavior | undefined => (task as never)[abortBehaviorSymbol];
+const getAbortBehavior = (task: AnyTask): AbortBehavior | undefined =>
+  (task as never)[abortBehaviorSymbol];
 
 const abortBehavior =
   (behavior: AbortBehavior) =>
@@ -1599,9 +1591,8 @@ const defaultConcurrency: Concurrency = 1;
 
 const concurrencyBehaviorSymbol = Symbol("evolu.Task.concurrencyBehavior");
 
-const getConcurrencyBehavior = (
-  task: Task<any, any, any>,
-): Concurrency | undefined => (task as never)[concurrencyBehaviorSymbol];
+const getConcurrencyBehavior = (task: AnyTask): Concurrency | undefined =>
+  (task as never)[concurrencyBehaviorSymbol];
 
 /**
  * Runs tasks in parallel instead of sequentially.
@@ -1849,12 +1840,7 @@ export const sleep = (duration: Duration): Task<void> =>
  *
  * @group Composition
  */
-export const race = <
-  T extends readonly [
-    Task<any, any, any>,
-    ...ReadonlyArray<Task<any, any, any>>,
-  ],
->(
+export const race = <T extends readonly [AnyTask, ...ReadonlyArray<AnyTask>]>(
   tasks: T,
   {
     abortReason = raceLostError,

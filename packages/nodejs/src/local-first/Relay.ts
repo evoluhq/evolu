@@ -37,61 +37,54 @@ export interface NodeJsRelayConfig extends RelayConfig {
   readonly port?: number;
 }
 
-/** Dependencies for {@link createNodeJsRelay} using better-sqlite3. */
-export const createNodeJsRelayBetterSqliteDeps = (): CreateSqliteDriverDep &
-  RandomDep &
-  TimingSafeEqualDep => ({
+export type RelayDeps = CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep;
+
+/** Dependencies for {@link startRelay} using better-sqlite3. */
+export const createRelayDeps = (): RelayDeps => ({
   createSqliteDriver: createBetterSqliteDriver,
   random: createRandom(),
   timingSafeEqual: createTimingSafeEqual(),
 });
 
 /**
- * Creates an Evolu relay server using Node.js.
+ * Starts an Evolu relay server using Node.js.
  *
- * Use {@link createNodeJsRelayBetterSqliteDeps} to create dependencies for
- * better-sqlite3, or provide a custom SQLite driver implementation.
+ * Use {@link createRelayDeps} to create dependencies for better-sqlite3, or
+ * provide a custom SQLite driver implementation.
  *
  * ### Example
  *
  * ```ts
- * const deps = {
- *   console: createConsole(),
- *   ...createNodeJsRelayBetterSqliteDeps(),
- * };
+ * const deps = { ...createRelayDeps(), console };
  *
- * runMain(deps)(async (run) => {
- *   await using stack = run.stack();
+ * await using run = createRunner(deps);
+ * await using stack = run.stack();
  *
- *   const relay = await stack.use(createNodeJsRelay({ port: 4000 }));
- *   if (!relay.ok) {
- *     run.deps.console.error(relay.error);
- *     return ok();
- *   }
+ * await stack.use(startRelay({ port: 4000 }));
  *
- *   return ok(stack.move());
- * });
+ * await run.deps.shutdown;
  * ```
  */
-export const createNodeJsRelay =
+export const startRelay =
   ({
     port = 443,
     name = SimpleName.orThrow("evolu-relay"),
     isOwnerAllowed,
     isOwnerWithinQuota,
-  }: NodeJsRelayConfig): Task<
-    Relay,
-    SqliteError,
-    CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep
-  > =>
+  }: NodeJsRelayConfig): Task<Relay, never, RelayDeps> =>
   async (_run) => {
     await using stack = _run.stack();
     const console = _run.deps.console.child("relay");
 
     const dbFileExists = existsSync(`${name}.db`);
 
+    const handleError = (error: SqliteError) => {
+      console.error(error);
+      return ok(stack);
+    };
+
     const sqlite = await stack.use(createSqlite(name));
-    if (!sqlite.ok) return sqlite;
+    if (!sqlite.ok) return handleError(sqlite.error);
     const deps = { ..._run.deps, sqlite: sqlite.value };
 
     if (!dbFileExists) {
@@ -99,7 +92,7 @@ export const createNodeJsRelay =
         createBaseSqliteStorageTables(deps),
         createRelayStorageTables(deps),
       ]);
-      if (!result.ok) return result;
+      if (!result.ok) return handleError(result.error);
     }
 
     const storage = createRelaySqliteStorage(deps)({
