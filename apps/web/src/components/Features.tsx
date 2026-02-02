@@ -29,7 +29,6 @@ import {
 } from "@tabler/icons-react";
 
 interface Feature {
-  id: string;
   name: string;
   description: string;
   icon: React.ComponentType<IconProps>;
@@ -153,98 +152,81 @@ const patterns: Array<Pattern> = [
 
 const features: Array<Feature> = [
   {
-    id: "#standard-library",
     name: "Standard library",
     description: "A tree-shakable TypeScript library that fits in your head.",
     icon: IconLibrary,
   },
   {
-    id: "#lightweight",
-    name: "Lightweight",
-    description: "The complete Hello World example is 5.6 kB gzipped.",
-    icon: IconFeather,
-  },
-  {
-    id: "#idiomatic-javascript",
-    name: "Idiomatic JavaScript",
-    description: "Minimal abstractions, native stack traces, debug-friendly.",
-    icon: IconBrandJavascript,
-  },
-  {
-    id: "#universal",
-    name: "Universal",
-    description: "Web, React Native, Electron, Solid, Vue, Svelte, and more.",
-    icon: IconDevices,
-  },
-  {
-    id: "#batteries-included",
-    name: "Batteries included",
-    description: "Helpers for Array, Object, etc. Eq, Order, Time, and more.",
-    icon: IconPackage,
-  },
-  {
-    id: "#typed-errors",
-    name: "Typed errors",
-    description: "Result type. No try/catch. Exhaustive error handling.",
-    icon: IconShieldCheck,
-  },
-  {
-    id: "#automatic-cleanup",
-    name: "Automatic cleanup",
-    description: "Resource management with the new JS using keyword.",
-    icon: IconTrash,
-  },
-  {
-    id: "#safe-async",
-    name: "Safe async",
-    description: "Structured concurrency built on JavaScript Promises.",
-    icon: IconSubtask,
-  },
-
-  {
-    id: "#developer-experience",
-    name: "Developer experience",
-    description: "Readable source code, tests, DX-first API.",
-    icon: IconCode,
-  },
-  {
-    id: "#runtime-validation",
     name: "Runtime types",
     description: "Typed parsing, errors, and formatters. Branded types.",
     icon: IconFilter,
   },
   {
-    id: "#sqlite",
-    name: "Reactive SQLite",
-    description: "Local-first with reactive queries and React Suspense.",
-    icon: IconSql,
+    name: "Tasks",
+    description: "Structured concurrency built on JavaScript Promises.",
+    icon: IconSubtask,
   },
   {
-    id: "#private-by-design",
+    name: "Lightweight",
+    description: "Runtime types, Tasks, and Logger in 5.6 kB gzipped.",
+    icon: IconFeather,
+  },
+  {
+    name: "Batteries included",
+    description: "Helpers for Array, Object, etc. Eq, Order, Time, and more.",
+    icon: IconPackage,
+  },
+  {
+    name: "Typed errors",
+    description: "Result type. No try/catch. Exhaustive error handling.",
+    icon: IconShieldCheck,
+  },
+  {
+    name: "Universal",
+    description: "Web, React Native, Electron, Solid, Vue, Svelte, and more.",
+    icon: IconDevices,
+  },
+  {
+    name: "Idiomatic JavaScript",
+    description: "Minimal abstractions, native stack traces, debug-friendly.",
+    icon: IconBrandJavascript,
+  },
+  {
     name: "Private by design",
     description: "E2E encrypted sync and backup. Post-quantum safe.",
     icon: IconShieldLock,
   },
   {
-    id: "#realtime",
+    name: "Automatic cleanup",
+    description: "Resource management with the new JS using keyword.",
+    icon: IconTrash,
+  },
+  {
+    name: "Reactive SQLite",
+    description: "Local-first with reactive queries and React Suspense.",
+    icon: IconSql,
+  },
+  {
+    name: "Developer experience",
+    description: "Readable source code, tests, DX-first API.",
+    icon: IconCode,
+  },
+  {
     name: "Real-time",
     description: "WebSocket by default, other transports possible.",
     icon: IconLivePhoto,
   },
   {
-    id: "#type-safe-sql",
     name: "Type-safe SQL",
     description: "Typed database schema and SQL with Kysely.",
     icon: IconBrandTypescript,
   },
   {
-    id: "#crdt",
     name: "CRDT",
     description: "Merging changes without conflicts. History preserved.",
     icon: IconLayersIntersect2,
   },
   {
-    id: "#free",
     name: "Free",
     description: "MIT License, self-hostable Relay server.",
     icon: IconBrandOpenSource,
@@ -318,7 +300,7 @@ const Feature = ({ feature, index }: { feature: Feature; index: number }) => {
 
   return (
     <div
-      key={feature.id}
+      key={feature.name}
       onMouseMove={onMouseMove}
       className="group relative flex rounded-2xl bg-zinc-50 transition-shadow hover:shadow-md hover:shadow-zinc-900/5 dark:bg-white/2.5 dark:hover:shadow-black/5"
     >
@@ -350,7 +332,7 @@ export const Features = (): React.ReactElement => (
   <div className="xl:max-w-none">
     <div className="not-prose mt-4 grid grid-cols-1 gap-2 pt-10 sm:grid-cols-2 lg:gap-8 xl:grid-cols-4">
       {features.map((feature, index) => (
-        <Feature key={feature.id} feature={feature} index={index} />
+        <Feature key={feature.name} feature={feature} index={index} />
       ))}
     </div>
   </div>
