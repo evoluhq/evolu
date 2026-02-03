@@ -36,15 +36,32 @@ import {
  * ### Example
  *
  * ```ts
- * const console = run.deps.console.child("relay");
+ * // Basic usage - defaults to "log"
+ * const console = createConsole();
  *
- * console.info("Started on port", 443); // logs
- * console.debug("Connection details", conn); // filtered out (debug < info)
+ * // With formatting (timestamps and path prefixes)
+ * const console = createConsole({
+ *   level: "info",
+ *   formatEntry: createConsoleEntryFormatter({ time: createTime() })({
+ *     timestampFormat: "relative",
+ *   }),
+ * });
+ *
+ * // Children inherit level at creation, then are independent
+ * const console = run.deps.console.child("relay");
+ * console.setLevel("silent");
+ *
+ * // Batch update via children
+ * const setLevelRecursive = (c: Console, level: ConsoleLevel): void => {
+ *   c.setLevel(level);
+ *   for (const child of c.children) setLevelRecursive(child, level);
+ * };
  * ```
  *
  * Console intentionally does not use {@link Task}. Logging must be as fast as
- * possible and always work, even during error handling or shutdown when tasks
- * may not be available.
+ * possible and always work, even during error handling or shutdown.
+ *
+ * @see {@link createConsole}
  */
 export interface Console {
   /** Name of this console. Empty for root. */
@@ -182,34 +199,7 @@ export interface ConsoleConfig {
   readonly formatEntry?: (entry: ConsoleEntry) => ReadonlyArray<unknown>;
 }
 
-/**
- * Creates a {@link Console} with structured logging and pluggable outputs.
- *
- * ### Example
- *
- * ```ts
- * // Basic usage - defaults to "log"
- * const console = createConsole();
- *
- * // With formatting (timestamps and path prefixes)
- * const console = createConsole({
- *   level: "info",
- *   formatEntry: createConsoleEntryFormatter({ time })({
- *     timestampFormat: "relative",
- *   }),
- * });
- *
- * // Children inherit level at creation, then are independent
- * const relay = console.child("relay");
- * console.setLevel("silent"); // only console, relay keeps inherited level
- *
- * // Batch update via children
- * const setLevelRecursive = (c: Console, level: ConsoleLevel): void => {
- *   c.setLevel(level);
- *   for (const child of c.children) setLevelRecursive(child, level);
- * };
- * ```
- */
+/** Creates a {@link Console}. */
 export const createConsole = ({
   name = "",
   level = "log",
