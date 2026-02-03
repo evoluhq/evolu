@@ -491,7 +491,7 @@ pnpm test --filter @evolu/common -- -t "yields and returns ok"
 
 ## Monorepo TypeScript issues
 
-**ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors should be ignored. Solution: use VS Code's "Developer: Reload Window" command (Cmd+Shift+P)
+**ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors are caused by stale TypeScript type cache. Solution: run "ESLint: Restart ESLint Server" command (Cmd+Shift+P)
 
 ## Git commit messages
 
