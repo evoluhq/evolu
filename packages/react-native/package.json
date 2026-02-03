@@ -21,26 +21,26 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "default": "./dist/src/index.js",
-      "react-native": "./dist/src/index.js"
+      "react-native": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
     },
     "./expo-sqlite": {
       "types": "./dist/src/exports/expo-sqlite.d.ts",
-      "default": "./dist/src/exports/expo-sqlite.js",
       "react-native": "./dist/src/exports/expo-sqlite.js",
-      "browser": "./dist/src/web.js"
+      "browser": "./dist/src/web.js",
+      "default": "./dist/src/exports/expo-sqlite.js"
     },
     "./expo-op-sqlite": {
       "types": "./dist/src/exports/expo-op-sqlite.d.ts",
-      "default": "./dist/src/exports/expo-op-sqlite.js",
       "react-native": "./dist/src/exports/expo-op-sqlite.js",
-      "browser": "./dist/src/web.js"
+      "browser": "./dist/src/web.js",
+      "default": "./dist/src/exports/expo-op-sqlite.js"
     },
     "./bare-op-sqlite": {
       "types": "./dist/src/exports/bare-op-sqlite.d.ts",
-      "default": "./dist/src/exports/bare-op-sqlite.js",
       "react-native": "./dist/src/exports/bare-op-sqlite.js",
-      "browser": "./dist/src/web.js"
+      "browser": "./dist/src/web.js",
+      "default": "./dist/src/exports/bare-op-sqlite.js"
     }
   },
   "typesVersions": {
