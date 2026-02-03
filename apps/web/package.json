@@ -18,8 +18,8 @@
   "dependencies": {
     "@algolia/autocomplete-core": "^1.19.4",
     "@evolu/common": "workspace:*",
-    "@evolu/react-web": "workspace:*",
     "@evolu/react": "workspace:*",
+    "@evolu/react-web": "workspace:*",
     "@evolu/sqlite-wasm": "2.2.4",
     "@evolu/web": "workspace:*",
     "@headlessui/react": "^2.2.9",
