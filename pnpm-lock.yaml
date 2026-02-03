@@ -43,6 +43,15 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^8.53.0
         version: 8.54.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
+      '@vitest/browser':
+        specifier: ^4.0.17
+        version: 4.0.18(vite@7.3.1(@types/node@24.10.10)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2))(vitest@4.0.18)
+      '@vitest/browser-playwright':
+        specifier: ^4.0.17
+        version: 4.0.18(playwright@1.58.1)(vite@7.3.1(@types/node@24.10.10)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2))(vitest@4.0.18)
+      '@vitest/coverage-v8':
+        specifier: ^4.0.17
+        version: 4.0.18(@vitest/browser@4.0.18(vite@7.3.1(@types/node@24.10.10)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2))(vitest@4.0.18))(vitest@4.0.18)
       eslint:
         specifier: ^9.39.2
         version: 9.39.2(jiti@2.6.1)
@@ -136,13 +145,13 @@ importers:
         version: 0.2.2(tailwindcss@4.1.18)
       '@mdx-js/loader':
         specifier: ^3.1.1
-        version: 3.1.1(webpack@5.104.1)
+        version: 3.1.1(webpack@5.105.0)
       '@mdx-js/react':
         specifier: ^3.1.1
         version: 3.1.1(@types/react@19.2.10)(react@19.2.4)
       '@next/mdx':
         specifier: ^16.1.3
-        version: 16.1.6(@mdx-js/loader@3.1.1(webpack@5.104.1))(@mdx-js/react@3.1.1(@types/react@19.2.10)(react@19.2.4))
+        version: 16.1.6(@mdx-js/loader@3.1.1(webpack@5.105.0))(@mdx-js/react@3.1.1(@types/react@19.2.10)(react@19.2.4))
       '@sindresorhus/slugify':
         specifier: ^3.0.0
         version: 3.0.0
@@ -412,7 +421,7 @@ importers:
         version: 4.22.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)
       react-native-svg:
         specifier: ^15.15.1
-        version: 15.15.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)
+        version: 15.15.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)
       set.prototype.difference:
         specifier: ^1.1.7
         version: 1.1.7
@@ -709,15 +718,6 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
-      '@vitest/browser':
-        specifier: ^4.0.17
-        version: 4.0.18(vite@7.3.1(@types/node@24.10.10)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2))(vitest@4.0.18)
-      '@vitest/browser-playwright':
-        specifier: ^4.0.17
-        version: 4.0.18(playwright@1.58.1)(vite@7.3.1(@types/node@24.10.10)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2))(vitest@4.0.18)
-      '@vitest/coverage-v8':
-        specifier: ^4.0.17
-        version: 4.0.18(@vitest/browser@4.0.18(vite@7.3.1(@types/node@24.10.10)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2))(vitest@4.0.18))(vitest@4.0.18)
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.6.2
@@ -730,12 +730,9 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
-      vitest:
-        specifier: ^4.0.17
-        version: 4.0.18(@types/node@24.10.10)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2)
       webpack:
         specifier: ^5.98.0
-        version: 5.104.1
+        version: 5.105.0
       ws:
         specifier: ^8.19.0
         version: 8.19.0
@@ -767,9 +764,6 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
-      vitest:
-        specifier: ^4.0.17
-        version: 4.0.18(@types/node@24.10.10)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2)
 
   packages/react:
     devDependencies:
@@ -791,9 +785,6 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
-      vitest:
-        specifier: ^4.0.17
-        version: 4.0.18(@types/node@24.10.10)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2)
 
   packages/react-native:
     devDependencies:
@@ -829,13 +820,10 @@ importers:
         version: 6.0.0-rc.11(react-native-nitro-modules@0.31.10(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.10)(react@19.2.4))(react@19.2.4))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.10)(react@19.2.4))(react@19.2.4)
       react-native-svg:
         specifier: ^15.15.1
-        version: 15.15.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.10)(react@19.2.4))(react@19.2.4)
+        version: 15.15.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.10)(react@19.2.4))(react@19.2.4)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
-      vitest:
-        specifier: ^4.0.17
-        version: 4.0.18(@types/node@24.10.10)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2)
 
   packages/react-web:
     devDependencies:
@@ -866,9 +854,6 @@ importers:
       user-agent-data-types:
         specifier: ^0.4.2
         version: 0.4.2
-      vitest:
-        specifier: ^4.0.17
-        version: 4.0.18(@types/node@24.10.10)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2)
 
   packages/svelte:
     devDependencies:
@@ -914,9 +899,6 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
-      vitest:
-        specifier: ^4.0.17
-        version: 4.0.18(@types/node@24.10.10)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2)
 
   packages/web:
     dependencies:
@@ -939,21 +921,12 @@ importers:
       '@types/web-locks-api':
         specifier: ^0.0.5
         version: 0.0.5
-      '@vitest/browser':
-        specifier: ^4.0.17
-        version: 4.0.18(vite@7.3.1(@types/node@24.10.10)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2))(vitest@4.0.18)
-      '@vitest/browser-playwright':
-        specifier: ^4.0.17
-        version: 4.0.18(playwright@1.58.1)(vite@7.3.1(@types/node@24.10.10)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2))(vitest@4.0.18)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       user-agent-data-types:
         specifier: ^0.4.2
         version: 0.4.2
-      vitest:
-        specifier: ^4.0.17
-        version: 4.0.18(@types/node@24.10.10)(@vitest/browser-playwright@4.0.18)(jiti@2.6.1)(lightningcss@1.31.1)(sass@1.97.1)(terser@5.46.0)(yaml@2.8.2)
 
 packages:
 
@@ -2745,8 +2718,8 @@ packages:
     resolution: {integrity: sha512-yzMTt9lEb8Gv7zRioUilSglI0c0smZ9k5D65677DLWLtWJaXIS3CqcGyUFByYKlnUj6TkjLVs54fBl6+TiGQDQ==}
     engines: {node: 20 || >=22}
 
-  '@isaacs/brace-expansion@5.0.0':
-    resolution: {integrity: sha512-ZT55BDLV0yv0RBm2czMiZ+SqCGO7AvmOM3G/w2xhVPH+te0aKgFjmBvGlL1dH+ql2tgGO3MVrbb3jCKyvpgnxA==}
+  '@isaacs/brace-expansion@5.0.1':
+    resolution: {integrity: sha512-WMz71T1JS624nWj2n2fnYAuPovhv7EUhk69R6i9dsVyzxt5eM3bjwvgk9L+APE1TRscGysAVMANkB0jh0LQZrQ==}
     engines: {node: 20 || >=22}
 
   '@isaacs/cliui@8.0.2':
@@ -6358,24 +6331,27 @@ packages:
 
   glob@10.5.0:
     resolution: {integrity: sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg==}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@11.1.0:
     resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
     engines: {node: 20 || >=22}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
-  glob@13.0.0:
-    resolution: {integrity: sha512-tvZgpqk6fz4BaNZ66ZsRaZnbHvP/jG3uKJvAZOwEVUL4RTA5nJeeLYfyN9/VA8NX/V3IBG+hkeuGpKjvELkVhA==}
+  glob@13.0.1:
+    resolution: {integrity: sha512-B7U/vJpE3DkJ5WXTgTpTRN63uV42DseiXXKMwG14LQBXmsdeIoHAPbU/MEo6II0k5ED74uc2ZGTC6MwHFQhF6w==}
     engines: {node: 20 || >=22}
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   glob@9.3.5:
     resolution: {integrity: sha512-e1LleDykUz2Iu+MTYdkSsuWX8lvAjAcs0Xef0lNIu0S2wOAzuTxCJtcd9S3cijlwYF18EsU3rzb8jPVobxDh9Q==}
     engines: {node: '>=16 || 14 >=14.17'}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   global-agent@3.0.0:
     resolution: {integrity: sha512-PT6XReJ+D07JvGoxQMkT6qji/jVNfX/h364XHZOWeRzy64sSFr+xJ5OX7LI3b4MPQzdL4H8Y8M0xzPpsVMwA8Q==}
@@ -7572,8 +7548,8 @@ packages:
     resolution: {integrity: sha512-r9deDe9p5FJUPZAk3A59wGH7Ii9YrjjWw0jmw/liSbHl2CHiyXj6FcDXDu2K3TjVAXqiJdaw3xxwlZZr9E6nHg==}
     hasBin: true
 
-  minimatch@10.1.1:
-    resolution: {integrity: sha512-enIvLvRAFZYXJzkCYG5RKmPfrFArdLv+R+lbQ53BmIMLIry74bjKzX6iHAm8WYamJkhSSEabrWN5D97XnKObjQ==}
+  minimatch@10.1.2:
+    resolution: {integrity: sha512-fu656aJ0n2kcXwsnwnv9g24tkU5uSmOlTjd6WyyaKm2Z+h1qmY6bAjrcaIxF/BslFqbZ8UBtbJi7KgQOZD2PTw==}
     engines: {node: 20 || >=22}
 
   minimatch@3.1.2:
@@ -8405,8 +8381,8 @@ packages:
       react-native: '*'
       react-native-nitro-modules: '*'
 
-  react-native-svg@15.15.1:
-    resolution: {integrity: sha512-ZUD1xwc3Hwo4cOmOLumjJVoc7lEf9oQFlHnLmgccLC19fNm6LVEdtB+Cnip6gEi0PG3wfvVzskViEtrySQP8Fw==}
+  react-native-svg@15.15.2:
+    resolution: {integrity: sha512-lpaSwA2i+eLvcEdDZyGgMEInQW99K06zjJqfMFblE0yxI0SCN5E4x6in46f0IYi6i3w2t2aaq3oOnyYBe+bo4w==}
     peerDependencies:
       react: '*'
       react-native: '*'
@@ -9854,8 +9830,8 @@ packages:
     resolution: {integrity: sha512-yd1RBzSGanHkitROoPFd6qsrxt+oFhg/129YzheDGqeustzX0vTZJZsSsQjVQC4yzBQ56K55XU8gaNCtIzOnTg==}
     engines: {node: '>=10.13.0'}
 
-  webpack@5.104.1:
-    resolution: {integrity: sha512-Qphch25abbMNtekmEGJmeRUhLDbe+QfiWTiqpKYkpCOWY64v9eyl+KRRLmqOFA2AvKPpc9DC6+u2n76tQLBoaA==}
+  webpack@5.105.0:
+    resolution: {integrity: sha512-gX/dMkRQc7QOMzgTe6KsYFM7DxeIONQSui1s0n/0xht36HvrgbxtM1xBlgx596NbpHuQU8P7QpKwrZYwUX48nw==}
     engines: {node: '>=10.13.0'}
     hasBin: true
     peerDependencies:
@@ -11757,7 +11733,7 @@ snapshots:
       expo-server: 1.0.5
       freeport-async: 2.0.0
       getenv: 2.0.0
-      glob: 13.0.0
+      glob: 13.0.1
       lan-network: 0.1.7
       minimatch: 9.0.5
       node-forge: 1.3.3
@@ -11832,7 +11808,7 @@ snapshots:
       expo-server: 1.0.5
       freeport-async: 2.0.0
       getenv: 2.0.0
-      glob: 13.0.0
+      glob: 13.0.1
       lan-network: 0.1.7
       minimatch: 9.0.5
       node-forge: 1.3.3
@@ -11882,7 +11858,7 @@ snapshots:
       chalk: 4.1.2
       debug: 4.4.3
       getenv: 2.0.0
-      glob: 13.0.0
+      glob: 13.0.1
       resolve-from: 5.0.0
       semver: 7.7.3
       slash: 3.0.0
@@ -11902,7 +11878,7 @@ snapshots:
       '@expo/json-file': 10.0.8
       deepmerge: 4.3.1
       getenv: 2.0.0
-      glob: 13.0.0
+      glob: 13.0.1
       require-from-string: 2.0.2
       resolve-from: 5.0.0
       resolve-workspace-root: 2.0.1
@@ -11950,7 +11926,7 @@ snapshots:
       chalk: 4.1.2
       debug: 4.4.3
       getenv: 2.0.0
-      glob: 13.0.0
+      glob: 13.0.1
       ignore: 5.3.2
       minimatch: 9.0.5
       p-limit: 3.1.0
@@ -11993,7 +11969,7 @@ snapshots:
       dotenv: 16.4.7
       dotenv-expand: 11.0.7
       getenv: 2.0.0
-      glob: 13.0.0
+      glob: 13.0.1
       hermes-parser: 0.29.1
       jsc-safe-url: 0.2.4
       lightningcss: 1.31.1
@@ -12385,7 +12361,7 @@ snapshots:
 
   '@isaacs/balanced-match@4.0.1': {}
 
-  '@isaacs/brace-expansion@5.0.0':
+  '@isaacs/brace-expansion@5.0.1':
     dependencies:
       '@isaacs/balanced-match': 4.0.1
 
@@ -12541,12 +12517,12 @@ snapshots:
       globby: 11.1.0
       read-yaml-file: 1.1.0
 
-  '@mdx-js/loader@3.1.1(webpack@5.104.1)':
+  '@mdx-js/loader@3.1.1(webpack@5.105.0)':
     dependencies:
       '@mdx-js/mdx': 3.1.1
       source-map: 0.7.6
     optionalDependencies:
-      webpack: 5.104.1
+      webpack: 5.105.0
     transitivePeerDependencies:
       - supports-color
 
@@ -12696,11 +12672,11 @@ snapshots:
     dependencies:
       fast-glob: 3.3.1
 
-  '@next/mdx@16.1.6(@mdx-js/loader@3.1.1(webpack@5.104.1))(@mdx-js/react@3.1.1(@types/react@19.2.10)(react@19.2.4))':
+  '@next/mdx@16.1.6(@mdx-js/loader@3.1.1(webpack@5.105.0))(@mdx-js/react@3.1.1(@types/react@19.2.10)(react@19.2.4))':
     dependencies:
       source-map: 0.7.6
     optionalDependencies:
-      '@mdx-js/loader': 3.1.1(webpack@5.104.1)
+      '@mdx-js/loader': 3.1.1(webpack@5.105.0)
       '@mdx-js/react': 3.1.1(@types/react@19.2.10)(react@19.2.4)
 
   '@next/swc-darwin-arm64@16.1.6':
@@ -14728,7 +14704,7 @@ snapshots:
       js-yaml: 4.1.1
       json5: 2.2.3
       lazy-val: 1.0.5
-      minimatch: 10.1.1
+      minimatch: 10.1.2
       plist: 3.1.0
       proper-lockfile: 4.1.2
       resedit: 1.7.2
@@ -16878,14 +16854,14 @@ snapshots:
     dependencies:
       foreground-child: 3.3.1
       jackspeak: 4.1.1
-      minimatch: 10.1.1
+      minimatch: 10.1.2
       minipass: 7.1.2
       package-json-from-dist: 1.0.1
       path-scurry: 2.0.1
 
-  glob@13.0.0:
+  glob@13.0.1:
     dependencies:
-      minimatch: 10.1.1
+      minimatch: 10.1.2
       minipass: 7.1.2
       path-scurry: 2.0.1
 
@@ -18516,9 +18492,9 @@ snapshots:
 
   mini-svg-data-uri@1.4.4: {}
 
-  minimatch@10.1.1:
+  minimatch@10.1.2:
     dependencies:
-      '@isaacs/brace-expansion': 5.0.0
+      '@isaacs/brace-expansion': 5.0.1
 
   minimatch@3.1.2:
     dependencies:
@@ -19319,7 +19295,7 @@ snapshots:
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.2.10)(react@19.2.4)
       react-native-nitro-modules: 0.31.10(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.10)(react@19.2.4))(react@19.2.4)
 
-  react-native-svg@15.15.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4):
+  react-native-svg@15.15.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4):
     dependencies:
       css-select: 5.2.2
       css-tree: 1.1.3
@@ -19327,7 +19303,7 @@ snapshots:
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4)
       warn-once: 0.1.1
 
-  react-native-svg@15.15.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.10)(react@19.2.4))(react@19.2.4):
+  react-native-svg@15.15.2(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.2.10)(react@19.2.4))(react@19.2.4):
     dependencies:
       css-select: 5.2.2
       css-tree: 1.1.3
@@ -19750,7 +19726,7 @@ snapshots:
 
   rimraf@6.1.2:
     dependencies:
-      glob: 13.0.0
+      glob: 13.0.1
       package-json-from-dist: 1.0.1
 
   roarr@2.15.4:
@@ -20563,14 +20539,14 @@ snapshots:
       ansi-escapes: 4.3.2
       supports-hyperlinks: 2.3.0
 
-  terser-webpack-plugin@5.3.16(webpack@5.104.1):
+  terser-webpack-plugin@5.3.16(webpack@5.105.0):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       jest-worker: 27.5.1
       schema-utils: 4.3.3
       serialize-javascript: 6.0.2
       terser: 5.46.0
-      webpack: 5.104.1
+      webpack: 5.105.0
 
   terser@5.46.0:
     dependencies:
@@ -21171,7 +21147,7 @@ snapshots:
 
   webpack-sources@3.3.3: {}
 
-  webpack@5.104.1:
+  webpack@5.105.0:
     dependencies:
       '@types/eslint-scope': 3.7.7
       '@types/estree': 1.0.8
@@ -21195,7 +21171,7 @@ snapshots:
       neo-async: 2.6.2
       schema-utils: 4.3.3
       tapable: 2.3.0
-      terser-webpack-plugin: 5.3.16(webpack@5.104.1)
+      terser-webpack-plugin: 5.3.16(webpack@5.105.0)
       watchpack: 2.5.1
       webpack-sources: 3.3.3
     transitivePeerDependencies:
