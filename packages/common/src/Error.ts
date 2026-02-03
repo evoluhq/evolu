@@ -94,7 +94,7 @@ export const createUnknownError = (error: unknown): UnknownError => {
  * `onunhandledrejection`, `uncaughtException`, etc.). Any error reaching these
  * handlers is a programming error — all unsafe code should be wrapped with
  * {@link trySync} or {@link tryAsync}. The `onError` callback exists for
- * telemetry and debugging, not error recovery.
+ * observability, not error recovery.
  *
  * Implementations use {@link handleGlobalError} to forward errors.
  */
