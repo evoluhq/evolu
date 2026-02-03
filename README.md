@@ -60,6 +60,7 @@ Linting
 Testing
 
 - `pnpm test` - Run tests
+- [Vitest VS Code extension](https://github.com/vitest-dev/vscode)
 
 Release
 

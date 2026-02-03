@@ -1,14 +1,8 @@
-import { defineConfig } from "vitest/config";
+import { defineProject } from "vitest/config";
 
-export default defineConfig({
+export default defineProject({
   test: {
     exclude: ["**/node_modules/**", "**/dist/**"],
     include: ["test/**/*.test.ts"],
-    coverage: {
-      provider: "v8",
-      include: ["src/**/*.ts"],
-      exclude: ["src/**/index.ts"],
-      reporter: ["text", "html"],
-    },
   },
 });

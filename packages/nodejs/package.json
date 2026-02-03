@@ -22,10 +22,7 @@
   "scripts": {
     "dev": "tsc",
     "build": "rimraf dist && tsc",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "clean": "rimraf .turbo node_modules dist coverage",
+    "clean": "rimraf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
@@ -38,8 +35,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.17"
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1"
