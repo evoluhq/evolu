@@ -6,11 +6,6 @@ applyTo: "**/*.{ts,tsx}"
 
 Follow these specific conventions and patterns:
 
-## Test-driven development
-
-- Write a failing test before implementing a new feature or fixing a bug
-- Keep test code cleaner than production code — good tests let you refactor production code; nothing protects messy tests
-
 ## Code organization & imports
 
 - **Use named imports only** - avoid default exports and namespace imports
@@ -433,6 +428,68 @@ const processTask: Task<void, ParseError | TimeoutError> = async (run) => {
 const result = await sleep("1s")(run);
 ```
 
+## Test-driven development
+
+- Write a failing test before implementing a new feature or fixing a bug
+- Run tests using the `runTests` tool with the test file path
+- Test files are in `packages/*/test/*.test.ts`
+- Use `testNames` parameter to run specific tests by name
+- Run related tests after making code changes to verify correctness
+
+### Test structure
+
+- Use `describe` blocks to group related tests by feature or function
+- Use `test` or `it` for individual test cases (both are equivalent)
+- Test names should be descriptive phrases: `"returns true for non-empty array"`
+- Use nested `describe` for sub-categories
+
+```ts
+import { describe, expect, expectTypeOf, test } from "vitest";
+
+describe("arrayFrom", () => {
+  test("creates array from iterable", () => {
+    const result = arrayFrom(new Set([1, 2, 3]));
+    expect(result).toEqual([1, 2, 3]);
+  });
+
+  test("returns input unchanged if already an array", () => {
+    const input = [1, 2, 3];
+    const result = arrayFrom(input);
+    expect(result).toBe(input);
+  });
+});
+```
+
+### Type testing
+
+Use `expectTypeOf` from Vitest for compile-time type assertions:
+
+```ts
+import { expectTypeOf } from "vitest";
+
+test("returns readonly array", () => {
+  const result = arrayFrom(2, () => "x");
+  expectTypeOf(result).toEqualTypeOf<ReadonlyArray<string>>();
+});
+
+test("NonEmptyArray requires at least one element", () => {
+  const _valid: NonEmptyArray<number> = [1, 2, 3];
+  // @ts-expect-error - empty array is not a valid NonEmptyArray
+  const _invalid: NonEmptyArray<number> = [];
+});
+```
+
+### Inline snapshots
+
+Use `toMatchInlineSnapshot` for readable test output directly in the test file:
+
+```ts
+test("Buffer", () => {
+  const buffer = createBuffer([1, 2, 3]);
+  expect(buffer.unwrap()).toMatchInlineSnapshot(`uint8:[1,2,3]`);
+});
+```
+
 ## Testing
 
 - **Create deps per test** - use `testCreateDeps()` from `@evolu/common` for test isolation
@@ -476,19 +533,6 @@ export const testCreateTime = (options?: {
 }): TestTime => { ... };
 ```
 
-### Vitest filtering (https://vitest.dev/guide/filtering)
-
-```bash
-# Run all tests in a package
-pnpm test --filter @evolu/common
-
-# Run a single file
-pnpm test --filter @evolu/common -- Task
-
-# Run a single test by name (-t flag)
-pnpm test --filter @evolu/common -- -t "yields and returns ok"
-```
-
 ## Monorepo TypeScript issues
 
 **ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors are caused by stale TypeScript type cache. Solution: run "ESLint: Restart ESLint Server" command (Cmd+Shift+P)
@@ -498,18 +542,6 @@ pnpm test --filter @evolu/common -- -t "yields and returns ok"
 - **Write as sentences** - use proper sentence case without trailing period
 - **No prefixes** - avoid `feat:`, `fix:`, `feature:` etc.
 - **Be descriptive** - explain what the change does
-
-```bash
-# Good
-Add support for custom error formatters
-Fix memory leak in WebSocket reconnection
-Update schema validation to handle edge cases
-
-# Avoid
-feat: add support for custom error formatters
-fix: memory leak in websocket reconnection
-Update schema validation to handle edge cases.
-```
 
 ## Changesets
 
