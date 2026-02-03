@@ -268,7 +268,7 @@ import {
  * ```ts
  * const deps = {
  *   console: createConsole({
- *     formatEntry: createConsoleEntryFormatter({ time: createTime() })({
+ *     formatEntry: createConsoleEntryFormatter()({
  *       timestampFormat: "absolute",
  *     }),
  *   }),

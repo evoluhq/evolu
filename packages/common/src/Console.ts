@@ -7,6 +7,7 @@
 import { objectFrom } from "./Object.js";
 import type { Task } from "./Task.js";
 import {
+  createTime,
   formatMillisAsClockTime,
   formatMillisAsDuration,
   type Millis,
@@ -42,7 +43,7 @@ import {
  * // With formatting (timestamps and path prefixes)
  * const console = createConsole({
  *   level: "info",
- *   formatEntry: createConsoleEntryFormatter({ time: createTime() })({
+ *   formatEntry: createConsoleEntryFormatter()({
  *     timestampFormat: "relative",
  *   }),
  * });
@@ -387,14 +388,14 @@ export type ConsoleEntryTimestampFormat =
  * ```ts
  * const console = createConsole({
  *   level: "info",
- *   formatEntry: createConsoleEntryFormatter({ time })({
+ *   formatEntry: createConsoleEntryFormatter()({
  *     timestampFormat: "relative",
  *   }),
  * });
  * ```
  */
 export const createConsoleEntryFormatter =
-  (deps: TimeDep) =>
+  (deps: TimeDep = { time: createTime() }) =>
   (
     config: ConsoleEntryFormatterConfig = {},
   ): ((entry: ConsoleEntry) => ReadonlyArray<unknown>) => {

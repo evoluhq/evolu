@@ -21,7 +21,13 @@ import {
  * ### Example
  *
  * ```ts
- * await using run = createRunner(deps);
+ * const console = createConsole({
+ *   formatEntry: createConsoleEntryFormatter()({
+ *     timestampFormat: "relative",
+ *   }),
+ * });
+ *
+ * await using run = createRunner({ console });
  * await using stack = run.stack();
  *
  * await stack.use(startApp());

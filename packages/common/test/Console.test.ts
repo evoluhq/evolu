@@ -237,6 +237,24 @@ describe("createConsole", () => {
 });
 
 describe("createConsoleEntryFormatter", () => {
+  test("uses default time dep when not provided", () => {
+    const formatter = createConsoleEntryFormatter()({
+      timestampFormat: "relative",
+    });
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    // Should have a relative timestamp prefix
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatch(/^\+\d+\.\d{3}s$/);
+    expect(result[1]).toBe("message");
+  });
+
   test("formats path", () => {
     const formatter = createConsoleEntryFormatter(createTimeDep())();
     const entry: ConsoleEntry = {
@@ -531,6 +549,18 @@ describe("testCreateConsole", () => {
     expect(console.getEntriesSnapshot().map((e) => e.args[0])).toEqual([
       "logged",
     ]);
+  });
+
+  test("hasOwnLevel tracks level override", () => {
+    const console = testCreateConsole({ level: "info" });
+
+    expect(console.hasOwnLevel()).toBe(false);
+
+    console.setLevel("debug");
+    expect(console.hasOwnLevel()).toBe(true);
+
+    console.setLevel(null);
+    expect(console.hasOwnLevel()).toBe(false);
   });
 
   test("debug-level methods use debug level", () => {

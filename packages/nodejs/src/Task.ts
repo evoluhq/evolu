@@ -28,7 +28,7 @@ export interface ShutdownDep {
 }
 
 /**
- * Creates a Node.js {@link Runner} with process signal and error handling.
+ * Creates a Node.js {@link Runner} with error handling and shutdown signal.
  *
  * - Global error handlers (`uncaughtException`, `unhandledRejection`) that log
  *   errors and initiate graceful shutdown
@@ -38,9 +38,17 @@ export interface ShutdownDep {
  * ### Example
  *
  * ```ts
- * const deps = createRelayDeps();
+ * const console = createConsole({
+ *   formatEntry: createConsoleEntryFormatter()({
+ *     timestampFormat: "relative",
+ *   }),
+ * });
+ *
+ * const deps = { ...createRelayDeps(), console };
+ *
  * await using run = createRunner(deps);
  * await using stack = run.stack();
+ *
  * await stack.use(startRelay({ port: 4000 }));
  *
  * await run.deps.shutdown;
