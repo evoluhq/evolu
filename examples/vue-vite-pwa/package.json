@@ -11,9 +11,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@evolu/common": "latest",
-    "@evolu/vue": "latest",
-    "@evolu/web": "latest",
+    "@evolu/common": "workspace:*",
+    "@evolu/vue": "workspace:*",
+    "@evolu/web": "workspace:*",
     "vue": "^3.5.26",
     "workbox-window": "^7.4.0"
   },

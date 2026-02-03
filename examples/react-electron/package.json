@@ -10,11 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@evolu/common": "latest",
-    "@evolu/react": "latest",
-    "@evolu/react-web": "latest",
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "@evolu/common": "workspace:*",
+    "@evolu/react": "workspace:*",
+    "@evolu/react-web": "workspace:*",
+    "react": "catalog:react19",
+    "react-dom": "catalog:react19"
   },
   "devDependencies": {
     "@types/react": "~19.1.17",
