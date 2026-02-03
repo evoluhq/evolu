@@ -20,54 +20,57 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js",
-      "react-native": "./dist/index.js"
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js",
+      "react-native": "./dist/src/index.js"
     },
     "./expo-sqlite": {
-      "types": "./dist/exports/expo-sqlite.d.ts",
-      "default": "./dist/exports/expo-sqlite.js",
-      "react-native": "./dist/exports/expo-sqlite.js",
-      "browser": "./dist/web.js"
+      "types": "./dist/src/exports/expo-sqlite.d.ts",
+      "default": "./dist/src/exports/expo-sqlite.js",
+      "react-native": "./dist/src/exports/expo-sqlite.js",
+      "browser": "./dist/src/web.js"
     },
     "./expo-op-sqlite": {
-      "types": "./dist/exports/expo-op-sqlite.d.ts",
-      "default": "./dist/exports/expo-op-sqlite.js",
-      "react-native": "./dist/exports/expo-op-sqlite.js",
-      "browser": "./dist/web.js"
+      "types": "./dist/src/exports/expo-op-sqlite.d.ts",
+      "default": "./dist/src/exports/expo-op-sqlite.js",
+      "react-native": "./dist/src/exports/expo-op-sqlite.js",
+      "browser": "./dist/src/web.js"
     },
     "./bare-op-sqlite": {
-      "types": "./dist/exports/bare-op-sqlite.d.ts",
-      "default": "./dist/exports/bare-op-sqlite.js",
-      "react-native": "./dist/exports/bare-op-sqlite.js",
-      "browser": "./dist/web.js"
+      "types": "./dist/src/exports/bare-op-sqlite.d.ts",
+      "default": "./dist/src/exports/bare-op-sqlite.js",
+      "react-native": "./dist/src/exports/bare-op-sqlite.js",
+      "browser": "./dist/src/web.js"
     }
   },
   "typesVersions": {
     "*": {
       ".": [
-        "./dist/index.d.ts"
+        "./dist/src/index.d.ts"
       ],
       "expo-sqlite": [
-        "./dist/exports/expo-sqlite.d.ts"
+        "./dist/src/exports/expo-sqlite.d.ts"
       ],
       "expo-op-sqlite": [
-        "./dist/exports/expo-op-sqlite.d.ts"
+        "./dist/src/exports/expo-op-sqlite.d.ts"
       ],
       "bare-op-sqlite": [
-        "./dist/exports/bare-op-sqlite.d.ts"
+        "./dist/src/exports/bare-op-sqlite.d.ts"
       ]
     }
   },
   "files": [
-    "dist/**",
+    "dist/src/**",
     "src/**",
     "README.md"
   ],
   "scripts": {
     "dev": "tsc",
     "build": "rimraf dist && tsc",
-    "clean": "rimraf .turbo node_modules dist",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rimraf .turbo node_modules dist coverage",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
