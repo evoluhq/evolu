@@ -35,9 +35,8 @@ import type { Simplify } from "../Types.js";
  * ### Example
  *
  * ```ts
- * const allTodos = evolu.createQuery((db) =>
- *   db.selectFrom("todo").selectAll(),
- * );
+ * const createQuery = createQueryBuilder(Schema);
+ * const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
  * type AllTodosRow = typeof allTodos.Row;
  * ```
  */
@@ -49,7 +48,8 @@ export type Query<R extends Row = Row> = string &
      * ### Example
      *
      * ```ts
-     * const allTodos = evolu.createQuery((db) =>
+     * const createQuery = createQueryBuilder(Schema);
+     * const allTodos = createQuery((db) =>
      *   db.selectFrom("todo").selectAll(),
      * );
      * type AllTodosRow = typeof allTodos.Row;

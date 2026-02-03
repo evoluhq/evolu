@@ -22,6 +22,9 @@ const Schema = {
 
 const deps = createEvoluDeps();
 
+// Create a typed query builder from the schema
+const createQuery = Evolu.createQueryBuilder(Schema);
+
 deps.evoluError.subscribe(() => {
   const error = deps.evoluError.get();
   if (!error) return;
@@ -72,7 +75,7 @@ export const EvoluMultitenantExample: FC = () => (
 );
 
 // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
-const todosQuery = evolu.createQuery((db) =>
+const todosQuery = createQuery((db) =>
   db
     // Type-safe SQL: try autocomplete for table and column names.
     .selectFrom("todo")

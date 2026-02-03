@@ -19,12 +19,7 @@ import type { DisposableDep, DisposableStackDep } from "../Resources.js";
 import { createDisposableDep } from "../Resources.js";
 import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
-import type { SafeSql, SqliteQuery } from "../Sqlite.js";
-import {
-  isSqlMutation,
-  SqliteBoolean,
-  sqliteBooleanToBoolean,
-} from "../Sqlite.js";
+import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
 import type { ReadonlyStore, Store } from "../Store.js";
 import { createStore } from "../Store.js";
 import type { AnyType, InferErrors, InferInput, ObjectType } from "../Type.js";
@@ -42,9 +37,8 @@ import type {
   Row,
   SubscribedQueries,
 } from "./Query.js";
-import { createSubscribedQueries, emptyRows, serializeQuery } from "./Query.js";
+import { createSubscribedQueries, emptyRows } from "./Query.js";
 import type {
-  CreateQuery,
   EvoluSchema,
   IndexesConfig,
   Mutation,
@@ -54,13 +48,7 @@ import type {
   MutationOptions,
   ValidateSchema,
 } from "./Schema.js";
-import {
-  insertable,
-  kysely,
-  SystemColumns,
-  updateable,
-  upsertable,
-} from "./Schema.js";
+import { insertable, SystemColumns, updateable, upsertable } from "./Schema.js";
 import { DbChange } from "./Storage.js";
 import type { SyncOwner } from "./Sync.js";
 import type { EvoluWorkerDep } from "./Worker.js";
@@ -240,33 +228,6 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
   readonly getError: () => EvoluError | null;
 
   /**
-   * Create type-safe SQL {@link Query}.
-   *
-   * Evolu uses Kysely - the type-safe SQL query builder for TypeScript. See
-   * https://kysely.dev.
-   *
-   * All this function does is compile the Kysely query and serialize it into a
-   * unique string. Both operations are fast and cheap.
-   *
-   * For mutations, use {@link Evolu.insert}, {@link Evolu.update}, or
-   * {@link Evolu.upsert}.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const allTodos = evolu.createQuery((db) =>
-   *   db.selectFrom("todo").selectAll(),
-   * );
-   *
-   * const todoById = (id: TodoId) =>
-   *   evolu.createQuery((db) =>
-   *     db.selectFrom("todo").selectAll().where("id", "=", id),
-   *   );
-   * ```
-   */
-  readonly createQuery: CreateQuery<S>;
-
-  /**
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
    * The returned promise always resolves successfully because there is no
@@ -283,7 +244,8 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    * ### Example
    *
    * ```ts
-   * const allTodos = evolu.createQuery((db) =>
+   * const createQuery = createQueryBuilder(Schema);
+   * const allTodos = createQuery((db) =>
    *   db.selectFrom("todo").selectAll(),
    * );
    * evolu.loadQuery(allTodos).then((rows) => {
@@ -570,16 +532,16 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
 /** Function returned by {@link Evolu.useOwner} to stop using an {@link SyncOwner}. */
 export type UnuseOwner = () => void;
 
-export type EvoluPlatformDeps = CreateMessageChannelDep &
-  ReloadAppDep &
-  EvoluWorkerDep &
-  Partial<FlushSyncDep>;
-
 export type EvoluDeps = EvoluPlatformDeps &
   ConsoleDep &
   DisposableDep &
   ErrorStoreDep &
   RandomBytesDep;
+
+export type EvoluPlatformDeps = CreateMessageChannelDep &
+  ReloadAppDep &
+  EvoluWorkerDep &
+  Partial<FlushSyncDep>;
 
 export interface ErrorStoreDep {
   /**
@@ -674,6 +636,7 @@ export const createEvolu =
     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
     {
       name,
+      // TODO:
       transports: _transports = [
         { type: "WebSocket", url: "wss://free.evoluhq.com" },
       ],
@@ -942,8 +905,6 @@ export const createEvolu =
       subscribeError: errorStore.subscribe,
       getError: errorStore.get,
 
-      createQuery: createQuery as CreateQuery<S>,
-
       loadQuery: <R extends Row>(query: Query<R>): Promise<QueryRows<R>> => {
         const { promise, isNew } = loadingPromises.get(query);
 
@@ -1104,27 +1065,6 @@ export const createEvolu =
 
     return evolu;
   };
-
-// TODO: Should not be exported, it is because of tests.
-export const createQuery = <R extends Row>(
-  queryCallback: Parameters<CreateQuery<EvoluSchema>>[0],
-  options?: Parameters<CreateQuery<EvoluSchema>>[1],
-): Query<R> => {
-  const compiledQuery = queryCallback(kysely as never).compile();
-
-  if (isSqlMutation(compiledQuery.sql))
-    throw new Error(
-      "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in the Evolu `createQuery` function. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu Mutation API.",
-    );
-
-  return serializeQuery({
-    sql: compiledQuery.sql as SafeSql,
-    parameters: compiledQuery.parameters as NonNullable<
-      SqliteQuery["parameters"]
-    >,
-    ...(options && { options }),
-  });
-};
 
 interface LoadingPromises {
   get: <R extends Row>(

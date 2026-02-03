@@ -14,6 +14,7 @@ import {
 } from "../Object.js";
 import { ok, type Result } from "../Result.js";
 import {
+  isSqlMutation,
   type SafeSql,
   sql,
   SqliteBoolean,
@@ -51,6 +52,7 @@ import type { Simplify } from "../Types.js";
 import type { AppOwner } from "./Owner.js";
 import { OwnerId } from "./Owner.js";
 import type { Query, Row } from "./Query.js";
+import { serializeQuery } from "./Query.js";
 import type { CrdtMessage, DbChange } from "./Storage.js";
 import { Timestamp, TimestampBytes } from "./Timestamp.js";
 
@@ -635,6 +637,48 @@ export const kysely = new Kysely.Kysely({
 });
 
 const createIndex = kysely.schema.createIndex.bind(kysely.schema);
+
+/**
+ * Creates a query builder from a {@link EvoluSchema}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const Schema = {
+ *   todo: {
+ *     id: id("Todo"),
+ *     title: NonEmptyString100,
+ *     isCompleted: nullOr(SqliteBoolean),
+ *   },
+ * };
+ *
+ * // Create a typed query builder (once per schema)
+ * const createQuery = createQueryBuilder(Schema);
+ *
+ * // Use it for all queries
+ * const todosQuery = createQuery((db) =>
+ *   db.selectFrom("todo").select(["id", "title", "isCompleted"]),
+ * );
+ * ```
+ */
+export const createQueryBuilder =
+  <S extends EvoluSchema>(_schema: S): CreateQuery<S> =>
+  (queryCallback, options) => {
+    const compiledQuery = queryCallback(kysely as never).compile();
+
+    if (isSqlMutation(compiledQuery.sql))
+      throw new Error(
+        "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in createQuery. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu Mutation API.",
+      );
+
+    return serializeQuery({
+      sql: compiledQuery.sql as SafeSql,
+      parameters: compiledQuery.parameters as NonNullable<
+        SqliteQuery["parameters"]
+      >,
+      ...(options && { options }),
+    });
+  };
 
 // export const maxMutationSize = 655360;
 
