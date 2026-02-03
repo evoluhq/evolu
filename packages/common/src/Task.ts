@@ -82,7 +82,7 @@ import {
  * - **{@link Runner}** — runs tasks, creates {@link Fiber}s, monitors and aborts
  *   them
  * - **{@link Fiber}** — awaitable, abortable/disposable handle to a running task
- * - **{@link TaskDisposableStack}** — task-aware resource management that
+ * - **{@link AsyncDisposableStack}** — task-aware resource management that
  *   completes even when aborted
  *
  * Evolu's structured concurrency core is minimal — one function with a few
@@ -290,7 +290,7 @@ import {
  * Evolu uses standard JavaScript
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management | resource management}.
  *
- * For task-based disposal, Evolu provides {@link TaskDisposableStack} — a
+ * For task-based disposal, Evolu provides {@link AsyncDisposableStack} — a
  * wrapper around the native
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack | AsyncDisposableStack}
  * where methods accept {@link Task} for acquisition. All operations run
@@ -577,7 +577,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
   readonly defer: (onDisposeAsync: Task<void, never, D>) => AsyncDisposable;
 
   /**
-   * Creates an {@link TaskDisposableStack} bound to the root runner.
+   * Creates an {@link AsyncDisposableStack} bound to the root runner.
    *
    * ### Example
    *
@@ -587,7 +587,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
    * const conn = await stack.use(openConnection);
    * ```
    */
-  readonly stack: () => TaskDisposableStack<D>;
+  readonly stack: () => AsyncDisposableStack<D>;
 
   /** Returns the dependencies passed to {@link createRunner}. */
   readonly deps: RunnerDeps & D;
@@ -967,7 +967,7 @@ export interface RunnerEvent extends InferType<typeof RunnerEvent> {}
  *
  * @group Resource Management
  */
-export class TaskDisposableStack<D = unknown> implements AsyncDisposable {
+export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
   readonly #stack = new globalThis.AsyncDisposableStack();
   readonly #daemon: Runner<D>["daemon"];
 
@@ -1411,7 +1411,7 @@ const createRunnerInternal =
         [Symbol.asyncDispose]: () =>
           run.daemon(unabortable(task)).then(lazyVoid),
       });
-      run.stack = () => new TaskDisposableStack(self);
+      run.stack = () => new AsyncDisposableStack(self);
 
       Object.defineProperty(run, "deps", { get: depsRef.get });
 

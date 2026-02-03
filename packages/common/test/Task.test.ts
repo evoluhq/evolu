@@ -61,7 +61,7 @@ import {
   runnerClosingError,
   RunnerEvent,
   sleep,
-  TaskDisposableStack,
+  AsyncDisposableStack,
   timeout,
   TimeoutError,
   unabortable,
@@ -1780,7 +1780,7 @@ describe("AsyncDisposableStack", () => {
       const task: Task<void> = async (run) => {
         await using stack = run.stack();
 
-        expectTypeOf(stack).toEqualTypeOf<TaskDisposableStack>();
+        expectTypeOf(stack).toEqualTypeOf<AsyncDisposableStack>();
 
         stack.defer(() => {
           events.push("cleanup");
