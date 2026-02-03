@@ -8,6 +8,12 @@ export default defineConfig({
       "packages/web",
       "packages/nodejs",
       "packages/react-native",
+      {
+        test: {
+          name: "scripts",
+          include: ["scripts/**/*.test.mts"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",
