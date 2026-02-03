@@ -91,7 +91,8 @@ describe("createRunner", () => {
     const previousHandler = vi.fn();
     mockErrorUtils.getGlobalHandler.mockReturnValue(previousHandler);
 
-    await using _run = createRunner();
+    const console = testCreateConsole();
+    await using _run = createRunner({ console });
 
     // Get the handler that was registered
     const handler = mockErrorUtils.setGlobalHandler.mock.calls[0][0];

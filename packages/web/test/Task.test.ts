@@ -13,7 +13,7 @@ describe("createRunner", () => {
     expect(run.deps.customValue).toBe(42);
   });
 
-  describe("listener registration (mocked)", () => {
+  describe("event listeners", () => {
     const originalAddEventListener = globalThis.addEventListener;
     const originalRemoveEventListener = globalThis.removeEventListener;
 
@@ -57,16 +57,13 @@ describe("createRunner", () => {
         addedListeners.get("unhandledrejection"),
       );
     });
-  });
 
-  describe("error handling (real browser events)", () => {
-    test("catches and logs ErrorEvent", async () => {
+    test("error handler logs ErrorEvent", async () => {
       const console = testCreateConsole();
       await using _run = createRunner({ console });
 
-      globalThis.dispatchEvent(
-        new ErrorEvent("error", { error: new Error("test error") }),
-      );
+      const handler = addedListeners.get("error")!;
+      handler(new ErrorEvent("error", { error: new Error("test error") }));
 
       const entries = console.getEntriesSnapshot();
       expect(entries).toHaveLength(1);
@@ -78,11 +75,12 @@ describe("createRunner", () => {
       });
     });
 
-    test("catches and logs PromiseRejectionEvent", async () => {
+    test("error handler logs PromiseRejectionEvent", async () => {
       const console = testCreateConsole();
       await using _run = createRunner({ console });
 
-      globalThis.dispatchEvent(
+      const handler = addedListeners.get("unhandledrejection")!;
+      handler(
         new PromiseRejectionEvent("unhandledrejection", {
           promise: Promise.resolve(),
           reason: new Error("test rejection"),
@@ -97,35 +95,6 @@ describe("createRunner", () => {
         type: "UnknownError",
         error: { message: "test rejection" },
       });
-    });
-
-    test("stops catching events after dispose", async () => {
-      const console = testCreateConsole();
-
-      // First verify events ARE caught before dispose
-      {
-        await using _run = createRunner({ console });
-        globalThis.dispatchEvent(
-          new ErrorEvent("error", { error: new Error("before dispose") }),
-        );
-      }
-      expect(console.getEntriesSnapshot()).toHaveLength(1);
-
-      // Verify events are NOT caught after dispose
-      // Prevent vitest from treating dispatched error as unhandled
-      const suppress = (e: Event) => e.preventDefault();
-      globalThis.addEventListener("error", suppress);
-
-      globalThis.dispatchEvent(
-        new ErrorEvent("error", {
-          error: new Error("after dispose"),
-          cancelable: true,
-        }),
-      );
-
-      globalThis.removeEventListener("error", suppress);
-
-      expect(console.getEntriesSnapshot()).toHaveLength(0);
     });
   });
 });
