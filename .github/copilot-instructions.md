@@ -433,26 +433,27 @@ const result = await sleep("1s")(run);
 - Write a failing test before implementing a new feature or fixing a bug
 - Run tests using the `runTests` tool with the test file path
 - Test files are in `packages/*/test/*.test.ts`
-- Use `testNames` parameter to run specific tests by name
-- Run related tests after making code changes to verify correctness
+- Use `testNames` parameter to run specific tests — uses **substring matching**, so unique names avoid running unrelated tests
+- Run only changed/affected tests, not entire describe blocks
+- **Always check workspace errors** after edits using `get_errors` tool — don't assume code is correct just because tests pass
 
 ### Test structure
 
 - Use `describe` blocks to group related tests by feature or function
 - Use `test` or `it` for individual test cases (both are equivalent)
-- Test names should be descriptive phrases: `"returns true for non-empty array"`
+- Test names should be descriptive and unique phrases: `"zipArray combines arrays into tuples"`
 - Use nested `describe` for sub-categories
 
 ```ts
 import { describe, expect, expectTypeOf, test } from "vitest";
 
 describe("arrayFrom", () => {
-  test("creates array from iterable", () => {
+  test("arrayFrom creates array from iterable", () => {
     const result = arrayFrom(new Set([1, 2, 3]));
     expect(result).toEqual([1, 2, 3]);
   });
 
-  test("returns input unchanged if already an array", () => {
+  test("arrayFrom returns input unchanged if already an array", () => {
     const input = [1, 2, 3];
     const result = arrayFrom(input);
     expect(result).toBe(input);
@@ -467,7 +468,7 @@ Use `expectTypeOf` from Vitest for compile-time type assertions:
 ```ts
 import { expectTypeOf } from "vitest";
 
-test("returns readonly array", () => {
+test("arrayFrom returns readonly array", () => {
   const result = arrayFrom(2, () => "x");
   expectTypeOf(result).toEqualTypeOf<ReadonlyArray<string>>();
 });
@@ -484,7 +485,7 @@ test("NonEmptyArray requires at least one element", () => {
 Use `toMatchInlineSnapshot` for readable test output directly in the test file:
 
 ```ts
-test("Buffer", () => {
+test("Buffer unwrap", () => {
   const buffer = createBuffer([1, 2, 3]);
   expect(buffer.unwrap()).toMatchInlineSnapshot(`uint8:[1,2,3]`);
 });
