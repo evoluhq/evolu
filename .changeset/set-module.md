@@ -12,7 +12,7 @@ Added Set module with type-safe helpers for immutable set operations.
 
 - `emptySet` — singleton empty set to avoid allocations
 
-**Type Guards:**
+**Type guards:**
 
 - `isNonEmptySet` — narrows to branded `NonEmptyReadonlySet`
 

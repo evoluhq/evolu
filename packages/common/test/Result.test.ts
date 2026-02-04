@@ -334,9 +334,9 @@ test.skip("Result wrapping vs unwrapped performance", () => {
   console.log(`Difference: ${(wrappedTime - unwrappedTime).toFixed(2)} ms`);
 });
 
-// --- Result with Resource Management ---
+// --- Result with resource management ---
 //
-// Result and Resource Management are orthogonal concerns:
+// Result and resource management are orthogonal concerns:
 // - Result answers: "Did the operation succeed?"
 // - Disposable answers: "When do we clean up resources?"
 //
@@ -410,7 +410,7 @@ const createAsyncResource = async (
   return ok(createMockAsyncResource(id));
 };
 
-describe("Result with Resource Management", () => {
+describe("Result with Resource management", () => {
   describe("using keyword", () => {
     it("disposes on success", () => {
       const resource = createResource("db", false);

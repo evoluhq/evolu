@@ -230,7 +230,7 @@ import {
  *   };
  * ```
  *
- * Provide dependencies when creating a runner:
+ * Provide dependencies when creating a Runner:
  *
  * ```ts
  * const deps: FetchDep = {
@@ -364,14 +364,14 @@ export type Task<T, E = never, D = unknown> = (
 /**
  * Shorthand for a {@link Task} with `any` type parameters.
  *
- * @group Type Utilities
+ * @group Type utilities
  */
 export type AnyTask = Task<any, any, any>;
 
 /**
  * Extracts the value type from a {@link Task}.
  *
- * @group Type Utilities
+ * @group Type utilities
  */
 export type InferTaskOk<R extends AnyTask> =
   R extends Task<infer T, any, any> ? T : never;
@@ -379,7 +379,7 @@ export type InferTaskOk<R extends AnyTask> =
 /**
  * Extracts the error type from a {@link Task}.
  *
- * @group Type Utilities
+ * @group Type utilities
  */
 export type InferTaskErr<R extends AnyTask> =
   R extends Task<any, infer E, any> ? E : never;
@@ -387,7 +387,7 @@ export type InferTaskErr<R extends AnyTask> =
 /**
  * Extracts the deps type from a {@link Task}.
  *
- * @group Type Utilities
+ * @group Type utilities
  */
 export type InferTaskDeps<R extends AnyTask> =
   R extends Task<any, any, infer D> ? D : never;
@@ -410,7 +410,7 @@ export type NextTask<T, E = never, D = void> = Task<T, E | Done<D>>;
 /**
  * Extracts the done value type from a {@link NextTask}.
  *
- * @group Type Utilities
+ * @group Type utilities
  */
 export type InferTaskDone<T extends AnyTask> =
   InferTaskErr<T> extends infer Errors
@@ -681,7 +681,7 @@ export interface Runner<D = unknown> extends AsyncDisposable {
  * UI/debugging tools can use this to visually distinguish protected tasks
  * (e.g., different icon or color) and explain why abort requests are ignored.
  *
- * @group Abort Masking
+ * @group Abort masking
  */
 export const AbortMask = /*#__PURE__*/ brand("AbortMask", NonNegativeInt);
 export type AbortMask = typeof AbortMask.Type;
@@ -692,7 +692,7 @@ export type AbortMask = typeof AbortMask.Type;
  * Default is 1 (sequential). Use 1-100 as a literal or {@link PositiveInt} for
  * larger values.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  * @see {@link parallel}
  * @see {@link createSemaphore}
  */
@@ -813,7 +813,7 @@ export class Fiber<T = unknown, E = unknown, D = unknown>
 /**
  * Extracts the value type from a {@link Fiber}.
  *
- * @group Type Utilities
+ * @group Type utilities
  */
 export type InferFiberOk<F extends Fiber<any, any, any>> =
   F extends Fiber<infer T, any, any> ? T : never;
@@ -821,7 +821,7 @@ export type InferFiberOk<F extends Fiber<any, any, any>> =
 /**
  * Extracts the error type from a {@link Fiber}.
  *
- * @group Type Utilities
+ * @group Type utilities
  */
 export type InferFiberErr<F extends Fiber<any, any, any>> =
   F extends Fiber<any, infer E, any> ? E : never;
@@ -829,7 +829,7 @@ export type InferFiberErr<F extends Fiber<any, any, any>> =
 /**
  * Extracts the deps type from a {@link Fiber}.
  *
- * @group Type Utilities
+ * @group Type utilities
  */
 export type InferFiberDeps<F extends Fiber<any, any, any>> =
   F extends Fiber<any, any, infer D> ? D : never;
@@ -965,7 +965,7 @@ export interface RunnerEvent extends InferType<typeof RunnerEvent> {}
  * }; // b released, then a released, then analytics sent
  * ```
  *
- * @group Resource Management
+ * @group Resource management
  */
 export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
   readonly #stack = new globalThis.AsyncDisposableStack();
@@ -1562,7 +1562,7 @@ const abortBehavior =
  * expect(result).toEqual(ok());
  * ```
  *
- * @group Abort Masking
+ * @group Abort masking
  */
 export const unabortable = /*#__PURE__*/ abortBehavior("unabortable");
 
@@ -1575,7 +1575,7 @@ export const unabortable = /*#__PURE__*/ abortBehavior("unabortable");
  * - Tasks run inside `unabortableMask` are unabortable by default
  * - Tasks wrapped with `restore()` restore the previous abortability
  *
- * @group Abort Masking
+ * @group Abort masking
  */
 export const unabortableMask = <T, E, D = unknown>(
   fn: (
@@ -2201,7 +2201,7 @@ export const repeat =
  * Disposing aborts all waiting tasks with an {@link AbortError} with
  * {@link deferredDisposedError} reason.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  * @see {@link createDeferred}
  */
 export interface Deferred<T, E = never> extends Disposable {
@@ -2229,7 +2229,7 @@ export interface Deferred<T, E = never> extends Disposable {
  * const result = await fiber; // ok("value")
  * ```
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export const createDeferred = <T, E = never>(): Deferred<T, E> => {
   let resolved: Result<T, E | DeferredDisposedError> | null = null;
@@ -2276,7 +2276,7 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
 /**
  * Abort reason used when a {@link Deferred} is disposed.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export const DeferredDisposedError = /*#__PURE__*/ typed(
   "DeferredDisposedError",
@@ -2288,7 +2288,7 @@ export interface DeferredDisposedError extends InferType<
 /**
  * {@link DeferredDisposedError} used as abort reason in {@link createDeferred}.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export const deferredDisposedError: DeferredDisposedError = {
   type: "DeferredDisposedError",
@@ -2305,7 +2305,7 @@ export const deferredDisposedError: DeferredDisposedError = {
  *
  * Disposing aborts all waiting tasks with {@link deferredDisposedError}.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  * @see {@link createGate}
  */
 export interface Gate<D = unknown> extends Disposable {
@@ -2341,7 +2341,7 @@ export interface Gate<D = unknown> extends Disposable {
  * };
  * ```
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export const createGate = <D = unknown>(): Gate<D> => {
   let isOpen = false;
@@ -2383,7 +2383,7 @@ export const createGate = <D = unknown>(): Gate<D> => {
  * For mutual exclusion (limiting to exactly one {@link Task}), use {@link Mutex}
  * instead.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export interface Semaphore extends Disposable {
   /**
@@ -2434,7 +2434,7 @@ export interface Semaphore extends Disposable {
  * // [demo] end 3
  * ```
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export const createSemaphore = (permits: Concurrency): Semaphore => {
   const fibers = new Set<Fiber>();
@@ -2510,7 +2510,7 @@ export const createSemaphore = (permits: Concurrency): Semaphore => {
 /**
  * Abort reason used when a {@link Semaphore} is disposed.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export const SemaphoreDisposedError = /*#__PURE__*/ typed(
   "SemaphoreDisposedError",
@@ -2522,7 +2522,7 @@ export interface SemaphoreDisposedError extends InferType<
 /**
  * {@link SemaphoreDisposedError} used as abort reason in {@link createSemaphore}.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export const semaphoreDisposedError: SemaphoreDisposedError = {
   type: "SemaphoreDisposedError",
@@ -2565,7 +2565,7 @@ const semaphoreDisposedAbortError: AbortError = createAbortError(
  * // end 2
  * ```
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export interface Mutex extends Disposable {
   /**
@@ -2580,7 +2580,7 @@ export interface Mutex extends Disposable {
 /**
  * Creates a {@link Mutex}.
  *
- * @group Concurrency Primitives
+ * @group Concurrency primitives
  */
 export const createMutex = (): Mutex => {
   const semaphore = createSemaphore(minPositiveInt);

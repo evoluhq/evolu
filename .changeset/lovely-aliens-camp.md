@@ -2,7 +2,7 @@
 "@evolu/common": minor
 ---
 
-Added `createObjectURL` helper for safe, disposable `URL.createObjectURL` usage using JS Resource Management so the URL is disposed automatically when the scope ends.
+Added `createObjectURL` helper for safe, disposable `URL.createObjectURL` usage using JS Resource management so the URL is disposed automatically when the scope ends.
 
 Example:
 

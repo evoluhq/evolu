@@ -95,7 +95,7 @@ describe("Constants", () => {
   });
 });
 
-describe("Type Guards", () => {
+describe("Type guards", () => {
   describe("isNonEmptyArray", () => {
     test("returns true for non-empty array", () => {
       const arr = [1, 2, 3];

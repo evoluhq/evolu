@@ -1401,7 +1401,7 @@ export const whenInput =
  * })(retryStrategyAws);
  * ```
  *
- * @group Side Effects
+ * @group Side effects
  */
 export const tapScheduleOutput =
   <Output>(f: (output: Output) => void) =>
@@ -1441,7 +1441,7 @@ export const tapScheduleOutput =
  * })(retrySchedule);
  * ```
  *
- * @group Side Effects
+ * @group Side effects
  */
 export const tapScheduleInput =
   <Input>(f: (input: Input) => void) =>

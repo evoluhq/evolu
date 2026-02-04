@@ -35,7 +35,7 @@ describe("Constants", () => {
   });
 });
 
-describe("Type Guards", () => {
+describe("Type guards", () => {
   describe("isNonEmptySet", () => {
     test("returns true for non-empty set", () => {
       const set = new Set([1, 2, 3]);

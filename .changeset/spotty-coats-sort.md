@@ -2,7 +2,7 @@
 "@evolu/common": minor
 ---
 
-Added Resource Management polyfills
+Added Resource management polyfills
 
 Provides `Symbol.dispose`, `Symbol.asyncDispose`, `DisposableStack`, and `AsyncDisposableStack` for environments without native support (e.g., Safari). This enables the `using` and `await using` declarations for automatic resource cleanup.
 
