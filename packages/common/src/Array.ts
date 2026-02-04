@@ -24,7 +24,7 @@
  * scores; // [1, 2, 3] — original order lost!
  * ```
  *
- * Imagine every methods doing that.
+ * Imagine every method doing that.
  *
  * On a `ReadonlyArray`, `.sort()` doesn't even exist. Use {@link sortArray}
  * instead:
@@ -54,6 +54,12 @@
  * For performance-critical cases where mutation is needed, Evolu provides
  * {@link shiftFromArray} and {@link popFromArray} — but only because they improve
  * type safety by returning a guaranteed `T` rather than an optional value.
+ *
+ * ### When to use native methods
+ *
+ * These helpers only exist where they add type-level value. Native methods like
+ * `find`, `some`, `every`, `includes`, `indexOf`, and `findIndex` work well on
+ * readonly arrays without mutation — use them directly.
  *
  * ## Examples
  *
@@ -632,6 +638,64 @@ export const spliceArray = <T>(
   deleteCount: number,
   ...items: ReadonlyArray<T>
 ): ReadonlyArray<T> => array.toSpliced(start, deleteCount, ...items);
+
+/**
+ * Extracts element types from a tuple of arrays, producing a tuple type.
+ *
+ * @group Types
+ */
+export type ZipArrayResult<T extends ReadonlyArray<ReadonlyArray<unknown>>> = {
+  [K in keyof T]: T[K] extends ReadonlyArray<infer U> ? U : never;
+};
+
+/**
+ * Combines multiple arrays into an array of tuples.
+ *
+ * Uses "shortest" mode — stops at the shortest input array. Preserves non-empty
+ * type when all input arrays are non-empty. See the
+ * {@link https://github.com/tc39/proposal-array-zip | TC39 Array.zip proposal}
+ * for the pattern this follows.
+ *
+ * ### Example
+ *
+ * ```ts
+ * zipArray([
+ *   [1, 2, 3],
+ *   ["a", "b", "c"],
+ * ]);
+ * // [[1, "a"], [2, "b"], [3, "c"]]
+ *
+ * zipArray([
+ *   [1, 2],
+ *   ["a", "b", "c"],
+ *   [true, false],
+ * ]);
+ * // [[1, "a", true], [2, "b", false]]
+ * ```
+ *
+ * @group Transformations
+ */
+export function zipArray<
+  T extends NonEmptyReadonlyArray<NonEmptyReadonlyArray<unknown>>,
+>(arrays: T): NonEmptyReadonlyArray<Readonly<ZipArrayResult<T>>>;
+/** Possibly empty arrays. */
+export function zipArray<T extends ReadonlyArray<ReadonlyArray<unknown>>>(
+  arrays: T,
+): ReadonlyArray<Readonly<ZipArrayResult<T>>>;
+export function zipArray<T extends ReadonlyArray<ReadonlyArray<unknown>>>(
+  arrays: T,
+): ReadonlyArray<Readonly<ZipArrayResult<T>>> {
+  if (arrays.length === 0) return emptyArray;
+
+  const minLength = Math.min(...mapArray(arrays, (a) => a.length));
+  const result = new Array<unknown>(minLength);
+
+  for (let i = 0; i < minLength; i++) {
+    result[i] = mapArray(arrays, (a) => a[i]);
+  }
+
+  return result as ReadonlyArray<Readonly<ZipArrayResult<T>>>;
+}
 
 /**
  * Returns the first element of a non-empty array.

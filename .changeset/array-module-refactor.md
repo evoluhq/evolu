@@ -35,6 +35,7 @@ if (isNonEmptyArray(mutableArr)) { ... }
 - **`sortArray`** — returns a new sorted array (wraps `toSorted`), preserving non-empty type
 - **`reverseArray`** — returns a new reversed array (wraps `toReversed`), preserving non-empty type
 - **`spliceArray`** — returns a new array with elements removed/replaced (wraps `toSpliced`)
+- **`zipArray`** — combines multiple arrays into an array of tuples, preserving non-empty type
 
 ### Migration
 

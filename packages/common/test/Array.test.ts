@@ -18,6 +18,7 @@ import {
   shiftFromArray,
   sortArray,
   spliceArray,
+  zipArray,
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../src/Array.js";
@@ -606,6 +607,75 @@ describe("Transformations", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3, 4];
       spliceArray(arr, 1, 2);
       expect(arr).toEqual([1, 2, 3, 4]);
+    });
+  });
+
+  describe("zipArray", () => {
+    test("combines arrays into tuples", () => {
+      const result = zipArray([
+        [1, 2, 3],
+        ["a", "b", "c"],
+      ]);
+      expect(result).toEqual([
+        [1, "a"],
+        [2, "b"],
+        [3, "c"],
+      ]);
+
+      expectTypeOf(result).toEqualTypeOf<
+        NonEmptyReadonlyArray<Readonly<[number, string]>>
+      >();
+    });
+
+    test("combines three arrays into tuples", () => {
+      const result = zipArray([
+        [1, 2],
+        ["a", "b"],
+        [true, false],
+      ]);
+      expect(result).toEqual([
+        [1, "a", true],
+        [2, "b", false],
+      ]);
+    });
+
+    test("stops at shortest array", () => {
+      const result = zipArray([
+        [1, 2],
+        ["a", "b", "c", "d"],
+      ]);
+      expect(result).toEqual([
+        [1, "a"],
+        [2, "b"],
+      ]);
+    });
+
+    test("returns empty array when any input is empty", () => {
+      const result = zipArray([[1, 2, 3], []]);
+      expect(result).toEqual([]);
+    });
+
+    test("returns empty array for empty outer array", () => {
+      const result = zipArray([]);
+      expect(result).toEqual([]);
+    });
+
+    test("handles single array", () => {
+      const result = zipArray([[1, 2, 3]]);
+      expect(result).toEqual([[1], [2], [3]]);
+    });
+
+    test("preserves non-empty type when all inputs are non-empty", () => {
+      const numbers: NonEmptyReadonlyArray<number> = [1, 2, 3];
+      const strings: NonEmptyReadonlyArray<string> = ["a", "b", "c"];
+      const result = zipArray([numbers, strings]);
+
+      expectTypeOf(result).toEqualTypeOf<
+        NonEmptyReadonlyArray<Readonly<[number, string]>>
+      >();
+
+      const first = firstInArray(result);
+      expect(first).toEqual([1, "a"]);
     });
   });
 });
