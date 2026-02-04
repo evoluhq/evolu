@@ -262,7 +262,7 @@ runApp(appDeps);
 
 - Start with an interface or type—everything can be a dependency.
 - To avoid clashes, wrap dependencies (`TimeDep`, `LoggerDep`).
-- Write factory functions (`createTime`, `createRunner`).
+- Write factory functions (`createTime`, `createRun`).
 - Both regular functions and factory functions accept a single argument named `deps`, combining one or more dependencies (e.g., `A & B & C`).
 - Sort dependencies alphabetically when combining them, and place `Partial` deps last.
 

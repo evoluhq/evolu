@@ -1,14 +1,14 @@
 import { testCreateConsole } from "@evolu/common";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { createRunner } from "../src/Task.js";
+import { createRun } from "../src/Task.js";
 
-describe("createRunner", () => {
+describe("createRun", () => {
   test("merges custom deps", async () => {
     interface CustomDep {
       readonly customValue: number;
     }
 
-    await using run = createRunner<CustomDep>({ customValue: 42 });
+    await using run = createRun<CustomDep>({ customValue: 42 });
 
     expect(run.deps.customValue).toBe(42);
   });
@@ -41,7 +41,7 @@ describe("createRunner", () => {
     });
 
     test("registers error and unhandledrejection listeners", async () => {
-      await using _run = createRunner();
+      await using _run = createRun();
 
       expect(addedListeners.has("error")).toBe(true);
       expect(addedListeners.has("unhandledrejection")).toBe(true);
@@ -49,7 +49,7 @@ describe("createRunner", () => {
 
     test("removes same listener instances on dispose", async () => {
       {
-        await using _run = createRunner();
+        await using _run = createRun();
       }
 
       expect(removedListeners.get("error")).toBe(addedListeners.get("error"));
@@ -60,7 +60,7 @@ describe("createRunner", () => {
 
     test("error handler logs ErrorEvent", async () => {
       const console = testCreateConsole();
-      await using _run = createRunner({ console });
+      await using _run = createRun({ console });
 
       const handler = addedListeners.get("error")!;
       handler(new ErrorEvent("error", { error: new Error("test error") }));
@@ -77,7 +77,7 @@ describe("createRunner", () => {
 
     test("error handler logs PromiseRejectionEvent", async () => {
       const console = testCreateConsole();
-      await using _run = createRunner({ console });
+      await using _run = createRun({ console });
 
       const handler = addedListeners.get("unhandledrejection")!;
       handler(

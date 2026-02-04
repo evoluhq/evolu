@@ -5,11 +5,11 @@
  */
 
 import {
-  createRunner as createCommonRunner,
+  createRun as createCommonRun,
   createUnknownError,
-  type CreateRunner,
-  type Runner,
-  type RunnerDeps,
+  type CreateRun,
+  type Run,
+  type RunDeps,
 } from "@evolu/common";
 
 /**
@@ -19,7 +19,7 @@ import {
  * `SIGHUP` (console close/terminal disconnect), or `SIGBREAK` (Windows
  * Ctrl-Break).
  *
- * @group Node.js Runner
+ * @group Node.js Run
  */
 export type Shutdown = Promise<void>;
 
@@ -28,7 +28,7 @@ export interface ShutdownDep {
 }
 
 /**
- * Creates a Node.js {@link Runner} with error handling and shutdown signal.
+ * Creates a Node.js {@link Run} with error handling and shutdown signal.
  *
  * - Global error handlers (`uncaughtException`, `unhandledRejection`) that log
  *   errors and initiate graceful shutdown
@@ -46,7 +46,7 @@ export interface ShutdownDep {
  *
  * const deps = { ...createRelayDeps(), console };
  *
- * await using run = createRunner(deps);
+ * await using run = createRun(deps);
  * await using stack = run.stack();
  *
  * await stack.use(startRelay({ port: 4000 }));
@@ -54,15 +54,15 @@ export interface ShutdownDep {
  * await run.deps.shutdown;
  * ```
  *
- * @group Node.js Runner
+ * @group Node.js Run
  */
-export const createRunner: CreateRunner<RunnerDeps & ShutdownDep> = <D>(
+export const createRun: CreateRun<RunDeps & ShutdownDep> = <D>(
   deps?: D,
-): Runner<RunnerDeps & ShutdownDep & D> => {
+): Run<RunDeps & ShutdownDep & D> => {
   const { promise: shutdown, resolve: resolveShutdown } =
     Promise.withResolvers<void>();
 
-  const run = createCommonRunner({ ...deps, shutdown } as D & ShutdownDep);
+  const run = createCommonRun({ ...deps, shutdown } as D & ShutdownDep);
 
   const console = run.deps.console.child("global");
 

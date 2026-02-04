@@ -5,18 +5,18 @@
  */
 
 import {
-  createRunner as createCommonRunner,
+  createRun as createCommonRun,
   createUnknownError,
-  type CreateRunner,
-  type Runner,
-  type RunnerDeps,
+  type CreateRun,
+  type Run,
+  type RunDeps,
 } from "@evolu/common";
 
 /**
- * Creates a browser {@link Runner} with global error handling.
+ * Creates a browser {@link Run} with global error handling.
  *
  * Registers `error` and `unhandledrejection` handlers that log errors to the
- * console. Handlers are removed when the runner is disposed.
+ * console. Handlers are removed when the Run is disposed.
  *
  * ### Example
  *
@@ -27,18 +27,18 @@ import {
  *   }),
  * });
  *
- * await using run = createRunner({ console });
+ * await using run = createRun({ console });
  * await using stack = run.stack();
  *
  * await stack.use(startApp());
  * ```
  *
- * @group Browser Runner
+ * @group Browser Run
  */
-export const createRunner: CreateRunner<RunnerDeps> = <D>(
+export const createRun: CreateRun<RunDeps> = <D>(
   deps?: D,
-): Runner<RunnerDeps & D> => {
-  const run = createCommonRunner(deps);
+): Run<RunDeps & D> => {
+  const run = createCommonRun(deps);
 
   const console = run.deps.console.child("global");
 

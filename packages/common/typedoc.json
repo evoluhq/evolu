@@ -2,7 +2,7 @@
   "extends": ["../../typedoc.base.json"],
   "groupOrder": [
     "Core Types",
-    "Creating Runners",
+    "Creating Run",
     "Abort masking",
     "Resource management",
     "Composition",

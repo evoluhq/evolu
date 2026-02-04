@@ -20,9 +20,9 @@ import {
   createPreparedStatementsCache,
   createSqliteOld,
 } from "../src/Sqlite.js";
-import type { Runner } from "../src/Task.js";
+import type { Run } from "../src/Task.js";
 import type { TestDeps } from "../src/Test.js";
-import { testCreateDeps, testCreateRunner } from "../src/Test.js";
+import { testCreateDeps, testCreateRun } from "../src/Test.js";
 import { SimpleName } from "../src/Type.js";
 
 /**
@@ -110,11 +110,11 @@ export const testCreateRelayStorageAndSqliteDeps = async (
   return { sqlite, storage };
 };
 
-/** Creates a test Runner with relay storage and SQLite deps. */
-export const testCreateRunnerWithRelayStorage = async (
+/** Creates a test Run with relay storage and SQLite deps. */
+export const testCreateRunWithRelayStorage = async (
   config?: Partial<StorageConfig>,
-): Promise<Runner<TestDeps & StorageDep & SqliteDep>> => {
+): Promise<Run<TestDeps & StorageDep & SqliteDep>> => {
   const deps = testCreateDeps();
   const { storage, sqlite } = await testCreateRelayStorageAndSqliteDeps(config);
-  return testCreateRunner({ ...deps, storage, sqlite });
+  return testCreateRun({ ...deps, storage, sqlite });
 };

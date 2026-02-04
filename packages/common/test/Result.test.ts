@@ -1044,7 +1044,7 @@ describe("NextResult", () => {
  *
  * ### Relation to Task
  *
- * Evolu also considered generators for Task and Runner. The same debugging
+ * Evolu also considered generators for Task and Run. The same debugging
  * concerns apply, but with higher stakes—async code is already harder to debug,
  * and adding generator machinery on top compounds the problem.
  *

@@ -1,6 +1,6 @@
 import { testCreateConsole } from "@evolu/common";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { createRunner } from "../src/Task.js";
+import { createRun } from "../src/Task.js";
 
 // Mock ErrorUtils for testing
 const mockErrorUtils = {
@@ -8,7 +8,7 @@ const mockErrorUtils = {
   setGlobalHandler: vi.fn(),
 };
 
-describe("createRunner", () => {
+describe("createRun", () => {
   beforeEach(() => {
     globalThis.ErrorUtils = mockErrorUtils;
     mockErrorUtils.getGlobalHandler.mockReset();
@@ -19,15 +19,15 @@ describe("createRunner", () => {
     globalThis.ErrorUtils = undefined;
   });
 
-  test("creates a runner", async () => {
-    await using run = createRunner();
+  test("creates a run", async () => {
+    await using run = createRun();
 
     expect(run).toBeDefined();
     expect(run.deps).toBeDefined();
   });
 
   test("registers global error handler", async () => {
-    await using _run = createRunner();
+    await using _run = createRun();
 
     expect(mockErrorUtils.setGlobalHandler).toHaveBeenCalledOnce();
     expect(mockErrorUtils.setGlobalHandler).toHaveBeenCalledWith(
@@ -39,7 +39,7 @@ describe("createRunner", () => {
     const previousHandler = vi.fn();
     mockErrorUtils.getGlobalHandler.mockReturnValue(previousHandler);
 
-    const run = createRunner();
+    const run = createRun();
     await run[Symbol.asyncDispose]();
 
     // Last call should restore the previous handler
@@ -49,7 +49,7 @@ describe("createRunner", () => {
 
   test("logs uncaught error", async () => {
     const console = testCreateConsole();
-    await using _run = createRunner({ console });
+    await using _run = createRun({ console });
 
     // Get the handler that was registered
     const handler = mockErrorUtils.setGlobalHandler.mock.calls[0][0];
@@ -69,7 +69,7 @@ describe("createRunner", () => {
 
   test("logs fatal error", async () => {
     const console = testCreateConsole();
-    await using _run = createRunner({ console });
+    await using _run = createRun({ console });
 
     // Get the handler that was registered
     const handler = mockErrorUtils.setGlobalHandler.mock.calls[0][0];
@@ -92,7 +92,7 @@ describe("createRunner", () => {
     mockErrorUtils.getGlobalHandler.mockReturnValue(previousHandler);
 
     const console = testCreateConsole();
-    await using _run = createRunner({ console });
+    await using _run = createRun({ console });
 
     // Get the handler that was registered
     const handler = mockErrorUtils.setGlobalHandler.mock.calls[0][0];
@@ -107,7 +107,7 @@ describe("createRunner", () => {
     globalThis.ErrorUtils = undefined;
 
     // Should not throw
-    await using run = createRunner();
+    await using run = createRun();
 
     expect(run).toBeDefined();
   });

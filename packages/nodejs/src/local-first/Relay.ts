@@ -57,7 +57,7 @@ export const createRelayDeps = (): RelayDeps => ({
  * ```ts
  * const deps = { ...createRelayDeps(), console };
  *
- * await using run = createRunner(deps);
+ * await using run = createRun(deps);
  * await using stack = run.stack();
  *
  * await stack.use(startRelay({ port: 4000 }));

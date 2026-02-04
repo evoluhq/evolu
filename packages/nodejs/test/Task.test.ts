@@ -1,8 +1,8 @@
 import { testCreateConsole } from "@evolu/common";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { createRunner } from "../src/Task.js";
+import { createRun } from "../src/Task.js";
 
-describe("createRunner", () => {
+describe("createRun", () => {
   beforeEach(() => {
     process.removeAllListeners("SIGINT");
     process.removeAllListeners("SIGTERM");
@@ -22,13 +22,13 @@ describe("createRunner", () => {
   });
 
   test("provides shutdown in deps", async () => {
-    await using run = createRunner();
+    await using run = createRun();
 
     expect(run.deps.shutdown).toBeInstanceOf(Promise);
   });
 
   test("shutdown resolves on SIGINT", async () => {
-    await using run = createRunner();
+    await using run = createRun();
 
     const shutdownResolved = Promise.withResolvers<boolean>();
     void run.deps.shutdown.then(() => shutdownResolved.resolve(true));
@@ -39,7 +39,7 @@ describe("createRunner", () => {
   });
 
   test("shutdown resolves on SIGTERM", async () => {
-    await using run = createRunner();
+    await using run = createRun();
 
     const shutdownResolved = Promise.withResolvers<boolean>();
     void run.deps.shutdown.then(() => shutdownResolved.resolve(true));
@@ -50,7 +50,7 @@ describe("createRunner", () => {
   });
 
   test("shutdown resolves on SIGHUP", async () => {
-    await using run = createRunner();
+    await using run = createRun();
 
     const shutdownResolved = Promise.withResolvers<boolean>();
     void run.deps.shutdown.then(() => shutdownResolved.resolve(true));
@@ -62,7 +62,7 @@ describe("createRunner", () => {
 
   test("logs error and resolves shutdown on uncaughtException", async () => {
     const console = testCreateConsole();
-    const run = createRunner({ console });
+    const run = createRun({ console });
 
     // In real code, an uncaught throw triggers this event.
     // We emit directly because test frameworks catch throws.
@@ -87,7 +87,7 @@ describe("createRunner", () => {
 
   test("logs error and resolves shutdown on unhandledRejection", async () => {
     const console = testCreateConsole();
-    const run = createRunner({ console });
+    const run = createRun({ console });
 
     process.emit(
       "unhandledRejection",
@@ -122,7 +122,7 @@ describe("createRunner", () => {
     };
 
     {
-      await using _run = createRunner();
+      await using _run = createRun();
 
       expect(process.listenerCount("SIGINT")).toBe(initialListeners.SIGINT + 1);
       expect(process.listenerCount("SIGTERM")).toBe(
@@ -153,7 +153,7 @@ describe("createRunner", () => {
       readonly customValue: number;
     }
 
-    await using run = createRunner<CustomDep>({ customValue: 42 });
+    await using run = createRun<CustomDep>({ customValue: 42 });
 
     expect(run.deps.customValue).toBe(42);
     expect(run.deps.shutdown).toBeInstanceOf(Promise);

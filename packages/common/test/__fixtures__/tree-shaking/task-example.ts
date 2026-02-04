@@ -1,6 +1,6 @@
 import {
   AbortError,
-  createRunner,
+  createRun,
   tryAsync,
   type Result,
   type Task,
@@ -33,8 +33,8 @@ const deps: NativeFetchDep = {
   fetch: () => Promise.reject(new Error("fetch not available")),
 };
 
-// Create runner with deps (passed to every task automatically).
-await using run = createRunner(deps);
+// Create Run with deps (passed to every task automatically).
+await using run = createRun(deps);
 
 // Running a task returns a fiber that can be awaited.
 const result: Result<Response, FetchError | AbortError> = await run(

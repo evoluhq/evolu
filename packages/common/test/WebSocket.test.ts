@@ -2,7 +2,7 @@ import { afterEach, assert, beforeEach, expect, test, vi } from "vitest";
 import { utf8ToBytes } from "../src/Buffer.js";
 import { isServer } from "../src/Platform.js";
 import { spaced, take } from "../src/Schedule.js";
-import { createRunner } from "../src/Task.js";
+import { createRun } from "../src/Task.js";
 import { createWebSocket, type WebSocketError } from "../src/WebSocket.js";
 
 declare module "vitest/browser" {
@@ -42,7 +42,7 @@ afterEach(async () => {
 });
 
 test("connects, receives message, sends message, and disposes", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   const messages: Array<Uint8Array> = [];
 
@@ -73,7 +73,7 @@ test("connects, receives message, sends message, and disposes", async () => {
 });
 
 test("calls onOpen callback", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   let openCalled = false;
 
@@ -97,7 +97,7 @@ test("calls onOpen callback", async () => {
 });
 
 test("does not call onClose when disposed", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   let openCalled = false;
   let closeCalled = false;
@@ -124,7 +124,7 @@ test("does not call onClose when disposed", async () => {
 });
 
 test("send returns error when socket is not ready", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   const result = await run(createWebSocket(getServerUrl()));
 
@@ -143,7 +143,7 @@ test("send returns error when socket is not ready", async () => {
 });
 
 test("supports protocols as array", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   let openCalled = false;
 
@@ -164,7 +164,7 @@ test("supports protocols as array", async () => {
 });
 
 test("supports protocols as string", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   let openCalled = false;
 
@@ -185,7 +185,7 @@ test("supports protocols as string", async () => {
 });
 
 test("getReadyState returns connecting when socket is null", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   // Create with invalid URL and no retries to test null socket state
   const result = await run(
@@ -204,7 +204,7 @@ test("getReadyState returns connecting when socket is null", async () => {
 });
 
 test("calls onError on connection failure", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   const errors: Array<WebSocketError> = [];
 
@@ -228,7 +228,7 @@ test("calls onError on connection failure", async () => {
 });
 
 test("calls onClose when server closes connection", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   let closeCalled = false;
 
@@ -250,7 +250,7 @@ test("calls onClose when server closes connection", async () => {
 });
 
 test("does not retry when shouldRetryOnClose returns false", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   const errors: Array<WebSocketError> = [];
   let closeCount = 0;
@@ -281,7 +281,7 @@ test("does not retry when shouldRetryOnClose returns false", async () => {
 });
 
 test("reconnects after server closes connection", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   const messages: Array<Uint8Array> = [];
   let closeCount = 0;
@@ -315,7 +315,7 @@ test("reconnects after server closes connection", async () => {
 });
 
 test("reports RetryError when schedule is exhausted", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   const errors: Array<WebSocketError> = [];
 
@@ -344,7 +344,7 @@ test("reports RetryError when schedule is exhausted", async () => {
 });
 
 test("WebSocketConnectionError behavior on abrupt termination", async () => {
-  await using run = createRunner();
+  await using run = createRun();
 
   const errors: Array<WebSocketError> = [];
   let closeCalled = false;

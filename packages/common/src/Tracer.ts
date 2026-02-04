@@ -5,13 +5,13 @@
  */
 
 import type { Ref } from "./Ref.js";
-import type { Runner } from "./Task.js";
+import type { Run } from "./Task.js";
 
 /**
  * Minimal tracer interface for observability.
  *
  * Tracer provides unified observability for both sync and async code. Use it
- * directly for sync operations, or let {@link Runner} use it automatically for
+ * directly for sync operations, or let {@link Run} use it automatically for
  * async tasks.
  *
  * ### Example
@@ -20,8 +20,8 @@ import type { Runner } from "./Task.js";
  * // Sync code — use tracer directly
  * const result = deps.tracer?.span("parseData", () => parseData(input));
  *
- * // Async code — Runner traces automatically
- * await using run = createRunner(deps);
+ * // Async code — Run traces automatically
+ * await using run = createRun(deps);
  * const result = await run(fetchUser(id)); // Traced if tracer provided
  * ```
  *
