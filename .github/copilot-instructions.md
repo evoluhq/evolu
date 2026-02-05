@@ -4,6 +4,43 @@ applyTo: "**/*.{ts,tsx}"
 
 # Evolu project guidelines
 
+## Build and test
+
+```bash
+pnpm install          # Install dependencies (Node >=24.0.0)
+pnpm build            # Build all packages
+pnpm dev              # Watch mode for development
+pnpm test             # Run all tests
+pnpm test:coverage    # With coverage
+pnpm lint             # ESLint
+pnpm format           # Prettier
+pnpm biome            # Biome (catches import cycles)
+pnpm verify           # Full verification (lint + format + biome + test)
+```
+
+## Architecture
+
+Monorepo with pnpm workspaces and Turborepo. All packages depend on `@evolu/common`:
+
+- `@evolu/common` — Platform-independent core (Result, Task, Type, Brand, Crypto, Sqlite)
+- `@evolu/web` — Web platform (SQLite WASM, SharedWorker)
+- `@evolu/nodejs` — Node.js (better-sqlite3, ws)
+- `@evolu/react-native` — React Native/Expo (expo-sqlite)
+- `@evolu/react` — Platform-independent React
+- `@evolu/react-web` — React + web combined
+- `@evolu/svelte` — Svelte 5
+- `@evolu/vue` — Vue 3
+
+Key directories:
+
+- `packages/common/src/` — Core utilities and abstractions
+- `packages/common/src/local-first/` — Local-first subsystem (Db, Evolu, Query, Schema, Sync, Relay)
+- `apps/web/` — Documentation website
+- `apps/relay/` — Sync server (Docker-deployable)
+- `examples/` — Framework-specific example apps
+
+---
+
 Follow these specific conventions and patterns:
 
 ## Code organization & imports
