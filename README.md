@@ -26,7 +26,7 @@ pnpm install
 
 Build scripts
 
-- `pnpm build` - Build packages
+- `pnpm build` - Build packages (required once after clone/pull for IDE types)
 - `pnpm build:web` - Build docs and web
 
 Web build notes
@@ -38,9 +38,10 @@ Web build notes
 
 Start dev
 
-- `pnpm dev` - Start development mode (builds packages, starts web and relay)
-- `pnpm ios` - Run iOS example (requires `pnpm dev` running)
-- `pnpm android` - Run Android example (requires `pnpm dev` running)
+- `pnpm dev` - Start relay and web servers
+- `pnpm relay` - Start relay server only (for mobile development)
+- `pnpm ios` - Run iOS example (start `pnpm relay` first)
+- `pnpm android` - Run Android example (start `pnpm relay` first)
 
 Examples
 

@@ -43,8 +43,7 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "tsc",
-    "build": "rimraf dist && tsc",
+    "build": "rimraf dist && tsc --build",
     "clean": "rimraf .turbo node_modules dist test/tmp test/__screenshots__",
     "format": "prettier --write \"src/*.{ts,tsx,md}\"",
     "bench": "vitest bench"

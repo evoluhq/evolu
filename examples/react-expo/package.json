@@ -11,7 +11,7 @@
     "ios": "expo run:ios",
     "ios:go": "expo start --ios",
     "lint": "expo lint",
-    "start": "expo start"
+    "_start": "expo start"
   },
   "jest": {
     "preset": "jest-expo"

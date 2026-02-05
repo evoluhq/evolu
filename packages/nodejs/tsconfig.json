@@ -2,8 +2,11 @@
   "extends": "@evolu/tsconfig/universal-esm.json",
   "compilerOptions": {
     "outDir": "dist",
-    "allowJs": true
+    "rootDir": ".",
+    "allowJs": true,
+    "tsBuildInfoFile": "dist/.tsBuildInfo"
   },
   "include": ["src", "test", "vitest.config.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules"],
+  "references": [{ "path": "../common" }]
 }

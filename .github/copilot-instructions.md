@@ -8,8 +8,8 @@ applyTo: "**/*.{ts,tsx}"
 
 ```bash
 pnpm install          # Install dependencies (Node >=24.0.0)
-pnpm build            # Build all packages
-pnpm dev              # Watch mode for development
+pnpm build            # Build all packages (required once for IDE types)
+pnpm dev              # Start relay and web servers
 pnpm test             # Run all tests
 pnpm test:coverage    # With coverage
 pnpm lint             # ESLint
@@ -432,6 +432,7 @@ const deps: TimeDep & Partial<LoggerDep> = {
 
 - **Single deps argument** - functions accept one `deps` parameter combining dependencies
 - **Wrap dependencies** - use `TimeDep`, `LoggerDep` etc. to avoid property clashes
+- **Skip JSDoc for simple dep interfaces** - `interface TimeDep { readonly time: Time }` is self-documenting
 - **Over-providing is OK** - passing extra deps is fine, over-depending is not
 - **Use Partial<>** for optional dependencies
 - **No global static instances** - avoid service locator pattern
@@ -467,7 +468,7 @@ const result = await sleep("1s")(run);
 
 ## Test-driven development
 
-- Write a failing test before implementing a new feature or fixing a bug
+- Write a test before implementing a new feature or fixing a bug
 - Run tests using the `runTests` tool with the test file path
 - Test files are in `packages/*/test/*.test.ts`
 - Use `testNames` parameter to run specific tests — uses **substring matching**, so unique names avoid running unrelated tests
@@ -530,7 +531,7 @@ test("Buffer unwrap", () => {
 
 ## Testing
 
-- **Create deps per test** - use `testCreateDeps()` from `@evolu/common` for test isolation
+- **Use Test module** - `packages/common/src/Test.ts` provides `testCreateDeps()` and `testCreateRun()` for test isolation
 - **Naming convention** - test factories follow `testCreateX` pattern (e.g., `testCreateTime`, `testCreateRandom`)
 - Mock dependencies using the same interfaces
 - Never rely on global state or shared mutable deps between tests
@@ -540,7 +541,7 @@ test("Buffer unwrap", () => {
 Create fresh deps at the start of each test for isolation. Each call creates independent instances, preventing shared state between tests.
 
 ```ts
-import { testCreateDeps, createId } from "@evolu/common";
+import { testCreateDeps, testCreateRun } from "@evolu/common";
 
 test("creates unique IDs", () => {
   const deps = testCreateDeps();

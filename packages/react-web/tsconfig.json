@@ -2,9 +2,12 @@
   "extends": "@evolu/tsconfig/universal-esm.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": "src",
     "allowJs": true,
-    "types": ["../../node_modules/user-agent-data-types"]
+    "types": ["../../node_modules/user-agent-data-types"],
+    "tsBuildInfoFile": "dist/.tsBuildInfo"
   },
-  "include": ["src", "test"],
-  "exclude": ["dist", "node_modules"]
+  "include": ["src"],
+  "exclude": ["dist", "node_modules"],
+  "references": [{ "path": "../common" }, { "path": "../web" }]
 }

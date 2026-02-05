@@ -2,10 +2,13 @@
   "extends": "@evolu/tsconfig/universal-esm.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": ".",
     "allowJs": true,
     "module": "esnext",
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "tsBuildInfoFile": "dist/.tsBuildInfo"
   },
   "include": ["src", "test", "vitest.config.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules"],
+  "references": [{ "path": "../common" }, { "path": "../react" }]
 }
