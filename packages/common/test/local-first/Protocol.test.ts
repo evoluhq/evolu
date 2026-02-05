@@ -70,8 +70,8 @@ import {
 import { testCreateRelayStorageAndSqliteDeps } from "../_deps.js";
 import {
   maxTimestamp,
-  testOwner,
-  testOwnerIdBytes,
+  testAppOwner,
+  testAppOwnerIdBytes,
   testTimestampsAsc,
   testTimestampsRandom,
 } from "./_fixtures.js";
@@ -436,7 +436,7 @@ const createEncryptedDbChange = (
   deps: TestDeps,
   message: CrdtMessage,
 ): EncryptedDbChange =>
-  encodeAndEncryptDbChange(deps)(message, testOwner.encryptionKey);
+  encodeAndEncryptDbChange(deps)(message, testAppOwner.encryptionKey);
 
 const createEncryptedCrdtMessage = (
   deps: TestDeps,
@@ -455,7 +455,7 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   );
   const decrypted = decryptAndDecodeDbChange(
     encryptedMessage,
-    testOwner.encryptionKey,
+    testAppOwner.encryptionKey,
   );
   assert(decrypted.ok);
   expect(decrypted.value).toEqual(crdtMessage.change);
@@ -482,7 +482,7 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   };
   const decryptedCorrupted = decryptAndDecodeDbChange(
     corruptedMessage,
-    testOwner.encryptionKey,
+    testAppOwner.encryptionKey,
   );
   assert(!decryptedCorrupted.ok);
   expect(decryptedCorrupted.error.type).toBe(
@@ -507,7 +507,7 @@ test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
   // Attempt to decrypt with wrong timestamp should fail with ProtocolTimestampMismatchError
   const decryptedWithWrongTimestamp = decryptAndDecodeDbChange(
     tamperedMessage,
-    testOwner.encryptionKey,
+    testAppOwner.encryptionKey,
   );
 
   expect(decryptedWithWrongTimestamp).toEqual(
@@ -599,7 +599,7 @@ describe("decodeRle", () => {
 
 describe("createProtocolMessageBuffer", () => {
   it("should allow no ranges", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
     expect(buffer.unwrap()).toMatchInlineSnapshot(
@@ -608,7 +608,7 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should allow single range with InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
     buffer.addRange({
@@ -619,7 +619,7 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should reject single range without InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
     buffer.addRange({
@@ -632,7 +632,7 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should allow multiple ranges with only last InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
     buffer.addRange({
@@ -651,7 +651,7 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should reject range added after InfiniteUpperBound", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
     buffer.addRange({
@@ -667,7 +667,7 @@ describe("createProtocolMessageBuffer", () => {
   });
 
   it("should reject multiple InfiniteUpperBounds", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
     buffer.addRange({
@@ -693,7 +693,7 @@ test("createProtocolMessageForSync", async () => {
 
   // Empty DB: version, ownerId, 0 messages, one empty TimestampsRange.
   expect(
-    createProtocolMessageForSync(storageDeps)(testOwner.id),
+    createProtocolMessageForSync(storageDeps)(testAppOwner.id),
   ).toMatchInlineSnapshot(
     `uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,0,0,1,2,0]`,
   );
@@ -708,11 +708,11 @@ test("createProtocolMessageForSync", async () => {
     }),
   );
   assertNonEmptyArray(messages31);
-  await run(storageDeps.storage.writeMessages(testOwnerIdBytes, messages31));
+  await run(storageDeps.storage.writeMessages(testAppOwnerIdBytes, messages31));
 
   // DB with 31 timestamps: version, ownerId, 0 messages, one full (31) TimestampsRange.
   expect(
-    createProtocolMessageForSync(storageDeps)(testOwner.id),
+    createProtocolMessageForSync(storageDeps)(testAppOwner.id),
   ).toMatchInlineSnapshot(
     `uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,0,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1]`,
   );
@@ -727,11 +727,11 @@ test("createProtocolMessageForSync", async () => {
     }),
   );
   assertNonEmptyArray(message32);
-  await run(storageDeps.storage.writeMessages(testOwnerIdBytes, message32));
+  await run(storageDeps.storage.writeMessages(testAppOwnerIdBytes, message32));
 
   // DB with 32 timestamps: version, ownerId, 0 messages, 16x FingerprintRange.
   expect(
-    createProtocolMessageForSync(storageDeps)(testOwner.id),
+    createProtocolMessageForSync(storageDeps)(testAppOwner.id),
   ).toMatchInlineSnapshot(
     `uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,0,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161]`,
   );
@@ -742,7 +742,7 @@ describe("E2E versioning", () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
     const v0 = 0 as NonNegativeInt;
 
-    const clientMessage = createProtocolMessageBuffer(testOwner.id, {
+    const clientMessage = createProtocolMessageBuffer(testAppOwner.id, {
       version: v0,
       messageType: MessageType.Request,
     }).unwrap();
@@ -760,7 +760,7 @@ describe("E2E versioning", () => {
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
-    const clientMessage = createProtocolMessageBuffer(testOwner.id, {
+    const clientMessage = createProtocolMessageBuffer(testAppOwner.id, {
       version: v0,
       messageType: MessageType.Request,
     }).unwrap();
@@ -780,7 +780,7 @@ describe("E2E versioning", () => {
         type: "ProtocolVersionError",
         version: 1,
         isInitiator: true,
-        ownerId: testOwner.id,
+        ownerId: testAppOwner.id,
       }),
     );
   });
@@ -790,7 +790,7 @@ describe("E2E versioning", () => {
     const v0 = 0 as NonNegativeInt;
     const v1 = 1 as NonNegativeInt;
 
-    const clientMessage = createProtocolMessageBuffer(testOwner.id, {
+    const clientMessage = createProtocolMessageBuffer(testAppOwner.id, {
       version: v1,
       messageType: MessageType.Request,
     }).unwrap();
@@ -810,7 +810,7 @@ describe("E2E versioning", () => {
         type: "ProtocolVersionError",
         version: 0,
         isInitiator: false,
-        ownerId: testOwner.id,
+        ownerId: testAppOwner.id,
       }),
     );
   });
@@ -842,7 +842,7 @@ describe("E2E errors", () => {
     ];
 
     const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
-      testOwner,
+      testAppOwner,
       messages,
     );
 
@@ -867,7 +867,7 @@ describe("E2E errors", () => {
       applyProtocolMessageAsClient(responseMessage),
     );
     expect(clientResult).toEqual(
-      err({ type: "ProtocolWriteKeyError", ownerId: testOwner.id }),
+      err({ type: "ProtocolWriteKeyError", ownerId: testAppOwner.id }),
     );
   });
 });
@@ -875,7 +875,7 @@ describe("E2E errors", () => {
 describe("E2E relay options", () => {
   test("subscribe", async () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
-    const message = createProtocolMessageBuffer(testOwner.id, {
+    const message = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.Subscribe,
     }).unwrap();
@@ -890,12 +890,12 @@ describe("E2E relay options", () => {
       }),
     );
 
-    expect(subscribeCalledWithOwnerId).toBe(testOwner.id);
+    expect(subscribeCalledWithOwnerId).toBe(testAppOwner.id);
   });
 
   test("unsubscribe", async () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
-    const message = createProtocolMessageBuffer(testOwner.id, {
+    const message = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.Unsubscribe,
     }).unwrap();
@@ -909,12 +909,12 @@ describe("E2E relay options", () => {
       }),
     );
 
-    expect(unsubscribeCalledWithOwnerId).toBe(testOwner.id);
+    expect(unsubscribeCalledWithOwnerId).toBe(testAppOwner.id);
   });
 
   test("no subscription flag (None)", async () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
-    const message = createProtocolMessageBuffer(testOwner.id, {
+    const message = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       subscriptionFlag: SubscriptionFlags.None,
     }).unwrap();
@@ -939,7 +939,7 @@ describe("E2E relay options", () => {
 
   test("default subscription flag (undefined)", async () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
-    const message = createProtocolMessageBuffer(testOwner.id, {
+    const message = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
       // No subscriptionFlag provided, should default to None
     }).unwrap();
@@ -971,7 +971,7 @@ describe("E2E relay options", () => {
     ];
 
     const initiatorMessage = createProtocolMessageFromCrdtMessages(deps)(
-      testOwner,
+      testAppOwner,
       messages,
     );
 
@@ -991,7 +991,7 @@ describe("E2E relay options", () => {
     await run(
       applyProtocolMessageAsRelay(initiatorMessage, {
         broadcast: (ownerId, message) => {
-          expect(ownerId).toBe(testOwner.id);
+          expect(ownerId).toBe(testAppOwner.id);
           broadcastedMessage = message;
         },
       }),
@@ -1065,7 +1065,9 @@ describe("E2E sync", () => {
     const clientStorageDep = { storage: clientStorage };
     const relayStorageDep = { storage: relayStorage };
 
-    let message = createProtocolMessageForSync(clientStorageDep)(testOwner.id);
+    let message = createProtocolMessageForSync(clientStorageDep)(
+      testAppOwner.id,
+    );
     assert(message);
 
     let result;
@@ -1090,7 +1092,7 @@ describe("E2E sync", () => {
         await using run = testCreateRun(clientStorageDep);
         result = await run(
           applyProtocolMessageAsClient(message, {
-            getWriteKey: () => testOwner.writeKey,
+            getWriteKey: () => testAppOwner.writeKey,
             rangesMaxSize,
           }),
         );
@@ -1108,7 +1110,7 @@ describe("E2E sync", () => {
       expect(
         clientStorage
           .readDbChange(
-            testOwnerIdBytes,
+            testAppOwnerIdBytes,
             timestampToTimestampBytes(message.timestamp),
           )
           ?.join(),
@@ -1117,7 +1119,7 @@ describe("E2E sync", () => {
       expect(
         relayStorage
           .readDbChange(
-            testOwnerIdBytes,
+            testAppOwnerIdBytes,
             timestampToTimestampBytes(message.timestamp),
           )
           ?.join(),
@@ -1133,8 +1135,8 @@ describe("E2E sync", () => {
   it("client and relay have all data", async () => {
     await using run = testCreateRun();
     const [clientStorage, relayStorage] = await createStorages();
-    await run(clientStorage.writeMessages(testOwnerIdBytes, messages));
-    await run(relayStorage.writeMessages(testOwnerIdBytes, messages));
+    await run(clientStorage.writeMessages(testAppOwnerIdBytes, messages));
+    await run(relayStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
@@ -1151,7 +1153,7 @@ describe("E2E sync", () => {
   it("client has all data", async () => {
     await using run = testCreateRun();
     const [clientStorage, relayStorage] = await createStorages();
-    await run(clientStorage.writeMessages(testOwnerIdBytes, messages));
+    await run(clientStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
@@ -1172,7 +1174,7 @@ describe("E2E sync", () => {
   it("client has all data - many steps", async () => {
     await using run = testCreateRun();
     const [clientStorage, relayStorage] = await createStorages();
-    await run(clientStorage.writeMessages(testOwnerIdBytes, messages));
+    await run(clientStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(
       clientStorage,
@@ -1205,7 +1207,7 @@ describe("E2E sync", () => {
   it("relay has all data", async () => {
     await using run = testCreateRun();
     const [clientStorage, relayStorage] = await createStorages();
-    await run(relayStorage.writeMessages(testOwnerIdBytes, messages));
+    await run(relayStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
@@ -1224,7 +1226,7 @@ describe("E2E sync", () => {
   it("relay has all data - many steps", async () => {
     await using run = testCreateRun();
     const [clientStorage, relayStorage] = await createStorages();
-    await run(relayStorage.writeMessages(testOwnerIdBytes, messages));
+    await run(relayStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(
       clientStorage,
@@ -1274,8 +1276,8 @@ describe("E2E sync", () => {
     assertNonEmptyArray(firstHalf);
     assertNonEmptyArray(secondHalf);
 
-    await run(clientStorage.writeMessages(testOwnerIdBytes, firstHalf));
-    await run(relayStorage.writeMessages(testOwnerIdBytes, secondHalf));
+    await run(clientStorage.writeMessages(testAppOwnerIdBytes, firstHalf));
+    await run(relayStorage.writeMessages(testAppOwnerIdBytes, secondHalf));
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
     expect(syncSteps).toMatchInlineSnapshot(`
@@ -1305,8 +1307,8 @@ describe("E2E sync", () => {
     assertNonEmptyArray(firstHalf);
     assertNonEmptyArray(secondHalf);
 
-    await run(clientStorage.writeMessages(testOwnerIdBytes, firstHalf));
-    await run(relayStorage.writeMessages(testOwnerIdBytes, secondHalf));
+    await run(clientStorage.writeMessages(testAppOwnerIdBytes, firstHalf));
+    await run(relayStorage.writeMessages(testAppOwnerIdBytes, secondHalf));
 
     const syncSteps = await reconcile(
       clientStorage,
@@ -1361,7 +1363,7 @@ describe("E2E sync", () => {
   });
 
   it("starts sync from createProtocolMessageFromCrdtMessages", async () => {
-    const owner = testOwner;
+    const owner = testAppOwner;
     const crdtMessages = testTimestampsAsc.map(
       (t): CrdtMessage => ({
         timestamp: timestampBytesToTimestamp(t),
@@ -1399,7 +1401,7 @@ describe("E2E sync", () => {
 
 describe("ranges sizes", () => {
   it("31 timestamps", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
     const range: TimestampsRangeWithTimestampsBuffer = {
@@ -1419,7 +1421,7 @@ describe("ranges sizes", () => {
   });
 
   it("testTimestampsAsc", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
 
@@ -1440,7 +1442,7 @@ describe("ranges sizes", () => {
   });
 
   it("fingerprints", () => {
-    const buffer = createProtocolMessageBuffer(testOwner.id, {
+    const buffer = createProtocolMessageBuffer(testAppOwner.id, {
       messageType: MessageType.Request,
     });
 

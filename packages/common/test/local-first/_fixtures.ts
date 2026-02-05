@@ -78,15 +78,14 @@ export const testAnotherTimestampsAsc = timestamps
   .toSorted(orderTimestampBytes)
   .slice(0, 1000);
 
-export const testOwnerSecret = createOwnerSecret({
+export const testAppOwnerSecret = createOwnerSecret({
   randomBytes: deps.randomBytes,
 });
-export const testOwnerSecret2 = createOwnerSecret({
+export const testAppOwner = createAppOwner(testAppOwnerSecret);
+export const testAppOwnerIdBytes = ownerIdToOwnerIdBytes(testAppOwner.id);
+
+export const testAppOwner2Secret = createOwnerSecret({
   randomBytes: deps.randomBytes,
 });
-
-export const testOwner = createAppOwner(testOwnerSecret);
-export const testOwnerIdBytes = ownerIdToOwnerIdBytes(testOwner.id);
-
-export const testOwner2 = createAppOwner(testOwnerSecret2);
-export const testOwnerIdBytes2 = ownerIdToOwnerIdBytes(testOwner2.id);
+export const testAppOwner2 = createAppOwner(testAppOwner2Secret);
+export const testAppOwner2IdBytes = ownerIdToOwnerIdBytes(testAppOwner2.id);

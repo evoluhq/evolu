@@ -13,12 +13,12 @@ import { mnemonicToOwnerSecret } from "../src/index.js";
 import { ok } from "../src/Result.js";
 import { testCreateDeps } from "../src/Test.js";
 import { Mnemonic, NonNegativeInt } from "../src/Type.js";
-import { testOwner } from "./local-first/_fixtures.js";
+import { testAppOwner } from "./local-first/_fixtures.js";
 
 test("encryptWithXChaCha20Poly1305 / decryptWithXChaCha20Poly1305", () => {
   const deps = testCreateDeps();
   const plaintext = utf8ToBytes("Hello, world!");
-  const encryptionKey = testOwner.encryptionKey;
+  const encryptionKey = testAppOwner.encryptionKey;
 
   const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
     plaintext,

@@ -19,10 +19,10 @@ import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
 import { testCreateDeps } from "../../src/Test.js";
 import { testCreateRunWithRelayStorage } from "../_deps.js";
 import {
-  testOwner,
-  testOwner2,
-  testOwnerIdBytes,
-  testOwnerIdBytes2,
+  testAppOwner,
+  testAppOwner2,
+  testAppOwnerIdBytes,
+  testAppOwner2IdBytes,
   testTimestampsAsc,
 } from "./_fixtures.js";
 
@@ -30,19 +30,22 @@ test("validateWriteKey", async () => {
   await using run = await testCreateRunWithRelayStorage();
   const { storage } = run.deps;
 
-  const writeKey = testOwner.writeKey;
-  const differentWriteKey = testOwner2.writeKey;
+  const writeKey = testAppOwner.writeKey;
+  const differentWriteKey = testAppOwner2.writeKey;
 
   // New owner
-  const result1 = storage.validateWriteKey(testOwnerIdBytes, writeKey);
+  const result1 = storage.validateWriteKey(testAppOwnerIdBytes, writeKey);
   expect(result1).toBe(true);
 
   // Existing owner, same write key
-  const result2 = storage.validateWriteKey(testOwnerIdBytes, writeKey);
+  const result2 = storage.validateWriteKey(testAppOwnerIdBytes, writeKey);
   expect(result2).toBe(true);
 
   // Existing owner ID, different write key
-  const result3 = storage.validateWriteKey(testOwnerIdBytes, differentWriteKey);
+  const result3 = storage.validateWriteKey(
+    testAppOwnerIdBytes,
+    differentWriteKey,
+  );
   expect(result3).toBe(false);
 });
 
@@ -50,25 +53,25 @@ test("deleteOwner", async () => {
   await using run = await testCreateRunWithRelayStorage();
   const { storage, sqlite } = run.deps;
 
-  storage.setWriteKey(testOwnerIdBytes, testOwner.writeKey);
+  storage.setWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey);
 
   const message: EncryptedCrdtMessage = {
     timestamp: timestampBytesToTimestamp(testTimestampsAsc[0]),
     change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
   };
 
-  await run(storage.writeMessages(testOwnerIdBytes, [message]));
+  await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
 
-  expect(storage.getSize(testOwnerIdBytes)).toBe(1);
+  expect(storage.getSize(testAppOwnerIdBytes)).toBe(1);
 
-  const deleteResult = storage.deleteOwner(testOwnerIdBytes);
+  const deleteResult = storage.deleteOwner(testAppOwnerIdBytes);
   expect(deleteResult).toBe(true);
 
   for (const table of ["evolu_timestamp", "evolu_message", "evolu_writeKey"]) {
     const countResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from ${sql.raw(table)}
-      where ownerid = ${testOwnerIdBytes};
+      where ownerid = ${testAppOwnerIdBytes};
     `);
     expect(countResult.ok && countResult.value.rows[0].count).toBe(0);
   }
@@ -99,19 +102,19 @@ describe("writeMessages", () => {
     await using run = await testCreateRunWithRelayStorage();
     const { storage, sqlite } = run.deps;
 
-    await run(storage.writeMessages(testOwnerIdBytes, [message]));
+    await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
 
-    expect(getStoredBytes({ sqlite })(testOwnerIdBytes)).toBe(3);
+    expect(getStoredBytes({ sqlite })(testAppOwnerIdBytes)).toBe(3);
   });
 
   test("accumulates storedBytes across multiple writes", async () => {
     await using run = await testCreateRunWithRelayStorage();
     const { storage, sqlite } = run.deps;
 
-    await run(storage.writeMessages(testOwnerIdBytes, [message]));
-    await run(storage.writeMessages(testOwnerIdBytes, [message]));
+    await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
+    await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
 
-    expect(getStoredBytes({ sqlite })(testOwnerIdBytes)).toBe(6);
+    expect(getStoredBytes({ sqlite })(testAppOwnerIdBytes)).toBe(6);
   });
 
   test("prevents duplicate timestamp writes", async () => {
@@ -119,19 +122,19 @@ describe("writeMessages", () => {
     const { storage, sqlite } = run.deps;
 
     const result1 = await run(
-      storage.writeMessages(testOwnerIdBytes, [message]),
+      storage.writeMessages(testAppOwnerIdBytes, [message]),
     );
     assert(result1.ok);
 
     const result2 = await run(
-      storage.writeMessages(testOwnerIdBytes, [message]),
+      storage.writeMessages(testAppOwnerIdBytes, [message]),
     );
     assert(result2.ok);
 
     const countResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_message
-      where ownerid = ${testOwnerIdBytes};
+      where ownerid = ${testAppOwnerIdBytes};
     `);
 
     assert(countResult.ok);
@@ -159,12 +162,12 @@ describe("writeMessages", () => {
     const message2 = createTestMessage();
 
     await Promise.all([
-      run(storage.writeMessages(testOwnerIdBytes, [message1])),
-      run(storage.writeMessages(testOwnerIdBytes, [message2])),
+      run(storage.writeMessages(testAppOwnerIdBytes, [message1])),
+      run(storage.writeMessages(testAppOwnerIdBytes, [message2])),
     ]);
 
     expect(concurrentAccess).toBe(false);
-    expect(storage.getSize(testOwnerIdBytes)).toBe(2);
+    expect(storage.getSize(testAppOwnerIdBytes)).toBe(2);
   });
 
   test("allows concurrent writes for different owners", async () => {
@@ -186,13 +189,13 @@ describe("writeMessages", () => {
     const message2 = createTestMessage();
 
     await Promise.all([
-      run(storage.writeMessages(testOwnerIdBytes, [message1])),
-      run(storage.writeMessages(testOwnerIdBytes2, [message2])),
+      run(storage.writeMessages(testAppOwnerIdBytes, [message1])),
+      run(storage.writeMessages(testAppOwner2IdBytes, [message2])),
     ]);
 
     expect(maxConcurrentWrites).toBe(2);
-    expect(storage.getSize(testOwnerIdBytes)).toBe(1);
-    expect(storage.getSize(testOwnerIdBytes2)).toBe(1);
+    expect(storage.getSize(testAppOwnerIdBytes)).toBe(1);
+    expect(storage.getSize(testAppOwner2IdBytes)).toBe(1);
   });
 
   test("transaction rollback on quota error", async () => {
@@ -202,17 +205,17 @@ describe("writeMessages", () => {
     const { storage, sqlite } = run.deps;
 
     const result = await run(
-      storage.writeMessages(testOwnerIdBytes, [message]),
+      storage.writeMessages(testAppOwnerIdBytes, [message]),
     );
 
     expect(result).toEqual(
-      err({ type: "StorageQuotaError", ownerId: testOwner.id }),
+      err({ type: "StorageQuotaError", ownerId: testAppOwner.id }),
     );
 
     const messageCountResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_message
-      where ownerid = ${testOwnerIdBytes};
+      where ownerid = ${testAppOwnerIdBytes};
     `);
 
     assert(messageCountResult.ok);
@@ -221,7 +224,7 @@ describe("writeMessages", () => {
     const usageResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
       from evolu_usage
-      where ownerid = ${testOwnerIdBytes};
+      where ownerid = ${testAppOwnerIdBytes};
     `);
 
     assert(usageResult.ok);
@@ -245,12 +248,12 @@ describe("writeMessages", () => {
       const { storage } = run.deps;
 
       const result = await run(
-        storage.writeMessages(testOwnerIdBytes, [message]),
+        storage.writeMessages(testAppOwnerIdBytes, [message]),
       );
 
       assert(result.ok);
       expect(quotaCheckCalled).toBe(true);
-      expect(receivedOwnerId).toBe(testOwner.id);
+      expect(receivedOwnerId).toBe(testAppOwner.id);
       expect(receivedBytes).toBe(3);
     });
 
@@ -271,12 +274,12 @@ describe("writeMessages", () => {
       const { storage } = run.deps;
 
       const result = await run(
-        storage.writeMessages(testOwnerIdBytes, [message]),
+        storage.writeMessages(testAppOwnerIdBytes, [message]),
       );
 
       assert(result.ok);
       expect(quotaCheckCalled).toBe(true);
-      expect(receivedOwnerId).toBe(testOwner.id);
+      expect(receivedOwnerId).toBe(testAppOwner.id);
       expect(receivedBytes).toBe(3);
     });
 
@@ -287,11 +290,11 @@ describe("writeMessages", () => {
       const { storage } = run.deps;
 
       const result = await run(
-        storage.writeMessages(testOwnerIdBytes, [message]),
+        storage.writeMessages(testAppOwnerIdBytes, [message]),
       );
 
       expect(result).toEqual(
-        err({ type: "StorageQuotaError", ownerId: testOwner.id }),
+        err({ type: "StorageQuotaError", ownerId: testAppOwner.id }),
       );
     });
 
@@ -305,11 +308,11 @@ describe("writeMessages", () => {
       const { storage } = run.deps;
 
       const result = await run(
-        storage.writeMessages(testOwnerIdBytes, [message]),
+        storage.writeMessages(testAppOwnerIdBytes, [message]),
       );
 
       expect(result).toEqual(
-        err({ type: "StorageQuotaError", ownerId: testOwner.id }),
+        err({ type: "StorageQuotaError", ownerId: testAppOwner.id }),
       );
     });
 
@@ -324,25 +327,25 @@ describe("writeMessages", () => {
 
       const message1 = createTestMessage(50);
       const result1 = await run(
-        storage.writeMessages(testOwnerIdBytes, [message1]),
+        storage.writeMessages(testAppOwnerIdBytes, [message1]),
       );
       assert(result1.ok);
 
       const message2 = createTestMessage(40);
       const result2 = await run(
-        storage.writeMessages(testOwnerIdBytes, [message2]),
+        storage.writeMessages(testAppOwnerIdBytes, [message2]),
       );
       assert(result2.ok);
 
       const largeMessage = createTestMessage(20);
       const result3 = await run(
-        storage.writeMessages(testOwnerIdBytes, [largeMessage]),
+        storage.writeMessages(testAppOwnerIdBytes, [largeMessage]),
       );
       expect(result3).toEqual(
-        err({ type: "StorageQuotaError", ownerId: testOwner.id }),
+        err({ type: "StorageQuotaError", ownerId: testAppOwner.id }),
       );
 
-      expect(getStoredBytes({ sqlite })(testOwnerIdBytes)).toBe(90);
+      expect(getStoredBytes({ sqlite })(testAppOwnerIdBytes)).toBe(90);
     });
   });
 });
