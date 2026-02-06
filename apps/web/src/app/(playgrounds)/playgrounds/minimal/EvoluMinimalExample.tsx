@@ -1,9 +1,10 @@
 "use client";
 
 import * as Evolu from "@evolu/common";
-import { createRunner } from "@evolu/web";
-
-import type { FC } from "react";
+import { createEvoluContext } from "@evolu/react";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
+import { Suspense, use, type FC } from "react";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -11,8 +12,8 @@ const TodoId = Evolu.id("Todo");
 type TodoId = typeof TodoId.Type;
 
 // Schema defines database structure with runtime validation.
-// Column types validate data on insert/update/upsert.
-const _Schema = {
+// Column types validate data on insert/update/upsert/sync.
+const Schema = {
   todo: {
     id: TodoId,
     // Branded type ensuring titles are non-empty and ≤100 chars.
@@ -22,68 +23,62 @@ const _Schema = {
   },
 };
 
-// Create a query builder (once per schema).
-const createQuery = Evolu.createQueryBuilder(_Schema);
+// Create typed query builder (once per schema).
+const createQuery = Evolu.createQueryBuilder(Schema);
 
 const _todosQuery = createQuery((db) =>
   db
     // Type-safe SQL: try autocomplete for table and column names.
     .selectFrom("todo")
     .select(["id", "title", "isCompleted"])
+
     // Soft delete: filter out deleted rows.
     .where("isDeleted", "is not", Evolu.sqliteTrue)
+
     // Like with GraphQL, all columns except id are nullable in queries
     // (even if defined without nullOr in the schema) to allow schema
     // evolution without migrations. Filter nulls with where + $narrowType.
     .where("title", "is not", null)
     .$narrowType<{ title: Evolu.kysely.NotNull }>()
+
     // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
     .orderBy("createdAt"),
 );
 
-// vytvorit deps
-// const deps = createEvoluDeps()
-// const run = createRunner(deps) // muze mrdnout vlastni konzoli
-// const evolu = run(createEvolu(...))
+// Create Run with Evolu dependencies for React Web.
+const run = createRun(createEvoluDeps());
 
-// ok, uz vim, nad cim jsem dumal, jak se to bude volat a predavat
+// Create Evolu App.
+const app = run(
+  Evolu.createEvolu(Schema, {
+    name: Evolu.SimpleName.orThrow("minimal-example"),
 
-const run = createRunner();
-run.deps.console.log("ahoj!");
+    ...(process.env.NODE_ENV === "development" && {
+      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+    }),
+  }),
+);
 
-run((run) => {
-  const console = run.deps.console.child("evolu");
-  console.info("Ahoj z Evolu!");
-  return Evolu.ok();
-});
+const [App, AppProvider] = createEvoluContext(app);
 
-export const EvoluMinimalExample: FC = () => <div>ahoj</div>;
+export const EvoluMinimalExample: FC = () => (
+  <Suspense>
+    <AppProvider>
+      <div>ahoj</div>
+      <Test />
+    </AppProvider>
+  </Suspense>
+);
 
-// const deps = createEvoluDeps();
+const Test = () => {
+  const app = use(App);
 
-// // runMain pro browser, tak jako tak
-// //  const run = runMain vypada nice
-// //  RunMain type, jo
-// // vsechny error do konzole, a poslouchat konzoli?
-// // SharedWorker jedna instance nebo vic?
-// //  imho factory, a kazda evolu instance vlastni
-// // hot reload, pres deps Instances
-// // budu to cele stavet od zhora
-// // bude createEvoluDeps Task? neni duvod
-
-// // Create Evolu instance for the React web platform.
-// const evolu = Evolu.createEvolu(deps)(Schema, {
-//   name: Evolu.SimpleName.orThrow("minimal-example"),
-
-//   // TODO: Patri do web deps only? hmm, deps jsou sdilene
-//   // tohle musim pak domyslet, callback? webReloadUrl? uvidime
-//   // tohle rozhodne patri se
-//   // reloadUrl: "/playgrounds/minimal",
-
-//   ...(process.env.NODE_ENV === "development" && {
-//     transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-//   }),
-// });
+  return (
+    <div>
+      {run.deps.random.next()} - {app.appOwner.id}
+    </div>
+  );
+};
 
 // // Creates a typed React Hook for accessing Evolu from EvoluProvider context.
 // // You can also use `evolu` directly, but the hook enables replacing Evolu
