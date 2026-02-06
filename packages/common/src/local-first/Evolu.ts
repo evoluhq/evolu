@@ -4,54 +4,27 @@
  * @module
  */
 
-import { pack } from "msgpackr";
-import { dedupeArray, isNonEmptyArray } from "../Array.js";
-import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
-import { createCallbacks } from "../Callbacks.js";
-import type { ConsoleDep } from "../Console.js";
-import { createConsole } from "../Console.js";
-import type { RandomBytesDep } from "../Crypto.js";
-import { createRandomBytes } from "../Crypto.js";
-import { eqArrayNumber } from "../Eq.js";
 import type { Listener, Unsubscribe } from "../Listeners.js";
+import { ok } from "../Result.js";
+import type { Task } from "../Task.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
-import type { DisposableDep, DisposableStackDep } from "../Resources.js";
-import { createDisposableDep } from "../Resources.js";
-import type { Result } from "../Result.js";
-import { err, ok } from "../Result.js";
-import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
-import type { ReadonlyStore, Store } from "../Store.js";
-import { createStore } from "../Store.js";
-import type { AnyType, InferErrors, InferInput, ObjectType } from "../Type.js";
-import { createId, Id, SimpleName } from "../Type.js";
-import type { CreateMessageChannelDep } from "../Worker.js";
-import type { EvoluError } from "./Error.js";
+import { SimpleName } from "../Type.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
-import { createOwnerWebSocketTransport, OwnerId } from "./Owner.js";
+import {
+  createAppOwner,
+  createOwnerSecret,
+  createOwnerWebSocketTransport,
+  OwnerId,
+} from "./Owner.js";
 import type {
   Queries,
   QueriesToQueryRowsPromises,
   Query,
   QueryRows,
-  QueryRowsMap,
   Row,
-  SubscribedQueries,
 } from "./Query.js";
-import { createSubscribedQueries, emptyRows } from "./Query.js";
-import type {
-  EvoluSchema,
-  IndexesConfig,
-  Mutation,
-  MutationChange,
-  MutationKind,
-  MutationMapping,
-  MutationOptions,
-  ValidateSchema,
-} from "./Schema.js";
-import { insertable, SystemColumns, updateable, upsertable } from "./Schema.js";
-import { DbChange } from "./Storage.js";
+import type { EvoluSchema, IndexesConfig, ValidateSchema } from "./Schema.js";
 import type { SyncOwner } from "./Sync.js";
-import type { EvoluWorkerDep } from "./Worker.js";
 
 export interface EvoluConfig {
   /**
@@ -69,6 +42,44 @@ export interface EvoluConfig {
    * ```
    */
   readonly name: SimpleName;
+
+  /**
+   * External AppOwner to use when creating Evolu instance. Use this when you
+   * want to manage AppOwner creation and persistence externally (e.g., with
+   * your own authentication system). If omitted, Evolu will automatically
+   * create and persist an AppOwner locally.
+   *
+   * For device-specific settings and account management state, we can use a
+   * separate local-only Evolu instance via `transports: []`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const ConfigId = id("Config");
+   * type ConfigId = typeof ConfigId.Type;
+   *
+   * const DeviceSchema = {
+   *   config: {
+   *     id: ConfigId,
+   *     key: NonEmptyString50,
+   *     value: NonEmptyString50,
+   *   },
+   * };
+   *
+   * // Local-only instance for device settings (no sync)
+   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
+   *   name: SimpleName.orThrow("MyApp-Device"),
+   *   transports: [], // No sync - stays local to device
+   * });
+   *
+   * // Main synced instance for user data
+   * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
+   *   name: SimpleName.orThrow("MyApp"),
+   *   // Default transports for sync
+   * });
+   * ```
+   */
+  readonly appOwner?: AppOwner;
 
   /**
    * Transport configuration for data sync and backup. Supports single transport
@@ -128,44 +139,6 @@ export interface EvoluConfig {
   readonly transports?: ReadonlyArray<OwnerTransport>;
 
   /**
-   * External AppOwner to use when creating Evolu instance. Use this when you
-   * want to manage AppOwner creation and persistence externally (e.g., with
-   * your own authentication system). If omitted, Evolu will automatically
-   * create and persist an AppOwner locally.
-   *
-   * For device-specific settings and account management state, we can use a
-   * separate local-only Evolu instance via `transports: []`.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const ConfigId = id("Config");
-   * type ConfigId = typeof ConfigId.Type;
-   *
-   * const DeviceSchema = {
-   *   config: {
-   *     id: ConfigId,
-   *     key: NonEmptyString50,
-   *     value: NonEmptyString50,
-   *   },
-   * };
-   *
-   * // Local-only instance for device settings (no sync)
-   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-   *   name: SimpleName.orThrow("MyApp-Device"),
-   *   transports: [], // No sync - stays local to device
-   * });
-   *
-   * // Main synced instance for user data
-   * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
-   *   name: SimpleName.orThrow("MyApp"),
-   *   // Default transports for sync
-   * });
-   * ```
-   */
-  readonly externalAppOwner?: AppOwner;
-
-  /**
    * Use in-memory SQLite database instead of persistent storage. Useful for
    * testing or temporary data that doesn't need persistence.
    *
@@ -198,41 +171,31 @@ export interface EvoluConfig {
    */
   readonly indexes?: IndexesConfig;
 
-  /**
-   * URL to reload browser tabs after reset or restore.
-   *
-   * The default value is `/`.
-   */
-  readonly reloadAppUrl?: string;
+  // /**
+  //  * URL to reload browser tabs after reset or restore.
+  //  *
+  //  * The default value is `/`.
+  //  */
+  // readonly reloadAppUrl?: string;
 }
 
-export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
+/** Local-first SQL database with typed queries, mutations, and sync. */
+export interface Evolu<
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  S extends EvoluSchema = EvoluSchema,
+> extends AsyncDisposable {
   /** The name of the Evolu instance from {@link EvoluConfig}. */
   readonly name: SimpleName;
 
-  /**
-   * Subscribe to {@link EvoluError} changes.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const unsubscribe = evolu.subscribeError(() => {
-   *   const error = evolu.getError();
-   *   console.log(error);
-   * });
-   * ```
-   */
-  readonly subscribeError: (listener: Listener) => Unsubscribe;
-
-  /** Get {@link EvoluError}. */
-  readonly getError: () => EvoluError | null;
+  /** {@link AppOwner}. */
+  readonly appOwner: AppOwner;
 
   /**
    * Load {@link Query} and return a promise with {@link QueryRows}.
    *
    * The returned promise always resolves successfully because there is no
-   * reason why loading should fail. All data are local, and the query is typed.
-   * Unexpected errors are handled with {@link Evolu.subscribeError}.
+   * reason why loading should fail. All data are local, and the query is
+   * typed.
    *
    * Loading is batched, and returned promises are cached until resolved to
    * prevent redundant database queries and to support React Suspense (which
@@ -298,210 +261,196 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
    */
   readonly getQueryRows: <R extends Row>(query: Query<R>) => QueryRows<R>;
 
-  /**
-   * Promise that resolves to {@link AppOwner} when available.
-   *
-   * Note: With web-only deps, this promise will not resolve during SSR because
-   * there is no AppOwner on the server.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const owner = await evolu.appOwner;
-   * ```
-   */
-  readonly appOwner: Promise<AppOwner>;
-
-  /**
-   * Inserts a row into the database and returns a {@link Result} with the new
-   * {@link Id}.
-   *
-   * The first argument is the table name, and the second is an object
-   * containing the row data. An optional third argument provides mutation
-   * options including an `onComplete` callback and `onlyValidate` flag.
-   *
-   * Returns a Result type - use `.ok` to check if the insertion succeeded, and
-   * `.value.id` to access the generated ID on success, or `.error` to handle
-   * validation errors.
-   *
-   * Evolu does not use SQL for mutations to ensure data can be safely and
-   * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically update {@link SystemColumns}.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const result = evolu.insert("todo", {
-   *   title: "Learn Evolu",
-   *   isCompleted: false,
-   * });
-   *
-   * if (result.ok) {
-   *   console.log("Todo created with ID:", result.value.id);
-   * } else {
-   *   console.error("Validation error:", result.error);
-   * }
-   *
-   * // With onComplete callback
-   * evolu.insert(
-   *   "todo",
-   *   { title: "Another todo" },
-   *   {
-   *     onComplete: () => {
-   *       console.log("Insert completed");
-   *     },
-   *   },
-   * );
-   * ```
-   */
-  insert: Mutation<S, "insert">;
-
-  /**
-   * Updates a row in the database and returns a {@link Result} with the existing
-   * {@link Id}.
-   *
-   * The first argument is the table name, and the second is an object
-   * containing the row data including the required `id` field. An optional
-   * third argument provides mutation options including an `onComplete` callback
-   * and `onlyValidate` flag.
-   *
-   * Returns a Result type - use `.ok` to check if the update succeeded, and
-   * `.value.id` to access the ID on success, or `.error` to handle validation
-   * errors.
-   *
-   * Evolu does not use SQL for mutations to ensure data can be safely and
-   * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically update {@link SystemColumns}.
-   *
-   * ### Example
-   *
-   * ```ts
-   * const result = evolu.update("todo", {
-   *   id: todoId,
-   *   title: "Updated title",
-   *   isCompleted: true,
-   * });
-   *
-   * if (result.ok) {
-   *   console.log("Todo updated with ID:", result.value.id);
-   * } else {
-   *   console.error("Validation error:", result.error);
-   * }
-   *
-   * // To delete a row, set isDeleted to true
-   * evolu.update("todo", { id: todoId, isDeleted: true });
-   *
-   * // With onComplete callback
-   * evolu.update(
-   *   "todo",
-   *   { id: todoId, title: "New title" },
-   *   {
-   *     onComplete: () => {
-   *       console.log("Update completed");
-   *     },
-   *   },
-   * );
-   * ```
-   */
-  update: Mutation<S, "update">;
-
-  /**
-   * Upserts a row in the database and returns a {@link Result} with the existing
-   * {@link Id}.
-   *
-   * The first argument is the table name, and the second is an object
-   * containing the row data including the required `id` field. An optional
-   * third argument provides mutation options including an `onComplete` callback
-   * and `onlyValidate` flag.
-   *
-   * This function allows you to use custom IDs and optionally set `createdAt`,
-   * which is useful for external systems, data migrations, or when the same row
-   * may already be created on a different device.
-   *
-   * Returns a Result type - use `.ok` to check if the upsert succeeded, and
-   * `.value.id` to access the ID on success, or `.error` to handle validation
-   * errors.
-   *
-   * Evolu does not use SQL for mutations to ensure data can be safely and
-   * predictably merged without conflicts. Explicit mutations also allow Evolu
-   * to automatically update {@link SystemColumns}.
-   *
-   * ### Example
-   *
-   * ```ts
-   * // Use deterministic ID for stable upserts across devices
-   * const stableId = createIdFromString("my-todo-1");
-   *
-   * const result = evolu.upsert("todo", {
-   *   id: stableId,
-   *   title: "Learn Evolu",
-   *   isCompleted: false,
-   * });
-   *
-   * if (result.ok) {
-   *   console.log("Todo upserted with ID:", result.value.id);
-   * } else {
-   *   console.error("Validation error:", result.error);
-   * }
-   *
-   * // Data migration with custom createdAt
-   * evolu.upsert("todo", {
-   *   id: externalId,
-   *   title: "Migrated todo",
-   *   createdAt: new Date("2023-01-01"), // Preserve original timestamp
-   * });
-   *
-   * // With onComplete callback
-   * evolu.upsert(
-   *   "todo",
-   *   { id: stableId, title: "Updated title" },
-   *   {
-   *     onComplete: () => {
-   *       console.log("Upsert completed");
-   *     },
-   *   },
-   * );
-   * ```
-   */
-  upsert: Mutation<S, "upsert">;
-
   // /**
-  //  * Delete {@link AppOwner} and all their data from the current device. After
-  //  * the deletion, Evolu will purge the application state. For browsers, this
-  //  * will reload all tabs using Evolu. For native apps, it will restart the
-  //  * app.
+  //  * Inserts a row into the database and returns a {@link Result} with the new
+  //  * {@link Id}.
   //  *
-  //  * Reloading can be turned off via options if you want to provide a different
-  //  * UX.
+  //  * The first argument is the table name, and the second is an object
+  //  * containing the row data. An optional third argument provides mutation
+  //  * options including an `onComplete` callback and `onlyValidate` flag.
+  //  *
+  //  * Returns a Result type - use `.ok` to check if the insertion succeeded, and
+  //  * `.value.id` to access the generated ID on success, or `.error` to handle
+  //  * validation errors.
+  //  *
+  //  * Evolu does not use SQL for mutations to ensure data can be safely and
+  //  * predictably merged without conflicts. Explicit mutations also allow Evolu
+  //  * to automatically update {@link SystemColumns}.
+  //  *
+  //  * ### Example
+  //  *
+  //  * ```ts
+  //  * const result = evolu.insert("todo", {
+  //  *   title: "Learn Evolu",
+  //  *   isCompleted: false,
+  //  * });
+  //  *
+  //  * if (result.ok) {
+  //  *   console.log("Todo created with ID:", result.value.id);
+  //  * } else {
+  //  *   console.error("Validation error:", result.error);
+  //  * }
+  //  *
+  //  * // With onComplete callback
+  //  * evolu.insert(
+  //  *   "todo",
+  //  *   { title: "Another todo" },
+  //  *   {
+  //  *     onComplete: () => {
+  //  *       console.log("Insert completed");
+  //  *     },
+  //  *   },
+  //  * );
+  //  * ```
   //  */
-  // readonly resetAppOwner: (options?: {
-  //   readonly reload?: boolean;
-  // }) => Promise<void>;
+  // insert: Mutation<S, "insert">;
 
   // /**
-  //  * Restore {@link AppOwner} with all their synced data. It uses
-  //  * {@link Evolu.resetAppOwner}, so be careful.
+  //  * Updates a row in the database and returns a {@link Result} with the existing
+  //  * {@link Id}.
+  //  *
+  //  * The first argument is the table name, and the second is an object
+  //  * containing the row data including the required `id` field. An optional
+  //  * third argument provides mutation options including an `onComplete` callback
+  //  * and `onlyValidate` flag.
+  //  *
+  //  * Returns a Result type - use `.ok` to check if the update succeeded, and
+  //  * `.value.id` to access the ID on success, or `.error` to handle validation
+  //  * errors.
+  //  *
+  //  * Evolu does not use SQL for mutations to ensure data can be safely and
+  //  * predictably merged without conflicts. Explicit mutations also allow Evolu
+  //  * to automatically update {@link SystemColumns}.
+  //  *
+  //  * ### Example
+  //  *
+  //  * ```ts
+  //  * const result = evolu.update("todo", {
+  //  *   id: todoId,
+  //  *   title: "Updated title",
+  //  *   isCompleted: true,
+  //  * });
+  //  *
+  //  * if (result.ok) {
+  //  *   console.log("Todo updated with ID:", result.value.id);
+  //  * } else {
+  //  *   console.error("Validation error:", result.error);
+  //  * }
+  //  *
+  //  * // To delete a row, set isDeleted to true
+  //  * evolu.update("todo", { id: todoId, isDeleted: true });
+  //  *
+  //  * // With onComplete callback
+  //  * evolu.update(
+  //  *   "todo",
+  //  *   { id: todoId, title: "New title" },
+  //  *   {
+  //  *     onComplete: () => {
+  //  *       console.log("Update completed");
+  //  *     },
+  //  *   },
+  //  * );
+  //  * ```
   //  */
-  // readonly restoreAppOwner: (
-  //   mnemonic: Mnemonic,
-  //   options?: {
-  //     readonly reload?: boolean;
-  //   },
-  // ) => Promise<void>;
+  // update: Mutation<S, "update">;
 
   // /**
-  //  * Reload the app in a platform-specific way. For browsers, this will reload
-  //  * all tabs using Evolu. For native apps, it will restart the app.
+  //  * Upserts a row in the database and returns a {@link Result} with the existing
+  //  * {@link Id}.
+  //  *
+  //  * The first argument is the table name, and the second is an object
+  //  * containing the row data including the required `id` field. An optional
+  //  * third argument provides mutation options including an `onComplete` callback
+  //  * and `onlyValidate` flag.
+  //  *
+  //  * This function allows you to use custom IDs and optionally set `createdAt`,
+  //  * which is useful for external systems, data migrations, or when the same row
+  //  * may already be created on a different device.
+  //  *
+  //  * Returns a Result type - use `.ok` to check if the upsert succeeded, and
+  //  * `.value.id` to access the ID on success, or `.error` to handle validation
+  //  * errors.
+  //  *
+  //  * Evolu does not use SQL for mutations to ensure data can be safely and
+  //  * predictably merged without conflicts. Explicit mutations also allow Evolu
+  //  * to automatically update {@link SystemColumns}.
+  //  *
+  //  * ### Example
+  //  *
+  //  * ```ts
+  //  * // Use deterministic ID for stable upserts across devices
+  //  * const stableId = createIdFromString("my-todo-1");
+  //  *
+  //  * const result = evolu.upsert("todo", {
+  //  *   id: stableId,
+  //  *   title: "Learn Evolu",
+  //  *   isCompleted: false,
+  //  * });
+  //  *
+  //  * if (result.ok) {
+  //  *   console.log("Todo upserted with ID:", result.value.id);
+  //  * } else {
+  //  *   console.error("Validation error:", result.error);
+  //  * }
+  //  *
+  //  * // Data migration with custom createdAt
+  //  * evolu.upsert("todo", {
+  //  *   id: externalId,
+  //  *   title: "Migrated todo",
+  //  *   createdAt: new Date("2023-01-01"), // Preserve original timestamp
+  //  * });
+  //  *
+  //  * // With onComplete callback
+  //  * evolu.upsert(
+  //  *   "todo",
+  //  *   { id: stableId, title: "Updated title" },
+  //  *   {
+  //  *     onComplete: () => {
+  //  *       console.log("Upsert completed");
+  //  *     },
+  //  *   },
+  //  * );
+  //  * ```
   //  */
-  // readonly reloadApp: () => void;
+  // upsert: Mutation<S, "upsert">;
 
-  /**
-   * Export SQLite database file as Uint8Array.
-   *
-   * In the future, it will be possible to import a database and export/import
-   * history for 1:1 migrations across owners.
-   */
-  readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
+  // // /**
+  // //  * Delete {@link AppOwner} and all their data from the current device. After
+  // //  * the deletion, Evolu will purge the application state. For browsers, this
+  // //  * will reload all tabs using Evolu. For native apps, it will restart the
+  // //  * app.
+  // //  *
+  // //  * Reloading can be turned off via options if you want to provide a different
+  // //  * UX.
+  // //  */
+  // // readonly resetAppOwner: (options?: {
+  // //   readonly reload?: boolean;
+  // // }) => Promise<void>;
+
+  // // /**
+  // //  * Restore {@link AppOwner} with all their synced data. It uses
+  // //  * {@link Evolu.resetAppOwner}, so be careful.
+  // //  */
+  // // readonly restoreAppOwner: (
+  // //   mnemonic: Mnemonic,
+  // //   options?: {
+  // //     readonly reload?: boolean;
+  // //   },
+  // // ) => Promise<void>;
+
+  // // /**
+  // //  * Reload the app in a platform-specific way. For browsers, this will reload
+  // //  * all tabs using Evolu. For native apps, it will restart the app.
+  // //  */
+  // // readonly reloadApp: () => void;
+
+  // /**
+  //  * Export SQLite database file as Uint8Array.
+  //  *
+  //  * In the future, it will be possible to import a database and export/import
+  //  * history for 1:1 migrations across owners.
+  //  */
+  // readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
   /**
    * Use a {@link SyncOwner}. Returns a {@link UnuseOwner}.
@@ -532,627 +481,644 @@ export interface Evolu<S extends EvoluSchema = EvoluSchema> extends Disposable {
 /** Function returned by {@link Evolu.useOwner} to stop using an {@link SyncOwner}. */
 export type UnuseOwner = () => void;
 
-export type EvoluDeps = EvoluPlatformDeps &
-  ConsoleDep &
-  DisposableDep &
-  ErrorStoreDep &
-  RandomBytesDep;
+export type EvoluDeps = EvoluPlatformDeps;
+// ErrorStoreDep &
 
-export type EvoluPlatformDeps = CreateMessageChannelDep &
-  ReloadAppDep &
-  EvoluWorkerDep &
-  Partial<FlushSyncDep>;
-
-export interface ErrorStoreDep {
-  /**
-   * Shared error store for all Evolu instances. Subscribe once to handle errors
-   * globally across all instances.
-   *
-   * ### Example
-   *
-   * ```ts
-   * deps.evoluError.subscribe(() => {
-   *   const error = deps.evoluError.get();
-   *   if (!error) return;
-   *   console.error(error);
-   * });
-   * ```
-   */
-  readonly evoluError: ReadonlyStore<EvoluError | null>;
-}
+export type EvoluPlatformDeps = ReloadAppDep & Partial<FlushSyncDep>;
 
 /** Creates Evolu dependencies from platform-specific dependencies. */
+// eslint-disable-next-line arrow-body-style
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
-  const disposableStack = new DisposableStack();
-  const evoluError = createErrorStore({ ...deps, disposableStack });
+  return deps;
+  // const disposableStack = new DisposableStack();
+  // const evoluError = createErrorStore({ ...deps, disposableStack });
 
-  return {
-    ...deps,
-    ...createDisposableDep(disposableStack),
-    console: createConsole(),
-    evoluError,
-    randomBytes: createRandomBytes(),
-  };
-};
-
-const createErrorStore = (
-  deps: CreateMessageChannelDep & EvoluWorkerDep & DisposableStackDep,
-): Store<EvoluError | null> => {
-  const errorChannel = deps.disposableStack.use(
-    deps.createMessageChannel<EvoluError>(),
-  );
-  const evoluError = deps.disposableStack.use(
-    createStore<EvoluError | null>(null),
-  );
-
-  deps.evoluWorker.port.postMessage(
-    { type: "InitErrorStore", port: errorChannel.port1.native },
-    [errorChannel.port1.native],
-  );
-
-  errorChannel.port2.onMessage = (error) => {
-    evoluError.set(error);
-  };
-
-  return evoluError;
+  // return {
+  //   ...deps,
+  //   ...createDisposableDep(disposableStack),
+  //   console: createConsole(),
+  //   evoluError,
+  //   randomBytes: createRandomBytes(),
+  // };
 };
 
 /**
- * Creates an {@link Evolu} instance for a platform configured with the specified
- * {@link EvoluSchema} and optional {@link EvoluConfig} providing a typed
- * interface for querying, mutating, and syncing your application's data.
- *
- * ### Example
- *
- * ```ts
- * const TodoId = id("Todo");
- * type TodoId = InferType<typeof TodoId>;
- *
- * const TodoCategoryId = id("TodoCategory");
- * type TodoCategoryId = InferType<typeof TodoCategoryId>;
- *
- * const NonEmptyString50 = maxLength(50, NonEmptyString);
- * type NonEmptyString50 = InferType<typeof NonEmptyString50>;
- *
- * const Schema = {
- *   todo: {
- *     id: TodoId,
- *     title: NonEmptyString1000,
- *     isCompleted: nullOr(SqliteBoolean),
- *     categoryId: nullOr(TodoCategoryId),
- *   },
- *   todoCategory: {
- *     id: TodoCategoryId,
- *     name: NonEmptyString50,
- *   },
- * };
- *
- * const evolu = createEvolu(evoluReactDeps)(Schema);
- * ```
+ * Creates an {@link Evolu} instance from {@link EvoluSchema} and
+ * {@link EvoluConfig}.
  */
 export const createEvolu =
-  (deps: EvoluDeps) =>
   <S extends EvoluSchema>(
-    schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
-    {
-      name,
-      // TODO:
-      transports: _transports = [
-        { type: "WebSocket", url: "wss://free.evoluhq.com" },
-      ],
-      externalAppOwner,
-      inMemory: _inMemory,
-      indexes: _indexes,
-    }: EvoluConfig,
-  ): Evolu<S> => {
-    // Cast schema to S since ValidateSchema ensures type safety at compile time.
-    // At runtime, schema is always valid because invalid schemas are compile errors.
-    const validSchema = schema as S;
-
-    const errorStore = createStore<EvoluError | null>(null);
-    const rowsStore = createStore<QueryRowsMap>(new Map());
-    const subscribedQueries = createSubscribedQueries(rowsStore);
-    const loadingPromises = createLoadingPromises(subscribedQueries);
-    const onCompleteCallbacks = createCallbacks(deps);
-    const exportCallbacks = createCallbacks<Uint8Array<ArrayBuffer>>(deps);
-
-    const loadQueryMicrotaskQueue: Array<Query> = [];
-    const useOwnerMicrotaskQueue: Array<[SyncOwner, boolean, Uint8Array]> = [];
-
-    const { promise: appOwner, resolve: resolveAppOwner } =
-      Promise.withResolvers<AppOwner>();
-    if (externalAppOwner) resolveAppOwner(externalAppOwner);
-
-    // deps.sharedWorker.
-
-    // const schema = _schema as EvoluSchema;
-
-    // const { indexes, reloadUrl = "/", ...partialDbConfig } = config ?? {};
-
-    // const dbConfig: DbConfig = { ...defaultDbConfig, ...partialDbConfig };
-
-    // deps.console.log("[evolu]", "createEvoluInstance", {
-    //   name: dbConfig.name,
-    // });
-
-    // // TODO: Update it for the owner-api
-    // const _syncStore = createStore<SyncState>(initialSyncState);
-
-    // const dbWorker = deps.createDbWorker(dbConfig.name);
-
-    // const getTabId = () => {
-    //   tabId ??= createId(deps);
-    //   return tabId;
-    // };
-
-    // // Worker responses are delivered to all tabs. Each case must handle this
-    // // properly (e.g., AppOwner promise resolves only once, tabId filtering).
-    // dbWorker.onMessage((message) => {
-    //   switch (message.type) {
-    //     case "onError": {
-    //       errorStore.set(message.error);
-    //       break;
-    //     }
-
-    //     case "onGetAppOwner": {
-    //       resolveAppOwner(message.appOwner);
-    //       break;
-    //     }
-
-    //     case "onQueryPatches": {
-    //       if (message.tabId !== getTabId()) return;
-
-    //       const state = rowsStore.get();
-    //       const nextState = new Map([
-    //         ...state,
-    //         ...message.queryPatches.map(
-    //           ({ query, patches }): [Query, ReadonlyArray<Row>] => [
-    //             query,
-    //             applyPatches(patches, state.get(query) ?? emptyRows),
-    //           ],
-    //         ),
-    //       ]);
-
-    //       for (const { query } of message.queryPatches) {
-    //         loadingPromises.resolve(query, nextState.get(query) ?? emptyRows);
-    //       }
-
-    //       if (deps.flushSync && message.onCompleteIds.length > 0) {
-    //         deps.flushSync(() => {
-    //           rowsStore.set(nextState);
-    //         });
-    //       } else {
-    //         rowsStore.set(nextState);
-    //       }
-
-    //       for (const id of message.onCompleteIds) {
-    //         onCompleteCallbacks.execute(id);
-    //       }
-    //       break;
-    //     }
-
-    //     case "refreshQueries": {
-    //       if (message.tabId && message.tabId === getTabId()) return;
-
-    //       const loadingPromisesQueries = loadingPromises.getQueries();
-    //       loadingPromises.releaseUnsubscribedOnMutation();
-
-    //       const queries = dedupeArray([
-    //         ...loadingPromisesQueries,
-    //         ...subscribedQueries.get(),
-    //       ]);
-
-    //       if (isNonEmptyArray(queries)) {
-    //         dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
-    //       }
-
-    //       break;
-    //     }
-
-    //     case "onReset": {
-    //       if (message.reload) {
-    //         deps.reloadApp(reloadUrl);
-    //       } else {
-    //         onCompleteCallbacks.execute(message.onCompleteId);
-    //       }
-    //       break;
-    //     }
-
-    //     case "onExport": {
-    //       exportCallbacks.execute(
-    //         message.onCompleteId,
-    //         message.file as Uint8Array<ArrayBuffer>,
-    //       );
-    //       break;
-    //     }
-
-    //     default:
-    //       exhaustiveCheck(message);
-    //   }
-    // });
-
-    // const dbSchema = evoluSchemaToDbSchema(schema, indexes);
-
-    const mutationTypesCache = new Map<
-      MutationKind,
-      Map<string, ObjectType<Record<string, AnyType>>>
-    >();
-
-    // Lazy create mutation Types like this: `insertable(Schema.todo)`
-    const getMutationType = (table: string, kind: MutationKind) => {
-      let types = mutationTypesCache.get(kind);
-      if (!types) {
-        types = new Map();
-        mutationTypesCache.set(kind, types);
-      }
-      let type = types.get(table);
-      if (!type) {
-        type = { insert: insertable, update: updateable, upsert: upsertable }[
-          kind
-        ](validSchema[table]);
-        types.set(table, type);
-      }
-      return type;
-    };
-
-    // dbWorker.postMessage({ type: "init", config: dbConfig, dbSchema });
-
-    // // We can't use `init` to get AppOwner because `init` runs only once per n tabs.
-    // dbWorker.postMessage({ type: "getAppOwner" });
-
-    const mutateMicrotaskQueue: Array<
-      [MutationChange | null, MutationOptions["onComplete"] | undefined]
-    > = [];
-
-    const createMutation =
-      <Kind extends MutationKind>(kind: Kind): Mutation<S, Kind> =>
-      <TableName extends keyof S>(
-        table: TableName,
-        props: InferInput<ObjectType<MutationMapping<S[TableName], Kind>>>,
-        options?: MutationOptions,
-      ): Result<
-        { readonly id: S[TableName]["id"]["Type"] },
-        InferErrors<ObjectType<MutationMapping<S[TableName], Kind>>>
-      > => {
-        const result = getMutationType(table as string, kind).fromUnknown(
-          props,
-        );
-
-        const id =
-          kind === "insert"
-            ? createId(deps)
-            : (props as unknown as { id: Id }).id;
-
-        if (options?.onlyValidate !== true) {
-          if (!result.ok) {
-            // Mark the transaction as invalid by pushing null
-            mutateMicrotaskQueue.push([null, undefined]);
-          } else {
-            const { id: _, isDeleted, ...values } = result.value;
-
-            const dbChange = {
-              table: table as string,
-              id,
-              values,
-              isInsert: kind === "insert" || kind === "upsert",
-              isDelete: SqliteBoolean.is(isDeleted)
-                ? sqliteBooleanToBoolean(isDeleted)
-                : null,
-            };
-
-            assert(
-              DbChange.is(dbChange),
-              `Invalid DbChange for table '${String(table)}': Please check schema type errors.`,
-            );
-
-            mutateMicrotaskQueue.push([
-              { ...dbChange, ownerId: options?.ownerId },
-              options?.onComplete,
-            ]);
-          }
-
-          if (mutateMicrotaskQueue.length === 1) {
-            queueMicrotask(processMutationQueue);
-          }
-        }
-
-        if (result.ok)
-          return ok({ id } as { readonly id: S[TableName]["id"]["Type"] });
-
-        return err(
-          result.error as InferErrors<
-            ObjectType<MutationMapping<S[TableName], Kind>>
-          >,
-        );
-      };
-
-    const processMutationQueue = () => {
-      const changes: Array<MutationChange> = [];
-      const onCompletes = [];
-
-      for (const [change, onComplete] of mutateMicrotaskQueue) {
-        if (change !== null) changes.push(change);
-        if (onComplete) onCompletes.push(onComplete);
-      }
-
-      const queueLength = mutateMicrotaskQueue.length;
-      mutateMicrotaskQueue.length = 0;
-
-      // Don't process any mutations if there was a validation error.
-      // All mutations within a queue run as a single transaction.
-      if (changes.length !== queueLength) {
-        return;
-      }
-
-      const _onCompleteIds = onCompletes.map(onCompleteCallbacks.register);
-      loadingPromises.releaseUnsubscribedOnMutation();
-
-      if (!isNonEmptyArray(changes)) return;
-
-      // TODO:
-      // dbWorker.postMessage({
-      //   type: "mutate",
-      //   tabId: getTabId(),
-      //   changes,
-      //   onCompleteIds,
-      //   subscribedQueries: subscribedQueries.get(),
-      // });
-    };
-
-    const evolu: Evolu<S> = {
-      name,
-
-      subscribeError: errorStore.subscribe,
-      getError: errorStore.get,
-
-      loadQuery: <R extends Row>(query: Query<R>): Promise<QueryRows<R>> => {
-        const { promise, isNew } = loadingPromises.get(query);
-
-        if (isNew) {
-          loadQueryMicrotaskQueue.push(query);
-          if (loadQueryMicrotaskQueue.length === 1) {
-            queueMicrotask(() => {
-              const queries = dedupeArray(loadQueryMicrotaskQueue);
-              loadQueryMicrotaskQueue.length = 0;
-              assertNonEmptyReadonlyArray(queries);
-              deps.console.log("[evolu]", "loadQuery", { queries });
-              // dbWorker.postMessage({
-              //   type: "query",
-              //   tabId: getTabId(),
-              //   queries,
-              // });
-            });
-          }
-        }
-
-        return promise;
-      },
-
-      loadQueries: <R extends Row, Q extends Queries<R>>(
-        queries: [...Q],
-      ): [...QueriesToQueryRowsPromises<Q>] =>
-        queries.map(evolu.loadQuery) as [...QueriesToQueryRowsPromises<Q>],
-
-      subscribeQuery: (query) => (listener) => {
-        // Call the listener only if the result has been changed.
-        let previousRows: unknown = null;
-        const unsubscribe = subscribedQueries.subscribe(query)(() => {
-          const rows = evolu.getQueryRows(query);
-          if (previousRows === rows) return;
-          previousRows = rows;
-          listener();
-        });
-        return () => {
-          previousRows = null;
-          unsubscribe();
-        };
-      },
-
-      getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
-        (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
-
-      appOwner,
-
-      // TODO: Update it for the owner-api
-      // subscribeSyncState: syncStore.subscribe,
-      // getSyncState: syncStore.get,
-
-      insert: createMutation("insert"),
-      update: createMutation("update"),
-      upsert: createMutation("upsert"),
-
-      // resetAppOwner: (_options) => {
-      //   const { promise, resolve } = Promise.withResolvers<undefined>();
-      //   const _onCompleteId = onCompleteCallbacks.register(resolve);
-      //   // dbWorker.postMessage({
-      //   //   type: "reset",
-      //   //   onCompleteId,
-      //   //   reload: options?.reload ?? true,
-      //   // });
-      //   return promise;
-      // },
-
-      // restoreAppOwner: (_mnemonic, _options) => {
-      //   const { promise, resolve } = Promise.withResolvers<undefined>();
-      //   const _onCompleteId = onCompleteCallbacks.register(resolve);
-      //   // dbWorker.postMessage({
-      //   //   type: "reset",
-      //   //   onCompleteId,
-      //   //   reload: options?.reload ?? true,
-      //   //   restore: { mnemonic, dbSchema },
-      //   // });
-      //   return promise;
-      // },
-
-      // reloadApp: () => {
-      //   // TODO:
-      //   // deps.reloadApp(reloadUrl);
-      // },
-
-      // ensureSchema: (schema) => {
-      //   mutationTypesCache.clear();
-      //   const dbSchema = evoluSchemaToDbSchema(schema);
-      //   dbWorker.postMessage({ type: "ensureDbSchema", dbSchema });
-      // },
-
-      exportDatabase: () => {
-        const { promise, resolve } =
-          Promise.withResolvers<Uint8Array<ArrayBuffer>>();
-        const _onCompleteId = exportCallbacks.register(resolve);
-        // dbWorker.postMessage({ type: "export", onCompleteId });
-        return promise;
-      },
-
-      useOwner: (owner) => {
-        const scheduleOwnerQueueProcessing = () => {
-          if (useOwnerMicrotaskQueue.length !== 1) return;
-          queueMicrotask(() => {
-            const queue = [...useOwnerMicrotaskQueue];
-            useOwnerMicrotaskQueue.length = 0;
-
-            const result: Array<[SyncOwner, boolean, Uint8Array]> = [];
-            const skipIndices = new Set<number>();
-
-            for (let i = 0; i < queue.length; i++) {
-              if (skipIndices.has(i)) continue;
-
-              const [currentOwner, currentUse, currentOwnerSerialized] =
-                queue[i];
-
-              // Look for opposite action with same owner
-              for (let j = i + 1; j < queue.length; j++) {
-                if (skipIndices.has(j)) continue;
-
-                const [, otherUse, otherOwnerSerialized] = queue[j];
-
-                if (
-                  currentUse !== otherUse &&
-                  eqArrayNumber(currentOwnerSerialized, otherOwnerSerialized)
-                ) {
-                  // Found cancel-out pair, skip both
-                  skipIndices.add(i).add(j);
-                  break;
-                }
-              }
-
-              if (!skipIndices.has(i)) {
-                result.push([currentOwner, currentUse, currentOwnerSerialized]);
-              }
-            }
-
-            for (const [_owner, _use] of result) {
-              // dbWorker.postMessage({ type: "useOwner", owner, use });
-            }
-          });
-        };
-
-        useOwnerMicrotaskQueue.push([owner, true, pack(owner)]);
-        scheduleOwnerQueueProcessing();
-
-        const unuse = () => {
-          useOwnerMicrotaskQueue.push([owner, false, pack(owner)]);
-          scheduleOwnerQueueProcessing();
-        };
-
-        return unuse;
-      },
-
-      /** Disposal is not implemented yet. */
-      [Symbol.dispose]: () => {
-        throw new Error("Evolu instance disposal is not yet implemented");
-      },
-    };
-
-    return evolu;
+    _schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
+    config: EvoluConfig,
+  ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
+  (run) => {
+    const appOwner =
+      config.appOwner ?? createAppOwner(createOwnerSecret(run.deps));
+
+    return ok({ appOwner } as Evolu<S>);
   };
 
-interface LoadingPromises {
-  get: <R extends Row>(
-    query: Query<R>,
-  ) => {
-    readonly promise: Promise<QueryRows<R>>;
-    readonly isNew: boolean;
-  };
+// CreateMessageChannelDep &
+// ReloadAppDep &
+// EvoluWorkerDep &
+// Partial<FlushSyncDep>;
 
-  resolve: (query: Query, rows: ReadonlyArray<Row>) => void;
+// export interface ErrorStoreDep {
+//   /**
+//    * Shared error store for all Evolu instances. Subscribe once to handle errors
+//    * globally across all instances.
+//    *
+//    * ### Example
+//    *
+//    * ```ts
+//    * deps.evoluError.subscribe(() => {
+//    *   const error = deps.evoluError.get();
+//    *   if (!error) return;
+//    *   console.error(error);
+//    * });
+//    * ```
+//    */
+//   readonly evoluError: ReadonlyStore<EvoluError | null>;
+// }
 
-  releaseUnsubscribedOnMutation: () => void;
+// const createErrorStore = (
+//   deps: CreateMessageChannelDep & EvoluWorkerDep & DisposableStackDep,
+// ): Store<EvoluError | null> => {
+//   const errorChannel = deps.disposableStack.use(
+//     deps.createMessageChannel<EvoluError>(),
+//   );
+//   const evoluError = deps.disposableStack.use(
+//     createStore<EvoluError | null>(null),
+//   );
 
-  getQueries: () => ReadonlyArray<Query>;
-}
+//   deps.evoluWorker.port.postMessage(
+//     { type: "InitErrorStore", port: errorChannel.port1.native },
+//     [errorChannel.port1.native],
+//   );
 
-interface LoadingPromise {
-  /** Promise with props for the React use hook. */
-  promise: Promise<QueryRows> & {
-    status?: "pending" | "fulfilled" | "rejected";
-    value?: QueryRows;
-    reason?: unknown;
-  };
-  resolve: (rows: QueryRows) => void;
-  releaseOnResolve: boolean;
-}
+//   errorChannel.port2.onMessage = (error) => {
+//     evoluError.set(error);
+//   };
 
-const createLoadingPromises = (
-  subscribedQueries: SubscribedQueries,
-): LoadingPromises => {
-  const loadingPromiseMap = new Map<Query, LoadingPromise>();
+//   return evoluError;
+// };
 
-  return {
-    get: <R extends Row>(
-      query: Query<R>,
-    ): {
-      readonly promise: Promise<QueryRows<R>>;
-      readonly isNew: boolean;
-    } => {
-      let loadingPromise = loadingPromiseMap.get(query);
-      const isNew = !loadingPromise;
-      if (!loadingPromise) {
-        const { promise, resolve } = Promise.withResolvers<QueryRows>();
-        loadingPromise = { resolve, promise, releaseOnResolve: false };
-        loadingPromiseMap.set(query, loadingPromise);
-      }
-      return {
-        promise: loadingPromise.promise as Promise<QueryRows<R>>,
-        isNew,
-      };
-    },
+// /**
+//  * Creates an {@link Evolu} instance for a platform configured with the specified
+//  * {@link EvoluSchema} and optional {@link EvoluConfig} providing a typed
+//  * interface for querying, mutating, and syncing data.
+//  *
+//  * ### Example
+//  *
+//  * ```ts
+//  * const TodoId = id("Todo");
+//  * type TodoId = InferType<typeof TodoId>;
+//  *
+//  * const TodoCategoryId = id("TodoCategory");
+//  * type TodoCategoryId = InferType<typeof TodoCategoryId>;
+//  *
+//  * const NonEmptyString50 = maxLength(50, NonEmptyString);
+//  * type NonEmptyString50 = InferType<typeof NonEmptyString50>;
+//  *
+//  * const Schema = {
+//  *   todo: {
+//  *     id: TodoId,
+//  *     title: NonEmptyString1000,
+//  *     isCompleted: nullOr(SqliteBoolean),
+//  *     categoryId: nullOr(TodoCategoryId),
+//  *   },
+//  *   todoCategory: {
+//  *     id: TodoCategoryId,
+//  *     name: NonEmptyString50,
+//  *   },
+//  * };
+//  *
+//  * const evolu = createEvolu(evoluReactDeps)(Schema);
+//  * ```
+//  */
+// export const createEvolu =
+//   (deps: EvoluDeps) =>
+//   <S extends EvoluSchema>(
+//     schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
+//     {
+//       name,
+//       // TODO:
+//       transports: _transports = [
+//         { type: "WebSocket", url: "wss://free.evoluhq.com" },
+//       ],
+//       externalAppOwner,
+//       inMemory: _inMemory,
+//       indexes: _indexes,
+//     }: EvoluConfig,
+//   ): Evolu<S> => {
+//     // Cast schema to S since ValidateSchema ensures type safety at compile time.
+//     // At runtime, schema is always valid because invalid schemas are compile errors.
+//     const validSchema = schema as S;
 
-    resolve: (query, rows) => {
-      const loadingPromise = loadingPromiseMap.get(query);
-      if (!loadingPromise) return;
+//     const errorStore = createStore<EvoluError | null>(null);
+//     const rowsStore = createStore<QueryRowsMap>(new Map());
+//     const subscribedQueries = createSubscribedQueries(rowsStore);
+//     const loadingPromises = createLoadingPromises(subscribedQueries);
+//     const onCompleteCallbacks = createCallbacks(deps);
+//     const exportCallbacks = createCallbacks<Uint8Array<ArrayBuffer>>(deps);
 
-      if (loadingPromise.promise.status !== "fulfilled") {
-        loadingPromise.resolve(rows);
-      } else {
-        loadingPromise.promise = Promise.resolve(rows);
-      }
+//     const loadQueryMicrotaskQueue: Array<Query> = [];
+//     const useOwnerMicrotaskQueue: Array<[SyncOwner, boolean, Uint8Array]> = [];
 
-      // Set status and value fields for React's `use` Hook to unwrap synchronously.
-      // While undocumented in React docs, React still uses these properties internally,
-      // and Evolu's own promise caching logic depends on checking `promise.status`.
-      // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-      void Object.assign(loadingPromise.promise, {
-        status: "fulfilled",
-        value: rows,
-      });
+//     const { promise: appOwner, resolve: resolveAppOwner } =
+//       Promise.withResolvers<AppOwner>();
+//     if (externalAppOwner) resolveAppOwner(externalAppOwner);
 
-      if (loadingPromise.releaseOnResolve) {
-        loadingPromiseMap.delete(query);
-      }
-    },
+//     // deps.sharedWorker.
 
-    releaseUnsubscribedOnMutation: () => {
-      [...loadingPromiseMap.entries()]
-        .filter(([query]) => !subscribedQueries.has(query))
-        .forEach(([query, loadingPromise]) => {
-          if (loadingPromise.promise.status === "fulfilled") {
-            loadingPromiseMap.delete(query);
-          } else {
-            loadingPromise.releaseOnResolve = true;
-          }
-        });
-    },
+//     // const schema = _schema as EvoluSchema;
 
-    getQueries: () => Array.from(loadingPromiseMap.keys()),
-  };
-};
+//     // const { indexes, reloadUrl = "/", ...partialDbConfig } = config ?? {};
+
+//     // const dbConfig: DbConfig = { ...defaultDbConfig, ...partialDbConfig };
+
+//     // deps.console.log("[evolu]", "createEvoluInstance", {
+//     //   name: dbConfig.name,
+//     // });
+
+//     // // TODO: Update it for the owner-api
+//     // const _syncStore = createStore<SyncState>(initialSyncState);
+
+//     // const dbWorker = deps.createDbWorker(dbConfig.name);
+
+//     // const getTabId = () => {
+//     //   tabId ??= createId(deps);
+//     //   return tabId;
+//     // };
+
+//     // // Worker responses are delivered to all tabs. Each case must handle this
+//     // // properly (e.g., AppOwner promise resolves only once, tabId filtering).
+//     // dbWorker.onMessage((message) => {
+//     //   switch (message.type) {
+//     //     case "onError": {
+//     //       errorStore.set(message.error);
+//     //       break;
+//     //     }
+
+//     //     case "onGetAppOwner": {
+//     //       resolveAppOwner(message.appOwner);
+//     //       break;
+//     //     }
+
+//     //     case "onQueryPatches": {
+//     //       if (message.tabId !== getTabId()) return;
+
+//     //       const state = rowsStore.get();
+//     //       const nextState = new Map([
+//     //         ...state,
+//     //         ...message.queryPatches.map(
+//     //           ({ query, patches }): [Query, ReadonlyArray<Row>] => [
+//     //             query,
+//     //             applyPatches(patches, state.get(query) ?? emptyRows),
+//     //           ],
+//     //         ),
+//     //       ]);
+
+//     //       for (const { query } of message.queryPatches) {
+//     //         loadingPromises.resolve(query, nextState.get(query) ?? emptyRows);
+//     //       }
+
+//     //       if (deps.flushSync && message.onCompleteIds.length > 0) {
+//     //         deps.flushSync(() => {
+//     //           rowsStore.set(nextState);
+//     //         });
+//     //       } else {
+//     //         rowsStore.set(nextState);
+//     //       }
+
+//     //       for (const id of message.onCompleteIds) {
+//     //         onCompleteCallbacks.execute(id);
+//     //       }
+//     //       break;
+//     //     }
+
+//     //     case "refreshQueries": {
+//     //       if (message.tabId && message.tabId === getTabId()) return;
+
+//     //       const loadingPromisesQueries = loadingPromises.getQueries();
+//     //       loadingPromises.releaseUnsubscribedOnMutation();
+
+//     //       const queries = dedupeArray([
+//     //         ...loadingPromisesQueries,
+//     //         ...subscribedQueries.get(),
+//     //       ]);
+
+//     //       if (isNonEmptyArray(queries)) {
+//     //         dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
+//     //       }
+
+//     //       break;
+//     //     }
+
+//     //     case "onReset": {
+//     //       if (message.reload) {
+//     //         deps.reloadApp(reloadUrl);
+//     //       } else {
+//     //         onCompleteCallbacks.execute(message.onCompleteId);
+//     //       }
+//     //       break;
+//     //     }
+
+//     //     case "onExport": {
+//     //       exportCallbacks.execute(
+//     //         message.onCompleteId,
+//     //         message.file as Uint8Array<ArrayBuffer>,
+//     //       );
+//     //       break;
+//     //     }
+
+//     //     default:
+//     //       exhaustiveCheck(message);
+//     //   }
+//     // });
+
+//     // const dbSchema = evoluSchemaToDbSchema(schema, indexes);
+
+//     const mutationTypesCache = new Map<
+//       MutationKind,
+//       Map<string, ObjectType<Record<string, AnyType>>>
+//     >();
+
+//     // Lazy create mutation Types like this: `insertable(Schema.todo)`
+//     const getMutationType = (table: string, kind: MutationKind) => {
+//       let types = mutationTypesCache.get(kind);
+//       if (!types) {
+//         types = new Map();
+//         mutationTypesCache.set(kind, types);
+//       }
+//       let type = types.get(table);
+//       if (!type) {
+//         type = { insert: insertable, update: updateable, upsert: upsertable }[
+//           kind
+//         ](validSchema[table]);
+//         types.set(table, type);
+//       }
+//       return type;
+//     };
+
+//     // dbWorker.postMessage({ type: "init", config: dbConfig, dbSchema });
+
+//     // // We can't use `init` to get AppOwner because `init` runs only once per n tabs.
+//     // dbWorker.postMessage({ type: "getAppOwner" });
+
+//     const mutateMicrotaskQueue: Array<
+//       [MutationChange | null, MutationOptions["onComplete"] | undefined]
+//     > = [];
+
+//     const createMutation =
+//       <Kind extends MutationKind>(kind: Kind): Mutation<S, Kind> =>
+//       <TableName extends keyof S>(
+//         table: TableName,
+//         props: InferInput<ObjectType<MutationMapping<S[TableName], Kind>>>,
+//         options?: MutationOptions,
+//       ): Result<
+//         { readonly id: S[TableName]["id"]["Type"] },
+//         InferErrors<ObjectType<MutationMapping<S[TableName], Kind>>>
+//       > => {
+//         const result = getMutationType(table as string, kind).fromUnknown(
+//           props,
+//         );
+
+//         const id =
+//           kind === "insert"
+//             ? createId(deps)
+//             : (props as unknown as { id: Id }).id;
+
+//         if (options?.onlyValidate !== true) {
+//           if (!result.ok) {
+//             // Mark the transaction as invalid by pushing null
+//             mutateMicrotaskQueue.push([null, undefined]);
+//           } else {
+//             const { id: _, isDeleted, ...values } = result.value;
+
+//             const dbChange = {
+//               table: table as string,
+//               id,
+//               values,
+//               isInsert: kind === "insert" || kind === "upsert",
+//               isDelete: SqliteBoolean.is(isDeleted)
+//                 ? sqliteBooleanToBoolean(isDeleted)
+//                 : null,
+//             };
+
+//             assert(
+//               DbChange.is(dbChange),
+//               `Invalid DbChange for table '${String(table)}': Please check schema type errors.`,
+//             );
+
+//             mutateMicrotaskQueue.push([
+//               { ...dbChange, ownerId: options?.ownerId },
+//               options?.onComplete,
+//             ]);
+//           }
+
+//           if (mutateMicrotaskQueue.length === 1) {
+//             queueMicrotask(processMutationQueue);
+//           }
+//         }
+
+//         if (result.ok)
+//           return ok({ id } as { readonly id: S[TableName]["id"]["Type"] });
+
+//         return err(
+//           result.error as InferErrors<
+//             ObjectType<MutationMapping<S[TableName], Kind>>
+//           >,
+//         );
+//       };
+
+//     const processMutationQueue = () => {
+//       const changes: Array<MutationChange> = [];
+//       const onCompletes = [];
+
+//       for (const [change, onComplete] of mutateMicrotaskQueue) {
+//         if (change !== null) changes.push(change);
+//         if (onComplete) onCompletes.push(onComplete);
+//       }
+
+//       const queueLength = mutateMicrotaskQueue.length;
+//       mutateMicrotaskQueue.length = 0;
+
+//       // Don't process any mutations if there was a validation error.
+//       // All mutations within a queue run as a single transaction.
+//       if (changes.length !== queueLength) {
+//         return;
+//       }
+
+//       const _onCompleteIds = onCompletes.map(onCompleteCallbacks.register);
+//       loadingPromises.releaseUnsubscribedOnMutation();
+
+//       if (!isNonEmptyArray(changes)) return;
+
+//       // TODO:
+//       // dbWorker.postMessage({
+//       //   type: "mutate",
+//       //   tabId: getTabId(),
+//       //   changes,
+//       //   onCompleteIds,
+//       //   subscribedQueries: subscribedQueries.get(),
+//       // });
+//     };
+
+//     const evolu: Evolu<S> = {
+//       name,
+
+//       subscribeError: errorStore.subscribe,
+//       getError: errorStore.get,
+
+//       loadQuery: <R extends Row>(query: Query<R>): Promise<QueryRows<R>> => {
+//         const { promise, isNew } = loadingPromises.get(query);
+
+//         if (isNew) {
+//           loadQueryMicrotaskQueue.push(query);
+//           if (loadQueryMicrotaskQueue.length === 1) {
+//             queueMicrotask(() => {
+//               const queries = dedupeArray(loadQueryMicrotaskQueue);
+//               loadQueryMicrotaskQueue.length = 0;
+//               assertNonEmptyReadonlyArray(queries);
+//               deps.console.log("[evolu]", "loadQuery", { queries });
+//               // dbWorker.postMessage({
+//               //   type: "query",
+//               //   tabId: getTabId(),
+//               //   queries,
+//               // });
+//             });
+//           }
+//         }
+
+//         return promise;
+//       },
+
+//       loadQueries: <R extends Row, Q extends Queries<R>>(
+//         queries: [...Q],
+//       ): [...QueriesToQueryRowsPromises<Q>] =>
+//         queries.map(evolu.loadQuery) as [...QueriesToQueryRowsPromises<Q>],
+
+//       subscribeQuery: (query) => (listener) => {
+//         // Call the listener only if the result has been changed.
+//         let previousRows: unknown = null;
+//         const unsubscribe = subscribedQueries.subscribe(query)(() => {
+//           const rows = evolu.getQueryRows(query);
+//           if (previousRows === rows) return;
+//           previousRows = rows;
+//           listener();
+//         });
+//         return () => {
+//           previousRows = null;
+//           unsubscribe();
+//         };
+//       },
+
+//       getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
+//         (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
+
+//       appOwner,
+
+//       // TODO: Update it for the owner-api
+//       // subscribeSyncState: syncStore.subscribe,
+//       // getSyncState: syncStore.get,
+
+//       insert: createMutation("insert"),
+//       update: createMutation("update"),
+//       upsert: createMutation("upsert"),
+
+//       // resetAppOwner: (_options) => {
+//       //   const { promise, resolve } = Promise.withResolvers<undefined>();
+//       //   const _onCompleteId = onCompleteCallbacks.register(resolve);
+//       //   // dbWorker.postMessage({
+//       //   //   type: "reset",
+//       //   //   onCompleteId,
+//       //   //   reload: options?.reload ?? true,
+//       //   // });
+//       //   return promise;
+//       // },
+
+//       // restoreAppOwner: (_mnemonic, _options) => {
+//       //   const { promise, resolve } = Promise.withResolvers<undefined>();
+//       //   const _onCompleteId = onCompleteCallbacks.register(resolve);
+//       //   // dbWorker.postMessage({
+//       //   //   type: "reset",
+//       //   //   onCompleteId,
+//       //   //   reload: options?.reload ?? true,
+//       //   //   restore: { mnemonic, dbSchema },
+//       //   // });
+//       //   return promise;
+//       // },
+
+//       // reloadApp: () => {
+//       //   // TODO:
+//       //   // deps.reloadApp(reloadUrl);
+//       // },
+
+//       // ensureSchema: (schema) => {
+//       //   mutationTypesCache.clear();
+//       //   const dbSchema = evoluSchemaToDbSchema(schema);
+//       //   dbWorker.postMessage({ type: "ensureDbSchema", dbSchema });
+//       // },
+
+//       exportDatabase: () => {
+//         const { promise, resolve } =
+//           Promise.withResolvers<Uint8Array<ArrayBuffer>>();
+//         const _onCompleteId = exportCallbacks.register(resolve);
+//         // dbWorker.postMessage({ type: "export", onCompleteId });
+//         return promise;
+//       },
+
+//       useOwner: (owner) => {
+//         const scheduleOwnerQueueProcessing = () => {
+//           if (useOwnerMicrotaskQueue.length !== 1) return;
+//           queueMicrotask(() => {
+//             const queue = [...useOwnerMicrotaskQueue];
+//             useOwnerMicrotaskQueue.length = 0;
+
+//             const result: Array<[SyncOwner, boolean, Uint8Array]> = [];
+//             const skipIndices = new Set<number>();
+
+//             for (let i = 0; i < queue.length; i++) {
+//               if (skipIndices.has(i)) continue;
+
+//               const [currentOwner, currentUse, currentOwnerSerialized] =
+//                 queue[i];
+
+//               // Look for opposite action with same owner
+//               for (let j = i + 1; j < queue.length; j++) {
+//                 if (skipIndices.has(j)) continue;
+
+//                 const [, otherUse, otherOwnerSerialized] = queue[j];
+
+//                 if (
+//                   currentUse !== otherUse &&
+//                   eqArrayNumber(currentOwnerSerialized, otherOwnerSerialized)
+//                 ) {
+//                   // Found cancel-out pair, skip both
+//                   skipIndices.add(i).add(j);
+//                   break;
+//                 }
+//               }
+
+//               if (!skipIndices.has(i)) {
+//                 result.push([currentOwner, currentUse, currentOwnerSerialized]);
+//               }
+//             }
+
+//             for (const [_owner, _use] of result) {
+//               // dbWorker.postMessage({ type: "useOwner", owner, use });
+//             }
+//           });
+//         };
+
+//         useOwnerMicrotaskQueue.push([owner, true, pack(owner)]);
+//         scheduleOwnerQueueProcessing();
+
+//         const unuse = () => {
+//           useOwnerMicrotaskQueue.push([owner, false, pack(owner)]);
+//           scheduleOwnerQueueProcessing();
+//         };
+
+//         return unuse;
+//       },
+
+//       /** Disposal is not implemented yet. */
+//       [Symbol.dispose]: () => {
+//         throw new Error("Evolu instance disposal is not yet implemented");
+//       },
+//     };
+
+//     return evolu;
+//   };
+
+// interface LoadingPromises {
+//   get: <R extends Row>(
+//     query: Query<R>,
+//   ) => {
+//     readonly promise: Promise<QueryRows<R>>;
+//     readonly isNew: boolean;
+//   };
+
+//   resolve: (query: Query, rows: ReadonlyArray<Row>) => void;
+
+//   releaseUnsubscribedOnMutation: () => void;
+
+//   getQueries: () => ReadonlyArray<Query>;
+// }
+
+// interface LoadingPromise {
+//   /** Promise with props for the React use hook. */
+//   promise: Promise<QueryRows> & {
+//     status?: "pending" | "fulfilled" | "rejected";
+//     value?: QueryRows;
+//     reason?: unknown;
+//   };
+//   resolve: (rows: QueryRows) => void;
+//   releaseOnResolve: boolean;
+// }
+
+// const createLoadingPromises = (
+//   subscribedQueries: SubscribedQueries,
+// ): LoadingPromises => {
+//   const loadingPromiseMap = new Map<Query, LoadingPromise>();
+
+//   return {
+//     get: <R extends Row>(
+//       query: Query<R>,
+//     ): {
+//       readonly promise: Promise<QueryRows<R>>;
+//       readonly isNew: boolean;
+//     } => {
+//       let loadingPromise = loadingPromiseMap.get(query);
+//       const isNew = !loadingPromise;
+//       if (!loadingPromise) {
+//         const { promise, resolve } = Promise.withResolvers<QueryRows>();
+//         loadingPromise = { resolve, promise, releaseOnResolve: false };
+//         loadingPromiseMap.set(query, loadingPromise);
+//       }
+//       return {
+//         promise: loadingPromise.promise as Promise<QueryRows<R>>,
+//         isNew,
+//       };
+//     },
+
+//     resolve: (query, rows) => {
+//       const loadingPromise = loadingPromiseMap.get(query);
+//       if (!loadingPromise) return;
+
+//       if (loadingPromise.promise.status !== "fulfilled") {
+//         loadingPromise.resolve(rows);
+//       } else {
+//         loadingPromise.promise = Promise.resolve(rows);
+//       }
+
+//       // Set status and value fields for React's `use` Hook to unwrap synchronously.
+//       // While undocumented in React docs, React still uses these properties internally,
+//       // and Evolu's own promise caching logic depends on checking `promise.status`.
+//       // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
+//       void Object.assign(loadingPromise.promise, {
+//         status: "fulfilled",
+//         value: rows,
+//       });
+
+//       if (loadingPromise.releaseOnResolve) {
+//         loadingPromiseMap.delete(query);
+//       }
+//     },
+
+//     releaseUnsubscribedOnMutation: () => {
+//       [...loadingPromiseMap.entries()]
+//         .filter(([query]) => !subscribedQueries.has(query))
+//         .forEach(([query, loadingPromise]) => {
+//           if (loadingPromise.promise.status === "fulfilled") {
+//             loadingPromiseMap.delete(query);
+//           } else {
+//             loadingPromise.releaseOnResolve = true;
+//           }
+//         });
+//     },
+
+//     getQueries: () => Array.from(loadingPromiseMap.keys()),
+//   };
+// };

@@ -1,7 +1,56 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
+import { lazyVoid } from "../../src/Function.js";
+import { createEvolu, createEvoluDeps } from "../../src/local-first/Evolu.js";
+import { SqliteBoolean } from "../../src/Sqlite.js";
+import { testCreateRun } from "../../src/Test.js";
+import { id, NonEmptyString100, nullOr } from "../../src/Type.js";
+import { testSimpleName } from "../_deps.js";
+import { testAppOwner } from "./_fixtures.js";
 
-test("TODO", () => {
-  expect(1).toBe(1);
+const TodoId = id("Todo");
+type TodoId = typeof TodoId.Type;
+
+const Schema = {
+  todo: {
+    id: TodoId,
+    title: NonEmptyString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+
+const createEvoluRun = () => testCreateRun({ reloadApp: lazyVoid });
+
+test("createEvoluDeps returns deps unchanged", () => {
+  const deps = { reloadApp: lazyVoid };
+  expect(createEvoluDeps(deps)).toBe(deps);
+});
+
+describe("createEvolu", () => {
+  test("appOwner from config is exposed as evolu.appOwner", async () => {
+    await using run = createEvoluRun();
+
+    const result = await run(
+      createEvolu(Schema, { name: testSimpleName, appOwner: testAppOwner }),
+    );
+
+    expect(result.ok && result.value.appOwner).toBe(testAppOwner);
+  });
+
+  test("appOwner is created when omitted from config", async () => {
+    await using run = createEvoluRun();
+
+    const result = await run(createEvolu(Schema, { name: testSimpleName }));
+
+    expect(result.ok && result.value.appOwner).toMatchInlineSnapshot(`
+      {
+        "encryptionKey": uint8:[50,42,177,193,76,197,92,240,100,30,92,209,205,42,108,45,195,37,118,158,238,206,161,144,11,241,190,167,14,254,186,53],
+        "id": "t_xEbmXuICrgDm3Ob0_afw",
+        "mnemonic": "old jungle over boy ankle suggest service source civil insane end silver polar swap flight diagram keep fix gauge social wink subway bronze leader",
+        "type": "AppOwner",
+        "writeKey": uint8:[129,228,239,103,127,237,0,59,174,241,77,12,26,180,213,14],
+      }
+    `);
+  });
 });
 
 // import { describe, expectTypeOf, test } from "vitest";
