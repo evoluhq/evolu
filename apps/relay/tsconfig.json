@@ -1,8 +1,7 @@
 {
   "extends": "@evolu/tsconfig/universal-esm.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "module": "Node16"
+    "outDir": "dist"
   },
   "include": ["src"],
   "exclude": ["node_modules"]
