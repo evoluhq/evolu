@@ -18,6 +18,10 @@ pnpm biome            # Biome (catches import cycles)
 pnpm verify           # Full verification (lint + format + biome + test)
 ```
 
+## Monorepo TypeScript issues
+
+**ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors are caused by stale TypeScript type cache. Solution: run "ESLint: Restart ESLint Server" command (Cmd+Shift+P). See [typed rule reports are out of date](https://typescript-eslint.io/troubleshooting/typed-linting/#typed-rule-reports-are-out-of-date-after-file-changes-in-my-editor).
+
 ## Architecture
 
 Monorepo with pnpm workspaces and Turborepo. All packages depend on `@evolu/common`:
@@ -40,8 +44,6 @@ Key directories:
 - `examples/` — Framework-specific example apps
 
 ---
-
-Follow these specific conventions and patterns:
 
 ## Code organization & imports
 
@@ -70,7 +72,7 @@ import { SharedWorker as SharedWorkerType } from "./Worker.js";
 ## Functions
 
 - **Use arrow functions** - avoid the `function` keyword for consistency
-- **Exception: function overloads** - TypeScript requires the `function` keyword for overloaded signatures
+- **Exception: function overloads** - the `function` keyword provides cleaner inline overload syntax than the equivalent arrow function approach (which requires a separate call-signature type)
 
 ### Factories
 
@@ -83,81 +85,17 @@ Use factory functions instead of classes for creating objects, typically named `
 5. Shared helpers
 6. Return object (public operations + disposal/closing)
 
-```ts
-// Good - Function overloads (requires function keyword)
-export function mapArray<T, U>(
-  array: NonEmptyReadonlyArray<T>,
-  mapper: (item: T) => U,
-): NonEmptyReadonlyArray<U>;
-export function mapArray<T, U>(
-  array: ReadonlyArray<T>,
-  mapper: (item: T) => U,
-): ReadonlyArray<U>;
-export function mapArray<T, U>(
-  array: ReadonlyArray<T>,
-  mapper: (item: T) => U,
-): ReadonlyArray<U> {
-  return array.map(mapper) as ReadonlyArray<U>;
-}
-
-// Avoid - function keyword without overloads
-export function createUser(data: UserData): User {
-  // implementation
-}
-```
-
 ### Function options
 
-For functions with optional configuration, use inline types without `readonly` for single-use options and named interfaces with `readonly` for reusable options. Always destructure immediately.
-
-```ts
-// Good - inline type, single-use
-export const race = (
-  tasks: Tasks,
-  {
-    abortReason = raceLostError,
-  }: {
-    abortReason?: unknown;
-  } = {},
-): Task<T, E> => {
-  // implementation
-};
-
-// Good - named interface, reusable
-export interface RetryOptions {
-  readonly maxAttempts?: number;
-  readonly delay?: Duration;
-}
-```
+For functions with optional configuration, use inline types without `readonly` for single-use options (immediate destructuring means no reference exists to mutate) and named interfaces with `readonly` for reusable options. Destructure in the parameter list to avoid `options.foo` access patterns.
 
 ## Variable shadowing
 
 - **Shadowing is OK** - since we use `const` everywhere, shadowing avoids artificial names like `innerValue`, `newValue`, `result2`
 
-```ts
-// Good - Shadow in nested scopes
-const value = getData();
-items.map((value) => process(value)); // shadowing is fine
-
-const result = fetchUser();
-if (result.ok) {
-  const result = fetchProfile(result.value); // shadow in nested block
-  if (result.ok) {
-    // ...
-  }
-}
-```
-
 ## Immutability
 
 - **Favor immutability** - use `readonly` properties and `ReadonlyArray`/`NonEmptyReadonlyArray`
-
-```ts
-interface Example {
-  readonly id: number;
-  readonly items: ReadonlyArray<string>;
-}
-```
 
 ## Interface over type for Evolu Type objects
 
@@ -196,103 +134,11 @@ type NativeMessagePort = Brand<"NativeMessagePort">;
 - **Use `{@link}` for references** - link to types, interfaces, functions, and exported symbols on first mention for discoverability
 - **Avoid pipe characters in first sentence** - TypeDoc extracts the first sentence for table descriptions, and pipe characters (even in inline code like `T | undefined`) break markdown table rendering. Move such details to subsequent sentences.
 
-````ts
-// Good
-/**
- * Creates a new user with the provided data.
- *
- * ### Example
- *
- * ```ts
- * const user = createUser({ name: "John", email: "john@example.com" });
- * ```
- */
-export const createUser = (data: UserData): User => {
-  // implementation
-};
-
-/**
- * Dependency wrapper for {@link CreateMessageChannel}.
- *
- * Used with {@link EvoluPlatformDeps} to provide platform-specific
- * MessageChannel creation.
- */
-export interface CreateMessageChannelDep {
-  readonly createMessageChannel: CreateMessageChannel;
-}
-
-// Avoid
-/**
- * Dependency wrapper for CreateMessageChannel.
- *
- * Used with EvoluPlatformDeps to provide platform-specific MessageChannel
- * creation.
- */
-export interface CreateMessageChannelDep {
-  readonly createMessageChannel: CreateMessageChannel;
-}
-
-// Avoid
-/**
- * Creates a new user with the provided data.
- *
- * @example
- *   ```ts
- *
- *
- *   const user = createUser({ name: "John", email: "john@example.com" });
- *   ```;
- *
- * @param data The user data to create the user with
- * @returns The created user
- */
-export const createUser = (data: UserData): User => {
-  // implementation
-};
-
-/**
- * Dependency wrapper for CreateMessageChannel.
- *
- * Used with EvoluPlatformDeps to provide platform-specific MessageChannel
- * creation.
- */
-export interface CreateMessageChannelDep {
-  readonly createMessageChannel: CreateMessageChannel;
-}
-````
-
 ## Error handling with Result
 
 - Use `Result<T, E>` for business/domain errors in public APIs
 - Keep implementation-specific errors internal to dependencies
 - Use **plain objects** for domain errors, Error instances only for debugging
-
-```ts
-// Good - Domain error
-interface ParseJsonError {
-  readonly type: "ParseJsonError";
-  readonly message: string;
-}
-
-const parseJson = (value: string): Result<unknown, ParseJsonError> =>
-  trySync(
-    () => JSON.parse(value) as unknown,
-    (error) => ({ type: "ParseJsonError", message: String(error) }),
-  );
-
-// Good - Sequential operations with short-circuiting
-const processData = (deps: DataDeps) => {
-  const foo = doFoo(deps);
-  if (!foo.ok) return foo;
-
-  return doStep2(deps)(foo.value);
-};
-
-// Avoid - Implementation error in public API
-export interface Storage {
-  writeMessages: (...) => Result<boolean, SqliteError>;
-}
-```
 
 ### Result patterns
 
@@ -301,73 +147,15 @@ export interface Storage {
 - Use `tryAsync` for wrapping asynchronous unsafe code
 - Use `getOrThrow` only for critical startup code where failure should crash
 
-```ts
-// For lazy operations array
-const operations: Lazy<Result<void, MyError>>[] = [
-  () => doSomething(),
-  () => doSomethingElse(),
-];
-
-for (const op of operations) {
-  const result = op();
-  if (!result.ok) return result;
-}
-```
-
 ### Avoid meaningless ok values
 
 Don't use `ok("done")` or `ok("success")` - the `ok()` itself already communicates success. Use `ok()` for `Result<void, E>` or return a meaningful value.
 
-```ts
-// Good - ok() means success, no redundant string needed
-const save = (): Result<void, SaveError> => {
-  // ...
-  return ok();
-};
-
-// Good - return a meaningful value
-const parse = (): Result<User, ParseError> => {
-  // ...
-  return ok(user);
-};
-
-// Avoid - "done" and "success" add no information
-return ok("done");
-return ok("success");
-```
-
 ## Evolu Type
 
 - **Use Type for validation/parsing** - leverage Evolu's Type system for runtime validation
-- **Define typed errors** - use interfaces extending `TypeError<Name>`
 - **Create Type factories** - use `brand`, `transform`, `array`, `object` etc.
 - **Use Brand types** - for semantic distinctions and constraints
-
-```ts
-// Good - Define typed error
-interface CurrencyCodeError extends TypeError<"CurrencyCode"> {}
-
-// Good - Brand for semantic meaning and validation
-const CurrencyCode = brand("CurrencyCode", String, (value) =>
-  /^[A-Z]{3}$/.test(value)
-    ? ok(value)
-    : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
-);
-
-// Good - Type factory pattern
-const minLength: <Min extends number>(
-  min: Min,
-) => BrandFactory<`MinLength${Min}`, { length: number }, MinLengthError<Min>> =
-  (min) => (parent) =>
-    brand(`MinLength${min}`, parent, (value) =>
-      value.length >= min ? ok(value) : err({ type: "MinLength", value, min }),
-    );
-
-// Good - Error formatter
-const formatCurrencyCodeError = createTypeErrorFormatter<CurrencyCodeError>(
-  (error) => `Invalid currency code: ${error.value}`,
-);
-```
 
 ## Assertions
 
@@ -375,32 +163,16 @@ const formatCurrencyCodeError = createTypeErrorFormatter<CurrencyCodeError>(
 - **Never use assertions instead of proper type validation** - use Type system for runtime validation
 - Use for catching developer mistakes eagerly (e.g., invalid configuration)
 
-```ts
-import { assert, assertNonEmptyArray } from "./Assert.js";
-
-const length = buffer.getLength();
-assert(NonNegativeInt.is(length), "buffer length should be non-negative");
-
-assertNonEmptyArray(items, "Expected items to process");
-```
-
 ## Dependency injection
 
-Follow Evolu's convention-based DI approach without frameworks:
+Follow Evolu's convention-based DI approach. There are two mechanisms depending on sync vs async:
 
-### 1. Define dependencies as interfaces
+- **Sync DI** — currying: `(deps: ADep & BDep) => (args) => Result`
+- **Task DI** — the `D` type parameter on `Task<T, E, D>`, accessed via `run.deps`
 
-```ts
-export interface Time {
-  readonly now: () => number;
-}
+Sync functions should take values, not dependencies — follow the impure/pure/impure sandwich pattern. When deps are needed in async code, use Task's `D` parameter.
 
-export interface TimeDep {
-  readonly time: Time;
-}
-```
-
-### 2. Use currying for functions with dependencies
+### Sync DI (currying)
 
 ```ts
 const timeUntilEvent =
@@ -411,21 +183,19 @@ const timeUntilEvent =
   };
 ```
 
-### 3. Create factory functions
+### Task DI (run.deps)
 
 ```ts
-export const createTime = (): Time => ({
-  now: () => Date.now(),
-});
-```
+const fetchUser =
+  (id: string): Task<User, FetchError, ConfigDep> =>
+  async (run) => {
+    const { config } = run.deps;
+    // ...
+  };
 
-### 4. Composition root pattern
-
-```ts
-const deps: TimeDep & Partial<LoggerDep> = {
-  time: createTime(),
-  ...(enableLogging && { logger: createLogger() }),
-};
+// Composition root
+await using run = createRun({ config: { apiUrl: "..." } });
+const result = await run(fetchUser("123"));
 ```
 
 ## DI Guidelines
@@ -440,31 +210,9 @@ const deps: TimeDep & Partial<LoggerDep> = {
 
 ## Tasks
 
-- **Call tasks with `run(task)`** - never call `task(run)` directly in user code
+- **Call tasks with `run(task)`** - never call `task(run)`
 - **Handle Results** - check `result.ok` before using values, short-circuit on error
 - **Compose tasks** - use helpers like `timeout`, `race` to combine tasks
-
-```ts
-// Good - Call tasks with run()
-const result = await run(sleep("1s"));
-if (!result.ok) return result;
-
-const data = result.value; // only available if ok
-
-// Good - Compose and short-circuit
-const processTask: Task<void, ParseError | TimeoutError> = async (run) => {
-  const data = await run(fetchData);
-  if (!data.ok) return data;
-
-  const parsed = await run(timeout(parseData(data.value), "5s"));
-  if (!parsed.ok) return parsed;
-
-  return ok();
-};
-
-// Avoid - Calling task directly
-const result = await sleep("1s")(run);
-```
 
 ## Test-driven development
 
@@ -529,22 +277,21 @@ test("Buffer unwrap", () => {
 });
 ```
 
-## Testing
+### Test utilities
 
 - **Use Test module** - `packages/common/src/Test.ts` provides `testCreateDeps()` and `testCreateRun()` for test isolation
 - **Naming convention** - test factories follow `testCreateX` pattern (e.g., `testCreateTime`, `testCreateRandom`)
 - Mock dependencies using the same interfaces
 - Never rely on global state or shared mutable deps between tests
 
-### Test deps pattern
-
 Create fresh deps at the start of each test for isolation. Each call creates independent instances, preventing shared state between tests.
 
 ```ts
 import { testCreateDeps, testCreateRun } from "@evolu/common";
 
-test("creates unique IDs", () => {
+test("creates unique IDs", async () => {
   const deps = testCreateDeps();
+  await using run = testCreateRun(deps);
   const id1 = createId(deps);
   const id2 = createId(deps);
   expect(id1).not.toBe(id2);
@@ -556,8 +303,6 @@ test("with custom seed for reproducibility", () => {
   expect(id).toMatchInlineSnapshot(`"..."`);
 });
 ```
-
-### Test factories naming
 
 Test-specific factories use `testCreateX` prefix to distinguish from production `createX`:
 
@@ -581,15 +326,5 @@ export const testCreateTime = (options?: {
 ## Changesets
 
 - **Write in past tense** - describe what was done, not what will be done
-
-```markdown
-# Good
-
-Added support for custom error formatters
-
-# Avoid
-
-Add support for custom error formatters
-```
 
 When suggesting code changes, ensure they follow these patterns and conventions.
