@@ -144,9 +144,8 @@ export const appOwnerState = <Schema extends EvoluSchema>(
     let writableState = $state<AppOwner | undefined>(undefined);
 
     $effect(() => {
-      void evolu.appOwner.then((appOwner) => {
-        writableState = appOwner;
-      });
+      // TODO: Review, it was promise, it isn't anymore.
+      writableState = evolu.appOwner;
     });
 
     return {
