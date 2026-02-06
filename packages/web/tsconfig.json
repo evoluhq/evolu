@@ -3,7 +3,6 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
-    "allowJs": true,
     "types": ["../../node_modules/user-agent-data-types"],
     "tsBuildInfoFile": "dist/.tsBuildInfo"
   },

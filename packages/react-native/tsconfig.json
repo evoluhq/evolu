@@ -3,7 +3,6 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
-    "allowJs": true,
     "module": "esnext",
     "moduleResolution": "bundler",
     "tsBuildInfoFile": "dist/.tsBuildInfo"

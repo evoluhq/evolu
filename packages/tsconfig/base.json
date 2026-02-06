@@ -10,7 +10,6 @@
     "forceConsistentCasingInFileNames": true,
     "inlineSources": false,
     "verbatimModuleSyntax": true,
-    "moduleResolution": "node",
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "preserveWatchOutput": true,
@@ -19,6 +18,5 @@
     "exactOptionalPropertyTypes": true,
     "noErrorTruncation": false,
     "erasableSyntaxOnly": true
-  },
-  "exclude": ["node_modules"]
+  }
 }

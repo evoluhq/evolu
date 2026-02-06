@@ -3,7 +3,6 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
-    "allowJs": true,
     "tsBuildInfoFile": "dist/.tsBuildInfo"
   },
   "include": ["src", "test", "vitest.config.ts"],
