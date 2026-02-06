@@ -5,8 +5,8 @@ import {
   type Row,
   emptyRows,
 } from "@evolu/common/local-first";
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { useEvolu } from "./useEvolu.js";
+import { use, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { EvoluContext } from "./EvoluContext.js";
 
 /** Subscribe to {@link Query} {@link QueryRows} changes. */
 export const useQuerySubscription = <R extends Row>(
@@ -19,7 +19,7 @@ export const useQuerySubscription = <R extends Row>(
     readonly once: boolean;
   }> = {},
 ): QueryRows<R> => {
-  const evolu = useEvolu();
+  const evolu = use(EvoluContext);
 
   // useRef to not break "rules-of-hooks"
   const { once } = useRef(options).current;

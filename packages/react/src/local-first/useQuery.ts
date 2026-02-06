@@ -1,6 +1,6 @@
 import type { Query, QueryRows, Row } from "@evolu/common/local-first";
 import { use } from "react";
-import { useEvolu } from "./useEvolu.js";
+import { EvoluContext } from "./EvoluContext.js";
 import { useIsSsr } from "./useIsSsr.js";
 import type { useQueries } from "./useQueries.js";
 import { useQuerySubscription } from "./useQuerySubscription.js";
@@ -44,7 +44,7 @@ export const useQuery = <R extends Row>(
     readonly promise: Promise<QueryRows<R>>;
   }> = {},
 ): QueryRows<R> => {
-  const evolu = useEvolu();
+  const evolu = use(EvoluContext);
   const isSSR = useIsSsr();
 
   if (isSSR) {

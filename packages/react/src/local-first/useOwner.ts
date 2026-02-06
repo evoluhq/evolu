@@ -1,6 +1,6 @@
 import type { SyncOwner } from "@evolu/common";
-import { useEffect } from "react";
-import { useEvolu } from "./useEvolu.js";
+import { use, useEffect } from "react";
+import { EvoluContext } from "./EvoluContext.js";
 
 /**
  * React Hook for Evolu `useOwner` method.
@@ -9,7 +9,7 @@ import { useEvolu } from "./useEvolu.js";
  * defined in Evolu config if the owner has no transports defined.
  */
 export const useOwner = (owner: SyncOwner | null): void => {
-  const evolu = useEvolu();
+  const evolu = use(EvoluContext);
 
   useEffect(() => {
     if (owner == null) return;
