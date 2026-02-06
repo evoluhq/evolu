@@ -28,12 +28,13 @@ export interface ShutdownDep {
 }
 
 /**
- * Creates a Node.js {@link Run} with error handling and shutdown signal.
+ * Creates {@link Run} for Node.js with global error handling and graceful
+ * shutdown.
  *
- * - Global error handlers (`uncaughtException`, `unhandledRejection`) that log
- *   errors and initiate graceful shutdown
- * - A `shutdown` promise in deps that resolves on termination signals (`SIGINT`,
- *   `SIGTERM`, `SIGHUP`)
+ * Registers `uncaughtException` and `unhandledRejection` handlers that log
+ * errors and initiate graceful shutdown. Adds a `shutdown` promise to deps that
+ * resolves on termination signals (`SIGINT`, `SIGTERM`, `SIGHUP`). Handlers are
+ * removed when the Run is disposed.
  *
  * ### Example
  *

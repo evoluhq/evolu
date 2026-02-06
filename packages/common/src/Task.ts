@@ -1180,15 +1180,12 @@ const defaultDeps: RunDeps = {
  * @group Creating Run
  */
 export interface CreateRun<BaseDeps> {
-  /** With default dependencies only. */
   (): Run<BaseDeps>;
-
-  /** With custom dependencies merged into base deps. */
   <D>(deps: D): Run<BaseDeps & D>;
 }
 
 /**
- * Creates a root {@link Run}.
+ * Creates root {@link Run}.
  *
  * Call once per entry point (main thread, worker, etc.) and dispose on
  * shutdown. All tasks run as descendants of this root Run.

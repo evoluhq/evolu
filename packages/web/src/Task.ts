@@ -13,7 +13,7 @@ import {
 } from "@evolu/common";
 
 /**
- * Creates a browser {@link Run} with global error handling.
+ * Creates {@link Run} for the browser with global error handling.
  *
  * Registers `error` and `unhandledrejection` handlers that log errors to the
  * console. Handlers are removed when the Run is disposed.
