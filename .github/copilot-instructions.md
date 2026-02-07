@@ -49,7 +49,7 @@ Key directories:
 
 - **Use named imports only** - avoid default exports and namespace imports
 - **Use unique exported members** - avoid namespaces, use descriptive names to prevent conflicts
-- **Organize code top-down** - public interfaces first, then implementation, then implementation details. If a helper must be defined before the public export that uses it (due to JavaScript hoisting), place it immediately before that export.
+- **Organize code top-down** - public interfaces first, then implementation, then implementation details. TypeScript types can reference types defined later in the file (no forward declaration needed), so always place the higher-level type first. For runtime code (functions, constants), if a helper must be defined before the public export that uses it (due to JavaScript hoisting), place it immediately before that export.
 - **Reference globals explicitly with `globalThis`** - when a name clashes with global APIs (e.g., `SharedWorker`, `Worker`), use `globalThis.SharedWorker` instead of aliasing imports
 
 ```ts
@@ -221,7 +221,7 @@ const result = await run(fetchUser("123"));
 - Test files are in `packages/*/test/*.test.ts`
 - Use `testNames` parameter to run specific tests — uses **substring matching**, so unique names avoid running unrelated tests
 - Run only changed/affected tests, not entire describe blocks
-- **Always check workspace errors** after edits using `get_errors` tool — don't assume code is correct just because tests pass
+- **Always check workspace errors** after edits using `get_errors` tool — don't assume code is correct just because tests pass. Never run `tsc` in the terminal; `get_errors` uses the same TypeScript diagnostics without extra compilation
 
 ### Test structure
 
