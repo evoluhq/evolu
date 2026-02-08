@@ -30,9 +30,7 @@ import {
  * - Child consoles — use {@link Console.child} to create derived consoles
  * - Async support — buffer logs for high-throughput scenarios
  *
- * Log levels are ordered by severity: trace < debug < log < info < warn <
- * error. Setting a level enables all logs at that level and above. Use
- * `"silent"` to disable all logging.
+ * See {@link ConsoleLevel} for available log levels and severity ordering.
  *
  * ### Example
  *
@@ -138,11 +136,15 @@ export interface Console {
   readonly error: (...args: ReadonlyArray<unknown>) => void;
 }
 
+export interface ConsoleDep {
+  readonly console: Console;
+}
+
 /**
  * Log level controlling which messages are output.
  *
- * Levels are ordered by severity: trace < debug < log < info < warn < error.
- * Setting a level enables all logs at that level and above.
+ * Setting a level enables all logs at that level and above (ordered by
+ * severity):
  *
  * - `"trace"` — Stack traces and detailed execution flow
  * - `"debug"` — Development diagnostics, timers, counters
@@ -161,24 +163,12 @@ export type ConsoleLevel =
   | "error"
   | "silent";
 
-/** Dependency wrapper for {@link Console}. */
-export interface ConsoleDep {
-  readonly console: Console;
-}
-
 /** Configuration for {@link createConsole}. */
 export interface ConsoleConfig {
   /** Name of this console. Defaults to empty string. */
   readonly name?: string;
 
-  /**
-   * Initial log level.
-   *
-   * Levels: trace < debug < log < info < warn < error < silent. Setting a level
-   * enables all logs at that level and above.
-   *
-   * Defaults to `"log"`.
-   */
+  /** Initial log level. Defaults to `"log"`. */
   readonly level?: ConsoleLevel;
 
   /**
@@ -214,19 +204,20 @@ export const createConsole = ({
   const getLevel = (): ConsoleLevel => ownLevel ?? level;
 
   const write =
-    (method: ConsoleMethod, methodLevel: ConsoleLevel, useFormatter: boolean) =>
+    (
+      method: ConsoleMethod,
+      methodLevel: ConsoleLevel,
+      formatter?: typeof formatEntry,
+    ) =>
     (...args: ReadonlyArray<unknown>): void => {
       if (levelOrder[methodLevel] >= levelOrder[getLevel()])
-        output.write(
-          { method, path, args },
-          useFormatter ? formatEntry : undefined,
-        );
+        output.write({ method, path, args }, formatter);
     };
 
   const levelMethod = (method: ConsoleLevel & ConsoleMethod) =>
-    write(method, method, true);
+    write(method, method, formatEntry);
 
-  const debugMethod = (method: ConsoleMethod) => write(method, "debug", false);
+  const debugMethod = (method: ConsoleMethod) => write(method, "debug");
 
   return {
     name,
@@ -292,7 +283,7 @@ export interface ConsoleOutput {
 /**
  * Structured log entry captured by {@link Console}.
  *
- * Contains all information needed for outputs route the log: method for
+ * Contains all information needed for outputs to route the log: method for
  * routing, path for context, and the original arguments.
  */
 export interface ConsoleEntry {
@@ -425,7 +416,8 @@ export const createConsoleEntryFormatter =
       const path =
         entry.path.length > 0 ? entry.path.map((p) => `[${p}]`).join(" ") : "";
 
-      const prefix = [timestamp, path].filter(Boolean).join(" ");
+      const prefix =
+        timestamp && path ? `${timestamp} ${path}` : timestamp || path;
       return prefix ? [prefix, ...entry.args] : entry.args;
     };
   };
@@ -441,6 +433,10 @@ export interface TestConsole extends Console {
 
   /** Clears all captured entries. */
   readonly clearEntries: () => void;
+}
+
+export interface TestConsoleDep {
+  readonly console: TestConsole;
 }
 
 /**
@@ -543,20 +539,14 @@ export const testCreateConsole = (config?: {
         return childConsole;
       },
 
-      trace: writeIfLevel("trace", "trace"),
-      debug: writeIfLevel("debug", "debug"),
-      log: writeIfLevel("log", "log"),
-      info: writeIfLevel("info", "info"),
-      warn: writeIfLevel("warn", "warn"),
-      error: writeIfLevel("error", "error"),
-
-      time: writeRawDebug("time"),
-      timeLog: writeRawDebug("timeLog"),
-      timeEnd: writeRawDebug("timeEnd"),
-      dir: writeRawDebug("dir"),
-      table: writeRawDebug("table"),
-      count: writeRawDebug("count"),
-      countReset: writeRawDebug("countReset"),
+      ...objectFrom(
+        ["trace", "debug", "log", "info", "warn", "error"],
+        (method: ConsoleLevel & ConsoleMethod) => writeIfLevel(method, method),
+      ),
+      ...objectFrom(
+        ["dir", "table", "time", "timeLog", "timeEnd", "count", "countReset"],
+        writeRawDebug,
+      ),
 
       getEntriesSnapshot,
       clearEntries,
