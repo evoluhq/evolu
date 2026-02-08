@@ -4,6 +4,8 @@ applyTo: "**/*.{ts,tsx}"
 
 # Evolu project guidelines
 
+This is a TypeScript project. All code, including helper scripts, must be written in TypeScript.
+
 ## Build and test
 
 ```bash
@@ -17,6 +19,8 @@ pnpm format           # Prettier
 pnpm biome            # Biome (catches import cycles)
 pnpm verify           # Full verification (lint + format + biome + test)
 ```
+
+Run standalone TypeScript scripts with `node --experimental-strip-types script.ts`.
 
 ## Monorepo TypeScript issues
 
@@ -222,6 +226,7 @@ const result = await run(fetchUser("123"));
 - Use `testNames` parameter to run specific tests — uses **substring matching**, so unique names avoid running unrelated tests
 - Run only changed/affected tests, not entire describe blocks
 - **Always check workspace errors** after edits using `get_errors` tool — don't assume code is correct just because tests pass. Never run `tsc` in the terminal; `get_errors` uses the same TypeScript diagnostics without extra compilation
+- **100% test coverage required** — use `runTests` with `mode="coverage"` and `coverageFiles` pointing to the source file under test. All statements, branches, and declarations must be covered. If coverage is below 100%, add missing tests before finishing
 
 ### Test structure
 
