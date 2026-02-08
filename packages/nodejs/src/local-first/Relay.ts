@@ -29,7 +29,7 @@ import {
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import { createBetterSqliteDriver } from "../BetterSqliteDriver.js";
+import { createBetterSqliteDriver } from "../Sqlite.js";
 import { createTimingSafeEqual } from "../Crypto.js";
 
 export interface NodeJsRelayConfig extends RelayConfig {

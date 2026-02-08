@@ -1,66 +1,57 @@
 import {
   bytesToHex,
   createPreparedStatementsCache,
+  ok,
   type CreateSqliteDriver,
-  type SqliteDriver,
   type SqliteRow,
 } from "@evolu/common";
 import { openDatabaseSync, SQLiteStatement } from "expo-sqlite";
 
-export const createExpoSqliteDriver: CreateSqliteDriver = (name, options) => {
-  const db = openDatabaseSync(
-    options?.memory ? ":memory:" : `evolu1-${name}.db`,
-  );
-  if (options?.encryptionKey) {
-    db.execSync(`
+export const createExpoSqliteDriver: CreateSqliteDriver =
+  (name, options) => () => {
+    const db = openDatabaseSync(
+      options?.mode === "memory" ? ":memory:" : `evolu1-${name}.db`,
+    );
+    if (options?.mode === "encrypted") {
+      db.execSync(`
       PRAGMA cipher = 'sqlcipher';
       PRAGMA legacy = 4;
       PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
     `);
-  }
-  let isDisposed = false;
+    }
+    let isDisposed = false;
 
-  const cache = createPreparedStatementsCache<SQLiteStatement>(
-    (sql) => db.prepareSync(sql),
-    (statement) => {
-      statement.finalizeSync();
-    },
-  );
+    const cache = createPreparedStatementsCache<SQLiteStatement>(
+      (sql) => db.prepareSync(sql),
+      (statement) => {
+        statement.finalizeSync();
+      },
+    );
 
-  const driver: SqliteDriver = {
-    exec: (query, isMutation) => {
-      const prepared = cache.get(query);
+    return ok({
+      exec: (query) => {
+        const prepared = cache.get(query);
 
-      if (prepared) {
-        if (isMutation) {
-          const { changes } = prepared.executeSync(query.parameters);
-          return { rows: [], changes };
+        if (prepared) {
+          const result = prepared.executeSync(query.parameters);
+          const rows = result.getAllSync();
+          const changes = result.changes;
+          result.resetSync();
+          return { rows: rows as Array<SqliteRow>, changes };
         }
 
-        const result = prepared.executeSync(query.parameters);
-        const rows = result.getAllSync();
-        result.resetSync();
-        return { rows: rows as Array<SqliteRow>, changes: 0 };
-      }
+        const result = db.runSync(query.sql, query.parameters);
+        const rows = db.getAllSync(query.sql, query.parameters);
+        return { rows: rows as Array<SqliteRow>, changes: result.changes };
+      },
 
-      if (isMutation) {
-        const { changes } = db.runSync(query.sql, query.parameters);
-        return { rows: [], changes };
-      }
+      export: () => db.serializeSync(),
 
-      const rows = db.getAllSync(query.sql, query.parameters);
-      return { rows: rows as Array<SqliteRow>, changes: 0 };
-    },
-
-    export: () => db.serializeSync(),
-
-    [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
-      cache[Symbol.dispose]();
-      db.closeSync();
-    },
+      [Symbol.dispose]: () => {
+        if (isDisposed) return;
+        isDisposed = true;
+        cache[Symbol.dispose]();
+        db.closeSync();
+      },
+    });
   };
-
-  return Promise.resolve(driver);
-};

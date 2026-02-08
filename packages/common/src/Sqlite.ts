@@ -5,57 +5,23 @@
  */
 
 import type { Brand } from "./Brand.js";
-import { createLruCache } from "./Cache.js";
-import type { ConsoleDep } from "./Console.js";
 import type { EncryptionKey } from "./Crypto.js";
 import type { Eq } from "./Eq.js";
 import { eqArrayNumber } from "./Eq.js";
 import type { UnknownError } from "./Error.js";
 import { createUnknownError } from "./Error.js";
 import type { Result } from "./Result.js";
-import { err, ok, tryAsync, trySync } from "./Result.js";
+import { err, ok, trySync } from "./Result.js";
 import type { Task } from "./Task.js";
 import type { SimpleName, Typed } from "./Type.js";
-import {
-  Null,
-  Number,
-  PositiveInt,
-  String,
-  Uint8Array,
-  union,
-} from "./Type.js";
-import type { Predicate } from "./Types.js";
+import { Null, Number, String, Uint8Array, union } from "./Type.js";
 
 /**
- * SQLite driver interface. This is the minimal interface that platform-specific
- * drivers must implement.
- */
-export interface SqliteDriver extends Disposable {
-  readonly exec: (query: SqliteQuery, isMutation: boolean) => SqliteExecResult;
-  readonly export: () => Uint8Array;
-}
-
-export type CreateSqliteDriver = (
-  name: SimpleName,
-  options?: SqliteDriverOptions,
-) => Promise<SqliteDriver>;
-
-export interface CreateSqliteDriverDep {
-  readonly createSqliteDriver: CreateSqliteDriver;
-}
-
-export interface SqliteDriverOptions {
-  readonly memory?: boolean;
-  readonly encryptionKey?: EncryptionKey | undefined;
-}
-
-/**
- * Platform-agnostic SQLite.
+ * Platform-agnostic SQLite wrapping a {@link SqliteDriver}.
  *
- * This API is sync only because SQLite is an embedded, single-threaded engine.
- * All operations are blocking and in-process, so async APIs add needless
- * complexity without any real benefit and are also slower. Check better-sqlite3
- * GitHub issues and docs for details.
+ * API is synchronous because it provides
+ * {@link https://github.com/WiseLibs/better-sqlite3/issues/262 | better concurrency}
+ * for SQLite.
  */
 export interface Sqlite extends Disposable {
   readonly exec: <R extends SqliteRow = SqliteRow>(
@@ -64,9 +30,9 @@ export interface Sqlite extends Disposable {
 
   /**
    * Executes a transaction, running the provided callback within a begin/commit
-   * block. If the callback returns an error (E or {@link SqliteError}), the
-   * transaction is rolled back. If the rollback fails, a SqliteError is
-   * returned with both the original error and rollbackError.
+   * block. If the callback returns an error, the transaction is rolled back. If
+   * the rollback fails, a {@link SqliteError} is returned with both the original
+   * error and rollbackError.
    */
   readonly transaction: <T, E>(
     callback: () => Result<T, E | SqliteError>,
@@ -79,17 +45,18 @@ export interface SqliteDep {
   readonly sqlite: Sqlite;
 }
 
+/** Represents a SQL query to be executed on a {@link Sqlite} database. */
 export interface SqliteQuery {
   readonly sql: SafeSql;
   readonly parameters: Array<SqliteValue>;
   readonly options?: SqliteQueryOptions;
 }
 
-/** A type representing a sanitized SQL string. */
+/** A sanitized SQL string for {@link SqliteQuery}. */
 export type SafeSql = string & Brand<"SafeSql">;
 
 /**
- * A value that can be stored in Sqlite.
+ * A value that can be stored in {@link Sqlite}.
  *
  * Note that Evolu can't support Int64 because expo-sqlite (and some others) do
  * not support it.
@@ -102,16 +69,11 @@ export const SqliteValue = /*#__PURE__*/ union(
 );
 export type SqliteValue = typeof SqliteValue.Type;
 
-export const eqSqliteValue: Eq<SqliteValue> = (x, y) => {
-  if (
-    x instanceof globalThis.Uint8Array &&
-    y instanceof globalThis.Uint8Array
-  ) {
-    return eqArrayNumber(x, y);
-  }
-  return x === y;
-};
+/** Equality comparison for {@link SqliteValue}. */
+export const eqSqliteValue: Eq<SqliteValue> = (x, y) =>
+  Uint8Array.is(x) && Uint8Array.is(y) ? eqArrayNumber(x, y) : x === y;
 
+/** Options for configuring {@link SqliteQuery} execution behavior. */
 export interface SqliteQueryOptions {
   /**
    * If set to `true`, logs the time taken to execute the SQL query. Useful for
@@ -150,8 +112,48 @@ export interface SqliteError extends Typed<"SqliteError"> {
   readonly rollbackError?: UnknownError;
 }
 
+/**
+ * A row returned from a {@link Sqlite} query, mapping column names to
+ * {@link SqliteValue}.
+ */
 export type SqliteRow = Record<string, SqliteValue>;
 
+/**
+ * SQLite driver interface.
+ *
+ * Platform-specific drivers must implement this interface.
+ */
+export interface SqliteDriver extends Disposable {
+  readonly exec: (query: SqliteQuery) => SqliteExecResult;
+  readonly export: () => Uint8Array;
+}
+
+/** Creates a {@link SqliteDriver}. */
+export type CreateSqliteDriver = (
+  name: SimpleName,
+  options?: SqliteDriverOptions,
+) => Task<SqliteDriver>;
+
+export interface CreateSqliteDriverDep {
+  createSqliteDriver: CreateSqliteDriver;
+}
+
+/**
+ * Options for creating a {@link CreateSqliteDriver}.
+ *
+ * Three mutually exclusive modes: in-memory (for testing), encrypted persistent
+ * (OPFS/file with encryption key), or persistent (default when omitted).
+ */
+export type SqliteDriverOptions =
+  | { readonly mode: "memory" }
+  | { readonly mode: "encrypted"; readonly encryptionKey: EncryptionKey };
+
+/**
+ * Creates a {@link Sqlite} instance backed by a platform-specific driver.
+ *
+ * The driver is created via {@link CreateSqliteDriver} and wrapped with logging,
+ * error handling, and transaction helpers.
+ */
 export const createSqlite =
   (
     name: SimpleName,
@@ -160,221 +162,152 @@ export const createSqlite =
   async (run) => {
     const { createSqliteDriver } = run.deps;
     const console = run.deps.console.child("sql");
-    return tryAsync(async () => {
-      const driver = await createSqliteDriver(name, options);
-      let isDisposed = false;
 
-      const doRollback = () =>
-        trySync(() => {
-          console.debug("rollback");
-          driver.exec(sql`rollback;`, true);
-        }, createSqliteError);
+    console.debug("createSqliteDriver");
+    const result = await run(createSqliteDriver(name, options));
+    if (!result.ok) return result;
+    const driver = result.value;
 
-      const sqlite: Sqlite = {
-        exec: (query) =>
-          trySync(
-            () => {
-              console.debug({ query });
+    let isDisposed = false;
 
-              const result = maybeLogSqliteQueryExecutionTime(query, () =>
-                driver.exec(query, isSqlMutation(query.sql)),
+    const rollback = <T, E>(
+      result: Result<T, E | SqliteError>,
+      error: UnknownError,
+    ): Result<T, E | SqliteError> => {
+      const rollbackResult = trySync(() => {
+        console.debug("rollback");
+        driver.exec(sql`rollback;`);
+      }, createSqliteError);
+      if (!rollbackResult.ok) {
+        console.warn("rollback failed", rollbackResult.error);
+        return err({
+          type: "SqliteError",
+          error,
+          rollbackError: rollbackResult.error.error,
+        });
+      }
+      return result;
+    };
+
+    return ok({
+      exec: (query) =>
+        trySync(
+          () => {
+            console.debug({ query });
+
+            const label =
+              query.options?.logQueryExecutionTime &&
+              `SqliteQueryExecutionTime ${query.sql}`;
+
+            if (label) console.time(label);
+            const result = driver.exec(query);
+            if (label) console.timeEnd(label);
+
+            if (query.options?.logExplainQueryPlan) {
+              const result = driver.exec({
+                ...query,
+                sql: `EXPLAIN QUERY PLAN ${query.sql}` as SafeSql,
+              });
+              console.log("[logExplainQueryPlan]", query);
+              console.log(
+                drawSqliteQueryPlan(
+                  result.rows as unknown as Array<SqliteQueryPlanRow>,
+                ),
               );
-
-              console.debug({ result });
-
-              return result as never;
-            },
-            (error): SqliteError => ({
-              type: "SqliteError",
-              error: createUnknownError(error),
-            }),
-          ),
-
-        transaction: (callback) => {
-          const transactionResult = trySync(() => {
-            console.debug("begin");
-            driver.exec(sql`begin;`, true);
-
-            const result = callback();
-            if (!result.ok) return result;
-
-            console.debug("commit");
-            driver.exec(sql`commit;`, true);
-
-            return result;
-          }, createSqliteError);
-
-          if (!transactionResult.ok) {
-            const rollback = doRollback();
-            if (!rollback.ok) {
-              console.debug("rollback failed", rollback.error);
-              return err({
-                type: "SqliteError",
-                error: transactionResult.error.error,
-                rollbackError: rollback.error.error,
-              });
             }
-            return transactionResult;
-          }
 
-          if (!transactionResult.value.ok) {
-            const rollback = doRollback();
-            if (!rollback.ok) {
-              console.debug("rollback failed", rollback.error);
-              return err({
-                type: "SqliteError",
-                error: createUnknownError(transactionResult.value.error),
-                rollbackError: rollback.error.error,
-              });
-            }
-            return transactionResult.value;
-          }
+            console.debug({ result });
+            return result as never;
+          },
+          (error): SqliteError => ({
+            type: "SqliteError",
+            error: createUnknownError(error),
+          }),
+        ),
 
-          return ok(transactionResult.value.value);
-        },
+      transaction: (callback) => {
+        const beginResult = trySync(() => {
+          console.debug("begin");
+          driver.exec(sql`begin;`);
+        }, createSqliteError);
+        if (!beginResult.ok) return beginResult;
 
-        export: () =>
-          trySync(
-            () => driver.export(),
-            (error): SqliteError => ({
-              type: "SqliteError",
-              error: createUnknownError(error),
-            }),
-          ),
+        const callbackResult = trySync(callback, createSqliteError);
+        if (!callbackResult.ok) {
+          return rollback(callbackResult, callbackResult.error.error);
+        }
 
-        [Symbol.dispose]: () => {
-          if (isDisposed) return;
-          isDisposed = true;
-          driver[Symbol.dispose]();
-        },
-      };
+        const callbackValue = callbackResult.value;
+        if (!callbackValue.ok) {
+          return rollback(
+            callbackValue,
+            createUnknownError(callbackValue.error),
+          );
+        }
 
-      return sqlite;
-    }, createSqliteError);
+        const commitResult = trySync(() => {
+          console.debug("commit");
+          driver.exec(sql`commit;`);
+        }, createSqliteError);
+        if (!commitResult.ok) {
+          return rollback(commitResult, commitResult.error.error);
+        }
+
+        return ok(callbackValue.value);
+      },
+
+      export: () =>
+        trySync(
+          () => driver.export(),
+          (error): SqliteError => ({
+            type: "SqliteError",
+            error: createUnknownError(error),
+          }),
+        ),
+
+      [Symbol.dispose]: () => {
+        if (isDisposed) return;
+        isDisposed = true;
+        driver[Symbol.dispose]();
+      },
+    });
   };
-
-/** Creates a {@link Sqlite} instance from a {@link SqliteDriver}. */
-export const createSqliteOld =
-  (deps: CreateSqliteDriverDep & Partial<ConsoleDep>) =>
-  async (
-    name: SimpleName,
-    options?: SqliteDriverOptions,
-  ): Promise<Result<Sqlite, SqliteError>> =>
-    tryAsync(async () => {
-      const driver = await deps.createSqliteDriver(name, options);
-      let isDisposed = false;
-
-      const doRollback = () =>
-        trySync(() => {
-          deps.console?.log("[sql] rollback");
-          driver.exec(sql`rollback;`, true);
-        }, createSqliteError);
-
-      const sqlite: Sqlite = {
-        exec: (query) =>
-          trySync(
-            () => {
-              deps.console?.log("[sql]", { query });
-
-              const result = maybeLogSqliteQueryExecutionTime(query, () =>
-                driver.exec(query, isSqlMutation(query.sql)),
-              );
-
-              deps.console?.log("[sql]", { result });
-
-              return result as never;
-            },
-            (error): SqliteError => ({
-              type: "SqliteError",
-              error: createUnknownError(error),
-            }),
-          ),
-
-        transaction: (callback) => {
-          const transactionResult = trySync(() => {
-            deps.console?.log("[sql] begin");
-            driver.exec(sql`begin;`, true);
-
-            const result = callback();
-            if (!result.ok) return result;
-
-            deps.console?.log("[sql] commit");
-            driver.exec(sql`commit;`, true);
-
-            return result;
-          }, createSqliteError);
-
-          if (!transactionResult.ok) {
-            const rollback = doRollback();
-            if (!rollback.ok) {
-              deps.console?.log("[sql] rollback failed", rollback.error);
-              return err({
-                type: "SqliteError",
-                error: transactionResult.error.error,
-                rollbackError: rollback.error.error,
-              });
-            }
-            return transactionResult;
-          }
-
-          if (!transactionResult.value.ok) {
-            const rollback = doRollback();
-            if (!rollback.ok) {
-              deps.console?.log("[sql] rollback failed", rollback.error);
-              return err({
-                type: "SqliteError",
-                error: createUnknownError(transactionResult.value.error),
-                rollbackError: rollback.error.error,
-              });
-            }
-            return transactionResult.value;
-          }
-
-          return ok(transactionResult.value.value);
-        },
-
-        export: () =>
-          trySync(
-            () => driver.export(),
-            (error): SqliteError => ({
-              type: "SqliteError",
-              error: createUnknownError(error),
-            }),
-          ),
-
-        [Symbol.dispose]: () => {
-          if (isDisposed) return;
-          isDisposed = true;
-          driver[Symbol.dispose]();
-        },
-      };
-
-      return sqlite;
-    }, createSqliteError);
 
 const createSqliteError = (error: unknown): SqliteError => ({
   type: "SqliteError",
   error: createUnknownError(error),
 });
 
-const maybeLogSqliteQueryExecutionTime = <T>(
-  query: SqliteQuery,
-  callback: () => T,
-): T => {
-  if (!query.options?.logQueryExecutionTime) {
-    return callback();
-  }
+interface SqliteQueryPlanRow {
+  id: number;
+  parent: number;
+  detail: string;
+}
 
-  const start = performance.now();
-  const result = callback();
-  const elapsed = performance.now() - start;
+const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
+  rows
+    .map((row) => {
+      let parentId = row.parent;
+      let indent = 0;
 
-  // eslint-disable-next-line no-console
-  console.log(`SqliteQueryExecutionTime: ${elapsed.toString()}ms`, query);
+      do {
+        const parent = rows.find((r) => r.id === parentId);
+        if (!parent) break;
+        parentId = parent.parent;
+        indent++;
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition, no-constant-condition
+      } while (true);
 
-  return result;
-};
+      return `${"  ".repeat(indent)}${row.detail}`;
+    })
+    .join("\n");
 
+/**
+ * Cache for compiled prepared statements.
+ *
+ * Statements are created on first access and reused for subsequent calls with
+ * the same SQL. Disposing the cache finalizes all cached statements.
+ */
 export interface PreparedStatements<P> extends Disposable {
   readonly get: <T extends boolean>(
     query: SqliteQuery,
@@ -382,6 +315,10 @@ export interface PreparedStatements<P> extends Disposable {
   ) => T extends true ? P : P | null;
 }
 
+/**
+ * Creates a {@link PreparedStatements} cache backed by the given factory and
+ * dispose function.
+ */
 export const createPreparedStatementsCache = <P>(
   factory: (sql: SafeSql) => P,
   disposeFn: (statement: P) => void,
@@ -410,14 +347,21 @@ export const createPreparedStatementsCache = <P>(
   };
 };
 
+/** A double-quoted SQL identifier for safe column or table name interpolation. */
 export interface SqlIdentifier extends Typed<"SqlIdentifier"> {
   readonly sql: SafeSql;
 }
 
+/**
+ * An unescaped SQL fragment inserted verbatim into a query.
+ *
+ * **Warning**: Use only with trusted, constant strings to avoid SQL injection.
+ */
 export interface RawSql extends Typed<"RawSql"> {
   readonly sql: string;
 }
 
+/** A parameter accepted by the {@link sql} tagged template. */
 export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
 
 /**
@@ -478,7 +422,7 @@ export const sql = (
     }
   }
 
-  return { sql: sql as SafeSql, parameters: values };
+  return { sql: sql.trim() as SafeSql, parameters: values };
 };
 
 sql.identifier = (identifier: string): SqlIdentifier => ({
@@ -488,15 +432,14 @@ sql.identifier = (identifier: string): SqlIdentifier => ({
 });
 
 /**
- * Insert any string.
+ * Insert any string verbatim.
  *
- * Sql.raw sometimes breaks auto-formatting because the parser does not consider
- * it valid SQL. A workaround is to remove it, format it, and put it back.
- *
- * **Warning**: This is not escaped.
+ * **Warning**: This is not escaped. Use only with trusted, constant SQL
+ * fragments to avoid SQL injection.
  */
 sql.raw = (raw: string): RawSql => ({ type: "RawSql", sql: raw });
 
+/** Tagged template that creates a {@link SqliteQuery} with `prepare: true`. */
 sql.prepared = (
   strings: TemplateStringsArray,
   ...parameters: Array<SqlTemplateParam>
@@ -504,125 +447,6 @@ sql.prepared = (
   const query = sql(strings, ...parameters);
   return { ...query, options: { prepare: true } };
 };
-
-/**
- * Checks if a SQL string contains mutation keywords (insert, update, delete,
- * etc.). Results are cached for performance.
- */
-export const isSqlMutation: Predicate<string> = (sql) => {
-  /**
-   * Without cache, "insert 1_000_000" Storage test dropped from 57742
-   * inserts/sec to 34k. Regex we used was fast, but CodeQL flagged it as a
-   * potential ReDoS vulnerability, so manual comment removal was the only
-   * option. LRU cache restores performance.
-   */
-  const cached = isSqlMutationCache.get(sql);
-  if (cached !== undefined) return cached;
-
-  const result = isSqlMutationRegEx.test(removeSqlComments(sql));
-  isSqlMutationCache.set(sql, result);
-  return result;
-};
-
-const isSqlMutationCache = createLruCache<string, boolean>(
-  PositiveInt.orThrow(10_000),
-);
-
-const isSqlMutationRegEx = new RegExp(
-  `\\b(${[
-    "alter",
-    "create",
-    "delete",
-    "drop",
-    "insert",
-    "replace",
-    "update",
-    "begin",
-    "commit",
-    "rollback",
-    "pragma",
-    "vacuum",
-  ].join("|")})\\b`,
-  "i",
-);
-
-/**
- * Removes SQL line comments (--) from a SQL string without using regex to avoid
- * ReDoS vulnerabilities.
- */
-const removeSqlComments = (sql: string): string => {
-  // Fast path: if there are no comments, return the original string
-  if (!sql.includes("--")) return sql;
-
-  let result = "";
-  let i = 0;
-
-  while (i < sql.length) {
-    // Check for comment start
-    if (i < sql.length - 1 && sql[i] === "-" && sql[i + 1] === "-") {
-      // Skip until end of line or end of string
-      i += 2;
-      while (i < sql.length && sql[i] !== "\n") {
-        i++;
-      }
-      // Keep the newline if present
-      if (i < sql.length && sql[i] === "\n") {
-        result += "\n";
-        i++;
-      }
-    } else {
-      result += sql[i];
-      i++;
-    }
-  }
-
-  return result;
-};
-
-export interface SqliteQueryPlanRow {
-  id: number;
-  parent: number;
-  detail: string;
-}
-
-export const explainSqliteQueryPlan =
-  (deps: SqliteDep) =>
-  (query: SqliteQuery): Result<void, SqliteError> => {
-    const result = deps.sqlite.exec({
-      ...query,
-      sql: `EXPLAIN QUERY PLAN ${query.sql}` as SafeSql,
-    });
-    if (!result.ok) return result;
-
-    // eslint-disable-next-line no-console
-    console.log("[explainSqliteQueryPlan]", query);
-    // eslint-disable-next-line no-console
-    console.log(
-      drawSqliteQueryPlan(
-        result.value.rows as unknown as Array<SqliteQueryPlanRow>,
-      ),
-    );
-
-    return ok();
-  };
-
-const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
-  rows
-    .map((row) => {
-      let parentId = row.parent;
-      let indent = 0;
-
-      do {
-        const parent = rows.find((r) => r.id === parentId);
-        if (!parent) break;
-        parentId = parent.parent;
-        indent++;
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition, no-constant-condition
-      } while (true);
-
-      return `${"  ".repeat(indent)}${row.detail}`;
-    })
-    .join("\n");
 
 /**
  * SQLite represents boolean values using `0` (false) and `1` (true) instead of

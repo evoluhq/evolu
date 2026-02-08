@@ -7,6 +7,10 @@ const isCoverage = process.argv.includes("--coverage");
 export default defineProject({
   // Transpile `using`/`await using` for WebKit which doesn't support it yet
   esbuild: { supported: { using: false } },
+  optimizeDeps: {
+    // Preserve import.meta.url so the WASM binary can be located at runtime.
+    exclude: ["@evolu/sqlite-wasm"],
+  },
   test: {
     exclude: ["**/node_modules/**", "**/dist/**"],
     include: ["test/**/*.test.ts"],

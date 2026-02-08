@@ -8,7 +8,7 @@ Added Test module for deterministic testing with proper isolation.
 
 - `testCreateDeps()` - Creates fresh test deps per call for test isolation
 - `testCreateRun()` - Test Run with deterministic deps for reproducible fiber IDs, timestamps, and other generated values
-- `TestDeps` type combining `RandomDep`, `RandomLibDep`, `RandomBytesDep`, and `TimeDep`
+- `TestDeps` type extending `RunDeps` with `TestConsoleDep` (for test assertions) and `RandomLibDep` (for seeded randomness)Ø
 
 **Pattern:**
 

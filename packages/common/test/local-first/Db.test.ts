@@ -38,7 +38,7 @@ test("TODO", () => {
 //   testSimpleName,
 //   testTime,
 //   TestWebSocket,
-// } from "../_deps.js";
+// } from "../_nodeDeps.js";
 // import { createTestCrdtMessage, getDbSnapshot } from "./_utils.js";
 
 // const createInitializedDbWorker = async (): Promise<{
