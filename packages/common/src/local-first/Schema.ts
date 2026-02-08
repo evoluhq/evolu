@@ -14,7 +14,6 @@ import {
 } from "../Object.js";
 import { ok, type Result } from "../Result.js";
 import {
-  isSqlMutation,
   type SafeSql,
   sql,
   SqliteBoolean,
@@ -24,29 +23,18 @@ import {
   type SqliteQueryOptions,
   SqliteValue,
 } from "../Sqlite.js";
+import type { InferType } from "../Type.js";
 import {
-  type AnyType,
   array,
-  createIdFromString,
   DateIso,
+  type Id,
   IdBytes,
-  type InferErrors,
-  type InferInput,
-  type InferType,
-  type MergeObjectTypeErrors,
-  nullableToOptional,
-  type NullableToOptionalProps,
   nullOr,
   object,
-  type ObjectType,
-  omit,
-  optional,
-  type OptionalType,
   record,
   set,
+  type StandardSchemaV1,
   String,
-  type TableId,
-  type Type,
 } from "../Type.js";
 import type { Simplify } from "../Types.js";
 import type { AppOwner } from "./Owner.js";
@@ -54,38 +42,41 @@ import { OwnerId } from "./Owner.js";
 import type { Query, Row } from "./Query.js";
 import { serializeQuery } from "./Query.js";
 import type { CrdtMessage, DbChange } from "./Storage.js";
-import { Timestamp, TimestampBytes } from "./Timestamp.js";
+import { TimestampBytes } from "./Timestamp.js";
+
+/** Any {@link StandardSchemaV1}. */
+export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
 
 /**
  * Defines the schema of an Evolu database.
  *
- * Table schema defines columns that are required for table rows. For not
- * required columns, use {@link nullOr}.
+ * Column types are Standard Schema v1 compatible — use Evolu Type, Zod,
+ * Valibot, ArkType, or any library that implements Standard Schema.
+ *
+ * Table schema defines columns that are required for table rows. For optional
+ * columns, use a schema whose output type includes `null`.
  *
  * ### Example
  *
  * ```ts
+ * // With Evolu Type
  * const TodoId = id("Todo");
  * type TodoId = typeof TodoId.Type;
  *
- * const TodoCategoryId = id("TodoCategory");
- * type TodoCategoryId = typeof TodoCategoryId.Type;
- *
- * const NonEmptyString50 = maxLength(50)(NonEmptyString);
- * type NonEmptyString50 = typeof NonEmptyString50.Type;
- *
- * // Database schema.
  * const Schema = {
  *   todo: {
  *     id: TodoId,
- *     title: NonEmptyString1000,
- *     isCompleted: nullable(SqliteBoolean),
- *     categoryId: nullable(TodoCategoryId),
+ *     title: NonEmptyString100,
+ *     isCompleted: nullOr(SqliteBoolean),
  *   },
- *   todoCategory: {
- *     id: TodoCategoryId,
- *     name: NonEmptyString50,
- *     json: nullable(SomeJson),
+ * };
+ *
+ * // With Zod (or any Standard Schema library)
+ * const Schema = {
+ *   todo: {
+ *     id: TodoId, // Evolu id() for branded IDs
+ *     title: z.string().min(1).max(100),
+ *     isCompleted: z.union([z.literal(0), z.literal(1)]).nullable(),
  *   },
  * };
  * ```
@@ -93,8 +84,11 @@ import { Timestamp, TimestampBytes } from "./Timestamp.js";
 export type EvoluSchema = ReadonlyRecord<
   string,
   // TypeScript errors are cryptic so we use ValidateSchema.
-  ReadonlyRecord<string, AnyType>
+  TableSchema
 >;
+
+/** A table schema: column names mapped to Standard Schema validators. */
+export type TableSchema = ReadonlyRecord<string, AnyStandardSchemaV1>;
 
 /**
  * Validates an {@link EvoluSchema} at compile time, returning the first error
@@ -105,9 +99,9 @@ export type EvoluSchema = ReadonlyRecord<
  * Validates the following schema requirements:
  *
  * 1. All tables must have an 'id' column
- * 2. The 'id' column must be a branded ID type (created with id() function)
+ * 2. The 'id' column output type must extend {@link Id}
  * 3. Tables cannot use system column names (createdAt, updatedAt, isDeleted)
- * 4. All column types must be compatible with SQLite (extend SqliteValue)
+ * 4. All column output types must be compatible with SQLite (extend SqliteValue)
  */
 export type ValidateSchema<S extends EvoluSchema> =
   ValidateSchemaHasId<S> extends never
@@ -120,84 +114,9 @@ export type ValidateSchema<S extends EvoluSchema> =
       : ValidateIdColumnType<S>
     : ValidateSchemaHasId<S>;
 
-export type ValidateSchemaHasId<S extends EvoluSchema> =
-  keyof S extends infer TableName
-    ? TableName extends keyof S
-      ? "id" extends keyof S[TableName]
-        ? never
-        : SchemaValidationError<`Table "${TableName & string}" is missing required id column.`>
-      : never
-    : never;
-
-export type ValidateIdColumnType<S extends EvoluSchema> =
-  keyof S extends infer TableName
-    ? TableName extends keyof S
-      ? "id" extends keyof S[TableName]
-        ? S[TableName]["id"] extends TableId<any>
-          ? never
-          : SchemaValidationError<`Table "${TableName & string}" id column must be a branded ID type (created with id("${TableName & string}")).`>
-        : never
-      : never
-    : never;
-
-export type ValidateNoSystemColumns<S extends EvoluSchema> =
-  keyof S extends infer TableName
-    ? TableName extends keyof S
-      ? keyof S[TableName] extends infer ColumnName
-        ? ColumnName extends keyof S[TableName]
-          ? ColumnName extends
-              | "createdAt"
-              | "updatedAt"
-              | "isDeleted"
-              | "ownerId"
-            ? SchemaValidationError<`Table "${TableName & string}" uses system column name "${ColumnName & string}". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.`>
-            : never
-          : never
-        : never
-      : never
-    : never;
-
-export type ValidateColumnTypes<S extends EvoluSchema> =
-  keyof S extends infer TableName
-    ? TableName extends keyof S
-      ? keyof S[TableName] extends infer ColumnName
-        ? ColumnName extends keyof S[TableName]
-          ? InferType<S[TableName][ColumnName]> extends SqliteValue
-            ? never
-            : SchemaValidationError<`Table "${TableName & string}" column "${ColumnName & string}" type is not compatible with SQLite. Column types must extend SqliteValue (string, number, Uint8Array, or null).`>
-          : never
-        : never
-      : never
-    : never;
-
-/** Schema validation error that shows clear, readable messages */
-export type SchemaValidationError<Message extends string> =
-  `❌ Schema Error: ${Message}`;
-
 export type IndexesConfig = (
   create: (indexName: string) => Kysely.CreateIndexBuilder,
 ) => ReadonlyArray<Kysely.CreateIndexBuilder<any>>;
-
-export const evoluSchemaToDbSchema = (
-  schema: EvoluSchema,
-  indexesConfig?: IndexesConfig,
-): DbSchema => {
-  const tables = mapObject(
-    schema,
-    (table) => new Set(Object.keys(table).filter((k) => k !== "id")),
-  );
-
-  const indexes = indexesConfig
-    ? indexesConfig(createIndex).map(
-        (index): DbIndex => ({
-          name: index.toOperationNode().name.name,
-          sql: index.compile().sql,
-        }),
-      )
-    : [];
-
-  return { tables, indexes };
-};
 
 export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
   queryCallback: (
@@ -206,8 +125,8 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
         {
           [Table in keyof S]: {
             readonly [Column in keyof S[Table]]: Column extends "id"
-              ? InferType<S[Table][Column]>
-              : InferType<S[Table][Column]> | null;
+              ? StandardSchemaV1.InferOutput<S[Table][Column]>
+              : StandardSchemaV1.InferOutput<S[Table][Column]> | null;
           } & SystemColumns;
         } & {
           readonly evolu_history: {
@@ -235,8 +154,8 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
 /**
  * System columns that are implicitly defined by Evolu.
  *
- * - `createdAt`: Set by Evolu on row creation, derived from {@link Timestamp}.
- * - `updatedAt`: Set by Evolu on every row change, derived from {@link Timestamp}.
+ * - `createdAt`: Set by Evolu on row creation, derived from Timestamp.
+ * - `updatedAt`: Set by Evolu on every row change, derived from Timestamp.
  * - `isDeleted`: Soft delete flag created by Evolu and used by the developer to
  *   mark rows as deleted.
  * - `ownerId`: Represents ownership and logically partitions the database.
@@ -249,36 +168,35 @@ export const SystemColumns = /*#__PURE__*/ object({
 });
 export interface SystemColumns extends InferType<typeof SystemColumns> {}
 
-export const systemColumns = /*#__PURE__*/ readonly(
-  new Set(Object.keys(SystemColumns.props)),
-);
-
-export const systemColumnsWithId = /*#__PURE__*/ readonly([
-  ...systemColumns,
-  "id",
-]);
-
 export type MutationKind = "insert" | "update" | "upsert";
 
+/**
+ * Mutation function type. Accepts already-validated values — validation is the
+ * caller's responsibility using any Standard Schema library (Evolu Type, Zod,
+ * Valibot, ArkType, etc.).
+ *
+ * Evolu does not use SQL for mutations to ensure data can be deterministically
+ * merged without conflicts. Explicit mutations also allow Evolu to
+ * automatically update {@link SystemColumns} and encourage developers to
+ * consider the number of changes produced, unlike SQL where a single query can
+ * inadvertently generate a large volume of CRDT messages. Each mutation
+ * produces exactly one {@link CrdtMessage} containing all provided columns.
+ *
+ * Mutations never fail — values are already validated by the caller, and
+ * changes are stored locally in SQLite.
+ *
+ * - **insert**: all non-nullable columns required, nullable columns optional,
+ *   `id` omitted (auto-generated)
+ * - **update**: only `id` required, everything else optional
+ * - **upsert**: like insert but `id` required too
+ */
 export type Mutation<S extends EvoluSchema, Kind extends MutationKind> = <
   TableName extends keyof S,
 >(
   table: TableName,
-  props: InferInput<ObjectType<MutationMapping<S[TableName], Kind>>>,
+  values: MutationValues<S[TableName], Kind>,
   options?: MutationOptions,
-) => Result<
-  { readonly id: S[TableName]["id"]["Type"] },
-  MergeObjectTypeErrors<ObjectType<MutationMapping<S[TableName], Kind>>>
->;
-
-export type MutationMapping<
-  P extends Record<string, AnyType>,
-  M extends MutationKind,
-> = M extends "insert"
-  ? InsertableProps<P>
-  : M extends "update"
-    ? UpdateableProps<P>
-    : UpsertableProps<P>;
+) => { readonly id: StandardSchemaV1.InferOutput<S[TableName]["id"]> };
 
 export interface MutationOptions {
   /**
@@ -320,14 +238,6 @@ export interface MutationOptions {
    * ```
    */
   readonly ownerId?: OwnerId;
-
-  /**
-   * Only validate, don't mutate.
-   *
-   * For example, `onChange` handler can call `insert`/`update`/`upsert` with
-   * `onlyValidate: true`.
-   */
-  readonly onlyValidate?: boolean;
 }
 
 export interface MutationChange extends DbChange {
@@ -336,134 +246,49 @@ export interface MutationChange extends DbChange {
 }
 
 /**
- * Type Factory to create insertable {@link Type}. It makes nullable Types
- * optional (so they are not required) and omits Id.
- *
- * ### Example
- *
- * ```ts
- * const InsertableTodo = insertable(Schema.todo);
- * type InsertableTodo = typeof InsertableTodo.Type;
- * const todo = InsertableTodo.from({ title });
- * if (!todo.ok) return; // handle errors
- * ```
+ * Derives the expected values type for a mutation from a table's column schemas
+ * and a {@link MutationKind}.
  */
-export const insertable = <Props extends Record<string, AnyType>>(
-  props: Props,
-): ObjectType<InsertableProps<Props>> => {
-  const optionalNullable = nullableToOptional(props);
-  return omit(optionalNullable, "id");
-};
+export type MutationValues<
+  T extends TableSchema,
+  M extends MutationKind,
+> = Simplify<
+  M extends "insert"
+    ? InsertValues<T>
+    : M extends "update"
+      ? UpdateValues<T>
+      : UpsertValues<T>
+>;
 
-export type InsertableProps<Props extends Record<string, AnyType>> = Omit<
-  NullableToOptionalProps<Props>,
+/**
+ * Insert values: `id` omitted (auto-generated), nullable columns optional,
+ * non-nullable columns required.
+ */
+export type InsertValues<T extends TableSchema> = Omit<
+  NullableColumnsToOptional<T>,
   "id"
 >;
 
-export type Insertable<Props extends Record<string, AnyType>> = InferInput<
-  ObjectType<InsertableProps<Props>>
->;
-
 /**
- * Type Factory to create updateable {@link Type}. It makes everything except for
- * the `id` column optional (so they are not required).
- *
- * ### Example
- *
- * ```ts
- * const UpdateableTodo = updateable(Schema.todo);
- * type UpdateableTodo = typeof UpdateableTodo.Type;
- *
- * // `id` is required; all other fields are optional.
- * const todoResult = UpdateableTodo.from({
- *   id: "123",
- *   title: "New Title",
- * });
- * if (!todo.ok) return; // handle errors
- * ```
+ * Update values: `id` required, all other columns optional. Includes
+ * `isDeleted` for soft deletes.
  */
-export const updateable = <Props extends Record<string, AnyType>>(
-  props: Props,
-): ObjectType<UpdateableProps<Props>> => {
-  const propsWithIsDeleted = { ...props, isDeleted: SqliteBoolean };
-  const updateableProps = mapObject(propsWithIsDeleted, (value, key) =>
-    key === "id" ? value : optional(value),
-  ) as UpdateableProps<Props>;
-  return object(updateableProps);
+export type UpdateValues<T extends TableSchema> = {
+  readonly id: StandardSchemaV1.InferOutput<T["id"]>;
+} & {
+  readonly [K in Exclude<keyof T, "id">]?: StandardSchemaV1.InferOutput<T[K]>;
+} & {
+  readonly isDeleted?: SqliteBoolean;
 };
 
-export type UpdateableProps<Props extends Record<string, AnyType>> = {
-  [K in keyof Props]: K extends "id" ? Props[K] : OptionalType<Props[K]>;
-} & { isDeleted: OptionalType<typeof SqliteBoolean> };
-
-export type Updateable<Props extends Record<string, AnyType>> = InferInput<
-  ObjectType<UpdateableProps<Props>>
->;
-
 /**
- * Type Factory to create an upsertable Type. It makes nullable Types optional
- * (so they are not required).
- *
- * Upsert is like insert, except it requires an ID. It's useful for inserting
- * rows with external ID via {@link createIdFromString}.
- *
- * Note that it's not possible to upsert a row with `createdAt` nor `updatedAt`,
- * because they are derived from {@link CrdtMessage} timestamp (so we don't
- * encode time twice). For external `createdAt`, use a different column.
- * Timestamps are generated by Evolu internally when a CRDT message is created
- * (insert, update, upsert). Allowing custom timestamps would be a foot-gun
- * API.
- *
- * ### Example
- *
- * ```ts
- * const UpsertableTodo = upsertable(Schema.todo);
- * type UpsertableTodo = typeof UpsertableTodo.Type;
- * const todo = UpsertableTodo.from({
- *   id,
- *   title,
- * });
- * if (!todo.ok) return; // handle errors
- * ```
+ * Upsert values: `id` required, nullable columns optional, non-nullable columns
+ * required. Includes `isDeleted` for soft deletes.
  */
-export const upsertable = <Props extends Record<string, AnyType>>(
-  props: Props,
-): ObjectType<UpsertableProps<Props>> => {
-  const propsWithDefaults = {
-    ...props,
-    isDeleted: optional(SqliteBoolean),
+export type UpsertValues<T extends TableSchema> =
+  NullableColumnsToOptional<T> & {
+    readonly isDeleted?: SqliteBoolean;
   };
-  return nullableToOptional(propsWithDefaults);
-};
-
-export type UpsertableProps<Props extends Record<string, AnyType>> =
-  NullableToOptionalProps<
-    Props & {
-      isDeleted: OptionalType<typeof SqliteBoolean>;
-    }
-  >;
-
-export type Upsertable<Props extends Record<string, AnyType>> = InferInput<
-  ObjectType<UpsertableProps<Props>>
->;
-
-export type InferEvoluSchemaError<S extends EvoluSchema> = {
-  [Table in keyof S]: InferMutationTypeErrors<S[Table]>;
-}[keyof S];
-
-export type InferMutationTypeErrors<T extends Record<string, AnyType>> =
-  | InferColumnErrors<T, "insert">
-  | InferColumnErrors<T, "update">
-  | InferColumnErrors<T, "upsert">;
-
-export type InferColumnErrors<
-  T extends Record<string, AnyType>,
-  M extends MutationKind,
-> = {
-  [Column in keyof MutationMapping<T, M>]: InferErrors<
-    MutationMapping<T, M>[Column]
-  >;
-}[keyof MutationMapping<T, M>];
 
 export const DbIndex = /*#__PURE__*/ object({ name: String, sql: String });
 export interface DbIndex extends InferType<typeof DbIndex> {}
@@ -479,6 +304,144 @@ export interface DbSchema extends InferType<typeof DbSchema> {}
 export interface DbSchemaDep {
   readonly dbSchema: DbSchema;
 }
+
+export type ValidateSchemaHasId<S extends EvoluSchema> =
+  keyof S extends infer TableName
+    ? TableName extends keyof S
+      ? "id" extends keyof S[TableName]
+        ? never
+        : SchemaValidationError<`Table "${TableName & string}" is missing required id column.`>
+      : never
+    : never;
+
+export type ValidateIdColumnType<S extends EvoluSchema> =
+  keyof S extends infer TableName
+    ? TableName extends keyof S
+      ? "id" extends keyof S[TableName]
+        ? StandardSchemaV1.InferOutput<S[TableName]["id"]> extends Id
+          ? never
+          : SchemaValidationError<`Table "${TableName & string}" id column output type must extend Id. Use id("${TableName & string}") from Evolu Type.`>
+        : never
+      : never
+    : never;
+
+export type ValidateNoSystemColumns<S extends EvoluSchema> =
+  keyof S extends infer TableName
+    ? TableName extends keyof S
+      ? keyof S[TableName] extends infer ColumnName
+        ? ColumnName extends keyof S[TableName]
+          ? ColumnName extends
+              | "createdAt"
+              | "updatedAt"
+              | "isDeleted"
+              | "ownerId"
+            ? SchemaValidationError<`Table "${TableName & string}" uses system column name "${ColumnName & string}". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.`>
+            : never
+          : never
+        : never
+      : never
+    : never;
+
+export type ValidateColumnTypes<S extends EvoluSchema> =
+  keyof S extends infer TableName
+    ? TableName extends keyof S
+      ? keyof S[TableName] extends infer ColumnName
+        ? ColumnName extends keyof S[TableName]
+          ? StandardSchemaV1.InferOutput<
+              S[TableName][ColumnName]
+            > extends SqliteValue
+            ? never
+            : SchemaValidationError<`Table "${TableName & string}" column "${ColumnName & string}" type is not compatible with SQLite. Column types must extend SqliteValue (string, number, Uint8Array, or null).`>
+          : never
+        : never
+      : never
+    : never;
+
+/** Schema validation error that shows clear, readable messages */
+export type SchemaValidationError<Message extends string> =
+  `❌ Schema Error: ${Message}`;
+
+/** Makes columns whose output type includes `null` optional. */
+export type NullableColumnsToOptional<T extends TableSchema> = {
+  readonly [K in RequiredColumnKeys<T>]: StandardSchemaV1.InferOutput<T[K]>;
+} & {
+  readonly [K in OptionalColumnKeys<T>]?: StandardSchemaV1.InferOutput<T[K]>;
+};
+
+export type RequiredColumnKeys<T extends TableSchema> = {
+  [K in keyof T]: null extends StandardSchemaV1.InferOutput<T[K]> ? never : K;
+}[keyof T];
+
+export type OptionalColumnKeys<T extends TableSchema> = {
+  [K in keyof T]: null extends StandardSchemaV1.InferOutput<T[K]> ? K : never;
+}[keyof T];
+
+export const systemColumns = /*#__PURE__*/ readonly(
+  new Set(Object.keys(SystemColumns.props)),
+);
+
+export const systemColumnsWithId = /*#__PURE__*/ readonly([
+  ...systemColumns,
+  "id",
+]);
+
+export const evoluSchemaToDbSchema = (
+  schema: EvoluSchema,
+  indexesConfig?: IndexesConfig,
+): DbSchema => {
+  const tables = mapObject(
+    schema,
+    (table) => new Set(Object.keys(table).filter((k) => k !== "id")),
+  );
+
+  const indexes = indexesConfig
+    ? indexesConfig(createIndex).map(
+        (index): DbIndex => ({
+          name: index.toOperationNode().name.name,
+          sql: index.compile().sql,
+        }),
+      )
+    : [];
+
+  return { tables, indexes };
+};
+
+/**
+ * Creates a query builder from a {@link EvoluSchema}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const Schema = {
+ *   todo: {
+ *     id: id("Todo"),
+ *     title: NonEmptyString100,
+ *     isCompleted: nullOr(SqliteBoolean),
+ *   },
+ * };
+ *
+ * // Create a typed query builder (once per schema)
+ * const createQuery = createQueryBuilder(Schema);
+ *
+ * // Use it for all queries
+ * const todosQuery = createQuery((db) =>
+ *   db.selectFrom("todo").select(["id", "title", "isCompleted"]),
+ * );
+ * ```
+ */
+export const createQueryBuilder =
+  <S extends EvoluSchema>(_schema: S): CreateQuery<S> =>
+  (queryCallback, options) => {
+    const compiledQuery = queryCallback(kysely as never).compile();
+
+    return serializeQuery({
+      sql: compiledQuery.sql as SafeSql,
+      parameters: compiledQuery.parameters as NonNullable<
+        SqliteQuery["parameters"]
+      >,
+      ...(options && { options }),
+    });
+  };
 
 /** Get the current database schema by reading SQLite metadata. */
 export const getDbSchema =
@@ -544,9 +507,6 @@ export const getDbSchema =
     return ok({ tables, indexes });
   };
 
-const indexesAreEqual = (self: DbIndex, that: DbIndex): boolean =>
-  self.name === that.name && self.sql === that.sql;
-
 export const ensureDbSchema =
   (deps: SqliteDep) =>
   (
@@ -606,6 +566,23 @@ export const ensureDbSchema =
     return ok();
   };
 
+// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
+export const kysely = new Kysely.Kysely({
+  dialect: {
+    createAdapter: () => new Kysely.SqliteAdapter(),
+    createDriver: () => new Kysely.DummyDriver(),
+    createIntrospector() {
+      throw new Error("Not implemeneted");
+    },
+    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
+  },
+});
+
+const createIndex = kysely.schema.createIndex.bind(kysely.schema);
+
+const indexesAreEqual = (self: DbIndex, that: DbIndex): boolean =>
+  self.name === that.name && self.sql === that.sql;
+
 const createAppTable = (tableName: string, columns: ReadonlySet<string>) => sql`
   create table ${sql.identifier(tableName)} (
     "id" text,
@@ -623,91 +600,3 @@ const createAppTable = (tableName: string, columns: ReadonlySet<string>) => sql`
   )
   without rowid, strict;
 `;
-
-// https://kysely.dev/docs/recipes/splitting-query-building-and-execution
-export const kysely = new Kysely.Kysely({
-  dialect: {
-    createAdapter: () => new Kysely.SqliteAdapter(),
-    createDriver: () => new Kysely.DummyDriver(),
-    createIntrospector() {
-      throw new Error("Not implemeneted");
-    },
-    createQueryCompiler: () => new Kysely.SqliteQueryCompiler(),
-  },
-});
-
-const createIndex = kysely.schema.createIndex.bind(kysely.schema);
-
-/**
- * Creates a query builder from a {@link EvoluSchema}.
- *
- * ### Example
- *
- * ```ts
- * const Schema = {
- *   todo: {
- *     id: id("Todo"),
- *     title: NonEmptyString100,
- *     isCompleted: nullOr(SqliteBoolean),
- *   },
- * };
- *
- * // Create a typed query builder (once per schema)
- * const createQuery = createQueryBuilder(Schema);
- *
- * // Use it for all queries
- * const todosQuery = createQuery((db) =>
- *   db.selectFrom("todo").select(["id", "title", "isCompleted"]),
- * );
- * ```
- */
-export const createQueryBuilder =
-  <S extends EvoluSchema>(_schema: S): CreateQuery<S> =>
-  (queryCallback, options) => {
-    const compiledQuery = queryCallback(kysely as never).compile();
-
-    if (isSqlMutation(compiledQuery.sql))
-      throw new Error(
-        "SQL mutation (INSERT, UPDATE, DELETE, etc.) isn't allowed in createQuery. Kysely suggests it because there is no read-only Kysely yet, and removing such an API is not possible. For mutations, use Evolu Mutation API.",
-      );
-
-    return serializeQuery({
-      sql: compiledQuery.sql as SafeSql,
-      parameters: compiledQuery.parameters as NonNullable<
-        SqliteQuery["parameters"]
-      >,
-      ...(options && { options }),
-    });
-  };
-
-// export const maxMutationSize = 655360;
-
-// /**
-//  * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
-//  * the `maxProtocolMessageRangesSize`. The max size is 640KB in bytes, measured
-//  * via JSON (conservative estimate, actual MessagePack will be smaller).
-//  */
-// export const validMutationSize = <T extends AnyType>(
-//   type: T,
-// ): BrandType<T, "ValidMutationSize", ValidMutationSizeError, InferErrors<T>> =>
-//   brand("ValidMutationSize", type, (value) =>
-//     pack(value).byteLength <= maxMutationSize
-//       ? ok(value)
-//       : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
-//   );
-
-// export interface ValidMutationSizeError extends TypeError<"ValidMutationSize"> {}
-
-// export const formatValidMutationSizeError =
-//   createTypeErrorFormatter<ValidMutationSizeError>(
-//     (error) =>
-//       `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
-//   );
-
-// export type ValidMutationSize<Props extends Record<string, AnyType>> =
-//   BrandType<
-//     ObjectType<Props>,
-//     "ValidMutationSize",
-//     ValidMutationSizeError,
-//     InferErrors<ObjectType<Props>>
-//   >;

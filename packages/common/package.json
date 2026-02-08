@@ -67,7 +67,8 @@
     "playwright": "^1.58.1",
     "typescript": "^5.9.3",
     "webpack": "^5.98.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "publishConfig": {
     "access": "public"

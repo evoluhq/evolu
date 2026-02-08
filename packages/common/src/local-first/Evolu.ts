@@ -5,9 +5,10 @@
  */
 
 import type { Listener, Unsubscribe } from "../Listeners.js";
+import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { ok } from "../Result.js";
 import type { Task } from "../Task.js";
-import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
+import type { createIdFromString, Id } from "../Type.js";
 import { SimpleName } from "../Type.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
 import {
@@ -23,8 +24,14 @@ import type {
   QueryRows,
   Row,
 } from "./Query.js";
-import type { EvoluSchema, IndexesConfig, ValidateSchema } from "./Schema.js";
+import type {
+  EvoluSchema,
+  IndexesConfig,
+  Mutation,
+  ValidateSchema,
+} from "./Schema.js";
 import type { SyncOwner } from "./Sync.js";
+import type { Timestamp } from "./Timestamp.js";
 
 export interface EvoluConfig {
   /**
@@ -181,7 +188,6 @@ export interface EvoluConfig {
 
 /** Local-first SQL database with typed queries, mutations, and sync. */
 export interface Evolu<
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   S extends EvoluSchema = EvoluSchema,
 > extends AsyncDisposable {
   /** The name of the Evolu instance from {@link EvoluConfig}. */
@@ -261,198 +267,84 @@ export interface Evolu<
    */
   readonly getQueryRows: <R extends Row>(query: Query<R>) => QueryRows<R>;
 
-  // /**
-  //  * Inserts a row into the database and returns a {@link Result} with the new
-  //  * {@link Id}.
-  //  *
-  //  * The first argument is the table name, and the second is an object
-  //  * containing the row data. An optional third argument provides mutation
-  //  * options including an `onComplete` callback and `onlyValidate` flag.
-  //  *
-  //  * Returns a Result type - use `.ok` to check if the insertion succeeded, and
-  //  * `.value.id` to access the generated ID on success, or `.error` to handle
-  //  * validation errors.
-  //  *
-  //  * Evolu does not use SQL for mutations to ensure data can be safely and
-  //  * predictably merged without conflicts. Explicit mutations also allow Evolu
-  //  * to automatically update {@link SystemColumns}.
-  //  *
-  //  * ### Example
-  //  *
-  //  * ```ts
-  //  * const result = evolu.insert("todo", {
-  //  *   title: "Learn Evolu",
-  //  *   isCompleted: false,
-  //  * });
-  //  *
-  //  * if (result.ok) {
-  //  *   console.log("Todo created with ID:", result.value.id);
-  //  * } else {
-  //  *   console.error("Validation error:", result.error);
-  //  * }
-  //  *
-  //  * // With onComplete callback
-  //  * evolu.insert(
-  //  *   "todo",
-  //  *   { title: "Another todo" },
-  //  *   {
-  //  *     onComplete: () => {
-  //  *       console.log("Insert completed");
-  //  *     },
-  //  *   },
-  //  * );
-  //  * ```
-  //  */
-  // insert: Mutation<S, "insert">;
-
-  // /**
-  //  * Updates a row in the database and returns a {@link Result} with the existing
-  //  * {@link Id}.
-  //  *
-  //  * The first argument is the table name, and the second is an object
-  //  * containing the row data including the required `id` field. An optional
-  //  * third argument provides mutation options including an `onComplete` callback
-  //  * and `onlyValidate` flag.
-  //  *
-  //  * Returns a Result type - use `.ok` to check if the update succeeded, and
-  //  * `.value.id` to access the ID on success, or `.error` to handle validation
-  //  * errors.
-  //  *
-  //  * Evolu does not use SQL for mutations to ensure data can be safely and
-  //  * predictably merged without conflicts. Explicit mutations also allow Evolu
-  //  * to automatically update {@link SystemColumns}.
-  //  *
-  //  * ### Example
-  //  *
-  //  * ```ts
-  //  * const result = evolu.update("todo", {
-  //  *   id: todoId,
-  //  *   title: "Updated title",
-  //  *   isCompleted: true,
-  //  * });
-  //  *
-  //  * if (result.ok) {
-  //  *   console.log("Todo updated with ID:", result.value.id);
-  //  * } else {
-  //  *   console.error("Validation error:", result.error);
-  //  * }
-  //  *
-  //  * // To delete a row, set isDeleted to true
-  //  * evolu.update("todo", { id: todoId, isDeleted: true });
-  //  *
-  //  * // With onComplete callback
-  //  * evolu.update(
-  //  *   "todo",
-  //  *   { id: todoId, title: "New title" },
-  //  *   {
-  //  *     onComplete: () => {
-  //  *       console.log("Update completed");
-  //  *     },
-  //  *   },
-  //  * );
-  //  * ```
-  //  */
-  // update: Mutation<S, "update">;
-
-  // /**
-  //  * Upserts a row in the database and returns a {@link Result} with the existing
-  //  * {@link Id}.
-  //  *
-  //  * The first argument is the table name, and the second is an object
-  //  * containing the row data including the required `id` field. An optional
-  //  * third argument provides mutation options including an `onComplete` callback
-  //  * and `onlyValidate` flag.
-  //  *
-  //  * This function allows you to use custom IDs and optionally set `createdAt`,
-  //  * which is useful for external systems, data migrations, or when the same row
-  //  * may already be created on a different device.
-  //  *
-  //  * Returns a Result type - use `.ok` to check if the upsert succeeded, and
-  //  * `.value.id` to access the ID on success, or `.error` to handle validation
-  //  * errors.
-  //  *
-  //  * Evolu does not use SQL for mutations to ensure data can be safely and
-  //  * predictably merged without conflicts. Explicit mutations also allow Evolu
-  //  * to automatically update {@link SystemColumns}.
-  //  *
-  //  * ### Example
-  //  *
-  //  * ```ts
-  //  * // Use deterministic ID for stable upserts across devices
-  //  * const stableId = createIdFromString("my-todo-1");
-  //  *
-  //  * const result = evolu.upsert("todo", {
-  //  *   id: stableId,
-  //  *   title: "Learn Evolu",
-  //  *   isCompleted: false,
-  //  * });
-  //  *
-  //  * if (result.ok) {
-  //  *   console.log("Todo upserted with ID:", result.value.id);
-  //  * } else {
-  //  *   console.error("Validation error:", result.error);
-  //  * }
-  //  *
-  //  * // Data migration with custom createdAt
-  //  * evolu.upsert("todo", {
-  //  *   id: externalId,
-  //  *   title: "Migrated todo",
-  //  *   createdAt: new Date("2023-01-01"), // Preserve original timestamp
-  //  * });
-  //  *
-  //  * // With onComplete callback
-  //  * evolu.upsert(
-  //  *   "todo",
-  //  *   { id: stableId, title: "Updated title" },
-  //  *   {
-  //  *     onComplete: () => {
-  //  *       console.log("Upsert completed");
-  //  *     },
-  //  *   },
-  //  * );
-  //  * ```
-  //  */
-  // upsert: Mutation<S, "upsert">;
-
-  // // /**
-  // //  * Delete {@link AppOwner} and all their data from the current device. After
-  // //  * the deletion, Evolu will purge the application state. For browsers, this
-  // //  * will reload all tabs using Evolu. For native apps, it will restart the
-  // //  * app.
-  // //  *
-  // //  * Reloading can be turned off via options if you want to provide a different
-  // //  * UX.
-  // //  */
-  // // readonly resetAppOwner: (options?: {
-  // //   readonly reload?: boolean;
-  // // }) => Promise<void>;
-
-  // // /**
-  // //  * Restore {@link AppOwner} with all their synced data. It uses
-  // //  * {@link Evolu.resetAppOwner}, so be careful.
-  // //  */
-  // // readonly restoreAppOwner: (
-  // //   mnemonic: Mnemonic,
-  // //   options?: {
-  // //     readonly reload?: boolean;
-  // //   },
-  // // ) => Promise<void>;
-
-  // // /**
-  // //  * Reload the app in a platform-specific way. For browsers, this will reload
-  // //  * all tabs using Evolu. For native apps, it will restart the app.
-  // //  */
-  // // readonly reloadApp: () => void;
-
-  // /**
-  //  * Export SQLite database file as Uint8Array.
-  //  *
-  //  * In the future, it will be possible to import a database and export/import
-  //  * history for 1:1 migrations across owners.
-  //  */
-  // readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
+  /**
+   * Inserts a row and returns the generated {@link Id}.
+   *
+   * All non-nullable columns are required, nullable columns are optional, and
+   * `id` is omitted because Evolu generates it automatically. This ensures
+   * every row has a globally unique, conflict-free identifier without
+   * coordination.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const { id } = evolu.insert("todo", {
+   *   title: NonEmptyString100.orThrow("Learn Evolu"),
+   * });
+   *
+   * // With onComplete callback
+   * evolu.insert(
+   *   "todo",
+   *   { title: NonEmptyString100.orThrow("Another todo") },
+   *   { onComplete: () => console.log("Insert completed") },
+   * );
+   * ```
+   *
+   * @see {@link Mutation}
+   */
+  insert: Mutation<S, "insert">;
 
   /**
+   * Updates a row and returns the {@link Id}.
+   *
+   * Only `id` is required, all other columns are optional.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const { id } = evolu.update("todo", {
+   *   id: todoId,
+   *   title: NonEmptyString100.orThrow("Updated title"),
+   * });
+   *
+   * // Soft delete
+   * evolu.update("todo", { id: todoId, isDeleted: sqliteTrue });
+   * ```
+   *
+   * @see {@link Mutation}
+   */
+  update: Mutation<S, "update">;
+
+  /**
+   * Upserts a row and returns the {@link Id}.
+   *
+   * Like insert, but requires an `id`. Useful for rows with external ID via
+   * {@link createIdFromString}. All other non-nullable columns are required,
+   * nullable columns are optional.
+   *
+   * `createdAt` and `updatedAt` cannot be set manually. Evolu derives both from
+   * the CRDT {@link Timestamp} — they share the same value, encoded once to
+   * avoid redundancy. Timestamps are always generated by Evolu to preserve CRDT
+   * consistency guarantees.
+   *
+   * ### Example
+   *
+   * ```ts
+   * const stableId = createIdFromString("my-todo-1");
+   * const { id } = evolu.upsert("todo", {
+   *   id: stableId,
+   *   title: NonEmptyString100.orThrow("Learn Evolu"),
+   * });
+   * ```
+   *
+   * @see {@link Mutation}
+   */
+  upsert: Mutation<S, "upsert">;
+
+  /**
+   * // TODO: Ten naming je furt divnej, syncOwner? subscribeOwner? // hmm, use
+   * je ale ok, cleanup vracet teda? uvidime.
+   *
    * Use a {@link SyncOwner}. Returns a {@link UnuseOwner}.
    *
    * Using an owner means syncing it with its transports, or the transports
@@ -471,7 +363,7 @@ export interface Evolu<
    * unuseOwner();
    *
    * // Bulk operations.
-   * const unuseOwners = owners.map((owner) => evolu.useOwner(owner));
+   * const unuseOwners = owners.map(evolu.useOwner);
    * // Later: for (const unuse of unuseOwners) unuse();
    * ```
    */
@@ -482,7 +374,6 @@ export interface Evolu<
 export type UnuseOwner = () => void;
 
 export type EvoluDeps = EvoluPlatformDeps;
-// ErrorStoreDep &
 
 export type EvoluPlatformDeps = ReloadAppDep & Partial<FlushSyncDep>;
 
@@ -512,8 +403,7 @@ export const createEvolu =
     config: EvoluConfig,
   ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
   (run) => {
-    const appOwner =
-      config.appOwner ?? createAppOwner(createOwnerSecret(run.deps));
+    const { appOwner = createAppOwner(createOwnerSecret(run.deps)) } = config;
 
     return ok({ appOwner } as Evolu<S>);
   };
@@ -1122,3 +1012,40 @@ export const createEvolu =
 //     getQueries: () => Array.from(loadingPromiseMap.keys()),
 //   };
 // };
+// // /**
+// //  * Delete {@link AppOwner} and all their data from the current device. After
+// //  * the deletion, Evolu will purge the application state. For browsers, this
+// //  * will reload all tabs using Evolu. For native apps, it will restart the
+// //  * app.
+// //  *
+// //  * Reloading can be turned off via options if you want to provide a different
+// //  * UX.
+// //  */
+// // readonly resetAppOwner: (options?: {
+// //   readonly reload?: boolean;
+// // }) => Promise<void>;
+
+// // /**
+// //  * Restore {@link AppOwner} with all their synced data. It uses
+// //  * {@link Evolu.resetAppOwner}, so be careful.
+// //  */
+// // readonly restoreAppOwner: (
+// //   mnemonic: Mnemonic,
+// //   options?: {
+// //     readonly reload?: boolean;
+// //   },
+// // ) => Promise<void>;
+
+// // /**
+// //  * Reload the app in a platform-specific way. For browsers, this will reload
+// //  * all tabs using Evolu. For native apps, it will restart the app.
+// //  */
+// // readonly reloadApp: () => void;
+
+// /**
+//  * Export SQLite database file as Uint8Array.
+//  *
+//  * In the future, it will be possible to import a database and export/import
+//  * history for 1:1 migrations across owners.
+//  */
+// readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;

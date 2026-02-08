@@ -63,7 +63,21 @@ export {
   type Row,
 } from "./local-first/Query.js";
 export { createQueryBuilder } from "./local-first/Schema.js";
-export type { EvoluSchema } from "./local-first/Schema.js";
+export type {
+  AnyStandardSchemaV1,
+  EvoluSchema,
+  InsertValues,
+  Mutation,
+  MutationKind,
+  MutationOptions,
+  MutationValues,
+  NullableColumnsToOptional,
+  OptionalColumnKeys,
+  RequiredColumnKeys,
+  TableSchema,
+  UpdateValues,
+  UpsertValues,
+} from "./local-first/Schema.js";
 export type {
   NetworkError,
   PaymentRequiredError,

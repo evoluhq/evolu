@@ -20,11 +20,7 @@ import type {
   SqliteQueryOptions,
   SqliteRow,
 } from "../Sqlite.js";
-import {
-  eqSqliteValue,
-  explainSqliteQueryPlan,
-  SqliteValue,
-} from "../Sqlite.js";
+import { eqSqliteValue, SqliteValue } from "../Sqlite.js";
 import type { Store } from "../Store.js";
 import { createId, Id, String } from "../Type.js";
 import type { Simplify } from "../Types.js";
@@ -211,9 +207,6 @@ export const loadQueries =
       if (!result.ok) return result;
 
       queriesRows.push([query, result.value.rows] as const);
-      if (sqlQuery.options?.logExplainQueryPlan) {
-        explainSqliteQueryPlan(deps)(sqlQuery);
-      }
     }
 
     const queryRowsCache = deps.getQueryRowsCache(tabId);

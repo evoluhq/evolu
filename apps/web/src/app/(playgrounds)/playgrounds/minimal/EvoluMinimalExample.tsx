@@ -80,11 +80,6 @@ const Test = () => {
   );
 };
 
-// // Creates a typed React Hook for accessing Evolu from EvoluProvider context.
-// // You can also use `evolu` directly, but the hook enables replacing Evolu
-// // in tests via the EvoluProvider.
-// const useEvolu = createUseEvolu(evolu);
-
 // /**
 //  * Subscribe to Evolu errors (database, network, sync issues). These should not
 //  * happen in normal operation, so log them for debugging. Show users a friendly
