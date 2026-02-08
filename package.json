@@ -21,7 +21,6 @@
     "release": "pnpm run build && changeset publish",
     "ios": "cd examples/react-expo && pnpm ios",
     "android": "cd examples/react-expo && pnpm android",
-    "bench": "turbo bench",
     "examples:toggle-deps": "node --experimental-strip-types ./scripts/toggle-examples-deps.mts",
     "examples:build": "turbo --filter @example/* build",
     "examples:react-nextjs:dev": "turbo --filter @example/react-nextjs dev",
