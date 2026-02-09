@@ -24,7 +24,7 @@ Run standalone TypeScript scripts with `node --experimental-strip-types script.t
 
 ## Monorepo TypeScript issues
 
-**ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors are caused by stale TypeScript type cache. Solution: run the `eslint.restart` VS Code command after cross-package edits. See [typed rule reports are out of date](https://typescript-eslint.io/troubleshooting/typed-linting/#typed-rule-reports-are-out-of-date-after-file-changes-in-my-editor).
+**ESLint "Unsafe..." errors after changes** - In a monorepo, ESLint may show "Unsafe call", "Unsafe member access", or "Unsafe assignment" errors after modifying packages that other packages depend on. These errors are caused by stale TypeScript type cache. Run the `eslint.restart` VS Code command using `run_vscode_command` tool to clear the cache before checking errors.
 
 ## Architecture
 
