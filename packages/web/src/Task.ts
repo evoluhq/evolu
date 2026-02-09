@@ -22,7 +22,7 @@ import {
  *
  * ```ts
  * const console = createConsole({
- *   formatEntry: createConsoleEntryFormatter()({
+ *   formatter: createConsoleFormatter()({
  *     timestampFormat: "relative",
  *   }),
  * });
@@ -32,37 +32,28 @@ import {
  *
  * await stack.use(startApp());
  * ```
- *
- * @group Browser Run
  */
 export const createRun: CreateRun<RunDeps> = <D>(
   deps?: D,
 ): Run<RunDeps & D> => {
   const run = createCommonRun(deps);
-
   const console = run.deps.console.child("global");
 
-  const handleError = (source: string) => (event: Event) => {
-    const error: unknown =
-      event instanceof ErrorEvent
-        ? event.error
-        : (event as PromiseRejectionEvent).reason;
-    console.error(source, createUnknownError(error));
-  };
+  globalThis.addEventListener(
+    "error",
+    (event) => {
+      console.error("error", createUnknownError(event.error));
+    },
+    { signal: run.signal },
+  );
 
-  const handleWindowError = handleError("error");
-  const handleUnhandledRejection = handleError("unhandledrejection");
-
-  globalThis.addEventListener("error", handleWindowError);
-  globalThis.addEventListener("unhandledrejection", handleUnhandledRejection);
-
-  run.onAbort(() => {
-    globalThis.removeEventListener("error", handleWindowError);
-    globalThis.removeEventListener(
-      "unhandledrejection",
-      handleUnhandledRejection,
-    );
-  });
+  globalThis.addEventListener(
+    "unhandledrejection",
+    (event) => {
+      console.error("unhandledrejection", createUnknownError(event.reason));
+    },
+    { signal: run.signal },
+  );
 
   return run;
 };

@@ -4,9 +4,9 @@ import {
   type MessagePort,
   type NativeMessagePort,
   type SharedWorker,
-  type SharedWorkerScope,
+  type SharedWorkerSelf,
   type Worker,
-  type WorkerScope,
+  type WorkerSelf,
 } from "@evolu/common";
 
 /**
@@ -18,32 +18,31 @@ import {
  * semantics.
  */
 export const createWorker = <Input, Output>(
-  initWorker: (scope: WorkerScope<Input, Output>) => void,
+  initWorker: (self: WorkerSelf<Input, Output>) => void,
 ): Worker<Input, Output> => {
-  let workerScope: WorkerScope<Input, Output> | null = null;
+  let workerSelf: WorkerSelf<Input, Output> | null = null;
 
   const worker: Worker<Input, Output> = {
     postMessage: (message) => {
       queueMicrotask(() => {
         assert(
-          workerScope?.onMessage != null,
+          workerSelf?.onMessage != null,
           "Worker onMessage must be set before receiving messages",
         );
-        workerScope.onMessage(message);
+        workerSelf.onMessage(message);
       });
     },
     onMessage: null,
     native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
     [Symbol.dispose]: () => {
       worker.onMessage = null;
-      workerScope?.[Symbol.dispose]();
-      workerScope = null;
+      workerSelf?.[Symbol.dispose]();
+      workerSelf = null;
     },
   };
 
-  workerScope = {
+  workerSelf = {
     onMessage: null,
-    onError: null, // React Native runs in-process, errors bubble to main thread
     postMessage: (message) => {
       queueMicrotask(() => {
         assert(
@@ -55,12 +54,12 @@ export const createWorker = <Input, Output>(
     },
     native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
     [Symbol.dispose]: () => {
-      if (workerScope) workerScope.onMessage = null;
+      if (workerSelf) workerSelf.onMessage = null;
     },
   };
 
   // Initialize the worker
-  initWorker(workerScope);
+  initWorker(workerSelf);
 
   return worker;
 };
@@ -73,7 +72,7 @@ export const createWorker = <Input, Output>(
  * instance.
  */
 export const createSharedWorker = <Input, Output>(
-  initWorker: (scope: SharedWorkerScope<Input, Output>) => void,
+  initWorker: (self: SharedWorkerSelf<Input, Output>) => void,
 ): SharedWorker<Input, Output> => {
   let workerPort: MessagePort<Output, Input> | null = null;
 
@@ -111,25 +110,24 @@ export const createSharedWorker = <Input, Output>(
     },
   };
 
-  const scope: SharedWorkerScope<Input, Output> = {
+  const self: SharedWorkerSelf<Input, Output> = {
     onConnect: null,
-    onError: null, // React Native runs in-process, errors bubble to main thread
     [Symbol.dispose]: () => {
-      scope.onConnect = null;
+      self.onConnect = null;
       workerPort[Symbol.dispose]();
     },
   };
 
   // Initialize the worker
-  initWorker(scope);
+  initWorker(self);
 
   // Simulate connection
   queueMicrotask(() => {
     assert(
-      scope.onConnect != null,
+      self.onConnect != null,
       "onConnect must be set before receiving connections",
     );
-    scope.onConnect(workerPort);
+    self.onConnect(workerPort);
   });
 
   return {

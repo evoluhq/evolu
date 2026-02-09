@@ -313,8 +313,12 @@ export interface ConsoleStoreOutput extends ConsoleOutput {
   readonly entry: ReadonlyStore<ConsoleEntry | null>;
 }
 
-export interface ConsoleEntryDep {
-  readonly consoleEntry: ReadonlyStore<ConsoleEntry | null>;
+/**
+ * Dependency providing the latest {@link ConsoleEntry} from a
+ * {@link ConsoleStoreOutput}.
+ */
+export interface ConsoleStoreOutputEntryDep {
+  readonly consoleStoreOutputEntry: ReadonlyStore<ConsoleEntry | null>;
 }
 
 /**

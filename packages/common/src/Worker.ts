@@ -1,18 +1,13 @@
 /**
- * Platform-agnostic Worker and MessageChannel abstractions.
+ * Platform-agnostic Worker abstractions.
  *
  * @module
  */
 
 import type { Brand } from "./Brand.js";
-import type { GlobalErrorScope } from "./Error.js";
 
 /**
  * Platform-agnostic Worker.
- *
- * Initialization errors (script load failures, syntax errors) bubble to global
- * error handlers — they're programming errors, not recoverable runtime
- * conditions.
  *
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Worker
  */
@@ -27,10 +22,6 @@ export interface Worker<Input, Output = never> extends MessagePort<
  * A shared worker is shared across multiple clients (tabs, windows, iframes)
  * and provides a port for bidirectional communication with each client.
  *
- * Initialization errors (script load failures, syntax errors) bubble to global
- * error handlers — they're programming errors, not recoverable runtime
- * conditions.
- *
  * @see https://developer.mozilla.org/en-US/docs/Web/API/SharedWorker
  */
 export interface SharedWorker<Input, Output = never> extends Disposable {
@@ -41,10 +32,6 @@ export interface SharedWorker<Input, Output = never> extends Disposable {
 /**
  * Platform-agnostic MessagePort.
  *
- * Message deserialization errors (structured clone failures) bubble to global
- * error handlers — they're programming errors, not recoverable runtime
- * conditions.
- *
  * Note: There is no reliable way to detect when a port is closed or
  * disconnected. Calling `postMessage` on a disposed port does not throw — it
  * silently fails. To detect dead ports, use a heartbeat pattern where the other
@@ -54,29 +41,35 @@ export interface SharedWorker<Input, Output = never> extends Disposable {
  * @see https://developer.mozilla.org/en-US/docs/Web/API/MessagePort
  */
 export interface MessagePort<Input, Output = never> extends Disposable {
-  /**
-   * Sends a message.
-   *
-   * Transferable objects in the optional transfer array will have their
-   * ownership transferred to the receiver, making them unusable in the sender.
-   * The transferable objects must be reachable from the message object.
-   */
   readonly postMessage: (
     message: Input,
     transfer?: ReadonlyArray<Transferable>,
   ) => void;
 
-  /**
-   * Callback for messages from the port (like `onmessage` on MessagePort).
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/MessagePort/message_event
-   */
   onMessage: ((message: Output) => void) | null;
 
-  /** The native underlying port. Use this only for transferring via postMessage. */
+  /**
+   * The native underlying port for transferring via `postMessage`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * sharedWorker.port.postMessage(
+   *   { type: "InitConsole", port: consoleChannel.port1.native },
+   *   [consoleChannel.port1.native],
+   * );
+   * ```
+   */
   readonly native: NativeMessagePort;
 }
 
+/**
+ * Objects whose ownership can be transferred between threads via `postMessage`.
+ *
+ * Intentionally scoped to types Evolu uses. The web platform defines additional
+ * transferable types (`ImageBitmap`, `OffscreenCanvas`, `ReadableStream`, etc.)
+ * that can be added here if needed.
+ */
 export type Transferable = NativeMessagePort | ArrayBuffer;
 
 /**
@@ -108,21 +101,21 @@ export interface CreateMessagePortDep {
  *
  * ### Example
  *
- * One-way error channel: worker sends errors, main thread receives them.
+ * One-way console channel: worker sends entries, main thread receives them.
  *
  * Main thread:
  *
  * ```ts
- * const errorChannel = createMessageChannel<UnknownError>();
- * const errorStore = createStore<UnknownError | null>(null);
+ * const consoleChannel = createMessageChannel<ConsoleEntry>();
+ * const consoleStore = createStore<ConsoleEntry | null>(null);
  *
  * sharedWorker.port.postMessage(
- *   { type: "InitErrorStore", port: errorChannel.port1.native },
- *   [errorChannel.port1.native], // transfer ownership to worker
+ *   { type: "InitConsole", port: consoleChannel.port1.native },
+ *   [consoleChannel.port1.native], // transfer ownership to worker
  * );
  *
- * errorChannel.port2.onMessage = (error) => {
- *   errorStore.set(error);
+ * consoleChannel.port2.onMessage = (entry) => {
+ *   consoleStore.set(entry);
  * };
  * ```
  *
@@ -130,7 +123,7 @@ export interface CreateMessagePortDep {
  *
  * ```ts
  * scope.onError = (error) => {
- *   errorPort.postMessage(error);
+ *   consolePort.postMessage(error);
  * };
  * ```
  *
@@ -160,25 +153,23 @@ export interface CreateMessageChannelDep {
   readonly createMessageChannel: CreateMessageChannel;
 }
 
-// Worker-side types (for code running inside workers)
-
 /**
- * Typed scope for code running inside a dedicated worker.
+ * Typed `self` for code running inside a dedicated worker.
  *
  * This is the worker-side counterpart to {@link Worker} — a typed
- * {@link MessagePort} combined with {@link GlobalErrorScope} that wraps `self`
- * inside the worker.
+ * {@link MessagePort} that wraps `self` inside the worker.
  */
-export interface WorkerScope<Input, Output = never>
-  extends MessagePort<Output, Input>, GlobalErrorScope {}
+export interface WorkerSelf<Input, Output = never> extends MessagePort<
+  Output,
+  Input
+> {}
 
 /**
- * Typed scope for code running inside a shared worker.
+ * Typed `self` for code running inside a shared worker.
  *
  * This is the worker-side counterpart to {@link SharedWorker}. It wraps `self`
  * inside the shared worker, providing typed `onConnect` callbacks.
  */
-export interface SharedWorkerScope<Input, Output = never>
-  extends GlobalErrorScope, Disposable {
+export interface SharedWorkerSelf<Input, Output = never> extends Disposable {
   onConnect: ((port: MessagePort<Output, Input>) => void) | null;
 }

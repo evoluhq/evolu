@@ -1,7 +1,9 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import { runEvoluWorkerScope } from "@evolu/common/local-first";
-import { createMessagePort, createSharedWorkerScope } from "../Worker.js";
+import { initEvoluWorker } from "@evolu/common/local-first";
+import { createSharedWorkerSelf, createWorkerRun } from "../Worker.js";
 
-runEvoluWorkerScope({ createMessagePort })(createSharedWorkerScope(self));
+await using run = createWorkerRun();
+
+await run(initEvoluWorker(createSharedWorkerSelf(self)));
