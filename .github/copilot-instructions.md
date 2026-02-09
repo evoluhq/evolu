@@ -206,7 +206,6 @@ const result = await run(fetchUser("123"));
 
 - **Single deps argument** - functions accept one `deps` parameter combining dependencies
 - **Wrap dependencies** - use `TimeDep`, `LoggerDep` etc. to avoid property clashes
-- **Skip JSDoc for simple dep interfaces** - `interface TimeDep { readonly time: Time }` is self-documenting
 - **Over-providing is OK** - passing extra deps is fine, over-depending is not
 - **Use Partial<>** for optional dependencies
 - **No global static instances** - avoid service locator pattern
