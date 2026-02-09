@@ -1,4 +1,4 @@
-import { createConsole, createConsoleEntryFormatter } from "@evolu/common";
+import { createConsole, createConsoleFormatter } from "@evolu/common";
 import { createRelayDeps, createRun, startRelay } from "@evolu/nodejs";
 import { mkdirSync } from "fs";
 
@@ -8,7 +8,7 @@ process.chdir("data");
 
 const console = createConsole({
   // level: "debug",
-  formatEntry: createConsoleEntryFormatter()({
+  formatter: createConsoleFormatter()({
     timestampFormat: "relative",
   }),
 });

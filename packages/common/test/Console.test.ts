@@ -2,7 +2,9 @@ import { describe, expect, test, vi } from "vitest";
 import {
   createConsole,
   createConsoleArrayOutput,
-  createConsoleEntryFormatter,
+  createConsoleFormatter,
+  createConsoleStoreOutput,
+  createMultiOutput,
   createNativeConsoleOutput,
   testCreateConsole,
   type ConsoleEntry,
@@ -26,10 +28,10 @@ const createTestOutput = (): ConsoleOutput & {
   }> = [];
   return {
     entries,
-    write: (entry, formatEntry) => {
+    write: (entry, formatter) => {
       entries.push({
         entry,
-        formattedArgs: formatEntry ? formatEntry(entry) : entry.args,
+        formattedArgs: formatter ? formatter(entry) : entry.args,
       });
     },
   };
@@ -153,12 +155,12 @@ describe("createConsole", () => {
     expect(output.entries[0].entry.path).toEqual(["relay", "db"]);
   });
 
-  test("child inherits formatEntry", () => {
+  test("child inherits formatter", () => {
     const output = createTestOutput();
-    const formatEntry = (entry: ConsoleEntry) => ["prefix", ...entry.args];
+    const formatter = (entry: ConsoleEntry) => ["prefix", ...entry.args];
     const console = createConsole({
       output,
-      formatEntry,
+      formatter,
     });
     const child = console.child("relay");
 
@@ -194,14 +196,14 @@ describe("createConsole", () => {
 
   test("debug-level methods skip formatter", () => {
     const output = createTestOutput();
-    const formatEntry = vi.fn((entry: ConsoleEntry) => [
+    const formatter = vi.fn((entry: ConsoleEntry) => [
       "formatted",
       ...entry.args,
     ]);
     const console = createConsole({
       output,
       level: "debug",
-      formatEntry,
+      formatter,
     });
 
     console.info("info message");
@@ -233,167 +235,6 @@ describe("createConsole", () => {
 
     expect(console.name).toBe("root");
     expect(child.name).toBe("relay");
-  });
-});
-
-describe("createConsoleEntryFormatter", () => {
-  test("uses default time dep when not provided", () => {
-    const formatter = createConsoleEntryFormatter()({
-      timestampFormat: "relative",
-    });
-    const entry: ConsoleEntry = {
-      method: "info",
-      path: [],
-      args: ["message"],
-    };
-
-    const result = formatter(entry);
-
-    // Should have a relative timestamp prefix
-    expect(result).toHaveLength(2);
-    expect(result[0]).toMatch(/^\+\d+\.\d{3}s$/);
-    expect(result[1]).toBe("message");
-  });
-
-  test("formats path", () => {
-    const formatter = createConsoleEntryFormatter(createTimeDep())();
-    const entry: ConsoleEntry = {
-      method: "info",
-      path: ["relay", "db"],
-      args: ["message"],
-    };
-
-    const result = formatter(entry);
-
-    expect(result).toEqual(["[relay] [db]", "message"]);
-  });
-
-  test("with no path returns args unchanged", () => {
-    const formatter = createConsoleEntryFormatter(createTimeDep())();
-    const entry: ConsoleEntry = {
-      method: "info",
-      path: [],
-      args: ["message", 123],
-    };
-
-    const result = formatter(entry);
-
-    expect(result).toEqual(["message", 123]);
-  });
-
-  test("relative timestamp", () => {
-    const time = testCreateTime({ startAt: 1000 as Millis });
-    const formatter = createConsoleEntryFormatter({ time })({
-      timestampFormat: "relative",
-    });
-
-    const entry: ConsoleEntry = {
-      method: "info",
-      path: [],
-      args: ["first"],
-    };
-
-    const result1 = formatter(entry);
-    time.advance("1.5s");
-    const result2 = formatter({ ...entry, args: ["second"] });
-
-    expect(result1).toMatchInlineSnapshot(`
-      [
-        "+0.000s",
-        "first",
-      ]
-    `);
-    expect(result2).toMatchInlineSnapshot(`
-      [
-        "+1.500s",
-        "second",
-      ]
-    `);
-  });
-
-  test("relative timestamp with custom start time", () => {
-    const time = testCreateTime({ startAt: 1500 as Millis });
-    const formatter = createConsoleEntryFormatter({ time })({
-      timestampFormat: "relative",
-      startTime: 500 as Millis,
-    });
-
-    const entry: ConsoleEntry = {
-      method: "info",
-      path: [],
-      args: ["message"],
-    };
-
-    const result = formatter(entry);
-
-    expect(result).toMatchInlineSnapshot(`
-      [
-        "+1.000s",
-        "message",
-      ]
-    `);
-  });
-
-  test("iso timestamp", () => {
-    const time = testCreateTime({
-      startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 123) as Millis,
-    });
-    const formatter = createConsoleEntryFormatter({ time })({
-      timestampFormat: "iso",
-    });
-
-    const entry: ConsoleEntry = {
-      method: "info",
-      path: [],
-      args: ["message"],
-    };
-
-    const result = formatter(entry);
-
-    expect(result).toEqual(["2026-01-28T14:30:00.123Z", "message"]);
-  });
-
-  test("absolute timestamp", () => {
-    const time = testCreateTime({
-      startAt: Date.UTC(2026, 0, 28, 14, 30, 15, 123) as Millis,
-    });
-    const formatter = createConsoleEntryFormatter({ time })({
-      timestampFormat: "absolute",
-    });
-
-    const entry: ConsoleEntry = {
-      method: "info",
-      path: [],
-      args: ["message"],
-    };
-
-    const result = formatter(entry);
-
-    // Result includes local time formatted as HH:MM:SS.mmm
-    expect(result).toHaveLength(2);
-    expect(result[0]).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
-    expect(result[1]).toBe("message");
-  });
-
-  test("combines timestamp and path", () => {
-    const formatter = createConsoleEntryFormatter(createTimeDep())({
-      timestampFormat: "relative",
-    });
-
-    const entry: ConsoleEntry = {
-      method: "info",
-      path: ["relay"],
-      args: ["message"],
-    };
-
-    const result = formatter(entry);
-
-    expect(result).toMatchInlineSnapshot(`
-      [
-        "+0.000s [relay]",
-        "message",
-      ]
-    `);
   });
 });
 
@@ -432,6 +273,354 @@ describe("createNativeConsoleOutput", () => {
 
     expect(logSpy).toHaveBeenCalledWith("prefix", "message");
     logSpy.mockRestore();
+  });
+});
+
+describe("createConsoleFormatter", () => {
+  test("uses default time dep when not provided", () => {
+    const formatter = createConsoleFormatter()({
+      timestampFormat: "relative",
+    });
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    // Should have a relative timestamp prefix
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatch(/^\+\d+\.\d{3}s$/);
+    expect(result[1]).toBe("message");
+  });
+
+  test("formats path", () => {
+    const formatter = createConsoleFormatter(createTimeDep())();
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: ["relay", "db"],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toEqual(["[relay] [db]", "message"]);
+  });
+
+  test("with no path returns args unchanged", () => {
+    const formatter = createConsoleFormatter(createTimeDep())();
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message", 123],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toEqual(["message", 123]);
+  });
+
+  test("relative timestamp", () => {
+    const time = testCreateTime({ startAt: 1000 as Millis });
+    const formatter = createConsoleFormatter({ time })({
+      timestampFormat: "relative",
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["first"],
+    };
+
+    const result1 = formatter(entry);
+    time.advance("1.5s");
+    const result2 = formatter({ ...entry, args: ["second"] });
+
+    expect(result1).toMatchInlineSnapshot(`
+      [
+        "+0.000s",
+        "first",
+      ]
+    `);
+    expect(result2).toMatchInlineSnapshot(`
+      [
+        "+1.500s",
+        "second",
+      ]
+    `);
+  });
+
+  test("relative timestamp with custom start time", () => {
+    const time = testCreateTime({ startAt: 1500 as Millis });
+    const formatter = createConsoleFormatter({ time })({
+      timestampFormat: "relative",
+      startTime: 500 as Millis,
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toMatchInlineSnapshot(`
+      [
+        "+1.000s",
+        "message",
+      ]
+    `);
+  });
+
+  test("iso timestamp", () => {
+    const time = testCreateTime({
+      startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 123) as Millis,
+    });
+    const formatter = createConsoleFormatter({ time })({
+      timestampFormat: "iso",
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toEqual(["2026-01-28T14:30:00.123Z", "message"]);
+  });
+
+  test("absolute timestamp", () => {
+    const time = testCreateTime({
+      startAt: Date.UTC(2026, 0, 28, 14, 30, 15, 123) as Millis,
+    });
+    const formatter = createConsoleFormatter({ time })({
+      timestampFormat: "absolute",
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    // Result includes local time formatted as HH:MM:SS.mmm
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
+    expect(result[1]).toBe("message");
+  });
+
+  test("combines timestamp and path", () => {
+    const formatter = createConsoleFormatter(createTimeDep())({
+      timestampFormat: "relative",
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: ["relay"],
+      args: ["message"],
+    };
+
+    const result = formatter(entry);
+
+    expect(result).toMatchInlineSnapshot(`
+      [
+        "+0.000s [relay]",
+        "message",
+      ]
+    `);
+  });
+
+  test("createConsoleFormatter example", () => {
+    const time = testCreateTime({ startAt: 0 as Millis });
+    const output = createTestOutput();
+
+    // Relative timestamps
+    const root = createConsole({
+      output,
+      formatter: createConsoleFormatter({ time })({
+        timestampFormat: "relative",
+      }),
+    });
+
+    const relay = root.child("relay");
+    relay.log("connected");
+    time.advance("1.5s");
+    relay.log("synced");
+
+    expect(output.entries.map((e) => e.formattedArgs)).toMatchInlineSnapshot(`
+      [
+        [
+          "+0.000s [relay]",
+          "connected",
+        ],
+        [
+          "+1.500s [relay]",
+          "synced",
+        ],
+      ]
+    `);
+
+    // Nested children
+    const db = relay.child("db");
+    db.log("opened");
+
+    expect(output.entries[2].formattedArgs).toMatchInlineSnapshot(`
+      [
+        "+1.500s [relay] [db]",
+        "opened",
+      ]
+    `);
+
+    // Absolute timestamps (local clock time HH:MM:SS.mmm)
+    const absoluteOutput = createTestOutput();
+    const absoluteTime = testCreateTime({
+      startAt: Date.UTC(2026, 0, 28, 14, 30, 15, 123) as Millis,
+    });
+    const absoluteRoot = createConsole({
+      output: absoluteOutput,
+      formatter: createConsoleFormatter({ time: absoluteTime })({
+        timestampFormat: "absolute",
+      }),
+    });
+    const absoluteRelay = absoluteRoot.child("relay");
+
+    absoluteRelay.log("connected");
+
+    const [timestamp, message] = absoluteOutput.entries[0].formattedArgs;
+    expect(timestamp).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3} \[relay\]$/);
+    expect(message).toBe("connected");
+  });
+});
+
+describe("createConsoleStoreOutput", () => {
+  test("entry starts as null", () => {
+    const output = createConsoleStoreOutput();
+    expect(output.entry.get()).toBeNull();
+  });
+
+  test("entry updates on write", () => {
+    const output = createConsoleStoreOutput();
+    const console = createConsole({ output });
+    console.info("hello");
+    expect(output.entry.get()).toEqual({
+      method: "info",
+      path: [],
+      args: ["hello"],
+    });
+  });
+
+  test("entry notifies subscribers", () => {
+    const output = createConsoleStoreOutput();
+    const console = createConsole({ output });
+    const received: Array<ConsoleEntry | null> = [];
+    output.entry.subscribe(() => {
+      received.push(output.entry.get());
+    });
+
+    console.warn("one");
+    console.error("two");
+
+    expect(received).toEqual([
+      { method: "warn", path: [], args: ["one"] },
+      { method: "error", path: [], args: ["two"] },
+    ]);
+  });
+
+  test("captures child entries", () => {
+    const output = createConsoleStoreOutput();
+    const console = createConsole({ output });
+    const child = console.child("db");
+    const received: Array<ConsoleEntry | null> = [];
+    output.entry.subscribe(() => {
+      received.push(output.entry.get());
+    });
+
+    child.info("from child");
+
+    expect(received).toEqual([
+      { method: "info", path: ["db"], args: ["from child"] },
+    ]);
+  });
+
+  test("skips filtered entries", () => {
+    const output = createConsoleStoreOutput();
+    const console = createConsole({ output, level: "warn" });
+    console.debug("ignored");
+    expect(output.entry.get()).toBeNull();
+    console.warn("logged");
+    expect(output.entry.get()?.method).toBe("warn");
+  });
+});
+
+describe("createConsoleArrayOutput", () => {
+  test("captures entries to array", () => {
+    const entries: Array<ConsoleEntry> = [];
+    const output = createConsoleArrayOutput(entries);
+
+    output.write({
+      method: "info",
+      path: ["relay"],
+      args: ["message", 123],
+    });
+
+    expect(entries).toEqual([
+      {
+        method: "info",
+        path: ["relay"],
+        args: ["message", 123],
+      },
+    ]);
+  });
+
+  test("works with createConsole", () => {
+    const entries: Array<ConsoleEntry> = [];
+    const output = createConsoleArrayOutput(entries);
+    const console = createConsole({ output });
+
+    console.info("hello");
+    console.warn("world");
+
+    expect(entries.map((e) => e.method)).toEqual(["info", "warn"]);
+    expect(entries.map((e) => e.args[0])).toEqual(["hello", "world"]);
+  });
+});
+
+describe("createMultiOutput", () => {
+  test("writes to all outputs", () => {
+    const entries1: Array<ConsoleEntry> = [];
+    const entries2: Array<ConsoleEntry> = [];
+    const output = createMultiOutput([
+      createConsoleArrayOutput(entries1),
+      createConsoleArrayOutput(entries2),
+    ]);
+    const console = createConsole({ output });
+
+    console.info("hello");
+
+    expect(entries1).toHaveLength(1);
+    expect(entries2).toHaveLength(1);
+    expect(entries1[0]).toEqual(entries2[0]);
+  });
+
+  test("combines native and store outputs", () => {
+    const storeOutput = createConsoleStoreOutput();
+    const entries: Array<ConsoleEntry> = [];
+    const output = createMultiOutput([
+      createConsoleArrayOutput(entries),
+      storeOutput,
+    ]);
+    const console = createConsole({ output });
+
+    console.error("fail");
+
+    expect(entries).toHaveLength(1);
+    expect(storeOutput.entry.get()?.args).toEqual(["fail"]);
   });
 });
 
@@ -610,38 +799,5 @@ describe("testCreateConsole", () => {
 
     expect(console.name).toBe("");
     expect(child.name).toBe("relay");
-  });
-});
-
-describe("createConsoleArrayOutput", () => {
-  test("captures entries to array", () => {
-    const entries: Array<ConsoleEntry> = [];
-    const output = createConsoleArrayOutput(entries);
-
-    output.write({
-      method: "info",
-      path: ["relay"],
-      args: ["message", 123],
-    });
-
-    expect(entries).toEqual([
-      {
-        method: "info",
-        path: ["relay"],
-        args: ["message", 123],
-      },
-    ]);
-  });
-
-  test("works with createConsole", () => {
-    const entries: Array<ConsoleEntry> = [];
-    const output = createConsoleArrayOutput(entries);
-    const console = createConsole({ output });
-
-    console.info("hello");
-    console.warn("world");
-
-    expect(entries.map((e) => e.method)).toEqual(["info", "warn"]);
-    expect(entries.map((e) => e.args[0])).toEqual(["hello", "world"]);
   });
 });

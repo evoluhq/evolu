@@ -22,7 +22,7 @@ import {
  *
  * ```ts
  * const console = createConsole({
- *   formatEntry: createConsoleEntryFormatter()({
+ *   formatter: createConsoleFormatter()({
  *     timestampFormat: "relative",
  *   }),
  * });
