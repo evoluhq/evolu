@@ -18,7 +18,7 @@ export default defineProject({
       enabled: true,
       provider: playwright(),
       headless: true,
-      fileParallelism: false,
+      fileParallelism: false, // false is faster for some reason.
       instances: isCoverage
         ? [{ browser: "chromium" }]
         : [

@@ -28,8 +28,7 @@ export default defineProject({
       enabled: true,
       provider: playwright(),
       headless: true,
-      // Sequential execution is faster than parallel for some reason.
-      fileParallelism: false,
+      fileParallelism: false, // false is faster for some reason.
       commands: {
         startWsServer: async () => {
           const { createServer } = await import("./test/_globalSetup.js");
