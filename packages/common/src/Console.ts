@@ -51,14 +51,16 @@ import {
  * // With formatting (timestamps and path prefixes)
  * const console = createConsole({
  *   level: "info",
- *   formatter: createConsoleFormatter()({
- *     timestampFormat: "relative",
- *   }),
+ *   formatter: createConsoleFormatter()({ timestampFormat: "relative" }),
  * });
  *
  * // Children inherit level at creation, then are independent
  * const console = run.deps.console.child("relay");
  * console.setLevel("silent");
+ *
+ * // Tip: Wrap logged values in objects for labeled output in DevTools
+ * console.info("Creating instance", { config }); // Good — expandable "config:" label
+ * console.info("Creating instance", config); // Avoid — anonymous object, no label
  *
  * // Batch update via children
  * const setLevelRecursive = (c: Console, level: ConsoleLevel): void => {
@@ -147,6 +149,13 @@ export interface Console {
 
   /** Resets a counter. Level: debug. */
   readonly countReset: (label?: string) => void;
+
+  /**
+   * Writes a pre-built {@link ConsoleEntry} directly to the output, bypassing
+   * level filtering. Used to replay entries from another context (e.g., a
+   * SharedWorker) where filtering was already applied.
+   */
+  readonly write: (entry: ConsoleEntry) => void;
 }
 
 export interface ConsoleDep {
@@ -361,7 +370,7 @@ export const createConsole = ({
 
   const getLevel = (): ConsoleLevel => ownLevel ?? level;
 
-  const write =
+  const createMethod =
     (
       method: ConsoleMethod,
       methodLevel: ConsoleLevel,
@@ -373,9 +382,9 @@ export const createConsole = ({
     };
 
   const levelMethod = (method: ConsoleLevel & ConsoleMethod) =>
-    write(method, method, formatter);
+    createMethod(method, method, formatter);
 
-  const debugMethod = (method: ConsoleMethod) => write(method, "debug");
+  const debugMethod = (method: ConsoleMethod) => createMethod(method, "debug");
 
   return {
     name,
@@ -406,6 +415,10 @@ export const createConsole = ({
       ["dir", "table", "time", "timeLog", "timeEnd", "count", "countReset"],
       debugMethod,
     ),
+
+    write: (entry) => {
+      output.write(entry, formatter);
+    },
   };
 };
 

@@ -236,6 +236,36 @@ describe("createConsole", () => {
     expect(console.name).toBe("root");
     expect(child.name).toBe("relay");
   });
+
+  test("write bypasses level filtering", () => {
+    const output = createTestOutput();
+    const console = createConsole({ output, level: "silent" });
+
+    const entry: ConsoleEntry = {
+      method: "debug",
+      path: ["worker"],
+      args: ["replayed"],
+    };
+    console.write(entry);
+
+    expect(output.entries).toHaveLength(1);
+    expect(output.entries[0].entry).toEqual(entry);
+  });
+
+  test("write passes formatter to output", () => {
+    const output = createTestOutput();
+    const formatter = (entry: ConsoleEntry) => ["fmt", ...entry.args];
+    const console = createConsole({ output, formatter });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: [],
+      args: ["msg"],
+    };
+    console.write(entry);
+
+    expect(output.entries[0].formattedArgs).toEqual(["fmt", "msg"]);
+  });
 });
 
 describe("createNativeConsoleOutput", () => {
