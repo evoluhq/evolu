@@ -11,9 +11,7 @@ import { Suspense, use, type FC } from "react";
 const TodoId = Evolu.id("Todo");
 type TodoId = typeof TodoId.Type;
 
-// Schema defines database structure with runtime validation.
-// Column types validate data on insert/update/upsert/sync.
-const Schema = {
+const AppSchema = {
   todo: {
     id: TodoId,
     // Branded type ensuring titles are non-empty and ≤100 chars.
@@ -24,7 +22,7 @@ const Schema = {
 };
 
 // Create typed query builder (once per schema).
-const createQuery = Evolu.createQueryBuilder(Schema);
+const createQuery = Evolu.createQueryBuilder(AppSchema);
 
 const _todosQuery = createQuery((db) =>
   db
@@ -45,13 +43,20 @@ const _todosQuery = createQuery((db) =>
     .orderBy("createdAt"),
 );
 
-// Create Run with Evolu dependencies for React Web.
-const run = createRun(createEvoluDeps());
+const console = Evolu.createConsole({
+  level: "debug",
+  formatter: Evolu.createConsoleFormatter()({ timestampFormat: "relative" }),
+});
+
+// Create Evolu dependencies for React Web.
+const deps = createEvoluDeps({ console });
+
+const run = createRun(deps);
 
 // Create Evolu App.
 const app = run(
-  Evolu.createEvolu(Schema, {
-    name: Evolu.SimpleName.orThrow("minimal-example"),
+  Evolu.createEvolu(AppSchema, {
+    appName: Evolu.AppName.orThrow("minimal-example"),
 
     ...(process.env.NODE_ENV === "development" && {
       transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
