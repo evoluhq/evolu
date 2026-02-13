@@ -36,36 +36,68 @@ export interface InitEvoluMessage extends Typed<"InitEvolu"> {
 export const initEvoluWorker =
   (
     self: SharedWorkerSelf<EvoluWorkerInput>,
-  ): Task<void, never, ConsoleStoreOutputEntryDep & CreateMessagePortDep> =>
-  (run) => {
+  ): Task<
+    AsyncDisposableStack,
+    never,
+    ConsoleStoreOutputEntryDep & CreateMessagePortDep
+  > =>
+  async (run) => {
     const { createMessagePort, consoleStoreOutputEntry } = run.deps;
+    const console = run.deps.console.child("EvoluWorker");
+
     // TODO: Use heartbeat to detect and prune dead ports.
     const consolePorts = new Set<MessagePort<ConsoleEntry>>();
+    const queuedConsoleEntries: Array<ConsoleEntry> = [];
+    const broadcastConsoleEntry = (entry: ConsoleEntry): void => {
+      for (const port of consolePorts) port.postMessage(entry);
+    };
 
-    run.onAbort(
+    await using stack = run.stack();
+
+    stack.defer(
       consoleStoreOutputEntry.subscribe(() => {
         const entry = consoleStoreOutputEntry.get();
         if (!entry) return;
-        for (const port of consolePorts) port.postMessage(entry);
+
+        if (consolePorts.size === 0) {
+          queuedConsoleEntries.push(entry);
+          return;
+        }
+
+        broadcastConsoleEntry(entry);
       }),
     );
 
+    console.info("initEvoluWorker");
+
     self.onConnect = (port) => {
+      console.info("onConnect");
+
       port.onMessage = (message) => {
         switch (message.type) {
           case "InitConsole": {
             const consolePort = createMessagePort<ConsoleEntry>(message.port);
             consolePorts.add(consolePort);
+
+            if (queuedConsoleEntries.length > 0) {
+              queuedConsoleEntries.forEach(broadcastConsoleEntry);
+              queuedConsoleEntries.length = 0;
+            }
+
             break;
           }
-          case "InitEvolu":
-            // TODO:
+          case "InitEvolu": {
+            // TODO: Wrap port, do async init (open DB, load owner),
+            // then set onMessage to start processing requests.
+            // Messages are queued until onMessage is assigned.
+            const _evoluPort = createMessagePort(message.port);
             break;
+          }
           default:
             exhaustiveCheck(message);
         }
       };
     };
 
-    return ok();
+    return ok(stack.move());
   };

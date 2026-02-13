@@ -1,10 +1,32 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, expectTypeOf, test } from "vitest";
+import type { Brand } from "../../src/Brand.js";
+import type { ConsoleEntry, TestConsole } from "../../src/Console.js";
+import { testCreateConsole } from "../../src/Console.js";
 import { lazyVoid } from "../../src/Function.js";
-import { createEvolu, createEvoluDeps } from "../../src/local-first/Evolu.js";
+import {
+  AppName,
+  createEvolu,
+  createEvoluDeps,
+} from "../../src/local-first/Evolu.js";
+import type {
+  EvoluWorkerInput,
+  InitConsoleMessage,
+} from "../../src/local-first/Worker.js";
+import { err, ok } from "../../src/Result.js";
 import { SqliteBoolean } from "../../src/Sqlite.js";
 import { testCreateRun } from "../../src/Test.js";
-import { id, NonEmptyString100, nullOr } from "../../src/Type.js";
-import { testSimpleName } from "../_deps.js";
+import {
+  createIdFromString,
+  id,
+  NonEmptyString100,
+  nullOr,
+} from "../../src/Type.js";
+import {
+  testCreateMessageChannel,
+  testCreateMessagePort,
+  testCreateSharedWorker,
+} from "../../src/Worker.js";
+import { testAppName } from "../_deps.js";
 import { testAppOwner } from "./_fixtures.js";
 
 const TodoId = id("Todo");
@@ -18,19 +40,133 @@ const Schema = {
   },
 };
 
-const createEvoluRun = () => testCreateRun({ reloadApp: lazyVoid });
+const createEvoluRun = () => {
+  const { worker } = testCreateSharedWorker<EvoluWorkerInput>();
+  return testCreateRun({
+    console: testCreateConsole(),
+    createMessageChannel: testCreateMessageChannel,
+    reloadApp: lazyVoid,
+    evoluWorker: worker,
+  });
+};
 
-test("createEvoluDeps returns deps unchanged", () => {
-  const deps = { reloadApp: lazyVoid };
-  expect(createEvoluDeps(deps)).toBe(deps);
+test("AppName", () => {
+  expect(AppName.from("my-app")).toEqual(ok("my-app"));
+  expect(AppName.from("")).toEqual(
+    err({
+      type: "Regex",
+      name: "UrlSafeString",
+      pattern: /^[A-Za-z0-9_-]+$/,
+      value: "",
+    }),
+  );
+  expect(AppName.from("a".repeat(41))).toEqual(ok("a".repeat(41)));
+  expect(AppName.from("a".repeat(42))).toEqual(
+    err({
+      type: "AppName",
+      value: "a".repeat(42),
+    }),
+  );
+
+  const appName = AppName.orThrow("my-app");
+  expectTypeOf(appName).toExtend<string & Brand<"AppName">>();
+  expectTypeOf(AppName.Input).toEqualTypeOf<string>();
+  expectTypeOf(AppName.Parent).toEqualTypeOf<string & Brand<"UrlSafeString">>();
+});
+
+describe("createEvoluDeps", () => {
+  const setupAndCall = (console?: TestConsole) => {
+    const { worker, self, connect } =
+      testCreateSharedWorker<EvoluWorkerInput>();
+    const messages: Array<EvoluWorkerInput> = [];
+    self.onConnect = (port) => {
+      port.onMessage = (message) => messages.push(message);
+    };
+    connect();
+
+    createEvoluDeps({
+      createMessageChannel: testCreateMessageChannel,
+      evoluWorker: worker,
+      reloadApp: lazyVoid,
+      ...(console && { console }),
+    });
+
+    return { messages };
+  };
+
+  test("posts InitConsole with port to worker", () => {
+    const { messages } = setupAndCall(testCreateConsole());
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe("InitConsole");
+  });
+
+  test("falls back to default console when not provided", () => {
+    const { messages } = setupAndCall();
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].type).toBe("InitConsole");
+  });
+
+  test("wires console channel to console.write", () => {
+    const console = testCreateConsole();
+    const { messages } = setupAndCall(console);
+
+    const initConsole = messages[0] as InitConsoleMessage;
+    const workerPort = testCreateMessagePort<ConsoleEntry>(initConsole.port);
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: ["test"],
+      args: ["hello"],
+    };
+    workerPort.postMessage(entry);
+
+    expect(console.getEntriesSnapshot()).toEqual([entry]);
+  });
+
+  test("dispose cleans up resources", () => {
+    const { worker, self, connect } =
+      testCreateSharedWorker<EvoluWorkerInput>();
+    self.onConnect = (port) => {
+      port.onMessage = lazyVoid;
+    };
+    connect();
+
+    const channels: Array<{ readonly isDisposed: () => boolean }> = [];
+
+    const deps = createEvoluDeps({
+      createMessageChannel: <Input, Output = never>() => {
+        const channel = testCreateMessageChannel<Input, Output>();
+        channels.push(channel);
+        return channel;
+      },
+      evoluWorker: worker,
+      reloadApp: lazyVoid,
+    });
+
+    expect(channels[0].isDisposed()).toBe(false);
+    deps[Symbol.dispose]();
+    expect(channels[0].isDisposed()).toBe(true);
+  });
 });
 
 describe("createEvolu", () => {
+  test("resolves name from appName and appOwner hash", async () => {
+    await using run = createEvoluRun();
+
+    const result = await run(
+      createEvolu(Schema, { appName: testAppName, appOwner: testAppOwner }),
+    );
+    const expectedSuffix = createIdFromString(testAppOwner.id);
+    expect(result.ok && result.value.name).toBe(`AppName-${expectedSuffix}`);
+  });
+
   test("appOwner from config is exposed as evolu.appOwner", async () => {
     await using run = createEvoluRun();
 
     const result = await run(
-      createEvolu(Schema, { name: testSimpleName, appOwner: testAppOwner }),
+      createEvolu(Schema, { appName: testAppName, appOwner: testAppOwner }),
     );
 
     expect(result.ok && result.value.appOwner).toBe(testAppOwner);
@@ -39,7 +175,7 @@ describe("createEvolu", () => {
   test("appOwner is created when omitted from config", async () => {
     await using run = createEvoluRun();
 
-    const result = await run(createEvolu(Schema, { name: testSimpleName }));
+    const result = await run(createEvolu(Schema, { appName: testAppName }));
 
     expect(result.ok && result.value.appOwner).toMatchInlineSnapshot(`
       {
@@ -50,6 +186,15 @@ describe("createEvolu", () => {
         "writeKey": uint8:[129,228,239,103,127,237,0,59,174,241,77,12,26,180,213,14],
       }
     `);
+  });
+
+  test("asyncDispose disposes Evolu resources", async () => {
+    await using run = createEvoluRun();
+
+    const result = await run(createEvolu(Schema, { appName: testAppName }));
+
+    if (!result.ok) return;
+    await result.value[Symbol.asyncDispose]();
   });
 });
 
@@ -77,14 +222,14 @@ describe("createEvolu", () => {
 //   maxLength,
 //   NonEmptyString,
 //   nullOr,
-//   SimpleName,
+//   Name,
 // } from "../../src/Type.js";
 // import {
 //   testCreateDummyWebSocket,
 //   testCreateSqliteDriver,
 //   testRandom,
 //   testRandomBytes,
-//   testSimpleName,
+//   testName,
 //   testTime,
 // } from "../_deps.js";
 
@@ -138,7 +283,7 @@ describe("createEvolu", () => {
 // let testInstanceCounter = 0;
 
 // const testCreateEvoluDeps = async () => {
-//   const instanceName = SimpleName.orThrow(`Test${testInstanceCounter++}`);
+//   const instanceName = Name.orThrow(`Test${testInstanceCounter++}`);
 //   // We eagerly create a SqliteDriver instance so we can use it for SQL tests.
 //   const sqliteDriver = await testCreateSqliteDriver(instanceName);
 //   const createSqliteDriver = () => Promise.resolve(sqliteDriver);
@@ -205,7 +350,7 @@ describe("createEvolu", () => {
 
 //     // @ts-expect-error - Schema validation should catch missing id column
 //     createEvolu(deps)(SchemaWithoutId, {
-//       name: testSimpleName,
+//       name: testName,
 //     });
 //   });
 
@@ -227,7 +372,7 @@ describe("createEvolu", () => {
 
 //     // @ts-expect-error - Schema validation should catch system column name
 //     createEvolu(deps)(SchemaWithDefaultColumn, {
-//       name: testSimpleName,
+//       name: testName,
 //     });
 //   });
 
@@ -249,7 +394,7 @@ describe("createEvolu", () => {
 
 //     // @ts-expect-error - Schema validation should catch system column name
 //     createEvolu(deps)(SchemaWithDefaultColumn, {
-//       name: testSimpleName,
+//       name: testName,
 //     });
 //   });
 
@@ -271,7 +416,7 @@ describe("createEvolu", () => {
 
 //     // @ts-expect-error - Schema validation should catch system column name
 //     createEvolu(deps)(SchemaWithDefaultColumn, {
-//       name: testSimpleName,
+//       name: testName,
 //     });
 //   });
 
@@ -293,7 +438,7 @@ describe("createEvolu", () => {
 
 //     // @ts-expect-error - Schema validation should catch system column name
 //     createEvolu(deps)(SchemaWithDefaultColumn, {
-//       name: testSimpleName,
+//       name: testName,
 //     });
 //   });
 
@@ -313,7 +458,7 @@ describe("createEvolu", () => {
 
 //     // @ts-expect-error - Schema validation should catch non-branded id column
 //     createEvolu(deps)(SchemaWithInvalidId, {
-//       name: testSimpleName,
+//       name: testName,
 //     });
 //   });
 
@@ -334,7 +479,7 @@ describe("createEvolu", () => {
 
 //     // @ts-expect-error - Schema validation should catch incompatible column type
 //     createEvolu(deps)(SchemaWithInvalidType, {
-//       name: testSimpleName,
+//       name: testName,
 //     });
 //   });
 // });

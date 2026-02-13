@@ -46,8 +46,9 @@ export * from "./Worker.js";
 
 // Local-first essentials.
 export type { EvoluError } from "./local-first/Error.js";
-export { createEvolu } from "./local-first/Evolu.js";
+export { AppName, createEvolu } from "./local-first/Evolu.js";
 export type {
+  AppNameError,
   Evolu,
   EvoluConfig,
   EvoluDeps,

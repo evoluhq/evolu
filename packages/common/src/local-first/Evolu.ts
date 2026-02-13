@@ -4,12 +4,15 @@
  * @module
  */
 
+import type { ConsoleDep, ConsoleEntry } from "../Console.js";
+import { createConsole } from "../Console.js";
 import type { Listener, Unsubscribe } from "../Listeners.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
-import { ok } from "../Result.js";
+import { err, ok } from "../Result.js";
 import type { Task } from "../Task.js";
-import type { createIdFromString, Id } from "../Type.js";
-import { SimpleName } from "../Type.js";
+import type { Id, TypeError } from "../Type.js";
+import { brand, createIdFromString, Name, UrlSafeString } from "../Type.js";
+import type { CreateMessageChannelDep } from "../Worker.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
 import {
   createAppOwner,
@@ -32,23 +35,26 @@ import type {
 } from "./Schema.js";
 import type { SyncOwner } from "./Sync.js";
 import type { Timestamp } from "./Timestamp.js";
+import type { EvoluWorkerDep } from "./Worker.js";
 
 export interface EvoluConfig {
   /**
-   * The name of the Evolu instance. Evolu is multitenant - it can run multiple
-   * instances concurrently. Each instance must have a unique name.
+   * The app name. Evolu is multitenant - it can run multiple instances
+   * concurrently. The same app can have multiple instances for different
+   * accounts.
    *
-   * The instance name is used as the SQLite database filename for persistent
-   * storage, ensuring that database files are separated and invisible to each
-   * other.
+   * Evolu derives the final instance name from `appName` and `appOwner`. The
+   * derived instance name is used as the SQLite database filename and as the
+   * log prefix. This ensures that each owner gets a separate local database
+   * while preserving a readable app prefix.
    *
    * ### Example
    *
    * ```ts
-   * // name: SimpleName.orThrow("MyApp")
+   * // appName: AppName.orThrow("MyApp")
    * ```
    */
-  readonly name: SimpleName;
+  readonly appName: AppName;
 
   /**
    * External AppOwner to use when creating Evolu instance. Use this when you
@@ -61,30 +67,7 @@ export interface EvoluConfig {
    *
    * ### Example
    *
-   * ```ts
-   * const ConfigId = id("Config");
-   * type ConfigId = typeof ConfigId.Type;
-   *
-   * const DeviceSchema = {
-   *   config: {
-   *     id: ConfigId,
-   *     key: NonEmptyString50,
-   *     value: NonEmptyString50,
-   *   },
-   * };
-   *
-   * // Local-only instance for device settings (no sync)
-   * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-   *   name: SimpleName.orThrow("MyApp-Device"),
-   *   transports: [], // No sync - stays local to device
-   * });
-   *
-   * // Main synced instance for user data
-   * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
-   *   name: SimpleName.orThrow("MyApp"),
-   *   // Default transports for sync
-   * });
-   * ```
+   * Use `appOwner` when restoring or switching owners managed by your app.
    */
   readonly appOwner?: AppOwner;
 
@@ -186,12 +169,37 @@ export interface EvoluConfig {
   // readonly reloadAppUrl?: string;
 }
 
-/** Local-first SQL database with typed queries, mutations, and sync. */
+/**
+ * Application name.
+ *
+ * Evolu uses AppName as the base prefix for {@link Evolu.name}. The final
+ * instance name is derived per {@link AppOwner} as
+ * `${appName}-${createIdFromString(appOwner.id)}`.
+ *
+ * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
+ * `_`) and must be between 1 and 41 characters.
+ */
+export const AppName = /*#__PURE__*/ brand("AppName", UrlSafeString, (value) =>
+  value.length >= 1 && value.length <= 41
+    ? ok(value)
+    : err<AppNameError>({ type: "AppName", value }),
+);
+export type AppName = typeof AppName.Type;
+export interface AppNameError extends TypeError<"AppName"> {}
+
+/**
+ * Local-first SQL database with typed queries, mutations, and sync.
+ *
+ * TODO: Better docs.
+ */
 export interface Evolu<
   S extends EvoluSchema = EvoluSchema,
 > extends AsyncDisposable {
-  /** The name of the Evolu instance from {@link EvoluConfig}. */
-  readonly name: SimpleName;
+  /**
+   * Resolved instance name derived from {@link EvoluConfig.appName} and app
+   * owner hash.
+   */
+  readonly name: Name;
 
   /** {@link AppOwner}. */
   readonly appOwner: AppOwner;
@@ -373,24 +381,30 @@ export interface Evolu<
 /** Function returned by {@link Evolu.useOwner} to stop using an {@link SyncOwner}. */
 export type UnuseOwner = () => void;
 
-export type EvoluDeps = EvoluPlatformDeps;
+export type EvoluDeps = EvoluPlatformDeps & Disposable;
 
-export type EvoluPlatformDeps = ReloadAppDep & Partial<FlushSyncDep>;
+export type EvoluPlatformDeps = CreateMessageChannelDep &
+  EvoluWorkerDep &
+  ReloadAppDep &
+  Partial<ConsoleDep> &
+  Partial<FlushSyncDep>;
 
 /** Creates Evolu dependencies from platform-specific dependencies. */
-// eslint-disable-next-line arrow-body-style
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
-  return deps;
-  // const disposableStack = new DisposableStack();
-  // const evoluError = createErrorStore({ ...deps, disposableStack });
+  const { createMessageChannel, evoluWorker } = deps;
+  const console = deps.console ?? createConsole();
+  const stack = new DisposableStack();
 
-  // return {
-  //   ...deps,
-  //   ...createDisposableDep(disposableStack),
-  //   console: createConsole(),
-  //   evoluError,
-  //   randomBytes: createRandomBytes(),
-  // };
+  const consoleChannel = stack.use(createMessageChannel<ConsoleEntry>());
+  consoleChannel.port2.onMessage = console.write;
+
+  evoluWorker.port.postMessage(
+    { type: "InitConsole", port: consoleChannel.port1.native },
+    [consoleChannel.port1.native],
+  );
+
+  const moved = stack.move();
+  return { ...deps, [Symbol.dispose]: () => moved[Symbol.dispose]() };
 };
 
 /**
@@ -402,16 +416,34 @@ export const createEvolu =
     _schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
     config: EvoluConfig,
   ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
-  (run) => {
-    const { appOwner = createAppOwner(createOwnerSecret(run.deps)) } = config;
+  async (run) => {
+    const { createMessageChannel, evoluWorker } = run.deps;
+    const { appName, appOwner = createAppOwner(createOwnerSecret(run.deps)) } =
+      config;
+    const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
+    const console = run.deps.console.child(name).child("Evolu");
 
-    return ok({ appOwner } as Evolu<S>);
+    console.info("createEvolu", { config });
+
+    await using stack = run.stack();
+
+    // Set up the evolu channel for bidirectional communication.
+    // TODO: Define EvoluRequest/EvoluResponse types.
+    const evoluChannel = stack.use(createMessageChannel());
+    evoluWorker.port.postMessage(
+      { type: "InitEvolu", port: evoluChannel.port1.native },
+      [evoluChannel.port1.native],
+    );
+
+    // console
+
+    const moved = stack.move();
+    return ok({
+      name,
+      appOwner,
+      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    } as unknown as Evolu<S>);
   };
-
-// CreateMessageChannelDep &
-// ReloadAppDep &
-// EvoluWorkerDep &
-// Partial<FlushSyncDep>;
 
 // export interface ErrorStoreDep {
 //   /**

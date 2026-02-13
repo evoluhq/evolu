@@ -1,6 +1,8 @@
-import type { EvoluDeps } from "@evolu/common/local-first";
+import type { ConsoleDep } from "@evolu/common";
+import type { EvoluDeps, EvoluWorkerInput } from "@evolu/common/local-first";
 import { createEvoluDeps as createCommonEvoluDeps } from "@evolu/common/local-first";
 import { reloadApp } from "../Platform.js";
+import { createMessageChannel, createSharedWorker } from "../Worker.js";
 
 // // TODO: Redesign.
 // // eslint-disable-next-line evolu/require-pure-annotation
@@ -10,16 +12,17 @@ import { reloadApp } from "../Platform.js";
 // });
 
 /** Creates Evolu dependencies for the web platform. */
-export const createEvoluDeps = (): EvoluDeps =>
-  createCommonEvoluDeps({ reloadApp });
-// const evoluWorker = createSharedWorker<EvoluWorkerInput>(
-//   new SharedWorker(new URL("Worker.worker.js", import.meta.url), {
-//     type: "module",
-//   }),
-// );
+export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
+  const evoluWorker = createSharedWorker<EvoluWorkerInput>(
+    new SharedWorker(new URL("Worker.worker.js", import.meta.url), {
+      type: "module",
+    }),
+  );
 
-// return createCommonEvoluDeps({
-//   createMessageChannel,
-//   reloadApp,
-//   evoluWorker,
-// });
+  return createCommonEvoluDeps({
+    ...deps,
+    createMessageChannel,
+    reloadApp,
+    evoluWorker,
+  });
+};
