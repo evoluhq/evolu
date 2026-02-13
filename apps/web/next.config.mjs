@@ -17,6 +17,32 @@ const withMDX = nextMDX({
 const nextConfig = {
   reactStrictMode: true,
   pageExtensions: ["js", "jsx", "ts", "tsx", "mdx"],
+
+  // Resolve workspace @evolu/* packages to TypeScript source for live reload.
+  // The "source" condition matches the export added to each package.json.
+  // The extensionAlias maps .js imports to .ts since packages use NodeNext
+  // module resolution with explicit .js extensions (required for npm publishing).
+  transpilePackages: [
+    "@evolu/common",
+    "@evolu/web",
+    "@evolu/react",
+    "@evolu/react-web",
+  ],
+  webpack(config) {
+    config.resolve.conditionNames = [
+      "source",
+      "browser",
+      "import",
+      "module",
+      "require",
+      "default",
+    ];
+    config.resolve.extensionAlias = {
+      ".js": [".ts", ".tsx", ".js"],
+    };
+    return config;
+  },
+
   outputFileTracingIncludes: {
     "/**/*": ["./src/app/**/*.mdx"],
   },
