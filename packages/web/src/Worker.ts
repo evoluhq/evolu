@@ -149,13 +149,28 @@ const wrap = <Input, Output>(
     | globalThis.MessagePort
     | globalThis.Worker,
 ): MessagePort<Input, Output> => {
-  const port: MessagePort<Input, Output> = {
+  let onMessageHandler: ((message: Output) => void) | null = null;
+
+  return {
     postMessage: (message: Input, transfer?: ReadonlyArray<Transferable>) => {
       if (transfer == null) native.postMessage(message);
       else native.postMessage(message, [...transfer]);
     },
 
-    onMessage: null,
+    get onMessage() {
+      return onMessageHandler;
+    },
+    set onMessage(fn) {
+      onMessageHandler = fn;
+      if (fn) {
+        // Messages are queued until onMessage is assigned.
+        native.onmessage = (event: MessageEvent<Output>) => {
+          fn(event.data);
+        };
+      } else {
+        native.onmessage = null;
+      }
+    },
 
     native: native as unknown as NativeMessagePort,
 
@@ -165,14 +180,4 @@ const wrap = <Input, Output>(
       else native.close();
     },
   };
-
-  native.onmessage = (event: MessageEvent<Output>) => {
-    assert(
-      port.onMessage != null,
-      "onMessage must be set before receiving messages",
-    );
-    port.onMessage(event.data);
-  };
-
-  return port;
 };

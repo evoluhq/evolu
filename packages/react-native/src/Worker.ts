@@ -10,105 +10,41 @@ import {
 } from "@evolu/common";
 
 /**
- * Creates a fake {@link Worker} for React Native.
+ * Creates an in-memory {@link Worker} for React Native.
  *
- * Since React Native doesn't support Web Workers yet, this creates a fake
- * worker that runs in the main thread. The worker logic runs synchronously but
- * messages are delivered asynchronously via microtasks to maintain similar
- * semantics.
+ * Since React Native doesn't support Web Workers yet, this runs in the main
+ * thread. Messages are queued until `onMessage` is assigned.
  */
 export const createWorker = <Input, Output>(
   initWorker: (self: WorkerSelf<Input, Output>) => void,
 ): Worker<Input, Output> => {
-  let workerSelf: WorkerSelf<Input, Output> | null = null;
+  const workerReceive: PortState<Input> = { handler: null, queue: [] };
+  const clientReceive: PortState<Output> = { handler: null, queue: [] };
 
-  const worker: Worker<Input, Output> = {
-    postMessage: (message) => {
-      queueMicrotask(() => {
-        assert(
-          workerSelf?.onMessage != null,
-          "Worker onMessage must be set before receiving messages",
-        );
-        workerSelf.onMessage(message);
-      });
-    },
-    onMessage: null,
-    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
-    [Symbol.dispose]: () => {
-      worker.onMessage = null;
-      workerSelf?.[Symbol.dispose]();
-      workerSelf = null;
-    },
-  };
+  const workerSelf = createRnPort<Output, Input>(workerReceive, clientReceive);
+  const worker = createRnPort<Input, Output>(clientReceive, workerReceive, () =>
+    workerSelf[Symbol.dispose](),
+  );
 
-  workerSelf = {
-    onMessage: null,
-    postMessage: (message) => {
-      queueMicrotask(() => {
-        assert(
-          worker.onMessage != null,
-          "onMessage must be set before receiving messages",
-        );
-        worker.onMessage(message);
-      });
-    },
-    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
-    [Symbol.dispose]: () => {
-      if (workerSelf) workerSelf.onMessage = null;
-    },
-  };
-
-  // Initialize the worker
   initWorker(workerSelf);
 
   return worker;
 };
 
 /**
- * Creates a fake {@link SharedWorker} for React Native.
+ * Creates an in-memory {@link SharedWorker} for React Native.
  *
- * Since React Native doesn't support SharedWorkers, this creates a fake shared
- * worker that runs in the main thread. All "connections" share the same
- * instance.
+ * Since React Native doesn't support SharedWorkers, this runs in the main
+ * thread. Messages are queued until `onMessage` is assigned.
  */
 export const createSharedWorker = <Input, Output>(
   initWorker: (self: SharedWorkerSelf<Input, Output>) => void,
 ): SharedWorker<Input, Output> => {
-  let workerPort: MessagePort<Output, Input> | null = null;
+  const workerReceive: PortState<Input> = { handler: null, queue: [] };
+  const clientReceive: PortState<Output> = { handler: null, queue: [] };
 
-  const clientPort: MessagePort<Input, Output> = {
-    postMessage: (message) => {
-      queueMicrotask(() => {
-        assert(
-          workerPort?.onMessage != null,
-          "Worker port onMessage must be set before receiving messages",
-        );
-        workerPort.onMessage(message);
-      });
-    },
-    onMessage: null,
-    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
-    [Symbol.dispose]: () => {
-      clientPort.onMessage = null;
-    },
-  };
-
-  workerPort = {
-    postMessage: (message) => {
-      queueMicrotask(() => {
-        assert(
-          clientPort.onMessage != null,
-          "onMessage must be set before receiving messages",
-        );
-        clientPort.onMessage(message);
-      });
-    },
-    onMessage: null,
-    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
-    [Symbol.dispose]: () => {
-      if (workerPort) workerPort.onMessage = null;
-    },
-  };
+  const clientPort = createRnPort<Input, Output>(clientReceive, workerReceive);
+  const workerPort = createRnPort<Output, Input>(workerReceive, clientReceive);
 
   const self: SharedWorkerSelf<Input, Output> = {
     onConnect: null,
@@ -118,17 +54,13 @@ export const createSharedWorker = <Input, Output>(
     },
   };
 
-  // Initialize the worker
   initWorker(self);
 
-  // Simulate connection
-  queueMicrotask(() => {
-    assert(
-      self.onConnect != null,
-      "onConnect must be set before receiving connections",
-    );
-    self.onConnect(workerPort);
-  });
+  assert(
+    self.onConnect != null,
+    "onConnect must be set before receiving connections",
+  );
+  self.onConnect(workerPort);
 
   return {
     port: clientPort,
@@ -139,48 +71,21 @@ export const createSharedWorker = <Input, Output>(
 };
 
 /**
- * Creates a fake {@link MessageChannel} for React Native.
+ * Creates an in-memory {@link MessageChannel} for React Native.
  *
- * Since React Native doesn't support MessageChannel yet, this creates a simple
- * in-memory channel with two connected ports.
+ * Since React Native doesn't support MessageChannel yet, this creates two
+ * connected ports running in-process. Messages are queued until `onMessage` is
+ * assigned.
  */
 export const createMessageChannel = <Input, Output = never>(): MessageChannel<
   Input,
   Output
 > => {
-  const port1: MessagePort<Input, Output> = {
-    postMessage: (message) => {
-      queueMicrotask(() => {
-        assert(
-          port2.onMessage != null,
-          "onMessage must be set before receiving messages",
-        );
-        port2.onMessage(message);
-      });
-    },
-    onMessage: null,
-    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
-    [Symbol.dispose]: () => {
-      port1.onMessage = null;
-    },
-  };
+  const state1: PortState<Output> = { handler: null, queue: [] };
+  const state2: PortState<Input> = { handler: null, queue: [] };
 
-  const port2: MessagePort<Output, Input> = {
-    postMessage: (message) => {
-      queueMicrotask(() => {
-        assert(
-          port1.onMessage != null,
-          "onMessage must be set before receiving messages",
-        );
-        port1.onMessage(message);
-      });
-    },
-    onMessage: null,
-    native: null as unknown as NativeMessagePort, // React Native runs in-process, no real native port
-    [Symbol.dispose]: () => {
-      port2.onMessage = null;
-    },
-  };
+  const port1 = createRnPort<Input, Output>(state1, state2);
+  const port2 = createRnPort<Output, Input>(state2, state1);
 
   return {
     port1,
@@ -202,3 +107,33 @@ export const createMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort,
 ): MessagePort<Input, Output> =>
   nativePort as unknown as MessagePort<Input, Output>;
+
+interface PortState<T> {
+  handler: ((message: T) => void) | null;
+  readonly queue: Array<T>;
+}
+
+const createRnPort = <Input, Output>(
+  receive: PortState<Output>,
+  peerReceive: PortState<Input>,
+  onDispose?: () => void,
+): MessagePort<Input, Output> => ({
+  postMessage: (message) => {
+    if (peerReceive.handler) peerReceive.handler(message);
+    else peerReceive.queue.push(message);
+  },
+  get onMessage() {
+    return receive.handler;
+  },
+  set onMessage(fn) {
+    receive.handler = fn;
+    if (fn) {
+      for (const msg of receive.queue.splice(0)) fn(msg);
+    }
+  },
+  native: null as unknown as NativeMessagePort,
+  [Symbol.dispose]: () => {
+    receive.handler = null;
+    onDispose?.();
+  },
+});
