@@ -651,6 +651,26 @@ describe("Run", () => {
       expect(events).toEqual(["work", "cleanup"]);
     });
 
+    test("accepts cleanup callback returning void", async () => {
+      await using run = createRun();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using _ = run.defer(() => {
+          events.push("cleanup");
+        });
+
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "cleanup"]);
+    });
+
     test("is unabortable", async () => {
       await using run = createRun();
 
@@ -1812,6 +1832,27 @@ describe("AsyncDisposableStack", () => {
       const task: Task<void> = async (run) => {
         await using stack = run.stack();
         stack.defer(cleanup);
+        events.push("work");
+        return ok();
+      };
+
+      const result = await run(task);
+
+      expect(result).toEqual(ok());
+      expect(events).toEqual(["work", "cleanup"]);
+    });
+
+    test("accepts async cleanup callback returning Promise<void>", async () => {
+      await using run = createRun();
+
+      const events: Array<string> = [];
+
+      const task: Task<void> = async (run) => {
+        await using stack = run.stack();
+        stack.defer(async () => {
+          await Promise.resolve();
+          events.push("cleanup");
+        });
         events.push("work");
         return ok();
       };

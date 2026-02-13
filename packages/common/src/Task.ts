@@ -546,7 +546,8 @@ export interface Run<D = unknown> extends AsyncDisposable {
   readonly daemon: <T, E>(task: Task<T, E, D>) => Fiber<T, E, D>;
 
   /**
-   * Creates an {@link AsyncDisposable} that runs the task when disposed.
+   * Creates an {@link AsyncDisposable} that runs a cleanup callback or
+   * {@link Task} when disposed.
    *
    * Use for one-off task; for multiple, use {@link Run.stack} instead.
    *
@@ -574,7 +575,9 @@ export interface Run<D = unknown> extends AsyncDisposable {
    * // connection[Symbol.asyncDispose] is now defined
    * ```
    */
-  readonly defer: (onDisposeAsync: Task<void, never, D>) => AsyncDisposable;
+  readonly defer: (
+    onDisposeAsync: Task<void, never, D> | (() => Awaitable<void>),
+  ) => AsyncDisposable;
 
   /**
    * Creates an {@link AsyncDisposableStack} bound to the root Run.
@@ -979,12 +982,15 @@ export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
     return this.#daemon(unabortable(task));
   }
 
-  #runVoid(task: Task<void, any, D>): PromiseLike<void> {
-    return this.#run(task).then(lazyVoid);
+  #runVoid(
+    task: Task<void, any, D> | (() => Awaitable<void>),
+  ): PromiseLike<void> {
+    return this.#run(task as Task<void, any, D>).then(lazyVoid);
   }
 
   /**
-   * Registers a {@link Task} to run when the stack is disposed.
+   * Registers a cleanup callback or {@link Task} to run when the stack is
+   * disposed.
    *
    * Deferred tasks run in LIFO order and are unabortable.
    *
@@ -1007,7 +1013,7 @@ export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/defer
    */
-  defer(onDisposeAsync: Task<void, never, D>): void {
+  defer(onDisposeAsync: Task<void, never, D> | (() => Awaitable<void>)): void {
     this.#stack.defer(() => this.#runVoid(onDisposeAsync));
   }
 
@@ -1406,7 +1412,7 @@ const createRunInternal =
       run.daemon = (task) => (daemon ?? self)(task);
       run.defer = (task) => ({
         [Symbol.asyncDispose]: () =>
-          run.daemon(unabortable(task)).then(lazyVoid),
+          run.daemon(unabortable(task as Task<void, never, D>)).then(lazyVoid),
       });
       run.stack = () => new AsyncDisposableStack(self);
 
