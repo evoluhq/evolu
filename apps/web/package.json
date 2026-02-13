@@ -17,6 +17,7 @@
   ],
   "dependencies": {
     "@algolia/autocomplete-core": "^1.19.4",
+    "@emotion/is-prop-valid": "^1.4.0",
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/react-web": "workspace:*",
