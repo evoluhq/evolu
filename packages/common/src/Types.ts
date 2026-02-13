@@ -342,13 +342,3 @@ export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
 export type NewKeys<T, Existing> = {
   [K in keyof T]: K extends keyof Existing ? never : T[K];
 };
-
-/** Dependency exposing a shared {@link DisposableStack}. */
-export interface DisposableStackDep {
-  readonly disposableStack: DisposableStack;
-}
-
-/** Dependency exposing a shared {@link AsyncDisposableStack}. */
-export interface AsyncDisposableStackDep {
-  readonly asyncDisposableStack: AsyncDisposableStack;
-}

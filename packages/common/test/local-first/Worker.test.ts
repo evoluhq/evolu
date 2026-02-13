@@ -2,6 +2,7 @@ import { createStore } from "../../src/Store.js";
 import type { ConsoleEntry } from "../../src/Console.js";
 import type { ReadonlyStore } from "../../src/Store.js";
 import {
+  type EvoluTabOutput,
   type EvoluWorkerInput,
   initEvoluWorker,
 } from "../../src/local-first/Worker.js";
@@ -54,14 +55,14 @@ describe("initEvoluWorker", () => {
 
     consoleStoreOutputEntry.set(firstEntry);
 
-    const receivedEntries: Array<ConsoleEntry> = [];
-    const consoleChannel = testCreateMessageChannel<ConsoleEntry>();
-    consoleChannel.port2.onMessage = (entry) => {
-      receivedEntries.push(entry);
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    consoleChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
     };
 
     worker.port.postMessage({
-      type: "InitConsole",
+      type: "InitTab",
       port: consoleChannel.port1.native,
     });
 
@@ -73,7 +74,10 @@ describe("initEvoluWorker", () => {
 
     consoleStoreOutputEntry.set(secondEntry);
 
-    expect(receivedEntries).toEqual([firstEntry, secondEntry]);
+    expect(receivedOutputs).toEqual([
+      { type: "ConsoleEntry", entry: firstEntry },
+      { type: "ConsoleEntry", entry: secondEntry },
+    ]);
   });
 
   test("forwards entries immediately when console port is already connected", async () => {
@@ -81,14 +85,14 @@ describe("initEvoluWorker", () => {
     const { worker, workerStack } = await setupWorker(consoleStoreOutputEntry);
     await using _workerStack = workerStack;
 
-    const receivedEntries: Array<ConsoleEntry> = [];
-    const consoleChannel = testCreateMessageChannel<ConsoleEntry>();
-    consoleChannel.port2.onMessage = (entry) => {
-      receivedEntries.push(entry);
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    consoleChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
     };
 
     worker.port.postMessage({
-      type: "InitConsole",
+      type: "InitTab",
       port: consoleChannel.port1.native,
     });
 
@@ -100,7 +104,9 @@ describe("initEvoluWorker", () => {
 
     consoleStoreOutputEntry.set(liveEntry);
 
-    expect(receivedEntries).toEqual([liveEntry]);
+    expect(receivedOutputs).toEqual([
+      { type: "ConsoleEntry", entry: liveEntry },
+    ]);
   });
 
   test("ignores null console store updates", async () => {
@@ -108,14 +114,14 @@ describe("initEvoluWorker", () => {
     const { worker, workerStack } = await setupWorker(consoleStoreOutputEntry);
     await using _workerStack = workerStack;
 
-    const receivedEntries: Array<ConsoleEntry> = [];
-    const consoleChannel = testCreateMessageChannel<ConsoleEntry>();
-    consoleChannel.port2.onMessage = (entry) => {
-      receivedEntries.push(entry);
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    consoleChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
     };
 
     worker.port.postMessage({
-      type: "InitConsole",
+      type: "InitTab",
       port: consoleChannel.port1.native,
     });
 
@@ -128,7 +134,116 @@ describe("initEvoluWorker", () => {
     consoleStoreOutputEntry.set(entry);
     consoleStoreOutputEntry.set(null);
 
-    expect(receivedEntries).toEqual([entry]);
+    expect(receivedOutputs).toEqual([{ type: "ConsoleEntry", entry }]);
+  });
+
+  test("forwards typed console error entries as ConsoleEntry", async () => {
+    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
+    const { worker, workerStack } = await setupWorker(consoleStoreOutputEntry);
+    await using _workerStack = workerStack;
+
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    consoleChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
+    };
+
+    worker.port.postMessage({
+      type: "InitTab",
+      port: consoleChannel.port1.native,
+    });
+
+    const error = { type: "UnknownError", error: "boom" } as const;
+    const entry: ConsoleEntry = {
+      method: "error",
+      path: ["global"],
+      args: ["error", error],
+    };
+
+    consoleStoreOutputEntry.set(entry);
+
+    expect(receivedOutputs).toEqual([{ type: "ConsoleEntry", entry }]);
+  });
+
+  test("forwards untyped console error entries as ConsoleEntry", async () => {
+    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
+    const { worker, workerStack } = await setupWorker(consoleStoreOutputEntry);
+    await using _workerStack = workerStack;
+
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    consoleChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
+    };
+
+    worker.port.postMessage({
+      type: "InitTab",
+      port: consoleChannel.port1.native,
+    });
+
+    const entry: ConsoleEntry = {
+      method: "error",
+      path: ["global"],
+      args: ["error", "plain string"],
+    };
+
+    consoleStoreOutputEntry.set(entry);
+
+    expect(receivedOutputs).toEqual([{ type: "ConsoleEntry", entry }]);
+  });
+
+  test("forwards console error entry with one argument", async () => {
+    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
+    const { worker, workerStack } = await setupWorker(consoleStoreOutputEntry);
+    await using _workerStack = workerStack;
+
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    consoleChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
+    };
+
+    worker.port.postMessage({
+      type: "InitTab",
+      port: consoleChannel.port1.native,
+    });
+
+    const entry: ConsoleEntry = {
+      method: "error",
+      path: ["global"],
+      args: ["plain string"],
+    };
+
+    consoleStoreOutputEntry.set(entry);
+
+    expect(receivedOutputs).toEqual([{ type: "ConsoleEntry", entry }]);
+  });
+
+  test("forwards console error entry with no arguments", async () => {
+    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
+    const { worker, workerStack } = await setupWorker(consoleStoreOutputEntry);
+    await using _workerStack = workerStack;
+
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    consoleChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
+    };
+
+    worker.port.postMessage({
+      type: "InitTab",
+      port: consoleChannel.port1.native,
+    });
+
+    const entry: ConsoleEntry = {
+      method: "error",
+      path: ["global"],
+      args: [],
+    };
+
+    consoleStoreOutputEntry.set(entry);
+
+    expect(receivedOutputs).toEqual([{ type: "ConsoleEntry", entry }]);
   });
 
   test("accepts InitEvolu message", async () => {

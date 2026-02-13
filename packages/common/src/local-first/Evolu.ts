@@ -4,16 +4,20 @@
  * @module
  */
 
-import type { ConsoleDep, ConsoleEntry } from "../Console.js";
+import type { ConsoleDep } from "../Console.js";
 import { createConsole } from "../Console.js";
+import { createUnknownError } from "../Error.js";
+import { exhaustiveCheck } from "../Function.js";
 import type { Listener, Unsubscribe } from "../Listeners.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { err, ok } from "../Result.js";
+import type { ReadonlyStore } from "../Store.js";
+import { createStore } from "../Store.js";
 import type { Task } from "../Task.js";
 import type { Id, TypeError } from "../Type.js";
 import { brand, createIdFromString, Name, UrlSafeString } from "../Type.js";
-import type { DisposableStackDep } from "../Types.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
+import type { EvoluError } from "./Error.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
 import {
   createAppOwner,
@@ -36,7 +40,7 @@ import type {
 } from "./Schema.js";
 import type { SyncOwner } from "./Sync.js";
 import type { Timestamp } from "./Timestamp.js";
-import type { EvoluWorkerDep } from "./Worker.js";
+import type { EvoluTabOutput, EvoluWorkerDep } from "./Worker.js";
 
 export interface EvoluConfig {
   /**
@@ -382,7 +386,11 @@ export interface Evolu<
 /** Function returned by {@link Evolu.useOwner} to stop using an {@link SyncOwner}. */
 export type UnuseOwner = () => void;
 
-export type EvoluDeps = EvoluPlatformDeps & DisposableStackDep;
+export interface EvoluErrorDep {
+  readonly evoluError: ReadonlyStore<EvoluError | null>;
+}
+
+export type EvoluDeps = EvoluPlatformDeps & EvoluErrorDep & Disposable;
 
 export type EvoluPlatformDeps = CreateMessageChannelDep &
   EvoluWorkerDep &
@@ -390,21 +398,54 @@ export type EvoluPlatformDeps = CreateMessageChannelDep &
   Partial<ConsoleDep> &
   Partial<FlushSyncDep>;
 
-/** Creates Evolu dependencies from platform-specific dependencies. */
+/**
+ * Creates Evolu dependencies from platform-specific dependencies. Returns a
+ * disposable deps object that disposes all used resources.
+ */
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const { createMessageChannel, evoluWorker } = deps;
   const console = deps.console ?? createConsole();
-  const stack = new DisposableStack();
+  const evoluError = createStore<EvoluError | null>(null);
 
-  const consoleChannel = stack.use(createMessageChannel<ConsoleEntry>());
-  consoleChannel.port2.onMessage = console.write;
+  const stack = new DisposableStack();
+  stack.use(evoluWorker);
+
+  const tabChannel = stack.use(createMessageChannel<EvoluTabOutput>());
+  tabChannel.port2.onMessage = (output) => {
+    switch (output.type) {
+      case "ConsoleEntry": {
+        console.write(output.entry);
+
+        // Fallback channel for unexpected errors without EvoluError typing.
+        if (output.entry.method === "error") {
+          evoluError.set(createUnknownError(output.entry.args));
+        }
+        break;
+      }
+      case "EvoluError": {
+        evoluError.set(output.error);
+
+        // Keep typed errors visible in logs as operational failures.
+        console.error(output.error);
+        break;
+      }
+      default:
+        exhaustiveCheck(output);
+    }
+  };
 
   evoluWorker.port.postMessage(
-    { type: "InitConsole", port: consoleChannel.port1.native },
-    [consoleChannel.port1.native],
+    { type: "InitTab", port: tabChannel.port1.native },
+    [tabChannel.port1.native],
   );
 
-  return { ...deps, disposableStack: stack.move() };
+  const movedStack = stack.move();
+
+  return {
+    ...deps,
+    evoluError,
+    [Symbol.dispose]: movedStack[Symbol.dispose].bind(movedStack),
+  };
 };
 
 /**

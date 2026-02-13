@@ -51,6 +51,13 @@ const console = Evolu.createConsole({
 // Create Evolu dependencies for React Web.
 const deps = createEvoluDeps({ console });
 
+deps.evoluError.subscribe(() => {
+  const error = deps.evoluError.get();
+  if (!error) return;
+
+  alert("🚨 Evolu error occurred! Check the console.");
+});
+
 const run = createRun(deps);
 
 // Create Evolu App.

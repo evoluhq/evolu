@@ -8,30 +8,40 @@ import type { ConsoleEntry, ConsoleStoreOutputEntryDep } from "../Console.js";
 import { exhaustiveCheck } from "../Function.js";
 import { ok } from "../Result.js";
 import type { Task } from "../Task.js";
-import type { Typed } from "../Type.js";
 import type {
-  SharedWorker as CommonSharedWorker,
   CreateMessagePortDep,
   MessagePort,
   NativeMessagePort,
+  SharedWorker,
   SharedWorkerSelf,
 } from "../Worker.js";
+import type { EvoluError } from "./Error.js";
 
-export type EvoluWorker = CommonSharedWorker<EvoluWorkerInput>;
+export type EvoluWorker = SharedWorker<EvoluWorkerInput>;
 
 export interface EvoluWorkerDep {
   readonly evoluWorker: EvoluWorker;
 }
 
-export type EvoluWorkerInput = InitConsoleMessage | InitEvoluMessage;
+export type EvoluWorkerInput =
+  | {
+      readonly type: "InitTab";
+      readonly port: NativeMessagePort;
+    }
+  | {
+      readonly type: "InitEvolu";
+      readonly port: NativeMessagePort;
+    };
 
-export interface InitConsoleMessage extends Typed<"InitConsole"> {
-  readonly port: NativeMessagePort;
-}
-
-export interface InitEvoluMessage extends Typed<"InitEvolu"> {
-  readonly port: NativeMessagePort;
-}
+export type EvoluTabOutput =
+  | {
+      readonly type: "ConsoleEntry";
+      readonly entry: ConsoleEntry;
+    }
+  | {
+      readonly type: "EvoluError";
+      readonly error: EvoluError;
+    };
 
 export const initEvoluWorker =
   (
@@ -46,10 +56,16 @@ export const initEvoluWorker =
     const console = run.deps.console.child("EvoluWorker");
 
     // TODO: Use heartbeat to detect and prune dead ports.
-    const consolePorts = new Set<MessagePort<ConsoleEntry>>();
-    const queuedConsoleEntries: Array<ConsoleEntry> = [];
-    const broadcastConsoleEntry = (entry: ConsoleEntry): void => {
-      for (const port of consolePorts) port.postMessage(entry);
+    const tabPorts = new Set<MessagePort<EvoluTabOutput>>();
+    const queuedTabOutputs: Array<EvoluTabOutput> = [];
+
+    const postTabOutput = (output: EvoluTabOutput): void => {
+      for (const port of tabPorts) port.postMessage(output);
+    };
+
+    const postOrQueueTabOutput = (output: EvoluTabOutput): void => {
+      if (tabPorts.size === 0) queuedTabOutputs.push(output);
+      else postTabOutput(output);
     };
 
     await using stack = run.stack();
@@ -57,14 +73,7 @@ export const initEvoluWorker =
     stack.defer(
       consoleStoreOutputEntry.subscribe(() => {
         const entry = consoleStoreOutputEntry.get();
-        if (!entry) return;
-
-        if (consolePorts.size === 0) {
-          queuedConsoleEntries.push(entry);
-          return;
-        }
-
-        broadcastConsoleEntry(entry);
+        if (entry) postOrQueueTabOutput({ type: "ConsoleEntry", entry });
       }),
     );
 
@@ -75,13 +84,13 @@ export const initEvoluWorker =
 
       port.onMessage = (message) => {
         switch (message.type) {
-          case "InitConsole": {
-            const consolePort = createMessagePort<ConsoleEntry>(message.port);
-            consolePorts.add(consolePort);
+          case "InitTab": {
+            const tabPort = createMessagePort<EvoluTabOutput>(message.port);
+            tabPorts.add(tabPort);
 
-            if (queuedConsoleEntries.length > 0) {
-              queuedConsoleEntries.forEach(broadcastConsoleEntry);
-              queuedConsoleEntries.length = 0;
+            if (queuedTabOutputs.length > 0) {
+              queuedTabOutputs.forEach(postTabOutput);
+              queuedTabOutputs.length = 0;
             }
 
             break;
@@ -91,6 +100,7 @@ export const initEvoluWorker =
             // then set onMessage to start processing requests.
             // Messages are queued until onMessage is assigned.
             const _evoluPort = createMessagePort(message.port);
+            // _evoluPort.onMessage()
             break;
           }
           default:

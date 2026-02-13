@@ -9,8 +9,9 @@ import {
   createEvoluDeps,
 } from "../../src/local-first/Evolu.js";
 import type {
+  EvoluTabOutput,
+  EvoluWorker,
   EvoluWorkerInput,
-  InitConsoleMessage,
 } from "../../src/local-first/Worker.js";
 import { err, ok } from "../../src/Result.js";
 import { SqliteBoolean } from "../../src/Sqlite.js";
@@ -94,35 +95,124 @@ describe("createEvoluDeps", () => {
     return { messages };
   };
 
-  test("posts InitConsole with port to worker", () => {
+  test("posts InitTab with port to worker", () => {
     const { messages } = setupAndCall(testCreateConsole());
 
     expect(messages).toHaveLength(1);
-    expect(messages[0].type).toBe("InitConsole");
+    expect(messages[0].type).toBe("InitTab");
   });
 
   test("falls back to default console when not provided", () => {
     const { messages } = setupAndCall();
 
     expect(messages).toHaveLength(1);
-    expect(messages[0].type).toBe("InitConsole");
+    expect(messages[0].type).toBe("InitTab");
   });
+
+  const setupDepsWithPort = () => {
+    const { worker, self, connect } =
+      testCreateSharedWorker<EvoluWorkerInput>();
+    const messages: Array<EvoluWorkerInput> = [];
+    self.onConnect = (port) => {
+      port.onMessage = (message) => messages.push(message);
+    };
+    connect();
+
+    const deps = createEvoluDeps({
+      createMessageChannel: testCreateMessageChannel,
+      evoluWorker: worker,
+      reloadApp: lazyVoid,
+    });
+
+    const initTab = messages[0] as Extract<
+      EvoluWorkerInput,
+      { readonly type: "InitTab" }
+    >;
+    const workerPort = testCreateMessagePort<EvoluTabOutput>(initTab.port);
+
+    return { deps, workerPort };
+  };
 
   test("wires console channel to console.write", () => {
     const console = testCreateConsole();
     const { messages } = setupAndCall(console);
 
-    const initConsole = messages[0] as InitConsoleMessage;
-    const workerPort = testCreateMessagePort<ConsoleEntry>(initConsole.port);
+    const initConsole = messages[0] as Extract<
+      EvoluWorkerInput,
+      { readonly type: "InitTab" }
+    >;
+    const workerPort = testCreateMessagePort<EvoluTabOutput>(initConsole.port);
 
     const entry: ConsoleEntry = {
       method: "info",
       path: ["test"],
       args: ["hello"],
     };
-    workerPort.postMessage(entry);
+    workerPort.postMessage({ type: "ConsoleEntry", entry });
 
     expect(console.getEntriesSnapshot()).toEqual([entry]);
+  });
+
+  test("maps ConsoleEntry error output to deps.evoluError store", () => {
+    const { deps, workerPort } = setupDepsWithPort();
+
+    const entry: ConsoleEntry = {
+      method: "error",
+      path: ["global"],
+      args: ["error", { type: "UnknownError", error: "boom" }],
+    };
+
+    workerPort.postMessage({ type: "ConsoleEntry", entry });
+
+    expect(deps.evoluError.get()).toEqual({
+      type: "UnknownError",
+      error: ["error", { type: "UnknownError", error: "boom" }],
+    });
+  });
+
+  test("wraps single-arg ConsoleEntry error output to UnknownError", () => {
+    const { deps, workerPort } = setupDepsWithPort();
+
+    workerPort.postMessage({
+      type: "ConsoleEntry",
+      entry: { method: "error", path: ["global"], args: ["boom"] },
+    });
+
+    expect(deps.evoluError.get()).toEqual({
+      type: "UnknownError",
+      error: ["boom"],
+    });
+  });
+
+  test("wraps multi-arg ConsoleEntry error output to UnknownError", () => {
+    const { deps, workerPort } = setupDepsWithPort();
+
+    workerPort.postMessage({
+      type: "ConsoleEntry",
+      entry: { method: "error", path: ["global"], args: ["error", "boom"] },
+    });
+
+    expect(deps.evoluError.get()).toEqual({
+      type: "UnknownError",
+      error: ["error", "boom"],
+    });
+  });
+
+  test("wires EvoluError output to deps.evoluError store", () => {
+    const { deps, workerPort } = setupDepsWithPort();
+
+    const error = { type: "UnknownError", error: "boom" } as const;
+    workerPort.postMessage({ type: "EvoluError", error });
+
+    expect(deps.evoluError.get()).toEqual(error);
+  });
+
+  test("throws for unknown tab output type", () => {
+    const { workerPort } = setupDepsWithPort();
+
+    expect(() => {
+      workerPort.postMessage({ type: "Unknown" } as never);
+    }).toThrow();
   });
 
   test("dispose cleans up resources", () => {
@@ -134,6 +224,14 @@ describe("createEvoluDeps", () => {
     connect();
 
     const channels: Array<{ readonly isDisposed: () => boolean }> = [];
+    let workerDisposed = false;
+    const evoluWorker: EvoluWorker = {
+      port: worker.port,
+      [Symbol.dispose]: () => {
+        workerDisposed = true;
+        worker[Symbol.dispose]();
+      },
+    };
 
     const deps = createEvoluDeps({
       createMessageChannel: <Input, Output = never>() => {
@@ -141,13 +239,15 @@ describe("createEvoluDeps", () => {
         channels.push(channel);
         return channel;
       },
-      evoluWorker: worker,
+      evoluWorker,
       reloadApp: lazyVoid,
     });
 
     expect(channels[0].isDisposed()).toBe(false);
-    deps.disposableStack[Symbol.dispose]();
+    expect(workerDisposed).toBe(false);
+    deps[Symbol.dispose]();
     expect(channels[0].isDisposed()).toBe(true);
+    expect(workerDisposed).toBe(true);
   });
 });
 
