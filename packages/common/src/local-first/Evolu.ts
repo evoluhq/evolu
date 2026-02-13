@@ -12,6 +12,7 @@ import { err, ok } from "../Result.js";
 import type { Task } from "../Task.js";
 import type { Id, TypeError } from "../Type.js";
 import { brand, createIdFromString, Name, UrlSafeString } from "../Type.js";
+import type { DisposableStackDep } from "../Types.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
 import {
@@ -381,7 +382,7 @@ export interface Evolu<
 /** Function returned by {@link Evolu.useOwner} to stop using an {@link SyncOwner}. */
 export type UnuseOwner = () => void;
 
-export type EvoluDeps = EvoluPlatformDeps & Disposable;
+export type EvoluDeps = EvoluPlatformDeps & DisposableStackDep;
 
 export type EvoluPlatformDeps = CreateMessageChannelDep &
   EvoluWorkerDep &
@@ -403,8 +404,7 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
     [consoleChannel.port1.native],
   );
 
-  const moved = stack.move();
-  return { ...deps, [Symbol.dispose]: () => moved[Symbol.dispose]() };
+  return { ...deps, disposableStack: stack.move() };
 };
 
 /**

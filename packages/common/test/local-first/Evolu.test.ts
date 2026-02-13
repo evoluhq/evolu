@@ -146,7 +146,7 @@ describe("createEvoluDeps", () => {
     });
 
     expect(channels[0].isDisposed()).toBe(false);
-    deps[Symbol.dispose]();
+    deps.disposableStack[Symbol.dispose]();
     expect(channels[0].isDisposed()).toBe(true);
   });
 });
