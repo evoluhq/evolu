@@ -1,6 +1,6 @@
 import {
   createSqlite,
-  SimpleName,
+  Name,
   sql,
   testCreateRun,
   type CreateSqliteDriverDep,
@@ -9,7 +9,7 @@ import { existsSync, unlinkSync } from "fs";
 import { afterEach, assert, describe, expect, test } from "vitest";
 import { createBetterSqliteDriver } from "../src/Sqlite.js";
 
-const testName = SimpleName.orThrow("Test");
+const testName = Name.orThrow("Test");
 
 describe("createBetterSqliteDriver", () => {
   test("creates in-memory database", async () => {

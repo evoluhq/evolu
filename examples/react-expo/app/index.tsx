@@ -28,7 +28,7 @@ const run = createRun(createEvoluDeps());
 // Create Evolu App.
 const app = run(
   Evolu.createEvolu(Schema, {
-    name: Evolu.SimpleName.orThrow("rn-expo"),
+    appName: Evolu.AppName.orThrow("rn-expo"),
   }),
 );
 
@@ -86,7 +86,7 @@ const Test = () => {
 // // Create Evolu App.
 // const app = run(
 //   Evolu.createEvolu(Schema, {
-//     name: Evolu.SimpleName.orThrow("rn-expo"),
+//     name: Evolu.Name.orThrow("rn-expo"),
 //   }),
 // );
 //
@@ -164,7 +164,7 @@ const Test = () => {
 // //       const authResult = await localAuth.getOwner({ service });
 // //       const ownerIds = await localAuth.getProfiles({ service });
 // //       const evolu = Evolu.createEvolu(evoluReactNativeDeps)(Schema, {
-// //         name: Evolu.SimpleName.orThrow(
+// //         name: Evolu.Name.orThrow(
 // //           `${service}-${authResult?.owner?.id ?? "guest"}`,
 // //         ),
 // //         encryptionKey: authResult?.owner?.encryptionKey,

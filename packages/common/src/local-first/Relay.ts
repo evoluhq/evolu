@@ -18,7 +18,7 @@ import type { SqliteDep, SqliteError } from "../Sqlite.js";
 import { sql } from "../Sqlite.js";
 import type { Mutex } from "../Task.js";
 import { createMutex } from "../Task.js";
-import { PositiveInt, SimpleName } from "../Type.js";
+import { PositiveInt, Name } from "../Type.js";
 import { isPromiseLike, type Awaitable } from "../Types.js";
 import {
   OwnerId,
@@ -49,7 +49,7 @@ export interface RelayConfig extends StorageConfig {
    * Implementations can use this for identification purposes (e.g., database
    * file name, logging).
    */
-  readonly name?: SimpleName;
+  readonly name?: Name;
 
   /**
    * Optional callback to check if an {@link OwnerId} is allowed to access the

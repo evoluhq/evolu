@@ -27,7 +27,7 @@
 //   SqliteError,
 // } from "../Sqlite.js";
 // import { TimeDep } from "../Time.js";
-// import { Id, Mnemonic, SimpleName } from "../Type.js";
+// import { Id, Mnemonic, Name } from "../Type.js";
 // import { CreateWebSocketDep } from "../WebSocket.js";
 // import {
 //   createInitializedWorkerWithHandlers,
@@ -93,10 +93,10 @@
 //    * ### Example
 //    *
 //    * ```ts
-//    * // name: SimpleName.orThrow("MyApp")
+//    * // name: Name.orThrow("MyApp")
 //    * ```
 //    */
-//   readonly name: SimpleName;
+//   readonly name: Name;
 
 //   /**
 //    * Transport configuration for data sync and backup. Supports single transport
@@ -180,13 +180,13 @@
 //    *
 //    * // Local-only instance for device settings (no sync)
 //    * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-//    *   name: SimpleName.orThrow("MyApp-Device"),
+//    *   name: Name.orThrow("MyApp-Device"),
 //    *   transports: [], // No sync - stays local to device
 //    * });
 //    *
 //    * // Main synced instance for user data
 //    * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
-//    *   name: SimpleName.orThrow("MyApp"),
+//    *   name: Name.orThrow("MyApp"),
 //    *   // Default transports for sync
 //    * });
 //    * ```
@@ -215,7 +215,7 @@
 // }
 
 // export const defaultDbConfig: DbConfig = {
-//   name: SimpleName.orThrow("Evolu"),
+//   name: Name.orThrow("Evolu"),
 //   transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
 //   maxDrift: 5 * 60 * 1000,
 //   enableLogging: false,
@@ -223,7 +223,7 @@
 
 // export type DbWorker = Worker<DbWorkerInput, DbWorkerOutput>;
 
-// export type CreateDbWorker = (name: SimpleName) => DbWorker;
+// export type CreateDbWorker = (name: Name) => DbWorker;
 
 // export interface CreateDbWorkerDep {
 //   readonly createDbWorker: CreateDbWorker;

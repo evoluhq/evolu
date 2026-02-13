@@ -310,7 +310,7 @@ export interface Type<
    * const maxRetries = PositiveInt.orThrow(3);
    *
    * // Good: App configuration that should crash on invalid values
-   * const appName = SimpleName.orThrow("MyApp");
+   * const appName = Name.orThrow("MyApp");
    *
    * // Good: Instead of assert when Type error is clear enough
    * // Context makes it obvious: count increments from non-negative value
@@ -1636,36 +1636,33 @@ export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
         };
 
 /**
- * Simple alphanumeric string for naming in file systems, URLs, and identifiers.
+ * Alphanumeric string for naming in file systems, URLs, and identifiers.
  *
  * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
- * `_`). See `UrlSafeString` for details.
+ * `_`).
  *
  * The string must be between 1 and 64 characters.
  *
  * ### Example
  *
  * ```ts
- * const result = SimpleName.from("data-report-123");
+ * const result = Name.from("data-report-123");
  * if (result.ok) {
- *   console.log("Valid SimpleName string:", result.value);
+ *   console.log("Valid Name string:", result.value);
  * } else {
- *   console.error("Invalid SimpleName string:", result.error);
+ *   console.error("Invalid Name string:", result.error);
  * }
  * ```
  *
  * @group String
  */
-export const SimpleName = /*#__PURE__*/ brand(
-  "SimpleName",
-  UrlSafeString,
-  (value) =>
-    value.length >= 1 && value.length <= 64
-      ? ok(value)
-      : err<SimpleNameError>({ type: "SimpleName", value }),
+export const Name = /*#__PURE__*/ brand("Name", UrlSafeString, (value) =>
+  value.length >= 1 && value.length <= 64
+    ? ok(value)
+    : err<NameError>({ type: "Name", value }),
 );
-export type SimpleName = typeof SimpleName.Type;
-export interface SimpleNameError extends TypeError<"SimpleName"> {}
+export type Name = typeof Name.Type;
+export interface NameError extends TypeError<"Name"> {}
 
 /**
  * Trimmed string between 8 and 64 characters, branded as `SimplePassword`.

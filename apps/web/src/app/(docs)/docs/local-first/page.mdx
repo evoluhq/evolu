@@ -101,12 +101,12 @@ After defining the schema, create an Evolu instance for your environment.
 <SinglePlatformCodeGroup>
 
 ```ts {{ title: 'React', language: 'tsx' }}
-import { createEvolu, SimpleName } from "@evolu/common";
+import { createEvolu, Name } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 
 const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: SimpleName.orThrow("your-app-name"),
+  appName: Name.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
@@ -123,12 +123,12 @@ const { insert, update } = useEvolu();
 ```
 
 ```ts {{ title: 'React Native', language: 'tsx' }}
-import { createEvolu, SimpleName } from "@evolu/common";
+import { createEvolu, Name } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/bare-op-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
- name: SimpleName.orThrow("your-app-name"),
+ appName: Name.orThrow("your-app-name"),
  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
@@ -145,12 +145,12 @@ const { insert, update } = useEvolu();
 ```
 
 ```ts {{ title: 'Expo', language: 'tsx' }}
-import { createEvolu, SimpleName } from "@evolu/common";
+import { createEvolu, Name } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
 import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
 
 const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
- name: SimpleName.orThrow("your-app-name"),
+ appName: Name.orThrow("your-app-name"),
  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
@@ -171,19 +171,19 @@ import * as Evolu from "@evolu/common";
 import { evoluSvelteDeps } from "@evolu/svelte";
 
 const evolu = Evolu.createEvolu(evoluSvelteDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow("your-app-name"),
+  appName: Evolu.Name.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```
 
 ```ts {{ title: 'Vue', language: 'ts' }}
 import { defineComponent } from "vue";
-import { createEvolu, SimpleName } from "@evolu/common";
+import { createEvolu, Name } from "@evolu/common";
 import { evoluWebDeps } from "@evolu/web";
 import { provideEvolu } from "@evolu/vue";
 
 const evolu = createEvolu(evoluWebDeps)(Schema, {
-  name: SimpleName.orThrow("your-app-name"),
+  appName: Name.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 
@@ -197,11 +197,11 @@ export default defineComponent({
 ```
 
 ```ts {{ title: 'Vanilla JS' }}
-import { createEvolu, SimpleName } from "@evolu/common";
+import { createEvolu, Name } from "@evolu/common";
 import { evoluWebDeps } from "@evolu/web";
 
 const evolu = createEvolu(evoluWebDeps)(Schema, {
-  name: SimpleName.orThrow("your-app-name"),
+  appName: Name.orThrow("your-app-name"),
   transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
 ```

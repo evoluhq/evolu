@@ -113,13 +113,10 @@ const result = NonEmptyString.from("hello"); // Ok<NonEmptyString>
 const error = NonEmptyString.from(""); // Err<MinLengthError<1>>
 
 // Many factories
-export const SimpleName = regex(
-  "SimpleName",
-  /^[a-z0-9-]{1,42}$/i,
-)(NonEmptyString);
+export const Name = regex("Name", /^[a-z0-9-]{1,42}$/i)(NonEmptyString);
 
-// string & Brand<"MinLength1"> & Brand<"SimpleName">
-export type SimpleName = typeof SimpleName.Type;
+// string & Brand<"MinLength1"> & Brand<"Name">
+export type Name = typeof Name.Type;
 
 // Complex objects
 const User = object({

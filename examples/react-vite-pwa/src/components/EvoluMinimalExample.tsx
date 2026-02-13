@@ -32,9 +32,7 @@ const authResult = await localAuth.getOwner({ service });
 
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow(
-    `${service}-${authResult?.owner?.id ?? "guest"}`,
-  ),
+  appName: Evolu.AppName.orThrow(service),
   encryptionKey: authResult?.owner?.encryptionKey,
   externalAppOwner: authResult?.owner,
   // ...(process.env.NODE_ENV === "development" && {

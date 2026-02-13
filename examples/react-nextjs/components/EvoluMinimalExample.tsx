@@ -26,7 +26,7 @@ const Schema = {
 
 // Create Evolu instance for the React web platform.
 const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
-  name: Evolu.SimpleName.orThrow("minimal-example"),
+  appName: Evolu.AppName.orThrow("minimal-example"),
 
   // ...(process.env.NODE_ENV === "development" && {
   //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],

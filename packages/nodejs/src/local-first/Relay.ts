@@ -9,7 +9,7 @@ import {
   ok,
   OwnerId,
   type RandomDep,
-  SimpleName,
+  Name,
   type SqliteError,
   type Task,
   type TimingSafeEqualDep,
@@ -68,7 +68,7 @@ export const createRelayDeps = (): RelayDeps => ({
 export const startRelay =
   ({
     port = 443,
-    name = SimpleName.orThrow("evolu-relay"),
+    name = Name.orThrow("evolu-relay"),
     isOwnerAllowed,
     isOwnerWithinQuota,
   }: NodeJsRelayConfig): Task<Relay, never, RelayDeps> =>

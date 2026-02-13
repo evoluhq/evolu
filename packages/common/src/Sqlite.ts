@@ -13,7 +13,7 @@ import { createUnknownError } from "./Error.js";
 import type { Result } from "./Result.js";
 import { err, ok, trySync } from "./Result.js";
 import type { Task } from "./Task.js";
-import type { SimpleName, Typed } from "./Type.js";
+import type { Name, Typed } from "./Type.js";
 import { Null, Number, String, Uint8Array, union } from "./Type.js";
 
 /**
@@ -130,7 +130,7 @@ export interface SqliteDriver extends Disposable {
 
 /** Creates a {@link SqliteDriver}. */
 export type CreateSqliteDriver = (
-  name: SimpleName,
+  name: Name,
   options?: SqliteDriverOptions,
 ) => Task<SqliteDriver>;
 
@@ -156,7 +156,7 @@ export type SqliteDriverOptions =
  */
 export const createSqlite =
   (
-    name: SimpleName,
+    name: Name,
     options?: SqliteDriverOptions,
   ): Task<Sqlite, SqliteError, CreateSqliteDriverDep> =>
   async (run) => {

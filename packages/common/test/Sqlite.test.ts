@@ -17,7 +17,7 @@ import {
 } from "../src/Sqlite.js";
 import { sleep } from "../src/Task.js";
 import { testCreateRun } from "../src/Test.js";
-import { testSimpleName } from "./_deps.js";
+import { testName } from "./_deps.js";
 import { testCreateRunWithSqlite } from "./_deps.nodejs.js";
 
 describe("eqSqliteValue", () => {
@@ -175,7 +175,7 @@ describe("transactions", () => {
     await using run = testCreateRun({
       createSqliteDriver: createFailingDriver,
     });
-    const sqliteResult = await run(createSqlite(testSimpleName));
+    const sqliteResult = await run(createSqlite(testName));
     assert(sqliteResult.ok);
     const sqlite = sqliteResult.value;
 
@@ -237,7 +237,7 @@ describe("transactions", () => {
     await using run = testCreateRun({
       createSqliteDriver: createFailingDriver,
     });
-    const sqliteResult = await run(createSqlite(testSimpleName));
+    const sqliteResult = await run(createSqlite(testName));
     assert(sqliteResult.ok);
     const sqlite = sqliteResult.value;
     const { console } = run.deps;
@@ -293,7 +293,7 @@ describe("transactions", () => {
     await using run = testCreateRun({
       createSqliteDriver: createFailingDriver,
     });
-    const sqliteResult = await run(createSqlite(testSimpleName));
+    const sqliteResult = await run(createSqlite(testName));
     assert(sqliteResult.ok);
     const sqlite = sqliteResult.value;
 
@@ -334,7 +334,7 @@ describe("export", () => {
     await using run = testCreateRun({
       createSqliteDriver: createFailingDriver,
     });
-    const sqliteResult = await run(createSqlite(testSimpleName));
+    const sqliteResult = await run(createSqlite(testName));
     assert(sqliteResult.ok);
     const sqlite = sqliteResult.value;
 
@@ -434,7 +434,7 @@ test("dispose is idempotent", async () => {
       return ok(driver);
     },
   });
-  const sqliteResult = await run(createSqlite(testSimpleName));
+  const sqliteResult = await run(createSqlite(testName));
   assert(sqliteResult.ok);
   const sqlite = sqliteResult.value;
 
@@ -458,7 +458,7 @@ test("createSqlite returns error when driver creation is aborted", async () => {
     createSqliteDriver: createSlowDriver,
   });
 
-  const fiber = run(createSqlite(testSimpleName));
+  const fiber = run(createSqlite(testName));
   fiber.abort("test");
   const result = await fiber;
 

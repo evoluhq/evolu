@@ -21,7 +21,7 @@ export const EvoluFullExample: FC = () => <div>TODO</div>;
 //   NonEmptyTrimmedString100,
 //   nullOr,
 //   object,
-//   SimpleName,
+//   Name,
 //   SqliteBoolean,
 //   sqliteFalse,
 //   sqliteTrue,
@@ -105,7 +105,7 @@ export const EvoluFullExample: FC = () => <div>TODO</div>;
 // const deps = createEvoluDeps();
 
 // const evolu = createEvolu(deps)(Schema, {
-//   name: SimpleName.orThrow("full-example"),
+//   name: Name.orThrow("full-example"),
 
 //   // reloadUrl: "/playgrounds/full",
 
