@@ -12,6 +12,7 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha512 } from "@noble/hashes/sha2.js";
 import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
+import { arrayFrom } from "./Array.js";
 import type { RandomLibDep } from "./Random.js";
 import type { Result } from "./Result.js";
 import { trySync } from "./Result.js";
@@ -22,7 +23,6 @@ import {
   Uint8Array,
   type Typed,
 } from "./Type.js";
-import { arrayFrom } from "./Array.js";
 
 export interface RandomBytes {
   /**
