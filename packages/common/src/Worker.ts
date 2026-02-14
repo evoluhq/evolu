@@ -183,6 +183,49 @@ export interface SharedWorkerSelf<Input, Output = never> extends Disposable {
 }
 
 /**
+ * Creates a connected {@link Worker} / {@link WorkerSelf} pair for testing.
+ *
+ * Returns both sides so tests can exercise dedicated worker communication
+ * without a real worker thread.
+ */
+export const testCreateWorker = <Input, Output = never>(): {
+  readonly worker: Worker<Input, Output>;
+  readonly self: WorkerSelf<Input, Output>;
+} => {
+  const channel = testCreateMessageChannel<Input, Output>();
+
+  const worker: Worker<Input, Output> = {
+    postMessage: channel.port1.postMessage,
+    get onMessage() {
+      return channel.port1.onMessage;
+    },
+    set onMessage(value) {
+      channel.port1.onMessage = value;
+    },
+    native: channel.port1.native,
+    [Symbol.dispose]: () => {
+      channel[Symbol.dispose]();
+    },
+  };
+
+  const self: WorkerSelf<Input, Output> = {
+    postMessage: channel.port2.postMessage,
+    get onMessage() {
+      return channel.port2.onMessage;
+    },
+    set onMessage(value) {
+      channel.port2.onMessage = value;
+    },
+    native: channel.port2.native,
+    [Symbol.dispose]: () => {
+      channel.port2[Symbol.dispose]();
+    },
+  };
+
+  return { worker, self };
+};
+
+/**
  * Creates a connected {@link SharedWorker} / {@link SharedWorkerSelf} pair for
  * testing.
  *

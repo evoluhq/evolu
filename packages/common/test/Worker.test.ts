@@ -5,6 +5,7 @@ import {
   testCreateMessageChannel,
   testCreateMessagePort,
   testCreateSharedWorker,
+  testCreateWorker,
 } from "../src/Worker.js";
 
 describe("testCreateMessageChannel", () => {
@@ -104,6 +105,44 @@ describe("testCreateMessagePort", () => {
     expect(() => testCreateMessagePort(unknownNative)).toThrow(
       "Unknown native port",
     );
+  });
+});
+
+describe("testCreateWorker", () => {
+  test("worker and self communicate through ports", () => {
+    const { worker, self } = testCreateWorker<string, number>();
+    const workerReceived: Array<number> = [];
+    const selfReceived: Array<string> = [];
+
+    worker.onMessage = (msg) => workerReceived.push(msg);
+    self.onMessage = (msg) => selfReceived.push(msg);
+
+    worker.postMessage("to-self");
+    self.postMessage(123);
+
+    expect(selfReceived).toEqual(["to-self"]);
+    expect(workerReceived).toEqual([123]);
+  });
+
+  test("messages are queued until onMessage is assigned", () => {
+    const { worker, self } = testCreateWorker<string>();
+    worker.postMessage("queued");
+
+    const received: Array<string> = [];
+    self.onMessage = (msg) => received.push(msg);
+
+    expect(received).toEqual(["queued"]);
+  });
+
+  test("worker dispose clears handlers", () => {
+    const { worker, self } = testCreateWorker<string>();
+    worker.onMessage = lazyVoid;
+    self.onMessage = lazyVoid;
+
+    worker[Symbol.dispose]();
+
+    expect(worker.onMessage).toBeNull();
+    expect(self.onMessage).toBeNull();
   });
 });
 
