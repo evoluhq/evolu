@@ -29,6 +29,7 @@ export * from "./Polyfills.js";
 export * from "./Random.js";
 export * from "./Redacted.js";
 export * from "./Ref.js";
+export * from "./RefCount.js";
 export * from "./Relation.js";
 export * from "./Resources.js";
 export * from "./Result.js";
