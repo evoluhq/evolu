@@ -6,7 +6,7 @@
 
 import type { LeaderLockDep } from "../Platform.js";
 import { ok } from "../Result.js";
-import type { Task } from "../Task.js";
+import type { AsyncDisposableStack, Task } from "../Task.js";
 import type { Name } from "../Type.js";
 import type { Worker, WorkerInitDep, WorkerSelf } from "../Worker.js";
 
@@ -27,11 +27,9 @@ export const initDbWorker =
   (
     self: WorkerSelf<DbWorkerInput>,
   ): Task<AsyncDisposableStack, never, WorkerInitDep & LeaderLockDep> =>
-  async (run) => {
-    const console = run.deps.console.child("DbWorker");
-    // TODO: Wire console to shared worker somehow.
-
-    await using stack = run.stack();
+  (run) => {
+    const { leaderLock } = run.deps;
+    const stack = run.stack();
 
     let initialized = false;
 
@@ -39,24 +37,29 @@ export const initDbWorker =
       if (!initialized) {
         initialized = true;
 
-        void run(async (run) => {
-          const lease = await run(run.deps.leaderLock.acquire(message.name));
-          if (!lease.ok) return lease;
-
-          stack.use(lease.value);
-          return ok();
+        void run.daemon(async (run) => {
+          await stack.use(leaderLock.acquire(message.name));
+          return run(initializeDb(message.name));
         });
       }
-
-      console.info("initDbWorker", { name: message.name });
-      // TODO: Add parallel stale-leader detection.
-      // Heartbeat is emitted by the active DB worker and sent to
-      // SharedWorker. SharedWorker tracks last-seen heartbeat per Evolu
-      // name and if silent for 10 seconds, it waits for another DB worker
-      // to announce itself alive and then routes requests to that worker.
     };
 
-    return ok(stack.move());
+    return ok(stack);
+  };
+
+const initializeDb =
+  (name: Name): Task<void, never, WorkerInitDep> =>
+  (run) => {
+    const _console = run.deps.console.child("DbWorker");
+
+    globalThis.console.info("initializeDb", { name });
+    // TODO: Add parallel stale-leader detection.
+    // Heartbeat is emitted by the active DB worker and sent to
+    // SharedWorker. SharedWorker tracks last-seen heartbeat per Evolu
+    // name and if silent for 10 seconds, it waits for another DB worker
+    // to announce itself alive and then routes requests to that worker.
+
+    return ok();
   };
 
 // import {
