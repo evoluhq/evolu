@@ -14,17 +14,17 @@ import type {
   CreateMessagePortDep,
   MessagePort,
   NativeMessagePort,
-  SharedWorker,
+  SharedWorker as CommonSharedWorker,
   SharedWorkerSelf,
 } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
 import type { Query } from "./Query.js";
 import type { MutationChange } from "./Schema.js";
 
-export type EvoluWorker = SharedWorker<EvoluWorkerInput>;
+export type SharedWorker = CommonSharedWorker<SharedWorkerInput>;
 
-export interface EvoluWorkerDep {
-  readonly evoluWorker: EvoluWorker;
+export interface SharedWorkerDep {
+  readonly sharedWorker: SharedWorker;
 }
 
 /**
@@ -40,7 +40,7 @@ export interface EvoluInput {
   readonly subscribedQueries: ReadonlyArray<Query>;
 }
 
-export type EvoluWorkerInput =
+export type SharedWorkerInput =
   | {
       /** Tab-level channel for broadcast outputs (console/error). */
       readonly type: "InitTab";
@@ -62,9 +62,9 @@ export type EvoluTabOutput =
       readonly error: EvoluError;
     };
 
-export const initEvoluWorker =
+export const initSharedWorker =
   (
-    self: SharedWorkerSelf<EvoluWorkerInput>,
+    self: SharedWorkerSelf<SharedWorkerInput>,
   ): Task<
     AsyncDisposableStack,
     never,
@@ -72,7 +72,7 @@ export const initEvoluWorker =
   > =>
   async (run) => {
     const { createMessagePort, consoleStoreOutputEntry } = run.deps;
-    const console = run.deps.console.child("EvoluWorker");
+    const console = run.deps.console.child("SharedWorker");
 
     // TODO: Use heartbeat to detect and prune dead ports.
     const tabPorts = new Set<MessagePort<EvoluTabOutput>>();
@@ -96,7 +96,7 @@ export const initEvoluWorker =
       }),
     );
 
-    console.info("initEvoluWorker");
+    console.info("initSharedWorker");
 
     self.onConnect = (port) => {
       console.info("onConnect");

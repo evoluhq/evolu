@@ -8,10 +8,10 @@ import {
   type ReloadAppDep,
   type SecureStorage,
 } from "@evolu/common";
-import type { EvoluDeps, EvoluWorkerInput } from "@evolu/common/local-first";
+import type { EvoluDeps, SharedWorkerInput } from "@evolu/common/local-first";
 import {
   createEvoluDeps as createCommonEvoluDeps,
-  initEvoluWorker,
+  initSharedWorker,
 } from "@evolu/common/local-first";
 import {
   createMessageChannel,
@@ -34,15 +34,15 @@ export const createEvoluDeps = (
     createMessagePort,
   });
 
-  const evoluWorker = createSharedWorker<EvoluWorkerInput, never>((self) => {
-    workerRun(initEvoluWorker(self));
+  const sharedWorker = createSharedWorker<SharedWorkerInput, never>((self) => {
+    workerRun(initSharedWorker(self));
   });
 
   return createCommonEvoluDeps({
     ...deps,
     createMessageChannel,
     reloadApp: deps.reloadApp,
-    evoluWorker,
+    sharedWorker,
   });
 };
 

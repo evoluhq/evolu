@@ -6,7 +6,7 @@ export * from "./Protocol.js";
 export * from "./Query.js";
 export * from "./Relay.js";
 export * from "./Schema.js";
-export * from "./Worker.js";
+export * from "./Shared.js";
 export * from "./Storage.js";
 export * from "./Sync.js";
 export * from "./Timestamp.js";

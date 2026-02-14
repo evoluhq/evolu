@@ -11,9 +11,9 @@ import {
 import type {
   EvoluInput,
   EvoluTabOutput,
-  EvoluWorker,
-  EvoluWorkerInput,
-} from "../../src/local-first/Worker.js";
+  SharedWorker,
+  SharedWorkerInput,
+} from "../../src/local-first/Shared.js";
 import { err, ok } from "../../src/Result.js";
 import { SqliteBoolean } from "../../src/Sqlite.js";
 import { testCreateRun } from "../../src/Test.js";
@@ -43,17 +43,17 @@ const Schema = {
 };
 
 const createEvoluRun = (
-  worker: EvoluWorker = testCreateSharedWorker<EvoluWorkerInput>().worker,
+  worker: SharedWorker = testCreateSharedWorker<SharedWorkerInput>().worker,
 ) =>
   testCreateRun({
     console: testCreateConsole(),
     createMessageChannel: testCreateMessageChannel,
     reloadApp: lazyVoid,
-    evoluWorker: worker,
+    sharedWorker: worker,
   });
 
 const setupCreateEvolu = async () => {
-  const { worker, self, connect } = testCreateSharedWorker<EvoluWorkerInput>();
+  const { worker, self, connect } = testCreateSharedWorker<SharedWorkerInput>();
   const evoluInputs: Array<EvoluInput> = [];
 
   self.onConnect = (port) => {
@@ -103,8 +103,8 @@ test("AppName", () => {
 describe("createEvoluDeps", () => {
   const setupAndCall = (console?: TestConsole) => {
     const { worker, self, connect } =
-      testCreateSharedWorker<EvoluWorkerInput>();
-    const messages: Array<EvoluWorkerInput> = [];
+      testCreateSharedWorker<SharedWorkerInput>();
+    const messages: Array<SharedWorkerInput> = [];
     self.onConnect = (port) => {
       port.onMessage = (message) => messages.push(message);
     };
@@ -112,7 +112,7 @@ describe("createEvoluDeps", () => {
 
     createEvoluDeps({
       createMessageChannel: testCreateMessageChannel,
-      evoluWorker: worker,
+      sharedWorker: worker,
       reloadApp: lazyVoid,
       ...(console && { console }),
     });
@@ -136,8 +136,8 @@ describe("createEvoluDeps", () => {
 
   const setupDepsWithPort = () => {
     const { worker, self, connect } =
-      testCreateSharedWorker<EvoluWorkerInput>();
-    const messages: Array<EvoluWorkerInput> = [];
+      testCreateSharedWorker<SharedWorkerInput>();
+    const messages: Array<SharedWorkerInput> = [];
     self.onConnect = (port) => {
       port.onMessage = (message) => messages.push(message);
     };
@@ -145,12 +145,12 @@ describe("createEvoluDeps", () => {
 
     const deps = createEvoluDeps({
       createMessageChannel: testCreateMessageChannel,
-      evoluWorker: worker,
+      sharedWorker: worker,
       reloadApp: lazyVoid,
     });
 
     const initTab = messages[0] as Extract<
-      EvoluWorkerInput,
+      SharedWorkerInput,
       { readonly type: "InitTab" }
     >;
     const workerPort = testCreateMessagePort<EvoluTabOutput>(initTab.port);
@@ -163,7 +163,7 @@ describe("createEvoluDeps", () => {
     const { messages } = setupAndCall(console);
 
     const initConsole = messages[0] as Extract<
-      EvoluWorkerInput,
+      SharedWorkerInput,
       { readonly type: "InitTab" }
     >;
     const workerPort = testCreateMessagePort<EvoluTabOutput>(initConsole.port);
@@ -242,7 +242,7 @@ describe("createEvoluDeps", () => {
 
   test("dispose cleans up resources", () => {
     const { worker, self, connect } =
-      testCreateSharedWorker<EvoluWorkerInput>();
+      testCreateSharedWorker<SharedWorkerInput>();
     self.onConnect = (port) => {
       port.onMessage = lazyVoid;
     };
@@ -250,7 +250,7 @@ describe("createEvoluDeps", () => {
 
     const channels: Array<{ readonly isDisposed: () => boolean }> = [];
     let workerDisposed = false;
-    const evoluWorker: EvoluWorker = {
+    const sharedWorker: SharedWorker = {
       port: worker.port,
       [Symbol.dispose]: () => {
         workerDisposed = true;
@@ -264,7 +264,7 @@ describe("createEvoluDeps", () => {
         channels.push(channel);
         return channel;
       },
-      evoluWorker,
+      sharedWorker,
       reloadApp: lazyVoid,
     });
 

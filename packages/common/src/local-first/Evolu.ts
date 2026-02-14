@@ -54,7 +54,7 @@ import type {
 import { DbChange } from "./Storage.js";
 import type { SyncOwner } from "./Sync.js";
 import type { Timestamp } from "./Timestamp.js";
-import type { EvoluInput, EvoluTabOutput, EvoluWorkerDep } from "./Worker.js";
+import type { EvoluInput, EvoluTabOutput, SharedWorkerDep } from "./Shared.js";
 import { mapArray } from "../Array.js";
 
 export interface EvoluConfig {
@@ -408,7 +408,7 @@ export interface EvoluErrorDep {
 export type EvoluDeps = EvoluPlatformDeps & EvoluErrorDep & Disposable;
 
 export type EvoluPlatformDeps = CreateMessageChannelDep &
-  EvoluWorkerDep &
+  SharedWorkerDep &
   ReloadAppDep &
   Partial<ConsoleDep> &
   Partial<FlushSyncDep>;
@@ -425,11 +425,11 @@ export type EvoluPlatformDeps = CreateMessageChannelDep &
  * Dispose it only during app shutdown.
  */
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
-  const { createMessageChannel, evoluWorker } = deps;
+  const { createMessageChannel, sharedWorker } = deps;
   const console = deps.console ?? createConsole();
 
   const stack = new DisposableStack();
-  stack.use(evoluWorker);
+  stack.use(sharedWorker);
   const evoluError = stack.use(createStore<EvoluError | null>(null));
 
   const tabChannel = stack.use(createMessageChannel<EvoluTabOutput>());
@@ -452,7 +452,7 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
     }
   };
 
-  evoluWorker.port.postMessage(
+  sharedWorker.port.postMessage(
     { type: "InitTab", port: tabChannel.port1.native },
     [tabChannel.port1.native],
   );
@@ -476,7 +476,7 @@ export const createEvolu =
     config: EvoluConfig,
   ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
   async (run) => {
-    const { createMessageChannel, evoluWorker } = run.deps;
+    const { createMessageChannel, sharedWorker } = run.deps;
 
     const { appName, appOwner = createAppOwner(createOwnerSecret(run.deps)) } =
       config;
@@ -495,7 +495,7 @@ export const createEvolu =
       port2,
     } = stack.use(createMessageChannel<EvoluInput>());
 
-    evoluWorker.port.postMessage({ type: "InitEvolu", port: port2.native }, [
+    sharedWorker.port.postMessage({ type: "InitEvolu", port: port2.native }, [
       port2.native,
     ]);
 
@@ -587,7 +587,7 @@ export const createEvolu =
 // }
 
 // const createErrorStore = (
-//   deps: CreateMessageChannelDep & EvoluWorkerDep & DisposableStackDep,
+//   deps: CreateMessageChannelDep & SharedWorkerDep & DisposableStackDep,
 // ): Store<EvoluError | null> => {
 //   const errorChannel = deps.disposableStack.use(
 //     deps.createMessageChannel<EvoluError>(),
@@ -596,7 +596,7 @@ export const createEvolu =
 //     createStore<EvoluError | null>(null),
 //   );
 
-//   deps.evoluWorker.port.postMessage(
+//   deps.sharedWorker.port.postMessage(
 //     { type: "InitErrorStore", port: errorChannel.port1.native },
 //     [errorChannel.port1.native],
 //   );

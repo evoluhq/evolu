@@ -3,9 +3,9 @@ import type { ConsoleEntry } from "../../src/Console.js";
 import type { ReadonlyStore } from "../../src/Store.js";
 import {
   type EvoluTabOutput,
-  type EvoluWorkerInput,
-  initEvoluWorker,
-} from "../../src/local-first/Worker.js";
+  type SharedWorkerInput,
+  initSharedWorker,
+} from "../../src/local-first/Shared.js";
 import { testCreateConsole } from "../../src/Console.js";
 import { testCreateRun } from "../../src/Test.js";
 import {
@@ -15,14 +15,14 @@ import {
 } from "../../src/Worker.js";
 import { describe, expect, test } from "vitest";
 
-describe("initEvoluWorker", () => {
+describe("initSharedWorker", () => {
   const setupWorker = async (
     consoleStoreOutputEntry: ReadonlyStore<ConsoleEntry | null> = createStore<ConsoleEntry | null>(
       null,
     ),
   ) => {
     const { worker, self, connect } =
-      testCreateSharedWorker<EvoluWorkerInput>();
+      testCreateSharedWorker<SharedWorkerInput>();
 
     await using run = testCreateRun({
       console: testCreateConsole(),
@@ -30,9 +30,9 @@ describe("initEvoluWorker", () => {
       createMessagePort: testCreateMessagePort,
     });
 
-    const initResult = await run(initEvoluWorker(self));
+    const initResult = await run(initSharedWorker(self));
     if (!initResult.ok)
-      throw new Error("initEvoluWorker should always succeed");
+      throw new Error("initSharedWorker should always succeed");
 
     connect();
 
