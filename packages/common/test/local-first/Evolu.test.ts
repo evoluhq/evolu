@@ -9,6 +9,11 @@ import {
   createEvoluDeps,
 } from "../../src/local-first/Evolu.js";
 import type {
+  CreateDbWorker,
+  DbWorker,
+  DbWorkerInput,
+} from "../../src/local-first/Db.js";
+import type {
   EvoluInput,
   EvoluTabOutput,
   SharedWorker,
@@ -27,6 +32,7 @@ import {
   testCreateMessageChannel,
   testCreateMessagePort,
   testCreateSharedWorker,
+  testCreateWorker,
 } from "../../src/Worker.js";
 import { testAppName } from "../_deps.js";
 import { testAppOwner } from "./_fixtures.js";
@@ -42,11 +48,17 @@ const Schema = {
   },
 };
 
+const testCreateDbWorker: CreateDbWorker = () => {
+  const { worker } = testCreateWorker<DbWorkerInput>();
+  return worker as DbWorker;
+};
+
 const createEvoluRun = (
   worker: SharedWorker = testCreateSharedWorker<SharedWorkerInput>().worker,
 ) =>
   testCreateRun({
     console: testCreateConsole(),
+    createDbWorker: testCreateDbWorker,
     createMessageChannel: testCreateMessageChannel,
     reloadApp: lazyVoid,
     sharedWorker: worker,
@@ -111,6 +123,7 @@ describe("createEvoluDeps", () => {
     connect();
 
     createEvoluDeps({
+      createDbWorker: testCreateDbWorker,
       createMessageChannel: testCreateMessageChannel,
       sharedWorker: worker,
       reloadApp: lazyVoid,
@@ -144,6 +157,7 @@ describe("createEvoluDeps", () => {
     connect();
 
     const deps = createEvoluDeps({
+      createDbWorker: testCreateDbWorker,
       createMessageChannel: testCreateMessageChannel,
       sharedWorker: worker,
       reloadApp: lazyVoid,
@@ -259,6 +273,7 @@ describe("createEvoluDeps", () => {
     };
 
     const deps = createEvoluDeps({
+      createDbWorker: testCreateDbWorker,
       createMessageChannel: <Input, Output = never>() => {
         const channel = testCreateMessageChannel<Input, Output>();
         channels.push(channel);
@@ -277,6 +292,37 @@ describe("createEvoluDeps", () => {
 });
 
 describe("createEvolu", () => {
+  test("initializes db worker with resolved name", async () => {
+    const dbWorkerMessages: Array<DbWorkerInput> = [];
+
+    const createDbWorker: CreateDbWorker = () => {
+      const { worker, self } = testCreateWorker<DbWorkerInput>();
+      self.onMessage = (message) => {
+        dbWorkerMessages.push(message);
+      };
+      return worker as DbWorker;
+    };
+
+    await using run = testCreateRun({
+      console: testCreateConsole(),
+      createDbWorker,
+      createMessageChannel: testCreateMessageChannel,
+      reloadApp: lazyVoid,
+      sharedWorker: testCreateSharedWorker<SharedWorkerInput>().worker,
+    });
+
+    const result = await run(
+      createEvolu(Schema, { appName: testAppName, appOwner: testAppOwner }),
+    );
+    if (!result.ok) return;
+
+    expect(dbWorkerMessages).toHaveLength(1);
+    expect(dbWorkerMessages[0]).toEqual({
+      type: "init",
+      name: result.value.name,
+    });
+  });
+
   test("resolves name from appName and appOwner hash", async () => {
     await using run = createEvoluRun();
 

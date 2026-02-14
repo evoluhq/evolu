@@ -4,11 +4,12 @@
  * @module
  */
 
-import type { ConsoleDep } from "../Console.js";
+import { mapArray } from "../Array.js";
+import { assert } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
+import type { ConsoleDep } from "../Console.js";
 import { createConsole } from "../Console.js";
 import { createUnknownError } from "../Error.js";
-import { assert } from "../Assert.js";
 import { exhaustiveCheck, todo } from "../Function.js";
 import type { Listener, Unsubscribe } from "../Listeners.js";
 import { createMicrotaskBatch } from "../Microtask.js";
@@ -28,6 +29,7 @@ import {
   UrlSafeString,
 } from "../Type.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
+import type { CreateDbWorkerDep } from "./Db.js";
 import type { EvoluError } from "./Error.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
 import {
@@ -51,11 +53,10 @@ import type {
   MutationChange,
   ValidateSchema,
 } from "./Schema.js";
+import type { EvoluInput, EvoluTabOutput, SharedWorkerDep } from "./Shared.js";
 import { DbChange } from "./Storage.js";
 import type { SyncOwner } from "./Sync.js";
 import type { Timestamp } from "./Timestamp.js";
-import type { EvoluInput, EvoluTabOutput, SharedWorkerDep } from "./Shared.js";
-import { mapArray } from "../Array.js";
 
 export interface EvoluConfig {
   /**
@@ -407,9 +408,10 @@ export interface EvoluErrorDep {
 
 export type EvoluDeps = EvoluPlatformDeps & EvoluErrorDep & Disposable;
 
-export type EvoluPlatformDeps = CreateMessageChannelDep &
-  SharedWorkerDep &
+export type EvoluPlatformDeps = CreateDbWorkerDep &
+  CreateMessageChannelDep &
   ReloadAppDep &
+  SharedWorkerDep &
   Partial<ConsoleDep> &
   Partial<FlushSyncDep>;
 
@@ -476,7 +478,7 @@ export const createEvolu =
     config: EvoluConfig,
   ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
   async (run) => {
-    const { createMessageChannel, sharedWorker } = run.deps;
+    const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
 
     const { appName, appOwner = createAppOwner(createOwnerSecret(run.deps)) } =
       config;
@@ -489,6 +491,9 @@ export const createEvolu =
     const onCompleteCallbacks = createCallbacks(run.deps);
 
     await using stack = run.stack();
+
+    const dbWorker = stack.use(createDbWorker());
+    dbWorker.postMessage({ type: "init", name });
 
     const {
       port1: { postMessage },

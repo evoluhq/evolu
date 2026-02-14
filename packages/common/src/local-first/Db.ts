@@ -3,6 +3,23 @@
  *
  * @module
  */
+
+import type { Name } from "../Type.js";
+import type { Worker } from "../Worker.js";
+
+export interface DbWorkerInput {
+  readonly type: "init";
+  readonly name: Name;
+}
+
+export type DbWorker = Worker<DbWorkerInput>;
+
+export type CreateDbWorker = () => DbWorker;
+
+export interface CreateDbWorkerDep {
+  readonly createDbWorker: CreateDbWorker;
+}
+
 // import {
 //   firstInArray,
 //   isNonEmptyArray,
