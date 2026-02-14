@@ -543,7 +543,7 @@ export interface Run<D = unknown> extends AsyncDisposable {
    * };
    * ```
    */
-  readonly daemon: <T, E>(task: Task<T, E, D>) => Fiber<T, E, D>;
+  readonly daemon: Run<D>;
 
   /**
    * Creates an {@link AsyncDisposable} that runs a cleanup callback or
@@ -1409,7 +1409,7 @@ const createRunInternal =
         return snapshot;
       };
 
-      run.daemon = (task) => (daemon ?? self)(task);
+      run.daemon = daemon ?? self;
       run.defer = (task) => ({
         [Symbol.asyncDispose]: () =>
           run.daemon(unabortable(task as Task<void, never, D>)).then(lazyVoid),
