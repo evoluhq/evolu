@@ -10,13 +10,7 @@ import type {
   WorkerDeps,
   WorkerSelf,
 } from "@evolu/common";
-import {
-  assert,
-  createConsole,
-  createConsoleStoreOutput,
-  createMultiOutput,
-  createNativeConsoleOutput,
-} from "@evolu/common";
+import { assert, createConsole, createConsoleStoreOutput } from "@evolu/common";
 
 /** Creates a {@link Worker} from a Web Worker. */
 export const createWorker = <Input, Output>(
@@ -109,10 +103,7 @@ export const createSharedWorkerSelf = <Input, Output = never>(
 export const createWorkerDeps = (): WorkerDeps => {
   const consoleStoreOutput = createConsoleStoreOutput();
   const console = createConsole({
-    output: createMultiOutput([
-      createNativeConsoleOutput(),
-      consoleStoreOutput,
-    ]),
+    output: consoleStoreOutput,
   });
 
   return {
