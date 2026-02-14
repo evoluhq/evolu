@@ -9,6 +9,7 @@ import {
   createEvoluDeps,
 } from "../../src/local-first/Evolu.js";
 import type {
+  EvoluInput,
   EvoluTabOutput,
   EvoluWorker,
   EvoluWorkerInput,
@@ -41,14 +42,38 @@ const Schema = {
   },
 };
 
-const createEvoluRun = () => {
-  const { worker } = testCreateSharedWorker<EvoluWorkerInput>();
-  return testCreateRun({
+const createEvoluRun = (
+  worker: EvoluWorker = testCreateSharedWorker<EvoluWorkerInput>().worker,
+) =>
+  testCreateRun({
     console: testCreateConsole(),
     createMessageChannel: testCreateMessageChannel,
     reloadApp: lazyVoid,
     evoluWorker: worker,
   });
+
+const setupCreateEvolu = async () => {
+  const { worker, self, connect } = testCreateSharedWorker<EvoluWorkerInput>();
+  const evoluInputs: Array<EvoluInput> = [];
+
+  self.onConnect = (port) => {
+    port.onMessage = (message) => {
+      if (message.type !== "InitEvolu") return;
+      const evoluPort = testCreateMessagePort<never, EvoluInput>(message.port);
+      evoluPort.onMessage = (input) => {
+        evoluInputs.push(input);
+      };
+    };
+  };
+  connect();
+
+  const run = createEvoluRun(worker);
+
+  const result = await run(
+    createEvolu(Schema, { appName: testAppName, appOwner: testAppOwner }),
+  );
+
+  return { run, result, evoluInputs };
 };
 
 test("AppName", () => {
@@ -295,6 +320,133 @@ describe("createEvolu", () => {
 
     if (!result.ok) return;
     await result.value[Symbol.asyncDispose]();
+  });
+});
+
+describe("mutations", () => {
+  test("insert posts mutate with generated id and stripped values", async () => {
+    const { run, result, evoluInputs } = await setupCreateEvolu();
+    await using _run = run;
+
+    if (!result.ok) return;
+
+    const { id } = result.value.insert("todo", {
+      title: NonEmptyString100.orThrow("Todo 1"),
+    });
+
+    await Promise.resolve();
+
+    expect(evoluInputs).toHaveLength(1);
+    expect(evoluInputs[0]).toEqual({
+      type: "mutate",
+      changes: [
+        {
+          table: "todo",
+          id,
+          values: { title: "Todo 1" },
+          isInsert: true,
+          isDelete: null,
+          ownerId: undefined,
+        },
+      ],
+      onCompleteIds: [],
+      subscribedQueries: [],
+    });
+  });
+
+  test("update and upsert preserve passed id and set isInsert correctly", async () => {
+    const { run, result, evoluInputs } = await setupCreateEvolu();
+    await using _run = run;
+
+    if (!result.ok) return;
+
+    const updateId = TodoId.orThrow(createIdFromString("todo-update"));
+    const upsertId = TodoId.orThrow(createIdFromString("todo-upsert"));
+
+    result.value.update("todo", {
+      id: updateId,
+      title: NonEmptyString100.orThrow("Updated"),
+      isDeleted: 1,
+    });
+
+    result.value.upsert("todo", {
+      id: upsertId,
+      title: NonEmptyString100.orThrow("Upserted"),
+    });
+
+    await Promise.resolve();
+
+    expect(evoluInputs).toHaveLength(1);
+    expect(evoluInputs[0]).toEqual({
+      type: "mutate",
+      changes: [
+        {
+          table: "todo",
+          id: updateId,
+          values: { title: "Updated" },
+          isInsert: false,
+          isDelete: true,
+          ownerId: undefined,
+        },
+        {
+          table: "todo",
+          id: upsertId,
+          values: { title: "Upserted" },
+          isInsert: true,
+          isDelete: null,
+          ownerId: undefined,
+        },
+      ],
+      onCompleteIds: [],
+      subscribedQueries: [],
+    });
+  });
+
+  test("coalesces insert, update, and upsert in one microtask", async () => {
+    const { run, result, evoluInputs } = await setupCreateEvolu();
+    await using _run = run;
+
+    if (!result.ok) return;
+
+    const updateId = TodoId.orThrow(createIdFromString("todo-batch-update"));
+    const upsertId = TodoId.orThrow(createIdFromString("todo-batch-upsert"));
+
+    result.value.insert("todo", { title: NonEmptyString100.orThrow("A") });
+    result.value.update("todo", {
+      id: updateId,
+      title: NonEmptyString100.orThrow("B"),
+    });
+    result.value.upsert("todo", {
+      id: upsertId,
+      title: NonEmptyString100.orThrow("C"),
+    });
+
+    await Promise.resolve();
+
+    expect(evoluInputs).toHaveLength(1);
+    expect(evoluInputs[0]?.type).toBe("mutate");
+    expect(evoluInputs[0]?.changes).toHaveLength(3);
+    expect(evoluInputs[0]?.changes[1]?.isInsert).toBe(false);
+    expect(evoluInputs[0]?.changes[2]?.isInsert).toBe(true);
+  });
+
+  test("includes ownerId and onComplete callback ids", async () => {
+    const { run, result, evoluInputs } = await setupCreateEvolu();
+    await using _run = run;
+
+    if (!result.ok) return;
+
+    result.value.insert(
+      "todo",
+      { title: NonEmptyString100.orThrow("With callback") },
+      { ownerId: testAppOwner.id, onComplete: lazyVoid },
+    );
+
+    await Promise.resolve();
+
+    expect(evoluInputs).toHaveLength(1);
+    expect(evoluInputs[0]?.changes[0]?.ownerId).toBe(testAppOwner.id);
+    expect(evoluInputs[0]?.onCompleteIds).toHaveLength(1);
   });
 });
 

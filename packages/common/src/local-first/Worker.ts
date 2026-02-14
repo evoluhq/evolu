@@ -8,6 +8,8 @@ import type { ConsoleEntry, ConsoleStoreOutputEntryDep } from "../Console.js";
 import { exhaustiveCheck } from "../Function.js";
 import { ok } from "../Result.js";
 import type { Task } from "../Task.js";
+import type { NonEmptyReadonlyArray } from "../Array.js";
+import type { CallbackId } from "../Callbacks.js";
 import type {
   CreateMessagePortDep,
   MessagePort,
@@ -16,6 +18,8 @@ import type {
   SharedWorkerSelf,
 } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
+import type { Query } from "./Query.js";
+import type { MutationChange } from "./Schema.js";
 
 export type EvoluWorker = SharedWorker<EvoluWorkerInput>;
 
@@ -23,12 +27,27 @@ export interface EvoluWorkerDep {
   readonly evoluWorker: EvoluWorker;
 }
 
+/**
+ * Messages sent from an Evolu instance to the worker-side Evolu port.
+ *
+ * Redesign status: currently only mutation dispatch is defined. Additional
+ * request variants will be added as query and owner flows are implemented.
+ */
+export interface EvoluInput {
+  readonly type: "mutate";
+  readonly changes: NonEmptyReadonlyArray<MutationChange>;
+  readonly onCompleteIds: ReadonlyArray<CallbackId>;
+  readonly subscribedQueries: ReadonlyArray<Query>;
+}
+
 export type EvoluWorkerInput =
   | {
+      /** Tab-level channel for broadcast outputs (console/error). */
       readonly type: "InitTab";
       readonly port: NativeMessagePort;
     }
   | {
+      /** Per-Evolu instance request channel. */
       readonly type: "InitEvolu";
       readonly port: NativeMessagePort;
     };
@@ -99,8 +118,12 @@ export const initEvoluWorker =
             // TODO: Wrap port, do async init (open DB, load owner),
             // then set onMessage to start processing requests.
             // Messages are queued until onMessage is assigned.
-            const _evoluPort = createMessagePort(message.port);
-            // _evoluPort.onMessage()
+            const evoluPort = createMessagePort<never, EvoluInput>(
+              message.port,
+            );
+            evoluPort.onMessage = (message) => {
+              console.log(message);
+            };
             break;
           }
           default:

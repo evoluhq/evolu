@@ -5,17 +5,28 @@
  */
 
 import type { ConsoleDep } from "../Console.js";
+import { createCallbacks } from "../Callbacks.js";
 import { createConsole } from "../Console.js";
 import { createUnknownError } from "../Error.js";
-import { exhaustiveCheck } from "../Function.js";
+import { assert } from "../Assert.js";
+import { exhaustiveCheck, todo } from "../Function.js";
 import type { Listener, Unsubscribe } from "../Listeners.js";
+import { createMicrotaskBatch } from "../Microtask.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
+import { createRefCount } from "../RefCount.js";
 import { err, ok } from "../Result.js";
+import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
 import type { ReadonlyStore } from "../Store.js";
 import { createStore } from "../Store.js";
 import type { Task } from "../Task.js";
 import type { Id, TypeError } from "../Type.js";
-import { brand, createIdFromString, Name, UrlSafeString } from "../Type.js";
+import {
+  brand,
+  createId,
+  createIdFromString,
+  Name,
+  UrlSafeString,
+} from "../Type.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
@@ -30,17 +41,21 @@ import type {
   QueriesToQueryRowsPromises,
   Query,
   QueryRows,
+  QueryRowsMap,
   Row,
 } from "./Query.js";
 import type {
   EvoluSchema,
   IndexesConfig,
   Mutation,
+  MutationChange,
   ValidateSchema,
 } from "./Schema.js";
+import { DbChange } from "./Storage.js";
 import type { SyncOwner } from "./Sync.js";
 import type { Timestamp } from "./Timestamp.js";
-import type { EvoluTabOutput, EvoluWorkerDep } from "./Worker.js";
+import type { EvoluInput, EvoluTabOutput, EvoluWorkerDep } from "./Worker.js";
+import { mapArray } from "../Array.js";
 
 export interface EvoluConfig {
   /**
@@ -305,7 +320,7 @@ export interface Evolu<
    *
    * @see {@link Mutation}
    */
-  insert: Mutation<S, "insert">;
+  readonly insert: Mutation<S, "insert">;
 
   /**
    * Updates a row and returns the {@link Id}.
@@ -326,7 +341,7 @@ export interface Evolu<
    *
    * @see {@link Mutation}
    */
-  update: Mutation<S, "update">;
+  readonly update: Mutation<S, "update">;
 
   /**
    * Upserts a row and returns the {@link Id}.
@@ -352,7 +367,7 @@ export interface Evolu<
    *
    * @see {@link Mutation}
    */
-  upsert: Mutation<S, "upsert">;
+  readonly upsert: Mutation<S, "upsert">;
 
   /**
    * // TODO: Ten naming je furt divnej, syncOwner? subscribeOwner? // hmm, use
@@ -399,36 +414,39 @@ export type EvoluPlatformDeps = CreateMessageChannelDep &
   Partial<FlushSyncDep>;
 
 /**
- * Creates Evolu dependencies from platform-specific dependencies. Returns a
- * disposable deps object that disposes all used resources.
+ * Creates shared dependencies used by all {@link createEvolu} instances on a
+ * platform.
+ *
+ * Call this once per platform and reuse the returned deps when creating
+ * multiple Evolu instances. The returned deps object owns long-lived resources
+ * such as worker channels and the shared {@link EvoluErrorDep.evoluError}
+ * store.
+ *
+ * Dispose it only during app shutdown.
  */
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const { createMessageChannel, evoluWorker } = deps;
   const console = deps.console ?? createConsole();
-  const evoluError = createStore<EvoluError | null>(null);
 
   const stack = new DisposableStack();
   stack.use(evoluWorker);
+  const evoluError = stack.use(createStore<EvoluError | null>(null));
 
   const tabChannel = stack.use(createMessageChannel<EvoluTabOutput>());
   tabChannel.port2.onMessage = (output) => {
     switch (output.type) {
-      case "ConsoleEntry": {
+      case "ConsoleEntry":
         console.write(output.entry);
-
         // Fallback channel for unexpected errors without EvoluError typing.
         if (output.entry.method === "error") {
           evoluError.set(createUnknownError(output.entry.args));
         }
         break;
-      }
-      case "EvoluError": {
+      case "EvoluError":
         evoluError.set(output.error);
-
         // Keep typed errors visible in logs as operational failures.
         console.error(output.error);
         break;
-      }
       default:
         exhaustiveCheck(output);
     }
@@ -439,12 +457,12 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
     [tabChannel.port1.native],
   );
 
-  const movedStack = stack.move();
+  const moved = stack.move();
 
   return {
     ...deps,
     evoluError,
-    [Symbol.dispose]: movedStack[Symbol.dispose].bind(movedStack),
+    [Symbol.dispose]: () => moved.dispose(),
   };
 };
 
@@ -459,31 +477,95 @@ export const createEvolu =
   ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
   async (run) => {
     const { createMessageChannel, evoluWorker } = run.deps;
+
     const { appName, appOwner = createAppOwner(createOwnerSecret(run.deps)) } =
       config;
     const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
     const console = run.deps.console.child(name).child("Evolu");
-
     console.info("createEvolu", { config });
+
+    const _rowsStore = createStore<QueryRowsMap>(new Map());
+    const subscribedQueriesRefCount = createRefCount<Query>();
+    const onCompleteCallbacks = createCallbacks(run.deps);
 
     await using stack = run.stack();
 
-    // Set up the evolu channel for bidirectional communication.
-    // TODO: Define EvoluRequest/EvoluResponse types.
-    const evoluChannel = stack.use(createMessageChannel());
-    evoluWorker.port.postMessage(
-      { type: "InitEvolu", port: evoluChannel.port1.native },
-      [evoluChannel.port1.native],
-    );
+    const {
+      port1: { postMessage },
+      port2,
+    } = stack.use(createMessageChannel<EvoluInput>());
 
-    // console
+    evoluWorker.port.postMessage({ type: "InitEvolu", port: port2.native }, [
+      port2.native,
+    ]);
+
+    const mutateBatch = createMicrotaskBatch<{
+      readonly change: MutationChange;
+      readonly onComplete: (() => void) | undefined;
+    }>((items) => {
+      postMessage({
+        type: "mutate",
+        changes: mapArray(items, (item) => item.change),
+        onCompleteIds: items.flatMap((item) =>
+          item.onComplete
+            ? [onCompleteCallbacks.register(item.onComplete)]
+            : [],
+        ),
+        subscribedQueries: [...subscribedQueriesRefCount.keys()],
+      });
+    });
+
+    const createMutation =
+      <Kind extends "insert" | "update" | "upsert">(
+        kind: Kind,
+      ): Mutation<S, Kind> =>
+      (table, values, options) => {
+        const {
+          id = createId(run.deps),
+          isDeleted,
+          ...changeValues
+        } = values as { id?: Id; isDeleted?: unknown; [key: string]: unknown };
+
+        const dbChange = {
+          table,
+          id,
+          values: changeValues,
+          isInsert: kind === "insert" || kind === "upsert",
+          isDelete: SqliteBoolean.is(isDeleted)
+            ? sqliteBooleanToBoolean(isDeleted)
+            : null,
+        };
+
+        assert(
+          DbChange.is(dbChange),
+          `Invalid DbChange for table '${String(table)}'.`,
+        );
+
+        mutateBatch.push({
+          change: { ...dbChange, ownerId: options?.ownerId },
+          onComplete: options?.onComplete,
+        });
+
+        return { id };
+      };
 
     const moved = stack.move();
+
     return ok({
       name,
       appOwner,
+
+      loadQuery: todo,
+      loadQueries: todo,
+      subscribeQuery: todo,
+      getQueryRows: todo,
+      insert: createMutation("insert"),
+      update: createMutation("update"),
+      upsert: createMutation("upsert"),
+      useOwner: todo,
+
       [Symbol.asyncDispose]: () => moved.disposeAsync(),
-    } as unknown as Evolu<S>);
+    } as Evolu<S>);
   };
 
 // export interface ErrorStoreDep {
