@@ -64,6 +64,7 @@ const run = createRun(deps);
 const app = run(
   Evolu.createEvolu(AppSchema, {
     appName: Evolu.AppName.orThrow("minimal-example"),
+    appOwner: Evolu.testAppOwner,
 
     ...(process.env.NODE_ENV === "development" && {
       transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
