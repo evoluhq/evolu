@@ -17,12 +17,15 @@ import type {
 } from "@evolu/common/local-first";
 import {
   createEvoluDeps as createCommonEvoluDeps,
+  initDbWorker,
   initSharedWorker,
 } from "@evolu/common/local-first";
+import { leaderLock } from "./Platform.js";
 import {
   createMessageChannel,
   createMessagePort,
   createSharedWorker,
+  createWorker,
 } from "./Worker.js";
 
 const randomBytes = createRandomBytes();
@@ -33,31 +36,18 @@ export const createEvoluDeps = (
 ): EvoluDeps => {
   const consoleStoreOutput = createConsoleStoreOutput();
 
-  const createDbWorker: CreateDbWorker = () => {
-    const channel = createMessageChannel<DbWorkerInput>();
-    const worker: DbWorker = {
-      postMessage: channel.port1.postMessage,
-      get onMessage() {
-        return channel.port1.onMessage;
-      },
-      set onMessage(value) {
-        channel.port1.onMessage = value;
-      },
-      native: channel.port1.native,
-      [Symbol.dispose]: () => {
-        channel[Symbol.dispose]();
-      },
-    };
-
-    return worker;
-  };
-
   // Worker-side Run lives as long as the app. When RN supports real workers,
   // this moves to the worker entry point (like web's Worker.worker.ts).
   const workerRun = createRun({
     consoleStoreOutputEntry: consoleStoreOutput.entry,
     createMessagePort,
+    leaderLock,
   });
+
+  const createDbWorker: CreateDbWorker = (): DbWorker =>
+    createWorker<DbWorkerInput, never>((self) => {
+      workerRun(initDbWorker(self));
+    });
 
   const sharedWorker = createSharedWorker<SharedWorkerInput, never>((self) => {
     workerRun(initSharedWorker(self));

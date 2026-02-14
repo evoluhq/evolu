@@ -1,16 +1,13 @@
 import type {
-  ConsoleStoreOutputEntryDep,
   CreateMessagePort,
-  CreateMessagePortDep,
   MessageChannel,
   MessagePort,
   NativeMessagePort,
-  Run,
-  RunDeps,
   SharedWorker,
   SharedWorkerSelf,
   Transferable,
   Worker,
+  WorkerDeps,
   WorkerSelf,
 } from "@evolu/common";
 import {
@@ -20,7 +17,6 @@ import {
   createMultiOutput,
   createNativeConsoleOutput,
 } from "@evolu/common";
-import { createRun } from "./Task.js";
 
 /** Creates a {@link Worker} from a Web Worker. */
 export const createWorker = <Input, Output>(
@@ -109,25 +105,8 @@ export const createSharedWorkerSelf = <Input, Output = never>(
   return self;
 };
 
-/**
- * Creates {@link Run} for a Web Worker or SharedWorker.
- *
- * Sets up console with {@link createConsoleStoreOutput} combined with native
- * console via {@link createMultiOutput}, and provides the store output's entry
- * as the `consoleEntry` dependency and {@link createMessagePort} as the
- * `createMessagePort` dependency.
- *
- * ### Example
- *
- * ```ts
- * await using run = createRun();
- * ```
- *
- * @group Worker Run
- */
-export const createWorkerRun = (): Run<
-  RunDeps & ConsoleStoreOutputEntryDep & CreateMessagePortDep
-> => {
+/** Creates deps shared by web worker entry points. */
+export const createWorkerDeps = (): WorkerDeps => {
   const consoleStoreOutput = createConsoleStoreOutput();
   const console = createConsole({
     output: createMultiOutput([
@@ -136,11 +115,11 @@ export const createWorkerRun = (): Run<
     ]),
   });
 
-  return createRun({
+  return {
     console,
     consoleStoreOutputEntry: consoleStoreOutput.entry,
     createMessagePort,
-  });
+  };
 };
 
 const wrap = <Input, Output>(

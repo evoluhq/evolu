@@ -4,18 +4,18 @@
  * @module
  */
 
-import type { ConsoleEntry, ConsoleStoreOutputEntryDep } from "../Console.js";
+import type { NonEmptyReadonlyArray } from "../Array.js";
+import type { CallbackId } from "../Callbacks.js";
+import type { ConsoleEntry } from "../Console.js";
 import { exhaustiveCheck } from "../Function.js";
 import { ok } from "../Result.js";
 import type { Task } from "../Task.js";
-import type { NonEmptyReadonlyArray } from "../Array.js";
-import type { CallbackId } from "../Callbacks.js";
 import type {
-  CreateMessagePortDep,
+  SharedWorker as CommonSharedWorker,
   MessagePort,
   NativeMessagePort,
-  SharedWorker as CommonSharedWorker,
   SharedWorkerSelf,
+  WorkerInitDep,
 } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
 import type { Query } from "./Query.js";
@@ -65,11 +65,7 @@ export type EvoluTabOutput =
 export const initSharedWorker =
   (
     self: SharedWorkerSelf<SharedWorkerInput>,
-  ): Task<
-    AsyncDisposableStack,
-    never,
-    ConsoleStoreOutputEntryDep & CreateMessagePortDep
-  > =>
+  ): Task<AsyncDisposableStack, never, WorkerInitDep> =>
   async (run) => {
     const { createMessagePort, consoleStoreOutputEntry } = run.deps;
     const console = run.deps.console.child("SharedWorker");

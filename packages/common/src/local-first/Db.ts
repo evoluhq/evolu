@@ -4,8 +4,11 @@
  * @module
  */
 
+import type { LeaderLockDep } from "../Platform.js";
+import { ok } from "../Result.js";
+import type { Task } from "../Task.js";
 import type { Name } from "../Type.js";
-import type { Worker } from "../Worker.js";
+import type { Worker, WorkerInitDep, WorkerSelf } from "../Worker.js";
 
 export interface DbWorkerInput {
   readonly type: "init";
@@ -19,6 +22,42 @@ export type CreateDbWorker = () => DbWorker;
 export interface CreateDbWorkerDep {
   readonly createDbWorker: CreateDbWorker;
 }
+
+export const initDbWorker =
+  (
+    self: WorkerSelf<DbWorkerInput>,
+  ): Task<AsyncDisposableStack, never, WorkerInitDep & LeaderLockDep> =>
+  async (run) => {
+    const console = run.deps.console.child("DbWorker");
+    // TODO: Wire console to shared worker somehow.
+
+    await using stack = run.stack();
+
+    let initialized = false;
+
+    self.onMessage = (message) => {
+      if (!initialized) {
+        initialized = true;
+
+        void run(async (run) => {
+          const lease = await run(run.deps.leaderLock.acquire(message.name));
+          if (!lease.ok) return lease;
+
+          stack.use(lease.value);
+          return ok();
+        });
+      }
+
+      console.info("initDbWorker", { name: message.name });
+      // TODO: Add parallel stale-leader detection.
+      // Heartbeat is emitted by the active DB worker and sent to
+      // SharedWorker. SharedWorker tracks last-seen heartbeat per Evolu
+      // name and if silent for 10 seconds, it waits for another DB worker
+      // to announce itself alive and then routes requests to that worker.
+    };
+
+    return ok(stack.move());
+  };
 
 // import {
 //   firstInArray,

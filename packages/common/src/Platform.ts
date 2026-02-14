@@ -1,8 +1,11 @@
 /**
- * Runtime platform detection utilities.
+ * Platform runtime utilities and capability abstractions.
  *
  * @module
  */
+
+import type { Task } from "./Task.js";
+import type { Name } from "./Type.js";
 
 /** Returns true if running in React Native with Hermes engine. */
 export const isHermes = "HermesInternal" in globalThis;
@@ -46,11 +49,26 @@ export interface FlushSyncDep {
  * Use this after purging persistent storage to clear in-memory state and ensure
  * the app starts fresh. It does not purge storage itself.
  *
- * - **Web**: Redirects to the specified URL (defaults to `/`)
- * - **React Native**: Restarts the app (URL ignored)
+ * - Web: Redirects to the specified URL (defaults to `/`)
+ * - React Native: Restarts the app (URL ignored)
  */
 export type ReloadApp = (url?: string) => void;
 
 export interface ReloadAppDep {
   readonly reloadApp: ReloadApp;
+}
+
+/**
+ * Cross-platform leader lock abstraction.
+ *
+ * `acquire` blocks until leadership is acquired.
+ *
+ * Returns {@link Disposable} lease. Dispose it to release leadership.
+ */
+export interface LeaderLock {
+  readonly acquire: (name: Name) => Task<Disposable>;
+}
+
+export interface LeaderLockDep {
+  readonly leaderLock: LeaderLock;
 }

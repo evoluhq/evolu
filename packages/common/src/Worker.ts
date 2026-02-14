@@ -5,6 +5,8 @@
  */
 
 import type { Brand } from "./Brand.js";
+import type { ConsoleDep, ConsoleStoreOutputEntryDep } from "./Console.js";
+import type { Task } from "./Task.js";
 
 /**
  * Platform-agnostic Worker.
@@ -95,6 +97,12 @@ export type CreateMessagePort = <Input, Output = never>(
 export interface CreateMessagePortDep {
   readonly createMessagePort: CreateMessagePort;
 }
+
+/** Common dependencies for worker initialization {@link Task}. */
+export type WorkerInitDep = ConsoleStoreOutputEntryDep & CreateMessagePortDep;
+
+/** Common dependencies for worker entry points. */
+export type WorkerDeps = WorkerInitDep & ConsoleDep;
 
 /**
  * Platform-agnostic MessageChannel.
