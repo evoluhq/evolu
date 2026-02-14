@@ -67,7 +67,7 @@ import {
   NonNegativeInt,
   PositiveInt,
 } from "../../src/Type.js";
-import { testCreateRunWithSqliteAndRelayStorage } from "../_deps.nodejs.js";
+import { testCreateRunWithSqliteAndRelayStorage } from "../_deps.js";
 import {
   maxTimestamp,
   testAppOwner,

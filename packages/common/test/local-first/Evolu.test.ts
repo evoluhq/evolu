@@ -3,16 +3,17 @@ import type { Brand } from "../../src/Brand.js";
 import type { ConsoleEntry, TestConsole } from "../../src/Console.js";
 import { testCreateConsole } from "../../src/Console.js";
 import { lazyVoid } from "../../src/Function.js";
-import {
-  AppName,
-  createEvolu,
-  createEvoluDeps,
-} from "../../src/local-first/Evolu.js";
 import type {
   CreateDbWorker,
   DbWorker,
   DbWorkerInput,
 } from "../../src/local-first/Db.js";
+import {
+  AppName,
+  createEvolu,
+  createEvoluDeps,
+  testAppName,
+} from "../../src/local-first/Evolu.js";
 import type {
   EvoluInput,
   EvoluTabOutput,
@@ -34,7 +35,6 @@ import {
   testCreateSharedWorker,
   testCreateWorker,
 } from "../../src/Worker.js";
-import { testAppName } from "../_deps.js";
 import { testAppOwner } from "./_fixtures.js";
 
 const TodoId = id("Todo");
@@ -529,7 +529,6 @@ describe("mutations", () => {
 //   testRandomBytes,
 //   testName,
 //   testTime,
-// } from "../_deps.js";
 
 // const TodoId = id("Todo");
 // type TodoId = InferType<typeof TodoId>;

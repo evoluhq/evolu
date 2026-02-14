@@ -23,7 +23,7 @@ import type {
 import { createPreparedStatementsCache, createSqlite } from "../src/Sqlite.js";
 import type { Run } from "../src/Task.js";
 import { testCreateRun, type TestDeps } from "../src/Test.js";
-import { testName } from "./_deps.js";
+import { testName } from "../src/Type.js";
 
 export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 

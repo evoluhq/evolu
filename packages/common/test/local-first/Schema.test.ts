@@ -24,7 +24,7 @@ import {
   nullOr,
   type InferType,
 } from "../../src/Type.js";
-import { testCreateRunWithSqlite } from "../_deps.nodejs.js";
+import { testCreateRunWithSqlite } from "../_deps.js";
 
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;

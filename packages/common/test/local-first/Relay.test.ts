@@ -17,7 +17,7 @@ import type {
 } from "../../src/local-first/Storage.js";
 import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
 import { testCreateDeps } from "../../src/Test.js";
-import { testCreateRunWithSqliteAndRelayStorage } from "../_deps.nodejs.js";
+import { testCreateRunWithSqliteAndRelayStorage } from "../_deps.js";
 import {
   testAppOwner,
   testAppOwner2,
