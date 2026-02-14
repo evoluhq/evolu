@@ -208,6 +208,8 @@ export const AppName = /*#__PURE__*/ brand("AppName", UrlSafeString, (value) =>
 export type AppName = typeof AppName.Type;
 export interface AppNameError extends TypeError<"AppName"> {}
 
+export const testAppName = /*#__PURE__*/ AppName.orThrow("AppName");
+
 /**
  * Local-first SQL database with typed queries, mutations, and sync.
  *
