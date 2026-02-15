@@ -4,11 +4,12 @@ import {
   createRelation,
   createSqlite,
   type CreateSqliteDriverDep,
+  getOk,
   isPromiseLike,
+  Name,
   ok,
   OwnerId,
   type RandomDep,
-  Name,
   type Task,
   type TimingSafeEqualDep,
   Uint8Array,
@@ -27,8 +28,8 @@ import {
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import { createBetterSqliteDriver } from "../Sqlite.js";
 import { createTimingSafeEqual } from "../Crypto.js";
+import { createBetterSqliteDriver } from "../Sqlite.js";
 
 export interface NodeJsRelayConfig extends RelayConfig {
   /** The port number for the HTTP server. */
@@ -76,9 +77,8 @@ export const startRelay =
 
     const dbFileExists = existsSync(`${name}.db`);
 
-    const sqliteResult = await stack.use(createSqlite(name));
-    if (!sqliteResult.ok) return sqliteResult;
-    const deps = { ..._run.deps, sqlite: sqliteResult.value };
+    const sqlite = getOk(await stack.use(createSqlite(name)));
+    const deps = { ..._run.deps, sqlite };
 
     if (!dbFileExists) {
       createBaseSqliteStorageTables(deps);

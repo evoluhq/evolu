@@ -34,15 +34,16 @@ export const testCreateRunWithSqlite = async (): Promise<
     createSqliteDriver: testCreateSqliteDriver,
   });
 
-  const sqlite = await run(createSqlite(testName));
-  assert(sqlite.ok, "bug");
+  const sqliteResult = await run(createSqlite(testName));
+  assert(sqliteResult.ok, "bug");
+  const sqlite = sqliteResult.value;
 
   run.defer(() => {
-    sqlite.value[Symbol.dispose]();
+    sqlite[Symbol.dispose]();
     return ok();
   });
 
-  return run.addDeps({ sqlite: sqlite.value });
+  return run.addDeps({ sqlite });
 };
 
 /** Creates a test Run with relay storage and SQLite deps. */

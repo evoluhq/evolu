@@ -9,7 +9,7 @@ import { firstInArray } from "../Array.js";
 import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import { EncryptionKey, type RandomBytesDep } from "../Crypto.js";
 import type { LeaderLockDep } from "../Platform.js";
-import { ok } from "../Result.js";
+import { getOk, ok } from "../Result.js";
 import type { CreateSqliteDriverDep, SqliteDep } from "../Sqlite.js";
 import { createSqlite, sql } from "../Sqlite.js";
 import type { AsyncDisposableStack, Task } from "../Task.js";
@@ -123,17 +123,13 @@ const startDbWorker =
     const { port } = run.deps;
     const _console = run.deps.console.child(name).child("DbWorker");
 
-    const sqlite = await stack.use(
-      createSqlite(name, { mode: "encrypted", encryptionKey }),
+    const sqlite = getOk(
+      await stack.use(createSqlite(name, { mode: "encrypted", encryptionKey })),
     );
-    if (!sqlite.ok) {
-      port.postMessage({ type: "EvoluError", error: sqlite.error });
-      return ok(stack.move());
-    }
 
-    const deps = { ...run.deps, sqlite: sqlite.value };
+    const deps = { ...run.deps, sqlite };
 
-    const result = sqlite.value.transaction(() => {
+    const result = sqlite.transaction(() => {
       const dbSchema = getDbSchema(deps)();
 
       const dbIsInitialized = "evolu_version" in dbSchema.tables;
