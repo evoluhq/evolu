@@ -492,13 +492,14 @@ export const createEvolu =
 
     await using stack = run.stack();
 
-    // Evolu instances send messages to SharedWorker.
+    // Used for all Evolu instance communication with SharedWorker.
+    // SharedWorker centralizes observability and resilience (retry, timeout).
     let postMessage: (input: EvoluInput) => void;
 
     {
-      // Wire workers.
+      // Wire SharedWorker and DbWorker channels.
       const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
-      // For DbWorker to announce SharedWorker it is the leader.
+      // For DbWorker to announce to SharedWorker that it is the leader.
       const leaderChannel = stack.use(
         createMessageChannel<DbWorkerLeaderOutput>(),
       );
