@@ -10,6 +10,7 @@ import {
   isNonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "./Array.js";
+import { assert } from "./Assert.js";
 import type { UnknownError } from "./Error.js";
 import type { Lazy } from "./Function.js";
 import { exhaustiveCheck } from "./Function.js";
@@ -199,7 +200,9 @@ import type { Typed } from "./Type.js";
  *   switch (error.type) {
  *     case "TimestampError":
  *       console.error(error.error.stack); // Log preserved stack trace
- *       showToast("Timestamp error. Your computer clock appears to be incorrect.");
+ *       showToast(
+ *         "Timestamp error. Your computer clock appears to be incorrect.",
+ *       );
  *       break;
  *     case "SyncError":
  *       showToast("Sync failed. Retrying...");
@@ -378,6 +381,18 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
  */
 export const getOrNull = <T, E>(result: Result<T, E>): T | null =>
   result.ok ? result.value : null;
+
+/**
+ * Extracts the value from a {@link Result} whose error type is `never`.
+ *
+ * This is useful when the type system guarantees the result cannot fail (for
+ * example `Result<T, never>`), avoiding impossible `if (!result.ok)` branches
+ * at call sites.
+ */
+export const getOk = <T>(result: Result<T>): T => {
+  assert(result.ok, "Expected Ok result.");
+  return result.value;
+};
 
 /**
  * Wraps a synchronous function that may throw, returning a {@link Result}.

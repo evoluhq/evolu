@@ -5,6 +5,8 @@ import {
   anyResult,
   done,
   err,
+  getOk,
+  getOrNull,
   getOrThrow,
   isErr,
   isOk,
@@ -128,6 +130,36 @@ describe("getOrThrow", () => {
     }
     const error = thrown as Error & { cause?: unknown };
     expect(error.cause).toBe(original);
+  });
+});
+
+describe("getOrNull", () => {
+  it("returns value for Ok", () => {
+    expect(getOrNull(ok(42))).toBe(42);
+  });
+
+  it("returns null for Err", () => {
+    expect(getOrNull(err("error"))).toBeNull();
+  });
+});
+
+describe("getOk", () => {
+  it("extracts value from Result with never error", () => {
+    const result = ok(42);
+    expect(getOk(result)).toBe(42);
+  });
+
+  it("rejects Result with possible error type", () => {
+    type IsAssignable =
+      Result<number, string> extends Result<number> ? true : false;
+    expectTypeOf<IsAssignable>().toEqualTypeOf<false>();
+  });
+
+  it("throws when invariant is violated at runtime", () => {
+    const invalid = err("fail") as unknown as Result<number>;
+    expect(() => getOk(invalid)).toThrowErrorMatchingInlineSnapshot(
+      `[Error: Expected Ok result.]`,
+    );
   });
 });
 
