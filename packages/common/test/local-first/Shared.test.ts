@@ -13,6 +13,7 @@ import {
   testCreateMessagePort,
   testCreateSharedWorker,
 } from "../../src/Worker.js";
+import { testName } from "../../src/Type.js";
 import { describe, expect, test } from "vitest";
 
 describe("initSharedWorker", () => {
@@ -251,11 +252,14 @@ describe("initSharedWorker", () => {
     await using _workerStack = workerStack;
 
     const evoluChannel = testCreateMessageChannel<string>();
+    const brokerChannel = testCreateMessageChannel<string>();
 
     expect(() => {
       worker.port.postMessage({
         type: "InitEvolu",
+        name: testName,
         port: evoluChannel.port1.native,
+        brokerPort: brokerChannel.port1.native,
       });
     }).not.toThrow();
   });

@@ -8,11 +8,17 @@ import type { LeaderLockDep } from "../Platform.js";
 import { ok } from "../Result.js";
 import type { AsyncDisposableStack, Task } from "../Task.js";
 import type { Name } from "../Type.js";
-import type { Worker, WorkerInitDep, WorkerSelf } from "../Worker.js";
+import type {
+  NativeMessagePort,
+  Worker,
+  WorkerInitDep,
+  WorkerSelf,
+} from "../Worker.js";
 
 export interface DbWorkerInput {
   readonly type: "init";
   readonly name: Name;
+  readonly brokerPort: NativeMessagePort;
 }
 
 export type DbWorker = Worker<DbWorkerInput>;
@@ -21,6 +27,11 @@ export type CreateDbWorker = () => DbWorker;
 
 export interface CreateDbWorkerDep {
   readonly createDbWorker: CreateDbWorker;
+}
+
+export interface DbWorkerLeaderOutput {
+  readonly type: "LeaderAcquired";
+  readonly name: Name;
 }
 
 export const initDbWorker =
@@ -33,13 +44,17 @@ export const initDbWorker =
 
     let initialized = false;
 
-    self.onMessage = (message) => {
+    self.onMessage = ({ name, brokerPort: nativeBrokerPort }) => {
       if (!initialized) {
         initialized = true;
 
+        const brokerPort =
+          run.deps.createMessagePort<DbWorkerLeaderOutput>(nativeBrokerPort);
+
         void run.daemon(async (run) => {
-          await stack.use(leaderLock.acquire(message.name));
-          return run(initializeDb(message.name));
+          await stack.use(leaderLock.acquire(name));
+          brokerPort.postMessage({ type: "LeaderAcquired", name });
+          return run(initializeDb(name));
         });
       }
     };

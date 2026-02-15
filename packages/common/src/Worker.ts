@@ -102,7 +102,7 @@ export interface CreateMessagePortDep {
 export type WorkerInitDep = ConsoleStoreOutputEntryDep & CreateMessagePortDep;
 
 /** Common dependencies for worker entry points. */
-export type WorkerDeps = WorkerInitDep & ConsoleDep;
+export type WorkerDeps = ConsoleDep & WorkerInitDep;
 
 /**
  * Platform-agnostic MessageChannel.

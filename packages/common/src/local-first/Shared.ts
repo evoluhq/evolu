@@ -10,6 +10,7 @@ import type { ConsoleEntry } from "../Console.js";
 import { exhaustiveCheck } from "../Function.js";
 import { ok } from "../Result.js";
 import type { Task } from "../Task.js";
+import type { Name } from "../Type.js";
 import type {
   SharedWorker as CommonSharedWorker,
   MessagePort,
@@ -17,6 +18,7 @@ import type {
   SharedWorkerSelf,
   WorkerInitDep,
 } from "../Worker.js";
+import type { DbWorkerLeaderOutput } from "./Db.js";
 import type { EvoluError } from "./Error.js";
 import type { Query } from "./Query.js";
 import type { MutationChange } from "./Schema.js";
@@ -49,7 +51,9 @@ export type SharedWorkerInput =
   | {
       /** Per-Evolu instance request channel. */
       readonly type: "InitEvolu";
+      readonly name: Name;
       readonly port: NativeMessagePort;
+      readonly brokerPort: NativeMessagePort;
     };
 
 export type EvoluTabOutput =
@@ -73,6 +77,10 @@ export const initSharedWorker =
     // TODO: Use heartbeat to detect and prune dead ports.
     const tabPorts = new Set<MessagePort<EvoluTabOutput>>();
     const queuedTabOutputs: Array<EvoluTabOutput> = [];
+    const leaderPorts = new Map<
+      Name,
+      MessagePort<never, DbWorkerLeaderOutput>
+    >();
 
     const postTabOutput = (output: EvoluTabOutput): void => {
       for (const port of tabPorts) port.postMessage(output);
@@ -117,6 +125,17 @@ export const initSharedWorker =
             const evoluPort = createMessagePort<never, EvoluInput>(
               message.port,
             );
+            const brokerPort = createMessagePort<never, DbWorkerLeaderOutput>(
+              message.brokerPort,
+            );
+
+            leaderPorts.set(message.name, brokerPort);
+
+            brokerPort.onMessage = (leaderEvent) => {
+              leaderPorts.set(leaderEvent.name, brokerPort);
+              console.info("leaderAcquired", { name: leaderEvent.name });
+            };
+
             evoluPort.onMessage = (message) => {
               console.log(message);
             };

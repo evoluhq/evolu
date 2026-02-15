@@ -29,7 +29,7 @@ import {
   UrlSafeString,
 } from "../Type.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
-import type { CreateDbWorkerDep } from "./Db.js";
+import type { CreateDbWorkerDep, DbWorkerLeaderOutput } from "./Db.js";
 import type { EvoluError } from "./Error.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
 import {
@@ -495,16 +495,27 @@ export const createEvolu =
     await using stack = run.stack();
 
     const dbWorker = stack.use(createDbWorker());
-    dbWorker.postMessage({ type: "init", name });
+    const evoluChannel = stack.use(createMessageChannel<EvoluInput>());
+    const brokerChannel = stack.use(
+      createMessageChannel<DbWorkerLeaderOutput>(),
+    );
 
-    const {
-      port1: { postMessage },
-      port2,
-    } = stack.use(createMessageChannel<EvoluInput>());
+    sharedWorker.port.postMessage(
+      {
+        type: "InitEvolu",
+        name,
+        port: evoluChannel.port2.native,
+        brokerPort: brokerChannel.port2.native,
+      },
+      [evoluChannel.port2.native, brokerChannel.port2.native],
+    );
 
-    sharedWorker.port.postMessage({ type: "InitEvolu", port: port2.native }, [
-      port2.native,
-    ]);
+    dbWorker.postMessage(
+      { type: "init", name, brokerPort: brokerChannel.port1.native },
+      [brokerChannel.port1.native],
+    );
+
+    const { postMessage } = evoluChannel.port1;
 
     const mutateBatch = createMicrotaskBatch<{
       readonly change: MutationChange;

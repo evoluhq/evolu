@@ -317,10 +317,12 @@ describe("createEvolu", () => {
     if (!result.ok) return;
 
     expect(dbWorkerMessages).toHaveLength(1);
-    expect(dbWorkerMessages[0]).toEqual({
-      type: "init",
-      name: result.value.name,
-    });
+    expect(dbWorkerMessages[0]).toEqual(
+      expect.objectContaining({
+        type: "init",
+        name: result.value.name,
+      }),
+    );
   });
 
   test("resolves name from appName and appOwner hash", async () => {
