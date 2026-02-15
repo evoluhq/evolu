@@ -385,12 +385,14 @@ export const systemColumnsWithId = /*#__PURE__*/ readonly([
   "id",
 ]);
 
-export const evoluSchemaToDbSchema = (
-  schema: EvoluSchema,
+export const evoluSchemaToDbSchema = <S extends EvoluSchema>(
+  schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
   indexesConfig?: IndexesConfig,
 ): DbSchema => {
+  const validSchema = schema as EvoluSchema;
+
   const tables = mapObject(
-    schema,
+    validSchema,
     (table) => new Set(Object.keys(table).filter((k) => k !== "id")),
   );
 

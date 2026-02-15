@@ -6,7 +6,7 @@
 
 import type { NonEmptyReadonlyArray } from "../Array.js";
 import type { CallbackId } from "../Callbacks.js";
-import type { ConsoleEntry } from "../Console.js";
+import type { ConsoleEntry, ConsoleLevel } from "../Console.js";
 import { exhaustiveCheck } from "../Function.js";
 import { ok } from "../Result.js";
 import type { Task } from "../Task.js";
@@ -46,6 +46,7 @@ export type SharedWorkerInput =
   | {
       /** Tab-level channel for broadcast outputs (console/error). */
       readonly type: "InitTab";
+      readonly consoleLevel: ConsoleLevel;
       readonly port: NativeMessagePort<EvoluTabOutput>;
     }
   | {
@@ -103,11 +104,12 @@ export const initSharedWorker =
     console.info("initSharedWorker");
 
     self.onConnect = (port) => {
-      console.info("onConnect");
+      console.debug("onConnect");
 
       port.onMessage = (message) => {
         switch (message.type) {
           case "InitTab": {
+            console.setLevel(message.consoleLevel);
             const tabPort = createMessagePort<EvoluTabOutput>(message.port);
             tabPorts.add(tabPort);
 
@@ -142,6 +144,13 @@ export const initSharedWorker =
                   postOrQueueTabOutput({
                     type: "ConsoleEntry",
                     entry: leaderEvent.entry,
+                  });
+                  break;
+                }
+                case "EvoluError": {
+                  postOrQueueTabOutput({
+                    type: "EvoluError",
+                    error: leaderEvent.error,
                   });
                   break;
                 }

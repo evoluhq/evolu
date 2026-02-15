@@ -53,6 +53,7 @@ import type {
   MutationChange,
   ValidateSchema,
 } from "./Schema.js";
+import { evoluSchemaToDbSchema } from "./Schema.js";
 import type { EvoluInput, EvoluTabOutput, SharedWorkerDep } from "./Shared.js";
 import { DbChange } from "./Storage.js";
 import type { SyncOwner } from "./Sync.js";
@@ -457,7 +458,11 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   };
 
   sharedWorker.port.postMessage(
-    { type: "InitTab", port: tabChannel.port1.native },
+    {
+      type: "InitTab",
+      consoleLevel: console.getLevel(),
+      port: tabChannel.port1.native,
+    },
     [tabChannel.port1.native],
   );
 
@@ -476,7 +481,7 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
  */
 export const createEvolu =
   <S extends EvoluSchema>(
-    _schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
+    schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
     config: EvoluConfig,
   ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
   async (run) => {
@@ -516,11 +521,17 @@ export const createEvolu =
         [evoluChannel.port2.native, leaderChannel.port2.native],
       );
 
-      stack
-        .use(createDbWorker())
-        .postMessage({ type: "init", name, port: leaderChannel.port1.native }, [
-          leaderChannel.port1.native,
-        ]);
+      stack.use(createDbWorker()).postMessage(
+        {
+          type: "init",
+          name,
+          consoleLevel: console.getLevel(),
+          dbSchema: evoluSchemaToDbSchema(schema, config.indexes),
+          encryptionKey: appOwner.encryptionKey,
+          port: leaderChannel.port1.native,
+        },
+        [leaderChannel.port1.native],
+      );
 
       postMessage = evoluChannel.port1.postMessage;
     }

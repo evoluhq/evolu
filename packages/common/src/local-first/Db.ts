@@ -4,21 +4,30 @@
  * @module
  */
 
+import type { ConsoleLevel } from "../Console.js";
+import { createSlip21, EncryptionKey } from "../Crypto.js";
 import type { LeaderLockDep } from "../Platform.js";
 import { ok } from "../Result.js";
+import type { CreateSqliteDriverDep, SqliteDep } from "../Sqlite.js";
+import { createSqlite } from "../Sqlite.js";
 import type { AsyncDisposableStack, Task } from "../Task.js";
 import type { Name } from "../Type.js";
 import type {
+  MessagePort,
   NativeMessagePort,
   Worker,
   WorkerDeps,
   WorkerSelf,
 } from "../Worker.js";
-import type { ConsoleEntry } from "../Console.js";
+import type { DbSchema } from "./Schema.js";
+import type { EvoluTabOutput } from "./Shared.js";
 
 export interface DbWorkerInput {
   readonly type: "init";
   readonly name: Name;
+  readonly consoleLevel: ConsoleLevel;
+  readonly dbSchema: DbSchema;
+  readonly encryptionKey: EncryptionKey;
   readonly port: NativeMessagePort<DbWorkerLeaderOutput>;
 }
 
@@ -30,29 +39,37 @@ export interface CreateDbWorkerDep {
   readonly createDbWorker: CreateDbWorker;
 }
 
+export type DbWorkerDeps = WorkerDeps & LeaderLockDep & CreateSqliteDriverDep;
+
 export type DbWorkerLeaderOutput =
   | {
       readonly type: "LeaderAcquired";
       readonly name: Name;
     }
-  | {
-      readonly type: "ConsoleEntry";
-      readonly entry: ConsoleEntry;
-    };
+  | EvoluTabOutput;
 
 export const initDbWorker =
   (
     self: WorkerSelf<DbWorkerInput>,
-  ): Task<AsyncDisposableStack, never, WorkerDeps & LeaderLockDep> =>
+  ): Task<AsyncDisposableStack, never, DbWorkerDeps> =>
   (run) => {
     const { leaderLock, createMessagePort, consoleStoreOutputEntry } = run.deps;
     const stack = run.stack();
 
     let initialized = false;
 
-    self.onMessage = ({ name, port: nativeLeaderPort }) => {
+    self.onMessage = ({
+      name,
+      consoleLevel,
+      dbSchema,
+      encryptionKey,
+      port: nativeLeaderPort,
+    }) => {
       if (!initialized) {
         initialized = true;
+        const console = run.deps.console.child(name).child("DbWorker");
+        console.setLevel(consoleLevel);
+        console.info("initDbWorker");
 
         const leaderPort = stack.use(
           createMessagePort<DbWorkerLeaderOutput>(nativeLeaderPort),
@@ -67,8 +84,11 @@ export const initDbWorker =
 
         void run.daemon(async (run) => {
           await stack.use(leaderLock.acquire(name));
+          console.info("leaderAcquired");
           leaderPort.postMessage({ type: "LeaderAcquired", name });
-          return run(startDbWorker(name));
+          return run.addDeps({ leaderPort })(
+            startDbWorker(name, dbSchema, encryptionKey),
+          );
         });
       }
     };
@@ -76,21 +96,61 @@ export const initDbWorker =
     return ok(stack);
   };
 
-const startDbWorker =
-  (name: Name): Task<void, never, WorkerDeps> =>
-  (run) => {
-    const console = run.deps.console.child(name).child("DbWorker");
+type StartDbWorkerDeps = DbWorkerDeps & {
+  readonly leaderPort: MessagePort<DbWorkerLeaderOutput>;
+};
 
-    console.info("initializeDb", { name });
+const startDbWorker =
+  (
+    name: Name,
+    dbSchema: DbSchema,
+    encryptionKey: EncryptionKey,
+  ): Task<globalThis.AsyncDisposableStack, never, StartDbWorkerDeps> =>
+  async (run) => {
+    await using stack = run.stack();
+    const console = run.deps.console.child(name).child("DbWorker");
+    const sqliteEncryptionKey = createSlip21(encryptionKey, [
+      "evolu",
+      "sqlite",
+      1,
+      name,
+    ]);
+
+    const sqlite = await stack.use(
+      createSqlite(name, {
+        mode: "encrypted",
+        encryptionKey: EncryptionKey.orThrow(sqliteEncryptionKey),
+      }),
+    );
+
+    if (!sqlite.ok) {
+      run.deps.leaderPort.postMessage({
+        type: "EvoluError",
+        error: sqlite.error,
+      });
+      return ok(stack.move());
+    }
+
+    const runWithSqlite = run.addDeps({ sqlite: sqlite.value });
+
+    const initializeResult = await runWithSqlite(initializeDb(dbSchema));
+    if (!initializeResult.ok) return initializeResult;
+
+    console.info("sqliteReady");
+
+    return ok(stack.move());
 
     // TODO: Add parallel stale-leader detection.
     // Heartbeat is emitted by the active DB worker and sent to
     // SharedWorker. SharedWorker tracks last-seen heartbeat per Evolu
     // name and if silent for 10 seconds, it waits for another DB worker
     // to announce itself alive and then routes requests to that worker.
-
-    return ok();
   };
+
+const initializeDb =
+  (_dbSchema: DbSchema): Task<void, never, SqliteDep> =>
+  (_run) =>
+    ok();
 
 // import {
 //   firstInArray,

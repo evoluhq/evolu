@@ -102,9 +102,7 @@ export const createSharedWorkerSelf = <Input, Output = never>(
 /** Creates deps shared by web worker entry points. */
 export const createWorkerDeps = (): WorkerDeps => {
   const consoleStoreOutput = createConsoleStoreOutput();
-  const console = createConsole({
-    output: consoleStoreOutput,
-  });
+  const console = createConsole({ output: consoleStoreOutput });
 
   return {
     console,

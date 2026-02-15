@@ -67,6 +67,7 @@ describe("initSharedWorker", () => {
 
     worker.port.postMessage({
       type: "InitTab",
+      consoleLevel: "debug",
       port: consoleChannel.port1.native,
     });
 
@@ -97,6 +98,7 @@ describe("initSharedWorker", () => {
 
     worker.port.postMessage({
       type: "InitTab",
+      consoleLevel: "debug",
       port: consoleChannel.port1.native,
     });
 
@@ -126,6 +128,7 @@ describe("initSharedWorker", () => {
 
     worker.port.postMessage({
       type: "InitTab",
+      consoleLevel: "debug",
       port: consoleChannel.port1.native,
     });
 
@@ -154,6 +157,7 @@ describe("initSharedWorker", () => {
 
     worker.port.postMessage({
       type: "InitTab",
+      consoleLevel: "debug",
       port: consoleChannel.port1.native,
     });
 
@@ -182,6 +186,7 @@ describe("initSharedWorker", () => {
 
     worker.port.postMessage({
       type: "InitTab",
+      consoleLevel: "debug",
       port: consoleChannel.port1.native,
     });
 
@@ -209,6 +214,7 @@ describe("initSharedWorker", () => {
 
     worker.port.postMessage({
       type: "InitTab",
+      consoleLevel: "debug",
       port: consoleChannel.port1.native,
     });
 
@@ -236,6 +242,7 @@ describe("initSharedWorker", () => {
 
     worker.port.postMessage({
       type: "InitTab",
+      consoleLevel: "debug",
       port: consoleChannel.port1.native,
     });
 
@@ -282,6 +289,7 @@ describe("initSharedWorker", () => {
 
     worker.port.postMessage({
       type: "InitTab",
+      consoleLevel: "debug",
       port: tabChannel.port1.native,
     });
 
