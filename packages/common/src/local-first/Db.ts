@@ -11,9 +11,10 @@ import type { Name } from "../Type.js";
 import type {
   NativeMessagePort,
   Worker,
-  WorkerInitDep,
+  WorkerDeps,
   WorkerSelf,
 } from "../Worker.js";
+import type { ConsoleEntry } from "../Console.js";
 
 export interface DbWorkerInput {
   readonly type: "init";
@@ -29,17 +30,22 @@ export interface CreateDbWorkerDep {
   readonly createDbWorker: CreateDbWorker;
 }
 
-export interface DbWorkerLeaderOutput {
-  readonly type: "LeaderAcquired";
-  readonly name: Name;
-}
+export type DbWorkerLeaderOutput =
+  | {
+      readonly type: "LeaderAcquired";
+      readonly name: Name;
+    }
+  | {
+      readonly type: "ConsoleEntry";
+      readonly entry: ConsoleEntry;
+    };
 
 export const initDbWorker =
   (
     self: WorkerSelf<DbWorkerInput>,
-  ): Task<AsyncDisposableStack, never, WorkerInitDep & LeaderLockDep> =>
+  ): Task<AsyncDisposableStack, never, WorkerDeps & LeaderLockDep> =>
   (run) => {
-    const { leaderLock, createMessagePort } = run.deps;
+    const { leaderLock, createMessagePort, consoleStoreOutputEntry } = run.deps;
     const stack = run.stack();
 
     let initialized = false;
@@ -52,10 +58,17 @@ export const initDbWorker =
           createMessagePort<DbWorkerLeaderOutput>(nativeLeaderPort),
         );
 
+        stack.defer(
+          consoleStoreOutputEntry.subscribe(() => {
+            const entry = consoleStoreOutputEntry.get();
+            if (entry) leaderPort.postMessage({ type: "ConsoleEntry", entry });
+          }),
+        );
+
         void run.daemon(async (run) => {
           await stack.use(leaderLock.acquire(name));
           leaderPort.postMessage({ type: "LeaderAcquired", name });
-          return run(initializeDb(name));
+          return run(startDbWorker(name));
         });
       }
     };
@@ -63,12 +76,13 @@ export const initDbWorker =
     return ok(stack);
   };
 
-const initializeDb =
-  (name: Name): Task<void, never, WorkerInitDep> =>
+const startDbWorker =
+  (name: Name): Task<void, never, WorkerDeps> =>
   (run) => {
-    const _console = run.deps.console.child("DbWorker");
+    const console = run.deps.console.child(name).child("DbWorker");
 
-    globalThis.console.info("initializeDb", { name });
+    console.info("initializeDb", { name });
+
     // TODO: Add parallel stale-leader detection.
     // Heartbeat is emitted by the active DB worker and sent to
     // SharedWorker. SharedWorker tracks last-seen heartbeat per Evolu

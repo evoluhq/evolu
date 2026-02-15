@@ -16,7 +16,7 @@ import type {
   MessagePort,
   NativeMessagePort,
   SharedWorkerSelf,
-  WorkerInitDep,
+  WorkerDeps,
 } from "../Worker.js";
 import type { DbWorkerLeaderOutput } from "./Db.js";
 import type { EvoluError } from "./Error.js";
@@ -69,7 +69,7 @@ export type EvoluTabOutput =
 export const initSharedWorker =
   (
     self: SharedWorkerSelf<SharedWorkerInput>,
-  ): Task<AsyncDisposableStack, never, WorkerInitDep> =>
+  ): Task<AsyncDisposableStack, never, WorkerDeps> =>
   async (run) => {
     const { createMessagePort, consoleStoreOutputEntry } = run.deps;
     const console = run.deps.console.child("SharedWorker");
@@ -132,8 +132,22 @@ export const initSharedWorker =
             leaderPorts.set(message.name, leaderPort);
 
             leaderPort.onMessage = (leaderEvent) => {
-              leaderPorts.set(leaderEvent.name, leaderPort);
-              console.info("leaderAcquired", { name: leaderEvent.name });
+              switch (leaderEvent.type) {
+                case "LeaderAcquired": {
+                  leaderPorts.set(leaderEvent.name, leaderPort);
+                  console.info("leaderAcquired", { name: leaderEvent.name });
+                  break;
+                }
+                case "ConsoleEntry": {
+                  postOrQueueTabOutput({
+                    type: "ConsoleEntry",
+                    entry: leaderEvent.entry,
+                  });
+                  break;
+                }
+                default:
+                  exhaustiveCheck(leaderEvent);
+              }
             };
 
             evoluPort.onMessage = (message) => {

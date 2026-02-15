@@ -8,6 +8,7 @@ import {
   initSharedWorker,
 } from "../../src/local-first/Shared.js";
 import type { DbWorkerLeaderOutput } from "../../src/local-first/Db.js";
+import type { MutationChange } from "../../src/local-first/Schema.js";
 import { testCreateConsole } from "../../src/Console.js";
 import { testCreateRun } from "../../src/Test.js";
 import {
@@ -267,6 +268,119 @@ describe("initSharedWorker", () => {
         port2: leaderChannel.port1.native,
       });
     }).not.toThrow();
+  });
+
+  test("forwards DbWorker console entries from leader channel", async () => {
+    const { worker, workerStack } = await setupWorker();
+    await using _workerStack = workerStack;
+
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
+    tabChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
+    };
+
+    worker.port.postMessage({
+      type: "InitTab",
+      port: tabChannel.port1.native,
+    });
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const leaderChannel = testCreateMessageChannel<
+      never,
+      DbWorkerLeaderOutput
+    >();
+
+    worker.port.postMessage({
+      type: "InitEvolu",
+      name: testName,
+      port1: evoluChannel.port1.native,
+      port2: leaderChannel.port1.native,
+    });
+
+    const entry: ConsoleEntry = {
+      method: "info",
+      path: ["DbWorker"],
+      args: ["initializeDb", { name: testName }],
+    };
+
+    leaderChannel.port2.postMessage({ type: "ConsoleEntry", entry });
+
+    expect(receivedOutputs).toContainEqual({ type: "ConsoleEntry", entry });
+  });
+
+  test("accepts LeaderAcquired events from leader channel", async () => {
+    const { worker, workerStack } = await setupWorker();
+    await using _workerStack = workerStack;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const leaderChannel = testCreateMessageChannel<
+      never,
+      DbWorkerLeaderOutput
+    >();
+
+    worker.port.postMessage({
+      type: "InitEvolu",
+      name: testName,
+      port1: evoluChannel.port1.native,
+      port2: leaderChannel.port1.native,
+    });
+
+    expect(() => {
+      leaderChannel.port2.postMessage({
+        type: "LeaderAcquired",
+        name: testName,
+      });
+    }).not.toThrow();
+  });
+
+  test("accepts Evolu input messages on evolu channel", async () => {
+    const { worker, workerStack } = await setupWorker();
+    await using _workerStack = workerStack;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const leaderChannel = testCreateMessageChannel<
+      never,
+      DbWorkerLeaderOutput
+    >();
+
+    worker.port.postMessage({
+      type: "InitEvolu",
+      name: testName,
+      port1: evoluChannel.port1.native,
+      port2: leaderChannel.port1.native,
+    });
+
+    expect(() => {
+      evoluChannel.port2.postMessage({
+        type: "mutate",
+        changes: [{} as MutationChange],
+        onCompleteIds: [],
+        subscribedQueries: [],
+      });
+    }).not.toThrow();
+  });
+
+  test("throws for unknown leader channel message type", async () => {
+    const { worker, workerStack } = await setupWorker();
+    await using _workerStack = workerStack;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const leaderChannel = testCreateMessageChannel<
+      never,
+      DbWorkerLeaderOutput
+    >();
+
+    worker.port.postMessage({
+      type: "InitEvolu",
+      name: testName,
+      port1: evoluChannel.port1.native,
+      port2: leaderChannel.port1.native,
+    });
+
+    expect(() => {
+      leaderChannel.port2.postMessage({ type: "Unknown" } as never);
+    }).toThrow();
   });
 
   test("throws for unknown message type", async () => {
