@@ -104,7 +104,7 @@ export const createMessageChannel = <Input, Output = never>(): MessageChannel<
  * wrapper, so this is a passthrough.
  */
 export const createMessagePort = <Input, Output = never>(
-  nativePort: NativeMessagePort,
+  nativePort: NativeMessagePort<Input, Output>,
 ): MessagePort<Input, Output> =>
   nativePort as unknown as MessagePort<Input, Output>;
 
@@ -131,7 +131,7 @@ const createRnPort = <Input, Output>(
       for (const msg of receive.queue.splice(0)) fn(msg);
     }
   },
-  native: null as unknown as NativeMessagePort,
+  native: null as unknown as NativeMessagePort<Input, Output>,
   [Symbol.dispose]: () => {
     receive.handler = null;
     onDispose?.();

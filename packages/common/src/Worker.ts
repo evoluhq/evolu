@@ -68,7 +68,7 @@ export interface MessagePort<Input, Output = never> extends Disposable {
    * );
    * ```
    */
-  readonly native: NativeMessagePort;
+  readonly native: NativeMessagePort<Input, Output>;
 }
 
 /**
@@ -78,7 +78,7 @@ export interface MessagePort<Input, Output = never> extends Disposable {
  * transferable types (`ImageBitmap`, `OffscreenCanvas`, `ReadableStream`, etc.)
  * that can be added here if needed.
  */
-export type Transferable = NativeMessagePort | ArrayBuffer;
+export type Transferable = NativeMessagePort<any, any> | ArrayBuffer;
 
 /**
  * Opaque type for platform-specific native MessagePort.
@@ -87,11 +87,20 @@ export type Transferable = NativeMessagePort | ArrayBuffer;
  * a wrapper. Ensures type-safe wiring between {@link MessagePort.native} and
  * {@link CreateMessagePort} without exposing platform details.
  */
-export type NativeMessagePort = Brand<"NativeMessagePort">;
+export type NativeMessagePort<
+  Input = unknown,
+  Output = never,
+> = Brand<"NativeMessagePort"> & {
+  readonly [nativeMessagePortInput]?: Input;
+  readonly [nativeMessagePortOutput]?: Output;
+};
+
+declare const nativeMessagePortInput: unique symbol;
+declare const nativeMessagePortOutput: unique symbol;
 
 /** Factory function to create a {@link MessagePort} from a native port. */
 export type CreateMessagePort = <Input, Output = never>(
-  nativePort: NativeMessagePort,
+  nativePort: NativeMessagePort<Input, Output>,
 ) => MessagePort<Input, Output>;
 
 export interface CreateMessagePortDep {
@@ -292,8 +301,14 @@ export const testCreateMessageChannel = <
   const state1: TestPortState<Output> = { handler: null, queue: [] };
   const state2: TestPortState<Input> = { handler: null, queue: [] };
 
-  const native1 = Symbol("NativeMessagePort1") as unknown as NativeMessagePort;
-  const native2 = Symbol("NativeMessagePort2") as unknown as NativeMessagePort;
+  const native1 = Symbol("NativeMessagePort1") as unknown as NativeMessagePort<
+    Input,
+    Output
+  >;
+  const native2 = Symbol("NativeMessagePort2") as unknown as NativeMessagePort<
+    Output,
+    Input
+  >;
 
   const port1 = createTestPort<Input, Output>(state1, state2, native1);
   const port2 = createTestPort<Output, Input>(state2, state1, native2);
@@ -317,7 +332,7 @@ export const testCreateMessageChannel = <
 
 /** Creates an in-memory {@link CreateMessagePort} for testing. */
 export const testCreateMessagePort: CreateMessagePort = <Input, Output = never>(
-  nativePort: NativeMessagePort,
+  nativePort: NativeMessagePort<Input, Output>,
 ): MessagePort<Input, Output> => {
   const pair = nativePortRegistry.get(nativePort);
   if (!pair) throw new Error("Unknown native port — did you transfer it?");
@@ -332,7 +347,7 @@ interface TestPortState<T> {
 const createTestPort = <Input, Output>(
   receive: TestPortState<Output>,
   peerReceive: TestPortState<Input>,
-  native: NativeMessagePort,
+  native: NativeMessagePort<Input, Output>,
 ): MessagePort<Input, Output> => ({
   postMessage: (message) => {
     if (peerReceive.handler) peerReceive.handler(message);
@@ -364,6 +379,6 @@ const createTestPort = <Input, Output>(
  * longer referenced.
  */
 const nativePortRegistry = new WeakMap<
-  NativeMessagePort,
+  NativeMessagePort<any, any>,
   MessagePort<any, any>
 >();
