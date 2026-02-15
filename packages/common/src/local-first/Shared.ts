@@ -46,14 +46,14 @@ export type SharedWorkerInput =
   | {
       /** Tab-level channel for broadcast outputs (console/error). */
       readonly type: "InitTab";
-      readonly port: NativeMessagePort;
+      readonly port: NativeMessagePort<EvoluTabOutput>;
     }
   | {
       /** Per-Evolu instance request channel. */
       readonly type: "InitEvolu";
       readonly name: Name;
-      readonly port: NativeMessagePort;
-      readonly brokerPort: NativeMessagePort;
+      readonly port1: NativeMessagePort<never, EvoluInput>;
+      readonly port2: NativeMessagePort<never, DbWorkerLeaderOutput>;
     };
 
 export type EvoluTabOutput =
@@ -123,16 +123,16 @@ export const initSharedWorker =
             // then set onMessage to start processing requests.
             // Messages are queued until onMessage is assigned.
             const evoluPort = createMessagePort<never, EvoluInput>(
-              message.port,
+              message.port1,
             );
-            const brokerPort = createMessagePort<never, DbWorkerLeaderOutput>(
-              message.brokerPort,
+            const leaderPort = createMessagePort<never, DbWorkerLeaderOutput>(
+              message.port2,
             );
 
-            leaderPorts.set(message.name, brokerPort);
+            leaderPorts.set(message.name, leaderPort);
 
-            brokerPort.onMessage = (leaderEvent) => {
-              leaderPorts.set(leaderEvent.name, brokerPort);
+            leaderPort.onMessage = (leaderEvent) => {
+              leaderPorts.set(leaderEvent.name, leaderPort);
               console.info("leaderAcquired", { name: leaderEvent.name });
             };
 

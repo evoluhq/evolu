@@ -18,7 +18,7 @@ import type {
 export interface DbWorkerInput {
   readonly type: "init";
   readonly name: Name;
-  readonly brokerPort: NativeMessagePort;
+  readonly port: NativeMessagePort<DbWorkerLeaderOutput>;
 }
 
 export type DbWorker = Worker<DbWorkerInput>;
@@ -39,21 +39,22 @@ export const initDbWorker =
     self: WorkerSelf<DbWorkerInput>,
   ): Task<AsyncDisposableStack, never, WorkerInitDep & LeaderLockDep> =>
   (run) => {
-    const { leaderLock } = run.deps;
+    const { leaderLock, createMessagePort } = run.deps;
     const stack = run.stack();
 
     let initialized = false;
 
-    self.onMessage = ({ name, brokerPort: nativeBrokerPort }) => {
+    self.onMessage = ({ name, port: nativeLeaderPort }) => {
       if (!initialized) {
         initialized = true;
 
-        const brokerPort =
-          run.deps.createMessagePort<DbWorkerLeaderOutput>(nativeBrokerPort);
+        const leaderPort = stack.use(
+          createMessagePort<DbWorkerLeaderOutput>(nativeLeaderPort),
+        );
 
         void run.daemon(async (run) => {
           await stack.use(leaderLock.acquire(name));
-          brokerPort.postMessage({ type: "LeaderAcquired", name });
+          leaderPort.postMessage({ type: "LeaderAcquired", name });
           return run(initializeDb(name));
         });
       }

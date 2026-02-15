@@ -480,8 +480,6 @@ export const createEvolu =
     config: EvoluConfig,
   ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
   async (run) => {
-    const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
-
     const { appName, appOwner = createAppOwner(createOwnerSecret(run.deps)) } =
       config;
     const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
@@ -494,28 +492,37 @@ export const createEvolu =
 
     await using stack = run.stack();
 
-    const dbWorker = stack.use(createDbWorker());
-    const evoluChannel = stack.use(createMessageChannel<EvoluInput>());
-    const brokerChannel = stack.use(
-      createMessageChannel<DbWorkerLeaderOutput>(),
-    );
+    // Evolu instances send messages to SharedWorker.
+    let postMessage: (input: EvoluInput) => void;
 
-    sharedWorker.port.postMessage(
-      {
-        type: "InitEvolu",
-        name,
-        port: evoluChannel.port2.native,
-        brokerPort: brokerChannel.port2.native,
-      },
-      [evoluChannel.port2.native, brokerChannel.port2.native],
-    );
+    {
+      // Wire workers.
+      const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
+      // For DbWorker to announce SharedWorker it is the leader.
+      const leaderChannel = stack.use(
+        createMessageChannel<DbWorkerLeaderOutput>(),
+      );
+      // For Evolu to send and receive messages with SharedWorker.
+      const evoluChannel = stack.use(createMessageChannel<EvoluInput>());
 
-    dbWorker.postMessage(
-      { type: "init", name, brokerPort: brokerChannel.port1.native },
-      [brokerChannel.port1.native],
-    );
+      sharedWorker.port.postMessage(
+        {
+          type: "InitEvolu",
+          name,
+          port1: evoluChannel.port2.native,
+          port2: leaderChannel.port2.native,
+        },
+        [evoluChannel.port2.native, leaderChannel.port2.native],
+      );
 
-    const { postMessage } = evoluChannel.port1;
+      stack
+        .use(createDbWorker())
+        .postMessage({ type: "init", name, port: leaderChannel.port1.native }, [
+          leaderChannel.port1.native,
+        ]);
+
+      postMessage = evoluChannel.port1.postMessage;
+    }
 
     const mutateBatch = createMicrotaskBatch<{
       readonly change: MutationChange;

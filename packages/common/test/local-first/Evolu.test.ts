@@ -71,7 +71,7 @@ const setupCreateEvolu = async () => {
   self.onConnect = (port) => {
     port.onMessage = (message) => {
       if (message.type !== "InitEvolu") return;
-      const evoluPort = testCreateMessagePort<never, EvoluInput>(message.port);
+      const evoluPort = testCreateMessagePort<never, EvoluInput>(message.port1);
       evoluPort.onMessage = (input) => {
         evoluInputs.push(input);
       };

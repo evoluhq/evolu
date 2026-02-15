@@ -2,10 +2,12 @@ import { createStore } from "../../src/Store.js";
 import type { ConsoleEntry } from "../../src/Console.js";
 import type { ReadonlyStore } from "../../src/Store.js";
 import {
+  type EvoluInput,
   type EvoluTabOutput,
   type SharedWorkerInput,
   initSharedWorker,
 } from "../../src/local-first/Shared.js";
+import type { DbWorkerLeaderOutput } from "../../src/local-first/Db.js";
 import { testCreateConsole } from "../../src/Console.js";
 import { testCreateRun } from "../../src/Test.js";
 import {
@@ -251,15 +253,18 @@ describe("initSharedWorker", () => {
     const { worker, workerStack } = await setupWorker();
     await using _workerStack = workerStack;
 
-    const evoluChannel = testCreateMessageChannel<string>();
-    const brokerChannel = testCreateMessageChannel<string>();
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const leaderChannel = testCreateMessageChannel<
+      never,
+      DbWorkerLeaderOutput
+    >();
 
     expect(() => {
       worker.port.postMessage({
         type: "InitEvolu",
         name: testName,
-        port: evoluChannel.port1.native,
-        brokerPort: brokerChannel.port1.native,
+        port1: evoluChannel.port1.native,
+        port2: leaderChannel.port1.native,
       });
     }).not.toThrow();
   });
