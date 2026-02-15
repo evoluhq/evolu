@@ -483,3 +483,19 @@ By hiding the generic, the `Storage` interface becomes implementation-agnostic. 
 - **Decoupling:** Code remains agnostic to underlying implementation (SQLite, IndexedDB, in-memory, etc.)
 - **Simplicity:** Consumers don't need to know implementation-specific types
 - **Testability:** Easy to mock without matching generic parameters
+
+**Why use type aliases for composed deps instead of interfaces?**
+
+Use `type` for dependency compositions like `A & B & Partial<C>`. Interfaces can be declaration-merged across files, which is useful for some extensibility patterns but risky for dependency contracts because accidental merges can silently change required deps.
+
+```ts
+// Prefer: closed composition
+type AppDeps = LoggerDep & TimeDep & Partial<MetricsDep>;
+
+// Avoid for composed deps: interface can be merged elsewhere
+interface AppDeps extends LoggerDep, TimeDep {
+  readonly metrics?: Metrics;
+}
+```
+
+Use interfaces for concrete dependency contracts (`Time`, `Logger`, `Storage`) and dep wrappers (`TimeDep`, `LoggerDep`). Use type aliases when combining multiple deps.
