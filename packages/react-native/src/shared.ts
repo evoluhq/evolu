@@ -4,6 +4,7 @@ import {
   createRandomBytes,
   createRun,
   type ConsoleDep,
+  type CreateSqliteDriverDep,
   type LocalAuth,
   type ReloadAppDep,
   type SecureStorage,
@@ -32,7 +33,7 @@ const randomBytes = createRandomBytes();
 
 /** Creates Evolu dependencies for React Native. */
 export const createEvoluDeps = (
-  deps: ReloadAppDep & Partial<ConsoleDep>,
+  deps: ReloadAppDep & CreateSqliteDriverDep & Partial<ConsoleDep>,
 ): EvoluDeps => {
   const consoleStoreOutput = createConsoleStoreOutput();
 
@@ -41,6 +42,7 @@ export const createEvoluDeps = (
   const workerRun = createRun({
     consoleStoreOutputEntry: consoleStoreOutput.entry,
     createMessagePort,
+    createSqliteDriver: deps.createSqliteDriver,
     leaderLock,
   });
 
