@@ -182,9 +182,9 @@ import type { Typed } from "./Type.js";
  * handleable at the app level. Group them in a union type like `AppError`:
  *
  * ```ts
- * type AppError = SqliteError | SyncError | UnknownError;
+ * type AppError = TimestampError | SyncError | UnknownError;
  *
- * interface SqliteError extends Typed<"SqliteError"> {
+ * interface TimestampError extends Typed<"TimestampError"> {
  *   readonly error: UnknownError;
  * }
  * ```
@@ -197,9 +197,9 @@ import type { Typed } from "./Type.js";
  * ```ts
  * const handleAppError = (error: AppError): void => {
  *   switch (error.type) {
- *     case "SqliteError":
+ *     case "TimestampError":
  *       console.error(error.error.stack); // Log preserved stack trace
- *       showToast("Database error. Please restart the app.");
+ *       showToast("Timestamp error. Your computer clock appears to be incorrect.");
  *       break;
  *     case "SyncError":
  *       showToast("Sync failed. Retrying...");

@@ -8,10 +8,8 @@ import type { Brand } from "./Brand.js";
 import type { EncryptionKey } from "./Crypto.js";
 import type { Eq } from "./Eq.js";
 import { eqArrayNumber } from "./Eq.js";
-import type { UnknownError } from "./Error.js";
-import { createUnknownError } from "./Error.js";
 import type { Result } from "./Result.js";
-import { err, ok, trySync } from "./Result.js";
+import { ok } from "./Result.js";
 import type { Task } from "./Task.js";
 import type { Name, Typed } from "./Type.js";
 import { Null, Number, String, Uint8Array, union } from "./Type.js";
@@ -26,23 +24,30 @@ import { Null, Number, String, Uint8Array, union } from "./Type.js";
 export interface Sqlite extends Disposable {
   readonly exec: <R extends SqliteRow = SqliteRow>(
     query: SqliteQuery,
-  ) => Result<SqliteExecResult<R>, SqliteError>;
+  ) => SqliteExecResult<R>;
 
   /**
    * Executes a transaction, running the provided callback within a begin/commit
-   * block. If the callback returns an error, the transaction is rolled back. If
-   * the rollback fails, a {@link SqliteError} is returned with both the original
-   * error and rollbackError.
+   * block.
+   *
+   * If the callback returns a {@link Result} error, the transaction is rolled
+   * back and the error result is returned.
+   *
+   * If the callback returns `void`, the transaction is committed unless the
+   * callback throws.
    */
-  readonly transaction: <T, E>(
-    callback: () => Result<T, E | SqliteError>,
-  ) => Result<T, E | SqliteError>;
+  readonly transaction: SqliteTransaction;
 
-  readonly export: () => Result<Uint8Array, SqliteError>;
+  readonly export: () => Uint8Array;
 }
 
 export interface SqliteDep {
   readonly sqlite: Sqlite;
+}
+
+export interface SqliteTransaction {
+  <T, E>(callback: () => Result<T, E>): Result<T, E>;
+  (callback: () => void): void;
 }
 
 /** Represents a SQL query to be executed on a {@link Sqlite} database. */
@@ -106,12 +111,6 @@ export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
   readonly changes: number;
 }
 
-/** Represents an error that occurred during a SQLite operation. */
-export interface SqliteError extends Typed<"SqliteError"> {
-  readonly error: UnknownError;
-  readonly rollbackError?: UnknownError;
-}
-
 /**
  * A row returned from a {@link Sqlite} query, mapping column names to
  * {@link SqliteValue}.
@@ -158,7 +157,7 @@ export const createSqlite =
   (
     name: Name,
     options?: SqliteDriverOptions,
-  ): Task<Sqlite, SqliteError, CreateSqliteDriverDep> =>
+  ): Task<Sqlite, never, CreateSqliteDriverDep> =>
   async (run) => {
     const { createSqliteDriver } = run.deps;
     const console = run.deps.console.child("sql");
@@ -170,100 +169,59 @@ export const createSqlite =
 
     let isDisposed = false;
 
-    const rollback = <T, E>(
-      result: Result<T, E | SqliteError>,
-      error: UnknownError,
-    ): Result<T, E | SqliteError> => {
-      const rollbackResult = trySync(() => {
-        console.debug("rollback");
-        driver.exec(sql`rollback;`);
-      }, createSqliteError);
-      if (!rollbackResult.ok) {
-        console.warn("rollback failed", rollbackResult.error);
-        return err({
-          type: "SqliteError",
-          error,
-          rollbackError: rollbackResult.error.error,
-        });
-      }
-      return result;
-    };
-
     return ok({
-      exec: (query) =>
-        trySync(
-          () => {
-            console.debug({ query });
+      exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
+        console.debug({ query });
 
-            const label =
-              query.options?.logQueryExecutionTime &&
-              `SqliteQueryExecutionTime ${query.sql}`;
+        const label =
+          query.options?.logQueryExecutionTime &&
+          `SqliteQueryExecutionTime ${query.sql}`;
 
-            if (label) console.time(label);
-            const result = driver.exec(query);
-            if (label) console.timeEnd(label);
+        if (label) console.time(label);
+        const result = driver.exec(query);
+        if (label) console.timeEnd(label);
 
-            if (query.options?.logExplainQueryPlan) {
-              const result = driver.exec({
-                ...query,
-                sql: `EXPLAIN QUERY PLAN ${query.sql}` as SafeSql,
-              });
-              console.log("[logExplainQueryPlan]", query);
-              console.log(
-                drawSqliteQueryPlan(
-                  result.rows as unknown as Array<SqliteQueryPlanRow>,
-                ),
-              );
-            }
-
-            console.debug({ result });
-            return result as never;
-          },
-          (error): SqliteError => ({
-            type: "SqliteError",
-            error: createUnknownError(error),
-          }),
-        ),
-
-      transaction: (callback) => {
-        const beginResult = trySync(() => {
-          console.debug("begin");
-          driver.exec(sql`begin;`);
-        }, createSqliteError);
-        if (!beginResult.ok) return beginResult;
-
-        const callbackResult = trySync(callback, createSqliteError);
-        if (!callbackResult.ok) {
-          return rollback(callbackResult, callbackResult.error.error);
-        }
-
-        const callbackValue = callbackResult.value;
-        if (!callbackValue.ok) {
-          return rollback(
-            callbackValue,
-            createUnknownError(callbackValue.error),
+        if (query.options?.logExplainQueryPlan) {
+          const result = driver.exec({
+            ...query,
+            sql: `EXPLAIN QUERY PLAN ${query.sql}` as SafeSql,
+          });
+          console.log("[logExplainQueryPlan]", query);
+          console.log(
+            drawSqliteQueryPlan(
+              result.rows as unknown as Array<SqliteQueryPlanRow>,
+            ),
           );
         }
 
-        const commitResult = trySync(() => {
-          console.debug("commit");
-          driver.exec(sql`commit;`);
-        }, createSqliteError);
-        if (!commitResult.ok) {
-          return rollback(commitResult, commitResult.error.error);
-        }
-
-        return ok(callbackValue.value);
+        console.debug({ result });
+        return result as SqliteExecResult<R>;
       },
 
-      export: () =>
-        trySync(
-          () => driver.export(),
-          (error): SqliteError => ({
-            type: "SqliteError",
-            error: createUnknownError(error),
-          }),
-        ),
+      transaction: ((callback: () => Result<unknown, unknown> | void) => {
+        console.debug("begin");
+        driver.exec(sql`begin;`);
+
+        let shouldRollback = true;
+        using _rollback = {
+          [Symbol.dispose]: () => {
+            if (!shouldRollback) return;
+            console.debug("rollback");
+            driver.exec(sql`rollback;`);
+          },
+        };
+
+        const result = callback();
+        if (result != null && !result.ok) return result;
+
+        console.debug("commit");
+        driver.exec(sql`commit;`);
+        shouldRollback = false;
+
+        return result;
+      }) as SqliteTransaction,
+
+      export: () => driver.export(),
 
       [Symbol.dispose]: () => {
         if (isDisposed) return;
@@ -272,11 +230,6 @@ export const createSqlite =
       },
     });
   };
-
-const createSqliteError = (error: unknown): SqliteError => ({
-  type: "SqliteError",
-  error: createUnknownError(error),
-});
 
 interface SqliteQueryPlanRow {
   id: number;

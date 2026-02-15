@@ -9,13 +9,8 @@ import { firstInArray } from "../Array.js";
 import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import { EncryptionKey, type RandomBytesDep } from "../Crypto.js";
 import type { LeaderLockDep } from "../Platform.js";
-import type { Result } from "../Result.js";
 import { ok } from "../Result.js";
-import type {
-  CreateSqliteDriverDep,
-  SqliteDep,
-  SqliteError,
-} from "../Sqlite.js";
+import type { CreateSqliteDriverDep, SqliteDep } from "../Sqlite.js";
 import { createSqlite, sql } from "../Sqlite.js";
 import type { AsyncDisposableStack, Task } from "../Task.js";
 import type { Name } from "../Type.js";
@@ -140,18 +135,13 @@ const startDbWorker =
 
     const result = sqlite.value.transaction(() => {
       const dbSchema = getDbSchema(deps)();
-      if (!dbSchema.ok) return dbSchema;
 
-      const dbIsInitialized = "evolu_version" in dbSchema.value.tables;
+      const dbIsInitialized = "evolu_version" in dbSchema.tables;
 
-      const clockResult = createClock(deps)(dbIsInitialized);
-      if (!clockResult.ok) return clockResult;
-
-      const clock = clockResult.value;
+      const clock = createClock(deps)(dbIsInitialized);
 
       if (!dbIsInitialized) {
-        const result = initializeDb(deps)(clock.get());
-        if (!result.ok) return result;
+        initializeDb(deps)(clock.get());
       }
 
       return ok();
@@ -177,7 +167,7 @@ const startDbWorker =
 
 const initializeDb =
   ({ sqlite }: SqliteDep) =>
-  (initialClock: Timestamp): Result<void, SqliteError> => {
+  (initialClock: Timestamp): void => {
     for (const query of [
       sql`
         create table evolu_version (
@@ -240,16 +230,15 @@ const initializeDb =
         );
       `,
     ]) {
-      const queryResult = sqlite.exec(query);
-      if (!queryResult.ok) return queryResult;
+      sqlite.exec(query);
     }
 
-    return createBaseSqliteStorageTables({ sqlite });
+    createBaseSqliteStorageTables({ sqlite });
   };
 
 interface Clock {
   readonly get: () => Timestamp;
-  readonly save: (timestamp: Timestamp) => Result<void, SqliteError>;
+  readonly save: (timestamp: Timestamp) => void;
 }
 
 // interface ClockDep {
@@ -258,7 +247,7 @@ interface Clock {
 
 const createClock =
   (deps: RandomBytesDep & SqliteDep) =>
-  (dbIsInitialized: boolean): Result<Clock, SqliteError> => {
+  (dbIsInitialized: boolean): Clock => {
     let currentTimestamp: Timestamp;
 
     if (dbIsInitialized) {
@@ -267,30 +256,25 @@ const createClock =
         from evolu_config
         limit 1;
       `);
-      if (!configResult.ok) return configResult;
-
-      assertNonEmptyReadonlyArray(configResult.value.rows);
-      const config = firstInArray(configResult.value.rows);
+      assertNonEmptyReadonlyArray(configResult.rows);
+      const config = firstInArray(configResult.rows);
       currentTimestamp = timestampBytesToTimestamp(config.clock);
     } else {
       currentTimestamp = createInitialTimestamp(deps);
     }
 
-    return ok({
+    return {
       get: () => currentTimestamp,
 
       save: (timestamp) => {
         currentTimestamp = timestamp;
 
-        const result = deps.sqlite.exec(sql.prepared`
+        deps.sqlite.exec(sql.prepared`
           update evolu_config
           set "clock" = ${timestampToTimestampBytes(timestamp)};
         `);
-        if (!result.ok) return result;
-
-        return ok();
       },
-    });
+    };
   };
 
 // import {

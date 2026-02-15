@@ -1,5 +1,4 @@
 import {
-  allResult,
   callback,
   createRandom,
   createRelation,
@@ -10,7 +9,6 @@ import {
   OwnerId,
   type RandomDep,
   Name,
-  type SqliteError,
   type Task,
   type TimingSafeEqualDep,
   Uint8Array,
@@ -78,25 +76,16 @@ export const startRelay =
 
     const dbFileExists = existsSync(`${name}.db`);
 
-    const handleError = (error: SqliteError) => {
-      console.error(error);
-      return ok(stack);
-    };
-
-    const sqlite = await stack.use(createSqlite(name));
-    if (!sqlite.ok) return handleError(sqlite.error);
-    const deps = { ..._run.deps, sqlite: sqlite.value };
+    const sqliteResult = await stack.use(createSqlite(name));
+    if (!sqliteResult.ok) return sqliteResult;
+    const deps = { ..._run.deps, sqlite: sqliteResult.value };
 
     if (!dbFileExists) {
-      const result = allResult([
-        createBaseSqliteStorageTables(deps),
-        createRelayStorageTables(deps),
-      ]);
-      if (!result.ok) return handleError(result.error);
+      createBaseSqliteStorageTables(deps);
+      createRelayStorageTables(deps);
     }
 
     const storage = createRelaySqliteStorage(deps)({
-      onStorageError: console.error,
       isOwnerWithinQuota,
     });
 

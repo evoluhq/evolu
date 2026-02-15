@@ -14,7 +14,6 @@ import {
   ensureDbSchema,
   getDbSchema,
 } from "../../src/local-first/Schema.js";
-import { ok } from "../../src/Result.js";
 import { SqliteBoolean } from "../../src/Sqlite.js";
 import {
   Boolean,
@@ -263,21 +262,17 @@ describe("ensureDbSchema", () => {
       indexes: [],
     };
 
-    const result = ensureDbSchema(run.deps)(newSchema);
-    expect(result).toEqual(ok());
+    ensureDbSchema(run.deps)(newSchema);
 
     const dbSchema = getDbSchema(run.deps)();
-    expect(dbSchema.ok).toBe(true);
-    if (!dbSchema.ok) return;
-
-    expect(dbSchema.value.tables.todo).toBeDefined();
-    expect(dbSchema.value.tables.todo.has("id")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("title")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("isCompleted")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("createdAt")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("updatedAt")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("isDeleted")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("ownerId")).toBe(true);
+    expect(dbSchema.tables.todo).toBeDefined();
+    expect(dbSchema.tables.todo.has("id")).toBe(true);
+    expect(dbSchema.tables.todo.has("title")).toBe(true);
+    expect(dbSchema.tables.todo.has("isCompleted")).toBe(true);
+    expect(dbSchema.tables.todo.has("createdAt")).toBe(true);
+    expect(dbSchema.tables.todo.has("updatedAt")).toBe(true);
+    expect(dbSchema.tables.todo.has("isDeleted")).toBe(true);
+    expect(dbSchema.tables.todo.has("ownerId")).toBe(true);
   });
 
   test("adds new columns to existing tables", async () => {
@@ -290,8 +285,7 @@ describe("ensureDbSchema", () => {
       indexes: [],
     };
 
-    const result1 = ensureDbSchema(run.deps)(initialSchema);
-    expect(result1).toEqual(ok());
+    ensureDbSchema(run.deps)(initialSchema);
 
     const updatedSchema: DbSchema = {
       tables: {
@@ -300,16 +294,12 @@ describe("ensureDbSchema", () => {
       indexes: [],
     };
 
-    const result2 = ensureDbSchema(run.deps)(updatedSchema);
-    expect(result2).toEqual(ok());
+    ensureDbSchema(run.deps)(updatedSchema);
 
     const dbSchema = getDbSchema(run.deps)();
-    expect(dbSchema.ok).toBe(true);
-    if (!dbSchema.ok) return;
-
-    expect(dbSchema.value.tables.todo.has("title")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("isCompleted")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("priority")).toBe(true);
+    expect(dbSchema.tables.todo.has("title")).toBe(true);
+    expect(dbSchema.tables.todo.has("isCompleted")).toBe(true);
+    expect(dbSchema.tables.todo.has("priority")).toBe(true);
   });
 
   test("creates multiple tables", async () => {
@@ -323,17 +313,13 @@ describe("ensureDbSchema", () => {
       indexes: [],
     };
 
-    const result = ensureDbSchema(run.deps)(newSchema);
-    expect(result).toEqual(ok());
+    ensureDbSchema(run.deps)(newSchema);
 
     const dbSchema = getDbSchema(run.deps)();
-    expect(dbSchema.ok).toBe(true);
-    if (!dbSchema.ok) return;
-
-    expect(dbSchema.value.tables.todo).toBeDefined();
-    expect(dbSchema.value.tables.category).toBeDefined();
-    expect(dbSchema.value.tables.todo.has("title")).toBe(true);
-    expect(dbSchema.value.tables.category.has("name")).toBe(true);
+    expect(dbSchema.tables.todo).toBeDefined();
+    expect(dbSchema.tables.category).toBeDefined();
+    expect(dbSchema.tables.todo.has("title")).toBe(true);
+    expect(dbSchema.tables.category.has("name")).toBe(true);
   });
 
   test("uses set difference to find new columns", async () => {
@@ -355,20 +341,16 @@ describe("ensureDbSchema", () => {
       indexes: [],
     };
 
-    const result = ensureDbSchema(run.deps)(updatedSchema);
-    expect(result).toEqual(ok());
+    ensureDbSchema(run.deps)(updatedSchema);
 
     const dbSchema = getDbSchema(run.deps)();
-    expect(dbSchema.ok).toBe(true);
-    if (!dbSchema.ok) return;
-
     // Original columns still exist
-    expect(dbSchema.value.tables.todo.has("a")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("b")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("c")).toBe(true);
+    expect(dbSchema.tables.todo.has("a")).toBe(true);
+    expect(dbSchema.tables.todo.has("b")).toBe(true);
+    expect(dbSchema.tables.todo.has("c")).toBe(true);
     // New columns added via difference
-    expect(dbSchema.value.tables.todo.has("d")).toBe(true);
-    expect(dbSchema.value.tables.todo.has("e")).toBe(true);
+    expect(dbSchema.tables.todo.has("d")).toBe(true);
+    expect(dbSchema.tables.todo.has("e")).toBe(true);
   });
 
   test("with currentSchema parameter skips getDbSchema call", async () => {
@@ -392,13 +374,9 @@ describe("ensureDbSchema", () => {
     };
 
     // Pass currentSchema to skip getDbSchema
-    const result = ensureDbSchema(run.deps)(newSchema, currentSchema);
-    expect(result).toEqual(ok());
+    ensureDbSchema(run.deps)(newSchema, currentSchema);
 
     const dbSchema = getDbSchema(run.deps)();
-    expect(dbSchema.ok).toBe(true);
-    if (!dbSchema.ok) return;
-
-    expect(dbSchema.value.tables.todo.has("description")).toBe(true);
+    expect(dbSchema.tables.todo.has("description")).toBe(true);
   });
 });

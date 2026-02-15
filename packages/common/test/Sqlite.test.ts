@@ -56,13 +56,10 @@ test("basic DDL/DML works", async () => {
   await using run = await testCreateRunWithSqlite();
   const { sqlite } = run.deps;
 
-  expect(sqlite.exec(sql`create table a (data);`).ok).toBe(true);
-  expect(sqlite.exec(sql`insert into a (data) values (${"foo"});`).ok).toBe(
-    true,
-  );
+  sqlite.exec(sql`create table a (data);`);
+  sqlite.exec(sql`insert into a (data) values (${"foo"});`);
   const result = sqlite.exec(sql`select * from a;`);
-  assert(result.ok);
-  expect(result.value.rows).toEqual([{ data: "foo" }]);
+  expect(result.rows).toEqual([{ data: "foo" }]);
 });
 
 describe("transactions", () => {
@@ -72,22 +69,15 @@ describe("transactions", () => {
 
     sqlite.exec(sql`create table a (data);`);
 
-    const result = sqlite.transaction(() =>
-      sqlite.exec(sql`insert into notexisting (data) values (${"foo"});`),
-    );
+    const action = () =>
+      sqlite.transaction(() =>
+        ok(sqlite.exec(sql`insert into notexisting (data) values (${"foo"});`)),
+      );
 
-    expect(result).toEqual(
-      err(
-        expect.objectContaining({
-          type: "SqliteError",
-          error: expect.anything(),
-        }),
-      ),
-    );
+    expect(action).toThrow();
 
     const rows = sqlite.exec(sql`select * from a;`);
-    assert(rows.ok);
-    expect(rows.value.rows).toEqual([]);
+    expect(rows.rows).toEqual([]);
 
     const entries = console.getEntriesSnapshot();
     const debugLogs = entries.filter((e) => e.method === "debug");
@@ -111,8 +101,7 @@ describe("transactions", () => {
     }
 
     const rows = sqlite.exec(sql`select * from a;`);
-    assert(rows.ok);
-    expect(rows.value.rows).toEqual([]);
+    expect(rows.rows).toEqual([]);
 
     const entries = console.getEntriesSnapshot();
     const debugLogs = entries.filter((e) => e.method === "debug");
@@ -125,15 +114,15 @@ describe("transactions", () => {
 
     sqlite.exec(sql`create table a (data);`);
 
-    const result = sqlite.transaction(() =>
-      sqlite.exec(sql`insert into a (data) values (${"bar"});`),
-    );
+    const result = sqlite.transaction(() => {
+      sqlite.exec(sql`insert into a (data) values (${"bar"});`);
+      return ok();
+    });
 
     expect(result.ok).toBe(true);
 
     const rows = sqlite.exec(sql`select * from a;`);
-    assert(rows.ok);
-    expect(rows.value.rows).toEqual([{ data: "bar" }]);
+    expect(rows.rows).toEqual([{ data: "bar" }]);
   });
 
   test("transaction callback returns error", async () => {
@@ -179,9 +168,8 @@ describe("transactions", () => {
     assert(sqliteResult.ok);
     const sqlite = sqliteResult.value;
 
-    const result = sqlite.transaction(() => ok("should not reach"));
+    expect(() => sqlite.transaction(() => ok("should not reach"))).toThrow();
 
-    expect(result.ok).toBe(false);
     expect(beginCalled).toBe(true);
     expect(rollbackCalled).toBe(false);
   });
@@ -192,26 +180,19 @@ describe("transactions", () => {
 
     sqlite.exec(sql`create table a (data);`);
 
-    const result = sqlite.transaction(() => {
-      sqlite.exec(sql`insert into a (data) values (${"boom"});`);
-      throw new Error("Callback failed");
-    });
+    const action = () =>
+      sqlite.transaction(() => {
+        sqlite.exec(sql`insert into a (data) values (${"boom"});`);
+        throw new Error("Callback failed");
+      });
 
-    expect(result).toEqual(
-      err(
-        expect.objectContaining({
-          type: "SqliteError",
-          error: expect.anything(),
-        }),
-      ),
-    );
+    expect(action).toThrow();
 
     const rows = sqlite.exec(sql`select * from a;`);
-    assert(rows.ok);
-    expect(rows.value.rows).toEqual([]);
+    expect(rows.rows).toEqual([]);
   });
 
-  test("rollback failure logs warning and returns both errors", async () => {
+  test("rollback failure throws rollback error", async () => {
     let rollbackCalled = false;
 
     const createFailingDriver: CreateSqliteDriver = () => () => {
@@ -240,28 +221,11 @@ describe("transactions", () => {
     const sqliteResult = await run(createSqlite(testName));
     assert(sqliteResult.ok);
     const sqlite = sqliteResult.value;
-    const { console } = run.deps;
 
-    const result = sqlite.transaction(() =>
-      sqlite.exec(sql`select * from users;`),
-    );
-
-    expect(result.ok).toBe(false);
+    expect(() =>
+      sqlite.transaction(() => ok(sqlite.exec(sql`select * from users;`))),
+    ).toThrow();
     expect(rollbackCalled).toBe(true);
-
-    if (!result.ok) {
-      expect(result.error.type).toBe("SqliteError");
-      expect(result.error.rollbackError).toEqual(
-        expect.objectContaining({
-          type: "UnknownError",
-          error: expect.objectContaining({ message: "Rollback failed" }),
-        }),
-      );
-    }
-
-    const entries = console.getEntriesSnapshot();
-    const warnLogs = entries.filter((e) => e.method === "warn");
-    expect(warnLogs.map((e) => e.args[0])).toContain("rollback failed");
   });
 
   test("transaction commit failure triggers rollback", async () => {
@@ -297,9 +261,7 @@ describe("transactions", () => {
     assert(sqliteResult.ok);
     const sqlite = sqliteResult.value;
 
-    const result = sqlite.transaction(() => ok("data"));
-
-    expect(result.ok).toBe(false);
+    expect(() => sqlite.transaction(() => ok("data"))).toThrow();
     expect(commitCalled).toBe(true);
     expect(rollbackCalled).toBe(true);
   });
@@ -314,12 +276,11 @@ describe("export", () => {
     sqlite.exec(sql`insert into a (data) values (${"foo"});`);
 
     const result = sqlite.export();
-    assert(result.ok);
-    expect(result.value).toBeInstanceOf(Uint8Array);
-    expect(result.value.length).toBeGreaterThan(0);
+    expect(result).toBeInstanceOf(Uint8Array);
+    expect(result.length).toBeGreaterThan(0);
   });
 
-  test("export failure returns SqliteError", async () => {
+  test("export failure throws", async () => {
     const createFailingDriver: CreateSqliteDriver = () => () => {
       const driver: SqliteDriver = {
         exec: () => ({ rows: [], changes: 0 }),
@@ -338,11 +299,7 @@ describe("export", () => {
     assert(sqliteResult.ok);
     const sqlite = sqliteResult.value;
 
-    const result = sqlite.export();
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.type).toBe("SqliteError");
-    }
+    expect(() => sqlite.export()).toThrow("Export failed");
   });
 });
 
@@ -376,7 +333,7 @@ describe("logExplainQueryPlan", () => {
     };
     const result = sqlite.exec(query);
 
-    expect(result.ok).toBe(true);
+    expect(result.rows).toEqual([]);
 
     const entries = run.deps.console.getEntriesSnapshot();
     const logEntries = entries.filter(

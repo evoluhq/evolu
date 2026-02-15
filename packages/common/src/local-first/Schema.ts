@@ -12,13 +12,11 @@ import {
   mapObject,
   type ReadonlyRecord,
 } from "../Object.js";
-import { ok, type Result } from "../Result.js";
 import {
   type SafeSql,
   sql,
   SqliteBoolean,
   type SqliteDep,
-  type SqliteError,
   type SqliteQuery,
   type SqliteQueryOptions,
   SqliteValue,
@@ -448,80 +446,68 @@ export const createQueryBuilder =
 /** Get the current database schema by reading SQLite metadata. */
 export const getDbSchema =
   (deps: SqliteDep) =>
-  ({ allIndexes = false }: { allIndexes?: boolean } = {}): Result<
-    DbSchema,
-    SqliteError
-  > => {
+  ({ allIndexes = false }: { allIndexes?: boolean } = {}): DbSchema => {
     const tables = createRecord<string, Set<string>>();
 
-    const tableAndColumnInfoRows = deps.sqlite.exec(sql`
-      select
-        sqlite_master.name as tableName,
-        table_info.name as columnName
-      from
-        sqlite_master
-        join pragma_table_info(sqlite_master.name) as table_info;
-    `);
-
-    if (!tableAndColumnInfoRows.ok) return tableAndColumnInfoRows;
-
-    tableAndColumnInfoRows.value.rows.forEach((row) => {
-      const { tableName, columnName } = row as unknown as {
+      const tableAndColumnInfoRows = deps.sqlite.exec<{
         tableName: string;
         columnName: string;
-      };
-      (tables[tableName] ??= new Set()).add(columnName);
+      }>(sql`
+        select
+          sqlite_master.name as tableName,
+          table_info.name as columnName
+        from
+          sqlite_master
+          join pragma_table_info(sqlite_master.name) as table_info;
+      `);
+
+      tableAndColumnInfoRows.rows.forEach(({ tableName, columnName }) => {
+        (tables[tableName] ??= new Set()).add(columnName);
+      });
+
+      const indexesRows = deps.sqlite.exec<{ name: string; sql: string | null }>(
+        allIndexes
+          ? sql`
+              select name, sql
+              from sqlite_master
+              where type = 'index' and name not like 'sqlite_%';
+            `
+          : sql`
+              select name, sql
+              from sqlite_master
+              where
+                type = 'index'
+                and name not like 'sqlite_%'
+                and name not like 'evolu_%';
+            `,
+      );
+
+    const indexes = indexesRows.rows.flatMap((row): Array<DbIndex> => {
+      if (row.sql == null) return [];
+      return [
+        {
+          name: row.name,
+          /**
+           * SQLite returns "CREATE INDEX" for "create index" for some reason.
+           * Other keywords remain unchanged. We have to normalize the casing for
+           * {@link indexesAreEqual} manually.
+           */
+          sql: row.sql
+            .replace("CREATE INDEX", "create index")
+            .replace("CREATE UNIQUE INDEX", "create unique index"),
+        },
+      ];
     });
 
-    const indexesRows = deps.sqlite.exec(
-      allIndexes
-        ? sql`
-            select name, sql
-            from sqlite_master
-            where type = 'index' and name not like 'sqlite_%';
-          `
-        : sql`
-            select name, sql
-            from sqlite_master
-            where
-              type = 'index'
-              and name not like 'sqlite_%'
-              and name not like 'evolu_%';
-          `,
-    );
-
-    if (!indexesRows.ok) return indexesRows;
-
-    const indexes = indexesRows.value.rows.map(
-      (row): DbIndex => ({
-        name: row.name as string,
-        /**
-         * SQLite returns "CREATE INDEX" for "create index" for some reason.
-         * Other keywords remain unchanged. We have to normalize the casing for
-         * {@link indexesAreEqual} manually.
-         */
-        sql: (row.sql as string)
-          .replace("CREATE INDEX", "create index")
-          .replace("CREATE UNIQUE INDEX", "create unique index"),
-      }),
-    );
-
-    return ok({ tables, indexes });
+    return { tables, indexes };
   };
 
 export const ensureDbSchema =
   (deps: SqliteDep) =>
-  (
-    newSchema: DbSchema,
-    currentSchema?: DbSchema,
-  ): Result<void, SqliteError> => {
+  (newSchema: DbSchema, currentSchema?: DbSchema): void => {
     const queries: Array<SqliteQuery> = [];
 
-    if (!currentSchema) {
-      const dbSchema = getDbSchema(deps)();
-      if (!dbSchema.ok) return dbSchema;
-      currentSchema = dbSchema.value;
-    }
+    currentSchema ??= getDbSchema(deps)();
 
     for (const [tableName, newColumns] of Object.entries(newSchema.tables)) {
       const currentColumns = getProperty(currentSchema.tables, tableName);
@@ -562,10 +548,8 @@ export const ensureDbSchema =
       });
 
     for (const query of queries) {
-      const result = deps.sqlite.exec(query);
-      if (!result.ok) return result;
+      deps.sqlite.exec(query);
     }
-    return ok();
   };
 
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution

@@ -1,10 +1,9 @@
-import { assert } from "../../src/Assert.js";
 import { DbSchema, getDbSchema } from "../../src/local-first/Schema.js";
-import { DbChange } from "../../src/local-first/Storage.js";
 import type { CrdtMessage } from "../../src/local-first/Storage.js";
+import { DbChange } from "../../src/local-first/Storage.js";
 import { createTimestamp } from "../../src/local-first/Timestamp.js";
-import { sql } from "../../src/Sqlite.js";
 import type { SqliteDep } from "../../src/Sqlite.js";
+import { sql } from "../../src/Sqlite.js";
 import { Millis } from "../../src/Time.js";
 import { Id } from "../../src/Type.js";
 
@@ -18,23 +17,21 @@ export interface DbSnapshot {
 
 export const getDbSnapshot = (deps: SqliteDep): DbSnapshot => {
   const schema = getDbSchema(deps)({ allIndexes: true });
-  assert(schema.ok, "bug");
 
   const tables = [];
 
-  for (const tableName in schema.value.tables) {
+  for (const tableName in schema.tables) {
     const result = deps.sqlite.exec(sql`
       select * from ${sql.identifier(tableName)};
     `);
-    assert(result.ok, "bug");
 
     tables.push({
       name: tableName,
-      rows: result.value.rows,
+      rows: result.rows,
     });
   }
 
-  return { schema: schema.value, tables };
+  return { schema, tables };
 };
 
 export const createTestCrdtMessage = (

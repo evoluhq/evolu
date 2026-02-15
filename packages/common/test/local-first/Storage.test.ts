@@ -1,6 +1,5 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
-import { lazyTrue } from "../../src/Function.js";
 import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
 import type {
   BaseSqliteStorageDep,
@@ -25,7 +24,7 @@ import {
 } from "../../src/local-first/Timestamp.js";
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
-import { getOrThrow, ok } from "../../src/Result.js";
+import { ok } from "../../src/Result.js";
 import type { SqliteDep } from "../../src/Sqlite.js";
 import { sql } from "../../src/Sqlite.js";
 import { testCreateDeps } from "../../src/Test.js";
@@ -49,15 +48,9 @@ const createDeps = async (): Promise<SqliteDep & BaseSqliteStorageDep> => {
   // Pseudo-random does not scale (randomness is limited).
   const random = createRandom();
 
-  const result = createBaseSqliteStorageTables({ sqlite });
-  assert(result.ok);
+  createBaseSqliteStorageTables({ sqlite });
 
-  const storage = createBaseSqliteStorage({ sqlite, random })({
-    onStorageError: (error) => {
-      throw new Error(error.type);
-    },
-    isOwnerWithinQuota: lazyTrue, // Allow all writes in tests
-  });
+  const storage = createBaseSqliteStorage({ sqlite, random })();
   return { sqlite, storage };
 };
 
@@ -136,16 +129,14 @@ const testTimestamps = async (
         ? null
         : (fingerprintRanges[i].upperBound as TimestampBytes);
 
-    const { rows: timestampRows } = getOrThrow(
-      deps.sqlite.exec<{ t: TimestampBytes }>(sql`
-        select t
-        from evolu_timestamp
-        where
-          (${lower} is null or t >= ${lower})
-          and (${upper} is null or t < ${upper})
-          and ownerid = ${testAppOwnerIdBytes};
-      `),
-    );
+    const { rows: timestampRows } = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
+      select t
+      from evolu_timestamp
+      where
+        (${lower} is null or t >= ${lower})
+        and (${upper} is null or t < ${upper})
+        and ownerid = ${testAppOwnerIdBytes};
+    `);
 
     incrementalCounts.push(timestampRows.length);
 
@@ -217,7 +208,7 @@ test("empty db", async () => {
     0 as NonNegativeInt,
     0 as NonNegativeInt,
   );
-  expect(fingerprint?.join()).toBe("0,0,0,0,0,0,0,0,0,0,0,0");
+  expect(fingerprint.join()).toBe("0,0,0,0,0,0,0,0,0,0,0,0");
 
   const lowerBound = deps.storage.findLowerBound(
     testAppOwnerIdBytes,
@@ -326,8 +317,7 @@ test("getTimestampByIndex", async () => {
       testAppOwnerIdBytes,
       i as NonNegativeInt,
     );
-    assert(timestamp.ok);
-    expect(timestamp.value.join()).toBe(testTimestampsAsc[i].join());
+    expect(timestamp.join()).toBe(testTimestampsAsc[i].join());
   }
 });
 

@@ -58,9 +58,6 @@ export const testCreateRunWithSqliteAndRelayStorage = async (
     ...run.deps,
     timingSafeEqual: testTimingSafeEqual,
   })({
-    onStorageError: (error) => {
-      throw new Error(error.type);
-    },
     isOwnerWithinQuota: lazyTrue,
     ...config,
   });

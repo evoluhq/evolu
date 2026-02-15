@@ -10,12 +10,9 @@ import { createRandomBytes } from "../Crypto.js";
 import type { Listener, Unsubscribe } from "../Listeners.js";
 import type { ReadonlyRecord } from "../Object.js";
 import { createRecord, isPlainObject, objectToEntries } from "../Object.js";
-import type { Result } from "../Result.js";
-import { ok } from "../Result.js";
 import type {
   SafeSql,
   SqliteDep,
-  SqliteError,
   SqliteQuery,
   SqliteQueryOptions,
   SqliteRow,
@@ -195,18 +192,14 @@ export const createGetQueryRowsCache = (): GetQueryRowsCache => {
 
 export const loadQueries =
   (deps: GetQueryRowsCacheDep & SqliteDep) =>
-  (
-    tabId: Id,
-    queries: ReadonlyArray<Query>,
-  ): Result<ReadonlyArray<QueryPatches>, SqliteError> => {
+  (tabId: Id, queries: ReadonlyArray<Query>): ReadonlyArray<QueryPatches> => {
     const queriesRows = [];
 
     for (const query of queries) {
       const sqlQuery = deserializeQuery(query);
       const result = deps.sqlite.exec(sqlQuery);
-      if (!result.ok) return result;
 
-      queriesRows.push([query, result.value.rows] as const);
+      queriesRows.push([query, result.rows] as const);
     }
 
     const queryRowsCache = deps.getQueryRowsCache(tabId);
@@ -225,7 +218,7 @@ export const loadQueries =
         ),
       }),
     );
-    return ok(queryPatchesArray);
+    return queryPatchesArray;
   };
 
 export interface QueryPatches {

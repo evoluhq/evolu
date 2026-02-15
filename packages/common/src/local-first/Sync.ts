@@ -6,7 +6,7 @@
 
 import type { NonEmptyArray, NonEmptyReadonlyArray } from "../Array.js";
 import { appendToArray, firstInArray, isNonEmptyArray } from "../Array.js";
-import { assertNonEmptyReadonlyArray } from "../Assert.js";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import type { Brand } from "../Brand.js";
 import type { ConsoleDep } from "../Console.js";
 import type {
@@ -14,13 +14,13 @@ import type {
   RandomBytesDep,
 } from "../Crypto.js";
 import type { UnknownError } from "../Error.js";
-import { lazyFalse, lazyTrue, todo } from "../Function.js";
+import { lazyFalse, lazyVoid, todo } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import type { RandomDep } from "../Random.js";
 import { createResources } from "../Resources.js";
 import type { Result } from "../Result.js";
-import { err, ok } from "../Result.js";
-import type { SqliteDep, SqliteError } from "../Sqlite.js";
+import { ok } from "../Result.js";
+import type { SqliteDep } from "../Sqlite.js";
 import {
   booleanToSqliteBoolean,
   sql,
@@ -62,12 +62,7 @@ import {
 } from "./Protocol.js";
 import type { DbSchemaDep, MutationChange } from "./Schema.js";
 import { systemColumns } from "./Schema.js";
-import type {
-  BaseSqliteStorage,
-  CrdtMessage,
-  Storage,
-  StorageWriteError,
-} from "./Storage.js";
+import type { BaseSqliteStorage, CrdtMessage, Storage } from "./Storage.js";
 import {
   createBaseSqliteStorage,
   DbChange,
@@ -105,7 +100,6 @@ export interface Sync extends Disposable {
     changes: NonEmptyReadonlyArray<MutationChange>,
   ) => Result<
     void,
-    | SqliteError
     | TimestampCounterOverflowError
     | TimestampDriftError
     | TimestampTimeOutOfRangeError
@@ -143,7 +137,6 @@ export interface SyncConfig {
       | ProtocolError
       | ProtocolInvalidDataError
       | ProtocolTimestampMismatchError
-      | SqliteError
       | DecryptWithXChaCha20Poly1305Error
       | TimestampCounterOverflowError
       | TimestampDriftError
@@ -167,7 +160,7 @@ export const createSync =
       TimeDep &
       TimestampConfigDep,
   ) =>
-  (config: SyncConfig): Result<Sync, SqliteError> => {
+  (config: SyncConfig): Sync => {
     let isDisposed = false;
 
     /** Returns owner data only if actively assigned to at least one transport. */
@@ -176,13 +169,10 @@ export const createSync =
       return resources.getConsumer(ownerId);
     };
 
-    const storageResult = createClientStorage({
+    const storage = createClientStorage({
       ...deps,
       getSyncOwner,
     })(config);
-
-    if (!storageResult.ok) return storageResult;
-    const storage = storageResult.value;
 
     const createResource = (transport: OwnerTransport): WebSocket => {
       const transportKey = createTransportKey(transport);
@@ -292,10 +282,10 @@ export const createSync =
 
         // The onOpen handler will sync it.
         if (!webSocket.isOpen()) return;
-        const message = createProtocolMessageForSync({ storage })(
-          owner.id,
-          SubscriptionFlags.Subscribe,
-        );
+        const message = createProtocolMessageForSync({
+          storage,
+          console: deps.console,
+        })(owner.id, SubscriptionFlags.Subscribe);
         if (message) webSocket.send(message);
       },
 
@@ -361,8 +351,7 @@ export const createSync =
         }
 
         for (const [ownerId, messages] of ownerMessages) {
-          const result = applyMessages({ ...deps, storage })(ownerId, messages);
-          if (!result.ok) return result;
+          applyMessages({ ...deps, storage })(ownerId, messages);
 
           const owner = getSyncOwner(ownerId);
           if (!owner?.writeKey) continue;
@@ -392,7 +381,8 @@ export const createSync =
           }
         }
 
-        return deps.clock.save(clockTimestamp);
+        deps.clock.save(clockTimestamp);
+        return ok();
       },
 
       [Symbol.dispose]: () => {
@@ -402,7 +392,7 @@ export const createSync =
       },
     };
 
-    return ok(sync);
+    return sync;
   };
 
 export interface ClockDep {
@@ -411,7 +401,7 @@ export interface ClockDep {
 
 export interface Clock {
   readonly get: () => Timestamp;
-  readonly save: (timestamp: Timestamp) => Result<void, SqliteError>;
+  readonly save: (timestamp: Timestamp) => void;
 }
 
 export const createClock =
@@ -424,13 +414,10 @@ export const createClock =
       save: (timestamp) => {
         currentTimestamp = timestamp;
 
-        const result = deps.sqlite.exec(sql.prepared`
+        deps.sqlite.exec(sql.prepared`
           update evolu_config
           set "clock" = ${timestampToTimestampBytes(timestamp)};
         `);
-        if (!result.ok) return result;
-
-        return ok();
       },
     };
   };
@@ -461,18 +448,14 @@ const createClientStorage =
       error:
         | ProtocolInvalidDataError
         | ProtocolTimestampMismatchError
-        | SqliteError
         | DecryptWithXChaCha20Poly1305Error
         | TimestampCounterOverflowError
         | TimestampDriftError
         | TimestampTimeOutOfRangeError,
     ) => void;
     onReceive: () => void;
-  }): Result<ClientStorage, SqliteError> => {
-    const sqliteStorageBase = createBaseSqliteStorage(deps)({
-      onStorageError: config.onError,
-      isOwnerWithinQuota: lazyTrue, // Clients don't have quota limits
-    });
+  }): ClientStorage => {
+    const sqliteStorageBase = createBaseSqliteStorage(deps)();
 
     // TODO: Mutex per OwnerId like in Relay to support more owners.
     const mutex = createMutex();
@@ -482,7 +465,7 @@ const createClientStorage =
 
       // Not implemented yet.
       validateWriteKey: lazyFalse,
-      setWriteKey: lazyFalse,
+      setWriteKey: lazyVoid,
 
       writeMessages: (ownerIdBytes, encryptedMessages) => async (run) => {
         const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
@@ -493,7 +476,6 @@ const createClientStorage =
               boolean,
               | ProtocolInvalidDataError
               | ProtocolTimestampMismatchError
-              | SqliteError
               | DecryptWithXChaCha20Poly1305Error
               | TimestampCounterOverflowError
               | TimestampDriftError
@@ -539,14 +521,11 @@ const createClientStorage =
                 }
 
                 if (isNonEmptyArray(messages)) {
-                  const result = applyMessages({ ...deps, storage })(
-                    owner.id,
-                    messages,
-                  );
-                  if (!result.ok) return result;
+                  applyMessages({ ...deps, storage })(owner.id, messages);
                 }
 
-                return deps.clock.save(clockTimestamp);
+                deps.clock.save(clockTimestamp);
+                return ok();
               });
 
               if (!transaction.ok) return transaction;
@@ -559,8 +538,9 @@ const createClientStorage =
         if (!result.ok) {
           if (result.error.type !== "AbortError") {
             config.onError(result.error);
+            throw new Error(result.error.type, { cause: result.error });
           }
-          return err<StorageWriteError>({ type: "StorageWriteError", ownerId });
+          return ok();
         }
 
         config.onReceive();
@@ -570,8 +550,7 @@ const createClientStorage =
 
       readDbChange: (ownerId, timestamp) => {
         const owner = deps.getSyncOwner(ownerIdBytesToOwnerId(ownerId));
-        // Owner can be removed to stop syncing.
-        if (!owner) return null;
+        assert(owner, "Sync owner must exist while reading db change");
 
         const result = deps.sqlite.exec<{
           readonly table: string;
@@ -588,12 +567,7 @@ const createClientStorage =
           where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
         `);
 
-        if (!result.ok) {
-          config.onError(result.error);
-          return null;
-        }
-
-        const { rows } = result.value;
+        const { rows } = result;
         assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
         const firstRow = firstInArray(rows);
 
@@ -634,7 +608,7 @@ const createClientStorage =
       },
     };
 
-    return ok(storage);
+    return storage;
   };
 
 type TransportKey = string & Brand<"TransportKey">;
@@ -663,45 +637,38 @@ const dbChangeToColumns = (change: DbChange, now: Millis) => {
 
 export const applyLocalOnlyChange =
   (deps: SqliteDep & TimeDep & AppOwnerDep) =>
-  (change: MutationChange): Result<void, SqliteError> => {
+  (change: MutationChange): void => {
     if (change.isDelete) {
-      const result = deps.sqlite.exec(sql`
+      deps.sqlite.exec(sql`
         delete from ${sql.identifier(change.table)}
         where id = ${change.id};
       `);
-      if (!result.ok) return result;
     } else {
       const ownerId = deps.appOwner.id;
       const columns = dbChangeToColumns(change, deps.time.now());
 
       for (const [column, value] of columns) {
-        const result = deps.sqlite.exec(sql.prepared`
+        deps.sqlite.exec(sql.prepared`
           insert into ${sql.identifier(change.table)}
             ("ownerId", "id", ${sql.identifier(column)})
           values (${ownerId}, ${change.id}, ${value})
           on conflict ("ownerId", "id") do update
             set ${sql.identifier(column)} = ${value};
         `);
-        if (!result.ok) return result;
       }
     }
-
-    return ok();
   };
 
 const applyMessages =
   (deps: ClientStorageDep & ClockDep & DbSchemaDep & RandomDep & SqliteDep) =>
-  (
-    ownerId: OwnerId,
-    messages: NonEmptyReadonlyArray<CrdtMessage>,
-  ): Result<void, SqliteError> => {
+  (ownerId: OwnerId, messages: NonEmptyReadonlyArray<CrdtMessage>): void => {
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
     const usage = getOwnerUsage(deps)(
       ownerIdBytes,
       timestampToTimestampBytes(firstInArray(messages).timestamp),
     );
-    if (!usage.ok) return usage;
+    if (!usage.ok) return;
 
     let { firstTimestamp, lastTimestamp } = usage.value;
 
@@ -712,7 +679,7 @@ const applyMessages =
 
       for (const [column, value] of columns) {
         if (validateColumnValue(deps)(change.table, column, value)) {
-          const result = applyColumnChange(deps)(
+          applyColumnChange(deps)(
             ownerIdBytes,
             ownerId,
             change.table,
@@ -722,9 +689,8 @@ const applyMessages =
             value,
             timestampBytes,
           );
-          if (!result.ok) return result;
         } else {
-          const result = deps.sqlite.exec(sql.prepared`
+          deps.sqlite.exec(sql.prepared`
             insert into evolu_message_quarantine
               ("ownerId", "timestamp", "table", "id", "column", "value")
             values
@@ -738,7 +704,6 @@ const applyMessages =
               )
             on conflict do nothing;
           `);
-          if (!result.ok) return result;
         }
       }
 
@@ -749,19 +714,15 @@ const applyMessages =
         lastTimestamp,
       );
 
-      const result = deps.storage.insertTimestamp(
-        ownerIdBytes,
-        timestampBytes,
-        strategy,
-      );
-      if (!result.ok) return result;
+      // TODO: Rethink and maybe refactor.
+      deps.storage.insertTimestamp(ownerIdBytes, timestampBytes, strategy);
     }
 
     /**
      * TODO: Implement proper storedBytes tracking for client using received and
      * sent encrypted message sizes.
      */
-    return updateOwnerUsage(deps)(
+    updateOwnerUsage(deps)(
       ownerIdBytes,
       1 as PositiveInt, // Placeholder until proper tracking implemented
       firstTimestamp,
@@ -798,8 +759,8 @@ const applyColumnChange =
     column: string,
     value: SqliteValue,
     timestampBytes: TimestampBytes,
-  ): Result<void, SqliteError> => {
-    const result = deps.sqlite.exec(sql.prepared`
+  ): void => {
+    deps.sqlite.exec(sql.prepared`
       with
         existingTimestamp as (
           select 1
@@ -820,10 +781,9 @@ const applyColumnChange =
         set ${sql.identifier(column)} = ${value}
         where not exists (select 1 from existingTimestamp);
     `);
-    if (!result.ok) return result;
 
     {
-      const result = deps.sqlite.exec(sql.prepared`
+      deps.sqlite.exec(sql.prepared`
         insert into evolu_history
           ("ownerId", "table", "id", "column", "value", "timestamp")
         values
@@ -837,10 +797,7 @@ const applyColumnChange =
           )
         on conflict do nothing;
       `);
-      if (!result.ok) return result;
     }
-
-    return ok();
   };
 
 /**
@@ -849,7 +806,7 @@ const applyColumnChange =
  * don't exist in the current schema (e.g., from a newer app version).
  */
 export const tryApplyQuarantinedMessages =
-  (deps: DbSchemaDep & SqliteDep) => (): Result<void, SqliteError> => {
+  (deps: DbSchemaDep & SqliteDep) => (): void => {
     const rows = deps.sqlite.exec<{
       readonly ownerId: OwnerIdBytes;
       readonly timestamp: TimestampBytes;
@@ -861,13 +818,12 @@ export const tryApplyQuarantinedMessages =
       select "ownerId", "timestamp", "table", "id", "column", "value"
       from evolu_message_quarantine;
     `);
-    if (!rows.ok) return rows;
 
-    for (const row of rows.value.rows) {
+    for (const row of rows.rows) {
       if (!validateColumnValue(deps)(row.table, row.column, row.value))
         continue;
 
-      const result = applyColumnChange(deps)(
+      applyColumnChange(deps)(
         row.ownerId,
         ownerIdBytesToOwnerId(row.ownerId),
         row.table,
@@ -877,10 +833,9 @@ export const tryApplyQuarantinedMessages =
         row.value,
         row.timestamp,
       );
-      if (!result.ok) return result;
 
       {
-        const result = deps.sqlite.exec(sql`
+        deps.sqlite.exec(sql`
           delete from evolu_message_quarantine
           where
             "ownerId" = ${row.ownerId}
@@ -889,11 +844,8 @@ export const tryApplyQuarantinedMessages =
             and "id" = ${row.id}
             and "column" = ${row.column};
         `);
-        if (!result.ok) return result;
       }
     }
-
-    return ok();
   };
 
 /**

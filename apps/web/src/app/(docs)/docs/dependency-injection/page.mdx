@@ -281,7 +281,7 @@ Btw, Evolu provides [Console](/docs/api-reference/common/Console).
 
 ## Error Handling
 
-Dependencies often perform operations that can fail. Use the [`Result`](/docs/api-reference/common/Result/type-aliases/Result) type to make errors explicit and type-safe. The key principle: **expose domain errors, hide implementation errors**.
+Dependencies often perform operations that can fail. Use the [`Result`](/docs/api-reference/common/Result/type-aliases/Result) type to make errors explicit and type-safe. The key principle: **expose domain errors, not implementation errors**.
 
 ```ts
 import { Result, ok, err } from "@evolu/common";
@@ -306,32 +306,6 @@ export interface StorageDep {
   readonly storage: Storage;
 }
 ```
-
-The implementation maps internal errors to domain errors:
-
-```ts
-// Avoid: Leaking implementation error (SqliteError) through interface
-export interface Storage {
-  readonly save: (data: Data) => Result<void, SqliteError>;
-}
-
-// Good: Map implementation errors to domain errors
-export const createStorage = (deps: SqliteDep): Storage => ({
-  save: (data) => {
-    const result = deps.sqlite.exec(/* ... */);
-    if (!result.ok) {
-      // Map SqliteError to a domain error
-      if (result.error.code === "SQLITE_FULL") {
-        return err({ type: "StorageFullError" });
-      }
-      return err({ type: "PermissionError" });
-    }
-    return ok();
-  },
-});
-```
-
-This approach keeps your domain logic decoupled from implementation details. You can swap SQLite for IndexedDB without changing the `Storage` interface or any code that depends on it.
 
 ### Testing Error Paths
 

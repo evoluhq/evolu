@@ -64,8 +64,7 @@ test("deleteOwner", async () => {
 
   expect(storage.getSize(testAppOwnerIdBytes)).toBe(1);
 
-  const deleteResult = storage.deleteOwner(testAppOwnerIdBytes);
-  expect(deleteResult).toBe(true);
+  storage.deleteOwner(testAppOwnerIdBytes);
 
   for (const table of ["evolu_timestamp", "evolu_message", "evolu_writeKey"]) {
     const countResult = sqlite.exec<{ count: number }>(sql`
@@ -73,7 +72,7 @@ test("deleteOwner", async () => {
       from ${sql.raw(table)}
       where ownerid = ${testAppOwnerIdBytes};
     `);
-    expect(countResult.ok && countResult.value.rows[0].count).toBe(0);
+    expect(countResult.rows[0].count).toBe(0);
   }
 });
 
@@ -92,8 +91,7 @@ describe("writeMessages", () => {
         from evolu_usage
         where ownerid = ${ownerId};
       `);
-      assert(usageResult.ok);
-      return usageResult.value.rows[0].storedBytes as NonNegativeInt;
+      return usageResult.rows[0].storedBytes as NonNegativeInt;
     };
 
   const message = createTestMessage();
@@ -137,8 +135,7 @@ describe("writeMessages", () => {
       where ownerid = ${testAppOwnerIdBytes};
     `);
 
-    assert(countResult.ok);
-    expect(countResult.value.rows[0].count).toBe(1);
+    expect(countResult.rows[0].count).toBe(1);
   });
 
   test("mutex prevents concurrent writes for same owner", async () => {
@@ -218,8 +215,7 @@ describe("writeMessages", () => {
       where ownerid = ${testAppOwnerIdBytes};
     `);
 
-    assert(messageCountResult.ok);
-    expect(messageCountResult.value.rows[0].count).toBe(0);
+    expect(messageCountResult.rows[0].count).toBe(0);
 
     const usageResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
@@ -227,8 +223,7 @@ describe("writeMessages", () => {
       where ownerid = ${testAppOwnerIdBytes};
     `);
 
-    assert(usageResult.ok);
-    expect(usageResult.value.rows[0].count).toBe(0);
+    expect(usageResult.rows[0].count).toBe(0);
   });
 
   describe("isOwnerWithinQuota", () => {

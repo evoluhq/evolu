@@ -181,6 +181,7 @@ import { Packr } from "msgpackr";
 import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import type { Brand } from "../Brand.js";
+import type { ConsoleDep } from "../Console.js";
 import {
   type Buffer,
   bytesToHex,
@@ -517,7 +518,7 @@ export const createProtocolMessageFromCrdtMessages =
 
 /** Creates a {@link ProtocolMessage} for sync. */
 export const createProtocolMessageForSync =
-  (deps: StorageDep) =>
+  (deps: StorageDep & ConsoleDep) =>
   (
     ownerId: OwnerId,
     subscriptionFlag?: SubscriptionFlag,
@@ -529,8 +530,6 @@ export const createProtocolMessageForSync =
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
     const size = deps.storage.getSize(ownerIdBytes);
-    // Errors are handled by the storage.
-    if (size == null) return null;
 
     splitRange(deps)(
       ownerIdBytes,
@@ -982,9 +981,14 @@ export const applyProtocolMessageAsClient =
       const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
       if (isNonEmptyArray(messages)) {
-        const result = await run(storage.writeMessages(ownerIdBytes, messages));
-        // Errors are handled by the Storage. Here we just stop syncing.
-        if (!result.ok) return ok({ type: "NoResponse" });
+        try {
+          const result = await run(storage.writeMessages(ownerIdBytes, messages));
+          // Quota errors are handled by Storage; protocol just stops syncing.
+          if (!result.ok) return ok({ type: "NoResponse" });
+        } catch (error) {
+          run.deps.console.error(error);
+          return ok({ type: "NoResponse" });
+        }
       }
 
       // Now: No writeKey, no sync.
@@ -1135,16 +1139,21 @@ export const applyProtocolMessageAsRelay =
           });
         }
 
-        const result = await run(storage.writeMessages(ownerIdBytes, messages));
+        try {
+          const result = await run(storage.writeMessages(ownerIdBytes, messages));
 
-        if (!result.ok) {
-          const errorCode =
-            result.error.type === "StorageWriteError"
-              ? ProtocolErrorCode.WriteError
-              : ProtocolErrorCode.QuotaError;
+          if (!result.ok) {
+            const message = createProtocolMessageBuffer(ownerId, {
+              messageType: MessageType.Response,
+              errorCode: ProtocolErrorCode.QuotaError,
+            }).unwrap();
+            return ok({ type: "Response", message });
+          }
+        } catch (error) {
+          run.deps.console.error(error);
           const message = createProtocolMessageBuffer(ownerId, {
             messageType: MessageType.Response,
-            errorCode,
+            errorCode: ProtocolErrorCode.WriteError,
           }).unwrap();
           return ok({ type: "Response", message });
         }
@@ -1255,16 +1264,20 @@ const decodeMessages = (
 };
 
 const sync =
-  (deps: StorageDep) =>
+  (deps: StorageDep & ConsoleDep) =>
   (
     ranges: NonEmptyReadonlyArray<Range>,
     output: ProtocolMessageBuffer,
     ownerIdBytes: OwnerIdBytes,
   ): Result<boolean, typeof ProtocolErrorCode.SyncError> => {
     const outputInitialSize = output.getSize();
-
-    const storageSize = deps.storage.getSize(ownerIdBytes);
-    if (storageSize == null) return err(ProtocolErrorCode.SyncError);
+    let storageSize: NonNegativeInt;
+    try {
+      storageSize = deps.storage.getSize(ownerIdBytes);
+    } catch (error) {
+      deps.console.error(error);
+      return err(ProtocolErrorCode.SyncError);
+    }
 
     let prevUpperBound: RangeUpperBound | null = null;
     let prevIndex = NonNegativeInt.orThrow(0);
@@ -1304,12 +1317,17 @@ const sync =
     const addFingerprintForRemainingRange = (
       begin: NonNegativeInt,
     ): boolean => {
-      const fingerprint = deps.storage.fingerprint(
-        ownerIdBytes,
-        begin,
-        storageSize,
-      );
-      if (!fingerprint) return false;
+      let fingerprint: Fingerprint;
+      try {
+        fingerprint = deps.storage.fingerprint(
+          ownerIdBytes,
+          begin,
+          storageSize,
+        );
+      } catch (error) {
+        deps.console.error(error);
+        return false;
+      }
       // There is always a space for a ramaining range.
       output.addRange({
         type: RangeType.Fingerprint,
@@ -1323,13 +1341,18 @@ const sync =
       const currentUpperBound = range.upperBound;
 
       const lower = prevIndex;
-      let upper = deps.storage.findLowerBound(
-        ownerIdBytes,
-        prevIndex,
-        storageSize,
-        currentUpperBound,
-      );
-      if (upper == null) return err(ProtocolErrorCode.SyncError);
+      let upper: NonNegativeInt;
+      try {
+        upper = deps.storage.findLowerBound(
+          ownerIdBytes,
+          prevIndex,
+          storageSize,
+          currentUpperBound,
+        );
+      } catch (error) {
+        deps.console.error(error);
+        return err(ProtocolErrorCode.SyncError);
+      }
 
       switch (range.type) {
         case RangeType.Skip: {
@@ -1338,12 +1361,17 @@ const sync =
         }
 
         case RangeType.Fingerprint: {
-          const ourFingerprint = deps.storage.fingerprint(
-            ownerIdBytes,
-            lower,
-            upper,
-          );
-          if (ourFingerprint == null) return err(ProtocolErrorCode.SyncError);
+          let ourFingerprint: Fingerprint;
+          try {
+            ourFingerprint = deps.storage.fingerprint(
+              ownerIdBytes,
+              lower,
+              upper,
+            );
+          } catch (error) {
+            deps.console.error(error);
+            return err(ProtocolErrorCode.SyncError);
+          }
 
           if (eqArrayNumber(range.fingerprint, ourFingerprint)) {
             skipRange(range);
@@ -1374,52 +1402,61 @@ const sync =
           );
           const ourTimestamps = createTimestampsBuffer();
 
-          let cantReadDbChange = false as boolean;
           let exceeded = false as boolean;
+          let iterateFailed = false as boolean;
 
-          deps.storage.iterate(
-            ownerIdBytes,
-            lower,
-            upper,
-            (timestamp, index) => {
-              const timestampString = timestamp.join();
-              const timestampBinary = timestampBytesToTimestamp(timestamp);
+          try {
+            deps.storage.iterate(
+              ownerIdBytes,
+              lower,
+              upper,
+              (timestamp, index) => {
+                const timestampString = timestamp.join();
+                const timestampBinary = timestampBytesToTimestamp(timestamp);
 
-              let message: EncryptedCrdtMessage | null = null;
+                let message: EncryptedCrdtMessage | null = null;
 
-              if (timestampsWeNeed.has(timestampString)) {
-                timestampsWeNeed.delete(timestampString);
-              } else {
-                const dbChange = deps.storage.readDbChange(
-                  ownerIdBytes,
-                  timestamp,
-                );
-                if (dbChange == null) {
-                  cantReadDbChange = true;
+                if (timestampsWeNeed.has(timestampString)) {
+                  timestampsWeNeed.delete(timestampString);
+                } else {
+                  try {
+                    message = {
+                      timestamp: timestampBinary,
+                      change: deps.storage.readDbChange(
+                        ownerIdBytes,
+                        timestamp,
+                      ),
+                    };
+                  } catch (error) {
+                    deps.console.error(error);
+                    iterateFailed = true;
+                    return false;
+                  }
+                }
+
+                if (
+                  !output.canAddTimestampsRangeAndMessage(
+                    ourTimestamps,
+                    message,
+                  )
+                ) {
+                  exceeded = true;
+                  endBound = timestamp;
+                  upper = index;
                   return false;
                 }
-                message = {
-                  timestamp: timestampBinary,
-                  change: dbChange,
-                };
-              }
 
-              if (
-                !output.canAddTimestampsRangeAndMessage(ourTimestamps, message)
-              ) {
-                exceeded = true;
-                endBound = timestamp;
-                upper = index;
-                return false;
-              }
+                ourTimestamps.add(timestampBinary);
+                if (message) output.addMessage(message);
+                return true;
+              },
+            );
+          } catch (error) {
+            deps.console.error(error);
+            return err(ProtocolErrorCode.SyncError);
+          }
 
-              ourTimestamps.add(timestampBinary);
-              if (message) output.addMessage(message);
-              return true;
-            },
-          );
-
-          if (cantReadDbChange) {
+          if (iterateFailed) {
             return err(ProtocolErrorCode.SyncError);
           }
 
@@ -1462,7 +1499,7 @@ const sync =
   };
 
 const splitRange =
-  (deps: StorageDep) =>
+  (deps: StorageDep & ConsoleDep) =>
   (
     ownerId: OwnerIdBytes,
     lower: NonNegativeInt,
@@ -1503,13 +1540,17 @@ const splitRange =
             ...buckets.value.map((b) => NonNegativeInt.orThrow(b + lower)),
           ];
 
-    const fingerprintRanges = deps.storage.fingerprintRanges(
-      ownerId,
-      fingerprintRangesBuckets,
-      upperBound,
-    );
-    // Errors are handled by the storage.
-    if (fingerprintRanges == null) return;
+    let fingerprintRanges: ReadonlyArray<FingerprintRange>;
+    try {
+      fingerprintRanges = deps.storage.fingerprintRanges(
+        ownerId,
+        fingerprintRangesBuckets,
+        upperBound,
+      );
+    } catch (error) {
+      deps.console.error(error);
+      return;
+    }
 
     const rangesToUse =
       lower > 0 ? fingerprintRanges.slice(1) : fingerprintRanges;

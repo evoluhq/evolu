@@ -23,8 +23,7 @@ describe("createBetterSqliteDriver", () => {
     sqlite.exec(sql`create table t (data text);`);
     sqlite.exec(sql`insert into t (data) values (${"hello"});`);
     const rows = sqlite.exec(sql`select * from t;`);
-    assert(rows.ok);
-    expect(rows.value.rows).toEqual([{ data: "hello" }]);
+    expect(rows.rows).toEqual([{ data: "hello" }]);
 
     sqlite[Symbol.dispose]();
   });
@@ -42,9 +41,8 @@ describe("createBetterSqliteDriver", () => {
     sqlite.exec(sql`insert into t (name) values (${"Bob"});`);
 
     const rows = sqlite.exec(sql`select name from t order by id;`);
-    assert(rows.ok);
-    expect(rows.value.rows).toEqual([{ name: "Alice" }, { name: "Bob" }]);
-    expect(rows.value.changes).toBe(0);
+    expect(rows.rows).toEqual([{ name: "Alice" }, { name: "Bob" }]);
+    expect(rows.changes).toBe(0);
 
     sqlite[Symbol.dispose]();
   });
@@ -62,9 +60,8 @@ describe("createBetterSqliteDriver", () => {
     sqlite.exec(sql`insert into t (name) values (${"Bob"});`);
 
     const deleteResult = sqlite.exec(sql`delete from t;`);
-    assert(deleteResult.ok);
-    expect(deleteResult.value.rows).toEqual([]);
-    expect(deleteResult.value.changes).toBe(2);
+    expect(deleteResult.rows).toEqual([]);
+    expect(deleteResult.changes).toBe(2);
 
     sqlite[Symbol.dispose]();
   });
@@ -81,9 +78,8 @@ describe("createBetterSqliteDriver", () => {
     sqlite.exec(sql`insert into t (data) values (${"foo"});`);
 
     const exported = sqlite.export();
-    assert(exported.ok);
-    expect(exported.value).toBeInstanceOf(Uint8Array);
-    expect(exported.value.length).toBeGreaterThan(0);
+    expect(exported).toBeInstanceOf(Uint8Array);
+    expect(exported.length).toBeGreaterThan(0);
 
     sqlite[Symbol.dispose]();
   });
@@ -113,12 +109,11 @@ describe("createBetterSqliteDriver", () => {
     // Execute the same query twice — both should succeed via cached statement
     const insert1 = sqlite.exec(sql`insert into t (name) values (${"A"});`);
     const insert2 = sqlite.exec(sql`insert into t (name) values (${"B"});`);
-    assert(insert1.ok);
-    assert(insert2.ok);
+    expect(insert1.changes).toBe(1);
+    expect(insert2.changes).toBe(1);
 
     const rows = sqlite.exec(sql`select name from t order by id;`);
-    assert(rows.ok);
-    expect(rows.value.rows).toEqual([{ name: "A" }, { name: "B" }]);
+    expect(rows.rows).toEqual([{ name: "A" }, { name: "B" }]);
 
     sqlite[Symbol.dispose]();
   });
