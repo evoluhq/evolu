@@ -5,11 +5,18 @@
  */
 
 import type { ConsoleLevel } from "../Console.js";
-import { createSlip21, EncryptionKey } from "../Crypto.js";
+import { firstInArray } from "../Array.js";
+import { assertNonEmptyReadonlyArray } from "../Assert.js";
+import { EncryptionKey, type RandomBytesDep } from "../Crypto.js";
 import type { LeaderLockDep } from "../Platform.js";
+import type { Result } from "../Result.js";
 import { ok } from "../Result.js";
-import type { CreateSqliteDriverDep, SqliteDep } from "../Sqlite.js";
-import { createSqlite } from "../Sqlite.js";
+import type {
+  CreateSqliteDriverDep,
+  SqliteDep,
+  SqliteError,
+} from "../Sqlite.js";
+import { createSqlite, sql } from "../Sqlite.js";
 import type { AsyncDisposableStack, Task } from "../Task.js";
 import type { Name } from "../Type.js";
 import type {
@@ -19,8 +26,18 @@ import type {
   WorkerDeps,
   WorkerSelf,
 } from "../Worker.js";
+import { protocolVersion } from "./Protocol.js";
 import type { DbSchema } from "./Schema.js";
+import { getDbSchema } from "./Schema.js";
 import type { EvoluTabOutput } from "./Shared.js";
+import { createBaseSqliteStorageTables } from "./Storage.js";
+import type { Timestamp } from "./Timestamp.js";
+import {
+  createInitialTimestamp,
+  TimestampBytes,
+  timestampBytesToTimestamp,
+  timestampToTimestampBytes,
+} from "./Timestamp.js";
 
 export interface DbWorkerInput {
   readonly type: "init";
@@ -48,6 +65,10 @@ export type DbWorkerLeaderOutput =
     }
   | EvoluTabOutput;
 
+export interface PortDep {
+  readonly port: MessagePort<DbWorkerLeaderOutput>;
+}
+
 export const initDbWorker =
   (
     self: WorkerSelf<DbWorkerInput>,
@@ -71,22 +92,22 @@ export const initDbWorker =
         console.setLevel(consoleLevel);
         console.info("initDbWorker");
 
-        const leaderPort = stack.use(
+        const port = stack.use(
           createMessagePort<DbWorkerLeaderOutput>(nativeLeaderPort),
         );
 
         stack.defer(
           consoleStoreOutputEntry.subscribe(() => {
             const entry = consoleStoreOutputEntry.get();
-            if (entry) leaderPort.postMessage({ type: "ConsoleEntry", entry });
+            if (entry) port.postMessage({ type: "ConsoleEntry", entry });
           }),
         );
 
         void run.daemon(async (run) => {
           await stack.use(leaderLock.acquire(name));
           console.info("leaderAcquired");
-          leaderPort.postMessage({ type: "LeaderAcquired", name });
-          return run.addDeps({ leaderPort })(
+          port.postMessage({ type: "LeaderAcquired", name });
+          return run.addDeps({ port })(
             startDbWorker(name, dbSchema, encryptionKey),
           );
         });
@@ -96,47 +117,54 @@ export const initDbWorker =
     return ok(stack);
   };
 
-type StartDbWorkerDeps = DbWorkerDeps & {
-  readonly leaderPort: MessagePort<DbWorkerLeaderOutput>;
-};
-
 const startDbWorker =
   (
     name: Name,
-    dbSchema: DbSchema,
+    _dbSchema: DbSchema,
     encryptionKey: EncryptionKey,
-  ): Task<globalThis.AsyncDisposableStack, never, StartDbWorkerDeps> =>
+  ): Task<globalThis.AsyncDisposableStack, never, DbWorkerDeps & PortDep> =>
   async (run) => {
     await using stack = run.stack();
-    const console = run.deps.console.child(name).child("DbWorker");
-    const sqliteEncryptionKey = createSlip21(encryptionKey, [
-      "evolu",
-      "sqlite",
-      1,
-      name,
-    ]);
+    const { port } = run.deps;
+    const _console = run.deps.console.child(name).child("DbWorker");
 
     const sqlite = await stack.use(
-      createSqlite(name, {
-        mode: "encrypted",
-        encryptionKey: EncryptionKey.orThrow(sqliteEncryptionKey),
-      }),
+      createSqlite(name, { mode: "encrypted", encryptionKey }),
     );
-
     if (!sqlite.ok) {
-      run.deps.leaderPort.postMessage({
-        type: "EvoluError",
-        error: sqlite.error,
-      });
+      port.postMessage({ type: "EvoluError", error: sqlite.error });
       return ok(stack.move());
     }
 
-    const runWithSqlite = run.addDeps({ sqlite: sqlite.value });
+    const deps = { ...run.deps, sqlite: sqlite.value };
 
-    const initializeResult = await runWithSqlite(initializeDb(dbSchema));
-    if (!initializeResult.ok) return initializeResult;
+    const result = sqlite.value.transaction(() => {
+      const dbSchema = getDbSchema(deps)();
+      if (!dbSchema.ok) return dbSchema;
 
-    console.info("sqliteReady");
+      const dbIsInitialized = "evolu_version" in dbSchema.value.tables;
+
+      const clockResult = createClock(deps)(dbIsInitialized);
+      if (!clockResult.ok) return clockResult;
+
+      const clock = clockResult.value;
+
+      if (!dbIsInitialized) {
+        const result = initializeDb(deps)(clock.get());
+        if (!result.ok) return result;
+      }
+
+      return ok();
+    });
+
+    if (!result.ok) {
+      port.postMessage({ type: "EvoluError", error: result.error });
+      return ok(stack.move());
+    }
+
+    // run.deps.leaderPort.onMessage({
+    //   //
+    // })
 
     return ok(stack.move());
 
@@ -148,9 +176,122 @@ const startDbWorker =
   };
 
 const initializeDb =
-  (_dbSchema: DbSchema): Task<void, never, SqliteDep> =>
-  (_run) =>
-    ok();
+  ({ sqlite }: SqliteDep) =>
+  (initialClock: Timestamp): Result<void, SqliteError> => {
+    for (const query of [
+      sql`
+        create table evolu_version (
+          "protocolVersion" integer not null
+        )
+        strict;
+      `,
+
+      sql`
+        insert into evolu_version ("protocolVersion")
+        values (${protocolVersion});
+      `,
+
+      sql`
+        create table evolu_config (
+          "clock" blob not null
+        )
+        strict;
+      `,
+
+      sql`
+        insert into evolu_config ("clock")
+        values (${timestampToTimestampBytes(initialClock)});
+      `,
+
+      /**
+       * The History table stores all values per ownerId, timestamp, table, id,
+       * and column for conflict-free merging using last-write-win CRDT.
+       * Denormalizes Timestamp and DbChange for covering index performance.
+       * Time travel is available when last-write-win isn't desired. Future
+       * optimization will store history more efficiently.
+       */
+      sql`
+        create table evolu_history (
+          "ownerId" blob not null,
+          "table" text not null,
+          "id" blob not null,
+          "column" text not null,
+          "timestamp" blob not null,
+          "value" any
+        )
+        strict;
+      `,
+
+      // Index for reading database changes by owner and timestamp.
+      sql`
+        create index evolu_history_ownerId_timestamp on evolu_history (
+          "ownerId",
+          "timestamp"
+        );
+      `,
+
+      sql`
+        create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
+          "ownerId",
+          "table",
+          "id",
+          "column",
+          "timestamp" desc
+        );
+      `,
+    ]) {
+      const queryResult = sqlite.exec(query);
+      if (!queryResult.ok) return queryResult;
+    }
+
+    return createBaseSqliteStorageTables({ sqlite });
+  };
+
+interface Clock {
+  readonly get: () => Timestamp;
+  readonly save: (timestamp: Timestamp) => Result<void, SqliteError>;
+}
+
+// interface ClockDep {
+//   readonly clock: Clock;
+// }
+
+const createClock =
+  (deps: RandomBytesDep & SqliteDep) =>
+  (dbIsInitialized: boolean): Result<Clock, SqliteError> => {
+    let currentTimestamp: Timestamp;
+
+    if (dbIsInitialized) {
+      const configResult = deps.sqlite.exec<{ clock: TimestampBytes }>(sql`
+        select clock
+        from evolu_config
+        limit 1;
+      `);
+      if (!configResult.ok) return configResult;
+
+      assertNonEmptyReadonlyArray(configResult.value.rows);
+      const config = firstInArray(configResult.value.rows);
+      currentTimestamp = timestampBytesToTimestamp(config.clock);
+    } else {
+      currentTimestamp = createInitialTimestamp(deps);
+    }
+
+    return ok({
+      get: () => currentTimestamp,
+
+      save: (timestamp) => {
+        currentTimestamp = timestamp;
+
+        const result = deps.sqlite.exec(sql.prepared`
+          update evolu_config
+          set "clock" = ${timestampToTimestampBytes(timestamp)};
+        `);
+        if (!result.ok) return result;
+
+        return ok();
+      },
+    });
+  };
 
 // import {
 //   firstInArray,
