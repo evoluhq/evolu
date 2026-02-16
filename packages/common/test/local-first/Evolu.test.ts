@@ -319,7 +319,7 @@ describe("createEvolu", () => {
     expect(dbWorkerMessages).toHaveLength(1);
     expect(dbWorkerMessages[0]).toEqual(
       expect.objectContaining({
-        type: "init",
+        type: "Init",
         name: result.value.name,
       }),
     );
@@ -386,7 +386,7 @@ describe("mutations", () => {
 
     expect(evoluInputs).toHaveLength(1);
     expect(evoluInputs[0]).toEqual({
-      type: "mutate",
+      type: "Mutate",
       changes: [
         {
           table: "todo",
@@ -426,7 +426,7 @@ describe("mutations", () => {
 
     expect(evoluInputs).toHaveLength(1);
     expect(evoluInputs[0]).toEqual({
-      type: "mutate",
+      type: "Mutate",
       changes: [
         {
           table: "todo",
@@ -472,7 +472,7 @@ describe("mutations", () => {
     await Promise.resolve();
 
     expect(evoluInputs).toHaveLength(1);
-    expect(evoluInputs[0]?.type).toBe("mutate");
+    expect(evoluInputs[0]?.type).toBe("Mutate");
     expect(evoluInputs[0]?.changes).toHaveLength(3);
     expect(evoluInputs[0]?.changes[1]?.isInsert).toBe(false);
     expect(evoluInputs[0]?.changes[2]?.isInsert).toBe(true);

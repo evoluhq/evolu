@@ -29,7 +29,11 @@ import {
   UrlSafeString,
 } from "../Type.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
-import type { CreateDbWorkerDep, DbWorkerLeaderOutput } from "./Db.js";
+import type {
+  CreateDbWorkerDep,
+  DbWorkerLeaderInput,
+  DbWorkerLeaderOutput,
+} from "./Db.js";
 import type { EvoluError } from "./Error.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
 import {
@@ -487,7 +491,9 @@ export const createEvolu =
   async (run) => {
     const { appName, appOwner = createAppOwner(createOwnerSecret(run.deps)) } =
       config;
+
     const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
+
     const console = run.deps.console.child(name).child("Evolu");
     console.info("createEvolu", { config });
 
@@ -506,7 +512,7 @@ export const createEvolu =
       const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
       // For DbWorker to announce to SharedWorker that it is the leader.
       const leaderChannel = stack.use(
-        createMessageChannel<DbWorkerLeaderOutput>(),
+        createMessageChannel<DbWorkerLeaderOutput, DbWorkerLeaderInput>(),
       );
       // For Evolu to send and receive messages with SharedWorker.
       const evoluChannel = stack.use(createMessageChannel<EvoluInput>());
@@ -523,7 +529,7 @@ export const createEvolu =
 
       stack.use(createDbWorker()).postMessage(
         {
-          type: "init",
+          type: "Init",
           name,
           consoleLevel: console.getLevel(),
           dbSchema: evoluSchemaToDbSchema(schema, config.indexes),
@@ -541,7 +547,7 @@ export const createEvolu =
       readonly onComplete: (() => void) | undefined;
     }>((items) => {
       postMessage({
-        type: "mutate",
+        type: "Mutate",
         changes: mapArray(items, (item) => item.change),
         onCompleteIds: items.flatMap((item) =>
           item.onComplete

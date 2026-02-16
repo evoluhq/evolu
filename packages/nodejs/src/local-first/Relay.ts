@@ -85,11 +85,11 @@ export const startRelay =
       createRelayStorageTables(deps);
     }
 
-    const storage = createRelaySqliteStorage(deps)({
-      isOwnerWithinQuota,
+    const run = _run.addDeps({
+      storage: createRelaySqliteStorage(deps)({
+        isOwnerWithinQuota,
+      }),
     });
-
-    const run = _run.addDeps({ storage });
 
     const server = createServer();
     const wss = new WebSocketServer({

@@ -72,6 +72,15 @@ const app = run(
   }),
 );
 
+app.then((appResult) => {
+  if (!appResult.ok) return;
+  const app = appResult.value;
+
+  app.insert("todo", {
+    title: Evolu.NonEmptyString100.orThrow("Foo"),
+  });
+});
+
 const [App, AppProvider] = createEvoluContext(app);
 
 export const EvoluMinimalExample: FC = () => (

@@ -801,54 +801,6 @@ const applyColumnChange =
   };
 
 /**
- * Attempts to apply quarantined messages that may now be valid after a schema
- * update. Messages are quarantined when they reference tables or columns that
- * don't exist in the current schema (e.g., from a newer app version).
- */
-export const tryApplyQuarantinedMessages =
-  (deps: DbSchemaDep & SqliteDep) => (): void => {
-    const rows = deps.sqlite.exec<{
-      readonly ownerId: OwnerIdBytes;
-      readonly timestamp: TimestampBytes;
-      readonly table: string;
-      readonly id: IdBytes;
-      readonly column: string;
-      readonly value: SqliteValue;
-    }>(sql`
-      select "ownerId", "timestamp", "table", "id", "column", "value"
-      from evolu_message_quarantine;
-    `);
-
-    for (const row of rows.rows) {
-      if (!validateColumnValue(deps)(row.table, row.column, row.value))
-        continue;
-
-      applyColumnChange(deps)(
-        row.ownerId,
-        ownerIdBytesToOwnerId(row.ownerId),
-        row.table,
-        row.id,
-        idBytesToId(row.id),
-        row.column,
-        row.value,
-        row.timestamp,
-      );
-
-      {
-        deps.sqlite.exec(sql`
-          delete from evolu_message_quarantine
-          where
-            "ownerId" = ${row.ownerId}
-            and "timestamp" = ${row.timestamp}
-            and "table" = ${row.table}
-            and "id" = ${row.id}
-            and "column" = ${row.column};
-        `);
-      }
-    }
-  };
-
-/**
  * TODO: Rework for the new owners API.
  *
  * The possible states of a synchronization process. The `SyncState` can be one

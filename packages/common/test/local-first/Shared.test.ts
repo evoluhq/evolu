@@ -7,7 +7,10 @@ import {
   type SharedWorkerInput,
   initSharedWorker,
 } from "../../src/local-first/Shared.js";
-import type { DbWorkerLeaderOutput } from "../../src/local-first/Db.js";
+import type {
+  DbWorkerLeaderInput,
+  DbWorkerLeaderOutput,
+} from "../../src/local-first/Db.js";
 import type { MutationChange } from "../../src/local-first/Schema.js";
 import { testCreateConsole } from "../../src/Console.js";
 import { testCreateRun } from "../../src/Test.js";
@@ -263,7 +266,7 @@ describe("initSharedWorker", () => {
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const leaderChannel = testCreateMessageChannel<
-      never,
+      DbWorkerLeaderInput,
       DbWorkerLeaderOutput
     >();
 
@@ -295,7 +298,7 @@ describe("initSharedWorker", () => {
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const leaderChannel = testCreateMessageChannel<
-      never,
+      DbWorkerLeaderInput,
       DbWorkerLeaderOutput
     >();
 
@@ -323,7 +326,7 @@ describe("initSharedWorker", () => {
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const leaderChannel = testCreateMessageChannel<
-      never,
+      DbWorkerLeaderInput,
       DbWorkerLeaderOutput
     >();
 
@@ -348,7 +351,7 @@ describe("initSharedWorker", () => {
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const leaderChannel = testCreateMessageChannel<
-      never,
+      DbWorkerLeaderInput,
       DbWorkerLeaderOutput
     >();
 
@@ -361,7 +364,7 @@ describe("initSharedWorker", () => {
 
     expect(() => {
       evoluChannel.port2.postMessage({
-        type: "mutate",
+        type: "Mutate",
         changes: [{} as MutationChange],
         onCompleteIds: [],
         subscribedQueries: [],
@@ -375,7 +378,7 @@ describe("initSharedWorker", () => {
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const leaderChannel = testCreateMessageChannel<
-      never,
+      DbWorkerLeaderInput,
       DbWorkerLeaderOutput
     >();
 
