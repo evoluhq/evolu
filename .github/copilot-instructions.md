@@ -56,6 +56,19 @@ Key directories:
 - **Organize code top-down** - public interfaces first, then implementation, then implementation details. TypeScript types can reference types defined later in the file (no forward declaration needed), so always place the higher-level type first. For runtime code (functions, constants), if a helper must be defined before the public export that uses it (due to JavaScript hoisting), place it immediately before that export.
 - **Reference globals explicitly with `globalThis`** - when a name clashes with global APIs (e.g., `SharedWorker`, `Worker`), use `globalThis.SharedWorker` instead of aliasing imports
 
+### Order (top-down readability)
+
+Write code top-down: public API first (interfaces and types), then implementation, then implementation details.
+
+Evolu optimizes for reading, not writing. Source code is read far more often than it is written, so developer-facing contracts should appear before low-level helpers.
+
+Think from whole to detail:
+
+1. Public contract (`interface`, exported types)
+2. Supporting types
+3. Implementation
+4. Implementation details
+
 ```ts
 // Good
 import { bar, baz } from "Foo.ts";
