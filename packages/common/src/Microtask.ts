@@ -12,7 +12,7 @@ import { appendToArray, type NonEmptyReadonlyArray } from "./Array.js";
  * Calls to {@link MicrotaskBatch.push} within the same tick are coalesced into
  * one flush.
  */
-export interface MicrotaskBatch<T> {
+export interface MicrotaskBatch<T> extends Disposable {
   /** Enqueues one item and schedules a microtask flush if needed. */
   readonly push: (item: T) => void;
 
@@ -25,9 +25,10 @@ export const createMicrotaskBatch = <T>(
   onFlush: (items: NonEmptyReadonlyArray<T>) => void,
 ): MicrotaskBatch<T> => {
   let queue: NonEmptyReadonlyArray<T> | null = null;
+  let disposed = false;
 
   const flushNow = () => {
-    if (queue == null) return;
+    if (disposed || queue == null) return;
     const queuedItems = queue;
     queue = null;
     onFlush(queuedItems);
@@ -35,6 +36,8 @@ export const createMicrotaskBatch = <T>(
 
   return {
     push: (item) => {
+      if (disposed) return;
+
       if (queue == null) {
         queue = [item];
         queueMicrotask(flushNow);
@@ -45,5 +48,11 @@ export const createMicrotaskBatch = <T>(
     },
 
     flushNow,
+
+    [Symbol.dispose]: () => {
+      if (disposed) return;
+      disposed = true;
+      queue = null;
+    },
   };
 };

@@ -83,4 +83,48 @@ describe("createMicrotaskBatch", () => {
 
     expect(flushed).toEqual([[1], [2]]);
   });
+
+  test("dispose cancels queued flush", async () => {
+    const flushed: Array<ReadonlyArray<number>> = [];
+    const batch = createMicrotaskBatch<number>((items) => {
+      flushed.push(items);
+    });
+
+    batch.push(1);
+    batch[Symbol.dispose]();
+
+    await Promise.resolve();
+
+    expect(flushed).toEqual([]);
+  });
+
+  test("push and flushNow are no-op after dispose", async () => {
+    const flushed: Array<ReadonlyArray<number>> = [];
+    const batch = createMicrotaskBatch<number>((items) => {
+      flushed.push(items);
+    });
+
+    batch[Symbol.dispose]();
+    batch.push(1);
+    batch.flushNow();
+
+    await Promise.resolve();
+
+    expect(flushed).toEqual([]);
+  });
+
+  test("dispose is idempotent", async () => {
+    const flushed: Array<ReadonlyArray<number>> = [];
+    const batch = createMicrotaskBatch<number>((items) => {
+      flushed.push(items);
+    });
+
+    batch.push(1);
+    batch[Symbol.dispose]();
+    batch[Symbol.dispose]();
+
+    await Promise.resolve();
+
+    expect(flushed).toEqual([]);
+  });
 });
