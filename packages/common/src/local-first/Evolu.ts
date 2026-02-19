@@ -542,21 +542,23 @@ export const createEvolu =
       postMessage = evoluChannel.port1.postMessage;
     }
 
-    const mutateBatch = createMicrotaskBatch<{
-      readonly change: MutationChange;
-      readonly onComplete: (() => void) | undefined;
-    }>((items) => {
-      postMessage({
-        type: "Mutate",
-        changes: mapArray(items, (item) => item.change),
-        onCompleteIds: items.flatMap((item) =>
-          item.onComplete
-            ? [onCompleteCallbacks.register(item.onComplete)]
-            : [],
-        ),
-        subscribedQueries: [...subscribedQueriesRefCount.keys()],
-      });
-    });
+    const mutateBatch = stack.use(
+      createMicrotaskBatch<{
+        readonly change: MutationChange;
+        readonly onComplete: (() => void) | undefined;
+      }>((items) => {
+        postMessage({
+          type: "Mutate",
+          changes: mapArray(items, (item) => item.change),
+          onCompleteIds: items.flatMap((item) =>
+            item.onComplete
+              ? [onCompleteCallbacks.register(item.onComplete)]
+              : [],
+          ),
+          subscribedQueries: [...subscribedQueriesRefCount.keys()],
+        });
+      }),
+    );
 
     const createMutation =
       <Kind extends "insert" | "update" | "upsert">(

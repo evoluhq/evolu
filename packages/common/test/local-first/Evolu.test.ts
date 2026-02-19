@@ -496,6 +496,22 @@ describe("mutations", () => {
     expect(evoluInputs[0]?.changes[0]?.ownerId).toBe(testAppOwner.id);
     expect(evoluInputs[0]?.onCompleteIds).toHaveLength(1);
   });
+
+  test("asyncDispose cancels pending mutation microtask", async () => {
+    const { run, result, evoluInputs } = await setupCreateEvolu();
+    await using _run = run;
+
+    if (!result.ok) return;
+
+    result.value.insert("todo", {
+      title: NonEmptyString100.orThrow("Queued then disposed"),
+    });
+
+    await result.value[Symbol.asyncDispose]();
+    await Promise.resolve();
+
+    expect(evoluInputs).toEqual([]);
+  });
 });
 
 // import { describe, expectTypeOf, test } from "vitest";
