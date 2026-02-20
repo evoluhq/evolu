@@ -20,6 +20,8 @@
  * are not consistent across environments, so this is a portable fallback.
  * Having two Evolu instances with the same name would mean two SQLite
  * connections to the same file, which could corrupt data.
+ *
+ * // TODO: Example.
  */
 export interface Instances<
   K extends string,
