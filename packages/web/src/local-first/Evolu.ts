@@ -1,7 +1,7 @@
 import type { ConsoleDep } from "@evolu/common";
 import type {
   CreateDbWorker,
-  DbWorkerInput,
+  DbWorkerInit,
   EvoluDeps,
   SharedWorkerInput,
 } from "@evolu/common/local-first";
@@ -23,7 +23,7 @@ import {
 /** Creates Evolu dependencies for the web platform. */
 export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
   const createDbWorker: CreateDbWorker = () =>
-    createWorker<DbWorkerInput, never>(
+    createWorker<DbWorkerInit, never>(
       new Worker(new URL("Db.worker.js", import.meta.url), {
         type: "module",
       }),

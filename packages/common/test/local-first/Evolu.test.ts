@@ -6,7 +6,7 @@ import { lazyVoid } from "../../src/Function.js";
 import type {
   CreateDbWorker,
   DbWorker,
-  DbWorkerInput,
+  DbWorkerInit,
 } from "../../src/local-first/Db.js";
 import {
   AppName,
@@ -16,6 +16,7 @@ import {
 } from "../../src/local-first/Evolu.js";
 import type {
   EvoluInput,
+  EvoluOutput,
   EvoluTabOutput,
   SharedWorker,
   SharedWorkerInput,
@@ -49,7 +50,7 @@ const Schema = {
 };
 
 const testCreateDbWorker: CreateDbWorker = () => {
-  const { worker } = testCreateWorker<DbWorkerInput>();
+  const { worker } = testCreateWorker<DbWorkerInit>();
   return worker as DbWorker;
 };
 
@@ -70,8 +71,10 @@ const setupCreateEvolu = async () => {
 
   self.onConnect = (port) => {
     port.onMessage = (message) => {
-      if (message.type !== "InitEvolu") return;
-      const evoluPort = testCreateMessagePort<never, EvoluInput>(message.port1);
+      if (message.type !== "CreateEvolu") return;
+      const evoluPort = testCreateMessagePort<EvoluOutput, EvoluInput>(
+        message.evoluPort,
+      );
       evoluPort.onMessage = (input) => {
         evoluInputs.push(input);
       };
@@ -187,7 +190,7 @@ describe("createEvoluDeps", () => {
       path: ["test"],
       args: ["hello"],
     };
-    workerPort.postMessage({ type: "ConsoleEntry", entry });
+    workerPort.postMessage({ type: "OnConsoleEntry", entry });
 
     expect(console.getEntriesSnapshot()).toEqual([entry]);
   });
@@ -201,7 +204,7 @@ describe("createEvoluDeps", () => {
       args: ["error", { type: "UnknownError", error: "boom" }],
     };
 
-    workerPort.postMessage({ type: "ConsoleEntry", entry });
+    workerPort.postMessage({ type: "OnConsoleEntry", entry });
 
     expect(deps.evoluError.get()).toEqual({
       type: "UnknownError",
@@ -213,7 +216,7 @@ describe("createEvoluDeps", () => {
     const { deps, workerPort } = setupDepsWithPort();
 
     workerPort.postMessage({
-      type: "ConsoleEntry",
+      type: "OnConsoleEntry",
       entry: { method: "error", path: ["global"], args: ["boom"] },
     });
 
@@ -227,7 +230,7 @@ describe("createEvoluDeps", () => {
     const { deps, workerPort } = setupDepsWithPort();
 
     workerPort.postMessage({
-      type: "ConsoleEntry",
+      type: "OnConsoleEntry",
       entry: { method: "error", path: ["global"], args: ["error", "boom"] },
     });
 
@@ -241,7 +244,7 @@ describe("createEvoluDeps", () => {
     const { deps, workerPort } = setupDepsWithPort();
 
     const error = { type: "UnknownError", error: "boom" } as const;
-    workerPort.postMessage({ type: "EvoluError", error });
+    workerPort.postMessage({ type: "OnError", error });
 
     expect(deps.evoluError.get()).toEqual(error);
   });
@@ -293,10 +296,10 @@ describe("createEvoluDeps", () => {
 
 describe("createEvolu", () => {
   test("initializes db worker with resolved name", async () => {
-    const dbWorkerMessages: Array<DbWorkerInput> = [];
+    const dbWorkerMessages: Array<DbWorkerInit> = [];
 
     const createDbWorker: CreateDbWorker = () => {
-      const { worker, self } = testCreateWorker<DbWorkerInput>();
+      const { worker, self } = testCreateWorker<DbWorkerInit>();
       self.onMessage = (message) => {
         dbWorkerMessages.push(message);
       };
@@ -378,28 +381,44 @@ describe("mutations", () => {
 
     if (!result.ok) return;
 
-    const { id } = result.value.insert("todo", {
+    result.value.insert("todo", {
       title: NonEmptyString100.orThrow("Todo 1"),
     });
 
     await Promise.resolve();
 
-    expect(evoluInputs).toHaveLength(1);
-    expect(evoluInputs[0]).toEqual({
-      type: "Mutate",
-      changes: [
+    expect(evoluInputs).toMatchInlineSnapshot(
+      [
         {
-          table: "todo",
-          id,
-          values: { title: "Todo 1" },
-          isInsert: true,
-          isDelete: null,
-          ownerId: undefined,
+          changes: [
+            {
+              id: expect.any(String),
+            },
+          ],
         },
       ],
-      onCompleteIds: [],
-      subscribedQueries: [],
-    });
+      `
+      [
+        {
+          "changes": [
+            {
+              "id": Any<String>,
+              "isDelete": null,
+              "isInsert": true,
+              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "table": "todo",
+              "values": {
+                "title": "Todo 1",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "type": "Mutate",
+        },
+      ]
+      `,
+    );
   });
 
   test("update and upsert preserve passed id and set isInsert correctly", async () => {
@@ -424,30 +443,51 @@ describe("mutations", () => {
 
     await Promise.resolve();
 
-    expect(evoluInputs).toHaveLength(1);
-    expect(evoluInputs[0]).toEqual({
-      type: "Mutate",
-      changes: [
+    expect(evoluInputs).toMatchInlineSnapshot(
+      [
         {
-          table: "todo",
-          id: updateId,
-          values: { title: "Updated" },
-          isInsert: false,
-          isDelete: true,
-          ownerId: undefined,
-        },
-        {
-          table: "todo",
-          id: upsertId,
-          values: { title: "Upserted" },
-          isInsert: true,
-          isDelete: null,
-          ownerId: undefined,
+          changes: [
+            {
+              id: updateId,
+            },
+            {
+              id: upsertId,
+            },
+          ],
         },
       ],
-      onCompleteIds: [],
-      subscribedQueries: [],
-    });
+      `
+      [
+        {
+          "changes": [
+            {
+              "id": "VPIPiOGb2m2OlsM-pg18CA",
+              "isDelete": true,
+              "isInsert": false,
+              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "table": "todo",
+              "values": {
+                "title": "Updated",
+              },
+            },
+            {
+              "id": "j4rh6UkYDIqXKLCOX4ru2A",
+              "isDelete": null,
+              "isInsert": true,
+              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "table": "todo",
+              "values": {
+                "title": "Upserted",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "type": "Mutate",
+        },
+      ]
+      `,
+    );
   });
 
   test("coalesces insert, update, and upsert in one microtask", async () => {
@@ -471,11 +511,64 @@ describe("mutations", () => {
 
     await Promise.resolve();
 
-    expect(evoluInputs).toHaveLength(1);
-    expect(evoluInputs[0]?.type).toBe("Mutate");
-    expect(evoluInputs[0]?.changes).toHaveLength(3);
-    expect(evoluInputs[0]?.changes[1]?.isInsert).toBe(false);
-    expect(evoluInputs[0]?.changes[2]?.isInsert).toBe(true);
+    expect(evoluInputs).toMatchInlineSnapshot(
+      [
+        {
+          changes: [
+            {
+              id: expect.any(String),
+            },
+            {
+              id: updateId,
+            },
+            {
+              id: upsertId,
+            },
+          ],
+        },
+      ],
+      `
+      [
+        {
+          "changes": [
+            {
+              "id": Any<String>,
+              "isDelete": null,
+              "isInsert": true,
+              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "table": "todo",
+              "values": {
+                "title": "A",
+              },
+            },
+            {
+              "id": "fOTG65tQ_ZYHpSBp3GbogA",
+              "isDelete": null,
+              "isInsert": false,
+              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "table": "todo",
+              "values": {
+                "title": "B",
+              },
+            },
+            {
+              "id": "3I1Sfwp5IxdacWcpAna5qg",
+              "isDelete": null,
+              "isInsert": true,
+              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "table": "todo",
+              "values": {
+                "title": "C",
+              },
+            },
+          ],
+          "onCompleteIds": [],
+          "subscribedQueries": [],
+          "type": "Mutate",
+        },
+      ]
+      `,
+    );
   });
 
   test("includes ownerId and onComplete callback ids", async () => {
@@ -492,9 +585,41 @@ describe("mutations", () => {
 
     await Promise.resolve();
 
-    expect(evoluInputs).toHaveLength(1);
-    expect(evoluInputs[0]?.changes[0]?.ownerId).toBe(testAppOwner.id);
-    expect(evoluInputs[0]?.onCompleteIds).toHaveLength(1);
+    expect(evoluInputs).toMatchInlineSnapshot(
+      [
+        {
+          changes: [
+            {
+              id: expect.any(String),
+            },
+          ],
+          onCompleteIds: [expect.any(String)],
+        },
+      ],
+      `
+      [
+        {
+          "changes": [
+            {
+              "id": Any<String>,
+              "isDelete": null,
+              "isInsert": true,
+              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "table": "todo",
+              "values": {
+                "title": "With callback",
+              },
+            },
+          ],
+          "onCompleteIds": [
+            Any<String>,
+          ],
+          "subscribedQueries": [],
+          "type": "Mutate",
+        },
+      ]
+      `,
+    );
   });
 
   test("asyncDispose cancels pending mutation microtask", async () => {
@@ -510,7 +635,13 @@ describe("mutations", () => {
     await result.value[Symbol.asyncDispose]();
     await Promise.resolve();
 
-    expect(evoluInputs).toEqual([]);
+    expect(evoluInputs).toMatchInlineSnapshot(`
+      [
+        {
+          "type": "Dispose",
+        },
+      ]
+    `);
   });
 });
 

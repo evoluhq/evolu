@@ -4,6 +4,8 @@ test("TODO", () => {
   expect(1).toBe(1);
 });
 
+// TODO: handleMutation, ze drzi poradi vkladani local a to sync
+
 // import { CallbackId } from "../../src/Callbacks.js";
 // import {
 //   createDbWorkerForPlatform,

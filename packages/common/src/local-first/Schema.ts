@@ -239,8 +239,7 @@ export interface MutationOptions {
 }
 
 export interface MutationChange extends DbChange {
-  /** Owner of the change. If undefined, the change belongs to the AppOwner. */
-  readonly ownerId?: OwnerId | undefined;
+  readonly ownerId: OwnerId;
 }
 
 /**
@@ -449,38 +448,38 @@ export const getDbSchema =
   ({ allIndexes = false }: { allIndexes?: boolean } = {}): DbSchema => {
     const tables = createRecord<string, Set<string>>();
 
-      const tableAndColumnInfoRows = deps.sqlite.exec<{
-        tableName: string;
-        columnName: string;
-      }>(sql`
-        select
-          sqlite_master.name as tableName,
-          table_info.name as columnName
-        from
-          sqlite_master
-          join pragma_table_info(sqlite_master.name) as table_info;
-      `);
+    const tableAndColumnInfoRows = deps.sqlite.exec<{
+      tableName: string;
+      columnName: string;
+    }>(sql`
+      select
+        sqlite_master.name as tableName,
+        table_info.name as columnName
+      from
+        sqlite_master
+        join pragma_table_info(sqlite_master.name) as table_info;
+    `);
 
-      tableAndColumnInfoRows.rows.forEach(({ tableName, columnName }) => {
-        (tables[tableName] ??= new Set()).add(columnName);
-      });
+    tableAndColumnInfoRows.rows.forEach(({ tableName, columnName }) => {
+      (tables[tableName] ??= new Set()).add(columnName);
+    });
 
-      const indexesRows = deps.sqlite.exec<{ name: string; sql: string | null }>(
-        allIndexes
-          ? sql`
-              select name, sql
-              from sqlite_master
-              where type = 'index' and name not like 'sqlite_%';
-            `
-          : sql`
-              select name, sql
-              from sqlite_master
-              where
-                type = 'index'
-                and name not like 'sqlite_%'
-                and name not like 'evolu_%';
-            `,
-      );
+    const indexesRows = deps.sqlite.exec<{ name: string; sql: string | null }>(
+      allIndexes
+        ? sql`
+            select name, sql
+            from sqlite_master
+            where type = 'index' and name not like 'sqlite_%';
+          `
+        : sql`
+            select name, sql
+            from sqlite_master
+            where
+              type = 'index'
+              and name not like 'sqlite_%'
+              and name not like 'evolu_%';
+          `,
+    );
 
     const indexes = indexesRows.rows.flatMap((row): Array<DbIndex> => {
       if (row.sql == null) return [];
@@ -489,8 +488,8 @@ export const getDbSchema =
           name: row.name,
           /**
            * SQLite returns "CREATE INDEX" for "create index" for some reason.
-           * Other keywords remain unchanged. We have to normalize the casing for
-           * {@link indexesAreEqual} manually.
+           * Other keywords remain unchanged. We have to normalize the casing
+           * for {@link indexesAreEqual} manually.
            */
           sql: row.sql
             .replace("CREATE INDEX", "create index")

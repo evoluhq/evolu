@@ -133,7 +133,7 @@ export type WorkerDeps = ConsoleDep &
  * const channel = createMessageChannel<EvoluRequest, EvoluResponse>();
  *
  * sharedWorker.port.postMessage(
- *   { type: "InitEvolu", port: channel.port1.native },
+ *   { type: "CreateEvolu", port: channel.port1.native },
  *   [channel.port1.native],
  * );
  *

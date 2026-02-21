@@ -29,11 +29,7 @@ import {
   UrlSafeString,
 } from "../Type.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
-import type {
-  CreateDbWorkerDep,
-  DbWorkerLeaderInput,
-  DbWorkerLeaderOutput,
-} from "./Db.js";
+import type { CreateDbWorkerDep } from "./Db.js";
 import type { EvoluError } from "./Error.js";
 import type { AppOwner, OwnerTransport } from "./Owner.js";
 import {
@@ -58,7 +54,13 @@ import type {
   ValidateSchema,
 } from "./Schema.js";
 import { evoluSchemaToDbSchema } from "./Schema.js";
-import type { EvoluInput, EvoluTabOutput, SharedWorkerDep } from "./Shared.js";
+import type {
+  DbWorkerInput,
+  DbWorkerOutput,
+  EvoluInput,
+  EvoluTabOutput,
+  SharedWorkerDep,
+} from "./Shared.js";
 import { DbChange } from "./Storage.js";
 import type { SyncOwner } from "./Sync.js";
 import type { Timestamp } from "./Timestamp.js";
@@ -444,14 +446,14 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const tabChannel = stack.use(createMessageChannel<EvoluTabOutput>());
   tabChannel.port2.onMessage = (output) => {
     switch (output.type) {
-      case "ConsoleEntry":
+      case "OnConsoleEntry":
         console.write(output.entry);
         // Fallback channel for unexpected errors without EvoluError typing.
         if (output.entry.method === "error") {
           evoluError.set(createUnknownError(output.entry.args));
         }
         break;
-      case "EvoluError":
+      case "OnError":
         evoluError.set(output.error);
         // Keep typed errors visible in logs as operational failures.
         console.error(output.error);
@@ -495,7 +497,7 @@ export const createEvolu =
     const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
 
     const console = run.deps.console.child(name).child("Evolu");
-    console.info("createEvolu", { config });
+    console.info("createEvolu");
 
     const _rowsStore = createStore<QueryRowsMap>(new Map());
     const subscribedQueriesRefCount = createRefCount<Query>();
@@ -503,40 +505,42 @@ export const createEvolu =
 
     await using stack = run.stack();
 
-    // Used for all Evolu instance communication with SharedWorker.
-    // SharedWorker centralizes observability and resilience (retry, timeout).
+    // TODO: tohle by mel bejt proste port, at muzu oboje
     let postMessage: (input: EvoluInput) => void;
 
+    // Wire SharedWorker and DbWorker.
     {
-      // Wire SharedWorker and DbWorker channels.
       const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
-      // For DbWorker to announce to SharedWorker that it is the leader.
-      const leaderChannel = stack.use(
-        createMessageChannel<DbWorkerLeaderOutput, DbWorkerLeaderInput>(),
+      const dbWorkerChannel = stack.use(
+        createMessageChannel<DbWorkerOutput, DbWorkerInput>(),
       );
-      // For Evolu to send and receive messages with SharedWorker.
       const evoluChannel = stack.use(createMessageChannel<EvoluInput>());
 
       sharedWorker.port.postMessage(
         {
-          type: "InitEvolu",
+          type: "CreateEvolu",
           name,
-          port1: evoluChannel.port2.native,
-          port2: leaderChannel.port2.native,
+          evoluPort: evoluChannel.port2.native,
+          dbWorkerPort: dbWorkerChannel.port2.native,
         },
-        [evoluChannel.port2.native, leaderChannel.port2.native],
+        [evoluChannel.port2.native, dbWorkerChannel.port2.native],
       );
 
-      stack.use(createDbWorker()).postMessage(
+      /**
+       * No stack.use because Evolu instances don't dispose DbWorker because
+       * it's SharedWorder responsibility. DbWorker can be used by another tab.
+       * That's required because SQLite WASM needs a single web worker.
+       */
+      createDbWorker().postMessage(
         {
           type: "Init",
           name,
           consoleLevel: console.getLevel(),
           dbSchema: evoluSchemaToDbSchema(schema, config.indexes),
           encryptionKey: appOwner.encryptionKey,
-          port: leaderChannel.port1.native,
+          port: dbWorkerChannel.port1.native,
         },
-        [leaderChannel.port1.native],
+        [dbWorkerChannel.port1.native],
       );
 
       postMessage = evoluChannel.port1.postMessage;
@@ -587,7 +591,7 @@ export const createEvolu =
         );
 
         mutateBatch.push({
-          change: { ...dbChange, ownerId: options?.ownerId },
+          change: { ...dbChange, ownerId: appOwner.id },
           onComplete: options?.onComplete,
         });
 
@@ -609,7 +613,10 @@ export const createEvolu =
       upsert: createMutation("upsert"),
       useOwner: todo,
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => {
+        postMessage({ type: "Dispose" });
+        return moved.disposeAsync();
+      },
     } as Evolu<S>);
   };
 

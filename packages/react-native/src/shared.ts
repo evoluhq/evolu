@@ -12,7 +12,7 @@ import {
 import type {
   CreateDbWorker,
   DbWorker,
-  DbWorkerInput,
+  DbWorkerInit,
   EvoluDeps,
   SharedWorkerInput,
 } from "@evolu/common/local-first";
@@ -47,7 +47,7 @@ export const createEvoluDeps = (
   });
 
   const createDbWorker: CreateDbWorker = (): DbWorker =>
-    createWorker<DbWorkerInput, never>((self) => {
+    createWorker<DbWorkerInit, never>((self) => {
       workerRun(initDbWorker(self));
     });
 

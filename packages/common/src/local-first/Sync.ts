@@ -339,7 +339,7 @@ export const createSync =
           if (!nextTimestamp.ok) return nextTimestamp;
           clockTimestamp = nextTimestamp.value;
 
-          const { ownerId = config.appOwner.id, ...dbChange } = change;
+          const { ownerId, ...dbChange } = change;
           const message: CrdtMessage = {
             timestamp: clockTimestamp,
             change: dbChange,
@@ -455,7 +455,7 @@ const createClientStorage =
     ) => void;
     onReceive: () => void;
   }): ClientStorage => {
-    const sqliteStorageBase = createBaseSqliteStorage(deps)();
+    const sqliteStorageBase = createBaseSqliteStorage(deps);
 
     // TODO: Mutex per OwnerId like in Relay to support more owners.
     const mutex = createMutex();

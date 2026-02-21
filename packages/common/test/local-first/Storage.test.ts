@@ -2,7 +2,6 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
 import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
 import type {
-  BaseSqliteStorageDep,
   Fingerprint,
   StorageInsertTimestampStrategy,
 } from "../../src/local-first/Storage.js";
@@ -25,7 +24,6 @@ import {
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { ok } from "../../src/Result.js";
-import type { SqliteDep } from "../../src/Sqlite.js";
 import { sql } from "../../src/Sqlite.js";
 import { testCreateDeps } from "../../src/Test.js";
 import type { Millis } from "../../src/Time.js";
@@ -40,7 +38,7 @@ import {
   testTimestampsRandom,
 } from "./_fixtures.js";
 
-const createDeps = async (): Promise<SqliteDep & BaseSqliteStorageDep> => {
+const createDeps = async () => {
   await using run = await testCreateRunWithSqlite();
   const { sqlite } = run.deps;
 
@@ -50,8 +48,7 @@ const createDeps = async (): Promise<SqliteDep & BaseSqliteStorageDep> => {
 
   createBaseSqliteStorageTables({ sqlite });
 
-  const storage = createBaseSqliteStorage({ sqlite, random })();
-  return { sqlite, storage };
+  return { sqlite, storage: createBaseSqliteStorage({ sqlite, random }) };
 };
 
 const xorFingerprints = (arr1: Fingerprint, arr2: Fingerprint): Fingerprint => {

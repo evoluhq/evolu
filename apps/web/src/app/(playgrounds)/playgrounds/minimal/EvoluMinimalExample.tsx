@@ -79,6 +79,10 @@ app.then((appResult) => {
   app.insert("todo", {
     title: Evolu.NonEmptyString100.orThrow("Foo"),
   });
+
+  // setTimeout(() => {
+  //   app[Symbol.asyncDispose]();
+  // }, 3000);
 });
 
 const [App, AppProvider] = createEvoluContext(app);

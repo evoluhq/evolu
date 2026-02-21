@@ -340,7 +340,7 @@ export interface BaseSqliteStorage extends Pick<
 }
 
 export interface BaseSqliteStorageDep {
-  readonly storage: BaseSqliteStorage;
+  readonly baseSqliteStorage: BaseSqliteStorage;
 }
 
 export type SqliteStorageDeps = RandomDep & SqliteDep;
@@ -358,98 +358,99 @@ export type SqliteStorageDeps = RandomDep & SqliteDep;
  * doesn't persist between requests. While not extensively tested in all these
  * environments yet, the stateless design should work well across them.
  */
-export const createBaseSqliteStorage =
-  (deps: SqliteStorageDeps) => (): BaseSqliteStorage => ({
-    insertTimestamp: (
-      ownerId: OwnerIdBytes,
-      timestamp: TimestampBytes,
-      strategy: StorageInsertTimestampStrategy,
-    ) => {
-      const level = randomSkiplistLevel(deps);
-      insertTimestamp(deps)(ownerId, timestamp, level, strategy);
-    },
+export const createBaseSqliteStorage = (
+  deps: SqliteStorageDeps,
+): BaseSqliteStorage => ({
+  insertTimestamp: (
+    ownerId: OwnerIdBytes,
+    timestamp: TimestampBytes,
+    strategy: StorageInsertTimestampStrategy,
+  ) => {
+    const level = randomSkiplistLevel(deps);
+    insertTimestamp(deps)(ownerId, timestamp, level, strategy);
+  },
 
-    getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
-      const concatenatedTimestamps = concatBytes(...timestampsBytes);
+  getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
+    const concatenatedTimestamps = concatBytes(...timestampsBytes);
 
-      const result = deps.sqlite.exec<{
-        timestampBytes: TimestampBytes;
-      }>(sql`
-        with recursive
-          split_timestamps(timestampBytes, pos) as (
-            select
-              substr(${concatenatedTimestamps}, 1, 16),
-              17 as pos
-            union all
-            select
-              substr(${concatenatedTimestamps}, pos, 16),
-              pos + 16
-            from split_timestamps
-            where pos <= length(${concatenatedTimestamps})
-          )
-        select s.timestampBytes
-        from
-          split_timestamps s
-          join evolu_timestamp t
-            on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
-      `);
+    const result = deps.sqlite.exec<{
+      timestampBytes: TimestampBytes;
+    }>(sql`
+      with recursive
+        split_timestamps(timestampBytes, pos) as (
+          select
+            substr(${concatenatedTimestamps}, 1, 16),
+            17 as pos
+          union all
+          select
+            substr(${concatenatedTimestamps}, pos, 16),
+            pos + 16
+          from split_timestamps
+          where pos <= length(${concatenatedTimestamps})
+        )
+      select s.timestampBytes
+      from
+        split_timestamps s
+        join evolu_timestamp t
+          on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
+    `);
 
-      return result.rows.map((row) => row.timestampBytes);
-    },
+    return result.rows.map((row) => row.timestampBytes);
+  },
 
-    getSize: getSize(deps),
+  getSize: getSize(deps),
 
-    fingerprint: (ownerId, begin, end) => {
-      assertBeginEnd(begin, end);
-      return fingerprint(deps)(ownerId, begin, end);
-    },
+  fingerprint: (ownerId, begin, end) => {
+    assertBeginEnd(begin, end);
+    return fingerprint(deps)(ownerId, begin, end);
+  },
 
-    fingerprintRanges: fingerprintRanges(deps),
+  fingerprintRanges: fingerprintRanges(deps),
 
-    findLowerBound: (ownerId, begin, end, upperBound) =>
-      findLowerBound(deps)(ownerId, begin, end, upperBound),
+  findLowerBound: (ownerId, begin, end, upperBound) =>
+    findLowerBound(deps)(ownerId, begin, end, upperBound),
 
-    iterate: (ownerId, begin, end, callback) => {
-      assertBeginEnd(begin, end);
-      const length = end - begin;
-      if (length === 0) return;
+  iterate: (ownerId, begin, end, callback) => {
+    assertBeginEnd(begin, end);
+    const length = end - begin;
+    if (length === 0) return;
 
-      // This is much faster than SQL limit with offset.
-      const first = getTimestampByIndex(deps)(ownerId, begin);
+    // This is much faster than SQL limit with offset.
+    const first = getTimestampByIndex(deps)(ownerId, begin);
 
-      if (!callback(first, begin)) return;
-      if (length === 1) return;
+    if (!callback(first, begin)) return;
+    if (length === 1) return;
 
-      /**
-       * TODO: In rare cases, we might overfetch a lot of rows here, but we
-       * don't have real usage numbers yet. Fetching one row at a time would
-       * probably be slower in almost all cases. In the future, we should fetch
-       * in chunks (e.g., 1,000 rows at a time). For now, consider logging
-       * unused rows to gather data and calculate an average, then use that
-       * information to determine an optimal chunk size. Before implementing
-       * chunking, be sure to run performance tests (including fetching one by
-       * one).
-       */
-      const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
-        select t
-        from evolu_timestamp
-        where ownerId = ${ownerId} and t > ${first}
-        order by t
-        limit ${length - 1};
-      `);
+    /**
+     * TODO: In rare cases, we might overfetch a lot of rows here, but we
+     * don't have real usage numbers yet. Fetching one row at a time would
+     * probably be slower in almost all cases. In the future, we should fetch
+     * in chunks (e.g., 1,000 rows at a time). For now, consider logging
+     * unused rows to gather data and calculate an average, then use that
+     * information to determine an optimal chunk size. Before implementing
+     * chunking, be sure to run performance tests (including fetching one by
+     * one).
+     */
+    const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
+      select t
+      from evolu_timestamp
+      where ownerId = ${ownerId} and t > ${first}
+      order by t
+      limit ${length - 1};
+    `);
 
-      for (let i = 0; i < result.rows.length; i++) {
-        const index = NonNegativeInt.orThrow(begin + 1 + i);
-        if (!callback(result.rows[i].t, index)) return;
-      }
-    },
+    for (let i = 0; i < result.rows.length; i++) {
+      const index = NonNegativeInt.orThrow(begin + 1 + i);
+      if (!callback(result.rows[i].t, index)) return;
+    }
+  },
 
-    deleteOwner: (ownerId) => {
-      deps.sqlite.exec(sql`
-        delete from evolu_timestamp where ownerId = ${ownerId};
-      `);
-    },
-  });
+  deleteOwner: (ownerId) => {
+    deps.sqlite.exec(sql`
+      delete from evolu_timestamp where ownerId = ${ownerId};
+    `);
+  },
+});
 
 const assertBeginEnd = (begin: NonNegativeInt, end: NonNegativeInt) => {
   assert(begin <= end, "invalid begin or end");

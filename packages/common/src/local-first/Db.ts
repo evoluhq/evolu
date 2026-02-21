@@ -4,19 +4,46 @@
  * @module
  */
 
-import { firstInArray } from "../Array.js";
+import {
+  appendToArray,
+  firstInArray,
+  type NonEmptyArray,
+  type NonEmptyReadonlyArray,
+} from "../Array.js";
 import { assertNonEmptyReadonlyArray } from "../Assert.js";
 import type { CallbackId } from "../Callbacks.js";
 import type { ConsoleLevel } from "../Console.js";
-import { EncryptionKey, type RandomBytesDep } from "../Crypto.js";
-import { getProperty } from "../Object.js";
+import {
+  EncryptionKey,
+  type DecryptWithXChaCha20Poly1305Error,
+  type EncryptionKeyDep,
+  type RandomBytesDep,
+} from "../Crypto.js";
+import { lazyFalse, lazyVoid } from "../Function.js";
+import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import type { LeaderLockDep } from "../Platform.js";
-import { getOk, ok } from "../Result.js";
-import type { CreateSqliteDriverDep, SqliteDep } from "../Sqlite.js";
-import { createSqlite, sql, SqliteValue } from "../Sqlite.js";
-import type { AsyncDisposableStack, Task } from "../Task.js";
+import type { RandomDep } from "../Random.js";
+import { getOk, ok, type Result } from "../Result.js";
+import type { CreateSqliteDriverDep, SqliteDep, SqliteRow } from "../Sqlite.js";
+import {
+  booleanToSqliteBoolean,
+  createSqlite,
+  sql,
+  SqliteBoolean,
+  sqliteBooleanToBoolean,
+  SqliteValue,
+} from "../Sqlite.js";
+import { type AsyncDisposableStack, type Task } from "../Task.js";
+import { Millis, millisToDateIso, type TimeDep } from "../Time.js";
 import type { Name } from "../Type.js";
-import { Id, IdBytes, idBytesToId } from "../Type.js";
+import {
+  Id,
+  IdBytes,
+  idBytesToId,
+  idToIdBytes,
+  minPositiveInt,
+} from "../Type.js";
+import type { ExtractType } from "../Types.js";
 import type {
   MessagePort,
   NativeMessagePort,
@@ -25,31 +52,62 @@ import type {
   WorkerSelf,
 } from "../Worker.js";
 import type { OwnerId, OwnerIdBytes } from "./Owner.js";
-import { ownerIdBytesToOwnerId } from "./Owner.js";
-import { protocolVersion } from "./Protocol.js";
-import type { Query } from "./Query.js";
-import type { DbSchema, MutationChange } from "./Schema.js";
+import { ownerIdBytesToOwnerId, ownerIdToOwnerIdBytes } from "./Owner.js";
+import {
+  decryptAndDecodeDbChange,
+  encodeAndEncryptDbChange,
+  protocolVersion,
+  type ProtocolInvalidDataError,
+  type ProtocolTimestampMismatchError,
+} from "./Protocol.js";
+import { deserializeQuery, type Query } from "./Query.js";
+import type { DbSchema, DbSchemaDep, MutationChange } from "./Schema.js";
 import { ensureDbSchema, getDbSchema, systemColumns } from "./Schema.js";
-import type { EvoluTabOutput } from "./Shared.js";
-import { createBaseSqliteStorageTables } from "./Storage.js";
-import type { Timestamp } from "./Timestamp.js";
+import type {
+  DbWorkerInput,
+  DbWorkerOutput,
+  EvoluInput,
+  QueuedResponse,
+} from "./Shared.js";
+import {
+  createBaseSqliteStorage,
+  createBaseSqliteStorageTables,
+  DbChange,
+  getOwnerUsage,
+  getTimestampInsertStrategy,
+  updateOwnerUsage,
+  type BaseSqliteStorage,
+  type BaseSqliteStorageDep,
+  type CrdtMessage,
+  type Storage,
+} from "./Storage.js";
+import type {
+  Timestamp,
+  TimestampCounterOverflowError,
+  TimestampDriftError,
+  TimestampTimeOutOfRangeError,
+} from "./Timestamp.js";
 import {
   createInitialTimestamp,
+  defaultTimestampMaxDrift,
+  receiveTimestamp,
+  sendTimestamp,
   TimestampBytes,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
+  type TimestampConfigDep,
 } from "./Timestamp.js";
 
-export interface DbWorkerInput {
+export type DbWorker = Worker<DbWorkerInit>;
+
+export interface DbWorkerInit {
   readonly type: "Init";
   readonly name: Name;
   readonly consoleLevel: ConsoleLevel;
   readonly dbSchema: DbSchema;
   readonly encryptionKey: EncryptionKey;
-  readonly port: NativeMessagePort<DbWorkerLeaderOutput, DbWorkerLeaderInput>;
+  readonly port: NativeMessagePort<DbWorkerOutput, DbWorkerInput>;
 }
-
-export type DbWorker = Worker<DbWorkerInput>;
 
 export type CreateDbWorker = () => DbWorker;
 
@@ -59,32 +117,13 @@ export interface CreateDbWorkerDep {
 
 export type DbWorkerDeps = WorkerDeps & LeaderLockDep & CreateSqliteDriverDep;
 
-export interface DbWorkerLeaderInput {
-  readonly type: "Mutate";
-  readonly requestId: CallbackId;
-  readonly changes: ReadonlyArray<MutationChange>;
-  readonly onCompleteIds: ReadonlyArray<CallbackId>;
-  readonly subscribedQueries: ReadonlyArray<Query>;
-}
-
-export type DbWorkerLeaderOutput =
-  | {
-      readonly type: "LeaderAcquired";
-      readonly name: Name;
-    }
-  | {
-      readonly type: "OnMutate";
-      readonly requestId: CallbackId;
-    }
-  | EvoluTabOutput;
-
 export interface PortDep {
-  readonly port: MessagePort<DbWorkerLeaderOutput, DbWorkerLeaderInput>;
+  readonly port: MessagePort<DbWorkerOutput, DbWorkerInput>;
 }
 
 export const initDbWorker =
   (
-    self: WorkerSelf<DbWorkerInput>,
+    self: WorkerSelf<DbWorkerInit>,
   ): Task<AsyncDisposableStack, never, DbWorkerDeps> =>
   (run) => {
     const { leaderLock, createMessagePort, consoleStoreOutputEntry } = run.deps;
@@ -99,34 +138,35 @@ export const initDbWorker =
       encryptionKey,
       port: nativeLeaderPort,
     }) => {
-      if (!initialized) {
-        initialized = true;
-        const console = run.deps.console.child(name).child("DbWorker");
-        console.setLevel(consoleLevel);
-        console.info("initDbWorker");
+      if (initialized) return;
+      initialized = true;
 
-        const port = stack.use(
-          createMessagePort<DbWorkerLeaderOutput, DbWorkerLeaderInput>(
-            nativeLeaderPort,
-          ),
-        );
+      const console = run.deps.console.child(name).child("DbWorker");
+      const port = stack.use(
+        createMessagePort<DbWorkerOutput, DbWorkerInput>(nativeLeaderPort),
+      );
 
-        stack.defer(
-          consoleStoreOutputEntry.subscribe(() => {
-            const entry = consoleStoreOutputEntry.get();
-            if (entry) port.postMessage({ type: "ConsoleEntry", entry });
-          }),
-        );
+      stack.defer(
+        consoleStoreOutputEntry.subscribe(() => {
+          const entry = consoleStoreOutputEntry.get();
+          if (entry) port.postMessage({ type: "OnConsoleEntry", entry });
+        }),
+      );
 
-        void run.daemon(async (run) => {
-          await stack.use(leaderLock.acquire(name));
-          console.info("leaderAcquired");
-          port.postMessage({ type: "LeaderAcquired", name });
-          return run.addDeps({ port })(
-            startDbWorker(name, dbSchema, encryptionKey),
-          );
-        });
-      }
+      // One DbWorker serves multiple tabs, so console level is global
+      // here. The most recently initialized tab's level wins.
+      console.setLevel(consoleLevel);
+      console.info("initDbWorker");
+
+      void run.daemon(async (run) => {
+        await stack.use(leaderLock.acquire(name));
+        console.info("leaderAcquired");
+        port.postMessage({ type: "LeaderAcquired", name });
+        return run.addDeps({
+          port,
+          timestampConfig: { maxDrift: defaultTimestampMaxDrift },
+        })(startDbWorker(name, dbSchema, encryptionKey));
+      });
     };
 
     return ok(stack);
@@ -137,38 +177,92 @@ const startDbWorker =
     name: Name,
     dbSchema: DbSchema,
     encryptionKey: EncryptionKey,
-  ): Task<globalThis.AsyncDisposableStack, never, DbWorkerDeps & PortDep> =>
+  ): Task<
+    globalThis.AsyncDisposableStack,
+    never,
+    DbWorkerDeps & PortDep & TimestampConfigDep
+  > =>
   async (run) => {
     await using stack = run.stack();
-    const { port: _port } = run.deps;
-    const _console = run.deps.console.child(name).child("DbWorker");
+
+    const console = run.deps.console.child(name).child("DbWorker");
+    console.info("startDbWorker");
 
     const sqlite = getOk(
       await stack.use(createSqlite(name, { mode: "encrypted", encryptionKey })),
     );
 
-    const deps = { ...run.deps, sqlite };
+    const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...run.deps });
+
+    const deps = { ...run.deps, sqlite, dbSchema, baseSqliteStorage };
+
+    const currentSchema = getDbSchema(deps)();
+    const dbIsInitialized = "evolu_version" in currentSchema.tables;
+    const clock = createClock(deps)(dbIsInitialized);
 
     sqlite.transaction(() => {
-      const currentSchema = getDbSchema(deps)();
-      const dbIsInitialized = "evolu_version" in currentSchema.tables;
-
-      const clock = createClock(deps)(dbIsInitialized);
-
       if (!dbIsInitialized) initializeDb(deps)(clock.get());
-
       ensureDbSchema(deps)(dbSchema, currentSchema);
-
-      tryApplyQuarantinedMessages(deps)(dbSchema);
+      tryApplyQuarantinedMessages(deps);
     });
 
-    _port.onMessage = (message) => {
-      _port.postMessage({ type: "OnMutate", requestId: message.requestId });
-    };
+    /**
+     * SharedWorker repeats sends until it gets a response, so handling here
+     * must be idempotent and ignore already processed IDs.
+     *
+     * TODO: Bound memory growth by evicting old IDs.
+     */
+    const processedRequestIds = new Set<CallbackId>();
 
-    // run.deps.leaderPort.onMessage({
-    //   //
-    // })
+    const { port } = run.deps;
+
+    port.onMessage = ({ callbackId, request, evoluPortId }) => {
+      if (processedRequestIds.has(callbackId)) return;
+      processedRequestIds.add(callbackId);
+
+      // console.debug("onQueuedEvoluInput", callbackId);
+
+      let result: Result<
+        QueuedResponse,
+        | TimestampDriftError
+        | TimestampCounterOverflowError
+        | TimestampTimeOutOfRangeError
+      >;
+
+      switch (request.type) {
+        case "Mutate":
+          result = handleMutation({ ...deps, clock })(request);
+          break;
+        case "Query":
+          result = ok({
+            type: "Query",
+            rowsByQuery: loadQueries(deps)(request.queries),
+          });
+          break;
+        case "Export":
+          result = ok({
+            type: "Export",
+            file: deps.sqlite.export(),
+          });
+          break;
+      }
+
+      if (!result.ok) {
+        port.postMessage({ type: "OnError", error: result.error });
+      } else {
+        port.postMessage(
+          {
+            type: "OnQueuedResponse",
+            callbackId,
+            evoluPortId,
+            response: result.value,
+          },
+          result.value.type === "Export"
+            ? [result.value.file.buffer]
+            : undefined,
+        );
+      }
+    };
 
     return ok(stack.move());
 
@@ -179,14 +273,18 @@ const startDbWorker =
     // to announce itself alive and then routes requests to that worker.
   };
 
+/**
+ * Hybrid Logical Clock. Keeps the current timestamp in memory to avoid frequent
+ * SQLite reads.
+ */
 interface Clock {
   readonly get: () => Timestamp;
   readonly save: (timestamp: Timestamp) => void;
 }
 
-// interface ClockDep {
-//   readonly clock: Clock;
-// }
+interface ClockDep {
+  readonly clock: Clock;
+}
 
 const createClock =
   (deps: RandomBytesDep & SqliteDep) =>
@@ -320,60 +418,54 @@ const initializeDb =
     createBaseSqliteStorageTables({ sqlite });
   };
 
-const tryApplyQuarantinedMessages =
-  (deps: SqliteDep) =>
-  (dbSchema: DbSchema): void => {
-    const rows = deps.sqlite.exec<{
-      readonly ownerId: OwnerIdBytes;
-      readonly timestamp: TimestampBytes;
-      readonly table: string;
-      readonly id: IdBytes;
-      readonly column: string;
-      readonly value: SqliteValue;
-    }>(sql`
-      select "ownerId", "timestamp", "table", "id", "column", "value"
-      from evolu_message_quarantine;
+const tryApplyQuarantinedMessages = (deps: SqliteDep & DbSchemaDep): void => {
+  const rows = deps.sqlite.exec<{
+    readonly ownerId: OwnerIdBytes;
+    readonly timestamp: TimestampBytes;
+    readonly table: string;
+    readonly id: IdBytes;
+    readonly column: string;
+    readonly value: SqliteValue;
+  }>(sql`
+    select "ownerId", "timestamp", "table", "id", "column", "value"
+    from evolu_message_quarantine;
+  `);
+
+  for (const row of rows.rows) {
+    if (!validateColumnValue(deps)(row.table, row.column, row.value)) continue;
+
+    applyColumnChange(deps)(
+      row.ownerId,
+      ownerIdBytesToOwnerId(row.ownerId),
+      row.table,
+      row.id,
+      idBytesToId(row.id),
+      row.column,
+      row.value,
+      row.timestamp,
+    );
+
+    deps.sqlite.exec(sql`
+      delete from evolu_message_quarantine
+      where
+        "ownerId" = ${row.ownerId}
+        and "timestamp" = ${row.timestamp}
+        and "table" = ${row.table}
+        and "id" = ${row.id}
+        and "column" = ${row.column};
     `);
-
-    for (const row of rows.rows) {
-      if (!validateColumnValue(dbSchema, row.table, row.column, row.value))
-        continue;
-
-      applyColumnChange(deps)(
-        row.ownerId,
-        ownerIdBytesToOwnerId(row.ownerId),
-        row.table,
-        row.id,
-        idBytesToId(row.id),
-        row.column,
-        row.value,
-        row.timestamp,
-      );
-
-      deps.sqlite.exec(sql`
-        delete from evolu_message_quarantine
-        where
-          "ownerId" = ${row.ownerId}
-          and "timestamp" = ${row.timestamp}
-          and "table" = ${row.table}
-          and "id" = ${row.id}
-          and "column" = ${row.column};
-      `);
-    }
-  };
-
-const validateColumnValue = (
-  dbSchema: DbSchema,
-  table: string,
-  column: string,
-  _value: SqliteValue,
-): boolean => {
-  const schemaColumns = getProperty(dbSchema.tables, table);
-  return (
-    schemaColumns != null &&
-    (systemColumnsWithoutOwnerId.has(column) || schemaColumns.has(column))
-  );
+  }
 };
+
+const validateColumnValue =
+  (deps: DbSchemaDep) =>
+  (table: string, column: string, _value: SqliteValue): boolean => {
+    const schemaColumns = getProperty(deps.dbSchema.tables, table);
+    return (
+      schemaColumns != null &&
+      (systemColumnsWithoutOwnerId.has(column) || schemaColumns.has(column))
+    );
+  };
 
 const systemColumnsWithoutOwnerId = systemColumns.difference(
   new Set(["ownerId"]),
@@ -429,609 +521,331 @@ const applyColumnChange =
     `);
   };
 
-// import {
-//   firstInArray,
-//   isNonEmptyArray,
-//   NonEmptyReadonlyArray,
-// } from "../Array.js";
-// import { assertNonEmptyReadonlyArray } from "../Assert.js";
-// import { CallbackId } from "../Callbacks.js";
-// import { ConsoleConfig, ConsoleDep } from "../Console.js";
-// import {
-//   DecryptWithXChaCha20Poly1305Error,
-//   EncryptionKey,
-//   RandomBytesDep,
-// } from "../Crypto.js";
-// import { UnknownError } from "../Error.js";
-// import { RandomDep } from "../Random.js";
-// import { ok, Result } from "../Result.js";
-// import {
-//   createSqlite,
-//   CreateSqliteDriverDep,
-//   sql,
-//   SqliteDep,
-//   SqliteError,
-// } from "../Sqlite.js";
-// import { TimeDep } from "../Time.js";
-// import { Id, Mnemonic, Name } from "../Type.js";
-// import { CreateWebSocketDep } from "../WebSocket.js";
-// import {
-//   createInitializedWorkerWithHandlers,
-//   MessageHandlers,
-//   Worker,
-// } from "../Worker.js";
-// import {
-//   AppOwner,
-//   AppOwnerDep,
-//   createAppOwner,
-//   createOwnerSecret,
-//   createOwnerWebSocketTransport,
-//   mnemonicToOwnerSecret,
-//   OwnerEncryptionKey,
-//   OwnerId,
-//   OwnerTransport,
-//   OwnerWriteKey,
-// } from "./Owner.js";
-// import { ProtocolError, protocolVersion } from "./Protocol.js";
-// import {
-//   createGetQueryRowsCache,
-//   GetQueryRowsCacheDep,
-//   loadQueries,
-//   Query,
-//   QueryPatches,
-// } from "./Query.js";
-// import {
-//   DbSchema,
-//   ensureDbSchema,
-//   getDbSchema,
-//   MutationChange,
-// } from "./Schema.js";
-// import { createBaseSqliteStorageTables } from "./Storage.js";
-// import {
-//   applyLocalOnlyChange,
-//   Clock,
-//   createClock,
-//   createSync,
-//   SyncDep,
-//   SyncOwner,
-// } from "./Sync.js";
-// import {
-//   Timestamp,
-//   TimestampBytes,
-//   timestampBytesToTimestamp,
-//   TimestampConfig,
-//   TimestampError,
-//   timestampToTimestampBytes,
-// } from "./Timestamp.js";
+interface ClientStorage extends Storage, BaseSqliteStorage {}
 
-// export interface DbConfig extends ConsoleConfig, TimestampConfig {
-//   /**
-//    * The name of the Evolu instance. Evolu is multitenant - it can run multiple
-//    * instances concurrently. Each instance must have a unique name.
-//    *
-//    * The instance name is used as the SQLite database filename for persistent
-//    * storage, ensuring that database files are separated and invisible to each
-//    * other.
-//    *
-//    * The default value is: `Evolu`.
-//    *
-//    * ### Example
-//    *
-//    * ```ts
-//    * // name: Name.orThrow("MyApp")
-//    * ```
-//    */
-//   readonly name: Name;
+const _createClientStorage =
+  (
+    deps: BaseSqliteStorageDep &
+      ClockDep &
+      DbSchemaDep &
+      EncryptionKeyDep &
+      RandomBytesDep &
+      RandomDep &
+      SqliteDep &
+      TimeDep &
+      TimestampConfigDep,
+  ) =>
+  ({
+    onError,
+  }: {
+    onError: (
+      error:
+        | ProtocolInvalidDataError
+        | ProtocolTimestampMismatchError
+        | DecryptWithXChaCha20Poly1305Error
+        | TimestampCounterOverflowError
+        | TimestampDriftError
+        | TimestampTimeOutOfRangeError,
+    ) => void;
+  }): ClientStorage => {
+    const storage: ClientStorage = {
+      ...deps.baseSqliteStorage,
 
-//   /**
-//    * Transport configuration for data sync and backup. Supports single transport
-//    * or multiple transports simultaneously for redundancy.
-//    *
-//    * **Redundancy:** The ideal setup uses at least two completely independent
-//    * relays - for example, a home relay and a geographically separate relay.
-//    * Data is sent to both relays simultaneously, providing true redundancy
-//    * similar to using two independent clouds. This eliminates vendor lock-in and
-//    * ensures your app continues working regardless of circumstances - whether
-//    * home relay hardware is stolen or a remote relay provider shuts down.
-//    *
-//    * Currently supports:
-//    *
-//    * - WebSocket: Real-time bidirectional communication with relay servers
-//    *
-//    * Empty transports create local-only instances. Transports can be dynamically
-//    * added and removed for any owner (including {@link AppOwner}) via
-//    * {@link Evolu.useOwner}.
-//    *
-//    * Use {@link createOwnerWebSocketTransport} to create WebSocket transport
-//    * configurations with proper URL formatting and {@link OwnerId} inclusion. The
-//    * {@link OwnerId} in the URL enables relay authentication, allowing relay
-//    * servers to control access (e.g., for paid tiers or private instances).
-//    *
-//    * The default value is:
-//    *
-//    * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
-//    *
-//    * ### Example
-//    *
-//    * ```ts
-//    * // Single WebSocket relay
-//    * transports: [{ type: "WebSocket", url: "wss://relay1.example.com" }];
-//    *
-//    * // Multiple WebSocket relays for redundancy
-//    * transports: [
-//    *   { type: "WebSocket", url: "wss://relay1.example.com" },
-//    *   { type: "WebSocket", url: "wss://relay2.example.com" },
-//    *   { type: "WebSocket", url: "wss://relay3.example.com" },
-//    * ];
-//    *
-//    * // Local-only instance (no sync) - useful for device settings or when relay
-//    * // URL will be provided later (e.g., after authentication), allowing users
-//    * // to work offline before the app connects
-//    * transports: [];
-//    *
-//    * // Using createOwnerWebSocketTransport helper for relay authentication
-//    * transports: [
-//    *   createOwnerWebSocketTransport({
-//    *     url: "ws://localhost:4000",
-//    *     ownerId,
-//    *   }),
-//    * ];
-//    * ```
-//    */
-//   readonly transports: ReadonlyArray<OwnerTransport>;
+      // Not implemented yet.
+      validateWriteKey: lazyFalse,
+      setWriteKey: lazyVoid,
 
-//   /**
-//    * External AppOwner to use when creating Evolu instance. Use this when you
-//    * want to manage AppOwner creation and persistence externally (e.g., with
-//    * your own authentication system). If omitted, Evolu will automatically
-//    * create and persist an AppOwner locally.
-//    *
-//    * For device-specific settings and account management state, we can use a
-//    * separate local-only Evolu instance via `transports: []`.
-//    *
-//    * ### Example
-//    *
-//    * ```ts
-//    * const ConfigId = id("Config");
-//    * type ConfigId = typeof ConfigId.Type;
-//    *
-//    * const DeviceSchema = {
-//    *   config: {
-//    *     id: ConfigId,
-//    *     key: NonEmptyString50,
-//    *     value: NonEmptyString50,
-//    *   },
-//    * };
-//    *
-//    * // Local-only instance for device settings (no sync)
-//    * const deviceEvolu = createEvolu(evoluReactWebDeps)(DeviceSchema, {
-//    *   name: Name.orThrow("MyApp-Device"),
-//    *   transports: [], // No sync - stays local to device
-//    * });
-//    *
-//    * // Main synced instance for user data
-//    * const evolu = createEvolu(evoluReactWebDeps)(MainSchema, {
-//    *   name: Name.orThrow("MyApp"),
-//    *   // Default transports for sync
-//    * });
-//    * ```
-//    */
-//   readonly externalAppOwner?: AppOwner;
+      writeMessages: (ownerIdBytes, encryptedMessages) => () => {
+        // TODO: Add quota checking for collaborative scenarios.
+        // When receiving messages from other owners via relay broadcast,
+        // check if this owner is within quota before accepting the data.
+        // This prevents an owner from exceeding storage limits when receiving
+        // data shared by other collaborators.
 
-//   /**
-//    * Use in-memory SQLite database instead of persistent storage. Useful for
-//    * testing or temporary data that doesn't need persistence.
-//    *
-//    * In-memory databases exist only in RAM and are completely destroyed when the
-//    * process ends, making them forensically safe for sensitive data.
-//    *
-//    * The default value is: `false`.
-//    */
-//   readonly inMemory?: boolean;
+        const messages: Array<CrdtMessage> = [];
 
-//   /**
-//    * Encryption key for the SQLite database.
-//    *
-//    * Note: If an unencrypted SQLite database already exists and you provide an
-//    * encryptionKey, SQLite will throw an error.
-//    *
-//    */
-//   readonly encryptionKey?: EncryptionKey;
-// }
+        for (const message of encryptedMessages) {
+          const change = decryptAndDecodeDbChange(message, deps.encryptionKey);
+          if (!change.ok) {
+            onError(change.error);
+            return ok();
+          }
+          messages.push({ timestamp: message.timestamp, change: change.value });
+        }
 
-// export const defaultDbConfig: DbConfig = {
-//   name: Name.orThrow("Evolu"),
-//   transports: [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
-//   maxDrift: 5 * 60 * 1000,
-//   enableLogging: false,
-// };
+        let clockTimestamp = deps.clock.get();
 
-// export type DbWorker = Worker<DbWorkerInput, DbWorkerOutput>;
+        for (const message of messages) {
+          const nextTimestamp = receiveTimestamp(deps)(
+            clockTimestamp,
+            message.timestamp,
+          );
+          if (!nextTimestamp.ok) {
+            onError(nextTimestamp.error);
+            return ok();
+          }
+          clockTimestamp = nextTimestamp.value;
+        }
 
-// export type CreateDbWorker = (name: Name) => DbWorker;
+        assertNonEmptyReadonlyArray(messages);
 
-// export interface CreateDbWorkerDep {
-//   readonly createDbWorker: CreateDbWorker;
-// }
+        return deps.sqlite.transaction(() => {
+          applyMessages(deps)(ownerIdBytesToOwnerId(ownerIdBytes), messages);
+          deps.clock.save(clockTimestamp);
+          return ok();
+        });
+      },
 
-// export type DbWorkerInput =
-//   | (Typed<"init"> & {
-//       readonly config: DbConfig;
-//       readonly dbSchema: DbSchema;
-//     })
-//   | Typed<"getAppOwner">
-//   | (Typed<"mutate"> & {
-//       readonly tabId: Id;
-//       readonly changes: NonEmptyReadonlyArray<MutationChange>;
-//       readonly onCompleteIds: ReadonlyArray<CallbackId>;
-//       readonly subscribedQueries: ReadonlyArray<Query>;
-//     })
-//   | (Typed<"query"> & {
-//       readonly tabId: Id;
-//       readonly queries: NonEmptyReadonlyArray<Query>;
-//     })
-//   | (Typed<"reset"> & {
-//       readonly onCompleteId: CallbackId;
-//       readonly reload: boolean;
-//       readonly restore?: {
-//         readonly dbSchema: DbSchema;
-//         readonly mnemonic: Mnemonic;
-//       };
-//     })
-//   | (Typed<"ensureDbSchema"> & {
-//       readonly dbSchema: DbSchema;
-//     })
-//   | (Typed<"export"> & {
-//       readonly onCompleteId: CallbackId;
-//     })
-//   | (Typed<"useOwner"> & {
-//       readonly use: boolean;
-//       readonly owner: SyncOwner;
-//     });
+      readDbChange: (ownerId, timestamp) => {
+        const result = deps.sqlite.exec<{
+          readonly table: string;
+          readonly id: IdBytes;
+          readonly column: string;
+          readonly value: SqliteValue;
+        }>(sql`
+          select "table", "id", "column", "value"
+          from evolu_history
+          where "ownerId" = ${ownerId} and "timestamp" = ${timestamp}
+          union all
+          select "table", "id", "column", "value"
+          from evolu_message_quarantine
+          where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
+        `);
 
-// export type DbWorkerOutput =
-//   | (Typed<"onError"> & {
-//       readonly error:
-//         | ProtocolError
-//         | SqliteError
-//         | DecryptWithXChaCha20Poly1305Error
-//         | TimestampError
-//         | UnknownError;
-//     })
-//   | (Typed<"onGetAppOwner"> & {
-//       readonly appOwner: AppOwner;
-//     })
-//   | (Typed<"onQueryPatches"> & {
-//       readonly tabId: Id;
-//       readonly queryPatches: ReadonlyArray<QueryPatches>;
-//       readonly onCompleteIds: ReadonlyArray<CallbackId>;
-//     })
-//   | (Typed<"refreshQueries"> & {
-//       readonly tabId?: Id;
-//     })
-//   | (Typed<"onReset"> & {
-//       readonly onCompleteId: CallbackId;
-//       readonly reload: boolean;
-//     })
-//   | (Typed<"onExport"> & {
-//       readonly onCompleteId: CallbackId;
-//       readonly file: Uint8Array;
-//     });
+        const { rows } = result;
+        assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
+        const firstRow = firstInArray(rows);
 
-// export type DbWorkerPlatformDeps = ConsoleDep &
-//   CreateSqliteDriverDep &
-//   CreateWebSocketDep &
-//   RandomBytesDep &
-//   RandomDep &
-//   TimeDep;
+        const values = createRecord<string, SqliteValue>();
+        let isInsert: DbChange["isInsert"] = false;
+        let isDelete: DbChange["isDelete"] = null;
 
-// type DbWorkerDeps = Omit<
-//   DbWorkerPlatformDeps,
-//   keyof CreateSqliteDriverDep | keyof CreateWebSocketDep
-// > &
-//   AppOwnerDep &
-//   GetQueryRowsCacheDep &
-//   PostMessageDep &
-//   SqliteDep &
-//   SyncDep;
+        for (const r of rows) {
+          switch (r.column) {
+            case "createdAt":
+              isInsert = true;
+              break;
+            case "updatedAt":
+              isInsert = false;
+              break;
+            case "isDeleted":
+              if (SqliteBoolean.is(r.value)) {
+                isDelete = sqliteBooleanToBoolean(r.value);
+              }
+              break;
+            default:
+              values[r.column] = r.value;
+          }
+        }
 
-// export interface PostMessageDep {
-//   readonly postMessage: (message: DbWorkerOutput) => void;
-// }
+        const message: CrdtMessage = {
+          timestamp: timestampBytesToTimestamp(timestamp),
+          change: DbChange.orThrow({
+            table: firstRow.table,
+            id: idBytesToId(firstRow.id),
+            values,
+            isInsert,
+            isDelete,
+          }),
+        };
 
-// export const createDbWorkerForPlatform = (
-//   platformDeps: DbWorkerPlatformDeps,
-// ): DbWorker =>
-//   createInitializedWorkerWithHandlers<
-//     DbWorkerInput,
-//     DbWorkerOutput,
-//     DbWorkerDeps
-//   >({
-//     init: async (initMessage, postMessage) => {
-//       platformDeps.console.enabled = initMessage.config.enableLogging ?? false;
+        return encodeAndEncryptDbChange(deps)(message, deps.encryptionKey);
+      },
+    };
 
-//       const deps = await createDbWorkerDeps(
-//         platformDeps,
-//         initMessage,
-//         postMessage,
-//       );
+    return storage;
+  };
 
-//       if (!deps.ok) {
-//         postMessage({ type: "onError", error: deps.error });
-//         return null;
-//       }
+const handleMutation =
+  (
+    deps: BaseSqliteStorageDep &
+      ClockDep &
+      DbSchemaDep &
+      RandomDep &
+      SqliteDep &
+      TimeDep &
+      TimestampConfigDep,
+  ) =>
+  (
+    message: ExtractType<EvoluInput, "Mutate">,
+  ): Result<
+    ExtractType<QueuedResponse, "Mutate">,
+    | TimestampDriftError
+    | TimestampCounterOverflowError
+    | TimestampTimeOutOfRangeError
+  > =>
+    deps.sqlite.transaction(() => {
+      const messagesByOwnerId = new Map<OwnerId, NonEmptyArray<CrdtMessage>>();
+      let clockTimestamp = deps.clock.get();
+      let clockChanged = false;
 
-//       return deps.value;
-//     },
-//     handlers,
-//   });
+      for (const change of message.changes) {
+        if (change.table.startsWith("_")) {
+          applyLocalOnlyChange(deps)(change);
+          continue;
+        }
 
-// const createDbWorkerDeps = async (
-//   platformDeps: DbWorkerPlatformDeps,
-//   initMessage: Extract<DbWorkerInput, { type: "init" }>,
-//   postMessage: (msg: DbWorkerOutput) => void,
-// ) => {
-//   const sqlite = await createSqlite(platformDeps)(initMessage.config.name, {
-//     memory: initMessage.config.inMemory ?? false,
-//     encryptionKey: initMessage.config.encryptionKey ?? undefined,
-//   });
-//   if (!sqlite.ok) return sqlite;
+        const nextTimestamp = sendTimestamp(deps)(clockTimestamp);
+        if (!nextTimestamp.ok) return nextTimestamp;
 
-//   const deps = { ...platformDeps, sqlite: sqlite.value };
+        clockTimestamp = nextTimestamp.value;
+        clockChanged = true;
 
-//   return deps.sqlite.transaction(() => {
-//     const dbSchema = getDbSchema(deps)();
-//     if (!dbSchema.ok) return dbSchema;
+        const { ownerId, ...dbChange } = change;
+        const message: CrdtMessage = {
+          timestamp: clockTimestamp,
+          change: dbChange,
+        };
 
-//     const dbIsInitialized = "evolu_version" in dbSchema.value.tables;
+        const messages = messagesByOwnerId.get(ownerId);
+        if (messages) messages.push(message);
+        else messagesByOwnerId.set(ownerId, [message]);
+      }
 
-//     let appOwner: AppOwner;
-//     let clock: Clock;
+      for (const [ownerId, messages] of messagesByOwnerId) {
+        applyMessages(deps)(ownerId, messages);
+      }
 
-//     if (dbIsInitialized) {
-//       const currentVersion = deps.sqlite.exec<{
-//         protocolVersion: number;
-//       }>(sql`select protocolVersion from evolu_version limit 1;`);
-//       if (!currentVersion.ok) return currentVersion;
+      if (clockChanged) deps.clock.save(clockTimestamp);
 
-//       const configResult = deps.sqlite.exec<{
-//         clock: TimestampBytes;
-//         appOwnerId: OwnerId;
-//         appOwnerEncryptionKey: OwnerEncryptionKey;
-//         appOwnerWriteKey: OwnerWriteKey;
-//         appOwnerMnemonic: Mnemonic | null;
-//       }>(sql`
-//         select
-//           clock,
-//           appOwnerId,
-//           appOwnerEncryptionKey,
-//           appOwnerWriteKey,
-//           appOwnerMnemonic
-//         from evolu_config
-//         limit 1;
-//       `);
-//       if (!configResult.ok) return configResult;
+      const rowsByQuery = loadQueries(deps)(message.subscribedQueries);
 
-//       assertNonEmptyReadonlyArray(configResult.value.rows);
-//       const config = firstInArray(configResult.value.rows);
+      return ok({
+        type: "Mutate",
+        output: { messagesByOwnerId, rowsByQuery },
+      });
+    });
 
-//       appOwner = {
-//         type: "AppOwner",
-//         id: config.appOwnerId,
-//         encryptionKey: config.appOwnerEncryptionKey,
-//         writeKey: config.appOwnerWriteKey,
-//         mnemonic: config.appOwnerMnemonic,
-//       };
+const applyLocalOnlyChange =
+  (deps: SqliteDep & TimeDep) =>
+  (change: MutationChange): void => {
+    if (change.isDelete) {
+      deps.sqlite.exec(sql`
+        delete from ${sql.identifier(change.table)}
+        where id = ${change.id};
+      `);
+    } else {
+      const ownerId = change.ownerId;
+      const columns = dbChangeToColumns(change, deps.time.now());
 
-//       clock = createClock(deps)(timestampBytesToTimestamp(config.clock));
-//     } else {
-//       appOwner =
-//         initMessage.config.externalAppOwner ??
-//         createAppOwner(createOwnerSecret(platformDeps));
+      for (const [column, value] of columns) {
+        deps.sqlite.exec(sql.prepared`
+          insert into ${sql.identifier(change.table)}
+            ("ownerId", "id", ${sql.identifier(column)})
+          values (${ownerId}, ${change.id}, ${value})
+          on conflict ("ownerId", "id") do update
+            set ${sql.identifier(column)} = ${value};
+        `);
+      }
+    }
+  };
 
-//       clock = createClock(deps)();
+const applyMessages =
+  (
+    deps: BaseSqliteStorageDep & ClockDep & DbSchemaDep & RandomDep & SqliteDep,
+  ) =>
+  (ownerId: OwnerId, messages: NonEmptyReadonlyArray<CrdtMessage>): void => {
+    const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-//       const result = initializeDb(deps)(appOwner, clock.get());
-//       if (!result.ok) return result;
-//     }
+    const usage = getOwnerUsage(deps)(
+      ownerIdBytes,
+      timestampToTimestampBytes(firstInArray(messages).timestamp),
+    );
+    if (!usage.ok) return;
 
-//     {
-//       const result = ensureDbSchema(deps)(initMessage.dbSchema, dbSchema.value);
-//       if (!result.ok) return result;
-//     }
+    let { firstTimestamp, lastTimestamp } = usage.value;
 
-//     {
-//       const result = ensureMessageQuarantineTable(deps);
-//       if (!result.ok) return result;
-//     }
+    for (const { timestamp, change } of messages) {
+      const columns = dbChangeToColumns(change, timestamp.millis);
+      const idBytes = idToIdBytes(change.id);
+      const timestampBytes = timestampToTimestampBytes(timestamp);
 
-//     const sync = createSync({
-//       ...deps,
-//       clock,
-//       timestampConfig: initMessage.config,
-//       dbSchema: initMessage.dbSchema,
-//     })({
-//       appOwner,
-//       transports: initMessage.config.transports,
-//       onError: (error) => {
-//         postMessage({ type: "onError", error });
-//       },
-//       onReceive: () => {
-//         postMessage({ type: "refreshQueries" });
-//       },
-//     });
-//     if (!sync.ok) return sync;
+      for (const [column, value] of columns) {
+        if (validateColumnValue(deps)(change.table, column, value)) {
+          applyColumnChange(deps)(
+            ownerIdBytes,
+            ownerId,
+            change.table,
+            idBytes,
+            change.id,
+            column,
+            value,
+            timestampBytes,
+          );
+        } else {
+          deps.sqlite.exec(sql.prepared`
+            insert into evolu_message_quarantine
+              ("ownerId", "timestamp", "table", "id", "column", "value")
+            values
+              (
+                ${ownerIdBytes},
+                ${timestampBytes},
+                ${change.table},
+                ${idBytes},
+                ${column},
+                ${value}
+              )
+            on conflict do nothing;
+          `);
+        }
+      }
 
-//     sync.value.useOwner(true, appOwner);
+      let strategy;
+      [strategy, firstTimestamp, lastTimestamp] = getTimestampInsertStrategy(
+        timestampBytes,
+        firstTimestamp,
+        lastTimestamp,
+      );
 
-//     return ok({
-//       ...deps,
-//       getQueryRowsCache: createGetQueryRowsCache(),
-//       postMessage,
-//       sync: sync.value,
-//       appOwner,
-//     });
-//   });
-// };
+      deps.baseSqliteStorage.insertTimestamp(
+        ownerIdBytes,
+        timestampBytes,
+        strategy,
+      );
+    }
 
-// const initializeDb =
-//   (deps: SqliteDep) =>
-//   (
-//     initialAppOwner: AppOwner,
-//     initialClock: Timestamp,
-//   ): Result<void, SqliteError> => {
-//     for (const query of [
-//       // Never change structure to ensure all versions can read it.
-//       sql`
-//         create table evolu_version (
-//           "protocolVersion" integer not null
-//         )
-//         strict;
-//       `,
+    /**
+     * TODO: Implement proper storedBytes tracking for client using received and
+     * sent encrypted message sizes.
+     */
+    updateOwnerUsage(deps)(
+      ownerIdBytes,
+      minPositiveInt, // Placeholder until proper tracking implemented
+      firstTimestamp,
+      lastTimestamp,
+    );
+  };
 
-//       sql`
-//         insert into evolu_version ("protocolVersion")
-//         values (${protocolVersion});
-//       `,
+const dbChangeToColumns = (change: DbChange, now: Millis) => {
+  let values = objectToEntries(change.values);
 
-//       sql`
-//         create table evolu_config (
-//           "clock" blob not null,
-//           "appOwnerId" text not null,
-//           "appOwnerEncryptionKey" blob not null,
-//           "appOwnerWriteKey" blob not null,
-//           "appOwnerMnemonic" text
-//         )
-//         strict;
-//       `,
+  // SystemColumns are not encoded in change.values.
+  values = appendToArray(values, [
+    change.isInsert ? "createdAt" : "updatedAt",
+    millisToDateIso(now),
+  ]);
+  if (change.isDelete != null) {
+    values = appendToArray(values, [
+      "isDeleted",
+      booleanToSqliteBoolean(change.isDelete),
+    ]);
+  }
 
-//       sql`
-//         insert into evolu_config
-//           (
-//             "clock",
-//             "appOwnerId",
-//             "appOwnerEncryptionKey",
-//             "appOwnerWriteKey",
-//             "appOwnerMnemonic"
-//           )
-//         values
-//           (
-//             ${timestampToTimestampBytes(initialClock)},
-//             ${initialAppOwner.id},
-//             ${initialAppOwner.encryptionKey},
-//             ${initialAppOwner.writeKey},
-//             ${initialAppOwner.mnemonic ?? null}
-//           );
-//       `,
+  return values;
+};
 
-//       /**
-//        * The History table stores all values per ownerId, timestamp, table, id,
-//        * and column for conflict-free merging using last-write-win CRDT.
-//        * Denormalizes Timestamp and DbChange for covering index performance.
-//        * Time travel is available when last-write-win isn't desired. Future
-//        * optimization will store history more efficiently.
-//        */
-//       sql`
-//         create table evolu_history (
-//           "ownerId" blob not null,
-//           "table" text not null,
-//           "id" blob not null,
-//           "column" text not null,
-//           "timestamp" blob not null,
-//           "value" any
-//         )
-//         strict;
-//       `,
+const loadQueries =
+  (deps: SqliteDep) =>
+  (queries: ReadonlyArray<Query>): Map<Query, ReadonlyArray<SqliteRow>> => {
+    const rowsByQuery = new Map<Query, ReadonlyArray<SqliteRow>>();
 
-//       // Index for reading database changes by owner and timestamp.
-//       sql`
-//         create index evolu_history_ownerId_timestamp on evolu_history (
-//           "ownerId",
-//           "timestamp"
-//         );
-//       `,
+    for (const query of queries) {
+      const { rows } = deps.sqlite.exec(deserializeQuery(query));
+      rowsByQuery.set(query, rows);
+    }
 
-//       sql`
-//         create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
-//           "ownerId",
-//           "table",
-//           "id",
-//           "column",
-//           "timestamp" desc
-//         );
-//       `,
-//     ]) {
-//       const result = deps.sqlite.exec(query);
-//       if (!result.ok) return result;
-//     }
-
-//     const result = createBaseSqliteStorageTables(deps);
-//     if (!result.ok) return result;
-
-//     return ok();
-//   };
-
-// /**
-//  * Ensures the quarantine table exists for storing messages with unknown schema.
-//  *
-//  * When a device receives sync messages containing tables or columns that don't
-//  * exist in its current schema (e.g., from a newer app version), those messages
-//  * are stored here instead of being discarded. This enables forward
-//  * compatibility:
-//  *
-//  * 1. Unknown data is preserved and can be applied when the app is updated
-//  * 2. Messages are still propagated to other devices that may understand them
-//  * 3. Partial messages work - known columns go to app tables, unknown to quarantine
-//  *
-//  * The `union all` query in `readDbChange` combines `evolu_history` and this
-//  * table, ensuring all data (known and unknown) is included when syncing to
-//  * other devices.
-//  */
-// const ensureMessageQuarantineTable = (
-//   deps: SqliteDep,
-// ): Result<void, SqliteError> => {
-//   const result = deps.sqlite.exec(sql`
-//     create table if not exists evolu_message_quarantine (
-//       "ownerId" blob not null,
-//       "timestamp" blob not null,
-//       "table" text not null,
-//       "id" blob not null,
-//       "column" text not null,
-//       "value" any,
-//       primary key ("ownerId", "timestamp", "table", "id", "column")
-//     )
-//     strict;
-//   `);
-//   if (!result.ok) return result;
-//   return ok();
-// };
-
-// const handlers: Omit<MessageHandlers<DbWorkerInput, DbWorkerDeps>, "init"> = {
-//   getAppOwner: (deps) => () => {
-//     deps.postMessage({
-//       type: "onGetAppOwner",
-//       appOwner: deps.appOwner,
-//     });
-//   },
-
-//   mutate: (deps) => (message) => {
-//     const mutate = deps.sqlite.transaction(() => {
-//       const syncChanges: Array<MutationChange> = [];
-
-//       for (const change of message.changes) {
-//         const isLocalOnlyChange = change.table.startsWith("_");
-//         if (isLocalOnlyChange) {
-//           const result = applyLocalOnlyChange(deps)(change);
-//           if (!result.ok) return result;
-//         } else {
-//           syncChanges.push(change);
-//         }
-//       }
-
-//       if (isNonEmptyArray(syncChanges)) {
-//         const result = deps.sync.applyChanges(syncChanges);
-//         if (!result.ok) return result;
-//       }
+    return rowsByQuery;
+  };
 
 //       // Read writes before commit to update UI ASAP
 //       const queryPatches = loadQueries(deps)(
@@ -1039,7 +853,6 @@ const applyColumnChange =
 //         message.subscribedQueries,
 //       );
 //       if (!queryPatches.ok) return queryPatches;
-
 //       // Update the tab that performed the mutation.
 //       deps.postMessage({
 //         type: "onQueryPatches",
@@ -1053,12 +866,6 @@ const applyColumnChange =
 
 //       return ok();
 //     });
-
-//     if (!mutate.ok) {
-//       deps.postMessage({ type: "onError", error: mutate.error });
-//       return;
-//     }
-//   },
 
 //   query: (deps) => (message) => {
 //     const queryPatches = loadQueries(deps)(message.tabId, message.queries);
@@ -1130,23 +937,3 @@ const applyColumnChange =
 //       return;
 //     }
 //   },
-
-//   export: (deps) => (message) => {
-//     const file = deps.sqlite.export();
-
-//     if (!file.ok) {
-//       deps.postMessage({ type: "onError", error: file.error });
-//       return;
-//     }
-
-//     deps.postMessage({
-//       type: "onExport",
-//       onCompleteId: message.onCompleteId,
-//       file: file.value,
-//     });
-//   },
-
-//   useOwner: (deps) => (message) => {
-//     deps.sync.useOwner(message.use, message.owner);
-//   },
-// };

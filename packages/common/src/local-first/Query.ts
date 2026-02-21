@@ -190,6 +190,7 @@ export const createGetQueryRowsCache = (): GetQueryRowsCache => {
   };
 };
 
+// TODO: Remove.
 export const loadQueries =
   (deps: GetQueryRowsCacheDep & SqliteDep) =>
   (tabId: Id, queries: ReadonlyArray<Query>): ReadonlyArray<QueryPatches> => {

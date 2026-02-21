@@ -111,7 +111,7 @@ export interface Relay extends AsyncDisposable {}
 export const createRelaySqliteStorage =
   (deps: SqliteStorageDeps & TimingSafeEqualDep) =>
   (config: StorageConfig): Storage => {
-    const sqliteStorageBase = createBaseSqliteStorage(deps)();
+    const sqliteStorageBase = createBaseSqliteStorage(deps);
 
     /** Mutex instances cached per OwnerId to prevent concurrent writes. */
     const ownerMutexes = createInstances<OwnerId, Mutex>();
