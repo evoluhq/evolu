@@ -49,7 +49,7 @@ import type { Callback } from "./Types.js";
  * @template T - The type of argument passed to callbacks (defaults to undefined
  *   for no-argument callbacks)
  */
-export interface Callbacks<T = undefined> {
+export interface Callbacks<T = undefined> extends Disposable {
   /** Registers a callback function and returns a unique ID. */
   readonly register: (callback: Callback<T>) => CallbackId;
 
@@ -85,6 +85,10 @@ export const createCallbacks = <T = undefined>(
       } else {
         callback(args[0]);
       }
+    },
+
+    [Symbol.dispose]: () => {
+      callbackMap.clear();
     },
   } as Callbacks<T>;
 };

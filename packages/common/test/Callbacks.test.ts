@@ -47,3 +47,18 @@ test("Callbacks with Promise.withResolvers pattern", () => {
 
   return expect(promise).resolves.toBe("resolved value");
 });
+
+test("Callbacks dispose clears pending callbacks", () => {
+  const deps = testCreateDeps();
+  const callbacks = createCallbacks<string>(deps);
+
+  let called = false;
+  const id = callbacks.register(() => {
+    called = true;
+  });
+
+  callbacks[Symbol.dispose]();
+  callbacks.execute(id, "ignored");
+
+  expect(called).toBe(false);
+});
