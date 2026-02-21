@@ -35,7 +35,17 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
         return { rows: [], changes };
       },
 
-      export: () => db.serialize(),
+      export: () => {
+        const file = db.serialize();
+        const { buffer } = file;
+
+        if (buffer instanceof ArrayBuffer) {
+          return new Uint8Array(buffer, file.byteOffset, file.byteLength);
+        }
+
+        // Ensure export uses transferable ArrayBuffer backing.
+        return new Uint8Array(file);
+      },
 
       [Symbol.dispose]: () => {
         if (isDisposed) return;

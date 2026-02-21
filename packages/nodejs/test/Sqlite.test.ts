@@ -5,6 +5,7 @@ import {
   testCreateRun,
   type CreateSqliteDriverDep,
 } from "@evolu/common";
+import BetterSQLite from "better-sqlite3";
 import { existsSync, unlinkSync } from "fs";
 import { afterEach, assert, describe, expect, test } from "vitest";
 import { createBetterSqliteDriver } from "../src/Sqlite.js";
@@ -127,6 +128,20 @@ describe("createBetterSqliteDriver", () => {
 
     driver[Symbol.dispose]();
     driver[Symbol.dispose]();
+  });
+
+  test("better-sqlite3 serialize returns Buffer backed by ArrayBuffer", () => {
+    const db = new BetterSQLite(":memory:");
+    db.exec("create table t (data text);");
+    db.exec("insert into t (data) values ('x');");
+
+    const serialized = db.serialize();
+
+    expect(serialized).toBeInstanceOf(Uint8Array);
+    expect(Buffer.isBuffer(serialized)).toBe(true);
+    expect(serialized.buffer).toBeInstanceOf(ArrayBuffer);
+
+    db.close();
   });
 
   describe("file-based database", () => {

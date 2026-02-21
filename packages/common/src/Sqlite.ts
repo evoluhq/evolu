@@ -38,7 +38,13 @@ export interface Sqlite extends Disposable {
    */
   readonly transaction: SqliteTransaction;
 
-  readonly export: () => Uint8Array;
+  /**
+   * Returns bytes backed by {@link ArrayBuffer}.
+   *
+   * Exported databases are forwarded through worker `postMessage` transfer
+   * lists, which require transferable `ArrayBuffer` backing.
+   */
+  readonly export: () => Uint8Array<ArrayBuffer>;
 }
 
 export interface SqliteDep {
@@ -124,7 +130,14 @@ export type SqliteRow = Record<string, SqliteValue>;
  */
 export interface SqliteDriver extends Disposable {
   readonly exec: (query: SqliteQuery) => SqliteExecResult;
-  readonly export: () => Uint8Array;
+
+  /**
+   * Returns bytes backed by {@link ArrayBuffer}.
+   *
+   * Exported databases are forwarded through worker `postMessage` transfer
+   * lists, which require transferable `ArrayBuffer` backing.
+   */
+  readonly export: () => Uint8Array<ArrayBuffer>;
 }
 
 /** Creates a {@link SqliteDriver}. */

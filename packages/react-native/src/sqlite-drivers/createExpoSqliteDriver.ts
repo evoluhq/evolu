@@ -13,11 +13,7 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
       options?.mode === "memory" ? ":memory:" : `evolu1-${name}.db`,
     );
     if (options?.mode === "encrypted") {
-      db.execSync(`
-      PRAGMA cipher = 'sqlcipher';
-      PRAGMA legacy = 4;
-      PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
-    `);
+      db.execSync(`PRAGMA key = '${bytesToHex(options.encryptionKey)}'`);
     }
     let isDisposed = false;
 
@@ -45,7 +41,17 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
         return { rows: rows as Array<SqliteRow>, changes: result.changes };
       },
 
-      export: () => db.serializeSync(),
+      export: () => {
+        const file = db.serializeSync();
+        const { buffer } = file;
+
+        if (buffer instanceof ArrayBuffer) {
+          return new Uint8Array(buffer, file.byteOffset, file.byteLength);
+        }
+
+        // Ensure export uses transferable ArrayBuffer backing.
+        return new Uint8Array(file);
+      },
 
       [Symbol.dispose]: () => {
         if (isDisposed) return;
