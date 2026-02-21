@@ -5,6 +5,7 @@
  */
 
 import * as Kysely from "kysely";
+import type { TypeName } from "./Type.js";
 
 /**
  * A function that receives a value and returns nothing.
@@ -333,6 +334,31 @@ export type UnionToIntersection<U> = (
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
   ? Omit<T, K>
   : never;
+
+/**
+ * Extracts members of a discriminated union by their `type` literal.
+ *
+ * Constrains `TType` to valid `type` values, so typos fail at the type argument
+ * instead of silently producing `never`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * type Message =
+ *   | { readonly type: "Create"; readonly id: string }
+ *   | { readonly type: "Delete"; readonly id: string };
+ *
+ * type CreateMessage = ExtractType<Message, "Create">;
+ * // { readonly type: "Create"; readonly id: string }
+ *
+ * // Type error: "Cretae" is not a valid Message type
+ * type _Typo = ExtractType<Message, "Cretae">;
+ * ```
+ */
+export type ExtractType<
+  TUnion extends { readonly type: TypeName },
+  TType extends TUnion["type"],
+> = Extract<TUnion, { readonly type: TType }>;
 
 /**
  * Constrains `T` to only contain keys not present in `Existing`.
