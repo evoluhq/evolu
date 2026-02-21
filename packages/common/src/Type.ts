@@ -2059,6 +2059,14 @@ export type NonPositiveNumber = typeof NonPositiveNumber.Type;
 export const NegativeNumber = /*#__PURE__*/ negative(NonPositiveNumber);
 export type NegativeNumber = typeof NegativeNumber.Type;
 
+// Next.js produces runtime `int is not defined` without the alias.
+const createInt: BrandFactory<"Int", number, IntError> = (parent) =>
+  brand("Int", parent, (value) =>
+    globalThis.Number.isSafeInteger(value)
+      ? ok(value)
+      : err<IntError>({ type: "Int", value }),
+  );
+
 /**
  * Integer within the safe range of JavaScript numbers.
  *
@@ -2070,12 +2078,7 @@ export type NegativeNumber = typeof NegativeNumber.Type;
  *
  * @group Number
  */
-export const int: BrandFactory<"Int", number, IntError> = (parent) =>
-  brand("Int", parent, (value) =>
-    globalThis.Number.isSafeInteger(value)
-      ? ok(value)
-      : err<IntError>({ type: "Int", value }),
-  );
+export const int = createInt;
 
 export interface IntError extends TypeError<"Int"> {}
 
@@ -2088,7 +2091,7 @@ export const formatIntError = /*#__PURE__*/ createTypeErrorFormatter<IntError>(
  *
  * @group Number
  */
-export const Int = /*#__PURE__*/ int(Number);
+export const Int = /*#__PURE__*/ createInt(Number);
 export type Int = typeof Int.Type;
 
 /**
@@ -3467,7 +3470,7 @@ export const formatObjectWithRecordError = <Error extends TypeError>(
  * @see {@link exhaustiveCheck} to ensure all cases are handled in void functions.
  * @see {@link typed} for runtime-validated typed objects.
  */
-export interface Typed<T extends Capitalize<string>> {
+export interface Typed<T extends TypeName> {
   readonly type: T;
 }
 
@@ -3504,14 +3507,14 @@ export interface Typed<T extends Capitalize<string>> {
  *
  * @see {@link Typed} for type-only discrimination.
  */
-export function typed<Tag extends Capitalize<string>>(tag: Tag): TypedType<Tag>;
+export function typed<Tag extends TypeName>(tag: Tag): TypedType<Tag>;
 /** With additional properties. */
 export function typed<
-  Tag extends Capitalize<string>,
+  Tag extends TypeName,
   Props extends Record<string, AnyType>,
 >(tag: Tag, props: Props): TypedType<Tag, Props>;
 export function typed<
-  Tag extends Capitalize<string>,
+  Tag extends TypeName,
   Props extends Record<string, AnyType>,
 >(tag: Tag, props?: Props): ObjectType<{ type: LiteralType<Tag> } & Props> {
   return object({ type: literal(tag), ...props } as {
@@ -3521,7 +3524,7 @@ export function typed<
 
 /** Return type of {@link typed}. */
 export type TypedType<
-  Tag extends Capitalize<string>,
+  Tag extends TypeName,
   Props extends Record<string, AnyType> = Record<never, never>,
 > = ObjectType<{ type: LiteralType<Tag> } & Props>;
 
