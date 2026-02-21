@@ -33,12 +33,13 @@ import type { ReadonlyRecord } from "./Object.js";
  * };
  * ```
  *
- * Useful only when the switch returns `void`; if it returns a value, the
- * function return type enforces exhaustiveness.
+ * Use this primarily in side-effect switches (`void` branches). For
+ * value-producing switches, TypeScript can enforce exhaustiveness without a
+ * `default` branch.
  *
  * ### Example
  *
- * Use a return type when the switch returns a value.
+ * Return from each case for value-producing switches.
  *
  * ```ts
  * type Color = "red" | "green" | "blue";
@@ -52,6 +53,39 @@ import type { ReadonlyRecord } from "./Object.js";
  *     case "blue":
  *       return "#0000ff";
  *   }
+ * };
+ * ```
+ *
+ * ### Example
+ *
+ * Use assignment + no `default` to get exhaustiveness by definite assignment.
+ *
+ * ```ts
+ * type Input =
+ *   | { readonly type: "Mutate" }
+ *   | { readonly type: "Query" }
+ *   | { readonly type: "Export" };
+ *
+ * const onInput = (input: Input): void => {
+ *   let result: "A" | "B" | "C";
+ *
+ *   switch (input.type) {
+ *     case "Mutate":
+ *       result = "A";
+ *       break;
+ *     case "Query":
+ *       result = "B";
+ *       break;
+ *     case "Export":
+ *       result = "C";
+ *       break;
+ *   }
+ *
+ *   handleKind(result);
+ * };
+ *
+ * const handleKind = (kind: "A" | "B" | "C"): void => {
+ *   console.log(kind);
  * };
  * ```
  */
