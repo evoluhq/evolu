@@ -12,12 +12,7 @@ import {
   testCreateRandomLib,
   type RandomLibDep,
 } from "./Random.js";
-import {
-  createRun,
-  type Run,
-  type RunConfigDep,
-  type RunDeps,
-} from "./Task.js";
+import { createRun, type Run, type RunDeps } from "./Task.js";
 import { testCreateTime } from "./Time.js";
 
 export type TestDeps = RunDeps & TestConsoleDep & RandomLibDep;
@@ -59,8 +54,7 @@ export const testCreateDeps = (options?: {
  * deterministic fiber IDs, timestamps, and other generated values. This makes
  * tests reproducible and snapshot-friendly.
  *
- * Accepts partial deps - any missing deps are created with defaults. Also
- * accepts {@link RunConfigDep} for enabling events and custom deps.
+ * Accepts partial deps - any missing deps are created with defaults.
  *
  * ### Example
  *
