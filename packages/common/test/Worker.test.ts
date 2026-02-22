@@ -2,11 +2,49 @@ import { describe, expect, test } from "vitest";
 import { lazyVoid } from "../src/Function.js";
 import type { NativeMessagePort } from "../src/Worker.js";
 import {
+  createSharedWorker,
+  createWorker,
   testCreateMessageChannel,
   testCreateMessagePort,
   testCreateSharedWorker,
   testCreateWorker,
 } from "../src/Worker.js";
+
+describe("createWorker", () => {
+  test("messages are queued until worker self onMessage is assigned", () => {
+    let self!: { onMessage: ((message: string) => void) | null };
+
+    const worker = createWorker<string>((nextSelf) => {
+      self = nextSelf;
+    });
+
+    worker.postMessage("queued");
+
+    const received: Array<string> = [];
+    self.onMessage = (message) => received.push(message);
+
+    expect(received).toEqual(["queued"]);
+  });
+});
+
+describe("createSharedWorker", () => {
+  test("messages are queued until worker-side port onMessage is assigned", () => {
+    let workerPort!: { onMessage: ((message: string) => void) | null };
+
+    const worker = createSharedWorker<string>((self) => {
+      self.onConnect = (port) => {
+        workerPort = port;
+      };
+    });
+
+    worker.port.postMessage("queued");
+
+    const received: Array<string> = [];
+    workerPort.onMessage = (message) => received.push(message);
+
+    expect(received).toEqual(["queued"]);
+  });
+});
 
 describe("testCreateMessageChannel", () => {
   test("port1 postMessage delivers to port2 onMessage", () => {
@@ -64,6 +102,14 @@ describe("testCreateMessageChannel", () => {
     expect(channel.port2.onMessage).toBeNull();
   });
 
+  test("isDisposed reflects disposal state", () => {
+    const channel = testCreateMessageChannel<string>();
+
+    expect(channel.isDisposed()).toBe(false);
+    channel[Symbol.dispose]();
+    expect(channel.isDisposed()).toBe(true);
+  });
+
   test("each channel creates independent ports", () => {
     const channel1 = testCreateMessageChannel<string>();
     const channel2 = testCreateMessageChannel<string>();
@@ -110,70 +156,81 @@ describe("testCreateMessagePort", () => {
 
 describe("testCreateWorker", () => {
   test("worker and self communicate through ports", () => {
-    const { worker, self } = testCreateWorker<string, number>();
+    const worker = testCreateWorker<string, number>();
     const workerReceived: Array<number> = [];
     const selfReceived: Array<string> = [];
 
     worker.onMessage = (msg) => workerReceived.push(msg);
-    self.onMessage = (msg) => selfReceived.push(msg);
+    worker.self.onMessage = (msg) => selfReceived.push(msg);
 
     worker.postMessage("to-self");
-    self.postMessage(123);
+    worker.self.postMessage(123);
 
     expect(selfReceived).toEqual(["to-self"]);
     expect(workerReceived).toEqual([123]);
   });
 
   test("messages are queued until onMessage is assigned", () => {
-    const { worker, self } = testCreateWorker<string>();
+    const worker = testCreateWorker<string>();
     worker.postMessage("queued");
 
     const received: Array<string> = [];
-    self.onMessage = (msg) => received.push(msg);
+    worker.self.onMessage = (msg) => received.push(msg);
 
     expect(received).toEqual(["queued"]);
   });
 
   test("worker dispose clears handlers", () => {
-    const { worker, self } = testCreateWorker<string>();
+    const worker = testCreateWorker<string>();
     worker.onMessage = lazyVoid;
-    self.onMessage = lazyVoid;
+    worker.self.onMessage = lazyVoid;
 
     worker[Symbol.dispose]();
 
     expect(worker.onMessage).toBeNull();
-    expect(self.onMessage).toBeNull();
+    expect(worker.self.onMessage).toBeNull();
+  });
+
+  test("self dispose clears self handler", () => {
+    const worker = testCreateWorker<string>();
+    worker.self.onMessage = lazyVoid;
+
+    worker.self[Symbol.dispose]();
+
+    expect(worker.self.onMessage).toBeNull();
   });
 });
 
 describe("testCreateSharedWorker", () => {
   test("connect triggers onConnect with worker port", () => {
-    const { self, connect } = testCreateSharedWorker<string>();
+    const worker = testCreateSharedWorker<string>();
     let connected = false;
-    self.onConnect = () => {
+    worker.self.onConnect = () => {
       connected = true;
     };
-    connect();
+    worker.connect();
     expect(connected).toBe(true);
   });
 
-  test("connect does nothing when onConnect is null", () => {
-    const { connect } = testCreateSharedWorker<string>();
-    expect(() => connect()).not.toThrow();
+  test("connect throws when onConnect is null", () => {
+    const worker = testCreateSharedWorker<string>();
+    expect(() => worker.connect()).toThrow(
+      "onConnect must be set before receiving connections",
+    );
   });
 
   test("worker and self communicate through ports", () => {
-    const { worker, self, connect } = testCreateSharedWorker<string, number>();
+    const worker = testCreateSharedWorker<string, number>();
     const workerReceived: Array<string> = [];
     const clientReceived: Array<number> = [];
 
-    self.onConnect = (port) => {
+    worker.self.onConnect = (port) => {
       port.onMessage = (msg) => workerReceived.push(msg);
       port.postMessage(99);
     };
 
     worker.port.onMessage = (msg) => clientReceived.push(msg);
-    connect();
+    worker.connect();
 
     worker.port.postMessage("hello");
 
@@ -182,20 +239,20 @@ describe("testCreateSharedWorker", () => {
   });
 
   test("messages sent before connect are queued", () => {
-    const { worker, self, connect } = testCreateSharedWorker<string>();
+    const worker = testCreateSharedWorker<string>();
     worker.port.postMessage("before-connect");
 
     const received: Array<string> = [];
-    self.onConnect = (port) => {
+    worker.self.onConnect = (port) => {
       port.onMessage = (msg) => received.push(msg);
     };
-    connect();
+    worker.connect();
 
     expect(received).toEqual(["before-connect"]);
   });
 
   test("worker dispose disposes channel", () => {
-    const { worker } = testCreateSharedWorker<string>();
+    const worker = testCreateSharedWorker<string>();
     worker.port.onMessage = lazyVoid;
     expect(worker.port.onMessage).not.toBeNull();
     worker[Symbol.dispose]();
@@ -203,10 +260,10 @@ describe("testCreateSharedWorker", () => {
   });
 
   test("self dispose nulls onConnect", () => {
-    const { self } = testCreateSharedWorker<string>();
-    self.onConnect = lazyVoid;
-    expect(self.onConnect).not.toBeNull();
-    self[Symbol.dispose]();
-    expect(self.onConnect).toBeNull();
+    const worker = testCreateSharedWorker<string>();
+    worker.self.onConnect = lazyVoid;
+    expect(worker.self.onConnect).not.toBeNull();
+    worker.self[Symbol.dispose]();
+    expect(worker.self.onConnect).toBeNull();
   });
 });

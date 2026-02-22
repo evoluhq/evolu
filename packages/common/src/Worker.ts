@@ -4,6 +4,7 @@
  * @module
  */
 
+import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { ConsoleDep, ConsoleStoreOutputEntryDep } from "./Console.js";
 
@@ -198,106 +199,53 @@ export interface SharedWorkerSelf<Input, Output = never> extends Disposable {
 }
 
 /**
- * Creates a connected {@link Worker} / {@link WorkerSelf} pair for testing.
+ * Creates an in-memory {@link Worker}.
  *
- * Returns both sides so tests can exercise dedicated worker communication
- * without a real worker thread.
+ * This is a memory-only fallback for platforms without native worker support.
+ * Message delivery is synchronous in-process.
  */
-export const testCreateWorker = <Input, Output = never>(): {
-  readonly worker: Worker<Input, Output>;
-  readonly self: WorkerSelf<Input, Output>;
-} => {
-  const channel = testCreateMessageChannel<Input, Output>();
-
-  const worker: Worker<Input, Output> = {
-    postMessage: channel.port1.postMessage,
-    get onMessage() {
-      return channel.port1.onMessage;
-    },
-    set onMessage(value) {
-      channel.port1.onMessage = value;
-    },
-    native: channel.port1.native,
-    [Symbol.dispose]: () => {
-      channel[Symbol.dispose]();
-    },
-  };
-
-  const self: WorkerSelf<Input, Output> = {
-    postMessage: channel.port2.postMessage,
-    get onMessage() {
-      return channel.port2.onMessage;
-    },
-    set onMessage(value) {
-      channel.port2.onMessage = value;
-    },
-    native: channel.port2.native,
-    [Symbol.dispose]: () => {
-      channel.port2[Symbol.dispose]();
-    },
-  };
-
-  return { worker, self };
+export const createWorker = <Input, Output = never>(
+  initWorker: (self: WorkerSelf<Input, Output>) => void,
+): Worker<Input, Output> => {
+  const { worker, self } = createMemoryWorkerPair<Input, Output>();
+  initWorker(self);
+  return worker;
 };
 
 /**
- * Creates a connected {@link SharedWorker} / {@link SharedWorkerSelf} pair for
- * testing.
+ * Creates an in-memory {@link SharedWorker}.
  *
- * Returns both sides so tests can exercise the full worker ↔ client pipeline
- * without a real worker thread. Calling `connect()` triggers `self.onConnect`.
+ * This is a memory-only fallback for platforms without native SharedWorker
+ * support. Connection and message delivery are synchronous in-process.
+ *
+ * Intended usage is one shared worker instance per process/app runtime.
  */
-export const testCreateSharedWorker = <Input, Output = never>(): {
-  readonly worker: SharedWorker<Input, Output>;
-  readonly self: SharedWorkerSelf<Input, Output>;
-  readonly connect: () => void;
-} => {
-  const channel = testCreateMessageChannel<Input, Output>();
+export const createSharedWorker = <Input, Output = never>(
+  initWorker: (self: SharedWorkerSelf<Input, Output>) => void,
+): SharedWorker<Input, Output> => {
+  const { worker, self, connect } = createMemorySharedWorkerPair<
+    Input,
+    Output
+  >();
 
-  const self: SharedWorkerSelf<Input, Output> = {
-    onConnect: null,
-    [Symbol.dispose]: () => {
-      self.onConnect = null;
-    },
-  };
+  initWorker(self);
+  connect();
 
-  const worker: SharedWorker<Input, Output> = {
-    port: channel.port1,
-    [Symbol.dispose]: () => {
-      channel[Symbol.dispose]();
-    },
-  };
-
-  const connect = () => {
-    if (self.onConnect) self.onConnect(channel.port2);
-  };
-
-  return { worker, self, connect };
+  return worker;
 };
 
-/** {@link MessageChannel} with disposal tracking for testing. */
-export interface TestMessageChannel<
-  Input,
-  Output = never,
-> extends MessageChannel<Input, Output> {
-  readonly isDisposed: () => boolean;
-}
-
 /**
- * Creates an in-memory {@link MessageChannel} for testing.
+ * Creates an in-memory {@link MessageChannel}.
  *
- * Messages are queued until `onMessage` is assigned, matching the browser
- * MessagePort behavior where the port message queue starts disabled.
- *
- * Both ports are registered in the native port registry so
- * {@link testCreateMessagePort} can look them up by their native token.
+ * This is a memory-only fallback for platforms without native MessageChannel
+ * support. Message delivery is synchronous in-process.
  */
-export const testCreateMessageChannel = <
+export const createMessageChannel: CreateMessageChannel = <
   Input,
   Output = never,
->(): TestMessageChannel<Input, Output> => {
-  const state1: TestPortState<Output> = { handler: null, queue: [] };
-  const state2: TestPortState<Input> = { handler: null, queue: [] };
+>(): MessageChannel<Input, Output> => {
+  const state1: PortState<Output> = { handler: null, queue: [] };
+  const state2: PortState<Input> = { handler: null, queue: [] };
 
   const native1 = Symbol("NativeMessagePort1") as unknown as NativeMessagePort<
     Input,
@@ -314,16 +262,128 @@ export const testCreateMessageChannel = <
   nativePortRegistry.set(native1, port1);
   nativePortRegistry.set(native2, port2);
 
-  let disposed = false;
-
   return {
     port1,
     port2,
+    [Symbol.dispose]: () => {
+      port1[Symbol.dispose]();
+      port2[Symbol.dispose]();
+    },
+  };
+};
+
+/**
+ * Creates an in-memory {@link MessagePort} from a native token.
+ *
+ * This is a memory-only fallback for platforms without native MessagePort
+ * support. Message delivery through returned ports is synchronous in-process.
+ */
+export const createMessagePort: CreateMessagePort = <Input, Output = never>(
+  nativePort: NativeMessagePort<Input, Output>,
+): MessagePort<Input, Output> => {
+  const pair = nativePortRegistry.get(nativePort);
+  assert(pair, "Unknown native port — did you transfer it?");
+  return pair as MessagePort<Input, Output>;
+};
+
+/**
+ * Test {@link Worker} with access to its paired worker-side `self`.
+ *
+ * Use `self` to simulate messages and behavior from inside the worker.
+ */
+export interface TestWorker<Input, Output = never> extends Worker<
+  Input,
+  Output
+> {
+  /** Typed `self` counterpart for worker-side testing assertions. */
+  readonly self: WorkerSelf<Input, Output>;
+}
+
+/**
+ * Test {@link SharedWorker} with direct access to `self` and `connect`.
+ *
+ * Call `connect()` to simulate a client connection and trigger
+ * `self.onConnect`.
+ */
+export interface TestSharedWorker<Input, Output = never> extends SharedWorker<
+  Input,
+  Output
+> {
+  readonly self: SharedWorkerSelf<Input, Output>;
+  readonly connect: () => void;
+}
+
+/** {@link MessageChannel} with disposal tracking for testing. */
+export interface TestMessageChannel<
+  Input,
+  Output = never,
+> extends MessageChannel<Input, Output> {
+  readonly isDisposed: () => boolean;
+}
+
+/**
+ * Creates a connected {@link TestWorker} for testing.
+ *
+ * The returned worker includes its typed {@link TestWorker.self} counterpart, so
+ * tests can exercise dedicated worker communication without a real thread.
+ */
+export const testCreateWorker = <Input, Output = never>(): TestWorker<
+  Input,
+  Output
+> => {
+  let self!: WorkerSelf<Input, Output>;
+
+  const worker = createWorker<Input, Output>((nextSelf) => {
+    self = nextSelf;
+  });
+
+  return Object.assign(worker, { self }) as TestWorker<Input, Output>;
+};
+
+/**
+ * Creates a connected {@link TestSharedWorker} for testing.
+ *
+ * The returned worker includes `self` and `connect` so tests can exercise the
+ * full worker ↔ client pipeline without a real worker thread.
+ */
+export const testCreateSharedWorker = <
+  Input,
+  Output = never,
+>(): TestSharedWorker<Input, Output> => {
+  const { worker, self, connect } = createMemorySharedWorkerPair<
+    Input,
+    Output
+  >();
+  return Object.assign(worker, {
+    self,
+    connect,
+  }) as TestSharedWorker<Input, Output>;
+};
+
+/**
+ * Creates an in-memory {@link MessageChannel} for testing.
+ *
+ * Messages are queued until `onMessage` is assigned, matching the browser
+ * MessagePort behavior where the port message queue starts disabled.
+ *
+ * Both ports are registered in the native port registry so
+ * {@link testCreateMessagePort} can look them up by their native token.
+ */
+export const testCreateMessageChannel = <
+  Input,
+  Output = never,
+>(): TestMessageChannel<Input, Output> => {
+  const channel = createMessageChannel<Input, Output>();
+
+  let disposed = false;
+
+  return {
+    port1: channel.port1,
+    port2: channel.port2,
     isDisposed: () => disposed,
     [Symbol.dispose]: () => {
       disposed = true;
-      port1[Symbol.dispose]();
-      port2[Symbol.dispose]();
+      channel[Symbol.dispose]();
     },
   };
 };
@@ -331,20 +391,85 @@ export const testCreateMessageChannel = <
 /** Creates an in-memory {@link CreateMessagePort} for testing. */
 export const testCreateMessagePort: CreateMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort<Input, Output>,
-): MessagePort<Input, Output> => {
-  const pair = nativePortRegistry.get(nativePort);
-  if (!pair) throw new Error("Unknown native port — did you transfer it?");
-  return pair as MessagePort<Input, Output>;
+): MessagePort<Input, Output> => createMessagePort(nativePort);
+
+const createMemoryWorkerPair = <Input, Output = never>(): {
+  readonly worker: Worker<Input, Output>;
+  readonly self: WorkerSelf<Input, Output>;
+} => {
+  const channel = createMessageChannel<Input, Output>();
+
+  const self: WorkerSelf<Input, Output> = {
+    postMessage: channel.port2.postMessage,
+    get onMessage() {
+      return channel.port2.onMessage;
+    },
+    set onMessage(value) {
+      channel.port2.onMessage = value;
+    },
+    native: channel.port2.native,
+    [Symbol.dispose]: () => {
+      channel.port2[Symbol.dispose]();
+    },
+  };
+
+  const worker: Worker<Input, Output> = {
+    postMessage: channel.port1.postMessage,
+    get onMessage() {
+      return channel.port1.onMessage;
+    },
+    set onMessage(value) {
+      channel.port1.onMessage = value;
+    },
+    native: channel.port1.native,
+    [Symbol.dispose]: () => {
+      channel[Symbol.dispose]();
+    },
+  };
+
+  return { worker, self };
 };
 
-interface TestPortState<T> {
+const createMemorySharedWorkerPair = <Input, Output = never>(): {
+  readonly worker: SharedWorker<Input, Output>;
+  readonly self: SharedWorkerSelf<Input, Output>;
+  readonly connect: () => void;
+} => {
+  const channel = createMessageChannel<Input, Output>();
+
+  const self: SharedWorkerSelf<Input, Output> = {
+    onConnect: null,
+    [Symbol.dispose]: () => {
+      self.onConnect = null;
+    },
+  };
+
+  const worker: SharedWorker<Input, Output> = {
+    port: channel.port1,
+    [Symbol.dispose]: () => {
+      channel[Symbol.dispose]();
+    },
+  };
+
+  const connect = (): void => {
+    assert(
+      self.onConnect,
+      "onConnect must be set before receiving connections",
+    );
+    self.onConnect(channel.port2);
+  };
+
+  return { worker, self, connect };
+};
+
+interface PortState<T> {
   handler: ((message: T) => void) | null;
   readonly queue: Array<T>;
 }
 
-const createTestPort = <Input, Output>(
-  receive: TestPortState<Output>,
-  peerReceive: TestPortState<Input>,
+const createPort = <Input, Output>(
+  receive: PortState<Output>,
+  peerReceive: PortState<Input>,
   native: NativeMessagePort<Input, Output>,
 ): MessagePort<Input, Output> => ({
   postMessage: (message) => {
@@ -365,6 +490,12 @@ const createTestPort = <Input, Output>(
     receive.handler = null;
   },
 });
+
+const createTestPort = <Input, Output>(
+  receive: PortState<Output>,
+  peerReceive: PortState<Input>,
+  native: NativeMessagePort<Input, Output>,
+): MessagePort<Input, Output> => createPort(receive, peerReceive, native);
 
 /**
  * Registry mapping native port tokens to their in-memory port counterparts.
