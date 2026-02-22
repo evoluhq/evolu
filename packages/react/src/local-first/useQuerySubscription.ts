@@ -1,9 +1,8 @@
-import { lazyVoid } from "@evolu/common";
+import { emptyArray, lazyVoid } from "@evolu/common";
 import {
   type Query,
   type QueryRows,
   type Row,
-  emptyRows,
 } from "@evolu/common/local-first";
 import { use, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { EvoluContext } from "./EvoluContext.js";
@@ -37,7 +36,7 @@ export const useQuerySubscription = <R extends Row>(
   return useSyncExternalStore(
     useMemo(() => evolu.subscribeQuery(query), [evolu, query]),
     useMemo(() => () => evolu.getQueryRows(query), [evolu, query]),
-    () => emptyRows as QueryRows<R>,
+    () => emptyArray as QueryRows<R>,
     /* eslint-enable react-hooks/rules-of-hooks */
   );
 };

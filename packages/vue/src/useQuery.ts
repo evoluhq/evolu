@@ -1,5 +1,5 @@
+import { emptyArray } from "@evolu/common";
 import {
-  emptyRows,
   type Query,
   type QueryRows,
   type Row,
@@ -43,7 +43,7 @@ export const useQuery = <R extends Row>(
   }> = {},
 ): Readonly<Ref<QueryRows<R>>> => {
   const evolu = useEvolu();
-  const rows = shallowRef(emptyRows as QueryRows<R>);
+  const rows = shallowRef(emptyArray as QueryRows<R>);
 
   void (options.promise ?? evolu.loadQuery(query)).then((result) => {
     rows.value = result;

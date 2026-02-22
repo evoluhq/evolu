@@ -4,6 +4,7 @@
  * @module
  */
 
+import { emptyArray } from "../Array.js";
 import type { Brand } from "../Brand.js";
 import { bytesToHex, hexToBytes } from "../Buffer.js";
 import { createRandomBytes } from "../Crypto.js";
@@ -93,9 +94,6 @@ export interface Row {
     | Row // for jsonObjectFrom from kysely/helpers/sqlite
     | ReadonlyArray<Row>; // for jsonArrayFrom from kysely/helpers/sqlite
 }
-
-// To preserve identity.
-export const emptyRows: ReadonlyArray<Row> = [];
 
 /** Rows returned by a query. */
 export type QueryRows<R extends Row = Row> = ReadonlyArray<
@@ -202,7 +200,7 @@ export const applyQueryPatches = (
   for (const { query, patches } of queryPatches) {
     nextRowsByQuery.set(
       query,
-      applyPatches(patches, nextRowsByQuery.get(query) ?? emptyRows),
+      applyPatches(patches, nextRowsByQuery.get(query) ?? emptyArray),
     );
   }
 
