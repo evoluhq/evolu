@@ -32,6 +32,7 @@
  * @module
  */
 
+import type { NonEmptyReadonlyArray } from "./Array.js";
 import type { Brand } from "./Brand.js";
 import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
 
@@ -43,6 +44,29 @@ import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
  * @group Constants
  */
 export const emptySet: ReadonlySet<never> = new Set();
+
+/**
+ * Creates a readonly set from an array.
+ *
+ * Preserves non-empty type when the input array is non-empty.
+ *
+ * ### Example
+ *
+ * ```ts
+ * createSet([1, 2, 3]); // NonEmptyReadonlySet<number>
+ * createSet([] as ReadonlyArray<number>); // ReadonlySet<number>
+ * ```
+ *
+ * @group Constructors
+ */
+export function createSet<T>(
+  items: NonEmptyReadonlyArray<T>,
+): NonEmptyReadonlySet<T>;
+/** Possibly empty set. */
+export function createSet<T>(items: ReadonlyArray<T>): ReadonlySet<T>;
+export function createSet<T>(items: ReadonlyArray<T>): ReadonlySet<T> {
+  return new Set(items) as ReadonlySet<T>;
+}
 
 /**
  * A readonly set with at least one element (branded for type safety).
