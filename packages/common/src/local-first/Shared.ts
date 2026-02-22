@@ -82,7 +82,6 @@ export type EvoluInput =
     }
   | {
       readonly type: "Export";
-      readonly requestId: Id;
     }
   | {
       readonly type: "Dispose";
@@ -99,7 +98,6 @@ export type EvoluOutput =
     }
   | {
       readonly type: "OnExport";
-      readonly requestId: Id;
       readonly file: Uint8Array<ArrayBuffer>;
     };
 
@@ -301,12 +299,10 @@ const createSharedEvolu = ({
           break;
         }
         case "Export":
-          assert(first.request.type === "Export", "Expected Export input");
           if (evoluPort)
             evoluPort.postMessage(
               {
                 type: "OnExport",
-                requestId: first.request.requestId,
                 file: response.file,
               },
               [response.file.buffer],

@@ -32,8 +32,7 @@ describe("initSharedWorker", () => {
       null,
     ),
   ) => {
-    const { worker, self, connect } =
-      testCreateSharedWorker<SharedWorkerInput>();
+    const worker = testCreateSharedWorker<SharedWorkerInput>();
 
     const deps = testCreateDeps();
 
@@ -44,10 +43,10 @@ describe("initSharedWorker", () => {
       createMessagePort: testCreateMessagePort,
     });
 
-    const initResult = await run(initSharedWorker(self));
+    const initResult = await run(initSharedWorker(worker.self));
     assert(initResult.ok);
 
-    connect();
+    worker.connect();
 
     return {
       deps,
@@ -536,11 +535,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const exportRequestId = "export-callback" as Id;
-    evoluChannel.port2.postMessage({
-      type: "Export",
-      requestId: exportRequestId,
-    });
+    evoluChannel.port2.postMessage({ type: "Export" });
     time.advance("10s");
     await Promise.resolve();
 
@@ -561,7 +556,6 @@ describe("initSharedWorker", () => {
     const output = outputs[0];
     assert(output.type === "OnExport");
 
-    expect(output.requestId).toBe(exportRequestId);
     expect(Array.from(output.file)).toEqual([1, 2, 3]);
   });
 
@@ -1001,11 +995,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const exportRequestId = "export-disposed-with-peer" as Id;
-    evoluChannel1.port2.postMessage({
-      type: "Export",
-      requestId: exportRequestId,
-    });
+    evoluChannel1.port2.postMessage({ type: "Export" });
     time.advance("10s");
     await Promise.resolve();
 
@@ -1060,11 +1050,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const exportRequestId = "export-after-dispose" as Id;
-    evoluChannel.port2.postMessage({
-      type: "Export",
-      requestId: exportRequestId,
-    });
+    evoluChannel.port2.postMessage({ type: "Export" });
     time.advance("10s");
     await Promise.resolve();
 
