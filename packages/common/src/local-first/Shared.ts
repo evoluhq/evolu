@@ -5,20 +5,21 @@
  */
 
 import {
+  emptyArray,
   firstInArray,
   isNonEmptyArray,
   shiftFromArray,
   type NonEmptyReadonlyArray,
 } from "../Array.js";
 import { assert } from "../Assert.js";
-import { createCallbacks, type CallbackId } from "../Callbacks.js";
+import { createCallbacks } from "../Callbacks.js";
 import type { Console, ConsoleEntry, ConsoleLevel } from "../Console.js";
 import { exhaustiveCheck } from "../Function.js";
 import { createInstances } from "../Instances.js";
 import { ok } from "../Result.js";
 import { spaced } from "../Schedule.js";
-import type { SqliteRow } from "../Sqlite.js";
-import { repeat, type Run, type Task } from "../Task.js";
+import type { NonEmptyReadonlySet } from "../Set.js";
+import { repeat, type Fiber, type Run, type Task } from "../Task.js";
 import { createId, type Id, type Name } from "../Type.js";
 import type { Callback, ExtractType } from "../Types.js";
 import type {
@@ -30,7 +31,12 @@ import type {
 } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
 import type { OwnerId } from "./Owner.js";
-import type { Query, QueryPatches } from "./Query.js";
+import {
+  makePatches,
+  type Query,
+  type QueryPatches,
+  type RowsByQuery,
+} from "./Query.js";
 import type { MutationChange } from "./Schema.js";
 import type { CrdtMessage } from "./Storage.js";
 
@@ -67,16 +73,16 @@ export type EvoluInput =
   | {
       readonly type: "Mutate";
       readonly changes: NonEmptyReadonlyArray<MutationChange>;
-      readonly onCompleteIds: ReadonlyArray<CallbackId>;
-      readonly subscribedQueries: ReadonlyArray<Query>;
+      readonly onCompleteIds: ReadonlyArray<Id>;
+      readonly subscribedQueries: ReadonlySet<Query>;
     }
   | {
       readonly type: "Query";
-      readonly queries: ReadonlyArray<Query>;
+      readonly queries: NonEmptyReadonlySet<Query>;
     }
   | {
       readonly type: "Export";
-      readonly callbackId: CallbackId;
+      readonly requestId: Id;
     }
   | {
       readonly type: "Dispose";
@@ -86,11 +92,14 @@ export type EvoluOutput =
   | {
       readonly type: "OnQueryPatches";
       readonly queryPatches: ReadonlyArray<QueryPatches>;
-      readonly onCompleteIds: ReadonlyArray<CallbackId>;
+      readonly onCompleteIds: ReadonlyArray<Id>;
+    }
+  | {
+      readonly type: "RefreshQueries";
     }
   | {
       readonly type: "OnExport";
-      readonly callbackId: CallbackId;
+      readonly requestId: Id;
       readonly file: Uint8Array<ArrayBuffer>;
     };
 
@@ -182,7 +191,7 @@ export interface DbWorkerQueueItem {
 }
 
 export interface DbWorkerInput extends DbWorkerQueueItem {
-  readonly callbackId: CallbackId;
+  readonly callbackId: Id;
 }
 
 export type DbWorkerOutput =
@@ -192,7 +201,7 @@ export type DbWorkerOutput =
     }
   | {
       readonly type: "OnQueuedResponse";
-      readonly callbackId: CallbackId;
+      readonly callbackId: Id;
       readonly evoluPortId: Id;
       readonly response: QueuedResponse;
     }
@@ -201,17 +210,15 @@ export type DbWorkerOutput =
 export type QueuedResponse =
   | {
       readonly type: "Mutate";
-      readonly output: {
-        readonly messagesByOwnerId: ReadonlyMap<
-          OwnerId,
-          NonEmptyReadonlyArray<CrdtMessage>
-        >;
-        readonly rowsByQuery: ReadonlyMap<Query, ReadonlyArray<SqliteRow>>;
-      };
+      readonly messagesByOwnerId: ReadonlyMap<
+        OwnerId,
+        NonEmptyReadonlyArray<CrdtMessage>
+      >;
+      readonly rowsByQuery: RowsByQuery;
     }
   | {
       readonly type: "Query";
-      readonly rowsByQuery: ReadonlyMap<Query, ReadonlyArray<SqliteRow>>;
+      readonly rowsByQuery: RowsByQuery;
     }
   | {
       readonly type: "Export";
@@ -241,7 +248,7 @@ const createSharedEvolu = ({
 
   const evoluPorts = new Map<Id, MessagePort<EvoluOutput, EvoluInput>>();
   const dbWorkerPorts = new Set<MessagePort<DbWorkerInput, DbWorkerOutput>>();
-
+  const rowsByQueryByEvoluPortId = new Map<Id, RowsByQuery>();
   const queue: Array<DbWorkerQueueItem> = [];
   const callbacks = createCallbacks<QueuedResult>(run.deps);
 
@@ -250,56 +257,56 @@ const createSharedEvolu = ({
     DbWorkerOutput
   > | null;
 
-  let isQueueProcessing = false;
+  let queueProcessingFiber: Fiber<void, never, WorkerDeps> | null = null;
 
   const ensureQueueProcessing = (): void => {
-    if (isQueueProcessing || !isNonEmptyArray(queue) || !activeDbWorkerPort) {
+    if (
+      queueProcessingFiber ||
+      !isNonEmptyArray(queue) ||
+      !activeDbWorkerPort
+    ) {
       return;
     }
-    isQueueProcessing = true;
 
     const first = firstInArray(queue);
 
     const callbackId = callbacks.register(({ evoluPortId, response }) => {
-      fiber.abort();
-
-      // TODO: Handle asi driv, at je to asap? Imho je to skoro jedno,
-      // ale asi lepsi ohadlovat, nez se jde na dalsi.
-
-      // Complete the current queue item and continue with the next one.
-      shiftFromArray(queue);
-      isQueueProcessing = false;
-      ensureQueueProcessing();
+      queueProcessingFiber?.abort();
+      queueProcessingFiber = null;
 
       const evoluPort = evoluPorts.get(evoluPortId);
 
       switch (response.type) {
-        case "Mutate": {
-          assert(first.request.type === "Mutate", "Expected Mutate input");
+        case "Mutate":
+        case "Query": {
+          if (evoluPort)
+            evoluPort.postMessage({
+              type: "OnQueryPatches",
+              queryPatches: createQueryPatches(
+                evoluPortId,
+                response.rowsByQuery,
+              ),
+              onCompleteIds:
+                first.request.type === "Mutate"
+                  ? first.request.onCompleteIds
+                  : emptyArray,
+            });
 
-          const processedMutateOutput = {
-            output: response.output,
-            onCompleteIds: first.request.onCompleteIds,
-          };
-
-          if (evoluPort) {
-            // TODO: Post converted OnQueryPatches to evoluPort.
+          if (response.type === "Mutate") {
+            for (const [otherEvoluPortId, otherEvoluPort] of evoluPorts) {
+              if (otherEvoluPortId === evoluPortId) continue;
+              otherEvoluPort.postMessage({ type: "RefreshQueries" });
+            }
           }
-
-          // TODO: Convert processedMutateOutput into OnQueryPatches and post it.
-          console.debug(processedMutateOutput);
           break;
         }
-        case "Query":
-          // TODO: Handle query output.
-          break;
         case "Export":
           assert(first.request.type === "Export", "Expected Export input");
           if (evoluPort)
             evoluPort.postMessage(
               {
                 type: "OnExport",
-                callbackId: first.request.callbackId,
+                requestId: first.request.requestId,
                 file: response.file,
               },
               [response.file.buffer],
@@ -309,15 +316,39 @@ const createSharedEvolu = ({
         default:
           exhaustiveCheck(response);
       }
+
+      // Complete the current queue item and continue with the next one.
+      shiftFromArray(queue);
+      ensureQueueProcessing();
     });
 
-    const fiber = run.daemon(
+    queueProcessingFiber = run.daemon(
       repeat(() => {
         assert(activeDbWorkerPort, "Expected an active DbWorker");
         activeDbWorkerPort.postMessage({ callbackId, ...first });
         return ok();
       }, spaced("5s")), // 5s seems to be a good balance
     );
+  };
+
+  const createQueryPatches = (
+    evoluPortId: Id,
+    rowsByQuery: RowsByQuery,
+  ): ReadonlyArray<QueryPatches> => {
+    const previousRowsByQuery = rowsByQueryByEvoluPortId.get(evoluPortId);
+    const nextRowsByQuery = new Map(previousRowsByQuery ?? emptyArray);
+    const queryPatches: Array<QueryPatches> = [];
+
+    for (const [query, rows] of rowsByQuery) {
+      nextRowsByQuery.set(query, rows);
+      queryPatches.push({
+        query,
+        patches: makePatches(previousRowsByQuery?.get(query), rows),
+      });
+    }
+
+    rowsByQueryByEvoluPortId.set(evoluPortId, nextRowsByQuery);
+    return queryPatches;
   };
 
   return {
@@ -368,7 +399,9 @@ const createSharedEvolu = ({
               hadLastPort: evoluPorts.size === 1,
             });
             evoluPorts.delete(evoluPortId);
+            rowsByQueryByEvoluPortId.delete(evoluPortId);
             if (evoluPorts.size === 0) onDispose();
+
             // TODO: Decided what to do with DbWorker but probably dispose it, but
             // https://bugs.webkit.org/show_bug.cgi?id=301520
             break;
@@ -388,9 +421,13 @@ const createSharedEvolu = ({
     },
 
     [Symbol.dispose]: () => {
+      queueProcessingFiber?.abort();
+      queueProcessingFiber = null;
+      callbacks[Symbol.dispose]();
       activeDbWorkerPort = null;
       queue.length = 0;
       evoluPorts.clear();
+      rowsByQueryByEvoluPortId.clear();
       dbWorkerPorts.clear();
     },
   };

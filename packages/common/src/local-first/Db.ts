@@ -11,7 +11,6 @@ import {
   type NonEmptyReadonlyArray,
 } from "../Array.js";
 import { assertNonEmptyReadonlyArray } from "../Assert.js";
-import type { CallbackId } from "../Callbacks.js";
 import type { ConsoleLevel } from "../Console.js";
 import {
   EncryptionKey,
@@ -212,7 +211,7 @@ const startDbWorker =
      *
      * TODO: Bound memory growth by evicting old IDs.
      */
-    const processedRequestIds = new Set<CallbackId>();
+    const processedRequestIds = new Set<Id>();
 
     const { port } = run.deps;
 
@@ -712,7 +711,8 @@ const handleMutation =
 
       return ok({
         type: "Mutate",
-        output: { messagesByOwnerId, rowsByQuery },
+        messagesByOwnerId,
+        rowsByQuery,
       });
     });
 
@@ -836,7 +836,7 @@ const dbChangeToColumns = (change: DbChange, now: Millis) => {
 
 const loadQueries =
   (deps: SqliteDep) =>
-  (queries: ReadonlyArray<Query>): Map<Query, ReadonlyArray<SqliteRow>> => {
+  (queries: Iterable<Query>): Map<Query, ReadonlyArray<SqliteRow>> => {
     const rowsByQuery = new Map<Query, ReadonlyArray<SqliteRow>>();
 
     for (const query of queries) {
@@ -846,42 +846,6 @@ const loadQueries =
 
     return rowsByQuery;
   };
-
-//       // Read writes before commit to update UI ASAP
-//       const queryPatches = loadQueries(deps)(
-//         message.tabId,
-//         message.subscribedQueries,
-//       );
-//       if (!queryPatches.ok) return queryPatches;
-//       // Update the tab that performed the mutation.
-//       deps.postMessage({
-//         type: "onQueryPatches",
-//         tabId: message.tabId,
-//         queryPatches: queryPatches.value,
-//         onCompleteIds: message.onCompleteIds,
-//       });
-
-//       // Notify other tabs to refresh their queries.
-//       deps.postMessage({ type: "refreshQueries", tabId: message.tabId });
-
-//       return ok();
-//     });
-
-//   query: (deps) => (message) => {
-//     const queryPatches = loadQueries(deps)(message.tabId, message.queries);
-
-//     if (!queryPatches.ok) {
-//       deps.postMessage({ type: "onError", error: queryPatches.error });
-//       return;
-//     }
-
-//     deps.postMessage({
-//       type: "onQueryPatches",
-//       tabId: message.tabId,
-//       queryPatches: queryPatches.value,
-//       onCompleteIds: [],
-//     });
-//   },
 
 //   reset: (deps) => (message) => {
 //     const result = deps.sqlite.transaction(() => {

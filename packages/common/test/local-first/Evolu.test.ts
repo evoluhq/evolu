@@ -413,7 +413,7 @@ describe("mutations", () => {
             },
           ],
           "onCompleteIds": [],
-          "subscribedQueries": [],
+          "subscribedQueries": Set {},
           "type": "Mutate",
         },
       ]
@@ -482,7 +482,7 @@ describe("mutations", () => {
             },
           ],
           "onCompleteIds": [],
-          "subscribedQueries": [],
+          "subscribedQueries": Set {},
           "type": "Mutate",
         },
       ]
@@ -563,7 +563,7 @@ describe("mutations", () => {
             },
           ],
           "onCompleteIds": [],
-          "subscribedQueries": [],
+          "subscribedQueries": Set {},
           "type": "Mutate",
         },
       ]
@@ -614,7 +614,7 @@ describe("mutations", () => {
           "onCompleteIds": [
             Any<String>,
           ],
-          "subscribedQueries": [],
+          "subscribedQueries": Set {},
           "type": "Mutate",
         },
       ]

@@ -7,19 +7,11 @@
 import type { Brand } from "../Brand.js";
 import { bytesToHex, hexToBytes } from "../Buffer.js";
 import { createRandomBytes } from "../Crypto.js";
-import type { Listener, Unsubscribe } from "../Listeners.js";
 import type { ReadonlyRecord } from "../Object.js";
 import { createRecord, isPlainObject, objectToEntries } from "../Object.js";
-import type {
-  SafeSql,
-  SqliteDep,
-  SqliteQuery,
-  SqliteQueryOptions,
-  SqliteRow,
-} from "../Sqlite.js";
+import type { SafeSql, SqliteQuery, SqliteQueryOptions } from "../Sqlite.js";
 import { eqSqliteValue, SqliteValue } from "../Sqlite.js";
-import type { Store } from "../Store.js";
-import { createId, Id, String } from "../Type.js";
+import { createId, String } from "../Type.js";
 import type { Simplify } from "../Types.js";
 
 /**
@@ -120,107 +112,7 @@ export type QueriesToQueryRowsPromises<Q extends Queries> = {
   [P in keyof Q]: Q[P] extends Query<infer R> ? Promise<QueryRows<R>> : never;
 };
 
-export type QueryRowsMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
-
-export interface SubscribedQueries {
-  subscribe: (query: Query) => (listener: Listener) => Unsubscribe;
-
-  has: (query: Query) => boolean;
-
-  get: () => ReadonlyArray<Query>;
-}
-
-export const createSubscribedQueries = (
-  rowsStore: Store<QueryRowsMap>,
-): SubscribedQueries => {
-  const subscribedQueryMap = new Map<Query, number>();
-
-  const subscribedQueries: SubscribedQueries = {
-    subscribe: (query) => (listener) => {
-      subscribedQueryMap.set(query, (subscribedQueryMap.get(query) ?? 0) + 1);
-      const unsubscribe = rowsStore.subscribe(listener);
-      return () => {
-        const count = subscribedQueryMap.get(query);
-        if (count != null && count > 1) {
-          subscribedQueryMap.set(query, count - 1);
-        } else {
-          subscribedQueryMap.delete(query);
-        }
-        unsubscribe();
-      };
-    },
-
-    get: () => [...subscribedQueryMap.keys()],
-
-    has: (query) => subscribedQueryMap.has(query),
-  };
-
-  return subscribedQueries;
-};
-
-export interface GetQueryRowsCacheDep {
-  readonly getQueryRowsCache: GetQueryRowsCache;
-}
-
-export type GetQueryRowsCache = (tabId: Id) => QueryRowsCache;
-
-export interface QueryRowsCache {
-  readonly set: (
-    queriesRows: ReadonlyArray<readonly [Query, ReadonlyArray<SqliteRow>]>,
-  ) => void;
-  readonly get: () => QueryRowsMap;
-}
-
-export const createGetQueryRowsCache = (): GetQueryRowsCache => {
-  const tabQueryRowsCacheMap = new Map<Id, QueryRowsCache>();
-
-  return (tabId: Id) => {
-    let cache = tabQueryRowsCacheMap.get(tabId);
-    if (!cache) {
-      let queryRowsCache: QueryRowsMap = new Map();
-      cache = {
-        set: (queriesRows) => {
-          queryRowsCache = new Map([...queryRowsCache, ...queriesRows]);
-        },
-        get: () => queryRowsCache,
-      };
-      tabQueryRowsCacheMap.set(tabId, cache);
-    }
-    return cache;
-  };
-};
-
-// TODO: Remove.
-export const loadQueries =
-  (deps: GetQueryRowsCacheDep & SqliteDep) =>
-  (tabId: Id, queries: ReadonlyArray<Query>): ReadonlyArray<QueryPatches> => {
-    const queriesRows = [];
-
-    for (const query of queries) {
-      const sqlQuery = deserializeQuery(query);
-      const result = deps.sqlite.exec(sqlQuery);
-
-      queriesRows.push([query, result.rows] as const);
-    }
-
-    const queryRowsCache = deps.getQueryRowsCache(tabId);
-
-    const previousState = queryRowsCache.get();
-    queryRowsCache.set(queriesRows);
-
-    const currentState = queryRowsCache.get();
-
-    const queryPatchesArray = queries.map(
-      (query): QueryPatches => ({
-        query,
-        patches: makePatches(
-          previousState.get(query),
-          currentState.get(query) ?? emptyRows,
-        ),
-      }),
-    );
-    return queryPatchesArray;
-  };
+export type RowsByQuery = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
 export interface QueryPatches {
   readonly query: Query;
@@ -251,8 +143,10 @@ export const makePatches = (
   previousRows: ReadonlyArray<Row> | undefined,
   nextRows: ReadonlyArray<Row>,
 ): ReadonlyArray<Patch> => {
-  if (previousRows === undefined)
+  if (previousRows === undefined) {
     return [{ op: "replaceAll", value: nextRows }];
+  }
+
   // TODO: Detect prepend and append, it's cheap.
   if (previousRows.length !== nextRows.length) {
     return [{ op: "replaceAll", value: nextRows }];
@@ -298,6 +192,22 @@ export const applyPatches = (
       }
     }
   }, current);
+
+export const applyQueryPatches = (
+  currentRowsByQuery: RowsByQuery,
+  queryPatches: ReadonlyArray<QueryPatches>,
+): RowsByQuery => {
+  const nextRowsByQuery = new Map(currentRowsByQuery);
+
+  for (const { query, patches } of queryPatches) {
+    nextRowsByQuery.set(
+      query,
+      applyPatches(patches, nextRowsByQuery.get(query) ?? emptyRows),
+    );
+  }
+
+  return nextRowsByQuery;
+};
 
 /**
  * A unique identifier prepended to JSON-encoded strings. This allows safe

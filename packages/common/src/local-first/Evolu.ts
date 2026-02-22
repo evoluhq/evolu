@@ -16,10 +16,11 @@ import { createMicrotaskBatch } from "../Microtask.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { createRefCount } from "../RefCount.js";
 import { err, ok } from "../Result.js";
+import { isNonEmptySet } from "../Set.js";
 import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
 import type { ReadonlyStore } from "../Store.js";
 import { createStore } from "../Store.js";
-import type { Task } from "../Task.js";
+import { createDeferreds, runClosingError, type Task } from "../Task.js";
 import type { Id, TypeError } from "../Type.js";
 import {
   brand,
@@ -43,9 +44,10 @@ import type {
   QueriesToQueryRowsPromises,
   Query,
   QueryRows,
-  QueryRowsMap,
   Row,
+  RowsByQuery,
 } from "./Query.js";
+import { applyQueryPatches } from "./Query.js";
 import type {
   EvoluSchema,
   IndexesConfig,
@@ -58,6 +60,7 @@ import type {
   DbWorkerInput,
   DbWorkerOutput,
   EvoluInput,
+  EvoluOutput,
   EvoluTabOutput,
   SharedWorkerDep,
 } from "./Shared.js";
@@ -379,6 +382,11 @@ export interface Evolu<
    */
   readonly upsert: Mutation<S, "upsert">;
 
+  /** Exports the SQLite database file. */
+  readonly exportDatabase: Task<Uint8Array<ArrayBuffer>>;
+
+  // TODO: Add exportHistory.
+
   /**
    * // TODO: Ten naming je furt divnej, syncOwner? subscribeOwner? // hmm, use
    * je ale ok, cleanup vracet teda? uvidime.
@@ -444,22 +452,22 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const evoluError = stack.use(createStore<EvoluError | null>(null));
 
   const tabChannel = stack.use(createMessageChannel<EvoluTabOutput>());
-  tabChannel.port2.onMessage = (output) => {
-    switch (output.type) {
+  tabChannel.port2.onMessage = (message) => {
+    switch (message.type) {
       case "OnConsoleEntry":
-        console.write(output.entry);
+        console.write(message.entry);
         // Fallback channel for unexpected errors without EvoluError typing.
-        if (output.entry.method === "error") {
-          evoluError.set(createUnknownError(output.entry.args));
+        if (message.entry.method === "error") {
+          evoluError.set(createUnknownError(message.entry.args));
         }
         break;
       case "OnError":
-        evoluError.set(output.error);
+        evoluError.set(message.error);
         // Keep typed errors visible in logs as operational failures.
-        console.error(output.error);
+        console.error(message.error);
         break;
       default:
-        exhaustiveCheck(output);
+        exhaustiveCheck(message);
     }
   };
 
@@ -499,13 +507,16 @@ export const createEvolu =
     const console = run.deps.console.child(name).child("Evolu");
     console.info("createEvolu");
 
-    const _rowsStore = createStore<QueryRowsMap>(new Map());
+    const rowsStore = createStore<RowsByQuery>(new Map());
     const subscribedQueriesRefCount = createRefCount<Query>();
-    const onCompleteCallbacks = createCallbacks(run.deps);
 
     await using stack = run.stack();
 
-    // TODO: tohle by mel bejt proste port, at muzu oboje
+    const onCompleteCallbacks = stack.use(createCallbacks(run.deps));
+    const pendingExports = stack.use(
+      createDeferreds<Uint8Array<ArrayBuffer>>(run.deps),
+    );
+
     let postMessage: (input: EvoluInput) => void;
 
     // Wire SharedWorker and DbWorker.
@@ -514,7 +525,9 @@ export const createEvolu =
       const dbWorkerChannel = stack.use(
         createMessageChannel<DbWorkerOutput, DbWorkerInput>(),
       );
-      const evoluChannel = stack.use(createMessageChannel<EvoluInput>());
+      const evoluChannel = stack.use(
+        createMessageChannel<EvoluInput, EvoluOutput>(),
+      );
 
       sharedWorker.port.postMessage(
         {
@@ -543,6 +556,41 @@ export const createEvolu =
         [dbWorkerChannel.port1.native],
       );
 
+      evoluChannel.port1.onMessage = (message) => {
+        switch (message.type) {
+          case "OnQueryPatches": {
+            const nextRowsByQuery = applyQueryPatches(
+              rowsStore.get(),
+              message.queryPatches,
+            );
+
+            if (run.deps.flushSync && message.onCompleteIds.length > 0) {
+              run.deps.flushSync(() => {
+                rowsStore.set(nextRowsByQuery);
+              });
+            } else {
+              rowsStore.set(nextRowsByQuery);
+            }
+
+            for (const onCompleteId of message.onCompleteIds) {
+              onCompleteCallbacks.execute(onCompleteId);
+            }
+            break;
+          }
+          case "RefreshQueries": {
+            const queries = subscribedQueriesRefCount.keys();
+            if (isNonEmptySet(queries)) postMessage({ type: "Query", queries });
+            break;
+          }
+          case "OnExport": {
+            pendingExports.resolve(message.requestId, ok(message.file));
+            break;
+          }
+          default:
+            exhaustiveCheck(message);
+        }
+      };
+
       postMessage = evoluChannel.port1.postMessage;
     }
 
@@ -559,7 +607,7 @@ export const createEvolu =
               ? [onCompleteCallbacks.register(item.onComplete)]
               : [],
           ),
-          subscribedQueries: [...subscribedQueriesRefCount.keys()],
+          subscribedQueries: subscribedQueriesRefCount.keys(),
         });
       }),
     );
@@ -608,12 +656,26 @@ export const createEvolu =
       loadQueries: todo,
       subscribeQuery: todo,
       getQueryRows: todo,
+
       insert: createMutation("insert"),
       update: createMutation("update"),
       upsert: createMutation("upsert"),
+
+      exportDatabase: (run) => {
+        const { id, task } = pendingExports.register();
+        run.onAbort((reason) => {
+          pendingExports.resolve(id, err({ type: "AbortError", reason }));
+        });
+        postMessage({ type: "Export", requestId: id });
+        return run(task);
+      },
+
       useOwner: todo,
 
       [Symbol.asyncDispose]: () => {
+        pendingExports.resolveAll(
+          err({ type: "AbortError", reason: runClosingError }),
+        );
         postMessage({ type: "Dispose" });
         return moved.disposeAsync();
       },
@@ -713,7 +775,7 @@ export const createEvolu =
 //     const validSchema = schema as S;
 
 //     const errorStore = createStore<EvoluError | null>(null);
-//     const rowsStore = createStore<QueryRowsMap>(new Map());
+//     const rowsStore = createStore<RowsByQuery>(new Map());
 //     const subscribedQueries = createSubscribedQueries(rowsStore);
 //     const loadingPromises = createLoadingPromises(subscribedQueries);
 //     const onCompleteCallbacks = createCallbacks(deps);

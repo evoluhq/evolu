@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import {
+  applyQueryPatches,
   applyPatches,
   deserializeQuery,
   makePatches,
@@ -85,4 +86,25 @@ test("applyPatches", () => {
   );
   expect(replaceAtResult).toEqual([{ a: 2 }, { b: 2 }, { c: 4 }]);
   expect(replaceAtResult[1]).toBe(replaceUntouched);
+});
+
+test("applyQueryPatches composes patches for the same query", () => {
+  const query = "q:test" as Query;
+  const currentRowsByQuery = new Map<Query, ReadonlyArray<Row>>([
+    [query, [{ a: 1 }, { b: 2 }]],
+  ]);
+
+  const nextRowsByQuery = applyQueryPatches(currentRowsByQuery, [
+    {
+      query,
+      patches: [{ op: "replaceAt", index: 0, value: { a: 10 } }],
+    },
+    {
+      query,
+      patches: [{ op: "replaceAt", index: 1, value: { b: 20 } }],
+    },
+  ]);
+
+  expect(nextRowsByQuery.get(query)).toEqual([{ a: 10 }, { b: 20 }]);
+  expect(currentRowsByQuery.get(query)).toEqual([{ a: 1 }, { b: 2 }]);
 });
