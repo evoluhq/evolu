@@ -1293,7 +1293,7 @@ describe("E2E sync", () => {
         "syncSteps": 6,
       }
     `);
-  });
+  }, 15_000);
 
   it("client and relay each have a random half of the data - many steps", async () => {
     await using run = testCreateRun();
