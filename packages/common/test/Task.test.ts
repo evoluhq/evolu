@@ -44,6 +44,7 @@ import {
   AsyncDisposableStack,
   callback,
   createDeferred,
+  createDeferreds,
   createGate,
   createMutex,
   createRun,
@@ -4285,6 +4286,76 @@ describe("concurrency", () => {
 
       const result = await run(task);
       expect(result).toEqual(ok("pre-resolved"));
+    });
+  });
+
+  describe("Deferreds", () => {
+    test("register and resolve by id", async () => {
+      await using run = createRun();
+
+      const deferreds = createDeferreds<string, MyError>(run.deps);
+      const { id, task } = deferreds.register();
+
+      const fiber = run(task);
+      expect(deferreds.resolve(id, ok("value"))).toBe(true);
+
+      const result = await fiber;
+      expect(result).toEqual(ok("value"));
+    });
+
+    test("resolve returns false when id is already resolved", () => {
+      const deferreds = createDeferreds<string, MyError>(testCreateDeps());
+      const { id } = deferreds.register();
+
+      expect(deferreds.resolve(id, ok("value"))).toBe(true);
+      expect(deferreds.resolve(id, ok("again"))).toBe(false);
+    });
+
+    test("register returns unique ids", () => {
+      const deferreds = createDeferreds<string, MyError>(testCreateDeps());
+
+      const first = deferreds.register();
+      const second = deferreds.register();
+
+      expect(first.id).not.toBe(second.id);
+    });
+
+    test("resolveAll completes all pending tasks", async () => {
+      await using run = createRun();
+
+      const deferreds = createDeferreds<string, MyError>(run.deps);
+      const first = deferreds.register();
+      const second = deferreds.register();
+
+      const fiber1 = run(first.task);
+      const fiber2 = run(second.task);
+
+      deferreds.resolveAll(ok("all"));
+
+      const result1 = await fiber1;
+      const result2 = await fiber2;
+
+      expect(result1).toEqual(ok("all"));
+      expect(result2).toEqual(ok("all"));
+    });
+
+    test("dispose aborts pending tasks with DeferredDisposedError", async () => {
+      await using run = createRun();
+
+      const deferreds = createDeferreds<string, MyError>(run.deps);
+      const first = deferreds.register();
+      const second = deferreds.register();
+
+      const fiber1 = run(first.task);
+      const fiber2 = run(second.task);
+
+      deferreds[Symbol.dispose]();
+
+      const result1 = await fiber1;
+      const result2 = await fiber2;
+
+      expect(result1).toEqual(err(deferredDisposedError));
+      expect(result2).toEqual(err(deferredDisposedError));
     });
   });
 

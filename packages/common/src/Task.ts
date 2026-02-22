@@ -2209,7 +2209,9 @@ export interface Deferred<T, E = never> extends Disposable {
   readonly task: Task<T, E | DeferredDisposedError>;
 
   /** Resolves the value. Returns `true` once, then `false`. */
-  readonly resolve: (result: Result<T, E | DeferredDisposedError>) => boolean;
+  readonly resolve: (
+    result: Result<T, E | AbortError | DeferredDisposedError>,
+  ) => boolean;
 }
 
 /**
@@ -2232,12 +2234,14 @@ export interface Deferred<T, E = never> extends Disposable {
  * @group Concurrency primitives
  */
 export const createDeferred = <T, E = never>(): Deferred<T, E> => {
-  let resolved: Result<T, E | DeferredDisposedError> | null = null;
+  let resolved: Result<T, E | AbortError | DeferredDisposedError> | null = null;
   const resolvers = new Set<
-    (result: Result<T, E | DeferredDisposedError>) => void
+    (result: Result<T, E | AbortError | DeferredDisposedError>) => void
   >();
 
-  const resolve = (result: Result<T, E | DeferredDisposedError>) => {
+  const resolve = (
+    result: Result<T, E | AbortError | DeferredDisposedError>,
+  ) => {
     if (resolved !== null) return false;
     resolved = result;
     for (const resolver of resolvers) resolver(result);
@@ -2269,6 +2273,87 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
 
     [Symbol.dispose]: () => {
       resolve(err(deferredDisposedError));
+    },
+  };
+};
+
+/**
+ * Registry of {@link Deferred} tasks addressed by IDs.
+ *
+ * Useful for request-response protocols where requests carry an ID and
+ * responses arrive later with the same ID.
+ *
+ * @group Concurrency primitives
+ * @see {@link createDeferreds}
+ */
+export interface Deferreds<T, E = never> extends Disposable {
+  /** Registers a new deferred task and returns its ID with the task. */
+  readonly register: () => {
+    readonly id: Id;
+    readonly task: Task<T, E | DeferredDisposedError>;
+  };
+
+  /** Resolves and removes deferred by ID. Returns false when ID is unknown. */
+  readonly resolve: (
+    id: Id,
+    result: Result<T, E | AbortError | DeferredDisposedError>,
+  ) => boolean;
+
+  /** Resolves and removes all pending deferreds with the same result. */
+  readonly resolveAll: (
+    result: Result<T, E | AbortError | DeferredDisposedError>,
+  ) => void;
+}
+
+/**
+ * Creates a {@link Deferreds} registry.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const deferreds = createDeferreds<string, MyError>(deps);
+ * const { id, task } = deferreds.register();
+ *
+ * // Later, when response for id arrives:
+ * deferreds.resolve(id, ok("value"));
+ *
+ * const result = await run(task); // ok("value")
+ * ```
+ *
+ * @group Concurrency primitives
+ */
+export const createDeferreds = <T, E = never>(
+  deps: RandomBytesDep,
+): Deferreds<T, E> => {
+  const deferredMap = new Map<Id, Deferred<T, E>>();
+
+  return {
+    register: () => {
+      const id = createId<"Deferred">(deps);
+      const deferred = createDeferred<T, E>();
+      deferredMap.set(id, deferred);
+      return { id, task: deferred.task };
+    },
+
+    resolve: (id, result) => {
+      const deferred = deferredMap.get(id);
+      if (!deferred) return false;
+      deferredMap.delete(id);
+      return deferred.resolve(result);
+    },
+
+    resolveAll: (result) => {
+      for (const deferred of deferredMap.values()) {
+        deferred.resolve(result);
+      }
+      deferredMap.clear();
+    },
+
+    [Symbol.dispose]: () => {
+      for (const deferred of deferredMap.values()) {
+        deferred[Symbol.dispose]();
+      }
+      deferredMap.clear();
     },
   };
 };
