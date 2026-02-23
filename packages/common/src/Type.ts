@@ -2059,26 +2059,28 @@ export type NonPositiveNumber = typeof NonPositiveNumber.Type;
 export const NegativeNumber = /*#__PURE__*/ negative(NonPositiveNumber);
 export type NegativeNumber = typeof NegativeNumber.Type;
 
-// Next.js produces runtime `int is not defined` without the alias.
-const createInt: BrandFactory<"Int", number, IntError> = (parent) =>
-  brand("Int", parent, (value) =>
-    globalThis.Number.isSafeInteger(value)
-      ? ok(value)
-      : err<IntError>({ type: "Int", value }),
-  );
-
 /**
  * Integer within the safe range of JavaScript numbers.
  *
  * ### Example
  *
  * ```ts
- * const Int = int(Number);
+ * const Int = safeInt(Number);
  * ```
+ *
+ * Note: This helper was previously named `int`. A Next.js regression produced
+ * runtime `int is not defined`, so we keep the implementation under the
+ * `safeInt` alias.
  *
  * @group Number
  */
-export const int = createInt;
+
+const safeInt: BrandFactory<"Int", number, IntError> = (parent) =>
+  brand("Int", parent, (value) =>
+    globalThis.Number.isSafeInteger(value)
+      ? ok(value)
+      : err<IntError>({ type: "Int", value }),
+  );
 
 export interface IntError extends TypeError<"Int"> {}
 
@@ -2091,7 +2093,7 @@ export const formatIntError = /*#__PURE__*/ createTypeErrorFormatter<IntError>(
  *
  * @group Number
  */
-export const Int = /*#__PURE__*/ createInt(Number);
+export const Int = /*#__PURE__*/ safeInt(Number);
 export type Int = typeof Int.Type;
 
 /**
