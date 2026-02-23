@@ -589,8 +589,6 @@ export const createEvolu =
       Uint8Array<ArrayBuffer>
     > | null;
 
-    let postMessage: (input: EvoluInput) => void;
-
     /**
      * Mutations and refreshes invalidate query snapshots. Keep loading promises
      * only for actively subscribed queries and release unsubscribed ones.
@@ -616,6 +614,7 @@ export const createEvolu =
         readonly change: MutationChange;
         readonly onComplete: (() => void) | undefined;
       }>((items) => {
+        console.debug("mutateBatch", { changeCount: items.length });
         releaseUnsubscribedLoadingPromises();
 
         postMessage({
@@ -638,10 +637,14 @@ export const createEvolu =
           isNonEmptySet(dedupedQueries),
           "Expected non-empty query batch.",
         );
+        console.debug("queryBatch", { queryCount: dedupedQueries.size });
         postMessage({ type: "Query", queries: dedupedQueries });
       }),
     );
 
+    let postMessage: (input: EvoluInput) => void;
+
+    // Scope worker/channel wiring and keep only postMessage outside.
     {
       const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
       const dbWorkerChannel = stack.use(
@@ -681,6 +684,10 @@ export const createEvolu =
       evoluChannel.port1.onMessage = (message) => {
         switch (message.type) {
           case "OnPatchesByQuery": {
+            console.debug("onPatchesByQuery", {
+              queryCount: message.patchesByQuery.size,
+              onCompleteCount: message.onCompleteIds.length,
+            });
             const state = rowsByQueryMapStore.get();
             const nextRowsByQueryMap = new Map(state);
 
@@ -875,6 +882,7 @@ export const createEvolu =
       useOwner: todo,
 
       [Symbol.asyncDispose]: () => {
+        console.info("disposeEvolu");
         exportDatabaseDeferred?.[Symbol.dispose]();
         postMessage({ type: "Dispose" });
         return moved.disposeAsync();
