@@ -36,6 +36,7 @@ export const Utils = { ok, trySync };
 - **Empty constants** — `emptyX`: `emptyArray`, `emptySet`, `emptyRecord`
 - **Predicates** — `isX`: `isNonEmptyArray`, `isBetween`, `isBetweenBigInt`
 - **Accessors** — position + `InX`: `firstInArray`, `lastInArray`, `firstInSet`
+- **Indexed collections** — value + `By` + key (`vByK`): `rowsByQuery`, `messagesByOwnerId`, `usersById`
 - **Dependencies** — `XDep`: `TimeDep`, `RandomDep`, `ConsoleDep`
 
 Consistent prefixes enable discoverability—type `map` and autocomplete shows `mapArray`, `mapSet`, `mapObject`, `mapSchedule` without importing first.

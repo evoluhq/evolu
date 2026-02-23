@@ -53,6 +53,7 @@ Key directories:
 
 - **Use named imports only** - avoid default exports and namespace imports
 - **Use unique exported members** - avoid namespaces, use descriptive names to prevent conflicts
+- **Name indexed collections as `vByK`** - use value + `By` + key for maps and records (for example `rowsByQuery`, `messagesByOwnerId`, `usersById`)
 - **Organize code top-down** - public interfaces first, then implementation, then implementation details. TypeScript types can reference types defined later in the file (no forward declaration needed), so always place the higher-level type first. For runtime code (functions, constants), if a helper must be defined before the public export that uses it (due to JavaScript hoisting), place it immediately before that export.
 - **Reference globals explicitly with `globalThis`** - when a name clashes with global APIs (e.g., `SharedWorker`, `Worker`), use `globalThis.SharedWorker` instead of aliasing imports
 
