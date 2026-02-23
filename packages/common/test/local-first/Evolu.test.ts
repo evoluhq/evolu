@@ -15,6 +15,7 @@ import {
   createEvoluDeps,
   testAppName,
 } from "../../src/local-first/Evolu.js";
+import { testQuery, testQuery2 } from "../../src/local-first/Query.js";
 import type {
   EvoluInput,
   EvoluOutput,
@@ -475,8 +476,8 @@ describe("dispose evolu", () => {
     await evolu[Symbol.asyncDispose]();
 
     run.deps.postEvoluOutput({
-      type: "OnQueryPatches",
-      queryPatches: [],
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map(),
       onCompleteIds: [onCompleteId],
     });
 
@@ -504,8 +505,8 @@ describe("dispose evolu", () => {
     const [onCompleteId] = mutate.onCompleteIds;
 
     run.deps.postEvoluOutput({
-      type: "OnQueryPatches",
-      queryPatches: [],
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map(),
       onCompleteIds: [onCompleteId],
     });
 
@@ -542,8 +543,8 @@ describe("dispose evolu", () => {
     const [onCompleteId] = mutate.onCompleteIds;
 
     run.deps.postEvoluOutput({
-      type: "OnQueryPatches",
-      queryPatches: [],
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map(),
       onCompleteIds: [onCompleteId],
     });
 
@@ -565,8 +566,8 @@ describe("dispose evolu", () => {
     getOrThrow(await run(testCreateEvolu));
 
     run.deps.postEvoluOutput({
-      type: "OnQueryPatches",
-      queryPatches: [],
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map(),
       onCompleteIds: [],
     });
 
@@ -591,6 +592,235 @@ describe("worker outputs", () => {
     expect(() => {
       run.deps.postEvoluOutput({ type: "Unknown" } as never);
     }).toThrow();
+  });
+});
+
+describe("query behavior", () => {
+  test("loadQuery reuses pending promise and sends one Query message", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    const firstLoad = evolu.loadQuery(testQuery);
+    const secondLoad = evolu.loadQuery(testQuery);
+
+    expect(firstLoad).toBe(secondLoad);
+
+    await Promise.resolve();
+
+    expect(run.deps.evoluInputs).toEqual([
+      { type: "Query", queries: new Set([testQuery]) },
+    ]);
+  });
+
+  test("loadQueries delegates to loadQuery for each query", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+    const loads = evolu.loadQueries([testQuery, testQuery2]);
+
+    expect(loads).toHaveLength(2);
+
+    await Promise.resolve();
+
+    expect(run.deps.evoluInputs).toEqual([
+      { type: "Query", queries: new Set([testQuery, testQuery2]) },
+    ]);
+  });
+
+  test("getQueryRows returns empty array for unknown query", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    expect(evolu.getQueryRows(testQuery)).toEqual([]);
+  });
+
+  test("subscribeQuery does not trigger Query by itself", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
+
+    await Promise.resolve();
+
+    expect(run.deps.evoluInputs).toEqual([]);
+
+    unsubscribe();
+  });
+
+  test("RefreshQueries re-queries pending unsubscribed loadQuery", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    void evolu.loadQuery(testQuery);
+    await Promise.resolve();
+
+    run.deps.evoluInputs.length = 0;
+    run.deps.postEvoluOutput({ type: "RefreshQueries" });
+
+    expect(run.deps.evoluInputs).toEqual([
+      { type: "Query", queries: new Set([testQuery]) },
+    ]);
+  });
+
+  test("RefreshQueries re-queries subscribed query without loadQuery", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
+
+    run.deps.postEvoluOutput({ type: "RefreshQueries" });
+
+    expect(run.deps.evoluInputs).toEqual([
+      { type: "Query", queries: new Set([testQuery]) },
+    ]);
+
+    unsubscribe();
+  });
+
+  test("mutation releases pending unsubscribed loading promise on resolve", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    const loadFiber = evolu.loadQuery(testQuery);
+    await Promise.resolve();
+
+    run.deps.evoluInputs.length = 0;
+
+    evolu.insert("todo", { title: NonEmptyString100.orThrow("M") });
+    await Promise.resolve();
+
+    run.deps.postEvoluOutput({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [testQuery, [{ op: "replaceAll", value: [{ title: "R" }] }]],
+      ]),
+      onCompleteIds: [],
+    });
+
+    await expect(loadFiber).resolves.toEqual([{ title: "R" }]);
+
+    run.deps.evoluInputs.length = 0;
+    run.deps.postEvoluOutput({ type: "RefreshQueries" });
+
+    expect(run.deps.evoluInputs).toEqual([]);
+  });
+
+  test("RefreshQueries drops fulfilled unsubscribed loading promises", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    void evolu.loadQuery(testQuery);
+    await Promise.resolve();
+
+    run.deps.postEvoluOutput({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [testQuery, [{ op: "replaceAll", value: [{ title: "A" }] }]],
+      ]),
+      onCompleteIds: [],
+    });
+
+    run.deps.evoluInputs.length = 0;
+    run.deps.postEvoluOutput({ type: "RefreshQueries" });
+
+    expect(run.deps.evoluInputs).toEqual([]);
+  });
+
+  test("RefreshQueries keeps loading promise for subscribed query", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
+    void evolu.loadQuery(testQuery);
+    await Promise.resolve();
+
+    run.deps.evoluInputs.length = 0;
+    run.deps.postEvoluOutput({ type: "RefreshQueries" });
+
+    expect(run.deps.evoluInputs).toEqual([
+      { type: "Query", queries: new Set([testQuery]) },
+    ]);
+
+    unsubscribe();
+  });
+
+  test("OnPatchesByQuery replaces fulfilled loading promise for subscribed query", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
+
+    const firstLoad = evolu.loadQuery(testQuery);
+    await Promise.resolve();
+
+    run.deps.postEvoluOutput({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [testQuery, [{ op: "replaceAll", value: [{ title: "A" }] }]],
+      ]),
+      onCompleteIds: [],
+    });
+
+    await expect(firstLoad).resolves.toEqual([{ title: "A" }]);
+
+    const fulfilledLoad = evolu.loadQuery(testQuery);
+
+    run.deps.postEvoluOutput({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [testQuery, [{ op: "replaceAll", value: [{ title: "B" }] }]],
+      ]),
+      onCompleteIds: [],
+    });
+
+    const replacedLoad = evolu.loadQuery(testQuery);
+
+    expect(replacedLoad).not.toBe(fulfilledLoad);
+    await expect(replacedLoad).resolves.toEqual([{ title: "B" }]);
+
+    unsubscribe();
+  });
+
+  test("OnPatchesByQuery ignores queries without loading promises", async () => {
+    await using run = testCreateEvoluRun();
+    getOrThrow(await run(testCreateEvolu));
+
+    run.deps.postEvoluOutput({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [testQuery, [{ op: "replaceAll", value: [{ title: "X" }] }]],
+      ]),
+      onCompleteIds: [],
+    });
+
+    expect(run.deps.evoluInputs).toEqual([]);
+  });
+
+  test("subscribeQuery notifies only when query rows reference changes", async () => {
+    await using run = testCreateEvoluRun();
+    const evolu = getOrThrow(await run(testCreateEvolu));
+
+    let calls = 0;
+    const unsubscribe = evolu.subscribeQuery(testQuery)(() => {
+      calls += 1;
+    });
+
+    run.deps.postEvoluOutput({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [testQuery, [{ op: "replaceAll", value: [{ title: "A" }] }]],
+      ]),
+      onCompleteIds: [],
+    });
+
+    run.deps.postEvoluOutput({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map(),
+      onCompleteIds: [],
+    });
+
+    expect(calls).toBe(1);
+
+    unsubscribe();
   });
 });
 
@@ -836,6 +1066,15 @@ describe("mutations", () => {
 });
 
 describe("exportDatabase", () => {
+  test("throws when OnExport arrives without pending export", async () => {
+    await using run = testCreateEvoluRun();
+    getOrThrow(await run(testCreateEvolu));
+
+    expect(() => {
+      run.deps.postEvoluOutput({ type: "OnExport", file: new Uint8Array() });
+    }).toThrow("OnExport received without pending export.");
+  });
+
   test("exports database for one caller", async () => {
     await using run = testCreateEvoluRun();
     const evolu = getOrThrow(await run(testCreateEvolu));

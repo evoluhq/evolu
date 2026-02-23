@@ -1,17 +1,19 @@
 import { expect, test } from "vitest";
+import type { Row } from "../../src/local-first/Query.js";
 import {
-  applyQueryPatches,
   applyPatches,
   deserializeQuery,
+  kyselyJsonIdentifier,
   makePatches,
   serializeQuery,
+  testQuery,
+  testQuery2,
 } from "../../src/local-first/Query.js";
-import type { Query, Row } from "../../src/local-first/Query.js";
-import type { SafeSql, SqliteQuery } from "../../src/Sqlite.js";
+import { sql, type SafeSql, type SqliteQuery } from "../../src/Sqlite.js";
 
 test("Query", () => {
-  const query1 = "a" as Query<{ a: 1 }>;
-  const query2 = "b" as Query<{ b: 1 }>;
+  const query1 = serializeQuery<{ a: 1 }>(sql`select "a" as "kind";`);
+  const query2 = serializeQuery<{ b: 1 }>(sql`select "b" as "kind";`);
 
   // Ensure query1 and query2 are treated as different types
   // @ts-expect-error - query1 should not be assignable to query2
@@ -29,6 +31,12 @@ test("Query", () => {
   const validQuery2: typeof query2 = query2;
 });
 
+test("testQuery placeholders", () => {
+  expect(deserializeQuery(testQuery).sql).toBe('select "test" as "query";');
+  expect(deserializeQuery(testQuery2).sql).toBe('select "test-2" as "query";');
+  expect(testQuery).not.toBe(testQuery2);
+});
+
 test("serializeQuery and deserializeQuery", () => {
   const binaryData = new Uint8Array([1, 3, 2]);
   const sqlQuery: SqliteQuery = {
@@ -37,6 +45,32 @@ test("serializeQuery and deserializeQuery", () => {
   };
 
   expect(deserializeQuery(serializeQuery(sqlQuery))).toStrictEqual(sqlQuery);
+});
+
+test("serializeQuery sorts options and deserializeQuery restores them", () => {
+  const sqlQuery: SqliteQuery = {
+    sql: "select 1" as SafeSql,
+    parameters: [],
+    options: {
+      prepare: true,
+      logQueryExecutionTime: true,
+      logExplainQueryPlan: true,
+    },
+  };
+
+  const serialized = serializeQuery(sqlQuery);
+  const [, , optionsArr] = JSON.parse(serialized) as [
+    SafeSql,
+    Array<unknown>,
+    Array<readonly [string, unknown]>,
+  ];
+
+  expect(optionsArr.map(([key]) => key)).toEqual([
+    "logExplainQueryPlan",
+    "logQueryExecutionTime",
+    "prepare",
+  ]);
+  expect(deserializeQuery(serialized)).toStrictEqual(sqlQuery);
 });
 
 test("makePatches", () => {
@@ -67,6 +101,14 @@ test("makePatches", () => {
   ).toBe(0);
 });
 
+test("makePatches handles undefined previous rows", () => {
+  const rows: ReadonlyArray<Row> = [{ a: 1 }];
+  const patches = makePatches(undefined, rows);
+
+  expect(patches).toEqual([{ op: "replaceAll", value: rows }]);
+  if (patches[0].op === "replaceAll") expect(patches[0].value).toBe(rows);
+});
+
 test("applyPatches", () => {
   const current: ReadonlyArray<Row> = [];
   expect(applyPatches([], current)).toBe(current);
@@ -88,23 +130,33 @@ test("applyPatches", () => {
   expect(replaceAtResult[1]).toBe(replaceUntouched);
 });
 
-test("applyQueryPatches composes patches for the same query", () => {
-  const query = "q:test" as Query;
-  const currentRowsByQuery = new Map<Query, ReadonlyArray<Row>>([
-    [query, [{ a: 1 }, { b: 2 }]],
-  ]);
+test("applyPatches parses prefixed JSON in strings, arrays, and objects", () => {
+  const encodedObject = `${kyselyJsonIdentifier}{"x":1}`;
+  const encodedArray = `${kyselyJsonIdentifier}[1,2]`;
 
-  const nextRowsByQuery = applyQueryPatches(currentRowsByQuery, [
+  const result = applyPatches(
+    [
+      {
+        op: "replaceAll",
+        value: [
+          {
+            plain: "no-json",
+            objectValue: encodedObject,
+            arrayValue: [{ inside: encodedArray }],
+            nested: { inside: encodedObject },
+          },
+        ],
+      },
+    ],
+    [],
+  );
+
+  expect(result).toEqual([
     {
-      query,
-      patches: [{ op: "replaceAt", index: 0, value: { a: 10 } }],
-    },
-    {
-      query,
-      patches: [{ op: "replaceAt", index: 1, value: { b: 20 } }],
+      plain: "no-json",
+      objectValue: { x: 1 },
+      arrayValue: [{ inside: [1, 2] }],
+      nested: { inside: { x: 1 } },
     },
   ]);
-
-  expect(nextRowsByQuery.get(query)).toEqual([{ a: 10 }, { b: 20 }]);
-  expect(currentRowsByQuery.get(query)).toEqual([{ a: 1 }, { b: 2 }]);
 });

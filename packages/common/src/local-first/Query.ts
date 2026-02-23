@@ -4,14 +4,13 @@
  * @module
  */
 
-import { emptyArray } from "../Array.js";
 import type { Brand } from "../Brand.js";
 import { bytesToHex, hexToBytes } from "../Buffer.js";
 import { createRandomBytes } from "../Crypto.js";
 import type { ReadonlyRecord } from "../Object.js";
 import { createRecord, isPlainObject, objectToEntries } from "../Object.js";
 import type { SafeSql, SqliteQuery, SqliteQueryOptions } from "../Sqlite.js";
-import { eqSqliteValue, SqliteValue } from "../Sqlite.js";
+import { eqSqliteValue, sql, SqliteValue } from "../Sqlite.js";
 import { createId, String } from "../Type.js";
 import type { Simplify } from "../Types.js";
 
@@ -62,6 +61,19 @@ export const serializeQuery = <R extends Row>(query: SqliteQuery): Query<R> => {
   return JSON.stringify([query.sql, params, options]) as Query<R>;
 };
 
+/** A default {@link Query} placeholder for tests. */
+export const testQuery = /*#__PURE__*/ serializeQuery(sql`
+  select "test" as "query";
+`);
+
+/**
+ * A secondary {@link Query} placeholder for tests that need two distinct
+ * queries.
+ */
+export const testQuery2 = /*#__PURE__*/ serializeQuery(sql`
+  select "test-2" as "query";
+`);
+
 export const deserializeQuery = <R extends Row>(
   query: Query<R>,
 ): SqliteQuery => {
@@ -110,12 +122,7 @@ export type QueriesToQueryRowsPromises<Q extends Queries> = {
   [P in keyof Q]: Q[P] extends Query<infer R> ? Promise<QueryRows<R>> : never;
 };
 
-export type RowsByQuery = ReadonlyMap<Query, ReadonlyArray<Row>>;
-
-export interface QueryPatches {
-  readonly query: Query;
-  readonly patches: ReadonlyArray<Patch>;
-}
+export type RowsByQueryMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
 
 export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
@@ -190,22 +197,6 @@ export const applyPatches = (
       }
     }
   }, current);
-
-export const applyQueryPatches = (
-  currentRowsByQuery: RowsByQuery,
-  queryPatches: ReadonlyArray<QueryPatches>,
-): RowsByQuery => {
-  const nextRowsByQuery = new Map(currentRowsByQuery);
-
-  for (const { query, patches } of queryPatches) {
-    nextRowsByQuery.set(
-      query,
-      applyPatches(patches, nextRowsByQuery.get(query) ?? emptyArray),
-    );
-  }
-
-  return nextRowsByQuery;
-};
 
 /**
  * A unique identifier prepended to JSON-encoded strings. This allows safe

@@ -1,7 +1,7 @@
 import { assert, describe, expect, test } from "vitest";
 import type { ConsoleEntry } from "../../src/Console.js";
 import { testCreateConsole } from "../../src/Console.js";
-import type { Query } from "../../src/local-first/Query.js";
+import { testQuery } from "../../src/local-first/Query.js";
 import type { MutationChange } from "../../src/local-first/Schema.js";
 import type {
   DbWorkerInput,
@@ -438,7 +438,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const query = "q:test" as Query;
+    const query = testQuery;
     const mutateOnCompleteId = "mutate-complete" as Id;
 
     evoluChannel.port2.postMessage({
@@ -486,17 +486,17 @@ describe("initSharedWorker", () => {
 
     const mutateOutput = outputs[0];
     const queryOutput = outputs[1];
-    assert(mutateOutput.type === "OnQueryPatches");
-    assert(queryOutput.type === "OnQueryPatches");
+    assert(mutateOutput.type === "OnPatchesByQuery");
+    assert(queryOutput.type === "OnPatchesByQuery");
 
     expect(mutateOutput.onCompleteIds).toEqual([mutateOnCompleteId]);
     expect(queryOutput.onCompleteIds).toEqual([]);
 
-    expect(mutateOutput.queryPatches[0]?.patches[0]).toEqual({
+    expect(mutateOutput.patchesByQuery.get(query)?.[0]).toEqual({
       op: "replaceAll",
       value: [{ value: 1 }],
     });
-    expect(queryOutput.queryPatches[0]?.patches[0]).toEqual({
+    expect(queryOutput.patchesByQuery.get(query)?.[0]).toEqual({
       op: "replaceAll",
       value: [{ value: 2 }],
     });
@@ -608,7 +608,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const query = "q:refresh-other" as Query;
+    const query = testQuery;
     evoluChannel1.port2.postMessage({
       type: "Mutate",
       changes: [{} as MutationChange],
@@ -635,7 +635,7 @@ describe("initSharedWorker", () => {
 
     const output1 = outputs1[0];
     const output2 = outputs2[0];
-    assert(output1.type === "OnQueryPatches");
+    assert(output1.type === "OnPatchesByQuery");
     assert(output2.type === "RefreshQueries");
   });
 
@@ -702,7 +702,7 @@ describe("initSharedWorker", () => {
       dbInputs.push(input);
     };
 
-    const query = "q:queue" as Query;
+    const query = testQuery;
 
     dbWorkerChannel.port2.postMessage({
       type: "LeaderAcquired",
@@ -784,7 +784,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const query = "q:empty" as Query;
+    const query = testQuery;
     evoluChannel.port2.postMessage({
       type: "Query",
       queries: createSet([query]),
@@ -856,7 +856,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const query = "q:multi" as Query;
+    const query = testQuery;
     evoluChannel2.port2.postMessage({
       type: "Query",
       queries: createSet([query]),
@@ -878,7 +878,7 @@ describe("initSharedWorker", () => {
     });
 
     const output2 = outputs2[0];
-    assert(output2.type === "OnQueryPatches");
+    assert(output2.type === "OnPatchesByQuery");
   });
 
   test("ignores query response for disposed port while another port keeps shared evolu alive", async () => {
@@ -925,7 +925,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const query = "q:disposed-query" as Query;
+    const query = testQuery;
     evoluChannel1.port2.postMessage({
       type: "Query",
       queries: createSet([query]),
@@ -1125,7 +1125,7 @@ describe("initSharedWorker", () => {
 
     evoluChannel.port2.postMessage({
       type: "Query",
-      queries: createSet(["q:unknown" as Query]),
+      queries: createSet([testQuery]),
     });
 
     time.advance("10s");
@@ -1169,7 +1169,7 @@ describe("initSharedWorker", () => {
 
     evoluChannel.port2.postMessage({
       type: "Query",
-      queries: createSet(["q:dispose-active" as Query]),
+      queries: createSet([testQuery]),
     });
     // Test passes if dispose (via await using) doesn't throw.
   });
@@ -1199,7 +1199,7 @@ describe("initSharedWorker", () => {
 
     evoluChannel.port2.postMessage({
       type: "Query",
-      queries: createSet(["q:no-leader" as Query]),
+      queries: createSet([testQuery]),
     });
 
     time.advance("10s");
@@ -1244,7 +1244,7 @@ describe("initSharedWorker", () => {
       name: testName,
     });
 
-    const query = "q:waiting" as Query;
+    const query = testQuery;
     evoluChannel.port2.postMessage({
       type: "Query",
       queries: createSet([query]),

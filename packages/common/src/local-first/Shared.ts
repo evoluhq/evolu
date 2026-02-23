@@ -33,9 +33,9 @@ import type { EvoluError } from "./Error.js";
 import type { OwnerId } from "./Owner.js";
 import {
   makePatches,
+  type Patch,
   type Query,
-  type QueryPatches,
-  type RowsByQuery,
+  type RowsByQueryMap,
 } from "./Query.js";
 import type { MutationChange } from "./Schema.js";
 import type { CrdtMessage } from "./Storage.js";
@@ -89,8 +89,8 @@ export type EvoluInput =
 
 export type EvoluOutput =
   | {
-      readonly type: "OnQueryPatches";
-      readonly queryPatches: ReadonlyArray<QueryPatches>;
+      readonly type: "OnPatchesByQuery";
+      readonly patchesByQuery: ReadonlyMap<Query, ReadonlyArray<Patch>>;
       readonly onCompleteIds: ReadonlyArray<Id>;
     }
   | {
@@ -212,11 +212,11 @@ export type QueuedResponse =
         OwnerId,
         NonEmptyReadonlyArray<CrdtMessage>
       >;
-      readonly rowsByQuery: RowsByQuery;
+      readonly rowsByQuery: RowsByQueryMap;
     }
   | {
       readonly type: "Query";
-      readonly rowsByQuery: RowsByQuery;
+      readonly rowsByQuery: RowsByQueryMap;
     }
   | {
       readonly type: "Export";
@@ -246,7 +246,7 @@ const createSharedEvolu = ({
 
   const evoluPorts = new Map<Id, MessagePort<EvoluOutput, EvoluInput>>();
   const dbWorkerPorts = new Set<MessagePort<DbWorkerInput, DbWorkerOutput>>();
-  const rowsByQueryByEvoluPortId = new Map<Id, RowsByQuery>();
+  const rowsByQueryByEvoluPortId = new Map<Id, RowsByQueryMap>();
   const queue: Array<DbWorkerQueueItem> = [];
   const callbacks = createCallbacks<QueuedResult>(run.deps);
 
@@ -279,8 +279,8 @@ const createSharedEvolu = ({
         case "Query": {
           if (evoluPort)
             evoluPort.postMessage({
-              type: "OnQueryPatches",
-              queryPatches: createQueryPatches(
+              type: "OnPatchesByQuery",
+              patchesByQuery: createPatchesByQuery(
                 evoluPortId,
                 response.rowsByQuery,
               ),
@@ -327,24 +327,24 @@ const createSharedEvolu = ({
     );
   };
 
-  const createQueryPatches = (
+  const createPatchesByQuery = (
     evoluPortId: Id,
-    rowsByQuery: RowsByQuery,
-  ): ReadonlyArray<QueryPatches> => {
+    rowsByQuery: RowsByQueryMap,
+  ): ReadonlyMap<Query, ReadonlyArray<Patch>> => {
     const previousRowsByQuery = rowsByQueryByEvoluPortId.get(evoluPortId);
     const nextRowsByQuery = new Map(previousRowsByQuery ?? emptyArray);
-    const queryPatches: Array<QueryPatches> = [];
+    const patchesByQuery = new Map<Query, ReadonlyArray<Patch>>();
 
     for (const [query, rows] of rowsByQuery) {
       nextRowsByQuery.set(query, rows);
-      queryPatches.push({
+      patchesByQuery.set(
         query,
-        patches: makePatches(previousRowsByQuery?.get(query), rows),
-      });
+        makePatches(previousRowsByQuery?.get(query), rows),
+      );
     }
 
     rowsByQueryByEvoluPortId.set(evoluPortId, nextRowsByQuery);
-    return queryPatches;
+    return patchesByQuery;
   };
 
   return {
@@ -429,22 +429,6 @@ const createSharedEvolu = ({
   };
 };
 
-// export type DbWorkerInput =
-//   | (Typed<"init"> & {
-//       readonly config: DbConfig;
-//       readonly dbSchema: DbSchema;
-//     })
-//   | Typed<"getAppOwner">
-//   | (Typed<"mutate"> & {
-//       readonly tabId: Id;
-//       readonly changes: NonEmptyReadonlyArray<MutationChange>;
-//       readonly onCompleteIds: ReadonlyArray<CallbackId>;
-//       readonly subscribedQueries: ReadonlyArray<Query>;
-//     })
-//   | (Typed<"query"> & {
-//       readonly tabId: Id;
-//       readonly queries: NonEmptyReadonlyArray<Query>;
-//     })
 //   | (Typed<"reset"> & {
 //       readonly onCompleteId: CallbackId;
 //       readonly reload: boolean;
@@ -463,32 +447,7 @@ const createSharedEvolu = ({
 //       readonly use: boolean;
 //       readonly owner: SyncOwner;
 //     });
-
-// export type DbWorkerOutput =
-//   | (Typed<"onError"> & {
-//       readonly error:
-//         | ProtocolError
-//         | SqliteError
-//         | DecryptWithXChaCha20Poly1305Error
-//         | TimestampError
-//         | UnknownError;
-//     })
-//   | (Typed<"onGetAppOwner"> & {
-//       readonly appOwner: AppOwner;
-//     })
-//   | (Typed<"onQueryPatches"> & {
-//       readonly tabId: Id;
-//       readonly queryPatches: ReadonlyArray<QueryPatches>;
-//       readonly onCompleteIds: ReadonlyArray<CallbackId>;
-//     })
-//   | (Typed<"refreshQueries"> & {
-//       readonly tabId?: Id;
-//     })
 //   | (Typed<"onReset"> & {
 //       readonly onCompleteId: CallbackId;
 //       readonly reload: boolean;
 //     })
-//   | (Typed<"onExport"> & {
-//       readonly onCompleteId: CallbackId;
-//       readonly file: Uint8Array;
-//     });
