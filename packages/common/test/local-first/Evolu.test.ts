@@ -23,7 +23,7 @@ import type {
   SharedWorker,
   SharedWorkerInput,
 } from "../../src/local-first/Shared.js";
-import { err, getOrThrow, ok } from "../../src/Result.js";
+import { err, ok } from "../../src/Result.js";
 import { SqliteBoolean } from "../../src/Sqlite.js";
 import { testCreateRun } from "../../src/Test.js";
 import {
@@ -334,7 +334,7 @@ describe("createEvolu", () => {
       sharedWorker: testCreateSharedWorker<SharedWorkerInput>(),
     });
 
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     expect(dbWorkerMessages).toHaveLength(1);
     expect(dbWorkerMessages[0]).toEqual(
@@ -348,7 +348,7 @@ describe("createEvolu", () => {
   test("resolves name from appName and appOwner hash", async () => {
     await using run = testCreateEvoluRun();
 
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
     const expectedSuffix = createIdFromString(testAppOwner.id);
     expect(evolu.name).toBe(`AppName-${expectedSuffix}`);
   });
@@ -356,7 +356,7 @@ describe("createEvolu", () => {
   test("appOwner from config is exposed as evolu.appOwner", async () => {
     await using run = testCreateEvoluRun();
 
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     expect(evolu.appOwner).toBe(testAppOwner);
   });
@@ -364,8 +364,8 @@ describe("createEvolu", () => {
   test("appOwner is created when omitted from config", async () => {
     await using run = testCreateEvoluRun();
 
-    const evolu = getOrThrow(
-      await run(createEvolu(Schema, { appName: testAppName })),
+    const evolu = await run.orThrow(
+      createEvolu(Schema, { appName: testAppName }),
     );
 
     expect(evolu.appOwner).toMatchInlineSnapshot(`
@@ -384,7 +384,7 @@ describe("dispose evolu", () => {
   test("posts Dispose message", async () => {
     await using run = testCreateEvoluRun();
 
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
     await evolu[Symbol.asyncDispose]();
 
     expect(run.deps.evoluInputs).toEqual([{ type: "Dispose" }]);
@@ -392,7 +392,7 @@ describe("dispose evolu", () => {
 
   test("fails pending export and posts Dispose", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const exportFiber = run(evolu.exportDatabase);
 
@@ -411,7 +411,7 @@ describe("dispose evolu", () => {
 
   test("cancels pending mutation microtask batch", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     evolu.insert("todo", {
       title: NonEmptyString100.orThrow("Queued then disposed"),
@@ -441,7 +441,7 @@ describe("dispose evolu", () => {
       },
     });
 
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     expect(channels).toHaveLength(2);
     expect(channels[0].isDisposed()).toBe(false);
@@ -455,7 +455,7 @@ describe("dispose evolu", () => {
 
   test("does not execute mutate onComplete callback after dispose", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     let called = 0;
     evolu.insert(
@@ -486,7 +486,7 @@ describe("dispose evolu", () => {
 
   test("executes mutate onComplete callback when query patches are received", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     let called = 0;
     evolu.insert(
@@ -524,7 +524,7 @@ describe("dispose evolu", () => {
       },
     });
 
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     let called = 0;
     evolu.insert(
@@ -563,7 +563,7 @@ describe("dispose evolu", () => {
       },
     });
 
-    getOrThrow(await run(testCreateEvolu));
+    await run.orThrow(testCreateEvolu);
 
     run.deps.postEvoluOutput({
       type: "OnPatchesByQuery",
@@ -578,7 +578,7 @@ describe("dispose evolu", () => {
 describe("worker outputs", () => {
   test("ignores RefreshQueries when there are no subscribed queries", async () => {
     await using run = testCreateEvoluRun();
-    getOrThrow(await run(testCreateEvolu));
+    await run.orThrow(testCreateEvolu);
 
     run.deps.postEvoluOutput({ type: "RefreshQueries" });
 
@@ -587,7 +587,7 @@ describe("worker outputs", () => {
 
   test("throws for unknown evolu output type", async () => {
     await using run = testCreateEvoluRun();
-    getOrThrow(await run(testCreateEvolu));
+    await run.orThrow(testCreateEvolu);
 
     expect(() => {
       run.deps.postEvoluOutput({ type: "Unknown" } as never);
@@ -598,7 +598,7 @@ describe("worker outputs", () => {
 describe("query behavior", () => {
   test("loadQuery reuses pending promise and sends one Query message", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const firstLoad = evolu.loadQuery(testQuery);
     const secondLoad = evolu.loadQuery(testQuery);
@@ -614,7 +614,7 @@ describe("query behavior", () => {
 
   test("loadQueries delegates to loadQuery for each query", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
     const loads = evolu.loadQueries([testQuery, testQuery2]);
 
     expect(loads).toHaveLength(2);
@@ -628,14 +628,14 @@ describe("query behavior", () => {
 
   test("getQueryRows returns empty array for unknown query", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     expect(evolu.getQueryRows(testQuery)).toEqual([]);
   });
 
   test("subscribeQuery does not trigger Query by itself", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
 
@@ -648,7 +648,7 @@ describe("query behavior", () => {
 
   test("RefreshQueries re-queries pending unsubscribed loadQuery", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     void evolu.loadQuery(testQuery);
     await Promise.resolve();
@@ -663,7 +663,7 @@ describe("query behavior", () => {
 
   test("RefreshQueries re-queries subscribed query without loadQuery", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
 
@@ -678,7 +678,7 @@ describe("query behavior", () => {
 
   test("mutation releases pending unsubscribed loading promise on resolve", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const loadFiber = evolu.loadQuery(testQuery);
     await Promise.resolve();
@@ -706,7 +706,7 @@ describe("query behavior", () => {
 
   test("RefreshQueries drops fulfilled unsubscribed loading promises", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     void evolu.loadQuery(testQuery);
     await Promise.resolve();
@@ -727,7 +727,7 @@ describe("query behavior", () => {
 
   test("RefreshQueries keeps loading promise for subscribed query", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
     void evolu.loadQuery(testQuery);
@@ -745,7 +745,7 @@ describe("query behavior", () => {
 
   test("OnPatchesByQuery replaces fulfilled loading promise for subscribed query", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
 
@@ -782,7 +782,7 @@ describe("query behavior", () => {
 
   test("OnPatchesByQuery ignores queries without loading promises", async () => {
     await using run = testCreateEvoluRun();
-    getOrThrow(await run(testCreateEvolu));
+    await run.orThrow(testCreateEvolu);
 
     run.deps.postEvoluOutput({
       type: "OnPatchesByQuery",
@@ -797,7 +797,7 @@ describe("query behavior", () => {
 
   test("subscribeQuery notifies only when query rows reference changes", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     let calls = 0;
     const unsubscribe = evolu.subscribeQuery(testQuery)(() => {
@@ -827,7 +827,7 @@ describe("query behavior", () => {
 describe("mutations", () => {
   test("insert posts mutate with generated id and stripped values", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     evolu.insert("todo", {
       title: NonEmptyString100.orThrow("Todo 1"),
@@ -871,7 +871,7 @@ describe("mutations", () => {
 
   test("update and upsert preserve passed id and set isInsert correctly", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const updateId = TodoId.orThrow(createIdFromString("todo-update"));
     const upsertId = TodoId.orThrow(createIdFromString("todo-upsert"));
@@ -938,7 +938,7 @@ describe("mutations", () => {
 
   test("coalesces insert, update, and upsert in one microtask", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const updateId = TodoId.orThrow(createIdFromString("todo-batch-update"));
     const upsertId = TodoId.orThrow(createIdFromString("todo-batch-upsert"));
@@ -1017,7 +1017,7 @@ describe("mutations", () => {
 
   test("includes ownerId and onComplete callback ids", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     evolu.insert(
       "todo",
@@ -1068,7 +1068,7 @@ describe("mutations", () => {
 describe("exportDatabase", () => {
   test("throws when OnExport arrives without pending export", async () => {
     await using run = testCreateEvoluRun();
-    getOrThrow(await run(testCreateEvolu));
+    await run.orThrow(testCreateEvolu);
 
     expect(() => {
       run.deps.postEvoluOutput({ type: "OnExport", file: new Uint8Array() });
@@ -1077,7 +1077,7 @@ describe("exportDatabase", () => {
 
   test("exports database for one caller", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const exportFiber = run(evolu.exportDatabase);
 
@@ -1091,7 +1091,7 @@ describe("exportDatabase", () => {
 
   test("aborts export for one caller", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const exportFiber = run(evolu.exportDatabase);
 
@@ -1105,7 +1105,7 @@ describe("exportDatabase", () => {
 
   test("shares pending export and resolves both callers", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const firstExport = run(evolu.exportDatabase);
     const secondExport = run(evolu.exportDatabase);
@@ -1132,7 +1132,7 @@ describe("exportDatabase", () => {
 
   test("aborting one of two pending callers does not abort the other", async () => {
     await using run = testCreateEvoluRun();
-    const evolu = getOrThrow(await run(testCreateEvolu));
+    const evolu = await run.orThrow(testCreateEvolu);
 
     const firstExport = run(evolu.exportDatabase);
     const secondExport = run(evolu.exportDatabase);

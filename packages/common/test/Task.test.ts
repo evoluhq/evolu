@@ -193,6 +193,32 @@ describe("Run", () => {
 
       expect(result).toEqual(ok("hello"));
     });
+
+    test("orThrow returns value for ok task", async () => {
+      await using run = createRun();
+
+      const task: Task<string> = () => ok("hello");
+
+      await expect(run.orThrow(task)).resolves.toBe("hello");
+    });
+
+    test("orThrow throws with error as cause for err task", async () => {
+      await using run = createRun();
+
+      const task: Task<never, MyError> = () => err({ type: "MyError" });
+
+      let thrown: unknown;
+      try {
+        await run.orThrow(task);
+      } catch (error: unknown) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      assert(thrown instanceof Error);
+      expect(thrown.message).toBe("getOrThrow");
+      expect(thrown.cause).toEqual({ type: "MyError" });
+    });
   });
 
   describe("error handling", () => {
