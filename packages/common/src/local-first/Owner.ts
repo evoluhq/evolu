@@ -180,14 +180,15 @@ const createOwner = (secret: OwnerSecret): Owner => ({
  *
  * ## Privacy Considerations
  *
- * AppOwner must never be shared with anyone, except for its {@link OwnerId},
- * which can be used for authorization with
- * {@link createOwnerWebSocketTransport}. It's safe because OwnerId is
- * pseudonymous (it can't be assigned to a specific person).
+ * AppOwner must never be shared with anyone.
+ *
+ * AppOwner's {@link OwnerId} is used for authorization with
+ * {@link createOwnerWebSocketTransport}. Share it only with trusted relay
+ * parties that must verify access, and do not share it with anyone else.
  *
  * For data sharing scenarios, use {@link SharedOwner} and
- * {@link SharedReadonlyOwner} instead, which are designed specifically for
- * collaborative access.
+ * {@link SharedReadonlyOwner} to make intent explicit and distinguish
+ * collaborative usage from {@link AppOwner} coordination.
  */
 export interface AppOwner extends Owner, Typed<"AppOwner"> {
   /**
@@ -197,7 +198,7 @@ export interface AppOwner extends Owner, Typed<"AppOwner"> {
    *
    * TODO: Wrap with `Redacted` in the next major version.
    */
-  readonly mnemonic?: Mnemonic | null;
+  readonly mnemonic: Mnemonic;
 }
 
 export interface AppOwnerDep {
