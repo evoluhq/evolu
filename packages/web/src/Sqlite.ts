@@ -44,10 +44,10 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
           "file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
         );
         db.exec(`
-      PRAGMA cipher = 'sqlcipher';
-      PRAGMA legacy = 4;
-      PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
-    `);
+          PRAGMA cipher = 'sqlcipher';
+          PRAGMA legacy = 4;
+          PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
+        `);
         break;
       }
       default: {
