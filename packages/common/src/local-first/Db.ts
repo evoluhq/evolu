@@ -159,7 +159,7 @@ export const initDbWorker =
 
       void run.daemon(async (run) => {
         await stack.use(leaderLock.acquire(name));
-        console.info("leaderAcquired");
+        console.info("leaderLock acquired");
         port.postMessage({ type: "LeaderAcquired", name });
         return run.addDeps({
           port,
@@ -190,6 +190,7 @@ const startDbWorker =
     const sqlite = getOk(
       await stack.use(createSqlite(name, { mode: "encrypted", encryptionKey })),
     );
+    console.info("SQLite created");
 
     const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...run.deps });
 
