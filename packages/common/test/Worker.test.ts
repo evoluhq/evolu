@@ -47,6 +47,14 @@ describe("createSharedWorker", () => {
 });
 
 describe("testCreateMessageChannel", () => {
+  test("native ports are object tokens for WeakMap compatibility", () => {
+    const channel = testCreateMessageChannel<string, number>();
+    expect(typeof channel.port1.native).toBe("object");
+    expect(channel.port1.native).not.toBeNull();
+    expect(typeof channel.port2.native).toBe("object");
+    expect(channel.port2.native).not.toBeNull();
+  });
+
   test("port1 postMessage delivers to port2 onMessage", () => {
     const channel = testCreateMessageChannel<string, number>();
     const received: Array<string> = [];
@@ -147,7 +155,7 @@ describe("testCreateMessagePort", () => {
   });
 
   test("throws for unknown native port", () => {
-    const unknownNative = Symbol("unknown") as unknown as NativeMessagePort;
+    const unknownNative = {} as NativeMessagePort;
     expect(() => testCreateMessagePort(unknownNative)).toThrow(
       "Unknown native port",
     );
