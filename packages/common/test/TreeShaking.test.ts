@@ -5,20 +5,23 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { describe, expect, test } from "vitest";
 import webpack, { type Stats } from "webpack";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const fixturesDir = resolve(
+const fixturesSourceDir = resolve(
   __dirname,
-  "../dist/test/__fixtures__/tree-shaking",
+  "../test/__fixtures__/tree-shaking",
 );
 const distDir = resolve(__dirname, "../dist/src/index.js");
 const tmpDir = resolve(__dirname, "../test/tmp/tree-shaking");
+const fixturesDir = join(tmpDir, "fixtures");
 
 interface BundleSize {
   readonly raw: number;
@@ -107,15 +110,35 @@ const bundleSize = async (fixturePath: string): Promise<BundleSize> => {
 };
 
 /**
- * Gets all fixture files from the tree-shaking fixtures directory (compiled
- * JS).
+ * Compiles TypeScript fixtures to JavaScript in a temp directory and returns
+ * compiled fixture file paths.
  */
 const getFixtures = (): ReadonlyArray<string> => {
-  const files = readdirSync(fixturesDir);
-  return files
-    .filter((f) => f.endsWith(".js"))
-    .map((f) => join(fixturesDir, f))
+  if (existsSync(fixturesDir)) {
+    rmSync(fixturesDir, { recursive: true });
+  }
+  mkdirSync(fixturesDir, { recursive: true });
+
+  const files = readdirSync(fixturesSourceDir)
+    .filter((file) => file.endsWith(".ts"))
     .sort();
+
+  for (const file of files) {
+    const sourcePath = join(fixturesSourceDir, file);
+    const source = readFileSync(sourcePath, "utf8");
+    const { outputText } = transpileModule(source, {
+      compilerOptions: {
+        module: ModuleKind.ESNext,
+        target: ScriptTarget.ES2020,
+      },
+      fileName: sourcePath,
+    });
+
+    const outputPath = join(fixturesDir, file.replace(/\.ts$/, ".js"));
+    writeFileSync(outputPath, outputText);
+  }
+
+  return files.map((file) => join(fixturesDir, file.replace(/\.ts$/, ".js")));
 };
 
 describe("tree-shaking", () => {
