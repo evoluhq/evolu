@@ -37,11 +37,11 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/tsconfig": "workspace:*",
-    "@types/react": "catalog:react19",
-    "@types/react-dom": "catalog:react19",
-    "react": "catalog:react19",
+    "@evolu/common": "*",
+    "@evolu/typescript-config": "*",
+    "@types/react": "19.2.8",
+    "@types/react-dom": "19.2.3",
+    "react": "19.2.3",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {

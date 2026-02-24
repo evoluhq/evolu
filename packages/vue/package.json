@@ -36,8 +36,8 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/tsconfig": "workspace:*",
+    "@evolu/common": "*",
+    "@evolu/typescript-config": "*",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {

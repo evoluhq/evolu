@@ -4,21 +4,21 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "pnpx vite",
-    "_build": "tsc && pnpx vite build && pnpx electron-builder",
+    "dev": "npm exec vite",
+    "_build": "tsc && npm exec vite build && npm exec electron-builder",
     "clean": "rimraf node_modules .turbo dist-electron",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/react": "workspace:*",
-    "@evolu/react-web": "workspace:*",
-    "react": "catalog:react19",
-    "react-dom": "catalog:react19"
+    "@evolu/common": "*",
+    "@evolu/react": "*",
+    "@evolu/react-web": "*",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@types/react": "~19.1.17",
-    "@types/react-dom": "~19.1.11",
+    "@types/react": "19.2.8",
+    "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "^5.1.2",
     "electron": "38.2.0",
     "electron-builder": "^26.4.0",

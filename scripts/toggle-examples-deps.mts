@@ -9,18 +9,8 @@ type Mode = "development" | "production";
 
 interface PackageJson {
   dependencies: Record<string, string>;
-  devDependencies: Record<string, string>;
+  devDependencies?: Record<string, string>;
 }
-
-// Hardcoded catalogs matching pnpm-workspace.yaml
-const catalogs = {
-  react19: {
-    "@types/react": "~19.1.13",
-    "@types/react-dom": "~19.1.9",
-    react: "19.1.0",
-    "react-dom": "19.1.0",
-  },
-} as const;
 
 // Function to toggle the mode for a single example
 const toggleMode = (examplePath: string, mode: Mode): void => {
@@ -35,39 +25,10 @@ const toggleMode = (examplePath: string, mode: Mode): void => {
       if (mode === "production") {
         packageJson.dependencies[dep] = `latest`;
       } else {
-        packageJson.dependencies[dep] = `workspace:*`;
+        packageJson.dependencies[dep] = `*`;
       }
     }
   }
-
-  // Toggle catalog references in both dependencies and devDependencies
-  const toggleCatalogRefs = (deps: Record<string, string>): void => {
-    for (const dep in deps) {
-      const value = deps[dep];
-      if (mode === "production" && value.startsWith("catalog:")) {
-        const catalogName = value.replace("catalog:", "");
-        const catalog = catalogs[catalogName as keyof typeof catalogs];
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (catalog && dep in catalog) {
-          deps[dep] = catalog[dep as keyof typeof catalog];
-        }
-      } else if (mode === "development") {
-        // Find which catalog this dep belongs to
-        for (const [catalogName, catalogDeps] of Object.entries(catalogs)) {
-          if (
-            dep in catalogDeps &&
-            catalogDeps[dep as keyof typeof catalogDeps] === value
-          ) {
-            deps[dep] = `catalog:${catalogName}`;
-            break;
-          }
-        }
-      }
-    }
-  };
-
-  toggleCatalogRefs(packageJson.dependencies);
-  toggleCatalogRefs(packageJson.devDependencies);
 
   fs.writeFileSync(
     packageJsonPath,
@@ -86,8 +47,8 @@ const toggleAllExamples = (targetMode: Mode): void => {
     toggleMode(examplePath, targetMode);
   });
 
-  execSync("pnpm clean", { stdio: "inherit" });
-  execSync("pnpm i", { stdio: "inherit" });
+  execSync("bun run clean", { stdio: "inherit" });
+  execSync("bun install", { stdio: "inherit" });
   // eslint-disable-next-line no-console
   console.log(`All examples switched to ${targetMode} mode.`);
 };

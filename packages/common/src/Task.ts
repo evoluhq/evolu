@@ -1716,9 +1716,15 @@ export const yieldNow: Task<void> = () =>
     (reason): AbortError => createAbortError(reason),
   );
 
+const scheduler = (
+  globalThis as unknown as {
+    readonly scheduler?: { readonly yield?: unknown };
+  }
+).scheduler;
+
 const yieldImpl: () => Promise<void> =
-  "scheduler" in globalThis && "yield" in globalThis.scheduler
-    ? () => globalThis.scheduler.yield()
+  typeof scheduler?.yield === "function"
+    ? () => (scheduler.yield as () => Promise<void>)()
     : typeof setImmediate !== "undefined"
       ? () => new Promise<void>(setImmediate)
       : () => new Promise<void>((r) => setTimeout(r, 0)); // Safari

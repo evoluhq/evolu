@@ -11,8 +11,8 @@
   "dependencies": {
     "@angular/core": "^21.1.0",
     "@angular/platform-browser": "^21.1.0",
-    "@evolu/common": "workspace:*",
-    "@evolu/web": "workspace:*"
+    "@evolu/common": "*",
+    "@evolu/web": "*"
   },
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "^2.2.2",

@@ -115,4 +115,19 @@ export default defineConfig(
       "@typescript-eslint/no-unsafe-member-access": "off",
     },
   },
+  {
+    files: ["apps/web/scripts/*.mts"],
+    languageOptions: {
+      parserOptions: {
+        project: ["apps/web/scripts/tsconfig.json"],
+        projectService: false,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+    },
+  },
 );

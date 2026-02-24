@@ -14,11 +14,11 @@
     "README.md"
   ],
   "dependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/nodejs": "workspace:*"
+    "@evolu/common": "*",
+    "@evolu/nodejs": "*"
   },
   "devDependencies": {
-    "@evolu/tsconfig": "workspace:*",
+    "@evolu/typescript-config": "*",
     "@types/node": "^24.10.9",
     "typescript": "^5.9.3"
   },

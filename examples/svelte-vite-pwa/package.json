@@ -11,9 +11,9 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/svelte": "workspace:*",
-    "@evolu/web": "workspace:*",
+    "@evolu/common": "*",
+    "@evolu/svelte": "*",
+    "@evolu/web": "*",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tsconfig/svelte": "^5.0.6",
     "svelte": "^5.48.2",

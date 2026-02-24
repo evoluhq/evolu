@@ -61,7 +61,7 @@
   },
   "devDependencies": {
     "@bokuweb/zstd-wasm": "0.0.27",
-    "@evolu/tsconfig": "workspace:*",
+    "@evolu/typescript-config": "*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/ws": "^8.18.1",
     "better-sqlite3": "^12.6.2",

@@ -39,8 +39,8 @@
     "idb-keyval": "^6.2.2"
   },
   "devDependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/tsconfig": "workspace:*",
+    "@evolu/common": "*",
+    "@evolu/typescript-config": "*",
     "@types/sharedworker": "^0.0.211",
     "@types/web-locks-api": "^0.0.5",
     "typescript": "^5.9.3",

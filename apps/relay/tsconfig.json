@@ -1,5 +1,5 @@
 {
-  "extends": "@evolu/tsconfig/universal-esm.json",
+  "extends": "@evolu/typescript-config/universal-esm.json",
   "compilerOptions": {
     "outDir": "dist"
   },

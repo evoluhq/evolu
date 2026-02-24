@@ -25,11 +25,6 @@ export const wrapper = ({
   <article className="flex h-full flex-col pt-16 pb-10">
     <Prose className="flex-auto">{children}</Prose>
     <LlmLink />
-    {/* TODO: feedback form
-      <footer className="mx-auto mt-16 hidden w-full max-w-2xl lg:max-w-5xl">
-        <Feedback />
-      </footer>
-      */}
   </article>
 );
 
