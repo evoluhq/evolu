@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
-    "@types/react-dom": "19.2.3",
+    "@types/react-dom": "~19.1.10",
     "@vitejs/plugin-react": "^5.1.2",
     "electron": "40.6.0",
     "electron-builder": "^26.8.1",

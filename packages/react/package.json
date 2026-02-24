@@ -40,7 +40,7 @@
     "@evolu/common": "*",
     "@evolu/typescript-config": "*",
     "@types/react": "~19.1.10",
-    "@types/react-dom": "19.2.3",
+    "@types/react-dom": "~19.1.10",
     "react": "19.1.0",
     "typescript": "^5.9.3"
   },

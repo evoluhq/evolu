@@ -63,7 +63,7 @@
     "@types/mdx": "^2.0.13",
     "@types/node": "^24.10.9",
     "@types/react": "~19.1.10",
-    "@types/react-dom": "19.2.3",
+    "@types/react-dom": "~19.1.10",
     "@types/react-highlight-words": "^0.20.1",
     "@types/rss": "^0.0.32",
     "cross-env": "^10.1.0",
