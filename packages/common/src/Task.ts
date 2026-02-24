@@ -1726,7 +1726,7 @@ const yieldImpl: () => Promise<void> =
   typeof scheduler?.yield === "function"
     ? () => (scheduler.yield as () => Promise<void>)()
     : typeof setImmediate !== "undefined"
-      ? () => new Promise<void>(setImmediate)
+      ? () => new Promise<void>((resolve) => setImmediate(resolve))
       : () => new Promise<void>((r) => setTimeout(r, 0)); // Safari
 
 /**
