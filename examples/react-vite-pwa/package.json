@@ -17,15 +17,15 @@
     "@evolu/react-web": "*",
     "@tabler/icons-react": "^3.36.1",
     "clsx": "^2.1.1",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@tailwindcss/forms": "^0.5.11",
     "@tailwindcss/vite": "^4.1.18",
-    "@types/react": "19.2.8",
+    "@types/react": "~19.1.10",
     "@types/react-dom": "19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.53.0",
     "@typescript-eslint/parser": "^8.53.0",
