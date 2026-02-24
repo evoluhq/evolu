@@ -26,19 +26,13 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
 
     return ok({
       exec: (query) => {
-        const prepared = cache.get(query);
+        const prepared = cache.get(query, true);
+        const result = prepared.executeSync(query.parameters);
+        const rows = result.getAllSync();
+        const changes = result.changes;
+        result.resetSync();
 
-        if (prepared) {
-          const result = prepared.executeSync(query.parameters);
-          const rows = result.getAllSync();
-          const changes = result.changes;
-          result.resetSync();
-          return { rows: rows as Array<SqliteRow>, changes };
-        }
-
-        const result = db.runSync(query.sql, query.parameters);
-        const rows = db.getAllSync(query.sql, query.parameters);
-        return { rows: rows as Array<SqliteRow>, changes: result.changes };
+        return { rows: rows as Array<SqliteRow>, changes };
       },
 
       export: () => {
