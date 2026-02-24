@@ -13,7 +13,7 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
       options?.mode === "memory" ? ":memory:" : `evolu1-${name}.db`,
     );
     if (options?.mode === "encrypted") {
-      db.execSync(`PRAGMA key = '${bytesToHex(options.encryptionKey)}'`);
+      db.execSync(`PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'"`);
     }
     let isDisposed = false;
 
@@ -26,13 +26,26 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
 
     return ok({
       exec: (query) => {
-        const prepared = cache.get(query, true);
-        const result = prepared.executeSync(query.parameters);
-        const rows = result.getAllSync();
-        const changes = result.changes;
-        result.resetSync();
+        const execStatement = (statement: SQLiteStatement) => {
+          const result = statement.executeSync(query.parameters);
+          try {
+            const rows = result.getAllSync();
+            const changes = result.changes;
+            return { rows: rows as Array<SqliteRow>, changes };
+          } finally {
+            result.resetSync();
+          }
+        };
 
-        return { rows: rows as Array<SqliteRow>, changes };
+        const prepared = cache.get(query);
+        if (prepared) return execStatement(prepared);
+
+        const statement = db.prepareSync(query.sql);
+        try {
+          return execStatement(statement);
+        } finally {
+          statement.finalizeSync();
+        }
       },
 
       export: () => {

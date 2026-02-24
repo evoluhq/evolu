@@ -45,7 +45,6 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
         );
         db.exec(`
           PRAGMA cipher = 'sqlcipher';
-          PRAGMA legacy = 4;
           PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
         `);
         break;
