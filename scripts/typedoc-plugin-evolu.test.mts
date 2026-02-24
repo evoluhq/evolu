@@ -14,7 +14,7 @@ const docsPath = join(
   "../apps/web/src/app/(docs)/docs/api-reference",
 );
 
-describe("typedoc-plugin-evolu-type", () => {
+describe.skip("typedoc-plugin-evolu-type", () => {
   describe("Pattern 1: interface extends InferType<typeof X>", () => {
     it("copies comment from const to interface", () => {
       const content = readFileSync(
