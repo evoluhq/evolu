@@ -13,37 +13,44 @@ const withMDX = nextMDX({
   },
 });
 
-const isDev = globalThis.process?.env.NODE_ENV === "development";
-
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   pageExtensions: ["js", "jsx", "ts", "tsx", "mdx"],
 
-  // Resolve workspace @evolu/* packages to TypeScript source for live reload.
-  transpilePackages: isDev
-    ? ["@evolu/common", "@evolu/web", "@evolu/react", "@evolu/react-web"]
-    : [],
-  webpack(config) {
-    if (isDev) {
-      config.resolve.conditionNames = [
-        "source",
-        "browser",
-        "import",
-        "module",
-        "require",
-        "default",
-      ];
-      config.resolve.extensionAlias = {
-        ".js": [".ts", ".tsx", ".js"],
-      };
-    }
-    return config;
-  },
+  ...(globalThis.process?.env.NODE_ENV === "development"
+    ? {
+        webpack: (config) => {
+          // Resolve only @evolu packages to source. Avoid global "source"
+          // condition because third-party packages can expose raw TS there.
+          config.resolve.alias = {
+            ...config.resolve.alias,
+            ...Object.fromEntries(
+              ["common", "react", "react-web", "web"].map((name) => [
+                `@evolu/${name}`,
+                new globalThis.URL(
+                  `../../packages/${name}/src`,
+                  import.meta.url,
+                ).pathname,
+              ]),
+            ),
+          };
+
+          // TypeScript source uses .js extensions in imports (ESM standard).
+          // Tell webpack to try .ts/.tsx when resolving .js imports.
+          config.resolve.extensionAlias = {
+            ...config.resolve.extensionAlias,
+            ".js": [".ts", ".tsx", ".js"],
+          };
+          return config;
+        },
+      }
+    : {}),
 
   outputFileTracingIncludes: {
     "/**/*": ["./src/app/**/*.mdx"],
   },
+
   async rewrites() {
     return [
       {

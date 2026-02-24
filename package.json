@@ -7,7 +7,7 @@
     "examples/*"
   ],
   "scripts": {
-    "dev": "turbo --filter @evolu/relay --filter web dev",
+    "dev": "turbo run dev --filter=@evolu/relay --filter=web",
     "relay": "turbo --filter @evolu/relay dev",
     "build": "turbo --filter @evolu/* build",
     "build:web": "bun run build:docs && turbo --filter web build",

@@ -17,10 +17,11 @@
     },
     "relay#dev": {
       "persistent": true,
-      "interruptible": true
+      "dependsOn": ["^build"]
     },
     "web#dev": {
-      "persistent": true
+      "persistent": true,
+      "dependsOn": []
     },
     "start": {
       "cache": false,
