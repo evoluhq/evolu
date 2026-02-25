@@ -1,6 +1,5 @@
 import BetterSQLite, { type Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
-import { assert } from "../src/Assert.js";
 import type { TimingSafeEqual } from "../src/Crypto.js";
 import { lazyTrue, lazyVoid } from "../src/Function.js";
 import {
@@ -20,54 +19,21 @@ import type {
   SqliteDriver,
   SqliteRow,
 } from "../src/Sqlite.js";
-import { createPreparedStatementsCache, createSqlite } from "../src/Sqlite.js";
+import {
+  createPreparedStatementsCache,
+  testCreateSqlite,
+} from "../src/Sqlite.js";
 import type { Run } from "../src/Task.js";
 import { testCreateRun, type TestDeps } from "../src/Test.js";
-import { testName } from "../src/Type.js";
 
 export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 
-export const testCreateRunWithSqlite = async (): Promise<
-  Run<TestDeps & SqliteDep>
-> => {
-  const run = testCreateRun<CreateSqliteDriverDep>({
-    createSqliteDriver: testCreateSqliteDriver,
-  });
-
-  const sqliteResult = await run(createSqlite(testName));
-  assert(sqliteResult.ok, "bug");
-  const sqlite = sqliteResult.value;
-
-  run.defer(() => {
-    sqlite[Symbol.dispose]();
-    return ok();
-  });
-
-  return run.addDeps({ sqlite });
-};
-
-/** Creates a test Run with relay storage and SQLite deps. */
-export const testCreateRunWithSqliteAndRelayStorage = async (
-  config?: Partial<StorageConfig>,
-): Promise<Run<TestDeps & SqliteDep & StorageDep>> => {
-  const run = await testCreateRunWithSqlite();
-
-  createBaseSqliteStorageTables(run.deps);
-  createRelayStorageTables(run.deps);
-
-  const storage = createRelaySqliteStorage({
-    ...run.deps,
-    timingSafeEqual: testTimingSafeEqual,
-  })({
-    isOwnerWithinQuota: lazyTrue,
-    ...config,
-  });
-
-  return run.addDeps<StorageDep>({ storage });
-};
+export const testCreateSqliteDeps = (): CreateSqliteDriverDep => ({
+  createSqliteDriver: testCreateSqliteDriver,
+});
 
 /** In-memory better-sqlite3 driver for tests. */
-const testCreateSqliteDriver: CreateSqliteDriver = (name) =>
+export const testCreateSqliteDriver: CreateSqliteDriver = (name) =>
   createBetterSqliteDriver(name, { mode: "memory" });
 
 // Duplicated from @evolu/nodejs because @evolu/common cannot depend on it
@@ -119,4 +85,26 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
   };
 
   return ok(driver);
+};
+
+/** Creates a test Run with relay storage and SQLite deps. */
+export const testCreateRunWithSqliteAndRelayStorage = async (
+  config?: Partial<StorageConfig>,
+): Promise<Run<TestDeps & CreateSqliteDriverDep & SqliteDep & StorageDep>> => {
+  const run = testCreateRun(testCreateSqliteDeps());
+  const sqlite = await run.orThrow(testCreateSqlite);
+  const runWithSqlite = run.addDeps({ sqlite });
+
+  createBaseSqliteStorageTables(runWithSqlite.deps);
+  createRelayStorageTables(runWithSqlite.deps);
+
+  const storage = createRelaySqliteStorage({
+    ...runWithSqlite.deps,
+    timingSafeEqual: testTimingSafeEqual,
+  })({
+    isOwnerWithinQuota: lazyTrue,
+    ...config,
+  });
+
+  return runWithSqlite.addDeps<StorageDep>({ storage });
 };

@@ -1,11 +1,11 @@
 import { Name, testName } from "@evolu/common";
 import { describe, expect, test } from "vitest";
-import { leaderLock } from "../src/Platform.js";
-import { createRun } from "../src/Task.js";
+import { createLeaderLock, createRun } from "../src/Task.js";
 
 describe("leaderLock", () => {
   test("acquire waits until previous lease is disposed", async () => {
     await using run = createRun();
+    const leaderLock = createLeaderLock();
 
     const first = await run(leaderLock.acquire(testName));
     expect(first.ok).toBe(true);
@@ -31,6 +31,7 @@ describe("leaderLock", () => {
 
   test("different names acquire independently", async () => {
     await using run = createRun();
+    const leaderLock = createLeaderLock();
 
     const aName = Name.orThrow("LeaderLockA");
     const bName = Name.orThrow("LeaderLockB");

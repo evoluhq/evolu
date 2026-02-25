@@ -24,11 +24,11 @@ import {
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { ok } from "../../src/Result.js";
-import { sql } from "../../src/Sqlite.js";
-import { testCreateDeps } from "../../src/Test.js";
+import { sql, testCreateSqlite } from "../../src/Sqlite.js";
+import { testCreateDeps, testCreateRun } from "../../src/Test.js";
 import type { Millis } from "../../src/Time.js";
 import { createId, NonNegativeInt, PositiveInt } from "../../src/Type.js";
-import { testCreateRunWithSqlite } from "../_deps.js";
+import { testCreateSqliteDeps } from "../_deps.js";
 import {
   testAnotherTimestampsAsc,
   testAppOwner2,
@@ -39,8 +39,8 @@ import {
 } from "./_fixtures.js";
 
 const createDeps = async () => {
-  await using run = await testCreateRunWithSqlite();
-  const { sqlite } = run.deps;
+  const run = testCreateRun(testCreateSqliteDeps());
+  const sqlite = await run.orThrow(testCreateSqlite);
 
   // For reliable performance, we have to use Math.random!
   // Pseudo-random does not scale (randomness is limited).
@@ -48,7 +48,11 @@ const createDeps = async () => {
 
   createBaseSqliteStorageTables({ sqlite });
 
-  return { sqlite, storage: createBaseSqliteStorage({ sqlite, random }) };
+  return {
+    sqlite,
+    storage: createBaseSqliteStorage({ sqlite, random }),
+    [Symbol.asyncDispose]: () => run[Symbol.asyncDispose](),
+  };
 };
 
 const xorFingerprints = (arr1: Fingerprint, arr2: Fingerprint): Fingerprint => {
@@ -66,7 +70,7 @@ const testTimestamps = async (
   timestamps: ReadonlyArray<TimestampBytes>,
   strategy: StorageInsertTimestampStrategy,
 ) => {
-  const deps = await createDeps();
+  await using deps = await createDeps();
 
   const bruteForceAllTimestampsFingerprint = timestamps
     .map(timestampBytesToFingerprint)
@@ -196,7 +200,7 @@ test(
 );
 
 test("empty db", async () => {
-  const deps = await createDeps();
+  await using deps = await createDeps();
   const size = deps.storage.getSize(testAppOwnerIdBytes);
   expect(size).toBe(0);
 
@@ -217,7 +221,8 @@ test("empty db", async () => {
 });
 
 test("findLowerBound", async () => {
-  const { storage } = await createDeps();
+  await using deps = await createDeps();
+  const { storage } = deps;
 
   const timestamps = Array.from({ length: 10 }, (_, i) =>
     timestampToTimestampBytes(createTimestamp({ millis: (i + 1) as Millis })),
@@ -260,7 +265,7 @@ test("findLowerBound", async () => {
 });
 
 test("iterate", async () => {
-  const deps = await createDeps();
+  await using deps = await createDeps();
 
   for (const timestamp of testTimestampsAsc) {
     deps.storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
@@ -303,7 +308,7 @@ test("iterate", async () => {
 });
 
 test("getTimestampByIndex", async () => {
-  const deps = await createDeps();
+  await using deps = await createDeps();
 
   for (const timestamp of testTimestampsAsc) {
     deps.storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
@@ -386,7 +391,7 @@ const benchmarkTimestamps = async (
   timestamps: ReadonlyArray<TimestampBytes>,
   strategy: StorageInsertTimestampStrategy,
 ) => {
-  const deps = await createDeps();
+  await using deps = await createDeps();
   const insertBeginTime = performance.now();
 
   for (
