@@ -11,9 +11,9 @@ import { createEqObject, eqArrayNumber, eqString } from "./Eq.js";
 import { createRecord } from "./Object.js";
 import type { Result } from "./Result.js";
 import { ok } from "./Result.js";
-import type { Task } from "./Task.js";
+import type { Run, Task } from "./Task.js";
+import { testCreateRun, type TestDeps } from "./Test.js";
 import type { InferType, Name, Typed } from "./Type.js";
-import { testName } from "./Type.js";
 import {
   array,
   Null,
@@ -22,6 +22,7 @@ import {
   record,
   set,
   String,
+  testName,
   Uint8Array,
   union,
 } from "./Type.js";
@@ -264,10 +265,27 @@ export const createSqlite =
     return ok(sqlite);
   };
 
-/** Test helper task creating in-memory SQLite identified by {@link testName}. */
-export const testCreateSqlite = /*#__PURE__*/ createSqlite(testName, {
-  mode: "memory",
-});
+/**
+ * Creates a test {@link Run} with a ready-to-use in-memory {@link Sqlite}.
+ *
+ * This helper removes repetitive test setup where callers first create a test
+ * run and then execute {@link createSqlite} manually.
+ */
+export function testCreateRunWithSqlite(
+  deps: CreateSqliteDriverDep,
+): Promise<Run<TestDeps & CreateSqliteDriverDep & SqliteDep>>;
+
+export function testCreateRunWithSqlite<D extends CreateSqliteDriverDep>(
+  deps: D,
+): Promise<Run<TestDeps & D & SqliteDep>>;
+
+export async function testCreateRunWithSqlite(
+  deps: CreateSqliteDriverDep,
+): Promise<Run<TestDeps & CreateSqliteDriverDep & SqliteDep>> {
+  const run = testCreateRun(deps);
+  const sqlite = await run.orThrow(createSqlite(testName, { mode: "memory" }));
+  return run.addDeps({ sqlite });
+}
 
 interface SqliteQueryPlanRow {
   id: number;

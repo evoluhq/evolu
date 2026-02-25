@@ -21,10 +21,10 @@ import type {
 } from "../src/Sqlite.js";
 import {
   createPreparedStatementsCache,
-  testCreateSqlite,
+  testCreateRunWithSqlite,
 } from "../src/Sqlite.js";
 import type { Run } from "../src/Task.js";
-import { testCreateRun, type TestDeps } from "../src/Test.js";
+import type { TestDeps } from "../src/Test.js";
 
 export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 
@@ -32,7 +32,6 @@ export const testCreateSqliteDeps = (): CreateSqliteDriverDep => ({
   createSqliteDriver: testCreateSqliteDriver,
 });
 
-/** In-memory better-sqlite3 driver for tests. */
 export const testCreateSqliteDriver: CreateSqliteDriver = (name) =>
   createBetterSqliteDriver(name, { mode: "memory" });
 
@@ -91,9 +90,7 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
 export const testCreateRunWithSqliteAndRelayStorage = async (
   config?: Partial<StorageConfig>,
 ): Promise<Run<TestDeps & CreateSqliteDriverDep & SqliteDep & StorageDep>> => {
-  const run = testCreateRun(testCreateSqliteDeps());
-  const sqlite = await run.orThrow(testCreateSqlite);
-  const runWithSqlite = run.addDeps({ sqlite });
+  const runWithSqlite = await testCreateRunWithSqlite(testCreateSqliteDeps());
 
   createBaseSqliteStorageTables(runWithSqlite.deps);
   createRelayStorageTables(runWithSqlite.deps);

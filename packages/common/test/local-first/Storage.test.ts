@@ -24,8 +24,8 @@ import {
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { ok } from "../../src/Result.js";
-import { sql, testCreateSqlite } from "../../src/Sqlite.js";
-import { testCreateDeps, testCreateRun } from "../../src/Test.js";
+import { sql, testCreateRunWithSqlite } from "../../src/Sqlite.js";
+import { testCreateDeps } from "../../src/Test.js";
 import type { Millis } from "../../src/Time.js";
 import { createId, NonNegativeInt, PositiveInt } from "../../src/Type.js";
 import { testCreateSqliteDeps } from "../_deps.js";
@@ -39,8 +39,8 @@ import {
 } from "./_fixtures.js";
 
 const createDeps = async () => {
-  const run = testCreateRun(testCreateSqliteDeps());
-  const sqlite = await run.orThrow(testCreateSqlite);
+  const run = await testCreateRunWithSqlite(testCreateSqliteDeps());
+  const { sqlite } = run.deps;
 
   // For reliable performance, we have to use Math.random!
   // Pseudo-random does not scale (randomness is limited).

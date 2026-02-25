@@ -17,7 +17,7 @@ Refactored SQLite integration to use Task and throw-first semantics
 - Replaced `options.memory` and `options.encryptionKey` with a discriminated `options.mode` field (`"memory"` | `"encrypted"`)
 - Updated Expo and op-sqlite drivers to match the new API
 - Added SQLite schema metadata primitives (`SqliteSchema`, `SqliteIndex`, `eqSqliteIndex`, `getSqliteSchema`, `getSqliteSnapshot`)
-- Added `testCreateSqlite` and updated tests to construct SQLite through Task-based helpers
+- Added `testCreateRunWithSqlite` helper for SQLite tests
 
 Why `SqliteError` was removed:
 
@@ -31,7 +31,3 @@ Boundary handling:
 - At protocol boundaries (for example Protocol ↔ Storage), error handling remains explicit.
 - Since storage implementations may throw, boundary code uses `try/catch`, logs with `console.error(error)`, and returns protocol-level outcomes.
 - Protocol handles all thrown errors as boundary concerns, without coupling to SQLite-specific error types.
-
-Developer experience:
-
-- This change reduces boilerplate (`if (!result.ok)` branches and `SqliteError` plumbing), making infrastructure code less verbose and easier to follow.
