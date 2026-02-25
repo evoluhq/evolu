@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { Task } from "./Task.js";
-import type { Name } from "./Type.js";
-
 /** Returns true if running in React Native with Hermes engine. */
 export const isHermes = "HermesInternal" in globalThis;
 
@@ -56,19 +53,4 @@ export type ReloadApp = (url?: string) => void;
 
 export interface ReloadAppDep {
   readonly reloadApp: ReloadApp;
-}
-
-/**
- * Cross-platform leader lock abstraction.
- *
- * `acquire` blocks until leadership is acquired.
- *
- * Returns {@link Disposable} lease. Dispose it to release leadership.
- */
-export interface LeaderLock {
-  readonly acquire: (name: Name) => Task<Disposable>;
-}
-
-export interface LeaderLockDep {
-  readonly leaderLock: LeaderLock;
 }

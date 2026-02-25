@@ -6,33 +6,28 @@
 
 import * as Kysely from "kysely";
 import { readonly } from "../Function.js";
+import { getProperty, mapObject, type ReadonlyRecord } from "../Object.js";
 import {
-  createRecord,
-  getProperty,
-  mapObject,
-  type ReadonlyRecord,
-} from "../Object.js";
-import {
+  eqSqliteIndex,
+  getSqliteSchema,
   type SafeSql,
   sql,
   SqliteBoolean,
   type SqliteDep,
+  type SqliteIndex,
   type SqliteQuery,
   type SqliteQueryOptions,
+  type SqliteSchema,
   SqliteValue,
 } from "../Sqlite.js";
 import type { InferType } from "../Type.js";
 import {
-  array,
   DateIso,
   type Id,
   IdBytes,
   nullOr,
   object,
-  record,
-  set,
   type StandardSchemaV1,
-  String,
 } from "../Type.js";
 import type { Simplify } from "../Types.js";
 import type { AppOwner } from "./Owner.js";
@@ -87,6 +82,10 @@ export type EvoluSchema = ReadonlyRecord<
 
 /** A table schema: column names mapped to Standard Schema validators. */
 export type TableSchema = ReadonlyRecord<string, AnyStandardSchemaV1>;
+
+export interface SqliteSchemaDep {
+  readonly sqliteSchema: SqliteSchema;
+}
 
 /**
  * Validates an {@link EvoluSchema} at compile time, returning the first error
@@ -287,21 +286,6 @@ export type UpsertValues<T extends TableSchema> =
     readonly isDeleted?: SqliteBoolean;
   };
 
-export const DbIndex = /*#__PURE__*/ object({ name: String, sql: String });
-export interface DbIndex extends InferType<typeof DbIndex> {}
-
-export const DbSchema = /*#__PURE__*/ object({
-  tables: record(String, set(String)),
-  indexes: array(DbIndex),
-});
-export interface DbSchema extends InferType<typeof DbSchema> {}
-
-// TODO: Use a ref and update dbSchema on hot reloading to support
-// development workflows where schema changes without full app restart.
-export interface DbSchemaDep {
-  readonly dbSchema: DbSchema;
-}
-
 export type ValidateSchemaHasId<S extends EvoluSchema> =
   keyof S extends infer TableName
     ? TableName extends keyof S
@@ -382,10 +366,10 @@ export const systemColumnsWithId = /*#__PURE__*/ readonly([
   "id",
 ]);
 
-export const evoluSchemaToDbSchema = <S extends EvoluSchema>(
+export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
   schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,
   indexesConfig?: IndexesConfig,
-): DbSchema => {
+): SqliteSchema => {
   const validSchema = schema as EvoluSchema;
 
   const tables = mapObject(
@@ -395,7 +379,7 @@ export const evoluSchemaToDbSchema = <S extends EvoluSchema>(
 
   const indexes = indexesConfig
     ? indexesConfig(createIndex).map(
-        (index): DbIndex => ({
+        (index): SqliteIndex => ({
           name: index.toOperationNode().name.name,
           sql: index.compile().sql,
         }),
@@ -442,71 +426,12 @@ export const createQueryBuilder =
     });
   };
 
-/** Get the current database schema by reading SQLite metadata. */
-export const getDbSchema =
+export const ensureSqliteSchema =
   (deps: SqliteDep) =>
-  ({ allIndexes = false }: { allIndexes?: boolean } = {}): DbSchema => {
-    const tables = createRecord<string, Set<string>>();
-
-    const tableAndColumnInfoRows = deps.sqlite.exec<{
-      tableName: string;
-      columnName: string;
-    }>(sql`
-      select
-        sqlite_master.name as tableName,
-        table_info.name as columnName
-      from
-        sqlite_master
-        join pragma_table_info(sqlite_master.name) as table_info;
-    `);
-
-    tableAndColumnInfoRows.rows.forEach(({ tableName, columnName }) => {
-      (tables[tableName] ??= new Set()).add(columnName);
-    });
-
-    const indexesRows = deps.sqlite.exec<{ name: string; sql: string | null }>(
-      allIndexes
-        ? sql`
-            select name, sql
-            from sqlite_master
-            where type = 'index' and name not like 'sqlite_%';
-          `
-        : sql`
-            select name, sql
-            from sqlite_master
-            where
-              type = 'index'
-              and name not like 'sqlite_%'
-              and name not like 'evolu_%';
-          `,
-    );
-
-    const indexes = indexesRows.rows.flatMap((row): Array<DbIndex> => {
-      if (row.sql == null) return [];
-      return [
-        {
-          name: row.name,
-          /**
-           * SQLite returns "CREATE INDEX" for "create index" for some reason.
-           * Other keywords remain unchanged. We have to normalize the casing
-           * for {@link indexesAreEqual} manually.
-           */
-          sql: row.sql
-            .replace("CREATE INDEX", "create index")
-            .replace("CREATE UNIQUE INDEX", "create unique index"),
-        },
-      ];
-    });
-
-    return { tables, indexes };
-  };
-
-export const ensureDbSchema =
-  (deps: SqliteDep) =>
-  (newSchema: DbSchema, currentSchema?: DbSchema): void => {
+  (newSchema: SqliteSchema, currentSchema?: SqliteSchema): void => {
     const queries: Array<SqliteQuery> = [];
 
-    currentSchema ??= getDbSchema(deps)();
+    currentSchema ??= getEvoluSqliteSchema(deps)();
 
     for (const [tableName, newColumns] of Object.entries(newSchema.tables)) {
       const currentColumns = getProperty(currentSchema.tables, tableName);
@@ -527,7 +452,7 @@ export const ensureDbSchema =
       .filter(
         (currentIndex) =>
           !newSchema.indexes.some((newIndex) =>
-            indexesAreEqual(newIndex, currentIndex),
+            eqSqliteIndex(newIndex, currentIndex),
           ),
       )
       .forEach((index) => {
@@ -539,7 +464,7 @@ export const ensureDbSchema =
       .filter(
         (newIndex) =>
           !currentSchema.indexes.some((currentIndex) =>
-            indexesAreEqual(newIndex, currentIndex),
+            eqSqliteIndex(newIndex, currentIndex),
           ),
       )
       .forEach((newIndex) => {
@@ -550,6 +475,9 @@ export const ensureDbSchema =
       deps.sqlite.exec(query);
     }
   };
+
+export const getEvoluSqliteSchema = (deps: SqliteDep) => (): SqliteSchema =>
+  getSqliteSchema(deps)({ excludeIndexNamePrefix: "evolu_" });
 
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
 export const kysely = new Kysely.Kysely({
@@ -565,19 +493,13 @@ export const kysely = new Kysely.Kysely({
 
 const createIndex = kysely.schema.createIndex.bind(kysely.schema);
 
-const indexesAreEqual = (self: DbIndex, that: DbIndex): boolean =>
-  self.name === that.name && self.sql === that.sql;
-
 const createAppTable = (tableName: string, columns: ReadonlySet<string>) => sql`
   create table ${sql.identifier(tableName)} (
     "id" text,
     ${sql.raw(
-      // With strict tables and any type, data is preserved exactly as received
-      // without any type affinity coercion. This allows storing any data type
-      // while maintaining strict null enforcement for primary key columns.
-      // TODO: Use proper SQLite types for system columns (text for createdAt,
-      // updatedAt, ownerId, integer for isDeleted) instead of "any".
       [...systemColumns, ...columns]
+        // In STRICT tables, ANY columns accept any SQLite storage class without
+        // affinity coercion, while the primary key still enforces non-nullness.
         .map((name) => `${sql.identifier(name).sql} any`)
         .join(", "),
     )},

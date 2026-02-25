@@ -433,12 +433,12 @@ const createSharedEvolu = ({
 //       readonly onCompleteId: CallbackId;
 //       readonly reload: boolean;
 //       readonly restore?: {
-//         readonly dbSchema: DbSchema;
+//         readonly sqliteSchema: SqliteSchema;
 //         readonly mnemonic: Mnemonic;
 //       };
 //     })
-//   | (Typed<"ensureDbSchema"> & {
-//       readonly dbSchema: DbSchema;
+//   | (Typed<"ensureSqliteSchema"> & {
+//       readonly sqliteSchema: SqliteSchema;
 //     })
 //   | (Typed<"export"> & {
 //       readonly onCompleteId: CallbackId;

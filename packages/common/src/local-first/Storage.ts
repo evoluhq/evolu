@@ -17,6 +17,7 @@ import { err, ok } from "../Result.js";
 import type { SqliteDep } from "../Sqlite.js";
 import { sql, SqliteValue } from "../Sqlite.js";
 import type { Task } from "../Task.js";
+import { Millis } from "../Time.js";
 import type { InferType, Int64String, Typed, TypeError } from "../Type.js";
 import {
   Boolean,
@@ -33,7 +34,12 @@ import type { Awaitable } from "../Types.js";
 import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.js";
 import { OwnerId, OwnerWriteKey } from "./Owner.js";
 import { systemColumnsWithId } from "./Schema.js";
-import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
+import {
+  createTimestamp,
+  orderTimestampBytes,
+  Timestamp,
+  TimestampBytes,
+} from "./Timestamp.js";
 
 export interface StorageConfig {
   /**
@@ -243,6 +249,25 @@ export interface CrdtMessage {
   readonly change: DbChange;
 }
 
+/** Test helper for creating a simple {@link CrdtMessage}. */
+export const testCreateCrdtMessage = (
+  id: Id,
+  millis: number,
+  name: string,
+): CrdtMessage => ({
+  timestamp: createTimestamp({
+    millis: Millis.orThrow(millis),
+    counter: 0 as never,
+  }),
+  change: DbChange.orThrow({
+    table: "testTable",
+    id,
+    values: { name },
+    isInsert: true,
+    isDelete: false,
+  }),
+});
+
 export const DbChangeValues = /*#__PURE__*/ record(String, SqliteValue);
 export type DbChangeValues = typeof DbChangeValues.Type;
 
@@ -422,14 +447,13 @@ export const createBaseSqliteStorage = (
     if (length === 1) return;
 
     /**
-     * TODO: In rare cases, we might overfetch a lot of rows here, but we
-     * don't have real usage numbers yet. Fetching one row at a time would
-     * probably be slower in almost all cases. In the future, we should fetch
-     * in chunks (e.g., 1,000 rows at a time). For now, consider logging
-     * unused rows to gather data and calculate an average, then use that
-     * information to determine an optimal chunk size. Before implementing
-     * chunking, be sure to run performance tests (including fetching one by
-     * one).
+     * TODO: In rare cases, we might overfetch a lot of rows here, but we don't
+     * have real usage numbers yet. Fetching one row at a time would probably be
+     * slower in almost all cases. In the future, we should fetch in chunks
+     * (e.g., 1,000 rows at a time). For now, consider logging unused rows to
+     * gather data and calculate an average, then use that information to
+     * determine an optimal chunk size. Before implementing chunking, be sure to
+     * run performance tests (including fetching one by one).
      */
     const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
       select t

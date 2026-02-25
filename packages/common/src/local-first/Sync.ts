@@ -60,7 +60,7 @@ import {
   encodeAndEncryptDbChange,
   SubscriptionFlags,
 } from "./Protocol.js";
-import type { DbSchemaDep, MutationChange } from "./Schema.js";
+import type { MutationChange, SqliteSchemaDep } from "./Schema.js";
 import { systemColumns } from "./Schema.js";
 import type { BaseSqliteStorage, CrdtMessage, Storage } from "./Storage.js";
 import {
@@ -152,7 +152,7 @@ export const createSync =
     deps: ClockDep &
       ConsoleDep &
       CreateWebSocketDep &
-      DbSchemaDep &
+      SqliteSchemaDep &
       // PostMessageDep &
       RandomBytesDep &
       RandomDep &
@@ -435,7 +435,7 @@ export interface ClientStorageDep {
 const createClientStorage =
   (
     deps: ClockDep &
-      DbSchemaDep &
+      SqliteSchemaDep &
       GetSyncOwnerDep &
       RandomBytesDep &
       RandomDep &
@@ -660,7 +660,9 @@ export const applyLocalOnlyChange =
   };
 
 const applyMessages =
-  (deps: ClientStorageDep & ClockDep & DbSchemaDep & RandomDep & SqliteDep) =>
+  (
+    deps: ClientStorageDep & ClockDep & SqliteSchemaDep & RandomDep & SqliteDep,
+  ) =>
   (ownerId: OwnerId, messages: NonEmptyReadonlyArray<CrdtMessage>): void => {
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
@@ -739,9 +741,9 @@ const systemColumnsWithoutOwnerId = systemColumns.difference(
 );
 
 const validateColumnValue =
-  (deps: DbSchemaDep) =>
+  (deps: SqliteSchemaDep) =>
   (table: string, column: string, _value: SqliteValue): boolean => {
-    const schemaColumns = getProperty(deps.dbSchema.tables, table);
+    const schemaColumns = getProperty(deps.sqliteSchema.tables, table);
     return (
       schemaColumns != null &&
       (systemColumnsWithoutOwnerId.has(column) || schemaColumns.has(column))

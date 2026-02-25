@@ -7,12 +7,24 @@
 import type { Brand } from "./Brand.js";
 import type { EncryptionKey } from "./Crypto.js";
 import type { Eq } from "./Eq.js";
-import { eqArrayNumber } from "./Eq.js";
+import { createEqObject, eqArrayNumber, eqString } from "./Eq.js";
+import { createRecord } from "./Object.js";
 import type { Result } from "./Result.js";
 import { ok } from "./Result.js";
 import type { Task } from "./Task.js";
-import type { Name, Typed } from "./Type.js";
-import { Null, Number, String, Uint8Array, union } from "./Type.js";
+import type { InferType, Name, Typed } from "./Type.js";
+import { testName } from "./Type.js";
+import {
+  array,
+  Null,
+  Number,
+  object,
+  record,
+  set,
+  String,
+  Uint8Array,
+  union,
+} from "./Type.js";
 
 /**
  * Platform-agnostic SQLite wrapping a {@link SqliteDriver}.
@@ -182,7 +194,7 @@ export const createSqlite =
 
     let isDisposed = false;
 
-    return ok({
+    const sqlite: Sqlite = {
       exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
         console.debug({ query });
 
@@ -241,8 +253,21 @@ export const createSqlite =
         isDisposed = true;
         driver[Symbol.dispose]();
       },
+    };
+
+    // Ensure Sqlite never outlives the root run even when callers forget to
+    // dispose it explicitly. Disposal is idempotent.
+    run.daemon.onAbort(() => {
+      sqlite[Symbol.dispose]();
     });
+
+    return ok(sqlite);
   };
+
+/** Test helper task creating in-memory SQLite identified by {@link testName}. */
+export const testCreateSqlite = /*#__PURE__*/ createSqlite(testName, {
+  mode: "memory",
+});
 
 interface SqliteQueryPlanRow {
   id: number;
@@ -412,6 +437,134 @@ sql.prepared = (
 ): SqliteQuery => {
   const query = sql(strings, ...parameters);
   return { ...query, options: { prepare: true } };
+};
+
+/** Index metadata stored in `sqlite_master` for a {@link Sqlite} database. */
+export const SqliteIndex = /*#__PURE__*/ object({ name: String, sql: String });
+export interface SqliteIndex extends InferType<typeof SqliteIndex> {}
+
+/** {@link Eq} instance for {@link SqliteIndex}. */
+export const eqSqliteIndex: Eq<SqliteIndex> = /*#__PURE__*/ createEqObject({
+  name: eqString,
+  sql: eqString,
+});
+
+/**
+ * Full schema metadata for a {@link Sqlite} database.
+ *
+ * Includes table-column mappings and user-visible indexes.
+ */
+export const SqliteSchema = /*#__PURE__*/ object({
+  tables: record(String, set(String)),
+  indexes: array(SqliteIndex),
+});
+export interface SqliteSchema extends InferType<typeof SqliteSchema> {}
+
+/** Get the current SQLite schema by reading SQLite metadata. */
+export const getSqliteSchema =
+  (deps: SqliteDep) =>
+  ({
+    excludeIndexNamePrefix,
+    excludeSqliteInternalIndexes = true,
+  }: {
+    /**
+     * If provided, indexes with names starting with this prefix are excluded in
+     * SQLite query.
+     */
+    excludeIndexNamePrefix?: string;
+
+    /**
+     * Excludes SQLite internal indexes prefixed with `sqlite_`.
+     *
+     * @default true
+     */
+    excludeSqliteInternalIndexes?: boolean;
+  } = {}): SqliteSchema => {
+    const tables = createRecord<string, Set<string>>();
+
+    const tableAndColumnInfoRows = deps.sqlite.exec<{
+      tableName: string;
+      columnName: string;
+    }>(sql`
+      select
+        sqlite_master.name as tableName,
+        table_info.name as columnName
+      from
+        sqlite_master
+        join pragma_table_info(sqlite_master.name) as table_info;
+    `);
+
+    tableAndColumnInfoRows.rows.forEach(({ tableName, columnName }) => {
+      (tables[tableName] ??= new Set()).add(columnName);
+    });
+
+    const indexNamePrefixFilter =
+      excludeIndexNamePrefix != null
+        ? ` and name not like '${excludeIndexNamePrefix.replaceAll("'", "''")}%'
+`
+        : "";
+
+    const indexesRows = deps.sqlite.exec<{ name: string; sql: string | null }>(
+      sql`
+        select name, sql
+        from sqlite_master
+        where
+          type = 'index'
+          ${sql.raw(
+            excludeSqliteInternalIndexes ? "and name not like 'sqlite_%'" : "",
+          )}
+          ${sql.raw(indexNamePrefixFilter)};
+      `,
+    );
+
+    const indexes = indexesRows.rows.flatMap((row): Array<SqliteIndex> => {
+      if (row.sql == null) return [];
+      return [
+        {
+          name: row.name,
+          /**
+           * SQLite returns "CREATE INDEX" for "create index" for some reason.
+           * Other keywords remain unchanged. We have to normalize the casing
+           * for schema comparison manually.
+           */
+          sql: row.sql
+            .replace("CREATE INDEX", "create index")
+            .replace("CREATE UNIQUE INDEX", "create unique index"),
+        },
+      ];
+    });
+
+    return { tables, indexes };
+  };
+
+/** Returns schema and full table contents for inspection and testing. */
+export interface SqliteSnapshot {
+  readonly schema: SqliteSchema;
+  readonly tables: Array<{
+    readonly name: string;
+    readonly rows: ReadonlyArray<SqliteRow>;
+  }>;
+}
+
+export const getSqliteSnapshot = (deps: SqliteDep): SqliteSnapshot => {
+  const schema = getSqliteSchema(deps)({
+    excludeSqliteInternalIndexes: false,
+  });
+
+  const tables: SqliteSnapshot["tables"] = [];
+
+  for (const tableName in schema.tables) {
+    const result = deps.sqlite.exec(sql`
+      select * from ${sql.identifier(tableName)};
+    `);
+
+    tables.push({
+      name: tableName,
+      rows: result.rows,
+    });
+  }
+
+  return { schema, tables };
 };
 
 /**
