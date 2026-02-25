@@ -39,7 +39,7 @@ import {
 } from "./_fixtures.js";
 
 const createDeps = async () => {
-  const run = await testCreateRunWithSqlite(testCreateSqliteDeps());
+  const run = await testCreateRunWithSqlite(testCreateSqliteDeps);
   const { sqlite } = run.deps;
 
   // For reliable performance, we have to use Math.random!

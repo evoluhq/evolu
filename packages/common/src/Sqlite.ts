@@ -483,20 +483,12 @@ export const getSqliteSchema =
   (deps: SqliteDep) =>
   ({
     excludeIndexNamePrefix,
-    excludeSqliteInternalIndexes = true,
   }: {
     /**
      * If provided, indexes with names starting with this prefix are excluded in
      * SQLite query.
      */
     excludeIndexNamePrefix?: string;
-
-    /**
-     * Excludes SQLite internal indexes prefixed with `sqlite_`.
-     *
-     * @default true
-     */
-    excludeSqliteInternalIndexes?: boolean;
   } = {}): SqliteSchema => {
     const tables = createRecord<string, Set<string>>();
 
@@ -518,44 +510,41 @@ export const getSqliteSchema =
 
     const indexNamePrefixFilter =
       excludeIndexNamePrefix != null
-        ? ` and name not like '${excludeIndexNamePrefix.replaceAll("'", "''")}%'
-`
+        ? ` and name not like '${excludeIndexNamePrefix.replaceAll("'", "''")}%'`
         : "";
 
-    const indexesRows = deps.sqlite.exec<{ name: string; sql: string | null }>(
+    const indexesRows = deps.sqlite.exec<{ name: string; sql: string }>(
       sql`
         select name, sql
         from sqlite_master
         where
           type = 'index'
-          ${sql.raw(
-            excludeSqliteInternalIndexes ? "and name not like 'sqlite_%'" : "",
-          )}
+          and name not like 'sqlite_%'
           ${sql.raw(indexNamePrefixFilter)};
       `,
     );
 
-    const indexes = indexesRows.rows.flatMap((row): Array<SqliteIndex> => {
-      if (row.sql == null) return [];
-      return [
-        {
-          name: row.name,
-          /**
-           * SQLite returns "CREATE INDEX" for "create index" for some reason.
-           * Other keywords remain unchanged. We have to normalize the casing
-           * for schema comparison manually.
-           */
-          sql: row.sql
-            .replace("CREATE INDEX", "create index")
-            .replace("CREATE UNIQUE INDEX", "create unique index"),
-        },
-      ];
-    });
+    const indexes = indexesRows.rows.map(
+      (row): SqliteIndex => ({
+        name: row.name,
+        /**
+         * SQLite returns "CREATE INDEX" for "create index" for some reason.
+         * Other keywords remain unchanged. We have to normalize the casing for
+         * schema comparison manually.
+         */
+        sql: row.sql
+          .replace("CREATE INDEX", "create index")
+          .replace("CREATE UNIQUE INDEX", "create unique index"),
+      }),
+    );
 
     return { tables, indexes };
   };
 
-/** Returns schema and full table contents for inspection and testing. */
+/**
+ * Returns {@link SqliteSchema} and full {@link SqliteRow} table contents for
+ * inspection and testing.
+ */
 export interface SqliteSnapshot {
   readonly schema: SqliteSchema;
   readonly tables: Array<{
@@ -564,10 +553,14 @@ export interface SqliteSnapshot {
   }>;
 }
 
+/**
+ * Captures a full {@link SqliteSnapshot} for testing and diagnostics.
+ *
+ * The snapshot includes current {@link SqliteSchema} and all rows from every
+ * discovered table. Table order follows `schema.tables` iteration order.
+ */
 export const getSqliteSnapshot = (deps: SqliteDep): SqliteSnapshot => {
-  const schema = getSqliteSchema(deps)({
-    excludeSqliteInternalIndexes: false,
-  });
+  const schema = getSqliteSchema(deps)();
 
   const tables: SqliteSnapshot["tables"] = [];
 
