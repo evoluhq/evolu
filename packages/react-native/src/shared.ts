@@ -1,5 +1,6 @@
 import {
   createConsoleStoreOutput,
+  createInMemoryLeaderLock,
   createLocalAuth,
   createRandomBytes,
   createRun,
@@ -21,7 +22,6 @@ import {
   initDbWorker,
   initSharedWorker,
 } from "@evolu/common/local-first";
-import { leaderLock } from "./Platform.js";
 import {
   createMessageChannel,
   createMessagePort,
@@ -30,6 +30,7 @@ import {
 } from "./Worker.js";
 
 const randomBytes = createRandomBytes();
+const leaderLock = createInMemoryLeaderLock();
 
 /** Creates Evolu dependencies for React Native. */
 export const createEvoluDeps = (
