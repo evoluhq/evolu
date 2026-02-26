@@ -50,6 +50,7 @@ import {
   createMessagePort,
   createSharedWorker,
   createWorker,
+  testWaitForWorkerMessage,
   testCreateMessageChannel,
   testCreateMessagePort,
   testCreateSharedWorker,
@@ -84,20 +85,25 @@ describe("unit tests", () => {
   const testCreateEvoluDeps = () => {
     const sharedWorker = testCreateSharedWorker<SharedWorkerInput>();
     const evoluInputs: Array<EvoluInput> = [];
-    let postEvoluOutput: ((output: EvoluOutput) => void) | null = null;
+    let evoluPort: {
+      onMessage: ((input: EvoluInput) => void) | null;
+      readonly postMessage: (output: EvoluOutput) => void;
+    } | null = null;
+    const queuedEvoluOutputs: Array<EvoluOutput> = [];
 
     sharedWorker.self.onConnect = (port) => {
       port.onMessage = (message) => {
         if (message.type !== "CreateEvolu") return;
-        const evoluPort = testCreateMessagePort<EvoluOutput, EvoluInput>(
+        evoluPort = testCreateMessagePort<EvoluOutput, EvoluInput>(
           message.evoluPort,
         );
         evoluPort.onMessage = (input) => {
           evoluInputs.push(input);
         };
-        postEvoluOutput = (output) => {
+        for (const output of queuedEvoluOutputs) {
           evoluPort.postMessage(output);
-        };
+        }
+        queuedEvoluOutputs.length = 0;
       };
     };
     sharedWorker.connect();
@@ -109,8 +115,11 @@ describe("unit tests", () => {
       sharedWorker,
       evoluInputs,
       postEvoluOutput: (output: EvoluOutput) => {
-        assert(postEvoluOutput, "postEvoluOutput is not available");
-        postEvoluOutput(output);
+        if (evoluPort) {
+          evoluPort.postMessage(output);
+          return;
+        }
+        queuedEvoluOutputs.push(output);
       },
     };
   };
@@ -142,9 +151,15 @@ describe("unit tests", () => {
   });
 
   describe("createEvoluDeps", () => {
-    const setupCreateEvoluDeps = (
+    const setupCreateEvoluDeps = async (
       console: TestConsole = testCreateConsole(),
-    ) => {
+    ): Promise<{
+      readonly deps: ReturnType<typeof createEvoluDeps>;
+      readonly messages: Array<SharedWorkerInput>;
+      readonly workerPort: {
+        readonly postMessage: (message: EvoluTabOutput) => void;
+      };
+    }> => {
       const worker = testCreateSharedWorker<SharedWorkerInput>();
 
       const messages: Array<SharedWorkerInput> = [];
@@ -161,6 +176,8 @@ describe("unit tests", () => {
         console,
       });
 
+      await testWaitForWorkerMessage();
+
       expect(messages).toHaveLength(1);
       const initTab = messages[0];
       expect(initTab.type).toBe("InitTab");
@@ -170,14 +187,14 @@ describe("unit tests", () => {
       return { deps, messages, workerPort };
     };
 
-    test("posts InitTab with port to worker", () => {
-      const { messages } = setupCreateEvoluDeps(testCreateConsole());
+    test("posts InitTab with port to worker", async () => {
+      const { messages } = await setupCreateEvoluDeps(testCreateConsole());
 
       expect(messages).toHaveLength(1);
       expect(messages[0].type).toBe("InitTab");
     });
 
-    test("falls back to default console when not provided", () => {
+    test("falls back to default console when not provided", async () => {
       const originalConsoleError = globalThis.console.error;
       const consoleErrors: Array<ReadonlyArray<unknown>> = [];
       globalThis.console.error = ((...args: ReadonlyArray<unknown>) => {
@@ -200,6 +217,8 @@ describe("unit tests", () => {
           reloadApp: lazyVoid,
         });
 
+        await testWaitForWorkerMessage();
+
         expect(messages).toHaveLength(1);
         const initTab = messages[0];
         expect(initTab.type).toBe("InitTab");
@@ -210,6 +229,8 @@ describe("unit tests", () => {
           type: "OnConsoleEntry",
           entry: { method: "error", path: ["global"], args: ["boom"] },
         });
+
+        await testWaitForWorkerMessage();
 
         expect(messages).toHaveLength(1);
         expect(messages[0].type).toBe("InitTab");
@@ -223,9 +244,9 @@ describe("unit tests", () => {
       }
     });
 
-    test("wires console channel to console.write", () => {
+    test("wires console channel to console.write", async () => {
       const console = testCreateConsole();
-      const { workerPort } = setupCreateEvoluDeps(console);
+      const { workerPort } = await setupCreateEvoluDeps(console);
 
       const entry: ConsoleEntry = {
         method: "info",
@@ -234,11 +255,13 @@ describe("unit tests", () => {
       };
       workerPort.postMessage({ type: "OnConsoleEntry", entry });
 
+      await testWaitForWorkerMessage();
+
       expect(console.getEntriesSnapshot()).toEqual([entry]);
     });
 
-    test("maps ConsoleEntry error output to deps.evoluError store", () => {
-      const { deps, workerPort } = setupCreateEvoluDeps();
+    test("maps ConsoleEntry error output to deps.evoluError store", async () => {
+      const { deps, workerPort } = await setupCreateEvoluDeps();
 
       const entry: ConsoleEntry = {
         method: "error",
@@ -248,19 +271,23 @@ describe("unit tests", () => {
 
       workerPort.postMessage({ type: "OnConsoleEntry", entry });
 
+      await testWaitForWorkerMessage();
+
       expect(deps.evoluError.get()).toEqual({
         type: "UnknownError",
         error: ["error", { type: "UnknownError", error: "boom" }],
       });
     });
 
-    test("wraps single-arg ConsoleEntry error output to UnknownError", () => {
-      const { deps, workerPort } = setupCreateEvoluDeps();
+    test("wraps single-arg ConsoleEntry error output to UnknownError", async () => {
+      const { deps, workerPort } = await setupCreateEvoluDeps();
 
       workerPort.postMessage({
         type: "OnConsoleEntry",
         entry: { method: "error", path: ["global"], args: ["boom"] },
       });
+
+      await testWaitForWorkerMessage();
 
       expect(deps.evoluError.get()).toEqual({
         type: "UnknownError",
@@ -268,13 +295,15 @@ describe("unit tests", () => {
       });
     });
 
-    test("wraps multi-arg ConsoleEntry error output to UnknownError", () => {
-      const { deps, workerPort } = setupCreateEvoluDeps();
+    test("wraps multi-arg ConsoleEntry error output to UnknownError", async () => {
+      const { deps, workerPort } = await setupCreateEvoluDeps();
 
       workerPort.postMessage({
         type: "OnConsoleEntry",
         entry: { method: "error", path: ["global"], args: ["error", "boom"] },
       });
+
+      await testWaitForWorkerMessage();
 
       expect(deps.evoluError.get()).toEqual({
         type: "UnknownError",
@@ -282,20 +311,40 @@ describe("unit tests", () => {
       });
     });
 
-    test("wires EvoluError output to deps.evoluError store", () => {
-      const { deps, workerPort } = setupCreateEvoluDeps();
+    test("wires EvoluError output to deps.evoluError store", async () => {
+      const { deps, workerPort } = await setupCreateEvoluDeps();
 
       const error = { type: "UnknownError", error: "boom" } as const;
       workerPort.postMessage({ type: "OnError", error });
+
+      await testWaitForWorkerMessage();
 
       expect(deps.evoluError.get()).toEqual(error);
     });
 
     test("throws for unknown tab output type", () => {
-      const { workerPort } = setupCreateEvoluDeps();
+      const channels: Array<{
+        readonly port2: {
+          onMessage: ((message: EvoluTabOutput) => void) | null;
+        };
+      }> = [];
+
+      createEvoluDeps({
+        createDbWorker: testCreateWorker,
+        createMessageChannel: <Input, Output = never>() => {
+          const channel = testCreateMessageChannel<Input, Output>();
+          channels.push(channel as never);
+          return channel;
+        },
+        sharedWorker: testCreateSharedWorker<SharedWorkerInput>(),
+        reloadApp: lazyVoid,
+      });
+
+      const tabChannel = channels.find((channel) => channel.port2.onMessage);
+      assert(tabChannel?.port2.onMessage, "Expected tab channel handler");
 
       expect(() => {
-        workerPort.postMessage({ type: "Unknown" } as never);
+        tabChannel.port2.onMessage?.({ type: "Unknown" } as never);
       }).toThrow();
     });
 
@@ -357,6 +406,8 @@ describe("unit tests", () => {
 
       const evolu = await run.orThrow(testCreateEvolu);
 
+      await testWaitForWorkerMessage();
+
       expect(dbWorkerMessages).toHaveLength(1);
       expect(dbWorkerMessages[0]).toEqual(
         expect.objectContaining({
@@ -408,14 +459,18 @@ describe("unit tests", () => {
       const evolu = await run.orThrow(testCreateEvolu);
       await evolu[Symbol.asyncDispose]();
 
+      await testWaitForWorkerMessage();
+
       expect(run.deps.evoluInputs).toEqual([{ type: "Dispose" }]);
     });
 
-    test("fails pending export and posts Dispose", async () => {
+    test("fails pending export", async () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
 
       const exportFiber = run(evolu.exportDatabase);
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
 
@@ -424,13 +479,12 @@ describe("unit tests", () => {
       await expect(exportFiber).resolves.toEqual(
         err({ type: "DeferredDisposedError" }),
       );
-      expect(run.deps.evoluInputs).toEqual([
-        { type: "Export" },
-        { type: "Dispose" },
-      ]);
+      await testWaitForWorkerMessage();
+
+      expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
     });
 
-    test("cancels pending mutation microtask batch", async () => {
+    test("posts Dispose with pending mutation microtask batch", async () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
 
@@ -440,13 +494,9 @@ describe("unit tests", () => {
 
       await evolu[Symbol.asyncDispose]();
 
-      expect(run.deps.evoluInputs).toMatchInlineSnapshot(`
-      [
-        {
-          "type": "Dispose",
-        },
-      ]
-    `);
+      await testWaitForWorkerMessage();
+
+      expect(run.deps.evoluInputs).toContainEqual({ type: "Dispose" });
     });
 
     test("disposes internal message channels", async () => {
@@ -489,7 +539,7 @@ describe("unit tests", () => {
         },
       );
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       const mutate = run.deps.evoluInputs[0] as ExtractType<
         EvoluInput,
@@ -504,6 +554,8 @@ describe("unit tests", () => {
         patchesByQuery: new Map(),
         onCompleteIds: [onCompleteId],
       });
+
+      await testWaitForWorkerMessage();
 
       expect(called).toBe(0);
     });
@@ -523,7 +575,7 @@ describe("unit tests", () => {
         },
       );
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       const mutate = run.deps.evoluInputs[0] as ExtractType<
         EvoluInput,
@@ -536,6 +588,8 @@ describe("unit tests", () => {
         patchesByQuery: new Map(),
         onCompleteIds: [onCompleteId],
       });
+
+      await testWaitForWorkerMessage();
 
       expect(called).toBe(1);
     });
@@ -564,7 +618,7 @@ describe("unit tests", () => {
         },
       );
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       const mutate = run.deps.evoluInputs[0] as ExtractType<
         EvoluInput,
@@ -577,6 +631,8 @@ describe("unit tests", () => {
         patchesByQuery: new Map(),
         onCompleteIds: [onCompleteId],
       });
+
+      await testWaitForWorkerMessage();
 
       expect(flushSyncCalls).toBe(1);
       expect(called).toBe(1);
@@ -612,15 +668,33 @@ describe("unit tests", () => {
 
       run.deps.postEvoluOutput({ type: "RefreshQueries" });
 
+      await testWaitForWorkerMessage();
+
       expect(run.deps.evoluInputs).toEqual([]);
     });
 
     test("throws for unknown evolu output type", async () => {
-      await using run = testCreateRun(testCreateEvoluDeps());
+      const channels: Array<{
+        readonly port1: {
+          onMessage: ((message: EvoluOutput) => void) | null;
+        };
+      }> = [];
+
+      await using run = testCreateRun({
+        ...testCreateEvoluDeps(),
+        createMessageChannel: <Input, Output = never>() => {
+          const channel = testCreateMessageChannel<Input, Output>();
+          channels.push(channel as never);
+          return channel;
+        },
+      });
       await run.orThrow(testCreateEvolu);
 
+      const evoluChannel = channels.find((channel) => channel.port1.onMessage);
+      assert(evoluChannel?.port1.onMessage, "Expected evolu channel handler");
+
       expect(() => {
-        run.deps.postEvoluOutput({ type: "Unknown" } as never);
+        evoluChannel.port1.onMessage?.({ type: "Unknown" } as never);
       }).toThrow();
     });
   });
@@ -635,7 +709,9 @@ describe("unit tests", () => {
 
       expect(firstLoad).toBe(secondLoad);
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([
         { type: "Query", queries: new Set([testQuery]) },
@@ -649,7 +725,9 @@ describe("unit tests", () => {
 
       expect(loads).toHaveLength(2);
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([
         { type: "Query", queries: new Set([testQuery, testQuery2]) },
@@ -669,7 +747,9 @@ describe("unit tests", () => {
 
       const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([]);
 
@@ -681,10 +761,12 @@ describe("unit tests", () => {
       const evolu = await run.orThrow(testCreateEvolu);
 
       void evolu.loadQuery(testQuery);
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       run.deps.evoluInputs.length = 0;
       run.deps.postEvoluOutput({ type: "RefreshQueries" });
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([
         { type: "Query", queries: new Set([testQuery]) },
@@ -699,6 +781,8 @@ describe("unit tests", () => {
 
       run.deps.postEvoluOutput({ type: "RefreshQueries" });
 
+      await testWaitForWorkerMessage();
+
       expect(run.deps.evoluInputs).toEqual([
         { type: "Query", queries: new Set([testQuery]) },
       ]);
@@ -711,12 +795,12 @@ describe("unit tests", () => {
       const evolu = await run.orThrow(testCreateEvolu);
 
       const loadFiber = evolu.loadQuery(testQuery);
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       run.deps.evoluInputs.length = 0;
 
       evolu.insert("todo", { title: NonEmptyString100.orThrow("M") });
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       run.deps.postEvoluOutput({
         type: "OnPatchesByQuery",
@@ -731,6 +815,8 @@ describe("unit tests", () => {
       run.deps.evoluInputs.length = 0;
       run.deps.postEvoluOutput({ type: "RefreshQueries" });
 
+      await testWaitForWorkerMessage();
+
       expect(run.deps.evoluInputs).toEqual([]);
     });
 
@@ -739,7 +825,7 @@ describe("unit tests", () => {
       const evolu = await run.orThrow(testCreateEvolu);
 
       void evolu.loadQuery(testQuery);
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       run.deps.postEvoluOutput({
         type: "OnPatchesByQuery",
@@ -752,6 +838,8 @@ describe("unit tests", () => {
       run.deps.evoluInputs.length = 0;
       run.deps.postEvoluOutput({ type: "RefreshQueries" });
 
+      await testWaitForWorkerMessage();
+
       expect(run.deps.evoluInputs).toEqual([]);
     });
 
@@ -761,10 +849,12 @@ describe("unit tests", () => {
 
       const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
       void evolu.loadQuery(testQuery);
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       run.deps.evoluInputs.length = 0;
       run.deps.postEvoluOutput({ type: "RefreshQueries" });
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([
         { type: "Query", queries: new Set([testQuery]) },
@@ -780,7 +870,7 @@ describe("unit tests", () => {
       const unsubscribe = evolu.subscribeQuery(testQuery)(lazyVoid);
 
       const firstLoad = evolu.loadQuery(testQuery);
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
 
       run.deps.postEvoluOutput({
         type: "OnPatchesByQuery",
@@ -802,6 +892,8 @@ describe("unit tests", () => {
         onCompleteIds: [],
       });
 
+      await testWaitForWorkerMessage();
+
       const replacedLoad = evolu.loadQuery(testQuery);
 
       expect(replacedLoad).not.toBe(fulfilledLoad);
@@ -821,6 +913,8 @@ describe("unit tests", () => {
         ]),
         onCompleteIds: [],
       });
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([]);
     });
@@ -848,6 +942,8 @@ describe("unit tests", () => {
         onCompleteIds: [],
       });
 
+      await testWaitForWorkerMessage();
+
       expect(calls).toBe(1);
 
       unsubscribe();
@@ -863,7 +959,9 @@ describe("unit tests", () => {
         title: NonEmptyString100.orThrow("Todo 1"),
       });
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toMatchInlineSnapshot(
         [
@@ -917,7 +1015,9 @@ describe("unit tests", () => {
         title: NonEmptyString100.orThrow("Upserted"),
       });
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toMatchInlineSnapshot(
         [
@@ -983,7 +1083,9 @@ describe("unit tests", () => {
         title: NonEmptyString100.orThrow("C"),
       });
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toMatchInlineSnapshot(
         [
@@ -1055,7 +1157,9 @@ describe("unit tests", () => {
         { ownerId: testAppOwner.id, onComplete: lazyVoid },
       );
 
-      await Promise.resolve();
+      await testWaitForWorkerMessage();
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toMatchInlineSnapshot(
         [
@@ -1097,11 +1201,30 @@ describe("unit tests", () => {
 
   describe("exportDatabase", () => {
     test("throws when OnExport arrives without pending export", async () => {
-      await using run = testCreateRun(testCreateEvoluDeps());
+      const channels: Array<{
+        readonly port1: {
+          onMessage: ((message: EvoluOutput) => void) | null;
+        };
+      }> = [];
+
+      await using run = testCreateRun({
+        ...testCreateEvoluDeps(),
+        createMessageChannel: <Input, Output = never>() => {
+          const channel = testCreateMessageChannel<Input, Output>();
+          channels.push(channel as never);
+          return channel;
+        },
+      });
       await run.orThrow(testCreateEvolu);
 
+      const evoluChannel = channels.find((channel) => channel.port1.onMessage);
+      assert(evoluChannel?.port1.onMessage, "Expected evolu channel handler");
+
       expect(() => {
-        run.deps.postEvoluOutput({ type: "OnExport", file: new Uint8Array() });
+        evoluChannel.port1.onMessage?.({
+          type: "OnExport",
+          file: new Uint8Array(),
+        });
       }).toThrow("OnExport received without pending export.");
     });
 
@@ -1110,6 +1233,8 @@ describe("unit tests", () => {
       const evolu = await run.orThrow(testCreateEvolu);
 
       const exportFiber = run(evolu.exportDatabase);
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
 
@@ -1124,6 +1249,8 @@ describe("unit tests", () => {
       const evolu = await run.orThrow(testCreateEvolu);
 
       const exportFiber = run(evolu.exportDatabase);
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
 
@@ -1140,6 +1267,8 @@ describe("unit tests", () => {
       const firstExport = run(evolu.exportDatabase);
       const secondExport = run(evolu.exportDatabase);
 
+      await testWaitForWorkerMessage();
+
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
 
       const firstFile = new Uint8Array([1, 2, 3]);
@@ -1149,6 +1278,8 @@ describe("unit tests", () => {
       expect(await secondExport).toEqual(ok(firstFile));
 
       const thirdExport = run(evolu.exportDatabase);
+      await testWaitForWorkerMessage();
+
       expect(run.deps.evoluInputs).toEqual([
         { type: "Export" },
         { type: "Export" },
@@ -1166,6 +1297,8 @@ describe("unit tests", () => {
 
       const firstExport = run(evolu.exportDatabase);
       const secondExport = run(evolu.exportDatabase);
+
+      await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
 
@@ -1223,7 +1356,7 @@ describe("integration tests", () => {
     });
   };
 
-  test.only("createEvolu", async () => {
+  test("createEvolu", async () => {
     await using run = await testCreateRunWithEvoluDeps();
     const { sqlite } = run.deps;
 

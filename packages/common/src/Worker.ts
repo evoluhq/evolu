@@ -7,6 +7,7 @@
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { ConsoleDep, ConsoleStoreOutputEntryDep } from "./Console.js";
+import { testWaitForMacrotask } from "./Test.js";
 
 /**
  * Platform-agnostic Worker.
@@ -395,6 +396,17 @@ export const testCreateMessageChannel = <
 export const testCreateMessagePort: CreateMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort<Input, Output>,
 ): MessagePort<Input, Output> => createMessagePort(nativePort);
+
+/**
+ * Waits long enough for multi-hop in-memory worker message delivery in tests.
+ *
+ * Some flows require several queued macrotasks across worker/message-port
+ * boundaries; this helper advances that pipeline deterministically.
+ */
+export const testWaitForWorkerMessage = async (): Promise<void> => {
+  await testWaitForMacrotask();
+  await testWaitForMacrotask();
+};
 
 const createMemoryWorkerPair = <Input, Output = never>(): {
   readonly worker: Worker<Input, Output>;
