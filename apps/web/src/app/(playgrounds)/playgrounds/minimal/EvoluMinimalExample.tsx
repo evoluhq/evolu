@@ -51,6 +51,8 @@ const console = Evolu.createConsole({
   formatter: Evolu.createConsoleFormatter()({ timestampFormat: "relative" }),
 });
 
+// TODO: createRunWithEvoluDeps()
+
 // Create Evolu dependencies for React Web.
 const deps = createEvoluDeps({ console });
 
@@ -264,17 +266,15 @@ const OwnerActions: FC = () => {
   };
 
   const handleDownloadDatabaseClick = () => {
-    // TODO: nemam to zmenit na async? by pak nejel ale cancel, hmm.
-    // vystavit oboje? nebo jen jedno?
-    // void evolu.exportDatabase().then((data) => {
-    //   using objectUrl = Evolu.createObjectURL(
-    //     new Blob([data], { type: "application/x-sqlite3" }),
-    //   );
-    //   const link = document.createElement("a");
-    //   link.href = objectUrl.url;
-    //   link.download = `${evolu.name}.sqlite3`;
-    //   link.click();
-    // });
+    void evolu.exportDatabase().then((data) => {
+      using objectUrl = Evolu.createObjectURL(
+        new Blob([data], { type: "application/x-sqlite3" }),
+      );
+      const link = document.createElement("a");
+      link.href = objectUrl.url;
+      link.download = `${evolu.name}.sqlite3`;
+      link.click();
+    });
   };
 
   return (

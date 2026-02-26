@@ -464,11 +464,11 @@ describe("unit tests", () => {
       expect(run.deps.evoluInputs).toEqual([{ type: "Dispose" }]);
     });
 
-    test("fails pending export", async () => {
+    test("rejects pending export", async () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
 
-      const exportFiber = run(evolu.exportDatabase);
+      const exportPromise = evolu.exportDatabase();
 
       await testWaitForWorkerMessage();
 
@@ -476,9 +476,9 @@ describe("unit tests", () => {
 
       await evolu[Symbol.asyncDispose]();
 
-      await expect(exportFiber).resolves.toEqual(
-        err({ type: "DeferredDisposedError" }),
-      );
+      await expect(exportPromise).rejects.toEqual({
+        type: "EvoluDisposedError",
+      });
       await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
@@ -1232,7 +1232,7 @@ describe("unit tests", () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
 
-      const exportFiber = run(evolu.exportDatabase);
+      const exportPromise = evolu.exportDatabase();
 
       await testWaitForWorkerMessage();
 
@@ -1241,31 +1241,15 @@ describe("unit tests", () => {
       const file = new Uint8Array([1, 2, 3]);
       run.deps.postEvoluOutput({ type: "OnExport", file });
 
-      expect(await exportFiber).toEqual(ok(file));
-    });
-
-    test("aborts export for one caller", async () => {
-      await using run = testCreateRun(testCreateEvoluDeps());
-      const evolu = await run.orThrow(testCreateEvolu);
-
-      const exportFiber = run(evolu.exportDatabase);
-
-      await testWaitForWorkerMessage();
-
-      expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
-
-      exportFiber.abort();
-      await expect(exportFiber).resolves.toEqual(
-        err({ type: "AbortError", reason: undefined }),
-      );
+      expect(await exportPromise).toEqual(file);
     });
 
     test("shares pending export and resolves both callers", async () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
 
-      const firstExport = run(evolu.exportDatabase);
-      const secondExport = run(evolu.exportDatabase);
+      const firstExport = evolu.exportDatabase();
+      const secondExport = evolu.exportDatabase();
 
       await testWaitForWorkerMessage();
 
@@ -1274,10 +1258,10 @@ describe("unit tests", () => {
       const firstFile = new Uint8Array([1, 2, 3]);
       run.deps.postEvoluOutput({ type: "OnExport", file: firstFile });
 
-      expect(await firstExport).toEqual(ok(firstFile));
-      expect(await secondExport).toEqual(ok(firstFile));
+      expect(await firstExport).toEqual(firstFile);
+      expect(await secondExport).toEqual(firstFile);
 
-      const thirdExport = run(evolu.exportDatabase);
+      const thirdExport = evolu.exportDatabase();
       await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([
@@ -1288,29 +1272,61 @@ describe("unit tests", () => {
       const secondFile = new Uint8Array([4, 5, 6]);
       run.deps.postEvoluOutput({ type: "OnExport", file: secondFile });
 
-      expect(await thirdExport).toEqual(ok(secondFile));
+      expect(await thirdExport).toEqual(secondFile);
     });
 
-    test("aborting one of two pending callers does not abort the other", async () => {
+    test("returns a new promise after previous export resolves", async () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
 
-      const firstExport = run(evolu.exportDatabase);
-      const secondExport = run(evolu.exportDatabase);
+      const firstExport = evolu.exportDatabase();
+      const secondExport = evolu.exportDatabase();
 
       await testWaitForWorkerMessage();
 
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
 
-      firstExport.abort();
-
       const file = new Uint8Array([7, 8, 9]);
       run.deps.postEvoluOutput({ type: "OnExport", file });
 
-      await expect(firstExport).resolves.toEqual(
+      await expect(firstExport).resolves.toEqual(file);
+      await expect(secondExport).resolves.toEqual(file);
+
+      const thirdExport = evolu.exportDatabase();
+
+      await testWaitForWorkerMessage();
+
+      expect(run.deps.evoluInputs).toEqual([
+        { type: "Export" },
+        { type: "Export" },
+      ]);
+
+      const secondFile = new Uint8Array([13, 14, 15]);
+      run.deps.postEvoluOutput({ type: "OnExport", file: secondFile });
+
+      await expect(thirdExport).resolves.toEqual(secondFile);
+    });
+
+    test("aborting run-wrapped export does not cancel shared export", async () => {
+      await using run = testCreateRun(testCreateEvoluDeps());
+      const evolu = await run.orThrow(testCreateEvolu);
+
+      const sharedExport = evolu.exportDatabase();
+      const wrappedExport = run(async () => ok(await evolu.exportDatabase()));
+
+      await testWaitForWorkerMessage();
+
+      expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
+
+      wrappedExport.abort();
+
+      const file = new Uint8Array([16, 17, 18]);
+      run.deps.postEvoluOutput({ type: "OnExport", file });
+
+      await expect(wrappedExport).resolves.toEqual(
         err({ type: "AbortError", reason: undefined }),
       );
-      expect(await secondExport).toEqual(ok(file));
+      await expect(sharedExport).resolves.toEqual(file);
     });
   });
 });
