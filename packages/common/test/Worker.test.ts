@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { lazyVoid } from "../src/Function.js";
+import { testWaitForMacrotask } from "../src/Test.js";
 import type { NativeMessagePort } from "../src/Worker.js";
 import {
   createSharedWorker,
@@ -11,7 +12,7 @@ import {
 } from "../src/Worker.js";
 
 describe("createWorker", () => {
-  test("messages are queued until worker self onMessage is assigned", () => {
+  test("messages are queued and delivered asynchronously after worker self onMessage is assigned", async () => {
     let self!: { onMessage: ((message: string) => void) | null };
 
     const worker = createWorker<string>((nextSelf) => {
@@ -23,12 +24,14 @@ describe("createWorker", () => {
     const received: Array<string> = [];
     self.onMessage = (message) => received.push(message);
 
+    await testWaitForMacrotask();
+
     expect(received).toEqual(["queued"]);
   });
 });
 
 describe("createSharedWorker", () => {
-  test("messages are queued until worker-side port onMessage is assigned", () => {
+  test("messages are queued and delivered asynchronously after worker-side port onMessage is assigned", async () => {
     let workerPort!: { onMessage: ((message: string) => void) | null };
 
     const worker = createSharedWorker<string>((self) => {
@@ -41,6 +44,8 @@ describe("createSharedWorker", () => {
 
     const received: Array<string> = [];
     workerPort.onMessage = (message) => received.push(message);
+
+    await testWaitForMacrotask();
 
     expect(received).toEqual(["queued"]);
   });
@@ -55,47 +60,63 @@ describe("testCreateMessageChannel", () => {
     expect(channel.port2.native).not.toBeNull();
   });
 
-  test("port1 postMessage delivers to port2 onMessage", () => {
+  test("port1 postMessage delivers to port2 onMessage asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const received: Array<string> = [];
     channel.port2.onMessage = (msg) => received.push(msg);
     channel.port1.postMessage("hello");
+
+    await testWaitForMacrotask();
+
     expect(received).toEqual(["hello"]);
   });
 
-  test("port2 postMessage delivers to port1 onMessage", () => {
+  test("port2 postMessage delivers to port1 onMessage asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const received: Array<number> = [];
     channel.port1.onMessage = (msg) => received.push(msg);
     channel.port2.postMessage(42);
+
+    await testWaitForMacrotask();
+
     expect(received).toEqual([42]);
   });
 
-  test("messages are queued until onMessage is assigned", () => {
+  test("messages are queued until onMessage is assigned and then flushed asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     channel.port1.postMessage("a");
     channel.port1.postMessage("b");
     const received: Array<string> = [];
     channel.port2.onMessage = (msg) => received.push(msg);
+
+    await testWaitForMacrotask();
+
     expect(received).toEqual(["a", "b"]);
   });
 
-  test("messages sent after onMessage is assigned are delivered immediately", () => {
+  test("messages sent after onMessage is assigned are delivered asynchronously", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
     channel.port2.onMessage = (msg) => received.push(msg);
     channel.port1.postMessage("first");
     channel.port1.postMessage("second");
+
+    await testWaitForMacrotask();
+
     expect(received).toEqual(["first", "second"]);
   });
 
-  test("setting onMessage to null stops delivery", () => {
+  test("setting onMessage to null stops future asynchronous delivery", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
     channel.port2.onMessage = (msg) => received.push(msg);
     channel.port1.postMessage("delivered");
+    await testWaitForMacrotask();
+
     channel.port2.onMessage = null;
     channel.port1.postMessage("queued");
+    await testWaitForMacrotask();
+
     expect(received).toEqual(["delivered"]);
   });
 
@@ -125,7 +146,7 @@ describe("testCreateMessageChannel", () => {
     expect(channel1.port2.native).not.toBe(channel2.port2.native);
   });
 
-  test("bidirectional communication works", () => {
+  test("bidirectional communication works asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const strings: Array<string> = [];
     const numbers: Array<number> = [];
@@ -135,6 +156,8 @@ describe("testCreateMessageChannel", () => {
 
     channel.port1.postMessage("hello");
     channel.port2.postMessage(42);
+
+    await testWaitForMacrotask();
 
     expect(strings).toEqual(["hello"]);
     expect(numbers).toEqual([42]);
@@ -163,7 +186,7 @@ describe("testCreateMessagePort", () => {
 });
 
 describe("testCreateWorker", () => {
-  test("worker and self communicate through ports", () => {
+  test("worker and self communicate through ports asynchronously", async () => {
     const worker = testCreateWorker<string, number>();
     const workerReceived: Array<number> = [];
     const selfReceived: Array<string> = [];
@@ -174,16 +197,20 @@ describe("testCreateWorker", () => {
     worker.postMessage("to-self");
     worker.self.postMessage(123);
 
+    await testWaitForMacrotask();
+
     expect(selfReceived).toEqual(["to-self"]);
     expect(workerReceived).toEqual([123]);
   });
 
-  test("messages are queued until onMessage is assigned", () => {
+  test("messages are queued until onMessage is assigned and then flushed asynchronously", async () => {
     const worker = testCreateWorker<string>();
     worker.postMessage("queued");
 
     const received: Array<string> = [];
     worker.self.onMessage = (msg) => received.push(msg);
+
+    await testWaitForMacrotask();
 
     expect(received).toEqual(["queued"]);
   });
@@ -227,7 +254,7 @@ describe("testCreateSharedWorker", () => {
     );
   });
 
-  test("worker and self communicate through ports", () => {
+  test("worker and self communicate through ports asynchronously", async () => {
     const worker = testCreateSharedWorker<string, number>();
     const workerReceived: Array<string> = [];
     const clientReceived: Array<number> = [];
@@ -242,11 +269,13 @@ describe("testCreateSharedWorker", () => {
 
     worker.port.postMessage("hello");
 
+    await testWaitForMacrotask();
+
     expect(workerReceived).toEqual(["hello"]);
     expect(clientReceived).toEqual([99]);
   });
 
-  test("messages sent before connect are queued", () => {
+  test("messages sent before connect are queued and delivered asynchronously", async () => {
     const worker = testCreateSharedWorker<string>();
     worker.port.postMessage("before-connect");
 
@@ -255,6 +284,8 @@ describe("testCreateSharedWorker", () => {
       port.onMessage = (msg) => received.push(msg);
     };
     worker.connect();
+
+    await testWaitForMacrotask();
 
     expect(received).toEqual(["before-connect"]);
   });

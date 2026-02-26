@@ -14,7 +14,6 @@ import {
 import { assert } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import type { Console, ConsoleEntry, ConsoleLevel } from "../Console.js";
-import { exhaustiveCheck } from "../Function.js";
 import { createInstances } from "../Instances.js";
 import { ok } from "../Result.js";
 import { spaced } from "../Schedule.js";
@@ -168,7 +167,7 @@ export const initSharedWorker =
             break;
           }
           default:
-            exhaustiveCheck(message);
+            console.error("Unknown shared worker input", message);
         }
       };
     };
@@ -310,7 +309,7 @@ const createSharedEvolu = ({
 
           break;
         default:
-          exhaustiveCheck(response);
+          console.error("Unknown queued response", response);
       }
 
       // Complete the current queue item and continue with the next one.
@@ -382,7 +381,7 @@ const createSharedEvolu = ({
             break;
           }
           default:
-            exhaustiveCheck(message);
+            console.error("Unknown db worker output", message);
         }
       };
 
@@ -411,7 +410,7 @@ const createSharedEvolu = ({
             break;
           }
           default:
-            exhaustiveCheck(evoluMessage);
+            console.error("Unknown evolu input", evoluMessage);
         }
       };
     },

@@ -202,7 +202,7 @@ export interface SharedWorkerSelf<Input, Output = never> extends Disposable {
  * Creates an in-memory {@link Worker}.
  *
  * This is a memory-only fallback for platforms without native worker support.
- * Message delivery is synchronous in-process.
+ * Message delivery is asynchronous in-process.
  */
 export const createWorker = <Input, Output = never>(
   initWorker: (self: WorkerSelf<Input, Output>) => void,
@@ -216,7 +216,8 @@ export const createWorker = <Input, Output = never>(
  * Creates an in-memory {@link SharedWorker}.
  *
  * This is a memory-only fallback for platforms without native SharedWorker
- * support. Connection and message delivery are synchronous in-process.
+ * support. Connection is synchronous while message delivery is asynchronous
+ * in-process.
  *
  * Intended usage is one shared worker instance per process/app runtime.
  */
@@ -238,14 +239,22 @@ export const createSharedWorker = <Input, Output = never>(
  * Creates an in-memory {@link MessageChannel}.
  *
  * This is a memory-only fallback for platforms without native MessageChannel
- * support. Message delivery is synchronous in-process.
+ * support. Message delivery is asynchronous in-process.
  */
 export const createMessageChannel: CreateMessageChannel = <
   Input,
   Output = never,
 >(): MessageChannel<Input, Output> => {
-  const state1: PortState<Output> = { handler: null, queue: [] };
-  const state2: PortState<Input> = { handler: null, queue: [] };
+  const state1: PortState<Output> = {
+    handler: null,
+    queue: [],
+    flushScheduled: false,
+  };
+  const state2: PortState<Input> = {
+    handler: null,
+    queue: [],
+    flushScheduled: false,
+  };
 
   const native1 = createNativeMessagePortToken<Input, Output>();
   const native2 = createNativeMessagePortToken<Output, Input>();
@@ -270,7 +279,7 @@ export const createMessageChannel: CreateMessageChannel = <
  * Creates an in-memory {@link MessagePort} from a native token.
  *
  * This is a memory-only fallback for platforms without native MessagePort
- * support. Message delivery through returned ports is synchronous in-process.
+ * support. Message delivery through returned ports is asynchronous in-process.
  */
 export const createMessagePort: CreateMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort<Input, Output>,
@@ -459,31 +468,50 @@ const createMemorySharedWorkerPair = <Input, Output = never>(): {
 interface PortState<T> {
   handler: ((message: T) => void) | null;
   readonly queue: Array<T>;
+  flushScheduled: boolean;
 }
 
 const createPort = <Input, Output>(
   receive: PortState<Output>,
   peerReceive: PortState<Input>,
   native: NativeMessagePort<Input, Output>,
-): MessagePort<Input, Output> => ({
-  postMessage: (message) => {
-    if (peerReceive.handler) peerReceive.handler(message);
-    else peerReceive.queue.push(message);
-  },
-  get onMessage() {
-    return receive.handler;
-  },
-  set onMessage(fn) {
-    receive.handler = fn;
-    if (fn) {
-      for (const msg of receive.queue.splice(0)) fn(msg);
-    }
-  },
-  native,
-  [Symbol.dispose]: () => {
-    receive.handler = null;
-  },
-});
+): MessagePort<Input, Output> => {
+  const scheduleFlush = (state: PortState<any>): void => {
+    if (state.flushScheduled) return;
+    state.flushScheduled = true;
+
+    // Native worker messages are task-queued; use macrotask timing.
+    setTimeout(() => {
+      state.flushScheduled = false;
+
+      const handler = state.handler;
+      if (!handler) return;
+
+      for (const message of state.queue.splice(0)) {
+        handler(message);
+      }
+    }, 0);
+  };
+
+  return {
+    postMessage: (message) => {
+      peerReceive.queue.push(message);
+      scheduleFlush(peerReceive);
+    },
+    get onMessage() {
+      return receive.handler;
+    },
+    set onMessage(fn) {
+      receive.handler = fn;
+      if (fn) scheduleFlush(receive);
+    },
+    native,
+    [Symbol.dispose]: () => {
+      receive.handler = null;
+      receive.flushScheduled = false;
+    },
+  };
+};
 
 const createTestPort = <Input, Output>(
   receive: PortState<Output>,

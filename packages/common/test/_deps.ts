@@ -28,12 +28,10 @@ import type { TestDeps } from "../src/Test.js";
 
 export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 
-export const testCreateSqliteDeps = (): CreateSqliteDriverDep => ({
-  createSqliteDriver: testCreateSqliteDriver,
-});
-
-export const testCreateSqliteDriver: CreateSqliteDriver = (name) =>
-  createBetterSqliteDriver(name, { mode: "memory" });
+export const testCreateSqliteDeps: CreateSqliteDriverDep = {
+  createSqliteDriver: (name) =>
+    createBetterSqliteDriver(name, { mode: "memory" }),
+};
 
 // Duplicated from @evolu/nodejs because @evolu/common cannot depend on it
 // (nodejs depends on common — importing back would create a circular dependency).
@@ -90,7 +88,7 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
 export const testCreateRunWithSqliteAndRelayStorage = async (
   config?: Partial<StorageConfig>,
 ): Promise<Run<TestDeps & CreateSqliteDriverDep & SqliteDep & StorageDep>> => {
-  const runWithSqlite = await testCreateRunWithSqlite(testCreateSqliteDeps());
+  const runWithSqlite = await testCreateRunWithSqlite(testCreateSqliteDeps);
 
   createBaseSqliteStorageTables(runWithSqlite.deps);
   createRelayStorageTables(runWithSqlite.deps);

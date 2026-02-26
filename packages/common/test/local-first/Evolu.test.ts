@@ -3,7 +3,6 @@ import { assert } from "../../src/Assert.js";
 import type { Brand } from "../../src/Brand.js";
 import type { ConsoleEntry, TestConsole } from "../../src/Console.js";
 import {
-  createConsole,
   createConsoleStoreOutput,
   testCreateConsole,
 } from "../../src/Console.js";
@@ -21,29 +20,29 @@ import {
   testAppName,
 } from "../../src/local-first/Evolu.js";
 import { testQuery, testQuery2 } from "../../src/local-first/Query.js";
-import type {
-  EvoluInput,
-  EvoluOutput,
-  EvoluTabOutput,
-  SharedWorker,
-  SharedWorkerInput,
+import { createQueryBuilder } from "../../src/local-first/Schema.js";
+import {
+  initSharedWorker,
+  type EvoluInput,
+  type EvoluOutput,
+  type EvoluTabOutput,
+  type SharedWorker,
+  type SharedWorkerInput,
 } from "../../src/local-first/Shared.js";
-import { initSharedWorker } from "../../src/local-first/Shared.js";
 import { err, ok } from "../../src/Result.js";
 import {
   createSqlite,
   getSqliteSnapshot,
   SqliteBoolean,
-  type CreateSqliteDriver,
-  type Sqlite,
 } from "../../src/Sqlite.js";
-import { createInMemoryLeaderLock, yieldNow } from "../../src/Task.js";
+import { createInMemoryLeaderLock } from "../../src/Task.js";
 import { testCreateRun } from "../../src/Test.js";
 import {
   createIdFromString,
   id,
   NonEmptyString100,
   nullOr,
+  testName,
 } from "../../src/Type.js";
 import type { ExtractType } from "../../src/Types.js";
 import {
@@ -56,7 +55,7 @@ import {
   testCreateSharedWorker,
   testCreateWorker,
 } from "../../src/Worker.js";
-import { testCreateSqliteDriver } from "../_deps.js";
+import { testCreateSqliteDeps } from "../_deps.js";
 import { testAppOwner } from "./_fixtures.js";
 
 const TodoId = id("Todo");
@@ -74,6 +73,12 @@ const testCreateEvolu = createEvolu(Schema, {
   appName: testAppName,
   appOwner: testAppOwner,
 });
+
+const createQuery = createQueryBuilder(Schema);
+
+const todoByCreatedAtQuery = createQuery((db) =>
+  db.selectFrom("todo").select(["id", "title"]).orderBy("createdAt"),
+);
 
 describe("unit tests", () => {
   const testCreateEvoluDeps = () => {
@@ -1178,60 +1183,80 @@ describe("unit tests", () => {
 });
 
 describe("integration tests", () => {
-  const testCreateEvoluDeps = () => {
+  const testCreateRunWithEvoluDeps = async () => {
     const consoleStoreOutput = createConsoleStoreOutput();
-    const console = createConsole({ output: consoleStoreOutput });
 
-    const sqlite = Promise.withResolvers<Sqlite>();
+    const run = testCreateRun({
+      // console: createConsole({ level: "debug" }),
+      consoleStoreOutputEntry: consoleStoreOutput.entry,
+      createMessageChannel,
+      createMessagePort,
+    });
 
-    const createSqliteDriver: CreateSqliteDriver = (name) => async (run) => {
-      const driver = await run(testCreateSqliteDriver(name));
-
-      const sqliteResult = await testCreateRun({
-        createSqliteDriver: () => () => driver,
-      })(createSqlite(name));
-      assert(sqliteResult.ok, "");
-
-      sqlite.resolve(sqliteResult.value);
-
-      return driver;
-    };
+    const driver = await run.orThrow(
+      testCreateSqliteDeps.createSqliteDriver(testName),
+    );
 
     const workerRun = testCreateRun({
-      console,
       consoleStoreOutputEntry: consoleStoreOutput.entry,
       createMessagePort,
-      createSqliteDriver,
       leaderLock: createInMemoryLeaderLock(),
+      createSqliteDriver: () => () => ok(driver),
     });
 
-    const createDbWorker: CreateDbWorker = () =>
+    const createDbWorker = () =>
       createWorker<DbWorkerInit>((self) => {
-        void workerRun(initDbWorker(self));
-      }) as DbWorker;
+        workerRun(initDbWorker(self));
+      });
 
     const sharedWorker = createSharedWorker<SharedWorkerInput>((self) => {
-      void workerRun(initSharedWorker(self));
+      run(initSharedWorker(self));
     });
 
-    return {
+    const sqlite = await workerRun.orThrow(createSqlite(testName));
+
+    return run.addDeps({
       createDbWorker,
-      createMessageChannel,
       reloadApp: lazyVoid,
       sharedWorker,
-      console,
-      sqlite: sqlite.promise,
-      workerRun,
-    };
+      sqlite,
+    });
   };
 
-  test("createEvolu", async () => {
-    await using run = testCreateRun(testCreateEvoluDeps());
-    const _evolu = await run.orThrow(testCreateEvolu);
+  test.only("createEvolu", async () => {
+    await using run = await testCreateRunWithEvoluDeps();
+    const { sqlite } = run.deps;
 
-    const sqlite = await run.deps.sqlite;
+    const evolu = await run.orThrow(testCreateEvolu);
 
-    await run(yieldNow);
+    expect(await evolu.loadQuery(todoByCreatedAtQuery)).toEqual([]);
+
+    let completed = 0;
+    const mutationCompleted = Promise.withResolvers<void>();
+
+    evolu.insert(
+      "todo",
+      {
+        title: NonEmptyString100.orThrow("Integration todo"),
+      },
+      {
+        onComplete: () => {
+          completed += 1;
+          mutationCompleted.resolve();
+        },
+      },
+    );
+
+    await mutationCompleted.promise;
+    expect(completed).toBe(1);
+
+    const rowsAfterInsert = await evolu.loadQuery(todoByCreatedAtQuery);
+    expect(rowsAfterInsert).toEqual([
+      {
+        id: expect.any(String),
+        title: "Integration todo",
+      },
+    ]);
 
     const snapshot = getSqliteSnapshot({ sqlite });
 
@@ -1329,13 +1354,30 @@ describe("integration tests", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,37,188,91,250,231,27,86,22],
+                "clock": uint8:[0,0,0,0,0,0,0,1,255,46,38,44,239,232,201,76],
               },
             ],
           },
           {
             "name": "evolu_history",
-            "rows": [],
+            "rows": [
+              {
+                "column": "title",
+                "id": uint8:[215,33,35,94,252,125,121,118,144,247,77,4,60,148,207,130],
+                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "table": "todo",
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,255,46,38,44,239,232,201,76],
+                "value": "Integration todo",
+              },
+              {
+                "column": "createdAt",
+                "id": uint8:[215,33,35,94,252,125,121,118,144,247,77,4,60,148,207,130],
+                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "table": "todo",
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,255,46,38,44,239,232,201,76],
+                "value": "1970-01-01T00:00:00.000Z",
+              },
+            ],
           },
           {
             "name": "evolu_message_quarantine",
@@ -1343,15 +1385,41 @@ describe("integration tests", () => {
           },
           {
             "name": "evolu_timestamp",
-            "rows": [],
+            "rows": [
+              {
+                "c": 1,
+                "h1": 254926804352991,
+                "h2": 61544627249815,
+                "l": 2,
+                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "t": uint8:[0,0,0,0,0,0,0,1,255,46,38,44,239,232,201,76],
+              },
+            ],
           },
           {
             "name": "evolu_usage",
-            "rows": [],
+            "rows": [
+              {
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,255,46,38,44,239,232,201,76],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,255,46,38,44,239,232,201,76],
+                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "storedBytes": 1,
+              },
+            ],
           },
           {
             "name": "todo",
-            "rows": [],
+            "rows": [
+              {
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "id": "1yEjXvx9eXaQ900EPJTPgg",
+                "isCompleted": null,
+                "isDeleted": null,
+                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "title": "Integration todo",
+                "updatedAt": null,
+              },
+            ],
           },
         ],
       }
