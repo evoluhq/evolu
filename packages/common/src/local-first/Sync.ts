@@ -29,8 +29,8 @@ import {
   SqliteValue,
 } from "../Sqlite.js";
 import { createMutex } from "../Task.js";
-import type { Millis, TimeDep } from "../Time.js";
-import { millisToDateIso } from "../Time.js";
+import type { TimeDep } from "../Time.js";
+import { Millis, millisToDateIso } from "../Time.js";
 import type { Typed } from "../Type.js";
 import { Id, IdBytes, idBytesToId, idToIdBytes, PositiveInt } from "../Type.js";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
@@ -268,11 +268,11 @@ export const createSync =
       OwnerTransport,
       SyncOwner,
       OwnerId
-    >({
+    >(deps)({
       createResource,
       getResourceKey: createTransportKey,
       getConsumerId: (owner) => owner.id,
-      disposalDelay: config.disposalDelayMs ?? 100,
+      disposalDelay: Millis.orThrow(config.disposalDelayMs ?? 100),
 
       onConsumerAdded: (owner, webSocket) => {
         deps.console.log("[sync]", "onConsumerAdded", {

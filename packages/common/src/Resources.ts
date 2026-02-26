@@ -6,6 +6,7 @@
 
 import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
+import type { Duration, TimeDep, TimeoutId } from "./Time.js";
 import { PositiveInt, type Typed } from "./Type.js";
 
 /**
@@ -96,10 +97,10 @@ export interface ResourcesConfig<
   readonly getConsumerId: (consumer: TConsumer) => TConsumerId;
 
   /**
-   * Delay in milliseconds before disposing unused resources. Helps avoid
-   * resource churn during rapid add/remove cycles. Defaults to 100ms.
+   * Delay before disposing unused resources. Helps avoid resource churn during
+   * rapid add/remove cycles. Defaults to `"100ms"`.
    */
-  readonly disposalDelay?: number;
+  readonly disposalDelay?: Duration;
 
   /**
    * Called when a consumer is added to a resource for the first time. This
@@ -147,11 +148,11 @@ export interface ResourcesConfig<
  *   WebSocketConfig,
  *   User,
  *   UserId
- * >({
+ * >({ time: createTime() })({
  *   createResource: (config) => new WebSocket(config.url),
  *   getResourceKey: (config) => config.url,
  *   getConsumerId: (user) => user.id,
- *   disposalDelay: 1000,
+ *   disposalDelay: "1s",
  * });
  *
  * // Add users to WebSocket connections
@@ -172,203 +173,207 @@ export interface ResourcesConfig<
  * // server2 gets disposed after delay, server1 stays alive
  * ```
  */
-export const createResources = <
-  TResource extends Disposable,
-  TResourceKey extends string,
-  TResourceConfig,
-  TConsumer,
-  TConsumerId extends string,
->(
-  config: ResourcesConfig<
+export const createResources =
+  <
+    TResource extends Disposable,
+    TResourceKey extends string,
+    TResourceConfig,
+    TConsumer,
+    TConsumerId extends string,
+  >(
+    deps: TimeDep,
+  ) =>
+  (
+    config: ResourcesConfig<
+      TResource,
+      TResourceKey,
+      TResourceConfig,
+      TConsumer,
+      TConsumerId
+    >,
+  ): Resources<
     TResource,
     TResourceKey,
     TResourceConfig,
     TConsumer,
     TConsumerId
-  >,
-): Resources<
-  TResource,
-  TResourceKey,
-  TResourceConfig,
-  TConsumer,
-  TConsumerId
-> => {
-  let isDisposed = false;
+  > => {
+    let isDisposed = false;
 
-  const resourcesMap = new Map<TResourceKey, TResource>();
-  const consumerCounts = new Map<TResourceKey, Map<TConsumerId, PositiveInt>>();
-  const consumers = new Map<TConsumerId, TConsumer>();
-  const disposalTimeouts = new Map<
-    TResourceKey,
-    ReturnType<typeof setTimeout>
-  >();
+    const resourcesMap = new Map<TResourceKey, TResource>();
+    const consumerCounts = new Map<
+      TResourceKey,
+      Map<TConsumerId, PositiveInt>
+    >();
+    const consumers = new Map<TConsumerId, TConsumer>();
+    const disposalTimeouts = new Map<TResourceKey, TimeoutId>();
 
-  const disposalDelay = config.disposalDelay ?? 100;
+    const disposalDelay = config.disposalDelay ?? "100ms";
 
-  const ensureResource = (resourceConfig: TResourceConfig) => {
-    const key = config.getResourceKey(resourceConfig);
-    const timeout = disposalTimeouts.get(key);
-    if (timeout) {
-      clearTimeout(timeout);
-      disposalTimeouts.delete(key);
-    }
-
-    if (!resourcesMap.has(key)) {
-      const resource = config.createResource(resourceConfig);
-      resourcesMap.set(key, resource);
-    }
-  };
-
-  const scheduleDisposal = (key: TResourceKey): void => {
-    const timeout = setTimeout(() => {
-      const resource = resourcesMap.get(key);
-      if (resource) {
-        resource[Symbol.dispose]();
-        resourcesMap.delete(key);
+    const ensureResource = (resourceConfig: TResourceConfig) => {
+      const key = config.getResourceKey(resourceConfig);
+      const timeout = disposalTimeouts.get(key);
+      if (timeout) {
+        deps.time.clearTimeout(timeout);
+        disposalTimeouts.delete(key);
       }
-      disposalTimeouts.delete(key);
-    }, disposalDelay);
 
-    disposalTimeouts.set(key, timeout);
-  };
+      if (!resourcesMap.has(key)) {
+        const resource = config.createResource(resourceConfig);
+        resourcesMap.set(key, resource);
+      }
+    };
 
-  const resources: Resources<
-    TResource,
-    TResourceKey,
-    TResourceConfig,
-    TConsumer,
-    TConsumerId
-  > = {
-    addConsumer: (consumer, resourceConfigs) => {
-      if (isDisposed) return;
-
-      const consumerId = config.getConsumerId(consumer);
-
-      // Store consumer (last added consumer for this ID)
-      consumers.set(consumerId, consumer);
-
-      for (const resourceConfig of resourceConfigs) {
-        ensureResource(resourceConfig);
-        const resourceKey = config.getResourceKey(resourceConfig);
-
-        let counts = consumerCounts.get(resourceKey);
-        if (!counts) {
-          counts = new Map<TConsumerId, PositiveInt>();
-          consumerCounts.set(resourceKey, counts);
+    const scheduleDisposal = (key: TResourceKey): void => {
+      const timeout = deps.time.setTimeout(() => {
+        const resource = resourcesMap.get(key);
+        if (resource) {
+          resource[Symbol.dispose]();
+          resourcesMap.delete(key);
         }
+        disposalTimeouts.delete(key);
+      }, disposalDelay);
 
-        const currentCount = counts.get(consumerId) ?? 0;
-        const newCount = currentCount + 1;
-        counts.set(consumerId, PositiveInt.orThrow(newCount));
+      disposalTimeouts.set(key, timeout);
+    };
 
-        // Call onConsumerAdded callback only when consumer is added for the first time (0 -> 1)
-        if (currentCount === 0 && config.onConsumerAdded) {
-          const resource = resourcesMap.get(resourceKey);
-          if (resource) {
-            config.onConsumerAdded(consumer, resource, resourceKey);
+    const resources: Resources<
+      TResource,
+      TResourceKey,
+      TResourceConfig,
+      TConsumer,
+      TConsumerId
+    > = {
+      addConsumer: (consumer, resourceConfigs) => {
+        if (isDisposed) return;
+
+        const consumerId = config.getConsumerId(consumer);
+
+        // Store consumer (last added consumer for this ID)
+        consumers.set(consumerId, consumer);
+
+        for (const resourceConfig of resourceConfigs) {
+          ensureResource(resourceConfig);
+          const resourceKey = config.getResourceKey(resourceConfig);
+
+          let counts = consumerCounts.get(resourceKey);
+          if (!counts) {
+            counts = new Map<TConsumerId, PositiveInt>();
+            consumerCounts.set(resourceKey, counts);
           }
-        }
-      }
-    },
 
-    removeConsumer: (consumer, resourceConfigs) => {
-      if (isDisposed) return ok();
+          const currentCount = counts.get(consumerId) ?? 0;
+          const newCount = currentCount + 1;
+          counts.set(consumerId, PositiveInt.orThrow(newCount));
 
-      const consumerId = config.getConsumerId(consumer);
-
-      for (const resourceConfig of resourceConfigs) {
-        const key = config.getResourceKey(resourceConfig);
-        const counts = consumerCounts.get(key);
-        if (!counts) {
-          return err({ type: "ResourceNotFoundError", resourceKey: key });
-        }
-
-        const currentCount = counts.get(consumerId);
-        if (currentCount == null) {
-          return err({
-            type: "ConsumerNotFoundError",
-            consumerId: consumerId,
-            resourceKey: key,
-          });
-        }
-
-        if (currentCount === 1) {
-          counts.delete(consumerId);
-
-          // Call onConsumerRemoved callback only when consumer is completely removed (1 -> 0)
-          if (config.onConsumerRemoved) {
-            const resource = resourcesMap.get(key);
+          // Call onConsumerAdded callback only when consumer is added for the first time (0 -> 1)
+          if (currentCount === 0 && config.onConsumerAdded) {
+            const resource = resourcesMap.get(resourceKey);
             if (resource) {
-              config.onConsumerRemoved(consumer, resource, key);
+              config.onConsumerAdded(consumer, resource, resourceKey);
             }
           }
-
-          if (counts.size === 0) {
-            consumerCounts.delete(key);
-            scheduleDisposal(key);
-          }
-        } else {
-          counts.set(consumerId, PositiveInt.orThrow(currentCount - 1));
         }
-      }
+      },
 
-      if (!resources.hasConsumerAnyResource(consumer)) {
-        consumers.delete(consumerId);
-      }
+      removeConsumer: (consumer, resourceConfigs) => {
+        if (isDisposed) return ok();
 
-      return ok();
-    },
+        const consumerId = config.getConsumerId(consumer);
 
-    getResource: (key) => {
-      if (isDisposed) return null;
-      return resourcesMap.get(key) ?? null;
-    },
+        for (const resourceConfig of resourceConfigs) {
+          const key = config.getResourceKey(resourceConfig);
+          const counts = consumerCounts.get(key);
+          if (!counts) {
+            return err({ type: "ResourceNotFoundError", resourceKey: key });
+          }
 
-    getConsumersForResource: (key) => {
-      if (isDisposed) return [];
-      const counts = consumerCounts.get(key);
-      return counts ? Array.from(counts.keys()) : [];
-    },
+          const currentCount = counts.get(consumerId);
+          if (currentCount == null) {
+            return err({
+              type: "ConsumerNotFoundError",
+              consumerId: consumerId,
+              resourceKey: key,
+            });
+          }
 
-    hasConsumerAnyResource: (consumer) => {
-      if (isDisposed) return false;
-      const consumerId = config.getConsumerId(consumer);
-      // If slow, can be optimized with reverse index
-      return Array.from(consumerCounts.values()).some((counts) =>
-        counts.has(consumerId),
-      );
-    },
+          if (currentCount === 1) {
+            counts.delete(consumerId);
 
-    getConsumer: (consumerId) => {
-      if (isDisposed) return null;
-      const consumer = consumers.get(consumerId);
-      if (!consumer) return null;
+            // Call onConsumerRemoved callback only when consumer is completely removed (1 -> 0)
+            if (config.onConsumerRemoved) {
+              const resource = resourcesMap.get(key);
+              if (resource) {
+                config.onConsumerRemoved(consumer, resource, key);
+              }
+            }
 
-      // Only return consumer if it's currently using any resources
-      if (!resources.hasConsumerAnyResource(consumer)) {
-        return null;
-      }
+            if (counts.size === 0) {
+              consumerCounts.delete(key);
+              scheduleDisposal(key);
+            }
+          } else {
+            counts.set(consumerId, PositiveInt.orThrow(currentCount - 1));
+          }
+        }
 
-      return consumer;
-    },
+        if (!resources.hasConsumerAnyResource(consumer)) {
+          consumers.delete(consumerId);
+        }
 
-    [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
+        return ok();
+      },
 
-      for (const timeout of disposalTimeouts.values()) {
-        clearTimeout(timeout);
-      }
-      disposalTimeouts.clear();
+      getResource: (key) => {
+        if (isDisposed) return null;
+        return resourcesMap.get(key) ?? null;
+      },
 
-      for (const resource of resourcesMap.values()) {
-        resource[Symbol.dispose]();
-      }
-      resourcesMap.clear();
-      consumerCounts.clear();
-      consumers.clear();
-    },
+      getConsumersForResource: (key) => {
+        if (isDisposed) return [];
+        const counts = consumerCounts.get(key);
+        return counts ? Array.from(counts.keys()) : [];
+      },
+
+      hasConsumerAnyResource: (consumer) => {
+        if (isDisposed) return false;
+        const consumerId = config.getConsumerId(consumer);
+        // If slow, can be optimized with reverse index
+        return Array.from(consumerCounts.values()).some((counts) =>
+          counts.has(consumerId),
+        );
+      },
+
+      getConsumer: (consumerId) => {
+        if (isDisposed) return null;
+        const consumer = consumers.get(consumerId);
+        if (!consumer) return null;
+
+        // Only return consumer if it's currently using any resources
+        if (!resources.hasConsumerAnyResource(consumer)) {
+          return null;
+        }
+
+        return consumer;
+      },
+
+      [Symbol.dispose]: () => {
+        if (isDisposed) return;
+        isDisposed = true;
+
+        for (const timeout of disposalTimeouts.values()) {
+          deps.time.clearTimeout(timeout);
+        }
+        disposalTimeouts.clear();
+
+        for (const resource of resourcesMap.values()) {
+          resource[Symbol.dispose]();
+        }
+        resourcesMap.clear();
+        consumerCounts.clear();
+        consumers.clear();
+      },
+    };
+
+    return resources;
   };
-
-  return resources;
-};
