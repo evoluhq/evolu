@@ -151,7 +151,7 @@ type NativeMessagePort = Brand<"NativeMessagePort">;
 - **Write clear descriptions** - explain what the function does, not how to use it
 - **Use `{@link}` for references** - link to types, interfaces, functions, and exported symbols on first mention for discoverability
 - **Avoid pipe characters in first sentence** - TypeDoc extracts the first sentence for table descriptions, and pipe characters (even in inline code like `T | undefined`) break markdown table rendering. Move such details to subsequent sentences.
-- **Ignore temporary JSDoc alignment lint while editing** - do not spend cycles manually fixing alignment-only warnings; rely on format-on-save to normalize comment indentation.
+- **Never make alignment-only JSDoc edits** - avoid whitespace-only JSDoc changes and avoid retry loops that only chase alignment diagnostics; keep focus on content edits.
 
 ## Error handling with Result
 
