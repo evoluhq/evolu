@@ -220,8 +220,8 @@ describe("Instances", () => {
       disposed: boolean;
     }
 
-    let instance1: TestInstance | null = null;
-    let instance2: TestInstance | null = null;
+    let instance1: TestInstance;
+    let instance2: TestInstance;
 
     {
       using instances = createInstances<string, TestInstance>();

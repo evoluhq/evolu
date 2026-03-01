@@ -9,7 +9,6 @@
     "android:go": "expo start --android",
     "ios": "expo run:ios",
     "ios:go": "expo start --ios",
-    "lint": "expo lint",
     "_start": "expo start"
   },
   "jest": {

@@ -5,8 +5,7 @@
   "scripts": {
     "_start": "next start",
     "build": "next build --webpack",
-    "dev": "next dev --webpack",
-    "lint": "next lint"
+    "dev": "next dev --webpack"
   },
   "dependencies": {
     "@evolu/common": "*",
