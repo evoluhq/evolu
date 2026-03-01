@@ -46,10 +46,15 @@ const todosQuery = createQuery((db) =>
     .orderBy("createdAt"),
 );
 
+// Extract the row type from the query for type-safe component props.
+type TodosRow = typeof todosQuery.Row;
+
 const console = Evolu.createConsole({
   level: "debug",
   formatter: Evolu.createConsoleFormatter()({ timestampFormat: "relative" }),
 });
+
+// console.log(Symbol.dispose);
 
 // TODO: createRunWithEvoluDeps()
 
@@ -106,9 +111,6 @@ export const EvoluMinimalExample: FC = () => (
     </div>
   </div>
 );
-
-// Extract the row type from the query for type-safe component props.
-type TodosRow = typeof todosQuery.Row;
 
 /** Trims user input and validates it as a todo title. */
 const parseTodoTitle = (value: string) =>

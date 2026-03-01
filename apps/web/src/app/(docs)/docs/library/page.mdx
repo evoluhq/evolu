@@ -19,6 +19,19 @@ This guide will help you get started with the Evolu Library.
 npm install @evolu/common
 ```
 
+## Polyfills
+
+Evolu uses [JavaScript explicit resource management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management),
+which Safari does not support yet, so call `installPolyfills` during app
+startup before using Evolu.
+
+```ts
+import { installPolyfills } from "@evolu/common/polyfills";
+installPolyfills();
+```
+
+For React Native apps, use `@evolu/react-native/polyfills` instead.
+
 ## Learning path
 
 We recommend learning the Evolu Library in this order:
