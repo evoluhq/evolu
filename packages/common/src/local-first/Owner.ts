@@ -13,7 +13,9 @@ import {
   EncryptionKey,
   Entropy16,
   Entropy32,
+  testCreateRandomBytes,
 } from "../Crypto.js";
+import { testCreateRandomLib } from "../Random.js";
 import { getOrNull } from "../Result.js";
 import {
   brand,
@@ -75,6 +77,18 @@ export interface Owner extends ReadonlyOwner {
   readonly writeKey: OwnerWriteKey;
 }
 
+/**
+ * Represents an owner for sync operations.
+ *
+ * Includes {@link ReadonlyOwner} fields plus optional {@link OwnerWriteKey} (for
+ * clients that write) and optional {@link OwnerTransport} to override default
+ * transports per owner.
+ */
+export interface SyncOwner extends ReadonlyOwner {
+  readonly writeKey?: OwnerWriteKey;
+  readonly transports?: ReadonlyArray<OwnerTransport>;
+}
+
 /** OwnerId is a branded {@link Id} that uniquely identifies an {@link Owner}. */
 export const OwnerId = /*#__PURE__*/ brand("OwnerId", Id);
 export type OwnerId = typeof OwnerId.Type;
@@ -129,6 +143,13 @@ export type OwnerSecret = typeof OwnerSecret.Type;
 /** Creates a {@link OwnerSecret}. */
 export const createOwnerSecret = (deps: RandomBytesDep): OwnerSecret =>
   deps.randomBytes.create(32) as OwnerSecret;
+
+/** Deterministic {@link OwnerSecret} for tests. */
+export const testOwnerSecret = /*#__PURE__*/ createOwnerSecret({
+  randomBytes: testCreateRandomBytes({
+    randomLib: testCreateRandomLib(),
+  }),
+});
 
 /** Converts an {@link OwnerSecret} to a {@link Mnemonic}. */
 export const ownerSecretToMnemonic = (secret: OwnerSecret): Mnemonic =>
@@ -211,6 +232,12 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
   type: "AppOwner",
   mnemonic: ownerSecretToMnemonic(secret),
 });
+
+/** Deterministic {@link AppOwner} for tests. */
+export const testAppOwner = /*#__PURE__*/ createAppOwner(testOwnerSecret);
+
+/** Deterministic {@link SyncOwner} for tests without {@link OwnerTransport}. */
+export const testSyncOwner: SyncOwner = testAppOwner;
 
 /**
  * An {@link Owner} for sharding data.

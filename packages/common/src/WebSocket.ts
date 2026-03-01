@@ -302,6 +302,46 @@ export const createWebSocket: CreateWebSocket =
     });
   };
 
+/** Creates a deterministic in-memory {@link CreateWebSocket} for testing. */
+export const testCreateWebSocket =
+  (
+    options: {
+      /** Throw immediately when a socket is created. */
+      readonly throwOnCreate?: boolean;
+
+      /** Initial open state of created sockets. Defaults to true. */
+      readonly isOpen?: boolean;
+    } = {},
+  ): CreateWebSocket =>
+  () =>
+  () => {
+    if (options.throwOnCreate) {
+      throw new Error("testCreateWebSocket is configured to throw on create");
+    }
+
+    let isDisposed = false;
+    let isOpen = options.isOpen ?? true;
+
+    return ok({
+      send: () => {
+        if (isDisposed || !isOpen) return err({ type: "WebSocketSendError" });
+        return ok();
+      },
+
+      getReadyState: () => {
+        if (isDisposed) return "closed";
+        return isOpen ? "open" : "closed";
+      },
+
+      isOpen: () => !isDisposed && isOpen,
+
+      [Symbol.dispose]: () => {
+        isDisposed = true;
+        isOpen = false;
+      },
+    });
+  };
+
 const nativeToStringState: Record<number, WebSocketReadyState> = {
   [globalThis.WebSocket.CONNECTING]: "connecting",
   [globalThis.WebSocket.OPEN]: "open",

@@ -5,14 +5,16 @@
  * Use this with Expo projects that use expo-sqlite.
  */
 
+import type { ConsoleDep } from "@evolu/common";
 import type { EvoluDeps } from "@evolu/common/local-first";
 import * as Expo from "expo";
 import { createEvoluDeps as createSharedEvoluDeps } from "../shared.js";
 import { createExpoSqliteDriver } from "../sqlite-drivers/createExpoSqliteDriver.js";
 
 /** Creates Evolu dependencies for Expo. */
-export const createEvoluDeps = (): EvoluDeps =>
+export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps =>
   createSharedEvoluDeps({
+    ...deps,
     createSqliteDriver: createExpoSqliteDriver,
     reloadApp: () => {
       void Expo.reloadAppAsync();

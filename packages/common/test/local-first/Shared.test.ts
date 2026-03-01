@@ -3,6 +3,7 @@ import type { ConsoleEntry } from "../../src/Console.js";
 import { testCreateConsole } from "../../src/Console.js";
 import { testQuery } from "../../src/local-first/Query.js";
 import type { MutationChange } from "../../src/local-first/Schema.js";
+import { testSyncOwner } from "../../src/local-first/Owner.js";
 import type {
   DbWorkerInput,
   DbWorkerOutput,
@@ -20,6 +21,7 @@ import { createStore } from "../../src/Store.js";
 import { testCreateDeps, testCreateRun } from "../../src/Test.js";
 import { type TestTime } from "../../src/Time.js";
 import { type Id, testName } from "../../src/Type.js";
+import { testCreateWebSocket } from "../../src/WebSocket.js";
 import {
   testWaitForWorkerMessage,
   testCreateMessageChannel,
@@ -42,6 +44,7 @@ describe("initSharedWorker", () => {
       console: testCreateConsole(),
       consoleStoreOutputEntry,
       createMessagePort: testCreateMessagePort,
+      createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
     });
 
     const initResult = await run(initSharedWorker(worker.self));
@@ -312,6 +315,7 @@ describe("initSharedWorker", () => {
       worker.port.postMessage({
         type: "CreateEvolu",
         name: testName,
+        appOwner: testSyncOwner,
         evoluPort: evoluChannel.port1.native,
         dbWorkerPort: dbWorkerChannel.port1.native,
       });
@@ -344,6 +348,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -374,6 +379,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -400,6 +406,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -428,6 +435,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -526,6 +534,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -589,12 +598,14 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel1.port1.native,
       dbWorkerPort: dbWorkerChannel1.port1.native,
     });
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel2.port1.native,
       dbWorkerPort: dbWorkerChannel2.port1.native,
     });
@@ -677,6 +688,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -706,6 +718,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -778,6 +791,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -842,12 +856,14 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel1.port1.native,
       dbWorkerPort: dbWorkerChannel1.port1.native,
     });
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel2.port1.native,
       dbWorkerPort: dbWorkerChannel2.port1.native,
     });
@@ -914,12 +930,14 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel1.port1.native,
       dbWorkerPort: dbWorkerChannel1.port1.native,
     });
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel2.port1.native,
       dbWorkerPort: dbWorkerChannel2.port1.native,
     });
@@ -984,12 +1002,14 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel1.port1.native,
       dbWorkerPort: dbWorkerChannel1.port1.native,
     });
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel2.port1.native,
       dbWorkerPort: dbWorkerChannel2.port1.native,
     });
@@ -1045,6 +1065,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -1100,6 +1121,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -1123,6 +1145,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -1172,6 +1195,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -1202,6 +1226,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -1244,6 +1269,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
@@ -1296,6 +1322,7 @@ describe("initSharedWorker", () => {
     worker.port.postMessage({
       type: "CreateEvolu",
       name: testName,
+      appOwner: testSyncOwner,
       evoluPort: evoluChannel.port1.native,
       dbWorkerPort: dbWorkerChannel.port1.native,
     });

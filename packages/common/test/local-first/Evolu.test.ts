@@ -56,6 +56,7 @@ import {
   testCreateSharedWorker,
   testCreateWorker,
 } from "../../src/Worker.js";
+import { testCreateWebSocket } from "../../src/WebSocket.js";
 import { testCreateSqliteDeps } from "../_deps.js";
 import { testAppOwner } from "./_fixtures.js";
 
@@ -1340,6 +1341,7 @@ describe("integration tests", () => {
       consoleStoreOutputEntry: consoleStoreOutput.entry,
       createMessageChannel,
       createMessagePort,
+      createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
     });
 
     const driver = await run.orThrow(
@@ -1512,7 +1514,7 @@ describe("integration tests", () => {
             "rows": [
               {
                 "column": "title",
-                "id": uint8:[215,33,35,94,252,125,121,118,144,247,77,4,60,148,207,130],
+                "id": uint8:[253,218,21,203,97,177,108,31,114,81,57,217,125,215,203,26],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "todo",
                 "timestamp": uint8:[0,0,0,0,0,0,0,1,255,46,38,44,239,232,201,76],
@@ -1520,7 +1522,7 @@ describe("integration tests", () => {
               },
               {
                 "column": "createdAt",
-                "id": uint8:[215,33,35,94,252,125,121,118,144,247,77,4,60,148,207,130],
+                "id": uint8:[253,218,21,203,97,177,108,31,114,81,57,217,125,215,203,26],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "todo",
                 "timestamp": uint8:[0,0,0,0,0,0,0,1,255,46,38,44,239,232,201,76],
@@ -1561,7 +1563,7 @@ describe("integration tests", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "1yEjXvx9eXaQ900EPJTPgg",
+                "id": "_doVy2GxbB9yUTnZfdfLGg",
                 "isCompleted": null,
                 "isDeleted": null,
                 "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",

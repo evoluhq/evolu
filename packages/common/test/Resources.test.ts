@@ -1,15 +1,10 @@
 import { expect, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
 import { createResources } from "../src/Resources.js";
-import { err } from "../src/Result.js";
-import { testCreateTime, type Duration } from "../src/Time.js";
-
-interface Resource extends Disposable {
-  readonly id: ResourceKey;
-  readonly disposed: boolean;
-}
+import { testCreateRun } from "../src/Test.js";
 
 type ResourceKey = string & Brand<"ResourceKey">;
+type ConsumerId = string & Brand<"ConsumerId">;
 
 interface ResourceConfig {
   readonly key: ResourceKey;
@@ -17,489 +12,355 @@ interface ResourceConfig {
 
 interface Consumer {
   readonly id: ConsumerId;
-  readonly name: string;
 }
 
-type ConsumerId = string & Brand<"ConsumerId">;
+interface TestResource extends Disposable {
+  readonly id: ResourceKey;
+  readonly isDisposed: () => boolean;
+}
 
-const createResource = (config: ResourceConfig): Resource => {
+const testCreateResource = (id: ResourceKey): Promise<TestResource> => {
   let disposed = false;
-  return {
-    id: config.key,
-    get disposed() {
-      return disposed;
-    },
-    [Symbol.dispose]() {
+
+  return Promise.resolve({
+    id,
+    isDisposed: () => disposed,
+    [Symbol.dispose]: () => {
       disposed = true;
     },
-  };
+  });
 };
 
-const createTestResources = (disposalDelay: Duration = "10ms") => {
-  const time = testCreateTime();
-  const resources = createResources<
-    Resource,
+test("addConsumer creates resource and indexes consumer-resource relation", async () => {
+  await using run = testCreateRun();
+
+  await using resources = createResources<
+    TestResource,
     ResourceKey,
     ResourceConfig,
     Consumer,
     ConsumerId
-  >({ time })({
-    createResource,
-    getResourceKey: (config) => config.key,
+  >({
+    createResource: (resourceConfig) => testCreateResource(resourceConfig.key),
+    getResourceId: (resourceConfig) => resourceConfig.key,
     getConsumerId: (consumer) => consumer.id,
-    disposalDelay,
   });
 
-  return { resources, time };
-};
+  const consumer: Consumer = { id: "consumer-1" as ConsumerId };
+  const resourceConfig: ResourceConfig = { key: "resource-1" as ResourceKey };
 
-const consumer1: Consumer = { id: "consumer1" as ConsumerId, name: "Alice" };
-const consumer2: Consumer = { id: "consumer2" as ConsumerId, name: "Bob" };
+  await run(resources.addConsumer(consumer, [resourceConfig]));
 
-const resourceConfig1: ResourceConfig = { key: "resource1" as ResourceKey };
-const resourceConfig2: ResourceConfig = { key: "resource2" as ResourceKey };
-const resourceConfig3: ResourceConfig = { key: "resource3" as ResourceKey };
-
-test("creates resources on demand when adding consumers", () => {
-  const { resources } = createTestResources();
-
-  resources.addConsumer(consumer1, [resourceConfig1, resourceConfig2]);
-
-  expect(resources.getResource(resourceConfig1.key)?.id).toBe(
-    resourceConfig1.key,
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set([consumer.id]),
   );
-  expect(resources.getResource(resourceConfig2.key)?.id).toBe(
-    resourceConfig2.key,
+
+  const resourcesForConsumer = resources.getResourcesForConsumerId(consumer.id);
+  expect(resourcesForConsumer.size).toBe(1);
+
+  const [resource] = Array.from(resourcesForConsumer);
+  expect(resource.id).toBe(resourceConfig.key);
+
+  await run(resources.removeConsumer(consumer, [resourceConfig]));
+});
+
+test("addConsumer reuses existing resource for the same key", async () => {
+  await using run = testCreateRun();
+
+  let createResourceCallCount = 0;
+  await using resources = createResources<
+    TestResource,
+    ResourceKey,
+    ResourceConfig,
+    Consumer,
+    ConsumerId
+  >({
+    createResource: (resourceConfig) => {
+      createResourceCallCount += 1;
+      return testCreateResource(resourceConfig.key);
+    },
+    getResourceId: (resourceConfig) => resourceConfig.key,
+    getConsumerId: (consumer) => consumer.id,
+  });
+
+  const consumer1: Consumer = { id: "consumer-1" as ConsumerId };
+  const consumer2: Consumer = { id: "consumer-2" as ConsumerId };
+  const resourceConfig: ResourceConfig = { key: "resource-1" as ResourceKey };
+
+  await run(resources.addConsumer(consumer1, [resourceConfig]));
+  await run(resources.addConsumer(consumer2, [resourceConfig]));
+
+  expect(createResourceCallCount).toBe(1);
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set([consumer1.id, consumer2.id]),
   );
 });
 
-test("tracks consumers for each resource", () => {
-  const { resources } = createTestResources();
+test("lookups return empty sets for unknown keys", async () => {
+  await using _run = testCreateRun();
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  resources.addConsumer(consumer2, [resourceConfig1, resourceConfig2]);
+  await using resources = createResources<
+    TestResource,
+    ResourceKey,
+    ResourceConfig,
+    Consumer,
+    ConsumerId
+  >({
+    createResource: (resourceConfig) => testCreateResource(resourceConfig.key),
+    getResourceId: (resourceConfig) => resourceConfig.key,
+    getConsumerId: (consumer) => consumer.id,
+  });
 
-  expect(resources.getConsumersForResource(resourceConfig1.key)).toEqual([
-    "consumer1",
-    "consumer2",
-  ]);
-
-  expect(resources.getConsumersForResource(resourceConfig2.key)).toEqual([
-    "consumer2",
-  ]);
+  expect(
+    resources.getConsumerIdsForResource("resource-missing" as ResourceKey),
+  ).toEqual(new Set());
+  expect(
+    resources.getResourcesForConsumerId("consumer-missing" as ConsumerId),
+  ).toEqual(new Set());
 });
 
-test("deduplicates resources for multiple consumers", () => {
-  const { resources } = createTestResources();
+test("removeConsumer disposes resource when last consumer is removed", async () => {
+  await using run = testCreateRun();
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  resources.addConsumer(consumer2, [resourceConfig1]);
+  await using resources = createResources<
+    TestResource,
+    ResourceKey,
+    ResourceConfig,
+    Consumer,
+    ConsumerId
+  >({
+    createResource: (resourceConfig) => testCreateResource(resourceConfig.key),
+    getResourceId: (resourceConfig) => resourceConfig.key,
+    getConsumerId: (consumer) => consumer.id,
+  });
 
-  const resource1 = resources.getResource(resourceConfig1.key);
-  const resource2 = resources.getResource(resourceConfig1.key);
+  const consumer: Consumer = { id: "consumer-1" as ConsumerId };
+  const resourceConfig: ResourceConfig = { key: "resource-1" as ResourceKey };
 
-  expect(resource1).toBe(resource2);
-  expect(resource1).not.toBeNull();
+  await run(resources.addConsumer(consumer, [resourceConfig]));
+  const [resource] = Array.from(
+    resources.getResourcesForConsumerId(consumer.id),
+  );
 
-  expect(resources.getConsumersForResource(resourceConfig1.key)).toEqual([
-    "consumer1",
-    "consumer2",
-  ]);
+  await run(resources.removeConsumer(consumer, [resourceConfig]));
+
+  expect(resource.isDisposed()).toBe(true);
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set(),
+  );
+  expect(resources.getResourcesForConsumerId(consumer.id)).toEqual(new Set());
 });
 
-test("increments reference counts for the same consumer", () => {
-  const { resources } = createTestResources();
+test("removeConsumer decrements reference count for repeated addConsumer", async () => {
+  await using run = testCreateRun();
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  resources.addConsumer(consumer1, [resourceConfig1]);
+  await using resources = createResources<
+    TestResource,
+    ResourceKey,
+    ResourceConfig,
+    Consumer,
+    ConsumerId
+  >({
+    createResource: (resourceConfig) => testCreateResource(resourceConfig.key),
+    getResourceId: (resourceConfig) => resourceConfig.key,
+    getConsumerId: (consumer) => consumer.id,
+  });
 
-  const consumers = resources.getConsumersForResource(resourceConfig1.key);
-  expect(consumers).toEqual(["consumer1"]);
+  const consumer: Consumer = { id: "consumer-1" as ConsumerId };
+  const resourceConfig: ResourceConfig = { key: "resource-1" as ResourceKey };
 
-  const result1 = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(result1.ok).toBe(true);
-  const result2 = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(result2.ok).toBe(true);
+  await run(resources.addConsumer(consumer, [resourceConfig]));
+  await run(resources.addConsumer(consumer, [resourceConfig]));
 
-  const resource = resources.getResource(resourceConfig1.key);
-  expect(resource?.disposed).toBe(false);
+  const [resource] = Array.from(
+    resources.getResourcesForConsumerId(consumer.id),
+  );
 
-  const result3 = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(result3.ok).toBe(true);
-  expect(resource?.disposed).toBe(false);
+  await run(resources.removeConsumer(consumer, [resourceConfig]));
+  expect(resource.isDisposed()).toBe(false);
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set([consumer.id]),
+  );
+
+  await run(resources.removeConsumer(consumer, [resourceConfig]));
+  expect(resource.isDisposed()).toBe(true);
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set(),
+  );
+  expect(resources.getResourcesForConsumerId(consumer.id)).toEqual(new Set());
 });
 
-test("removes consumers and decrements reference counts", () => {
-  const { resources } = createTestResources();
+test("removeConsumer is no-op for unknown resource and unknown consumer", async () => {
+  await using run = testCreateRun();
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  resources.addConsumer(consumer2, [resourceConfig1]);
+  await using resources = createResources<
+    TestResource,
+    ResourceKey,
+    ResourceConfig,
+    Consumer,
+    ConsumerId
+  >({
+    createResource: (resourceConfig) => testCreateResource(resourceConfig.key),
+    getResourceId: (resourceConfig) => resourceConfig.key,
+    getConsumerId: (consumer) => consumer.id,
+  });
 
-  const removeResult = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(removeResult.ok).toBe(true);
-
-  const consumers = resources.getConsumersForResource(resourceConfig1.key);
-  expect(consumers).toEqual(["consumer2"]);
-
-  const resource = resources.getResource(resourceConfig1.key);
-  expect(resource).toBeTruthy();
-  expect(resource?.disposed).toBe(false);
-});
-
-test("schedules resource disposal when no consumers remain", () => {
-  const { resources, time } = createTestResources("50ms");
-
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  const resource = resources.getResource(resourceConfig1.key);
-  expect(resource).toBeTruthy();
-
-  const removeResult = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(removeResult.ok).toBe(true);
-
-  expect(resources.getResource(resourceConfig1.key)).toBeTruthy();
-  expect(resource?.disposed).toBe(false);
-
-  time.advance("100ms");
-
-  expect(resources.getResource(resourceConfig1.key)).toBeNull();
-  expect(resource?.disposed).toBe(true);
-});
-
-test("cancels pending disposal when consumer is re-added", () => {
-  const { resources, time } = createTestResources("50ms");
-
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  const resource = resources.getResource(resourceConfig1.key);
-
-  const removeResult = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(removeResult.ok).toBe(true);
-
-  time.advance("25ms");
-
-  resources.addConsumer(consumer1, [resourceConfig1]);
-
-  time.advance("50ms");
-
-  expect(resources.getResource(resourceConfig1.key)).toBeTruthy();
-  expect(resource?.disposed).toBe(false);
-});
-
-test("hasConsumerAnyResource returns correct status", () => {
-  const { resources } = createTestResources();
-
-  expect(resources.hasConsumerAnyResource(consumer1)).toBe(false);
-  expect(resources.hasConsumerAnyResource(consumer2)).toBe(false);
-
-  resources.addConsumer(consumer1, [resourceConfig1, resourceConfig2]);
-  expect(resources.hasConsumerAnyResource(consumer1)).toBe(true);
-  expect(resources.hasConsumerAnyResource(consumer2)).toBe(false);
-
-  resources.addConsumer(consumer2, [resourceConfig3]);
-  expect(resources.hasConsumerAnyResource(consumer1)).toBe(true);
-  expect(resources.hasConsumerAnyResource(consumer2)).toBe(true);
-
-  const removeResult = resources.removeConsumer(consumer1, [
-    resourceConfig1,
-    resourceConfig2,
-  ]);
-  expect(removeResult.ok).toBe(true);
-  expect(resources.hasConsumerAnyResource(consumer1)).toBe(false);
-  expect(resources.hasConsumerAnyResource(consumer2)).toBe(true);
-});
-
-test("removeConsumer keeps consumer when still using another resource", () => {
-  const { resources } = createTestResources();
-
-  resources.addConsumer(consumer1, [resourceConfig1, resourceConfig2]);
-
-  const result = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(result.ok).toBe(true);
-
-  expect(resources.hasConsumerAnyResource(consumer1)).toBe(true);
-  expect(resources.getConsumer(consumer1.id)).toEqual(consumer1);
-  expect(resources.getConsumersForResource(resourceConfig1.key)).toEqual([]);
-  expect(resources.getConsumersForResource(resourceConfig2.key)).toEqual([
-    consumer1.id,
-  ]);
-});
-
-test("returns error when removing consumer from non-existent resource", () => {
-  const { resources } = createTestResources();
-
-  const nonexistentConfig: ResourceConfig = {
-    key: "nonexistent" as ResourceKey,
+  const consumer1: Consumer = { id: "consumer-1" as ConsumerId };
+  const consumer2: Consumer = { id: "consumer-2" as ConsumerId };
+  const existingResourceConfig: ResourceConfig = {
+    key: "resource-1" as ResourceKey,
   };
-  const result = resources.removeConsumer(consumer1, [nonexistentConfig]);
-
-  expect(result).toEqual(
-    err({
-      type: "ResourceNotFoundError",
-      resourceKey: "nonexistent",
-    }),
-  );
-});
-
-test("returns error when removing consumer not added to resource", () => {
-  const { resources } = createTestResources();
-
-  resources.addConsumer(consumer1, [resourceConfig1]);
-
-  const result = resources.removeConsumer(consumer2, [resourceConfig1]);
-
-  expect(result).toEqual(
-    err({
-      type: "ConsumerNotFoundError",
-      consumerId: "consumer2",
-      resourceKey: "resource1",
-    }),
-  );
-});
-
-test("disposes all resources when disposed", () => {
-  const { resources } = createTestResources();
-
-  resources.addConsumer(consumer1, [
-    resourceConfig1,
-    resourceConfig2,
-    resourceConfig3,
-  ]);
-
-  const resource1 = resources.getResource(resourceConfig1.key);
-  const resource2 = resources.getResource(resourceConfig2.key);
-  const resource3 = resources.getResource(resourceConfig3.key);
-
-  expect(resource1?.disposed).toBe(false);
-  expect(resource2?.disposed).toBe(false);
-  expect(resource3?.disposed).toBe(false);
-
-  resources[Symbol.dispose]();
-
-  expect(resource1?.disposed).toBe(true);
-  expect(resource2?.disposed).toBe(true);
-  expect(resource3?.disposed).toBe(true);
-});
-
-test("returns empty array for non-existent resource consumers", () => {
-  const { resources } = createTestResources();
-
-  const consumers = resources.getConsumersForResource(
-    "nonexistent" as ResourceKey,
-  );
-  expect(consumers).toEqual([]);
-});
-
-test("returns null for non-existent resource", () => {
-  const { resources } = createTestResources();
-
-  const resource = resources.getResource("nonexistent" as ResourceKey);
-  expect(resource).toBeNull();
-});
-
-test("getConsumer returns consumer data when consumer is using resources", () => {
-  const { resources } = createTestResources();
-  const consumer1 = { id: "consumer1" as ConsumerId, name: "Consumer 1" };
-  const consumer2 = { id: "consumer2" as ConsumerId, name: "Consumer 2" };
-  const resourceConfig1 = { key: "resource1" as ResourceKey };
-
-  resources.addConsumer(consumer1, [resourceConfig1]);
-
-  expect(resources.getConsumer(consumer1.id)).toEqual(consumer1);
-  expect(resources.getConsumer(consumer2.id)).toBeNull();
-});
-
-test("getConsumer returns null when consumer is not using any resources", () => {
-  const { resources } = createTestResources();
-  const consumer1 = { id: "consumer1" as ConsumerId, name: "Consumer 1" };
-  const resourceConfig1 = { key: "resource1" as ResourceKey };
-
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  expect(resources.getConsumer(consumer1.id)).toEqual(consumer1);
-
-  const removeResult = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(removeResult.ok).toBe(true);
-  expect(resources.getConsumer(consumer1.id)).toBeNull();
-});
-
-test("getConsumer returns null for stale consumer entry after partial remove failure", () => {
-  const { resources } = createTestResources();
-  const consumer = { id: "consumer-stale" as ConsumerId, name: "Stale" };
-  const existingResource = { key: "existing" as ResourceKey };
-  const missingResource = { key: "missing" as ResourceKey };
-
-  resources.addConsumer(consumer, [existingResource]);
-
-  const result = resources.removeConsumer(consumer, [
-    existingResource,
-    missingResource,
-  ]);
-
-  expect(result).toEqual(
-    err({
-      type: "ResourceNotFoundError",
-      resourceKey: "missing",
-    }),
-  );
-
-  expect(resources.hasConsumerAnyResource(consumer)).toBe(false);
-  expect(resources.getConsumer(consumer.id)).toBeNull();
-});
-
-test("getConsumer returns updated consumer data when re-added", () => {
-  const { resources } = createTestResources();
-  const consumer1 = { id: "consumer1" as ConsumerId, name: "Consumer 1" };
-  const consumer1Updated = {
-    id: "consumer1" as ConsumerId,
-    name: "Consumer 1 Updated",
-    extra: "data",
+  const missingResourceConfig: ResourceConfig = {
+    key: "resource-missing" as ResourceKey,
   };
-  const resourceConfig1 = { key: "resource1" as ResourceKey };
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  expect(resources.getConsumer(consumer1.id)).toEqual(consumer1);
+  await run(resources.addConsumer(consumer1, [existingResourceConfig]));
 
-  resources.addConsumer(consumer1Updated, [resourceConfig1]);
-  expect(resources.getConsumer(consumer1.id)).toEqual(consumer1Updated);
+  await run(resources.removeConsumer(consumer1, [missingResourceConfig]));
+  await run(resources.removeConsumer(consumer2, [existingResourceConfig]));
+
+  expect(
+    resources.getConsumerIdsForResource(existingResourceConfig.key),
+  ).toEqual(new Set([consumer1.id]));
+  expect(resources.getResourcesForConsumerId(consumer1.id).size).toBe(1);
 });
 
-test("operations after disposal return safe defaults", () => {
-  const { resources } = createTestResources();
-  const consumer1 = { id: "consumer1" as ConsumerId, name: "Consumer 1" };
-  const resourceConfig1 = { key: "resource1" as ResourceKey };
+test("removeConsumer preserves symmetry when ref counts are already cleared", async () => {
+  await using run = testCreateRun();
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  expect(resources.getResource(resourceConfig1.key)).not.toBeNull();
-
-  resources[Symbol.dispose]();
-
-  expect(resources.getResource(resourceConfig1.key)).toBeNull();
-  expect(resources.getConsumer(consumer1.id)).toBeNull();
-  expect(resources.getConsumersForResource(resourceConfig1.key)).toEqual([]);
-  expect(resources.hasConsumerAnyResource(consumer1)).toBe(false);
-
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  expect(resources.getResource(resourceConfig1.key)).toBeNull();
-
-  const result = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(result.ok).toBe(true);
-});
-
-test("calls onConsumerAdded and onConsumerRemoved callbacks", () => {
-  const addedCalls: Array<{
-    consumer: Consumer;
-    resourceKey: ResourceKey;
-    resource: Resource;
-  }> = [];
-  const removedCalls: Array<{
-    consumer: Consumer;
-    resourceKey: ResourceKey;
-    resource: Resource;
-  }> = [];
-
-  const resources = createResources<
-    Resource,
+  await using resources = createResources<
+    TestResource,
     ResourceKey,
     ResourceConfig,
     Consumer,
     ConsumerId
-  >({ time: testCreateTime() })({
-    createResource,
-    getResourceKey: (config) => config.key,
+  >({
+    createResource: (resourceConfig) => testCreateResource(resourceConfig.key),
+    getResourceId: (resourceConfig) => resourceConfig.key,
     getConsumerId: (consumer) => consumer.id,
-    disposalDelay: "10ms",
-    onConsumerAdded: (consumer, resource, resourceKey) => {
-      addedCalls.push({ consumer, resource, resourceKey });
-    },
-    onConsumerRemoved: (consumer, resource, resourceKey) => {
-      removedCalls.push({ consumer, resource, resourceKey });
-    },
   });
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  expect(addedCalls).toHaveLength(1);
-  expect(addedCalls[0].consumer).toBe(consumer1);
-  expect(addedCalls[0].resourceKey).toBe(resourceConfig1.key);
-  expect(removedCalls).toHaveLength(0);
+  const consumer: Consumer = { id: "consumer-1" as ConsumerId };
+  const resourceConfig: ResourceConfig = { key: "resource-1" as ResourceKey };
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  expect(addedCalls).toHaveLength(1);
-  expect(removedCalls).toHaveLength(0);
+  await run(resources.addConsumer(consumer, [resourceConfig]));
+  await run(resources.removeConsumer(consumer, [resourceConfig]));
 
-  resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(addedCalls).toHaveLength(1);
-  expect(removedCalls).toHaveLength(0);
+  // First removal disposes and clears ref counts; mutex instance remains cached.
+  await run(resources.removeConsumer(consumer, [resourceConfig]));
 
-  resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(addedCalls).toHaveLength(1);
-  expect(removedCalls).toHaveLength(1);
-  expect(removedCalls[0].consumer).toBe(consumer1);
-  expect(removedCalls[0].resourceKey).toBe(resourceConfig1.key);
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set(),
+  );
+  expect(resources.getResourcesForConsumerId(consumer.id)).toEqual(new Set());
 });
 
-test("multiple dispose calls are safe", () => {
-  const { resources } = createTestResources();
-  const consumer1 = { id: "consumer1" as ConsumerId, name: "Consumer 1" };
-  const resourceConfig1 = { key: "resource1" as ResourceKey };
+test("concurrent add/remove on same resource is serialized", async () => {
+  await using run = testCreateRun();
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  const resource = resources.getResource(resourceConfig1.key);
+  const onCreateRelease = Promise.withResolvers<void>();
+  let createResourceCallCount = 0;
+  let disposeCallCount = 0;
 
-  resources[Symbol.dispose]();
-  expect(resource?.disposed).toBe(true);
-
-  expect(() => {
-    resources[Symbol.dispose]();
-  }).not.toThrow();
-});
-
-test("dispose clears scheduled disposal timeouts", () => {
-  const { resources, time } = createTestResources("50ms");
-
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  const resource = resources.getResource(resourceConfig1.key);
-  expect(resource).not.toBeNull();
-
-  const result = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(result.ok).toBe(true);
-
-  resources[Symbol.dispose]();
-
-  time.advance("100ms");
-
-  expect(resource?.disposed).toBe(true);
-  expect(resources.getResource(resourceConfig1.key)).toBeNull();
-});
-
-test("handles falsy resource values and uses default disposal delay", () => {
-  const addedCalls: Array<unknown> = [];
-  const removedCalls: Array<unknown> = [];
-  const time = testCreateTime();
-
-  const resources = createResources<
-    Resource,
+  await using resources = createResources<
+    TestResource,
     ResourceKey,
     ResourceConfig,
     Consumer,
     ConsumerId
-  >({ time })({
-    createResource: () => null as unknown as Resource,
-    getResourceKey: (config) => config.key,
+  >({
+    createResource: async (resourceConfig) => {
+      createResourceCallCount += 1;
+      await onCreateRelease.promise;
+
+      let disposed = false;
+      return {
+        id: resourceConfig.key,
+        isDisposed: () => disposed,
+        [Symbol.dispose]: () => {
+          disposed = true;
+          disposeCallCount += 1;
+        },
+      };
+    },
+    getResourceId: (resourceConfig) => resourceConfig.key,
     getConsumerId: (consumer) => consumer.id,
-    onConsumerAdded: (...args) => {
-      addedCalls.push(args);
-    },
-    onConsumerRemoved: (...args) => {
-      removedCalls.push(args);
-    },
   });
 
-  resources.addConsumer(consumer1, [resourceConfig1]);
-  expect(addedCalls).toHaveLength(0);
+  const consumer1: Consumer = { id: "consumer-1" as ConsumerId };
+  const consumer2: Consumer = { id: "consumer-2" as ConsumerId };
+  const resourceConfig: ResourceConfig = { key: "resource-1" as ResourceKey };
 
-  const result = resources.removeConsumer(consumer1, [resourceConfig1]);
-  expect(result.ok).toBe(true);
-  expect(removedCalls).toHaveLength(0);
+  const add1 = run(resources.addConsumer(consumer1, [resourceConfig]));
+  const add2 = run(resources.addConsumer(consumer2, [resourceConfig]));
 
-  time.advance("120ms");
-  expect(resources.getResource(resourceConfig1.key)).toBeNull();
+  onCreateRelease.resolve();
+
+  await Promise.all([add1, add2]);
+
+  expect(createResourceCallCount).toBe(1);
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set([consumer1.id, consumer2.id]),
+  );
+
+  const remove1 = run(resources.removeConsumer(consumer1, [resourceConfig]));
+  const remove2 = run(resources.removeConsumer(consumer2, [resourceConfig]));
+  await Promise.all([remove1, remove2]);
+
+  expect(disposeCallCount).toBe(1);
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set(),
+  );
+});
+
+test("queued addConsumer during last removeConsumer does not fail", async () => {
+  await using run = testCreateRun();
+
+  let createResourceCallCount = 0;
+  let disposeCallCount = 0;
+
+  await using resources = createResources<
+    TestResource,
+    ResourceKey,
+    ResourceConfig,
+    Consumer,
+    ConsumerId
+  >({
+    createResource: (resourceConfig) => {
+      createResourceCallCount += 1;
+      let disposed = false;
+
+      return Promise.resolve({
+        id: resourceConfig.key,
+        isDisposed: () => disposed,
+        [Symbol.dispose]: () => {
+          disposeCallCount += 1;
+          disposed = true;
+        },
+      });
+    },
+    getResourceId: (resourceConfig) => resourceConfig.key,
+    getConsumerId: (consumer) => consumer.id,
+  });
+
+  const consumer1: Consumer = { id: "consumer-1" as ConsumerId };
+  const consumer2: Consumer = { id: "consumer-2" as ConsumerId };
+  const resourceConfig: ResourceConfig = { key: "resource-1" as ResourceKey };
+
+  await run(resources.addConsumer(consumer1, [resourceConfig]));
+
+  const remove = run(resources.removeConsumer(consumer1, [resourceConfig]));
+  const queuedAdd = run(resources.addConsumer(consumer2, [resourceConfig]));
+
+  await remove;
+  await queuedAdd;
+
+  expect(createResourceCallCount).toBe(2);
+  expect(disposeCallCount).toBe(1);
+  expect(resources.getConsumerIdsForResource(resourceConfig.key)).toEqual(
+    new Set([consumer2.id]),
+  );
+
+  await run(resources.removeConsumer(consumer2, [resourceConfig]));
+  expect(disposeCallCount).toBe(2);
 });

@@ -25,7 +25,6 @@ export * from "./Object.js";
 export * from "./Option.js";
 export * from "./Order.js";
 export * from "./Platform.js";
-export * from "./Polyfills.js";
 export * from "./Random.js";
 export * from "./Redacted.js";
 export * from "./Ref.js";
@@ -59,6 +58,7 @@ export type {
 export * as kysely from "./local-first/Kysely.js";
 export * from "./local-first/LocalAuth.js";
 export * from "./local-first/Owner.js";
+export type { SyncOwner } from "./local-first/Owner.js";
 export {
   type InferRow,
   type Query,
@@ -82,16 +82,11 @@ export type {
   UpsertValues,
 } from "./local-first/Schema.js";
 export type {
-  NetworkError,
-  PaymentRequiredError,
-  ServerError,
-  SyncOwner,
+  // NetworkError,
+  // PaymentRequiredError,
+  // ServerError,
   SyncState,
-  SyncStateInitial,
-  SyncStateIsNotSynced,
-  SyncStateIsSynced,
-  SyncStateIsSyncing,
-} from "./local-first/Sync.js";
+} from "./local-first/Shared.js";
 export {
   Timestamp,
   timestampBytesToTimestamp,

@@ -4,6 +4,7 @@ import {
   createLocalAuth,
   createRandomBytes,
   createRun,
+  createWebSocket,
   type ConsoleDep,
   type CreateSqliteDriverDep,
   type LocalAuth,
@@ -43,6 +44,7 @@ export const createEvoluDeps = (
   const workerRun = createRun({
     consoleStoreOutputEntry: consoleStoreOutput.entry,
     createMessagePort,
+    createWebSocket,
     createSqliteDriver: deps.createSqliteDriver,
     leaderLock,
   });

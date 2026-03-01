@@ -1029,7 +1029,7 @@ describe("E2E relay options", () => {
   });
 });
 
-describe("E2E sync", () => {
+describe("E2E sync", { timeout: 15_000 }, () => {
   const deps = testCreateDeps();
 
   const messages = testTimestampsAsc.map(
@@ -1293,7 +1293,7 @@ describe("E2E sync", () => {
         "syncSteps": 6,
       }
     `);
-  }, 15_000);
+  });
 
   it("client and relay each have a random half of the data - many steps", async () => {
     await using run = testCreateRun();

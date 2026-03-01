@@ -32,7 +32,7 @@ import {
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { CreateDbWorkerDep } from "./Db.js";
 import type { EvoluError } from "./Error.js";
-import type { AppOwner, OwnerTransport } from "./Owner.js";
+import type { AppOwner, OwnerTransport, SyncOwner } from "./Owner.js";
 import {
   createAppOwner,
   createOwnerSecret,
@@ -65,7 +65,6 @@ import type {
   SharedWorkerDep,
 } from "./Shared.js";
 import { DbChange } from "./Storage.js";
-import type { SyncOwner } from "./Sync.js";
 import type { Timestamp } from "./Timestamp.js";
 
 export interface EvoluConfig {
@@ -88,17 +87,25 @@ export interface EvoluConfig {
   readonly appName: AppName;
 
   /**
-   * External AppOwner to use when creating Evolu instance. Use this when you
-   * want to manage AppOwner creation and persistence externally (e.g., with
-   * your own authentication system). If omitted, Evolu will automatically
-   * create and persist an AppOwner locally.
+   * {@link AppOwner} used to create this {@link Evolu} instance.
    *
-   * For device-specific settings and account management state, we can use a
-   * separate local-only Evolu instance via `transports: []`.
+   * Exposed as {@link Evolu.appOwner}. If `appOwner` is not passed, Evolu
+   * creates one.
    *
-   * ### Example
+   * AppOwner controls access to the encrypted local SQLite database. If its
+   * secret material (owner secret / mnemonic) is not stored safely, data
+   * written by that instance is permanently inaccessible.
    *
-   * Use `appOwner` when restoring or switching owners managed by your app.
+   * Best onboarding UX is accountless first use: let users try a ready-to-use
+   * app, then prompt backup of `evolu.appOwner`.
+   *
+   * Recommended usage:
+   *
+   * - Omit `appOwner` for first run, then persist `evolu.appOwner` after user
+   *   activity and guide the user to back it up.
+   * - Pass `appOwner` restored from secure storage (for example, Expo
+   *   SecureStore, WebAuthn-backed storage, or app-managed account recovery
+   *   flow).
    */
   readonly appOwner?: AppOwner;
 
@@ -548,9 +555,11 @@ export const createEvolu =
     config: EvoluConfig,
   ): Task<Evolu<S>, never, EvoluPlatformDeps> =>
   async (run) => {
-    const { appName, appOwner = createAppOwner(createOwnerSecret(run.deps)) } =
-      config;
-
+    const {
+      appName,
+      appOwner = createAppOwner(createOwnerSecret(run.deps)),
+      transports,
+    } = config;
     const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
 
     const console = run.deps.console.child(name).child("Evolu");
@@ -656,6 +665,7 @@ export const createEvolu =
         {
           type: "CreateEvolu",
           name,
+          appOwner: { ...appOwner, transports: transports ?? emptyArray },
           evoluPort: evoluChannel.port2.native,
           dbWorkerPort: dbWorkerChannel.port2.native,
         },
@@ -890,24 +900,6 @@ export const createEvolu =
     } as Evolu<S>);
   };
 
-// const loadingPromises = createLoadingPromises(subscribedQueries);
-// const loadQueryMicrotaskQueue: Array<Query> = [];
-//     case "refreshQueries": {
-//       const loadingPromisesQueries = loadingPromises.getQueries();
-//       loadingPromises.releaseUnsubscribedOnMutation();
-
-//       const queries = dedupeArray([
-//         ...loadingPromisesQueries,
-//         ...subscribedQueries.get(),
-//       ]);
-
-//       if (isNonEmptyArray(queries)) {
-//         dbWorker.postMessage({ type: "query", tabId: getTabId(), queries });
-//       }
-
-//       break;
-//     }
-
 //     case "onReset": {
 //       if (message.reload) {
 //         deps.reloadApp(reloadUrl);
@@ -916,106 +908,6 @@ export const createEvolu =
 //       }
 //       break;
 //     }
-
-//     case "onExport": {
-//       exportCallbacks.execute(
-//         message.onCompleteId,
-//         message.file as Uint8Array<ArrayBuffer>,
-//       );
-//       break;
-//     }
-
-//     default:
-//       exhaustiveCheck(message);
-//   }
-// });
-
-// const sqliteSchema = evoluSchemaToSqliteSchema(schema, indexes);
-
-// const processMutationQueue = () => {
-//   const changes: Array<MutationChange> = [];
-//   const onCompletes = [];
-
-//   for (const [change, onComplete] of mutateMicrotaskQueue) {
-//     if (change !== null) changes.push(change);
-//     if (onComplete) onCompletes.push(onComplete);
-//   }
-
-//   const queueLength = mutateMicrotaskQueue.length;
-//   mutateMicrotaskQueue.length = 0;
-
-//   // Don't process any mutations if there was a validation error.
-//   // All mutations within a queue run as a single transaction.
-//   if (changes.length !== queueLength) {
-//     return;
-//   }
-
-//   const _onCompleteIds = onCompletes.map(onCompleteCallbacks.register);
-//   loadingPromises.releaseUnsubscribedOnMutation();
-
-//   if (!isNonEmptyArray(changes)) return;
-
-// TODO:
-// dbWorker.postMessage({
-//   type: "mutate",
-//   tabId: getTabId(),
-//   changes,
-//   onCompleteIds,
-//   subscribedQueries: subscribedQueries.get(),
-// });
-// };
-
-// const evolu: Evolu<S> = {
-//   name,
-
-//   subscribeError: errorStore.subscribe,
-//   getError: errorStore.get,
-
-//   loadQuery: <R extends Row>(query: Query<R>): Promise<QueryRows<R>> => {
-//     const { promise, isNew } = loadingPromises.get(query);
-
-//     if (isNew) {
-//       loadQueryMicrotaskQueue.push(query);
-//       if (loadQueryMicrotaskQueue.length === 1) {
-//         queueMicrotask(() => {
-//           const queries = dedupeArray(loadQueryMicrotaskQueue);
-//           loadQueryMicrotaskQueue.length = 0;
-//           assertNonEmptyReadonlyArray(queries);
-//           deps.console.log("[evolu]", "loadQuery", { queries });
-//           // dbWorker.postMessage({
-//           //   type: "query",
-//           //   tabId: getTabId(),
-//           //   queries,
-//           // });
-//         });
-//       }
-//     }
-
-//     return promise;
-//   },
-
-//   loadQueries: <R extends Row, Q extends Queries<R>>(
-//     queries: [...Q],
-//   ): [...QueriesToQueryRowsPromises<Q>] =>
-//     queries.map(evolu.loadQuery) as [...QueriesToQueryRowsPromises<Q>],
-
-//   subscribeQuery: (query) => (listener) => {
-//     // Call the listener only if the result has been changed.
-//     let previousRows: unknown = null;
-//     const unsubscribe = subscribedQueries.subscribe(query)(() => {
-//       const rows = evolu.getQueryRows(query);
-//       if (previousRows === rows) return;
-//       previousRows = rows;
-//       listener();
-//     });
-//     return () => {
-//       previousRows = null;
-//       unsubscribe();
-//     };
-//   },
-
-//   getQueryRows: <R extends Row>(query: Query<R>): QueryRows<R> =>
-//     (rowsStore.get().get(query) ?? emptyRows) as QueryRows<R>,
 
 // resetAppOwner: (_options) => {
 //   const { promise, resolve } = Promise.withResolvers<undefined>();

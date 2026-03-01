@@ -17,7 +17,6 @@ import type { RandomBytes, RandomBytesDep } from "./Crypto.js";
 import { createRandomBytes } from "./Crypto.js";
 import { eqArrayStrict } from "./Eq.js";
 import { lazyTrue, lazyVoid } from "./Function.js";
-import { createInstances } from "./Instances.js";
 import { decrement, increment } from "./Number.js";
 import {
   createRecord,
@@ -243,7 +242,7 @@ import {
  * await run(fetchUser(123));
  * ```
  *
- * For runtime-created dependencies, use {@link Run.addDeps}.
+ * For runtime-created dependencies, use {@link Run#addDeps}.
  *
  * ### Built-in dependencies
  *
@@ -1569,6 +1568,7 @@ const abortBehavior =
  *
  * @group Abort masking
  */
+// TODO: Clear AbortError from unabortable task results.
 export const unabortable = /*#__PURE__*/ abortBehavior("unabortable");
 
 /**
@@ -2715,7 +2715,16 @@ export interface LeaderLockDep {
  * @group Concurrency primitives
  */
 export const createInMemoryLeaderLock = (): LeaderLock => {
-  const mutexes = createInstances<Name, Mutex>();
+  const mutexesByName = new Map<Name, Mutex>();
+
+  const getMutexForName = (name: Name): Mutex => {
+    let mutex = mutexesByName.get(name);
+    if (mutex == null) {
+      mutex = createMutex();
+      mutexesByName.set(name, mutex);
+    }
+    return mutex;
+  };
 
   return {
     acquire: (name) => async (run) => {
@@ -2725,7 +2734,7 @@ export const createInMemoryLeaderLock = (): LeaderLock => {
       const onRelease = Promise.withResolvers<void>();
 
       void run.daemon(
-        mutexes.ensure(name, createMutex).withLock(async () => {
+        getMutexForName(name).withLock(async () => {
           onAcquired.resolve();
           await onRelease.promise;
           return ok();

@@ -6,7 +6,6 @@
 
 import { testCreateConsole, type TestConsoleDep } from "./Console.js";
 import { Entropy32, testCreateRandomBytes } from "./Crypto.js";
-import { createAppOwner, OwnerSecret } from "./local-first/Owner.js";
 import {
   testCreateRandom,
   testCreateRandomLib,
@@ -93,10 +92,6 @@ export const testEntropy32 = /*#__PURE__*/ Entropy32.orThrow(
     21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
   ]),
 );
-
-export const testOwnerSecret = /*#__PURE__*/ OwnerSecret.orThrow(testEntropy32);
-
-export const testAppOwner = /*#__PURE__*/ createAppOwner(testOwnerSecret);
 
 /** Returns a Promise that resolves on the next macrotask. */
 export const testWaitForMacrotask = (): Promise<void> => setTimeout(minMillis);
