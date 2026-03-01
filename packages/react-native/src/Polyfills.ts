@@ -1,32 +1,18 @@
 import { installPolyfills as installCommonPolyfills } from "@evolu/common/polyfills";
-// @ts-expect-error Shimming Set prototype methods
 import difference from "set.prototype.difference";
-// @ts-expect-error Shimming Set prototype methods
 import intersection from "set.prototype.intersection";
-// @ts-expect-error Shimming Set prototype methods
 import isDisjointFrom from "set.prototype.isdisjointfrom";
-// @ts-expect-error Shimming Set prototype methods
 import isSubsetOf from "set.prototype.issubsetof";
-// @ts-expect-error Shimming Set prototype methods
 import isSupersetOf from "set.prototype.issupersetof";
-// @ts-expect-error Shimming Set prototype methods
 import symmetricDifference from "set.prototype.symmetricdifference";
-// @ts-expect-error Shimming Set prototype methods
 import union from "set.prototype.union";
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 difference.shim();
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 intersection.shim();
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 isDisjointFrom.shim();
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 isSubsetOf.shim();
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 isSupersetOf.shim();
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 symmetricDifference.shim();
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
 union.shim();
 
 /** Installs polyfills required by Evolu in React Native runtimes. */
@@ -68,6 +54,38 @@ const installPromisePolyfills = () => {
   }
 };
 
+interface AbortControllerConstructor {
+  new (): AbortController;
+  readonly prototype: AbortController;
+}
+
+interface AbortSignalConstructor {
+  readonly prototype: AbortSignal;
+  abort?: (reason?: unknown) => AbortSignal;
+  timeout?: (milliseconds: number) => AbortSignal;
+  any?: (signals: Array<AbortSignal>) => AbortSignal;
+}
+
+interface AbortControllerPrototype extends AbortController {
+  abort: (reason?: unknown) => void;
+  readonly __evoluAbortReasonPatched?: true;
+}
+
+interface AbortSignalWithReason extends AbortSignal {
+  readonly reason: unknown;
+}
+
+interface AnyControllersRegistry {
+  readonly add: (controller: AbortController) => void;
+  readonly remove: (controller: AbortController) => void;
+}
+
+interface WeakRefLike<T extends object> {
+  deref(): T | undefined;
+}
+
+type ControllerRef = WeakRefLike<AbortController>;
+
 const abortReasonBySignal = new WeakMap<AbortSignal, unknown>();
 const anyControllersBySignal = new WeakMap<
   AbortSignal,
@@ -75,25 +93,13 @@ const anyControllersBySignal = new WeakMap<
 >();
 
 const installAbortControllerPolyfills = (): void => {
-  if (
-    typeof globalThis.AbortController === "undefined" ||
-    typeof globalThis.AbortSignal === "undefined"
-  ) {
-    return;
-  }
-
-  const abortControllerConstructor =
-    globalThis.AbortController as AbortControllerConstructor;
-  const abortSignalConstructor =
-    globalThis.AbortSignal as AbortSignalConstructor;
-
   installAbortReasonPolyfill(
-    abortControllerConstructor,
-    abortSignalConstructor,
+    globalThis.AbortController as AbortControllerConstructor,
+    globalThis.AbortSignal as AbortSignalConstructor,
   );
   installAbortSignalStaticMethods(
-    abortControllerConstructor,
-    abortSignalConstructor,
+    globalThis.AbortController as AbortControllerConstructor,
+    globalThis.AbortSignal as AbortSignalConstructor,
   );
 };
 
@@ -198,7 +204,10 @@ const createAbortSignalAny = (
   const sources = Array.from(new Set(signals));
 
   for (const signal of sources) {
-    const registry = getOrCreateAnyControllersRegistry(signal);
+    const registry =
+      anyControllersBySignal.get(signal) ??
+      createAnyControllersRegistry(signal);
+    anyControllersBySignal.set(signal, registry);
     registry.add(controller);
   }
 
@@ -213,17 +222,6 @@ const createAbortSignalAny = (
   );
 
   return controller.signal;
-};
-
-const getOrCreateAnyControllersRegistry = (
-  signal: AbortSignal,
-): AnyControllersRegistry => {
-  const existing = anyControllersBySignal.get(signal);
-  if (existing) return existing;
-
-  const registry = createAnyControllersRegistry(signal);
-  anyControllersBySignal.set(signal, registry);
-  return registry;
 };
 
 const createAnyControllersRegistry = (
@@ -300,35 +298,3 @@ const createNamedError = (name: string, message: string): Error => {
   error.name = name;
   return error;
 };
-
-interface AbortControllerConstructor {
-  new (): AbortController;
-  readonly prototype: AbortController;
-}
-
-interface AbortSignalConstructor {
-  readonly prototype: AbortSignal;
-  abort?: (reason?: unknown) => AbortSignal;
-  timeout?: (milliseconds: number) => AbortSignal;
-  any?: (signals: Array<AbortSignal>) => AbortSignal;
-}
-
-interface AbortControllerPrototype extends AbortController {
-  abort: (reason?: unknown) => void;
-  readonly __evoluAbortReasonPatched?: true;
-}
-
-interface AbortSignalWithReason extends AbortSignal {
-  readonly reason: unknown;
-}
-
-interface AnyControllersRegistry {
-  readonly add: (controller: AbortController) => void;
-  readonly remove: (controller: AbortController) => void;
-}
-
-interface WeakRefLike<T extends object> {
-  deref(): T | undefined;
-}
-
-type ControllerRef = WeakRefLike<AbortController>;

@@ -217,16 +217,6 @@ describe("installPolyfills", () => {
     expect(PromiseStatic.try).toBe(promiseTry);
   });
 
-  test("is safe when AbortController globals are missing", () => {
-    setAbortGlobals({
-      AbortController: undefined,
-      AbortSignal: undefined,
-      DOMException: globalThis.DOMException,
-    });
-
-    expect(() => installPolyfills()).not.toThrow();
-  });
-
   test("polyfills reason propagation", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
