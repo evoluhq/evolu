@@ -97,8 +97,6 @@ const app = run(
 
 const [App, AppProvider] = createEvoluContext(app);
 
-console.log(Symbol.asyncDispose);
-
 /** Trims user input and validates it as a todo title. */
 const parseTodoTitle = (value: string) =>
   Evolu.NonEmptyTrimmedString100.from(value.trim());
