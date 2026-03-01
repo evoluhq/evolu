@@ -31,7 +31,6 @@
     "build": "rimraf dist && tsc --build && npm run package",
     "prepack": "npm run build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "clean": "rimraf .turbo .svelte-kit node_modules dist",
     "package": "svelte-package",
     "prepublishOnly": "npm run package",
     "preview": "vite preview"

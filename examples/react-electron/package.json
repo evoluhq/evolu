@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "npm exec vite",
     "_build": "tsc && npm exec vite build && npm exec electron-builder",
-    "clean": "rimraf node_modules .turbo dist-electron",
     "preview": "vite preview"
   },
   "dependencies": {

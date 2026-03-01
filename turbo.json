@@ -27,9 +27,6 @@
       "cache": false,
       "persistent": true
     },
-    "clean": {
-      "cache": false
-    },
     "bench": {
       "cache": false
     }

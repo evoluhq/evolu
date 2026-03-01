@@ -75,7 +75,6 @@
   "scripts": {
     "build": "rimraf dist && tsc --build tsconfig.build.json",
     "prepack": "npm run build",
-    "clean": "rimraf .turbo node_modules dist",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {

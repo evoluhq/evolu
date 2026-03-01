@@ -1,22 +1,31 @@
-.DS_Store
-node_modules
-.turbo
-*.log
-.next
-dist
-dist-ssr
-*.local
-.env
-.cache
-.idea
-server/dist
-public/dist
-storybook-static
-.direnv
-.eslintcache
-out
-test-identicons
-coverage
-tmp
 __screenshots__
-*.tsBuildInfo
+.DS_Store
+.eslintcache
+.next
+.turbo
+.vite
+*.tsbuildinfo
+coverage
+dist
+next-env.d.ts
+node_modules
+test-identicons
+tmp
+
+# apps/relay
+apps/relay/data/*
+!apps/relay/data/.gitkeep
+
+# apps/web
+apps/web/src/app/(docs)/docs/api-reference/**
+apps/web/src/data/sections.json
+
+# packages/svelte
+packages/svelte/.svelte-kit
+
+# examples/react-expo
+examples/react-expo/.expo/
+examples/react-expo/expo-env.d.ts
+examples/react-expo/ios
+examples/react-expo/android
+

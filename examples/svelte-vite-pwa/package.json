@@ -6,7 +6,6 @@
   "scripts": {
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json",
-    "clean": "rimraf node_modules .turbo dist",
     "dev": "vite",
     "preview": "vite preview"
   },

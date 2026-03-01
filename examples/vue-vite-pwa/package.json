@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "build": "vue-tsc -b && vite build",
-    "clean": "rimraf node_modules dist .vite .turbo dev-dist",
     "dev": "vite",
     "generate-pwa-assets": "pwa-assets-generator",
     "preview": "vite preview"
