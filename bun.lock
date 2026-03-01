@@ -334,6 +334,10 @@
       "name": "@evolu/react-native",
       "version": "14.3.0",
       "dependencies": {
+        "array-from-async": "^3.0.0",
+        "array.prototype.tosorted": "^1.1.4",
+        "promise.try": "^2.0.1",
+        "promise.withresolvers": "^1.0.4",
         "set.prototype.difference": "^1.1.7",
         "set.prototype.intersection": "^1.1.8",
         "set.prototype.isdisjointfrom": "^1.1.5",
@@ -1844,7 +1848,11 @@
 
     "array-buffer-byte-length": ["array-buffer-byte-length@1.0.2", "", { "dependencies": { "call-bound": "^1.0.3", "is-array-buffer": "^3.0.5" } }, "sha512-LHE+8BuR7RYGDKvnrmcuSq3tDcKv9OFEXQt/HpbZhY7V6h0zlUXutnAD82GiFx9rdieCMjkvtcsPqBwgUl1Iiw=="],
 
+    "array-from-async": ["array-from-async@3.0.0", "", {}, "sha512-gV8/L4y2QB5JTXL9DMdtspGyed2M3V6nMnSN+nNg8ejyUlAAbKAjRS6pfWWINjU/MuFJFMGWPazHPor7hThXQw=="],
+
     "array-union": ["array-union@2.1.0", "", {}, "sha512-HGyxoOTYUyCM6stUe6EJgnd4EoewAI7zMdfqO+kGjnlZmBDz/cR5pf8r/cR4Wq60sL/p0IkcjUEEPwS3GFrIyw=="],
+
+    "array.prototype.tosorted": ["array.prototype.tosorted@1.1.4", "", { "dependencies": { "call-bind": "^1.0.7", "define-properties": "^1.2.1", "es-abstract": "^1.23.3", "es-errors": "^1.3.0", "es-shim-unscopables": "^1.0.2" } }, "sha512-p6Fx8B7b7ZhL/gmUsAy0D15WhvDccw3mnGNbZpi3pmeJdxtWsj2jEaI4Y6oo3XiHfzuSgPwKc04MYt6KgvC/wA=="],
 
     "arraybuffer.prototype.slice": ["arraybuffer.prototype.slice@1.0.4", "", { "dependencies": { "array-buffer-byte-length": "^1.0.1", "call-bind": "^1.0.8", "define-properties": "^1.2.1", "es-abstract": "^1.23.5", "es-errors": "^1.3.0", "get-intrinsic": "^1.2.6", "is-array-buffer": "^3.0.4" } }, "sha512-BNoCY6SXXPQ7gF2opIP4GBE+Xw7U+pHMYKuzjgCN3GwiaIR09UUeKfheyIry77QtrCBlC0KK0q5/TER/tYh3PQ=="],
 
@@ -2233,6 +2241,8 @@
     "es-set": ["es-set@1.1.2", "", { "dependencies": { "call-bind": "^1.0.7", "define-properties": "^1.2.1", "es-abstract": "^1.23.3", "es-map": "^1.0.6", "es-set-tostringtag": "^2.0.3", "for-each": "^0.3.3", "functions-have-names": "^1.2.3", "get-intrinsic": "^1.2.4", "globalthis": "^1.0.4", "gopd": "^1.0.1", "has-property-descriptors": "^1.0.2", "has-symbols": "^1.0.3", "internal-slot": "^1.0.7", "iterate-value": "^1.0.2", "object.entries": "^1.1.8", "stop-iteration-iterator": "^1.0.0" } }, "sha512-tGLC1yArXhXwZTm3D6xbu1JL4S3cUtRRggbFWHhqTxpPc975fmcLL1VB0QOnAY8q5TBdul7YTjfEOT2VpUGcCg=="],
 
     "es-set-tostringtag": ["es-set-tostringtag@2.1.0", "", { "dependencies": { "es-errors": "^1.3.0", "get-intrinsic": "^1.2.6", "has-tostringtag": "^1.0.2", "hasown": "^2.0.2" } }, "sha512-j6vWzfrGVfyXxge+O0x5sh6cvxAog0a/4Rdd2K36zCMV5eJ+/+tOAngRO8cODMNWbVRdVlmGZQL2YS3yR8bIUA=="],
+
+    "es-shim-unscopables": ["es-shim-unscopables@1.1.0", "", { "dependencies": { "hasown": "^2.0.2" } }, "sha512-d9T8ucsEhh8Bi1woXCf+TIKDIROLG5WCkxg8geBCbvk22kzwC5G2OnXVMO6FUsvQlgUUXQ2itephWDLqDzbeCw=="],
 
     "es-to-primitive": ["es-to-primitive@1.3.0", "", { "dependencies": { "is-callable": "^1.2.7", "is-date-object": "^1.0.5", "is-symbol": "^1.0.4" } }, "sha512-w+5mJ3GuFL+NjVtJlvydShqE1eN3h3PbI7/5LAsYJP/2qtuMXjfL2LpHSRqo4b4eSF5K/DH1JXKUAHSB2UW50g=="],
 
@@ -3227,6 +3237,10 @@
     "promise": ["promise@8.3.0", "", { "dependencies": { "asap": "~2.0.6" } }, "sha512-rZPNPKTOYVNEEKFaq1HqTgOwZD+4/YHS5ukLzQCypkj+OkYx7iv0mA91lJlpPPZ8vMau3IIGj5Qlwrx+8iiSmg=="],
 
     "promise-retry": ["promise-retry@2.0.1", "", { "dependencies": { "err-code": "^2.0.2", "retry": "^0.12.0" } }, "sha512-y+WKFlBR8BGXnsNlIHFGPZmyDf3DFMoLhaflAnyZgV6rG6xu+JwesTo2Q9R6XwYmtmwAFCkAk3e35jEdoeh/3g=="],
+
+    "promise.try": ["promise.try@2.0.1", "", { "dependencies": { "call-bind": "^1.0.8", "define-properties": "^1.2.1", "es-abstract": "^1.24.1", "es-errors": "^1.3.0", "set-function-name": "^2.0.2" } }, "sha512-7Lvq1rrywExCch6Uyw8P5G0HrgYs1u2rxY+0HFBMoA5IqndrJrSGc+ybRnPY1N78F8x+j9BaOWNbg7bzTMG9NA=="],
+
+    "promise.withresolvers": ["promise.withresolvers@1.0.4", "", { "dependencies": { "call-bind": "^1.0.8", "define-properties": "^1.2.1", "es-abstract": "^1.24.1", "es-errors": "^1.3.0" } }, "sha512-T75mGtyQ+r0CeIWk4rYVP0YN0GsO8r8RfF2SLHKVOhg6Hi0BVNWzMybbeqnXYTRoVZcUt8rKoVl0taxKffhpbA=="],
 
     "prompts": ["prompts@2.4.2", "", { "dependencies": { "kleur": "^3.0.3", "sisteransi": "^1.0.5" } }, "sha512-NxNv/kLguCA7p3jE8oL2aEBsrJWgAakBpgmgK6lpPWV+WuOmY6r2/zbAVnP+T8bQlA0nzHXSJSJW0Hq7ylaD2Q=="],
 

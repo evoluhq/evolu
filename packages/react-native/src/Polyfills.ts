@@ -1,10 +1,28 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+
 import { installPolyfills as installCommonPolyfills } from "@evolu/common/polyfills";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
+import fromAsync from "array-from-async";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
+import withResolvers from "promise.withresolvers";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
+import promiseTry from "promise.try";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
+import toSorted from "array.prototype.tosorted";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
 import difference from "set.prototype.difference";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
 import intersection from "set.prototype.intersection";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
 import isDisjointFrom from "set.prototype.isdisjointfrom";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
 import isSubsetOf from "set.prototype.issubsetof";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
 import isSupersetOf from "set.prototype.issupersetof";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
 import symmetricDifference from "set.prototype.symmetricdifference";
+// @ts-expect-error Runtime polyfill package has no TypeScript declarations.
 import union from "set.prototype.union";
 
 difference.shim();
@@ -18,40 +36,27 @@ union.shim();
 /** Installs polyfills required by Evolu in React Native runtimes. */
 export const installPolyfills = (): void => {
   installCommonPolyfills();
+  installArrayPolyfills();
   installPromisePolyfills();
   installAbortControllerPolyfills();
 };
 
-const installPromisePolyfills = () => {
-  // @see https://github.com/facebook/hermes/pull/1452
-  if (typeof Promise.withResolvers !== "function") {
-    // @ts-expect-error This is OK.
-    Promise.withResolvers = () => {
-      let resolve, reject;
-      const promise = new Promise((res, rej) => {
-        resolve = res;
-        reject = rej;
-      });
-      return { promise, resolve, reject };
-    };
+const installArrayPolyfills = (): void => {
+  if (typeof Array.fromAsync !== "function") {
+    Object.defineProperty(Array, "fromAsync", {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: fromAsync as typeof Array.fromAsync,
+    });
   }
 
-  // @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/try
-  if (typeof Promise.try !== "function") {
-    // @ts-expect-error This is OK.
-    Promise.try = (
-      func: (...args: ReadonlyArray<unknown>) => unknown,
-      ...args: ReadonlyArray<unknown>
-    ): Promise<unknown> =>
-      new Promise((resolve, reject) => {
-        try {
-          resolve(func(...args));
-        } catch (error) {
-          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-          reject(error);
-        }
-      });
-  }
+  toSorted.shim();
+};
+
+const installPromisePolyfills = () => {
+  withResolvers.shim();
+  promiseTry.shim();
 };
 
 interface AbortControllerConstructor {

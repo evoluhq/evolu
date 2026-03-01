@@ -13,10 +13,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  runAbortPolyfillRuntimeChecks,
-  type RuntimeCheckResult,
-} from "../runtime/polyfillRuntimeCheck";
 
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
@@ -122,7 +118,6 @@ export default function Index() {
               */}
               <Todos />
               <OwnerActions />
-              <RuntimeChecks />
 
               {/*
                 TODO: Auth and multi-owner related UI stays commented for now.
@@ -376,74 +371,6 @@ const OwnerActions: FC = () => {
   );
 };
 
-const RuntimeChecks: FC = () => {
-  const [isRunning, setIsRunning] = useState(false);
-  const [results, setResults] = useState<ReadonlyArray<RuntimeCheckResult>>([]);
-  const [runCount, setRunCount] = useState(0);
-
-  const isHermes = "HermesInternal" in globalThis;
-  const passedCount = results.filter((result) => result.ok).length;
-  const failedCount = results.length - passedCount;
-
-  const handleRunPress = async (): Promise<void> => {
-    setIsRunning(true);
-    try {
-      const nextResults = await runAbortPolyfillRuntimeChecks();
-      setResults(nextResults);
-      setRunCount((count) => count + 1);
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  return (
-    <View style={styles.runtimeChecksContainer}>
-      <Text style={styles.sectionTitle}>Runtime Checks</Text>
-      <Text style={styles.sectionDescription}>
-        Runs AbortController checks inside the active React Native runtime.
-      </Text>
-      <Text style={styles.runtimeMetaText}>
-        Runtime: {isHermes ? "Hermes" : "non-Hermes"}
-      </Text>
-
-      <Button
-        title={isRunning ? "Running checks..." : "Run runtime checks"}
-        onPress={() => {
-          void handleRunPress();
-        }}
-        variant="primary"
-      />
-
-      {results.length > 0 && (
-        <View style={styles.runtimeResultsContainer}>
-          <Text style={styles.runtimeSummaryText}>
-            Run #{runCount}: {passedCount} passed, {failedCount} failed
-          </Text>
-
-          {results.map((result) => (
-            <View key={result.name} style={styles.runtimeResultRow}>
-              <Text
-                style={[
-                  styles.runtimeStatusText,
-                  result.ok ? styles.runtimeStatusOk : styles.runtimeStatusFail,
-                ]}
-              >
-                {result.ok ? "PASS" : "FAIL"}
-              </Text>
-              <View style={styles.runtimeResultContent}>
-                <Text style={styles.runtimeResultName}>{result.name}</Text>
-                <Text style={styles.runtimeResultDetails}>
-                  {result.details}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-};
-
 const Button: FC<{
   title: string;
   style?: object;
@@ -617,63 +544,6 @@ const styles = StyleSheet.create({
     elevation: 1,
     borderWidth: 1,
     borderColor: "#e5e7eb",
-  },
-  runtimeChecksContainer: {
-    marginTop: 16,
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
-    padding: 24,
-    paddingTop: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    gap: 10,
-  },
-  runtimeMetaText: {
-    fontSize: 13,
-    color: "#4b5563",
-  },
-  runtimeResultsContainer: {
-    marginTop: 6,
-    gap: 10,
-  },
-  runtimeSummaryText: {
-    fontSize: 13,
-    color: "#111827",
-    fontWeight: "500",
-  },
-  runtimeResultRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  runtimeStatusText: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  runtimeStatusOk: {
-    color: "#047857",
-  },
-  runtimeStatusFail: {
-    color: "#b91c1c",
-  },
-  runtimeResultContent: {
-    flex: 1,
-    gap: 2,
-  },
-  runtimeResultName: {
-    fontSize: 13,
-    color: "#111827",
-    fontWeight: "500",
-  },
-  runtimeResultDetails: {
-    fontSize: 12,
-    color: "#6b7280",
   },
   sectionTitle: {
     fontSize: 18,
