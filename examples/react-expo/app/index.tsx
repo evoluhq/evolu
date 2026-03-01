@@ -56,7 +56,7 @@ const todosQuery = createQuery((db) =>
 type TodosRow = typeof todosQuery.Row;
 
 const console = Evolu.createConsole({
-  level: "debug",
+  // level: "debug",
   formatter: Evolu.createConsoleFormatter()({ timestampFormat: "relative" }),
 });
 

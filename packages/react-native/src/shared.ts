@@ -1,15 +1,12 @@
 import {
+  createConsole,
   createConsoleStoreOutput,
   createInMemoryLeaderLock,
-  createLocalAuth,
-  createRandomBytes,
   createRun,
   createWebSocket,
   type ConsoleDep,
   type CreateSqliteDriverDep,
-  type LocalAuth,
   type ReloadAppDep,
-  type SecureStorage,
 } from "@evolu/common";
 import type {
   CreateDbWorker,
@@ -30,32 +27,40 @@ import {
   createWorker,
 } from "./Worker.js";
 
-const randomBytes = createRandomBytes();
 const leaderLock = createInMemoryLeaderLock();
 
 /** Creates Evolu dependencies for React Native. */
 export const createEvoluDeps = (
   deps: ReloadAppDep & CreateSqliteDriverDep & Partial<ConsoleDep>,
 ): EvoluDeps => {
-  const consoleStoreOutput = createConsoleStoreOutput();
-
   // Worker-side Run lives as long as the app. When RN supports real workers,
   // this moves to the worker entry point (like web's Worker.worker.ts).
-  const workerRun = createRun({
-    consoleStoreOutputEntry: consoleStoreOutput.entry,
-    createMessagePort,
-    createWebSocket,
-    createSqliteDriver: deps.createSqliteDriver,
-    leaderLock,
-  });
+  const createWorkerRun = () => {
+    const consoleStoreOutput = createConsoleStoreOutput();
+    const workerConsole = createConsole({
+      output: consoleStoreOutput,
+      ...(deps.console && { level: deps.console.getLevel() }),
+    });
+
+    return createRun({
+      console: workerConsole,
+      consoleStoreOutputEntry: consoleStoreOutput.entry,
+      createMessagePort,
+      createWebSocket,
+      createSqliteDriver: deps.createSqliteDriver,
+      leaderLock,
+    });
+  };
 
   const createDbWorker: CreateDbWorker = (): DbWorker =>
     createWorker<DbWorkerInit, never>((self) => {
-      workerRun(initDbWorker(self));
+      const dbWorkerRun = createWorkerRun();
+      dbWorkerRun(initDbWorker(self));
     });
 
   const sharedWorker = createSharedWorker<SharedWorkerInput, never>((self) => {
-    workerRun(initSharedWorker(self));
+    const sharedWorkerRun = createWorkerRun();
+    sharedWorkerRun(initSharedWorker(self));
   });
 
   return createCommonEvoluDeps({
@@ -67,13 +72,14 @@ export const createEvoluDeps = (
   });
 };
 
-export const createSharedLocalAuth = (
-  secureStorage: SecureStorage,
-): LocalAuth =>
-  createLocalAuth({
-    randomBytes,
-    secureStorage,
-  });
+// TODO: Reimplement local auth for React Native from scratch.
+// export const createSharedLocalAuth = (
+//   secureStorage: SecureStorage,
+// ): LocalAuth =>
+//   createLocalAuth({
+//     randomBytes,
+//     secureStorage,
+//   });
 
 // import {
 //   createConsole,
