@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, test } from "vitest";
 import {
   appendToArray,
   arrayFrom,
+  arrayFromAsync,
   concatArrays,
   dedupeArray,
   emptyArray,
@@ -91,6 +92,36 @@ describe("Constants", () => {
     test("passes index to callback", () => {
       const result = arrayFrom(4, (i) => i * 10);
       expect(result).toEqual([0, 10, 20, 30]);
+    });
+  });
+
+  describe("arrayFromAsync", () => {
+    test("creates array from async iterable", async () => {
+      const asyncIterable = {
+        async *[Symbol.asyncIterator]() {
+          yield await Promise.resolve(1);
+          yield await Promise.resolve(2);
+          yield await Promise.resolve(3);
+        },
+      };
+
+      const result = await arrayFromAsync(asyncIterable);
+      expect(result).toEqual([1, 2, 3]);
+    });
+
+    test("awaits promised values from sync iterable", async () => {
+      const result = await arrayFromAsync([
+        Promise.resolve(1),
+        Promise.resolve(2),
+        Promise.resolve(3),
+      ]);
+
+      expect(result).toEqual([1, 2, 3]);
+    });
+
+    test("returns readonly array", async () => {
+      const result = await arrayFromAsync([Promise.resolve("x")]);
+      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<string>>();
     });
   });
 });

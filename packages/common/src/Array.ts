@@ -198,6 +198,35 @@ export function arrayFrom<T>(
 }
 
 /**
+ * Better `Array.fromAsync`.
+ *
+ * Returns a readonly array and awaits promised items from sync or async
+ * iterables.
+ *
+ * ### Example
+ *
+ * ```ts
+ * await arrayFromAsync(new Set([1, 2, 3])); // ReadonlyArray<number>
+ * await arrayFromAsync(
+ *   (async function* () {
+ *     yield Promise.resolve(1);
+ *     yield Promise.resolve(2);
+ *   })(),
+ * ); // [1, 2]
+ * ```
+ *
+ * Unlike `Array.fromAsync`, there's no map parameter — map the result with
+ * {@link mapArray} or use
+ * {@link https://web.dev/blog/baseline-iterator-helpers | iterator helpers}
+ * directly on iterables.
+ *
+ * @group Constructors
+ */
+export const arrayFromAsync = async <T>(
+  iterable: AsyncIterable<T> | Iterable<T | PromiseLike<T>>,
+): Promise<ReadonlyArray<T>> => Array.fromAsync(iterable);
+
+/**
  * Checks if an array is non-empty and narrows its type to {@link NonEmptyArray}
  * or {@link NonEmptyReadonlyArray} based on the input.
  *

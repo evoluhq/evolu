@@ -30,6 +30,7 @@ if (isNonEmptyArray(mutableArr)) { ... }
 ### New Functions
 
 - **`arrayFrom`** — creates a readonly array from an iterable or by generating elements with a length and mapper
+- **`arrayFromAsync`** — creates a readonly array from an async iterable (or iterable of promises) and awaits all values
 - **`flatMapArray`** — maps each element to an array and flattens the result, preserving non-empty type when applicable
 - **`concatArrays`** — concatenates two arrays, returning non-empty when at least one input is non-empty
 - **`sortArray`** — returns a new sorted array (wraps `toSorted`), preserving non-empty type
