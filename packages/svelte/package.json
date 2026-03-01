@@ -29,7 +29,7 @@
   ],
   "scripts": {
     "build": "rimraf dist && tsc --build && npm run package",
-    "prepack": "npm run build",
+    "prepare": "npm run build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "package": "svelte-package",
     "prepublishOnly": "npm run package",

@@ -56,7 +56,7 @@
   ],
   "scripts": {
     "build": "rimraf dist && tsc --build tsconfig.build.json",
-    "prepack": "npm run build",
+    "prepare": "npm run build",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
