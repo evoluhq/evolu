@@ -54,8 +54,6 @@ const console = Evolu.createConsole({
   formatter: Evolu.createConsoleFormatter()({ timestampFormat: "relative" }),
 });
 
-// console.log(Symbol.dispose);
-
 // TODO: createRunWithEvoluDeps()
 
 // Create Evolu dependencies for React Web.
@@ -87,7 +85,7 @@ const app = run(
   }),
 );
 
-const [App, AppProvider] = createEvoluContext(app);
+const [AppContext, AppProvider] = createEvoluContext(app);
 
 export const EvoluMinimalExample: FC = () => (
   <div className="min-h-screen px-8 py-8">
@@ -119,7 +117,8 @@ const parseTodoTitle = (value: string) =>
 const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
   const todos = useQuery(todosQuery);
-  const { insert } = use(App);
+
+  const { insert } = use(AppContext);
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
   const addTodo = () => {
@@ -172,7 +171,7 @@ const Todos: FC = () => {
 const TodoItem: FC<{
   row: TodosRow;
 }> = ({ row: { id, title, isCompleted } }) => {
-  const { update } = use(App);
+  const { update } = use(AppContext);
 
   const handleToggleCompletedClick = () => {
     update("todo", {
@@ -241,7 +240,7 @@ const TodoItem: FC<{
 };
 
 const OwnerActions: FC = () => {
-  const evolu = use(App);
+  const evolu = use(AppContext);
 
   const [showMnemonic, setShowMnemonic] = useState(false);
 
