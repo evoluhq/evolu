@@ -27,6 +27,7 @@ bun install
 Build scripts
 
 - `bun run build` - Build packages (required once after clone/pull for IDE types)
+- `bun run build:docs` - Build doc (required once after clone/pull)
 - `bun run build:web` - Build docs and web
 
 Web build notes
