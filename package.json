@@ -13,7 +13,7 @@
     "build:web": "bun run build:docs && turbo --filter web build",
     "build:docs": "typedoc && cd apps/web && bun run fix:docs",
     "build:expo": "turbo --filter @example/react-expo build",
-    "typecheck": "tsc --build tsconfig.typecheck.json --noEmit",
+    "typecheck": "tsc --build tsconfig.typecheck.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
