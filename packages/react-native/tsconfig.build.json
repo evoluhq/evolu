@@ -4,7 +4,6 @@
     "baseUrl": ".",
     "paths": {
       "@evolu/common": ["../common/src/index.ts"],
-      "@evolu/common/*": ["../common/src/*"],
       "@evolu/react": ["../react/src/index.ts"]
     }
   },

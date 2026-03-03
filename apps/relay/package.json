@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch --watch-preserve-output --experimental-strip-types src/index.ts",
-    "build": "rimraf dist && tsc",
+    "build": "tsc --build --clean tsconfig.json && tsc --build tsconfig.json",
     "start": "node dist/src/index.js"
   },
   "files": [
