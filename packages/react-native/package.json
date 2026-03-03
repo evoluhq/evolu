@@ -73,7 +73,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc --build --clean tsconfig.build.json && tsc --build tsconfig.build.json",
+    "build": "tsc --build tsconfig.build.json",
     "prepack": "npm run build",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },

@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "turbo run dev --filter=@evolu/relay --filter=web",
     "relay": "turbo --filter @evolu/relay dev",
-    "build": "turbo --filter @evolu/* build",
+    "build": "bun run clean:ts && turbo --filter @evolu/* build",
     "build:web": "bun run build:docs && turbo --filter web build",
     "build:docs": "typedoc && cd apps/web && bun run fix:docs",
     "build:expo": "turbo --filter @example/react-expo build",
@@ -22,6 +22,7 @@
     "biome": "biome check",
     "lint-monorepo": "bunx sherif@latest --ignore-dependency react@19.2.0",
     "verify": "bun run typecheck && bun run build && bun run test:coverage && bun run lint && bun run biome && bun run lint-monorepo && bun run build:docs",
+    "clean:ts": "tsc --build --clean tsconfig.typecheck.json",
     "clean:dry": "git clean -Xnd",
     "clean": "git clean -Xdf",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
