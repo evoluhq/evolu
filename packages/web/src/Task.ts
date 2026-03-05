@@ -1,5 +1,5 @@
 /**
- * Browser-specific Task utilities.
+ * Web platform-specific Task utilities.
  *
  * @module
  */

@@ -5,12 +5,11 @@
  */
 
 import { assert } from "./Assert.js";
-import { createInstances } from "./Instances.js";
 import { isNone } from "./Option.js";
 import { createRefCount, type RefCount } from "./RefCount.js";
 import { createRelation } from "./Relation.js";
 import { ok } from "./Result.js";
-import { createMutex, unabortable, type Mutex, type Task } from "./Task.js";
+import { createMutexByKey, unabortable, type Task } from "./Task.js";
 
 /**
  * Async reference-counted resource management.
@@ -150,7 +149,7 @@ export const createResources = <
     RefCount<TConsumerId>
   >();
   const consumerIdsByResourceId = createRelation<TResourceId, TConsumerId>();
-  const resourceMutexes = createInstances<TResourceId, Mutex>();
+  const mutexByResourceId = createMutexByKey<TResourceId>();
 
   return {
     addConsumer: (consumer, resourceConfigs) => async (run) => {
@@ -158,11 +157,10 @@ export const createResources = <
 
       for (const resourceConfig of resourceConfigs) {
         const resourceId = getResourceId(resourceConfig);
-        const mutex = resourceMutexes.ensure(resourceId, createMutex);
 
         const result = await run(
           unabortable(
-            mutex.withLock(async () => {
+            mutexByResourceId.withLock(resourceId, async () => {
               let resource = resourcesById.get(resourceId);
               if (!resource) {
                 resource = await createResource(resourceConfig);
@@ -201,20 +199,10 @@ export const createResources = <
 
       for (const resourceConfig of resourceConfigs) {
         const resourceId = getResourceId(resourceConfig);
-        const mutex = resourceMutexes.get(resourceId);
-        const hasRefCounts = consumerRefCountsByResourceId.has(resourceId);
-
-        if (!mutex) {
-          assert(
-            !hasRefCounts,
-            "Mutex must exist when resource has ref counts",
-          );
-          continue;
-        }
 
         const result = await run(
           unabortable(
-            mutex.withLock(() => {
+            mutexByResourceId.withLock(resourceId, () => {
               const consumerRefCountsByConsumerId =
                 consumerRefCountsByResourceId.get(resourceId);
               if (!consumerRefCountsByConsumerId) {
@@ -277,7 +265,7 @@ export const createResources = <
       resourcesById.clear();
       consumerRefCountsByResourceId.clear();
       consumerIdsByResourceId.clear();
-      resourceMutexes[Symbol.dispose]();
+      mutexByResourceId[Symbol.dispose]();
       return Promise.resolve();
     },
   };

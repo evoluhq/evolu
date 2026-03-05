@@ -1,30 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { lazyVoid } from "../src/Function.js";
-import { createInstances, createTaskInstances } from "../src/Instances.js";
-import { ok } from "../src/Result.js";
-import { testCreateRun } from "../src/Test.js";
+import { createInstances } from "../src/Instances.js";
 
 interface TestInstance extends Disposable {
   readonly id: string;
 }
 
 describe("Instances", () => {
-  test("creates and returns new instance on first call", () => {
-    const instances = createInstances<string, TestInstance>();
-    let createCount = 0;
-
-    const instance = instances.ensure("test", () => {
-      createCount++;
-      return {
-        id: "test-1",
-        [Symbol.dispose]: lazyVoid,
-      };
-    });
-
-    expect(instance.id).toBe("test-1");
-    expect(createCount).toBe(1);
-  });
-
   test("returns existing instance on second call with same key", () => {
     const instances = createInstances<string, TestInstance>();
     let createCount = 0;
@@ -46,6 +28,7 @@ describe("Instances", () => {
     });
 
     expect(instance1).toBe(instance2);
+    expect(instance1.id).toBe("test-1");
     expect(createCount).toBe(1);
   });
 
@@ -106,7 +89,10 @@ describe("Instances", () => {
     expect(instance2.id).toBe("instance-2");
   });
 
-  test("get returns instance if it exists", () => {
+  test.each([
+    ["test", "test-1"],
+    ["nonexistent", null],
+  ] as const)("get returns expected value for key %s", (key, expectedId) => {
     const instances = createInstances<string, TestInstance>();
 
     instances.ensure("test", () => ({
@@ -114,18 +100,14 @@ describe("Instances", () => {
       [Symbol.dispose]: lazyVoid,
     }));
 
-    const retrieved = instances.get("test");
-    expect(retrieved).not.toBeNull();
-    expect(retrieved?.id).toBe("test-1");
+    const retrieved = instances.get(key);
+    expect(retrieved?.id ?? null).toBe(expectedId);
   });
 
-  test("get returns null if instance does not exist", () => {
-    const instances = createInstances<string, TestInstance>();
-    const retrieved = instances.get("nonexistent");
-    expect(retrieved).toBeNull();
-  });
-
-  test("has returns true if instance exists", () => {
+  test.each([
+    ["test", true],
+    ["nonexistent", false],
+  ] as const)("has returns expected value for key %s", (key, expected) => {
     const instances = createInstances<string, TestInstance>();
 
     instances.ensure("test", () => ({
@@ -133,12 +115,7 @@ describe("Instances", () => {
       [Symbol.dispose]: lazyVoid,
     }));
 
-    expect(instances.has("test")).toBe(true);
-  });
-
-  test("has returns false if instance does not exist", () => {
-    const instances = createInstances<string, TestInstance>();
-    expect(instances.has("nonexistent")).toBe(false);
+    expect(instances.has(key)).toBe(expected);
   });
 
   test("delete deletes and disposes the instance", () => {
@@ -214,6 +191,40 @@ describe("Instances", () => {
     expect(instance2.disposed).toBe(true);
   });
 
+  test("Symbol.dispose disposes instances in LIFO order", () => {
+    interface TestInstance extends Disposable {
+      readonly id: string;
+    }
+
+    const instances = createInstances<string, TestInstance>();
+    const events: Array<string> = [];
+
+    instances.ensure("a", () => ({
+      id: "a",
+      [Symbol.dispose]: () => {
+        events.push("dispose a");
+      },
+    }));
+
+    instances.ensure("b", () => ({
+      id: "b",
+      [Symbol.dispose]: () => {
+        events.push("dispose b");
+      },
+    }));
+
+    instances.ensure("c", () => ({
+      id: "c",
+      [Symbol.dispose]: () => {
+        events.push("dispose c");
+      },
+    }));
+
+    instances[Symbol.dispose]();
+
+    expect(events).toEqual(["dispose c", "dispose b", "dispose a"]);
+  });
+
   test("using block syntax disposes all instances", () => {
     interface TestInstance extends Disposable {
       readonly id: string;
@@ -249,6 +260,42 @@ describe("Instances", () => {
     // After the block, instances should be disposed
     expect(instance1.disposed).toBe(true);
     expect(instance2.disposed).toBe(true);
+  });
+
+  test("dispose clears entries and registry remains reusable", () => {
+    interface TestInstance extends Disposable {
+      readonly id: string;
+      disposed: boolean;
+    }
+
+    const instances = createInstances<string, TestInstance>();
+
+    const first = instances.ensure("k", () => ({
+      id: "first",
+      disposed: false,
+      [Symbol.dispose]: function () {
+        this.disposed = true;
+      },
+    }));
+
+    instances[Symbol.dispose]();
+
+    expect(first.disposed).toBe(true);
+    expect(instances.has("k")).toBe(false);
+    expect(instances.get("k")).toBeNull();
+    expect(instances.delete("k")).toBe(false);
+
+    const second = instances.ensure("k", () => ({
+      id: "second",
+      disposed: false,
+      [Symbol.dispose]: function () {
+        this.disposed = true;
+      },
+    }));
+
+    expect(second.id).toBe("second");
+    expect(second).not.toBe(first);
+    expect(instances.has("k")).toBe(true);
   });
 
   test("delete still deletes instance from map even if dispose throws", () => {
@@ -344,7 +391,7 @@ describe("Instances", () => {
     }).toThrow("Single disposal error");
   });
 
-  test("Symbol.dispose throws AggregateError if multiple disposals fail", () => {
+  test("Symbol.dispose throws SuppressedError if multiple disposals fail", () => {
     interface TestInstance extends Disposable {
       readonly id: string;
     }
@@ -365,305 +412,32 @@ describe("Instances", () => {
       },
     }));
 
+    const SuppressedErrorCtor = (
+      globalThis as {
+        readonly SuppressedError?: new (
+          error: unknown,
+          suppressed: unknown,
+          message?: string,
+        ) => Error;
+      }
+    ).SuppressedError;
+    expect(SuppressedErrorCtor).toBeDefined();
+
     try {
       instances[Symbol.dispose]();
       expect.fail("Should have thrown");
     } catch (error) {
-      expect(error).toBeInstanceOf(AggregateError);
-      if (error instanceof AggregateError) {
-        expect(error.errors).toHaveLength(2);
-        expect(error.errors[0]).toBeInstanceOf(Error);
-        expect(error.errors[1]).toBeInstanceOf(Error);
-        expect((error.errors[0] as Error).message).toBe("Error 1");
-        expect((error.errors[1] as Error).message).toBe("Error 2");
-      }
+      expect(error).toBeInstanceOf(SuppressedErrorCtor);
+
+      const suppressedError = error as {
+        readonly error: unknown;
+        readonly suppressed: unknown;
+      };
+
+      expect(suppressedError.error).toBeInstanceOf(Error);
+      expect(suppressedError.suppressed).toBeInstanceOf(Error);
+      expect((suppressedError.error as Error).message).toBe("Error 1");
+      expect((suppressedError.suppressed as Error).message).toBe("Error 2");
     }
-  });
-});
-
-interface PrefixDep {
-  readonly prefix: string;
-}
-
-interface AsyncTestInstance extends AsyncDisposable {
-  id: string;
-  disposed: boolean;
-}
-
-const createAsyncTestInstance = (
-  id: string,
-  onDispose?: () => void | Promise<void>,
-): AsyncTestInstance => ({
-  id,
-  disposed: false,
-  [Symbol.asyncDispose]: async function () {
-    this.disposed = true;
-    await Promise.resolve();
-    if (onDispose) await onDispose();
-  },
-});
-
-describe("TaskInstances", () => {
-  test("ensures instance from task create and reuses it with cache-hit task", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    const instance1 = await run.orThrow(
-      instances.ensure("k", ({ deps }) =>
-        ok(createAsyncTestInstance(`${deps.prefix}-1`)),
-      ),
-    );
-
-    let cacheHitCount = 0;
-    const instance2 = await run.orThrow(
-      instances.ensure(
-        "k",
-        () => ok(createAsyncTestInstance("should-not-create")),
-        (instance) =>
-          ({ deps }) => {
-            cacheHitCount++;
-            instance.id = `${deps.prefix}-updated`;
-            return ok();
-          },
-      ),
-    );
-
-    expect(instance1).toBe(instance2);
-    expect(instance2.id).toBe("dep-updated");
-    expect(cacheHitCount).toBe(1);
-  });
-
-  test("get and has return task results", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    expect(await run.orThrow(instances.has("missing"))).toBe(false);
-    expect(await run.orThrow(instances.get("missing"))).toBeNull();
-
-    await run.orThrow(
-      instances.ensure("k", ({ deps }) =>
-        ok(createAsyncTestInstance(`${deps.prefix}-1`)),
-      ),
-    );
-
-    expect(await run.orThrow(instances.has("k"))).toBe(true);
-    const existing = await run.orThrow(instances.get("k"));
-    expect(existing?.id).toBe("dep-1");
-  });
-
-  test("serializes concurrent ensure for same key with mutex", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    const canFinishFirstCreate = Promise.withResolvers<void>();
-    const events: Array<string> = [];
-
-    const firstEnsure = run(
-      instances.ensure("k", async ({ deps }) => {
-        events.push("create-1-start");
-        await canFinishFirstCreate.promise;
-        events.push("create-1-end");
-
-        return ok(createAsyncTestInstance(`${deps.prefix}-1`));
-      }),
-    );
-
-    const secondEnsure = run(
-      instances.ensure(
-        "k",
-        () => {
-          events.push("create-2");
-          return ok(createAsyncTestInstance("should-not-create"));
-        },
-        () => () => {
-          events.push("cache-hit");
-          return ok();
-        },
-      ),
-    );
-
-    await Promise.resolve();
-    expect(events).toEqual(["create-1-start"]);
-
-    canFinishFirstCreate.resolve();
-
-    const [firstResult, secondResult] = await Promise.all([
-      firstEnsure,
-      secondEnsure,
-    ]);
-
-    expect(firstResult.ok).toBe(true);
-    expect(secondResult.ok).toBe(true);
-    expect(events).toEqual(["create-1-start", "create-1-end", "cache-hit"]);
-  });
-
-  test("delete calls onDelete, disposes instance, and returns false on repeated delete", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    const instance = await run.orThrow(
-      instances.ensure("k", ({ deps }) =>
-        ok(createAsyncTestInstance(`${deps.prefix}-1`)),
-      ),
-    );
-
-    let onDeleteCalled = 0;
-    const deleted = await run.orThrow(
-      instances.delete("k", () => ({ deps }) => {
-        onDeleteCalled++;
-        expect(deps.prefix).toBe("dep");
-        return ok();
-      }),
-    );
-
-    expect(deleted).toBe(true);
-    expect(onDeleteCalled).toBe(1);
-    expect(instance.disposed).toBe(true);
-    expect(await run.orThrow(instances.has("k"))).toBe(false);
-
-    expect(await run.orThrow(instances.delete("k"))).toBe(false);
-  });
-
-  test("delete returns false when key has never been ensured", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    expect(await run.orThrow(instances.delete("missing"))).toBe(false);
-  });
-
-  test("reuses existing instance without onCacheHit and deletes without onDelete", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    const created = await run.orThrow(
-      instances.ensure("k", ({ deps }) =>
-        ok(createAsyncTestInstance(`${deps.prefix}-1`)),
-      ),
-    );
-
-    const reused = await run.orThrow(
-      instances.ensure("k", () =>
-        ok(createAsyncTestInstance("should-not-create")),
-      ),
-    );
-
-    expect(reused).toBe(created);
-
-    expect(await run.orThrow(instances.delete("k"))).toBe(true);
-    expect(created.disposed).toBe(true);
-  });
-
-  test("Symbol.asyncDispose disposes all instances", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    const instance1 = await run.orThrow(
-      instances.ensure("k1", ({ deps }) =>
-        ok(createAsyncTestInstance(`${deps.prefix}-1`)),
-      ),
-    );
-
-    const instance2 = await run.orThrow(
-      instances.ensure("k2", ({ deps }) =>
-        ok(createAsyncTestInstance(`${deps.prefix}-2`)),
-      ),
-    );
-
-    await instances[Symbol.asyncDispose]();
-
-    expect(instance1.disposed).toBe(true);
-    expect(instance2.disposed).toBe(true);
-    expect(await run.orThrow(instances.has("k1"))).toBe(false);
-    expect(await run.orThrow(instances.has("k2"))).toBe(false);
-  });
-
-  test("Symbol.asyncDispose throws single error when one disposal fails", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    await run.orThrow(
-      instances.ensure("k1", ({ deps }) =>
-        ok(
-          createAsyncTestInstance(`${deps.prefix}-1`, () => {
-            throw new Error("single async dispose error");
-          }),
-        ),
-      ),
-    );
-
-    await run.orThrow(
-      instances.ensure("k2", ({ deps }) =>
-        ok(createAsyncTestInstance(`${deps.prefix}-2`)),
-      ),
-    );
-
-    await expect(instances[Symbol.asyncDispose]()).rejects.toThrow(
-      "single async dispose error",
-    );
-  });
-
-  test("Symbol.asyncDispose throws AggregateError when multiple disposals fail", async () => {
-    await using run = testCreateRun<PrefixDep>({ prefix: "dep" });
-    const instances = createTaskInstances<
-      string,
-      AsyncTestInstance,
-      PrefixDep
-    >();
-
-    await run.orThrow(
-      instances.ensure("k1", ({ deps }) =>
-        ok(
-          createAsyncTestInstance(`${deps.prefix}-1`, () => {
-            throw new Error("error 1");
-          }),
-        ),
-      ),
-    );
-
-    await run.orThrow(
-      instances.ensure("k2", ({ deps }) =>
-        ok(
-          createAsyncTestInstance(`${deps.prefix}-2`, () => {
-            throw new Error("error 2");
-          }),
-        ),
-      ),
-    );
-
-    await expect(instances[Symbol.asyncDispose]()).rejects.toBeInstanceOf(
-      AggregateError,
-    );
   });
 });

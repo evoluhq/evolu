@@ -17,6 +17,7 @@ import type { RandomBytes, RandomBytesDep } from "./Crypto.js";
 import { createRandomBytes } from "./Crypto.js";
 import { eqArrayStrict } from "./Eq.js";
 import { lazyTrue, lazyVoid } from "./Function.js";
+import { createInstances, type Instances } from "./Instances.js";
 import { decrement, increment } from "./Number.js";
 import {
   createRecord,
@@ -428,6 +429,10 @@ export type InferTaskDone<T extends AnyTask> =
  * logic. If you need to inspect the reason, use type guards like
  * `RaceLostError.is(reason)`.
  *
+ * In most code, treat `AbortError` as control flow rather than business logic.
+ * Propagate it unchanged and handle domain errors separately. Inspect
+ * `AbortError.reason` only when you need reason-specific behavior.
+ *
  * @group Core Types
  */
 export const AbortError = /*#__PURE__*/ typed("AbortError", {
@@ -438,24 +443,34 @@ export interface AbortError extends InferType<typeof AbortError> {}
 /**
  * Runs a {@link Task} with
  * {@link https://en.wikipedia.org/wiki/Structured_concurrency | structured concurrency}
- * guarantees.
+ * semantics.
  *
- * - **Lifetime** — child tasks are bound to parent scope
- * - **Cancellation** — abort propagates to all descendants
- * - **Observable state** — inspect running tasks via snapshots and events
+ * Each `Run` forms a task tree: child tasks are bound to it, abort propagates
+ * through that tree, and state is observable via snapshots and events.
  *
  * `Run` is a callable object — callable because it's convenient to run tasks as
- * `run(task)`, and an object because it holds state for abortability and
- * monitoring.
+ * `run(task)`, and an object because it holds state.
  *
- * Evolu's structured concurrency leverages native JavaScript APIs:
+ * Calling `run(task)` creates a child `Run`, passes it to the task, and returns
+ * a {@link Fiber}. The child is tracked in `getChildren()`/events while running,
+ * then disposed and removed when settled.
  *
- * - `PromiseLike` as the async primitive
- * - `AbortSignal` for cancellation
- * - `await using` for resource management
+ * Before task execution, `run(task)` applies two short-circuit checks:
  *
- * This makes Run idiomatic to JavaScript, tiny with minimal overhead, and easy
- * to debug (native stack traces).
+ * - If this run is not `Running`, the child is aborted with
+ *   {@link runClosingError} and the task is replaced with `err(AbortError)`.
+ * - If this run's signal is already aborted and the child is abortable
+ *   (`abortMask === 0`), the child is aborted with the same reason and the task
+ *   is replaced with `err(AbortError)`.
+ *
+ * After execution, the child stores both values: `outcome` (what the task
+ * returned) and `result` (what callers observe). If the child signal is aborted
+ * at settlement time, `result` is forced to `err(AbortError)` even when
+ * `outcome` is `ok(...)`.
+ *
+ * That's the whole mechanism: {@link Task} is a function that takes a `Run` and
+ * returns an {@link Awaitable} {@link Result}. `run(task)` runs it via
+ * `Promise.try(task, run)` with aforementioned logic.
  *
  * @group Core Types
  * @see {@link createRun}
@@ -1528,6 +1543,11 @@ const abortBehavior =
  * Once started, an unabortable task always completes — abort requests are
  * ignored and `signal.aborted` remains `false`.
  *
+ * Unabortable affects in-flight cancellation only. It does not guarantee the
+ * task starts. If the parent {@link Run} is already closing or disposed,
+ * `run(task)` short-circuits before task execution and returns
+ * `err(AbortError)` (typically with {@link runClosingError} as reason).
+ *
  * ### Example
  *
  * ```ts
@@ -2490,6 +2510,48 @@ export interface Semaphore extends Disposable {
    * whose reason is {@link semaphoreDisposedError}.
    */
   readonly withPermit: <T, E, D>(task: Task<T, E, D>) => Task<T, E, D>;
+
+  /**
+   * Executes a {@link Task} while holding a specified number of permits.
+   *
+   * If insufficient permits are available, waits in FIFO order until permits
+   * become available. If disposed while waiting or running, task is aborted
+   * with {@link semaphoreDisposedError}.
+   *
+   * Use this for weighted concurrency where a task represents a resource
+   * demand, not just "one more task". One permit is one resource unit.
+   *
+   * Example: with capacity `10`, a lightweight operation can reserve `1` permit
+   * while a heavy operation reserves `4` permits. This models shared budgets
+   * such as DB connections, API credits, memory/CPU buckets, or batch
+   * processing slots.
+   *
+   * {@link Semaphore.withPermit} is equivalent to `withPermits(1)`.
+   */
+  readonly withPermits: <T, E, D>(
+    permits: Concurrency,
+  ) => (task: Task<T, E, D>) => Task<T, E, D>;
+
+  /** Returns the current semaphore state for monitoring/debugging. */
+  readonly snapshot: () => SemaphoreSnapshot;
+}
+
+/** Snapshot returned by {@link Semaphore.snapshot}. */
+export interface SemaphoreSnapshot {
+  /** Total permits configured at creation. */
+  readonly permits: Concurrency;
+
+  /** Currently held permits. */
+  readonly taken: NonNegativeInt;
+
+  /** Number of currently waiting tasks. */
+  readonly waiting: NonNegativeInt;
+
+  /** Currently available permits. */
+  readonly available: NonNegativeInt;
+
+  /** Whether the semaphore has been disposed. */
+  readonly disposed: boolean;
 }
 
 /**
@@ -2533,72 +2595,99 @@ export interface Semaphore extends Disposable {
  * @group Concurrency primitives
  */
 export const createSemaphore = (permits: Concurrency): Semaphore => {
-  const fibers = new Set<Fiber>();
-  const queue = new Set<Callback<Result<void, AbortError>>>();
+  interface Waiter {
+    readonly permits: PositiveInt;
+    readonly resolve: Callback<Result<void, AbortError>>;
+  }
 
-  let availablePermits: number = permits;
+  const fibers = new Set<Fiber>();
+  const waiters: Array<Waiter> = [];
+  let taken = NonNegativeInt.orThrow(0);
   let disposed = false;
 
-  return {
-    withPermit:
-      <T, E, D>(task: Task<T, E, D>): Task<T, E, D> =>
-      async (run) => {
-        assert(
-          availablePermits === 0 || queue.size === 0,
-          "Semaphore invariant violated: queue must be empty when permits are available.",
-        );
-        if (disposed) return err(semaphoreDisposedAbortError);
+  const withPermits =
+    <T, E, D>(requestedPermits: Concurrency) =>
+    (task: Task<T, E, D>): Task<T, E, D> =>
+    async (run) => {
+      const requested = PositiveInt.orThrow(requestedPermits);
 
-        if (availablePermits === 0) {
-          const acquired = await new Promise<Result<void, AbortError>>(
-            (resolve) => {
-              queue.add(resolve);
-              run.onAbort((reason) => {
-                queue.delete(resolve);
-                resolve(err(createAbortError(reason)));
-              });
-            },
-          );
-          if (!acquired.ok) return acquired;
-        } else {
-          availablePermits -= 1;
-        }
+      assert(
+        requested <= permits,
+        "Requested permits must not exceed semaphore capacity.",
+      );
 
-        let fiber: Fiber<T, E, D> | null = null;
-        try {
-          fiber = run(task);
-          fibers.add(fiber);
-          return await fiber;
-        } finally {
+      if (disposed) return err(semaphoreDisposedAbortError);
+
+      if (waiters.length > 0 || taken + requested > permits) {
+        const waiter = Promise.withResolvers<Result<void, AbortError>>();
+        const waiting: Waiter = {
+          permits: requested,
+          resolve: waiter.resolve,
+        };
+        waiters.push(waiting);
+        run.onAbort((reason) => {
+          const i = waiters.indexOf(waiting);
+          if (i >= 0) waiters.splice(i, 1);
+          waiter.resolve(err(createAbortError(reason)));
+        });
+
+        const permit = await waiter.promise;
+        if (!permit.ok) return permit;
+      } else {
+        taken = NonNegativeInt.orThrow(taken + requested);
+      }
+
+      let fiber: Fiber<T, E, D> | null = null;
+      using _ = {
+        [Symbol.dispose]: () => {
           if (fiber) fibers.delete(fiber);
 
-          const next = queue.values().next();
-          if (!next.done) {
-            queue.delete(next.value);
-            next.value(ok());
-          } else {
-            availablePermits += 1;
-          }
+          taken = NonNegativeInt.orThrow(taken - requested);
 
-          assert(
-            availablePermits === 0 || queue.size === 0,
-            "Queue must be empty when permits are available.",
-          );
-        }
-      },
+          while (waiters.length > 0) {
+            const waiter = waiters[0];
+            if (taken + waiter.permits > permits) break;
+            waiters.shift();
+            taken = NonNegativeInt.orThrow(taken + waiter.permits);
+            waiter.resolve(ok());
+          }
+        },
+      };
+
+      fiber = run(task);
+      fibers.add(fiber);
+      return await fiber;
+    };
+
+  return {
+    withPermits,
+
+    withPermit: <T, E, D>(task: Task<T, E, D>): Task<T, E, D> =>
+      withPermits<T, E, D>(1)(task),
+
+    snapshot: () => ({
+      permits,
+      taken,
+      waiting: NonNegativeInt.orThrow(waiters.length),
+      available: NonNegativeInt.orThrow(permits - taken),
+      disposed,
+    }),
 
     [Symbol.dispose]: () => {
       if (disposed) return;
       disposed = true;
 
+      using stack = new DisposableStack();
       for (const fiber of fibers) {
-        fiber.abort(semaphoreDisposedError);
+        stack.adopt(fiber, (fiber) => {
+          fiber.abort(semaphoreDisposedError);
+        });
       }
 
-      for (const resolve of queue) {
-        resolve(err(semaphoreDisposedAbortError));
+      for (const waiter of waiters) {
+        waiter.resolve(err(semaphoreDisposedAbortError));
       }
-      queue.clear();
+      waiters.length = 0;
     },
   };
 };
@@ -2627,6 +2716,95 @@ export const semaphoreDisposedError: SemaphoreDisposedError = {
 const semaphoreDisposedAbortError: AbortError = createAbortError(
   semaphoreDisposedError,
 );
+
+/**
+ * A keyed {@link Semaphore} registry.
+ *
+ * Provides semaphore operations per key while preserving the same API shape as
+ * {@link Semaphore}.
+ *
+ * @group Concurrency primitives
+ */
+export interface SemaphoreByKey<K extends string = string> extends Disposable {
+  /**
+   * Executes a {@link Task} while holding one permit for a specific key.
+   *
+   * Behaves like {@link Semaphore.withPermit}, scoped to `key`.
+   */
+  readonly withPermit: <T, E, D>(key: K, task: Task<T, E, D>) => Task<T, E, D>;
+
+  /**
+   * Executes a {@link Task} while holding permits for a specific key.
+   *
+   * Behaves like {@link Semaphore.withPermits}, scoped to `key`.
+   */
+  readonly withPermits: <T, E, D>(
+    key: K,
+    permits: Concurrency,
+  ) => (task: Task<T, E, D>) => Task<T, E, D>;
+
+  /** Returns current semaphore state for a key, or `null` when no state exists. */
+  readonly snapshot: (key: K) => SemaphoreSnapshot | null;
+}
+
+/**
+ * Creates a {@link SemaphoreByKey}.
+ *
+ * Each key gets its own semaphore with the same permit capacity.
+ *
+ * @group Concurrency primitives
+ */
+export const createSemaphoreByKey = <K extends string = string>(
+  permits: Concurrency,
+): SemaphoreByKey<K> => {
+  const semaphoresByKey = new Map<K, Semaphore>();
+  let disposed = false;
+
+  const withPermits =
+    <T, E, D>(key: K, requestedPermits: Concurrency) =>
+    (task: Task<T, E, D>): Task<T, E, D> =>
+    async (run: Run<D>) => {
+      if (disposed) return err(semaphoreDisposedAbortError);
+
+      let semaphore = semaphoresByKey.get(key);
+      if (!semaphore) {
+        semaphore = createSemaphore(permits);
+        semaphoresByKey.set(key, semaphore);
+      }
+
+      using _ = {
+        [Symbol.dispose]: () => {
+          const snapshot = semaphore.snapshot();
+          if (snapshot.taken === 0 && snapshot.waiting === 0) {
+            semaphoresByKey.delete(key);
+            semaphore[Symbol.dispose]();
+          }
+        },
+      };
+
+      return await run(semaphore.withPermits<T, E, D>(requestedPermits)(task));
+    };
+
+  return {
+    withPermit: <T, E, D>(key: K, task: Task<T, E, D>): Task<T, E, D> =>
+      withPermits<T, E, D>(key, 1)(task),
+
+    withPermits,
+
+    snapshot: (key) => semaphoresByKey.get(key)?.snapshot() ?? null,
+
+    [Symbol.dispose]: () => {
+      if (disposed) return;
+      disposed = true;
+
+      using stack = new DisposableStack();
+      for (const semaphore of semaphoresByKey.values()) {
+        stack.use(semaphore);
+      }
+      semaphoresByKey.clear();
+    },
+  };
+};
 
 /**
  * A mutex (mutual exclusion) that ensures only one {@link Task} runs at a time.
@@ -2674,6 +2852,39 @@ export interface Mutex extends Disposable {
 }
 
 /**
+ * A keyed {@link Mutex} registry.
+ *
+ * Provides mutex operations per key.
+ *
+ * @group Concurrency primitives
+ */
+export interface MutexByKey<K extends string = string> extends Disposable {
+  /**
+   * Executes a {@link Task} while holding the mutex lock for a specific key.
+   *
+   * Behaves like {@link Mutex.withLock}, scoped to `key`.
+   */
+  readonly withLock: <T, E, D>(key: K, task: Task<T, E, D>) => Task<T, E, D>;
+}
+
+/**
+ * Creates a {@link MutexByKey}.
+ *
+ * @group Concurrency primitives
+ */
+export const createMutexByKey = <
+  K extends string = string,
+>(): MutexByKey<K> => {
+  const semaphoreByKey = createSemaphoreByKey<K>(minPositiveInt);
+
+  return {
+    withLock: <T, E, D>(key: K, task: Task<T, E, D>): Task<T, E, D> =>
+      semaphoreByKey.withPermit(key, task),
+    [Symbol.dispose]: semaphoreByKey[Symbol.dispose],
+  };
+};
+
+/**
  * Creates a {@link Mutex}.
  *
  * @group Concurrency primitives
@@ -2684,6 +2895,120 @@ export const createMutex = (): Mutex => {
   return {
     withLock: semaphore.withPermit,
     [Symbol.dispose]: semaphore[Symbol.dispose],
+  };
+};
+
+/**
+ * Task-based variant of {@link Instances} for async disposable instances.
+ *
+ * Uses {@link Task} for create and cache-hit refresh. Read operations (`get` and
+ * `has`) are synchronous.
+ *
+ * @group Concurrency primitives
+ */
+export interface TaskInstances<
+  K extends string,
+  T extends AsyncDisposable,
+  D = unknown,
+> extends AsyncDisposable {
+  /**
+   * Ensures an instance exists for the given key.
+   *
+   * If missing, `create` is executed and stored. If present, `onCacheHit` runs
+   * with the existing instance. Errors from either callback are propagated.
+   */
+  readonly ensure: <CreateError, CacheHitError = never>(
+    key: K,
+    create: Task<T, CreateError, D>,
+    onCacheHit?: (instance: T) => Task<void, CacheHitError, D>,
+  ) => Task<T, CreateError | CacheHitError, D>;
+
+  /** Gets an instance by key, or `null` when missing. */
+  readonly get: (key: K) => T | null;
+
+  /** Checks if an instance exists for the given key. */
+  readonly has: (key: K) => boolean;
+
+  /**
+   * Deletes and disposes an instance by key.
+   *
+   * Returns `true` if an instance existed, otherwise `false`.
+   */
+  readonly delete: (key: K) => Task<boolean, never, D>;
+}
+
+/**
+ * Creates a {@link TaskInstances}.
+ *
+ * Disposing clears and disposes current instances. The registry remains usable
+ * after disposal.
+ *
+ * @group Concurrency primitives
+ */
+export const createTaskInstances = <
+  K extends string,
+  T extends AsyncDisposable,
+  D = unknown,
+>(): TaskInstances<K, T, D> => {
+  const instances = new Map<K, T>();
+  const mutexByKey = createInstances<K, Mutex>();
+
+  return {
+    ensure:
+      <CreateError, CacheHitError = never>(
+        key: K,
+        create: Task<T, CreateError, D>,
+        onCacheHit?: (instance: T) => Task<void, CacheHitError, D>,
+      ): Task<T, CreateError | CacheHitError, D> =>
+      async (run) => {
+        const mutex = mutexByKey.ensure(key, createMutex);
+        return await run(
+          mutex.withLock<T, CreateError | CacheHitError, D>(async (run) => {
+            let instance = instances.get(key);
+
+            if (instance == null) {
+              const created = await run(create);
+              if (!created.ok) return created;
+
+              instance = created.value;
+              instances.set(key, instance);
+            } else if (onCacheHit) {
+              const cacheHitResult = await run(onCacheHit(instance));
+              if (!cacheHitResult.ok) return cacheHitResult;
+            }
+
+            return ok(instance);
+          }),
+        );
+      },
+
+    get: (key) => instances.get(key) ?? null,
+
+    has: (key) => instances.has(key),
+
+    delete: (key: K) => async (run) => {
+      const mutex = mutexByKey.get(key);
+      if (mutex == null) return ok(false);
+
+      return await run(
+        mutex.withLock(async () => {
+          await using instance = instances.get(key);
+          if (instance) instances.delete(key);
+          return ok(instance != null);
+        }),
+      );
+    },
+
+    [Symbol.asyncDispose]: async () => {
+      await using stack = new globalThis.AsyncDisposableStack();
+      stack.use(mutexByKey);
+
+      for (const instance of instances.values()) {
+        stack.use(instance);
+      }
+
+      instances.clear();
+    },
   };
 };
 
@@ -2715,16 +3040,7 @@ export interface LeaderLockDep {
  * @group Concurrency primitives
  */
 export const createInMemoryLeaderLock = (): LeaderLock => {
-  const mutexesByName = new Map<Name, Mutex>();
-
-  const getMutexForName = (name: Name): Mutex => {
-    let mutex = mutexesByName.get(name);
-    if (mutex == null) {
-      mutex = createMutex();
-      mutexesByName.set(name, mutex);
-    }
-    return mutex;
-  };
+  const mutexByName = createMutexByKey<Name>();
 
   return {
     acquire: (name) => async (run) => {
@@ -2734,7 +3050,7 @@ export const createInMemoryLeaderLock = (): LeaderLock => {
       const onRelease = Promise.withResolvers<void>();
 
       void run.daemon(
-        getMutexForName(name).withLock(async () => {
+        mutexByName.withLock(name, async () => {
           onAcquired.resolve();
           await onRelease.promise;
           return ok();
@@ -3606,3 +3922,5 @@ export const fetch =
 // Safari doesn't support it yet, Node.js probably never will (use setImmediate).
 // For Safari, scheduler-polyfill can be used.
 // https://www.npmjs.com/package/scheduler-polyfill
+
+// TODO: Do we really need specialized aborts?

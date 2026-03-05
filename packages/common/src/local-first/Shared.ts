@@ -14,12 +14,11 @@ import {
 import { assert } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import type { Console, ConsoleEntry, ConsoleLevel } from "../Console.js";
-import { createTaskInstances } from "../Instances.js";
 import { createResources, type Resources } from "../Resources.js";
 import { ok } from "../Result.js";
 import { spaced } from "../Schedule.js";
 import type { NonEmptyReadonlySet } from "../Set.js";
-import { repeat, type Fiber, type Task } from "../Task.js";
+import { createTaskInstances, repeat, type Fiber, type Task } from "../Task.js";
 import { createId, type Id, type Name } from "../Type.js";
 import type { Callback, ExtractType } from "../Types.js";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
@@ -154,7 +153,7 @@ export const initSharedWorker =
       }),
     );
 
-    const runWithTransports = run.addDeps({ transports });
+    const runWithSharedEvoluDeps = run.addDeps({ transports });
 
     // TODO: Use heartbeat to detect and prune dead instances.
     const sharedEvolus = stack.use(
@@ -185,7 +184,7 @@ export const initSharedWorker =
           }
 
           case "CreateEvolu": {
-            void runWithTransports
+            void runWithSharedEvoluDeps
               .daemon(
                 sharedEvolus.ensure(
                   message.name,
@@ -195,7 +194,7 @@ export const initSharedWorker =
                     appOwner: message.appOwner,
                     postTabOutput,
                     onDispose: () => {
-                      void runWithTransports.daemon(
+                      void runWithSharedEvoluDeps.daemon(
                         sharedEvolus.delete(message.name),
                       );
                     },

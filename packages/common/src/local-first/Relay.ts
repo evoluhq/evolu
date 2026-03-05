@@ -12,13 +12,11 @@ import {
 } from "../Array.js";
 import type { TimingSafeEqualDep } from "../Crypto.js";
 import { assert } from "../Assert.js";
-import { createInstances } from "../Instances.js";
 import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { SqliteDep } from "../Sqlite.js";
 import { sql } from "../Sqlite.js";
-import type { Mutex } from "../Task.js";
-import { createMutex } from "../Task.js";
+import { createMutexByKey } from "../Task.js";
 import { PositiveInt, Name } from "../Type.js";
 import { isPromiseLike, type Awaitable } from "../Types.js";
 import {
@@ -113,8 +111,8 @@ export const createRelaySqliteStorage =
   (config: StorageConfig): Storage => {
     const sqliteStorageBase = createBaseSqliteStorage(deps);
 
-    /** Mutex instances cached per OwnerId to prevent concurrent writes. */
-    const ownerMutexes = createInstances<OwnerId, Mutex>();
+    /** Mutex keyed by OwnerId to prevent concurrent writes. */
+    const mutexByOwnerId = createMutexByKey<OwnerId>();
 
     return {
       ...sqliteStorageBase,
@@ -167,9 +165,9 @@ export const createRelaySqliteStorage =
         }));
 
         const result = await run(
-          ownerMutexes
-            .ensure(ownerId, createMutex)
-            .withLock(async (): Promise<Result<void, StorageQuotaError>> => {
+          mutexByOwnerId.withLock(
+            ownerId,
+            async (): Promise<Result<void, StorageQuotaError>> => {
               const existingTimestampsResult =
                 sqliteStorageBase.getExistingTimestamps(
                   ownerIdBytes,
@@ -255,7 +253,8 @@ export const createRelaySqliteStorage =
 
                 return ok();
               });
-            }),
+            },
+          ),
         );
 
         if (!result.ok) {
