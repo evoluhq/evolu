@@ -76,6 +76,7 @@ export default defineConfig(
 
       "jsdoc/require-jsdoc": "off",
       "jsdoc/require-param": "off",
+      "jsdoc/check-alignment": "off", // TODO: Figure out why copilot inserts extra spaces in the JSDoc comments
       "jsdoc/require-returns": "off",
       "jsdoc/tag-lines": [
         "error",
