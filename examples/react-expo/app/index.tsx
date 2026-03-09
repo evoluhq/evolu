@@ -46,7 +46,7 @@ const todosQuery = createQuery((db) =>
     // (even if defined without nullOr in the schema) to allow schema
     // evolution without migrations. Filter nulls with where + $narrowType.
     .where("title", "is not", null)
-    .$narrowType<{ title: Evolu.kysely.NotNull }>()
+    .$narrowType<{ title: Evolu.KyselyNotNull }>()
 
     // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
     .orderBy("createdAt"),

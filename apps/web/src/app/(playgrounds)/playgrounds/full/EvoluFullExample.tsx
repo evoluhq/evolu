@@ -10,11 +10,13 @@ import {
   createQueryBuilder,
   createRun,
   err,
+  evoluJsonArrayFrom,
+  evoluJsonObjectFrom,
   FiniteNumber,
   id,
   idToIdBytes,
   json,
-  kysely,
+  type KyselyNotNull,
   maxLength,
   Mnemonic,
   NonEmptyString,
@@ -228,27 +230,25 @@ const projectsWithTodosQuery = createQuery(
       .select(["id", "name"])
       // https://kysely.dev/docs/recipes/relations
       .select((eb) => [
-        kysely
-          .jsonArrayFrom(
-            eb
-              .selectFrom("todo")
-              .select([
-                "todo.id",
-                "todo.title",
-                "todo.isCompleted",
-                "todo.projectId",
-              ])
-              .whereRef("todo.projectId", "=", "project.id")
-              .where("todo.isDeleted", "is not", sqliteTrue)
-              .where("todo.title", "is not", null)
-              .$narrowType<{ title: kysely.NotNull }>()
-              .orderBy("createdAt"),
-          )
-          .as("todos"),
+        evoluJsonArrayFrom(
+          eb
+            .selectFrom("todo")
+            .select([
+              "todo.id",
+              "todo.title",
+              "todo.isCompleted",
+              "todo.projectId",
+            ])
+            .whereRef("todo.projectId", "=", "project.id")
+            .where("todo.isDeleted", "is not", sqliteTrue)
+            .where("todo.title", "is not", null)
+            .$narrowType<{ title: KyselyNotNull }>()
+            .orderBy("createdAt"),
+        ).as("todos"),
       ])
       .where("project.isDeleted", "is not", sqliteTrue)
       .where("name", "is not", null)
-      .$narrowType<{ name: kysely.NotNull }>()
+      .$narrowType<{ name: KyselyNotNull }>()
       .orderBy("createdAt"),
   {
     // Log how long each query execution takes
@@ -521,9 +521,9 @@ const projectsQuery = createQuery((db) =>
     .select(["id", "name", "fooJson"])
     .where("isDeleted", "is not", sqliteTrue)
     .where("name", "is not", null)
-    .$narrowType<{ name: kysely.NotNull }>()
+    .$narrowType<{ name: KyselyNotNull }>()
     .where("fooJson", "is not", null)
-    .$narrowType<{ fooJson: kysely.NotNull }>()
+    .$narrowType<{ fooJson: KyselyNotNull }>()
     .orderBy("createdAt"),
 );
 
@@ -729,7 +729,7 @@ const deletedProjectsQuery = createQuery((db) =>
     .select(["id", "name", "updatedAt"])
     .where("isDeleted", "is", sqliteTrue)
     .where("name", "is not", null)
-    .$narrowType<{ name: kysely.NotNull }>()
+    .$narrowType<{ name: KyselyNotNull }>()
     .orderBy("updatedAt", "desc"),
 );
 
@@ -740,21 +740,19 @@ const deletedTodosQuery = createQuery((db) =>
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "projectId", "updatedAt"])
     .select((eb) => [
-      kysely
-        .jsonObjectFrom(
-          eb
-            .selectFrom("project")
-            .select(["project.id", "project.name"])
-            .where("project.isDeleted", "is not", sqliteTrue)
-            .whereRef("project.id", "=", "todo.projectId")
-            .where("project.name", "is not", null)
-            .$narrowType<{ name: kysely.NotNull }>(),
-        )
-        .as("project"),
+      evoluJsonObjectFrom(
+        eb
+          .selectFrom("project")
+          .select(["project.id", "project.name"])
+          .where("project.isDeleted", "is not", sqliteTrue)
+          .whereRef("project.id", "=", "todo.projectId")
+          .where("project.name", "is not", null)
+          .$narrowType<{ name: KyselyNotNull }>(),
+      ).as("project"),
     ])
     .where("isDeleted", "is", sqliteTrue)
     .where("title", "is not", null)
-    .$narrowType<{ title: kysely.NotNull }>()
+    .$narrowType<{ title: KyselyNotNull }>()
     .orderBy("updatedAt", "desc"),
 );
 

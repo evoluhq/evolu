@@ -50,9 +50,9 @@ To clear the OPFS (Origin Private File System) SQLite database:
 
 Evolu uses [Kysely](https://kysely.dev/), the type-safe SQL query builder for TypeScript.
 
-Kysely **is not** an ORM. It **does not** have the concept of relations. Kysely **is** a query builder—it builds the SQL you tell it to, nothing more, nothing less. However, there is a way to nest related rows in queries. It's described [here](https://kysely.dev/docs/recipes/relations), and Evolu supports it.
+Kysely **is not** an ORM. It **does not** have the concept of relations. Kysely **is** a query builder—it builds the SQL you tell it to, nothing more, nothing less. However, there is a way to nest related rows in queries. It's described [here](https://kysely.dev/docs/recipes/relations), and Evolu provides safer SQLite JSON helpers built on that recipe.
 
-**TL;DR**: JSON type with subselects. With this combination, we can write efficient queries with nested relations. Evolu automatically parses stringified JSONs to typed objects and ensures that no regular strings are mistakenly parsed as JSON.
+**TL;DR**: JSON type with subselects. With this combination, we can write efficient queries with nested relations. Evolu's SQLite JSON helpers automatically parse only Evolu-marked JSON payloads into typed objects, so regular strings are not mistakenly parsed as JSON.
 
 ## How do I store device-specific settings that shouldn't sync?
 

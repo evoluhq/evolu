@@ -54,12 +54,17 @@ export type {
   EvoluDeps,
   UnuseOwner,
 } from "./local-first/Evolu.js";
-export * as kysely from "./local-first/Kysely.js";
 export * from "./local-first/LocalAuth.js";
 export * from "./local-first/Owner.js";
 export type { SyncOwner } from "./local-first/Owner.js";
 export {
+  evoluJsonArrayFrom,
+  evoluJsonBuildObject,
+  evoluJsonObjectFrom,
+  getJsonObjectArgs,
+  kyselySql,
   type InferRow,
+  type KyselyNotNull,
   type Query,
   type QueryRows,
   type Row,

@@ -1,15 +1,40 @@
+import { ColumnNode, type SelectQueryNode } from "kysely";
 import { expect, test } from "vitest";
+import { createQueryBuilder } from "../../src/local-first/Schema.js";
 import type { Row } from "../../src/local-first/Query.js";
 import {
   applyPatches,
   deserializeQuery,
+  evoluJsonArrayFrom,
+  evoluJsonBuildObject,
+  evoluJsonObjectFrom,
+  getJsonObjectArgs,
   kyselyJsonIdentifier,
+  kyselySql,
   makePatches,
   serializeQuery,
   testQuery,
   testQuery2,
 } from "../../src/local-first/Query.js";
 import { sql, type SafeSql, type SqliteQuery } from "../../src/Sqlite.js";
+import { id, NonEmptyString100 } from "../../src/Type.js";
+
+const PersonId = id("Person");
+const PetId = id("Pet");
+
+const QuerySchema = {
+  person: {
+    id: PersonId,
+    name: NonEmptyString100,
+  },
+  pet: {
+    id: PetId,
+    name: NonEmptyString100,
+    ownerId: PersonId,
+  },
+};
+
+const createQuery = createQueryBuilder(QuerySchema);
 
 test("Query", () => {
   const query1 = serializeQuery<{ a: 1 }>(sql`select "a" as "kind";`);
@@ -71,6 +96,147 @@ test("serializeQuery sorts options and deserializeQuery restores them", () => {
     "prepare",
   ]);
   expect(deserializeQuery(serialized)).toStrictEqual(sqlQuery);
+});
+
+test("evoluJsonArrayFrom compiles a prefixed SQLite JSON array query", () => {
+  const query = createQuery((db) =>
+    db
+      .selectFrom("person")
+      .select(["person.id"])
+      .select((eb) => [
+        evoluJsonArrayFrom(
+          eb
+            .selectFrom("pet")
+            .select(["pet.id as petId", "pet.name", "ownerId"])
+            .whereRef("pet.ownerId", "=", "person.id"),
+        ).as("pets"),
+      ]),
+  );
+
+  const sqlQuery = deserializeQuery(query);
+
+  expect(sqlQuery.sql).toContain("json_group_array(json_object(");
+  expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);
+  expect(sqlQuery.sql).toContain('"agg"."petId"');
+  expect(sqlQuery.sql).toContain('"agg"."name"');
+  expect(sqlQuery.sql).toContain('"agg"."ownerId"');
+});
+
+test("evoluJsonObjectFrom compiles a prefixed SQLite JSON object query", () => {
+  const query = createQuery((db) =>
+    db
+      .selectFrom("person")
+      .select(["person.id"])
+      .select((eb) => [
+        evoluJsonObjectFrom(
+          eb
+            .selectFrom("pet")
+            .select(["id as petId", "name"])
+            .whereRef("pet.ownerId", "=", "person.id"),
+        ).as("favoritePet"),
+      ]),
+  );
+
+  const sqlQuery = deserializeQuery(query);
+
+  expect(sqlQuery.sql).toContain("json_object(");
+  expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);
+  expect(sqlQuery.sql).toContain('"obj"."petId"');
+  expect(sqlQuery.sql).toContain('"obj"."name"');
+});
+
+test("evoluJsonBuildObject compiles a prefixed SQLite json_object expression", () => {
+  const query = createQuery((db) =>
+    db.selectFrom("person").select((eb) => [
+      evoluJsonBuildObject({
+        first: eb.ref("name"),
+        full: kyselySql<string>`name || '!'`,
+      }).as("profile"),
+    ]),
+  );
+
+  const sqlQuery = deserializeQuery(query);
+
+  expect(sqlQuery.sql).toContain("json_object(");
+  expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);
+  expect(sqlQuery.sql).toContain("'first'");
+  expect(sqlQuery.sql).toContain("'full'");
+});
+
+test("getJsonObjectArgs handles alias, column, and reference selections", () => {
+  let operationNode: SelectQueryNode | undefined;
+
+  createQuery((db) => {
+    const subquery = db
+      .selectFrom("pet")
+      .select((eb) => [eb.ref("id").as("petId"), "name", "pet.ownerId"]);
+
+    operationNode = subquery.toOperationNode();
+    return db.selectFrom("pet").select(["pet.id"]);
+  });
+
+  expect(operationNode).toBeDefined();
+  if (!operationNode) throw new Error("Expected operation node");
+
+  const args = getJsonObjectArgs(operationNode, "agg");
+
+  expect(args).toHaveLength(6);
+});
+
+test("getJsonObjectArgs handles unqualified column selections", () => {
+  const operationNode = {
+    selections: [{ selection: ColumnNode.create("name") }],
+  } as unknown as SelectQueryNode;
+
+  const args = getJsonObjectArgs(operationNode, "agg");
+
+  expect(args).toHaveLength(2);
+});
+
+test("getJsonObjectArgs rejects selections it cannot map to json_object", () => {
+  let operationNode: SelectQueryNode | undefined;
+
+  createQuery((db) => {
+    const subquery = db.selectFrom("pet").selectAll();
+    operationNode = subquery.toOperationNode();
+    return db.selectFrom("pet").select(["pet.id"]);
+  });
+
+  expect(operationNode).toBeDefined();
+  if (!operationNode) throw new Error("Expected operation node");
+  const node = operationNode;
+
+  expect(() => getJsonObjectArgs(node, "agg")).toThrow(
+    "can't extract column names from the select query node",
+  );
+});
+
+test("getJsonObjectArgs returns empty array for nodes without selections", () => {
+  let operationNode: SelectQueryNode | undefined;
+
+  createQuery((db) => {
+    operationNode = db.selectFrom("pet").toOperationNode();
+    return db.selectFrom("pet").select(["pet.id"]);
+  });
+
+  expect(operationNode).toBeDefined();
+  if (!operationNode) throw new Error("Expected operation node");
+
+  expect(getJsonObjectArgs(operationNode, "agg")).toEqual([]);
+});
+
+test("evoluJsonArrayFrom rejects selectAll subqueries", () => {
+  expect(() =>
+    createQuery((db) =>
+      db
+        .selectFrom("person")
+        .select((eb) => [
+          evoluJsonArrayFrom(eb.selectFrom("pet").selectAll()).as("pets"),
+        ]),
+    ),
+  ).toThrow(
+    "SQLite evoluJsonArrayFrom and evoluJsonObjectFrom can only handle explicit selections due to limitations of the json_object function. selectAll() is not allowed in the subquery.",
+  );
 });
 
 test("makePatches", () => {
@@ -157,6 +323,43 @@ test("applyPatches parses prefixed JSON in strings, arrays, and objects", () => 
       objectValue: { x: 1 },
       arrayValue: [{ inside: [1, 2] }],
       nested: { inside: { x: 1 } },
+    },
+  ]);
+});
+
+test("applyPatches recursively parses prefixed JSON inside decoded JSON", () => {
+  const encodeJson = (value: unknown): string =>
+    `${kyselyJsonIdentifier}${JSON.stringify(value)}`;
+
+  const result = applyPatches(
+    [
+      {
+        op: "replaceAll",
+        value: [
+          {
+            nestedObject: encodeJson({
+              items: [
+                {
+                  detail: encodeJson({ status: "ok" }),
+                },
+              ],
+            }),
+          },
+        ],
+      },
+    ],
+    [],
+  );
+
+  expect(result).toEqual([
+    {
+      nestedObject: {
+        items: [
+          {
+            detail: { status: "ok" },
+          },
+        ],
+      },
     },
   ]);
 });

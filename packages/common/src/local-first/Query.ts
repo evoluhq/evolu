@@ -1,9 +1,26 @@
 /**
- * Query execution and caching.
+ * Query helpers, execution, and caching.
  *
  * @module
  */
 
+import type {
+  AliasableExpression,
+  Expression,
+  RawBuilder,
+  SelectQueryNode,
+  Simplify as KyselySimplify,
+} from "kysely";
+import {
+  AliasNode,
+  ColumnNode,
+  ExpressionWrapper,
+  IdentifierNode,
+  ReferenceNode,
+  sql as kyselySqlBuilder,
+  TableNode,
+  ValueNode,
+} from "kysely";
 import type { Brand } from "../Brand.js";
 import { bytesToHex, hexToBytes } from "../Buffer.js";
 import { createRandomBytes } from "../Crypto.js";
@@ -13,6 +30,9 @@ import type { SafeSql, SqliteQuery, SqliteQueryOptions } from "../Sqlite.js";
 import { eqSqliteValue, sql, SqliteValue } from "../Sqlite.js";
 import { createId, String } from "../Type.js";
 import type { Simplify } from "../Types.js";
+
+export { sql as kyselySql } from "kysely";
+export type { NotNull as KyselyNotNull } from "kysely";
 
 /**
  * A type-safe SQL query.
@@ -103,9 +123,160 @@ export type InferRow<T extends Query> = T extends Query<infer R> ? R : never;
 export interface Row {
   readonly [key: string]:
     | SqliteValue
-    | Row // for jsonObjectFrom from kysely/helpers/sqlite
-    | ReadonlyArray<Row>; // for jsonArrayFrom from kysely/helpers/sqlite
+    | Row // for evoluJsonObjectFrom
+    | ReadonlyArray<Row>; // for evoluJsonArrayFrom
 }
+
+/**
+ * An improved Evolu version of Kysely's SQLite `jsonArrayFrom` helper.
+ *
+ * Kysely's `ParseJSONResultsPlugin` heuristically parses any result string that
+ * looks like JSON. Evolu instead prefixes JSON produced by these helpers with a
+ * per-runtime identifier and only parses values carrying that prefix, avoiding
+ * accidental parsing of ordinary string columns that merely happen to start
+ * with `{` or `[`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { evoluJsonArrayFrom } from "@evolu/common";
+ *
+ * const result = await db
+ *   .selectFrom("person")
+ *   .select((eb) => [
+ *     "id",
+ *     evoluJsonArrayFrom(
+ *       eb
+ *         .selectFrom("pet")
+ *         .select(["pet.id as pet_id", "pet.name"])
+ *         .whereRef("pet.owner_id", "=", "person.id")
+ *         .orderBy("pet.name"),
+ *     ).as("pets"),
+ *   ])
+ *   .execute();
+ *
+ * result[0]?.id;
+ * result[0]?.pets[0].pet_id;
+ * result[0]?.pets[0].name;
+ * ```
+ */
+export const evoluJsonArrayFrom = <O>(
+  expr: SelectQueryBuilderExpression<O>,
+): RawBuilder<Array<KyselySimplify<O>>> =>
+  kyselySqlBuilder`(select ${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || coalesce(json_group_array(json_object(${kyselySqlBuilder.join(
+    getSqliteJsonObjectArgs(expr.toOperationNode(), "agg"),
+  )})), '[]') from ${expr} as agg)`;
+
+/**
+ * An improved Evolu version of Kysely's SQLite `jsonObjectFrom` helper.
+ *
+ * Kysely's `ParseJSONResultsPlugin` heuristically parses any result string that
+ * looks like JSON. Evolu instead prefixes JSON produced by these helpers with a
+ * per-runtime identifier and only parses values carrying that prefix, avoiding
+ * accidental parsing of ordinary string columns that merely happen to start
+ * with `{` or `[`.
+ *
+ * The subquery must only return one row.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { evoluJsonObjectFrom } from "@evolu/common";
+ *
+ * const result = await db
+ *   .selectFrom("person")
+ *   .select((eb) => [
+ *     "id",
+ *     evoluJsonObjectFrom(
+ *       eb
+ *         .selectFrom("pet")
+ *         .select(["pet.id as pet_id", "pet.name"])
+ *         .whereRef("pet.owner_id", "=", "person.id")
+ *         .where("pet.is_favorite", "=", true),
+ *     ).as("favorite_pet"),
+ *   ])
+ *   .execute();
+ *
+ * result[0]?.id;
+ * result[0]?.favorite_pet?.pet_id;
+ * result[0]?.favorite_pet?.name;
+ * ```
+ */
+export const evoluJsonObjectFrom = <O>(
+  expr: SelectQueryBuilderExpression<O>,
+): RawBuilder<KyselySimplify<O> | null> =>
+  kyselySqlBuilder`(select ${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || json_object(${kyselySqlBuilder.join(
+    getSqliteJsonObjectArgs(expr.toOperationNode(), "obj"),
+  )}) from ${expr} as obj)`;
+
+/**
+ * An improved Evolu version of Kysely's SQLite `jsonBuildObject` helper.
+ *
+ * Kysely's `ParseJSONResultsPlugin` heuristically parses any result string that
+ * looks like JSON. Evolu instead prefixes JSON produced by these helpers with a
+ * per-runtime identifier and only parses values carrying that prefix, avoiding
+ * accidental parsing of ordinary string columns that merely happen to start
+ * with `{` or `[`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { evoluJsonBuildObject, kyselySql } from "@evolu/common";
+ *
+ * const result = await db
+ *   .selectFrom("person")
+ *   .select((eb) => [
+ *     "id",
+ *     evoluJsonBuildObject({
+ *       first: eb.ref("first_name"),
+ *       last: eb.ref("last_name"),
+ *       full: kyselySql<string>`first_name || ' ' || last_name`,
+ *     }).as("name"),
+ *   ])
+ *   .execute();
+ *
+ * result[0]?.id;
+ * result[0]?.name.first;
+ * result[0]?.name.last;
+ * result[0]?.name.full;
+ * ```
+ */
+export const evoluJsonBuildObject = <
+  O extends Record<string, Expression<unknown>>,
+>(
+  obj: O,
+): RawBuilder<
+  KyselySimplify<{
+    [K in keyof O]: O[K] extends Expression<infer V> ? V : never;
+  }>
+> =>
+  kyselySqlBuilder`${kyselySqlBuilder.lit(kyselyJsonIdentifier)} || json_object(${kyselySqlBuilder.join(
+    Object.keys(obj).flatMap((k) => [kyselySqlBuilder.lit(k), obj[k]]),
+  )})`;
+
+export const getJsonObjectArgs = (
+  node: SelectQueryNode,
+  table: string,
+): Array<Expression<unknown> | string> => {
+  const args: Array<Expression<unknown> | string> = [];
+
+  for (const { selection: s } of node.selections ?? []) {
+    if (ReferenceNode.is(s) && ColumnNode.is(s.column)) {
+      args.push(
+        colName(s.column.column.name),
+        colRef(table, s.column.column.name),
+      );
+    } else if (ColumnNode.is(s)) {
+      args.push(colName(s.column.name), colRef(table, s.column.name));
+    } else if (AliasNode.is(s) && IdentifierNode.is(s.alias)) {
+      args.push(colName(s.alias.name), colRef(table, s.alias.name));
+    } else {
+      throw new Error(`can't extract column names from the select query node`);
+    }
+  }
+
+  return args;
+};
 
 /** Rows returned by a query. */
 export type QueryRows<R extends Row = Row> = ReadonlyArray<
@@ -218,6 +389,24 @@ export const kyselyJsonIdentifier = /*#__PURE__*/ createId({
   randomBytes: /*#__PURE__*/ createRandomBytes(),
 });
 
+interface SelectQueryBuilderExpression<O> extends AliasableExpression<O> {
+  get isSelectQueryBuilder(): true;
+  toOperationNode(): SelectQueryNode;
+}
+
+const getSqliteJsonObjectArgs = (
+  node: SelectQueryNode,
+  table: string,
+): Array<Expression<unknown> | string> => {
+  try {
+    return getJsonObjectArgs(node, table);
+  } catch {
+    throw new Error(
+      "SQLite evoluJsonArrayFrom and evoluJsonObjectFrom can only handle explicit selections due to limitations of the json_object function. selectAll() is not allowed in the subquery.",
+    );
+  }
+};
+
 export const parseSqliteJsonArray = <T>(
   arr: ReadonlyArray<T>,
 ): ReadonlyArray<T> => {
@@ -230,7 +419,7 @@ export const parseSqliteJsonArray = <T>(
 
 const parse = (obj: unknown): unknown => {
   if (String.is(obj) && obj.startsWith(kyselyJsonIdentifier)) {
-    return JSON.parse(obj.slice(kyselyJsonIdentifier.length));
+    return parse(JSON.parse(obj.slice(kyselyJsonIdentifier.length)));
   }
 
   if (Array.isArray(obj)) {
@@ -253,3 +442,11 @@ const parseObject = (
   }
   return result as ReadonlyRecord<string, unknown>;
 };
+
+const colName = (col: string): Expression<unknown> =>
+  new ExpressionWrapper(ValueNode.createImmediate(col));
+
+const colRef = (table: string, col: string): Expression<unknown> =>
+  new ExpressionWrapper(
+    ReferenceNode.create(ColumnNode.create(col), TableNode.create(table)),
+  );
