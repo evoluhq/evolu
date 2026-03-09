@@ -13,12 +13,13 @@ import {
 } from "../Array.js";
 import { assert } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
-import type { Console, ConsoleEntry, ConsoleLevel } from "../Console.js";
+import type { ConsoleEntry, ConsoleLevel } from "../Console.js";
+import { exhaustiveCheck } from "../Function.js";
 import { createResources, type Resources } from "../Resources.js";
 import { ok } from "../Result.js";
 import { spaced } from "../Schedule.js";
 import type { NonEmptyReadonlySet } from "../Set.js";
-import { createTaskInstances, repeat, type Fiber, type Task } from "../Task.js";
+import { createMutexByKey, repeat, type Fiber, type Task } from "../Task.js";
 import { createId, type Id, type Name } from "../Type.js";
 import type { Callback, ExtractType } from "../Types.js";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
@@ -154,15 +155,8 @@ export const initSharedWorker =
     );
 
     const runWithSharedEvoluDeps = run.addDeps({ transports });
-
-    // TODO: Use heartbeat to detect and prune dead instances.
-    const sharedEvolus = stack.use(
-      createTaskInstances<
-        Name,
-        SharedEvolu,
-        SharedWorkerDeps & TransportsDep
-      >(),
-    );
+    const sharedEvolusByName = new Map<Name, SharedEvolu>();
+    const sharedEvolusMutexByName = stack.use(createMutexByKey<Name>());
 
     self.onConnect = (port) => {
       console.debug("onConnect");
@@ -184,27 +178,36 @@ export const initSharedWorker =
           }
 
           case "CreateEvolu": {
-            void runWithSharedEvoluDeps
-              .daemon(
-                sharedEvolus.ensure(
-                  message.name,
-                  createSharedEvolu({
-                    console,
-                    name: message.name,
-                    appOwner: message.appOwner,
-                    postTabOutput,
-                    onDispose: () => {
-                      void runWithSharedEvoluDeps.daemon(
-                        sharedEvolus.delete(message.name),
-                      );
-                    },
-                  }),
-                ),
-              )
-              .then((result) => {
-                if (!result.ok) return;
-                result.value.addPorts(message.evoluPort, message.dbWorkerPort);
-              });
+            void runWithSharedEvoluDeps.daemon(
+              sharedEvolusMutexByName.withLock(message.name, async () => {
+                let sharedEvolu = sharedEvolusByName.get(message.name);
+
+                if (sharedEvolu == null) {
+                  const result = await runWithSharedEvoluDeps.daemon(
+                    createSharedEvolu({
+                      name: message.name,
+                      appOwner: message.appOwner,
+                      postTabOutput,
+                      onDispose: () => {
+                        void runWithSharedEvoluDeps.daemon(
+                          sharedEvolusMutexByName.withLock(message.name, () => {
+                            sharedEvolusByName.delete(message.name);
+                            return ok();
+                          }),
+                        );
+                      },
+                    }),
+                  );
+                  if (!result.ok) return result;
+
+                  sharedEvolu = result.value;
+                  sharedEvolusByName.set(message.name, sharedEvolu);
+                }
+
+                sharedEvolu.addPorts(message.evoluPort, message.dbWorkerPort);
+                return ok();
+              }),
+            );
             break;
           }
           default:
@@ -292,19 +295,18 @@ export type SyncState = 123;
 
 const createSharedEvolu =
   ({
-    console,
     name,
     appOwner,
     postTabOutput,
     onDispose,
   }: {
-    console: Console;
     name: Name;
     appOwner: SyncOwner;
     postTabOutput: Callback<EvoluTabOutput>;
     onDispose: () => void;
   }): Task<SharedEvolu, never, SharedWorkerDeps & TransportsDep> =>
   async (run) => {
+    const console = run.deps.console.child(name).child("SharedWorker");
     const { createMessagePort, transports } = run.deps;
 
     const evoluPorts = new Map<Id, MessagePort<EvoluOutput, EvoluInput>>();
@@ -416,74 +418,79 @@ const createSharedEvolu =
       return patchesByQuery;
     };
 
+    const addPorts = (
+      nativeEvoluPort: NativeMessagePort<EvoluOutput, EvoluInput>,
+      nativeDbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>,
+    ): void => {
+      const evoluPort = createMessagePort<EvoluOutput, EvoluInput>(
+        nativeEvoluPort,
+      );
+      const dbWorkerPort = createMessagePort<DbWorkerInput, DbWorkerOutput>(
+        nativeDbWorkerPort,
+      );
+
+      const evoluPortId = createId(run.deps);
+
+      evoluPorts.set(evoluPortId, evoluPort);
+      dbWorkerPorts.add(dbWorkerPort);
+
+      dbWorkerPort.onMessage = (message) => {
+        switch (message.type) {
+          case "LeaderAcquired": {
+            activeDbWorkerPort = dbWorkerPort;
+            console.info("leaderAcquired");
+            ensureQueueProcessing();
+            break;
+          }
+          case "OnQueuedResponse": {
+            callbacks.execute(message.callbackId, {
+              evoluPortId: message.evoluPortId,
+              response: message.response,
+            });
+            break;
+          }
+          case "OnConsoleEntry":
+          case "OnError": {
+            postTabOutput(message);
+            break;
+          }
+          default:
+            exhaustiveCheck(message);
+        }
+      };
+
+      evoluPort.onMessage = (evoluMessage) => {
+        switch (evoluMessage.type) {
+          case "Dispose": {
+            console.info("evoluDispose", {
+              name,
+              evoluPortId,
+              hadLastPort: evoluPorts.size === 1,
+            });
+            evoluPorts.delete(evoluPortId);
+            rowsByQueryByEvoluPortId.delete(evoluPortId);
+            if (evoluPorts.size === 0) onDispose();
+
+            // TODO: Decided what to do with DbWorker but probably dispose it, but
+            // https://bugs.webkit.org/show_bug.cgi?id=301520
+            break;
+          }
+
+          case "Mutate":
+          case "Query":
+          case "Export": {
+            queue.push({ evoluPortId, request: evoluMessage });
+            ensureQueueProcessing();
+            break;
+          }
+          default:
+            exhaustiveCheck(evoluMessage);
+        }
+      };
+    };
+
     return ok({
-      addPorts: (nativeEvoluPort, nativeDbWorkerPort) => {
-        const evoluPort = createMessagePort<EvoluOutput, EvoluInput>(
-          nativeEvoluPort,
-        );
-        const dbWorkerPort = createMessagePort<DbWorkerInput, DbWorkerOutput>(
-          nativeDbWorkerPort,
-        );
-
-        const evoluPortId = createId(run.deps);
-
-        evoluPorts.set(evoluPortId, evoluPort);
-        dbWorkerPorts.add(dbWorkerPort);
-
-        dbWorkerPort.onMessage = (message) => {
-          switch (message.type) {
-            case "LeaderAcquired": {
-              activeDbWorkerPort = dbWorkerPort;
-              console.info("leaderAcquired");
-              ensureQueueProcessing();
-              break;
-            }
-            case "OnQueuedResponse": {
-              callbacks.execute(message.callbackId, {
-                evoluPortId: message.evoluPortId,
-                response: message.response,
-              });
-              break;
-            }
-            case "OnConsoleEntry":
-            case "OnError": {
-              postTabOutput(message);
-              break;
-            }
-            default:
-              console.error("Unknown db worker output", message);
-          }
-        };
-
-        evoluPort.onMessage = (evoluMessage) => {
-          switch (evoluMessage.type) {
-            case "Dispose": {
-              console.info("evoluDispose", {
-                name,
-                evoluPortId,
-                hadLastPort: evoluPorts.size === 1,
-              });
-              evoluPorts.delete(evoluPortId);
-              rowsByQueryByEvoluPortId.delete(evoluPortId);
-              if (evoluPorts.size === 0) onDispose();
-
-              // TODO: Decided what to do with DbWorker but probably dispose it, but
-              // https://bugs.webkit.org/show_bug.cgi?id=301520
-              break;
-            }
-
-            case "Mutate":
-            case "Query":
-            case "Export": {
-              queue.push({ evoluPortId, request: evoluMessage });
-              ensureQueueProcessing();
-              break;
-            }
-            default:
-              console.error("Unknown evolu input", evoluMessage);
-          }
-        };
-      },
+      addPorts,
 
       [Symbol.asyncDispose]: async () => {
         await run(transports.removeConsumer(appOwner, ownerTransports));
