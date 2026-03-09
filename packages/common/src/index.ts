@@ -17,7 +17,6 @@ export * from "./Eq.js";
 export * from "./Error.js";
 export * from "./Function.js";
 export * from "./Identicon.js";
-export * from "./Instances.js";
 export * from "./Listeners.js";
 export * from "./Microtask.js";
 export * from "./Number.js";
