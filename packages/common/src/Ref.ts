@@ -1,30 +1,26 @@
 /**
- * Mutable reference container for state management.
+ * Mutable reference.
  *
  * @module
  */
 
-import type { Eq } from "./Eq.js";
 import type { Store } from "./Store.js";
 
 /**
- * `Ref` provides a simple API to hold and update a value, similar to a "ref" in
- * functional programming or React. It exposes methods to get, set, and modify
- * the current state.
+ * Mutable reference.
  *
- * Use a Ref instead of a variable when you want to pass state around as an
- * object. If you need subscriptions, see {@link Store}.
+ * `Ref` holds a mutable value and exposes explicit `get`, `set`, `update`, and
+ * `modify` operations. Use it when mutable state needs to be passed around as a
+ * value.
  *
- * Ref is a valid dependency in Evolu's [Dependency
- * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
- * functions need shared mutable state.
+ * For reactive state with subscriptions, see {@link Store}.
  *
  * ### Example
  *
  * ```ts
  * const count = createRef(0);
  * count.set(1);
- * count.modify((n) => n + 1);
+ * count.update((n) => n + 1);
  * console.log(count.get()); // 2
  * ```
  *
@@ -40,37 +36,71 @@ export interface Ref<T> {
   /** Returns the current state. */
   readonly get: () => T;
 
-  /** Sets the state. Returns `true` if the state was updated. */
-  readonly set: (state: T) => boolean;
+  /** Sets the state. */
+  readonly set: (state: T) => void;
 
-  /**
-   * Modifies the state using an updater function. Returns `true` if the state
-   * was updated.
-   */
-  readonly modify: (updater: (current: T) => T) => boolean;
+  /** Sets the state and returns the previous state. */
+  readonly getAndSet: (state: T) => T;
+
+  /** Sets the state and returns the current state after the update. */
+  readonly setAndGet: (state: T) => T;
+
+  /** Updates the state. */
+  readonly update: (updater: (current: T) => T) => void;
+
+  /** Updates the state and returns the previous state. */
+  readonly getAndUpdate: (updater: (current: T) => T) => T;
+
+  /** Updates the state and returns the current state after the update. */
+  readonly updateAndGet: (updater: (current: T) => T) => T;
+
+  /** Modifies the state and returns a computed result from the transition. */
+  readonly modify: <R>(
+    updater: (current: T) => readonly [result: R, nextState: T],
+  ) => R;
 }
 
-/**
- * Creates a {@link Ref} with the given initial state.
- *
- * By default, state is always updated. We can provide an optional {@link Eq}
- * function as the second argument to skip updates when the new state equals the
- * current state.
- */
-export const createRef = <T>(initialState: T, eq?: Eq<T>): Ref<T> => {
+/** Creates a {@link Ref} with the given initial state. */
+export const createRef = <T>(initialState: T): Ref<T> => {
   let currentState = initialState;
-
-  const updateState = (newState: T): boolean => {
-    if (eq?.(newState, currentState)) return false;
-    currentState = newState;
-    return true;
-  };
 
   return {
     get: () => currentState,
 
-    set: (state) => updateState(state),
+    set: (state) => {
+      currentState = state;
+    },
 
-    modify: (updater) => updateState(updater(currentState)),
+    getAndSet: (state) => {
+      const previousState = currentState;
+      currentState = state;
+      return previousState;
+    },
+
+    setAndGet: (state) => {
+      currentState = state;
+      return currentState;
+    },
+
+    update: (updater) => {
+      currentState = updater(currentState);
+    },
+
+    getAndUpdate: (updater) => {
+      const previousState = currentState;
+      currentState = updater(currentState);
+      return previousState;
+    },
+
+    updateAndGet: (updater) => {
+      currentState = updater(currentState);
+      return currentState;
+    },
+
+    modify: (updater) => {
+      const [result, nextState] = updater(currentState);
+      currentState = nextState;
+      return result;
+    },
   };
 };

@@ -1,75 +1,133 @@
 import { describe, expect, test } from "vitest";
-import { eqStrict } from "../src/Eq.js";
 import { createRef } from "../src/Ref.js";
 
-describe("createRef", () => {
+describe("get", () => {
   test("get returns initial state", () => {
     const ref = createRef(42);
     expect(ref.get()).toBe(42);
   });
+});
 
-  describe("set", () => {
-    test("updates state", () => {
-      const ref = createRef(0);
-      ref.set(1);
-      expect(ref.get()).toBe(1);
-    });
-
-    test("returns true when state changes", () => {
-      const ref = createRef(0);
-      expect(ref.set(1)).toBe(true);
-    });
-
-    test("returns true even for same value without eq", () => {
-      const ref = createRef(1);
-      expect(ref.set(1)).toBe(true);
-    });
-
-    test("with eq returns false for equal values", () => {
-      const ref = createRef(1, eqStrict);
-      expect(ref.set(1)).toBe(false);
-      expect(ref.get()).toBe(1);
-    });
-
-    test("with eq returns true for different values", () => {
-      const ref = createRef(1, eqStrict);
-      expect(ref.set(2)).toBe(true);
-      expect(ref.get()).toBe(2);
-    });
+describe("set", () => {
+  test("updates state", () => {
+    const ref = createRef(0);
+    ref.set(1);
+    expect(ref.get()).toBe(1);
   });
 
-  describe("modify", () => {
-    test("updates state", () => {
-      const ref = createRef(0);
-      ref.modify((n) => n + 1);
-      expect(ref.get()).toBe(1);
-    });
+  test("always assigns the provided state", () => {
+    const ref = createRef(1);
+    ref.set(1);
+    expect(ref.get()).toBe(1);
+  });
+});
 
-    test("returns true when state changes", () => {
-      const ref = createRef(0);
-      expect(ref.modify((n) => n + 1)).toBe(true);
-    });
+describe("getAndSet", () => {
+  test("returns previous state and updates state", () => {
+    const ref = createRef(1);
 
-    test("with eq returns false for equal values", () => {
-      const ref = createRef(1, eqStrict);
-      expect(ref.modify((n) => n)).toBe(false);
-    });
-
-    test("with eq returns true for different values", () => {
-      const ref = createRef(1, eqStrict);
-      expect(ref.modify((n) => n + 1)).toBe(true);
-      expect(ref.get()).toBe(2);
-    });
+    expect(ref.getAndSet(2)).toBe(1);
+    expect(ref.get()).toBe(2);
   });
 
-  test("with custom eq", () => {
-    const eqModulo10 = (a: number, b: number) => a % 10 === b % 10;
-    const ref = createRef(5 as number, eqModulo10);
+  test("returns current state without updating when next state is equal", () => {
+    const ref = createRef(1);
 
-    expect(ref.set(15)).toBe(false); // 5 % 10 === 15 % 10
+    expect(ref.getAndSet(1)).toBe(1);
+    expect(ref.get()).toBe(1);
+  });
+});
+
+describe("setAndGet", () => {
+  test("returns updated state", () => {
+    const ref = createRef(1);
+
+    expect(ref.setAndGet(2)).toBe(2);
+    expect(ref.get()).toBe(2);
+  });
+
+  test("returns current state when next state is equal", () => {
+    const ref = createRef(1);
+
+    expect(ref.setAndGet(1)).toBe(1);
+    expect(ref.get()).toBe(1);
+  });
+
+  test("assigns the provided state", () => {
+    const ref = createRef(5);
+
+    expect(ref.setAndGet(5)).toBe(5);
     expect(ref.get()).toBe(5);
 
-    expect(ref.set(16)).toBe(true); // 5 % 10 !== 16 % 10
+    expect(ref.setAndGet(16)).toBe(16);
     expect(ref.get()).toBe(16);
+  });
+});
+
+describe("update", () => {
+  test("updates state", () => {
+    const ref = createRef(1);
+
+    ref.update((n) => n + 1);
+
+    expect(ref.get()).toBe(2);
+  });
+
+  test("can keep the same state", () => {
+    const ref = createRef(1);
+
+    ref.update((n) => n);
+
+    expect(ref.get()).toBe(1);
+  });
+});
+
+describe("getAndUpdate", () => {
+  test("returns previous state and updates state", () => {
+    const ref = createRef(1);
+
+    expect(ref.getAndUpdate((n) => n + 1)).toBe(1);
+    expect(ref.get()).toBe(2);
+  });
+
+  test("returns current state without updating when next state is equal", () => {
+    const ref = createRef(1);
+
+    expect(ref.getAndUpdate((n) => n)).toBe(1);
+    expect(ref.get()).toBe(1);
+  });
+});
+
+describe("updateAndGet", () => {
+  test("returns updated state", () => {
+    const ref = createRef(1);
+
+    expect(ref.updateAndGet((n) => n + 1)).toBe(2);
+    expect(ref.get()).toBe(2);
+  });
+
+  test("returns current state when next state is equal", () => {
+    const ref = createRef(1);
+
+    expect(ref.updateAndGet((n) => n)).toBe(1);
+    expect(ref.get()).toBe(1);
+  });
+});
+
+describe("modify", () => {
+  test("returns a computed result and updates state", () => {
+    const ref = createRef(0);
+    const result = ref.modify((current) => [current, current + 1]);
+
+    expect(result).toBe(0);
+    expect(ref.get()).toBe(1);
+  });
+
+  test("can keep the same state while returning a result", () => {
+    const ref = createRef(1);
+    const result = ref.modify((current) => [`current:${current}`, current]);
+
+    expect(result).toBe("current:1");
+    expect(ref.get()).toBe(1);
   });
 });
