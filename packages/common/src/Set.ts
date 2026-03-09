@@ -43,7 +43,7 @@ import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
  *
  * @group Constants
  */
-export const emptySet: ReadonlySet<never> = new Set();
+export const emptySet: ReadonlySet<never> = /*#__PURE__*/ new Set();
 
 /**
  * Creates a readonly set from an array.

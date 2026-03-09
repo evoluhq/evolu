@@ -58,7 +58,7 @@ export interface TimestampTimeOutOfRangeError extends Typed<"TimestampTimeOutOfR
 
 export const Counter = /*#__PURE__*/ brand(
   "Counter",
-  lessThanOrEqualTo(65535)(NonNegativeInt),
+  /*#__PURE__*/ lessThanOrEqualTo(65535)(NonNegativeInt),
 );
 export type Counter = typeof Counter.Type;
 
@@ -269,7 +269,7 @@ export const receiveTimestamp =
 /** Sortable bytes representation of {@link Timestamp}. */
 export const TimestampBytes = /*#__PURE__*/ brand(
   "TimestampBytes",
-  length(16)(Uint8Array),
+  /*#__PURE__*/ length(16)(Uint8Array),
 );
 export type TimestampBytes = typeof TimestampBytes.Type;
 

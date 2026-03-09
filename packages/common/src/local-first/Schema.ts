@@ -161,7 +161,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
 export const SystemColumns = /*#__PURE__*/ object({
   createdAt: DateIso,
   updatedAt: DateIso,
-  isDeleted: nullOr(SqliteBoolean),
+  isDeleted: /*#__PURE__*/ nullOr(SqliteBoolean),
   ownerId: OwnerId,
 });
 export interface SystemColumns extends InferType<typeof SystemColumns> {}
@@ -359,7 +359,7 @@ export type OptionalColumnKeys<T extends TableSchema> = {
 }[keyof T];
 
 export const systemColumns = /*#__PURE__*/ readonly(
-  new Set(Object.keys(SystemColumns.props)),
+  /*#__PURE__*/ new Set(/*#__PURE__*/ Object.keys(SystemColumns.props)),
 );
 
 export const systemColumnsWithId = /*#__PURE__*/ readonly([
@@ -486,7 +486,7 @@ export const getEvoluSqliteSchema = (deps: SqliteDep) => (): SqliteSchema =>
   getSqliteSchema(deps)({ excludeIndexNamePrefix: "evolu_" });
 
 // https://kysely.dev/docs/recipes/splitting-query-building-and-execution
-export const kysely = new Kysely.Kysely({
+export const kysely = /*#__PURE__*/ new Kysely.Kysely({
   dialect: {
     createAdapter: () => new Kysely.SqliteAdapter(),
     createDriver: () => new Kysely.DummyDriver(),

@@ -143,7 +143,7 @@ const maxMillisWithInfinity = 281474976710655;
  */
 export const Millis = /*#__PURE__*/ brand(
   "Millis",
-  lessThan(maxMillisWithInfinity)(NonNegativeInt),
+  /*#__PURE__*/ lessThan(maxMillisWithInfinity)(NonNegativeInt),
 );
 export type Millis = typeof Millis.Type;
 

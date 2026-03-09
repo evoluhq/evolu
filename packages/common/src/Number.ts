@@ -105,7 +105,7 @@ export const computeBalancedBuckets = (
  */
 export const FibonacciIndex = /*#__PURE__*/ brand(
   "FibonacciIndex",
-  lessThanOrEqualTo(78)(PositiveInt),
+  /*#__PURE__*/ lessThanOrEqualTo(78)(PositiveInt),
 );
 export type FibonacciIndex = typeof FibonacciIndex.Type;
 

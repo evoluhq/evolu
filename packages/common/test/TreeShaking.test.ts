@@ -151,12 +151,6 @@ describe("tree-shaking", () => {
       results[name] = await bundleSize(fixture);
     }
 
-    // NOTE: We measured that moving 3 monitoring Types
-    // (`FiberSnapshotState`, `RunEventData`, `RunEvent`) to a separate module
-    // reduces `task-example` from raw 15095 / gzip 5626 to raw 14033 / gzip
-    // 5282. We reverted that change because we don't want to introduce modules
-    // only for the sake of tree shaking. We'll investigate a better approach
-    // later and keep this as the intentional baseline for now.
     expect(results).toMatchInlineSnapshot(`
       {
         "result-all": {
@@ -164,12 +158,12 @@ describe("tree-shaking", () => {
           "raw": 1602,
         },
         "task-example": {
-          "gzip": 5629,
-          "raw": 15101,
+          "gzip": 5239,
+          "raw": 13750,
         },
         "type-object": {
-          "gzip": 1549,
-          "raw": 4747,
+          "gzip": 1423,
+          "raw": 4393,
         },
       }
     `);

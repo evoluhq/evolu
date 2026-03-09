@@ -982,7 +982,9 @@ export const applyProtocolMessageAsClient =
 
       if (isNonEmptyArray(messages)) {
         try {
-          const result = await run(storage.writeMessages(ownerIdBytes, messages));
+          const result = await run(
+            storage.writeMessages(ownerIdBytes, messages),
+          );
           // Quota errors are handled by Storage; protocol just stops syncing.
           if (!result.ok) return ok({ type: "NoResponse" });
         } catch (error) {
@@ -1140,7 +1142,9 @@ export const applyProtocolMessageAsRelay =
         }
 
         try {
-          const result = await run(storage.writeMessages(ownerIdBytes, messages));
+          const result = await run(
+            storage.writeMessages(ownerIdBytes, messages),
+          );
 
           if (!result.ok) {
             const message = createProtocolMessageBuffer(ownerId, {
@@ -1998,26 +2002,26 @@ export const ProtocolValueType = {
   // 0-19 small ints
 
   // SQLite types
-  String: NonNegativeInt.orThrow(20),
-  Number: NonNegativeInt.orThrow(21),
-  Null: NonNegativeInt.orThrow(22),
-  Bytes: NonNegativeInt.orThrow(23),
+  String: /*#__PURE__*/ NonNegativeInt.orThrow(20),
+  Number: /*#__PURE__*/ NonNegativeInt.orThrow(21),
+  Null: /*#__PURE__*/ NonNegativeInt.orThrow(22),
+  Bytes: /*#__PURE__*/ NonNegativeInt.orThrow(23),
   // We can add more types for other DBs or anything else later.
 
   // Optimized types
-  NonNegativeInt: NonNegativeInt.orThrow(30),
+  NonNegativeInt: /*#__PURE__*/ NonNegativeInt.orThrow(30),
 
   // String optimizations
-  EmptyString: NonNegativeInt.orThrow(31), // 1 byte vs 2 bytes (50% reduction)
-  Base64Url: NonNegativeInt.orThrow(32),
-  Id: NonNegativeInt.orThrow(33),
-  Json: NonNegativeInt.orThrow(34),
+  EmptyString: /*#__PURE__*/ NonNegativeInt.orThrow(31), // 1 byte vs 2 bytes (50% reduction)
+  Base64Url: /*#__PURE__*/ NonNegativeInt.orThrow(32),
+  Id: /*#__PURE__*/ NonNegativeInt.orThrow(33),
+  Json: /*#__PURE__*/ NonNegativeInt.orThrow(34),
 
   // new Date().toISOString()   - 24 bytes
   // encoded with fixed length  - 8 bytes
   // encode as NonNegativeInt   - 6 bytes (additional 25% reduction)
-  DateIsoWithNonNegativeTime: NonNegativeInt.orThrow(35),
-  DateIsoWithNegativeTime: NonNegativeInt.orThrow(36), // 9 bytes
+  DateIsoWithNonNegativeTime: /*#__PURE__*/ NonNegativeInt.orThrow(35),
+  DateIsoWithNegativeTime: /*#__PURE__*/ NonNegativeInt.orThrow(36), // 9 bytes
 
   // TODO: Operations (from 40)
   // Increment, Decrement, Patch, whatever.

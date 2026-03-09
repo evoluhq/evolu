@@ -87,7 +87,7 @@ export function testCreateRun<D>(deps?: D): Run<TestDeps & D> {
 // Functions are ok.
 
 export const testEntropy32 = /*#__PURE__*/ Entropy32.orThrow(
-  new globalThis.Uint8Array([
+  /*#__PURE__*/ new globalThis.Uint8Array([
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
     21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
   ]),

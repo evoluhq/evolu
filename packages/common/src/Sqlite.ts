@@ -473,8 +473,8 @@ export const eqSqliteIndex: Eq<SqliteIndex> = /*#__PURE__*/ createEqObject({
  * Includes table-column mappings and user-visible indexes.
  */
 export const SqliteSchema = /*#__PURE__*/ object({
-  tables: record(String, set(String)),
-  indexes: array(SqliteIndex),
+  tables: /*#__PURE__*/ record(String, /*#__PURE__*/ set(String)),
+  indexes: /*#__PURE__*/ array(SqliteIndex),
 });
 export interface SqliteSchema extends InferType<typeof SqliteSchema> {}
 

@@ -146,8 +146,8 @@ export const createOwnerSecret = (deps: RandomBytesDep): OwnerSecret =>
 
 /** Deterministic {@link OwnerSecret} for tests. */
 export const testOwnerSecret = /*#__PURE__*/ createOwnerSecret({
-  randomBytes: testCreateRandomBytes({
-    randomLib: testCreateRandomLib(),
+  randomBytes: /*#__PURE__*/ testCreateRandomBytes({
+    randomLib: /*#__PURE__*/ testCreateRandomLib(),
   }),
 });
 
