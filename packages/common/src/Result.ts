@@ -11,7 +11,6 @@ import {
   type NonEmptyReadonlyArray,
 } from "./Array.js";
 import { assert } from "./Assert.js";
-import type { UnknownError } from "./Error.js";
 import type { Lazy } from "./Function.js";
 import { exhaustiveCheck } from "./Function.js";
 import { createRecord, emptyRecord, isIterable } from "./Object.js";
@@ -94,6 +93,10 @@ import type { Typed } from "./Type.js";
  * The caller doesn't need `try/catch`, just `if (!json.ok)`, and the error is
  * `ParseJsonError`, not `unknown`.
  *
+ * Use this pattern when the caller can recover or choose a different flow.
+ * Parsing unknown JSON is a good fit because invalid input is expected and
+ * actionable.
+ *
  * To avoid `try/catch` inside `parseJson` too, use {@link trySync}:
  *
  * ```ts
@@ -104,8 +107,12 @@ import type { Typed } from "./Type.js";
  *   );
  * ```
  *
- * `trySync` makes synchronous code that can throw safe. For asynchronous code,
- * use {@link tryAsync}.
+ * `trySync` and {@link tryAsync} are for intentionally converting thrown errors
+ * into typed, recoverable {@link Result} values.
+ *
+ * Do not wrap every throwing API in {@link Result}. If an error is unrecoverable
+ * and the caller has no meaningful fallback, let it throw and handle it at the
+ * app boundary.
  *
  * Since `Result` is a plain object, imperative code works naturally:
  *
@@ -180,56 +187,15 @@ import type { Typed } from "./Type.js";
  *
  * Some errors can't be handled locally — they must propagate to the top level.
  * These are unrecoverable errors: expected (you know they can happen) but only
- * handleable at the app level. Group them in a union type like `AppError`:
+ * handleable at the app level.
  *
- * ```ts
- * type AppError = TimestampError | SyncError | UnknownError;
+ * Do not force these errors into {@link Result} just because the underlying API
+ * throws. If the local caller cannot recover, let the error propagate to a
+ * global handler or other app boundary.
  *
- * interface TimestampError extends Typed<"TimestampError"> {
- *   readonly error: UnknownError;
- * }
- * ```
- *
- * {@link UnknownError} wraps `unknown` so it can be part of a union (`unknown`
- * absorbs all other types).
- *
- * Handle unrecoverable errors at the top level:
- *
- * ```ts
- * const handleAppError = (error: AppError): void => {
- *   switch (error.type) {
- *     case "TimestampError":
- *       console.error(error.error.stack); // Log preserved stack trace
- *       showToast(
- *         "Timestamp error. Your computer clock appears to be incorrect.",
- *       );
- *       break;
- *     case "SyncError":
- *       showToast("Sync failed. Retrying...");
- *       break;
- *     case "UnknownError":
- *       console.error(error.stack);
- *       showToast("An unexpected error occurred.");
- *       break;
- *     default:
- *       exhaustiveCheck(error);
- *   }
- * };
- * ```
- *
- * ## Unexpected errors
- *
- * Wrapping all unsafe code with {@link trySync} or {@link tryAsync} doesn't
- * prevent all errors — bugs can still throw. Catch them with global handlers:
- *
- * ```ts
- * // Worker
- * scope.onError = (error) => {
- *   errorPort.postMessage(error);
- * };
- * ```
- *
- * TODO: Window and Node.js
+ * In Evolu apps, that boundary is typically a platform `createRun` adapter such
+ * as `@evolu/web`, `@evolu/nodejs`, or `@evolu/react-native`, which add
+ * platform-specific global error handling.
  *
  * ## FAQ
  *
@@ -397,6 +363,10 @@ export const getOk = <T>(result: Result<T>): T => {
 /**
  * Wraps a synchronous function that may throw, returning a {@link Result}.
  *
+ * Use this when the thrown value should become a typed, recoverable error for
+ * the caller. Do not use it for failures that should terminate the current flow
+ * and propagate to a global handler.
+ *
  * ### Example
  *
  * ```ts
@@ -420,6 +390,10 @@ export const trySync = <T, E>(
 
 /**
  * Wraps an async function that may throw, returning a {@link Result}.
+ *
+ * Use this when the rejection should become a typed, recoverable error for the
+ * caller. Do not use it for failures that should terminate the current flow and
+ * propagate to a global handler.
  *
  * ### Example
  *

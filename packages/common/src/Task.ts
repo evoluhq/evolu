@@ -134,6 +134,10 @@ import {
  * // When this block ends, `await using` disposes the Run — aborting all Fibers.
  * ```
  *
+ * In composition roots, prefer Evolu platform `createRun` adapters when one
+ * exists. `@evolu/web`, `@evolu/nodejs`, and `@evolu/react-native` build on the
+ * common {@link createRun} and add platform-specific global error handling.
+ *
  * ## Composition
  *
  * | Category   | Helper             | Description                         |
@@ -1239,6 +1243,12 @@ export interface CreateRun<BaseDeps> {
  * Call once per entry point (main thread, worker, etc.) and dispose on
  * shutdown. All Tasks run as descendants of this root Run.
  *
+ * This common {@link createRun} is platform-agnostic. At application entry
+ * points, prefer the platform adapter when one exists. `@evolu/web` adds
+ * browser `error` and `unhandledrejection` handlers, `@evolu/nodejs` adds
+ * Node.js `uncaughtException`, `unhandledRejection`, and graceful shutdown
+ * handling, and `@evolu/react-native` adds React Native global error handling.
+ *
  * {@link RunDeps} provides default dependencies:
  *
  * - {@link Time}
@@ -1386,7 +1396,6 @@ const createRunInternal =
         task = () => err(signalController.signal.reason);
       }
 
-      // Evolu polyfills `Promise.try`
       const promise = Promise.try(task, run)
         .then((taskOutcome) => {
           const taskResult = run.signal.aborted
