@@ -165,8 +165,8 @@ const App: FC = () => {
   const handleTabClick = (tab: typeof activeTab) => () => {
     // `startTransition` prevents UI flickers when switching tabs by keeping
     // the current view visible while Suspense prepares the next one
-    // Test: Remove startTransition, add a todo, delete it, click to Trash.
-    // You will see a visible blink without startTransition.
+    // Test: Disable startTransition, add a todo, delete it, click to Trash.
+    // You will see a visible blink.
     startTransition(() => {
       setActiveTab(tab);
     });
