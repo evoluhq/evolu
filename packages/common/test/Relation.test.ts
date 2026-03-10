@@ -1,27 +1,23 @@
 import { expect, test } from "vitest";
 import { createRelation } from "../src/Relation.js";
 
-test("Relation - add and getB/getA", () => {
+test("add and iterateA/iterateB", () => {
   const relation = createRelation<string, number>();
 
   relation.add("a", 1);
   relation.add("a", 2);
   relation.add("b", 2);
 
-  expect(relation.getB("a")?.has(1)).toBe(true);
-  expect(relation.getB("a")?.has(2)).toBe(true);
-  expect(relation.getB("a")?.has(3)).toBe(false);
-  expect(relation.getB("b")?.has(2)).toBe(true);
-  expect(relation.getB("c")).toBeUndefined();
+  expect([...relation.iterateA(1)]).toEqual(["a"]);
+  expect([...relation.iterateA(2)]).toEqual(["a", "b"]);
+  expect([...relation.iterateA(3)]).toEqual([]);
 
-  expect(relation.getA(1)?.has("a")).toBe(true);
-  expect(relation.getA(1)?.has("b")).toBe(false);
-  expect(relation.getA(2)?.has("a")).toBe(true);
-  expect(relation.getA(2)?.has("b")).toBe(true);
-  expect(relation.getA(3)).toBeUndefined();
+  expect([...relation.iterateB("a")]).toEqual([1, 2]);
+  expect([...relation.iterateB("b")]).toEqual([2]);
+  expect([...relation.iterateB("c")]).toEqual([]);
 });
 
-test("Relation - has", () => {
+test("has", () => {
   const relation = createRelation<string, number>();
 
   relation.add("a", 1);
@@ -34,7 +30,7 @@ test("Relation - has", () => {
   expect(relation.has("c", 1)).toBe(false);
 });
 
-test("Relation - hasA and hasB", () => {
+test("hasA and hasB", () => {
   const relation = createRelation<string, number>();
 
   relation.add("a", 1);
@@ -50,7 +46,7 @@ test("Relation - hasA and hasB", () => {
   expect(relation.hasB(3)).toBe(false);
 });
 
-test("Relation - remove", () => {
+test("remove deletes an existing pair", () => {
   const relation = createRelation<string, number>();
 
   relation.add("a", 1);
@@ -61,21 +57,31 @@ test("Relation - remove", () => {
   expect(relation.has("a", 1)).toBe(false);
   expect(relation.has("a", 2)).toBe(true);
   expect(relation.has("b", 2)).toBe(true);
+});
 
-  // Remove non-existent pair should return false
+test("remove returns false for missing pairs", () => {
+  const relation = createRelation<string, number>();
+
   expect(relation.remove("a", 3)).toBe(false);
   expect(relation.remove("c", 1)).toBe(false);
+});
 
-  // Remove last B for an A should remove the A
+test("remove deletes empty side indexes", () => {
+  const relation = createRelation<string, number>();
+
+  relation.add("a", 1);
+  relation.add("a", 2);
+  relation.add("b", 2);
+
+  expect(relation.remove("a", 1)).toBe(true);
   expect(relation.remove("a", 2)).toBe(true);
   expect(relation.hasA("a")).toBe(false);
 
-  // Remove last A for a B should remove the B
   expect(relation.remove("b", 2)).toBe(true);
   expect(relation.hasB(2)).toBe(false);
 });
 
-test("Relation - deleteA", () => {
+test("removeByA", () => {
   const relation = createRelation<string, number>();
 
   relation.add("a", 1);
@@ -83,16 +89,16 @@ test("Relation - deleteA", () => {
   relation.add("b", 2);
   relation.add("c", 3);
 
-  expect(relation.deleteA("a")).toBe(true);
+  expect(relation.removeByA("a")).toBe(true);
   expect(relation.hasA("a")).toBe(false);
   expect(relation.hasB(1)).toBe(false);
   expect(relation.hasB(2)).toBe(true);
   expect(relation.hasA("b")).toBe(true);
 
-  expect(relation.deleteA("nonexistent")).toBe(false);
+  expect(relation.removeByA("nonexistent")).toBe(false);
 });
 
-test("Relation - deleteB", () => {
+test("removeByB", () => {
   const relation = createRelation<string, number>();
 
   relation.add("a", 1);
@@ -100,15 +106,42 @@ test("Relation - deleteB", () => {
   relation.add("b", 2);
   relation.add("c", 3);
 
-  expect(relation.deleteB(2)).toBe(true);
+  expect(relation.removeByB(2)).toBe(true);
   expect(relation.hasB(2)).toBe(false);
   expect(relation.hasA("a")).toBe(true);
   expect(relation.hasA("b")).toBe(false);
 
-  expect(relation.deleteB(99)).toBe(false);
+  expect(relation.removeByB(99)).toBe(false);
 });
 
-test("Relation - clear", () => {
+test("removeByA and removeByB remove all related pairs", () => {
+  const relation = createRelation<string, number>();
+
+  relation.add("a", 1);
+  relation.add("a", 2);
+  relation.add("a", 3);
+  relation.add("b", 3);
+  relation.add("c", 3);
+
+  // Bulk removal mutates the same internal indexes it is iterating, so this
+  // guards against implementations that accidentally skip later pairs.
+  expect(relation.removeByA("a")).toBe(true);
+  expect(relation.hasA("a")).toBe(false);
+  expect([...relation.iterateA(1)]).toEqual([]);
+  expect([...relation.iterateA(2)]).toEqual([]);
+  expect([...relation.iterateA(3)]).toEqual(["b", "c"]);
+  expect(relation.size()).toBe(2);
+
+  expect(relation.removeByB(3)).toBe(true);
+  expect(relation.hasB(3)).toBe(false);
+  expect(relation.hasA("b")).toBe(false);
+  expect(relation.hasA("c")).toBe(false);
+  expect(relation.aCount()).toBe(0);
+  expect(relation.bCount()).toBe(0);
+  expect(relation.size()).toBe(0);
+});
+
+test("clear", () => {
   const relation = createRelation<string, number>();
 
   relation.add("a", 1);
@@ -120,9 +153,14 @@ test("Relation - clear", () => {
   expect(relation.hasA("b")).toBe(false);
   expect(relation.hasB(1)).toBe(false);
   expect(relation.hasB(2)).toBe(false);
+  expect([...relation.iterateB("a")]).toEqual([]);
+  expect([...relation.iterateA(1)]).toEqual([]);
+  expect(relation.aCount()).toBe(0);
+  expect(relation.bCount()).toBe(0);
+  expect(relation.size()).toBe(0);
 });
 
-test("Relation - with complex objects as A and B", () => {
+test("works with complex objects as A and B", () => {
   interface Person {
     name: string;
     age: number;
@@ -148,45 +186,36 @@ test("Relation - with complex objects as A and B", () => {
   expect(relation.has(bob, london)).toBe(true);
   expect(relation.has(bob, newyork)).toBe(false);
 
-  expect(relation.getB(alice)?.has(newyork)).toBe(true);
-  expect(relation.getB(alice)?.has(london)).toBe(true);
-  expect(relation.getA(london)?.has(alice)).toBe(true);
-  expect(relation.getA(london)?.has(bob)).toBe(true);
+  expect(new Set(relation.iterateB(alice))).toEqual(new Set([newyork, london]));
+  expect(new Set(relation.iterateA(london))).toEqual(new Set([alice, bob]));
 
   expect(relation.remove(alice, newyork)).toBe(true);
   expect(relation.has(alice, newyork)).toBe(false);
 
-  expect(relation.deleteA(alice)).toBe(true);
+  expect(relation.removeByA(alice)).toBe(true);
   expect(relation.hasA(alice)).toBe(false);
   expect(relation.has(alice, london)).toBe(false);
 });
 
-test("Relation - duplicate adds and return value", () => {
+test("duplicate adds and return value", () => {
   const relation = createRelation<string, number>();
   expect(relation.add("a", 1)).toBe(true); // new
   expect(relation.add("a", 1)).toBe(false); // duplicate
   expect(relation.add("a", 2)).toBe(true); // new B for existing A
   expect(relation.add("b", 2)).toBe(true); // new A referencing existing B
-  expect(relation.getB("a")?.size).toBe(2);
-  expect(relation.getA(1)?.size).toBe(1);
-  expect(relation.getA(2)?.size).toBe(2);
+  expect(relation.bCountForA("a")).toBe(2);
+  expect(relation.aCountForB(1)).toBe(1);
+  expect(relation.aCountForB(2)).toBe(2);
 });
 
-test("Relation - forEach iterates over pairs", () => {
+test("directional counts return zero for missing keys", () => {
   const relation = createRelation<string, number>();
-  relation.add("a", 1);
-  relation.add("a", 2);
-  relation.add("b", 2);
-  const pairs: Array<[string, number]> = [];
-  relation.forEach((a, b) => pairs.push([a, b]));
-  expect(pairs).toEqual([
-    ["a", 1],
-    ["a", 2],
-    ["b", 2],
-  ]);
+
+  expect(relation.bCountForA("missing")).toBe(0);
+  expect(relation.aCountForB(99)).toBe(0);
 });
 
-test("Relation - iterator yields pairs", () => {
+test("iterator yields pairs", () => {
   const relation = createRelation<string, number>();
   relation.add("a", 1);
   relation.add("a", 2);
@@ -199,30 +228,46 @@ test("Relation - iterator yields pairs", () => {
   ]);
 });
 
-test("Relation - counts", () => {
+test("counts grow when adding new pairs", () => {
   const relation = createRelation<string, number>();
+
   expect(relation.aCount()).toBe(0);
   expect(relation.bCount()).toBe(0);
   expect(relation.size()).toBe(0);
-  relation.add("a", 1); // new pair
+
+  relation.add("a", 1);
   expect(relation.aCount()).toBe(1);
   expect(relation.bCount()).toBe(1);
   expect(relation.size()).toBe(1);
-  relation.add("a", 2); // new B same A
+
+  relation.add("a", 2);
   expect(relation.aCount()).toBe(1);
   expect(relation.bCount()).toBe(2);
   expect(relation.size()).toBe(2);
-  relation.add("b", 2); // new A same B
+
+  relation.add("b", 2);
   expect(relation.aCount()).toBe(2);
   expect(relation.bCount()).toBe(2);
   expect(relation.size()).toBe(3);
-  relation.add("b", 2); // duplicate
+
+  relation.add("b", 2);
   expect(relation.size()).toBe(3);
+});
+
+test("counts shrink when removing pairs", () => {
+  const relation = createRelation<string, number>();
+
+  relation.add("a", 1);
+  relation.add("a", 2);
+  relation.add("b", 2);
+
   relation.remove("a", 1);
   expect(relation.size()).toBe(2);
-  relation.deleteA("b"); // removes (b,2)
+
+  relation.removeByA("b");
   expect(relation.size()).toBe(1);
-  relation.deleteB(2); // removes (a,2)
+
+  relation.removeByB(2);
   expect(relation.size()).toBe(0);
   expect(relation.aCount()).toBe(0);
   expect(relation.bCount()).toBe(0);

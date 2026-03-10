@@ -4,12 +4,11 @@
  * @module
  */
 
+import { emptyArray } from "./Array.js";
 import { assert } from "./Assert.js";
 
 /**
  * Bidirectional relation between two types.
- *
- * Why useful:
  *
  * - Provides O(1) (amortized) lookup in both directions (A → B and B → A) without
  *   maintaining two maps manually and risking them diverging.
@@ -17,16 +16,18 @@ import { assert } from "./Assert.js";
  *   item, user ↔ role, entity ↔ subscription where both directions are
  *   frequently queried.
  * - Supports fast membership tests via `has`, `hasA`, and `hasB`.
- * - Iteration helpers (`forEach`, iterator) allow treating the structure as a set
- *   of pairs when needed.
+ * - Exposes directional iterators for imperative `for...of` traversal.
+ * - The relation itself is iterable, allowing it to be treated as a set of pairs
+ *   when needed.
  *
  * Complexity:
  *
- * - `add` / `remove` / `has*` / `get*` each perform a constant number of Map/Set
- *   operations (O(1) expected).
- * - `deleteA` and `deleteB` are O(d) where d is the number of associated elements
- *   (the degree). This is optimal because every associated pair must be touched
- *   once.
+ * - `add` / `remove` / `has*` / `*Count*` each perform a constant number of
+ *   Map/Set operations (O(1) expected).
+ * - `iterateA` and `iterateB` create iterators in O(1); consuming them is O(d)
+ *   where d is the number of associated elements.
+ * - `removeByA` and `removeByB` are O(d) where d is the number of associated
+ *   elements, because every associated pair must be touched once.
  *
  * Object identity:
  *
@@ -51,17 +52,31 @@ export interface Relation<A, B> {
    */
   readonly remove: (a: A, b: B) => boolean;
 
-  /** Gets all B elements related to an A element. */
-  readonly getB: (a: A) => ReadonlySet<B> | undefined;
+  /** Removes all pairs containing the given A element. */
+  readonly removeByA: (a: A) => boolean;
 
-  /** Gets all A elements related to a B element. */
-  readonly getA: (b: B) => ReadonlySet<A> | undefined;
+  /** Removes all pairs containing the given B element. */
+  readonly removeByB: (b: B) => boolean;
 
   /**
-   * Iterates over each pair in the relation (in insertion order of A elements,
-   * then B elements per A).
+   * Iterates over all A elements related to a B element.
+   *
+   * Returns a live iterator over the current relation state rather than a
+   * snapshot copy.
+   *
+   * Returns an empty iterator when the B element has no related values.
    */
-  readonly forEach: (callback: (a: A, b: B) => void) => void;
+  readonly iterateA: (b: B) => IterableIterator<A>;
+
+  /**
+   * Iterates over all B elements related to an A element.
+   *
+   * Returns a live iterator over the current relation state rather than a
+   * snapshot copy.
+   *
+   * Returns an empty iterator when the A element has no related values.
+   */
+  readonly iterateB: (a: A) => IterableIterator<B>;
 
   /**
    * Iterator over all pairs enabling for..of and spread. Yields readonly [a, b]
@@ -78,12 +93,6 @@ export interface Relation<A, B> {
   /** Checks if a B element exists in the relation. */
   readonly hasB: (b: B) => boolean;
 
-  /** Deletes all pairs containing the given A element. */
-  readonly deleteA: (a: A) => boolean;
-
-  /** Deletes all pairs containing the given B element. */
-  readonly deleteB: (b: B) => boolean;
-
   /** Clears all pairs from the relation. */
   readonly clear: () => void;
 
@@ -92,6 +101,12 @@ export interface Relation<A, B> {
 
   /** Number of distinct B elements currently present. */
   readonly bCount: () => number;
+
+  /** Number of B elements related to the given A element. */
+  readonly bCountForA: (a: A) => number;
+
+  /** Number of A elements related to the given B element. */
+  readonly aCountForB: (b: B) => number;
 
   /** Number of pairs currently stored in the relation. */
   readonly size: () => number;
@@ -103,8 +118,30 @@ export const createRelation = <A, B>(): Relation<A, B> => {
   const bToA = new Map<B, Set<A>>();
   let sizeInternal = 0;
 
-  const relation: Relation<A, B> = {
-    add(a: A, b: B) {
+  const removePair = (a: A, b: B): void => {
+    const bSet = aToB.get(a);
+    // This should only fail if a leaked view was mutated via an unsafe cast.
+    assert(bSet?.has(b), "Relation mapping inconsistency");
+
+    bSet!.delete(b);
+    if (bSet!.size === 0) {
+      aToB.delete(a);
+    }
+
+    const aSet = bToA.get(b);
+    // This should only fail if a leaked view was mutated via an unsafe cast.
+    assert(aSet?.has(a), "Relation mapping inconsistency");
+
+    aSet!.delete(a);
+    if (aSet!.size === 0) {
+      bToA.delete(b);
+    }
+
+    sizeInternal--;
+  };
+
+  return {
+    add: (a, b) => {
       let bSet = aToB.get(a);
       if (bSet?.has(b)) return false;
       if (!bSet) {
@@ -119,43 +156,37 @@ export const createRelation = <A, B>(): Relation<A, B> => {
         bToA.set(b, aSet);
       }
       aSet.add(a);
+
       sizeInternal++;
       return true;
     },
 
-    remove(a: A, b: B) {
-      const bSet = aToB.get(a);
-      if (!bSet?.has(b)) return false;
+    remove: (a, b) => {
+      if (!aToB.get(a)?.has(b)) return false;
 
-      bSet.delete(b);
-      if (bSet.size === 0) {
-        aToB.delete(a);
-      }
-
-      const aSet = bToA.get(b);
-      assert(aSet, "Relation mapping inconsistency");
-
-      aSet.delete(a);
-      if (aSet.size === 0) {
-        bToA.delete(b);
-      }
-      sizeInternal--;
+      removePair(a, b);
       return true;
     },
 
-    getB(a: A): ReadonlySet<B> | undefined {
-      return aToB.get(a);
+    removeByA: (a) => {
+      const bSet = aToB.get(a);
+      if (!bSet) return false;
+      for (const b of bSet) removePair(a, b);
+      return true;
     },
 
-    getA(b: B): ReadonlySet<A> | undefined {
-      return bToA.get(b);
+    removeByB: (b) => {
+      const aSet = bToA.get(b);
+      if (!aSet) return false;
+      for (const a of aSet) removePair(a, b);
+      return true;
     },
 
-    forEach(callback: (a: A, b: B) => void) {
-      for (const [a, bSet] of aToB) {
-        for (const b of bSet) callback(a, b);
-      }
-    },
+    iterateA: (b) =>
+      bToA.get(b)?.values() ?? (emptyArray.values() as IterableIterator<A>),
+
+    iterateB: (a) =>
+      aToB.get(a)?.values() ?? (emptyArray.values() as IterableIterator<B>),
 
     *[Symbol.iterator](): IterableIterator<readonly [A, B]> {
       for (const [a, bSet] of aToB) {
@@ -165,73 +196,29 @@ export const createRelation = <A, B>(): Relation<A, B> => {
       }
     },
 
-    has(a: A, b: B) {
+    has: (a, b) => {
       const bSet = aToB.get(a);
       return bSet?.has(b) ?? false;
     },
 
-    hasA(a: A) {
-      return aToB.has(a);
-    },
+    hasA: (a) => aToB.has(a),
 
-    hasB(b: B) {
-      return bToA.has(b);
-    },
+    hasB: (b) => bToA.has(b),
 
-    deleteA(a: A) {
-      const bSet = aToB.get(a);
-      if (!bSet) return false;
-      const removed = bSet.size;
-      for (const b of bSet) {
-        const aSet = bToA.get(b);
-        if (aSet) {
-          aSet.delete(a);
-          if (aSet.size === 0) {
-            bToA.delete(b);
-          }
-        }
-      }
-      aToB.delete(a);
-      sizeInternal -= removed;
-      return true;
-    },
-
-    deleteB(b: B) {
-      const aSet = bToA.get(b);
-      if (!aSet) return false;
-      const removed = aSet.size;
-      for (const a of aSet) {
-        const bSet = aToB.get(a);
-        if (bSet) {
-          bSet.delete(b);
-          if (bSet.size === 0) {
-            aToB.delete(a);
-          }
-        }
-      }
-      bToA.delete(b);
-      sizeInternal -= removed;
-      return true;
-    },
-
-    clear() {
+    clear: () => {
       aToB.clear();
       bToA.clear();
       sizeInternal = 0;
     },
 
-    aCount() {
-      return aToB.size;
-    },
+    aCount: () => aToB.size,
 
-    bCount() {
-      return bToA.size;
-    },
+    bCount: () => bToA.size,
 
-    size() {
-      return sizeInternal;
-    },
+    bCountForA: (a) => aToB.get(a)?.size ?? 0,
+
+    aCountForB: (b) => bToA.get(b)?.size ?? 0,
+
+    size: () => sizeInternal,
   };
-
-  return relation;
 };

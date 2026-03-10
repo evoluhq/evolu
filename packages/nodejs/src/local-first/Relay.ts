@@ -148,7 +148,7 @@ export const startRelay =
           console.debug(
             "subscribe",
             ownerId,
-            ownerSocketRelation.getB(ownerId)?.size ?? 0,
+            ownerSocketRelation.bCountForA(ownerId),
           );
         },
 
@@ -157,23 +157,22 @@ export const startRelay =
           console.debug(
             "unsubscribe",
             ownerId,
-            ownerSocketRelation.getB(ownerId)?.size ?? 0,
+            ownerSocketRelation.bCountForA(ownerId),
           );
         },
 
         broadcast: (ownerId, message) => {
-          const sockets = ownerSocketRelation.getB(ownerId);
-          if (!sockets) return;
-
-          let broadcastCount = 0;
-          for (const socket of sockets) {
+          for (const socket of ownerSocketRelation.iterateB(ownerId)) {
             if (socket !== ws && socket.readyState === WebSocket.OPEN) {
               socket.send(message, { binary: true });
-              broadcastCount++;
             }
           }
 
-          console.debug("broadcast", ownerId, broadcastCount, sockets.size);
+          console.debug(
+            "broadcast",
+            ownerId,
+            ownerSocketRelation.bCountForA(ownerId),
+          );
         },
       };
 
@@ -193,7 +192,7 @@ export const startRelay =
       });
 
       ws.on("close", () => {
-        ownerSocketRelation.deleteB(ws);
+        ownerSocketRelation.removeByB(ws);
         console.debug("ws close", wss.clients.size);
       });
     });
