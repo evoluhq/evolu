@@ -2935,62 +2935,53 @@ export interface MutexRef<T> extends Disposable {
  * @group Concurrency primitives
  */
 export const createMutexRef = <T>(initialState: T): MutexRef<T> => {
-  let currentState = initialState;
+  const ref = createRef(initialState);
   const mutex = createMutex();
 
   return {
-    get: mutex.withLock(() => ok(currentState)),
+    get: mutex.withLock(() => ok(ref.get())),
 
     set: (state) =>
       mutex.withLock(() => {
-        currentState = state;
+        ref.set(state);
         return ok();
       }),
 
-    getAndSet: (state) =>
-      mutex.withLock(() => {
-        const previousState = currentState;
-        currentState = state;
-        return ok(previousState);
-      }),
+    getAndSet: (state) => mutex.withLock(() => ok(ref.getAndSet(state))),
 
-    setAndGet: (state) =>
-      mutex.withLock(() => {
-        currentState = state;
-        return ok(currentState);
-      }),
+    setAndGet: (state) => mutex.withLock(() => ok(ref.setAndGet(state))),
 
     update: (updater) =>
       mutex.withLock(async (run) => {
-        const nextState = await run(updater(currentState));
+        const nextState = await run(updater(ref.get()));
         if (!nextState.ok) return nextState;
-        currentState = nextState.value;
+        ref.set(nextState.value);
         return ok();
       }),
 
     getAndUpdate: (updater) =>
       mutex.withLock(async (run) => {
-        const previousState = currentState;
-        const nextState = await run(updater(currentState));
+        const previousState = ref.get();
+        const nextState = await run(updater(previousState));
         if (!nextState.ok) return nextState;
-        currentState = nextState.value;
+        ref.set(nextState.value);
         return ok(previousState);
       }),
 
     updateAndGet: (updater) =>
       mutex.withLock(async (run) => {
+        const currentState = ref.get();
         const nextState = await run(updater(currentState));
         if (!nextState.ok) return nextState;
-        currentState = nextState.value;
-        return ok(currentState);
+        return ok(ref.setAndGet(nextState.value));
       }),
 
     modify: (updater) =>
       mutex.withLock(async (run) => {
-        const nextState = await run(updater(currentState));
+        const nextState = await run(updater(ref.get()));
         if (!nextState.ok) return nextState;
         const [result, updatedState] = nextState.value;
-        currentState = updatedState;
+        ref.set(updatedState);
         return ok(result);
       }),
 
