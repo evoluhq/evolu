@@ -160,6 +160,30 @@ import {
  * run Tasks concurrently. Note helpers like {@link race} always run
  * concurrently; sequential execution wouldn't make sense for their semantics.
  *
+ * ## Style
+ *
+ * Imperative code is the preferred way to compose sequential {@link Task}
+ * operations inside another Task.
+ *
+ * ```ts
+ * const user = await run(fetchUser(id));
+ * if (!user.ok) return user;
+ *
+ * const profile = await run(fetchProfile(user.value.id));
+ * if (!profile.ok) return profile;
+ *
+ * return ok({ user: user.value, profile: profile.value });
+ * ```
+ *
+ * This is an intentional style choice. Evolu keeps helpers for operations with
+ * distinct semantics that plain control flow does not express well, such as
+ * concurrency, racing, retries, timeouts, and collection processing. It
+ * intentionally does not provide generic chain, flatMap, or pipe-style helpers
+ * for ordinary sequential Task composition, because that would duplicate plain
+ * control flow and create API ambiguity. While this can look verbose, it is
+ * explicit, transparent, debuggable, and avoids pipes and nested helper
+ * chains.
+ *
  * ### Building a better fetch
  *
  * Use {@link timeout} to prevent hanging:
@@ -1090,7 +1114,7 @@ export class AsyncDisposableStack<D = unknown> implements AsyncDisposable {
   use<T extends AsyncDisposable | Disposable | null | undefined>(value: T): T;
   use<T extends AsyncDisposable | Disposable | null | undefined, E>(
     acquire: Task<T, E, D>,
-  ): PromiseLike<Result<T, E>>;
+  ): PromiseLike<Result<T, E | AbortError>>;
   use<T extends AsyncDisposable | Disposable | null | undefined, E>(
     valueOrAcquire: T | Task<T, E, D>,
   ): T | PromiseLike<Result<T, E | AbortError>> {

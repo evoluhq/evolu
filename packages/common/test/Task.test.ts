@@ -2192,6 +2192,8 @@ describe("AsyncDisposableStack", () => {
       const task: Task<void> = async (run) => {
         await using stack = run.stack();
         const a = await stack.use(createResource("a", events));
+
+        expectTypeOf(a).toEqualTypeOf<Result<Resource, AbortError>>();
         if (!a.ok) return a;
         events.push(`using ${a.value.id}`);
         return ok();
