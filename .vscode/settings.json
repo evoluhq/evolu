@@ -1,4 +1,7 @@
 {
+  "files.exclude": {
+    "**/node_modules": true
+  },
   "js/ts.tsdk.path": "node_modules/typescript/lib",
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "[json]": {
