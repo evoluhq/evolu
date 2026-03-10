@@ -133,6 +133,28 @@ import type { Typed } from "./Type.js";
  * }
  * ```
  *
+ * ## Style
+ *
+ * Imperative code is the preferred way to compose sequential {@link Result}
+ * operations.
+ *
+ * ```ts
+ * const user = getUser();
+ * if (!user.ok) return user;
+ *
+ * const profile = getProfile(user.value.id);
+ * if (!profile.ok) return profile;
+ *
+ * return ok({ user: user.value, profile: profile.value });
+ * ```
+ *
+ * This is an intentional style choice. Evolu does not provide helper
+ * combinators for every sequential pattern because that would duplicate plain
+ * control flow and create API ambiguity. Use helpers when they add semantics
+ * over ordinary control flow, such as operating on collections of results.
+ * While this can look verbose, it is explicit, transparent, debuggable, and
+ * avoids pipes and nested helper chains.
+ *
  * ## Composition
  *
  * Some patterns are common enough that deserve helpers. The previous example
