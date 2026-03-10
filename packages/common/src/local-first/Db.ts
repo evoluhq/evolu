@@ -21,7 +21,7 @@ import {
 import { lazyFalse, lazyVoid } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import type { RandomDep } from "../Random.js";
-import { getOk, ok, type Result } from "../Result.js";
+import { ok, type Result } from "../Result.js";
 import type {
   CreateSqliteDriverDep,
   SqliteDep,
@@ -199,10 +199,12 @@ const startDbWorker =
     const console = run.deps.console.child(name).child("DbWorker");
     console.info("startDbWorker");
 
-    const sqlite = getOk(
-      await stack.use(createSqlite(name, { mode: "encrypted", encryptionKey })),
+    const sqliteResult = await stack.use(
+      createSqlite(name, { mode: "encrypted", encryptionKey }),
     );
-    console.info("SQLite created");
+    if (!sqliteResult.ok) return sqliteResult;
+    const sqlite = sqliteResult.value;
+    console.debug("SQLite created");
 
     const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...run.deps });
 

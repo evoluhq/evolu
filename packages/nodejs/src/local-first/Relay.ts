@@ -4,7 +4,6 @@ import {
   createRelation,
   createSqlite,
   type CreateSqliteDriverDep,
-  getOk,
   isPromiseLike,
   Name,
   ok,
@@ -71,21 +70,23 @@ export const startRelay =
     isOwnerAllowed,
     isOwnerWithinQuota,
   }: NodeJsRelayConfig): Task<Relay, never, RelayDeps> =>
-  async (_run) => {
-    await using stack = _run.stack();
-    const console = _run.deps.console.child("relay");
+  async (run) => {
+    await using stack = run.stack();
+    const console = run.deps.console.child("relay");
 
     const dbFileExists = existsSync(`${name}.db`);
 
-    const sqlite = getOk(await stack.use(createSqlite(name)));
-    const deps = { ..._run.deps, sqlite };
+    const sqliteResult = await stack.use(createSqlite(name));
+    if (!sqliteResult.ok) return sqliteResult;
+
+    const deps = { ...run.deps, sqlite: sqliteResult.value };
 
     if (!dbFileExists) {
       createBaseSqliteStorageTables(deps);
       createRelayStorageTables(deps);
     }
 
-    const run = _run.addDeps({
+    const runWithStorage = run.addDeps({
       storage: createRelaySqliteStorage(deps)({
         isOwnerWithinQuota,
       }),
@@ -180,7 +181,7 @@ export const startRelay =
         if (!Uint8Array.is(message)) return;
 
         void (async () => {
-          const response = await run(
+          const response = await runWithStorage(
             applyProtocolMessageAsRelay(message, options),
           );
           if (!response.ok) {

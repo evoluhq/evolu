@@ -326,10 +326,10 @@ describe("Run", () => {
     });
 
     test("extends run with additional deps for reusable usage", async () => {
-      await using _run = createRun();
+      await using run = createRun();
 
       const db = createDb();
-      const run: Run<DbDep> = _run.addDeps({ db });
+      const runWithDb: Run<DbDep> = run.addDeps({ db });
 
       const task1: Task<string, never, DbDep> = (run) =>
         ok(run.deps.db.query("SELECT 1"));
@@ -337,8 +337,8 @@ describe("Run", () => {
       const task2: Task<string, never, DbDep> = (run) =>
         ok(run.deps.db.query("SELECT 2"));
 
-      const result1 = await run(task1);
-      const result2 = await run(task2);
+      const result1 = await runWithDb(task1);
+      const result2 = await runWithDb(task2);
 
       expect(result1).toEqual(ok("result:SELECT 1"));
       expect(result2).toEqual(ok("result:SELECT 2"));
@@ -1177,9 +1177,9 @@ describe("Run", () => {
       const childTask: Task<string, never, CustomDep> = (run) =>
         ok(run.deps.custom.value);
 
-      const parentTask: Task<void> = async (_run) => {
-        const run = _run.addDeps({ custom: { value: "from-create" } });
-        const createdRun = run.create();
+      const parentTask: Task<void> = async (run) => {
+        const runWithDep = run.addDeps({ custom: { value: "from-create" } });
+        const createdRun = runWithDep.create();
 
         const result = await createdRun(childTask);
         if (!result.ok) return result;
@@ -1199,8 +1199,8 @@ describe("Run", () => {
       let createdRun: Run | undefined;
 
       expect(
-        await run((_run) => {
-          createdRun = _run.create();
+        await run((run) => {
+          createdRun = run.create();
           return ok();
         }),
       ).toEqual(ok());
@@ -1240,8 +1240,8 @@ describe("Run", () => {
       let createdRun: Run | undefined;
 
       expect(
-        await run((_run) => {
-          createdRun = _run.create();
+        await run((run) => {
+          createdRun = run.create();
           return ok();
         }),
       ).toEqual(ok());
@@ -1667,9 +1667,9 @@ describe("Fiber", () => {
       };
 
       // Parent task adds deps and spawns daemon
-      const parentTask: Task<void> = async (_run) => {
-        const run = _run.addDeps({ custom: { value: "from-addDeps" } });
-        await run.daemon(daemonTask);
+      const parentTask: Task<void> = async (run) => {
+        const runWithDep = run.addDeps({ custom: { value: "from-addDeps" } });
+        await runWithDep.daemon(daemonTask);
         return ok();
       };
 
@@ -1948,7 +1948,7 @@ describe("unabortableMask", () => {
     const task = unabortableMask(
       (_restore1) => async (run) =>
         await run(
-          unabortableMask((restore2) => (_run) => {
+          unabortableMask((restore2) => () => {
             // restore2 restores to mask=1
             restoreFromInner = restore2;
 

@@ -686,22 +686,20 @@ export interface Run<D = unknown> extends AsyncDisposable {
    *
    * const init =
    *   (config: Config): Task<void, InitError, CreateDbDep> =>
-   *   async (_run) => {
-   *     const { createDb } = _run.deps;
-   *     await using stack = _run.stack();
+   *   async (run) => {
+   *     const { createDb } = run.deps;
+   *     await using stack = run.stack();
    *
    *     const db = await stack.use(createDb(config.connectionString));
    *     if (!db.ok) return db;
    *
-   *     const run = _run.addDeps({ db: db.value });
+   *     const runWithDb = run.addDeps({ db: db.value });
    *
-   *     await run(getUser(123));
-   *     await run(insertUser(user));
+   *     await runWithDb(getUser(123));
+   *     await runWithDb(insertUser(user));
    *     return ok();
    *   };
    * ```
-   *
-   * The `_run` naming convention reserves `run` for the extended Run.
    *
    * ## FAQ
    *

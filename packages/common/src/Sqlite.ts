@@ -188,10 +188,10 @@ export const createSqlite =
     const { createSqliteDriver } = run.deps;
     const console = run.deps.console.child("sql");
 
-    console.debug("createSqliteDriver");
-    const result = await run(createSqliteDriver(name, options));
-    if (!result.ok) return result;
-    const driver = result.value;
+    const driverResult = await run(createSqliteDriver(name, options));
+    if (!driverResult.ok) return driverResult;
+    const driver = driverResult.value;
+    console.debug("SQLite driver created");
 
     let isDisposed = false;
 
