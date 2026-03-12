@@ -10,7 +10,7 @@ export default defineProject({
       resolve(__dirname, "./test/local-first/_uint8ArraySerializer.ts"),
     ],
     include: ["test/**/*.test.ts"],
-    name: "unit",
+    name: "@evolu/common (nodejs)",
     environment: "node",
   },
 });

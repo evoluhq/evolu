@@ -5,8 +5,11 @@ import { defineProject } from "vitest/config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Coverage with v8 only works with a single browser instance
-const isCoverage = process.argv.includes("--coverage");
+// Coverage with v8 only works with a single browser instance. The VS Code
+// Vitest extension enables coverage internally instead of passing --coverage,
+// so extension runs need the same browser setup.
+const isSingleBrowserRun =
+  process.argv.includes("--coverage") || process.env.VITEST_VSCODE === "true";
 
 export default defineProject({
   // Transpile `using`/`await using` for WebKit which doesn't support it yet
@@ -22,7 +25,7 @@ export default defineProject({
       "test/Identicon.test.ts", // needs canvas
       "test/Redacted.test.ts", // uses node:util
     ],
-    name: "browser",
+    name: "@evolu/common",
     setupFiles: ["./test/_browserSetup.ts"],
     browser: {
       enabled: true,
@@ -39,7 +42,7 @@ export default defineProject({
           await closeServer(port);
         },
       },
-      instances: isCoverage
+      instances: isSingleBrowserRun
         ? [{ browser: "chromium" }]
         : [
             { browser: "chromium" },
