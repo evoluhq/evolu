@@ -4,17 +4,14 @@
  * @module
  */
 
-import { isPlainObject } from "./Object.js";
 import { assert } from "./Assert.js";
-import { uint8ArrayToBase64Url, type JsonValue } from "./Type.js";
+import { isPlainObject } from "./Object.js";
+import { uint8ArrayToBase64Url } from "./Type.js";
 
 /**
  * Immutable structural key.
  *
- * Structural keys support {@link JsonValue} plus `Uint8Array`.
- *
- * This is for keys that are JSON-like or can reasonably travel through
- * `postMessage`, not for arbitrary JavaScript objects.
+ * Structural keys are JSON-like values, `undefined`, or `Uint8Array`.
  *
  * Keys are compared by structural value rather than object identity, so arrays,
  * plain objects, and `Uint8Array` values must not be mutated.
@@ -26,15 +23,10 @@ export type StructuralKey =
   | number
   | boolean
   | null
+  | undefined
   | Uint8Array
-  | StructuralArrayInput
-  | StructuralObjectInput;
-
-export interface StructuralObjectInput {
-  readonly [key: string]: StructuralKey;
-}
-
-export type StructuralArrayInput = ReadonlyArray<StructuralKey>;
+  | ReadonlyArray<StructuralKey>
+  | { readonly [key: string]: StructuralKey };
 
 /**
  * `Map`-like collection keyed by {@link StructuralKey}.
@@ -58,6 +50,20 @@ export type StructuralArrayInput = ReadonlyArray<StructuralKey>;
  * key size before the final native `Map` lookup. For collections with many
  * distinct keys or very hot paths, prefer native stable keys with a native
  * `Map`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const map = createStructuralMap<
+ *   { readonly id: string; readonly filter: readonly [string, string] },
+ *   string
+ * >();
+ *
+ * map.set({ id: "items", filter: ["owner", "active"] }, "cached");
+ *
+ * map.get({ id: "items", filter: ["owner", "active"] });
+ * // => "cached"
+ * ```
  */
 export interface StructuralMap<K extends StructuralKey, V> extends Iterable<
   readonly [K, V]
@@ -82,10 +88,8 @@ export const createStructuralMap = <
   V,
 >(): StructuralMap<K, V> => {
   const entriesById = new Map<string, Entry<K, V>>();
-  const keyIdByObject = new WeakMap<object, string>();
 
-  const getKeyId = (key: K): string =>
-    serializeStructuralKey(key, keyIdByObject, new Set<object>());
+  const getKeyId = (key: K): string => serializeStructuralKey(key, new Set());
 
   const map: StructuralMap<K, V> = {
     get size() {
@@ -144,9 +148,10 @@ interface Entry<K extends StructuralKey, V> {
   readonly value: V;
 }
 
+const structuralKeyIdByObject = new WeakMap<object, string>();
+
 const serializeStructuralKey = (
   value: StructuralKey,
-  keyIdByObject: WeakMap<object, string>,
   path: Set<object>,
 ): string => {
   switch (typeof value) {
@@ -159,10 +164,12 @@ const serializeStructuralKey = (
       return Object.is(value, -0) ? "n:0" : `n:${value}`;
     case "boolean":
       return value ? "b:true" : "b:false";
+    case "undefined":
+      return "d:undefined";
     case "object": {
       if (value === null) return "l:null";
 
-      const cachedId = keyIdByObject.get(value);
+      const cachedId = structuralKeyIdByObject.get(value);
       if (cachedId) return cachedId;
 
       let keyId: string;
@@ -170,45 +177,45 @@ const serializeStructuralKey = (
       if (Array.isArray(value)) {
         assert(!path.has(value), "Structural keys must not contain cycles.");
         path.add(value);
-        keyId = serializeStructuralArray(value, keyIdByObject, path);
+        keyId = serializeStructuralArray(value, path);
         path.delete(value);
       } else if (isPlainObject(value)) {
         assert(!path.has(value), "Structural keys must not contain cycles.");
         path.add(value);
-        keyId = serializeStructuralObject(value, keyIdByObject, path);
+        keyId = serializeStructuralObject(value, path);
         path.delete(value);
       } else {
         keyId = `u:${uint8ArrayToBase64Url(value as Uint8Array)}`;
       }
 
-      keyIdByObject.set(value, keyId);
+      structuralKeyIdByObject.set(value, keyId);
       return keyId;
     }
     default:
-      assert(false, "Structural keys must be JSON-like values or Uint8Array.");
+      assert(
+        false,
+        "Structural keys must be JSON-like values, undefined, or Uint8Array.",
+      );
   }
 };
 
 const serializeStructuralArray = (
-  value: StructuralArrayInput,
-  keyIdByObject: WeakMap<object, string>,
+  value: ReadonlyArray<StructuralKey>,
   path: Set<object>,
 ): string =>
-  `a:[${value
-    .map((item) => serializeStructuralKey(item, keyIdByObject, path))
-    .join(",")}]`;
+  `a:[${Array.from(value, (item) => serializeStructuralKey(item, path)).join(
+    ",",
+  )}]`;
 
 const serializeStructuralObject = (
   value: Readonly<Record<string, StructuralKey | undefined>>,
-  keyIdByObject: WeakMap<object, string>,
   path: Set<object>,
 ): string => {
   const entries = Object.keys(value)
-    .sort()
+    .toSorted()
     .map((key) => {
       const item = value[key];
-      assert(item !== undefined, "Structural keys must not contain undefined.");
-      return `${JSON.stringify(key)}:${serializeStructuralKey(item, keyIdByObject, path)}`;
+      return `${JSON.stringify(key)}:${serializeStructuralKey(item, path)}`;
     });
 
   return `o:{${entries.join(",")}}`;

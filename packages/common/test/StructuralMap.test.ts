@@ -3,20 +3,25 @@ import { createStructuralMap } from "../src/StructuralMap.js";
 
 describe("createStructuralMap", () => {
   test("stores and retrieves primitive keys", () => {
-    const map = createStructuralMap<number | string | boolean | null, string>();
+    const map = createStructuralMap<
+      number | string | boolean | null | undefined,
+      string
+    >();
 
     map.set("x", "string");
     map.set(1, "number");
     map.set(true, "boolean");
     map.set(false, "boolean-false");
     map.set(null, "null");
+    map.set(undefined, "undefined");
 
-    expect(map.size).toBe(5);
+    expect(map.size).toBe(6);
     expect(map.get("x")).toBe("string");
     expect(map.get(1)).toBe("number");
     expect(map.get(true)).toBe("boolean");
     expect(map.get(false)).toBe("boolean-false");
     expect(map.get(null)).toBe("null");
+    expect(map.get(undefined)).toBe("undefined");
     expect(map.has("missing")).toBe(false);
     expect(map.delete("missing")).toBe(false);
   });
@@ -50,14 +55,14 @@ describe("createStructuralMap", () => {
 
   test("shares entries for structurally equal array keys", () => {
     const map = createStructuralMap<
-      readonly [string, { readonly count: number }],
+      readonly [string, undefined, { readonly count: number }],
       string
     >();
 
-    map.set(["a", { count: 1 }], "value");
+    map.set(["a", undefined, { count: 1 }], "value");
 
-    expect(map.get(["a", { count: 1 }])).toBe("value");
-    expect(map.has(["a", { count: 2 }])).toBe(false);
+    expect(map.get(["a", undefined, { count: 1 }])).toBe("value");
+    expect(map.has(["a", undefined, { count: 2 }])).toBe(false);
   });
 
   test("shares entries for equal Uint8Array keys", () => {
@@ -143,12 +148,16 @@ describe("createStructuralMap", () => {
     expect(map.has(key)).toBe(true);
   });
 
-  test("rejects keys containing undefined", () => {
-    const map = createStructuralMap<string, string>();
+  test("distinguishes undefined from missing object properties", () => {
+    const map = createStructuralMap<
+      { readonly id: string; readonly optional: undefined },
+      string
+    >();
 
-    expect(() =>
-      map.set({ ok: true, bad: undefined } as never, "value"),
-    ).toThrow("Structural keys must not contain undefined.");
+    map.set({ id: "a", optional: undefined }, "value");
+
+    expect(map.get({ id: "a", optional: undefined })).toBe("value");
+    expect(map.has({ id: "a" } as never)).toBe(false);
   });
 
   test("rejects cyclic keys", () => {
@@ -176,7 +185,7 @@ describe("createStructuralMap", () => {
     const map = createStructuralMap<string, string>();
 
     expect(() => map.set((() => undefined) as never, "value")).toThrow(
-      "Structural keys must be JSON-like values or Uint8Array.",
+      "Structural keys must be JSON-like values, undefined, or Uint8Array.",
     );
   });
 });
