@@ -1,5 +1,5 @@
 /**
- * Mutable reference.
+ * Mutable reference to an immutable value.
  *
  * @module
  */
@@ -7,13 +7,16 @@
 import type { Store } from "./Store.js";
 
 /**
- * Mutable reference.
+ * Mutable reference to an immutable value.
  *
- * `Ref` holds a mutable value and exposes explicit `get`, `set`, `update`, and
- * `modify` operations. Use it when mutable state needs to be passed around as a
- * value.
+ * `Ref` holds the current value and exposes explicit `get`, `set`, `update`,
+ * and `modify` operations. The reference is mutable, but the value inside it
+ * must be immutable and replaced with a new value rather than mutated in place.
+ * Storing a mutable value in `Ref` does not make sense, because callers could
+ * mutate that value directly and pass it around without `Ref`.
  *
- * For reactive state with subscriptions, see {@link Store}.
+ * Use it when mutable ownership of a value needs to be passed around as a
+ * value. For reactive state with subscriptions, see {@link Store}.
  *
  * ### Example
  *
@@ -33,73 +36,73 @@ import type { Store } from "./Store.js";
  * ```
  */
 export interface Ref<T> {
-  /** Returns the current state. */
+  /** Returns the current value. */
   readonly get: () => T;
 
-  /** Sets the state. */
-  readonly set: (state: T) => void;
+  /** Sets the current value. */
+  readonly set: (value: T) => void;
 
-  /** Sets the state and returns the previous state. */
-  readonly getAndSet: (state: T) => T;
+  /** Sets the current value and returns the previous value. */
+  readonly getAndSet: (value: T) => T;
 
-  /** Sets the state and returns the current state after the update. */
-  readonly setAndGet: (state: T) => T;
+  /** Sets the current value and returns it. */
+  readonly setAndGet: (value: T) => T;
 
-  /** Updates the state. */
+  /** Updates the current value. */
   readonly update: (updater: (current: T) => T) => void;
 
-  /** Updates the state and returns the previous state. */
+  /** Updates the current value and returns the previous value. */
   readonly getAndUpdate: (updater: (current: T) => T) => T;
 
-  /** Updates the state and returns the current state after the update. */
+  /** Updates the current value and returns it. */
   readonly updateAndGet: (updater: (current: T) => T) => T;
 
-  /** Modifies the state and returns a computed result from the transition. */
+  /** Modifies the current value and returns a computed result. */
   readonly modify: <R>(
-    updater: (current: T) => readonly [result: R, nextState: T],
+    updater: (current: T) => readonly [result: R, nextValue: T],
   ) => R;
 }
 
-/** Creates a {@link Ref} with the given initial state. */
-export const createRef = <T>(initialState: T): Ref<T> => {
-  let currentState = initialState;
+/** Creates a {@link Ref} with the given initial immutable value. */
+export const createRef = <T>(initialValue: T): Ref<T> => {
+  let currentValue = initialValue;
 
   return {
-    get: () => currentState,
+    get: () => currentValue,
 
-    set: (state) => {
-      currentState = state;
+    set: (value) => {
+      currentValue = value;
     },
 
-    getAndSet: (state) => {
-      const previousState = currentState;
-      currentState = state;
-      return previousState;
+    getAndSet: (value) => {
+      const previousValue = currentValue;
+      currentValue = value;
+      return previousValue;
     },
 
-    setAndGet: (state) => {
-      currentState = state;
-      return currentState;
+    setAndGet: (value) => {
+      currentValue = value;
+      return currentValue;
     },
 
     update: (updater) => {
-      currentState = updater(currentState);
+      currentValue = updater(currentValue);
     },
 
     getAndUpdate: (updater) => {
-      const previousState = currentState;
-      currentState = updater(currentState);
-      return previousState;
+      const previousValue = currentValue;
+      currentValue = updater(currentValue);
+      return previousValue;
     },
 
     updateAndGet: (updater) => {
-      currentState = updater(currentState);
-      return currentState;
+      currentValue = updater(currentValue);
+      return currentValue;
     },
 
     modify: (updater) => {
-      const [result, nextState] = updater(currentState);
-      currentState = nextState;
+      const [result, nextValue] = updater(currentValue);
+      currentValue = nextValue;
       return result;
     },
   };

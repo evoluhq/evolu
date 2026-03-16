@@ -2,20 +2,20 @@ import { describe, expect, test } from "vitest";
 import { createRef } from "../src/Ref.js";
 
 describe("get", () => {
-  test("get returns initial state", () => {
+  test("get returns initial value", () => {
     const ref = createRef(42);
     expect(ref.get()).toBe(42);
   });
 });
 
 describe("set", () => {
-  test("updates state", () => {
+  test("updates value", () => {
     const ref = createRef(0);
     ref.set(1);
     expect(ref.get()).toBe(1);
   });
 
-  test("always assigns the provided state", () => {
+  test("always assigns the provided value", () => {
     const ref = createRef(1);
     ref.set(1);
     expect(ref.get()).toBe(1);
@@ -23,14 +23,14 @@ describe("set", () => {
 });
 
 describe("getAndSet", () => {
-  test("returns previous state and updates state", () => {
+  test("returns previous value and updates value", () => {
     const ref = createRef(1);
 
     expect(ref.getAndSet(2)).toBe(1);
     expect(ref.get()).toBe(2);
   });
 
-  test("returns current state without updating when next state is equal", () => {
+  test("returns current value without updating when next value is equal", () => {
     const ref = createRef(1);
 
     expect(ref.getAndSet(1)).toBe(1);
@@ -39,21 +39,21 @@ describe("getAndSet", () => {
 });
 
 describe("setAndGet", () => {
-  test("returns updated state", () => {
+  test("returns updated value", () => {
     const ref = createRef(1);
 
     expect(ref.setAndGet(2)).toBe(2);
     expect(ref.get()).toBe(2);
   });
 
-  test("returns current state when next state is equal", () => {
+  test("returns current value when next value is equal", () => {
     const ref = createRef(1);
 
     expect(ref.setAndGet(1)).toBe(1);
     expect(ref.get()).toBe(1);
   });
 
-  test("assigns the provided state", () => {
+  test("assigns the provided value", () => {
     const ref = createRef(5);
 
     expect(ref.setAndGet(5)).toBe(5);
@@ -65,7 +65,7 @@ describe("setAndGet", () => {
 });
 
 describe("update", () => {
-  test("updates state", () => {
+  test("updates value", () => {
     const ref = createRef(1);
 
     ref.update((n) => n + 1);
@@ -73,7 +73,7 @@ describe("update", () => {
     expect(ref.get()).toBe(2);
   });
 
-  test("can keep the same state", () => {
+  test("can keep the same value", () => {
     const ref = createRef(1);
 
     ref.update((n) => n);
@@ -83,14 +83,14 @@ describe("update", () => {
 });
 
 describe("getAndUpdate", () => {
-  test("returns previous state and updates state", () => {
+  test("returns previous value and updates value", () => {
     const ref = createRef(1);
 
     expect(ref.getAndUpdate((n) => n + 1)).toBe(1);
     expect(ref.get()).toBe(2);
   });
 
-  test("returns current state without updating when next state is equal", () => {
+  test("returns current value without updating when next value is equal", () => {
     const ref = createRef(1);
 
     expect(ref.getAndUpdate((n) => n)).toBe(1);
@@ -99,14 +99,14 @@ describe("getAndUpdate", () => {
 });
 
 describe("updateAndGet", () => {
-  test("returns updated state", () => {
+  test("returns updated value", () => {
     const ref = createRef(1);
 
     expect(ref.updateAndGet((n) => n + 1)).toBe(2);
     expect(ref.get()).toBe(2);
   });
 
-  test("returns current state when next state is equal", () => {
+  test("returns current value when next value is equal", () => {
     const ref = createRef(1);
 
     expect(ref.updateAndGet((n) => n)).toBe(1);
@@ -115,7 +115,7 @@ describe("updateAndGet", () => {
 });
 
 describe("modify", () => {
-  test("returns a computed result and updates state", () => {
+  test("returns a computed result and updates value", () => {
     const ref = createRef(0);
     const result = ref.modify((current) => [current, current + 1]);
 
@@ -123,7 +123,7 @@ describe("modify", () => {
     expect(ref.get()).toBe(1);
   });
 
-  test("can keep the same state while returning a result", () => {
+  test("can keep the same value while returning a result", () => {
     const ref = createRef(1);
     const result = ref.modify((current) => [`current:${current}`, current]);
 
