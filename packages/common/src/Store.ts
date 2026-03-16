@@ -6,10 +6,18 @@
 
 import type { Eq } from "./Eq.js";
 import { eqStrict } from "./Eq.js";
-import type { Listener, Unsubscribe } from "./Listeners.js";
-import { createListeners } from "./Listeners.js";
 import type { Ref } from "./Ref.js";
 import { createRef } from "./Ref.js";
+
+/**
+ * A store for managing state with change notifications. Like a {@link Ref} with
+ * subscriptions.
+ *
+ * Store is a valid dependency in Evolu's [Dependency
+ * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
+ * functions need shared mutable state with subscriptions.
+ */
+export interface Store<T> extends ReadonlyStore<T>, Ref<T> {}
 
 /**
  * A read-only view of a {@link Store} that provides state access and change
@@ -29,15 +37,14 @@ export interface ReadonlyStore<T> extends Disposable {
   readonly subscribe: (listener: Listener) => Unsubscribe;
 }
 
+/** Callback used by {@link ReadonlyStore.subscribe} to observe changes. */
+export type Listener = () => void;
+
 /**
- * A store for managing state with change notifications. Like a {@link Ref} with
- * subscriptions.
- *
- * Store is a valid dependency in Evolu's [Dependency
- * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
- * functions need shared mutable state with subscriptions.
+ * Function returned by {@link ReadonlyStore.subscribe} to stop observing
+ * changes.
  */
-export interface Store<T> extends ReadonlyStore<T>, Ref<T> {}
+export type Unsubscribe = () => void;
 
 /**
  * Creates a store with the given initial state. The store encapsulates its
@@ -48,17 +55,22 @@ export interface Store<T> extends ReadonlyStore<T>, Ref<T> {}
  * provide a custom equality function as the second argument.
  */
 export const createStore = <T>(initialState: T, eq?: Eq<T>): Store<T> => {
-  const listeners = createListeners();
   const equality = eq ?? eqStrict;
   const ref = createRef(initialState);
+  const listeners = new Set<Listener>();
 
   const notifyIfChanged = (previousState: T): void => {
-    if (!equality(previousState, ref.get())) listeners.notify();
+    if (!equality(previousState, ref.get())) {
+      for (const listener of listeners) listener();
+    }
   };
 
   return {
     get: ref.get,
-    subscribe: listeners.subscribe,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
 
     set: (state) => {
       const previousState = ref.get();
@@ -107,6 +119,8 @@ export const createStore = <T>(initialState: T, eq?: Eq<T>): Store<T> => {
       return result;
     },
 
-    [Symbol.dispose]: listeners[Symbol.dispose],
+    [Symbol.dispose]: () => {
+      listeners.clear();
+    },
   };
 };
