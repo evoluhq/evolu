@@ -234,7 +234,9 @@ const result = await run(fetchUser("123"));
 
 ## Test-driven development
 
-- Write a test before implementing a new feature or fixing a bug
+- Tests are required for new features and bug fixes
+- Prefer writing or updating tests before implementation when behavior or API shape is still being clarified
+- When the implementation is straightforward from established patterns, implementation may come first
 - Run tests using the `runTests` tool with the test file path
 - Test files are in `packages/*/test/*.test.ts`
 - Use `testNames` parameter to run specific tests — uses **substring matching**, so unique names avoid running unrelated tests
