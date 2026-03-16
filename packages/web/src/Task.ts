@@ -14,9 +14,16 @@ import {
   type RunDeps,
 } from "@evolu/common";
 
-/** Creates a {@link LeaderLock} backed by the Web Locks API. */
+/**
+ * Creates a {@link LeaderLock} backed by the Web Locks API.
+ *
+ * Waiting for the browser lock is intentionally unabortable. If a caller starts
+ * waiting and its {@link Run} or fiber is later aborted, the underlying Web
+ * Locks request keeps waiting until the browser grants the lock. Only the
+ * returned lease releases it.
+ */
 export const createLeaderLock = (): LeaderLock => ({
-  acquire: (name) => async () => {
+  lock: (name) => async () => {
     const acquired = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
 
@@ -32,8 +39,9 @@ export const createLeaderLock = (): LeaderLock => ({
     await acquired.promise;
 
     return ok({
-      [Symbol.dispose]: () => {
+      [Symbol.asyncDispose]: async () => {
         release.resolve();
+        return Promise.resolve();
       },
     });
   },
@@ -55,9 +63,9 @@ export const createLeaderLock = (): LeaderLock => ({
  * });
  *
  * await using run = createRun({ console });
- * await using stack = run.stack();
+ * await using stack = new AsyncDisposableStack();
  *
- * await stack.use(startApp());
+ * stack.use(await run.orThrow(startApp()));
  * ```
  */
 export const createRun: CreateRun<RunDeps> = <D>(

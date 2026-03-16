@@ -28,9 +28,9 @@ import {
  * });
  *
  * await using run = createRun({ console });
- * await using stack = run.stack();
+ * await using stack = new AsyncDisposableStack();
  *
- * await stack.use(startApp());
+ * stack.use(await run.orThrow(startApp()));
  * ```
  *
  * @group React Native Run

@@ -39,18 +39,12 @@ export interface ShutdownDep {
  * ### Example
  *
  * ```ts
- * const console = createConsole({
- *   format: createConsoleFormatter()({
- *     timestampFormat: "relative",
- *   }),
- * });
- *
  * const deps = { ...createRelayDeps(), console };
  *
  * await using run = createRun(deps);
- * await using stack = run.stack();
+ * await using stack = new AsyncDisposableStack();
  *
- * await stack.use(startRelay({ port: 4000 }));
+ * stack.use(await run.orThrow(startRelay({ port: 4000 })));
  *
  * await run.deps.shutdown;
  * ```
