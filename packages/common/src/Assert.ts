@@ -4,6 +4,8 @@
  * @module
  */
 
+import type { Ok, Result } from "./Result.js";
+import type { AbortError } from "./Task.js";
 import type { AnyType, InferType, Type } from "./Type.js";
 
 /**
@@ -101,4 +103,51 @@ export const assertType: <T extends AnyType>(
   message?: string,
 ) => asserts value is InferType<T> = (type, value, message) => {
   assert(type.is(value), message ?? `Expected ${type.name}.`);
+};
+
+/**
+ * Asserts that a {@link Result} did not fail with `AbortError`.
+ *
+ * Use when abort would indicate a programmer error rather than ordinary control
+ * flow. A typical case is code that uses `unabortable` for work that must
+ * survive ordinary cancellation, but still wants to fail fast if that work was
+ * started on an already-stopped Run.
+ */
+export function assertNotAborted<T>(
+  result: Result<T, AbortError>,
+  message?: string,
+): asserts result is Ok<T>;
+export function assertNotAborted<T, E>(
+  result: Result<T, E | AbortError>,
+  message?: string,
+): asserts result is Result<T, E>;
+export function assertNotAborted<T, E>(
+  result: Result<T, E | AbortError>,
+  message = "Expected result to not be aborted.",
+): asserts result is Result<T, E> {
+  const isAbortError =
+    !result.ok &&
+    (result.error as { readonly type?: unknown }).type === "AbortError";
+
+  assert(!isAbortError, message);
+}
+
+/**
+ * Guards synchronous methods on objects that may be called after disposal.
+ *
+ * Use when an API must fail fast before touching already-disposed state.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const stack = new globalThis.AsyncDisposableStack();
+ * assertNotDisposed(stack); // no-op
+ * await stack.disposeAsync();
+ * assertNotDisposed(stack); // throws Error
+ * ```
+ */
+export const assertNotDisposed = (
+  value: globalThis.DisposableStack | globalThis.AsyncDisposableStack,
+): void => {
+  assert(!value.disposed, "Expected value to not be disposed.");
 };
