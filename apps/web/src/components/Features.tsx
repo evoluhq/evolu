@@ -167,7 +167,7 @@ const features: Array<Feature> = [
   },
   {
     name: "Lightweight",
-    description: "Runtime types, structured concurrency, logging: 5.2 kB.",
+    description: "Runtime types, structured concurrency, logging: 5.0 kB.",
     icon: IconFeather,
   },
   {
