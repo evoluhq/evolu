@@ -85,7 +85,7 @@ const newItems = [...items, 4];
 items === newItems; // false
 ```
 
-Mutation causes unintended side effects, makes code harder to predict, and complicates debugging. Use immutable values with readonly types.
+Mutation causes unintended side effects, makes code harder to predict, and complicates debugging. Prefer immutable update patterns unless mutation is necessary for performance reasons. Use readonly types to describe immutable APIs, but do not mistake them for runtime immutability.
 
 ### Readonly types
 
@@ -108,40 +108,26 @@ interface Example {
 }
 ```
 
-### The `readonly` helper
-
-Use the [readonly](/docs/api-reference/common/Function/functions/readonly) helper to cast arrays, sets, records, and maps to their readonly counterparts with zero runtime cost.
+Readonly in TypeScript is only a static constraint. It prevents mutation through
+that particular type, but it does not freeze the value or prove the value is
+actually immutable.
 
 ```ts
-import { readonly, NonEmptyArray } from "@evolu/common";
+const mutable = [1, 2, 3];
+const items: ReadonlyArray<number> = mutable;
 
-// Array literals become NonEmptyReadonlyArray
-const items = readonly([1, 2, 3]);
-// Type: NonEmptyReadonlyArray<number>
-
-// NonEmptyArray is preserved as NonEmptyReadonlyArray
-const nonEmpty: NonEmptyArray<number> = [1, 2, 3];
-const readonlyNonEmpty = readonly(nonEmpty);
-// Type: NonEmptyReadonlyArray<number>
-
-// Regular arrays become ReadonlyArray
-const arr: Array<number> = getNumbers();
-const readonlyArr = readonly(arr);
-// Type: ReadonlyArray<number>
-
-// Sets, Records, and Maps
-const ids = readonly(new Set(["a", "b"]));
-// Type: ReadonlySet<string>
-
-const users: Record<UserId, string> = {};
-const readonlyUsers = readonly(users);
-// Type: ReadonlyRecord<UserId, string>
-
-const lookup = readonly(new Map([["key", "value"]]));
-// Type: ReadonlyMap<string, string>
+mutable.push(4);
+items; // [1, 2, 3, 4]
 ```
 
-Evolu also provides helpers in the [Array](/docs/api-reference/common/Array) and [Object](/docs/api-reference/common/Object) modules that do not mutate and preserve readonly types.
+Treat readonly types as a contract for APIs that already maintain immutability.
+Do not cast mutable values to readonly just to satisfy the type checker. If a
+value is exposed as readonly, ensure it is produced immutably and that no
+mutable alias can still change it behind the scenes.
+
+Evolu also provides helpers in the [Array](/docs/api-reference/common/Array)
+and [Object](/docs/api-reference/common/Object) modules that do not mutate and
+preserve readonly types.
 
 ## Interface over type
 

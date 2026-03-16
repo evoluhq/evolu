@@ -5,7 +5,6 @@
  */
 
 import * as Kysely from "kysely";
-import { readonly } from "../Function.js";
 import { getProperty, mapObject, type ReadonlyRecord } from "../Object.js";
 import {
   eqSqliteIndex,
@@ -362,14 +361,14 @@ export type OptionalColumnKeys<T extends TableSchema> = {
   [K in keyof T]: null extends StandardSchemaV1.InferOutput<T[K]> ? K : never;
 }[keyof T];
 
-export const systemColumns = /*#__PURE__*/ readonly(
-  /*#__PURE__*/ new Set(/*#__PURE__*/ Object.keys(SystemColumns.props)),
+export const systemColumns: ReadonlySet<string> = /*#__PURE__*/ new Set(
+  /*#__PURE__*/ Object.keys(SystemColumns.props),
 );
 
-export const systemColumnsWithId = /*#__PURE__*/ readonly([
+export const systemColumnsWithId: ReadonlyArray<string> = [
   ...systemColumns,
   "id",
-]);
+];
 
 export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
   schema: ValidateSchema<S> extends never ? S : ValidateSchema<S>,

@@ -4,9 +4,6 @@
  * @module
  */
 
-import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.js";
-import type { ReadonlyRecord } from "./Object.js";
-
 /**
  * Helper function to ensure exhaustive matching in a switch statement. Throws
  * an error if an unhandled case is encountered.
@@ -110,67 +107,6 @@ export const exhaustiveCheck = (value: never): never => {
  * ```
  */
 export const identity = <A>(a: A): A => a;
-
-/**
- * Casts an array, set, record, or map to its readonly counterpart.
- *
- * Zero runtime cost — returns the same value with a readonly type. Use this to
- * enforce immutability at the type level. Preserves {@link NonEmptyArray} as
- * {@link NonEmptyReadonlyArray}.
- *
- * ### Example
- *
- * ```ts
- * // Array literals become NonEmptyReadonlyArray
- * const items = readonly([1, 2, 3]);
- * // Type: NonEmptyReadonlyArray<number>
- *
- * // NonEmptyArray is preserved as NonEmptyReadonlyArray
- * const nonEmpty: NonEmptyArray<number> = [1, 2, 3];
- * const readonlyNonEmpty = readonly(nonEmpty);
- * // Type: NonEmptyReadonlyArray<number>
- *
- * // Regular arrays become ReadonlyArray
- * const arr: Array<number> = getNumbers();
- * const readonlyArr = readonly(arr);
- * // Type: ReadonlyArray<number>
- *
- * // Sets, Records, and Maps
- * const ids = readonly(new Set(["a", "b"]));
- * // Type: ReadonlySet<string>
- *
- * const users: Record<UserId, string> = { ... };
- * const readonlyUsers = readonly(users);
- * // Type: ReadonlyRecord<UserId, string>
- *
- * const lookup = readonly(new Map([["key", "value"]]));
- * // Type: ReadonlyMap<string, string>
- *
- * // ES2025 iterator chains: use .toArray() then readonly
- * const doubled = readonly([1, 2, 3].values().map((x) => x * 2).toArray());
- * // Type: ReadonlyArray<number>
- * ```
- */
-export function readonly<T>(array: NonEmptyArray<T>): NonEmptyReadonlyArray<T>;
-/** Array overload. */
-export function readonly<T>(array: Array<T>): ReadonlyArray<T>;
-/** Set overload. */
-export function readonly<T>(set: Set<T>): ReadonlySet<T>;
-/** Map overload. */
-export function readonly<K, V>(map: Map<K, V>): ReadonlyMap<K, V>;
-/** Record overload. */
-export function readonly<K extends keyof any, V>(
-  record: Record<K, V>,
-): ReadonlyRecord<K, V>;
-export function readonly<T, K extends keyof any, V>(
-  value: Array<T> | Set<T> | Map<K, V> | Record<K, V>,
-):
-  | ReadonlyArray<T>
-  | ReadonlySet<T>
-  | ReadonlyMap<K, V>
-  | ReadonlyRecord<K, V> {
-  return value;
-}
 
 /**
  * A function that takes no arguments and returns a value of type T. Also known
