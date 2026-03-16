@@ -6,19 +6,18 @@
 
 import { isPlainObject } from "./Object.js";
 import { assert } from "./Assert.js";
-import { uint8ArrayToBase64Url, type JsonValueInput } from "./Type.js";
+import { uint8ArrayToBase64Url, type JsonValue } from "./Type.js";
 
 /**
  * Immutable structural key.
  *
- * Structural keys support {@link JsonValueInput} plus `Uint8Array`.
+ * Structural keys support {@link JsonValue} plus `Uint8Array`.
  *
  * This is for keys that are JSON-like or can reasonably travel through
  * `postMessage`, not for arbitrary JavaScript objects.
  *
  * Keys are compared by structural value rather than object identity, so arrays,
- * plain objects, and `Uint8Array` values must not be mutated after use as
- * keys.
+ * plain objects, and `Uint8Array` values must not be mutated.
  *
  * @see {@link StructuralMap}
  */
@@ -39,6 +38,8 @@ export type StructuralArrayInput = ReadonlyArray<StructuralKey>;
 
 /**
  * `Map`-like collection keyed by {@link StructuralKey}.
+ *
+ * Use this when keys should compare by structural value instead of identity.
  *
  * Structurally equal arrays and plain objects address the same entry even when
  * they are different JavaScript instances.
