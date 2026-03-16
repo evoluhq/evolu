@@ -287,6 +287,9 @@ export interface Type<
   /**
    * Creates `T` from an `Input` value, throwing an error if validation fails.
    *
+   * Use this where failure should crash the current flow instead of being
+   * handled locally.
+   *
    * Throws an Error with the Type validation error in its `cause` property,
    * making it debuggable while avoiding the need for custom error messages.
    *
@@ -294,14 +297,18 @@ export interface Type<
    *
    * **When to use:**
    *
-   * - Configuration values that are guaranteed to be valid (e.g., hardcoded
-   *   constants)
-   * - Application startup where failure should crash the program
+   * - Application startup or composition-root setup where errors must stop the
+   *   program immediately
+   * - Module-level constants
+   * - Test setup with values that are expected to be valid
    * - As an alternative to assertions when the Type error in the thrown Error's
    *   `cause` provides sufficient debugging information
-   * - Test code with known valid inputs (when error message clarity is not
-   *   critical; for better test error messages, use Vitest `schemaMatching` +
-   *   `assert` with `.is()`)
+   *
+   * Prefer `from` in ordinary application logic where the caller can recover,
+   * show validation errors, or choose a different flow.
+   *
+   * For clearer test failure messages on invalid input, use Vitest
+   * `schemaMatching` + `assert` with `.is()`.
    *
    * ### Example
    *
@@ -4091,6 +4098,16 @@ export const formatInt64StringError =
     (error) => `The value ${error.value} is not a valid Int64 string.`,
   );
 
+/**
+ * Validated JSON-compatible value.
+ *
+ * This is the output side of JSON data in Evolu. It uses {@link FiniteNumber}
+ * instead of `number` because JSON numbers are expected to be finite once the
+ * value has been parsed or validated.
+ *
+ * Compare with {@link JsonValueInput}, which represents caller-provided input
+ * before validation.
+ */
 export type JsonValue =
   | string
   | FiniteNumber
@@ -4099,6 +4116,19 @@ export type JsonValue =
   | JsonArray
   | JsonObject;
 
+/**
+ * JSON-compatible input value before validation.
+ *
+ * This is broader than {@link JsonValue} because inputs arrive as ordinary
+ * JavaScript values, so numbers are typed as `number` before validation can
+ * narrow them to {@link FiniteNumber}.
+ *
+ * That means `JsonValueInput` can temporarily contain numbers that are lossy in
+ * JSON serialization. For example, `JSON.stringify(NaN)` and
+ * `JSON.stringify(Infinity)` produce `null`, and `JSON.stringify(-0)` produces
+ * `0`. Use {@link JsonValue} when the value must already satisfy JSON numeric
+ * constraints.
+ */
 export type JsonValueInput =
   | string
   | number
