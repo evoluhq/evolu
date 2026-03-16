@@ -152,8 +152,8 @@ import type { Typed } from "./Type.js";
  * combinators for every sequential pattern because that would duplicate plain
  * control flow and create API ambiguity. Use helpers when they add semantics
  * over ordinary control flow, such as operating on collections of results.
- * While this can look verbose, it is explicit, transparent, debuggable, and
- * avoids pipes and nested helper chains.
+ * While it may seem verbose, it is explicit, transparent, and avoids pipes and
+ * nested helpers, which are harder to debug.
  *
  * ## Composition
  *
@@ -322,15 +322,20 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
   !result.ok;
 
 /**
- * Extracts the value from a {@link Result} if it is an `Ok`, or throws an error
- * if it is an `Err`.
+ * Returns the value from an `Ok` {@link Result}, or throws if it is an `Err`.
  *
- * **Intended usage:**
+ * Use this where failure should crash the current flow instead of being handled
+ * locally.
  *
- * - For critical code paths (e.g., app startup, config values) where failure
- *   should crash the app.
- * - Not recommended for general error handling in application logic—prefer
- *   explicit checks.
+ * **When to use:**
+ *
+ * - Application startup or composition-root setup where errors must stop the
+ *   program immediately
+ * - Module-level constants
+ * - Test setup with values that are expected to be valid
+ *
+ * Prefer an explicit `if (!result.ok)` check in ordinary application logic
+ * where the caller can recover, retry, or choose a different flow.
  *
  * ### Example
  *
