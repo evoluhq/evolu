@@ -22,20 +22,20 @@ import type { TypeName } from "./Type.js";
 export type Callback<T> = (value: T) => void;
 
 /**
- * A function that receives a value and optionally returns a cleanup function.
+ * A function that receives a value and optionally returns a teardown function.
  *
- * Use for subscriptions or resources that may need cleanup when done.
+ * Use for subscriptions or callbacks that need abort-time teardown.
  *
  * ### Example
  *
  * ```ts
- * const subscribe: CallbackWithCleanup<EventSource> = (source) => {
+ * const subscribe: CallbackWithTeardown<EventSource> = (source) => {
  *   source.start();
  *   return () => source.stop();
  * };
  * ```
  */
-export type CallbackWithCleanup<T> = (value: T) => void | (() => void);
+export type CallbackWithTeardown<T> = (value: T) => void | (() => void);
 
 /**
  * Checks a condition on a value and returns a boolean.
