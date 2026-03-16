@@ -12,7 +12,7 @@ import {
   type RandomLibDep,
 } from "./Random.js";
 import { createRun, type Run, type RunDeps } from "./Task.js";
-import { minMillis, setTimeout, testCreateTime } from "./Time.js";
+import { minMillis, setTimeout, testCreateTime, type Duration } from "./Time.js";
 
 export type TestDeps = RunDeps & TestConsoleDep & RandomLibDep;
 
@@ -93,5 +93,7 @@ export const testEntropy32 = /*#__PURE__*/ Entropy32.orThrow(
   ]),
 );
 
-/** Returns a Promise that resolves on the next macrotask. */
-export const testWaitForMacrotask = (): Promise<void> => setTimeout(minMillis);
+/** Returns a Promise that resolves after a macrotask delay. */
+export const testWaitForMacrotask = (
+  duration: Duration = minMillis,
+): Promise<void> => setTimeout(duration);

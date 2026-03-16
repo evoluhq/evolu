@@ -1,5 +1,4 @@
 import {
-  callback,
   createRandom,
   createRelation,
   createSqlite,
@@ -53,12 +52,37 @@ export const createRelayDeps = (): RelayDeps => ({
  * ### Example
  *
  * ```ts
+ * // Ensure the database is created in a predictable location for Docker.
+ * mkdirSync("data", { recursive: true });
+ * process.chdir("data");
+ *
+ * const console = createConsole({
+ *   // level: "debug",
+ *   formatter: createConsoleFormatter()({
+ *     timestampFormat: "relative",
+ *   }),
+ * });
+ *
  * const deps = { ...createRelayDeps(), console };
  *
  * await using run = createRun(deps);
- * await using stack = run.stack();
+ * await using stack = new AsyncDisposableStack();
  *
- * await stack.use(startRelay({ port: 4000 }));
+ * stack.use(
+ *   await run.orThrow(
+ *     startRelay({
+ *       port: 4000,
+ *
+ *       // Note: Relay requires URL in format ws://host:port/<ownerId>
+ *       // isOwnerAllowed: (_ownerId) => true,
+ *
+ *       isOwnerWithinQuota: (_ownerId, requiredBytes) => {
+ *         const maxBytes = 1024 * 1024; // 1MB
+ *         return requiredBytes <= maxBytes;
+ *       },
+ *     }),
+ *   ),
+ * );
  *
  * await run.deps.shutdown;
  * ```
@@ -71,15 +95,16 @@ export const startRelay =
     isOwnerWithinQuota,
   }: NodeJsRelayConfig): Task<Relay, never, RelayDeps> =>
   async (run) => {
-    await using stack = run.stack();
+    await using stack = new AsyncDisposableStack();
     const console = run.deps.console.child("relay");
 
     const dbFileExists = existsSync(`${name}.db`);
 
-    const sqliteResult = await stack.use(createSqlite(name));
+    const sqliteResult = await run(createSqlite(name));
     if (!sqliteResult.ok) return sqliteResult;
+    const sqlite = stack.use(sqliteResult.value);
 
-    const deps = { ...run.deps, sqlite: sqliteResult.value };
+    const deps = { ...run.deps, sqlite };
 
     if (!dbFileExists) {
       createBaseSqliteStorageTables(deps);
@@ -200,40 +225,31 @@ export const startRelay =
     // Cleanup runs in LIFO order: clients → WebSocketServer → HTTP server
     stack.defer(() => {
       console.info("Shutdown complete");
-      return ok();
     });
 
-    stack.defer(
-      callback(({ ok }) => {
-        server.close(() => {
-          console.info("HTTP server closed");
-          ok();
-        });
-      }),
-    );
+    stack.defer(() => {
+      server.close(() => {
+        console.info("HTTP server closed");
+      });
+    });
 
-    stack.defer(
-      callback(({ ok }) => {
-        // wss.close() emits 'close' when all clients have disconnected
-        // https://github.com/websockets/ws/blob/master/doc/ws.md#serverclosecallback
-        wss.close(() => {
-          console.info("WebSocketServer closed");
-          ok();
-        });
-      }),
-    );
-
-    stack.defer(
-      callback(({ ok }) => {
-        console.info("Shutting down...");
-        for (const client of wss.clients) {
-          if (client.readyState === WebSocket.OPEN) {
-            client.close(1000, "Evolu Relay shutting down");
-          }
-        }
+    stack.defer(() => {
+      // wss.close() emits 'close' when all clients have disconnected
+      // https://github.com/websockets/ws/blob/master/doc/ws.md#serverclosecallback
+      wss.close(() => {
+        console.info("WebSocketServer closed");
         ok();
-      }),
-    );
+      });
+    });
+
+    stack.defer(() => {
+      console.info("Shutting down...");
+      for (const client of wss.clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.close(1000, "Evolu Relay shutting down");
+        }
+      }
+    });
 
     server.listen(port);
     console.info(`Started on port ${port}`);

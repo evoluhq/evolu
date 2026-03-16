@@ -45,14 +45,14 @@ test("Buffer", () => {
   expect(buffer2.unwrap()).toMatchInlineSnapshot(`uint8:[3]`);
 
   expect(() => buffer2.shiftN(2 as NonNegativeInt)).toThrow(BufferError);
-  expect(() => buffer2.shiftN(2 as NonNegativeInt)).toThrowError(
+  expect(() => buffer2.shiftN(2 as NonNegativeInt)).toThrow(
     "Buffer parse ended prematurely",
   );
 
   buffer2.shift();
 
   expect(() => buffer2.shift()).toThrow(BufferError);
-  expect(() => buffer2.shift()).toThrowError("Buffer parse ended prematurely");
+  expect(() => buffer2.shift()).toThrow("Buffer parse ended prematurely");
 
   expect(buffer2.shiftN(0 as NonNegativeInt)).toStrictEqual(new Uint8Array(0));
 });
@@ -88,7 +88,7 @@ test("Buffer truncate", () => {
   }).toThrow(BufferError);
   expect(() => {
     buffer.truncate(1 as NonNegativeInt);
-  }).toThrowError("Cannot truncate to a length greater than current");
+  }).toThrow("Cannot truncate to a length greater than current");
 
   buffer.extend([6, 7, 8]);
   expect(buffer.getLength()).toBe(3);

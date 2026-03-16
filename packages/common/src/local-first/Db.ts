@@ -36,11 +36,7 @@ import {
   sqliteBooleanToBoolean,
   SqliteValue,
 } from "../Sqlite.js";
-import {
-  type AsyncDisposableStack,
-  type LeaderLockDep,
-  type Task,
-} from "../Task.js";
+import { type LeaderLockDep, type Task } from "../Task.js";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.js";
 import type { Name } from "../Type.js";
 import {
@@ -138,7 +134,7 @@ export const initDbWorker =
   ): Task<AsyncDisposableStack, never, DbWorkerDeps> =>
   (run) => {
     const { leaderLock, createMessagePort, consoleStoreOutputEntry } = run.deps;
-    const stack = run.stack();
+    const stack = new AsyncDisposableStack();
 
     let initialized = false;
 
@@ -170,7 +166,8 @@ export const initDbWorker =
       console.info("initDbWorker");
 
       void run.daemon(async (run) => {
-        await stack.use(leaderLock.acquire(name));
+        const lockResult = await run(leaderLock.lock(name));
+        if (lockResult.ok) stack.use(lockResult.value);
         console.info("leaderLock acquired");
         port.postMessage({ type: "LeaderAcquired", name });
         return run.addDeps({
@@ -194,16 +191,16 @@ const startDbWorker =
     DbWorkerDeps & PortDep & TimestampConfigDep
   > =>
   async (run) => {
-    await using stack = run.stack();
+    await using stack = new AsyncDisposableStack();
 
     const console = run.deps.console.child(name).child("DbWorker");
     console.info("startDbWorker");
 
-    const sqliteResult = await stack.use(
+    const sqliteResult = await run(
       createSqlite(name, { mode: "encrypted", encryptionKey }),
     );
     if (!sqliteResult.ok) return sqliteResult;
-    const sqlite = sqliteResult.value;
+    const sqlite = stack.use(sqliteResult.value);
     console.debug("SQLite created");
 
     const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...run.deps });

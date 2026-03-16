@@ -5,8 +5,11 @@ import {
   testCreateRun,
   type CreateSqliteDriverDep,
 } from "@evolu/common";
+import { installPolyfills } from "@evolu/common/polyfills";
 import { assert, describe, expect, test } from "vitest";
 import { createWasmSqliteDriver } from "../src/Sqlite.js";
+
+installPolyfills();
 
 const testName = Name.orThrow("Test");
 
@@ -67,7 +70,7 @@ describe("createWasmSqliteDriver", () => {
       const rows = sqlite.exec(sql`select * from t;`);
       expect(rows.rows).toEqual([{ data: "hello" }]);
 
-      sqlite[Symbol.dispose]();
+      await sqlite[Symbol.asyncDispose]();
     });
 
     test("exec returns changes for writer queries", async () => {
@@ -86,7 +89,7 @@ describe("createWasmSqliteDriver", () => {
       expect(deleteResult.rows).toEqual([]);
       expect(deleteResult.changes).toBe(2);
 
-      sqlite[Symbol.dispose]();
+      await sqlite[Symbol.asyncDispose]();
     });
 
     test("prepared statements are cached and reused", async () => {
@@ -105,7 +108,7 @@ describe("createWasmSqliteDriver", () => {
       const rows = sqlite.exec(sql.prepared`select name from t order by id;`);
       expect(rows.rows).toEqual([{ name: "A" }, { name: "B" }]);
 
-      sqlite[Symbol.dispose]();
+      await sqlite[Symbol.asyncDispose]();
     });
 
     test("export returns database bytes", async () => {
@@ -123,7 +126,7 @@ describe("createWasmSqliteDriver", () => {
       expect(exported).toBeInstanceOf(Uint8Array);
       expect(exported.length).toBeGreaterThan(0);
 
-      sqlite[Symbol.dispose]();
+      await sqlite[Symbol.asyncDispose]();
     });
 
     test("dispose is idempotent", async () => {
@@ -134,8 +137,8 @@ describe("createWasmSqliteDriver", () => {
       assert(result.ok);
       const sqlite = result.value;
 
-      sqlite[Symbol.dispose]();
-      sqlite[Symbol.dispose]();
+      await sqlite[Symbol.asyncDispose]();
+      await sqlite[Symbol.asyncDispose]();
     });
   });
 

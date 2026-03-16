@@ -58,11 +58,11 @@ import { String, type Typed } from "./Type.js";
  * );
  * if (ws.ok) {
  *   ws.value.send("Hello");
- *   // Later: ws.value[Symbol.dispose]();
+ *   // Later: await ws.value[Symbol.asyncDispose]();
  * }
  * ```
  */
-export interface WebSocket extends Disposable {
+export interface WebSocket extends AsyncDisposable {
   /**
    * Send data through the WebSocket connection. Returns {@link Result} with an
    * error if the data couldn't be sent.
@@ -197,7 +197,7 @@ export const createWebSocket: CreateWebSocket =
     } = {},
   ) =>
   async (run) => {
-    await using stack = run.stack();
+    await using stack = new AsyncDisposableStack();
 
     let socket: globalThis.WebSocket | null = null;
     let disposed = false;
@@ -295,9 +295,9 @@ export const createWebSocket: CreateWebSocket =
       isOpen: () =>
         !disposed && socket?.readyState === globalThis.WebSocket.OPEN,
 
-      [Symbol.dispose]() {
+      [Symbol.asyncDispose]: async () => {
         disposed = true;
-        void moved.disposeAsync();
+        await moved.disposeAsync();
       },
     });
   };
@@ -335,9 +335,10 @@ export const testCreateWebSocket =
 
       isOpen: () => !isDisposed && isOpen,
 
-      [Symbol.dispose]: () => {
+      [Symbol.asyncDispose]: () => {
         isDisposed = true;
         isOpen = false;
+        return Promise.resolve();
       },
     });
   };

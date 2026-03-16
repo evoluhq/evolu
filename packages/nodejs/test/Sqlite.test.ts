@@ -7,7 +7,7 @@ import {
 } from "@evolu/common";
 import BetterSQLite from "better-sqlite3";
 import { existsSync, unlinkSync } from "fs";
-import { afterEach, assert, describe, expect, test } from "vitest";
+import { afterEach, assert, describe, expect, test, vi } from "vitest";
 import { createBetterSqliteDriver } from "../src/Sqlite.js";
 
 const testName = Name.orThrow("Test");
@@ -26,7 +26,7 @@ describe("createBetterSqliteDriver", () => {
     const rows = sqlite.exec(sql`select * from t;`);
     expect(rows.rows).toEqual([{ data: "hello" }]);
 
-    sqlite[Symbol.dispose]();
+    await sqlite[Symbol.asyncDispose]();
   });
 
   test("exec returns rows for reader queries", async () => {
@@ -45,7 +45,7 @@ describe("createBetterSqliteDriver", () => {
     expect(rows.rows).toEqual([{ name: "Alice" }, { name: "Bob" }]);
     expect(rows.changes).toBe(0);
 
-    sqlite[Symbol.dispose]();
+    await sqlite[Symbol.asyncDispose]();
   });
 
   test("exec returns changes for writer queries", async () => {
@@ -64,7 +64,7 @@ describe("createBetterSqliteDriver", () => {
     expect(deleteResult.rows).toEqual([]);
     expect(deleteResult.changes).toBe(2);
 
-    sqlite[Symbol.dispose]();
+    await sqlite[Symbol.asyncDispose]();
   });
 
   test("export returns serialized database bytes", async () => {
@@ -82,7 +82,27 @@ describe("createBetterSqliteDriver", () => {
     expect(exported).toBeInstanceOf(Uint8Array);
     expect(exported.length).toBeGreaterThan(0);
 
-    sqlite[Symbol.dispose]();
+    await sqlite[Symbol.asyncDispose]();
+  });
+
+  test("export copies bytes when serialize is not backed by ArrayBuffer", async () => {
+    const serialized = new Uint8Array(new SharedArrayBuffer(3));
+    serialized.set([1, 2, 3]);
+
+    using _serializeSpy = vi
+      .spyOn(BetterSQLite.prototype, "serialize")
+      .mockImplementation(() => serialized as Buffer);
+
+    await using run = testCreateRun<CreateSqliteDriverDep>({
+      createSqliteDriver: createBetterSqliteDriver,
+    });
+    const result = await run(createSqlite(testName, { mode: "memory" }));
+    assert(result.ok);
+
+    const exported = result.value.export();
+
+    expect(exported).toEqual(new Uint8Array([1, 2, 3]));
+    expect(exported.buffer).toBeInstanceOf(ArrayBuffer);
   });
 
   test("dispose is idempotent", async () => {
@@ -93,8 +113,8 @@ describe("createBetterSqliteDriver", () => {
     assert(result.ok);
     const sqlite = result.value;
 
-    sqlite[Symbol.dispose]();
-    sqlite[Symbol.dispose]();
+    await sqlite[Symbol.asyncDispose]();
+    await sqlite[Symbol.asyncDispose]();
   });
 
   test("prepared statements are cached and reused", async () => {
@@ -116,7 +136,7 @@ describe("createBetterSqliteDriver", () => {
     const rows = sqlite.exec(sql`select name from t order by id;`);
     expect(rows.rows).toEqual([{ name: "A" }, { name: "B" }]);
 
-    sqlite[Symbol.dispose]();
+    await sqlite[Symbol.asyncDispose]();
   });
 
   test("driver dispose is idempotent", async () => {

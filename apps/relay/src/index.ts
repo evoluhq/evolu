@@ -16,20 +16,22 @@ const console = createConsole({
 const deps = { ...createRelayDeps(), console };
 
 await using run = createRun(deps);
-await using stack = run.stack();
+await using stack = new AsyncDisposableStack();
 
-await stack.use(
-  startRelay({
-    port: 4000,
+stack.use(
+  await run.orThrow(
+    startRelay({
+      port: 4000,
 
-    // Note: Relay requires URL in format ws://host:port/<ownerId>
-    // isOwnerAllowed: (_ownerId) => true,
+      // Note: Relay requires URL in format ws://host:port/<ownerId>
+      // isOwnerAllowed: (_ownerId) => true,
 
-    isOwnerWithinQuota: (_ownerId, requiredBytes) => {
-      const maxBytes = 1024 * 1024; // 1MB
-      return requiredBytes <= maxBytes;
-    },
-  }),
+      isOwnerWithinQuota: (_ownerId, requiredBytes) => {
+        const maxBytes = 1024 * 1024; // 1MB
+        return requiredBytes <= maxBytes;
+      },
+    }),
+  ),
 );
 
 await run.deps.shutdown;

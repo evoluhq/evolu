@@ -4,6 +4,7 @@
  * @module
  */
 
+import { assertNotDisposed } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { EncryptionKey } from "./Crypto.js";
 import type { Eq } from "./Eq.js";
@@ -34,7 +35,7 @@ import {
  * {@link https://github.com/WiseLibs/better-sqlite3/issues/262 | better concurrency}
  * for SQLite.
  */
-export interface Sqlite extends Disposable {
+export interface Sqlite extends AsyncDisposable {
   readonly exec: <R extends SqliteRow = SqliteRow>(
     query: SqliteQuery,
   ) => SqliteExecResult<R>;
@@ -187,16 +188,18 @@ export const createSqlite =
   async (run) => {
     const { createSqliteDriver } = run.deps;
     const console = run.deps.console.child("sql");
+    await using stack = new AsyncDisposableStack();
 
     const driverResult = await run(createSqliteDriver(name, options));
     if (!driverResult.ok) return driverResult;
-    const driver = driverResult.value;
+    const driver = stack.use(driverResult.value);
     console.debug("SQLite driver created");
 
-    let isDisposed = false;
+    const moved = stack.move();
 
     const sqlite: Sqlite = {
       exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
+        assertNotDisposed(moved);
         console.debug({ query });
 
         const label =
@@ -225,6 +228,7 @@ export const createSqlite =
       },
 
       transaction: ((callback: () => Result<unknown, unknown> | void) => {
+        assertNotDisposed(moved);
         console.debug("begin");
         driver.exec(sql`begin;`);
 
@@ -247,20 +251,13 @@ export const createSqlite =
         return result;
       }) as SqliteTransaction,
 
-      export: () => driver.export(),
-
-      [Symbol.dispose]: () => {
-        if (isDisposed) return;
-        isDisposed = true;
-        driver[Symbol.dispose]();
+      export: () => {
+        assertNotDisposed(moved);
+        return driver.export();
       },
-    };
 
-    // Ensure Sqlite never outlives the root run even when callers forget to
-    // dispose it explicitly. Disposal is idempotent.
-    run.daemon.onAbort(() => {
-      sqlite[Symbol.dispose]();
-    });
+      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    };
 
     return ok(sqlite);
   };

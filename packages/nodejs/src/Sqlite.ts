@@ -11,14 +11,18 @@ import BetterSQLite, { type Statement } from "better-sqlite3";
 export const createBetterSqliteDriver: CreateSqliteDriver =
   (name, options) => () => {
     const filename = options?.mode === "memory" ? ":memory:" : `${name}.db`;
-    const db = new BetterSQLite(filename);
-    let isDisposed = false;
+    const stack = new globalThis.DisposableStack();
+    const db = stack.adopt(new BetterSQLite(filename), (db) => {
+      db.close();
+    });
 
-    const cache = createPreparedStatementsCache<Statement>(
-      (sql) => db.prepare(sql),
-      // Not needed.
-      // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#class-statement
-      lazyVoid,
+    const cache = stack.use(
+      createPreparedStatementsCache<Statement>(
+        (sql) => db.prepare(sql),
+        // Not needed.
+        // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#class-statement
+        lazyVoid,
+      ),
     );
 
     const driver: SqliteDriver = {
@@ -48,10 +52,7 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
       },
 
       [Symbol.dispose]: () => {
-        if (isDisposed) return;
-        isDisposed = true;
-        cache[Symbol.dispose]();
-        db.close();
+        stack.dispose();
       },
     };
 

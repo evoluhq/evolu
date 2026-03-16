@@ -17,7 +17,7 @@
 // import { lazyFalse, lazyVoid, todo } from "../Function.js";
 // import { createRecord, getProperty, objectToEntries } from "../Object.js";
 // import type { RandomDep } from "../Random.js";
-// import { createResources } from "../Resources.js";
+// import { createResources } from "../Resource.js";
 // import type { Result } from "../Result.js";
 // import { ok } from "../Result.js";
 // import type { SqliteDep } from "../Sqlite.js";

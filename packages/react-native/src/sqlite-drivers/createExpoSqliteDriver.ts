@@ -9,19 +9,26 @@ import { openDatabaseSync, SQLiteStatement } from "expo-sqlite";
 
 export const createExpoSqliteDriver: CreateSqliteDriver =
   (name, options) => () => {
-    const db = openDatabaseSync(
-      options?.mode === "memory" ? ":memory:" : `evolu1-${name}.db`,
+    const stack = new globalThis.DisposableStack();
+    const db = stack.adopt(
+      openDatabaseSync(
+        options?.mode === "memory" ? ":memory:" : `evolu1-${name}.db`,
+      ),
+      (db) => {
+        db.closeSync();
+      },
     );
     if (options?.mode === "encrypted") {
       db.execSync(`PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'"`);
     }
-    let isDisposed = false;
 
-    const cache = createPreparedStatementsCache<SQLiteStatement>(
-      (sql) => db.prepareSync(sql),
-      (statement) => {
-        statement.finalizeSync();
-      },
+    const cache = stack.use(
+      createPreparedStatementsCache<SQLiteStatement>(
+        (sql) => db.prepareSync(sql),
+        (statement) => {
+          statement.finalizeSync();
+        },
+      ),
     );
 
     return ok({
@@ -61,10 +68,7 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
       },
 
       [Symbol.dispose]: () => {
-        if (isDisposed) return;
-        isDisposed = true;
-        cache[Symbol.dispose]();
-        db.closeSync();
+        stack.dispose();
       },
     });
   };

@@ -381,7 +381,7 @@ describe("logExplainQueryPlan", () => {
   });
 });
 
-test("dispose is idempotent", async () => {
+test("async dispose is idempotent", async () => {
   let driverDisposeCount = 0;
   await using run = testCreateRun({
     createSqliteDriver: () => () => {
@@ -399,23 +399,27 @@ test("dispose is idempotent", async () => {
   assert(sqliteResult.ok);
   const sqlite = sqliteResult.value;
 
-  // Should not throw on second dispose
-  sqlite[Symbol.dispose]();
-  sqlite[Symbol.dispose]();
+  await sqlite[Symbol.asyncDispose]();
+  await sqlite[Symbol.asyncDispose]();
   expect(driverDisposeCount).toBe(1);
 });
 
-test("run disposal disposes sqlite automatically", async () => {
-  let driverDisposeCount = 0;
+test("sync methods throw after sqlite is disposed", async () => {
+  let execCalls = 0;
+  let exportCalls = 0;
 
-  const run = testCreateRun({
+  await using run = testCreateRun({
     createSqliteDriver: () => () => {
       const driver: SqliteDriver = {
-        exec: () => ({ rows: [], changes: 0 }),
-        export: () => new Uint8Array(),
-        [Symbol.dispose]: () => {
-          driverDisposeCount++;
+        exec: () => {
+          execCalls++;
+          return { rows: [], changes: 0 };
         },
+        export: () => {
+          exportCalls++;
+          return new Uint8Array();
+        },
+        [Symbol.dispose]: lazyVoid,
       };
       return ok(driver);
     },
@@ -425,19 +429,25 @@ test("run disposal disposes sqlite automatically", async () => {
   assert(sqliteResult.ok);
   const sqlite = sqliteResult.value;
 
-  expect(driverDisposeCount).toBe(0);
+  await sqlite[Symbol.asyncDispose]();
 
-  await run[Symbol.asyncDispose]();
+  expect(() => sqlite.exec(sql`select 1;`)).toThrow(
+    "Expected value to not be disposed.",
+  );
+  expect(() =>
+    sqlite.transaction(() => {
+      throw new Error("should not run");
+    }),
+  ).toThrow("Expected value to not be disposed.");
+  expect(() => sqlite.export()).toThrow("Expected value to not be disposed.");
 
-  expect(driverDisposeCount).toBe(1);
-
-  sqlite[Symbol.dispose]();
-  expect(driverDisposeCount).toBe(1);
+  expect(execCalls).toBe(0);
+  expect(exportCalls).toBe(0);
 });
 
 test("createSqlite returns error when driver creation is aborted", async () => {
   const createSlowDriver: CreateSqliteDriver = () => async (run) => {
-    await run(sleep("10s"));
+    await run(sleep("10ms"));
     return ok({
       exec: () => ({ rows: [], changes: 0 }),
       export: () => new Uint8Array(),
@@ -453,7 +463,7 @@ test("createSqlite returns error when driver creation is aborted", async () => {
   fiber.abort("test");
   const result = await fiber;
 
-  expect(result.ok).toBe(false);
+  expect(result).toEqual(err({ type: "AbortError", reason: "test" }));
 });
 
 describe("createPreparedStatementsCache", () => {

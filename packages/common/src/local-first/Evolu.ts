@@ -11,14 +11,13 @@ import type { ConsoleDep } from "../Console.js";
 import { createConsole } from "../Console.js";
 import { createUnknownError } from "../Error.js";
 import { exhaustiveCheck, todo } from "../Function.js";
-import type { Listener, Unsubscribe } from "../Listeners.js";
 import { createMicrotaskBatch } from "../Microtask.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { createRefCount } from "../RefCount.js";
 import { err, ok } from "../Result.js";
 import { isNonEmptySet } from "../Set.js";
 import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
-import type { ReadonlyStore } from "../Store.js";
+import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.js";
 import { createStore } from "../Store.js";
 import { type createRun, type Task } from "../Task.js";
 import type { Id, TypeError } from "../Type.js";
@@ -566,6 +565,7 @@ export const createEvolu =
     console.info("createEvolu");
 
     const rowsByQueryMapStore = createStore<RowsByQueryMap>(new Map());
+    // TODO: Sync resource abstraction?
     const subscribedQueriesRefCount = createRefCount<Query>();
 
     interface LoadingPromise {
@@ -588,7 +588,7 @@ export const createEvolu =
 
     const loadingPromisesByQuery = new Map<Query, LoadingPromise>();
 
-    await using stack = run.stack();
+    await using stack = new AsyncDisposableStack();
 
     const onMutateCompleteCallbacks = stack.use(createCallbacks(run.deps));
 

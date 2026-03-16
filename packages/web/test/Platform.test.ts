@@ -7,12 +7,12 @@ describe("leaderLock", () => {
     await using run = createRun();
     const leaderLock = createLeaderLock();
 
-    const first = await run(leaderLock.acquire(testName));
+    const first = await run(leaderLock.lock(testName));
     expect(first.ok).toBe(true);
     if (!first.ok) return;
 
     let secondSettled = false;
-    const second = run(leaderLock.acquire(testName));
+    const second = run(leaderLock.lock(testName));
     void second.then(() => {
       secondSettled = true;
     });
@@ -20,13 +20,13 @@ describe("leaderLock", () => {
     await Promise.resolve();
     expect(secondSettled).toBe(false);
 
-    first.value[Symbol.dispose]();
+    await first.value[Symbol.asyncDispose]();
 
     const secondResult = await second;
     expect(secondResult.ok).toBe(true);
     if (!secondResult.ok) return;
 
-    secondResult.value[Symbol.dispose]();
+    await secondResult.value[Symbol.asyncDispose]();
   });
 
   test("different names acquire independently", async () => {
@@ -37,14 +37,14 @@ describe("leaderLock", () => {
     const bName = Name.orThrow("LeaderLockB");
 
     const [a, b] = await Promise.all([
-      run(leaderLock.acquire(aName)),
-      run(leaderLock.acquire(bName)),
+      run(leaderLock.lock(aName)),
+      run(leaderLock.lock(bName)),
     ]);
 
     expect(a.ok).toBe(true);
     expect(b.ok).toBe(true);
 
-    if (a.ok) a.value[Symbol.dispose]();
-    if (b.ok) b.value[Symbol.dispose]();
+    if (a.ok) await a.value[Symbol.asyncDispose]();
+    if (b.ok) await b.value[Symbol.asyncDispose]();
   });
 });

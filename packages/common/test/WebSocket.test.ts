@@ -46,7 +46,7 @@ test("connects, receives message, sends message, and disposes", async () => {
 
   const messages: Array<Uint8Array> = [];
 
-  const result = await run(
+  const ws = await run.orThrow(
     createWebSocket(getServerUrl(), {
       binaryType: "arraybuffer",
       onMessage: (data) => {
@@ -56,19 +56,19 @@ test("connects, receives message, sends message, and disposes", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
+  {
+    await using _ws = ws;
 
-  await vi.waitFor(() => expect(messages).toHaveLength(1));
-  expect(messages).toEqual([utf8ToBytes("welcome")]);
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(messages).toEqual([utf8ToBytes("welcome")]);
 
-  const sendResult = ws.send(utf8ToBytes("hello"));
-  expect(sendResult.ok).toBe(true);
+    const sendResult = ws.send(utf8ToBytes("hello"));
+    expect(sendResult.ok).toBe(true);
 
-  await vi.waitFor(() => expect(messages).toHaveLength(2));
-  expect(messages).toEqual([utf8ToBytes("welcome"), utf8ToBytes("hello")]);
+    await vi.waitFor(() => expect(messages).toHaveLength(2));
+    expect(messages).toEqual([utf8ToBytes("welcome"), utf8ToBytes("hello")]);
+  }
 
-  ws[Symbol.dispose]();
   expect(ws.getReadyState()).toBe("closed");
 });
 
@@ -77,7 +77,7 @@ test("calls onOpen callback", async () => {
 
   let openCalled = false;
 
-  const result = await run(
+  const ws = await run.orThrow(
     createWebSocket(getServerUrl(), {
       onOpen: () => {
         openCalled = true;
@@ -85,14 +85,14 @@ test("calls onOpen callback", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
+  {
+    await using _ws = ws;
 
-  await vi.waitFor(() => expect(openCalled).toBe(true));
-  expect(ws.isOpen()).toBe(true);
-  expect(ws.getReadyState()).toBe("open");
+    await vi.waitFor(() => expect(openCalled).toBe(true));
+    expect(ws.isOpen()).toBe(true);
+    expect(ws.getReadyState()).toBe("open");
+  }
 
-  ws[Symbol.dispose]();
   expect(ws.isOpen()).toBe(false);
 });
 
@@ -102,7 +102,7 @@ test("does not call onClose when disposed", async () => {
   let openCalled = false;
   let closeCalled = false;
 
-  const result = await run(
+  const ws = await run.orThrow(
     createWebSocket(getServerUrl(), {
       onOpen: () => {
         openCalled = true;
@@ -113,12 +113,11 @@ test("does not call onClose when disposed", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
+  {
+    await using _ws = ws;
 
-  await vi.waitFor(() => expect(openCalled).toBe(true));
-
-  ws[Symbol.dispose]();
+    await vi.waitFor(() => expect(openCalled).toBe(true));
+  }
 
   expect(closeCalled).toBe(false);
 });
@@ -126,13 +125,11 @@ test("does not call onClose when disposed", async () => {
 test("send returns error when socket is not ready", async () => {
   await using run = createRun();
 
-  const result = await run(createWebSocket(getServerUrl()));
+  const ws = await run.orThrow(createWebSocket(getServerUrl()));
 
-  assert(result.ok);
-  const ws = result.value;
-
-  // Dispose immediately to close socket
-  ws[Symbol.dispose]();
+  {
+    await using _ws = ws;
+  }
 
   // Now send should fail
   const sendResult = ws.send("test");
@@ -147,7 +144,7 @@ test("supports protocols as array", async () => {
 
   let openCalled = false;
 
-  const result = await run(
+  await using _ws = await run.orThrow(
     createWebSocket(getServerUrl(), {
       protocols: ["protocol1", "protocol2"],
       onOpen: () => {
@@ -156,11 +153,7 @@ test("supports protocols as array", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
-
   await vi.waitFor(() => expect(openCalled).toBe(true));
-  ws[Symbol.dispose]();
 });
 
 test("supports protocols as string", async () => {
@@ -168,7 +161,7 @@ test("supports protocols as string", async () => {
 
   let openCalled = false;
 
-  const result = await run(
+  await using _ws = await run.orThrow(
     createWebSocket(getServerUrl(), {
       protocols: "protocol1",
       onOpen: () => {
@@ -177,30 +170,21 @@ test("supports protocols as string", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
-
   await vi.waitFor(() => expect(openCalled).toBe(true));
-  ws[Symbol.dispose]();
 });
 
 test("getReadyState returns connecting when socket is null", async () => {
   await using run = createRun();
 
   // Create with invalid URL and no retries to test null socket state
-  const result = await run(
+  await using ws = await run.orThrow(
     createWebSocket("ws://localhost:1", {
       schedule: take(0)(spaced("1ms")),
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
-
   // After failed connection with no retries, socket is null
   await vi.waitFor(() => expect(ws.getReadyState()).toBe("connecting"));
-
-  ws[Symbol.dispose]();
 });
 
 test("calls onError on connection failure", async () => {
@@ -209,7 +193,7 @@ test("calls onError on connection failure", async () => {
   const errors: Array<WebSocketError> = [];
 
   // Use invalid port to trigger connection error
-  const result = await run(
+  await using _ws = await run.orThrow(
     createWebSocket("ws://localhost:1", {
       schedule: take(0)(spaced("1ms")), // No retry - fail immediately
       onError: (error) => {
@@ -218,13 +202,8 @@ test("calls onError on connection failure", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
-
   await vi.waitFor(() => expect(errors.length).toBeGreaterThan(0));
   expect(errors[0]?.type).toBe("WebSocketConnectError");
-
-  ws[Symbol.dispose]();
 });
 
 test("calls onClose when server closes connection", async () => {
@@ -232,7 +211,7 @@ test("calls onClose when server closes connection", async () => {
 
   let closeCalled = false;
 
-  const result = await run(
+  await using _ws = await run.orThrow(
     createWebSocket(getServerUrl("close"), {
       schedule: take(0)(spaced("1ms")), // No retry
       onClose: () => {
@@ -241,12 +220,7 @@ test("calls onClose when server closes connection", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
-
   await vi.waitFor(() => expect(closeCalled).toBe(true));
-
-  ws[Symbol.dispose]();
 });
 
 test("does not retry when shouldRetryOnClose returns false", async () => {
@@ -255,7 +229,7 @@ test("does not retry when shouldRetryOnClose returns false", async () => {
   const errors: Array<WebSocketError> = [];
   let closeCount = 0;
 
-  const result = await run(
+  await using _ws = await run.orThrow(
     createWebSocket(getServerUrl("close"), {
       schedule: take(2)(spaced("1ms")),
       shouldRetryOnClose: () => false,
@@ -268,16 +242,11 @@ test("does not retry when shouldRetryOnClose returns false", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
-
   await vi.waitFor(() => expect(closeCount).toBe(1));
   await new Promise((resolve) => setTimeout(resolve, 20));
 
   expect(closeCount).toBe(1);
   expect(errors).toHaveLength(0);
-
-  ws[Symbol.dispose]();
 });
 
 test("reconnects after server closes connection", async () => {
@@ -286,7 +255,7 @@ test("reconnects after server closes connection", async () => {
   const messages: Array<Uint8Array> = [];
   let closeCount = 0;
 
-  const result = await run(
+  await using ws = await run.orThrow(
     createWebSocket(getServerUrl("close-after-message"), {
       binaryType: "arraybuffer",
       schedule: spaced("1ms"), // Fast retry
@@ -300,9 +269,6 @@ test("reconnects after server closes connection", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
-
   // Trigger close by sending a message (server closes after first message)
   await vi.waitFor(() => expect(messages).toHaveLength(1));
   ws.send("trigger-close");
@@ -310,8 +276,6 @@ test("reconnects after server closes connection", async () => {
   // Wait for reconnection (should receive "hello" from both connections)
   await vi.waitFor(() => expect(messages.length).toBeGreaterThanOrEqual(2));
   expect(closeCount).toBeGreaterThan(0);
-
-  ws[Symbol.dispose]();
 });
 
 test("reports RetryError when schedule is exhausted", async () => {
@@ -321,7 +285,7 @@ test("reports RetryError when schedule is exhausted", async () => {
 
   // Use close endpoint so each connection attempt succeeds then closes,
   // triggering retry until schedule is exhausted
-  const result = await run(
+  await using _ws = await run.orThrow(
     createWebSocket(getServerUrl("close"), {
       schedule: take(2)(spaced("1ms")), // Allow 2 retries then exhaust
       onError: (error) => {
@@ -330,17 +294,12 @@ test("reports RetryError when schedule is exhausted", async () => {
     }),
   );
 
-  assert(result.ok);
-  const ws = result.value;
-
   await vi.waitFor(() => expect(errors.length).toBeGreaterThan(0));
   expect(errors.map((e) => e.type)).toMatchInlineSnapshot(`
     [
       "RetryError",
     ]
   `);
-
-  ws[Symbol.dispose]();
 });
 
 test("WebSocketConnectionError behavior on abrupt termination", async () => {
@@ -349,7 +308,7 @@ test("WebSocketConnectionError behavior on abrupt termination", async () => {
   const errors: Array<WebSocketError> = [];
   let closeCalled = false;
 
-  const result = await run(
+  await using _ws = await run.orThrow(
     createWebSocket(getServerUrl("terminate"), {
       schedule: take(0)(spaced("1ms")), // No retry
       onError: (error) => {
@@ -360,9 +319,6 @@ test("WebSocketConnectionError behavior on abrupt termination", async () => {
       },
     }),
   );
-
-  assert(result.ok);
-  const ws = result.value;
 
   await vi.waitFor(() => expect(closeCalled).toBe(true), { timeout: 2000 });
 
@@ -402,6 +358,4 @@ test("WebSocketConnectionError behavior on abrupt termination", async () => {
       ]
     `);
   }
-
-  ws[Symbol.dispose]();
 });

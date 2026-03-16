@@ -30,6 +30,7 @@ import {
 } from "../../src/Worker.js";
 
 describe("initSharedWorker", () => {
+  // TODO: Replace with a Run with deps.
   const setupWorker = async (
     consoleStoreOutputEntry: ReadonlyStore<ConsoleEntry | null> = createStore<ConsoleEntry | null>(
       null,
