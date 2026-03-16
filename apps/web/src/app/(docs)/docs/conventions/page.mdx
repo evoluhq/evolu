@@ -131,7 +131,8 @@ preserve readonly types.
 
 ## Interface over type
 
-Use `interface` over `type` because interfaces always appear by name in error messages and tooltips.
+Use `interface` over `type` because interfaces always appear by name in error
+messages and tooltips.
 
 Use `type` only when necessary:
 
@@ -275,9 +276,52 @@ interface CounterAvoid {
 }
 ```
 
-## Factory functions (no classes)
+## Functions over classes
 
-Use interfaces with factory functions instead of classes. Classes have subtle pitfalls: `this` binding is tricky and error-prone, and class inheritance encourages tight coupling. Evolu favors composition over inheritance (though interface inheritance is fine).
+Use interfaces with factory functions instead of classes. This keeps the public
+API separate from the implementation so the interface can describe the whole
+contract without mixing in state and method bodies.
+
+Evolu favors composition over class inheritance. When inheritance is useful, an
+interface can extend multiple interfaces, which is more flexible than a
+class hierarchy.
+
+Classes also bring `this` binding, constructor semantics, and visibility rules
+that do not add much value in this codebase.
+
+The same applies to domain objects. Evolu does not model domain entities as
+classes with methods. We model them as plain data described by interfaces.
+When a domain object is a tagged union member, extend
+[`Typed<T>`](/docs/api-reference/common/Type/interfaces/Typed). When it needs
+runtime validation or transport as JSON, define it with
+[`typed(...)`](/docs/api-reference/common/Type/functions/typed) or
+[`object(...)`](/docs/api-reference/common/Type/functions/object).
+
+For behavior, prefer plain functions that take the previous state and return
+the next state instead of mutating an instance.
+
+```ts
+interface Todo extends Typed<"Todo"> {
+  readonly id: TodoId;
+  readonly title: NonEmptyTrimmedString100;
+  readonly isCompleted: boolean;
+}
+
+const completeTodo = (todo: Todo): Todo => ({
+  ...todo,
+  isCompleted: true,
+});
+```
+
+```ts
+const Todo = typed("Todo", {
+  id: id("Todo"),
+  title: NonEmptyTrimmedString100,
+  isCompleted: Boolean,
+});
+
+interface Todo extends InferType<typeof Todo> {}
+```
 
 ```ts
 // Use interface + factory function
@@ -305,14 +349,37 @@ class Counter {
 }
 ```
 
-## Opaque types
+## Branded types
 
-Use opaque types when callers should not inspect or construct values directly—they can only pass them back to the API that created them.
+Use [`Brand`](/docs/api-reference/common/Brand/interfaces/Brand) to give
+otherwise identical values distinct meaning at the type level. Branding lets us
+separate domain concepts without changing the runtime representation. For
+example, `PositiveInt` is still a number at runtime, but it is not
+interchangeable with an arbitrary `number` in the type system.
 
 ```ts
 import { Brand } from "@evolu/common";
 
-// Opaque type - callers cannot see the internal structure
+type UserId = number & Brand<"UserId">;
+type TrimmedName = string & Brand<"TrimmedName">;
+```
+
+Prefer Evolu `Type` brands over raw primitives when the value has domain
+meaning. Do not create domain brands with plain `as` casts. Define a
+validated `Type` with [`brand(...)`](/docs/api-reference/common/Type/functions/brand)
+so the constraint is enforced and the branded value can only be obtained
+through validation.
+
+### Opaque types
+
+Opaque types are the standalone-brand case: a `Brand` with no base type. Use
+them when callers should not inspect or construct values directly and can only
+pass them back to the API that created them.
+
+```ts
+import { Brand } from "@evolu/common";
+
+// Opaque type: standalone brand with no exposed representation
 type TimeoutId = Brand<"TimeoutId">;
 
 interface Timer {
