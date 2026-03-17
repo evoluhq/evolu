@@ -4067,6 +4067,7 @@ describe("concurrency", () => {
         taken: 0,
         waiting: 0,
         available: 2,
+        isIdle: true,
         disposed: false,
       });
     });
@@ -4102,6 +4103,7 @@ describe("concurrency", () => {
         taken: 2,
         waiting: 0,
         available: 1,
+        isIdle: false,
         disposed: false,
       });
 
@@ -4113,6 +4115,7 @@ describe("concurrency", () => {
         taken: 0,
         waiting: 0,
         available: 3,
+        isIdle: true,
         disposed: false,
       });
     });
@@ -4169,6 +4172,7 @@ describe("concurrency", () => {
         taken: 2,
         waiting: 2,
         available: 1,
+        isIdle: false,
         disposed: false,
       });
 
@@ -4203,6 +4207,7 @@ describe("concurrency", () => {
         taken: 1,
         waiting: 0,
         available: 0,
+        isIdle: false,
         disposed: false,
       });
 
@@ -4214,6 +4219,7 @@ describe("concurrency", () => {
         taken: 1,
         waiting: 1,
         available: 0,
+        isIdle: false,
         disposed: false,
       });
 
@@ -4225,6 +4231,7 @@ describe("concurrency", () => {
         taken: 0,
         waiting: 0,
         available: 1,
+        isIdle: true,
         disposed: false,
       });
     });
@@ -4888,6 +4895,7 @@ describe("concurrency", () => {
         taken: 1,
         waiting: 0,
         available: 0,
+        isIdle: false,
         disposed: false,
       });
 
@@ -4934,6 +4942,7 @@ describe("concurrency", () => {
         taken: 1,
         waiting: 0,
         available: 0,
+        isIdle: false,
         disposed: false,
       });
 
@@ -5025,6 +5034,7 @@ describe("concurrency", () => {
         taken: 1,
         waiting: 1,
         available: 0,
+        isIdle: false,
         disposed: false,
       });
 
@@ -5039,6 +5049,7 @@ describe("concurrency", () => {
         taken: 1,
         waiting: 0,
         available: 0,
+        isIdle: false,
         disposed: false,
       });
 
@@ -5199,6 +5210,7 @@ describe("concurrency", () => {
         taken: 1,
         waiting: 0,
         available: 0,
+        isIdle: false,
         disposed: false,
       });
 
@@ -5210,6 +5222,7 @@ describe("concurrency", () => {
         taken: 1,
         waiting: 1,
         available: 0,
+        isIdle: false,
         disposed: false,
       });
 
@@ -5221,6 +5234,7 @@ describe("concurrency", () => {
         taken: 0,
         waiting: 0,
         available: 1,
+        isIdle: true,
         disposed: false,
       });
 
@@ -5231,6 +5245,7 @@ describe("concurrency", () => {
         taken: 0,
         waiting: 0,
         available: 1,
+        isIdle: true,
         disposed: true,
       });
     });
