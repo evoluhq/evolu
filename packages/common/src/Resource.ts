@@ -16,6 +16,7 @@ import {
   type Fiber,
   type MutexRef,
   type Task,
+  type SemaphoreSnapshot,
 } from "./Task.js";
 import { type Duration } from "./Time.js";
 import { NonNegativeInt } from "./Type.js";
@@ -26,8 +27,18 @@ import { NonNegativeInt } from "./Type.js";
  * A resource is any object that implements {@link Disposable} or
  * {@link AsyncDisposable}.
  *
+ * Disposal must succeed. A disposer that throws indicates an unrecoverable
+ * invariant violation, not a recoverable domain error, so resource lifecycle
+ * APIs let that error propagate. Disposal failures shall surface at the app
+ * boundary, where they are shown to the user and logged. The purpose of
+ * resource helpers is to guarantee cleanup and prevent leaks.
+ *
  * @see {@link ResourceRef}
  * @see {@link createResourceRef}
+ * @see {@link SharedResource}
+ * @see {@link createSharedResource}
+ * @see {@link SharedResourceByKey}
+ * @see {@link createSharedResourceByKey}
  */
 export type Resource = Disposable | AsyncDisposable;
 
@@ -55,8 +66,9 @@ export type BorrowedResource<T extends Resource> = Omit<
  * the `ResourceRef` can dispose it.
  *
  * Setting a new resource first disposes the current one and then sets the next.
- * The create Task must not fail. If it could fail, the current resource would
- * be disposed without the next resource installed.
+ * Calling abort on the returned Fiber does not roll that change back once it
+ * has started. The create Task must not fail. If it could fail, the current
+ * resource would be disposed without the next resource installed.
  */
 export interface ResourceRef<
   T extends Resource,
@@ -65,7 +77,12 @@ export interface ResourceRef<
   /** Returns the current resource. */
   readonly get: Task<BorrowedResource<T>, never, D>;
 
-  /** Disposes the current resource and then creates and sets the next. */
+  /**
+   * Disposes the current resource and then creates and sets the next.
+   *
+   * Once started, this operation runs to completion even if the caller aborts
+   * its Fiber. Always await the result instead of treating abort as rollback.
+   */
   readonly set: (create: Task<T, never, D>) => Task<void, never, D>;
 }
 
@@ -128,6 +145,9 @@ export interface SharedResource<
   T extends Resource,
   D = unknown,
 > extends AsyncDisposable {
+  /** Returns the current shared-resource state for monitoring/debugging. */
+  readonly snapshot: () => SharedResourceSnapshot;
+
   /**
    * Acquires a shared reference.
    *
@@ -136,6 +156,11 @@ export interface SharedResource<
    * final disposal path. Disposal happens immediately by default, or after
    * {@link SharedResourceOptions.idleDisposeAfter | idleDisposeAfter} elapses
    * when configured.
+   *
+   * Once started, acquire runs to completion even if the caller aborts its
+   * Fiber. Always await the result. A successful result still counts as an
+   * acquired lease and must later be balanced with
+   * {@link SharedResource.release | release}.
    */
   readonly acquire: Task<BorrowedResource<T>, never, D>;
 
@@ -147,11 +172,26 @@ export interface SharedResource<
    * {@link SharedResourceOptions.idleDisposeAfter | idleDisposeAfter} is set,
    * disposal is scheduled instead and a new acquire during that delay reuses
    * the current resource.
+   *
+   * Once started, release runs to completion even if the caller aborts its
+   * Fiber. Always await the result instead of assuming no cleanup happened.
    */
   readonly release: Task<void, never, D>;
 
   /** Returns the current acquire count. */
   readonly getCount: Task<NonNegativeInt, never, D>;
+}
+
+/** Snapshot returned by {@link SharedResource.snapshot}. */
+export interface SharedResourceSnapshot {
+  /**
+   * Whether the resource has no current value, no borrowers, and no pending
+   * idle disposal.
+   */
+  readonly isIdle: boolean;
+
+  /** Current mutex state for monitoring/debugging. */
+  readonly mutex: SemaphoreSnapshot;
 }
 
 /** Options for {@link createSharedResource}. */
@@ -187,19 +227,24 @@ export const createSharedResource = <T extends Resource, D>(
 
     const disposeCurrent = async () => {
       if (!current) return;
-      await current.stack.disposeAsync();
+      await using stack = new AsyncDisposableStack();
+      if (onDisposed) stack.defer(onDisposed);
+      stack.use(current.stack);
       current = undefined;
-      onDisposed?.();
     };
     stack.defer(disposeCurrent);
 
-    stack.defer(() => idleDisposeFiber?.abort());
     // Register as the last so disposal aborts further calls first.
     stack.use(sharedResourceRun);
 
     const moved = stack.move();
 
     return ok({
+      snapshot: () => ({
+        isIdle: acquireCount === 0 && !current && !idleDisposeFiber,
+        mutex: mutex.snapshot(),
+      }),
+
       acquire: unabortable<BorrowedResource<T>, never, D>(() =>
         sharedResourceRun(
           mutex.withLock(async (run) => {
@@ -277,15 +322,24 @@ export const createSharedResource = <T extends Resource, D>(
  * Different keys are independent and may progress concurrently. Operations for
  * the same key are serialized. Calls to
  * {@link SharedResourceByKey.release | release} must be balanced with successful
- * calls to {@link SharedResourceByKey.acquire | acquire}. Releasing more times
- * than acquired is a programmer error checked with {@link assert}.
+ * calls to {@link SharedResourceByKey.acquire | acquire}. Acquire and release
+ * may still be aborted before they start on an already-stopped Run, but once
+ * started they run to completion. Releasing more times than acquired is a
+ * programmer error checked with {@link assert}.
  */
 export interface SharedResourceByKey<
   K extends StructuralKey,
   T extends Resource,
   D = unknown,
 > extends AsyncDisposable {
-  /** Acquires the shared resource for `key`, creating it on first use. */
+  /**
+   * Acquires the shared resource for `key`, creating it on first use.
+   *
+   * Once started, acquire runs to completion even if the caller aborts its
+   * Fiber. Always await the result. A successful result still counts as an
+   * acquired lease for `key` and must later be balanced with
+   * {@link SharedResourceByKey.release | release}.
+   */
   readonly acquire: (key: K) => Task<BorrowedResource<T>, never, D>;
 
   /**
@@ -296,6 +350,9 @@ export interface SharedResourceByKey<
    * If {@link SharedResourceByKeyOptions.idleDisposeAfter | idleDisposeAfter} is
    * set, disposal and registry removal are scheduled instead and a new acquire
    * for the same key during that delay reuses the current resource.
+   *
+   * Once started, release runs to completion even if the caller aborts its
+   * Fiber. Always await the result instead of assuming no cleanup happened.
    */
   readonly release: (key: K) => Task<void, never, D>;
 
@@ -314,9 +371,8 @@ export interface SharedResourceByKeyOptions<
 /**
  * Creates {@link SharedResourceByKey}.
  *
- * The `create` Task is scoped to one key. It must not fail, for the same reason
- * as {@link createSharedResource}: callers should never observe a key in a
- * partially replaced state.
+ * The `create` Task is scoped to one key. It must not fail, matching
+ * {@link createSharedResource}.
  */
 export const createSharedResourceByKey = <
   K extends StructuralKey,
@@ -353,8 +409,25 @@ export const createSharedResourceByKey = <
                   createSharedResource(create(key), {
                     idleDisposeAfter,
                     onDisposed: () => {
-                      sharedResourcesByKey.delete(key);
                       onDisposed?.(key);
+
+                      void sharedResourceByKeyRun(
+                        mutexByKey.withLock(key, async () => {
+                          assert(
+                            sharedResource,
+                            "Shared resource must exist when disposal callback runs.",
+                          );
+
+                          if (
+                            sharedResourcesByKey.get(key) === sharedResource &&
+                            sharedResource.snapshot().isIdle
+                          ) {
+                            sharedResourcesByKey.delete(key);
+                            await sharedResource[Symbol.asyncDispose]();
+                          }
+                          return ok();
+                        }),
+                      );
                     },
                   }),
                 );

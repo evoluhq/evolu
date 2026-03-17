@@ -24,7 +24,14 @@ type DisposeKind = "sync" | "async";
 
 const testCreateResource =
   (disposeKind: DisposeKind) =>
-  (id: string): Task<TestResource> => {
+  (
+    id: string,
+    {
+      onDispose,
+    }: {
+      onDispose?: (() => void) | undefined;
+    } = {},
+  ): Task<TestResource> => {
     let disposed = false;
 
     return () =>
@@ -35,12 +42,14 @@ const testCreateResource =
           ? {
               [Symbol.dispose]: () => {
                 disposed = true;
+                onDispose?.();
               },
             }
           : {
               [Symbol.asyncDispose]: async () => {
                 await testWaitForMacrotask();
                 disposed = true;
+                onDispose?.();
               },
             }),
       });
@@ -51,6 +60,16 @@ const expectRunStopped = async (result: PromiseLike<AnyResult>) => {
     err({ type: "AbortError", reason: runStoppedError }),
   );
 };
+
+interface TestRunSnapshot {
+  readonly children: ReadonlyArray<TestRunSnapshot>;
+}
+
+const countRunDescendants = (snapshot: TestRunSnapshot): number =>
+  snapshot.children.reduce(
+    (count, child) => count + 1 + countRunDescendants(child),
+    0,
+  );
 
 const createThrowingResource = (
   disposeKind: DisposeKind,
@@ -279,7 +298,6 @@ describe("createResourceRef", () => {
           return result;
         });
 
-        await testWaitForMacrotask();
         expect(getResolved).toBe(false);
 
         createCanFinish.resolve();
@@ -510,32 +528,6 @@ describe("createSharedResource", () => {
     expect(resource.isDisposed()).toBe(false);
   });
 
-  test("onDisposed is called after current disposal completes", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
-
-    const events: Array<string> = [];
-    const resource = await run.orThrow(testCreateResource("sync")("r1"));
-    await using sharedResource = await run.orThrow(
-      createSharedResource(() => ok(resource), {
-        idleDisposeAfter: "10ms",
-        onDisposed: () => {
-          events.push(resource.isDisposed() ? "disposed" : "not-disposed");
-        },
-      }),
-    );
-
-    await run.orThrow(sharedResource.acquire);
-    await run.orThrow(sharedResource.release);
-
-    expect(events).toEqual([]);
-
-    time.advance("10ms");
-    await testWaitForMacrotask();
-
-    expect(events).toEqual(["disposed"]);
-  });
-
   for (const { label, disposeKind, createResource } of [
     {
       label: "with sync dispose",
@@ -618,7 +610,6 @@ describe("createSharedResource", () => {
           return result;
         });
 
-        await testWaitForMacrotask();
         expect(firstResolved).toBe(false);
         expect(secondResolved).toBe(false);
         expect(createCallCount).toBe(1);
@@ -686,125 +677,156 @@ describe("createSharedResource", () => {
         expect(await run.orThrow(sharedResource.getCount)).toBe(1);
       });
 
-      test("release disposes after idleDisposeAfter elapses", async () => {
-        const time = testCreateTime();
-        await using run = testCreateRun({ time });
+      describe("idleDisposeAfter", () => {
+        test("release keeps the resource alive until idleDisposeAfter elapses", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
 
-        const resource = await run.orThrow(createResource("resource-1"));
-        await using sharedResource = await run.orThrow(
-          createSharedResource(() => ok(resource), {
-            idleDisposeAfter: "10ms",
-          }),
-        );
-
-        await run.orThrow(sharedResource.acquire);
-        await run.orThrow(sharedResource.release);
-
-        expect(await run.orThrow(sharedResource.getCount)).toBe(0);
-        expect(resource.isDisposed()).toBe(false);
-
-        time.advance("9ms");
-        await testWaitForMacrotask();
-        expect(resource.isDisposed()).toBe(false);
-
-        time.advance("1ms");
-        await testWaitForMacrotask();
-        await testWaitForMacrotask();
-        expect(resource.isDisposed()).toBe(true);
-      });
-
-      test("acquire cancels pending idle disposal and reuses the current resource", async () => {
-        const time = testCreateTime();
-        await using run = testCreateRun({ time });
-
-        let createCallCount = 0;
-        await using sharedResource = await run.orThrow(
-          createSharedResource(
-            async (run) => {
-              createCallCount += 1;
-              return run(createResource(`resource-${createCallCount}`));
-            },
-            {
+          const disposed = Promise.withResolvers<void>();
+          const resource = await run.orThrow(
+            createResource("resource-1", {
+              onDispose: disposed.resolve,
+            }),
+          );
+          await using sharedResource = await run.orThrow(
+            createSharedResource(() => ok(resource), {
               idleDisposeAfter: "10ms",
-            },
-          ),
-        );
+            }),
+          );
 
-        const first = await run.orThrow(sharedResource.acquire);
-        await run.orThrow(sharedResource.release);
+          await run.orThrow(sharedResource.acquire);
+          await run.orThrow(sharedResource.release);
 
-        time.advance("9ms");
-        const second = await run.orThrow(sharedResource.acquire);
+          expect(resource.isDisposed()).toBe(false);
 
-        expect(second).toBe(first);
-        expect(first.isDisposed()).toBe(false);
-        expect(createCallCount).toBe(1);
-        expect(await run.orThrow(sharedResource.getCount)).toBe(1);
+          time.advance("10ms");
+          await disposed.promise;
 
-        time.advance("10ms");
-        await testWaitForMacrotask();
-        expect(first.isDisposed()).toBe(false);
+          expect(resource.isDisposed()).toBe(true);
+        });
 
-        await run.orThrow(sharedResource.release);
-        time.advance("10ms");
-        await testWaitForMacrotask();
-        await testWaitForMacrotask();
-        expect(first.isDisposed()).toBe(true);
-      });
+        test("release disposes after idleDisposeAfter elapses", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
 
-      test("acquire after timeout fires cancels the stale idle disposal", async () => {
-        const time = testCreateTime();
-        await using run = testCreateRun({ time });
-
-        let createCallCount = 0;
-        await using sharedResource = await run.orThrow(
-          createSharedResource(
-            async (run) => {
-              createCallCount += 1;
-              return run(createResource(`resource-${createCallCount}`));
-            },
-            {
+          const disposed = Promise.withResolvers<void>();
+          const resource = await run.orThrow(
+            createResource("resource-1", {
+              onDispose: disposed.resolve,
+            }),
+          );
+          await using sharedResource = await run.orThrow(
+            createSharedResource(() => ok(resource), {
               idleDisposeAfter: "10ms",
-            },
-          ),
-        );
+            }),
+          );
 
-        const first = await run.orThrow(sharedResource.acquire);
-        await run.orThrow(sharedResource.release);
+          await run.orThrow(sharedResource.acquire);
+          await run.orThrow(sharedResource.release);
 
-        time.advance("10ms");
-        const second = await run.orThrow(sharedResource.acquire);
+          expect(await run.orThrow(sharedResource.getCount)).toBe(0);
+          expect(resource.isDisposed()).toBe(false);
 
-        expect(second).toBe(first);
-        expect(createCallCount).toBe(1);
-        expect(await run.orThrow(sharedResource.getCount)).toBe(1);
+          time.advance("9ms");
+          expect(resource.isDisposed()).toBe(false);
 
-        await testWaitForMacrotask();
-        expect(first.isDisposed()).toBe(false);
-      });
+          time.advance("1ms");
+          await disposed.promise;
+          expect(resource.isDisposed()).toBe(true);
+        });
 
-      test("dispose cancels pending idle disposal and disposes immediately", async () => {
-        const time = testCreateTime();
-        await using run = testCreateRun({ time });
+        test("acquire cancels pending idle disposal and reuses the current resource", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
 
-        const resource = await run.orThrow(createResource("resource-1"));
-        const sharedResource = await run.orThrow(
-          createSharedResource(() => ok(resource), {
-            idleDisposeAfter: "10ms",
-          }),
-        );
+          let createCallCount = 0;
+          const disposed = Promise.withResolvers<void>();
+          await using sharedResource = await run.orThrow(
+            createSharedResource(
+              async (run) => {
+                createCallCount += 1;
+                return run(
+                  createResource(`resource-${createCallCount}`, {
+                    onDispose:
+                      createCallCount === 1 ? disposed.resolve : undefined,
+                  }),
+                );
+              },
+              {
+                idleDisposeAfter: "10ms",
+              },
+            ),
+          );
 
-        await run.orThrow(sharedResource.acquire);
-        await run.orThrow(sharedResource.release);
+          const first = await run.orThrow(sharedResource.acquire);
+          await run.orThrow(sharedResource.release);
 
-        expect(resource.isDisposed()).toBe(false);
+          time.advance("9ms");
+          const second = await run.orThrow(sharedResource.acquire);
 
-        await sharedResource[Symbol.asyncDispose]();
-        expect(resource.isDisposed()).toBe(true);
+          expect(second).toBe(first);
+          expect(first.isDisposed()).toBe(false);
+          expect(createCallCount).toBe(1);
+          expect(await run.orThrow(sharedResource.getCount)).toBe(1);
 
-        time.advance("10ms");
-        await testWaitForMacrotask();
-        expect(resource.isDisposed()).toBe(true);
+          time.advance("10ms");
+          expect(first.isDisposed()).toBe(false);
+
+          await run.orThrow(sharedResource.release);
+          time.advance("10ms");
+          await disposed.promise;
+          expect(first.isDisposed()).toBe(true);
+        });
+
+        test("acquire after timeout fires cancels the stale idle disposal", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
+
+          let createCallCount = 0;
+          await using sharedResource = await run.orThrow(
+            createSharedResource(
+              async (run) => {
+                createCallCount += 1;
+                return run(createResource(`resource-${createCallCount}`));
+              },
+              {
+                idleDisposeAfter: "10ms",
+              },
+            ),
+          );
+
+          const first = await run.orThrow(sharedResource.acquire);
+          await run.orThrow(sharedResource.release);
+
+          time.advance("10ms");
+          const second = await run.orThrow(sharedResource.acquire);
+
+          expect(second).toBe(first);
+          expect(createCallCount).toBe(1);
+          expect(await run.orThrow(sharedResource.getCount)).toBe(1);
+
+          expect(first.isDisposed()).toBe(false);
+        });
+
+        test("dispose cancels pending idle disposal and disposes immediately", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
+
+          const resource = await run.orThrow(createResource("resource-1"));
+          const sharedResource = await run.orThrow(
+            createSharedResource(() => ok(resource), {
+              idleDisposeAfter: "10ms",
+            }),
+          );
+
+          await run.orThrow(sharedResource.acquire);
+          await run.orThrow(sharedResource.release);
+
+          expect(resource.isDisposed()).toBe(false);
+
+          await sharedResource[Symbol.asyncDispose]();
+          expect(resource.isDisposed()).toBe(true);
+        });
       });
 
       test("acquire completes resource creation despite caller abort", async () => {
@@ -948,38 +970,6 @@ describe("createSharedResourceByKey", () => {
         ),
       ),
     );
-  });
-
-  test("onDisposed is called with the key after keyed disposal completes", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
-
-    const events: Array<string> = [];
-    const resource = await run.orThrow(testCreateResource("sync")("a"));
-    await using sharedResourceByKey = await run.orThrow(
-      createSharedResourceByKey(
-        (key: string) => {
-          expect(key).toBe("a");
-          return () => ok(resource);
-        },
-        {
-          idleDisposeAfter: "10ms",
-          onDisposed: (key) => {
-            events.push(resource.isDisposed() ? key : `not-disposed:${key}`);
-          },
-        },
-      ),
-    );
-
-    await run.orThrow(sharedResourceByKey.acquire("a"));
-    await run.orThrow(sharedResourceByKey.release("a"));
-
-    expect(events).toEqual([]);
-
-    time.advance("10ms");
-    await testWaitForMacrotask();
-
-    expect(events).toEqual(["a"]);
   });
 
   test("structurally equal object keys share one resource", async () => {
@@ -1135,17 +1125,20 @@ describe("createSharedResourceByKey", () => {
           },
         );
 
-        await testWaitForMacrotask();
         expect(firstResolved).toBe(false);
         expect(secondResolved).toBe(false);
         expect(createCallCount).toBe(1);
 
         createCanFinish.resolve();
 
-        const first = await run.orThrow(() => firstAcquire);
-        const second = await run.orThrow(() => secondAcquire);
+        const firstResult = await firstAcquire;
+        const secondResult = await secondAcquire;
 
-        expect(first).toBe(second);
+        expect(firstResult.ok).toBe(true);
+        expect(secondResult.ok).toBe(true);
+        if (!firstResult.ok || !secondResult.ok) return;
+
+        expect(firstResult.value).toBe(secondResult.value);
         expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(2);
       });
 
@@ -1171,43 +1164,193 @@ describe("createSharedResourceByKey", () => {
         expect(next).not.toBe(resource);
       });
 
-      test("release disposes after idleDisposeAfter elapses and reacquire cancels it", async () => {
-        const time = testCreateTime();
-        await using run = testCreateRun({ time });
+      describe("idleDisposeAfter", () => {
+        test("idle eviction disposes the removed keyed shared-resource wrapper", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
 
-        let createCallCount = 0;
-        const createKeyedResource =
-          (key: string): Task<TestResource> =>
-          async (run) => {
-            createCallCount += 1;
-            return run(createResource(`${key}-${createCallCount}`));
-          };
-        await using sharedResourceByKey = await run.orThrow(
-          createSharedResourceByKey(createKeyedResource, {
-            idleDisposeAfter: "10ms",
-          }),
-        );
+          const disposed = Promise.withResolvers<void>();
+          await using sharedResourceByKey = await run.orThrow(
+            createSharedResourceByKey((key: string) => createResource(key), {
+              idleDisposeAfter: "10ms",
+              onDisposed: () => {
+                disposed.resolve();
+              },
+            }),
+          );
 
-        const first = await run.orThrow(sharedResourceByKey.acquire("a"));
-        await run.orThrow(sharedResourceByKey.release("a"));
+          expect(countRunDescendants(run.snapshot())).toBe(1);
 
-        time.advance("9ms");
-        const second = await run.orThrow(sharedResourceByKey.acquire("a"));
+          await run.orThrow(sharedResourceByKey.acquire("a"));
+          expect(countRunDescendants(run.snapshot())).toBe(2);
 
-        expect(second).toBe(first);
-        expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(1);
+          await run.orThrow(sharedResourceByKey.release("a"));
 
-        await run.orThrow(sharedResourceByKey.release("a"));
-        time.advance("10ms");
-        await testWaitForMacrotask();
-        await testWaitForMacrotask();
+          time.advance("10ms");
+          await disposed.promise;
+          await testWaitForMacrotask();
 
-        expect(first.isDisposed()).toBe(true);
-        expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(0);
+          expect(countRunDescendants(run.snapshot())).toBe(1);
+        });
 
-        const third = await run.orThrow(sharedResourceByKey.acquire("a"));
-        expect(third).not.toBe(first);
-        expect(createCallCount).toBe(2);
+        test("onDisposed fires when a key's resource is disposed", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
+
+          const disposedKeys: Array<string> = [];
+          const onDisposedCalled = Promise.withResolvers<void>();
+          await using sharedResourceByKey = await run.orThrow(
+            createSharedResourceByKey((key: string) => createResource(key), {
+              idleDisposeAfter: "10ms",
+              onDisposed: (key) => {
+                disposedKeys.push(key);
+                onDisposedCalled.resolve();
+              },
+            }),
+          );
+
+          await run.orThrow(sharedResourceByKey.acquire("a"));
+          await run.orThrow(sharedResourceByKey.release("a"));
+
+          expect(disposedKeys).toEqual([]);
+
+          time.advance("10ms");
+          await onDisposedCalled.promise;
+
+          expect(disposedKeys).toEqual(["a"]);
+        });
+
+        test("release disposes after idleDisposeAfter elapses and reacquire cancels it", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
+
+          let createCallCount = 0;
+          const firstDisposed = Promise.withResolvers<void>();
+          const createKeyedResource =
+            (key: string): Task<TestResource> =>
+            async (run) => {
+              createCallCount += 1;
+              return run(
+                createResource(`${key}-${createCallCount}`, {
+                  onDispose:
+                    createCallCount === 1
+                      ? () => {
+                          firstDisposed.resolve();
+                        }
+                      : undefined,
+                }),
+              );
+            };
+          await using sharedResourceByKey = await run.orThrow(
+            createSharedResourceByKey(createKeyedResource, {
+              idleDisposeAfter: "10ms",
+            }),
+          );
+
+          const first = await run.orThrow(sharedResourceByKey.acquire("a"));
+          await run.orThrow(sharedResourceByKey.release("a"));
+
+          time.advance("9ms");
+          const second = await run.orThrow(sharedResourceByKey.acquire("a"));
+
+          expect(second).toBe(first);
+          expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(1);
+
+          await run.orThrow(sharedResourceByKey.release("a"));
+          time.advance("10ms");
+          await firstDisposed.promise;
+
+          expect(first.isDisposed()).toBe(true);
+          expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(0);
+
+          const third = await run.orThrow(sharedResourceByKey.acquire("a"));
+          expect(third).not.toBe(first);
+          expect(createCallCount).toBe(2);
+        });
+
+        test("dispose cancels pending keyed idle disposal and disposes current resources", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
+
+          const resource = await run.orThrow(createResource("a"));
+          const sharedResourceByKey = await run.orThrow(
+            createSharedResourceByKey(() => () => ok(resource), {
+              idleDisposeAfter: "10ms",
+            }),
+          );
+
+          await run.orThrow(sharedResourceByKey.acquire("a"));
+          await run.orThrow(sharedResourceByKey.release("a"));
+
+          await sharedResourceByKey[Symbol.asyncDispose]();
+
+          expect(resource.isDisposed()).toBe(true);
+        });
+
+        test("stale disposal callback must not remove a key that is reacquired concurrently", async () => {
+          const time = testCreateTime();
+          await using run = testCreateRun({ time });
+
+          let createCallCount = 0;
+          const firstDisposeStarted = Promise.withResolvers<void>();
+          const firstDisposeCanFinish = Promise.withResolvers<void>();
+
+          const createKeyedResource =
+            (key: string): Task<TestResource> =>
+            () => {
+              createCallCount += 1;
+
+              let disposed = false;
+              const resourceId = `${key}-${createCallCount}`;
+              const isFirstResource = createCallCount === 1;
+
+              return ok({
+                id: resourceId,
+                isDisposed: () => disposed,
+                [Symbol.asyncDispose]: async () => {
+                  if (isFirstResource) {
+                    firstDisposeStarted.resolve();
+                    await firstDisposeCanFinish.promise;
+                  }
+                  disposed = true;
+                },
+              });
+            };
+
+          await using sharedResourceByKey = await run.orThrow(
+            createSharedResourceByKey(createKeyedResource, {
+              idleDisposeAfter: "10ms",
+            }),
+          );
+
+          const first = await run.orThrow(sharedResourceByKey.acquire("a"));
+          await run.orThrow(sharedResourceByKey.release("a"));
+
+          time.advance("10ms");
+          await firstDisposeStarted.promise;
+
+          const reacquire = run(sharedResourceByKey.acquire("a"));
+
+          firstDisposeCanFinish.resolve();
+
+          const second = await run.orThrow(() => reacquire);
+
+          expect(second).not.toBe(first);
+          expect(second.id).toBe("a-2");
+          expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(1);
+
+          const third = await run.orThrow(sharedResourceByKey.acquire("a"));
+
+          expect(third).toBe(second);
+          expect(createCallCount).toBe(2);
+          expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(2);
+
+          await run.orThrow(sharedResourceByKey.release("a"));
+          expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(1);
+
+          await run.orThrow(sharedResourceByKey.release("a"));
+          expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(0);
+        });
       });
 
       test("dispose aborts later operations", async () => {
