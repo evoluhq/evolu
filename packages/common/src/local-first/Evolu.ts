@@ -565,7 +565,6 @@ export const createEvolu =
     console.info("createEvolu");
 
     const rowsByQueryMapStore = createStore<RowsByQueryMap>(new Map());
-    // TODO: Sync resource abstraction?
     const subscribedQueriesRefCount = createRefCount<Query>();
 
     interface LoadingPromise {

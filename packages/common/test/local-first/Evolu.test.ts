@@ -1514,7 +1514,7 @@ describe("integration tests", () => {
             "rows": [
               {
                 "column": "title",
-                "id": uint8:[255,46,38,44,239,232,201,76,59,135,208,175,94,213,54,255],
+                "id": uint8:[130,126,32,8,130,103,69,93,114,246,130,251,205,195,207,130],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "todo",
                 "timestamp": uint8:[0,0,0,0,0,0,0,1,2,0,125,85,114,123,39,28],
@@ -1522,7 +1522,7 @@ describe("integration tests", () => {
               },
               {
                 "column": "createdAt",
-                "id": uint8:[255,46,38,44,239,232,201,76,59,135,208,175,94,213,54,255],
+                "id": uint8:[130,126,32,8,130,103,69,93,114,246,130,251,205,195,207,130],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "todo",
                 "timestamp": uint8:[0,0,0,0,0,0,0,1,2,0,125,85,114,123,39,28],
@@ -1563,7 +1563,7 @@ describe("integration tests", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "_y4mLO_oyUw7h9CvXtU2_w",
+                "id": "gn4gCIJnRV1y9oL7zcPPgg",
                 "isCompleted": null,
                 "isDeleted": null,
                 "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
