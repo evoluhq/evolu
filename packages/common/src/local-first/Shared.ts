@@ -11,14 +11,15 @@ import {
   shiftFromArray,
   type NonEmptyReadonlyArray,
 } from "../Array.js";
-import { assert } from "../Assert.js";
+import { assert, assertNotAborted } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.js";
 import { exhaustiveCheck } from "../Function.js";
+import { createSharedResourceByKey } from "../Resource.js";
 import { ok } from "../Result.js";
 import { spaced } from "../Schedule.js";
 import type { NonEmptyReadonlySet } from "../Set.js";
-import { createMutexByKey, repeat, type Fiber, type Task } from "../Task.js";
+import { repeat, type Fiber, type Task } from "../Task.js";
 import { createId, type Id, type Name } from "../Type.js";
 import type { Callback, ExtractType } from "../Types.js";
 import type { CreateWebSocketDep } from "../WebSocket.js";
@@ -156,18 +157,8 @@ export const initSharedWorker =
     //   }),
     // );
 
-    const runWithSharedEvoluDeps = run;
+    const initSharedWorkerRun = run.create();
     // .addDeps({ transports });
-
-    // tady bych mel jednu vec
-    // const sharedEvoluResources = run.addDeps({ transports })(
-    //  createResourcesByKey(() => ))
-    // sharedEvoluResources.lock(name)
-    // onDispose, release?
-    // use, unuse? hmm
-
-    const sharedEvolusByName = new Map<Name, SharedEvolu>();
-    const sharedEvolusMutexByName = stack.use(createMutexByKey<Name>());
 
     self.onConnect = (port) => {
       console.debug("onConnect");
@@ -189,28 +180,23 @@ export const initSharedWorker =
           }
 
           case "CreateEvolu": {
-            void runWithSharedEvoluDeps.daemon(
-              sharedEvolusMutexByName.withLock(message.name, async () => {
-                let sharedEvolu = sharedEvolusByName.get(message.name);
+            void initSharedWorkerRun(async (run) => {
+              const sharedEvoluResult = await run(
+                sharedEvolusByName.acquire(message.name),
+              );
+              assertNotAborted(sharedEvoluResult);
 
-                if (sharedEvolu == null) {
-                  const result = await runWithSharedEvoluDeps.daemon(
-                    createSharedEvolu({
-                      name: message.name,
-                      appOwner: message.appOwner,
-                      postTabOutput,
-                    }),
+              sharedEvoluResult.value.addPorts(
+                message.evoluPort,
+                message.dbWorkerPort,
+                () => {
+                  void initSharedWorkerRun(
+                    sharedEvolusByName.release(message.name),
                   );
-                  if (!result.ok) return result;
-
-                  sharedEvolu = result.value;
-                  sharedEvolusByName.set(message.name, sharedEvolu);
-                }
-
-                sharedEvolu.addPorts(message.evoluPort, message.dbWorkerPort);
-                return ok();
-              }),
-            );
+                },
+              );
+              return ok();
+            });
             break;
           }
           default:
@@ -218,6 +204,14 @@ export const initSharedWorker =
         }
       };
     };
+
+    const sharedEvolusByName = stack.use(
+      await run.orThrow(
+        createSharedResourceByKey((name: Name) =>
+          createSharedEvolu({ name, postTabOutput }),
+        ),
+      ),
+    );
 
     stack.defer(
       consoleStoreOutputEntry.subscribe(() => {
@@ -235,6 +229,7 @@ interface SharedEvolu extends AsyncDisposable {
   readonly addPorts: (
     evoluPort: NativeMessagePort<EvoluOutput, EvoluInput>,
     dbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>,
+    releaseSharedEvolu: () => void,
   ) => void;
 }
 
@@ -299,11 +294,9 @@ export type SyncState = 123;
 const createSharedEvolu =
   ({
     name,
-    appOwner: _appOwner,
     postTabOutput,
   }: {
     name: Name;
-    appOwner: SyncOwner;
     postTabOutput: Callback<EvoluTabOutput>;
   }): Task<
     SharedEvolu,
@@ -328,6 +321,7 @@ const createSharedEvolu =
     > | null;
 
     let queueProcessingFiber: Fiber<void, never, WorkerDeps> | null = null;
+    let isDisposed = false;
 
     // const ownerTransports = appOwner.transports ?? emptyArray;
 
@@ -428,7 +422,13 @@ const createSharedEvolu =
     const addPorts = (
       nativeEvoluPort: NativeMessagePort<EvoluOutput, EvoluInput>,
       nativeDbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>,
+      releaseSharedEvolu: () => void,
     ): void => {
+      assert(
+        !isDisposed,
+        "SharedEvolu.addPorts must not be called after disposal.",
+      );
+
       const evoluPort = createMessagePort<EvoluOutput, EvoluInput>(
         nativeEvoluPort,
       );
@@ -469,13 +469,23 @@ const createSharedEvolu =
       evoluPort.onMessage = (evoluMessage) => {
         switch (evoluMessage.type) {
           case "Dispose": {
+            if (!evoluPorts.has(evoluPortId)) break;
+
             console.info("evoluDispose", {
               name,
               evoluPortId,
               hadLastPort: evoluPorts.size === 1,
             });
             evoluPorts.delete(evoluPortId);
+            // Potential plan: keep DbWorker ports in a SharedResource
+            // abstraction instead of deleting them eagerly here. DbWorkers use
+            // leader election because SQLite WASM needs a single active owner.
+            // When the last Evolu instance is disposed, broadcast shutdown to
+            // all DbWorkers so the current leader can dispose itself and the
+            // followers can clean up consistently.
+            dbWorkerPorts.delete(dbWorkerPort);
             rowsByQueryByEvoluPortId.delete(evoluPortId);
+            releaseSharedEvolu();
 
             // TODO: Decided what to do with DbWorker but probably dispose it, but
             // https://bugs.webkit.org/show_bug.cgi?id=301520
@@ -500,6 +510,7 @@ const createSharedEvolu =
 
       // eslint-disable-next-line @typescript-eslint/require-await
       [Symbol.asyncDispose]: async () => {
+        isDisposed = true;
         // await run(transports.removeConsumer(appOwner, ownerTransports));
 
         queueProcessingFiber?.abort();
