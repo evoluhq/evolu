@@ -826,8 +826,8 @@ export const formatFunctionError =
 
 /** @group Base Types */
 export const Uint8Array = /*#__PURE__*/ base("Uint8Array", (value) =>
-  value instanceof globalThis.Uint8Array
-    ? ok(value)
+  Object.prototype.toString.call(value as object) === "[object Uint8Array]"
+    ? ok(value as globalThis.Uint8Array)
     : err<Uint8ArrayError>({ type: "Uint8Array", value }),
 );
 

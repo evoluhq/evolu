@@ -121,6 +121,7 @@ import {
   trimmed,
   TrimmedString,
   tuple,
+  Uint8Array,
   typed,
   uint8ArrayToBase64Url,
   undefinedOr,
@@ -168,6 +169,14 @@ test("Base Types", () => {
 
   expect(formatStringError({ type: "String", value: 42 })).toBe(
     "A value 42 is not a string.",
+  );
+
+  const bytes = new globalThis.Uint8Array([1, 2, 3]);
+  expect(Uint8Array.fromUnknown(bytes)).toEqual(ok(bytes));
+
+  const date = new globalThis.Date();
+  expect(Uint8Array.fromUnknown(date)).toEqual(
+    err({ type: "Uint8Array", value: date }),
   );
 
   // TODO: Test other Base Types.
@@ -708,9 +717,9 @@ test("Base64Url", () => {
     "ABCD",
     "SGVsbG8g",
     "SGVsbG8",
-    uint8ArrayToBase64Url(new Uint8Array([0x00])),
-    uint8ArrayToBase64Url(new Uint8Array([0xff])),
-    uint8ArrayToBase64Url(new Uint8Array([0x00, 0x00])),
+    uint8ArrayToBase64Url(new globalThis.Uint8Array([0x00])),
+    uint8ArrayToBase64Url(new globalThis.Uint8Array([0xff])),
+    uint8ArrayToBase64Url(new globalThis.Uint8Array([0x00, 0x00])),
   ];
   for (const v of valid) {
     const r = Base64Url.from(v);
@@ -738,7 +747,7 @@ test("Base64Url", () => {
 
 test("base64UrlToUint8Array/uint8ArrayToBase64Url", () => {
   // Test round-trip conversion
-  const originalBytes = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
+  const originalBytes = new globalThis.Uint8Array([72, 101, 108, 108, 111]); // "Hello"
   const base64String = uint8ArrayToBase64Url(originalBytes);
   const decodedBytes = base64UrlToUint8Array(base64String);
 
@@ -746,10 +755,10 @@ test("base64UrlToUint8Array/uint8ArrayToBase64Url", () => {
   expect(base64String).toBe("SGVsbG8");
 
   const testData = [
-    new Uint8Array([1, 2, 3, 4]),
-    new Uint8Array([255, 254, 253]),
-    new Uint8Array([]),
-    new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+    new globalThis.Uint8Array([1, 2, 3, 4]),
+    new globalThis.Uint8Array([255, 254, 253]),
+    new globalThis.Uint8Array([]),
+    new globalThis.Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
   ];
 
   for (const bytes of testData) {
@@ -760,7 +769,7 @@ test("base64UrlToUint8Array/uint8ArrayToBase64Url", () => {
   }
 
   expectTypeOf(base64String).toEqualTypeOf<Base64Url>();
-  expectTypeOf(decodedBytes).toEqualTypeOf<Uint8Array>();
+  expectTypeOf(decodedBytes).toEqualTypeOf<globalThis.Uint8Array>();
 });
 
 test("DateIso", () => {
