@@ -34,7 +34,7 @@ export * from "./Set.js";
 export * from "./Sqlite.js";
 export * from "./Store.js";
 export * from "./String.js";
-export * from "./StructuralMap.js";
+export * from "./Structural.js";
 export * from "./Task.js";
 export * from "./Test.js";
 export * from "./Time.js";
