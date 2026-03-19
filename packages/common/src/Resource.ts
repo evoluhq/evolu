@@ -1,12 +1,18 @@
 /**
- * Resource lifecycle primitives.
+ * Concurrency-safe helpers for efficient reuse of disposable resources.
  *
  * @module
  */
 
 import { assert, assertNotAborted } from "./Assert.js";
 import { ok } from "./Result.js";
-import { createStructuralMap, type StructuralKey } from "./StructuralMap.js";
+import {
+  createStructuralMap,
+  createStructuralRelation,
+  createStructuralSet,
+  type Structural,
+  type StructuralKey,
+} from "./Structural.js";
 import {
   createMutex,
   createMutexByKey,
@@ -15,8 +21,8 @@ import {
   type AbortError,
   type Fiber,
   type MutexRef,
-  type Task,
   type SemaphoreSnapshot,
+  type Task,
 } from "./Task.js";
 import { type Duration } from "./Time.js";
 import { NonNegativeInt } from "./Type.js";
@@ -148,6 +154,9 @@ export interface SharedResource<
   /** Returns the current shared-resource state for monitoring/debugging. */
   readonly snapshot: () => SharedResourceSnapshot;
 
+  /** Returns the current resource, or `undefined` if absent. */
+  readonly get: () => BorrowedResource<T> | undefined;
+
   /**
    * Acquires a shared reference.
    *
@@ -245,6 +254,8 @@ export const createSharedResource = <T extends Resource, D>(
         mutex: mutex.snapshot(),
       }),
 
+      get: () => current?.resource,
+
       acquire: unabortable<BorrowedResource<T>, never, D>(() =>
         sharedResourceRun(
           mutex.withLock(async (run) => {
@@ -328,10 +339,13 @@ export const createSharedResource = <T extends Resource, D>(
  * programmer error checked with {@link assert}.
  */
 export interface SharedResourceByKey<
-  K extends StructuralKey,
+  K,
   T extends Resource,
   D = unknown,
 > extends AsyncDisposable {
+  /** Returns the current resource for `key`, or `undefined` if absent. */
+  readonly get: (key: Structural<K>) => BorrowedResource<T> | undefined;
+
   /**
    * Acquires the shared resource for `key`, creating it on first use.
    *
@@ -340,7 +354,7 @@ export interface SharedResourceByKey<
    * acquired lease for `key` and must later be balanced with
    * {@link SharedResourceByKey.release | release}.
    */
-  readonly acquire: (key: K) => Task<BorrowedResource<T>, never, D>;
+  readonly acquire: (key: Structural<K>) => Task<BorrowedResource<T>, never, D>;
 
   /**
    * Releases one previously acquired shared reference for `key`.
@@ -354,18 +368,31 @@ export interface SharedResourceByKey<
    * Once started, release runs to completion even if the caller aborts its
    * Fiber. Always await the result instead of assuming no cleanup happened.
    */
-  readonly release: (key: K) => Task<void, never, D>;
+  readonly release: (key: Structural<K>) => Task<void, never, D>;
 
   /** Returns the current acquire count for `key`. Missing keys return `0`. */
-  readonly getCount: (key: K) => Task<NonNegativeInt, never, D>;
+  readonly getCount: (key: Structural<K>) => Task<NonNegativeInt, never, D>;
+
+  /** Returns current keyed resources and their per-key mutex state. */
+  readonly snapshot: () => SharedResourceByKeySnapshot<K, T>;
+}
+
+/** Snapshot returned by {@link SharedResourceByKey.snapshot}. */
+export interface SharedResourceByKeySnapshot<K, T extends Resource> {
+  /** Current borrowed resources by key. */
+  readonly resourcesByKey: ReadonlyMap<Structural<K>, BorrowedResource<T>>;
+
+  /** Current mutex state for each key in the resource snapshot. */
+  readonly mutexByKey: ReadonlyMap<Structural<K>, SemaphoreSnapshot | null>;
 }
 
 /** Options for {@link createSharedResourceByKey}. */
-export interface SharedResourceByKeyOptions<
-  K extends StructuralKey,
-> extends Pick<SharedResourceOptions, "idleDisposeAfter"> {
+export interface SharedResourceByKeyOptions<K> extends Pick<
+  SharedResourceOptions,
+  "idleDisposeAfter"
+> {
   /** Called after `key`'s current resource is disposed and cleared. */
-  readonly onDisposed?: (key: K) => void;
+  readonly onDisposed?: (key: Structural<K>) => void;
 }
 
 /**
@@ -375,9 +402,9 @@ export interface SharedResourceByKeyOptions<
  * {@link createSharedResource}.
  */
 export const createSharedResourceByKey = <
-  K extends StructuralKey,
-  T extends Resource,
-  D,
+  K = StructuralKey,
+  T extends Resource = Resource,
+  D = unknown,
 >(
   create: (key: K) => Task<T, never, D>,
   { idleDisposeAfter, onDisposed }: SharedResourceByKeyOptions<K> = {},
@@ -387,9 +414,12 @@ export const createSharedResourceByKey = <
     const sharedResourcesByKey = createStructuralMap<K, SharedResource<T, D>>();
 
     const stack = new AsyncDisposableStack();
+
     const mutexByKey = stack.use(createMutexByKey<K>());
     stack.defer(async () => {
-      await disposeResources(sharedResourcesByKey.values());
+      const stack = new AsyncDisposableStack();
+      for (const resource of sharedResourcesByKey.values()) stack.use(resource);
+      await stack.disposeAsync();
       sharedResourcesByKey.clear();
     });
     // Register as the last so disposal aborts further calls first.
@@ -398,6 +428,8 @@ export const createSharedResourceByKey = <
     const moved = stack.move();
 
     return ok({
+      get: (key) => sharedResourcesByKey.get(key)?.get(),
+
       acquire: (key) =>
         unabortable<BorrowedResource<T>, never, D>(() =>
           sharedResourceByKeyRun(
@@ -406,19 +438,15 @@ export const createSharedResourceByKey = <
 
               if (!sharedResource) {
                 const sharedResourceResult = await run(
-                  createSharedResource(create(key), {
+                  createSharedResource(create(key as K), {
                     idleDisposeAfter,
                     onDisposed: () => {
                       onDisposed?.(key);
 
                       void sharedResourceByKeyRun(
                         mutexByKey.withLock(key, async () => {
-                          assert(
-                            sharedResource,
-                            "Shared resource must exist when disposal callback runs.",
-                          );
-
                           if (
+                            sharedResource &&
                             sharedResourcesByKey.get(key) === sharedResource &&
                             sharedResource.snapshot().isIdle
                           ) {
@@ -432,7 +460,6 @@ export const createSharedResourceByKey = <
                   }),
                 );
                 assertNotAborted(sharedResourceResult);
-
                 sharedResource = sharedResourceResult.value;
                 sharedResourcesByKey.set(key, sharedResource);
               }
@@ -465,9 +492,295 @@ export const createSharedResourceByKey = <
           }),
         ),
 
+      snapshot: () => {
+        const resourcesByKey = new Map<Structural<K>, BorrowedResource<T>>();
+        const mutexSnapshotsByKey = new Map<
+          Structural<K>,
+          SemaphoreSnapshot | null
+        >();
+
+        for (const [key, sharedResource] of sharedResourcesByKey.entries()) {
+          const resource = sharedResource.get();
+          if (!resource) continue;
+
+          resourcesByKey.set(key, resource);
+          mutexSnapshotsByKey.set(key, mutexByKey.snapshot(key));
+        }
+
+        return {
+          resourcesByKey,
+          mutexByKey: mutexSnapshotsByKey,
+        };
+      },
+
       [Symbol.asyncDispose]: () => moved.disposeAsync(),
     });
   });
+
+/**
+ * Shared {@link Resource}s keyed by structural keys and retained by claims.
+ *
+ * This combines {@link SharedResourceByKey} with structural claim tracking.
+ * Resources are kept alive while at least one claim retains their key.
+ */
+export interface SharedResourceByKeyWithClaims<
+  K,
+  C,
+  T extends Resource,
+  D = unknown,
+> extends AsyncDisposable {
+  /** Retains each resource key for `claim`. */
+  readonly addClaim: (
+    claim: Structural<C>,
+    resourceKeys: ReadonlyArray<Structural<K>>,
+  ) => Task<void, never, D>;
+
+  /** Releases each previously retained resource key for `claim`. */
+  readonly removeClaim: (
+    claim: Structural<C>,
+    resourceKeys: ReadonlyArray<Structural<K>>,
+  ) => Task<void, never, D>;
+
+  /** Returns the current resource for `key`, or `undefined` if absent. */
+  readonly getResource: (key: Structural<K>) => BorrowedResource<T> | undefined;
+
+  /** Returns the current unique claims retaining `key`. */
+  readonly getClaimsForResource: (
+    key: Structural<K>,
+  ) => ReadonlySet<Structural<C>>;
+
+  /** Returns the current unique resource keys retained by `claim`. */
+  readonly getResourceKeysForClaim: (
+    claim: Structural<C>,
+  ) => ReadonlySet<Structural<K>>;
+
+  /** Returns the current unique resources retained by `claim`. */
+  readonly getResourcesForClaim: (
+    claim: Structural<C>,
+  ) => ReadonlySet<BorrowedResource<T>>;
+}
+
+/** Options for {@link createSharedResourceByKeyWithClaims}. */
+export interface SharedResourceByKeyWithClaimsOptions<
+  K,
+  T extends Resource,
+> extends Pick<SharedResourceOptions, "idleDisposeAfter"> {
+  /** Called when a key transitions from zero claims to one claim. */
+  readonly onFirstClaimAdded?: (
+    resource: BorrowedResource<T>,
+    resourceKey: Structural<K>,
+  ) => void;
+
+  /** Called when a key transitions from one claim to zero claims. */
+  readonly onLastClaimRemoved?: (
+    resource: BorrowedResource<T>,
+    resourceKey: Structural<K>,
+  ) => void;
+}
+
+/**
+ * Creates {@link SharedResourceByKeyWithClaims}.
+ *
+ * Claim-resource pairs are reference-counted by structural equality. The
+ * underlying resource for a key is acquired on the first active claim and
+ * released when the last active claim for that key is removed.
+ */
+export const createSharedResourceByKeyWithClaims = <
+  T extends Resource,
+  K = StructuralKey,
+  C = StructuralKey,
+  D = unknown,
+>(
+  create: (key: K) => Task<T, never, D>,
+  {
+    idleDisposeAfter,
+    onFirstClaimAdded,
+    onLastClaimRemoved,
+  }: SharedResourceByKeyWithClaimsOptions<K, T> = {},
+): Task<SharedResourceByKeyWithClaims<K, C, T, D>, never, D> =>
+  unabortable<SharedResourceByKeyWithClaims<K, C, T, D>, never, D>(
+    async (run) => {
+      const sharedResourceClaimsRun = run.create();
+
+      await using stack = new AsyncDisposableStack();
+
+      const keyByClaim = createStructuralRelation<C, K>();
+      const pairRefCountsByClaim = createStructuralMap<
+        C,
+        ReturnType<typeof createStructuralMap<K, number>>
+      >();
+
+      const mutexByKey = stack.use(createMutexByKey<K>());
+
+      stack.defer(() => {
+        keyByClaim.clear();
+        pairRefCountsByClaim.clear();
+      });
+
+      const sharedResourcesByKeyResult = await sharedResourceClaimsRun(
+        createSharedResourceByKey(create, { idleDisposeAfter }),
+      );
+      assertNotAborted(sharedResourcesByKeyResult);
+      const sharedResourcesByKey = stack.use(sharedResourcesByKeyResult.value);
+
+      // Register as the last so disposal aborts further calls first.
+      stack.use(sharedResourceClaimsRun);
+
+      /** Asserts that one call does not contain the same structural key twice. */
+      const assertNoDuplicateResourceKeys = (
+        resourceKeys: ReadonlyArray<Structural<K>>,
+      ) => {
+        assert(
+          createStructuralSet(resourceKeys).size === resourceKeys.length,
+          "resourceKeys must not contain structural duplicates.",
+        );
+      };
+
+      const moved = stack.move();
+
+      return ok({
+        addClaim: (claim, resourceKeys) =>
+          unabortable<void, never, D>(() =>
+            sharedResourceClaimsRun(async (run) => {
+              assertNoDuplicateResourceKeys(resourceKeys);
+
+              for (const resourceKey of resourceKeys) {
+                const added = await run(
+                  mutexByKey.withLock(resourceKey, async (run) => {
+                    let keyRefCounts = pairRefCountsByClaim.get(claim);
+                    if (!keyRefCounts) {
+                      keyRefCounts = createStructuralMap<K, number>();
+                      pairRefCountsByClaim.set(claim, keyRefCounts);
+                    }
+
+                    const currentPairCount = keyRefCounts.get(resourceKey) ?? 0;
+                    if (currentPairCount > 0) {
+                      keyRefCounts.set(resourceKey, currentPairCount + 1);
+                      return ok();
+                    }
+
+                    const hasClaimsForKey = keyByClaim.hasB(resourceKey);
+                    let firstResource: BorrowedResource<T> | undefined;
+                    if (!hasClaimsForKey) {
+                      const resourceResult = await run(
+                        sharedResourcesByKey.acquire(resourceKey),
+                      );
+                      assertNotAborted(resourceResult);
+                      firstResource = resourceResult.value;
+                    }
+
+                    const wasAdded = keyByClaim.add(claim, resourceKey);
+                    assert(
+                      wasAdded,
+                      "Claim-resource relation must be absent before first retain.",
+                    );
+
+                    keyRefCounts.set(resourceKey, 1);
+
+                    if (firstResource) {
+                      onFirstClaimAdded?.(firstResource, resourceKey);
+                    }
+
+                    return ok();
+                  }),
+                );
+                assertNotAborted(added);
+              }
+
+              return ok();
+            }),
+          ),
+
+        removeClaim: (claim, resourceKeys) =>
+          unabortable<void, never, D>(() =>
+            sharedResourceClaimsRun(async (run) => {
+              assertNoDuplicateResourceKeys(resourceKeys);
+
+              for (const resourceKey of resourceKeys) {
+                const removed = await run(
+                  mutexByKey.withLock(resourceKey, async (run) => {
+                    const keyRefCounts = pairRefCountsByClaim.get(claim);
+
+                    assert(
+                      keyRefCounts,
+                      "Claim-resource pair must not be removed more times than added.",
+                    );
+
+                    const currentPairCount = keyRefCounts.get(resourceKey);
+                    assert(
+                      currentPairCount && currentPairCount > 0,
+                      "Claim-resource pair must not be removed more times than added.",
+                    );
+
+                    if (currentPairCount > 1) {
+                      keyRefCounts.set(resourceKey, currentPairCount - 1);
+                      return ok();
+                    }
+
+                    keyRefCounts.delete(resourceKey);
+                    if (keyRefCounts.size === 0) {
+                      pairRefCountsByClaim.delete(claim);
+                    }
+
+                    const relationRemoved = keyByClaim.remove(
+                      claim,
+                      resourceKey,
+                    );
+                    assert(
+                      relationRemoved,
+                      "Claim-resource relation must exist while its ref count is positive.",
+                    );
+
+                    if (keyByClaim.hasB(resourceKey)) {
+                      return ok();
+                    }
+
+                    const resource = sharedResourcesByKey.get(resourceKey);
+                    assert(
+                      resource,
+                      "Resource must exist when the last claim is removed.",
+                    );
+
+                    onLastClaimRemoved?.(resource, resourceKey);
+
+                    const releaseResult = await run(
+                      sharedResourcesByKey.release(resourceKey),
+                    );
+                    assertNotAborted(releaseResult);
+
+                    return ok();
+                  }),
+                );
+                assertNotAborted(removed);
+              }
+
+              return ok();
+            }),
+          ),
+
+        getResource: (key) => sharedResourcesByKey.get(key),
+
+        getClaimsForResource: (key) => new Set(keyByClaim.iterateA(key)),
+
+        getResourceKeysForClaim: (claim) => new Set(keyByClaim.iterateB(claim)),
+
+        getResourcesForClaim: (claim) => {
+          const resources = new Set<BorrowedResource<T>>();
+          for (const key of keyByClaim.iterateB(claim)) {
+            const resource = sharedResourcesByKey.get(key);
+            assert(
+              resource,
+              "Resource must exist for every retained claim-resource relation.",
+            );
+            resources.add(resource);
+          }
+          return resources;
+        },
+
+        [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      });
+    },
+  );
 
 interface OwnedResource<T extends Resource> {
   readonly resource: BorrowedResource<T>;
@@ -482,269 +795,6 @@ const createOwnedResource = <T extends Resource>(
   return { resource, stack };
 };
 
-/**
- * Disposes resources via a temporary stack so one disposal failure does not
- * prevent later resources from being attempted.
- */
-const disposeResources = async (
-  resources: Iterable<Resource>,
-): Promise<void> => {
-  const stack = new AsyncDisposableStack();
-  for (const resource of resources) stack.use(resource);
-  await stack.disposeAsync();
-};
-
-// /**
-//  *
-//  * Tracks which consumers use which shared resources and keeps resources alive
-//  * while at least one consumer is attached.
-//  *
-//  * ### Example
-//  *
-//  * ```ts
-//  * interface TransportConfig {
-//  *   readonly url: UrlString;
-//  * }
-//  *
-//  * interface Owner {
-//  *   readonly id: OwnerId;
-//  * }
-//  *
-//  * const resources = createResources<
-//  *   WebSocket,
-//  *   UrlString,
-//  *   TransportConfig,
-//  *   Owner,
-//  *   OwnerId
-//  * >({
-//  *   createResource: async (transport) => {
-//  *     const { createWebSocket } = run.deps;
-//  *     return await run.orThrow(
-//  *       createWebSocket(transport.url, {
-//  *         onOpen: handleWebSocketOpen(transport.url),
-//  *       }),
-//  *     );
-//  *   },
-//  *   getResourceId: (transportConfig) => transportConfig.url,
-//  *   getConsumerId: (owner) => owner.id,
-//  * });
-//  *
-//  * const handleWebSocketOpen = (transportUrl: UrlString) => (): void => {
-//  *   const ownerIds = resources.getConsumerIdsForResource(transportUrl);
-//  *   dbWorker.postMessage({ type: "CreateSyncMessages", ownerIds });
-//  * };
-//  *
-//  * dbWorker.onMessage = (message) => {
-//  *   switch (message.type) {
-//  *     case "OnSyncMessage":
-//  *       for (const [ownerId, syncMessage] of message.messagesByOwnerId) {
-//  *         const webSockets = resources.getResourcesForConsumerId(ownerId);
-//  *         for (const webSocket of webSockets) {
-//  *           if (webSocket.isOpen()) webSocket.send(syncMessage);
-//  *         }
-//  *       }
-//  *   }
-//  * };
-//  *
-//  * await run(
-//  *   resources.addConsumer({ id: "owner-1" as OwnerId }, [
-//  *     { url: "wss://server1.com" as UrlString },
-//  *     { url: "wss://server2.com" as UrlString },
-//  *   ]),
-//  * );
-//  *
-//  * await run(
-//  *   resources.addConsumer({ id: "owner-2" as OwnerId }, [
-//  *     { url: "wss://server1.com" as UrlString },
-//  *   ]),
-//  * );
-//  *
-//  * await run(
-//  *   resources.removeConsumer({ id: "owner-1" as OwnerId }, [
-//  *     { url: "wss://server1.com" as UrlString },
-//  *     { url: "wss://server2.com" as UrlString },
-//  *   ]),
-//  * );
-//  *
-//  * // The WebSocket for wss://server2.com is disposed because it has no consumers.
-//  * // The WebSocket for wss://server1.com stays alive because owner-2 still uses it.
-//  * ```
-//  */
-// export interface Resources<
-//   TResource extends Disposable | AsyncDisposable,
-//   TResourceId extends string,
-//   TResourceConfig,
-//   TConsumer,
-//   TConsumerId extends string,
-// > extends AsyncDisposable {
-//   /** Attaches a consumer to resources. */
-//   readonly addConsumer: (
-//     consumer: TConsumer,
-//     resourceConfigs: ReadonlyArray<TResourceConfig>,
-//   ) => Task<void>;
-
-//   /** Detaches a consumer from resources. */
-//   readonly removeConsumer: (
-//     consumer: TConsumer,
-//     resourceConfigs: ReadonlyArray<TResourceConfig>,
-//   ) => Task<void>;
-
-//   readonly getConsumerIdsForResource: (
-//     resourceId: TResourceId,
-//   ) => ReadonlySet<TConsumerId>;
-
-//   readonly getResourcesForConsumerId: (
-//     consumerId: TConsumerId,
-//   ) => ReadonlySet<TResource>;
-// }
-
-// /** Creates {@link Resources}. */
-// export const createResources = <
-//   TResource extends Disposable | AsyncDisposable,
-//   TResourceId extends string,
-//   TResourceConfig,
-//   TConsumer,
-//   TConsumerId extends string,
-// >({
-//   createResource,
-//   getResourceId,
-//   getConsumerId,
-// }: {
-//   /** Creates a resource for the provided configuration. */
-//   createResource: (resourceConfig: TResourceConfig) => Promise<TResource>;
-
-//   /** Maps a resource configuration to its shared resource identifier. */
-//   getResourceId: (resourceConfig: TResourceConfig) => TResourceId;
-
-//   /** Maps a consumer value to its stable consumer identifier. */
-//   getConsumerId: (consumer: TConsumer) => TConsumerId;
-// }): Resources<
-//   TResource,
-//   TResourceId,
-//   TResourceConfig,
-//   TConsumer,
-//   TConsumerId
-// > => {
-//   const resourcesById = new Map<TResourceId, TResource>();
-//   const consumerRefCountsByResourceId = new Map<
-//     TResourceId,
-//     RefCount<TConsumerId>
-//   >();
-//   const consumerIdsByResourceId = createRelation<TResourceId, TConsumerId>();
-//   const mutexByResourceId = createMutexByKey<TResourceId>();
-
-//   return {
-//     addConsumer: (consumer, resourceConfigs) => async (run) => {
-//       const consumerId = getConsumerId(consumer);
-
-//       for (const resourceConfig of resourceConfigs) {
-//         const resourceId = getResourceId(resourceConfig);
-
-//         const result = await run(
-//           unabortable(
-//             mutexByResourceId.withLock(resourceId, async () => {
-//               let resource = resourcesById.get(resourceId);
-//               if (!resource) {
-//                 resource = await createResource(resourceConfig);
-//                 resourcesById.set(resourceId, resource);
-//               }
-
-//               let consumerRefCountsByConsumerId =
-//                 consumerRefCountsByResourceId.get(resourceId);
-//               if (!consumerRefCountsByConsumerId) {
-//                 consumerRefCountsByConsumerId = createRefCount<TConsumerId>();
-//                 consumerRefCountsByResourceId.set(
-//                   resourceId,
-//                   consumerRefCountsByConsumerId,
-//                 );
-//               }
-
-//               const nextCount =
-//                 consumerRefCountsByConsumerId.increment(consumerId);
-
-//               if (nextCount === 1) {
-//                 consumerIdsByResourceId.add(resourceId, consumerId);
-//               }
-
-//               return ok();
-//             }),
-//           ),
-//         );
-//         assert(result.ok, "Unabortable addConsumer lock must not abort");
-//       }
-
-//       return ok();
-//     },
-
-//     removeConsumer: (consumer, resourceConfigs) => async (run) => {
-//       const consumerId = getConsumerId(consumer);
-
-//       for (const resourceConfig of resourceConfigs) {
-//         const resourceId = getResourceId(resourceConfig);
-
-//         const result = await run(
-//           unabortable(
-//             mutexByResourceId.withLock(resourceId, () => {
-//               const consumerRefCountsByConsumerId =
-//                 consumerRefCountsByResourceId.get(resourceId);
-//               if (!consumerRefCountsByConsumerId) {
-//                 assert(
-//                   !consumerIdsByResourceId.hasA(resourceId) &&
-//                     !resourcesById.has(resourceId),
-//                   "Ref counts, relation, and resources must stay symmetric",
-//                 );
-//                 return ok();
-//               }
-
-//               const nextCount =
-//                 consumerRefCountsByConsumerId.decrement(consumerId);
-//               if (isNone(nextCount)) return ok();
-
-//               if (nextCount.value === 0) {
-//                 consumerIdsByResourceId.remove(resourceId, consumerId);
-//               }
-
-//               if (!consumerIdsByResourceId.hasA(resourceId)) {
-//                 consumerRefCountsByResourceId.delete(resourceId);
-//                 const resource = resourcesById.get(resourceId);
-//                 assert(
-//                   resource,
-//                   "Resource must exist when last consumer reference is removed",
-//                 );
-//                 resourcesById.delete(resourceId);
-//                 // await disposeResource(resource);
-//               }
-
-//               return ok();
-//             }),
-//           ),
-//         );
-//         assert(result.ok, "Unabortable removeConsumer lock must not abort");
-//       }
-
-//       return ok();
-//     },
-
-//     getConsumerIdsForResource: (resourceId) =>
-//       new Set(consumerIdsByResourceId.iterateB(resourceId)),
-
-//     getResourcesForConsumerId: (consumerId) => {
-//       const resources = new Set<TResource>();
-//       for (const resourceId of consumerIdsByResourceId.iterateA(consumerId)) {
-//         resources.add(resourcesById.get(resourceId)!);
-//       }
-
-//       return resources;
-//     },
-
-//     [Symbol.asyncDispose]: async () => {
-//       for (const resource of resourcesById.values()) {
-//         await disposeResource(resource);
-//       }
-//       resourcesById.clear();
-//       consumerRefCountsByResourceId.clear();
-//       consumerIdsByResourceId.clear();
-//       mutexByResourceId[Symbol.dispose]();
-//     },
-//   };
-// };
+// TODO: Make lifecycle callbacks exception-safe. `onDisposed`,
+// `onFirstClaimAdded`, and `onLastClaimRemoved` can currently leave resource
+// bookkeeping in a partially updated state if they throw.
