@@ -59,6 +59,7 @@ import {
   brand,
   createFormatTypeError,
   createId,
+  createIdAsUuidv7,
   createIdFromString,
   Date,
   DateIso,
@@ -993,6 +994,22 @@ test("createIdFromString", () => {
   const id3 = createIdFromString("test1");
   const id4 = createIdFromString("test2");
   expect(id3).not.toBe(id4);
+});
+
+test("createIdAsUuidv7", () => {
+  const deps = testCreateDeps();
+  const id = createIdAsUuidv7(deps);
+  const _todoId = createIdAsUuidv7<"Todo">(deps);
+
+  expect(Id.is(id)).toBe(true);
+  expect(id).toHaveLength(22);
+
+  const idBytes = idToIdBytes(id);
+  expect((idBytes[6] & 0xf0) >> 4).toBe(0x7);
+  expect(idBytes[8] & 0xc0).toBe(0x80);
+
+  expectTypeOf(id).toEqualTypeOf<Id>();
+  expectTypeOf(_todoId).toEqualTypeOf<Id & Brand<"Todo">>();
 });
 
 test("IdBytes/idToIdBytes/idBytesToId", () => {

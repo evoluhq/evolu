@@ -1848,7 +1848,9 @@ export const createIdAsUuidv7 = <B extends string = never>(
   id[6] = (id[6] & 0x0f) | 0x70;
   id[8] = (id[8] & 0x3f) | 0x80;
 
-  return id as unknown as [B] extends [never] ? Id : Id & Brand<B>;
+  return uint8ArrayToBase64Url(id) as unknown as [B] extends [never]
+    ? Id
+    : Id & Brand<B>;
 };
 
 /**
