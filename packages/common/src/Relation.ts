@@ -121,19 +121,21 @@ export const createRelation = <A, B>(): Relation<A, B> => {
   const removePair = (a: A, b: B): void => {
     const bSet = aToB.get(a);
     // This should only fail if a leaked view was mutated via an unsafe cast.
-    assert(bSet?.has(b), "Relation mapping inconsistency");
+    assertRelationMappingConsistency(bSet);
+    assertRelationMappingConsistency(bSet.has(b));
 
-    bSet!.delete(b);
-    if (bSet!.size === 0) {
+    bSet.delete(b);
+    if (bSet.size === 0) {
       aToB.delete(a);
     }
 
     const aSet = bToA.get(b);
     // This should only fail if a leaked view was mutated via an unsafe cast.
-    assert(aSet?.has(a), "Relation mapping inconsistency");
+    assertRelationMappingConsistency(aSet);
+    assertRelationMappingConsistency(aSet.has(a));
 
-    aSet!.delete(a);
-    if (aSet!.size === 0) {
+    aSet.delete(a);
+    if (aSet.size === 0) {
       bToA.delete(b);
     }
 
@@ -221,4 +223,10 @@ export const createRelation = <A, B>(): Relation<A, B> => {
 
     size: () => sizeInternal,
   };
+};
+
+const assertRelationMappingConsistency: (
+  condition: unknown,
+) => asserts condition = (condition) => {
+  assert(condition, "Relation mapping inconsistency");
 };
