@@ -33,7 +33,11 @@ import type { Done, NextResult, Ok, Result } from "./Result.js";
 import { err, getOrThrow, ok, tryAsync } from "./Result.js";
 import type { Schedule, ScheduleStep } from "./Schedule.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
-import { createStructuralMap, type StructuralKey } from "./StructuralMap.js";
+import {
+  createStructuralMap,
+  type Structural,
+  type StructuralKey,
+} from "./Structural.js";
 import type { testCreateRun } from "./Test.js";
 import type { Duration, Time, TimeDep } from "./Time.js";
 import { createTime, durationToMillis, Millis } from "./Time.js";
@@ -2569,15 +2573,16 @@ const semaphoreDisposedAbortError: AbortError = createAbortError(
  *
  * @group Concurrency primitives
  */
-export interface SemaphoreByKey<
-  K extends StructuralKey = StructuralKey,
-> extends Disposable {
+export interface SemaphoreByKey<K = StructuralKey> extends Disposable {
   /**
    * Executes a {@link Task} while holding one permit for a specific key.
    *
    * Behaves like {@link Semaphore.withPermit}, scoped to `key`.
    */
-  readonly withPermit: <T, E, D>(key: K, task: Task<T, E, D>) => Task<T, E, D>;
+  readonly withPermit: <T, E, D>(
+    key: Structural<K>,
+    task: Task<T, E, D>,
+  ) => Task<T, E, D>;
 
   /**
    * Executes a {@link Task} while holding permits for a specific key.
@@ -2585,12 +2590,12 @@ export interface SemaphoreByKey<
    * Behaves like {@link Semaphore.withPermits}, scoped to `key`.
    */
   readonly withPermits: <T, E, D>(
-    key: K,
+    key: Structural<K>,
     permits: Concurrency,
   ) => (task: Task<T, E, D>) => Task<T, E, D>;
 
   /** Returns current semaphore state for a key, or `null` if absent. */
-  readonly snapshot: (key: K) => SemaphoreSnapshot | null;
+  readonly snapshot: (key: Structural<K>) => SemaphoreSnapshot | null;
 }
 
 /**
@@ -2600,14 +2605,14 @@ export interface SemaphoreByKey<
  *
  * @group Concurrency primitives
  */
-export const createSemaphoreByKey = <K extends StructuralKey = StructuralKey>(
+export const createSemaphoreByKey = <K = StructuralKey>(
   permits: Concurrency,
 ): SemaphoreByKey<K> => {
   const semaphoresByKey = createStructuralMap<K, Semaphore>();
   let disposed = false;
 
   const withPermits =
-    <T, E, D>(key: K, requestedPermits: Concurrency) =>
+    <T, E, D>(key: Structural<K>, requestedPermits: Concurrency) =>
     (task: Task<T, E, D>): Task<T, E, D> =>
     async (run: Run<D>) => {
       if (disposed) return err(semaphoreDisposedAbortError);
@@ -2632,8 +2637,10 @@ export const createSemaphoreByKey = <K extends StructuralKey = StructuralKey>(
     };
 
   return {
-    withPermit: <T, E, D>(key: K, task: Task<T, E, D>): Task<T, E, D> =>
-      withPermits<T, E, D>(key, 1)(task),
+    withPermit: <T, E, D>(
+      key: Structural<K>,
+      task: Task<T, E, D>,
+    ): Task<T, E, D> => withPermits<T, E, D>(key, 1)(task),
 
     withPermits,
 
@@ -2722,18 +2729,19 @@ export const createMutex = (): Mutex => {
  *
  * @group Concurrency primitives
  */
-export interface MutexByKey<
-  K extends StructuralKey = StructuralKey,
-> extends Disposable {
+export interface MutexByKey<K = StructuralKey> extends Disposable {
   /**
    * Executes a {@link Task} while holding the mutex lock for a specific key.
    *
    * Behaves like {@link Mutex.withLock}, scoped to `key`.
    */
-  readonly withLock: <T, E, D>(key: K, task: Task<T, E, D>) => Task<T, E, D>;
+  readonly withLock: <T, E, D>(
+    key: Structural<K>,
+    task: Task<T, E, D>,
+  ) => Task<T, E, D>;
 
   /** Returns the current mutex state for `key`, or `null` if absent. */
-  readonly snapshot: (key: K) => SemaphoreSnapshot | null;
+  readonly snapshot: (key: Structural<K>) => SemaphoreSnapshot | null;
 }
 
 /**
@@ -2741,14 +2749,14 @@ export interface MutexByKey<
  *
  * @group Concurrency primitives
  */
-export const createMutexByKey = <
-  K extends StructuralKey = StructuralKey,
->(): MutexByKey<K> => {
+export const createMutexByKey = <K = StructuralKey>(): MutexByKey<K> => {
   const semaphoreByKey = createSemaphoreByKey<K>(minPositiveInt);
 
   return {
-    withLock: <T, E, D>(key: K, task: Task<T, E, D>): Task<T, E, D> =>
-      semaphoreByKey.withPermit(key, task),
+    withLock: <T, E, D>(
+      key: Structural<K>,
+      task: Task<T, E, D>,
+    ): Task<T, E, D> => semaphoreByKey.withPermit(key, task),
     snapshot: semaphoreByKey.snapshot,
     [Symbol.dispose]: semaphoreByKey[Symbol.dispose],
   };

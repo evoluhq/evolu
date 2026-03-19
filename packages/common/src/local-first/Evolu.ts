@@ -10,7 +10,7 @@ import { createCallbacks } from "../Callbacks.js";
 import type { ConsoleDep } from "../Console.js";
 import { createConsole } from "../Console.js";
 import { createUnknownError } from "../Error.js";
-import { exhaustiveCheck, todo } from "../Function.js";
+import { exhaustiveCheck } from "../Function.js";
 import { createMicrotaskBatch } from "../Microtask.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { createRefCount } from "../RefCount.js";
@@ -21,6 +21,7 @@ import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.js";
 import { createStore } from "../Store.js";
 import { type createRun, type Task } from "../Task.js";
 import type { Id, TypeError } from "../Type.js";
+import type { ExtractType } from "../Types.js";
 import {
   brand,
   createId,
@@ -31,12 +32,11 @@ import {
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { CreateDbWorkerDep } from "./Db.js";
 import type { EvoluError } from "./Error.js";
-import type { AppOwner, OwnerTransport, SyncOwner } from "./Owner.js";
+import type { AppOwner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.js";
 import {
   createAppOwner,
   createOwnerSecret,
   createOwnerWebSocketTransport,
-  OwnerId,
 } from "./Owner.js";
 import type {
   Queries,
@@ -780,6 +780,12 @@ export const createEvolu =
       postMessage = evoluChannel.port1.postMessage;
     }
 
+    const useOwnerBatch = stack.use(
+      createMicrotaskBatch<
+        ExtractType<EvoluInput, "UseOwner">["actions"][number]
+      >((actions) => postMessage({ type: "UseOwner", actions })),
+    );
+
     const createMutation =
       <Kind extends "insert" | "update" | "upsert">(
         kind: Kind,
@@ -807,7 +813,7 @@ export const createEvolu =
         );
 
         mutateBatch.push({
-          change: { ...dbChange, ownerId: appOwner.id },
+          change: { ...dbChange, ownerId: options?.ownerId ?? appOwner.id },
           onComplete: options?.onComplete,
         });
 
@@ -887,7 +893,28 @@ export const createEvolu =
         return exportDatabasePending.promise;
       },
 
-      useOwner: todo,
+      useOwner: (owner) => {
+        const syncOwner: SyncOwner = {
+          ...owner,
+          transports: owner.transports ?? transports ?? emptyArray,
+        };
+
+        useOwnerBatch.push({
+          owner: syncOwner,
+          action: "add",
+        });
+
+        let isUsed = true;
+
+        return () => {
+          assert(isUsed, "UnuseOwner can be called only once.");
+          isUsed = false;
+          useOwnerBatch.push({
+            owner: syncOwner,
+            action: "remove",
+          });
+        };
+      },
 
       [Symbol.asyncDispose]: () => {
         console.info("disposeEvolu");
@@ -940,60 +967,6 @@ export const createEvolu =
 //   mutationTypesCache.clear();
 //   const sqliteSchema = evoluSchemaToSqliteSchema(schema);
 //   dbWorker.postMessage({ type: "ensureSqliteSchema", sqliteSchema });
-// },
-
-// useOwner: (owner) => {
-//   const scheduleOwnerQueueProcessing = () => {
-//     if (useOwnerMicrotaskQueue.length !== 1) return;
-//     queueMicrotask(() => {
-//       const queue = [...useOwnerMicrotaskQueue];
-//       useOwnerMicrotaskQueue.length = 0;
-
-//       const result: Array<[SyncOwner, boolean, Uint8Array]> = [];
-//       const skipIndices = new Set<number>();
-
-//       for (let i = 0; i < queue.length; i++) {
-//         if (skipIndices.has(i)) continue;
-
-//         const [currentOwner, currentUse, currentOwnerSerialized] =
-//           queue[i];
-
-//         // Look for opposite action with same owner
-//         for (let j = i + 1; j < queue.length; j++) {
-//           if (skipIndices.has(j)) continue;
-
-//           const [, otherUse, otherOwnerSerialized] = queue[j];
-
-//           if (
-//             currentUse !== otherUse &&
-//             eqArrayNumber(currentOwnerSerialized, otherOwnerSerialized)
-//           ) {
-//             // Found cancel-out pair, skip both
-//             skipIndices.add(i).add(j);
-//             break;
-//           }
-//         }
-
-//         if (!skipIndices.has(i)) {
-//           result.push([currentOwner, currentUse, currentOwnerSerialized]);
-//         }
-//       }
-
-//       for (const [_owner, _use] of result) {
-//         // dbWorker.postMessage({ type: "useOwner", owner, use });
-//       }
-//     });
-//   };
-
-//   useOwnerMicrotaskQueue.push([owner, true, pack(owner)]);
-//   scheduleOwnerQueueProcessing();
-
-//   const unuse = () => {
-//     useOwnerMicrotaskQueue.push([owner, false, pack(owner)]);
-//     scheduleOwnerQueueProcessing();
-//   };
-
-//   return unuse;
 // },
 
 // interface LoadingPromises {

@@ -2,6 +2,7 @@ import {
   createConsole,
   createConsoleStoreOutput,
   createInMemoryLeaderLock,
+  createRandomBytes,
   createRun,
   createWebSocket,
   type ConsoleDep,
@@ -49,6 +50,7 @@ export const createEvoluDeps = (
       createWebSocket,
       createSqliteDriver: deps.createSqliteDriver,
       leaderLock,
+      randomBytes: createRandomBytes(),
     });
   };
 

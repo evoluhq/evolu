@@ -1,13 +1,17 @@
 import { assert, describe, expect, test } from "vitest";
 import type { ConsoleEntry } from "../../src/Console.js";
 import { testCreateConsole } from "../../src/Console.js";
+import {
+  createOwnerWebSocketTransport,
+  testSyncOwner,
+} from "../../src/local-first/Owner.js";
 import { testQuery } from "../../src/local-first/Query.js";
 import type { MutationChange } from "../../src/local-first/Schema.js";
-import { testSyncOwner } from "../../src/local-first/Owner.js";
 import type {
   DbWorkerInput,
   DbWorkerOutput,
 } from "../../src/local-first/Shared.js";
+import { ok } from "../../src/Result.js";
 import {
   type EvoluInput,
   type EvoluOutput,
@@ -21,7 +25,10 @@ import { createStore } from "../../src/Store.js";
 import { testCreateDeps, testCreateRun } from "../../src/Test.js";
 import { type TestTime } from "../../src/Time.js";
 import { type Id, testName } from "../../src/Type.js";
-import { testCreateWebSocket } from "../../src/WebSocket.js";
+import {
+  type CreateWebSocket,
+  testCreateWebSocket,
+} from "../../src/WebSocket.js";
 import {
   testWaitForWorkerMessage,
   testCreateMessageChannel,
@@ -35,6 +42,9 @@ describe("initSharedWorker", () => {
     consoleStoreOutputEntry: ReadonlyStore<ConsoleEntry | null> = createStore<ConsoleEntry | null>(
       null,
     ),
+    createWebSocket: CreateWebSocket = testCreateWebSocket({
+      throwOnCreate: true,
+    }),
   ) => {
     const worker = testCreateSharedWorker<SharedWorkerInput>();
 
@@ -45,7 +55,7 @@ describe("initSharedWorker", () => {
       console: testCreateConsole(),
       consoleStoreOutputEntry,
       createMessagePort: testCreateMessagePort,
-      createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
+      createWebSocket,
     });
 
     const initResult = await run(initSharedWorker(worker.self));
@@ -478,9 +488,11 @@ describe("initSharedWorker", () => {
       response: {
         type: "Mutate",
         messagesByOwnerId: new Map(),
+        protocolMessagesByOwnerId: new Map(),
         rowsByQuery: new Map([[query, [{ value: 1 }]]]),
       },
     });
+    await testWaitForWorkerMessage();
 
     evoluChannel.port2.postMessage({
       type: "Query",
@@ -652,6 +664,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "Mutate",
         messagesByOwnerId: new Map(),
+        protocolMessagesByOwnerId: new Map(),
         rowsByQuery: new Map([[query, [{ value: 1 }]]]),
       },
     });
@@ -661,6 +674,98 @@ describe("initSharedWorker", () => {
     const output2 = outputs2[0];
     assert(output1.type === "OnPatchesByQuery");
     assert(output2.type === "RefreshQueries");
+  });
+
+  test("sends protocol messages through transports retained for ownerId claims", async () => {
+    const sentMessages: Array<{
+      url: string;
+      data: Uint8Array;
+    }> = [];
+
+    const createWebSocket: CreateWebSocket = (url) => () =>
+      ok({
+        send: (data) => {
+          sentMessages.push({ url, data: data as Uint8Array });
+          return ok();
+        },
+        getReadyState: () => "open",
+        isOpen: () => true,
+        [Symbol.asyncDispose]: () => Promise.resolve(),
+      });
+
+    const { run, time, worker, workerStack } = await setupWorker(
+      undefined,
+      createWebSocket,
+    );
+    await using _run = run;
+    await using _workerStack = workerStack;
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://relay.example",
+      ownerId: testSyncOwner.id,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      appOwner: {
+        ...testSyncOwner,
+        transports: [transport],
+      },
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "Mutate",
+      changes: [{ ownerId: testSyncOwner.id } as MutationChange],
+      onCompleteIds: [],
+      subscribedQueries: new Set([testQuery]),
+    });
+
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const mutateInput = dbInputs.at(-1);
+    assert(mutateInput);
+
+    const protocolMessage = new Uint8Array([1, 2, 3]);
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: mutateInput.callbackId,
+      evoluPortId: mutateInput.evoluPortId,
+      response: {
+        type: "Mutate",
+        messagesByOwnerId: new Map(),
+        protocolMessagesByOwnerId: new Map([
+          [testSyncOwner.id, protocolMessage as never],
+        ]),
+        rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    expect(sentMessages).toEqual([
+      {
+        url: transport.url,
+        data: protocolMessage,
+      },
+    ]);
   });
 
   test("forwards DbWorker OnError to tab ports", async () => {

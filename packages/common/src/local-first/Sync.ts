@@ -181,7 +181,7 @@
 //       //     const webSocket = resources.getResource(transportKey);
 //       //     if (!webSocket) return;
 
-//       //     const ownerIds = resources.getConsumersForResource(transportKey);
+//       //     const owners = resources.getClaimsForResource(transportKey);
 //       //     deps.console.log("[sync]", "onOpen", { transportKey, ownerIds });
 
 //       //     for (const ownerId of ownerIds) {
@@ -262,29 +262,21 @@
 //       getConsumerId: (owner) => owner.id,
 //       disposalDelay: Millis.orThrow(config.disposalDelayMs ?? 100),
 
-//       onConsumerAdded: (owner, webSocket) => {
-//         deps.console.log("[sync]", "onConsumerAdded", {
-//           ownerId: owner.id,
+//       onFirstClaimAdded: (webSocket, transportKey) => {
+//         deps.console.log("[sync]", "onFirstClaimAdded", {
+//           transportKey,
 //           isOpen: webSocket.isOpen(),
 //         });
 
-//         // The onOpen handler will sync it.
-//         if (!webSocket.isOpen()) return;
-//         const message = createProtocolMessageForSync({
-//           storage,
-//           console: deps.console,
-//         })(owner.id, SubscriptionFlags.Subscribe);
-//         if (message) webSocket.send(message);
+//         // transportKey carries the logical subscription identity.
+//         // The onOpen handler will sync it if the socket is not open yet.
 //       },
 
-//       onConsumerRemoved: (owner, webSocket) => {
-//         deps.console.log("[sync]", "onConsumerRemoved", {
-//           ownerId: owner.id,
+//       onLastClaimRemoved: (webSocket, transportKey) => {
+//         deps.console.log("[sync]", "onLastClaimRemoved", {
+//           transportKey,
 //           isOpen: webSocket.isOpen(),
 //         });
-
-//         const message = createProtocolMessageForUnsubscribe(owner.id);
-//         webSocket.send(message);
 //       },
 //     });
 
@@ -303,11 +295,11 @@
 //         const transports = owner.transports ?? config.transports;
 
 //         if (use) {
-//           resources.addConsumer(owner, transports);
+//           resources.addClaim(owner, transports);
 //         } else {
-//           const result = resources.removeConsumer(owner, transports);
+//           const result = resources.removeClaim(owner, transports);
 //           if (!result.ok) {
-//             deps.console.warn("[sync]", "Failed to remove consumer", {
+//             deps.console.warn("[sync]", "Failed to remove claim", {
 //               transports,
 //               ownerId: owner.id,
 //               error: result.error,
