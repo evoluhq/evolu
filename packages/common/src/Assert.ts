@@ -109,9 +109,15 @@ export const assertType: <T extends AnyType>(
  * Asserts that a {@link Result} did not fail with `AbortError`.
  *
  * Use when abort would indicate a programmer error rather than ordinary control
- * flow. A typical case is code that uses `unabortable` for work that must
- * survive ordinary cancellation, but still wants to fail fast if that work was
- * started on an already-stopped Run.
+ * flow.
+ *
+ * In general, abort is normal control flow. Stopping work and returning
+ * `AbortError` is the correct behavior when a `Run` or `Fiber` is cancelled.
+ *
+ * Use `assertNotAborted` only to protect invariants in code that has already
+ * decided abort must not happen, such as resource helpers built on
+ * `unabortable`. In those places it helps fail fast on mistakes, because
+ * TypeScript cannot fully enforce that lifecycle logic is correct.
  */
 export function assertNotAborted<T>(
   result: Result<T, AbortError>,
