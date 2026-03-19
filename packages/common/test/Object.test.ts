@@ -17,7 +17,14 @@ import {
 
 test("isPlainObject", () => {
   expect(isPlainObject({})).toBe(true);
+  expect(isPlainObject(Object.create(null))).toBe(true);
   expect(isPlainObject(new Date())).toBe(false);
+
+  class Example {
+    readonly id = "a";
+  }
+
+  expect(isPlainObject(new Example())).toBe(false);
   expect(isPlainObject([])).toBe(false);
   expect(isPlainObject(null)).toBe(false);
 });

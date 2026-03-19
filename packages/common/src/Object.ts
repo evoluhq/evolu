@@ -24,8 +24,17 @@ export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
  */
 export const isPlainObject = (
   value: unknown,
-): value is Record<string, unknown> =>
-  Object.prototype.toString.call(value) === "[object Object]";
+): value is Record<string, unknown> => {
+  if (Object.prototype.toString.call(value) !== "[object Object]") {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value as object) as object | null;
+  return (
+    prototype === null ||
+    (Object.getPrototypeOf(prototype) as object | null) === null
+  );
+};
 
 /**
  * Checks if a value is a function.
