@@ -15,7 +15,7 @@ import {
   minMillis,
   type TimeDep,
 } from "./Time.js";
-import { minPositiveInt, PositiveInt } from "./Type.js";
+import { onePositiveInt, PositiveInt } from "./Type.js";
 import type { Predicate } from "./Types.js";
 
 /**
@@ -106,7 +106,7 @@ interface ScheduleStepMetrics {
 const createScheduleStepMetrics = (
   deps: TimeDep,
 ): (() => ScheduleStepMetrics) => {
-  let attempt = minPositiveInt;
+  let attempt = onePositiveInt;
   let start: Millis | null = null;
   let previous: Millis | null = null;
 

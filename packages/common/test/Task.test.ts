@@ -81,7 +81,7 @@ import { createTime, Millis, msLongTask, testCreateTime } from "../src/Time.js";
 import type { Typed } from "../src/Type.js";
 import {
   Id,
-  minPositiveInt,
+  onePositiveInt,
   Name,
   PositiveInt,
   testName,
@@ -2870,7 +2870,7 @@ describe("retry", () => {
     expect(retryLog).toEqual([
       {
         error: { type: "MyError" },
-        attempt: minPositiveInt,
+        attempt: onePositiveInt,
         output: 1,
         delay: 1,
       },
@@ -3127,7 +3127,7 @@ describe("repeat", () => {
     expect(repeatLog).toEqual([
       {
         value: 1,
-        attempt: minPositiveInt,
+        attempt: onePositiveInt,
         output: Millis.orThrow(0),
         delay: Millis.orThrow(0),
       },
@@ -6126,7 +6126,7 @@ describe("all", () => {
 
     const fiber = run(
       concurrently(
-        minPositiveInt,
+        onePositiveInt,
         all({ a: createTask("a"), b: createTask("b"), c: createTask("c") }),
       ),
     );
@@ -6457,7 +6457,7 @@ describe("allSettled", () => {
 
     const fiber = run(
       concurrently(
-        minPositiveInt,
+        onePositiveInt,
         allSettled({
           a: createTask("a"),
           b: createTask("b"),

@@ -368,10 +368,10 @@ This mirrors what C# does by default with
 ```ts
 /** Creates {@link RefCount}. */
 export const createRefCount = (): RefCount => {
-  let count = NonNegativeInt.orThrow(0);
+  let count = zeroNonNegativeInt;
   const stack = new DisposableStack();
   stack.defer(() => {
-    count = NonNegativeInt.orThrow(0);
+    count = zeroNonNegativeInt;
   });
   const moved = stack.move();
 

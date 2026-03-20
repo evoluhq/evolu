@@ -5,7 +5,7 @@
  */
 
 import type { Result } from "./Result.js";
-import { NonNegativeInt } from "./Type.js";
+import { NonNegativeInt, zeroNonNegativeInt } from "./Type.js";
 export {
   bytesToHex,
   bytesToUtf8,
@@ -172,7 +172,7 @@ export const createBuffer = (
     },
 
     reset: () => {
-      length = NonNegativeInt.orThrow(0);
+      length = zeroNonNegativeInt;
     },
 
     unwrap: () => value.subarray(0, length),

@@ -43,7 +43,7 @@ import {
   IdBytes,
   idBytesToId,
   idToIdBytes,
-  minPositiveInt,
+  onePositiveInt,
 } from "../Type.js";
 import type { ExtractType } from "../Types.js";
 import type {
@@ -838,7 +838,7 @@ const applyMessages =
      */
     updateOwnerUsage(deps)(
       ownerIdBytes,
-      minPositiveInt, // Placeholder until proper tracking implemented
+      onePositiveInt, // Placeholder until proper tracking implemented
       firstTimestamp,
       lastTimestamp,
     );

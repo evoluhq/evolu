@@ -25,7 +25,7 @@ import {
   type Task,
 } from "./Task.js";
 import { type Duration } from "./Time.js";
-import { NonNegativeInt, PositiveInt } from "./Type.js";
+import { NonNegativeInt, PositiveInt, zeroNonNegativeInt } from "./Type.js";
 
 /**
  * Disposable resource.
@@ -481,7 +481,7 @@ export const createSharedResourceByKey = <
         sharedResourceByKeyRun(
           mutexByKey.withLock(key, async (run) => {
             const sharedResource = sharedResourcesByKey.get(key);
-            if (!sharedResource) return ok(NonNegativeInt.orThrow(0));
+            if (!sharedResource) return ok(zeroNonNegativeInt);
             return run(sharedResource.getCount);
           }),
         ),
@@ -801,10 +801,10 @@ export interface RefCount extends Disposable {
 
 /** Creates {@link RefCount}. */
 export const createRefCount = (): RefCount => {
-  let count = NonNegativeInt.orThrow(0);
+  let count = zeroNonNegativeInt;
   const stack = new DisposableStack();
   stack.defer(() => {
-    count = NonNegativeInt.orThrow(0);
+    count = zeroNonNegativeInt;
   });
   const moved = stack.move();
 
@@ -866,7 +866,6 @@ export interface RefCountByKey<TKey> extends Disposable {
 /** Creates {@link RefCountByKey}. */
 export const createRefCountByKey = <TKey>(): RefCountByKey<TKey> => {
   const stack = new DisposableStack();
-  const zero = NonNegativeInt.orThrow(0);
 
   const refCountByKey = stack.adopt(
     new Map<TKey, RefCount>(),
@@ -906,7 +905,7 @@ export const createRefCountByKey = <TKey>(): RefCountByKey<TKey> => {
 
     getCount: (key) => {
       assertNotDisposed(moved);
-      return refCountByKey.get(key)?.getCount() ?? zero;
+      return refCountByKey.get(key)?.getCount() ?? zeroNonNegativeInt;
     },
 
     has: (key) => {

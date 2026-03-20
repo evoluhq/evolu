@@ -48,7 +48,7 @@ import {
   Id,
   type InferType,
   maxPositiveInt,
-  minPositiveInt,
+  onePositiveInt,
   type Name,
   NonNegativeInt,
   object,
@@ -58,6 +58,7 @@ import {
   union,
   Unknown,
   UnknownResult,
+  zeroNonNegativeInt,
 } from "./Type.js";
 import type { isPromiseLike } from "./Types.js";
 import {
@@ -1995,7 +1996,7 @@ export const retry =
   ): Task<T, RetryError<E>, D> =>
   async (run) => {
     const step = schedule(run.deps);
-    let attempt = minPositiveInt;
+    let attempt = onePositiveInt;
     let error: E | undefined;
 
     for (;;) {
@@ -2116,7 +2117,7 @@ export const repeat =
   async (run) => {
     const step = schedule(run.deps);
     let lastResult: Result<T, E>;
-    let attempt = minPositiveInt;
+    let attempt = onePositiveInt;
 
     for (;;) {
       const result = await run(task);
@@ -2449,7 +2450,7 @@ export const createSemaphore = (permits: Concurrency): Semaphore => {
 
   const fibers = new Set<Fiber>();
   const waiters: Array<Waiter> = [];
-  let taken = NonNegativeInt.orThrow(0);
+  let taken = zeroNonNegativeInt;
   let disposed = false;
 
   const withPermits =
@@ -2713,7 +2714,7 @@ export interface Mutex extends Disposable {
  * @group Concurrency primitives
  */
 export const createMutex = (): Mutex => {
-  const semaphore = createSemaphore(minPositiveInt);
+  const semaphore = createSemaphore(onePositiveInt);
 
   return {
     withLock: semaphore.withPermit,
@@ -2750,7 +2751,7 @@ export interface MutexByKey<K = StructuralKey> extends Disposable {
  * @group Concurrency primitives
  */
 export const createMutexByKey = <K = StructuralKey>(): MutexByKey<K> => {
-  const semaphoreByKey = createSemaphoreByKey<K>(minPositiveInt);
+  const semaphoreByKey = createSemaphoreByKey<K>(onePositiveInt);
 
   return {
     withLock: <T, E, D>(

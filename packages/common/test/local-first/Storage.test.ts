@@ -27,7 +27,12 @@ import { ok } from "../../src/Result.js";
 import { sql, testCreateRunWithSqlite } from "../../src/Sqlite.js";
 import { testCreateDeps } from "../../src/Test.js";
 import type { Millis } from "../../src/Time.js";
-import { createId, NonNegativeInt, PositiveInt } from "../../src/Type.js";
+import {
+  createId,
+  NonNegativeInt,
+  PositiveInt,
+  zeroNonNegativeInt,
+} from "../../src/Type.js";
 import { testCreateSqliteDeps } from "../_deps.js";
 import {
   testAnotherTimestampsAsc,
@@ -232,7 +237,7 @@ test("findLowerBound", async () => {
   }
 
   const ownerId = testAppOwnerIdBytes;
-  const begin = NonNegativeInt.orThrow(0);
+  const begin = zeroNonNegativeInt;
   const end = NonNegativeInt.orThrow(10);
 
   const beforeAll = timestampToTimestampBytes(createTimestamp());

@@ -22,6 +22,7 @@ import {
   NonNegativeInt,
   Uint8Array,
   type Typed,
+  zeroNonNegativeInt,
 } from "./Type.js";
 
 export interface RandomBytes {
@@ -235,7 +236,7 @@ export const decryptWithXChaCha20Poly1305 = (
 export const createPadmePaddedLength = (
   length: NonNegativeInt,
 ): NonNegativeInt => {
-  if (length <= 0) return NonNegativeInt.orThrow(0);
+  if (length <= 0) return zeroNonNegativeInt;
   const e = 31 - Math.clz32(length >>> 0);
   const s = 32 - Math.clz32(e >>> 0);
   const z = Math.max(0, e - s);

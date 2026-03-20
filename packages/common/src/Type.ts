@@ -2116,6 +2116,9 @@ export type Int = typeof Int.Type;
 export const NonNegativeInt = /*#__PURE__*/ nonNegative(Int);
 export type NonNegativeInt = typeof NonNegativeInt.Type;
 
+/** Minimum {@link NonNegativeInt} value (0). */
+export const zeroNonNegativeInt = /*#__PURE__*/ NonNegativeInt.orThrow(0);
+
 /**
  * Positive integer (> 0).
  *
@@ -2124,8 +2127,8 @@ export type NonNegativeInt = typeof NonNegativeInt.Type;
 export const PositiveInt = /*#__PURE__*/ positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
 
-/** Minimum {@link PositiveInt} value (1). */
-export const minPositiveInt = /*#__PURE__*/ PositiveInt.orThrow(1);
+/** {@link PositiveInt} value 1. */
+export const onePositiveInt = /*#__PURE__*/ PositiveInt.orThrow(1);
 
 /** Maximum {@link PositiveInt} value (MAX_SAFE_INTEGER). */
 export const maxPositiveInt = /*#__PURE__*/ PositiveInt.orThrow(
