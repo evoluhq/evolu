@@ -59,7 +59,7 @@ export interface SharedWorkerDep {
   readonly sharedWorker: SharedWorker;
 }
 
-type SharedWorkerDeps = WorkerDeps & CreateWebSocketDep;
+export type SharedWorkerDeps = WorkerDeps & CreateWebSocketDep;
 
 export type SharedWorkerInput =
   | {
