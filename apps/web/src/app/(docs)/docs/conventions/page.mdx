@@ -349,6 +349,72 @@ class Counter {
 }
 ```
 
+## Disposing
+
+### Disposable
+
+Use `Disposable` when an object owns something that requires synchronous
+cleanup.
+
+Use `DisposableStack` for synchronous disposable helpers, even when they own
+only one cleanup step.
+
+Leverage that same stack with `assertNotDisposed` when synchronous public
+methods become invalid after disposal.
+
+This mirrors what C# does by default with
+[`ObjectDisposedException`](https://learn.microsoft.com/en-us/dotnet/api/system.objectdisposedexception?view=net-10.0): using a disposed object is a programmer error and should fail fast. In Evolu we enforce that behavior by convention with explicit `assertNotDisposed` guards.
+
+```ts
+/** Creates {@link RefCount}. */
+export const createRefCount = (): RefCount => {
+  let count = NonNegativeInt.orThrow(0);
+  const stack = new DisposableStack();
+  stack.defer(() => {
+    count = NonNegativeInt.orThrow(0);
+  });
+  const moved = stack.move();
+
+  return {
+    increment: () => {
+      assertNotDisposed(moved);
+      const nextCount = PositiveInt.orThrow(count + 1);
+      count = nextCount;
+      return nextCount;
+    },
+
+    decrement: () => {
+      assertNotDisposed(moved);
+      assert(count > 0, "RefCount must not be decremented below zero.");
+      count = NonNegativeInt.orThrow(count - 1);
+      return count;
+    },
+
+    getCount: () => {
+      assertNotDisposed(moved);
+      return count;
+    },
+
+    [Symbol.dispose]: () => moved.dispose(),
+  };
+};
+```
+
+### AsyncDisposable
+
+Use `AsyncDisposable` when an object owns async cleanup or long-lived async
+work.
+
+Use `AsyncDisposableStack` to own async resources and cleanup.
+
+For reusable async resources, create one internal `Run` with `run.create()`
+and use that `Run` for the resource's async operations. Disposing the resource
+then disposes that internal `Run`, which aborts in-flight child tasks, waits
+for them to settle, and rejects later calls through it.
+
+If an `AsyncDisposable` object also exposes synchronous methods, guard those
+methods with `assertNotDisposed` on the moved `AsyncDisposableStack`.
+
 ## Branded types
 
 Use [`Brand`](/docs/api-reference/common/Brand/interfaces/Brand) to give

@@ -182,6 +182,20 @@ Don't use `ok("done")` or `ok("success")` - the `ok()` itself already communicat
 - **Never use assertions instead of proper type validation** - use Type system for runtime validation
 - Use for catching developer mistakes eagerly (e.g., invalid configuration)
 
+## Disposing
+
+### Disposable
+
+- Use `extends Disposable` on interface when it contains something that has to be disposed
+- Use `new DisposableStack()` for synchronous disposable helpers, even when they own only one cleanup step
+- For synchronous methods on disposable helpers, guard public methods explicitly with `assertNotDisposed` when use-after-dispose is a programmer error
+
+### AsyncDisposable
+
+- Use `AsyncDisposableStack` for async disposable helpers
+- For reusable async resources, create one internal `Run` with `run.create()` and use that `Run` for the resource's async operations
+- If an `AsyncDisposable` helper also exposes synchronous methods, guard those methods with `assertNotDisposed` on the moved `AsyncDisposableStack`
+
 ## Dependency injection
 
 Follow Evolu's convention-based DI approach. There are two mechanisms depending on sync vs async:
