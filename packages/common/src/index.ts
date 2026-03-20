@@ -26,7 +26,6 @@ export * from "./Platform.js";
 export * from "./Random.js";
 export * from "./Redacted.js";
 export * from "./Ref.js";
-export * from "./RefCount.js";
 export * from "./Relation.js";
 export * from "./Resource.js";
 export * from "./Result.js";

@@ -13,8 +13,8 @@ import { createUnknownError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
 import { createMicrotaskBatch } from "../Microtask.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
-import { createRefCount } from "../RefCount.js";
 import { err, ok } from "../Result.js";
+import { createRefCountByKey } from "../Resource.js";
 import { isNonEmptySet } from "../Set.js";
 import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.js";
@@ -559,13 +559,17 @@ export const createEvolu =
       appOwner = createAppOwner(createOwnerSecret(run.deps)),
       transports,
     } = config;
-    const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
 
+    const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
     const console = run.deps.console.child(name).child("Evolu");
     console.info("createEvolu");
 
-    const rowsByQueryMapStore = createStore<RowsByQueryMap>(new Map());
-    const subscribedQueriesRefCount = createRefCount<Query>();
+    await using stack = new AsyncDisposableStack();
+
+    const rowsByQueryMapStore = stack.use(
+      createStore<RowsByQueryMap>(new Map()),
+    );
+    const subscribedQueriesRefCount = stack.use(createRefCountByKey<Query>());
 
     interface LoadingPromise {
       /**
@@ -586,8 +590,6 @@ export const createEvolu =
     }
 
     const loadingPromisesByQuery = new Map<Query, LoadingPromise>();
-
-    await using stack = new AsyncDisposableStack();
 
     const onMutateCompleteCallbacks = stack.use(createCallbacks(run.deps));
 
