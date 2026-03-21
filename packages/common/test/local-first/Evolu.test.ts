@@ -615,6 +615,77 @@ describe("unit tests", () => {
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
     });
 
+    test("throws from sync methods after dispose", async () => {
+      await using run = testCreateRun(testCreateEvoluDeps());
+      const evolu = await run.orThrow(testCreateEvolu);
+      evolu.useOwner(testAppOwner);
+
+      await evolu[Symbol.asyncDispose]();
+
+      const disposedMessage = "Expected value to not be disposed.";
+
+      expect(() => {
+        evolu.insert("todo", {
+          title: NonEmptyString100.orThrow("Inserted after dispose"),
+        });
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        evolu.update("todo", {
+          id: TodoId.orThrow(createIdFromString("todo-update-after-dispose")),
+          title: NonEmptyString100.orThrow("Updated after dispose"),
+        });
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        evolu.upsert("todo", {
+          id: TodoId.orThrow(createIdFromString("todo-upsert-after-dispose")),
+          title: NonEmptyString100.orThrow("Upserted after dispose"),
+        });
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        void evolu.loadQuery(testQuery);
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        void evolu.loadQueries([testQuery, testQuery2]);
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        evolu.subscribeQuery(testQuery)(lazyVoid);
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        evolu.getQueryRows(testQuery);
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        void evolu.exportDatabase();
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        evolu.useOwner(testAppOwner);
+      }).toThrow(disposedMessage);
+    });
+
+    test("allows unuseOwner after dispose", async () => {
+      await using run = testCreateRun(testCreateEvoluDeps());
+      const evolu = await run.orThrow(testCreateEvolu);
+
+      const unuseOwner = evolu.useOwner(testAppOwner);
+
+      await evolu[Symbol.asyncDispose]();
+
+      expect(() => {
+        unuseOwner();
+      }).not.toThrow();
+
+      expect(() => {
+        unuseOwner();
+      }).toThrow("UnuseOwner can be called only once.");
+    });
+
     test("resolves pending loadQuery with empty rows on dispose", async () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
