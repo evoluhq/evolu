@@ -589,13 +589,42 @@ export const createEvolu =
       releaseOnResolve: boolean;
     }
 
-    const loadingPromisesByQuery = new Map<Query, LoadingPromise>();
+    /**
+     * Settle pending query loads during disposal so awaiting callers and React
+     * `use` thenables do not hang forever during teardown.
+     */
+    const loadingPromisesByQuery = stack.adopt(
+      new Map<Query, LoadingPromise>(),
+      (loadingPromisesByQuery) => {
+        for (const loadingPromise of loadingPromisesByQuery.values()) {
+          if (loadingPromise.promise.status === "fulfilled") continue;
+          fulfillLoadingPromise(loadingPromise, emptyArray);
+        }
+        loadingPromisesByQuery.clear();
+      },
+    );
 
-    const onMutateCompleteCallbacks = stack.use(createCallbacks(run.deps));
+    const fulfillLoadingPromise = (
+      loadingPromise: LoadingPromise,
+      rows: QueryRows,
+    ): void => {
+      /**
+       * Pending promises must be resolved in place to preserve identity for
+       * current awaiters. Fulfilled promises are replaced with a new resolved
+       * promise so future loads see the latest rows.
+       */
+      if (loadingPromise.promise.status !== "fulfilled") {
+        loadingPromise.resolve(rows);
+      } else {
+        loadingPromise.promise = Promise.resolve(rows);
+      }
 
-    let exportDatabasePending = null as PromiseWithResolvers<
-      Uint8Array<ArrayBuffer>
-    > | null;
+      /** See {@link LoadingPromise.promise}. */
+      void Object.assign(loadingPromise.promise, {
+        status: "fulfilled",
+        value: rows,
+      });
+    };
 
     /**
      * Mutations and refreshes invalidate query snapshots. Keep loading promises
@@ -616,6 +645,17 @@ export const createEvolu =
         }
       }
     };
+
+    const onMutateCompleteCallbacks = stack.use(createCallbacks(run.deps));
+
+    let exportDatabasePending = null as PromiseWithResolvers<
+      Uint8Array<ArrayBuffer>
+    > | null;
+
+    stack.defer(() => {
+      exportDatabasePending?.reject({ type: "EvoluDisposedError" });
+      exportDatabasePending = null;
+    });
 
     const mutateBatch = stack.use(
       createMicrotaskBatch<{
@@ -650,6 +690,12 @@ export const createEvolu =
       }),
     );
 
+    const useOwnerBatch = stack.use(
+      createMicrotaskBatch<
+        ExtractType<EvoluInput, "UseOwner">["actions"][number]
+      >((actions) => postMessage({ type: "UseOwner", actions })),
+    );
+
     let postMessage: (input: EvoluInput) => void;
 
     // Scope worker/channel wiring and keep only postMessage outside.
@@ -660,34 +706,6 @@ export const createEvolu =
       );
       const evoluChannel = stack.use(
         createMessageChannel<EvoluInput, EvoluOutput>(),
-      );
-
-      sharedWorker.port.postMessage(
-        {
-          type: "CreateEvolu",
-          name,
-          appOwner: { ...appOwner, transports: transports ?? emptyArray },
-          evoluPort: evoluChannel.port2.native,
-          dbWorkerPort: dbWorkerChannel.port2.native,
-        },
-        [evoluChannel.port2.native, dbWorkerChannel.port2.native],
-      );
-
-      /**
-       * No stack.use because Evolu instances don't dispose DbWorker because
-       * it's SharedWorder responsibility. DbWorker can be used by another tab.
-       * That's required because SQLite WASM needs a single web worker.
-       */
-      createDbWorker().postMessage(
-        {
-          type: "Init",
-          name,
-          consoleLevel: console.getLevel(),
-          sqliteSchema: evoluSchemaToSqliteSchema(schema, config.indexes),
-          encryptionKey: appOwner.encryptionKey,
-          port: dbWorkerChannel.port1.native,
-        },
-        [dbWorkerChannel.port1.native],
       );
 
       evoluChannel.port1.onMessage = (message) => {
@@ -714,22 +732,7 @@ export const createEvolu =
               const rows = nextRowsByQueryMap.get(query);
               assert(rows, "Expected patched query rows to exist.");
 
-              /**
-               * Pending promises must be resolved in place to preserve identity
-               * for current awaiters. Fulfilled promises are replaced with a
-               * new resolved promise so future loads see the latest rows.
-               */
-              if (loadingPromise.promise.status !== "fulfilled") {
-                loadingPromise.resolve(rows);
-              } else {
-                loadingPromise.promise = Promise.resolve(rows);
-              }
-
-              /** See {@link LoadingPromise.promise}. */
-              void Object.assign(loadingPromise.promise, {
-                status: "fulfilled",
-                value: rows,
-              });
+              fulfillLoadingPromise(loadingPromise, rows);
 
               /**
                * Release promises flagged during mutation when they finish
@@ -779,14 +782,40 @@ export const createEvolu =
         }
       };
 
-      postMessage = evoluChannel.port1.postMessage;
-    }
+      sharedWorker.port.postMessage(
+        {
+          type: "CreateEvolu",
+          name,
+          appOwner: { ...appOwner, transports: transports ?? emptyArray },
+          evoluPort: evoluChannel.port2.native,
+          dbWorkerPort: dbWorkerChannel.port2.native,
+        },
+        [evoluChannel.port2.native, dbWorkerChannel.port2.native],
+      );
 
-    const useOwnerBatch = stack.use(
-      createMicrotaskBatch<
-        ExtractType<EvoluInput, "UseOwner">["actions"][number]
-      >((actions) => postMessage({ type: "UseOwner", actions })),
-    );
+      /**
+       * No stack.use because Evolu instances don't dispose DbWorker because
+       * it's SharedWorder responsibility. DbWorker can be used by another tab.
+       * That's required because SQLite WASM needs a single web worker.
+       */
+      createDbWorker().postMessage(
+        {
+          type: "Init",
+          name,
+          consoleLevel: console.getLevel(),
+          sqliteSchema: evoluSchemaToSqliteSchema(schema, config.indexes),
+          encryptionKey: appOwner.encryptionKey,
+          port: dbWorkerChannel.port1.native,
+        },
+        [dbWorkerChannel.port1.native],
+      );
+
+      postMessage = evoluChannel.port1.postMessage;
+
+      stack.defer(() => {
+        postMessage({ type: "Dispose" });
+      });
+    }
 
     const createMutation =
       <Kind extends "insert" | "update" | "upsert">(
@@ -919,10 +948,7 @@ export const createEvolu =
       },
 
       [Symbol.asyncDispose]: () => {
-        console.info("disposeEvolu");
-        exportDatabasePending?.reject({ type: "EvoluDisposedError" });
-        exportDatabasePending = null;
-        postMessage({ type: "Dispose" });
+        console.info("dispose");
         return moved.disposeAsync();
       },
     } as Evolu<S>);
@@ -971,96 +997,6 @@ export const createEvolu =
 //   dbWorker.postMessage({ type: "ensureSqliteSchema", sqliteSchema });
 // },
 
-// interface LoadingPromises {
-//   get: <R extends Row>(
-//     query: Query<R>,
-//   ) => {
-//     readonly promise: Promise<QueryRows<R>>;
-//     readonly isNew: boolean;
-//   };
-
-//   resolve: (query: Query, rows: ReadonlyArray<Row>) => void;
-
-//   releaseUnsubscribedOnMutation: () => void;
-
-//   getQueries: () => ReadonlyArray<Query>;
-// }
-
-// interface LoadingPromise {
-//   /** Promise with props for the React use hook. */
-//   promise: Promise<QueryRows> & {
-//     status?: "pending" | "fulfilled" | "rejected";
-//     value?: QueryRows;
-//     reason?: unknown;
-//   };
-//   resolve: (rows: QueryRows) => void;
-//   releaseOnResolve: boolean;
-// }
-
-// const createLoadingPromises = (
-//   subscribedQueries: SubscribedQueries,
-// ): LoadingPromises => {
-//   const loadingPromiseMap = new Map<Query, LoadingPromise>();
-
-//   return {
-//     get: <R extends Row>(
-//       query: Query<R>,
-//     ): {
-//       readonly promise: Promise<QueryRows<R>>;
-//       readonly isNew: boolean;
-//     } => {
-//       let loadingPromise = loadingPromiseMap.get(query);
-//       const isNew = !loadingPromise;
-//       if (!loadingPromise) {
-//         const { promise, resolve } = Promise.withResolvers<QueryRows>();
-//         loadingPromise = { resolve, promise, releaseOnResolve: false };
-//         loadingPromiseMap.set(query, loadingPromise);
-//       }
-//       return {
-//         promise: loadingPromise.promise as Promise<QueryRows<R>>,
-//         isNew,
-//       };
-//     },
-
-//     resolve: (query, rows) => {
-//       const loadingPromise = loadingPromiseMap.get(query);
-//       if (!loadingPromise) return;
-
-//       if (loadingPromise.promise.status !== "fulfilled") {
-//         loadingPromise.resolve(rows);
-//       } else {
-//         loadingPromise.promise = Promise.resolve(rows);
-//       }
-
-//       // Set status and value fields for React's `use` Hook to unwrap synchronously.
-//       // While undocumented in React docs, React still uses these properties internally,
-//       // and Evolu's own promise caching logic depends on checking `promise.status`.
-//       // https://github.com/acdlite/rfcs/blob/first-class-promises/text/0000-first-class-support-for-promises.md
-//       void Object.assign(loadingPromise.promise, {
-//         status: "fulfilled",
-//         value: rows,
-//       });
-
-//       if (loadingPromise.releaseOnResolve) {
-//         loadingPromiseMap.delete(query);
-//       }
-//     },
-
-//     releaseUnsubscribedOnMutation: () => {
-//       [...loadingPromiseMap.entries()]
-//         .filter(([query]) => !subscribedQueries.has(query))
-//         .forEach(([query, loadingPromise]) => {
-//           if (loadingPromise.promise.status === "fulfilled") {
-//             loadingPromiseMap.delete(query);
-//           } else {
-//             loadingPromise.releaseOnResolve = true;
-//           }
-//         });
-//     },
-
-//     getQueries: () => Array.from(loadingPromiseMap.keys()),
-//   };
-// };
 // /**
 //  * Delete {@link AppOwner} and all their data from the current device. After
 //  * the deletion, Evolu will purge the application state. For browsers, this

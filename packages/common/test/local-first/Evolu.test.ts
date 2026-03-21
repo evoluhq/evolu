@@ -615,6 +615,45 @@ describe("unit tests", () => {
       expect(run.deps.evoluInputs).toEqual([{ type: "Export" }]);
     });
 
+    test("resolves pending loadQuery with empty rows on dispose", async () => {
+      await using run = testCreateRun(testCreateEvoluDeps());
+      const evolu = await run.orThrow(testCreateEvolu);
+
+      const loadPromise = evolu.loadQuery(testQuery);
+
+      await testWaitForWorkerMessage();
+
+      expect(run.deps.evoluInputs).toEqual([
+        { type: "Query", queries: new Set([testQuery]) },
+      ]);
+
+      await evolu[Symbol.asyncDispose]();
+
+      await expect(loadPromise).resolves.toEqual([]);
+    });
+
+    test("dispose keeps fulfilled subscribed loadQuery settled", async () => {
+      await using run = testCreateRun(testCreateEvoluDeps());
+      const evolu = await run.orThrow(testCreateEvolu);
+
+      evolu.subscribeQuery(testQuery)(lazyVoid);
+      const loadPromise = evolu.loadQuery(testQuery);
+
+      await testWaitForWorkerMessage();
+
+      run.deps.postEvoluOutput({
+        type: "OnPatchesByQuery",
+        patchesByQuery: new Map([
+          [testQuery, [{ op: "replaceAll", value: [{ title: "A" }] }]],
+        ]),
+        onCompleteIds: [],
+      });
+
+      await expect(loadPromise).resolves.toEqual([{ title: "A" }]);
+
+      await evolu[Symbol.asyncDispose]();
+    });
+
     test("posts Dispose with pending mutation microtask batch", async () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
