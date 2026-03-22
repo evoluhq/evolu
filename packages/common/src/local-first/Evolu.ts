@@ -4,8 +4,17 @@
  * @module
  */
 
-import { emptyArray, mapArray } from "../Array.js";
-import { assert, assertNotDisposed } from "../Assert.js";
+import {
+  emptyArray,
+  isNonEmptyArray,
+  mapArray,
+  type NonEmptyReadonlyArray,
+} from "../Array.js";
+import {
+  assert,
+  assertNonEmptyReadonlyArray,
+  assertNotDisposed,
+} from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import type { ConsoleDep } from "../Console.js";
 import { createConsole } from "../Console.js";
@@ -13,15 +22,14 @@ import { createUnknownError } from "../Error.js";
 import { exhaustiveCheck } from "../Function.js";
 import { createMicrotaskBatch } from "../Microtask.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
+import { createRefCountByKey } from "../RefCount.js";
 import { err, ok } from "../Result.js";
-import { createRefCountByKey } from "../Resource.js";
 import { isNonEmptySet } from "../Set.js";
 import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.js";
 import { createStore } from "../Store.js";
 import { type createRun, type Task } from "../Task.js";
 import type { Id, TypeError } from "../Type.js";
-import type { ExtractType } from "../Types.js";
 import {
   brand,
   createId,
@@ -29,10 +37,18 @@ import {
   Name,
   UrlSafeString,
 } from "../Type.js";
+import type { ExtractType } from "../Types.js";
 import type { CreateMessageChannelDep } from "../Worker.js";
 import type { CreateDbWorkerDep } from "./Db.js";
 import type { EvoluError } from "./Error.js";
-import type { AppOwner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.js";
+import type {
+  AppOwner,
+  Owner,
+  OwnerId,
+  OwnerTransport,
+  ReadonlyOwner,
+  SyncOwner,
+} from "./Owner.js";
 import {
   createAppOwner,
   createOwnerSecret,
@@ -74,7 +90,7 @@ export interface EvoluConfig {
    *
    * Evolu derives the final instance name from `appName` and `appOwner`. The
    * derived instance name is used as the SQLite database filename and as the
-   * log prefix. This ensures that each owner gets a separate local database
+   * log prefix. This ensures that each Owner gets a separate local database
    * while preserving a readable app prefix.
    *
    * ### Example
@@ -92,7 +108,7 @@ export interface EvoluConfig {
    * creates one.
    *
    * AppOwner controls access to the encrypted local SQLite database. If its
-   * secret material (owner secret / mnemonic) is not stored safely, data
+   * secret material (Owner secret / Mnemonic) is not stored safely, data
    * written by that instance is permanently inaccessible.
    *
    * Best onboarding UX is accountless first use: let users try a ready-to-use
@@ -109,23 +125,27 @@ export interface EvoluConfig {
   readonly appOwner?: AppOwner;
 
   /**
-   * Transport configuration for data sync and backup. Supports single transport
-   * or multiple transports simultaneously for redundancy.
+   * Transport configuration for sync and backup.
+   *
+   * If not specified, Evolu uses the default Evolu relay. Pass one or more
+   * transports to override it with your own relays. Pass an empty array to
+   * disable sync, which is useful when sync should be configured later.
+   *
+   * Empty transports start the instance without sync. In that case,
+   * {@link Evolu.useOwner} must be called with explicit non-empty transports to
+   * enable sync for any Owner, including the AppOwner.
    *
    * **Redundancy:** The ideal setup uses at least two completely independent
    * relays - for example, a home relay and a geographically separate relay.
    * Data is sent to both relays simultaneously, providing true redundancy
    * similar to using two independent clouds. This eliminates vendor lock-in and
    * ensures your app continues working regardless of circumstances - whether
-   * home relay hardware is stolen or a remote relay provider shuts down.
+   * home relay hardware fails or disappears, or a remote relay provider shuts
+   * down.
    *
    * Currently supports:
    *
    * - WebSocket: Real-time bidirectional communication with relay servers
-   *
-   * Empty transports create local-only instances. Transports can be dynamically
-   * added and removed for any owner (including {@link AppOwner}) via
-   * {@link Evolu.useOwner}.
    *
    * Use {@link createOwnerWebSocketTransport} to create WebSocket transport
    * configurations with proper URL formatting and {@link OwnerId} inclusion. The
@@ -235,8 +255,8 @@ export interface Evolu<
   S extends EvoluSchema = EvoluSchema,
 > extends AsyncDisposable {
   /**
-   * Resolved instance name derived from {@link EvoluConfig.appName} and app
-   * owner hash.
+   * Evolu instance name is derived from {@link EvoluConfig.appName} and
+   * {@link AppOwner}'s hash.
    */
   readonly name: Name;
 
@@ -403,24 +423,30 @@ export interface Evolu<
   // TODO: Add exportHistory.
 
   /**
-   * // TODO: Ten naming je furt divnej, syncOwner? subscribeOwner? // hmm, use
-   * je ale ok, cleanup vracet teda? uvidime.
+   * Use an Owner for sync. Returns a {@link UnuseOwner}.
    *
-   * Use a {@link SyncOwner}. Returns a {@link UnuseOwner}.
+   * Using an Owner means syncing it with the provided transports, or with the
+   * default transports defined in {@link EvoluConfig} when transports are
+   * omitted.
    *
-   * Using an owner means syncing it with its transports, or the transports
-   * defined in Evolu config if the owner has no transports defined.
+   * If {@link EvoluConfig.transports} is an empty array, this method must be
+   * called with explicit non-empty transports.
    *
-   * Transport are automatically deduplicated and reference-counted, so multiple
-   * owners using the same transport will share a single connection.
+   * Transports are automatically deduplicated and reference-counted, so
+   * multiple Owners using the same transport will share a single connection.
    *
    * ### Example
    *
    * ```ts
-   * // Use an owner (starts syncing).
-   * const unuseOwner = evolu.useOwner(shardOwner);
+   * // Use an Owner (starts syncing).
+   * const unuseOwner = evolu.useOwner(shardOwner, [
+   *   createOwnerWebSocketTransport({
+   *     url: "ws://localhost:4000",
+   *     ownerId: shardOwner.id,
+   *   }),
+   * ]);
    *
-   * // Later, stop using the owner.
+   * // Later, stop using the Owner.
    * unuseOwner();
    *
    * // Bulk operations.
@@ -428,10 +454,13 @@ export interface Evolu<
    * // Later: for (const unuse of unuseOwners) unuse();
    * ```
    */
-  readonly useOwner: (owner: SyncOwner) => UnuseOwner;
+  readonly useOwner: (
+    owner: ReadonlyOwner | Owner,
+    transports?: NonEmptyReadonlyArray<OwnerTransport>,
+  ) => UnuseOwner;
 }
 
-/** Function returned by {@link Evolu.useOwner} to stop using an {@link SyncOwner}. */
+/** Function returned by {@link Evolu.useOwner} to stop using an Owner for sync. */
 export type UnuseOwner = () => void;
 
 export interface EvoluErrorDep {
@@ -557,7 +586,7 @@ export const createEvolu =
     const {
       appName,
       appOwner = createAppOwner(createOwnerSecret(run.deps)),
-      transports,
+      transports = [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
     } = config;
 
     const name = Name.orThrow(`${appName}-${createIdFromString(appOwner.id)}`);
@@ -757,6 +786,7 @@ export const createEvolu =
             }
             break;
           }
+
           case "RefreshQueries": {
             releaseUnsubscribedLoadingPromises();
 
@@ -768,6 +798,7 @@ export const createEvolu =
             if (isNonEmptySet(queries)) postMessage({ type: "Query", queries });
             break;
           }
+
           case "OnExport": {
             assert(
               exportDatabasePending,
@@ -777,6 +808,7 @@ export const createEvolu =
             exportDatabasePending = null;
             break;
           }
+
           default:
             exhaustiveCheck(message);
         }
@@ -786,7 +818,6 @@ export const createEvolu =
         {
           type: "CreateEvolu",
           name,
-          appOwner: { ...appOwner, transports: transports ?? emptyArray },
           evoluPort: evoluChannel.port2.native,
           dbWorkerPort: dbWorkerChannel.port2.native,
         },
@@ -885,7 +916,43 @@ export const createEvolu =
         emptyArray) as QueryRows<R>;
     };
 
+    const useOwner = (
+      owner: ReadonlyOwner | Owner,
+      ownerTransports?: NonEmptyReadonlyArray<OwnerTransport>,
+    ): UnuseOwner => {
+      assertNotDisposed(moved);
+
+      const effectiveTransports = ownerTransports ?? transports;
+      assertNonEmptyReadonlyArray(
+        effectiveTransports,
+        "useOwner requires explicit non-empty transports when config.transports is empty.",
+      );
+
+      const syncOwner: SyncOwner = {
+        owner,
+        transports: effectiveTransports,
+      };
+
+      useOwnerBatch.push({
+        owner: syncOwner,
+        action: "add",
+      });
+
+      let isUsed = true;
+
+      return () => {
+        assert(isUsed, "UnuseOwner can be called only once.");
+        isUsed = false;
+        useOwnerBatch.push({
+          owner: syncOwner,
+          action: "remove",
+        });
+      };
+    };
+
     const moved = stack.move();
+
+    if (isNonEmptyArray(transports)) useOwner(appOwner);
 
     return ok({
       name,
@@ -936,30 +1003,7 @@ export const createEvolu =
         return exportDatabasePending.promise;
       },
 
-      useOwner: (owner) => {
-        assertNotDisposed(moved);
-
-        const syncOwner: SyncOwner = {
-          ...owner,
-          transports: owner.transports ?? transports ?? emptyArray,
-        };
-
-        useOwnerBatch.push({
-          owner: syncOwner,
-          action: "add",
-        });
-
-        let isUsed = true;
-
-        return () => {
-          assert(isUsed, "UnuseOwner can be called only once.");
-          isUsed = false;
-          useOwnerBatch.push({
-            owner: syncOwner,
-            action: "remove",
-          });
-        };
-      },
+      useOwner,
 
       [Symbol.asyncDispose]: () => {
         console.info("dispose");

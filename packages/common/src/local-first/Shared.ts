@@ -15,6 +15,8 @@ import { assert } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.js";
 import { exhaustiveCheck } from "../Function.js";
+import { structuralLookup, type StructuralLookupKey } from "../Lookup.js";
+import { createRefCountByKey, type RefCountByKey } from "../RefCount.js";
 import {
   createSharedResourceByKey,
   createSharedResourceByKeyWithClaims,
@@ -35,15 +37,7 @@ import type {
   WorkerDeps,
 } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
-import type {
-  Owner,
-  OwnerId,
-  OwnerTransport,
-  OwnerWriteKey,
-  ReadonlyOwner,
-  SyncOwner,
-} from "./Owner.js";
-import type { ProtocolMessage } from "./Protocol.js";
+import type { OwnerId, OwnerTransport, SyncOwner } from "./Owner.js";
 import {
   makePatches,
   type Patch,
@@ -70,7 +64,6 @@ export type SharedWorkerInput =
   | {
       readonly type: "CreateEvolu";
       readonly name: Name;
-      readonly appOwner: SyncOwner;
       readonly evoluPort: NativeMessagePort<EvoluOutput, EvoluInput>;
       readonly dbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>;
     };
@@ -177,9 +170,8 @@ export const initSharedWorker =
 
             case "CreateEvolu": {
               void sharedWorkerRunWithSharedEvoluDeps(async (run) => {
-                const { name, appOwner } = message;
                 const sharedEvoluResult = await run(
-                  sharedEvolusByName.acquire({ name, appOwner }),
+                  sharedEvolusByName.acquire(message.name),
                 );
                 if (!sharedEvoluResult.ok) return sharedEvoluResult;
                 sharedEvoluResult.value.addPorts(
@@ -187,7 +179,7 @@ export const initSharedWorker =
                   message.dbWorkerPort,
                   () =>
                     void sharedWorkerRunWithSharedEvoluDeps(
-                      sharedEvolusByName.release({ name, appOwner }),
+                      sharedEvolusByName.release(message.name),
                     ),
                 );
                 return ok();
@@ -209,13 +201,18 @@ export const initSharedWorker =
           WebSocket,
           OwnerTransport,
           OwnerId,
-          SharedWorkerDeps
+          SharedWorkerDeps,
+          StructuralLookupKey
         >(
           (transport): Task<WebSocket, never, SharedWorkerDeps> =>
             createWebSocket(transport.url, {
               binaryType: "arraybuffer",
               // onOpen:
             }),
+          {
+            // "onFirstClaimAdded": todo()
+            resourceLookup: structuralLookup,
+          },
         ),
       ),
     );
@@ -227,7 +224,9 @@ export const initSharedWorker =
 
     const sharedEvolusByName = stack.use(
       await sharedWorkerRunWithSharedEvoluDeps.orThrow(
-        createSharedResourceByKey(createSharedEvolu),
+        createSharedResourceByKey(createSharedEvolu, {
+          lookup: structuralLookup,
+        }),
       ),
     );
 
@@ -237,23 +236,6 @@ export const initSharedWorker =
     return ok(stack.move());
   };
 
-type SharedEvoluDeps = SharedWorkerDeps & TransportsDep & PostTabOutputDep;
-
-interface PostTabOutputDep {
-  readonly postTabOutput: Callback<EvoluTabOutput>;
-}
-
-interface TransportsDep {
-  readonly transports: SharedTransportResources;
-}
-
-type SharedTransportResources = SharedResourceByKeyWithClaims<
-  OwnerTransport,
-  OwnerId,
-  WebSocket,
-  SharedWorkerDeps
->;
-
 interface SharedEvolu extends AsyncDisposable {
   readonly addPorts: (
     evoluPort: NativeMessagePort<EvoluOutput, EvoluInput>,
@@ -262,42 +244,53 @@ interface SharedEvolu extends AsyncDisposable {
   ) => void;
 }
 
-export interface DbWorkerQueueItem {
-  readonly evoluPortId: Id;
-  readonly request: DbWorkerRequest;
+type SharedEvoluDeps = SharedWorkerDeps & PostTabOutputDep & TransportsDep;
+
+interface PostTabOutputDep {
+  readonly postTabOutput: Callback<EvoluTabOutput>;
 }
 
-export type DbWorkerRequest =
-  | (ExtractType<EvoluInput, "Mutate"> & {
-      readonly syncOwners: ReadonlyArray<Owner>;
-    })
-  | ExtractType<EvoluInput, "Query" | "Export">;
+interface TransportsDep {
+  readonly transports: SharedResourceByKeyWithClaims<
+    OwnerTransport,
+    OwnerId,
+    WebSocket,
+    SharedWorkerDeps
+  >;
+}
 
-export interface DbWorkerInput extends DbWorkerQueueItem {
+export interface DbWorkerQueueMeta {
   readonly callbackId: Id;
+  readonly evoluPortId: Id;
 }
+
+export interface DbWorkerQueueItem extends Pick<
+  DbWorkerQueueMeta,
+  "evoluPortId"
+> {
+  readonly request: ExtractType<EvoluInput, "Mutate" | "Query" | "Export">;
+}
+
+export interface DbWorkerInput extends DbWorkerQueueMeta, DbWorkerQueueItem {}
 
 export type DbWorkerOutput =
+  | EvoluTabOutput
   | {
       readonly type: "LeaderAcquired";
       readonly name: Name;
     }
-  | {
+  | (DbWorkerQueueMeta & {
       readonly type: "OnQueuedResponse";
-      readonly callbackId: Id;
-      readonly evoluPortId: Id;
-      readonly response: QueuedResponse;
-    }
-  | EvoluTabOutput;
+      readonly response: DbWorkerQueuedResponse;
+    });
 
-export type QueuedResponse =
+export type DbWorkerQueuedResponse =
   | {
       readonly type: "Mutate";
       readonly messagesByOwnerId: ReadonlyMap<
         OwnerId,
         NonEmptyReadonlyArray<CrdtMessage>
       >;
-      readonly protocolMessagesByOwnerId: ReadonlyMap<OwnerId, ProtocolMessage>;
       readonly rowsByQuery: RowsByQueryMap;
     }
   | {
@@ -312,36 +305,11 @@ export type QueuedResponse =
       readonly type: "CreateSyncMessages";
     };
 
-export interface QueuedResult {
-  readonly evoluPortId: Id;
-  readonly response: QueuedResponse;
-}
-
 export type SyncState = 123;
 
-interface EvoluInstanceState {
-  readonly evoluPort: MessagePort<EvoluOutput, EvoluInput>;
-  readonly dbWorkerPort: MessagePort<DbWorkerInput, DbWorkerOutput>;
-  readonly releaseSharedEvolu: () => void;
-  rowsByQuery: RowsByQueryMap;
-  readonly usedSyncOwnersById: Map<
-    OwnerId,
-    {
-      owner: SyncOwner;
-      count: number;
-    }
-  >;
-}
-
 const createSharedEvolu =
-  ({
-    name,
-    appOwner,
-  }: {
-    name: Name;
-    appOwner: SyncOwner;
-  }): Task<SharedEvolu, never, SharedEvoluDeps> =>
-  async (run) => {
+  (name: Name): Task<SharedEvolu, never, SharedEvoluDeps> =>
+  (run) => {
     const stack = new AsyncDisposableStack();
     const sharedEvoluRun = run.create();
     stack.use(sharedEvoluRun);
@@ -349,9 +317,19 @@ const createSharedEvolu =
     const console = run.deps.console.child(name).child("SharedWorker");
     const { createMessagePort, postTabOutput, transports } = run.deps;
 
-    const evoluInstancesById = new Map<Id, EvoluInstanceState>();
+    interface EvoluInstanceState {
+      readonly evoluPort: MessagePort<EvoluOutput, EvoluInput>;
+      readonly dbWorkerPort: MessagePort<DbWorkerInput, DbWorkerOutput>;
+      readonly releaseSharedEvolu: () => void;
+      rowsByQuery: RowsByQueryMap;
+      readonly usedSyncOwners: RefCountByKey<SyncOwner>;
+    }
+
+    const evoluInstancesByPortId = new Map<Id, EvoluInstanceState>();
     const queue: Array<DbWorkerQueueItem> = [];
-    const callbacks = createCallbacks<QueuedResult>(run.deps);
+    const callbacks = createCallbacks<
+      ExtractType<DbWorkerOutput, "OnQueuedResponse">
+    >(run.deps);
 
     let leaderDbWorkerPort = null as MessagePort<
       DbWorkerInput,
@@ -361,123 +339,72 @@ const createSharedEvolu =
     let queueProcessingFiber: Fiber<void, never, WorkerDeps> | null = null;
     let isDisposed = false;
 
-    const toOwnerWithWriteKey = (
-      owner: SyncOwner,
-    ): (ReadonlyOwner & { readonly writeKey: OwnerWriteKey }) | null =>
-      owner.writeKey
-        ? {
-            id: owner.id,
-            encryptionKey: owner.encryptionKey,
-            writeKey: owner.writeKey,
-          }
-        : null;
-
-    const toggleUsedOwnerForEvoluInstance = (
+    const toggleUsedSyncOwner = (
       evoluInstance: EvoluInstanceState,
-      owner: SyncOwner,
+      syncOwner: SyncOwner,
       action: "add" | "remove",
     ): Task<void, never, SharedEvoluDeps> =>
       unabortable(async (run) => {
-        const current = evoluInstance.usedSyncOwnersById.get(owner.id);
-
         if (action === "add") {
-          if (current) {
-            current.count += 1;
-            current.owner = owner;
-          } else {
-            evoluInstance.usedSyncOwnersById.set(owner.id, { owner, count: 1 });
-          }
+          evoluInstance.usedSyncOwners.increment(syncOwner);
+          await run(
+            transports.addClaim(syncOwner.owner.id, syncOwner.transports),
+          );
         } else {
-          if (!current) return ok();
-
-          current.count -= 1;
-          if (current.count === 0) {
-            evoluInstance.usedSyncOwnersById.delete(owner.id);
-          }
+          evoluInstance.usedSyncOwners.decrement(syncOwner);
+          await run(
+            transports.removeClaim(syncOwner.owner.id, syncOwner.transports),
+          );
         }
-
-        const ownerTransports = owner.transports ?? emptyArray;
-        if (ownerTransports.length === 0) return ok();
-
-        await run(
-          action === "add"
-            ? transports.addClaim(owner.id, ownerTransports)
-            : transports.removeClaim(owner.id, ownerTransports),
-        );
-
         return ok();
       });
 
-    const removeAllUsedOwnersForEvoluInstance = (
+    const removeAllUsedSyncOwners = (
       evoluInstance: EvoluInstanceState,
     ): Task<void, never, SharedEvoluDeps> =>
       unabortable(async (run) => {
-        const usedSyncOwners = [...evoluInstance.usedSyncOwnersById.values()];
-
-        for (const { owner, count } of usedSyncOwners) {
-          for (let index = 0; index < count; index += 1) {
-            await run(
-              toggleUsedOwnerForEvoluInstance(evoluInstance, owner, "remove"),
-            );
+        for (const syncOwner of evoluInstance.usedSyncOwners.keys()) {
+          while (evoluInstance.usedSyncOwners.has(syncOwner)) {
+            await run(toggleUsedSyncOwner(evoluInstance, syncOwner, "remove"));
           }
         }
-
         return ok();
       });
 
-    const getSyncOwnerById = (ownerId: OwnerId): SyncOwner | null => {
-      if (ownerId === appOwner.id) return appOwner;
+    // const getSyncOwnersForMutate = (
+    //   changes: NonEmptyReadonlyArray<MutationChange>,
+    // ): ReadonlyArray<Owner> => {
+    //   const syncOwnersById = new Map<OwnerId, Owner>();
 
-      for (const evoluInstance of evoluInstancesById.values()) {
-        const owner = evoluInstance.usedSyncOwnersById.get(ownerId)?.owner;
-        if (owner) return owner;
-      }
+    //   for (const { ownerId } of changes) {
+    //     const owner =
+    //       ownerId === appOwner.id
+    //         ? appOwner
+    //         : ([...evoluInstancesById.values()]
+    //             .find((evoluInstance) =>
+    //               evoluInstance.usedSyncOwnersById.has(ownerId),
+    //             )
+    //             ?.usedSyncOwnersById.get(ownerId)?.owner ?? null);
+    //     if (!owner) continue;
 
-      return null;
-    };
+    //     const toOwnerWithWriteKey = (
+    //       owner: SyncOwner,
+    //     ): (ReadonlyOwner & { readonly writeKey: OwnerWriteKey }) | null =>
+    //       owner.writeKey
+    //         ? {
+    //             id: owner.id,
+    //             encryptionKey: owner.encryptionKey,
+    //             writeKey: owner.writeKey,
+    //           }
+    //         : null;
 
-    const getSyncOwnersForMutate = (
-      changes: NonEmptyReadonlyArray<MutationChange>,
-    ): ReadonlyArray<Owner> => {
-      const syncOwnersById = new Map<OwnerId, Owner>();
+    //     const ownerWithWriteKey = toOwnerWithWriteKey(owner);
+    //     if (!ownerWithWriteKey) continue;
+    //     syncOwnersById.set(ownerId, ownerWithWriteKey);
+    //   }
 
-      for (const { ownerId } of changes) {
-        const owner = getSyncOwnerById(ownerId);
-        if (!owner) continue;
-
-        const ownerWithWriteKey = toOwnerWithWriteKey(owner);
-        if (!ownerWithWriteKey) continue;
-        syncOwnersById.set(ownerId, ownerWithWriteKey);
-      }
-
-      return [...syncOwnersById.values()];
-    };
-
-    const sendProtocolMessageToOwnerTransports = (
-      ownerId: OwnerId,
-      protocolMessage: ProtocolMessage,
-    ): void => {
-      for (const transport of transports.getResourceKeysForClaim(ownerId)) {
-        const webSocket = transports.getResource(transport);
-        if (!webSocket?.isOpen()) continue;
-
-        const sendResult = webSocket.send(protocolMessage);
-        if (!sendResult.ok) {
-          console.debug("syncSendSkipped", {
-            ownerId,
-            transport,
-            error: sendResult.error,
-          });
-        }
-      }
-    };
-
-    const appOwnerTransports = appOwner.transports ?? emptyArray;
-    if (appOwnerTransports.length > 0) {
-      await sharedEvoluRun.orThrow(
-        transports.addClaim(appOwner.id, appOwnerTransports),
-      );
-    }
+    //   return [...syncOwnersById.values()];
+    // };
 
     const ensureQueueProcessing = (): void => {
       if (
@@ -494,7 +421,7 @@ const createSharedEvolu =
         queueProcessingFiber?.abort();
         queueProcessingFiber = null;
 
-        const evoluInstance = evoluInstancesById.get(evoluPortId);
+        const evoluInstance = evoluInstancesByPortId.get(evoluPortId);
         const evoluPort = evoluInstance?.evoluPort;
 
         switch (response.type) {
@@ -517,35 +444,47 @@ const createSharedEvolu =
               for (const [
                 otherEvoluPortId,
                 otherEvoluInstance,
-              ] of evoluInstancesById) {
+              ] of evoluInstancesByPortId) {
                 if (otherEvoluPortId === evoluPortId) continue;
                 otherEvoluInstance.evoluPort.postMessage({
                   type: "RefreshQueries",
                 });
               }
 
-              for (const [
-                ownerId,
-                protocolMessage,
-              ] of response.protocolMessagesByOwnerId) {
-                sendProtocolMessageToOwnerTransports(ownerId, protocolMessage);
-              }
+              // for (const [
+              //   ownerId,
+              //   protocolMessage,
+              // ] of response.protocolMessagesByOwnerId) {
+              //   for (const transport of transports.getResourceKeysForClaim(
+              //     ownerId,
+              //   )) {
+              //     const webSocket = transports.getResource(transport);
+              //     if (!webSocket?.isOpen()) continue;
+
+              //     const sendResult = webSocket.send(protocolMessage);
+              //     if (!sendResult.ok) {
+              //       console.debug("syncSendSkipped", {
+              //         ownerId,
+              //         transport,
+              //         error: sendResult.error,
+              //       });
+              //     }
+              //   }
+              // }
             }
             break;
           }
+
           case "Export":
             if (evoluPort)
-              evoluPort.postMessage(
-                {
-                  type: "OnExport",
-                  file: response.file,
-                },
-                [response.file.buffer],
-              );
-
+              evoluPort.postMessage({ type: "OnExport", file: response.file }, [
+                response.file.buffer,
+              ]);
             break;
+
           case "CreateSyncMessages":
             break;
+
           default:
             console.error("Unknown queued response", response);
         }
@@ -602,15 +541,18 @@ const createSharedEvolu =
         );
 
         const evoluPortId = createId(run.deps);
+
         const evoluInstance: EvoluInstanceState = {
           evoluPort,
           dbWorkerPort,
           releaseSharedEvolu,
           rowsByQuery: new Map(),
-          usedSyncOwnersById: new Map(),
+          usedSyncOwners: createRefCountByKey<SyncOwner, OwnerId>({
+            lookup: ({ owner: { id } }) => id,
+          }),
         };
 
-        evoluInstancesById.set(evoluPortId, evoluInstance);
+        evoluInstancesByPortId.set(evoluPortId, evoluInstance);
 
         dbWorkerPort.onMessage = (message) => {
           switch (message.type) {
@@ -620,18 +562,18 @@ const createSharedEvolu =
               ensureQueueProcessing();
               break;
             }
+
             case "OnQueuedResponse": {
-              callbacks.execute(message.callbackId, {
-                evoluPortId: message.evoluPortId,
-                response: message.response,
-              });
+              callbacks.execute(message.callbackId, message);
               break;
             }
+
             case "OnConsoleEntry":
             case "OnError": {
               postTabOutput(message);
               break;
             }
+
             default:
               exhaustiveCheck(message);
           }
@@ -639,61 +581,61 @@ const createSharedEvolu =
 
         evoluPort.onMessage = (evoluMessage) => {
           switch (evoluMessage.type) {
+            case "Query":
+            case "Export": {
+              queue.push({ evoluPortId, request: evoluMessage });
+              ensureQueueProcessing();
+              break;
+            }
+
+            case "Mutate": {
+              // TODO: Delegate do vsech evolu instances, co to pouzivaji
+              queue.push({ evoluPortId, request: evoluMessage });
+              ensureQueueProcessing();
+              break;
+            }
+
+            case "UseOwner": {
+              const evoluInstance = evoluInstancesByPortId.get(evoluPortId);
+              if (!evoluInstance) break;
+
+              for (const { owner, action } of evoluMessage.actions) {
+                void sharedEvoluRun(
+                  toggleUsedSyncOwner(evoluInstance, owner, action),
+                );
+              }
+              break;
+            }
+
             case "Dispose": {
-              const evoluInstance = evoluInstancesById.get(evoluPortId);
+              const evoluInstance = evoluInstancesByPortId.get(evoluPortId);
               if (!evoluInstance) break;
 
               console.info("evoluDispose", {
                 name,
                 evoluPortId,
-                hadLastPort: evoluInstancesById.size === 1,
+                hadLastPort: evoluInstancesByPortId.size === 1,
               });
-              evoluInstancesById.delete(evoluPortId);
+              evoluInstancesByPortId.delete(evoluPortId);
+
               // Potential plan: keep DbWorker ports in a SharedResource
               // abstraction instead of deleting them eagerly here. DbWorkers use
               // leader election because SQLite WASM needs a single active owner.
               // When the last Evolu instance is disposed, broadcast shutdown to
               // all DbWorkers so the current leader can dispose itself and the
               // followers can clean up consistently.
-              void sharedEvoluRun(
-                removeAllUsedOwnersForEvoluInstance(evoluInstance),
-              );
-              evoluInstance.releaseSharedEvolu();
+              void sharedEvoluRun(async (run) => {
+                await run(removeAllUsedSyncOwners(evoluInstance));
+                evoluInstance.usedSyncOwners[Symbol.dispose]();
+                evoluInstance.releaseSharedEvolu();
+                return ok();
+              });
 
               // TODO: Decided what to do with DbWorker but probably dispose it, but
               // https://bugs.webkit.org/show_bug.cgi?id=301520
               break;
             }
 
-            case "Mutate":
-            case "Query":
-            case "Export": {
-              queue.push({
-                evoluPortId,
-                request:
-                  evoluMessage.type === "Mutate"
-                    ? {
-                        ...evoluMessage,
-                        syncOwners: getSyncOwnersForMutate(
-                          evoluMessage.changes,
-                        ),
-                      }
-                    : evoluMessage,
-              });
-              ensureQueueProcessing();
-              break;
-            }
-            case "UseOwner": {
-              const evoluInstance = evoluInstancesById.get(evoluPortId);
-              if (!evoluInstance) break;
-
-              for (const { owner, action } of evoluMessage.actions) {
-                void sharedEvoluRun(
-                  toggleUsedOwnerForEvoluInstance(evoluInstance, owner, action),
-                );
-              }
-              break;
-            }
             default:
               exhaustiveCheck(evoluMessage);
           }
@@ -703,15 +645,9 @@ const createSharedEvolu =
       [Symbol.asyncDispose]: async () => {
         isDisposed = true;
 
-        for (const evoluInstance of evoluInstancesById.values()) {
-          await sharedEvoluRun.orThrow(
-            removeAllUsedOwnersForEvoluInstance(evoluInstance),
-          );
-        }
-        if (appOwnerTransports.length > 0) {
-          await sharedEvoluRun.orThrow(
-            transports.removeClaim(appOwner.id, appOwnerTransports),
-          );
+        for (const evoluInstance of evoluInstancesByPortId.values()) {
+          await sharedEvoluRun.orThrow(removeAllUsedSyncOwners(evoluInstance));
+          evoluInstance.usedSyncOwners[Symbol.dispose]();
         }
 
         queueProcessingFiber?.abort();
@@ -719,7 +655,7 @@ const createSharedEvolu =
         callbacks[Symbol.dispose]();
         leaderDbWorkerPort = null;
         queue.length = 0;
-        evoluInstancesById.clear();
+        evoluInstancesByPortId.clear();
         await moved.disposeAsync();
       },
     });

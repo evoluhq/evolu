@@ -1,5 +1,4 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { emptyArray } from "../../src/Array.js";
 import { assert } from "../../src/Assert.js";
 import type { Brand } from "../../src/Brand.js";
 import type { ConsoleEntry, TestConsole } from "../../src/Console.js";
@@ -20,10 +19,7 @@ import {
   createEvoluDeps,
   testAppName,
 } from "../../src/local-first/Evolu.js";
-import {
-  createOwnerWebSocketTransport,
-  type SyncOwner,
-} from "../../src/local-first/Owner.js";
+import { createOwnerWebSocketTransport } from "../../src/local-first/Owner.js";
 import { testQuery, testQuery2 } from "../../src/local-first/Query.js";
 import { createQueryBuilder } from "../../src/local-first/Schema.js";
 import {
@@ -50,18 +46,18 @@ import {
   testName,
 } from "../../src/Type.js";
 import type { ExtractType } from "../../src/Types.js";
+import { testCreateWebSocket } from "../../src/WebSocket.js";
 import {
   createMessageChannel,
   createMessagePort,
   createSharedWorker,
   createWorker,
-  testWaitForWorkerMessage,
   testCreateMessageChannel,
   testCreateMessagePort,
   testCreateSharedWorker,
   testCreateWorker,
+  testWaitForWorkerMessage,
 } from "../../src/Worker.js";
-import { testCreateWebSocket } from "../../src/WebSocket.js";
 import { testCreateSqliteDeps } from "../_deps.js";
 import { testAppOwner } from "./_fixtures.js";
 
@@ -79,6 +75,12 @@ const Schema = {
 const testCreateEvolu = createEvolu(Schema, {
   appName: testAppName,
   appOwner: testAppOwner,
+  transports: [],
+});
+
+const testOwnerTransport = createOwnerWebSocketTransport({
+  url: "wss://example.com",
+  ownerId: testAppOwner.id,
 });
 
 const createQuery = createQueryBuilder(Schema);
@@ -458,20 +460,48 @@ describe("unit tests", () => {
     });
 
     describe("useOwner", () => {
-      test("posts in a microtask with fallback transports", async () => {
-        const transport = createOwnerWebSocketTransport({
-          url: "wss://example.com",
-          ownerId: testAppOwner.id,
-        });
+      test("auto-uses appOwner in a microtask when transports are configured", async () => {
+        await using run = testCreateRun(testCreateEvoluDeps());
+        await run.orThrow(
+          createEvolu(Schema, {
+            appName: testAppName,
+            appOwner: testAppOwner,
+            transports: [testOwnerTransport],
+          }),
+        );
 
+        expect(run.deps.evoluInputs).toEqual([]);
+
+        await testWaitForWorkerMessage();
+
+        expect(run.deps.evoluInputs).toEqual([
+          {
+            type: "UseOwner",
+            actions: [
+              {
+                owner: {
+                  owner: testAppOwner,
+                  transports: [testOwnerTransport],
+                },
+                action: "add",
+              },
+            ],
+          },
+        ]);
+      });
+
+      test("posts in a microtask with fallback transports", async () => {
         await using run = testCreateRun(testCreateEvoluDeps());
         const evolu = await run.orThrow(
           createEvolu(Schema, {
             appName: testAppName,
             appOwner: testAppOwner,
-            transports: [transport],
+            transports: [testOwnerTransport],
           }),
         );
+
+        await testWaitForWorkerMessage();
+        run.deps.evoluInputs.length = 0;
 
         evolu.useOwner(testAppOwner);
 
@@ -484,7 +514,10 @@ describe("unit tests", () => {
             type: "UseOwner",
             actions: [
               {
-                owner: { ...testAppOwner, transports: [transport] },
+                owner: {
+                  owner: testAppOwner,
+                  transports: [testOwnerTransport],
+                },
                 action: "add",
               },
             ],
@@ -496,7 +529,7 @@ describe("unit tests", () => {
         await using run = testCreateRun(testCreateEvoluDeps());
         const evolu = await run.orThrow(testCreateEvolu);
 
-        const unuseOwner = evolu.useOwner(testAppOwner);
+        const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
         unuseOwner();
 
         expect(run.deps.evoluInputs).toEqual([]);
@@ -508,11 +541,17 @@ describe("unit tests", () => {
             type: "UseOwner",
             actions: [
               {
-                owner: { ...testAppOwner, transports: emptyArray },
+                owner: {
+                  owner: testAppOwner,
+                  transports: [testOwnerTransport],
+                },
                 action: "add",
               },
               {
-                owner: { ...testAppOwner, transports: emptyArray },
+                owner: {
+                  owner: testAppOwner,
+                  transports: [testOwnerTransport],
+                },
                 action: "remove",
               },
             ],
@@ -524,7 +563,7 @@ describe("unit tests", () => {
         await using run = testCreateRun(testCreateEvoluDeps());
         const evolu = await run.orThrow(testCreateEvolu);
 
-        const unuseOwner = evolu.useOwner(testAppOwner);
+        const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
         await testWaitForWorkerMessage();
         run.deps.evoluInputs.length = 0;
 
@@ -541,7 +580,10 @@ describe("unit tests", () => {
             type: "UseOwner",
             actions: [
               {
-                owner: { ...testAppOwner, transports: emptyArray },
+                owner: {
+                  owner: testAppOwner,
+                  transports: [testOwnerTransport],
+                },
                 action: "remove",
               },
             ],
@@ -550,24 +592,16 @@ describe("unit tests", () => {
       });
 
       test("flush keeps call order before mutate batch", async () => {
-        const transport = createOwnerWebSocketTransport({
-          url: "wss://example.com",
-          ownerId: testAppOwner.id,
-        });
-        const syncOwner: SyncOwner = {
-          ...testAppOwner,
-          transports: [transport],
-        };
-
         await using run = testCreateRun(testCreateEvoluDeps());
         const evolu = await run.orThrow(
           createEvolu(Schema, {
             appName: testAppName,
             appOwner: testAppOwner,
+            transports: [],
           }),
         );
 
-        evolu.useOwner(syncOwner);
+        evolu.useOwner(testAppOwner, [testOwnerTransport]);
         evolu.insert("todo", {
           title: NonEmptyString100.orThrow("Queued after useOwner"),
         });
@@ -576,7 +610,15 @@ describe("unit tests", () => {
 
         expect(run.deps.evoluInputs[0]).toEqual({
           type: "UseOwner",
-          actions: [{ owner: syncOwner, action: "add" }],
+          actions: [
+            {
+              owner: {
+                owner: testAppOwner,
+                transports: [testOwnerTransport],
+              },
+              action: "add",
+            },
+          ],
         });
         expect(run.deps.evoluInputs[1]?.type).toBe("Mutate");
       });
@@ -618,7 +660,7 @@ describe("unit tests", () => {
     test("throws from sync methods after dispose", async () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
-      evolu.useOwner(testAppOwner);
+      evolu.useOwner(testAppOwner, [testOwnerTransport]);
 
       await evolu[Symbol.asyncDispose]();
 
@@ -673,7 +715,7 @@ describe("unit tests", () => {
       await using run = testCreateRun(testCreateEvoluDeps());
       const evolu = await run.orThrow(testCreateEvolu);
 
-      const unuseOwner = evolu.useOwner(testAppOwner);
+      const unuseOwner = evolu.useOwner(testAppOwner, [testOwnerTransport]);
 
       await evolu[Symbol.asyncDispose]();
 

@@ -1,5 +1,5 @@
 /**
- * Local-first database implementation.
+ * Local-first Db worker.
  *
  * @module
  */
@@ -56,11 +56,9 @@ import type {
 import type { OwnerId, OwnerIdBytes } from "./Owner.js";
 import { ownerIdBytesToOwnerId, ownerIdToOwnerIdBytes } from "./Owner.js";
 import {
-  createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   protocolVersion,
-  type ProtocolMessage,
   type ProtocolInvalidDataError,
   type ProtocolTimestampMismatchError,
 } from "./Protocol.js";
@@ -74,7 +72,7 @@ import {
 import type {
   DbWorkerInput,
   DbWorkerOutput,
-  QueuedResponse,
+  DbWorkerQueuedResponse,
 } from "./Shared.js";
 import {
   createBaseSqliteStorage,
@@ -234,10 +232,8 @@ const startDbWorker =
       if (processedRequestIds.has(callbackId)) return;
       processedRequestIds.add(callbackId);
 
-      // console.debug("onQueuedEvoluInput", callbackId);
-
       let result: Result<
-        QueuedResponse,
+        DbWorkerQueuedResponse,
         | TimestampDriftError
         | TimestampCounterOverflowError
         | TimestampTimeOutOfRangeError
@@ -684,7 +680,7 @@ const handleMutation =
   (
     message: ExtractType<DbWorkerInput["request"], "Mutate">,
   ): Result<
-    ExtractType<QueuedResponse, "Mutate">,
+    ExtractType<DbWorkerQueuedResponse, "Mutate">,
     | TimestampDriftError
     | TimestampCounterOverflowError
     | TimestampTimeOutOfRangeError
@@ -723,26 +719,10 @@ const handleMutation =
 
       if (clockChanged) deps.clock.save(clockTimestamp);
 
-      const rowsByQuery = loadQueries(deps)(message.subscribedQueries);
-      const protocolMessagesByOwnerId = new Map<OwnerId, ProtocolMessage>();
-
-      for (const owner of message.syncOwners) {
-        const ownerMessages = messagesByOwnerId.get(owner.id);
-        if (!ownerMessages) continue;
-
-        protocolMessagesByOwnerId.set(
-          owner.id,
-          createProtocolMessageFromCrdtMessages(deps)(owner, ownerMessages),
-        );
-      }
-
       return ok({
         type: "Mutate",
         messagesByOwnerId,
-        // TODO: Split sync packaging into a separate queued step so local UI
-        // updates do not wait for protocol message generation.
-        protocolMessagesByOwnerId,
-        rowsByQuery,
+        rowsByQuery: loadQueries(deps)(message.subscribedQueries),
       });
     });
 

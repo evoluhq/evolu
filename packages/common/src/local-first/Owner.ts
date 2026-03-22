@@ -78,15 +78,12 @@ export interface Owner extends ReadonlyOwner {
 }
 
 /**
- * Represents an owner for sync operations.
- *
- * Includes {@link ReadonlyOwner} fields plus optional {@link OwnerWriteKey} (for
- * clients that write) and optional {@link OwnerTransport} to override default
- * transports per owner.
+ * An {@link ReadonlyOwner} or {@link Owner} with non-empty {@link OwnerTransport}s
+ * so it can be synced.
  */
-export interface SyncOwner extends ReadonlyOwner {
-  readonly writeKey?: OwnerWriteKey;
-  readonly transports?: ReadonlyArray<OwnerTransport>;
+export interface SyncOwner {
+  readonly owner: ReadonlyOwner | Owner;
+  readonly transports: NonEmptyReadonlyArray<OwnerTransport>;
 }
 
 /** OwnerId is a branded {@link Id} that uniquely identifies an {@link Owner}. */
@@ -235,9 +232,6 @@ export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
 
 /** Deterministic {@link AppOwner} for tests. */
 export const testAppOwner = /*#__PURE__*/ createAppOwner(testOwnerSecret);
-
-/** Deterministic {@link SyncOwner} for tests without {@link OwnerTransport}. */
-export const testSyncOwner: SyncOwner = testAppOwner;
 
 /**
  * An {@link Owner} for sharding data.
