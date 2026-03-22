@@ -13,11 +13,22 @@ export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
 /**
  * Checks if a value is a plain object (e.g., created with `{}` or `Object`).
  *
+ * Accepts objects with `Object.prototype` and objects with a `null` prototype
+ * created via `Object.create(null)`. Rejects class instances and other built-in
+ * objects because their prototype chain includes an application-specific or
+ * built-in prototype before `Object.prototype`.
+ *
+ * The prototype-chain check uses structure instead of `prototype ===
+ * Object.prototype` so it also works for plain objects coming from another
+ * JavaScript realm.
+ *
  * ### Example
  *
  * ```ts
  * isPlainObject({}); // true
+ * isPlainObject(Object.create(null)); // true
  * isPlainObject(new Date()); // false
+ * isPlainObject(new (class Example {})()); // false
  * isPlainObject([]); // false
  * isPlainObject(null); // false
  * ```
@@ -29,11 +40,8 @@ export const isPlainObject = (
     return false;
   }
 
-  const prototype = Object.getPrototypeOf(value as object) as object | null;
-  return (
-    prototype === null ||
-    (Object.getPrototypeOf(prototype) as object | null) === null
-  );
+  const prototype = Object.getPrototypeOf(value) as object | null;
+  return prototype === null || Object.getPrototypeOf(prototype) === null;
 };
 
 /**
