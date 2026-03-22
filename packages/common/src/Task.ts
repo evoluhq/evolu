@@ -17,7 +17,9 @@ import { type Console, type ConsoleDep, createConsole } from "./Console.js";
 import type { RandomBytes, RandomBytesDep } from "./Crypto.js";
 import { createRandomBytes } from "./Crypto.js";
 import { eqArrayStrict } from "./Eq.js";
+import { identity } from "./Function.js";
 import { lazyTrue, lazyVoid } from "./Function.js";
+import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.js";
 import { decrement, increment } from "./Number.js";
 import {
   createRecord,
@@ -33,11 +35,6 @@ import type { Done, NextResult, Ok, Result } from "./Result.js";
 import { err, getOrThrow, ok, tryAsync } from "./Result.js";
 import type { Schedule, ScheduleStep } from "./Schedule.js";
 import { addToSet, deleteFromSet, emptySet } from "./Set.js";
-import {
-  createStructuralMap,
-  type Structural,
-  type StructuralKey,
-} from "./Structural.js";
 import type { testCreateRun } from "./Test.js";
 import type { Duration, Time, TimeDep } from "./Time.js";
 import { createTime, durationToMillis, Millis } from "./Time.js";
@@ -2572,18 +2569,19 @@ const semaphoreDisposedAbortError: AbortError = createAbortError(
  * Provides semaphore operations per key while preserving the same API shape as
  * {@link Semaphore}.
  *
+ * By default, {@link createSemaphoreByKey} uses reference identity for keys,
+ * matching native `Map`. Callers may instead provide a {@link Lookup lookup} so
+ * logical equality is based on a derived stable key.
+ *
  * @group Concurrency primitives
  */
-export interface SemaphoreByKey<K = StructuralKey> extends Disposable {
+export interface SemaphoreByKey<K = unknown> extends Disposable {
   /**
    * Executes a {@link Task} while holding one permit for a specific key.
    *
    * Behaves like {@link Semaphore.withPermit}, scoped to `key`.
    */
-  readonly withPermit: <T, E, D>(
-    key: Structural<K>,
-    task: Task<T, E, D>,
-  ) => Task<T, E, D>;
+  readonly withPermit: <T, E, D>(key: K, task: Task<T, E, D>) => Task<T, E, D>;
 
   /**
    * Executes a {@link Task} while holding permits for a specific key.
@@ -2591,13 +2589,19 @@ export interface SemaphoreByKey<K = StructuralKey> extends Disposable {
    * Behaves like {@link Semaphore.withPermits}, scoped to `key`.
    */
   readonly withPermits: <T, E, D>(
-    key: Structural<K>,
+    key: K,
     permits: Concurrency,
   ) => (task: Task<T, E, D>) => Task<T, E, D>;
 
   /** Returns current semaphore state for a key, or `null` if absent. */
-  readonly snapshot: (key: Structural<K>) => SemaphoreSnapshot | null;
+  readonly snapshot: (key: K) => SemaphoreSnapshot | null;
 }
+
+/** Options for {@link createSemaphoreByKey}. */
+export interface CreateSemaphoreByKeyOptions<K, L = K> extends LookupOption<
+  K,
+  L
+> {}
 
 /**
  * Creates a {@link SemaphoreByKey}.
@@ -2606,14 +2610,24 @@ export interface SemaphoreByKey<K = StructuralKey> extends Disposable {
  *
  * @group Concurrency primitives
  */
-export const createSemaphoreByKey = <K = StructuralKey>(
+export function createSemaphoreByKey<K = unknown>(
   permits: Concurrency,
-): SemaphoreByKey<K> => {
-  const semaphoresByKey = createStructuralMap<K, Semaphore>();
+): SemaphoreByKey<K>;
+export function createSemaphoreByKey<K, L>(
+  permits: Concurrency,
+  options: CreateSemaphoreByKeyOptions<K, L>,
+): SemaphoreByKey<K>;
+export function createSemaphoreByKey<K, L = K>(
+  permits: Concurrency,
+  { lookup = identity as Lookup<K, L> }: CreateSemaphoreByKeyOptions<K, L> = {},
+): SemaphoreByKey<K> {
+  const semaphoresByKey = createLookupMap<K, Semaphore, L>({
+    lookup,
+  });
   let disposed = false;
 
   const withPermits =
-    <T, E, D>(key: Structural<K>, requestedPermits: Concurrency) =>
+    <T, E, D>(key: K, requestedPermits: Concurrency) =>
     (task: Task<T, E, D>): Task<T, E, D> =>
     async (run: Run<D>) => {
       if (disposed) return err(semaphoreDisposedAbortError);
@@ -2638,10 +2652,8 @@ export const createSemaphoreByKey = <K = StructuralKey>(
     };
 
   return {
-    withPermit: <T, E, D>(
-      key: Structural<K>,
-      task: Task<T, E, D>,
-    ): Task<T, E, D> => withPermits<T, E, D>(key, 1)(task),
+    withPermit: <T, E, D>(key: K, task: Task<T, E, D>): Task<T, E, D> =>
+      withPermits<T, E, D>(key, 1)(task),
 
     withPermits,
 
@@ -2658,7 +2670,7 @@ export const createSemaphoreByKey = <K = StructuralKey>(
       semaphoresByKey.clear();
     },
   };
-};
+}
 
 /**
  * A mutex (mutual exclusion) that ensures only one {@link Task} runs at a time.
@@ -2728,40 +2740,50 @@ export const createMutex = (): Mutex => {
  *
  * Provides mutex operations per key.
  *
+ * By default, {@link createMutexByKey} uses reference identity for keys,
+ * matching native `Map`. Callers may instead provide a {@link Lookup lookup} so
+ * logical equality is based on a derived stable key.
+ *
  * @group Concurrency primitives
  */
-export interface MutexByKey<K = StructuralKey> extends Disposable {
+export interface MutexByKey<K = unknown> extends Disposable {
   /**
    * Executes a {@link Task} while holding the mutex lock for a specific key.
    *
    * Behaves like {@link Mutex.withLock}, scoped to `key`.
    */
-  readonly withLock: <T, E, D>(
-    key: Structural<K>,
-    task: Task<T, E, D>,
-  ) => Task<T, E, D>;
+  readonly withLock: <T, E, D>(key: K, task: Task<T, E, D>) => Task<T, E, D>;
 
   /** Returns the current mutex state for `key`, or `null` if absent. */
-  readonly snapshot: (key: Structural<K>) => SemaphoreSnapshot | null;
+  readonly snapshot: (key: K) => SemaphoreSnapshot | null;
 }
+
+/** Options for {@link createMutexByKey}. */
+export interface CreateMutexByKeyOptions<K, L = K> extends LookupOption<K, L> {}
 
 /**
  * Creates a {@link MutexByKey}.
  *
  * @group Concurrency primitives
  */
-export const createMutexByKey = <K = StructuralKey>(): MutexByKey<K> => {
-  const semaphoreByKey = createSemaphoreByKey<K>(onePositiveInt);
+export function createMutexByKey<K = unknown>(): MutexByKey<K>;
+export function createMutexByKey<K, L>(
+  options: CreateMutexByKeyOptions<K, L>,
+): MutexByKey<K>;
+export function createMutexByKey<K, L = K>({
+  lookup = identity as Lookup<K, L>,
+}: CreateMutexByKeyOptions<K, L> = {}): MutexByKey<K> {
+  const semaphoreByKey = createSemaphoreByKey<K, L>(onePositiveInt, {
+    lookup,
+  });
 
   return {
-    withLock: <T, E, D>(
-      key: Structural<K>,
-      task: Task<T, E, D>,
-    ): Task<T, E, D> => semaphoreByKey.withPermit(key, task),
+    withLock: <T, E, D>(key: K, task: Task<T, E, D>): Task<T, E, D> =>
+      semaphoreByKey.withPermit(key, task),
     snapshot: semaphoreByKey.snapshot,
     [Symbol.dispose]: semaphoreByKey[Symbol.dispose],
   };
-};
+}
 
 /**
  * {@link Ref} protected by a {@link Mutex}.

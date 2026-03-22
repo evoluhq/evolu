@@ -6,6 +6,7 @@ import {
 } from "../src/Array.js";
 import { testCreateConsole } from "../src/Console.js";
 import { exhaustiveCheck, lazyVoid } from "../src/Function.js";
+import { structuralLookup, type StructuralLookupKey } from "../src/Lookup.js";
 import { emptyRecord } from "../src/Object.js";
 import { testCreateRandom } from "../src/Random.js";
 import { createRef } from "../src/Ref.js";
@@ -5059,12 +5060,47 @@ describe("concurrency", () => {
       expect(semaphoreByKey.snapshot("a")).toBeNull();
     });
 
-    test("shares semaphore for structurally equal object keys", async () => {
+    test("uses reference identity for equal object keys by default", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<{
         readonly ownerId: string;
       }>(1);
+      const started: Array<string> = [];
+      const canFinishA = Promise.withResolvers<void>();
+      const canFinishB = Promise.withResolvers<void>();
+
+      const fiber1 = run(
+        semaphoreByKey.withPermit({ ownerId: "a" }, async () => {
+          started.push("a");
+          await canFinishA.promise;
+          return ok();
+        }),
+      );
+
+      const fiber2 = run(
+        semaphoreByKey.withPermit({ ownerId: "a" }, () => {
+          started.push("b");
+          return canFinishB.promise.then(() => ok());
+        }),
+      );
+
+      await Promise.resolve();
+      expect(started.sort()).toEqual(["a", "b"]);
+
+      canFinishA.resolve();
+      canFinishB.resolve();
+      await Promise.all([fiber1, fiber2]);
+
+      expect(semaphoreByKey.snapshot({ ownerId: "a" })).toBeNull();
+    });
+
+    test("supports custom lookup functions with typed keys", async () => {
+      await using run = createRun();
+
+      const semaphoreByKey = createSemaphoreByKey(1, {
+        lookup: (key: { readonly ownerId: string }) => structuralLookup(key),
+      });
       const events: Array<string> = [];
       const firstCanFinish = Promise.withResolvers<void>();
       const firstStarted = Promise.withResolvers<void>();
@@ -5078,6 +5114,9 @@ describe("concurrency", () => {
           return ok();
         }),
       );
+
+      // @ts-expect-error lookup constrains accepted key types
+      semaphoreByKey.snapshot("a");
 
       await firstStarted.promise;
 
@@ -5379,10 +5418,43 @@ describe("concurrency", () => {
       expect(afterAbort).toEqual(ok("after"));
     });
 
-    test("shares mutex for structurally equal object keys", async () => {
+    test("uses reference identity for equal object keys by default", async () => {
       await using run = createRun();
 
       const mutexByKey = createMutexByKey<{ readonly id: string }>();
+      const started: Array<string> = [];
+      const canFinishA = Promise.withResolvers<void>();
+      const canFinishB = Promise.withResolvers<void>();
+
+      const fiber1 = run(
+        mutexByKey.withLock({ id: "a" }, async () => {
+          started.push("a");
+          await canFinishA.promise;
+          return ok();
+        }),
+      );
+
+      const fiber2 = run(
+        mutexByKey.withLock({ id: "a" }, () => {
+          started.push("b");
+          return canFinishB.promise.then(() => ok());
+        }),
+      );
+
+      await Promise.resolve();
+      expect(started.sort()).toEqual(["a", "b"]);
+
+      canFinishA.resolve();
+      canFinishB.resolve();
+      await Promise.all([fiber1, fiber2]);
+    });
+
+    test("supports custom lookup functions for object keys", async () => {
+      await using run = createRun();
+
+      const mutexByKey = createMutexByKey({
+        lookup: (key: { readonly id: string }) => structuralLookup(key),
+      });
       const events: Array<string> = [];
       const firstCanFinish = Promise.withResolvers<void>();
       const firstStarted = Promise.withResolvers<void>();
@@ -5396,6 +5468,9 @@ describe("concurrency", () => {
           return ok();
         }),
       );
+
+      // @ts-expect-error lookup constrains accepted key types
+      mutexByKey.withLock("a", () => ok());
 
       await firstStarted.promise;
 
@@ -5415,10 +5490,12 @@ describe("concurrency", () => {
       expect(events).toEqual(["start 1", "end 1", "task 2"]);
     });
 
-    test("shares mutex for equal Uint8Array keys", async () => {
+    test("supports custom lookup functions for Uint8Array keys", async () => {
       await using run = createRun();
 
-      const mutexByKey = createMutexByKey<Uint8Array>();
+      const mutexByKey = createMutexByKey({
+        lookup: (key: Uint8Array): StructuralLookupKey => structuralLookup(key),
+      });
       const events: Array<string> = [];
       const firstCanFinish = Promise.withResolvers<void>();
       const firstStarted = Promise.withResolvers<void>();

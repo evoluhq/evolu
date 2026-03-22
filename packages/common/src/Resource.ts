@@ -4,15 +4,21 @@
  * @module
  */
 
-import { assert, assertNotAborted, assertNotDisposed } from "./Assert.js";
-import { ok } from "./Result.js";
+import { assert, assertNotAborted } from "./Assert.js";
+import { identity } from "./Function.js";
 import {
-  createStructuralMap,
-  createStructuralRelation,
-  createStructuralSet,
-  type Structural,
-  type StructuralKey,
-} from "./Structural.js";
+  createLookupMap,
+  createLookupSet,
+  type Lookup,
+  type LookupOption,
+} from "./Lookup.js";
+import {
+  createRefCount,
+  createRefCountByKey,
+  type RefCountByKey,
+} from "./RefCount.js";
+import { createRelation } from "./Relation.js";
+import { ok } from "./Result.js";
 import {
   createMutex,
   createMutexByKey,
@@ -25,7 +31,15 @@ import {
   type Task,
 } from "./Task.js";
 import { type Duration } from "./Time.js";
-import { NonNegativeInt, PositiveInt, zeroNonNegativeInt } from "./Type.js";
+import { NonNegativeInt, zeroNonNegativeInt } from "./Type.js";
+
+export {
+  createRefCount,
+  createRefCountByKey,
+  type CreateRefCountByKeyOptions,
+  type RefCount,
+  type RefCountByKey,
+} from "./RefCount.js";
 
 /**
  * Disposable resource.
@@ -311,7 +325,7 @@ export const createSharedResource = <T extends Resource, D>(
   });
 
 /**
- * Shared {@link Resource}s keyed by {@link StructuralKey}.
+ * Shared {@link Resource}s keyed by logical identity.
  *
  * A map-like registry of {@link SharedResource}s. Each key owns at most one
  * current resource instance.
@@ -331,6 +345,11 @@ export const createSharedResource = <T extends Resource, D>(
  * may still be aborted before they start on an already-stopped Run, but once
  * started they run to completion. Releasing more times than acquired is a
  * programmer error checked with {@link assert}.
+ *
+ * By default, {@link createSharedResourceByKey} uses reference identity for
+ * keys, matching native `Map`. Callers may instead provide a
+ * {@link Lookup
+ * lookup} so logical equality is based on a derived stable key.
  */
 export interface SharedResourceByKey<
   K,
@@ -338,7 +357,7 @@ export interface SharedResourceByKey<
   D = unknown,
 > extends AsyncDisposable {
   /** Returns the current resource for `key`, or `undefined` if absent. */
-  readonly get: (key: Structural<K>) => BorrowedResource<T> | undefined;
+  readonly get: (key: K) => BorrowedResource<T> | undefined;
 
   /**
    * Acquires the shared resource for `key`, creating it on first use.
@@ -348,7 +367,7 @@ export interface SharedResourceByKey<
    * acquired lease for `key` and must later be balanced with
    * {@link SharedResourceByKey.release | release}.
    */
-  readonly acquire: (key: Structural<K>) => Task<BorrowedResource<T>, never, D>;
+  readonly acquire: (key: K) => Task<BorrowedResource<T>, never, D>;
 
   /**
    * Releases one previously acquired shared reference for `key`.
@@ -362,10 +381,10 @@ export interface SharedResourceByKey<
    * Once started, release runs to completion even if the caller aborts its
    * Fiber. Always await the result instead of assuming no cleanup happened.
    */
-  readonly release: (key: Structural<K>) => Task<void, never, D>;
+  readonly release: (key: K) => Task<void, never, D>;
 
   /** Returns the current acquire count for `key`. Missing keys return `0`. */
-  readonly getCount: (key: Structural<K>) => Task<NonNegativeInt, never, D>;
+  readonly getCount: (key: K) => Task<NonNegativeInt, never, D>;
 
   /** Returns current keyed resources and their per-key mutex state. */
   readonly snapshot: () => SharedResourceByKeySnapshot<K, T>;
@@ -374,19 +393,17 @@ export interface SharedResourceByKey<
 /** Snapshot returned by {@link SharedResourceByKey.snapshot}. */
 export interface SharedResourceByKeySnapshot<K, T extends Resource> {
   /** Current borrowed resources by key. */
-  readonly resourcesByKey: ReadonlyMap<Structural<K>, BorrowedResource<T>>;
+  readonly resourcesByKey: ReadonlyMap<K, BorrowedResource<T>>;
 
   /** Current mutex state for each key in the resource snapshot. */
-  readonly mutexByKey: ReadonlyMap<Structural<K>, SemaphoreSnapshot | null>;
+  readonly mutexByKey: ReadonlyMap<K, SemaphoreSnapshot | null>;
 }
 
 /** Options for {@link createSharedResourceByKey}. */
-export interface SharedResourceByKeyOptions<K> extends Pick<
-  SharedResourceOptions,
-  "idleDisposeAfter"
-> {
+export interface SharedResourceByKeyOptions<K, L = K>
+  extends Pick<SharedResourceOptions, "idleDisposeAfter">, LookupOption<K, L> {
   /** Called after `key`'s current resource is disposed and cleared. */
-  readonly onDisposed?: (key: Structural<K>) => void;
+  readonly onDisposed?: (key: K) => void;
 }
 
 /**
@@ -395,21 +412,39 @@ export interface SharedResourceByKeyOptions<K> extends Pick<
  * The `create` Task is scoped to one key. It must not fail, matching
  * {@link createSharedResource}.
  */
-export const createSharedResourceByKey = <
-  K = StructuralKey,
+export function createSharedResourceByKey<
+  K = unknown,
   T extends Resource = Resource,
   D = unknown,
 >(
   create: (key: K) => Task<T, never, D>,
-  { idleDisposeAfter, onDisposed }: SharedResourceByKeyOptions<K> = {},
-): Task<SharedResourceByKey<K, T, D>, never, D> =>
-  unabortable<SharedResourceByKey<K, T, D>, never, D>((run) => {
+): Task<SharedResourceByKey<K, T, D>, never, D>;
+export function createSharedResourceByKey<K, T extends Resource, D, L = K>(
+  create: (key: K) => Task<T, never, D>,
+  options: SharedResourceByKeyOptions<K, L>,
+): Task<SharedResourceByKey<K, T, D>, never, D>;
+export function createSharedResourceByKey<
+  K = unknown,
+  T extends Resource = Resource,
+  D = unknown,
+  L = K,
+>(
+  create: (key: K) => Task<T, never, D>,
+  {
+    idleDisposeAfter,
+    lookup = identity as Lookup<K, L>,
+    onDisposed,
+  }: SharedResourceByKeyOptions<K, L> = {},
+): Task<SharedResourceByKey<K, T, D>, never, D> {
+  return unabortable<SharedResourceByKey<K, T, D>, never, D>((run) => {
     const sharedResourceByKeyRun = run.create();
-    const sharedResourcesByKey = createStructuralMap<K, SharedResource<T, D>>();
+    const sharedResourcesByKey = createLookupMap<K, SharedResource<T, D>, L>({
+      lookup,
+    });
 
     const stack = new AsyncDisposableStack();
 
-    const mutexByKey = stack.use(createMutexByKey<K>());
+    const mutexByKey = stack.use(createMutexByKey<K, L>({ lookup }));
     stack.defer(async () => {
       const stack = new AsyncDisposableStack();
       for (const resource of sharedResourcesByKey.values()) stack.use(resource);
@@ -432,7 +467,7 @@ export const createSharedResourceByKey = <
 
               if (!sharedResource) {
                 const sharedResourceResult = await run(
-                  createSharedResource(create(key as K), {
+                  createSharedResource(create(key), {
                     idleDisposeAfter,
                     onDisposed: () => {
                       onDisposed?.(key);
@@ -487,11 +522,8 @@ export const createSharedResourceByKey = <
         ),
 
       snapshot: () => {
-        const resourcesByKey = new Map<Structural<K>, BorrowedResource<T>>();
-        const mutexSnapshotsByKey = new Map<
-          Structural<K>,
-          SemaphoreSnapshot | null
-        >();
+        const resourcesByKey = new Map<K, BorrowedResource<T>>();
+        const mutexSnapshotsByKey = new Map<K, SemaphoreSnapshot | null>();
 
         for (const [key, sharedResource] of sharedResourcesByKey.entries()) {
           const resource = sharedResource.get();
@@ -510,12 +542,18 @@ export const createSharedResourceByKey = <
       [Symbol.asyncDispose]: () => moved.disposeAsync(),
     });
   });
+}
 
 /**
- * Shared {@link Resource}s keyed by structural keys and retained by claims.
+ * Shared {@link Resource}s keyed by logical identity and retained by claims.
  *
- * This combines {@link SharedResourceByKey} with structural claim tracking.
- * Resources are kept alive while at least one claim retains their key.
+ * This combines {@link SharedResourceByKey} with claim tracking. Resources are
+ * kept alive while at least one claim retains their key.
+ *
+ * By default, {@link createSharedResourceByKeyWithClaims} uses reference
+ * identity for both resource keys and claims, matching native `Map` and `Set`.
+ * Callers may instead provide {@link Lookup lookup} functions so logical
+ * equality is based on derived stable keys.
  */
 export interface SharedResourceByKeyWithClaims<
   K,
@@ -525,94 +563,131 @@ export interface SharedResourceByKeyWithClaims<
 > extends AsyncDisposable {
   /** Retains each resource key for `claim`. */
   readonly addClaim: (
-    claim: Structural<C>,
-    resourceKeys: ReadonlyArray<Structural<K>>,
+    claim: C,
+    resourceKeys: ReadonlyArray<K>,
   ) => Task<void, never, D>;
 
   /** Releases each previously retained resource key for `claim`. */
   readonly removeClaim: (
-    claim: Structural<C>,
-    resourceKeys: ReadonlyArray<Structural<K>>,
+    claim: C,
+    resourceKeys: ReadonlyArray<K>,
   ) => Task<void, never, D>;
 
   /** Returns the current resource for `key`, or `undefined` if absent. */
-  readonly getResource: (key: Structural<K>) => BorrowedResource<T> | undefined;
+  readonly getResource: (key: K) => BorrowedResource<T> | undefined;
 
   /** Returns the current unique claims retaining `key`. */
-  readonly getClaimsForResource: (
-    key: Structural<K>,
-  ) => ReadonlySet<Structural<C>>;
+  readonly getClaimsForResource: (key: K) => ReadonlySet<C>;
 
   /** Returns the current unique resource keys retained by `claim`. */
-  readonly getResourceKeysForClaim: (
-    claim: Structural<C>,
-  ) => ReadonlySet<Structural<K>>;
+  readonly getResourceKeysForClaim: (claim: C) => ReadonlySet<K>;
 
   /** Returns the current unique resources retained by `claim`. */
-  readonly getResourcesForClaim: (
-    claim: Structural<C>,
-  ) => ReadonlySet<BorrowedResource<T>>;
+  readonly getResourcesForClaim: (claim: C) => ReadonlySet<BorrowedResource<T>>;
 }
 
 /** Options for {@link createSharedResourceByKeyWithClaims}. */
 export interface SharedResourceByKeyWithClaimsOptions<
   K,
+  C,
   T extends Resource,
+  LK = K,
+  LC = C,
 > extends Pick<SharedResourceOptions, "idleDisposeAfter"> {
+  /** Derives logical identity for resource keys. Defaults to {@link identity}. */
+  readonly resourceLookup?: Lookup<K, LK>;
+
+  /** Derives logical identity for claims. Defaults to {@link identity}. */
+  readonly claimLookup?: Lookup<C, LC>;
+
   /** Called when a key transitions from zero claims to one claim. */
   readonly onFirstClaimAdded?: (
     resource: BorrowedResource<T>,
-    resourceKey: Structural<K>,
+    resourceKey: K,
   ) => void;
 
   /** Called when a key transitions from one claim to zero claims. */
   readonly onLastClaimRemoved?: (
     resource: BorrowedResource<T>,
-    resourceKey: Structural<K>,
+    resourceKey: K,
   ) => void;
 }
 
 /**
  * Creates {@link SharedResourceByKeyWithClaims}.
  *
- * Claim-resource pairs are reference-counted by structural equality. The
+ * Claim-resource pairs are reference-counted by logical identity. The
  * underlying resource for a key is acquired on the first active claim and
  * released when the last active claim for that key is removed.
  */
-export const createSharedResourceByKeyWithClaims = <
+export function createSharedResourceByKeyWithClaims<
   T extends Resource,
-  K = StructuralKey,
-  C = StructuralKey,
+  K = unknown,
+  C = unknown,
   D = unknown,
+>(
+  create: (key: K) => Task<T, never, D>,
+): Task<SharedResourceByKeyWithClaims<K, C, T, D>, never, D>;
+export function createSharedResourceByKeyWithClaims<
+  T extends Resource,
+  K,
+  C,
+  D,
+  LK = K,
+  LC = C,
+>(
+  create: (key: K) => Task<T, never, D>,
+  options: SharedResourceByKeyWithClaimsOptions<K, C, T, LK, LC>,
+): Task<SharedResourceByKeyWithClaims<K, C, T, D>, never, D>;
+export function createSharedResourceByKeyWithClaims<
+  T extends Resource,
+  K = unknown,
+  C = unknown,
+  D = unknown,
+  LK = K,
+  LC = C,
 >(
   create: (key: K) => Task<T, never, D>,
   {
     idleDisposeAfter,
+    resourceLookup = identity as Lookup<K, LK>,
+    claimLookup = identity as Lookup<C, LC>,
     onFirstClaimAdded,
     onLastClaimRemoved,
-  }: SharedResourceByKeyWithClaimsOptions<K, T> = {},
-): Task<SharedResourceByKeyWithClaims<K, C, T, D>, never, D> =>
-  unabortable<SharedResourceByKeyWithClaims<K, C, T, D>, never, D>(
+  }: SharedResourceByKeyWithClaimsOptions<K, C, T, LK, LC> = {},
+): Task<SharedResourceByKeyWithClaims<K, C, T, D>, never, D> {
+  return unabortable<SharedResourceByKeyWithClaims<K, C, T, D>, never, D>(
     async (run) => {
       const sharedResourceClaimsRun = run.create();
-
       await using stack = new AsyncDisposableStack();
 
-      const keyByClaim = createStructuralRelation<C, K>();
-      const pairRefCountsByClaim = createStructuralMap<
-        C,
-        ReturnType<typeof createStructuralMap<K, number>>
-      >();
+      const keyByClaim = createRelation<C, K, LC, LK>({
+        lookupA: claimLookup,
+        lookupB: resourceLookup,
+      });
+      const pairRefCountsByClaim = stack.adopt(
+        createLookupMap<C, RefCountByKey<K>, LC>({ lookup: claimLookup }),
+        (pairRefCountsByClaim) => {
+          for (const pairRefCountByKey of pairRefCountsByClaim.values()) {
+            pairRefCountByKey[Symbol.dispose]();
+          }
+          pairRefCountsByClaim.clear();
+        },
+      );
 
-      const mutexByKey = stack.use(createMutexByKey<K>());
+      const mutexByKey = stack.use(
+        createMutexByKey<K, LK>({ lookup: resourceLookup }),
+      );
 
       stack.defer(() => {
         keyByClaim.clear();
-        pairRefCountsByClaim.clear();
       });
 
       const sharedResourcesByKeyResult = await sharedResourceClaimsRun(
-        createSharedResourceByKey(create, { idleDisposeAfter }),
+        createSharedResourceByKey(create, {
+          idleDisposeAfter,
+          lookup: resourceLookup,
+        }),
       );
       assertNotAborted(sharedResourcesByKeyResult);
       const sharedResourcesByKey = stack.use(sharedResourcesByKeyResult.value);
@@ -620,13 +695,16 @@ export const createSharedResourceByKeyWithClaims = <
       // Register as the last so disposal aborts further calls first.
       stack.use(sharedResourceClaimsRun);
 
-      /** Asserts that one call does not contain the same structural key twice. */
+      /** Asserts that one call does not contain the same logical key twice. */
       const assertNoDuplicateResourceKeys = (
-        resourceKeys: ReadonlyArray<Structural<K>>,
+        resourceKeys: ReadonlyArray<K>,
       ) => {
         assert(
-          createStructuralSet(resourceKeys).size === resourceKeys.length,
-          "resourceKeys must not contain structural duplicates.",
+          createLookupSet<K, LK>({
+            lookup: resourceLookup,
+            values: resourceKeys,
+          }).size === resourceKeys.length,
+          "resourceKeys must not contain lookup duplicates.",
         );
       };
 
@@ -641,15 +719,16 @@ export const createSharedResourceByKeyWithClaims = <
               for (const resourceKey of resourceKeys) {
                 const added = await run(
                   mutexByKey.withLock(resourceKey, async (run) => {
-                    let keyRefCounts = pairRefCountsByClaim.get(claim);
-                    if (!keyRefCounts) {
-                      keyRefCounts = createStructuralMap<K, number>();
-                      pairRefCountsByClaim.set(claim, keyRefCounts);
+                    let pairRefCountByKey = pairRefCountsByClaim.get(claim);
+                    if (!pairRefCountByKey) {
+                      pairRefCountByKey = createRefCountByKey<K, LK>({
+                        lookup: resourceLookup,
+                      });
+                      pairRefCountsByClaim.set(claim, pairRefCountByKey);
                     }
 
-                    const currentPairCount = keyRefCounts.get(resourceKey) ?? 0;
-                    if (currentPairCount > 0) {
-                      keyRefCounts.set(resourceKey, currentPairCount + 1);
+                    if (pairRefCountByKey.has(resourceKey)) {
+                      pairRefCountByKey.increment(resourceKey);
                       return ok();
                     }
 
@@ -663,13 +742,12 @@ export const createSharedResourceByKeyWithClaims = <
                       firstResource = resourceResult.value;
                     }
 
-                    const wasAdded = keyByClaim.add(claim, resourceKey);
                     assert(
-                      wasAdded,
+                      keyByClaim.add(claim, resourceKey),
                       "Claim-resource relation must be absent before first retain.",
                     );
 
-                    keyRefCounts.set(resourceKey, 1);
+                    pairRefCountByKey.increment(resourceKey);
 
                     if (firstResource) {
                       onFirstClaimAdded?.(firstResource, resourceKey);
@@ -693,35 +771,24 @@ export const createSharedResourceByKeyWithClaims = <
               for (const resourceKey of resourceKeys) {
                 const removed = await run(
                   mutexByKey.withLock(resourceKey, async (run) => {
-                    const keyRefCounts = pairRefCountsByClaim.get(claim);
+                    const pairRefCountByKey = pairRefCountsByClaim.get(claim);
 
                     assert(
-                      keyRefCounts,
+                      pairRefCountByKey,
                       "Claim-resource pair must not be removed more times than added.",
                     );
 
-                    const currentPairCount = keyRefCounts.get(resourceKey);
-                    assert(
-                      currentPairCount && currentPairCount > 0,
-                      "Claim-resource pair must not be removed more times than added.",
-                    );
-
-                    if (currentPairCount > 1) {
-                      keyRefCounts.set(resourceKey, currentPairCount - 1);
+                    if (pairRefCountByKey.decrement(resourceKey) > 0) {
                       return ok();
                     }
 
-                    keyRefCounts.delete(resourceKey);
-                    if (keyRefCounts.size === 0) {
+                    if (pairRefCountByKey.keys().size === 0) {
                       pairRefCountsByClaim.delete(claim);
+                      pairRefCountByKey[Symbol.dispose]();
                     }
 
-                    const relationRemoved = keyByClaim.remove(
-                      claim,
-                      resourceKey,
-                    );
                     assert(
-                      relationRemoved,
+                      keyByClaim.remove(claim, resourceKey),
                       "Claim-resource relation must exist while its ref count is positive.",
                     );
 
@@ -775,152 +842,7 @@ export const createSharedResourceByKeyWithClaims = <
       });
     },
   );
-
-/**
- * Reference count for one retained value.
- *
- * Decrementing below zero is a programmer error checked with {@link assert}.
- */
-export interface RefCount extends Disposable {
-  /** Increments the count and returns the new count. */
-  readonly increment: () => PositiveInt;
-
-  /**
-   * Decrements the count and returns the new count.
-   *
-   * Decrementing below zero is a programmer error checked with {@link assert}.
-   */
-  readonly decrement: () => NonNegativeInt;
-
-  /** Returns the current count. */
-  readonly getCount: () => NonNegativeInt;
-
-  /** Disposes and invalidates the helper. Further method calls throw. */
-  readonly [Symbol.dispose]: () => void;
 }
-
-/** Creates {@link RefCount}. */
-export const createRefCount = (): RefCount => {
-  let count = zeroNonNegativeInt;
-  const stack = new DisposableStack();
-  stack.defer(() => {
-    count = zeroNonNegativeInt;
-  });
-  const moved = stack.move();
-
-  return {
-    increment: () => {
-      assertNotDisposed(moved);
-      const nextCount = PositiveInt.orThrow(count + 1);
-      count = nextCount;
-      return nextCount;
-    },
-
-    decrement: () => {
-      assertNotDisposed(moved);
-      assert(count > 0, "RefCount must not be decremented below zero.");
-      count = NonNegativeInt.orThrow(count - 1);
-      return count;
-    },
-
-    getCount: () => {
-      assertNotDisposed(moved);
-      return count;
-    },
-
-    [Symbol.dispose]: () => moved.dispose(),
-  };
-};
-
-/**
- * Reference counts keyed by identity.
- *
- * Keys use reference identity, the same as `Map` keys. Decrementing a missing
- * key is a programmer error checked with {@link assert}.
- */
-export interface RefCountByKey<TKey> extends Disposable {
-  /** Increments key count and returns the new count. */
-  readonly increment: (key: TKey) => PositiveInt;
-
-  /**
-   * Decrements key count and returns the new count.
-   *
-   * Decrementing a missing key is a programmer error checked with
-   * {@link assert}.
-   */
-  readonly decrement: (key: TKey) => NonNegativeInt;
-
-  /** Gets current count for key. Returns `0` when the key is not tracked. */
-  readonly getCount: (key: TKey) => NonNegativeInt;
-
-  /** Returns `true` when the key is tracked with count greater than zero. */
-  readonly has: (key: TKey) => boolean;
-
-  /** Returns all currently tracked keys. */
-  readonly keys: () => ReadonlySet<TKey>;
-
-  /** Disposes and invalidates the helper. Further method calls throw. */
-  readonly [Symbol.dispose]: () => void;
-}
-
-/** Creates {@link RefCountByKey}. */
-export const createRefCountByKey = <TKey>(): RefCountByKey<TKey> => {
-  const stack = new DisposableStack();
-
-  const refCountByKey = stack.adopt(
-    new Map<TKey, RefCount>(),
-    (refCountByKey) => {
-      for (const refCount of refCountByKey.values()) refCount[Symbol.dispose]();
-      refCountByKey.clear();
-    },
-  );
-
-  const moved = stack.move();
-
-  const getRefCount = (key: TKey): RefCount => {
-    let refCount = refCountByKey.get(key);
-    if (!refCount) {
-      refCount = createRefCount();
-      refCountByKey.set(key, refCount);
-    }
-    return refCount;
-  };
-
-  return {
-    increment: (key) => {
-      assertNotDisposed(moved);
-      return getRefCount(key).increment();
-    },
-
-    decrement: (key) => {
-      assertNotDisposed(moved);
-      const refCount = getRefCount(key);
-      const nextCount = refCount.decrement();
-      if (nextCount === 0) {
-        refCount[Symbol.dispose]();
-        refCountByKey.delete(key);
-      }
-      return nextCount;
-    },
-
-    getCount: (key) => {
-      assertNotDisposed(moved);
-      return refCountByKey.get(key)?.getCount() ?? zeroNonNegativeInt;
-    },
-
-    has: (key) => {
-      assertNotDisposed(moved);
-      return refCountByKey.has(key);
-    },
-
-    keys: () => {
-      assertNotDisposed(moved);
-      return new Set(refCountByKey.keys());
-    },
-
-    [Symbol.dispose]: () => moved.dispose(),
-  };
-};
 
 interface OwnedResource<T extends Resource> {
   readonly resource: BorrowedResource<T>;

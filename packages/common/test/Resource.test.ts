@@ -1,12 +1,10 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
+import { structuralLookup, type StructuralLookupKey } from "../src/Lookup.js";
 import {
-  createRefCount,
-  createRefCountByKey,
   createResourceRef,
   createSharedResource,
   createSharedResourceByKey,
   createSharedResourceByKeyWithClaims,
-  type RefCountByKey,
   type Resource,
   type ResourceRef,
   type SharedResource,
@@ -75,6 +73,24 @@ const countRunDescendants = (snapshot: TestRunSnapshot): number =>
     (count, child) => count + 1 + countRunDescendants(child),
     0,
   );
+
+const ownerTransportLookup = (key: {
+  readonly ownerId: string;
+  readonly transport: string;
+}): StructuralLookupKey => structuralLookup(key);
+
+const transportLookup = (key: {
+  readonly transport: string;
+}): StructuralLookupKey => structuralLookup(key);
+
+const ownerClaimLookup = (claim: {
+  readonly ownerId: string;
+}): StructuralLookupKey => structuralLookup(claim);
+
+const encryptedOwnerClaimLookup = (claim: {
+  readonly ownerId: string;
+  readonly encryptionKey: string;
+}): StructuralLookupKey => structuralLookup(claim);
 
 const createThrowingResource = (
   disposeKind: DisposeKind,
@@ -991,7 +1007,7 @@ describe("createSharedResourceByKey", () => {
     );
   });
 
-  test("structurally equal object keys share one resource", async () => {
+  test("uses reference identity for equal object keys by default", async () => {
     await using run = testCreateRun();
 
     const createCalls: Array<string> = [];
@@ -1004,29 +1020,61 @@ describe("createSharedResourceByKey", () => {
       ),
     );
 
-    const first = await run.orThrow(
-      sharedResourceByKey.acquire({ ownerId: "a", transport: "ws" }),
-    );
-    const second = await run.orThrow(
-      sharedResourceByKey.acquire({ transport: "ws", ownerId: "a" }),
-    );
+    const firstKey = { ownerId: "a", transport: "ws" };
+    const secondKey = { transport: "ws", ownerId: "a" };
 
-    expect(first).toBe(second);
-    expect(createCalls).toEqual(["a:ws"]);
-    expect(
-      await run.orThrow(
-        sharedResourceByKey.getCount({ ownerId: "a", transport: "ws" }),
-      ),
-    ).toBe(2);
+    const first = await run.orThrow(sharedResourceByKey.acquire(firstKey));
+    const second = await run.orThrow(sharedResourceByKey.acquire(secondKey));
+
+    expect(first).not.toBe(second);
+    expect(createCalls).toEqual(["a:ws", "a:ws"]);
+    expect(await run.orThrow(sharedResourceByKey.getCount(firstKey))).toBe(1);
+    expect(await run.orThrow(sharedResourceByKey.getCount(secondKey))).toBe(1);
   });
 
-  test("structurally equal object keys release and dispose symmetrically", async () => {
+  test("supports custom lookup functions with typed keys", async () => {
     await using run = testCreateRun();
 
     await using sharedResourceByKey = await run.orThrow(
       createSharedResourceByKey(
         (key: { readonly ownerId: string; readonly transport: string }) =>
           testCreateResource("sync")(`${key.ownerId}:${key.transport}`),
+        { lookup: ownerTransportLookup },
+      ),
+    );
+
+    // @ts-expect-error lookup constrains accepted key types
+    sharedResourceByKey.get("a");
+
+    const resource = await run.orThrow(
+      sharedResourceByKey.acquire({ ownerId: "a", transport: "ws" }),
+    );
+
+    const equivalent = { transport: "ws", ownerId: "a" };
+    const sameResource = await run.orThrow(
+      sharedResourceByKey.acquire(equivalent),
+    );
+
+    expect(sameResource).toBe(resource);
+
+    await run.orThrow(sharedResourceByKey.release(equivalent));
+
+    expect(resource.isDisposed()).toBe(false);
+    expect(
+      await run.orThrow(
+        sharedResourceByKey.getCount({ ownerId: "a", transport: "ws" }),
+      ),
+    ).toBe(1);
+  });
+
+  test("custom lookup releases and disposes symmetrically", async () => {
+    await using run = testCreateRun();
+
+    await using sharedResourceByKey = await run.orThrow(
+      createSharedResourceByKey(
+        (key: { readonly ownerId: string; readonly transport: string }) =>
+          testCreateResource("sync")(`${key.ownerId}:${key.transport}`),
+        { lookup: ownerTransportLookup },
       ),
     );
 
@@ -1660,6 +1708,8 @@ describe("createSharedResourceByKeyWithClaims", () => {
           return testCreateResource("sync")(key.transport);
         },
         {
+          resourceLookup: transportLookup,
+          claimLookup: ownerClaimLookup,
           onFirstClaimAdded: (resource, key) => {
             firstClaimAdded.push(`${resource.id}:${key.transport}`);
           },
@@ -1757,6 +1807,8 @@ describe("createSharedResourceByKeyWithClaims", () => {
         (key: { readonly transport: string }) =>
           testCreateResource("sync")(key.transport),
         {
+          resourceLookup: transportLookup,
+          claimLookup: ownerClaimLookup,
           onFirstClaimAdded: (_resource, key) => {
             firstClaimAdded.push(key.transport);
           },
@@ -1820,6 +1872,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
       createSharedResourceByKeyWithClaims(
         (key: { readonly transport: string }) =>
           testCreateResource("sync")(key.transport),
+        { resourceLookup: transportLookup },
       ),
     );
 
@@ -1830,7 +1883,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
           { transport: "ws://one" },
         ]),
       ),
-    ).rejects.toThrow("resourceKeys must not contain structural duplicates.");
+    ).rejects.toThrow("resourceKeys must not contain lookup duplicates.");
   });
 
   test("idleDisposeAfter keeps the current resource observable until sync disposal completes", async () => {
@@ -1936,8 +1989,9 @@ describe("createSharedResourceByKeyWithClaims", () => {
     await using run = testCreateRun();
 
     await using sharedResourceByKeyWithClaims = await run.orThrow(
-      createSharedResourceByKeyWithClaims((key: string) =>
-        testCreateResource("sync")(key),
+      createSharedResourceByKeyWithClaims(
+        (key: string) => testCreateResource("sync")(key),
+        { claimLookup: encryptedOwnerClaimLookup },
       ),
     );
 
@@ -2043,6 +2097,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
       createSharedResourceByKeyWithClaims(
         (key: { readonly transport: string }) =>
           testCreateResource("sync")(key.transport),
+        { resourceLookup: transportLookup },
       ),
     );
 
@@ -2059,7 +2114,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
           { transport: "ws://one" },
         ]),
       ),
-    ).rejects.toThrow("resourceKeys must not contain structural duplicates.");
+    ).rejects.toThrow("resourceKeys must not contain lookup duplicates.");
   });
 
   test("removeClaim throws on over-removal", async () => {
@@ -2149,140 +2204,5 @@ describe("createSharedResourceByKeyWithClaims", () => {
     await expectRunStopped(
       run(sharedResourceByKeyWithClaims.removeClaim("owner-1", ["a"])),
     );
-  });
-});
-
-describe("createRefCount", () => {
-  test("increments and decrements the count", () => {
-    const refCount = createRefCount();
-
-    expect(refCount.getCount()).toBe(0);
-    expect(refCount.increment()).toBe(1);
-    expect(refCount.increment()).toBe(2);
-    expect(refCount.getCount()).toBe(2);
-    expect(refCount.decrement()).toBe(1);
-    expect(refCount.decrement()).toBe(0);
-    expect(refCount.getCount()).toBe(0);
-  });
-
-  test("decrement throws on underflow", () => {
-    const refCount = createRefCount();
-
-    expect(() => refCount.decrement()).toThrow(
-      "RefCount must not be decremented below zero.",
-    );
-  });
-
-  test("dispose invalidates the helper", () => {
-    const refCount = createRefCount();
-
-    refCount.increment();
-    refCount.increment();
-    refCount[Symbol.dispose]();
-
-    expect(() => refCount.increment()).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.decrement()).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.getCount()).toThrow(
-      "Expected value to not be disposed.",
-    );
-  });
-});
-
-describe("createRefCountByKey", () => {
-  test("types expose keyed reference counting", () => {
-    expectTypeOf<typeof createRefCountByKey>().toEqualTypeOf<
-      <TKey>() => RefCountByKey<TKey>
-    >();
-  });
-
-  test("tracks counts per key", () => {
-    const refCount = createRefCountByKey<string>();
-
-    expect(refCount.increment("a")).toBe(1);
-    expect(refCount.increment("a")).toBe(2);
-    expect(refCount.increment("b")).toBe(1);
-    expect(refCount.getCount("a")).toBe(2);
-    expect(refCount.getCount("b")).toBe(1);
-    expect(refCount.keys()).toEqual(new Set(["a", "b"]));
-  });
-
-  test("decrement removes key at zero", () => {
-    const refCount = createRefCountByKey<string>();
-
-    refCount.increment("a");
-
-    expect(refCount.decrement("a")).toBe(0);
-    expect(refCount.getCount("a")).toBe(0);
-    expect(refCount.has("a")).toBe(false);
-    expect(refCount.keys()).toEqual(new Set());
-  });
-
-  test("decrement throws on missing key", () => {
-    const refCount = createRefCountByKey<string>();
-
-    expect(() => refCount.decrement("missing")).toThrow(
-      "RefCount must not be decremented below zero.",
-    );
-  });
-
-  test("decrement keeps key while count stays positive", () => {
-    const refCount = createRefCountByKey<string>();
-
-    refCount.increment("a");
-    refCount.increment("a");
-
-    expect(refCount.decrement("a")).toBe(1);
-    expect(refCount.getCount("a")).toBe(1);
-    expect(refCount.has("a")).toBe(true);
-  });
-
-  test("keys returns a snapshot set", () => {
-    const refCount = createRefCountByKey<string>();
-    refCount.increment("a");
-
-    const keys = refCount.keys() as Set<string>;
-    keys.add("b");
-
-    expect(refCount.keys()).toEqual(new Set(["a"]));
-    expect(refCount.has("b")).toBe(false);
-  });
-
-  test("dispose invalidates the helper", () => {
-    const refCount = createRefCountByKey<string>();
-
-    refCount.increment("a");
-    refCount.increment("b");
-    refCount[Symbol.dispose]();
-
-    expect(() => refCount.increment("c")).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.decrement("a")).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.getCount("a")).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.has("a")).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.keys()).toThrow("Expected value to not be disposed.");
-  });
-
-  test("uses reference identity for object keys", () => {
-    const refCount = createRefCountByKey<{ readonly id: string }>();
-    const keyA = { id: "same" };
-    const keyB = { id: "same" };
-
-    refCount.increment(keyA);
-    refCount.increment(keyB);
-
-    expect(refCount.getCount(keyA)).toBe(1);
-    expect(refCount.getCount(keyB)).toBe(1);
-    expect(refCount.keys().size).toBe(2);
   });
 });

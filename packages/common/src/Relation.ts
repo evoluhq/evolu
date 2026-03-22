@@ -6,6 +6,13 @@
 
 import { emptyArray } from "./Array.js";
 import { assert } from "./Assert.js";
+import { identity } from "./Function.js";
+import {
+  createLookupMap,
+  createLookupSet,
+  type Lookup,
+  type LookupSet,
+} from "./Lookup.js";
 
 /**
  * Bidirectional relation between two types.
@@ -29,15 +36,43 @@ import { assert } from "./Assert.js";
  * - `removeByA` and `removeByB` are O(d) where d is the number of associated
  *   elements, because every associated pair must be touched once.
  *
- * Object identity:
+ * By default, {@link createRelation} uses reference identity for both sides,
+ * matching native `Map` and `Set`. Callers may instead provide
+ * {@link Lookup lookup} functions so logical equality is based on a derived
+ * stable key.
  *
- * - Elements are compared by reference (standard Map / Set semantics). Structural
- *   hashing of objects in JavaScript is non-trivial, can be expensive, and
- *   collision-prone if done naively. Prefer using stable primitive identifiers
- *   (ids, strings) instead of attempting to hash full object structures.
- * - If structural equivalence is truly required, wrap objects in an adapter that
- *   supplies a canonical hash/id and stores/retrieves the original objects
- *   separately. This is a rare need; avoid unless you have clear requirements.
+ * The input parameter types of `lookupA` and `lookupB` determine which values
+ * the returned relation accepts on each side.
+ *
+ * ### Example
+ *
+ * Use the default identity semantics.
+ *
+ * ```ts
+ * const relation = createRelation<WebSocket, string>();
+ * relation.add(socket, "owner-1");
+ * ```
+ *
+ * ### Example
+ *
+ * Use lookup-derived equality.
+ *
+ * ```ts
+ * interface Person {
+ *   readonly id: string;
+ *   readonly name: string;
+ * }
+ *
+ * const relation = createRelation({
+ *   lookupA: (person: Person) => person.id,
+ *   lookupB: (group: { readonly id: string }) => group.id,
+ * });
+ *
+ * relation.add({ id: "1", name: "Ada" }, { id: "admins" });
+ * relation.has({ id: "1", name: "Grace" }, { id: "admins" }); // true
+ * ```
+ *
+ * @see {@link createRelation}
  */
 export interface Relation<A, B> {
   /**
@@ -112,31 +147,47 @@ export interface Relation<A, B> {
   readonly size: () => number;
 }
 
+/** Options for {@link createRelation}. */
+export interface CreateRelationOptions<A, B, LA = A, LB = B> {
+  /** Derives logical identity for A values. Defaults to {@link identity}. */
+  readonly lookupA?: Lookup<A, LA>;
+
+  /** Derives logical identity for B values. Defaults to {@link identity}. */
+  readonly lookupB?: Lookup<B, LB>;
+}
+
 /** Creates a {@link Relation}. */
-export const createRelation = <A, B>(): Relation<A, B> => {
-  const aToB = new Map<A, Set<B>>();
-  const bToA = new Map<B, Set<A>>();
+export function createRelation<A, B>(): Relation<A, B>;
+export function createRelation<A, B, LA, LB>(
+  options: CreateRelationOptions<A, B, LA, LB>,
+): Relation<A, B>;
+export function createRelation<A, B, LA = A, LB = B>({
+  lookupA = identity as Lookup<A, LA>,
+  lookupB = identity as Lookup<B, LB>,
+}: CreateRelationOptions<A, B, LA, LB> = {}): Relation<A, B> {
+  const bByA = createLookupMap<A, LookupSet<B>, LA>({ lookup: lookupA });
+  const aByB = createLookupMap<B, LookupSet<A>, LB>({ lookup: lookupB });
   let sizeInternal = 0;
 
   const removePair = (a: A, b: B): void => {
-    const bSet = aToB.get(a);
+    const relatedB = bByA.get(a);
     // This should only fail if a leaked view was mutated via an unsafe cast.
-    assertRelationMappingConsistency(bSet);
-    assertRelationMappingConsistency(bSet.has(b));
+    assertRelationMappingConsistency(relatedB);
+    assertRelationMappingConsistency(relatedB.has(b));
 
-    bSet.delete(b);
-    if (bSet.size === 0) {
-      aToB.delete(a);
+    relatedB.delete(b);
+    if (relatedB.size === 0) {
+      bByA.delete(a);
     }
 
-    const aSet = bToA.get(b);
+    const relatedA = aByB.get(b);
     // This should only fail if a leaked view was mutated via an unsafe cast.
-    assertRelationMappingConsistency(aSet);
-    assertRelationMappingConsistency(aSet.has(a));
+    assertRelationMappingConsistency(relatedA);
+    assertRelationMappingConsistency(relatedA.has(a));
 
-    aSet.delete(a);
-    if (aSet.size === 0) {
-      bToA.delete(b);
+    relatedA.delete(a);
+    if (relatedA.size === 0) {
+      aByB.delete(b);
     }
 
     sizeInternal--;
@@ -144,86 +195,89 @@ export const createRelation = <A, B>(): Relation<A, B> => {
 
   return {
     add: (a, b) => {
-      let bSet = aToB.get(a);
-      if (bSet?.has(b)) return false;
-      if (!bSet) {
-        bSet = new Set<B>();
-        aToB.set(a, bSet);
-      }
-      bSet.add(b);
+      const canonicalA = bByA.getKey(a) ?? a;
+      const canonicalB = aByB.getKey(b) ?? b;
 
-      let aSet = bToA.get(b);
-      if (!aSet) {
-        aSet = new Set<A>();
-        bToA.set(b, aSet);
+      let relatedB = bByA.get(canonicalA);
+      if (relatedB?.has(canonicalB)) return false;
+      if (!relatedB) {
+        relatedB = createLookupSet<B, LB>({ lookup: lookupB });
+        bByA.set(canonicalA, relatedB);
       }
-      aSet.add(a);
+      relatedB.add(canonicalB);
+
+      let relatedA = aByB.get(canonicalB);
+      if (!relatedA) {
+        relatedA = createLookupSet<A, LA>({ lookup: lookupA });
+        aByB.set(canonicalB, relatedA);
+      }
+      relatedA.add(canonicalA);
 
       sizeInternal++;
       return true;
     },
 
     remove: (a, b) => {
-      if (!aToB.get(a)?.has(b)) return false;
+      if (!bByA.get(a)?.has(b)) return false;
 
       removePair(a, b);
       return true;
     },
 
     removeByA: (a) => {
-      const bSet = aToB.get(a);
-      if (!bSet) return false;
-      for (const b of bSet) removePair(a, b);
+      const relatedB = bByA.get(a);
+      if (!relatedB) return false;
+      for (const b of [...relatedB.keys()]) removePair(a, b);
       return true;
     },
 
     removeByB: (b) => {
-      const aSet = bToA.get(b);
-      if (!aSet) return false;
-      for (const a of aSet) removePair(a, b);
+      const relatedA = aByB.get(b);
+      if (!relatedA) return false;
+      for (const a of [...relatedA.keys()]) removePair(a, b);
       return true;
     },
 
     iterateA: (b) =>
-      bToA.get(b)?.values() ?? (emptyArray.values() as IterableIterator<A>),
+      aByB.get(b)?.keys() ?? (emptyArray.values() as IterableIterator<A>),
 
     iterateB: (a) =>
-      aToB.get(a)?.values() ?? (emptyArray.values() as IterableIterator<B>),
+      bByA.get(a)?.keys() ?? (emptyArray.values() as IterableIterator<B>),
 
     *[Symbol.iterator](): IterableIterator<readonly [A, B]> {
-      for (const [a, bSet] of aToB) {
-        for (const b of bSet) {
+      for (const [a, relatedB] of bByA) {
+        for (const b of relatedB.keys()) {
           yield [a, b] as const;
         }
       }
     },
 
     has: (a, b) => {
-      const bSet = aToB.get(a);
-      return bSet?.has(b) ?? false;
+      const relatedB = bByA.get(a);
+      return relatedB?.has(b) ?? false;
     },
 
-    hasA: (a) => aToB.has(a),
+    hasA: (a) => bByA.has(a),
 
-    hasB: (b) => bToA.has(b),
+    hasB: (b) => aByB.has(b),
 
     clear: () => {
-      aToB.clear();
-      bToA.clear();
+      bByA.clear();
+      aByB.clear();
       sizeInternal = 0;
     },
 
-    aCount: () => aToB.size,
+    aCount: () => bByA.size,
 
-    bCount: () => bToA.size,
+    bCount: () => aByB.size,
 
-    bCountForA: (a) => aToB.get(a)?.size ?? 0,
+    bCountForA: (a) => bByA.get(a)?.size ?? 0,
 
-    aCountForB: (b) => bToA.get(b)?.size ?? 0,
+    aCountForB: (b) => aByB.get(b)?.size ?? 0,
 
     size: () => sizeInternal,
   };
-};
+}
 
 const assertRelationMappingConsistency: (
   condition: unknown,

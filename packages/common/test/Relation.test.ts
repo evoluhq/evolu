@@ -272,3 +272,29 @@ test("counts shrink when removing pairs", () => {
   expect(relation.aCount()).toBe(0);
   expect(relation.bCount()).toBe(0);
 });
+
+test("supports custom lookup functions with typed keys", () => {
+  const uint8ArrayLookup = (bytes: Uint8Array): string =>
+    JSON.stringify(Array.from(bytes));
+
+  const relation = createRelation({
+    lookupA: uint8ArrayLookup,
+    lookupB: uint8ArrayLookup,
+  });
+
+  const a1 = new Uint8Array([1, 2, 3]);
+  const a2 = new Uint8Array([1, 2, 3]);
+  const b1 = new Uint8Array([4, 5, 6]);
+  const b2 = new Uint8Array([4, 5, 6]);
+
+  expect(relation.add(a1, b1)).toBe(true);
+  expect(relation.add(a2, b2)).toBe(false);
+  expect(relation.has(a2, b2)).toBe(true);
+  expect([...relation.iterateB(a2)]).toEqual([b1]);
+  expect([...relation.iterateA(b2)]).toEqual([a1]);
+
+  // @ts-expect-error custom lookup restricts A to Uint8Array
+  relation.add("a", b1);
+  // @ts-expect-error custom lookup restricts B to Uint8Array
+  relation.add(a1, "b");
+});
