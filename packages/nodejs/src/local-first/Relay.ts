@@ -111,7 +111,7 @@ export const startRelay =
       createRelayStorageTables(deps);
     }
 
-    const runWithStorage = run.addDeps({
+    const relayRun = run.create().addDeps({
       storage: createRelaySqliteStorage(deps)({
         isOwnerWithinQuota,
       }),
@@ -205,7 +205,7 @@ export const startRelay =
         if (!Uint8Array.is(message)) return;
 
         void (async () => {
-          const response = await runWithStorage(
+          const response = await relayRun(
             applyProtocolMessageAsRelay(message, options),
           );
           if (!response.ok) {
@@ -250,6 +250,8 @@ export const startRelay =
         }
       }
     });
+
+    stack.use(relayRun);
 
     server.listen(port);
     console.info(`Started on port ${port}`);
