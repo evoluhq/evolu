@@ -3,6 +3,7 @@ import type { ConsoleEntry } from "../../src/Console.js";
 import { testCreateConsole } from "../../src/Console.js";
 import {
   createOwnerWebSocketTransport,
+  type OwnerId,
   testAppOwner,
 } from "../../src/local-first/Owner.js";
 import { testQuery } from "../../src/local-first/Query.js";
@@ -11,6 +12,7 @@ import type {
   DbWorkerInput,
   DbWorkerOutput,
 } from "../../src/local-first/Shared.js";
+import { testCreateCrdtMessage } from "../../src/local-first/Storage.js";
 import {
   type EvoluInput,
   type EvoluOutput,
@@ -24,7 +26,7 @@ import type { ReadonlyStore } from "../../src/Store.js";
 import { createStore } from "../../src/Store.js";
 import { testCreateDeps, testCreateRun } from "../../src/Test.js";
 import { type TestTime } from "../../src/Time.js";
-import { type Id, testName } from "../../src/Type.js";
+import { createId, type Id, testName } from "../../src/Type.js";
 import {
   type CreateWebSocket,
   testCreateWebSocket,
@@ -666,7 +668,7 @@ describe("initSharedWorker", () => {
     assert(output2.type === "RefreshQueries");
   });
 
-  test.skip("sends protocol messages through transports retained for ownerId claims", async () => {
+  test("sends protocol messages only for writable used owners", async () => {
     const sentMessages: Array<{
       url: string;
       data: Uint8Array;
@@ -683,7 +685,7 @@ describe("initSharedWorker", () => {
         [Symbol.asyncDispose]: () => Promise.resolve(),
       });
 
-    const { run, time, worker, workerStack } = await setupWorker(
+    const { deps, run, time, worker, workerStack } = await setupWorker(
       undefined,
       createWebSocket,
     );
@@ -699,6 +701,15 @@ describe("initSharedWorker", () => {
       url: "wss://relay.example",
       ownerId: testAppOwner.id,
     });
+    const readonlyOwnerId = "readonly-owner" as OwnerId;
+    const readonlyTransport = createOwnerWebSocketTransport({
+      url: "wss://readonly.example",
+      ownerId: readonlyOwnerId,
+    });
+    const readonlyOwner = {
+      id: readonlyOwnerId,
+      encryptionKey: testAppOwner.encryptionKey,
+    };
 
     worker.port.postMessage({
       type: "CreateEvolu",
@@ -727,6 +738,13 @@ describe("initSharedWorker", () => {
           },
           action: "add",
         },
+        {
+          owner: {
+            owner: readonlyOwner,
+            transports: [readonlyTransport],
+          },
+          action: "add",
+        },
       ],
     });
     await testWaitForWorkerMessage();
@@ -744,25 +762,29 @@ describe("initSharedWorker", () => {
     const mutateInput = dbInputs.at(-1);
     assert(mutateInput);
 
-    const protocolMessage = new Uint8Array([1, 2, 3]);
+    const usedOwnerMessages = [
+      testCreateCrdtMessage(createId(deps), 1, "hello"),
+    ] as const;
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: mutateInput.callbackId,
       evoluPortId: mutateInput.evoluPortId,
       response: {
         type: "Mutate",
-        messagesByOwnerId: new Map(),
+        messagesByOwnerId: new Map([
+          [testAppOwner.id, usedOwnerMessages],
+          [readonlyOwner.id, usedOwnerMessages],
+          ["unused-owner" as OwnerId, usedOwnerMessages],
+        ]),
         rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
       },
     });
     await testWaitForWorkerMessage();
 
-    expect(sentMessages).toEqual([
-      {
-        url: transport.url,
-        data: protocolMessage,
-      },
-    ]);
+    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages[0]?.url).toBe(transport.url);
+    expect(sentMessages[0]?.data).toBeInstanceOf(Uint8Array);
+    expect(sentMessages[0]?.data.byteLength).toBeGreaterThan(0);
   });
 
   test("releases UseOwner transport claims when evolu instance is disposed", async () => {
