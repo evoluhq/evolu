@@ -477,15 +477,19 @@ describe("initSharedWorker", () => {
 
     const mutateInput = dbInputs.at(-1);
     assert(mutateInput);
+    assert(mutateInput.request.type === "ForEvolu");
 
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: mutateInput.callbackId,
-      evoluPortId: mutateInput.evoluPortId,
       response: {
-        type: "Mutate",
-        messagesByOwnerId: new Map(),
-        rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        type: "ForEvolu",
+        evoluPortId: mutateInput.request.evoluPortId,
+        response: {
+          type: "Mutate",
+          messagesByOwnerId: new Map(),
+          rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        },
       },
     });
     await testWaitForWorkerMessage();
@@ -499,14 +503,18 @@ describe("initSharedWorker", () => {
 
     const queryInput = dbInputs.at(-1);
     assert(queryInput);
+    assert(queryInput.request.type === "ForEvolu");
 
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: queryInput.callbackId,
-      evoluPortId: queryInput.evoluPortId,
       response: {
-        type: "Query",
-        rowsByQuery: new Map([[query, [{ value: 2 }]]]),
+        type: "ForEvolu",
+        evoluPortId: queryInput.request.evoluPortId,
+        response: {
+          type: "Query",
+          rowsByQuery: new Map([[query, [{ value: 2 }]]]),
+        },
       },
     });
     await testWaitForWorkerMessage();
@@ -568,15 +576,19 @@ describe("initSharedWorker", () => {
 
     const exportInput = dbInputs.at(-1);
     assert(exportInput);
+    assert(exportInput.request.type === "ForEvolu");
 
     const file = new Uint8Array([1, 2, 3]);
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: exportInput.callbackId,
-      evoluPortId: exportInput.evoluPortId,
       response: {
-        type: "Export",
-        file,
+        type: "ForEvolu",
+        evoluPortId: exportInput.request.evoluPortId,
+        response: {
+          type: "Export",
+          file,
+        },
       },
     });
     await testWaitForWorkerMessage();
@@ -649,15 +661,19 @@ describe("initSharedWorker", () => {
 
     const mutateInput = dbInputs1.at(-1);
     assert(mutateInput);
+    assert(mutateInput.request.type === "ForEvolu");
 
     dbWorkerChannel1.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: mutateInput.callbackId,
-      evoluPortId: mutateInput.evoluPortId,
       response: {
-        type: "Mutate",
-        messagesByOwnerId: new Map(),
-        rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        type: "ForEvolu",
+        evoluPortId: mutateInput.request.evoluPortId,
+        response: {
+          type: "Mutate",
+          messagesByOwnerId: new Map(),
+          rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        },
       },
     });
     await testWaitForWorkerMessage();
@@ -761,6 +777,7 @@ describe("initSharedWorker", () => {
 
     const mutateInput = dbInputs.at(-1);
     assert(mutateInput);
+    assert(mutateInput.request.type === "ForEvolu");
 
     const usedOwnerMessages = [
       testCreateCrdtMessage(createId(deps), 1, "hello"),
@@ -768,15 +785,18 @@ describe("initSharedWorker", () => {
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: mutateInput.callbackId,
-      evoluPortId: mutateInput.evoluPortId,
       response: {
-        type: "Mutate",
-        messagesByOwnerId: new Map([
-          [testAppOwner.id, usedOwnerMessages],
-          [readonlyOwner.id, usedOwnerMessages],
-          ["unused-owner" as OwnerId, usedOwnerMessages],
-        ]),
-        rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+        type: "ForEvolu",
+        evoluPortId: mutateInput.request.evoluPortId,
+        response: {
+          type: "Mutate",
+          messagesByOwnerId: new Map([
+            [testAppOwner.id, usedOwnerMessages],
+            [readonlyOwner.id, usedOwnerMessages],
+            ["unused-owner" as OwnerId, usedOwnerMessages],
+          ]),
+          rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+        },
       },
     });
     await testWaitForWorkerMessage();
@@ -934,13 +954,17 @@ describe("initSharedWorker", () => {
 
     const firstInput = dbInputs[0];
     assert(firstInput);
+    assert(firstInput.request.type === "ForEvolu");
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: firstInput.callbackId,
-      evoluPortId: firstInput.evoluPortId,
       response: {
-        type: "Query",
-        rowsByQuery: new Map([[query, [{ value: 1 }, { value: 2 }]]]),
+        type: "ForEvolu",
+        evoluPortId: firstInput.request.evoluPortId,
+        response: {
+          type: "Query",
+          rowsByQuery: new Map([[query, [{ value: 1 }, { value: 2 }]]]),
+        },
       },
     });
 
@@ -949,13 +973,17 @@ describe("initSharedWorker", () => {
 
     const secondInput = dbInputs[1];
     assert(secondInput);
+    assert(secondInput.request.type === "ForEvolu");
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: secondInput.callbackId,
-      evoluPortId: secondInput.evoluPortId,
       response: {
-        type: "Query",
-        rowsByQuery: new Map([[query, [{ value: 1 }, { value: 3 }]]]),
+        type: "ForEvolu",
+        evoluPortId: secondInput.request.evoluPortId,
+        response: {
+          type: "Query",
+          rowsByQuery: new Map([[query, [{ value: 1 }, { value: 3 }]]]),
+        },
       },
     });
 
@@ -1005,16 +1033,20 @@ describe("initSharedWorker", () => {
 
     const queuedInput = dbInputs.at(-1);
     assert(queuedInput);
+    assert(queuedInput.request.type === "ForEvolu");
 
     evoluChannel.port2.postMessage({ type: "Dispose" });
 
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: queuedInput.callbackId,
-      evoluPortId: queuedInput.evoluPortId,
       response: {
-        type: "Query",
-        rowsByQuery: new Map(),
+        type: "ForEvolu",
+        evoluPortId: queuedInput.request.evoluPortId,
+        response: {
+          type: "Query",
+          rowsByQuery: new Map(),
+        },
       },
     });
 
@@ -1077,14 +1109,18 @@ describe("initSharedWorker", () => {
 
     const queuedInput2 = dbInputs2.at(-1);
     assert(queuedInput2);
+    assert(queuedInput2.request.type === "ForEvolu");
 
     dbWorkerChannel2.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: queuedInput2.callbackId,
-      evoluPortId: queuedInput2.evoluPortId,
       response: {
-        type: "Query",
-        rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        type: "ForEvolu",
+        evoluPortId: queuedInput2.request.evoluPortId,
+        response: {
+          type: "Query",
+          rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        },
       },
     });
     await testWaitForWorkerMessage();
@@ -1147,16 +1183,20 @@ describe("initSharedWorker", () => {
 
     const queuedInput = dbInputs1.at(-1);
     assert(queuedInput);
+    assert(queuedInput.request.type === "ForEvolu");
 
     evoluChannel1.port2.postMessage({ type: "Dispose" });
 
     dbWorkerChannel1.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: queuedInput.callbackId,
-      evoluPortId: queuedInput.evoluPortId,
       response: {
-        type: "Query",
-        rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        type: "ForEvolu",
+        evoluPortId: queuedInput.request.evoluPortId,
+        response: {
+          type: "Query",
+          rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        },
       },
     });
 
@@ -1213,16 +1253,20 @@ describe("initSharedWorker", () => {
 
     const queuedInput = dbInputs1.at(-1);
     assert(queuedInput);
+    assert(queuedInput.request.type === "ForEvolu");
 
     evoluChannel1.port2.postMessage({ type: "Dispose" });
 
     dbWorkerChannel1.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: queuedInput.callbackId,
-      evoluPortId: queuedInput.evoluPortId,
       response: {
-        type: "Export",
-        file: new Uint8Array([7]),
+        type: "ForEvolu",
+        evoluPortId: queuedInput.request.evoluPortId,
+        response: {
+          type: "Export",
+          file: new Uint8Array([7]),
+        },
       },
     });
 
@@ -1268,16 +1312,20 @@ describe("initSharedWorker", () => {
 
     const exportInput = dbInputs.at(-1);
     assert(exportInput);
+    assert(exportInput.request.type === "ForEvolu");
 
     evoluChannel.port2.postMessage({ type: "Dispose" });
 
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
       callbackId: exportInput.callbackId,
-      evoluPortId: exportInput.evoluPortId,
       response: {
-        type: "Export",
-        file: new Uint8Array([9]),
+        type: "ForEvolu",
+        evoluPortId: exportInput.request.evoluPortId,
+        response: {
+          type: "Export",
+          file: new Uint8Array([9]),
+        },
       },
     });
 
@@ -1345,13 +1393,18 @@ describe("initSharedWorker", () => {
 
     const queuedInput = dbInputs.at(-1);
     assert(queuedInput);
+    assert(queuedInput.request.type === "ForEvolu");
+    const evoluPortId = queuedInput.request.evoluPortId;
 
     expect(() => {
       dbWorkerChannel.port2.postMessage({
         type: "OnQueuedResponse",
         callbackId: queuedInput.callbackId,
-        evoluPortId: queuedInput.evoluPortId,
-        response: { type: "Unknown" } as never,
+        response: {
+          type: "ForEvolu",
+          evoluPortId,
+          response: { type: "Unknown" } as never,
+        },
       });
     }).not.toThrow();
   });

@@ -223,6 +223,7 @@ import {
   jsonToJsonValue,
   NonNegativeInt,
   Number,
+  onePositiveInt,
   PositiveInt,
   type Typed,
   uint8ArrayToBase64Url,
@@ -340,7 +341,7 @@ export const defaultProtocolMessageRangesMaxSize =
 export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
 
 /** Evolu Protocol version. */
-export const protocolVersion = /*#__PURE__*/ NonNegativeInt.orThrow(1);
+export const protocolVersion = onePositiveInt;
 
 export const MessageType = {
   /** Request message from initiator (client) to non-initiator (relay). */
@@ -352,6 +353,33 @@ export const MessageType = {
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
+
+/** Parsed protocol header for supported protocol messages. */
+export interface ProtocolHeader extends Typed<"ProtocolHeader"> {
+  readonly version: 1;
+  readonly ownerId: OwnerId;
+  readonly messageType: MessageType;
+}
+
+/**
+ * Parses the protocol header needed for routing.
+ *
+ * Every protocol message begins with `protocolVersion`, `ownerId`, and
+ * `messageType`.
+ */
+export const parseProtocolHeader = (
+  inputMessage: Uint8Array,
+): Result<ProtocolHeader, ProtocolInvalidDataError> => {
+  try {
+    return ok(parseProtocolHeaderFromBuffer(createBuffer(inputMessage)));
+  } catch (error) {
+    return err<ProtocolInvalidDataError>({
+      type: "ProtocolInvalidDataError",
+      data: inputMessage,
+      error,
+    });
+  }
+};
 
 export const SubscriptionFlags = {
   /** No subscription changes for this owner. */
@@ -1069,7 +1097,7 @@ export const applyProtocolMessageAsRelay =
     inputMessage: Uint8Array,
     options: ApplyProtocolMessageAsRelayOptions = {},
     /** For tests only. */
-    version = protocolVersion,
+    version: NonNegativeInt = protocolVersion,
   ): Task<
     ApplyProtocolMessageAsRelayResult,
     ProtocolInvalidDataError,
@@ -1237,6 +1265,38 @@ const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
   const version = decodeNonNegativeInt(input);
   const ownerId = decodeId(input) as OwnerId;
   return [version, ownerId];
+};
+
+const parseProtocolHeaderFromBuffer = (input: Buffer): ProtocolHeader => {
+  const [version, ownerId] = decodeVersionAndOwner(input);
+
+  if (version !== protocolVersion) {
+    throw new ProtocolDecodeError(`Unsupported protocol version: ${version}`);
+  }
+
+  const messageTypeValue = input.shift();
+  let messageType: MessageType;
+
+  switch (messageTypeValue) {
+    case MessageType.Request:
+      messageType = MessageType.Request;
+      break;
+    case MessageType.Response:
+      messageType = MessageType.Response;
+      break;
+    case MessageType.Broadcast:
+      messageType = MessageType.Broadcast;
+      break;
+    default:
+      throw new ProtocolDecodeError("Invalid MessageType");
+  }
+
+  return {
+    type: "ProtocolHeader",
+    version: 1,
+    ownerId,
+    messageType,
+  };
 };
 
 /**

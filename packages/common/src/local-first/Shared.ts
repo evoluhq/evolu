@@ -38,7 +38,10 @@ import type {
 } from "../Worker.js";
 import type { EvoluError } from "./Error.js";
 import type { OwnerId, OwnerTransport, SyncOwner } from "./Owner.js";
-import { createProtocolMessageFromCrdtMessages } from "./Protocol.js";
+import {
+  createProtocolMessageFromCrdtMessages,
+  type ProtocolMessage,
+} from "./Protocol.js";
 import {
   makePatches,
   type Patch,
@@ -208,7 +211,17 @@ export const initSharedWorker =
           (transport): Task<WebSocket, never, SharedWorkerDeps> =>
             createWebSocket(transport.url, {
               binaryType: "arraybuffer",
-              // onOpen:
+              onOpen: () => {
+                const ownerIds = transports.getClaimsForResource(transport);
+                for (const sharedEvolu of sharedEvolusByName
+                  .snapshot()
+                  .resourcesByKey.values()) {
+                  sharedEvolu.requestCreateSyncMessages(ownerIds);
+                }
+              },
+              // onMessage(_data) {
+              //   //
+              // },
             }),
           {
             // "onFirstClaimAdded": todo()
@@ -243,6 +256,8 @@ interface SharedEvolu extends AsyncDisposable {
     dbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>,
     releaseSharedEvolu: () => void,
   ) => void;
+
+  readonly requestCreateSyncMessages: (ownerIds: ReadonlySet<OwnerId>) => void;
 }
 
 type SharedEvoluDeps = SharedWorkerDeps & PostTabOutputDep & TransportsDep;
@@ -260,19 +275,25 @@ interface TransportsDep {
   >;
 }
 
-export interface DbWorkerQueueMeta {
+export interface DbWorkerInput {
   readonly callbackId: Id;
-  readonly evoluPortId: Id;
+  readonly request:
+    | {
+        readonly type: "ForEvolu";
+        readonly evoluPortId: Id;
+        readonly message: ExtractType<
+          EvoluInput,
+          "Mutate" | "Query" | "Export"
+        >;
+      }
+    | {
+        readonly type: "ForSharedWorker";
+        readonly message: {
+          readonly type: "CreateSyncMessages";
+          readonly ownerIds: NonEmptyReadonlyArray<OwnerId>;
+        };
+      };
 }
-
-export interface DbWorkerQueueItem extends Pick<
-  DbWorkerQueueMeta,
-  "evoluPortId"
-> {
-  readonly request: ExtractType<EvoluInput, "Mutate" | "Query" | "Export">;
-}
-
-export interface DbWorkerInput extends DbWorkerQueueMeta, DbWorkerQueueItem {}
 
 export type DbWorkerOutput =
   | EvoluTabOutput
@@ -280,30 +301,41 @@ export type DbWorkerOutput =
       readonly type: "LeaderAcquired";
       readonly name: Name;
     }
-  | (DbWorkerQueueMeta & {
+  | {
       readonly type: "OnQueuedResponse";
-      readonly response: DbWorkerQueuedResponse;
-    });
-
-export type DbWorkerQueuedResponse =
-  | {
-      readonly type: "Mutate";
-      readonly messagesByOwnerId: ReadonlyMap<
-        OwnerId,
-        NonEmptyReadonlyArray<CrdtMessage>
-      >;
-      readonly rowsByQuery: RowsByQueryMap;
-    }
-  | {
-      readonly type: "Query";
-      readonly rowsByQuery: RowsByQueryMap;
-    }
-  | {
-      readonly type: "Export";
-      readonly file: Uint8Array<ArrayBuffer>;
-    }
-  | {
-      readonly type: "CreateSyncMessages";
+      readonly callbackId: Id;
+      readonly response:
+        | {
+            readonly type: "ForEvolu";
+            readonly evoluPortId: Id;
+            readonly response:
+              | {
+                  readonly type: "Mutate";
+                  readonly messagesByOwnerId: ReadonlyMap<
+                    OwnerId,
+                    NonEmptyReadonlyArray<CrdtMessage>
+                  >;
+                  readonly rowsByQuery: RowsByQueryMap;
+                }
+              | {
+                  readonly type: "Query";
+                  readonly rowsByQuery: RowsByQueryMap;
+                }
+              | {
+                  readonly type: "Export";
+                  readonly file: Uint8Array<ArrayBuffer>;
+                };
+          }
+        | {
+            readonly type: "ForSharedWorker";
+            readonly response: {
+              readonly type: "CreateSyncMessages";
+              readonly protocolMessagesByOwnerId: ReadonlyMap<
+                OwnerId,
+                ProtocolMessage
+              >;
+            };
+          };
     };
 
 export type SyncState = 123;
@@ -326,7 +358,7 @@ const createSharedEvolu =
     }
 
     const evoluInstancesByPortId = new Map<Id, EvoluInstanceState>();
-    const queue: Array<DbWorkerQueueItem> = [];
+    const queue: Array<DbWorkerInput["request"]> = [];
     const callbacks = stack.use(
       createCallbacks<ExtractType<DbWorkerOutput, "OnQueuedResponse">>(
         run.deps,
@@ -342,6 +374,17 @@ const createSharedEvolu =
     stack.use(sharedEvoluRun);
     const moved = stack.move();
 
+    const sendProtocolMessagesByOwnerId = (
+      protocolMessagesByOwnerId: ReadonlyMap<OwnerId, ProtocolMessage>,
+    ): void => {
+      for (const [ownerId, protocolMessage] of protocolMessagesByOwnerId) {
+        for (const transport of transports.getResourceKeysForClaim(ownerId)) {
+          const webSocket = transports.getResource(transport);
+          if (webSocket?.isOpen()) webSocket.send(protocolMessage);
+        }
+      }
+    };
+
     const ensureQueueProcessing = (): void => {
       if (
         queueProcessingFiber ||
@@ -353,104 +396,110 @@ const createSharedEvolu =
 
       const first = firstInArray(queue);
 
-      const callbackId = callbacks.register(({ evoluPortId, response }) => {
+      const callbackId = callbacks.register(({ response }) => {
         queueProcessingFiber?.abort();
         queueProcessingFiber = null;
 
-        const instance = evoluInstancesByPortId.get(evoluPortId);
-        const port = instance?.evoluPort;
+        switch (response.type) {
+          case "ForEvolu": {
+            const instance = evoluInstancesByPortId.get(response.evoluPortId);
+            const port = instance?.evoluPort;
 
-        if (port) {
-          switch (response.type) {
-            case "Mutate":
-            case "Query": {
-              const previousRowsByQuery = instance.rowsByQuery;
-              const nextRowsByQuery = new Map(previousRowsByQuery);
-              const patchesByQuery = new Map<Query, ReadonlyArray<Patch>>();
+            if (!port) break;
 
-              for (const [query, rows] of response.rowsByQuery) {
-                nextRowsByQuery.set(query, rows);
-                patchesByQuery.set(
-                  query,
-                  makePatches(previousRowsByQuery.get(query), rows),
-                );
-              }
+            switch (response.response.type) {
+              case "Mutate":
+              case "Query": {
+                const previousRowsByQuery = instance.rowsByQuery;
+                const nextRowsByQuery = new Map(previousRowsByQuery);
+                const patchesByQuery = new Map<Query, ReadonlyArray<Patch>>();
 
-              instance.rowsByQuery = nextRowsByQuery;
-
-              instance.evoluPort.postMessage({
-                type: "OnPatchesByQuery",
-                patchesByQuery,
-                onCompleteIds:
-                  first.request.type === "Mutate"
-                    ? first.request.onCompleteIds
-                    : emptyArray,
-              });
-
-              if (response.type === "Mutate") {
-                for (const [
-                  otherEvoluPortId,
-                  otherEvoluInstance,
-                ] of evoluInstancesByPortId) {
-                  if (otherEvoluPortId === evoluPortId) continue;
-                  otherEvoluInstance.evoluPort.postMessage({
-                    type: "RefreshQueries",
-                  });
+                for (const [query, rows] of response.response.rowsByQuery) {
+                  nextRowsByQuery.set(query, rows);
+                  patchesByQuery.set(
+                    query,
+                    makePatches(previousRowsByQuery.get(query), rows),
+                  );
                 }
 
-                void sharedEvoluRun((run) => {
-                  const createProtocolMessage =
-                    createProtocolMessageFromCrdtMessages(run.deps);
-                  const protocolMessagesByOwnerId = new Map<
-                    OwnerId,
-                    ReturnType<typeof createProtocolMessage>
-                  >();
+                instance.rowsByQuery = nextRowsByQuery;
 
-                  for (const syncOwner of instance.usedSyncOwners.keys()) {
-                    const { owner } = syncOwner;
-                    const messages = response.messagesByOwnerId.get(owner.id);
+                instance.evoluPort.postMessage({
+                  type: "OnPatchesByQuery",
+                  patchesByQuery,
+                  onCompleteIds:
+                    first.message.type === "Mutate"
+                      ? first.message.onCompleteIds
+                      : emptyArray,
+                });
 
-                    // Skip owners this instance does not currently sync for
-                    // writing. Read-only owners cannot produce protocol
-                    // messages because they do not have a write key.
-                    if (!messages || !("writeKey" in owner)) continue;
-
-                    protocolMessagesByOwnerId.set(
-                      owner.id,
-                      createProtocolMessage(owner, messages),
-                    );
-                  }
+                if (response.response.type === "Mutate") {
+                  const mutateResponse = response.response;
 
                   for (const [
-                    ownerId,
-                    protocolMessage,
-                  ] of protocolMessagesByOwnerId) {
-                    for (const transport of transports.getResourceKeysForClaim(
-                      ownerId,
-                    )) {
-                      const webSocket = transports.getResource(transport);
-                      if (webSocket?.isOpen()) webSocket.send(protocolMessage);
-                    }
+                    otherEvoluPortId,
+                    otherEvoluInstance,
+                  ] of evoluInstancesByPortId) {
+                    if (otherEvoluPortId === response.evoluPortId) continue;
+                    otherEvoluInstance.evoluPort.postMessage({
+                      type: "RefreshQueries",
+                    });
                   }
 
-                  return ok();
-                });
+                  void sharedEvoluRun((run) => {
+                    const createProtocolMessage =
+                      createProtocolMessageFromCrdtMessages(run.deps);
+                    const protocolMessagesByOwnerId = new Map<
+                      OwnerId,
+                      ProtocolMessage
+                    >();
+
+                    for (const syncOwner of instance.usedSyncOwners.keys()) {
+                      const { owner } = syncOwner;
+                      const messages = mutateResponse.messagesByOwnerId.get(
+                        owner.id,
+                      );
+
+                      // Skip owners this instance does not currently sync for
+                      // writing. Read-only owners cannot produce protocol
+                      // messages because they do not have a write key.
+                      if (!messages || !("writeKey" in owner)) continue;
+
+                      protocolMessagesByOwnerId.set(
+                        owner.id,
+                        createProtocolMessage(owner, messages),
+                      );
+                    }
+
+                    sendProtocolMessagesByOwnerId(protocolMessagesByOwnerId);
+
+                    return ok();
+                  });
+                }
+                break;
               }
-              break;
+
+              case "Export":
+                port.postMessage(
+                  { type: "OnExport", file: response.response.file },
+                  [response.response.file.buffer],
+                );
+                break;
+
+              default:
+                exhaustiveCheck(response.response);
             }
-
-            case "Export":
-              port.postMessage({ type: "OnExport", file: response.file }, [
-                response.file.buffer,
-              ]);
-              break;
-
-            case "CreateSyncMessages":
-              break;
-
-            default:
-              console.error("Unknown queued response", response);
+            break;
           }
+
+          case "ForSharedWorker":
+            sendProtocolMessagesByOwnerId(
+              response.response.protocolMessagesByOwnerId,
+            );
+            break;
+
+          default:
+            exhaustiveCheck(response);
         }
 
         // Complete the current queue item and continue with the next one.
@@ -466,7 +515,7 @@ const createSharedEvolu =
       queueProcessingFiber = sharedEvoluRun.daemon(
         repeat(() => {
           assert(leaderDbWorkerPort, "Expected a leader DbWorker");
-          leaderDbWorkerPort.postMessage({ callbackId, ...first });
+          leaderDbWorkerPort.postMessage({ callbackId, request: first });
           return ok();
         }, spaced("5s")),
       );
@@ -505,6 +554,31 @@ const createSharedEvolu =
       });
 
     return ok({
+      requestCreateSyncMessages: (ownerIds): void => {
+        const usedOwnerIds = new Set<OwnerId>();
+        for (const evoluInstance of evoluInstancesByPortId.values()) {
+          for (const { owner } of evoluInstance.usedSyncOwners.keys()) {
+            usedOwnerIds.add(owner.id);
+          }
+        }
+
+        const ownerIdsToSync = [
+          ...new Set(ownerIds).intersection(usedOwnerIds),
+        ];
+
+        if (!isNonEmptyArray(ownerIdsToSync)) return;
+
+        queue.push({
+          type: "ForSharedWorker",
+          message: {
+            type: "CreateSyncMessages",
+            ownerIds: ownerIdsToSync,
+          },
+        });
+
+        ensureQueueProcessing();
+      },
+
       addPorts: (
         nativeEvoluPort: NativeMessagePort<EvoluOutput, EvoluInput>,
         nativeDbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>,
@@ -562,14 +636,22 @@ const createSharedEvolu =
           switch (evoluMessage.type) {
             case "Query":
             case "Export": {
-              queue.push({ evoluPortId, request: evoluMessage });
+              queue.push({
+                type: "ForEvolu",
+                evoluPortId,
+                message: evoluMessage,
+              });
               ensureQueueProcessing();
               break;
             }
 
             case "Mutate": {
               // TODO: Delegate do vsech evolu instances, co to pouzivaji
-              queue.push({ evoluPortId, request: evoluMessage });
+              queue.push({
+                type: "ForEvolu",
+                evoluPortId,
+                message: evoluMessage,
+              });
               ensureQueueProcessing();
               break;
             }

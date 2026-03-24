@@ -5,7 +5,10 @@ import { createBuffer } from "../../src/Buffer.js";
 import { lazyFalse, lazyTrue } from "../../src/Function.js";
 import type { NonEmptyReadonlyArray, RunDeps } from "../../src/index.js";
 import { assertNonEmptyArray, EncryptionKey } from "../../src/index.js";
-import type { OwnerIdBytes } from "../../src/local-first/Owner.js";
+import {
+  ownerIdToOwnerIdBytes,
+  type OwnerIdBytes,
+} from "../../src/local-first/Owner.js";
 import type { TimestampsRangeWithTimestampsBuffer } from "../../src/local-first/Protocol.js";
 import {
   applyProtocolMessageAsClient,
@@ -33,6 +36,7 @@ import {
   encodeSqliteValue,
   encodeString,
   MessageType,
+  parseProtocolHeader,
   ProtocolMessageMaxSize,
   ProtocolMessageRangesMaxSize,
   ProtocolValueType,
@@ -736,6 +740,75 @@ test("createProtocolMessageForSync", async () => {
   ).toMatchInlineSnapshot(
     `uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,0,0,16,187,171,234,5,151,160,243,1,203,195,245,1,167,160,170,7,202,245,251,13,150,132,58,199,251,253,2,242,181,246,4,161,234,59,192,227,115,149,230,160,6,220,210,151,2,170,219,140,3,240,195,234,1,172,128,209,11,0,15,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,5,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,7,153,201,144,40,214,99,106,145,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,79,199,221,49,166,129,34,35,99,27,109,221,72,203,113,173,13,174,108,244,220,53,10,79,91,208,39,170,201,18,73,253,152,51,99,124,0,152,50,246,239,212,6,13,80,19,126,71,76,18,73,200,62,200,42,99,188,63,73,207,154,238,98,14,224,33,103,255,188,202,60,84,33,248,184,78,240,231,221,198,98,244,79,237,208,100,110,251,209,4,221,129,70,179,162,173,26,9,38,199,115,85,231,208,141,13,135,35,144,151,124,233,151,6,119,79,51,128,236,157,32,91,160,104,143,239,236,16,148,246,215,168,225,200,73,253,182,117,53,113,24,52,165,196,73,55,66,212,228,27,187,1,71,143,234,75,93,129,254,145,224,183,203,200,8,205,21,142,6,139,145,237,12,30,146,233,222,152,203,251,132,199,125,55,190,43,113,63,180,29,179,161]`,
   );
+});
+
+test("parseProtocolHeader parses supported headers and rejects malformed ones", () => {
+  const requestHeader = parseProtocolHeader(
+    createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Request,
+      subscriptionFlag: SubscriptionFlags.Subscribe,
+    }).unwrap(),
+  );
+  expect(requestHeader).toEqual(
+    ok({
+      type: "ProtocolHeader",
+      version: 1,
+      ownerId: testAppOwner.id,
+      messageType: MessageType.Request,
+    }),
+  );
+
+  const responseHeader = parseProtocolHeader(
+    createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Response,
+      errorCode: 0,
+    }).unwrap(),
+  );
+  expect(responseHeader).toEqual(
+    ok({
+      type: "ProtocolHeader",
+      version: 1,
+      ownerId: testAppOwner.id,
+      messageType: MessageType.Response,
+    }),
+  );
+
+  const broadcastHeader = parseProtocolHeader(
+    createProtocolMessageBuffer(testAppOwner.id, {
+      messageType: MessageType.Broadcast,
+    }).unwrap(),
+  );
+  expect(broadcastHeader).toEqual(
+    ok({
+      type: "ProtocolHeader",
+      version: 1,
+      ownerId: testAppOwner.id,
+      messageType: MessageType.Broadcast,
+    }),
+  );
+
+  const invalidVersionMessage = createProtocolMessageBuffer(testAppOwner.id, {
+    version: PositiveInt.orThrow(2),
+    messageType: MessageType.Request,
+  }).unwrap();
+  const invalidVersion = parseProtocolHeader(invalidVersionMessage);
+  expect(invalidVersion.ok).toBe(false);
+  if (!invalidVersion.ok) {
+    expect(invalidVersion.error.type).toBe("ProtocolInvalidDataError");
+    expect(invalidVersion.error.error).toBeInstanceOf(Error);
+  }
+
+  const invalidTypeMessage = createBuffer();
+  encodeNonNegativeInt(invalidTypeMessage, protocolVersion);
+  invalidTypeMessage.extend(ownerIdToOwnerIdBytes(testAppOwner.id));
+  invalidTypeMessage.extend([255]);
+
+  const invalidType = parseProtocolHeader(invalidTypeMessage.unwrap());
+  expect(invalidType.ok).toBe(false);
+  if (!invalidType.ok) {
+    expect(invalidType.error.type).toBe("ProtocolInvalidDataError");
+    expect(invalidType.error.error).toBeInstanceOf(Error);
+  }
 });
 
 describe("E2E versioning", () => {

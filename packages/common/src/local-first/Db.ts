@@ -18,7 +18,7 @@ import {
   type EncryptionKeyDep,
   type RandomBytesDep,
 } from "../Crypto.js";
-import { lazyFalse, lazyVoid } from "../Function.js";
+import { exhaustiveCheck, lazyFalse, lazyVoid } from "../Function.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import { ok, type Result } from "../Result.js";
 import type {
@@ -56,24 +56,22 @@ import type {
 import type { OwnerId, OwnerIdBytes } from "./Owner.js";
 import { ownerIdBytesToOwnerId, ownerIdToOwnerIdBytes } from "./Owner.js";
 import {
+  createProtocolMessageForSync,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   protocolVersion,
+  type ProtocolMessage,
   type ProtocolInvalidDataError,
   type ProtocolTimestampMismatchError,
 } from "./Protocol.js";
-import { deserializeQuery, type Query } from "./Query.js";
+import { deserializeQuery, type Query, type RowsByQueryMap } from "./Query.js";
 import type { MutationChange, SqliteSchemaDep } from "./Schema.js";
 import {
   ensureSqliteSchema,
   getEvoluSqliteSchema,
   systemColumns,
 } from "./Schema.js";
-import type {
-  DbWorkerInput,
-  DbWorkerOutput,
-  DbWorkerQueuedResponse,
-} from "./Shared.js";
+import type { DbWorkerInput, DbWorkerOutput } from "./Shared.js";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -146,6 +144,7 @@ export const initDbWorker =
       encryptionKey,
       port: nativeLeaderPort,
     }) => {
+      // TODO: Replace it with assert.
       if (initialized) return;
       initialized = true;
 
@@ -228,49 +227,98 @@ const startDbWorker =
 
     const { port } = run.deps;
 
-    port.onMessage = ({ callbackId, request, evoluPortId }) => {
+    // TODO: Tohle je spatne, ten encryptionKey.
+    const storage = createClientStorage({ ...deps, clock, encryptionKey })({
+      onError: (error) => {
+        port.postMessage({ type: "OnError", error });
+      },
+    });
+
+    port.onMessage = ({ callbackId, request }) => {
       if (processedRequestIds.has(callbackId)) return;
       processedRequestIds.add(callbackId);
 
-      let result: Result<
-        DbWorkerQueuedResponse,
-        | TimestampDriftError
-        | TimestampCounterOverflowError
-        | TimestampTimeOutOfRangeError
-      >;
-
-      switch (request.type) {
-        case "Mutate":
-          result = handleMutation({ ...deps, clock })(request);
-          break;
-        case "Query":
-          result = ok({
-            type: "Query",
-            rowsByQuery: loadQueries(deps)(request.queries),
-          });
-          break;
-        case "Export":
-          result = ok({
-            type: "Export",
-            file: deps.sqlite.export(),
-          });
-          break;
-      }
-
-      if (!result.ok) {
-        port.postMessage({ type: "OnError", error: result.error });
-      } else {
+      const postQueuedResponse = (
+        response: ExtractType<DbWorkerOutput, "OnQueuedResponse">["response"],
+      ): void => {
         port.postMessage(
-          {
-            type: "OnQueuedResponse",
-            callbackId,
-            evoluPortId,
-            response: result.value,
-          },
-          result.value.type === "Export"
-            ? [result.value.file.buffer]
+          { type: "OnQueuedResponse", callbackId, response },
+          response.type === "ForEvolu" && response.response.type === "Export"
+            ? [response.response.file.buffer]
             : undefined,
         );
+      };
+
+      switch (request.type) {
+        case "ForEvolu": {
+          switch (request.message.type) {
+            case "Mutate": {
+              const result = handleMutation({ ...deps, clock })(
+                request.message,
+              );
+              if (!result.ok) {
+                port.postMessage({ type: "OnError", error: result.error });
+              } else {
+                postQueuedResponse({
+                  type: "ForEvolu",
+                  evoluPortId: request.evoluPortId,
+                  response: result.value,
+                });
+              }
+              break;
+            }
+
+            case "Query":
+              postQueuedResponse({
+                type: "ForEvolu",
+                evoluPortId: request.evoluPortId,
+                response: {
+                  type: "Query",
+                  rowsByQuery: loadQueries(deps)(request.message.queries),
+                },
+              });
+              break;
+
+            case "Export":
+              postQueuedResponse({
+                type: "ForEvolu",
+                evoluPortId: request.evoluPortId,
+                response: {
+                  type: "Export",
+                  file: deps.sqlite.export(),
+                },
+              });
+              break;
+
+            default:
+              exhaustiveCheck(request.message);
+          }
+          break;
+        }
+
+        case "ForSharedWorker": {
+          const createSyncProtocolMessage = createProtocolMessageForSync({
+            storage,
+            console,
+          });
+          const protocolMessagesByOwnerId = new Map<OwnerId, ProtocolMessage>();
+
+          for (const ownerId of request.message.ownerIds) {
+            const protocolMessage = createSyncProtocolMessage(ownerId);
+            if (protocolMessage) {
+              protocolMessagesByOwnerId.set(ownerId, protocolMessage);
+            }
+          }
+
+          postQueuedResponse({
+            type: "ForSharedWorker",
+            response: { type: "CreateSyncMessages", protocolMessagesByOwnerId },
+          });
+          break;
+        }
+
+        default:
+          exhaustiveCheck(request);
       }
     };
 
@@ -535,7 +583,7 @@ const applyColumnChange =
 
 interface ClientStorage extends Storage, BaseSqliteStorage {}
 
-const _createClientStorage =
+const createClientStorage =
   (
     deps: BaseSqliteStorageDep &
       ClockDep &
@@ -678,9 +726,19 @@ const handleMutation =
       TimestampConfigDep,
   ) =>
   (
-    message: ExtractType<DbWorkerInput["request"], "Mutate">,
+    message: ExtractType<
+      ExtractType<DbWorkerInput["request"], "ForEvolu">["message"],
+      "Mutate"
+    >,
   ): Result<
-    ExtractType<DbWorkerQueuedResponse, "Mutate">,
+    {
+      readonly type: "Mutate";
+      readonly messagesByOwnerId: ReadonlyMap<
+        OwnerId,
+        NonEmptyReadonlyArray<CrdtMessage>
+      >;
+      readonly rowsByQuery: RowsByQueryMap;
+    },
     | TimestampDriftError
     | TimestampCounterOverflowError
     | TimestampTimeOutOfRangeError
