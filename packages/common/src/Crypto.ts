@@ -136,10 +136,6 @@ export const deriveSlip21Node = (
 export const EncryptionKey = /*#__PURE__*/ brand("EncryptionKey", Entropy32);
 export type EncryptionKey = typeof EncryptionKey.Type;
 
-export interface EncryptionKeyDep {
-  readonly encryptionKey: EncryptionKey;
-}
-
 /** The nonce length for XChaCha20-Poly1305 encryption. */
 export const xChaCha20Poly1305NonceLength = 24;
 

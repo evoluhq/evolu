@@ -10,12 +10,11 @@ import {
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.js";
-import { assertNonEmptyReadonlyArray } from "../Assert.js";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import type { ConsoleLevel } from "../Console.js";
 import {
   EncryptionKey,
   type DecryptWithXChaCha20Poly1305Error,
-  type EncryptionKeyDep,
   type RandomBytesDep,
 } from "../Crypto.js";
 import { exhaustiveCheck, lazyFalse, lazyVoid } from "../Function.js";
@@ -56,12 +55,13 @@ import type {
 import type { OwnerId, OwnerIdBytes } from "./Owner.js";
 import { ownerIdBytesToOwnerId, ownerIdToOwnerIdBytes } from "./Owner.js";
 import {
+  applyProtocolMessageAsClient,
   createProtocolMessageForSync,
   decryptAndDecodeDbChange,
   encodeAndEncryptDbChange,
   protocolVersion,
-  type ProtocolMessage,
   type ProtocolInvalidDataError,
+  type ProtocolMessage,
   type ProtocolTimestampMismatchError,
 } from "./Protocol.js";
 import { deserializeQuery, type Query, type RowsByQueryMap } from "./Query.js";
@@ -144,8 +144,7 @@ export const initDbWorker =
       encryptionKey,
       port: nativeLeaderPort,
     }) => {
-      // TODO: Replace it with assert.
-      if (initialized) return;
+      assert(!initialized, "DbWorker must be initialized only once");
       initialized = true;
 
       const console = run.deps.console.child(name).child("DbWorker");
@@ -205,7 +204,12 @@ const startDbWorker =
 
     const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...run.deps });
 
-    const deps = { ...run.deps, sqlite, sqliteSchema, baseSqliteStorage };
+    const deps = {
+      ...run.deps,
+      sqlite,
+      sqliteSchema,
+      baseSqliteStorage,
+    };
 
     const currentSchema = getEvoluSqliteSchema(deps)();
     const dbIsInitialized = "evolu_version" in currentSchema.tables;
@@ -217,6 +221,16 @@ const startDbWorker =
       tryApplyQuarantinedMessages(deps);
     });
 
+    const { port } = run.deps;
+    const storage = createClientStorage({ ...deps, clock })({
+      onError: (error) => {
+        port.postMessage({ type: "OnError", error });
+      },
+    });
+    const dbWorkerRun = run.create().addDeps({ storage });
+
+    stack.use(dbWorkerRun);
+
     /**
      * SharedWorker repeats sends until it gets a response, so handling here
      * must be idempotent and ignore already processed IDs.
@@ -224,15 +238,6 @@ const startDbWorker =
      * TODO: Bound memory growth by evicting old IDs.
      */
     const processedRequestIds = new Set<Id>();
-
-    const { port } = run.deps;
-
-    // TODO: Tohle je spatne, ten encryptionKey.
-    const storage = createClientStorage({ ...deps, clock, encryptionKey })({
-      onError: (error) => {
-        port.postMessage({ type: "OnError", error });
-      },
-    });
 
     port.onMessage = ({ callbackId, request }) => {
       if (processedRequestIds.has(callbackId)) return;
@@ -243,8 +248,8 @@ const startDbWorker =
       ): void => {
         port.postMessage(
           { type: "OnQueuedResponse", callbackId, response },
-          response.type === "ForEvolu" && response.response.type === "Export"
-            ? [response.response.file.buffer]
+          response.type === "ForEvolu" && response.message.type === "Export"
+            ? [response.message.file.buffer]
             : undefined,
         );
       };
@@ -262,7 +267,7 @@ const startDbWorker =
                 postQueuedResponse({
                   type: "ForEvolu",
                   evoluPortId: request.evoluPortId,
-                  response: result.value,
+                  message: result.value,
                 });
               }
               break;
@@ -272,7 +277,7 @@ const startDbWorker =
               postQueuedResponse({
                 type: "ForEvolu",
                 evoluPortId: request.evoluPortId,
-                response: {
+                message: {
                   type: "Query",
                   rowsByQuery: loadQueries(deps)(request.message.queries),
                 },
@@ -283,7 +288,7 @@ const startDbWorker =
               postQueuedResponse({
                 type: "ForEvolu",
                 evoluPortId: request.evoluPortId,
-                response: {
+                message: {
                   type: "Export",
                   file: deps.sqlite.export(),
                 },
@@ -297,23 +302,67 @@ const startDbWorker =
         }
 
         case "ForSharedWorker": {
-          const createSyncProtocolMessage = createProtocolMessageForSync({
-            storage,
-            console,
-          });
-          const protocolMessagesByOwnerId = new Map<OwnerId, ProtocolMessage>();
+          switch (request.message.type) {
+            case "CreateSyncMessages": {
+              const protocolMessagesByOwnerId = new Map<
+                OwnerId,
+                ProtocolMessage
+              >();
 
-          for (const ownerId of request.message.ownerIds) {
-            const protocolMessage = createSyncProtocolMessage(ownerId);
-            if (protocolMessage) {
-              protocolMessagesByOwnerId.set(ownerId, protocolMessage);
+              for (const owner of request.message.owners) {
+                storage.setOwnerState(owner.encryptionKey);
+                const protocolMessage = createProtocolMessageForSync({
+                  storage,
+                  console,
+                })(owner.id);
+
+                if (protocolMessage) {
+                  protocolMessagesByOwnerId.set(owner.id, protocolMessage);
+                }
+              }
+
+              postQueuedResponse({
+                type: "ForSharedWorker",
+                message: {
+                  type: "CreateSyncMessages",
+                  protocolMessagesByOwnerId,
+                },
+              });
+              break;
             }
-          }
 
-          postQueuedResponse({
-            type: "ForSharedWorker",
-            response: { type: "CreateSyncMessages", protocolMessagesByOwnerId },
-          });
+            case "ApplySyncMessage": {
+              const { owner, inputMessage } = request.message;
+
+              void dbWorkerRun(async (run) => {
+                storage.setOwnerState(owner.encryptionKey);
+
+                const result = await run(
+                  applyProtocolMessageAsClient(inputMessage, {
+                    writeKey: owner.writeKey,
+                  }),
+                );
+
+                const didWriteMessages = storage.didWriteMessages();
+
+                postQueuedResponse({
+                  type: "ForSharedWorker",
+                  message: {
+                    type: "ApplySyncMessage",
+                    ownerId: owner.id,
+                    didWriteMessages,
+                    result,
+                  },
+                });
+
+                return ok();
+              });
+              break;
+            }
+
+            default:
+              exhaustiveCheck(request.message);
+          }
           break;
         }
 
@@ -581,14 +630,21 @@ const applyColumnChange =
     `);
   };
 
-interface ClientStorage extends Storage, BaseSqliteStorage {}
+/**
+ * The Db worker needs one object that can both satisfy sync code expecting
+ * {@link Storage}, expose {@link BaseSqliteStorage} helpers to the local
+ * implementation, and switch owner encryption keys between requests.
+ */
+interface ClientStorage extends Storage, BaseSqliteStorage {
+  readonly setOwnerState: (encryptionKey: EncryptionKey) => void;
+  readonly didWriteMessages: () => boolean;
+}
 
 const createClientStorage =
   (
     deps: BaseSqliteStorageDep &
       ClockDep &
       SqliteSchemaDep &
-      EncryptionKeyDep &
       RandomBytesDep &
       SqliteDep &
       TimeDep &
@@ -607,8 +663,27 @@ const createClientStorage =
         | TimestampTimeOutOfRangeError,
     ) => void;
   }): ClientStorage => {
-    const storage: ClientStorage = {
+    let encryptionKey: EncryptionKey | null = null;
+    let didWriteMessages = false;
+
+    const getEncryptionKey = (): EncryptionKey => {
+      assert(encryptionKey != null, "ClientStorage encryption key must be set");
+      return encryptionKey;
+    };
+
+    return {
       ...deps.baseSqliteStorage,
+
+      // DEV: ClientStorage was designed when Storage and Sync lived in the
+      // same file.
+      // This is safe because the worker handles one message at a time. We will
+      // refactor it later, we will probably have to change Protocol API.
+      setOwnerState: (nextEncryptionKey) => {
+        encryptionKey = nextEncryptionKey;
+        didWriteMessages = false;
+      },
+
+      didWriteMessages: () => didWriteMessages,
 
       // Not implemented yet.
       validateWriteKey: lazyFalse,
@@ -622,9 +697,13 @@ const createClientStorage =
         // data shared by other collaborators.
 
         const messages: Array<CrdtMessage> = [];
+        const currentEncryptionKey = getEncryptionKey();
 
         for (const message of encryptedMessages) {
-          const change = decryptAndDecodeDbChange(message, deps.encryptionKey);
+          const change = decryptAndDecodeDbChange(
+            message,
+            currentEncryptionKey,
+          );
           if (!change.ok) {
             onError(change.error);
             return ok();
@@ -651,6 +730,7 @@ const createClientStorage =
         return deps.sqlite.transaction(() => {
           applyMessages(deps)(ownerIdBytesToOwnerId(ownerIdBytes), messages);
           deps.clock.save(clockTimestamp);
+          didWriteMessages = true;
           return ok();
         });
       },
@@ -708,11 +788,9 @@ const createClientStorage =
           }),
         };
 
-        return encodeAndEncryptDbChange(deps)(message, deps.encryptionKey);
+        return encodeAndEncryptDbChange(deps)(message, getEncryptionKey());
       },
     };
-
-    return storage;
   };
 
 const handleMutation =

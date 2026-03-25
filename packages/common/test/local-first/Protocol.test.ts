@@ -1166,7 +1166,7 @@ describe("E2E sync", { timeout: 15_000 }, () => {
         await using run = testCreateRun(clientStorageDep);
         result = await run(
           applyProtocolMessageAsClient(message, {
-            getWriteKey: () => testAppOwner.writeKey,
+            writeKey: testAppOwner.writeKey,
             rangesMaxSize,
           }),
         );

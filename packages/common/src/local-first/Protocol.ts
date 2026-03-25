@@ -912,7 +912,7 @@ const createRunLengthEncoder = <T>(
 };
 
 export interface ApplyProtocolMessageAsClientOptions {
-  getWriteKey?: (ownerId: OwnerId) => OwnerWriteKey | null;
+  writeKey?: OwnerWriteKey;
 
   rangesMaxSize?: ProtocolMessageRangesMaxSize;
 
@@ -1027,7 +1027,7 @@ export const applyProtocolMessageAsClient =
       // Without local changes, writeKey will not be required.
       // With local changes, writeKey will be required and if not provided,
       // the sync will stop.
-      const writeKey = options.getWriteKey?.(ownerId);
+      const writeKey = options.writeKey;
       if (writeKey == null) {
         return ok({ type: "NoResponse" });
       }

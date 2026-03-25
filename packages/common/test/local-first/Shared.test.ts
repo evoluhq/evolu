@@ -485,7 +485,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: mutateInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Mutate",
           messagesByOwnerId: new Map(),
           rowsByQuery: new Map([[query, [{ value: 1 }]]]),
@@ -511,7 +511,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: queryInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 2 }]]]),
         },
@@ -585,7 +585,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: exportInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Export",
           file,
         },
@@ -669,7 +669,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: mutateInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Mutate",
           messagesByOwnerId: new Map(),
           rowsByQuery: new Map([[query, [{ value: 1 }]]]),
@@ -788,7 +788,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: mutateInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Mutate",
           messagesByOwnerId: new Map([
             [testAppOwner.id, usedOwnerMessages],
@@ -961,7 +961,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: firstInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 1 }, { value: 2 }]]]),
         },
@@ -980,7 +980,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: secondInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 1 }, { value: 3 }]]]),
         },
@@ -1043,7 +1043,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: queuedInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Query",
           rowsByQuery: new Map(),
         },
@@ -1117,7 +1117,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: queuedInput2.request.evoluPortId,
-        response: {
+        message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 1 }]]]),
         },
@@ -1193,7 +1193,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: queuedInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 1 }]]]),
         },
@@ -1263,7 +1263,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: queuedInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Export",
           file: new Uint8Array([7]),
         },
@@ -1322,7 +1322,7 @@ describe("initSharedWorker", () => {
       response: {
         type: "ForEvolu",
         evoluPortId: exportInput.request.evoluPortId,
-        response: {
+        message: {
           type: "Export",
           file: new Uint8Array([9]),
         },
@@ -1403,7 +1403,7 @@ describe("initSharedWorker", () => {
         response: {
           type: "ForEvolu",
           evoluPortId,
-          response: { type: "Unknown" } as never,
+          message: { type: "Unknown" } as never,
         },
       });
     }).not.toThrow();
