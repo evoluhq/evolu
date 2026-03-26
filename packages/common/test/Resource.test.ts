@@ -1710,11 +1710,15 @@ describe("createSharedResourceByKeyWithClaims", () => {
         {
           resourceLookup: transportLookup,
           claimLookup: ownerClaimLookup,
-          onFirstClaimAdded: (resource, key) => {
-            firstClaimAdded.push(`${resource.id}:${key.transport}`);
+          onFirstClaimAdded: (claim, resource, key) => {
+            firstClaimAdded.push(
+              `${resource.id}:${key.transport}:${claim.ownerId}`,
+            );
           },
-          onLastClaimRemoved: (resource, key) => {
-            lastClaimRemoved.push(`${resource.id}:${key.transport}`);
+          onLastClaimRemoved: (claim, resource, key) => {
+            lastClaimRemoved.push(
+              `${resource.id}:${key.transport}:${claim.ownerId}`,
+            );
           },
         },
       ),
@@ -1737,7 +1741,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
 
     expect(resource?.id).toBe("ws://one");
     expect(createCalls).toEqual(["ws://one"]);
-    expect(firstClaimAdded).toEqual(["ws://one:ws://one"]);
+    expect(firstClaimAdded).toEqual(["ws://one:ws://one:owner-1"]);
     expect(lastClaimRemoved).toEqual([]);
     expect(
       sharedResourceByKeyWithClaims.getClaimsForResource({
@@ -1775,7 +1779,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
     );
 
     expect(resource?.isDisposed()).toBe(true);
-    expect(lastClaimRemoved).toEqual(["ws://one:ws://one"]);
+    expect(lastClaimRemoved).toEqual(["ws://one:ws://one:owner-1"]);
     expect(
       sharedResourceByKeyWithClaims.getResource({ transport: "ws://one" }),
     ).toBeUndefined();
@@ -1809,11 +1813,11 @@ describe("createSharedResourceByKeyWithClaims", () => {
         {
           resourceLookup: transportLookup,
           claimLookup: ownerClaimLookup,
-          onFirstClaimAdded: (_resource, key) => {
-            firstClaimAdded.push(key.transport);
+          onFirstClaimAdded: (claim, _resource, key) => {
+            firstClaimAdded.push(`${key.transport}:${claim.ownerId}`);
           },
-          onLastClaimRemoved: (_resource, key) => {
-            lastClaimRemoved.push(key.transport);
+          onLastClaimRemoved: (claim, _resource, key) => {
+            lastClaimRemoved.push(`${key.transport}:${claim.ownerId}`);
           },
         },
       ),
@@ -1834,7 +1838,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
       transport: "ws://shared",
     });
 
-    expect(firstClaimAdded).toEqual(["ws://shared"]);
+    expect(firstClaimAdded).toEqual(["ws://shared:owner-1"]);
     expect(
       sharedResourceByKeyWithClaims.getClaimsForResource({
         transport: "ws://shared",
@@ -1862,7 +1866,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
     );
 
     expect(resource?.isDisposed()).toBe(true);
-    expect(lastClaimRemoved).toEqual(["ws://shared"]);
+    expect(lastClaimRemoved).toEqual(["ws://shared:owner-2"]);
   });
 
   test("addClaim throws on duplicate structural resource keys in one call", async () => {

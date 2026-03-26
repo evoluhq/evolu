@@ -602,12 +602,14 @@ export interface SharedResourceByKeyWithClaimsOptions<
 
   /** Called when a key transitions from zero claims to one claim. */
   readonly onFirstClaimAdded?: (
+    claim: C,
     resource: BorrowedResource<T>,
     resourceKey: K,
   ) => void;
 
   /** Called when a key transitions from one claim to zero claims. */
   readonly onLastClaimRemoved?: (
+    claim: C,
     resource: BorrowedResource<T>,
     resourceKey: K,
   ) => void;
@@ -750,7 +752,7 @@ export function createSharedResourceByKeyWithClaims<
                     pairRefCountByKey.increment(resourceKey);
 
                     if (firstResource) {
-                      onFirstClaimAdded?.(firstResource, resourceKey);
+                      onFirstClaimAdded?.(claim, firstResource, resourceKey);
                     }
 
                     return ok();
@@ -802,7 +804,7 @@ export function createSharedResourceByKeyWithClaims<
                       "Resource must exist when the last claim is removed.",
                     );
 
-                    onLastClaimRemoved?.(resource, resourceKey);
+                    onLastClaimRemoved?.(claim, resource, resourceKey);
 
                     const releaseResult = await run(
                       sharedResourcesByKey.release(resourceKey),
