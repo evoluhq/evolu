@@ -63,6 +63,8 @@ Write code top-down: public API first (interfaces and types), then implementatio
 
 Evolu optimizes for reading, not writing. Source code is read far more often than it is written, so developer-facing contracts should appear before low-level helpers.
 
+This rule primarily applies at the file and module level. Inside one implementation, still read from whole to detail: a higher-level helper can appear before the lower-level helpers it delegates to. For example, an orchestration helper like `ensureQueueProcessing` should usually appear before step-level helpers like `handleResponseForEvolu` and `handleResponseForSharedWorker`.
+
 Think from whole to detail:
 
 1. Public contract (`interface`, exported types)
@@ -102,6 +104,8 @@ Use factory functions instead of classes for creating objects, typically named `
 4. Side-effectful wiring
 5. Shared helpers
 6. Return object (public operations + disposal/closing)
+
+Within steps 4 and 5, order helpers from bigger picture to smaller detail. Prefer an orchestrating helper before the narrower helpers it calls. Do not mechanically move every callee above its caller just because it is referenced there.
 
 ### Function options
 
