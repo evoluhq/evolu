@@ -1,31 +1,31 @@
 import { assert, describe, expect, test } from "vitest";
 import type { ConsoleEntry } from "../../src/Console.js";
-import { testCreateConsole } from "../../src/Console.js";
 import {
   createOwnerWebSocketTransport,
   type OwnerId,
   testAppOwner,
 } from "../../src/local-first/Owner.js";
+import { createProtocolMessageForUnsubscribe } from "../../src/local-first/Protocol.js";
 import { testQuery } from "../../src/local-first/Query.js";
 import type { MutationChange } from "../../src/local-first/Schema.js";
 import type {
   DbWorkerInput,
   DbWorkerOutput,
 } from "../../src/local-first/Shared.js";
-import { testCreateCrdtMessage } from "../../src/local-first/Storage.js";
 import {
   type EvoluInput,
   type EvoluOutput,
   type EvoluTabOutput,
-  type SharedWorkerInput,
   initSharedWorker,
+  type SharedWorkerInput,
 } from "../../src/local-first/Shared.js";
+import { testCreateCrdtMessage } from "../../src/local-first/Storage.js";
 import { ok } from "../../src/Result.js";
 import { createSet } from "../../src/Set.js";
 import type { ReadonlyStore } from "../../src/Store.js";
 import { createStore } from "../../src/Store.js";
-import { testCreateDeps, testCreateRun } from "../../src/Test.js";
-import { type TestTime } from "../../src/Time.js";
+import type { Run } from "../../src/Task.js";
+import { testCreateRun, type TestDeps } from "../../src/Test.js";
 import { createId, type Id, testName } from "../../src/Type.js";
 import {
   type CreateWebSocket,
@@ -37,50 +37,54 @@ import {
   testCreateSharedWorker,
   testWaitForWorkerMessage,
 } from "../../src/Worker.js";
+interface SharedWorkerDep {
+  readonly worker: ReturnType<typeof testCreateSharedWorker<SharedWorkerInput>>;
+}
 
-describe("initSharedWorker", () => {
-  // TODO: Replace with a Run with deps.
-  const setupWorker = async (
-    consoleStoreOutputEntry: ReadonlyStore<ConsoleEntry | null> = createStore<ConsoleEntry | null>(
-      null,
-    ),
-    createWebSocket: CreateWebSocket = testCreateWebSocket({
-      throwOnCreate: true,
-    }),
-  ) => {
-    const worker = testCreateSharedWorker<SharedWorkerInput>();
+interface SetupWorkerOptions {
+  readonly consoleStoreOutputEntry?: ReadonlyStore<ConsoleEntry | null>;
+  readonly createWebSocket?: CreateWebSocket;
+}
 
-    const deps = testCreateDeps();
+const createSharedWorkerRun = (
+  consoleStoreOutputEntry: ReadonlyStore<ConsoleEntry | null>,
+  createWebSocket: CreateWebSocket,
+) =>
+  testCreateRun({
+    consoleStoreOutputEntry,
+    createMessagePort: testCreateMessagePort,
+    createWebSocket,
+  });
 
-    const run = testCreateRun({
-      ...deps,
-      console: testCreateConsole(),
-      consoleStoreOutputEntry,
-      createMessagePort: testCreateMessagePort,
-      createWebSocket,
-    });
+const protocolMessageToArrayBuffer = (message: Uint8Array): ArrayBuffer =>
+  Uint8Array.from(message).buffer;
 
-    const initResult = await run(initSharedWorker(worker.self));
-    assert(initResult.ok);
+const testCreateRunWithSharedWorkerDep = async ({
+  consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null),
+  createWebSocket = testCreateWebSocket({
+    throwOnCreate: true,
+  }),
+}: SetupWorkerOptions = {}): Promise<Run<TestDeps & SharedWorkerDep>> => {
+  const worker = testCreateSharedWorker<SharedWorkerInput>();
+  const run = createSharedWorkerRun(consoleStoreOutputEntry, createWebSocket);
 
-    worker.connect();
+  const initResult = await run(initSharedWorker(worker.self));
+  assert(initResult.ok);
 
-    return {
-      deps,
-      run,
-      time: deps.time as TestTime,
-      worker,
-      workerStack: initResult.value,
-    };
-  };
+  worker.connect();
 
+  return run.addDeps<SharedWorkerDep>({
+    worker,
+  });
+};
+
+describe("console and tab output", () => {
   test("replays queued console entries after first console port connects", async () => {
     const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    const { run, worker, workerStack } = await setupWorker(
+    await using run = await testCreateRunWithSharedWorkerDep({
       consoleStoreOutputEntry,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
+    });
+    const { worker } = run.deps;
 
     const firstEntry: ConsoleEntry = {
       method: "info",
@@ -119,11 +123,10 @@ describe("initSharedWorker", () => {
 
   test("ignores null console store updates", async () => {
     const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    const { run, worker, workerStack } = await setupWorker(
+    await using run = await testCreateRunWithSharedWorkerDep({
       consoleStoreOutputEntry,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
+    });
+    const { worker } = run.deps;
 
     const receivedOutputs: Array<EvoluTabOutput> = [];
     const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
@@ -151,9 +154,8 @@ describe("initSharedWorker", () => {
   });
 
   test("forwards DbWorker console entries from db worker channel", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { worker } = run.deps;
 
     const receivedOutputs: Array<EvoluTabOutput> = [];
     const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
@@ -192,10 +194,68 @@ describe("initSharedWorker", () => {
     expect(receivedOutputs).toContainEqual({ type: "OnConsoleEntry", entry });
   });
 
+  test("logs unknown shared worker inputs to tab output", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { worker } = run.deps;
+    const { console } = run.deps;
+
+    worker.port.postMessage({ type: "UnknownInput" } as never);
+    await testWaitForWorkerMessage();
+
+    expect(console.getEntriesSnapshot()).toContainEqual(
+      expect.objectContaining({
+        path: ["SharedWorker"],
+        method: "error",
+        args: ["Unknown shared worker input", { type: "UnknownInput" }],
+      }),
+    );
+  });
+
+  test("forwards DbWorker OnError to tab ports", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { worker } = run.deps;
+
+    const receivedOutputs: Array<EvoluTabOutput> = [];
+    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
+    tabChannel.port2.onMessage = (output) => {
+      receivedOutputs.push(output);
+    };
+
+    worker.port.postMessage({
+      type: "InitTab",
+      consoleLevel: "debug",
+      port: tabChannel.port1.native,
+    });
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const errorOutput: EvoluTabOutput = {
+      type: "OnError",
+      error: { type: "UnknownError", error: "boom" },
+    } as const;
+
+    dbWorkerChannel.port2.postMessage(errorOutput);
+    await testWaitForWorkerMessage();
+
+    expect(receivedOutputs).toContainEqual(errorOutput);
+  });
+});
+
+describe("queued evolu responses", () => {
   test("handles mutate and query queued responses with correct onCompleteIds", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -300,9 +360,8 @@ describe("initSharedWorker", () => {
   });
 
   test("forwards export queued response back to evolu port", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -362,9 +421,8 @@ describe("initSharedWorker", () => {
   });
 
   test("sends RefreshQueries to other evolu ports after mutate response", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel1 = testCreateMessageChannel<
@@ -446,6 +504,87 @@ describe("initSharedWorker", () => {
     assert(output2.type === "RefreshQueries");
   });
 
+  test("queues next request while processing current one", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    const query = testQuery;
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([query]),
+    });
+    evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([query]),
+    });
+
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const firstInput = dbInputs[0];
+    assert(firstInput);
+    assert(firstInput.request.type === "ForEvolu");
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: firstInput.callbackId,
+      response: {
+        type: "ForEvolu",
+        evoluPortId: firstInput.request.evoluPortId,
+        message: {
+          type: "Query",
+          rowsByQuery: new Map([[query, [{ value: 1 }, { value: 2 }]]]),
+        },
+      },
+    });
+
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const secondInput = dbInputs[1];
+    assert(secondInput);
+    assert(secondInput.request.type === "ForEvolu");
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: secondInput.callbackId,
+      response: {
+        type: "ForEvolu",
+        evoluPortId: secondInput.request.evoluPortId,
+        message: {
+          type: "Query",
+          rowsByQuery: new Map([[query, [{ value: 1 }, { value: 3 }]]]),
+        },
+      },
+    });
+
+    expect(dbInputs.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("transport and sync behavior", () => {
   test("sends protocol messages only for writable used owners", async () => {
     const sentMessages: Array<{
       url: string;
@@ -463,12 +602,10 @@ describe("initSharedWorker", () => {
         [Symbol.asyncDispose]: () => Promise.resolve(),
       });
 
-    const { deps, run, time, worker, workerStack } = await setupWorker(
-      undefined,
+    await using run = await testCreateRunWithSharedWorkerDep({
       createWebSocket,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
+    });
+    const { time, worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -560,7 +697,7 @@ describe("initSharedWorker", () => {
     assert(mutateInput.request.type === "ForEvolu");
 
     const usedOwnerMessages = [
-      testCreateCrdtMessage(createId(deps), 1, "hello"),
+      testCreateCrdtMessage(createId(run.deps), 1, "hello"),
     ] as const;
     dbWorkerChannel.port2.postMessage({
       type: "OnQueuedResponse",
@@ -587,6 +724,1063 @@ describe("initSharedWorker", () => {
     expect(sentMessages[0]?.data.byteLength).toBeGreaterThan(0);
   });
 
+  test("ignores non-binary and invalid transport messages", async () => {
+    const inspectableWebSocket = testCreateWebSocket({ isOpen: false });
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://transport.example",
+      ownerId: testAppOwner.id,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    inspectableWebSocket.message(transport.url, "not-binary");
+    inspectableWebSocket.message(transport.url, new Uint8Array([1]).buffer);
+    await testWaitForWorkerMessage();
+
+    expect(dbInputs).toEqual([]);
+  });
+
+  test("requests sync messages when a claimed transport opens later", async () => {
+    const inspectableWebSocket = testCreateWebSocket({ isOpen: false });
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://open-later.example",
+      ownerId: testAppOwner.id,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+    expect(dbInputs).toEqual([]);
+
+    inspectableWebSocket.open(transport.url);
+    await testWaitForWorkerMessage();
+
+    const createSyncInput = dbInputs.at(-1);
+    assert(createSyncInput);
+    expect(createSyncInput.request).toEqual({
+      type: "ForSharedWorker",
+      message: {
+        type: "CreateSyncMessages",
+        owners: [testAppOwner],
+      },
+    });
+  });
+
+  test("sends unsubscribe when the last transport claim is removed", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://unsubscribe.example",
+      ownerId: testAppOwner.id,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "remove",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    expect(inspectableWebSocket.sentMessages).toContainEqual({
+      url: transport.url,
+      data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+    });
+  });
+
+  test("handles apply sync responses for errors, refresh, and response messages", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { time, worker } = run.deps;
+
+    const tabOutputs: Array<EvoluTabOutput> = [];
+    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
+    tabChannel.port2.onMessage = (output) => {
+      tabOutputs.push(output);
+    };
+
+    worker.port.postMessage({
+      type: "InitTab",
+      consoleLevel: "debug",
+      port: tabChannel.port1.native,
+    });
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://apply-sync.example",
+      ownerId: testAppOwner.id,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    const evoluOutputs: Array<EvoluOutput> = [];
+    evoluChannel.port2.onMessage = (output) => {
+      evoluOutputs.push(output);
+    };
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    const createSyncInput = dbInputs.at(-1);
+    assert(createSyncInput);
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: createSyncInput.callbackId,
+      response: {
+        type: "ForSharedWorker",
+        message: {
+          type: "CreateSyncMessages",
+          protocolMessagesByOwnerId: new Map(),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+    dbInputs.length = 0;
+
+    inspectableWebSocket.message(
+      transport.url,
+      protocolMessageToArrayBuffer(
+        createProtocolMessageForUnsubscribe(testAppOwner.id),
+      ),
+    );
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const firstApplyInput = dbInputs.at(-1);
+    assert(firstApplyInput);
+    assert(firstApplyInput.request.type === "ForSharedWorker");
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: firstApplyInput.callbackId,
+      response: {
+        type: "ForSharedWorker",
+        message: {
+          type: "ApplySyncMessage",
+          ownerId: testAppOwner.id,
+          didWriteMessages: true,
+          result: {
+            ok: false,
+            error: {
+              type: "ProtocolInvalidDataError",
+              data: new Uint8Array(),
+              error: "boom",
+            },
+          },
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    expect(evoluOutputs).toContainEqual({ type: "RefreshQueries" });
+    expect(tabOutputs).toContainEqual({
+      type: "OnError",
+      error: {
+        type: "ProtocolInvalidDataError",
+        data: new Uint8Array(),
+        error: "boom",
+      },
+    });
+
+    inspectableWebSocket.message(
+      transport.url,
+      protocolMessageToArrayBuffer(
+        createProtocolMessageForUnsubscribe(testAppOwner.id),
+      ),
+    );
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const responseApplyInput = dbInputs.at(-1);
+    assert(responseApplyInput);
+    assert(responseApplyInput.request.type === "ForSharedWorker");
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: responseApplyInput.callbackId,
+      response: {
+        type: "ForSharedWorker",
+        message: {
+          type: "ApplySyncMessage",
+          ownerId: testAppOwner.id,
+          didWriteMessages: false,
+          result: {
+            ok: true,
+            value: {
+              type: "Response",
+              message: createProtocolMessageForUnsubscribe(testAppOwner.id),
+            },
+          },
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    expect(inspectableWebSocket.sentMessages).toContainEqual({
+      url: transport.url,
+      data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+    });
+  });
+
+  test("ignores abort, broadcast, and no-response apply sync results", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { time, worker } = run.deps;
+
+    const tabOutputs: Array<EvoluTabOutput> = [];
+    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
+    tabChannel.port2.onMessage = (output) => {
+      tabOutputs.push(output);
+    };
+
+    worker.port.postMessage({
+      type: "InitTab",
+      consoleLevel: "debug",
+      port: tabChannel.port1.native,
+    });
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://apply-sync-ignored.example",
+      ownerId: testAppOwner.id,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    const createSyncInput = dbInputs.at(-1);
+    assert(createSyncInput);
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: createSyncInput.callbackId,
+      response: {
+        type: "ForSharedWorker",
+        message: {
+          type: "CreateSyncMessages",
+          protocolMessagesByOwnerId: new Map(),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+    dbInputs.length = 0;
+
+    const runApplySync = async (
+      response: Extract<
+        Extract<DbWorkerOutput, { type: "OnQueuedResponse" }>["response"],
+        { type: "ForSharedWorker" }
+      >["message"],
+    ) => {
+      inspectableWebSocket.message(
+        transport.url,
+        protocolMessageToArrayBuffer(
+          createProtocolMessageForUnsubscribe(testAppOwner.id),
+        ),
+      );
+      time.advance("10s");
+      await testWaitForWorkerMessage();
+
+      const applyInput = dbInputs.at(-1);
+      assert(applyInput);
+      dbWorkerChannel.port2.postMessage({
+        type: "OnQueuedResponse",
+        callbackId: applyInput.callbackId,
+        response: {
+          type: "ForSharedWorker",
+          message: response,
+        },
+      });
+      await testWaitForWorkerMessage();
+    };
+
+    const sentMessageCount = inspectableWebSocket.sentMessages.length;
+
+    await runApplySync({
+      type: "ApplySyncMessage",
+      ownerId: testAppOwner.id,
+      didWriteMessages: false,
+      result: { ok: false, error: { type: "AbortError", reason: "stop" } },
+    });
+
+    await runApplySync({
+      type: "ApplySyncMessage",
+      ownerId: testAppOwner.id,
+      didWriteMessages: false,
+      result: { ok: true, value: { type: "Broadcast" } },
+    });
+
+    await runApplySync({
+      type: "ApplySyncMessage",
+      ownerId: testAppOwner.id,
+      didWriteMessages: false,
+      result: { ok: true, value: { type: "NoResponse" } },
+    });
+
+    expect(tabOutputs).toEqual([]);
+    expect(inspectableWebSocket.sentMessages).toHaveLength(sentMessageCount);
+  });
+
+  test("ignores sync creation and apply when no writable owner is active", async () => {
+    const inspectableWebSocket = testCreateWebSocket({ isOpen: false });
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const readonlyOwnerId = "readonly-owner" as OwnerId;
+    const readonlyTransport = createOwnerWebSocketTransport({
+      url: "wss://readonly-only.example",
+      ownerId: readonlyOwnerId,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: {
+            owner: {
+              id: readonlyOwnerId,
+              encryptionKey: testAppOwner.encryptionKey,
+            },
+            transports: [readonlyTransport],
+          },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    inspectableWebSocket.open(readonlyTransport.url);
+    await testWaitForWorkerMessage();
+    expect(dbInputs).toEqual([]);
+
+    const writableTransport = createOwnerWebSocketTransport({
+      url: "wss://removed-owner.example",
+      ownerId: testAppOwner.id,
+    });
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [writableTransport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [writableTransport] },
+          action: "remove",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    dbInputs.length = 0;
+    inspectableWebSocket.message(
+      writableTransport.url,
+      protocolMessageToArrayBuffer(
+        createProtocolMessageForUnsubscribe(testAppOwner.id),
+      ),
+    );
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    expect(dbInputs).toEqual([]);
+  });
+
+  test("ignores UseOwner and repeated Dispose after the instance is gone", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://disposed-instance.example",
+      ownerId: testAppOwner.id,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    evoluChannel.port2.postMessage({ type: "Dispose" });
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    evoluChannel.port2.postMessage({ type: "Dispose" });
+    await testWaitForWorkerMessage();
+
+    expect(inspectableWebSocket.createdUrls).toEqual([]);
+  });
+
+  test("ignores CreateEvolu after shared worker disposal", async () => {
+    const worker = testCreateSharedWorker<SharedWorkerInput>();
+    const run = createSharedWorkerRun(
+      createStore<ConsoleEntry | null>(null),
+      testCreateWebSocket({ throwOnCreate: true }),
+    );
+    const initResult = await run(initSharedWorker(worker.self));
+    assert(initResult.ok);
+
+    const sharedWorkerChannel = testCreateMessageChannel<SharedWorkerInput>();
+    assert(worker.self.onConnect);
+    worker.self.onConnect(sharedWorkerChannel.port2);
+    await testWaitForWorkerMessage();
+
+    const onMessage = sharedWorkerChannel.port2.onMessage;
+    assert(onMessage);
+
+    await run[Symbol.asyncDispose]();
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+
+    onMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    await testWaitForWorkerMessage();
+    await initResult.value[Symbol.asyncDispose]();
+  });
+
+  test("ignores queued evolu responses for missing ports", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const outputs: Array<EvoluOutput> = [];
+    evoluChannel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const queryInput = dbInputs.at(-1);
+    assert(queryInput);
+    assert(queryInput.request.type === "ForEvolu");
+
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: queryInput.callbackId,
+      response: {
+        type: "ForEvolu",
+        evoluPortId: createId(run.deps),
+        message: {
+          type: "Query",
+          rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    expect(outputs).toEqual([]);
+  });
+
+  test("ignores protocol sends through closed transports", async () => {
+    const inspectableWebSocket = testCreateWebSocket({ isOpen: false });
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://closed-transport.example",
+      ownerId: testAppOwner.id,
+    });
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    const outputs: Array<EvoluOutput> = [];
+    evoluChannel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "Mutate",
+      changes: [{ ownerId: testAppOwner.id } as MutationChange],
+      onCompleteIds: [],
+      subscribedQueries: new Set([testQuery]),
+    });
+
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const mutateInput = dbInputs.at(-1);
+    assert(mutateInput);
+    assert(mutateInput.request.type === "ForEvolu");
+
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: mutateInput.callbackId,
+      response: {
+        type: "ForEvolu",
+        evoluPortId: mutateInput.request.evoluPortId,
+        message: {
+          type: "Mutate",
+          messagesByOwnerId: new Map([
+            [
+              testAppOwner.id,
+              [testCreateCrdtMessage(createId(run.deps), 1, "closed")],
+            ],
+          ]),
+          rowsByQuery: new Map([[testQuery, [{ value: 2 }]]]),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    expect(outputs).toContainEqual({
+      type: "OnPatchesByQuery",
+      patchesByQuery: new Map([
+        [testQuery, [{ op: "replaceAll", value: [{ value: 2 }] }]],
+      ]),
+      onCompleteIds: [],
+    });
+    expect(inspectableWebSocket.sentMessages).toEqual([]);
+  });
+
+  test("throws for impossible db worker and evolu port messages", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    await testWaitForWorkerMessage();
+
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    const evoluOnMessage = evoluChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+    assert(evoluOnMessage);
+
+    expect(() => dbWorkerOnMessage({ type: "Impossible" } as never)).toThrow(
+      /exhaustiveCheck/,
+    );
+    expect(() => evoluOnMessage({ type: "Impossible" } as never)).toThrow(
+      /exhaustiveCheck/,
+    );
+  });
+
+  test("throws for impossible queued response type", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+    evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const queryInput = dbInputs.at(-1);
+    assert(queryInput);
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+
+    expect(() =>
+      dbWorkerOnMessage({
+        type: "OnQueuedResponse",
+        callbackId: queryInput.callbackId,
+        response: { type: "Impossible" } as never,
+      }),
+    ).toThrow(/exhaustiveCheck/);
+  });
+
+  test("throws for impossible evolu queued response messages", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+    evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const queryInput = dbInputs.at(-1);
+    assert(queryInput);
+    assert(queryInput.request.type === "ForEvolu");
+    const evoluPortId = queryInput.request.evoluPortId;
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+
+    expect(() =>
+      dbWorkerOnMessage({
+        type: "OnQueuedResponse",
+        callbackId: queryInput.callbackId,
+        response: {
+          type: "ForEvolu",
+          evoluPortId,
+          message: { type: "Impossible" },
+        } as never,
+      }),
+    ).toThrow(/exhaustiveCheck/);
+  });
+
+  test("throws for impossible shared worker queued response messages", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://impossible-shared-worker.example",
+      ownerId: testAppOwner.id,
+    });
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    const createSyncInput = dbInputs.at(-1);
+    assert(createSyncInput);
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+
+    expect(() =>
+      dbWorkerOnMessage({
+        type: "OnQueuedResponse",
+        callbackId: createSyncInput.callbackId,
+        response: {
+          type: "ForSharedWorker",
+          message: { type: "Impossible" },
+        } as never,
+      }),
+    ).toThrow(/exhaustiveCheck/);
+  });
+
+  test("throws for impossible shared worker apply result values", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://impossible-apply.example",
+      ownerId: testAppOwner.id,
+    });
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    const createSyncInput = dbInputs.at(-1);
+    assert(createSyncInput);
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: createSyncInput.callbackId,
+      response: {
+        type: "ForSharedWorker",
+        message: {
+          type: "CreateSyncMessages",
+          protocolMessagesByOwnerId: new Map(),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    inspectableWebSocket.message(
+      transport.url,
+      protocolMessageToArrayBuffer(
+        createProtocolMessageForUnsubscribe(testAppOwner.id),
+      ),
+    );
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const applyInput = dbInputs.at(-1);
+    assert(applyInput);
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+
+    expect(() =>
+      dbWorkerOnMessage({
+        type: "OnQueuedResponse",
+        callbackId: applyInput.callbackId,
+        response: {
+          type: "ForSharedWorker",
+          message: {
+            type: "ApplySyncMessage",
+            ownerId: testAppOwner.id,
+            didWriteMessages: false,
+            result: { ok: true, value: { type: "Impossible" } },
+          },
+        } as never,
+      }),
+    ).toThrow(/exhaustiveCheck/);
+  });
+
   test("reuses UseOwner transport when it is re-added before idle disposal", async () => {
     const createdUrls: Array<string> = [];
     const disposedUrls: Array<string> = [];
@@ -607,12 +1801,10 @@ describe("initSharedWorker", () => {
       });
     };
 
-    const { run, time, worker, workerStack } = await setupWorker(
-      undefined,
+    await using run = await testCreateRunWithSharedWorkerDep({
       createWebSocket,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
+    });
+    const { time, worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -686,132 +1878,12 @@ describe("initSharedWorker", () => {
 
     expect(disposedUrls).toEqual([transport.url]);
   });
+});
 
-  test("forwards DbWorker OnError to tab ports", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
-    tabChannel.port2.onMessage = (output) => {
-      receivedOutputs.push(output);
-    };
-
-    worker.port.postMessage({
-      type: "InitTab",
-      consoleLevel: "debug",
-      port: tabChannel.port1.native,
-    });
-
-    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
-    const dbWorkerChannel = testCreateMessageChannel<
-      DbWorkerInput,
-      DbWorkerOutput
-    >();
-
-    worker.port.postMessage({
-      type: "CreateEvolu",
-      name: testName,
-      evoluPort: evoluChannel.port1.native,
-      dbWorkerPort: dbWorkerChannel.port1.native,
-    });
-
-    const errorOutput: EvoluTabOutput = {
-      type: "OnError",
-      error: { type: "UnknownError", error: "boom" },
-    } as const;
-
-    dbWorkerChannel.port2.postMessage(errorOutput);
-    await testWaitForWorkerMessage();
-
-    expect(receivedOutputs).toContainEqual(errorOutput);
-  });
-
-  test("queues next request while processing current one", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
-    const dbWorkerChannel = testCreateMessageChannel<
-      DbWorkerInput,
-      DbWorkerOutput
-    >();
-
-    worker.port.postMessage({
-      type: "CreateEvolu",
-      name: testName,
-      evoluPort: evoluChannel.port1.native,
-      dbWorkerPort: dbWorkerChannel.port1.native,
-    });
-
-    const dbInputs: Array<DbWorkerInput> = [];
-    dbWorkerChannel.port2.onMessage = (input) => {
-      dbInputs.push(input);
-    };
-
-    const query = testQuery;
-
-    dbWorkerChannel.port2.postMessage({
-      type: "LeaderAcquired",
-      name: testName,
-    });
-
-    evoluChannel.port2.postMessage({
-      type: "Query",
-      queries: createSet([query]),
-    });
-    evoluChannel.port2.postMessage({
-      type: "Query",
-      queries: createSet([query]),
-    });
-
-    time.advance("10s");
-    await testWaitForWorkerMessage();
-
-    const firstInput = dbInputs[0];
-    assert(firstInput);
-    assert(firstInput.request.type === "ForEvolu");
-    dbWorkerChannel.port2.postMessage({
-      type: "OnQueuedResponse",
-      callbackId: firstInput.callbackId,
-      response: {
-        type: "ForEvolu",
-        evoluPortId: firstInput.request.evoluPortId,
-        message: {
-          type: "Query",
-          rowsByQuery: new Map([[query, [{ value: 1 }, { value: 2 }]]]),
-        },
-      },
-    });
-
-    time.advance("10s");
-    await testWaitForWorkerMessage();
-
-    const secondInput = dbInputs[1];
-    assert(secondInput);
-    assert(secondInput.request.type === "ForEvolu");
-    dbWorkerChannel.port2.postMessage({
-      type: "OnQueuedResponse",
-      callbackId: secondInput.callbackId,
-      response: {
-        type: "ForEvolu",
-        evoluPortId: secondInput.request.evoluPortId,
-        message: {
-          type: "Query",
-          rowsByQuery: new Map([[query, [{ value: 1 }, { value: 3 }]]]),
-        },
-      },
-    });
-
-    expect(dbInputs.length).toBeGreaterThanOrEqual(2);
-  });
-
+describe("disposal and ignored responses", () => {
   test("handles empty query rows and response after dispose", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -872,9 +1944,8 @@ describe("initSharedWorker", () => {
   });
 
   test("keeps shared evolu alive when one of multiple ports disposes", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel1 = testCreateMessageChannel<
@@ -948,9 +2019,8 @@ describe("initSharedWorker", () => {
   });
 
   test("ignores query response for disposed port while another port keeps shared evolu alive", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel1 = testCreateMessageChannel<
@@ -1022,9 +2092,8 @@ describe("initSharedWorker", () => {
   });
 
   test("ignores export response for disposed port while another port keeps shared evolu alive", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel1 = testCreateMessageChannel<
@@ -1092,9 +2161,8 @@ describe("initSharedWorker", () => {
   });
 
   test("ignores export response after evolu dispose", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1151,9 +2219,8 @@ describe("initSharedWorker", () => {
   });
 
   test("disposes shared evolu while queue processing is active", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1179,11 +2246,12 @@ describe("initSharedWorker", () => {
     });
     // Test passes if dispose (via await using) doesn't throw.
   });
+});
 
+describe("queue processing", () => {
   test("does not send queued requests before leader is acquired", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1223,9 +2291,8 @@ describe("initSharedWorker", () => {
   });
 
   test("keeps processing first queued item while a second is waiting", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1272,5 +2339,281 @@ describe("initSharedWorker", () => {
     const repeatedFirstInput = dbInputs.at(-1);
     assert(repeatedFirstInput);
     expect(repeatedFirstInput.callbackId).toBe(firstInput.callbackId);
+  });
+});
+
+describe("exhaustive checks", () => {
+  test("throws for impossible db worker and evolu port messages", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    await testWaitForWorkerMessage();
+
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    const evoluOnMessage = evoluChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+    assert(evoluOnMessage);
+
+    expect(() => dbWorkerOnMessage({ type: "Impossible" } as never)).toThrow(
+      /exhaustiveCheck/,
+    );
+    expect(() => evoluOnMessage({ type: "Impossible" } as never)).toThrow(
+      /exhaustiveCheck/,
+    );
+  });
+
+  test("throws for impossible queued response type", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+    evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const queryInput = dbInputs.at(-1);
+    assert(queryInput);
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+
+    expect(() =>
+      dbWorkerOnMessage({
+        type: "OnQueuedResponse",
+        callbackId: queryInput.callbackId,
+        response: { type: "Impossible" } as never,
+      }),
+    ).toThrow(/exhaustiveCheck/);
+  });
+
+  test("throws for impossible evolu queued response messages", async () => {
+    await using run = await testCreateRunWithSharedWorkerDep();
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+    evoluChannel.port2.postMessage({
+      type: "Query",
+      queries: createSet([testQuery]),
+    });
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const queryInput = dbInputs.at(-1);
+    assert(queryInput);
+    assert(queryInput.request.type === "ForEvolu");
+    const evoluPortId = queryInput.request.evoluPortId;
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+
+    expect(() =>
+      dbWorkerOnMessage({
+        type: "OnQueuedResponse",
+        callbackId: queryInput.callbackId,
+        response: {
+          type: "ForEvolu",
+          evoluPortId,
+          message: { type: "Impossible" },
+        } as never,
+      }),
+    ).toThrow(/exhaustiveCheck/);
+  });
+
+  test("throws for impossible shared worker queued response messages", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://impossible-shared-worker.example",
+      ownerId: testAppOwner.id,
+    });
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    const createSyncInput = dbInputs.at(-1);
+    assert(createSyncInput);
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+
+    expect(() =>
+      dbWorkerOnMessage({
+        type: "OnQueuedResponse",
+        callbackId: createSyncInput.callbackId,
+        response: {
+          type: "ForSharedWorker",
+          message: { type: "Impossible" },
+        } as never,
+      }),
+    ).toThrow(/exhaustiveCheck/);
+  });
+
+  test("throws for impossible shared worker apply result values", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    await using run = await testCreateRunWithSharedWorkerDep({
+      createWebSocket: inspectableWebSocket,
+    });
+    const { time, worker } = run.deps;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const transport = createOwnerWebSocketTransport({
+      url: "wss://impossible-apply.example",
+      ownerId: testAppOwner.id,
+    });
+    const dbInputs: Array<DbWorkerInput> = [];
+    dbWorkerChannel.port2.onMessage = (input) => {
+      dbInputs.push(input);
+    };
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+    dbWorkerChannel.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: { owner: testAppOwner, transports: [transport] },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    const createSyncInput = dbInputs.at(-1);
+    assert(createSyncInput);
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: createSyncInput.callbackId,
+      response: {
+        type: "ForSharedWorker",
+        message: {
+          type: "CreateSyncMessages",
+          protocolMessagesByOwnerId: new Map(),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    inspectableWebSocket.message(
+      transport.url,
+      protocolMessageToArrayBuffer(
+        createProtocolMessageForUnsubscribe(testAppOwner.id),
+      ),
+    );
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const applyInput = dbInputs.at(-1);
+    assert(applyInput);
+    const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
+    assert(dbWorkerOnMessage);
+
+    expect(() =>
+      dbWorkerOnMessage({
+        type: "OnQueuedResponse",
+        callbackId: applyInput.callbackId,
+        response: {
+          type: "ForSharedWorker",
+          message: {
+            type: "ApplySyncMessage",
+            ownerId: testAppOwner.id,
+            didWriteMessages: false,
+            result: { ok: true, value: { type: "Impossible" } },
+          },
+        } as never,
+      }),
+    ).toThrow(/exhaustiveCheck/);
   });
 });
