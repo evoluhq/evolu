@@ -187,7 +187,7 @@ export const initSharedWorker =
                   sharedEvolusByName.acquire(message.name),
                 );
                 if (!sharedEvoluResult.ok) return sharedEvoluResult;
-                sharedEvoluResult.value.addPorts(
+                sharedEvoluResult.value.createInstance(
                   message.evoluPort,
                   message.dbWorkerPort,
                   () =>
@@ -276,6 +276,8 @@ export const initSharedWorker =
             onLastClaimRemoved: (ownerId, webSocket) => {
               webSocket.send(createProtocolMessageForUnsubscribe(ownerId));
             },
+            // Keep sockets alive briefly across short owner churn.
+            idleDisposeAfter: "3s",
             resourceLookup: structuralLookup,
           },
         ),
@@ -312,7 +314,7 @@ export const initSharedWorker =
   };
 
 interface SharedEvolu extends AsyncDisposable {
-  readonly addPorts: (
+  readonly createInstance: (
     evoluPort: NativeMessagePort<EvoluOutput, EvoluInput>,
     dbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>,
     releaseSharedEvolu: () => void,
@@ -725,7 +727,7 @@ const createSharedEvolu =
       });
 
     return ok({
-      addPorts: (
+      createInstance: (
         nativeEvoluPort: NativeMessagePort<EvoluOutput, EvoluInput>,
         nativeDbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>,
         releaseSharedEvolu: () => void,

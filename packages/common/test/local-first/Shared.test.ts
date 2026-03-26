@@ -587,11 +587,13 @@ describe("initSharedWorker", () => {
     expect(sentMessages[0]?.data.byteLength).toBeGreaterThan(0);
   });
 
-  test("releases UseOwner transport claims when evolu instance is disposed", async () => {
+  test("reuses UseOwner transport when it is re-added before idle disposal", async () => {
+    const createdUrls: Array<string> = [];
     const disposedUrls: Array<string> = [];
     const baseCreateWebSocket = testCreateWebSocket();
 
     const createWebSocket: CreateWebSocket = (url, options) => async (run) => {
+      createdUrls.push(url);
       const webSocketResult = await baseCreateWebSocket(url, options)(run);
       if (!webSocketResult.ok) return webSocketResult;
 
@@ -605,7 +607,7 @@ describe("initSharedWorker", () => {
       });
     };
 
-    const { run, worker, workerStack } = await setupWorker(
+    const { run, time, worker, workerStack } = await setupWorker(
       undefined,
       createWebSocket,
     );
@@ -644,6 +646,42 @@ describe("initSharedWorker", () => {
     await testWaitForWorkerMessage();
 
     evoluChannel.port2.postMessage({ type: "Dispose" });
+    await testWaitForWorkerMessage();
+
+    expect(createdUrls).toEqual([transport.url]);
+    expect(disposedUrls).toEqual([]);
+
+    time.advance("2s");
+    await testWaitForWorkerMessage();
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: {
+            owner: testAppOwner,
+            transports: [transport],
+          },
+          action: "add",
+        },
+      ],
+    });
+    await testWaitForWorkerMessage();
+
+    expect(createdUrls).toEqual([transport.url]);
+    expect(disposedUrls).toEqual([]);
+
+    evoluChannel.port2.postMessage({ type: "Dispose" });
+    await testWaitForWorkerMessage();
+
+    time.advance("3s");
     await testWaitForWorkerMessage();
 
     expect(disposedUrls).toEqual([transport.url]);
