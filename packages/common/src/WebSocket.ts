@@ -13,6 +13,7 @@ import type { RetryError, Task } from "./Task.js";
 import { callback, retry } from "./Task.js";
 import type { Millis } from "./Time.js";
 import { String, type Typed } from "./Type.js";
+import { assert } from "./Assert.js";
 
 /**
  * WebSocket with auto-reconnect.
@@ -303,45 +304,100 @@ export const createWebSocket: CreateWebSocket =
   };
 
 /** Creates a deterministic in-memory {@link CreateWebSocket} for testing. */
-export const testCreateWebSocket =
-  (
-    options: {
-      /** Throw immediately when a socket is created. */
-      readonly throwOnCreate?: boolean;
+export interface TestCreateWebSocket extends CreateWebSocket {
+  readonly createdUrls: Array<string>;
+  readonly sentMessages: Array<{
+    readonly url: string;
+    readonly data: string | ArrayBufferLike | Blob | ArrayBufferView;
+  }>;
+  readonly message: (url: string, data: string | ArrayBuffer | Blob) => void;
+  readonly open: (url: string) => void;
+}
 
-      /** Initial open state of created sockets. Defaults to true. */
-      readonly isOpen?: boolean;
-    } = {},
-  ): CreateWebSocket =>
-  () =>
-  () => {
+export const testCreateWebSocket = (
+  options: {
+    /** Throw immediately when a socket is created. */
+    readonly throwOnCreate?: boolean;
+
+    /** Initial open state of created sockets. Defaults to true. */
+    readonly isOpen?: boolean;
+  } = {},
+): TestCreateWebSocket => {
+  const createdUrls: Array<string> = [];
+  const sentMessages: Array<{
+    readonly url: string;
+    readonly data: string | ArrayBufferLike | Blob | ArrayBufferView;
+  }> = [];
+  const stateByUrl = new Map<
+    string,
+    {
+      options: WebSocketOptions | undefined;
+      isOpen: boolean;
+      isDisposed: boolean;
+    }
+  >();
+
+  const getState = (url: string) => {
+    const state = stateByUrl.get(url);
+    assert(state, `Test WebSocket for ${url} does not exist.`);
+    return state;
+  };
+
+  const createWebSocket: CreateWebSocket = (url, socketOptions) => () => {
     if (options.throwOnCreate) {
       throw new Error("testCreateWebSocket is configured to throw on create");
     }
 
-    let isDisposed = false;
-    let isOpen = options.isOpen ?? true;
+    createdUrls.push(url);
+    stateByUrl.set(url, {
+      options: socketOptions,
+      isOpen: options.isOpen ?? true,
+      isDisposed: false,
+    });
 
     return ok({
-      send: () => {
-        if (isDisposed || !isOpen) return err({ type: "WebSocketSendError" });
+      send: (data) => {
+        const state = getState(url);
+        if (state.isDisposed || !state.isOpen) {
+          return err({ type: "WebSocketSendError" });
+        }
+        sentMessages.push({ url, data });
         return ok();
       },
 
       getReadyState: () => {
-        if (isDisposed) return "closed";
-        return isOpen ? "open" : "closed";
+        const state = getState(url);
+        if (state.isDisposed) return "closed";
+        return state.isOpen ? "open" : "closed";
       },
 
-      isOpen: () => !isDisposed && isOpen,
+      isOpen: () => {
+        const state = getState(url);
+        return !state.isDisposed && state.isOpen;
+      },
 
       [Symbol.asyncDispose]: () => {
-        isDisposed = true;
-        isOpen = false;
+        const state = getState(url);
+        state.isDisposed = true;
+        state.isOpen = false;
         return Promise.resolve();
       },
     });
   };
+
+  return Object.assign(createWebSocket, {
+    createdUrls,
+    sentMessages,
+    message: (url: string, data: string | ArrayBuffer | Blob) => {
+      getState(url).options?.onMessage?.(data);
+    },
+    open: (url: string) => {
+      const state = getState(url);
+      state.isOpen = true;
+      state.options?.onOpen?.();
+    },
+  });
+};
 
 const nativeToStringState: Record<number, WebSocketReadyState> = {
   [globalThis.WebSocket.CONNECTING]: "connecting",
