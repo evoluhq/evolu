@@ -71,6 +71,10 @@ export interface TestTime extends Time {
   readonly advance: (duration: Duration) => void;
 }
 
+export interface TestTimeDep {
+  readonly time: TestTime;
+}
+
 /**
  * Creates a {@link TestTime} with controllable timers for testing.
  *
