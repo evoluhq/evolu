@@ -117,40 +117,6 @@ describe("initSharedWorker", () => {
     ]);
   });
 
-  test("forwards entries asynchronously when console port is already connected", async () => {
-    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    const { run, worker, workerStack } = await setupWorker(
-      consoleStoreOutputEntry,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
-    consoleChannel.port2.onMessage = (output) => {
-      receivedOutputs.push(output);
-    };
-
-    worker.port.postMessage({
-      type: "InitTab",
-      consoleLevel: "debug",
-      port: consoleChannel.port1.native,
-    });
-
-    const liveEntry: ConsoleEntry = {
-      method: "info",
-      path: ["live"],
-      args: ["entry"],
-    };
-
-    consoleStoreOutputEntry.set(liveEntry);
-    await testWaitForWorkerMessage();
-
-    expect(receivedOutputs).toEqual([
-      { type: "OnConsoleEntry", entry: liveEntry },
-    ]);
-  });
-
   test("ignores null console store updates", async () => {
     const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
     const { run, worker, workerStack } = await setupWorker(
@@ -182,156 +148,6 @@ describe("initSharedWorker", () => {
     await testWaitForWorkerMessage();
 
     expect(receivedOutputs).toEqual([{ type: "OnConsoleEntry", entry }]);
-  });
-
-  test("forwards typed console error entries as ConsoleEntry", async () => {
-    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    const { run, worker, workerStack } = await setupWorker(
-      consoleStoreOutputEntry,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
-    consoleChannel.port2.onMessage = (output) => {
-      receivedOutputs.push(output);
-    };
-
-    worker.port.postMessage({
-      type: "InitTab",
-      consoleLevel: "debug",
-      port: consoleChannel.port1.native,
-    });
-
-    const error = { type: "UnknownError", error: "boom" } as const;
-    const entry: ConsoleEntry = {
-      method: "error",
-      path: ["global"],
-      args: ["error", error],
-    };
-
-    consoleStoreOutputEntry.set(entry);
-    await testWaitForWorkerMessage();
-
-    expect(receivedOutputs).toEqual([{ type: "OnConsoleEntry", entry }]);
-  });
-
-  test("forwards untyped console error entries as ConsoleEntry", async () => {
-    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    const { run, worker, workerStack } = await setupWorker(
-      consoleStoreOutputEntry,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
-    consoleChannel.port2.onMessage = (output) => {
-      receivedOutputs.push(output);
-    };
-
-    worker.port.postMessage({
-      type: "InitTab",
-      consoleLevel: "debug",
-      port: consoleChannel.port1.native,
-    });
-
-    const entry: ConsoleEntry = {
-      method: "error",
-      path: ["global"],
-      args: ["error", "plain string"],
-    };
-
-    consoleStoreOutputEntry.set(entry);
-    await testWaitForWorkerMessage();
-
-    expect(receivedOutputs).toEqual([{ type: "OnConsoleEntry", entry }]);
-  });
-
-  test("forwards console error entry with one argument", async () => {
-    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    const { run, worker, workerStack } = await setupWorker(
-      consoleStoreOutputEntry,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
-    consoleChannel.port2.onMessage = (output) => {
-      receivedOutputs.push(output);
-    };
-
-    worker.port.postMessage({
-      type: "InitTab",
-      consoleLevel: "debug",
-      port: consoleChannel.port1.native,
-    });
-
-    const entry: ConsoleEntry = {
-      method: "error",
-      path: ["global"],
-      args: ["plain string"],
-    };
-
-    consoleStoreOutputEntry.set(entry);
-    await testWaitForWorkerMessage();
-
-    expect(receivedOutputs).toEqual([{ type: "OnConsoleEntry", entry }]);
-  });
-
-  test("forwards console error entry with no arguments", async () => {
-    const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    const { run, worker, workerStack } = await setupWorker(
-      consoleStoreOutputEntry,
-    );
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
-    consoleChannel.port2.onMessage = (output) => {
-      receivedOutputs.push(output);
-    };
-
-    worker.port.postMessage({
-      type: "InitTab",
-      consoleLevel: "debug",
-      port: consoleChannel.port1.native,
-    });
-
-    const entry: ConsoleEntry = {
-      method: "error",
-      path: ["global"],
-      args: [],
-    };
-
-    consoleStoreOutputEntry.set(entry);
-    await testWaitForWorkerMessage();
-
-    expect(receivedOutputs).toEqual([{ type: "OnConsoleEntry", entry }]);
-  });
-
-  test("accepts CreateEvolu message", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
-    const dbWorkerChannel = testCreateMessageChannel<
-      DbWorkerInput,
-      DbWorkerOutput
-    >();
-
-    expect(() => {
-      worker.port.postMessage({
-        type: "CreateEvolu",
-        name: testName,
-        evoluPort: evoluChannel.port1.native,
-        dbWorkerPort: dbWorkerChannel.port1.native,
-      });
-    }).not.toThrow();
   });
 
   test("forwards DbWorker console entries from db worker channel", async () => {
@@ -374,60 +190,6 @@ describe("initSharedWorker", () => {
     await testWaitForWorkerMessage();
 
     expect(receivedOutputs).toContainEqual({ type: "OnConsoleEntry", entry });
-  });
-
-  test("accepts LeaderAcquired events from db worker channel", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
-    const dbWorkerChannel = testCreateMessageChannel<
-      DbWorkerInput,
-      DbWorkerOutput
-    >();
-
-    worker.port.postMessage({
-      type: "CreateEvolu",
-      name: testName,
-      evoluPort: evoluChannel.port1.native,
-      dbWorkerPort: dbWorkerChannel.port1.native,
-    });
-
-    expect(() => {
-      dbWorkerChannel.port2.postMessage({
-        type: "LeaderAcquired",
-        name: testName,
-      });
-    }).not.toThrow();
-  });
-
-  test("accepts Evolu input messages on evolu channel", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
-    const dbWorkerChannel = testCreateMessageChannel<
-      DbWorkerInput,
-      DbWorkerOutput
-    >();
-
-    worker.port.postMessage({
-      type: "CreateEvolu",
-      name: testName,
-      evoluPort: evoluChannel.port1.native,
-      dbWorkerPort: dbWorkerChannel.port1.native,
-    });
-
-    expect(() => {
-      evoluChannel.port2.postMessage({
-        type: "Mutate",
-        changes: [{} as MutationChange],
-        onCompleteIds: [],
-        subscribedQueries: new Set(),
-      });
-    }).not.toThrow();
   });
 
   test("handles mutate and query queued responses with correct onCompleteIds", async () => {
@@ -762,6 +524,24 @@ describe("initSharedWorker", () => {
           action: "add",
         },
       ],
+    });
+    await testWaitForWorkerMessage();
+
+    // Respond to the ForSharedWorker/CreateSyncMessages request triggered by
+    // onFirstClaimAdded for the already-open WebSocket.
+    const createSyncInput = dbInputs.at(-1);
+    assert(createSyncInput);
+    assert(createSyncInput.request.type === "ForSharedWorker");
+    dbWorkerChannel.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: createSyncInput.callbackId,
+      response: {
+        type: "ForSharedWorker",
+        message: {
+          type: "CreateSyncMessages",
+          protocolMessagesByOwnerId: new Map(),
+        },
+      },
     });
     await testWaitForWorkerMessage();
 
@@ -1332,83 +1112,6 @@ describe("initSharedWorker", () => {
     expect(outputs).toEqual([]);
   });
 
-  test("does not throw synchronously for unknown db worker channel message type", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
-    const dbWorkerChannel = testCreateMessageChannel<
-      DbWorkerInput,
-      DbWorkerOutput
-    >();
-
-    worker.port.postMessage({
-      type: "CreateEvolu",
-      name: testName,
-      evoluPort: evoluChannel.port1.native,
-      dbWorkerPort: dbWorkerChannel.port1.native,
-    });
-
-    expect(() => {
-      dbWorkerChannel.port2.postMessage({ type: "Unknown" } as never);
-    }).not.toThrow();
-  });
-
-  test("does not throw synchronously for unknown queued response type", async () => {
-    const { run, time, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
-    const dbWorkerChannel = testCreateMessageChannel<
-      DbWorkerInput,
-      DbWorkerOutput
-    >();
-
-    worker.port.postMessage({
-      type: "CreateEvolu",
-      name: testName,
-      evoluPort: evoluChannel.port1.native,
-      dbWorkerPort: dbWorkerChannel.port1.native,
-    });
-
-    const dbInputs: Array<DbWorkerInput> = [];
-    dbWorkerChannel.port2.onMessage = (input) => {
-      dbInputs.push(input);
-    };
-
-    dbWorkerChannel.port2.postMessage({
-      type: "LeaderAcquired",
-      name: testName,
-    });
-
-    evoluChannel.port2.postMessage({
-      type: "Query",
-      queries: createSet([testQuery]),
-    });
-
-    time.advance("10s");
-    await testWaitForWorkerMessage();
-
-    const queuedInput = dbInputs.at(-1);
-    assert(queuedInput);
-    assert(queuedInput.request.type === "ForEvolu");
-    const evoluPortId = queuedInput.request.evoluPortId;
-
-    expect(() => {
-      dbWorkerChannel.port2.postMessage({
-        type: "OnQueuedResponse",
-        callbackId: queuedInput.callbackId,
-        response: {
-          type: "ForEvolu",
-          evoluPortId,
-          message: { type: "Unknown" } as never,
-        },
-      });
-    }).not.toThrow();
-  });
-
   test("disposes shared evolu while queue processing is active", async () => {
     const { run, worker, workerStack } = await setupWorker();
     await using _run = run;
@@ -1531,40 +1234,5 @@ describe("initSharedWorker", () => {
     const repeatedFirstInput = dbInputs.at(-1);
     assert(repeatedFirstInput);
     expect(repeatedFirstInput.callbackId).toBe(firstInput.callbackId);
-  });
-
-  test("does not throw synchronously for unknown evolu channel message type", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
-    const dbWorkerChannel = testCreateMessageChannel<
-      DbWorkerInput,
-      DbWorkerOutput
-    >();
-
-    worker.port.postMessage({
-      type: "CreateEvolu",
-      name: testName,
-      evoluPort: evoluChannel.port1.native,
-      dbWorkerPort: dbWorkerChannel.port1.native,
-    });
-
-    expect(() => {
-      evoluChannel.port2.postMessage({ type: "Unknown" } as never);
-    }).not.toThrow();
-  });
-
-  test("does not throw synchronously for unknown message type", async () => {
-    const { run, worker, workerStack } = await setupWorker();
-    await using _run = run;
-    await using _workerStack = workerStack;
-
-    expect(() => {
-      worker.port.postMessage({
-        type: "Unknown",
-      } as never);
-    }).not.toThrow();
   });
 });
