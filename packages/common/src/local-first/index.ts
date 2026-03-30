@@ -8,5 +8,4 @@ export * from "./Relay.js";
 export * from "./Schema.js";
 export * from "./Shared.js";
 export * from "./Storage.js";
-export * from "./Sync.js";
 export * from "./Timestamp.js";
