@@ -11,6 +11,7 @@
     "relay": "turbo --filter @evolu/relay dev",
     "build": "bun run clean:ts && turbo --filter @evolu/* build",
     "build:web": "bun run build:docs && turbo --filter web build",
+    "build:web:fast": "rm -rf 'apps/web/src/app/(docs)/docs/api-reference' && turbo --filter web build",
     "build:docs": "typedoc && cd apps/web && bun run fix:docs",
     "build:expo": "turbo --filter @example/react-expo build",
     "typecheck": "tsc --build tsconfig.typecheck.json",

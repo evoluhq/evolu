@@ -29,6 +29,7 @@ Build scripts
 - `bun run build` - Build packages (required once after clone/pull for IDE types)
 - `bun run build:docs` - Build doc (required once after clone/pull)
 - `bun run build:web` - Build docs and web
+- `bun run build:web:fast` - Delete `api-reference` and build web only
 
 Web build notes
 
