@@ -827,12 +827,13 @@ const createSharedEvolu =
               const evoluInstance = evoluInstancesByPortId.get(evoluPortId);
               if (!evoluInstance) break;
 
+              evoluInstancesByPortId.delete(evoluPortId);
+              const hadLastPort = evoluInstancesByPortId.size === 0;
               console.info("evoluDispose", {
                 name,
                 evoluPortId,
-                hadLastPort: evoluInstancesByPortId.size === 1,
+                hadLastPort,
               });
-              evoluInstancesByPortId.delete(evoluPortId);
 
               // Potential plan: keep DbWorker ports in a SharedResource
               // abstraction instead of deleting them eagerly here. DbWorkers use
@@ -843,9 +844,10 @@ const createSharedEvolu =
               void sharedEvoluRun(async (run) => {
                 await run(removeAllUsedSyncOwners(evoluInstance));
                 evoluInstance.usedSyncOwners[Symbol.dispose]();
-                evoluInstance.releaseSharedEvolu();
                 return ok();
               });
+
+              // if (hadLastPort) evoluInstance.releaseSharedEvolu();
 
               // TODO: Dispose SharedEvolu on the last port.
 
