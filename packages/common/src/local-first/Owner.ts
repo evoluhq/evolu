@@ -219,10 +219,6 @@ export interface AppOwner extends Owner, Typed<"AppOwner"> {
   readonly mnemonic: Mnemonic;
 }
 
-export interface AppOwnerDep {
-  readonly appOwner: AppOwner;
-}
-
 /** Creates an {@link AppOwner} from an {@link OwnerSecret}. */
 export const createAppOwner = (secret: OwnerSecret): AppOwner => ({
   ...createOwner(secret),
@@ -446,4 +442,38 @@ export interface OwnerUsage {
    * Free relays can use it to identify inactive accounts for cleanup.
    */
   readonly lastTimestamp: TimestampBytes | null;
+}
+
+/**
+ * An {@link AppOwner} for encrypting device-only data.
+ *
+ * Device-only data belongs to the current device rather than to the synced app
+ * identity. A common example is the last used {@link AppOwner}, which can be
+ * stored so users do not need to enter the mnemonic every time they reopen the
+ * app.
+ *
+ * This data must be encrypted because other OS processes may be able to read
+ * unencrypted app-controlled storage such as `localStorage`, `IndexedDB`, or
+ * similar stores.
+ *
+ * DeviceAppOwner is backed by a platform-specific secure primitive such as Expo
+ * SecureStore, Electron safeStorage, or WebAuthn PRF.
+ *
+ * Use DeviceAppOwner with a local-only Evolu instance. Local-only means an
+ * Evolu instance with empty transports (`transports: []`) so it does not sync
+ * its AppOwner, and local-only (prefixed with "_") tables.
+ *
+ * A local-only Evolu instance is better than plain platform storage because
+ * device-only data gets schema, reactivity, and the same cross-platform
+ * behavior as the rest of Evolu.
+ *
+ * The local-only Evolu instance can still use other owners for sync via
+ * `useOwner`. Use it for data that belongs to the current device rather than
+ * the user app Evolu instance (news delivery etc.).
+ *
+ * DeviceAppOwner Evolu instance is secure only when its data stays on the
+ * device.
+ */
+export interface DeviceAppOwner extends AppOwner {
+  readonly source: "ExpoSecureStore" | "WebAuthnPrf" | "ElectronSafeStorage";
 }
