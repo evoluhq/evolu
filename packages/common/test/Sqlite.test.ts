@@ -12,11 +12,15 @@ import {
   sql,
   sqliteBooleanToBoolean,
   sqliteFalse,
+  sqliteQueryStringToSqliteQuery,
+  sqliteQueryToSqliteQueryString,
   sqliteTrue,
   testCreateRunWithSqlite,
   type CreateSqliteDriver,
   type SafeSql,
   type SqliteDriver,
+  type SqliteQuery,
+  type SqliteQueryString,
   type SqliteValue,
 } from "../src/Sqlite.js";
 import { sleep } from "../src/Task.js";
@@ -53,6 +57,54 @@ describe("eqSqliteValue", () => {
     expectTypeOf<SqliteValue>().toEqualTypeOf<
       null | string | number | Uint8Array
     >();
+  });
+});
+
+describe("SqliteQueryString", () => {
+  test("sqliteQueryToSqliteQueryString and sqliteQueryStringToSqliteQuery round-trip", () => {
+    const binaryData = new Uint8Array([1, 3, 2]);
+    const sqliteQuery: SqliteQuery = {
+      sql: "a" as SafeSql,
+      parameters: [null, "a", 1, binaryData],
+    };
+
+    expect(
+      sqliteQueryStringToSqliteQuery(
+        sqliteQueryToSqliteQueryString(sqliteQuery),
+      ),
+    ).toStrictEqual(sqliteQuery);
+  });
+
+  test("sqliteQueryToSqliteQueryString sorts options and restores them", () => {
+    const sqliteQuery: SqliteQuery = {
+      sql: "select 1" as SafeSql,
+      parameters: [],
+      options: {
+        prepare: true,
+        logQueryExecutionTime: true,
+        logExplainQueryPlan: true,
+      },
+    };
+
+    const sqliteQueryString = sqliteQueryToSqliteQueryString(sqliteQuery);
+    const [, , optionsArr] = JSON.parse(sqliteQueryString) as [
+      SafeSql,
+      Array<unknown>,
+      Array<readonly [string, unknown]>,
+    ];
+
+    expect(optionsArr.map(([key]) => key)).toEqual([
+      "logExplainQueryPlan",
+      "logQueryExecutionTime",
+      "prepare",
+    ]);
+    expect(sqliteQueryStringToSqliteQuery(sqliteQueryString)).toStrictEqual(
+      sqliteQuery,
+    );
+  });
+
+  test("SqliteQueryString is a branded string", () => {
+    expectTypeOf<SqliteQueryString>().toExtend<string>();
   });
 });
 

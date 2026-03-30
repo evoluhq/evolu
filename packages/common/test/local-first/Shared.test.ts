@@ -6,7 +6,6 @@ import {
   testAppOwner,
 } from "../../src/local-first/Owner.js";
 import { createProtocolMessageForUnsubscribe } from "../../src/local-first/Protocol.js";
-import { testQuery } from "../../src/local-first/Query.js";
 import type { MutationChange } from "../../src/local-first/Schema.js";
 import type {
   DbWorkerInput,
@@ -37,6 +36,7 @@ import {
   testCreateSharedWorker,
   testWaitForWorkerMessage,
 } from "../../src/Worker.js";
+import { testQuery } from "./_fixtures.js";
 interface SharedWorkerDep {
   readonly worker: ReturnType<typeof testCreateSharedWorker<SharedWorkerInput>>;
 }

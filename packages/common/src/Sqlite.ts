@@ -6,10 +6,11 @@
 
 import { assertNotDisposed } from "./Assert.js";
 import type { Brand } from "./Brand.js";
+import { bytesToHex, hexToBytes } from "./Buffer.js";
 import type { EncryptionKey } from "./Crypto.js";
 import type { Eq } from "./Eq.js";
 import { createEqObject, eqArrayNumber, eqString } from "./Eq.js";
-import { createRecord } from "./Object.js";
+import { createRecord, objectToEntries } from "./Object.js";
 import type { Result } from "./Result.js";
 import { ok } from "./Result.js";
 import type { Run, Task } from "./Task.js";
@@ -77,6 +78,9 @@ export interface SqliteQuery {
   readonly options?: SqliteQueryOptions;
 }
 
+/** Serialized {@link SqliteQuery} used as a stable string key. */
+export type SqliteQueryString = string & Brand<"SqliteQueryString">;
+
 /** A sanitized SQL string for {@link SqliteQuery}. */
 export type SafeSql = string & Brand<"SafeSql">;
 
@@ -124,6 +128,48 @@ export interface SqliteQueryOptions {
    */
   readonly prepare?: boolean;
 }
+
+/** Converts a {@link SqliteQuery} into a stable {@link SqliteQueryString}. */
+export const sqliteQueryToSqliteQueryString = (
+  query: SqliteQuery,
+): SqliteQueryString => {
+  const params = query.parameters.map((value) =>
+    value instanceof globalThis.Uint8Array
+      ? (["b", bytesToHex(value)] as const)
+      : (["j", value] as const),
+  );
+
+  const options = query.options
+    ? objectToEntries(query.options).toSorted(([a], [b]) => a.localeCompare(b))
+    : [];
+
+  return JSON.stringify([query.sql, params, options]) as SqliteQueryString;
+};
+
+/** Converts a {@link SqliteQueryString} back into a {@link SqliteQuery}. */
+export const sqliteQueryStringToSqliteQuery = (
+  query: SqliteQueryString,
+): SqliteQuery => {
+  const [sql, paramsArr, optionsArr] = JSON.parse(query) as [
+    SafeSql,
+    Array<readonly ["b", string] | readonly ["j", string | number | null]>,
+    Array<Array<string | number | null>>,
+  ];
+
+  const parameters = paramsArr.map(([type, value]) =>
+    type === "b" ? hexToBytes(value) : value,
+  );
+
+  const options = optionsArr.length
+    ? (Object.fromEntries(optionsArr) as SqliteQueryOptions)
+    : undefined;
+
+  return {
+    sql,
+    parameters,
+    ...(options !== undefined && { options }),
+  };
+};
 
 /** Result of executing a SQLite query. */
 export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {

@@ -1,10 +1,8 @@
 import { ColumnNode, type SelectQueryNode } from "kysely";
 import { expect, test } from "vitest";
-import { createQueryBuilder } from "../../src/local-first/Schema.js";
-import type { Row } from "../../src/local-first/Query.js";
+import type { Query, Row } from "../../src/local-first/Query.js";
 import {
   applyPatches,
-  deserializeQuery,
   evoluJsonArrayFrom,
   evoluJsonBuildObject,
   evoluJsonObjectFrom,
@@ -12,11 +10,9 @@ import {
   kyselyJsonIdentifier,
   kyselySql,
   makePatches,
-  serializeQuery,
-  testQuery,
-  testQuery2,
 } from "../../src/local-first/Query.js";
-import { sql, type SafeSql, type SqliteQuery } from "../../src/Sqlite.js";
+import { createQueryBuilder } from "../../src/local-first/Schema.js";
+import { sqliteQueryStringToSqliteQuery } from "../../src/Sqlite.js";
 import { id, NonEmptyString100 } from "../../src/Type.js";
 
 const PersonId = id("Person");
@@ -36,11 +32,25 @@ const QuerySchema = {
 
 const createQuery = createQueryBuilder(QuerySchema);
 
-test("Query", () => {
-  const query1 = serializeQuery<{ a: 1 }>(sql`select "a" as "kind";`);
-  const query2 = serializeQuery<{ b: 1 }>(sql`select "b" as "kind";`);
+const NoteId = id("Note");
+const AnotherQuerySchema = {
+  note: {
+    id: NoteId,
+    title: NonEmptyString100,
+  },
+};
 
-  // Ensure query1 and query2 are treated as different types
+const createAnotherQuery = createQueryBuilder(AnotherQuerySchema);
+
+test("Query", () => {
+  const query1 = createQuery((db) =>
+    db.selectFrom("person").select(["id", "name"]),
+  );
+  const query2 = createAnotherQuery((db) =>
+    db.selectFrom("note").select(["id", "title"]),
+  );
+
+  // Ensure queries from different schemas are not assignable.
   // @ts-expect-error - query1 should not be assignable to query2
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const shouldError: typeof query2 = query1;
@@ -54,48 +64,8 @@ test("Query", () => {
   const validQuery1: typeof query1 = query1;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const validQuery2: typeof query2 = query2;
-});
-
-test("testQuery placeholders", () => {
-  expect(deserializeQuery(testQuery).sql).toBe('select "test" as "query";');
-  expect(deserializeQuery(testQuery2).sql).toBe('select "test-2" as "query";');
-  expect(testQuery).not.toBe(testQuery2);
-});
-
-test("serializeQuery and deserializeQuery", () => {
-  const binaryData = new Uint8Array([1, 3, 2]);
-  const sqlQuery: SqliteQuery = {
-    sql: "a" as SafeSql,
-    parameters: [null, "a", 1, binaryData],
-  };
-
-  expect(deserializeQuery(serializeQuery(sqlQuery))).toStrictEqual(sqlQuery);
-});
-
-test("serializeQuery sorts options and deserializeQuery restores them", () => {
-  const sqlQuery: SqliteQuery = {
-    sql: "select 1" as SafeSql,
-    parameters: [],
-    options: {
-      prepare: true,
-      logQueryExecutionTime: true,
-      logExplainQueryPlan: true,
-    },
-  };
-
-  const serialized = serializeQuery(sqlQuery);
-  const [, , optionsArr] = JSON.parse(serialized) as [
-    SafeSql,
-    Array<unknown>,
-    Array<readonly [string, unknown]>,
-  ];
-
-  expect(optionsArr.map(([key]) => key)).toEqual([
-    "logExplainQueryPlan",
-    "logQueryExecutionTime",
-    "prepare",
-  ]);
-  expect(deserializeQuery(serialized)).toStrictEqual(sqlQuery);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const validSchemaQuery: Query<typeof QuerySchema> = query1;
 });
 
 test("evoluJsonArrayFrom compiles a prefixed SQLite JSON array query", () => {
@@ -113,7 +83,7 @@ test("evoluJsonArrayFrom compiles a prefixed SQLite JSON array query", () => {
       ]),
   );
 
-  const sqlQuery = deserializeQuery(query);
+  const sqlQuery = sqliteQueryStringToSqliteQuery(query);
 
   expect(sqlQuery.sql).toContain("json_group_array(json_object(");
   expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);
@@ -137,7 +107,7 @@ test("evoluJsonObjectFrom compiles a prefixed SQLite JSON object query", () => {
       ]),
   );
 
-  const sqlQuery = deserializeQuery(query);
+  const sqlQuery = sqliteQueryStringToSqliteQuery(query);
 
   expect(sqlQuery.sql).toContain("json_object(");
   expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);
@@ -155,7 +125,7 @@ test("evoluJsonBuildObject compiles a prefixed SQLite json_object expression", (
     ]),
   );
 
-  const sqlQuery = deserializeQuery(query);
+  const sqlQuery = sqliteQueryStringToSqliteQuery(query);
 
   expect(sqlQuery.sql).toContain("json_object(");
   expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);

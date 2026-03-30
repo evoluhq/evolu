@@ -1,9 +1,14 @@
 /* eslint-disable evolu/require-pure-annotation */
+import { sql as kyselySql } from "kysely";
 import {
   createAppOwner,
   createOwnerSecret,
   ownerIdToOwnerIdBytes,
 } from "../../src/index.js";
+import {
+  createQueryBuilder,
+  type EvoluSchema,
+} from "../../src/local-first/Schema.js";
 import {
   Counter,
   createTimestamp,
@@ -15,6 +20,7 @@ import {
 } from "../../src/local-first/Timestamp.js";
 import { testCreateDeps } from "../../src/Test.js";
 import { maxMillis, Millis } from "../../src/Time.js";
+import { id, String } from "../../src/Type.js";
 
 const deps = testCreateDeps();
 
@@ -89,3 +95,27 @@ export const testAppOwner2Secret = createOwnerSecret({
 });
 export const testAppOwner2 = createAppOwner(testAppOwner2Secret);
 export const testAppOwner2IdBytes = ownerIdToOwnerIdBytes(testAppOwner2.id);
+
+const TestRowId = id("TestRow");
+
+export const testEvoluSchema = {
+  test: {
+    id: TestRowId,
+    value: String,
+  },
+} satisfies EvoluSchema;
+
+const createTestQuery = createQueryBuilder(testEvoluSchema);
+
+export const testQueries = [
+  createTestQuery((db) =>
+    db.selectFrom("test").select(() => [kyselySql<string>`"test"`.as("query")]),
+  ),
+  createTestQuery((db) =>
+    db
+      .selectFrom("test")
+      .select(() => [kyselySql<string>`"test-2"`.as("query")]),
+  ),
+] as const;
+
+export const [testQuery, testQuery2] = testQueries;

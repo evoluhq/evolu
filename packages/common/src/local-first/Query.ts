@@ -7,29 +7,29 @@
 import type {
   AliasableExpression,
   Expression,
+  Simplify as KyselySimplify,
   RawBuilder,
   SelectQueryNode,
-  Simplify as KyselySimplify,
 } from "kysely";
 import {
   AliasNode,
   ColumnNode,
   ExpressionWrapper,
   IdentifierNode,
-  ReferenceNode,
   sql as kyselySqlBuilder,
+  ReferenceNode,
   TableNode,
   ValueNode,
 } from "kysely";
 import type { Brand } from "../Brand.js";
-import { bytesToHex, hexToBytes } from "../Buffer.js";
 import { createRandomBytes } from "../Crypto.js";
 import type { ReadonlyRecord } from "../Object.js";
-import { createRecord, isPlainObject, objectToEntries } from "../Object.js";
-import type { SafeSql, SqliteQuery, SqliteQueryOptions } from "../Sqlite.js";
-import { eqSqliteValue, sql, SqliteValue } from "../Sqlite.js";
+import { createRecord, isPlainObject } from "../Object.js";
+import type { SqliteQueryString } from "../Sqlite.js";
+import { eqSqliteValue, SqliteValue } from "../Sqlite.js";
 import { createId, String } from "../Type.js";
 import type { Simplify } from "../Types.js";
+import type { EvoluSchema } from "./Schema.js";
 
 export { sql as kyselySql } from "kysely";
 export type { NotNull as KyselyNotNull } from "kysely";
@@ -45,8 +45,14 @@ export type { NotNull as KyselyNotNull } from "kysely";
  * type AllTodosRow = typeof allTodos.Row;
  * ```
  */
-export type Query<R extends Row = Row> = string &
+export type Query<
+  S extends EvoluSchema = EvoluSchema,
+  R extends Row = Row,
+> = SqliteQueryString &
   Brand<"Query"> & {
+    /** A shorthand for the query schema. */
+    Schema: S;
+
     /**
      * A shorthand for {@link InferRow}.
      *
@@ -63,62 +69,8 @@ export type Query<R extends Row = Row> = string &
     Row: R;
   };
 
-/**
- * Evolu serializes {@link SqliteQuery} into a string to be easily used as a key
- * and for comparison.
- */
-export const serializeQuery = <R extends Row>(query: SqliteQuery): Query<R> => {
-  const params = query.parameters.map((v) =>
-    v instanceof Uint8Array
-      ? (["b", bytesToHex(v)] as const)
-      : (["j", v] as const),
-  );
-
-  const options = query.options
-    ? objectToEntries(query.options).toSorted(([a], [b]) => a.localeCompare(b))
-    : [];
-
-  return JSON.stringify([query.sql, params, options]) as Query<R>;
-};
-
-/** A default {@link Query} placeholder for tests. */
-export const testQuery = /*#__PURE__*/ serializeQuery(sql`
-  select "test" as "query";
-`);
-
-/**
- * A secondary {@link Query} placeholder for tests that need two distinct
- * queries.
- */
-export const testQuery2 = /*#__PURE__*/ serializeQuery(sql`
-  select "test-2" as "query";
-`);
-
-export const deserializeQuery = <R extends Row>(
-  query: Query<R>,
-): SqliteQuery => {
-  const [sql, paramsArr, optionsArr] = JSON.parse(query) as [
-    SafeSql,
-    Array<readonly ["b", string] | readonly ["j", string | number | null]>,
-    Array<Array<string | number | null>>,
-  ];
-
-  const parameters = paramsArr.map(([type, value]) =>
-    type === "b" ? hexToBytes(value) : value,
-  );
-
-  const options = optionsArr.length
-    ? (Object.fromEntries(optionsArr) as SqliteQueryOptions)
-    : undefined;
-
-  return {
-    sql,
-    parameters,
-    ...(options !== undefined && { options }),
-  };
-};
-
-export type InferRow<T extends Query> = T extends Query<infer R> ? R : never;
+export type InferRow<T extends Query> =
+  T extends Query<any, infer R> ? R : never;
 
 export interface Row {
   readonly [key: string]:
@@ -283,17 +235,25 @@ export type QueryRows<R extends Row = Row> = ReadonlyArray<
   Readonly<Simplify<R>>
 >;
 
-export type Queries<R extends Row = Row> = ReadonlyArray<Query<R>>;
+export type Queries<
+  S extends EvoluSchema = EvoluSchema,
+  R extends Row = Row,
+> = ReadonlyArray<Query<S, R>>;
 
 export type QueriesToQueryRows<Q extends Queries> = {
-  [P in keyof Q]: Q[P] extends Query<infer R> ? QueryRows<R> : never;
+  [P in keyof Q]: Q[P] extends Query<any, infer R> ? QueryRows<R> : never;
 };
 
 export type QueriesToQueryRowsPromises<Q extends Queries> = {
-  [P in keyof Q]: Q[P] extends Query<infer R> ? Promise<QueryRows<R>> : never;
+  [P in keyof Q]: Q[P] extends Query<any, infer R>
+    ? Promise<QueryRows<R>>
+    : never;
 };
 
-export type RowsByQueryMap = ReadonlyMap<Query, ReadonlyArray<Row>>;
+export type RowsByQueryMap<S extends EvoluSchema = EvoluSchema> = ReadonlyMap<
+  Query<S>,
+  ReadonlyArray<Row>
+>;
 
 export type Patch = ReplaceAllPatch | ReplaceAtPatch;
 
