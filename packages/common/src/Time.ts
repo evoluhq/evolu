@@ -20,8 +20,11 @@ import type {
 
 /** Time and timer operations. */
 export interface Time {
-  /** Returns current time in milliseconds. */
+  /** Returns current time as Unix epoch milliseconds. */
   readonly now: () => Millis;
+
+  /** Returns current time as an ISO 8601 UTC string. */
+  readonly nowDateIso: () => DateIso;
 
   /** Schedules a callback after the specified delay. */
   readonly setTimeout: (fn: () => void, delay: Duration) => TimeoutId;
@@ -47,19 +50,25 @@ export type TimeoutId = Brand<"TimeoutId">;
  * Throws if the system clock returns an out-of-range value. This is intentional
  * — there's no reasonable fallback for a misconfigured clock.
  */
-export const createTime = (): Time => ({
-  now: () => Millis.orThrow(globalThis.Date.now()),
+export const createTime = (): Time => {
+  const getNowMillis = (): Millis => Millis.orThrow(globalThis.Date.now());
 
-  setTimeout: (callback, delay) =>
-    globalThis.setTimeout(
-      callback,
-      durationToMillis(delay),
-    ) as unknown as TimeoutId,
+  return {
+    now: () => getNowMillis(),
 
-  clearTimeout: (id) => {
-    globalThis.clearTimeout(id as unknown as number);
-  },
-});
+    nowDateIso: () => millisToDateIso(getNowMillis()),
+
+    setTimeout: (callback, delay) =>
+      globalThis.setTimeout(
+        callback,
+        durationToMillis(delay),
+      ) as unknown as TimeoutId,
+
+    clearTimeout: (id) => {
+      globalThis.clearTimeout(id as unknown as number);
+    },
+  };
+};
 
 /**
  * Test {@link Time} with controllable timers.
@@ -96,16 +105,20 @@ export const testCreateTime = (options?: {
 
   const pending = new Map<number, { callback: () => void; runAt: number }>();
 
+  const getNowMillis = (): Millis => {
+    const result = now;
+    if (autoIncrement) {
+      queueMicrotask(() => {
+        now = Millis.orThrow(now + 1);
+      });
+    }
+    return result;
+  };
+
   return {
-    now: () => {
-      const result = now;
-      if (autoIncrement) {
-        queueMicrotask(() => {
-          now = Millis.orThrow(now + 1);
-        });
-      }
-      return result;
-    },
+    now: () => getNowMillis(),
+
+    nowDateIso: () => millisToDateIso(getNowMillis()),
 
     setTimeout: (callback, delay) => {
       const id = nextId++;

@@ -20,6 +20,15 @@ describe("Time", () => {
       expect(time.now()).toBeLessThanOrEqual(now + 10);
     });
 
+    test("nowDateIso returns current time as ISO string", () => {
+      const time = createTime();
+      const result = time.nowDateIso();
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      const parsed = Date.parse(result);
+      expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
+      expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
+    });
+
     test("millisToDateIso returns current time as ISO string", () => {
       const time = createTime();
       const result = millisToDateIso(time.now());
@@ -109,11 +118,34 @@ describe("Time", () => {
       expect(third).toBe(2);
     });
 
+    test("nowDateIso respects autoIncrement", async () => {
+      const time = testCreateTime({
+        autoIncrement: true,
+        startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
+      });
+
+      const first = time.nowDateIso();
+
+      await Promise.resolve();
+
+      const second = time.nowDateIso();
+
+      expect(first).toBe("2026-01-28T14:30:00.000Z");
+      expect(second).toBe("2026-01-28T14:30:00.001Z");
+    });
+
     test("millisToDateIso returns ISO string for current time", () => {
       const time = testCreateTime({
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
       });
       expect(millisToDateIso(time.now())).toBe("2026-01-28T14:30:00.000Z");
+    });
+
+    test("nowDateIso returns ISO string for current time", () => {
+      const time = testCreateTime({
+        startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
+      });
+      expect(time.nowDateIso()).toBe("2026-01-28T14:30:00.000Z");
     });
 
     test("setTimeout fires callback when time is advanced past deadline", () => {
