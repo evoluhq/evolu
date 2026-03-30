@@ -32,6 +32,7 @@ import {
   sql,
   SqliteBoolean,
   sqliteBooleanToBoolean,
+  sqliteQueryStringToSqliteQuery,
   SqliteValue,
 } from "../Sqlite.js";
 import { type LeaderLockDep, type Task } from "../Task.js";
@@ -65,7 +66,7 @@ import {
   type ProtocolMessage,
   type ProtocolTimestampMismatchError,
 } from "./Protocol.js";
-import { deserializeQuery, type Query, type RowsByQueryMap } from "./Query.js";
+import type { Query, RowsByQueryMap } from "./Query.js";
 import type { MutationChange, SqliteSchemaDep } from "./Schema.js";
 import {
   ensureSqliteSchema,
@@ -110,6 +111,7 @@ export interface DbWorkerInit {
   readonly consoleLevel: ConsoleLevel;
   readonly sqliteSchema: SqliteSchema;
   readonly encryptionKey: EncryptionKey;
+  readonly memoryOnly: boolean;
   readonly port: NativeMessagePort<DbWorkerOutput, DbWorkerInput>;
 }
 
@@ -143,6 +145,7 @@ export const initDbWorker =
       consoleLevel,
       sqliteSchema,
       encryptionKey,
+      memoryOnly,
       port: nativeLeaderPort,
     }) => {
       assert(!initialized, "DbWorker must be initialized only once");
@@ -173,7 +176,7 @@ export const initDbWorker =
         return run.addDeps({
           port,
           timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-        })(startDbWorker(name, sqliteSchema, encryptionKey));
+        })(startDbWorker(name, sqliteSchema, encryptionKey, memoryOnly));
       });
     };
 
@@ -185,6 +188,7 @@ const startDbWorker =
     name: Name,
     sqliteSchema: SqliteSchema,
     encryptionKey: EncryptionKey,
+    memoryOnly: boolean,
   ): Task<
     globalThis.AsyncDisposableStack,
     never,
@@ -197,7 +201,10 @@ const startDbWorker =
     console.info("startDbWorker");
 
     const sqliteResult = await run(
-      createSqlite(name, { mode: "encrypted", encryptionKey }),
+      createSqlite(
+        name,
+        memoryOnly ? { mode: "memory" } : { mode: "encrypted", encryptionKey },
+      ),
     );
     if (!sqliteResult.ok) return sqliteResult;
     const sqlite = stack.use(sqliteResult.value);
@@ -985,7 +992,7 @@ const loadQueries =
     const rowsByQuery = new Map<Query, ReadonlyArray<SqliteRow>>();
 
     for (const query of queries) {
-      const { rows } = deps.sqlite.exec(deserializeQuery(query));
+      const { rows } = deps.sqlite.exec(sqliteQueryStringToSqliteQuery(query));
       rowsByQuery.set(query, rows);
     }
 

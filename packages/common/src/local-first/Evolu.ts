@@ -19,7 +19,7 @@ import { createCallbacks } from "../Callbacks.js";
 import type { ConsoleDep } from "../Console.js";
 import { createConsole } from "../Console.js";
 import { createUnknownError } from "../Error.js";
-import { exhaustiveCheck } from "../Function.js";
+import { exhaustiveCheck, todo } from "../Function.js";
 import { createMicrotaskBatch } from "../Microtask.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { createRefCountByKey } from "../RefCount.js";
@@ -49,11 +49,7 @@ import type {
   ReadonlyOwner,
   SyncOwner,
 } from "./Owner.js";
-import {
-  createAppOwner,
-  createOwnerSecret,
-  createOwnerWebSocketTransport,
-} from "./Owner.js";
+import { createOwnerWebSocketTransport } from "./Owner.js";
 import type {
   Queries,
   QueriesToQueryRowsPromises,
@@ -88,10 +84,11 @@ export interface EvoluConfig {
    * concurrently. The same app can have multiple instances for different
    * accounts.
    *
-   * Evolu derives the final instance name from `appName` and `appOwner`. The
-   * derived instance name is used as the SQLite database filename and as the
-   * log prefix. This ensures that each Owner gets a separate local database
-   * while preserving a readable app prefix.
+   * Evolu derives the final instance name from `appName` and `appOwner` in
+   * {@link EvoluConfig}. The derived instance name is used as the SQLite
+   * database filename and as the log prefix. This ensures that each
+   * {@link Owner} gets a separate local database while preserving a readable app
+   * prefix.
    *
    * ### Example
    *
@@ -122,7 +119,7 @@ export interface EvoluConfig {
    *   SecureStore, WebAuthn-backed storage, or app-managed account recovery
    *   flow).
    */
-  readonly appOwner?: AppOwner;
+  readonly appOwner: AppOwner;
 
   /**
    * Transport configuration for sync and backup.
@@ -186,15 +183,16 @@ export interface EvoluConfig {
   readonly transports?: ReadonlyArray<OwnerTransport>;
 
   /**
-   * Use in-memory SQLite database instead of persistent storage. Useful for
-   * testing or temporary data that doesn't need persistence.
+   * Keep local data only in memory instead of persisting it on this device.
+   * Useful for testing, temporary data, or sensitive data that should not be
+   * recoverable from local storage after the process ends.
    *
-   * In-memory databases exist only in RAM and are completely destroyed when the
-   * process ends, making them forensically safe for sensitive data.
+   * Local data stored in memory is completely destroyed when the process ends.
+   * Sync can still persist data remotely when transports are enabled.
    *
    * The default value is: `false`.
    */
-  readonly inMemory?: boolean;
+  readonly memoryOnly?: boolean;
 
   /**
    * Use the `indexes` option to define SQLite indexes.
@@ -218,12 +216,21 @@ export interface EvoluConfig {
    */
   readonly indexes?: IndexesConfig;
 
-  // /**
-  //  * URL to reload browser tabs after reset or restore.
-  //  *
-  //  * The default value is `/`.
-  //  */
-  // readonly reloadAppUrl?: string;
+  /**
+   * Called when this instance's local database is deleted.
+   *
+   * Apps can use this to update UI immediately because the corresponding
+   * {@link Evolu} instance becomes unusable after local database deletion.
+   */
+  readonly onDatabaseDeleted?: () => void;
+
+  /**
+   * Called when local data for an {@link Owner} is deleted.
+   *
+   * Apps can use this to update UI immediately because that owner stops being
+   * used across tabs and instances.
+   */
+  readonly onOwnerDeleted?: (owner: Owner) => void;
 }
 
 /**
@@ -364,7 +371,9 @@ export interface Evolu<
    * });
    * ```
    */
-  readonly loadQuery: <R extends Row>(query: Query<R>) => Promise<QueryRows<R>>;
+  readonly loadQuery: <R extends Row>(
+    query: Query<S, R>,
+  ) => Promise<QueryRows<R>>;
 
   /**
    * Load an array of {@link Query} queries and return an array of
@@ -377,7 +386,7 @@ export interface Evolu<
    * evolu.loadQueries([allTodos, todoById(1)]);
    * ```
    */
-  readonly loadQueries: <R extends Row, Q extends Queries<R>>(
+  readonly loadQueries: <Q extends Queries<S>>(
     queries: [...Q],
   ) => [...QueriesToQueryRowsPromises<Q>];
 
@@ -393,7 +402,7 @@ export interface Evolu<
    * ```
    */
   readonly subscribeQuery: (
-    query: Query,
+    query: Query<S>,
   ) => (listener: Listener) => Unsubscribe;
 
   /**
@@ -407,7 +416,7 @@ export interface Evolu<
    * });
    * ```
    */
-  readonly getQueryRows: <R extends Row>(query: Query<R>) => QueryRows<R>;
+  readonly getQueryRows: <R extends Row>(query: Query<S, R>) => QueryRows<R>;
 
   /**
    * Exports the SQLite database file.
@@ -421,6 +430,34 @@ export interface Evolu<
   readonly exportDatabase: () => Promise<Uint8Array<ArrayBuffer>>;
 
   // TODO: Add exportHistory.
+
+  /**
+   * Delete the local SQLite database for this {@link Evolu} instance on the
+   * current device.
+   *
+   * **Warning**: This first drops all tables. “The dropped table is completely
+   * removed from the database schema and the disk file. The table can not be
+   * recovered. All indices and triggers associated with the table are also
+   * deleted.” https://sqlite.org/lang_droptable.html
+   *
+   * After that, it deletes the SQLite file identified by {@link Evolu.name},
+   * permanently forgetting all local data for that instance on this device.
+   *
+   * All instances identified by {@link Evolu.name} will be self-disposed. Use
+   * {@link EvoluConfig.onDatabaseDeleted} to update app UI when that happens.
+   */
+  readonly deleteDatabase: () => void;
+
+  /**
+   * Delete all local data for a specific {@link Owner}.
+   *
+   * This deletes all rows whose `ownerId` matches the provided owner and
+   * deletes that owner's local history as well.
+   *
+   * It also stops using that owner across all tabs and instances. Use
+   * {@link EvoluConfig.onOwnerDeleted} to update app UI when that happens.
+   */
+  readonly deleteOwner: (owner: Owner) => void;
 
   /**
    * Use an Owner for sync. Returns a {@link UnuseOwner}.
@@ -545,11 +582,13 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
           evoluError.set(createUnknownError(message.entry.args));
         }
         break;
+
       case "OnError":
         evoluError.set(message.error);
         // Keep typed errors visible in logs as operational failures.
         console.error(message.error);
         break;
+
       default:
         exhaustiveCheck(message);
     }
@@ -585,7 +624,8 @@ export const createEvolu =
   async (run) => {
     const {
       appName,
-      appOwner = createAppOwner(createOwnerSecret(run.deps)),
+      appOwner,
+      memoryOnly = false,
       transports = [{ type: "WebSocket", url: "wss://free.evoluhq.com" }],
     } = config;
 
@@ -836,6 +876,7 @@ export const createEvolu =
           consoleLevel: console.getLevel(),
           sqliteSchema: evoluSchemaToSqliteSchema(schema, config.indexes),
           encryptionKey: appOwner.encryptionKey,
+          memoryOnly,
           port: dbWorkerChannel.port1.native,
         },
         [dbWorkerChannel.port1.native],
@@ -885,7 +926,7 @@ export const createEvolu =
       };
 
     const loadQuery = <R extends Row>(
-      query: Query<R>,
+      query: Query<S, R>,
     ): Promise<QueryRows<R>> => {
       assertNotDisposed(moved);
 
@@ -909,7 +950,7 @@ export const createEvolu =
       return typedPromise as Promise<QueryRows<R>>;
     };
 
-    const getQueryRows = <R extends Row>(query: Query<R>): QueryRows<R> => {
+    const getQueryRows = <R extends Row>(query: Query<S, R>): QueryRows<R> => {
       assertNotDisposed(moved);
 
       return (rowsByQueryMapStore.get().get(query) ??
@@ -963,7 +1004,7 @@ export const createEvolu =
       upsert: createMutation("upsert"),
 
       loadQuery,
-      loadQueries: <R extends Row, Q extends Queries<R>>(
+      loadQueries: <Q extends Queries<S>>(
         queries: [...Q],
       ): [...QueriesToQueryRowsPromises<Q>] =>
         queries.map((query) => loadQuery(query)) as [
@@ -974,6 +1015,7 @@ export const createEvolu =
         assertNotDisposed(moved);
 
         subscribedQueriesRefCount.increment(query);
+        let isSubscribed = true;
 
         let previousRows: unknown = null;
 
@@ -985,8 +1027,17 @@ export const createEvolu =
         });
 
         return () => {
+          assert(
+            isSubscribed,
+            "subscribeQuery unsubscribe can be called only once.",
+          );
+          isSubscribed = false;
+
           previousRows = null;
           unsubscribe();
+
+          if (moved.disposed) return;
+
           subscribedQueriesRefCount.decrement(query);
         };
       },
@@ -1001,6 +1052,17 @@ export const createEvolu =
           postMessage({ type: "Export" });
         }
         return exportDatabasePending.promise;
+      },
+
+      deleteDatabase: () => {
+        assertNotDisposed(moved);
+        todo();
+      },
+
+      deleteOwner: (owner) => {
+        assertNotDisposed(moved);
+        void owner;
+        todo();
       },
 
       useOwner,
