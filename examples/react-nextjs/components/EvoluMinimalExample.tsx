@@ -1,7 +1,7 @@
 "use client";
 
 import * as Evolu from "@evolu/common";
-import { createUseEvolu, EvoluProvider, useQuery } from "@evolu/react";
+import { createEvoluBinding } from "@evolu/react";
 import { evoluReactWebDeps } from "@evolu/react-web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import clsx from "clsx";
@@ -33,8 +33,7 @@ const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
   // }),
 });
 
-// Creates a typed React Hook returning an instance of Evolu.
-const useEvolu = createUseEvolu(evolu);
+const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(Schema);
 
 /**
  * Subscribe to unexpected Evolu errors (database, network, sync issues). These
@@ -60,7 +59,7 @@ export const EvoluMinimalExample: FC = () => {
           </h1>
         </div>
 
-        <EvoluProvider value={evolu}>
+        <EvoluContext value={evolu}>
           {/*
             Suspense delivers great UX (no loading flickers) and DX (no loading
             states to manage). Highly recommended with Evolu.
@@ -69,7 +68,7 @@ export const EvoluMinimalExample: FC = () => {
             <Todos />
             <OwnerActions />
           </Suspense>
-        </EvoluProvider>
+        </EvoluContext>
       </div>
     </div>
   );

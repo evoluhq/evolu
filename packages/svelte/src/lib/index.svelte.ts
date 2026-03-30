@@ -56,7 +56,7 @@ export const evoluSvelteDeps = createEvoluDeps();
 export const queryState = <
   R extends Row,
   Schema extends EvoluSchema,
-  MappedRow = InferRow<Query<R>>,
+  MappedRow = InferRow<Query<Schema, R>>,
 >(
   evolu: Evolu<Schema>,
   /**
@@ -65,7 +65,7 @@ export const queryState = <
    * Svelte reactivity: it needs to be a callback, if the query is $derived this
    * will re-trigger the load/subscription based on the new query.
    */
-  observedQuery: () => Query<R> | undefined,
+  observedQuery: () => Query<Schema, R> | undefined,
   options?: {
     /**
      * This is a little helper so that you can map the results instead of using

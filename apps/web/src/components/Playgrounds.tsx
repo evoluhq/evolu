@@ -8,8 +8,13 @@ const playgrounds = [
   },
   {
     name: "Full-Featured",
-    description: "A comprehensive playground with all features.",
+    description: "A playground with many features.",
     href: "/playgrounds/full",
+  },
+  {
+    name: "Multitenant",
+    description: "A playground demonstrating device and app-owner flows.",
+    href: "/playgrounds/multitenant",
   },
 ];
 

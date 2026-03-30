@@ -1,6 +1,6 @@
 import Alert from "@blazejkustra/react-native-alert";
 import * as Evolu from "@evolu/common";
-import { createEvoluContext, useQuery } from "@evolu/react";
+import { createEvoluBinding } from "@evolu/react";
 import { createRun } from "@evolu/react-native";
 import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
 import { Suspense, use, useState, type FC } from "react";
@@ -55,6 +55,8 @@ const todosQuery = createQuery((db) =>
 // Extract the row type from the query for type-safe component props.
 type TodosRow = typeof todosQuery.Row;
 
+const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(AppSchema);
+
 const console = Evolu.createConsole({
   // level: "debug",
   formatter: Evolu.createConsoleFormatter()({ timestampFormat: "relative" }),
@@ -80,7 +82,7 @@ deps.evoluError.subscribe(() => {
 const run = createRun(deps);
 
 // Create Evolu App.
-const app = run(
+const evoluFiber = run.orThrow(
   Evolu.createEvolu(AppSchema, {
     appName: Evolu.AppName.orThrow("minimal-example"),
     appOwner: Evolu.testAppOwner,
@@ -90,8 +92,6 @@ const app = run(
     }),
   }),
 );
-
-const [App, AppProvider] = createEvoluContext(app);
 
 /** Trims user input and validates it as a todo title. */
 const parseTodoTitle = (value: string) =>
@@ -111,20 +111,11 @@ export default function Index() {
             <Text style={styles.title}>Minimal Todo App (Evolu + Expo)</Text>
           </View>
           <Suspense>
-            <AppProvider>
-              {/*
-                Suspense delivers great UX (no loading flickers) and DX (no loading
-                states to manage). Highly recommended with Evolu.
-              */}
-              <Todos />
-              <OwnerActions />
-
-              {/*
-                TODO: Auth and multi-owner related UI stays commented for now.
-                Port this section after the base context migration is complete.
-              */}
-              {/* <AuthActions /> */}
-            </AppProvider>
+            {/*
+              Suspense delivers great UX (no loading flickers) and DX (no loading
+              states to manage). Highly recommended with Evolu.
+            */}
+            <App />
           </Suspense>
         </View>
       </ScrollView>
@@ -132,10 +123,23 @@ export default function Index() {
   );
 }
 
+const App: FC = () => (
+  <EvoluContext value={use(evoluFiber)}>
+    <Todos />
+    <OwnerActions />
+
+    {/*
+      TODO: Auth and multi-owner related UI stays commented for now.
+      Port this section after the base context migration is complete.
+    */}
+    {/* <AuthActions /> */}
+  </EvoluContext>
+);
+
 const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
   const todos = useQuery(todosQuery);
-  const { insert } = use(App);
+  const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
   const handleAddTodo = () => {
@@ -194,7 +198,7 @@ const Todos: FC = () => {
 const TodoItem: FC<{
   row: TodosRow;
 }> = ({ row: { id, title, isCompleted } }) => {
-  const { update } = use(App);
+  const { update } = useEvolu();
 
   const handleToggleCompletedPress = () => {
     update("todo", {
@@ -275,7 +279,7 @@ const TodoItem: FC<{
 };
 
 const OwnerActions: FC = () => {
-  const evolu = use(App);
+  const evolu = useEvolu();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   // Restore owner from mnemonic to sync data across devices.
@@ -619,8 +623,8 @@ const formatTypeError = Evolu.createFormatTypeError<
   kept out of the active implementation for now.
 
   We already migrated the core todo flow to:
-  - createEvoluContext(app)
-  - use(App)
+  - EvoluContext with use(evoluFiber)
+  - useEvolu()
 
   Port passkeys, owner profiles, and related actions in a follow-up change.
 */

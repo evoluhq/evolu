@@ -30,7 +30,7 @@ import {
   type Result,
   type Typed,
 } from "@evolu/common";
-import { createEvoluContext, useQueries, useQuery } from "@evolu/react";
+import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
@@ -97,32 +97,31 @@ const AppSchema = {
 
 const createQuery = createQueryBuilder(AppSchema);
 
-// TODO: createRunWithEvoluDeps()
-
 const console = createConsole({
   level: "debug",
   formatter: createConsoleFormatter()({ timestampFormat: "relative" }),
 });
 
-// Create Evolu dependencies for React Web.
-const deps = createEvoluDeps({ console });
+// Create Run with dependencies for React Web.
+const run = createRun(createEvoluDeps({ console }));
 
 /**
  * `evoluError` is shared by all Evolu instances created from this `deps`.
  * Subscribe once for user-facing error messages. Logging is handled by platform
  * `createRun` global error handlers.
  */
-deps.evoluError.subscribe(() => {
-  const error = deps.evoluError.get();
+run.deps.evoluError.subscribe(() => {
+  const error = run.deps.evoluError.get();
   if (!error) return;
 
   alert("🚨 Evolu error occurred! Check the console.");
 });
 
-const run = createRun(deps);
+const { EvoluContext, useEvolu, useQuery, useQueries } =
+  createEvoluBinding(AppSchema);
 
 // Create Evolu App.
-const app = run(
+const evoluFiber = run.orThrow(
   createEvolu(AppSchema, {
     appName: AppName.orThrow("full-example"),
     appOwner: testAppOwner,
@@ -143,18 +142,24 @@ const app = run(
   }),
 );
 
-const [AppContext, AppProvider] = createEvoluContext(app);
-
 export const EvoluFullExample: FC = () => (
   <div className="min-h-screen px-8 py-8">
     <div className="mx-auto max-w-md min-w-sm md:min-w-md">
-      <AppProvider>
-        <Suspense>
-          <App />
-        </Suspense>
-      </AppProvider>
+      <Suspense>
+        {/*
+          Suspense delivers great UX (no loading flickers) and DX (no loading
+          states to manage). Highly recommended with Evolu.
+        */}
+        <Root />
+      </Suspense>
     </div>
   </div>
+);
+
+const Root: FC = () => (
+  <EvoluContext value={use(evoluFiber)}>
+    <App />
+  </EvoluContext>
 );
 
 const App: FC = () => {
@@ -316,7 +321,7 @@ const HomeTabProject: FC<{
   todos: ProjectsWithTodosRow["todos"];
   projects: ReadonlyArray<ProjectsRow>;
 }> = ({ project, todos, projects }) => {
-  const { insert } = use(AppContext);
+  const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
   const addTodo = () => {
@@ -390,7 +395,7 @@ const HomeTabProjectSectionTodoItem: FC<{
   row: ProjectsWithTodosRow["todos"][number];
   projects: ReadonlyArray<ProjectsRow>;
 }> = ({ row: { id, title, isCompleted, projectId }, projects }) => {
-  const { update } = use(AppContext);
+  const { update } = useEvolu();
 
   const handleToggleCompletedClick = () => {
     // No need to check result if a mutation can't fail.
@@ -553,7 +558,7 @@ const ProjectsTab: FC = () => {
 };
 
 const useAddProject = () => {
-  const { insert } = use(AppContext);
+  const { insert } = useEvolu();
 
   return () => {
     const parsedName = promptStringWithAlert(
@@ -576,7 +581,7 @@ const useAddProject = () => {
 const ProjectsTabProjectItem: FC<{
   project: ProjectsRow;
 }> = ({ project }) => {
-  const { update } = use(AppContext);
+  const { update } = useEvolu();
 
   const handleRenameClick = () => {
     const parsedName = promptStringWithAlert(
@@ -646,7 +651,7 @@ const ProjectsTabProjectItem: FC<{
 };
 
 const AccountTab: FC = () => {
-  const { appOwner } = use(AppContext);
+  const { appOwner } = useEvolu();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreAppOwnerClick = () => {
@@ -812,7 +817,7 @@ const TrashTab: FC = () => {
 const TrashTabDeletedProjectItem: FC<{
   project: DeletedProjectsRow;
 }> = ({ project }) => {
-  const { update } = use(AppContext);
+  const { update } = useEvolu();
 
   const handleRestoreClick = () => {
     if (
@@ -852,7 +857,7 @@ const TrashTabDeletedProjectItem: FC<{
 const TrashTabDeletedTodoItem: FC<{
   todo: DeletedTodosRow;
 }> = ({ todo }) => {
-  const { update } = use(AppContext);
+  const { update } = useEvolu();
 
   const handleRestoreClick = () => {
     if (confirm(`Are you sure you want to restore todo "${todo.title}"?`)) {

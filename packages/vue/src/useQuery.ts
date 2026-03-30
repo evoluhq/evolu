@@ -1,5 +1,6 @@
 import { emptyArray } from "@evolu/common";
 import {
+  type EvoluSchema,
   type Query,
   type QueryRows,
   type Row,
@@ -33,8 +34,8 @@ import { useEvolu } from "./useEvolu.js";
  * const rows = useQuery(allTodos, { promise: allTodosPromise });
  * ```
  */
-export const useQuery = <R extends Row>(
-  query: Query<R>,
+export const useQuery = <S extends EvoluSchema, R extends Row>(
+  query: Query<S, R>,
   options: Partial<{
     /** Without subscribing to changes. */
     readonly once: boolean;

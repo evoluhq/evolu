@@ -1,22 +1,19 @@
 "use client";
 
 import * as Evolu from "@evolu/common";
-import { createEvoluContext, useQuery } from "@evolu/react";
+import { createEvoluBinding } from "@evolu/react";
 import { createEvoluDeps } from "@evolu/react-web";
 import { createRun } from "@evolu/web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
 import { clsx } from "clsx";
 import { Suspense, use, useState, type FC } from "react";
 
-// Primary keys are branded types, preventing accidental use of IDs across
-// different tables (e.g., a TodoId can't be used where a UserId is expected).
-const TodoId = Evolu.id("Todo");
-type TodoId = typeof TodoId.Type;
-
-// We use Evolu Type, but any Standard Schema library can be used.
+// Any Standard Schema library can be used.
 const AppSchema = {
   todo: {
-    id: TodoId,
+    // Primary keys are branded types, preventing accidental use of IDs across
+    // different tables (e.g., a TodoId can't be used where a UserId is expected).
+    id: Evolu.id("Todo"),
     // Branded type ensuring titles are non-empty and ≤100 chars.
     title: Evolu.NonEmptyTrimmedString100,
     // SQLite doesn't support the boolean type; it uses 0 and 1 instead.
@@ -24,10 +21,9 @@ const AppSchema = {
   },
 };
 
-// Create typed query builder (once per schema).
-const createQuery = Evolu.createQueryBuilder(AppSchema);
+const createAppQuery = Evolu.createQueryBuilder(AppSchema);
 
-const todosQuery = createQuery((db) =>
+const todosQuery = createAppQuery((db) =>
   db
     // Type-safe SQL: try autocomplete for table and column names.
     .selectFrom("todo")
@@ -49,43 +45,31 @@ const todosQuery = createQuery((db) =>
 // Extract the row type from the query for type-safe component props.
 type TodosRow = typeof todosQuery.Row;
 
-const console = Evolu.createConsole({
-  level: "debug",
-  formatter: Evolu.createConsoleFormatter()({ timestampFormat: "relative" }),
-});
-
-// TODO: createRunWithEvoluDeps()
-
-// Create Evolu dependencies for React Web.
-const deps = createEvoluDeps({ console });
+// Create Run with dependencies for React Web.
+const run = createRun(
+  createEvoluDeps({
+    console: Evolu.createConsole({
+      level: "debug",
+      formatter: Evolu.createConsoleFormatter()({
+        timestampFormat: "relative",
+      }),
+    }),
+  }),
+);
 
 /**
- * `evoluError` is shared by all Evolu instances created from this `deps`.
- * Subscribe once for user-facing error messages. Logging is handled by platform
- * `createRun` global error handlers.
+ * `evoluError` is shared by all Evolu instances. Subscribe once for user-facing
+ * error messages. Logging is handled by platform `createRun` global error
+ * handlers.
  */
-deps.evoluError.subscribe(() => {
-  const error = deps.evoluError.get();
+run.deps.evoluError.subscribe(() => {
+  const error = run.deps.evoluError.get();
   if (!error) return;
 
   alert("🚨 Evolu error occurred! Check the console.");
 });
 
-const run = createRun(deps);
-
-// Create Evolu App.
-const app = run(
-  Evolu.createEvolu(AppSchema, {
-    appName: Evolu.AppName.orThrow("minimal-example"),
-    appOwner: Evolu.testAppOwner,
-
-    ...(process.env.NODE_ENV === "development" && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-    }),
-  }),
-);
-
-const [AppContext, AppProvider] = createEvoluContext(app);
+const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(AppSchema);
 
 export const EvoluMinimalExample: FC = () => (
   <div className="min-h-screen px-8 py-8">
@@ -97,17 +81,32 @@ export const EvoluMinimalExample: FC = () => (
       </div>
 
       <Suspense>
-        <AppProvider>
-          {/*
-            Suspense delivers great UX (no loading flickers) and DX (no loading
-            states to manage). Highly recommended with Evolu.
-          */}
-          <Todos />
-          <OwnerActions />
-        </AppProvider>
+        {/*
+          Suspense delivers great UX (no loading flickers) and DX (no loading
+          states to manage). Highly recommended with Evolu.
+        */}
+        <App />
       </Suspense>
     </div>
   </div>
+);
+
+const appPromise = run.orThrow(
+  Evolu.createEvolu(AppSchema, {
+    appName: Evolu.AppName.orThrow("minimal-example"),
+    appOwner: Evolu.testAppOwner,
+
+    ...(process.env.NODE_ENV === "development" && {
+      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+    }),
+  }),
+);
+
+const App: FC = () => (
+  <EvoluContext value={use(appPromise)}>
+    <Todos />
+    <OwnerActions />
+  </EvoluContext>
 );
 
 /** Trims user input and validates it as a todo title. */
@@ -118,7 +117,7 @@ const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
   const todos = useQuery(todosQuery);
 
-  const { insert } = use(AppContext);
+  const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
   const addTodo = () => {
@@ -171,7 +170,7 @@ const Todos: FC = () => {
 const TodoItem: FC<{
   row: TodosRow;
 }> = ({ row: { id, title, isCompleted } }) => {
-  const { update } = use(AppContext);
+  const { update } = useEvolu();
 
   const handleToggleCompletedClick = () => {
     update("todo", {
@@ -240,7 +239,7 @@ const TodoItem: FC<{
 };
 
 const OwnerActions: FC = () => {
-  const evolu = use(AppContext);
+  const evolu = useEvolu();
 
   const [showMnemonic, setShowMnemonic] = useState(false);
 
@@ -267,7 +266,7 @@ const OwnerActions: FC = () => {
   };
 
   const handleDownloadDatabaseClick = () => {
-    void evolu.exportDatabase().then((data) => {
+    void evolu.exportDatabase().then((data: Uint8Array<ArrayBuffer>) => {
       using objectUrl = Evolu.createObjectURL(
         new Blob([data], { type: "application/x-sqlite3" }),
       );
