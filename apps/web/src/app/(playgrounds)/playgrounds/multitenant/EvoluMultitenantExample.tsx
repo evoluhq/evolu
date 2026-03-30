@@ -51,11 +51,9 @@ const deviceAppOwnersQuery = createDeviceQuery((db) =>
   db
     .selectFrom("_appOwner")
     .select(["id", "secret", "lastOpenedAt"])
-    .where("id", "is not", null)
     .where("secret", "is not", null)
     .where("lastOpenedAt", "is not", null)
     .$narrowType<{
-      id: Evolu.KyselyNotNull;
       secret: Evolu.KyselyNotNull;
       lastOpenedAt: Evolu.KyselyNotNull;
     }>()
