@@ -52,8 +52,9 @@ export default defineConfig(
       // https://github.com/typescript-eslint/typescript-eslint/issues/8113#issuecomment-2334943836
       "@typescript-eslint/no-invalid-void-type": "off",
 
-      // It seems its buggy, disable it for now.
+      // Buggy, recheck later.
       "@typescript-eslint/no-redundant-type-constituents": "off",
+      "@typescript-eslint/no-unnecessary-type-arguments": "off",
 
       "@typescript-eslint/no-empty-object-type": "off",
       "@typescript-eslint/restrict-template-expressions": "off",
