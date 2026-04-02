@@ -330,7 +330,8 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
  * **When to use:**
  *
  * - Application startup or composition-root setup where errors must stop the
- *   program immediately
+ *   program immediately. In Evolu apps, errors are handled by platform-specific
+ *   `createRun` adapters at the app boundary.
  * - Module-level constants
  * - Test setup with values that are expected to be valid
  *

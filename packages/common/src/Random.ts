@@ -66,7 +66,7 @@ export const createRandomWithSeed = (seed: string): Random => {
  * https://github.com/transitive-bullshit/random
  */
 export interface RandomLibDep {
-  randomLib: RandomLib;
+  readonly randomLib: RandomLib;
 }
 
 /** Creates a `RandomLib` using the NPM `random` package. */

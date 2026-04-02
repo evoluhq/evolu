@@ -33,11 +33,16 @@ export const Utils = { ok, trySync };
 - **Operations** — verb + TypeSuffix: `mapArray`, `filterSet`, `sortArray`, `addToSet`
 - **Conversions** — `xToY` (often symmetric pairs): `ownerIdToOwnerIdBytes`/`ownerIdBytesToOwnerId`, `durationToMillis`
 - **Factories** — `createX`: `createTime`, `createStore`, `createRun`
+- **Library-exported test helpers** — `testX`: `testCreateDeps`, `testCreateRun`, `testCreateTime`, `testSetupSqlite`
 - **Empty constants** — `emptyX`: `emptyArray`, `emptySet`, `emptyRecord`
 - **Predicates** — `isX`: `isNonEmptyArray`, `isBetween`, `isBetweenBigInt`
 - **Accessors** — position + `InX`: `firstInArray`, `lastInArray`, `firstInSet`
 - **Indexed collections** — value + `By` + key (`vByK`): `rowsByQuery`, `messagesByOwnerId`, `usersById`
 - **Dependencies** — `XDep`: `TimeDep`, `RandomDep`, `ConsoleDep`
+
+Reusable test setup helpers should be named after what they set up: use `setupFoo`
+for local helpers and helpers shared from test-only files such as `_deps.ts`.
+Use the `test` prefix only for test helpers exported from library modules.
 
 Consistent prefixes enable discoverability—type `map` and autocomplete shows `mapArray`, `mapSet`, `mapObject`, `mapSchedule` without importing first.
 
