@@ -557,7 +557,7 @@ const createSharedEvolu =
               });
             }
 
-            void sharedEvoluRun((run) => {
+            sharedEvoluRun<void, never>((run) => {
               const protocolMessagesByOwnerId = new Map<
                 OwnerId,
                 ProtocolMessage
@@ -841,7 +841,7 @@ const createSharedEvolu =
               // When the last Evolu instance is disposed, broadcast shutdown to
               // all DbWorkers so the current leader can dispose itself and the
               // followers can clean up consistently.
-              void sharedEvoluRun(async (run) => {
+              sharedEvoluRun<void, never>(async (run) => {
                 await run(removeAllUsedSyncOwners(evoluInstance));
                 evoluInstance.usedSyncOwners[Symbol.dispose]();
                 return ok();

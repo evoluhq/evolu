@@ -23,8 +23,7 @@ import { ok } from "../../src/Result.js";
 import { createSet } from "../../src/Set.js";
 import type { ReadonlyStore } from "../../src/Store.js";
 import { createStore } from "../../src/Store.js";
-import type { Run } from "../../src/Task.js";
-import { testCreateRun, type TestDeps } from "../../src/Test.js";
+import { testCreateRun } from "../../src/Test.js";
 import { createId, type Id, testName } from "../../src/Type.js";
 import {
   type CreateWebSocket,
@@ -37,54 +36,50 @@ import {
   testWaitForWorkerMessage,
 } from "../../src/Worker.js";
 import { testQuery } from "./_fixtures.js";
-interface SharedWorkerDep {
-  readonly worker: ReturnType<typeof testCreateSharedWorker<SharedWorkerInput>>;
-}
 
 interface SetupWorkerOptions {
   readonly consoleStoreOutputEntry?: ReadonlyStore<ConsoleEntry | null>;
   readonly createWebSocket?: CreateWebSocket;
 }
 
-const createSharedWorkerRun = (
-  consoleStoreOutputEntry: ReadonlyStore<ConsoleEntry | null>,
-  createWebSocket: CreateWebSocket,
-) =>
-  testCreateRun({
-    consoleStoreOutputEntry,
-    createMessagePort: testCreateMessagePort,
-    createWebSocket,
-  });
-
 const protocolMessageToArrayBuffer = (message: Uint8Array): ArrayBuffer =>
   Uint8Array.from(message).buffer;
 
-const testCreateRunWithSharedWorkerDep = async ({
+const setupSharedWorker = async ({
   consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null),
   createWebSocket = testCreateWebSocket({
     throwOnCreate: true,
   }),
-}: SetupWorkerOptions = {}): Promise<Run<TestDeps & SharedWorkerDep>> => {
-  const worker = testCreateSharedWorker<SharedWorkerInput>();
-  const run = createSharedWorkerRun(consoleStoreOutputEntry, createWebSocket);
+}: SetupWorkerOptions = {}) => {
+  await using stack = new AsyncDisposableStack();
 
-  const initResult = await run(initSharedWorker(worker.self));
-  assert(initResult.ok);
+  const worker = stack.use(testCreateSharedWorker<SharedWorkerInput>());
+  const run = stack.use(
+    testCreateRun({
+      consoleStoreOutputEntry,
+      createMessagePort: testCreateMessagePort,
+      createWebSocket,
+    }),
+  );
+  stack.use(await run.orThrow(initSharedWorker(worker.self)));
 
   worker.connect();
+  const moved = stack.move();
 
-  return run.addDeps<SharedWorkerDep>({
+  return {
+    run,
     worker,
-  });
+    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+  };
 };
 
 describe("console and tab output", () => {
   test("replays queued console entries after first console port connects", async () => {
     const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       consoleStoreOutputEntry,
     });
-    const { worker } = run.deps;
+    const { worker } = setup;
 
     const firstEntry: ConsoleEntry = {
       method: "info",
@@ -123,10 +118,10 @@ describe("console and tab output", () => {
 
   test("ignores null console store updates", async () => {
     const consoleStoreOutputEntry = createStore<ConsoleEntry | null>(null);
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       consoleStoreOutputEntry,
     });
-    const { worker } = run.deps;
+    const { worker } = setup;
 
     const receivedOutputs: Array<EvoluTabOutput> = [];
     const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
@@ -154,8 +149,8 @@ describe("console and tab output", () => {
   });
 
   test("forwards DbWorker console entries from db worker channel", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { worker } = setup;
 
     const receivedOutputs: Array<EvoluTabOutput> = [];
     const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
@@ -195,8 +190,8 @@ describe("console and tab output", () => {
   });
 
   test("logs unknown shared worker inputs to tab output", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
     const { console } = run.deps;
 
     worker.port.postMessage({ type: "UnknownInput" } as never);
@@ -212,8 +207,8 @@ describe("console and tab output", () => {
   });
 
   test("forwards DbWorker OnError to tab ports", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { worker } = setup;
 
     const receivedOutputs: Array<EvoluTabOutput> = [];
     const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
@@ -254,8 +249,9 @@ describe("console and tab output", () => {
 
 describe("queued evolu responses", () => {
   test("handles mutate and query queued responses with correct onCompleteIds", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -360,8 +356,9 @@ describe("queued evolu responses", () => {
   });
 
   test("forwards export queued response back to evolu port", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -421,8 +418,9 @@ describe("queued evolu responses", () => {
   });
 
   test("sends RefreshQueries to other evolu ports after mutate response", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel1 = testCreateMessageChannel<
@@ -505,8 +503,9 @@ describe("queued evolu responses", () => {
   });
 
   test("queues next request while processing current one", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -602,10 +601,12 @@ describe("transport and sync behavior", () => {
         [Symbol.asyncDispose]: () => Promise.resolve(),
       });
 
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket,
     });
-    const { time, worker } = run.deps;
+
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -726,10 +727,10 @@ describe("transport and sync behavior", () => {
 
   test("ignores non-binary and invalid transport messages", async () => {
     const inspectableWebSocket = testCreateWebSocket({ isOpen: false });
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { worker } = run.deps;
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -778,10 +779,10 @@ describe("transport and sync behavior", () => {
 
   test("requests sync messages when a claimed transport opens later", async () => {
     const inspectableWebSocket = testCreateWebSocket({ isOpen: false });
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { worker } = run.deps;
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -838,10 +839,10 @@ describe("transport and sync behavior", () => {
 
   test("sends unsubscribe when the last transport claim is removed", async () => {
     const inspectableWebSocket = testCreateWebSocket();
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { worker } = run.deps;
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -895,10 +896,11 @@ describe("transport and sync behavior", () => {
 
   test("handles apply sync responses for errors, refresh, and response messages", async () => {
     const inspectableWebSocket = testCreateWebSocket();
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { time, worker } = run.deps;
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const tabOutputs: Array<EvoluTabOutput> = [];
     const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
@@ -1056,10 +1058,11 @@ describe("transport and sync behavior", () => {
 
   test("ignores abort, broadcast, and no-response apply sync results", async () => {
     const inspectableWebSocket = testCreateWebSocket();
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { time, worker } = run.deps;
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const tabOutputs: Array<EvoluTabOutput> = [];
     const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
@@ -1184,10 +1187,11 @@ describe("transport and sync behavior", () => {
 
   test("ignores sync creation and apply when no writable owner is active", async () => {
     const inspectableWebSocket = testCreateWebSocket({ isOpen: false });
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { time, worker } = run.deps;
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1279,10 +1283,10 @@ describe("transport and sync behavior", () => {
 
   test("ignores UseOwner and repeated Dispose after the instance is gone", async () => {
     const inspectableWebSocket = testCreateWebSocket();
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { worker } = run.deps;
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1319,12 +1323,14 @@ describe("transport and sync behavior", () => {
 
   test("ignores CreateEvolu after shared worker disposal", async () => {
     const worker = testCreateSharedWorker<SharedWorkerInput>();
-    const run = createSharedWorkerRun(
-      createStore<ConsoleEntry | null>(null),
-      testCreateWebSocket({ throwOnCreate: true }),
+    const run = testCreateRun({
+      consoleStoreOutputEntry: createStore<ConsoleEntry | null>(null),
+      createMessagePort: testCreateMessagePort,
+      createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
+    });
+    await using _sharedWorker = await run.orThrow(
+      initSharedWorker(worker.self),
     );
-    const initResult = await run(initSharedWorker(worker.self));
-    assert(initResult.ok);
 
     const sharedWorkerChannel = testCreateMessageChannel<SharedWorkerInput>();
     assert(worker.self.onConnect);
@@ -1350,12 +1356,12 @@ describe("transport and sync behavior", () => {
     });
 
     await testWaitForWorkerMessage();
-    await initResult.value[Symbol.asyncDispose]();
   });
 
   test("ignores queued evolu responses for missing ports", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1416,10 +1422,11 @@ describe("transport and sync behavior", () => {
 
   test("ignores protocol sends through closed transports", async () => {
     const inspectableWebSocket = testCreateWebSocket({ isOpen: false });
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { time, worker } = run.deps;
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1508,8 +1515,8 @@ describe("transport and sync behavior", () => {
   });
 
   test("throws for impossible db worker and evolu port messages", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1539,8 +1546,9 @@ describe("transport and sync behavior", () => {
   });
 
   test("throws for impossible queued response type", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1584,8 +1592,9 @@ describe("transport and sync behavior", () => {
   });
 
   test("throws for impossible evolu queued response messages", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1636,10 +1645,10 @@ describe("transport and sync behavior", () => {
 
   test("throws for impossible shared worker queued response messages", async () => {
     const inspectableWebSocket = testCreateWebSocket();
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { worker } = run.deps;
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1695,10 +1704,11 @@ describe("transport and sync behavior", () => {
 
   test("throws for impossible shared worker apply result values", async () => {
     const inspectableWebSocket = testCreateWebSocket();
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { time, worker } = run.deps;
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1801,10 +1811,12 @@ describe("transport and sync behavior", () => {
       });
     };
 
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket,
     });
-    const { time, worker } = run.deps;
+
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1882,8 +1894,9 @@ describe("transport and sync behavior", () => {
 
 describe("disposal and ignored responses", () => {
   test("handles empty query rows and response after dispose", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -1944,8 +1957,9 @@ describe("disposal and ignored responses", () => {
   });
 
   test("keeps shared evolu alive when one of multiple ports disposes", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel1 = testCreateMessageChannel<
@@ -2019,8 +2033,9 @@ describe("disposal and ignored responses", () => {
   });
 
   test("ignores query response for disposed port while another port keeps shared evolu alive", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel1 = testCreateMessageChannel<
@@ -2092,8 +2107,9 @@ describe("disposal and ignored responses", () => {
   });
 
   test("ignores export response for disposed port while another port keeps shared evolu alive", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel1 = testCreateMessageChannel<
@@ -2161,8 +2177,9 @@ describe("disposal and ignored responses", () => {
   });
 
   test("ignores export response after evolu dispose", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -2219,8 +2236,8 @@ describe("disposal and ignored responses", () => {
   });
 
   test("disposes shared evolu while queue processing is active", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -2250,8 +2267,9 @@ describe("disposal and ignored responses", () => {
 
 describe("queue processing", () => {
   test("does not send queued requests before leader is acquired", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -2291,8 +2309,9 @@ describe("queue processing", () => {
   });
 
   test("keeps processing first queued item while a second is waiting", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -2344,8 +2363,8 @@ describe("queue processing", () => {
 
 describe("exhaustive checks", () => {
   test("throws for impossible db worker and evolu port messages", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -2375,8 +2394,9 @@ describe("exhaustive checks", () => {
   });
 
   test("throws for impossible queued response type", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -2420,8 +2440,9 @@ describe("exhaustive checks", () => {
   });
 
   test("throws for impossible evolu queued response messages", async () => {
-    await using run = await testCreateRunWithSharedWorkerDep();
-    const { time, worker } = run.deps;
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -2472,10 +2493,10 @@ describe("exhaustive checks", () => {
 
   test("throws for impossible shared worker queued response messages", async () => {
     const inspectableWebSocket = testCreateWebSocket();
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { worker } = run.deps;
+    const { worker } = setup;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<
@@ -2531,10 +2552,11 @@ describe("exhaustive checks", () => {
 
   test("throws for impossible shared worker apply result values", async () => {
     const inspectableWebSocket = testCreateWebSocket();
-    await using run = await testCreateRunWithSharedWorkerDep({
+    await using setup = await setupSharedWorker({
       createWebSocket: inspectableWebSocket,
     });
-    const { time, worker } = run.deps;
+    const { run, worker } = setup;
+    const { time } = run.deps;
 
     const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
     const dbWorkerChannel = testCreateMessageChannel<

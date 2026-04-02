@@ -22,7 +22,7 @@ const createConsole = vi.fn((config: object) => ({
 }));
 
 const createCommonEvoluDeps = vi.fn((deps: object) => deps);
-const initDbWorker = vi.fn(() => Symbol("initDbWorkerTask"));
+const startDbWorker = vi.fn(() => Symbol("startDbWorkerTask"));
 const initSharedWorker = vi.fn(() => Symbol("initSharedWorkerTask"));
 
 vi.mock("@evolu/common", () => ({
@@ -36,7 +36,7 @@ vi.mock("@evolu/common", () => ({
 
 vi.mock("@evolu/common/local-first", () => ({
   createEvoluDeps: createCommonEvoluDeps,
-  initDbWorker,
+  startDbWorker,
   initSharedWorker,
 }));
 
@@ -73,7 +73,7 @@ describe("createEvoluDeps", () => {
 
     expect(createRun).toHaveBeenCalledTimes(2);
     expect(createConsoleStoreOutput).toHaveBeenCalledTimes(2);
-    expect(initDbWorker).toHaveBeenCalledTimes(1);
+    expect(startDbWorker).toHaveBeenCalledTimes(1);
 
     const sharedRunDeps = createRun.mock.calls[0][0] as {
       consoleStoreOutputEntry: symbol;
