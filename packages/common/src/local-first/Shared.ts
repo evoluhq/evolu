@@ -1,5 +1,5 @@
 /**
- * Platform-agnostic Evolu Worker.
+ * Platform-agnostic Evolu SharedWorker.
  *
  * @module
  */
@@ -18,9 +18,9 @@ import { exhaustiveCheck } from "../Function.js";
 import { structuralLookup, type StructuralLookupKey } from "../Lookup.js";
 import { createRefCountByKey, type RefCountByKey } from "../RefCount.js";
 import {
-  type BorrowedResource,
   createSharedResourceByKey,
   createSharedResourceByKeyWithClaims,
+  type BorrowedResource,
   type SharedResourceByKeyWithClaims,
 } from "../Resource.js";
 import { ok, type Result } from "../Result.js";

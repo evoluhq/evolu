@@ -1,5 +1,5 @@
 /**
- * Local-first Db worker.
+ * Platform-agnostic Evolu DbWorker.
  *
  * @module
  */
