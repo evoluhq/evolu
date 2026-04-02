@@ -4,9 +4,14 @@
  * @module
  */
 
-import { testCreateConsole, type TestConsoleDep } from "./Console.js";
-import { Entropy32, testCreateRandomBytes } from "./Crypto.js";
 import {
+  testCreateConsole,
+  type TestConsole,
+  type TestConsoleDep,
+} from "./Console.js";
+import { testCreateRandomBytes, type RandomBytes } from "./Crypto.js";
+import {
+  type Random,
   testCreateRandom,
   testCreateRandomLib,
   type RandomLibDep,
@@ -17,29 +22,55 @@ import {
   setTimeout,
   testCreateTime,
   type Duration,
+  type TestTime,
   type TestTimeDep,
 } from "./Time.js";
 
-export type TestDeps = Omit<RunDeps, "time"> &
+/**
+ * Cheap deterministic baseline deps for tests.
+ *
+ * `TestDeps` includes test-friendly replacements for {@link RunDeps}, such as
+ * {@link TestConsole} and {@link TestTime}, plus extra helpers commonly useful in
+ * tests and fixtures, such as `randomLib` (only that for now).
+ *
+ * Use it directly for synchronous test setup, fixtures, and helpers. It is also
+ * intentionally the base deps used by {@link testCreateRun}.
+ */
+export type TestDeps = Omit<RunDeps, "console" | "time"> &
   TestConsoleDep &
-  RandomLibDep &
-  TestTimeDep;
+  TestTimeDep &
+  RandomLibDep;
 
 /**
- * Creates test dependencies for proper isolation.
+ * Creates deterministic {@link TestDeps}.
  *
  * Each call creates fresh instances, so tests don't share state.
+ *
+ * Includes these deps:
+ *
+ * - `console`: {@link TestConsole}
+ * - `random`: {@link Random}
+ * - `randomLib`: seeded `random` package instance
+ * - `randomBytes`: {@link RandomBytes}
+ * - `time`: {@link TestTime}
+ *
+ * Use this for synchronous code that accepts deps directly. For tests that run
+ * Tasks, use {@link testCreateRun}.
  *
  * ### Example
  *
  * ```ts
- * test("my test", async () => {
+ * test("Callbacks with no argument", () => {
  *   const deps = testCreateDeps();
- *   await using run = testCreateRun(deps);
+ *   const callbacks = createCallbacks(deps);
  *
- *   const fiber = run(sleep("1s"));
- *   deps.time.advance("1s");
- *   await fiber;
+ *   let called = false;
+ *   const id = callbacks.register(() => {
+ *     called = true;
+ *   });
+ *
+ *   callbacks.execute(id);
+ *   expect(called).toBe(true);
  * });
  * ```
  */
@@ -56,30 +87,56 @@ export const testCreateDeps = (options?: {
 };
 
 /**
- * Creates a test {@link Run} with deterministic deps.
+ * Creates a test {@link Run} with deterministic default deps or optional custom
+ * deps.
  *
- * Uses {@link TestDeps} which provides seeded random values, ensuring
- * deterministic fiber IDs, timestamps, and other generated values. This makes
- * tests reproducible and snapshot-friendly.
- *
- * Accepts partial deps - any missing deps are created with defaults.
+ * Use this as the default composition root in tests. Each call creates fresh
+ * {@link TestDeps} via {@link testCreateDeps}, then merges any provided custom
+ * deps.
  *
  * ### Example
  *
  * ```ts
- * // Basic usage with TestDeps
+ * // Built-in TestTime
  * await using run = testCreateRun();
+ * const fiber = run(sleep("1s"));
+ * run.deps.time.advance("1s");
+ * await fiber;
  *
- * // Override specific deps
- * await using run = testCreateRun({ time: customTime });
+ * // For a single test, create the dependency using the Run.
+ * await using run = testCreateRun();
+ * await using foo = await run.orThrow(createFoo());
+ * const runWithFoo = run.addDeps({ foo });
  *
- * // Add custom deps
- * interface HttpDep {
- *   readonly http: Http;
- * }
- * await using run = testCreateRun({ http });
- * // run is Run<TestDeps & HttpDep>
+ * expect(runWithFoo.deps.foo).toBe(foo);
+ *
+ * // If multiple tests need the same setup, create a disposable helper.
+ * // Then `await using setup` disposes everything the helper owns.
+ * const setupFoo = async () => {
+ *   await using stack = new AsyncDisposableStack();
+ *   const run = stack.use(testCreateRun());
+ *   const foo = stack.use(await run.orThrow(createFoo()));
+ *   const moved = stack.move();
+ *
+ *   // Return whatever the tests need: a Run with the dependency,
+ *   // the dependency itself, or both.
+ *   return {
+ *     run: run.addDeps({ foo }),
+ *     foo,
+ *     [Symbol.asyncDispose]: () => moved.disposeAsync(),
+ *   };
+ * };
+ *
+ * await using setup = await setupFoo();
+ * const { run, foo } = setup;
+ * expect(run.deps.foo).toBe(foo);
  * ```
+ *
+ * Name reusable setup helpers after what they set up:
+ *
+ * - `setupFoo` for reusable test setup for `Foo`
+ * - `testSetupFoo` when a library module exports the helper as part of its public
+ *   test API, e.g. `testSetupSqlite`.
  */
 export function testCreateRun(): Run<TestDeps>;
 
@@ -91,25 +148,14 @@ export function testCreateRun<D>(deps?: D): Run<TestDeps & D> {
   return createRun<TestDeps & D>({ ...defaults, ...deps } as TestDeps & D);
 }
 
-// Deterministic test values for reproducible fixtures. Keep eager test values
-// here to avoid affecting tree-shaking baselines.
-// Functions are ok.
-
-export const testEntropy32 = /*#__PURE__*/ Entropy32.orThrow(
-  /*#__PURE__*/ new globalThis.Uint8Array([
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-    21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-  ]),
-);
-
 /**
  * Returns a Promise that resolves after a macrotask delay.
  *
  * Use this to model a real async boundary in a test double, for example an
  * async disposer that should not complete in the same turn.
  *
- * Avoid using it to coordinate assertions in tests. Waiting for scheduler turns
- * instead of an explicit signal tends to make tests indirect and brittle.
+ * Avoid using it to coordinate assertions. Waiting for a macrotask tends to
+ * make tests indirect and brittle.
  */
 export const testWaitForMacrotask = (
   duration: Duration = minMillis,
