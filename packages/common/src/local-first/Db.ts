@@ -35,7 +35,7 @@ import {
   sqliteQueryStringToSqliteQuery,
   SqliteValue,
 } from "../Sqlite.js";
-import { type LeaderLockDep, type Task } from "../Task.js";
+import { callback, type LeaderLockDep, type Task } from "../Task.js";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.js";
 import type { Name } from "../Type.js";
 import {
@@ -47,7 +47,6 @@ import {
 } from "../Type.js";
 import type { ExtractType } from "../Types.js";
 import type {
-  MessagePort,
   NativeMessagePort,
   Worker,
   WorkerDeps,
@@ -126,118 +125,86 @@ export type DbWorkerDeps = WorkerDeps &
   CreateSqliteDriverDep &
   RandomBytesDep;
 
-export interface PortDep {
-  readonly port: MessagePort<DbWorkerOutput, DbWorkerInput>;
-}
-
-export const initDbWorker =
-  (
-    self: WorkerSelf<DbWorkerInit>,
-  ): Task<AsyncDisposableStack, never, DbWorkerDeps> =>
-  (run) => {
-    const { leaderLock, createMessagePort, consoleStoreOutputEntry } = run.deps;
-    const stack = new AsyncDisposableStack();
+export const startDbWorker =
+  (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
+  async (_run) => {
+    await using stack = new AsyncDisposableStack();
+    const run = stack.use(_run.create());
+    const { deps } = run;
 
     let initialized = false;
 
-    self.onMessage = ({
-      name,
-      consoleLevel,
-      sqliteSchema,
-      encryptionKey,
-      memoryOnly,
-      port: nativeLeaderPort,
-    }) => {
-      assert(!initialized, "DbWorker must be initialized only once");
-      initialized = true;
+    const initMessage = await run.orThrow(
+      callback<DbWorkerInit>(({ ok }) => {
+        self.onMessage = (message) => {
+          assert(!initialized, "DbWorker must be initialized only once");
+          initialized = true;
+          ok(message);
+        };
+      }),
+    );
 
-      const console = run.deps.console.child(name).child("DbWorker");
-      const port = stack.use(
-        createMessagePort<DbWorkerOutput, DbWorkerInput>(nativeLeaderPort),
-      );
+    const console = deps.console.child(initMessage.name).child("DbWorker");
+    console.setLevel(initMessage.consoleLevel);
+    console.info("start DbWorker");
 
-      stack.defer(
-        consoleStoreOutputEntry.subscribe(() => {
-          const entry = consoleStoreOutputEntry.get();
-          if (entry) port.postMessage({ type: "OnConsoleEntry", entry });
-        }),
-      );
+    const port = stack.use(
+      deps.createMessagePort<DbWorkerOutput, DbWorkerInput>(initMessage.port),
+    );
 
-      // One DbWorker serves multiple tabs, so console level is global
-      // here. The most recently initialized tab's level wins.
-      console.setLevel(consoleLevel);
-      console.info("initDbWorker");
+    stack.defer(
+      deps.consoleStoreOutputEntry.subscribe(() => {
+        const entry = deps.consoleStoreOutputEntry.get();
+        if (entry) port.postMessage({ type: "OnConsoleEntry", entry });
+      }),
+    );
 
-      void run.daemon(async (run) => {
-        const lockResult = await run(leaderLock.lock(name));
-        if (lockResult.ok) stack.use(lockResult.value);
-        console.info("leaderLock acquired");
-        port.postMessage({ type: "LeaderAcquired", name });
-        return run.addDeps({
-          port,
-          timestampConfig: { maxDrift: defaultTimestampMaxDrift },
-        })(startDbWorker(name, sqliteSchema, encryptionKey, memoryOnly));
-      });
-    };
+    stack.use(await run.orThrow(deps.leaderLock.lock(initMessage.name)));
+    if (stack.disposed) return ok();
 
-    return ok(stack);
-  };
+    port.postMessage({ type: "LeaderAcquired", name: initMessage.name });
 
-const startDbWorker =
-  (
-    name: Name,
-    sqliteSchema: SqliteSchema,
-    encryptionKey: EncryptionKey,
-    memoryOnly: boolean,
-  ): Task<
-    globalThis.AsyncDisposableStack,
-    never,
-    DbWorkerDeps & PortDep & TimestampConfigDep
-  > =>
-  async (run) => {
-    await using stack = new AsyncDisposableStack();
-
-    const console = run.deps.console.child(name).child("DbWorker");
-    console.info("startDbWorker");
-
-    const sqliteResult = await run(
-      createSqlite(
-        name,
-        memoryOnly ? { mode: "memory" } : { mode: "encrypted", encryptionKey },
+    const sqlite = stack.use(
+      await run.orThrow(
+        createSqlite(
+          initMessage.name,
+          initMessage.memoryOnly
+            ? { mode: "memory" }
+            : { mode: "encrypted", encryptionKey: initMessage.encryptionKey },
+        ),
       ),
     );
-    if (!sqliteResult.ok) return sqliteResult;
-    const sqlite = stack.use(sqliteResult.value);
     console.debug("SQLite created");
 
     const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...run.deps });
 
-    const deps = {
+    const dbDeps = {
       ...run.deps,
       sqlite,
-      sqliteSchema,
+      sqliteSchema: initMessage.sqliteSchema,
       baseSqliteStorage,
+      timestampConfig: { maxDrift: defaultTimestampMaxDrift },
     };
 
-    const currentSchema = getEvoluSqliteSchema(deps)();
+    const currentSchema = getEvoluSqliteSchema(dbDeps)();
     const dbIsInitialized = "evolu_version" in currentSchema.tables;
-    const clock = createClock(deps)(dbIsInitialized);
+    const clock = createClock(dbDeps)(dbIsInitialized);
 
     sqlite.transaction(() => {
-      if (!dbIsInitialized) initializeDb(deps)(clock.get());
-      ensureSqliteSchema(deps)(sqliteSchema, currentSchema);
-      tryApplyQuarantinedMessages(deps);
+      if (!dbIsInitialized) initializeDb(dbDeps)(clock.get());
+      ensureSqliteSchema(dbDeps)(initMessage.sqliteSchema, currentSchema);
+      tryApplyQuarantinedMessages(dbDeps);
     });
 
-    const { port } = run.deps;
-    const storage = createClientStorage({ ...deps, clock })({
+    const storage = createClientStorage({ ...dbDeps, clock })({
       onError: (error) => {
         port.postMessage({ type: "OnError", error });
       },
     });
-    const dbWorkerRun = run.create().addDeps({ storage });
 
-    stack.use(dbWorkerRun);
+    // TODO: Call on dispose message.
+    const _moved = stack.move();
+    const runWithStorage = run.addDeps({ storage });
 
     /**
      * SharedWorker repeats sends until it gets a response, so handling here
@@ -266,7 +233,7 @@ const startDbWorker =
         case "ForEvolu": {
           switch (request.message.type) {
             case "Mutate": {
-              const result = handleMutation({ ...deps, clock })(
+              const result = handleMutation({ ...dbDeps, clock })(
                 request.message,
               );
               if (!result.ok) {
@@ -287,7 +254,7 @@ const startDbWorker =
                 evoluPortId: request.evoluPortId,
                 message: {
                   type: "Query",
-                  rowsByQuery: loadQueries(deps)(request.message.queries),
+                  rowsByQuery: loadQueries(dbDeps)(request.message.queries),
                 },
               });
               break;
@@ -298,7 +265,7 @@ const startDbWorker =
                 evoluPortId: request.evoluPortId,
                 message: {
                   type: "Export",
-                  file: deps.sqlite.export(),
+                  file: dbDeps.sqlite.export(),
                 },
               });
               break;
@@ -342,7 +309,7 @@ const startDbWorker =
             case "ApplySyncMessage": {
               const { owner, inputMessage } = request.message;
 
-              void dbWorkerRun(async (run) => {
+              runWithStorage<void, never>(async (run) => {
                 storage.setOwnerState(owner.encryptionKey);
 
                 const result = await run(
@@ -379,7 +346,7 @@ const startDbWorker =
       }
     };
 
-    return ok(stack.move());
+    return ok();
 
     // TODO: Add parallel stale-leader detection.
     // Heartbeat is emitted by the active DB worker and sent to
