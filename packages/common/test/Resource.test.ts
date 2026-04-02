@@ -15,7 +15,7 @@ import {
 import { err, ok, type AnyResult, type Result } from "../src/Result.js";
 import { runStoppedError, type AbortError, type Task } from "../src/Task.js";
 import { testCreateRun, testWaitForMacrotask } from "../src/Test.js";
-import { testCreateTime, type Duration } from "../src/Time.js";
+import { type Duration } from "../src/Time.js";
 import { NonNegativeInt } from "../src/Type.js";
 
 type TestResource = {
@@ -708,8 +708,7 @@ describe("createSharedResource", () => {
 
       describe("idleDisposeAfter", () => {
         test("release keeps the resource alive until idleDisposeAfter elapses", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           const disposed = Promise.withResolvers<void>();
           const resource = await run.orThrow(
@@ -729,7 +728,7 @@ describe("createSharedResource", () => {
           expect(sharedResource.get()).toBe(resource);
           expect(resource.isDisposed()).toBe(false);
 
-          time.advance("10ms");
+          run.deps.time.advance("10ms");
           await disposed.promise;
 
           expect(sharedResource.get()).toBeUndefined();
@@ -737,8 +736,7 @@ describe("createSharedResource", () => {
         });
 
         test("release disposes after idleDisposeAfter elapses", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           const disposed = Promise.withResolvers<void>();
           const resource = await run.orThrow(
@@ -758,17 +756,16 @@ describe("createSharedResource", () => {
           expect(await run.orThrow(sharedResource.getCount)).toBe(0);
           expect(resource.isDisposed()).toBe(false);
 
-          time.advance("9ms");
+          run.deps.time.advance("9ms");
           expect(resource.isDisposed()).toBe(false);
 
-          time.advance("1ms");
+          run.deps.time.advance("1ms");
           await disposed.promise;
           expect(resource.isDisposed()).toBe(true);
         });
 
         test("acquire cancels pending idle disposal and reuses the current resource", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           let createCallCount = 0;
           const disposed = Promise.withResolvers<void>();
@@ -792,7 +789,7 @@ describe("createSharedResource", () => {
           const first = await run.orThrow(sharedResource.acquire);
           await run.orThrow(sharedResource.release);
 
-          time.advance("9ms");
+          run.deps.time.advance("9ms");
           const second = await run.orThrow(sharedResource.acquire);
 
           expect(second).toBe(first);
@@ -800,18 +797,17 @@ describe("createSharedResource", () => {
           expect(createCallCount).toBe(1);
           expect(await run.orThrow(sharedResource.getCount)).toBe(1);
 
-          time.advance("10ms");
+          run.deps.time.advance("10ms");
           expect(first.isDisposed()).toBe(false);
 
           await run.orThrow(sharedResource.release);
-          time.advance("10ms");
+          run.deps.time.advance("10ms");
           await disposed.promise;
           expect(first.isDisposed()).toBe(true);
         });
 
         test("acquire after timeout fires cancels the stale idle disposal", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           let createCallCount = 0;
           await using sharedResource = await run.orThrow(
@@ -829,7 +825,7 @@ describe("createSharedResource", () => {
           const first = await run.orThrow(sharedResource.acquire);
           await run.orThrow(sharedResource.release);
 
-          time.advance("10ms");
+          run.deps.time.advance("10ms");
           const second = await run.orThrow(sharedResource.acquire);
 
           expect(second).toBe(first);
@@ -840,8 +836,7 @@ describe("createSharedResource", () => {
         });
 
         test("dispose cancels pending idle disposal and disposes immediately", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           const resource = await run.orThrow(createResource("resource-1"));
           const sharedResource = await run.orThrow(
@@ -1299,8 +1294,7 @@ describe("createSharedResourceByKey", () => {
 
       describe("idleDisposeAfter", () => {
         test("idle eviction disposes the removed keyed shared-resource wrapper", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           const disposed = Promise.withResolvers<void>();
           await using sharedResourceByKey = await run.orThrow(
@@ -1319,7 +1313,7 @@ describe("createSharedResourceByKey", () => {
 
           await run.orThrow(sharedResourceByKey.release("a"));
 
-          time.advance("10ms");
+          run.deps.time.advance("10ms");
           await disposed.promise;
           await testWaitForMacrotask();
 
@@ -1327,8 +1321,7 @@ describe("createSharedResourceByKey", () => {
         });
 
         test("onDisposed fires when a key's resource is disposed", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           const disposedKeys: Array<string> = [];
           const onDisposedCalled = Promise.withResolvers<void>();
@@ -1348,7 +1341,7 @@ describe("createSharedResourceByKey", () => {
           expect(sharedResourceByKey.get("a")?.id).toBe("a");
           expect(disposedKeys).toEqual([]);
 
-          time.advance("10ms");
+          run.deps.time.advance("10ms");
           await onDisposedCalled.promise;
 
           expect(sharedResourceByKey.get("a")).toBeUndefined();
@@ -1356,8 +1349,7 @@ describe("createSharedResourceByKey", () => {
         });
 
         test("release disposes after idleDisposeAfter elapses and reacquire cancels it", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           let createCallCount = 0;
           const firstDisposed = Promise.withResolvers<void>();
@@ -1385,14 +1377,14 @@ describe("createSharedResourceByKey", () => {
           const first = await run.orThrow(sharedResourceByKey.acquire("a"));
           await run.orThrow(sharedResourceByKey.release("a"));
 
-          time.advance("9ms");
+          run.deps.time.advance("9ms");
           const second = await run.orThrow(sharedResourceByKey.acquire("a"));
 
           expect(second).toBe(first);
           expect(await run.orThrow(sharedResourceByKey.getCount("a"))).toBe(1);
 
           await run.orThrow(sharedResourceByKey.release("a"));
-          time.advance("10ms");
+          run.deps.time.advance("10ms");
           await firstDisposed.promise;
 
           expect(first.isDisposed()).toBe(true);
@@ -1404,8 +1396,7 @@ describe("createSharedResourceByKey", () => {
         });
 
         test("dispose cancels pending keyed idle disposal and disposes current resources", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           const resource = await run.orThrow(createResource("a"));
           const sharedResourceByKey = await run.orThrow(
@@ -1423,8 +1414,7 @@ describe("createSharedResourceByKey", () => {
         });
 
         test("stale disposal callback must not remove a key that is reacquired concurrently", async () => {
-          const time = testCreateTime();
-          await using run = testCreateRun({ time });
+          await using run = testCreateRun();
 
           let createCallCount = 0;
           const firstDisposeStarted = Promise.withResolvers<void>();
@@ -1461,7 +1451,7 @@ describe("createSharedResourceByKey", () => {
           const first = await run.orThrow(sharedResourceByKey.acquire("a"));
           await run.orThrow(sharedResourceByKey.release("a"));
 
-          time.advance("10ms");
+          run.deps.time.advance("10ms");
           await firstDisposeStarted.promise;
 
           const reacquire = run(sharedResourceByKey.acquire("a"));
@@ -1891,8 +1881,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
   });
 
   test("idleDisposeAfter keeps the current resource observable until sync disposal completes", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     const disposed = Promise.withResolvers<void>();
     await using sharedResourceByKeyWithClaims = await run.orThrow(
@@ -1927,7 +1916,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
     ).toEqual(new Set());
     expect(sharedResourceByKeyWithClaims.getResource("a")).toBe(resource);
 
-    time.advance("10ms");
+    run.deps.time.advance("10ms");
     await disposed.promise;
     await testWaitForMacrotask();
 
@@ -1935,8 +1924,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
   });
 
   test("idleDisposeAfter stops exposing the resource once async disposal starts", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     const disposeStarted = Promise.withResolvers<void>();
     const disposeFinished = Promise.withResolvers<void>();
@@ -1974,7 +1962,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
 
     expect(sharedResourceByKeyWithClaims.getResource("a")).toBe(resource);
 
-    time.advance("10ms");
+    run.deps.time.advance("10ms");
     await disposeStarted.promise;
 
     expect(resource?.isDisposed()).toBe(false);
@@ -2027,8 +2015,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
   });
 
   test("stale disposal callback does not hide a reacquired resource", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     let createCallCount = 0;
     const firstDisposeStarted = Promise.withResolvers<void>();
@@ -2069,7 +2056,7 @@ describe("createSharedResourceByKeyWithClaims", () => {
       sharedResourceByKeyWithClaims.removeClaim("owner-1", ["a"]),
     );
 
-    time.advance("10ms");
+    run.deps.time.advance("10ms");
     await firstDisposeStarted.promise;
 
     const reacquire = run(

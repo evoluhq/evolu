@@ -299,7 +299,7 @@ export const createSharedResource = <T extends Resource, D>(
               return ok();
             }
 
-            idleDisposeFiber = sharedResourceRun(async (run) => {
+            idleDisposeFiber = sharedResourceRun<void, never>(async (run) => {
               const slept = await run(sleep(idleDisposeAfter));
               if (!slept.ok) return slept;
 
