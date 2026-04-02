@@ -17,6 +17,7 @@
     "typecheck": "tsc --build tsconfig.typecheck.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "playwright:install": "cd packages/common && bunx playwright install chromium firefox webkit",
     "test:watch": "vitest",
     "start": "turbo start",
     "lint": "eslint --cache",

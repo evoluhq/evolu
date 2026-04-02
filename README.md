@@ -24,6 +24,14 @@ Install dependencies:
 bun install
 ```
 
+Install Playwright browsers for local test and verify runs:
+
+```
+bun run playwright:install
+```
+
+Run the browser install step again after Playwright updates or if the browser cache was removed.
+
 Build scripts
 
 - `bun run build` - Build packages (required once after clone/pull for IDE types)
@@ -60,6 +68,7 @@ Linting
 
 Testing
 
+- `bun run playwright:install` - Install browsers required by Playwright-based Vitest projects
 - `bun run test` - Run tests
 - [Vitest VS Code extension](https://github.com/vitest-dev/vscode)
 

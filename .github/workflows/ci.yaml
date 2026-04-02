@@ -25,7 +25,7 @@ jobs:
         uses: ./.github/actions/setup-node-bun-install
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps
+        run: cd packages/common && bunx playwright install --with-deps chromium firefox webkit
 
       - name: Verify
         run: bun run verify
