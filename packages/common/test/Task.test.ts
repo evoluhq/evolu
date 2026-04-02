@@ -1143,8 +1143,7 @@ describe("Run", () => {
     };
 
     test("created run outlives parent task", async () => {
-      const time = testCreateTime();
-      await using run = testCreateRun({ time });
+      await using run = testCreateRun();
 
       const events: Array<string> = [];
       let childFiber: Fiber<void> | undefined;
@@ -1172,7 +1171,7 @@ describe("Run", () => {
 
       expect(events).toEqual(["parent started", "child started"]);
 
-      time.advance("3s");
+      run.deps.time.advance("3s");
 
       expect(await parentFiber).toEqual(ok());
       expect(events).toEqual([
@@ -1182,7 +1181,7 @@ describe("Run", () => {
       ]);
       expect(childFiber!.run.getState().type).toBe("Running");
 
-      time.advance("2s");
+      run.deps.time.advance("2s");
 
       expect(await childFiber!).toEqual(ok());
       expect(events).toEqual([
@@ -1260,8 +1259,7 @@ describe("Run", () => {
     });
 
     test("created run is aborted when root Run disposes", async () => {
-      const time = testCreateTime();
-      const run = testCreateRun({ time });
+      const run = testCreateRun();
 
       const events: Array<string> = [];
       let createdRun: Run | undefined;
@@ -1585,6 +1583,82 @@ describe("Fiber", () => {
     expect(state.outcome).toEqual(ok("data"));
   });
 
+  test("disposing fiber.run waits for abortable task completion and matches the fiber result", async () => {
+    await using run = createRun();
+
+    const taskCanFinish = Promise.withResolvers<void>();
+    let signalAbortedAfterAwait = false;
+
+    const fiber = run(async ({ signal }) => {
+      await taskCanFinish.promise;
+      signalAbortedAfterAwait = signal.aborted;
+      return signal.aborted ? err(signal.reason as AbortError) : ok("data");
+    });
+
+    let disposeFinished = false;
+    const disposePromise = fiber.run[Symbol.asyncDispose]().then(() => {
+      disposeFinished = true;
+    });
+
+    expect(fiber.run.getState().type).toBe("Disposing");
+
+    await Promise.resolve();
+    expect(disposeFinished).toBe(false);
+
+    taskCanFinish.resolve();
+    await disposePromise;
+
+    expect(signalAbortedAfterAwait).toBe(true);
+
+    const result = await fiber;
+    const state = fiber.getState();
+    assert(state.type === "Settled");
+
+    expect(result).toEqual(
+      err({ type: "AbortError", reason: runStoppedError }),
+    );
+    expect(state.result).toEqual(result);
+    expect(state.outcome).toEqual(result);
+  });
+
+  test("disposing fiber.run waits for unabortable task completion and preserves the task result", async () => {
+    await using run = createRun();
+
+    const taskCanFinish = Promise.withResolvers<void>();
+    let signalAbortedAfterAwait = true;
+
+    const fiber = run(
+      unabortable(async ({ signal }) => {
+        await taskCanFinish.promise;
+        signalAbortedAfterAwait = signal.aborted;
+        return ok("data");
+      }),
+    );
+
+    let disposeFinished = false;
+    const disposePromise = fiber.run[Symbol.asyncDispose]().then(() => {
+      disposeFinished = true;
+    });
+
+    expect(fiber.run.getState().type).toBe("Disposing");
+
+    await Promise.resolve();
+    expect(disposeFinished).toBe(false);
+
+    taskCanFinish.resolve();
+    await disposePromise;
+
+    expect(signalAbortedAfterAwait).toBe(false);
+
+    const result = await fiber;
+    const state = fiber.getState();
+    assert(state.type === "Settled");
+
+    expect(result).toEqual(ok("data"));
+    expect(state.result).toEqual(result);
+    expect(state.outcome).toEqual(result);
+  });
+
   describe("run", () => {
     test("id matches run.id inside task", async () => {
       await using run = createRun();
@@ -1812,122 +1886,6 @@ describe("Fiber", () => {
       await run(parentTask);
 
       expect(receivedValue).toBe("from-addDeps");
-    });
-  });
-
-  describe("asUnabortableDaemon", () => {
-    test("supports AsyncDisposableStack.defer", async () => {
-      const events: Array<string> = [];
-      const cleanupStarted = Promise.withResolvers<void>();
-      const cleanupCanFinish = Promise.withResolvers<void>();
-
-      const run = createRun();
-
-      const fiber = run(async (run) => {
-        await using stack = new AsyncDisposableStack();
-
-        const closeConnection: Task<void> = async ({ signal }) => {
-          events.push("cleanup started");
-          cleanupStarted.resolve();
-          await cleanupCanFinish.promise;
-          events.push(signal.aborted ? "cleanup aborted" : "cleanup completed");
-          return ok();
-        };
-
-        stack.defer(async () => {
-          events.push("cleanup callback");
-          await run.asUnabortableDaemon(closeConnection);
-          events.push("cleanup callback done");
-        });
-
-        events.push("task body done");
-        return ok();
-      });
-
-      await cleanupStarted.promise;
-      // Dispose the root Run to prove the native cleanup callback can still
-      // finish after root shutdown has started.
-      const disposePromise = run[Symbol.asyncDispose]();
-      cleanupCanFinish.resolve();
-      await disposePromise;
-
-      expect(await fiber).toEqual(
-        err({ type: "AbortError", reason: runStoppedError }),
-      );
-      expect(events).toEqual([
-        "task body done",
-        "cleanup callback",
-        "cleanup started",
-        "cleanup completed",
-        "cleanup callback done",
-      ]);
-    });
-
-    test("supports AsyncDisposableStack.adopt", async () => {
-      const events: Array<string> = [];
-      const cleanupStarted = Promise.withResolvers<void>();
-      const cleanupCanFinish = Promise.withResolvers<void>();
-
-      const run = createRun();
-
-      const fiber = run(async (run) => {
-        await using stack = new AsyncDisposableStack();
-        const session = "session-1";
-
-        const logout =
-          (value: string): Task<void> =>
-          async ({ signal }) => {
-            events.push(`logout started:${value}`);
-            cleanupStarted.resolve();
-            await cleanupCanFinish.promise;
-            events.push(
-              signal.aborted
-                ? `logout aborted:${value}`
-                : `logout completed:${value}`,
-            );
-            return ok();
-          };
-
-        stack.adopt(session, async (session) => {
-          events.push(`logout callback:${session}`);
-          await run.asUnabortableDaemon(logout(session));
-          events.push(`logout callback done:${session}`);
-        });
-
-        events.push("task body done");
-        return ok();
-      });
-
-      await cleanupStarted.promise;
-      // Dispose the root Run to prove the native cleanup callback can still
-      // finish after root shutdown has started.
-      const disposePromise = run[Symbol.asyncDispose]();
-      cleanupCanFinish.resolve();
-      await disposePromise;
-
-      expect(await fiber).toEqual(
-        err({ type: "AbortError", reason: runStoppedError }),
-      );
-      expect(events).toEqual([
-        "task body done",
-        "logout callback:session-1",
-        "logout started:session-1",
-        "logout completed:session-1",
-        "logout callback done:session-1",
-      ]);
-    });
-
-    test("returns task values", async () => {
-      const run = createRun();
-
-      const result = await run(async (run) => {
-        const daemonFiber = run.asUnabortableDaemon(() => ok("done"));
-        expectTypeOf(daemonFiber).toExtend<Fiber<string, never, RunDeps>>();
-        const daemonResult = await daemonFiber;
-        return ok(daemonResult);
-      });
-
-      expect(result).toEqual(ok(ok("done")));
     });
   });
 
@@ -2394,8 +2352,7 @@ describe("callback", () => {
   });
 
   test("provides RunDeps for testable time", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     const task = callback<void>(({ ok, deps: { time } }) => {
       const id = time.setTimeout(ok, "100ms");
@@ -2403,7 +2360,7 @@ describe("callback", () => {
     });
 
     const fiber = run(task);
-    time.advance("100ms");
+    run.deps.time.advance("100ms");
 
     const result = await fiber;
     expect(result).toEqual(ok());
@@ -2431,12 +2388,11 @@ describe("callback", () => {
 
 describe("sleep", () => {
   test("completes after duration", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     const fiber = run(sleep("100ms"));
 
-    time.advance("100ms");
+    run.deps.time.advance("100ms");
 
     const result = await fiber;
     expect(result).toEqual(ok());
@@ -2672,13 +2628,12 @@ describe("timeout", () => {
   });
 
   test("returns TimeoutError when task exceeds duration", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     const slow = sleep("100ms");
 
     const fiber = run(timeout(slow, "10ms"));
-    time.advance("10ms");
+    run.deps.time.advance("10ms");
 
     const result = await fiber;
 
@@ -2686,8 +2641,7 @@ describe("timeout", () => {
   });
 
   test("aborts task when timeout fires", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     const abortReasonCapture = Promise.withResolvers<unknown>();
 
@@ -2701,7 +2655,7 @@ describe("timeout", () => {
     };
 
     const fiber = run(timeout(slow, "10ms"));
-    time.advance("10ms");
+    run.deps.time.advance("10ms");
 
     const result = await fiber;
     expect(result).toEqual(err({ type: "TimeoutError" }));
@@ -2711,8 +2665,7 @@ describe("timeout", () => {
   });
 
   test("uses custom abortReason when provided", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     const customReason = { type: "CustomTimeout" };
     const abortReasonCapture = Promise.withResolvers<unknown>();
@@ -2727,7 +2680,7 @@ describe("timeout", () => {
     };
 
     const fiber = run(timeout(slow, "10ms", { abortReason: customReason }));
-    time.advance("10ms");
+    run.deps.time.advance("10ms");
 
     await fiber;
 
@@ -2736,8 +2689,7 @@ describe("timeout", () => {
   });
 
   test("returns TimeoutError immediately when unabortable task exceeds duration", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     let taskCompleted = false;
     const completionCapture = Promise.withResolvers<void>();
@@ -2751,7 +2703,7 @@ describe("timeout", () => {
     });
 
     const fiber = run(timeout(slow, "10ms"));
-    time.advance("10ms");
+    run.deps.time.advance("10ms");
 
     // timeout returns immediately with TimeoutError
     const result = await fiber;
@@ -2761,7 +2713,7 @@ describe("timeout", () => {
     expect(taskCompleted).toBe(false);
 
     // After more time passes, unabortable task completes
-    time.advance("100ms");
+    run.deps.time.advance("100ms");
     await completionCapture.promise;
     expect(taskCompleted).toBe(true);
   });
@@ -3195,8 +3147,7 @@ describe("repeat", () => {
   });
 
   test("does not sleep when delay is zero", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     let count = 0;
     const task = () => {
@@ -3211,8 +3162,7 @@ describe("repeat", () => {
   });
 
   test("aborts while waiting between repeats", async () => {
-    const time = testCreateTime();
-    await using run = testCreateRun({ time });
+    await using run = testCreateRun();
 
     let count = 0;
     const task = () => {
