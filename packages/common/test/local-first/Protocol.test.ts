@@ -72,7 +72,7 @@ import {
   PositiveInt,
   zeroNonNegativeInt,
 } from "../../src/Type.js";
-import { testCreateRunWithSqliteAndRelayStorage } from "../_deps.js";
+import { setupSqliteAndRelayStorage } from "../_deps.js";
 import {
   maxTimestamp,
   testAppOwner,
@@ -458,12 +458,10 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   expect(encryptedMessage.change).toMatchInlineSnapshot(
     `uint8:[241,14,128,41,142,157,38,100,106,119,182,150,57,231,121,203,1,130,102,255,189,176,71,43,120,23,239,6,214,65,111,99,169,234,146,241,12,0,58,45,51,31,132,69,127,250,60,149,153,138,200,19,145,53,210,180,34,126,99,90,197,77,140,109,134,17,112,53,148,133,66,107,149,90,154,174,221,58,233,123,146,196,69,167,238,191,79,236,109,122,109,91,246,157,252,218,187,152,0,207,39,10,32,7,186,217,215,12,165,245,82,236,250,178,227,132,171,89,106,77,81,216,236,92,149,188,250,219,5,20,130,27,55,43,64,164,180,75,222,112,122,62,145,82,171]`,
   );
-  const decrypted = decryptAndDecodeDbChange(
-    encryptedMessage,
-    testAppOwner.encryptionKey,
+  const decrypted = getOrThrow(
+    decryptAndDecodeDbChange(encryptedMessage, testAppOwner.encryptionKey),
   );
-  assert(decrypted.ok);
-  expect(decrypted.value).toEqual(crdtMessage.change);
+  expect(decrypted).toEqual(crdtMessage.change);
 
   const wrongKey = EncryptionKey.orThrow(new Uint8Array(32).fill(42));
   const decryptedWithWrongKey = decryptAndDecodeDbChange(
@@ -693,8 +691,8 @@ describe("createProtocolMessageBuffer", () => {
 });
 
 test("createProtocolMessageForSync", async () => {
-  await using run = await testCreateRunWithSqliteAndRelayStorage();
-  const { storage } = run.deps;
+  await using setup = await setupSqliteAndRelayStorage();
+  const { run, storage } = setup;
 
   // Empty DB: version, ownerId, 0 messages, one empty TimestampsRange.
   expect(
@@ -821,12 +819,10 @@ describe("E2E versioning", () => {
       messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = await run(
+    const relayResponse = await run.orThrow(
       applyProtocolMessageAsRelay(clientMessage, {}, v0),
     );
-
-    assert(relayResponse.ok);
-    expect(relayResponse.value.message.length).toMatchInlineSnapshot(`20`);
+    expect(relayResponse.message.length).toMatchInlineSnapshot(`20`);
   });
 
   test("non-initiator version is higher", async () => {
@@ -839,13 +835,12 @@ describe("E2E versioning", () => {
       messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = await run(
+    const relayResponse = await run.orThrow(
       applyProtocolMessageAsRelay(clientMessage, {}, v1),
     );
-    assert(relayResponse.ok);
 
     const clientResult = await run(
-      applyProtocolMessageAsClient(relayResponse.value.message, {
+      applyProtocolMessageAsClient(relayResponse.message, {
         version: v0,
       }),
     );
@@ -869,13 +864,12 @@ describe("E2E versioning", () => {
       messageType: MessageType.Request,
     }).unwrap();
 
-    const relayResponse = await run(
+    const relayResponse = await run.orThrow(
       applyProtocolMessageAsRelay(clientMessage, {}, v0),
     );
-    assert(relayResponse.ok);
 
     const clientResult = await run(
-      applyProtocolMessageAsClient(relayResponse.value.message, {
+      applyProtocolMessageAsClient(relayResponse.message, {
         version: v1,
       }),
     );
@@ -928,12 +922,13 @@ describe("E2E errors", () => {
           validateWriteKey: lazyFalse,
         },
       });
-      const response = await run(applyProtocolMessageAsRelay(initiatorMessage));
-      assert(response.ok);
-      expect(response.value.message).toMatchInlineSnapshot(
+      const response = await run.orThrow(
+        applyProtocolMessageAsRelay(initiatorMessage),
+      );
+      expect(response.message).toMatchInlineSnapshot(
         `uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,1,1,0]`,
       );
-      responseMessage = response.value.message;
+      responseMessage = response.message;
     }
 
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
@@ -1126,9 +1121,16 @@ describe("E2E sync", { timeout: 15_000 }, () => {
   assertNonEmptyArray(messages);
 
   const createStorages = async () => {
-    const client = await testCreateRunWithSqliteAndRelayStorage();
-    const rela = await testCreateRunWithSqliteAndRelayStorage();
-    return [client.deps.storage, rela.deps.storage];
+    await using stack = new AsyncDisposableStack();
+    const client = stack.use(await setupSqliteAndRelayStorage());
+    const relay = stack.use(await setupSqliteAndRelayStorage());
+    const moved = stack.move();
+
+    return {
+      clientStorage: client.storage,
+      relayStorage: relay.storage,
+      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    };
   };
 
   const reconcile = async (
@@ -1208,7 +1210,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
   it("client and relay have all data", async () => {
     await using run = testCreateRun();
-    const [clientStorage, relayStorage] = await createStorages();
+    await using storages = await createStorages();
+    const { clientStorage, relayStorage } = storages;
     await run(clientStorage.writeMessages(testAppOwnerIdBytes, messages));
     await run(relayStorage.writeMessages(testAppOwnerIdBytes, messages));
 
@@ -1226,7 +1229,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
   it("client has all data", async () => {
     await using run = testCreateRun();
-    const [clientStorage, relayStorage] = await createStorages();
+    await using storages = await createStorages();
+    const { clientStorage, relayStorage } = storages;
     await run(clientStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
@@ -1247,7 +1251,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
   it("client has all data - many steps", async () => {
     await using run = testCreateRun();
-    const [clientStorage, relayStorage] = await createStorages();
+    await using storages = await createStorages();
+    const { clientStorage, relayStorage } = storages;
     await run(clientStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(
@@ -1280,7 +1285,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
   it("relay has all data", async () => {
     await using run = testCreateRun();
-    const [clientStorage, relayStorage] = await createStorages();
+    await using storages = await createStorages();
+    const { clientStorage, relayStorage } = storages;
     await run(relayStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(clientStorage, relayStorage);
@@ -1299,7 +1305,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
   it("relay has all data - many steps", async () => {
     await using run = testCreateRun();
-    const [clientStorage, relayStorage] = await createStorages();
+    await using storages = await createStorages();
+    const { clientStorage, relayStorage } = storages;
     await run(relayStorage.writeMessages(testAppOwnerIdBytes, messages));
 
     const syncSteps = await reconcile(
@@ -1340,7 +1347,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
   it("client and relay each have a random half of the data", async () => {
     await using run = testCreateRun();
-    const [clientStorage, relayStorage] = await createStorages();
+    await using storages = await createStorages();
+    const { clientStorage, relayStorage } = storages;
 
     const shuffledMessages = deps.randomLib.shuffle(messages);
     const middle = Math.floor(shuffledMessages.length / 2);
@@ -1371,7 +1379,8 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
   it("client and relay each have a random half of the data - many steps", async () => {
     await using run = testCreateRun();
-    const [clientStorage, relayStorage] = await createStorages();
+    await using storages = await createStorages();
+    const { clientStorage, relayStorage } = storages;
 
     const shuffledMessages = deps.randomLib.shuffle(messages);
     const middle = Math.floor(shuffledMessages.length / 2);
@@ -1459,15 +1468,17 @@ describe("E2E sync", { timeout: 15_000 }, () => {
       1000 as ProtocolMessageMaxSize,
     );
 
-    await using run = await testCreateRunWithSqliteAndRelayStorage();
-    const relayResult = await run(applyProtocolMessageAsRelay(protocolMessage));
+    await using setup = await setupSqliteAndRelayStorage();
+    const { run } = setup;
+    const relayResult = await run.orThrow(
+      applyProtocolMessageAsRelay(protocolMessage),
+    );
 
-    assert(relayResult.ok);
-    expect(relayResult.value.message).toMatchInlineSnapshot(
+    expect(relayResult.message).toMatchInlineSnapshot(
       `uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,1,0,0,1,2,9,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,0,9,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6]`,
     );
     // Sync continue
-    expect(relayResult.value).not.toBe(null);
+    expect(relayResult).not.toBe(null);
   });
 });
 

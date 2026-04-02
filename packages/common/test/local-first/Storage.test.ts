@@ -23,8 +23,8 @@ import {
 } from "../../src/local-first/Timestamp.js";
 import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
-import { ok } from "../../src/Result.js";
-import { sql, testCreateRunWithSqlite } from "../../src/Sqlite.js";
+import { getOrThrow, ok } from "../../src/Result.js";
+import { sql } from "../../src/Sqlite.js";
 import { testCreateDeps } from "../../src/Test.js";
 import type { Millis } from "../../src/Time.js";
 import {
@@ -33,7 +33,7 @@ import {
   PositiveInt,
   zeroNonNegativeInt,
 } from "../../src/Type.js";
-import { testCreateSqliteDeps } from "../_deps.js";
+import { setupSqlite } from "../_deps.js";
 import {
   testAnotherTimestampsAsc,
   testAppOwner2,
@@ -43,9 +43,9 @@ import {
   testTimestampsRandom,
 } from "./_fixtures.js";
 
-const createDeps = async () => {
-  const run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-  const { sqlite } = run.deps;
+const setupSqliteAndStorage = async () => {
+  const setup = await setupSqlite();
+  const { sqlite } = setup;
 
   // For reliable performance, we have to use Math.random!
   // Pseudo-random does not scale (randomness is limited).
@@ -56,7 +56,7 @@ const createDeps = async () => {
   return {
     sqlite,
     storage: createBaseSqliteStorage({ sqlite, random }),
-    [Symbol.asyncDispose]: () => run[Symbol.asyncDispose](),
+    [Symbol.asyncDispose]: () => setup[Symbol.asyncDispose](),
   };
 };
 
@@ -75,25 +75,26 @@ const testTimestamps = async (
   timestamps: ReadonlyArray<TimestampBytes>,
   strategy: StorageInsertTimestampStrategy,
 ) => {
-  await using deps = await createDeps();
+  await using setup = await setupSqliteAndStorage();
+  const { sqlite, storage } = setup;
 
   const bruteForceAllTimestampsFingerprint = timestamps
     .map(timestampBytesToFingerprint)
     .reduce((prev, curr) => xorFingerprints(prev, curr));
 
-  const txResult = deps.sqlite.transaction(() => {
+  const txResult = sqlite.transaction(() => {
     for (const timestamp of timestamps) {
-      deps.storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy);
+      storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy);
     }
 
     // Add the same timestamps again to test idempotency.
     for (const timestamp of timestamps) {
-      deps.storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy);
+      storage.insertTimestamp(testAppOwnerIdBytes, timestamp, strategy);
     }
 
     // Add similar timestamps of another owner.
     for (const timestamp of testAnotherTimestampsAsc) {
-      deps.storage.insertTimestamp(
+      storage.insertTimestamp(
         ownerIdToOwnerIdBytes(testAppOwner2.id),
         timestamp,
         "append",
@@ -103,16 +104,15 @@ const testTimestamps = async (
   });
   assert(txResult.ok);
 
-  const count = deps.storage.getSize(testAppOwnerIdBytes);
+  const count = storage.getSize(testAppOwnerIdBytes);
   assert(count);
   expect(count).toBe(timestamps.length);
 
-  const buckets = computeBalancedBuckets(count);
-  assert(buckets.ok, JSON.stringify(buckets));
+  const buckets = getOrThrow(computeBalancedBuckets(count));
 
-  const fingerprintRanges = deps.storage.fingerprintRanges(
+  const fingerprintRanges = storage.fingerprintRanges(
     testAppOwnerIdBytes,
-    buckets.value,
+    buckets,
   );
   assert(fingerprintRanges);
 
@@ -135,7 +135,7 @@ const testTimestamps = async (
         ? null
         : (fingerprintRanges[i].upperBound as TimestampBytes);
 
-    const { rows: timestampRows } = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
+    const { rows: timestampRows } = sqlite.exec<{ t: TimestampBytes }>(sql`
       select t
       from evolu_timestamp
       where
@@ -154,10 +154,10 @@ const testTimestamps = async (
       bruteForceRangeFingerprint,
     );
 
-    const fingerprintResult = deps.storage.fingerprint(
+    const fingerprintResult = storage.fingerprint(
       testAppOwnerIdBytes,
-      NonNegativeInt.orThrow(i > 0 ? buckets.value[i - 1] : 0),
-      NonNegativeInt.orThrow(buckets.value[i]),
+      NonNegativeInt.orThrow(i > 0 ? buckets[i - 1] : 0),
+      NonNegativeInt.orThrow(buckets[i]),
     );
     assert(fingerprintResult);
     expect(fingerprintResult).toEqual(bruteForceRangeFingerprint);
@@ -169,10 +169,9 @@ const testTimestamps = async (
   );
 
   // The whole DB fingerprint.
-  const oneRangeFingerprints = deps.storage.fingerprintRanges(
-    testAppOwnerIdBytes,
-    [timestamps.length as PositiveInt],
-  );
+  const oneRangeFingerprints = storage.fingerprintRanges(testAppOwnerIdBytes, [
+    timestamps.length as PositiveInt,
+  ]);
   assert(oneRangeFingerprints);
 
   expect(oneRangeFingerprints.length).toBe(1);
@@ -205,18 +204,19 @@ test(
 );
 
 test("empty db", async () => {
-  await using deps = await createDeps();
-  const size = deps.storage.getSize(testAppOwnerIdBytes);
+  await using setup = await setupSqliteAndStorage();
+  const { storage } = setup;
+  const size = storage.getSize(testAppOwnerIdBytes);
   expect(size).toBe(0);
 
-  const fingerprint = deps.storage.fingerprint(
+  const fingerprint = storage.fingerprint(
     testAppOwnerIdBytes,
     0 as NonNegativeInt,
     0 as NonNegativeInt,
   );
   expect(fingerprint.join()).toBe("0,0,0,0,0,0,0,0,0,0,0,0");
 
-  const lowerBound = deps.storage.findLowerBound(
+  const lowerBound = storage.findLowerBound(
     testAppOwnerIdBytes,
     0 as NonNegativeInt,
     0 as NonNegativeInt,
@@ -226,8 +226,8 @@ test("empty db", async () => {
 });
 
 test("findLowerBound", async () => {
-  await using deps = await createDeps();
-  const { storage } = deps;
+  await using setup = await setupSqliteAndStorage();
+  const { storage } = setup;
 
   const timestamps = Array.from({ length: 10 }, (_, i) =>
     timestampToTimestampBytes(createTimestamp({ millis: (i + 1) as Millis })),
@@ -270,14 +270,15 @@ test("findLowerBound", async () => {
 });
 
 test("iterate", async () => {
-  await using deps = await createDeps();
+  await using setup = await setupSqliteAndStorage();
+  const { storage } = setup;
 
   for (const timestamp of testTimestampsAsc) {
-    deps.storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
+    storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
   }
 
   const collected: Array<TimestampBytes> = [];
-  deps.storage.iterate(
+  storage.iterate(
     testAppOwnerIdBytes,
     0 as NonNegativeInt,
     testTimestampsAsc.length as NonNegativeInt,
@@ -295,7 +296,7 @@ test("iterate", async () => {
 
   const stopAfter = 3;
   const stopAfterCollected: Array<TimestampBytes> = [];
-  deps.storage.iterate(
+  storage.iterate(
     testAppOwnerIdBytes,
     0 as NonNegativeInt,
     testTimestampsAsc.length as NonNegativeInt,
@@ -313,14 +314,15 @@ test("iterate", async () => {
 });
 
 test("getTimestampByIndex", async () => {
-  await using deps = await createDeps();
+  await using setup = await setupSqliteAndStorage();
+  const { sqlite, storage } = setup;
 
   for (const timestamp of testTimestampsAsc) {
-    deps.storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
+    storage.insertTimestamp(testAppOwnerIdBytes, timestamp, "append");
   }
 
   for (let i = 0; i < testTimestampsAsc.length; i++) {
-    const timestamp = getTimestampByIndex(deps)(
+    const timestamp = getTimestampByIndex({ sqlite })(
       testAppOwnerIdBytes,
       i as NonNegativeInt,
     );
@@ -396,7 +398,8 @@ const benchmarkTimestamps = async (
   timestamps: ReadonlyArray<TimestampBytes>,
   strategy: StorageInsertTimestampStrategy,
 ) => {
-  await using deps = await createDeps();
+  await using setup = await setupSqliteAndStorage();
+  const { sqlite, storage } = setup;
   const insertBeginTime = performance.now();
 
   for (
@@ -407,13 +410,9 @@ const benchmarkTimestamps = async (
     const batchEnd = Math.min(batchStart + batchSize, timestamps.length);
 
     const batchBeginTime = performance.now();
-    deps.sqlite.transaction(() => {
+    sqlite.transaction(() => {
       for (let i = batchStart; i < batchEnd; i++) {
-        deps.storage.insertTimestamp(
-          testAppOwnerIdBytes,
-          timestamps[i],
-          strategy,
-        );
+        storage.insertTimestamp(testAppOwnerIdBytes, timestamps[i], strategy);
       }
       return ok();
     });
@@ -421,14 +420,10 @@ const benchmarkTimestamps = async (
     const insertsPerSec = ((batchEnd - batchStart) / batchTimeSec).toFixed(0);
 
     const bucketsBeginTime = performance.now();
-    const size = deps.storage.getSize(testAppOwnerIdBytes);
+    const size = storage.getSize(testAppOwnerIdBytes);
     assert(size);
-    const buckets = computeBalancedBuckets(size);
-    assert(buckets.ok);
-    const fingerprint = deps.storage.fingerprintRanges(
-      testAppOwnerIdBytes,
-      buckets.value,
-    );
+    const buckets = getOrThrow(computeBalancedBuckets(size));
+    const fingerprint = storage.fingerprintRanges(testAppOwnerIdBytes, buckets);
     assert(fingerprint);
     const now = performance.now();
     const timestampsTime = (now - insertBeginTime).toFixed(1);

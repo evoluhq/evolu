@@ -308,27 +308,29 @@ export const createSqlite =
     return ok(sqlite);
   };
 
-/**
- * Creates a test {@link Run} with a ready-to-use in-memory {@link Sqlite}.
- *
- * This helper removes repetitive test setup where callers first create a test
- * run and then execute {@link createSqlite} manually.
- */
-export function testCreateRunWithSqlite(
+/** Creates a test setup with a in-memory {@link Sqlite}. */
+export const testSetupSqlite = async (
   deps: CreateSqliteDriverDep,
-): Promise<Run<TestDeps & CreateSqliteDriverDep & SqliteDep>>;
+): Promise<
+  AsyncDisposable &
+    SqliteDep & {
+      readonly run: Run<TestDeps & CreateSqliteDriverDep & SqliteDep>;
+      readonly sqlite: Sqlite;
+    }
+> => {
+  await using stack = new AsyncDisposableStack();
+  const run = stack.use(testCreateRun(deps));
+  const sqlite = stack.use(
+    await run.orThrow(createSqlite(testName, { mode: "memory" })),
+  );
+  const moved = stack.move();
 
-export function testCreateRunWithSqlite<D extends CreateSqliteDriverDep>(
-  deps: D,
-): Promise<Run<TestDeps & D & SqliteDep>>;
-
-export async function testCreateRunWithSqlite(
-  deps: CreateSqliteDriverDep,
-): Promise<Run<TestDeps & CreateSqliteDriverDep & SqliteDep>> {
-  const run = testCreateRun(deps);
-  const sqlite = await run.orThrow(createSqlite(testName, { mode: "memory" }));
-  return run.addDeps({ sqlite });
-}
+  return {
+    run: run.addDeps({ sqlite }),
+    sqlite,
+    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+  };
+};
 
 interface SqliteQueryPlanRow {
   id: number;

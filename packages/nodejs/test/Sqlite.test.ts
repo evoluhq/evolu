@@ -1,41 +1,41 @@
-import {
-  createSqlite,
-  Name,
-  sql,
-  testCreateRun,
-  type CreateSqliteDriverDep,
-} from "@evolu/common";
+import { createSqlite, Name, sql, testCreateRun } from "@evolu/common";
 import BetterSQLite from "better-sqlite3";
 import { existsSync, unlinkSync } from "fs";
-import { afterEach, assert, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createBetterSqliteDriver } from "../src/Sqlite.js";
 
 const testName = Name.orThrow("Test");
 
+const setupBetterSqlite = async () => {
+  await using stack = new AsyncDisposableStack();
+  const run = stack.use(
+    testCreateRun({ createSqliteDriver: createBetterSqliteDriver }),
+  );
+  const sqlite = stack.use(
+    await run.orThrow(createSqlite(testName, { mode: "memory" })),
+  );
+  const moved = stack.move();
+
+  return {
+    sqlite,
+    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+  };
+};
+
 describe("createBetterSqliteDriver", () => {
   test("creates in-memory database", async () => {
-    await using run = testCreateRun<CreateSqliteDriverDep>({
-      createSqliteDriver: createBetterSqliteDriver,
-    });
-    const result = await run(createSqlite(testName, { mode: "memory" }));
-    assert(result.ok);
-    const sqlite = result.value;
+    await using setup = await setupBetterSqlite();
+    const { sqlite } = setup;
 
     sqlite.exec(sql`create table t (data text);`);
     sqlite.exec(sql`insert into t (data) values (${"hello"});`);
     const rows = sqlite.exec(sql`select * from t;`);
     expect(rows.rows).toEqual([{ data: "hello" }]);
-
-    await sqlite[Symbol.asyncDispose]();
   });
 
   test("exec returns rows for reader queries", async () => {
-    await using run = testCreateRun<CreateSqliteDriverDep>({
-      createSqliteDriver: createBetterSqliteDriver,
-    });
-    const result = await run(createSqlite(testName, { mode: "memory" }));
-    assert(result.ok);
-    const sqlite = result.value;
+    await using setup = await setupBetterSqlite();
+    const { sqlite } = setup;
 
     sqlite.exec(sql`create table t (id integer primary key, name text);`);
     sqlite.exec(sql`insert into t (name) values (${"Alice"});`);
@@ -44,17 +44,11 @@ describe("createBetterSqliteDriver", () => {
     const rows = sqlite.exec(sql`select name from t order by id;`);
     expect(rows.rows).toEqual([{ name: "Alice" }, { name: "Bob" }]);
     expect(rows.changes).toBe(0);
-
-    await sqlite[Symbol.asyncDispose]();
   });
 
   test("exec returns changes for writer queries", async () => {
-    await using run = testCreateRun<CreateSqliteDriverDep>({
-      createSqliteDriver: createBetterSqliteDriver,
-    });
-    const result = await run(createSqlite(testName, { mode: "memory" }));
-    assert(result.ok);
-    const sqlite = result.value;
+    await using setup = await setupBetterSqlite();
+    const { sqlite } = setup;
 
     sqlite.exec(sql`create table t (id integer primary key, name text);`);
     sqlite.exec(sql`insert into t (name) values (${"Alice"});`);
@@ -63,17 +57,11 @@ describe("createBetterSqliteDriver", () => {
     const deleteResult = sqlite.exec(sql`delete from t;`);
     expect(deleteResult.rows).toEqual([]);
     expect(deleteResult.changes).toBe(2);
-
-    await sqlite[Symbol.asyncDispose]();
   });
 
   test("export returns serialized database bytes", async () => {
-    await using run = testCreateRun<CreateSqliteDriverDep>({
-      createSqliteDriver: createBetterSqliteDriver,
-    });
-    const result = await run(createSqlite(testName, { mode: "memory" }));
-    assert(result.ok);
-    const sqlite = result.value;
+    await using setup = await setupBetterSqlite();
+    const { sqlite } = setup;
 
     sqlite.exec(sql`create table t (data text);`);
     sqlite.exec(sql`insert into t (data) values (${"foo"});`);
@@ -81,8 +69,6 @@ describe("createBetterSqliteDriver", () => {
     const exported = sqlite.export();
     expect(exported).toBeInstanceOf(Uint8Array);
     expect(exported.length).toBeGreaterThan(0);
-
-    await sqlite[Symbol.asyncDispose]();
   });
 
   test("export copies bytes when serialize is not backed by ArrayBuffer", async () => {
@@ -93,37 +79,26 @@ describe("createBetterSqliteDriver", () => {
       .spyOn(BetterSQLite.prototype, "serialize")
       .mockImplementation(() => serialized as Buffer);
 
-    await using run = testCreateRun<CreateSqliteDriverDep>({
-      createSqliteDriver: createBetterSqliteDriver,
-    });
-    const result = await run(createSqlite(testName, { mode: "memory" }));
-    assert(result.ok);
+    await using setup = await setupBetterSqlite();
+    const { sqlite } = setup;
 
-    const exported = result.value.export();
+    const exported = sqlite.export();
 
     expect(exported).toEqual(new Uint8Array([1, 2, 3]));
     expect(exported.buffer).toBeInstanceOf(ArrayBuffer);
   });
 
   test("dispose is idempotent", async () => {
-    await using run = testCreateRun<CreateSqliteDriverDep>({
-      createSqliteDriver: createBetterSqliteDriver,
-    });
-    const result = await run(createSqlite(testName, { mode: "memory" }));
-    assert(result.ok);
-    const sqlite = result.value;
+    await using setup = await setupBetterSqlite();
+    const { sqlite } = setup;
 
     await sqlite[Symbol.asyncDispose]();
     await sqlite[Symbol.asyncDispose]();
   });
 
   test("prepared statements are cached and reused", async () => {
-    await using run = testCreateRun<CreateSqliteDriverDep>({
-      createSqliteDriver: createBetterSqliteDriver,
-    });
-    const result = await run(createSqlite(testName, { mode: "memory" }));
-    assert(result.ok);
-    const sqlite = result.value;
+    await using setup = await setupBetterSqlite();
+    const { sqlite } = setup;
 
     sqlite.exec(sql`create table t (id integer primary key, name text);`);
 
@@ -135,16 +110,13 @@ describe("createBetterSqliteDriver", () => {
 
     const rows = sqlite.exec(sql`select name from t order by id;`);
     expect(rows.rows).toEqual([{ name: "A" }, { name: "B" }]);
-
-    await sqlite[Symbol.asyncDispose]();
   });
 
   test("driver dispose is idempotent", async () => {
     await using run = testCreateRun();
-    const task = createBetterSqliteDriver(testName, { mode: "memory" });
-    const result = await run(task);
-    assert(result.ok);
-    const driver = result.value;
+    const driver = await run.orThrow(
+      createBetterSqliteDriver(testName, { mode: "memory" }),
+    );
 
     driver[Symbol.dispose]();
     driver[Symbol.dispose]();
@@ -173,13 +145,9 @@ describe("createBetterSqliteDriver", () => {
 
     test("creates database file on disk", async () => {
       await using run = testCreateRun();
-      const task = createBetterSqliteDriver(testName);
-      const result = await run(task);
-      assert(result.ok);
-      const driver = result.value;
+      using _driver = await run.orThrow(createBetterSqliteDriver(testName));
 
       expect(existsSync(dbPath)).toBe(true);
-      driver[Symbol.dispose]();
     });
   });
 });

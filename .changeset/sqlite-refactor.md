@@ -17,7 +17,7 @@ Refactored SQLite integration to use Task and throw-first semantics
 - Replaced `options.memory` and `options.encryptionKey` with a discriminated `options.mode` field (`"memory"` | `"encrypted"`)
 - Updated Expo and op-sqlite drivers to match the new API
 - Added SQLite schema metadata primitives (`SqliteSchema`, `SqliteIndex`, `eqSqliteIndex`, `getSqliteSchema`, `getSqliteSnapshot`)
-- Added `testCreateRunWithSqlite` helper for SQLite tests
+- Added `testSetupSqlite` helper for SQLite tests
 
 Why `SqliteError` was removed:
 

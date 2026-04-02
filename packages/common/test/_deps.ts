@@ -21,17 +21,20 @@ import type {
 } from "../src/Sqlite.js";
 import {
   createPreparedStatementsCache,
-  testCreateRunWithSqlite,
+  testSetupSqlite,
 } from "../src/Sqlite.js";
 import type { Run } from "../src/Task.js";
 import type { TestDeps } from "../src/Test.js";
 
 export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 
-export const testCreateSqliteDeps: CreateSqliteDriverDep = {
+export const testCreateSqliteDep: CreateSqliteDriverDep = {
   createSqliteDriver: (name) =>
     createBetterSqliteDriver(name, { mode: "memory" }),
 };
+
+export const setupSqlite: () => ReturnType<typeof testSetupSqlite> = () =>
+  testSetupSqlite(testCreateSqliteDep);
 
 // Duplicated from @evolu/nodejs because @evolu/common cannot depend on it
 // (nodejs depends on common — importing back would create a circular dependency).
@@ -85,22 +88,36 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
   return ok(driver);
 };
 
-/** Creates a test Run with relay storage and SQLite deps. */
-export const testCreateRunWithSqliteAndRelayStorage = async (
-  config?: Partial<StorageConfig>,
-): Promise<Run<TestDeps & CreateSqliteDriverDep & SqliteDep & StorageDep>> => {
-  const runWithSqlite = await testCreateRunWithSqlite(testCreateSqliteDeps);
+export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {
+  readonly run: Run<TestDeps & CreateSqliteDriverDep & SqliteDep & StorageDep>;
+  readonly sqlite: SqliteDep["sqlite"];
+  readonly storage: StorageDep["storage"];
+}
 
-  createBaseSqliteStorageTables(runWithSqlite.deps);
-  createRelayStorageTables(runWithSqlite.deps);
+/** Creates a disposable test setup with relay storage and SQLite deps. */
+export const setupSqliteAndRelayStorage = async (
+  config?: Partial<StorageConfig>,
+): Promise<TestSqliteAndRelayStorageSetup> => {
+  await using stack = new AsyncDisposableStack();
+  const sqliteSetup = stack.use(await setupSqlite());
+  const { run, sqlite } = sqliteSetup;
+
+  createBaseSqliteStorageTables({ sqlite });
+  createRelayStorageTables({ sqlite });
 
   const storage = createRelaySqliteStorage({
-    ...runWithSqlite.deps,
+    ...run.deps,
     timingSafeEqual: testTimingSafeEqual,
   })({
     isOwnerWithinQuota: lazyTrue,
     ...config,
   });
+  const moved = stack.move();
 
-  return runWithSqlite.addDeps<StorageDep>({ storage });
+  return {
+    run: run.addDeps<StorageDep>({ storage }),
+    sqlite,
+    storage,
+    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+  };
 };

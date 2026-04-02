@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import type {
   NonNegativeInt,
   OwnerIdBytes,
@@ -17,18 +17,18 @@ import type {
 } from "../../src/local-first/Storage.js";
 import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
 import { testCreateDeps } from "../../src/Test.js";
-import { testCreateRunWithSqliteAndRelayStorage } from "../_deps.js";
+import { setupSqliteAndRelayStorage } from "../_deps.js";
 import {
   testAppOwner,
   testAppOwner2,
-  testAppOwnerIdBytes,
   testAppOwner2IdBytes,
+  testAppOwnerIdBytes,
   testTimestampsAsc,
 } from "./_fixtures.js";
 
 test("validateWriteKey", async () => {
-  await using run = await testCreateRunWithSqliteAndRelayStorage();
-  const { storage } = run.deps;
+  await using setup = await setupSqliteAndRelayStorage();
+  const { storage } = setup;
 
   const writeKey = testAppOwner.writeKey;
   const differentWriteKey = testAppOwner2.writeKey;
@@ -50,8 +50,8 @@ test("validateWriteKey", async () => {
 });
 
 test("deleteOwner", async () => {
-  await using run = await testCreateRunWithSqliteAndRelayStorage();
-  const { storage, sqlite } = run.deps;
+  await using setup = await setupSqliteAndRelayStorage();
+  const { run, storage, sqlite } = setup;
 
   storage.setWriteKey(testAppOwnerIdBytes, testAppOwner.writeKey);
 
@@ -97,8 +97,8 @@ describe("writeMessages", () => {
   const message = createTestMessage();
 
   test("calculates storedBytes correctly", async () => {
-    await using run = await testCreateRunWithSqliteAndRelayStorage();
-    const { storage, sqlite } = run.deps;
+    await using setup = await setupSqliteAndRelayStorage();
+    const { run, storage, sqlite } = setup;
 
     await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
 
@@ -106,8 +106,8 @@ describe("writeMessages", () => {
   });
 
   test("accumulates storedBytes across multiple writes", async () => {
-    await using run = await testCreateRunWithSqliteAndRelayStorage();
-    const { storage, sqlite } = run.deps;
+    await using setup = await setupSqliteAndRelayStorage();
+    const { run, storage, sqlite } = setup;
 
     await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
     await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
@@ -116,18 +116,12 @@ describe("writeMessages", () => {
   });
 
   test("prevents duplicate timestamp writes", async () => {
-    await using run = await testCreateRunWithSqliteAndRelayStorage();
-    const { storage, sqlite } = run.deps;
+    await using setup = await setupSqliteAndRelayStorage();
+    const { run, storage, sqlite } = setup;
 
-    const result1 = await run(
-      storage.writeMessages(testAppOwnerIdBytes, [message]),
-    );
-    assert(result1.ok);
+    await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
 
-    const result2 = await run(
-      storage.writeMessages(testAppOwnerIdBytes, [message]),
-    );
-    assert(result2.ok);
+    await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
 
     const countResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count
@@ -142,7 +136,7 @@ describe("writeMessages", () => {
     let concurrentAccess = false;
     let activeWrites = 0;
 
-    await using run = await testCreateRunWithSqliteAndRelayStorage({
+    await using setup = await setupSqliteAndRelayStorage({
       isOwnerWithinQuota: async (_ownerId, _requiredBytes) => {
         activeWrites++;
         if (activeWrites > 1) {
@@ -153,7 +147,7 @@ describe("writeMessages", () => {
         return true;
       },
     });
-    const { storage } = run.deps;
+    const { run, storage } = setup;
 
     const message1 = createTestMessage();
     const message2 = createTestMessage();
@@ -171,7 +165,7 @@ describe("writeMessages", () => {
     let activeWrites = 0;
     let maxConcurrentWrites = 0;
 
-    await using run = await testCreateRunWithSqliteAndRelayStorage({
+    await using setup = await setupSqliteAndRelayStorage({
       isOwnerWithinQuota: async (_ownerId, _requiredBytes) => {
         activeWrites++;
         maxConcurrentWrites = Math.max(maxConcurrentWrites, activeWrites);
@@ -180,7 +174,7 @@ describe("writeMessages", () => {
         return true;
       },
     });
-    const { storage } = run.deps;
+    const { run, storage } = setup;
 
     const message1 = createTestMessage();
     const message2 = createTestMessage();
@@ -196,10 +190,10 @@ describe("writeMessages", () => {
   });
 
   test("transaction rollback on quota error", async () => {
-    await using run = await testCreateRunWithSqliteAndRelayStorage({
+    await using setup = await setupSqliteAndRelayStorage({
       isOwnerWithinQuota: lazyFalse,
     });
-    const { storage, sqlite } = run.deps;
+    const { run, storage, sqlite } = setup;
 
     const result = await run(
       storage.writeMessages(testAppOwnerIdBytes, [message]),
@@ -232,7 +226,7 @@ describe("writeMessages", () => {
       let receivedOwnerId = "";
       let receivedBytes = 0;
 
-      await using run = await testCreateRunWithSqliteAndRelayStorage({
+      await using setup = await setupSqliteAndRelayStorage({
         isOwnerWithinQuota: (ownerId, requiredBytes) => {
           quotaCheckCalled = true;
           receivedOwnerId = ownerId;
@@ -240,13 +234,9 @@ describe("writeMessages", () => {
           return true;
         },
       });
-      const { storage } = run.deps;
+      const { run, storage } = setup;
 
-      const result = await run(
-        storage.writeMessages(testAppOwnerIdBytes, [message]),
-      );
-
-      assert(result.ok);
+      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
       expect(quotaCheckCalled).toBe(true);
       expect(receivedOwnerId).toBe(testAppOwner.id);
       expect(receivedBytes).toBe(3);
@@ -257,7 +247,7 @@ describe("writeMessages", () => {
       let receivedOwnerId = "";
       let receivedBytes = 0;
 
-      await using run = await testCreateRunWithSqliteAndRelayStorage({
+      await using setup = await setupSqliteAndRelayStorage({
         isOwnerWithinQuota: async (ownerId, requiredBytes) => {
           await setTimeout("1ms");
           quotaCheckCalled = true;
@@ -266,23 +256,19 @@ describe("writeMessages", () => {
           return true;
         },
       });
-      const { storage } = run.deps;
+      const { run, storage } = setup;
 
-      const result = await run(
-        storage.writeMessages(testAppOwnerIdBytes, [message]),
-      );
-
-      assert(result.ok);
+      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
       expect(quotaCheckCalled).toBe(true);
       expect(receivedOwnerId).toBe(testAppOwner.id);
       expect(receivedBytes).toBe(3);
     });
 
     test("fails when isOwnerWithinQuota returns false", async () => {
-      await using run = await testCreateRunWithSqliteAndRelayStorage({
+      await using setup = await setupSqliteAndRelayStorage({
         isOwnerWithinQuota: lazyFalse,
       });
-      const { storage } = run.deps;
+      const { run, storage } = setup;
 
       const result = await run(
         storage.writeMessages(testAppOwnerIdBytes, [message]),
@@ -294,13 +280,13 @@ describe("writeMessages", () => {
     });
 
     test("fails when async isOwnerWithinQuota returns false", async () => {
-      await using run = await testCreateRunWithSqliteAndRelayStorage({
+      await using setup = await setupSqliteAndRelayStorage({
         isOwnerWithinQuota: async () => {
           await setTimeout("1ms");
           return false;
         },
       });
-      const { storage } = run.deps;
+      const { run, storage } = setup;
 
       const result = await run(
         storage.writeMessages(testAppOwnerIdBytes, [message]),
@@ -314,23 +300,17 @@ describe("writeMessages", () => {
     test("with quota check based on cumulative bytes", async () => {
       const quotaLimit = 100;
 
-      await using run = await testCreateRunWithSqliteAndRelayStorage({
+      await using setup = await setupSqliteAndRelayStorage({
         isOwnerWithinQuota: (_ownerId, requiredBytes) =>
           requiredBytes <= quotaLimit,
       });
-      const { storage, sqlite } = run.deps;
+      const { run, storage, sqlite } = setup;
 
       const message1 = createTestMessage(50);
-      const result1 = await run(
-        storage.writeMessages(testAppOwnerIdBytes, [message1]),
-      );
-      assert(result1.ok);
+      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message1]));
 
       const message2 = createTestMessage(40);
-      const result2 = await run(
-        storage.writeMessages(testAppOwnerIdBytes, [message2]),
-      );
-      assert(result2.ok);
+      await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message2]));
 
       const largeMessage = createTestMessage(20);
       const result3 = await run(

@@ -1,12 +1,6 @@
-import {
-  createSqlite,
-  Name,
-  sql,
-  testCreateRun,
-  type CreateSqliteDriverDep,
-} from "@evolu/common";
+import { createSqlite, Name, sql, testCreateRun } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
-import { assert, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { createWasmSqliteDriver } from "../src/Sqlite.js";
 
 installPolyfills();
@@ -16,6 +10,22 @@ const testName = Name.orThrow("Test");
 const isWebKit =
   navigator.userAgent.includes("WebKit") &&
   !navigator.userAgent.includes("Chrome");
+
+const setupWasmSqlite = async () => {
+  await using stack = new AsyncDisposableStack();
+  const run = stack.use(
+    testCreateRun({ createSqliteDriver: createWasmSqliteDriver }),
+  );
+  const sqlite = stack.use(
+    await run.orThrow(createSqlite(testName, { mode: "memory" })),
+  );
+  const moved = stack.move();
+
+  return {
+    sqlite,
+    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+  };
+};
 
 // Helper to communicate with the sqlite-worker for OPFS tests.
 const createWorkerDriver = () => {
@@ -58,28 +68,18 @@ const createWorkerDriver = () => {
 describe("createWasmSqliteDriver", () => {
   describe("memory", () => {
     test("creates in-memory database and executes queries", async () => {
-      await using run = testCreateRun<CreateSqliteDriverDep>({
-        createSqliteDriver: createWasmSqliteDriver,
-      });
-      const result = await run(createSqlite(testName, { mode: "memory" }));
-      assert(result.ok);
-      const sqlite = result.value;
+      await using setup = await setupWasmSqlite();
+      const { sqlite } = setup;
 
       sqlite.exec(sql`create table t (data text);`);
       sqlite.exec(sql`insert into t (data) values (${"hello"});`);
       const rows = sqlite.exec(sql`select * from t;`);
       expect(rows.rows).toEqual([{ data: "hello" }]);
-
-      await sqlite[Symbol.asyncDispose]();
     });
 
     test("exec returns changes for writer queries", async () => {
-      await using run = testCreateRun<CreateSqliteDriverDep>({
-        createSqliteDriver: createWasmSqliteDriver,
-      });
-      const result = await run(createSqlite(testName, { mode: "memory" }));
-      assert(result.ok);
-      const sqlite = result.value;
+      await using setup = await setupWasmSqlite();
+      const { sqlite } = setup;
 
       sqlite.exec(sql`create table t (id integer primary key, name text);`);
       sqlite.exec(sql`insert into t (name) values (${"Alice"});`);
@@ -88,17 +88,11 @@ describe("createWasmSqliteDriver", () => {
       const deleteResult = sqlite.exec(sql`delete from t;`);
       expect(deleteResult.rows).toEqual([]);
       expect(deleteResult.changes).toBe(2);
-
-      await sqlite[Symbol.asyncDispose]();
     });
 
     test("prepared statements are cached and reused", async () => {
-      await using run = testCreateRun<CreateSqliteDriverDep>({
-        createSqliteDriver: createWasmSqliteDriver,
-      });
-      const result = await run(createSqlite(testName, { mode: "memory" }));
-      assert(result.ok);
-      const sqlite = result.value;
+      await using setup = await setupWasmSqlite();
+      const { sqlite } = setup;
 
       sqlite.exec(sql`create table t (id integer primary key, name text);`);
 
@@ -107,17 +101,11 @@ describe("createWasmSqliteDriver", () => {
 
       const rows = sqlite.exec(sql.prepared`select name from t order by id;`);
       expect(rows.rows).toEqual([{ name: "A" }, { name: "B" }]);
-
-      await sqlite[Symbol.asyncDispose]();
     });
 
     test("export returns database bytes", async () => {
-      await using run = testCreateRun<CreateSqliteDriverDep>({
-        createSqliteDriver: createWasmSqliteDriver,
-      });
-      const result = await run(createSqlite(testName, { mode: "memory" }));
-      assert(result.ok);
-      const sqlite = result.value;
+      await using setup = await setupWasmSqlite();
+      const { sqlite } = setup;
 
       sqlite.exec(sql`create table t (data text);`);
       sqlite.exec(sql`insert into t (data) values (${"foo"});`);
@@ -125,17 +113,11 @@ describe("createWasmSqliteDriver", () => {
       const exported = sqlite.export();
       expect(exported).toBeInstanceOf(Uint8Array);
       expect(exported.length).toBeGreaterThan(0);
-
-      await sqlite[Symbol.asyncDispose]();
     });
 
     test("dispose is idempotent", async () => {
-      await using run = testCreateRun<CreateSqliteDriverDep>({
-        createSqliteDriver: createWasmSqliteDriver,
-      });
-      const result = await run(createSqlite(testName, { mode: "memory" }));
-      assert(result.ok);
-      const sqlite = result.value;
+      await using setup = await setupWasmSqlite();
+      const { sqlite } = setup;
 
       await sqlite[Symbol.asyncDispose]();
       await sqlite[Symbol.asyncDispose]();
@@ -160,7 +142,7 @@ describe("createWasmSqliteDriver", () => {
           await driver.exec("INSERT INTO t (name) VALUES (?)", ["Alice"]);
 
           const queryResult = await driver.exec("SELECT name FROM t");
-          assert(queryResult.ok);
+          if (!queryResult.ok) throw new Error(queryResult.error);
           expect(queryResult.data?.rows).toEqual([{ name: "Alice" }]);
 
           await driver.dispose();
@@ -189,7 +171,7 @@ describe("createWasmSqliteDriver", () => {
           await driver.exec("INSERT INTO t (data) VALUES (?)", ["encrypted"]);
 
           const queryResult = await driver.exec("SELECT data FROM t");
-          assert(queryResult.ok);
+          if (!queryResult.ok) throw new Error(queryResult.error);
           expect(queryResult.data?.rows).toEqual([{ data: "encrypted" }]);
 
           await driver.dispose();

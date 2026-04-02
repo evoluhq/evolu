@@ -1,4 +1,4 @@
-import { assert, describe, expect, expectTypeOf, test } from "vitest";
+import { describe, expect, expectTypeOf, test } from "vitest";
 import { lazyVoid } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
 import {
@@ -15,7 +15,7 @@ import {
   sqliteQueryStringToSqliteQuery,
   sqliteQueryToSqliteQueryString,
   sqliteTrue,
-  testCreateRunWithSqlite,
+  testSetupSqlite,
   type CreateSqliteDriver,
   type SafeSql,
   type SqliteDriver,
@@ -26,7 +26,7 @@ import {
 import { sleep } from "../src/Task.js";
 import { testCreateRun } from "../src/Test.js";
 import { testName } from "../src/Type.js";
-import { testCreateSqliteDeps } from "./_deps.js";
+import { setupSqlite } from "./_deps.js";
 
 describe("eqSqliteValue", () => {
   test("equal Uint8Arrays return true", () => {
@@ -109,8 +109,8 @@ describe("SqliteQueryString", () => {
 });
 
 test("basic DDL/DML works", async () => {
-  await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-  const { sqlite } = run.deps;
+  await using setup = await setupSqlite();
+  const { sqlite } = setup;
 
   sqlite.exec(sql`create table a (data);`);
   sqlite.exec(sql`insert into a (data) values (${"foo"});`);
@@ -120,8 +120,9 @@ test("basic DDL/DML works", async () => {
 
 describe("transactions", () => {
   test("transaction fails and rolls back on SQL error", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite, console } = run.deps;
+    await using setup = await setupSqlite();
+    const { run, sqlite } = setup;
+    const { console } = run.deps;
 
     sqlite.exec(sql`create table a (data);`);
 
@@ -141,8 +142,9 @@ describe("transactions", () => {
   });
 
   test("transaction fails and rolls back on callback error", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite, console } = run.deps;
+    await using setup = await setupSqlite();
+    const { run, sqlite } = setup;
+    const { console } = run.deps;
 
     sqlite.exec(sql`create table a (data);`);
 
@@ -165,8 +167,8 @@ describe("transactions", () => {
   });
 
   test("transaction succeeds and commits", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using setup = await setupSqlite();
+    const { sqlite } = setup;
 
     sqlite.exec(sql`create table a (data);`);
 
@@ -182,8 +184,8 @@ describe("transactions", () => {
   });
 
   test("transaction callback returns error", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using setup = await setupSqlite();
+    const { sqlite } = setup;
 
     const result = sqlite.transaction(() => err({ type: "CustomError" }));
 
@@ -217,12 +219,10 @@ describe("transactions", () => {
       return ok(driver);
     };
 
-    await using run = testCreateRun({
+    await using setup = await testSetupSqlite({
       createSqliteDriver: createFailingDriver,
     });
-    const sqliteResult = await run(createSqlite(testName));
-    assert(sqliteResult.ok);
-    const sqlite = sqliteResult.value;
+    const { sqlite } = setup;
 
     expect(() => sqlite.transaction(() => ok("should not reach"))).toThrow();
 
@@ -231,8 +231,8 @@ describe("transactions", () => {
   });
 
   test("transaction rolls back when callback throws", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using setup = await setupSqlite();
+    const { sqlite } = setup;
 
     sqlite.exec(sql`create table a (data);`);
 
@@ -271,12 +271,10 @@ describe("transactions", () => {
       return ok(driver);
     };
 
-    await using run = testCreateRun({
+    await using setup = await testSetupSqlite({
       createSqliteDriver: createFailingDriver,
     });
-    const sqliteResult = await run(createSqlite(testName));
-    assert(sqliteResult.ok);
-    const sqlite = sqliteResult.value;
+    const { sqlite } = setup;
 
     expect(() =>
       sqlite.transaction(() => ok(sqlite.exec(sql`select * from users;`))),
@@ -310,12 +308,10 @@ describe("transactions", () => {
       return ok(driver);
     };
 
-    await using run = testCreateRun({
+    await using setup = await testSetupSqlite({
       createSqliteDriver: createFailingDriver,
     });
-    const sqliteResult = await run(createSqlite(testName));
-    assert(sqliteResult.ok);
-    const sqlite = sqliteResult.value;
+    const { sqlite } = setup;
 
     expect(() => sqlite.transaction(() => ok("data"))).toThrow();
     expect(commitCalled).toBe(true);
@@ -325,8 +321,8 @@ describe("transactions", () => {
 
 describe("export", () => {
   test("export returns database bytes", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using setup = await setupSqlite();
+    const { sqlite } = setup;
 
     sqlite.exec(sql`create table a (data);`);
     sqlite.exec(sql`insert into a (data) values (${"foo"});`);
@@ -348,20 +344,19 @@ describe("export", () => {
       return ok(driver);
     };
 
-    await using run = testCreateRun({
+    await using setup = await testSetupSqlite({
       createSqliteDriver: createFailingDriver,
     });
-    const sqliteResult = await run(createSqlite(testName));
-    assert(sqliteResult.ok);
-    const sqlite = sqliteResult.value;
+    const { sqlite } = setup;
 
     expect(() => sqlite.export()).toThrow("Export failed");
   });
 });
 
 test("logQueryExecutionTime logs timing", async () => {
-  await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-  const { sqlite, console } = run.deps;
+  await using setup = await setupSqlite();
+  const { run, sqlite } = setup;
+  const { console } = run.deps;
 
   sqlite.exec(sql`create table a (data);`);
 
@@ -377,8 +372,8 @@ test("logQueryExecutionTime logs timing", async () => {
 
 describe("logExplainQueryPlan", () => {
   test("logs query plan when option is set", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using setup = await setupSqlite();
+    const { run, sqlite } = setup;
 
     sqlite.exec(sql`create table users (id text, name text);`);
     run.deps.console.clearEntries();
@@ -400,8 +395,8 @@ describe("logExplainQueryPlan", () => {
   });
 
   test("draws nested query plan with indentation", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using setup = await setupSqlite();
+    const { run, sqlite } = setup;
 
     sqlite.exec(sql`create table t1 (id text primary key, data text);`);
     sqlite.exec(sql`create table t2 (id text primary key, ref text);`);
@@ -435,7 +430,7 @@ describe("logExplainQueryPlan", () => {
 
 test("async dispose is idempotent", async () => {
   let driverDisposeCount = 0;
-  await using run = testCreateRun({
+  await using setup = await testSetupSqlite({
     createSqliteDriver: () => () => {
       const driver: SqliteDriver = {
         exec: () => ({ rows: [], changes: 0 }),
@@ -447,9 +442,7 @@ test("async dispose is idempotent", async () => {
       return ok(driver);
     },
   });
-  const sqliteResult = await run(createSqlite(testName));
-  assert(sqliteResult.ok);
-  const sqlite = sqliteResult.value;
+  const { sqlite } = setup;
 
   await sqlite[Symbol.asyncDispose]();
   await sqlite[Symbol.asyncDispose]();
@@ -460,7 +453,7 @@ test("sync methods throw after sqlite is disposed", async () => {
   let execCalls = 0;
   let exportCalls = 0;
 
-  await using run = testCreateRun({
+  await using setup = await testSetupSqlite({
     createSqliteDriver: () => () => {
       const driver: SqliteDriver = {
         exec: () => {
@@ -476,10 +469,7 @@ test("sync methods throw after sqlite is disposed", async () => {
       return ok(driver);
     },
   });
-
-  const sqliteResult = await run(createSqlite(testName));
-  assert(sqliteResult.ok);
-  const sqlite = sqliteResult.value;
+  const { sqlite } = setup;
 
   await sqlite[Symbol.asyncDispose]();
 
@@ -751,13 +741,13 @@ describe("getSqliteSchema", () => {
     };
 
   test("returns tables and user indexes by default", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using deps = await setupSqlite();
+    const { sqlite } = deps;
 
     sqlite.exec(sql`create table todos (id text primary key, title text);`);
     sqlite.exec(sql`create index idx_todos_title on todos (title);`);
 
-    const schema = getSqliteSchema(run.deps)();
+    const schema = getSqliteSchema(deps)();
 
     expect(toSnapshot(schema)).toMatchInlineSnapshot(`
       {
@@ -778,8 +768,8 @@ describe("getSqliteSchema", () => {
   });
 
   test("normalizes CREATE INDEX and CREATE UNIQUE INDEX casing", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using deps = await setupSqlite();
+    const { sqlite } = deps;
 
     sqlite.exec(sql`create table users (id text primary key, email text);`);
     sqlite.exec(sql`create index idx_users_email on users (email);`);
@@ -787,7 +777,7 @@ describe("getSqliteSchema", () => {
       create unique index idx_users_email_unique on users (email);
     `);
 
-    const schema = getSqliteSchema(run.deps)();
+    const schema = getSqliteSchema(deps)();
 
     expect(toSnapshot(schema)).toMatchInlineSnapshot(`
       {
@@ -812,14 +802,14 @@ describe("getSqliteSchema", () => {
   });
 
   test("excludeIndexNamePrefix filters indexes in SQL query", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using deps = await setupSqlite();
+    const { sqlite } = deps;
 
     sqlite.exec(sql`create table t (id text primary key, value text);`);
     sqlite.exec(sql`create index evolu_idx_value on t (value);`);
     sqlite.exec(sql`create index app_idx_value on t (value);`);
 
-    const schema = getSqliteSchema(run.deps)({
+    const schema = getSqliteSchema(deps)({
       excludeIndexNamePrefix: "evolu_",
     });
 
@@ -842,12 +832,12 @@ describe("getSqliteSchema", () => {
   });
 
   test("excludeIndexNamePrefix escapes single quote safely", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using deps = await setupSqlite();
+    const { sqlite } = deps;
 
     expect(sqlite).toBeDefined();
 
-    const schema = getSqliteSchema(run.deps)({
+    const schema = getSqliteSchema(deps)({
       excludeIndexNamePrefix: "abc'xyz",
     });
 
@@ -860,8 +850,8 @@ describe("getSqliteSchema", () => {
   });
 
   test("sqlite_master index query returns empty rows on empty database", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using deps = await setupSqlite();
+    const { sqlite } = deps;
 
     const withoutInternalFilter = sqlite.exec<{
       name: string;
@@ -888,14 +878,14 @@ describe("getSqliteSchema", () => {
 
 describe("getSqliteSnapshot", () => {
   test("returns schema and table rows", async () => {
-    await using run = await testCreateRunWithSqlite(testCreateSqliteDeps);
-    const { sqlite } = run.deps;
+    await using deps = await setupSqlite();
+    const { sqlite } = deps;
 
     sqlite.exec(sql`create table t (id text primary key, value text);`);
     sqlite.exec(sql`create index idx_t_value on t (value);`);
     sqlite.exec(sql`insert into t (id, value) values (${"a"}, ${"one"});`);
 
-    const snapshot = getSqliteSnapshot(run.deps);
+    const snapshot = getSqliteSnapshot(deps);
 
     expect([...snapshot.schema.tables.t]).toEqual(["id", "value"]);
     expect(snapshot.schema.indexes).toEqual([
