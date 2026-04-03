@@ -42,8 +42,7 @@
         }
       ],
       [
-        "expo-sqlite",
-        {
+        "expo-sqlite", {
           "useSQLCipher": true
         }
       ],
