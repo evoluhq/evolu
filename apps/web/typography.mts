@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { Config } from "tailwindcss";
 
 const typographyStyles: Config = {

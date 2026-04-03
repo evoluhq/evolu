@@ -1,11 +1,11 @@
 {
-  "extends": "@evolu/tsconfig/universal-esm.json",
+  "extends": "@evolu/typescript-config/universal-esm.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
-    "allowJs": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "tsBuildInfoFile": "dist/.tsBuildInfo"
   },
-  "include": ["src", "test", "vitest.config.ts"],
+  "include": ["src", "test", "vitest.*.config.ts"],
   "exclude": ["dist", "node_modules"]
 }

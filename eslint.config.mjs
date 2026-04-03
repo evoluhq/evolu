@@ -5,6 +5,7 @@ import jsdoc from "eslint-plugin-jsdoc";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import { configs as evoluConfigs } from "./scripts/eslint-plugin-evolu.mjs";
 
 export default defineConfig(
   {
@@ -13,9 +14,9 @@ export default defineConfig(
       "**/.svelte-kit/",
       "**/.turbo/",
       "**/dist/",
+      "**/out/",
+      "**/tmp/",
       "**/*.d.ts",
-      // TODO: Consider enabling linting for scripts and examples later.
-      "scripts/**",
       // To validate examples, uncomment apps/** and packages/** otherwise
       // FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
       "examples/**",
@@ -25,12 +26,13 @@ export default defineConfig(
   },
   eslint.configs.recommended,
   {
-    files: ["**/*.ts", "**/*.tsx"],
+    files: ["**/*.ts", "**/*.tsx", "**/*.mts"],
     extends: [
       tseslint.configs.strictTypeChecked,
       tseslint.configs.stylisticTypeChecked,
       jsdoc.configs["flat/recommended"],
       reactHooksPlugin.configs.flat.recommended,
+      evoluConfigs.recommended,
     ],
     languageOptions: {
       parserOptions: {
@@ -39,6 +41,9 @@ export default defineConfig(
       },
     },
     rules: {
+      // Enforce arrows, auto-exempts overloaded functions
+      "func-style": ["error", "expression"],
+      "arrow-body-style": ["error", "as-needed"],
       "no-console": "error",
       "@typescript-eslint/array-type": ["error", { default: "generic" }],
       "@typescript-eslint/no-non-null-assertion": "off",
@@ -47,8 +52,9 @@ export default defineConfig(
       // https://github.com/typescript-eslint/typescript-eslint/issues/8113#issuecomment-2334943836
       "@typescript-eslint/no-invalid-void-type": "off",
 
-      // It seems its buggy, disable it for now.
+      // Buggy, recheck later.
       "@typescript-eslint/no-redundant-type-constituents": "off",
+      "@typescript-eslint/no-unnecessary-type-arguments": "off",
 
       "@typescript-eslint/no-empty-object-type": "off",
       "@typescript-eslint/restrict-template-expressions": "off",
@@ -64,8 +70,14 @@ export default defineConfig(
           ignoreRestSiblings: true,
         },
       ],
+      "@typescript-eslint/no-confusing-void-expression": [
+        "error",
+        { ignoreArrowShorthand: true },
+      ],
+
       "jsdoc/require-jsdoc": "off",
       "jsdoc/require-param": "off",
+      "jsdoc/check-alignment": "off", // TODO: Figure out why copilot inserts extra spaces in the JSDoc comments
       "jsdoc/require-returns": "off",
       "jsdoc/tag-lines": [
         "error",
@@ -75,10 +87,7 @@ export default defineConfig(
           tags: { param: { lines: "never" } },
         },
       ],
-      "jsdoc/check-tag-names": [
-        "error",
-        { definedTags: ["category", "experimental"] },
-      ],
+      "jsdoc/check-tag-names": ["error", { definedTags: ["group"] }],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
     },
@@ -99,6 +108,28 @@ export default defineConfig(
     rules: {
       "react-hooks/rules-of-hooks": "off",
       "react-hooks/exhaustive-deps": "off",
+    },
+  },
+  {
+    files: ["apps/web/typography.mts"],
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+    },
+  },
+  {
+    files: ["apps/web/scripts/*.mts"],
+    languageOptions: {
+      parserOptions: {
+        project: ["apps/web/scripts/tsconfig.json"],
+        projectService: false,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
     },
   },
 );

@@ -1,12 +1,13 @@
 name: DockerHub
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - apps/relay/package.json
-      - .github/workflows/docker.yaml
+  workflow_dispatch:
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - apps/relay/package.json
+  #     - .github/workflows/docker.yaml
 
 env:
   REGISTRY: docker.io

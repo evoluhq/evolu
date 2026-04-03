@@ -2,7 +2,7 @@
 import {
   NonEmptyString,
   NonEmptyString1000,
-  SimpleName,
+  Name,
   SqliteBoolean,
   sqliteTrue,
   createEvolu,
@@ -14,7 +14,6 @@ import {
   type EvoluSchema,
   type InferType,
   type MinLengthError,
-  type ValidMutationSizeError,
   union,
 } from "@evolu/common";
 import { evoluWebDeps } from "@evolu/web";
@@ -53,7 +52,7 @@ const DatabaseSchema = {
 type DatabaseSchema = typeof DatabaseSchema;
 
 const evolu = createEvolu(evoluWebDeps)(DatabaseSchema, {
-  name: SimpleName.orThrow("minimal-example"),
+  name: Name.orThrow("minimal-example"),
   // ...(!!import.meta.env.DEV && {
   //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
   // }),
@@ -148,16 +147,14 @@ const customPrompt = <
   onSuccess(result.value as never);
 };
 
-const formatTypeError = createFormatTypeError<
-  ValidMutationSizeError | MinLengthError
->((error): string => {
-  switch (error.type) {
-    case "ValidMutationSize":
-      return "This is a developer error, it should not happen 🤨";
-    case "MinLength":
-      return `Minimal length is: ${error.min}`;
-  }
-});
+const formatTypeError = createFormatTypeError<MinLengthError>(
+  (error): string => {
+    switch (error.type) {
+      case "MinLength":
+        return `Minimal length is: ${error.min}`;
+    }
+  },
+);
 
 function onCategoryChange(event: Event, id: TodoId) {
   if (!(event.target instanceof HTMLSelectElement)) return;

@@ -3,7 +3,7 @@ import {
   type IdenticonStyle,
   type OwnerId,
 } from "@evolu/common";
-import { FC, useMemo } from "react";
+import { type FC, useMemo } from "react";
 
 export const EvoluIdenticon: FC<{
   id: OwnerId;

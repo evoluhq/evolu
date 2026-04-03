@@ -1,80 +1,126 @@
-import { Eq, eqStrict } from "./Eq.js";
-import { Ref } from "./Ref.js";
+/**
+ * Observable state container with change notifications.
+ *
+ * @module
+ */
+
+import type { Eq } from "./Eq.js";
+import { eqStrict } from "./Eq.js";
+import type { Ref } from "./Ref.js";
+import { createRef } from "./Ref.js";
 
 /**
- * A store for managing state with change notifications. Extends {@link Ref} with
- * subscriptions. Provides methods to get, set, and modify state, and to notify
- * listeners when the state changes.
+ * A store for managing state with change notifications. Like a {@link Ref} with
+ * subscriptions.
+ *
+ * Store is a valid dependency in Evolu's [Dependency
+ * Injection](https://evolu.dev/docs/dependency-injection) pattern—use it when
+ * functions need shared mutable state with subscriptions.
  */
-export interface Store<T> extends Ref<T> {
-  /**
-   * Registers a listener to be called on state changes and returns a function
-   * to unsubscribe.
-   */
-  readonly subscribe: StoreSubscribe;
+export interface Store<T> extends ReadonlyStore<T>, Ref<T> {}
 
+/**
+ * A read-only view of a {@link Store} that provides state access and change
+ * notifications without allowing modifications.
+ *
+ * Use {@link ReadonlyStore} in public APIs where consumers should observe state
+ * but not modify it directly.
+ */
+export interface ReadonlyStore<T> extends Disposable {
   /** Returns the current state of the store. */
   readonly get: () => T;
 
   /**
-   * Updates the store's state and notifies all subscribed listeners if the new
-   * state differs from the current one.
+   * Registers a listener to be called on state changes and returns a function
+   * to unsubscribe.
    */
-  readonly set: (state: T) => void;
-
-  /**
-   * Modifies the store's state by applying a callback function to the current
-   * state and notifies listeners if the state changes.
-   */
-  readonly modify: (updater: (current: T) => T) => void;
+  readonly subscribe: (listener: Listener) => Unsubscribe;
 }
 
-/** Registers a listener for state changes, returning an unsubscribe function. */
-export type StoreSubscribe = (listener: StoreListener) => StoreUnsubscribe;
+/** Callback used by {@link ReadonlyStore.subscribe} to observe changes. */
+export type Listener = () => void;
 
-/** A callback invoked whenever the store's state updates. */
-export type StoreListener = () => void;
-
-/** A function to remove a previously added listener. */
-export type StoreUnsubscribe = () => void;
+/**
+ * Function returned by {@link ReadonlyStore.subscribe} to stop observing
+ * changes.
+ */
+export type Unsubscribe = () => void;
 
 /**
  * Creates a store with the given initial state. The store encapsulates its
- * state, which can be read with `get` and updated with `set` or `modify`. All
+ * state, which can be read with `get` and updated with `set` or `update`. All
  * changes are broadcast to subscribers.
  *
- * By default, state changes are detected using `===` (shallow equality). You
- * can provide a custom equality function as the second argument.
+ * By default, state changes are detected using strict equality (`===`). You can
+ * provide a custom equality function as the second argument.
  */
-export const createStore = <T>(
-  initialState: T,
-  eq: Eq<T> = eqStrict,
-): Store<T> => {
-  const listeners = new Set<StoreListener>();
-  let currentState = initialState;
+export const createStore = <T>(initialState: T, eq?: Eq<T>): Store<T> => {
+  const equality = eq ?? eqStrict;
+  const ref = createRef(initialState);
+  const listeners = new Set<Listener>();
 
-  const updateState = (newState: T) => {
-    if (eq(newState, currentState)) return;
-    currentState = newState;
-    listeners.forEach((listener) => {
-      listener();
-    });
+  const notifyIfChanged = (previousState: T): void => {
+    if (!equality(previousState, ref.get())) {
+      for (const listener of listeners) listener();
+    }
   };
 
   return {
+    get: ref.get,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
 
-    get: () => currentState,
-
     set: (state) => {
-      updateState(state);
+      const previousState = ref.get();
+      ref.set(state);
+      notifyIfChanged(previousState);
     },
 
-    modify: (updater) => {
-      updateState(updater(currentState));
+    getAndSet: (state) => {
+      const previousState = ref.getAndSet(state);
+      notifyIfChanged(previousState);
+      return previousState;
+    },
+
+    setAndGet: (state) => {
+      const previousState = ref.get();
+      ref.set(state);
+      notifyIfChanged(previousState);
+      return ref.get();
+    },
+
+    update: (updater) => {
+      const previousState = ref.get();
+      ref.update(updater);
+      notifyIfChanged(previousState);
+    },
+
+    getAndUpdate: (updater) => {
+      const previousState = ref.getAndUpdate(updater);
+      notifyIfChanged(previousState);
+      return previousState;
+    },
+
+    updateAndGet: (updater) => {
+      const previousState = ref.get();
+      ref.updateAndGet(updater);
+      notifyIfChanged(previousState);
+      return ref.get();
+    },
+
+    modify: <R>(
+      updater: (current: T) => readonly [result: R, nextState: T],
+    ): R => {
+      const previousState = ref.get();
+      const result = ref.modify(updater);
+      notifyIfChanged(previousState);
+      return result;
+    },
+
+    [Symbol.dispose]: () => {
+      listeners.clear();
     },
   };
 };

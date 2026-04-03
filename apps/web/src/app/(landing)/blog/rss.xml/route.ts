@@ -1,16 +1,16 @@
 import { type ArticleWithSlug, getAllArticles } from "@/lib/blog";
 import RSS from "rss";
 
-function getSiteUrl(request: Request): string {
+const getSiteUrl = (request: Request): string => {
   if (process.env.NODE_ENV === "production") {
     return "https://www.evolu.dev";
   }
 
   const url = new URL(request.url);
   return `${url.protocol}//${url.host}`;
-}
+};
 
-export async function GET(request: Request): Promise<Response> {
+export const GET = async (request: Request): Promise<Response> => {
   const articles = await getAllArticles();
   const currentSiteUrl = getSiteUrl(request);
 
@@ -43,6 +43,6 @@ export async function GET(request: Request): Promise<Response> {
       "Cache-Control": "public, max-age=3600, s-maxage=3600",
     },
   });
-}
+};
 
 export const dynamic = "force-static";

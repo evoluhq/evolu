@@ -1,9 +1,14 @@
-/** Detects if the code is running in React Native environment. */
-export const isReactNative =
-  typeof navigator !== "undefined" &&
-  "product" in navigator &&
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  (navigator as any).product === "ReactNative";
+/**
+ * Platform runtime utilities and capability abstractions.
+ *
+ * @module
+ */
+
+/** Returns true if running in React Native with Hermes engine. */
+export const isHermes = "HermesInternal" in globalThis;
+
+/** Returns true if running in a server environment (no DOM). */
+export const isServer = typeof document === "undefined";
 
 /**
  * Detects if Node.js Buffer is available and should be used.
@@ -17,4 +22,35 @@ export const isReactNative =
  * @see https://github.com/craftzdog/react-native-quick-base64#installation
  */
 export const hasNodeBuffer =
-  !isReactNative && typeof globalThis.Buffer !== "undefined";
+  !isHermes && typeof globalThis.Buffer !== "undefined";
+
+/**
+ * FlushSync is for libraries like React to flush updates synchronously inside
+ * the provided callback to ensure the DOM is updated immediately.
+ *
+ * For example, with React, when we want to focus on an element rendered as a
+ * result of a mutation, Evolu ensures all DOM changes are flushed synchronously
+ * if an onComplete callback is used.
+ *
+ * https://react.dev/reference/react-dom/flushSync
+ */
+export type FlushSync = (callback: () => void) => void;
+
+export interface FlushSyncDep {
+  readonly flushSync: FlushSync;
+}
+
+/**
+ * Reload the app in a platform-specific way.
+ *
+ * Use this after purging persistent storage to clear in-memory state and ensure
+ * the app starts fresh. It does not purge storage itself.
+ *
+ * - Web: Redirects to the specified URL (defaults to `/`)
+ * - React Native: Restarts the app (URL ignored)
+ */
+export type ReloadApp = (url?: string) => void;
+
+export interface ReloadAppDep {
+  readonly reloadApp: ReloadApp;
+}

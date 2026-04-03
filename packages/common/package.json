@@ -23,15 +23,27 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js",
       "browser": "./dist/src/index.js",
-      "react-native": "./dist/src/index.js"
+      "react-native": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
     },
     "./local-first": {
       "types": "./dist/src/local-first/index.d.ts",
-      "import": "./dist/src/local-first/index.js"
+      "import": "./dist/src/local-first/index.js",
+      "default": "./dist/src/local-first/index.js"
+    },
+    "./polyfills": {
+      "types": "./dist/src/Polyfills.d.ts",
+      "import": "./dist/src/Polyfills.js",
+      "browser": "./dist/src/Polyfills.js",
+      "react-native": "./dist/src/Polyfills.js",
+      "default": "./dist/src/Polyfills.js"
     }
   },
   "typesVersions": {
     "*": {
+      "polyfills": [
+        "./dist/src/Polyfills.d.ts"
+      ],
       "local-first": [
         "./dist/src/local-first/index.d.ts"
       ]
@@ -43,38 +55,36 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "tsc --watch",
-    "build": "rimraf dist && tsc",
-    "test": "vitest run --disableConsoleIntercept",
-    "test:watch": "vitest --disableConsoleIntercept",
-    "clean": "rimraf .turbo node_modules dist",
-    "format": "prettier --write \"src/*.{ts,tsx,md}\"",
-    "bench": "vitest bench"
+    "build": "tsc --build tsconfig.build.json",
+    "prepack": "npm run build",
+    "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "@noble/ciphers": "^2.0.0",
-    "@noble/hashes": "^2.0.0",
-    "@scure/bip39": "^2.0.0",
-    "kysely": "^0.28.4",
-    "msgpackr": "^1.11.5",
+    "@noble/ciphers": "^2.1.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
+    "kysely": "^0.28.15",
+    "msgpackr": "^1.11.8",
     "random": "^5.4.1"
   },
   "devDependencies": {
     "@bokuweb/zstd-wasm": "0.0.27",
-    "@evolu/tsconfig": "workspace:*",
+    "@evolu/typescript-config": "*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/ws": "^8.18.1",
-    "better-sqlite3": "^12.1.1",
-    "fast-check": "^4.2.0",
-    "typescript": "^5.9.2",
-    "vitest": "^4.0.4",
-    "ws": "^8.18.2"
+    "better-sqlite3": "^12.6.2",
+    "fast-check": "^4.5.3",
+    "playwright": "^1.58.1",
+    "typescript": "^5.9.3",
+    "webpack": "^5.98.0",
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "publishConfig": {
     "access": "public"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
-  "sideEffects": []
+  "sideEffects": false
 }

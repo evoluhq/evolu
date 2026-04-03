@@ -3,8 +3,6 @@ export const metadata = {
   description: "Understand how Evolu protects your data and ensures privacy.",
 };
 
-export const sections = [];
-
 # Privacy
 
 Privacy is fundamental to local-first software, and Evolu takes it seriously. Unlike traditional client-server applications where data lives on someone else's servers, Evolu ensures that data remains under the user's complete control while providing the synchronization and backup benefits needed.
@@ -43,7 +41,7 @@ The Evolu Relay is completely blind to user data. What the relay sees:
 
 The relay functions purely as a message buffer for synchronization and backup—it stores and forwards encrypted messages without any ability to decrypt, analyze, or understand them.
 
-## Timestamp metadata & activity privacy
+## Timestamp metadata
 
 Relays and collaborators can see timestamps (user activity). This does not increase risk compared to any real‑time messaging system where traffic timing is observable.
 
@@ -62,12 +60,8 @@ If maximum privacy is required (e.g., hiding interaction cadence), an applicatio
 
 ## Post-quantum resistance
 
-### Evolu Relay
-
 The Evolu Relay is post-quantum safe, so "harvest now, decrypt later" attacks (where adversaries collect encrypted data today to decrypt with future quantum computers) are not possible. Unlike public-key cryptography systems that use asymmetric encryption (which quantum computers could potentially break), the relay uses only symmetric encryption.
 
 The Evolu Relay never sees or stores public keys—it only handles symmetrically encrypted data. Symmetric encryption algorithms are considered quantum-safe.
-
-### Collaboration
 
 For collaboration, asymmetric cryptography is required, and asymmetric cryptography can be vulnerable to quantum attacks. Detailed documentation will be provided soon.

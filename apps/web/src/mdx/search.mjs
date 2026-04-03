@@ -9,8 +9,13 @@ import { createLoader } from "simple-functional-loader";
 import { filter } from "unist-util-filter";
 import { SKIP, visit } from "unist-util-visit";
 import * as url from "url";
+import { addSyntheticH1 } from "./searchUtils.mjs";
 
 const __filename = url.fileURLToPath(import.meta.url);
+const searchIndexPath = path.resolve(
+  path.dirname(__filename),
+  "./searchIndex.js",
+);
 const processor = remark().use(remarkMdx).use(extractSections);
 const slugify = slugifyWithCounter();
 
@@ -30,14 +35,20 @@ function extractSections() {
     slugify.reset();
 
     visit(tree, (node) => {
-      if (node.type === "heading" || node.type === "paragraph") {
+      if (node.type === "heading" && node.depth <= 2) {
         let content = toString(excludeObjectExpressions(node));
-        if (node.type === "heading" && node.depth <= 2) {
-          let hash = node.depth === 1 ? null : slugify(content);
-          sections.push([content, hash, []]);
-        } else {
-          sections.at(-1)?.[2].push(content);
-        }
+        let hash = node.depth === 1 ? null : slugify(content);
+        sections.push([content, hash, []]);
+        return SKIP;
+      }
+      // Extract text from paragraphs, table cells, list items, etc.
+      if (
+        node.type === "paragraph" ||
+        node.type === "tableCell" ||
+        node.type === "listItem"
+      ) {
+        let content = toString(excludeObjectExpressions(node));
+        sections.at(-1)?.[2].push(content);
         return SKIP;
       }
     });
@@ -68,61 +79,33 @@ export default function Search(nextConfig = {}) {
               if (cache.get(file)?.[0] === mdx) {
                 sections = cache.get(file)[1];
               } else {
-                let vfile = { value: mdx, sections };
-                processor.runSync(processor.parse(vfile), vfile);
-                cache.set(file, [mdx, sections]);
+                try {
+                  let vfile = { value: mdx, sections };
+                  processor.runSync(processor.parse(vfile), vfile);
+
+                  addSyntheticH1(sections, mdx);
+
+                  cache.set(file, [mdx, sections]);
+                } catch (err) {
+                  // eslint-disable-next-line no-undef
+                  console.error(`\n\n❌ MDX PARSE ERROR in file: ${file}\n`);
+                  // eslint-disable-next-line no-undef
+                  console.log(JSON.stringify(err));
+                  // eslint-disable-next-line no-undef
+                  console.error("\n");
+                  throw err;
+                }
               }
 
               return { url, sections };
             });
 
-            // When this file is imported within the application
-            // the following module is loaded:
-            return `
-              import FlexSearch from 'flexsearch'
-
-              let sectionIndex = new FlexSearch.Document({
-                tokenize: 'full',
-                document: {
-                  id: 'url',
-                  index: 'content',
-                  store: ['title', 'pageTitle'],
-                },
-                context: {
-                  resolution: 9,
-                  depth: 2,
-                  bidirectional: true
-                }
-              })
-
-              let data = ${JSON.stringify(data)}
-
-              for (let { url, sections } of data) {
-                for (let [title, hash, content] of sections) {
-                  sectionIndex.add({
-                    url: url + (hash ? ('#' + hash) : ''),
-                    title,
-                    content: [title, ...content].join('\\n'),
-                    pageTitle: hash ? sections[0][0] : undefined,
-                  })
-                }
-              }
-
-              export function search(query, options = {}) {
-                let result = sectionIndex.search(query, {
-                  ...options,
-                  enrich: true,
-                })
-                if (result.length === 0) {
-                  return []
-                }
-                return result[0].result.map((item) => ({
-                  url: item.id,
-                  title: item.doc.title,
-                  pageTitle: item.doc.pageTitle,
-                }))
-              }
-            `;
+            // Read the search index template and inject the data
+            const template = fs.readFileSync(searchIndexPath, "utf8");
+            return template.replace(
+              'const data = "DATA_PLACEHOLDER";',
+              `const data = ${JSON.stringify(data)};`,
+            );
           }),
         ],
       });

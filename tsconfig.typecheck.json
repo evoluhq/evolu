@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/common" },
+    { "path": "./packages/nodejs" },
+    { "path": "./packages/react" },
+    { "path": "./packages/react-native" },
+    { "path": "./packages/react-web" },
+    { "path": "./packages/vue" },
+    { "path": "./packages/web" }
+  ]
+}

@@ -14,38 +14,36 @@
   "repository": "evoluhq/evolu",
   "license": "MIT",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
-  "sideEffects": [],
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "browser": "./dist/index.js"
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "browser": "./dist/src/index.js"
     }
   },
-  "types": "./dist/index.d.ts",
+  "types": "./dist/src/index.d.ts",
   "files": [
-    "dist/**",
+    "dist/src/**",
     "src/**",
     "README.md"
   ],
   "scripts": {
-    "build": "rimraf dist && tsc",
-    "clean": "rimraf .turbo node_modules dist",
-    "dev": "tsc --watch",
+    "build": "tsc --build tsconfig.build.json",
+    "prepack": "npm run build",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/tsconfig": "workspace:*",
-    "@evolu/web": "workspace:*",
-    "@types/react": "catalog:react19",
-    "@types/react-dom": "catalog:react19",
-    "react": "catalog:react19",
-    "react-dom": "catalog:react19",
-    "typescript": "^5.9.2",
-    "user-agent-data-types": "^0.4.2",
-    "vitest": "^4.0.4"
+    "@evolu/common": "*",
+    "@evolu/typescript-config": "*",
+    "@evolu/web": "*",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "typescript": "^5.9.3",
+    "user-agent-data-types": "^0.4.2"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1",
@@ -54,7 +52,7 @@
     "react-dom": ">=19"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
   "publishConfig": {
     "access": "public"

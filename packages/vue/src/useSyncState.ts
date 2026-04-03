@@ -1,5 +1,5 @@
-import { SyncState } from "@evolu/common/local-first";
-import { Ref } from "vue";
+import type { SyncState } from "@evolu/common/local-first";
+import type { Ref } from "vue";
 // import { useEvolu } from "./useEvolu.js";
 
 /** Subscribe to {@link SyncState} changes. */

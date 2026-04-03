@@ -1,23 +1,29 @@
+/**
+ * Mutable reference to an immutable value.
+ *
+ * @module
+ */
+
 import type { Store } from "./Store.js";
 
 /**
- * `Ref` provides a simple API to hold and update a value, similar to a "ref" in
- * functional programming or React. It exposes methods to get, set, and modify
- * the current state.
+ * Mutable reference to an immutable value.
  *
- * Use a Ref instead of a variable when you want to pass state around as an
- * object or update it in a controlled way. If you need subscriptions, see
- * {@link Store}.
+ * `Ref` holds the current value and exposes explicit `get`, `set`, `update`,
+ * and `modify` operations. The reference is mutable, but the value inside it
+ * must be immutable and replaced with a new value rather than mutated in place.
+ * Storing a mutable value in `Ref` does not make sense, because callers could
+ * mutate that value directly and pass it around without `Ref`.
  *
- * Updating in a controlled way means all changes go through specific methods
- * (`set` or `modify`), making state updates predictable and easy to track.
+ * Use it when mutable ownership of a value needs to be passed around as a
+ * value. For reactive state with subscriptions, see {@link Store}.
  *
  * ### Example
  *
  * ```ts
  * const count = createRef(0);
  * count.set(1);
- * count.modify((n) => n + 1);
+ * count.update((n) => n + 1);
  * console.log(count.get()); // 2
  * ```
  *
@@ -30,29 +36,74 @@ import type { Store } from "./Store.js";
  * ```
  */
 export interface Ref<T> {
-  /** Returns the current state. */
+  /** Returns the current value. */
   readonly get: () => T;
 
-  /** Sets the state. */
-  readonly set: (state: T) => void;
+  /** Sets the current value. */
+  readonly set: (value: T) => void;
 
-  /** Modifies the state using an updater function. */
-  readonly modify: (updater: (current: T) => T) => void;
+  /** Sets the current value and returns the previous value. */
+  readonly getAndSet: (value: T) => T;
+
+  /** Sets the current value and returns it. */
+  readonly setAndGet: (value: T) => T;
+
+  /** Updates the current value. */
+  readonly update: (updater: (current: T) => T) => void;
+
+  /** Updates the current value and returns the previous value. */
+  readonly getAndUpdate: (updater: (current: T) => T) => T;
+
+  /** Updates the current value and returns it. */
+  readonly updateAndGet: (updater: (current: T) => T) => T;
+
+  /** Modifies the current value and returns a computed result. */
+  readonly modify: <R>(
+    updater: (current: T) => readonly [result: R, nextValue: T],
+  ) => R;
 }
 
-/** Creates a {@link Ref} with the given initial state. */
-export const createRef = <T>(initialState: T): Ref<T> => {
-  let currentState = initialState;
+/** Creates a {@link Ref} with the given initial immutable value. */
+export const createRef = <T>(initialValue: T): Ref<T> => {
+  let currentValue = initialValue;
 
   return {
-    get: () => currentState,
+    get: () => currentValue,
 
-    set: (state) => {
-      currentState = state;
+    set: (value) => {
+      currentValue = value;
+    },
+
+    getAndSet: (value) => {
+      const previousValue = currentValue;
+      currentValue = value;
+      return previousValue;
+    },
+
+    setAndGet: (value) => {
+      currentValue = value;
+      return currentValue;
+    },
+
+    update: (updater) => {
+      currentValue = updater(currentValue);
+    },
+
+    getAndUpdate: (updater) => {
+      const previousValue = currentValue;
+      currentValue = updater(currentValue);
+      return previousValue;
+    },
+
+    updateAndGet: (updater) => {
+      currentValue = updater(currentValue);
+      return currentValue;
     },
 
     modify: (updater) => {
-      currentState = updater(currentState);
+      const [result, nextValue] = updater(currentValue);
+      currentValue = nextValue;
+      return result;
     },
   };
 };

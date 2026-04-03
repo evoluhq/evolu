@@ -1,327 +1,123 @@
-import { CreateWebSocket, TimingSafeEqual, WebSocket } from "@evolu/common";
-import BetterSQLite, { Statement } from "better-sqlite3";
+import BetterSQLite, { type Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
-import { Console } from "../src/Console.js";
-import {
-  createSymmetricCrypto,
-  RandomBytes,
-  RandomBytesDep,
-  SymmetricCryptoDep,
-} from "../src/Crypto.js";
-import { constFalse, constTrue, constVoid } from "../src/Function.js";
-import {
-  createAppOwner,
-  createOwnerSecret,
-  ownerIdToOwnerIdBytes,
-} from "../src/local-first/Owner.js";
+import type { TimingSafeEqual } from "../src/Crypto.js";
+import { lazyTrue, lazyVoid } from "../src/Function.js";
 import {
   createRelaySqliteStorage,
   createRelayStorageTables,
 } from "../src/local-first/Relay.js";
 import {
   createBaseSqliteStorageTables,
-  StorageConfig,
-  StorageDep,
+  type StorageConfig,
+  type StorageDep,
 } from "../src/local-first/Storage.js";
-import {
-  createRandom,
-  createRandomLibWithSeed,
-  createRandomWithSeed,
-} from "../src/Random.js";
-import { getOrThrow, ok } from "../src/Result.js";
-import {
-  createPreparedStatementsCache,
-  createSqlite,
+import { ok } from "../src/Result.js";
+import type {
   CreateSqliteDriver,
-  Sqlite,
+  CreateSqliteDriverDep,
   SqliteDep,
   SqliteDriver,
   SqliteRow,
 } from "../src/Sqlite.js";
-import { createTestTime, TimeDep } from "../src/Time.js";
-import { createId, Id, SimpleName } from "../src/Type.js";
-// import { existsSync, unlinkSync } from "fs";
+import {
+  createPreparedStatementsCache,
+  testSetupSqlite,
+} from "../src/Sqlite.js";
+import type { Run } from "../src/Task.js";
+import type { TestDeps } from "../src/Test.js";
 
-export const testRandom = createRandomWithSeed("evolu");
-export const testTime = createTestTime();
+export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 
-export const testRandomLib = createRandomLibWithSeed("evolu").random;
-export const testRandomLib2 = createRandomLibWithSeed("forever").random;
-
-export const testRandomBytes: RandomBytes = {
-  create: (bytesLength) => {
-    const array = Array.from({ length: bytesLength }, () =>
-      testRandomLib.int(0, 255),
-    );
-    return new Uint8Array(array);
-  },
-} as RandomBytes;
-
-const randomBytesDep = { randomBytes: testRandomBytes };
-
-export const testCreateId = (): Id => createId(randomBytesDep);
-
-export const testOwnerSecret = createOwnerSecret(randomBytesDep);
-export const testOwnerSecret2 = createOwnerSecret(randomBytesDep);
-
-export const testSymmetricCrypto = createSymmetricCrypto(randomBytesDep);
-
-type TestDeps = RandomBytesDep & SymmetricCryptoDep & TimeDep;
-
-export const testDeps: TestDeps = {
-  randomBytes: testRandomBytes,
-  symmetricCrypto: testSymmetricCrypto,
-  time: testTime,
+export const testCreateSqliteDep: CreateSqliteDriverDep = {
+  createSqliteDriver: (name) =>
+    createBetterSqliteDriver(name, { mode: "memory" }),
 };
 
-export const testOwner = createAppOwner(testOwnerSecret);
-export const testOwnerIdBytes = ownerIdToOwnerIdBytes(testOwner.id);
+export const setupSqlite: () => ReturnType<typeof testSetupSqlite> = () =>
+  testSetupSqlite(testCreateSqliteDep);
 
-export const testOwner2 = createAppOwner(testOwnerSecret2);
-export const testOwnerIdBytes2 = ownerIdToOwnerIdBytes(testOwner2.id);
+// Duplicated from @evolu/nodejs because @evolu/common cannot depend on it
+// (nodejs depends on common — importing back would create a circular dependency).
+const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
+  const filename = options?.mode === "memory" ? ":memory:" : `${name}.db`;
+  const stack = new globalThis.DisposableStack();
+  const db = stack.adopt(new BetterSQLite(filename), (db) => {
+    db.close();
+  });
 
-//   /**
-//    * Log for SQL.
-//    *
-//    * - `select log(a) from foo`
-//    */
-//   db.function("log", (msg) => {
-//     // eslint-disable-next-line no-console
-//     console.log(msg);
-//   });
-export const testCreateSqliteDriver: CreateSqliteDriver = () => {
-  // TODO: Param for benchmark tests and delete that file after.
-  // const dbFile = "test.db";
-  // if (existsSync(dbFile)) unlinkSync(dbFile);
-  // const db = new BetterSQLite(dbFile);
-  const db = new BetterSQLite(":memory:");
-  let isDisposed = false;
-
-  const cache = createPreparedStatementsCache<Statement>(
-    (sql) => db.prepare(sql),
-    // Not needed.
-    // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#class-statement
-    constVoid,
+  const cache = stack.use(
+    createPreparedStatementsCache<Statement>(
+      (sql) => db.prepare(sql),
+      // Not needed.
+      // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#class-statement
+      lazyVoid,
+    ),
   );
 
   const driver: SqliteDriver = {
-    exec: (query, isMutation) => {
+    exec: (query) => {
       // Always prepare is recommended for better-sqlite3
       const prepared = cache.get(query, true);
 
-      const rows = isMutation
-        ? []
-        : (prepared.all(query.parameters) as Array<SqliteRow>);
+      if (prepared.reader) {
+        const rows = prepared.all(query.parameters) as Array<SqliteRow>;
+        return { rows, changes: 0 };
+      }
 
-      const changes = isMutation ? prepared.run(query.parameters).changes : 0;
-
-      return { rows, changes };
+      const changes = prepared.run(query.parameters).changes;
+      return { rows: [], changes };
     },
 
-    export: () => db.serialize(),
+    export: () => {
+      const file = db.serialize();
+      const { buffer } = file;
+
+      if (buffer instanceof ArrayBuffer) {
+        return new Uint8Array(buffer, file.byteOffset, file.byteLength);
+      }
+
+      // Ensure export uses transferable ArrayBuffer backing.
+      return new Uint8Array(file);
+    },
 
     [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
-      cache[Symbol.dispose]();
-      db.close();
+      stack.dispose();
     },
   };
 
-  return Promise.resolve(driver);
+  return ok(driver);
 };
 
-export const testSimpleName = SimpleName.orThrow("Test");
-
-export const testCreateSqlite = async (): Promise<Sqlite> => {
-  const sqlite = await createSqlite({
-    createSqliteDriver: testCreateSqliteDriver,
-  })(testSimpleName);
-  return getOrThrow(sqlite);
-};
-
-export const testCreateTimingSafeEqual = (): TimingSafeEqual => timingSafeEqual;
-
-export interface TestWebSocket extends WebSocket {
-  readonly sentMessages: ReadonlyArray<Uint8Array>;
-  readonly simulateMessage: (message: Uint8Array) => void;
-  readonly simulateOpen: () => void;
-  readonly simulateClose: () => void;
+export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {
+  readonly run: Run<TestDeps & CreateSqliteDriverDep & SqliteDep & StorageDep>;
+  readonly sqlite: SqliteDep["sqlite"];
+  readonly storage: StorageDep["storage"];
 }
 
-export const testCreateWebSocket = (
-  _url?: string,
-  options?: {
-    onOpen?: () => void;
-    onClose?: (event: CloseEvent) => void;
-    onError?: (error: any) => void;
-    onMessage?: (data: string | ArrayBuffer | Blob) => void;
-  },
-): TestWebSocket => {
-  const sentMessages: Array<Uint8Array> = [];
-  let isWebSocketOpen = false;
-
-  return {
-    get sentMessages() {
-      return sentMessages;
-    },
-    send: (data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
-      sentMessages.push(data as Uint8Array);
-      return ok();
-    },
-    getReadyState: () => (isWebSocketOpen ? "open" : "connecting"),
-    isOpen: () => isWebSocketOpen,
-    simulateMessage: (message: Uint8Array) => {
-      if (options?.onMessage) {
-        options.onMessage(message.buffer as ArrayBuffer);
-      }
-    },
-    simulateOpen: () => {
-      isWebSocketOpen = true;
-      if (options?.onOpen) {
-        options.onOpen();
-      }
-    },
-    simulateClose: () => {
-      isWebSocketOpen = false;
-      if (options?.onClose) {
-        options.onClose({} as CloseEvent);
-      }
-    },
-    [Symbol.dispose]: constVoid,
-  };
-};
-
-export const testCreateDummyWebSocket: CreateWebSocket = () => ({
-  send: () => ok(),
-  getReadyState: () => "connecting",
-  isOpen: constFalse,
-  [Symbol.dispose]: constVoid,
-});
-
-/**
- * A test console that captures all console output for snapshot testing.
- *
- * Use this as a drop-in replacement for `createConsole` in tests where you want
- * to capture and verify console output.
- */
-export interface TestConsole extends Console {
-  /**
-   * Gets all captured console logs. Clears the captured logs after returning
-   * them.
-   */
-  readonly getLogsSnapshot: () => ReadonlyArray<Array<unknown>>;
-
-  /** Clears all captured logs. */
-  readonly clearLogs: () => void;
-}
-
-/**
- * Creates a test console that captures all console output for testing.
- *
- * ### Example
- *
- * ```ts
- * test("console output", () => {
- *   const testConsole = createTestConsole();
- *
- *   // Use it in place of createConsole()
- *   const deps = { console: testConsole };
- *
- *   // ... run code that logs to console
- *
- *   expect(testConsole.getLogsSnapshot()).toMatchInlineSnapshot();
- * });
- * ```
- */
-export const testCreateConsole = (): TestConsole => {
-  const logs: Array<Array<unknown>> = [];
-
-  return {
-    enabled: true,
-
-    log: (...args) => {
-      logs.push(args);
-    },
-    info: (...args) => {
-      logs.push(args);
-    },
-    warn: (...args) => {
-      logs.push(args);
-    },
-    error: (...args) => {
-      logs.push(args);
-    },
-    debug: (...args) => {
-      logs.push(args);
-    },
-    time: (label) => {
-      logs.push(["time", label]);
-    },
-    timeLog: (label, ...data) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      logs.push(["timeLog", label, ...data]);
-    },
-    timeEnd: (label) => {
-      logs.push(["timeEnd", label]);
-    },
-    dir: (object, options) => {
-      logs.push(["dir", object, options]);
-    },
-    table: (tabularData, properties) => {
-      logs.push(["table", tabularData, properties]);
-    },
-    count: (label) => {
-      logs.push(["count", label]);
-    },
-    countReset: (label) => {
-      logs.push(["countReset", label]);
-    },
-    assert: (value, message, ...optionalParams) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      logs.push(["assert", value, message, ...optionalParams]);
-    },
-    trace: (message, ...optionalParams) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      logs.push(["trace", message, ...optionalParams]);
-    },
-
-    getLogsSnapshot: () => {
-      const snapshot = [...logs];
-      logs.length = 0; // Clear captured logs
-      return snapshot;
-    },
-
-    clearLogs: () => {
-      logs.length = 0;
-    },
-  };
-};
-
-export const testCreateRelayStorageAndSqliteDeps = async (
+/** Creates a disposable test setup with relay storage and SQLite deps. */
+export const setupSqliteAndRelayStorage = async (
   config?: Partial<StorageConfig>,
-): Promise<StorageDep & SqliteDep> => {
-  const sqlite = await testCreateSqlite();
+): Promise<TestSqliteAndRelayStorageSetup> => {
+  await using stack = new AsyncDisposableStack();
+  const sqliteSetup = stack.use(await setupSqlite());
+  const { run, sqlite } = sqliteSetup;
 
-  getOrThrow(createBaseSqliteStorageTables({ sqlite }));
-  getOrThrow(createRelayStorageTables({ sqlite }));
+  createBaseSqliteStorageTables({ sqlite });
+  createRelayStorageTables({ sqlite });
 
   const storage = createRelaySqliteStorage({
-    sqlite,
-    /**
-     * We intentionally use non-deterministic `createRandom` by default because
-     * deterministic testRandom affects perf results (has decreasing
-     * distribution).
-     */
-    random: createRandom(),
-    timingSafeEqual: testCreateTimingSafeEqual(),
+    ...run.deps,
+    timingSafeEqual: testTimingSafeEqual,
   })({
-    onStorageError: (error) => {
-      throw new Error(error.type);
-    },
-    isOwnerWithinQuota: constTrue, // Allow all writes in tests by default
+    isOwnerWithinQuota: lazyTrue,
     ...config,
   });
+  const moved = stack.move();
 
-  return { sqlite, storage };
+  return {
+    run: run.addDeps<StorageDep>({ storage }),
+    sqlite,
+    storage,
+    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+  };
 };

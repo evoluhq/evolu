@@ -1,4 +1,10 @@
 /**
+ * Ordering and comparison utilities.
+ *
+ * @module
+ */
+
+/**
  * Compares two values of type `A` and returns their ordering.
  *
  * Ordering functions start with an 'order' prefix, e.g., `orderNumber`.
@@ -61,7 +67,9 @@ export const reverseOrder =
  * ["c", "b", "a"].toSorted(orderString); // ["a", "b", "c"]
  * ```
  */
-export const orderString: Order<string> = createOrder((a, b) => a < b);
+export const orderString: Order<string> = /*#__PURE__*/ createOrder(
+  (a, b) => a < b,
+);
 
 /**
  * An order for numbers in ascending order.
@@ -78,7 +86,7 @@ export const orderString: Order<string> = createOrder((a, b) => a < b);
  * reverseOrder(orderNumber)(1, 1); // 0
  * ```
  */
-export const orderNumber = createOrder<number>((a, b) => a < b);
+export const orderNumber = /*#__PURE__*/ createOrder<number>((a, b) => a < b);
 
 /**
  * An order for bigints in ascending order.
@@ -92,7 +100,7 @@ export const orderNumber = createOrder<number>((a, b) => a < b);
  * [2n, 1n, 3n].toSorted(orderBigInt); // [1n, 2n, 3n]
  * ```
  */
-export const orderBigInt = createOrder<bigint>((a, b) => a < b);
+export const orderBigInt = /*#__PURE__*/ createOrder<bigint>((a, b) => a < b);
 
 /** An {@link Order} for Uint8Array. */
 export const orderUint8Array: Order<Uint8Array> = (a, b) => {

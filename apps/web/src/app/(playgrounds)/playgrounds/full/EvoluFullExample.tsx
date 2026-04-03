@@ -1,36 +1,37 @@
 "use client";
 
 import {
+  AppName,
   booleanToSqliteBoolean,
+  createConsole,
+  createConsoleFormatter,
   createEvolu,
   createFormatTypeError,
+  createQueryBuilder,
+  createRun,
+  err,
+  evoluJsonArrayFrom,
+  evoluJsonObjectFrom,
   FiniteNumber,
   id,
   idToIdBytes,
   json,
-  kysely,
+  type KyselyNotNull,
   maxLength,
-  MaxLengthError,
-  MinLengthError,
   Mnemonic,
   NonEmptyString,
   NonEmptyTrimmedString100,
   nullOr,
   object,
-  SimpleName,
   SqliteBoolean,
   sqliteFalse,
   sqliteTrue,
-  timestampBytesToTimestamp,
+  testAppOwner,
+  type Result,
+  type Typed,
 } from "@evolu/common";
-import { timestampToDateIso } from "@evolu/common/local-first";
-import {
-  createUseEvolu,
-  EvoluProvider,
-  useQueries,
-  useQuery,
-} from "@evolu/react";
-import { evoluReactWebDeps } from "@evolu/react-web";
+import { createEvoluBinding } from "@evolu/react";
+import { createEvoluDeps } from "@evolu/react-web";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   IconChecklist,
@@ -41,12 +42,12 @@ import {
 } from "@tabler/icons-react";
 import clsx from "clsx";
 import {
-  FC,
-  KeyboardEvent,
   startTransition,
   Suspense,
   use,
   useState,
+  type FC,
+  type KeyboardEvent,
 } from "react";
 
 // TODO: Epochs and sharing.
@@ -80,7 +81,7 @@ const [FooJson, fooToFooJson, fooJsonToFoo] = json(Foo, "FooJson");
 // string & Brand<"FooJson">
 type FooJson = typeof FooJson.Type;
 
-const Schema = {
+const AppSchema = {
   project: {
     id: ProjectId,
     name: NonEmptyTrimmedString100,
@@ -94,63 +95,83 @@ const Schema = {
   },
 };
 
-const evolu = createEvolu(evoluReactWebDeps)(Schema, {
-  name: SimpleName.orThrow("full-example"),
+const createQuery = createQueryBuilder(AppSchema);
 
-  reloadUrl: "/playgrounds/full",
-
-  ...(process.env.NODE_ENV === "development" && {
-    transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-
-    // Empty transports for local-only instance.
-    // transports: [],
-  }),
-
-  // https://www.evolu.dev/docs/indexes
-  indexes: (create) => [
-    create("todoCreatedAt").on("todo").column("createdAt"),
-    create("projectCreatedAt").on("project").column("createdAt"),
-    create("todoProjectId").on("todo").column("projectId"),
-  ],
-
-  enableLogging: false,
+const console = createConsole({
+  level: "debug",
+  formatter: createConsoleFormatter()({ timestampFormat: "relative" }),
 });
 
-const useEvolu = createUseEvolu(evolu);
+// Create Run with dependencies for React Web.
+const run = createRun(createEvoluDeps({ console }));
 
-evolu.subscribeError(() => {
-  const error = evolu.getError();
+/**
+ * `evoluError` is shared by all Evolu instances created from this `deps`.
+ * Subscribe once for user-facing error messages. Logging is handled by platform
+ * `createRun` global error handlers.
+ */
+run.deps.evoluError.subscribe(() => {
+  const error = run.deps.evoluError.get();
   if (!error) return;
 
   alert("🚨 Evolu error occurred! Check the console.");
-  // eslint-disable-next-line no-console
-  console.error(error);
 });
 
-export const EvoluFullExample: FC = () => {
-  return (
-    <div className="min-h-screen px-8 py-8">
-      <div className="mx-auto max-w-md min-w-sm md:min-w-md">
-        <EvoluProvider value={evolu}>
-          <Suspense>
-            <App />
-          </Suspense>
-        </EvoluProvider>
-      </div>
+const { EvoluContext, useEvolu, useQuery, useQueries } =
+  createEvoluBinding(AppSchema);
+
+// Create Evolu App.
+const evoluFiber = run.orThrow(
+  createEvolu(AppSchema, {
+    appName: AppName.orThrow("full-example"),
+    appOwner: testAppOwner,
+
+    ...(process.env.NODE_ENV === "development" && {
+      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+    }),
+
+    // Empty transports for local-only instance.
+    // transports: [],
+
+    // https://www.evolu.dev/docs/indexes
+    indexes: (create) => [
+      create("todoCreatedAt").on("todo").column("createdAt"),
+      create("projectCreatedAt").on("project").column("createdAt"),
+      create("todoProjectId").on("todo").column("projectId"),
+    ],
+  }),
+);
+
+export const EvoluFullExample: FC = () => (
+  <div className="min-h-screen px-8 py-8">
+    <div className="mx-auto max-w-md min-w-sm md:min-w-md">
+      <Suspense>
+        {/*
+          Suspense delivers great UX (no loading flickers) and DX (no loading
+          states to manage). Highly recommended with Evolu.
+        */}
+        <Root />
+      </Suspense>
     </div>
-  );
-};
+  </div>
+);
+
+const Root: FC = () => (
+  <EvoluContext value={use(evoluFiber)}>
+    <App />
+  </EvoluContext>
+);
 
 const App: FC = () => {
   const [activeTab, setActiveTab] = useState<
     "home" | "projects" | "account" | "trash"
   >("home");
 
-  const createHandleTabClick = (tab: typeof activeTab) => () => {
-    // startTransition prevents UI flickers when switching tabs by keeping
+  const handleTabClick = (tab: typeof activeTab) => () => {
+    // `startTransition` prevents UI flickers when switching tabs by keeping
     // the current view visible while Suspense prepares the next one
-    // Test: Remove startTransition, add a todo, delete it, click to Trash.
-    // You will see a visible blink without startTransition.
+    // Test: Disable startTransition, add a todo, delete it, click to Trash.
+    // You will see a visible blink.
     startTransition(() => {
       setActiveTab(tab);
     });
@@ -165,7 +186,7 @@ const App: FC = () => {
               "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
               activeTab === "home" && "border-blue-600! text-blue-600!",
             )}
-            onClick={createHandleTabClick("home")}
+            onClick={handleTabClick("home")}
           >
             Home
           </button>
@@ -174,7 +195,7 @@ const App: FC = () => {
               "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
               activeTab === "projects" && "border-blue-600! text-blue-600!",
             )}
-            onClick={createHandleTabClick("projects")}
+            onClick={handleTabClick("projects")}
           >
             Projects
           </button>
@@ -183,7 +204,7 @@ const App: FC = () => {
               "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
               activeTab === "account" && "border-blue-600! text-blue-600!",
             )}
-            onClick={createHandleTabClick("account")}
+            onClick={handleTabClick("account")}
           >
             Account
           </button>
@@ -192,7 +213,7 @@ const App: FC = () => {
               "cursor-pointer border-b-2 border-b-transparent whitespace-nowrap text-gray-500",
               activeTab === "trash" && "border-blue-600! text-blue-600!",
             )}
-            onClick={createHandleTabClick("trash")}
+            onClick={handleTabClick("trash")}
           >
             Trash
           </button>
@@ -207,34 +228,32 @@ const App: FC = () => {
   );
 };
 
-const projectsWithTodosQuery = evolu.createQuery(
+const projectsWithTodosQuery = createQuery(
   (db) =>
     db
       .selectFrom("project")
       .select(["id", "name"])
       // https://kysely.dev/docs/recipes/relations
       .select((eb) => [
-        kysely
-          .jsonArrayFrom(
-            eb
-              .selectFrom("todo")
-              .select([
-                "todo.id",
-                "todo.title",
-                "todo.isCompleted",
-                "todo.projectId",
-              ])
-              .whereRef("todo.projectId", "=", "project.id")
-              .where("todo.isDeleted", "is not", sqliteTrue)
-              .where("todo.title", "is not", null)
-              .$narrowType<{ title: kysely.NotNull }>()
-              .orderBy("createdAt"),
-          )
-          .as("todos"),
+        evoluJsonArrayFrom(
+          eb
+            .selectFrom("todo")
+            .select([
+              "todo.id",
+              "todo.title",
+              "todo.isCompleted",
+              "todo.projectId",
+            ])
+            .whereRef("todo.projectId", "=", "project.id")
+            .where("todo.isDeleted", "is not", sqliteTrue)
+            .where("todo.title", "is not", null)
+            .$narrowType<{ title: KyselyNotNull }>()
+            .orderBy("createdAt"),
+        ).as("todos"),
       ])
       .where("project.isDeleted", "is not", sqliteTrue)
       .where("name", "is not", null)
-      .$narrowType<{ name: kysely.NotNull }>()
+      .$narrowType<{ name: KyselyNotNull }>()
       .orderBy("createdAt"),
   {
     // Log how long each query execution takes
@@ -258,7 +277,7 @@ const HomeTab: FC = () => {
     projectsQuery,
   ]);
 
-  const handleAddProjectClick = useAddProject();
+  const addProject = useAddProject();
 
   if (projectsWithTodos.length === 0) {
     return (
@@ -274,7 +293,7 @@ const HomeTab: FC = () => {
         </p>
         <Button
           title="Add new project"
-          onClick={handleAddProjectClick}
+          onClick={addProject}
           variant="primary"
         />
       </div>
@@ -306,10 +325,16 @@ const HomeTabProject: FC<{
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
   const addTodo = () => {
-    const result = insert(
+    const parsedTitle = parseStringWithAlert(
+      NonEmptyTrimmedString100,
+      newTodoTitle,
+    );
+    if (!parsedTitle.ok) return;
+
+    insert(
       "todo",
       {
-        title: newTodoTitle.trim(),
+        title: parsedTitle.value,
         projectId: project.id,
       },
       {
@@ -318,10 +343,6 @@ const HomeTabProject: FC<{
         },
       },
     );
-
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
   };
 
   const handleKeyPress = (e: KeyboardEvent) => {
@@ -389,13 +410,14 @@ const HomeTabProjectSectionTodoItem: FC<{
   };
 
   const handleRenameClick = () => {
-    const newTitle = window.prompt("Edit todo", title);
-    if (newTitle == null) return;
+    const parsedTitle = promptStringWithAlert(
+      "Edit todo",
+      NonEmptyTrimmedString100,
+      title,
+    );
+    if (!parsedTitle.ok) return;
 
-    const result = update("todo", { id, title: newTitle.trim() });
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
+    update("todo", { id, title: parsedTitle.value });
   };
 
   const handleDeleteClick = () => {
@@ -404,7 +426,7 @@ const HomeTabProjectSectionTodoItem: FC<{
 
   // Demonstrate history tracking. Evolu automatically tracks all changes
   // in the evolu_history table, making it easy to build audit logs or undo features.
-  const titleHistoryQuery = evolu.createQuery((db) =>
+  const _titleHistoryQuery = createQuery((db) =>
     db
       .selectFrom("evolu_history")
       .select(["value", "timestamp"])
@@ -412,18 +434,18 @@ const HomeTabProjectSectionTodoItem: FC<{
       .where("id", "==", idToIdBytes(id))
       .where("column", "==", "title")
       // The value isn't typed; this is how we can cast it.
-      .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()
+      .$narrowType<{ value: (typeof AppSchema)["todo"]["title"]["Type"] }>()
       .orderBy("timestamp", "desc"),
   );
 
   const handleHistoryClick = () => {
-    void evolu.loadQuery(titleHistoryQuery).then((rows) => {
-      const rowsWithTimestamp = rows.map((row) => ({
-        value: row.value,
-        timestamp: timestampToDateIso(timestampBytesToTimestamp(row.timestamp)),
-      }));
-      alert(JSON.stringify(rowsWithTimestamp, null, 2));
-    });
+    // void evolu.loadQuery(titleHistoryQuery).then((rows) => {
+    //   const rowsWithTimestamp = rows.map((row) => ({
+    //     value: row.value,
+    //     timestamp: timestampToDateIso(timestampBytesToTimestamp(row.timestamp)),
+    //   }));
+    //   alert(JSON.stringify(rowsWithTimestamp, null, 2));
+    // });
   };
 
   return (
@@ -498,44 +520,23 @@ const HomeTabProjectSectionTodoItem: FC<{
   );
 };
 
-const projectsQuery = evolu.createQuery((db) =>
+const projectsQuery = createQuery((db) =>
   db
     .selectFrom("project")
     .select(["id", "name", "fooJson"])
     .where("isDeleted", "is not", sqliteTrue)
     .where("name", "is not", null)
-    .$narrowType<{ name: kysely.NotNull }>()
+    .$narrowType<{ name: KyselyNotNull }>()
     .where("fooJson", "is not", null)
-    .$narrowType<{ fooJson: kysely.NotNull }>()
+    .$narrowType<{ fooJson: KyselyNotNull }>()
     .orderBy("createdAt"),
 );
 
 type ProjectsRow = typeof projectsQuery.Row;
 
-const useAddProject = () => {
-  const { insert } = useEvolu();
-
-  return () => {
-    const name = window.prompt("What's the project name?");
-    if (name == null) return;
-
-    // Demonstrate JSON usage.
-    const foo = Foo.from({ foo: "baz", bar: 42 });
-    if (!foo.ok) return;
-
-    const result = insert("project", {
-      name: name.trim(),
-      fooJson: fooToFooJson(foo.value),
-    });
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
-  };
-};
-
 const ProjectsTab: FC = () => {
   const projects = useQuery(projectsQuery);
-  const handleAddProjectClick = useAddProject();
+  const addProject = useAddProject();
 
   return (
     <div>
@@ -546,7 +547,7 @@ const ProjectsTab: FC = () => {
         <div className="flex justify-center pt-4">
           <Button
             title="Add new project"
-            onClick={handleAddProjectClick}
+            onClick={addProject}
             variant="primary"
             className="w-full py-3 text-base! font-semibold"
           />
@@ -556,19 +557,41 @@ const ProjectsTab: FC = () => {
   );
 };
 
+const useAddProject = () => {
+  const { insert } = useEvolu();
+
+  return () => {
+    const parsedName = promptStringWithAlert(
+      "What's the project name?",
+      NonEmptyTrimmedString100,
+    );
+    if (!parsedName.ok) return;
+
+    // Demonstrate JSON usage.
+    const foo = Foo.from({ foo: "baz", bar: 42 });
+    if (!foo.ok) return;
+
+    insert("project", {
+      name: parsedName.value,
+      fooJson: fooToFooJson(foo.value),
+    });
+  };
+};
+
 const ProjectsTabProjectItem: FC<{
   project: ProjectsRow;
 }> = ({ project }) => {
   const { update } = useEvolu();
 
   const handleRenameClick = () => {
-    const newName = window.prompt("Edit project name", project.name);
-    if (newName == null) return;
+    const parsedName = promptStringWithAlert(
+      "Edit project name",
+      NonEmptyTrimmedString100,
+      project.name,
+    );
+    if (!parsedName.ok) return;
 
-    const result = update("project", { id: project.id, name: newName.trim() });
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
+    update("project", { id: project.id, name: parsedName.value });
   };
 
   const handleDeleteClick = () => {
@@ -628,42 +651,35 @@ const ProjectsTabProjectItem: FC<{
 };
 
 const AccountTab: FC = () => {
-  const evolu = useEvolu();
-  const appOwner = use(evolu.appOwner);
-
+  const { appOwner } = useEvolu();
   const [showMnemonic, setShowMnemonic] = useState(false);
 
   const handleRestoreAppOwnerClick = () => {
-    const mnemonic = window.prompt("Enter your mnemonic to restore your data:");
-    if (mnemonic == null) return;
+    const result = promptStringWithAlert(
+      "Enter your mnemonic to restore your data:",
+      Mnemonic,
+    );
+    if (!result.ok) return;
 
-    const result = Mnemonic.from(mnemonic.trim());
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-      return;
-    }
-
-    void evolu.restoreAppOwner(result.value);
+    // void evolu.restoreAppOwner(result.value);
   };
 
   const handleResetAppOwnerClick = () => {
     if (confirm("Are you sure? This will delete all your local data.")) {
-      void evolu.resetAppOwner();
+      // void evolu.resetAppOwner();
     }
   };
 
   const handleDownloadDatabaseClick = () => {
-    void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], {
-        type: "application/x-sqlite3",
-      });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "todos.sqlite3";
-      a.click();
-      window.URL.revokeObjectURL(url);
-    });
+    // void evolu.exportDatabase().then((data) => {
+    //   using objectUrl = createObjectURL(
+    //     new Blob([data], { type: "application/x-sqlite3" }),
+    //   );
+    //   const link = document.createElement("a");
+    //   link.href = objectUrl.url;
+    //   link.download = `${evolu.name}.sqlite3`;
+    //   link.click();
+    // });
   };
 
   return (
@@ -712,38 +728,36 @@ const AccountTab: FC = () => {
   );
 };
 
-const deletedProjectsQuery = evolu.createQuery((db) =>
+const deletedProjectsQuery = createQuery((db) =>
   db
     .selectFrom("project")
     .select(["id", "name", "updatedAt"])
     .where("isDeleted", "is", sqliteTrue)
     .where("name", "is not", null)
-    .$narrowType<{ name: kysely.NotNull }>()
+    .$narrowType<{ name: KyselyNotNull }>()
     .orderBy("updatedAt", "desc"),
 );
 
 type DeletedProjectsRow = typeof deletedProjectsQuery.Row;
 
-const deletedTodosQuery = evolu.createQuery((db) =>
+const deletedTodosQuery = createQuery((db) =>
   db
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "projectId", "updatedAt"])
     .select((eb) => [
-      kysely
-        .jsonObjectFrom(
-          eb
-            .selectFrom("project")
-            .select(["project.id", "project.name"])
-            .where("project.isDeleted", "is not", sqliteTrue)
-            .whereRef("project.id", "=", "todo.projectId")
-            .where("project.name", "is not", null)
-            .$narrowType<{ name: kysely.NotNull }>(),
-        )
-        .as("project"),
+      evoluJsonObjectFrom(
+        eb
+          .selectFrom("project")
+          .select(["project.id", "project.name"])
+          .where("project.isDeleted", "is not", sqliteTrue)
+          .whereRef("project.id", "=", "todo.projectId")
+          .where("project.name", "is not", null)
+          .$narrowType<{ name: KyselyNotNull }>(),
+      ).as("project"),
     ])
     .where("isDeleted", "is", sqliteTrue)
     .where("title", "is not", null)
-    .$narrowType<{ title: kysely.NotNull }>()
+    .$narrowType<{ title: KyselyNotNull }>()
     .orderBy("updatedAt", "desc"),
 );
 
@@ -899,24 +913,32 @@ const Button: FC<{
   );
 };
 
-const formatTypeError = createFormatTypeError<
-  MinLengthError | MaxLengthError
-  // TODO:
-  // | typeof OwnerId.Error
-  // | typeof OwnerEncryptionKey.Error
-  // | typeof OwnerWriteKey.Error
->((error): string => {
-  switch (error.type) {
-    case "MinLength":
-      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
-    case "MaxLength":
-      return `Text is too long (maximum ${error.max} characters)`;
-    // TODO:
-    // case "OwnerId":
-    //   return `Invalid owner ID: ${error.value}`;
-    // case "OwnerEncryptionKey":
-    //   return `Invalid encryption key: ${error.value}`;
-    // case "OwnerWriteKey":
-    //   return `Invalid owner write key: ${error.value}`;
-  }
-});
+/**
+ * Can be extended with more string Types as needed. `createFormatTypeError` can
+ * be extended with custom errors as well.
+ */
+type SupportedStringType = typeof NonEmptyTrimmedString100 | typeof Mnemonic;
+
+const parseStringWithAlert = <T extends SupportedStringType>(
+  type: T,
+  value: string,
+): ReturnType<T["from"]> => {
+  const parsed = type.from(value.trim()) as ReturnType<T["from"]>;
+  if (!parsed.ok) alert(formatTypeError(parsed.error));
+  return parsed;
+};
+
+const formatTypeError = createFormatTypeError();
+
+interface PromptCancelledError extends Typed<"PromptCancelledError"> {}
+
+const promptStringWithAlert = <T extends SupportedStringType>(
+  promptMessage: string,
+  type: T,
+  initialValue?: string,
+): ReturnType<T["from"]> | Result<never, PromptCancelledError> => {
+  const value = window.prompt(promptMessage, initialValue);
+  if (value == null) return err({ type: "PromptCancelledError" });
+
+  return parseStringWithAlert(type, value);
+};

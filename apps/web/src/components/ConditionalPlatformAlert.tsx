@@ -5,7 +5,7 @@ import { usePreferredLanguageStore } from "@/components/Code";
 
 type AlertType = "warning" | "info" | "announcement";
 
-export function ConditionalPlatformAlert({
+export const ConditionalPlatformAlert = ({
   platform,
   type = "warning",
   children,
@@ -13,7 +13,7 @@ export function ConditionalPlatformAlert({
   platform: Array<string>;
   type?: AlertType;
   children: React.ReactNode;
-}): React.ReactElement | null {
+}): React.ReactElement | null => {
   const { preferredLanguages } = usePreferredLanguageStore();
 
   const mostRecentPlatform = preferredLanguages[preferredLanguages.length - 1];
@@ -32,4 +32,4 @@ export function ConditionalPlatformAlert({
     default:
       return <Warn>{children}</Warn>;
   }
-}
+};

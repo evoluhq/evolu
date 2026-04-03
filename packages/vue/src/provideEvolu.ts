@@ -1,8 +1,8 @@
 import type { Evolu } from "@evolu/common";
 import {
-  ComponentInternalInstance,
+  type ComponentInternalInstance,
   getCurrentInstance,
-  InjectionKey,
+  type InjectionKey,
   provide,
 } from "vue";
 
@@ -10,6 +10,7 @@ import {
  * Stores the Evolu instance for a Vue component. This is most useful at the
  * root component where provide/inject doesn't work.
  */
+// eslint-disable-next-line evolu/require-pure-annotation
 export const evoluInstanceMap = new WeakMap<
   ComponentInternalInstance,
   Evolu<any>
@@ -17,10 +18,10 @@ export const evoluInstanceMap = new WeakMap<
 
 /** The injection key for providing Evolu. */
 export const EvoluContext: InjectionKey<Evolu<any> | null> =
-  Symbol("EvoluContext");
+  /*#__PURE__*/ Symbol("EvoluContext");
 
 /** Provide the Evolu instance to components via Vue's provide/inject system. */
-export function provideEvolu(evolu: Evolu<any> | (() => Evolu<any>)): void {
+export const provideEvolu = (evolu: Evolu<any> | (() => Evolu<any>)): void => {
   const vueInstance = getCurrentInstance();
 
   if (!vueInstance) {
@@ -36,4 +37,4 @@ export function provideEvolu(evolu: Evolu<any> | (() => Evolu<any>)): void {
   // Vue doesn't allow injecting a value from the same component where it was provided,
   // so we store the mapping to give root components access as well.
   evoluInstanceMap.set(vueInstance, instance);
-}
+};

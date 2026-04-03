@@ -1,14 +1,23 @@
+/**
+ * Hybrid logical clock timestamps for CRDT ordering.
+ *
+ * @module
+ */
+
 import { bytesToHex } from "../Buffer.js";
-import { RandomBytesDep } from "../Crypto.js";
+import type { RandomBytesDep } from "../Crypto.js";
 import { createEqObject, eqNumber, eqString } from "../Eq.js";
 import { increment } from "../Number.js";
-import { Order, orderUint8Array } from "../Order.js";
-import { err, ok, Result } from "../Result.js";
-import { TimeDep } from "../Time.js";
+import type { Order } from "../Order.js";
+import { orderUint8Array } from "../Order.js";
+import type { Result } from "../Result.js";
+import { err, ok } from "../Result.js";
+import type { TimeDep } from "../Time.js";
+import { Millis, minMillis } from "../Time.js";
+import type { DateIso, InferType, Typed } from "../Type.js";
 import {
   brand,
-  DateIso,
-  InferType,
+  length,
   lessThanOrEqualTo,
   NonNegativeInt,
   object,
@@ -26,6 +35,9 @@ export interface TimestampConfig {
   readonly maxDrift: number;
 }
 
+/** Default value for {@link TimestampConfig.maxDrift}. */
+export const defaultTimestampMaxDrift = 5 * 60 * 1000;
+
 export interface TimestampConfigDep {
   readonly timestampConfig: TimestampConfig;
 }
@@ -35,44 +47,18 @@ export type TimestampError =
   | TimestampCounterOverflowError
   | TimestampTimeOutOfRangeError;
 
-export interface TimestampDriftError {
-  readonly type: "TimestampDriftError";
+export interface TimestampDriftError extends Typed<"TimestampDriftError"> {
   readonly next: Millis;
   readonly now: Millis;
 }
 
-export interface TimestampCounterOverflowError {
-  readonly type: "TimestampCounterOverflowError";
-}
+export interface TimestampCounterOverflowError extends Typed<"TimestampCounterOverflowError"> {}
 
-export interface TimestampTimeOutOfRangeError {
-  readonly type: "TimestampTimeOutOfRangeError";
-}
+export interface TimestampTimeOutOfRangeError extends Typed<"TimestampTimeOutOfRangeError"> {}
 
-/**
- * Millis is a timestamp in milliseconds, like `Date.now()`, but limited to the
- * maximum value representable in 6 bytes (281474976710655) minus 1 (reserved
- * for infinity). This enables more efficient binary serialization, saving 2
- * bytes compared to the typical 8-byte (64-bit) timestamp representation.
- *
- * This limit is enforced to prevent data corruption. If a device's clock
- * exceeds this range, Evolu will stop saving data until the clock is
- * corrected.
- *
- * `new Date(281474976710654).toString()` = Tue Aug 02 10889 07:31:49
- */
-export const Millis = brand(
-  "Millis",
-  lessThanOrEqualTo(281474976710655 - 1)(NonNegativeInt),
-);
-export type Millis = typeof Millis.Type;
-
-export const minMillis = 0 as Millis;
-export const maxMillis = (281474976710655 - 1) as Millis;
-
-export const Counter = brand(
+export const Counter = /*#__PURE__*/ brand(
   "Counter",
-  lessThanOrEqualTo(65535)(NonNegativeInt),
+  /*#__PURE__*/ lessThanOrEqualTo(65535)(NonNegativeInt),
 );
 export type Counter = typeof Counter.Type;
 
@@ -104,7 +90,7 @@ export const maxCounter = 65535 as Counter;
  * yet they will think they are synced. This is extremely rare and can be
  * resolved by resetting one device to generate a new NodeId.
  */
-export const NodeId = regex("NodeId", /^[a-f0-9]{16}$/)(String);
+export const NodeId = /*#__PURE__*/ regex("NodeId", /^[a-f0-9]{16}$/)(String);
 export type NodeId = typeof NodeId.Type;
 
 export const minNodeId = "0000000000000000" as NodeId;
@@ -116,7 +102,7 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * Timestamps serve as globally unique, causally ordered identifiers for CRDT
  * messages in Evolu's sync protocol.
  *
- * ### Why Hybrid Logical Clocks
+ * ## Why Hybrid Logical Clocks
  *
  * Evolu uses Hybrid Logical Clocks (HLC), which combine physical time (millis)
  * with a logical counter. This hybrid approach preserves causality like logical
@@ -141,14 +127,14 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * configuration protects against buggy clocks and prevents problematic
  * future-dated entries from propagating through the network.
  *
- * ### References
+ * ## References
  *
  * - https://muratbuffalo.blogspot.com/2014/07/hybrid-logical-clocks.html
  * - https://sergeiturukin.com/2017/06/26/hybrid-logical-clocks.html
  * - https://jaredforsyth.com/posts/hybrid-logical-clocks/
  * - https://willowprotocol.org/more/timestamps_really/index.html
  *
- * ### Privacy Considerations
+ * ## Privacy Considerations
  *
  * Timestamps are metadata visible to relays and collaborators. While it can be
  * considered a privacy leak, let us explain why it's necessary, and how to
@@ -165,8 +151,12 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * 2. Periodically and randomly flush messages to sync tables
  *
  * **Trade-off:** It breaks real-time collaboration.
+ *
+ * Another technique is generating fake random activity (dummy messages) to mask
+ * real usage patterns. This preserves real-time collaboration but increases
+ * storage and bandwidth usage.
  */
-export const Timestamp = object({
+export const Timestamp = /*#__PURE__*/ object({
   millis: Millis,
   counter: Counter,
   nodeId: NodeId,
@@ -174,7 +164,7 @@ export const Timestamp = object({
 export interface Timestamp extends InferType<typeof Timestamp> {}
 
 /** Equality function for comparing {@link Timestamp}. */
-export const eqTimestamp = createEqObject<Timestamp>({
+export const eqTimestamp = /*#__PURE__*/ createEqObject<Timestamp>({
   millis: eqNumber,
   counter: eqNumber,
   nodeId: eqString,
@@ -277,10 +267,13 @@ export const receiveTimestamp =
   };
 
 /** Sortable bytes representation of {@link Timestamp}. */
-export const TimestampBytes = brand("TimestampBytes", Uint8Array);
+export const TimestampBytes = /*#__PURE__*/ brand(
+  "TimestampBytes",
+  /*#__PURE__*/ length(16)(Uint8Array),
+);
 export type TimestampBytes = typeof TimestampBytes.Type;
 
-export const timestampBytesLength = NonNegativeInt.orThrow(16);
+export const timestampBytesLength = /*#__PURE__*/ NonNegativeInt.orThrow(16);
 
 export const timestampToTimestampBytes = (
   timestamp: Timestamp,

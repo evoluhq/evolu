@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "common" },
+    { "path": "web" },
+    { "path": "nodejs" },
+    { "path": "react" },
+    { "path": "react-web" },
+    { "path": "react-native" },
+    { "path": "svelte" },
+    { "path": "vue" }
+  ]
+}

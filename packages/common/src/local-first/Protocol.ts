@@ -20,7 +20,7 @@
  * transfer, ownership, real-time broadcasting, request-response semantics, and
  * error handling.
  *
- * ### Message structure
+ * ## Message structure
  *
  * | Field                          | Notes                     |
  * | :----------------------------- | :------------------------ |
@@ -43,7 +43,7 @@
  * | - {@link NonNegativeInt}       | Number of ranges.         |
  * | - {@link Range}                |                           |
  *
- * ### WriteKey validation
+ * ## WriteKey validation
  *
  * The initiator sends a hasWriteKey flag and optionally a WriteKey. The
  * WriteKey is required when sending messages as a secure token proving the
@@ -52,7 +52,7 @@
  * validates the WriteKey immediately after parsing the initiator header, before
  * processing any messages or ranges.
  *
- * ### Synchronization
+ * ## Synchronization
  *
  * - **Messages**: Sends {@link EncryptedCrdtMessage}s in either direction.
  * - **Ranges**: Determines messages to sync. Usage varies by transport—e.g., sent
@@ -79,7 +79,7 @@
  * initiator. In relay-to-relay or P2P sync, both sides may require the
  * {@link OwnerWriteKey} depending on who is the initiator.
  *
- * ### Protocol errors
+ * ## Protocol errors
  *
  * The protocol uses error codes in the header to signal issues:
  *
@@ -94,7 +94,7 @@
  * All protocol errors except `ProtocolInvalidDataError` include the `OwnerId`
  * to allow clients to associate errors with the correct owner.
  *
- * ### Message size limit
+ * ## Message size limit
  *
  * The protocol enforces a strict maximum size for all messages, defined by
  * {@link ProtocolMessageMaxSize}. This ensures every {@link ProtocolMessage} is
@@ -107,7 +107,7 @@
  * message limit to ensure efficient sync with
  * {@link defaultProtocolMessageRangesMaxSize}.
  *
- * ### Why Binary?
+ * ## Why Binary?
  *
  * The protocol avoids JSON because:
  *
@@ -127,7 +127,7 @@
  * To avoid reinventing serialization where it’s unnecessary—like for JSON and
  * certain numbers—the Evolu Protocol relies on MessagePack.
  *
- * ### Versioning
+ * ## Versioning
  *
  * Evolu Protocol uses explicit versioning to ensure compatibility between
  * clients and relays (or peers). Each protocol message begins with a version
@@ -148,7 +148,7 @@
  * Version negotiation is per-owner, allowing Evolu Protocol to evolve safely
  * over time and provide clear feedback about version mismatches.
  *
- * ### Credible exit
+ * ## Credible exit
  *
  * The protocol specification is intentionally non-configurable to ensure
  * universal compatibility. This design allows applications (users) to switch
@@ -178,11 +178,12 @@
  */
 
 import { Packr } from "msgpackr";
-import { isNonEmptyReadonlyArray, NonEmptyReadonlyArray } from "../Array.js";
+import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
-import { Brand } from "../Brand.js";
+import type { Brand } from "../Brand.js";
+import type { ConsoleDep } from "../Console.js";
 import {
-  Buffer,
+  type Buffer,
   bytesToHex,
   bytesToUtf8,
   createBuffer,
@@ -191,16 +192,22 @@ import {
 } from "../Buffer.js";
 import {
   createPadmePadding,
+  decryptWithXChaCha20Poly1305,
+  type DecryptWithXChaCha20Poly1305Error,
   EncryptionKey,
-  RandomBytesDep,
-  SymmetricCryptoDecryptError,
-  SymmetricCryptoDep,
+  encryptWithXChaCha20Poly1305,
+  Entropy24,
+  type RandomBytesDep,
+  XChaCha20Poly1305Ciphertext,
+  xChaCha20Poly1305NonceLength,
 } from "../Crypto.js";
 import { eqArrayNumber } from "../Eq.js";
 import { computeBalancedBuckets } from "../Number.js";
 import { createRecord, objectToEntries } from "../Object.js";
-import { err, ok, Result } from "../Result.js";
+import { err, ok, type Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
+import type { Task } from "../Task.js";
+import { Millis } from "../Time.js";
 import {
   Base64Url,
   base64UrlToUint8Array,
@@ -216,13 +223,16 @@ import {
   jsonToJsonValue,
   NonNegativeInt,
   Number,
+  onePositiveInt,
   PositiveInt,
+  type Typed,
   uint8ArrayToBase64Url,
+  zeroNonNegativeInt,
 } from "../Type.js";
-import { Predicate } from "../Types.js";
+import type { Predicate } from "../Types.js";
 import {
-  Owner,
-  OwnerError,
+  type Owner,
+  type OwnerError,
   OwnerId,
   OwnerIdBytes,
   ownerIdToOwnerIdBytes,
@@ -230,26 +240,25 @@ import {
   ownerWriteKeyLength,
 } from "./Owner.js";
 import {
-  BaseRange,
-  CrdtMessage,
+  type BaseRange,
+  type CrdtMessage,
   DbChange,
-  EncryptedCrdtMessage,
-  EncryptedDbChange,
-  Fingerprint,
-  FingerprintRange,
+  type EncryptedCrdtMessage,
+  type EncryptedDbChange,
+  type Fingerprint,
+  type FingerprintRange,
   fingerprintSize,
   InfiniteUpperBound,
-  Range,
+  type Range,
   RangeType,
-  RangeUpperBound,
-  SkipRange,
-  StorageDep,
-  TimestampsRange,
+  type RangeUpperBound,
+  type SkipRange,
+  type StorageDep,
+  type TimestampsRange,
 } from "./Storage.js";
 import {
   Counter,
   eqTimestamp,
-  Millis,
   NodeId,
   Timestamp,
   TimestampBytes,
@@ -285,7 +294,7 @@ const maxProtocolMessageMaxSize = 100_000_000;
  * Increasing this value on the client side would break compatibility with
  * relays that enforce smaller limits.
  */
-export const ProtocolMessageMaxSize = between(
+export const ProtocolMessageMaxSize = /*#__PURE__*/ between(
   minProtocolMessageMaxSize,
   maxProtocolMessageMaxSize,
 )(Int);
@@ -312,7 +321,10 @@ export const defaultProtocolMessageMaxSize =
  * {@link defaultProtocolMessageMaxSize}, maintaining compatibility between all
  * clients and relays.
  */
-export const ProtocolMessageRangesMaxSize = between(3_000, 100_000)(Int);
+export const ProtocolMessageRangesMaxSize = /*#__PURE__*/ between(
+  3_000,
+  100_000,
+)(Int);
 export type ProtocolMessageRangesMaxSize =
   typeof ProtocolMessageRangesMaxSize.Type;
 
@@ -329,7 +341,7 @@ export const defaultProtocolMessageRangesMaxSize =
 export type ProtocolMessage = Uint8Array & Brand<"ProtocolMessage">;
 
 /** Evolu Protocol version. */
-export const protocolVersion = NonNegativeInt.orThrow(1);
+export const protocolVersion = onePositiveInt;
 
 export const MessageType = {
   /** Request message from initiator (client) to non-initiator (relay). */
@@ -341,6 +353,33 @@ export const MessageType = {
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
+
+/** Parsed protocol header for supported protocol messages. */
+export interface ProtocolHeader extends Typed<"ProtocolHeader"> {
+  readonly version: 1;
+  readonly ownerId: OwnerId;
+  readonly messageType: MessageType;
+}
+
+/**
+ * Parses the protocol header needed for routing.
+ *
+ * Every protocol message begins with `protocolVersion`, `ownerId`, and
+ * `messageType`.
+ */
+export const parseProtocolHeader = (
+  inputMessage: Uint8Array,
+): Result<ProtocolHeader, ProtocolInvalidDataError> => {
+  try {
+    return ok(parseProtocolHeaderFromBuffer(createBuffer(inputMessage)));
+  } catch (error) {
+    return err<ProtocolInvalidDataError>({
+      type: "ProtocolInvalidDataError",
+      data: inputMessage,
+      error,
+    });
+  }
+};
 
 export const SubscriptionFlags = {
   /** No subscription changes for this owner. */
@@ -382,32 +421,29 @@ export type ProtocolError =
  * Represents a version mismatch in the Evolu Protocol. Occurs when the
  * initiator and non-initiator are using incompatible protocol versions.
  */
-export interface ProtocolVersionError extends OwnerError {
-  readonly type: "ProtocolVersionError";
+export interface ProtocolVersionError
+  extends OwnerError, Typed<"ProtocolVersionError"> {
   readonly version: NonNegativeInt;
   /** Indicates which side is obsolete and should update. */
   readonly isInitiator: boolean;
 }
 
 /** Error for invalid or corrupted protocol message data. */
-export interface ProtocolInvalidDataError {
-  readonly type: "ProtocolInvalidDataError";
+export interface ProtocolInvalidDataError extends Typed<"ProtocolInvalidDataError"> {
   readonly data: globalThis.Uint8Array;
   readonly error: unknown;
 }
 
 /** Error when a {@link OwnerWriteKey} is invalid, missing, or fails validation. */
-export interface ProtocolWriteKeyError extends OwnerError {
-  readonly type: "ProtocolWriteKeyError";
-}
+export interface ProtocolWriteKeyError
+  extends OwnerError, Typed<"ProtocolWriteKeyError"> {}
 
 /**
  * Error indicating a serious relay-side write failure. Clients should log this
  * error and show a generic sync error to the user.
  */
-export interface ProtocolWriteError extends OwnerError {
-  readonly type: "ProtocolWriteError";
-}
+export interface ProtocolWriteError
+  extends OwnerError, Typed<"ProtocolWriteError"> {}
 
 /**
  * Error when storage or billing quota is exceeded.
@@ -422,25 +458,22 @@ export interface ProtocolWriteError extends OwnerError {
  * plan. Quota monitoring and management is the relay provider's
  * responsibility.
  */
-export interface ProtocolQuotaError extends OwnerError {
-  readonly type: "ProtocolQuotaError";
-}
+export interface ProtocolQuotaError
+  extends OwnerError, Typed<"ProtocolQuotaError"> {}
 
 /**
  * Error indicating a serious relay-side synchronization failure. Clients should
  * log this error and show a generic sync error to the user.
  */
-export interface ProtocolSyncError extends OwnerError {
-  readonly type: "ProtocolSyncError";
-}
+export interface ProtocolSyncError
+  extends OwnerError, Typed<"ProtocolSyncError"> {}
 
 /**
  * Error when embedded timestamp doesn't match expected timestamp in
  * EncryptedDbChange. Indicates potential tampering or corruption of CRDT
  * messages.
  */
-export interface ProtocolTimestampMismatchError {
-  readonly type: "ProtocolTimestampMismatchError";
+export interface ProtocolTimestampMismatchError extends Typed<"ProtocolTimestampMismatchError"> {
   readonly expected: Timestamp;
   readonly timestamp: Timestamp;
 }
@@ -453,7 +486,7 @@ export interface ProtocolTimestampMismatchError {
  * unidirectional and stateless transports.
  */
 export const createProtocolMessageFromCrdtMessages =
-  (deps: RandomBytesDep & SymmetricCryptoDep) =>
+  (deps: RandomBytesDep) =>
   (
     owner: Owner,
     messages: NonEmptyReadonlyArray<CrdtMessage>,
@@ -514,7 +547,7 @@ export const createProtocolMessageFromCrdtMessages =
 
 /** Creates a {@link ProtocolMessage} for sync. */
 export const createProtocolMessageForSync =
-  (deps: StorageDep) =>
+  (deps: StorageDep & ConsoleDep) =>
   (
     ownerId: OwnerId,
     subscriptionFlag?: SubscriptionFlag,
@@ -526,12 +559,10 @@ export const createProtocolMessageForSync =
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
     const size = deps.storage.getSize(ownerIdBytes);
-    // Errors are handled by the storage.
-    if (size == null) return null;
 
     splitRange(deps)(
       ownerIdBytes,
-      NonNegativeInt.orThrow(0),
+      zeroNonNegativeInt,
       size,
       InfiniteUpperBound,
       buffer,
@@ -687,9 +718,8 @@ export const createProtocolMessageBuffer = (
       assert(isWithinSizeLimits(), "the message is too big");
     },
 
-    canSplitRange: () => {
-      return getRangesSize() + safeMargins.splitRange <= rangesMaxSize;
-    },
+    canSplitRange: () =>
+      getRangesSize() + safeMargins.splitRange <= rangesMaxSize,
 
     canAddTimestampsRangeAndMessage: (timestamps, message) => {
       const rangesNewSize =
@@ -790,7 +820,7 @@ export interface TimestampsBuffer {
 }
 
 export const createTimestampsBuffer = (): TimestampsBuffer => {
-  let count = NonNegativeInt.orThrow(0);
+  let count = zeroNonNegativeInt;
   const countBuffer = createBuffer();
 
   const syncCount = () => {
@@ -857,9 +887,9 @@ const createRunLengthEncoder = <T>(
   encodeValue: (buffer: Buffer, value: T) => void,
 ): RunLengthEncoder<T> => {
   const buffer = createBuffer();
-  let previousLength = NonNegativeInt.orThrow(0);
+  let previousLength = zeroNonNegativeInt;
   let previousValue = null as T | null;
-  let runLength = NonNegativeInt.orThrow(0);
+  let runLength = zeroNonNegativeInt;
 
   return {
     add: (value) => {
@@ -882,7 +912,7 @@ const createRunLengthEncoder = <T>(
 };
 
 export interface ApplyProtocolMessageAsClientOptions {
-  getWriteKey?: (ownerId: OwnerId) => OwnerWriteKey | null;
+  writeKey?: OwnerWriteKey;
 
   rangesMaxSize?: ProtocolMessageRangesMaxSize;
 
@@ -894,27 +924,35 @@ export interface ApplyProtocolMessageAsClientOptions {
  * Result type for {@link applyProtocolMessageAsClient} that distinguishes
  * between responses to client requests and broadcast messages.
  */
+export interface ApplyProtocolMessageAsClientResponse extends Typed<"Response"> {
+  readonly message: ProtocolMessage;
+}
+
+export interface ApplyProtocolMessageAsClientNoResponse extends Typed<"NoResponse"> {}
+
+export interface ApplyProtocolMessageAsClientBroadcast extends Typed<"Broadcast"> {}
+
 export type ApplyProtocolMessageAsClientResult =
-  | { readonly type: "response"; readonly message: ProtocolMessage }
-  | { readonly type: "no-response" }
-  | { readonly type: "broadcast" };
+  | ApplyProtocolMessageAsClientResponse
+  | ApplyProtocolMessageAsClientNoResponse
+  | ApplyProtocolMessageAsClientBroadcast;
 
 export const applyProtocolMessageAsClient =
-  (deps: StorageDep) =>
-  async (
+  (
     inputMessage: Uint8Array,
     options: ApplyProtocolMessageAsClientOptions = {},
-  ): Promise<
-    Result<
-      ApplyProtocolMessageAsClientResult,
-      | ProtocolInvalidDataError
-      | ProtocolSyncError
-      | ProtocolVersionError
-      | ProtocolWriteError
-      | ProtocolWriteKeyError
-      | ProtocolQuotaError
-    >
-  > => {
+  ): Task<
+    ApplyProtocolMessageAsClientResult,
+    | ProtocolInvalidDataError
+    | ProtocolSyncError
+    | ProtocolVersionError
+    | ProtocolWriteError
+    | ProtocolWriteKeyError
+    | ProtocolQuotaError,
+    StorageDep
+  > =>
+  async (run) => {
+    const { storage } = run.deps;
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
@@ -971,10 +1009,17 @@ export const applyProtocolMessageAsClient =
       const messages = decodeMessages(input);
       const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-      if (isNonEmptyReadonlyArray(messages)) {
-        const result = await deps.storage.writeMessages(ownerIdBytes, messages);
-        // Errors are handled by the Storage. Here we just stop syncing.
-        if (!result.ok) return ok({ type: "no-response" });
+      if (isNonEmptyArray(messages)) {
+        try {
+          const result = await run(
+            storage.writeMessages(ownerIdBytes, messages),
+          );
+          // Quota errors are handled by Storage; protocol just stops syncing.
+          if (!result.ok) return ok({ type: "NoResponse" });
+        } catch (error) {
+          run.deps.console.error(error);
+          return ok({ type: "NoResponse" });
+        }
       }
 
       // Now: No writeKey, no sync.
@@ -982,19 +1027,19 @@ export const applyProtocolMessageAsClient =
       // Without local changes, writeKey will not be required.
       // With local changes, writeKey will be required and if not provided,
       // the sync will stop.
-      const writeKey = options.getWriteKey?.(ownerId);
+      const writeKey = options.writeKey;
       if (writeKey == null) {
-        return ok({ type: "no-response" });
+        return ok({ type: "NoResponse" });
       }
 
       if (messageType === MessageType.Broadcast) {
-        return ok({ type: "broadcast" });
+        return ok({ type: "Broadcast" });
       }
 
       const ranges = decodeRanges(input);
 
-      if (!isNonEmptyReadonlyArray(ranges)) {
-        return ok({ type: "no-response" });
+      if (!isNonEmptyArray(ranges)) {
+        return ok({ type: "NoResponse" });
       }
 
       const output = createProtocolMessageBuffer(ownerId, {
@@ -1003,14 +1048,14 @@ export const applyProtocolMessageAsClient =
         rangesMaxSize: options.rangesMaxSize,
       });
 
-      const result = sync(deps)(ranges, output, ownerIdBytes);
+      const result = sync(run.deps)(ranges, output, ownerIdBytes);
 
       // Client sync error (handled via Storage) or no changes.
       if (!result.ok || !result.value) {
-        return ok({ type: "no-response" });
+        return ok({ type: "NoResponse" });
       }
 
-      return ok({ type: "response", message: output.unwrap() });
+      return ok({ type: "Response", message: output.unwrap() });
     } catch (error) {
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
@@ -1043,21 +1088,23 @@ export interface ApplyProtocolMessageAsRelayOptions {
  * to sync. Clients may choose not to respond in certain cases (like when they
  * receive broadcast messages or when they lack a write key for syncing).
  */
-export interface ApplyProtocolMessageAsRelayResult {
-  readonly type: "response";
+export interface ApplyProtocolMessageAsRelayResult extends Typed<"Response"> {
   readonly message: ProtocolMessage;
 }
 
 export const applyProtocolMessageAsRelay =
-  (deps: StorageDep) =>
-  async (
+  (
     inputMessage: Uint8Array,
     options: ApplyProtocolMessageAsRelayOptions = {},
     /** For tests only. */
-    version = protocolVersion,
-  ): Promise<
-    Result<ApplyProtocolMessageAsRelayResult, ProtocolInvalidDataError>
-  > => {
+    version: NonNegativeInt = protocolVersion,
+  ): Task<
+    ApplyProtocolMessageAsRelayResult,
+    ProtocolInvalidDataError,
+    StorageDep
+  > =>
+  async (run) => {
+    const { storage } = run.deps;
     try {
       const input = createBuffer(inputMessage);
       const [requestedVersion, ownerId] = decodeVersionAndOwner(input);
@@ -1069,7 +1116,7 @@ export const applyProtocolMessageAsRelay =
         encodeNonNegativeInt(output, version);
         output.extend(ownerIdBytes);
         return ok({
-          type: "response",
+          type: "Response",
           message: output.unwrap() as ProtocolMessage,
         });
       }
@@ -1098,10 +1145,10 @@ export const applyProtocolMessageAsRelay =
       }
 
       if (writeKey) {
-        const isValid = deps.storage.validateWriteKey(ownerIdBytes, writeKey);
+        const isValid = storage.validateWriteKey(ownerIdBytes, writeKey);
         if (!isValid) {
           return ok({
-            type: "response",
+            type: "Response",
             message: createProtocolMessageBuffer(ownerId, {
               messageType: MessageType.Response,
               errorCode: ProtocolErrorCode.WriteKeyError,
@@ -1112,10 +1159,10 @@ export const applyProtocolMessageAsRelay =
 
       const messages = decodeMessages(input);
 
-      if (isNonEmptyReadonlyArray(messages)) {
+      if (isNonEmptyArray(messages)) {
         if (!writeKey) {
           return ok({
-            type: "response",
+            type: "Response",
             message: createProtocolMessageBuffer(ownerId, {
               messageType: MessageType.Response,
               errorCode: ProtocolErrorCode.WriteKeyError,
@@ -1123,18 +1170,25 @@ export const applyProtocolMessageAsRelay =
           });
         }
 
-        const result = await deps.storage.writeMessages(ownerIdBytes, messages);
+        try {
+          const result = await run(
+            storage.writeMessages(ownerIdBytes, messages),
+          );
 
-        if (!result.ok) {
-          const errorCode =
-            result.error.type === "StorageWriteError"
-              ? ProtocolErrorCode.WriteError
-              : ProtocolErrorCode.QuotaError;
+          if (!result.ok) {
+            const message = createProtocolMessageBuffer(ownerId, {
+              messageType: MessageType.Response,
+              errorCode: ProtocolErrorCode.QuotaError,
+            }).unwrap();
+            return ok({ type: "Response", message });
+          }
+        } catch (error) {
+          run.deps.console.error(error);
           const message = createProtocolMessageBuffer(ownerId, {
             messageType: MessageType.Response,
-            errorCode,
+            errorCode: ProtocolErrorCode.WriteError,
           }).unwrap();
-          return ok({ type: "response", message });
+          return ok({ type: "Response", message });
         }
 
         /**
@@ -1179,11 +1233,11 @@ export const applyProtocolMessageAsRelay =
 
       // Non-initiators always respond to provide sync completion feedback,
       // even when there's nothing to sync.
-      if (!isNonEmptyReadonlyArray(ranges)) {
-        return ok({ type: "response", message: output.unwrap() });
+      if (!isNonEmptyArray(ranges)) {
+        return ok({ type: "Response", message: output.unwrap() });
       }
 
-      const result = sync(deps)(ranges, output, ownerIdBytes);
+      const result = sync(run.deps)(ranges, output, ownerIdBytes);
 
       const message = result.ok
         ? output.unwrap()
@@ -1193,7 +1247,7 @@ export const applyProtocolMessageAsRelay =
           }).unwrap();
 
       // Non-initiators always respond to provide sync completion feedback,
-      return ok({ type: "response", message });
+      return ok({ type: "Response", message });
     } catch (error) {
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
@@ -1211,6 +1265,38 @@ const decodeVersionAndOwner = (input: Buffer): [NonNegativeInt, OwnerId] => {
   const version = decodeNonNegativeInt(input);
   const ownerId = decodeId(input) as OwnerId;
   return [version, ownerId];
+};
+
+const parseProtocolHeaderFromBuffer = (input: Buffer): ProtocolHeader => {
+  const [version, ownerId] = decodeVersionAndOwner(input);
+
+  if (version !== protocolVersion) {
+    throw new ProtocolDecodeError(`Unsupported protocol version: ${version}`);
+  }
+
+  const messageTypeValue = input.shift();
+  let messageType: MessageType;
+
+  switch (messageTypeValue) {
+    case MessageType.Request:
+      messageType = MessageType.Request;
+      break;
+    case MessageType.Response:
+      messageType = MessageType.Response;
+      break;
+    case MessageType.Broadcast:
+      messageType = MessageType.Broadcast;
+      break;
+    default:
+      throw new ProtocolDecodeError("Invalid MessageType");
+  }
+
+  return {
+    type: "ProtocolHeader",
+    version: 1,
+    ownerId,
+    messageType,
+  };
 };
 
 /**
@@ -1231,30 +1317,35 @@ const decodeMessages = (
 ): ReadonlyArray<EncryptedCrdtMessage> => {
   const timestamps = decodeTimestamps(buffer);
 
-  const messages: Array<EncryptedCrdtMessage> = [];
-  for (const timestamp of timestamps) {
+  const messages = new Array<EncryptedCrdtMessage>(timestamps.length);
+  for (let i = 0; i < timestamps.length; i++) {
+    const timestamp = timestamps[i];
     const changeLength = decodeLength(buffer);
     const change = buffer.shiftN(changeLength) as EncryptedDbChange;
-    messages.push({ timestamp, change });
+    messages[i] = { timestamp, change };
   }
 
   return messages;
 };
 
 const sync =
-  (deps: StorageDep) =>
+  (deps: StorageDep & ConsoleDep) =>
   (
     ranges: NonEmptyReadonlyArray<Range>,
     output: ProtocolMessageBuffer,
     ownerIdBytes: OwnerIdBytes,
   ): Result<boolean, typeof ProtocolErrorCode.SyncError> => {
     const outputInitialSize = output.getSize();
-
-    const storageSize = deps.storage.getSize(ownerIdBytes);
-    if (storageSize == null) return err(ProtocolErrorCode.SyncError);
+    let storageSize: NonNegativeInt;
+    try {
+      storageSize = deps.storage.getSize(ownerIdBytes);
+    } catch (error) {
+      deps.console.error(error);
+      return err(ProtocolErrorCode.SyncError);
+    }
 
     let prevUpperBound: RangeUpperBound | null = null;
-    let prevIndex = NonNegativeInt.orThrow(0);
+    let prevIndex = zeroNonNegativeInt;
 
     let skip = false;
     let nonSkipRangeAdded = false;
@@ -1291,12 +1382,17 @@ const sync =
     const addFingerprintForRemainingRange = (
       begin: NonNegativeInt,
     ): boolean => {
-      const fingerprint = deps.storage.fingerprint(
-        ownerIdBytes,
-        begin,
-        storageSize,
-      );
-      if (!fingerprint) return false;
+      let fingerprint: Fingerprint;
+      try {
+        fingerprint = deps.storage.fingerprint(
+          ownerIdBytes,
+          begin,
+          storageSize,
+        );
+      } catch (error) {
+        deps.console.error(error);
+        return false;
+      }
       // There is always a space for a ramaining range.
       output.addRange({
         type: RangeType.Fingerprint,
@@ -1310,13 +1406,18 @@ const sync =
       const currentUpperBound = range.upperBound;
 
       const lower = prevIndex;
-      let upper = deps.storage.findLowerBound(
-        ownerIdBytes,
-        prevIndex,
-        storageSize,
-        currentUpperBound,
-      );
-      if (upper == null) return err(ProtocolErrorCode.SyncError);
+      let upper: NonNegativeInt;
+      try {
+        upper = deps.storage.findLowerBound(
+          ownerIdBytes,
+          prevIndex,
+          storageSize,
+          currentUpperBound,
+        );
+      } catch (error) {
+        deps.console.error(error);
+        return err(ProtocolErrorCode.SyncError);
+      }
 
       switch (range.type) {
         case RangeType.Skip: {
@@ -1325,12 +1426,17 @@ const sync =
         }
 
         case RangeType.Fingerprint: {
-          const ourFingerprint = deps.storage.fingerprint(
-            ownerIdBytes,
-            lower,
-            upper,
-          );
-          if (ourFingerprint == null) return err(ProtocolErrorCode.SyncError);
+          let ourFingerprint: Fingerprint;
+          try {
+            ourFingerprint = deps.storage.fingerprint(
+              ownerIdBytes,
+              lower,
+              upper,
+            );
+          } catch (error) {
+            deps.console.error(error);
+            return err(ProtocolErrorCode.SyncError);
+          }
 
           if (eqArrayNumber(range.fingerprint, ourFingerprint)) {
             skipRange(range);
@@ -1361,52 +1467,61 @@ const sync =
           );
           const ourTimestamps = createTimestampsBuffer();
 
-          let cantReadDbChange = false as boolean;
           let exceeded = false as boolean;
+          let iterateFailed = false as boolean;
 
-          deps.storage.iterate(
-            ownerIdBytes,
-            lower,
-            upper,
-            (timestamp, index) => {
-              const timestampString = timestamp.join();
-              const timestampBinary = timestampBytesToTimestamp(timestamp);
+          try {
+            deps.storage.iterate(
+              ownerIdBytes,
+              lower,
+              upper,
+              (timestamp, index) => {
+                const timestampString = timestamp.join();
+                const timestampBinary = timestampBytesToTimestamp(timestamp);
 
-              let message: EncryptedCrdtMessage | null = null;
+                let message: EncryptedCrdtMessage | null = null;
 
-              if (timestampsWeNeed.has(timestampString)) {
-                timestampsWeNeed.delete(timestampString);
-              } else {
-                const dbChange = deps.storage.readDbChange(
-                  ownerIdBytes,
-                  timestamp,
-                );
-                if (dbChange == null) {
-                  cantReadDbChange = true;
+                if (timestampsWeNeed.has(timestampString)) {
+                  timestampsWeNeed.delete(timestampString);
+                } else {
+                  try {
+                    message = {
+                      timestamp: timestampBinary,
+                      change: deps.storage.readDbChange(
+                        ownerIdBytes,
+                        timestamp,
+                      ),
+                    };
+                  } catch (error) {
+                    deps.console.error(error);
+                    iterateFailed = true;
+                    return false;
+                  }
+                }
+
+                if (
+                  !output.canAddTimestampsRangeAndMessage(
+                    ourTimestamps,
+                    message,
+                  )
+                ) {
+                  exceeded = true;
+                  endBound = timestamp;
+                  upper = index;
                   return false;
                 }
-                message = {
-                  timestamp: timestampBinary,
-                  change: dbChange,
-                };
-              }
 
-              if (
-                !output.canAddTimestampsRangeAndMessage(ourTimestamps, message)
-              ) {
-                exceeded = true;
-                endBound = timestamp;
-                upper = index;
-                return false;
-              }
+                ourTimestamps.add(timestampBinary);
+                if (message) output.addMessage(message);
+                return true;
+              },
+            );
+          } catch (error) {
+            deps.console.error(error);
+            return err(ProtocolErrorCode.SyncError);
+          }
 
-              ourTimestamps.add(timestampBinary);
-              if (message) output.addMessage(message);
-              return true;
-            },
-          );
-
-          if (cantReadDbChange) {
+          if (iterateFailed) {
             return err(ProtocolErrorCode.SyncError);
           }
 
@@ -1449,7 +1564,7 @@ const sync =
   };
 
 const splitRange =
-  (deps: StorageDep) =>
+  (deps: StorageDep & ConsoleDep) =>
   (
     ownerId: OwnerIdBytes,
     lower: NonNegativeInt,
@@ -1469,7 +1584,7 @@ const splitRange =
 
       deps.storage.iterate(
         ownerId,
-        NonNegativeInt.orThrow(0),
+        zeroNonNegativeInt,
         itemCount,
         (timestamp) => {
           range.timestamps.add(timestampBytesToTimestamp(timestamp));
@@ -1490,13 +1605,17 @@ const splitRange =
             ...buckets.value.map((b) => NonNegativeInt.orThrow(b + lower)),
           ];
 
-    const fingerprintRanges = deps.storage.fingerprintRanges(
-      ownerId,
-      fingerprintRangesBuckets,
-      upperBound,
-    );
-    // Errors are handled by the storage.
-    if (fingerprintRanges == null) return;
+    let fingerprintRanges: ReadonlyArray<FingerprintRange>;
+    try {
+      fingerprintRanges = deps.storage.fingerprintRanges(
+        ownerId,
+        fingerprintRangesBuckets,
+        upperBound,
+      );
+    } catch (error) {
+      deps.console.error(error);
+      return;
+    }
 
     const rangesToUse =
       lower > 0 ? fingerprintRanges.slice(1) : fingerprintRanges;
@@ -1514,7 +1633,8 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
 
   const timestampsCount = NonNegativeInt.orThrow(rangesCount - 1);
   const timestamps = decodeTimestamps(buffer, timestampsCount);
-  const rangeTypes: Array<RangeType> = [];
+
+  const rangeTypes = new Array<RangeType>(rangesCount);
 
   for (let i = 0; i < rangesCount; i++) {
     const rangeType = decodeNonNegativeInt(buffer);
@@ -1522,14 +1642,14 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
       case RangeType.Fingerprint:
       case RangeType.Skip:
       case RangeType.Timestamps:
-        rangeTypes.push(rangeType as RangeType);
+        rangeTypes[i] = rangeType as RangeType;
         break;
       default:
         throw new ProtocolDecodeError(`Invalid RangeType: ${rangeType}`);
     }
   }
 
-  const ranges: Array<Range> = [];
+  const ranges = new Array<Range>(rangesCount);
 
   for (let i = 0; i < rangesCount; i++) {
     const upperBound =
@@ -1541,16 +1661,16 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
 
     switch (rangeType) {
       case RangeType.Skip:
-        ranges.push({ type: RangeType.Skip, upperBound });
+        ranges[i] = { type: RangeType.Skip, upperBound };
         break;
 
       case RangeType.Fingerprint: {
         const fingerprint = buffer.shiftN(fingerprintSize) as Fingerprint;
-        ranges.push({
+        ranges[i] = {
           type: RangeType.Fingerprint,
           upperBound,
           fingerprint,
-        });
+        };
         break;
       }
 
@@ -1558,11 +1678,11 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
         const timestamps = decodeTimestamps(buffer).map(
           timestampToTimestampBytes,
         );
-        ranges.push({
+        ranges[i] = {
           type: RangeType.Timestamps,
           upperBound,
           timestamps,
-        });
+        };
         break;
       }
     }
@@ -1571,7 +1691,6 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   return ranges;
 };
 
-/** Decodes an array of sorted timestamps with delta-encoded millis. */
 const decodeTimestamps = (
   buffer: Buffer,
   length?: NonNegativeInt,
@@ -1580,48 +1699,66 @@ const decodeTimestamps = (
 
   let previousMillis = 0 as Millis;
 
-  const millises: Array<Millis> = [];
+  const millises = new Array<Millis>(length);
   for (let i = 0; i < length; i++) {
     const deltaMillis = decodeNonNegativeInt(buffer);
     const millis = Millis.from(previousMillis + deltaMillis);
     if (!millis.ok) throw new ProtocolDecodeError(millis.error.type);
-    millises.push(millis.value);
+    millises[i] = millis.value;
     previousMillis = millis.value;
   }
 
-  const counters: Array<Counter> = [];
-  let counterIndex = 0;
-  while (counterIndex < length) {
+  const counters = decodeRle(buffer, length, (): Counter => {
     const counter = Counter.from(decodeNonNegativeInt(buffer));
     if (!counter.ok) throw new ProtocolDecodeError(counter.error.type);
-    const runLength = decodeNonNegativeInt(buffer);
-    for (let i = 0; i < runLength; i++) {
-      counters.push(counter.value);
-      counterIndex++;
-    }
-  }
+    return counter.value;
+  });
 
-  const nodeIds: Array<NodeId> = [];
-  let nodeIdIndex = 0;
-  while (nodeIdIndex < length) {
-    const nodeId = decodeNodeId(buffer);
-    const runLength = decodeNonNegativeInt(buffer);
-    for (let i = 0; i < runLength; i++) {
-      nodeIds.push(nodeId);
-      nodeIdIndex++;
-    }
-  }
+  const nodeIds = decodeRle(buffer, length, (): NodeId => decodeNodeId(buffer));
 
-  const timestamps: Array<Timestamp> = [];
+  const timestamps = new Array<Timestamp>(length);
   for (let i = 0; i < length; i++) {
-    timestamps.push({
+    timestamps[i] = {
       millis: millises[i],
       counter: counters[i],
       nodeId: nodeIds[i],
-    });
+    };
   }
 
   return timestamps;
+};
+
+export const decodeRle = <T>(
+  buffer: Buffer,
+  length: NonNegativeInt,
+  decodeValue: () => T,
+): ReadonlyArray<T> => {
+  const values = new Array<T>(length);
+  let index = 0;
+  while (index < length) {
+    const value = decodeValue();
+    const runLength = decodeNonNegativeInt(buffer);
+
+    // Prevent infinite loop on malformed input.
+    if (runLength === 0) {
+      throw new ProtocolDecodeError(
+        "Invalid RLE encoding: runLength must be positive",
+      );
+    }
+    const remaining = length - index;
+
+    // Prevent CPU/memory amplification via oversized runLength.
+    if (runLength > remaining) {
+      throw new ProtocolDecodeError(
+        `Invalid RLE encoding: runLength ${runLength} exceeds remaining ${remaining}`,
+      );
+    }
+    for (let i = 0; i < runLength; i++) {
+      values[index] = value;
+      index++;
+    }
+  }
+  return values;
 };
 
 const decodeId = (buffer: Buffer): Id => {
@@ -1699,9 +1836,10 @@ export const decodeFlags = (
   count: PositiveInt,
 ): ReadonlyArray<boolean> => {
   const byte = buffer.shift();
-  const flags: Array<boolean> = [];
-  for (let i = 0; i < count && i < 8; i++) {
-    flags.push((byte & (1 << i)) !== 0);
+  const length = globalThis.Math.min(count, 8);
+  const flags = new Array<boolean>(length);
+  for (let i = 0; i < length; i++) {
+    flags[i] = (byte & (1 << i)) !== 0;
   }
   return flags;
 };
@@ -1715,7 +1853,7 @@ export const decodeFlags = (
  * data.
  */
 export const encodeAndEncryptDbChange =
-  (deps: SymmetricCryptoDep) =>
+  (deps: RandomBytesDep) =>
   (message: CrdtMessage, key: EncryptionKey): EncryptedDbChange => {
     const buffer = createBuffer();
 
@@ -1727,6 +1865,7 @@ export const encodeAndEncryptDbChange =
 
     encodeFlags(buffer, [
       message.change.isInsert,
+      // Encode nullable boolean as two flags: presence + value.
       message.change.isDelete != null,
       message.change.isDelete ?? false,
     ]);
@@ -1745,7 +1884,7 @@ export const encodeAndEncryptDbChange =
     // Add PADMÉ padding (ignored during decoding)
     buffer.extend(createPadmePadding(buffer.getLength()));
 
-    const { nonce, ciphertext } = deps.symmetricCrypto.encrypt(
+    const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
       buffer.unwrap(),
       key,
     );
@@ -1763,78 +1902,76 @@ export const encodeAndEncryptDbChange =
  * owner's encryption key. Verifies that the embedded timestamp matches the
  * expected timestamp to ensure message integrity.
  */
-export const decryptAndDecodeDbChange =
-  (deps: SymmetricCryptoDep) =>
-  (
-    message: EncryptedCrdtMessage,
-    key: EncryptionKey,
-  ): Result<
-    DbChange,
-    | SymmetricCryptoDecryptError
-    | ProtocolInvalidDataError
-    | ProtocolTimestampMismatchError
-  > => {
-    try {
-      const buffer = createBuffer(message.change);
+export const decryptAndDecodeDbChange = (
+  message: EncryptedCrdtMessage,
+  key: EncryptionKey,
+): Result<
+  DbChange,
+  | DecryptWithXChaCha20Poly1305Error
+  | ProtocolInvalidDataError
+  | ProtocolTimestampMismatchError
+> => {
+  try {
+    const buffer = createBuffer(message.change);
 
-      const nonce = buffer.shiftN(deps.symmetricCrypto.nonceLength);
-      const ciphertext = buffer.shiftN(decodeLength(buffer));
+    const nonce = buffer.shiftN(xChaCha20Poly1305NonceLength as NonNegativeInt);
+    const ciphertext = buffer.shiftN(decodeLength(buffer));
 
-      const plaintextBytes = deps.symmetricCrypto.decrypt(
-        ciphertext,
-        key,
-        nonce,
-      );
-      if (!plaintextBytes.ok) return plaintextBytes;
+    const plaintextBytes = decryptWithXChaCha20Poly1305(
+      XChaCha20Poly1305Ciphertext.orThrow(ciphertext),
+      Entropy24.orThrow(nonce),
+      key,
+    );
+    if (!plaintextBytes.ok) return plaintextBytes;
 
-      buffer.reset();
-      buffer.extend(plaintextBytes.value);
+    buffer.reset();
+    buffer.extend(plaintextBytes.value);
 
-      // Decode version (for future compatibility, not need yet)
-      decodeNonNegativeInt(buffer);
+    // Decode version (for future compatibility, not need yet)
+    decodeNonNegativeInt(buffer);
 
-      const timestamp = timestampBytesToTimestamp(
-        buffer.shiftN(timestampBytesLength) as TimestampBytes,
-      );
+    const timestamp = timestampBytesToTimestamp(
+      TimestampBytes.orThrow(buffer.shiftN(timestampBytesLength)),
+    );
 
-      if (!eqTimestamp(timestamp, message.timestamp)) {
-        return err<ProtocolTimestampMismatchError>({
-          type: "ProtocolTimestampMismatchError",
-          expected: message.timestamp,
-          timestamp,
-        });
-      }
-
-      const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
-      const table = decodeString(buffer);
-      const id = decodeId(buffer);
-
-      const length = decodeLength(buffer);
-      const values = createRecord<string, SqliteValue>();
-
-      for (let i = 0; i < length; i++) {
-        const column = decodeString(buffer);
-        const value = decodeSqliteValue(buffer);
-        values[column] = value;
-      }
-
-      const dbChange = DbChange.orThrow({
-        table,
-        id,
-        values,
-        isInsert: flags[0],
-        isDelete: flags[1] ? flags[2] : null,
-      });
-
-      return ok(dbChange);
-    } catch (error) {
-      return err<ProtocolInvalidDataError>({
-        type: "ProtocolInvalidDataError",
-        data: message.change,
-        error,
+    if (!eqTimestamp(timestamp, message.timestamp)) {
+      return err<ProtocolTimestampMismatchError>({
+        type: "ProtocolTimestampMismatchError",
+        expected: message.timestamp,
+        timestamp,
       });
     }
-  };
+
+    const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
+    const table = decodeString(buffer);
+    const id = decodeId(buffer);
+
+    const length = decodeLength(buffer);
+    const values = createRecord<string, SqliteValue>();
+
+    for (let i = 0; i < length; i++) {
+      const column = decodeString(buffer);
+      const value = decodeSqliteValue(buffer);
+      values[column] = value;
+    }
+
+    const dbChange = DbChange.orThrow({
+      table,
+      id,
+      values,
+      isInsert: flags[0],
+      isDelete: flags[1] ? flags[2] : null,
+    });
+
+    return ok(dbChange);
+  } catch (error) {
+    return err<ProtocolInvalidDataError>({
+      type: "ProtocolInvalidDataError",
+      data: message.change,
+      error,
+    });
+  }
+};
 
 /**
  * Encodes a non-negative integer into a variable-length integer format. It's
@@ -1926,26 +2063,26 @@ export const ProtocolValueType = {
   // 0-19 small ints
 
   // SQLite types
-  String: NonNegativeInt.orThrow(20),
-  Number: NonNegativeInt.orThrow(21),
-  Null: NonNegativeInt.orThrow(22),
-  Bytes: NonNegativeInt.orThrow(23),
+  String: /*#__PURE__*/ NonNegativeInt.orThrow(20),
+  Number: /*#__PURE__*/ NonNegativeInt.orThrow(21),
+  Null: /*#__PURE__*/ NonNegativeInt.orThrow(22),
+  Bytes: /*#__PURE__*/ NonNegativeInt.orThrow(23),
   // We can add more types for other DBs or anything else later.
 
   // Optimized types
-  NonNegativeInt: NonNegativeInt.orThrow(30),
+  NonNegativeInt: /*#__PURE__*/ NonNegativeInt.orThrow(30),
 
   // String optimizations
-  EmptyString: NonNegativeInt.orThrow(31), // 1 byte vs 2 bytes (50% reduction)
-  Base64Url: NonNegativeInt.orThrow(32),
-  Id: NonNegativeInt.orThrow(33),
-  Json: NonNegativeInt.orThrow(34),
+  EmptyString: /*#__PURE__*/ NonNegativeInt.orThrow(31), // 1 byte vs 2 bytes (50% reduction)
+  Base64Url: /*#__PURE__*/ NonNegativeInt.orThrow(32),
+  Id: /*#__PURE__*/ NonNegativeInt.orThrow(33),
+  Json: /*#__PURE__*/ NonNegativeInt.orThrow(34),
 
   // new Date().toISOString()   - 24 bytes
   // encoded with fixed length  - 8 bytes
   // encode as NonNegativeInt   - 6 bytes (additional 25% reduction)
-  DateIsoWithNonNegativeTime: NonNegativeInt.orThrow(35),
-  DateIsoWithNegativeTime: NonNegativeInt.orThrow(36), // 9 bytes
+  DateIsoWithNonNegativeTime: /*#__PURE__*/ NonNegativeInt.orThrow(35),
+  DateIsoWithNegativeTime: /*#__PURE__*/ NonNegativeInt.orThrow(36), // 9 bytes
 
   // TODO: Operations (from 40)
   // Increment, Decrement, Patch, whatever.

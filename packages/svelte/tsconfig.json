@@ -1,18 +1,25 @@
 {
   "extends": "@tsconfig/svelte/tsconfig.json",
-	"compilerOptions": {
+  "compilerOptions": {
     "outDir": "dist",
-		"allowJs": true,
-		"checkJs": true,
-		"esModuleInterop": true,
-		"forceConsistentCasingInFileNames": true,
-		"resolveJsonModule": true,
-		"skipLibCheck": true,
-		"sourceMap": true,
-		"strict": true,
-		"module": "NodeNext",
-		"moduleResolution": "NodeNext"
-	},
-  "include": ["src", "test", "svelte-types.d.ts"],
-  "exclude": ["dist", "node_modules"]
+    "rootDir": "src",
+    "allowJs": true,
+    "checkJs": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "composite": true,
+    "incremental": true,
+    "declaration": true,
+    "declarationMap": true,
+    "tsBuildInfoFile": "dist/.tsBuildInfo"
+  },
+  "include": ["src", "svelte-types.d.ts"],
+  "exclude": ["dist", "node_modules"],
+  "references": [{ "path": "../common" }, { "path": "../web" }]
 }

@@ -1,39 +1,45 @@
+/**
+ * Encrypted storage layer for local-first data.
+ *
+ * @module
+ */
+
 import { sha256 } from "@noble/hashes/sha2.js";
-import {
-  firstInArray,
-  isNonEmptyReadonlyArray,
-  NonEmptyReadonlyArray,
-} from "../Array.js";
+import type { NonEmptyReadonlyArray } from "../Array.js";
+import { firstInArray, isNonEmptyArray } from "../Array.js";
 import { assert } from "../Assert.js";
-import { Brand } from "../Brand.js";
+import type { Brand } from "../Brand.js";
 import { concatBytes } from "../Buffer.js";
 import { decrement } from "../Number.js";
-import { RandomDep } from "../Random.js";
-import { err, ok, Result } from "../Result.js";
-import { sql, SqliteDep, SqliteError, SqliteValue } from "../Sqlite.js";
-import { MaybeAsync } from "../Task.js";
+import type { RandomDep } from "../Random.js";
+import type { Result } from "../Result.js";
+import { err, ok } from "../Result.js";
+import type { SqliteDep } from "../Sqlite.js";
+import { sql, SqliteValue } from "../Sqlite.js";
+import type { Task } from "../Task.js";
+import { Millis } from "../Time.js";
+import type { InferType, Int64String, Typed, TypeError } from "../Type.js";
 import {
   Boolean,
   brand,
   Id,
-  Int64String,
   NonNegativeInt,
   nullOr,
   object,
   PositiveInt,
   record,
   String,
-  TypeError,
 } from "../Type.js";
-import {
-  Owner,
-  OwnerError,
-  OwnerId,
-  OwnerIdBytes,
-  OwnerWriteKey,
-} from "./Owner.js";
+import type { Awaitable } from "../Types.js";
+import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.js";
+import { OwnerId, OwnerWriteKey } from "./Owner.js";
 import { systemColumnsWithId } from "./Schema.js";
-import { orderTimestampBytes, Timestamp, TimestampBytes } from "./Timestamp.js";
+import {
+  createTimestamp,
+  orderTimestampBytes,
+  Timestamp,
+  TimestampBytes,
+} from "./Timestamp.js";
 
 export interface StorageConfig {
   /**
@@ -42,7 +48,7 @@ export interface StorageConfig {
    *
    * The callback receives the {@link OwnerId} and the total bytes that would be
    * stored after the write (current stored bytes plus incoming bytes), and
-   * returns a {@link MaybeAsync} boolean: `true` to allow the write, or `false`
+   * returns a {@link Awaitable} boolean: `true` to allow the write, or `false`
    * to deny it due to quota limits.
    *
    * The callback can be synchronous (for SQLite or in-memory checks) or
@@ -68,34 +74,34 @@ export interface StorageConfig {
   readonly isOwnerWithinQuota: (
     ownerId: OwnerId,
     requiredBytes: PositiveInt,
-  ) => MaybeAsync<boolean>;
+  ) => Awaitable<boolean>;
 }
 
 /**
- * Evolu Storage
+ * Evolu Storage.
  *
- * Evolu protocol using Storage is agnostic to storage implementation
- * details—any storage can be plugged in, as long as it implements this
- * interface. Implementations must handle their own errors; return values only
- * indicate overall success or failure.
+ * Evolu Protocol is agnostic to storage implementation—any storage can be
+ * plugged in, as long as it implements this interface. Implementations must
+ * handle their own errors; return values only indicate overall success or
+ * failure.
  *
  * The Storage API is synchronous because SQLite's synchronous API is the
  * fastest way to use SQLite. Synchronous bindings (like better-sqlite3) call
  * SQLite's C API directly with no context switching between the event loop and
  * native code, and no promise microtasks or await overhead.
  *
- * The only exception is {@link Storage#writeMessages}, which is async to allow
+ * The only exception is {@link Storage.writeMessages}, which is async to allow
  * for async validation logic before writing to storage. The write operation
  * itself remains synchronous.
  */
 export interface Storage {
-  readonly getSize: (ownerId: OwnerIdBytes) => NonNegativeInt | null;
+  readonly getSize: (ownerId: OwnerIdBytes) => NonNegativeInt;
 
   readonly fingerprint: (
     ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
     end: NonNegativeInt,
-  ) => Fingerprint | null;
+  ) => Fingerprint;
 
   /**
    * Computes fingerprints with their upper bounds in one call.
@@ -108,14 +114,14 @@ export interface Storage {
     ownerId: OwnerIdBytes,
     buckets: ReadonlyArray<NonNegativeInt>,
     upperBound?: RangeUpperBound,
-  ) => ReadonlyArray<FingerprintRange> | null;
+  ) => ReadonlyArray<FingerprintRange>;
 
   readonly findLowerBound: (
     ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
     end: NonNegativeInt,
     upperBound: RangeUpperBound,
-  ) => NonNegativeInt | null;
+  ) => NonNegativeInt;
 
   readonly iterate: (
     ownerId: OwnerIdBytes,
@@ -138,62 +144,52 @@ export interface Storage {
   readonly setWriteKey: (
     ownerId: OwnerIdBytes,
     writeKey: OwnerWriteKey,
-  ) => boolean;
+  ) => void;
 
   /**
    * Write encrypted {@link CrdtMessage}s to storage.
    *
    * Must use a mutex per ownerId to ensure sequential processing and proper
    * protocol logic handling during sync operations.
-   *
-   * TODO: Use MaybeAsync
    */
   readonly writeMessages: (
     ownerIdBytes: OwnerIdBytes,
     messages: NonEmptyReadonlyArray<EncryptedCrdtMessage>,
-  ) => MaybeAsync<Result<void, StorageWriteError | StorageQuotaError>>;
+  ) => Task<void, StorageQuotaError>;
 
   /** Read encrypted {@link DbChange}s from storage. */
   readonly readDbChange: (
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
-  ) => EncryptedDbChange | null;
+  ) => EncryptedDbChange;
 
-  /**
-   * Delete all data for the given {@link Owner}.
-   *
-   * Returns `true` on success, `false` on failure.
-   */
-  readonly deleteOwner: (ownerId: OwnerIdBytes) => boolean;
+  /** Delete all data for the given {@link Owner}. */
+  readonly deleteOwner: (ownerId: OwnerIdBytes) => void;
 }
 
 export interface StorageDep {
   readonly storage: Storage;
 }
 
-/** Error indicating a serious write failure. */
-export interface StorageWriteError extends OwnerError {
-  readonly type: "StorageWriteError";
-}
-
 /** Error when storage or billing quota is exceeded. */
-export interface StorageQuotaError extends OwnerError {
-  readonly type: "StorageQuotaError";
-}
+export interface StorageQuotaError
+  extends OwnerError, Typed<"StorageQuotaError"> {}
 
 /**
  * A cryptographic hash used for efficiently comparing collections of
- * {@link TimestampBytes}s.
+ * {@link TimestampBytes}es.
  *
  * It consists of the first {@link fingerprintSize} bytes of the SHA-256 hash of
  * one or more timestamps.
  */
 export type Fingerprint = Uint8Array & Brand<"Fingerprint">;
 
-export const fingerprintSize = NonNegativeInt.orThrow(12);
+export const fingerprintSize = /*#__PURE__*/ NonNegativeInt.orThrow(12);
 
 /** A fingerprint of an empty range. */
-export const zeroFingerprint = new Uint8Array(fingerprintSize) as Fingerprint;
+export const zeroFingerprint = /*#__PURE__*/ new Uint8Array(
+  fingerprintSize,
+) as Fingerprint;
 
 export interface BaseRange {
   readonly upperBound: RangeUpperBound;
@@ -205,7 +201,9 @@ export interface BaseRange {
  */
 export type RangeUpperBound = TimestampBytes | InfiniteUpperBound;
 
-export const InfiniteUpperBound = Symbol("InfiniteUpperBound");
+export const InfiniteUpperBound = /*#__PURE__*/ Symbol(
+  "evolu.local-first.Storage.InfiniteUpperBound",
+);
 export type InfiniteUpperBound = typeof InfiniteUpperBound;
 
 export const RangeType = {
@@ -253,10 +251,29 @@ export interface CrdtMessage {
   readonly change: DbChange;
 }
 
-export const DbChangeValues = record(String, SqliteValue);
+/** Test helper for creating a simple {@link CrdtMessage}. */
+export const testCreateCrdtMessage = (
+  id: Id,
+  millis: number,
+  name: string,
+): CrdtMessage => ({
+  timestamp: createTimestamp({
+    millis: Millis.orThrow(millis),
+    counter: 0 as never,
+  }),
+  change: DbChange.orThrow({
+    table: "testTable",
+    id,
+    values: { name },
+    isInsert: true,
+    isDelete: false,
+  }),
+});
+
+export const DbChangeValues = /*#__PURE__*/ record(String, SqliteValue);
 export type DbChangeValues = typeof DbChangeValues.Type;
 
-export const ValidDbChangeValues = brand(
+export const ValidDbChangeValues = /*#__PURE__*/ brand(
   "ValidDbChangeValues",
   DbChangeValues,
   (value) => {
@@ -281,14 +298,14 @@ export interface ValidDbChangeValuesError extends TypeError<"ValidDbChangeValues
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
  */
-export const DbChange = object({
+export const DbChange = /*#__PURE__*/ object({
   table: String,
   id: Id,
   values: ValidDbChangeValues,
   isInsert: Boolean,
-  isDelete: nullOr(Boolean),
+  isDelete: /*#__PURE__*/ nullOr(Boolean),
 });
-export type DbChange = typeof DbChange.Type;
+export interface DbChange extends InferType<typeof DbChange> {}
 
 /**
  * Common interface for both client and relay SQLite storages.
@@ -323,21 +340,16 @@ export type DbChange = typeof DbChange.Type;
  * users, and when it goes down, nothing happens, because it will be
  * synchronized later.
  */
-export interface BaseSqliteStorage extends Pick<
+export interface BaseSqliteStorage extends Omit<
   Storage,
-  | "getSize"
-  | "fingerprint"
-  | "fingerprintRanges"
-  | "findLowerBound"
-  | "iterate"
-  | "deleteOwner"
+  "validateWriteKey" | "setWriteKey" | "writeMessages" | "readDbChange"
 > {
   /** Inserts a timestamp for an owner into the skiplist-based storage. */
   readonly insertTimestamp: (
     ownerId: OwnerIdBytes,
     timestamp: TimestampBytes,
     strategy: StorageInsertTimestampStrategy,
-  ) => Result<void, SqliteError>;
+  ) => void;
 
   /**
    * Efficiently checks which timestamps already exist in the database using a
@@ -346,18 +358,14 @@ export interface BaseSqliteStorage extends Pick<
   readonly getExistingTimestamps: (
     ownerIdBytes: OwnerIdBytes,
     timestampsBytes: NonEmptyReadonlyArray<TimestampBytes>,
-  ) => Result<ReadonlyArray<TimestampBytes>, SqliteError>;
+  ) => ReadonlyArray<TimestampBytes>;
 }
 
 export interface BaseSqliteStorageDep {
-  readonly storage: BaseSqliteStorage;
+  readonly baseSqliteStorage: BaseSqliteStorage;
 }
 
 export type SqliteStorageDeps = RandomDep & SqliteDep;
-
-export interface CreateBaseSqliteStorageConfig extends StorageConfig {
-  onStorageError: (error: SqliteError) => void;
-}
 
 /**
  * Creates a {@link BaseSqliteStorage} implementation.
@@ -372,154 +380,104 @@ export interface CreateBaseSqliteStorageConfig extends StorageConfig {
  * doesn't persist between requests. While not extensively tested in all these
  * environments yet, the stateless design should work well across them.
  */
-export const createBaseSqliteStorage =
-  (deps: SqliteStorageDeps) =>
-  (config: CreateBaseSqliteStorageConfig): BaseSqliteStorage => {
-    return {
-      insertTimestamp: (
-        ownerId: OwnerIdBytes,
-        timestamp: TimestampBytes,
-        strategy: StorageInsertTimestampStrategy,
-      ) => {
-        const level = randomSkiplistLevel(deps);
-        return insertTimestamp(deps)(ownerId, timestamp, level, strategy);
-      },
+export const createBaseSqliteStorage = (
+  deps: SqliteStorageDeps,
+): BaseSqliteStorage => ({
+  insertTimestamp: (
+    ownerId: OwnerIdBytes,
+    timestamp: TimestampBytes,
+    strategy: StorageInsertTimestampStrategy,
+  ) => {
+    const level = randomSkiplistLevel(deps);
+    insertTimestamp(deps)(ownerId, timestamp, level, strategy);
+  },
 
-      getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
-        const concatenatedTimestamps = concatBytes(...timestampsBytes);
+  getExistingTimestamps: (ownerIdBytes, timestampsBytes) => {
+    const concatenatedTimestamps = concatBytes(...timestampsBytes);
 
-        const result = deps.sqlite.exec<{
-          timestampBytes: TimestampBytes;
-        }>(sql`
-          with recursive
-            split_timestamps(timestampBytes, pos) as (
-              select
-                substr(${concatenatedTimestamps}, 1, 16),
-                17 as pos
-              union all
-              select
-                substr(${concatenatedTimestamps}, pos, 16),
-                pos + 16
-              from split_timestamps
-              where pos <= length(${concatenatedTimestamps})
-            )
-          select s.timestampBytes
-          from
-            split_timestamps s
-            join evolu_timestamp t
-              on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
-        `);
+    const result = deps.sqlite.exec<{
+      timestampBytes: TimestampBytes;
+    }>(sql`
+      with recursive
+        split_timestamps(timestampBytes, pos) as (
+          select
+            substr(${concatenatedTimestamps}, 1, 16),
+            17 as pos
+          union all
+          select
+            substr(${concatenatedTimestamps}, pos, 16),
+            pos + 16
+          from split_timestamps
+          where pos <= length(${concatenatedTimestamps})
+        )
+      select s.timestampBytes
+      from
+        split_timestamps s
+        join evolu_timestamp t
+          on t.ownerId = ${ownerIdBytes} and s.timestampBytes = t.t;
+    `);
 
-        if (!result.ok) return result;
+    return result.rows.map((row) => row.timestampBytes);
+  },
 
-        return ok(result.value.rows.map((row) => row.timestampBytes));
-      },
+  getSize: getSize(deps),
 
-      getSize: (ownerId) => {
-        const size = getSize(deps)(ownerId);
-        if (!size.ok) {
-          config.onStorageError(size.error);
-          return null;
-        }
-        return size.value;
-      },
+  fingerprint: (ownerId, begin, end) => {
+    assertBeginEnd(begin, end);
+    return fingerprint(deps)(ownerId, begin, end);
+  },
 
-      fingerprint: (ownerId, begin, end) => {
-        assertBeginEnd(begin, end);
-        const result = fingerprint(deps)(ownerId, begin, end);
-        if (!result.ok) {
-          config.onStorageError(result.error);
-          return null;
-        }
-        return result.value;
-      },
+  fingerprintRanges: fingerprintRanges(deps),
 
-      fingerprintRanges: (ownerId, buckets, upperBound) => {
-        const ranges = fingerprintRanges(deps)(ownerId, buckets, upperBound);
-        if (!ranges.ok) {
-          config.onStorageError(ranges.error);
-          return null;
-        }
-        return ranges.value;
-      },
+  findLowerBound: (ownerId, begin, end, upperBound) =>
+    findLowerBound(deps)(ownerId, begin, end, upperBound),
 
-      findLowerBound: (ownerId, begin, end, upperBound) => {
-        const lowerBound = findLowerBound(deps)(
-          ownerId,
-          begin,
-          end,
-          upperBound,
-        );
-        if (!lowerBound.ok) {
-          config.onStorageError(lowerBound.error);
-          return null;
-        }
-        return lowerBound.value;
-      },
+  iterate: (ownerId, begin, end, callback) => {
+    assertBeginEnd(begin, end);
+    const length = end - begin;
+    if (length === 0) return;
 
-      iterate: (ownerId, begin, end, callback) => {
-        assertBeginEnd(begin, end);
-        const length = end - begin;
-        if (length === 0) return;
+    // This is much faster than SQL limit with offset.
+    const first = getTimestampByIndex(deps)(ownerId, begin);
 
-        // This is much faster than SQL limit with offset.
-        const first = getTimestampByIndex(deps)(ownerId, begin);
-        if (!first.ok) {
-          config.onStorageError(first.error);
-          return;
-        }
+    if (!callback(first, begin)) return;
+    if (length === 1) return;
 
-        if (!callback(first.value, begin)) return;
-        if (length === 1) return;
+    /**
+     * TODO: In rare cases, we might overfetch a lot of rows here, but we don't
+     * have real usage numbers yet. Fetching one row at a time would probably be
+     * slower in almost all cases. In the future, we should fetch in chunks
+     * (e.g., 1,000 rows at a time). For now, consider logging unused rows to
+     * gather data and calculate an average, then use that information to
+     * determine an optimal chunk size. Before implementing chunking, be sure to
+     * run performance tests (including fetching one by one).
+     */
+    const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
+      select t
+      from evolu_timestamp
+      where ownerId = ${ownerId} and t > ${first}
+      order by t
+      limit ${length - 1};
+    `);
 
-        /**
-         * TODO: In rare cases, we might overfetch a lot of rows here, but we
-         * don't have real usage numbers yet. Fetching one row at a time would
-         * probably be slower in almost all cases. In the future, we should
-         * fetch in chunks (e.g., 1,000 rows at a time). For now, consider
-         * logging unused rows to gather data and calculate an average, then use
-         * that information to determine an optimal chunk size. Before
-         * implementing chunking, be sure to run performance tests (including
-         * fetching one by one).
-         */
-        const result = deps.sqlite.exec<{ t: TimestampBytes }>(sql`
-          select t
-          from evolu_timestamp
-          where ownerId = ${ownerId} and t > ${first.value}
-          order by t
-          limit ${length - 1};
-        `);
-        if (!result.ok) {
-          config.onStorageError(result.error);
-          return;
-        }
+    for (let i = 0; i < result.rows.length; i++) {
+      const index = NonNegativeInt.orThrow(begin + 1 + i);
+      if (!callback(result.rows[i].t, index)) return;
+    }
+  },
 
-        for (let i = 0; i < result.value.rows.length; i++) {
-          const index = NonNegativeInt.orThrow(begin + 1 + i);
-          if (!callback(result.value.rows[i].t, index)) return;
-        }
-      },
-
-      deleteOwner: (ownerId) => {
-        const result = deps.sqlite.exec(sql`
-          delete from evolu_timestamp where ownerId = ${ownerId};
-        `);
-        if (!result.ok) {
-          config.onStorageError(result.error);
-          return false;
-        }
-        return true;
-      },
-    };
-  };
+  deleteOwner: (ownerId) => {
+    deps.sqlite.exec(sql`
+      delete from evolu_timestamp where ownerId = ${ownerId};
+    `);
+  },
+});
 
 const assertBeginEnd = (begin: NonNegativeInt, end: NonNegativeInt) => {
   assert(begin <= end, "invalid begin or end");
 };
 
-export const createBaseSqliteStorageTables = (
-  deps: SqliteDep,
-): Result<void, SqliteError> => {
+export const createBaseSqliteStorageTables = (deps: SqliteDep): void => {
   for (const query of [
     /**
      * Creates the `evolu_timestamp` table for storing timestamps of multiple
@@ -581,10 +539,8 @@ export const createBaseSqliteStorageTables = (
       strict;
     `,
   ]) {
-    const result = deps.sqlite.exec(query);
-    if (!result.ok) return result;
+    deps.sqlite.exec(query);
   }
-  return ok();
 };
 
 export type StorageInsertTimestampStrategy = "append" | "prepend" | "insert";
@@ -634,7 +590,7 @@ const insertTimestamp =
     timestamp: TimestampBytes,
     level: PositiveInt,
     strategy: StorageInsertTimestampStrategy,
-  ): Result<void, SqliteError> => {
+  ): void => {
     const [h1, h2] = fingerprintToSqliteFingerprint(
       timestampBytesToFingerprint(timestamp),
     );
@@ -1147,11 +1103,8 @@ const insertTimestamp =
     }
 
     for (const query of queries) {
-      const result = deps.sqlite.exec(query);
-      if (!result.ok) return result;
+      deps.sqlite.exec(query);
     }
-
-    return ok();
   };
 
 export const timestampBytesToFingerprint = (
@@ -1241,7 +1194,7 @@ const sqliteFingerprintToFingerprint = ([
 
 const getSize =
   (deps: SqliteDep) =>
-  (ownerId: OwnerIdBytes): Result<NonNegativeInt, SqliteError> => {
+  (ownerId: OwnerIdBytes): NonNegativeInt => {
     const result = deps.sqlite.exec<{ size: NonNegativeInt }>(sql.prepared`
       with
         ml(ml) as (
@@ -1277,8 +1230,7 @@ const getSize =
       from sc;
     `);
 
-    if (!result.ok) return result;
-    return ok(result.value.rows[0].size);
+    return result.rows[0].size;
   };
 
 const findLowerBound =
@@ -1288,11 +1240,11 @@ const findLowerBound =
     begin: NonNegativeInt,
     end: NonNegativeInt,
     upperBound: RangeUpperBound,
-  ): Result<NonNegativeInt, SqliteError> => {
+  ): NonNegativeInt => {
     assertBeginEnd(begin, end);
 
     if (end === 0 || begin === end || upperBound === InfiniteUpperBound) {
-      return ok(end);
+      return end;
     }
 
     const result = deps.sqlite.exec<{
@@ -1304,25 +1256,19 @@ const findLowerBound =
       order by t
       limit 1;
     `);
-    if (!result.ok) return result;
 
-    if (result.value.rows.length === 0) {
-      return ok(end);
+    if (result.rows.length === 0) {
+      return end;
     }
 
-    const count = getTimestampCount(deps)(ownerId, result.value.rows[0].t);
-    if (!count.ok) return count;
-
+    const count = getTimestampCount(deps)(ownerId, result.rows[0].t);
     // `decrement` converts a count to an index.
-    return ok(NonNegativeInt.orThrow(decrement(count.value)));
+    return NonNegativeInt.orThrow(decrement(count));
   };
 
 const getTimestampCount =
   (deps: SqliteDep) =>
-  (
-    ownerId: OwnerIdBytes,
-    timestamp: TimestampBytes,
-  ): Result<PositiveInt, SqliteError> => {
+  (ownerId: OwnerIdBytes, timestamp: TimestampBytes): PositiveInt => {
     const result = deps.sqlite.exec<{
       count: PositiveInt;
     }>(sql.prepared`
@@ -1367,8 +1313,7 @@ const getTimestampCount =
       from sc;
     `);
 
-    if (!result.ok) return result;
-    return ok(result.value.rows[0].count);
+    return result.rows[0].count;
   };
 
 /**
@@ -1381,22 +1326,18 @@ const fingerprint =
     ownerId: OwnerIdBytes,
     begin: NonNegativeInt,
     end: NonNegativeInt,
-  ): Result<Fingerprint, SqliteError> => {
+  ): Fingerprint => {
     // There is no need to fingerprint an empty range.
     if (end - begin === 0) {
-      return ok(zeroFingerprint);
+      return zeroFingerprint;
     }
 
     if (begin === 0) {
-      const result = fingerprintRanges(deps)(ownerId, [end]);
-      if (!result.ok) return result;
-      return ok(result.value[0].fingerprint);
+      return fingerprintRanges(deps)(ownerId, [end])[0].fingerprint;
     }
 
     // We should have a param to skip the first result.
-    const result = fingerprintRanges(deps)(ownerId, [begin, end]);
-    if (!result.ok) return result;
-    return ok(result.value[1].fingerprint);
+    return fingerprintRanges(deps)(ownerId, [begin, end])[1].fingerprint;
   };
 
 /**
@@ -1413,7 +1354,7 @@ const fingerprintRanges =
     ownerId: OwnerIdBytes,
     buckets: ReadonlyArray<NonNegativeInt>,
     upperBound: RangeUpperBound = InfiniteUpperBound,
-  ): Result<ReadonlyArray<FingerprintRange>, SqliteError> => {
+  ): ReadonlyArray<FingerprintRange> => {
     const bucketsJson = JSON.stringify(buckets);
 
     const result = deps.sqlite.exec<{
@@ -1531,9 +1472,7 @@ const fingerprintRanges =
       from c3;
     `);
 
-    if (!result.ok) return result;
-
-    const fingerprintRanges = result.value.rows.map(
+    const fingerprintRanges = result.rows.map(
       (row, i, arr): FingerprintRange => ({
         type: RangeType.Fingerprint,
         upperBound: i === arr.length - 1 ? upperBound : row.b!,
@@ -1544,7 +1483,7 @@ const fingerprintRanges =
       }),
     );
 
-    return ok(fingerprintRanges);
+    return fingerprintRanges;
   };
 
 // XOR in SQLite
@@ -1552,10 +1491,7 @@ const x = (a: string, b: string) => sql.raw(`(${a} | ${b}) - (${a} & ${b})`);
 
 export const getTimestampByIndex =
   (deps: SqliteDep) =>
-  (
-    ownerId: OwnerIdBytes,
-    index: NonNegativeInt,
-  ): Result<TimestampBytes, SqliteError> => {
+  (ownerId: OwnerIdBytes, index: NonNegativeInt): TimestampBytes => {
     const result = deps.sqlite.exec<{
       readonly pt: TimestampBytes;
     }>(sql.prepared`
@@ -1630,8 +1566,7 @@ export const getTimestampByIndex =
       where ic == ${index + 1};
     `);
 
-    if (!result.ok) return result;
-    return ok(result.value.rows[0].pt);
+    return result.rows[0].pt;
   };
 
 /** Retrieves usage information for an owner from the evolu_usage table. */
@@ -1640,14 +1575,11 @@ export const getOwnerUsage =
   (
     ownerIdBytes: OwnerIdBytes,
     initialTimestamp: TimestampBytes,
-  ): Result<
-    {
-      storedBytes: NonNegativeInt | null;
-      firstTimestamp: TimestampBytes;
-      lastTimestamp: TimestampBytes;
-    },
-    SqliteError
-  > => {
+  ): Result<{
+    storedBytes: NonNegativeInt | null;
+    firstTimestamp: TimestampBytes;
+    lastTimestamp: TimestampBytes;
+  }> => {
     const result = deps.sqlite.exec<{
       storedBytes: NonNegativeInt;
       firstTimestamp: TimestampBytes | null;
@@ -1657,9 +1589,8 @@ export const getOwnerUsage =
       from evolu_usage
       where ownerId = ${ownerIdBytes};
     `);
-    if (!result.ok) return result;
 
-    if (!isNonEmptyReadonlyArray(result.value.rows)) {
+    if (!isNonEmptyArray(result.rows)) {
       return ok({
         storedBytes: null,
         firstTimestamp: initialTimestamp,
@@ -1667,7 +1598,7 @@ export const getOwnerUsage =
       });
     }
 
-    const row = firstInArray(result.value.rows);
+    const row = firstInArray(result.rows);
     assert(row.firstTimestamp, "not null");
     assert(row.lastTimestamp, "not null");
 
@@ -1691,8 +1622,8 @@ export const updateOwnerUsage =
     storedBytes: PositiveInt,
     firstTimestamp: TimestampBytes,
     lastTimestamp: TimestampBytes,
-  ): Result<void, SqliteError> => {
-    const result = deps.sqlite.exec(sql`
+  ): void => {
+    deps.sqlite.exec(sql`
       insert into evolu_usage
         ("ownerId", "storedBytes", "firstTimestamp", "lastTimestamp")
       values
@@ -1703,6 +1634,4 @@ export const updateOwnerUsage =
           firstTimestamp = ${firstTimestamp},
           lastTimestamp = ${lastTimestamp};
     `);
-    if (!result.ok) return result;
-    return ok();
   };

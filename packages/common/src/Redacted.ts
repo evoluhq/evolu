@@ -1,3 +1,9 @@
+/**
+ * Sensitive value protection against accidental exposure.
+ *
+ * @module
+ */
+
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { Eq } from "./Eq.js";
@@ -44,8 +50,8 @@ import type { Eq } from "./Eq.js";
  *   // use value...
  * };
  *
- * fetchUser(redactedKey); // ✅
- * // fetchUser(createRedacted("x" as DbPassword)); // ❌ type error
+ * fetchUser(redactedKey); // ok
+ * // fetchUser(createRedacted("x" as DbPassword)); // type error
  *
  * // Automatic cleanup with `using`
  * {
@@ -53,8 +59,6 @@ import type { Eq } from "./Eq.js";
  *   // ... use secret ...
  * } // automatically wiped from memory
  * ```
- *
- * @experimental
  */
 export interface Redacted<A> extends Brand<"Redacted">, Disposable {
   /** The inner type. Useful for inference via `typeof redacted.Type`. */

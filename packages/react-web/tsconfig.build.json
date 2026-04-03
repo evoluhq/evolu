@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@evolu/common": ["../common/src/index.ts"],
+      "@evolu/common/*": ["../common/src/*"],
+      "@evolu/web": ["../web/src/index.ts"],
+      "@evolu/web/*": ["../web/src/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["dist", "node_modules", "test", "vitest.config.ts"],
+  "references": [
+    { "path": "../common/tsconfig.build.json" },
+    { "path": "../web/tsconfig.build.json" }
+  ]
+}

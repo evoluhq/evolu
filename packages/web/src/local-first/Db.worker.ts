@@ -1,21 +1,21 @@
-import {
-  createConsole,
-  createRandom,
-  createRandomBytes,
-  createTime,
-  createWebSocket,
-} from "@evolu/common";
-import { createDbWorkerForPlatform } from "@evolu/common/local-first";
-import { createWasmSqliteDriver } from "../WasmSqliteDriver.js";
-import { wrapWebWorkerSelf } from "../WebWorker.js";
+/// <reference lib="webworker" />
+declare const self: DedicatedWorkerGlobalScope;
 
-const dbWorker = createDbWorkerForPlatform({
-  console: createConsole(),
+import { installPolyfills } from "@evolu/common/polyfills";
+installPolyfills();
+
+import { createRandomBytes } from "@evolu/common";
+import { startDbWorker } from "@evolu/common/local-first";
+import { createWasmSqliteDriver } from "../Sqlite.js";
+import { createLeaderLock, createRun } from "../Task.js";
+import { createWorkerDeps, createWorkerSelf } from "../Worker.js";
+
+// TODO: Disposal.
+const run = createRun({
+  ...createWorkerDeps(),
   createSqliteDriver: createWasmSqliteDriver,
-  createWebSocket,
-  random: createRandom(),
+  leaderLock: createLeaderLock(),
   randomBytes: createRandomBytes(),
-  time: createTime(),
 });
 
-wrapWebWorkerSelf(dbWorker);
+run(startDbWorker(createWorkerSelf(self)));

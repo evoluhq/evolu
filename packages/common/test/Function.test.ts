@@ -1,16 +1,22 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { NonEmptyArray, NonEmptyReadonlyArray } from "../src/Array.js";
 import {
-  constFalse,
-  constNull,
-  constTrue,
-  constUndefined,
-  constVoid,
+  lazyFalse,
+  lazyNull,
+  lazyTrue,
+  lazyUndefined,
+  lazyVoid,
   exhaustiveCheck,
   identity,
-  readonly,
+  todo,
 } from "../src/Function.js";
-import { ReadonlyRecord } from "../src/Object.js";
+
+describe("exhaustiveCheck", () => {
+  test("throws error for unhandled case", () => {
+    expect(() => exhaustiveCheck("unexpected" as never)).toThrow(
+      'exhaustiveCheck unhandled case: "unexpected"',
+    );
+  });
+});
 
 describe("identity", () => {
   test("returns the same value", () => {
@@ -33,157 +39,40 @@ describe("identity", () => {
   });
 });
 
-describe("readonly", () => {
-  describe("documentation example", () => {
-    test("matches the JSDoc example", () => {
-      // Array literals become NonEmptyReadonlyArray
-      const items = readonly([1, 2, 3]);
-      expectTypeOf(items).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
-
-      // NonEmptyArray is preserved as NonEmptyReadonlyArray
-      const nonEmpty: NonEmptyArray<number> = [1, 2, 3];
-      const readonlyNonEmpty = readonly(nonEmpty);
-      expectTypeOf(readonlyNonEmpty).toEqualTypeOf<
-        NonEmptyReadonlyArray<number>
-      >();
-
-      // Regular arrays become ReadonlyArray
-      const arr: Array<number> = [1, 2, 3];
-      const readonlyArr = readonly(arr);
-      expectTypeOf(readonlyArr).toEqualTypeOf<ReadonlyArray<number>>();
-
-      // Sets, Records, and Maps
-      const ids = readonly(new Set(["a", "b"]));
-      expectTypeOf(ids).toEqualTypeOf<ReadonlySet<string>>();
-
-      type UserId = string & { readonly __brand: "UserId" };
-      const users: Record<UserId, string> = {} as Record<UserId, string>;
-      const readonlyUsers = readonly(users);
-      expectTypeOf(readonlyUsers).toEqualTypeOf<
-        ReadonlyRecord<UserId, string>
-      >();
-
-      const lookup = readonly(new Map([["key", "value"]]));
-      expectTypeOf(lookup).toEqualTypeOf<ReadonlyMap<string, string>>();
-    });
+describe("lazy", () => {
+  test("lazyVoid returns void", () => {
+    expectTypeOf<ReturnType<typeof lazyVoid>>().toEqualTypeOf<void>();
   });
 
-  describe("Array", () => {
-    test("returns the same array", () => {
-      const arr = [1, 2, 3];
-      expect(readonly(arr)).toBe(arr);
-    });
-
-    test("types array literal as NonEmptyReadonlyArray", () => {
-      const arr = readonly([1, 2, 3]);
-      expectTypeOf(arr).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
-    });
-
-    test("types empty array literal as ReadonlyArray<never>", () => {
-      const arr = readonly([]);
-      expectTypeOf(arr).toEqualTypeOf<ReadonlyArray<never>>();
-    });
-
-    test("types Array<T> as ReadonlyArray", () => {
-      const arr: Array<number> = [1, 2, 3];
-      const result = readonly(arr);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
-    });
-
-    test("types empty array as ReadonlyArray", () => {
-      const arr: Array<number> = [];
-      const result = readonly(arr);
-      expect(result).toBe(arr);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
-    });
-
-    test("types NonEmptyArray as NonEmptyReadonlyArray", () => {
-      const arr: NonEmptyArray<number> = [1, 2, 3];
-      const result = readonly(arr);
-      expect(result).toBe(arr);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
-    });
+  test("lazyUndefined returns undefined", () => {
+    expectTypeOf<ReturnType<typeof lazyUndefined>>().toEqualTypeOf<undefined>();
   });
 
-  describe("Set", () => {
-    test("returns the same set", () => {
-      const set = new Set([1, 2, 3]);
-      expect(readonly(set)).toBe(set);
-    });
-
-    test("types as ReadonlySet", () => {
-      const set = readonly(new Set([1, 2, 3]));
-      expectTypeOf(set).toEqualTypeOf<ReadonlySet<number>>();
-    });
+  test("lazyNull returns null", () => {
+    expect(lazyNull()).toBe(null);
   });
 
-  describe("Record", () => {
-    test("returns the same record", () => {
-      const record: Record<string, number> = { a: 1, b: 2 };
-      expect(readonly(record)).toBe(record);
-    });
-
-    test("types as ReadonlyRecord", () => {
-      const record: Record<string, number> = { a: 1, b: 2 };
-      const result = readonly(record);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyRecord<string, number>>();
-    });
-
-    test("preserves branded key types", () => {
-      type UserId = string & { readonly __brand: "UserId" };
-      const users: Record<UserId, string> = {} as Record<UserId, string>;
-      const result = readonly(users);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyRecord<UserId, string>>();
-    });
+  test("lazyTrue returns true", () => {
+    expect(lazyTrue()).toBe(true);
   });
 
-  describe("Map", () => {
-    test("returns the same map", () => {
-      const map = new Map([["a", 1]]);
-      expect(readonly(map)).toBe(map);
-    });
-
-    test("types as ReadonlyMap", () => {
-      const map = readonly(
-        new Map([
-          ["a", 1],
-          ["b", 2],
-        ]),
-      );
-      expectTypeOf(map).toEqualTypeOf<ReadonlyMap<string, number>>();
-    });
+  test("lazyFalse returns false", () => {
+    expect(lazyFalse()).toBe(false);
   });
 });
 
-describe("exhaustiveCheck", () => {
-  test("throws error for unhandled case", () => {
-    expect(() => exhaustiveCheck("unexpected" as never)).toThrow(
-      'exhaustiveCheck unhandled case: "unexpected"',
-    );
-  });
-});
-
-describe("const functions", () => {
-  test("constVoid returns void", () => {
-    constVoid();
-    expectTypeOf<ReturnType<typeof constVoid>>().toEqualTypeOf<void>();
+describe("todo", () => {
+  test("throws", () => {
+    expect(() => todo()).toThrow("not yet implemented");
   });
 
-  test("constUndefined returns undefined", () => {
-    expectTypeOf<
-      ReturnType<typeof constUndefined>
-    >().toEqualTypeOf<undefined>();
+  test("infers type from return type annotation", () => {
+    const fn = (): number => todo();
+    expectTypeOf(fn).returns.toEqualTypeOf<number>();
   });
 
-  test("constNull returns null", () => {
-    expect(constNull()).toBe(null);
-  });
-
-  test("constTrue returns true", () => {
-    expect(constTrue()).toBe(true);
-  });
-
-  test("constFalse returns false", () => {
-    expect(constFalse()).toBe(false);
+  test("accepts explicit generic when no return type", () => {
+    const fn = () => todo<string>();
+    expectTypeOf(fn).returns.toEqualTypeOf<string>();
   });
 });

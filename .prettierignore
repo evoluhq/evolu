@@ -1,5 +1,4 @@
 pnpm-lock.yaml
-apps/web/src/app/docs/api-reference/**/*.mdx
 apps/web/src/app/(docs)/docs/api-reference/**/*.mdx
 # Contains SQL with runtime kyselyJsonIdentifier that breaks CLI SQL parser.
 # File uses // prettier-ignore comments to preserve compact SQL format.

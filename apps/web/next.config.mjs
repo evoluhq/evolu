@@ -15,36 +15,53 @@ const withMDX = nextMDX({
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
   pageExtensions: ["js", "jsx", "ts", "tsx", "mdx"],
+
+  ...(globalThis.process?.env.NODE_ENV === "development"
+    ? {
+        webpack: (config) => {
+          // Resolve only @evolu packages to source. Avoid global "source"
+          // condition because third-party packages can expose raw TS there.
+          config.resolve.alias = {
+            ...config.resolve.alias,
+            ...Object.fromEntries(
+              ["common", "react", "react-web", "web"].map((name) => [
+                `@evolu/${name}`,
+                new globalThis.URL(
+                  `../../packages/${name}/src`,
+                  import.meta.url,
+                ).pathname,
+              ]),
+            ),
+          };
+
+          // TypeScript source uses .js extensions in imports (ESM standard).
+          // Tell webpack to try .ts/.tsx when resolving .js imports.
+          config.resolve.extensionAlias = {
+            ...config.resolve.extensionAlias,
+            ".js": [".ts", ".tsx", ".js"],
+          };
+          return config;
+        },
+      }
+    : {}),
+
   outputFileTracingIncludes: {
     "/**/*": ["./src/app/**/*.mdx"],
   },
-  async redirects() {
+
+  async rewrites() {
     return [
       {
-        source: "/docs/quickstart",
-        destination: "/docs/local-first",
-        permanent: true,
+        // Rewrite /docs/index.md to the root docs page
+        source: "/docs/index.md",
+        destination: "/api/docs-md/index",
       },
       {
-        source: "/docs/installation",
-        destination: "/docs/local-first",
-        permanent: true,
-      },
-      {
-        source: "/docs/evolu-server",
-        destination: "/docs/relay",
-        permanent: true,
-      },
-      {
-        source: "/docs/evolu-relay",
-        destination: "/docs/relay",
-        permanent: true,
-      },
-      {
-        source: "/examples/:path*",
-        destination: "/docs/examples",
-        permanent: true,
+        // Rewrite /docs/*.md to the LLM markdown route
+        source: "/docs/:path*.md",
+        destination: "/api/docs-md/:path*",
       },
     ];
   },

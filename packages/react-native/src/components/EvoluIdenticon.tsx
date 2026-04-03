@@ -1,5 +1,5 @@
-import { createIdenticon, IdenticonStyle, OwnerId } from "@evolu/common";
-import { FC, useMemo } from "react";
+import { createIdenticon, type IdenticonStyle, OwnerId } from "@evolu/common";
+import { type FC, useMemo } from "react";
 import { View } from "react-native";
 import { SvgXml } from "react-native-svg";
 

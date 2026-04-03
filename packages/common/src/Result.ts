@@ -1,25 +1,77 @@
-import type { Task } from "./Task.js";
+/**
+ * Type-safe error handling with Result types.
+ *
+ * @module
+ */
+
+import {
+  arrayFrom,
+  emptyArray,
+  isNonEmptyArray,
+  type NonEmptyReadonlyArray,
+} from "./Array.js";
+import { assert } from "./Assert.js";
+import type { Lazy } from "./Function.js";
+import { exhaustiveCheck } from "./Function.js";
+import { createRecord, emptyRecord, isIterable } from "./Object.js";
+import type { Typed } from "./Type.js";
 
 /**
- * The problem with throwing an exception in JavaScript is that the caught error
- * is always of an unknown type. The unknown type is a problem because we can't
- * be sure all errors have been handled because the TypeScript compiler can't
- * tell us.
+ * The problem with `throw` in JavaScript is that the caught value is always of
+ * unknown type. We can't be sure all errors have been handled because the
+ * TypeScript compiler can't tell us what was thrown — we can't use
+ * {@link exhaustiveCheck}.
  *
- * Languages like Rust or Haskell use a type-safe approach to error handling,
- * where errors are explicitly represented as part of the return type, such as
- * Result or Either, allowing the developer to handle errors safely. TypeScript
- * can have this too via the `Result` type.
- *
- * The `Result` type can be either {@link Ok} (success) or {@link Err} (error).
- * Use {@link ok} to create a successful result and {@link err} to create an error
- * result.
- *
- * Now let's look at how `Result` can be used for safe JSON parsing:
+ * Languages like Rust and Haskell solve this with types like `Result` or
+ * `Either` where errors are part of the return type. TypeScript can do the
+ * same.
  *
  * ```ts
- * interface ParseJsonError {
- *   readonly type: "ParseJsonError";
+ * // With throw - caught value is unknown, can't use exhaustiveCheck
+ * try {
+ *   doSomething();
+ * } catch (error) {
+ *   // error is unknown - TypeScript can't help us here
+ * }
+ *
+ * // With Result - error type is known, exhaustiveCheck works
+ * const result = doSomething();
+ * if (!result.ok) {
+ *   switch (result.error.type) {
+ *     case "NotFound":
+ *       // handle not found
+ *       break;
+ *     case "InvalidInput":
+ *       // handle invalid input
+ *       break;
+ *     default:
+ *       exhaustiveCheck(result.error); // TypeScript ensures all cases handled
+ *   }
+ * }
+ * ```
+ *
+ * A `Result` is either {@link Ok} (success with a value) or {@link Err} (failure
+ * with an error). Create them with {@link ok} and {@link err}.
+ *
+ * ```ts
+ * type Result<T, E = never> = Ok<T> | Err<E>;
+ *
+ * interface Ok<T> {
+ *   readonly ok: true;
+ *   readonly value: T;
+ * }
+ *
+ * interface Err<E> {
+ *   readonly ok: false;
+ *   readonly error: E;
+ * }
+ * ```
+ *
+ * ## Example
+ *
+ * ```ts
+ * // Typed<T> adds { type: T } for discriminated unions
+ * interface ParseJsonError extends Typed<"ParseJsonError"> {
  *   readonly message: string;
  * }
  *
@@ -31,21 +83,21 @@ import type { Task } from "./Task.js";
  *   }
  * };
  *
- * // Result<unknown, ParseJsonError>
- * const json = parseJson('{"key": "value"}');
+ * const json = parseJson('{"name": "Alice"}');
+ * if (!json.ok) return json; // short-circuit on error
  *
- * // Fail fast to handle errors early.
- * if (!json.ok) return json; // Err<ParseJsonError>
- *
- * // Now, we have access to the json.value.
- * expectTypeOf(json.value).toBeUnknown();
+ * // Now we have access to json.value (type: unknown)
+ * console.log(json.value);
  * ```
  *
- * Note how we didn't have to use the try/catch, just `if (!json.ok)`, and how
- * the error isn't unknown but has a type.
+ * The caller doesn't need `try/catch`, just `if (!json.ok)`, and the error is
+ * `ParseJsonError`, not `unknown`.
  *
- * But we had to use `try/catch` in the `parseJson` function. For such a case,
- * wrapping unsafe code, Evolu provides the {@link trySync} helper:
+ * Use this pattern when the caller can recover or choose a different flow.
+ * Parsing unknown JSON is a good fit because invalid input is expected and
+ * actionable.
+ *
+ * To avoid `try/catch` inside `parseJson` too, use {@link trySync}:
  *
  * ```ts
  * const parseJson = (value: string): Result<unknown, ParseJsonError> =>
@@ -55,65 +107,97 @@ import type { Task } from "./Task.js";
  *   );
  * ```
  *
- * ✨ {@link trySync} helper makes unsafe (can throw) synchronous code safe; for
- * unsafe asynchronous code, use {@link tryAsync}.
+ * `trySync` and {@link tryAsync} are for intentionally converting thrown errors
+ * into typed, recoverable {@link Result} values.
  *
- * Let's summarize it:
+ * Do not wrap every throwing API in {@link Result}. If an error is unrecoverable
+ * and the caller has no meaningful fallback, let it throw and handle it at the
+ * app boundary.
  *
- * - For safe code, use `ok` and `err`.
- * - For unsafe code, use `trySync` or `tryAsync`.
+ * Since `Result` is a plain object, imperative code works naturally:
  *
- * Safe asynchronous code (using Result with a Promise):
+ * ### Stop on error, map on success
  *
  * ```ts
- * const fetchUser = async (
- *   userId: string,
- * ): Promise<Result<User, FetchUserError>> => {
- *   // Simulate an API call
- *   return new Promise((resolve) => {
- *     setTimeout(() => {
- *       if (userId === "1") {
- *         resolve(ok({ id: "1", name: "Alice" }));
- *       } else {
- *         resolve(
- *           err({ type: "FetchUserError", reason: "user not found" }),
- *         );
- *       }
- *     }, 1000);
- *   });
- * };
+ * const users = getActiveUsers();
+ * if (!users.ok) return users;
+ * const usernames = mapArray(users.value, (u) => u.username);
  * ```
  *
- * For lazy, cancellable async operations, see {@link Task}.
- *
- * ### Naming convention
- *
- * - **For values you need:** use a name without Result suffix (`user`, `config`)
- * - **For void operations:** use `result` (no value to name)
- *
- * For multiple void operations, use block scopes to avoid potentially long
- * names like `createBaseTablesResult`, `createRelayTablesResult`, or counters
- * like `result1`, `result2`:
+ * ### Iterate array, stop on first error
  *
  * ```ts
- * const processUser = () => {
+ * for (const user of users) {
+ *   const result = validateUser(user); // Result<ValidUser, ValidateUserError>
+ *   if (!result.ok) return result;
+ * }
+ * ```
+ *
+ * ## Style
+ *
+ * Imperative code is the preferred way to compose sequential {@link Result}
+ * operations.
+ *
+ * ```ts
+ * const user = getUser();
+ * if (!user.ok) return user;
+ *
+ * const profile = getProfile(user.value.id);
+ * if (!profile.ok) return profile;
+ *
+ * return ok({ user: user.value, profile: profile.value });
+ * ```
+ *
+ * This is an intentional style choice. Evolu does not provide helper
+ * combinators for every sequential pattern because that would duplicate plain
+ * control flow and create API ambiguity. Use helpers when they add semantics
+ * over ordinary control flow, such as operating on collections of results.
+ * While it may seem verbose, it is explicit, transparent, and avoids pipes and
+ * nested helpers, which are harder to debug.
+ *
+ * ## Composition
+ *
+ * Some patterns are common enough that deserve helpers. The previous example
+ * can be written with {@link mapResult}:
+ *
+ * ```ts
+ * const result = mapResult(users, validateUser);
+ * // Result<ValidUser[], ValidateUserError>
+ * ```
+ *
+ * For an array of results, {@link allResult} extracts all values or returns the
+ * first error:
+ *
+ * ```ts
+ * const result = allResult(validationResults);
+ * ```
+ *
+ * For the first success, {@link anyResult} returns the first Ok or the last
+ * error if all fail:
+ *
+ * ```ts
+ * const result = anyResult(parserResults);
+ * ```
+ *
+ * ## Naming convention
+ *
+ * - Result with a value: name it after the value (`user`, `config`)
+ * - Result without a value: name it `result`
+ *
+ * ```ts
+ * const processUser = (): Result<
+ *   void,
+ *   GetUserError | SaveToDatabaseError | SendWelcomeEmailError
+ * > => {
  *   const user = getUser();
  *   if (!user.ok) return user;
  *
  *   const result = saveToDatabase(user.value);
  *   if (!result.ok) return result;
  *
- *   return ok();
- * };
- *
- * const setupDatabase = () => {
- *   // Multiple void operations - use block scopes to avoid name clash
+ *   // To avoid a clash with the previous `result`, use a block scope.
  *   {
- *     const result = createBaseTables();
- *     if (!result.ok) return result;
- *   }
- *   {
- *     const result = createRelayTables();
+ *     const result = sendWelcomeEmail(user.value);
  *     if (!result.ok) return result;
  *   }
  *
@@ -121,231 +205,39 @@ import type { Task } from "./Task.js";
  * };
  * ```
  *
- * ### Examples
+ * ## Unrecoverable errors
  *
- * #### Sequential operations with short-circuiting
+ * Some errors can't be handled locally — they must propagate to the top level.
+ * These are unrecoverable errors: expected (you know they can happen) but only
+ * handleable at the app level.
  *
- * When performing a sequence of operations where any failure should stop
- * further processing, use the `Result` type with early returns.
+ * Do not force these errors into {@link Result} just because the underlying API
+ * throws. If the local caller cannot recover, let the error propagate to a
+ * global handler or other app boundary.
  *
- * Here's an example of a database reset operation that drops tables, restores a
- * schema, and initializes the database, stopping on the first error:
+ * In Evolu apps, that boundary is typically a platform `createRun` adapter such
+ * as `@evolu/web`, `@evolu/nodejs`, or `@evolu/react-native`, which add
+ * platform-specific global error handling.
  *
- * ```ts
- * const result = deps.sqlite.transaction(() => {
- *   const result = dropAllTables(deps);
- *   if (!result.ok) return result;
+ * ## FAQ
  *
- *   if (message.restore) {
- *     const dbSchema = getDbSchema(deps)();
- *     if (!dbSchema.ok) return dbSchema;
+ * ### What if a function doesn't return a value on success?
  *
- *     {
- *       const result = ensureDbSchema(deps)(
- *         message.restore.dbSchema,
- *         dbSchema.value,
- *       );
- *       if (!result.ok) return result;
- *     }
- *     {
- *       const result = initializeDb(deps)(message.restore.mnemonic);
- *       if (!result.ok) return result;
- *     }
- *   }
- *   return ok();
- * });
- *
- * if (!result.ok) {
- *   deps.postMessage({ type: "onError", error: result.error });
- *   return;
- * }
- * ```
- *
- * In this pattern:
- *
- * - Each operation returns a `Result` (e.g., `Result<void, E>` or `Result<T,
- *   E>`).
- * - After each operation, check `if (!result.ok)` and return the `Err` to
- *   short-circuit.
- * - If all operations succeed, return `ok()` (or another value if needed).
- * - Outside the transaction, handle the final `Result` to report success or
- *   failure.
- *
- * This approach ensures type-safe error handling, avoids nested try/catch
- * blocks, and clearly communicates the control flow.
- *
- * #### A function with two different errors:
- *
- * ```ts
- * const example = (value: string): Result<number, FooError | BarError> => {
- *   const foo = getFoo(value);
- *   if (!foo.ok) return foo;
- *
- *   const bar = getBar(foo.value);
- *   if (!bar.ok) return bar;
- *
- *   return ok(barToNumber(bar.value));
- * };
- * ```
- *
- * ### Handling unexpected errors
- *
- * Even with disciplined use of `trySync` and `tryAsync`, unexpected errors can
- * still occur due to programming mistakes, third-party library bugs, or edge
- * cases. These should be logged for debugging, but **unexpected errors are not
- * recoverable** - they represent bugs that must be fixed.
- *
- * **Important**: "Graceful shutdown" and error recovery can only come from
- * expected errors handled via the `Result` type. Unexpected errors should fail
- * fast - the operation fails immediately and the error bubbles up.
- *
- * #### In browser environments
- *
- * ```ts
- * // Global error handler for unexpected errors
- * window.addEventListener("error", (event) => {
- *   console.error("Uncaught error:", event.error);
- *   // Send to error reporting service
- *   errorReportingService.report(event.error);
- * });
- *
- * // For unhandled promise rejections
- * window.addEventListener("unhandledrejection", (event) => {
- *   console.error("Unhandled promise rejection:", event.reason);
- *   errorReportingService.report(event.reason);
- * });
- * ```
- *
- * #### In Node.js environments
- *
- * ```ts
- * // Handle uncaught exceptions - log and fail fast
- * process.on("uncaughtException", (error) => {
- *   console.error("Uncaught exception:", error);
- *   errorReportingService.report(error);
- *   // Exit immediately - unexpected errors are not recoverable
- *   process.exit(1);
- * });
- *
- * // Handle unhandled promise rejections
- * process.on("unhandledRejection", (reason) => {
- *   console.error("Unhandled promise rejection:", reason);
- *   errorReportingService.report(reason);
- * });
- * ```
- *
- * These global handlers serve as a safety net to log and report unexpected
- * errors for debugging purposes. They do not attempt recovery - unexpected
- * errors represent bugs that must be fixed. The discipline of explicit error
- * handling through the `Result` pattern remains the primary approach for all
- * recoverable scenarios.
- *
- * ### FAQ
- *
- * #### When should a function return a plain value instead of `Result<T, E>`?
- *
- * Use `Result<T, E>` only when a function can fail with **known, expected
- * errors** that callers need to handle. If a function cannot fail with a known
- * error, return the value directly.
- *
- * - ✅ Return `Result<User, UserNotFoundError>` - can fail with a known error
- * - ✅ Return `User` - cannot fail with a known error
- * - ❌ Don't return `Result<User, never>` - unnecessary wrapper
- *
- * This keeps the codebase clean and makes error handling intentional. The type
- * system communicates which operations can fail and which cannot.
- *
- * Unsafe code from external libraries (not under our control) should be wrapped
- * with `trySync` or `tryAsync` at the boundaries. Once wrapped, if the error is
- * not important to callers, functions can safely return plain values. If the
- * error matters, use `Result` with a typed error.
- *
- * ```ts
- * // ✅ Safe to return void - unsafe code is wrapped and error is handled
- * const processData = (data: string): void => {
- *   const result = trySync(
- *     () => JSON.parse(data),
- *     (error) => ({ type: "ParseError", message: String(error) }),
- *   );
- *
- *   if (!result.ok) {
- *     logError(result.error);
- *     return;
- *   }
- *
- *   // Continue with safe operations...
- * };
- *
- * // ✅ Can call without try-catch since it returns void
- * processData(jsonString);
- * ```
- *
- * #### What if my function doesn't return a value on success?
- *
- * If your function performs an operation but doesn't need to return a value on
- * success, you can use `Result<void, E>`. Using `Result<void, E>` is clearer
- * than using `Result<true, E>` or `Result<null, E>` because it communicates
- * that the function doesn't produce a value but can produce errors.
- *
- * #### How do I short-circuit processing of an array on the first error?
- *
- * If you want to stop processing as soon as an error occurs (short-circuit),
- * you should produce and check each `Result` inside a loop:
- *
- * ```ts
- * for (const query of [
- *   sql`drop table evolu_config;`,
- *   sql`drop table evolu_message;`,
- * ]) {
- *   const result = deps.sqlite.exec(query);
- *   if (!result.ok) return result;
- * }
- * // All queries succeeded
- * ```
- *
- * #### How do I handle an array of operations and short-circuit on the first error?
- *
- * If you have an array of operations (not results), you should make them
- * _lazy_—that is, represent each operation as a function. This way, you only
- * execute each operation as needed, and can stop on the first error:
- *
- * ```ts
- * import type { LazyValue } from "./Function";
- *
- * const operations: LazyValue<Result<void, MyError>>[] = [
- *   () => doSomething(),
- *   () => doSomethingElse(),
- * ];
- *
- * for (const op of operations) {
- *   const result = op();
- *   if (!result.ok) return result;
- * }
- * // All operations succeeded
- * ```
- *
- * If you already have an array of `Result`s, the processing has already
- * happened, so you can't short-circuit. In that case, you can check for the
- * first error:
- *
- * ```ts
- * const firstError = results.find((r) => !r.ok);
- * if (firstError) return firstError;
- * // All results are Ok
- * ```
- *
- * ### Why doesn't Evolu provide "handy helpers"?
- *
- * Evolu intentionally favors imperative patterns (like the `for...of` loop
- * above) over monadic helpers. Imperative code is generally more readable,
- * easier to debug, and more familiar to most JavaScript and TypeScript
- * developers. While monads and functional helpers can be powerful, they often
- * obscure control flow and make debugging harder.
+ * Use `Result<void, E>` and return `ok()` (no argument). Don't return
+ * `ok(true)`, `ok("success")`, or `ok("done")` — `ok()` already signals
+ * success; redundant values add noise.
  */
-export type Result<T, E> = Ok<T> | Err<E>;
+export type Result<T, E = never> = Ok<T> | Err<E>;
+
+/**
+ * Shorthand for a {@link Result} with `any` type parameters.
+ *
+ * @group Utilities
+ */
+export type AnyResult = Result<any, any>;
 
 /** A successful {@link Result}. */
-export interface Ok<T> {
+export interface Ok<out T> {
   readonly ok: true;
   readonly value: T;
 }
@@ -353,48 +245,24 @@ export interface Ok<T> {
 /**
  * An error {@link Result}.
  *
- * The `error` property can be any type that describes the error. For normal
- * domain logic, use a plain object. This allows us to structure errors with
- * custom fields (e.g., `{ type: "MyError", code: 123 }`). Messages for users
- * belong to translations, not to error objects.
+ * The `error` property can be any type that describes the error. For domain
+ * errors, use a plain object with a `type` field for discrimination.
  *
- * If you need a stack trace for debugging, use an `Error` instance or a custom
- * error class to include additional metadata.
- *
- * ### Examples
- *
- * #### Domain logic error (plain object, recommended)
+ * ### Example
  *
  * ```ts
- * const failure = err({
- *   type: "ParseJsonError",
- *   code: 1001,
- *   input: "foo",
- * });
- * ```
- *
- * #### Debugging with stack trace (error instance)
- *
- * ```ts
- * const failure = err(new Error("Something went wrong"));
- * ```
- *
- * #### Custom error class
- *
- * ```ts
- * class MyCustomError extends Error {
- *   constructor(
- *     public code: number,
- *     public input: string,
- *   ) {
- *     super(`Error ${code} on input: ${input}`);
- *     this.name = "MyCustomError";
- *   }
+ * interface NotFoundError extends Typed<"NotFoundError"> {
+ *   readonly id: string;
  * }
- * const failure = err(new MyCustomError(404, "bad-input"));
+ *
+ * const findUser = (id: string): Result<User, NotFoundError> => {
+ *   const user = users.get(id);
+ *   if (user == null) return err({ type: "NotFoundError", id });
+ *   return ok(user);
+ * };
  * ```
  */
-export interface Err<E> {
+export interface Err<out E> {
   readonly ok: false;
   readonly error: E;
 }
@@ -402,7 +270,7 @@ export interface Err<E> {
 /**
  * Extracts the value type from a {@link Result}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferOk<R extends Result<any, any>> =
   R extends Ok<infer T> ? T : never;
@@ -410,7 +278,7 @@ export type InferOk<R extends Result<any, any>> =
 /**
  * Extracts the error type from a {@link Result}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferErr<R extends Result<any, any>> =
   R extends Err<infer E> ? E : never;
@@ -418,9 +286,9 @@ export type InferErr<R extends Result<any, any>> =
 /**
  * Creates an {@link Ok} result.
  *
- * - `ok()` creates an `Ok<void>` for operations that succeed without producing a
- *   value.
- * - `ok(value)` creates an `Ok<T>` containing the specified value.
+ * - `ok()` creates a `Result<void, never>` for operations that succeed without
+ *   producing a value.
+ * - `ok(value)` creates a `Result<T, never>` containing the specified value.
  *
  * ### Example
  *
@@ -432,35 +300,43 @@ export type InferErr<R extends Result<any, any>> =
  * console.log(success); // { ok: true, value: 42 }
  * ```
  */
-export function ok(): Ok<void>;
+export function ok(): Result<void>;
 /** Creates an {@link Ok} result with a specified value. */
-export function ok<T>(value: T): Ok<T>;
-export function ok<T>(value = undefined): Ok<T> {
+export function ok<T>(value: T): Result<T>;
+export function ok<T>(value?: T): Result<T> {
+  if (value === undefined) return okVoid as Result<T>;
   return { ok: true, value: value as T };
 }
 
-/**
- * Creates an {@link Err} result.
- *
- * ### Example
- *
- * ```ts
- * const failure = err("Something went wrong");
- * console.log(failure); // { ok: false, error: "Something went wrong" }
- * ```
- */
-export const err = <E>(error: E): Err<E> => ({ ok: false, error });
+/** Cache ok() and ok(undefined) to avoid repeated allocations. */
+const okVoid: Result<void> = { ok: true, value: undefined };
+
+/** Creates an {@link Err} result. */
+export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
+
+/** Type guard for {@link Ok} results. */
+export const isOk = <T, E>(result: Result<T, E>): result is Ok<T> => result.ok;
+
+/** Type guard for {@link Err} results. */
+export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
+  !result.ok;
 
 /**
- * Extracts the value from a {@link Result} if it is an `Ok`, or throws an error
- * if it is an `Err`.
+ * Returns the value from an `Ok` {@link Result}, or throws if it is an `Err`.
  *
- * **Intended usage:**
+ * Use this where failure should crash the current flow instead of being handled
+ * locally.
  *
- * - For critical code paths (e.g., app startup, config values) where failure
- *   should crash the app.
- * - Not recommended for general error handling in application logic—prefer
- *   explicit checks.
+ * **When to use:**
+ *
+ * - Application startup or composition-root setup where errors must stop the
+ *   program immediately. In Evolu apps, errors are handled by platform-specific
+ *   `createRun` adapters at the app boundary.
+ * - Module-level constants
+ * - Test setup with values that are expected to be valid
+ *
+ * Prefer an explicit `if (!result.ok)` check in ordinary application logic
+ * where the caller can recover, retry, or choose a different flow.
  *
  * ### Example
  *
@@ -493,42 +369,39 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
  * ### Example
  *
  * ```ts
- * const parseResult = parseJson('{"key": "value"}');
- * const value = getOrNull(parseResult);
- * // value is unknown | null
- *
- * if (value != null) {
- *   console.log("Parsed value:", value);
- * }
+ * // For APIs that expect T | null
+ * const user = getOrNull(findUser(id));
  * ```
  */
 export const getOrNull = <T, E>(result: Result<T, E>): T | null =>
   result.ok ? result.value : null;
 
 /**
- * Wraps synchronous functions that may throw exceptions, returning a
- * {@link Result}.
+ * Extracts the value from a {@link Result} whose error type is `never`.
  *
- * The `trySync` function is designed to handle synchronous code safely by
- * wrapping the execution in a try-catch block. If the function succeeds, it
- * returns an `Ok` result. If an exception is thrown, it maps the error to a
- * custom type and returns an `Err` result.
+ * This is useful when the type system guarantees the result cannot fail (for
+ * example `Result<T, never>`), avoiding impossible `if (!result.ok)` branches
+ * at call sites.
+ */
+export const getOk = <T>(result: Result<T>): T => {
+  assert(result.ok, "Expected Ok result.");
+  return result.value;
+};
+
+/**
+ * Wraps a synchronous function that may throw, returning a {@link Result}.
+ *
+ * Use this when the thrown value should become a typed, recoverable error for
+ * the caller. Do not use it for failures that should terminate the current flow
+ * and propagate to a global handler.
  *
  * ### Example
  *
  * ```ts
- * interface ParseJsonError {
- *   readonly type: "ParseJsonError";
- *   readonly message: string;
- * }
- *
  * const parseJson = (value: string): Result<unknown, ParseJsonError> =>
  *   trySync(
  *     () => JSON.parse(value) as unknown,
- *     (error): ParseJsonError => ({
- *       type: "ParseJsonError",
- *       message: String(error),
- *     }),
+ *     (error) => ({ type: "ParseJsonError", message: String(error) }),
  *   );
  * ```
  */
@@ -544,54 +417,348 @@ export const trySync = <T, E>(
 };
 
 /**
- * Wraps async functions or any operation returning a promise, returning a
- * {@link Result}.
+ * Wraps an async function that may throw, returning a {@link Result}.
  *
- * The `tryAsync` function provides a way to handle asynchronous code safely by
- * catching any rejected promises and mapping errors to a custom type. If the
- * promise resolves, it returns an `Ok` result. If the promise rejects, it maps
- * the error and returns an `Err` result.
+ * Use this when the rejection should become a typed, recoverable error for the
+ * caller. Do not use it for failures that should terminate the current flow and
+ * propagate to a global handler.
  *
  * ### Example
  *
  * ```ts
- * interface FetchError {
- *   readonly type: "FetchError";
- *   readonly message: string;
- * }
- *
- * const tryFetch = async (
- *   url: string,
- * ): Promise<Result<unknown, FetchError>> =>
+ * const fetchJson = (url: string): Promise<Result<unknown, FetchError>> =>
  *   tryAsync(
  *     async () => {
  *       const response = await fetch(url);
- *       if (!response.ok) {
- *         throw new Error(`Request failed with status ${response.status}`);
- *       }
+ *       if (!response.ok) throw new Error(`Status ${response.status}`);
  *       return response.json();
  *     },
- *     (error) => ({
- *       type: "FetchError",
- *       message: String(error),
- *     }),
+ *     (error) => ({ type: "FetchError", message: String(error) }),
  *   );
- *
- * const result = await tryFetch(
- *   "https://jsonplaceholder.typicode.com/posts/1",
- * );
- * if (result.ok) {
- *   console.log("Data:", result.value);
- * } else {
- *   console.error("Error:", result.error);
- * }
  * ```
  */
-export const tryAsync = async <T, E>(
-  promiseFn: () => Promise<T>,
+export const tryAsync = <T, E>(
+  lazyPromise: Lazy<Promise<T>>,
   mapError: (error: unknown) => E,
 ): Promise<Result<T, E>> =>
-  promiseFn().then(
+  Promise.try(lazyPromise).then(
     (value) => ok(value),
     (error: unknown) => err(mapError(error)),
   );
+
+/**
+ * A result for a pull-based protocol with three outcomes.
+ *
+ * The consumer requests the next value (e.g. via `next()`), and the producer
+ * responds with one of:
+ *
+ * - `Ok<A>` — produced a value
+ * - `Err<Done<D>>` — completed normally with a done value
+ * - `Err<E>` — failed with an error
+ *
+ * Inspired by JavaScript's `Iterator.next()`, which returns `{ value, done }`.
+ */
+export type NextResult<A, E = never, D = void> = Result<A, E | Done<D>>;
+
+/**
+ * A signal indicating normal completion of a pull-based protocol.
+ *
+ * This is not a failure — it is a control signal that carries an optional
+ * "done" value (often `void`, but can be a final summary or leftover).
+ *
+ * Inspired by JavaScript's `IteratorResult` where `{ done: true }` signals
+ * completion.
+ */
+export interface Done<out D = unknown> extends Typed<"Done"> {
+  readonly done: D;
+}
+
+/**
+ * Constructs a {@link Done} value.
+ *
+ * - `done()` creates a `Done<void>` for protocols that don't need a done value.
+ * - `done(value)` creates a `Done<D>` containing the specified value.
+ */
+export function done(): Done<void>;
+/** With a done value. */
+export function done<D>(value: D): Done<D>;
+export function done<D>(value?: D): Done<D> {
+  return {
+    type: "Done",
+    done: value as D,
+  };
+}
+
+/**
+ * Removes {@link Done} from an error union.
+ *
+ * Useful for pull-based protocols where completion is encoded in the error
+ * channel (for example {@link NextResult}).
+ *
+ * @group Utilities
+ */
+export type ExcludeDone<E> = Exclude<E, Done<any>>;
+
+/**
+ * Extracts only {@link Done} from an error union.
+ *
+ * Useful for pull-based protocols where completion is encoded in the error
+ * channel (for example {@link NextResult}).
+ *
+ * @group Utilities
+ */
+export type OnlyDone<E> = Extract<E, Done<any>>;
+
+/**
+ * Extracts the done value type from a {@link NextResult}.
+ *
+ * @group Utilities
+ */
+export type InferDone<R extends Result<any, any>> =
+  InferErr<R> extends infer Errors
+    ? Errors extends Done<infer D>
+      ? D
+      : never
+    : never;
+
+/**
+ * Extracts all values from an array of {@link Result}s.
+ *
+ * Returns the first error if any result fails.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const results = [ok(1), ok(2), ok(3)];
+ * const all = allResult(results);
+ * // ok([1, 2, 3])
+ *
+ * const withError = [ok(1), err("fail"), ok(3)];
+ * const failed = allResult(withError);
+ * // err("fail")
+ * ```
+ *
+ * @group Composition
+ */
+export function allResult<
+  const T extends readonly [AnyResult, ...ReadonlyArray<AnyResult>],
+>(results: T): Result<{ [K in keyof T]: InferOk<T[K]> }, InferErr<T[number]>>;
+
+/**
+ * Returns object with same keys.
+ *
+ * ```ts
+ * const result = allResult({ a: ok(1), b: ok(2) });
+ * // ok({ a: 1, b: 2 })
+ * ```
+ */
+export function allResult<T extends Readonly<Record<string, AnyResult>>>(
+  results: T,
+): Result<
+  { [P in keyof T]: InferOk<T[P]> },
+  [keyof T] extends [never] ? never : InferErr<T[keyof T]>
+>;
+
+/**
+ * For dynamic or generated result lists.
+ *
+ * ```ts
+ * const results: ReadonlyArray<Result<number, Error>> = getResults();
+ * const all = allResult(results);
+ * // Result<ReadonlyArray<number>, Error>
+ * ```
+ */
+export function allResult<T, E>(
+  results: Iterable<Result<T, E>>,
+): Result<ReadonlyArray<T>, E>;
+
+/**
+ * Guarantees non-empty result.
+ *
+ * ```ts
+ * const results: NonEmptyReadonlyArray<Result<number, Error>> = [
+ *   ok(1),
+ *   ok(2),
+ * ];
+ * const all = allResult(results);
+ * // Result<NonEmptyReadonlyArray<number>, Error>
+ * ```
+ */
+export function allResult<T, E>(
+  results: NonEmptyReadonlyArray<Result<T, E>>,
+): Result<NonEmptyReadonlyArray<T>, E>;
+
+export function allResult(
+  input: Iterable<AnyResult> | Readonly<Record<string, AnyResult>>,
+): AnyResult {
+  if (isIterable(input)) {
+    const array = arrayFrom(input);
+    if (!isNonEmptyArray(array)) return ok(emptyArray);
+
+    const length = array.length;
+    const values = new Array<unknown>(length);
+    for (let i = 0; i < length; i++) {
+      const result = array[i];
+      if (!result.ok) return result;
+      values[i] = result.value;
+    }
+    return ok(values);
+  }
+
+  const length = Object.keys(input).length;
+  if (length === 0) return ok(emptyRecord);
+
+  const keys = new Array<string>(length);
+  const results = new Array<AnyResult>(length);
+  let index = 0;
+  for (const key in input) {
+    keys[index] = key;
+    results[index] = (input as Record<string, AnyResult>)[key];
+    index++;
+  }
+
+  const record = createRecord();
+  for (let i = 0; i < length; i++) {
+    const result = results[i];
+    if (!result.ok) return result;
+    record[keys[i]] = result.value;
+  }
+  return ok(record);
+}
+
+/**
+ * Maps items to {@link Result}s and extracts all values.
+ *
+ * Returns the first error if any result fails.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const users = [{ id: 1 }, { id: 2 }];
+ * const result = mapResult(users, validateUser);
+ * // Result<ReadonlyArray<ValidUser>, ValidateUserError>
+ * ```
+ *
+ * @group Composition
+ */
+export function mapResult<
+  const A extends readonly [unknown, ...Array<unknown>],
+  T,
+  E,
+>(
+  items: A,
+  fn: (a: A[number]) => Result<T, E>,
+): Result<{ [K in keyof A]: T }, E>;
+
+/**
+ * For dynamic or generated item lists.
+ *
+ * ```ts
+ * const users = [{ id: 1 }, { id: 2 }];
+ * const result = mapResult(users, validateUser);
+ * // Result<ReadonlyArray<ValidUser>, ValidateUserError>
+ * ```
+ */
+export function mapResult<A, T, E>(
+  items: Iterable<A>,
+  fn: (a: A) => Result<T, E>,
+): Result<ReadonlyArray<T>, E>;
+
+/**
+ * Returns object with same keys.
+ *
+ * ```ts
+ * const result = mapResult({ a: 1, b: 2 }, double);
+ * // Result<{ a: number, b: number }, DoubleError>
+ * ```
+ */
+export function mapResult<A, T, E, K extends string>(
+  items: Readonly<Record<K, A>>,
+  fn: (a: A) => Result<T, E>,
+): Result<Readonly<Record<K, T>>, E>;
+
+export function mapResult(
+  input: Iterable<unknown> | Readonly<Record<string, unknown>>,
+  fn: (a: unknown) => AnyResult,
+): AnyResult {
+  if (isIterable(input)) {
+    const array = arrayFrom(input);
+    if (!isNonEmptyArray(array)) return ok(emptyArray);
+
+    const length = array.length;
+    const values = new Array<unknown>(length);
+    for (let i = 0; i < length; i++) {
+      const result = fn(array[i]);
+      if (!result.ok) return result;
+      values[i] = result.value;
+    }
+    return ok(values);
+  }
+
+  const length = Object.keys(input).length;
+  if (length === 0) return ok(emptyRecord);
+
+  const keys = new Array<string>(length);
+  const items = new Array<unknown>(length);
+  let index = 0;
+  for (const key in input) {
+    keys[index] = key;
+    items[index] = (input as Record<string, unknown>)[key];
+    index++;
+  }
+
+  const record = createRecord();
+  for (let i = 0; i < length; i++) {
+    const result = fn(items[i]);
+    if (!result.ok) return result;
+    record[keys[i]] = result.value;
+  }
+  return ok(record);
+}
+
+/**
+ * Returns the first successful {@link Result}.
+ *
+ * If all results fail, returns the last error.
+ *
+ * Requires a non-empty array — there's no "first success" with zero
+ * participants. Use {@link isNonEmptyArray} to guard:
+ *
+ * ```ts
+ * if (isNonEmptyArray(results)) {
+ *   const result = anyResult(results);
+ * }
+ * ```
+ *
+ * ### Example
+ *
+ * ```ts
+ * const results = [err("fail1"), ok(42), err("fail2")];
+ * if (isNonEmptyArray(results)) {
+ *   const result = anyResult(results);
+ *   // ok(42)
+ * }
+ *
+ * const allFailed = [err("a"), err("b"), err("c")];
+ * if (isNonEmptyArray(allFailed)) {
+ *   const result = anyResult(allFailed);
+ *   // err("c") — last error
+ * }
+ * ```
+ *
+ * @group Composition
+ */
+export function anyResult<
+  const T extends readonly [AnyResult, ...ReadonlyArray<AnyResult>],
+>(results: T): Result<InferOk<T[number]>, InferErr<T[number]>>;
+
+export function anyResult(
+  results: NonEmptyReadonlyArray<AnyResult>,
+): AnyResult {
+  let lastError: Err<unknown> | null = null;
+  for (const result of results) {
+    if (result.ok) return result;
+    lastError = result;
+  }
+  return lastError!;
+}

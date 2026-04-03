@@ -10,39 +10,41 @@
   },
   "homepage": "https://evolu.dev",
   "type": "module",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/src/index.d.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
   },
   "files": [
-    "dist/**",
+    "dist/src/**",
     "src/**",
     "README.md"
   ],
   "scripts": {
-    "dev": "tsc --watch",
-    "build": "rimraf dist && tsc",
-    "clean": "rimraf .turbo node_modules dist",
+    "build": "tsc --build tsconfig.build.json",
+    "prepack": "npm run build",
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "better-sqlite3": "^12.1.1",
-    "ws": "^8.18.2"
+    "better-sqlite3": "^12.6.2",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/tsconfig": "workspace:*",
+    "@evolu/common": "*",
+    "@evolu/typescript-config": "*",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.17.1",
+    "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.9.2",
-    "vitest": "^4.0.4"
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "@evolu/common": "^7.4.1"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
   "publishConfig": {
     "access": "public"

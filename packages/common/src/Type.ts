@@ -1,24 +1,35 @@
+/**
+ * Runtime type validation, parsing, and branded types.
+ *
+ * @module
+ */
+
 import { utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import { pack } from "msgpackr";
 import type { Brand } from "./Brand.js";
 import type { RandomBytesDep } from "./Crypto.js";
-import { isPlainObject } from "./Object.js";
+import { exhaustiveCheck } from "./Function.js";
+import { isFunction, isPlainObject } from "./Object.js";
 import { hasNodeBuffer } from "./Platform.js";
-import { err, getOrNull, getOrThrow, ok, Result, trySync } from "./Result.js";
+import type { NextResult, Result } from "./Result.js";
+import { err, getOrNull, getOrThrow, ok, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { TimeDep } from "./Time.js";
 import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
-import { IntentionalNever } from "./Types.js";
 
 /**
  * Evolu {@link Type} is like a type guard that returns typed errors (via
- * {@link Result}) instead of throwing. We either get a safely typed value or a
- * composable typed error telling us exactly why validation failed.
+ * {@link Result}) instead of throwing. We either receive a safely typed value or
+ * a composable typed error that tells us exactly why the validation failed.
  *
- * Why another validation library?
+ * The reason why Evolu Type exists is that no other TypeScript validation
+ * library met Evolu's requirements. A distinctive feature of Evolu Type
+ * compared to other validation libraries is that it returns typed errors rather
+ * than string messages. This allows TypeScript to enforce that all validation
+ * errors are handled via {@link exhaustiveCheck}, significantly improving the
+ * developer experience. Those requirements are:
  *
  * - **Result-based error handling** – no exceptions for normal control flow.
  * - **Typed errors with decoupled formatters** – validation logic ≠ user
@@ -31,15 +42,10 @@ import { IntentionalNever } from "./Types.js";
  *   bottom.
  * - **No user-land chaining DSL** – prepared for TC39 Hack pipes.
  *
- * A distinctive feature of Evolu Type compared to other validation libraries is
- * that it returns typed errors rather than string messages. This allows
- * TypeScript to enforce that all validation errors are handled by type
- * checking, significantly improving the developer experience.
- *
  * Evolu Type supports [Standard Schema](https://standardschema.dev/) for
  * interoperability with 40+ validation-compatible tools and frameworks.
  *
- * ### Base Types Quick Start
+ * ## Base Types
  *
  * ```ts
  * // Validate unknown values
@@ -47,7 +53,7 @@ import { IntentionalNever } from "./Types.js";
  * const stringResult = String.fromUnknown(value);
  * if (!stringResult.ok) {
  *   // console.error(formatStringError(stringResult.error));
- *   return stringResult; // inside a function returning Result<string, _>
+ *   return stringResult;
  * }
  * // Safe branch: value is now string
  * const upper = stringResult.value.toUpperCase();
@@ -66,10 +72,12 @@ import { IntentionalNever } from "./Types.js";
  * Point.from({ x: 1, y: "2" }); // err -> nested Number error
  * ```
  *
- * ### Branding Basics
+ * ## Branded types
  *
- * Branding adds semantic meaning & constraints while preserving the runtime
- * shape:
+ * Branding is the recommended way to define types in Evolu. Instead of using
+ * primitive types like `string` or `number` directly, wrap them with
+ * {@link brand} to create semantically meaningful types. See {@link Brand} for
+ * why this matters.
  *
  * ```ts
  * const CurrencyCode = brand("CurrencyCode", String, (value) =>
@@ -93,20 +101,25 @@ import { IntentionalNever } from "./Types.js";
  * See also reusable brand factories like `minLength`, `maxLength`, `trimmed`,
  * `positive`, `between`, etc.
  *
- * ### Objects & Optional Fields
+ * ## Object types
  *
  * ```ts
  * const User = object({
  *   name: NonEmptyTrimmedString100,
  *   age: optional(PositiveInt),
  * });
- * type User = typeof User.Type;
+ *
+ * // Use interface for objects. TypeScript displays the interface name
+ * // instead of expanding all properties.
+ * interface User extends InferType<typeof User> {}
  *
  * User.from({ name: "Alice" }); // ok
  * User.from({ name: "Alice", age: -1 }); // err(PositiveInt)
+ *
+ * // TODO: Add `record`
  * ```
  *
- * ### Deriving JSON String Types
+ * ## JSON type
  *
  * ```ts
  * const Person = object({
@@ -115,7 +128,7 @@ import { IntentionalNever } from "./Types.js";
  *   // To prevent this, use FiniteNumber.
  *   age: FiniteNumber,
  * });
- * type Person = typeof Person.Type;
+ * interface Person extends InferType<typeof Person> {}
  *
  * const [PersonJson, personToPersonJson, personJsonToPerson] = json(
  *   Person,
@@ -133,7 +146,7 @@ import { IntentionalNever } from "./Types.js";
  * expect(personJsonToPerson(personJson)).toEqual(person);
  * ```
  *
- * ### Error Formatting
+ * ## Error Formatting
  *
  * Evolu separates validation logic from human-readable messages. There are two
  * layers:
@@ -144,14 +157,14 @@ import { IntentionalNever } from "./Types.js";
  *    custom errors (including nested composite types) and lets us override
  *    selected messages.
  *
- * #### 1. Per-Type Formatter (recap)
+ * ### 1. Per-Type formatter
  *
  * ```ts
  * const r = String.fromUnknown(42);
  * if (!r.ok) console.error(formatStringError(r.error));
  * ```
  *
- * #### 2. Unified Formatter with Overrides
+ * ### 2. Unified formatter with overrides
  *
  * ```ts
  * // Override only what we care about; fall back to built-ins for the rest.
@@ -174,12 +187,14 @@ import { IntentionalNever } from "./Types.js";
  * tuple / union) and applies overrides only where specified, greatly reducing
  * boilerplate when formatting complex validation errors.
  *
- * ### Tip
+ * ## Naming
  *
- * If necessary, write `globalThis.String` instead of `String` to avoid naming
- * clashes with native types.
+ * Evolu Types intentionally use the same names as native JavaScript types
+ * (String, Number, Boolean, etc.). When you need to distinguish between an
+ * Evolu Type and the native type, use `globalThis` to reference the native one
+ * (e.g., `globalThis.String`, `globalThis.Number`).
  *
- * ### Design Decision: No Bidirectional Transformations
+ * ## Design decision
  *
  * Evolu Type intentionally does not support bidirectional transformations. It
  * previously did, but supporting that while keeping typed error fidelity added
@@ -188,28 +203,62 @@ import { IntentionalNever } from "./Types.js";
  * reverse transforms would not buy much. We may revisit this if we can design a
  * minimal, 100% safe API that preserves simplicity.
  *
- * ### Prepared for TC39 Hack Pipes
+ * ## Composition without pipe
  *
  * Take a look how `SimplePassword` is defined:
  *
  * ```ts
- * export const SimplePassword = brand(
+ * const SimplePassword = brand(
  *   "SimplePassword",
  *   minLength(8)(maxLength(64)(TrimmedString)),
  * );
  * ```
  *
- * Nested functions are often OK (if not, make a helper) and read well, but with
- * TC39 Hack pipes it would be clearer:
+ * Shallow nesting often fits one line. If it doesn't, split into named parts:
  *
  * ```ts
- * // TrimmedString
- * //   |> minLength(8)(%)
- * //   |> maxLength(64)(%)
- * //   |> brand("SimplePassword", %)
+ * const Min8TrimmedString64 = minLength(8)(maxLength(64)(TrimmedString));
+ * const SimplePassword = brand("SimplePassword", Min8TrimmedString64);
  * ```
  *
- * Note `minLength` and `maxLength` are curried because they are factories.
+ * ## FAQ
+ *
+ * ### How do I create a generic interface like `FooState<T>`?
+ *
+ * TypeScript's {@link InferType} extracts a concrete type, not a generic one. We
+ * cannot write `interface FooState<T> extends InferType<typeof fooState<T>>`
+ * because `InferType` needs a concrete Type instance.
+ *
+ * The recommended approach is to define the generic interface manually, then
+ * create a Type factory that produces structurally compatible Types:
+ *
+ * ```ts
+ * // Define the generic interface manually
+ * interface FooState<T> {
+ *   readonly value: T;
+ *   readonly loading: boolean;
+ * }
+ *
+ * // Create a Type factory that produces Types matching the interface
+ * const fooState = <T extends AnyType>(valueType: T) =>
+ *   object({
+ *     value: valueType,
+ *     loading: Boolean,
+ *   });
+ *
+ * // Usage
+ * const StringFooState = fooState(String);
+ * type StringFooState = InferType<typeof StringFooState>;
+ *
+ * // The interface and inferred type are structurally compatible
+ * const state: FooState<string> = StringFooState.orThrow({
+ *   value: "hi",
+ *   loading: false,
+ * });
+ * ```
+ *
+ * This keeps the interface generic while having type-safe runtime validation
+ * for each concrete use.
  */
 export interface Type<
   Name extends TypeName,
@@ -238,6 +287,9 @@ export interface Type<
   /**
    * Creates `T` from an `Input` value, throwing an error if validation fails.
    *
+   * Use this where failure should crash the current flow instead of being
+   * handled locally.
+   *
    * Throws an Error with the Type validation error in its `cause` property,
    * making it debuggable while avoiding the need for custom error messages.
    *
@@ -245,36 +297,41 @@ export interface Type<
    *
    * **When to use:**
    *
-   * - Configuration values that are guaranteed to be valid (e.g., hardcoded
-   *   constants)
-   * - Application startup where failure should crash the program
+   * - Application startup or composition-root setup where errors must stop the
+   *   program immediately. In Evolu apps, errors are handled by
+   *   platform-specific `createRun` adapters at the app boundary.
+   * - Module-level constants
+   * - Test setup with values that are expected to be valid
    * - As an alternative to assertions when the Type error in the thrown Error's
    *   `cause` provides sufficient debugging information
-   * - Test code with known valid inputs (when error message clarity is not
-   *   critical; for better test error messages, use Vitest `schemaMatching` +
-   *   `assert` with `.is()`)
+   *
+   * Prefer `from` in ordinary application logic where the caller can recover,
+   * show validation errors, or choose a different flow.
+   *
+   * For clearer test failure messages on invalid input, use Vitest
+   * `schemaMatching` + `assert` with `.is()`.
    *
    * ### Example
    *
    * ```ts
-   * // ✅ Good: Known valid constant
+   * // Good: Known valid constant
    * const maxRetries = PositiveInt.orThrow(3);
    *
-   * // ✅ Good: App configuration that should crash on invalid values
-   * const appName = SimpleName.orThrow("MyApp");
+   * // Good: App configuration that should crash on invalid values
+   * const appName = Name.orThrow("MyApp");
    *
-   * // ✅ Good: Instead of assert when Type error is clear enough
+   * // Good: Instead of assert when Type error is clear enough
    * // Context makes it obvious: count increments from non-negative value
    * const currentCount = counts.get(id) ?? 0;
    * const newCount = PositiveInt.orThrow(currentCount + 1);
    *
-   * // ✅ Good: Test setup with known valid values
+   * // Good: Test setup with known valid values
    * const testUser = User.orThrow({ name: "Alice", age: 30 });
    *
-   * // ❌ Avoid: User input (use `from` instead)
+   * // Avoid: User input (use `from` instead)
    * const userAge = PositiveInt.orThrow(userInput); // Could crash!
    *
-   * // ✅ Better: Handle user input gracefully
+   * // Better: Handle user input gracefully
    * const ageResult = PositiveInt.from(userInput);
    * if (!ageResult.ok) {
    *   // Handle validation error
@@ -296,16 +353,16 @@ export interface Type<
    * ### Example
    *
    * ```ts
-   * // ✅ Good: Optional user input
+   * // Good: Optional user input
    * const age = PositiveInt.orNull(userInput);
    * if (age != null) {
    *   console.log("Valid age:", age);
    * }
    *
-   * // ✅ Good: Default fallback
+   * // Good: Default fallback
    * const maxRetries = PositiveInt.orNull(config.retries) ?? 3;
    *
-   * // ❌ Avoid: When you need to know why validation failed (use `from` instead)
+   * // Avoid: When you need to know why validation failed (use `from` instead)
    * const result = PositiveInt.from(userInput);
    * if (!result.ok) {
    *   console.error(formatPositiveError(result.error));
@@ -420,7 +477,7 @@ export interface Type<
 /**
  * Unique identifier for a {@link Type}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type TypeName = Capitalize<string>;
 
@@ -444,12 +501,17 @@ export interface TypeErrorWithReason<
   readonly reason: Reason;
 }
 
+/**
+ * A {@link Type} with all type parameters set to `any`.
+ *
+ * @group Utilities
+ */
 export type AnyType = Type<any, any, any, any, any, any>;
 
 /**
  * Extracts the name from a {@link Type}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferName<A extends AnyType> =
   A extends Type<infer Name, any, any, any, any, any> ? Name : never;
@@ -457,7 +519,20 @@ export type InferName<A extends AnyType> =
 /**
  * Extracts the type from a {@link Type}.
  *
- * @category Utilities
+ * ### Example
+ *
+ * ```ts
+ * const User = object({
+ *   name: NonEmptyTrimmedString100,
+ *   age: optional(PositiveInt),
+ * });
+ *
+ * // Use interface for objects. TypeScript displays the interface name
+ * // instead of expanding all properties.
+ * interface User extends InferType<typeof User> {}
+ * ```
+ *
+ * @group Utilities
  */
 export type InferType<A extends AnyType> =
   A extends Type<any, infer T, any, any, any, any> ? T : never;
@@ -465,7 +540,7 @@ export type InferType<A extends AnyType> =
 /**
  * Extracts the input type from a {@link Type}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferInput<A extends AnyType> =
   A extends Type<any, any, infer Input, any, any, any> ? Input : never;
@@ -473,7 +548,7 @@ export type InferInput<A extends AnyType> =
 /**
  * Extracts the specific error type from a {@link Type}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferError<A extends AnyType> =
   A extends Type<any, any, any, infer Error, any, any> ? Error : never;
@@ -481,7 +556,7 @@ export type InferError<A extends AnyType> =
 /**
  * Extracts the parent type from a {@link Type}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferParent<A extends AnyType> =
   A extends Type<any, any, any, any, infer Parent, any> ? Parent : never;
@@ -489,7 +564,7 @@ export type InferParent<A extends AnyType> =
 /**
  * Extracts the parent error type from a {@link Type}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferParentError<A extends AnyType> =
   A extends Type<any, any, any, any, any, infer ParentError>
@@ -499,7 +574,7 @@ export type InferParentError<A extends AnyType> =
 /**
  * Extracts all error types from a {@link Type}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type InferErrors<T extends AnyType> =
   T extends Type<any, any, any, infer Error, any, infer ParentError>
@@ -511,7 +586,7 @@ const EvoluTypeSymbol = Symbol("evolu.Type");
 /**
  * Checks if the given value is an {@link Type}.
  *
- * @category Utilities
+ * @group Utilities
  */
 export const isType = (value: unknown): value is AnyType =>
   typeof value === "object" && value !== null && EvoluTypeSymbol in value;
@@ -563,11 +638,9 @@ const createType = <
       if (result.ok) {
         return { value: result.value };
       }
-      cachedStandardSchemaFormatTypeError ??= createFormatTypeError();
       return {
         issues: typeErrorToStandardSchemaIssues(
           result.error as TypeErrors<Error>,
-          cachedStandardSchemaFormatTypeError,
         ),
       };
     },
@@ -592,7 +665,7 @@ const createType = <
  * );
  * ```
  *
- * @category Utilities
+ * @group Utilities
  */
 export const createTypeErrorFormatter =
   <Error extends TypeError>(
@@ -628,7 +701,7 @@ export type TypeErrorFormatter<Error extends TypeError> = (
  * );
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const base = <Name extends TypeName, T, Error extends TypeError>(
   name: Name,
@@ -652,7 +725,7 @@ export const base = <Name extends TypeName, T, Error extends TypeError>(
  *   createBaseTypeErrorFormatter<StringError>();
  * ```
  *
- * @category Utilities
+ * @group Utilities
  */
 export const createBaseTypeErrorFormatter = <
   Error extends TypeError,
@@ -661,14 +734,17 @@ export const createBaseTypeErrorFormatter = <
     (error) => `A value ${error.value} is not a ${error.type.toLowerCase()}.`,
   );
 
-/** @category Base Types */
-export const Unknown = base<"Unknown", unknown, never>("Unknown", ok);
+/** @group Base Types */
+export const Unknown = /*#__PURE__*/ base<"Unknown", unknown, never>(
+  "Unknown",
+  ok,
+);
 
 /**
- * @category Base Types
- * @category String
+ * @group Base Types
+ * @group String
  */
-export const String = base("String", (value) =>
+export const String = /*#__PURE__*/ base("String", (value) =>
   typeof value === "string"
     ? ok(value)
     : err<StringError>({ type: "String", value }),
@@ -676,10 +752,11 @@ export const String = base("String", (value) =>
 
 export interface StringError extends TypeError<"String"> {}
 
-export const formatStringError = createBaseTypeErrorFormatter<StringError>();
+export const formatStringError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<StringError>();
 
-/** @category Base Types */
-export const Number = base("Number", (value) =>
+/** @group Base Types */
+export const Number = /*#__PURE__*/ base("Number", (value) =>
   typeof value === "number"
     ? ok(value)
     : err<NumberError>({ type: "Number", value }),
@@ -687,10 +764,11 @@ export const Number = base("Number", (value) =>
 
 export interface NumberError extends TypeError<"Number"> {}
 
-export const formatNumberError = createBaseTypeErrorFormatter<NumberError>();
+export const formatNumberError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<NumberError>();
 
-/** @category Base Types */
-export const BigInt = base("BigInt", (value) =>
+/** @group Base Types */
+export const BigInt = /*#__PURE__*/ base("BigInt", (value) =>
   typeof value === "bigint"
     ? ok(value)
     : err<BigIntError>({ type: "BigInt", value }),
@@ -698,10 +776,11 @@ export const BigInt = base("BigInt", (value) =>
 
 export interface BigIntError extends TypeError<"BigInt"> {}
 
-export const formatBigIntError = createBaseTypeErrorFormatter<BigIntError>();
+export const formatBigIntError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<BigIntError>();
 
-/** @category Base Types */
-export const Boolean = base("Boolean", (value) =>
+/** @group Base Types */
+export const Boolean = /*#__PURE__*/ base("Boolean", (value) =>
   typeof value === "boolean"
     ? ok(value)
     : err<BooleanError>({ type: "Boolean", value }),
@@ -709,10 +788,11 @@ export const Boolean = base("Boolean", (value) =>
 
 export interface BooleanError extends TypeError<"Boolean"> {}
 
-export const formatBooleanError = createBaseTypeErrorFormatter<BooleanError>();
+export const formatBooleanError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<BooleanError>();
 
-/** @category Base Types */
-export const Undefined = base("Undefined", (value) =>
+/** @group Base Types */
+export const Undefined = /*#__PURE__*/ base("Undefined", (value) =>
   value === undefined
     ? ok(value)
     : err<UndefinedError>({ type: "Undefined", value }),
@@ -721,20 +801,21 @@ export const Undefined = base("Undefined", (value) =>
 export interface UndefinedError extends TypeError<"Undefined"> {}
 
 export const formatUndefinedError =
-  createBaseTypeErrorFormatter<UndefinedError>();
+  /*#__PURE__*/ createBaseTypeErrorFormatter<UndefinedError>();
 
-/** @category Base Types */
-export const Null = base("Null", (value) =>
+/** @group Base Types */
+export const Null = /*#__PURE__*/ base("Null", (value) =>
   value === null ? ok(value) : err<NullError>({ type: "Null", value }),
 );
 
 export interface NullError extends TypeError<"Null"> {}
 
-export const formatNullError = createBaseTypeErrorFormatter<NullError>();
+export const formatNullError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<NullError>();
 
-/** @category Base Types */
-export const Function = base("Function", (value) =>
-  typeof value === "function"
+/** @group Base Types */
+export const Function = /*#__PURE__*/ base("Function", (value) =>
+  isFunction(value)
     ? ok(value)
     : err<FunctionError>({ type: "Function", value }),
 );
@@ -742,19 +823,19 @@ export const Function = base("Function", (value) =>
 export interface FunctionError extends TypeError<"Function"> {}
 
 export const formatFunctionError =
-  createBaseTypeErrorFormatter<FunctionError>();
+  /*#__PURE__*/ createBaseTypeErrorFormatter<FunctionError>();
 
-/** @category Base Types */
-export const Uint8Array = base("Uint8Array", (value) =>
-  value instanceof globalThis.Uint8Array
-    ? ok(value)
+/** @group Base Types */
+export const Uint8Array = /*#__PURE__*/ base("Uint8Array", (value) =>
+  Object.prototype.toString.call(value as object) === "[object Uint8Array]"
+    ? ok(value as globalThis.Uint8Array)
     : err<Uint8ArrayError>({ type: "Uint8Array", value }),
 );
 
 export interface Uint8ArrayError extends TypeError<"Uint8Array"> {}
 
 export const formatUint8ArrayError =
-  createBaseTypeErrorFormatter<Uint8ArrayError>();
+  /*#__PURE__*/ createBaseTypeErrorFormatter<Uint8ArrayError>();
 
 /**
  * `instanceof` {@link Type}.
@@ -774,7 +855,7 @@ export const formatUint8ArrayError =
  * const error = UserInstance.from({}); // err
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const instanceOf = <T extends abstract new (...args: any) => any>(
   ctor: T,
@@ -802,16 +883,17 @@ export interface InstanceOfType<
   ctor: T;
 }
 
-export const formatInstanceOfError = createTypeErrorFormatter<InstanceOfError>(
-  (error) => `The value ${error.value} is not an instance of ${error.ctor}.`,
-);
+export const formatInstanceOfError =
+  /*#__PURE__*/ createTypeErrorFormatter<InstanceOfError>(
+    (error) => `The value ${error.value} is not an instance of ${error.ctor}.`,
+  );
 
 /**
  * JavaScript Date.
  *
- * @category Base Types
+ * @group Base Types
  */
-export const Date = instanceOf(globalThis.Date);
+export const Date = /*#__PURE__*/ instanceOf(globalThis.Date);
 
 /**
  * Validates that an unknown value is an Evolu {@link Type} (i.e., satisfies
@@ -825,7 +907,7 @@ export const Date = instanceOf(globalThis.Date);
  * ```
  */
 // TODO: Rename to TypeInstance or something like that.
-export const EvoluType = base("EvoluType", (value) =>
+export const EvoluType = /*#__PURE__*/ base("EvoluType", (value) =>
   isType(value)
     ? ok(value)
     : err<EvoluTypeError>({
@@ -836,19 +918,24 @@ export const EvoluType = base("EvoluType", (value) =>
 
 export interface EvoluTypeError extends TypeError<"EvoluType"> {}
 
-export const formatIsTypeError = createTypeErrorFormatter<EvoluTypeError>(
-  (error) => `Value ${error.value} is not a valid Evolu Type.`,
-);
+export const formatIsTypeError =
+  /*#__PURE__*/ createTypeErrorFormatter<EvoluTypeError>(
+    (error) => `Value ${error.value} is not a valid Evolu Type.`,
+  );
 
 /**
  * Branded {@link Type}.
+ *
+ * Branding is the recommended way to define types in Evolu. Instead of using
+ * primitive types like `string` or `number` directly, wrap them with `brand` to
+ * create semantically meaningful types. See {@link Brand} for why this matters.
  *
  * The `brand` Type Factory takes the name of a new {@link Brand}, a parent Type
  * to be branded, and the optional `refine` function for additional constraint.
  *
  * The `refine` function can be omitted if we only want to add a brand.
  *
- * ### Examples
+ * ### Example
  *
  * A simple `CurrencyCode` Type:
  *
@@ -967,7 +1054,7 @@ export const formatIsTypeError = createTypeErrorFormatter<EvoluTypeError>(
  * );
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export function brand<
   Name extends TypeName,
@@ -980,6 +1067,7 @@ export function brand<
   refine: (value: Parent) => Result<Parent, RefineError>,
 ): BrandType<ParentType, Name, RefineError, InferErrors<ParentType>>;
 
+/** Without refine function. */
 export function brand<Name extends TypeName, ParentType extends AnyType>(
   name: Name,
   parent: ParentType,
@@ -1003,15 +1091,15 @@ export function brand<
     ? (value: unknown) => {
         const parentResult = parent.fromUnknown(value);
         if (!parentResult.ok) return parentResult;
-        return refine(parentResult.value as IntentionalNever);
+        return refine(parentResult.value as never);
       }
     : (value: unknown) => {
         const parentResult = parent.fromUnknown(value);
         if (!parentResult.ok)
-          return err<BrandWithoutRefineError<Name, IntentionalNever>>({
+          return err<BrandWithoutRefineError<Name, never>>({
             type: name,
             value,
-            parentError: parentResult.error as IntentionalNever,
+            parentError: parentResult.error as never,
           });
         return ok(parentResult.value);
       };
@@ -1019,7 +1107,7 @@ export function brand<
   return {
     ...createType("Brand", {
       fromUnknown,
-      fromParent: (refine ?? ok) as IntentionalNever,
+      fromParent: (refine ?? ok) as never,
     }),
     brand: name,
     parentType: parent,
@@ -1053,12 +1141,15 @@ export interface BrandWithoutRefineError<
 /**
  * A three-letter ISO 4217 currency code (e.g., USD, EUR).
  *
- * @category String
+ * @group String
  */
-export const CurrencyCode = brand("CurrencyCode", String, (value) =>
-  /^[A-Z]{3}$/.test(value)
-    ? ok(value)
-    : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
+export const CurrencyCode = /*#__PURE__*/ brand(
+  "CurrencyCode",
+  String,
+  (value) =>
+    /^[A-Z]{3}$/.test(value)
+      ? ok(value)
+      : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
 );
 
 export type CurrencyCode = typeof CurrencyCode.Type;
@@ -1066,7 +1157,7 @@ export type CurrencyCode = typeof CurrencyCode.Type;
 export interface CurrencyCodeError extends TypeError<"CurrencyCode"> {}
 
 export const formatCurrencyCodeError =
-  createTypeErrorFormatter<CurrencyCodeError>(
+  /*#__PURE__*/ createTypeErrorFormatter<CurrencyCodeError>(
     (error) => `Invalid currency code: ${error.value}.`,
   );
 
@@ -1089,9 +1180,9 @@ export const formatCurrencyCodeError =
  * const error = DateIso.from("10000-01-01T00:00:00.000Z"); // err
  * ```
  *
- * @category String
+ * @group String
  */
-export const DateIso = brand("DateIso", String, (value) => {
+export const DateIso = /*#__PURE__*/ brand("DateIso", String, (value) => {
   if (value.length !== 24) {
     return err<DateIsoError>({ type: "DateIso", value });
   }
@@ -1111,9 +1202,10 @@ export type DateIso = typeof DateIso.Type;
 
 export interface DateIsoError extends TypeError<"DateIso"> {}
 
-export const formatDateIsoError = createTypeErrorFormatter<DateIsoError>(
-  (error) => `The value ${error.value} is not a valid ISO 8601 date string.`,
-);
+export const formatDateIsoError =
+  /*#__PURE__*/ createTypeErrorFormatter<DateIsoError>(
+    (error) => `The value ${error.value} is not a valid ISO 8601 date string.`,
+  );
 
 export const dateToDateIso = (value: Date): Result<DateIso, DateIsoError> =>
   DateIso.fromParent(value.toISOString());
@@ -1137,7 +1229,18 @@ export const dateIsoToDate = (value: DateIso): Date =>
  *   );
  * ```
  *
- * @category Utilities
+ * ### Numeric literal inference
+ *
+ * When using factories with numeric parameters (like `lessThan`, `maxLength`,
+ * `between`), use numeric literals instead of expressions. TypeScript widens
+ * expressions to `number`, losing the literal type in the brand name:
+ *
+ * ```ts
+ * lessThan(100)(Number); // Brand<"LessThan100"> ✓
+ * lessThan(100 - 1)(Number); // Brand<"LessThan" + number> ✗
+ * ```
+ *
+ * @group Utilities
  */
 export type BrandFactory<
   Name extends TypeName,
@@ -1173,7 +1276,7 @@ export type BrandFactory<
  * type TrimmedNonEmptyString = typeof TrimmedNonEmptyString.Type;
  * ```
  *
- * @category String
+ * @group String
  */
 export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
   parent,
@@ -1186,9 +1289,10 @@ export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
 
 export interface TrimmedError extends TypeError<"Trimmed"> {}
 
-export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
-  (error) => `The value ${error.value} must be trimmed.`,
-);
+export const formatTrimmedError =
+  /*#__PURE__*/ createTypeErrorFormatter<TrimmedError>(
+    (error) => `The value ${error.value} must be trimmed.`,
+  );
 
 /**
  * Trimmed string
@@ -1196,9 +1300,9 @@ export const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
  * - Use `TrimmedString.is` to check if an unknown value is trimmed.
  * - Use `TrimmedString.from` to check if a string is trimmed.
  *
- * @category String
+ * @group String
  */
-export const TrimmedString = trimmed(String);
+export const TrimmedString = /*#__PURE__*/ trimmed(String);
 export type TrimmedString = typeof TrimmedString.Type;
 
 export const trim = (value: string): TrimmedString =>
@@ -1207,6 +1311,8 @@ export const trim = (value: string): TrimmedString =>
 /**
  * Minimum length.
  *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
  * ### Example
  *
  * ```ts
@@ -1214,8 +1320,8 @@ export const trim = (value: string): TrimmedString =>
  * const NonEmptyString = minLength(1)(String);
  * ```
  *
- * @category String
- * @category Array
+ * @group String
+ * @group Array
  */
 export const minLength: <Min extends number>(
   min: Min,
@@ -1231,13 +1337,16 @@ export interface MinLengthError<
   readonly min: Min;
 }
 
-export const formatMinLengthError = createTypeErrorFormatter<MinLengthError>(
-  (error) =>
-    `The value ${error.value} does not meet the minimum length of ${error.min}.`,
-);
+export const formatMinLengthError =
+  /*#__PURE__*/ createTypeErrorFormatter<MinLengthError>(
+    (error) =>
+      `The value ${error.value} does not meet the minimum length of ${error.min}.`,
+  );
 
 /**
  * Maximum length.
+ *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
  *
  * ### Example
  *
@@ -1246,8 +1355,8 @@ export const formatMinLengthError = createTypeErrorFormatter<MinLengthError>(
  * const String100 = maxLength(100)(String);
  * ```
  *
- * @category String
- * @category Array
+ * @group String
+ * @group Array
  */
 export const maxLength: <Max extends number>(
   max: Max,
@@ -1263,13 +1372,16 @@ export interface MaxLengthError<
   readonly max: Max;
 }
 
-export const formatMaxLengthError = createTypeErrorFormatter<MaxLengthError>(
-  (error) =>
-    `The value ${error.value} exceeds the maximum length of ${error.max}.`,
-);
+export const formatMaxLengthError =
+  /*#__PURE__*/ createTypeErrorFormatter<MaxLengthError>(
+    (error) =>
+      `The value ${error.value} exceeds the maximum length of ${error.max}.`,
+  );
 
 /**
  * Exact length.
+ *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
  *
  * ### Example
  *
@@ -1278,8 +1390,8 @@ export const formatMaxLengthError = createTypeErrorFormatter<MaxLengthError>(
  * const Length1String = length(1)(String);
  * ```
  *
- * @category String
- * @category Array
+ * @group String
+ * @group Array
  */
 export const length: <Exact extends number>(
   exact: Exact,
@@ -1297,49 +1409,52 @@ export interface LengthError<
   readonly exact: Exact;
 }
 
-export const formatLengthError = createTypeErrorFormatter<LengthError>(
-  (error) =>
-    `The value ${error.value} does not have the required length of ${error.exact}.`,
-);
+export const formatLengthError =
+  /*#__PURE__*/ createTypeErrorFormatter<LengthError>(
+    (error) =>
+      `The value ${error.value} does not have the required length of ${error.exact}.`,
+  );
 
-/** @category String */
-export const NonEmptyString = minLength(1)(String);
+/** @group String */
+export const NonEmptyString = /*#__PURE__*/ minLength(1)(String);
 export type NonEmptyString = typeof NonEmptyString.Type;
 
-/** @category String */
-export const String100 = maxLength(100)(String);
+/** @group String */
+export const String100 = /*#__PURE__*/ maxLength(100)(String);
 export type String100 = typeof String100.Type;
 
-/** @category String */
-export const String1000 = maxLength(1000)(String);
+/** @group String */
+export const String1000 = /*#__PURE__*/ maxLength(1000)(String);
 export type String1000 = typeof String1000.Type;
 
-/** @category String */
-export const NonEmptyString100 = minLength(1)(String100);
+/** @group String */
+export const NonEmptyString100 = /*#__PURE__*/ minLength(1)(String100);
 export type NonEmptyString100 = typeof NonEmptyString100.Type;
 
-/** @category String */
-export const NonEmptyString1000 = minLength(1)(String1000);
+/** @group String */
+export const NonEmptyString1000 = /*#__PURE__*/ minLength(1)(String1000);
 export type NonEmptyString1000 = typeof NonEmptyString1000.Type;
 
-/** @category String */
-export const NonEmptyTrimmedString = minLength(1)(TrimmedString);
+/** @group String */
+export const NonEmptyTrimmedString = /*#__PURE__*/ minLength(1)(TrimmedString);
 export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Type;
 
-/** @category String */
-export const TrimmedString100 = maxLength(100)(TrimmedString);
+/** @group String */
+export const TrimmedString100 = /*#__PURE__*/ maxLength(100)(TrimmedString);
 export type TrimmedString100 = typeof TrimmedString100.Type;
 
-/** @category String */
-export const TrimmedString1000 = maxLength(1000)(TrimmedString);
+/** @group String */
+export const TrimmedString1000 = /*#__PURE__*/ maxLength(1000)(TrimmedString);
 export type TrimmedString1000 = typeof TrimmedString1000.Type;
 
-/** @category String */
-export const NonEmptyTrimmedString100 = minLength(1)(TrimmedString100);
+/** @group String */
+export const NonEmptyTrimmedString100 =
+  /*#__PURE__*/ minLength(1)(TrimmedString100);
 export type NonEmptyTrimmedString100 = typeof NonEmptyTrimmedString100.Type;
 
-/** @category String */
-export const NonEmptyTrimmedString1000 = minLength(1)(TrimmedString1000);
+/** @group String */
+export const NonEmptyTrimmedString1000 =
+  /*#__PURE__*/ minLength(1)(TrimmedString1000);
 export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Type;
 
 /**
@@ -1349,20 +1464,24 @@ export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Type;
  * safely on the user's device using cryptographically secure random number
  * generation, ensuring it remains private and unique.
  *
- * @category String
+ * @group String
  */
-export const Mnemonic = brand("Mnemonic", NonEmptyTrimmedString, (value) =>
-  bip39.validateMnemonic(value, wordlist)
-    ? ok(value)
-    : err<MnemonicError>({ type: "Mnemonic", value }),
+export const Mnemonic = /*#__PURE__*/ brand(
+  "Mnemonic",
+  NonEmptyTrimmedString,
+  (value) =>
+    bip39.validateMnemonic(value, wordlist)
+      ? ok(value)
+      : err<MnemonicError>({ type: "Mnemonic", value }),
 );
 export type Mnemonic = typeof Mnemonic.Type;
 
 export interface MnemonicError extends TypeError<"Mnemonic"> {}
 
-export const formatMnemonicError = createTypeErrorFormatter<MnemonicError>(
-  (error) => `Invalid BIP39 mnemonic: ${error.value}.`,
-);
+export const formatMnemonicError =
+  /*#__PURE__*/ createTypeErrorFormatter<MnemonicError>(
+    (error) => `Invalid BIP39 mnemonic: ${error.value}.`,
+  );
 
 /**
  * String matching a regular expression.
@@ -1373,7 +1492,7 @@ export const formatMnemonicError = createTypeErrorFormatter<MnemonicError>(
  * const Alphanumeric = regex("Alphanumeric", /^[a-z0-9]+$/i)(String);
  * ```
  *
- * @category String
+ * @group String
  */
 export const regex: <Name extends TypeName>(
   name: Name,
@@ -1399,10 +1518,11 @@ export interface RegexError<
   readonly pattern: RegExp;
 }
 
-export const formatRegexError = createTypeErrorFormatter<RegexError>(
-  (error) =>
-    `The value ${error.value} does not match the pattern for ${error.name}: ${error.pattern}.`,
-);
+export const formatRegexError =
+  /*#__PURE__*/ createTypeErrorFormatter<RegexError>(
+    (error) =>
+      `The value ${error.value} does not match the pattern for ${error.name}: ${error.pattern}.`,
+  );
 
 /**
  * URL-safe string.
@@ -1429,9 +1549,12 @@ export const formatRegexError = createTypeErrorFormatter<RegexError>(
  * }
  * ```
  *
- * @category String
+ * @group String
  */
-export const UrlSafeString = regex("UrlSafeString", /^[A-Za-z0-9_-]+$/)(String);
+export const UrlSafeString = /*#__PURE__*/ regex(
+  "UrlSafeString",
+  /^[A-Za-z0-9_-]+$/,
+)(String);
 export type UrlSafeString = typeof UrlSafeString.Type;
 export type UrlSafeStringError = typeof UrlSafeString.Error;
 
@@ -1441,9 +1564,9 @@ export type UrlSafeStringError = typeof UrlSafeString.Error;
  * Encode with {@link uint8ArrayToBase64Url}, decode with
  * {@link base64UrlToUint8Array}.
  *
- * @category String
+ * @group String
  */
-export const Base64Url = brand(
+export const Base64Url = /*#__PURE__*/ brand(
   "Base64Url",
   String,
   (value: string): Result<string, Base64UrlError> => {
@@ -1466,9 +1589,10 @@ export const Base64Url = brand(
 export type Base64Url = typeof Base64Url.Type;
 export interface Base64UrlError extends TypeError<"Base64Url"> {}
 
-export const formatBase64UrlError = createTypeErrorFormatter<Base64UrlError>(
-  (error) => `The value ${error.value} is not a valid Base64Url string.`,
-);
+export const formatBase64UrlError =
+  /*#__PURE__*/ createTypeErrorFormatter<Base64UrlError>(
+    (error) => `The value ${error.value} is not a valid Base64Url string.`,
+  );
 
 const base64UrlOptions = { alphabet: "base64url", omitPadding: true };
 
@@ -1520,33 +1644,35 @@ export const base64UrlToUint8Array: (str: Base64Url) => Uint8Array =
         };
 
 /**
- * Simple alphanumeric string for naming in file systems, URLs, and identifiers.
+ * Alphanumeric string for naming in file systems, URLs, and identifiers.
  *
  * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
- * `_`). See `UrlSafeString` for details.
+ * `_`).
  *
  * The string must be between 1 and 64 characters.
  *
  * ### Example
  *
  * ```ts
- * const result = SimpleName.from("data-report-123");
+ * const result = Name.from("data-report-123");
  * if (result.ok) {
- *   console.log("Valid SimpleName string:", result.value);
+ *   console.log("Valid Name string:", result.value);
  * } else {
- *   console.error("Invalid SimpleName string:", result.error);
+ *   console.error("Invalid Name string:", result.error);
  * }
  * ```
  *
- * @category String
+ * @group String
  */
-export const SimpleName = brand("SimpleName", UrlSafeString, (value) =>
+export const Name = /*#__PURE__*/ brand("Name", UrlSafeString, (value) =>
   value.length >= 1 && value.length <= 64
     ? ok(value)
-    : err<SimpleNameError>({ type: "SimpleName", value }),
+    : err<NameError>({ type: "Name", value }),
 );
-export type SimpleName = typeof SimpleName.Type;
-export interface SimpleNameError extends TypeError<"SimpleName"> {}
+export type Name = typeof Name.Type;
+export interface NameError extends TypeError<"Name"> {}
+
+export const testName = /*#__PURE__*/ Name.orThrow("Name");
 
 /**
  * Trimmed string between 8 and 64 characters, branded as `SimplePassword`.
@@ -1570,11 +1696,11 @@ export interface SimpleNameError extends TypeError<"SimpleName"> {}
  * //   |> brand("SimplePassword", %)
  * ```
  *
- * @category String
+ * @group String
  */
-export const SimplePassword = brand(
+export const SimplePassword = /*#__PURE__*/ brand(
   "SimplePassword",
-  minLength(8)(maxLength(64)(TrimmedString)),
+  /*#__PURE__*/ minLength(8)(/*#__PURE__*/ maxLength(64)(TrimmedString)),
 );
 export type SimplePassword = typeof SimplePassword.Type;
 
@@ -1605,16 +1731,16 @@ export const formatSimplePasswordError = (
  * copied (logs, URLs, exports); only use it when you explicitly want insertion
  * locality for very large write‑heavy tables and accept timestamp exposure.
  *
- * ### Future
+ * ## Future
  *
  * A possible hybrid masked‑time approach (`timestamp ^ H(cluster_id, timestamp
  *
  * > > N)`) could provide locality without exposing raw creation time. See
  * > > https://brooker.co.za/blog/2025/10/22/uuidv7.html
  *
- * @category String
+ * @group String
  */
-export const Id = brand("Id", String, (value) =>
+export const Id = /*#__PURE__*/ brand("Id", String, (value) =>
   value.length === 22 && Base64Url.fromParent(value).ok
     ? ok(value)
     : err<IdError>({ type: "Id", value }),
@@ -1623,7 +1749,7 @@ export type Id = typeof Id.Type;
 
 export interface IdError extends TypeError<"Id"> {}
 
-export const formatIdError = createTypeErrorFormatter<IdError>(
+export const formatIdError = /*#__PURE__*/ createTypeErrorFormatter<IdError>(
   (error) => `The value ${error.value} is not a valid Id.`,
 );
 
@@ -1678,7 +1804,7 @@ export const createId = <B extends string = never>(
  * external string from the generated {@link Id}. If you need to preserve the
  * original external ID, store it in a separate column.
  *
- * @category String
+ * @group String
  */
 export const createIdFromString = <B extends string = never>(
   value: string,
@@ -1723,7 +1849,9 @@ export const createIdAsUuidv7 = <B extends string = never>(
   id[6] = (id[6] & 0x0f) | 0x70;
   id[8] = (id[8] & 0x3f) | 0x80;
 
-  return id as unknown as [B] extends [never] ? Id : Id & Brand<B>;
+  return uint8ArrayToBase64Url(id) as unknown as [B] extends [never]
+    ? Id
+    : Id & Brand<B>;
 };
 
 /**
@@ -1739,7 +1867,7 @@ export const createIdAsUuidv7 = <B extends string = never>(
  * type TodoId = typeof TodoId.Type;
  * ```
  *
- * @category String
+ * @group String
  */
 export const id = <Table extends TypeName>(table: Table): TableId<Table> => {
   const fromUnknown = (value: unknown) => {
@@ -1779,12 +1907,16 @@ export interface TableIdError<
   readonly table: Table;
 }
 
-export const formatTableIdError = createTypeErrorFormatter<TableIdError>(
-  (error) => `Invalid Id for table ${error.table}: ${error.value}.`,
-);
+export const formatTableIdError =
+  /*#__PURE__*/ createTypeErrorFormatter<TableIdError>(
+    (error) => `Invalid Id for table ${error.table}: ${error.value}.`,
+  );
 
 /** Binary representation of an {@link Id}. */
-export const IdBytes = brand("IdBytes", length(16)(Uint8Array));
+export const IdBytes = /*#__PURE__*/ brand(
+  "IdBytes",
+  /*#__PURE__*/ length(16)(Uint8Array),
+);
 export type IdBytes = typeof IdBytes.Type;
 
 export const idBytesTypeValueLength = 16 as NonNegativeInt;
@@ -1809,7 +1941,7 @@ export const idBytesToId = (idBytes: IdBytes): Id =>
  * const errorResult = PositiveNumber.from(-5); // err
  * ```
  *
- * @category Number
+ * @group Number
  */
 export const positive: BrandFactory<"Positive", number, PositiveError> = (
   parent,
@@ -1820,9 +1952,10 @@ export const positive: BrandFactory<"Positive", number, PositiveError> = (
 
 export interface PositiveError extends TypeError<"Positive"> {}
 
-export const formatPositiveError = createTypeErrorFormatter<PositiveError>(
-  (error) => `The value ${error.value} must be positive (> 0).`,
-);
+export const formatPositiveError =
+  /*#__PURE__*/ createTypeErrorFormatter<PositiveError>(
+    (error) => `The value ${error.value} must be positive (> 0).`,
+  );
 
 /**
  * Negative number (< 0).
@@ -1833,7 +1966,7 @@ export const formatPositiveError = createTypeErrorFormatter<PositiveError>(
  * const NegativeNumber = negative(Number);
  * ```
  *
- * @category Number
+ * @group Number
  */
 export const negative: BrandFactory<"Negative", number, NegativeError> = (
   parent,
@@ -1844,9 +1977,10 @@ export const negative: BrandFactory<"Negative", number, NegativeError> = (
 
 export interface NegativeError extends TypeError<"Negative"> {}
 
-export const formatNegativeError = createTypeErrorFormatter<NegativeError>(
-  (error) => `The value ${error.value} must be negative (< 0).`,
-);
+export const formatNegativeError =
+  /*#__PURE__*/ createTypeErrorFormatter<NegativeError>(
+    (error) => `The value ${error.value} must be negative (< 0).`,
+  );
 
 /**
  * Non-positive number (≤ 0).
@@ -1857,7 +1991,7 @@ export const formatNegativeError = createTypeErrorFormatter<NegativeError>(
  * const NonPositiveNumber = nonPositive(Number);
  * ```
  *
- * @category Number
+ * @group Number
  */
 export const nonPositive: BrandFactory<
   "NonPositive",
@@ -1873,7 +2007,7 @@ export const nonPositive: BrandFactory<
 export interface NonPositiveError extends TypeError<"NonPositive"> {}
 
 export const formatNonPositiveError =
-  createTypeErrorFormatter<NonPositiveError>(
+  /*#__PURE__*/ createTypeErrorFormatter<NonPositiveError>(
     (error) => `The value ${error.value} must be non-positive (≤ 0).`,
   );
 
@@ -1886,7 +2020,7 @@ export const formatNonPositiveError =
  * const NonNegativeNumber = nonNegative(Number);
  * ```
  *
- * @category Number
+ * @group Number
  */
 export const nonNegative: BrandFactory<
   "NonNegative",
@@ -1902,40 +2036,40 @@ export const nonNegative: BrandFactory<
 export interface NonNegativeError extends TypeError<"NonNegative"> {}
 
 export const formatNonNegativeError =
-  createTypeErrorFormatter<NonNegativeError>(
+  /*#__PURE__*/ createTypeErrorFormatter<NonNegativeError>(
     (error) => `The value ${error.value} must be non-negative (≥ 0).`,
   );
 
 /**
  * Non-negative number (≥ 0).
  *
- * @category Number
+ * @group Number
  */
-export const NonNegativeNumber = nonNegative(Number);
+export const NonNegativeNumber = /*#__PURE__*/ nonNegative(Number);
 export type NonNegativeNumber = typeof NonNegativeNumber.Type;
 
 /**
  * Positive number (> 0).
  *
- * @category Number
+ * @group Number
  */
-export const PositiveNumber = positive(NonNegativeNumber);
+export const PositiveNumber = /*#__PURE__*/ positive(NonNegativeNumber);
 export type PositiveNumber = typeof PositiveNumber.Type;
 
 /**
  * Non-positive number (≤ 0).
  *
- * @category Number
+ * @group Number
  */
-export const NonPositiveNumber = nonPositive(Number);
+export const NonPositiveNumber = /*#__PURE__*/ nonPositive(Number);
 export type NonPositiveNumber = typeof NonPositiveNumber.Type;
 
 /**
  * Negative number (< 0).
  *
- * @category Number
+ * @group Number
  */
-export const NegativeNumber = negative(NonPositiveNumber);
+export const NegativeNumber = /*#__PURE__*/ negative(NonPositiveNumber);
 export type NegativeNumber = typeof NegativeNumber.Type;
 
 /**
@@ -1944,12 +2078,17 @@ export type NegativeNumber = typeof NegativeNumber.Type;
  * ### Example
  *
  * ```ts
- * const Int = int(Number);
+ * const Int = safeInt(Number);
  * ```
  *
- * @category Number
+ * Note: This helper was previously named `int`. A Next.js regression produced
+ * runtime `int is not defined`, so we keep the implementation under the
+ * `safeInt` alias.
+ *
+ * @group Number
  */
-export const int: BrandFactory<"Int", number, IntError> = (parent) =>
+
+const safeInt: BrandFactory<"Int", number, IntError> = (parent) =>
   brand("Int", parent, (value) =>
     globalThis.Number.isSafeInteger(value)
       ? ok(value)
@@ -1958,59 +2097,67 @@ export const int: BrandFactory<"Int", number, IntError> = (parent) =>
 
 export interface IntError extends TypeError<"Int"> {}
 
-export const formatIntError = createTypeErrorFormatter<IntError>(
+export const formatIntError = /*#__PURE__*/ createTypeErrorFormatter<IntError>(
   (error) => `The value ${error.value} must be an integer.`,
 );
 
 /**
  * Integer within the safe range of JavaScript numbers.
  *
- * @category Number
+ * @group Number
  */
-export const Int = int(Number);
+export const Int = /*#__PURE__*/ safeInt(Number);
 export type Int = typeof Int.Type;
 
 /**
  * Non-negative integer (≥ 0).
  *
- * @category Number
+ * @group Number
  */
-export const NonNegativeInt = nonNegative(Int);
+export const NonNegativeInt = /*#__PURE__*/ nonNegative(Int);
 export type NonNegativeInt = typeof NonNegativeInt.Type;
+
+/** Minimum {@link NonNegativeInt} value (0). */
+export const zeroNonNegativeInt = /*#__PURE__*/ NonNegativeInt.orThrow(0);
 
 /**
  * Positive integer (> 0).
  *
- * @category Number
+ * @group Number
  */
-export const PositiveInt = positive(NonNegativeInt);
+export const PositiveInt = /*#__PURE__*/ positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
 
-/** Maximum safe positive integer value for practically infinite operations. */
-export const maxPositiveInt = PositiveInt.orThrow(
+/** {@link PositiveInt} value 1. */
+export const onePositiveInt = /*#__PURE__*/ PositiveInt.orThrow(1);
+
+/** Maximum {@link PositiveInt} value (MAX_SAFE_INTEGER). */
+export const maxPositiveInt = /*#__PURE__*/ PositiveInt.orThrow(
   globalThis.Number.MAX_SAFE_INTEGER,
 );
 
 /**
  * Non-positive integer (≤ 0).
  *
- * @category Number
+ * @group Number
  */
-export const NonPositiveInt = nonPositive(Int);
+export const NonPositiveInt = /*#__PURE__*/ nonPositive(Int);
 export type NonPositiveInt = typeof NonPositiveInt.Type;
 
 /**
  * Negative integer (< 0).
  *
- * @category Number
+ * @group Number
  */
-export const NegativeInt = negative(NonPositiveInt);
+export const NegativeInt = /*#__PURE__*/ negative(NonPositiveInt);
 export type NegativeInt = typeof NegativeInt.Type;
 
 /**
  * Number greater than a specified value.
  *
- * @category Number
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
+ * @group Number
  */
 export const greaterThan: <Min extends number>(
   min: Min,
@@ -2027,14 +2174,16 @@ export interface GreaterThanError<
 }
 
 export const formatGreaterThanError =
-  createTypeErrorFormatter<GreaterThanError>(
+  /*#__PURE__*/ createTypeErrorFormatter<GreaterThanError>(
     (error) => `The value ${error.value} is not > ${error.min}.`,
   );
 
 /**
  * Number less than a specified value.
  *
- * @category Number
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
+ * @group Number
  */
 export const lessThan: <Max extends number>(
   max: Max,
@@ -2050,14 +2199,17 @@ export interface LessThanError<
   readonly max: Max;
 }
 
-export const formatLessThanError = createTypeErrorFormatter<LessThanError>(
-  (error) => `The value ${error.value} is not < ${error.max}.`,
-);
+export const formatLessThanError =
+  /*#__PURE__*/ createTypeErrorFormatter<LessThanError>(
+    (error) => `The value ${error.value} is not < ${error.max}.`,
+  );
 
 /**
  * Number ≥ a specified value.
  *
- * @category Number
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
+ * @group Number
  */
 export const greaterThanOrEqualTo: <Min extends number>(
   min: Min,
@@ -2079,14 +2231,16 @@ export interface GreaterThanOrEqualToError<
 }
 
 export const formatGreaterThanOrEqualToError =
-  createTypeErrorFormatter<GreaterThanOrEqualToError>(
+  /*#__PURE__*/ createTypeErrorFormatter<GreaterThanOrEqualToError>(
     (error) => `The value ${error.value} is not >= ${error.min}.`,
   );
 
 /**
  * Number ≤ a specified value.
  *
- * @category Number
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
+ * @group Number
  */
 export const lessThanOrEqualTo: <Max extends number>(
   max: Max,
@@ -2106,14 +2260,14 @@ export interface LessThanOrEqualToError<
 }
 
 export const formatLessThanOrEqualToError =
-  createTypeErrorFormatter<LessThanOrEqualToError>(
+  /*#__PURE__*/ createTypeErrorFormatter<LessThanOrEqualToError>(
     (error) => `The value ${error.value} is not <= ${error.max}.`,
   );
 
 /**
  * Number that is not NaN.
  *
- * @category Number
+ * @group Number
  */
 export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
   brand("NonNaN", parent, (value) =>
@@ -2124,18 +2278,19 @@ export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
 
 export interface NonNaNError extends TypeError<"NonNaN"> {}
 
-export const formatNonNaNError = createTypeErrorFormatter<NonNaNError>(
-  () => `The value must not be NaN.`,
-);
+export const formatNonNaNError =
+  /*#__PURE__*/ createTypeErrorFormatter<NonNaNError>(
+    () => `The value must not be NaN.`,
+  );
 
-/** @category Number */
-export const NonNaNNumber = nonNaN(Number);
+/** @group Number */
+export const NonNaNNumber = /*#__PURE__*/ nonNaN(Number);
 export type NonNaNNumber = typeof NonNaNNumber.Type;
 
 /**
  * Finite number.
  *
- * @category Number
+ * @group Number
  */
 export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
   brand("Finite", parent, (value) =>
@@ -2146,9 +2301,10 @@ export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
 
 export interface FiniteError extends TypeError<"Finite"> {}
 
-export const formatFiniteError = createTypeErrorFormatter<FiniteError>(
-  (error) => `The value ${error.value} must be finite.`,
-);
+export const formatFiniteError =
+  /*#__PURE__*/ createTypeErrorFormatter<FiniteError>(
+    (error) => `The value ${error.value} must be finite.`,
+  );
 
 /**
  * Finite number.
@@ -2161,15 +2317,17 @@ export const formatFiniteError = createTypeErrorFormatter<FiniteError>(
  * finite (e.g., `Infinity`, `-Infinity`, or `NaN`). Using `FiniteNumber` helps
  * prevent these unexpected behaviors when working with JSON serialization.
  *
- * @category Number
+ * @group Number
  */
-export const FiniteNumber = finite(Number);
+export const FiniteNumber = /*#__PURE__*/ finite(Number);
 export type FiniteNumber = typeof FiniteNumber.Type;
 
 /**
  * Number that is a multiple of a divisor.
  *
- * @category Number
+ * Use numeric literal, not expression. See {@link BrandFactory}.
+ *
+ * @group Number
  */
 export const multipleOf: <Divisor extends number>(
   divisor: Divisor,
@@ -2187,12 +2345,16 @@ export interface MultipleOfError<
   readonly divisor: Divisor;
 }
 
-export const formatMultipleOfError = createTypeErrorFormatter<MultipleOfError>(
-  (error) => `The value ${error.value} is not a multiple of ${error.divisor}.`,
-);
+export const formatMultipleOfError =
+  /*#__PURE__*/ createTypeErrorFormatter<MultipleOfError>(
+    (error) =>
+      `The value ${error.value} is not a multiple of ${error.divisor}.`,
+  );
 
 /**
  * Number within a range, inclusive.
+ *
+ * Use numeric literal, not expression. See {@link BrandFactory}.
  *
  * ### Example
  *
@@ -2202,7 +2364,7 @@ export const formatMultipleOfError = createTypeErrorFormatter<MultipleOfError>(
  * const errorResult = Between1And10.from(11); // err
  * ```
  *
- * @category Number
+ * @group Number
  */
 export const between: <Min extends number, Max extends number>(
   min: Min,
@@ -2223,10 +2385,11 @@ export interface BetweenError<
   readonly max: Max;
 }
 
-export const formatBetweenError = createTypeErrorFormatter<BetweenError>(
-  (error) =>
-    `The value ${error.value} is not between ${error.min} and ${error.max}, inclusive.`,
-);
+export const formatBetweenError =
+  /*#__PURE__*/ createTypeErrorFormatter<BetweenError>(
+    (error) =>
+      `The value ${error.value} is not between ${error.min} and ${error.max}, inclusive.`,
+  );
 
 /**
  * Literal {@link Type}.
@@ -2243,7 +2406,7 @@ export const formatBetweenError = createTypeErrorFormatter<BetweenError>(
  *
  * TODO: Add JsonValue
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const literal = <T extends Literal>(expected: T): LiteralType<T> => {
   const fromUnknown = (value: unknown): Result<T, LiteralError<T>> =>
@@ -2275,17 +2438,18 @@ export interface LiteralError<
   readonly expected: T;
 }
 
-export const formatLiteralError = createTypeErrorFormatter<LiteralError>(
-  (error) =>
-    `The value ${error.value} is not strictly equal to the expected literal: ${globalThis.String(
-      error.expected,
-    )}.`,
-);
+export const formatLiteralError =
+  /*#__PURE__*/ createTypeErrorFormatter<LiteralError>(
+    (error) =>
+      `The value ${error.value} is not strictly equal to the expected literal: ${globalThis.String(
+        error.expected,
+      )}.`,
+  );
 
 /**
  * Array of a specific {@link Type}.
  *
- * Usage:
+ * ### Example
  *
  * ```ts
  * const NumberArray = array(Number);
@@ -2294,8 +2458,8 @@ export const formatLiteralError = createTypeErrorFormatter<LiteralError>(
  * const result2 = NumberArray.from(["a", "b"]); // err(...)
  * ```
  *
- * @category Base Factories
- * @category Array
+ * @group Base factories
+ * @group Array
  */
 export const array = <ElementType extends AnyType>(
   element: ElementType,
@@ -2413,7 +2577,7 @@ export const formatArrayError = <Error extends TypeError>(
  * const result2 = NumberSet.from(new Set(["a", "b"])); // err(...)
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const set = <ElementType extends AnyType>(
   element: ElementType,
@@ -2543,8 +2707,8 @@ export const formatSetError = <Error extends TypeError>(
  * StringToNumberRecord.from({ a: "x", b: 2 });
  * ```
  *
- * @category Base Factories
- * @category Object
+ * @group Base factories
+ * @group Object
  */
 export const record = <
   KeyName extends TypeName,
@@ -2591,7 +2755,7 @@ export const record = <
           type: "Record",
           value,
           reason: { kind: "Key", key: rawKey, error: keyResult.error },
-        } as IntentionalNever);
+        } as never);
       }
 
       const valueResult = valueType.fromUnknown(rawValue);
@@ -2602,12 +2766,12 @@ export const record = <
           reason: {
             kind: "Value",
             key: rawKey,
-            error: valueResult.error as IntentionalNever,
+            error: valueResult.error as never,
           },
         });
       }
 
-      result[keyResult.value] = valueResult.value as IntentionalNever;
+      result[keyResult.value] = valueResult.value as never;
     }
 
     return ok(result);
@@ -2664,7 +2828,7 @@ export const record = <
     }),
     key: keyType,
     value: valueType,
-  } as IntentionalNever;
+  } as never;
 };
 
 /**
@@ -2748,22 +2912,22 @@ export const formatRecordError = <Error extends TypeError>(
  *
  * https://www.typescriptlang.org/docs/handbook/2/objects.html#index-signatures
  *
- * ### Examples
+ * ### Example
  *
- * #### Basic Object Validation
+ * ## Basic Object Validation
  *
  * ```ts
  * const User = object({
  *   name: NonEmptyTrimmedString,
  *   age: PositiveNumber,
  * });
- * type User = typeof User.Type;
+ * interface User extends InferType<typeof User> {}
  *
  * const result = User.from({ name: "John", age: 30 }); // ok({ name: "John", age: 30 })
  * const error = User.from({ name: "John", age: -5 }); // err
  * ```
  *
- * #### Optional Properties
+ * ## Optional Properties
  *
  * In this example the `age` property is marked as optional using
  * {@link optional}.
@@ -2773,10 +2937,10 @@ export const formatRecordError = <Error extends TypeError>(
  *   name: NonEmptyString, // Required
  *   age: optional(PositiveNumber), // Optional
  * });
- * type User = typeof User.Type;
+ * interface User extends InferType<typeof User> {}
  * ```
  *
- * #### Allowing Additional Properties
+ * ## Allowing Additional Properties
  *
  * ```ts
  * const UserWithAnyExtraProperties = object(
@@ -2795,7 +2959,7 @@ export const formatRecordError = <Error extends TypeError>(
  * });
  * ```
  *
- * #### Combining Fixed and Flexible Properties
+ * ## Combining Fixed and Flexible Properties
  *
  * ```ts
  * const NumberDictionary = object(
@@ -2832,13 +2996,14 @@ export const formatRecordError = <Error extends TypeError>(
  * );
  * ```
  *
- * @category Base Factories
- * @category Object
+ * @group Base factories
+ * @group Object
  */
 export function object<Props extends Record<string, AnyType>>(
   props: Props,
 ): ObjectType<Props>;
 
+/** With additional record properties. */
 export function object<
   Props extends Record<string, AnyType>,
   KeyName extends TypeName,
@@ -2901,9 +3066,9 @@ export function object(
 
       const propResult = props[key].fromUnknown(value[key]);
       if (!propResult.ok) {
-        errors[key] = propResult.error as IntentionalNever;
+        errors[key] = propResult.error as never;
       } else {
-        result[key] = propResult.value as IntentionalNever;
+        result[key] = propResult.value as never;
       }
     }
 
@@ -2921,7 +3086,7 @@ export function object(
             reason: {
               kind: "IndexKey",
               key,
-              error: keyResult.error as IntentionalNever,
+              error: keyResult.error as never,
             },
           });
         }
@@ -2934,12 +3099,12 @@ export function object(
             reason: {
               kind: "IndexValue",
               key,
-              error: valueResult.error as IntentionalNever,
+              error: valueResult.error as never,
             },
           });
         }
 
-        result[keyResult.value] = valueResult.value as IntentionalNever;
+        result[keyResult.value] = valueResult.value as never;
       }
     } else if (extraKeys.length > 0) {
       return err({
@@ -3092,7 +3257,7 @@ export interface ObjectError<
  * Merge Error and ParentError into one ObjectError so tooltips and error
  * messages are easier to read.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type MergeObjectTypeErrors<T extends ObjectType<any>> =
   T extends ObjectType<infer Props>
@@ -3203,6 +3368,187 @@ export const formatObjectWithRecordError = <Error extends TypeError>(
   });
 
 /**
+ * Base interface for objects with a discriminant `type` property.
+ *
+ * This enables
+ * {@link https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions | discriminated unions}
+ * (also known as tagged unions) — a pattern where TypeScript uses a literal
+ * `type` field to narrow union types automatically.
+ *
+ * ## Why Discriminated Unions?
+ *
+ * Discriminated unions model states that are **mutually exclusive**. Instead of
+ * optional fields and boolean flags that can combine into invalid
+ * configurations, each variant is a distinct type. This makes illegal states
+ * unrepresentable — invalid combinations cannot exist, so bugs cannot create
+ * them.
+ *
+ * Benefits:
+ *
+ * - **Self-documenting** — Union cases immediately show all possible states
+ * - **Compile-time safety** — TypeScript enforces handling all cases
+ * - **Refactoring-friendly** — Adding a new state breaks code that doesn't handle
+ *   it
+ *
+ * ### Example
+ *
+ * ```ts
+ * // Bad: optional fields allow invalid states (no contact info at all)
+ * interface Contact {
+ *   readonly email?: Email;
+ *   readonly phone?: Phone;
+ * }
+ *
+ * // Good: discriminated union makes "at least one" explicit
+ * interface EmailOnly extends Typed<"EmailOnly"> {
+ *   readonly email: Email;
+ * }
+ * interface PhoneOnly extends Typed<"PhoneOnly"> {
+ *   readonly phone: Phone;
+ * }
+ * interface EmailAndPhone extends Typed<"EmailAndPhone"> {
+ *   readonly email: Email;
+ *   readonly phone: Phone;
+ * }
+ *
+ * type ContactInfo = EmailOnly | PhoneOnly | EmailAndPhone;
+ * ```
+ *
+ * ```ts
+ * interface Pending extends Typed<"Pending"> {
+ *   readonly createdAt: DateIso;
+ * }
+ * interface Shipped extends Typed<"Shipped"> {
+ *   readonly trackingNumber: TrackingNumber;
+ * }
+ * interface Delivered extends Typed<"Delivered"> {
+ *   readonly deliveredAt: DateIso;
+ * }
+ * interface Cancelled extends Typed<"Cancelled"> {
+ *   readonly reason: CancellationReason;
+ * }
+ *
+ * type OrderState = Pending | Shipped | Delivered | Cancelled;
+ *
+ * // TypeScript enforces exhaustiveness via return type
+ * const getStatusMessage = (state: OrderState): string => {
+ *   switch (state.type) {
+ *     case "Pending":
+ *       return "Order placed";
+ *     case "Shipped":
+ *       return `Shipped: ${state.trackingNumber}`;
+ *     case "Delivered":
+ *       return `Delivered on ${state.deliveredAt.toLocaleDateString()}`;
+ *     case "Cancelled":
+ *       return `Cancelled: ${state.reason}`;
+ *   }
+ * };
+ *
+ * // For void functions, use exhaustiveCheck to ensure all cases are handled
+ * const logState = (state: OrderState): void => {
+ *   switch (state.type) {
+ *     case "Pending":
+ *       console.log("Order placed");
+ *       break;
+ *     case "Shipped":
+ *       console.log(`Shipped: ${state.trackingNumber}`);
+ *       break;
+ *     case "Delivered":
+ *       console.log(
+ *         `Delivered on ${state.deliveredAt.toLocaleDateString()}`,
+ *       );
+ *       break;
+ *     case "Cancelled":
+ *       console.log(`Cancelled: ${state.reason}`);
+ *       break;
+ *     default:
+ *       exhaustiveCheck(state);
+ *   }
+ * };
+ * ```
+ *
+ * ## Why `type` (and not e.g. `_tag`)?
+ *
+ * Underscore-prefixing is meant to avoid clashing with domain properties, but
+ * proper discriminated union design means the discriminant IS the domain
+ * concept — there's no clash to avoid. The `type` prop name also aligns with
+ * {@link Type}'s name. If an entity has a meaningful "type" (like product
+ * category), model it as the discriminant itself:
+ *
+ * ```ts
+ * interface Electronics extends Typed<"Electronics"> {
+ *   voltage: Voltage;
+ * }
+ * interface Clothing extends Typed<"Clothing"> {
+ *   size: Size;
+ * }
+ * type Product = Electronics | Clothing;
+ * ```
+ *
+ * @see {@link exhaustiveCheck} to ensure all cases are handled in void functions.
+ * @see {@link typed} for runtime-validated typed objects.
+ */
+export interface Typed<T extends TypeName> {
+  readonly type: T;
+}
+
+/**
+ * Creates a runtime-validated typed object with a `type` discriminant.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const Card = typed("Card", {
+ *   cardNumber: CardNumber,
+ *   expiry: DateIso,
+ * });
+ *
+ * const Cash = typed("Cash", {
+ *   currency: NonEmptyTrimmedString,
+ * });
+ *
+ * const Payment = union(Card, Cash);
+ * type Payment = typeof Payment.Type;
+ *
+ * const result = Payment.fromUnknown(data);
+ * if (result.ok) {
+ *   switch (result.value.type) {
+ *     case "Card":
+ *       console.log(result.value.cardNumber);
+ *       break;
+ *     case "Cash":
+ *       console.log(result.value.currency);
+ *       break;
+ *   }
+ * }
+ * ```
+ *
+ * @see {@link Typed} for type-only discrimination.
+ */
+export function typed<Tag extends TypeName>(tag: Tag): TypedType<Tag>;
+/** With additional properties. */
+export function typed<
+  Tag extends TypeName,
+  Props extends Record<string, AnyType>,
+>(tag: Tag, props: Props): TypedType<Tag, Props>;
+export function typed<
+  Tag extends TypeName,
+  Props extends Record<string, AnyType>,
+>(tag: Tag, props?: Props): ObjectType<{ type: LiteralType<Tag> } & Props> {
+  return object({ type: literal(tag), ...props } as {
+    type: LiteralType<Tag>;
+  } & Props);
+}
+
+/** Return type of {@link typed}. */
+export type TypedType<
+  Tag extends TypeName,
+  Props extends Record<string, AnyType> = Record<never, never>,
+> = ObjectType<{ type: LiteralType<Tag> } & Props>;
+
+// TODO: TypeError with "Error" suffix.
+
+/**
  * Union {@link Type}.
  *
  * `UnionType` represents a union of multiple member Types. Accepts both
@@ -3224,12 +3570,13 @@ export const formatObjectWithRecordError = <Error extends TypeError>(
  * const result3 = StringOrNumber.from(42); // ok(42)
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export function union<
   Members extends [AnyType, AnyType, ...ReadonlyArray<AnyType>],
 >(...members: Members): UnionType<Members>;
 
+/** With literal values. */
 export function union<
   Literals extends [Literal, Literal, ...ReadonlyArray<Literal>],
 >(
@@ -3320,6 +3667,110 @@ export const isUnionType = (
   t.name === "Union" && Array.isArray((t as { members?: unknown }).members);
 
 /**
+ * Creates a {@link Type} for {@link Result} values.
+ *
+ * Use for validating serialized Results from storage, APIs, or message passing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const SyncResponse = result(
+ *   object({ timestamp: NonNegativeInt }),
+ *   typed("SyncError", { message: String }),
+ * );
+ *
+ * // Validate response from worker or API
+ * const validated = SyncResponse.from(JSON.parse(message));
+ * if (!validated.ok) return validated; // validation error
+ * // validated.value is Result<{ timestamp }, SyncError>
+ * ```
+ *
+ * @group Composite factories
+ */
+export const result = <OkType extends AnyType, ErrType extends AnyType>(
+  okType: OkType,
+  errType: ErrType,
+): UnionType<
+  [
+    ObjectType<{ ok: LiteralType<true>; value: OkType }>,
+    ObjectType<{ ok: LiteralType<false>; error: ErrType }>,
+  ]
+> =>
+  union(
+    object({ ok: literal(true), value: okType }),
+    object({ ok: literal(false), error: errType }),
+  );
+
+/**
+ * A {@link result} type for `Result<unknown, unknown>`.
+ *
+ * Useful for serializing Results where the value and error types are unknown.
+ *
+ * @group Composite factories
+ */
+export const UnknownResult = /*#__PURE__*/ result(Unknown, Unknown);
+export type UnknownResult = typeof UnknownResult.Type;
+
+/**
+ * Creates a {@link Type} for {@link NextResult} with three outcomes.
+ *
+ * Validates results where the producer responds with:
+ *
+ * - `Ok<A>` — produced a value
+ * - `Err<Done<D>>` — completed normally with a done value
+ * - `Err<E>` — failed with an error
+ *
+ * ### Example
+ *
+ * ```ts
+ * const MyNextResult = nextResult(Item, MyError, Summary);
+ *
+ * const validated = MyNextResult.fromUnknown(data);
+ * if (!validated.ok) return validated;
+ *
+ * const result = validated.value;
+ * if (result.ok) {
+ *   console.log(result.value);
+ * } else if (result.error.type === "Done") {
+ *   console.log("Done:", result.error.done);
+ * } else {
+ *   console.error(result.error);
+ * }
+ * ```
+ *
+ * @group Composite factories
+ */
+export const nextResult = <
+  ValueType extends AnyType,
+  ErrorType extends AnyType,
+  DoneType extends AnyType,
+>(
+  valueType: ValueType,
+  errorType: ErrorType,
+  doneType: DoneType,
+): ReturnType<
+  typeof result<
+    ValueType,
+    UnionType<[ErrorType, TypedType<"Done", { done: DoneType }>]>
+  >
+> => result(valueType, union(errorType, typed("Done", { done: doneType })));
+
+/**
+ * A {@link nextResult} type for `NextResult<unknown, unknown, unknown>`.
+ *
+ * Useful for checking if a value is a {@link NextResult} via
+ * `UnknownNextResult.is(value)`.
+ *
+ * @group Composite factories
+ */
+export const UnknownNextResult = /*#__PURE__*/ nextResult(
+  Unknown,
+  Unknown,
+  Unknown,
+);
+export type UnknownNextResult = typeof UnknownNextResult.Type;
+
+/**
  * Recursive {@link Type}.
  *
  * Recursive types can't be inferred, so we must define them using an interface
@@ -3352,7 +3803,7 @@ export const isUnionType = (
  * );
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const recursive = <ParentType extends AnyType>(
   create: () => ParentType,
@@ -3412,7 +3863,7 @@ export interface RecursiveType<ParentType extends AnyType> extends Type<
  * NullOrString.from(42); // err(...)
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const nullOr = <T extends AnyType>(
   type: T,
@@ -3430,7 +3881,7 @@ export const nullOr = <T extends AnyType>(
  * UndefinedOrString.from(42); // err(...)
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const undefinedOr = <T extends AnyType>(
   type: T,
@@ -3452,7 +3903,7 @@ export const undefinedOr = <T extends AnyType>(
  * NullishOrString.from(42); // err(...)
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const nullishOr = <T extends AnyType>(
   type: T,
@@ -3473,7 +3924,7 @@ export const nullishOr = <T extends AnyType>(
  * const error = NameAndAge.from(["Alice", -10]); // err
  * ```
  *
- * @category Base Factories
+ * @group Base factories
  */
 export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
   ...elements: Elements
@@ -3503,7 +3954,7 @@ export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
           reason: {
             kind: "Element",
             index: i,
-            error: elementResult.error as IntentionalNever,
+            error: elementResult.error as never,
           },
         });
       }
@@ -3534,7 +3985,7 @@ export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
           reason: {
             kind: "Element",
             index: i,
-            error: elementResult.error as IntentionalNever,
+            error: elementResult.error as never,
           },
         });
       }
@@ -3550,7 +4001,7 @@ export const tuple = <Elements extends [AnyType, ...ReadonlyArray<AnyType>]>(
       fromParent,
     }),
     elements,
-  } as IntentionalNever;
+  } as never;
 };
 
 /**
@@ -3609,9 +4060,9 @@ export const formatTupleError = <Error extends TypeError>(
  *
  * https://www.sqlite.org/c3ref/int64.html
  *
- * @category Number
+ * @group Number
  */
-export const Int64 = brand("Int64", BigInt, (value) =>
+export const Int64 = /*#__PURE__*/ brand("Int64", BigInt, (value) =>
   value >= -9223372036854775808n && value <= 9223372036854775807n
     ? ok(value)
     : err<Int64Error>({ type: "Int64", value }),
@@ -3619,25 +4070,29 @@ export const Int64 = brand("Int64", BigInt, (value) =>
 export type Int64 = typeof Int64.Type;
 export interface Int64Error extends TypeError<"Int64"> {}
 
-export const formatInt64Error = createTypeErrorFormatter<Int64Error>(
-  (error) =>
-    `The value ${error.value} is not a valid 64-bit signed integer (Int64).`,
-);
+export const formatInt64Error =
+  /*#__PURE__*/ createTypeErrorFormatter<Int64Error>(
+    (error) =>
+      `The value ${error.value} is not a valid 64-bit signed integer (Int64).`,
+  );
 
 /**
  * Stringified {@link Int64}.
  *
- * @category String
+ * @group String
  */
-export const Int64String = brand("Int64", NonEmptyTrimmedString, (value) =>
-  trySync(
-    () => {
-      const maybeInt = globalThis.BigInt(value);
-      Int64.orThrow(maybeInt);
-      return value;
-    },
-    (): Int64StringError => ({ type: "Int64String", value }),
-  ),
+export const Int64String = /*#__PURE__*/ brand(
+  "Int64",
+  NonEmptyTrimmedString,
+  (value) =>
+    trySync(
+      () => {
+        const maybeInt = globalThis.BigInt(value);
+        Int64.orThrow(maybeInt);
+        return value;
+      },
+      (): Int64StringError => ({ type: "Int64String", value }),
+    ),
 );
 
 export type Int64String = typeof Int64String.Type;
@@ -3645,10 +4100,20 @@ export type Int64String = typeof Int64String.Type;
 export interface Int64StringError extends TypeError<"Int64String"> {}
 
 export const formatInt64StringError =
-  createTypeErrorFormatter<Int64StringError>(
+  /*#__PURE__*/ createTypeErrorFormatter<Int64StringError>(
     (error) => `The value ${error.value} is not a valid Int64 string.`,
   );
 
+/**
+ * Validated JSON-compatible value.
+ *
+ * This is the output side of JSON data in Evolu. It uses {@link FiniteNumber}
+ * instead of `number` because JSON numbers are expected to be finite once the
+ * value has been parsed or validated.
+ *
+ * Compare with {@link JsonValueInput}, which represents caller-provided input
+ * before validation.
+ */
 export type JsonValue =
   | string
   | FiniteNumber
@@ -3657,6 +4122,19 @@ export type JsonValue =
   | JsonArray
   | JsonObject;
 
+/**
+ * JSON-compatible input value before validation.
+ *
+ * This is broader than {@link JsonValue} because inputs arrive as ordinary
+ * JavaScript values, so numbers are typed as `number` before validation can
+ * narrow them to {@link FiniteNumber}.
+ *
+ * That means `JsonValueInput` can temporarily contain numbers that are lossy in
+ * JSON serialization. For example, `JSON.stringify(NaN)` and
+ * `JSON.stringify(Infinity)` produce `null`, and `JSON.stringify(-0)` produces
+ * `0`. Use {@link JsonValue} when the value must already satisfy JSON numeric
+ * constraints.
+ */
 export type JsonValueInput =
   | string
   | number
@@ -3690,9 +4168,9 @@ export type JsonArrayInput = ReadonlyArray<JsonValueInput>;
  * JSON-compatible value: string, {@link FiniteNumber}, boolean, null,
  * {@link JsonArray}, or {@link JsonObject}.
  *
- * @category Base Types
+ * @group Base Types
  */
-export const JsonValue = recursive(
+export const JsonValue = /*#__PURE__*/ recursive(
   (): UnionType<
     [
       typeof String,
@@ -3732,16 +4210,16 @@ export const JsonValue = recursive(
 /**
  * JSON-compatible array of {@link JsonValue} elements.
  *
- * @category Array
+ * @group Array
  */
-export const JsonArray = array(JsonValue);
+export const JsonArray = /*#__PURE__*/ array(JsonValue);
 
 /**
  * JSON-compatible object with string keys and {@link JsonValue} values.
  *
- * @category Object
+ * @group Object
  */
-export const JsonObject = record(String, JsonValue);
+export const JsonObject = /*#__PURE__*/ record(String, JsonValue);
 
 export const parseJson = (value: string): Result<JsonValue, JsonError> =>
   trySync(
@@ -3763,9 +4241,9 @@ export const parseJson = (value: string): Result<JsonValue, JsonError> =>
  * const error = Json.from("invalid json"); // err
  * ```
  *
- * @category String
+ * @group String
  */
-export const Json = brand("Json", String, (value) => {
+export const Json = /*#__PURE__*/ brand("Json", String, (value) => {
   const result = parseJson(value);
   if (!result.ok) return result;
   return ok(value);
@@ -3777,9 +4255,10 @@ export interface JsonError extends TypeError<"Json"> {
   readonly message: string;
 }
 
-export const formatJsonError = createTypeErrorFormatter<JsonError>(
-  (error) => `Invalid JSON: ${error.value}. Error: ${error.message}`,
-);
+export const formatJsonError =
+  /*#__PURE__*/ createTypeErrorFormatter<JsonError>(
+    (error) => `Invalid JSON: ${error.value}. Error: ${error.message}`,
+  );
 
 export const jsonValueToJson = (value: JsonValue): Json =>
   JSON.stringify(value) as Json;
@@ -3807,7 +4286,7 @@ export const jsonToJsonValue = (value: Json): JsonValue =>
  *   name: NonEmptyString100,
  *   age: FiniteNumber,
  * });
- * type Person = typeof Person.Type;
+ * interface Person extends InferType<typeof Person> {}
  *
  * const [PersonJson, personToPersonJson, personJsonToPerson] = json(
  *   Person,
@@ -3848,11 +4327,7 @@ export const json = <T extends AnyType, Name extends TypeName>(
     return ok(value);
   }) as BrandType<typeof String, Name, JsonError | InferErrors<T>, StringError>;
 
-  return [
-    BrandedJsonType,
-    jsonValueToJson as IntentionalNever,
-    jsonToJsonValue as IntentionalNever,
-  ];
+  return [BrandedJsonType, jsonValueToJson as never, jsonToJsonValue as never];
 };
 
 /**
@@ -3924,7 +4399,7 @@ export const isOptionalType = (x: unknown): x is OptionalType<any> =>
  * PartialUser.from({ age: -5 });
  * ```
  *
- * @category Object
+ * @group Object
  */
 export const partial = <Props extends Record<string, AnyType>>(
   props: Props,
@@ -3944,7 +4419,7 @@ export const partial = <Props extends Record<string, AnyType>>(
  * entirely, or set it to `null`, or set it to the non-null member of the
  * union.
  *
- * @category Object
+ * @group Object
  */
 export const nullableToOptional = <Props extends Record<string, AnyType>>(
   props: Props,
@@ -3990,12 +4465,12 @@ export type NullTypeInMembers<Members extends [AnyType, ...Array<AnyType>]> =
 /**
  * Create a new `object` {@link Type} by omitting some keys.
  *
- * @category Object
+ * @group Object
  */
-export function omit<T extends ObjectType<any>, Keys extends keyof T["props"]>(
+export const omit = <T extends ObjectType<any>, Keys extends keyof T["props"]>(
   objectType: T,
   ...keys: ReadonlyArray<Keys>
-): ObjectType<Omit<T["props"], Keys>> {
+): ObjectType<Omit<T["props"], Keys>> => {
   const newProps = {} as Omit<T["props"], Keys>;
 
   for (const key in objectType.props) {
@@ -4005,40 +4480,7 @@ export function omit<T extends ObjectType<any>, Keys extends keyof T["props"]>(
     }
   }
   return object(newProps);
-}
-
-export const maxMutationSize = 655360;
-
-/**
- * Evolu has to limit the maximum mutation size. Otherwise, sync couldn't use
- * the `maxProtocolMessageRangesSize`. The max size is 640KB in bytes, measured
- * via MessagePack. Evolu Protocol DbChange will be smaller thanks to various
- * optimizations.
- */
-export const validMutationSize = <T extends AnyType>(
-  type: T,
-): BrandType<T, "ValidMutationSize", ValidMutationSizeError, InferErrors<T>> =>
-  brand("ValidMutationSize", type, (value) =>
-    pack(value).byteLength <= maxMutationSize
-      ? ok(value)
-      : err<ValidMutationSizeError>({ type: "ValidMutationSize", value }),
-  );
-
-export interface ValidMutationSizeError extends TypeError<"ValidMutationSize"> {}
-
-export const formatValidMutationSizeError =
-  createTypeErrorFormatter<ValidMutationSizeError>(
-    (error) =>
-      `The mutation size exceeds the maximum limit of ${maxMutationSize} bytes. The provided mutation has a size of ${pack(error.value).byteLength} bytes.`,
-  );
-
-export type ValidMutationSize<Props extends Record<string, AnyType>> =
-  BrandType<
-    ObjectType<Props>,
-    "ValidMutationSize",
-    ValidMutationSizeError,
-    InferErrors<ObjectType<Props>>
-  >;
+};
 
 /**
  * Union of all `TypeError`s defined in the `Type.ts` file, including base type
@@ -4051,7 +4493,7 @@ export type ValidMutationSize<Props extends Record<string, AnyType>> =
  * Used by {@link createFormatTypeError} to generate human-readable error
  * messages.
  *
- * @category Utilities
+ * @group Utilities
  */
 export type TypeErrors<ExtraErrors extends TypeError = never> =
   | StringError
@@ -4092,7 +4534,6 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | Int64Error
   | Int64StringError
   | JsonError
-  | ValidMutationSizeError
   | ExtraErrors
   // Composite errors
   | ArrayError<TypeErrors<ExtraErrors>>
@@ -4185,7 +4626,7 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
  * };
  * ```
  *
- * @category Utilities
+ * @group Utilities
  */
 export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
   extraFormatter?: TypeErrorFormatter<ExtraErrors>,
@@ -4274,8 +4715,6 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatInt64StringError(error);
       case "Json":
         return formatJsonError(error);
-      case "ValidMutationSize":
-        return formatValidMutationSizeError(error);
       // Composite Types
       case "SimplePassword":
         return formatSimplePasswordError(formatTypeError)(error);
@@ -4308,25 +4747,25 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
  * Converts an Evolu {@link TypeError} to Standard Schema V1 issues format.
  *
  * This function recursively converts Evolu's typed errors into the Standard
- * Schema issue format with proper path tracking for nested structures.
+ * Schema issue format with proper path tracking for nested structures. The
+ * `message` field contains the JSON-serialized typed error, which users can
+ * deserialize and format using appropriate {@link TypeErrorFormatter}s.
  *
- * @category Utilities
+ * @group Utilities
  */
 export const typeErrorToStandardSchemaIssues = <
   ExtraErrors extends TypeError = never,
 >(
   error: TypeErrors<ExtraErrors>,
-  formatTypeError: TypeErrorFormatter<TypeErrors<ExtraErrors>>,
   path: ReadonlyArray<PropertyKey> = [],
 ): ReadonlyArray<StandardSchemaV1.Issue> => {
   if (error.type === "Array") {
     const arrayError = error as ArrayError;
     if (arrayError.reason.kind === "NotArray") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     return typeErrorToStandardSchemaIssues(
       arrayError.reason.error as TypeErrors<ExtraErrors>,
-      formatTypeError,
       [...path, arrayError.reason.index],
     );
   }
@@ -4334,11 +4773,10 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "Set") {
     const setError = error as SetError;
     if (setError.reason.kind === "NotSet") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     return typeErrorToStandardSchemaIssues(
       setError.reason.error as TypeErrors<ExtraErrors>,
-      formatTypeError,
       [...path, setError.reason.index],
     );
   }
@@ -4349,14 +4787,13 @@ export const typeErrorToStandardSchemaIssues = <
       objectError.reason.kind === "NotObject" ||
       objectError.reason.kind === "ExtraKeys"
     ) {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     const issues: Array<StandardSchemaV1.Issue> = [];
     for (const [key, propError] of Object.entries(objectError.reason.errors)) {
       issues.push(
         ...typeErrorToStandardSchemaIssues(
           propError as TypeErrors<ExtraErrors>,
-          formatTypeError,
           [...path, key],
         ),
       );
@@ -4367,7 +4804,7 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "ObjectWithRecord") {
     const objectWithRecordError = error as ObjectWithRecordError;
     if (objectWithRecordError.reason.kind === "NotObject") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     if (
       objectWithRecordError.reason.kind === "IndexKey" ||
@@ -4375,7 +4812,6 @@ export const typeErrorToStandardSchemaIssues = <
     ) {
       return typeErrorToStandardSchemaIssues(
         objectWithRecordError.reason.error as TypeErrors<ExtraErrors>,
-        formatTypeError,
         [...path, objectWithRecordError.reason.key as PropertyKey],
       );
     }
@@ -4386,7 +4822,6 @@ export const typeErrorToStandardSchemaIssues = <
       issues.push(
         ...typeErrorToStandardSchemaIssues(
           propError as TypeErrors<ExtraErrors>,
-          formatTypeError,
           [...path, key],
         ),
       );
@@ -4397,11 +4832,10 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "Record") {
     const recordError = error as RecordError;
     if (recordError.reason.kind === "NotRecord") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     return typeErrorToStandardSchemaIssues(
       recordError.reason.error as TypeErrors<ExtraErrors>,
-      formatTypeError,
       [...path, recordError.reason.key as PropertyKey],
     );
   }
@@ -4409,11 +4843,10 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "Tuple") {
     const tupleError = error as TupleError;
     if (tupleError.reason.kind === "InvalidLength") {
-      return [{ message: formatTypeError(error), path }];
+      return [{ message: JSON.stringify(error), path }];
     }
     return typeErrorToStandardSchemaIssues(
       tupleError.reason.error as TypeErrors<ExtraErrors>,
-      formatTypeError,
       [...path, tupleError.reason.index],
     );
   }
@@ -4421,11 +4854,7 @@ export const typeErrorToStandardSchemaIssues = <
   if (error.type === "Union") {
     const unionError = error as UnionError;
     return unionError.errors.flatMap((err) =>
-      typeErrorToStandardSchemaIssues(
-        err as TypeErrors<ExtraErrors>,
-        formatTypeError,
-        path,
-      ),
+      typeErrorToStandardSchemaIssues(err as TypeErrors<ExtraErrors>, path),
     );
   }
 
@@ -4434,14 +4863,13 @@ export const typeErrorToStandardSchemaIssues = <
     if ("parentError" in brandError) {
       return typeErrorToStandardSchemaIssues(
         brandError.parentError as TypeErrors<ExtraErrors>,
-        formatTypeError,
         path,
       );
     }
-    return [{ message: formatTypeError(error), path }];
+    return [{ message: JSON.stringify(error), path }];
   }
 
-  return [{ message: formatTypeError(error), path }];
+  return [{ message: JSON.stringify(error), path }];
 };
 
 /** The Standard Schema interface. */
@@ -4515,10 +4943,3 @@ export declare namespace StandardSchemaV1 {
     Schema["~standard"]["types"]
   >["output"];
 }
-
-/**
- * Shared formatter cache for Standard Schema integration - avoids circular
- * dependency by lazily creating the formatter on first use rather than during
- * module initialization.
- */
-let cachedStandardSchemaFormatTypeError: TypeErrorFormatter<any> | undefined;

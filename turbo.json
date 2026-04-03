@@ -1,5 +1,5 @@
 {
-  "$schema": "https://turborepo.org/schema.json",
+  "$schema": "https://turborepo.dev/schema.json",
   "globalEnv": ["NODE_ENV", "PORT", "ENABLE_EXPERIMENTAL_COREPACK"],
   "tasks": {
     "build": {
@@ -12,20 +12,20 @@
       "dependsOn": ["^build"]
     },
     "dev": {
-      "cache": false,
-      "persistent": true
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "relay#dev": {
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
+    "web#dev": {
+      "persistent": true,
+      "dependsOn": []
     },
     "start": {
       "cache": false,
       "persistent": true
-    },
-    "test": {},
-    "test:watch": {
-      "cache": false,
-      "persistent": true
-    },
-    "clean": {
-      "cache": false
     },
     "bench": {
       "cache": false

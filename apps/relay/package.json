@@ -4,25 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --experimental-strip-types --watch src/index.ts",
-    "build": "rimraf dist && tsc",
-    "start": "node dist/index.js",
-    "clean": "rimraf .turbo node_modules dist data/evolu-relay.db"
+    "dev": "node --watch --watch-preserve-output --experimental-strip-types src/index.ts",
+    "build": "tsc --build tsconfig.json",
+    "start": "node dist/src/index.js"
   },
   "files": [
     "dist",
     "README.md"
   ],
   "dependencies": {
-    "@evolu/common": "workspace:*",
-    "@evolu/nodejs": "workspace:*"
+    "@evolu/common": "*",
+    "@evolu/nodejs": "*"
   },
   "devDependencies": {
-    "@evolu/tsconfig": "workspace:*",
-    "@types/node": "^22.17.1",
-    "typescript": "^5.9.2"
+    "@evolu/typescript-config": "*",
+    "@types/node": "^24.10.9",
+    "typescript": "^5.9.3"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   }
 }

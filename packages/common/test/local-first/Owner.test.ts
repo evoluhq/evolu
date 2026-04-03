@@ -8,20 +8,21 @@ import {
   ownerIdToOwnerIdBytes,
   ownerSecretToMnemonic,
 } from "../../src/index.js";
+import { testCreateDeps } from "../../src/Test.js";
 import {
-  testDeps,
-  testOwner,
-  testOwnerSecret,
-  testOwnerSecret2,
-} from "../_deps.js";
+  testAppOwner,
+  testAppOwnerSecret,
+  testAppOwner2Secret,
+} from "./_fixtures.js";
 
 test("ownerIdToOwnerIdBytes/ownerIdBytesToOwnerId", () => {
-  const id = testOwner.id;
+  const id = testAppOwner.id;
   expect(ownerIdBytesToOwnerId(ownerIdToOwnerIdBytes(id))).toStrictEqual(id);
 });
 
 test("ownerSecretToMnemonic and mnemonicToOwnerSecret are inverses", () => {
-  const secret = createOwnerSecret(testDeps);
+  const deps = testCreateDeps();
+  const secret = createOwnerSecret(deps);
   const mnemonic = ownerSecretToMnemonic(secret);
   const backToSecret = mnemonicToOwnerSecret(mnemonic);
 
@@ -29,8 +30,8 @@ test("ownerSecretToMnemonic and mnemonicToOwnerSecret are inverses", () => {
 });
 
 test("createAppOwner is deterministic", () => {
-  const owner1 = createAppOwner(testOwnerSecret);
-  const owner2 = createAppOwner(testOwnerSecret);
+  const owner1 = createAppOwner(testAppOwnerSecret);
+  const owner2 = createAppOwner(testAppOwnerSecret);
 
   expect(owner1).toEqual(owner2);
   expect(owner1.type).toBe("AppOwner");
@@ -38,7 +39,7 @@ test("createAppOwner is deterministic", () => {
 });
 
 test("deriveShardOwner is deterministic", () => {
-  const appOwner = createAppOwner(testOwnerSecret);
+  const appOwner = createAppOwner(testAppOwnerSecret);
 
   const shard1 = deriveShardOwner(appOwner, ["contacts"]);
   const shard2 = deriveShardOwner(appOwner, ["contacts"]);
@@ -48,7 +49,7 @@ test("deriveShardOwner is deterministic", () => {
 });
 
 test("deriveShardOwner with different paths produces different owners", () => {
-  const appOwner = createAppOwner(testOwnerSecret);
+  const appOwner = createAppOwner(testAppOwnerSecret);
 
   const contacts = deriveShardOwner(appOwner, ["contacts"]);
   const photos = deriveShardOwner(appOwner, ["photos"]);
@@ -59,7 +60,7 @@ test("deriveShardOwner with different paths produces different owners", () => {
 });
 
 test("deriveShardOwner with nested paths", () => {
-  const appOwner = createAppOwner(testOwnerSecret);
+  const appOwner = createAppOwner(testAppOwnerSecret);
 
   const project1 = deriveShardOwner(appOwner, ["projects", "project-1"]);
   const project2 = deriveShardOwner(appOwner, ["projects", "project-2"]);
@@ -70,8 +71,8 @@ test("deriveShardOwner with nested paths", () => {
 });
 
 test("different app owners produce different shard owners", () => {
-  const appOwner1 = createAppOwner(testOwnerSecret);
-  const appOwner2 = createAppOwner(testOwnerSecret2);
+  const appOwner1 = createAppOwner(testAppOwnerSecret);
+  const appOwner2 = createAppOwner(testAppOwner2Secret);
 
   const shard1 = deriveShardOwner(appOwner1, ["contacts"]);
   const shard2 = deriveShardOwner(appOwner2, ["contacts"]);

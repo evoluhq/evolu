@@ -1,66 +1,74 @@
 import {
   bytesToHex,
   createPreparedStatementsCache,
-  CreateSqliteDriver,
-  SqliteDriver,
-  SqliteRow,
+  ok,
+  type CreateSqliteDriver,
+  type SqliteRow,
 } from "@evolu/common";
 import { openDatabaseSync, SQLiteStatement } from "expo-sqlite";
 
-export const createExpoSqliteDriver: CreateSqliteDriver = (name, options) => {
-  const db = openDatabaseSync(
-    options?.memory ? ":memory:" : `evolu1-${name}.db`,
-  );
-  if (options?.encryptionKey) {
-    db.execSync(`
-      PRAGMA cipher = 'sqlcipher';
-      PRAGMA legacy = 4;
-      PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'";
-    `);
-  }
-  let isDisposed = false;
+export const createExpoSqliteDriver: CreateSqliteDriver =
+  (name, options) => () => {
+    const stack = new globalThis.DisposableStack();
+    const db = stack.adopt(
+      openDatabaseSync(
+        options?.mode === "memory" ? ":memory:" : `evolu1-${name}.db`,
+      ),
+      (db) => {
+        db.closeSync();
+      },
+    );
+    if (options?.mode === "encrypted") {
+      db.execSync(`PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'"`);
+    }
 
-  const cache = createPreparedStatementsCache<SQLiteStatement>(
-    (sql) => db.prepareSync(sql),
-    (statement) => {
-      statement.finalizeSync();
-    },
-  );
+    const cache = stack.use(
+      createPreparedStatementsCache<SQLiteStatement>(
+        (sql) => db.prepareSync(sql),
+        (statement) => {
+          statement.finalizeSync();
+        },
+      ),
+    );
 
-  const driver: SqliteDriver = {
-    exec: (query, isMutation) => {
-      const prepared = cache.get(query);
+    return ok({
+      exec: (query) => {
+        const execStatement = (statement: SQLiteStatement) => {
+          const result = statement.executeSync(query.parameters);
+          try {
+            const rows = result.getAllSync();
+            const changes = result.changes;
+            return { rows: rows as Array<SqliteRow>, changes };
+          } finally {
+            result.resetSync();
+          }
+        };
 
-      if (prepared) {
-        if (isMutation) {
-          const { changes } = prepared.executeSync(query.parameters);
-          return { rows: [], changes };
+        const prepared = cache.get(query);
+        if (prepared) return execStatement(prepared);
+
+        const statement = db.prepareSync(query.sql);
+        try {
+          return execStatement(statement);
+        } finally {
+          statement.finalizeSync();
+        }
+      },
+
+      export: () => {
+        const file = db.serializeSync();
+        const { buffer } = file;
+
+        if (buffer instanceof ArrayBuffer) {
+          return new Uint8Array(buffer, file.byteOffset, file.byteLength);
         }
 
-        const result = prepared.executeSync(query.parameters);
-        const rows = result.getAllSync();
-        result.resetSync();
-        return { rows: rows as Array<SqliteRow>, changes: 0 };
-      }
+        // Ensure export uses transferable ArrayBuffer backing.
+        return new Uint8Array(file);
+      },
 
-      if (isMutation) {
-        const { changes } = db.runSync(query.sql, query.parameters);
-        return { rows: [], changes };
-      }
-
-      const rows = db.getAllSync(query.sql, query.parameters);
-      return { rows: rows as Array<SqliteRow>, changes: 0 };
-    },
-
-    export: () => db.serializeSync(),
-
-    [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
-      cache[Symbol.dispose]();
-      db.closeSync();
-    },
+      [Symbol.dispose]: () => {
+        stack.dispose();
+      },
+    });
   };
-
-  return Promise.resolve(driver);
-};

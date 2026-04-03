@@ -1,0 +1,7 @@
+{
+  "extends": "./packages/typescript-config/universal-esm.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["vitest.config.mts"]
+}

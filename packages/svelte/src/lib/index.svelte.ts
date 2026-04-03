@@ -6,19 +6,17 @@
 import type {
   AppOwner,
   Evolu,
-  EvoluDeps,
   EvoluSchema,
   InferRow,
   Query,
   QueryRows,
   Row,
 } from "@evolu/common/local-first";
-import { evoluWebDeps } from "@evolu/web";
+import { createEvoluDeps } from "@evolu/web";
 
 // just in case we need to add some svelte specific deps
-export const evoluSvelteDeps: EvoluDeps = {
-  ...evoluWebDeps,
-};
+// eslint-disable-next-line evolu/require-pure-annotation
+export const evoluSvelteDeps = createEvoluDeps();
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` property
@@ -28,7 +26,9 @@ export const evoluSvelteDeps: EvoluDeps = {
  *
  * ```ts
  * // Create your query
- * const allTodos = evolu.createQuery((db) => ...);
+ * const allTodos = evolu.createQuery((db) =>
+ *   db.selectFrom("todo").selectAll(),
+ * );
  *
  * // Get all rows.
  * const allTodosState = queryState(evolu, () => allTodos);
@@ -38,10 +38,14 @@ export const evoluSvelteDeps: EvoluDeps = {
  *
  * ```ts
  * // some kind of state
- * let someKindOfState = $state('someId');
+ * let someKindOfState = $state("someId");
  *
  * // derive your query based other props
- * const allTodos = $derived(evolu.createQuery((db) => use someKindOfState here ));
+ * const allTodos = $derived(
+ *   evolu.createQuery((db) =>
+ *     db.selectFrom("todo").where("id", "=", someKindOfState).selectAll(),
+ *   ),
+ * );
  *
  * // Get all rows, once someKindOfState changes, this allTodosState will be updated with the evolu query result
  * const allTodosState = queryState(evolu, () => allTodos);
@@ -49,10 +53,10 @@ export const evoluSvelteDeps: EvoluDeps = {
  * // use allTodosState.rows in further calculations / UI
  * ```
  */
-export function queryState<
+export const queryState = <
   R extends Row,
   Schema extends EvoluSchema,
-  MappedRow = InferRow<Query<R>>,
+  MappedRow = InferRow<Query<Schema, R>>,
 >(
   evolu: Evolu<Schema>,
   /**
@@ -61,7 +65,7 @@ export function queryState<
    * Svelte reactivity: it needs to be a callback, if the query is $derived this
    * will re-trigger the load/subscription based on the new query.
    */
-  observedQuery: () => Query<R> | undefined,
+  observedQuery: () => Query<Schema, R> | undefined,
   options?: {
     /**
      * This is a little helper so that you can map the results instead of using
@@ -71,12 +75,12 @@ export function queryState<
      */
     mapping?: (row: R) => MappedRow;
   },
-): { readonly rows: Array<MappedRow> } {
+): { readonly rows: Array<MappedRow> } => {
   {
     // writing to this variable - svelte's compiler will track it
     let writableState: Array<MappedRow> = $state([]);
 
-    function updateState(rows: QueryRows<R>): void {
+    const updateState = (rows: QueryRows<R>): void => {
       if (options?.mapping) {
         // re-assigning because somehow typescript thinks its still nullable here
         // remove again once no issue anymore
@@ -85,7 +89,7 @@ export function queryState<
       }
 
       writableState = rows as Array<MappedRow>;
-    }
+    };
 
     $effect(() => {
       const query = observedQuery();
@@ -114,7 +118,7 @@ export function queryState<
       },
     };
   }
-}
+};
 
 /**
  * Get the {@link AppOwner} promise that resolves when available.
@@ -130,19 +134,18 @@ export function queryState<
  * // it will be undefined initially and set once the promise resolves
  * ```
  */
-export function appOwnerState<Schema extends EvoluSchema>(
+export const appOwnerState = <Schema extends EvoluSchema>(
   evolu: Evolu<Schema>,
 ): {
   readonly current: AppOwner | undefined;
-} {
+} => {
   {
     // writing to this variable - svelte's compiler will track it
     let writableState = $state<AppOwner | undefined>(undefined);
 
     $effect(() => {
-      void evolu.appOwner.then((appOwner) => {
-        writableState = appOwner;
-      });
+      // TODO: Review, it was promise, it isn't anymore.
+      writableState = evolu.appOwner;
     });
 
     return {
@@ -152,4 +155,4 @@ export function appOwnerState<Schema extends EvoluSchema>(
       },
     };
   }
-}
+};

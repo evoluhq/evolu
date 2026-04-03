@@ -1,15 +1,28 @@
+/* eslint-disable evolu/require-pure-annotation */
+import { sql as kyselySql } from "kysely";
+import {
+  createAppOwner,
+  createOwnerSecret,
+  ownerIdToOwnerIdBytes,
+} from "../../src/index.js";
+import {
+  createQueryBuilder,
+  type EvoluSchema,
+} from "../../src/local-first/Schema.js";
 import {
   Counter,
   createTimestamp,
   maxCounter,
-  maxMillis,
   maxNodeId,
-  Millis,
   NodeId,
   orderTimestampBytes,
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
-import { testRandomLib } from "../_deps.js";
+import { testCreateDeps } from "../../src/Test.js";
+import { maxMillis, Millis } from "../../src/Time.js";
+import { id, String } from "../../src/Type.js";
+
+const deps = testCreateDeps();
 
 // Random numbers are unique only for a few thousand iterations.
 // We leverage this behavior to generate counters.
@@ -21,7 +34,7 @@ const randomMillisMap = new Map<Millis, { counter: Counter; nodeId: NodeId }>();
 const timestamps: Array<[Millis, Counter, NodeId]> = [];
 
 for (let i = 0; i < numberOfTimestamps; i++) {
-  const millis = testRandomLib.int(0, oneYearMillis) as Millis;
+  const millis = deps.randomLib.int(0, oneYearMillis) as Millis;
   const entry = randomMillisMap.get(millis);
 
   if (entry) {
@@ -29,7 +42,7 @@ for (let i = 0; i < numberOfTimestamps; i++) {
     timestamps.push([millis, entry.counter, entry.nodeId]);
   } else {
     const nodeId = (
-      testRandomLib.next() > 0.8 ? "99c99028d6636a91" : "68a2a7bf3f85a096"
+      deps.randomLib.next() > 0.8 ? "99c99028d6636a91" : "68a2a7bf3f85a096"
     ) as NodeId;
     randomMillisMap.set(millis, { counter: 0 as Counter, nodeId });
     timestamps.push([millis, 0 as Counter, nodeId]);
@@ -56,7 +69,7 @@ testTimestampsAsc.unshift(minTimestamp);
 testTimestampsAsc.push(maxTimestamp);
 
 export const testTimestampsDesc = testTimestampsAsc.toReversed();
-export const testTimestampsRandom = testRandomLib.shuffle(testTimestampsAsc);
+export const testTimestampsRandom = deps.randomLib.shuffle(testTimestampsAsc);
 
 export const testAnotherTimestampsAsc = timestamps
   .map(([millis, counter, nodeId]) =>
@@ -70,3 +83,39 @@ export const testAnotherTimestampsAsc = timestamps
   )
   .toSorted(orderTimestampBytes)
   .slice(0, 1000);
+
+export const testAppOwnerSecret = createOwnerSecret({
+  randomBytes: deps.randomBytes,
+});
+export const testAppOwner = createAppOwner(testAppOwnerSecret);
+export const testAppOwnerIdBytes = ownerIdToOwnerIdBytes(testAppOwner.id);
+
+export const testAppOwner2Secret = createOwnerSecret({
+  randomBytes: deps.randomBytes,
+});
+export const testAppOwner2 = createAppOwner(testAppOwner2Secret);
+export const testAppOwner2IdBytes = ownerIdToOwnerIdBytes(testAppOwner2.id);
+
+const TestRowId = id("TestRow");
+
+export const testEvoluSchema = {
+  test: {
+    id: TestRowId,
+    value: String,
+  },
+} satisfies EvoluSchema;
+
+const createTestQuery = createQueryBuilder(testEvoluSchema);
+
+export const testQueries = [
+  createTestQuery((db) =>
+    db.selectFrom("test").select(() => [kyselySql<string>`"test"`.as("query")]),
+  ),
+  createTestQuery((db) =>
+    db
+      .selectFrom("test")
+      .select(() => [kyselySql<string>`"test-2"`.as("query")]),
+  ),
+] as const;
+
+export const [testQuery, testQuery2] = testQueries;

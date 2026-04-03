@@ -1,5 +1,5 @@
 {
-  "extends": "@evolu/tsconfig/nextjs.json",
+  "extends": "@evolu/typescript-config/nextjs.json",
   "compilerOptions": {
     "paths": {
       "@/*": ["./src/*"]
@@ -8,14 +8,13 @@
       {
         "name": "next"
       }
-    ],
-    "strictNullChecks": true
+    ]
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "next.config.ts",
+    "**/*.mts",
     ".next/types/**/*.ts",
     "tailwind.config.js"
   ],

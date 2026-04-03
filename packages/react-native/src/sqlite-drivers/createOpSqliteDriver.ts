@@ -1,74 +1,64 @@
 import {
   bytesToHex,
-  constVoid,
   createPreparedStatementsCache,
-  CreateSqliteDriver,
-  isSqlMutation,
-  SqliteDriver,
-  SqliteRow,
+  type CreateSqliteDriver,
+  lazyVoid,
+  ok,
+  type SqliteRow,
 } from "@evolu/common";
-import { open, PreparedStatement } from "@op-engineering/op-sqlite";
+import { open, type PreparedStatement } from "@op-engineering/op-sqlite";
 
-export const createOpSqliteDriver: CreateSqliteDriver = (name, options) => {
-  // https://op-engineering.github.io/op-sqlite/docs/configuration#in-memory
-  const db = open(
-    options?.memory
-      ? { name: `inMemoryDb`, location: ":memory:" }
-      : {
-          name: `evolu1-${name}.db`,
-          ...(options?.encryptionKey && {
-            encryptionKey: `x'${bytesToHex(options.encryptionKey)}'`,
-          }),
-        },
-  );
-  let isDisposed = false;
+export const createOpSqliteDriver: CreateSqliteDriver =
+  (name, options) => () => {
+    // https://op-engineering.github.io/op-sqlite/docs/configuration#in-memory
+    const stack = new globalThis.DisposableStack();
+    const db = stack.adopt(
+      open(
+        options?.mode === "memory"
+          ? { name: `inMemoryDb`, location: ":memory:" }
+          : {
+              name: `evolu1-${name}.db`,
+              ...(options?.mode === "encrypted" && {
+                encryptionKey: `x'${bytesToHex(options.encryptionKey)}'`,
+              }),
+            },
+      ),
+      (db) => {
+        db.close();
+      },
+    );
 
-  const cache = createPreparedStatementsCache<PreparedStatement>(
-    (sql) => db.prepareStatement(sql),
-    // op-sqlite doesn't have API for that
-    constVoid,
-  );
+    const cache = stack.use(
+      createPreparedStatementsCache<PreparedStatement>(
+        (sql) => db.prepareStatement(sql),
+        // op-sqlite doesn't have API for that
+        lazyVoid,
+      ),
+    );
 
-  const driver: SqliteDriver = {
-    exec: (query, isMutation) => {
-      const prepared = cache.get(query);
+    return ok({
+      exec: (query) => {
+        const prepared = cache.get(query);
 
-      if (prepared) {
-        prepared.bindSync(query.parameters);
-        if (isSqlMutation(query.sql)) {
-          let changes = 0;
-          const { rowsAffected } = db.executeSync(query.sql, query.parameters);
-          changes += rowsAffected;
-          return { rows: [], changes };
+        if (prepared) {
+          prepared.bindSync(query.parameters);
         }
-        const { rows } = db.executeSync(query.sql, query.parameters);
-        return { rows: rows as Array<SqliteRow>, changes: 0 };
-      }
 
-      if (isMutation) {
-        let changes = 0;
-        const { rowsAffected } = db.executeSync(query.sql, query.parameters);
-        changes += rowsAffected;
-        return { rows: [], changes };
-      }
+        const { rows, rowsAffected } = db.executeSync(
+          query.sql,
+          query.parameters,
+        );
+        return { rows: rows as Array<SqliteRow>, changes: rowsAffected };
+      },
 
-      const { rows } = db.executeSync(query.sql, query.parameters);
-      return { rows: rows as Array<SqliteRow>, changes: 0 };
-    },
+      // FIXME: op-sqlite does not expose binary, but a path to the database file
+      // another react native dependency would be needed to implement this
+      export: () => {
+        throw new Error("TODO: Not implemented yet");
+      },
 
-    // FIXME: op-sqlite does not expose binary, but a path to the database file
-    // another react native dependency would be needed to implement this
-    export: () => {
-      throw new Error("TODO: Not implemented yet");
-    },
-
-    [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
-      cache[Symbol.dispose]();
-      db.close();
-    },
+      [Symbol.dispose]: () => {
+        stack.dispose();
+      },
+    });
   };
-
-  return Promise.resolve(driver);
-};

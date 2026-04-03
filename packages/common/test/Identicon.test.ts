@@ -6,12 +6,13 @@ import {
   createIdenticon,
   createOwnerSecret,
 } from "../src/index.js";
-import { testDeps } from "./_deps.js";
+import { testCreateDeps } from "../src/Test.js";
 
 test.skip("generates visually distinct identicons", () => {
+  const deps = testCreateDeps();
   const ids = [];
   for (let i = 0; i < 10; i++) {
-    const secret = createOwnerSecret(testDeps);
+    const secret = createOwnerSecret(deps);
     const owner = createAppOwner(secret);
     ids.push(owner.id);
   }
