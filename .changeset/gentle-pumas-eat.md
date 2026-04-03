@@ -6,7 +6,7 @@
 "@evolu/react": major
 "@evolu/vue": major
 "@evolu/web": major
-"@evolu/relay": major
+"relay": major
 ---
 
 Updated minimum Node.js version from 22 to 24 (current LTS)

@@ -9,7 +9,7 @@ WORKDIR /app
 COPY . .
 
 # Generate a partial monorepo for the relay workspace.
-RUN bunx turbo prune @evolu/relay --docker
+RUN bunx turbo prune relay --docker
 
 # ------------------------------------------------------------
 # Installer stage - build the pruned workspace
@@ -25,10 +25,10 @@ RUN bun install --frozen-lockfile
 COPY --from=builder /app/out/full/ .
 # Ensure README.md is available at the root for the build process
 COPY --from=builder /app/README.md ./README.md
-RUN bunx turbo run build --filter @evolu/relay
+RUN bunx turbo run build --filter relay
 
 # Keep only production dependencies for relay runtime.
-RUN bun install --frozen-lockfile --production --filter @evolu/relay
+RUN bun install --frozen-lockfile --production --filter relay
 
 # ------------------------------------------------------------
 # Runner stage - minimal runtime image

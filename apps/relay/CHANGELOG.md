@@ -1,4 +1,4 @@
-# @evolu/relay
+# relay
 
 ## 2.0.8
 
