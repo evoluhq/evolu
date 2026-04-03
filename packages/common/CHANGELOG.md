@@ -1,5 +1,539 @@
 # @evolu/common
 
+## 8.0.0-next.0
+
+### Major Changes
+
+- 98a4b6c: Refactored the Array module with breaking changes, better naming, and new helpers.
+
+  ### Breaking Changes
+
+  **Removed `isNonEmptyReadonlyArray`** — use `isNonEmptyArray` instead. The function now handles both mutable and readonly arrays via overloads:
+
+  ```ts
+  // Before
+  if (isNonEmptyReadonlyArray(readonlyArr)) { ... }
+  if (isNonEmptyArray(mutableArr)) { ... }
+
+  // After — one function for both
+  if (isNonEmptyArray(readonlyArr)) { ... }
+  if (isNonEmptyArray(mutableArr)) { ... }
+  ```
+
+  **Renamed mutation functions** for consistency with the `...Array` suffix pattern:
+  - `shiftArray` → `shiftFromArray`
+  - `popArray` → `popFromArray`
+
+  ### New Constants
+  - **`emptyArray`** — use as a default or initial value to avoid allocating new empty arrays
+
+  ### New Functions
+  - **`arrayFrom`** — creates a readonly array from an iterable or by generating elements with a length and mapper
+  - **`arrayFromAsync`** — creates a readonly array from an async iterable (or iterable of promises) and awaits all values
+  - **`flatMapArray`** — maps each element to an array and flattens the result, preserving non-empty type when applicable
+  - **`concatArrays`** — concatenates two arrays, returning non-empty when at least one input is non-empty
+  - **`sortArray`** — returns a new sorted array (wraps `toSorted`), preserving non-empty type
+  - **`reverseArray`** — returns a new reversed array (wraps `toReversed`), preserving non-empty type
+  - **`spliceArray`** — returns a new array with elements removed/replaced (wraps `toSpliced`)
+  - **`zipArray`** — combines multiple arrays into an array of tuples, preserving non-empty type
+
+  ### Migration
+
+  ```ts
+  // isNonEmptyReadonlyArray → isNonEmptyArray
+  -import { isNonEmptyReadonlyArray } from "@evolu/common";
+  +import { isNonEmptyArray } from "@evolu/common";
+
+  // shiftArray → shiftFromArray
+  -import { shiftArray } from "@evolu/common";
+  +import { shiftFromArray } from "@evolu/common";
+
+  // popArray → popFromArray
+  -import { popArray } from "@evolu/common";
+  +import { popFromArray } from "@evolu/common";
+  ```
+
+- 97f5314: Redesigned Console with structured logging and pluggable outputs
+
+  **Breaking changes:**
+  - Replaced `enabled` property with `ConsoleLevel` filtering (trace < debug < log < info < warn < error < silent)
+  - Removed `enableLogging` config option - use `level` instead
+  - Removed `createConsoleWithTime` - use `createConsoleFormatter` with `format` option
+  - Removed `assert` method
+  - Changed `TestConsole.getLogsSnapshot()` to `getEntriesSnapshot()` returning `ConsoleEntry` objects
+  - Changed `TestConsole.clearLogs()` to `clearEntries()`
+
+  **New features:**
+  - Structured `ConsoleEntry` objects with method, path, and args
+  - Pluggable `ConsoleOutput` interface for custom destinations (file, network, array)
+  - `Console.child(name)` creates derived consoles with path prefixes
+  - `children: ReadonlySet<Console>` tracks child consoles for batch operations
+  - `name` property identifies consoles
+  - `getLevel()`, `setLevel(level | null)`, `hasOwnLevel()` for runtime level control
+  - `createConsoleFormatter` for timestamps (relative, absolute, iso) and path prefixes
+  - `createNativeConsoleOutput` and `createConsoleArrayOutput` built-in outputs
+  - Static level inheritance - children inherit parent's level at creation, then are independent
+  - `createConsoleStoreOutput` — a `ConsoleOutput` that stores the latest entry in a `ReadonlyStore` for observing log entries (e.g., forwarding from workers to main thread)
+  - `createMultiOutput` — fans out entries to multiple outputs (e.g., native console + store)
+  - Simplified `testCreateConsole` to delegate to `createConsole` internally
+
+- 5275b07: Replaced `evolu.createQuery` with standalone `createQueryBuilder` function
+
+  Queries are now created using a standalone `createQueryBuilder` function instead of `evolu.createQuery` method. This enables query creation without an Evolu instance, improving code organization and enabling schema-first development.
+
+  ```ts
+  // Before
+  const todosQuery = evolu.createQuery((db) =>
+    db.selectFrom("todo").selectAll(),
+  );
+
+  // After
+  const createQuery = createQueryBuilder(Schema);
+  const todosQuery = createQuery((db) => db.selectFrom("todo").selectAll());
+  ```
+
+- cd6b74d: Removed the root `kysely` namespace export and exposed Evolu's SQLite JSON helpers as explicit named exports.
+
+  Use `evoluJsonArrayFrom`, `evoluJsonObjectFrom`, `evoluJsonBuildObject`, `kyselySql`, and `KyselyNotNull` from `@evolu/common` instead of `kysely.jsonArrayFrom`, `kysely.jsonObjectFrom`, `kysely.jsonBuildObject`, `kysely.sql`, and `kysely.NotNull`.
+
+  ```ts
+  // Before
+  import { kysely } from "@evolu/common";
+
+  kysely.jsonArrayFrom(...)
+  type Name = kysely.NotNull;
+
+  // After
+  import {
+    evoluJsonArrayFrom,
+    evoluJsonBuildObject,
+    evoluJsonObjectFrom,
+    kyselySql,
+    type KyselyNotNull,
+  } from "@evolu/common";
+
+  evoluJsonArrayFrom(...)
+  type Name = KyselyNotNull;
+  ```
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+- 87780a3: Renamed `LazyValue<T>` to `Lazy<T>`, renamed `const*` lazy helpers to `lazy*`, and added the `lazy` factory
+- 0528425: - Merged `@evolu/common/local-first/Platform.ts` into `@evolu/common/Platform.ts`
+  - Made `@evolu/react-web` re-export everything from `@evolu/web`, allowing React users to install only `@evolu/react-web`
+- 7fe328d: Changed `ok()` to return `Result<T, never>` and `err()` to return `Result<never, E>` for correct type inference.
+- 2abf93d: Refactored SQLite integration to use Task and throw-first semantics
+  - Changed `createSqlite` to `Task<Sqlite, never, CreateSqliteDriverDep>`
+  - Changed `CreateSqliteDriver` to `Task<SqliteDriver>`
+  - Removed `SqliteError` from SQLite driver/task APIs
+  - Changed `Sqlite.exec` to return `SqliteExecResult` directly (no `Result<..., SqliteError>`)
+  - Changed `Sqlite.transaction` to support callbacks returning either `Result<T, E>` or `void` (no `SqliteError` in the error channel)
+  - Changed `Sqlite.export` to return `Uint8Array` directly (no `Result<..., SqliteError>`)
+  - Simplified `SqliteDriver.exec` by removing the `isMutation` parameter, so the driver determines read vs write internally
+  - Replaced `options.memory` and `options.encryptionKey` with a discriminated `options.mode` field (`"memory"` | `"encrypted"`)
+  - Updated Expo and op-sqlite drivers to match the new API
+  - Added SQLite schema metadata primitives (`SqliteSchema`, `SqliteIndex`, `eqSqliteIndex`, `getSqliteSchema`, `getSqliteSnapshot`)
+  - Added `testSetupSqlite` helper for SQLite tests
+
+  Why `SqliteError` was removed:
+  - In Evolu, SQLite runs in-process. Failures are infrastructure-level and unrecoverable at the call site.
+  - Wrapping these failures as `Result` values did not create meaningful recovery paths; callers still had to fail.
+  - The correct behavior is to let such failures throw and surface them through platform `createRun` global handlers (web, nodejs, react-native), which report uncaught errors via Evolu `console.error`.
+  - Evolu also propagates `console.error` entries through its messaging layer into the shared `evoluError` global store, so app-level error subscriptions still receive these failures.
+
+  Boundary handling:
+  - At protocol boundaries (for example Protocol ↔ Storage), error handling remains explicit.
+  - Since storage implementations may throw, boundary code uses `try/catch`, logs with `console.error(error)`, and returns protocol-level outcomes.
+  - Protocol handles all thrown errors as boundary concerns, without coupling to SQLite-specific error types.
+
+- d30b95a: Refactored Time module for type safety, consistency, and better abstractions.
+
+  **Type safety:**
+  - Changed `Time.now()` return type from `number` to `Millis`
+  - Added `Millis` branded type with efficient 6-byte serialization (max value: year 10889)
+  - Added `minMillis` and `maxMillis` constants
+  - `now()` now throw on invalid values for consistent error handling
+
+  **Timer abstraction:**
+  - Added `Time.setTimeout` and `Time.clearTimeout` for platform-agnostic timers
+  - Added `TimeoutId` opaque type for timeout handles
+  - Added `TestTime` interface with `advance()` for controllable time in tests
+  - Added `testCreateTime` with `startAt` and `autoIncrement` options
+  - Added `setTimeout(duration)` helper that returns a Promise
+
+  **Duration literals:**
+  - Renamed `DurationString` to `DurationLiteral`
+  - Each duration has exactly one canonical form (e.g., "1000ms" must be written as "1s")
+  - Added decimal support: "1.5s" (1500ms), "1.5h" (90 minutes)
+  - Added weeks ("1w" to "51w") and years ("1y" to "99y")
+  - Removed combination syntax ("1h 30m") in favor of decimals ("1.5h")
+  - Months not supported (variable length)
+
+  **UI responsiveness constants:**
+  - `ms60fps` (16ms frame budget at 60fps)
+  - `ms120fps` (8ms frame budget at 120fps)
+  - `msLongTask` (50ms long task threshold for use with `yieldNow`)
+
+  **Formatting utilities:**
+  - Added `formatMillisAsDuration(millis)` - formats as human-readable duration (`1.234s`, `1m30.000s`, `1h30m45.000s`)
+  - Added `formatMillisAsClockTime(millis)` - formats as clock time (`HH:MM:SS.mmm`)
+  - Added `/*#__PURE__*/` annotation to `Millis` for better tree-shaking
+
+- 953c1fb: Replaced interface-based symmetric encryption with direct function-based API
+
+  ### Breaking Changes
+
+  **Removed:**
+  - `SymmetricCrypto` interface
+  - `SymmetricCryptoDep` interface
+  - `createSymmetricCrypto()` factory function
+  - `SymmetricCryptoDecryptError` error type
+
+  **Added:**
+  - `encryptWithXChaCha20Poly1305()` - Direct encryption function with explicit algorithm name
+  - `decryptWithXChaCha20Poly1305()` - Direct decryption function
+  - `XChaCha20Poly1305Ciphertext` - Branded type for ciphertext
+  - `Entropy24` - Branded type for 24-byte nonces
+  - `DecryptWithXChaCha20Poly1305Error` - Algorithm-specific error type
+  - `xChaCha20Poly1305NonceLength` - Constant for nonce length (24)
+
+  ### Migration Guide
+
+  **Before:**
+
+  ```ts
+  const symmetricCrypto = createSymmetricCrypto({ randomBytes });
+  const { nonce, ciphertext } = symmetricCrypto.encrypt(plaintext, key);
+  const result = symmetricCrypto.decrypt(ciphertext, key, nonce);
+  ```
+
+  **After:**
+
+  ```ts
+  const [ciphertext, nonce] = encryptWithXChaCha20Poly1305({ randomBytes })(
+    plaintext,
+    key,
+  );
+  const result = decryptWithXChaCha20Poly1305(ciphertext, nonce, key);
+  ```
+
+  **Error handling:**
+
+  ```ts
+  // Before
+  if (!result.ok && result.error.type === "SymmetricCryptoDecryptError") { ... }
+
+  // After
+  if (!result.ok && result.error.type === "DecryptWithXChaCha20Poly1305Error") { ... }
+  ```
+
+  **Dependency injection:**
+
+  ```ts
+  // Before
+  interface Deps extends SymmetricCryptoDep { ... }
+
+  // After - only encrypt needs RandomBytesDep
+  interface Deps extends RandomBytesDep { ... }
+  ```
+
+  ### Rationale
+
+  This change improves API extensibility by using explicit function names instead of a generic interface. Adding new encryption algorithms (e.g., `encryptWithAES256GCM`) is now straightforward without breaking existing code.
+
+- 9ba5442: Renamed `TransferableError` to `UnknownError` to better reflect its purpose as a wrapper for unknown errors caught at runtime, not just errors that need to be transferred between contexts
+- c24ec2f: **Breaking:** Standard Schema validation now returns JSON-serialized errors instead of formatted messages
+
+  Users who need human-readable messages should deserialize the error and format it using appropriate `TypeErrorFormatter`s:
+
+  ```ts
+  const result = MyType["~standard"].validate(input);
+  if (!result.ok) {
+    for (const issue of result.issues) {
+      const error = JSON.parse(issue.message);
+      const message = formatTypeError(error);
+      // use message...
+    }
+  }
+  ```
+
+  This gives consumers full control over error formatting while keeping the Standard Schema integration simple.
+
+- 4be336d: Refactored worker abstraction to support all platforms uniformly:
+  - Added platform-agnostic worker interfaces: `Worker<Input, Output>`, `SharedWorker<Input, Output>`, `MessagePort<Input, Output>`, `MessageChannel<Input, Output>`
+  - Added worker-side interfaces: `WorkerSelf<Input, Output>` and `SharedWorkerSelf<Input, Output>` for typed worker `self` wrappers
+  - Changed `onMessage` from a method to a property for consistency with Web APIs
+  - Made all worker and message port interfaces `Disposable` for proper resource cleanup
+  - Added default generic parameters (`Output = never`) for simpler one-way communication patterns
+  - Added complete web platform implementations: `createWorker`, `createSharedWorker`, `createMessageChannel`, `createWorkerSelf`, `createSharedWorkerSelf`, `createMessagePort`
+  - Added React Native polyfills for Workers and MessageChannel
+
+### Minor Changes
+
+- 6fc3bba: Added `todo` function, a development placeholder that always throws
+
+  Use to sketch function bodies before implementing them. TypeScript infers the return type from context, so surrounding code still type-checks. Use an explicit generic when there is no return type annotation.
+
+  ```ts
+  // Type inferred from return type annotation
+  const fetchUser = (id: UserId): Result<User, FetchError> => todo();
+
+  expectTypeOf(fetchUser).returns.toEqualTypeOf<Result<User, FetchError>>();
+
+  // Explicit generic when no return type
+  const getConfig = () => todo<Config>();
+
+  expectTypeOf(getConfig).returns.toEqualTypeOf<Config>();
+  ```
+
+- 2f39c8e: Added new types and utilities to Types.ts:
+  - `Awaitable<T>` - type for values that can be sync or async
+  - `isPromiseLike` - type guard to check if a value is a PromiseLike
+  - `Digit`, `Digit1To9`, `Digit1To6`, `Digit1To23`, `Digit1To51`, `Digit1To99`, `Digit1To59` - template literal types for numeric validation
+  - `UnionToIntersection<U>` - converts a union to an intersection
+
+  `Awaitable<T>` represents values that can be either synchronous or asynchronous (`T | PromiseLike<T>`). This type is useful for functions that may complete synchronously or asynchronously depending on runtime conditions.
+
+  `isPromiseLike()` is a type guard to check if an Awaitable value is async, allowing conditional await only when necessary.
+
+- ce83b24: Added `assertType` helper for asserting values against Evolu Types.
+
+  Uses the Type name as the default error message to keep assertion failures readable.
+
+  ```ts
+  const length = buffer.getLength();
+  assertType(NonNegativeInt, length, "buffer length should be non-negative");
+  ```
+
+- f0bbebb: Added `createObjectURL` helper for safe, disposable `URL.createObjectURL` usage using JS Resource management so the URL is disposed automatically when the scope ends.
+
+  Example:
+
+  ```ts
+  const handleDownloadDatabaseClick = () => {
+    void evolu.exportDatabase().then((data) => {
+      using objectUrl = createObjectURL(
+        new Blob([data], { type: "application/x-sqlite3" }),
+      );
+
+      const link = document.createElement("a");
+      link.href = objectUrl.url;
+      link.download = `${evolu.name}.sqlite3`;
+      link.click();
+    });
+  };
+  ```
+
+- 332dfca: Added pull-based protocol types for modeling three-outcome operations
+
+  New types and utilities for iterators and streams where completion is a normal outcome, not an error:
+  - `Done<D>` - Signal type for normal completion with optional summary value
+  - `done(value)` - Factory function to create Done instances
+  - `NextResult<A, E, D>` - Result that can complete with value, error, or done
+  - `nextResult(ok, err, done)` - Factory for creating NextResult Type instances
+  - `UnknownNextResult` - Type instance for runtime `.is()` checks
+  - `InferDone<R>` - Extracts the done value type from a NextResult
+  - `NextTask<T, E, D>` - Task that can complete with value, error, or done
+  - `InferTaskDone<T>` - Extracts the done value type from a NextTask
+
+  The naming follows the existing pattern: `Result` → `NextResult`, `Task` → `NextTask`.
+
+- 7da2364: Added Option module for distinguishing absence from nullable values.
+
+  Use Option when the value itself can be `null` or `undefined`. For APIs where `null` means "not found", just use `T | null` directly.
+
+  **Types:**
+  - `Option<T>` — `Some<T> | None`
+  - `Some<T>` — present value
+  - `None` — absent value
+  - `InferOption<O>` — extracts value type from Option or Some
+
+  **Functions:**
+  - `some(value)` — creates a Some
+  - `none` — shared None instance
+  - `isSome(option)` — type guard for Some
+  - `isNone(option)` — type guard for None
+  - `fromNullable(value)` — converts nullable to Option
+
+- 6f1d6ea: Added `RandomNumber` branded type for type-safe random values
+  - `RandomNumber` — branded `number` type for values in [0, 1) range
+  - `Random.next()` now returns `RandomNumber` instead of `number`
+  - Prevents accidentally passing arbitrary numbers where random values are expected
+
+- 5f97e83: Added Result composition helpers for arrays and structs.
+  - **`allResult`** — extracts all values from an array/struct of Results, returning the first error if any fails
+  - **`mapResult`** — maps items to Results and extracts all values, returning the first error if any fails
+  - **`anyResult`** — returns the first successful Result, or the last error if all fail
+
+  ```ts
+  // Extract values from array of Results
+  const results = [ok(1), ok(2), ok(3)];
+  const all = allResult(results); // ok([1, 2, 3])
+
+  // Map items to Results
+  const users = mapResult(userIds, fetchUser);
+  // Result<ReadonlyArray<User>, FetchError>
+
+  // First success wins
+  const result = anyResult([err("a"), ok(42), err("b")]); // ok(42)
+
+  // Struct support
+  const struct = allResult({ a: ok(1), b: ok("two") });
+  // ok({ a: 1, b: "two" })
+  ```
+
+- 3ba2a92: Added Schedule module for composable scheduling strategies.
+
+  **Schedule** is a composable abstraction for retry, repeat, and rate limiting. Each schedule is a state machine: calling `schedule(deps)` creates a step function, and each `step(input)` returns `Ok([Output, Millis])` or `Err(Done<void>)` to stop.
+
+  **Constructors:**
+  - `forever` — never stops, no delay (base for composition)
+  - `once` — runs exactly once
+  - `recurs(n)` — runs n times
+  - `spaced(duration)` — constant delay
+  - `exponential(base, factor?)` — exponential backoff
+  - `linear(base)` — linear backoff
+  - `fibonacci(initial)` — Fibonacci backoff
+  - `fixed(interval)` — window-aligned intervals
+  - `windowed(interval)` — sleeps until next window boundary
+  - `fromDelay(duration)` — single delay
+  - `fromDelays(...durations)` — sequence of delays
+  - `elapsed` — outputs elapsed time
+  - `during(duration)` — runs for specified duration
+  - `always(value)` — constant output
+  - `unfoldSchedule(initial, next)` — state machine
+
+  **Combinators:**
+  - Limiting: `take`, `maxElapsed`, `maxDelay`
+  - Delay: `jitter`, `delayed`, `addDelay`, `modifyDelay`, `compensate`
+  - Filtering: `whileScheduleInput`, `untilScheduleInput`, `whileScheduleOutput`, `untilScheduleOutput`, `resetScheduleAfter`
+  - Transform: `mapSchedule`, `passthrough`, `foldSchedule`, `repetitions`, `delays`
+  - Collection: `collectAllScheduleOutputs`, `collectScheduleInputs`, `collectWhileScheduleOutput`, `collectUntilScheduleOutput`
+  - Composition: `sequenceSchedules`, `intersectSchedules`, `unionSchedules`, `whenInput`
+  - Side effects: `tapScheduleOutput`, `tapScheduleInput`
+
+  **Presets:**
+  - `retryStrategyAws` — exponential backoff (100ms base), max 2 retries, 20s cap, full jitter
+
+- 5720b0b: Added Set module with type-safe helpers for immutable set operations.
+
+  **Types:**
+  - `NonEmptyReadonlySet<T>` — branded type for sets with at least one element (no mutable variant because `clear()`/`delete()` would break the guarantee)
+
+  **Constants:**
+  - `emptySet` — singleton empty set to avoid allocations
+
+  **Type guards:**
+  - `isNonEmptySet` — narrows to branded `NonEmptyReadonlySet`
+
+  **Transformations:**
+  - `addToSet` — returns branded non-empty set with item added
+  - `deleteFromSet` — returns new set with item removed
+  - `mapSet` — maps over set, preserves non-empty type
+  - `filterSet` — filters set with predicate or refinement
+
+  **Accessors:**
+  - `firstInSet` — returns first element by insertion order (requires branded type)
+
+- e948269: Added optional equality function to `Ref` and `ReadonlyStore` interface. `Ref.set` and `Ref.modify` now return `boolean` indicating whether state was updated. `Store` now uses `Ref` internally for state management.
+- d1f817f: Added Resource management polyfills
+
+  Provides `Symbol.dispose`, `Symbol.asyncDispose`, `DisposableStack`, and `AsyncDisposableStack` for environments without native support (e.g., Safari). This enables the `using` and `await using` declarations for automatic resource cleanup.
+
+  Polyfills are installed automatically when importing `@evolu/common`.
+
+  See `Result.test.ts` for usage patterns combining `Result` with `using`, `DisposableStack`, and `AsyncDisposableStack`.
+
+- b956a5f: Added a new `StructuralMap` module for `Map`-like storage keyed by structural values instead of object identity.
+
+  `StructuralMap` was added for cases where callers already had immutable keys such as JSON-like values, `undefined`, or `Uint8Array` and wanted to look up shared state, cached values, or in-flight work without maintaining a separate canonical string id. Structurally equal arrays, objects, and byte arrays addressed the same entry even when they were different JavaScript instances.
+
+  `StructuralMap` worked by deriving a canonical structural id for each key and storing entries in a native `Map` keyed by that id. Repeated lookups of the same object, array, or `Uint8Array` instance reused cached ids through a `WeakMap`.
+
+  ### Example
+
+  ```ts
+  import { createStructuralMap } from "@evolu/common";
+
+  const map = createStructuralMap<
+    { readonly id: string; readonly filter: readonly [string, string] },
+    string
+  >();
+
+  map.set({ id: "items", filter: ["owner", "active"] }, "cached");
+
+  map.get({ id: "items", filter: ["owner", "active"] });
+  // => "cached"
+  ```
+
+- ece429b: Added Test module for deterministic testing with proper isolation.
+
+  **New exports:**
+  - `testCreateDeps()` - Creates fresh test deps per call for test isolation
+  - `testCreateRun()` - Test Run with deterministic deps for reproducible fiber IDs, timestamps, and other generated values
+  - `TestDeps` type extending `RunDeps` with `TestConsoleDep` (for test assertions) and `RandomLibDep` (for seeded randomness)Ø
+
+  **Pattern:**
+
+  ```ts
+  test("my test", () => {
+    const deps = testCreateDeps();
+    const id = createId(deps);
+    // Each test gets fresh, isolated deps
+  });
+
+  test("with custom seed", () => {
+    const deps = testCreateDeps({ seed: "my-test" });
+    // Reproducible randomness
+  });
+  ```
+
+- 3b74e48: Added `result` Type factory and `typed` overload for props-less discriminants
+
+  **Result Type factory:**
+  - `result(okType, errType)` — creates a Type for validating serialized Results from storage, APIs, or message passing
+  - `UnknownResult` — validates `Result<unknown, unknown>` for runtime `.is()` checks
+
+  **typed overload:**
+  - `typed(tag)` now accepts just a tag without props for simple discriminants like `typed("Pending")`
+  - Added `TypedType<Tag, Props?>` helper type for the return type of `typed`
+
+- 9373afa: Added `Typed` interface and `typed` factory for discriminated unions
+
+  Discriminated unions model mutually exclusive states where each variant is a distinct type. This makes illegal states unrepresentable — invalid combinations cannot exist.
+
+  ```ts
+  // Type-only usage for static discrimination
+  interface Pending extends Typed<"Pending"> {
+    readonly createdAt: DateIso;
+  }
+  interface Shipped extends Typed<"Shipped"> {
+    readonly trackingNumber: TrackingNumber;
+  }
+  type OrderState = Pending | Shipped;
+
+  // Runtime validation with typed() factory
+  const Pending = typed("Pending", { createdAt: DateIso });
+  const Shipped = typed("Shipped", { trackingNumber: TrackingNumber });
+  ```
+
+### Patch Changes
+
+- bfaa2ca: Added Listeners module for publish-subscribe notifications
+
+  ### Example
+
+  ```ts
+  // Without payload (default)
+  const listeners = createListeners();
+  listeners.subscribe(() => console.log("notified"));
+  listeners.notify();
+
+  // With typed payload
+  const listeners = createListeners<{ id: string }>();
+  listeners.subscribe((event) => console.log(event.id));
+  listeners.notify({ id: "123" });
+  ```
+
 ## 7.4.1
 
 ### Patch Changes

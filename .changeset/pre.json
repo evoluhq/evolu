@@ -21,5 +21,37 @@
     "@evolu/vue": "1.4.0",
     "@evolu/web": "2.4.0"
   },
-  "changesets": []
+  "changesets": [
+    "add-todo-function",
+    "add-types-utilities",
+    "array-module-refactor",
+    "bright-cats-assert-type",
+    "console-improved",
+    "create-query-builder",
+    "evolu-kysely-helper-cleanup",
+    "gentle-pumas-eat",
+    "lazy-helpers-rename",
+    "listeners-module",
+    "lovely-aliens-camp",
+    "next-result-done",
+    "option-module",
+    "random-number-brand",
+    "red-wings-itch",
+    "result-composition-helpers",
+    "result-never-inference",
+    "schedule-module",
+    "set-module",
+    "smart-refs-store",
+    "spotty-coats-sort",
+    "sqlite-refactor",
+    "structural-map-uint8array",
+    "test-module",
+    "time-module-refactor",
+    "tough-cats-fall",
+    "transferable-error-rename",
+    "type-result-factory",
+    "type-standard-schema-json-errors",
+    "typed-discriminant",
+    "worker-abstraction-refactor"
+  ]
 }

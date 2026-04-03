@@ -1,5 +1,69 @@
 # @evolu/nodejs
 
+## 3.0.0-next.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+- 2abf93d: Refactored SQLite integration to use Task and throw-first semantics
+  - Changed `createSqlite` to `Task<Sqlite, never, CreateSqliteDriverDep>`
+  - Changed `CreateSqliteDriver` to `Task<SqliteDriver>`
+  - Removed `SqliteError` from SQLite driver/task APIs
+  - Changed `Sqlite.exec` to return `SqliteExecResult` directly (no `Result<..., SqliteError>`)
+  - Changed `Sqlite.transaction` to support callbacks returning either `Result<T, E>` or `void` (no `SqliteError` in the error channel)
+  - Changed `Sqlite.export` to return `Uint8Array` directly (no `Result<..., SqliteError>`)
+  - Simplified `SqliteDriver.exec` by removing the `isMutation` parameter, so the driver determines read vs write internally
+  - Replaced `options.memory` and `options.encryptionKey` with a discriminated `options.mode` field (`"memory"` | `"encrypted"`)
+  - Updated Expo and op-sqlite drivers to match the new API
+  - Added SQLite schema metadata primitives (`SqliteSchema`, `SqliteIndex`, `eqSqliteIndex`, `getSqliteSchema`, `getSqliteSnapshot`)
+  - Added `testSetupSqlite` helper for SQLite tests
+
+  Why `SqliteError` was removed:
+  - In Evolu, SQLite runs in-process. Failures are infrastructure-level and unrecoverable at the call site.
+  - Wrapping these failures as `Result` values did not create meaningful recovery paths; callers still had to fail.
+  - The correct behavior is to let such failures throw and surface them through platform `createRun` global handlers (web, nodejs, react-native), which report uncaught errors via Evolu `console.error`.
+  - Evolu also propagates `console.error` entries through its messaging layer into the shared `evoluError` global store, so app-level error subscriptions still receive these failures.
+
+  Boundary handling:
+  - At protocol boundaries (for example Protocol ↔ Storage), error handling remains explicit.
+  - Since storage implementations may throw, boundary code uses `try/catch`, logs with `console.error(error)`, and returns protocol-level outcomes.
+  - Protocol handles all thrown errors as boundary concerns, without coupling to SQLite-specific error types.
+
+### Patch Changes
+
+- Updated dependencies [6fc3bba]
+- Updated dependencies [2f39c8e]
+- Updated dependencies [98a4b6c]
+- Updated dependencies [ce83b24]
+- Updated dependencies [97f5314]
+- Updated dependencies [5275b07]
+- Updated dependencies [cd6b74d]
+- Updated dependencies [5a4d172]
+- Updated dependencies [87780a3]
+- Updated dependencies [bfaa2ca]
+- Updated dependencies [f0bbebb]
+- Updated dependencies [332dfca]
+- Updated dependencies [7da2364]
+- Updated dependencies [6f1d6ea]
+- Updated dependencies [0528425]
+- Updated dependencies [5f97e83]
+- Updated dependencies [7fe328d]
+- Updated dependencies [3ba2a92]
+- Updated dependencies [5720b0b]
+- Updated dependencies [e948269]
+- Updated dependencies [d1f817f]
+- Updated dependencies [2abf93d]
+- Updated dependencies [b956a5f]
+- Updated dependencies [ece429b]
+- Updated dependencies [d30b95a]
+- Updated dependencies [953c1fb]
+- Updated dependencies [9ba5442]
+- Updated dependencies [3b74e48]
+- Updated dependencies [c24ec2f]
+- Updated dependencies [9373afa]
+- Updated dependencies [4be336d]
+  - @evolu/common@8.0.0-next.0
+
 ## 2.4.0
 
 ### Patch Changes

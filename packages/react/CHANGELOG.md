@@ -1,5 +1,46 @@
 # @evolu/react
 
+## 11.0.0-next.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+
+### Patch Changes
+
+- Updated dependencies [6fc3bba]
+- Updated dependencies [2f39c8e]
+- Updated dependencies [98a4b6c]
+- Updated dependencies [ce83b24]
+- Updated dependencies [97f5314]
+- Updated dependencies [5275b07]
+- Updated dependencies [cd6b74d]
+- Updated dependencies [5a4d172]
+- Updated dependencies [87780a3]
+- Updated dependencies [bfaa2ca]
+- Updated dependencies [f0bbebb]
+- Updated dependencies [332dfca]
+- Updated dependencies [7da2364]
+- Updated dependencies [6f1d6ea]
+- Updated dependencies [0528425]
+- Updated dependencies [5f97e83]
+- Updated dependencies [7fe328d]
+- Updated dependencies [3ba2a92]
+- Updated dependencies [5720b0b]
+- Updated dependencies [e948269]
+- Updated dependencies [d1f817f]
+- Updated dependencies [2abf93d]
+- Updated dependencies [b956a5f]
+- Updated dependencies [ece429b]
+- Updated dependencies [d30b95a]
+- Updated dependencies [953c1fb]
+- Updated dependencies [9ba5442]
+- Updated dependencies [3b74e48]
+- Updated dependencies [c24ec2f]
+- Updated dependencies [9373afa]
+- Updated dependencies [4be336d]
+  - @evolu/common@8.0.0-next.0
+
 ## 10.4.0
 
 ### Patch Changes

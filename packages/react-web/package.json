@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react-web",
-  "version": "2.4.0",
+  "version": "3.0.0-next.0",
   "description": "Evolu for React (web platform)",
   "keywords": [
     "evolu",
@@ -35,9 +35,9 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
-    "@evolu/common": "*",
+    "@evolu/common": "8.0.0-next.0",
     "@evolu/typescript-config": "*",
-    "@evolu/web": "*",
+    "@evolu/web": "3.0.0-next.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.4",
@@ -46,8 +46,8 @@
     "user-agent-data-types": "^0.4.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^7.4.1",
-    "@evolu/web": "^2.4.0",
+    "@evolu/common": "^8.0.0-next.0",
+    "@evolu/web": "^3.0.0-next.0",
     "react": ">=19",
     "react-dom": ">=19"
   },

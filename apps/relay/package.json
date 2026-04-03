@@ -1,6 +1,6 @@
 {
   "name": "relay",
-  "version": "2.0.8",
+  "version": "3.0.0-next.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,8 +13,8 @@
     "README.md"
   ],
   "dependencies": {
-    "@evolu/common": "*",
-    "@evolu/nodejs": "*"
+    "@evolu/common": "8.0.0-next.0",
+    "@evolu/nodejs": "3.0.0-next.0"
   },
   "devDependencies": {
     "@evolu/typescript-config": "*",
