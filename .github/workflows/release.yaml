@@ -29,6 +29,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Install Playwright browsers
+        run: cd packages/common && bunx playwright install --with-deps chromium firefox webkit
+
       - name: Verify
         run: bun run verify
 
