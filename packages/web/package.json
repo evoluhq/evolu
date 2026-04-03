@@ -1,6 +1,6 @@
 {
   "name": "@evolu/web",
-  "version": "2.4.0",
+  "version": "3.0.0-next.0",
   "description": "Evolu for web",
   "keywords": [
     "evolu",
@@ -37,7 +37,7 @@
     "idb-keyval": "^6.2.2"
   },
   "devDependencies": {
-    "@evolu/common": "*",
+    "@evolu/common": "8.0.0-next.0",
     "@evolu/typescript-config": "*",
     "@types/sharedworker": "^0.0.221",
     "@types/web-locks-api": "^0.0.5",
@@ -45,7 +45,7 @@
     "user-agent-data-types": "^0.4.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^7.4.1"
+    "@evolu/common": "^8.0.0-next.0"
   },
   "publishConfig": {
     "access": "public"

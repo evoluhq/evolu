@@ -1,5 +1,142 @@
 # @evolu/web
 
+## 3.0.0-next.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+- 0528425: - Merged `@evolu/common/local-first/Platform.ts` into `@evolu/common/Platform.ts`
+  - Made `@evolu/react-web` re-export everything from `@evolu/web`, allowing React users to install only `@evolu/react-web`
+- 2abf93d: Refactored SQLite integration to use Task and throw-first semantics
+  - Changed `createSqlite` to `Task<Sqlite, never, CreateSqliteDriverDep>`
+  - Changed `CreateSqliteDriver` to `Task<SqliteDriver>`
+  - Removed `SqliteError` from SQLite driver/task APIs
+  - Changed `Sqlite.exec` to return `SqliteExecResult` directly (no `Result<..., SqliteError>`)
+  - Changed `Sqlite.transaction` to support callbacks returning either `Result<T, E>` or `void` (no `SqliteError` in the error channel)
+  - Changed `Sqlite.export` to return `Uint8Array` directly (no `Result<..., SqliteError>`)
+  - Simplified `SqliteDriver.exec` by removing the `isMutation` parameter, so the driver determines read vs write internally
+  - Replaced `options.memory` and `options.encryptionKey` with a discriminated `options.mode` field (`"memory"` | `"encrypted"`)
+  - Updated Expo and op-sqlite drivers to match the new API
+  - Added SQLite schema metadata primitives (`SqliteSchema`, `SqliteIndex`, `eqSqliteIndex`, `getSqliteSchema`, `getSqliteSnapshot`)
+  - Added `testSetupSqlite` helper for SQLite tests
+
+  Why `SqliteError` was removed:
+  - In Evolu, SQLite runs in-process. Failures are infrastructure-level and unrecoverable at the call site.
+  - Wrapping these failures as `Result` values did not create meaningful recovery paths; callers still had to fail.
+  - The correct behavior is to let such failures throw and surface them through platform `createRun` global handlers (web, nodejs, react-native), which report uncaught errors via Evolu `console.error`.
+  - Evolu also propagates `console.error` entries through its messaging layer into the shared `evoluError` global store, so app-level error subscriptions still receive these failures.
+
+  Boundary handling:
+  - At protocol boundaries (for example Protocol ↔ Storage), error handling remains explicit.
+  - Since storage implementations may throw, boundary code uses `try/catch`, logs with `console.error(error)`, and returns protocol-level outcomes.
+  - Protocol handles all thrown errors as boundary concerns, without coupling to SQLite-specific error types.
+
+- 953c1fb: Replaced interface-based symmetric encryption with direct function-based API
+
+  ### Breaking Changes
+
+  **Removed:**
+  - `SymmetricCrypto` interface
+  - `SymmetricCryptoDep` interface
+  - `createSymmetricCrypto()` factory function
+  - `SymmetricCryptoDecryptError` error type
+
+  **Added:**
+  - `encryptWithXChaCha20Poly1305()` - Direct encryption function with explicit algorithm name
+  - `decryptWithXChaCha20Poly1305()` - Direct decryption function
+  - `XChaCha20Poly1305Ciphertext` - Branded type for ciphertext
+  - `Entropy24` - Branded type for 24-byte nonces
+  - `DecryptWithXChaCha20Poly1305Error` - Algorithm-specific error type
+  - `xChaCha20Poly1305NonceLength` - Constant for nonce length (24)
+
+  ### Migration Guide
+
+  **Before:**
+
+  ```ts
+  const symmetricCrypto = createSymmetricCrypto({ randomBytes });
+  const { nonce, ciphertext } = symmetricCrypto.encrypt(plaintext, key);
+  const result = symmetricCrypto.decrypt(ciphertext, key, nonce);
+  ```
+
+  **After:**
+
+  ```ts
+  const [ciphertext, nonce] = encryptWithXChaCha20Poly1305({ randomBytes })(
+    plaintext,
+    key,
+  );
+  const result = decryptWithXChaCha20Poly1305(ciphertext, nonce, key);
+  ```
+
+  **Error handling:**
+
+  ```ts
+  // Before
+  if (!result.ok && result.error.type === "SymmetricCryptoDecryptError") { ... }
+
+  // After
+  if (!result.ok && result.error.type === "DecryptWithXChaCha20Poly1305Error") { ... }
+  ```
+
+  **Dependency injection:**
+
+  ```ts
+  // Before
+  interface Deps extends SymmetricCryptoDep { ... }
+
+  // After - only encrypt needs RandomBytesDep
+  interface Deps extends RandomBytesDep { ... }
+  ```
+
+  ### Rationale
+
+  This change improves API extensibility by using explicit function names instead of a generic interface. Adding new encryption algorithms (e.g., `encryptWithAES256GCM`) is now straightforward without breaking existing code.
+
+- 4be336d: Refactored worker abstraction to support all platforms uniformly:
+  - Added platform-agnostic worker interfaces: `Worker<Input, Output>`, `SharedWorker<Input, Output>`, `MessagePort<Input, Output>`, `MessageChannel<Input, Output>`
+  - Added worker-side interfaces: `WorkerSelf<Input, Output>` and `SharedWorkerSelf<Input, Output>` for typed worker `self` wrappers
+  - Changed `onMessage` from a method to a property for consistency with Web APIs
+  - Made all worker and message port interfaces `Disposable` for proper resource cleanup
+  - Added default generic parameters (`Output = never`) for simpler one-way communication patterns
+  - Added complete web platform implementations: `createWorker`, `createSharedWorker`, `createMessageChannel`, `createWorkerSelf`, `createSharedWorkerSelf`, `createMessagePort`
+  - Added React Native polyfills for Workers and MessageChannel
+
+### Patch Changes
+
+- Updated dependencies [6fc3bba]
+- Updated dependencies [2f39c8e]
+- Updated dependencies [98a4b6c]
+- Updated dependencies [ce83b24]
+- Updated dependencies [97f5314]
+- Updated dependencies [5275b07]
+- Updated dependencies [cd6b74d]
+- Updated dependencies [5a4d172]
+- Updated dependencies [87780a3]
+- Updated dependencies [bfaa2ca]
+- Updated dependencies [f0bbebb]
+- Updated dependencies [332dfca]
+- Updated dependencies [7da2364]
+- Updated dependencies [6f1d6ea]
+- Updated dependencies [0528425]
+- Updated dependencies [5f97e83]
+- Updated dependencies [7fe328d]
+- Updated dependencies [3ba2a92]
+- Updated dependencies [5720b0b]
+- Updated dependencies [e948269]
+- Updated dependencies [d1f817f]
+- Updated dependencies [2abf93d]
+- Updated dependencies [b956a5f]
+- Updated dependencies [ece429b]
+- Updated dependencies [d30b95a]
+- Updated dependencies [953c1fb]
+- Updated dependencies [9ba5442]
+- Updated dependencies [3b74e48]
+- Updated dependencies [c24ec2f]
+- Updated dependencies [9373afa]
+- Updated dependencies [4be336d]
+  - @evolu/common@8.0.0-next.0
+
 ## 2.4.0
 
 ### Patch Changes

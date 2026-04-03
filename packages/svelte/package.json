@@ -1,6 +1,6 @@
 {
   "name": "@evolu/svelte",
-  "version": "2.4.0",
+  "version": "3.0.0-next.0",
   "description": "Evolu for Svelte",
   "keywords": [
     "evolu",
@@ -36,9 +36,9 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@evolu/common": "*",
+    "@evolu/common": "8.0.0-next.0",
     "@evolu/typescript-config": "*",
-    "@evolu/web": "*",
+    "@evolu/web": "3.0.0-next.0",
     "@sveltejs/package": "^2.5.7",
     "@tsconfig/svelte": "^5.0.6",
     "svelte": "^5.48.2",
@@ -46,8 +46,8 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@evolu/common": "^7.4.1",
-    "@evolu/web": "^2.4.0",
+    "@evolu/common": "^8.0.0-next.0",
+    "@evolu/web": "^3.0.0-next.0",
     "svelte": ">=5"
   },
   "publishConfig": {

@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react",
-  "version": "10.4.0",
+  "version": "11.0.0-next.0",
   "description": "Evolu for React",
   "keywords": [
     "evolu",
@@ -35,7 +35,7 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "devDependencies": {
-    "@evolu/common": "*",
+    "@evolu/common": "8.0.0-next.0",
     "@evolu/typescript-config": "*",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -43,7 +43,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@evolu/common": "^7.4.1",
+    "@evolu/common": "^8.0.0-next.0",
     "react": ">=19"
   },
   "publishConfig": {
