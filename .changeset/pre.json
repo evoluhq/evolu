@@ -1,0 +1,25 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "relay": "2.0.8",
+    "web": "2.0.0",
+    "@example/angular-vite-pwa": "0.0.0",
+    "@example/react-electron": "0.0.0",
+    "@example/react-expo": "1.0.0",
+    "@example/react-nextjs": "0.1.0",
+    "@example/react-vite-pwa": "0.0.0",
+    "@example/svelte-vite-pwa": "0.0.0",
+    "@example/vue-vite-pwa": "0.0.0",
+    "@evolu/common": "7.4.1",
+    "@evolu/nodejs": "2.4.0",
+    "@evolu/react": "10.4.0",
+    "@evolu/react-native": "14.3.0",
+    "@evolu/react-web": "2.4.0",
+    "@evolu/svelte": "2.4.0",
+    "@evolu/typescript-config": "0.0.2",
+    "@evolu/vue": "1.4.0",
+    "@evolu/web": "2.4.0"
+  },
+  "changesets": []
+}
