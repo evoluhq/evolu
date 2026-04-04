@@ -5,6 +5,7 @@ import { err, ok } from "../src/Result.js";
 import { testCreateDeps } from "../src/Test.js";
 import type {
   AnyType,
+  ArrayBufferError,
   ArrayError,
   BigIntError,
   BooleanError,
@@ -52,6 +53,7 @@ import type {
   UnionError,
 } from "../src/Type.js";
 import {
+  ArrayBuffer,
   array,
   Base64Url,
   base64UrlToUint8Array,
@@ -175,10 +177,24 @@ test("Base Types", () => {
   const bytes = new globalThis.Uint8Array([1, 2, 3]);
   expect(Uint8Array.fromUnknown(bytes)).toEqual(ok(bytes));
 
+  const arrayBuffer = bytes.buffer;
+  expect(ArrayBuffer.fromUnknown(arrayBuffer)).toEqual(ok(arrayBuffer));
+  expect(ArrayBuffer.is(arrayBuffer)).toBe(true);
+
   const date = new globalThis.Date();
   expect(Uint8Array.fromUnknown(date)).toEqual(
     err({ type: "Uint8Array", value: date }),
   );
+  expect(ArrayBuffer.fromUnknown(date)).toEqual(
+    err<ArrayBufferError>({ type: "ArrayBuffer", value: date }),
+  );
+  expect(ArrayBuffer.is(date)).toBe(false);
+
+  expectTypeOf(ArrayBuffer.Type).toEqualTypeOf<globalThis.ArrayBuffer>();
+  expectTypeOf(ArrayBuffer.Error).toEqualTypeOf<ArrayBufferError>();
+  expectTypeOf(ArrayBuffer.Input).toEqualTypeOf<globalThis.ArrayBuffer>();
+  expectTypeOf(ArrayBuffer.Parent).toEqualTypeOf<globalThis.ArrayBuffer>();
+  expectTypeOf(ArrayBuffer.ParentError).toEqualTypeOf<ArrayBufferError>();
 
   // TODO: Test other Base Types.
 });

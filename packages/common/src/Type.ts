@@ -837,6 +837,18 @@ export interface Uint8ArrayError extends TypeError<"Uint8Array"> {}
 export const formatUint8ArrayError =
   /*#__PURE__*/ createBaseTypeErrorFormatter<Uint8ArrayError>();
 
+/** @group Base Types */
+export const ArrayBuffer = /*#__PURE__*/ base("ArrayBuffer", (value) =>
+  Object.prototype.toString.call(value as object) === "[object ArrayBuffer]"
+    ? ok(value as globalThis.ArrayBuffer)
+    : err<ArrayBufferError>({ type: "ArrayBuffer", value }),
+);
+
+export interface ArrayBufferError extends TypeError<"ArrayBuffer"> {}
+
+export const formatArrayBufferError =
+  /*#__PURE__*/ createBaseTypeErrorFormatter<ArrayBufferError>();
+
 /**
  * `instanceof` {@link Type}.
  *
@@ -4504,6 +4516,7 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | NullError
   | FunctionError
   | Uint8ArrayError
+  | ArrayBufferError
   | InstanceOfError
   | EvoluTypeError
   | CurrencyCodeError
@@ -4657,6 +4670,8 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatFunctionError(error);
       case "Uint8Array":
         return formatUint8ArrayError(error);
+      case "ArrayBuffer":
+        return formatArrayBufferError(error);
       case "InstanceOf":
         return formatInstanceOfError(error);
       case "EvoluType":
