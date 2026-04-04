@@ -194,6 +194,10 @@ export const fetchProcessedMdxPages = async (
 > => {
   const glob = await import("fast-glob");
 
+  // TODO: If docs builds hit EMFILE again, replace this wide fast-glob scan
+  // with a bounded recursive fs walk and load MDX pages with a small
+  // concurrency limit instead of Promise.all. The generated API reference tree
+  // can exceed default macOS file-descriptor limits.
   // Find all MDX files, conditionally excluding specified paths
   const ignoreList = includeApiReference
     ? excludePaths.filter((path) => path !== "api-reference")
