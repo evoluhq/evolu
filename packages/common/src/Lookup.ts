@@ -46,6 +46,8 @@ export interface LookupMap<K, V> extends Iterable<readonly [K, V]> {
   readonly size: number;
   readonly has: (key: K) => boolean;
   readonly get: (key: K) => V | undefined;
+  readonly getOrInsert: (key: K, defaultValue: V) => V;
+  readonly getOrInsertComputed: (key: K, callbackfn: (key: K) => V) => V;
   readonly getKey: (key: K) => K | undefined;
   readonly set: (key: K, value: V) => LookupMap<K, V>;
   readonly delete: (key: K) => boolean;
@@ -87,6 +89,18 @@ export const createLookupMap = <K, V, L>({
     has: (key) => entriesByLookupKey.has(lookup(key)),
 
     get: (key) => entriesByLookupKey.get(lookup(key))?.value,
+
+    getOrInsert: (key, defaultValue) =>
+      entriesByLookupKey.getOrInsert(lookup(key), {
+        key,
+        value: defaultValue,
+      }).value,
+
+    getOrInsertComputed: (key, callbackfn) =>
+      entriesByLookupKey.getOrInsertComputed(lookup(key), () => ({
+        key,
+        value: callbackfn(key),
+      })).value,
 
     getKey: (key) => entriesByLookupKey.get(lookup(key))?.key,
 

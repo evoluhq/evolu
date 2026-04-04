@@ -228,6 +228,27 @@ describe("installPolyfills Symbol statics", () => {
     expect(asyncDisposeDescriptor?.enumerable).toBe(false);
     expect(asyncDisposeDescriptor?.writable).toBe(false);
   });
+
+  test("installs missing SuppressedError with explicit and default messages", () => {
+    deleteGlobalIfConfigurable("SuppressedError");
+
+    installPolyfills();
+
+    const customMessageError = new globalThis.SuppressedError(
+      new Error("error"),
+      new Error("suppressed"),
+      "custom message",
+    );
+    const defaultMessageError = new globalThis.SuppressedError(
+      new Error("error"),
+      new Error("suppressed"),
+    );
+
+    expect(customMessageError.message).toBe("custom message");
+    expect(defaultMessageError.message).toBe(
+      "An error was suppressed during disposal.",
+    );
+  });
 });
 
 const describeInstallPolyfills = isNativeDisposableStackImplementation
@@ -1446,5 +1467,69 @@ describe("AsyncDisposableStack behavior", () => {
       Reflect.construct(globalThis.AsyncDisposableStack, [], newTarget),
     ).toThrow(EvalError);
     expect(calls).toBe(1);
+  });
+});
+
+describe("installPolyfills Map and WeakMap upsert methods", () => {
+  test("installs Map and WeakMap upsert methods", () => {
+    expect(typeof Map.prototype.getOrInsert).toBe("function");
+    expect(typeof Map.prototype.getOrInsertComputed).toBe("function");
+    expect(typeof WeakMap.prototype.getOrInsert).toBe("function");
+    expect(typeof WeakMap.prototype.getOrInsertComputed).toBe("function");
+  });
+
+  test("Map upsert methods keep existing undefined values and lazily compute missing ones", () => {
+    const map = new Map<string, number | undefined>([["present", undefined]]);
+    const computeCalls: Array<string> = [];
+
+    expect(map.getOrInsert("present", 1)).toBeUndefined();
+    expect(map.getOrInsert("missing", 2)).toBe(2);
+    expect(map.get("missing")).toBe(2);
+
+    expect(
+      map.getOrInsertComputed("present", (key) => {
+        computeCalls.push(key);
+        return 3;
+      }),
+    ).toBeUndefined();
+
+    expect(
+      map.getOrInsertComputed("computed", (key) => {
+        computeCalls.push(key);
+        return key.length;
+      }),
+    ).toBe(8);
+    expect(map.get("computed")).toBe(8);
+    expect(computeCalls).toEqual(["computed"]);
+  });
+
+  test("WeakMap upsert methods keep existing undefined values and lazily compute missing ones", () => {
+    const presentKey = {};
+    const missingKey = {};
+    const computedKey = {};
+    const weakMap = new WeakMap<object, number | undefined>([
+      [presentKey, undefined],
+    ]);
+    const computeCalls: Array<object> = [];
+
+    expect(weakMap.getOrInsert(presentKey, 1)).toBeUndefined();
+    expect(weakMap.getOrInsert(missingKey, 2)).toBe(2);
+    expect(weakMap.get(missingKey)).toBe(2);
+
+    expect(
+      weakMap.getOrInsertComputed(presentKey, (key) => {
+        computeCalls.push(key);
+        return 3;
+      }),
+    ).toBeUndefined();
+
+    expect(
+      weakMap.getOrInsertComputed(computedKey, (key) => {
+        computeCalls.push(key);
+        return Number(key === computedKey);
+      }),
+    ).toBe(1);
+    expect(weakMap.get(computedKey)).toBe(1);
+    expect(computeCalls).toEqual([computedKey]);
   });
 });

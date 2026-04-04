@@ -12,7 +12,7 @@ import { exponential, jitter, maxDelay } from "./Schedule.js";
 import type { RetryError, Task } from "./Task.js";
 import { callback, retry } from "./Task.js";
 import type { Millis } from "./Time.js";
-import { String, type Typed } from "./Type.js";
+import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.js";
 import { assert } from "./Assert.js";
 
 /**
@@ -69,7 +69,7 @@ export interface WebSocket extends AsyncDisposable {
    * error if the data couldn't be sent.
    */
   send: (
-    data: string | ArrayBufferLike | Blob | ArrayBufferView,
+    data: BufferSource | Blob | string | globalThis.Uint8Array,
   ) => Result<void, WebSocketSendError>;
 
   readonly getReadyState: () => WebSocketReadyState;
@@ -201,7 +201,6 @@ export const createWebSocket: CreateWebSocket =
     await using stack = new AsyncDisposableStack();
 
     let socket: globalThis.WebSocket | null = null;
-    let disposed = false;
 
     const closeSocket = () => {
       if (!socket) return;
@@ -284,31 +283,38 @@ export const createWebSocket: CreateWebSocket =
         if (!socket || socket.readyState === socket.CONNECTING) {
           return err({ type: "WebSocketSendError" });
         }
-        socket.send(data);
+        socket.send(ensureSendableData(data));
         return ok();
       },
 
       getReadyState: () => {
-        if (disposed) return "closed";
+        if (moved.disposed) return "closed";
         return socket ? nativeToStringState[socket.readyState] : "connecting";
       },
 
       isOpen: () =>
-        !disposed && socket?.readyState === globalThis.WebSocket.OPEN,
+        !moved.disposed && socket?.readyState === globalThis.WebSocket.OPEN,
 
-      [Symbol.asyncDispose]: async () => {
-        disposed = true;
-        await moved.disposeAsync();
-      },
+      [Symbol.asyncDispose]: () => moved.disposeAsync(),
     });
   };
+
+/** Clones SharedArrayBuffer-backed Uint8Array values before WebSocket.send. */
+const ensureSendableData = (
+  data: BufferSource | Blob | string | globalThis.Uint8Array,
+): BufferSource | Blob | string => {
+  if (!Uint8Array.is(data)) return data;
+  return ArrayBuffer.is(data.buffer)
+    ? (data as globalThis.Uint8Array<ArrayBuffer>)
+    : new globalThis.Uint8Array(data);
+};
 
 /** Creates a deterministic in-memory {@link CreateWebSocket} for testing. */
 export interface TestCreateWebSocket extends CreateWebSocket {
   readonly createdUrls: Array<string>;
   readonly sentMessages: Array<{
     readonly url: string;
-    readonly data: string | ArrayBufferLike | Blob | ArrayBufferView;
+    readonly data: BufferSource | Blob | string | globalThis.Uint8Array;
   }>;
   readonly message: (url: string, data: string | ArrayBuffer | Blob) => void;
   readonly open: (url: string) => void;
@@ -326,7 +332,7 @@ export const testCreateWebSocket = (
   const createdUrls: Array<string> = [];
   const sentMessages: Array<{
     readonly url: string;
-    readonly data: string | ArrayBufferLike | Blob | ArrayBufferView;
+    readonly data: BufferSource | Blob | string | globalThis.Uint8Array;
   }> = [];
   const stateByUrl = new Map<
     string,
@@ -361,7 +367,10 @@ export const testCreateWebSocket = (
         if (state.isDisposed || !state.isOpen) {
           return err({ type: "WebSocketSendError" });
         }
-        sentMessages.push({ url, data });
+        sentMessages.push({
+          url,
+          data: ensureSendableData(data),
+        });
         return ok();
       },
 

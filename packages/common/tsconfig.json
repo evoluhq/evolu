@@ -3,9 +3,15 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
+    "types": ["node"],
     "resolveJsonModule": true,
     "tsBuildInfoFile": "dist/.tsBuildInfo"
   },
-  "include": ["src", "test", "vitest.*.config.ts"],
+  "include": [
+    "src",
+    "test",
+    "test/_webSocketTestServerControl.ts",
+    "vitest.*.config.ts"
+  ],
   "exclude": ["dist", "node_modules"]
 }

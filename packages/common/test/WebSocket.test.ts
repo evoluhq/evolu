@@ -12,45 +12,31 @@ import { isServer } from "../src/Platform.js";
 import { spaced, take } from "../src/Schedule.js";
 import { createRun } from "../src/Task.js";
 import {
+  startTestWebSocketServer,
+  stopTestWebSocketServer,
+} from "./_webSocketTestServerControl.js";
+import {
   createWebSocket,
   testCreateWebSocket,
   type WebSocketError,
 } from "../src/WebSocket.js";
 
-declare module "vitest/browser" {
-  interface BrowserCommands {
-    startWsServer: () => Promise<number>;
-    stopWsServer: (port: number) => Promise<void>;
-  }
-}
-
 let port: number | undefined;
+
 const getServerUrl = (path = ""): string => {
   if (port === undefined) throw new Error("Server port not initialized");
   return `ws://localhost:${port}${path ? "/" + path : ""}`;
 };
 
 beforeEach(async () => {
-  if (isServer) {
-    const { createServer } = await import("./_globalSetup.js");
-    port = await createServer();
-  } else {
-    const { commands } = await import("vitest/browser");
-    port = await commands.startWsServer();
-  }
+  port = await startTestWebSocketServer();
 });
 
 afterEach(async () => {
   if (port === undefined) return;
   const currentPort = port;
   port = undefined;
-  if (isServer) {
-    const { closeServer } = await import("./_globalSetup.js");
-    await closeServer(currentPort);
-  } else {
-    const { commands } = await import("vitest/browser");
-    await commands.stopWsServer(currentPort);
-  }
+  await stopTestWebSocketServer(currentPort);
 });
 
 describe("createWebSocket", () => {
@@ -462,6 +448,56 @@ describe("testCreateWebSocket", () => {
       { url: "ws://default-open.example.com", data: "payload" },
     ]);
   });
+
+  test("passes through ArrayBuffer-backed Uint8Array", async () => {
+    await using run = createRun();
+
+    const createTestWebSocket = testCreateWebSocket();
+    const ws = await run.orThrow(createTestWebSocket("ws://bytes.example.com"));
+
+    await using _ws = ws;
+
+    const buffer = new globalThis.ArrayBuffer(8);
+    const data = new globalThis.Uint8Array(buffer, 2, 3);
+    data.set([1, 2, 3]);
+
+    expect(ws.send(data)).toEqual({ ok: true, value: undefined });
+
+    const sentData = createTestWebSocket.sentMessages[0]?.data;
+    assert(sentData instanceof globalThis.Uint8Array);
+    expect(sentData).toBe(data);
+    expect(sentData.buffer).toBe(buffer);
+    expect(sentData.byteOffset).toBe(data.byteOffset);
+    expect(sentData.byteLength).toBe(data.byteLength);
+    expect([...sentData]).toEqual([1, 2, 3]);
+  });
+
+  test.runIf(typeof globalThis.SharedArrayBuffer !== "undefined")(
+    "clones SharedArrayBuffer-backed Uint8Array before send",
+    async () => {
+      await using run = createRun();
+
+      const createTestWebSocket = testCreateWebSocket();
+      const ws = await run.orThrow(
+        createTestWebSocket("ws://shared-bytes.example.com"),
+      );
+
+      await using _ws = ws;
+
+      const buffer = new globalThis.SharedArrayBuffer(8);
+      const data = new globalThis.Uint8Array(buffer, 1, 3);
+      data.set([4, 5, 6]);
+
+      expect(ws.send(data)).toEqual({ ok: true, value: undefined });
+
+      const sentData = createTestWebSocket.sentMessages[0]?.data;
+      assert(sentData instanceof globalThis.Uint8Array);
+      expect(sentData.buffer).not.toBe(buffer);
+      expect(sentData.byteOffset).toBe(0);
+      expect(sentData.byteLength).toBe(data.byteLength);
+      expect([...sentData]).toEqual([4, 5, 6]);
+    },
+  );
 
   test("asserts when opening or messaging an unknown socket", () => {
     const createTestWebSocket = testCreateWebSocket();

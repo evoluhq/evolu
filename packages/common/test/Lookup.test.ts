@@ -88,6 +88,69 @@ describe("createLookupMap", () => {
     map.clear();
     expect(map.size).toBe(0);
   });
+
+  test("getOrInsert uses lookup equality and preserves the first representative", () => {
+    interface Person {
+      readonly id: string;
+      readonly name: string;
+    }
+
+    const ada: Person = { id: "a", name: "Ada" };
+    const grace: Person = { id: "a", name: "Grace" };
+
+    const map = createLookupMap<Person, number, string>({
+      lookup: (key) => key.id,
+    });
+
+    expect(map.getOrInsert(ada, 1)).toBe(1);
+    expect(map.getOrInsert(grace, 2)).toBe(1);
+    expect(map.size).toBe(1);
+    expect(map.get(grace)).toBe(1);
+    expect(map.getKey(grace)).toBe(ada);
+  });
+
+  test("getOrInsertComputed computes only for missing logical keys", () => {
+    interface Person {
+      readonly id: string;
+      readonly name: string;
+    }
+
+    const ada: Person = { id: "a", name: "Ada" };
+    const grace: Person = { id: "a", name: "Grace" };
+    const linus: Person = { id: "b", name: "Linus" };
+
+    const map = createLookupMap<Person, number, string>({
+      lookup: (key) => key.id,
+    });
+
+    const computedForKeys: Array<string> = [];
+
+    expect(
+      map.getOrInsertComputed(ada, (key) => {
+        computedForKeys.push(key.name);
+        return 1;
+      }),
+    ).toBe(1);
+
+    expect(
+      map.getOrInsertComputed(grace, (key) => {
+        computedForKeys.push(key.name);
+        return 2;
+      }),
+    ).toBe(1);
+
+    expect(
+      map.getOrInsertComputed(linus, (key) => {
+        computedForKeys.push(key.name);
+        return 3;
+      }),
+    ).toBe(3);
+
+    expect(computedForKeys).toEqual(["Ada", "Linus"]);
+    expect(map.getKey(grace)).toBe(ada);
+    expect(map.get(grace)).toBe(1);
+    expect(map.get(linus)).toBe(3);
+  });
 });
 
 describe("createLookupSet", () => {

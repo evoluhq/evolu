@@ -26,7 +26,7 @@ export default defineProject({
       "test/Redacted.test.ts", // uses node:util
     ],
     name: "@evolu/common",
-    setupFiles: ["./test/_browserSetup.ts"],
+    setupFiles: ["./test/_setup.ts"],
     browser: {
       enabled: true,
       provider: playwright(),
@@ -34,11 +34,13 @@ export default defineProject({
       fileParallelism: false, // false is faster for some reason.
       commands: {
         startWsServer: async () => {
-          const { createServer } = await import("./test/_globalSetup.js");
+          const { createServer } =
+            await import("./test/_webSocketTestServer.js");
           return createServer();
         },
         stopWsServer: async (_, port: number) => {
-          const { closeServer } = await import("./test/_globalSetup.js");
+          const { closeServer } =
+            await import("./test/_webSocketTestServer.js");
           await closeServer(port);
         },
       },

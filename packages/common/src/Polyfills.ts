@@ -7,12 +7,14 @@
 /**
  * Installs polyfills required by `@evolu/common`.
  *
- * Installs resource-management polyfills (`Symbol.dispose`,
- * `Symbol.asyncDispose`, `DisposableStack`, `AsyncDisposableStack`, and
- * `SuppressedError`), which are not yet supported by Safari and React Native.
+ * Installs:
  *
- * Evolu currently does not require any additional polyfills. If that changes,
- * this is where they will be installed.
+ * - Resource-management polyfills (`Symbol.dispose`, `Symbol.asyncDispose`,
+ *   `DisposableStack`, `AsyncDisposableStack`, and `SuppressedError`) for
+ *   Safari and React Native
+ * - `Map` and `WeakMap` upsert polyfills (`Map.prototype.getOrInsert`,
+ *   `Map.prototype.getOrInsertComputed`, `WeakMap.prototype.getOrInsert`, and
+ *   `WeakMap.prototype.getOrInsertComputed`) for Node 24 and React Native
  *
  * `@evolu/react-native` has its own `Polyfills` module and its
  * `installPolyfills` calls this function first, then installs React Native
@@ -40,6 +42,7 @@ export const installPolyfills = (): void => {
    * including WebKit.
    */
   installDisposableStack();
+  installMapAndWeakMapUpsertPolyfills();
 };
 
 interface DisposableResource {
@@ -462,4 +465,56 @@ const createAsyncDisposableStackPolyfill = (
   );
 
   return AsyncDisposableStackPolyfill;
+};
+
+/** Installs `Map` and `WeakMap` upsert polyfills missing from the runtime. */
+const installMapAndWeakMapUpsertPolyfills = (): void => {
+  const getOrInsert: typeof Map.prototype.getOrInsert = function (
+    this: Map<unknown, unknown> | WeakMap<object, unknown>,
+    key: unknown,
+    defaultValue: unknown,
+  ): unknown {
+    if (!this.has(key as never)) {
+      this.set(key as never, defaultValue);
+    }
+
+    return this.get(key as never);
+  };
+
+  const getOrInsertComputed: typeof Map.prototype.getOrInsertComputed =
+    function (
+      this: Map<unknown, unknown> | WeakMap<object, unknown>,
+      key: unknown,
+      callbackFunction: (key: unknown) => unknown,
+    ): unknown {
+      if (!this.has(key as never)) {
+        this.set(key as never, callbackFunction(key));
+      }
+
+      return this.get(key as never);
+    };
+
+  if (typeof Map.prototype.getOrInsert !== "function") {
+    defineGlobalValue(Map.prototype, "getOrInsert", getOrInsert);
+  }
+
+  if (typeof Map.prototype.getOrInsertComputed !== "function") {
+    defineGlobalValue(
+      Map.prototype,
+      "getOrInsertComputed",
+      getOrInsertComputed,
+    );
+  }
+
+  if (typeof WeakMap.prototype.getOrInsert !== "function") {
+    defineGlobalValue(WeakMap.prototype, "getOrInsert", getOrInsert);
+  }
+
+  if (typeof WeakMap.prototype.getOrInsertComputed !== "function") {
+    defineGlobalValue(
+      WeakMap.prototype,
+      "getOrInsertComputed",
+      getOrInsertComputed,
+    );
+  }
 };

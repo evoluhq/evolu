@@ -1,6 +1,9 @@
 import { createConsole, createConsoleFormatter } from "@evolu/common";
+import { installPolyfills } from "@evolu/common/polyfills";
 import { createRelayDeps, createRun, startRelay } from "@evolu/nodejs";
 import { mkdirSync } from "fs";
+
+installPolyfills();
 
 // Ensure the database is created in a predictable location for Docker.
 mkdirSync("data", { recursive: true });
