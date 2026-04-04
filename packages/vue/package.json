@@ -37,7 +37,7 @@
   "devDependencies": {
     "@evolu/common": "8.0.0-next.0",
     "@evolu/typescript-config": "*",
-    "typescript": "^5.9.3"
+    "typescript": "^6"
   },
   "peerDependencies": {
     "@evolu/common": "^8.0.0-next.0",

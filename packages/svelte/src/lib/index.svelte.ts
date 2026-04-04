@@ -15,8 +15,8 @@ import type {
 import { createEvoluDeps } from "@evolu/web";
 
 // just in case we need to add some svelte specific deps
-// eslint-disable-next-line evolu/require-pure-annotation
-export const evoluSvelteDeps = createEvoluDeps();
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+export const evoluSvelteDeps = /*#__PURE__*/ createEvoluDeps();
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` property

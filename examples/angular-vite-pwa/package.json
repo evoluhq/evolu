@@ -21,7 +21,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "@vite-pwa/assets-generator": "^1.0.2",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3",
+    "typescript": "^6",
     "vite": "^7.3.1",
     "vite-plugin-pwa": "^1.2.0"
   }

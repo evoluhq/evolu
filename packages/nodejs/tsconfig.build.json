@@ -1,7 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@evolu/common": ["../common/src/index.ts"],
       "@evolu/common/*": ["../common/src/*"]

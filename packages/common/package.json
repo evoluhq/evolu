@@ -71,11 +71,12 @@
     "@bokuweb/zstd-wasm": "0.0.27",
     "@evolu/typescript-config": "*",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
     "better-sqlite3": "^12.6.2",
     "fast-check": "^4.5.3",
     "playwright": "^1.58.1",
-    "typescript": "^5.9.3",
+    "typescript": "^6",
     "webpack": "^5.98.0",
     "ws": "^8.19.0",
     "zod": "^4.3.6"

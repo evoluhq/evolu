@@ -52,7 +52,7 @@
     "shiki": "^4.0.0",
     "simple-functional-loader": "^1.2.1",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3",
+    "typescript": "^6",
     "unist-util-filter": "^5.0.1",
     "unist-util-visit": "^5.0.0",
     "zustand": "^5.0.10"

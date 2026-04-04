@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
+    "types": ["node"],
     "tsBuildInfoFile": "dist/.tsBuildInfo"
   },
   "include": ["src", "test", "vitest.config.ts"],

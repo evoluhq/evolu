@@ -39,9 +39,10 @@
   "devDependencies": {
     "@evolu/common": "8.0.0-next.0",
     "@evolu/typescript-config": "*",
+    "@types/node": "^24.10.9",
     "@types/sharedworker": "^0.0.221",
     "@types/web-locks-api": "^0.0.5",
-    "typescript": "^5.9.3",
+    "typescript": "^6",
     "user-agent-data-types": "^0.4.2"
   },
   "peerDependencies": {

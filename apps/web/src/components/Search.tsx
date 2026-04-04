@@ -1,5 +1,6 @@
 "use client";
 
+import type { Result } from "@/mdx/search.mjs";
 import {
   type AutocompleteApi,
   type AutocompleteCollection,
@@ -19,8 +20,6 @@ import {
   useState,
 } from "react";
 import Highlighter from "react-highlight-words";
-
-import { type Result } from "@/mdx/search.mjs";
 
 type EmptyObject = Record<string, never>;
 
@@ -412,7 +411,6 @@ const useSearchProps = () => {
 
 export const Search = (): React.ReactElement => {
   const [modifierKey] = useState<string>(() =>
-    // eslint-disable-next-line @typescript-eslint/no-deprecated
     /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) ? "⌘" : "Ctrl ",
   );
   const { buttonProps, dialogProps } = useSearchProps();
