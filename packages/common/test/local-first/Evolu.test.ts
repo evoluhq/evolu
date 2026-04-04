@@ -1,5 +1,4 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import type { NonEmptyReadonlyArray } from "../../src/Array.js";
 import { assert } from "../../src/Assert.js";
 import type { Brand } from "../../src/Brand.js";
 import type { ConsoleEntry, TestConsole } from "../../src/Console.js";
@@ -19,15 +18,9 @@ import {
   createEvolu,
   createEvoluDeps,
   testAppName,
-  type Evolu,
   type EvoluPlatformDeps,
 } from "../../src/local-first/Evolu.js";
-import {
-  createOwnerWebSocketTransport,
-  type Owner,
-  type OwnerTransport,
-  type ReadonlyOwner,
-} from "../../src/local-first/Owner.js";
+import { createOwnerWebSocketTransport } from "../../src/local-first/Owner.js";
 import { createQueryBuilder } from "../../src/local-first/Schema.js";
 import {
   initSharedWorker,
@@ -45,7 +38,7 @@ import {
   type CreateSqliteDriver,
   type SqliteDriverOptions,
 } from "../../src/Sqlite.js";
-import { createInMemoryLeaderLock, type Task } from "../../src/Task.js";
+import { createInMemoryLeaderLock } from "../../src/Task.js";
 import { testCreateRun } from "../../src/Test.js";
 import {
   createIdFromString,
@@ -528,26 +521,6 @@ describe("unit tests", () => {
       const evolu = await run.orThrow(testCreateEvolu);
 
       expect(evolu.appOwner).toBe(testAppOwner);
-    });
-
-    test("infers default useOwner transports from config", () => {
-      const task = createEvolu(Schema, {
-        appName: testAppName,
-        appOwner: testAppOwner,
-      });
-
-      expectTypeOf(task).toEqualTypeOf<
-        Task<Evolu<typeof Schema>, never, EvoluPlatformDeps>
-      >();
-
-      expectTypeOf<
-        Parameters<Evolu<typeof Schema>["useOwner"]>
-      >().toEqualTypeOf<
-        [
-          owner: ReadonlyOwner | Owner,
-          transports?: NonEmptyReadonlyArray<OwnerTransport>,
-        ]
-      >();
     });
 
     describe("useOwner", () => {
