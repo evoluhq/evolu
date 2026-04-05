@@ -13,6 +13,12 @@ import { type NavGroup, navigation } from "@/lib/navigation";
 import { remToPx } from "@/lib/remToPx";
 import { IconArrowUpRight } from "@tabler/icons-react";
 
+const isPathActive = (href: string, pathname: string): boolean => {
+  const segmentCount = href.split("/").filter(Boolean).length;
+  if (segmentCount < 2) return href === pathname; // exact match for top-level paths
+  return href === pathname || pathname.startsWith(`${href}/`);
+};
+
 const useInitialValue = <T,>(value: T, condition = true) => {
   const [initialValue] = useState(value);
   return condition ? initialValue : value;
@@ -100,7 +106,7 @@ const VisibleSectionHighlight = ({
     ? Math.max(1, visibleSections.length) * itemHeight
     : itemHeight;
   const top =
-    group.links.findIndex((link) => pathname.includes(link.href)) * itemHeight +
+    group.links.findIndex((link) => isPathActive(link.href, pathname)) * itemHeight +
     firstVisibleSectionIndex * itemHeight;
 
   return (
@@ -125,7 +131,7 @@ const ActivePageMarker = ({
   const itemHeight = remToPx(2);
   const offset = remToPx(0.25);
   const activePageIndex = group.links.findIndex(
-    (link) => pathname.includes(link.href),
+    (link) => isPathActive(link.href, pathname),
   );
   const top = offset + activePageIndex * itemHeight;
 
@@ -158,7 +164,7 @@ const NavigationGroup = ({
   );
 
   const isActiveGroup =
-    group.links.findIndex((link) => pathname.includes(link.href)) !== -1;
+    group.links.findIndex((link) => isPathActive(link.href, pathname)) !== -1;
 
   return (
     <li className={clsx("relative mt-6", className)}>
@@ -186,12 +192,12 @@ const NavigationGroup = ({
         <ul role="list" className="border-l border-transparent">
           {group.links.map((link) => (
             <motion.li key={link.href} layout="position" className="relative">
-              <NavLink href={link.href} active={pathname.includes(link.href)}>
+              <NavLink href={link.href} active={isPathActive(link.href, pathname)}>
                 {link.title}{" "}
                 {link.href.startsWith("http") && <IconArrowUpRight />}
               </NavLink>
               <AnimatePresence mode="popLayout" initial={false}>
-                {pathname.includes(link.href) && sections.length > 0 && (
+                {isPathActive(link.href, pathname) && sections.length > 0 && (
                   <motion.ul
                     role="list"
                     initial={{ opacity: 0 }}
