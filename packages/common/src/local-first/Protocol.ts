@@ -181,7 +181,6 @@ import { Packr } from "msgpackr";
 import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.js";
 import { assert } from "../Assert.js";
 import type { Brand } from "../Brand.js";
-import type { ConsoleDep } from "../Console.js";
 import {
   type Buffer,
   bytesToHex,
@@ -190,6 +189,7 @@ import {
   hexToBytes,
   utf8ToBytes,
 } from "../Buffer.js";
+import type { ConsoleDep } from "../Console.js";
 import {
   createPadmePadding,
   decryptWithXChaCha20Poly1305,
@@ -548,10 +548,7 @@ export const createProtocolMessageFromCrdtMessages =
 /** Creates a {@link ProtocolMessage} for sync. */
 export const createProtocolMessageForSync =
   (deps: StorageDep & ConsoleDep) =>
-  (
-    ownerId: OwnerId,
-    subscriptionFlag?: SubscriptionFlag,
-  ): ProtocolMessage | null => {
+  (ownerId: OwnerId, subscriptionFlag?: SubscriptionFlag): ProtocolMessage => {
     const buffer = createProtocolMessageBuffer(ownerId, {
       messageType: MessageType.Request,
       subscriptionFlag: subscriptionFlag ?? SubscriptionFlags.None,

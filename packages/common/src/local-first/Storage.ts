@@ -12,7 +12,6 @@ import type { Brand } from "../Brand.js";
 import { concatBytes } from "../Buffer.js";
 import { decrement } from "../Number.js";
 import type { RandomDep } from "../Random.js";
-import type { Result } from "../Result.js";
 import { err, ok } from "../Result.js";
 import type { SqliteDep } from "../Sqlite.js";
 import { sql, SqliteValue } from "../Sqlite.js";
@@ -1569,17 +1568,17 @@ export const getTimestampByIndex =
     return result.rows[0].pt;
   };
 
-/** Retrieves usage information for an owner from the evolu_usage table. */
-export const getOwnerUsage =
+/** Reads owner usage from SQLite and returns default bounds when absent. */
+export const readOwnerUsageOrDefault =
   (deps: SqliteDep) =>
   (
     ownerIdBytes: OwnerIdBytes,
     initialTimestamp: TimestampBytes,
-  ): Result<{
-    storedBytes: NonNegativeInt | null;
-    firstTimestamp: TimestampBytes;
-    lastTimestamp: TimestampBytes;
-  }> => {
+  ): {
+    readonly storedBytes: NonNegativeInt | null;
+    readonly firstTimestamp: TimestampBytes;
+    readonly lastTimestamp: TimestampBytes;
+  } => {
     const result = deps.sqlite.exec<{
       storedBytes: NonNegativeInt;
       firstTimestamp: TimestampBytes | null;
@@ -1591,22 +1590,22 @@ export const getOwnerUsage =
     `);
 
     if (!isNonEmptyArray(result.rows)) {
-      return ok({
+      return {
         storedBytes: null,
         firstTimestamp: initialTimestamp,
         lastTimestamp: initialTimestamp,
-      });
+      };
     }
 
     const row = firstInArray(result.rows);
     assert(row.firstTimestamp, "not null");
     assert(row.lastTimestamp, "not null");
 
-    return ok({
+    return {
       storedBytes: row.storedBytes,
       firstTimestamp: row.firstTimestamp,
       lastTimestamp: row.lastTimestamp,
-    });
+    };
   };
 
 /**
