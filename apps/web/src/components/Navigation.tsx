@@ -100,7 +100,7 @@ const VisibleSectionHighlight = ({
     ? Math.max(1, visibleSections.length) * itemHeight
     : itemHeight;
   const top =
-    group.links.findIndex((link) => link.href === pathname) * itemHeight +
+    group.links.findIndex((link) => pathname.includes(link.href)) * itemHeight +
     firstVisibleSectionIndex * itemHeight;
 
   return (
@@ -125,7 +125,7 @@ const ActivePageMarker = ({
   const itemHeight = remToPx(2);
   const offset = remToPx(0.25);
   const activePageIndex = group.links.findIndex(
-    (link) => link.href === pathname,
+    (link) => pathname.includes(link.href),
   );
   const top = offset + activePageIndex * itemHeight;
 
@@ -158,7 +158,7 @@ const NavigationGroup = ({
   );
 
   const isActiveGroup =
-    group.links.findIndex((link) => link.href === pathname) !== -1;
+    group.links.findIndex((link) => pathname.includes(link.href)) !== -1;
 
   return (
     <li className={clsx("relative mt-6", className)}>
@@ -186,12 +186,12 @@ const NavigationGroup = ({
         <ul role="list" className="border-l border-transparent">
           {group.links.map((link) => (
             <motion.li key={link.href} layout="position" className="relative">
-              <NavLink href={link.href} active={link.href === pathname}>
+              <NavLink href={link.href} active={pathname.includes(link.href)}>
                 {link.title}{" "}
                 {link.href.startsWith("http") && <IconArrowUpRight />}
               </NavLink>
               <AnimatePresence mode="popLayout" initial={false}>
-                {link.href === pathname && sections.length > 0 && (
+                {pathname.includes(link.href) && sections.length > 0 && (
                   <motion.ul
                     role="list"
                     initial={{ opacity: 0 }}
@@ -207,7 +207,7 @@ const NavigationGroup = ({
                     {sections.map((section) => (
                       <li key={section.id}>
                         <NavLink
-                          href={`${link.href}#${section.id}`}
+                          href={`${pathname}#${section.id}`}
                           tag={section.tag}
                           isAnchorLink
                         >

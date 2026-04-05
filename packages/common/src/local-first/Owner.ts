@@ -200,7 +200,7 @@ const createOwner = (secret: OwnerSecret): Owner => ({
  *
  * AppOwner must never be shared with anyone.
  *
- * AppOwner's {@link OwnerId} is used for authorization with
+ * AppOwner's {@link OwnerId} is used for authentization with
  * {@link createOwnerWebSocketTransport}. Share it only with trusted relay
  * parties that must verify access, and do not share it with anyone else.
  *
