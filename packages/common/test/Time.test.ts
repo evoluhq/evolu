@@ -102,7 +102,7 @@ describe("Time", () => {
     });
 
     test("with autoIncrement returns monotonically increasing values", async () => {
-      const time = testCreateTime({ autoIncrement: true });
+      const time = testCreateTime({ autoIncrement: "microtask" });
       const first = time.now();
 
       await Promise.resolve();
@@ -118,9 +118,18 @@ describe("Time", () => {
       expect(third).toBe(2);
     });
 
+    test("with sync autoIncrement increments within the same turn", () => {
+      const time = testCreateTime({ autoIncrement: "sync" });
+
+      expect(time.now()).toBe(0);
+      expect(time.now()).toBe(1);
+      expect(time.nowDateIso()).toBe("1970-01-01T00:00:00.002Z");
+      expect(time.now()).toBe(3);
+    });
+
     test("nowDateIso respects autoIncrement", async () => {
       const time = testCreateTime({
-        autoIncrement: true,
+        autoIncrement: "microtask",
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
       });
 

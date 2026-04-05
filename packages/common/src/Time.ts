@@ -92,25 +92,32 @@ export interface TestTimeDep {
  * their deadline.
  *
  * Set `autoIncrement` to automatically increment time by 1ms after each `now()`
- * call via microtask (useful for tests that need monotonically increasing
- * values without explicit `advance()` calls).
+ * call. `"microtask"` increments after the current turn, while `"sync"`
+ * increments immediately after each read. Omit it to keep time fixed until
+ * `advance()` is called.
  */
 export const testCreateTime = (options?: {
   readonly startAt?: Millis;
-  readonly autoIncrement?: boolean;
+  readonly autoIncrement?: "microtask" | "sync";
 }): TestTime => {
   let now = options?.startAt ?? minMillis;
-  const autoIncrement = options?.autoIncrement ?? false;
+  const autoIncrement = options?.autoIncrement;
   let nextId = 1;
 
   const pending = new Map<number, { callback: () => void; runAt: number }>();
+  const incrementNow = (): void => {
+    now = Millis.orThrow(now + 1);
+  };
 
   const getNowMillis = (): Millis => {
     const result = now;
-    if (autoIncrement) {
-      queueMicrotask(() => {
-        now = Millis.orThrow(now + 1);
-      });
+    switch (autoIncrement) {
+      case "sync":
+        incrementNow();
+        break;
+      case "microtask":
+        queueMicrotask(incrementNow);
+        break;
     }
     return result;
   };

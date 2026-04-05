@@ -1,12 +1,15 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, expectTypeOf, test } from "vitest";
+import type { Brand } from "../src/Brand.js";
 import { createCallbacks } from "../src/Callbacks.js";
 import { ok } from "../src/Result.js";
 import { sleep, type Task } from "../src/Task.js";
 import {
   testCreateDeps,
+  testCreateId,
   testCreateRun,
   testWaitForMacrotask,
 } from "../src/Test.js";
+import type { Id } from "../src/Type.js";
 
 interface Foo extends AsyncDisposable {
   readonly value: string;
@@ -148,5 +151,29 @@ describe("testWaitForMacrotask", () => {
 
   test("accepts an explicit duration", async () => {
     await expect(testWaitForMacrotask("1ms")).resolves.toBeUndefined();
+  });
+});
+
+describe("testCreateId", () => {
+  test("creates file-local stable pseudo-random ids", () => {
+    const createTestId = testCreateId();
+    const first = createTestId();
+    const second = createTestId();
+
+    expect([first, second]).toMatchInlineSnapshot(`
+      [
+        "IGNl5t4ulaaQpdnwDhgoCA",
+        "0l2pVhO0LWfZ0SWcHuPJiQ",
+      ]
+    `);
+    expect(second).not.toBe(first);
+    expectTypeOf(first).toEqualTypeOf<Id>();
+  });
+
+  test("preserves branded id typing", () => {
+    const createTestId = testCreateId();
+    const _todoId = createTestId<"Todo">();
+
+    expectTypeOf(_todoId).toEqualTypeOf<Id & Brand<"Todo">>();
   });
 });

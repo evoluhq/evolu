@@ -4,6 +4,7 @@
  * @module
  */
 
+import type { Brand } from "./Brand.js";
 import {
   testCreateConsole,
   type TestConsole,
@@ -11,9 +12,9 @@ import {
 } from "./Console.js";
 import { testCreateRandomBytes, type RandomBytes } from "./Crypto.js";
 import {
-  type Random,
   testCreateRandom,
   testCreateRandomLib,
+  type Random,
   type RandomLibDep,
 } from "./Random.js";
 import { createRun, type Run, type RunDeps } from "./Task.js";
@@ -25,6 +26,11 @@ import {
   type TestTime,
   type TestTimeDep,
 } from "./Time.js";
+import { createId, type Id } from "./Type.js";
+
+export type TestCreateId = <B extends string = never>() => [B] extends [never]
+  ? Id
+  : Id & Brand<B>;
 
 /**
  * Cheap deterministic baseline deps for tests.
@@ -160,3 +166,37 @@ export function testCreateRun<D>(deps?: D): Run<TestDeps & D> {
 export const testWaitForMacrotask = (
   duration: Duration = minMillis,
 ): Promise<void> => setTimeout(duration);
+
+/**
+ * Creates a deterministic `createId` helper.
+ *
+ * The returned function mirrors {@link createId}, but uses stable test entropy
+ * so each call yields the next deterministic pseudo-random id.
+ *
+ * Create one helper per test, or per reusable test setup helper such as
+ * `setupFoo`, so deterministic ids stay local to that setup.
+ *
+ * Avoid sharing one helper across a whole test file. Adding an extra `createId`
+ * call in one test would shift ids used by unrelated tests later in the file.
+ *
+ * ### Example
+ *
+ * ```ts
+ * test("creates stable ids", () => {
+ *   const createId = testCreateId();
+ *
+ *   const callbackId = createId();
+ *   const secondCallbackId = createId();
+ *   const todoId = createId<"Todo">();
+ * });
+ * ```
+ */
+export const testCreateId = (): TestCreateId => {
+  const randomBytes = testCreateRandomBytes({
+    randomLib: testCreateRandomLib(),
+  });
+
+  return <B extends string = never>(): [B] extends [never]
+    ? Id
+    : Id & Brand<B> => createId<B>({ randomBytes });
+};
