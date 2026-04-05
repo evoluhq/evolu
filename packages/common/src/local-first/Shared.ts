@@ -324,7 +324,7 @@ interface SharedEvolu extends AsyncDisposable {
 
   readonly requestApplySyncMessage: (
     ownerId: OwnerId,
-    inputMessage: Uint8Array<ArrayBuffer>,
+    inputMessage: Uint8Array,
   ) => void;
 }
 
@@ -364,7 +364,7 @@ export interface DbWorkerInput {
           | {
               readonly type: "ApplySyncMessage";
               readonly owner: Owner;
-              readonly inputMessage: Uint8Array<ArrayBuffer>;
+              readonly inputMessage: Uint8Array;
             };
       };
 }

@@ -10,7 +10,7 @@ import {
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.js";
-import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
+import { assert, assertNonEmptyReadonlyArray, assertType } from "../Assert.js";
 import type { ConsoleLevel } from "../Console.js";
 import {
   EncryptionKey,
@@ -77,8 +77,8 @@ import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
   DbChange,
-  getOwnerUsage,
   getTimestampInsertStrategy,
+  readOwnerUsageOrDefault,
   updateOwnerUsage,
   type BaseSqliteStorage,
   type BaseSqliteStorageDep,
@@ -120,10 +120,7 @@ export interface CreateDbWorkerDep {
   readonly createDbWorker: CreateDbWorker;
 }
 
-export type DbWorkerDeps = WorkerDeps &
-  LeaderLockDep &
-  CreateSqliteDriverDep &
-  RandomBytesDep;
+export type DbWorkerDeps = WorkerDeps & LeaderLockDep & CreateSqliteDriverDep;
 
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
@@ -207,10 +204,14 @@ export const startDbWorker =
     const runWithStorage = run.addDeps({ storage });
 
     /**
-     * SharedWorker repeats sends until it gets a response, so handling here
-     * must be idempotent and ignore already processed IDs.
+     * SharedWorker retries until some leader replies, so this worker must
+     * ignore callback IDs it already completed.
      *
-     * TODO: Bound memory growth by evicting old IDs.
+     * The Set intentionally lives for one leader's lifetime. If that leader tab
+     * closes, retries go to a new leader with a fresh Set. Revisit this only if
+     * memory pressure shows up; even millions of short callback IDs are
+     * acceptable here, and naive eviction could let a still-retried request run
+     * again.
      */
     const processedRequestIds = new Set<Id>();
 
@@ -285,15 +286,12 @@ export const startDbWorker =
               >();
 
               for (const owner of request.message.owners) {
-                storage.setOwnerState(owner.encryptionKey);
+                storage.setRequestContext(owner.encryptionKey);
                 const protocolMessage = createProtocolMessageForSync({
                   storage,
                   console,
                 })(owner.id, SubscriptionFlags.Subscribe);
-
-                if (protocolMessage) {
-                  protocolMessagesByOwnerId.set(owner.id, protocolMessage);
-                }
+                protocolMessagesByOwnerId.set(owner.id, protocolMessage);
               }
 
               postQueuedResponse({
@@ -310,7 +308,7 @@ export const startDbWorker =
               const { owner, inputMessage } = request.message;
 
               runWithStorage<void, never>(async (run) => {
-                storage.setOwnerState(owner.encryptionKey);
+                storage.setRequestContext(owner.encryptionKey);
 
                 const result = await run(
                   applyProtocolMessageAsClient(inputMessage, {
@@ -611,7 +609,7 @@ const applyColumnChange =
  * implementation, and switch owner encryption keys between requests.
  */
 interface ClientStorage extends Storage, BaseSqliteStorage {
-  readonly setOwnerState: (encryptionKey: EncryptionKey) => void;
+  readonly setRequestContext: (encryptionKey: EncryptionKey) => void;
   readonly didWriteMessages: () => boolean;
 }
 
@@ -653,7 +651,7 @@ const createClientStorage =
       // same file.
       // This is safe because the worker handles one message at a time. We will
       // refactor it later, we will probably have to change Protocol API.
-      setOwnerState: (nextEncryptionKey) => {
+      setRequestContext: (nextEncryptionKey) => {
         encryptionKey = nextEncryptionKey;
         didWriteMessages = false;
       },
@@ -743,9 +741,8 @@ const createClientStorage =
               isInsert = false;
               break;
             case "isDeleted":
-              if (SqliteBoolean.is(r.value)) {
-                isDelete = sqliteBooleanToBoolean(r.value);
-              }
+              assertType(SqliteBoolean, r.value);
+              isDelete = sqliteBooleanToBoolean(r.value);
               break;
             default:
               values[r.column] = r.value;
@@ -843,7 +840,7 @@ const applyLocalOnlyChange =
     if (change.isDelete) {
       deps.sqlite.exec(sql`
         delete from ${sql.identifier(change.table)}
-        where id = ${change.id};
+        where "ownerId" = ${change.ownerId} and "id" = ${change.id};
       `);
     } else {
       const ownerId = change.ownerId;
@@ -866,13 +863,12 @@ const applyMessages =
   (ownerId: OwnerId, messages: NonEmptyReadonlyArray<CrdtMessage>): void => {
     const ownerIdBytes = ownerIdToOwnerIdBytes(ownerId);
 
-    const usage = getOwnerUsage(deps)(
+    const usage = readOwnerUsageOrDefault(deps)(
       ownerIdBytes,
       timestampToTimestampBytes(firstInArray(messages).timestamp),
     );
-    if (!usage.ok) return;
 
-    let { firstTimestamp, lastTimestamp } = usage.value;
+    let { firstTimestamp, lastTimestamp } = usage;
 
     for (const { timestamp, change } of messages) {
       const columns = dbChangeToColumns(change, timestamp.millis);
