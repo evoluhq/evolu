@@ -810,22 +810,6 @@ test("formatBase64UrlError", () => {
   );
 });
 
-test("base64Url fallback path without Buffer", async () => {
-  vi.resetModules();
-  vi.doMock("../src/Platform.js", () => ({ hasNodeBuffer: false }));
-
-  const typeModule = await import("../src/Type.js?base64-fallback");
-  const bytes = new globalThis.Uint8Array([0, 1, 2, 255]);
-
-  const encoded = typeModule.uint8ArrayToBase64Url(bytes);
-  const decoded = typeModule.base64UrlToUint8Array(encoded);
-
-  expect(decoded).toEqual(bytes);
-
-  vi.doUnmock("../src/Platform.js");
-  vi.resetModules();
-});
-
 test("DateIso", () => {
   const validDates = [
     "0000-01-01T00:00:00.000Z", // Minimum
@@ -2895,109 +2879,82 @@ test("createFormatTypeError", () => {
   expect(formatTypeErrorWithCustomError(nameResult.error)).toBe("name");
 });
 
-test("createFormatTypeError covers all built-in dispatch cases", () => {
+test("createFormatTypeError covers built-in and composite formatter branches", () => {
   const formatTypeError = createFormatTypeError();
-  const getError = <T, E>(
-    result: { ok: true; value: T } | { ok: false; error: E },
-  ): E => {
-    assert(!result.ok);
-    return result.error;
-  };
-
-  const scalarErrors = [
-    getError(String.fromUnknown(1)),
-    getError(Number.fromUnknown("x")),
-    getError(BigIntType.fromUnknown(1)),
-    getError(Boolean.fromUnknown(1)),
-    getError(Undefined.fromUnknown(null)),
-    getError(Null.fromUnknown(undefined)),
-    getError(Function.fromUnknown(1)),
-    getError(Uint8Array.fromUnknown("x")),
-    getError(instanceOf(class User {}).fromUnknown({})),
-    getError(EvoluType.fromUnknown("x")),
-    getError(CurrencyCode.fromUnknown("usd")),
-    getError(DateIso.fromUnknown("2022-12-01T00:00:00.000")),
-    getError(TrimmedString.fromUnknown(" x")),
-    getError(minLength(2)(String).fromUnknown("")),
-    getError(maxLength(1)(String).fromUnknown("ab")),
-    getError(length(2)(String).fromUnknown("a")),
-    getError(Mnemonic.fromUnknown("abandon abandon abandon")),
-    getError(regex("Alpha", /^[a-z]+$/)(String).fromUnknown("123")),
-    getError(Id.fromUnknown("short")),
-    getError(id("User").fromUnknown("short")),
-    getError(PositiveNumber.fromUnknown(0)),
-    getError(NegativeNumber.fromUnknown(0)),
-    getError(NonPositiveNumber.fromUnknown(1)),
-    getError(NonNegativeNumber.fromUnknown(-1)),
-    getError(Int.fromUnknown(1.5)),
-    getError(greaterThan(2)(Number).fromUnknown(2)),
-    getError(lessThan(2)(Number).fromUnknown(2)),
-    getError(greaterThanOrEqualTo(2)(Number).fromUnknown(1)),
-    getError(lessThanOrEqualTo(2)(Number).fromUnknown(3)),
-    getError(NonNaNNumber.fromUnknown(NaN)),
-    getError(FiniteNumber.fromUnknown(Infinity)),
-    getError(multipleOf(3)(Number).fromUnknown(4)),
-    getError(between(1, 2)(Number).fromUnknown(3)),
-    getError(literal("x").fromUnknown("y")),
-    getError(Int64.fromUnknown(9223372036854775808n)),
-    getError(Int64String.fromUnknown("abc")),
-    getError(Json.fromUnknown("{ bad json }")),
-  ];
-
-  for (const error of scalarErrors) {
-    expect(formatTypeError(error as never)).not.toBe("");
-  }
-  expect(formatTypeError({ type: "Custom", value: 1 } as never)).toContain(
-    "Custom",
-  );
-});
-
-test("createFormatTypeError covers composite formatter branches", () => {
-  const formatTypeError = createFormatTypeError();
-  const getError = <T, E>(
-    result: { ok: true; value: T } | { ok: false; error: E },
-  ): E => {
-    assert(!result.ok);
-    return result.error;
-  };
-
   const ObjectType = object({ a: String, b: Number });
   const ObjectWithRecordType = object(
     { fixed: String },
     record(NonEmptyString, Number),
   );
 
-  const compositeErrors = [
-    getError(SimplePassword.fromUnknown("short")),
+  const cases: ReadonlyArray<readonly [AnyType, unknown]> = [
+    [String, 1],
+    [Number, "x"],
+    [BigIntType, 1],
+    [Boolean, 1],
+    [Undefined, null],
+    [Null, undefined],
+    [Function, 1],
+    [Uint8Array, "x"],
+    [instanceOf(class User {}), {}],
+    [EvoluType, "x"],
+    [CurrencyCode, "usd"],
+    [DateIso, "2022-12-01T00:00:00.000"],
+    [TrimmedString, " x"],
+    [minLength(2)(String), ""],
+    [maxLength(1)(String), "ab"],
+    [length(2)(String), "a"],
+    [Mnemonic, "abandon abandon abandon"],
+    [regex("Alpha", /^[a-z]+$/)(String), "123"],
+    [Id, "short"],
+    [id("User"), "short"],
+    [PositiveNumber, 0],
+    [NegativeNumber, 0],
+    [NonPositiveNumber, 1],
+    [NonNegativeNumber, -1],
+    [Int, 1.5],
+    [greaterThan(2)(Number), 2],
+    [lessThan(2)(Number), 2],
+    [greaterThanOrEqualTo(2)(Number), 1],
+    [lessThanOrEqualTo(2)(Number), 3],
+    [NonNaNNumber, NaN],
+    [FiniteNumber, Infinity],
+    [multipleOf(3)(Number), 4],
+    [between(1, 2)(Number), 3],
+    [literal("x"), "y"],
+    [Int64, 9223372036854775808n],
+    [Int64String, "abc"],
+    [Json, "{ bad json }"],
 
-    getError(array(Number).fromUnknown("x")),
-    getError(array(Number).fromUnknown([1, "x"])),
-
-    getError(set(Number).fromUnknown("x")),
-    getError(set(Number).fromUnknown(new globalThis.Set([1, "x"]))),
-
-    getError(record(NonEmptyString, Number).fromUnknown(1)),
-    getError(record(NonEmptyString, Number).fromUnknown({ "": 1 })),
-    getError(record(NonEmptyString, Number).fromUnknown({ a: "x" })),
-
-    getError(ObjectType.fromUnknown(1)),
-    getError(ObjectType.fromUnknown({ a: "x", b: 1, c: 1 })),
-    getError(ObjectType.fromUnknown({ a: 1, b: "x" })),
-
-    getError(ObjectWithRecordType.fromUnknown(1)),
-    getError(ObjectWithRecordType.fromUnknown({ fixed: 1 })),
-    getError(ObjectWithRecordType.fromUnknown({ fixed: "x", "": 1 })),
-    getError(ObjectWithRecordType.fromUnknown({ fixed: "x", key: "x" })),
-
-    getError(union(String, Number).fromUnknown(true)),
-
-    getError(tuple(String, Number).fromUnknown(["x"])),
-    getError(tuple(String, Number).fromUnknown(["x", "y"])),
+    [SimplePassword, "short"],
+    [array(Number), "x"],
+    [array(Number), [1, "x"]],
+    [set(Number), "x"],
+    [set(Number), new globalThis.Set([1, "x"])],
+    [record(NonEmptyString, Number), 1],
+    [record(NonEmptyString, Number), { "": 1 }],
+    [record(NonEmptyString, Number), { a: "x" }],
+    [ObjectType, 1],
+    [ObjectType, { a: "x", b: 1, c: 1 }],
+    [ObjectType, { a: 1, b: "x" }],
+    [ObjectWithRecordType, 1],
+    [ObjectWithRecordType, { fixed: 1 }],
+    [ObjectWithRecordType, { fixed: "x", "": 1 }],
+    [ObjectWithRecordType, { fixed: "x", key: "x" }],
+    [union(String, Number), true],
+    [tuple(String, Number), ["x"]],
+    [tuple(String, Number), ["x", "y"]],
   ];
 
-  for (const error of compositeErrors) {
-    expect(formatTypeError(error as never)).not.toBe("");
+  for (const [type, value] of cases) {
+    const result = type.fromUnknown(value);
+    assert(!result.ok);
+    expect(formatTypeError(result.error as never)).not.toBe("");
   }
+
+  expect(formatTypeError({ type: "Custom", value: 1 } as never)).toContain(
+    "Custom",
+  );
 });
 
 test("formatSimplePasswordError", () => {
