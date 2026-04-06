@@ -1,4 +1,4 @@
-import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
+import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
 import { exhaustiveCheck, lazyVoid } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
@@ -2896,7 +2896,7 @@ test("createFormatTypeError covers built-in and composite formatter branches", (
     [Null, undefined],
     [Function, 1],
     [Uint8Array, "x"],
-    [instanceOf(class User {}), {}],
+    [instanceOf(class User { id = 1; }), {}],
     [EvoluType, "x"],
     [CurrencyCode, "usd"],
     [DateIso, "2022-12-01T00:00:00.000"],
@@ -2925,7 +2925,6 @@ test("createFormatTypeError covers built-in and composite formatter branches", (
     [Int64, 9223372036854775808n],
     [Int64String, "abc"],
     [Json, "{ bad json }"],
-
     [SimplePassword, "short"],
     [array(Number), "x"],
     [array(Number), [1, "x"]],
