@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # For PRs, fetch one additional commit for proper diff analysis
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}

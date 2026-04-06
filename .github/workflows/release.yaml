@@ -6,6 +6,8 @@ on:
       - main
   workflow_dispatch: # for manual triggering
 
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
 permissions:
   id-token: write # Required for OIDC trusted publishing
   contents: write # Required for creating releases
@@ -18,15 +20,16 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+        with:
+          cache: true
+
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
-          cache: "pnpm"
           registry-url: "https://registry.npmjs.org"
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Ensure npm 11.5.1+ for trusted publishing
         run: npm install -g npm@latest
@@ -44,6 +47,3 @@ jobs:
         uses: changesets/action@v1
         with:
           publish: pnpm changeset publish
-          createGithubReleases: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
