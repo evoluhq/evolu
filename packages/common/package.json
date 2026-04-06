@@ -69,7 +69,7 @@
   },
   "devDependencies": {
     "@bokuweb/zstd-wasm": "0.0.27",
-    "@evolu/typescript-config": "*",
+    "@evolu/typescript-config": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",

@@ -10,20 +10,20 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@evolu/common": "8.0.0-next.0",
-    "@evolu/react": "11.0.0-next.0",
-    "@evolu/react-web": "3.0.0-next.0",
+    "@evolu/common": "workspace:*",
+    "@evolu/react": "workspace:*",
+    "@evolu/react-web": "workspace:*",
     "@tabler/icons-react": "^3.36.1",
     "clsx": "^2.1.1",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "react": "catalog:react19",
+    "react-dom": "catalog:react19",
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.11",
     "@tailwindcss/vite": "^4.1.18",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "catalog:react19",
+    "@types/react-dom": "catalog:react19",
     "@vite-pwa/assets-generator": "^1.0.2",
     "@vitejs/plugin-react": "^5.1.2",
     "globals": "^17.3.0",

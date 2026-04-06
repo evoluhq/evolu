@@ -9,18 +9,18 @@ This is a TypeScript project. All code, including helper scripts, must be writte
 ## Build and test
 
 ```bash
-bun install          # Install dependencies (Node >=24.0.0)
-bun run build        # Build all packages (required once for IDE types)
-bun run dev          # Start relay and web servers
-bun run test         # Run all tests
-bun run test:coverage # With coverage
-bun run lint         # ESLint
-bun run format       # Prettier
-bun run biome        # Biome (catches import cycles)
-bun run verify       # Full verification (lint + format + biome + test)
+pnpm install          # Install dependencies (Node >=24.0.0)
+pnpm build            # Build all packages (required once for IDE types)
+pnpm dev              # Start relay and web servers
+pnpm test             # Run all tests
+pnpm test:coverage    # With coverage
+pnpm lint             # ESLint
+pnpm format           # Prettier
+pnpm biome            # Biome (catches import cycles)
+pnpm verify           # Full verification (lint + format + biome + test)
 ```
 
-Run standalone TypeScript scripts with `bun script.ts`.
+Run standalone TypeScript scripts with `node script.ts`.
 
 ## Monorepo TypeScript issues
 
@@ -28,7 +28,7 @@ Run standalone TypeScript scripts with `bun script.ts`.
 
 ## Architecture
 
-Monorepo with workspaces and Turborepo. All packages depend on `@evolu/common`:
+Monorepo with pnpm workspaces and Turborepo. All packages depend on `@evolu/common`:
 
 - `@evolu/common` — Platform-independent core (Result, Task, Type, Brand, Crypto, Sqlite)
 - `@evolu/web` — Web platform (SQLite WASM, SharedWorker)

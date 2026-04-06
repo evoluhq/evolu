@@ -72,7 +72,7 @@ export const Heading = <Level extends 2 | 3>({
   children,
   tag,
   label,
-  level,
+  level: providedLevel,
   anchor = true,
   ...props
 }: React.ComponentPropsWithoutRef<`h${Level}`> & {
@@ -82,7 +82,7 @@ export const Heading = <Level extends 2 | 3>({
   level?: Level;
   anchor?: boolean;
 }): React.ReactElement => {
-  level = level ?? (2 as Level);
+  const level = providedLevel ?? (2 as Level);
   const Component = `h${level}` as "h2" | "h3";
   const ref = useRef<HTMLHeadingElement>(null);
   const registerHeading = useSectionStore((s) => s.registerHeading);

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --watch-preserve-output --experimental-strip-types src/index.ts",
+    "dev": "node --watch --watch-preserve-output src/index.ts",
     "build": "tsc --build tsconfig.json",
     "start": "node dist/src/index.js"
   },
@@ -13,11 +13,11 @@
     "README.md"
   ],
   "dependencies": {
-    "@evolu/common": "8.0.0-next.0",
-    "@evolu/nodejs": "3.0.0-next.0"
+    "@evolu/common": "workspace:*",
+    "@evolu/nodejs": "workspace:*"
   },
   "devDependencies": {
-    "@evolu/typescript-config": "*",
+    "@evolu/typescript-config": "workspace:*",
     "@types/node": "^24.10.9",
     "typescript": "^6"
   },

@@ -28,17 +28,17 @@
     "!dist/**/*.spec.*"
   ],
   "scripts": {
-    "build": "tsc --build && npm run package",
-    "prepack": "npm run build",
+    "build": "tsc --build && pnpm package",
+    "prepack": "pnpm build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "package": "svelte-package",
-    "prepublishOnly": "npm run package",
+    "prepublishOnly": "pnpm package",
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@evolu/common": "8.0.0-next.0",
-    "@evolu/typescript-config": "*",
-    "@evolu/web": "3.0.0-next.0",
+    "@evolu/common": "workspace:*",
+    "@evolu/typescript-config": "workspace:*",
+    "@evolu/web": "workspace:*",
     "@sveltejs/package": "^2.5.7",
     "@tsconfig/svelte": "^5.0.6",
     "svelte": "^5.48.2",

@@ -2,13 +2,13 @@
 
 Evolu Relay implementation using Node.js
 
-We chose Node.js for stability, but we'll add a Bun version soon too.
+Relay standardizes on Node.js for runtime and deployment.
 
 ## Usage
 
 - **Docker image**: fastest path for most use cases
 - **Node.js library** (`@evolu/nodejs`): for custom logging, auth, or tight server integration
-- **Custom implementation**: re-implement for other runtimes (Bun, Deno, serverless)
+- **Custom implementation**: re-implement for other runtimes (Deno, Bun, serverless)
 
 ### Run with Docker
 

@@ -22,24 +22,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
+          cache: "pnpm"
           registry-url: "https://registry.npmjs.org"
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.9"
 
-      - run: bun install --frozen-lockfile
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Ensure npm 11.5.1+ for trusted publishing
+        run: npm install -g npm@latest
+
+      - run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: cd packages/common && bunx playwright install --with-deps chromium firefox webkit
+        run: pnpm --filter @evolu/common exec playwright install --with-deps chromium firefox webkit
 
       - name: Verify
-        run: bun run verify
+        run: pnpm verify
 
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: bunx changeset publish
+          publish: pnpm changeset publish
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

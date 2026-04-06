@@ -1,38 +1,27 @@
-FROM oven/bun:1.3.9-alpine AS bun-base
-
-# Build stages use Bun for lockfile-native dependency install and turbo pruning.
-# Runtime stays on Node.js because Relay is a Node process in production.
-
-FROM bun-base AS builder
+FROM node:24-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 RUN apk add --no-cache libc6-compat
-WORKDIR /app
-COPY . .
-
-# Generate a partial monorepo for the relay workspace.
-RUN bunx turbo prune relay --docker
-
-# ------------------------------------------------------------
-# Installer stage - build the pruned workspace
-FROM bun-base AS installer
-RUN apk add --no-cache libc6-compat
+RUN corepack enable pnpm
 WORKDIR /app
 
-# Install all dependencies in the pruned workspace to build relay.
-COPY --from=builder /app/out/json/ .
-RUN bun install --frozen-lockfile
+FROM base AS builder
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc README.md ./
+COPY packages/ ./packages/
+COPY apps/relay/ ./apps/relay/
 
-# Copy source and build
-COPY --from=builder /app/out/full/ .
-# Ensure README.md is available at the root for the build process
-COPY --from=builder /app/README.md ./README.md
-RUN bunx turbo run build --filter relay
+# Install only relay and its local workspace dependencies.
+RUN pnpm install --frozen-lockfile --filter relay...
 
-# Keep only production dependencies for relay runtime.
-RUN bun install --frozen-lockfile --production --filter relay
+# Build relay and the packages it depends on.
+RUN pnpm --filter relay... build
+
+# Create a minimal production deploy for the relay package.
+RUN pnpm --filter relay --prod deploy --legacy /app/deploy
 
 # ------------------------------------------------------------
 # Runner stage - minimal runtime image
-FROM node:24-alpine AS runner
+FROM base AS runner
 WORKDIR /app
 
 # Ensure production runtime defaults
@@ -47,8 +36,8 @@ USER evolu
 # Ensure data directory exists for persistent storage
 RUN mkdir -p /app/data
 
-# Copy the pruned production workspace.
-COPY --from=installer --chown=evolu:nodejs /app/ ./
+# Copy the minimal deployed app.
+COPY --from=builder --chown=evolu:nodejs /app/deploy/ ./
 
 # Declare data volume for clarity and persistence
 VOLUME ["/app/data"]
@@ -63,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "const net=require('net');const s=net.connect(4000,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"
 
 # Start the application
-CMD ["node", "apps/relay/dist/index.js"]
+CMD ["node", "dist/src/index.js"]

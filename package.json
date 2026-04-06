@@ -1,38 +1,33 @@
 {
   "private": true,
   "name": "@evolu/monorepo",
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "examples/*"
-  ],
   "scripts": {
     "dev": "turbo run dev --filter=relay --filter=web",
     "relay": "turbo --filter relay dev",
-    "build": "bun run clean:ts && turbo --filter @evolu/* build",
-    "build:web": "bun run build:docs && turbo --filter web build",
+    "build": "pnpm clean:ts && turbo --filter @evolu/* build",
+    "build:web": "pnpm build:docs && turbo --filter web build",
     "build:web:fast": "rm -rf 'apps/web/src/app/(docs)/docs/api-reference' && turbo --filter web build",
-    "build:docs": "typedoc && cd apps/web && bun run fix:docs",
+    "build:docs": "typedoc && pnpm --dir apps/web fix:docs",
     "build:expo": "turbo --filter @example/react-expo build",
     "typecheck": "tsc --build tsconfig.typecheck.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "playwright:install": "cd packages/common && bunx playwright install chromium firefox webkit",
+    "playwright:install": "pnpm --filter @evolu/common exec playwright install chromium firefox webkit",
     "test:watch": "vitest",
     "start": "turbo start",
     "lint": "eslint --cache",
     "biome": "biome check",
-    "lint-monorepo": "bunx sherif@latest --ignore-dependency react@19.2.0",
-    "verify": "bun run typecheck && bun run build && bun run test:coverage && bun run lint && bun run biome && bun run lint-monorepo && bun run build:docs",
+    "lint-monorepo": "pnpm dlx sherif@latest --ignore-dependency react@19.2.0",
+    "verify": "pnpm typecheck && pnpm build && pnpm test:coverage && pnpm lint && pnpm biome && pnpm lint-monorepo && pnpm build:docs",
     "clean:ts": "tsc --build --clean tsconfig.typecheck.json",
     "clean:dry": "git clean -Xnd",
     "clean": "git clean -Xdf",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
     "version": "changeset version",
-    "release": "bun run build && bunx changeset publish",
-    "ios": "cd examples/react-expo && bun run ios",
-    "android": "cd examples/react-expo && bun run android",
-    "examples:toggle-deps": "node --experimental-strip-types ./scripts/toggle-examples-deps.mts",
+    "release": "pnpm build && pnpm changeset publish",
+    "ios": "pnpm --dir examples/react-expo ios",
+    "android": "pnpm --dir examples/react-expo android",
+    "examples:toggle-deps": "node ./scripts/toggle-examples-deps.mts",
     "examples:build": "turbo --filter @example/* build",
     "examples:react-nextjs:dev": "turbo --filter @example/react-nextjs dev",
     "examples:react-vite-pwa:dev": "turbo --filter @example/react-vite-pwa dev",
@@ -67,5 +62,20 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "packageManager": "bun@1.3.9"
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@tailwindcss/oxide",
+      "better-sqlite3",
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "lmdb",
+      "msgpackr-extract",
+      "react-native-nitro-modules",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
 }

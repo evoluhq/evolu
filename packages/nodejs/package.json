@@ -33,8 +33,8 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@evolu/common": "8.0.0-next.0",
-    "@evolu/typescript-config": "*",
+    "@evolu/common": "workspace:*",
+    "@evolu/typescript-config": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",

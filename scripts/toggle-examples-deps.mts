@@ -1,16 +1,26 @@
 import { execSync } from "node:child_process";
-import readline from "node:readline";
 import fs from "node:fs";
 import path from "node:path";
+import readline from "node:readline";
 
 const examplesDir = path.resolve(import.meta.dirname, "../examples");
 
 type Mode = "development" | "production";
 
 interface PackageJson {
-  dependencies: Record<string, string>;
+  dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
+
+// Hardcoded catalogs matching pnpm-workspace.yaml
+const catalogs = {
+  react19: {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    react: "^19.2.4",
+    "react-dom": "^19.2.4",
+  },
+} as const;
 
 // Function to toggle the mode for a single example
 const toggleMode = (examplePath: string, mode: Mode): void => {
@@ -19,16 +29,59 @@ const toggleMode = (examplePath: string, mode: Mode): void => {
     fs.readFileSync(packageJsonPath, "utf-8"),
   ) as PackageJson;
 
-  // Toggle @evolu/* dependencies
-  for (const dep in packageJson.dependencies) {
-    if (dep.startsWith("@evolu/")) {
-      if (mode === "production") {
-        packageJson.dependencies[dep] = `latest`;
-      } else {
-        packageJson.dependencies[dep] = `*`;
+  const toggleEvoluDeps = (deps?: Record<string, string>): void => {
+    if (!deps) {
+      return;
+    }
+
+    for (const dep in deps) {
+      if (dep.startsWith("@evolu/")) {
+        if (mode === "production") {
+          deps[dep] = `latest`;
+        } else {
+          deps[dep] = `workspace:*`;
+        }
       }
     }
-  }
+  };
+
+  // Toggle @evolu/* dependencies in both sections because some examples keep
+  // local Evolu packages in devDependencies.
+  toggleEvoluDeps(packageJson.dependencies);
+  toggleEvoluDeps(packageJson.devDependencies);
+
+  // Toggle catalog references in both dependencies and devDependencies
+  const toggleCatalogRefs = (deps?: Record<string, string>): void => {
+    if (!deps) {
+      return;
+    }
+
+    for (const dep in deps) {
+      const value = deps[dep];
+      if (mode === "production" && value.startsWith("catalog:")) {
+        const catalogName = value.replace("catalog:", "");
+        const catalog = catalogs[catalogName as keyof typeof catalogs];
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (catalog && dep in catalog) {
+          deps[dep] = catalog[dep as keyof typeof catalog];
+        }
+      } else if (mode === "development") {
+        // Find which catalog this dep belongs to
+        for (const [catalogName, catalogDeps] of Object.entries(catalogs)) {
+          if (
+            dep in catalogDeps &&
+            catalogDeps[dep as keyof typeof catalogDeps] === value
+          ) {
+            deps[dep] = `catalog:${catalogName}`;
+            break;
+          }
+        }
+      }
+    }
+  };
+
+  toggleCatalogRefs(packageJson.dependencies);
+  toggleCatalogRefs(packageJson.devDependencies);
 
   fs.writeFileSync(
     packageJsonPath,
@@ -47,8 +100,8 @@ const toggleAllExamples = (targetMode: Mode): void => {
     toggleMode(examplePath, targetMode);
   });
 
-  execSync("bun run clean", { stdio: "inherit" });
-  execSync("bun install", { stdio: "inherit" });
+  execSync("pnpm clean", { stdio: "inherit" });
+  execSync("pnpm i", { stdio: "inherit" });
   // eslint-disable-next-line no-console
   console.log(`All examples switched to ${targetMode} mode.`);
 };

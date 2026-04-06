@@ -16,28 +16,28 @@ To chat with other community members, you can join the [Evolu Discord](https://d
 
 ## Developing
 
-Evolu monorepo uses [Bun](https://bun.sh).
+Evolu monorepo uses [Node.js](https://nodejs.org) and [pnpm](https://pnpm.io).
 
 Install dependencies:
 
 ```
-bun install
+pnpm install
 ```
 
 Install Playwright browsers for local test and verify runs:
 
 ```
-bun run playwright:install
+pnpm playwright:install
 ```
 
 Run the browser install step again after Playwright updates or if the browser cache was removed.
 
 Build scripts
 
-- `bun run build` - Build packages (required once after clone/pull for IDE types)
-- `bun run build:docs` - Build doc (required once after clone/pull)
-- `bun run build:web` - Build docs and web
-- `bun run build:web:fast` - Delete `api-reference` and build web only
+- `pnpm build` - Build packages (required once after clone/pull for IDE types)
+- `pnpm build:docs` - Build doc (required once after clone/pull)
+- `pnpm build:web` - Build docs and web
+- `pnpm build:web:fast` - Delete `api-reference` and build web only
 
 Web build notes
 
@@ -46,36 +46,36 @@ Web build notes
 
 Start dev
 
-- `bun run dev` - Start relay and web servers
-- `bun run relay` - Start relay server only (for mobile development)
-- `bun run ios` - Run iOS example (start `relay` first)
-- `bun run android` - Run Android example (start `relay` first)
+- `pnpm dev` - Start relay and web servers
+- `pnpm relay` - Start relay server only (for mobile development)
+- `pnpm ios` - Run iOS example (start `relay` first)
+- `pnpm android` - Run Android example (start `relay` first)
 
 Examples
 
 > **Note**: To work on examples with local packages, run `examples:toggle-deps` first.
 
-- `bun run examples:react-nextjs:dev` - Dev server for React Next.js example
-- `bun run examples:react-vite-pwa:dev` - Dev server for React Vite PWA example
-- `bun run examples:svelte-vite-pwa:dev` - Dev server for Svelte Vite PWA example
-- `bun run examples:vue-vite-pwa:dev` - Dev server for Vue Vite PWA example
-- `bun run examples:build` - Build all examples
+- `pnpm examples:react-nextjs:dev` - Dev server for React Next.js example
+- `pnpm examples:react-vite-pwa:dev` - Dev server for React Vite PWA example
+- `pnpm examples:svelte-vite-pwa:dev` - Dev server for Svelte Vite PWA example
+- `pnpm examples:vue-vite-pwa:dev` - Dev server for Vue Vite PWA example
+- `pnpm examples:build` - Build all examples
 
 Linting
 
-- `bun run lint` - Lint code
-- `bun run lint-monorepo` - Lint monorepo structure
+- `pnpm lint` - Lint code
+- `pnpm lint-monorepo` - Lint monorepo structure
 
 Testing
 
-- `bun run playwright:install` - Install browsers required by Playwright-based Vitest projects
-- `bun run test` - Run tests
+- `pnpm playwright:install` - Install browsers required by Playwright-based Vitest projects
+- `pnpm test` - Run tests
 - [Vitest VS Code extension](https://github.com/vitest-dev/vscode)
 
 Release
 
-- `bunx changeset` - Describe changes for release log
+- `pnpm changeset` - Describe changes for release log
 
 Verify
 
-- `bun run verify` - Run all checks (build, lint, test) before commit
+- `pnpm verify` - Run all checks (build, lint, test) before commit
