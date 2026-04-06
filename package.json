@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "turbo run dev --filter=relay --filter=web",
     "relay": "turbo --filter relay dev",
-    "build": "pnpm clean:ts && turbo --filter @evolu/* build",
+    "build": "pnpm clean:ts && turbo --filter \"@evolu/*\" build",
     "build:web": "pnpm build:docs && turbo --filter web build",
     "build:web:fast": "rm -rf 'apps/web/src/app/(docs)/docs/api-reference' && turbo --filter web build",
     "build:docs": "typedoc && pnpm --dir apps/web fix:docs",
@@ -28,7 +28,7 @@
     "ios": "pnpm --dir examples/react-expo ios",
     "android": "pnpm --dir examples/react-expo android",
     "examples:toggle-deps": "node ./scripts/toggle-examples-deps.mts",
-    "examples:build": "turbo --filter @example/* build",
+    "examples:build": "turbo --filter \"@example/*\" build",
     "examples:react-nextjs:dev": "turbo --filter @example/react-nextjs dev",
     "examples:react-vite-pwa:dev": "turbo --filter @example/react-vite-pwa dev",
     "examples:svelte-vite-pwa:dev": "turbo --filter @example/svelte-vite-pwa dev",
