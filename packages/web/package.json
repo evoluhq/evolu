@@ -8,7 +8,10 @@
   ],
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
-  "repository": "evoluhq/evolu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evoluhq/evolu.git"
+  },
   "bugs": {
     "url": "https://github.com/evoluhq/evolu/issues"
   },
