@@ -1709,6 +1709,10 @@ const yieldImpl: () => Promise<void> =
  *
  * Optionally return a teardown function that runs on abort.
  *
+ * This helper can also wrap promise APIs that do not observe `AbortSignal`.
+ * Start the promise work inside the callback, and aborting the Task stops
+ * waiting for it immediately.
+ *
  * ### Example
  *
  * ```ts
@@ -1732,6 +1736,13 @@ const yieldImpl: () => Promise<void> =
  *       if (error) err(error);
  *       else ok(data);
  *     });
+ *   });
+ *
+ * // Wrap a non-cooperating promise API. Aborting the Task stops waiting even
+ * // if promiseApi itself ignores AbortSignal.
+ * const fromPromiseApi = (): Task<string> =>
+ *   callback(({ ok, err }) => {
+ *     void promiseApi().then(ok, err);
  *   });
  * ```
  *

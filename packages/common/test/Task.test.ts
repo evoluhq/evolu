@@ -11,7 +11,7 @@ import { emptyRecord } from "../src/Object.js";
 import { testCreateRandom } from "../src/Random.js";
 import { createRef } from "../src/Ref.js";
 import type { Done, Result } from "../src/Result.js";
-import { done, err, ok } from "../src/Result.js";
+import { done, err, ok, tryAsync } from "../src/Result.js";
 import {
   exponential,
   fixed,
@@ -2383,6 +2383,93 @@ describe("callback", () => {
 
     expect(result).toEqual(err({ type: "AbortError", reason: "cancelled" }));
     expect(elapsed).toBeLessThan(50);
+  });
+});
+
+describe("promise interop", () => {
+  test("wraps promise api returning success", async () => {
+    await using run = createRun();
+
+    const promiseApi = (): Promise<string> => Promise.resolve("hello");
+
+    const task: Task<string> = async () => ok(await promiseApi());
+
+    const result = await run(task);
+
+    expect(result).toEqual(ok("hello"));
+  });
+
+  test("maps failing promise with tryAsync", async () => {
+    interface PromiseApiError extends Typed<"PromiseApiError"> {
+      readonly error: unknown;
+    }
+
+    await using run = createRun();
+
+    const failure = new Error("boom");
+    const promiseApi = (): Promise<string> => Promise.reject(failure);
+
+    const task: Task<string, PromiseApiError> = () =>
+      tryAsync(
+        () => promiseApi(),
+        (error): PromiseApiError => ({ type: "PromiseApiError", error }),
+      );
+
+    const result = await run(task);
+
+    expect(result).toEqual(err({ type: "PromiseApiError", error: failure }));
+  });
+
+  test("cooperating promise api can use signal for abort", async () => {
+    await using run = createRun();
+
+    const observedAbortReason = Promise.withResolvers<unknown>();
+
+    const promiseApi = (signal: AbortSignal): Promise<void> =>
+      new Promise((resolve) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            observedAbortReason.resolve(signal.reason);
+            resolve();
+          },
+          { once: true },
+        );
+      });
+
+    const task: Task<string> = async (run) => {
+      await promiseApi(run.signal);
+      return err(run.signal.reason);
+    };
+    const fiber = run(task);
+
+    fiber.abort("cancelled");
+
+    expect(await fiber).toEqual(
+      err({ type: "AbortError", reason: "cancelled" }),
+    );
+    expect(await observedAbortReason.promise).toEqual({
+      type: "AbortError",
+      reason: "cancelled",
+    });
+  });
+
+  test("non-cooperating promise api can be aborted via callback", async () => {
+    await using run = createRun();
+
+    const promiseApi = (): Promise<string> =>
+      new Promise((_resolve) => void _resolve);
+
+    const task = callback<string, unknown>(({ ok, err }) => {
+      void promiseApi().then(ok, err);
+    });
+
+    const fiber = run(task);
+    fiber.abort("cancelled");
+
+    const expected = err({ type: "AbortError", reason: "cancelled" });
+
+    expect(await fiber).toEqual(expected);
   });
 });
 
