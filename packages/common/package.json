@@ -1,6 +1,6 @@
 {
   "name": "@evolu/common",
-  "version": "8.0.0-next.1",
+  "version": "8.0.0-next.2",
   "description": "TypeScript library and local-first platform",
   "keywords": [
     "evolu",

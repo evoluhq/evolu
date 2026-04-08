@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 8.0.0-next.2
+
+### Patch Changes
+
+- b096543: Added test coverage proving that `createSlip21` normalizes numeric path elements to strings.
+
 ## 8.0.0-next.1
 
 ### Major Changes
