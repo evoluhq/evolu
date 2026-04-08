@@ -1,9 +1,11 @@
 import {
+  AbortError,
+  assert,
+  callback,
   createRandom,
   createRelation,
   createSqlite,
   type CreateSqliteDriverDep,
-  isPromiseLike,
   Name,
   ok,
   OwnerId,
@@ -23,6 +25,7 @@ import {
   type Relay,
   type RelayConfig,
 } from "@evolu/common/local-first";
+import { once } from "events";
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
@@ -73,8 +76,8 @@ export const createRelayDeps = (): RelayDeps => ({
  *     startRelay({
  *       port: 4000,
  *
- *       // Note: Relay requires URL in format ws://host:port/<ownerId>
- *       // isOwnerAllowed: (_ownerId) => true,
+ *       // Note: Relay requires URL in format ws://host:port?ownerId=<ownerId>
+ *       // isOwnerAllowed: (_ownerId, { signal: _signal }) => true,
  *
  *       isOwnerWithinQuota: (_ownerId, requiredBytes) => {
  *         const maxBytes = 1024 * 1024; // 1MB
@@ -98,12 +101,12 @@ export const startRelay =
     await using stack = new AsyncDisposableStack();
     const console = run.deps.console.child("relay");
 
+    stack.defer(() => {
+      console.info("Shutdown complete");
+    });
+
     const dbFileExists = existsSync(`${name}.db`);
-
-    const sqliteResult = await run(createSqlite(name));
-    if (!sqliteResult.ok) return sqliteResult;
-    const sqlite = stack.use(sqliteResult.value);
-
+    const sqlite = stack.use(await run.orThrow(createSqlite(name)));
     const deps = { ...run.deps, sqlite };
 
     if (!dbFileExists) {
@@ -111,18 +114,34 @@ export const startRelay =
       createRelayStorageTables(deps);
     }
 
-    const relayRun = run.create().addDeps({
-      storage: createRelaySqliteStorage(deps)({
-        isOwnerWithinQuota,
-      }),
+    const server = stack.use(createServer());
+    server.once("close", () => {
+      console.info("HTTP server closed");
     });
 
-    const server = createServer();
-    const wss = new WebSocketServer({
-      maxPayload: defaultProtocolMessageMaxSize,
-      noServer: true,
-    });
+    const wss = stack.adopt(
+      new WebSocketServer({
+        maxPayload: defaultProtocolMessageMaxSize,
+        noServer: true,
+      }),
+      (wss) =>
+        new Promise<void>((resolve) => {
+          wss.close(() => {
+            console.info("WebSocketServer closed");
+            resolve();
+          });
+        }),
+    );
+
     const ownerSocketRelation = createRelation<OwnerId, WebSocket>();
+
+    const relayRun = stack.use(
+      run.create().addDeps({
+        storage: createRelaySqliteStorage(deps)({
+          isOwnerWithinQuota,
+        }),
+      }),
+    );
 
     server.on("upgrade", (request, socket, head) => {
       socket.on("error", console.debug);
@@ -140,28 +159,65 @@ export const startRelay =
         return;
       }
 
-      const ownerId = parseOwnerIdFromOwnerWebSocketTransportUrl(
-        request.url ?? "",
-      );
+      const respondAndDestroy = (
+        statusCode: keyof typeof HttpStatusTextByCode,
+      ) => {
+        if (socket.destroyed) return;
+        socket.write(
+          `HTTP/1.1 ${statusCode} ${HttpStatusTextByCode[statusCode]}\r\n\r\n`,
+        );
+        socket.destroy();
+      };
+
+      const requestUrl = request.url;
+      const ownerId = requestUrl
+        ? parseOwnerIdFromOwnerWebSocketTransportUrl(requestUrl)
+        : undefined;
 
       if (!ownerId) {
-        console.debug("invalid or missing ownerId in URL", request.url);
-        socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
-        socket.destroy();
+        console.debug("invalid or missing ownerId in URL", requestUrl);
+        respondAndDestroy(400);
         return;
       }
 
-      void (async () => {
-        const result = isOwnerAllowed(ownerId);
-        const isAllowed = isPromiseLike(result) ? await result : result;
-        if (!isAllowed) {
-          console.debug("unauthorized owner", ownerId);
-          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      const authorizationFiber = relayRun(
+        callback<boolean, unknown>(({ ok, err, signal }) => {
+          void Promise.try(() => isOwnerAllowed(ownerId, { signal })).then(
+            ok,
+            err,
+          );
+        }),
+      );
+
+      const abortAuthorization = () => {
+        authorizationFiber.abort("WebSocket upgrade request socket closed");
+      };
+
+      socket.once("close", abortAuthorization);
+      socket.once("error", abortAuthorization);
+
+      void authorizationFiber.then((result) => {
+        socket.removeListener("close", abortAuthorization);
+        socket.removeListener("error", abortAuthorization);
+
+        if (!result.ok) {
+          if (!AbortError.is(result.error)) {
+            console.error("isOwnerAllowed failed", ownerId, result.error);
+            respondAndDestroy(503);
+            return;
+          }
           socket.destroy();
           return;
         }
+
+        if (!result.value) {
+          console.debug("unauthorized owner", ownerId);
+          respondAndDestroy(401);
+          return;
+        }
+
         completeUpgrade();
-      })();
+      });
     });
 
     wss.on("connection", (ws) => {
@@ -222,26 +278,6 @@ export const startRelay =
       });
     });
 
-    // Cleanup runs in LIFO order: clients → WebSocketServer → HTTP server
-    stack.defer(() => {
-      console.info("Shutdown complete");
-    });
-
-    stack.defer(() => {
-      server.close(() => {
-        console.info("HTTP server closed");
-      });
-    });
-
-    stack.defer(() => {
-      // wss.close() emits 'close' when all clients have disconnected
-      // https://github.com/websockets/ws/blob/master/doc/ws.md#serverclosecallback
-      wss.close(() => {
-        console.info("WebSocketServer closed");
-        ok();
-      });
-    });
-
     stack.defer(() => {
       console.info("Shutting down...");
       for (const client of wss.clients) {
@@ -251,10 +287,24 @@ export const startRelay =
       }
     });
 
-    stack.use(relayRun);
-
     server.listen(port);
-    console.info(`Started on port ${port}`);
+    await once(server, "listening");
 
-    return ok(stack.move());
+    const address = server.address();
+    assert(address && typeof address !== "string", "Expected TCP address");
+
+    const moved = stack.move();
+
+    console.info(`Started on port ${address.port}`);
+
+    return ok({
+      port: address.port,
+      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    });
   };
+
+const HttpStatusTextByCode = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  503: "Service Unavailable",
+} as const;

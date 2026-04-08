@@ -53,8 +53,9 @@ export interface RelayConfig extends StorageConfig {
    * Optional callback to check if an {@link OwnerId} is allowed to access the
    * relay. If this callback is not provided, all owners are allowed.
    *
-   * The callback receives the {@link OwnerId} and returns a {@link Awaitable}
-   * boolean: `true` to allow access, or `false` to deny.
+   * The callback receives the {@link OwnerId} and an options object with an
+   * abort `AbortSignal`, and returns a {@link Awaitable} boolean: `true` to
+   * allow access, or `false` to deny.
    *
    * The callback can be synchronous (for SQLite or in-memory checks) or
    * asynchronous (for calling remote APIs).
@@ -69,9 +70,9 @@ export interface RelayConfig extends StorageConfig {
    *
    * Owners specify which relays to connect to via `OwnerTransport`. In
    * WebSocket-based implementations, this check occurs before accepting the
-   * connection, with the OwnerId typically extracted from the URL Path (e.g.,
-   * `ws://localhost:4000/<ownerId>`). The relay requires the URL to be in the
-   * correct format for OwnerId extraction.
+   * connection, with the OwnerId typically extracted from the URL query string
+   * (e.g., `ws://localhost:4000?ownerId=...`). The relay requires the URL to be
+   * in the correct format for OwnerId extraction.
    *
    * ### Example
    *
@@ -88,23 +89,31 @@ export interface RelayConfig extends StorageConfig {
    *
    *
    * // Relay
-   * isOwnerAllowed: (ownerId) =>
+   * isOwnerAllowed: (ownerId, { signal: _signal }) =>
    *   Promise.resolve(ownerId === "6jy_2F4RT5qqeLgJ14_dnQ"),
    * ```
    */
-  readonly isOwnerAllowed?: (ownerId: OwnerId) => Awaitable<boolean>;
+  readonly isOwnerAllowed?: (
+    ownerId: OwnerId,
+    options: {
+      /** Aborted when the relay stops waiting for the access check. */
+      readonly signal: AbortSignal;
+    },
+  ) => Awaitable<boolean>;
 }
 
 /**
- * A completely interchangeable server for syncing and backing up encrypted data
- * between Evolu clients.
+ * Sync and backup relay for Evolu clients.
  *
- * Unlike traditional servers, relays are blind by design—they transmit
- * encrypted data without understanding its shape or meaning. This enables true
- * decentralization and infinite horizontal scalability with minimal
- * infrastructure.
+ * A relay syncs and backs up encrypted data for Evolu apps. Evolu apps can use
+ * multiple relays at the same time, combining self-hosted and cloud relays for
+ * resilience. Relays are blind by design: they transmit and store encrypted
+ * data without understanding its shape or meaning.
  */
-export interface Relay extends AsyncDisposable {}
+export interface Relay extends AsyncDisposable {
+  /** The TCP port actually bound by the relay. */
+  readonly port: number;
+}
 
 export const createRelaySqliteStorage =
   (deps: SqliteStorageDeps & TimingSafeEqualDep) =>
