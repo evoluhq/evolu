@@ -1,5 +1,11 @@
 # @evolu/common
 
+## 8.0.0-next.3
+
+### Patch Changes
+
+- f7d505a: Fixed in-memory transferred message port lifetime so transferred ports stayed usable while ownership moved between wrappers during disposal and re-creation.
+
 ## 8.0.0-next.2
 
 ### Patch Changes
