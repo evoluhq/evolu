@@ -7,8 +7,10 @@ import type {
 import {
   err,
   lazyFalse,
+  runStoppedError,
   setTimeout,
   sql,
+  timestampToTimestampBytes,
   timestampBytesToTimestamp,
 } from "../../src/index.js";
 import type {
@@ -16,7 +18,7 @@ import type {
   EncryptedDbChange,
 } from "../../src/local-first/Storage.js";
 import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
-import { testCreateDeps } from "../../src/Test.js";
+import { testCreateDeps, testCreateRun } from "../../src/Test.js";
 import { setupSqliteAndRelayStorage } from "../_deps.js";
 import {
   testAppOwner,
@@ -76,6 +78,27 @@ test("deleteOwner", async () => {
   }
 });
 
+test("readDbChange returns stored encrypted change", async () => {
+  await using setup = await setupSqliteAndRelayStorage();
+  const { run, storage } = setup;
+
+  const message: EncryptedCrdtMessage = {
+    timestamp: timestampBytesToTimestamp(testTimestampsAsc[0]),
+    change: new Uint8Array([1, 2, 3]) as EncryptedDbChange,
+  };
+
+  await run.orThrow(storage.writeMessages(testAppOwnerIdBytes, [message]));
+
+  expect(
+    Array.from(
+      storage.readDbChange(
+        testAppOwnerIdBytes,
+        timestampToTimestampBytes(message.timestamp),
+      ),
+    ),
+  ).toEqual(Array.from(message.change));
+});
+
 describe("writeMessages", () => {
   const deps = testCreateDeps();
   const createTestMessage = (length = 3): EncryptedCrdtMessage => ({
@@ -112,7 +135,7 @@ describe("writeMessages", () => {
     await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
     await run(storage.writeMessages(testAppOwnerIdBytes, [message]));
 
-    expect(getStoredBytes({ sqlite })(testAppOwnerIdBytes)).toBe(6);
+    expect(getStoredBytes({ sqlite })(testAppOwnerIdBytes)).toBe(3);
   });
 
   test("prevents duplicate timestamp writes", async () => {
@@ -130,6 +153,25 @@ describe("writeMessages", () => {
     `);
 
     expect(countResult.rows[0].count).toBe(1);
+    expect(getStoredBytes({ sqlite })(testAppOwnerIdBytes)).toBe(3);
+  });
+
+  test("deduplicates duplicate timestamps within the same write batch", async () => {
+    await using setup = await setupSqliteAndRelayStorage();
+    const { run, storage, sqlite } = setup;
+
+    await run.orThrow(
+      storage.writeMessages(testAppOwnerIdBytes, [message, message]),
+    );
+
+    const countResult = sqlite.exec<{ count: number }>(sql`
+      select count(*) as count
+      from evolu_message
+      where ownerid = ${testAppOwnerIdBytes};
+    `);
+
+    expect(countResult.rows[0].count).toBe(1);
+    expect(getStoredBytes({ sqlite })(testAppOwnerIdBytes)).toBe(3);
   });
 
   test("mutex prevents concurrent writes for same owner", async () => {
@@ -218,6 +260,30 @@ describe("writeMessages", () => {
     `);
 
     expect(usageResult.rows[0].count).toBe(0);
+  });
+
+  test("returns AbortError when write starts on disposed run", async () => {
+    await using setup = await setupSqliteAndRelayStorage();
+    const { storage, sqlite } = setup;
+
+    await using run = testCreateRun();
+    await run[Symbol.asyncDispose]();
+
+    const result = await run(
+      storage.writeMessages(testAppOwnerIdBytes, [message]),
+    );
+
+    expect(result).toEqual(
+      err({ type: "AbortError", reason: runStoppedError }),
+    );
+
+    const messageCountResult = sqlite.exec<{ count: number }>(sql`
+      select count(*) as count
+      from evolu_message
+      where ownerid = ${testAppOwnerIdBytes};
+    `);
+
+    expect(messageCountResult.rows[0].count).toBe(0);
   });
 
   describe("isOwnerWithinQuota", () => {

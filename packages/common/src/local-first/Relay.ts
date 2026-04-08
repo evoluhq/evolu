@@ -5,6 +5,7 @@
  */
 
 import {
+  dedupeArray,
   filterArray,
   firstInArray,
   isNonEmptyArray,
@@ -16,7 +17,7 @@ import { err, ok } from "../Result.js";
 import type { SqliteDep } from "../Sqlite.js";
 import { sql } from "../Sqlite.js";
 import { createMutexByKey } from "../Task.js";
-import { Name, PositiveInt } from "../Type.js";
+import { Name, PositiveInt, uint8ArrayToBase64Url } from "../Type.js";
 import { isPromiseLike, type Awaitable } from "../Types.js";
 import {
   OwnerId,
@@ -158,25 +159,31 @@ export const createRelaySqliteStorage =
 
       writeMessages: (ownerIdBytes, messages) => async (run) => {
         const ownerId = ownerIdBytesToOwnerId(ownerIdBytes);
-        const messagesWithTimestampBytes = mapArray(messages, (m) => ({
-          timestamp: timestampToTimestampBytes(m.timestamp),
-          change: m.change,
-        }));
+        const uniqueMessagesWithTimestampBytes = dedupeArray(
+          mapArray(messages, (m) => ({
+            timestamp: timestampToTimestampBytes(m.timestamp),
+            change: m.change,
+          })),
+          (message) => uint8ArrayToBase64Url(message.timestamp),
+        );
 
-        const result = await run(
+        return run(
           mutexByOwnerId.withLock(ownerId, async () => {
             const existingTimestampsResult =
               sqliteStorageBase.getExistingTimestamps(
                 ownerIdBytes,
-                mapArray(messagesWithTimestampBytes, (m) => m.timestamp),
+                mapArray(uniqueMessagesWithTimestampBytes, (m) => m.timestamp),
               );
 
-            const existingTimestampsSet = new Set(
-              existingTimestampsResult.map((t) => t.toString()),
+            const existingTimestampKeys = new Set(
+              mapArray(existingTimestampsResult, uint8ArrayToBase64Url),
             );
             const newMessages = filterArray(
-              messagesWithTimestampBytes,
-              (m) => !existingTimestampsSet.has(m.timestamp.toString()),
+              uniqueMessagesWithTimestampBytes,
+              (message) =>
+                !existingTimestampKeys.has(
+                  uint8ArrayToBase64Url(message.timestamp),
+                ),
             );
 
             // Nothing to write
@@ -248,13 +255,6 @@ export const createRelaySqliteStorage =
             });
           }),
         );
-
-        if (!result.ok) {
-          if (result.error.type === "AbortError") return ok();
-          return result;
-        }
-
-        return ok();
       },
 
       readDbChange: (ownerId, timestamp) => {
