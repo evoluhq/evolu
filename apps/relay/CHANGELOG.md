@@ -1,5 +1,15 @@
 # relay
 
+## 3.0.0-next.1
+
+### Patch Changes
+
+- Updated dependencies [a883a8c]
+- Updated dependencies [0af46e1]
+- Updated dependencies [45e62ac]
+  - @evolu/common@8.0.0-next.1
+  - @evolu/nodejs@3.0.0-next.1
+
 ## 3.0.0-next.0
 
 ### Major Changes
