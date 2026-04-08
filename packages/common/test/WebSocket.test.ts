@@ -17,6 +17,7 @@ import {
 } from "./_webSocketTestServerControl.js";
 import {
   createWebSocket,
+  testSetupWebSocket,
   testCreateWebSocket,
   type WebSocketError,
 } from "../src/WebSocket.js";
@@ -119,6 +120,64 @@ describe("createWebSocket", () => {
     }
 
     expect(closeCalled).toBe(false);
+  });
+
+  test("closes the underlying websocket when disposed", async () => {
+    await using run = createRun();
+
+    const openCalled = Promise.withResolvers<void>();
+    let nativeCloseCalled = false;
+
+    class FakeWebSocket {
+      static readonly CONNECTING = globalThis.WebSocket.CONNECTING;
+      static readonly OPEN = globalThis.WebSocket.OPEN;
+      static readonly CLOSING = globalThis.WebSocket.CLOSING;
+      static readonly CLOSED = globalThis.WebSocket.CLOSED;
+
+      readonly url: string;
+      readonly protocol = "";
+      readonly extensions = "";
+      readonly bufferedAmount = 0;
+      binaryType: BinaryType = "blob";
+      readyState: number = FakeWebSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor(url: string) {
+        this.url = url;
+        queueMicrotask(() => {
+          this.readyState = FakeWebSocket.OPEN;
+          this.onopen?.(new Event("open"));
+        });
+      }
+
+      send(_data: string | BufferSource | Blob): void {
+        return;
+      }
+
+      close(): void {
+        nativeCloseCalled = true;
+        this.readyState = FakeWebSocket.CLOSED;
+      }
+    }
+
+    const ws = await run.orThrow(
+      createWebSocket("ws://example.com", {
+        onOpen: () => {
+          openCalled.resolve();
+        },
+        WebSocketConstructor:
+          FakeWebSocket as unknown as typeof globalThis.WebSocket,
+      }),
+    );
+
+    await openCalled.promise;
+
+    await ws[Symbol.asyncDispose]();
+
+    expect(nativeCloseCalled).toBe(true);
   });
 
   test("send returns error when socket is not ready", async () => {
@@ -509,5 +568,65 @@ describe("testCreateWebSocket", () => {
     expect(() => {
       createTestWebSocket.message("ws://missing.example.com", "payload");
     }).toThrow("Test WebSocket for ws://missing.example.com does not exist.");
+  });
+});
+
+describe("testSetupWebSocket", () => {
+  test("receives text messages", async () => {
+    await using ws = await testSetupWebSocket(getServerUrl("text"));
+
+    await expect(ws.waitForMessage()).resolves.toBe("hello");
+  });
+
+  test("sends messages", async () => {
+    await using ws = await testSetupWebSocket(getServerUrl());
+
+    await expect(ws.waitForMessage()).resolves.toEqual(utf8ToBytes("welcome"));
+
+    ws.send("hello");
+
+    await expect(ws.waitForMessage()).resolves.toEqual(utf8ToBytes("hello"));
+  });
+
+  test("receives binary messages", async () => {
+    await using ws = await testSetupWebSocket(getServerUrl());
+
+    await expect(ws.waitForMessage()).resolves.toEqual(utf8ToBytes("welcome"));
+  });
+
+  test("rejects failed connections", async () => {
+    await expect(testSetupWebSocket("ws://127.0.0.1:1")).rejects.toThrow(
+      "WebSocket connection failed",
+    );
+  });
+
+  test("rejects waiting when socket closes", async () => {
+    await using ws = await testSetupWebSocket(getServerUrl("close"));
+
+    await expect(ws.waitForMessage()).rejects.toThrow(
+      "WebSocket closed before message",
+    );
+  });
+
+  test("rejects waiting after socket already closed", async () => {
+    const ws = await testSetupWebSocket(getServerUrl("close"));
+
+    await new Promise<void>((resolve) => {
+      ws.socket.addEventListener("close", () => resolve(), { once: true });
+    });
+
+    await expect(ws.waitForMessage()).rejects.toThrow(
+      "WebSocket closed before message",
+    );
+  });
+
+  test("dispose tolerates already closed sockets", async () => {
+    const ws = await testSetupWebSocket(getServerUrl("close"));
+
+    await new Promise<void>((resolve) => {
+      ws.socket.addEventListener("close", () => resolve(), { once: true });
+    });
+
+    await expect(ws[Symbol.asyncDispose]()).resolves.toBeUndefined();
   });
 });

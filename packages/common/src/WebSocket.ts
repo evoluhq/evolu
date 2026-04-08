@@ -4,6 +4,7 @@
  * @module
  */
 
+import { assert } from "./Assert.js";
 import { lazyTrue } from "./Function.js";
 import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
@@ -13,7 +14,6 @@ import type { RetryError, Task } from "./Task.js";
 import { callback, retry } from "./Task.js";
 import type { Millis } from "./Time.js";
 import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.js";
-import { assert } from "./Assert.js";
 
 /**
  * WebSocket with auto-reconnect.
@@ -27,7 +27,9 @@ import { assert } from "./Assert.js";
  *
  * Created via {@link createWebSocket} which returns a {@link Task}.
  *
- * Disposing the WebSocket closes the connection.
+ * Disposing starts closing the connection without waiting for the close event
+ * so disposal stays immediate. This wrapper treats disposal as local teardown,
+ * not as waiting for the full WebSocket close handshake to finish.
  *
  * ## How Binary Messages Work
  *
@@ -309,7 +311,17 @@ const ensureSendableData = (
     : new globalThis.Uint8Array(data);
 };
 
-/** Creates a deterministic in-memory {@link CreateWebSocket} for testing. */
+const nativeToStringState: Record<number, WebSocketReadyState> = {
+  [globalThis.WebSocket.CONNECTING]: "connecting",
+  [globalThis.WebSocket.OPEN]: "open",
+  [globalThis.WebSocket.CLOSING]: "closing",
+  [globalThis.WebSocket.CLOSED]: "closed",
+};
+
+/**
+ * An inspectable in-memory {@link CreateWebSocket} for testing by
+ * {@link testCreateWebSocket}.
+ */
 export interface TestCreateWebSocket extends CreateWebSocket {
   readonly createdUrls: Array<string>;
   readonly sentMessages: Array<{
@@ -320,6 +332,7 @@ export interface TestCreateWebSocket extends CreateWebSocket {
   readonly open: (url: string) => void;
 }
 
+/** Creates {@link TestCreateWebSocket}. */
 export const testCreateWebSocket = (
   options: {
     /** Throw immediately when a socket is created. */
@@ -408,9 +421,91 @@ export const testCreateWebSocket = (
   });
 };
 
-const nativeToStringState: Record<number, WebSocketReadyState> = {
-  [globalThis.WebSocket.CONNECTING]: "connecting",
-  [globalThis.WebSocket.OPEN]: "open",
-  [globalThis.WebSocket.CLOSING]: "closing",
-  [globalThis.WebSocket.CLOSED]: "closed",
+/**
+ * A native {@link WebSocket} prepared for integration tests by
+ * {@link testSetupWebSocket}.
+ */
+export interface TestSetupWebSocket extends AsyncDisposable {
+  readonly socket: globalThis.WebSocket;
+  readonly send: (
+    data: BufferSource | Blob | string | globalThis.Uint8Array,
+  ) => void;
+  readonly waitForMessage: () => Promise<string | globalThis.Uint8Array>;
+}
+
+/** Opens a native {@link WebSocket} and returns {@link TestSetupWebSocket}. */
+export const testSetupWebSocket = async (
+  url: string,
+): Promise<TestSetupWebSocket> => {
+  const socket = new globalThis.WebSocket(url);
+  socket.binaryType = "arraybuffer";
+
+  await new Promise<void>((resolve, reject) => {
+    const onOpen = () => {
+      cleanup();
+      resolve();
+    };
+
+    const onError = () => {
+      cleanup();
+      socket.close();
+      reject(new Error("WebSocket connection failed"));
+    };
+
+    const cleanup = () => {
+      socket.removeEventListener("open", onOpen);
+      socket.removeEventListener("error", onError);
+    };
+
+    socket.addEventListener("open", onOpen, { once: true });
+    socket.addEventListener("error", onError, { once: true });
+  });
+
+  return {
+    socket,
+    send: (data) => {
+      socket.send(ensureSendableData(data));
+    },
+    waitForMessage: () =>
+      new Promise((resolve, reject) => {
+        if (socket.readyState === globalThis.WebSocket.CLOSED) {
+          reject(new Error("WebSocket closed before message"));
+          return;
+        }
+
+        const onMessage = (event: MessageEvent) => {
+          cleanup();
+
+          if (typeof event.data === "string") {
+            resolve(event.data);
+            return;
+          }
+
+          resolve(new globalThis.Uint8Array(event.data as ArrayBuffer));
+        };
+
+        const onClose = () => {
+          cleanup();
+          reject(new Error("WebSocket closed before message"));
+        };
+
+        const cleanup = () => {
+          socket.removeEventListener("message", onMessage);
+          socket.removeEventListener("close", onClose);
+        };
+
+        socket.addEventListener("message", onMessage, { once: true });
+        socket.addEventListener("close", onClose, { once: true });
+      }),
+    [Symbol.asyncDispose]: async () => {
+      if (socket.readyState === globalThis.WebSocket.CLOSED) return;
+
+      const closed = new Promise<void>((resolve) => {
+        socket.addEventListener("close", () => resolve(), { once: true });
+      });
+
+      socket.close();
+      await closed;
+    },
+  };
 };

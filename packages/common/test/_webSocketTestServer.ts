@@ -35,6 +35,10 @@ export const createServer = (): Promise<number> => {
     "connection",
     (socket: WebSocket, _request: unknown, pathname: string) => {
       switch (pathname) {
+        case "text":
+          socket.send("hello");
+          break;
+
         case "close":
           socket.close();
           break;
