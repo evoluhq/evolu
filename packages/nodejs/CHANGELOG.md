@@ -1,5 +1,11 @@
 # @evolu/nodejs
 
+## 3.0.0-next.2
+
+### Patch Changes
+
+- 65c1fe6: Documented `createTimingSafeEqual` in the Node.js crypto module.
+
 ## 3.0.0-next.1
 
 ### Minor Changes
