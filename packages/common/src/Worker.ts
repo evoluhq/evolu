@@ -250,21 +250,38 @@ export const createMessageChannel: CreateMessageChannel = <
     handler: null,
     queue: [],
     flushScheduled: false,
+    refCount: 0,
+    pendingTransferCount: 0,
+    closed: false,
   };
   const state2: PortState<Input> = {
     handler: null,
     queue: [],
     flushScheduled: false,
+    refCount: 0,
+    pendingTransferCount: 0,
+    closed: false,
   };
 
   const native1 = createNativeMessagePortToken<Input, Output>();
   const native2 = createNativeMessagePortToken<Output, Input>();
 
-  const port1 = createTestPort<Input, Output>(state1, state2, native1);
-  const port2 = createTestPort<Output, Input>(state2, state1, native2);
+  const port1Registration: PortRegistration<Input, Output> = {
+    receive: state1,
+    peerReceive: state2,
+    native: native1,
+  };
+  const port2Registration: PortRegistration<Output, Input> = {
+    receive: state2,
+    peerReceive: state1,
+    native: native2,
+  };
 
-  nativePortRegistry.set(native1, port1);
-  nativePortRegistry.set(native2, port2);
+  const port1 = createTestPort(port1Registration);
+  const port2 = createTestPort(port2Registration);
+
+  nativePortRegistry.set(native1, port1Registration);
+  nativePortRegistry.set(native2, port2Registration);
 
   return {
     port1,
@@ -285,9 +302,9 @@ export const createMessageChannel: CreateMessageChannel = <
 export const createMessagePort: CreateMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort<Input, Output>,
 ): MessagePort<Input, Output> => {
-  const pair = nativePortRegistry.get(nativePort);
-  assert(pair, "Unknown native port — did you transfer it?");
-  return pair as MessagePort<Input, Output>;
+  const registration = nativePortRegistry.get(nativePort);
+  assert(registration, "Unknown native port — did you transfer it?");
+  return createTestPort(registration as PortRegistration<Input, Output>);
 };
 
 /**
@@ -481,20 +498,34 @@ interface PortState<T> {
   handler: ((message: T) => void) | null;
   readonly queue: Array<T>;
   flushScheduled: boolean;
+  refCount: number;
+  pendingTransferCount: number;
+  closed: boolean;
 }
 
-const createPort = <Input, Output>(
-  receive: PortState<Output>,
-  peerReceive: PortState<Input>,
-  native: NativeMessagePort<Input, Output>,
-): MessagePort<Input, Output> => {
+interface PortRegistration<Input, Output> {
+  readonly receive: PortState<Output>;
+  readonly peerReceive: PortState<Input>;
+  readonly native: NativeMessagePort<Input, Output>;
+}
+
+const createPort = <Input, Output>({
+  receive,
+  peerReceive,
+  native,
+}: PortRegistration<Input, Output>): MessagePort<Input, Output> => {
+  if (receive.pendingTransferCount > 0) receive.pendingTransferCount -= 1;
+  receive.refCount += 1;
+  let isDisposed = false;
+
   const scheduleFlush = (state: PortState<any>): void => {
-    if (state.flushScheduled) return;
+    if (state.flushScheduled || state.closed) return;
     state.flushScheduled = true;
 
     // Native worker messages are task-queued; use macrotask timing.
     setTimeout(() => {
       state.flushScheduled = false;
+      if (state.closed) return;
 
       const handler = state.handler;
       if (!handler) return;
@@ -506,30 +537,48 @@ const createPort = <Input, Output>(
   };
 
   return {
-    postMessage: (message) => {
+    postMessage: (message, transfer) => {
+      for (const transferable of transfer ?? []) {
+        if (transferable instanceof globalThis.ArrayBuffer) continue;
+
+        const registration = nativePortRegistry.get(transferable);
+        if (!registration) continue;
+
+        registration.receive.pendingTransferCount += 1;
+        registration.receive.closed = false;
+      }
+
+      if (peerReceive.closed) return;
       peerReceive.queue.push(message);
       scheduleFlush(peerReceive);
     },
     get onMessage() {
-      return receive.handler;
+      return isDisposed ? null : receive.handler;
     },
     set onMessage(fn) {
+      if (isDisposed || receive.closed) return;
       receive.handler = fn;
       if (fn) scheduleFlush(receive);
     },
     native,
     [Symbol.dispose]: () => {
+      if (isDisposed) return;
+      isDisposed = true;
+
+      receive.refCount -= 1;
+      if (receive.refCount > 0 || receive.pendingTransferCount > 0) return;
+
+      receive.closed = true;
       receive.handler = null;
       receive.flushScheduled = false;
+      receive.queue.length = 0;
     },
   };
 };
 
 const createTestPort = <Input, Output>(
-  receive: PortState<Output>,
-  peerReceive: PortState<Input>,
-  native: NativeMessagePort<Input, Output>,
-): MessagePort<Input, Output> => createPort(receive, peerReceive, native);
+  registration: PortRegistration<Input, Output>,
+): MessagePort<Input, Output> => createPort(registration);
 
 const createNativeMessagePortToken = <Input, Output>(): NativeMessagePort<
   Input,
@@ -548,5 +597,5 @@ const createNativeMessagePortToken = <Input, Output>(): NativeMessagePort<
  */
 const nativePortRegistry = new WeakMap<
   NativeMessagePort<any, any>,
-  MessagePort<any, any>
+  PortRegistration<any, any>
 >();

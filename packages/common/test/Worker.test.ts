@@ -168,13 +168,33 @@ describe("testCreateMessagePort", () => {
   test("looks up port by native token from channel", () => {
     const channel = testCreateMessageChannel<string, number>();
     const port = testCreateMessagePort<string, number>(channel.port1.native);
-    expect(port).toBe(channel.port1);
+    expect(port.native).toBe(channel.port1.native);
   });
 
   test("looks up port2 by native token", () => {
     const channel = testCreateMessageChannel<string, number>();
     const port = testCreateMessagePort<number, string>(channel.port2.native);
-    expect(port).toBe(channel.port2);
+    expect(port.native).toBe(channel.port2.native);
+  });
+
+  test("transferred ports remain usable after original channel dispose", async () => {
+    const channel = testCreateMessageChannel<string, number>();
+    const transferredPort1 = testCreateMessagePort<string, number>(
+      channel.port1.native,
+    );
+    const transferredPort2 = testCreateMessagePort<number, string>(
+      channel.port2.native,
+    );
+
+    const received: Array<string> = [];
+    transferredPort2.onMessage = (message) => received.push(message);
+
+    channel[Symbol.dispose]();
+    transferredPort1.postMessage("hello");
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual(["hello"]);
   });
 
   test("throws for unknown native port", () => {

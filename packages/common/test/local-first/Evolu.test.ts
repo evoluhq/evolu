@@ -725,7 +725,7 @@ describe("unit tests", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(evoluInputs).toEqual([{ type: "Export" }]);
+      expect(evoluInputs).toEqual([{ type: "Export" }, { type: "Dispose" }]);
     });
 
     test("throws from sync methods after dispose", async () => {
@@ -1971,6 +1971,59 @@ describe("integration tests", () => {
         ],
       }
     `);
+  });
+
+  test("dispose and recreate keeps loadQuery working", async () => {
+    await using setup = await setupRunWithEvoluDeps();
+    const { run } = setup;
+
+    const evolu1 = await run.orThrow(testCreateEvolu);
+    await expect(evolu1.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([]);
+
+    await evolu1[Symbol.asyncDispose]();
+
+    const evolu2 = await run.orThrow(testCreateEvolu);
+    await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([]);
+  });
+
+  test("dispose and recreate keeps subscribed query loading persisted rows", async () => {
+    await using setup = await setupRunWithEvoluDeps();
+    const { run } = setup;
+
+    const evolu1 = await run.orThrow(testCreateEvolu);
+
+    let completed = 0;
+    const mutationCompleted = Promise.withResolvers<void>();
+
+    evolu1.insert(
+      "todo",
+      {
+        title: NonEmptyString100.orThrow("Persisted after recreate"),
+      },
+      {
+        onComplete: () => {
+          completed += 1;
+          mutationCompleted.resolve();
+        },
+      },
+    );
+
+    await mutationCompleted.promise;
+    expect(completed).toBe(1);
+
+    await evolu1[Symbol.asyncDispose]();
+
+    const evolu2 = await run.orThrow(testCreateEvolu);
+    const unsubscribe = evolu2.subscribeQuery(todoByCreatedAtQuery)(lazyVoid);
+
+    await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([
+      {
+        id: expect.any(String),
+        title: "Persisted after recreate",
+      },
+    ]);
+
+    unsubscribe();
   });
 
   test("memoryOnly opens SQLite in memory mode", async () => {

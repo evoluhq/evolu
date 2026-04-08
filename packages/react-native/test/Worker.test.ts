@@ -81,7 +81,7 @@ describe("createMessagePort", () => {
     const channel = createMessageChannel<string, number>();
     const port = createMessagePort<string, number>(channel.port1.native);
 
-    expect(port).toBe(channel.port1);
+    expect(port.native).toBe(channel.port1.native);
   });
 
   test("throws for unknown native ports", () => {
