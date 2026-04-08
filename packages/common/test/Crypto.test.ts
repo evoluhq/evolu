@@ -95,6 +95,18 @@ test("createSlip21", () => {
   );
 });
 
+test("createSlip21 normalizes numeric path elements", () => {
+  const mnemonic = Mnemonic.orThrow(
+    "all all all all all all all all all all all all",
+  );
+  const ownerSecret = mnemonicToOwnerSecret(mnemonic);
+
+  const withNumber = createSlip21(ownerSecret, ["Evolu", 0]);
+  const withString = createSlip21(ownerSecret, ["Evolu", "0"]);
+
+  expect(bytesToHex(withNumber)).toBe(bytesToHex(withString));
+});
+
 /**
  * This test demonstrates createRandomBytes performance, which is used for
  * createId and is fast enough: ~0.0014ms per call on Apple M1.
