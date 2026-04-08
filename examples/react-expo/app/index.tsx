@@ -81,23 +81,52 @@ deps.evoluError.subscribe(() => {
 
 const run = createRun(deps);
 
-// Create Evolu App.
-const evoluFiber = run.orThrow(
-  Evolu.createEvolu(AppSchema, {
-    appName: Evolu.AppName.orThrow("minimal-example"),
-    appOwner: Evolu.testAppOwner,
+const createEvoluFiber = () =>
+  run.orThrow(
+    Evolu.createEvolu(AppSchema, {
+      appName: Evolu.AppName.orThrow("minimal-example"),
+      appOwner: Evolu.testAppOwner,
 
-    ...(process.env.NODE_ENV === "development" && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+      ...(process.env.NODE_ENV === "development" && {
+        transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+      }),
     }),
-  }),
-);
+  );
+
+type EvoluFiber = ReturnType<typeof createEvoluFiber>;
 
 /** Trims user input and validates it as a todo title. */
 const parseTodoTitle = (value: string) =>
   Evolu.NonEmptyTrimmedString100.from(value.trim());
 
 export default function Index() {
+  const [evoluFiber, setEvoluFiber] = useState<EvoluFiber>(createEvoluFiber);
+  const [isRecreatingEvolu, setIsRecreatingEvolu] = useState(false);
+  const [evoluGeneration, setEvoluGeneration] = useState(1);
+
+  const handleRecreateEvoluPress = () => {
+    if (isRecreatingEvolu) return;
+
+    setIsRecreatingEvolu(true);
+
+    const currentEvoluFiber = evoluFiber;
+
+    void (async () => {
+      try {
+        const currentEvolu = await currentEvoluFiber;
+        await currentEvolu[Symbol.asyncDispose]();
+
+        const nextEvoluFiber = createEvoluFiber();
+        setEvoluFiber(nextEvoluFiber);
+        setEvoluGeneration((value) => value + 1);
+
+        await nextEvoluFiber;
+      } finally {
+        setIsRecreatingEvolu(false);
+      }
+    })();
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -109,13 +138,33 @@ export default function Index() {
         <View style={styles.maxWidthContainer}>
           <View style={styles.header}>
             <Text style={styles.title}>Minimal Todo App (Evolu + Expo)</Text>
+            <Text style={styles.headerDescription}>
+              Dispose the current Evolu instance and recreate it with the same
+              testAppOwner to verify todos load again.
+            </Text>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillText}>
+                Instance #{evoluGeneration}
+                {isRecreatingEvolu ? " • Recreating" : " • Ready"}
+              </Text>
+            </View>
+            <Button
+              title={
+                isRecreatingEvolu
+                  ? "Recreating Evolu..."
+                  : "Dispose + Recreate Evolu"
+              }
+              onPress={handleRecreateEvoluPress}
+              style={styles.recreateButton}
+              disabled={isRecreatingEvolu}
+            />
           </View>
-          <Suspense>
+          <Suspense fallback={<LoadingState generation={evoluGeneration} />}>
             {/*
               Suspense delivers great UX (no loading flickers) and DX (no loading
               states to manage). Highly recommended with Evolu.
             */}
-            <App />
+            <App key={evoluGeneration} evoluFiber={evoluFiber} />
           </Suspense>
         </View>
       </ScrollView>
@@ -123,7 +172,22 @@ export default function Index() {
   );
 }
 
-const App: FC = () => (
+const LoadingState: FC<{
+  generation: number;
+}> = ({ generation }) => (
+  <View style={styles.loadingCard}>
+    <Text style={styles.loadingTitle}>
+      Loading Evolu instance #{generation}
+    </Text>
+    <Text style={styles.loadingDescription}>
+      Reopening the same app owner and reloading persisted todos.
+    </Text>
+  </View>
+);
+
+const App: FC<{
+  evoluFiber: EvoluFiber;
+}> = ({ evoluFiber }) => (
   <EvoluContext value={use(evoluFiber)}>
     <Todos />
     <OwnerActions />
@@ -380,10 +444,12 @@ const Button: FC<{
   style?: object;
   onPress: () => void;
   variant?: "primary" | "secondary";
-}> = ({ title, style, onPress, variant = "secondary" }) => {
+  disabled?: boolean;
+}> = ({ title, style, onPress, variant = "secondary", disabled = false }) => {
   const buttonStyle = [
     styles.button,
     variant === "primary" ? styles.buttonPrimary : styles.buttonSecondary,
+    disabled ? styles.buttonDisabled : null,
     style,
   ];
 
@@ -395,7 +461,7 @@ const Button: FC<{
   ];
 
   return (
-    <TouchableOpacity style={buttonStyle} onPress={onPress}>
+    <TouchableOpacity style={buttonStyle} onPress={onPress} disabled={disabled}>
       <Text style={textStyle}>{title}</Text>
     </TouchableOpacity>
   );
@@ -423,12 +489,54 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingBottom: 16,
     alignItems: "center",
+    gap: 12,
   },
   title: {
     fontSize: 20,
     fontWeight: "600",
     color: "#111827",
     textAlign: "center",
+  },
+  headerDescription: {
+    fontSize: 14,
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  statusPill: {
+    backgroundColor: "#eff6ff",
+    borderColor: "#bfdbfe",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  statusPillText: {
+    color: "#1d4ed8",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  recreateButton: {
+    width: "100%",
+  },
+  loadingCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  loadingTitle: {
+    color: "#111827",
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  loadingDescription: {
+    color: "#6b7280",
+    fontSize: 14,
+    lineHeight: 20,
   },
   todosContainer: {
     backgroundColor: "#ffffff",
@@ -524,6 +632,9 @@ const styles = StyleSheet.create({
   },
   buttonSecondary: {
     backgroundColor: "#f3f4f6",
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   buttonText: {
     fontSize: 14,
