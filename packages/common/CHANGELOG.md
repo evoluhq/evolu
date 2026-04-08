@@ -1,5 +1,31 @@
 # @evolu/common
 
+## 8.0.0-next.1
+
+### Major Changes
+
+- 45e62ac: Updated the time testing API and added deterministic test ids.
+
+  **Breaking changes:**
+  - Changed `testCreateTime({ autoIncrement })` to accept `"microtask" | "sync"` instead of `boolean`
+
+  **Added:**
+  - Added `testCreateId()` for deterministic branded and unbranded ids in tests
+
+### Minor Changes
+
+- a883a8c: Added signal-aware relay authorization and exposed the actual bound port from Node.js relays.
+
+  Added WebSocket test helpers for native client setup and raw upgrade requests.
+
+  Made relay storage count duplicate timestamped messages only once when computing owner usage.
+
+- 0af46e1: Added Map and WeakMap upsert helpers and binary-type improvements to `@evolu/common`.
+  - Added `LookupMap.getOrInsert` and `LookupMap.getOrInsertComputed` for lookup-key-aware insert-or-read operations that preserve the first logical key representative.
+  - Added the `ArrayBuffer` base `Type` and formatter support.
+  - Installed `Map` and `WeakMap` collection upsert polyfills in `installPolyfills()` for runtimes that do not provide them yet.
+  - Normalized `WebSocket.send` binary payload handling so `Uint8Array` views backed by `ArrayBuffer` stay zero-copy while `SharedArrayBuffer`-backed views are cloned into a sendable `Uint8Array`.
+
 ## 8.0.0-next.0
 
 ### Major Changes
