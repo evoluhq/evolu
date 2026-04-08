@@ -19,6 +19,8 @@ jobs:
     if: github.repository == 'evoluhq/evolu'
     name: Release
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.59.1-noble
     steps:
       - uses: actions/checkout@v6
 
@@ -35,9 +37,6 @@ jobs:
         run: npm install -g npm@latest
 
       - run: pnpm install --frozen-lockfile
-
-      - name: Install Playwright browsers
-        run: pnpm --filter @evolu/common exec playwright install --with-deps chromium firefox webkit
 
       - name: Verify
         run: pnpm verify
