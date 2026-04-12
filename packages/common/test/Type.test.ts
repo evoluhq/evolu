@@ -2896,6 +2896,7 @@ test("createFormatTypeError covers built-in and composite formatter branches", (
     [Null, undefined],
     [Function, 1],
     [Uint8Array, "x"],
+    [ArrayBuffer, "x"],
     [instanceOf(class User { id = 1; }), {}],
     [EvoluType, "x"],
     [CurrencyCode, "usd"],
