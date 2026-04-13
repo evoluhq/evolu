@@ -165,12 +165,6 @@ export interface SharedResource<
   T extends Resource,
   D = unknown,
 > extends AsyncDisposable {
-  /** Returns the current shared-resource state for monitoring/debugging. */
-  readonly snapshot: () => SharedResourceSnapshot;
-
-  /** Returns the current resource, or `undefined` if absent. */
-  readonly get: () => BorrowedResource<T> | undefined;
-
   /**
    * Acquires a shared reference.
    *
@@ -203,6 +197,12 @@ export interface SharedResource<
 
   /** Returns the current acquire count. */
   readonly getCount: Task<NonNegativeInt, never, D>;
+
+  /** Returns the current resource, or `undefined` if absent. */
+  readonly get: () => BorrowedResource<T> | undefined;
+
+  /** Returns the current shared-resource state for monitoring/debugging. */
+  readonly snapshot: () => SharedResourceSnapshot;
 }
 
 /** Snapshot returned by {@link SharedResource.snapshot}. */
@@ -262,13 +262,6 @@ export const createSharedResource = <T extends Resource, D>(
     const moved = stack.move();
 
     return ok({
-      snapshot: () => ({
-        isIdle: refCount.getCount() === 0 && !current && !idleDisposeFiber,
-        mutex: mutex.snapshot(),
-      }),
-
-      get: () => current?.resource,
-
       acquire: unabortable<BorrowedResource<T>, never, D>(() =>
         sharedResourceRun(
           mutex.withLock(async (run) => {
@@ -320,6 +313,13 @@ export const createSharedResource = <T extends Resource, D>(
       getCount: () =>
         sharedResourceRun(mutex.withLock(() => ok(refCount.getCount()))),
 
+      get: () => current?.resource,
+
+      snapshot: () => ({
+        isIdle: refCount.getCount() === 0 && !current && !idleDisposeFiber,
+        mutex: mutex.snapshot(),
+      }),
+
       [Symbol.asyncDispose]: () => moved.disposeAsync(),
     });
   });
@@ -356,9 +356,6 @@ export interface SharedResourceByKey<
   T extends Resource,
   D = unknown,
 > extends AsyncDisposable {
-  /** Returns the current resource for `key`, or `undefined` if absent. */
-  readonly get: (key: K) => BorrowedResource<T> | undefined;
-
   /**
    * Acquires the shared resource for `key`, creating it on first use.
    *
@@ -385,6 +382,9 @@ export interface SharedResourceByKey<
 
   /** Returns the current acquire count for `key`. Missing keys return `0`. */
   readonly getCount: (key: K) => Task<NonNegativeInt, never, D>;
+
+  /** Returns the current resource for `key`, or `undefined` if absent. */
+  readonly get: (key: K) => BorrowedResource<T> | undefined;
 
   /** Returns current keyed resources and their per-key mutex state. */
   readonly snapshot: () => SharedResourceByKeySnapshot<K, T>;
@@ -457,8 +457,6 @@ export function createSharedResourceByKey<
     const moved = stack.move();
 
     return ok({
-      get: (key) => sharedResourcesByKey.get(key)?.get(),
-
       acquire: (key) =>
         unabortable<BorrowedResource<T>, never, D>(() =>
           sharedResourceByKeyRun(
@@ -520,6 +518,8 @@ export function createSharedResourceByKey<
             return run(sharedResource.getCount);
           }),
         ),
+
+      get: (key) => sharedResourcesByKey.get(key)?.get(),
 
       snapshot: () => {
         const resourcesByKey = new Map<K, BorrowedResource<T>>();
