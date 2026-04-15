@@ -16,7 +16,6 @@ import type {
   CreateSqliteDriver,
   CreateSqliteDriverDep,
   SqliteDep,
-  SqliteDriver,
   SqliteRow,
 } from "../src/Sqlite.js";
 import {
@@ -40,7 +39,7 @@ export const setupSqlite: () => ReturnType<typeof testSetupSqlite> = () =>
 // (nodejs depends on common — importing back would create a circular dependency).
 const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
   const filename = options?.mode === "memory" ? ":memory:" : `${name}.db`;
-  const stack = new globalThis.DisposableStack();
+  using stack = new DisposableStack();
   const db = stack.adopt(new BetterSQLite(filename), (db) => {
     db.close();
   });
@@ -54,7 +53,9 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
     ),
   );
 
-  const driver: SqliteDriver = {
+  const moved = stack.move();
+
+  return ok({
     exec: (query) => {
       // Always prepare is recommended for better-sqlite3
       const prepared = cache.get(query, true);
@@ -81,11 +82,9 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
     },
 
     [Symbol.dispose]: () => {
-      stack.dispose();
+      moved.dispose();
     },
-  };
-
-  return ok(driver);
+  });
 };
 
 export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {

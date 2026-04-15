@@ -373,11 +373,9 @@ This mirrors what C# does by default with
 ```ts
 /** Creates {@link RefCount}. */
 export const createRefCount = (): RefCount => {
+  // We use DisposableStack only because of assertNotDisposed.
+  using stack = new DisposableStack();
   let count = zeroNonNegativeInt;
-  const stack = new DisposableStack();
-  stack.defer(() => {
-    count = zeroNonNegativeInt;
-  });
   const moved = stack.move();
 
   return {

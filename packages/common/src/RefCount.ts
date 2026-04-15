@@ -34,11 +34,9 @@ export interface RefCount extends Disposable {
 
 /** Creates {@link RefCount}. */
 export const createRefCount = (): RefCount => {
+  // We use DisposableStack only because of assertNotDisposed.
+  using stack = new DisposableStack();
   let count = zeroNonNegativeInt;
-  const stack = new DisposableStack();
-  stack.defer(() => {
-    count = zeroNonNegativeInt;
-  });
   const moved = stack.move();
 
   return {
@@ -112,7 +110,8 @@ export function createRefCountByKey<TKey, L>(
 export function createRefCountByKey<TKey, L = TKey>({
   lookup = identity as Lookup<TKey, L>,
 }: CreateRefCountByKeyOptions<TKey, L> = {}): RefCountByKey<TKey> {
-  const stack = new DisposableStack();
+  // We use DisposableStack only because of assertNotDisposed.
+  using stack = new DisposableStack();
 
   const refCountByKey = stack.adopt(
     createLookupMap<TKey, RefCount, L>({ lookup }),

@@ -124,14 +124,14 @@ export type DbWorkerDeps = WorkerDeps & LeaderLockDep & CreateSqliteDriverDep;
 
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
-  async (_run) => {
+  async (run) => {
     await using stack = new AsyncDisposableStack();
-    const run = stack.use(_run.create());
-    const { deps } = run;
+    const dbWorkerRun = stack.use(run.create());
+    const { deps } = dbWorkerRun;
 
     let initialized = false;
 
-    const initMessage = await run.orThrow(
+    const initMessage = await dbWorkerRun.orThrow(
       callback<DbWorkerInit>(({ ok }) => {
         self.onMessage = (message) => {
           assert(!initialized, "DbWorker must be initialized only once");
@@ -156,13 +156,15 @@ export const startDbWorker =
       }),
     );
 
-    stack.use(await run.orThrow(deps.leaderLock.lock(initMessage.name)));
+    stack.use(
+      await dbWorkerRun.orThrow(deps.leaderLock.lock(initMessage.name)),
+    );
     if (stack.disposed) return ok();
 
     port.postMessage({ type: "LeaderAcquired", name: initMessage.name });
 
     const sqlite = stack.use(
-      await run.orThrow(
+      await dbWorkerRun.orThrow(
         createSqlite(
           initMessage.name,
           initMessage.memoryOnly
@@ -173,10 +175,13 @@ export const startDbWorker =
     );
     console.debug("SQLite created");
 
-    const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...run.deps });
+    const baseSqliteStorage = createBaseSqliteStorage({
+      sqlite,
+      ...dbWorkerRun.deps,
+    });
 
     const dbDeps = {
-      ...run.deps,
+      ...dbWorkerRun.deps,
       sqlite,
       sqliteSchema: initMessage.sqliteSchema,
       baseSqliteStorage,
@@ -201,7 +206,7 @@ export const startDbWorker =
 
     // TODO: Call on dispose message.
     const _moved = stack.move();
-    const runWithStorage = run.addDeps({ storage });
+    const dbWorkerRunWithStorage = dbWorkerRun.addDeps({ storage });
 
     /**
      * SharedWorker retries until some leader replies, so this worker must
@@ -242,7 +247,7 @@ export const startDbWorker =
               } else {
                 postQueuedResponse({
                   type: "ForEvolu",
-                  evoluPortId: request.evoluPortId,
+                  id: request.id,
                   message: result.value,
                 });
               }
@@ -252,7 +257,7 @@ export const startDbWorker =
             case "Query":
               postQueuedResponse({
                 type: "ForEvolu",
-                evoluPortId: request.evoluPortId,
+                id: request.id,
                 message: {
                   type: "Query",
                   rowsByQuery: loadQueries(dbDeps)(request.message.queries),
@@ -263,7 +268,7 @@ export const startDbWorker =
             case "Export":
               postQueuedResponse({
                 type: "ForEvolu",
-                evoluPortId: request.evoluPortId,
+                id: request.id,
                 message: {
                   type: "Export",
                   file: dbDeps.sqlite.export(),
@@ -307,7 +312,7 @@ export const startDbWorker =
             case "ApplySyncMessage": {
               const { owner, inputMessage } = request.message;
 
-              runWithStorage<void, never>(async (run) => {
+              dbWorkerRunWithStorage<void, never>(async (run) => {
                 storage.setRequestContext(owner.encryptionKey);
 
                 const result = await run(

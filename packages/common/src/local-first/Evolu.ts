@@ -72,7 +72,7 @@ import type {
   DbWorkerOutput,
   EvoluInput,
   EvoluOutput,
-  EvoluTabOutput,
+  TabOutput,
   SharedWorkerDep,
 } from "./Shared.js";
 import { DbChange } from "./Storage.js";
@@ -568,11 +568,11 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const { createMessageChannel, sharedWorker } = deps;
   const console = deps.console ?? createConsole();
 
-  const stack = new DisposableStack();
+  using stack = new DisposableStack();
   stack.use(sharedWorker);
   const evoluError = stack.use(createStore<EvoluError | null>(null));
 
-  const tabChannel = stack.use(createMessageChannel<EvoluTabOutput>());
+  const tabChannel = stack.use(createMessageChannel<TabOutput>());
   tabChannel.port2.onMessage = (message) => {
     switch (message.type) {
       case "OnConsoleEntry":

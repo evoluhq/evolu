@@ -14,7 +14,7 @@ import type {
 import {
   type EvoluInput,
   type EvoluOutput,
-  type EvoluTabOutput,
+  type TabOutput,
   initSharedWorker,
   type SharedWorkerInput,
 } from "../../src/local-first/Shared.js";
@@ -89,8 +89,8 @@ describe("console and tab output", () => {
 
     consoleStoreOutputEntry.set(firstEntry);
 
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    const receivedOutputs: Array<TabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<TabOutput>();
     consoleChannel.port2.onMessage = (output) => {
       receivedOutputs.push(output);
     };
@@ -123,8 +123,8 @@ describe("console and tab output", () => {
     });
     const { worker } = setup;
 
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const consoleChannel = testCreateMessageChannel<EvoluTabOutput>();
+    const receivedOutputs: Array<TabOutput> = [];
+    const consoleChannel = testCreateMessageChannel<TabOutput>();
     consoleChannel.port2.onMessage = (output) => {
       receivedOutputs.push(output);
     };
@@ -152,8 +152,8 @@ describe("console and tab output", () => {
     await using setup = await setupSharedWorker();
     const { worker } = setup;
 
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
+    const receivedOutputs: Array<TabOutput> = [];
+    const tabChannel = testCreateMessageChannel<TabOutput>();
     tabChannel.port2.onMessage = (output) => {
       receivedOutputs.push(output);
     };
@@ -210,8 +210,8 @@ describe("console and tab output", () => {
     await using setup = await setupSharedWorker();
     const { worker } = setup;
 
-    const receivedOutputs: Array<EvoluTabOutput> = [];
-    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
+    const receivedOutputs: Array<TabOutput> = [];
+    const tabChannel = testCreateMessageChannel<TabOutput>();
     tabChannel.port2.onMessage = (output) => {
       receivedOutputs.push(output);
     };
@@ -235,7 +235,7 @@ describe("console and tab output", () => {
       dbWorkerPort: dbWorkerChannel.port1.native,
     });
 
-    const errorOutput: EvoluTabOutput = {
+    const errorOutput: TabOutput = {
       type: "OnError",
       error: { type: "UnknownError", error: "boom" },
     } as const;
@@ -302,7 +302,7 @@ describe("queued evolu responses", () => {
       callbackId: mutateInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: mutateInput.request.evoluPortId,
+        id: mutateInput.request.id,
         message: {
           type: "Mutate",
           messagesByOwnerId: new Map(),
@@ -328,7 +328,7 @@ describe("queued evolu responses", () => {
       callbackId: queryInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: queryInput.request.evoluPortId,
+        id: queryInput.request.id,
         message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 2 }]]]),
@@ -402,7 +402,7 @@ describe("queued evolu responses", () => {
       callbackId: exportInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: exportInput.request.evoluPortId,
+        id: exportInput.request.id,
         message: {
           type: "Export",
           file,
@@ -486,7 +486,7 @@ describe("queued evolu responses", () => {
       callbackId: mutateInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: mutateInput.request.evoluPortId,
+        id: mutateInput.request.id,
         message: {
           type: "Mutate",
           messagesByOwnerId: new Map(),
@@ -552,7 +552,7 @@ describe("queued evolu responses", () => {
       callbackId: firstInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: firstInput.request.evoluPortId,
+        id: firstInput.request.id,
         message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 1 }, { value: 2 }]]]),
@@ -571,7 +571,7 @@ describe("queued evolu responses", () => {
       callbackId: secondInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: secondInput.request.evoluPortId,
+        id: secondInput.request.id,
         message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 1 }, { value: 3 }]]]),
@@ -705,7 +705,7 @@ describe("transport and sync behavior", () => {
       callbackId: mutateInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: mutateInput.request.evoluPortId,
+        id: mutateInput.request.id,
         message: {
           type: "Mutate",
           messagesByOwnerId: new Map([
@@ -902,8 +902,8 @@ describe("transport and sync behavior", () => {
     const { run, worker } = setup;
     const { time } = run.deps;
 
-    const tabOutputs: Array<EvoluTabOutput> = [];
-    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
+    const tabOutputs: Array<TabOutput> = [];
+    const tabChannel = testCreateMessageChannel<TabOutput>();
     tabChannel.port2.onMessage = (output) => {
       tabOutputs.push(output);
     };
@@ -1064,8 +1064,8 @@ describe("transport and sync behavior", () => {
     const { run, worker } = setup;
     const { time } = run.deps;
 
-    const tabOutputs: Array<EvoluTabOutput> = [];
-    const tabChannel = testCreateMessageChannel<EvoluTabOutput>();
+    const tabOutputs: Array<TabOutput> = [];
+    const tabChannel = testCreateMessageChannel<TabOutput>();
     tabChannel.port2.onMessage = (output) => {
       tabOutputs.push(output);
     };
@@ -1408,7 +1408,7 @@ describe("transport and sync behavior", () => {
       callbackId: queryInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: createId(run.deps),
+        id: createId(run.deps),
         message: {
           type: "Query",
           rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
@@ -1489,7 +1489,7 @@ describe("transport and sync behavior", () => {
       callbackId: mutateInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: mutateInput.request.evoluPortId,
+        id: mutateInput.request.id,
         message: {
           type: "Mutate",
           messagesByOwnerId: new Map([
@@ -1626,7 +1626,7 @@ describe("transport and sync behavior", () => {
     const queryInput = dbInputs.at(-1);
     assert(queryInput);
     assert(queryInput.request.type === "ForEvolu");
-    const evoluPortId = queryInput.request.evoluPortId;
+    const id = queryInput.request.id;
     const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
     assert(dbWorkerOnMessage);
 
@@ -1636,7 +1636,7 @@ describe("transport and sync behavior", () => {
         callbackId: queryInput.callbackId,
         response: {
           type: "ForEvolu",
-          evoluPortId,
+          id,
           message: { type: "Impossible" },
         } as never,
       }),
@@ -1890,6 +1890,90 @@ describe("transport and sync behavior", () => {
 
     expect(disposedUrls).toEqual([transport.url]);
   });
+
+  test("serializes overlapping UseOwner add and remove across multiple transports", async () => {
+    const inspectableWebSocket = testCreateWebSocket();
+    const firstCreateStarted = Promise.withResolvers<void>();
+    const allowFirstCreateToFinish = Promise.withResolvers<void>();
+    const transportA = createOwnerWebSocketTransport({
+      url: "wss://use-owner-a.example",
+      ownerId: testAppOwner.id,
+    });
+    const transportB = createOwnerWebSocketTransport({
+      url: "wss://use-owner-b.example",
+      ownerId: testAppOwner.id,
+    });
+
+    let pausedFirstCreate = false;
+    const createWebSocket: CreateWebSocket = (url, options) => async (run) => {
+      if (url === transportA.url && !pausedFirstCreate) {
+        pausedFirstCreate = true;
+        firstCreateStarted.resolve();
+        evoluChannel.port2.postMessage({
+          type: "UseOwner",
+          actions: [
+            {
+              owner: {
+                owner: testAppOwner,
+                transports: [transportB, transportA],
+              },
+              action: "remove",
+            },
+          ],
+        });
+        await allowFirstCreateToFinish.promise;
+      }
+
+      return inspectableWebSocket(url, options)(run);
+    };
+
+    await using setup = await setupSharedWorker({
+      createWebSocket,
+    });
+    const { worker } = setup;
+
+    const evoluChannel = testCreateMessageChannel<never, EvoluInput>();
+    const dbWorkerChannel = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel.port1.native,
+      dbWorkerPort: dbWorkerChannel.port1.native,
+    });
+
+    evoluChannel.port2.postMessage({
+      type: "UseOwner",
+      actions: [
+        {
+          owner: {
+            owner: testAppOwner,
+            transports: [transportA, transportB],
+          },
+          action: "add",
+        },
+      ],
+    });
+
+    await firstCreateStarted.promise;
+    await testWaitForWorkerMessage();
+    allowFirstCreateToFinish.resolve();
+    await testWaitForWorkerMessage();
+    await testWaitForWorkerMessage();
+
+    expect(inspectableWebSocket.sentMessages).toHaveLength(2);
+    expect(inspectableWebSocket.sentMessages).toContainEqual({
+      url: transportA.url,
+      data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+    });
+    expect(inspectableWebSocket.sentMessages).toContainEqual({
+      url: transportB.url,
+      data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+    });
+  });
 });
 
 describe("disposal and ignored responses", () => {
@@ -1945,7 +2029,7 @@ describe("disposal and ignored responses", () => {
       callbackId: queuedInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: queuedInput.request.evoluPortId,
+        id: queuedInput.request.id,
         message: {
           type: "Query",
           rowsByQuery: new Map(),
@@ -2019,7 +2103,83 @@ describe("disposal and ignored responses", () => {
       callbackId: queuedInput2.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: queuedInput2.request.evoluPortId,
+        id: queuedInput2.request.id,
+        message: {
+          type: "Query",
+          rowsByQuery: new Map([[query, [{ value: 1 }]]]),
+        },
+      },
+    });
+    await testWaitForWorkerMessage();
+
+    const output2 = outputs2[0];
+    assert(output2.type === "OnPatchesByQuery");
+  });
+
+  test("keeps disposed instance db worker alive until tenant disposal", async () => {
+    await using setup = await setupSharedWorker();
+    const { run, worker } = setup;
+    const { time } = run.deps;
+
+    const evoluChannel1 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel1 = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+    const evoluChannel2 = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+    const dbWorkerChannel2 = testCreateMessageChannel<
+      DbWorkerInput,
+      DbWorkerOutput
+    >();
+
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel1.port1.native,
+      dbWorkerPort: dbWorkerChannel1.port1.native,
+    });
+    worker.port.postMessage({
+      type: "CreateEvolu",
+      name: testName,
+      evoluPort: evoluChannel2.port1.native,
+      dbWorkerPort: dbWorkerChannel2.port1.native,
+    });
+
+    const dbInputs1: Array<DbWorkerInput> = [];
+    dbWorkerChannel1.port2.onMessage = (input) => {
+      dbInputs1.push(input);
+    };
+
+    const outputs2: Array<EvoluOutput> = [];
+    evoluChannel2.port2.onMessage = (output) => {
+      outputs2.push(output);
+    };
+
+    evoluChannel1.port2.postMessage({ type: "Dispose" });
+
+    dbWorkerChannel1.port2.postMessage({
+      type: "LeaderAcquired",
+      name: testName,
+    });
+
+    const query = testQuery;
+    evoluChannel2.port2.postMessage({
+      type: "Query",
+      queries: createSet([query]),
+    });
+    time.advance("10s");
+    await testWaitForWorkerMessage();
+
+    const queuedInput1 = dbInputs1.at(-1);
+    assert(queuedInput1);
+    assert(queuedInput1.request.type === "ForEvolu");
+
+    dbWorkerChannel1.port2.postMessage({
+      type: "OnQueuedResponse",
+      callbackId: queuedInput1.callbackId,
+      response: {
+        type: "ForEvolu",
+        id: queuedInput1.request.id,
         message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 1 }]]]),
@@ -2095,7 +2255,7 @@ describe("disposal and ignored responses", () => {
       callbackId: queuedInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: queuedInput.request.evoluPortId,
+        id: queuedInput.request.id,
         message: {
           type: "Query",
           rowsByQuery: new Map([[query, [{ value: 1 }]]]),
@@ -2165,7 +2325,7 @@ describe("disposal and ignored responses", () => {
       callbackId: queuedInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: queuedInput.request.evoluPortId,
+        id: queuedInput.request.id,
         message: {
           type: "Export",
           file: new Uint8Array([7]),
@@ -2224,7 +2384,7 @@ describe("disposal and ignored responses", () => {
       callbackId: exportInput.callbackId,
       response: {
         type: "ForEvolu",
-        evoluPortId: exportInput.request.evoluPortId,
+        id: exportInput.request.id,
         message: {
           type: "Export",
           file: new Uint8Array([9]),
@@ -2474,7 +2634,7 @@ describe("exhaustive checks", () => {
     const queryInput = dbInputs.at(-1);
     assert(queryInput);
     assert(queryInput.request.type === "ForEvolu");
-    const evoluPortId = queryInput.request.evoluPortId;
+    const id = queryInput.request.id;
     const dbWorkerOnMessage = dbWorkerChannel.port1.onMessage;
     assert(dbWorkerOnMessage);
 
@@ -2484,7 +2644,7 @@ describe("exhaustive checks", () => {
         callbackId: queryInput.callbackId,
         response: {
           type: "ForEvolu",
-          evoluPortId,
+          id,
           message: { type: "Impossible" },
         } as never,
       }),
