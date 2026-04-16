@@ -31,7 +31,7 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     sqlite3.capi.sqlite3mc_vfs_create("opfs", 1);
 
-    const stack = new globalThis.DisposableStack();
+    using stack = new DisposableStack();
     let db: Database;
     switch (options?.mode) {
       case "memory":
@@ -69,6 +69,8 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
       ),
     );
 
+    const moved = stack.move();
+
     return ok({
       exec: (query) => {
         const prepared = cache.get(query);
@@ -103,7 +105,7 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
 
       [Symbol.dispose]: () => {
         // poolUtil.unlink?
-        stack.dispose();
+        moved.dispose();
       },
     });
   };
