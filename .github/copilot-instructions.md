@@ -93,6 +93,7 @@ import { SharedWorker as SharedWorkerType } from "./Worker.js";
 
 - **Use arrow functions** - avoid the `function` keyword for consistency
 - **Exception: function overloads** - the `function` keyword provides cleaner inline overload syntax than the equivalent arrow function approach (which requires a separate call-signature type)
+- **Never extract inlineable code into a function** - Create functions only when the code is reused.
 
 ### Factories
 
