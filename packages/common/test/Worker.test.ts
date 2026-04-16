@@ -131,6 +131,46 @@ describe("testCreateMessageChannel", () => {
     expect(channel.port2.onMessage).toBeNull();
   });
 
+  test("dispose before scheduled flush drops queued messages", async () => {
+    const channel = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+    const clearTimeout = globalThis.clearTimeout;
+    const ignoreClearTimeout: typeof globalThis.clearTimeout = (
+      _timeout,
+    ) => undefined;
+
+    try {
+      globalThis.clearTimeout = ignoreClearTimeout;
+
+      channel.port2.onMessage = (message) => received.push(message);
+      channel.port1.postMessage("queued");
+      channel.port2[Symbol.dispose]();
+
+      await testWaitForMacrotask();
+
+      expect(received).toEqual([]);
+    } finally {
+      globalThis.clearTimeout = clearTimeout;
+    }
+  });
+
+  test("dispose during flush stops remaining queued messages", async () => {
+    const channel = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+      channel.port2[Symbol.dispose]();
+    };
+
+    channel.port1.postMessage("first");
+    channel.port1.postMessage("second");
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual(["first"]);
+  });
+
   test("isDisposed reflects disposal state", () => {
     const channel = testCreateMessageChannel<string>();
 
@@ -161,6 +201,74 @@ describe("testCreateMessageChannel", () => {
 
     expect(strings).toEqual(["hello"]);
     expect(numbers).toEqual([42]);
+  });
+
+  test("disposed port ignores onMessage reassignment and repeated dispose", () => {
+    const channel = testCreateMessageChannel<string>();
+
+    channel.port2[Symbol.dispose]();
+    channel.port2.onMessage = lazyVoid;
+    channel.port2[Symbol.dispose]();
+
+    expect(channel.port2.onMessage).toBeNull();
+  });
+
+  test("sending to a disposed peer is ignored", async () => {
+    const channel = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+
+    channel.port2.onMessage = (message) => received.push(message);
+    channel.port2[Symbol.dispose]();
+    channel.port1.postMessage("ignored");
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual([]);
+  });
+
+  test("unknown transferables are ignored", async () => {
+    const channel = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+
+    channel.port2.onMessage = (message) => received.push(message);
+    channel.port1.postMessage("hello", [{} as NativeMessagePort]);
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual(["hello"]);
+  });
+
+  test("transferred native ports can be wrapped after transfer", async () => {
+    const channel = testCreateMessageChannel<
+      NativeMessagePort<never, string>,
+      never
+    >();
+    const transferredChannel = testCreateMessageChannel<never, string>();
+    let transferredNative!: NativeMessagePort<never, string>;
+
+    channel.port2.onMessage = (nativePort) => {
+      transferredNative = nativePort;
+    };
+
+    channel.port1.postMessage(transferredChannel.port1.native, [
+      transferredChannel.port1.native,
+    ]);
+
+    await testWaitForMacrotask();
+
+    transferredChannel.port1[Symbol.dispose]();
+
+    const wrappedPort = testCreateMessagePort<never, string>(
+      transferredNative,
+    );
+    const received: Array<string> = [];
+    wrappedPort.onMessage = (message) => received.push(message);
+
+    transferredChannel.port2.postMessage("hello");
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual(["hello"]);
   });
 });
 
@@ -195,6 +303,27 @@ describe("testCreateMessagePort", () => {
     await testWaitForMacrotask();
 
     expect(received).toEqual(["hello"]);
+  });
+
+  test("disposed wrapper postMessage is ignored", async () => {
+    const channel = testCreateMessageChannel<string, number>();
+    const transferredPort1 = testCreateMessagePort<string, number>(
+      channel.port1.native,
+    );
+    const transferredPort2 = testCreateMessagePort<number, string>(
+      channel.port2.native,
+    );
+
+    const received: Array<string> = [];
+    transferredPort2.onMessage = (message) => received.push(message);
+
+    channel.port1[Symbol.dispose]();
+    channel.port1.postMessage("ignored");
+    transferredPort1.postMessage("delivered");
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual(["delivered"]);
   });
 
   test("throws for unknown native port", () => {

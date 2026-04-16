@@ -250,6 +250,7 @@ export const createMessageChannel: CreateMessageChannel = <
     handler: null,
     queue: [],
     flushScheduled: false,
+    flushTimeoutId: null,
     refCount: 0,
     pendingTransferCount: 0,
     closed: false,
@@ -258,6 +259,7 @@ export const createMessageChannel: CreateMessageChannel = <
     handler: null,
     queue: [],
     flushScheduled: false,
+    flushTimeoutId: null,
     refCount: 0,
     pendingTransferCount: 0,
     closed: false,
@@ -277,8 +279,11 @@ export const createMessageChannel: CreateMessageChannel = <
     native: native2,
   };
 
-  const port1 = createTestPort(port1Registration);
-  const port2 = createTestPort(port2Registration);
+  using stack = new DisposableStack();
+
+  const port1 = stack.use(createTestPort(port1Registration));
+  const port2 = stack.use(createTestPort(port2Registration));
+  const moved = stack.move();
 
   nativePortRegistry.set(native1, port1Registration);
   nativePortRegistry.set(native2, port2Registration);
@@ -287,8 +292,7 @@ export const createMessageChannel: CreateMessageChannel = <
     port1,
     port2,
     [Symbol.dispose]: () => {
-      port1[Symbol.dispose]();
-      port2[Symbol.dispose]();
+      moved.dispose();
     },
   };
 };
@@ -498,6 +502,7 @@ interface PortState<T> {
   handler: ((message: T) => void) | null;
   readonly queue: Array<T>;
   flushScheduled: boolean;
+  flushTimeoutId: ReturnType<typeof globalThis.setTimeout> | null;
   refCount: number;
   pendingTransferCount: number;
   closed: boolean;
@@ -523,14 +528,15 @@ const createPort = <Input, Output>({
     state.flushScheduled = true;
 
     // Native worker messages are task-queued; use macrotask timing.
-    setTimeout(() => {
+    state.flushTimeoutId = globalThis.setTimeout(() => {
+      state.flushTimeoutId = null;
       state.flushScheduled = false;
       if (state.closed) return;
 
-      const handler = state.handler;
-      if (!handler) return;
-
       for (const message of state.queue.splice(0)) {
+        const handler = state.handler;
+        if (!handler) return;
+
         handler(message);
       }
     }, 0);
@@ -538,6 +544,8 @@ const createPort = <Input, Output>({
 
   return {
     postMessage: (message, transfer) => {
+      if (isDisposed || receive.closed || peerReceive.closed) return;
+
       for (const transferable of transfer ?? []) {
         if (transferable instanceof globalThis.ArrayBuffer) continue;
 
@@ -548,7 +556,6 @@ const createPort = <Input, Output>({
         registration.receive.closed = false;
       }
 
-      if (peerReceive.closed) return;
       peerReceive.queue.push(message);
       scheduleFlush(peerReceive);
     },
@@ -567,6 +574,11 @@ const createPort = <Input, Output>({
 
       receive.refCount -= 1;
       if (receive.refCount > 0 || receive.pendingTransferCount > 0) return;
+
+      if (receive.flushTimeoutId != null) {
+        globalThis.clearTimeout(receive.flushTimeoutId);
+        receive.flushTimeoutId = null;
+      }
 
       receive.closed = true;
       receive.handler = null;

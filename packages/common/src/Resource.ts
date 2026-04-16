@@ -237,12 +237,12 @@ export const createSharedResource = <T extends Resource, D>(
   create: Task<T, never, D>,
   { idleDisposeAfter, onDisposed }: SharedResourceOptions = {},
 ): Task<SharedResource<T, D>, never, D> =>
-  unabortable<SharedResource<T, D>, never, D>((run) => {
+  unabortable<SharedResource<T, D>, never, D>(async (run) => {
     const sharedResourceRun = run.create();
     let current: OwnedResource<T> | undefined;
     let idleDisposeFiber: Fiber<void, AbortError, D> | undefined;
 
-    const stack = new AsyncDisposableStack();
+    await using stack = new AsyncDisposableStack();
     const refCount = stack.use(createRefCount());
 
     const mutex = stack.use(createMutex());
@@ -436,17 +436,17 @@ export function createSharedResourceByKey<
     onDisposed,
   }: SharedResourceByKeyOptions<K, L> = {},
 ): Task<SharedResourceByKey<K, T, D>, never, D> {
-  return unabortable<SharedResourceByKey<K, T, D>, never, D>((run) => {
+  return unabortable<SharedResourceByKey<K, T, D>, never, D>(async (run) => {
     const sharedResourceByKeyRun = run.create();
     const sharedResourcesByKey = createLookupMap<K, SharedResource<T, D>, L>({
       lookup,
     });
 
-    const stack = new AsyncDisposableStack();
+    await using stack = new AsyncDisposableStack();
 
     const mutexByKey = stack.use(createMutexByKey<K, L>({ lookup }));
     stack.defer(async () => {
-      const stack = new AsyncDisposableStack();
+      await using stack = new AsyncDisposableStack();
       for (const resource of sharedResourcesByKey.values()) stack.use(resource);
       await stack.disposeAsync();
       sharedResourcesByKey.clear();
