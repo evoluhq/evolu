@@ -42,9 +42,9 @@ export interface ShutdownDep {
  * const deps = { ...createRelayDeps(), console };
  *
  * await using run = createRun(deps);
- * await using stack = new AsyncDisposableStack();
+ * await using disposer = new AsyncDisposableStack();
  *
- * stack.use(await run.orThrow(startRelay({ port: 4000 })));
+ * disposer.use(await run.orThrow(startRelay({ port: 4000 })));
  *
  * await run.deps.shutdown;
  * ```

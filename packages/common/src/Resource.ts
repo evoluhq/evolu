@@ -113,21 +113,21 @@ export const createResourceRef = <T extends Resource, D>(
   unabortable<ResourceRef<T, D>, never, D>(async (run) => {
     const resourceRefRun = run.create();
 
-    await using stack = new AsyncDisposableStack();
-    stack.use(resourceRefRun);
+    await using disposer = new AsyncDisposableStack();
+    disposer.use(resourceRefRun);
 
     const initial = await resourceRefRun(create);
     if (!initial.ok) return initial;
 
     let current = createOwnedResource(initial.value);
 
-    const mutex = stack.use(createMutex());
-    stack.defer(() => current.stack.disposeAsync());
+    const mutex = disposer.use(createMutex());
+    disposer.defer(() => current.stack.disposeAsync());
     // Register as the last so disposal aborts further calls first.
     // Repeated registration is safe because disposal is idempotent.
-    stack.use(resourceRefRun);
+    disposer.use(resourceRefRun);
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok({
       get: () => resourceRefRun(mutex.withLock(() => ok(current.resource))),
@@ -145,7 +145,7 @@ export const createResourceRef = <T extends Resource, D>(
           ),
         ),
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   });
 
@@ -165,12 +165,6 @@ export interface SharedResource<
   T extends Resource,
   D = unknown,
 > extends AsyncDisposable {
-  /** Returns the current shared-resource state for monitoring/debugging. */
-  readonly snapshot: () => SharedResourceSnapshot;
-
-  /** Returns the current resource, or `undefined` if absent. */
-  readonly get: () => BorrowedResource<T> | undefined;
-
   /**
    * Acquires a shared reference.
    *
@@ -203,6 +197,12 @@ export interface SharedResource<
 
   /** Returns the current acquire count. */
   readonly getCount: Task<NonNegativeInt, never, D>;
+
+  /** Returns the current resource, or `undefined` if absent. */
+  readonly get: () => BorrowedResource<T> | undefined;
+
+  /** Returns the current shared-resource state for monitoring/debugging. */
+  readonly snapshot: () => SharedResourceSnapshot;
 }
 
 /** Snapshot returned by {@link SharedResource.snapshot}. */
@@ -237,38 +237,31 @@ export const createSharedResource = <T extends Resource, D>(
   create: Task<T, never, D>,
   { idleDisposeAfter, onDisposed }: SharedResourceOptions = {},
 ): Task<SharedResource<T, D>, never, D> =>
-  unabortable<SharedResource<T, D>, never, D>((run) => {
+  unabortable<SharedResource<T, D>, never, D>(async (run) => {
     const sharedResourceRun = run.create();
     let current: OwnedResource<T> | undefined;
     let idleDisposeFiber: Fiber<void, AbortError, D> | undefined;
 
-    const stack = new AsyncDisposableStack();
-    const refCount = stack.use(createRefCount());
+    await using disposer = new AsyncDisposableStack();
+    const refCount = disposer.use(createRefCount());
 
-    const mutex = stack.use(createMutex());
+    const mutex = disposer.use(createMutex());
 
     const disposeCurrent = async () => {
       if (!current) return;
-      await using stack = new AsyncDisposableStack();
-      if (onDisposed) stack.defer(onDisposed);
-      stack.use(current.stack);
+      await using disposer = new AsyncDisposableStack();
+      if (onDisposed) disposer.defer(onDisposed);
+      disposer.use(current.stack);
       current = undefined;
     };
-    stack.defer(disposeCurrent);
+    disposer.defer(disposeCurrent);
 
     // Register as the last so disposal aborts further calls first.
-    stack.use(sharedResourceRun);
+    disposer.use(sharedResourceRun);
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok({
-      snapshot: () => ({
-        isIdle: refCount.getCount() === 0 && !current && !idleDisposeFiber,
-        mutex: mutex.snapshot(),
-      }),
-
-      get: () => current?.resource,
-
       acquire: unabortable<BorrowedResource<T>, never, D>(() =>
         sharedResourceRun(
           mutex.withLock(async (run) => {
@@ -320,7 +313,14 @@ export const createSharedResource = <T extends Resource, D>(
       getCount: () =>
         sharedResourceRun(mutex.withLock(() => ok(refCount.getCount()))),
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      get: () => current?.resource,
+
+      snapshot: () => ({
+        isIdle: refCount.getCount() === 0 && !current && !idleDisposeFiber,
+        mutex: mutex.snapshot(),
+      }),
+
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   });
 
@@ -356,9 +356,6 @@ export interface SharedResourceByKey<
   T extends Resource,
   D = unknown,
 > extends AsyncDisposable {
-  /** Returns the current resource for `key`, or `undefined` if absent. */
-  readonly get: (key: K) => BorrowedResource<T> | undefined;
-
   /**
    * Acquires the shared resource for `key`, creating it on first use.
    *
@@ -385,6 +382,9 @@ export interface SharedResourceByKey<
 
   /** Returns the current acquire count for `key`. Missing keys return `0`. */
   readonly getCount: (key: K) => Task<NonNegativeInt, never, D>;
+
+  /** Returns the current resource for `key`, or `undefined` if absent. */
+  readonly get: (key: K) => BorrowedResource<T> | undefined;
 
   /** Returns current keyed resources and their per-key mutex state. */
   readonly snapshot: () => SharedResourceByKeySnapshot<K, T>;
@@ -436,29 +436,28 @@ export function createSharedResourceByKey<
     onDisposed,
   }: SharedResourceByKeyOptions<K, L> = {},
 ): Task<SharedResourceByKey<K, T, D>, never, D> {
-  return unabortable<SharedResourceByKey<K, T, D>, never, D>((run) => {
+  return unabortable<SharedResourceByKey<K, T, D>, never, D>(async (run) => {
     const sharedResourceByKeyRun = run.create();
     const sharedResourcesByKey = createLookupMap<K, SharedResource<T, D>, L>({
       lookup,
     });
 
-    const stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
-    const mutexByKey = stack.use(createMutexByKey<K, L>({ lookup }));
-    stack.defer(async () => {
-      const stack = new AsyncDisposableStack();
-      for (const resource of sharedResourcesByKey.values()) stack.use(resource);
-      await stack.disposeAsync();
+    const mutexByKey = disposer.use(createMutexByKey<K, L>({ lookup }));
+    disposer.defer(async () => {
+      await using disposer = new AsyncDisposableStack();
+      for (const resource of sharedResourcesByKey.values())
+        disposer.use(resource);
+      await disposer.disposeAsync();
       sharedResourcesByKey.clear();
     });
     // Register as the last so disposal aborts further calls first.
-    stack.use(sharedResourceByKeyRun);
+    disposer.use(sharedResourceByKeyRun);
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok({
-      get: (key) => sharedResourcesByKey.get(key)?.get(),
-
       acquire: (key) =>
         unabortable<BorrowedResource<T>, never, D>(() =>
           sharedResourceByKeyRun(
@@ -521,6 +520,8 @@ export function createSharedResourceByKey<
           }),
         ),
 
+      get: (key) => sharedResourcesByKey.get(key)?.get(),
+
       snapshot: () => {
         const resourcesByKey = new Map<K, BorrowedResource<T>>();
         const mutexSnapshotsByKey = new Map<K, SemaphoreSnapshot | null>();
@@ -539,7 +540,7 @@ export function createSharedResourceByKey<
         };
       },
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   });
 }
@@ -661,27 +662,31 @@ export function createSharedResourceByKeyWithClaims<
   return unabortable<SharedResourceByKeyWithClaims<K, C, T, D>, never, D>(
     async (run) => {
       const sharedResourceClaimsRun = run.create();
-      await using stack = new AsyncDisposableStack();
+      await using disposer = new AsyncDisposableStack();
 
       const keyByClaim = createRelation<C, K, LC, LK>({
         lookupA: claimLookup,
         lookupB: resourceLookup,
       });
-      const pairRefCountsByClaim = stack.adopt(
+      const pairRefCountsByClaim = disposer.adopt(
         createLookupMap<C, RefCountByKey<K>, LC>({ lookup: claimLookup }),
         (pairRefCountsByClaim) => {
+          using disposer = new DisposableStack();
+          disposer.defer(() => {
+            pairRefCountsByClaim.clear();
+          });
+
           for (const pairRefCountByKey of pairRefCountsByClaim.values()) {
-            pairRefCountByKey[Symbol.dispose]();
+            disposer.use(pairRefCountByKey);
           }
-          pairRefCountsByClaim.clear();
         },
       );
 
-      const mutexByKey = stack.use(
+      const mutexByKey = disposer.use(
         createMutexByKey<K, LK>({ lookup: resourceLookup }),
       );
 
-      stack.defer(() => {
+      disposer.defer(() => {
         keyByClaim.clear();
       });
 
@@ -692,10 +697,12 @@ export function createSharedResourceByKeyWithClaims<
         }),
       );
       assertNotAborted(sharedResourcesByKeyResult);
-      const sharedResourcesByKey = stack.use(sharedResourcesByKeyResult.value);
+      const sharedResourcesByKey = disposer.use(
+        sharedResourcesByKeyResult.value,
+      );
 
       // Register as the last so disposal aborts further calls first.
-      stack.use(sharedResourceClaimsRun);
+      disposer.use(sharedResourceClaimsRun);
 
       /** Asserts that one call does not contain the same logical key twice. */
       const assertNoDuplicateResourceKeys = (
@@ -710,7 +717,7 @@ export function createSharedResourceByKeyWithClaims<
         );
       };
 
-      const moved = stack.move();
+      const disposables = disposer.move();
 
       return ok({
         addClaim: (claim, resourceKeys) =>
@@ -840,7 +847,7 @@ export function createSharedResourceByKeyWithClaims<
           return resources;
         },
 
-        [Symbol.asyncDispose]: () => moved.disposeAsync(),
+        [Symbol.asyncDispose]: () => disposables.disposeAsync(),
       });
     },
   );

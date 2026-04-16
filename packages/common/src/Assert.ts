@@ -146,14 +146,14 @@ export function assertNotAborted<T, E>(
  * ### Example
  *
  * ```ts
- * const stack = new globalThis.AsyncDisposableStack();
- * assertNotDisposed(stack); // no-op
- * await stack.disposeAsync();
- * assertNotDisposed(stack); // throws Error
+ * using disposer = new globalThis.AsyncDisposableStack();
+ * assertNotDisposed(disposer); // no-op
+ * await disposer.disposeAsync();
+ * assertNotDisposed(disposer); // throws Error
  * ```
  */
 export const assertNotDisposed = (
-  value: globalThis.DisposableStack | globalThis.AsyncDisposableStack,
+  value: DisposableStack | AsyncDisposableStack,
 ): void => {
   assert(!value.disposed, "Expected value to not be disposed.");
 };

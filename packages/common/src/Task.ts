@@ -12,7 +12,7 @@ import {
   type NonEmptyReadonlyArray,
 } from "./Array.js";
 import type { assertNotAborted } from "./Assert.js";
-import { assert } from "./Assert.js";
+import { assert, assertNotDisposed } from "./Assert.js";
 import { type Console, type ConsoleDep, createConsole } from "./Console.js";
 import type { RandomBytes, RandomBytesDep } from "./Crypto.js";
 import { createRandomBytes } from "./Crypto.js";
@@ -327,13 +327,13 @@ import {
  * ### Example
  *
  * ```ts
- * await using stack = new AsyncDisposableStack();
+ * await using disposer = new AsyncDisposableStack();
  *
  * const fooResult = await run(createFoo());
  * if (!fooResult.ok) return fooResult;
- * const foo = stack.use(fooResult.value);
+ * const foo = disposer.use(fooResult.value);
  *
- * stack.defer(async () => {
+ * disposer.defer(async () => {
  *   await foo.close();
  * });
  * stack.adopt(session, async (session) => {
@@ -761,9 +761,9 @@ export interface Run<D = unknown> extends AsyncDisposable {
    *   (config: Config): Task<void, InitError, CreateDbDep> =>
    *   async (run) => {
    *     const { createDb } = run.deps;
-   *     await using stack = new AsyncDisposableStack();
+   *     await using disposer = new AsyncDisposableStack();
    *
-   *     const db = stack.use(await run.orThrow(startApp()));
+   *     const db = disposer.use(await run.orThrow(startApp()));
    *     if (!db.ok) return db;
    *
    *     const runWithDb = run.addDeps({ db: db.value });
@@ -2340,36 +2340,43 @@ export interface Gate<D = unknown> extends Disposable {
  * @group Concurrency primitives
  */
 export const createGate = <D = unknown>(): Gate<D> => {
+  using disposer = new DisposableStack();
   let isOpen = false;
-  let disposed = false;
   let deferred = createDeferred<void>();
+
+  disposer.defer(() => {
+    deferred[Symbol.dispose]();
+  });
+
+  const disposables = disposer.move();
 
   return {
     wait: (run) => {
-      if (disposed) return err(deferredDisposedError);
+      if (disposables.disposed) return err(deferredDisposedError);
       if (isOpen) return ok();
       return run(deferred.task);
     },
 
     open: () => {
-      if (disposed || isOpen) return;
+      assertNotDisposed(disposables);
+      if (isOpen) return;
       isOpen = true;
       deferred.resolve(ok());
     },
 
     close: () => {
-      if (disposed || !isOpen) return;
+      assertNotDisposed(disposables);
+      if (!isOpen) return;
       isOpen = false;
       deferred = createDeferred<void>();
     },
 
-    isOpen: () => isOpen,
-
-    [Symbol.dispose]: () => {
-      if (disposed) return;
-      disposed = true;
-      deferred[Symbol.dispose]();
+    isOpen: () => {
+      assertNotDisposed(disposables);
+      return isOpen;
     },
+
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 
@@ -2483,10 +2490,26 @@ export const createSemaphore = (permits: Concurrency): Semaphore => {
     readonly resolve: Callback<Result<void, AbortError>>;
   }
 
+  using disposer = new DisposableStack();
   const fibers = new Set<Fiber>();
   const waiters: Array<Waiter> = [];
   let taken = zeroNonNegativeInt;
-  let disposed = false;
+
+  disposer.defer(() => {
+    using disposer = new DisposableStack();
+    for (const fiber of fibers) {
+      disposer.adopt(fiber, (fiber) => {
+        fiber.abort(semaphoreDisposedError);
+      });
+    }
+
+    for (const waiter of waiters) {
+      waiter.resolve(err(semaphoreDisposedAbortError));
+    }
+    waiters.length = 0;
+  });
+
+  const disposables = disposer.move();
 
   const withPermits =
     <T, E, D>(requestedPermits: Concurrency) =>
@@ -2499,7 +2522,7 @@ export const createSemaphore = (permits: Concurrency): Semaphore => {
         "Requested permits must not exceed semaphore capacity.",
       );
 
-      if (disposed) return err(semaphoreDisposedAbortError);
+      if (disposables.disposed) return err(semaphoreDisposedAbortError);
 
       if (waiters.length > 0 || taken + requested > permits) {
         const waiter = Promise.withResolvers<Result<void, AbortError>>();
@@ -2548,31 +2571,19 @@ export const createSemaphore = (permits: Concurrency): Semaphore => {
     withPermit: <T, E, D>(task: Task<T, E, D>): Task<T, E, D> =>
       withPermits<T, E, D>(1)(task),
 
-    snapshot: () => ({
-      permits,
-      taken,
-      waiting: NonNegativeInt.orThrow(waiters.length),
-      available: NonNegativeInt.orThrow(permits - taken),
-      isIdle: taken === 0 && waiters.length === 0,
-      disposed,
-    }),
-
-    [Symbol.dispose]: () => {
-      if (disposed) return;
-      disposed = true;
-
-      using stack = new DisposableStack();
-      for (const fiber of fibers) {
-        stack.adopt(fiber, (fiber) => {
-          fiber.abort(semaphoreDisposedError);
-        });
-      }
-
-      for (const waiter of waiters) {
-        waiter.resolve(err(semaphoreDisposedAbortError));
-      }
-      waiters.length = 0;
+    snapshot: () => {
+      assertNotDisposed(disposables);
+      return {
+        permits,
+        taken,
+        waiting: NonNegativeInt.orThrow(waiters.length),
+        available: NonNegativeInt.orThrow(permits - taken),
+        isIdle: taken === 0 && waiters.length === 0,
+        disposed: disposables.disposed,
+      };
     },
+
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 
@@ -2659,16 +2670,29 @@ export function createSemaphoreByKey<K, L = K>(
   permits: Concurrency,
   { lookup = identity as Lookup<K, L> }: CreateSemaphoreByKeyOptions<K, L> = {},
 ): SemaphoreByKey<K> {
+  using disposer = new DisposableStack();
   const semaphoresByKey = createLookupMap<K, Semaphore, L>({
     lookup,
   });
-  let disposed = false;
+
+  disposer.defer(() => {
+    using disposer = new DisposableStack();
+    disposer.defer(() => {
+      semaphoresByKey.clear();
+    });
+
+    for (const semaphore of semaphoresByKey.values()) {
+      disposer.use(semaphore);
+    }
+  });
+
+  const disposables = disposer.move();
 
   const withPermits =
     <T, E, D>(key: K, requestedPermits: Concurrency) =>
     (task: Task<T, E, D>): Task<T, E, D> =>
     async (run: Run<D>) => {
-      if (disposed) return err(semaphoreDisposedAbortError);
+      if (disposables.disposed) return err(semaphoreDisposedAbortError);
 
       let semaphore = semaphoresByKey.get(key);
       if (!semaphore) {
@@ -2678,6 +2702,8 @@ export function createSemaphoreByKey<K, L = K>(
 
       using _ = {
         [Symbol.dispose]: () => {
+          if (semaphoresByKey.get(key) !== semaphore) return;
+
           const snapshot = semaphore.snapshot();
           if (snapshot.isIdle) {
             semaphoresByKey.delete(key);
@@ -2695,18 +2721,12 @@ export function createSemaphoreByKey<K, L = K>(
 
     withPermits,
 
-    snapshot: (key) => semaphoresByKey.get(key)?.snapshot() ?? null,
-
-    [Symbol.dispose]: () => {
-      if (disposed) return;
-      disposed = true;
-
-      using stack = new DisposableStack();
-      for (const semaphore of semaphoresByKey.values()) {
-        stack.use(semaphore);
-      }
-      semaphoresByKey.clear();
+    snapshot: (key) => {
+      assertNotDisposed(disposables);
+      return semaphoresByKey.get(key)?.snapshot() ?? null;
     },
+
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 }
 

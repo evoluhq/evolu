@@ -568,7 +568,7 @@ describe("createPreparedStatementsCache", () => {
     });
 
     cache[Symbol.dispose]();
-    expect(disposed).toEqual(["a;", "b;"]);
+    expect(disposed).toEqual(["b;", "a;"]);
   });
 
   test("dispose is idempotent", () => {
@@ -586,6 +586,53 @@ describe("createPreparedStatementsCache", () => {
     cache[Symbol.dispose]();
     cache[Symbol.dispose]();
     expect(disposeCount).toBe(1);
+  });
+
+  test("get throws after dispose", () => {
+    const cache = createPreparedStatementsCache(
+      (s) => ({ prepared: s }),
+      lazyVoid,
+    );
+
+    cache[Symbol.dispose]();
+
+    expect(() => {
+      cache.get({
+        sql: "select 1;" as SafeSql,
+        parameters: [],
+        options: { prepare: true },
+      });
+    }).toThrow("Expected value to not be disposed.");
+  });
+
+  test("dispose still attempts later statements when one disposeFn throws", () => {
+    const disposed: Array<string> = [];
+    const cache = createPreparedStatementsCache(
+      (s) => s,
+      (s) => {
+        disposed.push(s);
+        if (s === ("b;" as SafeSql)) {
+          throw new Error("dispose failed");
+        }
+      },
+    );
+
+    cache.get({
+      sql: "a;" as SafeSql,
+      parameters: [],
+      options: { prepare: true },
+    });
+    cache.get({
+      sql: "b;" as SafeSql,
+      parameters: [],
+      options: { prepare: true },
+    });
+
+    expect(() => {
+      cache[Symbol.dispose]();
+    }).toThrow("dispose failed");
+
+    expect(disposed).toEqual(["b;", "a;"]);
   });
 });
 

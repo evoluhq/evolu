@@ -250,6 +250,7 @@ export const createMessageChannel: CreateMessageChannel = <
     handler: null,
     queue: [],
     flushScheduled: false,
+    flushTimeoutId: null,
     refCount: 0,
     pendingTransferCount: 0,
     closed: false,
@@ -258,6 +259,7 @@ export const createMessageChannel: CreateMessageChannel = <
     handler: null,
     queue: [],
     flushScheduled: false,
+    flushTimeoutId: null,
     refCount: 0,
     pendingTransferCount: 0,
     closed: false,
@@ -277,8 +279,11 @@ export const createMessageChannel: CreateMessageChannel = <
     native: native2,
   };
 
-  const port1 = createTestPort(port1Registration);
-  const port2 = createTestPort(port2Registration);
+  using disposer = new DisposableStack();
+
+  const port1 = disposer.use(createTestPort(port1Registration));
+  const port2 = disposer.use(createTestPort(port2Registration));
+  const disposables = disposer.move();
 
   nativePortRegistry.set(native1, port1Registration);
   nativePortRegistry.set(native2, port2Registration);
@@ -286,10 +291,7 @@ export const createMessageChannel: CreateMessageChannel = <
   return {
     port1,
     port2,
-    [Symbol.dispose]: () => {
-      port1[Symbol.dispose]();
-      port2[Symbol.dispose]();
-    },
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 
@@ -394,18 +396,16 @@ export const testCreateMessageChannel = <
   Input,
   Output = never,
 >(): TestMessageChannel<Input, Output> => {
-  const channel = createMessageChannel<Input, Output>();
+  using disposer = new DisposableStack();
 
-  let disposed = false;
+  const channel = disposer.use(createMessageChannel<Input, Output>());
+  const disposables = disposer.move();
 
   return {
     port1: channel.port1,
     port2: channel.port2,
-    isDisposed: () => disposed,
-    [Symbol.dispose]: () => {
-      disposed = true;
-      channel[Symbol.dispose]();
-    },
+    isDisposed: () => disposables.disposed,
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 
@@ -498,6 +498,7 @@ interface PortState<T> {
   handler: ((message: T) => void) | null;
   readonly queue: Array<T>;
   flushScheduled: boolean;
+  flushTimeoutId: ReturnType<typeof globalThis.setTimeout> | null;
   refCount: number;
   pendingTransferCount: number;
   closed: boolean;
@@ -514,23 +515,42 @@ const createPort = <Input, Output>({
   peerReceive,
   native,
 }: PortRegistration<Input, Output>): MessagePort<Input, Output> => {
+  using disposer = new DisposableStack();
+
   if (receive.pendingTransferCount > 0) receive.pendingTransferCount -= 1;
   receive.refCount += 1;
-  let isDisposed = false;
+
+  disposer.defer(() => {
+    receive.refCount -= 1;
+    if (receive.refCount > 0 || receive.pendingTransferCount > 0) return;
+
+    if (receive.flushTimeoutId != null) {
+      globalThis.clearTimeout(receive.flushTimeoutId);
+      receive.flushTimeoutId = null;
+    }
+
+    receive.closed = true;
+    receive.handler = null;
+    receive.flushScheduled = false;
+    receive.queue.length = 0;
+  });
+
+  const disposables = disposer.move();
 
   const scheduleFlush = (state: PortState<any>): void => {
     if (state.flushScheduled || state.closed) return;
     state.flushScheduled = true;
 
     // Native worker messages are task-queued; use macrotask timing.
-    setTimeout(() => {
+    state.flushTimeoutId = globalThis.setTimeout(() => {
+      state.flushTimeoutId = null;
       state.flushScheduled = false;
       if (state.closed) return;
 
-      const handler = state.handler;
-      if (!handler) return;
-
       for (const message of state.queue.splice(0)) {
+        const handler = state.handler;
+        if (!handler) return;
+
         handler(message);
       }
     }, 0);
@@ -538,6 +558,8 @@ const createPort = <Input, Output>({
 
   return {
     postMessage: (message, transfer) => {
+      if (disposables.disposed || receive.closed || peerReceive.closed) return;
+
       for (const transferable of transfer ?? []) {
         if (transferable instanceof globalThis.ArrayBuffer) continue;
 
@@ -548,31 +570,19 @@ const createPort = <Input, Output>({
         registration.receive.closed = false;
       }
 
-      if (peerReceive.closed) return;
       peerReceive.queue.push(message);
       scheduleFlush(peerReceive);
     },
     get onMessage() {
-      return isDisposed ? null : receive.handler;
+      return disposables.disposed ? null : receive.handler;
     },
     set onMessage(fn) {
-      if (isDisposed || receive.closed) return;
+      if (disposables.disposed || receive.closed) return;
       receive.handler = fn;
       if (fn) scheduleFlush(receive);
     },
     native,
-    [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
-
-      receive.refCount -= 1;
-      if (receive.refCount > 0 || receive.pendingTransferCount > 0) return;
-
-      receive.closed = true;
-      receive.handler = null;
-      receive.flushScheduled = false;
-      receive.queue.length = 0;
-    },
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 

@@ -69,9 +69,9 @@ export const createRelayDeps = (): RelayDeps => ({
  * const deps = { ...createRelayDeps(), console };
  *
  * await using run = createRun(deps);
- * await using stack = new AsyncDisposableStack();
+ * await using disposer = new AsyncDisposableStack();
  *
- * stack.use(
+ * disposer.use(
  *   await run.orThrow(
  *     startRelay({
  *       port: 4000,
@@ -98,15 +98,15 @@ export const startRelay =
     isOwnerWithinQuota,
   }: NodeJsRelayConfig): Task<Relay, never, RelayDeps> =>
   async (run) => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
     const console = run.deps.console.child("relay");
 
-    stack.defer(() => {
+    disposer.defer(() => {
       console.info("Shutdown complete");
     });
 
     const dbFileExists = existsSync(`${name}.db`);
-    const sqlite = stack.use(await run.orThrow(createSqlite(name)));
+    const sqlite = disposer.use(await run.orThrow(createSqlite(name)));
     const deps = { ...run.deps, sqlite };
 
     if (!dbFileExists) {
@@ -114,12 +114,12 @@ export const startRelay =
       createRelayStorageTables(deps);
     }
 
-    const server = stack.use(createServer());
+    const server = disposer.use(createServer());
     server.once("close", () => {
       console.info("HTTP server closed");
     });
 
-    const wss = stack.adopt(
+    const wss = disposer.adopt(
       new WebSocketServer({
         maxPayload: defaultProtocolMessageMaxSize,
         noServer: true,
@@ -135,7 +135,7 @@ export const startRelay =
 
     const ownerSocketRelation = createRelation<OwnerId, WebSocket>();
 
-    const relayRun = stack.use(
+    const relayRun = disposer.use(
       run.create().addDeps({
         storage: createRelaySqliteStorage(deps)({
           isOwnerWithinQuota,
@@ -278,7 +278,7 @@ export const startRelay =
       });
     });
 
-    stack.defer(() => {
+    disposer.defer(() => {
       console.info("Shutting down...");
       for (const client of wss.clients) {
         if (client.readyState === WebSocket.OPEN) {
@@ -293,13 +293,13 @@ export const startRelay =
     const address = server.address();
     assert(address && typeof address !== "string", "Expected TCP address");
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     console.info(`Started on port ${address.port}`);
 
     return ok({
       port: address.port,
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   };
 

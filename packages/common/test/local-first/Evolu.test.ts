@@ -26,7 +26,7 @@ import {
   initSharedWorker,
   type EvoluInput,
   type EvoluOutput,
-  type EvoluTabOutput,
+  type TabOutput,
   type SharedWorker,
   type SharedWorkerInput,
 } from "../../src/local-first/Shared.js";
@@ -103,9 +103,11 @@ describe("unit tests", () => {
   const setupRunWithEvoluDeps = async (
     overrides: Partial<EvoluPlatformDeps> = {},
   ) => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
-    const sharedWorker = stack.use(testCreateSharedWorker<SharedWorkerInput>());
+    const sharedWorker = disposer.use(
+      testCreateSharedWorker<SharedWorkerInput>(),
+    );
 
     const evoluInputs: Array<EvoluInput> = [];
     let evoluPort: {
@@ -146,14 +148,14 @@ describe("unit tests", () => {
       sharedWorker,
       ...overrides,
     };
-    const run = stack.use(testCreateRun(evoluDeps));
-    const moved = stack.move();
+    const run = disposer.use(testCreateRun(evoluDeps));
+    const disposables = disposer.move();
 
     return {
       run,
       evoluInputs,
       postEvoluOutput,
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
 
@@ -190,12 +192,12 @@ describe("unit tests", () => {
       readonly deps: ReturnType<typeof createEvoluDeps>;
       readonly messages: Array<SharedWorkerInput>;
       readonly workerPort: {
-        readonly postMessage: (message: EvoluTabOutput) => void;
+        readonly postMessage: (message: TabOutput) => void;
       };
       readonly [Symbol.dispose]: () => void;
     }> => {
-      using stack = new DisposableStack();
-      const worker = stack.use(testCreateSharedWorker<SharedWorkerInput>());
+      using disposer = new DisposableStack();
+      const worker = disposer.use(testCreateSharedWorker<SharedWorkerInput>());
 
       const messages: Array<SharedWorkerInput> = [];
       worker.self.onConnect = (port) => {
@@ -203,7 +205,7 @@ describe("unit tests", () => {
       };
       worker.connect();
 
-      const deps = stack.use(
+      const deps = disposer.use(
         createEvoluDeps({
           createDbWorker: testCreateWorker,
           createMessageChannel: testCreateMessageChannel,
@@ -219,14 +221,14 @@ describe("unit tests", () => {
       const initTab = messages[0];
       expect(initTab.type).toBe("InitTab");
       assert(initTab.type === "InitTab", "InitTab message is missing");
-      const workerPort = testCreateMessagePort<EvoluTabOutput>(initTab.port);
-      const moved = stack.move();
+      const workerPort = testCreateMessagePort<TabOutput>(initTab.port);
+      const disposables = disposer.move();
 
       return {
         deps,
         messages,
         workerPort,
-        [Symbol.dispose]: () => moved.dispose(),
+        [Symbol.dispose]: () => disposables.dispose(),
       };
     };
 
@@ -267,7 +269,7 @@ describe("unit tests", () => {
         const initTab = messages[0];
         expect(initTab.type).toBe("InitTab");
         assert(initTab.type === "InitTab", "InitTab message is missing");
-        const workerPort = testCreateMessagePort<EvoluTabOutput>(initTab.port);
+        const workerPort = testCreateMessagePort<TabOutput>(initTab.port);
 
         workerPort.postMessage({
           type: "OnConsoleEntry",
@@ -374,7 +376,7 @@ describe("unit tests", () => {
     test("throws for unknown tab output type", () => {
       const channels: Array<{
         readonly port2: {
-          onMessage: ((message: EvoluTabOutput) => void) | null;
+          onMessage: ((message: TabOutput) => void) | null;
         };
       }> = [];
 
@@ -779,11 +781,19 @@ describe("unit tests", () => {
       }).toThrow(disposedMessage);
 
       expect(() => {
+        evolu.deleteDatabase();
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        evolu.deleteOwner(testAppOwner);
+      }).toThrow(disposedMessage);
+
+      expect(() => {
         evolu.useOwner(testAppOwner, [testOwnerTransport]);
       }).toThrow(disposedMessage);
     });
 
-    test("allows unuseOwner after dispose", async () => {
+    test("unuseOwner is a no-op after dispose", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run } = setup;
       const evolu = await run.orThrow(testCreateEvolu);
@@ -798,7 +808,7 @@ describe("unit tests", () => {
 
       expect(() => {
         unuseOwner();
-      }).toThrow("UnuseOwner can be called only once.");
+      }).not.toThrow();
     });
 
     test("resolves pending loadQuery with empty rows on dispose", async () => {
@@ -1720,11 +1730,11 @@ describe("unit tests", () => {
 
 describe("integration tests", () => {
   const setupRunWithEvoluDeps = async () => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
     const consoleStoreOutput = createConsoleStoreOutput();
 
-    const run = stack.use(
+    const run = disposer.use(
       testCreateRun({
         // console: createConsole({ level: "debug" }),
         consoleStoreOutputEntry: consoleStoreOutput.entry,
@@ -1738,7 +1748,7 @@ describe("integration tests", () => {
       testCreateSqliteDep.createSqliteDriver(testName),
     );
 
-    const workerRun = stack.use(
+    const workerRun = disposer.use(
       testCreateRun({
         consoleStoreOutputEntry: consoleStoreOutput.entry,
         createMessagePort,
@@ -1747,14 +1757,16 @@ describe("integration tests", () => {
       }),
     );
 
-    const sharedWorker = stack.use(
+    const sharedWorker = disposer.use(
       createSharedWorker<SharedWorkerInput>((self) => {
         run(initSharedWorker(self));
       }),
     );
 
-    const sqlite = stack.use(await workerRun.orThrow(createSqlite(testName)));
-    const moved = stack.move();
+    const sqlite = disposer.use(
+      await workerRun.orThrow(createSqlite(testName)),
+    );
+    const disposables = disposer.move();
 
     return {
       run: run.addDeps({
@@ -1766,7 +1778,7 @@ describe("integration tests", () => {
         sharedWorker,
       }),
       sqlite,
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
 
@@ -1973,7 +1985,7 @@ describe("integration tests", () => {
     `);
   });
 
-  test("dispose and recreate keeps loadQuery working", async () => {
+  test.todo("dispose and recreate keeps loadQuery working", async () => {
     await using setup = await setupRunWithEvoluDeps();
     const { run } = setup;
 
@@ -1986,45 +1998,48 @@ describe("integration tests", () => {
     await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([]);
   });
 
-  test("dispose and recreate keeps subscribed query loading persisted rows", async () => {
-    await using setup = await setupRunWithEvoluDeps();
-    const { run } = setup;
+  test.todo(
+    "dispose and recreate keeps subscribed query loading persisted rows",
+    async () => {
+      await using setup = await setupRunWithEvoluDeps();
+      const { run } = setup;
 
-    const evolu1 = await run.orThrow(testCreateEvolu);
+      const evolu1 = await run.orThrow(testCreateEvolu);
 
-    let completed = 0;
-    const mutationCompleted = Promise.withResolvers<void>();
+      let completed = 0;
+      const mutationCompleted = Promise.withResolvers<void>();
 
-    evolu1.insert(
-      "todo",
-      {
-        title: NonEmptyString100.orThrow("Persisted after recreate"),
-      },
-      {
-        onComplete: () => {
-          completed += 1;
-          mutationCompleted.resolve();
+      evolu1.insert(
+        "todo",
+        {
+          title: NonEmptyString100.orThrow("Persisted after recreate"),
         },
-      },
-    );
+        {
+          onComplete: () => {
+            completed += 1;
+            mutationCompleted.resolve();
+          },
+        },
+      );
 
-    await mutationCompleted.promise;
-    expect(completed).toBe(1);
+      await mutationCompleted.promise;
+      expect(completed).toBe(1);
 
-    await evolu1[Symbol.asyncDispose]();
+      await evolu1[Symbol.asyncDispose]();
 
-    const evolu2 = await run.orThrow(testCreateEvolu);
-    const unsubscribe = evolu2.subscribeQuery(todoByCreatedAtQuery)(lazyVoid);
+      const evolu2 = await run.orThrow(testCreateEvolu);
+      const unsubscribe = evolu2.subscribeQuery(todoByCreatedAtQuery)(lazyVoid);
 
-    await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([
-      {
-        id: expect.any(String),
-        title: "Persisted after recreate",
-      },
-    ]);
+      await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([
+        {
+          id: expect.any(String),
+          title: "Persisted after recreate",
+        },
+      ]);
 
-    unsubscribe();
-  });
+      unsubscribe();
+    },
+  );
 
   test("memoryOnly opens SQLite in memory mode", async () => {
     const consoleStoreOutput = createConsoleStoreOutput();

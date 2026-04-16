@@ -50,9 +50,9 @@ const startTestRelay = async (config: Partial<NodeJsRelayConfig> = {}) => {
       return result;
     };
 
-  await using stack = new AsyncDisposableStack();
+  await using disposer = new AsyncDisposableStack();
 
-  const run = stack.use(
+  const run = disposer.use(
     testCreateRun({
       ...relayDeps,
       createSqliteDriver,
@@ -60,7 +60,7 @@ const startTestRelay = async (config: Partial<NodeJsRelayConfig> = {}) => {
     }),
   );
 
-  const relay = stack.use(
+  const relay = disposer.use(
     await run.orThrow(
       startRelay({
         port: 0,
@@ -73,33 +73,33 @@ const startTestRelay = async (config: Partial<NodeJsRelayConfig> = {}) => {
 
   assert(driver, "Expected relay SQLite driver");
 
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     console,
     driver,
     relay,
     run,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 
 const setupRelay = async () => {
-  await using stack = new AsyncDisposableStack();
+  await using disposer = new AsyncDisposableStack();
 
-  const relaySetup = stack.use(await startTestRelay());
-  const ws = stack.use(
+  const relaySetup = disposer.use(await startTestRelay());
+  const ws = disposer.use(
     await testSetupWebSocket(
       `ws://127.0.0.1:${relaySetup.relay.port}/?ownerId=${testAppOwner.id}`,
     ),
   );
 
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     ...relaySetup,
     ws,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 
@@ -414,10 +414,10 @@ describe("startRelay", () => {
   });
 
   test("does not broadcast back to the subscribed writer", async () => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
     const createId = testCreateId();
-    const setup = stack.use(await startTestRelay());
-    const writer = stack.use(
+    const setup = disposer.use(await startTestRelay());
+    const writer = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
@@ -452,16 +452,16 @@ describe("startRelay", () => {
   });
 
   test("removes closed subscribed sockets before later broadcasts", async () => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
     const createId = testCreateId();
-    const setup = stack.use(await startTestRelay());
+    const setup = disposer.use(await startTestRelay());
     const { console } = setup;
-    const writer = stack.use(
+    const writer = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
-    const subscriber = stack.use(
+    const subscriber = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
@@ -515,15 +515,15 @@ describe("startRelay", () => {
   });
 
   test("broadcasts to subscribed sockets and stops after unsubscribe", async () => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
     const createId = testCreateId();
-    const setup = stack.use(await startTestRelay());
-    const writer = stack.use(
+    const setup = disposer.use(await startTestRelay());
+    const writer = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
-    const subscriber = stack.use(
+    const subscriber = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
@@ -575,15 +575,15 @@ describe("startRelay", () => {
   });
 
   test("one socket can subscribe to multiple owners", async () => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
     const createId = testCreateId();
-    const setup = stack.use(await startTestRelay());
-    const subscriber = stack.use(
+    const setup = disposer.use(await startTestRelay());
+    const subscriber = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
-    const writer = stack.use(
+    const writer = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
@@ -632,16 +632,16 @@ describe("startRelay", () => {
   });
 
   test("closing a multi-owner socket removes all owner subscriptions", async () => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
     const createId = testCreateId();
-    const setup = stack.use(await startTestRelay());
+    const setup = disposer.use(await startTestRelay());
     const { console } = setup;
-    const subscriber = stack.use(
+    const subscriber = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),
     );
-    const writer = stack.use(
+    const writer = disposer.use(
       await testSetupWebSocket(
         `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
       ),

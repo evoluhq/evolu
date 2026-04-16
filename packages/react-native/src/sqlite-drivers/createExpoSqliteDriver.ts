@@ -9,8 +9,8 @@ import { openDatabaseSync, SQLiteStatement } from "expo-sqlite";
 
 export const createExpoSqliteDriver: CreateSqliteDriver =
   (name, options) => () => {
-    const stack = new globalThis.DisposableStack();
-    const db = stack.adopt(
+    using disposer = new DisposableStack();
+    const db = disposer.adopt(
       openDatabaseSync(
         options?.mode === "memory" ? ":memory:" : `evolu1-${name}.db`,
       ),
@@ -22,7 +22,7 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
       db.execSync(`PRAGMA key = "x'${bytesToHex(options.encryptionKey)}'"`);
     }
 
-    const cache = stack.use(
+    const cache = disposer.use(
       createPreparedStatementsCache<SQLiteStatement>(
         (sql) => db.prepareSync(sql),
         (statement) => {
@@ -30,6 +30,8 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
         },
       ),
     );
+
+    const disposables = disposer.move();
 
     return ok({
       exec: (query) => {
@@ -68,7 +70,7 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
       },
 
       [Symbol.dispose]: () => {
-        stack.dispose();
+        disposables.dispose();
       },
     });
   };

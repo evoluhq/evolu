@@ -72,7 +72,7 @@ import type {
   DbWorkerOutput,
   EvoluInput,
   EvoluOutput,
-  EvoluTabOutput,
+  TabOutput,
   SharedWorkerDep,
 } from "./Shared.js";
 import { DbChange } from "./Storage.js";
@@ -568,11 +568,11 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
   const { createMessageChannel, sharedWorker } = deps;
   const console = deps.console ?? createConsole();
 
-  const stack = new DisposableStack();
-  stack.use(sharedWorker);
-  const evoluError = stack.use(createStore<EvoluError | null>(null));
+  using disposer = new DisposableStack();
+  disposer.use(sharedWorker);
+  const evoluError = disposer.use(createStore<EvoluError | null>(null));
 
-  const tabChannel = stack.use(createMessageChannel<EvoluTabOutput>());
+  const tabChannel = disposer.use(createMessageChannel<TabOutput>());
   tabChannel.port2.onMessage = (message) => {
     switch (message.type) {
       case "OnConsoleEntry":
@@ -603,12 +603,12 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
     [tabChannel.port1.native],
   );
 
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     ...deps,
     evoluError,
-    [Symbol.dispose]: () => moved.dispose(),
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 
@@ -633,12 +633,14 @@ export const createEvolu =
     const console = run.deps.console.child(name).child("Evolu");
     console.info("createEvolu");
 
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
-    const rowsByQueryMapStore = stack.use(
+    const rowsByQueryMapStore = disposer.use(
       createStore<RowsByQueryMap>(new Map()),
     );
-    const subscribedQueriesRefCount = stack.use(createRefCountByKey<Query>());
+    const subscribedQueriesRefCount = disposer.use(
+      createRefCountByKey<Query>(),
+    );
 
     interface LoadingPromise {
       /**
@@ -662,7 +664,7 @@ export const createEvolu =
      * Settle pending query loads during disposal so awaiting callers and React
      * `use` thenables do not hang forever during teardown.
      */
-    const loadingPromisesByQuery = stack.adopt(
+    const loadingPromisesByQuery = disposer.adopt(
       new Map<Query, LoadingPromise>(),
       (loadingPromisesByQuery) => {
         for (const loadingPromise of loadingPromisesByQuery.values()) {
@@ -715,18 +717,18 @@ export const createEvolu =
       }
     };
 
-    const onMutateCompleteCallbacks = stack.use(createCallbacks(run.deps));
+    const onMutateCompleteCallbacks = disposer.use(createCallbacks(run.deps));
 
     let exportDatabasePending = null as PromiseWithResolvers<
       Uint8Array<ArrayBuffer>
     > | null;
 
-    stack.defer(() => {
+    disposer.defer(() => {
       exportDatabasePending?.reject({ type: "EvoluDisposedError" });
       exportDatabasePending = null;
     });
 
-    const mutateBatch = stack.use(
+    const mutateBatch = disposer.use(
       createMicrotaskBatch<{
         readonly change: MutationChange;
         readonly onComplete: (() => void) | undefined;
@@ -747,7 +749,7 @@ export const createEvolu =
       }),
     );
 
-    const queryBatch = stack.use(
+    const queryBatch = disposer.use(
       createMicrotaskBatch<Query>((queries) => {
         const dedupedQueries = new Set(queries);
         assert(
@@ -759,7 +761,7 @@ export const createEvolu =
       }),
     );
 
-    const useOwnerBatch = stack.use(
+    const useOwnerBatch = disposer.use(
       createMicrotaskBatch<
         ExtractType<EvoluInput, "UseOwner">["actions"][number]
       >((actions) => postMessage({ type: "UseOwner", actions })),
@@ -770,10 +772,10 @@ export const createEvolu =
     // Scope worker/channel wiring and keep only postMessage outside.
     {
       const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
-      const dbWorkerChannel = stack.use(
+      const dbWorkerChannel = disposer.use(
         createMessageChannel<DbWorkerOutput, DbWorkerInput>(),
       );
-      const evoluChannel = stack.use(
+      const evoluChannel = disposer.use(
         createMessageChannel<EvoluInput, EvoluOutput>(),
       );
 
@@ -884,7 +886,7 @@ export const createEvolu =
 
       postMessage = evoluChannel.port1.postMessage;
 
-      stack.defer(() => {
+      disposer.defer(() => {
         postMessage({ type: "Dispose" });
       });
     }
@@ -894,7 +896,7 @@ export const createEvolu =
         kind: Kind,
       ): Mutation<S, Kind> =>
       (table, values, options) => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
 
         const {
           id = createId(run.deps),
@@ -928,7 +930,7 @@ export const createEvolu =
     const loadQuery = <R extends Row>(
       query: Query<S, R>,
     ): Promise<QueryRows<R>> => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
 
       const loadingPromise = loadingPromisesByQuery.get(query);
       if (loadingPromise) {
@@ -951,7 +953,7 @@ export const createEvolu =
     };
 
     const getQueryRows = <R extends Row>(query: Query<S, R>): QueryRows<R> => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
 
       return (rowsByQueryMapStore.get().get(query) ??
         emptyArray) as QueryRows<R>;
@@ -961,7 +963,7 @@ export const createEvolu =
       owner: ReadonlyOwner | Owner,
       ownerTransports?: NonEmptyReadonlyArray<OwnerTransport>,
     ): UnuseOwner => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
 
       const effectiveTransports = ownerTransports ?? transports;
       assertNonEmptyReadonlyArray(
@@ -982,6 +984,7 @@ export const createEvolu =
       let isUsed = true;
 
       return () => {
+        if (disposables.disposed) return;
         assert(isUsed, "UnuseOwner can be called only once.");
         isUsed = false;
         useOwnerBatch.push({
@@ -991,7 +994,7 @@ export const createEvolu =
       };
     };
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     if (isNonEmptyArray(transports)) useOwner(appOwner);
 
@@ -1012,7 +1015,7 @@ export const createEvolu =
         ],
 
       subscribeQuery: (query) => (listener) => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
 
         subscribedQueriesRefCount.increment(query);
         let isSubscribed = true;
@@ -1036,7 +1039,7 @@ export const createEvolu =
           previousRows = null;
           unsubscribe();
 
-          if (moved.disposed) return;
+          if (disposables.disposed) return;
 
           subscribedQueriesRefCount.decrement(query);
         };
@@ -1044,7 +1047,7 @@ export const createEvolu =
       getQueryRows,
 
       exportDatabase: () => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
 
         if (!exportDatabasePending) {
           exportDatabasePending =
@@ -1055,12 +1058,12 @@ export const createEvolu =
       },
 
       deleteDatabase: () => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
         todo();
       },
 
       deleteOwner: (owner) => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
         void owner;
         todo();
       },
@@ -1069,7 +1072,7 @@ export const createEvolu =
 
       [Symbol.asyncDispose]: () => {
         console.info("dispose");
-        return moved.disposeAsync();
+        return disposables.disposeAsync();
       },
     } as Evolu<S>);
   };

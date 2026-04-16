@@ -12,18 +12,18 @@ const isWebKit =
   !navigator.userAgent.includes("Chrome");
 
 const setupWasmSqlite = async () => {
-  await using stack = new AsyncDisposableStack();
-  const run = stack.use(
+  await using disposer = new AsyncDisposableStack();
+  const run = disposer.use(
     testCreateRun({ createSqliteDriver: createWasmSqliteDriver }),
   );
-  const sqlite = stack.use(
+  const sqlite = disposer.use(
     await run.orThrow(createSqlite(testName, { mode: "memory" })),
   );
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     sqlite,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 

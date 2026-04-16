@@ -17,6 +17,7 @@ import { createQueryBuilder } from "../../src/local-first/Schema.js";
 import type {
   DbWorkerInput,
   DbWorkerOutput,
+  EvoluInstanceId,
 } from "../../src/local-first/Shared.js";
 import { DbChange } from "../../src/local-first/Storage.js";
 import {
@@ -140,7 +141,7 @@ interface DbSetup extends AsyncDisposable {
   readonly consoleStoreOutput: ConsoleStoreOutput;
   readonly createId: ReturnType<typeof testCreateId>;
   readonly createSqliteDriver: CreateSqliteDriver;
-  readonly evoluPortId: Id;
+  readonly evoluInstanceId: EvoluInstanceId;
   readonly leaderLock: ReturnType<typeof createInMemoryLeaderLock>;
   readonly sqlite: Sqlite;
   readonly time: TestTime;
@@ -151,12 +152,12 @@ const setupDb = async ({
 }: {
   time?: TestTime;
 } = {}): Promise<DbSetup> => {
-  await using stack = new AsyncDisposableStack();
+  await using disposer = new AsyncDisposableStack();
 
   const createId = testCreateId();
-  const evoluPortId = createId();
+  const evoluInstanceId = createId<"EvoluInstance">();
   const consoleStoreOutput = createConsoleStoreOutput();
-  const run = stack.use(
+  const run = disposer.use(
     testCreateRun({
       console: testCreateConsole({ level: "silent" }),
       consoleStoreOutputEntry: consoleStoreOutput.entry,
@@ -164,7 +165,7 @@ const setupDb = async ({
     }),
   );
 
-  const driver = stack.use(
+  const driver = disposer.use(
     await run.orThrow(testCreateSqliteDep.createSqliteDriver(testName)),
   );
 
@@ -176,23 +177,23 @@ const setupDb = async ({
       [Symbol.dispose]: lazyVoid,
     });
 
-  const sqlite = stack.use(
+  const sqlite = disposer.use(
     await run
       .addDeps({ createSqliteDriver })
       .orThrow(createSqlite(testName, { mode: "memory" })),
   );
   const leaderLock = createInMemoryLeaderLock();
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     consoleStoreOutput,
     createId,
     createSqliteDriver,
-    evoluPortId,
+    evoluInstanceId,
     leaderLock,
     sqlite,
     time,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 
@@ -213,13 +214,13 @@ const setupDbWorker = async ({
   sqliteSchema?: SqliteSchema;
   time?: TestTime;
 } = {}): Promise<DbWorkerSetup> => {
-  await using stack = new AsyncDisposableStack();
+  await using disposer = new AsyncDisposableStack();
 
   const dbSetup =
     providedDbSetup ??
-    stack.use(await setupDb(time == null ? undefined : { time }));
+    disposer.use(await setupDb(time == null ? undefined : { time }));
 
-  const run = stack.use(
+  const run = disposer.use(
     testCreateRun({
       console: testCreateConsole({ level: "silent" }),
       consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
@@ -229,12 +230,12 @@ const setupDbWorker = async ({
       time: dbSetup.time,
     }),
   );
-  const worker = stack.use(
+  const worker = disposer.use(
     createWorker<DbWorkerInit>((self) => {
       void run(startDbWorker(self));
     }),
   );
-  const channel = stack.use(
+  const channel = disposer.use(
     testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>(),
   );
   const outputs: Array<DbWorkerOutput> = [];
@@ -258,14 +259,14 @@ const setupDbWorker = async ({
   expect(initOutputs).toEqual([{ type: "LeaderAcquired", name: testName }]);
   await testWaitForWorkerMessage();
 
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     ...dbSetup,
     initOutputs,
     outputs,
     port: channel.port2,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 
@@ -511,7 +512,7 @@ describe("query and mutation flow", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Mutate",
           changes: [
@@ -532,7 +533,7 @@ describe("query and mutation flow", () => {
         {
           "callbackId": "mg8id41Qk7HxDoApjp0mZA",
           "response": {
-            "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "IGNl5t4ulaaQpdnwDhgoCA",
             "message": {
               "messagesByOwnerId": Map {},
               "rowsByQuery": Map {
@@ -697,7 +698,7 @@ describe("query and mutation flow", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Mutate",
           changes: [
@@ -718,7 +719,7 @@ describe("query and mutation flow", () => {
         {
           "callbackId": "ane2ljnnecsBgmb_vbBHKw",
           "response": {
-            "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "IGNl5t4ulaaQpdnwDhgoCA",
             "message": {
               "messagesByOwnerId": Map {},
               "rowsByQuery": Map {
@@ -883,7 +884,7 @@ describe("query and mutation flow", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Mutate",
           changes: [
@@ -904,7 +905,7 @@ describe("query and mutation flow", () => {
         {
           "callbackId": "T-vftdB4K_reh6yT2RUm8w",
           "response": {
-            "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "IGNl5t4ulaaQpdnwDhgoCA",
             "message": {
               "messagesByOwnerId": Map {},
               "rowsByQuery": Map {
@@ -1060,7 +1061,7 @@ describe("query and mutation flow", () => {
 
     await postRequest(setup, {
       type: "ForEvolu",
-      evoluPortId: setup.evoluPortId,
+      id: setup.evoluInstanceId,
       message: {
         type: "Mutate",
         changes: [
@@ -1104,7 +1105,7 @@ describe("query and mutation flow", () => {
 
     await postRequest(setup, {
       type: "ForEvolu",
-      evoluPortId: setup.evoluPortId,
+      id: setup.evoluInstanceId,
       message: {
         type: "Mutate",
         changes: [
@@ -1147,7 +1148,7 @@ describe("query and mutation flow", () => {
       setup,
       {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Mutate",
           changes: [
@@ -1379,7 +1380,7 @@ describe("query and mutation flow", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Mutate",
           changes: [
@@ -1400,7 +1401,7 @@ describe("query and mutation flow", () => {
         {
           "callbackId": "mg8id41Qk7HxDoApjp0mZA",
           "response": {
-            "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "IGNl5t4ulaaQpdnwDhgoCA",
             "message": {
               "messagesByOwnerId": Map {
                 "-9AbmkcTJdXDGMs8_ycHCw" => [
@@ -1435,7 +1436,7 @@ describe("query and mutation flow", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Query",
           queries: createSet([testTableQuery]),
@@ -1446,7 +1447,7 @@ describe("query and mutation flow", () => {
         {
           "callbackId": "ane2ljnnecsBgmb_vbBHKw",
           "response": {
-            "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "IGNl5t4ulaaQpdnwDhgoCA",
             "message": {
               "rowsByQuery": Map {
                 "["select \\"id\\", \\"name\\" from \\"testTable\\"",[],[]]" => [
@@ -1467,14 +1468,14 @@ describe("query and mutation flow", () => {
 
     const exportOutputs = await postRequest(setup, {
       type: "ForEvolu",
-      evoluPortId: setup.evoluPortId,
+      id: setup.evoluInstanceId,
       message: { type: "Export" },
     });
 
     expect(exportOutputs).toMatchObject([
       {
         response: {
-          evoluPortId: setup.evoluPortId,
+          id: setup.evoluInstanceId,
           message: {
             file: expect.objectContaining({
               byteLength: setup.sqlite.export().byteLength,
@@ -1671,7 +1672,7 @@ describe("sync message flow", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Mutate",
           changes: [
@@ -1692,7 +1693,7 @@ describe("sync message flow", () => {
         {
           "callbackId": "mg8id41Qk7HxDoApjp0mZA",
           "response": {
-            "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "IGNl5t4ulaaQpdnwDhgoCA",
             "message": {
               "messagesByOwnerId": Map {
                 "-9AbmkcTJdXDGMs8_ycHCw" => [
@@ -1935,7 +1936,7 @@ describe("sync message flow", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Mutate",
           changes: [
@@ -1963,7 +1964,7 @@ describe("sync message flow", () => {
         {
           "callbackId": "mg8id41Qk7HxDoApjp0mZA",
           "response": {
-            "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "IGNl5t4ulaaQpdnwDhgoCA",
             "message": {
               "messagesByOwnerId": Map {
                 "-9AbmkcTJdXDGMs8_ycHCw" => [
@@ -2270,7 +2271,7 @@ describe("sync message flow", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Query",
           queries: createSet([testTableQuery]),
@@ -2281,7 +2282,7 @@ describe("sync message flow", () => {
         {
           "callbackId": "ane2ljnnecsBgmb_vbBHKw",
           "response": {
-            "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "IGNl5t4ulaaQpdnwDhgoCA",
             "message": {
               "rowsByQuery": Map {
                 "["select \\"id\\", \\"name\\" from \\"testTable\\"",[],[]]" => [
@@ -2872,7 +2873,7 @@ describe("sync message flow", () => {
         setup,
         {
           type: "ForEvolu",
-          evoluPortId: setup.evoluPortId,
+          id: setup.evoluInstanceId,
           message: {
             type: "Query",
             queries: createSet([query]),
@@ -3314,7 +3315,7 @@ describe("sync message flow", () => {
 
     await postRequest(setup, {
       type: "ForEvolu",
-      evoluPortId: setup.evoluPortId,
+      id: setup.evoluInstanceId,
       message: {
         type: "Mutate",
         changes: [
@@ -3333,7 +3334,7 @@ describe("sync message flow", () => {
 
     await postRequest(setup, {
       type: "ForEvolu",
-      evoluPortId: setup.evoluPortId,
+      id: setup.evoluInstanceId,
       message: {
         type: "Mutate",
         changes: [
@@ -3540,7 +3541,7 @@ describe("request deduplication and drift", () => {
     const callbackId = setup.createId();
     const request: DbWorkerInput["request"] = {
       type: "ForEvolu",
-      evoluPortId: setup.evoluPortId,
+      id: setup.evoluInstanceId,
       message: {
         type: "Mutate",
         changes: [
@@ -3563,7 +3564,7 @@ describe("request deduplication and drift", () => {
           {
             "callbackId": "0l2pVhO0LWfZ0SWcHuPJiQ",
             "response": {
-              "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+              "id": "IGNl5t4ulaaQpdnwDhgoCA",
               "message": {
                 "messagesByOwnerId": Map {
                   "-9AbmkcTJdXDGMs8_ycHCw" => [
@@ -3798,7 +3799,7 @@ describe("request deduplication and drift", () => {
     expect(
       await postRequest(setup, {
         type: "ForEvolu",
-        evoluPortId: setup.evoluPortId,
+        id: setup.evoluInstanceId,
         message: {
           type: "Mutate",
           changes: [
@@ -4421,7 +4422,7 @@ describe("quarantine replay", () => {
       expect(
         await postRequest(setup, {
           type: "ForEvolu",
-          evoluPortId: setup.evoluPortId,
+          id: setup.evoluInstanceId,
           message: {
             type: "Query",
             queries: createSet([testTableWithNoteQuery]),
@@ -4432,7 +4433,7 @@ describe("quarantine replay", () => {
           {
             "callbackId": "ane2ljnnecsBgmb_vbBHKw",
             "response": {
-              "evoluPortId": "IGNl5t4ulaaQpdnwDhgoCA",
+              "id": "IGNl5t4ulaaQpdnwDhgoCA",
               "message": {
                 "rowsByQuery": Map {
                   "["select \\"id\\", \\"name\\", \\"note\\" from \\"testTable\\"",[],[]]" => [
@@ -4736,7 +4737,7 @@ describe("quarantine replay", () => {
         setup,
         {
           type: "ForEvolu",
-          evoluPortId: setup.evoluPortId,
+          id: setup.evoluInstanceId,
           message: {
             type: "Query",
             queries: createSet([testTableWithNoteQuery]),
@@ -4901,7 +4902,7 @@ describe("quarantine replay", () => {
           setup,
           {
             type: "ForEvolu",
-            evoluPortId: setup.evoluPortId,
+            id: setup.evoluInstanceId,
             message: {
               type: "Query",
               queries: createSet([futureTableQuery]),
@@ -4913,7 +4914,7 @@ describe("quarantine replay", () => {
         {
           callbackId: queryCallbackId,
           response: {
-            evoluPortId: setup.evoluPortId,
+            id: setup.evoluInstanceId,
             message: {
               rowsByQuery: new Map([
                 [futureTableQuery, [{ id: futureRowId, name: "future row" }]],

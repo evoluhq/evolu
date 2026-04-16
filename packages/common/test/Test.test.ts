@@ -105,15 +105,15 @@ describe("testCreateRun", () => {
 
   test("supports reusable setup helpers centered on a fixture", async () => {
     const setupFoo = async () => {
-      await using stack = new AsyncDisposableStack();
-      const run = stack.use(testCreateRun());
-      const foo = stack.use(await run.orThrow(createFoo()));
-      const moved = stack.move();
+      await using disposer = new AsyncDisposableStack();
+      const run = disposer.use(testCreateRun());
+      const foo = disposer.use(await run.orThrow(createFoo()));
+      const disposables = disposer.move();
 
       return {
         run: run.addDeps({ foo }),
         foo,
-        [Symbol.asyncDispose]: () => moved.disposeAsync(),
+        [Symbol.asyncDispose]: () => disposables.disposeAsync(),
       };
     };
 

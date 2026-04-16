@@ -34,34 +34,32 @@ export interface RefCount extends Disposable {
 
 /** Creates {@link RefCount}. */
 export const createRefCount = (): RefCount => {
+  // We use DisposableStack only because of assertNotDisposed.
+  using disposer = new DisposableStack();
   let count = zeroNonNegativeInt;
-  const stack = new DisposableStack();
-  stack.defer(() => {
-    count = zeroNonNegativeInt;
-  });
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     increment: () => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
       const nextCount = PositiveInt.orThrow(count + 1);
       count = nextCount;
       return nextCount;
     },
 
     decrement: () => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
       assert(count > 0, "RefCount must not be decremented below zero.");
       count = NonNegativeInt.orThrow(count - 1);
       return count;
     },
 
     getCount: () => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
       return count;
     },
 
-    [Symbol.dispose]: () => moved.dispose(),
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 
@@ -112,17 +110,23 @@ export function createRefCountByKey<TKey, L>(
 export function createRefCountByKey<TKey, L = TKey>({
   lookup = identity as Lookup<TKey, L>,
 }: CreateRefCountByKeyOptions<TKey, L> = {}): RefCountByKey<TKey> {
-  const stack = new DisposableStack();
+  // We use DisposableStack only because of assertNotDisposed.
+  using disposer = new DisposableStack();
 
-  const refCountByKey = stack.adopt(
+  const refCountByKey = disposer.adopt(
     createLookupMap<TKey, RefCount, L>({ lookup }),
     (refCountByKey) => {
-      for (const refCount of refCountByKey.values()) refCount[Symbol.dispose]();
-      refCountByKey.clear();
+      using disposer = new DisposableStack();
+      disposer.defer(() => {
+        refCountByKey.clear();
+      });
+      for (const refCount of refCountByKey.values()) {
+        disposer.use(refCount);
+      }
     },
   );
 
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   const getRefCount = (key: TKey): RefCount => {
     let refCount = refCountByKey.get(key);
@@ -135,36 +139,36 @@ export function createRefCountByKey<TKey, L = TKey>({
 
   return {
     increment: (key) => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
       return getRefCount(key).increment();
     },
 
     decrement: (key) => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
       const refCount = getRefCount(key);
       const nextCount = refCount.decrement();
       if (nextCount === 0) {
-        refCount[Symbol.dispose]();
         refCountByKey.delete(key);
+        refCount[Symbol.dispose]();
       }
       return nextCount;
     },
 
     getCount: (key) => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
       return refCountByKey.get(key)?.getCount() ?? zeroNonNegativeInt;
     },
 
     has: (key) => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
       return refCountByKey.has(key);
     },
 
     keys: () => {
-      assertNotDisposed(moved);
+      assertNotDisposed(disposables);
       return new Set(refCountByKey.keys());
     },
 
-    [Symbol.dispose]: () => moved.dispose(),
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 }

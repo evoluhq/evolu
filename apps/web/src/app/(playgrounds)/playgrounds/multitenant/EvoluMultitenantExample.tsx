@@ -173,7 +173,7 @@ const App: FC = () => {
     return () => {
       cancelled = true;
       void evoluFiber.then((evolu) => {
-        if (evolu.ok) evolu.value[Symbol.asyncDispose]();
+        if (evolu.ok) void evolu.value[Symbol.asyncDispose]();
       });
     };
   }, [selectedAppOwnerSecret, run]);

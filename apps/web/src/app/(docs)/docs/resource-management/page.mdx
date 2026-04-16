@@ -108,40 +108,40 @@ When acquiring multiple resources, use [`DisposableStack`](https://developer.moz
 
 ```ts
 const processResources = (): Result<string, CreateResourceError> => {
-  using stack = new DisposableStack();
+  using disposer = new DisposableStack();
 
   const db = createResource("db");
-  if (!db.ok) return db; // stack disposes nothing yet
+  if (!db.ok) return db; // disposer disposes nothing yet
 
-  stack.use(db.value);
+  disposer.use(db.value);
 
   const file = createResource("file");
-  if (!file.ok) return file; // stack disposes db
+  if (!file.ok) return file; // disposer disposes db
 
-  stack.use(file.value);
+  disposer.use(file.value);
 
   return ok("processed");
-}; // stack disposes file, then db (reverse order)
+}; // disposer disposes file, then db (reverse order)
 ```
 
 The pattern is simple:
 
 1. Create a `DisposableStack` with `using`
 2. Try to create a resource (returns `Result`)
-3. If failed, return early—stack disposes what's been acquired
-4. If succeeded, add to stack with `stack.use()`
+3. If failed, return early—the disposer disposes what's been acquired
+4. If succeeded, add to the disposer with `disposer.use()`
 5. Repeat for additional resources
 
 For async resources, use [`AsyncDisposableStack`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack) with `await using`.
 
 API overview:
 
-- `stack.use(resource)` — adds a disposable resource
-- `stack.defer(fn)` — adds a cleanup function (like Go's `defer`)
-- `stack.adopt(value, cleanup)` — wraps a non-disposable value with cleanup
-- `stack.move()` — transfers ownership to caller
+- `disposer.use(resource)` — adds a disposable resource
+- `disposer.defer(fn)` — adds a cleanup function (like Go's `defer`)
+- `disposer.adopt(value, cleanup)` — wraps a non-disposable value with cleanup
+- `disposer.move()` — transfers ownership to caller
 
-### The use-and-move pattern
+## Ownership transfer
 
 When a factory function creates resources for use elsewhere, use `move()` to transfer ownership:
 
@@ -153,22 +153,22 @@ interface OpenFiles extends Disposable {
 const openFiles = (
   paths: ReadonlyArray<string>,
 ): Result<OpenFiles, OpenFileError> => {
-  using stack = new DisposableStack();
+  using disposer = new DisposableStack();
 
   const handles: Array<FileHandle> = [];
   for (const path of paths) {
     const file = open(path);
-    if (!file.ok) return file; // Error: stack cleans up opened files
+    if (!file.ok) return file; // Error: disposer cleans up opened files
 
-    stack.use(file.value);
+    disposer.use(file.value);
     handles.push(file.value);
   }
 
   // Success: transfer ownership to caller
-  const cleanup = stack.move();
+  const disposables = disposer.move();
   return ok({
     handles,
-    [Symbol.dispose]: () => cleanup.dispose(),
+    [Symbol.dispose]: () => disposables.dispose(),
   });
 };
 
@@ -184,7 +184,107 @@ const processFiles = (): Result<void, MyError> => {
 }; // files cleaned up here
 ```
 
-Without `move()`, the stack would dispose files when `openFiles` returns—even on success.
+Without `move()`, the disposer would dispose files when `openFiles` returns, even on success.
+
+This naming mirrors the two roles:
+
+- `disposer` while you are still registering resources
+- `disposables` after ownership has been moved to the returned object
+
+## Lifetime guards
+
+Not every `DisposableStack` usage owns an external resource such as a file handle or connection.
+
+Some helpers use a stack only to model lifetime and make `assertNotDisposed` available for synchronous methods that must fail fast after disposal.
+
+This mirrors what C# does by default with [`ObjectDisposedException`](https://learn.microsoft.com/en-us/dotnet/api/system.objectdisposedexception?view=net-10.0): using a disposed object is a programmer error and should fail fast. In Evolu we enforce that correctness constraint by convention with explicit `assertNotDisposed` guards.
+
+The same rule applies to `AsyncDisposable` helpers that also expose synchronous methods: guard those synchronous methods with `assertNotDisposed` on the moved `AsyncDisposableStack`.
+
+Async methods are different. For reusable async resources, create one internal `Run` with `run.create()` and use that `Run` for the resource's async operations. Disposing the resource then disposes that internal `Run`, which aborts in-flight child tasks, waits for them to settle, and rejects later calls through it.
+
+If aborting one of those async operations would indicate a lifecycle bug rather than ordinary control flow, assert that explicitly with [`assertNotAborted`](/docs/api-reference/common/Assert/functions/assertNotAborted).
+
+```ts
+interface RefCount extends Disposable {
+  readonly increment: () => number;
+  readonly getCount: () => number;
+}
+
+const createRefCount = (): RefCount => {
+  using disposer = new DisposableStack();
+  let count = 0;
+  const disposables = disposer.move();
+
+  return {
+    increment: () => {
+      assertNotDisposed(disposables);
+      count += 1;
+      return count;
+    },
+
+    getCount: () => {
+      assertNotDisposed(disposables);
+      return count;
+    },
+
+    [Symbol.dispose]: () => disposables.dispose(),
+  };
+};
+```
+
+This pattern is useful when the helper owns mutable state rather than an external resource, but use-after-dispose is still a programmer error.
+
+## Anti-patterns
+
+Avoid writing disposal logic by hand when a stack can own it for you.
+
+### Manual disposed flags
+
+```ts
+// Avoid
+interface Counter extends Disposable {
+  readonly next: () => number;
+}
+
+const createCounter = (): Counter => {
+  let isDisposed = false;
+  let value = 0;
+
+  return {
+    next: () => {
+      if (isDisposed) throw new Error("disposed");
+      value += 1;
+      return value;
+    },
+    [Symbol.dispose]: () => {
+      if (isDisposed) return;
+      isDisposed = true;
+    },
+  };
+};
+```
+
+Prefer a stack plus `assertNotDisposed`.
+
+### Manual disposal arrays or loops
+
+```ts
+// Avoid
+for (const resource of resources) {
+  resource[Symbol.dispose]();
+}
+```
+
+If one dispose throws, later resources are skipped. A `DisposableStack` preserves reverse-order disposal and continues cleanup even when an earlier dispose fails.
+
+```ts
+// Use
+using disposer = new DisposableStack();
+for (const resource of resources) {
+  disposer.use(resource);
+}
+```
 
 ## Ready to use
 

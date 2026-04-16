@@ -44,14 +44,16 @@ export const createMessageChannel = <Input, Output = never>(): MessageChannel<
   Output
 > => {
   const channel = new globalThis.MessageChannel();
-  const stack = new DisposableStack();
+  using disposer = new DisposableStack();
+
+  const port1 = disposer.use(wrap<Input, Output>(channel.port1));
+  const port2 = disposer.use(wrap<Output, Input>(channel.port2));
+  const disposables = disposer.move();
 
   return {
-    port1: stack.use(wrap<Input, Output>(channel.port1)),
-    port2: stack.use(wrap<Output, Input>(channel.port2)),
-    [Symbol.dispose]: () => {
-      stack.dispose();
-    },
+    port1,
+    port2,
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 
@@ -144,7 +146,7 @@ const wrap = <Input, Output>(
 
     [Symbol.dispose]: () => {
       native.onmessage = null;
-      if (native instanceof globalThis.Worker) native.terminate();
+      if ("terminate" in native) native.terminate();
       else native.close();
     },
   };

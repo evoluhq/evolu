@@ -119,10 +119,10 @@ export const testCreateDeps = (options?: {
  * // If multiple tests need the same setup, create a disposable helper.
  * // Then `await using setup` disposes everything the helper owns.
  * const setupFoo = async () => {
- *   await using stack = new AsyncDisposableStack();
- *   const run = stack.use(testCreateRun());
- *   const foo = stack.use(await run.orThrow(createFoo()));
- *   const moved = stack.move();
+ *   await using disposer = new AsyncDisposableStack();
+ *   const run = disposer.use(testCreateRun());
+ *   const foo = disposer.use(await run.orThrow(createFoo()));
+ *   const disposables = disposer.move();
  *
  *   // Return whatever the tests need: a Run with the dependency,
  *   // the dependency itself, or both.
