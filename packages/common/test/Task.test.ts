@@ -1065,18 +1065,18 @@ describe("Run", () => {
 
       const createResource: Task<SyncFooResource> = async (run) => {
         const resourceRun = run.create();
-        await using stack = new AsyncDisposableStack();
+        await using disposer = new AsyncDisposableStack();
 
         const nativeResourceResult = await run(createNativeResource);
         if (!nativeResourceResult.ok) return nativeResourceResult;
-        const nativeResource = stack.use(nativeResourceResult.value);
+        const nativeResource = disposer.use(nativeResourceResult.value);
 
-        stack.use(resourceRun);
-        const moved = stack.move();
+        disposer.use(resourceRun);
+        const disposables = disposer.move();
 
         return ok({
           foo: (arg) => () => resourceRun(nativeResource.foo(arg)),
-          [Symbol.asyncDispose]: () => moved.disposeAsync(),
+          [Symbol.asyncDispose]: () => disposables.disposeAsync(),
         });
       };
 
@@ -1119,18 +1119,18 @@ describe("Run", () => {
 
       const createResource: Task<AsyncFooResource> = async (run) => {
         const resourceRun = run.create();
-        await using stack = new AsyncDisposableStack();
+        await using disposer = new AsyncDisposableStack();
 
         const nativeResourceResult = await run(createNativeResource);
         if (!nativeResourceResult.ok) return nativeResourceResult;
-        const nativeResource = stack.use(nativeResourceResult.value);
+        const nativeResource = disposer.use(nativeResourceResult.value);
 
-        stack.use(resourceRun);
-        const moved = stack.move();
+        disposer.use(resourceRun);
+        const disposables = disposer.move();
 
         return ok({
           foo: (arg) => () => resourceRun(nativeResource.foo(arg)),
-          [Symbol.asyncDispose]: () => moved.disposeAsync(),
+          [Symbol.asyncDispose]: () => disposables.disposeAsync(),
         });
       };
 
@@ -4041,11 +4041,11 @@ describe("concurrency", () => {
     test("dispose is idempotent", () => {
       const gate = createGate();
 
-      gate[Symbol.dispose]();
-      gate[Symbol.dispose]();
-      gate[Symbol.dispose]();
-
-      expect(gate.isOpen()).toBe(false);
+      expect(() => {
+        gate[Symbol.dispose]();
+        gate[Symbol.dispose]();
+        gate[Symbol.dispose]();
+      }).not.toThrow();
     });
 
     test("open is idempotent", () => {
@@ -4073,15 +4073,21 @@ describe("concurrency", () => {
       expect(gate.isOpen()).toBe(false);
     });
 
-    test("open and close are no-op after dispose", () => {
+    test("open and close throw after dispose", () => {
       const gate = createGate();
 
       gate[Symbol.dispose]();
 
-      // Should not throw or change state
-      gate.open();
-      gate.close();
-      expect(gate.isOpen()).toBe(false);
+      expect(() => gate.open()).toThrow("Expected value to not be disposed.");
+      expect(() => gate.close()).toThrow("Expected value to not be disposed.");
+    });
+
+    test("isOpen throws after dispose", () => {
+      const gate = createGate();
+
+      gate[Symbol.dispose]();
+
+      expect(() => gate.isOpen()).toThrow("Expected value to not be disposed.");
     });
 
     test("wait returns DeferredDisposedError after dispose", async () => {
@@ -4749,6 +4755,16 @@ describe("concurrency", () => {
       // Should not throw
     });
 
+    test("snapshot throws after dispose", () => {
+      const semaphore = createSemaphore(1);
+
+      semaphore[Symbol.dispose]();
+
+      expect(() => semaphore.snapshot()).toThrow(
+        "Expected value to not be disposed.",
+      );
+    });
+
     test("preserves FIFO order for queued tasks", async () => {
       await using run = createRun();
 
@@ -5219,6 +5235,16 @@ describe("concurrency", () => {
         }),
       );
     });
+
+    test("snapshot throws after dispose", () => {
+      const semaphoreByKey = createSemaphoreByKey<"a">(1);
+
+      semaphoreByKey[Symbol.dispose]();
+
+      expect(() => semaphoreByKey.snapshot("a")).toThrow(
+        "Expected value to not be disposed.",
+      );
+    });
   });
 
   describe("Mutex", () => {
@@ -5265,7 +5291,7 @@ describe("concurrency", () => {
       mutex[Symbol.dispose]();
     });
 
-    test("snapshot reflects lock, waiters, and disposal", async () => {
+    test("snapshot reflects lock and waiters, then throws after dispose", async () => {
       await using run = createRun();
 
       const mutex = createMutex();
@@ -5316,14 +5342,9 @@ describe("concurrency", () => {
 
       mutex[Symbol.dispose]();
 
-      expect(mutex.snapshot()).toEqual({
-        permits: 1,
-        taken: 0,
-        waiting: 0,
-        available: 1,
-        isIdle: true,
-        disposed: true,
-      });
+      expect(() => mutex.snapshot()).toThrow(
+        "Expected value to not be disposed.",
+      );
     });
   });
 

@@ -277,9 +277,9 @@ export const initSharedWorker =
       else for (const port of tabPorts) port.postMessage(output);
     };
 
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
-    stack.defer(
+    disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
         const entry = deps.consoleStoreOutputEntry.get();
         if (entry) postTabOutput({ type: "OnConsoleEntry", entry });
@@ -328,7 +328,7 @@ export const initSharedWorker =
       });
     };
 
-    const transports = stack.use(
+    const transports = disposer.use(
       await run.orThrow(
         createSharedResourceByKeyWithClaims<
           WebSocket,
@@ -407,7 +407,7 @@ export const initSharedWorker =
       postTabOutput,
     });
 
-    const tenantsByName = stack.use(
+    const tenantsByName = disposer.use(
       await sharedWorkerRun.orThrow(
         createSharedResourceByKey(createEvoluTenant, {
           lookup: structuralLookup,
@@ -426,13 +426,13 @@ export const initSharedWorker =
     sharedWorkerReady.resolve();
     console.info("initSharedWorker");
 
-    return ok(stack.move());
+    return ok(disposer.move());
   };
 
 const createEvoluTenant =
   (name: Name): Task<EvoluTenant, never, EvoluTenantDeps> =>
   async (run) => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
     const tenantRun = run.create();
 
     const { deps } = run;
@@ -441,7 +441,7 @@ const createEvoluTenant =
     const instancesById = new Map<EvoluInstanceId, EvoluInstance>();
     const dbWorkerPorts = new Set<MessagePort<DbWorkerInput, DbWorkerOutput>>();
     const queue: Array<DbWorkerInput["request"]> = [];
-    const callbacks = stack.use(
+    const callbacks = disposer.use(
       createCallbacks<ExtractType<DbWorkerOutput, "OnQueuedResponse">>(
         run.deps,
       ),
@@ -453,26 +453,26 @@ const createEvoluTenant =
     > | null;
     let queueProcessingFiber: Fiber<void, never, WorkerDeps> | null = null;
 
-    stack.defer(() => {
-      using disposeStack = new DisposableStack();
+    disposer.defer(() => {
+      using disposer = new DisposableStack();
 
       leaderDbWorkerPort = null;
 
       for (const instance of instancesById.values()) {
         instance.port.onMessage = null;
-        disposeStack.use(instance.port);
+        disposer.use(instance.port);
       }
       instancesById.clear();
 
       for (const dbWorkerPort of dbWorkerPorts) {
         dbWorkerPort.onMessage = null;
-        disposeStack.use(dbWorkerPort);
+        disposer.use(dbWorkerPort);
       }
       dbWorkerPorts.clear();
     });
 
-    stack.use(tenantRun);
-    const moved = stack.move();
+    disposer.use(tenantRun);
+    const disposables = disposer.move();
 
     const ensureQueueProcessing = (): void => {
       if (
@@ -734,7 +734,7 @@ const createEvoluTenant =
         nativeDbWorkerPort: NativeMessagePort<DbWorkerInput, DbWorkerOutput>,
         onDisposed: () => void,
       ): void => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
 
         const instance: EvoluInstance = {
           id: createId<"EvoluInstance">(deps),
@@ -893,7 +893,7 @@ const createEvoluTenant =
         ensureQueueProcessing();
       },
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   };
 

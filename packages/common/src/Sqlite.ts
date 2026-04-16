@@ -234,18 +234,18 @@ export const createSqlite =
   async (run) => {
     const { createSqliteDriver } = run.deps;
     const console = run.deps.console.child("sql");
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
     const driverResult = await run(createSqliteDriver(name, options));
     if (!driverResult.ok) return driverResult;
-    const driver = stack.use(driverResult.value);
+    const driver = disposer.use(driverResult.value);
     console.debug("SQLite driver created");
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     const sqlite: Sqlite = {
       exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
         console.debug({ query });
 
         const label =
@@ -274,18 +274,17 @@ export const createSqlite =
       },
 
       transaction: ((callback: () => Result<unknown, unknown> | void) => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
         console.debug("begin");
         driver.exec(sql`begin;`);
 
+        using rollback = new DisposableStack();
         let shouldRollback = true;
-        using _rollback = {
-          [Symbol.dispose]: () => {
-            if (!shouldRollback) return;
-            console.debug("rollback");
-            driver.exec(sql`rollback;`);
-          },
-        };
+        rollback.defer(() => {
+          if (!shouldRollback) return;
+          console.debug("rollback");
+          driver.exec(sql`rollback;`);
+        });
 
         const result = callback();
         if (result != null && !result.ok) return result;
@@ -298,11 +297,11 @@ export const createSqlite =
       }) as SqliteTransaction,
 
       export: () => {
-        assertNotDisposed(moved);
+        assertNotDisposed(disposables);
         return driver.export();
       },
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
 
     return ok(sqlite);
@@ -318,17 +317,17 @@ export const testSetupSqlite = async (
       readonly sqlite: Sqlite;
     }
 > => {
-  await using stack = new AsyncDisposableStack();
-  const run = stack.use(testCreateRun(deps));
-  const sqlite = stack.use(
+  await using disposer = new AsyncDisposableStack();
+  const run = disposer.use(testCreateRun(deps));
+  const sqlite = disposer.use(
     await run.orThrow(createSqlite(testName, { mode: "memory" })),
   );
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     run: run.addDeps({ sqlite }),
     sqlite,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 
@@ -377,27 +376,36 @@ export const createPreparedStatementsCache = <P>(
   factory: (sql: SafeSql) => P,
   disposeFn: (statement: P) => void,
 ): PreparedStatements<P> => {
-  let isDisposed = false;
-  const cache = new Map<SafeSql, P>();
+  using disposer = new DisposableStack();
+  const statementsBySql = new Map<SafeSql, P>();
+
+  disposer.defer(() => {
+    using disposer = new DisposableStack();
+    disposer.defer(() => {
+      statementsBySql.clear();
+    });
+
+    for (const statement of statementsBySql.values()) {
+      disposer.adopt(statement, disposeFn);
+    }
+  });
+
+  const disposables = disposer.move();
 
   return {
     get: (query, alwaysPrepare) => {
+      assertNotDisposed(disposables);
       if (alwaysPrepare !== true && !query.options?.prepare)
         return null as never;
-      let statement = cache.get(query.sql);
+      let statement = statementsBySql.get(query.sql);
       if (!statement) {
         statement = factory(query.sql);
-        cache.set(query.sql, statement);
+        statementsBySql.set(query.sql, statement);
       }
       return statement as never;
     },
 
-    [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
-      cache.forEach(disposeFn);
-      cache.clear();
-    },
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 

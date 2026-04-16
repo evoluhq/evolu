@@ -19,9 +19,9 @@ const console = createConsole({
 const deps = { ...createRelayDeps(), console };
 
 await using run = createRun(deps);
-await using stack = new AsyncDisposableStack();
+await using disposer = new AsyncDisposableStack();
 
-stack.use(
+disposer.use(
   await run.orThrow(
     startRelay({
       port: 4000,

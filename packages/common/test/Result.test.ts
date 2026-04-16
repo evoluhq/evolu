@@ -540,17 +540,17 @@ describe("Result with Resource management", () => {
       const disposed: Array<string> = [];
 
       const processResources = (): Result<string, CreateResourceError> => {
-        using stack = new DisposableStack();
+        using disposer = new DisposableStack();
 
         const resource1 = createResource("db", false);
         if (!resource1.ok) return resource1;
-        stack.use(resource1.value);
-        stack.defer(() => disposed.push("db"));
+        disposer.use(resource1.value);
+        disposer.defer(() => disposed.push("db"));
 
         const resource2 = createResource("file", false);
         if (!resource2.ok) return resource2;
-        stack.use(resource2.value);
-        stack.defer(() => disposed.push("file"));
+        disposer.use(resource2.value);
+        disposer.defer(() => disposed.push("file"));
 
         return ok("processed");
       };
@@ -567,18 +567,18 @@ describe("Result with Resource management", () => {
       const disposed: Array<string> = [];
 
       const processResources = (): Result<string, CreateResourceError> => {
-        using stack = new DisposableStack();
+        using disposer = new DisposableStack();
 
         const resource1 = createResource("db", false);
         if (!resource1.ok) return resource1;
-        stack.use(resource1.value);
-        stack.defer(() => disposed.push("db"));
+        disposer.use(resource1.value);
+        disposer.defer(() => disposed.push("db"));
 
         const resource2 = createResource("file", true);
         if (!resource2.ok) return resource2;
 
-        stack.use(resource2.value);
-        stack.defer(() => disposed.push("file"));
+        disposer.use(resource2.value);
+        disposer.defer(() => disposed.push("file"));
 
         return ok("processed");
       };
@@ -596,12 +596,12 @@ describe("Result with Resource management", () => {
       const disposed: Array<string> = [];
 
       const processResources = (): Result<string, CreateResourceError> => {
-        using stack = new DisposableStack();
+        using disposer = new DisposableStack();
 
         const resource1 = createResource("db", true);
         if (!resource1.ok) return resource1;
-        stack.use(resource1.value);
-        stack.defer(() => disposed.push("db"));
+        disposer.use(resource1.value);
+        disposer.defer(() => disposed.push("db"));
 
         return ok("processed");
       };
@@ -637,12 +637,12 @@ describe("Result with Resource management", () => {
       };
 
       const queryDatabase = (): Result<Array<string>, CreateResourceError> => {
-        using stack = new DisposableStack();
+        using disposer = new DisposableStack();
 
         const conn = openConnection(false);
         if (!conn.ok) return conn;
 
-        stack.adopt(conn.value, closeConnection);
+        disposer.adopt(conn.value, closeConnection);
 
         return ok(conn.value.query("SELECT * FROM users"));
       };
@@ -666,17 +666,17 @@ describe("Result with Resource management", () => {
       type MyError = CreateResourceError | ProcessingError;
 
       const process = (): Result<void, MyError> => {
-        using stack = new DisposableStack();
+        using disposer = new DisposableStack();
 
         const db = createResource("db", false);
         if (!db.ok) return db;
-        stack.use(db.value);
-        stack.defer(() => log.push("cleanup:db"));
+        disposer.use(db.value);
+        disposer.defer(() => log.push("cleanup:db"));
 
         const cache = createResource("cache", false);
         if (!cache.ok) return cache;
-        stack.use(cache.value);
-        stack.defer(() => log.push("cleanup:cache"));
+        disposer.use(cache.value);
+        disposer.defer(() => log.push("cleanup:cache"));
 
         log.push("work:step1");
 
@@ -702,12 +702,12 @@ describe("Result with Resource management", () => {
       const disposed: Array<string> = [];
 
       const processResources = (): Result<string, CreateResourceError> => {
-        using stack = new DisposableStack();
+        using disposer = new DisposableStack();
 
         const resource1 = createResource("db", false);
         if (!resource1.ok) return resource1;
-        stack.use(resource1.value);
-        stack.defer(() => disposed.push("db"));
+        disposer.use(resource1.value);
+        disposer.defer(() => disposed.push("db"));
 
         // Simulate unexpected error (bug in code, not a Result error)
         throw new Error("Unexpected bug!");
@@ -728,19 +728,19 @@ describe("Result with Resource management", () => {
         DisposableStack,
         CreateResourceError
       > => {
-        using stack = new DisposableStack();
+        using disposer = new DisposableStack();
 
         const r1 = createResource("a", false);
         if (!r1.ok) return r1;
-        stack.use(r1.value);
-        stack.defer(() => disposed.push("a"));
+        disposer.use(r1.value);
+        disposer.defer(() => disposed.push("a"));
 
         const r2 = createResource("b", false);
         if (!r2.ok) return r2;
-        stack.use(r2.value);
-        stack.defer(() => disposed.push("b"));
+        disposer.use(r2.value);
+        disposer.defer(() => disposed.push("b"));
 
-        return ok(stack.move());
+        return ok(disposer.move());
       };
 
       interface TransferError {
@@ -774,20 +774,20 @@ describe("Result with Resource management", () => {
       const processResources = async (): Promise<
         Result<string, CreateResourceError>
       > => {
-        await using stack = new AsyncDisposableStack();
+        await using disposer = new AsyncDisposableStack();
 
         const resource1 = await createAsyncResource("db", false);
         if (!resource1.ok) return resource1;
-        stack.use(resource1.value);
-        stack.defer(async () => {
+        disposer.use(resource1.value);
+        disposer.defer(async () => {
           await Promise.resolve();
           disposed.push("db");
         });
 
         const resource2 = await createAsyncResource("file", false);
         if (!resource2.ok) return resource2;
-        stack.use(resource2.value);
-        stack.defer(async () => {
+        disposer.use(resource2.value);
+        disposer.defer(async () => {
           await Promise.resolve();
           disposed.push("file");
         });
@@ -809,20 +809,20 @@ describe("Result with Resource management", () => {
       const processResources = async (): Promise<
         Result<string, CreateResourceError>
       > => {
-        await using stack = new AsyncDisposableStack();
+        await using disposer = new AsyncDisposableStack();
 
         const resource1 = await createAsyncResource("db", false);
         if (!resource1.ok) return resource1;
-        stack.use(resource1.value);
-        stack.defer(async () => {
+        disposer.use(resource1.value);
+        disposer.defer(async () => {
           await Promise.resolve();
           disposed.push("db");
         });
 
         const resource2 = await createAsyncResource("file", true);
         if (!resource2.ok) return resource2;
-        stack.use(resource2.value);
-        stack.defer(async () => {
+        disposer.use(resource2.value);
+        disposer.defer(async () => {
           await Promise.resolve();
           disposed.push("file");
         });
@@ -844,19 +844,19 @@ describe("Result with Resource management", () => {
       const processResources = async (): Promise<
         Result<string, CreateResourceError>
       > => {
-        await using stack = new AsyncDisposableStack();
+        await using disposer = new AsyncDisposableStack();
 
         const syncResource = createResource("sync", false);
         if (!syncResource.ok) return syncResource;
-        stack.use(syncResource.value);
-        stack.defer(() => {
+        disposer.use(syncResource.value);
+        disposer.defer(() => {
           disposed.push("sync");
         });
 
         const asyncResource = await createAsyncResource("async", false);
         if (!asyncResource.ok) return asyncResource;
-        stack.use(asyncResource.value);
-        stack.defer(async () => {
+        disposer.use(asyncResource.value);
+        disposer.defer(async () => {
           await Promise.resolve();
           disposed.push("async");
         });
@@ -1362,14 +1362,14 @@ describe("generator-based composition", () => {
     };
 
     const program = function* (): Gen<string, ParseError> {
-      using stack = new DisposableStack();
+      using disposer = new DisposableStack();
 
       const r1 = yield* gen(createTestResource("db", false));
-      stack.use(r1);
+      disposer.use(r1);
 
       // This fails - generator yields Err and runGen calls gen.return()
       const r2 = yield* gen(createTestResource("file", true));
-      stack.use(r2);
+      disposer.use(r2);
 
       return "done";
     };
@@ -1392,13 +1392,13 @@ describe("generator-based composition", () => {
       });
 
     const program = function* (): Gen<string, ParseError> {
-      using stack = new DisposableStack();
+      using disposer = new DisposableStack();
 
       const r1 = yield* gen(createTestResource("db"));
-      stack.use(r1);
+      disposer.use(r1);
 
       const r2 = yield* gen(createTestResource("file"));
-      stack.use(r2);
+      disposer.use(r2);
 
       return "done";
     };

@@ -7,18 +7,18 @@ import { createBetterSqliteDriver } from "../src/Sqlite.js";
 const testName = Name.orThrow("Test");
 
 const setupBetterSqlite = async () => {
-  await using stack = new AsyncDisposableStack();
-  const run = stack.use(
+  await using disposer = new AsyncDisposableStack();
+  const run = disposer.use(
     testCreateRun({ createSqliteDriver: createBetterSqliteDriver }),
   );
-  const sqlite = stack.use(
+  const sqlite = disposer.use(
     await run.orThrow(createSqlite(testName, { mode: "memory" })),
   );
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     sqlite,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 

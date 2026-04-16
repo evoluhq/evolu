@@ -152,12 +152,12 @@ const setupDb = async ({
 }: {
   time?: TestTime;
 } = {}): Promise<DbSetup> => {
-  await using stack = new AsyncDisposableStack();
+  await using disposer = new AsyncDisposableStack();
 
   const createId = testCreateId();
   const evoluInstanceId = createId<"EvoluInstance">();
   const consoleStoreOutput = createConsoleStoreOutput();
-  const run = stack.use(
+  const run = disposer.use(
     testCreateRun({
       console: testCreateConsole({ level: "silent" }),
       consoleStoreOutputEntry: consoleStoreOutput.entry,
@@ -165,7 +165,7 @@ const setupDb = async ({
     }),
   );
 
-  const driver = stack.use(
+  const driver = disposer.use(
     await run.orThrow(testCreateSqliteDep.createSqliteDriver(testName)),
   );
 
@@ -177,13 +177,13 @@ const setupDb = async ({
       [Symbol.dispose]: lazyVoid,
     });
 
-  const sqlite = stack.use(
+  const sqlite = disposer.use(
     await run
       .addDeps({ createSqliteDriver })
       .orThrow(createSqlite(testName, { mode: "memory" })),
   );
   const leaderLock = createInMemoryLeaderLock();
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     consoleStoreOutput,
@@ -193,7 +193,7 @@ const setupDb = async ({
     leaderLock,
     sqlite,
     time,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 
@@ -214,13 +214,13 @@ const setupDbWorker = async ({
   sqliteSchema?: SqliteSchema;
   time?: TestTime;
 } = {}): Promise<DbWorkerSetup> => {
-  await using stack = new AsyncDisposableStack();
+  await using disposer = new AsyncDisposableStack();
 
   const dbSetup =
     providedDbSetup ??
-    stack.use(await setupDb(time == null ? undefined : { time }));
+    disposer.use(await setupDb(time == null ? undefined : { time }));
 
-  const run = stack.use(
+  const run = disposer.use(
     testCreateRun({
       console: testCreateConsole({ level: "silent" }),
       consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
@@ -230,12 +230,12 @@ const setupDbWorker = async ({
       time: dbSetup.time,
     }),
   );
-  const worker = stack.use(
+  const worker = disposer.use(
     createWorker<DbWorkerInit>((self) => {
       void run(startDbWorker(self));
     }),
   );
-  const channel = stack.use(
+  const channel = disposer.use(
     testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>(),
   );
   const outputs: Array<DbWorkerOutput> = [];
@@ -259,14 +259,14 @@ const setupDbWorker = async ({
   expect(initOutputs).toEqual([{ type: "LeaderAcquired", name: testName }]);
   await testWaitForWorkerMessage();
 
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     ...dbSetup,
     initOutputs,
     outputs,
     port: channel.port2,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 

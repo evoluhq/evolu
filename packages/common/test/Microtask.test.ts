@@ -98,15 +98,21 @@ describe("createMicrotaskBatch", () => {
     expect(flushed).toEqual([]);
   });
 
-  test("push and flushNow are no-op after dispose", async () => {
+  test("push and flushNow throw after dispose", async () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
     });
 
     batch[Symbol.dispose]();
-    batch.push(1);
-    batch.flushNow();
+
+    expect(() => {
+      batch.push(1);
+    }).toThrow("Expected value to not be disposed.");
+
+    expect(() => {
+      batch.flushNow();
+    }).toThrow("Expected value to not be disposed.");
 
     await Promise.resolve();
 

@@ -63,9 +63,9 @@ export const createLeaderLock = (): LeaderLock => ({
  * });
  *
  * await using run = createRun({ console });
- * await using stack = new AsyncDisposableStack();
+ * await using disposer = new AsyncDisposableStack();
  *
- * stack.use(await run.orThrow(startApp()));
+ * disposer.use(await run.orThrow(startApp()));
  * ```
  */
 export const createRun: CreateRun<RunDeps> = <D>(

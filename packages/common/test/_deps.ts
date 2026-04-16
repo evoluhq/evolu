@@ -39,12 +39,12 @@ export const setupSqlite: () => ReturnType<typeof testSetupSqlite> = () =>
 // (nodejs depends on common — importing back would create a circular dependency).
 const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
   const filename = options?.mode === "memory" ? ":memory:" : `${name}.db`;
-  using stack = new DisposableStack();
-  const db = stack.adopt(new BetterSQLite(filename), (db) => {
+  using disposer = new DisposableStack();
+  const db = disposer.adopt(new BetterSQLite(filename), (db) => {
     db.close();
   });
 
-  const cache = stack.use(
+  const cache = disposer.use(
     createPreparedStatementsCache<Statement>(
       (sql) => db.prepare(sql),
       // Not needed.
@@ -53,7 +53,7 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
     ),
   );
 
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return ok({
     exec: (query) => {
@@ -82,7 +82,7 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
     },
 
     [Symbol.dispose]: () => {
-      moved.dispose();
+      disposables.dispose();
     },
   });
 };
@@ -97,8 +97,8 @@ export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {
 export const setupSqliteAndRelayStorage = async (
   config?: Partial<StorageConfig>,
 ): Promise<TestSqliteAndRelayStorageSetup> => {
-  await using stack = new AsyncDisposableStack();
-  const sqliteSetup = stack.use(await setupSqlite());
+  await using disposer = new AsyncDisposableStack();
+  const sqliteSetup = disposer.use(await setupSqlite());
   const { run, sqlite } = sqliteSetup;
 
   createBaseSqliteStorageTables({ sqlite });
@@ -111,12 +111,12 @@ export const setupSqliteAndRelayStorage = async (
     isOwnerWithinQuota: lazyTrue,
     ...config,
   });
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     run: run.addDeps<StorageDep>({ storage }),
     sqlite,
     storage,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };

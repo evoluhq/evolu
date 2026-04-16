@@ -645,17 +645,17 @@ describe("DisposableStack behavior", () => {
   test("move transfers ownership and old stack becomes disposed", () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.DisposableStack();
-    stack.defer(() => {
+    const disposer = new globalThis.DisposableStack();
+    disposer.defer(() => {
       events.push("cleanup");
     });
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
-    expect(stack.disposed).toBe(true);
-    expect(moved.disposed).toBe(false);
+    expect(disposer.disposed).toBe(true);
+    expect(disposables.disposed).toBe(false);
 
-    moved.dispose();
+    disposables.dispose();
     expect(events).toEqual(["cleanup"]);
   });
 
@@ -1090,19 +1090,19 @@ describe("AsyncDisposableStack behavior", () => {
   test("move transfers ownership and old stack becomes disposed", async () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.AsyncDisposableStack();
-    stack.defer(() =>
+    const disposer = new globalThis.AsyncDisposableStack();
+    disposer.defer(() =>
       Promise.resolve().then(() => {
         events.push("cleanup");
       }),
     );
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
-    expect(stack.disposed).toBe(true);
-    expect(moved.disposed).toBe(false);
+    expect(disposer.disposed).toBe(true);
+    expect(disposables.disposed).toBe(false);
 
-    await moved.disposeAsync();
+    await disposables.disposeAsync();
     expect(events).toEqual(["cleanup"]);
   });
 

@@ -113,21 +113,21 @@ export const createResourceRef = <T extends Resource, D>(
   unabortable<ResourceRef<T, D>, never, D>(async (run) => {
     const resourceRefRun = run.create();
 
-    await using stack = new AsyncDisposableStack();
-    stack.use(resourceRefRun);
+    await using disposer = new AsyncDisposableStack();
+    disposer.use(resourceRefRun);
 
     const initial = await resourceRefRun(create);
     if (!initial.ok) return initial;
 
     let current = createOwnedResource(initial.value);
 
-    const mutex = stack.use(createMutex());
-    stack.defer(() => current.stack.disposeAsync());
+    const mutex = disposer.use(createMutex());
+    disposer.defer(() => current.stack.disposeAsync());
     // Register as the last so disposal aborts further calls first.
     // Repeated registration is safe because disposal is idempotent.
-    stack.use(resourceRefRun);
+    disposer.use(resourceRefRun);
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok({
       get: () => resourceRefRun(mutex.withLock(() => ok(current.resource))),
@@ -145,7 +145,7 @@ export const createResourceRef = <T extends Resource, D>(
           ),
         ),
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   });
 
@@ -242,24 +242,24 @@ export const createSharedResource = <T extends Resource, D>(
     let current: OwnedResource<T> | undefined;
     let idleDisposeFiber: Fiber<void, AbortError, D> | undefined;
 
-    await using stack = new AsyncDisposableStack();
-    const refCount = stack.use(createRefCount());
+    await using disposer = new AsyncDisposableStack();
+    const refCount = disposer.use(createRefCount());
 
-    const mutex = stack.use(createMutex());
+    const mutex = disposer.use(createMutex());
 
     const disposeCurrent = async () => {
       if (!current) return;
-      await using stack = new AsyncDisposableStack();
-      if (onDisposed) stack.defer(onDisposed);
-      stack.use(current.stack);
+      await using disposer = new AsyncDisposableStack();
+      if (onDisposed) disposer.defer(onDisposed);
+      disposer.use(current.stack);
       current = undefined;
     };
-    stack.defer(disposeCurrent);
+    disposer.defer(disposeCurrent);
 
     // Register as the last so disposal aborts further calls first.
-    stack.use(sharedResourceRun);
+    disposer.use(sharedResourceRun);
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok({
       acquire: unabortable<BorrowedResource<T>, never, D>(() =>
@@ -320,7 +320,7 @@ export const createSharedResource = <T extends Resource, D>(
         mutex: mutex.snapshot(),
       }),
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   });
 
@@ -442,19 +442,20 @@ export function createSharedResourceByKey<
       lookup,
     });
 
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
-    const mutexByKey = stack.use(createMutexByKey<K, L>({ lookup }));
-    stack.defer(async () => {
-      await using stack = new AsyncDisposableStack();
-      for (const resource of sharedResourcesByKey.values()) stack.use(resource);
-      await stack.disposeAsync();
+    const mutexByKey = disposer.use(createMutexByKey<K, L>({ lookup }));
+    disposer.defer(async () => {
+      await using disposer = new AsyncDisposableStack();
+      for (const resource of sharedResourcesByKey.values())
+        disposer.use(resource);
+      await disposer.disposeAsync();
       sharedResourcesByKey.clear();
     });
     // Register as the last so disposal aborts further calls first.
-    stack.use(sharedResourceByKeyRun);
+    disposer.use(sharedResourceByKeyRun);
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok({
       acquire: (key) =>
@@ -539,7 +540,7 @@ export function createSharedResourceByKey<
         };
       },
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   });
 }
@@ -661,27 +662,31 @@ export function createSharedResourceByKeyWithClaims<
   return unabortable<SharedResourceByKeyWithClaims<K, C, T, D>, never, D>(
     async (run) => {
       const sharedResourceClaimsRun = run.create();
-      await using stack = new AsyncDisposableStack();
+      await using disposer = new AsyncDisposableStack();
 
       const keyByClaim = createRelation<C, K, LC, LK>({
         lookupA: claimLookup,
         lookupB: resourceLookup,
       });
-      const pairRefCountsByClaim = stack.adopt(
+      const pairRefCountsByClaim = disposer.adopt(
         createLookupMap<C, RefCountByKey<K>, LC>({ lookup: claimLookup }),
         (pairRefCountsByClaim) => {
+          using disposer = new DisposableStack();
+          disposer.defer(() => {
+            pairRefCountsByClaim.clear();
+          });
+
           for (const pairRefCountByKey of pairRefCountsByClaim.values()) {
-            pairRefCountByKey[Symbol.dispose]();
+            disposer.use(pairRefCountByKey);
           }
-          pairRefCountsByClaim.clear();
         },
       );
 
-      const mutexByKey = stack.use(
+      const mutexByKey = disposer.use(
         createMutexByKey<K, LK>({ lookup: resourceLookup }),
       );
 
-      stack.defer(() => {
+      disposer.defer(() => {
         keyByClaim.clear();
       });
 
@@ -692,10 +697,12 @@ export function createSharedResourceByKeyWithClaims<
         }),
       );
       assertNotAborted(sharedResourcesByKeyResult);
-      const sharedResourcesByKey = stack.use(sharedResourcesByKeyResult.value);
+      const sharedResourcesByKey = disposer.use(
+        sharedResourcesByKeyResult.value,
+      );
 
       // Register as the last so disposal aborts further calls first.
-      stack.use(sharedResourceClaimsRun);
+      disposer.use(sharedResourceClaimsRun);
 
       /** Asserts that one call does not contain the same logical key twice. */
       const assertNoDuplicateResourceKeys = (
@@ -710,7 +717,7 @@ export function createSharedResourceByKeyWithClaims<
         );
       };
 
-      const moved = stack.move();
+      const disposables = disposer.move();
 
       return ok({
         addClaim: (claim, resourceKeys) =>
@@ -840,7 +847,7 @@ export function createSharedResourceByKeyWithClaims<
           return resources;
         },
 
-        [Symbol.asyncDispose]: () => moved.disposeAsync(),
+        [Symbol.asyncDispose]: () => disposables.disposeAsync(),
       });
     },
   );

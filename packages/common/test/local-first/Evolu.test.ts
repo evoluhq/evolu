@@ -103,9 +103,11 @@ describe("unit tests", () => {
   const setupRunWithEvoluDeps = async (
     overrides: Partial<EvoluPlatformDeps> = {},
   ) => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
-    const sharedWorker = stack.use(testCreateSharedWorker<SharedWorkerInput>());
+    const sharedWorker = disposer.use(
+      testCreateSharedWorker<SharedWorkerInput>(),
+    );
 
     const evoluInputs: Array<EvoluInput> = [];
     let evoluPort: {
@@ -146,14 +148,14 @@ describe("unit tests", () => {
       sharedWorker,
       ...overrides,
     };
-    const run = stack.use(testCreateRun(evoluDeps));
-    const moved = stack.move();
+    const run = disposer.use(testCreateRun(evoluDeps));
+    const disposables = disposer.move();
 
     return {
       run,
       evoluInputs,
       postEvoluOutput,
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
 
@@ -194,8 +196,8 @@ describe("unit tests", () => {
       };
       readonly [Symbol.dispose]: () => void;
     }> => {
-      using stack = new DisposableStack();
-      const worker = stack.use(testCreateSharedWorker<SharedWorkerInput>());
+      using disposer = new DisposableStack();
+      const worker = disposer.use(testCreateSharedWorker<SharedWorkerInput>());
 
       const messages: Array<SharedWorkerInput> = [];
       worker.self.onConnect = (port) => {
@@ -203,7 +205,7 @@ describe("unit tests", () => {
       };
       worker.connect();
 
-      const deps = stack.use(
+      const deps = disposer.use(
         createEvoluDeps({
           createDbWorker: testCreateWorker,
           createMessageChannel: testCreateMessageChannel,
@@ -220,13 +222,13 @@ describe("unit tests", () => {
       expect(initTab.type).toBe("InitTab");
       assert(initTab.type === "InitTab", "InitTab message is missing");
       const workerPort = testCreateMessagePort<TabOutput>(initTab.port);
-      const moved = stack.move();
+      const disposables = disposer.move();
 
       return {
         deps,
         messages,
         workerPort,
-        [Symbol.dispose]: () => moved.dispose(),
+        [Symbol.dispose]: () => disposables.dispose(),
       };
     };
 
@@ -779,11 +781,19 @@ describe("unit tests", () => {
       }).toThrow(disposedMessage);
 
       expect(() => {
+        evolu.deleteDatabase();
+      }).toThrow(disposedMessage);
+
+      expect(() => {
+        evolu.deleteOwner(testAppOwner);
+      }).toThrow(disposedMessage);
+
+      expect(() => {
         evolu.useOwner(testAppOwner, [testOwnerTransport]);
       }).toThrow(disposedMessage);
     });
 
-    test("allows unuseOwner after dispose", async () => {
+    test("unuseOwner is a no-op after dispose", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run } = setup;
       const evolu = await run.orThrow(testCreateEvolu);
@@ -798,7 +808,7 @@ describe("unit tests", () => {
 
       expect(() => {
         unuseOwner();
-      }).toThrow("UnuseOwner can be called only once.");
+      }).not.toThrow();
     });
 
     test("resolves pending loadQuery with empty rows on dispose", async () => {
@@ -1720,11 +1730,11 @@ describe("unit tests", () => {
 
 describe("integration tests", () => {
   const setupRunWithEvoluDeps = async () => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
     const consoleStoreOutput = createConsoleStoreOutput();
 
-    const run = stack.use(
+    const run = disposer.use(
       testCreateRun({
         // console: createConsole({ level: "debug" }),
         consoleStoreOutputEntry: consoleStoreOutput.entry,
@@ -1738,7 +1748,7 @@ describe("integration tests", () => {
       testCreateSqliteDep.createSqliteDriver(testName),
     );
 
-    const workerRun = stack.use(
+    const workerRun = disposer.use(
       testCreateRun({
         consoleStoreOutputEntry: consoleStoreOutput.entry,
         createMessagePort,
@@ -1747,14 +1757,16 @@ describe("integration tests", () => {
       }),
     );
 
-    const sharedWorker = stack.use(
+    const sharedWorker = disposer.use(
       createSharedWorker<SharedWorkerInput>((self) => {
         run(initSharedWorker(self));
       }),
     );
 
-    const sqlite = stack.use(await workerRun.orThrow(createSqlite(testName)));
-    const moved = stack.move();
+    const sqlite = disposer.use(
+      await workerRun.orThrow(createSqlite(testName)),
+    );
+    const disposables = disposer.move();
 
     return {
       run: run.addDeps({
@@ -1766,7 +1778,7 @@ describe("integration tests", () => {
         sharedWorker,
       }),
       sqlite,
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
 

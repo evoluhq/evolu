@@ -44,18 +44,16 @@ export const createMessageChannel = <Input, Output = never>(): MessageChannel<
   Output
 > => {
   const channel = new globalThis.MessageChannel();
-  using stack = new DisposableStack();
+  using disposer = new DisposableStack();
 
-  const port1 = stack.use(wrap<Input, Output>(channel.port1));
-  const port2 = stack.use(wrap<Output, Input>(channel.port2));
-  const moved = stack.move();
+  const port1 = disposer.use(wrap<Input, Output>(channel.port1));
+  const port2 = disposer.use(wrap<Output, Input>(channel.port2));
+  const disposables = disposer.move();
 
   return {
     port1,
     port2,
-    [Symbol.dispose]: () => {
-      moved.dispose();
-    },
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };
 

@@ -11,8 +11,8 @@ import { open, type PreparedStatement } from "@op-engineering/op-sqlite";
 export const createOpSqliteDriver: CreateSqliteDriver =
   (name, options) => () => {
     // https://op-engineering.github.io/op-sqlite/docs/configuration#in-memory
-    using stack = new DisposableStack();
-    const db = stack.adopt(
+    using disposer = new DisposableStack();
+    const db = disposer.adopt(
       open(
         options?.mode === "memory"
           ? { name: `inMemoryDb`, location: ":memory:" }
@@ -28,7 +28,7 @@ export const createOpSqliteDriver: CreateSqliteDriver =
       },
     );
 
-    const cache = stack.use(
+    const cache = disposer.use(
       createPreparedStatementsCache<PreparedStatement>(
         (sql) => db.prepareStatement(sql),
         // op-sqlite doesn't have API for that
@@ -36,7 +36,7 @@ export const createOpSqliteDriver: CreateSqliteDriver =
       ),
     );
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok({
       exec: (query) => {
@@ -60,7 +60,7 @@ export const createOpSqliteDriver: CreateSqliteDriver =
       },
 
       [Symbol.dispose]: () => {
-        moved.dispose();
+        disposables.dispose();
       },
     });
   };

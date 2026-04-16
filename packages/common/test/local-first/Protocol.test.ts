@@ -1121,15 +1121,15 @@ describe("E2E sync", { timeout: 15_000 }, () => {
   assertNonEmptyArray(messages);
 
   const createStorages = async () => {
-    await using stack = new AsyncDisposableStack();
-    const client = stack.use(await setupSqliteAndRelayStorage());
-    const relay = stack.use(await setupSqliteAndRelayStorage());
-    const moved = stack.move();
+    await using disposer = new AsyncDisposableStack();
+    const client = disposer.use(await setupSqliteAndRelayStorage());
+    const relay = disposer.use(await setupSqliteAndRelayStorage());
+    const disposables = disposer.move();
 
     return {
       clientStorage: client.storage,
       relayStorage: relay.storage,
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
   };
 

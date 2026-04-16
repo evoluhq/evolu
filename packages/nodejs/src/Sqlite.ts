@@ -10,12 +10,12 @@ import BetterSQLite, { type Statement } from "better-sqlite3";
 export const createBetterSqliteDriver: CreateSqliteDriver =
   (name, options) => () => {
     const filename = options?.mode === "memory" ? ":memory:" : `${name}.db`;
-    using stack = new DisposableStack();
-    const db = stack.adopt(new BetterSQLite(filename), (db) => {
+    using disposer = new DisposableStack();
+    const db = disposer.adopt(new BetterSQLite(filename), (db) => {
       db.close();
     });
 
-    const cache = stack.use(
+    const cache = disposer.use(
       createPreparedStatementsCache<Statement>(
         (sql) => db.prepare(sql),
         // Not needed.
@@ -24,7 +24,7 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
       ),
     );
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok({
       exec: (query) => {
@@ -53,7 +53,7 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
       },
 
       [Symbol.dispose]: () => {
-        moved.dispose();
+        disposables.dispose();
       },
     });
   };

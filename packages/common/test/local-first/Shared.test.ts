@@ -51,25 +51,25 @@ const setupSharedWorker = async ({
     throwOnCreate: true,
   }),
 }: SetupWorkerOptions = {}) => {
-  await using stack = new AsyncDisposableStack();
+  await using disposer = new AsyncDisposableStack();
 
-  const worker = stack.use(testCreateSharedWorker<SharedWorkerInput>());
-  const run = stack.use(
+  const worker = disposer.use(testCreateSharedWorker<SharedWorkerInput>());
+  const run = disposer.use(
     testCreateRun({
       consoleStoreOutputEntry,
       createMessagePort: testCreateMessagePort,
       createWebSocket,
     }),
   );
-  stack.use(await run.orThrow(initSharedWorker(worker.self)));
+  disposer.use(await run.orThrow(initSharedWorker(worker.self)));
 
   worker.connect();
-  const moved = stack.move();
+  const disposables = disposer.move();
 
   return {
     run,
     worker,
-    [Symbol.asyncDispose]: () => moved.disposeAsync(),
+    [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
 };
 

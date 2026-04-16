@@ -5,6 +5,7 @@
  */
 
 import { appendToArray, type NonEmptyReadonlyArray } from "./Array.js";
+import { assertNotDisposed } from "./Assert.js";
 
 /**
  * Batches values and flushes them in a single microtask.
@@ -24,11 +25,17 @@ export interface MicrotaskBatch<T> extends Disposable {
 export const createMicrotaskBatch = <T>(
   onFlush: (items: NonEmptyReadonlyArray<T>) => void,
 ): MicrotaskBatch<T> => {
+  using disposer = new DisposableStack();
   let queue: NonEmptyReadonlyArray<T> | null = null;
-  let disposed = false;
 
-  const flushNow = () => {
-    if (disposed || queue == null) return;
+  disposer.defer(() => {
+    queue = null;
+  });
+
+  const disposables = disposer.move();
+
+  const flushQueuedItems = () => {
+    if (queue == null) return;
     const queuedItems = queue;
     queue = null;
     onFlush(queuedItems);
@@ -36,23 +43,22 @@ export const createMicrotaskBatch = <T>(
 
   return {
     push: (item) => {
-      if (disposed) return;
+      assertNotDisposed(disposables);
 
       if (queue == null) {
         queue = [item];
-        queueMicrotask(flushNow);
+        queueMicrotask(flushQueuedItems);
         return;
       }
 
       queue = appendToArray(queue, item);
     },
 
-    flushNow,
-
-    [Symbol.dispose]: () => {
-      if (disposed) return;
-      disposed = true;
-      queue = null;
+    flushNow: () => {
+      assertNotDisposed(disposables);
+      flushQueuedItems();
     },
+
+    [Symbol.dispose]: () => disposables.dispose(),
   };
 };

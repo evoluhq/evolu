@@ -8,6 +8,7 @@ import {
   testCreateMessageChannel,
   testCreateMessagePort,
   testCreateSharedWorker,
+  testWaitForWorkerMessage,
   testCreateWorker,
 } from "../src/Worker.js";
 
@@ -135,9 +136,8 @@ describe("testCreateMessageChannel", () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
     const clearTimeout = globalThis.clearTimeout;
-    const ignoreClearTimeout: typeof globalThis.clearTimeout = (
-      _timeout,
-    ) => undefined;
+    const ignoreClearTimeout: typeof globalThis.clearTimeout = (_timeout) =>
+      undefined;
 
     try {
       globalThis.clearTimeout = ignoreClearTimeout;
@@ -226,16 +226,17 @@ describe("testCreateMessageChannel", () => {
     expect(received).toEqual([]);
   });
 
-  test("unknown transferables are ignored", async () => {
+  test("non-port transferables are ignored", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
 
     channel.port2.onMessage = (message) => received.push(message);
     channel.port1.postMessage("hello", [{} as NativeMessagePort]);
+    channel.port1.postMessage("world", [new ArrayBuffer(8)]);
 
     await testWaitForMacrotask();
 
-    expect(received).toEqual(["hello"]);
+    expect(received).toEqual(["hello", "world"]);
   });
 
   test("transferred native ports can be wrapped after transfer", async () => {
@@ -258,9 +259,7 @@ describe("testCreateMessageChannel", () => {
 
     transferredChannel.port1[Symbol.dispose]();
 
-    const wrappedPort = testCreateMessagePort<never, string>(
-      transferredNative,
-    );
+    const wrappedPort = testCreateMessagePort<never, string>(transferredNative);
     const received: Array<string> = [];
     wrappedPort.onMessage = (message) => received.push(message);
 
@@ -453,5 +452,21 @@ describe("testCreateSharedWorker", () => {
     expect(worker.self.onConnect).not.toBeNull();
     worker.self[Symbol.dispose]();
     expect(worker.self.onConnect).toBeNull();
+  });
+});
+
+describe("testWaitForWorkerMessage", () => {
+  test("waits for two macrotask hops", async () => {
+    const received: Array<string> = [];
+
+    globalThis.setTimeout(() => {
+      globalThis.setTimeout(() => {
+        received.push("done");
+      }, 0);
+    }, 0);
+
+    await testWaitForWorkerMessage();
+
+    expect(received).toEqual(["done"]);
   });
 });

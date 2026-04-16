@@ -200,7 +200,7 @@ export const createWebSocket: CreateWebSocket =
     } = {},
   ) =>
   async (run) => {
-    await using stack = new AsyncDisposableStack();
+    await using disposer = new AsyncDisposableStack();
 
     let socket: globalThis.WebSocket | null = null;
 
@@ -268,7 +268,7 @@ export const createWebSocket: CreateWebSocket =
       return closeSocket;
     });
 
-    const retryFiber = stack.use(run.daemon(retry(connect, schedule)));
+    const retryFiber = disposer.use(run.daemon(retry(connect, schedule)));
 
     // Report RetryError (schedule exhausted) via onError callback
     void retryFiber.then((result) => {
@@ -277,7 +277,7 @@ export const createWebSocket: CreateWebSocket =
       }
     });
 
-    const moved = stack.move();
+    const disposables = disposer.move();
 
     return ok<WebSocket>({
       send: (data) => {
@@ -290,14 +290,15 @@ export const createWebSocket: CreateWebSocket =
       },
 
       getReadyState: () => {
-        if (moved.disposed) return "closed";
+        if (disposables.disposed) return "closed";
         return socket ? nativeToStringState[socket.readyState] : "connecting";
       },
 
       isOpen: () =>
-        !moved.disposed && socket?.readyState === globalThis.WebSocket.OPEN,
+        !disposables.disposed &&
+        socket?.readyState === globalThis.WebSocket.OPEN,
 
-      [Symbol.asyncDispose]: () => moved.disposeAsync(),
+      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     });
   };
 

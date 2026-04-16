@@ -125,8 +125,8 @@ export type DbWorkerDeps = WorkerDeps & LeaderLockDep & CreateSqliteDriverDep;
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
   async (run) => {
-    await using stack = new AsyncDisposableStack();
-    const dbWorkerRun = stack.use(run.create());
+    await using disposer = new AsyncDisposableStack();
+    const dbWorkerRun = disposer.use(run.create());
     const { deps } = dbWorkerRun;
 
     let initialized = false;
@@ -145,25 +145,25 @@ export const startDbWorker =
     console.setLevel(initMessage.consoleLevel);
     console.info("start DbWorker");
 
-    const port = stack.use(
+    const port = disposer.use(
       deps.createMessagePort<DbWorkerOutput, DbWorkerInput>(initMessage.port),
     );
 
-    stack.defer(
+    disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
         const entry = deps.consoleStoreOutputEntry.get();
         if (entry) port.postMessage({ type: "OnConsoleEntry", entry });
       }),
     );
 
-    stack.use(
+    disposer.use(
       await dbWorkerRun.orThrow(deps.leaderLock.lock(initMessage.name)),
     );
-    if (stack.disposed) return ok();
+    if (disposer.disposed) return ok();
 
     port.postMessage({ type: "LeaderAcquired", name: initMessage.name });
 
-    const sqlite = stack.use(
+    const sqlite = disposer.use(
       await dbWorkerRun.orThrow(
         createSqlite(
           initMessage.name,
@@ -205,7 +205,7 @@ export const startDbWorker =
     });
 
     // TODO: Call on dispose message.
-    const _moved = stack.move();
+    const _disposables = disposer.move();
     const dbWorkerRunWithStorage = dbWorkerRun.addDeps({ storage });
 
     /**
