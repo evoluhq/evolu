@@ -148,7 +148,7 @@ const wrap = <Input, Output>(
 
     [Symbol.dispose]: () => {
       native.onmessage = null;
-      if (native instanceof globalThis.Worker) native.terminate();
+      if ("terminate" in native) native.terminate();
       else native.close();
     },
   };
