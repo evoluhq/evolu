@@ -46,7 +46,6 @@ import {
   concurrently,
   createDeferred,
   createGate,
-  createInMemoryLeaderLock,
   createMutex,
   createMutexByKey,
   createMutexRef,
@@ -80,13 +79,7 @@ import {
 } from "../src/Test.js";
 import { createTime, Millis, msLongTask, testCreateTime } from "../src/Time.js";
 import type { Typed } from "../src/Type.js";
-import {
-  Id,
-  onePositiveInt,
-  Name,
-  PositiveInt,
-  testName,
-} from "../src/Type.js";
+import { Id, onePositiveInt, PositiveInt } from "../src/Type.js";
 
 const eventsEnabled: RunConfigDep = {
   runConfig: { eventsEnabled: createRef(true) },
@@ -5905,95 +5898,6 @@ describe("concurrency", () => {
 
         expect(await updateFiber).toEqual(ok());
       });
-    });
-  });
-
-  describe("InMemoryLeaderLock", () => {
-    test("lock waits until previous lease is disposed", async () => {
-      await using run = createRun();
-      const leaderLock = createInMemoryLeaderLock();
-
-      const first = await run.orThrow(leaderLock.lock(testName));
-
-      let secondSettled = false;
-      const second = run(leaderLock.lock(testName));
-      void second.then(() => {
-        secondSettled = true;
-      });
-
-      await run(yieldNow);
-      expect(secondSettled).toBe(false);
-
-      await first[Symbol.asyncDispose]();
-
-      const secondLease = await run.orThrow(() => second);
-      await secondLease[Symbol.asyncDispose]();
-    });
-
-    test("different names lock independently", async () => {
-      await using run = createRun();
-      const leaderLock = createInMemoryLeaderLock();
-
-      const aName = Name.orThrow("LeaderLockA");
-      const bName = Name.orThrow("LeaderLockB");
-
-      const [a, b] = await Promise.all([
-        run.orThrow(leaderLock.lock(aName)),
-        run.orThrow(leaderLock.lock(bName)),
-      ]);
-
-      await a[Symbol.asyncDispose]();
-      await b[Symbol.asyncDispose]();
-    });
-
-    test("root Run disposal releases lease-owned lock wait", async () => {
-      const run = createRun();
-      const leaderLock = createInMemoryLeaderLock();
-
-      await run.orThrow(leaderLock.lock(testName));
-
-      const disposePromise = run[Symbol.asyncDispose]();
-      await testWaitForMacrotask();
-      expect(run.getState().type).toBe("Settled");
-      await disposePromise;
-    });
-
-    test("waiting lock caller aborts when root Run disposes", async () => {
-      const run = createRun();
-      const leaderLock = createInMemoryLeaderLock();
-
-      const first = await run.orThrow(leaderLock.lock(testName));
-
-      const second = run(leaderLock.lock(testName));
-      await run(yieldNow);
-
-      const disposePromise = run[Symbol.asyncDispose]();
-      await expect(second).resolves.toEqual(
-        err({ type: "AbortError", reason: runStoppedError }),
-      );
-      await disposePromise;
-
-      await first[Symbol.asyncDispose]();
-    });
-
-    test("aborting waiting lock caller releases leadership", async () => {
-      await using run = createRun();
-      const leaderLock = createInMemoryLeaderLock();
-
-      const first = await run.orThrow(leaderLock.lock(testName));
-
-      const second = run(leaderLock.lock(testName));
-      await run(yieldNow);
-
-      second.abort("stop");
-      await expect(second).resolves.toEqual(
-        err({ type: "AbortError", reason: "stop" }),
-      );
-
-      await first[Symbol.asyncDispose]();
-
-      const third = await run.orThrow(leaderLock.lock(testName));
-      await third[Symbol.asyncDispose]();
     });
   });
 });

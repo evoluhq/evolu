@@ -1,7 +1,6 @@
 import {
   createConsole,
   createConsoleStoreOutput,
-  createInMemoryLeaderLock,
   createRandomBytes,
   createRun,
   createWebSocket,
@@ -18,17 +17,16 @@ import type {
 } from "@evolu/common/local-first";
 import {
   createEvoluDeps as createCommonEvoluDeps,
-  startDbWorker,
   initSharedWorker,
+  startDbWorker,
 } from "@evolu/common/local-first";
+import { lockManager } from "./LockManager.js";
 import {
   createMessageChannel,
   createMessagePort,
   createSharedWorker,
   createWorker,
 } from "./Worker.js";
-
-const leaderLock = createInMemoryLeaderLock();
 
 /** Creates Evolu dependencies for React Native. */
 export const createEvoluDeps = (
@@ -49,7 +47,7 @@ export const createEvoluDeps = (
       createMessagePort,
       createWebSocket,
       createSqliteDriver: deps.createSqliteDriver,
-      leaderLock,
+      lockManager,
       randomBytes: createRandomBytes(),
     });
   };
@@ -69,6 +67,7 @@ export const createEvoluDeps = (
     ...deps,
     createDbWorker,
     createMessageChannel,
+    lockManager,
     reloadApp: deps.reloadApp,
     sharedWorker,
   });

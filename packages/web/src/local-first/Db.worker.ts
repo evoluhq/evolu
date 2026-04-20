@@ -7,14 +7,14 @@ installPolyfills();
 import { createRandomBytes } from "@evolu/common";
 import { startDbWorker } from "@evolu/common/local-first";
 import { createWasmSqliteDriver } from "../Sqlite.js";
-import { createLeaderLock, createRun } from "../Task.js";
+import { createRun } from "../Task.js";
 import { createWorkerDeps, createWorkerSelf } from "../Worker.js";
 
 // TODO: Disposal.
 const run = createRun({
   ...createWorkerDeps(),
   createSqliteDriver: createWasmSqliteDriver,
-  leaderLock: createLeaderLock(),
+  lockManager: globalThis.navigator.locks,
   randomBytes: createRandomBytes(),
 });
 

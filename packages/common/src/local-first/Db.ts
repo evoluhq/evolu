@@ -18,6 +18,7 @@ import {
   type RandomBytesDep,
 } from "../Crypto.js";
 import { exhaustiveCheck, lazyFalse, lazyVoid } from "../Function.js";
+import { acquireLeaderLock } from "../LockManager.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import { ok, type Result } from "../Result.js";
 import type {
@@ -35,7 +36,7 @@ import {
   sqliteQueryStringToSqliteQuery,
   SqliteValue,
 } from "../Sqlite.js";
-import { callback, type LeaderLockDep, type Task } from "../Task.js";
+import { callback, type Task } from "../Task.js";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.js";
 import type { Name } from "../Type.js";
 import {
@@ -46,6 +47,7 @@ import {
   onePositiveInt,
 } from "../Type.js";
 import type { ExtractType } from "../Types.js";
+import type { LockManagerDep } from "../LockManager.js";
 import type {
   NativeMessagePort,
   Worker,
@@ -120,7 +122,7 @@ export interface CreateDbWorkerDep {
   readonly createDbWorker: CreateDbWorker;
 }
 
-export type DbWorkerDeps = WorkerDeps & LeaderLockDep & CreateSqliteDriverDep;
+export type DbWorkerDeps = WorkerDeps & LockManagerDep & CreateSqliteDriverDep;
 
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
@@ -157,7 +159,7 @@ export const startDbWorker =
     );
 
     disposer.use(
-      await dbWorkerRun.orThrow(deps.leaderLock.lock(initMessage.name)),
+      await dbWorkerRun.orThrow(acquireLeaderLock(initMessage.name)),
     );
     if (disposer.disposed) return ok();
 

@@ -43,7 +43,6 @@ import {
   Id,
   type InferType,
   maxPositiveInt,
-  type Name,
   NonNegativeInt,
   object,
   onePositiveInt,
@@ -2948,68 +2947,6 @@ export const createMutexRef = <T>(initialValue: T): MutexRef<T> => {
       }),
 
     [Symbol.dispose]: mutex[Symbol.dispose],
-  };
-};
-
-/**
- * Cross-platform leader lock abstraction.
- *
- * `lock` returns a {@link Task} that waits until leadership is acquired and
- * yields a lease.
- *
- * Returns {@link AsyncDisposable} lease. Dispose it to release leadership.
- *
- * @group Concurrency primitives
- */
-export interface LeaderLock {
-  readonly lock: (name: Name) => Task<AsyncDisposable>;
-}
-
-/** @group Concurrency primitives */
-export interface LeaderLockDep {
-  readonly leaderLock: LeaderLock;
-}
-
-/**
- * Creates an in-process {@link LeaderLock}.
- *
- * Uses one {@link Mutex} per {@link Name}. Suitable for runtimes without a
- * cross-process lock manager (for example in-memory worker tests or React
- * Native).
- *
- * @group Concurrency primitives
- */
-export const createInMemoryLeaderLock = (): LeaderLock => {
-  const mutexByName = createMutexByKey<Name>();
-
-  return {
-    lock: (name) => async (run) => {
-      const leaseRun = run.create();
-      const released = createDeferred<void>();
-      const acquired = createDeferred<void>();
-
-      void leaseRun(
-        mutexByName.withLock(name, async (run) => {
-          acquired.resolve(ok());
-          await run(released.task);
-          return ok();
-        }),
-      );
-
-      const acquiredResult = await run(acquired.task);
-      if (!acquiredResult.ok) {
-        assert(
-          AbortError.is(acquiredResult.error),
-          "Leader lock acquisition deferred must not be disposed.",
-        );
-        void leaseRun[Symbol.asyncDispose]();
-        return err(acquiredResult.error);
-      }
-
-      return ok({
-        [Symbol.asyncDispose]: leaseRun[Symbol.asyncDispose],
-      });
-    },
   };
 };
 
