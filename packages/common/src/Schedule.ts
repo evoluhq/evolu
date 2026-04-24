@@ -11,6 +11,7 @@ import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task.js";
 import {
   type Duration,
   durationToMillis,
+  maxMillis,
   Millis,
   minMillis,
   type TimeDep,
@@ -211,6 +212,10 @@ export const spaced =
     return () => ok([ms, ms]);
   };
 
+/** Clamps a computed delay to the valid {@link Millis} range, saturating at {@link maxMillis}. */
+const clampToMillis = (raw: number): Millis =>
+  Math.round(raw) >= maxMillis ? maxMillis : Millis.orThrow(Math.max(0, Math.round(raw)));
+
 /**
  * Exponential backoff schedule.
  *
@@ -243,7 +248,7 @@ export const exponential =
     return () => {
       attempt++;
       const rawDelay = baseMs * Math.pow(factor, attempt - 1);
-      const delay = Millis.orThrow(Math.max(0, Math.round(rawDelay)));
+      const delay = clampToMillis(rawDelay);
       return ok([delay, delay]);
     };
   };
@@ -276,7 +281,7 @@ export const linear =
     let attempt = 0;
     return () => {
       attempt++;
-      const delay = Millis.orThrow(ms * attempt);
+      const delay = clampToMillis(ms * attempt);
       return ok([delay, delay]);
     };
   };
@@ -310,7 +315,7 @@ export const fibonacci =
     const ms = durationToMillis(initial);
     let index = 1;
     return () => {
-      const delay = Millis.orThrow(
+      const delay = clampToMillis(
         ms * fibonacciAt(FibonacciIndex.orThrow(index)),
       );
       index++;
