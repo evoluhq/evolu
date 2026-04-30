@@ -2024,7 +2024,7 @@ export const retry =
     task: Task<T, E, D>,
     schedule: Schedule<Output, E>,
     {
-      retryable = lazyTrue as Predicate<E>,
+      retryable = lazyTrue,
       onRetry,
     }: RetryOptions<E, Output> = {},
   ): Task<T, RetryError<E>, D> =>
@@ -2144,7 +2144,7 @@ export const repeat =
     task: Task<T, E, D>,
     schedule: Schedule<Output, T>,
     {
-      repeatable = lazyTrue as Predicate<T>,
+      repeatable = lazyTrue,
       onRepeat,
     }: RepeatOptions<T, Output> = {},
   ): Task<T, E, D> =>

@@ -4651,6 +4651,7 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
 
     if (extraMessage != null) return extraMessage;
 
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
     error = error as TypeErrors;
 
     switch (error.type) {

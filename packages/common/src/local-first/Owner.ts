@@ -100,7 +100,7 @@ export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
 
 /** Converts {@link OwnerIdBytes} to {@link OwnerId}. */
 export const ownerIdBytesToOwnerId = (ownerIdBytes: OwnerIdBytes): OwnerId =>
-  idBytesToId(ownerIdBytes as IdBytes) as OwnerId;
+  idBytesToId(ownerIdBytes) as OwnerId;
 
 export const ownerWriteKeyLength = /*#__PURE__*/ NonNegativeInt.orThrow(16);
 

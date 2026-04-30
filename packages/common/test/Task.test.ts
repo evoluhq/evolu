@@ -6557,7 +6557,7 @@ describe("allSettled", () => {
     const result = await run(
       allSettled([
         () => ok(42),
-        () => err({ type: "MyError" } as MyError),
+        () => err<MyError>({ type: "MyError" }),
         () => ok("hello"),
       ]),
     );
@@ -7233,8 +7233,7 @@ describe("fetch", () => {
     const failure = new Error("network failure");
 
     try {
-      globalThis.fetch = (() =>
-        Promise.reject(failure)) as typeof globalThis.fetch;
+      globalThis.fetch = () => Promise.reject(failure);
 
       expect(await run(fetch("https://example.com"))).toEqual(
         err({ type: "FetchError", error: failure }),
@@ -7250,10 +7249,10 @@ describe("fetch", () => {
     const originalFetch = globalThis.fetch;
 
     try {
-      globalThis.fetch = (() =>
+      globalThis.fetch = () =>
         new Promise<Response>((_resolve, reject) => {
           queueMicrotask(() => reject(new Error("Fetch is aborted")));
-        })) as typeof globalThis.fetch;
+        });
 
       const fiber = run(fetch("https://example.com"));
       fiber.abort("cancelled-by-user");

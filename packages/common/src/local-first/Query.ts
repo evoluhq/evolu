@@ -400,7 +400,7 @@ const parseObject = (
   for (const key in obj) {
     result[key] = parse(obj[key]);
   }
-  return result as ReadonlyRecord<string, unknown>;
+  return result;
 };
 
 const colName = (col: string): Expression<unknown> =>

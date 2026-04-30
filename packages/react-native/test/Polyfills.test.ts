@@ -81,7 +81,7 @@ const createFakeAbortRuntime = (): {
   }
 
   return {
-    AbortController: TestAbortController as unknown as typeof AbortController,
+    AbortController: TestAbortController,
     AbortSignal: TestAbortSignal as unknown as typeof AbortSignal,
     getAbortCallCount: () => abortCallCount,
   };

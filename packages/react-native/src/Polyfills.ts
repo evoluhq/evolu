@@ -76,10 +76,6 @@ interface AbortControllerPrototype extends AbortController {
   readonly __evoluAbortReasonPatched?: true;
 }
 
-interface AbortSignalWithReason extends AbortSignal {
-  readonly reason: unknown;
-}
-
 interface AnyControllersRegistry {
   readonly add: (controller: AbortController) => void;
   readonly remove: (controller: AbortController) => void;
@@ -99,12 +95,12 @@ const anyControllersBySignal = new WeakMap<
 
 const installAbortControllerPolyfills = (): void => {
   installAbortReasonPolyfill(
-    globalThis.AbortController as AbortControllerConstructor,
-    globalThis.AbortSignal as AbortSignalConstructor,
+    globalThis.AbortController,
+    globalThis.AbortSignal,
   );
   installAbortSignalStaticMethods(
-    globalThis.AbortController as AbortControllerConstructor,
-    globalThis.AbortSignal as AbortSignalConstructor,
+    globalThis.AbortController,
+    globalThis.AbortSignal,
   );
 };
 
@@ -279,7 +275,7 @@ const createAnyControllersRegistry = (
 
 const readSignalReason = (signal: AbortSignal): unknown => {
   if ("reason" in signal) {
-    return (signal as AbortSignalWithReason).reason;
+    return signal.reason;
   }
   return createAbortError();
 };

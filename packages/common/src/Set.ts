@@ -65,7 +65,7 @@ export function createSet<T>(
 /** Possibly empty set. */
 export function createSet<T>(items: ReadonlyArray<T>): ReadonlySet<T>;
 export function createSet<T>(items: ReadonlyArray<T>): ReadonlySet<T> {
-  return new Set(items) as ReadonlySet<T>;
+  return new Set(items);
 }
 
 /**
@@ -154,7 +154,7 @@ export const deleteFromSet = <T>(
 ): ReadonlySet<T> => {
   const next = new Set(set);
   next.delete(item);
-  return next as ReadonlySet<T>;
+  return next;
 };
 
 /**
@@ -191,7 +191,7 @@ export function mapSet<T, U>(
   for (const item of set) {
     next.add(mapper(item));
   }
-  return next as ReadonlySet<U>;
+  return next;
 }
 
 /**
@@ -229,7 +229,7 @@ export function filterSet<T>(
       next.add(item);
     }
   }
-  return next as ReadonlySet<T>;
+  return next;
 }
 
 /**

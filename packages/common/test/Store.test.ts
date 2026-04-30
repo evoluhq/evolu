@@ -245,7 +245,8 @@ describe("dispose", () => {
 describe("custom eq", () => {
   test("suppresses notifications for equal states under the provided equality", () => {
     const eqModulo10 = (a: number, b: number) => a % 10 === b % 10;
-    const store = createStore(5 as number, eqModulo10);
+    const store = createStore<number>(5, eqModulo10);
+
     const listener = vi.fn();
     store.subscribe(listener);
 

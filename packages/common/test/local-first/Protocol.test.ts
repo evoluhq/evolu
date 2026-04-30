@@ -87,7 +87,7 @@ beforeAll(async () => {
 
 /** Returns uncompressed and compressed sizes. */
 const getUncompressedAndCompressedSizes = (array: Uint8Array) =>
-  `${array.byteLength} ${compress(array as never).length}`;
+  `${array.byteLength} ${compress(array).length}`;
 
 test("encodeNumber/decodeNumber", () => {
   const testCases = [

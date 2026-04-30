@@ -326,7 +326,7 @@ export function mapArray<T, U>(
   const length = array.length;
   const result = new Array<U>(length);
   for (let i = 0; i < length; i++) result[i] = mapper(array[i], i);
-  return result as ReadonlyArray<U>;
+  return result;
 }
 
 /**
@@ -394,7 +394,7 @@ export function flatMapArray<T, U>(
     index: number,
   ) => ReadonlyArray<U> | Array<U>,
 ): ReadonlyArray<U> {
-  return array.flatMap(mapper) as ReadonlyArray<U>;
+  return array.flatMap(mapper);
 }
 
 /**
@@ -475,7 +475,7 @@ export function filterArray<T>(
   array: ReadonlyArray<T>,
   predicate: PredicateWithIndex<T>,
 ): ReadonlyArray<T> {
-  return array.filter(predicate) as ReadonlyArray<T>;
+  return array.filter(predicate);
 }
 
 /**
@@ -519,7 +519,7 @@ export function dedupeArray<T>(
   by?: (item: T) => unknown,
 ): ReadonlyArray<T> {
   if (by == null) {
-    return Array.from(new Set(array)) as ReadonlyArray<T>;
+    return Array.from(new Set(array));
   }
 
   const seen = new Set<unknown>();
@@ -528,7 +528,7 @@ export function dedupeArray<T>(
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }) as ReadonlyArray<T>;
+  });
 }
 
 /**
@@ -593,7 +593,7 @@ export function partitionArray<T>(
     }
   }
 
-  return [trueArray as ReadonlyArray<T>, falseArray as ReadonlyArray<T>];
+  return [trueArray, falseArray];
 }
 
 /**
@@ -622,7 +622,7 @@ export function sortArray<T>(
   array: ReadonlyArray<T>,
   compareFn?: (a: T, b: T) => number,
 ): ReadonlyArray<T> {
-  return array.toSorted(compareFn) as ReadonlyArray<T>;
+  return array.toSorted(compareFn);
 }
 
 /**
@@ -644,7 +644,7 @@ export function reverseArray<T>(
 /** Possibly empty array. */
 export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T>;
 export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T> {
-  return array.toReversed() as ReadonlyArray<T>;
+  return array.toReversed();
 }
 
 /**

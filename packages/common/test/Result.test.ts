@@ -1,5 +1,16 @@
 import { describe, expect, expectTypeOf, it, test } from "vitest";
 import type { NonEmptyReadonlyArray } from "../src/Array.js";
+import type {
+  Done,
+  Err,
+  ExcludeDone,
+  InferDone,
+  InferErr,
+  InferOk,
+  NextResult,
+  OnlyDone,
+  Result,
+} from "../src/Result.js";
 import {
   allResult,
   anyResult,
@@ -14,17 +25,6 @@ import {
   ok,
   tryAsync,
   trySync,
-} from "../src/Result.js";
-import type {
-  Done,
-  Err,
-  ExcludeDone,
-  InferDone,
-  InferErr,
-  InferOk,
-  NextResult,
-  OnlyDone,
-  Result,
 } from "../src/Result.js";
 
 describe("ok", () => {
@@ -1251,7 +1251,7 @@ describe("generator-based composition", () => {
       ok: false,
       error,
       *[Symbol.iterator]() {
-        yield { ok: false, error } as Err<E>;
+        yield { ok: false, error };
         throw new Error("Unreachable");
       },
     });
@@ -1439,7 +1439,7 @@ describe("generator-based composition", () => {
       ok: false,
       error,
       *[Symbol.iterator]() {
-        yield { ok: false, error } as Err<E>;
+        yield { ok: false, error };
         throw new Error("Unreachable");
       },
     });

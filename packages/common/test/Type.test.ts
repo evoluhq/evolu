@@ -1292,14 +1292,14 @@ test("array", () => {
     TrimmedStringArray.fromParent([
       "test",
       "trimmed",
-    ] as unknown as ReadonlyArray<TrimmedString>),
+    ]),
   ).toEqual(ok(["test", "trimmed"]));
 
   expect(
     TrimmedStringArray.fromParent([
       "valid",
       " invalid",
-    ] as unknown as ReadonlyArray<TrimmedString>),
+    ]),
   ).toEqual(
     err<ArrayError<TrimmedError>>({
       type: "Array",
@@ -2466,7 +2466,7 @@ test("optional", () => {
 
   expect(
     User.fromParent({
-      name: "Alice" as NonEmptyString,
+      name: "Alice",
       age: 30 as PositiveNumber,
     }),
   ).toEqual(ok({ name: "Alice", age: 30 }));
