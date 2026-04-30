@@ -5,7 +5,9 @@ import {
   durationToMillis,
   formatMillisAsClockTime,
   formatMillisAsDuration,
+  maxMillis,
   millisToDateIso,
+  saturateMillis,
   setTimeout,
   testCreateTime,
 } from "../src/Time.js";
@@ -291,6 +293,22 @@ describe("Time", () => {
     test("passes through Millis unchanged", () => {
       expect(durationToMillis(0 as Millis)).toBe(0);
       expect(durationToMillis(5000 as Millis)).toBe(5000);
+    });
+  });
+
+  describe("saturateMillis", () => {
+    test("rounds to the nearest millisecond", () => {
+      expect(saturateMillis(1.4)).toBe(1);
+      expect(saturateMillis(1.5)).toBe(2);
+    });
+
+    test("saturates negative values at min millis", () => {
+      expect(saturateMillis(-1)).toBe(0);
+    });
+
+    test("saturates overflow at maxMillis", () => {
+      expect(saturateMillis(maxMillis + 1)).toBe(maxMillis);
+      expect(saturateMillis(Number.POSITIVE_INFINITY)).toBe(maxMillis);
     });
   });
 

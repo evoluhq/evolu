@@ -55,8 +55,21 @@ import { maxMillis, Millis, minMillis, testCreateTime } from "../src/Time.js";
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {
   const deps = testCreateDeps();
-  const time = testCreateTime({ startAt: startAt as Millis });
+  const time = testCreateTime({ startAt: Millis.orThrow(startAt) });
   return { ...deps, time };
+};
+
+const createScheduleDepsWithNow = (...times: ReadonlyArray<number>) => {
+  const deps = testCreateDeps();
+  let index = 0;
+  const time = testCreateTime({ startAt: Millis.orThrow(times[0] ?? 0) });
+  return {
+    ...deps,
+    time: {
+      ...time,
+      now: () => Millis.orThrow(times[Math.min(index++, times.length - 1)]),
+    },
+  };
 };
 
 const expectOk = (
@@ -88,7 +101,7 @@ describe("Schedule", () => {
       let attempt = 0;
       return () => {
         attempt++;
-        const delay = (100 * attempt) as Millis;
+        const delay = Millis.orThrow(100 * attempt);
         return ok([{ attempt, delay }, delay]);
       };
     };
@@ -98,7 +111,7 @@ describe("Schedule", () => {
       let attempt = 0;
       return () => {
         attempt++;
-        const delay = (100 * attempt) as Millis;
+        const delay = Millis.orThrow(100 * attempt);
         return ok([{ attempt }, delay]);
       };
     };
@@ -257,6 +270,19 @@ describe("exponential", () => {
     // Advance to attempt 43 where 100 * 2^42 > maxMillis
     for (let i = 0; i < 42; i++) step(undefined);
     expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+  });
+
+  test("throws for invalid factor", () => {
+    expect(() => exponential("100ms", Number.NaN)).toThrow(
+      "Expected factor to be a non-negative finite number.",
+    );
+    expect(() => exponential("100ms", Number.POSITIVE_INFINITY)).toThrow(
+      "Expected factor to be a non-negative finite number.",
+    );
+    expect(() => exponential("100ms", -1)).toThrow(
+      "Expected factor to be a non-negative finite number.",
+    );
   });
 });
 
@@ -268,6 +294,13 @@ describe("linear", () => {
     expectOk(step(undefined), [200, 200]);
     expectOk(step(undefined), [300, 300]);
     expectOk(step(undefined), [400, 400]);
+  });
+
+  test("saturates at maxMillis instead of throwing on overflow", () => {
+    const deps = createScheduleDeps();
+    const step = linear(maxMillis)(deps);
+    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
   });
 });
 
@@ -282,6 +315,14 @@ describe("fibonacci", () => {
     expectOk(step(undefined), [300, 300]); // 100 * 3
     expectOk(step(undefined), [500, 500]); // 100 * 5
     expectOk(step(undefined), [800, 800]); // 100 * 8
+  });
+
+  test("saturates at maxMillis instead of throwing after max Fibonacci index", () => {
+    const deps = createScheduleDeps();
+    const step = fibonacci("1ms")(deps);
+    for (let i = 0; i < 78; i++) step(undefined);
+    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
   });
 });
 
@@ -402,6 +443,14 @@ describe("elapsed", () => {
     expectOk(step(undefined), [1000, 0]);
   });
 
+  test("returns zero elapsed time when time moves backwards", () => {
+    const deps = createScheduleDepsWithNow(100, 50);
+    const step = elapsed(deps);
+
+    expectOk(step(undefined), [0, 0]);
+    expectOk(step(undefined), [0, 0]);
+  });
+
   test("combined with other schedule", () => {
     const deps = createScheduleDeps();
     const step = intersectSchedules(take(3)(spaced("100ms")), elapsed)(deps);
@@ -512,6 +561,17 @@ describe("take", () => {
     expectOk(step(undefined), [400, 400]);
     expectDone(step(undefined));
   });
+
+  test("throws for invalid number of attempts", () => {
+    expect(() => take(Number.NaN)).toThrow(
+      "Expected n to be a non-negative integer.",
+    );
+    expect(() => take(Number.POSITIVE_INFINITY)).toThrow(
+      "Expected n to be a non-negative integer.",
+    );
+    expect(() => take(1.5)).toThrow("Expected n to be a non-negative integer.");
+    expect(() => take(-1)).toThrow("Expected n to be a non-negative integer.");
+  });
 });
 
 describe("maxElapsed", () => {
@@ -535,6 +595,13 @@ describe("maxDelay", () => {
     expectOk(step(undefined), [400, 300]); // capped
     expectOk(step(undefined), [800, 300]); // capped
   });
+
+  test("maxDelay preserves done", () => {
+    const deps = createScheduleDeps();
+    const step = maxDelay("300ms")(once)(deps);
+    expectOk(step(undefined), [0, 0]);
+    expectDone(step(undefined));
+  });
 });
 
 describe("jitter", () => {
@@ -550,14 +617,33 @@ describe("jitter", () => {
     expect(delay).toBeLessThanOrEqual(150);
   });
 
-  test("validates Millis bounds", () => {
+  test("jitter preserves done", () => {
+    const deps = createScheduleDeps();
+    const step = jitter(0.5)(once)(deps);
+    expectOk(step(undefined), [0, 0]);
+    expectDone(step(undefined));
+  });
+
+  test("saturates at maxMillis instead of throwing on overflow", () => {
     const deps = {
-      time: testCreateTime({ startAt: 0 as Millis }),
+      time: testCreateTime({ startAt: minMillis }),
       random: { next: () => 0.999999999 as RandomNumber },
     };
 
     const step = jitter(1)(spaced(maxMillis))(deps);
-    expect(() => step(undefined)).toThrow();
+    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+  });
+
+  test("throws for invalid factor", () => {
+    expect(() => jitter(Number.NaN)).toThrow(
+      "Expected factor to be a non-negative finite number.",
+    );
+    expect(() => jitter(Number.POSITIVE_INFINITY)).toThrow(
+      "Expected factor to be a non-negative finite number.",
+    );
+    expect(() => jitter(-1)).toThrow(
+      "Expected factor to be a non-negative finite number.",
+    );
   });
 });
 
@@ -613,6 +699,12 @@ describe("modifyDelay", () => {
     expectOk(step(undefined), [0, 123]);
     expectDone(step(undefined));
   });
+
+  test("saturates at maxMillis instead of throwing on overflow", () => {
+    const deps = createScheduleDeps();
+    const step = modifyDelay(() => maxMillis + 1)(once)(deps);
+    expect(step(undefined)).toEqual(ok([0, maxMillis]));
+  });
 });
 
 describe("compensate", () => {
@@ -634,6 +726,14 @@ describe("compensate", () => {
     const step = compensate(take(1)(spaced("1s")))(deps);
     expectOk(step(undefined), [1000, 1000]);
     expectDone(step(undefined));
+  });
+
+  test("keeps full delay when time moves backwards", () => {
+    const deps = createScheduleDepsWithNow(100, 50);
+    const step = compensate(spaced("1s"))(deps);
+
+    expectOk(step(undefined), [1000, 1000]);
+    expectOk(step(undefined), [1000, 1000]);
   });
 });
 

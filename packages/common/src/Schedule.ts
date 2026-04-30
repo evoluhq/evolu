@@ -4,6 +4,7 @@
  * @module
  */
 
+import { assertType } from "./Assert.js";
 import { fibonacciAt, FibonacciIndex, increment } from "./Number.js";
 import type { RandomDep } from "./Random.js";
 import { done, err, type NextResult, ok } from "./Result.js";
@@ -11,12 +12,17 @@ import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task.js";
 import {
   type Duration,
   durationToMillis,
-  maxMillis,
   Millis,
   minMillis,
+  saturateMillis,
   type TimeDep,
 } from "./Time.js";
-import { onePositiveInt, PositiveInt } from "./Type.js";
+import {
+  NonNegativeFiniteNumber,
+  NonNegativeInt,
+  onePositiveInt,
+  PositiveInt,
+} from "./Type.js";
 import type { Predicate } from "./Types.js";
 
 /**
@@ -114,11 +120,11 @@ const createScheduleStepMetrics = (
   return () => {
     const now = deps.time.now();
     const currentAttempt = attempt;
-    attempt = increment(attempt) as PositiveInt;
+    attempt = PositiveInt.orThrow(increment(attempt));
     start ??= now;
-    const elapsed = (now - start) as Millis;
+    const elapsed = saturateMillis(now - start);
     const elapsedSincePrevious =
-      previous === null ? (0 as Millis) : ((now - previous) as Millis);
+      previous === null ? minMillis : saturateMillis(now - previous);
     previous = now;
     return { attempt: currentAttempt, elapsed, elapsedSincePrevious };
   };
@@ -212,10 +218,6 @@ export const spaced =
     return () => ok([ms, ms]);
   };
 
-/** Clamps a computed delay to the valid {@link Millis} range, saturating at {@link maxMillis}. */
-const clampToMillis = (raw: number): Millis =>
-  Math.round(raw) >= maxMillis ? maxMillis : Millis.orThrow(Math.max(0, Math.round(raw)));
-
 /**
  * Exponential backoff schedule.
  *
@@ -240,18 +242,24 @@ const clampToMillis = (raw: number): Millis =>
  *
  * @group Constructors
  */
-export const exponential =
-  (base: Duration, factor = 2): Schedule<Millis> =>
-  () => {
+export const exponential = (base: Duration, factor = 2): Schedule<Millis> => {
+  assertType(
+    NonNegativeFiniteNumber,
+    factor,
+    "Expected factor to be a non-negative finite number.",
+  );
+
+  return () => {
     const baseMs = durationToMillis(base);
     let attempt = 0;
     return () => {
       attempt++;
       const rawDelay = baseMs * Math.pow(factor, attempt - 1);
-      const delay = clampToMillis(rawDelay);
+      const delay = saturateMillis(rawDelay);
       return ok([delay, delay]);
     };
   };
+};
 
 /**
  * Linear backoff schedule.
@@ -281,7 +289,7 @@ export const linear =
     let attempt = 0;
     return () => {
       attempt++;
-      const delay = clampToMillis(ms * attempt);
+      const delay = saturateMillis(ms * attempt);
       return ok([delay, delay]);
     };
   };
@@ -313,12 +321,10 @@ export const fibonacci =
   (initial: Duration): Schedule<Millis> =>
   () => {
     const ms = durationToMillis(initial);
-    let index = 1;
+    let index = FibonacciIndex.orThrow(1);
     return () => {
-      const delay = clampToMillis(
-        ms * fibonacciAt(FibonacciIndex.orThrow(index)),
-      );
-      index++;
+      const delay = saturateMillis(ms * fibonacciAt(index));
+      index = FibonacciIndex.orNull(increment(index)) ?? index;
       return ok([delay, delay]);
     };
   };
@@ -361,7 +367,7 @@ export const fixed =
       const remainder = intervalMs === 0 ? 0 : elapsed % intervalMs;
       const boundary = intervalMs - remainder;
       const delay = runningBehind ? 0 : boundary;
-      return ok([count++, delay as Millis]);
+      return ok([count++, saturateMillis(delay)]);
     };
   };
 
@@ -393,7 +399,7 @@ export const windowed =
       const { elapsed } = metrics();
       const remainder = intervalMs === 0 ? 0 : elapsed % intervalMs;
       const delay = intervalMs === 0 ? 0 : intervalMs - remainder;
-      return ok([count++, delay as Millis]);
+      return ok([count++, saturateMillis(delay)]);
     };
   };
 
@@ -568,18 +574,22 @@ export const unfoldSchedule =
  *
  * @group Limiting
  */
-export const take =
-  (n: number) =>
-  <Output, Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
-  (deps) => {
-    const step = schedule(deps);
-    let attempt = 0;
-    return (input) => {
-      attempt++;
-      if (attempt > n) return err(done());
-      return step(input);
+export const take = (n: number) => {
+  assertType(NonNegativeInt, n, "Expected n to be a non-negative integer.");
+
+  return <Output, Input>(
+      schedule: Schedule<Output, Input>,
+    ): Schedule<Output, Input> =>
+    (deps) => {
+      const step = schedule(deps);
+      let attempt = 0;
+      return (input) => {
+        attempt++;
+        if (attempt > n) return err(done());
+        return step(input);
+      };
     };
-  };
+};
 
 /**
  * Limits schedule execution to a maximum elapsed time.
@@ -664,19 +674,27 @@ export const maxDelay = (max: Duration) => {
  *
  * @group Delay
  */
-export const jitter =
-  (factor = 0.5) =>
-  <Output, Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
-  (deps) => {
-    const step = schedule(deps);
-    return (input) => {
-      const result = step(input);
-      if (!result.ok) return result;
-      const [output, delay] = result.value;
-      const jittered = delay * (1 - factor + deps.random.next() * 2 * factor);
-      return ok([output, Millis.orThrow(Math.max(0, Math.round(jittered)))]);
+export const jitter = (factor = 0.5) => {
+  assertType(
+    NonNegativeFiniteNumber,
+    factor,
+    "Expected factor to be a non-negative finite number.",
+  );
+
+  return <Output, Input>(
+      schedule: Schedule<Output, Input>,
+    ): Schedule<Output, Input> =>
+    (deps) => {
+      const step = schedule(deps);
+      return (input) => {
+        const result = step(input);
+        if (!result.ok) return result;
+        const [output, delay] = result.value;
+        const jittered = delay * (1 - factor + deps.random.next() * 2 * factor);
+        return ok([output, saturateMillis(jittered)]);
+      };
     };
-  };
+};
 
 /**
  * Adds an initial delay before the first attempt.
@@ -760,7 +778,7 @@ export const modifyDelay =
       const result = step(input);
       if (!result.ok) return result;
       const [output, delay] = result.value;
-      return ok([output, Millis.orThrow(Math.max(0, Math.round(f(delay))))]);
+      return ok([output, saturateMillis(f(delay))]);
     };
   };
 
@@ -792,8 +810,7 @@ export const compensate =
       const result = step(input);
       if (!result.ok) return result;
       const [output, delay] = result.value;
-      const adjusted = Math.max(0, delay - elapsedSincePrevious);
-      return ok([output, adjusted as Millis]);
+      return ok([output, saturateMillis(delay - elapsedSincePrevious)]);
     };
   };
 
@@ -1047,15 +1064,15 @@ export function passthrough<Output, Input>(
  * // Outputs: 100, 300, 700, 1500, ... (cumulative)
  *
  * // Collect all outputs
- * const collected = foldSchedule([] as Millis[], (acc, delay: Millis) => [
- *   ...acc,
- *   delay,
- * ])(take(3)(spaced("1s")));
+ * const collected = foldSchedule<ReadonlyArray<Millis>, Millis>(
+ *   [],
+ *   (acc, delay) => [...acc, delay],
+ * )(take(3)(spaced("1s")));
  * // Outputs: [1000], [1000, 1000], [1000, 1000, 1000]
  *
  * // Count attempts with custom output
  * const counted = foldSchedule(
- *   { attempts: 0, lastDelay: 0 as Millis },
+ *   { attempts: 0, lastDelay: minMillis },
  *   (acc, delay: Millis) => ({
  *     attempts: acc.attempts + 1,
  *     lastDelay: delay,
@@ -1343,7 +1360,7 @@ export const unionSchedules =
       const [outputA, delayA] = resultA.value;
       const [outputB, delayB] = resultB.value;
       // Use minimum delay, output from the one with smaller delay
-      const minDelay = Math.min(delayA, delayB) as Millis;
+      const minDelay = Millis.orThrow(Math.min(delayA, delayB));
       return delayA <= delayB
         ? ok([outputA, minDelay])
         : ok([outputB, minDelay]);

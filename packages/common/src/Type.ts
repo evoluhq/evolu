@@ -2335,6 +2335,14 @@ export const FiniteNumber = /*#__PURE__*/ finite(Number);
 export type FiniteNumber = typeof FiniteNumber.Type;
 
 /**
+ * Non-negative finite number.
+ *
+ * @group Number
+ */
+export const NonNegativeFiniteNumber = /*#__PURE__*/ nonNegative(FiniteNumber);
+export type NonNegativeFiniteNumber = typeof NonNegativeFiniteNumber.Type;
+
+/**
  * Number that is a multiple of a divisor.
  *
  * Use numeric literal, not expression. See {@link BrandFactory}.

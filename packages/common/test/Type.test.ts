@@ -53,28 +53,28 @@ import type {
   UnionError,
 } from "../src/Type.js";
 import {
-  ArrayBuffer,
   array,
+  ArrayBuffer,
   Base64Url,
   base64UrlToUint8Array,
   between,
   BigInt as BigIntType,
   Boolean,
   brand,
-  CurrencyCode,
   createFormatTypeError,
   createId,
   createIdAsUuidv7,
   createIdFromString,
+  CurrencyCode,
   Date,
   DateIso,
-  dateToDateIso,
   dateIsoToDate,
+  dateToDateIso,
   EvoluType,
   FiniteNumber,
   formatBase64UrlError,
-  formatSimplePasswordError,
   formatRegexError,
+  formatSimplePasswordError,
   formatStringError,
   Function,
   greaterThan,
@@ -101,8 +101,8 @@ import {
   maxLength,
   minLength,
   Mnemonic,
-  Name,
   multipleOf,
+  Name,
   NegativeInt,
   NegativeNumber,
   NonEmptyString,
@@ -111,12 +111,13 @@ import {
   NonEmptyTrimmedString100,
   NonEmptyTrimmedString1000,
   NonNaNNumber,
+  NonNegativeFiniteNumber,
   NonNegativeInt,
   NonNegativeNumber,
   NonPositiveInt,
   NonPositiveNumber,
-  nullableToOptional,
   Null,
+  nullableToOptional,
   nullishOr,
   nullOr,
   Number,
@@ -137,11 +138,11 @@ import {
   trimmed,
   TrimmedString,
   tuple,
-  typeErrorToStandardSchemaIssues,
-  Undefined,
-  Uint8Array,
   typed,
+  typeErrorToStandardSchemaIssues,
+  Uint8Array,
   uint8ArrayToBase64Url,
+  Undefined,
   undefinedOr,
   union,
   Unknown,
@@ -1201,6 +1202,20 @@ test("FiniteNumber", () => {
   expectTypeOf(FiniteNumber.Type).toEqualTypeOf<number & Brand<"Finite">>();
 });
 
+test("NonNegativeFiniteNumber", () => {
+  expect(NonNegativeFiniteNumber.from(0)).toEqual(ok(0));
+  expect(NonNegativeFiniteNumber.from(1)).toEqual(ok(1));
+  expect(NonNegativeFiniteNumber.from(-1)).toEqual(
+    err<NonNegativeError>({ type: "NonNegative", value: -1 }),
+  );
+  expect(NonNegativeFiniteNumber.from(Infinity)).toEqual(
+    err<FiniteError>({ type: "Finite", value: Infinity }),
+  );
+  expectTypeOf(NonNegativeFiniteNumber.Type).toEqualTypeOf<
+    number & Brand<"Finite"> & Brand<"NonNegative">
+  >();
+});
+
 test("multipleOf", () => {
   const MultipleOf3 = multipleOf(3)(Number);
 
@@ -1346,19 +1361,11 @@ test("array", () => {
     }),
   );
 
-  expect(
-    TrimmedStringArray.fromParent([
-      "test",
-      "trimmed",
-    ]),
-  ).toEqual(ok(["test", "trimmed"]));
+  expect(TrimmedStringArray.fromParent(["test", "trimmed"])).toEqual(
+    ok(["test", "trimmed"]),
+  );
 
-  expect(
-    TrimmedStringArray.fromParent([
-      "valid",
-      " invalid",
-    ]),
-  ).toEqual(
+  expect(TrimmedStringArray.fromParent(["valid", " invalid"])).toEqual(
     err<ArrayError<TrimmedError>>({
       type: "Array",
       value: ["valid", " invalid"],
@@ -1618,7 +1625,7 @@ test("record", () => {
     RecordError<StringError, NumberError>
   >();
 
-  expect(NonEmptyStringToNumber.fromParent({ "": 42 } as never)).toEqual(
+  expect(NonEmptyStringToNumber.fromParent({ "": 42 })).toEqual(
     err({
       type: "Record",
       value: { "": 42 },
@@ -1632,7 +1639,9 @@ test("record", () => {
 
   const NonEmptyStringToPositiveNumber = record(NonEmptyString, PositiveNumber);
 
-  expect(NonEmptyStringToPositiveNumber.fromParent({ key: -1 } as never)).toEqual(
+  expect(
+    NonEmptyStringToPositiveNumber.fromParent({ key: -1 } as never),
+  ).toEqual(
     err({
       type: "Record",
       value: { key: -1 },
@@ -2078,7 +2087,9 @@ test("recursive", () => {
     expect(validResult.value).toEqual(validCategory);
   }
 
-  expect(Category.fromParent(validCategory as never)).toEqual(ok(validCategory));
+  expect(Category.fromParent(validCategory as never)).toEqual(
+    ok(validCategory),
+  );
 
   expect(Category.name).toBe("Recursive");
 
@@ -2095,7 +2106,6 @@ test("recursive", () => {
       },
     }),
   );
-
 });
 
 test("nullOr", () => {
@@ -2897,7 +2907,14 @@ test("createFormatTypeError covers built-in and composite formatter branches", (
     [Function, 1],
     [Uint8Array, "x"],
     [ArrayBuffer, "x"],
-    [instanceOf(class User { id = 1; }), {}],
+    [
+      instanceOf(
+        class User {
+          id = 1;
+        },
+      ),
+      {},
+    ],
     [EvoluType, "x"],
     [CurrencyCode, "usd"],
     [DateIso, "2022-12-01T00:00:00.000"],

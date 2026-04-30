@@ -178,6 +178,13 @@ export const minMillis = 0 as Millis;
 export const maxMillis = (maxMillisWithInfinity - 1) as Millis;
 
 /**
+ * Converts a number to {@link Millis}, rounding to the nearest millisecond and
+ * saturating overflow at {@link maxMillis}.
+ */
+export const saturateMillis = (value: number): Millis =>
+  Millis.orNull(Math.max(0, Math.round(value))) ?? maxMillis;
+
+/**
  * Converts {@link Millis} to {@link DateIso}.
  *
  * This is a safe cast because {@link Millis} guarantees a valid timestamp range
