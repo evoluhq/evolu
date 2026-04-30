@@ -58,7 +58,7 @@ type TodosRow = typeof todosQuery.Row;
 const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(AppSchema);
 
 const console = Evolu.createConsole({
-  // level: "debug",
+  level: "debug",
   formatter: Evolu.createConsoleFormatter()({ timestampFormat: "relative" }),
 });
 
