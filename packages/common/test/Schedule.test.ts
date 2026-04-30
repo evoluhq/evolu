@@ -250,6 +250,14 @@ describe("exponential", () => {
     // step1 continues from its data
     expectOk(step1(undefined), [400, 400]);
   });
+
+  test("saturates at maxMillis instead of throwing on overflow", () => {
+    const deps = createScheduleDeps();
+    const step = exponential("100ms")(deps);
+    // Advance to attempt 43 where 100 * 2^42 > maxMillis
+    for (let i = 0; i < 42; i++) step(undefined);
+    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+  });
 });
 
 describe("linear", () => {
