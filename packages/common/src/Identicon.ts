@@ -147,8 +147,8 @@ export const createIdenticon = (
     case "sutnar": {
       // Three compositional variants with adaptive colors.
       const hue = (bytes[0] / 255) * 360;
-      const saturation = 50 + (bytes[1] / 255) * 30;
-      const lightness = 50 + (bytes[2] / 255) * 20;
+      const saturation = 60 + (bytes[1] / 255) * 30;
+      const lightness = 35 + (bytes[2] / 255) * 20;
 
       // Generate palette from base hue with variations
       const toHsl = (h: number, s: number, l: number) =>
@@ -157,11 +157,11 @@ export const createIdenticon = (
       const color1 = toHsl(hue, saturation, lightness);
       const color2 = toHsl((hue + 120) % 360, saturation, lightness);
       const color3 = toHsl((hue + 240) % 360, saturation, lightness);
-      const color4 = toHsl(hue, saturation * 0.3, lightness * 0.5);
+      const color4 = toHsl(hue, saturation * 0.5, lightness * 0.6);
       const color5 = toHsl(
         hue,
         saturation * 0.5,
-        Math.min(lightness * 1.3, 90),
+        Math.min(lightness * 1.3, 60),
       );
 
       const palette = [color1, color2, color3, color4, color5] as const;
