@@ -191,6 +191,9 @@ export type SqliteRow = Record<string, SqliteValue>;
 export interface SqliteDriver extends Disposable {
   readonly exec: (query: SqliteQuery) => SqliteExecResult;
 
+  /** Disposes this driver, then deletes its persistent database file. */
+  readonly deleteDatabase: () => void;
+
   /**
    * Returns bytes backed by {@link ArrayBuffer}.
    *
@@ -402,7 +405,7 @@ export const createPreparedStatementsCache = <P>(
         statement = factory(query.sql);
         statementsBySql.set(query.sql, statement);
       }
-      return statement as never;
+      return statement;
     },
 
     [Symbol.dispose]: () => disposables.dispose(),

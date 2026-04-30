@@ -5,15 +5,18 @@ import {
   type CreateSqliteDriver,
   type SqliteRow,
 } from "@evolu/common";
-import { openDatabaseSync, SQLiteStatement } from "expo-sqlite";
+import {
+  deleteDatabaseSync,
+  openDatabaseSync,
+  type SQLiteStatement,
+} from "expo-sqlite";
 
 export const createExpoSqliteDriver: CreateSqliteDriver =
   (name, options) => () => {
+    const databaseName = `evolu1-${name}.db`;
     using disposer = new DisposableStack();
     const db = disposer.adopt(
-      openDatabaseSync(
-        options?.mode === "memory" ? ":memory:" : `evolu1-${name}.db`,
-      ),
+      openDatabaseSync(options?.mode === "memory" ? ":memory:" : databaseName),
       (db) => {
         db.closeSync();
       },
@@ -67,6 +70,16 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
 
         // Ensure export uses transferable ArrayBuffer backing.
         return new Uint8Array(file);
+      },
+
+      deleteDatabase: () => {
+        using deleteDisposer = new DisposableStack();
+        if (options?.mode !== "memory") {
+          deleteDisposer.defer(() => {
+            deleteDatabaseSync(databaseName);
+          });
+        }
+        deleteDisposer.use(disposables);
       },
 
       [Symbol.dispose]: () => {

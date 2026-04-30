@@ -59,6 +59,16 @@ export const createOpSqliteDriver: CreateSqliteDriver =
         throw new Error("TODO: Not implemented yet");
       },
 
+      deleteDatabase: () => {
+        using deleteDisposer = new DisposableStack();
+        if (options?.mode !== "memory") {
+          deleteDisposer.defer(() => {
+            db.delete();
+          });
+        }
+        deleteDisposer.use(disposables);
+      },
+
       [Symbol.dispose]: () => {
         disposables.dispose();
       },

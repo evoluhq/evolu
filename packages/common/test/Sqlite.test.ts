@@ -212,6 +212,7 @@ describe("transactions", () => {
           return { rows: [], changes: 0 };
         },
         export: () => new Uint8Array(),
+        deleteDatabase: lazyVoid,
         [Symbol.dispose]: () => {
           // No cleanup needed
         },
@@ -264,6 +265,7 @@ describe("transactions", () => {
           throw new Error("Query failed");
         },
         export: () => new Uint8Array(),
+        deleteDatabase: lazyVoid,
         [Symbol.dispose]: () => {
           // No cleanup needed
         },
@@ -303,6 +305,7 @@ describe("transactions", () => {
           return { rows: [], changes: 0 };
         },
         export: () => new Uint8Array(),
+        deleteDatabase: lazyVoid,
         [Symbol.dispose]: lazyVoid,
       };
       return ok(driver);
@@ -339,6 +342,7 @@ describe("export", () => {
         export: () => {
           throw new Error("Export failed");
         },
+        deleteDatabase: lazyVoid,
         [Symbol.dispose]: lazyVoid,
       };
       return ok(driver);
@@ -435,6 +439,7 @@ test("async dispose is idempotent", async () => {
       const driver: SqliteDriver = {
         exec: () => ({ rows: [], changes: 0 }),
         export: () => new Uint8Array(),
+        deleteDatabase: lazyVoid,
         [Symbol.dispose]: () => {
           driverDisposeCount++;
         },
@@ -464,6 +469,7 @@ test("sync methods throw after sqlite is disposed", async () => {
           exportCalls++;
           return new Uint8Array();
         },
+        deleteDatabase: lazyVoid,
         [Symbol.dispose]: lazyVoid,
       };
       return ok(driver);
@@ -493,6 +499,7 @@ test("createSqlite returns error when driver creation is aborted", async () => {
     return ok({
       exec: () => ({ rows: [], changes: 0 }),
       export: () => new Uint8Array(),
+      deleteDatabase: lazyVoid,
       [Symbol.dispose]: lazyVoid,
     });
   };

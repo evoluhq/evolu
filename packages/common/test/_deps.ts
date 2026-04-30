@@ -1,5 +1,6 @@
 import BetterSQLite, { type Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
+import { rmSync } from "fs";
 import type { TimingSafeEqual } from "../src/Crypto.js";
 import { lazyTrue, lazyVoid } from "../src/Function.js";
 import {
@@ -39,6 +40,10 @@ export const setupSqlite: () => ReturnType<typeof testSetupSqlite> = () =>
 // (nodejs depends on common — importing back would create a circular dependency).
 const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
   const filename = options?.mode === "memory" ? ":memory:" : `${name}.db`;
+  const filenamesToDelete =
+    options?.mode === "memory"
+      ? []
+      : [filename, `${filename}-shm`, `${filename}-wal`, `${filename}-journal`];
   using disposer = new DisposableStack();
   const db = disposer.adopt(new BetterSQLite(filename), (db) => {
     db.close();
@@ -79,6 +84,16 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
 
       // Ensure export uses transferable ArrayBuffer backing.
       return new Uint8Array(file);
+    },
+
+    deleteDatabase: () => {
+      using deleteDisposer = new DisposableStack();
+      for (const filename of filenamesToDelete) {
+        deleteDisposer.defer(() => {
+          rmSync(filename, { force: true });
+        });
+      }
+      deleteDisposer.use(disposables);
     },
 
     [Symbol.dispose]: () => {

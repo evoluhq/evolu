@@ -1,6 +1,6 @@
 import { createSqlite, Name, sql, testCreateRun } from "@evolu/common";
 import BetterSQLite from "better-sqlite3";
-import { existsSync, unlinkSync } from "fs";
+import { existsSync, rmSync } from "fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createBetterSqliteDriver } from "../src/Sqlite.js";
 
@@ -138,9 +138,15 @@ describe("createBetterSqliteDriver", () => {
 
   describe("file-based database", () => {
     const dbPath = `${testName}.db`;
+    const dbPaths = [
+      dbPath,
+      `${dbPath}-shm`,
+      `${dbPath}-wal`,
+      `${dbPath}-journal`,
+    ];
 
     afterEach(() => {
-      if (existsSync(dbPath)) unlinkSync(dbPath);
+      for (const path of dbPaths) rmSync(path, { force: true });
     });
 
     test("creates database file on disk", async () => {
@@ -148,6 +154,36 @@ describe("createBetterSqliteDriver", () => {
       using _driver = await run.orThrow(createBetterSqliteDriver(testName));
 
       expect(existsSync(dbPath)).toBe(true);
+    });
+
+    test("dispose preserves database file on disk", async () => {
+      await using run = testCreateRun();
+      const driver = await run.orThrow(createBetterSqliteDriver(testName));
+
+      driver.exec(sql`create table t (data text);`);
+      driver[Symbol.dispose]();
+
+      expect(existsSync(dbPath)).toBe(true);
+    });
+
+    test("deleteDatabase removes database file from disk", async () => {
+      await using run = testCreateRun();
+      const driver = await run.orThrow(createBetterSqliteDriver(testName));
+
+      driver.exec(sql`create table t (data text);`);
+      driver.exec(sql`insert into t (data) values (${"deleted"});`);
+      driver.deleteDatabase();
+
+      expect(dbPaths.every((path) => !existsSync(path))).toBe(true);
+
+      using newDriver = await run.orThrow(createBetterSqliteDriver(testName));
+      const result = newDriver.exec(sql`
+        select name
+        from sqlite_master
+        where type = 'table' and name = 't';
+      `);
+
+      expect(result.rows).toEqual([]);
     });
   });
 });

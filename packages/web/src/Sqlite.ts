@@ -3,6 +3,7 @@ import { bytesToHex, createPreparedStatementsCache, ok } from "@evolu/common";
 import sqlite3InitModule, {
   type Database,
   type PreparedStatement,
+  type SAHPoolUtil,
 } from "@evolu/sqlite-wasm";
 
 // @ts-expect-error Missing types.
@@ -23,26 +24,51 @@ globalThis.sqlite3ApiConfig = {
 // Init ASAP.
 const sqlite3Promise = sqlite3InitModule();
 
+const fileName = "evolu1.db";
+
 export const createWasmSqliteDriver: CreateSqliteDriver =
   (name, options) => async () => {
     const sqlite3 = await sqlite3Promise;
-    // This is used to make OPFS default vfs for multipleciphers
-    // @ts-expect-error Missing types (update @evolu/sqlite-wasm types)
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    sqlite3.capi.sqlite3mc_vfs_create("opfs", 1);
 
     using disposer = new DisposableStack();
+    const useDatabase = (database: Database): Database =>
+      disposer.adopt(database, (database) => {
+        database.close();
+      });
+
+    let deleteDatabaseFile = false;
+    const createOpfsSAHPoolVfs = async (
+      options: Parameters<typeof sqlite3.installOpfsSAHPoolVfs>[0],
+    ): Promise<SAHPoolUtil> => {
+      const pool = await sqlite3.installOpfsSAHPoolVfs(options);
+      if (pool.isPaused()) await pool.unpauseVfs();
+      disposer.defer(() => {
+        if (deleteDatabaseFile) pool.unlink(`/${fileName}`);
+        pool.pauseVfs();
+      });
+      return pool;
+    };
+
     let db: Database;
+
     switch (options?.mode) {
       case "memory":
-        db = new sqlite3.oo1.DB(":memory:");
+        db = useDatabase(new sqlite3.oo1.DB(":memory:"));
         break;
+
       case "encrypted": {
-        const pool = await sqlite3.installOpfsSAHPoolVfs({
+        // MultipleCiphers encryption requires its VFS wrapper for OPFS SAH-pool.
+        // @ts-expect-error Missing types (update @evolu/sqlite-wasm types)
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        sqlite3.capi.sqlite3mc_vfs_create("opfs", 1);
+        const pool = await createOpfsSAHPoolVfs({
           directory: `.${name}`,
         });
-        db = new pool.OpfsSAHPoolDb(
-          "file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
+        db = useDatabase(
+          new pool.OpfsSAHPoolDb(
+            // SQLite normalizes this URI filename to SAH-pool path "/evolu1.db".
+            `file:${fileName}?vfs=multipleciphers-opfs-sahpool`,
+          ),
         );
         db.exec(`
           PRAGMA cipher = 'sqlcipher';
@@ -50,15 +76,12 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
         `);
         break;
       }
+
       default: {
-        const pool = await sqlite3.installOpfsSAHPoolVfs({ name });
-        db = new pool.OpfsSAHPoolDb("file:evolu1.db");
+        const pool = await createOpfsSAHPoolVfs({ name });
+        db = useDatabase(new pool.OpfsSAHPoolDb(`file:${fileName}`));
       }
     }
-
-    db = disposer.adopt(db, (db) => {
-      db.close();
-    });
 
     const cache = disposer.use(
       createPreparedStatementsCache<PreparedStatement>(
@@ -103,8 +126,12 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
 
       export: () => sqlite3.capi.sqlite3_js_db_export(db),
 
+      deleteDatabase: () => {
+        deleteDatabaseFile = true;
+        disposables.dispose();
+      },
+
       [Symbol.dispose]: () => {
-        // poolUtil.unlink?
         disposables.dispose();
       },
     });

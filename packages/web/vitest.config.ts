@@ -17,7 +17,8 @@ export default defineProject({
     setupFiles: ["./test/_setup.ts"],
     browser: {
       enabled: true,
-      provider: playwright(),
+      // WebKit OPFS sync access handles fail in Playwright's ephemeral context.
+      provider: playwright({ persistentContext: true }),
       headless: true,
       fileParallelism: false, // false is faster for some reason.
       instances: isCoverage
