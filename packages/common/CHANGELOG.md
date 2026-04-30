@@ -1,5 +1,31 @@
 # @evolu/common
 
+## 8.0.0-next.4
+
+### Minor Changes
+
+- ef7f242: Added Web Locks helpers in `@evolu/common`: `LockManagerDep`,
+  `testCreateLockManager`, and `acquireLeaderLock`.
+
+  `testCreateLockManager` is a native-backed test helper because native `LockManager` cannot be instantiated per test. It isolates lock usage per instance with internal namespacing while preserving visible lock names and native Web Locks behavior in tests.
+
+  `acquireLeaderLock` acquires an exclusive leader-election lease for a name and returns an async-disposable handle that holds leadership until disposed.
+
+  Added a React Native `lockManager` ponyfill in `@evolu/react-native` because React Native does not support [Web Locks](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) yet.
+
+### Patch Changes
+
+- a70d933: Improved Schedule timing safety and validation.
+
+  Schedule now:
+  - Saturates computed delays to valid `Millis` values instead of throwing on overflow.
+  - Handles backwards-clock elapsed deltas without producing invalid branded values.
+  - Validates numeric Schedule options.
+
+  Also added:
+  - `saturateMillis` in the Time module for converting numbers to valid `Millis` values with overflow saturation.
+  - `NonNegativeFiniteNumber` in the Type module for validating non-negative finite numbers.
+
 ## 8.0.0-next.3
 
 ### Patch Changes
