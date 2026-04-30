@@ -414,6 +414,7 @@ export const initSharedWorker =
     const tenantsByName = disposer.use(
       await sharedWorkerRun.orThrow(
         createSharedResourceByKey(createEvoluTenant, {
+          idleDisposeAfter: "3s",
           lookup: (message) => message.name,
         }),
       ),

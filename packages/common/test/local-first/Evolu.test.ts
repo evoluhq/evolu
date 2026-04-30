@@ -2154,7 +2154,7 @@ describe("integration tests", () => {
     `);
   });
 
-  test.todo("dispose and recreate keeps loadQuery working", async () => {
+  test("dispose and recreate keeps loadQuery working", async () => {
     await using setup = await setupRunWithEvoluDeps();
     const { createIntegrationEvolu, run } = setup;
 
@@ -2167,48 +2167,45 @@ describe("integration tests", () => {
     await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([]);
   });
 
-  test.todo(
-    "dispose and recreate keeps subscribed query loading persisted rows",
-    async () => {
-      await using setup = await setupRunWithEvoluDeps();
-      const { createIntegrationEvolu, run } = setup;
+  test("dispose and recreate keeps subscribed query loading persisted rows", async () => {
+    await using setup = await setupRunWithEvoluDeps();
+    const { createIntegrationEvolu, run } = setup;
 
-      const evolu1 = await run.orThrow(createIntegrationEvolu);
+    const evolu1 = await run.orThrow(createIntegrationEvolu);
 
-      let completed = 0;
-      const mutationCompleted = Promise.withResolvers<void>();
+    let completed = 0;
+    const mutationCompleted = Promise.withResolvers<void>();
 
-      evolu1.insert(
-        "todo",
-        {
-          title: NonEmptyString100.orThrow("Persisted after recreate"),
+    evolu1.insert(
+      "todo",
+      {
+        title: NonEmptyString100.orThrow("Persisted after recreate"),
+      },
+      {
+        onComplete: () => {
+          completed += 1;
+          mutationCompleted.resolve();
         },
-        {
-          onComplete: () => {
-            completed += 1;
-            mutationCompleted.resolve();
-          },
-        },
-      );
+      },
+    );
 
-      await mutationCompleted.promise;
-      expect(completed).toBe(1);
+    await mutationCompleted.promise;
+    expect(completed).toBe(1);
 
-      await evolu1[Symbol.asyncDispose]();
+    await evolu1[Symbol.asyncDispose]();
 
-      const evolu2 = await run.orThrow(createIntegrationEvolu);
-      const unsubscribe = evolu2.subscribeQuery(todoByCreatedAtQuery)(lazyVoid);
+    const evolu2 = await run.orThrow(createIntegrationEvolu);
+    const unsubscribe = evolu2.subscribeQuery(todoByCreatedAtQuery)(lazyVoid);
 
-      await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([
-        {
-          id: expect.any(String),
-          title: "Persisted after recreate",
-        },
-      ]);
+    await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([
+      {
+        id: expect.any(String),
+        title: "Persisted after recreate",
+      },
+    ]);
 
-      unsubscribe();
-    },
-  );
+    unsubscribe();
+  });
 
   test("memoryOnly opens SQLite in memory mode", async () => {
     const consoleStoreOutput = createConsoleStoreOutput();

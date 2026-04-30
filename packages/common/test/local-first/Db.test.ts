@@ -2026,7 +2026,64 @@ describe("sync message flow", () => {
     `);
   });
 
-  test.todo("CreateSyncMessages isolates owner state across multiple owners");
+  test("CreateSyncMessages isolates owner state across multiple owners", async () => {
+    await using setup = await setupDbWorker();
+
+    await postRequest(setup, {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Mutate",
+        changes: [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            ownerId: testAppOwner.id,
+            values: { name: "first owner" },
+            isInsert: true,
+            isDelete: null,
+          }),
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            ownerId: testAppOwner2.id,
+            values: { name: "second owner" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+        onCompleteIds: [],
+        subscribedQueries: emptySet,
+      },
+    });
+
+    const outputs = await postRequest(setup, {
+      type: "ForSharedWorker",
+      message: {
+        type: "CreateSyncMessages",
+        owners: [testAppOwner, testAppOwner2],
+      },
+    });
+
+    expect(outputs).toMatchInlineSnapshot(`
+      [
+        {
+          "callbackId": "T-vftdB4K_reh6yT2RUm8w",
+          "response": {
+            "message": {
+              "protocolMessagesByOwnerId": Map {
+                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,1,0,1,1,179,193,154,79,36,24,166,44,1],
+                "aTWWTYCG02eZXcwSlNkOyA" => uint8:[1,105,53,150,77,128,134,211,103,153,93,204,18,148,217,14,200,0,0,1,0,1,2,1,0,2,1,179,193,154,79,36,24,166,44,1],
+              },
+              "type": "CreateSyncMessages",
+            },
+            "type": "ForSharedWorker",
+          },
+          "type": "OnQueuedResponse",
+        },
+      ]
+    `);
+  });
 
   test("sync mutate batches same-owner changes and updates updatedAt", async () => {
     await using setup = await setupDbWorker();
