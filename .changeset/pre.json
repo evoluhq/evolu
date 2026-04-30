@@ -46,6 +46,7 @@
     "result-never-inference",
     "schedule-module",
     "set-module",
+    "silent-showers-follow",
     "smart-refs-store",
     "spotty-coats-sort",
     "sqlite-refactor",
