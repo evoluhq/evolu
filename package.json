@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "turbo run dev --filter=relay --filter=web",
     "relay": "turbo --filter relay dev",
-    "build": "pnpm clean:ts && turbo --filter @evolu/* build",
+    "build": "pnpm clean:ts && turbo --filter @evolu/* --filter relay build",
     "build:web": "pnpm build:docs && turbo --filter web build",
     "build:web:fast": "rm -rf 'apps/web/src/app/(docs)/docs/api-reference' && turbo --filter web build",
     "build:docs": "typedoc && pnpm --dir apps/web fix:docs",
@@ -62,7 +62,7 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@parcel/watcher",

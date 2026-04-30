@@ -103,7 +103,7 @@
     "expo-secure-store": "~55.0.8",
     "expo-sqlite": "~55.0.10",
     "react": "catalog:react19",
-    "react-native": "0.83.2",
+    "react-native": "0.83.6",
     "react-native-nitro-modules": "0.34.1",
     "react-native-sensitive-info": "6.0.0-rc.11",
     "react-native-svg": "15.15.3",
