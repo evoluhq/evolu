@@ -106,7 +106,8 @@ const VisibleSectionHighlight = ({
     ? Math.max(1, visibleSections.length) * itemHeight
     : itemHeight;
   const top =
-    group.links.findIndex((link) => isPathActive(link.href, pathname)) * itemHeight +
+    group.links.findIndex((link) => isPathActive(link.href, pathname)) *
+      itemHeight +
     firstVisibleSectionIndex * itemHeight;
 
   return (
@@ -130,8 +131,8 @@ const ActivePageMarker = ({
 }) => {
   const itemHeight = remToPx(2);
   const offset = remToPx(0.25);
-  const activePageIndex = group.links.findIndex(
-    (link) => isPathActive(link.href, pathname),
+  const activePageIndex = group.links.findIndex((link) =>
+    isPathActive(link.href, pathname),
   );
   const top = offset + activePageIndex * itemHeight;
 
@@ -192,7 +193,10 @@ const NavigationGroup = ({
         <ul role="list" className="border-l border-transparent">
           {group.links.map((link) => (
             <motion.li key={link.href} layout="position" className="relative">
-              <NavLink href={link.href} active={isPathActive(link.href, pathname)}>
+              <NavLink
+                href={link.href}
+                active={isPathActive(link.href, pathname)}
+              >
                 {link.title}{" "}
                 {link.href.startsWith("http") && <IconArrowUpRight />}
               </NavLink>
