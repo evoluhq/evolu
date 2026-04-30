@@ -1,6 +1,7 @@
 import type { MessagePort, NativeMessagePort } from "@evolu/common";
 import { expect, test, vi } from "vitest";
 import {
+  createBroadcastChannel,
   createMessageChannel,
   createMessagePort,
   createSharedWorker,
@@ -45,25 +46,21 @@ test("createWorker wraps a native worker and disposes via terminate", () => {
 });
 
 test("createMessageChannel queues messages until onMessage is assigned", async () => {
-  const channel = createMessageChannel<string>();
+  using channel = createMessageChannel<string>();
   const received: Array<string> = [];
 
-  try {
-    channel.port1.postMessage("queued");
-    channel.port2.onMessage = (message) => {
-      received.push(message);
-    };
+  channel.port1.postMessage("queued");
+  channel.port2.onMessage = (message) => {
+    received.push(message);
+  };
 
-    await vi.waitFor(() => {
-      expect(received).toEqual(["queued"]);
-    });
-  } finally {
-    channel[Symbol.dispose]();
-  }
+  await vi.waitFor(() => {
+    expect(received).toEqual(["queued"]);
+  });
 });
 
 test("createMessageChannel supports bidirectional communication and disposal", async () => {
-  const channel = createMessageChannel<string, number>();
+  using channel = createMessageChannel<string, number>();
   const strings: Array<string> = [];
   const numbers: Array<number> = [];
 
@@ -81,40 +78,39 @@ test("createMessageChannel supports bidirectional communication and disposal", a
     expect(strings).toEqual(["hello"]);
     expect(numbers).toEqual([42]);
   });
-
-  channel[Symbol.dispose]();
 });
 
 test("createMessagePort wraps a native port received from MessageChannel", async () => {
+  using disposer = new DisposableStack();
   const nativeChannel = new MessageChannel();
-  const wrappedPort = createMessagePort<number, string>(
-    nativeChannel.port1 as unknown as NativeMessagePort<number, string>,
+  disposer.defer(() => {
+    nativeChannel.port2.close();
+  });
+  const wrappedPort = disposer.use(
+    createMessagePort<number, string>(
+      nativeChannel.port1 as unknown as NativeMessagePort<number, string>,
+    ),
   );
   const received: Array<string> = [];
 
-  try {
-    wrappedPort.onMessage = (message) => {
-      received.push(message);
+  wrappedPort.onMessage = (message) => {
+    received.push(message);
+  };
+  nativeChannel.port2.postMessage("hello");
+
+  await vi.waitFor(() => {
+    expect(received).toEqual(["hello"]);
+  });
+
+  const nativeReceived = new Promise<number>((resolve) => {
+    nativeChannel.port2.onmessage = (event) => {
+      resolve(event.data as number);
     };
-    nativeChannel.port2.postMessage("hello");
+  });
 
-    await vi.waitFor(() => {
-      expect(received).toEqual(["hello"]);
-    });
+  wrappedPort.postMessage(42);
 
-    const nativeReceived = new Promise<number>((resolve) => {
-      nativeChannel.port2.onmessage = (event) => {
-        resolve(event.data as number);
-      };
-    });
-
-    wrappedPort.postMessage(42);
-
-    expect(await nativeReceived).toBe(42);
-  } finally {
-    wrappedPort[Symbol.dispose]();
-    nativeChannel.port2.close();
-  }
+  expect(await nativeReceived).toBe(42);
 });
 
 test("createMessagePort assigns and clears the native onmessage handler", () => {
@@ -140,6 +136,47 @@ test("createMessagePort assigns and clears the native onmessage handler", () => 
   expect(nativePort.postMessage).toHaveBeenNthCalledWith(2, "with transfer", [
     transferable,
   ]);
+});
+
+test("createBroadcastChannel wraps native BroadcastChannel", async () => {
+  const channelName = `test-channel-${crypto.randomUUID()}`;
+  const channel1 = createBroadcastChannel<string>(channelName);
+  const received1: Array<string> = [];
+  const received2: Array<string> = [];
+
+  {
+    using _channel1 = channel1;
+    using channel2 = createBroadcastChannel<string>(channelName);
+
+    channel1.onMessage = (message) => {
+      received1.push(message);
+    };
+    channel2.onMessage = (message) => {
+      received2.push(message);
+    };
+    expect(channel2.onMessage).not.toBeNull();
+    channel2.onMessage = null;
+    expect(channel2.onMessage).toBeNull();
+    channel2.onMessage = (message) => {
+      received2.push(message);
+    };
+
+    channel1.postMessage("hello");
+
+    await vi.waitFor(() => {
+      expect(received2).toEqual(["hello"]);
+    });
+
+    expect(received1).toEqual([]);
+  }
+
+  channel1.onMessage = (message) => {
+    received1.push(message);
+  };
+  expect(channel1.onMessage).toBeNull();
+  expect(() => channel1.postMessage("closed")).toThrow(
+    "Expected value to not be disposed.",
+  );
 });
 
 test("createMessagePort dispose uses terminate when available", () => {
@@ -186,32 +223,28 @@ test("createWorker communicates with createWorkerSelf through a native worker", 
     new URL("./workers/dedicated-worker.ts", import.meta.url),
     { type: "module" },
   );
-  const worker = createWorker<WorkerInput, WorkerOutput>(nativeWorker);
+  using worker = createWorker<WorkerInput, WorkerOutput>(nativeWorker);
 
-  try {
-    const ready = new Promise<void>((resolve) => {
-      worker.onMessage = (message) => {
-        if (message.type === "ready") resolve();
-      };
-    });
+  const ready = new Promise<void>((resolve) => {
+    worker.onMessage = (message) => {
+      if (message.type === "ready") resolve();
+    };
+  });
 
-    await ready;
+  await ready;
 
-    const received = new Promise<WorkerOutput>((resolve) => {
-      worker.onMessage = (message) => {
-        if (message.type === "echo") resolve(message);
-      };
-    });
+  const received = new Promise<WorkerOutput>((resolve) => {
+    worker.onMessage = (message) => {
+      if (message.type === "echo") resolve(message);
+    };
+  });
 
-    worker.postMessage({ type: "echo", value: "hello" });
+  worker.postMessage({ type: "echo", value: "hello" });
 
-    await expect(received).resolves.toEqual({
-      type: "echo",
-      value: "hello",
-    });
-  } finally {
-    worker[Symbol.dispose]();
-  }
+  await expect(received).resolves.toEqual({
+    type: "echo",
+    value: "hello",
+  });
 });
 
 test("createWorkerSelf wraps dedicated worker self and disposes via close", () => {
@@ -244,23 +277,20 @@ test("createSharedWorker communicates with createSharedWorkerSelf through a nati
   const worker = createSharedWorker<WorkerInput, WorkerOutput>(
     nativeSharedWorker,
   );
+  using _worker = worker;
 
-  try {
-    const received = new Promise<WorkerOutput>((resolve) => {
-      worker.port.onMessage = (message) => {
-        if (message.type === "echo") resolve(message);
-      };
-    });
+  const received = new Promise<WorkerOutput>((resolve) => {
+    worker.port.onMessage = (message) => {
+      if (message.type === "echo") resolve(message);
+    };
+  });
 
-    worker.port.postMessage({ type: "echo", value: "queued" });
+  worker.port.postMessage({ type: "echo", value: "queued" });
 
-    await expect(received).resolves.toEqual({
-      type: "echo",
-      value: "queued",
-    });
-  } finally {
-    worker[Symbol.dispose]();
-  }
+  await expect(received).resolves.toEqual({
+    type: "echo",
+    value: "queued",
+  });
 });
 
 test("createSharedWorkerSelf wraps connected ports and disposes the worker scope", () => {

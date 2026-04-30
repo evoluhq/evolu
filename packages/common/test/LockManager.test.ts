@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { err, getOrThrow } from "../src/Result.js";
 import {
   acquireLeaderLock,
+  acquireLeaderLockCallback,
   testCreateLockManager,
 } from "../src/LockManager.js";
 import { runStoppedError, yieldNow } from "../src/Task.js";
@@ -204,5 +205,65 @@ describe("acquireLeaderLock", () => {
     if (!secondResult.ok) return;
 
     await secondResult.value[Symbol.asyncDispose]();
+  });
+});
+
+describe("acquireLeaderLockCallback", () => {
+  const leaderLockName = Name.orThrow("LeaderLockCallback");
+
+  test("waits until previous disposable lease is disposed", async () => {
+    const deps = { lockManager: testCreateLockManager() };
+    const firstAcquired = Promise.withResolvers<void>();
+    const secondAcquired = Promise.withResolvers<void>();
+    const acquisitions: Array<string> = [];
+
+    using first = acquireLeaderLockCallback(deps)(leaderLockName, () => {
+      acquisitions.push("first");
+      firstAcquired.resolve();
+    });
+
+    await firstAcquired.promise;
+
+    let secondCallbackCalled = false;
+    using _second = acquireLeaderLockCallback(deps)(leaderLockName, () => {
+      acquisitions.push("second");
+      secondCallbackCalled = true;
+      secondAcquired.resolve();
+    });
+
+    await testWaitForMacrotask();
+    expect(secondCallbackCalled).toBe(false);
+
+    first[Symbol.dispose]();
+    await secondAcquired.promise;
+
+    expect(acquisitions).toEqual(["first", "second"]);
+  });
+
+  test("disposing pending acquisition prevents callback", async () => {
+    const deps = { lockManager: testCreateLockManager() };
+    const firstAcquired = Promise.withResolvers<void>();
+    const thirdAcquired = Promise.withResolvers<void>();
+
+    const first = acquireLeaderLockCallback(deps)(leaderLockName, () => {
+      firstAcquired.resolve();
+    });
+    await firstAcquired.promise;
+
+    let secondCallbackCalled = false;
+    const second = acquireLeaderLockCallback(deps)(leaderLockName, () => {
+      secondCallbackCalled = true;
+    });
+    await testWaitForMacrotask();
+
+    second[Symbol.dispose]();
+    first[Symbol.dispose]();
+
+    using _third = acquireLeaderLockCallback(deps)(leaderLockName, () => {
+      thirdAcquired.resolve();
+    });
+
+    await thirdAcquired.promise;
+    expect(secondCallbackCalled).toBe(false);
   });
 });

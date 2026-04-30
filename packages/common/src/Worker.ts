@@ -1,16 +1,16 @@
 /**
- * Platform-agnostic Worker abstractions.
+ * Typed, disposable worker and messaging primitives.
  *
  * @module
  */
 
-import { assert } from "./Assert.js";
+import { assert, assertNotDisposed } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { ConsoleDep, ConsoleStoreOutputEntryDep } from "./Console.js";
 import { testWaitForMacrotask } from "./Test.js";
 
 /**
- * Platform-agnostic Worker.
+ * Typed, disposable Worker.
  *
  * @see https://developer.mozilla.org/en-US/docs/Web/API/Worker
  */
@@ -20,7 +20,7 @@ export interface Worker<Input, Output = never> extends MessagePort<
 > {}
 
 /**
- * Platform-agnostic SharedWorker.
+ * Typed, disposable SharedWorker.
  *
  * A shared worker is shared across multiple clients (tabs, windows, iframes)
  * and provides a port for bidirectional communication with each client.
@@ -33,7 +33,7 @@ export interface SharedWorker<Input, Output = never> extends Disposable {
 }
 
 /**
- * Platform-agnostic MessagePort.
+ * Typed, disposable MessagePort.
  *
  * Note: There is no reliable way to detect when a port is closed or
  * disconnected. Calling `postMessage` on a disposed port does not throw — it
@@ -114,7 +114,7 @@ export type WorkerDeps = ConsoleDep &
   CreateMessagePortDep;
 
 /**
- * Platform-agnostic MessageChannel.
+ * Typed, disposable MessageChannel.
  *
  * Creates two entangled ports: keep one and transfer the other (e.g., to a
  * SharedWorker via `postMessage` with `transfer`). Messages sent to one port
@@ -176,6 +176,31 @@ export type CreateMessageChannel = <Input, Output = never>() => MessageChannel<
 
 export interface CreateMessageChannelDep {
   readonly createMessageChannel: CreateMessageChannel;
+}
+
+/**
+ * Typed, disposable BroadcastChannel.
+ *
+ * Broadcast channels deliver messages to other channels opened with the same
+ * name. The sending channel does not receive its own messages.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel
+ */
+export interface BroadcastChannel<Input, Output = Input> extends Disposable {
+  /** Posts a message to other channels with the same name. */
+  readonly postMessage: (message: Input) => void;
+
+  /** Handler for incoming broadcast messages. */
+  onMessage: ((message: Output) => void) | null;
+}
+
+/** Factory function to create a {@link BroadcastChannel}. */
+export type CreateBroadcastChannel = <Input, Output = Input>(
+  name: string,
+) => BroadcastChannel<Input, Output>;
+
+export interface CreateBroadcastChannelDep {
+  readonly createBroadcastChannel: CreateBroadcastChannel;
 }
 
 /**
@@ -251,18 +276,16 @@ export const createMessageChannel: CreateMessageChannel = <
     queue: [],
     flushScheduled: false,
     flushTimeoutId: null,
-    refCount: 0,
+    ownerCount: 0,
     pendingTransferCount: 0,
-    closed: false,
   };
   const state2: PortState<Input> = {
     handler: null,
     queue: [],
     flushScheduled: false,
     flushTimeoutId: null,
-    refCount: 0,
+    ownerCount: 0,
     pendingTransferCount: 0,
-    closed: false,
   };
 
   const native1 = createNativeMessagePortToken<Input, Output>();
@@ -310,6 +333,75 @@ export const createMessagePort: CreateMessagePort = <Input, Output = never>(
 };
 
 /**
+ * Creates an in-memory {@link BroadcastChannel}.
+ *
+ * This is a memory-only fallback for platforms without native BroadcastChannel
+ * support. Message delivery is asynchronous in-process.
+ */
+export const createBroadcastChannel: CreateBroadcastChannel = <
+  Input,
+  Output = Input,
+>(
+  name: string,
+): BroadcastChannel<Input, Output> => {
+  let onMessageHandler: ((message: Output) => void) | null = null;
+  const dispatch: BroadcastChannelDispatch<Output> = (message) => {
+    onMessageHandler?.(message);
+  };
+
+  let dispatches = broadcastChannelDispatchesByName.get(name);
+  if (!dispatches) {
+    dispatches = new Set();
+    broadcastChannelDispatchesByName.set(name, dispatches);
+  }
+  dispatches.add(dispatch as BroadcastChannelDispatch<any>);
+
+  using disposer = new DisposableStack();
+
+  disposer.defer(() => {
+    onMessageHandler = null;
+
+    dispatches.delete(dispatch as BroadcastChannelDispatch<any>);
+    if (dispatches.size === 0) broadcastChannelDispatchesByName.delete(name);
+  });
+
+  const disposables = disposer.move();
+
+  return {
+    postMessage: (message) => {
+      assertNotDisposed(disposables);
+
+      const dispatches = broadcastChannelDispatchesByName.get(name);
+      assert(dispatches, "Expected broadcast channel dispatches");
+
+      for (const otherDispatch of [...dispatches]) {
+        if (otherDispatch === dispatch) continue;
+
+        globalThis.setTimeout(() => {
+          if (!dispatches.has(otherDispatch)) return;
+          otherDispatch(message);
+        }, 0);
+      }
+    },
+    get onMessage() {
+      return disposables.disposed ? null : onMessageHandler;
+    },
+    set onMessage(fn) {
+      if (disposables.disposed) return;
+      onMessageHandler = fn;
+    },
+    [Symbol.dispose]: () => disposables.dispose(),
+  };
+};
+
+type BroadcastChannelDispatch<T> = (message: T) => void;
+
+const broadcastChannelDispatchesByName = new Map<
+  string,
+  Set<BroadcastChannelDispatch<any>>
+>();
+
+/**
  * Test {@link Worker} with access to its paired worker-side `self`.
  *
  * Use `self` to simulate messages and behavior from inside the worker.
@@ -344,6 +436,14 @@ export interface TestMessageChannel<
   readonly isDisposed: () => boolean;
 }
 
+/** {@link BroadcastChannel} with disposal tracking for testing. */
+export interface TestBroadcastChannel<
+  Input,
+  Output = Input,
+> extends BroadcastChannel<Input, Output> {
+  readonly isDisposed: () => boolean;
+}
+
 /**
  * Creates a connected {@link TestWorker} for testing.
  *
@@ -360,7 +460,7 @@ export const testCreateWorker = <Input, Output = never>(): TestWorker<
     self = nextSelf;
   });
 
-  return Object.assign(worker, { self }) as TestWorker<Input, Output>;
+  return Object.assign(worker, { self });
 };
 
 /**
@@ -380,7 +480,7 @@ export const testCreateSharedWorker = <
   return Object.assign(worker, {
     self,
     connect,
-  }) as TestSharedWorker<Input, Output>;
+  });
 };
 
 /**
@@ -414,11 +514,35 @@ export const testCreateMessagePort: CreateMessagePort = <Input, Output = never>(
   nativePort: NativeMessagePort<Input, Output>,
 ): MessagePort<Input, Output> => createMessagePort(nativePort);
 
+/** Creates an in-memory {@link BroadcastChannel} for testing. */
+export const testCreateBroadcastChannel = <Input, Output = Input>(
+  name: string,
+): TestBroadcastChannel<Input, Output> => {
+  using disposer = new DisposableStack();
+
+  const channel = disposer.use(createBroadcastChannel<Input, Output>(name));
+  const disposables = disposer.move();
+
+  return {
+    postMessage: channel.postMessage,
+    get onMessage() {
+      return channel.onMessage;
+    },
+    set onMessage(value) {
+      channel.onMessage = value;
+    },
+    isDisposed: () => disposables.disposed,
+    [Symbol.dispose]: () => disposables.dispose(),
+  };
+};
+
 /**
- * Waits long enough for multi-hop in-memory worker message delivery in tests.
+ * Waits the minimal time necessary for in-memory worker message delivery in
+ * tests.
  *
- * Some flows require several queued macrotasks across worker/message-port
- * boundaries; this helper advances that pipeline deterministically.
+ * This is better than `vi.waitFor` when a test only needs to flush the known
+ * in-memory worker/message-port pipeline. It encodes that transport boundary
+ * once, avoids polling, and keeps worker-focused tests fast and explicit.
  */
 export const testWaitForWorkerMessage = async (): Promise<void> => {
   await testWaitForMacrotask();
@@ -499,9 +623,8 @@ interface PortState<T> {
   readonly queue: Array<T>;
   flushScheduled: boolean;
   flushTimeoutId: ReturnType<typeof globalThis.setTimeout> | null;
-  refCount: number;
+  ownerCount: number;
   pendingTransferCount: number;
-  closed: boolean;
 }
 
 interface PortRegistration<Input, Output> {
@@ -518,18 +641,19 @@ const createPort = <Input, Output>({
   using disposer = new DisposableStack();
 
   if (receive.pendingTransferCount > 0) receive.pendingTransferCount -= 1;
-  receive.refCount += 1;
+  else receive.ownerCount += 1;
 
   disposer.defer(() => {
-    receive.refCount -= 1;
-    if (receive.refCount > 0 || receive.pendingTransferCount > 0) return;
+    receive.ownerCount -= 1;
+    if (receive.ownerCount > 0) return;
+
+    nativePortRegistry.delete(native);
 
     if (receive.flushTimeoutId != null) {
       globalThis.clearTimeout(receive.flushTimeoutId);
       receive.flushTimeoutId = null;
     }
 
-    receive.closed = true;
     receive.handler = null;
     receive.flushScheduled = false;
     receive.queue.length = 0;
@@ -538,14 +662,17 @@ const createPort = <Input, Output>({
   const disposables = disposer.move();
 
   const scheduleFlush = (state: PortState<any>): void => {
-    if (state.flushScheduled || state.closed) return;
+    if (state.flushScheduled || state.ownerCount === 0) return;
     state.flushScheduled = true;
 
     // Native worker messages are task-queued; use macrotask timing.
     state.flushTimeoutId = globalThis.setTimeout(() => {
       state.flushTimeoutId = null;
       state.flushScheduled = false;
-      if (state.closed) return;
+      if (state.ownerCount === 0) return;
+
+      const firstHandler = state.handler;
+      if (!firstHandler) return;
 
       for (const message of state.queue.splice(0)) {
         const handler = state.handler;
@@ -558,7 +685,12 @@ const createPort = <Input, Output>({
 
   return {
     postMessage: (message, transfer) => {
-      if (disposables.disposed || receive.closed || peerReceive.closed) return;
+      if (
+        disposables.disposed ||
+        receive.ownerCount === 0 ||
+        peerReceive.ownerCount === 0
+      )
+        return;
 
       for (const transferable of transfer ?? []) {
         if (transferable instanceof globalThis.ArrayBuffer) continue;
@@ -566,8 +698,8 @@ const createPort = <Input, Output>({
         const registration = nativePortRegistry.get(transferable);
         if (!registration) continue;
 
+        registration.receive.ownerCount += 1;
         registration.receive.pendingTransferCount += 1;
-        registration.receive.closed = false;
       }
 
       peerReceive.queue.push(message);
@@ -577,7 +709,7 @@ const createPort = <Input, Output>({
       return disposables.disposed ? null : receive.handler;
     },
     set onMessage(fn) {
-      if (disposables.disposed || receive.closed) return;
+      if (disposables.disposed || receive.ownerCount === 0) return;
       receive.handler = fn;
       if (fn) scheduleFlush(receive);
     },

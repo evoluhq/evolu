@@ -1,4 +1,8 @@
 import type {
+  BroadcastChannel,
+  CreateBroadcastChannel,
+  CreateBroadcastChannelDep,
+  CreateMessageChannelDep,
   CreateMessagePort,
   MessageChannel,
   MessagePort,
@@ -10,7 +14,12 @@ import type {
   WorkerDeps,
   WorkerSelf,
 } from "@evolu/common";
-import { assert, createConsole, createConsoleStoreOutput } from "@evolu/common";
+import {
+  assert,
+  assertNotDisposed,
+  createConsole,
+  createConsoleStoreOutput,
+} from "@evolu/common";
 
 /** Creates a {@link Worker} from a Web Worker. */
 export const createWorker = <Input, Output>(
@@ -65,6 +74,45 @@ export const createMessageChannel = <Input, Output = never>(): MessageChannel<
 export const createMessagePort: CreateMessagePort = (nativePort) =>
   wrap(nativePort as unknown as globalThis.MessagePort);
 
+/** Creates an Evolu {@link BroadcastChannel} from a Web BroadcastChannel. */
+export const createBroadcastChannel: CreateBroadcastChannel = <
+  Input,
+  Output = Input,
+>(
+  name: string,
+): BroadcastChannel<Input, Output> => {
+  const nativeBroadcastChannel = new globalThis.BroadcastChannel(name);
+  using disposer = new DisposableStack();
+
+  disposer.defer(() => {
+    nativeBroadcastChannel.onmessage = null;
+    nativeBroadcastChannel.close();
+  });
+
+  const disposables = disposer.move();
+  let onMessageHandler: ((message: Output) => void) | null = null;
+
+  return {
+    postMessage: (message) => {
+      assertNotDisposed(disposables);
+      nativeBroadcastChannel.postMessage(message);
+    },
+    get onMessage() {
+      return disposables.disposed ? null : onMessageHandler;
+    },
+    set onMessage(fn) {
+      if (disposables.disposed) return;
+      onMessageHandler = fn;
+      nativeBroadcastChannel.onmessage = fn
+        ? (event: MessageEvent<Output>) => {
+            fn(event.data);
+          }
+        : null;
+    },
+    [Symbol.dispose]: () => disposables.dispose(),
+  };
+};
+
 /**
  * Creates an Evolu {@link WorkerSelf} from a Web `DedicatedWorkerGlobalScope`
  * (`self` inside a dedicated worker).
@@ -102,13 +150,17 @@ export const createSharedWorkerSelf = <Input, Output = never>(
 };
 
 /** Creates deps shared by web worker entry points. */
-export const createWorkerDeps = (): WorkerDeps => {
+export const createWorkerDeps = (): WorkerDeps &
+  CreateBroadcastChannelDep &
+  CreateMessageChannelDep => {
   const consoleStoreOutput = createConsoleStoreOutput();
   const console = createConsole({ output: consoleStoreOutput });
 
   return {
     console,
     consoleStoreOutputEntry: consoleStoreOutput.entry,
+    createBroadcastChannel,
+    createMessageChannel,
     createMessagePort,
   };
 };

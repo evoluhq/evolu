@@ -3,13 +3,15 @@ import { lazyVoid } from "../src/Function.js";
 import { testWaitForMacrotask } from "../src/Test.js";
 import type { NativeMessagePort } from "../src/Worker.js";
 import {
-  createSharedWorker,
   createWorker,
+  createSharedWorker,
+  createBroadcastChannel,
+  testCreateWorker,
+  testCreateSharedWorker,
   testCreateMessageChannel,
   testCreateMessagePort,
-  testCreateSharedWorker,
+  testCreateBroadcastChannel,
   testWaitForWorkerMessage,
-  testCreateWorker,
 } from "../src/Worker.js";
 
 describe("createWorker", () => {
@@ -93,6 +95,19 @@ describe("testCreateMessageChannel", () => {
     await testWaitForMacrotask();
 
     expect(received).toEqual(["a", "b"]);
+  });
+
+  test("messages remain queued when dispatch runs before onMessage is assigned", async () => {
+    const channel = testCreateMessageChannel<string>();
+    const received: Array<string> = [];
+
+    channel.port1.postMessage("buffered");
+    await testWaitForMacrotask();
+
+    channel.port2.onMessage = (msg) => received.push(msg);
+    await testWaitForMacrotask();
+
+    expect(received).toEqual(["buffered"]);
   });
 
   test("messages sent after onMessage is assigned are delivered asynchronously", async () => {
@@ -325,11 +340,183 @@ describe("testCreateMessagePort", () => {
     expect(received).toEqual(["delivered"]);
   });
 
+  test("throws for disposed native port", () => {
+    const channel = testCreateMessageChannel<string>();
+    const native = channel.port1.native;
+
+    channel.port1[Symbol.dispose]();
+
+    expect(() => testCreateMessagePort(native)).toThrow("Unknown native port");
+  });
+
   test("throws for unknown native port", () => {
     const unknownNative = {} as NativeMessagePort;
     expect(() => testCreateMessagePort(unknownNative)).toThrow(
       "Unknown native port",
     );
+  });
+});
+
+describe("createBroadcastChannel", () => {
+  test("postMessage delivers to other channels with the same name asynchronously", async () => {
+    using channel1 = createBroadcastChannel<string>("test-channel");
+    using channel2 = createBroadcastChannel<string>("test-channel");
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => received.push(message);
+    channel1.postMessage("hello");
+
+    expect(received).toEqual([]);
+    await testWaitForMacrotask();
+
+    expect(received).toEqual(["hello"]);
+  });
+
+  test("postMessage does not deliver to the sending channel", async () => {
+    using channel = createBroadcastChannel<string>("test-channel-self");
+    const received: Array<string> = [];
+
+    channel.onMessage = (message) => received.push(message);
+    channel.postMessage("ignored");
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual([]);
+  });
+
+  test("postMessage fans out to all other channels with the same name", async () => {
+    using channel1 = createBroadcastChannel<string>("test-channel-fanout");
+    using channel2 = createBroadcastChannel<string>("test-channel-fanout");
+    using channel3 = createBroadcastChannel<string>("test-channel-fanout");
+    const received2: Array<string> = [];
+    const received3: Array<string> = [];
+
+    channel2.onMessage = (message) => received2.push(message);
+    channel3.onMessage = (message) => received3.push(message);
+    channel1.postMessage("hello");
+
+    await testWaitForMacrotask();
+
+    expect(received2).toEqual(["hello"]);
+    expect(received3).toEqual(["hello"]);
+  });
+
+  test("channels with different names are isolated", async () => {
+    using channel1 = createBroadcastChannel<string>("test-channel-a");
+    using channel2 = createBroadcastChannel<string>("test-channel-b");
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => received.push(message);
+    channel1.postMessage("ignored");
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual([]);
+  });
+
+  test("messages posted before onMessage is assigned are delivered if assigned before dispatch", async () => {
+    using channel1 = createBroadcastChannel<string>("test-channel-queued");
+    using channel2 = createBroadcastChannel<string>("test-channel-queued");
+    const received: Array<string> = [];
+
+    channel1.postMessage("queued");
+    channel2.onMessage = (message) => received.push(message);
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual(["queued"]);
+  });
+
+  test("messages are dropped when no onMessage is assigned at dispatch", async () => {
+    using channel1 = createBroadcastChannel<string>("test-channel-drop");
+    using channel2 = createBroadcastChannel<string>("test-channel-drop");
+    const received: Array<string> = [];
+
+    channel1.postMessage("dropped");
+    await testWaitForMacrotask();
+    channel2.onMessage = (message) => received.push(message);
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual([]);
+  });
+
+  test("setting onMessage to null before dispatch drops the message", async () => {
+    using channel1 = createBroadcastChannel<string>("test-channel-null");
+    using channel2 = createBroadcastChannel<string>("test-channel-null");
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => received.push(message);
+    channel1.postMessage("dropped");
+    channel2.onMessage = null;
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual([]);
+  });
+
+  test("dispose removes channel from future delivery", async () => {
+    using channel1 = createBroadcastChannel<string>("test-channel-dispose");
+    const channel2 = createBroadcastChannel<string>("test-channel-dispose");
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => received.push(message);
+    channel2[Symbol.dispose]();
+    channel1.postMessage("ignored");
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual([]);
+  });
+
+  test("dispose before scheduled dispatch drops the message", async () => {
+    using channel1 = createBroadcastChannel<string>(
+      "test-channel-dispose-queued",
+    );
+    const channel2 = createBroadcastChannel<string>(
+      "test-channel-dispose-queued",
+    );
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => received.push(message);
+    channel1.postMessage("queued");
+    channel2[Symbol.dispose]();
+
+    await testWaitForMacrotask();
+
+    expect(received).toEqual([]);
+  });
+
+  test("disposed channel postMessage asserts not disposed", () => {
+    const channel = createBroadcastChannel<string>(
+      "test-channel-disposed-send",
+    );
+
+    channel[Symbol.dispose]();
+
+    expect(() => channel.postMessage("ignored")).toThrow(
+      "Expected value to not be disposed.",
+    );
+  });
+
+  test("disposed channel ignores onMessage reassignment", async () => {
+    using channel1 = createBroadcastChannel<string>(
+      "test-channel-disposed-send",
+    );
+    using channel2 = createBroadcastChannel<string>(
+      "test-channel-disposed-send",
+    );
+    const received: Array<string> = [];
+
+    channel1.onMessage = (message) => received.push(message);
+    channel1[Symbol.dispose]();
+    channel1.onMessage = (message) => received.push(message);
+    channel2.postMessage("ignored");
+
+    await testWaitForMacrotask();
+
+    expect(channel1.onMessage).toBeNull();
+    expect(received).toEqual([]);
   });
 });
 
@@ -452,6 +639,30 @@ describe("testCreateSharedWorker", () => {
     expect(worker.self.onConnect).not.toBeNull();
     worker.self[Symbol.dispose]();
     expect(worker.self.onConnect).toBeNull();
+  });
+});
+
+describe("testCreateBroadcastChannel", () => {
+  test("forwards postMessage and onMessage to the underlying channel", async () => {
+    using channel1 = testCreateBroadcastChannel<string>("test-channel-helper");
+    using channel2 = testCreateBroadcastChannel<string>("test-channel-helper");
+    const received: Array<string> = [];
+
+    channel2.onMessage = (message) => received.push(message);
+    channel1.postMessage("hello");
+
+    await testWaitForMacrotask();
+
+    expect(channel2.onMessage).not.toBeNull();
+    expect(received).toEqual(["hello"]);
+  });
+
+  test("isDisposed reflects disposal state", () => {
+    const channel = testCreateBroadcastChannel<string>("test-channel-state");
+
+    expect(channel.isDisposed()).toBe(false);
+    channel[Symbol.dispose]();
+    expect(channel.isDisposed()).toBe(true);
   });
 });
 

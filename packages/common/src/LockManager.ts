@@ -5,9 +5,11 @@
  */
 
 import { createRandomBytes } from "./Crypto.js";
+import { lazyVoid } from "./Function.js";
 import { tryAsync } from "./Result.js";
 import { AbortError, type Task } from "./Task.js";
 import { createId } from "./Type.js";
+import type { Callback } from "./Types.js";
 
 /**
  * Dependency wrapper for {@link LockManager}.
@@ -116,7 +118,7 @@ export const acquireLeaderLock =
         const released = Promise.withResolvers<void>();
 
         const request = run.deps.lockManager.request(
-          `evolu-leaderlock-${name}`,
+          createLeaderLockName(name),
           { mode: "exclusive", signal: run.signal },
           async () => {
             acquisition.resolve();
@@ -137,3 +139,43 @@ export const acquireLeaderLock =
       (error): AbortError =>
         AbortError.is(error) ? error : { type: "AbortError", reason: error },
     );
+
+/**
+ * Competes to become the current leader for `name` using {@link LockManager}.
+ *
+ * Only one caller can lead for a given name at a time. The callback runs when
+ * leadership is acquired, and the returned {@link Disposable} represents that
+ * leadership request.
+ *
+ * Leadership is held until the returned handle is disposed. Once released,
+ * another waiting caller may become the next leader. Waiting for leadership is
+ * abortable by disposing the returned handle.
+ */
+export const acquireLeaderLockCallback =
+  (deps: LockManagerDep) =>
+  (name: string, callback: Callback<void>): Disposable => {
+    const abortController = new AbortController();
+    let release: (() => void) | null = null;
+
+    const request = deps.lockManager.request(
+      createLeaderLockName(name),
+      { mode: "exclusive", signal: abortController.signal },
+      async () => {
+        const released = Promise.withResolvers<void>();
+        release = released.resolve;
+        callback();
+        await released.promise;
+      },
+    );
+    void request.catch(lazyVoid);
+
+    return {
+      [Symbol.dispose]: () => {
+        abortController.abort();
+        release?.();
+      },
+    };
+  };
+
+const createLeaderLockName = (name: string): string =>
+  `evolu-leaderlock-${name}`;
