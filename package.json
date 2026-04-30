@@ -5,7 +5,7 @@
     "dev": "turbo run dev --filter=relay --filter=web",
     "relay": "turbo --filter relay dev",
     "build": "pnpm clean:ts && turbo --filter \"@evolu/*\" --filter relay build",
-    "build:web": "pnpm build:docs && turbo --filter web build",
+    "build:web": "pnpm build && pnpm build:docs && turbo --filter web build",
     "build:web:fast": "rm -rf 'apps/web/src/app/(docs)/docs/api-reference' && turbo --filter web build",
     "build:docs": "typedoc && pnpm --dir apps/web fix:docs",
     "build:expo": "turbo --filter @example/react-expo build",
