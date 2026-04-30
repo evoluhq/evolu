@@ -90,17 +90,7 @@ const { RunContext, useRun } = createRunBinding(run);
 const device = createEvoluBinding(DeviceSchema);
 const app = createEvoluBinding(AppSchema);
 
-const createAppEvolu = (appOwner: Evolu.AppOwner) =>
-  Evolu.createEvolu(AppSchema, {
-    appName: Evolu.AppName.orThrow("minimal-example"),
-    appOwner,
-
-    ...(process.env.NODE_ENV === "development" && {
-      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-    }),
-  });
-
-// Memory only, TODO: Use DeviceAppOwner.
+// Memory only for now, TODO: Use DeviceAppOwner.
 const devicePromise = run.orThrow(
   Evolu.createEvolu(DeviceSchema, {
     appOwner: Evolu.testAppOwner,
@@ -139,60 +129,227 @@ const DeviceEvoluContext: FC<PropsWithChildren> = ({ children }) => {
 };
 
 const App: FC = () => {
-  const run = useRun();
   const appOwners = device.useQuery(deviceAppOwnersQuery);
   const selectedAppOwnerSecret = appOwners.at(0)?.secret;
   const selectedAppOwner = selectedAppOwnerSecret
     ? Evolu.createAppOwner(selectedAppOwnerSecret)
     : null;
 
-  const [openedApp, setOpenedApp] = useState<Evolu.Evolu<
+  return (
+    <div className="space-y-4">
+      <AppOwners appOwners={appOwners} selectedAppOwner={selectedAppOwner} />
+      {selectedAppOwner && (
+        <AppEvoluContext key={selectedAppOwner.id} appOwner={selectedAppOwner}>
+          <Todos />
+        </AppEvoluContext>
+      )}
+    </div>
+  );
+};
+
+const AppOwners: FC<{
+  appOwners: ReadonlyArray<DeviceAppOwnersRow>;
+  selectedAppOwner: Evolu.AppOwner | null;
+}> = ({ appOwners, selectedAppOwner }) => {
+  const run = useRun();
+  const evolu = device.useEvolu();
+  const [shownMnemonicOwnerId, setShownMnemonicOwnerId] =
+    useState<Evolu.OwnerId | null>(null);
+
+  const upsertAppOwner = (secret: Evolu.OwnerSecret) => {
+    const appOwner = Evolu.createAppOwner(secret);
+    evolu.upsert("_appOwner", {
+      id: appOwner.id,
+      secret,
+      lastOpenedAt: run.deps.time.nowDateIso(),
+    });
+  };
+
+  return (
+    <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
+      <h2 className="mb-4 text-lg font-medium text-gray-900">AppOwners</h2>
+
+      <div className="mb-4 flex gap-2">
+        <Button
+          title="Create"
+          onClick={() => {
+            upsertAppOwner(Evolu.createOwnerSecret(run.deps));
+          }}
+          variant="primary"
+        />
+        <Button
+          title="Restore"
+          onClick={() => {
+            const mnemonic = window.prompt(
+              "Enter your mnemonic to restore your data:",
+            );
+            if (mnemonic == null) return;
+
+            const result = Evolu.Mnemonic.from(mnemonic.trim());
+            if (!result.ok) {
+              alert(formatTypeError(result.error));
+              return;
+            }
+
+            upsertAppOwner(Evolu.mnemonicToOwnerSecret(result.value));
+          }}
+        />
+      </div>
+
+      <ol className="space-y-2">
+        {appOwners.map((row) => (
+          <AppOwnersItem
+            key={row.id}
+            row={row}
+            isSelected={selectedAppOwner?.id === row.id}
+            onSelect={() => {
+              upsertAppOwner(row.secret);
+            }}
+            onDelete={() => {
+              if (!confirm(`Delete stored AppOwner ${row.id}?`)) return;
+
+              evolu.update("_appOwner", {
+                id: row.id,
+                isDeleted: Evolu.sqliteTrue,
+              });
+            }}
+          />
+        ))}
+      </ol>
+
+      <div className="mt-6 rounded-lg bg-gray-50 p-4 ring-1 ring-gray-200">
+        <h3 className="mb-4 text-base font-medium text-gray-900">
+          Selected AppOwner
+        </h3>
+
+        {selectedAppOwner ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <EvoluIdenticon id={selectedAppOwner.id} size={40} />
+              <div>
+                <div className="font-mono text-sm text-gray-900">
+                  {selectedAppOwner.id}
+                </div>
+                <div className="text-sm text-gray-500">App is open.</div>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h4 className="text-sm font-medium text-gray-900">Mnemonic</h4>
+                <button
+                  onClick={() => {
+                    setShownMnemonicOwnerId(
+                      shownMnemonicOwnerId === selectedAppOwner.id
+                        ? null
+                        : selectedAppOwner.id,
+                    );
+                  }}
+                  className="rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                >
+                  {shownMnemonicOwnerId === selectedAppOwner.id
+                    ? "Hide"
+                    : "Show"}
+                </button>
+              </div>
+              {shownMnemonicOwnerId === selectedAppOwner.id && (
+                <p className="rounded-md bg-white p-3 font-mono text-xs leading-5 wrap-break-word text-gray-900 ring-1 ring-gray-200">
+                  {selectedAppOwner.mnemonic}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">
+            Create, restore, or select an AppOwner.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const AppOwnersItem: FC<{
+  row: DeviceAppOwnersRow;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}> = ({ row, isSelected, onSelect, onDelete }) => (
+  <li
+    className={clsx(
+      "flex items-center justify-between rounded-lg border px-3 py-3",
+      isSelected ? "border-blue-300 bg-blue-50" : "border-gray-200",
+    )}
+  >
+    <div className="flex items-center gap-3">
+      <EvoluIdenticon id={row.id} size={36} />
+      <div>
+        <div className="font-mono text-sm text-gray-900">{row.id}</div>
+        <div className="text-xs text-gray-500">
+          Last opened {new globalThis.Date(row.lastOpenedAt).toLocaleString()}
+        </div>
+      </div>
+    </div>
+
+    <div className="flex gap-2">
+      {!isSelected && (
+        <Button title="Select" onClick={onSelect} variant="primary" />
+      )}
+      <button
+        onClick={onDelete}
+        className="p-2 text-gray-400 transition-colors hover:text-red-600"
+        title="Delete"
+      >
+        <IconTrash className="size-4" />
+      </button>
+    </div>
+  </li>
+);
+
+const AppEvoluContext: FC<
+  PropsWithChildren<{ readonly appOwner: Evolu.AppOwner }>
+> = ({ appOwner, children }) => {
+  const run = useRun();
+  const [appEvolu, setAppEvolu] = useState<Evolu.Evolu<
     typeof AppSchema
   > | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpenedApp(null);
+    const disposer = new AsyncDisposableStack();
+    const effectRun = disposer.use(run.create());
 
-    if (!selectedAppOwnerSecret) {
-      return;
-    }
+    void effectRun(async (run) => {
+      const instance = await run(
+        Evolu.createEvolu(AppSchema, {
+          appName: Evolu.AppName.orThrow("minimal-example"),
+          appOwner,
 
-    let cancelled = false;
-
-    const evoluFiber = run(async (run) => {
-      const nextApp = await run(
-        createAppEvolu(Evolu.createAppOwner(selectedAppOwnerSecret)),
+          ...(process.env.NODE_ENV === "development" && {
+            transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+          }),
+        }),
       );
-      if (!cancelled && nextApp.ok) {
-        setOpenedApp(nextApp.value);
-      }
-      return nextApp;
+      if (!instance.ok) return instance;
+      disposer.use(instance.value);
+      setAppEvolu(instance.value);
+      return Evolu.ok();
     });
 
     return () => {
-      cancelled = true;
-      void evoluFiber.then((evolu) => {
-        if (evolu.ok) void evolu.value[Symbol.asyncDispose]();
-      });
+      void disposer.disposeAsync();
     };
-  }, [selectedAppOwnerSecret, run]);
+  }, [appOwner, run]);
+
+  if (!appEvolu) return <AppLoading />;
 
   return (
-    <>
-      <AppOwners appOwners={appOwners} selectedAppOwner={selectedAppOwner} />
-      {openedApp && (
-        <app.EvoluContext value={openedApp}>
-          <Suspense fallback={<TodosLoading />}>
-            <Todos />
-          </Suspense>
-        </app.EvoluContext>
-      )}
-    </>
+    <app.EvoluContext value={appEvolu}>
+      <Suspense fallback={<AppLoading />}>{children}</Suspense>
+    </app.EvoluContext>
   );
 };
 
-const TodosLoading: FC = () => (
+const AppLoading: FC = () => (
   <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
     <p className="text-sm text-gray-600">Opening app...</p>
   </div>
@@ -326,138 +483,6 @@ const TodoItem: FC<{
     </li>
   );
 };
-
-const AppOwners: FC<{
-  appOwners: ReadonlyArray<DeviceAppOwnersRow>;
-  selectedAppOwner: Evolu.AppOwner | null;
-}> = ({ appOwners, selectedAppOwner }) => {
-  const run = useRun();
-  const evolu = device.useEvolu();
-
-  const upsertAppOwner = (secret: Evolu.OwnerSecret) => {
-    const appOwner = Evolu.createAppOwner(secret);
-    evolu.upsert("_appOwner", {
-      id: appOwner.id,
-      secret,
-      lastOpenedAt: run.deps.time.nowDateIso(),
-    });
-  };
-
-  return (
-    <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
-      <h2 className="mb-4 text-lg font-medium text-gray-900">AppOwners</h2>
-      <p className="mb-4 text-sm text-gray-600">
-        Create or restore an AppOwner, then reopen it later from encrypted
-        device-only storage.
-      </p>
-
-      <div className="mb-4 flex gap-2">
-        <Button
-          title="Create"
-          onClick={() => {
-            upsertAppOwner(Evolu.createOwnerSecret(run.deps));
-          }}
-          variant="primary"
-        />
-        <Button
-          title="Restore"
-          onClick={() => {
-            const mnemonic = window.prompt(
-              "Enter your mnemonic to restore your data:",
-            );
-            if (mnemonic == null) return;
-
-            const result = Evolu.Mnemonic.from(mnemonic.trim());
-            if (!result.ok) {
-              alert(formatTypeError(result.error));
-              return;
-            }
-
-            upsertAppOwner(Evolu.mnemonicToOwnerSecret(result.value));
-          }}
-        />
-      </div>
-
-      <ol className="space-y-2">
-        {appOwners.map((row) => (
-          <AppOwnersItem
-            key={row.id}
-            row={row}
-            isSelected={selectedAppOwner?.id === row.id}
-            onSelect={() => {
-              upsertAppOwner(row.secret);
-            }}
-            onDelete={() => {
-              if (!confirm(`Delete stored AppOwner ${row.id}?`)) return;
-
-              evolu.update("_appOwner", {
-                id: row.id,
-                isDeleted: Evolu.sqliteTrue,
-              });
-            }}
-          />
-        ))}
-      </ol>
-
-      <div className="mt-6 rounded-lg bg-gray-50 p-4 ring-1 ring-gray-200">
-        <h3 className="mb-4 text-base font-medium text-gray-900">
-          Selected AppOwner
-        </h3>
-
-        {selectedAppOwner ? (
-          <div className="flex items-center gap-3">
-            <EvoluIdenticon id={selectedAppOwner.id} size={40} />
-            <div>
-              <div className="font-mono text-sm text-gray-900">
-                {selectedAppOwner.id}
-              </div>
-              <div className="text-sm text-gray-500">Ready to open app.</div>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-600">
-            Create, restore, or select an AppOwner.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const AppOwnersItem: FC<{
-  row: DeviceAppOwnersRow;
-  isSelected: boolean;
-  onSelect: () => void;
-  onDelete: () => void;
-}> = ({ row, isSelected, onSelect, onDelete }) => (
-  <li
-    className={clsx(
-      "flex items-center justify-between rounded-lg border px-3 py-3",
-      isSelected ? "border-blue-300 bg-blue-50" : "border-gray-200",
-    )}
-  >
-    <div className="flex items-center gap-3">
-      <EvoluIdenticon id={row.id} size={36} />
-      <div>
-        <div className="font-mono text-sm text-gray-900">{row.id}</div>
-        <div className="text-xs text-gray-500">
-          Last opened {new globalThis.Date(row.lastOpenedAt).toLocaleString()}
-        </div>
-      </div>
-    </div>
-
-    <div className="flex gap-2">
-      <Button title="Select" onClick={onSelect} variant="primary" />
-      <button
-        onClick={onDelete}
-        className="p-2 text-gray-400 transition-colors hover:text-red-600"
-        title="Delete"
-      >
-        <IconTrash className="size-4" />
-      </button>
-    </div>
-  </li>
-);
 
 const Button: FC<{
   title: string;
