@@ -1,9 +1,14 @@
 import {
   createConsole,
   createConsoleStoreOutput,
+  createBroadcastChannel,
+  createMessageChannel,
+  createMessagePort,
   createRandomBytes,
   createRun,
+  createSharedWorker,
   createWebSocket,
+  createWorker,
   type ConsoleDep,
   type CreateSqliteDriverDep,
   type ReloadAppDep,
@@ -14,6 +19,7 @@ import type {
   DbWorkerInit,
   EvoluDeps,
   SharedWorkerInput,
+  SharedWorkerOutput,
 } from "@evolu/common/local-first";
 import {
   createEvoluDeps as createCommonEvoluDeps,
@@ -21,12 +27,6 @@ import {
   startDbWorker,
 } from "@evolu/common/local-first";
 import { lockManager } from "./LockManager.js";
-import {
-  createMessageChannel,
-  createMessagePort,
-  createSharedWorker,
-  createWorker,
-} from "./Worker.js";
 
 /** Creates Evolu dependencies for React Native. */
 export const createEvoluDeps = (
@@ -44,6 +44,8 @@ export const createEvoluDeps = (
     return createRun({
       console: workerConsole,
       consoleStoreOutputEntry: consoleStoreOutput.entry,
+      createBroadcastChannel,
+      createMessageChannel,
       createMessagePort,
       createWebSocket,
       createSqliteDriver: deps.createSqliteDriver,
@@ -58,7 +60,10 @@ export const createEvoluDeps = (
       dbWorkerRun(startDbWorker(self));
     });
 
-  const sharedWorker = createSharedWorker<SharedWorkerInput, never>((self) => {
+  const sharedWorker = createSharedWorker<
+    SharedWorkerInput,
+    SharedWorkerOutput
+  >((self) => {
     const sharedWorkerRun = createWorkerRun();
     sharedWorkerRun(initSharedWorker(self));
   });
@@ -66,6 +71,7 @@ export const createEvoluDeps = (
   return createCommonEvoluDeps({
     ...deps,
     createDbWorker,
+    createBroadcastChannel,
     createMessageChannel,
     lockManager,
     reloadApp: deps.reloadApp,

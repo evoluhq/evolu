@@ -7,11 +7,7 @@ import {
   testCreateConsole,
 } from "../../src/Console.js";
 import { lazyVoid } from "../../src/Function.js";
-import type {
-  CreateDbWorker,
-  DbWorker,
-  DbWorkerInit,
-} from "../../src/local-first/Db.js";
+import type { DbWorkerInit } from "../../src/local-first/Db.js";
 import { startDbWorker } from "../../src/local-first/Db.js";
 import {
   AppName,
@@ -23,13 +19,18 @@ import {
 import { createOwnerWebSocketTransport } from "../../src/local-first/Owner.js";
 import { createQueryBuilder } from "../../src/local-first/Schema.js";
 import {
+  consoleEntryOrErrorBroadcastChannelName,
   initSharedWorker,
+  type ConsoleEntryOrError,
+  type DbWorkerInput,
+  type DbWorkerOutput,
   type EvoluInput,
   type EvoluOutput,
-  type TabOutput,
   type SharedWorker,
   type SharedWorkerInput,
+  type SharedWorkerOutput,
 } from "../../src/local-first/Shared.js";
+import { testCreateLockManager } from "../../src/LockManager.js";
 import { err, ok } from "../../src/Result.js";
 import {
   createSqlite,
@@ -38,7 +39,6 @@ import {
   type CreateSqliteDriver,
   type SqliteDriverOptions,
 } from "../../src/Sqlite.js";
-import { createInMemoryLeaderLock } from "../../src/Task.js";
 import { testCreateRun } from "../../src/Test.js";
 import {
   createIdFromString,
@@ -50,15 +50,18 @@ import {
 import type { ExtractType } from "../../src/Types.js";
 import { testCreateWebSocket } from "../../src/WebSocket.js";
 import {
+  createBroadcastChannel,
   createMessageChannel,
   createMessagePort,
   createSharedWorker,
   createWorker,
+  testCreateBroadcastChannel,
   testCreateMessageChannel,
   testCreateMessagePort,
   testCreateSharedWorker,
   testCreateWorker,
   testWaitForWorkerMessage,
+  type MessagePort,
 } from "../../src/Worker.js";
 import { testCreateSqliteDep } from "../_deps.js";
 import { testAppOwner } from "./_fixtures.js";
@@ -100,13 +103,16 @@ const todoByCreatedAtQuery = createQuery((db) =>
 );
 
 describe("unit tests", () => {
-  const setupRunWithEvoluDeps = async (
-    overrides: Partial<EvoluPlatformDeps> = {},
-  ) => {
+  const setupRunWithEvoluDeps = async ({
+    onSharedWorkerPostMessage,
+    ...overrides
+  }: Partial<EvoluPlatformDeps> & {
+    readonly onSharedWorkerPostMessage?: (message: SharedWorkerInput) => void;
+  } = {}) => {
     await using disposer = new AsyncDisposableStack();
 
     const sharedWorker = disposer.use(
-      testCreateSharedWorker<SharedWorkerInput>(),
+      testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
     );
 
     const evoluInputs: Array<EvoluInput> = [];
@@ -141,11 +147,34 @@ describe("unit tests", () => {
       queuedEvoluOutputs.push(output);
     };
 
+    const sharedWorkerDep: EvoluPlatformDeps["sharedWorker"] =
+      onSharedWorkerPostMessage
+        ? {
+            port: {
+              postMessage: (message, transfer) => {
+                sharedWorker.port.postMessage(message, transfer);
+                onSharedWorkerPostMessage(message);
+              },
+              get onMessage() {
+                return sharedWorker.port.onMessage;
+              },
+              set onMessage(value) {
+                sharedWorker.port.onMessage = value;
+              },
+              native: sharedWorker.port.native,
+              [Symbol.dispose]: lazyVoid,
+            },
+            [Symbol.dispose]: lazyVoid,
+          }
+        : sharedWorker;
+
     const evoluDeps: EvoluPlatformDeps = {
       createDbWorker: testCreateWorker,
+      createBroadcastChannel: testCreateBroadcastChannel,
       createMessageChannel: testCreateMessageChannel,
+      lockManager: testCreateLockManager(),
       reloadApp: lazyVoid,
-      sharedWorker,
+      sharedWorker: sharedWorkerDep,
       ...overrides,
     };
     const run = disposer.use(testCreateRun(evoluDeps));
@@ -191,13 +220,15 @@ describe("unit tests", () => {
     ): Promise<{
       readonly deps: ReturnType<typeof createEvoluDeps>;
       readonly messages: Array<SharedWorkerInput>;
-      readonly workerPort: {
-        readonly postMessage: (message: TabOutput) => void;
+      readonly consoleEntryOrErrorBroadcastChannel: {
+        readonly postMessage: (message: ConsoleEntryOrError) => void;
       };
       readonly [Symbol.dispose]: () => void;
     }> => {
       using disposer = new DisposableStack();
-      const worker = disposer.use(testCreateSharedWorker<SharedWorkerInput>());
+      const worker = disposer.use(
+        testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
+      );
 
       const messages: Array<SharedWorkerInput> = [];
       worker.self.onConnect = (port) => {
@@ -208,7 +239,9 @@ describe("unit tests", () => {
       const deps = disposer.use(
         createEvoluDeps({
           createDbWorker: testCreateWorker,
+          createBroadcastChannel: testCreateBroadcastChannel,
           createMessageChannel: testCreateMessageChannel,
+          lockManager: testCreateLockManager(),
           sharedWorker: worker,
           reloadApp: lazyVoid,
           console,
@@ -218,26 +251,103 @@ describe("unit tests", () => {
       await testWaitForWorkerMessage();
 
       expect(messages).toHaveLength(1);
-      const initTab = messages[0];
-      expect(initTab.type).toBe("InitTab");
-      assert(initTab.type === "InitTab", "InitTab message is missing");
-      const workerPort = testCreateMessagePort<TabOutput>(initTab.port);
+      expect(messages[0].type).toBe("AnnounceTabLeader");
+      const consoleEntryOrErrorBroadcastChannel = disposer.use(
+        testCreateBroadcastChannel<ConsoleEntryOrError>(
+          consoleEntryOrErrorBroadcastChannelName,
+        ),
+      );
       const disposables = disposer.move();
 
       return {
         deps,
         messages,
-        workerPort,
+        consoleEntryOrErrorBroadcastChannel,
         [Symbol.dispose]: () => disposables.dispose(),
       };
     };
 
-    test("posts InitTab with port to worker", async () => {
-      using setup = await setupCreateEvoluDeps(testCreateConsole());
+    test("posts AnnounceTabLeader with console level to worker", async () => {
+      const console = testCreateConsole();
+      using setup = await setupCreateEvoluDeps(console);
       const { messages } = setup;
 
       expect(messages).toHaveLength(1);
-      expect(messages[0].type).toBe("InitTab");
+      expect(messages[0]).toEqual({
+        type: "AnnounceTabLeader",
+        consoleLevel: console.getLevel(),
+      });
+    });
+
+    test("initializes db worker from shared worker init output", async () => {
+      const dbWorkerMessages: Array<DbWorkerInit> = [];
+      const dbWorkerChannel = testCreateMessageChannel<
+        DbWorkerOutput,
+        DbWorkerInput
+      >();
+      const sqliteSchema = {
+        tables: { todo: new Set(["title"]) },
+        indexes: [],
+      };
+      const sharedWorkerPort: {
+        value: MessagePort<SharedWorkerOutput, SharedWorkerInput> | null;
+      } = { value: null };
+
+      const worker = testCreateSharedWorker<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      >();
+      worker.self.onConnect = (port) => {
+        sharedWorkerPort.value = port;
+        port.onMessage = lazyVoid;
+      };
+      worker.connect();
+
+      using _deps = createEvoluDeps({
+        createDbWorker: () => {
+          const worker = testCreateWorker<DbWorkerInit>();
+          worker.self.onMessage = (message) => {
+            dbWorkerMessages.push(message);
+          };
+          return worker;
+        },
+        createBroadcastChannel: testCreateBroadcastChannel,
+        createMessageChannel: testCreateMessageChannel,
+        lockManager: testCreateLockManager(),
+        sharedWorker: worker,
+        reloadApp: lazyVoid,
+      });
+
+      await testWaitForWorkerMessage();
+      assert(sharedWorkerPort.value, "Expected shared worker port");
+
+      sharedWorkerPort.value.postMessage(
+        {
+          type: "DbWorkerInit",
+          name: testName,
+          consoleLevel: "debug",
+          sqliteSchema,
+          encryptionKey: testAppOwner.encryptionKey,
+          memoryOnly: true,
+          port: dbWorkerChannel.port1.native,
+        },
+        [dbWorkerChannel.port1.native],
+      );
+
+      await testWaitForWorkerMessage();
+
+      expect(dbWorkerMessages).toHaveLength(1);
+      expect(dbWorkerMessages[0]).toEqual({
+        type: "DbWorkerInit",
+        name: testName,
+        consoleLevel: "debug",
+        sqliteSchema,
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: true,
+        port: dbWorkerChannel.port1.native,
+      });
+
+      dbWorkerChannel[Symbol.dispose]();
     });
 
     test("falls back to default console when not provided", async () => {
@@ -248,7 +358,10 @@ describe("unit tests", () => {
       }) as typeof globalThis.console.error;
 
       try {
-        const worker = testCreateSharedWorker<SharedWorkerInput>();
+        const worker = testCreateSharedWorker<
+          SharedWorkerInput,
+          SharedWorkerOutput
+        >();
         const messages: Array<SharedWorkerInput> = [];
 
         worker.self.onConnect = (port) => {
@@ -256,9 +369,11 @@ describe("unit tests", () => {
         };
         worker.connect();
 
-        const deps = createEvoluDeps({
+        using deps = createEvoluDeps({
           createDbWorker: testCreateWorker,
+          createBroadcastChannel: testCreateBroadcastChannel,
           createMessageChannel: testCreateMessageChannel,
+          lockManager: testCreateLockManager(),
           sharedWorker: worker,
           reloadApp: lazyVoid,
         });
@@ -266,20 +381,21 @@ describe("unit tests", () => {
         await testWaitForWorkerMessage();
 
         expect(messages).toHaveLength(1);
-        const initTab = messages[0];
-        expect(initTab.type).toBe("InitTab");
-        assert(initTab.type === "InitTab", "InitTab message is missing");
-        const workerPort = testCreateMessagePort<TabOutput>(initTab.port);
+        expect(messages[0].type).toBe("AnnounceTabLeader");
+        using consoleEntryOrErrorBroadcastChannel =
+          testCreateBroadcastChannel<ConsoleEntryOrError>(
+            consoleEntryOrErrorBroadcastChannelName,
+          );
 
-        workerPort.postMessage({
-          type: "OnConsoleEntry",
+        consoleEntryOrErrorBroadcastChannel.postMessage({
+          type: "ConsoleEntry",
           entry: { method: "error", path: ["global"], args: ["boom"] },
         });
 
         await testWaitForWorkerMessage();
 
         expect(messages).toHaveLength(1);
-        expect(messages[0].type).toBe("InitTab");
+        expect(messages[0].type).toBe("AnnounceTabLeader");
         expect(deps.evoluError.get()).toEqual({
           type: "UnknownError",
           error: ["boom"],
@@ -293,14 +409,17 @@ describe("unit tests", () => {
     test("wires console channel to console.write", async () => {
       const console = testCreateConsole();
       using setup = await setupCreateEvoluDeps(console);
-      const { workerPort } = setup;
+      const { consoleEntryOrErrorBroadcastChannel } = setup;
 
       const entry: ConsoleEntry = {
         method: "info",
         path: ["test"],
         args: ["hello"],
       };
-      workerPort.postMessage({ type: "OnConsoleEntry", entry });
+      consoleEntryOrErrorBroadcastChannel.postMessage({
+        type: "ConsoleEntry",
+        entry,
+      });
 
       await testWaitForWorkerMessage();
 
@@ -309,7 +428,7 @@ describe("unit tests", () => {
 
     test("maps ConsoleEntry error output to deps.evoluError store", async () => {
       using setup = await setupCreateEvoluDeps();
-      const { deps, workerPort } = setup;
+      const { deps, consoleEntryOrErrorBroadcastChannel } = setup;
 
       const entry: ConsoleEntry = {
         method: "error",
@@ -317,7 +436,10 @@ describe("unit tests", () => {
         args: ["error", { type: "UnknownError", error: "boom" }],
       };
 
-      workerPort.postMessage({ type: "OnConsoleEntry", entry });
+      consoleEntryOrErrorBroadcastChannel.postMessage({
+        type: "ConsoleEntry",
+        entry,
+      });
 
       await testWaitForWorkerMessage();
 
@@ -329,10 +451,10 @@ describe("unit tests", () => {
 
     test("wraps single-arg ConsoleEntry error output to UnknownError", async () => {
       using setup = await setupCreateEvoluDeps();
-      const { deps, workerPort } = setup;
+      const { deps, consoleEntryOrErrorBroadcastChannel } = setup;
 
-      workerPort.postMessage({
-        type: "OnConsoleEntry",
+      consoleEntryOrErrorBroadcastChannel.postMessage({
+        type: "ConsoleEntry",
         entry: { method: "error", path: ["global"], args: ["boom"] },
       });
 
@@ -346,10 +468,10 @@ describe("unit tests", () => {
 
     test("wraps multi-arg ConsoleEntry error output to UnknownError", async () => {
       using setup = await setupCreateEvoluDeps();
-      const { deps, workerPort } = setup;
+      const { deps, consoleEntryOrErrorBroadcastChannel } = setup;
 
-      workerPort.postMessage({
-        type: "OnConsoleEntry",
+      consoleEntryOrErrorBroadcastChannel.postMessage({
+        type: "ConsoleEntry",
         entry: { method: "error", path: ["global"], args: ["error", "boom"] },
       });
 
@@ -363,10 +485,10 @@ describe("unit tests", () => {
 
     test("wires EvoluError output to deps.evoluError store", async () => {
       using setup = await setupCreateEvoluDeps();
-      const { deps, workerPort } = setup;
+      const { deps, consoleEntryOrErrorBroadcastChannel } = setup;
 
       const error = { type: "UnknownError", error: "boom" } as const;
-      workerPort.postMessage({ type: "OnError", error });
+      consoleEntryOrErrorBroadcastChannel.postMessage({ type: "Error", error });
 
       await testWaitForWorkerMessage();
 
@@ -374,39 +496,50 @@ describe("unit tests", () => {
     });
 
     test("throws for unknown tab output type", () => {
-      const channels: Array<{
-        readonly port2: {
-          onMessage: ((message: TabOutput) => void) | null;
-        };
-      }> = [];
+      const consoleEntryOrErrorBroadcastChannel: {
+        value: {
+          readonly onMessage: ((message: ConsoleEntryOrError) => void) | null;
+        } | null;
+      } = { value: null };
 
-      createEvoluDeps({
+      using _deps = createEvoluDeps({
         createDbWorker: testCreateWorker,
-        createMessageChannel: <Input, Output = never>() => {
-          const channel = testCreateMessageChannel<Input, Output>();
-          channels.push(channel as never);
+        createBroadcastChannel: <Input, Output = Input>(name: string) => {
+          const channel = testCreateBroadcastChannel<Input, Output>(name);
+          consoleEntryOrErrorBroadcastChannel.value = channel as NonNullable<
+            typeof consoleEntryOrErrorBroadcastChannel.value
+          >;
           return channel;
         },
-        sharedWorker: testCreateSharedWorker<SharedWorkerInput>(),
+        createMessageChannel: testCreateMessageChannel,
+        lockManager: testCreateLockManager(),
+        sharedWorker: testCreateSharedWorker<
+          SharedWorkerInput,
+          SharedWorkerOutput
+        >(),
         reloadApp: lazyVoid,
       });
 
-      const tabChannel = channels.find((channel) => channel.port2.onMessage);
-      assert(tabChannel?.port2.onMessage, "Expected tab channel handler");
+      const onMessage = consoleEntryOrErrorBroadcastChannel.value?.onMessage;
+      assert(onMessage, "Expected tab output handler");
 
       expect(() => {
-        tabChannel.port2.onMessage?.({ type: "Unknown" } as never);
+        onMessage({ type: "Unknown" } as never);
       }).toThrow();
     });
 
     test("dispose cleans up resources", () => {
-      const worker = testCreateSharedWorker<SharedWorkerInput>();
+      const worker = testCreateSharedWorker<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      >();
       worker.self.onConnect = (port) => {
         port.onMessage = lazyVoid;
       };
       worker.connect();
 
-      const channels: Array<{ readonly isDisposed: () => boolean }> = [];
+      const broadcastChannels: Array<{ readonly isDisposed: () => boolean }> =
+        [];
       let workerDisposed = false;
       const sharedWorker: SharedWorker = {
         port: worker.port,
@@ -418,95 +551,27 @@ describe("unit tests", () => {
 
       const deps = createEvoluDeps({
         createDbWorker: testCreateWorker,
-        createMessageChannel: <Input, Output = never>() => {
-          const channel = testCreateMessageChannel<Input, Output>();
-          channels.push(channel);
+        createBroadcastChannel: <Input, Output = Input>(name: string) => {
+          const channel = testCreateBroadcastChannel<Input, Output>(name);
+          broadcastChannels.push(channel);
           return channel;
         },
+        createMessageChannel: testCreateMessageChannel,
+        lockManager: testCreateLockManager(),
         sharedWorker,
         reloadApp: lazyVoid,
       });
 
-      expect(channels).toHaveLength(1);
-      expect(channels[0].isDisposed()).toBe(false);
+      expect(broadcastChannels).toHaveLength(1);
+      expect(broadcastChannels[0].isDisposed()).toBe(false);
       expect(workerDisposed).toBe(false);
       deps[Symbol.dispose]();
-      expect(channels[0].isDisposed()).toBe(true);
+      expect(broadcastChannels[0].isDisposed()).toBe(true);
       expect(workerDisposed).toBe(true);
     });
   });
 
   describe("createEvolu", () => {
-    test("initializes db worker with resolved name", async () => {
-      const dbWorkerMessages: Array<DbWorkerInit> = [];
-
-      const createDbWorker: CreateDbWorker = () => {
-        const worker = testCreateWorker<DbWorkerInit>();
-        worker.self.onMessage = (message) => {
-          dbWorkerMessages.push(message);
-        };
-        return worker as DbWorker;
-      };
-
-      await using run = testCreateRun({
-        createDbWorker,
-        createMessageChannel: testCreateMessageChannel,
-        reloadApp: lazyVoid,
-        sharedWorker: testCreateSharedWorker<SharedWorkerInput>(),
-      });
-
-      const evolu = await run.orThrow(testCreateEvolu);
-
-      await testWaitForWorkerMessage();
-
-      expect(dbWorkerMessages).toHaveLength(1);
-      expect(dbWorkerMessages[0]).toEqual(
-        expect.objectContaining({
-          type: "Init",
-          name: evolu.name,
-          memoryOnly: false,
-        }),
-      );
-    });
-
-    test("forwards memoryOnly to db worker init", async () => {
-      const dbWorkerMessages: Array<DbWorkerInit> = [];
-
-      const createDbWorker: CreateDbWorker = () => {
-        const worker = testCreateWorker<DbWorkerInit>();
-        worker.self.onMessage = (message) => {
-          dbWorkerMessages.push(message);
-        };
-        return worker as DbWorker;
-      };
-
-      await using run = testCreateRun({
-        createDbWorker,
-        createMessageChannel: testCreateMessageChannel,
-        reloadApp: lazyVoid,
-        sharedWorker: testCreateSharedWorker<SharedWorkerInput>(),
-      });
-
-      await run.orThrow(
-        createEvolu(Schema, {
-          appName: testAppName,
-          appOwner: testAppOwner,
-          transports: [],
-          memoryOnly: true,
-        }),
-      );
-
-      await testWaitForWorkerMessage();
-
-      expect(dbWorkerMessages).toHaveLength(1);
-      expect(dbWorkerMessages[0]).toEqual(
-        expect.objectContaining({
-          type: "Init",
-          memoryOnly: true,
-        }),
-      );
-    });
-
     test("resolves name from appName and appOwner hash", async () => {
       await using setup = await setupRunWithEvoluDeps();
       const { run } = setup;
@@ -523,6 +588,48 @@ describe("unit tests", () => {
       const evolu = await run.orThrow(testCreateEvolu);
 
       expect(evolu.appOwner).toBe(testAppOwner);
+    });
+
+    test("posts CreateEvolu with db worker init config", async () => {
+      const sharedWorkerMessages: Array<SharedWorkerInput> = [];
+      const sharedWorker = testCreateSharedWorker<
+        SharedWorkerInput,
+        SharedWorkerOutput
+      >();
+
+      sharedWorker.self.onConnect = (port) => {
+        port.onMessage = (message) => {
+          sharedWorkerMessages.push(message);
+        };
+      };
+      sharedWorker.connect();
+
+      await using run = testCreateRun({
+        createDbWorker: testCreateWorker,
+        createBroadcastChannel: testCreateBroadcastChannel,
+        createMessageChannel: testCreateMessageChannel,
+        lockManager: testCreateLockManager(),
+        reloadApp: lazyVoid,
+        sharedWorker,
+      });
+
+      const evolu = await run.orThrow(testCreateEvolu);
+
+      await testWaitForWorkerMessage();
+
+      expect(sharedWorkerMessages).toHaveLength(1);
+      expect(sharedWorkerMessages[0]).toEqual(
+        expect.objectContaining({
+          type: "CreateEvolu",
+          name: evolu.name,
+          id: "mg8id41Qk7HxDoApjp0mZA",
+          consoleLevel: expect.any(String),
+          sqliteSchema: expect.any(Object),
+          encryptionKey: testAppOwner.encryptionKey,
+          memoryOnly: false,
+          evoluPort: expect.anything(),
+        }),
+      );
     });
 
     describe("useOwner", () => {
@@ -697,16 +804,61 @@ describe("unit tests", () => {
   });
 
   describe("dispose evolu", () => {
-    test("posts Dispose message", async () => {
-      await using setup = await setupRunWithEvoluDeps();
-      const { run, evoluInputs } = setup;
-
+    test("logs disposeEvolu once", async () => {
+      const console = testCreateConsole();
+      await using setup = await setupRunWithEvoluDeps({ console });
+      const { run } = setup;
       const evolu = await run.orThrow(testCreateEvolu);
+
+      console.clearEntries();
+
+      await evolu[Symbol.asyncDispose]();
       await evolu[Symbol.asyncDispose]();
 
-      await testWaitForWorkerMessage();
+      const entries = console
+        .getEntriesSnapshot()
+        .filter((entry) => entry.args[0] === "disposeEvolu");
 
-      expect(evoluInputs).toEqual([{ type: "Dispose" }]);
+      expect(entries).toEqual([
+        {
+          method: "info",
+          path: [evolu.name, "Evolu"],
+          args: ["disposeEvolu"],
+        },
+      ]);
+    });
+
+    test("disposes resources when createEvolu is aborted after setup", async () => {
+      const channels: Array<{ readonly isDisposed: () => boolean }> = [];
+      let abortCreateEvolu: () => void = () => {
+        assert(
+          false,
+          "Expected createEvolu fiber to exist before postMessage.",
+        );
+      };
+
+      await using setup = await setupRunWithEvoluDeps({
+        createMessageChannel: <Input, Output = never>() => {
+          const channel = testCreateMessageChannel<Input, Output>();
+          channels.push(channel);
+          return channel;
+        },
+        onSharedWorkerPostMessage: (message) => {
+          if (message.type !== "CreateEvolu") return;
+          abortCreateEvolu();
+        },
+      });
+      const { run } = setup;
+
+      const fiber = run(testCreateEvolu);
+      abortCreateEvolu = () => fiber.abort("late abort");
+
+      await expect(fiber).resolves.toEqual(
+        err({ type: "AbortError", reason: "late abort" }),
+      );
+
+      expect(channels).toHaveLength(1);
+      expect(channels[0].isDisposed()).toBe(true);
     });
 
     test("rejects pending export", async () => {
@@ -727,7 +879,7 @@ describe("unit tests", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(evoluInputs).toEqual([{ type: "Export" }, { type: "Dispose" }]);
+      expect(evoluInputs).toEqual([{ type: "Export" }]);
     });
 
     test("throws from sync methods after dispose", async () => {
@@ -852,9 +1004,9 @@ describe("unit tests", () => {
       await evolu[Symbol.asyncDispose]();
     });
 
-    test("posts Dispose with pending mutation microtask batch", async () => {
+    test("drops pending mutation microtask batch on dispose", async () => {
       await using setup = await setupRunWithEvoluDeps();
-      const { run, evoluInputs } = setup;
+      const { evoluInputs, run } = setup;
       const evolu = await run.orThrow(testCreateEvolu);
 
       evolu.insert("todo", {
@@ -865,7 +1017,7 @@ describe("unit tests", () => {
 
       await testWaitForWorkerMessage();
 
-      expect(evoluInputs).toContainEqual({ type: "Dispose" });
+      expect(evoluInputs).toEqual([]);
     });
 
     test("disposes internal message channels", async () => {
@@ -882,14 +1034,12 @@ describe("unit tests", () => {
 
       const evolu = await run.orThrow(testCreateEvolu);
 
-      expect(channels).toHaveLength(2);
+      expect(channels).toHaveLength(1);
       expect(channels[0].isDisposed()).toBe(false);
-      expect(channels[1].isDisposed()).toBe(false);
 
       await evolu[Symbol.asyncDispose]();
 
       expect(channels[0].isDisposed()).toBe(true);
-      expect(channels[1].isDisposed()).toBe(true);
     });
 
     test("does not execute mutate onComplete callback after dispose", async () => {
@@ -1738,9 +1888,11 @@ describe("integration tests", () => {
       testCreateRun({
         // console: createConsole({ level: "debug" }),
         consoleStoreOutputEntry: consoleStoreOutput.entry,
+        createBroadcastChannel,
         createMessageChannel,
         createMessagePort,
         createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
+        lockManager: testCreateLockManager(),
       }),
     );
 
@@ -1751,29 +1903,46 @@ describe("integration tests", () => {
     const workerRun = disposer.use(
       testCreateRun({
         consoleStoreOutputEntry: consoleStoreOutput.entry,
+        createBroadcastChannel,
         createMessagePort,
-        leaderLock: createInMemoryLeaderLock(),
+        lockManager: testCreateLockManager(),
         createSqliteDriver: () => () => ok(driver),
       }),
     );
 
+    const createDbWorker = () =>
+      createWorker<DbWorkerInit>((self) => {
+        workerRun(startDbWorker(self));
+      });
+
     const sharedWorker = disposer.use(
-      createSharedWorker<SharedWorkerInput>((self) => {
+      createSharedWorker<SharedWorkerInput, SharedWorkerOutput>((self) => {
         run(initSharedWorker(self));
       }),
     );
+    sharedWorker.port.onMessage = (message) => {
+      createDbWorker().postMessage(message, [message.port]);
+    };
+    sharedWorker.port.postMessage({
+      type: "AnnounceTabLeader",
+      consoleLevel: "debug",
+    });
+    await testWaitForWorkerMessage();
 
     const sqlite = disposer.use(
       await workerRun.orThrow(createSqlite(testName)),
     );
+    const createIntegrationEvolu = createEvolu(Schema, {
+      appName: testAppName,
+      appOwner: testAppOwner,
+      transports: [],
+    });
     const disposables = disposer.move();
 
     return {
+      createIntegrationEvolu,
       run: run.addDeps({
-        createDbWorker: () =>
-          createWorker<DbWorkerInit>((self) => {
-            workerRun(startDbWorker(self));
-          }),
+        createDbWorker,
         reloadApp: lazyVoid,
         sharedWorker,
       }),
@@ -1784,9 +1953,9 @@ describe("integration tests", () => {
 
   test("createEvolu", async () => {
     await using setup = await setupRunWithEvoluDeps();
-    const { run, sqlite } = setup;
+    const { createIntegrationEvolu, run, sqlite } = setup;
 
-    const evolu = await run.orThrow(testCreateEvolu);
+    const evolu = await run.orThrow(createIntegrationEvolu);
 
     expect(await evolu.loadQuery(todoByCreatedAtQuery)).toEqual([]);
 
@@ -1913,7 +2082,7 @@ describe("integration tests", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,1,2,0,125,85,114,123,39,28],
+                "clock": uint8:[0,0,0,0,0,0,0,1,215,33,35,94,252,125,121,118],
               },
             ],
           },
@@ -1922,18 +2091,18 @@ describe("integration tests", () => {
             "rows": [
               {
                 "column": "title",
-                "id": uint8:[192,25,220,129,232,160,52,142,147,60,132,127,87,13,194,106],
+                "id": uint8:[41,132,154,238,188,77,158,200,78,77,67,72,116,20,108,1],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "todo",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,2,0,125,85,114,123,39,28],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,215,33,35,94,252,125,121,118],
                 "value": "Integration todo",
               },
               {
                 "column": "createdAt",
-                "id": uint8:[192,25,220,129,232,160,52,142,147,60,132,127,87,13,194,106],
+                "id": uint8:[41,132,154,238,188,77,158,200,78,77,67,72,116,20,108,1],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "todo",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,2,0,125,85,114,123,39,28],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,215,33,35,94,252,125,121,118],
                 "value": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -1947,11 +2116,11 @@ describe("integration tests", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 226788241197268,
-                "h2": 198651634711178,
+                "h1": 138879772550631,
+                "h2": 208978932391880,
                 "l": 2,
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,2,0,125,85,114,123,39,28],
+                "t": uint8:[0,0,0,0,0,0,0,1,215,33,35,94,252,125,121,118],
               },
             ],
           },
@@ -1959,8 +2128,8 @@ describe("integration tests", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,2,0,125,85,114,123,39,28],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,2,0,125,85,114,123,39,28],
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,215,33,35,94,252,125,121,118],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,215,33,35,94,252,125,121,118],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "storedBytes": 1,
               },
@@ -1971,7 +2140,7 @@ describe("integration tests", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "wBncgeigNI6TPIR_Vw3Cag",
+                "id": "KYSa7rxNnshOTUNIdBRsAQ",
                 "isCompleted": null,
                 "isDeleted": null,
                 "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
@@ -1987,14 +2156,14 @@ describe("integration tests", () => {
 
   test.todo("dispose and recreate keeps loadQuery working", async () => {
     await using setup = await setupRunWithEvoluDeps();
-    const { run } = setup;
+    const { createIntegrationEvolu, run } = setup;
 
-    const evolu1 = await run.orThrow(testCreateEvolu);
+    const evolu1 = await run.orThrow(createIntegrationEvolu);
     await expect(evolu1.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([]);
 
     await evolu1[Symbol.asyncDispose]();
 
-    const evolu2 = await run.orThrow(testCreateEvolu);
+    const evolu2 = await run.orThrow(createIntegrationEvolu);
     await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([]);
   });
 
@@ -2002,9 +2171,9 @@ describe("integration tests", () => {
     "dispose and recreate keeps subscribed query loading persisted rows",
     async () => {
       await using setup = await setupRunWithEvoluDeps();
-      const { run } = setup;
+      const { createIntegrationEvolu, run } = setup;
 
-      const evolu1 = await run.orThrow(testCreateEvolu);
+      const evolu1 = await run.orThrow(createIntegrationEvolu);
 
       let completed = 0;
       const mutationCompleted = Promise.withResolvers<void>();
@@ -2027,7 +2196,7 @@ describe("integration tests", () => {
 
       await evolu1[Symbol.asyncDispose]();
 
-      const evolu2 = await run.orThrow(testCreateEvolu);
+      const evolu2 = await run.orThrow(createIntegrationEvolu);
       const unsubscribe = evolu2.subscribeQuery(todoByCreatedAtQuery)(lazyVoid);
 
       await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([
@@ -2053,15 +2222,18 @@ describe("integration tests", () => {
 
     const run = testCreateRun({
       consoleStoreOutputEntry: consoleStoreOutput.entry,
+      createBroadcastChannel,
       createMessageChannel,
       createMessagePort,
       createWebSocket: testCreateWebSocket({ throwOnCreate: true }),
+      lockManager: testCreateLockManager(),
     });
 
     const workerRun = testCreateRun({
       consoleStoreOutputEntry: consoleStoreOutput.entry,
+      createBroadcastChannel,
       createMessagePort,
-      leaderLock: createInMemoryLeaderLock(),
+      lockManager: testCreateLockManager(),
       createSqliteDriver,
     });
 
@@ -2070,9 +2242,20 @@ describe("integration tests", () => {
         workerRun(startDbWorker(self));
       });
 
-    const sharedWorker = createSharedWorker<SharedWorkerInput>((self) => {
+    const sharedWorker = createSharedWorker<
+      SharedWorkerInput,
+      SharedWorkerOutput
+    >((self) => {
       run(initSharedWorker(self));
     });
+    sharedWorker.port.onMessage = (message) => {
+      createDbWorker().postMessage(message, [message.port]);
+    };
+    sharedWorker.port.postMessage({
+      type: "AnnounceTabLeader",
+      consoleLevel: "debug",
+    });
+    await testWaitForWorkerMessage();
 
     await using runWithDeps = run.addDeps({
       createDbWorker,

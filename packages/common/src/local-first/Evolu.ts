@@ -20,6 +20,11 @@ import type { ConsoleDep } from "../Console.js";
 import { createConsole } from "../Console.js";
 import { createUnknownError } from "../Error.js";
 import { exhaustiveCheck, todo } from "../Function.js";
+import {
+  acquireLeaderLock,
+  acquireLeaderLockCallback,
+  type LockManagerDep,
+} from "../LockManager.js";
 import { createMicrotaskBatch } from "../Microtask.js";
 import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
 import { createRefCountByKey } from "../RefCount.js";
@@ -38,7 +43,10 @@ import {
   UrlSafeString,
 } from "../Type.js";
 import type { ExtractType } from "../Types.js";
-import type { CreateMessageChannelDep } from "../Worker.js";
+import type {
+  CreateBroadcastChannelDep,
+  CreateMessageChannelDep,
+} from "../Worker.js";
 import type { CreateDbWorkerDep } from "./Db.js";
 import type { EvoluError } from "./Error.js";
 import type {
@@ -68,13 +76,12 @@ import type {
 } from "./Schema.js";
 import { evoluSchemaToSqliteSchema } from "./Schema.js";
 import type {
-  DbWorkerInput,
-  DbWorkerOutput,
+  ConsoleEntryOrError,
   EvoluInput,
   EvoluOutput,
-  TabOutput,
   SharedWorkerDep,
 } from "./Shared.js";
+import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.js";
 import { DbChange } from "./Storage.js";
 import type { Timestamp } from "./Timestamp.js";
 
@@ -547,7 +554,9 @@ export type EvoluDeps = EvoluPlatformDeps & EvoluErrorDep & Disposable;
  * logging and synchronous UI flush.
  */
 export type EvoluPlatformDeps = CreateDbWorkerDep &
+  CreateBroadcastChannelDep &
   CreateMessageChannelDep &
+  LockManagerDep &
   ReloadAppDep &
   SharedWorkerDep &
   Partial<ConsoleDep> &
@@ -565,17 +574,21 @@ export type EvoluPlatformDeps = CreateDbWorkerDep &
  * Dispose it only during app shutdown.
  */
 export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
-  const { createMessageChannel, sharedWorker } = deps;
+  const { createBroadcastChannel, sharedWorker } = deps;
   const console = deps.console ?? createConsole();
 
   using disposer = new DisposableStack();
   disposer.use(sharedWorker);
   const evoluError = disposer.use(createStore<EvoluError | null>(null));
 
-  const tabChannel = disposer.use(createMessageChannel<TabOutput>());
-  tabChannel.port2.onMessage = (message) => {
+  const consoleEntryOrErrorBroadcastChannel = disposer.use(
+    createBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    ),
+  );
+  consoleEntryOrErrorBroadcastChannel.onMessage = (message) => {
     switch (message.type) {
-      case "OnConsoleEntry":
+      case "ConsoleEntry":
         console.write(message.entry);
         // Fallback channel for unexpected errors without EvoluError typing.
         if (message.entry.method === "error") {
@@ -583,7 +596,7 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
         }
         break;
 
-      case "OnError":
+      case "Error":
         evoluError.set(message.error);
         // Keep typed errors visible in logs as operational failures.
         console.error(message.error);
@@ -594,13 +607,17 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
     }
   };
 
-  sharedWorker.port.postMessage(
-    {
-      type: "InitTab",
-      consoleLevel: console.getLevel(),
-      port: tabChannel.port1.native,
-    },
-    [tabChannel.port1.native],
+  sharedWorker.port.onMessage = (message) => {
+    deps.createDbWorker().postMessage(message, [message.port]);
+  };
+
+  disposer.use(
+    acquireLeaderLockCallback(deps)("tab", () => {
+      sharedWorker.port.postMessage({
+        type: "AnnounceTabLeader",
+        consoleLevel: console.getLevel(),
+      });
+    }),
   );
 
   const disposables = disposer.move();
@@ -771,10 +788,10 @@ export const createEvolu =
 
     // Scope worker/channel wiring and keep only postMessage outside.
     {
-      const { createDbWorker, createMessageChannel, sharedWorker } = run.deps;
-      const dbWorkerChannel = disposer.use(
-        createMessageChannel<DbWorkerOutput, DbWorkerInput>(),
-      );
+      const id = createId<"EvoluInstance">(run.deps);
+      const { createMessageChannel, sharedWorker } = run.deps;
+      disposer.use(await run.orThrow(acquireLeaderLock(id)));
+
       const evoluChannel = disposer.use(
         createMessageChannel<EvoluInput, EvoluOutput>(),
       );
@@ -860,35 +877,17 @@ export const createEvolu =
         {
           type: "CreateEvolu",
           name,
-          evoluPort: evoluChannel.port2.native,
-          dbWorkerPort: dbWorkerChannel.port2.native,
-        },
-        [evoluChannel.port2.native, dbWorkerChannel.port2.native],
-      );
-
-      /**
-       * No stack.use because Evolu instances don't dispose DbWorker because
-       * it's SharedWorder responsibility. DbWorker can be used by another tab.
-       * That's required because SQLite WASM needs a single web worker.
-       */
-      createDbWorker().postMessage(
-        {
-          type: "Init",
-          name,
+          id,
           consoleLevel: console.getLevel(),
           sqliteSchema: evoluSchemaToSqliteSchema(schema, config.indexes),
           encryptionKey: appOwner.encryptionKey,
           memoryOnly,
-          port: dbWorkerChannel.port1.native,
+          evoluPort: evoluChannel.port2.native,
         },
-        [dbWorkerChannel.port1.native],
+        [evoluChannel.port2.native],
       );
 
       postMessage = evoluChannel.port1.postMessage;
-
-      disposer.defer(() => {
-        postMessage({ type: "Dispose" });
-      });
     }
 
     const createMutation =
@@ -998,6 +997,10 @@ export const createEvolu =
 
     if (isNonEmptyArray(transports)) useOwner(appOwner);
 
+    if (run.signal.aborted) {
+      await disposables.disposeAsync();
+    }
+
     return ok({
       name,
       appOwner,
@@ -1071,7 +1074,7 @@ export const createEvolu =
       useOwner,
 
       [Symbol.asyncDispose]: () => {
-        console.info("dispose");
+        if (!disposables.disposed) console.info("disposeEvolu");
         return disposables.disposeAsync();
       },
     } as Evolu<S>);

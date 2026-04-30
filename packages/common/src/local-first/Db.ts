@@ -18,6 +18,7 @@ import {
   type RandomBytesDep,
 } from "../Crypto.js";
 import { exhaustiveCheck, lazyFalse, lazyVoid } from "../Function.js";
+import type { LockManagerDep } from "../LockManager.js";
 import { acquireLeaderLock } from "../LockManager.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
 import { ok, type Result } from "../Result.js";
@@ -47,8 +48,8 @@ import {
   onePositiveInt,
 } from "../Type.js";
 import type { ExtractType } from "../Types.js";
-import type { LockManagerDep } from "../LockManager.js";
 import type {
+  CreateBroadcastChannelDep,
   NativeMessagePort,
   Worker,
   WorkerDeps,
@@ -74,7 +75,14 @@ import {
   getEvoluSqliteSchema,
   systemColumns,
 } from "./Schema.js";
-import type { DbWorkerInput, DbWorkerOutput } from "./Shared.js";
+import type {
+  ConsoleEntryOrError,
+  DbWorkerInput,
+  DbWorkerOutput,
+  DbWorkerQueuedResponse,
+  DbWorkerRequest,
+} from "./Shared.js";
+import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.js";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -107,7 +115,7 @@ import {
 export type DbWorker = Worker<DbWorkerInit>;
 
 export interface DbWorkerInit {
-  readonly type: "Init";
+  readonly type: "DbWorkerInit";
   readonly name: Name;
   readonly consoleLevel: ConsoleLevel;
   readonly sqliteSchema: SqliteSchema;
@@ -122,12 +130,16 @@ export interface CreateDbWorkerDep {
   readonly createDbWorker: CreateDbWorker;
 }
 
-export type DbWorkerDeps = WorkerDeps & LockManagerDep & CreateSqliteDriverDep;
+export type DbWorkerDeps = WorkerDeps &
+  CreateBroadcastChannelDep &
+  LockManagerDep &
+  CreateSqliteDriverDep;
 
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
   async (run) => {
     await using disposer = new AsyncDisposableStack();
+    disposer.use(self);
     const dbWorkerRun = disposer.use(run.create());
     const { deps } = dbWorkerRun;
 
@@ -145,23 +157,31 @@ export const startDbWorker =
 
     const console = deps.console.child(initMessage.name).child("DbWorker");
     console.setLevel(initMessage.consoleLevel);
-    console.info("start DbWorker");
 
     const port = disposer.use(
       deps.createMessagePort<DbWorkerOutput, DbWorkerInput>(initMessage.port),
+    );
+    const consoleEntryOrErrorBroadcastChannel = disposer.use(
+      deps.createBroadcastChannel<ConsoleEntryOrError>(
+        consoleEntryOrErrorBroadcastChannelName,
+      ),
     );
 
     disposer.defer(
       deps.consoleStoreOutputEntry.subscribe(() => {
         const entry = deps.consoleStoreOutputEntry.get();
-        if (entry) port.postMessage({ type: "OnConsoleEntry", entry });
+        if (entry)
+          consoleEntryOrErrorBroadcastChannel.postMessage({
+            type: "ConsoleEntry",
+            entry,
+          });
       }),
     );
+    console.debug("createDbWorker");
 
     disposer.use(
       await dbWorkerRun.orThrow(acquireLeaderLock(initMessage.name)),
     );
-    if (disposer.disposed) return ok();
 
     port.postMessage({ type: "LeaderAcquired", name: initMessage.name });
 
@@ -202,33 +222,26 @@ export const startDbWorker =
 
     const storage = createClientStorage({ ...dbDeps, clock })({
       onError: (error) => {
-        port.postMessage({ type: "OnError", error });
+        consoleEntryOrErrorBroadcastChannel.postMessage({
+          type: "Error",
+          error,
+        });
       },
     });
 
-    // TODO: Call on dispose message.
-    const _disposables = disposer.move();
+    const disposables = disposer.move();
     const dbWorkerRunWithStorage = dbWorkerRun.addDeps({ storage });
 
-    /**
-     * SharedWorker retries until some leader replies, so this worker must
-     * ignore callback IDs it already completed.
-     *
-     * The Set intentionally lives for one leader's lifetime. If that leader tab
-     * closes, retries go to a new leader with a fresh Set. Revisit this only if
-     * memory pressure shows up; even millions of short callback IDs are
-     * acceptable here, and naive eviction could let a still-retried request run
-     * again.
-     */
-    const processedRequestIds = new Set<Id>();
+    port.onMessage = (input) => {
+      if (input.type === "Dispose") {
+        if (!disposables.disposed) console.debug("disposeDbWorker");
+        void disposables.disposeAsync();
+        return;
+      }
 
-    port.onMessage = ({ callbackId, request }) => {
-      if (processedRequestIds.has(callbackId)) return;
-      processedRequestIds.add(callbackId);
+      const { callbackId, request } = input;
 
-      const postQueuedResponse = (
-        response: ExtractType<DbWorkerOutput, "OnQueuedResponse">["response"],
-      ): void => {
+      const postQueuedResponse = (response: DbWorkerQueuedResponse): void => {
         port.postMessage(
           { type: "OnQueuedResponse", callbackId, response },
           response.type === "ForEvolu" && response.message.type === "Export"
@@ -245,7 +258,10 @@ export const startDbWorker =
                 request.message,
               );
               if (!result.ok) {
-                port.postMessage({ type: "OnError", error: result.error });
+                consoleEntryOrErrorBroadcastChannel.postMessage({
+                  type: "Error",
+                  error: result.error,
+                });
               } else {
                 postQueuedResponse({
                   type: "ForEvolu",
@@ -784,7 +800,7 @@ const handleMutation =
   ) =>
   (
     message: ExtractType<
-      ExtractType<DbWorkerInput["request"], "ForEvolu">["message"],
+      ExtractType<DbWorkerRequest, "ForEvolu">["message"],
       "Mutate"
     >,
   ): Result<

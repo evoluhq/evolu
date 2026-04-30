@@ -4,10 +4,12 @@ import type {
   DbWorkerInit,
   EvoluDeps,
   SharedWorkerInput,
+  SharedWorkerOutput,
 } from "@evolu/common/local-first";
 import { createEvoluDeps as createCommonEvoluDeps } from "@evolu/common/local-first";
 import { reloadApp } from "../Platform.js";
 import {
+  createBroadcastChannel,
   createMessageChannel,
   createSharedWorker,
   createWorker,
@@ -29,7 +31,10 @@ export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
       }),
     );
 
-  const sharedWorker = createSharedWorker<SharedWorkerInput>(
+  const sharedWorker = createSharedWorker<
+    SharedWorkerInput,
+    SharedWorkerOutput
+  >(
     new SharedWorker(new URL("Shared.worker.js", import.meta.url), {
       type: "module",
     }),
@@ -38,7 +43,9 @@ export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
   return createCommonEvoluDeps({
     ...deps,
     createDbWorker,
+    createBroadcastChannel,
     createMessageChannel,
+    lockManager: globalThis.navigator.locks,
     reloadApp,
     sharedWorker,
   });

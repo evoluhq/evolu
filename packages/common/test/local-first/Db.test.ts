@@ -15,10 +15,13 @@ import {
 } from "../../src/local-first/Protocol.js";
 import { createQueryBuilder } from "../../src/local-first/Schema.js";
 import type {
+  ConsoleEntryOrError,
   DbWorkerInput,
   DbWorkerOutput,
+  DbWorkerRequest,
   EvoluInstanceId,
 } from "../../src/local-first/Shared.js";
+import { consoleEntryOrErrorBroadcastChannelName } from "../../src/local-first/Shared.js";
 import { DbChange } from "../../src/local-first/Storage.js";
 import {
   createTimestamp,
@@ -26,9 +29,13 @@ import {
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
+import {
+  acquireLeaderLock,
+  testCreateLockManager,
+  type LockManagerDep,
+} from "../../src/LockManager.js";
 import { ok } from "../../src/Result.js";
 import { createSet, emptySet } from "../../src/Set.js";
-import { testCreateLockManager } from "../../src/LockManager.js";
 import {
   createSqlite,
   getSqliteSnapshot,
@@ -50,9 +57,11 @@ import type { ExtractType } from "../../src/Types.js";
 import {
   createMessagePort,
   createWorker,
+  testCreateBroadcastChannel,
   testCreateMessageChannel,
   testWaitForWorkerMessage,
   type MessagePort,
+  type WorkerSelf,
 } from "../../src/Worker.js";
 import { setupSqliteAndRelayStorage, testCreateSqliteDep } from "../_deps.js";
 import {
@@ -180,6 +189,7 @@ const setupDb = async ({
     ok({
       exec: (query) => driver.exec(query),
       export: () => driver.export(),
+      deleteDatabase: () => driver.deleteDatabase(),
       [Symbol.dispose]: lazyVoid,
     });
 
@@ -204,8 +214,10 @@ const setupDb = async ({
 
 interface DbWorkerSetup extends DbSetup {
   readonly initOutputs: ReadonlyArray<DbWorkerOutput>;
+  readonly lockManager: LockManagerDep["lockManager"];
   readonly outputs: Array<DbWorkerOutput>;
   readonly port: MessagePort<DbWorkerInput, DbWorkerOutput>;
+  readonly consoleEntryOrErrors: Array<ConsoleEntryOrError>;
   readonly workerName: Name;
 }
 
@@ -225,14 +237,16 @@ const setupDbWorker = async ({
   const dbSetup =
     providedDbSetup ??
     disposer.use(await setupDb(time == null ? undefined : { time }));
+  const lockManager = testCreateLockManager();
   const workerName = dbSetup.name;
 
   const run = disposer.use(
     testCreateRun({
       console: testCreateConsole({ level: "silent" }),
       consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
+      createBroadcastChannel: testCreateBroadcastChannel,
       createMessagePort,
-      lockManager: testCreateLockManager(),
+      lockManager,
       createSqliteDriver: dbSetup.createSqliteDriver,
       time: dbSetup.time,
     }),
@@ -246,13 +260,23 @@ const setupDbWorker = async ({
     testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>(),
   );
   const outputs: Array<DbWorkerOutput> = [];
+  const consoleEntryOrErrors: Array<ConsoleEntryOrError> = [];
+  const consoleEntryOrErrorBroadcastChannel = disposer.use(
+    testCreateBroadcastChannel<ConsoleEntryOrError>(
+      consoleEntryOrErrorBroadcastChannelName,
+    ),
+  );
+
+  consoleEntryOrErrorBroadcastChannel.onMessage = (output) => {
+    consoleEntryOrErrors.push(output);
+  };
 
   channel.port2.onMessage = (output) => {
     outputs.push(output);
   };
 
   worker.postMessage({
-    type: "Init",
+    type: "DbWorkerInit",
     name: workerName,
     consoleLevel: "silent",
     sqliteSchema,
@@ -274,8 +298,10 @@ const setupDbWorker = async ({
   return {
     ...dbSetup,
     initOutputs,
+    lockManager,
     outputs,
     port: channel.port2,
+    consoleEntryOrErrors,
     workerName,
     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
@@ -283,10 +309,10 @@ const setupDbWorker = async ({
 
 const postRequest = async (
   setup: DbWorkerSetup,
-  request: DbWorkerInput["request"],
+  request: DbWorkerRequest,
   callbackId = setup.createId(),
 ): Promise<ReadonlyArray<DbWorkerOutput>> => {
-  setup.port.postMessage({ callbackId, request });
+  setup.port.postMessage({ type: "Request", callbackId, request });
   await testWaitForWorkerMessage();
   return setup.outputs.splice(0);
 };
@@ -340,7 +366,9 @@ describe("worker startup", () => {
 
     writeEntry(entry);
     await testWaitForWorkerMessage();
-    expect(setup.outputs).toEqual([{ type: "OnConsoleEntry", entry }]);
+    expect(setup.consoleEntryOrErrors).toEqual([
+      { type: "ConsoleEntry", entry },
+    ]);
   });
 
   test("acquires leadership and initializes SQLite", async () => {
@@ -481,6 +509,71 @@ describe("worker startup", () => {
         ],
       }
     `);
+  });
+
+  test("releases leadership after dispose message", async () => {
+    await using setup = await setupDbWorker();
+    await using run = testCreateRun({ lockManager: setup.lockManager });
+
+    setup.port.postMessage({ type: "Dispose" });
+
+    await using lock = await run.orThrow(acquireLeaderLock(setup.workerName));
+    expect(lock).toBeDefined();
+  });
+
+  test("disposes worker self after dispose message", async () => {
+    await using disposer = new AsyncDisposableStack();
+    const dbSetup = disposer.use(await setupDb());
+    const lockManager = testCreateLockManager();
+    const workerSelfDisposed = Promise.withResolvers<void>();
+    let workerSelfDisposeCount = 0;
+    const self: WorkerSelf<DbWorkerInit> = {
+      postMessage: lazyVoid,
+      onMessage: null,
+      native: {} as WorkerSelf<DbWorkerInit>["native"],
+      [Symbol.dispose]: () => {
+        workerSelfDisposeCount += 1;
+        workerSelfDisposed.resolve();
+      },
+    };
+
+    const run = disposer.use(
+      testCreateRun({
+        console: testCreateConsole({ level: "silent" }),
+        consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
+        createBroadcastChannel: testCreateBroadcastChannel,
+        createMessagePort,
+        lockManager,
+        createSqliteDriver: dbSetup.createSqliteDriver,
+        time: dbSetup.time,
+      }),
+    );
+    void run(startDbWorker(self));
+
+    using channel = testCreateMessageChannel<DbWorkerOutput, DbWorkerInput>();
+    const outputs: Array<DbWorkerOutput> = [];
+    channel.port2.onMessage = (output) => {
+      outputs.push(output);
+    };
+
+    while (!self.onMessage) await testWaitForWorkerMessage();
+    self.onMessage({
+      type: "DbWorkerInit",
+      name: dbSetup.name,
+      consoleLevel: "silent",
+      sqliteSchema: defaultSqliteSchema,
+      encryptionKey: testAppOwner.encryptionKey,
+      memoryOnly: true,
+      port: channel.port1.native,
+    });
+
+    while (outputs.length === 0) await testWaitForWorkerMessage();
+
+    channel.port2.postMessage({ type: "Dispose" });
+
+    await workerSelfDisposed.promise;
+
+    expect(workerSelfDisposeCount).toBe(1);
   });
 
   test("passes encrypted SQLite options when memoryOnly is false", async () => {
@@ -2483,7 +2576,7 @@ describe("sync message flow", () => {
     `);
   });
 
-  test("ApplySyncMessage emits OnError for corrupted messages", async () => {
+  test("ApplySyncMessage emits Error for corrupted messages", async () => {
     await using setup = await setupDbWorker();
 
     const validMessage = await createBroadcastProtocolMessage([
@@ -2504,24 +2597,26 @@ describe("sync message flow", () => {
     const corruptedMessage = Uint8Array.from(validMessage);
     corruptedMessage[corruptedMessage.length - 1] ^= 0xff;
 
-    expect(
-      await postRequest(setup, {
-        type: "ForSharedWorker",
-        message: {
-          type: "ApplySyncMessage",
-          owner: testAppOwner,
-          inputMessage: corruptedMessage,
+    const outputs = await postRequest(setup, {
+      type: "ForSharedWorker",
+      message: {
+        type: "ApplySyncMessage",
+        owner: testAppOwner,
+        inputMessage: corruptedMessage,
+      },
+    });
+
+    expect(setup.consoleEntryOrErrors).toEqual([
+      {
+        type: "Error",
+        error: {
+          type: "DecryptWithXChaCha20Poly1305Error",
+          error: expect.any(Error),
         },
-      }),
-    ).toMatchInlineSnapshot(`
+      },
+    ]);
+    expect(outputs).toMatchInlineSnapshot(`
       [
-        {
-          "error": {
-            "error": [Error: invalid tag],
-            "type": "DecryptWithXChaCha20Poly1305Error",
-          },
-          "type": "OnError",
-        },
         {
           "callbackId": "mg8id41Qk7HxDoApjp0mZA",
           "response": {
@@ -2677,7 +2772,7 @@ describe("sync message flow", () => {
     `);
   });
 
-  test("ApplySyncMessage emits OnError for timestamps beyond max drift", async () => {
+  test("ApplySyncMessage emits Error for timestamps beyond max drift", async () => {
     await using setup = await setupDbWorker();
 
     const farFutureMessage = await createBroadcastProtocolMessage([
@@ -2696,25 +2791,27 @@ describe("sync message flow", () => {
       },
     ]);
 
-    expect(
-      await postRequest(setup, {
-        type: "ForSharedWorker",
-        message: {
-          type: "ApplySyncMessage",
-          owner: testAppOwner,
-          inputMessage: farFutureMessage,
+    const outputs = await postRequest(setup, {
+      type: "ForSharedWorker",
+      message: {
+        type: "ApplySyncMessage",
+        owner: testAppOwner,
+        inputMessage: farFutureMessage,
+      },
+    });
+
+    expect(setup.consoleEntryOrErrors).toEqual([
+      {
+        type: "Error",
+        error: {
+          type: "TimestampDriftError",
+          now: 0,
+          next: 600000,
         },
-      }),
-    ).toMatchInlineSnapshot(`
+      },
+    ]);
+    expect(outputs).toMatchInlineSnapshot(`
       [
-        {
-          "error": {
-            "next": 600000,
-            "now": 0,
-            "type": "TimestampDriftError",
-          },
-          "type": "OnError",
-        },
         {
           "callbackId": "mg8id41Qk7HxDoApjp0mZA",
           "response": {
@@ -2897,7 +2994,7 @@ describe("sync message flow", () => {
 
       const rows = response.message.rowsByQuery.get(query);
       assert(rows, "Expected query rows");
-      return rows as ReadonlyArray<Record<string, unknown>>;
+      return rows;
     };
 
     const selectHistoryRows = (setup: DbWorkerSetup) =>
@@ -3540,303 +3637,59 @@ describe("sync message flow", () => {
   });
 });
 
-describe("request deduplication and drift", () => {
-  test("ignores duplicate callbackId for repeated mutate requests", async () => {
-    await using setup = await setupDbWorker();
+test("sync mutate posts Error when persisted clock exceeds drift", async () => {
+  await using dbSetup = await setupDb();
 
-    const callbackId = setup.createId();
-    const request: DbWorkerInput["request"] = {
-      type: "ForEvolu",
-      id: setup.evoluInstanceId,
-      message: {
-        type: "Mutate",
-        changes: [
-          createMutationChange({
-            table: "testTable",
-            id: setup.createId(),
-            values: { name: "once" },
-            isInsert: true,
-            isDelete: null,
-          }),
-        ],
-        onCompleteIds: [],
-        subscribedQueries: emptySet,
-      },
-    };
+  {
+    await using setup = await setupDbWorker({ dbSetup });
+    expect(setup.outputs).toEqual([]);
+  }
+  await testWaitForMacrotask();
 
-    expect(await postRequest(setup, request, callbackId))
-      .toMatchInlineSnapshot(`
-        [
-          {
-            "callbackId": "0l2pVhO0LWfZ0SWcHuPJiQ",
-            "response": {
-              "id": "IGNl5t4ulaaQpdnwDhgoCA",
-              "message": {
-                "messagesByOwnerId": Map {
-                  "-9AbmkcTJdXDGMs8_ycHCw" => [
-                    {
-                      "change": {
-                        "id": "mg8id41Qk7HxDoApjp0mZA",
-                        "isDelete": null,
-                        "isInsert": true,
-                        "table": "testTable",
-                        "values": {
-                          "name": "once",
-                        },
-                      },
-                      "timestamp": {
-                        "counter": 1,
-                        "millis": 0,
-                        "nodeId": "b3c19a4f2418a62c",
-                      },
-                    },
-                  ],
-                },
-                "rowsByQuery": Map {},
-                "type": "Mutate",
-              },
-              "type": "ForEvolu",
-            },
-            "type": "OnQueuedResponse",
-          },
-        ]
-      `);
+  dbSetup.sqlite.exec(sql.prepared`
+    update evolu_config
+    set "clock" = ${timestampToTimestampBytes(
+      createTimestamp({
+        millis: Millis.orThrow(10 * 60 * 1000),
+        counter: 0 as never,
+      }),
+    )};
+  `);
 
-    expect(await postRequest(setup, request, callbackId)).toMatchInlineSnapshot(
-      `[]`,
-    );
+  await using setup = await setupDbWorker({ dbSetup });
 
-    expect(getSqliteSnapshot(setup)).toMatchInlineSnapshot(`
-      {
-        "schema": {
-          "indexes": [
-            {
-              "name": "evolu_history_ownerId_timestamp",
-              "sql": "create index evolu_history_ownerId_timestamp on evolu_history (
-                "ownerId",
-                "timestamp"
-              )",
-            },
-            {
-              "name": "evolu_history_ownerId_table_id_column_timestampDesc",
-              "sql": "create unique index evolu_history_ownerId_table_id_column_timestampDesc on evolu_history (
-                "ownerId",
-                "table",
-                "id",
-                "column",
-                "timestamp" desc
-              )",
-            },
-            {
-              "name": "evolu_timestamp_index",
-              "sql": "create index evolu_timestamp_index on evolu_timestamp (
-              "ownerId",
-              "l",
-              "t",
-              "h1",
-              "h2",
-              "c"
-            )",
-            },
-          ],
-          "tables": {
-            "_localTable": Set {
-              "id",
-              "createdAt",
-              "updatedAt",
-              "isDeleted",
-              "ownerId",
-              "value",
-            },
-            "evolu_config": Set {
-              "clock",
-            },
-            "evolu_history": Set {
-              "ownerId",
-              "table",
-              "id",
-              "column",
-              "timestamp",
-              "value",
-            },
-            "evolu_message_quarantine": Set {
-              "ownerId",
-              "timestamp",
-              "table",
-              "id",
-              "column",
-              "value",
-            },
-            "evolu_timestamp": Set {
-              "ownerId",
-              "t",
-              "h1",
-              "h2",
-              "c",
-              "l",
-            },
-            "evolu_usage": Set {
-              "ownerId",
-              "storedBytes",
-              "firstTimestamp",
-              "lastTimestamp",
-            },
-            "evolu_version": Set {
-              "protocolVersion",
-            },
-            "testTable": Set {
-              "id",
-              "createdAt",
-              "updatedAt",
-              "isDeleted",
-              "ownerId",
-              "name",
-            },
-          },
-        },
-        "tables": [
-          {
-            "name": "evolu_version",
-            "rows": [
-              {
-                "protocolVersion": 1,
-              },
-            ],
-          },
-          {
-            "name": "evolu_config",
-            "rows": [
-              {
-                "clock": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-              },
-            ],
-          },
-          {
-            "name": "evolu_history",
-            "rows": [
-              {
-                "column": "name",
-                "id": uint8:[154,15,34,119,141,80,147,177,241,14,128,41,142,157,38,100],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-                "value": "once",
-              },
-              {
-                "column": "createdAt",
-                "id": uint8:[154,15,34,119,141,80,147,177,241,14,128,41,142,157,38,100],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-                "value": "1970-01-01T00:00:00.000Z",
-              },
-            ],
-          },
-          {
-            "name": "evolu_message_quarantine",
-            "rows": [],
-          },
-          {
-            "name": "evolu_timestamp",
-            "rows": [
-              {
-                "c": 1,
-                "h1": 16132600677598,
-                "h2": 86597046377751,
-                "l": 2,
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-              },
-            ],
-          },
-          {
-            "name": "evolu_usage",
-            "rows": [
-              {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "storedBytes": 1,
-              },
-            ],
-          },
-          {
-            "name": "testTable",
-            "rows": [
-              {
-                "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "mg8id41Qk7HxDoApjp0mZA",
-                "isDeleted": null,
-                "name": "once",
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
-                "updatedAt": null,
-              },
-            ],
-          },
-          {
-            "name": "_localTable",
-            "rows": [],
-          },
-        ],
-      }
-    `);
+  const outputs = await postRequest(setup, {
+    type: "ForEvolu",
+    id: setup.evoluInstanceId,
+    message: {
+      type: "Mutate",
+      changes: [
+        createMutationChange({
+          table: "testTable",
+          id: setup.createId(),
+          values: { name: "drift" },
+          isInsert: true,
+          isDelete: null,
+        }),
+      ],
+      onCompleteIds: [],
+      subscribedQueries: emptySet,
+    },
   });
 
-  test("sync mutate posts OnError when persisted clock exceeds drift", async () => {
-    await using dbSetup = await setupDb();
-
+  expect(outputs).toEqual([]);
+  expect(setup.consoleEntryOrErrors).toEqual([
     {
-      await using setup = await setupDbWorker({ dbSetup });
-      expect(setup.outputs).toEqual([]);
-    }
-    await testWaitForMacrotask();
+      type: "Error",
+      error: {
+        type: "TimestampDriftError",
+        now: 0,
+        next: 600000,
+      },
+    },
+  ]);
 
-    dbSetup.sqlite.exec(sql.prepared`
-      update evolu_config
-      set "clock" = ${timestampToTimestampBytes(
-        createTimestamp({
-          millis: Millis.orThrow(10 * 60 * 1000),
-          counter: 0 as never,
-        }),
-      )};
-    `);
-
-    await using setup = await setupDbWorker({ dbSetup });
-
-    expect(
-      await postRequest(setup, {
-        type: "ForEvolu",
-        id: setup.evoluInstanceId,
-        message: {
-          type: "Mutate",
-          changes: [
-            createMutationChange({
-              table: "testTable",
-              id: setup.createId(),
-              values: { name: "drift" },
-              isInsert: true,
-              isDelete: null,
-            }),
-          ],
-          onCompleteIds: [],
-          subscribedQueries: emptySet,
-        },
-      }),
-    ).toMatchInlineSnapshot(`
-      [
-        {
-          "error": {
-            "next": 600000,
-            "now": 0,
-            "type": "TimestampDriftError",
-          },
-          "type": "OnError",
-        },
-      ]
-    `);
-
-    expect(getSqliteSnapshot({ sqlite: dbSetup.sqlite }))
-      .toMatchInlineSnapshot(`
+  expect(getSqliteSnapshot({ sqlite: dbSetup.sqlite })).toMatchInlineSnapshot(`
       {
         "schema": {
           "indexes": [
@@ -3968,7 +3821,6 @@ describe("request deduplication and drift", () => {
         ],
       }
     `);
-  });
 });
 
 describe("quarantine replay", () => {

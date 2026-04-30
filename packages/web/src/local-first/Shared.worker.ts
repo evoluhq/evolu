@@ -13,6 +13,7 @@ import { createSharedWorkerSelf, createWorkerDeps } from "../Worker.js";
 const run = createRun({
   ...createWorkerDeps(),
   createWebSocket,
+  lockManager: globalThis.navigator.locks,
 });
 
 run(initSharedWorker(createSharedWorkerSelf(self)));
