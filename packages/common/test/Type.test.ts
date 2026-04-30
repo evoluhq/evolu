@@ -57,17 +57,26 @@ import {
   array,
   Base64Url,
   base64UrlToUint8Array,
+  between,
+  BigInt as BigIntType,
   Boolean,
   brand,
+  CurrencyCode,
   createFormatTypeError,
   createId,
   createIdAsUuidv7,
   createIdFromString,
   Date,
   DateIso,
+  dateToDateIso,
+  dateIsoToDate,
+  EvoluType,
   FiniteNumber,
+  formatBase64UrlError,
+  formatSimplePasswordError,
   formatRegexError,
   formatStringError,
+  Function,
   greaterThan,
   greaterThanOrEqualTo,
   Id,
@@ -91,6 +100,8 @@ import {
   literal,
   maxLength,
   minLength,
+  Mnemonic,
+  Name,
   multipleOf,
   NegativeInt,
   NegativeNumber,
@@ -105,6 +116,7 @@ import {
   NonPositiveInt,
   NonPositiveNumber,
   nullableToOptional,
+  Null,
   nullishOr,
   nullOr,
   Number,
@@ -121,9 +133,12 @@ import {
   set,
   SimplePassword,
   String,
+  trim,
   trimmed,
   TrimmedString,
   tuple,
+  typeErrorToStandardSchemaIssues,
+  Undefined,
   Uint8Array,
   typed,
   uint8ArrayToBase64Url,
@@ -789,6 +804,12 @@ test("base64UrlToUint8Array/uint8ArrayToBase64Url", () => {
   expectTypeOf(decodedBytes).toEqualTypeOf<globalThis.Uint8Array>();
 });
 
+test("formatBase64UrlError", () => {
+  expect(formatBase64UrlError({ type: "Base64Url", value: "*" })).toBe(
+    'The value "*" is not a valid Base64Url string.',
+  );
+});
+
 test("DateIso", () => {
   const validDates = [
     "0000-01-01T00:00:00.000Z", // Minimum
@@ -818,6 +839,43 @@ test("DateIso", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.type).toBe("DateIso");
   }
+
+  const dateIso = DateIso.orThrow("2023-01-01T12:00:00.000Z");
+  expect(dateIsoToDate(dateIso).toISOString()).toBe(dateIso);
+  const date = new globalThis.Date("2023-01-01T12:00:00.000Z");
+  expect(dateToDateIso(date)).toEqual(ok("2023-01-01T12:00:00.000Z"));
+});
+
+test("Function/EvoluType/CurrencyCode/Name/Mnemonic", () => {
+  expect(Function.fromUnknown(lazyVoid)).toEqual(ok(lazyVoid));
+  expect(Function.fromUnknown(1)).toEqual(err({ type: "Function", value: 1 }));
+
+  expect(EvoluType.fromUnknown(String)).toEqual(ok(String));
+  expect(EvoluType.fromUnknown("x")).toEqual(
+    err({ type: "EvoluType", value: "x" }),
+  );
+
+  expect(CurrencyCode.fromUnknown("USD")).toEqual(ok("USD"));
+  expect(CurrencyCode.fromUnknown("usd")).toEqual(
+    err({ type: "CurrencyCode", value: "usd" }),
+  );
+
+  expect(Name.fromUnknown("valid_name-1")).toEqual(ok("valid_name-1"));
+  const tooLongName = "a".repeat(65);
+  expect(Name.fromUnknown(tooLongName)).toEqual(
+    err({ type: "Name", value: tooLongName }),
+  );
+
+  const validMnemonic =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+  expect(Mnemonic.fromUnknown(validMnemonic)).toEqual(ok(validMnemonic));
+  expect(Mnemonic.fromUnknown("abandon abandon abandon")).toEqual(
+    err({ type: "Mnemonic", value: "abandon abandon abandon" }),
+  );
+});
+
+test("trim helper", () => {
+  expect(trim(" a ")).toBe("a");
 });
 
 test("SimplePassword", () => {
@@ -1559,6 +1617,32 @@ test("record", () => {
   expectTypeOf(NonEmptyStringToNumber.ParentError).toEqualTypeOf<
     RecordError<StringError, NumberError>
   >();
+
+  expect(NonEmptyStringToNumber.fromParent({ "": 42 } as never)).toEqual(
+    err({
+      type: "Record",
+      value: { "": 42 },
+      reason: {
+        kind: "Key",
+        key: "",
+        error: { type: "MinLength", value: "", min: 1 },
+      },
+    }),
+  );
+
+  const NonEmptyStringToPositiveNumber = record(NonEmptyString, PositiveNumber);
+
+  expect(NonEmptyStringToPositiveNumber.fromParent({ key: -1 } as never)).toEqual(
+    err({
+      type: "Record",
+      value: { key: -1 },
+      reason: {
+        kind: "Value",
+        key: "key",
+        error: { type: "Positive", value: -1 },
+      },
+    }),
+  );
 });
 
 test("object", () => {
@@ -1742,6 +1826,52 @@ test("object", () => {
   expectTypeOf(NumberDictionary.ParentError).toEqualTypeOf<
     ObjectWithRecordError<{ length: NumberError }, StringError, NumberError>
   >();
+
+  const StrictDictionary = object(
+    { fixed: NonEmptyString },
+    record(NonEmptyString, PositiveNumber),
+  );
+
+  expect(StrictDictionary.fromParent({ fixed: "ok", key: 1 } as never)).toEqual(
+    ok({ fixed: "ok", key: 1 }),
+  );
+
+  expect(StrictDictionary.fromParent({ fixed: "ok", "": 1 } as never)).toEqual(
+    err({
+      type: "ObjectWithRecord",
+      value: { fixed: "ok", "": 1 },
+      reason: {
+        kind: "IndexKey",
+        key: "",
+        error: { type: "MinLength", value: "", min: 1 },
+      },
+    }),
+  );
+
+  expect(
+    StrictDictionary.fromParent({ fixed: "ok", key: -1 } as never),
+  ).toEqual(
+    err({
+      type: "ObjectWithRecord",
+      value: { fixed: "ok", key: -1 },
+      reason: {
+        kind: "IndexValue",
+        key: "key",
+        error: { type: "Positive", value: -1 },
+      },
+    }),
+  );
+
+  expect(StrictDictionary.fromParent({ fixed: "" } as never)).toEqual(
+    err({
+      type: "ObjectWithRecord",
+      value: { fixed: "" },
+      reason: {
+        kind: "Props",
+        errors: { fixed: { type: "MinLength", value: "", min: 1 } },
+      },
+    }),
+  );
 });
 
 test("union", () => {
@@ -1906,14 +2036,14 @@ test("recursive", () => {
   }
 
   type CategoryError = ObjectError<{
-    readonly name: typeof String.Error;
+    readonly name: MinLengthError<1> | StringError;
     readonly subcategories: ArrayError<CategoryError>;
   }>;
 
   const Category = recursive(
     (): Type<"Object", Category, CategoryInput, CategoryError> =>
       object({
-        name: String,
+        name: NonEmptyString,
         subcategories: array(Category),
       }),
   );
@@ -1948,6 +2078,8 @@ test("recursive", () => {
     expect(validResult.value).toEqual(validCategory);
   }
 
+  expect(Category.fromParent(validCategory as never)).toEqual(ok(validCategory));
+
   expect(Category.name).toBe("Recursive");
 
   const invalidResult1 = Category.fromUnknown({ name: 123, subcategories: [] });
@@ -1963,6 +2095,7 @@ test("recursive", () => {
       },
     }),
   );
+
 });
 
 test("nullOr", () => {
@@ -2168,6 +2301,32 @@ test("tuple", () => {
       number & Brand<"Positive"> & Brand<"NonNegative">,
     ]
   >();
+
+  expect(TupleOfStringAndNumber.fromParent(["hello", 42] as never)).toEqual(
+    ok(["hello", 42]),
+  );
+
+  expect(TupleOfStringAndNumber.fromParent(["hello"] as never)).toEqual(
+    err({
+      type: "Tuple",
+      value: ["hello"],
+      reason: { kind: "InvalidLength", expected: 2 },
+    }),
+  );
+
+  const TupleOfStringAndPositive = tuple(String, PositiveNumber);
+
+  expect(TupleOfStringAndPositive.fromParent(["hello", -1] as never)).toEqual(
+    err({
+      type: "Tuple",
+      value: ["hello", -1],
+      reason: {
+        kind: "Element",
+        index: 1,
+        error: { type: "Positive", value: -1 },
+      },
+    }),
+  );
 });
 
 test("JsonValue", () => {
@@ -2553,6 +2712,13 @@ test("partial", () => {
   expectTypeOf(PartialUser.ParentError).toEqualTypeOf<
     ObjectError<{ name: StringError; age: NumberError | NonNegativeError }>
   >();
+
+  const inheritedProps = { inherited: NonEmptyString };
+  const derivedProps = Object.create(inheritedProps) as {
+    inherited: typeof NonEmptyString;
+  };
+  const PartialDerived = partial(derivedProps);
+  expect(PartialDerived.from({})).toEqual(ok({}));
 });
 
 test("nullableToOptional", () => {
@@ -2570,6 +2736,29 @@ test("nullableToOptional", () => {
   }>();
   expect(TransformedUser.props.name).toBe(String);
   expect(isOptionalType(TransformedUser.props.age)).toBe(true);
+
+  const RequiredUser = nullableToOptional({
+    name: union(String, Number),
+  });
+  expect(RequiredUser.fromUnknown({})).toEqual(
+    err({
+      type: "Object",
+      value: {},
+      reason: {
+        kind: "Props",
+        errors: {
+          name: {
+            type: "Union",
+            value: undefined,
+            errors: [
+              { type: "String", value: undefined },
+              { type: "Number", value: undefined },
+            ],
+          },
+        },
+      },
+    }),
+  );
 });
 
 test("omit - single key", () => {
@@ -2672,8 +2861,8 @@ test("createFormatTypeError", () => {
   assert(!stringResult.ok);
   expect(formatTypeErrorWithCustomMessage(stringResult.error)).toBe("string");
 
-  const Name = brand("Name", NonEmptyTrimmedString1000);
-  type NameError = typeof Name.Error;
+  const CustomName = brand("Name", NonEmptyTrimmedString1000);
+  type NameError = typeof CustomName.Error;
 
   const formatTypeErrorWithCustomError = createFormatTypeError<NameError>(
     (error) => {
@@ -2685,9 +2874,99 @@ test("createFormatTypeError", () => {
     },
   );
 
-  const nameResult = Name.fromUnknown(1);
+  const nameResult = CustomName.fromUnknown(1);
   assert(!nameResult.ok);
   expect(formatTypeErrorWithCustomError(nameResult.error)).toBe("name");
+});
+
+test("createFormatTypeError covers built-in and composite formatter branches", () => {
+  const formatTypeError = createFormatTypeError();
+  const ObjectType = object({ a: String, b: Number });
+  const ObjectWithRecordType = object(
+    { fixed: String },
+    record(NonEmptyString, Number),
+  );
+
+  const cases: ReadonlyArray<readonly [AnyType, unknown]> = [
+    [String, 1],
+    [Number, "x"],
+    [BigIntType, 1],
+    [Boolean, 1],
+    [Undefined, null],
+    [Null, undefined],
+    [Function, 1],
+    [Uint8Array, "x"],
+    [ArrayBuffer, "x"],
+    [instanceOf(class User { id = 1; }), {}],
+    [EvoluType, "x"],
+    [CurrencyCode, "usd"],
+    [DateIso, "2022-12-01T00:00:00.000"],
+    [TrimmedString, " x"],
+    [minLength(2)(String), ""],
+    [maxLength(1)(String), "ab"],
+    [length(2)(String), "a"],
+    [Mnemonic, "abandon abandon abandon"],
+    [regex("Alpha", /^[a-z]+$/)(String), "123"],
+    [Id, "short"],
+    [id("User"), "short"],
+    [PositiveNumber, 0],
+    [NegativeNumber, 0],
+    [NonPositiveNumber, 1],
+    [NonNegativeNumber, -1],
+    [Int, 1.5],
+    [greaterThan(2)(Number), 2],
+    [lessThan(2)(Number), 2],
+    [greaterThanOrEqualTo(2)(Number), 1],
+    [lessThanOrEqualTo(2)(Number), 3],
+    [NonNaNNumber, NaN],
+    [FiniteNumber, Infinity],
+    [multipleOf(3)(Number), 4],
+    [between(1, 2)(Number), 3],
+    [literal("x"), "y"],
+    [Int64, 9223372036854775808n],
+    [Int64String, "abc"],
+    [Json, "{ bad json }"],
+    [SimplePassword, "short"],
+    [array(Number), "x"],
+    [array(Number), [1, "x"]],
+    [set(Number), "x"],
+    [set(Number), new globalThis.Set([1, "x"])],
+    [record(NonEmptyString, Number), 1],
+    [record(NonEmptyString, Number), { "": 1 }],
+    [record(NonEmptyString, Number), { a: "x" }],
+    [ObjectType, 1],
+    [ObjectType, { a: "x", b: 1, c: 1 }],
+    [ObjectType, { a: 1, b: "x" }],
+    [ObjectWithRecordType, 1],
+    [ObjectWithRecordType, { fixed: 1 }],
+    [ObjectWithRecordType, { fixed: "x", "": 1 }],
+    [ObjectWithRecordType, { fixed: "x", key: "x" }],
+    [union(String, Number), true],
+    [tuple(String, Number), ["x"]],
+    [tuple(String, Number), ["x", "y"]],
+  ];
+
+  for (const [type, value] of cases) {
+    const result = type.fromUnknown(value);
+    assert(!result.ok);
+    expect(formatTypeError(result.error as never)).not.toBe("");
+  }
+
+  expect(formatTypeError({ type: "Custom", value: 1 } as never)).toContain(
+    "Custom",
+  );
+});
+
+test("formatSimplePasswordError", () => {
+  const format = formatSimplePasswordError(createFormatTypeError());
+  const result = SimplePassword.fromUnknown("short");
+  assert(!result.ok);
+  expect(format(result.error)).toContain("Invalid password:");
+});
+
+test("id fromUnknown returns StringError for non-string", () => {
+  const UserId = id("User");
+  expect(UserId.fromUnknown(123)).toEqual(err({ type: "String", value: 123 }));
 });
 
 test("custom formatTypeError written from scratch", () => {
@@ -2788,6 +3067,9 @@ test("json Type Factory", () => {
   expectTypeOf(personJson).toEqualTypeOf<string & Brand<"PersonJson">>();
 
   expect(personJsonToPerson(personJson)).toEqual(person);
+  expect(PersonJson.fromUnknown('{"name":"Alice","age":30}')).toEqual(
+    ok(personJson),
+  );
 
   // Test StringError: input is not a string
   expect(PersonJson.fromUnknown(42)).toEqual(
@@ -2836,6 +3118,26 @@ test("json Type Factory", () => {
         exhaustiveCheck(testErrorResult.error);
     }
   }
+});
+
+test("between accepts boundary values", () => {
+  expect(between(1, 2)(Number).fromUnknown(2)).toEqual(ok(2));
+});
+
+test("object fromParent keeps Object error type without record", () => {
+  const User = object({ age: PositiveNumber });
+  expect(User.fromParent({ age: 0 } as never)).toEqual(
+    err({
+      type: "Object",
+      value: { age: 0 },
+      reason: {
+        kind: "Props",
+        errors: {
+          age: { type: "Positive", value: 0 },
+        },
+      },
+    }),
+  );
 });
 
 test("Branded numbers relationships", () => {
@@ -2961,6 +3263,34 @@ describe("Standard Schema V1", () => {
         ],
       }
     `);
+
+    const invalidResult4 = User["~standard"].validate("x");
+    expect(invalidResult4).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"Object","value":"x","reason":{"kind":"NotObject"}}",
+            "path": [],
+          },
+        ],
+      }
+    `);
+
+    const invalidResult5 = User["~standard"].validate({
+      name: "Alice",
+      age: 30,
+      extra: true,
+    });
+    expect(invalidResult5).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"Object","value":{"name":"Alice","age":30,"extra":true},"reason":{"kind":"ExtraKeys","extraKeys":["extra"]}}",
+            "path": [],
+          },
+        ],
+      }
+    `);
   });
 
   test("array validation with path tracking", () => {
@@ -2975,6 +3305,54 @@ describe("Standard Schema V1", () => {
         "issues": [
           {
             "message": "{"type":"Number","value":"two"}",
+            "path": [
+              1,
+            ],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("array validation not-array error", () => {
+    const NumberArray = array(Number);
+
+    const invalidResult = NumberArray["~standard"].validate("x");
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"Array","value":"x","reason":{"kind":"NotArray"}}",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("set validation with path tracking", () => {
+    const NumberSet = set(Number);
+
+    const notSetResult = NumberSet["~standard"].validate(1);
+    expect(notSetResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"Set","value":1,"reason":{"kind":"NotSet"}}",
+            "path": [],
+          },
+        ],
+      }
+    `);
+
+    const elementResult = NumberSet["~standard"].validate(
+      new globalThis.Set([1, "x"]),
+    );
+    expect(elementResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"Number","value":"x"}",
             "path": [
               1,
             ],
@@ -3030,6 +3408,91 @@ describe("Standard Schema V1", () => {
             "message": "{"type":"String","value":123}",
             "path": [
               "baz",
+            ],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("record validation not-record error", () => {
+    const StringRecord = record(String, String);
+
+    const invalidResult = StringRecord["~standard"].validate(1);
+    expect(invalidResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"Record","value":1,"reason":{"kind":"NotRecord"}}",
+            "path": [],
+          },
+        ],
+      }
+    `);
+  });
+
+  test("object with record validation covers all issue branches", () => {
+    const ObjectWithRecordType = object(
+      { fixed: String },
+      record(NonEmptyString, Number),
+    );
+
+    const notObjectResult = ObjectWithRecordType["~standard"].validate(1);
+    expect(notObjectResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"ObjectWithRecord","value":1,"reason":{"kind":"NotObject"}}",
+            "path": [],
+          },
+        ],
+      }
+    `);
+
+    const indexKeyResult = ObjectWithRecordType["~standard"].validate({
+      fixed: "ok",
+      "": 1,
+    });
+    expect(indexKeyResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"MinLength","value":"","min":1}",
+            "path": [
+              "",
+            ],
+          },
+        ],
+      }
+    `);
+
+    const indexValueResult = ObjectWithRecordType["~standard"].validate({
+      fixed: "ok",
+      key: "x",
+    });
+    expect(indexValueResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"Number","value":"x"}",
+            "path": [
+              "key",
+            ],
+          },
+        ],
+      }
+    `);
+
+    const propsResult = ObjectWithRecordType["~standard"].validate({
+      fixed: 1,
+    });
+    expect(propsResult).toMatchInlineSnapshot(`
+      {
+        "issues": [
+          {
+            "message": "{"type":"String","value":1}",
+            "path": [
+              "fixed",
             ],
           },
         ],
@@ -3149,6 +3612,31 @@ describe("Standard Schema V1", () => {
         ],
       }
     `);
+  });
+
+  test("typeErrorToStandardSchemaIssues handles Brand errors", () => {
+    const parentErrorIssues = typeErrorToStandardSchemaIssues({
+      type: "Brand",
+      value: 123,
+      parentError: { type: "String", value: 123 },
+    } as never);
+    expect(parentErrorIssues).toEqual([
+      {
+        message: '{"type":"String","value":123}',
+        path: [],
+      },
+    ]);
+
+    const brandOnlyIssues = typeErrorToStandardSchemaIssues({
+      type: "Brand",
+      value: 123,
+    } as never);
+    expect(brandOnlyIssues).toEqual([
+      {
+        message: '{"type":"Brand","value":123}',
+        path: [],
+      },
+    ]);
   });
 
   test("InferInput and InferOutput types", () => {
