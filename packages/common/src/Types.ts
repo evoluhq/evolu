@@ -359,12 +359,3 @@ export type ExtractType<
   TUnion extends { readonly type: TypeName },
   TType extends TUnion["type"],
 > = Extract<TUnion, { readonly type: TType }>;
-
-/**
- * Constrains `T` to only contain keys not present in `Existing`.
- *
- * Use as a generic constraint to prevent overriding existing properties.
- */
-export type NewKeys<T, Existing> = {
-  [K in keyof T]: K extends keyof Existing ? never : T[K];
-};

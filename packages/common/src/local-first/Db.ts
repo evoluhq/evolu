@@ -140,12 +140,11 @@ export const startDbWorker =
   async (run) => {
     await using disposer = new AsyncDisposableStack();
     disposer.use(self);
-    const dbWorkerRun = disposer.use(run.create());
-    const { deps } = dbWorkerRun;
+    const { deps } = run;
 
     let initialized = false;
 
-    const initMessage = await dbWorkerRun.orThrow(
+    const initMessage = await run.orThrow(
       callback<DbWorkerInit>(({ ok }) => {
         self.onMessage = (message) => {
           assert(!initialized, "DbWorker must be initialized only once");
@@ -179,14 +178,12 @@ export const startDbWorker =
     );
     console.debug("createDbWorker");
 
-    disposer.use(
-      await dbWorkerRun.orThrow(acquireLeaderLock(initMessage.name)),
-    );
+    disposer.use(await run.orThrow(acquireLeaderLock(initMessage.name)));
 
     port.postMessage({ type: "LeaderAcquired", name: initMessage.name });
 
     const sqlite = disposer.use(
-      await dbWorkerRun.orThrow(
+      await run.orThrow(
         createSqlite(
           initMessage.name,
           initMessage.memoryOnly
@@ -199,16 +196,17 @@ export const startDbWorker =
 
     const baseSqliteStorage = createBaseSqliteStorage({
       sqlite,
-      ...dbWorkerRun.deps,
+      ...deps,
     });
 
     const dbDeps = {
-      ...dbWorkerRun.deps,
+      ...deps,
       sqlite,
       sqliteSchema: initMessage.sqliteSchema,
       baseSqliteStorage,
       timestampConfig: { maxDrift: defaultTimestampMaxDrift },
     };
+    const dbWorkerRun = disposer.use(run.create());
 
     const currentSchema = getEvoluSqliteSchema(dbDeps)();
     const dbIsInitialized = "evolu_version" in currentSchema.tables;
@@ -230,7 +228,6 @@ export const startDbWorker =
     });
 
     const disposables = disposer.move();
-    const dbWorkerRunWithStorage = dbWorkerRun.addDeps({ storage });
 
     port.onMessage = (input) => {
       if (input.type === "Dispose") {
@@ -330,29 +327,34 @@ export const startDbWorker =
             case "ApplySyncMessage": {
               const { owner, inputMessage } = request.message;
 
-              dbWorkerRunWithStorage<void, never>(async (run) => {
-                storage.setRequestContext(owner.encryptionKey);
+              dbWorkerRun<void, never, { readonly storage: ClientStorage }>(
+                async (run) => {
+                  const { storage } = run.deps;
 
-                const result = await run(
-                  applyProtocolMessageAsClient(inputMessage, {
-                    writeKey: owner.writeKey,
-                  }),
-                );
+                  storage.setRequestContext(owner.encryptionKey);
 
-                const didWriteMessages = storage.didWriteMessages();
+                  const result = await run(
+                    applyProtocolMessageAsClient(inputMessage, {
+                      writeKey: owner.writeKey,
+                    }),
+                  );
 
-                postQueuedResponse({
-                  type: "ForSharedWorker",
-                  message: {
-                    type: "ApplySyncMessage",
-                    ownerId: owner.id,
-                    didWriteMessages,
-                    result,
-                  },
-                });
+                  const didWriteMessages = storage.didWriteMessages();
 
-                return ok();
-              });
+                  postQueuedResponse({
+                    type: "ForSharedWorker",
+                    message: {
+                      type: "ApplySyncMessage",
+                      ownerId: owner.id,
+                      didWriteMessages,
+                      result,
+                    },
+                  });
+
+                  return ok();
+                },
+                { storage },
+              );
               break;
             }
 

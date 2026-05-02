@@ -325,10 +325,11 @@ export const testSetupSqlite = async (
   const sqlite = disposer.use(
     await run.orThrow(createSqlite(testName, { mode: "memory" })),
   );
+  const runWithSqlite = disposer.use(run.create({ ...run.deps, sqlite }));
   const disposables = disposer.move();
 
   return {
-    run: run.addDeps({ sqlite }),
+    run: runWithSqlite,
     sqlite,
     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };

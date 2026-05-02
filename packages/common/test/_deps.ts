@@ -126,10 +126,11 @@ export const setupSqliteAndRelayStorage = async (
     isOwnerWithinQuota: lazyTrue,
     ...config,
   });
+  const runWithStorage = disposer.use(run.create({ ...run.deps, storage }));
   const disposables = disposer.move();
 
   return {
-    run: run.addDeps<StorageDep>({ storage }),
+    run: runWithStorage,
     sqlite,
     storage,
     [Symbol.asyncDispose]: () => disposables.disposeAsync(),

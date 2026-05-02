@@ -11,12 +11,11 @@ import {
   shiftFromArray,
   type NonEmptyReadonlyArray,
 } from "../Array.js";
-import { assert, assertNotDisposed } from "../Assert.js";
+import { assert, assertNotAborted, assertNotDisposed } from "../Assert.js";
 import type { Brand } from "../Brand.js";
 import { createCallbacks } from "../Callbacks.js";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.js";
 import type { EncryptionKey } from "../Crypto.js";
-import { exhaustiveCheck } from "../Function.js";
 import { acquireLeaderLock, type LockManagerDep } from "../LockManager.js";
 import { structuralLookup, type StructuralLookupKey } from "../Lookup.js";
 import { createRefCountByKey, type RefCountByKey } from "../RefCount.js";
@@ -30,7 +29,13 @@ import { ok, type Result } from "../Result.js";
 import type { NonEmptyReadonlySet } from "../Set.js";
 import type { SqliteSchema } from "../Sqlite.js";
 import { createStore, type Store } from "../Store.js";
-import { AbortError, createMutex, type Mutex, type Task } from "../Task.js";
+import {
+  AbortError,
+  createMutex,
+  unabortable,
+  type Mutex,
+  type Task,
+} from "../Task.js";
 import { type Id, type Name, type Typed } from "../Type.js";
 import type { Callback, ExtractType } from "../Types.js";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
@@ -308,10 +313,12 @@ export const initSharedWorker =
 
             case "CreateEvolu": {
               void sharedWorkerRun(async (run) => {
-                const tenant = await run.orThrow(
-                  tenantsByName.acquire(message),
+                const tenant = await run(
+                  unabortable(tenantsByName.acquire(message)),
                 );
-                tenant.addInstance(
+                assertNotAborted(tenant);
+
+                tenant.value.addInstance(
                   message,
                   () => void sharedWorkerRun(tenantsByName.release(message)),
                 );
@@ -405,7 +412,8 @@ export const initSharedWorker =
       ),
     );
 
-    const sharedWorkerRun = run.create().addDeps({
+    const sharedWorkerRun = run.create({
+      ...deps,
       postConsoleEntryOrError,
       tabLeaderPortStore,
       transports,
@@ -506,8 +514,6 @@ const createEvoluTenant =
             callbacks.execute(message.callbackId, message);
             break;
           }
-          default:
-            exhaustiveCheck(message);
         }
       };
 
@@ -550,9 +556,6 @@ const createEvoluTenant =
           case "ForSharedWorker":
             handleResponseForSharedWorker(response);
             break;
-
-          default:
-            exhaustiveCheck(response);
         }
 
         // Complete the current queue item and continue with the next one.
@@ -570,7 +573,16 @@ const createEvoluTenant =
       dbWorkerPort = null;
       queueRequestInFlight = false;
 
-      await using _ = await tenantRun.orThrow(acquireLeaderLock(name));
+      // The DbWorker holds this tenant leader lock while it is alive. Tenant
+      // disposal sends Dispose, then acquires the same lock to wait until the
+      // DbWorker releases it: either because Dispose was delivered or because
+      // the hosting tab closed. The wait is unabortable because tenant disposal
+      // must finish even after tenantRun receives an abort request.
+      const lock = await tenantRun(unabortable(acquireLeaderLock(name)));
+      // AbortError here means tenantRun was already disposed before this
+      // cleanup could start, violating the disposal ordering above.
+      assertNotAborted(lock);
+      await using _ = lock.value;
     });
 
     disposer.defer(deps.tabLeaderPortStore.subscribe(initDbWorker));
@@ -653,9 +665,6 @@ const createEvoluTenant =
             [response.message.file.buffer],
           );
           break;
-
-        default:
-          exhaustiveCheck(response.message);
       }
     };
 
@@ -699,15 +708,9 @@ const createEvoluTenant =
               case "Broadcast":
               case "NoResponse":
                 break;
-
-              default:
-                exhaustiveCheck(response.message.result.value);
             }
           }
           break;
-
-        default:
-          exhaustiveCheck(response.message);
       }
     };
 
@@ -813,15 +816,14 @@ const createEvoluTenant =
         });
         disposer.use(instance.port);
 
-        void tenantRun(acquireLeaderLock(message.id)).then((result) => {
-          if (!result.ok) return;
-          const lock = result.value;
+        // The main-thread Evolu instance holds this per-instance leader lock
+        // while it is alive. Acquiring the same lock here means the main
+        // thread instance was disposed or its tab closed, so the tenant-side
+        // instance must dispose itself.
+        void tenantRun(acquireLeaderLock(message.id)).then((lock) => {
+          if (!lock.ok) return;
 
-          if (disposer.disposed) {
-            return lock[Symbol.asyncDispose]();
-          }
-
-          disposer.use(lock);
+          disposer.use(lock.value);
           return disposer.disposeAsync();
         });
 
@@ -858,8 +860,6 @@ const createEvoluTenant =
               );
               break;
             }
-            default:
-              exhaustiveCheck(message);
           }
         };
       },

@@ -61,7 +61,6 @@ import {
   type CallbackWithTeardown,
   type Int1To100,
   type Mutable,
-  type NewKeys,
   type Predicate,
 } from "./Types.js";
 
@@ -270,12 +269,22 @@ import {
  * await run(fetchUser(123));
  * ```
  *
- * For runtime-created dependencies, use {@link Run#addDeps}.
+ * Provide runtime-created dependencies to a single Task with `run(task, deps)`:
  *
- * ### Built-in dependencies
+ * ```ts
+ * const dbResult = await run(createDb(config));
+ * if (!dbResult.ok) return dbResult;
  *
- * {@link createRun} provides default {@link RunDeps} available to all Tasks
- * without declaring `D`:
+ * const userResult = await run(fetchUser(123), { db: dbResult.value });
+ * ```
+ *
+ * For reusable resources that own async work, use `run.create(deps)` and
+ * dispose the created Run with the resource.
+ *
+ * ### Default dependencies
+ *
+ * {@link createRun} provides default {@link RunDefaultDeps} available to all
+ * Tasks without declaring `D`:
  *
  * - {@link Console} — logging with hierarchical context via `child()`
  * - {@link Time} — current time
@@ -312,7 +321,7 @@ import {
  * ```
  *
  * For testing, use {@link testCreateRun} to get deterministic, controllable
- * implementations of all RunDeps.
+ * implementations of all RunDefaultDeps.
  *
  * ## Resource management
  *
@@ -415,6 +424,35 @@ import {
  * execution begins. If that abort would indicate a lifecycle bug in your code,
  * use {@link assertNotAborted} to crash immediately instead of threading the
  * impossible case through domain logic.
+ *
+ * ### What should code do with `AbortError`?
+ *
+ * Treat `AbortError` as structured-concurrency control flow. It usually means
+ * the current work should stop because its owning {@link Run} or {@link Fiber} is
+ * stopping.
+ *
+ * In ordinary Task code, return it unchanged:
+ *
+ * ```ts
+ * const result = await run(loadUser(id));
+ * if (!result.ok) return result;
+ * ```
+ *
+ * In fire-and-forget or cleanup code where nobody observes the result and the
+ * runtime already owns cleanup, returning early is enough:
+ *
+ * ```ts
+ * const result = await run(waitUntilClosed());
+ * if (!result.ok) return;
+ * ```
+ *
+ * Do not use {@link Run#orThrow} just to avoid thinking about abort. It turns
+ * normal cancellation into an exception. Use `orThrow` at composition
+ * boundaries where any error should fail the whole flow.
+ *
+ * If abort would violate a lifecycle invariant, make that invariant explicit:
+ * run the must-finish part with {@link unabortable}, then use
+ * {@link assertNotAborted} to fail fast if the Task could not even start.
  *
  * ### How do I type an anonymous Task callback?
  *
@@ -579,6 +617,17 @@ export interface Run<D = unknown> extends AsyncDisposable {
   <T, E>(task: Task<T, E, D>): Fiber<T, E, D>;
 
   /**
+   * Runs a {@link Task} with custom dependencies.
+   *
+   * The provided dependencies replace the current custom dependency set for
+   * this Task. Default {@link RunDefaultDeps} are always available.
+   */
+  <T, E, Deps>(
+    task: Task<T, E, Deps>,
+    deps: Deps,
+  ): Fiber<T, E, RunDefaultDeps & Deps>;
+
+  /**
    * Runs a {@link Task} and throws if the returned {@link Result} is an error.
    *
    * Use this where failure should crash the current flow instead of being
@@ -601,13 +650,16 @@ export interface Run<D = unknown> extends AsyncDisposable {
    *
    * Throws: `Error` with the original Task error attached as `cause`.
    */
-  readonly orThrow: <T, E>(task: Task<T, E, D>) => Promise<T>;
+  readonly orThrow: {
+    <T, E>(task: Task<T, E, D>): Promise<T>;
+    <T, E, Deps>(task: Task<T, E, Deps>, deps: Deps): Promise<T>;
+  };
 
   /** Unique {@link Id} for this Run. */
   readonly id: Id;
 
   /** The parent {@link Run}, if this Run was created as a child. */
-  readonly parent: Run<D> | null;
+  readonly parent: Run | null;
 
   /** @see https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal */
   readonly signal: AbortSignal;
@@ -641,7 +693,7 @@ export interface Run<D = unknown> extends AsyncDisposable {
   readonly getState: () => RunState;
 
   /** Returns the current child {@link Fiber}s. */
-  readonly getChildren: () => ReadonlySet<Fiber<any, any, D>>;
+  readonly getChildren: () => ReadonlySet<AnyFiber>;
 
   /**
    * Creates a memoized {@link RunSnapshot} of this Run.
@@ -708,13 +760,15 @@ export interface Run<D = unknown> extends AsyncDisposable {
    *
    * For a long-lived reusable {@link Run}, use {@link Run.create}.
    */
-  readonly daemon: Run<D>;
+  readonly daemon: Run;
 
   /**
    * Creates a {@link Run} from this Run.
    *
    * Like {@link createRun}, the returned Run is daemon: it stays running until
-   * disposed. Unlike {@link createRun}, it shares the same Deps as this Run.
+   * disposed. Without arguments, it shares this Run's dependencies. With deps,
+   * it uses those custom dependencies plus preserved default
+   * {@link RunDefaultDeps}.
    *
    * Use this for long-lived disposable resources that need to own async work.
    * The resource creates one internal Run with `run.create()` and uses that Run
@@ -727,77 +781,19 @@ export interface Run<D = unknown> extends AsyncDisposable {
    *
    * To run a single Task as daemon, use {@link Run.daemon}.
    */
-  readonly create: () => Run<D>;
+  readonly create: {
+    (): Run<D>;
+    <Deps>(deps: Deps): Run<RunDefaultDeps & Deps>;
+  };
 
-  /** Returns the dependencies passed to {@link createRun}. */
-  readonly deps: RunDeps & D;
+  /** Returns this Run's dependencies. */
+  readonly deps: RunDefaultDeps & D;
 
   /**
    * @see {@link Concurrency}
    * @see {@link concurrently}
    */
   readonly concurrency: Concurrency;
-
-  /**
-   * Adds additional dependencies to this Run and returns it.
-   *
-   * Use for runtime-created dependencies — dependencies that cannot be created
-   * in the composition root (e.g., app start).
-   *
-   * ### Example
-   *
-   * ```ts
-   * // One-shot
-   * await run.addDeps({ db })(getUser(123));
-   *
-   * // Multiple deps at once
-   * await run.addDeps({ db, cache })(task);
-   *
-   * // Reusable — config comes from outside (message, file, etc.)
-   * type DbWorkerDeps = DbDep; // or DbDep & CacheDep & ...
-   *
-   * const init =
-   *   (config: Config): Task<void, InitError, CreateDbDep> =>
-   *   async (run) => {
-   *     const { createDb } = run.deps;
-   *     await using disposer = new AsyncDisposableStack();
-   *
-   *     const db = disposer.use(await run.orThrow(startApp()));
-   *     if (!db.ok) return db;
-   *
-   *     const runWithDb = run.addDeps({ db: db.value });
-   *
-   *     await runWithDb(getUser(123));
-   *     await runWithDb(insertUser(user));
-   *     return ok();
-   *   };
-   * ```
-   *
-   * ## FAQ
-   *
-   * ### How does it work?
-   *
-   * This is the whole implementation:
-   *
-   * ```ts
-   * run.addDeps = <E extends NewKeys<E, D>>(newDeps: E): Run<D & E> => {
-   *   depsRef.modify((currentDeps) => {
-   *     const duplicate = Object.keys(newDeps).find(
-   *       (k) => k in currentDeps,
-   *     );
-   *     assert(!duplicate, `Dependency '${duplicate}' already added.`);
-   *     return [undefined, { ...currentDeps, ...newDeps }];
-   *   });
-   *   return self as unknown as Run<D & E>;
-   * };
-   * ```
-   *
-   * Dependencies are stored in a shared {@link Ref}, so `addDeps` propagates to
-   * all runs. The runtime assertion ensures dependencies are created once —
-   * automatic deduplication would mask poor design (dependencies should have a
-   * single, clear point of creation).
-   */
-  readonly addDeps: <E extends NewKeys<E, D>>(extraDeps: E) => Run<D & E>;
 }
 
 /**
@@ -897,11 +893,18 @@ export interface Fiber<T = unknown, E = unknown, D = unknown>
 }
 
 /**
+ * Shorthand for a {@link Fiber} with `any` type parameters.
+ *
+ * @group Type utilities
+ */
+export type AnyFiber = Fiber<any, any, any>;
+
+/**
  * Extracts the value type from a {@link Fiber}.
  *
  * @group Type utilities
  */
-export type InferFiberOk<F extends Fiber<any, any, any>> =
+export type InferFiberOk<F extends AnyFiber> =
   F extends Fiber<infer T, any, any> ? T : never;
 
 /**
@@ -909,7 +912,7 @@ export type InferFiberOk<F extends Fiber<any, any, any>> =
  *
  * @group Type utilities
  */
-export type InferFiberErr<F extends Fiber<any, any, any>> =
+export type InferFiberErr<F extends AnyFiber> =
   F extends Fiber<any, infer E, any> ? E : never;
 
 /**
@@ -917,7 +920,7 @@ export type InferFiberErr<F extends Fiber<any, any, any>> =
  *
  * @group Type utilities
  */
-export type InferFiberDeps<F extends Fiber<any, any, any>> =
+export type InferFiberDeps<F extends AnyFiber> =
   F extends Fiber<any, any, infer D> ? D : never;
 
 /**
@@ -1023,7 +1026,7 @@ export type RunSnapshotState = typeof RunSnapshotState.Type;
  * @see {@link Run.snapshot}
  */
 export interface RunSnapshot {
-  /** The {@link Run.id} this snapshot represents. */
+  /** The Run id this snapshot represents. */
   readonly id: Id;
 
   /** The current lifecycle state. */
@@ -1083,7 +1086,7 @@ export interface RunConfigDep {
 }
 
 /** Default deps provided by {@link createRun}. */
-export type RunDeps = ConsoleDep &
+export type RunDefaultDeps = ConsoleDep &
   RandomBytesDep &
   RandomDep &
   TimeDep &
@@ -1093,7 +1096,7 @@ export type RunDeps = ConsoleDep &
 // Partial<TracerConfigDep> & // TODO:
 // Partial<TracerDep>; // TODO:
 
-const runDeps: RunDeps = {
+const runDefaultDeps: RunDefaultDeps = {
   console: createConsole(),
   randomBytes: createRandomBytes(),
   random: createRandom(),
@@ -1125,7 +1128,7 @@ export interface CreateRun<BaseDeps> {
  * Node.js `uncaughtException`, `unhandledRejection`, and graceful shutdown
  * handling, and `@evolu/react-native` adds React Native global error handling.
  *
- * {@link RunDeps} provides default dependencies:
+ * {@link RunDefaultDeps} provides default dependencies:
  *
  * - {@link Time}
  * - {@link Console}
@@ -1163,7 +1166,7 @@ export interface CreateRun<BaseDeps> {
  *   };
  *
  * // Composition root: create a Run with custom deps
- * type AppDeps = RunDeps & ConfigDep;
+ * type AppDeps = RunDefaultDeps & ConfigDep;
  *
  * const appDeps: AppDeps = {
  *   ...testCreateDeps(), // or spread individual deps
@@ -1176,24 +1179,24 @@ export interface CreateRun<BaseDeps> {
  * const result = await run(fetchUser("123"));
  *
  * // TypeScript catches missing deps at compile time:
- * // await using run2 = createRun(); // Run<RunDeps>
+ * // await using run2 = createRun(); // Run<RunDefaultDeps>
  * // run2(fetchUser("123")); // Error: Property 'config' is missing
  * ```
  *
  * @group Creating Run
  */
-export const createRun: CreateRun<RunDeps> = <D>(
+export const createRun: CreateRun<RunDefaultDeps> = <D>(
   deps?: D,
-): Run<RunDeps & D> => {
-  const mergedDeps = { ...runDeps, ...deps } as RunDeps & D;
-  return createRunInternal(createRef(mergedDeps))();
-};
+): Run<RunDefaultDeps & D> =>
+  createRunInternal({ ...runDefaultDeps, ...deps } as RunDefaultDeps & D);
 
 /** Internal Run properties, hidden from public API via TypeScript types. */
-interface RunInternal<D extends RunDeps = RunDeps> extends Run<D> {
+interface RunInternal<
+  D extends RunDefaultDeps = RunDefaultDeps,
+> extends Run<D> {
   ownTaskSettled: PromiseWithResolvers<void> | null;
 
-  readonly requestAbort: (reason: unknown) => void;
+  readonly requestAbort: (abortError: AbortError) => void;
   readonly requestSignal: AbortSignal;
 
   /**
@@ -1208,227 +1211,233 @@ interface RunInternal<D extends RunDeps = RunDeps> extends Run<D> {
   readonly handleTaskSettled: () => void;
 }
 
-const createRunInternal =
-  <D extends RunDeps>(depsRef: Ref<D>) =>
-  (
-    parent?: RunInternal<D>,
-    daemon?: RunInternal<D>,
-    abortBehavior?: AbortBehavior,
-    concurrencyBehavior?: Concurrency,
-  ): RunInternal<D> => {
-    const parentMask = parent?.abortMask ?? isAbortable;
+const createRunInternal = <D extends RunDefaultDeps>(
+  deps: D,
+  parent?: RunInternal,
+  daemon?: RunInternal,
+  abortBehavior?: AbortBehavior,
+  concurrencyBehavior?: Concurrency,
+): RunInternal<D> => {
+  const parentMask = parent?.abortMask ?? isAbortable;
 
-    let abortMask: AbortMask;
-    switch (abortBehavior) {
-      case undefined:
-        abortMask = parentMask;
-        break;
-      case "unabortable":
-        abortMask = increment(parentMask) as AbortMask;
-        break;
-      default:
-        assert(
-          abortBehavior <= parentMask,
-          "restore used outside its unabortableMask",
-        );
-        abortMask = abortBehavior;
-    }
-
-    const requestController = new AbortController();
-    const signalController = new AbortController();
-
-    let state: RunState = running;
-    let result: UnknownResult | undefined;
-    let outcome: UnknownResult | undefined;
-    let children: ReadonlySet<Fiber<any, any, D>> = emptySet;
-
-    const requestAbort = (reason: unknown) => {
-      const abortError = reason as AbortError;
-      if (abortMask === isAbortable) signalController.abort(abortError);
-      requestController.abort(abortError);
-    };
-
-    if (parent) {
-      subscribeToAbort(
-        parent.requestSignal,
-        () => requestAbort(parent.requestSignal.reason),
-        { signal: requestController.signal },
+  let abortMask: AbortMask;
+  switch (abortBehavior) {
+    case undefined:
+      abortMask = parentMask;
+      break;
+    case "unabortable":
+      abortMask = increment(parentMask) as AbortMask;
+      break;
+    default:
+      assert(
+        abortBehavior <= parentMask,
+        "restore used outside its unabortableMask",
       );
-    }
+      abortMask = abortBehavior;
+  }
 
-    const emitEvent = (data: RunEventData) => {
-      const deps = depsRef.get();
-      if (!deps.runConfig?.eventsEnabled.get()) return;
-      const e: RunEvent = { id: self.id, timestamp: deps.time.now(), data };
-      for (let node: Run<D> | null = self; node; node = node.parent) {
-        node.onEvent?.(e);
-      }
-    };
+  const requestController = new AbortController();
+  const signalController = new AbortController();
 
-    const run = <T, E>(task: Task<T, E, D>): Fiber<T, E, D> => {
-      const childRun = createRunInternal(depsRef)(
-        self,
-        daemon ?? self,
-        getAbortBehavior(task),
-        getConcurrencyBehavior(task),
-      );
+  let state: RunState = running;
+  let result: UnknownResult | undefined;
+  let outcome: UnknownResult | undefined;
+  let children: ReadonlySet<AnyFiber> = emptySet;
 
-      if (state !== running) {
-        childRun.requestAbort(runStoppedAbortError);
-        task = () => err(runStoppedAbortError);
-      } else if (
-        signalController.signal.aborted &&
-        childRun.abortMask === isAbortable
-      ) {
-        childRun.requestAbort(signalController.signal.reason);
-        task = () => err(signalController.signal.reason);
-      }
-
-      const childFiber: Fiber<T, E, D> = Object.assign(
-        Promise.try(task, childRun)
-          .then(childRun.handleTaskFulfilled)
-          .finally(childRun.handleTaskSettled)
-          .finally(childRun[Symbol.asyncDispose])
-          .finally(() => {
-            children = deleteFromSet(children, childFiber);
-            emitEvent({ type: "ChildRemoved", childId: childRun.id });
-          }),
-        {
-          run: childRun,
-          abort: (reason?: unknown): void => {
-            childRun.requestAbort(createAbortError(reason));
-          },
-          getState: () => childRun.getState() as RunState<T, E>,
-          [Symbol.dispose]: () => {
-            childFiber.abort();
-          },
-        },
-      );
-
-      children = addToSet(children, childFiber);
-      emitEvent({ type: "ChildAdded", childId: childRun.id });
-
-      return childFiber;
-    };
-
-    const self = run as RunInternal<D>;
-
-    {
-      const run = self as Mutable<RunInternal<D>>;
-      const id = createId(depsRef.get());
-
-      let snapshot: RunSnapshot | null = null;
-      let disposingPromise: Promise<void> | null = null;
-
-      run.orThrow = async (task) => getOrThrow(await self(task));
-      run.id = id;
-      run.parent = parent ?? null;
-
-      run.signal = signalController.signal;
-      run.abortMask = abortMask;
-      run.onAbort = (callback) => {
-        if (abortMask !== isAbortable) return;
-        subscribeToAbort(
-          signalController.signal,
-          () => callback((signalController.signal.reason as AbortError).reason),
-          { once: true, signal: requestController.signal },
-        );
-      };
-      run.getState = () => state;
-      run.getChildren = () => children;
-
-      run.snapshot = () => {
-        const childSnapshots = Array.from(children).map((fiber) =>
-          fiber.run.snapshot(),
-        );
-        if (
-          snapshot?.state !== state ||
-          !eqArrayStrict(snapshot.children, childSnapshots)
-        ) {
-          snapshot = {
-            id,
-            state: state as RunSnapshotState,
-            children: childSnapshots,
-            abortMask,
-          };
-        }
-        return snapshot;
-      };
-
-      run.daemon = daemon ?? self;
-
-      run.create = () => run.daemon(createDeferred().task).run;
-
-      Object.defineProperty(run, "deps", { get: depsRef.get });
-
-      run.concurrency =
-        concurrencyBehavior ?? parent?.concurrency ?? defaultConcurrency;
-
-      run.addDeps = <E extends NewKeys<E, D>>(newDeps: E): Run<D & E> => {
-        depsRef.modify((currentDeps) => {
-          const duplicate = Object.keys(newDeps).find((k) => k in currentDeps);
-          assert(
-            !duplicate,
-            `Dependency '${duplicate}' already added. ` +
-              `This assert ensures dependencies are created once. ` +
-              `Automatic deduplication would mask bugs.`,
-          );
-          return [undefined, { ...currentDeps, ...newDeps }];
-        });
-        return self as unknown as Run<D & E>;
-      };
-
-      run[Symbol.asyncDispose] = () => {
-        if (disposingPromise) return disposingPromise;
-
-        state = { type: "Disposing" };
-        emitEvent({ type: "StateChanged", state });
-        requestAbort(runStoppedAbortError);
-
-        disposingPromise = Promise.allSettled(
-          (run.ownTaskSettled
-            ? [run.ownTaskSettled.promise, ...children]
-            : children) as Iterable<PromiseLike<unknown>>,
-        )
-          .then(lazyVoid)
-          .finally(() => {
-            /**
-             * Root and daemon Runs have no own Task, so
-             * `run.handleTaskFulfilled` never populates their terminal values.
-             * In that case disposal publishes `ok()` for both `result` and
-             * `outcome`. Task-backed Runs normally reach this point with both
-             * values already set.
-             */
-            [result, outcome] = [result ?? ok(), outcome ?? ok()];
-            state = { type: "Settled", result, outcome };
-            emitEvent({ type: "StateChanged", state });
-          });
-
-        return disposingPromise;
-      };
-
-      // Internal
-      run.ownTaskSettled = parent ? Promise.withResolvers<void>() : null;
-
-      run.requestAbort = requestAbort;
-      run.requestSignal = requestController.signal;
-
-      run.handleTaskFulfilled = (taskOutcome) => {
-        const taskResult = run.signal.aborted
-          ? (err(run.signal.reason as AbortError) as typeof taskOutcome)
-          : taskOutcome;
-        result = taskResult;
-        outcome = taskOutcome;
-        return taskResult;
-      };
-
-      run.handleTaskSettled = () => {
-        run.ownTaskSettled?.resolve();
-      };
-    }
-
-    return self;
+  const requestAbort = (abortError: AbortError) => {
+    if (abortMask === isAbortable) signalController.abort(abortError);
+    requestController.abort(abortError);
   };
+
+  if (parent) {
+    subscribeToAbort(
+      parent.requestSignal,
+      () => requestAbort(parent.requestSignal.reason as AbortError),
+      { signal: requestController.signal },
+    );
+  }
+
+  const emitEvent = (data: RunEventData) => {
+    if (!deps.runConfig?.eventsEnabled.get()) return;
+    const e: RunEvent = { id: self.id, timestamp: deps.time.now(), data };
+    for (let node: Run | null = self; node; node = node.parent) {
+      node.onEvent?.(e);
+    }
+  };
+
+  const run = (task: AnyTask, taskDeps?: unknown): AnyFiber => {
+    const childRun = createRunInternal(
+      taskDeps === undefined
+        ? deps
+        : {
+            console: deps.console,
+            randomBytes: deps.randomBytes,
+            random: deps.random,
+            time: deps.time,
+            ...(deps.runConfig && {
+              runConfig: deps.runConfig,
+            }),
+            ...taskDeps,
+          },
+      self,
+      daemon ?? self,
+      getAbortBehavior(task),
+      getConcurrencyBehavior(task),
+    );
+
+    if (state !== running) {
+      childRun.requestAbort(runStoppedAbortError);
+      task = () => err(runStoppedAbortError);
+    } else if (
+      signalController.signal.aborted &&
+      childRun.abortMask === isAbortable
+    ) {
+      const abortError = signalController.signal.reason as AbortError;
+      childRun.requestAbort(abortError);
+      task = () => err(abortError);
+    }
+
+    const childFiber: Fiber = Object.assign(
+      Promise.try(task, childRun)
+        .then(childRun.handleTaskFulfilled)
+        .finally(childRun.handleTaskSettled)
+        .finally(childRun[Symbol.asyncDispose])
+        .finally(() => {
+          children = deleteFromSet(children, childFiber);
+          emitEvent({ type: "ChildRemoved", childId: childRun.id });
+        }),
+      {
+        run: childRun,
+        abort: (reason?: unknown): void => {
+          childRun.requestAbort(createAbortError(reason));
+        },
+        getState: () => childRun.getState(),
+        [Symbol.dispose]: () => {
+          childFiber.abort();
+        },
+      },
+    );
+
+    children = addToSet(children, childFiber);
+    emitEvent({ type: "ChildAdded", childId: childRun.id });
+
+    return childFiber;
+  };
+
+  let snapshot: RunSnapshot | null = null;
+  let disposingPromise: Promise<void> | null = null;
+
+  const self = run as RunInternal<D>;
+
+  {
+    const run: Mutable<RunInternal<D>> = self;
+    const id = createId(deps);
+
+    function orThrow<T, E>(task: Task<T, E, D>): Promise<T>;
+    function orThrow<T, E, Deps>(
+      task: Task<T, E, Deps>,
+      taskDeps: Deps,
+    ): Promise<T>;
+    async function orThrow<T, E, Deps>(
+      task: Task<T, E, D | Deps>,
+      taskDeps?: Deps,
+    ): Promise<T> {
+      const result =
+        taskDeps === undefined ? await self(task) : await self(task, taskDeps);
+      return getOrThrow(result);
+    }
+
+    run.orThrow = orThrow;
+    run.id = id;
+    run.parent = parent ?? null;
+
+    run.signal = signalController.signal;
+    run.abortMask = abortMask;
+    run.onAbort = (callback) => {
+      if (abortMask !== isAbortable) return;
+      subscribeToAbort(
+        signalController.signal,
+        () => callback((signalController.signal.reason as AbortError).reason),
+        { once: true, signal: requestController.signal },
+      );
+    };
+    run.getState = () => state;
+    run.getChildren = () => children;
+
+    run.snapshot = () => {
+      const childSnapshots = Array.from(children).map((fiber) =>
+        fiber.run.snapshot(),
+      );
+      if (
+        snapshot?.state !== state ||
+        !eqArrayStrict(snapshot.children, childSnapshots)
+      ) {
+        snapshot = {
+          id,
+          state,
+          children: childSnapshots,
+          abortMask,
+        };
+      }
+      return snapshot;
+    };
+
+    run.onEvent = undefined;
+    run.daemon = daemon ?? self;
+    run.create = (runDeps: {} = deps): Run<any> => {
+      const task = createDeferred().task;
+      return run.daemon(task, runDeps).run;
+    };
+    run.deps = deps;
+    run.concurrency =
+      concurrencyBehavior ?? parent?.concurrency ?? defaultConcurrency;
+    run[Symbol.asyncDispose] = () => {
+      if (disposingPromise) return disposingPromise;
+
+      state = { type: "Disposing" };
+      emitEvent({ type: "StateChanged", state });
+      requestAbort(runStoppedAbortError);
+
+      disposingPromise = Promise.allSettled(
+        (self.ownTaskSettled
+          ? [self.ownTaskSettled.promise, ...children]
+          : children) as Iterable<PromiseLike<unknown>>,
+      )
+        .then(lazyVoid)
+        .finally(() => {
+          /**
+           * Root and daemon Runs have no own Task, so `run.handleTaskFulfilled`
+           * never populates their terminal values. In that case disposal
+           * publishes `ok()` for both `result` and `outcome`. Task-backed Runs
+           * normally reach this point with both values already set.
+           */
+          [result, outcome] = [result ?? ok(), outcome ?? ok()];
+          state = { type: "Settled", result, outcome };
+          emitEvent({ type: "StateChanged", state });
+        });
+
+      return disposingPromise;
+    };
+
+    // Internal
+    run.ownTaskSettled = parent ? Promise.withResolvers<void>() : null;
+    run.requestAbort = requestAbort;
+    run.requestSignal = requestController.signal;
+    run.handleTaskFulfilled = (taskOutcome) => {
+      const taskResult = self.signal.aborted
+        ? err(self.signal.reason as AbortError)
+        : taskOutcome;
+      result = taskResult;
+      outcome = taskOutcome;
+      return taskResult;
+    };
+    run.handleTaskSettled = () => {
+      self.ownTaskSettled?.resolve();
+    };
+  }
+
+  return self;
+};
 
 const running: RunState = { type: "Running" };
 
@@ -1485,16 +1494,19 @@ const abortBehavior =
 /**
  * Makes a {@link Task} unabortable.
  *
- * Once started, an unabortable Task always completes — abort requests are
- * ignored and `signal.aborted` remains `false`.
+ * Once started, an unabortable Task always completes. Abort requests are masked
+ * while it runs, and `signal.aborted` remains `false` inside the Task.
  *
- * If the parent {@link Run} is already disposing or settled, `run(task)`
+ * `unabortable` controls abort signal propagation; it does not force work to
+ * start. If the parent {@link Run} is already disposing or settled, `run(task)`
  * short-circuits before task execution and returns `err(AbortError)` with
  * {@link runStoppedError} as reason. So `unabortable` means “do not interrupt
  * this Task once it has started”, not “remove AbortError from its type”.
  *
- * When that pre-start abort would be a programmer error, assert it explicitly
- * with `assertNotAborted` after awaiting the result.
+ * Most callers should still propagate or ignore {@link AbortError} according to
+ * ordinary structured-concurrency ownership. When abort would violate a
+ * lifecycle invariant, await the unabortable Task and use
+ * {@link assertNotAborted} to fail fast if it could not even start.
  *
  * ### Example
  *
@@ -1753,7 +1765,7 @@ export const callback =
       readonly ok: Callback<T>;
       readonly err: Callback<E>;
       readonly signal: AbortSignal;
-      readonly deps: RunDeps;
+      readonly deps: RunDefaultDeps;
     }>,
   ): Task<T, E> =>
   (run) =>
@@ -2023,10 +2035,7 @@ export const retry =
   <T, E, D = unknown, Output = unknown>(
     task: Task<T, E, D>,
     schedule: Schedule<Output, E>,
-    {
-      retryable = lazyTrue,
-      onRetry,
-    }: RetryOptions<E, Output> = {},
+    { retryable = lazyTrue, onRetry }: RetryOptions<E, Output> = {},
   ): Task<T, RetryError<E>, D> =>
   async (run) => {
     const step = schedule(run.deps);
@@ -2143,10 +2152,7 @@ export const repeat =
   <T, E, D = unknown, Output = unknown>(
     task: Task<T, E, D>,
     schedule: Schedule<Output, T>,
-    {
-      repeatable = lazyTrue,
-      onRepeat,
-    }: RepeatOptions<T, Output> = {},
+    { repeatable = lazyTrue, onRepeat }: RepeatOptions<T, Output> = {},
   ): Task<T, E, D> =>
   async (run) => {
     const step = schedule(run.deps);
@@ -2185,7 +2191,7 @@ export const repeat =
  *
  * Similar to
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/withResolvers | Promise.withResolvers},
- * but integrated with {@link Task} and {@link Run} for cancellation support.
+ * but integrated with {@link Task} and {@link Run}.
  *
  * Use for bridging callback-based APIs or coordinating between Tasks.
  *
@@ -3201,7 +3207,7 @@ export function allSettled(
   input: Iterable<AnyTask> | Readonly<Record<string, AnyTask>>,
   options?: CollectOptions<boolean>,
 ): Task<unknown> {
-  return collect("allSettled", input, options) as Task<unknown>;
+  return collect("allSettled", input, options);
 }
 
 /**
@@ -3503,9 +3509,7 @@ export interface AnyAbortError extends InferType<typeof AnyAbortError> {}
  */
 export const anyAbortError: AnyAbortError = { type: "AnyAbortError" };
 
-type CollectInput =
-  | Iterable<Task<unknown, unknown>>
-  | Readonly<Record<string, AnyTask>>;
+type CollectInput = Iterable<AnyTask> | Readonly<Record<string, AnyTask>>;
 
 /** Shared implementation for {@link all} and {@link allSettled}. */
 const collect = (
@@ -3515,15 +3519,16 @@ const collect = (
     collect = true,
     abortReason = type === "all" ? allAbortError : allSettledAbortError,
   }: CollectOptions<boolean> = {},
-): Task<unknown, unknown> => {
+): AnyTask => {
   const stopOn = type === "all" ? ("error" as const) : null;
 
   if (isIterable(input)) {
-    const array = arrayFrom(input as Iterable<unknown>);
+    const tasks: Iterable<AnyTask> = input;
+    const array = arrayFrom(tasks);
     if (!isNonEmptyArray(array))
       return () => ok(collect ? emptyArray : undefined);
 
-    return pool(array as ReadonlyArray<Task<unknown, unknown>>, {
+    return pool(array, {
       stopOn,
       collect,
       abortReason,
@@ -3534,7 +3539,7 @@ const collect = (
   const taskArray: Array<AnyTask> = [];
   for (const key in input) {
     keys.push(key);
-    taskArray.push((input as Record<string, AnyTask>)[key]);
+    taskArray.push(input[key]);
   }
   if (keys.length === 0) return () => ok(collect ? emptyRecord : undefined);
 
@@ -3706,7 +3711,7 @@ function pool<T, E>(
     };
 
     const workerCount = Math.min(run.concurrency, length);
-    const workers = arrayFrom(workerCount, () => run.daemon(worker));
+    const workers = arrayFrom(workerCount, () => run.daemon(worker, run.deps));
 
     using _ = new DisposableStack();
     _.defer(() => {

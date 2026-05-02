@@ -9,7 +9,7 @@ import {
   createUnknownError,
   type CreateRun,
   type Run,
-  type RunDeps,
+  type RunDefaultDeps,
 } from "@evolu/common";
 
 /**
@@ -35,9 +35,9 @@ import {
  *
  * @group React Native Run
  */
-export const createRun: CreateRun<RunDeps> = <D>(
+export const createRun: CreateRun<RunDefaultDeps> = <D>(
   deps?: D,
-): Run<RunDeps & D> => {
+): Run<RunDefaultDeps & D> => {
   const run = createCommonRun(deps);
 
   const console = run.deps.console.child("global");

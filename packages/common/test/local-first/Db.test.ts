@@ -194,9 +194,9 @@ const setupDb = async ({
     });
 
   const sqlite = disposer.use(
-    await run
-      .addDeps({ createSqliteDriver })
-      .orThrow(createSqlite(name, { mode: "memory" })),
+    await run.orThrow(createSqlite(name, { mode: "memory" }), {
+      createSqliteDriver,
+    }),
   );
   const disposables = disposer.move();
 

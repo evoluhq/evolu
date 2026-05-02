@@ -1937,15 +1937,19 @@ describe("integration tests", () => {
       appOwner: testAppOwner,
       transports: [],
     });
-    const disposables = disposer.move();
-
-    return {
-      createIntegrationEvolu,
-      run: run.addDeps({
+    const runWithEvoluDeps = disposer.use(
+      run.create({
+        ...run.deps,
         createDbWorker,
         reloadApp: lazyVoid,
         sharedWorker,
       }),
+    );
+    const disposables = disposer.move();
+
+    return {
+      createIntegrationEvolu,
+      run: runWithEvoluDeps,
       sqlite,
       [Symbol.asyncDispose]: () => disposables.disposeAsync(),
     };
@@ -2091,7 +2095,7 @@ describe("integration tests", () => {
             "rows": [
               {
                 "column": "title",
-                "id": uint8:[41,132,154,238,188,77,158,200,78,77,67,72,116,20,108,1],
+                "id": uint8:[69,140,34,142,216,10,174,109,125,0,213,39,191,242,247,12],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "todo",
                 "timestamp": uint8:[0,0,0,0,0,0,0,1,215,33,35,94,252,125,121,118],
@@ -2099,7 +2103,7 @@ describe("integration tests", () => {
               },
               {
                 "column": "createdAt",
-                "id": uint8:[41,132,154,238,188,77,158,200,78,77,67,72,116,20,108,1],
+                "id": uint8:[69,140,34,142,216,10,174,109,125,0,213,39,191,242,247,12],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "todo",
                 "timestamp": uint8:[0,0,0,0,0,0,0,1,215,33,35,94,252,125,121,118],
@@ -2140,7 +2144,7 @@ describe("integration tests", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "KYSa7rxNnshOTUNIdBRsAQ",
+                "id": "RYwijtgKrm19ANUnv_L3DA",
                 "isCompleted": null,
                 "isDeleted": null,
                 "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
@@ -2254,19 +2258,19 @@ describe("integration tests", () => {
     });
     await testWaitForWorkerMessage();
 
-    await using runWithDeps = run.addDeps({
-      createDbWorker,
-      reloadApp: lazyVoid,
-      sharedWorker,
-    });
-
-    await runWithDeps.orThrow(
+    await run.orThrow(
       createEvolu(Schema, {
         appName: testAppName,
         appOwner: testAppOwner,
         transports: [],
         memoryOnly: true,
       }),
+      {
+        ...run.deps,
+        createDbWorker,
+        reloadApp: lazyVoid,
+        sharedWorker,
+      },
     );
 
     await sqliteDriverOptionsCalled.promise;

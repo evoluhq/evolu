@@ -3,7 +3,7 @@ import * as fc from "fast-check";
 import { assert, beforeAll, describe, expect, it, test } from "vitest";
 import { createBuffer } from "../../src/Buffer.js";
 import { lazyFalse, lazyTrue } from "../../src/Function.js";
-import type { NonEmptyReadonlyArray, RunDeps } from "../../src/index.js";
+import type { NonEmptyReadonlyArray, RunDefaultDeps } from "../../src/index.js";
 import { assertNonEmptyArray, EncryptionKey } from "../../src/index.js";
 import {
   ownerIdToOwnerIdBytes,
@@ -419,7 +419,7 @@ test("encodeSqliteValue/decodeSqliteValue specific failing case from property te
   expect(decoded).toBe(failingInput);
 });
 
-const createDbChange = (deps: RunDeps) =>
+const createDbChange = (deps: RunDefaultDeps) =>
   DbChange.orThrow({
     table: "employee",
     id: createId(deps),
@@ -438,13 +438,13 @@ const createTestCrdtMessage = (deps: TestDeps): CrdtMessage => ({
 });
 
 const createEncryptedDbChange = (
-  deps: RunDeps,
+  deps: RunDefaultDeps,
   message: CrdtMessage,
 ): EncryptedDbChange =>
   encodeAndEncryptDbChange(deps)(message, testAppOwner.encryptionKey);
 
 const createEncryptedCrdtMessage = (
-  deps: RunDeps,
+  deps: RunDefaultDeps,
   message: CrdtMessage,
 ): EncryptedCrdtMessage => ({
   timestamp: message.timestamp,

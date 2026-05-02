@@ -30,7 +30,7 @@ import type {
   RetryError,
   Run,
   RunConfigDep,
-  RunDeps,
+  RunDefaultDeps,
   RunState,
   Task,
 } from "../src/Task.js";
@@ -209,6 +209,21 @@ describe("Run", () => {
       await expect(run.orThrow(task)).resolves.toBe("hello");
     });
 
+    test("orThrow runs task with custom deps", async () => {
+      interface CustomDep {
+        readonly custom: { readonly value: string };
+      }
+
+      await using run = createRun();
+
+      const task: Task<string, never, CustomDep> = (run) =>
+        ok(run.deps.custom.value);
+
+      await expect(
+        run.orThrow(task, { custom: { value: "from-orThrow" } }),
+      ).resolves.toBe("from-orThrow");
+    });
+
     test("orThrow throws with error as cause for err task", async () => {
       await using run = createRun();
 
@@ -294,7 +309,7 @@ describe("Run", () => {
     });
   });
 
-  describe("addDeps", () => {
+  describe("custom deps", () => {
     interface Db {
       readonly query: (sql: string) => string;
     }
@@ -305,7 +320,7 @@ describe("Run", () => {
 
     const createDb = (): Db => ({ query: (sql) => `result:${sql}` });
 
-    test("extends run with additional deps for one-shot usage", async () => {
+    test("runs a task with custom deps", async () => {
       await using run = createRun();
 
       const db = createDb();
@@ -313,31 +328,12 @@ describe("Run", () => {
       const task: Task<string, never, DbDep> = (run) =>
         ok(run.deps.db.query("SELECT 1"));
 
-      const result = await run.addDeps({ db })(task);
+      const result = await run(task, { db });
 
       expect(result).toEqual(ok("result:SELECT 1"));
     });
 
-    test("extends run with additional deps for reusable usage", async () => {
-      await using run = createRun();
-
-      const db = createDb();
-      const runWithDb: Run<DbDep> = run.addDeps({ db });
-
-      const task1: Task<string, never, DbDep> = (run) =>
-        ok(run.deps.db.query("SELECT 1"));
-
-      const task2: Task<string, never, DbDep> = (run) =>
-        ok(run.deps.db.query("SELECT 2"));
-
-      const result1 = await runWithDb(task1);
-      const result2 = await runWithDb(task2);
-
-      expect(result1).toEqual(ok("result:SELECT 1"));
-      expect(result2).toEqual(ok("result:SELECT 2"));
-    });
-
-    test("child tasks inherit extended deps", async () => {
+    test("child tasks inherit custom deps", async () => {
       await using run = createRun();
 
       const db = createDb();
@@ -351,9 +347,41 @@ describe("Run", () => {
       const childTask: Task<string, never, DbDep> = (run) =>
         ok(run.deps.db.query("child"));
 
-      const result = await run.addDeps({ db })(parentTask);
+      const result = await run(parentTask, { db });
 
       expect(result).toEqual(ok("parent(result:child)"));
+    });
+
+    test("all preserves one-shot custom deps", async () => {
+      await using run = createRun();
+
+      const db = createDb();
+
+      const childTask: Task<string, never, DbDep> = (run) =>
+        ok(run.deps.db.query("child"));
+
+      const parentTask: Task<ReadonlyArray<string>, never, DbDep> = (run) =>
+        run(all([childTask]));
+
+      const result = await run(parentTask, { db });
+
+      expect(result).toEqual(ok(["result:child"]));
+    });
+
+    test("race preserves one-shot custom deps", async () => {
+      await using run = createRun();
+
+      const db = createDb();
+
+      const childTask: Task<string, never, DbDep> = (run) =>
+        ok(run.deps.db.query("child"));
+
+      const parentTask: Task<string, never, DbDep> = (run) =>
+        run(race([childTask]));
+
+      const result = await run(parentTask, { db });
+
+      expect(result).toEqual(ok("result:child"));
     });
 
     test("supports multiple deps at once", async () => {
@@ -371,57 +399,87 @@ describe("Run", () => {
         return ok(`${db.query("db")}-${cache.get("")}`);
       };
 
-      const result = await run.addDeps({ db, cache })(task);
+      const result = await run(task, { db, cache });
 
       expect(result).toEqual(ok("result:db-cache"));
     });
 
-    test("returns same run instance", async () => {
+    test("preserves default run deps with custom deps", async () => {
+      const deps = testCreateDeps();
+      await using run = testCreateRun({ ...deps, ...eventsEnabled });
+
+      const db = createDb();
+
+      const task: Task<void, never, DbDep> = (run) => {
+        expect(run.deps.db).toBe(db);
+        expect(run.deps.time).toBe(deps.time);
+        expect(run.deps.runConfig).toBe(eventsEnabled.runConfig);
+        return ok();
+      };
+
+      expect(await run(task, { db })).toEqual(ok());
+    });
+
+    test("does not add custom deps to the parent run", async () => {
       await using run = createRun();
 
       const db = createDb();
-      const runWithDb = run.addDeps({ db });
+      const task: Task<string, never, DbDep> = (run) =>
+        ok(run.deps.db.query("SELECT 1"));
 
-      expect(runWithDb).toBe(run);
+      await run(task, { db });
+
+      expect("db" in run.deps).toBe(false);
     });
 
-    test("type error when overriding existing dep", async () => {
+    test("replaces parent custom deps with provided deps", async () => {
+      interface CacheDep {
+        readonly cache: { readonly get: (key: string) => string };
+      }
+
+      const db = createDb();
+      const cache = { get: () => "cache" };
+      await using run = createRun({ db });
+
+      const task: Task<string, never, CacheDep> = (run) => {
+        expect("db" in run.deps).toBe(false);
+        return ok(run.deps.cache.get("key"));
+      };
+
+      const result = await run(task, { cache });
+
+      expect(result).toEqual(ok("cache"));
+    });
+
+    test("returns a fiber whose run has custom deps", async () => {
       await using run = createRun();
 
       const db = createDb();
-      const runWithDb = run.addDeps({ db });
-
-      // @ts-expect-error - cannot override existing dep
-      expect(() => runWithDb.addDeps({ db: { query: () => "new" } })).toThrow(
-        "Dependency 'db' already added",
-      );
-    });
-
-    test("type error when overriding RunDeps", async () => {
-      await using run = createRun();
-
-      // @ts-expect-error - cannot override built-in time dep
-      expect(() => run.addDeps({ time: { now: () => 0 } })).toThrow(
-        "Dependency 'time' already added",
-      );
-    });
-
-    test("run with more deps is assignable to run with fewer deps", async () => {
-      await using run = createRun();
-
-      const runWithBoth = run.addDeps({
-        createDb,
-        db: createDb(),
-      });
-
-      const runWithDb: Run<DbDep> = runWithBoth;
 
       const task: Task<string, never, DbDep> = (run) =>
         ok(run.deps.db.query("SELECT 1"));
 
-      const result = await runWithDb(task);
+      const fiber = run(task, { db });
+
+      expectTypeOf(fiber.run.deps.db).toEqualTypeOf<Db>();
+
+      const result = await fiber;
 
       expect(result).toEqual(ok("result:SELECT 1"));
+    });
+
+    test("custom deps can include RunDefaultDeps", async () => {
+      await using run = createRun();
+
+      const parentTime = run.deps.time;
+      const time = createTime();
+      const task: Task<void, never, { readonly time: typeof time }> = (run) => {
+        expect(run.deps.time).toBe(time);
+        expect(run.deps.time).not.toBe(parentTime);
+        return ok();
+      };
+
+      expect(await run(task, { time })).toEqual(ok());
     });
   });
 
@@ -1010,9 +1068,9 @@ describe("Run", () => {
             // We can identify it by checking what signal addEventListener is called on
             // The parent's requestSignal is internal, but we can use a trick:
             // spawn another child and that child will register on childRun's requestSignal
-            parentRequestSignal = (
-              childRun as never as { requestSignal: AbortSignal }
-            ).requestSignal;
+            const requestSignal = Reflect.get(childRun, "requestSignal");
+            assert(requestSignal instanceof AbortSignal);
+            parentRequestSignal = requestSignal;
 
             const childFiber = childRun(() => ok(42));
             return childFiber;
@@ -1185,7 +1243,23 @@ describe("Run", () => {
       ]);
     });
 
-    test("shares deps with the creating run", async () => {
+    test("creates reusable run with custom deps", async () => {
+      interface CustomDep {
+        readonly custom: { readonly value: string };
+      }
+
+      await using run = createRun();
+      await using createdRun = run.create({
+        custom: { value: "from-root-create" },
+      });
+
+      const childTask: Task<string, never, CustomDep> = (run) =>
+        ok(run.deps.custom.value);
+
+      expect(await createdRun(childTask)).toEqual(ok("from-root-create"));
+    });
+
+    test("created run inherits current custom deps by default", async () => {
       interface CustomDep {
         readonly custom: { readonly value: string };
       }
@@ -1196,9 +1270,8 @@ describe("Run", () => {
       const childTask: Task<string, never, CustomDep> = (run) =>
         ok(run.deps.custom.value);
 
-      const parentTask: Task<void> = async (run) => {
-        const runWithDep = run.addDeps({ custom: { value: "from-create" } });
-        const createdRun = runWithDep.create();
+      const parentTask: Task<void, never, CustomDep> = async (run) => {
+        const createdRun = run.create();
 
         const result = await createdRun(childTask);
         if (!result.ok) return result;
@@ -1207,8 +1280,40 @@ describe("Run", () => {
         return ok();
       };
 
-      expect(await run(parentTask)).toEqual(ok());
-      expect(receivedValue).toBe("from-create");
+      expect(
+        await run(parentTask, { custom: { value: "from-parent-scope" } }),
+      ).toEqual(ok());
+      expect(receivedValue).toBe("from-parent-scope");
+    });
+
+    test("created run explicit deps replace current custom deps", async () => {
+      interface CustomDep {
+        readonly custom: { readonly value: string };
+      }
+
+      interface OtherDep {
+        readonly other: { readonly value: string };
+      }
+
+      await using run = createRun();
+
+      const childTask: Task<string, never, OtherDep> = (run) => {
+        expect("custom" in run.deps).toBe(false);
+        return ok(run.deps.other.value);
+      };
+
+      const parentTask: Task<string, never, CustomDep> = async (run) => {
+        await using createdRun = run.create({
+          other: { value: "from-created-run" },
+        });
+        return await createdRun(childTask);
+      };
+
+      const result = await run(parentTask, {
+        custom: { value: "from-parent-scope" },
+      });
+
+      expect(result).toEqual(ok("from-created-run"));
     });
 
     test("disposing created run aborts running tasks and later calls", async () => {
@@ -1404,7 +1509,7 @@ describe("Fiber", () => {
     const task: Task<number> = () => Promise.resolve(ok(42));
     const fiber = run(task);
 
-    expectTypeOf(fiber).toEqualTypeOf<Fiber<number, never, RunDeps>>();
+    expectTypeOf(fiber).toEqualTypeOf<Fiber<number, never, RunDefaultDeps>>();
 
     const result = await fiber;
 
@@ -1855,7 +1960,7 @@ describe("Fiber", () => {
       ]);
     });
 
-    test("addDeps propagates to daemon tasks via shared depsRef", async () => {
+    test("daemon tasks accept custom deps", async () => {
       interface CustomDep {
         readonly custom: { readonly value: string };
       }
@@ -1869,16 +1974,14 @@ describe("Fiber", () => {
         return ok();
       };
 
-      // Parent task adds deps and spawns daemon
       const parentTask: Task<void> = async (run) => {
-        const runWithDep = run.addDeps({ custom: { value: "from-addDeps" } });
-        await runWithDep.daemon(daemonTask);
+        await run.daemon(daemonTask, { custom: { value: "from-daemon" } });
         return ok();
       };
 
       await run(parentTask);
 
-      expect(receivedValue).toBe("from-addDeps");
+      expect(receivedValue).toBe("from-daemon");
     });
   });
 
@@ -2344,7 +2447,7 @@ describe("callback", () => {
     expect(signalAbortedDuringTask).toBe(false);
   });
 
-  test("provides RunDeps for testable time", async () => {
+  test("provides RunDefaultDeps for testable time", async () => {
     await using run = testCreateRun();
 
     const task = callback<void>(({ ok, deps: { time } }) => {
@@ -3332,8 +3435,8 @@ describe("DI", () => {
     };
   };
 
-  // Custom deps must extend RunDeps
-  type AppDeps = RunDeps & HttpDep & DbDep;
+  // Custom deps must extend RunDefaultDeps
+  type AppDeps = RunDefaultDeps & HttpDep & DbDep;
 
   // Tasks declare deps in type parameter D, access via run.deps
   const fetchUser =
@@ -3363,7 +3466,7 @@ describe("DI", () => {
     const deps = testCreateDeps();
     const http = createTestHttp({ "/users/1": "Alice" });
 
-    await using run = createRun<RunDeps & HttpDep>({ ...deps, http });
+    await using run = createRun<RunDefaultDeps & HttpDep>({ ...deps, http });
 
     const result = await run(fetchUser("1"));
 
@@ -3386,7 +3489,7 @@ describe("DI", () => {
     await using run = createRun(customDeps);
 
     // Type is inferred from argument
-    expectTypeOf(run).toEqualTypeOf<Run<RunDeps & typeof customDeps>>();
+    expectTypeOf(run).toEqualTypeOf<Run<RunDefaultDeps & typeof customDeps>>();
 
     const task: Task<string, never, ConfigDep> = (run) =>
       ok(run.deps.config.apiUrl);
@@ -3396,17 +3499,17 @@ describe("DI", () => {
     expect(result).toEqual(ok("https://api.example.com"));
   });
 
-  test("createRun without args returns Run<RunDeps>", async () => {
+  test("createRun without args returns Run<RunDefaultDeps>", async () => {
     await using run = createRun();
 
-    expectTypeOf(run).toEqualTypeOf<Run<RunDeps>>();
+    expectTypeOf(run).toEqualTypeOf<Run<RunDefaultDeps>>();
   });
 
   test("run rejects task with missing deps", async () => {
     const task: Task<void, never, HttpDep> = () => ok();
     await using run = createRun();
 
-    // @ts-expect-error Property 'http' is missing in type 'RunDeps'...
+    // @ts-expect-error Property 'http' is missing in type 'RunDefaultDeps'...
     run(task);
   });
 
@@ -3414,14 +3517,14 @@ describe("DI", () => {
     const deps = testCreateDeps();
     const http = createTestHttp({ "/users/1": "Alice" });
 
-    await using run = createRun<RunDeps & HttpDep>({ ...deps, http });
+    await using run = createRun<RunDefaultDeps & HttpDep>({ ...deps, http });
 
     const fiber = run(fetchUser("1"));
 
     expectTypeOf(fiber).toEqualTypeOf<
-      Fiber<string, never, RunDeps & HttpDep>
+      Fiber<string, never, RunDefaultDeps & HttpDep>
     >();
-    expectTypeOf(fiber.run).toEqualTypeOf<Run<RunDeps & HttpDep>>();
+    expectTypeOf(fiber.run).toEqualTypeOf<Run<RunDefaultDeps & HttpDep>>();
 
     const result = await fiber.run(fetchUser("1"));
     expect(result).toEqual(ok("Alice"));
@@ -3488,7 +3591,7 @@ describe("DI", () => {
     const syncAllWithLogging: Task<void, never, HttpDep & DbDep & LoggerDep> =
       withLogging("syncAll", syncUsers(["1", "2"]));
 
-    type AllDeps = RunDeps & HttpDep & DbDep & LoggerDep;
+    type AllDeps = RunDefaultDeps & HttpDep & DbDep & LoggerDep;
 
     await using run = createRun<AllDeps>({ ...deps, http, db, logger });
 
@@ -3503,7 +3606,7 @@ describe("DI", () => {
     const deps = testCreateDeps();
     const http = createTestHttp({ "/users/1": "Alice" });
 
-    await using run = createRun<RunDeps & HttpDep>({ ...deps, http });
+    await using run = createRun<RunDefaultDeps & HttpDep>({ ...deps, http });
 
     // timeout should preserve D from wrapped task
     const fetchWithTimeout = timeout(fetchUser("1"), "5s");
@@ -3518,7 +3621,7 @@ describe("DI", () => {
       "/users/1": "Alice",
       "/users/2": "Bob",
     });
-    await using run = createRun<RunDeps & HttpDep>({ ...deps, http });
+    await using run = createRun<RunDefaultDeps & HttpDep>({ ...deps, http });
 
     // race should preserve D from all tasks
     const result = await run(race([fetchUser("1"), fetchUser("2")]));
@@ -3554,7 +3657,7 @@ describe("DI", () => {
         },
     };
 
-    await using run = createRun<RunDeps & HttpWithErrorDep>({
+    await using run = createRun<RunDefaultDeps & HttpWithErrorDep>({
       ...deps,
       http,
       time: createTime(),
@@ -6094,9 +6197,12 @@ describe("all", () => {
   test("struct preserves types", async () => {
     await using run = createRun();
 
+    const num: Task<number> = () => ok(42);
+    const str: Task<string> = () => ok("hello");
+
     const struct = {
-      num: (() => ok(42)) as Task<number>,
-      str: (() => ok("hello")) as Task<string>,
+      num,
+      str,
     };
 
     const result = await run(all(struct));
@@ -6196,9 +6302,12 @@ describe("all", () => {
   test("struct preserves readonly properties", async () => {
     await using run = createRun();
 
+    const num: Task<number> = () => ok(42);
+    const str: Task<string> = () => ok("hello");
+
     const readonlyStruct = {
-      num: (() => ok(42)) as Task<number>,
-      str: (() => ok("hello")) as Task<string>,
+      num,
+      str,
     } as const;
 
     const result = await run(all(readonlyStruct));
@@ -6445,9 +6554,12 @@ describe("allSettled", () => {
   test("struct preserves types", async () => {
     await using run = createRun();
 
+    const num: Task<number> = () => ok(42);
+    const str: Task<string> = () => ok("hello");
+
     const struct = {
-      num: (() => ok(42)) as Task<number>,
-      str: (() => ok("hello")) as Task<string>,
+      num,
+      str,
     };
 
     const result = await run(allSettled(struct));
@@ -6464,9 +6576,12 @@ describe("allSettled", () => {
   test("struct preserves readonly properties", async () => {
     await using run = createRun();
 
+    const num: Task<number> = () => ok(42);
+    const str: Task<string> = () => ok("hello");
+
     const readonlyStruct = {
-      num: (() => ok(42)) as Task<number>,
-      str: (() => ok("hello")) as Task<string>,
+      num,
+      str,
     } as const;
 
     const result = await run(allSettled(readonlyStruct));
@@ -7016,9 +7131,10 @@ describe("any", () => {
   test("returns empty array for empty runtime input", async () => {
     await using run = createRun();
 
-    const emptyTasks = [] as unknown as NonEmptyReadonlyArray<
-      Task<unknown, MyError>
-    >;
+    const emptyTasks: NonEmptyReadonlyArray<Task<unknown, MyError>> = [
+      () => err({ type: "MyError" }),
+    ];
+    Array.prototype.pop.call(emptyTasks);
 
     expect(await run(any(emptyTasks))).toEqual(ok(emptyArray));
   });
@@ -7312,7 +7428,7 @@ describe("examples TODO", () => {
         >
       >();
 
-      const deps: RunDeps & NativeFetchDep = {
+      const deps: RunDefaultDeps & NativeFetchDep = {
         ...testCreateDeps(),
         fetch: globalThis.fetch,
       };

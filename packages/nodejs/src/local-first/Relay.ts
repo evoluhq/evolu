@@ -136,7 +136,8 @@ export const startRelay =
     const ownerSocketRelation = createRelation<OwnerId, WebSocket>();
 
     const relayRun = disposer.use(
-      run.create().addDeps({
+      run.create({
+        ...run.deps,
         storage: createRelaySqliteStorage(deps)({
           isOwnerWithinQuota,
         }),

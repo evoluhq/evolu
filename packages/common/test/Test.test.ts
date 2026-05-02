@@ -76,7 +76,7 @@ describe("testCreateDeps", () => {
 });
 
 describe("testCreateRun", () => {
-  test("provides built-in TestTime", async () => {
+  test("provides default TestTime", async () => {
     await using run = testCreateRun();
 
     const fiber = run(sleep("1s"));
@@ -85,20 +85,22 @@ describe("testCreateRun", () => {
     expect(await fiber).toEqual(ok());
   });
 
-  test("supports adding a run-created dependency for a single test", async () => {
-    let foo: Foo;
-
-    {
+  test("supports using a run-created dependency for a single task", async () => {
+    const foo = await (async () => {
       await using run = testCreateRun();
-      await using createdFoo = await run.orThrow(createFoo());
-      foo = createdFoo;
+      await using foo = await run.orThrow(createFoo());
 
-      const runWithFoo = run.addDeps({ foo: createdFoo });
+      const task: Task<void, never, { readonly foo: Foo }> = (run) => {
+        expect(run.deps.foo).toBe(foo);
+        expect(run.deps.foo.value).toBe("foo");
+        expect(run.deps.foo.isDisposed()).toBe(false);
+        return ok();
+      };
 
-      expect(runWithFoo.deps.foo).toBe(createdFoo);
-      expect(runWithFoo.deps.foo.value).toBe("foo");
-      expect(runWithFoo.deps.foo.isDisposed()).toBe(false);
-    }
+      await expect(run.orThrow(task, { foo })).resolves.toBeUndefined();
+
+      return foo;
+    })();
 
     expect(foo.isDisposed()).toBe(true);
   });
@@ -108,10 +110,11 @@ describe("testCreateRun", () => {
       await using disposer = new AsyncDisposableStack();
       const run = disposer.use(testCreateRun());
       const foo = disposer.use(await run.orThrow(createFoo()));
+      const runWithFoo = disposer.use(run.create({ ...run.deps, foo }));
       const disposables = disposer.move();
 
       return {
-        run: run.addDeps({ foo }),
+        run: runWithFoo,
         foo,
         [Symbol.asyncDispose]: () => disposables.disposeAsync(),
       };

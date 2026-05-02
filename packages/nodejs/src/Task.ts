@@ -9,7 +9,7 @@ import {
   createUnknownError,
   type CreateRun,
   type Run,
-  type RunDeps,
+  type RunDefaultDeps,
 } from "@evolu/common";
 
 /**
@@ -51,9 +51,9 @@ export interface ShutdownDep {
  *
  * @group Node.js Run
  */
-export const createRun: CreateRun<RunDeps & ShutdownDep> = <D>(
+export const createRun: CreateRun<RunDefaultDeps & ShutdownDep> = <D>(
   deps?: D,
-): Run<RunDeps & ShutdownDep & D> => {
+): Run<RunDefaultDeps & ShutdownDep & D> => {
   const { promise: shutdown, resolve: resolveShutdown } =
     Promise.withResolvers<void>();
 

@@ -17,7 +17,7 @@ import {
   type Random,
   type RandomLibDep,
 } from "./Random.js";
-import { createRun, type Run, type RunDeps } from "./Task.js";
+import { createRun, type Run, type RunDefaultDeps } from "./Task.js";
 import {
   minMillis,
   setTimeout,
@@ -35,14 +35,14 @@ export type TestCreateId = <B extends string = never>() => [B] extends [never]
 /**
  * Cheap deterministic baseline deps for tests.
  *
- * `TestDeps` includes test-friendly replacements for {@link RunDeps}, such as
- * {@link TestConsole} and {@link TestTime}, plus extra helpers commonly useful in
- * tests and fixtures, such as `randomLib` (only that for now).
+ * `TestDeps` includes test-friendly replacements for {@link RunDefaultDeps},
+ * such as {@link TestConsole} and {@link TestTime}, plus extra helpers commonly
+ * useful in tests and fixtures, such as `randomLib` (only that for now).
  *
  * Use it directly for synchronous test setup, fixtures, and helpers. It is also
  * intentionally the base deps used by {@link testCreateRun}.
  */
-export type TestDeps = Omit<RunDeps, "console" | "time"> &
+export type TestDeps = Omit<RunDefaultDeps, "console" | "time"> &
   TestConsoleDep &
   TestTimeDep &
   RandomLibDep;
@@ -103,7 +103,7 @@ export const testCreateDeps = (options?: {
  * ### Example
  *
  * ```ts
- * // Built-in TestTime
+ * // Default TestTime
  * await using run = testCreateRun();
  * const fiber = run(sleep("1s"));
  * run.deps.time.advance("1s");
@@ -112,9 +112,7 @@ export const testCreateDeps = (options?: {
  * // For a single test, create the dependency using the Run.
  * await using run = testCreateRun();
  * await using foo = await run.orThrow(createFoo());
- * const runWithFoo = run.addDeps({ foo });
- *
- * expect(runWithFoo.deps.foo).toBe(foo);
+ * await run.orThrow(taskThatNeedsFoo, { foo });
  *
  * // If multiple tests need the same setup, create a disposable helper.
  * // Then `await using setup` disposes everything the helper owns.
@@ -122,14 +120,15 @@ export const testCreateDeps = (options?: {
  *   await using disposer = new AsyncDisposableStack();
  *   const run = disposer.use(testCreateRun());
  *   const foo = disposer.use(await run.orThrow(createFoo()));
+ *   const runWithFoo = disposer.use(run.create({ ...run.deps, foo }));
  *   const disposables = disposer.move();
  *
  *   // Return whatever the tests need: a Run with the dependency,
  *   // the dependency itself, or both.
  *   return {
- *     run: run.addDeps({ foo }),
+ *     run: runWithFoo,
  *     foo,
- *     [Symbol.asyncDispose]: () => moved.disposeAsync(),
+ *     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
  *   };
  * };
  *
