@@ -2,7 +2,6 @@ import { type Metadata } from "next";
 
 import { Providers } from "@/app/providers";
 import { Layout } from "@/components/Layout";
-import { type Section } from "@/components/SectionProvider";
 import allSections from "@/data/sections.json";
 
 import "@/styles/tailwind.css";
@@ -21,9 +20,7 @@ export default function RootLayout({
 }): React.ReactElement {
   return (
     <Providers>
-      <Layout allSections={allSections as Record<string, Array<Section>>}>
-        {children}
-      </Layout>
+      <Layout allSections={allSections}>{children}</Layout>
     </Providers>
   );
 }
