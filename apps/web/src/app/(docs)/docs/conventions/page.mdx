@@ -257,6 +257,38 @@ const retry = (
 };
 ```
 
+## Switch exhaustiveness
+
+Use `exhaustiveCheck` in the `default` branch of switches over union types.
+This makes missing cases fail at compile time and preserves a runtime guard if
+an unexpected value crosses a typed boundary.
+
+Use it mainly for side-effect switches. For value-producing switches, prefer
+returning from every case and omitting `default` so TypeScript enforces
+exhaustiveness through the return type.
+
+```ts
+import { exhaustiveCheck } from "@evolu/common";
+
+type Message =
+  | { readonly type: "Create" }
+  | { readonly type: "Update" }
+  | { readonly type: "Delete" };
+
+const handleMessage = (message: Message): void => {
+  switch (message.type) {
+    case "Create":
+      break;
+    case "Update":
+      break;
+    case "Delete":
+      break;
+    default:
+      exhaustiveCheck(message);
+  }
+};
+```
+
 ## Avoid getters and setters
 
 Avoid JavaScript getters and setters. Use simple readonly properties for stable values and explicit methods for values that may change.
