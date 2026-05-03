@@ -18,7 +18,7 @@
     "lint": "eslint --cache",
     "biome": "biome check",
     "lint-monorepo": "pnpm dlx sherif@latest --ignore-dependency react@19.2.0",
-    "verify": "pnpm typecheck && pnpm build && pnpm test:coverage && pnpm lint && pnpm biome && pnpm lint-monorepo && pnpm build:docs",
+    "verify": "pnpm typecheck && pnpm build && pnpm test:coverage && pnpm biome && pnpm lint-monorepo && pnpm build:docs && pnpm lint",
     "clean:ts": "tsc --build --clean tsconfig.typecheck.json",
     "clean:dry": "git clean -Xnd",
     "clean": "git clean -Xdf",
