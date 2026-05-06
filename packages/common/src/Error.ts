@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { Typed } from "./Type.js";
+import { type InferType, typed, Unknown } from "./Type.js";
 
 /**
  * A wrapper for unknown errors caught at runtime.
@@ -18,9 +18,10 @@ import type { Typed } from "./Type.js";
  *
  * Use {@link createUnknownError} to create instances.
  */
-export interface UnknownError extends Typed<"UnknownError"> {
-  readonly error: unknown;
-}
+export const UnknownError = /*#__PURE__*/ typed("UnknownError", {
+  error: Unknown,
+});
+export interface UnknownError extends InferType<typeof UnknownError> {}
 
 /**
  * Creates an {@link UnknownError} from an unknown error.

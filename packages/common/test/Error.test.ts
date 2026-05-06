@@ -1,7 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { createUnknownError } from "../src/Error.js";
+import { UnknownError, createUnknownError } from "../src/Error.js";
 
 describe("createUnknownError", () => {
+  test("UnknownError validates unknown error values", () => {
+    const result = createUnknownError("boom");
+
+    expect(UnknownError.is(result)).toBe(true);
+    expect(UnknownError.is({ type: "OtherError", error: "boom" })).toBe(false);
+  });
+
   test("handles plain error", () => {
     const error = new Error("Test error");
     const result = createUnknownError(error);
@@ -27,6 +34,20 @@ describe("createUnknownError", () => {
         message: "Inner error",
         stack: expect.any(String),
       },
+    });
+  });
+
+  test("handles inherited stack getter", () => {
+    const prototype = Object.create(Error.prototype, {
+      stack: { get: () => "Inherited stack" },
+    });
+    const error = Object.create(prototype) as Error;
+    Object.defineProperty(error, "message", { value: "Test error" });
+    const result = createUnknownError(error);
+
+    expect(result.error).toMatchObject({
+      message: "Test error",
+      stack: "Inherited stack",
     });
   });
 
