@@ -316,7 +316,7 @@ export const initSharedWorker =
                 const tenant = await run(
                   unabortable(tenantsByName.acquire(message)),
                 );
-                assertNotAborted(tenant);
+                if (!tenant.ok) return tenant;
 
                 tenant.value.addInstance(
                   message,
@@ -578,7 +578,7 @@ const createEvoluTenant =
       // DbWorker releases it: either because Dispose was delivered or because
       // the hosting tab closed. The wait is unabortable because tenant disposal
       // must finish even after tenantRun receives an abort request.
-      const lock = await tenantRun(unabortable(acquireLeaderLock(name)));
+      const lock = await tenantRun(acquireLeaderLock(name));
       // AbortError here means tenantRun was already disposed before this
       // cleanup could start, violating the disposal ordering above.
       assertNotAborted(lock);

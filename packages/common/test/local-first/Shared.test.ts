@@ -6,6 +6,7 @@ import { createProtocolMessageForUnsubscribe } from "../../src/local-first/Proto
 import type { MutationChange } from "../../src/local-first/Schema.js";
 import {
   consoleEntryOrErrorBroadcastChannelName,
+  type EvoluInstanceId,
   initSharedWorker,
   type ConsoleEntryOrError,
   type DbWorkerInput,
@@ -197,6 +198,7 @@ const setupSharedWorker = async ({
 
   return {
     consoleStoreOutputEntry,
+    sharedWorkerOutputs,
     run,
     worker,
 
@@ -508,6 +510,165 @@ describe("with one evolu instance", () => {
         op: "replaceAll",
         value: [{ value: 2 }],
       });
+    });
+
+    test("refreshes sibling instances after mutate responses", async () => {
+      await using setup = await setupSharedWorker();
+      const { createEvolu, run, worker } = setup;
+      const { time } = run.deps;
+      const first = await createEvolu({ autoDispose: false });
+      const firstOutputs: Array<EvoluOutput> = [];
+      const secondOutputs: Array<EvoluOutput> = [];
+      first.evoluChannel.port2.onMessage = (output) => {
+        firstOutputs.push(output);
+      };
+
+      const secondId: EvoluInstanceId = createId(run.deps);
+      await using _secondInstanceLock = await run.orThrow(
+        acquireLeaderLock(secondId),
+      );
+      using secondChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+      secondChannel.port2.onMessage = (output) => {
+        secondOutputs.push(output);
+      };
+
+      worker.port.postMessage({
+        type: "CreateEvolu",
+        name: testName,
+        id: secondId,
+        consoleLevel: "debug",
+        sqliteSchema: testSqliteSchema,
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: false,
+        evoluPort: secondChannel.port1.native,
+      });
+      await testWaitForWorkerMessage();
+
+      secondChannel.port2.postMessage({
+        type: "Query",
+        queries: createSet([testQuery]),
+      });
+      time.advance("10s");
+      await testWaitForWorkerMessage();
+
+      const secondQueryInput = first.dbInputs.at(-1);
+      assert(secondQueryInput, "Expected second instance query input");
+      expect(secondQueryInput.request).toEqual({
+        type: "ForEvolu",
+        id: secondId,
+        message: {
+          type: "Query",
+          queries: createSet([testQuery]),
+        },
+      });
+
+      first.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        callbackId: secondQueryInput.callbackId,
+        response: {
+          type: "ForEvolu",
+          id: secondId,
+          message: {
+            type: "Query",
+            rowsByQuery: new Map([[testQuery, [{ value: 0 }]]]),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      first.evoluChannel.port2.postMessage({
+        type: "Mutate",
+        changes: [{} as MutationChange],
+        onCompleteIds: [],
+        subscribedQueries: new Set([testQuery]),
+      });
+      time.advance("10s");
+      await testWaitForWorkerMessage();
+
+      const mutateInput = first.dbInputs.at(-1);
+      assert(mutateInput, "Expected mutate input");
+      expect(mutateInput.request).toEqual({
+        type: "ForEvolu",
+        id: first.id,
+        message: {
+          type: "Mutate",
+          changes: [{}],
+          onCompleteIds: [],
+          subscribedQueries: new Set([testQuery]),
+        },
+      });
+
+      first.dbWorkerPort.postMessage({
+        type: "OnQueuedResponse",
+        callbackId: mutateInput.callbackId,
+        response: {
+          type: "ForEvolu",
+          id: first.id,
+          message: {
+            type: "Mutate",
+            messagesByOwnerId: new Map(),
+            rowsByQuery: new Map([[testQuery, [{ value: 1 }]]]),
+          },
+        },
+      });
+      await testWaitForWorkerMessage();
+
+      expect(firstOutputs).toContainEqual(
+        expect.objectContaining({ type: "OnPatchesByQuery" }),
+      );
+      expect(secondOutputs).toContainEqual({ type: "RefreshQueries" });
+    });
+
+    test("drops CreateEvolu when shared worker stops during tenant startup", async () => {
+      await using setup = await setupSharedWorker();
+      const { announceTabLeader, run, sharedWorkerOutputs, worker } = setup;
+      const id: EvoluInstanceId = createId(run.deps);
+      const evoluOutputs: Array<EvoluOutput> = [];
+
+      using evoluChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
+      evoluChannel.port2.onMessage = (output) => {
+        evoluOutputs.push(output);
+      };
+
+      await announceTabLeader();
+
+      const outputCount = sharedWorkerOutputs.length;
+      worker.port.postMessage({
+        type: "CreateEvolu",
+        name: testName,
+        id,
+        consoleLevel: "debug",
+        sqliteSchema: testSqliteSchema,
+        encryptionKey: testAppOwner.encryptionKey,
+        memoryOnly: false,
+        evoluPort: evoluChannel.port1.native,
+      });
+
+      await testWaitForWorkerMessage();
+
+      const initDbWorker = sharedWorkerOutputs[outputCount];
+      expect(initDbWorker).toBeDefined();
+
+      using dbWorkerPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
+        initDbWorker.port,
+      );
+      const dbDisposeInputs: Array<
+        Extract<DbWorkerInput, { type: "Dispose" }>
+      > = [];
+      dbWorkerPort.onMessage = (input) => {
+        if (input.type === "Dispose") dbDisposeInputs.push(input);
+      };
+
+      const disposePromise = setup[Symbol.asyncDispose]();
+      dbWorkerPort.postMessage({
+        type: "LeaderAcquired",
+        name: testName,
+      });
+      await disposePromise;
+      await testWaitForWorkerMessage();
+
+      expect(dbDisposeInputs).toEqual([{ type: "Dispose" }]);
+      expect(evoluOutputs).toEqual([]);
     });
 
     test("forwards export responses back to the evolu port", async () => {
