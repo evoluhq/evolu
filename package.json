@@ -21,7 +21,8 @@
     "verify": "pnpm typecheck && pnpm build && pnpm test:coverage && pnpm biome && pnpm lint-monorepo && pnpm build:docs && pnpm lint",
     "clean:ts": "tsc --build --clean tsconfig.typecheck.json",
     "clean:dry": "git clean -Xnd",
-    "clean": "git clean -Xdf",
+    "// clean": "Retry because macOS can report large hoisted node_modules trees as non-empty while cleaning.",
+    "clean": "git clean -Xdf || git clean -Xdf || git clean -Xdf || git clean -Xdf",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,md,mdx}\"",
     "version": "changeset version",
     "release": "pnpm build && pnpm changeset publish",
@@ -62,7 +63,7 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8",
+  "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800",
   "pnpm": {
     "onlyBuiltDependencies": [
       "@parcel/watcher",
