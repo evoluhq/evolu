@@ -29,15 +29,9 @@ describe("createRefCount", () => {
     refCount.increment();
     refCount[Symbol.dispose]();
 
-    expect(() => refCount.increment()).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.decrement()).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.getCount()).toThrow(
-      "Expected value to not be disposed.",
-    );
+    expect(() => refCount.increment()).toThrow("Cannot use a disposed object.");
+    expect(() => refCount.decrement()).toThrow("Cannot use a disposed object.");
+    expect(() => refCount.getCount()).toThrow("Cannot use a disposed object.");
   });
 });
 
@@ -102,18 +96,16 @@ describe("createRefCountByKey", () => {
     refCount[Symbol.dispose]();
 
     expect(() => refCount.increment("c")).toThrow(
-      "Expected value to not be disposed.",
+      "Cannot use a disposed object.",
     );
     expect(() => refCount.decrement("a")).toThrow(
-      "Expected value to not be disposed.",
+      "Cannot use a disposed object.",
     );
     expect(() => refCount.getCount("a")).toThrow(
-      "Expected value to not be disposed.",
+      "Cannot use a disposed object.",
     );
-    expect(() => refCount.has("a")).toThrow(
-      "Expected value to not be disposed.",
-    );
-    expect(() => refCount.keys()).toThrow("Expected value to not be disposed.");
+    expect(() => refCount.has("a")).toThrow("Cannot use a disposed object.");
+    expect(() => refCount.keys()).toThrow("Cannot use a disposed object.");
   });
 
   test("uses reference identity for object keys", () => {

@@ -4174,8 +4174,8 @@ describe("concurrency", () => {
 
       gate[Symbol.dispose]();
 
-      expect(() => gate.open()).toThrow("Expected value to not be disposed.");
-      expect(() => gate.close()).toThrow("Expected value to not be disposed.");
+      expect(() => gate.open()).toThrow("Cannot use a disposed object.");
+      expect(() => gate.close()).toThrow("Cannot use a disposed object.");
     });
 
     test("isOpen throws after dispose", () => {
@@ -4183,7 +4183,7 @@ describe("concurrency", () => {
 
       gate[Symbol.dispose]();
 
-      expect(() => gate.isOpen()).toThrow("Expected value to not be disposed.");
+      expect(() => gate.isOpen()).toThrow("Cannot use a disposed object.");
     });
 
     test("wait returns DeferredDisposedError after dispose", async () => {
@@ -4857,7 +4857,7 @@ describe("concurrency", () => {
       semaphore[Symbol.dispose]();
 
       expect(() => semaphore.snapshot()).toThrow(
-        "Expected value to not be disposed.",
+        "Cannot use a disposed object.",
       );
     });
 
@@ -5338,7 +5338,7 @@ describe("concurrency", () => {
       semaphoreByKey[Symbol.dispose]();
 
       expect(() => semaphoreByKey.snapshot("a")).toThrow(
-        "Expected value to not be disposed.",
+        "Cannot use a disposed object.",
       );
     });
   });
@@ -5438,9 +5438,7 @@ describe("concurrency", () => {
 
       mutex[Symbol.dispose]();
 
-      expect(() => mutex.snapshot()).toThrow(
-        "Expected value to not be disposed.",
-      );
+      expect(() => mutex.snapshot()).toThrow("Cannot use a disposed object.");
     });
   });
 

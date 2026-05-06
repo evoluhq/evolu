@@ -495,7 +495,7 @@ describe("createBroadcastChannel", () => {
     channel[Symbol.dispose]();
 
     expect(() => channel.postMessage("ignored")).toThrow(
-      "Expected value to not be disposed.",
+      "Cannot use a disposed object.",
     );
   });
 

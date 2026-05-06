@@ -135,5 +135,5 @@ test("assertNotDisposed", async () => {
 
   expect(() => {
     assertNotDisposed(stack);
-  }).toThrow("Expected value to not be disposed.");
+  }).toThrow("Cannot use a disposed object.");
 });

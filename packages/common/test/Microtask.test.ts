@@ -108,11 +108,11 @@ describe("createMicrotaskBatch", () => {
 
     expect(() => {
       batch.push(1);
-    }).toThrow("Expected value to not be disposed.");
+    }).toThrow("Cannot use a disposed object.");
 
     expect(() => {
       batch.flushNow();
-    }).toThrow("Expected value to not be disposed.");
+    }).toThrow("Cannot use a disposed object.");
 
     await Promise.resolve();
 

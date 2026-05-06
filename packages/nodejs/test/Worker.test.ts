@@ -38,6 +38,6 @@ test("createBroadcastChannel wraps native BroadcastChannel", async () => {
   };
   expect(channel1.onMessage).toBeNull();
   expect(() => channel1.postMessage("closed")).toThrow(
-    "Expected value to not be disposed.",
+    "Cannot use a disposed object.",
   );
 });

@@ -151,9 +151,14 @@ export function assertNotAborted<T, E>(
  * await disposer.disposeAsync();
  * assertNotDisposed(disposer); // throws Error
  * ```
+ *
+ * This is the JavaScript equivalent of the .NET `ObjectDisposedException`
+ * pattern: once a helper has been disposed, calling its synchronous methods is
+ * a programmer error and should throw immediately instead of continuing with
+ * invalid state.
  */
 export const assertNotDisposed = (
   value: DisposableStack | AsyncDisposableStack,
 ): void => {
-  assert(!value.disposed, "Expected value to not be disposed.");
+  assert(!value.disposed, "Cannot use a disposed object.");
 };

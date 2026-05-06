@@ -890,7 +890,7 @@ describe("unit tests", () => {
 
       await evolu[Symbol.asyncDispose]();
 
-      const disposedMessage = "Expected value to not be disposed.";
+      const disposedMessage = "Cannot use a disposed object.";
 
       expect(() => {
         evolu.insert("todo", {

@@ -480,14 +480,14 @@ test("sync methods throw after sqlite is disposed", async () => {
   await sqlite[Symbol.asyncDispose]();
 
   expect(() => sqlite.exec(sql`select 1;`)).toThrow(
-    "Expected value to not be disposed.",
+    "Cannot use a disposed object.",
   );
   expect(() =>
     sqlite.transaction(() => {
       throw new Error("should not run");
     }),
-  ).toThrow("Expected value to not be disposed.");
-  expect(() => sqlite.export()).toThrow("Expected value to not be disposed.");
+  ).toThrow("Cannot use a disposed object.");
+  expect(() => sqlite.export()).toThrow("Cannot use a disposed object.");
 
   expect(execCalls).toBe(0);
   expect(exportCalls).toBe(0);
@@ -609,7 +609,7 @@ describe("createPreparedStatementsCache", () => {
         parameters: [],
         options: { prepare: true },
       });
-    }).toThrow("Expected value to not be disposed.");
+    }).toThrow("Cannot use a disposed object.");
   });
 
   test("dispose still attempts later statements when one disposeFn throws", () => {
