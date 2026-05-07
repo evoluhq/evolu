@@ -64,6 +64,8 @@ describe("createRefCountByKey", () => {
     expect(() => refCount.decrement("missing")).toThrow(
       "RefCount must not be decremented below zero.",
     );
+    expect(refCount.has("missing")).toBe(false);
+    expect(refCount.keys()).toEqual(new Set());
   });
 
   test("decrement keeps key while count stays positive", () => {

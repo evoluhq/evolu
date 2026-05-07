@@ -27,39 +27,34 @@ export interface RefCount extends Disposable {
 
   /** Returns the current count. */
   readonly getCount: () => NonNegativeInt;
-
-  /** Disposes and invalidates the helper. Further method calls throw. */
-  readonly [Symbol.dispose]: () => void;
 }
 
 /** Creates {@link RefCount}. */
 export const createRefCount = (): RefCount => {
-  // We use DisposableStack only because of assertNotDisposed.
-  using disposer = new DisposableStack();
+  const disposer = new DisposableStack();
   let count = zeroNonNegativeInt;
-  const disposables = disposer.move();
 
   return {
     increment: () => {
-      assertNotDisposed(disposables);
+      assertNotDisposed(disposer);
       const nextCount = PositiveInt.orThrow(count + 1);
       count = nextCount;
       return nextCount;
     },
 
     decrement: () => {
-      assertNotDisposed(disposables);
+      assertNotDisposed(disposer);
       assert(count > 0, "RefCount must not be decremented below zero.");
       count = NonNegativeInt.orThrow(count - 1);
       return count;
     },
 
     getCount: () => {
-      assertNotDisposed(disposables);
+      assertNotDisposed(disposer);
       return count;
     },
 
-    [Symbol.dispose]: () => disposables.dispose(),
+    [Symbol.dispose]: () => disposer.dispose(),
   };
 };
 
@@ -91,9 +86,6 @@ export interface RefCountByKey<TKey> extends Disposable {
 
   /** Returns all currently tracked keys. */
   readonly keys: () => ReadonlySet<TKey>;
-
-  /** Disposes and invalidates the helper. Further method calls throw. */
-  readonly [Symbol.dispose]: () => void;
 }
 
 /** Options for {@link createRefCountByKey}. */
@@ -110,7 +102,6 @@ export function createRefCountByKey<TKey, L>(
 export function createRefCountByKey<TKey, L = TKey>({
   lookup = identity as Lookup<TKey, L>,
 }: CreateRefCountByKeyOptions<TKey, L> = {}): RefCountByKey<TKey> {
-  // We use DisposableStack only because of assertNotDisposed.
   using disposer = new DisposableStack();
 
   const refCountByKey = disposer.adopt(
@@ -145,7 +136,8 @@ export function createRefCountByKey<TKey, L = TKey>({
 
     decrement: (key) => {
       assertNotDisposed(disposables);
-      const refCount = getRefCount(key);
+      const refCount = refCountByKey.get(key);
+      assert(refCount, "RefCount must not be decremented below zero.");
       const nextCount = refCount.decrement();
       if (nextCount === 0) {
         refCountByKey.delete(key);
