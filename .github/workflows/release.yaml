@@ -14,14 +14,27 @@ permissions:
   pull-requests: write # Required for changesets to update PRs
 
 jobs:
-  release:
-    # prevents this action from running on forks
-    if: github.repository == 'evoluhq/evolu'
-    name: Release
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
     # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
     container:
       image: mcr.microsoft.com/playwright:v1.59.1-noble
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Verify
+        run: pnpm verify
+
+  release:
+    # prevents this action from running on forks
+    if: github.repository == 'evoluhq/evolu'
+    name: Release
+    needs: verify
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -38,9 +51,6 @@ jobs:
         run: npm install -g npm@latest
 
       - run: pnpm install --frozen-lockfile
-
-      - name: Verify
-        run: pnpm verify
 
       - name: Create Release Pull Request or Publish
         id: changesets
