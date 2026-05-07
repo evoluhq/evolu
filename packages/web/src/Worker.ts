@@ -26,7 +26,37 @@ export const createWorker = <Input, Output>(
   nativeWorker: globalThis.Worker,
 ): Worker<Input, Output> => wrap(nativeWorker);
 
-/** Creates an Evolu {@link SharedWorker} from a Web SharedWorker. */
+/**
+ * Installs a one-tab SharedWorker polyfill backed by a Web Worker.
+ *
+ * Use it before constructing a SharedWorker in browsers without native
+ * SharedWorker support.
+ */
+export const installOneTabSharedWorkerPolyfill = (): void => {
+  if (typeof globalThis.SharedWorker === "function") return;
+
+  Object.defineProperty(globalThis, "SharedWorker", {
+    configurable: true,
+    writable: true,
+    value: class {
+      readonly port: globalThis.MessagePort;
+
+      constructor(scriptURL: string | URL, options?: WorkerOptions) {
+        this.port = new globalThis.Worker(
+          scriptURL,
+          options,
+        ) as unknown as globalThis.MessagePort;
+      }
+    },
+  });
+};
+
+/**
+ * Creates a {@link SharedWorker} from a Web SharedWorker.
+ *
+ * Call {@link installOneTabSharedWorkerPolyfill} first to support browsers
+ * without native SharedWorker support.
+ */
 export const createSharedWorker = <Input, Output = never>(
   nativeSharedWorker: globalThis.SharedWorker,
 ): SharedWorker<Input, Output> => {
@@ -147,6 +177,90 @@ export const createSharedWorkerSelf = <Input, Output = never>(
   };
 
   return self;
+};
+
+/**
+ * Creates a one-tab {@link SharedWorkerSelf} polyfill for browsers without
+ * native SharedWorker support.
+ *
+ * Delivers one synthetic `onConnect` port, queues startup messages until
+ * `onMessage` is set, and does not share state across tabs.
+ */
+export const createOneTabSharedWorkerSelfPolyfill = <Input, Output = never>(
+  nativeSelf: globalThis.DedicatedWorkerGlobalScope,
+): SharedWorkerSelf<Input, Output> => {
+  using disposer = new DisposableStack();
+
+  let onConnectHandler: ((port: MessagePort<Output, Input>) => void) | null =
+    null;
+  let onMessageHandler: ((message: Input) => void) | null = null;
+  const messages: Array<Input> = [];
+  let connected = false;
+
+  disposer.defer(() => {
+    messages.length = 0;
+    onConnectHandler = null;
+    onMessageHandler = null;
+    nativeSelf.onmessage = null;
+    nativeSelf.close();
+  });
+
+  const disposables = disposer.move();
+
+  nativeSelf.onmessage = (event: MessageEvent<Input>) => {
+    if (disposables.disposed) return;
+
+    const handler = onMessageHandler;
+    if (handler) handler(event.data);
+    else messages.push(event.data);
+  };
+
+  const flushMessages = (): void => {
+    for (const message of messages.splice(0)) {
+      const handler = onMessageHandler;
+      if (!handler) return;
+      handler(message);
+    }
+  };
+
+  const port: MessagePort<Output, Input> = {
+    postMessage: (message, transfer) => {
+      if (disposables.disposed) return;
+      if (transfer == null) nativeSelf.postMessage(message);
+      else nativeSelf.postMessage(message, [...transfer]);
+    },
+
+    get onMessage() {
+      return disposables.disposed ? null : onMessageHandler;
+    },
+    set onMessage(fn) {
+      if (disposables.disposed) return;
+      onMessageHandler = fn;
+      if (fn) flushMessages();
+    },
+
+    native: nativeSelf as unknown as NativeMessagePort<Output, Input>,
+
+    [Symbol.dispose]: () => disposables.dispose(),
+  };
+
+  const connect = (): void => {
+    if (connected || !onConnectHandler) return;
+    connected = true;
+    onConnectHandler(port);
+  };
+
+  return {
+    get onConnect() {
+      return onConnectHandler;
+    },
+    set onConnect(fn) {
+      if (disposables.disposed) return;
+      onConnectHandler = fn;
+      connect();
+    },
+    [Symbol.dispose]: () => disposables.dispose(),
+  };
 };
 
 /** Creates deps shared by web worker entry points. */

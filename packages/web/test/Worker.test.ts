@@ -1,7 +1,8 @@
 import type { MessagePort, NativeMessagePort } from "@evolu/common";
-import { expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   createBroadcastChannel,
+  createOneTabSharedWorkerSelfPolyfill,
   createMessageChannel,
   createMessagePort,
   createSharedWorker,
@@ -9,6 +10,7 @@ import {
   createWorker,
   createWorkerDeps,
   createWorkerSelf,
+  installOneTabSharedWorkerPolyfill,
 } from "../src/Worker.js";
 
 interface WorkerInput {
@@ -216,6 +218,127 @@ test("createSharedWorker wraps a shared worker port and disposes via close", () 
   expect(nativePort.postMessage).toHaveBeenCalledWith("request");
   expect(nativePort.close).toHaveBeenCalledOnce();
   expect(nativePort.onmessage).toBeNull();
+});
+
+describe("one-tab SharedWorker polyfill", () => {
+  test("installOneTabSharedWorkerPolyfill installs a Worker-backed SharedWorker", () => {
+    const nativeWorker = createClosableNativePort<string>();
+    const calls: Array<{
+      readonly scriptURL: string | URL;
+      readonly options: WorkerOptions | undefined;
+    }> = [];
+    const Worker = function (scriptURL: string | URL, options?: WorkerOptions) {
+      calls.push({ scriptURL, options });
+      return nativeWorker;
+    } as unknown as typeof globalThis.Worker;
+    const scriptURL = new URL("https://example.com/Shared.worker.js");
+    const options = { type: "module" } as const;
+
+    vi.stubGlobal("SharedWorker", undefined);
+    vi.stubGlobal("Worker", Worker);
+
+    try {
+      installOneTabSharedWorkerPolyfill();
+      const nativeSharedWorker = new SharedWorker(scriptURL, options);
+
+      expect(calls).toEqual([{ scriptURL, options }]);
+      expect(nativeSharedWorker.port).toBe(nativeWorker);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("installOneTabSharedWorkerPolyfill keeps native SharedWorker", () => {
+    const nativePort = createClosableNativePort<string>();
+    const NativeSharedWorker = class {
+      readonly port = nativePort;
+    } as unknown as typeof globalThis.SharedWorker;
+
+    vi.stubGlobal("SharedWorker", NativeSharedWorker);
+
+    try {
+      installOneTabSharedWorkerPolyfill();
+      expect(globalThis.SharedWorker).toBe(NativeSharedWorker);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("createOneTabSharedWorkerSelfPolyfill creates one queued synthetic connection", () => {
+    const nativeSelf = createClosableNativePort<string>();
+    const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
+      nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
+    );
+    const received: Array<string> = [];
+    let connectedPort!: MessagePort<string, string>;
+
+    expect(workerSelf.onConnect).toBeNull();
+    workerSelf.onConnect = null;
+    workerSelf.onConnect = (port) => {
+      connectedPort = port;
+    };
+    expect(workerSelf.onConnect).not.toBeNull();
+
+    nativeSelf.onmessage?.({ data: "queued" } as MessageEvent<string>);
+    connectedPort.onMessage = (message) => {
+      received.push(message);
+    };
+    expect(connectedPort.onMessage).not.toBeNull();
+
+    nativeSelf.onmessage?.({ data: "immediate" } as MessageEvent<string>);
+    connectedPort.onMessage = null;
+    expect(connectedPort.onMessage).toBeNull();
+    connectedPort.onMessage = (message) => {
+      received.push(message);
+    };
+    workerSelf.onConnect = null;
+
+    connectedPort.postMessage("response");
+    const transferable = new ArrayBuffer(1);
+    connectedPort.postMessage("response with transfer", [transferable]);
+    const nativeSelfOnMessage = nativeSelf.onmessage;
+    workerSelf[Symbol.dispose]();
+    nativeSelfOnMessage?.({ data: "ignored" } as MessageEvent<string>);
+    connectedPort.postMessage("ignored");
+    connectedPort.onMessage = () => {
+      received.push("ignored");
+    };
+    workerSelf[Symbol.dispose]();
+
+    expect(received).toEqual(["queued", "immediate"]);
+    expect(connectedPort.native).toBe(nativeSelf);
+    expect(connectedPort.onMessage).toBeNull();
+    expect(nativeSelf.postMessage).toHaveBeenNthCalledWith(1, "response");
+    expect(nativeSelf.postMessage).toHaveBeenNthCalledWith(
+      2,
+      "response with transfer",
+      [transferable],
+    );
+    expect(nativeSelf.close).toHaveBeenCalledOnce();
+    expect(nativeSelf.onmessage).toBeNull();
+  });
+
+  test("createOneTabSharedWorkerSelfPolyfill stops flushing when onMessage is cleared", () => {
+    const nativeSelf = createClosableNativePort<string>();
+    const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
+      nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
+    );
+    const received: Array<string> = [];
+    let connectedPort!: MessagePort<string, string>;
+
+    workerSelf.onConnect = (port) => {
+      connectedPort = port;
+    };
+    nativeSelf.onmessage?.({ data: "first" } as MessageEvent<string>);
+    nativeSelf.onmessage?.({ data: "second" } as MessageEvent<string>);
+    connectedPort.onMessage = (message) => {
+      received.push(message);
+      connectedPort.onMessage = null;
+    };
+    workerSelf[Symbol.dispose]();
+
+    expect(received).toEqual(["first"]);
+  });
 });
 
 test("createWorker communicates with createWorkerSelf through a native worker", async () => {

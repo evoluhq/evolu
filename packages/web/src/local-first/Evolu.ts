@@ -1,5 +1,6 @@
-import type { ConsoleDep } from "@evolu/common";
+import { exhaustiveCheck, type ConsoleDep } from "@evolu/common";
 import type {
+  SharedWorker as CommonSharedWorker,
   CreateDbWorker,
   DbWorkerInit,
   EvoluDeps,
@@ -13,6 +14,7 @@ import {
   createMessageChannel,
   createSharedWorker,
   createWorker,
+  installOneTabSharedWorkerPolyfill,
 } from "../Worker.js";
 
 // // TODO: Redesign.
@@ -22,8 +24,20 @@ import {
 //   secureStorage: createWebAuthnStore({ randomBytes: createRandomBytes() }),
 // });
 
+export interface SharedWorkerUnsupported {
+  readonly type: "SharedWorkerUnsupported";
+}
+
+export interface SharedWorkerUnsupportedDep {
+  readonly onSharedWorkerUnsupported: () => void;
+}
+
 /** Creates Evolu dependencies for the web platform. */
-export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
+export const createEvoluDeps = (
+  deps: Partial<ConsoleDep> & Partial<SharedWorkerUnsupportedDep> = {},
+): EvoluDeps => {
+  installOneTabSharedWorkerPolyfill();
+
   const createDbWorker: CreateDbWorker = () =>
     createWorker<DbWorkerInit, never>(
       new Worker(new URL("Db.worker.js", import.meta.url), {
@@ -31,7 +45,7 @@ export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
       }),
     );
 
-  const sharedWorker = createSharedWorker<
+  const webSharedWorker = createSharedWorker<
     SharedWorkerInput,
     SharedWorkerOutput
   >(
@@ -39,6 +53,44 @@ export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => {
       type: "module",
     }),
   );
+  let onSharedWorkerMessage: ((message: SharedWorkerOutput) => void) | null =
+    null;
+  const sharedWorker: CommonSharedWorker = {
+    ...webSharedWorker,
+    port: {
+      ...webSharedWorker.port,
+      get onMessage() {
+        return onSharedWorkerMessage;
+      },
+      set onMessage(fn) {
+        onSharedWorkerMessage = fn;
+        webSharedWorker.port.onMessage = fn
+          ? (message: SharedWorkerOutput | SharedWorkerUnsupported) => {
+              switch (message.type) {
+                case "DbWorkerInit": {
+                  fn(message);
+                  break;
+                }
+
+                case "SharedWorkerUnsupported": {
+                  if (deps.onSharedWorkerUnsupported) {
+                    deps.onSharedWorkerUnsupported();
+                  } else {
+                    globalThis.alert(
+                      "This browser supports Evolu in one tab only. Close this tab and use the already open tab.",
+                    );
+                  }
+                  break;
+                }
+
+                default:
+                  exhaustiveCheck(message);
+              }
+            }
+          : null;
+      },
+    },
+  };
 
   return createCommonEvoluDeps({
     ...deps,
