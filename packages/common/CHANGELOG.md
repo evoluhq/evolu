@@ -1,5 +1,20 @@
 # @evolu/common
 
+## 8.0.0-next.5
+
+### Minor Changes
+
+- 63dce92: Updated Task and Run dependency injection API.
+
+  Removed `Run.addDeps` because every `Run` now owns its deps. The new API is more flexible and better matches sync Pure DI: deps are passed explicitly where a task is called, can replace existing deps when needed, and can be scoped to an owned disposable `Run` with `run.create(deps)`.
+  - Renamed `RunDeps` to `RunDefaultDeps` to describe default Run dependencies more clearly.
+  - Replaced `Run.addDeps` with explicit dependency passing via `run(task, deps)`, `run.orThrow(task, deps)`, and `run.create(deps)`.
+  - Allowed explicit deps to override default `RunDefaultDeps` when needed.
+
+### Patch Changes
+
+- 0fbb5e7: Kept SharedWorker Evolu tenants alive briefly after the last instance was released so immediate dispose-and-recreate flows continue using the same local-first runtime.
+
 ## 8.0.0-next.4
 
 ### Minor Changes

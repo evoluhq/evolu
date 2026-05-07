@@ -1,5 +1,30 @@
 # @evolu/web
 
+## 3.0.0-next.1
+
+### Patch Changes
+
+- c1f97ff: Fixed the SharedWorker fallback on older Chrome Android versions without native SharedWorker support.
+
+  Apps can pass `onSharedWorkerUnsupported` to show a custom message when another fallback tab is already running:
+
+  ```ts
+  createEvoluDeps({
+    onSharedWorkerUnsupported: () => {
+      alert(
+        "This browser supports Evolu in one tab only. Close this tab and use the already open tab.",
+      );
+    },
+  });
+  ```
+
+- 63dce92: Updated Task and Run dependency injection API.
+
+  Removed `Run.addDeps` because every `Run` now owns its deps. The new API is more flexible and better matches sync Pure DI: deps are passed explicitly where a task is called, can replace existing deps when needed, and can be scoped to an owned disposable `Run` with `run.create(deps)`.
+  - Renamed `RunDeps` to `RunDefaultDeps` to describe default Run dependencies more clearly.
+  - Replaced `Run.addDeps` with explicit dependency passing via `run(task, deps)`, `run.orThrow(task, deps)`, and `run.create(deps)`.
+  - Allowed explicit deps to override default `RunDefaultDeps` when needed.
+
 ## 3.0.0-next.0
 
 ### Major Changes
