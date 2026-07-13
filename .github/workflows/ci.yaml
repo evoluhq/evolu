@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
     container:
-      image: mcr.microsoft.com/playwright:v1.59.1-noble
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
     steps:
       - uses: actions/checkout@v6
 
