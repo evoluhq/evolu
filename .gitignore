@@ -21,16 +21,14 @@ apps/relay/data/*
 apps/web/src/app/(docs)/docs/api-reference/**
 apps/web/src/data/sections.json
 
-# examples/react-electron
+# examples
 examples/react-electron/dist-electron/
 examples/react-electron/release/
-
-# packages/svelte
-packages/svelte/.svelte-kit
-
-# examples/react-expo
 examples/react-expo/.expo/
 examples/react-expo/expo-env.d.ts
 examples/react-expo/ios
 examples/react-expo/android
+
+# packages/svelte
+packages/svelte/.svelte-kit
 
