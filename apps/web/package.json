@@ -66,6 +66,6 @@
     "@types/react-highlight-words": "^0.20.1",
     "@types/rss": "^0.0.32",
     "cross-env": "^10.1.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   }
 }

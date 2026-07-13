@@ -43,7 +43,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
     "@types/node": "^24.10.9",
-    "@types/sharedworker": "^0.0.221",
+    "@types/sharedworker": "^0.0.228",
     "@types/web-locks-api": "^0.0.5",
     "typescript": "^6",
     "user-agent-data-types": "^0.4.2"
