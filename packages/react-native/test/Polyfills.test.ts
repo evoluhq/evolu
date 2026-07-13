@@ -246,6 +246,46 @@ describe("installPolyfills", () => {
     expect(reason.message).toBe("This operation was aborted");
   });
 
+  test("polyfills AbortSignal.throwIfAborted", () => {
+    const runtime = createFakeAbortRuntime();
+    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+
+    installPolyfills();
+
+    const controller = new globalThis.AbortController();
+    expect(() => controller.signal.throwIfAborted()).not.toThrow();
+
+    const reason = new Error("stop");
+    controller.abort(reason);
+
+    let thrown: unknown;
+    try {
+      controller.signal.throwIfAborted();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBe(reason);
+  });
+
+  test("does not override AbortSignal.throwIfAborted", () => {
+    const runtime = createFakeAbortRuntime();
+    let called = false;
+    const throwIfAborted = () => {
+      called = true;
+    };
+    Object.defineProperty(runtime.AbortSignal.prototype, "throwIfAborted", {
+      value: throwIfAborted,
+    });
+    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+
+    installPolyfills();
+
+    new globalThis.AbortController().signal.throwIfAborted();
+
+    expect(called).toBe(true);
+  });
+
   test("polyfills AbortSignal.abort", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });

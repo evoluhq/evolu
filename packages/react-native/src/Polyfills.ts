@@ -98,6 +98,7 @@ const installAbortControllerPolyfills = (): void => {
     globalThis.AbortController,
     globalThis.AbortSignal,
   );
+  installAbortSignalThrowIfAbortedPolyfill(globalThis.AbortSignal);
   installAbortSignalStaticMethods(
     globalThis.AbortController,
     globalThis.AbortSignal,
@@ -133,6 +134,21 @@ const installAbortReasonPolyfill = (
     configurable: true,
     enumerable: false,
     writable: false,
+  });
+};
+
+const installAbortSignalThrowIfAbortedPolyfill = (
+  abortSignal: AbortSignalConstructor,
+): void => {
+  if (typeof abortSignal.prototype.throwIfAborted === "function") return;
+
+  Object.defineProperty(abortSignal.prototype, "throwIfAborted", {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value(this: AbortSignal): void {
+      if (this.aborted) throw this.reason;
+    },
   });
 };
 
