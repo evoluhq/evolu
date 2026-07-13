@@ -2,6 +2,7 @@ import { expectTypeOf, test } from "vitest";
 import type {
   DistributiveOmit,
   ExtractType,
+  ParameterIntersection,
   WidenLiteral,
 } from "../src/Types.js";
 
@@ -41,4 +42,19 @@ test("ExtractType", () => {
 
   // @ts-expect-error - typos must fail at the type argument.
   type _Invalid = ExtractType<Message, "Mutaet">;
+});
+
+test("ParameterIntersection", () => {
+  type First = (value: { readonly first: string }) => void;
+  type Second = (value: { readonly second: number }) => void;
+  type Unknown = (value: unknown) => void;
+
+  expectTypeOf<ParameterIntersection<First | Second>>().toEqualTypeOf<
+    { readonly first: string } & { readonly second: number }
+  >();
+  expectTypeOf<
+    ParameterIntersection<First | Second | Unknown>
+  >().toEqualTypeOf<
+    { readonly first: string } & { readonly second: number }
+  >();
 });

@@ -314,6 +314,11 @@ export type UnionToIntersection<U> = (
   ? I
   : never;
 
+/** Intersects the parameter types of a union of unary functions. */
+export type ParameterIntersection<T> = [T] extends [(value: infer I) => void]
+  ? I
+  : unknown;
+
 /**
  * Removes keys from each member of a union.
  *
