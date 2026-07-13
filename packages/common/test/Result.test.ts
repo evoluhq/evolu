@@ -26,6 +26,7 @@ import {
   tryAsync,
   trySync,
 } from "../src/Result.js";
+import { parseStackTrace } from "../src/StackTrace.js";
 
 describe("ok", () => {
   it("creates Ok with a value", () => {
@@ -195,6 +196,37 @@ describe("trySync", () => {
       },
     });
   });
+
+  it("returns Err with the exception when mapError is omitted", () => {
+    const failure = new Error("Something went wrong");
+    const result = trySync(() => {
+      throw failure;
+    });
+
+    expectTypeOf(result).toEqualTypeOf<Result<never, unknown>>();
+    expect(result).toStrictEqual(err(failure));
+  });
+
+  it("mapError may throw to escalate a failure", () => {
+    const failure = new Error("Something went wrong");
+    const escalated = new Error("Escalated");
+
+    let thrown: unknown;
+    try {
+      trySync(
+        () => {
+          throw failure;
+        },
+        () => {
+          throw escalated;
+        },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBe(escalated);
+  });
 });
 
 describe("tryAsync", () => {
@@ -224,6 +256,19 @@ describe("tryAsync", () => {
     );
   });
 
+  it("returns Err with the rejection when mapError is omitted", async () => {
+    const failure = new Error("Something went wrong");
+    const result = await tryAsync(
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async () => {
+        throw failure;
+      },
+    );
+
+    expectTypeOf(result).toEqualTypeOf<Result<never, unknown>>();
+    expect(result).toStrictEqual(err(failure));
+  });
+
   it("maps custom error properties", async () => {
     const result = await tryAsync(
       // eslint-disable-next-line @typescript-eslint/require-await
@@ -246,6 +291,20 @@ describe("tryAsync", () => {
     );
   });
 
+  it("mapError may throw to escalate a failure", async () => {
+    const failure = new Error("Something went wrong");
+    const escalated = new Error("Escalated");
+
+    await expect(
+      tryAsync(
+        () => Promise.reject(failure),
+        () => {
+          throw escalated;
+        },
+      ),
+    ).rejects.toBe(escalated);
+  });
+
   it("catches synchronous throws", async () => {
     const result = await tryAsync(
       () => {
@@ -260,6 +319,18 @@ describe("tryAsync", () => {
         message: "Error: Sync throw before promise",
       }),
     );
+  });
+
+  it("preserves its await boundary in rejected error stacks", async () => {
+    const result = await tryAsync(async () => {
+      await Promise.resolve();
+      throw new Error("Something went wrong");
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok || !(result.error instanceof Error)) return;
+
+    expect(parseStackTrace(result.error.stack).files).toContain("Result.ts");
   });
 });
 

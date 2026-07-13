@@ -11,10 +11,10 @@ import {
   type NonEmptyReadonlyArray,
 } from "./Array.js";
 import { assert } from "./Assert.js";
-import type { Lazy } from "./Function.js";
-import { exhaustiveCheck } from "./Function.js";
+import { exhaustiveCheck, type Lazy } from "./Function.js";
 import { createRecord, emptyRecord, isIterable } from "./Object.js";
 import type { Typed } from "./Type.js";
+import type { Awaitable } from "./Types.js";
 
 /**
  * The problem with `throw` in JavaScript is that the caught value is always of
@@ -215,9 +215,8 @@ import type { Typed } from "./Type.js";
  * throws. If the local caller cannot recover, let the error propagate to a
  * global handler or other app boundary.
  *
- * In Evolu apps, that boundary is typically a platform `createRun` adapter such
- * as `@evolu/web`, `@evolu/nodejs`, or `@evolu/react-native`, which add
- * platform-specific global error handling.
+ * In Evolu apps, the root Run reports defects and the platform lifecycle API
+ * owns application shutdown. For example, `@evolu/nodejs` provides `runMain`.
  *
  * ## FAQ
  *
@@ -330,8 +329,8 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
  * **When to use:**
  *
  * - Application startup or composition-root setup where errors must stop the
- *   program immediately. In Evolu apps, errors are handled by platform-specific
- *   `createRun` adapters at the app boundary.
+ *   program immediately. In Evolu apps, the root Run reports the defect and the
+ *   platform lifecycle API handles shutdown.
  * - Module-level constants
  * - Test setup with values that are expected to be valid
  *
@@ -395,6 +394,10 @@ export const getOk = <T>(result: Result<T>): T => {
  * the caller. Do not use it for failures that should terminate the current flow
  * and propagate to a global handler.
  *
+ * `mapError` may throw; `trySync` then throws the thrown value instead of
+ * returning Err. Use this to escalate selected failures instead of returning
+ * them as Err.
+ *
  * ### Example
  *
  * ```ts
@@ -405,16 +408,21 @@ export const getOk = <T>(result: Result<T>): T => {
  *   );
  * ```
  */
-export const trySync = <T, E>(
+export function trySync<T>(fn: () => T): Result<T, unknown>;
+export function trySync<T, E>(
   fn: () => T,
   mapError: (error: unknown) => E,
-): Result<T, E> => {
+): Result<T, E>;
+export function trySync<T, E>(
+  fn: () => T,
+  mapError?: (error: unknown) => E,
+): Result<T, E | unknown> {
   try {
     return ok(fn());
   } catch (error) {
-    return err(mapError(error));
+    return err(mapError ? mapError(error) : error);
   }
-};
+}
 
 /**
  * Wraps an async function that may throw, returning a {@link Result}.
@@ -423,28 +431,37 @@ export const trySync = <T, E>(
  * caller. Do not use it for failures that should terminate the current flow and
  * propagate to a global handler.
  *
+ * `mapError` may throw; the returned promise then rejects with the thrown
+ * value. Use this to escalate selected failures instead of returning them as
+ * Err.
+ *
  * ### Example
  *
  * ```ts
- * const fetchJson = (url: string): Promise<Result<unknown, FetchError>> =>
+ * const readConfig = (path: string): Promise<Result<string, ReadConfigError>> =>
  *   tryAsync(
- *     async () => {
- *       const response = await fetch(url);
- *       if (!response.ok) throw new Error(`Status ${response.status}`);
- *       return response.json();
- *     },
- *     (error) => ({ type: "FetchError", message: String(error) }),
+ *     () => fs.readFile(path, "utf8"),
+ *     (error) => ({ type: "ReadConfigError", error }),
  *   );
  * ```
  */
-export const tryAsync = <T, E>(
-  lazyPromise: Lazy<Promise<T>>,
+export function tryAsync<T>(
+  lazyPromise: Lazy<Awaitable<T>>,
+): Promise<Result<T, unknown>>;
+export function tryAsync<T, E>(
+  lazyPromise: Lazy<Awaitable<T>>,
   mapError: (error: unknown) => E,
-): Promise<Result<T, E>> =>
-  Promise.try(lazyPromise).then(
-    (value) => ok(value),
-    (error: unknown) => err(mapError(error)),
-  );
+): Promise<Result<T, E>>;
+export async function tryAsync<T, E>(
+  lazyPromise: Lazy<Awaitable<T>>,
+  mapError?: (error: unknown) => E,
+): Promise<Result<T, E | unknown>> {
+  try {
+    return ok(await lazyPromise());
+  } catch (error) {
+    return err(mapError ? mapError(error) : error);
+  }
+}
 
 /**
  * A result for a pull-based protocol with three outcomes.
