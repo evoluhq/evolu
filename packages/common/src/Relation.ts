@@ -11,8 +11,15 @@ import {
   createLookupMap,
   createLookupSet,
   type Lookup,
+  type LookupMap,
   type LookupSet,
 } from "./Lookup.js";
+import {
+  NonNegativeInt,
+  onePositiveInt,
+  PositiveInt,
+  zeroNonNegativeInt,
+} from "./Type.js";
 
 /**
  * Bidirectional relation between two types.
@@ -171,7 +178,6 @@ export function createRelation<A, B, LA = A, LB = B>({
 
   const removePair = (a: A, b: B): void => {
     const relatedB = bByA.get(a);
-    // This should only fail if a leaked view was mutated via an unsafe cast.
     assertRelationMappingConsistency(relatedB);
     assertRelationMappingConsistency(relatedB.has(b));
 
@@ -181,7 +187,6 @@ export function createRelation<A, B, LA = A, LB = B>({
     }
 
     const relatedA = aByB.get(b);
-    // This should only fail if a leaked view was mutated via an unsafe cast.
     assertRelationMappingConsistency(relatedA);
     assertRelationMappingConsistency(relatedA.has(a));
 
@@ -279,8 +284,179 @@ export function createRelation<A, B, LA = A, LB = B>({
   };
 }
 
+// This can fail if a lookup function violates its pure and stable contract.
 const assertRelationMappingConsistency: (
   condition: unknown,
 ) => asserts condition = (condition) => {
   assert(condition, "Relation mapping inconsistency");
 };
+
+/**
+ * Bidirectional relation with a positive retain count for every active pair.
+ *
+ * Logical equality and canonical representatives follow the same lookup rules
+ * as {@link Relation}. The first active representative on each side remains
+ * canonical until that value has no active pairs. Increment and decrement
+ * return those representatives so callers can reliably handle pair transitions
+ * without repeating lookup or canonicalization logic.
+ *
+ * Unlike {@link Relation}'s live iterators, directional and entry reads return
+ * snapshots so callers can mutate this relation while iterating. Their order
+ * follows first insertion of the current canonical representatives and pairs.
+ */
+export interface RefCountedRelation<A, B> {
+  /** Increments a pair count and returns its canonical values and new count. */
+  readonly increment: (
+    a: A,
+    b: B,
+  ) => {
+    readonly a: A;
+    readonly b: B;
+    readonly count: PositiveInt;
+  };
+
+  /**
+   * Decrements a pair count and returns its canonical values and new count.
+   * Decrementing a missing pair is a programmer error checked with
+   * {@link assert}.
+   */
+  readonly decrement: (
+    a: A,
+    b: B,
+  ) => {
+    readonly a: A;
+    readonly b: B;
+    readonly count: NonNegativeInt;
+  };
+
+  /** Returns the pair count, or zero when the pair is absent. */
+  readonly getCount: (a: A, b: B) => NonNegativeInt;
+
+  /** Returns a snapshot of canonical A values related to `b`. */
+  readonly getAs: (b: B) => ReadonlyArray<A>;
+
+  /** Returns a snapshot of canonical B values related to `a`. */
+  readonly getBs: (a: A) => ReadonlyArray<B>;
+
+  /** Returns whether an A value has at least one active pair. */
+  readonly hasA: (a: A) => boolean;
+
+  /** Returns whether a B value has at least one active pair. */
+  readonly hasB: (b: B) => boolean;
+
+  /** Returns a snapshot of every canonical pair and its positive count. */
+  readonly getEntries: () => ReadonlyArray<
+    readonly [a: A, b: B, count: PositiveInt]
+  >;
+
+  /** Removes all pair counts and both directional indexes. */
+  readonly clear: () => void;
+}
+
+/** Creates a {@link RefCountedRelation}. */
+export function createRefCountedRelation<A, B>(): RefCountedRelation<A, B>;
+export function createRefCountedRelation<A, B, LA, LB>(
+  options: CreateRelationOptions<A, B, LA, LB>,
+): RefCountedRelation<A, B>;
+export function createRefCountedRelation<A, B, LA = A, LB = B>({
+  lookupA = identity as Lookup<A, LA>,
+  lookupB = identity as Lookup<B, LB>,
+}: CreateRelationOptions<A, B, LA, LB> = {}): RefCountedRelation<A, B> {
+  interface RelatedBs {
+    readonly a: A;
+    readonly countsByB: LookupMap<B, PositiveInt>;
+  }
+
+  interface RelatedAs {
+    readonly b: B;
+    readonly as: LookupSet<A>;
+  }
+
+  const relatedBsByA = createLookupMap<A, RelatedBs, LA>({ lookup: lookupA });
+  const relatedAsByB = createLookupMap<B, RelatedAs, LB>({ lookup: lookupB });
+
+  return {
+    increment: (a, b) => {
+      let relatedBs = relatedBsByA.get(a);
+      const canonicalA = relatedBs ? relatedBs.a : a;
+      const relatedAs = relatedAsByB.get(b);
+      const canonicalB = relatedAs ? relatedAs.b : b;
+
+      if (!relatedBs) {
+        relatedBs = {
+          a: canonicalA,
+          countsByB: createLookupMap<B, PositiveInt, LB>({ lookup: lookupB }),
+        };
+        relatedBsByA.set(canonicalA, relatedBs);
+      }
+
+      const count = relatedBs.countsByB.get(canonicalB);
+      if (count) {
+        const nextCount = PositiveInt.orThrow(count + 1);
+        relatedBs.countsByB.set(canonicalB, nextCount);
+        return { a: canonicalA, b: canonicalB, count: nextCount };
+      }
+
+      relatedBs.countsByB.set(canonicalB, onePositiveInt);
+      if (relatedAs) {
+        relatedAs.as.add(canonicalA);
+      } else {
+        relatedAsByB.set(canonicalB, {
+          b: canonicalB,
+          as: createLookupSet<A, LA>({
+            lookup: lookupA,
+            values: [canonicalA],
+          }),
+        });
+      }
+      return { a: canonicalA, b: canonicalB, count: onePositiveInt };
+    },
+
+    decrement: (a, b) => {
+      const relatedBs = relatedBsByA.get(a);
+      const relatedAs = relatedAsByB.get(b);
+      const count = relatedBs?.countsByB.get(b);
+      assert(
+        relatedBs && relatedAs && count,
+        "RefCountedRelation pair must exist before decrement.",
+      );
+
+      const nextCount = NonNegativeInt.orThrow(count - 1);
+      if (nextCount > 0) {
+        relatedBs.countsByB.set(relatedAs.b, PositiveInt.orThrow(nextCount));
+      } else {
+        relatedBs.countsByB.delete(relatedAs.b);
+        if (relatedBs.countsByB.size === 0) relatedBsByA.delete(relatedBs.a);
+
+        relatedAs.as.delete(relatedBs.a);
+        if (relatedAs.as.size === 0) relatedAsByB.delete(relatedAs.b);
+      }
+
+      return { a: relatedBs.a, b: relatedAs.b, count: nextCount };
+    },
+
+    getCount: (a, b) =>
+      relatedBsByA.get(a)?.countsByB.get(b) ?? zeroNonNegativeInt,
+
+    getAs: (b) => [...(relatedAsByB.get(b)?.as ?? emptyArray)],
+
+    getBs: (a) => [...(relatedBsByA.get(a)?.countsByB.keys() ?? emptyArray)],
+
+    hasA: (a) => relatedBsByA.has(a),
+
+    hasB: (b) => relatedAsByB.has(b),
+
+    getEntries: () => {
+      const entries: Array<readonly [A, B, PositiveInt]> = [];
+      for (const { a, countsByB } of relatedBsByA.values()) {
+        for (const [b, count] of countsByB) entries.push([a, b, count]);
+      }
+      return entries;
+    },
+
+    clear: () => {
+      relatedBsByA.clear();
+      relatedAsByB.clear();
+    },
+  };
+}
