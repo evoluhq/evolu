@@ -4,8 +4,6 @@
  * @module
  */
 
-import type { Ok, Result } from "./Result.js";
-import type { AbortError } from "./Task.js";
 import type { AnyType, InferType, Type } from "./Type.js";
 
 /**
@@ -33,6 +31,22 @@ export const assert: (
   if (!condition) {
     throw new Error(message);
   }
+};
+
+/**
+ * Asserts that a value is non-nullable.
+ *
+ * Narrows a nullable value to {@link NonNullable} when null or undefined is
+ * logically impossible but TypeScript cannot prove it.
+ */
+export const assertNonNullable: <T>(
+  value: T,
+  message?: string,
+) => asserts value is NonNullable<T> = (
+  value,
+  message = "Expected value to be non-nullable.",
+) => {
+  assert(value != null, message);
 };
 
 /**
@@ -106,39 +120,6 @@ export const assertType: <T extends AnyType>(
 };
 
 /**
- * Asserts that a {@link Result} did not fail with `AbortError`.
- *
- * Use when abort would indicate a programmer error rather than ordinary control
- * flow.
- *
- * In general, abort is normal control flow. Stopping work and returning
- * `AbortError` is the correct behavior when a `Run` or `Fiber` is cancelled.
- *
- * Use `assertNotAborted` only to protect invariants in code that has already
- * decided abort must not happen, such as resource helpers built on
- * `unabortable`. In those places it helps fail fast on mistakes, because
- * TypeScript cannot fully enforce that lifecycle logic is correct.
- */
-export function assertNotAborted<T>(
-  result: Result<T, AbortError>,
-  message?: string,
-): asserts result is Ok<T>;
-export function assertNotAborted<T, E>(
-  result: Result<T, E | AbortError>,
-  message?: string,
-): asserts result is Result<T, E>;
-export function assertNotAborted<T, E>(
-  result: Result<T, E | AbortError>,
-  message = "Expected result to not be aborted.",
-): asserts result is Result<T, E> {
-  const isAbortError =
-    !result.ok &&
-    (result.error as { readonly type?: unknown }).type === "AbortError";
-
-  assert(!isAbortError, message);
-}
-
-/**
  * Guards synchronous methods on objects that may be called after disposal.
  *
  * Use when an API must fail fast before touching already-disposed state.
@@ -158,7 +139,8 @@ export function assertNotAborted<T, E>(
  * invalid state.
  */
 export const assertNotDisposed = (
-  value: DisposableStack | AsyncDisposableStack,
+  value:
+    DisposableStack | AsyncDisposableStack | { readonly disposed: boolean },
 ): void => {
   assert(!value.disposed, "Cannot use a disposed object.");
 };
