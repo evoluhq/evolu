@@ -191,14 +191,14 @@ describe("runMain", () => {
 
     try {
       expect(console.getEntriesSnapshot()).toEqual([
-        { method: "info", path: [], args: ["Shutting down..."] },
+        { method: "info", path: ["main"], args: ["Shutting down..."] },
       ]);
 
       finishCleanup.resolve();
       await done;
 
       expect(console.getEntriesSnapshot()).toEqual([
-        { method: "info", path: [], args: ["Shutdown complete"] },
+        { method: "info", path: ["main"], args: ["Shutdown complete"] },
       ]);
     } finally {
       finishCleanup.resolve();
@@ -243,8 +243,8 @@ describe("runMain", () => {
         );
         expect(exit).toHaveBeenCalledWith(exitCode);
         expect(console.getEntriesSnapshot()).toEqual([
-          { method: "info", path: [], args: ["Shutting down..."] },
-          { method: "warn", path: [], args: ["Forcing shutdown..."] },
+          { method: "info", path: ["main"], args: ["Shutting down..."] },
+          { method: "warn", path: ["main"], args: ["Forcing shutdown..."] },
         ]);
       } finally {
         exit.mockRestore();
@@ -375,10 +375,10 @@ describe("runMain", () => {
 
       expect(reportDefect.getDefectsSnapshot()).toHaveLength(1);
       expect(console.getEntriesSnapshot()).toEqual([
-        { method: "info", path: [], args: ["Shutting down..."] },
+        { method: "info", path: ["main"], args: ["Shutting down..."] },
         {
           method: "warn",
-          path: [],
+          path: ["main"],
           args: ["Shutdown finished with errors"],
         },
       ]);

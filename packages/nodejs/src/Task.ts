@@ -135,6 +135,7 @@ const runMainInternal = async <T extends void | Resource, D extends object>(
   mode: RunMainMode,
 ): Promise<void> => {
   const console = deps.console ?? createConsole();
+  const mainConsole = console.child("main");
 
   let defectReported = false as boolean;
   let receivedSignal = null as NodeSignal | null;
@@ -156,13 +157,13 @@ const runMainInternal = async <T extends void | Resource, D extends object>(
   (["SIGINT", "SIGTERM", "SIGBREAK"] as const).forEach((signal) => {
     const handleSignal = (): void => {
       if (receivedSignal !== null) {
-        console.warn("Forcing shutdown...");
+        mainConsole.warn("Forcing shutdown...");
         process.exit(commandExitCodeBySignal[signal]);
         return;
       }
 
       receivedSignal = signal;
-      console.info("Shutting down...");
+      mainConsole.info("Shutting down...");
       run.abort({ type: "NodeSignalAbortReason", signal });
     };
 
@@ -193,8 +194,8 @@ const runMainInternal = async <T extends void | Resource, D extends object>(
   }
 
   if (receivedSignal !== null) {
-    if (defectReported) console.warn("Shutdown finished with errors");
-    else console.info("Shutdown complete");
+    if (defectReported) mainConsole.warn("Shutdown finished with errors");
+    else mainConsole.info("Shutdown complete");
     if (mode === "command")
       process.exitCode ??= commandExitCodeBySignal[receivedSignal];
   }
