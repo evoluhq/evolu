@@ -78,10 +78,11 @@ jobs:
               break
             fi
 
-            if grep -Eq "original_status_code:5[0-9]{2}" "$LOG_FILE" && [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
-              echo "Socket API returned a 5xx response. Retrying in 60 seconds (attempt $ATTEMPT/$MAX_ATTEMPTS)."
+            if grep -Eq "original_status_code:5[0-9][0-9]" "$LOG_FILE" && [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              NEXT_ATTEMPT=$((ATTEMPT + 1))
+              echo "Socket API returned a 5xx response. Retrying in 60 seconds (next attempt $NEXT_ATTEMPT/$MAX_ATTEMPTS)."
               rm -f "$LOG_FILE"
-              ATTEMPT=$((ATTEMPT + 1))
+              ATTEMPT="$NEXT_ATTEMPT"
               sleep 60
               continue
             fi
