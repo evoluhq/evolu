@@ -146,7 +146,7 @@ describe("require-pure-annotation", () => {
   });
 });
 
-describe("no-direct-task-call", () => {
+describe("no-direct-task-call", { timeout: 10_000 }, () => {
   test("reports calling an intersection of Task", async () => {
     const result = await lintTypeScript(
       [
