@@ -37,13 +37,15 @@ jobs:
           python-version: "3.12"
 
       - name: Install Socket CLI
-        run: pip install socketsecurity --upgrade
+        run: pip install socketsecurity==2.4.20
 
       - name: Run Socket Security Scan
         env:
           SOCKET_SECURITY_API_TOKEN: ${{ secrets.SOCKET_SECURITY_API_KEY }}
           GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -o pipefail
+
           # Determine PR number based on event type
           PR_NUMBER=0
           if [ "${{ github.event_name }}" == "pull_request" ]; then
@@ -52,16 +54,38 @@ jobs:
             PR_NUMBER=${{ github.event.issue.number }}
           fi
 
-          # Run Socket CLI with minimal required parameters
-          # The CLI automatically detects:
-          # - Repository name from git
-          # - Branch name from git
-          # - Commit SHA from git
-          # - Commit message from git
-          # - Committer information from git
-          # - Default branch status from git and GitHub environment
-          # - Changed files from git commit
-          socketcli \
-            --target-path $GITHUB_WORKSPACE \
-            --scm github \
-            --pr-number $PR_NUMBER
+          run_socket_scan() {
+            # The CLI automatically detects:
+            # - Repository name from git
+            # - Branch name from git
+            # - Commit SHA from git
+            # - Commit message from git
+            # - Committer information from git
+            # - Default branch status from git and GitHub environment
+            # - Changed files from git commit
+            socketcli \
+              --target-path "$GITHUB_WORKSPACE" \
+              --scm github \
+              --pr-number "$PR_NUMBER"
+          }
+
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+          while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+            LOG_FILE="$(mktemp)"
+            if run_socket_scan 2>&1 | tee "$LOG_FILE"; then
+              rm -f "$LOG_FILE"
+              break
+            fi
+
+            if grep -Eq "original_status_code:5[0-9]{2}" "$LOG_FILE" && [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              echo "Socket API returned a 5xx response. Retrying in 60 seconds (attempt $ATTEMPT/$MAX_ATTEMPTS)."
+              rm -f "$LOG_FILE"
+              ATTEMPT=$((ATTEMPT + 1))
+              sleep 60
+              continue
+            fi
+
+            rm -f "$LOG_FILE"
+            exit 1
+          done
