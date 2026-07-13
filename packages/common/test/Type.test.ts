@@ -2,7 +2,7 @@ import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
 import { exhaustiveCheck, lazyVoid } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
-import { testCreateDeps } from "../src/Task2.js";
+import { testCreateDeps } from "../src/Task.js";
 import type {
   AnyType,
   ArrayBufferError,

@@ -182,11 +182,7 @@ const noDirectTaskCall = {
         resolved?.getName() === name &&
         resolved.declarations?.some((declaration) => {
           const fileName = declaration.getSourceFile().fileName;
-          return (
-            // TODO: Remove Task2 after renaming it Task.
-            fileName.endsWith("/packages/common/src/Task.ts") ||
-            fileName.endsWith("/packages/common/src/Task2.ts")
-          );
+          return fileName.endsWith("/packages/common/src/Task.ts");
         }) === true
       );
     };

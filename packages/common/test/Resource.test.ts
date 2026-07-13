@@ -11,7 +11,7 @@ import {
   type SharedResource,
   type SharedResourceByKey,
   type SharedResourceByKeyWithClaims,
-} from "../src/Resource2.js";
+} from "../src/Resource.js";
 import { err, ok } from "../src/Result.js";
 import {
   AbortError,
@@ -20,7 +20,7 @@ import {
   testAbortReason,
   testCreateRun,
   type Task,
-} from "../src/Task2.js";
+} from "../src/Task.js";
 import { expectConditionAfterMicrotasks } from "./_vitest.js";
 
 /** Creates a fresh Disposable per create call and records lifecycle counts. */
@@ -791,8 +791,7 @@ describe("SharedResource", () => {
       const onDisposedCalled = Promise.withResolvers<void>();
 
       let stateAtCallback:
-        | { disposeCount: number; hasResource: boolean }
-        | undefined;
+        { disposeCount: number; hasResource: boolean } | undefined;
 
       await using sharedResource = await run.ok(
         createSharedResource(resources.create, {

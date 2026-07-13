@@ -5,7 +5,7 @@
  */
 
 import type { Ref } from "./Ref.js";
-import type { Run } from "./Task2.js";
+import type { Run } from "./Task.js";
 
 /**
  * Minimal tracer interface for observability.

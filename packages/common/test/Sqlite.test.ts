@@ -23,7 +23,7 @@ import {
   type SqliteQueryString,
   type SqliteValue,
 } from "../src/Sqlite.js";
-import { createAbortError, sleep, testCreateRun } from "../src/Task2.js";
+import { createAbortError, sleep, testCreateRun } from "../src/Task.js";
 import { testName } from "../src/Type.js";
 import { setupSqlite } from "./_deps.js";
 

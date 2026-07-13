@@ -15,7 +15,7 @@ import type { RandomDep } from "../Random.js";
 import { err, ok } from "../Result.js";
 import type { SqliteDep } from "../Sqlite.js";
 import { sql, SqliteValue } from "../Sqlite.js";
-import type { Task } from "../Task2.js";
+import type { Task } from "../Task.js";
 import { Millis } from "../Time.js";
 import type { InferType, Int64String, Typed, TypeError } from "../Type.js";
 import {

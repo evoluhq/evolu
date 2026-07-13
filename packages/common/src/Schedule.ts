@@ -8,7 +8,7 @@ import { assertType } from "./Assert.js";
 import { fibonacciAt, FibonacciIndex, increment } from "./Number.js";
 import type { RandomDep } from "./Random.js";
 import { done, err, type NextResult, ok } from "./Result.js";
-import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task2.js";
+import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task.js";
 import {
   type Duration,
   durationToMillis,
@@ -1311,8 +1311,7 @@ export const sequenceSchedules =
   (deps) => {
     let index = 0;
     type Step =
-      | ((input: Input) => NextResult<readonly [Output, Millis]>)
-      | null;
+      ((input: Input) => NextResult<readonly [Output, Millis]>) | null;
     let currentStep: Step = schedules.length > 0 ? schedules[0](deps) : null;
     return (input) => {
       while (currentStep !== null) {

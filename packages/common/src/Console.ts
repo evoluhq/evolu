@@ -7,7 +7,7 @@
 import { objectFrom } from "./Object.js";
 import type { ReadonlyStore } from "./Store.js";
 import { createStore } from "./Store.js";
-import type { Task } from "./Task2.js";
+import type { Task } from "./Task.js";
 import {
   createTime,
   formatMillisAsClockTime,
@@ -177,13 +177,7 @@ export interface ConsoleDep {
  * - `"silent"` — Disables all logging
  */
 export type ConsoleLevel =
-  | "trace"
-  | "debug"
-  | "log"
-  | "info"
-  | "warn"
-  | "error"
-  | "silent";
+  "trace" | "debug" | "log" | "info" | "warn" | "error" | "silent";
 
 /**
  * Structured log entry captured by {@link Console}.
@@ -294,10 +288,7 @@ export interface ConsoleFormatterConfig {
 
 /** Timestamp format for {@link ConsoleFormatterConfig}. */
 export type ConsoleEntryTimestampFormat =
-  | "relative"
-  | "absolute"
-  | "iso"
-  | "none";
+  "relative" | "absolute" | "iso" | "none";
 
 /**
  * A {@link ConsoleOutput} that stores the latest entry in a

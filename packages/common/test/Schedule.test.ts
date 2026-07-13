@@ -49,7 +49,7 @@ import {
   whileScheduleOutput,
   windowed,
 } from "../src/Schedule.js";
-import { testCreateDeps } from "../src/Task2.js";
+import { testCreateDeps } from "../src/Task.js";
 import { maxMillis, Millis, minMillis, testCreateTime } from "../src/Time.js";
 
 // Helper to create scheduleDeps with controllable time

@@ -10,8 +10,8 @@ import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
 import type { Schedule } from "./Schedule.js";
 import { exponential, jitter, maxDelay } from "./Schedule.js";
-import type { RetryError, Task } from "./Task2.js";
-import { callback, retry } from "./Task2.js";
+import type { RetryError, Task } from "./Task.js";
+import { callback, retry } from "./Task.js";
 import type { Millis } from "./Time.js";
 import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.js";
 
@@ -175,8 +175,7 @@ export interface WebSocketConnectionError extends Typed<"WebSocketConnectionErro
 }
 
 export type WebSocketRetryError =
-  | WebSocketConnectError
-  | WebSocketConnectionCloseError;
+  WebSocketConnectError | WebSocketConnectionCloseError;
 
 /** An error that occurs when the connection is closed by the server. */
 export interface WebSocketConnectionCloseError extends Typed<"WebSocketConnectionCloseError"> {

@@ -17,7 +17,7 @@ import type {
   EncryptedDbChange,
 } from "../../src/local-first/Storage.js";
 import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
-import { testCreateDeps, testCreateRun } from "../../src/Task2.js";
+import { testCreateDeps, testCreateRun } from "../../src/Task.js";
 import { setupSqliteAndRelayStorage } from "../_deps.js";
 import {
   testAppOwner,
@@ -270,9 +270,7 @@ describe("writeMessages", () => {
 
     expect(() =>
       run(storage.writeMessages(testAppOwnerIdBytes, [message])),
-    ).toThrow(
-      "Cannot use a disposed object.",
-    );
+    ).toThrow("Cannot use a disposed object.");
 
     const messageCountResult = sqlite.exec<{ count: number }>(sql`
       select count(*) as count

@@ -39,7 +39,7 @@ import {
   type CreateSqliteDriver,
   type SqliteDriverOptions,
 } from "../../src/Sqlite.js";
-import { explicitAbortReason, testCreateRun } from "../../src/Task2.js";
+import { explicitAbortReason, testCreateRun } from "../../src/Task.js";
 import {
   createIdFromString,
   id,

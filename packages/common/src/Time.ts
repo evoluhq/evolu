@@ -6,7 +6,7 @@
 
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
-import type { yieldNow } from "./Task2.js";
+import type { yieldNow } from "./Task.js";
 import { brand, type DateIso, lessThan, NonNegativeInt } from "./Type.js";
 import type {
   Digit,

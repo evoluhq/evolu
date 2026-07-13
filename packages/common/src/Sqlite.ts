@@ -13,7 +13,7 @@ import { disposable } from "./Function.js";
 import { createRecord, objectToEntries } from "./Object.js";
 import type { Result } from "./Result.js";
 import { ok } from "./Result.js";
-import { testCreateRun, type Task, type TestRunDep } from "./Task2.js";
+import { testCreateRun, type Task, type TestRunDep } from "./Task.js";
 import type { InferType, Name, Typed } from "./Type.js";
 import {
   array,
@@ -568,19 +568,17 @@ export const getSqliteSchema =
       `,
     );
 
-    const indexes = indexesRows.rows.map(
-      (row): SqliteIndex => ({
-        name: row.name,
-        /**
-         * SQLite returns "CREATE INDEX" for "create index" for some reason.
-         * Other keywords remain unchanged. We have to normalize the casing for
-         * schema comparison manually.
-         */
-        sql: row.sql
-          .replace("CREATE INDEX", "create index")
-          .replace("CREATE UNIQUE INDEX", "create unique index"),
-      }),
-    );
+    const indexes = indexesRows.rows.map((row): SqliteIndex => ({
+      name: row.name,
+      /**
+       * SQLite returns "CREATE INDEX" for "create index" for some reason. Other
+       * keywords remain unchanged. We have to normalize the casing for schema
+       * comparison manually.
+       */
+      sql: row.sql
+        .replace("CREATE INDEX", "create index")
+        .replace("CREATE UNIQUE INDEX", "create unique index"),
+    }));
 
     return { tables, indexes };
   };

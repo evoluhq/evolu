@@ -11,7 +11,7 @@ import {
   runDisposedAbortReason,
   testCreateRun,
   yieldNow,
-} from "../src/Task2.js";
+} from "../src/Task.js";
 import { Name } from "../src/Type.js";
 
 describe("testCreateLockManager", () => {

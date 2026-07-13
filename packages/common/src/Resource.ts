@@ -23,7 +23,7 @@ import {
   type DisposableRun,
   type SemaphoreSnapshot,
   type Task,
-} from "./Task2.js";
+} from "./Task.js";
 import { type Duration } from "./Time.js";
 import { NonNegativeInt } from "./Type.js";
 import { type DistributiveOmit } from "./Types.js";

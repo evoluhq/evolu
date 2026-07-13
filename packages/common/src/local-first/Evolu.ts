@@ -29,7 +29,7 @@ import { isNonEmptySet } from "../Set.js";
 import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.js";
 import { createStore } from "../Store.js";
-import type { Task } from "../Task2.js";
+import type { Task } from "../Task.js";
 import type { Id, TypeError } from "../Type.js";
 import {
   brand,

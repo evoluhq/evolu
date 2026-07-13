@@ -15,7 +15,7 @@ import {
   testAbortReason,
   testCreateRun,
   type Task,
-} from "../src/Task2.js";
+} from "../src/Task.js";
 
 describe("fetch", () => {
   test("uses deps.nativeFetch with init and the Task Run signal", async () => {
@@ -107,9 +107,8 @@ describe("fetch", () => {
       Task<string, FetchTransportError>
     >();
     expectTypeOf(
-      fetch(
-        "/consumer-error",
-        (): Result<string, TestError> => err({ type: "TestError" }),
+      fetch("/consumer-error", (): Result<string, TestError> =>
+        err({ type: "TestError" }),
       ),
     ).toEqualTypeOf<Task<string, FetchTransportError | TestError>>();
   });
@@ -493,7 +492,7 @@ describe("fetch", () => {
               init?.signal?.addEventListener(
                 "abort",
                 () => {
-                  // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Fetch can reject with Task2's structured AbortError.
+                  // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Fetch can reject with Task's structured AbortError.
                   reject(init.signal?.reason);
                 },
                 { once: true },
@@ -520,7 +519,7 @@ describe("fetch", () => {
               init?.signal?.addEventListener(
                 "abort",
                 () => {
-                  // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Fetch can reject with Task2's structured AbortError.
+                  // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Fetch can reject with Task's structured AbortError.
                   reject(init.signal?.reason);
                 },
                 { once: true },

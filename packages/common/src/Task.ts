@@ -1494,9 +1494,7 @@ export interface RunSnapshot {
  * @group Monitoring
  */
 export type RunEventData =
-  | RunEventDataChildAdded
-  | RunEventDataChildRemoved
-  | RunEventDataStateChanged;
+  RunEventDataChildAdded | RunEventDataChildRemoved | RunEventDataStateChanged;
 
 /**
  * A child Run was added to the emitting Run.
@@ -4986,7 +4984,7 @@ export const createMutexRef = <T>(initialValue: T): MutexRef<T> => {
   };
 };
 
-// TODO: Add Run observability after Task2 migration.
+// TODO: Add Run observability after Task migration.
 // - Structured logging with levels, inherited log annotations, JSON output,
 //   filtering, and pluggable log sinks.
 // - Tracing spans with names, timing, parent-child relationships, attributes,

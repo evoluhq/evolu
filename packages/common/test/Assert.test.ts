@@ -7,7 +7,7 @@ import {
   assertNotDisposed,
   assertType,
 } from "../src/Assert.js";
-import { AbortError } from "../src/Task2.js";
+import { AbortError } from "../src/Task.js";
 
 test("assert", () => {
   // Should not throw when the condition is true

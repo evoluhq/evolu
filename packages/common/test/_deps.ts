@@ -23,7 +23,7 @@ import {
   createPreparedStatementsCache,
   testSetupSqlite,
 } from "../src/Sqlite.js";
-import type { DisposableRun } from "../src/Task2.js";
+import type { DisposableRun } from "../src/Task.js";
 
 export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 

@@ -112,16 +112,16 @@ export default defineConfig({
             "packages/common/test/Brand.test.ts",
             "packages/common/test/Cache.test.ts",
             "packages/common/test/Callbacks.test.ts",
-            "packages/react-native/test/Task2.ios.test.ts",
+            "packages/react-native/test/Task.ios.test.ts",
 
             // Uses inline snapshots, which vitest-mobile does not support yet.
             // "packages/common/test/Buffer.test.ts",
 
-            // Task2.test.ts imports Vitest's vi and assert for other
+            // Task.test.ts imports Vitest's vi and assert for other
             // coverage. vitest-mobile's runtime shim does not provide those
             // APIs, and a correct mobile implementation needs more than a
             // simple re-export.
-            // "packages/common/test/Task2.test.ts",
+            // "packages/common/test/Task.test.ts",
           ],
           exclude: ["packages/react-native/test/_setup.ios.test.ts"],
           setupFiles: ["packages/react-native/test/_setup.ios.test.ts"],

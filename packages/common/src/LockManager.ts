@@ -7,7 +7,7 @@
 import { createRandomBytes } from "./Crypto.js";
 import { lazyVoid } from "./Function.js";
 import { ok } from "./Result.js";
-import type { Task } from "./Task2.js";
+import type { Task } from "./Task.js";
 import { createId } from "./Type.js";
 import type { Callback } from "./Types.js";
 

@@ -79,7 +79,7 @@ import {
   type TestReportDefectDep,
   type TestRunDefaultDeps,
   type TimeoutError,
-} from "../src/Task2.js";
+} from "../src/Task.js";
 import { Millis, testCreateTime, type Time } from "../src/Time.js";
 import {
   type Int1To100OrPositiveInt,
@@ -603,7 +603,7 @@ describe("Run", () => {
         vi.resetModules();
 
         const platformModule = await import("../src/Platform.js");
-        const taskModule = await import("../src/Task2.js");
+        const taskModule = await import("../src/Task.js");
         expect(platformModule.isDev).toBe(false);
         await using run = taskModule.testCreateRun();
         const malformedTask = (() =>
@@ -659,7 +659,7 @@ describe("Run", () => {
       // so markers are not stable even within V8. Runner frames are filtered
       // out because they differ per engine and test runner version.
       const stackTrace = parseStackTrace(defect.stack, {
-        sourceNameAllowlist: new Set(["Task2.test.ts", "Task2.ts"]),
+        sourceNameAllowlist: new Set(["Task.test.ts", "Task.ts"]),
       });
 
       if (engine === "v8") {
@@ -688,17 +688,17 @@ describe("Run", () => {
         // JSC also links the async chain across every Run boundary, but it
         // drops function names, so the named extraction above finds nothing
         // and the chain is documented via file basenames instead: the Task
-        // frames (Task2.test.ts) alternate with runTask frames (Task2.ts).
+        // frames (Task.test.ts) alternate with runTask frames (Task.ts).
         expect(stackTrace.names).toEqual([]);
 
         expect(stackTrace.files).toEqual([
-          "Task2.test.ts",
-          "Task2.ts",
-          "Task2.test.ts",
-          "Task2.ts",
-          "Task2.test.ts",
-          "Task2.ts",
-          "Task2.test.ts",
+          "Task.test.ts",
+          "Task.ts",
+          "Task.test.ts",
+          "Task.ts",
+          "Task.test.ts",
+          "Task.ts",
+          "Task.test.ts",
         ]);
       }
     });
@@ -6480,7 +6480,7 @@ describe("concurrency", () => {
         // still suspended in await run(tasks[index]). eachWorker remains in
         // the stack because async linkage is captured at the child throw site.
         const stackTrace = parseStackTrace(defect.stack, {
-          sourceNameAllowlist: new Set(["Task2.test.ts", "Task2.ts"]),
+          sourceNameAllowlist: new Set(["Task.test.ts", "Task.ts"]),
         });
         const engine = await jsEngine;
 
@@ -6515,16 +6515,16 @@ describe("concurrency", () => {
           expect(stackTrace.names).toEqual([]);
 
           expect(stackTrace.files).toEqual([
-            "Task2.test.ts",
-            "Task2.ts",
-            "Task2.ts",
-            "Task2.ts",
-            "Task2.ts",
-            "Task2.ts",
-            "Task2.ts",
-            "Task2.test.ts",
-            "Task2.ts",
-            "Task2.test.ts",
+            "Task.test.ts",
+            "Task.ts",
+            "Task.ts",
+            "Task.ts",
+            "Task.ts",
+            "Task.ts",
+            "Task.ts",
+            "Task.test.ts",
+            "Task.ts",
+            "Task.test.ts",
           ]);
         }
       });
@@ -6859,8 +6859,7 @@ describe("concurrency", () => {
         await using run = testCreateRun();
         const completeFirst = Promise.withResolvers<void>();
         let restoreFromCompletedMask:
-          | (<T, E>(task: Task<T, E>) => Task<T, E>)
-          | undefined;
+          (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
         expect(
           await run(
@@ -6904,8 +6903,7 @@ describe("concurrency", () => {
       test("does not start later Tasks after synchronous child scheduling defect", async () => {
         await using run = testCreateRun();
         let restoreFromCompletedMask:
-          | (<T, E>(task: Task<T, E>) => Task<T, E>)
-          | undefined;
+          (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
         expect(
           await run(
@@ -7986,8 +7984,7 @@ describe("unabortableMask", () => {
     test("captured from a completed inner mask", async () => {
       await using run = createRun();
       let restoreFromInner:
-        | (<T, E>(task: Task<T, E>) => Task<T, E>)
-        | undefined;
+        (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
       const task = unabortableMask(() => async (run) => {
         await run.ok(
@@ -8011,8 +8008,7 @@ describe("unabortableMask", () => {
     test("after its mask settles", async () => {
       await using run = createRun();
       let restoreFromOuter:
-        | (<T, E>(task: Task<T, E>) => Task<T, E>)
-        | undefined;
+        (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
       expect(
         await run(
@@ -8032,8 +8028,7 @@ describe("unabortableMask", () => {
     test("inside sibling mask", async () => {
       await using run = testCreateRun();
       let restoreFromFirst:
-        | (<T, E>(task: Task<T, E>) => Task<T, E>)
-        | undefined;
+        (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
       const task = unabortableMask(() => async (run) => {
         await run.ok(

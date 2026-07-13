@@ -37,7 +37,7 @@ import {
   sqliteQueryStringToSqliteQuery,
   SqliteValue,
 } from "../Sqlite.js";
-import { callback, type Run, type Task } from "../Task2.js";
+import { callback, type Run, type Task } from "../Task.js";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.js";
 import type { Name } from "../Type.js";
 import {

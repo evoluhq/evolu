@@ -10,7 +10,7 @@ import {
 import { utf8ToBytes } from "../src/Buffer.js";
 import { isServer } from "../src/Platform.js";
 import { spaced, take } from "../src/Schedule.js";
-import { AbortError, createRun, testCreateRun } from "../src/Task2.js";
+import { AbortError, createRun, testCreateRun } from "../src/Task.js";
 import {
   startTestWebSocketServer,
   stopTestWebSocketServer,

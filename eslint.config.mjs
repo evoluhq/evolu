@@ -113,13 +113,13 @@ export default defineConfig(
   },
   {
     files: [
-      "packages/common/src/Task2.ts",
-      "packages/common/test/Resource2.test.ts",
-      "packages/common/test/Task2.test.ts",
+      "packages/common/src/Task.ts",
+      "packages/common/test/Resource.test.ts",
+      "packages/common/test/Task.test.ts",
       "packages/nodejs/test/Task.test.ts",
     ],
     rules: {
-      // Buggy: overflows while traversing Task2's recursive Task -> Run -> Task types.
+      // Buggy: overflows while traversing Task's recursive Task -> Run -> Task types.
       // Inline disables cannot help because the rule crashes before reporting.
       "@typescript-eslint/no-unnecessary-type-assertion": "off",
     },

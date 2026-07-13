@@ -31,7 +31,7 @@ import {
   type BorrowedResource,
   type ClaimLease,
   type SharedResourceByKeyWithClaims,
-} from "../Resource2.js";
+} from "../Resource.js";
 import { ok, type Result } from "../Result.js";
 import type { NonEmptyReadonlySet } from "../Set.js";
 import type { SqliteSchema } from "../Sqlite.js";
@@ -42,7 +42,7 @@ import {
   unabortable,
   type Mutex,
   type Task,
-} from "../Task2.js";
+} from "../Task.js";
 import { type Id, type Name, type Typed } from "../Type.js";
 import type { Callback, ExtractType } from "../Types.js";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";

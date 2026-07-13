@@ -67,7 +67,7 @@ import {
   testCreateDeps,
   testCreateRun,
   type TestRunDefaultDeps as TestDeps,
-} from "../../src/Task2.js";
+} from "../../src/Task.js";
 import {
   createId,
   dateToDateIso,
@@ -704,15 +704,15 @@ test("createProtocolMessageForSync", async () => {
     `uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,0,0,1,2,0]`,
   );
 
-  const messages31 = testTimestampsAsc.slice(0, 31).map(
-    (t): EncryptedCrdtMessage => ({
+  const messages31 = testTimestampsAsc
+    .slice(0, 31)
+    .map((t): EncryptedCrdtMessage => ({
       timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange(run.deps, {
         timestamp: timestampBytesToTimestamp(t),
         change: createDbChange(run.deps),
       }),
-    }),
-  );
+    }));
   assertNonEmptyArray(messages31);
   await run(storage.writeMessages(testAppOwnerIdBytes, messages31));
 
@@ -723,15 +723,15 @@ test("createProtocolMessageForSync", async () => {
     `uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,0,0,1,2,31,0,163,205,139,2,152,222,222,3,141,195,32,138,221,210,1,216,167,200,1,243,155,45,128,152,244,5,167,136,182,1,199,139,225,5,131,234,154,8,0,150,132,58,233,134,161,1,222,244,220,1,250,141,170,3,248,167,204,1,0,161,234,59,0,192,227,115,181,188,169,1,224,169,247,4,205,177,37,143,161,242,1,137,231,180,2,161,244,87,235,207,53,133,244,180,1,142,243,223,10,158,141,113,0,11,1,1,0,5,1,1,0,1,1,1,0,11,0,0,0,0,0,0,0,0,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,11,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,1,153,201,144,40,214,99,106,145,1,104,162,167,191,63,133,160,150,6,153,201,144,40,214,99,106,145,1]`,
   );
 
-  const message32 = testTimestampsAsc.slice(32, 33).map(
-    (t): EncryptedCrdtMessage => ({
+  const message32 = testTimestampsAsc
+    .slice(32, 33)
+    .map((t): EncryptedCrdtMessage => ({
       timestamp: timestampBytesToTimestamp(t),
       change: createEncryptedDbChange(run.deps, {
         timestamp: timestampBytesToTimestamp(t),
         change: createDbChange(run.deps),
       }),
-    }),
-  );
+    }));
   assertNonEmptyArray(message32);
   await run(storage.writeMessages(testAppOwnerIdBytes, message32));
 
@@ -1104,23 +1104,21 @@ describe("E2E relay options", () => {
 describe("E2E sync", { timeout: 15_000 }, () => {
   const deps = testCreateDeps();
 
-  const messages = testTimestampsAsc.map(
-    (t): EncryptedCrdtMessage => ({
+  const messages = testTimestampsAsc.map((t): EncryptedCrdtMessage => ({
+    timestamp: timestampBytesToTimestamp(t),
+    change: createEncryptedDbChange(deps, {
       timestamp: timestampBytesToTimestamp(t),
-      change: createEncryptedDbChange(deps, {
-        timestamp: timestampBytesToTimestamp(t),
-        change: DbChange.orThrow({
-          table: "foo",
-          id: createId(deps),
-          values: {
-            bar: "x".repeat(deps.randomLib.int(1, 500)),
-          },
-          isInsert: true,
-          isDelete: null,
-        }),
+      change: DbChange.orThrow({
+        table: "foo",
+        id: createId(deps),
+        values: {
+          bar: "x".repeat(deps.randomLib.int(1, 500)),
+        },
+        isInsert: true,
+        isDelete: null,
       }),
     }),
-  );
+  }));
   assertNonEmptyArray(messages);
 
   const createStorages = async () => {
@@ -1450,18 +1448,16 @@ describe("E2E sync", { timeout: 15_000 }, () => {
 
   it("starts sync from createProtocolMessageFromCrdtMessages", async () => {
     const owner = testAppOwner;
-    const crdtMessages = testTimestampsAsc.map(
-      (t): CrdtMessage => ({
-        timestamp: timestampBytesToTimestamp(t),
-        change: DbChange.orThrow({
-          table: "foo",
-          id: createId(deps),
-          values: { bar: "baz" },
-          isInsert: true,
-          isDelete: null,
-        }),
+    const crdtMessages = testTimestampsAsc.map((t): CrdtMessage => ({
+      timestamp: timestampBytesToTimestamp(t),
+      change: DbChange.orThrow({
+        table: "foo",
+        id: createId(deps),
+        values: { bar: "baz" },
+        isInsert: true,
+        isDelete: null,
       }),
-    );
+    }));
     assertNonEmptyArray(crdtMessages);
 
     const protocolMessage = createProtocolMessageFromCrdtMessages(deps)(

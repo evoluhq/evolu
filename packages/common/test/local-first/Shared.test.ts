@@ -24,7 +24,7 @@ import {
 import { createSet } from "../../src/Set.js";
 import type { SqliteSchema } from "../../src/Sqlite.js";
 import { createStore } from "../../src/Store.js";
-import { testCreateRun } from "../../src/Task2.js";
+import { testCreateRun } from "../../src/Task.js";
 import { testCreateId } from "../../src/Test.js";
 import { createId, testName, type Id, type Name } from "../../src/Type.js";
 import {

@@ -5,7 +5,7 @@
  */
 
 import { err, ok, tryAsync, type Err, type Result } from "./Result.js";
-import type { AbortError, retry, Task, timeout } from "./Task2.js";
+import type { AbortError, retry, Task, timeout } from "./Task.js";
 import type { Typed } from "./Type.js";
 import type { Awaitable } from "./Types.js";
 
@@ -56,8 +56,8 @@ export type FetchMode = "text" | "json" | "bytes" | "headers";
  *
  * {@link fetch} returns this view only after the native body has been drained,
  * errored, or cancelled, so none of its usable members depends on the request
- * signal. Body-reading members and `Response.clone` are omitted because
- * they would be invalid after the fetch Task settles.
+ * signal. Body-reading members and `Response.clone` are omitted because they
+ * would be invalid after the fetch Task settles.
  *
  * This is a TypeScript contract, not a runtime security boundary: the runtime
  * value can still be a native Response, and casts can access omitted members.

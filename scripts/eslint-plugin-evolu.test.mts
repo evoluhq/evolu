@@ -150,7 +150,7 @@ describe("no-direct-task-call", () => {
   test("reports calling an intersection of Task", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run, Task } from "../packages/common/src/Task2.js";',
+        'import type { Run, Task } from "../packages/common/src/Task.js";',
         "type AppTask = Task<void> & { readonly appTask: true };",
         "declare const run: Run;",
         "declare const task: AppTask;",
@@ -169,7 +169,7 @@ describe("no-direct-task-call", () => {
   test("reports ordinary functions accepting an alias of Run", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run } from "../packages/common/src/Task2.js";',
+        'import type { Run } from "../packages/common/src/Task.js";',
         "type AppRun = Run;",
         "declare const run: AppRun;",
         "declare const inspectRun: (run: AppRun) => void;",
@@ -188,7 +188,7 @@ describe("no-direct-task-call", () => {
   test("allows calling a Task factory", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Task } from "../packages/common/src/Task2.js";',
+        'import type { Task } from "../packages/common/src/Task.js";',
         "declare const createTask: () => Task<void>;",
         "createTask();",
       ].join("\n"),
@@ -200,7 +200,7 @@ describe("no-direct-task-call", () => {
   test("allows generic functions called with Run", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run } from "../packages/common/src/Task2.js";',
+        'import type { Run } from "../packages/common/src/Task.js";',
         "declare const run: Run;",
         "declare const observe: <T>(value: T) => void;",
         "observe(run);",
@@ -219,7 +219,7 @@ describe("no-direct-task-call", () => {
   test("reports calling a Task returned by a factory", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run, Task } from "../packages/common/src/Task2.js";',
+        'import type { Run, Task } from "../packages/common/src/Task.js";',
         "declare const run: Run;",
         "declare const createTask: () => Task<void>;",
         "createTask()(run);",
@@ -238,7 +238,7 @@ describe("no-direct-task-call", () => {
   test("reports calling a Task member", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run, Task } from "../packages/common/src/Task2.js";',
+        'import type { Run, Task } from "../packages/common/src/Task.js";',
         "declare const run: Run;",
         "declare const holder: { readonly task: Task<void> };",
         "holder.task(run);",
@@ -256,7 +256,7 @@ describe("no-direct-task-call", () => {
   test("reports ordinary functions accepting Run", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run } from "../packages/common/src/Task2.js";',
+        'import type { Run } from "../packages/common/src/Task.js";',
         "declare const run: Run;",
         "declare const inspectRun: (run: Run) => void;",
         "inspectRun(run);",
@@ -274,7 +274,7 @@ describe("no-direct-task-call", () => {
   test("allows starting a Task with Run", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run, Task } from "../packages/common/src/Task2.js";',
+        'import type { Run, Task } from "../packages/common/src/Task.js";',
         "declare const run: Run;",
         "declare const task: Task<void>;",
         "run(task);",
@@ -287,7 +287,7 @@ describe("no-direct-task-call", () => {
   test("reports calling a NextTask", async () => {
     const result = await lintTypeScript(
       [
-        'import type { NextTask, Run } from "../packages/common/src/Task2.js";',
+        'import type { NextTask, Run } from "../packages/common/src/Task.js";',
         "declare const run: Run;",
         "declare const task: NextTask<void>;",
         "task(run);",
@@ -305,7 +305,7 @@ describe("no-direct-task-call", () => {
   test("reports calling an alias of Task", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run, Task } from "../packages/common/src/Task2.js";',
+        'import type { Run, Task } from "../packages/common/src/Task.js";',
         "type AppTask = Task<void>;",
         "declare const run: Run;",
         "declare const task: AppTask;",
@@ -336,7 +336,7 @@ describe("no-direct-task-call", () => {
   test("reports calling a Task with a Run", async () => {
     const result = await lintTypeScript(
       [
-        'import type { Run, Task } from "../packages/common/src/Task2.js";',
+        'import type { Run, Task } from "../packages/common/src/Task.js";',
         "declare const run: Run;",
         "declare const task: Task<void>;",
         "task(run);",

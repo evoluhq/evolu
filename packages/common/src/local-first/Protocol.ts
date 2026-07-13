@@ -206,7 +206,7 @@ import { computeBalancedBuckets } from "../Number.js";
 import { createRecord, objectToEntries } from "../Object.js";
 import { err, ok, type Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
-import { AbortError, type Task } from "../Task2.js";
+import { AbortError, type Task } from "../Task.js";
 import { Millis } from "../Time.js";
 import {
   Base64Url,

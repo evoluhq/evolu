@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { createCallbacks } from "../src/Callbacks.js";
-import { testCreateDeps } from "../src/Task2.js";
+import { testCreateDeps } from "../src/Task.js";
 
 test("Callbacks with no argument", () => {
   const deps = testCreateDeps();

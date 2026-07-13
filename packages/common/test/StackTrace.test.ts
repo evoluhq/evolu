@@ -20,56 +20,56 @@ describe("parseStackTrace", () => {
   test("parses V8 async stack frames", () => {
     const stack = [
       "Error: boom",
-      "    at async childTask (http://localhost:63315/src/Task2.test.ts?t=123:10:2#hash)",
-      "    at http://localhost:63315/src/Task2.ts:11:3",
+      "    at async childTask (http://localhost:63315/src/Task.test.ts?t=123:10:2#hash)",
+      "    at http://localhost:63315/src/Task.ts:11:3",
     ].join("\n");
 
     expect(parseStackTrace(stack).frames).toEqual([
       {
         columnNumber: 2,
         lineNumber: 10,
-        location: "http://localhost:63315/src/Task2.test.ts?t=123:10:2#hash",
+        location: "http://localhost:63315/src/Task.test.ts?t=123:10:2#hash",
         name: "childTask",
-        sourceName: "Task2.test.ts",
+        sourceName: "Task.test.ts",
       },
       {
         columnNumber: 3,
         lineNumber: 11,
-        location: "http://localhost:63315/src/Task2.ts:11:3",
+        location: "http://localhost:63315/src/Task.ts:11:3",
         name: undefined,
-        sourceName: "Task2.ts",
+        sourceName: "Task.ts",
       },
     ]);
   });
 
   test("parses SpiderMonkey async stack frames", () => {
     const stack = [
-      "eachChildDefectTask@http://localhost:63315/src/Task2.test.ts:6280:17",
-      "async*each/<@http://localhost:63315/src/Task2.ts?t=123:3440:28",
-      "createRunInternal/run.abortable@http://localhost:63315/src/Task2.ts#hash:2149:19",
+      "eachChildDefectTask@http://localhost:63315/src/Task.test.ts:6280:17",
+      "async*each/<@http://localhost:63315/src/Task.ts?t=123:3440:28",
+      "createRunInternal/run.abortable@http://localhost:63315/src/Task.ts#hash:2149:19",
     ].join("\n");
 
     expect(parseStackTrace(stack).frames).toEqual([
       {
         columnNumber: 17,
         lineNumber: 6280,
-        location: "http://localhost:63315/src/Task2.test.ts:6280:17",
+        location: "http://localhost:63315/src/Task.test.ts:6280:17",
         name: "eachChildDefectTask",
-        sourceName: "Task2.test.ts",
+        sourceName: "Task.test.ts",
       },
       {
         columnNumber: 28,
         lineNumber: 3440,
-        location: "http://localhost:63315/src/Task2.ts?t=123:3440:28",
+        location: "http://localhost:63315/src/Task.ts?t=123:3440:28",
         name: "each",
-        sourceName: "Task2.ts",
+        sourceName: "Task.ts",
       },
       {
         columnNumber: 19,
         lineNumber: 2149,
-        location: "http://localhost:63315/src/Task2.ts#hash:2149:19",
+        location: "http://localhost:63315/src/Task.ts#hash:2149:19",
         name: "createRunInternal/run.abortable",
-        sourceName: "Task2.ts",
+        sourceName: "Task.ts",
       },
     ]);
   });
@@ -90,32 +90,32 @@ describe("parseStackTrace", () => {
 
   test("parses anonymous stack frames", () => {
     const stack = [
-      "@http://localhost:63315/src/Task2.test.ts:1:2",
-      "http://localhost:63315/src/Task2.ts:3:4",
+      "@http://localhost:63315/src/Task.test.ts:1:2",
+      "http://localhost:63315/src/Task.ts:3:4",
     ].join("\n");
 
     expect(parseStackTrace(stack).frames).toEqual([
       {
         columnNumber: 2,
         lineNumber: 1,
-        location: "http://localhost:63315/src/Task2.test.ts:1:2",
+        location: "http://localhost:63315/src/Task.test.ts:1:2",
         name: undefined,
-        sourceName: "Task2.test.ts",
+        sourceName: "Task.test.ts",
       },
       {
         columnNumber: 4,
         lineNumber: 3,
-        location: "http://localhost:63315/src/Task2.ts:3:4",
+        location: "http://localhost:63315/src/Task.ts:3:4",
         name: undefined,
-        sourceName: "Task2.ts",
+        sourceName: "Task.ts",
       },
     ]);
   });
 
   test("returns frame names", () => {
     const stack = [
-      "named@http://localhost:63315/src/Task2.test.ts:1:2",
-      "@http://localhost:63315/src/Task2.ts:3:4",
+      "named@http://localhost:63315/src/Task.test.ts:1:2",
+      "@http://localhost:63315/src/Task.ts:3:4",
     ].join("\n");
 
     expect(parseStackTrace(stack).names).toEqual(["named"]);
@@ -123,36 +123,36 @@ describe("parseStackTrace", () => {
 
   test("returns source names", () => {
     const stack = [
-      "named@http://localhost:63315/src/Task2.test.ts?t=123:1:2#hash",
+      "named@http://localhost:63315/src/Task.test.ts?t=123:1:2#hash",
       "named@http://localhost:63315/src/QueryOnly.ts?t=123:2:3",
       "named@http://localhost:63315/src/HashOnly.ts#hash:3:4",
       "named@http://localhost:63315/src/HashBeforeQuery.ts#hash?query:4:5",
-      "@/Users/me/dev/evolu/packages/common/src/Task2.ts:3:4",
+      "@/Users/me/dev/evolu/packages/common/src/Task.ts:3:4",
       "at C:\\repo\\packages\\common\\src\\StackTrace.ts:5:6",
     ].join("\n");
 
     expect(parseStackTrace(stack).files).toEqual([
-      "Task2.test.ts",
+      "Task.test.ts",
       "QueryOnly.ts",
       "HashOnly.ts",
       "HashBeforeQuery.ts",
-      "Task2.ts",
+      "Task.ts",
       "StackTrace.ts",
     ]);
   });
 
   test("filters source names by allowlist", () => {
     const stack = [
-      "child@http://localhost:63315/src/Task2.test.ts:1:2",
+      "child@http://localhost:63315/src/Task.test.ts:1:2",
       "parseStackTrace@http://localhost:63315/src/StackTrace.ts:3:4",
       "runTest@http://localhost:63315/chunk-artifact.js:5:6",
     ].join("\n");
 
     const stackTrace = parseStackTrace(stack, {
-      sourceNameAllowlist: new Set(["Task2.test.ts", "StackTrace.ts"]),
+      sourceNameAllowlist: new Set(["Task.test.ts", "StackTrace.ts"]),
     });
 
-    expect(stackTrace.files).toEqual(["Task2.test.ts", "StackTrace.ts"]);
+    expect(stackTrace.files).toEqual(["Task.test.ts", "StackTrace.ts"]);
     expect(stackTrace.names).toEqual(["child", "parseStackTrace"]);
   });
 
@@ -1370,10 +1370,10 @@ describe("parseStackTrace", () => {
       "",
       "Error: boom",
       "    at childTask",
-      "    at childTask (http://localhost:63315/src/Task2.test.ts)",
-      "    at childTask (http://localhost:63315/src/Task2.test.ts:10)",
-      "    at childTask (http://localhost:63315/src/Task2.test.ts:a:2)",
-      "    at childTask (http://localhost:63315/src/Task2.test.ts:10:b)",
+      "    at childTask (http://localhost:63315/src/Task.test.ts)",
+      "    at childTask (http://localhost:63315/src/Task.test.ts:10)",
+      "    at childTask (http://localhost:63315/src/Task.test.ts:a:2)",
+      "    at childTask (http://localhost:63315/src/Task.test.ts:10:b)",
     ].join("\n");
 
     expect(parseStackTrace(undefined).frames).toEqual([]);
