@@ -4,6 +4,10 @@
  * @module
  */
 
+import { assertNotDisposed } from "./Assert.js";
+import { isFunction } from "./Object.js";
+import type { Mutable } from "./Types.js";
+
 /**
  * Helper function to ensure exhaustive matching in a switch statement. Throws
  * an error if an unhandled case is encountered.
@@ -107,6 +111,107 @@ export const exhaustiveCheck = (value: never): never => {
  * ```
  */
 export const identity = <A>(a: A): A => a;
+
+/**
+ * Creates an object that follows JavaScript disposal semantics.
+ *
+ * The first argument is the object to make disposable. The returned object gets
+ * a disposal method and its functions are wrapped with a disposal guard. This
+ * is the JavaScript equivalent of .NET `ObjectDisposedException`: once an
+ * object has been disposed, calling its methods is a programmer error and
+ * should throw immediately instead of continuing with invalid state. Evolu
+ * asserts this invariant with the "Cannot use a disposed object." message.
+ *
+ * The second argument is an optional disposer. When provided, it is
+ * [moved](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack/move)
+ * into the returned object, and the returned object's disposal method disposes
+ * it. Omit it when the object has no cleanup resources but still must become
+ * unusable after disposal, such as with reference count helpers where disposal
+ * enforces correct ownership tracking.
+ *
+ * ### Example
+ *
+ * ```ts
+ * interface Queue extends Disposable {
+ *   readonly push: (value: string) => void;
+ *   readonly drain: () => ReadonlyArray<string>;
+ * }
+ *
+ * const createQueue = (): Queue => {
+ *   using disposer = new DisposableStack();
+ *   let values: ReadonlyArray<string> = [];
+ *
+ *   disposer.defer(() => {
+ *     values = [];
+ *   });
+ *
+ *   return disposable<Queue>(
+ *     {
+ *       push: (value) => {
+ *         values = [...values, value];
+ *       },
+ *
+ *       drain: () => {
+ *         const drained = values;
+ *         values = [];
+ *         return drained;
+ *       },
+ *     },
+ *     disposer,
+ *   );
+ * };
+ *
+ * const queue = createQueue();
+ * queue.push("hello");
+ * queue.drain(); // ["hello"]
+ * queue[Symbol.dispose]();
+ * queue.push("again"); // Throws "Cannot use a disposed object."
+ * ```
+ */
+export function disposable<T extends object>(
+  value: T extends Disposable ? Omit<T, typeof Symbol.dispose> : T,
+  disposer?: DisposableStack,
+): T extends Disposable ? T : T & Disposable;
+export function disposable<T extends object>(
+  value: T extends AsyncDisposable ? Omit<T, typeof Symbol.asyncDispose> : T,
+  disposer: AsyncDisposableStack,
+): T extends AsyncDisposable ? T : T & AsyncDisposable;
+export function disposable<T extends object>(
+  value: T,
+  disposer: DisposableStack | AsyncDisposableStack | null = null,
+): T & (Disposable | AsyncDisposable) {
+  const mutableValue = value as Mutable<Record<string, unknown>>;
+  const ownedDisposer = disposer?.move() ?? new DisposableStack();
+
+  for (const [key, property] of Object.entries(value)) {
+    if (!isFunction(property)) continue;
+
+    mutableValue[key] = (...args: Array<unknown>): unknown => {
+      assertNotDisposed(ownedDisposer);
+      return (property as (...args: Array<unknown>) => unknown)(...args);
+    };
+  }
+
+  if (ownedDisposer instanceof AsyncDisposableStack) {
+    (value as T & AsyncDisposable)[Symbol.asyncDispose] = () =>
+      ownedDisposer.disposeAsync();
+  } else {
+    (value as T & Disposable)[Symbol.dispose] = () => ownedDisposer.dispose();
+  }
+
+  return value as T & (Disposable | AsyncDisposable);
+}
+
+export const isDisposable = (
+  value: unknown,
+): value is Disposable | AsyncDisposable => {
+  if (typeof value !== "object" || value === null) return false;
+
+  return (
+    isFunction((value as Partial<Disposable>)[Symbol.dispose]) ||
+    isFunction((value as Partial<AsyncDisposable>)[Symbol.asyncDispose])
+  );
+};
 
 /**
  * A function that takes no arguments and returns a value of type T. Also known
