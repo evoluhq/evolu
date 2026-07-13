@@ -21,6 +21,10 @@ apps/relay/data/*
 apps/web/src/app/(docs)/docs/api-reference/**
 apps/web/src/data/sections.json
 
+# examples/react-electron
+examples/react-electron/dist-electron/
+examples/react-electron/release/
+
 # packages/svelte
 packages/svelte/.svelte-kit
 
