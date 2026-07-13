@@ -98,7 +98,7 @@
     "@evolu/react": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
     "@expo/dom-webview": "~57.0.0",
-    "@op-engineering/op-sqlite": "^15.2.2",
+    "@op-engineering/op-sqlite": "^17.1.2",
     "@react-native/metro-config": "0.86.0",
     "@types/react": "catalog:react19",
     "expo": "^57.0.4",
@@ -108,7 +108,7 @@
     "react-native": "0.86.0",
     "react-native-nitro-modules": "0.34.1",
     "react-native-reanimated": "~4.5.0",
-    "react-native-sensitive-info": "6.0.0-rc.11",
+    "react-native-sensitive-info": "6.1.5",
     "react-native-svg": "15.15.4",
     "react-native-worklets": "0.10.0",
     "typescript": "^6"
