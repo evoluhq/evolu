@@ -72,14 +72,14 @@ jobs:
           MAX_ATTEMPTS=3
           ATTEMPT=1
           while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
-            LOG_FILE="$(mktemp)"
+            LOG_FILE="$(mktemp -p "${RUNNER_TEMP:-/tmp}" socketcli.XXXXXX.log)"
             if run_socket_scan 2>&1 | tee "$LOG_FILE"; then
               rm -f "$LOG_FILE"
               break
             fi
 
             # Socket CLI surfaces API failures in logs as "original_status_code:<code>".
-            if grep -Eq "original_status_code:5[0-9][0-9]" "$LOG_FILE" && [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+            if [ -r "$LOG_FILE" ] && grep -Eq "original_status_code:5[0-9][0-9]" "$LOG_FILE" && [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
               NEXT_ATTEMPT=$((ATTEMPT + 1))
               echo "Socket API returned a 5xx response. Retrying in 60 seconds (next attempt $NEXT_ATTEMPT/$MAX_ATTEMPTS)."
               rm -f "$LOG_FILE"
