@@ -9,20 +9,20 @@
     "generate-pwa-assets": "pwa-assets-generator"
   },
   "dependencies": {
-    "@angular/core": "^21.1.0",
-    "@angular/platform-browser": "^21.1.0",
+    "@angular/core": "^22.0.6",
+    "@angular/platform-browser": "^22.0.6",
     "@evolu/common": "workspace:*",
     "@evolu/web": "workspace:*"
   },
   "devDependencies": {
-    "@analogjs/vite-plugin-angular": "^2.2.2",
-    "@angular/build": "^21.1.0",
-    "@angular/compiler-cli": "^21.1.0",
+    "@analogjs/vite-plugin-angular": "^2.6.3",
+    "@angular/build": "^22.0.6",
+    "@angular/compiler-cli": "^22.0.6",
     "@tailwindcss/vite": "^4.1.18",
     "@vite-pwa/assets-generator": "^1.0.2",
     "tailwindcss": "^4.1.18",
     "typescript": "^6",
-    "vite": "^7.3.1",
+    "vite": "^8.1.4",
     "vite-plugin-pwa": "^1.2.0"
   }
 }

@@ -1,5 +1,13 @@
-import { createApp } from "vue";
+import { createApp, defineComponent, h, Suspense } from "vue";
 import App from "./App.vue";
 import "./style.css";
 
-createApp(App).mount("#app");
+const Root = defineComponent(
+  () => () =>
+    h(Suspense, null, {
+      default: () => h(App),
+      fallback: () => h("p", "Loading..."),
+    }),
+);
+
+createApp(Root).mount("#app");

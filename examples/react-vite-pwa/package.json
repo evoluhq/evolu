@@ -13,6 +13,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/react": "workspace:*",
     "@evolu/react-web": "workspace:*",
+    "@evolu/web": "workspace:*",
     "@tabler/icons-react": "^3.36.1",
     "clsx": "^2.1.1",
     "react": "catalog:react19",
@@ -22,13 +23,14 @@
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.11",
     "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^24.10.9",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "@vite-pwa/assets-generator": "^1.0.2",
     "@vitejs/plugin-react": "^5.1.2",
     "globals": "^17.3.0",
     "typescript": "^6",
-    "vite": "^7.3.1",
+    "vite": "^8.1.4",
     "vite-plugin-pwa": "^1.2.0",
     "workbox-core": "^7.4.0",
     "workbox-window": "^7.4.0"

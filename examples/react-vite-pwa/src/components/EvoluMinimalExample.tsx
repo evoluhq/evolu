@@ -1,100 +1,43 @@
+"use client";
+
 import * as Evolu from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
-import { evoluReactWebDeps, EvoluIdenticon, localAuth } from "@evolu/react-web";
+import { createEvoluDeps } from "@evolu/react-web";
+import { createRun } from "@evolu/web";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
-import clsx from "clsx";
-import { FC, Suspense, use, useMemo, useState } from "react";
+import { clsx } from "clsx";
+import { Suspense, use, useState, type FC } from "react";
 
-// Namespace for the current app (scopes databases, passkeys, etc.)
-const service = "pwa-react-151125";
-
-// Primary keys are branded types, preventing accidental use of IDs across
-// different tables (e.g., a TodoId can't be used where a UserId is expected).
-const TodoId = Evolu.id("Todo");
-type TodoId = typeof TodoId.Type;
-
-// Schema defines database structure with runtime validation.
-// Column types validate data on insert/update/upsert.
-const Schema = {
+// Any Standard Schema library can be used.
+const AppSchema = {
   todo: {
-    id: TodoId,
+    // Primary keys are branded types, preventing accidental use of IDs across
+    // different tables (e.g., a TodoId can't be used where a UserId is expected).
+    id: Evolu.id("Todo"),
     // Branded type ensuring titles are non-empty and ≤100 chars.
-    title: Evolu.NonEmptyString100,
+    title: Evolu.NonEmptyTrimmedString100,
     // SQLite doesn't support the boolean type; it uses 0 and 1 instead.
     isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
   },
 };
 
-// Note: this is a top-level await and used for brevity in the demo
-// In a real application, you would use a wrapper component.
-const ownerIds = await localAuth.getProfiles({ service });
-const authResult = await localAuth.getOwner({ service });
+const createAppQuery = Evolu.createQueryBuilder(AppSchema);
 
-// Create Evolu instance for the React web platform.
-const evolu = Evolu.createEvolu(evoluReactWebDeps)(Schema, {
-  appName: Evolu.AppName.orThrow(service),
-  encryptionKey: authResult?.owner?.encryptionKey,
-  externalAppOwner: authResult?.owner,
-  // ...(process.env.NODE_ENV === "development" && {
-  //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-  // }),
-});
-
-const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(Schema);
-
-/**
- * Subscribe to unexpected Evolu errors (database, network, sync issues). These
- * should not happen in normal operation, so always log them for debugging. Show
- * users a friendly error message instead of technical details.
- */
-evolu.subscribeError(() => {
-  const error = evolu.getError();
-  if (!error) return;
-
-  alert("🚨 Evolu error occurred! Check the console.");
-  // eslint-disable-next-line no-console
-  console.error(error);
-});
-
-export const EvoluMinimalExample: FC = () => {
-  return (
-    <div className="min-h-screen px-8 py-8">
-      <div className="mx-auto max-w-md">
-        <div className="mb-2 flex items-center justify-between pb-4">
-          <h1 className="w-full text-center text-xl font-semibold text-gray-900">
-            Minimal Todo App (Evolu + React + Vite + PWA)
-          </h1>
-        </div>
-
-        <EvoluContext value={evolu}>
-          {/*
-            Suspense delivers great UX (no loading flickers) and DX (no loading
-            states to manage). Highly recommended with Evolu.
-          */}
-          <Suspense>
-            <Todos />
-            <OwnerActions />
-            <AuthActions />
-          </Suspense>
-        </EvoluContext>
-      </div>
-    </div>
-  );
-};
-
-// Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
-const todosQuery = evolu.createQuery((db) =>
+const todosQuery = createAppQuery((db) =>
   db
     // Type-safe SQL: try autocomplete for table and column names.
     .selectFrom("todo")
     .select(["id", "title", "isCompleted"])
+
     // Soft delete: filter out deleted rows.
     .where("isDeleted", "is not", Evolu.sqliteTrue)
+
     // Like with GraphQL, all columns except id are nullable in queries
     // (even if defined without nullOr in the schema) to allow schema
     // evolution without migrations. Filter nulls with where + $narrowType.
     .where("title", "is not", null)
     .$narrowType<{ title: Evolu.KyselyNotNull }>()
+
     // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
     .orderBy("createdAt"),
 );
@@ -102,26 +45,98 @@ const todosQuery = evolu.createQuery((db) =>
 // Extract the row type from the query for type-safe component props.
 type TodosRow = typeof todosQuery.Row;
 
+// Create Run with dependencies for React Web.
+const run = createRun(
+  createEvoluDeps({
+    console: Evolu.createConsole({
+      level: "debug",
+      formatter: Evolu.createConsoleFormatter()({
+        timestampFormat: "relative",
+      }),
+    }),
+  }),
+);
+
+/**
+ * `evoluError` is shared by all Evolu instances. Subscribe once for user-facing
+ * error messages.
+ */
+run.deps.evoluError.subscribe(() => {
+  const error = run.deps.evoluError.get();
+  if (!error) return;
+
+  alert("🚨 Evolu error occurred! Check the console.");
+});
+
+const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(AppSchema);
+
+export const EvoluMinimalExample: FC = () => (
+  <div className="min-h-screen px-8 py-8">
+    <div className="mx-auto max-w-md">
+      <div className="mb-2 flex items-center justify-between pb-4">
+        <h1 className="w-full text-center text-xl font-semibold text-gray-900">
+          Minimal Todo App
+        </h1>
+      </div>
+
+      <Suspense>
+        {/*
+          Suspense delivers great UX (no loading flickers) and DX (no loading
+          states to manage). Highly recommended with Evolu.
+        */}
+        <App />
+      </Suspense>
+    </div>
+  </div>
+);
+
+const appPromise = run.ok(
+  Evolu.createEvolu(AppSchema, {
+    appName: Evolu.AppName.orThrow("minimal-example"),
+    appOwner: Evolu.testAppOwner,
+
+    ...(process.env.NODE_ENV === "development" && {
+      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+    }),
+  }),
+);
+
+const App: FC = () => (
+  <EvoluContext value={use(appPromise)}>
+    <Todos />
+    <OwnerActions />
+  </EvoluContext>
+);
+
+/** Trims user input and validates it as a todo title. */
+const parseTodoTitle = (value: string) =>
+  Evolu.NonEmptyTrimmedString100.from(value.trim());
+
 const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
   const todos = useQuery(todosQuery);
+
   const { insert } = useEvolu();
   const [newTodoTitle, setNewTodoTitle] = useState("");
 
   const addTodo = () => {
-    const result = insert(
+    const result = parseTodoTitle(newTodoTitle);
+    if (!result.ok) {
+      alert(formatTypeError(result.error));
+      return;
+    }
+
+    insert(
       "todo",
-      { title: newTodoTitle.trim() },
+      {
+        title: result.value,
+      },
       {
         onComplete: () => {
           setNewTodoTitle("");
         },
       },
     );
-
-    if (!result.ok) {
-      alert(formatTypeError(result.error));
-    }
   };
 
   return (
@@ -167,10 +182,13 @@ const TodoItem: FC<{
     const newTitle = window.prompt("Edit todo", title);
     if (newTitle == null) return;
 
-    const result = update("todo", { id, title: newTitle });
+    const result = parseTodoTitle(newTitle);
     if (!result.ok) {
       alert(formatTypeError(result.error));
+      return;
     }
+
+    update("todo", { id, title: result.value });
   };
 
   const handleDeleteClick = () => {
@@ -221,7 +239,6 @@ const TodoItem: FC<{
 
 const OwnerActions: FC = () => {
   const evolu = useEvolu();
-  const appOwner = use(evolu.appOwner);
 
   const [showMnemonic, setShowMnemonic] = useState(false);
 
@@ -236,43 +253,42 @@ const OwnerActions: FC = () => {
       return;
     }
 
-    void evolu.restoreAppOwner(result.value);
+    // TODO:
+    // void evolu.restoreAppOwner(result.value);
   };
 
   const handleResetAppOwnerClick = () => {
     if (confirm("Are you sure? This will delete all your local data.")) {
-      void evolu.resetAppOwner();
+      // TODO:
+      // void evolu.resetAppOwner();
     }
   };
 
   const handleDownloadDatabaseClick = () => {
-    void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], { type: "application/x-sqlite3" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "todos.sqlite3";
-      a.click();
-      window.URL.revokeObjectURL(url);
+    void evolu.exportDatabase().then((data: Uint8Array<ArrayBuffer>) => {
+      using objectUrl = Evolu.createObjectURL(
+        new Blob([data], { type: "application/x-sqlite3" }),
+      );
+      const link = document.createElement("a");
+      link.href = objectUrl.url;
+      link.download = `${evolu.name}.sqlite3`;
+      link.click();
     });
   };
 
   return (
     <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <h2 className="mb-4 text-lg font-medium text-gray-900">Account</h2>
-      {appOwner && (
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <OwnerProfile
-            {...{
-              ownerId: appOwner.id,
-              username: authResult?.username ?? "Guest",
-            }}
-          />
-        </div>
-      )}
       <p className="mb-4 text-sm text-gray-600">
         Todos are stored in local SQLite. When you sync across devices, your
         data is end-to-end encrypted using your mnemonic.
+      </p>
+
+      <p className="mb-4 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+        Restore and reset are not implemented yet. Encrypted SQLite requires
+        secure persistence and unlocking of the AppOwner secret, such as
+        WebAuthn PRF or an external authentication mechanism. Persisting the
+        secret directly in browser storage would undermine encryption at rest.
       </p>
 
       <div className="space-y-3">
@@ -284,13 +300,13 @@ const OwnerActions: FC = () => {
           className="w-full"
         />
 
-        {showMnemonic && appOwner.mnemonic && (
+        {showMnemonic && (
           <div className="bg-gray-50 p-3">
             <label className="mb-2 block text-xs font-medium text-gray-700">
               Your Mnemonic (keep this safe!)
             </label>
             <textarea
-              value={appOwner.mnemonic}
+              value={evolu.appOwner.mnemonic}
               readOnly
               rows={3}
               className="w-full border-b border-gray-300 bg-white px-2 py-1 font-mono text-xs focus:border-blue-500 focus:outline-none"
@@ -303,120 +319,52 @@ const OwnerActions: FC = () => {
             title="Restore from Mnemonic"
             onClick={handleRestoreAppOwnerClick}
           />
+          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
           <Button
             title="Download Backup"
             onClick={handleDownloadDatabaseClick}
           />
-          <Button title="Reset All Data" onClick={handleResetAppOwnerClick} />
+        </div>
+
+        <div className="mb-4 space-y-3 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+          <p className="font-medium text-gray-900">
+            Restore and reset are not implemented in this example yet.
+          </p>
+          <p>
+            Evolu encrypts the local SQLite database using secret material
+            associated with the AppOwner. Restoring from a mnemonic provides the
+            secret needed to derive the AppOwner, identify its database, and
+            unlock that database.
+          </p>
+          <p>
+            A production application must protect this secret between sessions.
+            Persisting the mnemonic or AppOwner secret directly in browser
+            storage would allow code or malware capable of reading that storage
+            to obtain both the encrypted database and the key needed to decrypt
+            it, largely defeating encryption at rest.
+          </p>
+          <p>
+            A secure browser implementation could use a passkey with the
+            WebAuthn PRF extension to derive a wrapping key after user
+            verification. Another option is to unlock the secret through an
+            external authentication service or trusted device. In both cases,
+            the user authenticates whenever the application is opened so the
+            AppOwner secret is not persisted in browser storage.
+          </p>
+          <p>
+            An application that does not require encryption at rest can use an
+            unencrypted SQLite database for simpler persistence without repeated
+            authentication. Data extracted from browser storage can then be read
+            directly.
+          </p>
+          <p>
+            Reset requires disposing every active instance, deleting the local
+            SQLite file across tabs, removing any persisted AppOwner secret, and
+            mounting a new Evolu instance. That deletion and authentication flow
+            has not been completed yet.
+          </p>
         </div>
       </div>
-    </div>
-  );
-};
-
-const AuthActions: FC = () => {
-  const evolu = useEvolu();
-  const appOwner = use(evolu.appOwner);
-  const otherOwnerIds = useMemo(
-    () => ownerIds.filter(({ ownerId }) => ownerId !== appOwner?.id),
-    [appOwner?.id],
-  );
-
-  // Create a new owner and register it to a passkey.
-  const handleRegisterClick = async () => {
-    const username = window.prompt("Enter your username:");
-    if (username == null) return;
-
-    // Determine if this is a guest login or a new owner.
-    const isGuest = !Boolean(authResult?.owner);
-
-    // Register the guest owner or create a new one if this is already registered.
-    const result = await localAuth.register(username, {
-      service: service,
-      mnemonic: isGuest ? appOwner?.mnemonic : undefined,
-    });
-    if (result) {
-      // If this is a guest owner, we should clear the database and reload.
-      // The owner is transferred to a new database on next login.
-      if (isGuest) {
-        void evolu.resetAppOwner({ reload: true });
-        // Otherwise, just reload the page
-      } else {
-        evolu.reloadApp();
-      }
-    } else {
-      alert("Failed to register profile");
-    }
-  };
-
-  // Login with a specific owner id using the registered passkey.
-  // Note: we already have a database created, so we need to reload.
-  const handleLoginClick = async (ownerId: Evolu.OwnerId) => {
-    const result = await localAuth.login(ownerId, { service });
-    if (result) {
-      evolu.reloadApp();
-    } else {
-      alert("Failed to login");
-    }
-  };
-
-  // Clear all data including passkeys and metadata.
-  const handleClearAllClick = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to clear all data? This will remove all passkeys and cannot be undone.",
-    );
-    if (!confirmed) return;
-    await localAuth.clearAll({ service });
-    evolu.resetAppOwner({ reload: true });
-  };
-
-  return (
-    <div className="mt-8 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
-      <h2 className="mb-4 text-lg font-medium text-gray-900">Passkeys</h2>
-      <p className="mb-4 text-sm text-gray-600">
-        Register a new passkey or choose a previously registered one.
-      </p>
-      <div className="flex gap-3">
-        <Button
-          title="Register Passkey"
-          className="flex-1"
-          onClick={handleRegisterClick}
-        />
-        <Button
-          title="Clear All"
-          className="flex-1"
-          onClick={handleClearAllClick}
-        />
-      </div>
-      {otherOwnerIds.length > 0 && (
-        <div className="mt-4 flex flex-col gap-2">
-          {otherOwnerIds.map(({ ownerId, username }) => (
-            <OwnerProfile
-              key={ownerId}
-              {...{ ownerId, username, handleLoginClick }}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const OwnerProfile: FC<{
-  ownerId: Evolu.OwnerId;
-  username: string;
-  handleLoginClick?: (ownerId: Evolu.OwnerId) => void;
-}> = ({ ownerId, username, handleLoginClick }) => {
-  return (
-    <div className="flex justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <EvoluIdenticon id={ownerId} />
-        <span className="text-sm font-medium text-gray-900">{username}</span>
-        <span className="text-xs text-gray-500 italic">{ownerId}</span>
-      </div>
-      {handleLoginClick && (
-        <Button title="Login" onClick={() => handleLoginClick(ownerId)} />
-      )}
     </div>
   );
 };

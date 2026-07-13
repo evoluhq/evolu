@@ -1,63 +1,7 @@
 <script lang="ts">
   import * as Evolu from "@evolu/common";
-  import { appOwnerState, evoluSvelteDeps, queryState } from "@evolu/svelte";
-
-  // Primary keys are branded types, preventing accidental use of IDs across
-  // different tables (e.g., a TodoId can't be used where a UserId is expected).
-  const TodoId = Evolu.id("Todo");
-  type TodoId = typeof TodoId.Type;
-
-  // Schema defines database structure with runtime validation.
-  // Column types validate data on insert/update/upsert.
-  const Schema = {
-    todo: {
-      id: TodoId,
-      // Branded type ensuring titles are non-empty and ≤100 chars.
-      title: Evolu.NonEmptyString100,
-      // SQLite doesn't support the boolean type; it uses 0 and 1 instead.
-      isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
-    },
-  };
-
-  // Create Evolu instance for the Svelte platform.
-  const evolu = Evolu.createEvolu(evoluSvelteDeps)(Schema, {
-    name: Evolu.Name.orThrow("minimal-example"),
-
-    // ...(process.env.NODE_ENV === "development" && {
-    //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-    // }),
-  });
-
-  /**
-   * Subscribe to unexpected Evolu errors (database, network, sync issues).
-   * These should not happen in normal operation, so always log them for
-   * debugging. Show users a friendly error message instead of technical
-   * details.
-   */
-  evolu.subscribeError(() => {
-    const error = evolu.getError();
-    if (!error) return;
-
-    alert("🚨 Evolu error occurred! Check the console.");
-    console.error(error);
-  });
-
-  // Evolu uses Kysely for type-safe SQL (https://kysely.dev/).
-  const todosQuery = evolu.createQuery((db) =>
-    db
-      // Type-safe SQL: try autocomplete for table and column names.
-      .selectFrom("todo")
-      .select(["id", "title", "isCompleted"])
-      // Soft delete: filter out deleted rows.
-      .where("isDeleted", "is not", Evolu.sqliteTrue)
-      // Like with GraphQL, all columns except id are nullable in queries
-      // (even if defined without nullOr in the schema) to allow schema
-      // evolution without migrations. Filter nulls with where + $narrowType.
-      .where("title", "is not", null)
-      .$narrowType<{ title: Evolu.kysely.NotNull }>()
-      // Columns createdAt, updatedAt, isDeleted are auto-added to all tables.
-      .orderBy("createdAt"),
-  );
+  import { appOwnerState, queryState } from "@evolu/svelte";
+  import { evolu, todosQuery, type TodoId } from "./evolu";
 
   const allTodos = queryState(evolu, () => todosQuery);
 
@@ -69,27 +13,34 @@
   let showMnemonic = $state(false);
 
   const handleAddTodo = () => {
-    const result = insert("todo", { title: newTodoTitle.trim() });
-
-    if (result.ok) {
-      newTodoTitle = "";
-    } else {
+    const result = Evolu.NonEmptyTrimmedString100.from(newTodoTitle.trim());
+    if (!result.ok) {
       alert(formatTypeError(result.error));
+      return;
     }
+
+    insert("todo", { title: result.value });
+    newTodoTitle = "";
   };
 
   const handleToggleCompletedClick = (id: TodoId, isCompleted: boolean) => {
-    update("todo", { id, isCompleted: Number(!isCompleted) });
+    update("todo", {
+      id,
+      isCompleted: Evolu.booleanToSqliteBoolean(!isCompleted),
+    });
   };
 
   const handleRenameTodoClick = (id: TodoId, currentTitle: string) => {
     const newTitle = window.prompt("Edit todo", currentTitle);
     if (newTitle == null) return;
 
-    const result = update("todo", { id, title: newTitle });
+    const result = Evolu.NonEmptyTrimmedString100.from(newTitle.trim());
     if (!result.ok) {
       alert(formatTypeError(result.error));
+      return;
     }
+
+    update("todo", { id, title: result.value });
   };
 
   const handleDeleteTodoClick = (id: TodoId) => {
@@ -111,24 +62,25 @@
       return;
     }
 
-    evolu.restoreAppOwner(result.value);
+    // TODO: Implement secure AppOwner persistence before restoring.
   };
 
   const handleResetAppOwnerClick = () => {
     if (confirm("Are you sure? This will delete all your local data.")) {
-      evolu.resetAppOwner();
+      // TODO: Implement secure AppOwner persistence before resetting.
     }
   };
 
-  const handleDownloadDatabaseClick = async () => {
-    void evolu.exportDatabase().then((array) => {
-      const blob = new Blob([array], { type: "application/x-sqlite3" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "todos.sqlite3";
-      a.click();
-      window.URL.revokeObjectURL(url);
+  const handleDownloadDatabaseClick = () => {
+    void evolu.exportDatabase().then((data: Uint8Array<ArrayBuffer>) => {
+      const objectUrl = URL.createObjectURL(
+        new Blob([data], { type: "application/x-sqlite3" }),
+      );
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `${evolu.name}.sqlite3`;
+      link.click();
+      URL.revokeObjectURL(objectUrl);
     });
   };
 
@@ -219,6 +171,13 @@
       <p class="owner-description">
         Todos are stored in local SQLite. When you sync across devices, your
         data is end-to-end encrypted using your mnemonic.
+      </p>
+
+      <p class="owner-warning">
+        Restore and reset are not implemented yet. Encrypted SQLite requires
+        secure persistence and unlocking of the AppOwner secret, such as
+        WebAuthn PRF or an external authentication mechanism. Persisting the
+        secret directly in browser storage would undermine encryption at rest.
       </p>
 
       <div class="owner-actions">
@@ -460,6 +419,14 @@
 
   .owner-description {
     margin: 0 0 1rem 0;
+    font-size: 0.875rem;
+    color: #6b7280;
+  }
+
+  .owner-warning {
+    margin: 0 0 1rem 0;
+    padding-left: 1rem;
+    border-left: 2px solid #fbbf24;
     font-size: 0.875rem;
     color: #6b7280;
   }

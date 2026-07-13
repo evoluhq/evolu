@@ -1,22 +1,25 @@
 <script setup lang="ts">
 import {
+  AppName,
+  booleanToSqliteBoolean,
   NonEmptyString,
   NonEmptyString1000,
-  Name,
   SqliteBoolean,
   sqliteTrue,
   createEvolu,
   createFormatTypeError,
+  createQueryBuilder,
   id,
-  kysely,
   maxLength,
   nullOr,
+  testAppOwner,
   type EvoluSchema,
   type InferType,
+  type KyselyNotNull,
   type MinLengthError,
   union,
 } from "@evolu/common";
-import { evoluWebDeps } from "@evolu/web";
+import { createEvoluDeps, createRun } from "@evolu/web";
 import { provideEvolu, useQuery } from "@evolu/vue";
 
 const TodoId = id("Todo");
@@ -51,34 +54,49 @@ const DatabaseSchema = {
 
 type DatabaseSchema = typeof DatabaseSchema;
 
-const evolu = createEvolu(evoluWebDeps)(DatabaseSchema, {
-  name: Name.orThrow("minimal-example"),
-  // ...(!!import.meta.env.DEV && {
-  //   transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
-  // }),
-});
+const createQuery = createQueryBuilder(DatabaseSchema);
 
-provideEvolu(evolu);
-
-const todosWithCategories = evolu.createQuery((db) =>
+const todosWithCategories = createQuery((db) =>
   db
     .selectFrom("todo")
     .select(["id", "title", "isCompleted", "categoryId", "priority"])
-    .where("isDeleted", "is not", 1)
+    .where("isDeleted", "is not", sqliteTrue)
     .where("title", "is not", null)
-    .$narrowType<{ title: kysely.NotNull }>()
+    .$narrowType<{ title: KyselyNotNull }>()
     .orderBy("createdAt"),
 );
 
-const todoCategories = evolu.createQuery((db) =>
+const todoCategories = createQuery((db) =>
   db
     .selectFrom("todoCategory")
     .select(["id", "name"])
-    .where("isDeleted", "is not", 1)
+    .where("isDeleted", "is not", sqliteTrue)
     .where("name", "is not", null)
-    .$narrowType<{ name: kysely.NotNull }>()
+    .$narrowType<{ name: KyselyNotNull }>()
     .orderBy("createdAt"),
 );
+
+const run = createRun(createEvoluDeps());
+
+run.deps.evoluError.subscribe(() => {
+  const error = run.deps.evoluError.get();
+  if (!error) return;
+
+  alert("🚨 Evolu error occurred! Check the console.");
+});
+
+const evolu = await run.ok(
+  createEvolu(DatabaseSchema, {
+    appName: AppName.orThrow("minimal-example"),
+    appOwner: testAppOwner,
+
+    ...(import.meta.env.DEV && {
+      transports: [{ type: "WebSocket", url: "ws://localhost:4000" }],
+    }),
+  }),
+);
+
+provideEvolu(evolu);
 
 const allTodos = useQuery(todosWithCategories);
 const allCategories = useQuery(todoCategories);
@@ -106,7 +124,10 @@ const handleUpdatePriority = (id: TodoId, priority: TodoPriority) => {
 };
 
 const handleToggleCompletedClick = (id: TodoId, isCompleted: boolean) => {
-  update("todo", { id, isCompleted: Number(!isCompleted) as 0 | 1 });
+  update("todo", {
+    id,
+    isCompleted: booleanToSqliteBoolean(!isCompleted),
+  });
 };
 
 const handleRenameTodoClick = (id: TodoId) => {
@@ -255,19 +276,11 @@ function onPriorityChange(event: Event, id: TodoId) {
     </table>
 
     <button @click="createNewTodo()">Create Todo</button>
-
-    <div class="owner-actions">
-      <button @click="evolu.resetAppOwner()">Reset Owner</button>
-    </div>
   </main>
 </template>
 
 <style>
 .completed {
   text-decoration: line-through;
-}
-
-.owner-actions {
-  margin-top: 2rem;
 }
 </style>
