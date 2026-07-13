@@ -26,7 +26,7 @@ import { increment } from "../../src/Number.js";
 import { orderNumber } from "../../src/Order.js";
 import type { Result } from "../../src/Result.js";
 import { ok } from "../../src/Result.js";
-import { testCreateDeps } from "../../src/Test.js";
+import { testCreateDeps } from "../../src/Task2.js";
 import type { TimeDep } from "../../src/Time.js";
 import {
   maxMillis,

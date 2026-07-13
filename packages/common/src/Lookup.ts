@@ -23,6 +23,16 @@ import { Uint8Array, uint8ArrayToBase64Url } from "./Type.js";
  * Use this when callers provide keys in one form but logical identity should be
  * based on another stable key, such as a natural id or {@link StructuralKey}.
  *
+ * Lookup functions must be pure and stable. The same logical key must derive
+ * the same native `Map` key while an entry is stored, so use lookup-based
+ * collections with immutable key data, preferably readonly values. Mutating key
+ * data after insertion can make later `get`, `has`, and `delete` calls disagree
+ * with the inserted entry.
+ *
+ * The returned lookup key uses native `Map` equality. Return primitives or
+ * stable object references; returning a new object for each call prevents equal
+ * logical keys from matching.
+ *
  * @see {@link createLookupMap}
  * @see {@link createLookupSet}
  */
@@ -74,12 +84,12 @@ export const createLookupMap = <K, V, L>({
   lookup,
   entries,
 }: CreateLookupMapOptions<K, V, L>): LookupMap<K, V> => {
-  interface LookupEntry<K, V> {
+  interface LookupEntry {
     readonly key: K;
     readonly value: V;
   }
 
-  const entriesByLookupKey = new Map<L, LookupEntry<K, V>>();
+  const entriesByLookupKey = new Map<L, LookupEntry>();
 
   const map: LookupMap<K, V> = {
     get size() {
@@ -278,8 +288,10 @@ export type StructuralKey =
  *
  * `Structural<T>` checks a concrete type recursively at compile time instead:
  * scalars pass through, arrays recurse, object properties recurse, and
- * function-valued properties are rejected. This keeps public structural APIs
- * ergonomic for interface-based inputs while preserving the same runtime
+ * function-valued and symbol-keyed properties are rejected. Symbol-keyed
+ * properties are rejected because runtime serialization reads only enumerable
+ * string keys, so they would be silently ignored. This keeps public structural
+ * APIs ergonomic for interface-based inputs while preserving the same runtime
  * constraints as structural lookup serialization.
  *
  * @see {@link StructuralKey}
@@ -293,19 +305,17 @@ export type Structural<T> = T extends StructuralScalar
       ? never
       : T extends object
         ? {
-            readonly [K in keyof T as Extract<
-              T[K],
-              StructuralFunction
-            > extends never
-              ? K
-              : never]: Structural<Exclude<T[K], StructuralFunction>>;
-          } & {
-            readonly [K in keyof T as Extract<
-              T[K],
-              StructuralFunction
-            > extends never
+            readonly [K in keyof T as K extends symbol
               ? never
-              : K]?: never;
+              : Extract<T[K], StructuralFunction> extends never
+                ? K
+                : never]: Structural<Exclude<T[K], StructuralFunction>>;
+          } & {
+            readonly [K in keyof T as K extends symbol
+              ? K
+              : Extract<T[K], StructuralFunction> extends never
+                ? never
+                : K]?: never;
           }
         : never;
 
@@ -317,7 +327,8 @@ export type StructuralFunction = (...args: ReadonlyArray<unknown>) => unknown;
  *
  * Structural lookup keys are derived from JSON-like values plus `Uint8Array`.
  * Equal structures produce the same lookup key even when they are different
- * JavaScript instances.
+ * JavaScript instances. `undefined` values and sparse array holes are rejected
+ * rather than skipped.
  *
  * The derived key is memoized by non-null object identity in a module-scoped
  * `WeakMap` shared by all callers, so keys must be immutable.
@@ -395,6 +406,8 @@ const structuralLookupInternal = (
         );
       }
 
+      // Cache only after traversal succeeds so cyclic values never leave a
+      // partial lookup key in the memo.
       structuralLookupKeyByValue.set(value, lookupKey);
       return lookupKey;
     }

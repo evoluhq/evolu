@@ -7,7 +7,7 @@
 import { objectFrom } from "./Object.js";
 import type { ReadonlyStore } from "./Store.js";
 import { createStore } from "./Store.js";
-import type { Task } from "./Task.js";
+import type { Task } from "./Task2.js";
 import {
   createTime,
   formatMillisAsClockTime,

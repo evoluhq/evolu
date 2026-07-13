@@ -1,0 +1,38 @@
+import { describe, expect, test } from "vitest";
+import { ok } from "../../common/src/Result.js";
+import { testCreateRun } from "../../common/src/Task2.js";
+import "./_setup.ios.test.js";
+
+describe("Task", () => {
+  test("polyfills AbortSignal.throwIfAborted", () => {
+    const controller = new AbortController();
+
+    expect(() => controller.signal.throwIfAborted()).not.toThrow();
+
+    const reason = new Error("stop");
+    controller.abort(reason);
+
+    let thrown: unknown;
+    try {
+      controller.signal.throwIfAborted();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBe(reason);
+  });
+
+  test("starts a Task synchronously", async () => {
+    await using run = testCreateRun();
+    let started = false;
+
+    const fiber = run(() => {
+      started = true;
+      return ok();
+    });
+
+    expect(started).toBe(true);
+    expect((await fiber).ok).toBe(true);
+    expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([]);
+  });
+});

@@ -9,6 +9,7 @@ import {
   createSharedWorker,
   createWebSocket,
   createWorker,
+  waitForAbort,
   type ConsoleDep,
   type CreateSqliteDriverDep,
   type ReloadAppDep,
@@ -57,7 +58,7 @@ export const createEvoluDeps = (
   const createDbWorker: CreateDbWorker = (): DbWorker =>
     createWorker<DbWorkerInit, never>((self) => {
       const dbWorkerRun = createWorkerRun();
-      dbWorkerRun(startDbWorker(self));
+      void dbWorkerRun(startDbWorker(self));
     });
 
   const sharedWorker = createSharedWorker<
@@ -65,7 +66,10 @@ export const createEvoluDeps = (
     SharedWorkerOutput
   >((self) => {
     const sharedWorkerRun = createWorkerRun();
-    sharedWorkerRun(initSharedWorker(self));
+    void sharedWorkerRun(async (run) => {
+      await using _ = await run.ok(initSharedWorker(self));
+      return await run(waitForAbort);
+    });
   });
 
   return createCommonEvoluDeps({

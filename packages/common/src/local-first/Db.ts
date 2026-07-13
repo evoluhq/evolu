@@ -17,7 +17,7 @@ import {
   type DecryptWithXChaCha20Poly1305Error,
   type RandomBytesDep,
 } from "../Crypto.js";
-import { exhaustiveCheck, lazyFalse, lazyVoid } from "../Function.js";
+import { lazyFalse, lazyVoid } from "../Function.js";
 import type { LockManagerDep } from "../LockManager.js";
 import { acquireLeaderLock } from "../LockManager.js";
 import { createRecord, getProperty, objectToEntries } from "../Object.js";
@@ -37,7 +37,7 @@ import {
   sqliteQueryStringToSqliteQuery,
   SqliteValue,
 } from "../Sqlite.js";
-import { callback, type Task } from "../Task.js";
+import { callback, type Run, type Task } from "../Task2.js";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.js";
 import type { Name } from "../Type.js";
 import {
@@ -135,6 +135,10 @@ export type DbWorkerDeps = WorkerDeps &
   LockManagerDep &
   CreateSqliteDriverDep;
 
+/**
+ * Starts the platform-agnostic Evolu DbWorker and owns its resources until the
+ * worker receives a dispose message or its {@link Run} is aborted.
+ */
 export const startDbWorker =
   (self: WorkerSelf<DbWorkerInit>): Task<void, never, DbWorkerDeps> =>
   async (run) => {
@@ -142,20 +146,11 @@ export const startDbWorker =
     disposer.use(self);
     const { deps } = run;
 
-    let initialized = false;
-
-    const initMessage = await run.orThrow(
-      callback<DbWorkerInit>(({ ok }) => {
-        self.onMessage = (message) => {
-          assert(!initialized, "DbWorker must be initialized only once");
-          initialized = true;
-          ok(message);
-        };
+    const initMessage = await run.ok(
+      callback<DbWorkerInit>(({ resolve }) => {
+        self.onMessage = (message) => resolve(ok(message));
       }),
     );
-
-    const console = deps.console.child(initMessage.name).child("DbWorker");
-    console.setLevel(initMessage.consoleLevel);
 
     const port = disposer.use(
       deps.createMessagePort<DbWorkerOutput, DbWorkerInput>(initMessage.port),
@@ -176,14 +171,11 @@ export const startDbWorker =
           });
       }),
     );
-    console.debug("createDbWorker");
 
-    disposer.use(await run.orThrow(acquireLeaderLock(initMessage.name)));
-
-    port.postMessage({ type: "LeaderAcquired", name: initMessage.name });
+    disposer.use(await run.ok(acquireLeaderLock(initMessage.name)));
 
     const sqlite = disposer.use(
-      await run.orThrow(
+      await run.ok(
         createSqlite(
           initMessage.name,
           initMessage.memoryOnly
@@ -192,13 +184,8 @@ export const startDbWorker =
         ),
       ),
     );
-    console.debug("SQLite created");
 
-    const baseSqliteStorage = createBaseSqliteStorage({
-      sqlite,
-      ...deps,
-    });
-
+    const baseSqliteStorage = createBaseSqliteStorage({ sqlite, ...deps });
     const dbDeps = {
       ...deps,
       sqlite,
@@ -206,8 +193,6 @@ export const startDbWorker =
       baseSqliteStorage,
       timestampConfig: { maxDrift: defaultTimestampMaxDrift },
     };
-    const dbWorkerRun = disposer.use(run.create());
-
     const currentSchema = getEvoluSqliteSchema(dbDeps)();
     const dbIsInitialized = "evolu_version" in currentSchema.tables;
     const clock = createClock(dbDeps)(dbIsInitialized);
@@ -226,156 +211,135 @@ export const startDbWorker =
         });
       },
     });
+    const dbWorkerRun = disposer.use(run.create({ storage }));
 
-    const disposables = disposer.move();
+    port.postMessage({ type: "LeaderAcquired", name: initMessage.name });
 
-    port.onMessage = (input) => {
-      if (input.type === "Dispose") {
-        if (!disposables.disposed) console.debug("disposeDbWorker");
-        void disposables.disposeAsync();
-        return;
-      }
-
-      const { callbackId, request } = input;
-
-      const postQueuedResponse = (response: DbWorkerQueuedResponse): void => {
-        port.postMessage(
-          { type: "OnQueuedResponse", callbackId, response },
-          response.type === "ForEvolu" && response.message.type === "Export"
-            ? [response.message.file.buffer]
-            : undefined,
-        );
-      };
-
-      switch (request.type) {
-        case "ForEvolu": {
-          switch (request.message.type) {
-            case "Mutate": {
-              const result = handleMutation({ ...dbDeps, clock })(
-                request.message,
-              );
-              if (!result.ok) {
-                consoleEntryOrErrorBroadcastChannel.postMessage({
-                  type: "Error",
-                  error: result.error,
-                });
-              } else {
-                postQueuedResponse({
-                  type: "ForEvolu",
-                  id: request.id,
-                  message: result.value,
-                });
-              }
-              break;
-            }
-
-            case "Query":
-              postQueuedResponse({
-                type: "ForEvolu",
-                id: request.id,
-                message: {
-                  type: "Query",
-                  rowsByQuery: loadQueries(dbDeps)(request.message.queries),
-                },
-              });
-              break;
-
-            case "Export":
-              postQueuedResponse({
-                type: "ForEvolu",
-                id: request.id,
-                message: {
-                  type: "Export",
-                  file: dbDeps.sqlite.export(),
-                },
-              });
-              break;
-
-            default:
-              exhaustiveCheck(request.message);
+    await run.ok(
+      callback<void>(({ resolve }) => {
+        port.onMessage = (input) => {
+          if (input.type === "Dispose") {
+            resolve(ok());
+            return;
           }
-          break;
-        }
 
-        case "ForSharedWorker": {
-          switch (request.message.type) {
-            case "CreateSyncMessages": {
-              const protocolMessagesByOwnerId = new Map<
-                OwnerId,
-                ProtocolMessage
-              >();
+          const { callbackId, request } = input;
+          const postQueuedResponse = (
+            response: DbWorkerQueuedResponse,
+          ): void => {
+            port.postMessage(
+              {
+                type: "OnQueuedResponse",
+                callbackId,
+                response,
+              },
+              response.type === "ForEvolu" && response.message.type === "Export"
+                ? [response.message.file.buffer]
+                : undefined,
+            );
+          };
 
-              for (const owner of request.message.owners) {
-                storage.setRequestContext(owner.encryptionKey);
-                const protocolMessage = createProtocolMessageForSync({
-                  storage,
-                  console,
-                })(owner.id, SubscriptionFlags.Subscribe);
-                protocolMessagesByOwnerId.set(owner.id, protocolMessage);
-              }
-
-              postQueuedResponse({
-                type: "ForSharedWorker",
-                message: {
-                  type: "CreateSyncMessages",
-                  protocolMessagesByOwnerId,
-                },
-              });
-              break;
-            }
-
-            case "ApplySyncMessage": {
+          if (request.type === "ForSharedWorker") {
+            if (request.message.type === "ApplySyncMessage") {
               const { owner, inputMessage } = request.message;
 
-              dbWorkerRun<void, never, { readonly storage: ClientStorage }>(
-                async (run) => {
-                  const { storage } = run.deps;
+              void dbWorkerRun(async (run) => {
+                storage.setRequestContext(owner.encryptionKey);
 
-                  storage.setRequestContext(owner.encryptionKey);
+                const result = await run.abortable(
+                  applyProtocolMessageAsClient(inputMessage, {
+                    writeKey: owner.writeKey,
+                  }),
+                );
 
-                  const result = await run(
-                    applyProtocolMessageAsClient(inputMessage, {
-                      writeKey: owner.writeKey,
-                    }),
-                  );
+                postQueuedResponse({
+                  type: "ForSharedWorker",
+                  message: {
+                    type: "ApplySyncMessage",
+                    ownerId: owner.id,
+                    didWriteMessages: storage.didWriteMessages(),
+                    result,
+                  },
+                });
 
-                  const didWriteMessages = storage.didWriteMessages();
-
-                  postQueuedResponse({
-                    type: "ForSharedWorker",
-                    message: {
-                      type: "ApplySyncMessage",
-                      ownerId: owner.id,
-                      didWriteMessages,
-                      result,
-                    },
-                  });
-
-                  return ok();
-                },
-                { storage },
-              );
-              break;
+                return ok();
+              });
+              return;
             }
 
-            default:
-              exhaustiveCheck(request.message);
-          }
-          break;
-        }
+            const protocolMessagesByOwnerId = new Map<
+              OwnerId,
+              ProtocolMessage
+            >();
 
-        default:
-          exhaustiveCheck(request);
-      }
-    };
+            for (const owner of request.message.owners) {
+              storage.setRequestContext(owner.encryptionKey);
+              protocolMessagesByOwnerId.set(
+                owner.id,
+                createProtocolMessageForSync({
+                  storage,
+                  console: deps.console,
+                })(owner.id, SubscriptionFlags.Subscribe),
+              );
+            }
+
+            postQueuedResponse({
+              type: "ForSharedWorker",
+              message: {
+                type: "CreateSyncMessages",
+                protocolMessagesByOwnerId,
+              },
+            });
+            return;
+          }
+
+          if (request.message.type === "Query") {
+            postQueuedResponse({
+              type: "ForEvolu",
+              id: request.id,
+              message: {
+                type: "Query",
+                rowsByQuery: loadQueries(dbDeps)(request.message.queries),
+              },
+            });
+            return;
+          }
+
+          if (request.message.type === "Export") {
+            postQueuedResponse({
+              type: "ForEvolu",
+              id: request.id,
+              message: {
+                type: "Export",
+                file: sqlite.export(),
+              },
+            });
+            return;
+          }
+
+          const result = handleMutation({ ...dbDeps, clock })(request.message);
+          if (!result.ok) {
+            consoleEntryOrErrorBroadcastChannel.postMessage({
+              type: "Error",
+              error: result.error,
+            });
+            return;
+          }
+
+          postQueuedResponse({
+            type: "ForEvolu",
+            id: request.id,
+            message: result.value,
+          });
+        };
+
+        return () => {
+          port.onMessage = null;
+        };
+      }),
+    );
 
     return ok();
-
-    // TODO: Add parallel stale-leader detection.
-    // Heartbeat is emitted by the active DB worker and sent to
-    // SharedWorker. SharedWorker tracks last-seen heartbeat per Evolu
-    // name and if silent for 10 seconds, it waits for another DB worker
-    // to announce itself alive and then routes requests to that worker.
   };
 
 /**

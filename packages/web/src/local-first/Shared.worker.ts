@@ -4,7 +4,7 @@ declare const self: DedicatedWorkerGlobalScope | SharedWorkerGlobalScope;
 import { installPolyfills } from "@evolu/common/polyfills";
 installPolyfills();
 
-import { createWebSocket, ok } from "@evolu/common";
+import { createWebSocket, ok, waitForAbort } from "@evolu/common";
 import type {
   SharedWorkerInput,
   SharedWorkerOutput,
@@ -18,7 +18,6 @@ import {
   createWorkerDeps,
 } from "../Worker.js";
 
-// No disposal (`await using`) is needed — a SharedWorker lives forever.
 const run = createRun({
   ...createWorkerDeps(),
   createWebSocket,
@@ -27,8 +26,10 @@ const run = createRun({
 
 void run(async (run) => {
   if ("onconnect" in self) {
-    void run(initSharedWorker(createSharedWorkerSelf(self)));
-    return ok();
+    await using _ = await run.ok(
+      initSharedWorker(createSharedWorkerSelf(self)),
+    );
+    return await run(waitForAbort);
   }
 
   using workerSelf = createOneTabSharedWorkerSelfPolyfill<
@@ -48,9 +49,8 @@ void run(async (run) => {
         return;
       }
 
-      void run(initSharedWorker(workerSelf));
-
-      await Promise.withResolvers<never>().promise;
+      await using _ = await run.ok(initSharedWorker(workerSelf));
+      await run(waitForAbort);
     },
   );
 

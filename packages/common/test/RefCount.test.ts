@@ -62,7 +62,7 @@ describe("createRefCountByKey", () => {
     const refCount = createRefCountByKey<string>();
 
     expect(() => refCount.decrement("missing")).toThrow(
-      "RefCount must not be decremented below zero.",
+      "RefCount must not be decremented for an untracked key.",
     );
     expect(refCount.has("missing")).toBe(false);
     expect(refCount.keys()).toEqual(new Set());
@@ -83,11 +83,10 @@ describe("createRefCountByKey", () => {
     const refCount = createRefCountByKey<string>();
     refCount.increment("a");
 
-    const keys = refCount.keys() as Set<string>;
-    keys.add("b");
+    const keys = refCount.keys();
+    refCount.increment("b");
 
-    expect(refCount.keys()).toEqual(new Set(["a"]));
-    expect(refCount.has("b")).toBe(false);
+    expect(keys).toEqual(new Set(["a"]));
   });
 
   test("dispose invalidates the helper", () => {
@@ -121,5 +120,20 @@ describe("createRefCountByKey", () => {
     expect(refCount.getCount(keyA)).toBe(1);
     expect(refCount.getCount(keyB)).toBe(1);
     expect(refCount.keys().size).toBe(2);
+  });
+
+  test("uses lookup for logical key equality", () => {
+    const refCount = createRefCountByKey<{ readonly id: string }, string>({
+      lookup: (key) => key.id,
+    });
+
+    expect(refCount.increment({ id: "same" })).toBe(1);
+    expect(refCount.increment({ id: "same" })).toBe(2);
+    expect(refCount.getCount({ id: "same" })).toBe(2);
+    expect(refCount.keys().size).toBe(1);
+
+    expect(refCount.decrement({ id: "same" })).toBe(1);
+    expect(refCount.decrement({ id: "same" })).toBe(0);
+    expect(refCount.has({ id: "same" })).toBe(false);
   });
 });

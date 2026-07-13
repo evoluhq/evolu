@@ -6,6 +6,7 @@
  */
 interface ErrorUtils {
   getGlobalHandler: () => ((error: unknown, isFatal?: boolean) => void) | null;
+  reportError: (error: unknown) => void;
   setGlobalHandler: (
     handler: (error: unknown, isFatal?: boolean) => void,
   ) => void;

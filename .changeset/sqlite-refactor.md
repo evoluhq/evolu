@@ -23,8 +23,8 @@ Why `SqliteError` was removed:
 
 - In Evolu, SQLite runs in-process. Failures are infrastructure-level and unrecoverable at the call site.
 - Wrapping these failures as `Result` values did not create meaningful recovery paths; callers still had to fail.
-- The correct behavior is to let such failures throw and surface them through platform `createRun` global handlers (web, nodejs, react-native), which report uncaught errors via Evolu `console.error`.
-- Evolu also propagates `console.error` entries through its messaging layer into the shared `evoluError` global store, so app-level error subscriptions still receive these failures.
+- Such failures now throw as Task defects, panic the owning Run tree, and are reported through its `ReportDefect` dependency.
+- Platform Run adapters provide native defect reporters, and applications can inject a custom reporter at the composition root.
 
 Boundary handling:
 

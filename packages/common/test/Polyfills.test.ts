@@ -1293,6 +1293,36 @@ describe("AsyncDisposableStack behavior", () => {
     expect(events).toEqual(["cleanup"]);
   });
 
+  test("does not share an in-flight disposeAsync promise", async () => {
+    const disposalCanFinish = Promise.withResolvers<void>();
+    let firstDisposeFinished = false;
+    let secondDisposeFinished = false;
+
+    const stack = new globalThis.AsyncDisposableStack();
+    stack.defer(async () => {
+      await disposalCanFinish.promise;
+    });
+
+    const firstDispose = stack.disposeAsync().then(() => {
+      firstDisposeFinished = true;
+    });
+    const secondDispose = stack.disposeAsync().then(() => {
+      secondDisposeFinished = true;
+    });
+
+    expect(secondDispose).not.toBe(firstDispose);
+
+    await Promise.resolve();
+
+    expect(firstDisposeFinished).toBe(false);
+    expect(secondDisposeFinished).toBe(true);
+
+    disposalCanFinish.resolve();
+
+    await firstDispose;
+    await secondDispose;
+  });
+
   test("disposeAsync is reentry-safe and does not dispose twice", async () => {
     let count = 0;
 

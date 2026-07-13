@@ -49,7 +49,7 @@ import {
   whileScheduleOutput,
   windowed,
 } from "../src/Schedule.js";
-import { testCreateDeps } from "../src/Test.js";
+import { testCreateDeps } from "../src/Task2.js";
 import { maxMillis, Millis, minMillis, testCreateTime } from "../src/Time.js";
 
 // Helper to create scheduleDeps with controllable time
@@ -605,6 +605,17 @@ describe("maxDelay", () => {
 });
 
 describe("jitter", () => {
+  test("factor 0 preserves delay", () => {
+    const deps = createScheduleDeps();
+    const step = jitter(0)(spaced("100ms"))(deps);
+
+    expectOk(step(undefined), [100, 100]);
+  });
+
+  test("accepts factor 1", () => {
+    expect(() => jitter(1)).not.toThrow();
+  });
+
   test("randomizes delay", () => {
     const deps = createScheduleDeps();
     // With deterministic random, we can test jitter
@@ -644,6 +655,7 @@ describe("jitter", () => {
     expect(() => jitter(-1)).toThrow(
       "Expected factor to be a non-negative finite number.",
     );
+    expect(() => jitter(1.5)).toThrow("Expected factor to be between 0 and 1.");
   });
 });
 
@@ -708,17 +720,25 @@ describe("modifyDelay", () => {
 });
 
 describe("compensate", () => {
-  test("subtracts execution time from delay", () => {
+  test("subtracts execution time, not previous sleep", () => {
+    const deps = createScheduleDeps();
+    const step = compensate(spaced("1s"))(deps);
+
+    expectOk(step(undefined), [1000, 1000]);
+
+    // Simulate: slept 1000ms, then execution took 200ms.
+    deps.time.advance("1.2s");
+    expectOk(step(undefined), [1000, 800]);
+  });
+
+  test("keeps full delay until previous delay elapses", () => {
     const deps = createScheduleDeps();
     const step = compensate(spaced("1s"))(deps);
     // First attempt at T=0, no previous → full delay
     expectOk(step(undefined), [1000, 1000]);
-    // Second at T=200 (execution took 200ms) → wait 800ms
+    // Second at T=200, before the previous 1000ms delay could have elapsed
     deps.time.advance("200ms");
-    expectOk(step(undefined), [1000, 800]);
-    // Third at T=1400 (execution took 1200ms since T=200) → wait 0ms
-    deps.time.advance("1.2s");
-    expectOk(step(undefined), [1000, 0]);
+    expectOk(step(undefined), [1000, 1000]);
   });
 
   test("passes through termination", () => {
@@ -751,6 +771,15 @@ describe("whileScheduleInput", () => {
     expectOk(step({ type: "Transient" }), [100, 100]);
     expectOk(step({ type: "Transient" }), [100, 100]);
     expectDone(step({ type: "Fatal" }));
+  });
+
+  test("remains done after predicate fails", () => {
+    const deps = createScheduleDeps();
+    const step = whileScheduleInput((n: number) => n > 0)(forever)(deps);
+
+    expectOk(step(1), [0, 0]);
+    expectDone(step(0));
+    expectDone(step(1));
   });
 });
 
@@ -809,6 +838,31 @@ describe("untilScheduleOutput", () => {
     const step = untilScheduleOutput(() => false)(take(1)(forever))(deps);
     expectOk(step(undefined), [0, 0]);
     expectDone(step(undefined));
+  });
+});
+
+describe("predicate filters", () => {
+  test("other predicate stops are sticky", () => {
+    const inputUntilStep = untilScheduleInput((n: number) => n <= 0)(forever)(
+      createScheduleDeps(),
+    );
+    expectOk(inputUntilStep(1), [0, 0]);
+    expectDone(inputUntilStep(0));
+    expectDone(inputUntilStep(1));
+
+    const outputWhileStep = whileScheduleOutput((n: number) => n > 0)(
+      unfoldSchedule(1, (n) => (n === 1 ? 0 : 1)),
+    )(createScheduleDeps());
+    expectOk(outputWhileStep(undefined), [1, 0]);
+    expectDone(outputWhileStep(undefined));
+    expectDone(outputWhileStep(undefined));
+
+    const outputUntilStep = untilScheduleOutput((n: number) => n <= 0)(
+      unfoldSchedule(1, (n) => (n === 1 ? 0 : 1)),
+    )(createScheduleDeps());
+    expectOk(outputUntilStep(undefined), [1, 0]);
+    expectDone(outputUntilStep(undefined));
+    expectDone(outputUntilStep(undefined));
   });
 });
 

@@ -51,6 +51,7 @@ const deviceAppOwnersQuery = createDeviceQuery((db) =>
   db
     .selectFrom("_appOwner")
     .select(["id", "secret", "lastOpenedAt"])
+    .where("isDeleted", "is not", Evolu.sqliteTrue)
     .where("secret", "is not", null)
     .where("lastOpenedAt", "is not", null)
     .$narrowType<{
@@ -76,8 +77,7 @@ const run = createRun(
 
 /**
  * `evoluError` is shared by all Evolu instances. Subscribe once for user-facing
- * error messages. Logging is handled by platform `createRun` global error
- * handlers.
+ * error messages.
  */
 run.deps.evoluError.subscribe(() => {
   const error = run.deps.evoluError.get();
@@ -91,7 +91,7 @@ const device = createEvoluBinding(DeviceSchema);
 const app = createEvoluBinding(AppSchema);
 
 // Memory only for now, TODO: Use DeviceAppOwner.
-const devicePromise = run.orThrow(
+const devicePromise = run.ok(
   Evolu.createEvolu(DeviceSchema, {
     appOwner: Evolu.testAppOwner,
     appName: Evolu.AppName.orThrow("device"),
@@ -162,12 +162,20 @@ const AppOwners: FC<{
       id: appOwner.id,
       secret,
       lastOpenedAt: run.deps.time.nowDateIso(),
+      isDeleted: Evolu.sqliteFalse,
     });
   };
 
   return (
     <div className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
       <h2 className="mb-4 text-lg font-medium text-gray-900">AppOwners</h2>
+
+      <p className="mb-4 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+        This example keeps AppOwner secrets in memory only. Creating, restoring,
+        and switching AppOwners works during the current session, but reloading
+        the page forgets the owner list. Forgetting an AppOwner does not delete
+        its local SQLite database.
+      </p>
 
       <div className="mb-4 flex gap-2">
         <Button
@@ -206,7 +214,7 @@ const AppOwners: FC<{
               upsertAppOwner(row.secret);
             }}
             onDelete={() => {
-              if (!confirm(`Delete stored AppOwner ${row.id}?`)) return;
+              if (!confirm(`Forget stored AppOwner ${row.id}?`)) return;
 
               evolu.update("_appOwner", {
                 id: row.id,
@@ -265,6 +273,32 @@ const AppOwners: FC<{
           </p>
         )}
       </div>
+
+      <div className="mt-6 space-y-3 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+        <p>
+          This example demonstrates running multiple encrypted Evolu instances
+          concurrently. Each AppOwner identifies a separate local SQLite
+          database and provides the secret material needed to unlock it.
+          Restoring from a mnemonic recreates the AppOwner and opens its
+          corresponding database. If transports are configured, Evolu also
+          synchronizes that owner&apos;s data from the relay.
+        </p>
+        <p>
+          The device registry is currently memory-only because AppOwner secrets
+          must not be persisted directly in browser storage. A production
+          application could encrypt the stored secrets using a wrapping key
+          derived through WebAuthn PRF, or unlock them using an external
+          authentication mechanism. The user authenticates when opening the
+          application, after which the registry can open the selected tenant.
+        </p>
+        <p>
+          The Forget action only removes an AppOwner from the device registry.
+          It does not delete that owner&apos;s local SQLite database. Complete
+          deletion requires disposing every active instance using the database,
+          coordinating deletion across tabs, deleting the SQLite file, and
+          removing the securely persisted AppOwner secret.
+        </p>
+      </div>
     </div>
   );
 };
@@ -298,7 +332,7 @@ const AppOwnersItem: FC<{
       <button
         onClick={onDelete}
         className="p-2 text-gray-400 transition-colors hover:text-red-600"
-        title="Delete"
+        title="Forget"
       >
         <IconTrash className="size-4" />
       </button>

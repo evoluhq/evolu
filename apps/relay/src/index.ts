@@ -1,6 +1,6 @@
 import { createConsole, createConsoleFormatter } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
-import { createRelayDeps, createRun, startRelay } from "@evolu/nodejs";
+import { createRelay, createRelayDeps, runMain } from "@evolu/nodejs";
 import { mkdirSync } from "fs";
 
 installPolyfills();
@@ -16,25 +16,16 @@ const console = createConsole({
   }),
 });
 
-const deps = { ...createRelayDeps(), console };
+await runMain({ ...createRelayDeps(), console })(
+  createRelay({
+    port: 4000,
 
-await using run = createRun(deps);
-await using disposer = new AsyncDisposableStack();
+    // Note: Relay requires URL in format ws://host:port/<ownerId>
+    // isOwnerAllowed: (_ownerId) => true,
 
-disposer.use(
-  await run.orThrow(
-    startRelay({
-      port: 4000,
-
-      // Note: Relay requires URL in format ws://host:port/<ownerId>
-      // isOwnerAllowed: (_ownerId) => true,
-
-      isOwnerWithinQuota: (_ownerId, requiredBytes) => {
-        const maxBytes = 1024 * 1024; // 1MB
-        return requiredBytes <= maxBytes;
-      },
-    }),
-  ),
+    isOwnerWithinQuota: (_ownerId, requiredBytes) => {
+      const maxBytes = 1024 * 1024; // 1MB
+      return requiredBytes <= maxBytes;
+    },
+  }),
 );
-
-await run.deps.shutdown;

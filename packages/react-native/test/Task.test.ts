@@ -1,22 +1,56 @@
-import { testCreateConsole } from "@evolu/common";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { testGlobalUncaughtErrors } from "@evolu/common";
+import { afterEach, assert, describe, expect, test, vi } from "vitest";
 import { createRun } from "../src/Task.js";
 
-// Mock ErrorUtils for testing
-const mockErrorUtils = {
-  getGlobalHandler: vi.fn(),
-  setGlobalHandler: vi.fn(),
-};
-
 describe("createRun", () => {
-  beforeEach(() => {
-    globalThis.ErrorUtils = mockErrorUtils;
-    mockErrorUtils.getGlobalHandler.mockReset();
-    mockErrorUtils.setGlobalHandler.mockReset();
-  });
-
   afterEach(() => {
     globalThis.ErrorUtils = undefined;
+  });
+
+  test("createRun reports defects with ErrorUtils.reportError", async () => {
+    const reportError = vi.fn();
+    globalThis.ErrorUtils = {
+      getGlobalHandler: () => null,
+      setGlobalHandler: vi.fn(),
+      reportError,
+    };
+    await using run = createRun();
+    const defect = new Error("boom");
+
+    run.panic(defect);
+
+    expect(reportError).toHaveBeenCalledOnce();
+    const reported = reportError.mock.calls[0]?.[0];
+    assert(typeof reported === "object" && reported && "reason" in reported);
+    expect(reported.reason).toEqual({ type: "PanicAbortReason", defect });
+  });
+
+  test("createRun preserves a custom reportDefect", async () => {
+    const reportError = vi.fn();
+    const reportDefect = vi.fn();
+    globalThis.ErrorUtils = {
+      getGlobalHandler: () => null,
+      setGlobalHandler: vi.fn(),
+      reportError,
+    };
+    await using run = createRun({ reportDefect });
+
+    run.panic(new Error("boom"));
+
+    expect(reportDefect).toHaveBeenCalledOnce();
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  test("createRun falls back when ErrorUtils is unavailable", async () => {
+    globalThis.ErrorUtils = undefined;
+    using uncaughtErrors = testGlobalUncaughtErrors();
+    await using run = createRun();
+
+    run.panic(new Error("boom"));
+
+    const reported = await uncaughtErrors.next();
+    assert(typeof reported === "object" && reported && "reason" in reported);
+    expect(reported.reason).toMatchObject({ type: "PanicAbortReason" });
   });
 
   test("creates a run", async () => {
@@ -24,91 +58,5 @@ describe("createRun", () => {
 
     expect(run).toBeDefined();
     expect(run.deps).toBeDefined();
-  });
-
-  test("registers global error handler", async () => {
-    await using _run = createRun();
-
-    expect(mockErrorUtils.setGlobalHandler).toHaveBeenCalledOnce();
-    expect(mockErrorUtils.setGlobalHandler).toHaveBeenCalledWith(
-      expect.any(Function),
-    );
-  });
-
-  test("restores previous handler on dispose", async () => {
-    const previousHandler = vi.fn();
-    mockErrorUtils.getGlobalHandler.mockReturnValue(previousHandler);
-
-    const run = createRun();
-    await run[Symbol.asyncDispose]();
-
-    // Last call should restore the previous handler
-    const calls = mockErrorUtils.setGlobalHandler.mock.calls;
-    expect(calls[calls.length - 1][0]).toBe(previousHandler);
-  });
-
-  test("logs uncaught error", async () => {
-    const console = testCreateConsole();
-    await using _run = createRun({ console });
-
-    // Get the handler that was registered
-    const handler = mockErrorUtils.setGlobalHandler.mock.calls[0][0];
-
-    // Simulate an uncaught error
-    handler(new Error("test error"), false);
-
-    const entries = console.getEntriesSnapshot();
-    expect(entries.length).toBe(1);
-    expect(entries[0].method).toBe("error");
-    expect(entries[0].args[0]).toBe("uncaughtError");
-    expect(entries[0].args[1]).toEqual({
-      type: "UnknownError",
-      error: expect.objectContaining({ message: "test error" }),
-    });
-  });
-
-  test("logs fatal error", async () => {
-    const console = testCreateConsole();
-    await using _run = createRun({ console });
-
-    // Get the handler that was registered
-    const handler = mockErrorUtils.setGlobalHandler.mock.calls[0][0];
-
-    // Simulate a fatal error
-    handler(new Error("fatal test error"), true);
-
-    const entries = console.getEntriesSnapshot();
-    expect(entries.length).toBe(1);
-    expect(entries[0].method).toBe("error");
-    expect(entries[0].args[0]).toBe("fatalError");
-    expect(entries[0].args[1]).toEqual({
-      type: "UnknownError",
-      error: expect.objectContaining({ message: "fatal test error" }),
-    });
-  });
-
-  test("calls previous handler when error occurs", async () => {
-    const previousHandler = vi.fn();
-    mockErrorUtils.getGlobalHandler.mockReturnValue(previousHandler);
-
-    const console = testCreateConsole();
-    await using _run = createRun({ console });
-
-    // Get the handler that was registered
-    const handler = mockErrorUtils.setGlobalHandler.mock.calls[0][0];
-
-    const error = new Error("test error");
-    handler(error, true);
-
-    expect(previousHandler).toHaveBeenCalledWith(error, true);
-  });
-
-  test("works when ErrorUtils is not available", async () => {
-    globalThis.ErrorUtils = undefined;
-
-    // Should not throw
-    await using run = createRun();
-
-    expect(run).toBeDefined();
   });
 });

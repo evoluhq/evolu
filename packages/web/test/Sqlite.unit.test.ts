@@ -159,7 +159,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
-    using _driver = await run.orThrow(
+    using _driver = await run.ok(
       createWasmSqliteDriver(Name.orThrow("MockPlain")),
     );
 
@@ -175,7 +175,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
-    using _driver = await run.orThrow(
+    using _driver = await run.ok(
       createWasmSqliteDriver(Name.orThrow("MockMemory"), { mode: "memory" }),
     );
 
@@ -187,7 +187,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
-    using driver = await run.orThrow(
+    using driver = await run.ok(
       createWasmSqliteDriver(Name.orThrow("MockPlain")),
     );
 
@@ -203,7 +203,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
 
     await using run = testCreateRun();
     {
-      using driver = await run.orThrow(
+      using driver = await run.ok(
         createWasmSqliteDriver(Name.orThrow("MockPlain")),
       );
 
@@ -231,7 +231,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
 
     await using run = testCreateRun();
     {
-      using _driver = await run.orThrow(
+      using _driver = await run.ok(
         createWasmSqliteDriver(Name.orThrow("MockPlain")),
       );
     }
@@ -246,12 +246,12 @@ describe("createWasmSqliteDriver coverage helpers", () => {
 
     await using run = testCreateRun();
     {
-      using _driver = await run.orThrow(
+      using _driver = await run.ok(
         createWasmSqliteDriver(Name.orThrow("MockPlain")),
       );
     }
 
-    using _driver = await run.orThrow(
+    using _driver = await run.ok(
       createWasmSqliteDriver(Name.orThrow("MockPlain")),
     );
 
@@ -262,7 +262,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
-    using driver = await run.orThrow(
+    using driver = await run.ok(
       createWasmSqliteDriver(Name.orThrow("MockPlain")),
     );
 
@@ -281,7 +281,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
-    using driver = await run.orThrow(
+    using driver = await run.ok(
       createWasmSqliteDriver(Name.orThrow("MockMemory"), { mode: "memory" }),
     );
 
@@ -296,7 +296,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
-    using driver = await run.orThrow(
+    using driver = await run.ok(
       createWasmSqliteDriver(Name.orThrow("MockEncrypted"), {
         mode: "encrypted",
         encryptionKey: EncryptionKey.orThrow(new Uint8Array(32).fill(42)),
@@ -320,7 +320,7 @@ describe("createWasmSqliteDriver coverage helpers", () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
-    using _driver = await run.orThrow(
+    using _driver = await run.ok(
       createWasmSqliteDriver(Name.orThrow("MockEncrypted"), {
         mode: "encrypted",
         encryptionKey: EncryptionKey.orThrow(new Uint8Array(32).fill(42)),

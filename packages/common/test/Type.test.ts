@@ -2,7 +2,7 @@ import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../src/Brand.js";
 import { exhaustiveCheck, lazyVoid } from "../src/Function.js";
 import { err, ok } from "../src/Result.js";
-import { testCreateDeps } from "../src/Test.js";
+import { testCreateDeps } from "../src/Task2.js";
 import type {
   AnyType,
   ArrayBufferError,
@@ -61,6 +61,8 @@ import {
   BigInt as BigIntType,
   Boolean,
   brand,
+  capitalized,
+  CapitalizedString,
   createFormatTypeError,
   createId,
   createIdAsUuidv7,
@@ -877,6 +879,32 @@ test("Function/EvoluType/CurrencyCode/Name/Mnemonic", () => {
 
 test("trim helper", () => {
   expect(trim(" a ")).toBe("a");
+});
+
+test("capitalized validates capitalized strings", () => {
+  const CapitalizedName = capitalized(String);
+
+  expectTypeOf<typeof CapitalizedName.Type>().toEqualTypeOf<
+    string & Brand<"Capitalized">
+  >();
+  expectTypeOf<typeof CapitalizedString.Type>().toEqualTypeOf<
+    string & Brand<"Capitalized">
+  >();
+
+  expect(CapitalizedName.fromUnknown("Name")).toEqual(ok("Name"));
+  expect(CapitalizedString.fromUnknown("Name")).toEqual(ok("Name"));
+  expect(CapitalizedString.fromParent("name")).toEqual(
+    err({ type: "Capitalized", value: "name" }),
+  );
+  expect(CapitalizedString.fromUnknown("name")).toEqual(
+    err({ type: "Capitalized", value: "name" }),
+  );
+  expect(CapitalizedString.fromUnknown(1)).toEqual(
+    err({ type: "String", value: 1 }),
+  );
+  expect(createFormatTypeError()({ type: "Capitalized", value: "name" })).toBe(
+    'The value "name" must be capitalized.',
+  );
 });
 
 test("SimplePassword", () => {

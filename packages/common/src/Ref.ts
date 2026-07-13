@@ -59,7 +59,7 @@ export interface Ref<T> {
 
   /** Modifies the current value and returns a computed result. */
   readonly modify: <R>(
-    updater: (current: T) => readonly [result: R, nextValue: T],
+    modifier: (current: T) => readonly [result: R, nextValue: T],
   ) => R;
 }
 
@@ -100,8 +100,8 @@ export const createRef = <T>(initialValue: T): Ref<T> => {
       return currentValue;
     },
 
-    modify: (updater) => {
-      const [result, nextValue] = updater(currentValue);
+    modify: (modifier) => {
+      const [result, nextValue] = modifier(currentValue);
       currentValue = nextValue;
       return result;
     },

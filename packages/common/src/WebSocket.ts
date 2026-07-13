@@ -10,8 +10,8 @@ import type { Result } from "./Result.js";
 import { err, ok } from "./Result.js";
 import type { Schedule } from "./Schedule.js";
 import { exponential, jitter, maxDelay } from "./Schedule.js";
-import type { RetryError, Task } from "./Task.js";
-import { callback, retry } from "./Task.js";
+import type { RetryError, Task } from "./Task2.js";
+import { callback, retry } from "./Task2.js";
 import type { Millis } from "./Time.js";
 import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.js";
 
@@ -226,7 +226,7 @@ export const createWebSocket: CreateWebSocket =
      * A task that connects and stays connected until the connection closes or
      * errors. Returns error to trigger retry.
      */
-    const connect: Task<void, WebSocketRetryError> = callback(({ err, ok }) => {
+    const connect: Task<void, WebSocketRetryError> = callback(({ resolve }) => {
       closeSocket();
 
       socket = new WebSocketConstructor(
@@ -246,9 +246,9 @@ export const createWebSocket: CreateWebSocket =
       socket.onclose = (event) => {
         onClose?.(event);
         if (shouldRetryOnClose(event)) {
-          err({ type: "WebSocketConnectionCloseError", event });
+          resolve(err({ type: "WebSocketConnectionCloseError", event }));
         } else {
-          ok();
+          resolve(ok());
         }
       };
 
@@ -262,7 +262,7 @@ export const createWebSocket: CreateWebSocket =
           : { type: "WebSocketConnectError", event };
         onError?.(error);
 
-        if (error.type === "WebSocketConnectError") err(error);
+        if (error.type === "WebSocketConnectError") resolve(err(error));
       };
 
       return closeSocket;

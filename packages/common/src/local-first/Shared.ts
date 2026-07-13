@@ -11,20 +11,27 @@ import {
   shiftFromArray,
   type NonEmptyReadonlyArray,
 } from "../Array.js";
-import { assert, assertNotAborted, assertNotDisposed } from "../Assert.js";
+import { assert } from "../Assert.js";
 import type { Brand } from "../Brand.js";
 import { createCallbacks } from "../Callbacks.js";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.js";
 import type { EncryptionKey } from "../Crypto.js";
+import { disposable } from "../Function.js";
 import { acquireLeaderLock, type LockManagerDep } from "../LockManager.js";
-import { structuralLookup, type StructuralLookupKey } from "../Lookup.js";
+import {
+  createLookupMap,
+  structuralLookup,
+  type LookupMap,
+  type StructuralLookupKey,
+} from "../Lookup.js";
 import { createRefCountByKey, type RefCountByKey } from "../RefCount.js";
 import {
   createSharedResourceByKey,
   createSharedResourceByKeyWithClaims,
   type BorrowedResource,
+  type ClaimLease,
   type SharedResourceByKeyWithClaims,
-} from "../Resource.js";
+} from "../Resource2.js";
 import { ok, type Result } from "../Result.js";
 import type { NonEmptyReadonlySet } from "../Set.js";
 import type { SqliteSchema } from "../Sqlite.js";
@@ -35,7 +42,7 @@ import {
   unabortable,
   type Mutex,
   type Task,
-} from "../Task.js";
+} from "../Task2.js";
 import { type Id, type Name, type Typed } from "../Type.js";
 import type { Callback, ExtractType } from "../Types.js";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
@@ -265,8 +272,7 @@ interface TransportsDep {
   readonly transports: SharedResourceByKeyWithClaims<
     OwnerTransport,
     OwnerId,
-    WebSocket,
-    SharedWorkerDeps
+    WebSocket
   >;
 }
 
@@ -274,6 +280,7 @@ export type EvoluInstanceId = Id & Brand<"EvoluInstance">;
 
 export type SyncState = 123;
 
+/** Initializes the platform-agnostic Evolu SharedWorker. */
 export const initSharedWorker =
   (
     self: SharedWorkerSelf<SharedWorkerInput, SharedWorkerOutput>,
@@ -313,15 +320,10 @@ export const initSharedWorker =
 
             case "CreateEvolu": {
               void sharedWorkerRun(async (run) => {
-                const tenant = await run(
+                const tenantLease = await run.ok(
                   unabortable(tenantsByName.acquire(message)),
                 );
-                if (!tenant.ok) return tenant;
-
-                tenant.value.addInstance(
-                  message,
-                  () => void sharedWorkerRun(tenantsByName.release(message)),
-                );
+                tenantLease.resource.addInstance(message, tenantLease.release);
                 return ok();
               });
               break;
@@ -340,12 +342,13 @@ export const initSharedWorker =
       }),
     );
 
+    const currentTenantsByName = new Map<Name, BorrowedResource<EvoluTenant>>();
     const transports = disposer.use(
-      await run.orThrow(
+      await run.ok(
         createSharedResourceByKeyWithClaims<
-          WebSocket,
           OwnerTransport,
           OwnerId,
+          WebSocket,
           SharedWorkerDeps,
           StructuralLookupKey
         >(
@@ -420,11 +423,15 @@ export const initSharedWorker =
     });
 
     const tenantsByName = disposer.use(
-      await sharedWorkerRun.orThrow(
-        createSharedResourceByKey(createEvoluTenant, {
-          idleDisposeAfter: "3s",
-          lookup: (message) => message.name,
-        }),
+      await sharedWorkerRun.ok(
+        createSharedResourceByKey(
+          (message: ExtractType<SharedWorkerInput, "CreateEvolu">) =>
+            createEvoluTenant(message, currentTenantsByName),
+          {
+            idleDisposeAfter: "3s",
+            lookup: (message) => message.name,
+          },
+        ),
       ),
     );
 
@@ -433,26 +440,23 @@ export const initSharedWorker =
     const forEachTenant = (
       callback: Callback<BorrowedResource<EvoluTenant>>,
     ): void => {
-      for (const tenant of tenantsByName.snapshot().resourcesByKey.values()) {
-        callback(tenant);
-      }
+      for (const tenant of currentTenantsByName.values()) callback(tenant);
     };
 
     return ok(disposer.move());
   };
 
 const createEvoluTenant =
-  ({
-    name,
-    consoleLevel,
-    sqliteSchema,
-    encryptionKey,
-    memoryOnly,
-  }: ExtractType<SharedWorkerInput, "CreateEvolu">): Task<
-    EvoluTenant,
-    never,
-    EvoluTenantDeps
-  > =>
+  (
+    {
+      name,
+      consoleLevel,
+      sqliteSchema,
+      encryptionKey,
+      memoryOnly,
+    }: ExtractType<SharedWorkerInput, "CreateEvolu">,
+    currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
+  ): Task<EvoluTenant, never, EvoluTenantDeps> =>
   async (run) => {
     await using disposer = new AsyncDisposableStack();
     const tenantRun = disposer.use(run.create());
@@ -462,6 +466,7 @@ const createEvoluTenant =
 
     interface EvoluInstance extends AsyncDisposable {
       readonly id: EvoluInstanceId;
+      readonly claimLeasesBySyncOwner: LookupMap<SyncOwner, Array<ClaimLease>>;
       readonly onDisposed: () => void;
       readonly port: MessagePort<EvoluOutput, EvoluInput>;
       readonly useOwnerMutex: Mutex;
@@ -578,18 +583,13 @@ const createEvoluTenant =
       // DbWorker releases it: either because Dispose was delivered or because
       // the hosting tab closed. The wait is unabortable because tenant disposal
       // must finish even after tenantRun receives an abort request.
-      const lock = await tenantRun(acquireLeaderLock(name));
-      // AbortError here means tenantRun was already disposed before this
-      // cleanup could start, violating the disposal ordering above.
-      assertNotAborted(lock);
-      await using _ = lock.value;
+      await using _ = await tenantRun.ok(acquireLeaderLock(name));
     });
 
     disposer.defer(deps.tabLeaderPortStore.subscribe(initDbWorker));
 
     initDbWorker();
     await dbWorkerInited.promise;
-    const disposables = disposer.move();
 
     const handleResponseForEvolu = (
       response: ExtractType<DbWorkerQueuedResponse, "ForEvolu">,
@@ -718,20 +718,20 @@ const createEvoluTenant =
       protocolMessagesByOwnerId: ReadonlyMap<OwnerId, ProtocolMessage>,
     ): void => {
       for (const [ownerId, protocolMessage] of protocolMessagesByOwnerId) {
-        for (const transport of deps.transports.getResourceKeysForClaim(
+        deps.transports.forEachResourceForClaim(
           ownerId,
-        )) {
-          const webSocket = deps.transports.getResource(transport);
-          if (!webSocket?.isOpen()) continue;
+          (webSocket, transport) => {
+            if (!webSocket.isOpen()) return;
 
-          console.debug("sendProtocolMessage", {
-            ownerId,
-            url: transport.url,
-            byteLength: protocolMessage.byteLength,
-          });
+            console.debug("sendProtocolMessage", {
+              ownerId,
+              url: transport.url,
+              byteLength: protocolMessage.byteLength,
+            });
 
-          webSocket.send(protocolMessage);
-        }
+            webSocket.send(protocolMessage);
+          },
+        );
       }
     };
 
@@ -757,156 +757,184 @@ const createEvoluTenant =
       async (run) => {
         if (action === "add") {
           instance.usedSyncOwners.increment(syncOwner);
-          return await run(
-            deps.transports.addClaim(syncOwner.owner.id, syncOwner.transports),
+          let succeeded = false;
+          using compensation = new DisposableStack();
+          compensation.defer(() => {
+            if (!succeeded) instance.usedSyncOwners.decrement(syncOwner);
+          });
+          const claimLease = await run.ok(
+            deps.transports.claim(syncOwner.owner.id, syncOwner.transports),
           );
+          instance.claimLeasesBySyncOwner
+            .getOrInsertComputed(syncOwner, () => [])
+            .push(claimLease);
+          succeeded = true;
         } else {
           instance.usedSyncOwners.decrement(syncOwner);
-          return await run(
-            deps.transports.removeClaim(
-              syncOwner.owner.id,
-              syncOwner.transports,
-            ),
-          );
+          const claimLeases = instance.claimLeasesBySyncOwner.get(syncOwner);
+          assert(claimLeases, "Expected a ClaimLease for the used owner.");
+          const claimLease = claimLeases.pop();
+          assert(claimLease, "Expected a ClaimLease for the used owner.");
+          claimLease.release();
+          if (claimLeases.length === 0) {
+            instance.claimLeasesBySyncOwner.delete(syncOwner);
+          }
         }
+        return ok();
       };
 
-    return ok({
-      addInstance: (message, onDisposed) => {
-        assertNotDisposed(disposables);
-
-        const instance: EvoluInstance = {
-          id: message.id,
-          port: deps.createMessagePort<EvoluOutput, EvoluInput>(
-            message.evoluPort,
-          ),
-          onDisposed,
-          rowsByQuery: new Map<Query, ReadonlyArray<Row>>(),
-          useOwnerMutex: createMutex(),
-          usedSyncOwners: createRefCountByKey<SyncOwner, OwnerId>({
-            lookup: (syncOwner) => syncOwner.owner.id,
-          }),
-          [Symbol.asyncDispose]: () => disposer.disposeAsync(),
-        };
-
-        instancesById.set(instance.id, instance);
-
-        const disposer = new AsyncDisposableStack();
-
-        disposer.defer(instance.onDisposed);
-        disposer.use(instance.usedSyncOwners);
-        disposer.use(instance.useOwnerMutex);
-
-        disposer.defer(async () => {
-          await tenantRun(
-            instance.useOwnerMutex.withLock(async (run) => {
-              for (const syncOwner of instance.usedSyncOwners.keys()) {
-                while (instance.usedSyncOwners.has(syncOwner)) {
-                  await run(toggleSyncOwner(instance, syncOwner, "remove"));
-                }
-              }
-              return ok();
-            }),
-          );
-        });
-
-        disposer.defer(() => {
-          instancesById.delete(instance.id);
-          console.info("evoluDispose", { name, id: instance.id });
-        });
-        disposer.use(instance.port);
-
-        // The main-thread Evolu instance holds this per-instance leader lock
-        // while it is alive. Acquiring the same lock here means the main
-        // thread instance was disposed or its tab closed, so the tenant-side
-        // instance must dispose itself.
-        void tenantRun(acquireLeaderLock(message.id)).then((lock) => {
-          if (!lock.ok) return;
-
-          disposer.use(lock.value);
-          return disposer.disposeAsync();
-        });
-
-        instance.port.onMessage = (message) => {
-          switch (message.type) {
-            case "Query":
-            case "Export": {
-              queue.push({ type: "ForEvolu", id: instance.id, message });
-              runQueue();
-              break;
-            }
-            case "Mutate": {
-              // TODO: Delegate do vsech evolu instances, co to pouzivaji
-              queue.push({ type: "ForEvolu", id: instance.id, message });
-              runQueue();
-              break;
-            }
-            case "UseOwner": {
-              void tenantRun(
-                instance.useOwnerMutex.withLock(async (run) => {
-                  for (const { owner, action } of message.actions) {
-                    console.debug("useOwner", {
-                      id: instance.id,
-                      action,
-                      ownerId: owner.owner.id,
-                      transportUrls: owner.transports.map(({ url }) => url),
-                    });
-
-                    await run(toggleSyncOwner(instance, owner, action));
-                  }
-
-                  return ok();
-                }),
-              );
-              break;
-            }
-          }
-        };
-      },
-
-      requestCreateSyncMessages: (ownerIds): void => {
-        const ownersToSync = [...getUsedOwnersById(ownerIds).values()];
-
-        if (!isNonEmptyArray(ownersToSync)) return;
-
-        console.debug("requestCreateSyncMessages", {
-          ownerIds: ownersToSync.map(({ id }) => id),
-        });
-
-        queue.push({
-          type: "ForSharedWorker",
-          message: {
-            type: "CreateSyncMessages",
-            owners: ownersToSync,
-          },
-        });
-
-        runQueue();
-      },
-
-      requestApplySyncMessage: (ownerId, inputMessage): void => {
-        const owner = getUsedOwnersById(new Set([ownerId])).get(ownerId);
-        if (!owner) return;
-
-        console.debug("requestApplySyncMessage", {
-          ownerId,
-          byteLength: inputMessage.byteLength,
-        });
-
-        queue.push({
-          type: "ForSharedWorker",
-          message: {
-            type: "ApplySyncMessage",
-            owner,
-            inputMessage,
-          },
-        });
-
-        runQueue();
-      },
-
-      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
+    disposer.defer(() => {
+      currentTenantsByName.delete(name);
     });
+    const tenant = disposable<EvoluTenant>(
+      {
+        addInstance: (message, onDisposed) => {
+          const disposer = new AsyncDisposableStack();
+          const instance: EvoluInstance = {
+            id: message.id,
+            claimLeasesBySyncOwner: createLookupMap({
+              lookup: (syncOwner: SyncOwner) =>
+                structuralLookup({
+                  ownerId: syncOwner.owner.id,
+                  transports: syncOwner.transports
+                    .map(structuralLookup)
+                    .toSorted(),
+                }),
+            }),
+            port: deps.createMessagePort<EvoluOutput, EvoluInput>(
+              message.evoluPort,
+            ),
+            onDisposed,
+            rowsByQuery: new Map<Query, ReadonlyArray<Row>>(),
+            useOwnerMutex: createMutex(),
+            usedSyncOwners: createRefCountByKey<SyncOwner, OwnerId>({
+              lookup: (syncOwner) => syncOwner.owner.id,
+            }),
+            [Symbol.asyncDispose]: () => disposer.disposeAsync(),
+          };
+
+          instancesById.set(instance.id, instance);
+
+          disposer.defer(instance.onDisposed);
+          disposer.use(instance.usedSyncOwners);
+
+          disposer.defer(async () => {
+            await tenantRun(
+              instance.useOwnerMutex.withLock(async (run) => {
+                for (const syncOwner of instance.usedSyncOwners.keys()) {
+                  while (instance.usedSyncOwners.has(syncOwner)) {
+                    await run(toggleSyncOwner(instance, syncOwner, "remove"));
+                  }
+                }
+                return ok();
+              }),
+            );
+          });
+
+          disposer.defer(() => {
+            instancesById.delete(instance.id);
+            console.info("evoluDispose", { name, id: instance.id });
+          });
+          disposer.use(instance.port);
+          disposer.defer(() => {
+            instance.port.onMessage = null;
+          });
+
+          // The main-thread Evolu instance holds this per-instance leader lock
+          // while it is alive. Acquiring the same lock here means the main
+          // thread instance was disposed or its tab closed, so the tenant-side
+          // instance must dispose itself.
+          void tenantRun
+            .abortable(acquireLeaderLock(message.id))
+            .then((lock) => {
+              if (!lock.ok) return;
+
+              disposer.use(lock.value);
+              return instance[Symbol.asyncDispose]();
+            });
+
+          instance.port.onMessage = (message) => {
+            switch (message.type) {
+              case "Query":
+              case "Export": {
+                queue.push({ type: "ForEvolu", id: instance.id, message });
+                runQueue();
+                break;
+              }
+              case "Mutate": {
+                // TODO: Delegate do vsech evolu instances, co to pouzivaji
+                queue.push({ type: "ForEvolu", id: instance.id, message });
+                runQueue();
+                break;
+              }
+              case "UseOwner": {
+                void tenantRun(
+                  instance.useOwnerMutex.withLock(async (run) => {
+                    for (const { owner, action } of message.actions) {
+                      console.debug("useOwner", {
+                        id: instance.id,
+                        action,
+                        ownerId: owner.owner.id,
+                        transportUrls: owner.transports.map(({ url }) => url),
+                      });
+
+                      await run(toggleSyncOwner(instance, owner, action));
+                    }
+
+                    return ok();
+                  }),
+                );
+                break;
+              }
+            }
+          };
+        },
+
+        requestCreateSyncMessages: (ownerIds): void => {
+          const ownersToSync = [...getUsedOwnersById(ownerIds).values()];
+
+          if (!isNonEmptyArray(ownersToSync)) return;
+
+          console.debug("requestCreateSyncMessages", {
+            ownerIds: ownersToSync.map(({ id }) => id),
+          });
+
+          queue.push({
+            type: "ForSharedWorker",
+            message: {
+              type: "CreateSyncMessages",
+              owners: ownersToSync,
+            },
+          });
+
+          runQueue();
+        },
+
+        requestApplySyncMessage: (ownerId, inputMessage): void => {
+          const owner = getUsedOwnersById(new Set([ownerId])).get(ownerId);
+          if (!owner) return;
+
+          console.debug("requestApplySyncMessage", {
+            ownerId,
+            byteLength: inputMessage.byteLength,
+          });
+
+          queue.push({
+            type: "ForSharedWorker",
+            message: {
+              type: "ApplySyncMessage",
+              owner,
+              inputMessage,
+            },
+          });
+
+          runQueue();
+        },
+      },
+      disposer,
+    );
+    currentTenantsByName.set(name, tenant);
+    return ok(tenant);
   };
 
 //   | (Typed<"reset"> & {
@@ -932,10 +960,17 @@ const createEvoluTenant =
 //       readonly reload: boolean;
 //     })
 
-// TODO: Remaining SharedWorker lifetime issues.
-// - Investigate heartbeat for ports and where liveness tracking is needed.
-// - Sync state for monitoring.
+// TODO: SharedWorker follow-ups.
+// - Complete the queue head when a DbWorker mutation returns an error.
+// - Make retried DbWorker requests deterministic by materializing clocks and
+//   timestamps in the SharedWorker before enqueueing them.
+// - Replace the callback registry and queueRequestInFlight flag with one
+//   explicit in-flight request state.
+// - Detect DbWorker and port liveness so a worker-only crash resumes the queue.
+// - Consolidate usedSyncOwners and claimLeasesBySyncOwner into one owner-use
+//   state abstraction without changing repeated-use semantics.
+// - Split worker protocol types and the EvoluTenant implementation into focused
+//   modules.
+// - Remove the obsolete commented protocol block above.
+// - Replace the SyncState placeholder with actual sync monitoring state.
 // - Propagate invalid protocol messages to sync state.
-// - Make DbWorker logically stateless by making all requests idempotent.
-// - Investigate WebKit bug 301520 relevance to DbWorker disposal. (again)
-//   https://bugs.webkit.org/show_bug.cgi?id=301520

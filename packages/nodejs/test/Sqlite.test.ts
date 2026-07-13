@@ -12,7 +12,7 @@ const setupBetterSqlite = async () => {
     testCreateRun({ createSqliteDriver: createBetterSqliteDriver }),
   );
   const sqlite = disposer.use(
-    await run.orThrow(createSqlite(testName, { mode: "memory" })),
+    await run.ok(createSqlite(testName, { mode: "memory" })),
   );
   const disposables = disposer.move();
 
@@ -114,7 +114,7 @@ describe("createBetterSqliteDriver", () => {
 
   test("driver dispose is idempotent", async () => {
     await using run = testCreateRun();
-    const driver = await run.orThrow(
+    const driver = await run.ok(
       createBetterSqliteDriver(testName, { mode: "memory" }),
     );
 
@@ -151,14 +151,14 @@ describe("createBetterSqliteDriver", () => {
 
     test("creates database file on disk", async () => {
       await using run = testCreateRun();
-      using _driver = await run.orThrow(createBetterSqliteDriver(testName));
+      using _driver = await run.ok(createBetterSqliteDriver(testName));
 
       expect(existsSync(dbPath)).toBe(true);
     });
 
     test("dispose preserves database file on disk", async () => {
       await using run = testCreateRun();
-      const driver = await run.orThrow(createBetterSqliteDriver(testName));
+      const driver = await run.ok(createBetterSqliteDriver(testName));
 
       driver.exec(sql`create table t (data text);`);
       driver[Symbol.dispose]();
@@ -168,7 +168,7 @@ describe("createBetterSqliteDriver", () => {
 
     test("deleteDatabase removes database file from disk", async () => {
       await using run = testCreateRun();
-      const driver = await run.orThrow(createBetterSqliteDriver(testName));
+      const driver = await run.ok(createBetterSqliteDriver(testName));
 
       driver.exec(sql`create table t (data text);`);
       driver.exec(sql`insert into t (data) values (${"deleted"});`);
@@ -176,7 +176,7 @@ describe("createBetterSqliteDriver", () => {
 
       expect(dbPaths.every((path) => !existsSync(path))).toBe(true);
 
-      using newDriver = await run.orThrow(createBetterSqliteDriver(testName));
+      using newDriver = await run.ok(createBetterSqliteDriver(testName));
       const result = newDriver.exec(sql`
         select name
         from sqlite_master

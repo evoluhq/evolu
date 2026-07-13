@@ -199,12 +199,9 @@ const installSuppressedError = (): void => {
 const createDisposableStackPolyfill = (
   symbolDispose: symbol,
 ): new () => DisposableStack => {
-  class DisposableStackPolyfill implements DisposableStack {
+  class DisposableStackPolyfill {
     #disposed = false;
     #resources: Array<DisposableResource> = [];
-
-    declare readonly [Symbol.toStringTag]: "DisposableStack";
-    declare [Symbol.dispose]: () => void;
 
     get disposed(): boolean {
       return this.#disposed;
@@ -278,7 +275,7 @@ const createDisposableStackPolyfill = (
       this.#resources = [];
       this.#disposed = true;
 
-      return moved;
+      return moved as unknown as DisposableStack;
     }
 
     dispose(): void {
@@ -321,19 +318,16 @@ const createDisposableStackPolyfill = (
     value: "DisposableStack",
   });
 
-  return DisposableStackPolyfill;
+  return DisposableStackPolyfill as unknown as new () => DisposableStack;
 };
 
 const createAsyncDisposableStackPolyfill = (
   symbolDispose: symbol,
   symbolAsyncDispose: symbol,
 ): new () => AsyncDisposableStack => {
-  class AsyncDisposableStackPolyfill implements AsyncDisposableStack {
+  class AsyncDisposableStackPolyfill {
     #disposed = false;
     #resources: Array<AsyncDisposableResource> = [];
-
-    declare readonly [Symbol.toStringTag]: "AsyncDisposableStack";
-    declare [Symbol.asyncDispose]: () => Promise<void>;
 
     get disposed(): boolean {
       return this.#disposed;
@@ -417,7 +411,7 @@ const createAsyncDisposableStackPolyfill = (
       this.#resources = [];
       this.#disposed = true;
 
-      return moved;
+      return moved as unknown as AsyncDisposableStack;
     }
 
     async disposeAsync(): Promise<void> {
@@ -464,7 +458,7 @@ const createAsyncDisposableStackPolyfill = (
     },
   );
 
-  return AsyncDisposableStackPolyfill;
+  return AsyncDisposableStackPolyfill as unknown as new () => AsyncDisposableStack;
 };
 
 /** Installs `Map` and `WeakMap` upsert polyfills missing from the runtime. */

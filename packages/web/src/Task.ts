@@ -1,22 +1,21 @@
 /**
- * Web platform-specific Task utilities.
+ * Web-specific Task utilities.
  *
  * @module
  */
 
 import {
   createRun as createCommonRun,
-  createUnknownError,
-  type CreateRun,
+  type DisposableRun,
   type Run,
-  type RunDefaultDeps,
+  type RunCustomDeps,
 } from "@evolu/common";
 
 /**
- * Creates {@link Run} for the browser with global error handling.
+ * Creates a root {@link Run} for the browser.
  *
- * Registers `error` and `unhandledrejection` handlers that log errors to the
- * console. Handlers are removed when the Run is disposed.
+ * Defects are reported with the browser's global `reportError`. A custom
+ * `reportDefect` dependency overrides the browser default.
  *
  * ### Example
  *
@@ -27,33 +26,22 @@ import {
  *   }),
  * });
  *
- * await using run = createRun({ console });
- * await using disposer = new AsyncDisposableStack();
- *
- * disposer.use(await run.orThrow(startApp()));
+ * const run = createRun({ console });
+ * const appPromise = run.ok(startApp());
  * ```
  */
-export const createRun: CreateRun<RunDefaultDeps> = <D>(
-  deps?: D,
-): Run<RunDefaultDeps & D> => {
-  const run = createCommonRun(deps);
-  const console = run.deps.console.child("global");
+export function createRun(): DisposableRun;
+export function createRun<D extends object>(
+  deps: RunCustomDeps<D>,
+): DisposableRun<D>;
+export function createRun<D extends object>(
+  deps?: RunCustomDeps<D>,
+): DisposableRun | DisposableRun<D> {
+  const reportDefect = (reported: unknown): void => {
+    globalThis.reportError(reported);
+  };
 
-  globalThis.addEventListener(
-    "error",
-    (event) => {
-      console.error("error", createUnknownError(event.error));
-    },
-    { signal: run.signal },
-  );
-
-  globalThis.addEventListener(
-    "unhandledrejection",
-    (event) => {
-      console.error("unhandledrejection", createUnknownError(event.reason));
-    },
-    { signal: run.signal },
-  );
-
-  return run;
-};
+  return deps === undefined
+    ? createCommonRun({ reportDefect })
+    : createCommonRun<D>({ reportDefect, ...deps });
+}

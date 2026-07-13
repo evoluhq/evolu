@@ -7,7 +7,6 @@ import type {
 import {
   err,
   lazyFalse,
-  runStoppedError,
   setTimeout,
   sql,
   timestampToTimestampBytes,
@@ -18,7 +17,7 @@ import type {
   EncryptedDbChange,
 } from "../../src/local-first/Storage.js";
 import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
-import { testCreateDeps, testCreateRun } from "../../src/Test.js";
+import { testCreateDeps, testCreateRun } from "../../src/Task2.js";
 import { setupSqliteAndRelayStorage } from "../_deps.js";
 import {
   testAppOwner,
@@ -262,19 +261,17 @@ describe("writeMessages", () => {
     expect(usageResult.rows[0].count).toBe(0);
   });
 
-  test("returns AbortError when write starts on disposed run", async () => {
+  test("throws when write starts on disposed run", async () => {
     await using setup = await setupSqliteAndRelayStorage();
     const { storage, sqlite } = setup;
 
     await using run = testCreateRun();
     await run[Symbol.asyncDispose]();
 
-    const result = await run(
-      storage.writeMessages(testAppOwnerIdBytes, [message]),
-    );
-
-    expect(result).toEqual(
-      err({ type: "AbortError", reason: runStoppedError }),
+    expect(() =>
+      run(storage.writeMessages(testAppOwnerIdBytes, [message])),
+    ).toThrow(
+      "Cannot use a disposed object.",
     );
 
     const messageCountResult = sqlite.exec<{ count: number }>(sql`

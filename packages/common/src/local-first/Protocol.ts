@@ -206,7 +206,7 @@ import { computeBalancedBuckets } from "../Number.js";
 import { createRecord, objectToEntries } from "../Object.js";
 import { err, ok, type Result } from "../Result.js";
 import { SqliteValue } from "../Sqlite.js";
-import type { Task } from "../Task.js";
+import { AbortError, type Task } from "../Task2.js";
 import { Millis } from "../Time.js";
 import {
   Base64Url,
@@ -1014,6 +1014,7 @@ export const applyProtocolMessageAsClient =
           // Quota errors are handled by Storage; protocol just stops syncing.
           if (!result.ok) return ok({ type: "NoResponse" });
         } catch (error) {
+          if (AbortError.is(error)) throw error;
           run.deps.console.error(error);
           return ok({ type: "NoResponse" });
         }
@@ -1054,6 +1055,7 @@ export const applyProtocolMessageAsClient =
 
       return ok({ type: "Response", message: output.unwrap() });
     } catch (error) {
+      if (AbortError.is(error)) throw error;
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
         data: inputMessage,
@@ -1180,6 +1182,7 @@ export const applyProtocolMessageAsRelay =
             return ok({ type: "Response", message });
           }
         } catch (error) {
+          if (AbortError.is(error)) throw error;
           run.deps.console.error(error);
           const message = createProtocolMessageBuffer(ownerId, {
             messageType: MessageType.Response,
@@ -1246,6 +1249,7 @@ export const applyProtocolMessageAsRelay =
       // Non-initiators always respond to provide sync completion feedback,
       return ok({ type: "Response", message });
     } catch (error) {
+      if (AbortError.is(error)) throw error;
       return err<ProtocolInvalidDataError>({
         type: "ProtocolInvalidDataError",
         data: inputMessage,

@@ -6,8 +6,8 @@
 
 import { createRandomBytes } from "./Crypto.js";
 import { lazyVoid } from "./Function.js";
-import { tryAsync } from "./Result.js";
-import { AbortError, type Task } from "./Task.js";
+import { ok } from "./Result.js";
+import type { Task } from "./Task2.js";
 import { createId } from "./Type.js";
 import type { Callback } from "./Types.js";
 
@@ -110,35 +110,30 @@ export const testCreateLockManager = (
  * abortable via the calling {@link Task}'s signal.
  */
 export const acquireLeaderLock =
-  (name: string): Task<AsyncDisposable, AbortError, LockManagerDep> =>
-  (run) =>
-    tryAsync(
+  (name: string): Task<AsyncDisposable, never, LockManagerDep> =>
+  async (run) => {
+    const acquisition = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+
+    const request = run.deps.lockManager.request(
+      createLeaderLockName(name),
+      { mode: "exclusive", signal: run.signal },
       async () => {
-        const acquisition = Promise.withResolvers<void>();
-        const released = Promise.withResolvers<void>();
-
-        const request = run.deps.lockManager.request(
-          createLeaderLockName(name),
-          { mode: "exclusive", signal: run.signal },
-          async () => {
-            acquisition.resolve();
-            await released.promise;
-          },
-        );
-        void request.catch(acquisition.reject);
-
-        await acquisition.promise;
-
-        return {
-          [Symbol.asyncDispose]: async () => {
-            released.resolve();
-            await request;
-          },
-        };
+        acquisition.resolve();
+        await released.promise;
       },
-      (error): AbortError =>
-        AbortError.is(error) ? error : { type: "AbortError", reason: error },
     );
+    void request.catch(acquisition.reject);
+
+    await acquisition.promise;
+
+    return ok({
+      [Symbol.asyncDispose]: async () => {
+        released.resolve();
+        await request;
+      },
+    });
+  };
 
 /**
  * Competes to become the current leader for `name` using {@link LockManager}.

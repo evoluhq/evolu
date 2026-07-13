@@ -8,7 +8,7 @@ import { assertType } from "./Assert.js";
 import { fibonacciAt, FibonacciIndex, increment } from "./Number.js";
 import type { RandomDep } from "./Random.js";
 import { done, err, type NextResult, ok } from "./Result.js";
-import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task.js";
+import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task2.js";
 import {
   type Duration,
   durationToMillis,
@@ -18,6 +18,7 @@ import {
   type TimeDep,
 } from "./Time.js";
 import {
+  lessThanOrEqualTo,
   NonNegativeFiniteNumber,
   NonNegativeInt,
   onePositiveInt,
@@ -680,6 +681,11 @@ export const jitter = (factor = 0.5) => {
     factor,
     "Expected factor to be a non-negative finite number.",
   );
+  assertType(
+    lessThanOrEqualTo(1)(NonNegativeFiniteNumber),
+    factor,
+    "Expected factor to be between 0 and 1.",
+  );
 
   return <Output, Input>(
       schedule: Schedule<Output, Input>,
@@ -783,10 +789,16 @@ export const modifyDelay =
   };
 
 /**
- * Adjusts delay by subtracting execution time.
+ * Adjusts delay by subtracting time elapsed beyond the previously returned
+ * delay.
  *
- * A simple combinator that subtracts the previous execution time from the
- * schedule's delay. If execution took longer than the delay, returns 0.
+ * In a normal executor loop, this corresponds to the previous execution time.
+ * If the runtime wakes later than requested, the extra lag is also compensated.
+ * If execution and lag took longer than the delay, returns 0.
+ *
+ * When composing with delay-shaping combinators such as {@link maxDelay}, put
+ * `compensate` near the outside of the stack so it observes the final returned
+ * delay.
  *
  * For window-aligned scheduling, use {@link fixed} instead.
  *
@@ -805,12 +817,18 @@ export const compensate =
   (deps) => {
     const step = schedule(deps);
     const metrics = createScheduleStepMetrics(deps);
+    let previousReturnedDelay = minMillis;
     return (input) => {
       const { elapsedSincePrevious } = metrics();
       const result = step(input);
       if (!result.ok) return result;
       const [output, delay] = result.value;
-      return ok([output, saturateMillis(delay - elapsedSincePrevious)]);
+      const executionTime = saturateMillis(
+        elapsedSincePrevious - previousReturnedDelay,
+      );
+      const compensatedDelay = saturateMillis(delay - executionTime);
+      previousReturnedDelay = compensatedDelay;
+      return ok([output, compensatedDelay]);
     };
   };
 
@@ -839,8 +857,13 @@ export const whileScheduleInput =
   <Output>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
     const step = schedule(deps);
+    let stopped = false;
     return (input) => {
-      if (!predicate(input)) return err(done());
+      if (stopped) return err(done());
+      if (!predicate(input)) {
+        stopped = true;
+        return err(done());
+      }
       return step(input);
     };
   };
@@ -869,8 +892,13 @@ export const untilScheduleInput =
   <Output>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
     const step = schedule(deps);
+    let stopped = false;
     return (input) => {
-      if (predicate(input)) return err(done());
+      if (stopped) return err(done());
+      if (predicate(input)) {
+        stopped = true;
+        return err(done());
+      }
       return step(input);
     };
   };
@@ -896,10 +924,15 @@ export const whileScheduleOutput =
   <Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
     const step = schedule(deps);
+    let stopped = false;
     return (input) => {
+      if (stopped) return err(done());
       const result = step(input);
       if (!result.ok) return result;
-      if (!predicate(result.value[0])) return err(done());
+      if (!predicate(result.value[0])) {
+        stopped = true;
+        return err(done());
+      }
       return result;
     };
   };
@@ -925,10 +958,15 @@ export const untilScheduleOutput =
   <Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
   (deps) => {
     const step = schedule(deps);
+    let stopped = false;
     return (input) => {
+      if (stopped) return err(done());
       const result = step(input);
       if (!result.ok) return result;
-      if (predicate(result.value[0])) return err(done());
+      if (predicate(result.value[0])) {
+        stopped = true;
+        return err(done());
+      }
       return result;
     };
   };
@@ -1225,7 +1263,7 @@ export const collectWhileScheduleOutput =
  * Collects outputs until a predicate becomes true.
  *
  * Mirror of {@link collectWhileScheduleOutput} — stops collecting when the
- * predicate returns true (inclusive of the matching output).
+ * predicate returns true.
  *
  * ### Example
  *

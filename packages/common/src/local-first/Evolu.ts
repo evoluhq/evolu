@@ -10,16 +10,12 @@ import {
   mapArray,
   type NonEmptyReadonlyArray,
 } from "../Array.js";
-import {
-  assert,
-  assertNonEmptyReadonlyArray,
-  assertNotDisposed,
-} from "../Assert.js";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
 import { createCallbacks } from "../Callbacks.js";
 import type { ConsoleDep } from "../Console.js";
 import { createConsole } from "../Console.js";
 import { createUnknownError } from "../Error.js";
-import { exhaustiveCheck, todo } from "../Function.js";
+import { disposable, exhaustiveCheck, todo } from "../Function.js";
 import {
   acquireLeaderLock,
   acquireLeaderLockCallback,
@@ -33,7 +29,7 @@ import { isNonEmptySet } from "../Set.js";
 import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.js";
 import { createStore } from "../Store.js";
-import { type createRun, type Task } from "../Task.js";
+import type { Task } from "../Task2.js";
 import type { Id, TypeError } from "../Type.js";
 import {
   brand,
@@ -512,8 +508,7 @@ export interface EvoluErrorDep {
    * {@link ReadonlyStore} of {@link EvoluError} shared by all {@link Evolu}
    * instances created from the same {@link createEvoluDeps} result.
    *
-   * Subscribe once to show user-facing messages across all instances. Logging
-   * is handled by platform {@link createRun} global error handlers.
+   * Subscribe once to show user-facing error messages across all instances.
    *
    * ### Example
    *
@@ -545,7 +540,10 @@ export interface EvoluErrorDep {
  * Includes platform adapters, the shared {@link EvoluErrorDep.evoluError} store,
  * and disposal for owned resources.
  */
-export type EvoluDeps = EvoluPlatformDeps & EvoluErrorDep & Disposable;
+export type EvoluDeps = EvoluPlatformDeps &
+  ConsoleDep &
+  EvoluErrorDep &
+  Disposable;
 
 /**
  * Platform-specific dependencies required to create {@link EvoluDeps}.
@@ -620,13 +618,14 @@ export const createEvoluDeps = (deps: EvoluPlatformDeps): EvoluDeps => {
     }),
   );
 
-  const disposables = disposer.move();
-
-  return {
-    ...deps,
-    evoluError,
-    [Symbol.dispose]: () => disposables.dispose(),
-  };
+  return disposable<EvoluDeps>(
+    {
+      ...deps,
+      console,
+      evoluError,
+    },
+    disposer,
+  );
 };
 
 /**
@@ -745,52 +744,13 @@ export const createEvolu =
       exportDatabasePending = null;
     });
 
-    const mutateBatch = disposer.use(
-      createMicrotaskBatch<{
-        readonly change: MutationChange;
-        readonly onComplete: (() => void) | undefined;
-      }>((items) => {
-        console.debug("mutateBatch", { changeCount: items.length });
-        releaseUnsubscribedLoadingPromises();
-
-        postMessage({
-          type: "Mutate",
-          changes: mapArray(items, (item) => item.change),
-          onCompleteIds: items.flatMap((item) =>
-            item.onComplete
-              ? [onMutateCompleteCallbacks.register(item.onComplete)]
-              : [],
-          ),
-          subscribedQueries: subscribedQueriesRefCount.keys(),
-        });
-      }),
-    );
-
-    const queryBatch = disposer.use(
-      createMicrotaskBatch<Query>((queries) => {
-        const dedupedQueries = new Set(queries);
-        assert(
-          isNonEmptySet(dedupedQueries),
-          "Expected non-empty query batch.",
-        );
-        console.debug("queryBatch", { queryCount: dedupedQueries.size });
-        postMessage({ type: "Query", queries: dedupedQueries });
-      }),
-    );
-
-    const useOwnerBatch = disposer.use(
-      createMicrotaskBatch<
-        ExtractType<EvoluInput, "UseOwner">["actions"][number]
-      >((actions) => postMessage({ type: "UseOwner", actions })),
-    );
-
     let postMessage: (input: EvoluInput) => void;
 
     // Scope worker/channel wiring and keep only postMessage outside.
     {
       const id = createId<"EvoluInstance">(run.deps);
       const { createMessageChannel, sharedWorker } = run.deps;
-      disposer.use(await run.orThrow(acquireLeaderLock(id)));
+      disposer.use(await run.ok(acquireLeaderLock(id)));
 
       const evoluChannel = disposer.use(
         createMessageChannel<EvoluInput, EvoluOutput>(),
@@ -890,13 +850,55 @@ export const createEvolu =
       postMessage = evoluChannel.port1.postMessage;
     }
 
+    const mutateBatch = disposer.use(
+      createMicrotaskBatch<{
+        readonly change: MutationChange;
+        readonly onComplete: (() => void) | undefined;
+      }>((items) => {
+        if (disposed) return;
+        console.debug("mutateBatch", { changeCount: items.length });
+        releaseUnsubscribedLoadingPromises();
+
+        postMessage({
+          type: "Mutate",
+          changes: mapArray(items, (item) => item.change),
+          onCompleteIds: items.flatMap((item) =>
+            item.onComplete
+              ? [onMutateCompleteCallbacks.register(item.onComplete)]
+              : [],
+          ),
+          subscribedQueries: subscribedQueriesRefCount.keys(),
+        });
+      }),
+    );
+
+    const queryBatch = disposer.use(
+      createMicrotaskBatch<Query>((queries) => {
+        if (disposed) return;
+        const dedupedQueries = new Set(queries);
+        assert(
+          isNonEmptySet(dedupedQueries),
+          "Expected non-empty query batch.",
+        );
+        console.debug("queryBatch", { queryCount: dedupedQueries.size });
+        postMessage({ type: "Query", queries: dedupedQueries });
+      }),
+    );
+
+    const useOwnerBatch = disposer.use(
+      createMicrotaskBatch<
+        ExtractType<EvoluInput, "UseOwner">["actions"][number]
+      >((actions) => {
+        if (disposed) return;
+        postMessage({ type: "UseOwner", actions });
+      }),
+    );
+
     const createMutation =
       <Kind extends "insert" | "update" | "upsert">(
         kind: Kind,
       ): Mutation<S, Kind> =>
       (table, values, options) => {
-        assertNotDisposed(disposables);
-
         const {
           id = createId(run.deps),
           isDeleted,
@@ -929,8 +931,6 @@ export const createEvolu =
     const loadQuery = <R extends Row>(
       query: Query<S, R>,
     ): Promise<QueryRows<R>> => {
-      assertNotDisposed(disposables);
-
       const loadingPromise = loadingPromisesByQuery.get(query);
       if (loadingPromise) {
         return loadingPromise.promise as Promise<QueryRows<R>>;
@@ -951,19 +951,13 @@ export const createEvolu =
       return typedPromise as Promise<QueryRows<R>>;
     };
 
-    const getQueryRows = <R extends Row>(query: Query<S, R>): QueryRows<R> => {
-      assertNotDisposed(disposables);
-
-      return (rowsByQueryMapStore.get().get(query) ??
-        emptyArray) as QueryRows<R>;
-    };
+    const getQueryRows = <R extends Row>(query: Query<S, R>): QueryRows<R> =>
+      (rowsByQueryMapStore.get().get(query) ?? emptyArray) as QueryRows<R>;
 
     const useOwner = (
       owner: ReadonlyOwner | Owner,
       ownerTransports?: NonEmptyReadonlyArray<OwnerTransport>,
     ): UnuseOwner => {
-      assertNotDisposed(disposables);
-
       const effectiveTransports = ownerTransports ?? transports;
       assertNonEmptyReadonlyArray(
         effectiveTransports,
@@ -983,7 +977,7 @@ export const createEvolu =
       let isUsed = true;
 
       return () => {
-        if (disposables.disposed) return;
+        if (disposed) return;
         assert(isUsed, "UnuseOwner can be called only once.");
         isUsed = false;
         useOwnerBatch.push({
@@ -993,91 +987,87 @@ export const createEvolu =
       };
     };
 
-    const disposables = disposer.move();
+    let disposed = false;
+    disposer.defer(() => {
+      disposed = true;
+      console.info("disposeEvolu");
+    });
 
     if (isNonEmptyArray(transports)) useOwner(appOwner);
 
-    if (run.signal.aborted) {
-      await disposables.disposeAsync();
-    }
+    run.signal.throwIfAborted();
 
-    return ok({
-      name,
-      appOwner,
+    return ok(
+      disposable<Evolu<S>>(
+        {
+          name,
+          appOwner,
 
-      insert: createMutation("insert"),
-      update: createMutation("update"),
-      upsert: createMutation("upsert"),
+          insert: createMutation("insert"),
+          update: createMutation("update"),
+          upsert: createMutation("upsert"),
 
-      loadQuery,
-      loadQueries: <Q extends Queries<S>>(
-        queries: [...Q],
-      ): [...QueriesToQueryRowsPromises<Q>] =>
-        queries.map((query) => loadQuery(query)) as [
-          ...QueriesToQueryRowsPromises<Q>,
-        ],
+          loadQuery,
+          loadQueries: <Q extends Queries<S>>(
+            queries: [...Q],
+          ): [...QueriesToQueryRowsPromises<Q>] =>
+            queries.map((query) => loadQuery(query)) as [
+              ...QueriesToQueryRowsPromises<Q>,
+            ],
 
-      subscribeQuery: (query) => (listener) => {
-        assertNotDisposed(disposables);
+          subscribeQuery: (query) => (listener) => {
+            subscribedQueriesRefCount.increment(query);
+            let isSubscribed = true;
 
-        subscribedQueriesRefCount.increment(query);
-        let isSubscribed = true;
+            let previousRows: unknown = null;
 
-        let previousRows: unknown = null;
+            const unsubscribe = rowsByQueryMapStore.subscribe(() => {
+              const rows = getQueryRows(query);
+              if (previousRows === rows) return;
+              previousRows = rows;
+              listener();
+            });
 
-        const unsubscribe = rowsByQueryMapStore.subscribe(() => {
-          const rows = getQueryRows(query);
-          if (previousRows === rows) return;
-          previousRows = rows;
-          listener();
-        });
+            return () => {
+              assert(
+                isSubscribed,
+                "subscribeQuery unsubscribe can be called only once.",
+              );
+              isSubscribed = false;
 
-        return () => {
-          assert(
-            isSubscribed,
-            "subscribeQuery unsubscribe can be called only once.",
-          );
-          isSubscribed = false;
+              previousRows = null;
 
-          previousRows = null;
-          unsubscribe();
+              if (disposed) return;
 
-          if (disposables.disposed) return;
+              unsubscribe();
+              subscribedQueriesRefCount.decrement(query);
+            };
+          },
+          getQueryRows,
 
-          subscribedQueriesRefCount.decrement(query);
-        };
-      },
-      getQueryRows,
+          exportDatabase: () => {
+            if (!exportDatabasePending) {
+              exportDatabasePending =
+                Promise.withResolvers<Uint8Array<ArrayBuffer>>();
+              postMessage({ type: "Export" });
+            }
+            return exportDatabasePending.promise;
+          },
 
-      exportDatabase: () => {
-        assertNotDisposed(disposables);
+          deleteDatabase: () => {
+            todo();
+          },
 
-        if (!exportDatabasePending) {
-          exportDatabasePending =
-            Promise.withResolvers<Uint8Array<ArrayBuffer>>();
-          postMessage({ type: "Export" });
-        }
-        return exportDatabasePending.promise;
-      },
+          deleteOwner: (owner) => {
+            void owner;
+            todo();
+          },
 
-      deleteDatabase: () => {
-        assertNotDisposed(disposables);
-        todo();
-      },
-
-      deleteOwner: (owner) => {
-        assertNotDisposed(disposables);
-        void owner;
-        todo();
-      },
-
-      useOwner,
-
-      [Symbol.asyncDispose]: () => {
-        if (!disposables.disposed) console.info("disposeEvolu");
-        return disposables.disposeAsync();
-      },
-    } as Evolu<S>);
+          useOwner,
+        },
+        disposer,
+      ),
+    );
   };
 
 //     case "onReset": {

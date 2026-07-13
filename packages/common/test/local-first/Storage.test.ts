@@ -25,7 +25,7 @@ import { computeBalancedBuckets } from "../../src/Number.js";
 import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
 import { sql } from "../../src/Sqlite.js";
-import { testCreateDeps } from "../../src/Test.js";
+import { testCreateDeps } from "../../src/Task2.js";
 import type { Millis } from "../../src/Time.js";
 import {
   createId,

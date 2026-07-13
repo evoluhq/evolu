@@ -13,6 +13,7 @@ export default defineConfig(
       "**/.next/",
       "**/.svelte-kit/",
       "**/.turbo/",
+      "**/.vitest-mobile/",
       "**/dist/",
       "**/out/",
       "**/tmp/",
@@ -108,6 +109,19 @@ export default defineConfig(
     rules: {
       "react-hooks/rules-of-hooks": "off",
       "react-hooks/exhaustive-deps": "off",
+    },
+  },
+  {
+    files: [
+      "packages/common/src/Task2.ts",
+      "packages/common/test/Resource2.test.ts",
+      "packages/common/test/Task2.test.ts",
+      "packages/nodejs/test/Task.test.ts",
+    ],
+    rules: {
+      // Buggy: overflows while traversing Task2's recursive Task -> Run -> Task types.
+      // Inline disables cannot help because the rule crashes before reporting.
+      "@typescript-eslint/no-unnecessary-type-assertion": "off",
     },
   },
   {

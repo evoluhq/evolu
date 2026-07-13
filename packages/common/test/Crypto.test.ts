@@ -11,7 +11,7 @@ import {
 } from "../src/Crypto.js";
 import { mnemonicToOwnerSecret } from "../src/index.js";
 import { ok } from "../src/Result.js";
-import { testCreateDeps } from "../src/Test.js";
+import { testCreateDeps } from "../src/Task2.js";
 import { Mnemonic, NonNegativeInt } from "../src/Type.js";
 import { testAppOwner } from "./local-first/_fixtures.js";
 

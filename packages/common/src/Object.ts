@@ -87,9 +87,7 @@ export const isIterable = (value: unknown): value is Iterable<unknown> =>
 export const objectToEntries = <T extends Record<string, any>>(
   record: T,
 ): ReadonlyArray<[StringKeyOf<T>, T[StringKeyOf<T>]]> =>
-  Object.entries(record) as Array<
-    [StringKeyOf<T>, T[StringKeyOf<T>]]
-  >;
+  Object.entries(record) as Array<[StringKeyOf<T>, T[StringKeyOf<T>]]>;
 
 // A helper type to remove symbol keys (e.g for branded objects).
 type StringKeyOf<T> = Extract<keyof T, string>;

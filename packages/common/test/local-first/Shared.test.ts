@@ -24,7 +24,8 @@ import {
 import { createSet } from "../../src/Set.js";
 import type { SqliteSchema } from "../../src/Sqlite.js";
 import { createStore } from "../../src/Store.js";
-import { testCreateId, testCreateRun } from "../../src/Test.js";
+import { testCreateRun } from "../../src/Task2.js";
+import { testCreateId } from "../../src/Test.js";
 import { createId, testName, type Id, type Name } from "../../src/Type.js";
 import {
   testCreateWebSocket,
@@ -63,6 +64,9 @@ const setupSharedWorker = async ({
     testCreateSharedWorker<SharedWorkerInput, SharedWorkerOutput>(),
   );
   const sharedWorkerOutputs: Array<SharedWorkerOutput> = [];
+  let sharedWorkerOutput = Promise.withResolvers<void>();
+  const waitForSharedWorkerOutput = (): Promise<void> =>
+    sharedWorkerOutput.promise;
   const lockManager = testCreateLockManager();
   const mainThreadRun = disposer.use(
     testCreateRun({
@@ -80,10 +84,12 @@ const setupSharedWorker = async ({
     }),
   );
 
-  disposer.use(await run.orThrow(initSharedWorker(worker.self)));
+  disposer.use(await run.ok(initSharedWorker(worker.self)));
   worker.connect();
   worker.port.onMessage = (output) => {
     sharedWorkerOutputs.push(output);
+    sharedWorkerOutput.resolve();
+    sharedWorkerOutput = Promise.withResolvers<void>();
   };
 
   const disposables = disposer.move();
@@ -114,7 +120,7 @@ const setupSharedWorker = async ({
     };
 
     const acquireDbWorkerLeader = async (): Promise<void> => {
-      dbWorkerLeaderLock = await mainThreadRun.orThrow(
+      dbWorkerLeaderLock = await mainThreadRun.ok(
         acquireLeaderLock(tenantName),
       );
       dbWorkerPort.postMessage({
@@ -126,7 +132,7 @@ const setupSharedWorker = async ({
 
     instanceDisposables.defer(releaseDbWorkerLeader);
 
-    instanceDisposables.use(await mainThreadRun.orThrow(acquireLeaderLock(id)));
+    instanceDisposables.use(await mainThreadRun.ok(acquireLeaderLock(id)));
 
     worker.port.postMessage({
       type: "AnnounceTabLeader",
@@ -146,10 +152,10 @@ const setupSharedWorker = async ({
     };
 
     const outputCount = sharedWorkerOutputs.length;
+    const output = waitForSharedWorkerOutput();
     worker.port.postMessage(message);
 
-    await testWaitForWorkerMessage();
-    await testWaitForWorkerMessage();
+    await output;
 
     const initDbWorker = sharedWorkerOutputs[outputCount];
     expect(initDbWorker).toBeDefined();
@@ -524,7 +530,7 @@ describe("with one evolu instance", () => {
       };
 
       const secondId: EvoluInstanceId = createId(run.deps);
-      await using _secondInstanceLock = await run.orThrow(
+      await using _secondInstanceLock = await run.ok(
         acquireLeaderLock(secondId),
       );
       using secondChannel = testCreateMessageChannel<EvoluOutput, EvoluInput>();
@@ -950,6 +956,135 @@ describe("with one evolu instance", () => {
       });
     });
 
+    test("keeps a repeated owner transport claimed until every use is removed", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const { createEvolu } = setup;
+      const { evoluChannel } = await createEvolu();
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://repeated-owner.example",
+        ownerId: testAppOwner.id,
+      });
+      const syncOwner = {
+        owner: testAppOwner,
+        transports: [transport],
+      } as const;
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { owner: syncOwner, action: "add" },
+          { owner: syncOwner, action: "add" },
+        ],
+      });
+      await testWaitForWorkerMessage();
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ owner: syncOwner, action: "remove" }],
+      });
+      await testWaitForWorkerMessage();
+
+      expect(createWebSocket.sentMessages).toEqual([]);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ owner: syncOwner, action: "remove" }],
+      });
+      await testWaitForWorkerMessage();
+
+      expect(createWebSocket.sentMessages).toContainEqual({
+        url: transport.url,
+        data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+      });
+    });
+
+    test("releases the matching transport set when owner uses are removed out of order", async () => {
+      const createWebSocket = testCreateWebSocket();
+      await using setup = await setupSharedWorker({ createWebSocket });
+      const { createEvolu } = setup;
+      const { evoluChannel } = await createEvolu();
+      const firstTransport = createOwnerWebSocketTransport({
+        url: "wss://first-owner-use.example",
+        ownerId: testAppOwner.id,
+      });
+      const secondTransport = createOwnerWebSocketTransport({
+        url: "wss://second-owner-use.example",
+        ownerId: testAppOwner.id,
+      });
+      const firstSyncOwner = {
+        owner: testAppOwner,
+        transports: [firstTransport],
+      } as const;
+      const secondSyncOwner = {
+        owner: testAppOwner,
+        transports: [secondTransport],
+      } as const;
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          { owner: firstSyncOwner, action: "add" },
+          { owner: secondSyncOwner, action: "add" },
+        ],
+      });
+      await testWaitForWorkerMessage();
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ owner: firstSyncOwner, action: "remove" }],
+      });
+      await testWaitForWorkerMessage();
+
+      expect(createWebSocket.sentMessages).toEqual([
+        {
+          url: firstTransport.url,
+          data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+        },
+      ]);
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [{ owner: secondSyncOwner, action: "remove" }],
+      });
+      await testWaitForWorkerMessage();
+
+      expect(createWebSocket.sentMessages).toContainEqual({
+        url: secondTransport.url,
+        data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+      });
+    });
+
+    test("reports a transport creation defect without leaving a pending owner use", async () => {
+      await using setup = await setupSharedWorker();
+      const { createEvolu, run } = setup;
+      const { evoluChannel } = await createEvolu();
+      const transport = createOwnerWebSocketTransport({
+        url: "wss://create-defect.example",
+        ownerId: testAppOwner.id,
+      });
+      const reported = run.deps.reportDefect.next();
+
+      evoluChannel.port2.postMessage({
+        type: "UseOwner",
+        actions: [
+          {
+            owner: { owner: testAppOwner, transports: [transport] },
+            action: "add",
+          },
+        ],
+      });
+
+      await expect(reported).resolves.toMatchObject({
+        reason: {
+          type: "PanicAbortReason",
+          defect: expect.objectContaining({
+            message: "testCreateWebSocket is configured to throw on create",
+          }),
+        },
+      });
+    });
+
     test("handles apply sync responses for errors, refreshes, and response messages", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
@@ -1173,7 +1308,10 @@ describe("with one evolu instance", () => {
         type: "ApplySyncMessage",
         ownerId: testAppOwner.id,
         didWriteMessages: false,
-        result: { ok: false, error: { type: "AbortError", reason: "stop" } },
+        result: {
+          ok: false,
+          error: { type: "AbortError", reason: { type: "Stop" } },
+        },
       });
       await runApplySync({
         type: "ApplySyncMessage",
@@ -1362,7 +1500,7 @@ describe("with one evolu instance", () => {
             await allowFirstCreateToFinish.promise;
           }
 
-          return createWebSocket(url, options)(run);
+          return run(createWebSocket(url, options));
         };
 
       await using setup = await setupSharedWorker({

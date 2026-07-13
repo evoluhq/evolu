@@ -1,5 +1,7 @@
 // @ts-check
 
+import ts from "typescript";
+
 /**
  * Custom ESLint rules for Evolu.
  *
@@ -132,6 +134,148 @@ const requirePureAnnotation = {
   },
 };
 
+/** @type {import("eslint").Rule.RuleModule} */
+const noDirectTaskCall = {
+  meta: {
+    type: "problem",
+    docs: {
+      description: "Require Tasks to be started with run(task)",
+      recommended: true,
+    },
+    messages: {
+      directTaskCall:
+        "Do not call a Task directly. Use run(task) to preserve structured concurrency.",
+      directRunArgument:
+        "Do not pass Run to a function. Define a Task and start it with run(task).",
+    },
+    schema: [],
+  },
+  create(context) {
+    const { sourceCode } = context;
+    const { esTreeNodeToTSNodeMap, program } = sourceCode.parserServices;
+
+    if (!esTreeNodeToTSNodeMap || !program)
+      throw new Error(
+        "no-direct-task-call requires TypeScript type information",
+      );
+
+    const checker = /** @type {import("typescript").TypeChecker} */ (
+      program.getTypeChecker()
+    );
+
+    /**
+     * @param {import("typescript").Symbol | undefined} symbol
+     * @returns {import("typescript").Symbol | undefined}
+     */
+    const resolveSymbol = (symbol) =>
+      symbol && symbol.flags & ts.SymbolFlags.Alias
+        ? checker.getAliasedSymbol(symbol)
+        : symbol;
+
+    /**
+     * @param {import("typescript").Symbol | undefined} symbol
+     * @param {"Run" | "Task"} name
+     */
+    const isEvoluSymbol = (symbol, name) => {
+      const resolved = resolveSymbol(symbol);
+      return (
+        resolved?.getName() === name &&
+        resolved.declarations?.some((declaration) => {
+          const fileName = declaration.getSourceFile().fileName;
+          return (
+            // TODO: Remove Task2 after renaming it Task.
+            fileName.endsWith("/packages/common/src/Task.ts") ||
+            fileName.endsWith("/packages/common/src/Task2.ts")
+          );
+        }) === true
+      );
+    };
+
+    /**
+     * @param {import("typescript").TypeNode} node
+     * @param {"Run" | "Task"} name
+     * @param {Set<import("typescript").Symbol>} seenSymbols
+     * @returns {boolean}
+     */
+    const typeNodeResolvesToEvolu = (node, name, seenSymbols) => {
+      if (ts.isTypeReferenceNode(node)) {
+        const symbol = resolveSymbol(
+          checker.getSymbolAtLocation(node.typeName),
+        );
+        if (isEvoluSymbol(symbol, name)) return true;
+
+        if (symbol && !seenSymbols.has(symbol)) {
+          seenSymbols.add(symbol);
+          if (
+            symbol.declarations?.some(
+              (declaration) =>
+                ts.isTypeAliasDeclaration(declaration) &&
+                typeNodeResolvesToEvolu(declaration.type, name, seenSymbols),
+            )
+          )
+            return true;
+        }
+      }
+
+      if (ts.isParenthesizedTypeNode(node))
+        return typeNodeResolvesToEvolu(node.type, name, seenSymbols);
+
+      if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node))
+        return node.types.some((type) =>
+          typeNodeResolvesToEvolu(type, name, seenSymbols),
+        );
+
+      return false;
+    };
+
+    /** @param {import("typescript").Type} type */
+    const isEvoluTaskType = (type) => {
+      if (isEvoluSymbol(type.aliasSymbol, "Task")) return true;
+
+      return (
+        type.aliasSymbol?.declarations?.some(
+          (declaration) =>
+            ts.isTypeAliasDeclaration(declaration) &&
+            typeNodeResolvesToEvolu(declaration.type, "Task", new Set()),
+        ) === true
+      );
+    };
+
+    return {
+      CallExpression(node) {
+        const tsNode = /** @type {import("typescript").CallExpression} */ (
+          esTreeNodeToTSNodeMap.get(node)
+        );
+        const calleeType = checker.getTypeAtLocation(tsNode.expression);
+
+        if (isEvoluTaskType(calleeType)) {
+          context.report({ node, messageId: "directTaskCall" });
+          return;
+        }
+
+        const signature = checker.getResolvedSignature(tsNode);
+        for (let index = 0; index < node.arguments.length; index += 1) {
+          const parameter = signature?.parameters.at(
+            Math.min(index, signature.parameters.length - 1),
+          );
+          if (
+            parameter?.declarations?.some(
+              (declaration) =>
+                ts.isParameter(declaration) &&
+                declaration.type !== undefined &&
+                typeNodeResolvesToEvolu(declaration.type, "Run", new Set()),
+            ) !== true
+          )
+            continue;
+
+          context.report({ node, messageId: "directRunArgument" });
+          return;
+        }
+      },
+    };
+  },
+};
+
 /** @type {import("eslint").ESLint.Plugin} */
 const plugin = {
   meta: {
@@ -139,6 +283,7 @@ const plugin = {
     version: "1.0.0",
   },
   rules: {
+    "no-direct-task-call": noDirectTaskCall,
     "require-pure-annotation": requirePureAnnotation,
   },
 };
@@ -148,6 +293,7 @@ export const configs = {
   recommended: {
     plugins: { evolu: plugin },
     rules: {
+      "evolu/no-direct-task-call": "error",
       "evolu/require-pure-annotation": "error",
     },
   },

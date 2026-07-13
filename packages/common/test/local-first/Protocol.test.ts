@@ -63,8 +63,11 @@ import {
 } from "../../src/local-first/Timestamp.js";
 import { err, getOrThrow, ok } from "../../src/Result.js";
 import { SqliteValue } from "../../src/Sqlite.js";
-import type { TestDeps } from "../../src/Test.js";
-import { testCreateDeps, testCreateRun } from "../../src/Test.js";
+import {
+  testCreateDeps,
+  testCreateRun,
+  type TestRunDefaultDeps as TestDeps,
+} from "../../src/Task2.js";
 import {
   createId,
   dateToDateIso,

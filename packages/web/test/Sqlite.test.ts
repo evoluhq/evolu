@@ -31,7 +31,7 @@ const setupWasmSqlite = async () => {
     testCreateRun({ createSqliteDriver: createWasmSqliteDriver }),
   );
   const sqlite = disposer.use(
-    await run.orThrow(createSqlite(testName, { mode: "memory" })),
+    await run.ok(createSqlite(testName, { mode: "memory" })),
   );
   const disposables = disposer.move();
 

@@ -4,17 +4,16 @@
  * @module
  */
 
-import { assertNotDisposed } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import { bytesToHex, hexToBytes } from "./Buffer.js";
 import type { EncryptionKey } from "./Crypto.js";
 import type { Eq } from "./Eq.js";
 import { createEqObject, eqArrayNumber, eqString } from "./Eq.js";
+import { disposable } from "./Function.js";
 import { createRecord, objectToEntries } from "./Object.js";
 import type { Result } from "./Result.js";
 import { ok } from "./Result.js";
-import type { Run, Task } from "./Task.js";
-import { testCreateRun, type TestDeps } from "./Test.js";
+import { testCreateRun, type Task, type TestRunDep } from "./Task2.js";
 import type { InferType, Name, Typed } from "./Type.js";
 import {
   array,
@@ -239,91 +238,81 @@ export const createSqlite =
     const console = run.deps.console.child("sql");
     await using disposer = new AsyncDisposableStack();
 
-    const driverResult = await run(createSqliteDriver(name, options));
-    if (!driverResult.ok) return driverResult;
-    const driver = disposer.use(driverResult.value);
+    const driver = disposer.use(
+      await run.ok(createSqliteDriver(name, options)),
+    );
     console.debug("SQLite driver created");
 
-    const disposables = disposer.move();
+    return ok(
+      disposable<Sqlite>(
+        {
+          exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
+            console.debug({ query });
 
-    const sqlite: Sqlite = {
-      exec: <R extends SqliteRow = SqliteRow>(query: SqliteQuery) => {
-        assertNotDisposed(disposables);
-        console.debug({ query });
+            const label =
+              query.options?.logQueryExecutionTime &&
+              `SqliteQueryExecutionTime ${query.sql}`;
 
-        const label =
-          query.options?.logQueryExecutionTime &&
-          `SqliteQueryExecutionTime ${query.sql}`;
+            if (label) console.time(label);
+            const result = driver.exec(query);
+            if (label) console.timeEnd(label);
 
-        if (label) console.time(label);
-        const result = driver.exec(query);
-        if (label) console.timeEnd(label);
+            if (query.options?.logExplainQueryPlan) {
+              const result = driver.exec({
+                ...query,
+                sql: `EXPLAIN QUERY PLAN ${query.sql}` as SafeSql,
+              });
+              console.log("[logExplainQueryPlan]", query);
+              console.log(
+                drawSqliteQueryPlan(
+                  result.rows as unknown as Array<SqliteQueryPlanRow>,
+                ),
+              );
+            }
 
-        if (query.options?.logExplainQueryPlan) {
-          const result = driver.exec({
-            ...query,
-            sql: `EXPLAIN QUERY PLAN ${query.sql}` as SafeSql,
-          });
-          console.log("[logExplainQueryPlan]", query);
-          console.log(
-            drawSqliteQueryPlan(
-              result.rows as unknown as Array<SqliteQueryPlanRow>,
-            ),
-          );
-        }
+            console.debug({ result });
+            return result as SqliteExecResult<R>;
+          },
 
-        console.debug({ result });
-        return result as SqliteExecResult<R>;
-      },
+          transaction: ((callback: () => Result<unknown, unknown> | void) => {
+            console.debug("begin");
+            driver.exec(sql`begin;`);
 
-      transaction: ((callback: () => Result<unknown, unknown> | void) => {
-        assertNotDisposed(disposables);
-        console.debug("begin");
-        driver.exec(sql`begin;`);
+            using rollback = new DisposableStack();
+            let shouldRollback = true;
+            rollback.defer(() => {
+              if (!shouldRollback) return;
+              console.debug("rollback");
+              driver.exec(sql`rollback;`);
+            });
 
-        using rollback = new DisposableStack();
-        let shouldRollback = true;
-        rollback.defer(() => {
-          if (!shouldRollback) return;
-          console.debug("rollback");
-          driver.exec(sql`rollback;`);
-        });
+            const result = callback();
+            if (result != null && !result.ok) return result;
 
-        const result = callback();
-        if (result != null && !result.ok) return result;
+            console.debug("commit");
+            driver.exec(sql`commit;`);
+            shouldRollback = false;
 
-        console.debug("commit");
-        driver.exec(sql`commit;`);
-        shouldRollback = false;
+            return result;
+          }) as SqliteTransaction,
 
-        return result;
-      }) as SqliteTransaction,
-
-      export: () => {
-        assertNotDisposed(disposables);
-        return driver.export();
-      },
-
-      [Symbol.asyncDispose]: () => disposables.disposeAsync(),
-    };
-
-    return ok(sqlite);
+          export: () => driver.export(),
+        },
+        disposer,
+      ),
+    );
   };
 
 /** Creates a test setup with a in-memory {@link Sqlite}. */
 export const testSetupSqlite = async (
   deps: CreateSqliteDriverDep,
 ): Promise<
-  AsyncDisposable &
-    SqliteDep & {
-      readonly run: Run<TestDeps & CreateSqliteDriverDep & SqliteDep>;
-      readonly sqlite: Sqlite;
-    }
+  AsyncDisposable & SqliteDep & TestRunDep<CreateSqliteDriverDep & SqliteDep>
 > => {
   await using disposer = new AsyncDisposableStack();
   const run = disposer.use(testCreateRun(deps));
   const sqlite = disposer.use(
-    await run.orThrow(createSqlite(testName, { mode: "memory" })),
+    await run.ok(createSqlite(testName, { mode: "memory" })),
   );
   const runWithSqlite = disposer.use(run.create({ ...run.deps, sqlite }));
   const disposables = disposer.move();
@@ -394,23 +383,21 @@ export const createPreparedStatementsCache = <P>(
     }
   });
 
-  const disposables = disposer.move();
-
-  return {
-    get: (query, alwaysPrepare) => {
-      assertNotDisposed(disposables);
-      if (alwaysPrepare !== true && !query.options?.prepare)
-        return null as never;
-      let statement = statementsBySql.get(query.sql);
-      if (!statement) {
-        statement = factory(query.sql);
-        statementsBySql.set(query.sql, statement);
-      }
-      return statement;
+  return disposable<PreparedStatements<P>>(
+    {
+      get: (query, alwaysPrepare) => {
+        if (alwaysPrepare !== true && !query.options?.prepare)
+          return null as never;
+        let statement = statementsBySql.get(query.sql);
+        if (!statement) {
+          statement = factory(query.sql);
+          statementsBySql.set(query.sql, statement);
+        }
+        return statement;
+      },
     },
-
-    [Symbol.dispose]: () => disposables.dispose(),
-  };
+    disposer,
+  );
 };
 
 /** A double-quoted SQL identifier for safe column or table name interpolation. */

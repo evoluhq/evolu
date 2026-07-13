@@ -59,8 +59,7 @@ const run = createRun(
 
 /**
  * `evoluError` is shared by all Evolu instances. Subscribe once for user-facing
- * error messages. Logging is handled by platform `createRun` global error
- * handlers.
+ * error messages.
  */
 run.deps.evoluError.subscribe(() => {
   const error = run.deps.evoluError.get();
@@ -91,7 +90,7 @@ export const EvoluMinimalExample: FC = () => (
   </div>
 );
 
-const appPromise = run.orThrow(
+const appPromise = run.ok(
   Evolu.createEvolu(AppSchema, {
     appName: Evolu.AppName.orThrow("minimal-example"),
     appOwner: Evolu.testAppOwner,
@@ -285,6 +284,13 @@ const OwnerActions: FC = () => {
         data is end-to-end encrypted using your mnemonic.
       </p>
 
+      <p className="mb-4 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+        Restore and reset are not implemented yet. Encrypted SQLite requires
+        secure persistence and unlocking of the AppOwner secret, such as
+        WebAuthn PRF or an external authentication mechanism. Persisting the
+        secret directly in browser storage would undermine encryption at rest.
+      </p>
+
       <div className="space-y-3">
         <Button
           title={`${showMnemonic ? "Hide" : "Show"} Mnemonic`}
@@ -318,6 +324,45 @@ const OwnerActions: FC = () => {
             title="Download Backup"
             onClick={handleDownloadDatabaseClick}
           />
+        </div>
+
+        <div className="mb-4 space-y-3 border-l-2 border-amber-400 pl-4 text-sm text-gray-600">
+          <p className="font-medium text-gray-900">
+            Restore and reset are not implemented in this example yet.
+          </p>
+          <p>
+            Evolu encrypts the local SQLite database using secret material
+            associated with the AppOwner. Restoring from a mnemonic provides the
+            secret needed to derive the AppOwner, identify its database, and
+            unlock that database.
+          </p>
+          <p>
+            A production application must protect this secret between sessions.
+            Persisting the mnemonic or AppOwner secret directly in browser
+            storage would allow code or malware capable of reading that storage
+            to obtain both the encrypted database and the key needed to decrypt
+            it, largely defeating encryption at rest.
+          </p>
+          <p>
+            A secure browser implementation could use a passkey with the
+            WebAuthn PRF extension to derive a wrapping key after user
+            verification. Another option is to unlock the secret through an
+            external authentication service or trusted device. In both cases,
+            the user authenticates whenever the application is opened so the
+            AppOwner secret is not persisted in browser storage.
+          </p>
+          <p>
+            An application that does not require encryption at rest can use an
+            unencrypted SQLite database for simpler persistence without repeated
+            authentication. Data extracted from browser storage can then be read
+            directly.
+          </p>
+          <p>
+            Reset requires disposing every active instance, deleting the local
+            SQLite file across tabs, removing any persisted AppOwner secret, and
+            mounting a new Evolu instance. That deletion and authentication flow
+            has not been completed yet.
+          </p>
         </div>
       </div>
     </div>

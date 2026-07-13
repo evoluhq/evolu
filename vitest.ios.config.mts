@@ -112,6 +112,7 @@ export default defineConfig({
             "packages/common/test/Brand.test.ts",
             "packages/common/test/Cache.test.ts",
             "packages/common/test/Callbacks.test.ts",
+            "packages/react-native/test/Task2.ios.test.ts",
 
             // Uses inline snapshots, which vitest-mobile does not support yet.
             // "packages/common/test/Buffer.test.ts",

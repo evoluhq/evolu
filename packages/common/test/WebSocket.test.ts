@@ -10,7 +10,7 @@ import {
 import { utf8ToBytes } from "../src/Buffer.js";
 import { isServer } from "../src/Platform.js";
 import { spaced, take } from "../src/Schedule.js";
-import { createRun } from "../src/Task.js";
+import { AbortError, createRun, testCreateRun } from "../src/Task2.js";
 import {
   startTestWebSocketServer,
   stopTestWebSocketServer,
@@ -46,7 +46,7 @@ describe("createWebSocket", () => {
 
     const messages: Array<Uint8Array> = [];
 
-    const ws = await run.orThrow(
+    const ws = await run.ok(
       createWebSocket(getServerUrl(), {
         binaryType: "arraybuffer",
         onMessage: (data) => {
@@ -77,7 +77,7 @@ describe("createWebSocket", () => {
 
     let openCalled = false;
 
-    const ws = await run.orThrow(
+    const ws = await run.ok(
       createWebSocket(getServerUrl(), {
         onOpen: () => {
           openCalled = true;
@@ -102,7 +102,7 @@ describe("createWebSocket", () => {
     let openCalled = false;
     let closeCalled = false;
 
-    const ws = await run.orThrow(
+    const ws = await run.ok(
       createWebSocket(getServerUrl(), {
         onOpen: () => {
           openCalled = true;
@@ -163,7 +163,7 @@ describe("createWebSocket", () => {
       }
     }
 
-    const ws = await run.orThrow(
+    const ws = await run.ok(
       createWebSocket("ws://example.com", {
         onOpen: () => {
           openCalled.resolve();
@@ -183,7 +183,7 @@ describe("createWebSocket", () => {
   test("send returns error when socket is not ready", async () => {
     await using run = createRun();
 
-    const ws = await run.orThrow(createWebSocket(getServerUrl()));
+    const ws = await run.ok(createWebSocket(getServerUrl()));
 
     {
       await using _ws = ws;
@@ -202,7 +202,7 @@ describe("createWebSocket", () => {
 
     let openCalled = false;
 
-    await using _ws = await run.orThrow(
+    await using _ws = await run.ok(
       createWebSocket(getServerUrl(), {
         protocols: ["protocol1", "protocol2"],
         onOpen: () => {
@@ -219,7 +219,7 @@ describe("createWebSocket", () => {
 
     let openCalled = false;
 
-    await using _ws = await run.orThrow(
+    await using _ws = await run.ok(
       createWebSocket(getServerUrl(), {
         protocols: "protocol1",
         onOpen: () => {
@@ -235,7 +235,7 @@ describe("createWebSocket", () => {
     await using run = createRun();
 
     // Create with invalid URL and no retries to test null socket state
-    await using ws = await run.orThrow(
+    await using ws = await run.ok(
       createWebSocket("ws://localhost:1", {
         schedule: take(0)(spaced("1ms")),
       }),
@@ -251,7 +251,7 @@ describe("createWebSocket", () => {
     const errors: Array<WebSocketError> = [];
 
     // Use invalid port to trigger connection error
-    await using _ws = await run.orThrow(
+    await using _ws = await run.ok(
       createWebSocket("ws://localhost:1", {
         schedule: take(0)(spaced("1ms")), // No retry - fail immediately
         onError: (error) => {
@@ -269,7 +269,7 @@ describe("createWebSocket", () => {
 
     let closeCalled = false;
 
-    await using _ws = await run.orThrow(
+    await using _ws = await run.ok(
       createWebSocket(getServerUrl("close"), {
         schedule: take(0)(spaced("1ms")), // No retry
         onClose: () => {
@@ -287,7 +287,7 @@ describe("createWebSocket", () => {
     const errors: Array<WebSocketError> = [];
     let closeCount = 0;
 
-    await using _ws = await run.orThrow(
+    await using _ws = await run.ok(
       createWebSocket(getServerUrl("close"), {
         schedule: take(2)(spaced("1ms")),
         shouldRetryOnClose: () => false,
@@ -313,7 +313,7 @@ describe("createWebSocket", () => {
     const messages: Array<Uint8Array> = [];
     let closeCount = 0;
 
-    await using ws = await run.orThrow(
+    await using ws = await run.ok(
       createWebSocket(getServerUrl("close-after-message"), {
         binaryType: "arraybuffer",
         schedule: spaced("1ms"), // Fast retry
@@ -343,7 +343,7 @@ describe("createWebSocket", () => {
 
     // Use close endpoint so each connection attempt succeeds then closes,
     // triggering retry until schedule is exhausted
-    await using _ws = await run.orThrow(
+    await using _ws = await run.ok(
       createWebSocket(getServerUrl("close"), {
         schedule: take(2)(spaced("1ms")), // Allow 2 retries then exhaust
         onError: (error) => {
@@ -366,7 +366,7 @@ describe("createWebSocket", () => {
     const errors: Array<WebSocketError> = [];
     let closeCalled = false;
 
-    await using _ws = await run.orThrow(
+    await using _ws = await run.ok(
       createWebSocket(getServerUrl("terminate"), {
         schedule: take(0)(spaced("1ms")), // No retry
         onError: (error) => {
@@ -383,7 +383,11 @@ describe("createWebSocket", () => {
     // Map errors to snapshot-friendly shape (Event internals differ across platforms)
     const mapped = errors.map((e) =>
       e.type === "RetryError"
-        ? { type: e.type, attempts: e.attempts, causeType: e.cause.type }
+        ? {
+            type: e.type,
+            attempts: e.attempts,
+            causeType: e.lastError.type,
+          }
         : { type: e.type },
     );
 
@@ -429,7 +433,7 @@ describe("testCreateWebSocket", () => {
     const receivedMessages: Array<string | ArrayBuffer | Blob> = [];
     let openCount = 0;
 
-    const ws = await run.orThrow(
+    const ws = await run.ok(
       createTestWebSocket("ws://example.com", {
         onOpen: () => {
           openCount++;
@@ -478,23 +482,31 @@ describe("testCreateWebSocket", () => {
     });
   });
 
-  test("throws when configured to throw on create", async () => {
-    await using run = createRun();
+  test("panics when configured to throw on create", async () => {
+    await using run = testCreateRun();
 
     const createTestWebSocket = testCreateWebSocket({ throwOnCreate: true });
+    const reported = run.deps.reportDefect.next();
+    const result = await run.abortable(createTestWebSocket("ws://example.com"));
+    const abortError = await reported;
 
-    await expect(
-      run.orThrow(createTestWebSocket("ws://example.com")),
-    ).rejects.toThrowErrorMatchingInlineSnapshot(
-      `[Error: testCreateWebSocket is configured to throw on create]`,
-    );
+    expect(AbortError.is(abortError)).toBe(true);
+    expect(result).toEqual({ ok: false, error: abortError });
+    expect(abortError).toMatchObject({
+      reason: {
+        type: "PanicAbortReason",
+        defect: expect.objectContaining({
+          message: "testCreateWebSocket is configured to throw on create",
+        }),
+      },
+    });
   });
 
   test("defaults created sockets to open", async () => {
     await using run = createRun();
 
     const createTestWebSocket = testCreateWebSocket();
-    const ws = await run.orThrow(
+    const ws = await run.ok(
       createTestWebSocket("ws://default-open.example.com"),
     );
 
@@ -512,7 +524,7 @@ describe("testCreateWebSocket", () => {
     await using run = createRun();
 
     const createTestWebSocket = testCreateWebSocket();
-    const ws = await run.orThrow(createTestWebSocket("ws://bytes.example.com"));
+    const ws = await run.ok(createTestWebSocket("ws://bytes.example.com"));
 
     await using _ws = ws;
 
@@ -537,7 +549,7 @@ describe("testCreateWebSocket", () => {
       await using run = createRun();
 
       const createTestWebSocket = testCreateWebSocket();
-      const ws = await run.orThrow(
+      const ws = await run.ok(
         createTestWebSocket("ws://shared-bytes.example.com"),
       );
 

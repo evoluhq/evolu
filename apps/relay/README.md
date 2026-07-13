@@ -45,4 +45,4 @@ docker rm -f evolu-relay
 If you prefer to run in‑process or need custom configuration (logging, auth, etc.), use the Node.js library.
 
 - Package: `@evolu/nodejs`
-- API: `startRelay`
+- API: `createRelay`

@@ -18,7 +18,7 @@ import {
   orderTimestampBytes,
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
-import { testCreateDeps } from "../../src/Test.js";
+import { testCreateDeps } from "../../src/Task2.js";
 import { maxMillis, Millis } from "../../src/Time.js";
 import { id, String } from "../../src/Type.js";
 

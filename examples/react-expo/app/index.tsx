@@ -82,7 +82,7 @@ deps.evoluError.subscribe(() => {
 const run = createRun(deps);
 
 const createEvoluFiber = () =>
-  run.orThrow(
+  run.ok(
     Evolu.createEvolu(AppSchema, {
       appName: Evolu.AppName.orThrow("minimal-example"),
       appOwner: Evolu.testAppOwner,

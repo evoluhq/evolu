@@ -256,6 +256,14 @@ describe("structuralLookup", () => {
     expect(accessCount).toBe(1);
   });
 
+  test("rejects symbol-keyed properties at compile time", () => {
+    const symbolKey = Symbol("meta");
+    const key = { id: "a", [symbolKey]: "x" };
+
+    // @ts-expect-error - symbol-keyed properties are ignored by runtime serialization.
+    structuralLookup(key);
+  });
+
   test("rejects unsupported values and cycles", () => {
     class Example {
       readonly id = "a";

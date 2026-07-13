@@ -5,8 +5,13 @@ import {
   acquireLeaderLockCallback,
   testCreateLockManager,
 } from "../src/LockManager.js";
-import { runStoppedError, yieldNow } from "../src/Task.js";
-import { testCreateRun, testWaitForMacrotask } from "../src/Test.js";
+import {
+  createAbortError,
+  createPanicAbortReason,
+  runDisposedAbortReason,
+  testCreateRun,
+  yieldNow,
+} from "../src/Task2.js";
 import { Name } from "../src/Type.js";
 
 describe("testCreateLockManager", () => {
@@ -42,9 +47,12 @@ describe("testCreateLockManager", () => {
     const name = "QueryVisibleName";
     const releaseFirst = Promise.withResolvers<void>();
     const releaseSecond = Promise.withResolvers<void>();
+    const firstAcquired = Promise.withResolvers<void>();
+    const secondAcquired = Promise.withResolvers<void>();
 
     const firstHeld = firstLockManager.request(name, async (lock) => {
       expect(lock).toEqual(expect.objectContaining({ name }));
+      firstAcquired.resolve();
       await releaseFirst.promise;
     });
 
@@ -52,10 +60,11 @@ describe("testCreateLockManager", () => {
 
     const secondHeld = secondLockManager.request(name, async (lock) => {
       expect(lock).toEqual(expect.objectContaining({ name }));
+      secondAcquired.resolve();
       await releaseSecond.promise;
     });
 
-    await testWaitForMacrotask();
+    await Promise.all([firstAcquired.promise, secondAcquired.promise]);
 
     await expect(firstLockManager.query()).resolves.toEqual({
       held: [{ clientId: expect.any(String), mode: "exclusive", name }],
@@ -91,7 +100,7 @@ describe("acquireLeaderLock", () => {
   test("waits until previous lease is disposed", async () => {
     await using run = testCreateRun({ lockManager: testCreateLockManager() });
 
-    const first = await run.orThrow(acquireLeaderLock(leaderLockName));
+    const first = await run.ok(acquireLeaderLock(leaderLockName));
 
     let secondSettled = false;
     const second = run(acquireLeaderLock(leaderLockName));
@@ -99,7 +108,7 @@ describe("acquireLeaderLock", () => {
       secondSettled = true;
     });
 
-    await run(yieldNow);
+    await run.ok(yieldNow);
     expect(secondSettled).toBe(false);
 
     await first[Symbol.asyncDispose]();
@@ -111,8 +120,8 @@ describe("acquireLeaderLock", () => {
     await using run = testCreateRun({ lockManager: testCreateLockManager() });
 
     const [a, b] = await Promise.all([
-      run.orThrow(acquireLeaderLock(leaderLockName)),
-      run.orThrow(acquireLeaderLock(otherLeaderLockName)),
+      run.ok(acquireLeaderLock(leaderLockName)),
+      run.ok(acquireLeaderLock(otherLeaderLockName)),
     ]);
 
     await a[Symbol.asyncDispose]();
@@ -122,25 +131,23 @@ describe("acquireLeaderLock", () => {
   test("root Run disposal releases lease-owned lock wait", async () => {
     const run = testCreateRun({ lockManager: testCreateLockManager() });
 
-    await run.orThrow(acquireLeaderLock(leaderLockName));
+    await run.ok(acquireLeaderLock(leaderLockName));
 
-    const disposePromise = run[Symbol.asyncDispose]();
-    await testWaitForMacrotask();
+    await run[Symbol.asyncDispose]();
     expect(run.getState().type).toBe("Settled");
-    await disposePromise;
   });
 
   test("waiting caller aborts when root Run disposes", async () => {
     const run = testCreateRun({ lockManager: testCreateLockManager() });
 
-    const first = await run.orThrow(acquireLeaderLock(leaderLockName));
+    const first = await run.ok(acquireLeaderLock(leaderLockName));
 
-    const second = run(acquireLeaderLock(leaderLockName));
-    await run(yieldNow);
+    const second = run.abortable(acquireLeaderLock(leaderLockName));
+    await run.ok(yieldNow);
 
     const disposePromise = run[Symbol.asyncDispose]();
     await expect(second).resolves.toEqual(
-      err({ type: "AbortError", reason: runStoppedError }),
+      err(createAbortError(runDisposedAbortReason)),
     );
     await disposePromise;
 
@@ -150,23 +157,22 @@ describe("acquireLeaderLock", () => {
   test("aborting a waiting caller releases leadership", async () => {
     await using run = testCreateRun({ lockManager: testCreateLockManager() });
 
-    const first = await run.orThrow(acquireLeaderLock(leaderLockName));
+    const first = await run.ok(acquireLeaderLock(leaderLockName));
 
-    const second = run(acquireLeaderLock(leaderLockName));
-    await run(yieldNow);
+    const second = run.abortable(acquireLeaderLock(leaderLockName));
+    await run.ok(yieldNow);
 
-    second.abort("stop");
-    await expect(second).resolves.toEqual(
-      err({ type: "AbortError", reason: "stop" }),
-    );
+    const reason = { type: "TestAbortReason" };
+    second.abort(reason);
+    await expect(second).resolves.toEqual(err(createAbortError(reason)));
 
     await first[Symbol.asyncDispose]();
 
-    const third = await run.orThrow(acquireLeaderLock(leaderLockName));
+    const third = await run.ok(acquireLeaderLock(leaderLockName));
     await third[Symbol.asyncDispose]();
   });
 
-  test("maps non-abort lock manager failures to AbortError", async () => {
+  test("panics on non-abort lock manager failures", async () => {
     const error = new Error("boom");
     await using run = testCreateRun({
       lockManager: {
@@ -175,8 +181,13 @@ describe("acquireLeaderLock", () => {
       },
     });
 
-    await expect(run(acquireLeaderLock(leaderLockName))).resolves.toEqual(
-      err({ type: "AbortError", reason: error }),
+    const reported = run.deps.reportDefect.next();
+
+    await expect(
+      run.abortable(acquireLeaderLock(leaderLockName)),
+    ).resolves.toEqual(err(createAbortError(createPanicAbortReason(error))));
+    await expect(reported).resolves.toEqual(
+      createAbortError(createPanicAbortReason(error)),
     );
   });
 
@@ -185,9 +196,7 @@ describe("acquireLeaderLock", () => {
 
     await using run = testCreateRun({ lockManager: nativeLockManager });
 
-    const first = await run(acquireLeaderLock(rawNativeLeaderLockName));
-    expect(first.ok).toBe(true);
-    if (!first.ok) return;
+    const first = await run.ok(acquireLeaderLock(rawNativeLeaderLockName));
 
     let secondSettled = false;
     const second = run(acquireLeaderLock(rawNativeLeaderLockName));
@@ -198,7 +207,7 @@ describe("acquireLeaderLock", () => {
     await Promise.resolve();
     expect(secondSettled).toBe(false);
 
-    await first.value[Symbol.asyncDispose]();
+    await first[Symbol.asyncDispose]();
 
     const secondResult = await second;
     expect(secondResult.ok).toBe(true);
@@ -231,7 +240,6 @@ describe("acquireLeaderLockCallback", () => {
       secondAcquired.resolve();
     });
 
-    await testWaitForMacrotask();
     expect(secondCallbackCalled).toBe(false);
 
     first[Symbol.dispose]();
@@ -254,7 +262,6 @@ describe("acquireLeaderLockCallback", () => {
     const second = acquireLeaderLockCallback(deps)(leaderLockName, () => {
       secondCallbackCalled = true;
     });
-    await testWaitForMacrotask();
 
     second[Symbol.dispose]();
     first[Symbol.dispose]();

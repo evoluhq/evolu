@@ -48,15 +48,21 @@
   "externalSymbolLinkMappings": {
     "typescript": {
       "ArrayBuffer": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer",
+      "AbortController": "https://developer.mozilla.org/en-US/docs/Web/API/AbortController",
+      "AbortSignal": "https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal",
       "AsyncDisposable": "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management",
       "AsyncDisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack",
+      "AsyncDisposableStack.move": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack/move",
       "Disposable": "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management",
       "DisposableStack": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack",
       "Iterable": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterable_protocol",
       "LockManager": "https://developer.mozilla.org/en-US/docs/Web/API/LockManager",
+      "NonNullable": "https://www.typescriptlang.org/docs/handbook/utility-types.html#nonnullabletype",
       "Omit": "https://www.typescriptlang.org/docs/handbook/utility-types.html#omittype-keys",
       "PromiseLike": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise#thenables",
       "RangeError": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RangeError",
+      "Response": "https://developer.mozilla.org/en-US/docs/Web/API/Response",
+      "Response.ok": "https://developer.mozilla.org/en-US/docs/Web/API/Response/ok",
       "TypeError": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError"
     }
   }

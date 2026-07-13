@@ -4,8 +4,8 @@
  * @module
  */
 
-import { assert, assertNotDisposed } from "./Assert.js";
-import { identity } from "./Function.js";
+import { assert } from "./Assert.js";
+import { disposable, identity } from "./Function.js";
 import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.js";
 import { NonNegativeInt, PositiveInt, zeroNonNegativeInt } from "./Type.js";
 
@@ -31,31 +31,23 @@ export interface RefCount extends Disposable {
 
 /** Creates {@link RefCount}. */
 export const createRefCount = (): RefCount => {
-  const disposer = new DisposableStack();
   let count = zeroNonNegativeInt;
 
-  return {
+  return disposable<RefCount>({
     increment: () => {
-      assertNotDisposed(disposer);
       const nextCount = PositiveInt.orThrow(count + 1);
       count = nextCount;
       return nextCount;
     },
 
     decrement: () => {
-      assertNotDisposed(disposer);
       assert(count > 0, "RefCount must not be decremented below zero.");
       count = NonNegativeInt.orThrow(count - 1);
       return count;
     },
 
-    getCount: () => {
-      assertNotDisposed(disposer);
-      return count;
-    },
-
-    [Symbol.dispose]: () => disposer.dispose(),
-  };
+    getCount: () => count,
+  });
 };
 
 /**
@@ -104,63 +96,37 @@ export function createRefCountByKey<TKey, L = TKey>({
 }: CreateRefCountByKeyOptions<TKey, L> = {}): RefCountByKey<TKey> {
   using disposer = new DisposableStack();
 
-  const refCountByKey = disposer.adopt(
-    createLookupMap<TKey, RefCount, L>({ lookup }),
-    (refCountByKey) => {
-      using disposer = new DisposableStack();
-      disposer.defer(() => {
-        refCountByKey.clear();
-      });
-      for (const refCount of refCountByKey.values()) {
-        disposer.use(refCount);
-      }
+  const refCountByKey = createLookupMap<TKey, RefCount, L>({ lookup });
+  disposer.defer(() => {
+    refCountByKey.clear();
+  });
+
+  return disposable<RefCountByKey<TKey>>(
+    {
+      increment: (key) =>
+        refCountByKey.getOrInsertComputed(key, createRefCount).increment(),
+
+      decrement: (key) => {
+        const refCount = refCountByKey.get(key);
+        assert(
+          refCount,
+          "RefCount must not be decremented for an untracked key.",
+        );
+        const nextCount = refCount.decrement();
+        if (nextCount === 0) {
+          refCountByKey.delete(key);
+          refCount[Symbol.dispose]();
+        }
+        return nextCount;
+      },
+
+      getCount: (key) =>
+        refCountByKey.get(key)?.getCount() ?? zeroNonNegativeInt,
+
+      has: (key) => refCountByKey.has(key),
+
+      keys: () => new Set(refCountByKey.keys()),
     },
+    disposer,
   );
-
-  const disposables = disposer.move();
-
-  const getRefCount = (key: TKey): RefCount => {
-    let refCount = refCountByKey.get(key);
-    if (!refCount) {
-      refCount = createRefCount();
-      refCountByKey.set(key, refCount);
-    }
-    return refCount;
-  };
-
-  return {
-    increment: (key) => {
-      assertNotDisposed(disposables);
-      return getRefCount(key).increment();
-    },
-
-    decrement: (key) => {
-      assertNotDisposed(disposables);
-      const refCount = refCountByKey.get(key);
-      assert(refCount, "RefCount must not be decremented below zero.");
-      const nextCount = refCount.decrement();
-      if (nextCount === 0) {
-        refCountByKey.delete(key);
-        refCount[Symbol.dispose]();
-      }
-      return nextCount;
-    },
-
-    getCount: (key) => {
-      assertNotDisposed(disposables);
-      return refCountByKey.get(key)?.getCount() ?? zeroNonNegativeInt;
-    },
-
-    has: (key) => {
-      assertNotDisposed(disposables);
-      return refCountByKey.has(key);
-    },
-
-    keys: () => {
-      assertNotDisposed(disposables);
-      return new Set(refCountByKey.keys());
-    },
-
-    [Symbol.dispose]: () => disposables.dispose(),
-  };
 }

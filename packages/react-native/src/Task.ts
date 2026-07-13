@@ -6,17 +6,18 @@
 
 import {
   createRun as createCommonRun,
-  createUnknownError,
-  type CreateRun,
+  reportDefectAfterMicrotask,
+  type DisposableRun,
   type Run,
-  type RunDefaultDeps,
+  type RunCustomDeps,
 } from "@evolu/common";
 
 /**
- * Creates {@link Run} for React Native with global error handling.
+ * Creates a root {@link Run} for React Native.
  *
- * Registers `ErrorUtils.setGlobalHandler` for uncaught JavaScript errors. The
- * handler is restored to the previous one when the Run is disposed.
+ * Defects are reported with React Native's global `ErrorUtils.reportError`. A
+ * custom `reportDefect` dependency overrides the React Native default. The
+ * platform-independent microtask reporter is used when `ErrorUtils` is absent.
  *
  * ### Example
  *
@@ -27,40 +28,23 @@ import {
  *   }),
  * });
  *
- * await using run = createRun({ console });
- * await using disposer = new AsyncDisposableStack();
- *
- * disposer.use(await run.orThrow(startApp()));
+ * const run = createRun({ console });
+ * const appPromise = run.ok(startApp());
  * ```
- *
- * @group React Native Run
  */
-export const createRun: CreateRun<RunDefaultDeps> = <D>(
-  deps?: D,
-): Run<RunDefaultDeps & D> => {
-  const run = createCommonRun(deps);
-
-  const console = run.deps.console.child("global");
-
-  const previousHandler = globalThis.ErrorUtils?.getGlobalHandler();
-
-  const handleError = (error: unknown, isFatal?: boolean) => {
-    console.error(
-      isFatal ? "fatalError" : "uncaughtError",
-      createUnknownError(error),
-    );
-
-    // Call the previous handler if it exists
-    previousHandler?.(error, isFatal);
+export function createRun(): DisposableRun;
+export function createRun<D extends object>(
+  deps: RunCustomDeps<D>,
+): DisposableRun<D>;
+export function createRun<D extends object>(
+  deps?: RunCustomDeps<D>,
+): DisposableRun | DisposableRun<D> {
+  const reportDefect = (reported: unknown): void => {
+    if (globalThis.ErrorUtils) globalThis.ErrorUtils.reportError(reported);
+    else reportDefectAfterMicrotask(reported);
   };
 
-  globalThis.ErrorUtils?.setGlobalHandler(handleError);
-
-  run.onAbort(() => {
-    if (previousHandler) {
-      globalThis.ErrorUtils?.setGlobalHandler(previousHandler);
-    }
-  });
-
-  return run;
-};
+  return deps === undefined
+    ? createCommonRun({ reportDefect })
+    : createCommonRun<D>({ reportDefect, ...deps });
+}

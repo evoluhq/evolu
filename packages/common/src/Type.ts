@@ -17,7 +17,13 @@ import type { NextResult, Result } from "./Result.js";
 import { err, getOrNull, getOrThrow, ok, trySync } from "./Result.js";
 import { safelyStringifyUnknownValue } from "./String.js";
 import type { TimeDep } from "./Time.js";
-import type { Literal, Refinement, Simplify, WidenLiteral } from "./Types.js";
+import type {
+  Int1To100,
+  Literal,
+  Refinement,
+  Simplify,
+  WidenLiteral,
+} from "./Types.js";
 
 /**
  * Evolu {@link Type} is like a type guard that returns typed errors (via
@@ -298,8 +304,8 @@ export interface Type<
    * **When to use:**
    *
    * - Application startup or composition-root setup where errors must stop the
-   *   program immediately. In Evolu apps, errors are handled by
-   *   platform-specific `createRun` adapters at the app boundary.
+   *   program immediately. In Evolu apps, the root Run reports the defect and
+   *   the platform lifecycle API handles shutdown.
    * - Module-level constants
    * - Test setup with values that are expected to be valid
    * - As an alternative to assertions when the Type error in the thrown Error's
@@ -1275,6 +1281,36 @@ export type BrandFactory<
 >;
 
 /**
+ * Capitalized string.
+ *
+ * This Type Factory validates that the first character of a string is already
+ * uppercase.
+ *
+ * @group String
+ */
+export const capitalized: BrandFactory<
+  "Capitalized",
+  string,
+  CapitalizedError
+> = (parent) =>
+  brand("Capitalized", parent, (value) =>
+    value === value.charAt(0).toUpperCase() + value.slice(1)
+      ? ok(value)
+      : err<CapitalizedError>({ type: "Capitalized", value }),
+  );
+
+export interface CapitalizedError extends TypeError<"Capitalized"> {}
+
+export const formatCapitalizedError =
+  /*#__PURE__*/ createTypeErrorFormatter<CapitalizedError>(
+    (error) => `The value ${error.value} must be capitalized.`,
+  );
+
+/** @group String */
+export const CapitalizedString = /*#__PURE__*/ capitalized(String);
+export type CapitalizedString = typeof CapitalizedString.Type;
+
+/**
  * Trimmed string.
  *
  * This Type Factory validates whether a string has no leading or trailing
@@ -2139,6 +2175,9 @@ export const zeroNonNegativeInt = /*#__PURE__*/ NonNegativeInt.orThrow(0);
  */
 export const PositiveInt = /*#__PURE__*/ positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Type;
+
+/** 1-100 as a literal, or any already-validated {@link PositiveInt}. */
+export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
 
 /** {@link PositiveInt} value 1. */
 export const onePositiveInt = /*#__PURE__*/ PositiveInt.orThrow(1);
@@ -4135,12 +4174,7 @@ export const formatInt64StringError =
  * before validation.
  */
 export type JsonValue =
-  | string
-  | FiniteNumber
-  | boolean
-  | null
-  | JsonArray
-  | JsonObject;
+  string | FiniteNumber | boolean | null | JsonArray | JsonObject;
 
 /**
  * JSON-compatible input value before validation.
@@ -4156,12 +4190,7 @@ export type JsonValue =
  * constraints.
  */
 export type JsonValueInput =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonArrayInput
-  | JsonObjectInput;
+  string | number | boolean | null | JsonArrayInput | JsonObjectInput;
 
 export type JsonValueError = UnionError<
   | StringError
@@ -4527,6 +4556,7 @@ export type TypeErrors<ExtraErrors extends TypeError = never> =
   | ArrayBufferError
   | InstanceOfError
   | EvoluTypeError
+  | CapitalizedError
   | CurrencyCodeError
   | DateIsoError
   | TrimmedError
@@ -4685,6 +4715,8 @@ export const createFormatTypeError = <ExtraErrors extends TypeError = never>(
         return formatInstanceOfError(error);
       case "EvoluType":
         return formatIsTypeError(error);
+      case "Capitalized":
+        return formatCapitalizedError(error);
       case "CurrencyCode":
         return formatCurrencyCodeError(error);
       case "DateIso":

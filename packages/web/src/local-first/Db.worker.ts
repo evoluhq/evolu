@@ -10,7 +10,6 @@ import { createWasmSqliteDriver } from "../Sqlite.js";
 import { createRun } from "../Task.js";
 import { createWorkerDeps, createWorkerSelf } from "../Worker.js";
 
-// TODO: Disposal.
 const run = createRun({
   ...createWorkerDeps(),
   createSqliteDriver: createWasmSqliteDriver,
@@ -18,4 +17,4 @@ const run = createRun({
   randomBytes: createRandomBytes(),
 });
 
-run(startDbWorker(createWorkerSelf(self)));
+void run(startDbWorker(createWorkerSelf(self)));

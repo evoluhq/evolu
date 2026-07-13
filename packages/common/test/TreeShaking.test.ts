@@ -154,16 +154,16 @@ describe("tree-shaking", () => {
     expect(results).toMatchInlineSnapshot(`
       {
         "result-all": {
-          "gzip": 689,
-          "raw": 1602,
+          "gzip": 679,
+          "raw": 1639,
         },
         "task-example": {
-          "gzip": 5051,
-          "raw": 13315,
+          "gzip": 5946,
+          "raw": 17407,
         },
         "type-object": {
-          "gzip": 1458,
-          "raw": 4489,
+          "gzip": 1477,
+          "raw": 4535,
         },
       }
     `);

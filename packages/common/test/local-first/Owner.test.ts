@@ -8,7 +8,7 @@ import {
   ownerIdToOwnerIdBytes,
   ownerSecretToMnemonic,
 } from "../../src/index.js";
-import { testCreateDeps } from "../../src/Test.js";
+import { testCreateDeps } from "../../src/Task2.js";
 import {
   testAppOwner,
   testAppOwnerSecret,

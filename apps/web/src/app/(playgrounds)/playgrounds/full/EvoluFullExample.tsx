@@ -107,8 +107,7 @@ const run = createRun(createEvoluDeps({ console }));
 
 /**
  * `evoluError` is shared by all Evolu instances created from this `deps`.
- * Subscribe once for user-facing error messages. Logging is handled by platform
- * `createRun` global error handlers.
+ * Subscribe once for user-facing error messages.
  */
 run.deps.evoluError.subscribe(() => {
   const error = run.deps.evoluError.get();
@@ -121,7 +120,7 @@ const { EvoluContext, useEvolu, useQuery, useQueries } =
   createEvoluBinding(AppSchema);
 
 // Create Evolu App.
-const evoluFiber = run.orThrow(
+const evoluFiber = run.ok(
   createEvolu(AppSchema, {
     appName: AppName.orThrow("full-example"),
     appOwner: testAppOwner,

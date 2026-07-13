@@ -28,7 +28,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { testSetupWebSocket } from "../../common/src/WebSocket.js";
 import {
   createRelayDeps,
-  startRelay,
+  createRelay,
   testSendWebSocketUpgradeRequest,
   testSetupWebSocketUpgradeRequest,
   type NodeJsRelayConfig,
@@ -61,8 +61,8 @@ const startTestRelay = async (config: Partial<NodeJsRelayConfig> = {}) => {
   );
 
   const relay = disposer.use(
-    await run.orThrow(
-      startRelay({
+    await run.ok(
+      createRelay({
         port: 0,
         name: testName,
         isOwnerWithinQuota: () => true,
@@ -158,7 +158,7 @@ const loadRelayModuleWithMockedTransport = async () => {
   return { relayModule, server, wss };
 };
 
-describe("startRelay", () => {
+describe("createRelay", () => {
   afterEach(() => {
     for (const suffix of [".db", ".db-shm", ".db-wal"]) {
       const filePath = `${testName}${suffix}`;
@@ -261,7 +261,7 @@ describe("startRelay", () => {
     expect(signal.aborted).toBe(false);
 
     await setup.relay[Symbol.asyncDispose]();
-    pendingAuthorization.reject(new Error("ignored after abort"));
+    pendingAuthorization.resolve(true);
 
     expect(signal.aborted).toBe(true);
   });
@@ -358,13 +358,12 @@ describe("startRelay", () => {
   });
 
   test("returns service unavailable when owner authorization throws", async () => {
+    const error = new Error("boom");
     await using setup = await startTestRelay({
       isOwnerAllowed: () => {
-        throw new Error("boom");
+        throw error;
       },
     });
-    const { console } = setup;
-    console.clearEntries();
 
     const response = await testSendWebSocketUpgradeRequest(
       setup.relay.port,
@@ -372,10 +371,10 @@ describe("startRelay", () => {
     );
 
     expect(response.statusCode).toBe(503);
-    await vi.waitFor(() => {
-      expect(
-        console.getEntriesSnapshot().some((entry) => entry.method === "error"),
-      ).toBe(true);
+    expect(setup.console.getEntriesSnapshot()).toContainEqual({
+      method: "error",
+      path: ["relay"],
+      args: [error],
     });
   });
 
@@ -745,7 +744,7 @@ describe("startRelay", () => {
     expect(row.count).toBe(1);
   });
 
-  test("logs shutdown in resource disposal order with open websocket clients", async () => {
+  test("logs resource disposal order with open websocket clients", async () => {
     await using setup = await setupRelay();
     const { console, relay } = setup;
     console.clearEntries();
@@ -759,15 +758,10 @@ describe("startRelay", () => {
         .flatMap((entry) =>
           typeof entry.args[0] === "string" ? [entry.args[0]] : [],
         ),
-    ).toEqual([
-      "Shutting down...",
-      "WebSocketServer closed",
-      "HTTP server closed",
-      "Shutdown complete",
-    ]);
+    ).toEqual(["WebSocketServer closed", "HTTP server closed"]);
   });
 
-  test("logs shutdown in resource disposal order with no open websocket clients", async () => {
+  test("logs resource disposal order with no open websocket clients", async () => {
     await using setup = await setupRelay();
     const { console, relay, ws } = setup;
     await ws[Symbol.asyncDispose]();
@@ -782,12 +776,7 @@ describe("startRelay", () => {
         .flatMap((entry) =>
           typeof entry.args[0] === "string" ? [entry.args[0]] : [],
         ),
-    ).toEqual([
-      "Shutting down...",
-      "WebSocketServer closed",
-      "HTTP server closed",
-      "Shutdown complete",
-    ]);
+    ).toEqual(["WebSocketServer closed", "HTTP server closed"]);
   });
 
   test("rejects websocket upgrades when request url is missing", async () => {
@@ -799,8 +788,8 @@ describe("startRelay", () => {
         ...relayModule.createRelayDeps(),
         console,
       });
-      await using _relay = await run.orThrow(
-        relayModule.startRelay({
+      await using _relay = await run.ok(
+        relayModule.createRelay({
           port: 0,
           name: testName,
           isOwnerAllowed: lazyTrue,
@@ -842,8 +831,8 @@ describe("startRelay", () => {
         ...relayModule.createRelayDeps(),
         console,
       });
-      await using _relay = await run.orThrow(
-        relayModule.startRelay({
+      await using _relay = await run.ok(
+        relayModule.createRelay({
           port: 0,
           name: testName,
           isOwnerAllowed: lazyTrue,
@@ -881,8 +870,8 @@ describe("startRelay", () => {
         ...relayModule.createRelayDeps(),
         console,
       });
-      await using _relay = await run.orThrow(
-        relayModule.startRelay({
+      await using _relay = await run.ok(
+        relayModule.createRelay({
           port: 0,
           name: testName,
           isOwnerWithinQuota: () => true,
@@ -899,6 +888,61 @@ describe("startRelay", () => {
       ws.emit("message", new ArrayBuffer(3));
 
       expect(ws.send).not.toHaveBeenCalled();
+      expect(
+        console.getEntriesSnapshot().some((entry) => entry.method === "error"),
+      ).toBe(false);
+    } finally {
+      vi.doUnmock("http");
+      vi.doUnmock("ws");
+      vi.resetModules();
+    }
+  });
+
+  test("ignores websocket message processing aborted during shutdown", async () => {
+    const { relayModule, wss } = await loadRelayModuleWithMockedTransport();
+
+    try {
+      const console = testCreateConsole();
+      const continueQuotaCheck = Promise.withResolvers<boolean>();
+      const isOwnerWithinQuota = vi.fn(() => continueQuotaCheck.promise);
+      const run = testCreateRun({
+        ...relayModule.createRelayDeps(),
+        console,
+      });
+      await using _relay = await run.ok(
+        relayModule.createRelay({
+          port: 0,
+          name: testName,
+          isOwnerWithinQuota,
+        }),
+      );
+
+      class FakeSocket extends EventEmitter {
+        readonly send = vi.fn();
+      }
+
+      const ws = new FakeSocket();
+      const createId = testCreateId();
+
+      wss.emit("connection", ws);
+      const createMessage = () =>
+        createProtocolMessageFromCrdtMessages(run.deps)(testAppOwner, [
+          testCreateCrdtMessage(createId(), 1, "Victoria"),
+        ]);
+
+      ws.emit("message", createMessage());
+      await vi.waitFor(() => {
+        expect(isOwnerWithinQuota).toHaveBeenCalledOnce();
+      });
+      ws.emit("message", createMessage());
+
+      const disposePromise = run[Symbol.asyncDispose]();
+      continueQuotaCheck.resolve(true);
+      await disposePromise;
+
+      await vi.waitFor(() => {
+        expect(ws.send).toHaveBeenCalledOnce();
+      });
       expect(
         console.getEntriesSnapshot().some((entry) => entry.method === "error"),
       ).toBe(false);

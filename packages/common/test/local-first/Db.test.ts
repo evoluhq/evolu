@@ -34,7 +34,7 @@ import {
   testCreateLockManager,
   type LockManagerDep,
 } from "../../src/LockManager.js";
-import { ok } from "../../src/Result.js";
+import { err, ok } from "../../src/Result.js";
 import { createSet, emptySet } from "../../src/Set.js";
 import {
   createSqlite,
@@ -45,12 +45,8 @@ import {
   type SqliteSchema,
   type SqliteValue,
 } from "../../src/Sqlite.js";
-import {
-  testCreateDeps,
-  testCreateId,
-  testCreateRun,
-  testWaitForMacrotask,
-} from "../../src/Test.js";
+import { testCreateDeps, testCreateRun } from "../../src/Task2.js";
+import { testCreateId } from "../../src/Test.js";
 import { Millis, testCreateTime, type TestTime } from "../../src/Time.js";
 import { id, String, testName, type Id, type Name } from "../../src/Type.js";
 import type { ExtractType } from "../../src/Types.js";
@@ -181,7 +177,7 @@ const setupDb = async ({
   );
 
   const driver = disposer.use(
-    await run.orThrow(testCreateSqliteDep.createSqliteDriver(name)),
+    await run.ok(testCreateSqliteDep.createSqliteDriver(name)),
   );
 
   // Tests need a stable handle to the lazily created SQLite driver.
@@ -194,7 +190,7 @@ const setupDb = async ({
     });
 
   const sqlite = disposer.use(
-    await run.orThrow(createSqlite(name, { mode: "memory" }), {
+    await run.ok(createSqlite(name, { mode: "memory" }), {
       createSqliteDriver,
     }),
   );
@@ -218,6 +214,8 @@ interface DbWorkerSetup extends DbSetup {
   readonly outputs: Array<DbWorkerOutput>;
   readonly port: MessagePort<DbWorkerInput, DbWorkerOutput>;
   readonly consoleEntryOrErrors: Array<ConsoleEntryOrError>;
+  readonly waitForActivity: () => Promise<void>;
+  readonly waitForResponse: (callbackId: Id) => Promise<void>;
   readonly workerName: Name;
 }
 
@@ -261,6 +259,18 @@ const setupDbWorker = async ({
   );
   const outputs: Array<DbWorkerOutput> = [];
   const consoleEntryOrErrors: Array<ConsoleEntryOrError> = [];
+  const responseWaitersByCallbackId = new Map<Id, () => void>();
+  let activity = Promise.withResolvers<void>();
+  const waitForActivity = (): Promise<void> => activity.promise;
+  const waitForResponse = (callbackId: Id): Promise<void> => {
+    const response = Promise.withResolvers<void>();
+    responseWaitersByCallbackId.set(callbackId, response.resolve);
+    return response.promise;
+  };
+  const notifyActivity = (): void => {
+    activity.resolve();
+    activity = Promise.withResolvers<void>();
+  };
   const consoleEntryOrErrorBroadcastChannel = disposer.use(
     testCreateBroadcastChannel<ConsoleEntryOrError>(
       consoleEntryOrErrorBroadcastChannelName,
@@ -269,12 +279,19 @@ const setupDbWorker = async ({
 
   consoleEntryOrErrorBroadcastChannel.onMessage = (output) => {
     consoleEntryOrErrors.push(output);
+    notifyActivity();
   };
 
   channel.port2.onMessage = (output) => {
     outputs.push(output);
+    if (output.type === "OnQueuedResponse") {
+      responseWaitersByCallbackId.get(output.callbackId)?.();
+      responseWaitersByCallbackId.delete(output.callbackId);
+    }
+    notifyActivity();
   };
 
+  const initActivity = waitForActivity();
   worker.postMessage({
     type: "DbWorkerInit",
     name: workerName,
@@ -285,13 +302,10 @@ const setupDbWorker = async ({
     port: channel.port1.native,
   });
 
-  while (outputs.length === 0) {
-    await testWaitForWorkerMessage();
-  }
+  await initActivity;
 
   const initOutputs = outputs.splice(0);
   expect(initOutputs).toEqual([{ type: "LeaderAcquired", name: workerName }]);
-  await testWaitForWorkerMessage();
 
   const disposables = disposer.move();
 
@@ -302,6 +316,8 @@ const setupDbWorker = async ({
     outputs,
     port: channel.port2,
     consoleEntryOrErrors,
+    waitForActivity,
+    waitForResponse,
     workerName,
     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
   };
@@ -311,9 +327,14 @@ const postRequest = async (
   setup: DbWorkerSetup,
   request: DbWorkerRequest,
   callbackId = setup.createId(),
+  waitFor: "activity" | "response" = "response",
 ): Promise<ReadonlyArray<DbWorkerOutput>> => {
+  const completion =
+    waitFor === "response"
+      ? setup.waitForResponse(callbackId)
+      : setup.waitForActivity();
   setup.port.postMessage({ type: "Request", callbackId, request });
-  await testWaitForWorkerMessage();
+  await completion;
   return setup.outputs.splice(0);
 };
 
@@ -347,6 +368,40 @@ const getQueuedSharedWorkerMessage = <
 };
 
 describe("worker startup", () => {
+  test("startDbWorker waits for initialization and disposes self when aborted", async () => {
+    await using dbSetup = await setupDb();
+    let workerSelfDisposeCount = 0;
+    const self: WorkerSelf<DbWorkerInit> = {
+      postMessage: lazyVoid,
+      onMessage: null,
+      native: {} as WorkerSelf<DbWorkerInit>["native"],
+      [Symbol.dispose]: () => {
+        workerSelfDisposeCount += 1;
+      },
+    };
+
+    await using run = testCreateRun({
+      consoleStoreOutputEntry: dbSetup.consoleStoreOutput.entry,
+      createBroadcastChannel: testCreateBroadcastChannel,
+      createMessagePort,
+      lockManager: testCreateLockManager(),
+      createSqliteDriver: dbSetup.createSqliteDriver,
+      time: dbSetup.time,
+    });
+
+    const fiber = run.abortable(startDbWorker(self));
+    await testWaitForWorkerMessage();
+
+    expect(self.onMessage).not.toBeNull();
+    expect(fiber.run.getState().type).toBe("Running");
+
+    const reason = { type: "TestAbort" } as const;
+    fiber.abort(reason);
+
+    await expect(fiber).resolves.toEqual(err({ type: "AbortError", reason }));
+    expect(workerSelfDisposeCount).toBe(1);
+  });
+
   test("forwards console store entries to the worker port", async () => {
     await using setup = await setupDbWorker();
 
@@ -365,6 +420,12 @@ describe("worker startup", () => {
     };
 
     writeEntry(entry);
+    await testWaitForWorkerMessage();
+    expect(setup.consoleEntryOrErrors).toEqual([
+      { type: "ConsoleEntry", entry },
+    ]);
+
+    writeEntry(null);
     await testWaitForWorkerMessage();
     expect(setup.consoleEntryOrErrors).toEqual([
       { type: "ConsoleEntry", entry },
@@ -478,7 +539,7 @@ describe("worker startup", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -517,7 +578,7 @@ describe("worker startup", () => {
 
     setup.port.postMessage({ type: "Dispose" });
 
-    await using lock = await run.orThrow(acquireLeaderLock(setup.workerName));
+    await using lock = await run.ok(acquireLeaderLock(setup.workerName));
     expect(lock).toBeDefined();
   });
 
@@ -753,7 +814,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -939,7 +1000,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -1120,7 +1181,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -1381,7 +1442,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,1,0,0,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -1393,7 +1454,7 @@ describe("query and mutation flow", () => {
                 "id": uint8:[154,15,34,119,141,80,147,177,241,14,128,41,142,157,38,100],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,1,0,0,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
                 "value": "synced",
               },
               {
@@ -1401,7 +1462,7 @@ describe("query and mutation flow", () => {
                 "id": uint8:[154,15,34,119,141,80,147,177,241,14,128,41,142,157,38,100],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,1,0,0,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
                 "value": "1970-01-01T00:00:00.001Z",
               },
             ],
@@ -1415,11 +1476,11 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 21823902788060,
-                "h2": 246138890692443,
+                "h1": 262052944750976,
+                "h2": 29027662046710,
                 "l": 2,
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,1,0,0,179,193,154,79,36,24,166,44],
+                "t": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -1427,8 +1488,8 @@ describe("query and mutation flow", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,1,0,0,179,193,154,79,36,24,166,44],
-                "lastTimestamp": uint8:[0,0,0,0,0,1,0,0,179,193,154,79,36,24,166,44],
+                "firstTimestamp": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
+                "lastTimestamp": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "storedBytes": 1,
               },
@@ -1473,64 +1534,27 @@ describe("query and mutation flow", () => {
     `);
   });
 
-  test("query and export return current state", async () => {
+  test("query returns current state", async () => {
     await using setup = await setupDbWorker();
 
-    expect(
-      await postRequest(setup, {
-        type: "ForEvolu",
-        id: setup.evoluInstanceId,
-        message: {
-          type: "Mutate",
-          changes: [
-            createMutationChange({
-              table: "testTable",
-              id: setup.createId(),
-              values: { name: "queryable" },
-              isInsert: true,
-              isDelete: null,
-            }),
-          ],
-          onCompleteIds: [],
-          subscribedQueries: emptySet,
-        },
-      }),
-    ).toMatchInlineSnapshot(`
-      [
-        {
-          "callbackId": "mg8id41Qk7HxDoApjp0mZA",
-          "response": {
-            "id": "IGNl5t4ulaaQpdnwDhgoCA",
-            "message": {
-              "messagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => [
-                  {
-                    "change": {
-                      "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
-                      "isDelete": null,
-                      "isInsert": true,
-                      "table": "testTable",
-                      "values": {
-                        "name": "queryable",
-                      },
-                    },
-                    "timestamp": {
-                      "counter": 1,
-                      "millis": 0,
-                      "nodeId": "b3c19a4f2418a62c",
-                    },
-                  },
-                ],
-              },
-              "rowsByQuery": Map {},
-              "type": "Mutate",
-            },
-            "type": "ForEvolu",
-          },
-          "type": "OnQueuedResponse",
-        },
-      ]
-    `);
+    await postRequest(setup, {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Mutate",
+        changes: [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "queryable" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+        onCompleteIds: [],
+        subscribedQueries: emptySet,
+      },
+    });
 
     expect(
       await postRequest(setup, {
@@ -1564,6 +1588,29 @@ describe("query and mutation flow", () => {
         },
       ]
     `);
+  });
+
+  test("export returns current state", async () => {
+    await using setup = await setupDbWorker();
+
+    await postRequest(setup, {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Mutate",
+        changes: [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "queryable" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+        onCompleteIds: [],
+        subscribedQueries: emptySet,
+      },
+    });
 
     const exportOutputs = await postRequest(setup, {
       type: "ForEvolu",
@@ -1688,7 +1735,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -1700,7 +1747,7 @@ describe("query and mutation flow", () => {
                 "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
                 "value": "queryable",
               },
               {
@@ -1708,7 +1755,7 @@ describe("query and mutation flow", () => {
                 "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
                 "value": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -1722,11 +1769,11 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 16132600677598,
-                "h2": 86597046377751,
+                "h1": 227956131342583,
+                "h2": 225641860058631,
                 "l": 2,
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "t": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -1734,8 +1781,8 @@ describe("query and mutation flow", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "storedBytes": 1,
               },
@@ -1809,7 +1856,7 @@ describe("sync message flow", () => {
                     "timestamp": {
                       "counter": 1,
                       "millis": 0,
-                      "nodeId": "b3c19a4f2418a62c",
+                      "nodeId": "f3ea9b822631f414",
                     },
                   },
                 ],
@@ -1839,7 +1886,7 @@ describe("sync message flow", () => {
           "response": {
             "message": {
               "protocolMessagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,1,0,1,1,179,193,154,79,36,24,166,44,1],
+                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,1,0,1,1,243,234,155,130,38,49,244,20,1],
               },
               "type": "CreateSyncMessages",
             },
@@ -1951,7 +1998,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -1963,7 +2010,7 @@ describe("sync message flow", () => {
                 "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
                 "value": "synced",
               },
               {
@@ -1971,7 +2018,7 @@ describe("sync message flow", () => {
                 "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
                 "value": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -1985,11 +2032,11 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 16132600677598,
-                "h2": 86597046377751,
+                "h1": 227956131342583,
+                "h2": 225641860058631,
                 "l": 2,
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "t": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -1997,8 +2044,8 @@ describe("sync message flow", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "storedBytes": 1,
               },
@@ -2072,8 +2119,8 @@ describe("sync message flow", () => {
           "response": {
             "message": {
               "protocolMessagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,1,0,1,1,179,193,154,79,36,24,166,44,1],
-                "aTWWTYCG02eZXcwSlNkOyA" => uint8:[1,105,53,150,77,128,134,211,103,153,93,204,18,148,217,14,200,0,0,1,0,1,2,1,0,2,1,179,193,154,79,36,24,166,44,1],
+                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,1,0,1,1,243,234,155,130,38,49,244,20,1],
+                "aTWWTYCG02eZXcwSlNkOyA" => uint8:[1,105,53,150,77,128,134,211,103,153,93,204,18,148,217,14,200,0,0,1,0,1,2,1,0,2,1,243,234,155,130,38,49,244,20,1],
               },
               "type": "CreateSyncMessages",
             },
@@ -2137,7 +2184,7 @@ describe("sync message flow", () => {
                     "timestamp": {
                       "counter": 1,
                       "millis": 0,
-                      "nodeId": "b3c19a4f2418a62c",
+                      "nodeId": "f3ea9b822631f414",
                     },
                   },
                   {
@@ -2153,7 +2200,7 @@ describe("sync message flow", () => {
                     "timestamp": {
                       "counter": 2,
                       "millis": 0,
-                      "nodeId": "b3c19a4f2418a62c",
+                      "nodeId": "f3ea9b822631f414",
                     },
                   },
                 ],
@@ -2276,7 +2323,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,2,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -2288,7 +2335,7 @@ describe("sync message flow", () => {
                 "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
                 "value": "before",
               },
               {
@@ -2296,7 +2343,7 @@ describe("sync message flow", () => {
                 "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
                 "value": "1970-01-01T00:00:00.000Z",
               },
               {
@@ -2304,7 +2351,7 @@ describe("sync message flow", () => {
                 "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,2,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
                 "value": "after",
               },
               {
@@ -2312,7 +2359,7 @@ describe("sync message flow", () => {
                 "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,2,179,193,154,79,36,24,166,44],
+                "timestamp": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
                 "value": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -2326,19 +2373,19 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 16132600677598,
-                "h2": 86597046377751,
+                "h1": 227956131342583,
+                "h2": 225641860058631,
                 "l": 2,
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
+                "t": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
               },
               {
                 "c": 1,
-                "h1": 143770407076971,
-                "h2": 214490834920679,
+                "h1": 79205771092971,
+                "h2": 119756240965943,
                 "l": 1,
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,2,179,193,154,79,36,24,166,44],
+                "t": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -2346,8 +2393,8 @@ describe("sync message flow", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,179,193,154,79,36,24,166,44],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,2,179,193,154,79,36,24,166,44],
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
                 "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
                 "storedBytes": 1,
               },
@@ -2558,7 +2605,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,1,0,1,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,1,0,1,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -2796,7 +2843,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -2991,7 +3038,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,179,193,154,79,36,24,166,44],
+                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
               },
             ],
           },
@@ -3530,7 +3577,7 @@ describe("sync message flow", () => {
           "response": {
             "message": {
               "protocolMessagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,2,0,0,1,1,2,1,179,193,154,79,36,24,166,44,2],
+                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,2,0,0,1,1,2,1,243,234,155,130,38,49,244,20,2],
               },
               "type": "CreateSyncMessages",
             },
@@ -3701,7 +3748,6 @@ test("sync mutate posts Error when persisted clock exceeds drift", async () => {
     await using setup = await setupDbWorker({ dbSetup });
     expect(setup.outputs).toEqual([]);
   }
-  await testWaitForMacrotask();
 
   dbSetup.sqlite.exec(sql.prepared`
     update evolu_config
@@ -3715,24 +3761,29 @@ test("sync mutate posts Error when persisted clock exceeds drift", async () => {
 
   await using setup = await setupDbWorker({ dbSetup });
 
-  const outputs = await postRequest(setup, {
-    type: "ForEvolu",
-    id: setup.evoluInstanceId,
-    message: {
-      type: "Mutate",
-      changes: [
-        createMutationChange({
-          table: "testTable",
-          id: setup.createId(),
-          values: { name: "drift" },
-          isInsert: true,
-          isDelete: null,
-        }),
-      ],
-      onCompleteIds: [],
-      subscribedQueries: emptySet,
+  const outputs = await postRequest(
+    setup,
+    {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Mutate",
+        changes: [
+          createMutationChange({
+            table: "testTable",
+            id: setup.createId(),
+            values: { name: "drift" },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+        onCompleteIds: [],
+        subscribedQueries: emptySet,
+      },
     },
-  });
+    setup.createId(),
+    "activity",
+  );
 
   expect(outputs).toEqual([]);
   expect(setup.consoleEntryOrErrors).toEqual([
@@ -4040,7 +4091,7 @@ describe("quarantine replay", () => {
               "name": "evolu_config",
               "rows": [
                 {
-                  "clock": uint8:[0,0,0,0,0,1,0,1,179,193,154,79,36,24,166,44],
+                  "clock": uint8:[0,0,0,0,0,1,0,1,243,234,155,130,38,49,244,20],
                 },
               ],
             },
@@ -4238,7 +4289,7 @@ describe("quarantine replay", () => {
               "name": "evolu_config",
               "rows": [
                 {
-                  "clock": uint8:[0,0,0,0,0,1,0,1,179,193,154,79,36,24,166,44],
+                  "clock": uint8:[0,0,0,0,0,1,0,1,243,234,155,130,38,49,244,20],
                 },
               ],
             },
@@ -4473,7 +4524,7 @@ describe("quarantine replay", () => {
               "name": "evolu_config",
               "rows": [
                 {
-                  "clock": uint8:[0,0,0,0,0,1,0,1,179,193,154,79,36,24,166,44],
+                  "clock": uint8:[0,0,0,0,0,1,0,1,243,234,155,130,38,49,244,20],
                 },
               ],
             },
@@ -4627,7 +4678,6 @@ describe("quarantine replay", () => {
         setup.createId(),
       );
     }
-    await testWaitForMacrotask();
 
     expect(
       dbSetup.sqlite.exec<{
@@ -4791,7 +4841,6 @@ describe("quarantine replay", () => {
       await using setup = await setupDbWorker({ dbSetup });
       expect(setup.outputs).toEqual([]);
     }
-    await testWaitForMacrotask();
 
     expect(
       dbSetup.sqlite.exec<{

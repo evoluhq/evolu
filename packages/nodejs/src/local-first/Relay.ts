@@ -1,17 +1,17 @@
 import {
-  AbortError,
   assert,
-  callback,
   createRandom,
   createRelation,
   createSqlite,
   type CreateSqliteDriverDep,
+  daemon,
   Name,
   ok,
   OwnerId,
   type RandomDep,
   type Task,
   type TimingSafeEqualDep,
+  tryAsync,
   Uint8Array,
 } from "@evolu/common";
 import {
@@ -39,7 +39,7 @@ export interface NodeJsRelayConfig extends RelayConfig {
 
 export type RelayDeps = CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep;
 
-/** Dependencies for {@link startRelay} using better-sqlite3. */
+/** Dependencies for {@link createRelay} using better-sqlite3. */
 export const createRelayDeps = (): RelayDeps => ({
   createSqliteDriver: createBetterSqliteDriver,
   random: createRandom(),
@@ -47,7 +47,7 @@ export const createRelayDeps = (): RelayDeps => ({
 });
 
 /**
- * Starts an Evolu relay server using Node.js.
+ * Creates an Evolu Relay server resource using Node.js.
  *
  * Use {@link createRelayDeps} to create dependencies for better-sqlite3, or
  * provide a custom SQLite driver implementation.
@@ -68,29 +68,22 @@ export const createRelayDeps = (): RelayDeps => ({
  *
  * const deps = { ...createRelayDeps(), console };
  *
- * await using run = createRun(deps);
- * await using disposer = new AsyncDisposableStack();
+ * await runMain(deps)(
+ *   createRelay({
+ *     port: 4000,
  *
- * disposer.use(
- *   await run.orThrow(
- *     startRelay({
- *       port: 4000,
+ *     // Note: Relay requires URL in format ws://host:port?ownerId=<ownerId>
+ *     // isOwnerAllowed: (_ownerId, { signal: _signal }) => true,
  *
- *       // Note: Relay requires URL in format ws://host:port?ownerId=<ownerId>
- *       // isOwnerAllowed: (_ownerId, { signal: _signal }) => true,
- *
- *       isOwnerWithinQuota: (_ownerId, requiredBytes) => {
- *         const maxBytes = 1024 * 1024; // 1MB
- *         return requiredBytes <= maxBytes;
- *       },
- *     }),
- *   ),
+ *     isOwnerWithinQuota: (_ownerId, requiredBytes) => {
+ *       const maxBytes = 1024 * 1024; // 1MB
+ *       return requiredBytes <= maxBytes;
+ *     },
+ *   }),
  * );
- *
- * await run.deps.shutdown;
  * ```
  */
-export const startRelay =
+export const createRelay =
   ({
     port = 443,
     name = Name.orThrow("evolu-relay"),
@@ -101,12 +94,8 @@ export const startRelay =
     await using disposer = new AsyncDisposableStack();
     const console = run.deps.console.child("relay");
 
-    disposer.defer(() => {
-      console.info("Shutdown complete");
-    });
-
     const dbFileExists = existsSync(`${name}.db`);
-    const sqlite = disposer.use(await run.orThrow(createSqlite(name)));
+    const sqlite = disposer.use(await run.ok(createSqlite(name)));
     const deps = { ...run.deps, sqlite };
 
     if (!dbFileExists) {
@@ -135,14 +124,8 @@ export const startRelay =
 
     const ownerSocketRelation = createRelation<OwnerId, WebSocket>();
 
-    const relayRun = disposer.use(
-      run.create({
-        ...run.deps,
-        storage: createRelaySqliteStorage(deps)({
-          isOwnerWithinQuota,
-        }),
-      }),
-    );
+    const storage = createRelaySqliteStorage(deps)({ isOwnerWithinQuota });
+    const relayRun = disposer.use(run.create({ storage }));
 
     server.on("upgrade", (request, socket, head) => {
       socket.on("error", console.debug);
@@ -181,33 +164,43 @@ export const startRelay =
         return;
       }
 
-      const authorizationFiber = relayRun(
-        callback<boolean, unknown>(({ ok, err, signal }) => {
-          void Promise.try(() => isOwnerAllowed(ownerId, { signal })).then(
-            ok,
-            err,
-          );
-        }),
+      const authorizationFiber = relayRun.abortable(
+        // Use daemon because authorization can call an external service that
+        // ignores abort. The daemon runs in the root Run, so aborting the
+        // current Run does not make its Fiber wait for the service Promise to
+        // settle.
+        daemon(
+          async (run) =>
+            await tryAsync(
+              () => isOwnerAllowed(ownerId, { signal: run.signal }),
+              (error) => ({ type: "OwnerAuthorizationError", error }) as const,
+            ),
+        ),
       );
 
       const abortAuthorization = () => {
-        authorizationFiber.abort("WebSocket upgrade request socket closed");
+        authorizationFiber.abort({
+          type: "WebSocketUpgradeSocketClosed",
+        });
       };
 
       socket.once("close", abortAuthorization);
       socket.once("error", abortAuthorization);
 
-      void authorizationFiber.then((result) => {
+      void (async () => {
+        const result = await authorizationFiber;
+
         socket.removeListener("close", abortAuthorization);
         socket.removeListener("error", abortAuthorization);
 
         if (!result.ok) {
-          if (!AbortError.is(result.error)) {
-            console.error("isOwnerAllowed failed", ownerId, result.error);
-            respondAndDestroy(503);
+          if (result.error.type === "AbortError") {
+            socket.destroy();
             return;
           }
-          socket.destroy();
+
+          console.error(result.error.error);
+          respondAndDestroy(503);
           return;
         }
 
@@ -218,7 +211,7 @@ export const startRelay =
         }
 
         completeUpgrade();
-      });
+      })();
     });
 
     wss.on("connection", (ws) => {
@@ -262,13 +255,16 @@ export const startRelay =
         if (!Uint8Array.is(message)) return;
 
         void (async () => {
-          const response = await relayRun(
+          const response = await relayRun.abortable(
             applyProtocolMessageAsRelay(message, options),
           );
+
           if (!response.ok) {
+            if (response.error.type === "AbortError") return;
             console.error(response);
             return;
           }
+
           ws.send(response.value.message, { binary: true });
         })();
       });
@@ -280,7 +276,6 @@ export const startRelay =
     });
 
     disposer.defer(() => {
-      console.info("Shutting down...");
       for (const client of wss.clients) {
         if (client.readyState === WebSocket.OPEN) {
           client.close(1000, "Evolu Relay shutting down");

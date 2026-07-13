@@ -23,8 +23,7 @@ import {
   createPreparedStatementsCache,
   testSetupSqlite,
 } from "../src/Sqlite.js";
-import type { Run } from "../src/Task.js";
-import type { TestDeps } from "../src/Test.js";
+import type { DisposableRun } from "../src/Task2.js";
 
 export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 
@@ -103,7 +102,7 @@ const createBetterSqliteDriver: CreateSqliteDriver = (name, options) => () => {
 };
 
 export interface TestSqliteAndRelayStorageSetup extends AsyncDisposable {
-  readonly run: Run<TestDeps & CreateSqliteDriverDep & SqliteDep & StorageDep>;
+  readonly run: DisposableRun<StorageDep>;
   readonly sqlite: SqliteDep["sqlite"];
   readonly storage: StorageDep["storage"];
 }
@@ -126,7 +125,7 @@ export const setupSqliteAndRelayStorage = async (
     isOwnerWithinQuota: lazyTrue,
     ...config,
   });
-  const runWithStorage = disposer.use(run.create({ ...run.deps, storage }));
+  const runWithStorage = disposer.use(run.create({ storage }));
   const disposables = disposer.move();
 
   return {

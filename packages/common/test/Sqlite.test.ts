@@ -23,8 +23,7 @@ import {
   type SqliteQueryString,
   type SqliteValue,
 } from "../src/Sqlite.js";
-import { sleep } from "../src/Task.js";
-import { testCreateRun } from "../src/Test.js";
+import { createAbortError, sleep, testCreateRun } from "../src/Task2.js";
 import { testName } from "../src/Type.js";
 import { setupSqlite } from "./_deps.js";
 
@@ -508,11 +507,12 @@ test("createSqlite returns error when driver creation is aborted", async () => {
     createSqliteDriver: createSlowDriver,
   });
 
-  const fiber = run(createSqlite(testName));
-  fiber.abort("test");
+  const fiber = run.abortable(createSqlite(testName));
+  const reason = { type: "TestAbortReason" };
+  fiber.abort(reason);
   const result = await fiber;
 
-  expect(result).toEqual(err({ type: "AbortError", reason: "test" }));
+  expect(result).toEqual(err(createAbortError(reason)));
 });
 
 describe("createPreparedStatementsCache", () => {
