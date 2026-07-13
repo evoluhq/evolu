@@ -1,0 +1,31 @@
+diff --git a/dist/runtime/vitest-shim.cjs b/dist/runtime/vitest-shim.cjs
+index 981f7a0c534b1b44a2cdf1500bf4f058f223ed16..2a6e7d3ccf97dcc24251653e8b90dd729631c0c2 100644
+--- a/dist/runtime/vitest-shim.cjs
++++ b/dist/runtime/vitest-shim.cjs
+@@ -36,12 +36,14 @@ __export(vitest_shim_exports, {
+   beforeEach: () => import_runner.beforeEach,
+   describe: () => import_runner.describe,
+   expect: () => expect,
++  expectTypeOf: () => import_expect_type.expectTypeOf,
+   it: () => import_runner.it,
+   suite: () => import_runner.suite,
+   test: () => import_runner.test
+ });
+ module.exports = __toCommonJS(vitest_shim_exports);
+ var import_runner = require("@vitest/runner");
++var import_expect_type = require("expect-type");
+ 
+ // src/runtime/global-types.ts
+ var g = globalThis;
+diff --git a/src/runtime/vitest-shim.ts b/src/runtime/vitest-shim.ts
+index 28fda0a4885a34f21fc58832b11a4e1ef47f5ee3..dd194a55935915d4fe4b9422df2a4a4687a00a9e 100644
+--- a/src/runtime/vitest-shim.ts
++++ b/src/runtime/vitest-shim.ts
+@@ -8,6 +8,7 @@
+ /// <reference path="../../matchers.d.ts" />
+ 
+ export { describe, it, test, suite, beforeAll, beforeEach, afterAll, afterEach } from '@vitest/runner';
++export { expectTypeOf } from 'expect-type';
+ 
+ import { setupExpect, getExpect } from './expect-setup';
+ 

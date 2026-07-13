@@ -12,10 +12,12 @@
     "typecheck": "tsc --build tsconfig.typecheck.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:ios": "NODE_ENV=development vitest run --config vitest.ios.config.mts",
+    "test:ios:bootstrap": "vitest-mobile bootstrap --platform ios",
     "playwright:install": "pnpm --filter @evolu/common exec playwright install chromium firefox webkit",
     "test:watch": "vitest",
     "start": "turbo start",
-    "lint": "eslint --cache",
+    "lint": "eslint",
     "biome": "biome check",
     "lint-monorepo": "pnpm dlx sherif@latest --ignore-dependency react@19.2.0",
     "verify": "pnpm typecheck && pnpm build && pnpm test:coverage && pnpm biome && pnpm lint-monorepo && pnpm build:docs && pnpm lint",
@@ -46,37 +48,23 @@
     "@vitest/browser-playwright": "^4.1.2",
     "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^10.1.0",
-    "eslint-plugin-jsdoc": "^62.8.1",
+    "eslint-plugin-jsdoc": "^63.0.6",
     "eslint-plugin-react-hooks": "^7.0.1",
     "prettier": "^3.8.1",
     "prettier-plugin-embed": "^0.5.1",
     "prettier-plugin-jsdoc": "^1.8.0",
-    "prettier-plugin-sql-cst": "^0.18.0",
-    "prettier-plugin-tailwindcss": "^0.7.2",
+    "prettier-plugin-sql-cst": "^0.22.1",
+    "prettier-plugin-tailwindcss": "^0.8.0",
     "turbo": "^2.9.1",
     "typedoc": "^0.28.18",
     "typedoc-plugin-markdown": "^4.11.0",
     "typescript": "^6",
     "typescript-eslint": "^8.58.0",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "vitest-mobile": "^0.4.3"
   },
   "engines": {
     "node": ">=24.0.0"
   },
-  "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "@tailwindcss/oxide",
-      "better-sqlite3",
-      "electron",
-      "electron-winstaller",
-      "esbuild",
-      "lmdb",
-      "msgpackr-extract",
-      "react-native-nitro-modules",
-      "sharp",
-      "unrs-resolver"
-    ]
-  }
+  "packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620"
 }

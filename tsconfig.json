@@ -3,5 +3,5 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["vitest.config.mts"]
+  "include": ["vitest.config.mts", "vitest.ios.config.mts"]
 }
