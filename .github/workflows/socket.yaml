@@ -72,7 +72,7 @@ jobs:
           MAX_ATTEMPTS=3
           ATTEMPT=1
           while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
-            LOG_FILE="$(mktemp -p "${RUNNER_TEMP:-/tmp}" socketcli.XXXXXX.log)"
+            LOG_FILE="$(mktemp -p "${RUNNER_TEMP:-/tmp}" socket-scan-attempt.XXXXXX.log)"
             if run_socket_scan 2>&1 | tee "$LOG_FILE"; then
               rm -f "$LOG_FILE"
               break
