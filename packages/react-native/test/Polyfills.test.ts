@@ -19,6 +19,10 @@ interface PromiseStatics {
   ) => Promise<unknown>;
 }
 
+interface ArrayConstructorWithFromAsync {
+  fromAsync?: typeof Array.fromAsync;
+}
+
 type FakeAbortListener = () => void;
 
 interface FakeAbortSignal {
@@ -114,6 +118,7 @@ const setAbortGlobals = (globals: GlobalAbort): void => {
 
 describe("installPolyfills", () => {
   let originalGlobals: GlobalAbort;
+  let originalArrayFromAsync: PropertyDescriptor | undefined;
   let originalPromiseWithResolvers: PropertyDescriptor | undefined;
   let originalPromiseTry: PropertyDescriptor | undefined;
 
@@ -124,6 +129,10 @@ describe("installPolyfills", () => {
       DOMException: globalThis.DOMException,
     };
 
+    originalArrayFromAsync = Object.getOwnPropertyDescriptor(
+      Array,
+      "fromAsync",
+    );
     originalPromiseWithResolvers = Object.getOwnPropertyDescriptor(
       Promise,
       "withResolvers",
@@ -133,6 +142,12 @@ describe("installPolyfills", () => {
 
   afterEach(() => {
     setAbortGlobals(originalGlobals);
+
+    if (originalArrayFromAsync === undefined) {
+      delete (Array as ArrayConstructorWithFromAsync).fromAsync;
+    } else {
+      Object.defineProperty(Array, "fromAsync", originalArrayFromAsync);
+    }
 
     if (originalPromiseWithResolvers === undefined) {
       delete (Promise as PromiseStatics).withResolvers;
@@ -149,6 +164,14 @@ describe("installPolyfills", () => {
     } else {
       Object.defineProperty(Promise, "try", originalPromiseTry);
     }
+  });
+
+  test("polyfills Array.fromAsync", async () => {
+    delete (Array as ArrayConstructorWithFromAsync).fromAsync;
+
+    installPolyfills();
+
+    expect(await Array.fromAsync(new Set([1, 2, 3]))).toEqual([1, 2, 3]);
   });
 
   test("polyfills Promise.withResolvers", async () => {
