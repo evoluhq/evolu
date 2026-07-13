@@ -29,4 +29,5 @@ catalogs:
     react-dom: ^19.2.4
 
 patchedDependencies:
+  "@next/mdx@16.2.10": patches/@next__mdx@16.2.10.patch
   vitest-mobile@0.4.3: patches/vitest-mobile@0.4.3.patch

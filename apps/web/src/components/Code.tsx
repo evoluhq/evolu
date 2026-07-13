@@ -242,7 +242,7 @@ const CodeGroupHeader = ({
         </h3>
       )}
       {hasTabs && (
-        <TabList className="-mb-px flex gap-4 overflow-x-auto text-xs font-medium [scrollbar-width:none] [-webkit-scrollbar]:hidden">
+        <TabList className="-mb-px flex scrollbar-none gap-4 overflow-x-auto text-xs font-medium [-webkit-scrollbar]:hidden">
           {Children.map(children, (child, childIndex) => (
             <Tab
               className={clsx(
@@ -482,8 +482,7 @@ export const Pre = ({
   children,
   ...props
 }: React.ComponentPropsWithoutRef<typeof CodeGroup>):
-  | React.ReactElement
-  | ReactNode => {
+  React.ReactElement | ReactNode => {
   const isGrouped = useContext(CodeGroupContext);
 
   if (isGrouped) {
