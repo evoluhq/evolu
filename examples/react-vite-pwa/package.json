@@ -27,7 +27,7 @@
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "@vite-pwa/assets-generator": "^1.0.2",
-    "@vitejs/plugin-react": "^5.1.2",
+    "@vitejs/plugin-react": "^6.0.3",
     "globals": "^17.3.0",
     "typescript": "^6",
     "vite": "^8.1.4",
