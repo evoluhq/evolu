@@ -16,9 +16,9 @@ import type {
 } from "@evolu/common";
 import {
   assert,
-  assertNotDisposed,
   createConsole,
   createConsoleStoreOutput,
+  disposable,
 } from "@evolu/common";
 
 /** Creates a {@link Worker} from a Web Worker. */
@@ -113,34 +113,36 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
 ): BroadcastChannel<Input, Output> => {
   const nativeBroadcastChannel = new globalThis.BroadcastChannel(name);
   using disposer = new DisposableStack();
+  let disposed = false;
 
   disposer.defer(() => {
+    disposed = true;
     nativeBroadcastChannel.onmessage = null;
     nativeBroadcastChannel.close();
   });
 
-  const disposables = disposer.move();
   let onMessageHandler: ((message: Output) => void) | null = null;
 
-  return {
-    postMessage: (message) => {
-      assertNotDisposed(disposables);
-      nativeBroadcastChannel.postMessage(message);
+  return disposable<BroadcastChannel<Input, Output>>(
+    {
+      postMessage: (message) => {
+        nativeBroadcastChannel.postMessage(message);
+      },
+      get onMessage() {
+        return disposed ? null : onMessageHandler;
+      },
+      set onMessage(fn) {
+        if (disposed) return;
+        onMessageHandler = fn;
+        nativeBroadcastChannel.onmessage = fn
+          ? (event: MessageEvent<Output>) => {
+              fn(event.data);
+            }
+          : null;
+      },
     },
-    get onMessage() {
-      return disposables.disposed ? null : onMessageHandler;
-    },
-    set onMessage(fn) {
-      if (disposables.disposed) return;
-      onMessageHandler = fn;
-      nativeBroadcastChannel.onmessage = fn
-        ? (event: MessageEvent<Output>) => {
-            fn(event.data);
-          }
-        : null;
-    },
-    [Symbol.dispose]: () => disposables.dispose(),
-  };
+    disposer,
+  );
 };
 
 /**

@@ -339,6 +339,28 @@ describe("one-tab SharedWorker polyfill", () => {
 
     expect(received).toEqual(["first"]);
   });
+
+  test("createOneTabSharedWorkerSelfPolyfill disposes from connected port", () => {
+    const nativeSelf = createClosableNativePort<string>();
+    const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
+      nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
+    );
+    let connectedPort!: MessagePort<string, string>;
+
+    workerSelf.onConnect = (port) => {
+      connectedPort = port;
+    };
+
+    connectedPort[Symbol.dispose]();
+    workerSelf.onConnect = () => {
+      throw new Error("Disposed worker self must ignore onConnect setter.");
+    };
+
+    expect(workerSelf.onConnect).toBeNull();
+    expect(connectedPort.onMessage).toBeNull();
+    expect(nativeSelf.close).toHaveBeenCalledOnce();
+    expect(nativeSelf.onmessage).toBeNull();
+  });
 });
 
 test("createWorker communicates with createWorkerSelf through a native worker", async () => {

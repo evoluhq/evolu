@@ -4,10 +4,10 @@
  * @module
  */
 
-import { assert, assertNotDisposed } from "./Assert.js";
+import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { ConsoleDep, ConsoleStoreOutputEntryDep } from "./Console.js";
-import { testWaitForMacrotask } from "./Test.js";
+import { disposable } from "./Function.js";
 
 /**
  * Typed, disposable Worker.
@@ -357,41 +357,41 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
   dispatches.add(dispatch as BroadcastChannelDispatch<any>);
 
   using disposer = new DisposableStack();
+  let disposed = false;
 
   disposer.defer(() => {
+    disposed = true;
     onMessageHandler = null;
 
     dispatches.delete(dispatch as BroadcastChannelDispatch<any>);
     if (dispatches.size === 0) broadcastChannelDispatchesByName.delete(name);
   });
 
-  const disposables = disposer.move();
+  return disposable<BroadcastChannel<Input, Output>>(
+    {
+      postMessage: (message) => {
+        const dispatches = broadcastChannelDispatchesByName.get(name);
+        assert(dispatches, "Expected broadcast channel dispatches");
 
-  return {
-    postMessage: (message) => {
-      assertNotDisposed(disposables);
+        for (const otherDispatch of [...dispatches]) {
+          if (otherDispatch === dispatch) continue;
 
-      const dispatches = broadcastChannelDispatchesByName.get(name);
-      assert(dispatches, "Expected broadcast channel dispatches");
-
-      for (const otherDispatch of [...dispatches]) {
-        if (otherDispatch === dispatch) continue;
-
-        globalThis.setTimeout(() => {
-          if (!dispatches.has(otherDispatch)) return;
-          otherDispatch(message);
-        }, 0);
-      }
+          scheduleWorkerTask(() => {
+            if (!dispatches.has(otherDispatch)) return;
+            otherDispatch(message);
+          });
+        }
+      },
+      get onMessage() {
+        return disposed ? null : onMessageHandler;
+      },
+      set onMessage(fn) {
+        if (disposed) return;
+        onMessageHandler = fn;
+      },
     },
-    get onMessage() {
-      return disposables.disposed ? null : onMessageHandler;
-    },
-    set onMessage(fn) {
-      if (disposables.disposed) return;
-      onMessageHandler = fn;
-    },
-    [Symbol.dispose]: () => disposables.dispose(),
-  };
+    disposer,
+  );
 };
 
 type BroadcastChannelDispatch<T> = (message: T) => void;
@@ -537,17 +537,17 @@ export const testCreateBroadcastChannel = <Input, Output = Input>(
 };
 
 /**
- * Waits the minimal time necessary for in-memory worker message delivery in
- * tests.
+ * Waits until scheduled in-memory worker message delivery becomes idle.
  *
- * This is better than `vi.waitFor` when a test only needs to flush the known
- * in-memory worker/message-port pipeline. It encodes that transport boundary
- * once, avoids polling, and keeps worker-focused tests fast and explicit.
+ * This observes actual transport tasks instead of waiting for an arbitrary
+ * duration. It also waits through message handlers that schedule more worker
+ * tasks before the current microtask checkpoint completes.
  */
-export const testWaitForWorkerMessage = async (): Promise<void> => {
-  await testWaitForMacrotask();
-  await testWaitForMacrotask();
-};
+export const testWaitForWorkerMessage = (): Promise<void> =>
+  new Promise((resolve) => {
+    workerTaskIdleWaiters.add(resolve);
+    notifyWorkerTaskIdle();
+  });
 
 const createMemoryWorkerPair = <Input, Output = never>(): {
   readonly worker: Worker<Input, Output>;
@@ -650,7 +650,7 @@ const createPort = <Input, Output>({
     nativePortRegistry.delete(native);
 
     if (receive.flushTimeoutId != null) {
-      globalThis.clearTimeout(receive.flushTimeoutId);
+      cancelWorkerTask(receive.flushTimeoutId);
       receive.flushTimeoutId = null;
     }
 
@@ -665,8 +665,7 @@ const createPort = <Input, Output>({
     if (state.flushScheduled || state.ownerCount === 0) return;
     state.flushScheduled = true;
 
-    // Native worker messages are task-queued; use macrotask timing.
-    state.flushTimeoutId = globalThis.setTimeout(() => {
+    state.flushTimeoutId = scheduleWorkerTask(() => {
       state.flushTimeoutId = null;
       state.flushScheduled = false;
       if (state.ownerCount === 0) return;
@@ -680,7 +679,7 @@ const createPort = <Input, Output>({
 
         handler(message);
       }
-    }, 0);
+    });
   };
 
   return {
@@ -716,6 +715,56 @@ const createPort = <Input, Output>({
     native,
     [Symbol.dispose]: () => disposables.dispose(),
   };
+};
+
+const pendingWorkerTaskIds = new Set<
+  ReturnType<typeof globalThis.setTimeout>
+>();
+const workerTaskIdleWaiters = new Set<() => void>();
+let workerTaskIdleCheckTimeoutId:
+  ReturnType<typeof globalThis.setTimeout> | undefined;
+
+const scheduleWorkerTask = (
+  callback: () => void,
+): ReturnType<typeof globalThis.setTimeout> => {
+  if (workerTaskIdleCheckTimeoutId != null) {
+    globalThis.clearTimeout(workerTaskIdleCheckTimeoutId);
+    workerTaskIdleCheckTimeoutId = undefined;
+  }
+
+  const timeoutId = globalThis.setTimeout(() => {
+    pendingWorkerTaskIds.delete(timeoutId);
+    try {
+      callback();
+    } finally {
+      queueMicrotask(notifyWorkerTaskIdle);
+    }
+  }, 0);
+  pendingWorkerTaskIds.add(timeoutId);
+  return timeoutId;
+};
+
+const cancelWorkerTask = (
+  timeoutId: ReturnType<typeof globalThis.setTimeout>,
+): void => {
+  globalThis.clearTimeout(timeoutId);
+  pendingWorkerTaskIds.delete(timeoutId);
+  queueMicrotask(notifyWorkerTaskIdle);
+};
+
+const notifyWorkerTaskIdle = (): void => {
+  if (
+    pendingWorkerTaskIds.size > 0 ||
+    workerTaskIdleWaiters.size === 0 ||
+    workerTaskIdleCheckTimeoutId != null
+  )
+    return;
+
+  workerTaskIdleCheckTimeoutId = globalThis.setTimeout(() => {
+    workerTaskIdleCheckTimeoutId = undefined;
+    for (const resolve of workerTaskIdleWaiters) resolve();
+    workerTaskIdleWaiters.clear();
+  }, 0);
 };
 
 const createTestPort = <Input, Output>(
