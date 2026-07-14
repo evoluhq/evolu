@@ -1,6 +1,5 @@
 import { type Metadata } from "next";
 
-import { Providers } from "@/app/providers";
 import { Layout } from "@/components/Layout";
 import allSections from "@/data/sections.json";
 
@@ -18,9 +17,5 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }): React.ReactElement {
-  return (
-    <Providers>
-      <Layout allSections={allSections}>{children}</Layout>
-    </Providers>
-  );
+  return <Layout allSections={allSections}>{children}</Layout>;
 }

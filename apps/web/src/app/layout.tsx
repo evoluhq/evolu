@@ -1,5 +1,7 @@
 import { type Metadata } from "next";
 
+import { Providers } from "@/app/providers";
+
 export const metadata: Metadata = {
   title: {
     template: "%s - Evolu",
@@ -25,7 +27,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="flex min-h-full bg-white antialiased dark:bg-zinc-900">
-        <div className="w-full">{children}</div>
+        <Providers>
+          <div className="w-full">{children}</div>
+        </Providers>
       </body>
     </html>
   );
