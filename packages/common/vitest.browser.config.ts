@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { playwright } from "@vitest/browser-playwright";
+import { transformWithEsbuild } from "vite";
 import { defineProject } from "vitest/config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -13,7 +14,18 @@ const isSingleBrowserRun =
 
 export default defineProject({
   // Transpile `using`/`await using` for WebKit which doesn't support it yet
-  esbuild: { supported: { using: false } },
+  plugins: [
+    {
+      name: "transform-using",
+      enforce: "pre",
+      transform: (code, id) =>
+        code.includes("using ")
+          ? transformWithEsbuild(code, id, {
+              supported: { using: false },
+            })
+          : undefined,
+    },
+  ],
   test: {
     snapshotSerializers: [
       resolve(__dirname, "./test/local-first/_uint8ArraySerializer.ts"),

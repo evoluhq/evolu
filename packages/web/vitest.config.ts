@@ -1,4 +1,5 @@
 import { playwright } from "@vitest/browser-playwright";
+import { transformWithEsbuild } from "vite";
 import { defineProject } from "vitest/config";
 
 // Coverage with v8 only works with a single browser instance
@@ -6,7 +7,18 @@ const isCoverage = process.argv.includes("--coverage");
 
 export default defineProject({
   // Transpile `using`/`await using` for WebKit which doesn't support it yet
-  esbuild: { supported: { using: false } },
+  plugins: [
+    {
+      name: "transform-using",
+      enforce: "pre",
+      transform: (code, id) =>
+        code.includes("using ")
+          ? transformWithEsbuild(code, id, {
+              supported: { using: false },
+            })
+          : undefined,
+    },
+  ],
   optimizeDeps: {
     // Preserve import.meta.url so the WASM binary can be located at runtime.
     exclude: ["@evolu/sqlite-wasm"],
