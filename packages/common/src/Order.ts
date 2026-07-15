@@ -4,6 +4,8 @@
  * @module
  */
 
+import type { Eq, eqFromOrder } from "./Eq.js";
+
 /**
  * Compares two values of type `A` and returns their ordering.
  *
@@ -12,6 +14,9 @@
  * - Returns `-1` if `x` is less than `y`.
  * - Returns `0` if `x` is equal to `y`.
  * - Returns `1` if `x` is greater than `y`.
+ *
+ * An `Order` also defines equality. Use {@link eqFromOrder} to derive an
+ * {@link Eq}.
  */
 export type Order<in A> = (x: A, y: A) => Ordering;
 

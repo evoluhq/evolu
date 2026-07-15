@@ -3,6 +3,7 @@ import {
   createOrder,
   orderBigInt,
   orderNumber,
+  orderString,
   orderUint8Array,
   reverseOrder,
 } from "../src/Order.js";
@@ -22,6 +23,10 @@ test("createOrder", () => {
 test("reverseOrder", () => {
   const orderNumberDesc = reverseOrder(orderNumber);
   expect([2, 1, 3].toSorted(orderNumberDesc)).toEqual([3, 2, 1]);
+});
+
+test("orderString", () => {
+  expect(["b", "a", "c"].toSorted(orderString)).toEqual(["a", "b", "c"]);
 });
 
 test("orderNumber", () => {
