@@ -79,6 +79,7 @@ const testTimestamps = async (
 ) => {
   await using setup = await setupSqliteAndStorage();
   const { sqlite, storage } = setup;
+  const sortedTimestamps = timestamps.toSorted(orderTimestampBytes);
 
   const bruteForceAllTimestampsFingerprint = timestamps
     .map(timestampBytesToFingerprint)
@@ -145,6 +146,20 @@ const testTimestamps = async (
         and (${upper} is null or t < ${upper})
         and ownerid = ${testAppOwnerIdBytes};
     `);
+
+    expect(timestampRows.length, `count in range ${i}`).toBe(
+      buckets[i] - (i === 0 ? 0 : buckets[i - 1]),
+    );
+    if (buckets[i] === timestamps.length) {
+      expect(fingerprintRanges[i].upperBound, `upper bound of range ${i}`).toBe(
+        InfiniteUpperBound,
+      );
+    } else {
+      expect(
+        Array.from(fingerprintRanges[i].upperBound as TimestampBytes),
+        `upper bound of range ${i}`,
+      ).toStrictEqual(Array.from(sortedTimestamps[buckets[i]]));
+    }
 
     incrementalCounts.push(timestampRows.length);
 
