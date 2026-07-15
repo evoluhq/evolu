@@ -5,7 +5,7 @@
  */
 
 import type { Eq } from "./Eq.js";
-import { eqStrict } from "./Eq.js";
+import { eqSameValueZero } from "./Eq.js";
 import type { Ref } from "./Ref.js";
 import { createRef } from "./Ref.js";
 
@@ -51,11 +51,12 @@ export type Unsubscribe = () => void;
  * state, which can be read with `get` and updated with `set` or `update`. All
  * changes are broadcast to subscribers.
  *
- * By default, state changes are detected using strict equality (`===`). You can
- * provide a custom equality function as the second argument.
+ * By default, state changes are detected using {@link eqSameValueZero}, which
+ * considers `NaN` equal to itself and `0` equal to `-0`. You can provide a
+ * custom equality function as the second argument.
  */
 export const createStore = <T>(initialState: T, eq?: Eq<T>): Store<T> => {
-  const equality = eq ?? eqStrict;
+  const equality = eq ?? eqSameValueZero;
   const ref = createRef(initialState);
   const listeners = new Set<Listener>();
 

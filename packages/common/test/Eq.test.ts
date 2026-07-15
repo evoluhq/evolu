@@ -2,19 +2,53 @@ import { expect, test } from "vitest";
 import {
   createEqArrayLike,
   createEqObject,
+  eqFromOrder,
   eqJsonValueInput,
   eqNumber,
+  eqSameValueZero,
+  eqStrict,
 } from "../src/Eq.js";
+import { orderNumber } from "../src/Order.js";
 import type { JsonValueInput } from "../src/Type.js";
+
+test("eqStrict", () => {
+  expect(eqStrict(1, 1)).toBe(true);
+  expect(eqStrict(NaN, NaN)).toBe(false);
+});
+
+test("eqSameValueZero", () => {
+  expect(eqSameValueZero(NaN, NaN)).toBe(true);
+  expect(eqSameValueZero(0, -0)).toBe(true);
+  expect(eqSameValueZero(1, 2)).toBe(false);
+
+  const object = {};
+  expect(eqSameValueZero(object, object)).toBe(true);
+  expect(eqSameValueZero({}, {})).toBe(false);
+});
+
+test("eqNumber", () => {
+  expect(eqNumber(NaN, NaN)).toBe(true);
+});
+
+test("eqFromOrder", () => {
+  const eqNumberFromOrder = eqFromOrder(orderNumber);
+  expect(eqNumberFromOrder(1, 1)).toBe(true);
+  expect(eqNumberFromOrder(1, 2)).toBe(false);
+});
 
 test("createEqArrayLike", () => {
   const eqArrayNumber = createEqArrayLike(eqNumber);
+  const array = [1, 2, 3];
+  expect(eqArrayNumber(array, array)).toBe(true);
+  expect(eqArrayNumber([1, 2, 3], [1, 2])).toBe(false);
   expect(eqArrayNumber([1, 2, 3], [1, 2, 3])).toBe(true);
   expect(eqArrayNumber([1, 2, 3], [1, 2, 4])).toBe(false);
 });
 
 test("createEqObject", () => {
   const eqObjectNumber = createEqObject({ a: eqNumber });
+  const object = { a: 1 };
+  expect(eqObjectNumber(object, object)).toBe(true);
   expect(eqObjectNumber({ a: 1 }, { a: 1 })).toBe(true);
   expect(eqObjectNumber({ a: 1 }, { a: 2 })).toBe(false);
 });

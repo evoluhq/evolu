@@ -34,6 +34,16 @@ describe("set", () => {
 
     expect(listener).not.toHaveBeenCalled();
   });
+
+  test("does not notify listeners when repeated state is NaN", () => {
+    const store = createStore(NaN);
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.set(NaN);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
 });
 
 describe("getAndSet", () => {
