@@ -11,22 +11,30 @@
       },
       "measurementsMs": {
         "memory": {
-          "append": 549,
-          "prepend": 1191,
-          "insert": 5567,
-          "insertLevel1": 161,
-          "insertLevel2": 221,
-          "insertLevel10": 591,
-          "fingerprintRanges": 875
+          "append": 307,
+          "prepend": 1052,
+          "insert": 1701,
+          "appendLevel1": 24,
+          "appendLevel2": 101,
+          "appendLevel10": 165,
+          "appendSparseLevel10": 55,
+          "insertLevel1": 20,
+          "insertLevel2": 69,
+          "insertLevel10": 439,
+          "fingerprintRanges": 708
         },
         "file": {
-          "append": 531,
-          "prepend": 1159,
-          "insert": 5745,
-          "insertLevel1": 181,
-          "insertLevel2": 239,
-          "insertLevel10": 621,
-          "fingerprintRanges": 874
+          "append": 322,
+          "prepend": 1033,
+          "insert": 1974,
+          "appendLevel1": 26,
+          "appendLevel2": 100,
+          "appendLevel10": 179,
+          "appendSparseLevel10": 56,
+          "insertLevel1": 35,
+          "insertLevel2": 82,
+          "insertLevel10": 462,
+          "fingerprintRanges": 715
         }
       }
     }

@@ -12,7 +12,7 @@ pnpm build
 
 ### Workload
 
-Every benchmark scenario inserts 50,000 deterministic timestamps in five transactions of 10,000 rows. It measures three insertion methods:
+The primary insertion scenarios insert 50,000 deterministic timestamps in five transactions of 10,000 rows. They measure three insertion methods:
 
 - `append`: timestamps in ascending order.
 - `prepend`: timestamps in descending order.
@@ -20,14 +20,32 @@ Every benchmark scenario inserts 50,000 deterministic timestamps in five transac
 
 Each method gets a fresh database and the same seeded Skiplist-level random sequence. The timed region contains only the insert transaction. Database setup, size checks, fingerprint checks, disposal, and file cleanup are excluded.
 
-The benchmark also builds normally distributed 50,000-row Skiplists and measures:
+The benchmark also measures:
 
+- 10,000 appends forced to Skiplist levels 1, 2, and 10, each in a fresh database.
+- The first level-10 append after building a 50,000-row Skiplist containing only level-1 nodes. This isolates the sparse promoted-anchor path.
 - 1,000 gap insertions forced to Skiplist levels 1, 2, and 10. Each level gets a fresh database, and the benchmark verifies every inserted row has the requested level and that the resulting whole-database fingerprint matches brute force.
 - 1,000 `fingerprintRanges` calls with 16 balanced buckets. Database construction is excluded from the timed region.
 
-Forced-level scenarios isolate paths hidden by the normal level distribution, where approximately 75% of timestamps have level 1. The modest insertion count preserves the normal structure of the prebuilt Skiplist instead of creating an artificial all-level-N database.
+Forced-level scenarios isolate paths hidden by the normal level distribution, where approximately 75% of timestamps have level 1. The forced gap insertions use normally distributed prebuilt 50,000-row Skiplists. Their modest insertion count preserves that normal structure instead of creating an artificial all-level-N database.
 
 The detailed output preserves each 10,000-row interval so size-dependent degradation remains visible. The `Overall` section sums all five intervals within each run, then reports the median 50,000-row duration across runs for each method.
+
+### SQLite planner statistics
+
+The storage benchmark and Evolu production code do not run SQLite's `ANALYZE` command or `PRAGMA optimize`. `ANALYZE` samples database contents and stores statistics in internal tables such as `sqlite_stat1`. SQLite uses those statistics to estimate the cost of competing query plans. Without them, it uses built-in default estimates.
+
+This is a deliberate current constraint, not a general recommendation to avoid `ANALYZE`. Several storage queries have multiple plausible index and join plans, and their validated plans currently depend on the default estimates. For example, promoted appends find their preceding boundary by walking the `(ownerId, t)` primary key backward and filtering by Skiplist level. Different statistics could make SQLite choose the `(ownerId, l, t, ...)` index and sort the result instead. Recursive CTE join order can change for the same reason.
+
+Do not add `ANALYZE` or `PRAGMA optimize` to production setup as an isolated maintenance improvement. Evaluate it as a storage performance change:
+
+1. Build representative populated databases for both client and Relay workloads.
+2. Capture benchmarks and `EXPLAIN QUERY PLAN` output before collecting statistics.
+3. Run `ANALYZE` or the intended `PRAGMA optimize` schedule.
+4. Repeat every insertion, forced-level, fingerprint, and read workload.
+5. Preserve or deliberately enforce every planner-sensitive access pattern before enabling statistics in production.
+
+Planner regression tests use fresh databases without statistics, matching the current production policy. If Evolu starts collecting statistics, those tests and benchmarks must also cover the analyzed database state.
 
 ### Profiles
 

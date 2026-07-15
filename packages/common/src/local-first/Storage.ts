@@ -566,18 +566,31 @@ export const getTimestampInsertStrategy = (
 };
 
 /**
- * AFAIK, we can't do both insert and update in one query, and that's probably
- * why append is 2x faster than insert. Prepend also has to update parents, but
- * it's constantly fast. Insert degrades for reversed (yet LIMIT X magically
- * fixes that) but it's OK for append.
+ * Append derives the new node's metadata in its insertion statement. Prepend
+ * and insert require a second statement to update existing Skiplist ancestors.
  *
- * Note: SQL operations are idempotent (using `on conflict do nothing` and
- * `changes() > 0`), but this is no longer required here since we use
- * {@link BaseSqliteStorage.getExistingTimestamps} to filter out duplicates
- * before insertion, which we need for quota checks anyway.
+ * A non-level-1 append summarizes the suffix after the nearest preceding node
+ * at the same or a higher level. A reverse primary-key scan finds that boundary
+ * directly, so metadata traversal starts one level below the new node instead
+ * of descending from the maximum level.
  *
- * TODO: Remove idempotency (`on conflict do nothing` and `changes() > 0`) since
- * duplicates are now filtered before insertion.
+ * Append is the fastest strategy because level 1, which occurs 75% of the time,
+ * needs only the insertion, and promoted nodes derive their metadata without
+ * updating existing nodes. Prepend inserts first, then updates one successor at
+ * each relevant higher level through predictable edge searches. Insert is the
+ * slowest because an arbitrary interior position requires predecessor metadata
+ * for the new node and successor discovery to update existing ancestors. All
+ * traversals use bounded index ranges, but insert necessarily performs the most
+ * Skiplist work.
+ *
+ * SQLite does not support `LATERAL` subqueries. Recursive traversals therefore
+ * alternate between finding the next timestamp and loading that row by primary
+ * key instead of repeating the same correlated range lookup for every column.
+ *
+ * Inserts are idempotent to support direct calls and message replay. `on
+ * conflict do nothing` makes a duplicate insertion a no-op, and `changes() > 0`
+ * ensures ancestor metadata is updated only when the preceding insertion added
+ * a timestamp.
  */
 const insertTimestamp =
   (deps: SqliteDep) =>
@@ -609,12 +622,20 @@ const insertTimestamp =
                   fc(b, cl, pt, nt, ih1, ih2, ic) as (
                     select
                       0,
-                      (
-                        select max(l)
-                        from evolu_timestamp
-                        where ownerId = ${ownerId}
+                      ${level} - 1,
+                      ifnull(
+                        (
+                          select t
+                          from evolu_timestamp
+                          where
+                            ownerId = ${ownerId}
+                            and l >= ${level}
+                            and t < ${timestamp}
+                          order by t desc
+                          limit 1
+                        ),
+                        zeroblob(0)
                       ),
-                      zeroblob(0),
                       null,
                       0,
                       0,
@@ -640,33 +661,20 @@ const insertTimestamp =
                         )
                       ),
                       iif(
-                        b and cl < ${level} and nt is not null,
-                        (
-                          select (ih1 | h1) - (ih1 & h1)
-                          from evolu_timestamp
-                          where ownerId = ${ownerId} and t = nt
-                        ),
+                        node.t is not null,
+                        (ih1 | node.h1) - (ih1 & node.h1),
                         ih1
                       ),
                       iif(
-                        b and cl < ${level} and nt is not null,
-                        (
-                          select (ih2 | h2) - (ih2 & h2)
-                          from evolu_timestamp
-                          where ownerId = ${ownerId} and t = nt
-                        ),
+                        node.t is not null,
+                        (ih2 | node.h2) - (ih2 & node.h2),
                         ih2
                       ),
-                      iif(
-                        b and cl < ${level} and nt is not null,
-                        (
-                          select ic + c
-                          from evolu_timestamp
-                          where ownerId = ${ownerId} and t = nt
-                        ),
-                        ic
-                      )
-                    from fc
+                      iif(node.t is not null, ic + node.c, ic)
+                    from
+                      fc
+                      left join evolu_timestamp as node
+                        on b and node.ownerId = ${ownerId} and node.t = nt
                     where cl > 0
                   )
                 insert into evolu_timestamp (ownerId, t, l, h1, h2, c)
@@ -701,64 +709,60 @@ const insertTimestamp =
                 from evolu_timestamp
                 where ownerId = ${ownerId}
               ),
-              fp(b, cl, pt, nt, h1, h2, c) as (
+              fp(b, cl, pt, nt, h1, h2) as (
                 select
                   0,
                   (select ml from ml),
                   null,
                   null,
                   null,
-                  null,
                   null
                 union all
                 select
-                  not b,
-                  iif(b, cl - 1, cl),
+                  not fp.b,
+                  iif(fp.b, fp.cl - 1, fp.cl),
                   iif(
-                    b,
-                    iif(nt is not null and (pt is null or nt < pt), nt, pt),
-                    pt
+                    fp.b,
+                    iif(
+                      fp.nt is not null and (fp.pt is null or fp.nt < fp.pt),
+                      fp.nt,
+                      fp.pt
+                    ),
+                    fp.pt
                   ),
                   iif(
-                    b,
+                    fp.b,
                     null,
                     (
                       select t
                       from evolu_timestamp
-                      where ownerId = ${ownerId} and l = cl and t > ${timestamp}
+                      where
+                        ownerId = ${ownerId}
+                        and l = fp.cl
+                        and t > ${timestamp}
                       order by t
                       limit 1
                     )
                   ),
                   iif(
-                    b and nt is not null and (pt is null or nt < pt),
-                    (
-                      select h1
-                      from evolu_timestamp
-                      where ownerId = ${ownerId} and t = nt
-                    ),
+                    fp.b
+                    and fp.nt is not null
+                    and (fp.pt is null or fp.nt < fp.pt),
+                    node.h1,
                     null
                   ),
                   iif(
-                    b and nt is not null and (pt is null or nt < pt),
-                    (
-                      select h2
-                      from evolu_timestamp
-                      where ownerId = ${ownerId} and t = nt
-                    ),
-                    null
-                  ),
-                  iif(
-                    b and nt is not null and (pt is null or nt < pt),
-                    (
-                      select c
-                      from evolu_timestamp
-                      where ownerId = ${ownerId} and t = nt
-                    ),
+                    fp.b
+                    and fp.nt is not null
+                    and (fp.pt is null or fp.nt < fp.pt),
+                    node.h2,
                     null
                   )
-                from fp
-                where cl > ${level}
+                from
+                  fp
+                  left join evolu_timestamp as node
+                    on fp.b and node.ownerId = ${ownerId} and node.t = fp.nt
+                where fp.cl > ${level}
               ),
               u(t, h1, h2) as (
                 select
@@ -796,19 +800,17 @@ const insertTimestamp =
                   on conflict do nothing;
                 `,
 
-                // DEV: Check whether a boolean flag is faster.
                 sql.prepared`
                   with
-                    p(l, t, h1, h2) as (
+                    p(l, t, pt) as (
                       select
                         (
                           select max(l) + 1
                           from evolu_timestamp
                           where ownerId = ${ownerId}
                         ),
-                        null,
-                        null,
-                        null
+                        X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
+                        X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
                       union all
                       select
                         p.l - 1,
@@ -820,45 +822,27 @@ const insertTimestamp =
                               ownerId = ${ownerId}
                               and l = p.l - 1
                               and t > ${timestamp}
-                              and (p.t is null or p.t > t)
+                              and t < p.t
                             order by t
                             limit 1
                           ),
                           p.t
                         ),
-                        (
-                          select h1
-                          from evolu_timestamp
-                          where
-                            ownerId = ${ownerId}
-                            and l = p.l - 1
-                            and t > ${timestamp}
-                            and (p.t is null or p.t > t)
-                          order by t
-                          limit 1
-                        ),
-                        (
-                          select h2
-                          from evolu_timestamp
-                          where
-                            ownerId = ${ownerId}
-                            and l = p.l - 1
-                            and t > ${timestamp}
-                            and (p.t is null or p.t > t)
-                          order by t
-                          limit 1
-                        )
+                        p.t
                       from p
                       where p.l > 2
                       limit ${sql.raw(skiplistMaxLevel.toString())}
                     ),
                     u(t, h1, h2) as (
                       select
-                        t,
-                        (${h1} | h1) - (${h1} & h1),
-                        (${h2} | h2) - (${h2} & h2)
-                      from p
-                      where h1 is not null
+                        p.t,
+                        (${h1} | node.h1) - (${h1} & node.h1),
+                        (${h2} | node.h2) - (${h2} & node.h2)
+                      from
+                        p
+                        join evolu_timestamp as node
+                          on node.ownerId = ${ownerId} and node.t = p.t
+                      where p.t is not p.pt
                     )
                   update evolu_timestamp
                   set
@@ -979,22 +963,27 @@ const insertTimestamp =
                       from c3
                       group by l
                     ),
-                    -- DEV: Check whether a boolean flag is faster.
-                    n(l, t, h1, h2, c) as (
+                    -- Alternate range discovery and primary-key loading.
+                    n(b, l, t, nt, h1, h2, c) as (
                       select
+                        1,
                         (
                           select max(l) + 1
                           from evolu_timestamp
                           where ownerId = ${ownerId}
                         ),
+                        X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
                         null,
                         null,
                         null,
                         null
                       union all
                       select
-                        n.l - 1,
-                        ifnull(
+                        not n.b,
+                        iif(n.b, n.l - 1, n.l),
+                        iif(n.b, n.t, ifnull(n.nt, n.t)),
+                        iif(
+                          n.b,
                           (
                             select t
                             from evolu_timestamp
@@ -1002,47 +991,22 @@ const insertTimestamp =
                               ownerId = ${ownerId}
                               and l = n.l - 1
                               and t > ${timestamp}
-                              and (n.t is null or t < n.t)
+                              and t < n.t
                             order by t
                             limit 1
                           ),
-                          n.t
+                          null
                         ),
-                        (
-                          select h1
-                          from evolu_timestamp
-                          where
-                            ownerId = ${ownerId}
-                            and l = n.l - 1
-                            and t > ${timestamp}
-                            and (n.t is null or t < n.t)
-                          order by t
-                          limit 1
-                        ),
-                        (
-                          select h2
-                          from evolu_timestamp
-                          where
-                            ownerId = ${ownerId}
-                            and l = n.l - 1
-                            and t > ${timestamp}
-                            and (n.t is null or t < n.t)
-                          order by t
-                          limit 1
-                        ),
-                        (
-                          select c
-                          from evolu_timestamp
-                          where
-                            ownerId = ${ownerId}
-                            and l = n.l - 1
-                            and t > ${timestamp}
-                            and (n.t is null or t < n.t)
-                          order by t
-                          limit 1
-                        )
-                      from n
-                      where l - 1 > (select min(l) from c4)
+                        iif(not n.b and n.nt is not null, node.h1, null),
+                        iif(not n.b and n.nt is not null, node.h2, null),
+                        iif(not n.b and n.nt is not null, node.c, null)
+                      from
+                        n
+                        left join evolu_timestamp as node
+                          on not n.b
+                          and node.ownerId = ${ownerId}
+                          and node.t = n.nt
+                      where iif(n.b, n.l - 1 > (select min(l) from c4), 1)
                     ),
                     u(ut, uh1, uh2, uc) as (
                       select t, h1, h2, c from c4 where t = ${timestamp}
@@ -1080,6 +1044,7 @@ const insertTimestamp =
                           )
                         )
                       from n
+                      where b
                       group by t
                       limit ${sql.raw(skiplistMaxLevel.toString())}
                     )
@@ -1138,9 +1103,14 @@ const skiplistProbability = 0.25;
  * 2^32 rows and scans every timestamp for the owner instead of scanning the CTE
  * and looking up each timestamp by primary key.
  *
- * With SQLite's default un-ANALYZEd estimates, 10 is the planner crossover. An
- * `ANALYZE` or a planner change can move it because this is undocumented cost
- * model behavior.
+ * Evolu does not run SQLite's `ANALYZE` command or `PRAGMA optimize`. `ANALYZE`
+ * samples database contents and stores statistics in tables such as
+ * `sqlite_stat1`; without those statistics, the query planner uses default
+ * estimates. With those default estimates, 10 is the planner crossover.
+ * Collected statistics or a planner change can move it because this is
+ * undocumented cost model behavior. Do not enable planner statistics without
+ * benchmarking every storage workload and verifying its query plans on a
+ * representative populated database.
  *
  * The queries inject this value with `sql.raw`. SQLite versions before 3.47
  * cannot derive the estimate from a bound parameter. Newer versions require
@@ -1348,12 +1318,15 @@ const fingerprint =
   };
 
 /**
- * First, check this: https://logperiodic.com/rbsr.html#tree-friendly-functions
+ * Computes all RBSR fingerprint buckets in one SQL statement.
  *
- * We are a little smarter. We leverage continuous ranges to have half of
- * traversals. 16 instead of 32. And we compute all of them in a single SQL
- * select. If only we could get rid of those subqueries. Then, it would be
- * perfect. Btw, reading h1, h2, c in the second step would be slighly faster.
+ * Continuous ranges reduce the required traversals from 32 to 16. Each
+ * recursive step first finds the next timestamp, then loads its count and
+ * fingerprint by primary key in the following step. This two-phase traversal
+ * avoids repeated correlated range lookups because SQLite does not support
+ * `LATERAL` subqueries.
+ *
+ * See https://logperiodic.com/rbsr.html#tree-friendly-functions.
  */
 const fingerprintRanges =
   (deps: SqliteDep) =>
@@ -1374,13 +1347,10 @@ const fingerprintRanges =
           select max(l) from evolu_timestamp where ownerId = ${ownerId}
         ),
         c0(c) as (select value as c from json_each(${bucketsJson})),
-        c1(c, b, nt, nc, nh1, nh2, ft, tt, dl, ic, h1, h2) as (
+        c1(c, b, nt, ft, tt, dl, ic, h1, h2) as (
           select
             c,
             1,
-            null,
-            null,
-            null,
             null,
             zeroblob(0),
             X'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
@@ -1393,60 +1363,50 @@ const fingerprintRanges =
             ml
           union all
           select
-            c,
-            not b,
+            c1.c,
+            not c1.b,
             iif(
-              b,
+              c1.b,
               (
                 select t
                 from evolu_timestamp
-                where l = dl and t > ft and t < tt and ownerId = ${ownerId}
+                where
+                  l = c1.dl
+                  and t > c1.ft
+                  and t < c1.tt
+                  and ownerId = ${ownerId}
                 order by t
                 limit 1
               ),
               null
+            ),
+            iif(c1.b, c1.ft, iif(c1.ic + node.c <= c1.c, c1.nt, c1.ft)),
+            iif(
+              c1.b,
+              c1.tt,
+              iif(c1.ic + node.c <= c1.c, c1.tt, ifnull(c1.nt, c1.tt))
+            ),
+            iif(c1.b, c1.dl, iif(c1.ic + node.c <= c1.c, c1.dl, c1.dl - 1)),
+            iif(
+              c1.b,
+              c1.ic,
+              iif(c1.ic + node.c <= c1.c, c1.ic + node.c, c1.ic)
             ),
             iif(
-              b,
-              (
-                select c
-                from evolu_timestamp
-                where l = dl and t > ft and t < tt and ownerId = ${ownerId}
-                order by t
-                limit 1
-              ),
-              null
+              c1.b,
+              c1.h1,
+              iif(c1.ic + node.c <= c1.c, ${x("c1.h1", "node.h1")}, c1.h1)
             ),
             iif(
-              b,
-              (
-                select h1
-                from evolu_timestamp
-                where l = dl and t > ft and t < tt and ownerId = ${ownerId}
-                order by t
-                limit 1
-              ),
-              null
-            ),
-            iif(
-              b,
-              (
-                select h2
-                from evolu_timestamp
-                where l = dl and t > ft and t < tt and ownerId = ${ownerId}
-                order by t
-                limit 1
-              ),
-              null
-            ),
-            iif(b, ft, iif(ic + nc <= c, nt, ft)),
-            iif(b, tt, iif(ic + nc <= c, tt, ifnull(nt, tt))),
-            iif(b, dl, iif(ic + nc <= c, dl, dl - 1)),
-            iif(b, ic, iif(ic + nc <= c, ic + nc, ic)),
-            iif(b, h1, iif(ic + nc <= c, ${x("h1", "nh1")}, h1)),
-            iif(b, h2, iif(ic + nc <= c, ${x("h2", "nh2")}, h2))
-          from c1
-          where iif(b, 1, ic != c)
+              c1.b,
+              c1.h2,
+              iif(c1.ic + node.c <= c1.c, ${x("c1.h2", "node.h2")}, c1.h2)
+            )
+          from
+            c1
+            left join evolu_timestamp as node
+              on not c1.b and node.ownerId = ${ownerId} and node.t = c1.nt
+          where iif(c1.b, 1, c1.ic != c1.c)
         ),
         c2(h1, h2, t, rn) as (
           select

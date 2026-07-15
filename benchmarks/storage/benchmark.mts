@@ -39,6 +39,7 @@ import { createBetterSqliteDriver } from "../../packages/nodejs/dist/src/index.j
 const timestampCount = 50_000;
 const checkpointSize = 10_000;
 const checkpointCount = timestampCount / checkpointSize;
+const levelAppendCount = 10_000;
 const levelInsertCount = 1_000;
 const fingerprintRangesCount = 1_000;
 const maxRegressionPercent = 10;
@@ -94,6 +95,8 @@ const insertLevels = [1, 2, 10] as const;
 type InsertLevel = (typeof insertLevels)[number];
 type StorageBenchmarkMethod =
   | StorageInsertTimestampStrategy
+  | `appendLevel${InsertLevel}`
+  | "appendSparseLevel10"
   | `insertLevel${InsertLevel}`
   | "fingerprintRanges";
 const ownerId = OwnerIdBytes.orThrow(new Uint8Array(16));
@@ -113,6 +116,10 @@ const StorageBenchmarkMethodMeasurements = object({
   append: Millis,
   prepend: Millis,
   insert: Millis,
+  appendLevel1: optional(Millis),
+  appendLevel2: optional(Millis),
+  appendLevel10: optional(Millis),
+  appendSparseLevel10: optional(Millis),
   insertLevel1: optional(Millis),
   insertLevel2: optional(Millis),
   insertLevel10: optional(Millis),
@@ -280,8 +287,7 @@ const formatChange = (durationNs: bigint, baselineDurationNs: bigint) => {
 const durationNsToBaselineMs = (durationNs: bigint): Millis =>
   Millis.orThrow(
     Number(
-      (durationNs + nanosecondsPerMillisecond / 2n) /
-        nanosecondsPerMillisecond,
+      (durationNs + nanosecondsPerMillisecond / 2n) / nanosecondsPerMillisecond,
     ),
   );
 
@@ -422,90 +428,175 @@ try {
         }),
       ),
   );
-  const levelExpectedFingerprint = [
-    ...levelBaseTimestamps,
-    ...levelInsertTimestamps,
-  ]
-    .map(timestampBytesToFingerprint)
-    .reduce<Uint8Array>(
-      (left, right) =>
-        Uint8Array.from(left, (byte, index) => byte ^ right[index]),
-      new Uint8Array(
-        timestampBytesToFingerprint(levelBaseTimestamps[0]).length,
+  const levelAppendTimestamps = Array.from(
+    { length: levelAppendCount },
+    (_, index) =>
+      timestampToTimestampBytes(
+        createTimestamp({
+          millis: Millis.orThrow(timestampCount * 2 + index),
+        }),
       ),
-    );
+  );
 
   for (const mode of sqliteModes) {
-    for (const level of insertLevels) {
-      const method = `insertLevel${level}` as const;
-      const runMeasurements: Array<bigint> = [];
-
-      for (let run = 1; run <= repeatCount; run++) {
-        const label = `${mode} insert level=${level} run ${run}`;
-        const filter = process.env.JSBT_FILTER;
-        if (filter && !label.includes(filter)) continue;
-
-        await using setup = await setupStorage(mode);
-        const { sqlite, storage } = setup;
-        insertTimestamps(
-          sqlite,
-          storage,
-          levelBaseTimestamps,
-          "append",
-          0,
-          levelBaseTimestamps.length,
-        );
-        const levelStorage = createBaseSqliteStorage({
-          sqlite,
-          random: createInsertLevelRandom(level),
-        });
-        const levelCountBefore = getTimestampCountAtLevel(sqlite, level);
-        const result = await bench(
-          label,
-          () =>
-            insertTimestamps(
-              sqlite,
-              levelStorage,
-              levelInsertTimestamps,
-              "insert",
-              0,
-              levelInsertTimestamps.length,
-            ),
-          {
-            mode: "runOnce",
-            returnStats: true,
-            throughput: { amount: levelInsertCount, unit: "inserts" },
-          },
-        );
-        if (result) runMeasurements.push(result.stats.mean);
-        strictEqual(
-          levelStorage.getSize(ownerId),
-          timestampCount + levelInsertCount,
-        );
-        strictEqual(
-          getTimestampCountAtLevel(sqlite, level) - levelCountBefore,
-          levelInsertCount,
-        );
-        deepStrictEqual(
-          levelStorage.fingerprint(
-            ownerId,
-            NonNegativeInt.orThrow(0),
-            NonNegativeInt.orThrow(timestampCount + levelInsertCount),
+    for (const strategy of ["append", "insert"] as const) {
+      const levelTimestamps =
+        strategy === "append" ? levelAppendTimestamps : levelInsertTimestamps;
+      const levelExpectedFingerprint = [
+        ...levelBaseTimestamps,
+        ...levelTimestamps,
+      ]
+        .map(timestampBytesToFingerprint)
+        .reduce<Uint8Array>(
+          (left, right) =>
+            Uint8Array.from(left, (byte, index) => byte ^ right[index]),
+          new Uint8Array(
+            timestampBytesToFingerprint(levelBaseTimestamps[0]).length,
           ),
-          levelExpectedFingerprint,
         );
-      }
 
-      if (runMeasurements.length > 0) {
-        benchmarkResults.push({
-          mode,
-          method,
-          durationNs: utils.calcStats([...runMeasurements]).median,
-          runCount: runMeasurements.length,
-          amount: levelInsertCount,
-          unit: "inserts",
-        });
+      for (const level of insertLevels) {
+        const method = `${strategy}Level${level}` as const;
+        const runMeasurements: Array<bigint> = [];
+
+        for (let run = 1; run <= repeatCount; run++) {
+          const label = `${mode} ${strategy} level=${level} run ${run}`;
+          const filter = process.env.JSBT_FILTER;
+          if (filter && !label.includes(filter)) continue;
+
+          await using setup = await setupStorage(mode);
+          const { sqlite, storage } = setup;
+          insertTimestamps(
+            sqlite,
+            storage,
+            levelBaseTimestamps,
+            "append",
+            0,
+            levelBaseTimestamps.length,
+          );
+          const levelStorage = createBaseSqliteStorage({
+            sqlite,
+            random: createInsertLevelRandom(level),
+          });
+          const levelCountBefore = getTimestampCountAtLevel(sqlite, level);
+          const result = await bench(
+            label,
+            () =>
+              insertTimestamps(
+                sqlite,
+                levelStorage,
+                levelTimestamps,
+                strategy,
+                0,
+                levelTimestamps.length,
+              ),
+            {
+              mode: "runOnce",
+              returnStats: true,
+              throughput: { amount: levelTimestamps.length, unit: "inserts" },
+            },
+          );
+          if (result) runMeasurements.push(result.stats.mean);
+          strictEqual(
+            levelStorage.getSize(ownerId),
+            timestampCount + levelTimestamps.length,
+          );
+          strictEqual(
+            getTimestampCountAtLevel(sqlite, level) - levelCountBefore,
+            levelTimestamps.length,
+          );
+          deepStrictEqual(
+            levelStorage.fingerprint(
+              ownerId,
+              NonNegativeInt.orThrow(0),
+              NonNegativeInt.orThrow(timestampCount + levelTimestamps.length),
+            ),
+            levelExpectedFingerprint,
+          );
+        }
+
+        if (runMeasurements.length > 0) {
+          benchmarkResults.push({
+            mode,
+            method,
+            durationNs: utils.calcStats([...runMeasurements]).median,
+            runCount: runMeasurements.length,
+            amount: levelTimestamps.length,
+            unit: "inserts",
+          });
+        }
       }
+    }
+  }
+
+  for (const mode of sqliteModes) {
+    const runMeasurements: Array<bigint> = [];
+
+    for (let run = 1; run <= repeatCount; run++) {
+      const label = `${mode} append sparse level=10 run ${run}`;
+      const filter = process.env.JSBT_FILTER;
+      if (filter && !label.includes(filter)) continue;
+
+      await using setup = await setupStorage(mode, createInsertLevelRandom(1));
+      const { sqlite, storage } = setup;
+      insertTimestamps(
+        sqlite,
+        storage,
+        levelBaseTimestamps,
+        "append",
+        0,
+        levelBaseTimestamps.length,
+      );
+      const levelStorage = createBaseSqliteStorage({
+        sqlite,
+        random: createInsertLevelRandom(10),
+      });
+      const result = await bench(
+        label,
+        () =>
+          insertTimestamps(
+            sqlite,
+            levelStorage,
+            levelAppendTimestamps,
+            "append",
+            0,
+            1,
+          ),
+        {
+          mode: "runOnce",
+          returnStats: true,
+          throughput: { amount: 1, unit: "inserts" },
+        },
+      );
+      if (result) runMeasurements.push(result.stats.mean);
+      strictEqual(levelStorage.getSize(ownerId), timestampCount + 1);
+      deepStrictEqual(
+        levelStorage.fingerprint(
+          ownerId,
+          NonNegativeInt.orThrow(0),
+          NonNegativeInt.orThrow(timestampCount + 1),
+        ),
+        [...levelBaseTimestamps, levelAppendTimestamps[0]]
+          .map(timestampBytesToFingerprint)
+          .reduce<Uint8Array>(
+            (left, right) =>
+              Uint8Array.from(left, (byte, index) => byte ^ right[index]),
+            new Uint8Array(
+              timestampBytesToFingerprint(levelBaseTimestamps[0]).length,
+            ),
+          ),
+      );
+    }
+
+    if (runMeasurements.length > 0) {
+      benchmarkResults.push({
+        mode,
+        method: "appendSparseLevel10",
+        durationNs: utils.calcStats([...runMeasurements]).median,
+        runCount: runMeasurements.length,
+        amount: 1,
+        unit: "inserts",
+      });
     }
   }
 
@@ -629,7 +720,7 @@ try {
       }
     }
 
-    if (profile === "full" && benchmarkResults.length === 14) {
+    if (profile === "full" && benchmarkResults.length === 22) {
       const getDurationMs = (
         mode: SqliteMode,
         method: StorageBenchmarkMethod,
@@ -647,6 +738,10 @@ try {
             append: getDurationMs("memory", "append"),
             prepend: getDurationMs("memory", "prepend"),
             insert: getDurationMs("memory", "insert"),
+            appendLevel1: getDurationMs("memory", "appendLevel1"),
+            appendLevel2: getDurationMs("memory", "appendLevel2"),
+            appendLevel10: getDurationMs("memory", "appendLevel10"),
+            appendSparseLevel10: getDurationMs("memory", "appendSparseLevel10"),
             insertLevel1: getDurationMs("memory", "insertLevel1"),
             insertLevel2: getDurationMs("memory", "insertLevel2"),
             insertLevel10: getDurationMs("memory", "insertLevel10"),
@@ -656,6 +751,10 @@ try {
             append: getDurationMs("file", "append"),
             prepend: getDurationMs("file", "prepend"),
             insert: getDurationMs("file", "insert"),
+            appendLevel1: getDurationMs("file", "appendLevel1"),
+            appendLevel2: getDurationMs("file", "appendLevel2"),
+            appendLevel10: getDurationMs("file", "appendLevel10"),
+            appendSparseLevel10: getDurationMs("file", "appendSparseLevel10"),
             insertLevel1: getDurationMs("file", "insertLevel1"),
             insertLevel2: getDurationMs("file", "insertLevel2"),
             insertLevel10: getDurationMs("file", "insertLevel10"),

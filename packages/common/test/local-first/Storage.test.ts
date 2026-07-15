@@ -261,7 +261,66 @@ test("insertTimestamp updates use primary-key query plans", async () => {
 
     expect(scanIndex).toBeGreaterThanOrEqual(0);
     expect(targetSearchIndex).toBeGreaterThan(scanIndex);
+
+    if (index >= 1) {
+      expect(
+        plan.rows.filter((row) =>
+          /^SEARCH evolu_timestamp USING COVERING INDEX .* \(ownerId=\? AND l=\? AND t>\? AND t<\?\)$/.test(
+            row.detail,
+          ),
+        ),
+      ).toHaveLength(index);
+    }
   }
+});
+
+test("insertTimestamp append uses primary-key query plans", async () => {
+  await using setup = await setupSqlite();
+  const { sqlite } = setup;
+  createBaseSqliteStorageTables({ sqlite });
+
+  const appendQueries: Array<SqliteQuery> = [];
+  const randomValues = [0.9, 0.1, 0.9] as Array<RandomNumber>;
+  const storage = createBaseSqliteStorage({
+    random: { next: () => randomValues.shift() ?? (0.9 as RandomNumber) },
+    sqlite: {
+      ...sqlite,
+      exec: (query) => {
+        if (query.sql.includes("fc(b, cl, pt, nt, ih1, ih2, ic)")) {
+          appendQueries.push(query);
+        }
+        return sqlite.exec(query);
+      },
+    },
+  });
+  const timestamp = (millis: number) =>
+    timestampToTimestampBytes(createTimestamp({ millis: millis as Millis }));
+
+  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(100), "append");
+  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(200), "append");
+
+  expect(appendQueries).toHaveLength(1);
+  const query = appendQueries[0];
+  const plan = sqlite.exec<{
+    id: number;
+    parent: number;
+    detail: string;
+  }>({
+    ...sql`explain query plan ${sql.raw(query.sql)}`,
+    parameters: query.parameters,
+  });
+  const details = plan.rows.map((row) => row.detail);
+
+  expect(details).toContainEqual(
+    expect.stringMatching(
+      /^SEARCH evolu_timestamp USING INDEX .* \(ownerId=\? AND t<\?\)$/,
+    ),
+  );
+  expect(details).toContainEqual(
+    expect.stringMatching(
+      /^SEARCH node USING (?:COVERING )?INDEX .* \(ownerId=\? AND t=\?\) LEFT-JOIN$/,
+    ),
+  );
 });
 
 test("empty db", async () => {
