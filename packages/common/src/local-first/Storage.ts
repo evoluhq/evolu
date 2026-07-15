@@ -898,34 +898,16 @@ const insertTimestamp =
                             limit 1
                           )
                         ),
-                        iif(
-                          b and cl < ${level} and nt is not null,
-                          (
-                            select h1
-                            from evolu_timestamp
-                            where ownerId = ${ownerId} and t = nt
-                          ),
-                          null
-                        ),
-                        iif(
-                          b and cl < ${level} and nt is not null,
-                          (
-                            select h2
-                            from evolu_timestamp
-                            where ownerId = ${ownerId} and t = nt
-                          ),
-                          null
-                        ),
-                        iif(
-                          b and cl < ${level} and nt is not null,
-                          (
-                            select c
-                            from evolu_timestamp
-                            where ownerId = ${ownerId} and t = nt
-                          ),
-                          null
-                        )
-                      from c0
+                        node.h1,
+                        node.h2,
+                        node.c
+                      from
+                        c0
+                        left join evolu_timestamp as node
+                          on c0.b
+                          and c0.cl < ${level}
+                          and node.ownerId = ${ownerId}
+                          and node.t = c0.nt
                       where cl > 0
                     ),
                     c1(l, t, h1, h2, c) as (

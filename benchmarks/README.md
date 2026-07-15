@@ -25,6 +25,7 @@ The benchmark also measures:
 - 10,000 appends forced to Skiplist levels 1, 2, and 10, each in a fresh database.
 - The first level-10 append after building a 50,000-row Skiplist containing only level-1 nodes. This isolates the sparse promoted-anchor path.
 - 1,000 gap insertions forced to Skiplist levels 1, 2, and 10. Each level gets a fresh database, and the benchmark verifies every inserted row has the requested level and that the resulting whole-database fingerprint matches brute force.
+- 1,000 `getTimestampByIndex` calls evenly distributed across a normally distributed 50,000-row Skiplist. Database construction and result verification are excluded from the timed region.
 - 1,000 `fingerprintRanges` calls with 16 balanced buckets. Database construction is excluded from the timed region.
 
 Forced-level scenarios isolate paths hidden by the normal level distribution, where approximately 75% of timestamps have level 1. The forced gap insertions use normally distributed prebuilt 50,000-row Skiplists. Their modest insertion count preserves that normal structure instead of creating an artificial all-level-N database.

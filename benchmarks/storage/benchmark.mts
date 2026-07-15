@@ -28,6 +28,7 @@ import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
   createTimestamp,
+  getTimestampByIndex,
   OwnerIdBytes,
   type StorageInsertTimestampStrategy,
   type TimestampBytes,
@@ -41,6 +42,7 @@ const checkpointSize = 10_000;
 const checkpointCount = timestampCount / checkpointSize;
 const levelAppendCount = 10_000;
 const levelInsertCount = 1_000;
+const getTimestampByIndexCount = 1_000;
 const fingerprintRangesCount = 1_000;
 const maxRegressionPercent = 10;
 const nanosecondsPerMillisecond = 1_000_000n;
@@ -98,6 +100,7 @@ type StorageBenchmarkMethod =
   | `appendLevel${InsertLevel}`
   | "appendSparseLevel10"
   | `insertLevel${InsertLevel}`
+  | "getTimestampByIndex"
   | "fingerprintRanges";
 const ownerId = OwnerIdBytes.orThrow(new Uint8Array(16));
 
@@ -123,6 +126,7 @@ const StorageBenchmarkMethodMeasurements = object({
   insertLevel1: optional(Millis),
   insertLevel2: optional(Millis),
   insertLevel10: optional(Millis),
+  getTimestampByIndex: optional(Millis),
   fingerprintRanges: optional(Millis),
 });
 interface StorageBenchmarkMethodMeasurements extends InferType<
@@ -600,6 +604,73 @@ try {
     }
   }
 
+  section("Storage getTimestampByIndex");
+
+  const getTimestampByIndexIndexes = Array.from(
+    { length: getTimestampByIndexCount },
+    (_, index) =>
+      NonNegativeInt.orThrow(
+        Math.floor(
+          (index * (timestampCount - 1)) / (getTimestampByIndexCount - 1),
+        ),
+      ),
+  );
+
+  for (const mode of sqliteModes) {
+    const runMeasurements: Array<bigint> = [];
+
+    for (let run = 1; run <= repeatCount; run++) {
+      const label = `${mode} getTimestampByIndex run ${run}`;
+      const filter = process.env.JSBT_FILTER;
+      if (filter && !label.includes(filter)) continue;
+
+      await using setup = await setupStorage(mode);
+      const { sqlite, storage } = setup;
+      insertTimestamps(
+        sqlite,
+        storage,
+        timestampsAsc,
+        "append",
+        0,
+        timestampsAsc.length,
+      );
+      const getTimestamp = getTimestampByIndex({ sqlite });
+      for (const index of getTimestampByIndexIndexes) {
+        deepStrictEqual(
+          Array.from(getTimestamp(ownerId, index)),
+          Array.from(timestampsAsc[index]),
+        );
+      }
+      let timestamp = timestampsAsc[0];
+      const result = await bench(
+        label,
+        () => {
+          for (const index of getTimestampByIndexIndexes) {
+            timestamp = getTimestamp(ownerId, index);
+          }
+          return timestamp;
+        },
+        {
+          mode: "runOnce",
+          returnStats: true,
+          throughput: { amount: getTimestampByIndexCount, unit: "calls" },
+        },
+      );
+      if (result) runMeasurements.push(result.stats.mean);
+    }
+
+    if (runMeasurements.length > 0) {
+      benchmarkResults.push({
+        mode,
+        method: "getTimestampByIndex",
+        durationNs: utils.calcStats([...runMeasurements]).median,
+        runCount: runMeasurements.length,
+        amount: getTimestampByIndexCount,
+        unit: "calls",
+      });
+    }
+  }
+
   section("Storage fingerprintRanges");
 
   for (const mode of sqliteModes) {
@@ -720,7 +791,7 @@ try {
       }
     }
 
-    if (profile === "full" && benchmarkResults.length === 22) {
+    if (profile === "full" && benchmarkResults.length === 24) {
       const getDurationMs = (
         mode: SqliteMode,
         method: StorageBenchmarkMethod,
@@ -745,6 +816,10 @@ try {
             insertLevel1: getDurationMs("memory", "insertLevel1"),
             insertLevel2: getDurationMs("memory", "insertLevel2"),
             insertLevel10: getDurationMs("memory", "insertLevel10"),
+            getTimestampByIndex: getDurationMs(
+              "memory",
+              "getTimestampByIndex",
+            ),
             fingerprintRanges: getDurationMs("memory", "fingerprintRanges"),
           },
           file: {
@@ -758,6 +833,10 @@ try {
             insertLevel1: getDurationMs("file", "insertLevel1"),
             insertLevel2: getDurationMs("file", "insertLevel2"),
             insertLevel10: getDurationMs("file", "insertLevel10"),
+            getTimestampByIndex: getDurationMs(
+              "file",
+              "getTimestampByIndex",
+            ),
             fingerprintRanges: getDurationMs("file", "fingerprintRanges"),
           },
         },
