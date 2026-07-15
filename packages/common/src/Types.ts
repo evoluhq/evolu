@@ -82,7 +82,8 @@ export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
  * const isDog: Refinement<Animal, Dog> = (animal): animal is Dog =>
  *   "breed" in animal;
  *
- * const animal: Animal = { name: "Dog", breed: "Beagle" };
+ * const dog: Dog = { name: "Dog", breed: "Beagle" };
+ * const animal: Animal = dog;
  * if (isDog(animal)) {
  *   console.log(animal.breed); // Safe access to `breed`
  * }
@@ -220,7 +221,7 @@ export type PartialProp<T, K extends keyof T> = Omit<T, K> &
  * ```ts
  * const getData = (id: string): Awaitable<Data> => {
  *   const cached = cache.get(id);
- *   if (cached) return cached; // Sync path
+ *   if (cached !== undefined) return cached; // Sync path
  *   return fetchData(id); // Async path
  * };
  *
