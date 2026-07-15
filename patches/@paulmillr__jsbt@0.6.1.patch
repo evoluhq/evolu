@@ -1,0 +1,47 @@
+diff --git a/bench.d.ts b/bench.d.ts
+index 8ca4ebd6ab4de84880d1df45bf2ad01f5c063afb..635921fa52e38be2eeddac3c2170c2de3480df19 100644
+--- a/bench.d.ts
++++ b/bench.d.ts
+@@ -43,6 +43,8 @@ export type BenchOpts = {
+     /** Per-benchmark runtime in seconds. Defaults to 0.4. */
+     maxRunTimeSec?: number;
+     mode?: 'normal' | 'runOnce';
++    /** Returns statistics and retains individual measurements. Disabled by default so measurements can be released immediately. */
++    returnStats?: boolean;
+ };
+ export type BenchThroughput = {
+     amount: number;
+diff --git a/bench.js b/bench.js
+index fe0cb68d5c9d49c4c94ab17a574ba55314447dba..2dbcd82a389cb5f80f6daef685fbc7c4e7e09c94 100644
+--- a/bench.js
++++ b/bench.js
+@@ -269,12 +269,15 @@ export async function bench(label, fn, opts = {}) {
+         return;
+     if (!opts || typeof opts !== 'object')
+         throw new Error('benchmark opts must be an object, got: ' + typeof opts);
+-    let { maxRunTimeSec, mode } = opts;
++    let { maxRunTimeSec, mode, returnStats } = opts;
+     const rate = parseBenchRate(opts);
+-    let { stats, perSecStr, perItemStr, measurements } = await benchmarkRaw(fn, mode === 'runOnce' ? 0n : parseMaxRunTime(maxRunTimeSec));
++    const result = await benchmarkRaw(fn, mode === 'runOnce' ? 0n : parseMaxRunTime(maxRunTimeSec));
++    let { stats, perSecStr, perItemStr } = result;
+     if (csvOn) {
+         printBenchCsv(label, stats, mode === 'runOnce' ? undefined : rate);
+-        measurements.length = 0; // Destroy the list, simplify the life for garbage collector
++        if (returnStats)
++            return result;
++        result.measurements.length = 0; // Destroy the list, simplify the life for garbage collector
+         return;
+     }
+     let OUTPUT = `${label} `;
+@@ -300,7 +303,9 @@ export async function bench(label, fn, opts = {}) {
+         }
+     }
+     printOutput(OUTPUT);
+-    measurements.length = 0; // Destroy the list, simplify the life for garbage collector
++    if (returnStats)
++        return result;
++    result.measurements.length = 0; // Destroy the list, simplify the life for garbage collector
+     return;
+ }
+ export default bench;

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "baselines": [
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "nodeVersion": "24.14.1",
+        "sqliteVersion": "3.53.2"
+      },
+      "measurementsNs": {
+        "memory": {
+          "append": "500518582",
+          "prepend": "1134378877",
+          "insert": "5390655667"
+        },
+        "file": {
+          "append": "514362960",
+          "prepend": "1123340624",
+          "insert": "5642579167"
+        }
+      }
+    }
+  ]
+}

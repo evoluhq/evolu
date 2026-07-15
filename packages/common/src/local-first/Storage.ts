@@ -320,9 +320,6 @@ export interface DbChange extends InferType<typeof DbChange> {}
  * storage](https://github.com/hoytech/negentropy), except we use a Skiplist to
  * leverage SQLite indexes, which makes the code simpler.
  *
- * Note: A paid review by the SQLite team is planned, as they use the same
- * algorithm for their rsync tool.
- *
  * The ideal storage for a Relay should use an architecture like
  * [strfry](https://github.com/hoytech/strfry) (a KV storage), but with Skiplist
  * to ensure that insertion order doesn't matter (local-first apps can often
@@ -771,8 +768,7 @@ const insertTimestamp =
                 from fp
                 where h1 is not null and pt is not null
                 order by pt
-                -- Check skiplistMaxLevel docs.
-                limit 10
+                limit ${sql.raw(skiplistMaxLevel.toString())}
               )
             update evolu_timestamp
             set
@@ -854,8 +850,7 @@ const insertTimestamp =
                         )
                       from p
                       where p.l > 2
-                      -- Check skiplistMaxLevel docs.
-                      limit 10
+                      limit ${sql.raw(skiplistMaxLevel.toString())}
                     ),
                     u(t, h1, h2) as (
                       select
@@ -1086,8 +1081,7 @@ const insertTimestamp =
                         )
                       from n
                       group by t
-                      -- Check skiplistMaxLevel docs.
-                      limit 10
+                      limit ${sql.raw(skiplistMaxLevel.toString())}
                     )
                   update evolu_timestamp
                   set
@@ -1136,13 +1130,27 @@ const randomSkiplistLevel = (deps: RandomDep): PositiveInt => {
 const skiplistProbability = 0.25;
 
 /**
- * The SQLite has weird behaviour when we have to limit CTEs even when we don't
- * actually limit anything; otherwise, it would not work. But without it, SQLite
- * insert and prepend is slow. The 10 is the maximum allowed number, which
- * "fixes" SQLite.
+ * Maximum Skiplist level and exact upper bound for planner-sensitive CTEs.
  *
- * Because we are using {@link skiplistProbability} 0.25, it's OK even for
- * millions of rows.
+ * The three CTEs bounded by this value feed `update ... from` statements in the
+ * prepend and insert paths. Each emits at most one row per Skiplist level.
+ * Without a known integer `limit`, SQLite estimates a recursive CTE at about
+ * 2^32 rows and scans every timestamp for the owner instead of scanning the CTE
+ * and looking up each timestamp by primary key.
+ *
+ * With SQLite's default un-ANALYZEd estimates, 10 is the planner crossover. An
+ * `ANALYZE` or a planner change can move it because this is undocumented cost
+ * model behavior.
+ *
+ * The queries inject this value with `sql.raw`. SQLite versions before 3.47
+ * cannot derive the estimate from a bound parameter. Newer versions require
+ * QPSG to be disabled and invalidate the query plan whenever that parameter is
+ * bound, which would recompile these hot cached statements on every execution.
+ *
+ * Because the limit can emit at most one row per Skiplist level, the Skiplist
+ * is capped at the same value to prevent updates from being truncated. With
+ * {@link skiplistProbability} 0.25, level 10 occurs once per 4^9 rows on
+ * average, keeping the highest-level scan small for millions of rows.
  */
 const skiplistMaxLevel = 10;
 

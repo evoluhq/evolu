@@ -19,6 +19,7 @@ overrides:
 
 patchedDependencies:
   '@next/mdx@16.2.10': 3aeb7e9273f8012e6d5d20b28e2c9636aae4c26f68dd16abfb2a7437587d09ac
+  '@paulmillr/jsbt@0.6.1': 979d4745ee31a3e68861b375f46271b8891387e46b4f6cf9d4ad14167ebd670b
   vitest-mobile@0.4.3: c7f7be0dde85fe8c1982a4661ca03bebce2691152ed2eba35325c5c8b1bd17fe
 
 importers:
@@ -34,6 +35,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.7.0(jiti@2.7.0))
+      '@paulmillr/jsbt':
+        specifier: 0.6.1
+        version: 0.6.1(patch_hash=979d4745ee31a3e68861b375f46271b8891387e46b4f6cf9d4ad14167ebd670b)
       '@types/inquirer':
         specifier: ^9.0.9
         version: 9.0.10
@@ -3704,6 +3708,10 @@ packages:
   '@parcel/watcher@2.5.6':
     resolution: {integrity: sha512-tmmZ3lQxAe/k/+rNnXQRawJ4NjxO2hqiOLTHvWchtGZULp4RyFeh6aU4XdOYBFe2KE1oShQTv4AblOs2iOrNnQ==}
     engines: {node: '>= 10.0.0'}
+
+  '@paulmillr/jsbt@0.6.1':
+    resolution: {integrity: sha512-e3U7N9mPVWUiIZtmMTEAD1w4PcMrS7mEge7R4Q7EiAW2UZK/eqURHjwuvgIW+V64u8jyfMq1mJREB/8Ieh6kcw==}
+    hasBin: true
 
   '@peculiar/asn1-schema@2.8.0':
     resolution: {integrity: sha512-7YT0U/ze0tF2QOBbE15gKZwy5tvgGyLRiRHLzhlbOpf7BT032oBSd0haZqXn5W6l26WLlu3dyxzjM+2638/z2Q==}
@@ -13230,6 +13238,8 @@ snapshots:
       '@parcel/watcher-win32-ia32': 2.5.6
       '@parcel/watcher-win32-x64': 2.5.6
     optional: true
+
+  '@paulmillr/jsbt@0.6.1(patch_hash=979d4745ee31a3e68861b375f46271b8891387e46b4f6cf9d4ad14167ebd670b)': {}
 
   '@peculiar/asn1-schema@2.8.0':
     dependencies:

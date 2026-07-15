@@ -22,8 +22,10 @@ import {
   timestampToTimestampBytes,
 } from "../../src/local-first/Timestamp.js";
 import { computeBalancedBuckets } from "../../src/Number.js";
+import type { RandomNumber } from "../../src/Random.js";
 import { createRandom } from "../../src/Random.js";
 import { getOrThrow, ok } from "../../src/Result.js";
+import type { SqliteQuery } from "../../src/Sqlite.js";
 import { sql } from "../../src/Sqlite.js";
 import { testCreateDeps } from "../../src/Task.js";
 import type { Millis } from "../../src/Time.js";
@@ -203,6 +205,65 @@ test(
   },
 );
 
+test("insertTimestamp updates use primary-key query plans", async () => {
+  await using setup = await setupSqlite();
+  const { sqlite } = setup;
+  createBaseSqliteStorageTables({ sqlite });
+
+  const updateQueries: Array<SqliteQuery> = [];
+  const randomValues = [0.9, 0.9, 0.9, 0.9, 0.1, 0.9] as Array<RandomNumber>;
+  const storage = createBaseSqliteStorage({
+    random: { next: () => randomValues.shift() ?? (0.9 as RandomNumber) },
+    sqlite: {
+      ...sqlite,
+      exec: (query) => {
+        if (query.sql.includes("update evolu_timestamp")) {
+          updateQueries.push(query);
+        }
+        return sqlite.exec(query);
+      },
+    },
+  });
+  const timestamp = (millis: number) =>
+    timestampToTimestampBytes(createTimestamp({ millis: millis as Millis }));
+
+  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(100), "append");
+  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(200), "append");
+  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(0), "prepend");
+  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(150), "insert");
+  storage.insertTimestamp(testAppOwnerIdBytes, timestamp(175), "insert");
+
+  expect(updateQueries).toHaveLength(3);
+
+  for (const [index, query] of updateQueries.entries()) {
+    const plan = sqlite.exec<{
+      id: number;
+      parent: number;
+      detail: string;
+    }>({
+      ...sql`explain query plan ${sql.raw(query.sql)}`,
+      parameters: query.parameters,
+    });
+    const topLevelDetails = plan.rows
+      .filter((row) => row.parent === 0)
+      .map((row) => row.detail);
+
+    const scanIndex = topLevelDetails.indexOf(
+      `SCAN ${index === 1 ? "p" : "u"}`,
+    );
+    const targetSearchIndex = topLevelDetails.findIndex(
+      (detail, index) =>
+        index > scanIndex &&
+        /^SEARCH evolu_timestamp USING (?:COVERING )?INDEX .* \(ownerId=\? AND t=\?\)$/.test(
+          detail,
+        ),
+    );
+
+    expect(scanIndex).toBeGreaterThanOrEqual(0);
+    expect(targetSearchIndex).toBeGreaterThan(scanIndex);
+  }
+});
+
 test("empty db", async () => {
   await using setup = await setupSqliteAndStorage();
   const { storage } = setup;
@@ -368,79 +429,6 @@ test("getTimestampInsertStrategy", () => {
   expect(getTimestampInsertStrategy(t100, t100, t200)[0]).toBe("insert");
   expect(getTimestampInsertStrategy(t200, t100, t200)[0]).toBe("insert");
 });
-
-test.skip("insert 1_000_000", longTimeout, async () => {
-  const timestampsAsc = Array.from({ length: count }, (_, i) =>
-    timestampToTimestampBytes(createTimestamp({ millis: i as Millis })),
-  );
-  const timestampsDesc = timestampsAsc.toReversed();
-  const timestampsRandom = timestampsAsc.toSorted(() => Math.random() - 0.5);
-
-  // Tested on M1, file (not memory).
-
-  // 1m timestamps asc in 22s, the first 10k: 57742 inserts/sec, it's stable.
-  await benchmarkTimestamps(timestampsAsc, "append");
-
-  // 1m timestamps desc in 87s, the first 10k: 26882 inserts/sec, it's stable.
-  await benchmarkTimestamps(timestampsDesc, "prepend");
-
-  // The first 10k: 11912 inserts/sec, then it degrades,
-  // but it's fixable and still usable (1-2k inserts/sec).
-  // TODO: Ask SQLite team for paid review
-  await benchmarkTimestamps(timestampsRandom, "insert");
-});
-
-// const count = 1_000_000;
-const count = 50_000;
-const batchSize = 10_000;
-
-const benchmarkTimestamps = async (
-  timestamps: ReadonlyArray<TimestampBytes>,
-  strategy: StorageInsertTimestampStrategy,
-) => {
-  await using setup = await setupSqliteAndStorage();
-  const { sqlite, storage } = setup;
-  const insertBeginTime = performance.now();
-
-  for (
-    let batchStart = 0;
-    batchStart < timestamps.length;
-    batchStart += batchSize
-  ) {
-    const batchEnd = Math.min(batchStart + batchSize, timestamps.length);
-
-    const batchBeginTime = performance.now();
-    sqlite.transaction(() => {
-      for (let i = batchStart; i < batchEnd; i++) {
-        storage.insertTimestamp(testAppOwnerIdBytes, timestamps[i], strategy);
-      }
-      return ok();
-    });
-    const batchTimeSec = (performance.now() - batchBeginTime) / 1000;
-    const insertsPerSec = ((batchEnd - batchStart) / batchTimeSec).toFixed(0);
-
-    const bucketsBeginTime = performance.now();
-    const size = storage.getSize(testAppOwnerIdBytes);
-    assert(size);
-    const buckets = getOrThrow(computeBalancedBuckets(size));
-    const fingerprint = storage.fingerprintRanges(testAppOwnerIdBytes, buckets);
-    assert(fingerprint);
-    const now = performance.now();
-    const timestampsTime = (now - insertBeginTime).toFixed(1);
-    const bucketsTime = (now - bucketsBeginTime).toFixed(1);
-
-    // eslint-disable-next-line no-console
-    console.log(
-      `${Math.min(batchStart + batchSize, timestamps.length)} timestamps ${
-        strategy
-      } in ${
-        timestampsTime
-      } ms, ${insertsPerSec} inserts/sec in batch, getSize + 16 fingerprints in ${
-        bucketsTime
-      } ms`,
-    );
-  }
-};
 
 /**
  * Test with 16_777_216 sequential timestamps, as JavaScript's Set has a limit
