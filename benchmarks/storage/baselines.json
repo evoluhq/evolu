@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "baselines": [
     {
       "environment": {
@@ -9,16 +9,24 @@
         "nodeVersion": "24.14.1",
         "sqliteVersion": "3.53.2"
       },
-      "measurementsNs": {
+      "measurementsMs": {
         "memory": {
-          "append": "500518582",
-          "prepend": "1134378877",
-          "insert": "5390655667"
+          "append": 549,
+          "prepend": 1191,
+          "insert": 5567,
+          "insertLevel1": 161,
+          "insertLevel2": 221,
+          "insertLevel10": 591,
+          "fingerprintRanges": 875
         },
         "file": {
-          "append": "514362960",
-          "prepend": "1123340624",
-          "insert": "5642579167"
+          "append": 531,
+          "prepend": 1159,
+          "insert": 5745,
+          "insertLevel1": 181,
+          "insertLevel2": 239,
+          "insertLevel10": 621,
+          "fingerprintRanges": 874
         }
       }
     }

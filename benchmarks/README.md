@@ -2,7 +2,7 @@
 
 ## Storage benchmark
 
-[`storage/benchmark.mts`](./storage/benchmark.mts) measures `insertTimestamp` performance for the SQLite timestamp Skiplist implemented in [`Storage.ts`](../packages/common/src/local-first/Storage.ts).
+[`storage/benchmark.mts`](./storage/benchmark.mts) measures the SQLite timestamp Skiplist implemented in [`Storage.ts`](../packages/common/src/local-first/Storage.ts).
 
 Build the packages before running the benchmark because the script imports their generated `dist` files:
 
@@ -19,6 +19,13 @@ Every benchmark scenario inserts 50,000 deterministic timestamps in five transac
 - `insert`: timestamps in a deterministic shuffled order.
 
 Each method gets a fresh database and the same seeded Skiplist-level random sequence. The timed region contains only the insert transaction. Database setup, size checks, fingerprint checks, disposal, and file cleanup are excluded.
+
+The benchmark also builds normally distributed 50,000-row Skiplists and measures:
+
+- 1,000 gap insertions forced to Skiplist levels 1, 2, and 10. Each level gets a fresh database, and the benchmark verifies every inserted row has the requested level and that the resulting whole-database fingerprint matches brute force.
+- 1,000 `fingerprintRanges` calls with 16 balanced buckets. Database construction is excluded from the timed region.
+
+Forced-level scenarios isolate paths hidden by the normal level distribution, where approximately 75% of timestamps have level 1. The modest insertion count preserves the normal structure of the prebuilt Skiplist instead of creating an artificial all-level-N database.
 
 The detailed output preserves each 10,000-row interval so size-dependent degradation remains visible. The `Overall` section sums all five intervals within each run, then reports the median 50,000-row duration across runs for each method.
 
@@ -57,7 +64,7 @@ Run the quick storage regression check explicitly after building the packages:
 pnpm benchmark:storage:check
 ```
 
-The check compares the complete 50,000-row memory total for each method against the exact matching environment baseline. It fails when append, prepend, or insert is more than 10% slower. Each method is gated independently so an improvement in one method cannot hide a regression in another.
+The check compares each complete memory scenario against the exact matching environment baseline. It fails when any insertion strategy, forced level, or fingerprint workload is more than 10% slower. Each method is gated independently so an improvement in one method cannot hide a regression in another.
 
 The quick profile uses one run to keep local verification fast. The committed baseline uses the median of three full-profile runs.
 
@@ -67,7 +74,7 @@ Filters and baseline updates are rejected in check mode because they would produ
 
 ### Baselines
 
-[`storage/baselines.json`](./storage/baselines.json) stores exact nanosecond totals for multiple environments. A baseline matches only when all environment fields match:
+[`storage/baselines.json`](./storage/baselines.json) stores totals rounded to the nearest millisecond for multiple environments. A baseline matches only when all environment fields match:
 
 - Operating-system platform.
 - Architecture.
@@ -83,7 +90,7 @@ Run an unfiltered full benchmark to add or replace the baseline for the current 
 pnpm benchmark:storage:update-baseline
 ```
 
-Baseline updates require all three repeats, both SQLite modes, all methods, and all checkpoints. Quick or filtered benchmarks cannot update the file.
+Baseline updates require all three repeats, both SQLite modes, all insertion methods, all forced levels, the fingerprint workload, and all checkpoints. Quick or filtered benchmarks cannot update the file.
 
 When no environment matches, a quick run explains how to create one. An unfiltered full run also prints the complete JSON entry, which can be reviewed and added manually.
 
@@ -93,7 +100,7 @@ Commit a baseline update only after confirming that the measured behavior is the
 
 1. Run `pnpm benchmark:storage:quick` before changing the storage SQL.
 2. Make the change and rerun the same command.
-3. Compare the overall append, prepend, and insert totals.
+3. Compare the overall insertion, forced-level, and fingerprint totals.
 4. Use the detailed 10,000-row intervals to locate any size-dependent change.
 5. Run `pnpm benchmark:storage` before accepting the change.
 6. Run `pnpm benchmark:storage:check` to exercise the automatic gate.
