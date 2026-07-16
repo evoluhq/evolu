@@ -7,7 +7,6 @@ import type {
 import {
   err,
   lazyFalse,
-  setTimeout,
   sql,
   timestampToTimestampBytes,
   timestampBytesToTimestamp,
@@ -183,7 +182,7 @@ describe("writeMessages", () => {
         if (activeWrites > 1) {
           concurrentAccess = true;
         }
-        await setTimeout("1ms");
+        await Promise.resolve();
         activeWrites--;
         return true;
       },
@@ -210,7 +209,7 @@ describe("writeMessages", () => {
       isOwnerWithinQuota: async (_ownerId, _requiredBytes) => {
         activeWrites++;
         maxConcurrentWrites = Math.max(maxConcurrentWrites, activeWrites);
-        await setTimeout("1ms");
+        await Promise.resolve();
         activeWrites--;
         return true;
       },
@@ -310,7 +309,7 @@ describe("writeMessages", () => {
 
       await using setup = await setupSqliteAndRelayStorage({
         isOwnerWithinQuota: async (ownerId, requiredBytes) => {
-          await setTimeout("1ms");
+          await Promise.resolve();
           quotaCheckCalled = true;
           receivedOwnerId = ownerId;
           receivedBytes = requiredBytes;
@@ -343,7 +342,7 @@ describe("writeMessages", () => {
     test("fails when async isOwnerWithinQuota returns false", async () => {
       await using setup = await setupSqliteAndRelayStorage({
         isOwnerWithinQuota: async () => {
-          await setTimeout("1ms");
+          await Promise.resolve();
           return false;
         },
       });

@@ -17,7 +17,6 @@ Refactored Time module for type safety, consistency, and better abstractions.
 - Added `TimeoutId` opaque type for timeout handles
 - Added `TestTime` interface with `advance()` for controllable time in tests
 - Added `testCreateTime` with `startAt` and `autoIncrement: "microtask" | "sync"` options
-- Added `setTimeout(duration)` helper that returns a Promise
 
 **Duration literals:**
 

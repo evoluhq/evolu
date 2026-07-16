@@ -80,7 +80,11 @@ import {
   type TestRunDefaultDeps,
   type TimeoutError,
 } from "../src/Task.js";
-import { Millis, testCreateTime, type Time } from "../src/Time.js";
+import {
+  Millis,
+  testCreateTime,
+  type Time,
+} from "../src/Time.js";
 import {
   type Int1To100OrPositiveInt,
   maxPositiveInt,
@@ -5000,6 +5004,12 @@ describe("callback", () => {
 });
 
 describe("sleep", () => {
+  test("requires a positive duration", () => {
+    sleep("1ms");
+    // @ts-expect-error - Zero Millis is not a positive duration.
+    sleep(0 as Millis);
+  });
+
   test("completes after duration", async () => {
     await using run = testCreateRun();
 
@@ -5034,6 +5044,14 @@ describe("sleep", () => {
 });
 
 describe("timeout", () => {
+  test("requires a positive duration", () => {
+    const task: Task<void> = () => ok();
+
+    timeout(task, "1ms");
+    // @ts-expect-error - Zero Millis is not a positive duration.
+    timeout(task, 0 as Millis);
+  });
+
   test("returns the Task Result when it settles within the duration", async () => {
     await using run = testCreateRun();
 

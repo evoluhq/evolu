@@ -1,25 +1,33 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
-import type { DurationLiteral, Millis } from "../src/Time.js";
+import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
+import type {
+  Duration,
+  DurationLiteral,
+  PositiveDuration,
+} from "../src/Time.js";
 import {
   createTime,
   durationToMillis,
   formatMillisAsClockTime,
   formatMillisAsDuration,
   maxMillis,
+  Millis,
   millisToDateIso,
+  PositiveMillis,
   saturateMillis,
-  setTimeout,
   testCreateTime,
 } from "../src/Time.js";
+import { NonNaNNumber } from "../src/Type.js";
 
 describe("Time", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("createTime", () => {
     test("now returns current time", () => {
-      const time = createTime();
-      const now = Date.now();
-      // Allow small difference due to execution time
-      expect(time.now()).toBeGreaterThanOrEqual(now - 10);
-      expect(time.now()).toBeLessThanOrEqual(now + 10);
+      vi.spyOn(globalThis.Date, "now").mockReturnValue(123);
+
+      expect(createTime().now()).toBe(123);
     });
 
     test("nowDateIso returns current time as ISO string", () => {
@@ -31,58 +39,130 @@ describe("Time", () => {
       expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
     });
 
-    test("millisToDateIso returns current time as ISO string", () => {
-      const time = createTime();
-      const result = millisToDateIso(time.now());
-      // Verify it's a valid ISO string
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      // And it's close to now
-      const parsed = Date.parse(result);
-      expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
-      expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
-    });
+    describe("setTimeout", () => {
+      test("fires after the delay", () => {
+        let now = 1000;
+        const callbacks: Array<() => void> = [];
+        const setTimeout = vi
+          .spyOn(globalThis, "setTimeout")
+          .mockImplementation((callback) => {
+            callbacks.push(callback);
+            return callbacks.length as unknown as ReturnType<
+              typeof globalThis.setTimeout
+            >;
+          });
+        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
+        const callback = vi.fn();
 
-    test("setTimeout and clearTimeout work", async () => {
-      const time = createTime();
-      let called = false;
+        createTime().setTimeout(callback, "10ms");
 
-      const id = time.setTimeout(() => {
-        called = true;
-      }, "10ms");
+        expect(setTimeout).toHaveBeenCalledWith(callbacks[0], 10);
+        expect(callback).not.toHaveBeenCalled();
 
-      // Cancel before it fires
-      time.clearTimeout(id);
+        now += 10;
+        callbacks[0]();
 
-      // Wait longer than the timeout
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
-      expect(called).toBe(false);
-    });
-
-    test("setTimeout fires after delay", async () => {
-      const time = createTime();
-      let called = false;
-
-      time.setTimeout(() => {
-        called = true;
-      }, "10ms");
-
-      expect(called).toBe(false);
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
-      expect(called).toBe(true);
-    });
-  });
-
-  describe("setTimeout", () => {
-    test("resolves asynchronously", async () => {
-      let resolved = false;
-
-      const promise = setTimeout("1ms").then(() => {
-        resolved = true;
+        expect(callback).toHaveBeenCalledOnce();
       });
 
-      expect(resolved).toBe(false);
-      await promise;
-      expect(resolved).toBe(true);
+      test("accounts for elapsed time while a long timeout is suspended", () => {
+        const maxNativeTimeoutMillis = 2 ** 31 - 1;
+        let now = 1000;
+        const callbacks: Array<() => void> = [];
+        const delays: Array<number | undefined> = [];
+        const callback = vi.fn();
+
+        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
+        vi.spyOn(globalThis, "setTimeout").mockImplementation(
+          (scheduledCallback, delay) => {
+            callbacks.push(scheduledCallback);
+            delays.push(delay);
+            return callbacks.length as unknown as ReturnType<
+              typeof globalThis.setTimeout
+            >;
+          },
+        );
+
+        createTime().setTimeout(
+          callback,
+          PositiveMillis.orThrow(maxNativeTimeoutMillis + 100),
+        );
+
+        expect(delays).toEqual([maxNativeTimeoutMillis]);
+
+        // Simulate the native timer firing 50ms late after event-loop suspension.
+        now += maxNativeTimeoutMillis + 50;
+        callbacks[0]();
+
+        // Only 50ms remains; do not add the elapsed 50ms again.
+        expect(delays).toEqual([maxNativeTimeoutMillis, 50]);
+        expect(callback).not.toHaveBeenCalled();
+
+        now += 50;
+        callbacks[1]();
+
+        expect(callback).toHaveBeenCalledOnce();
+      });
+
+      test("clearTimeout cancels the active chunk of a long delay", () => {
+        const maxNativeTimeoutMillis = 2 ** 31 - 1;
+        let now = 1000;
+        const callbacks: Array<() => void> = [];
+        const callback = vi.fn();
+        const clearTimeout = vi
+          .spyOn(globalThis, "clearTimeout")
+          .mockImplementation(() => undefined);
+
+        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
+        vi.spyOn(globalThis, "setTimeout").mockImplementation(
+          (scheduledCallback) => {
+            callbacks.push(scheduledCallback);
+            return callbacks.length as unknown as ReturnType<
+              typeof globalThis.setTimeout
+            >;
+          },
+        );
+
+        const time = createTime();
+        const id = time.setTimeout(
+          callback,
+          PositiveMillis.orThrow(maxNativeTimeoutMillis + 100),
+        );
+
+        now += maxNativeTimeoutMillis;
+        callbacks[0]();
+        time.clearTimeout(id);
+        callbacks[1]();
+
+        expect(clearTimeout).toHaveBeenCalledWith(2);
+        expect(callback).not.toHaveBeenCalled();
+      });
+
+      test("clearTimeout cancels a single native timeout", () => {
+        const callbacks: Array<() => void> = [];
+        const callback = vi.fn();
+        const clearTimeout = vi
+          .spyOn(globalThis, "clearTimeout")
+          .mockImplementation(() => undefined);
+
+        vi.spyOn(globalThis, "setTimeout").mockImplementation(
+          (scheduledCallback) => {
+            callbacks.push(scheduledCallback);
+            return callbacks.length as unknown as ReturnType<
+              typeof globalThis.setTimeout
+            >;
+          },
+        );
+
+        const time = createTime();
+        const id = time.setTimeout(callback, "10ms");
+
+        time.clearTimeout(id);
+        callbacks[0]();
+
+        expect(clearTimeout).toHaveBeenCalledWith(1);
+        expect(callback).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -145,13 +225,6 @@ describe("Time", () => {
       expect(second).toBe("2026-01-28T14:30:00.001Z");
     });
 
-    test("millisToDateIso returns ISO string for current time", () => {
-      const time = testCreateTime({
-        startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
-      });
-      expect(millisToDateIso(time.now())).toBe("2026-01-28T14:30:00.000Z");
-    });
-
     test("nowDateIso returns ISO string for current time", () => {
       const time = testCreateTime({
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
@@ -190,7 +263,7 @@ describe("Time", () => {
       expect(called).toBe(false);
     });
 
-    test("multiple timeouts fire in order", () => {
+    test("multiple timeouts fire in deadline order", () => {
       const time = testCreateTime();
       const order: Array<number> = [];
 
@@ -200,11 +273,162 @@ describe("Time", () => {
 
       time.advance("200ms");
 
-      // All should have fired, order depends on iteration order in Map
-      expect(order).toContain(1);
-      expect(order).toContain(2);
-      expect(order).toContain(3);
-      expect(order).toHaveLength(3);
+      expect(order).toEqual([2, 1, 3]);
+    });
+
+    test("timeout callbacks observe their deadlines", () => {
+      const time = testCreateTime();
+      const observedTimes: Array<Millis> = [];
+
+      time.setTimeout(() => observedTimes.push(time.now()), "100ms");
+      time.setTimeout(() => observedTimes.push(time.now()), "50ms");
+
+      time.advance("200ms");
+
+      expect(observedTimes).toEqual([50, 100]);
+      expect(time.now()).toBe(200);
+    });
+
+    test("advance fires timeouts scheduled by callbacks within its target", () => {
+      const time = testCreateTime();
+      const observedTimes: Array<Millis> = [];
+
+      time.setTimeout(() => {
+        observedTimes.push(time.now());
+        time.setTimeout(() => observedTimes.push(time.now()), "50ms");
+      }, "50ms");
+
+      time.advance("200ms");
+
+      expect(observedTimes).toEqual([50, 100]);
+      expect(time.now()).toBe(200);
+    });
+
+    test("an earlier timeout can cancel a later timeout", () => {
+      const time = testCreateTime();
+      const callback = vi.fn();
+      const laterId = time.setTimeout(callback, "100ms");
+      time.setTimeout(() => time.clearTimeout(laterId), "50ms");
+
+      time.advance("200ms");
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    test("a throwing callback aborts advance at its deadline", () => {
+      const time = testCreateTime();
+      const error = new Error("callback failed");
+      const laterCallback = vi.fn();
+
+      time.setTimeout(() => {
+        throw error;
+      }, "50ms");
+      time.setTimeout(laterCallback, "100ms");
+
+      expect(() => time.advance("200ms")).toThrow(error);
+      expect(time.now()).toBe(50);
+      expect(laterCallback).not.toHaveBeenCalled();
+
+      time.advance("150ms");
+
+      expect(laterCallback).toHaveBeenCalledOnce();
+      expect(time.now()).toBe(200);
+    });
+
+    test("advance rejects reentrant calls", () => {
+      const time = testCreateTime();
+
+      time.setTimeout(() => {
+        expect(() => time.advance("1ms")).toThrow(
+          "TestTime.advance cannot be called while advancing",
+        );
+      }, "50ms");
+
+      time.advance("100ms");
+
+      expect(time.now()).toBe(100);
+    });
+
+    test("advance preserves auto-incremented time", () => {
+      const time = testCreateTime({ autoIncrement: "sync" });
+      const observedTimes: Array<Millis> = [];
+
+      time.setTimeout(() => observedTimes.push(time.now()), "50ms");
+      time.setTimeout(() => observedTimes.push(time.now()), "50ms");
+
+      time.advance("50ms");
+
+      expect(observedTimes).toEqual([50, 51]);
+      expect(time.now()).toBe(52);
+    });
+  });
+
+  describe("saturateMillis", () => {
+    test("requires NonNaNNumber", () => {
+      saturateMillis(NonNaNNumber.orThrow(1));
+      // @ts-expect-error - Numbers require validation.
+      saturateMillis(1);
+    });
+
+    test("rounds to the nearest millisecond", () => {
+      expect(saturateMillis(NonNaNNumber.orThrow(1.4))).toBe(1);
+      expect(saturateMillis(NonNaNNumber.orThrow(1.5))).toBe(2);
+    });
+
+    test("saturates negative values at min millis", () => {
+      expect(saturateMillis(NonNaNNumber.orThrow(-1))).toBe(0);
+      expect(
+        saturateMillis(NonNaNNumber.orThrow(Number.NEGATIVE_INFINITY)),
+      ).toBe(0);
+    });
+
+    test("saturates overflow at maxMillis", () => {
+      expect(saturateMillis(NonNaNNumber.orThrow(maxMillis + 1))).toBe(
+        maxMillis,
+      );
+      expect(
+        saturateMillis(NonNaNNumber.orThrow(Number.POSITIVE_INFINITY)),
+      ).toBe(maxMillis);
+    });
+  });
+
+  describe("PositiveMillis", () => {
+    test("accepts only positive millis", () => {
+      const _millis: Millis = PositiveMillis.orThrow(1);
+      expect(PositiveMillis.is(1)).toBe(true);
+      expect(PositiveMillis.is(maxMillis)).toBe(true);
+      expect(PositiveMillis.is(0)).toBe(false);
+    });
+  });
+
+  describe("PositiveDuration", () => {
+    test("accepts only positive durations", () => {
+      const time = testCreateTime();
+      const duration: PositiveDuration = PositiveMillis.orThrow(1);
+
+      time.setTimeout(() => undefined, duration);
+      // @ts-expect-error - Zero Millis is not a positive duration.
+      time.setTimeout(() => undefined, 0 as Millis);
+    });
+  });
+
+  describe("millisToDateIso", () => {
+    test("millisToDateIso returns current time as ISO string", () => {
+      const time = createTime();
+      const result = millisToDateIso(time.now());
+      // Verify it's a valid ISO string
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      // And it's close to now
+      const parsed = Date.parse(result);
+      expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
+      expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
+    });
+
+    test("millisToDateIso returns ISO string for current time", () => {
+      const time = testCreateTime({
+        startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
+      });
+      expect(millisToDateIso(time.now())).toBe("2026-01-28T14:30:00.000Z");
     });
   });
 
@@ -243,8 +467,10 @@ describe("Time", () => {
 
     test("invalid durations", () => {
       expectTypeOf<"invalid">().not.toExtend<DurationLiteral>();
+      expectTypeOf<"-1s">().not.toExtend<DurationLiteral>();
       expectTypeOf<"0ms">().not.toExtend<DurationLiteral>();
       expectTypeOf<"0s">().not.toExtend<DurationLiteral>();
+      expectTypeOf<"0.5s">().not.toExtend<DurationLiteral>();
       expectTypeOf<"01d">().not.toExtend<DurationLiteral>();
       expectTypeOf<"60s">().not.toExtend<DurationLiteral>();
       expectTypeOf<"60m">().not.toExtend<DurationLiteral>();
@@ -258,6 +484,16 @@ describe("Time", () => {
   });
 
   describe("durationToMillis", () => {
+    test("preserves positive duration type", () => {
+      const _literalMillis: PositiveMillis = durationToMillis("1ms");
+      const _positiveMillis: PositiveMillis = durationToMillis(
+        PositiveMillis.orThrow(1),
+      );
+
+      const duration: Duration = 0 as Millis;
+      const _millis: Millis = durationToMillis(duration);
+    });
+
     test("converts DurationLiteral to milliseconds", () => {
       // Milliseconds
       expect(durationToMillis("1ms")).toBe(1);
@@ -296,22 +532,6 @@ describe("Time", () => {
     });
   });
 
-  describe("saturateMillis", () => {
-    test("rounds to the nearest millisecond", () => {
-      expect(saturateMillis(1.4)).toBe(1);
-      expect(saturateMillis(1.5)).toBe(2);
-    });
-
-    test("saturates negative values at min millis", () => {
-      expect(saturateMillis(-1)).toBe(0);
-    });
-
-    test("saturates overflow at maxMillis", () => {
-      expect(saturateMillis(maxMillis + 1)).toBe(maxMillis);
-      expect(saturateMillis(Number.POSITIVE_INFINITY)).toBe(maxMillis);
-    });
-  });
-
   describe("formatMillisAsDuration", () => {
     test("formats sub-minute durations", () => {
       expect(formatMillisAsDuration(0 as Millis)).toBe("0.000s");
@@ -335,24 +555,24 @@ describe("Time", () => {
   });
 
   describe("formatMillisAsClockTime", () => {
-    test("formats millis as HH:MM:SS.mmm", () => {
-      // Use a fixed timestamp: 2026-01-28T14:32:15.234Z
-      const timestamp = Date.UTC(2026, 0, 28, 14, 32, 15, 234) as Millis;
-      const result = formatMillisAsClockTime(timestamp);
+    test("formats local time as HH:MM:SS.mmm", () => {
+      const timestamp = new Date(
+        2026,
+        0,
+        28,
+        14,
+        32,
+        15,
+        234,
+      ).getTime() as Millis;
 
-      // The result depends on local timezone, so just verify the format
-      expect(result).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
+      expect(formatMillisAsClockTime(timestamp)).toBe("14:32:15.234");
     });
 
     test("pads single digits", () => {
-      // Midnight UTC: 2026-01-01T00:01:02.003Z
-      const timestamp = Date.UTC(2026, 0, 1, 0, 1, 2, 3) as Millis;
-      const result = formatMillisAsClockTime(timestamp);
+      const timestamp = new Date(2026, 0, 1, 0, 1, 2, 3).getTime() as Millis;
 
-      // Verify padding (format is HH:MM:SS.mmm)
-      expect(result).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
-      // The milliseconds should be "003"
-      expect(result.slice(-3)).toBe("003");
+      expect(formatMillisAsClockTime(timestamp)).toBe("00:01:02.003");
     });
   });
 });

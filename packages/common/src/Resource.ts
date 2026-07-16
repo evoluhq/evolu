@@ -24,7 +24,7 @@ import {
   type SemaphoreSnapshot,
   type Task,
 } from "./Task.js";
-import { type Duration } from "./Time.js";
+import { type PositiveDuration } from "./Time.js";
 import { NonNegativeInt } from "./Type.js";
 import { type DistributiveOmit } from "./Types.js";
 
@@ -265,7 +265,7 @@ export interface SharedResourceOptions {
    * likely to be acquired again soon. A new acquire during this delay cancels
    * the pending disposal and reuses the current resource.
    */
-  readonly idleDisposeAfter?: Duration | undefined;
+  readonly idleDisposeAfter?: PositiveDuration | undefined;
 
   /**
    * Called after each current resource disposal is attempted and the current

@@ -7,7 +7,14 @@
 import { assert } from "./Assert.js";
 import type { Brand } from "./Brand.js";
 import type { yieldNow } from "./Task.js";
-import { brand, type DateIso, lessThan, NonNegativeInt } from "./Type.js";
+import {
+  brand,
+  type DateIso,
+  lessThan,
+  type NonNaNNumber,
+  NonNegativeInt,
+  positive,
+} from "./Type.js";
 import type {
   Digit,
   Digit1To23,
@@ -26,8 +33,8 @@ export interface Time {
   /** Returns current time as an ISO 8601 UTC string. */
   readonly nowDateIso: () => DateIso;
 
-  /** Schedules a callback after the specified delay. */
-  readonly setTimeout: (fn: () => void, delay: Duration) => TimeoutId;
+  /** Schedules a callback after the specified positive delay. */
+  readonly setTimeout: (fn: () => void, delay: PositiveDuration) => TimeoutId;
 
   /** Cancels a timeout scheduled with {@link Time.setTimeout}. */
   readonly clearTimeout: (id: TimeoutId) => void;
@@ -47,6 +54,10 @@ export type TimeoutId = Brand<"TimeoutId">;
 /**
  * Creates a {@link Time} using `Date.now()` and `globalThis.setTimeout`.
  *
+ * Timeout deadlines use the wall clock so time spent in system suspension
+ * counts toward the delay. System clock adjustments can therefore shorten or
+ * lengthen pending timeouts.
+ *
  * Throws if the system clock returns an out-of-range value. This is intentional
  * — there's no reasonable fallback for a misconfigured clock.
  */
@@ -58,17 +69,58 @@ export const createTime = (): Time => {
 
     nowDateIso: () => millisToDateIso(getNowMillis()),
 
-    setTimeout: (callback, delay) =>
-      globalThis.setTimeout(
-        callback,
-        durationToMillis(delay),
-      ) as unknown as TimeoutId,
+    setTimeout: scheduleNativeTimeout,
 
     clearTimeout: (id) => {
-      globalThis.clearTimeout(id as unknown as number);
+      (id as unknown as () => void)();
     },
   };
 };
+
+const scheduleNativeTimeout = (
+  callback: () => void,
+  duration: PositiveDuration,
+): TimeoutId => {
+  const delay = durationToMillis(duration);
+  // Recompute each chunk from one absolute deadline so time elapsed while the
+  // event loop is suspended, for example during system sleep, is not added again.
+  const deadline = globalThis.Date.now() + delay;
+  let cancelled = false;
+  let nativeId: ReturnType<typeof globalThis.setTimeout>;
+
+  const onTimeout = (): void => {
+    if (cancelled) return;
+
+    const remaining = deadline - globalThis.Date.now();
+    if (remaining > 0) {
+      nativeId = globalThis.setTimeout(
+        onTimeout,
+        Math.min(remaining, maxNativeTimeoutMillis),
+      );
+      return;
+    }
+
+    cancelled = true;
+    callback();
+  };
+
+  nativeId = globalThis.setTimeout(
+    onTimeout,
+    Math.min(delay, maxNativeTimeoutMillis),
+  );
+
+  return (() => {
+    cancelled = true;
+    globalThis.clearTimeout(nativeId);
+  }) as unknown as TimeoutId;
+};
+
+/**
+ * Maximum delay supported reliably by native timers: the largest positive
+ * signed 32-bit integer, approximately 24.9 days in milliseconds. Longer
+ * logical delays are scheduled in chunks to avoid native timer overflow.
+ */
+const maxNativeTimeoutMillis = 2 ** 31 - 1;
 
 /**
  * Test {@link Time} with controllable timers.
@@ -76,7 +128,12 @@ export const createTime = (): Time => {
  * Call `advance(ms)` to move time forward and trigger any pending timeouts.
  */
 export interface TestTime extends Time {
-  /** Advances time by the specified duration, triggering pending timeouts. */
+  /**
+   * Advances time by the specified duration, triggering pending timeouts.
+   *
+   * Timeout callback errors propagate and leave time at the callback's
+   * deadline. Throws if called while another advance is in progress.
+   */
   readonly advance: (duration: Duration) => void;
 }
 
@@ -103,6 +160,7 @@ export const testCreateTime = (options?: {
   let now = options?.startAt ?? minMillis;
   const autoIncrement = options?.autoIncrement;
   let nextId = 1;
+  let advancing = false;
 
   const pending = new Map<number, { callback: () => void; runAt: number }>();
   const incrementNow = (): void => {
@@ -138,13 +196,33 @@ export const testCreateTime = (options?: {
     },
 
     advance: (duration) => {
-      now = Millis.orThrow(now + durationToMillis(duration));
+      assert(!advancing, "TestTime.advance cannot be called while advancing");
+      const target = Millis.orThrow(now + durationToMillis(duration));
+      advancing = true;
 
-      for (const [id, timeout] of pending) {
-        if (timeout.runAt <= now) {
-          pending.delete(id);
+      try {
+        while (pending.size > 0) {
+          let nextId: number | null = null;
+          let nextRunAt = Number.POSITIVE_INFINITY;
+
+          for (const [id, timeout] of pending) {
+            if (timeout.runAt <= target && timeout.runAt < nextRunAt) {
+              nextId = id;
+              nextRunAt = timeout.runAt;
+            }
+          }
+
+          if (nextId === null) break;
+
+          const timeout = pending.get(nextId)!;
+          pending.delete(nextId);
+          now = Millis.orThrow(Math.max(now, nextRunAt));
           timeout.callback();
         }
+
+        now = Millis.orThrow(Math.max(now, target));
+      } finally {
+        advancing = false;
       }
     },
   };
@@ -154,7 +232,7 @@ export const testCreateTime = (options?: {
 const maxMillisWithInfinity = 281474976710655;
 
 /**
- * Milliseconds timestamp, like `Date.now()`.
+ * Non-negative integer milliseconds used for timestamps and durations.
  *
  * The maximum value is 281474976710654 (281474976710655 - 1, reserved for
  * infinity). This enables efficient binary serialization, saving 2 bytes
@@ -171,6 +249,10 @@ export const Millis = /*#__PURE__*/ brand(
 );
 export type Millis = typeof Millis.Type;
 
+/** Positive {@link Millis} value. */
+export const PositiveMillis = /*#__PURE__*/ positive(Millis);
+export type PositiveMillis = typeof PositiveMillis.Type;
+
 /** Minimum {@link Millis} value. */
 export const minMillis = 0 as Millis;
 
@@ -181,7 +263,7 @@ export const maxMillis = (maxMillisWithInfinity - 1) as Millis;
  * Converts a number to {@link Millis}, rounding to the nearest millisecond and
  * saturating overflow at {@link maxMillis}.
  */
-export const saturateMillis = (value: number): Millis =>
+export const saturateMillis = (value: NonNaNNumber): Millis =>
   Millis.orNull(Math.max(0, Math.round(value))) ?? maxMillis;
 
 /**
@@ -199,6 +281,9 @@ export const millisToDateIso = (value: Millis): DateIso =>
  */
 export type Duration = DurationLiteral | Millis;
 
+/** Positive duration accepted by timer-based APIs. */
+export type PositiveDuration = DurationLiteral | PositiveMillis;
+
 /**
  * Duration literal with compile-time validation.
  *
@@ -213,9 +298,9 @@ export type Duration = DurationLiteral | Millis;
  * - Months: not supported (variable length)
  * - Years: `1y`, `99y`, `1.5y` (1-99, 1.1-99.9)
  *
- * Each unit is limited to values that can't be expressed in the next larger
- * unit, ensuring every duration has exactly one canonical representation (e.g.,
- * 1000ms must be written as `"1s"`, not `"1000ms"`).
+ * Each unit uses a bounded range. Where units convert exactly, this avoids
+ * equivalent representations (e.g., 1000ms must be written as `"1s"`, not
+ * `"1000ms"`).
  *
  * Decimal values cover cases like 1.5s (1500ms) or 1.5h (90 minutes) without
  * allowing redundant forms. For precise values that don't fit (e.g., 1050ms),
@@ -305,11 +390,15 @@ export type DurationLiteralYears =
  * durationToMillis("30s"); // 30000
  * durationToMillis("5m"); // 300000
  * durationToMillis("12h"); // 43200000
- * durationToMillis("7d"); // 604800000
+ * durationToMillis("1w"); // 604800000
  * durationToMillis(Millis.orThrow(5000)); // 5000 (already Millis)
  * ```
  */
-export const durationToMillis = (duration: Duration): Millis => {
+export function durationToMillis(
+  duration: DurationLiteral | PositiveMillis,
+): PositiveMillis;
+export function durationToMillis(duration: Duration): Millis;
+export function durationToMillis(duration: Duration): Millis {
   if (typeof duration === "number") return duration;
 
   const num = parseFloat(duration);
@@ -320,23 +409,7 @@ export const durationToMillis = (duration: Duration): Millis => {
   return Millis.orThrow(
     Math.round(num * durationUnits[unit as keyof typeof durationUnits]),
   );
-};
-
-/**
- * Returns a Promise that resolves after the specified duration.
- *
- * Uses {@link Duration} parsing and `globalThis.setTimeout`.
- *
- * ### Example
- *
- * ```ts
- * await setTimeout("1ms");
- * ```
- */
-export const setTimeout = (duration: Duration): Promise<void> =>
-  new Promise((resolve) => {
-    globalThis.setTimeout(resolve, durationToMillis(duration));
-  });
+}
 
 const durationUnits = {
   ms: 1,
@@ -398,13 +471,13 @@ export const formatMillisAsDuration = (millis: Millis): string => {
   } else {
     const hours = Math.floor(elapsed / 3600);
     const minutes = Math.floor((elapsed % 3600) / 60);
-    const seconds = ((elapsed % 3600) % 60).toFixed(3);
+    const seconds = (elapsed % 60).toFixed(3);
     return `${hours}h${minutes}m${seconds}s`;
   }
 };
 
 /**
- * Formats {@link Millis} as `HH:MM:SS.mmm`.
+ * Formats {@link Millis} as local time in `HH:MM:SS.mmm` format.
  *
  * ### Example
  *
