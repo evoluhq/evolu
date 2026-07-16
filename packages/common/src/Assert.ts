@@ -100,7 +100,8 @@ export const assertNonEmptyReadonlyArray: <T>(
 /**
  * Ensures a value conforms to a {@link Type}.
  *
- * Uses the Type name for the default error message.
+ * Uses the Type name for the error message and preserves the Type validation
+ * error as the cause.
  *
  * ### Example
  *
@@ -114,9 +115,11 @@ export const assertNonEmptyReadonlyArray: <T>(
 export const assertType: <T extends AnyType>(
   type: T,
   value: unknown,
-  message?: string,
-) => asserts value is InferType<T> = (type, value, message) => {
-  assert(type.is(value), message ?? `Expected ${type.name}.`);
+) => asserts value is InferType<T> = (type, value) => {
+  const result = type.fromUnknown(value);
+  if (!result.ok) {
+    throw new Error(`Expected ${type.name}.`, { cause: result.error });
+  }
 };
 
 /**

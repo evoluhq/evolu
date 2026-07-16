@@ -74,13 +74,15 @@ test("assertType", () => {
     reason: { type: "Timeout" },
   });
 
-  expect(() => {
-    assertType(AbortError, { type: "Other" });
-  }).toThrow("Expected Object.");
+  const value = { type: "Other" };
+  const result = AbortError.fromUnknown(value);
+  assert(!result.ok, "Expected AbortError validation to fail.");
 
   expect(() => {
-    assertType(AbortError, { type: "Other" }, "Custom error");
-  }).toThrow("Custom error");
+    assertType(AbortError, value);
+  }).toThrow(
+    expect.objectContaining({ message: "Expected Object.", cause: result.error }),
+  );
 });
 
 test("assertNotDisposed", async () => {
