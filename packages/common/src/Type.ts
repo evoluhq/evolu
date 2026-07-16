@@ -11,6 +11,11 @@ import { wordlist } from "@scure/bip39/wordlists/english.js";
 import type { Brand } from "./Brand.js";
 import type { RandomBytesDep } from "./Crypto.js";
 import { exhaustiveCheck } from "./Function.js";
+import type {
+  Percentage,
+  PercentageLiteral,
+  percentageToRatio,
+} from "./Number.js";
 import { isFunction, isPlainObject } from "./Object.js";
 import { hasNodeBuffer } from "./Platform.js";
 import type { NextResult, Result } from "./Result.js";
@@ -2165,6 +2170,9 @@ export type Int = typeof Int.Type;
 export const NonNegativeInt = /*#__PURE__*/ nonNegative(Int);
 export type NonNegativeInt = typeof NonNegativeInt.Type;
 
+/** 0-100 as a literal, or any already-validated {@link NonNegativeInt}. */
+export type Int0To100OrNonNegativeInt = 0 | Int1To100 | NonNegativeInt;
+
 /** Minimum {@link NonNegativeInt} value (0). */
 export const zeroNonNegativeInt = /*#__PURE__*/ NonNegativeInt.orThrow(0);
 
@@ -2334,7 +2342,17 @@ export const formatNonNaNError =
     () => `The value must not be NaN.`,
   );
 
-/** @group Number */
+/**
+ * Number that is not `NaN`.
+ *
+ * Unlike {@link FiniteNumber}, this Type permits `Infinity` and `-Infinity`.
+ * This is useful for arithmetic that can meaningfully saturate infinities to a
+ * boundary but cannot assign a boundary to `NaN`. Excluding `NaN` also makes
+ * ordering and clamping reliable because comparisons with `NaN` are always
+ * false and most arithmetic propagates it.
+ *
+ * @group Number
+ */
 export const NonNaNNumber = /*#__PURE__*/ nonNaN(Number);
 export type NonNaNNumber = typeof NonNaNNumber.Type;
 
@@ -2360,17 +2378,15 @@ export const formatFiniteError =
 /**
  * Finite number.
  *
- * This Type ensures that a number is finite.
- *
- * **Why is this important?**
+ * Extends {@link NonNaNNumber} by also rejecting `Infinity` and `-Infinity`.
  *
  * `JSON.stringify` serializes JavaScript numbers into `null` if they are not
- * finite (e.g., `Infinity`, `-Infinity`, or `NaN`). Using `FiniteNumber` helps
- * prevent these unexpected behaviors when working with JSON serialization.
+ * finite. Use `FiniteNumber` when values must remain representable as JSON
+ * numbers.
  *
  * @group Number
  */
-export const FiniteNumber = /*#__PURE__*/ finite(Number);
+export const FiniteNumber = /*#__PURE__*/ finite(NonNaNNumber);
 export type FiniteNumber = typeof FiniteNumber.Type;
 
 /**
@@ -2380,6 +2396,22 @@ export type FiniteNumber = typeof FiniteNumber.Type;
  */
 export const NonNegativeFiniteNumber = /*#__PURE__*/ nonNegative(FiniteNumber);
 export type NonNegativeFiniteNumber = typeof NonNegativeFiniteNumber.Type;
+
+/**
+ * Finite ratio from 0 to 1, inclusive.
+ *
+ * Ratios are the numeric representation of percentages: `0.25` represents
+ * `25%`. Use {@link PercentageLiteral} for readable values such as `"25%"`,
+ * {@link Percentage} when either representation is accepted, and
+ * {@link percentageToRatio} to normalize a percentage to a ratio.
+ *
+ * @group Number
+ */
+export const Ratio = /*#__PURE__*/ brand(
+  "Ratio",
+  /*#__PURE__*/ lessThanOrEqualTo(1)(NonNegativeFiniteNumber),
+);
+export type Ratio = typeof Ratio.Type;
 
 /**
  * Number that is a multiple of a divisor.
@@ -4196,6 +4228,7 @@ export type JsonValueError = UnionError<
   | StringError
   | BooleanError
   | NullError
+  | NonNaNError
   | FiniteError
   | NumberError
   | ArrayError<JsonValueError>

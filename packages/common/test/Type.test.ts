@@ -129,6 +129,7 @@ import {
   partial,
   PositiveInt,
   PositiveNumber,
+  Ratio,
   record,
   recursive,
   regex,
@@ -1224,10 +1225,15 @@ test("NonNaNNumber", () => {
 
 test("FiniteNumber", () => {
   expect(FiniteNumber.from(42)).toEqual(ok(42));
+  expect(FiniteNumber.from(NaN)).toEqual(
+    err<NonNaNError>({ type: "NonNaN", value: NaN }),
+  );
   expect(FiniteNumber.from(Infinity)).toEqual(
     err<FiniteError>({ type: "Finite", value: Infinity }),
   );
-  expectTypeOf(FiniteNumber.Type).toEqualTypeOf<number & Brand<"Finite">>();
+  expectTypeOf(FiniteNumber.Type).toEqualTypeOf<
+    number & Brand<"NonNaN"> & Brand<"Finite">
+  >();
 });
 
 test("NonNegativeFiniteNumber", () => {
@@ -1240,7 +1246,25 @@ test("NonNegativeFiniteNumber", () => {
     err<FiniteError>({ type: "Finite", value: Infinity }),
   );
   expectTypeOf(NonNegativeFiniteNumber.Type).toEqualTypeOf<
-    number & Brand<"Finite"> & Brand<"NonNegative">
+    number & Brand<"NonNaN"> & Brand<"Finite"> & Brand<"NonNegative">
+  >();
+});
+
+test("Ratio", () => {
+  expect(Ratio.from(0)).toEqual(ok(0));
+  expect(Ratio.from(0.5)).toEqual(ok(0.5));
+  expect(Ratio.from(1)).toEqual(ok(1));
+  expect(Ratio.is(-0.1)).toBe(false);
+  expect(Ratio.is(1.1)).toBe(false);
+  expect(Ratio.is(NaN)).toBe(false);
+  expect(Ratio.is(Infinity)).toBe(false);
+  expectTypeOf(Ratio.Type).toEqualTypeOf<
+    number &
+      Brand<"NonNaN"> &
+      Brand<"Finite"> &
+      Brand<"NonNegative"> &
+      Brand<"LessThanOrEqualTo1"> &
+      Brand<"Ratio">
   >();
 });
 
@@ -2407,6 +2431,7 @@ test("JsonValue", () => {
   expectTypeOf(JsonValue.Error).toEqualTypeOf<
     UnionError<
       | StringError
+      | NonNaNError
       | FiniteError
       | NumberError
       | BooleanError
