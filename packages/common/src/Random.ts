@@ -1,5 +1,5 @@
 /**
- * Seeded random number generation.
+ * Random number generation.
  *
  * @module
  */
@@ -27,17 +27,17 @@ export type RandomNumber = number & Brand<"RandomNumber">;
  * random.next();
  *
  * // For tests
- * const random = createRandomWithSeed("test");
+ * const random = testCreateRandom("test");
  * random.next();
  * ```
  */
 export interface Random {
   /** Returns a floating point number in [0, 1). Just like Math.random(). */
-  next: () => RandomNumber;
+  readonly next: () => RandomNumber;
 }
 
 export interface RandomDep {
-  random: Random;
+  readonly random: Random;
 }
 
 /** Creates a {@link Random} using Math.random(). */
@@ -45,15 +45,12 @@ export const createRandom = (): Random => ({
   next: () => Math.random() as RandomNumber,
 });
 
-/** Creates a seeded {@link Random} for deterministic tests. Default seed "evolu". */
-export const testCreateRandom = (seed = "evolu"): Random =>
-  createRandomWithSeed(seed);
-
 /**
- * Creates {@link Random} using {@link RandomLibDep} with a seed which is useful
- * for tests.
+ * Creates a seeded {@link Random} for deterministic tests.
+ *
+ * Default seed "evolu".
  */
-export const createRandomWithSeed = (seed: string): Random => {
+export const testCreateRandom = (seed = "evolu"): Random => {
   const random = new RandomLib(seed);
   return {
     next: () => random.next() as RandomNumber,
@@ -61,7 +58,8 @@ export const createRandomWithSeed = (seed: string): Random => {
 };
 
 /**
- * A random number generator using the NPM `random` package dependency.
+ * Seedable random number generator supporting many common distributions,
+ * provided by the NPM `random` package.
  *
  * https://github.com/transitive-bullshit/random
  */
@@ -69,9 +67,13 @@ export interface RandomLibDep {
   readonly randomLib: RandomLib;
 }
 
-/** Creates a `RandomLib` using the NPM `random` package. */
+/** Creates {@link RandomLib}. */
 export const createRandomLib = (): RandomLib => new RandomLib();
 
-/** Creates a seeded `RandomLib` for deterministic tests. Default seed "evolu". */
+/**
+ * Creates a seeded {@link RandomLib} for deterministic tests.
+ *
+ * Default seed "evolu".
+ */
 export const testCreateRandomLib = (seed = "evolu"): RandomLib =>
   new RandomLib(seed);
