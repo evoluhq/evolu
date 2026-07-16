@@ -15,10 +15,39 @@ import {
   onePositiveInt,
   NonNegativeInt,
   PositiveInt,
+  Ratio,
 } from "./Type.js";
-import type { Predicate, WidenLiteral } from "./Types.js";
+import type {
+  Digit,
+  Digit1To9,
+  Digit1To99,
+  Predicate,
+  WidenLiteral,
+} from "./Types.js";
+
+/** Percentage represented as a readable literal or a validated ratio. */
+export type Percentage = PercentageLiteral | Ratio;
+
+/**
+ * Percentage literal from `"0%"` to `"100%"`.
+ *
+ * Decimal literals support one decimal place. Use {@link Ratio} for computed
+ * values or greater precision.
+ */
+export type PercentageLiteral =
+  "0%" | "100%" | `${Digit1To99}%` | `${Digit | Digit1To99}.${Digit1To9}%`;
+
+/** Converts a {@link Percentage} to its numeric {@link Ratio}. */
+export const percentageToRatio = (percentage: Percentage): Ratio =>
+  typeof percentage === "number"
+    ? percentage
+    : Ratio.orThrow(globalThis.Number.parseFloat(percentage) / 100);
 
 export const increment = (n: number): number => n + 1;
+
+/** Increments a positive integer, saturating at the maximum safe integer. */
+export const incrementPositiveInt = (n: PositiveInt): PositiveInt =>
+  PositiveInt.orNull(increment(n)) ?? n;
 
 export const decrement = (n: number): number => n - 1;
 

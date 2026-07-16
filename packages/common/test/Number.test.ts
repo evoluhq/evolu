@@ -6,15 +6,50 @@ import {
   fibonacciAt,
   FibonacciIndex,
   increment,
+  incrementPositiveInt,
   isBetween,
   max,
   min,
+  type Percentage,
+  type PercentageLiteral,
+  percentageToRatio,
 } from "../src/Number.js";
 import { err, ok } from "../src/Result.js";
-import { NonNegativeInt, PositiveInt } from "../src/Type.js";
+import {
+  maxPositiveInt,
+  NonNegativeInt,
+  onePositiveInt,
+  PositiveInt,
+  Ratio,
+} from "../src/Type.js";
+
+test("Percentage accepts canonical literals or Ratio", () => {
+  expectTypeOf<"0%">().toExtend<PercentageLiteral>();
+  expectTypeOf<"25%">().toExtend<PercentageLiteral>();
+  expectTypeOf<"12.5%">().toExtend<PercentageLiteral>();
+  expectTypeOf<"100%">().toExtend<PercentageLiteral>();
+  expectTypeOf<"01%">().not.toExtend<PercentageLiteral>();
+  expectTypeOf<"10.0%">().not.toExtend<PercentageLiteral>();
+  expectTypeOf<"100.1%">().not.toExtend<PercentageLiteral>();
+  expectTypeOf<Ratio>().toExtend<Percentage>();
+});
+
+test("percentageToRatio converts percentage literals and preserves Ratio", () => {
+  expect(percentageToRatio("0%")).toBe(0);
+  expect(percentageToRatio("12.5%")).toBe(0.125);
+  expect(percentageToRatio("100%")).toBe(1);
+
+  const ratio = Ratio.orThrow(0.123456);
+  expect(percentageToRatio(ratio)).toBe(ratio);
+});
 
 test("increment", () => {
   expect(increment(1)).toEqual(2);
+});
+
+test("incrementPositiveInt saturates at maxPositiveInt", () => {
+  expect(incrementPositiveInt(onePositiveInt)).toEqual(2);
+  expect(incrementPositiveInt(maxPositiveInt)).toBe(maxPositiveInt);
 });
 
 test("decrement", () => {
