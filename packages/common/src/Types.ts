@@ -259,33 +259,33 @@ export const isPromiseLike = <T>(
 ): value is PromiseLike<T> =>
   typeof (value as PromiseLike<T> | null | undefined)?.then === "function";
 
-/** Single digit 0-9. Useful for template literal type validation. */
+/** Decimal digit from `"0"` to `"9"`. */
 export type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 
-/** Digit 1-9. Useful for template literal type validation. */
+/** Decimal digit from `"1"` to `"9"`. */
 export type Digit1To9 = Exclude<Digit, "0">;
 
-/** Numeric string 1-6. Useful for days validation. */
+/** Decimal string from `"1"` to `"6"`. */
 export type Digit1To6 = "1" | "2" | "3" | "4" | "5" | "6";
 
-/** Numeric string 1-23. Useful for hours validation. */
+/** Decimal string from `"1"` to `"23"`. */
 export type Digit1To23 =
   | Digit1To9 // 1-9
   | `1${Digit}` // 10-19
   | `2${"0" | "1" | "2" | "3"}`; // 20-23
 
-/** Numeric string 1-51. Useful for weeks validation. */
+/** Decimal string from `"1"` to `"51"`. */
 export type Digit1To51 =
   | Digit1To9 // 1-9
   | `${"1" | "2" | "3" | "4"}${Digit}` // 10-49
   | `5${"0" | "1"}`; // 50-51
 
-/** Numeric string 1-99. Useful for years validation. */
+/** Decimal string from `"1"` to `"99"`. */
 export type Digit1To99 =
   | Digit1To9 // 1-9
   | `${Digit1To9}${Digit}`; // 10-99
 
-/** Numeric string 1-59. Useful for minutes, seconds validation. */
+/** Decimal string from `"1"` to `"59"`. */
 export type Digit1To59 =
   | Digit1To9 // 1-9
   | `1${Digit}` // 10-19
