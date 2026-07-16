@@ -43,7 +43,7 @@ import {
   type TestLeakDetectorDep,
 } from "./LeakDetector.js";
 import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.js";
-import { decrement, increment } from "./Number.js";
+import { decrement, increment, incrementPositiveInt } from "./Number.js";
 import {
   emptyRecord,
   mapObject,
@@ -79,9 +79,10 @@ import type { Schedule, ScheduleStep } from "./Schedule.js";
 import { emptySet } from "./Set.js";
 import {
   createTime,
+  PositiveMillis,
   testCreateTime,
-  type Duration,
   type Millis,
+  type PositiveDuration,
   type Time,
   type TimeDep,
   type TestTimeDep,
@@ -327,7 +328,7 @@ import type {
  *   retry(
  *     fetchWithTimeout(url),
  *     // A jittered, capped, limited exponential backoff.
- *     jitter(1)(maxDelay("20s")(take(2)(exponential("100ms")))),
+ *     jitter("100%")(maxDelay("20s")(take(2)(exponential("100ms")))),
  *   );
  * ```
  *
@@ -2904,11 +2905,11 @@ const mapInput = (
  *   callback,
  *   err,
  *   ok,
- *   type Duration,
+ *   type PositiveDuration,
  *   type Task,
  * } from "@evolu/common";
  *
- * const sleep = (duration: Duration): Task<void> =>
+ * const sleep = (duration: PositiveDuration): Task<void> =>
  *   callback(({ run: { deps }, resolve }) => {
  *     const id = deps.time.setTimeout(() => resolve(ok()), duration);
  *     return () => deps.time.clearTimeout(id);
@@ -2971,13 +2972,13 @@ export const callback =
   };
 
 /**
- * Pauses execution for a specified {@link Duration}.
+ * Pauses execution for a specified {@link PositiveDuration}.
  *
  * Aborting the Task clears the scheduled timeout.
  *
  * @group Timing
  */
-export const sleep = (duration: Duration): Task<void> =>
+export const sleep = (duration: PositiveDuration): Task<void> =>
   callback(({ run: { deps }, resolve }) => {
     const id = deps.time.setTimeout(() => resolve(ok()), duration);
     return () => deps.time.clearTimeout(id);
@@ -3026,7 +3027,7 @@ export const timeoutError: TimeoutError = { type: "TimeoutError" };
  */
 export const timeout = <T, E, D = unknown>(
   task: Task<T, E, D>,
-  duration: Duration,
+  duration: PositiveDuration,
 ): Task<T, E | TimeoutError, D> =>
   race([
     task,
@@ -3195,8 +3196,8 @@ export const retry =
 
       const [output, delay] = next.value;
       onRetry?.({ error, attempt, output, delay });
-      attempt = PositiveInt.orThrow(increment(attempt));
-      if (delay > 0) await run.ok(sleep(delay));
+      attempt = incrementPositiveInt(attempt);
+      if (delay > 0) await run.ok(sleep(PositiveMillis.orThrow(delay)));
     }
   };
 
@@ -3314,8 +3315,8 @@ export const repeat =
 
       const [output, delay] = next.value;
       onRepeat?.({ value: result.value, attempt, output, delay });
-      attempt = PositiveInt.orThrow(increment(attempt));
-      if (delay > 0) await run.ok(sleep(delay));
+      attempt = incrementPositiveInt(attempt);
+      if (delay > 0) await run.ok(sleep(PositiveMillis.orThrow(delay)));
     }
   };
 

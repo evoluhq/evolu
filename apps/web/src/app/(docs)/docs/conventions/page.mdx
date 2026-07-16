@@ -454,20 +454,22 @@ Opaque types are useful for:
 Evolu doesn't provide a `pipe` helper. Instead, compose functions directly:
 
 ```ts
-// AWS-style retry - a jittered, capped, limited exponential backoff.
-const awsRetry = jitter(1)(maxDelay("20s")(take(3)(exponential("1s"))));
+// AWS SDK for Java 2.1 ordinary-failure retry timing.
+const retryStrategyAws = jitter("100%")(
+  maxDelay("20s")(take(2)(exponential("50ms"))),
+);
 ```
 
 If nested composition gets too deep, split into meaningful named parts:
 
 ```ts
 // Split long compositions into named intermediate values
-const limitedExponential = take(3)(exponential("1s"));
+const limitedExponential = take(2)(exponential("50ms"));
 const cappedBackoff = maxDelay("20s")(limitedExponential);
-const awsRetry = jitter(1)(cappedBackoff);
+const retryStrategyAws = jitter("100%")(cappedBackoff);
 ```
 
-Shallow nesting often fits one line (like `awsRetry`). If it doesn't, split — there's a good chance you'll reuse those named parts elsewhere.
+Shallow nesting often fits one line (like `retryStrategyAws`). If it doesn't, split — there's a good chance you'll reuse those named parts elsewhere.
 
 Evolu favors imperative code over pipes. A well-named helper is more discoverable and self-documenting than a long chain of transformations.
 

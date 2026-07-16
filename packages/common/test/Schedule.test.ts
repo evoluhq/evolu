@@ -50,7 +50,14 @@ import {
   windowed,
 } from "../src/Schedule.js";
 import { testCreateDeps } from "../src/Task.js";
-import { maxMillis, Millis, minMillis, testCreateTime } from "../src/Time.js";
+import {
+  maxMillis,
+  Millis,
+  minMillis,
+  PositiveMillis,
+  testCreateTime,
+} from "../src/Time.js";
+import { NonNegativeInt, Ratio } from "../src/Type.js";
 
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {
@@ -71,6 +78,11 @@ const createScheduleDepsWithNow = (...times: ReadonlyArray<number>) => {
     },
   };
 };
+
+const createScheduleDepsWithRandom = (value: RandomNumber) => ({
+  ...createScheduleDeps(),
+  random: { next: () => value },
+});
 
 const expectOk = (
   result: NextResult<readonly [unknown, Millis]>,
@@ -273,16 +285,18 @@ describe("exponential", () => {
     expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
   });
 
+  test("keeps a zero base at zero after the power overflows", () => {
+    const step = exponential(minMillis)(createScheduleDeps());
+    for (let i = 0; i < 1025; i++) step(undefined);
+    expect(step(undefined)).toEqual(ok([minMillis, minMillis]));
+  });
+
   test("throws for invalid factor", () => {
-    expect(() => exponential("100ms", Number.NaN)).toThrow(
-      "Expected factor to be a non-negative finite number.",
-    );
+    expect(() => exponential("100ms", Number.NaN)).toThrow("Expected Brand.");
     expect(() => exponential("100ms", Number.POSITIVE_INFINITY)).toThrow(
-      "Expected factor to be a non-negative finite number.",
+      "Expected Brand.",
     );
-    expect(() => exponential("100ms", -1)).toThrow(
-      "Expected factor to be a non-negative finite number.",
-    );
+    expect(() => exponential("100ms", -1)).toThrow("Expected Brand.");
   });
 });
 
@@ -367,6 +381,19 @@ describe("fixed", () => {
     expectOk(step(undefined), [2, 2000]);
   });
 
+  test("catches up missed recurrences before realigning", () => {
+    const deps = createScheduleDeps();
+    const step = fixed("10s")(deps);
+
+    expectOk(step(undefined), [0, 10000]);
+    deps.time.advance("55s");
+    expectOk(step(undefined), [1, 0]);
+    expectOk(step(undefined), [2, 0]);
+    expectOk(step(undefined), [3, 0]);
+    expectOk(step(undefined), [4, 0]);
+    expectOk(step(undefined), [5, 5000]);
+  });
+
   test("with zero interval", () => {
     const deps = createScheduleDeps();
     const step = fixed(minMillis)(deps);
@@ -379,6 +406,24 @@ describe("fixed", () => {
 });
 
 describe("windowed", () => {
+  test("skips missed recurrences before realigning", () => {
+    const deps = createScheduleDeps();
+    const step = windowed("10s")(deps);
+
+    expectOk(step(undefined), [0, 10000]);
+    deps.time.advance("55s");
+    expectOk(step(undefined), [1, 5000]);
+  });
+
+  test("waits until the next interval at an exact boundary", () => {
+    const deps = createScheduleDeps();
+    const step = windowed("100ms")(deps);
+
+    expectOk(step(undefined), [0, 100]);
+    deps.time.advance("100ms");
+    expectOk(step(undefined), [1, 100]);
+  });
+
   test("with zero interval", () => {
     const deps = createScheduleDeps();
     const step = windowed(minMillis)(deps);
@@ -425,6 +470,12 @@ describe("fromDelays", () => {
     expectOk(step(undefined), [100, 100]);
     expectOk(step(undefined), [500, 500]);
     expectOk(step(undefined), [2000, 2000]);
+    expectDone(step(undefined));
+  });
+
+  test("stops immediately with no delays", () => {
+    const step = fromDelays()(createScheduleDeps());
+
     expectDone(step(undefined));
   });
 });
@@ -562,15 +613,21 @@ describe("take", () => {
     expectDone(step(undefined));
   });
 
-  test("throws for invalid number of attempts", () => {
-    expect(() => take(Number.NaN)).toThrow(
-      "Expected n to be a non-negative integer.",
-    );
-    expect(() => take(Number.POSITIVE_INFINITY)).toThrow(
-      "Expected n to be a non-negative integer.",
-    );
-    expect(() => take(1.5)).toThrow("Expected n to be a non-negative integer.");
-    expect(() => take(-1)).toThrow("Expected n to be a non-negative integer.");
+  test("accepts literals from 0 to 100 or a validated NonNegativeInt", () => {
+    take(0);
+    take(100);
+    take(NonNegativeInt.orThrow(101));
+  });
+
+  test("requires validation for other numbers", () => {
+    // @ts-expect-error - Dynamic numbers require validation.
+    take(Math.random());
+    // @ts-expect-error - Literals above 100 require validation.
+    take(101);
+    // @ts-expect-error - Negative integers are invalid.
+    take(-1);
+    // @ts-expect-error - Fractions are invalid.
+    take(1.5);
   });
 });
 
@@ -583,6 +640,16 @@ describe("maxElapsed", () => {
     expectOk(step(undefined), [200, 200]);
     deps.time.advance("150ms"); // now at 250ms
     expectDone(step(undefined)); // elapsed >= 250
+  });
+
+  test("keeps terminal done when time moves backwards", () => {
+    const step = maxElapsed("250ms")(exponential("100ms"))(
+      createScheduleDepsWithNow(0, 250, 0),
+    );
+
+    expectOk(step(undefined), [100, 100]);
+    expectDone(step(undefined));
+    expectDone(step(undefined));
   });
 });
 
@@ -605,62 +672,113 @@ describe("maxDelay", () => {
 });
 
 describe("jitter", () => {
-  test("factor 0 preserves delay", () => {
+  test("0% preserves delay", () => {
     const deps = createScheduleDeps();
-    const step = jitter(0)(spaced("100ms"))(deps);
+    const step = jitter("0%")(spaced("100ms"))(deps);
 
     expectOk(step(undefined), [100, 100]);
   });
 
-  test("accepts factor 1", () => {
-    expect(() => jitter(1)).not.toThrow();
+  test("accepts Ratio", () => {
+    expect(() => jitter(Ratio.orThrow(1))).not.toThrow();
   });
 
-  test("randomizes delay", () => {
-    const deps = createScheduleDeps();
-    // With deterministic random, we can test jitter
-    const step = jitter(0.5)(spaced("100ms"))(deps);
-    const result = step(undefined);
-    expect(result.ok).toBe(true);
-    const [, delay] = result.ok ? result.value : [0, 0];
-    // With factor 0.5, delay should be between 50 and 150
-    expect(delay).toBeGreaterThanOrEqual(50);
-    expect(delay).toBeLessThanOrEqual(150);
+  describe("below", () => {
+    test("defaults to 50% below jitter", () => {
+      const result = jitter()(spaced("100ms"))(
+        createScheduleDepsWithRandom(0.5 as RandomNumber),
+      )(undefined);
+      const explicitResult = jitter("50%", "below")(spaced("100ms"))(
+        createScheduleDepsWithRandom(0.5 as RandomNumber),
+      )(undefined);
+
+      expect(result).toEqual(explicitResult);
+      expectOk(result, [100, 75]);
+    });
+
+    test("50% applies equal jitter", () => {
+      expectOk(
+        jitter("50%")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0 as RandomNumber),
+        )(undefined),
+        [100, 50],
+      );
+      expectOk(
+        jitter("50%", "below")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0.5 as RandomNumber),
+        )(undefined),
+        [100, 75],
+      );
+      expectOk(
+        jitter("50%")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0.999999999 as RandomNumber),
+        )(undefined),
+        [100, 100],
+      );
+    });
+
+    test("100% applies full jitter", () => {
+      expectOk(
+        jitter("100%")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0 as RandomNumber),
+        )(undefined),
+        [100, 0],
+      );
+      expectOk(
+        jitter("100%")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0.5 as RandomNumber),
+        )(undefined),
+        [100, 50],
+      );
+      expectOk(
+        jitter("100%")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0.999999999 as RandomNumber),
+        )(undefined),
+        [100, 100],
+      );
+    });
+  });
+
+  describe("around", () => {
+    test("randomizes around the original delay", () => {
+      expectOk(
+        jitter("50%", "around")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0 as RandomNumber),
+        )(undefined),
+        [100, 50],
+      );
+      expectOk(
+        jitter("50%", "around")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0.5 as RandomNumber),
+        )(undefined),
+        [100, 100],
+      );
+      expectOk(
+        jitter("50%", "around")(spaced("100ms"))(
+          createScheduleDepsWithRandom(0.999999999 as RandomNumber),
+        )(undefined),
+        [100, 150],
+      );
+    });
+
+    test("saturates at maxMillis instead of throwing on overflow", () => {
+      const step = jitter("100%", "around")(spaced(maxMillis))(
+        createScheduleDepsWithRandom(0.999999999 as RandomNumber),
+      );
+      expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+    });
   });
 
   test("jitter preserves done", () => {
     const deps = createScheduleDeps();
-    const step = jitter(0.5)(once)(deps);
+    const step = jitter("50%")(once)(deps);
     expectOk(step(undefined), [0, 0]);
     expectDone(step(undefined));
-  });
-
-  test("saturates at maxMillis instead of throwing on overflow", () => {
-    const deps = {
-      time: testCreateTime({ startAt: minMillis }),
-      random: { next: () => 0.999999999 as RandomNumber },
-    };
-
-    const step = jitter(1)(spaced(maxMillis))(deps);
-    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
-  });
-
-  test("throws for invalid factor", () => {
-    expect(() => jitter(Number.NaN)).toThrow(
-      "Expected factor to be a non-negative finite number.",
-    );
-    expect(() => jitter(Number.POSITIVE_INFINITY)).toThrow(
-      "Expected factor to be a non-negative finite number.",
-    );
-    expect(() => jitter(-1)).toThrow(
-      "Expected factor to be a non-negative finite number.",
-    );
-    expect(() => jitter(1.5)).toThrow("Expected factor to be between 0 and 1.");
   });
 });
 
 describe("delayed", () => {
-  test("adds initial delay before first attempt", () => {
+  test("replaces the first delay", () => {
     const deps = createScheduleDeps();
     const step = delayed("500ms")(exponential("100ms"))(deps);
     expectOk(step(undefined), [100, 500]); // Initial delay
@@ -716,6 +834,11 @@ describe("modifyDelay", () => {
     const deps = createScheduleDeps();
     const step = modifyDelay(() => maxMillis + 1)(once)(deps);
     expect(step(undefined)).toEqual(ok([0, maxMillis]));
+  });
+
+  test("throws when the transform returns NaN", () => {
+    const step = modifyDelay(() => Number.NaN)(once)(createScheduleDeps());
+    expect(() => step(undefined)).toThrow("Expected Brand.");
   });
 });
 
@@ -867,30 +990,34 @@ describe("predicate filters", () => {
 });
 
 describe("resetScheduleAfter", () => {
-  test("resets schedule after inactivity", () => {
-    const deps = createScheduleDeps();
-    const step = resetScheduleAfter("1s")(take(2)(spaced("100ms")))(deps);
-    // First two attempts with short gaps (less than reset threshold)
-    expectOk(step(undefined), [100, 100]);
-    deps.time.advance("100ms");
-    expectOk(step(undefined), [100, 100]);
-    // Schedule exhausted
-    deps.time.advance("100ms");
-    expectDone(step(undefined));
+  test("requires a positive millis duration", () => {
+    resetScheduleAfter("1ms");
+    resetScheduleAfter(PositiveMillis.orThrow(1));
+    // @ts-expect-error - Zero Millis is not a positive duration.
+    resetScheduleAfter(minMillis);
+  });
 
-    // Test reset: after 1s+ gap, schedule resets
-    const d2 = createScheduleDeps();
-    const step2 = resetScheduleAfter("1s")(take(2)(spaced("100ms")))(d2);
-    expectOk(step2(undefined), [100, 100]);
-    // Gap of 2000ms triggers reset, so we get fresh state
-    d2.time.advance("2s");
-    expectOk(step2(undefined), [100, 100]);
-    // Another short gap, count continues from fresh state
-    d2.time.advance("100ms");
-    expectOk(step2(undefined), [100, 100]);
-    // Now exhausted again
-    d2.time.advance("100ms");
-    expectDone(step2(undefined));
+  test("resets a running schedule after inactivity", () => {
+    const deps = createScheduleDeps();
+    const step = resetScheduleAfter("1s")(exponential("100ms"))(deps);
+
+    expectOk(step(undefined), [100, 100]);
+    deps.time.advance("100ms");
+    expectOk(step(undefined), [200, 200]);
+    deps.time.advance("1s");
+    expectOk(step(undefined), [100, 100]);
+    deps.time.advance("100ms");
+    expectOk(step(undefined), [200, 200]);
+  });
+
+  test("keeps terminal done after inactivity", () => {
+    const deps = createScheduleDeps();
+    const step = resetScheduleAfter("1s")(take(1)(spaced("100ms")))(deps);
+
+    expectOk(step(undefined), [100, 100]);
+    expectDone(step(undefined));
+    deps.time.advance("2s");
+    expectDone(step(undefined));
   });
 });
 
@@ -1041,6 +1168,17 @@ describe("collectAllScheduleOutputs", () => {
     expectOk(step(undefined), [[100, 100, 100], 100]);
     expectDone(step(undefined));
   });
+
+  test("returns a new snapshot without changing previous outputs", () => {
+    const step = collectAllScheduleOutputs(take(2)(spaced("100ms")))(
+      createScheduleDeps(),
+    );
+
+    const first = step(undefined);
+    expectOk(first, [[100], 100]);
+    expectOk(step(undefined), [[100, 100], 100]);
+    expectOk(first, [[100], 100]);
+  });
 });
 
 describe("collectScheduleInputs", () => {
@@ -1140,6 +1278,20 @@ describe("intersectSchedules", () => {
     expectOk(step(undefined), [[100, 200], 200]); // max(100, 200)
     expectDone(step(undefined)); // a stopped, so intersection stops
   });
+
+  test("does not step children after the intersection stops", () => {
+    let aCalls = 0;
+    let bCalls = 0;
+    const step = intersectSchedules(
+      tapScheduleInput(() => aCalls++)(take(1)(spaced("100ms"))),
+      tapScheduleInput(() => bCalls++)(spaced("200ms")),
+    )(createScheduleDeps());
+
+    expectOk(step(undefined), [[100, 200], 200]);
+    expectDone(step(undefined));
+    expectDone(step(undefined));
+    expect([aCalls, bCalls]).toEqual([2, 2]);
+  });
 });
 
 describe("unionSchedules", () => {
@@ -1178,31 +1330,50 @@ describe("unionSchedules", () => {
 
     expectOk(step(undefined), ["b", 100]);
   });
+
+  test("does not step completed children", () => {
+    let aCalls = 0;
+    let bCalls = 0;
+    const step = unionSchedules(
+      tapScheduleInput(() => aCalls++)(take(1)(spaced("100ms"))),
+      tapScheduleInput(() => bCalls++)(take(3)(spaced("200ms"))),
+    )(createScheduleDeps());
+
+    expectOk(step(undefined), [100, 100]);
+    expectOk(step(undefined), [200, 200]);
+    expectOk(step(undefined), [200, 200]);
+    expect([aCalls, bCalls]).toEqual([2, 3]);
+    expectDone(step(undefined));
+    expectDone(step(undefined));
+    expect([aCalls, bCalls]).toEqual([2, 4]);
+  });
 });
 
 describe("whenInput", () => {
-  test("selects schedule based on input", () => {
-    const deps = createScheduleDeps();
+  test("maintains independent branch state", () => {
+    const step = whenInput(
+      (useAlt: boolean) => useAlt,
+      exponential("1s"),
+    )(exponential("100ms"))(createScheduleDeps());
 
-    interface MyError {
-      readonly type: "Throttled" | "NetworkError";
-    }
+    expectOk(step(false), [100, 100]);
+    expectOk(step(true), [1000, 1000]);
+    expectOk(step(false), [200, 200]);
+    expectOk(step(true), [2000, 2000]);
+  });
 
-    const isThrottled = (error: MyError) => error.type === "Throttled";
+  test("shares an outer attempt limit across branches", () => {
+    const step = take(3)(
+      whenInput(
+        (useAlt: boolean) => useAlt,
+        exponential("1s"),
+      )(exponential("100ms")),
+    )(createScheduleDeps());
 
-    const step = whenInput<MyError, Millis>(
-      isThrottled,
-      spaced("1s"),
-    )(spaced("100ms"))(deps);
-
-    // Normal error uses base schedule
-    expectOk(step({ type: "NetworkError" }), [100, 100]);
-
-    // Throttled error uses throttled schedule
-    expectOk(step({ type: "Throttled" }), [1000, 1000]);
-
-    // Another normal error uses base schedule
-    expectOk(step({ type: "NetworkError" }), [100, 100]);
+    expectOk(step(false), [100, 100]);
+    expectOk(step(true), [1000, 1000]);
+    expectOk(step(false), [200, 200]);
+    expectDone(step(true));
   });
 
   test("passes through termination from alt schedule", () => {
@@ -1214,6 +1385,19 @@ describe("whenInput", () => {
 
     expectOk(step(undefined), [1000, 1000]);
     expectDone(step(undefined));
+  });
+
+  test("keeps terminal done when the selected branch changes", () => {
+    const step = whenInput(
+      (useAlt: boolean) => useAlt,
+      take(1)(spaced("1s")),
+    )(exponential("100ms"))(createScheduleDeps());
+
+    expectOk(step(false), [100, 100]);
+    expectOk(step(false), [200, 200]);
+    expectOk(step(true), [1000, 1000]);
+    expectDone(step(true));
+    expectDone(step(false));
   });
 });
 
@@ -1283,14 +1467,14 @@ describe("tapScheduleInput", () => {
 });
 
 describe("retryStrategyAws", () => {
-  test("configuration", () => {
-    const deps = createScheduleDeps();
+  test("uses AWS 2.1 ordinary-failure timing", () => {
+    // RandomNumber is below 1; millisecond rounding reaches the 50ms upper bound.
+    const step = retryStrategyAws(
+      createScheduleDepsWithRandom(0.999999999 as RandomNumber),
+    );
 
-    // Just verify it produces steps correctly
-    const step = retryStrategyAws(deps);
-    const result = step(undefined);
-    expect(result.ok).toBe(true);
-    const [, delay] = result.ok ? result.value : [0, 0];
-    expect(delay).toBeLessThanOrEqual(200); // 100ms * 2 (jitter upper bound)
+    expectOk(step(undefined), [50, 50]);
+    expectOk(step(undefined), [100, 100]);
+    expectDone(step(undefined));
   });
 });

@@ -9,8 +9,15 @@ import {
 } from "vitest";
 import { utf8ToBytes } from "../src/Buffer.js";
 import { isServer } from "../src/Platform.js";
+import type { RandomNumber } from "../src/Random.js";
+import { ok } from "../src/Result.js";
 import { spaced, take } from "../src/Schedule.js";
-import { AbortError, createRun, testCreateRun } from "../src/Task.js";
+import {
+  AbortError,
+  createRun,
+  testCreateDeps,
+  testCreateRun,
+} from "../src/Task.js";
 import {
   startTestWebSocketServer,
   stopTestWebSocketServer,
@@ -19,6 +26,8 @@ import {
   createWebSocket,
   testSetupWebSocket,
   testCreateWebSocket,
+  webSocketReconnectSchedule,
+  type WebSocketRetryError,
   type WebSocketError,
 } from "../src/WebSocket.js";
 
@@ -38,6 +47,25 @@ afterEach(async () => {
   const currentPort = port;
   port = undefined;
   await stopTestWebSocketServer(currentPort);
+});
+
+describe("webSocketReconnectSchedule", () => {
+  test("uses capped unlimited full-jitter backoff", () => {
+    const deps = {
+      ...testCreateDeps(),
+      random: { next: () => 0.999999999 as RandomNumber },
+    };
+    const step = webSocketReconnectSchedule(deps);
+    const error: WebSocketRetryError = {
+      type: "WebSocketConnectError",
+      event: new Event("error"),
+    };
+
+    expect(step(error)).toEqual(ok([100, 100]));
+    for (let attempt = 2; attempt < 10; attempt++) step(error);
+    expect(step(error)).toEqual(ok([51200, 30000]));
+    expect(step(error).ok).toBe(true);
+  });
 });
 
 describe("createWebSocket", () => {

@@ -5,24 +5,35 @@
  */
 
 import { assertType } from "./Assert.js";
-import { fibonacciAt, FibonacciIndex, increment } from "./Number.js";
+import {
+  fibonacciAt,
+  FibonacciIndex,
+  increment,
+  max,
+  min,
+  type Percentage,
+  percentageToRatio,
+} from "./Number.js";
 import type { RandomDep } from "./Random.js";
 import { done, err, type NextResult, ok } from "./Result.js";
 import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task.js";
 import {
   type Duration,
+  type DurationLiteral,
   durationToMillis,
   Millis,
   minMillis,
+  PositiveMillis,
   saturateMillis,
   type TimeDep,
 } from "./Time.js";
 import {
-  lessThanOrEqualTo,
+  type Int0To100OrNonNegativeInt,
+  NonNaNNumber,
   NonNegativeFiniteNumber,
-  NonNegativeInt,
-  onePositiveInt,
+  type NonNegativeInt,
   PositiveInt,
+  type Ratio,
 } from "./Type.js";
 import type { Predicate } from "./Types.js";
 
@@ -35,6 +46,9 @@ import type { Predicate } from "./Types.js";
  * advances that state and returns `Ok([Output, Millis])` or `Err(Done<void>)`
  * to stop. Multiple calls to `schedule(deps)` create independent state
  * instances.
+ *
+ * `Err(Done<void>)` is terminal. After a step returns it, every subsequent call
+ * to that step must also return `Err(Done<void>)`.
  *
  * ### Example
  *
@@ -50,7 +64,7 @@ import type { Predicate } from "./Types.js";
  * const fetchWithRetry = retry(
  *   fetchData,
  *   // A jittered, capped, limited exponential backoff.
- *   jitter(1)(maxDelay("20s")(take(2)(exponential("100ms")))),
+ *   jitter("100%")(maxDelay("20s")(take(2)(exponential("100ms")))),
  * );
  * ```
  *
@@ -93,45 +107,6 @@ export interface ScheduleStep<Output> {
 }
 
 /**
- * Internal per-step metrics computed from timestamps.
- *
- * The schedule computes this internally from deps.time.now().
- */
-interface ScheduleStepMetrics {
-  /** Current attempt number. */
-  readonly attempt: PositiveInt;
-  /** Milliseconds elapsed since the schedule started. */
-  readonly elapsed: Millis;
-  /** Milliseconds since the previous step. On first step, this is 0. */
-  readonly elapsedSincePrevious: Millis;
-}
-
-/**
- * Creates an internal per-step metrics tracker.
- *
- * Each call updates internal state and returns computed metrics.
- */
-const createScheduleStepMetrics = (
-  deps: TimeDep,
-): (() => ScheduleStepMetrics) => {
-  let attempt = onePositiveInt;
-  let start: Millis | null = null;
-  let previous: Millis | null = null;
-
-  return () => {
-    const now = deps.time.now();
-    const currentAttempt = attempt;
-    attempt = PositiveInt.orThrow(increment(attempt));
-    start ??= now;
-    const elapsed = saturateMillis(now - start);
-    const elapsedSincePrevious =
-      previous === null ? minMillis : saturateMillis(now - previous);
-    previous = now;
-    return { attempt: currentAttempt, elapsed, elapsedSincePrevious };
-  };
-};
-
-/**
  * A schedule that never stops and has no delay.
  *
  * Outputs the attempt count (0, 1, 2, ...). Useful as a base for composition or
@@ -154,7 +129,7 @@ export const forever: Schedule<number> = () => {
 /**
  * A schedule that runs exactly once with no delay.
  *
- * Convenience for `take(1)(forever)`. Useful for one-shot operations.
+ * Equivalent to `take(1)(forever)`. Useful for one-shot operations.
  *
  * ### Example
  *
@@ -180,6 +155,9 @@ export const once: Schedule<number> = () => {
  * Convenience for `take(n)(forever)`. Outputs the current repetition count (0,
  * 1, 2, ..., n-1).
  *
+ * `n` uses {@link Int0To100OrNonNegativeInt}: pass `0` to `100` as a literal, or
+ * a validated {@link NonNegativeInt} for larger or dynamic values.
+ *
  * ### Example
  *
  * ```ts
@@ -189,7 +167,8 @@ export const once: Schedule<number> = () => {
  *
  * @group Constructors
  */
-export const recurs = (n: number): Schedule<number> => take(n)(forever);
+export const recurs = (n: Int0To100OrNonNegativeInt): Schedule<number> =>
+  take(n)(forever);
 
 /**
  * Constant delay schedule.
@@ -244,22 +223,24 @@ export const spaced =
  * @group Constructors
  */
 export const exponential = (base: Duration, factor = 2): Schedule<Millis> => {
-  assertType(
-    NonNegativeFiniteNumber,
-    factor,
-    "Expected factor to be a non-negative finite number.",
-  );
+  assertType(NonNegativeFiniteNumber, factor);
 
   return () => {
     const baseMs = durationToMillis(base);
     let attempt = 0;
     return () => {
       attempt++;
-      const rawDelay = baseMs * Math.pow(factor, attempt - 1);
-      const delay = saturateMillis(rawDelay);
+      const rawDelay =
+        baseMs === 0 ? minMillis : baseMs * Math.pow(factor, attempt - 1);
+      const delay = saturateComputedMillis(rawDelay);
       return ok([delay, delay]);
     };
   };
+};
+
+const saturateComputedMillis = (value: number): Millis => {
+  assertType(NonNaNNumber, value);
+  return saturateMillis(value);
 };
 
 /**
@@ -290,7 +271,7 @@ export const linear =
     let attempt = 0;
     return () => {
       attempt++;
-      const delay = saturateMillis(ms * attempt);
+      const delay = saturateComputedMillis(ms * attempt);
       return ok([delay, delay]);
     };
   };
@@ -324,7 +305,7 @@ export const fibonacci =
     const ms = durationToMillis(initial);
     let index = FibonacciIndex.orThrow(1);
     return () => {
-      const delay = saturateMillis(ms * fibonacciAt(index));
+      const delay = saturateComputedMillis(ms * fibonacciAt(index));
       index = FibonacciIndex.orNull(increment(index)) ?? index;
       return ok([delay, delay]);
     };
@@ -337,9 +318,9 @@ export const fibonacci =
  * Unlike {@link spaced}, which waits a duration _after_ each execution, `fixed`
  * maintains a consistent cadence from when the schedule started.
  *
- * If execution takes longer than the interval, the next execution happens
- * immediately but subsequent runs still align to the original window
- * boundaries. This prevents "pile-up" while maintaining predictable timing.
+ * If execution falls behind by one or more intervals, missed recurrences happen
+ * immediately until the schedule catches up to the original cadence. Use
+ * {@link windowed} to skip missed recurrences instead.
  *
  * ### Example
  *
@@ -368,15 +349,49 @@ export const fixed =
       const remainder = intervalMs === 0 ? 0 : elapsed % intervalMs;
       const boundary = intervalMs - remainder;
       const delay = runningBehind ? 0 : boundary;
-      return ok([count++, saturateMillis(delay)]);
+      return ok([count++, saturateComputedMillis(delay)]);
     };
   };
 
 /**
+ * Internal per-step metrics computed from timestamps.
+ *
+ * The schedule computes this internally from deps.time.now().
+ */
+interface ScheduleStepMetrics {
+  /** Milliseconds elapsed since the schedule started. */
+  readonly elapsed: Millis;
+  /** Milliseconds since the previous step. On first step, this is 0. */
+  readonly elapsedSincePrevious: Millis;
+}
+
+/**
+ * Creates an internal per-step metrics tracker.
+ *
+ * Each call updates internal state and returns computed metrics.
+ */
+const createScheduleStepMetrics = (
+  deps: TimeDep,
+): (() => ScheduleStepMetrics) => {
+  let start: Millis | null = null;
+  let previous: Millis | null = null;
+
+  return () => {
+    const now = deps.time.now();
+    start ??= now;
+    const elapsed = saturateComputedMillis(now - start);
+    const elapsedSincePrevious =
+      previous === null ? minMillis : saturateComputedMillis(now - previous);
+    previous = now;
+    return { elapsed, elapsedSincePrevious };
+  };
+};
+
+/**
  * Divides the timeline into fixed windows and sleeps until the next boundary.
  *
- * Similar to {@link fixed}, but always sleeps until the next window boundary
- * regardless of when the last execution started. Outputs the repetition count.
+ * Similar to {@link fixed}, but skips missed recurrences and always sleeps until
+ * the next window boundary. Outputs the repetition count.
  *
  * Useful for aligning executions to regular intervals from the start time.
  *
@@ -400,7 +415,7 @@ export const windowed =
       const { elapsed } = metrics();
       const remainder = intervalMs === 0 ? 0 : elapsed % intervalMs;
       const delay = intervalMs === 0 ? 0 : intervalMs - remainder;
-      return ok([count++, saturateMillis(delay)]);
+      return ok([count++, saturateComputedMillis(delay)]);
     };
   };
 
@@ -425,7 +440,7 @@ export const fromDelay = (delay: Duration): Schedule<Millis> =>
  * A schedule that runs through a sequence of delays.
  *
  * Convenience for sequencing single-delay schedules. Useful for predefined
- * retry patterns.
+ * retry patterns. With no delays, returns a schedule that stops immediately.
  *
  * ### Example
  *
@@ -565,6 +580,9 @@ export const unfoldSchedule =
  *
  * After `n` attempts, returns `Err(Done<void>)` (stop).
  *
+ * `n` uses {@link Int0To100OrNonNegativeInt}: pass `0` to `100` as a literal, or
+ * a validated {@link NonNegativeInt} for larger or dynamic values.
+ *
  * ### Example
  *
  * ```ts
@@ -575,22 +593,18 @@ export const unfoldSchedule =
  *
  * @group Limiting
  */
-export const take = (n: number) => {
-  assertType(NonNegativeInt, n, "Expected n to be a non-negative integer.");
-
-  return <Output, Input>(
-      schedule: Schedule<Output, Input>,
-    ): Schedule<Output, Input> =>
-    (deps) => {
-      const step = schedule(deps);
-      let attempt = 0;
-      return (input) => {
-        attempt++;
-        if (attempt > n) return err(done());
-        return step(input);
-      };
+export const take =
+  (n: Int0To100OrNonNegativeInt) =>
+  <Output, Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
+  (deps) => {
+    const step = schedule(deps);
+    let attempt = 0;
+    return (input) => {
+      attempt++;
+      if (attempt > n) return err(done());
+      return step(input);
     };
-};
+  };
 
 /**
  * Limits schedule execution to a maximum elapsed time.
@@ -615,9 +629,15 @@ export const maxElapsed = (duration: Duration) => {
     (deps) => {
       const step = schedule(deps);
       const metrics = createScheduleStepMetrics(deps);
+      let stopped = false;
       return (input) => {
+        if (stopped) return err(done());
         const { elapsed } = metrics();
-        return elapsed >= maxMs ? err(done()) : step(input);
+        if (elapsed >= maxMs) {
+          stopped = true;
+          return err(done());
+        }
+        return step(input);
       };
     };
 };
@@ -648,70 +668,77 @@ export const maxDelay = (max: Duration) => {
         const result = step(input);
         if (!result.ok) return result;
         const [output, delay] = result.value;
-        return ok([output, Millis.orThrow(Math.min(delay, maxMs))]);
+        return ok([output, min(delay, maxMs)]);
       };
     };
 };
 
 /**
- * Adds randomized jitter to delays.
+ * Randomizes delays by up to a percentage.
  *
  * Jitter helps prevent "thundering herd" when many clients retry simultaneously
- * after a service recovers. The delay is randomized within a range:
+ * after a service recovers. By default, the original delay is the upper bound:
  *
- * - `factor = 0` — no jitter (original delay)
- * - `factor = 0.5` — delay varies ±50% (e.g., 1s becomes 500ms-1500ms)
- * - `factor = 1` — full jitter, delay varies 0-200% (e.g., 1s becomes 0-2s)
+ * - `"0%"` — no jitter (original delay)
+ * - `"50%"` — equal jitter, shortens the delay by up to 50%
+ * - `"100%"` — full jitter, shortens the delay by up to 100%
+ *
+ * Pass `"around"` to preserve the average delay for periodic work:
+ *
+ * - `"0%"` — no jitter (original delay)
+ * - `"50%"` — varies by up to 50% below or above the original delay
+ * - `"100%"` — varies by up to 100% below or above the original delay
  *
  * ### Example
  *
  * ```ts
- * // AWS-style full jitter
- * const awsStyle = jitter(1)(exponential("1s"));
+ * // Shorten by at most 25%
+ * const conservative = jitter("25%")(exponential("1s"));
  *
- * // Conservative jitter (±25%)
- * const conservative = jitter(0.25)(exponential("1s"));
+ * // Poll around a 30s target cadence, from 27s to 33s.
+ * const polling = jitter("10%", "around")(spaced("30s"));
  * ```
  *
  * @group Delay
  */
-export const jitter = (factor = 0.5) => {
-  assertType(
-    NonNegativeFiniteNumber,
-    factor,
-    "Expected factor to be a non-negative finite number.",
-  );
-  assertType(
-    lessThanOrEqualTo(1)(NonNegativeFiniteNumber),
-    factor,
-    "Expected factor to be between 0 and 1.",
-  );
-
-  return <Output, Input>(
-      schedule: Schedule<Output, Input>,
-    ): Schedule<Output, Input> =>
-    (deps) => {
-      const step = schedule(deps);
-      return (input) => {
-        const result = step(input);
-        if (!result.ok) return result;
-        const [output, delay] = result.value;
-        const jittered = delay * (1 - factor + deps.random.next() * 2 * factor);
-        return ok([output, saturateMillis(jittered)]);
-      };
-    };
+export const jitter = (
+  percentage: Percentage = "50%",
+  mode: "below" | "around" = "below",
+): (<Output, Input>(
+  schedule: Schedule<Output, Input>,
+) => Schedule<Output, Input>) => {
+  const ratio = percentageToRatio(percentage);
+  return createJitter(ratio, mode === "around" ? 1 + ratio : 1);
 };
 
+const createJitter =
+  (factor: Ratio, maxMultiplier: number) =>
+  <Output, Input>(schedule: Schedule<Output, Input>): Schedule<Output, Input> =>
+  (deps) => {
+    const step = schedule(deps);
+    return (input) => {
+      const result = step(input);
+      if (!result.ok) return result;
+      const [output, delay] = result.value;
+      const minMultiplier = 1 - factor;
+      const jittered =
+        delay *
+        (minMultiplier + deps.random.next() * (maxMultiplier - minMultiplier));
+      return ok([output, saturateComputedMillis(jittered)]);
+    };
+  };
+
 /**
- * Adds an initial delay before the first attempt.
+ * Replaces the schedule's first delay.
  *
- * Subsequent attempts use the schedule's normal delays.
+ * The first successful step uses `initialDelay` instead of the delay produced
+ * by the schedule. Subsequent steps use the schedule's delays unchanged.
  *
  * ### Example
  *
  * ```ts
- * // Wait 1s before first attempt, then exponential backoff
- * const withWarmup = delayed("1s")(exponential("100ms"));
+ * const withInitialDelay = delayed("1s")(exponential("100ms"));
+ * // 1s, 200ms, 400ms, 800ms, ...
  * ```
  *
  * @group Delay
@@ -784,7 +811,7 @@ export const modifyDelay =
       const result = step(input);
       if (!result.ok) return result;
       const [output, delay] = result.value;
-      return ok([output, saturateMillis(f(delay))]);
+      return ok([output, saturateComputedMillis(f(delay))]);
     };
   };
 
@@ -823,10 +850,10 @@ export const compensate =
       const result = step(input);
       if (!result.ok) return result;
       const [output, delay] = result.value;
-      const executionTime = saturateMillis(
+      const executionTime = saturateComputedMillis(
         elapsedSincePrevious - previousReturnedDelay,
       );
-      const compensatedDelay = saturateMillis(delay - executionTime);
+      const compensatedDelay = saturateComputedMillis(delay - executionTime);
       previousReturnedDelay = compensatedDelay;
       return ok([output, compensatedDelay]);
     };
@@ -972,24 +999,24 @@ export const untilScheduleOutput =
   };
 
 /**
- * Resets the schedule after a period of inactivity.
+ * Resets a running schedule after a period of inactivity.
  *
- * If `elapsedSincePrevious` is greater than or equal to `duration`, creates a
- * fresh state. Useful for circuit breakers that should "forget" failures after
- * idle time.
+ * Before each step, if the time since the previous step is at least `duration`,
+ * replaces the wrapped schedule with fresh state. Once the wrapped schedule
+ * returns `Done`, termination is final.
  *
  * ### Example
  *
  * ```ts
- * // Reset retry count after 1 minute of success
- * const circuitBreaker = resetScheduleAfter("1m")(
- *   take(5)(exponential("1s")),
- * );
+ * // Restart exponential backoff at 1s after one minute between inputs.
+ * const backoff = resetScheduleAfter("1m")(exponential("1s"));
  * ```
  *
  * @group State
  */
-export const resetScheduleAfter = (duration: Duration) => {
+export const resetScheduleAfter = (
+  duration: DurationLiteral | PositiveMillis,
+) => {
   const resetMs = durationToMillis(duration);
   return <Output, Input>(
       schedule: Schedule<Output, Input>,
@@ -997,12 +1024,16 @@ export const resetScheduleAfter = (duration: Duration) => {
     (deps) => {
       let step = schedule(deps);
       const metrics = createScheduleStepMetrics(deps);
+      let stopped = false;
       return (input) => {
+        if (stopped) return err(done());
         const { elapsedSincePrevious } = metrics();
         if (elapsedSincePrevious >= resetMs) {
           step = schedule(deps);
         }
-        return step(input);
+        const result = step(input);
+        if (!result.ok) stopped = true;
+        return result;
       };
     };
 };
@@ -1192,7 +1223,9 @@ export const delays =
 /**
  * Collects all outputs into an array.
  *
- * Each step outputs an array containing all outputs so far.
+ * Each step outputs a new snapshot containing all outputs so far. Because all
+ * outputs are retained and copied on each step, use this combinator with finite
+ * schedules.
  *
  * ### Example
  *
@@ -1351,13 +1384,18 @@ export const intersectSchedules =
   (deps) => {
     const stepA = a(deps);
     const stepB = b(deps);
+    let stopped = false;
     return (input) => {
+      if (stopped) return err(done());
       const resultA = stepA(input);
       const resultB = stepB(input);
-      if (!resultA.ok || !resultB.ok) return err(done());
+      if (!resultA.ok || !resultB.ok) {
+        stopped = true;
+        return err(done());
+      }
       const [outputA, delayA] = resultA.value;
       const [outputB, delayB] = resultB.value;
-      return ok([[outputA, outputB], Millis.orThrow(Math.max(delayA, delayB))]);
+      return ok([[outputA, outputB], max(delayA, delayB)]);
     };
   };
 
@@ -1384,20 +1422,28 @@ export const unionSchedules =
     b: Schedule<OutputB, Input>,
   ): Schedule<OutputA | OutputB, Input> =>
   (deps) => {
-    const stepA = a(deps);
-    const stepB = b(deps);
+    let stepA:
+      ((input: Input) => NextResult<readonly [OutputA, Millis]>) | null =
+      a(deps);
+    let stepB:
+      ((input: Input) => NextResult<readonly [OutputB, Millis]>) | null =
+      b(deps);
     return (input) => {
-      const resultA = stepA(input);
-      const resultB = stepB(input);
+      if (stepA === null && stepB === null) return err(done());
 
-      if (!resultA.ok && !resultB.ok) return err(done());
-      if (!resultA.ok) return resultB;
-      if (!resultB.ok) return resultA;
+      const resultA = stepA?.(input) ?? null;
+      const resultB = stepB?.(input) ?? null;
+
+      if (resultA !== null && !resultA.ok) stepA = null;
+      if (resultB !== null && !resultB.ok) stepB = null;
+
+      if (!resultA?.ok) return resultB?.ok ? resultB : err(done());
+      if (!resultB?.ok) return resultA;
 
       const [outputA, delayA] = resultA.value;
       const [outputB, delayB] = resultB.value;
       // Use minimum delay, output from the one with smaller delay
-      const minDelay = Millis.orThrow(Math.min(delayA, delayB));
+      const minDelay = min(delayA, delayB);
       return delayA <= delayB
         ? ok([outputA, minDelay])
         : ok([outputB, minDelay]);
@@ -1411,15 +1457,21 @@ export const unionSchedules =
  * base schedule. Useful for implementing error-aware backoff where certain
  * errors (e.g., throttling) use different delays.
  *
+ * Each branch has independent state. Place combinators such as {@link take}
+ * outside `whenInput` when their state must be shared across both branches.
+ *
  * ### Example
  *
  * ```ts
  * interface MyError extends Typed<"Throttled" | "NetworkError"> {}
  *
- * const awsWithThrottling = whenInput<MyError, Millis>(
- *   (error) => error.type === "Throttled",
- *   exponential("1s"), // throttled: 1s base
- * )(exponential("100ms")); // normal: 100ms base
+ * // At most 3 retries total across both error types.
+ * const awsWithThrottling = take(3)(
+ *   whenInput<MyError, Millis>(
+ *     (error) => error.type === "Throttled",
+ *     exponential("1s"), // throttled: 1s base
+ *   )(exponential("100ms")), // normal: 100ms base
+ * );
  * ```
  *
  * @group Composition
@@ -1433,9 +1485,12 @@ export const whenInput =
   (deps) => {
     const normalStep = schedule(deps);
     const altStep = altSchedule(deps);
+    let stopped = false;
     return (input) => {
-      if (predicate(input)) return altStep(input);
-      return normalStep(input);
+      if (stopped) return err(done());
+      const result = predicate(input) ? altStep(input) : normalStep(input);
+      if (!result.ok) stopped = true;
+      return result;
     };
   };
 
@@ -1514,17 +1569,19 @@ export const tapScheduleInput =
   };
 
 /**
- * AWS standard retry strategy.
+ * AWS SDK for Java 2.1 ordinary-failure retry timing.
  *
- * Exponential backoff (100ms base), max 2 retries (3 total attempts), 20s cap,
+ * Exponential backoff (50ms base), max 2 retries (3 total attempts), 20s cap,
  * full jitter.
  *
+ * This schedule does not model throttling-specific timing, token accounting, or
+ * circuit breaking.
+ *
  * @group Retry Strategies
- * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/StandardRetryStrategy.java
- * @see https://github.com/aws/aws-sdk-java-v2/blob/master/core/retries/src/main/java/software/amazon/awssdk/retries/DefaultRetryStrategy.java
+ * @see https://github.com/aws/aws-sdk-java-v2/blob/b69b75f07b6ebd93fd44b032d49b76a3b71fbb90/core/retries/src/main/java/software/amazon/awssdk/retries/DefaultRetryStrategy.java
  */
-export const retryStrategyAws: Schedule<Millis> = /*#__PURE__*/ jitter(1)(
+export const retryStrategyAws: Schedule<Millis> = /*#__PURE__*/ jitter("100%")(
   /*#__PURE__*/ maxDelay("20s")(
-    /*#__PURE__*/ take(2)(/*#__PURE__*/ exponential("100ms")),
+    /*#__PURE__*/ take(2)(/*#__PURE__*/ exponential("50ms")),
   ),
 );

@@ -34,6 +34,7 @@ export * from "./RefCount.js";
 export * from "./Relation.js";
 export * from "./Resource.js";
 export * from "./Result.js";
+export * from "./Schedule.js";
 export * from "./Set.js";
 export * from "./Sqlite.js";
 export * from "./Store.js";

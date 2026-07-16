@@ -27,7 +27,7 @@ Added Schedule module for composable scheduling strategies.
 **Combinators:**
 
 - Limiting: `take`, `maxElapsed`, `maxDelay`
-- Delay: `jitter`, `delayed`, `addDelay`, `modifyDelay`, `compensate`
+- Delay: `jitter` (downward or mean-preserving around jitter), `delayed`, `addDelay`, `modifyDelay`, `compensate`
 - Filtering: `whileScheduleInput`, `untilScheduleInput`, `whileScheduleOutput`, `untilScheduleOutput`, `resetScheduleAfter`
 - Transform: `mapSchedule`, `passthrough`, `foldSchedule`, `repetitions`, `delays`
 - Collection: `collectAllScheduleOutputs`, `collectScheduleInputs`, `collectWhileScheduleOutput`, `collectUntilScheduleOutput`
@@ -36,4 +36,4 @@ Added Schedule module for composable scheduling strategies.
 
 **Presets:**
 
-- `retryStrategyAws` — exponential backoff (100ms base), max 2 retries, 20s cap, full jitter
+- `retryStrategyAws` — AWS SDK for Java 2.1 ordinary-failure timing with exponential backoff (50ms base), max 2 retries, 20s cap, and full jitter
