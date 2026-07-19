@@ -21,7 +21,7 @@ import {
   sql,
   String,
   testCreateRandom,
-} from "../../packages/common/dist/src/index.js";
+} from "@evolu/common";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -31,13 +31,13 @@ import {
   type StorageInsertTimestampStrategy,
   type TimestampBytes,
   timestampToTimestampBytes,
-} from "../../packages/common/dist/src/local-first/index.js";
+} from "@evolu/common/local-first";
 import {
   createBetterSqliteDriver,
   type HrDuration,
   hrDurationToMillis,
   millisToHrDuration,
-} from "../../packages/nodejs/dist/src/index.js";
+} from "@evolu/nodejs";
 import { parseBenchmarkMode } from "../index.mts";
 
 const timestampCount = 50_000;

@@ -2,12 +2,6 @@
 
 [`benchmark.mts`](./benchmark.mts) measures the SQLite timestamp Skiplist implemented in [`Storage.ts`](../../packages/common/src/local-first/Storage.ts).
 
-Build the packages before running the benchmark because the script imports their generated `dist` files:
-
-```bash
-pnpm build
-```
-
 ## Workload
 
 The benchmark runs fixed timestamp workloads against fresh in-memory SQLite
@@ -29,7 +23,7 @@ The benchmark runs without SQLite's `ANALYZE` command or `PRAGMA optimize`, matc
 
 The benchmark uses three independent in-memory repeats for most methods and five independent Skiplist topologies for `fingerprintRanges`.
 
-Run the benchmark after building packages:
+Run the benchmark:
 
 ```bash
 pnpm bench:storage
