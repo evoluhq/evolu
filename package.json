@@ -43,6 +43,8 @@
     "@biomejs/biome": "^2.4.10",
     "@changesets/cli": "^2.30.0",
     "@eslint/js": "^10.0.1",
+    "@evolu/common": "workspace:*",
+    "@evolu/nodejs": "workspace:*",
     "@paulmillr/jsbt": "0.6.1",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^24.10.9",

@@ -35,6 +35,12 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.7.0(jiti@2.7.0))
+      '@evolu/common':
+        specifier: workspace:*
+        version: link:packages/common
+      '@evolu/nodejs':
+        specifier: workspace:*
+        version: link:packages/nodejs
       '@paulmillr/jsbt':
         specifier: 0.6.1
         version: 0.6.1(patch_hash=979d4745ee31a3e68861b375f46271b8891387e46b4f6cf9d4ad14167ebd670b)
