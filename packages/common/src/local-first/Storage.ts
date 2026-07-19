@@ -1055,6 +1055,24 @@ export const timestampBytesToFingerprint = (
 };
 
 /**
+ * Computes a brute-force {@link Fingerprint} from {@link TimestampBytes} values
+ * for tests and benchmarks.
+ */
+export const testFingerprintTimestamps = (
+  timestamps: ReadonlyArray<TimestampBytes>,
+): Fingerprint =>
+  timestamps
+    .map(timestampBytesToFingerprint)
+    .reduce<Fingerprint>(
+      (left, right) =>
+        Uint8Array.from(
+          left,
+          (byte, index) => byte ^ right[index],
+        ) as Fingerprint,
+      zeroFingerprint,
+    );
+
+/**
  * Generates a random skiplist level in the range [1, skiplistMaxLevel].
  * Probabilistic approach avoids the need for explicit tree balancing.
  */

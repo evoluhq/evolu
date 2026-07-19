@@ -1,4 +1,9 @@
 {
   "extends": "../scripts/tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "lib": ["dom", "esnext"],
+    "noEmit": true
+  },
   "include": ["**/*.mts"]
 }

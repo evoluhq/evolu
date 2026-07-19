@@ -14,6 +14,12 @@ export default defineConfig({
           include: ["scripts/**/*.test.mts"],
         },
       },
+      {
+        test: {
+          name: "benchmarks",
+          include: ["benchmarks/**/*.test.mts"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",

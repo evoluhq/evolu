@@ -1,5 +1,4 @@
 {
-  "version": 2,
   "baselines": [
     {
       "environment": {
@@ -10,34 +9,11 @@
         "sqliteVersion": "3.53.2"
       },
       "measurementsMs": {
-        "memory": {
-          "append": 305,
-          "prepend": 1041,
-          "insert": 1697,
-          "appendLevel1": 24,
-          "appendLevel2": 101,
-          "appendLevel10": 165,
-          "appendSparseLevel10": 56,
-          "insertLevel1": 20,
-          "insertLevel2": 69,
-          "insertLevel10": 437,
-          "getTimestampByIndex": 33,
-          "fingerprintRanges": 716
-        },
-        "file": {
-          "append": 314,
-          "prepend": 1032,
-          "insert": 1972,
-          "appendLevel1": 26,
-          "appendLevel2": 99,
-          "appendLevel10": 181,
-          "appendSparseLevel10": 57,
-          "insertLevel1": 35,
-          "insertLevel2": 82,
-          "insertLevel10": 460,
-          "getTimestampByIndex": 36,
-          "fingerprintRanges": 715
-        }
+        "append": 291,
+        "prepend": 1092,
+        "insert": 1610,
+        "getTimestampByIndex": 30,
+        "fingerprintRanges": 164
       }
     }
   ]

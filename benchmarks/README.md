@@ -1,145 +1,66 @@
 # Benchmarks
 
-## Storage benchmark
+Benchmarks measure performance characteristics that ordinary correctness tests do not cover. Each benchmark suite owns its workload, measurement method, baselines, and detailed documentation in a dedicated directory.
 
-[`storage/benchmark.mts`](./storage/benchmark.mts) measures the SQLite timestamp Skiplist implemented in [`Storage.ts`](../packages/common/src/local-first/Storage.ts).
+## Suites
 
-Build the packages before running the benchmark because the script imports their generated `dist` files:
+- [Storage](./storage/README.md) measures SQLite timestamp Skiplist operations.
 
-```bash
-pnpm build
-```
+## Commands
 
-### Workload
-
-The primary insertion scenarios insert 50,000 deterministic timestamps in five transactions of 10,000 rows. They measure three insertion methods:
-
-- `append`: timestamps in ascending order.
-- `prepend`: timestamps in descending order.
-- `insert`: timestamps in a deterministic shuffled order.
-
-Each method gets a fresh database and the same seeded Skiplist-level random sequence. The timed region contains only the insert transaction. Database setup, size checks, fingerprint checks, disposal, and file cleanup are excluded.
-
-The benchmark also measures:
-
-- 10,000 appends forced to Skiplist levels 1, 2, and 10, each in a fresh database.
-- The first level-10 append after building a 50,000-row Skiplist containing only level-1 nodes. This isolates the sparse promoted-anchor path.
-- 1,000 gap insertions forced to Skiplist levels 1, 2, and 10. Each level gets a fresh database, and the benchmark verifies every inserted row has the requested level and that the resulting whole-database fingerprint matches brute force.
-- 1,000 `getTimestampByIndex` calls evenly distributed across a normally distributed 50,000-row Skiplist. Database construction and result verification are excluded from the timed region.
-- 1,000 `fingerprintRanges` calls with 16 balanced buckets. Database construction is excluded from the timed region.
-
-Forced-level scenarios isolate paths hidden by the normal level distribution, where approximately 75% of timestamps have level 1. The forced gap insertions use normally distributed prebuilt 50,000-row Skiplists. Their modest insertion count preserves that normal structure instead of creating an artificial all-level-N database.
-
-The detailed output preserves each 10,000-row interval so size-dependent degradation remains visible. The `Overall` section sums all five intervals within each run, then reports the median 50,000-row duration across runs for each method.
-
-### SQLite planner statistics
-
-The storage benchmark and Evolu production code do not run SQLite's `ANALYZE` command or `PRAGMA optimize`. `ANALYZE` samples database contents and stores statistics in internal tables such as `sqlite_stat1`. SQLite uses those statistics to estimate the cost of competing query plans. Without them, it uses built-in default estimates.
-
-This is a deliberate current constraint, not a general recommendation to avoid `ANALYZE`. Several storage queries have multiple plausible index and join plans, and their validated plans currently depend on the default estimates. For example, promoted appends find their preceding boundary by walking the `(ownerId, t)` primary key backward and filtering by Skiplist level. Different statistics could make SQLite choose the `(ownerId, l, t, ...)` index and sort the result instead. Recursive CTE join order can change for the same reason.
-
-Do not add `ANALYZE` or `PRAGMA optimize` to production setup as an isolated maintenance improvement. Evaluate it as a storage performance change:
-
-1. Build representative populated databases for both client and Relay workloads.
-2. Capture benchmarks and `EXPLAIN QUERY PLAN` output before collecting statistics.
-3. Run `ANALYZE` or the intended `PRAGMA optimize` schedule.
-4. Repeat every insertion, forced-level, fingerprint, and read workload.
-5. Preserve or deliberately enforce every planner-sensitive access pattern before enabling statistics in production.
-
-Planner regression tests use fresh databases without statistics, matching the current production policy. If Evolu starts collecting statistics, those tests and benchmarks must also cover the analyzed database state.
-
-### Profiles
-
-| Profile | Repeats | SQLite modes    | Purpose                                |
-| ------- | ------: | --------------- | -------------------------------------- |
-| `quick` |       1 | Memory          | Fast feedback while changing SQL       |
-| `full`  |       3 | Memory and file | Stable comparison and baseline updates |
-
-The full profile is the default:
+Each suite exposes one script in the `benchmark:<suite>` namespace and uses
+these mutually exclusive modes:
 
 ```bash
-pnpm benchmark:storage:quick
-pnpm benchmark:storage:check
-pnpm benchmark:storage
-pnpm benchmark:storage --profile=quick
-pnpm benchmark:storage --profile=full
+pnpm benchmark:<suite>
+pnpm benchmark:<suite> --mode=default
+pnpm benchmark:<suite> --mode=update-baseline
+pnpm benchmark:<suite> --mode=force-update-baseline
 ```
 
-A positive percentage means the current code is slower than the baseline. A negative percentage means it is faster:
+Omitting `--mode` selects `default`.
+
+## Modes
+
+- `default`: Runs the complete workload, compares every result with its baseline,
+  and fails on regression.
+- `update-baseline`: Runs the complete workload and writes the baseline only
+  when results pass or no matching baseline exists.
+- `force-update-baseline`: Runs the complete workload and writes the baseline
+  despite an intentional performance regression.
+
+Do not let a partial or filtered run update a baseline.
+
+## Methodology
+
+A benchmark must isolate the behavior it claims to measure:
+
+- Use deterministic inputs and seeded randomness when possible.
+- Keep setup, cleanup, assertions, and fixture generation outside the measured region.
+- Give each independent scenario fresh state unless shared state is part of the workload.
+- Verify outputs outside the measured region so a faster but incorrect implementation cannot pass.
+- Report scenarios independently so an improvement in one cannot hide a regression in another.
+- Prefer stable work metrics over elapsed time when the underlying tool exposes them.
+
+Choose workloads that represent production behavior and add focused scenarios for important paths hidden by the normal distribution. Document the workload size, state, repetitions, measured region, excluded work, and aggregation method in the suite README.
+
+## Baselines
+
+Store committed baselines in `<suite>/baselines.json`. Include every environment property required to determine whether results are comparable.
+
+Compare each result only with a compatible baseline; fail when none is available.
+
+Baseline updates must be explicit and complete. A normal update rejects regressions; a forced update bypasses only that guard and still requires the complete workload and all benchmark integrity checks.
+
+## Adding a suite
+
+Create a directory containing:
 
 ```text
-memory append: 534ms, 93,472 inserts/sec, n=1, baseline 536ms, -0.29%
-memory prepend: 1162ms, 43,025 inserts/sec, n=1, baseline 1187ms, -2.13%
-memory insert: 5573ms, 8,970 inserts/sec, n=1, baseline 5565ms, +0.15%
+benchmarks/<suite>/
+  README.md
+  benchmark.mts
+  baselines.json
 ```
 
-Ordinary quick and full comparisons are informational. Use the regression check when a performance change should affect the exit code.
-
-### Regression check
-
-Run the quick storage regression check explicitly after building the packages:
-
-```bash
-pnpm benchmark:storage:check
-```
-
-The check compares each complete memory scenario against the exact matching environment baseline. It fails when any insertion strategy, forced level, or fingerprint workload is more than 10% slower. Each method is gated independently so an improvement in one method cannot hide a regression in another.
-
-The quick profile uses one run to keep local verification fast. The committed baseline uses the median of three full-profile runs.
-
-If no baseline matches the current environment, the check prints a skip message and exits successfully. Contributors with different hardware can add their environment with a full baseline update when useful.
-
-Filters and baseline updates are rejected in check mode because they would produce an incomplete or changing reference. The check is intentionally separate from `pnpm verify` because benchmark results depend on hardware and system load. A future dedicated CI benchmark can use the same mechanism after its environment has a committed baseline.
-
-### Baselines
-
-[`storage/baselines.json`](./storage/baselines.json) stores totals rounded to the nearest millisecond for multiple environments. A baseline matches only when all environment fields match:
-
-- Operating-system platform.
-- Architecture.
-- CPU model.
-- Node.js version.
-- SQLite version.
-
-This prevents results from different hardware or runtimes from being compared directly. Developers and CI runners can contribute separate entries to the same file.
-
-Run an unfiltered full benchmark to add or replace the baseline for the current environment:
-
-```bash
-pnpm benchmark:storage:update-baseline
-```
-
-Baseline updates require all three repeats, both SQLite modes, all insertion methods, all forced levels, the fingerprint workload, and all checkpoints. Quick or filtered benchmarks cannot update the file.
-
-When no environment matches, a quick run explains how to create one. An unfiltered full run also prints the complete JSON entry, which can be reviewed and added manually.
-
-Commit a baseline update only after confirming that the measured behavior is the intended reference. Updating a baseline accepts the current performance; it is not part of an ordinary benchmark comparison.
-
-### A/B workflow
-
-1. Run `pnpm benchmark:storage:quick` before changing the storage SQL.
-2. Make the change and rerun the same command.
-3. Compare the overall insertion, forced-level, and fingerprint totals.
-4. Use the detailed 10,000-row intervals to locate any size-dependent change.
-5. Run `pnpm benchmark:storage` before accepting the change.
-6. Run `pnpm benchmark:storage:check` to exercise the automatic gate.
-7. Update the baseline only when the new implementation should become the committed reference.
-
-For a strict A/B test that must survive unrelated baseline changes, record the baseline revision's output before switching revisions, then run the candidate on the same machine under the same load conditions.
-
-### Filtering and CSV
-
-`JSBT_FILTER` runs labels containing the provided substring:
-
-```bash
-JSBT_FILTER="memory insert" pnpm benchmark:storage
-JSBT_FILTER="memory insert run 1 40000-50000 rows" pnpm benchmark:storage
-```
-
-An overall method result is printed only when all five checkpoints for that method and run were measured. A single-checkpoint filter therefore prints detailed timing without an overall total.
-
-Set `JSBT_CSV=1` to write the detailed jsbt measurements as CSV to stdout. Environment and overall summaries are written to stderr, so stdout can be redirected without mixing formats:
-
-```bash
-JSBT_CSV=1 pnpm benchmark:storage > storage.csv
-```
+Expose one package script, parse the shared mode with [parseBenchmarkMode](./index.mts), and list the suite above. The suite README must explain prerequisites, workload, metrics, regression thresholds, baseline matching, and any filtering or output modes.

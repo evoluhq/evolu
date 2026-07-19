@@ -1,10 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
 import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
-import type {
-  Fingerprint,
-  StorageInsertTimestampStrategy,
-} from "../../src/local-first/Storage.js";
+import type { StorageInsertTimestampStrategy } from "../../src/local-first/Storage.js";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -12,7 +9,9 @@ import {
   getTimestampByIndex,
   getTimestampInsertStrategy,
   InfiniteUpperBound,
+  testFingerprintTimestamps,
   timestampBytesToFingerprint,
+  zeroFingerprint,
 } from "../../src/local-first/Storage.js";
 import {
   Counter,
@@ -62,17 +61,6 @@ const setupSqliteAndStorage = async () => {
   };
 };
 
-const xorFingerprints = (arr1: Fingerprint, arr2: Fingerprint): Fingerprint => {
-  if (arr1.length !== arr2.length) {
-    throw new Error("Arrays must have the same length");
-  }
-  const result = new Uint8Array(arr1.length);
-  for (let i = 0; i < arr1.length; i++) {
-    result[i] = arr1[i] ^ arr2[i];
-  }
-  return result as Fingerprint;
-};
-
 const testTimestamps = async (
   timestamps: ReadonlyArray<TimestampBytes>,
   strategy: StorageInsertTimestampStrategy,
@@ -81,9 +69,8 @@ const testTimestamps = async (
   const { sqlite, storage } = setup;
   const sortedTimestamps = timestamps.toSorted(orderTimestampBytes);
 
-  const bruteForceAllTimestampsFingerprint = timestamps
-    .map(timestampBytesToFingerprint)
-    .reduce((prev, curr) => xorFingerprints(prev, curr));
+  const bruteForceAllTimestampsFingerprint =
+    testFingerprintTimestamps(timestamps);
 
   const txResult = sqlite.transaction(() => {
     for (const timestamp of timestamps) {
@@ -163,9 +150,9 @@ const testTimestamps = async (
 
     incrementalCounts.push(timestampRows.length);
 
-    const bruteForceRangeFingerprint = timestampRows
-      .map((a) => timestampBytesToFingerprint(a.t))
-      .reduce((prev, curr) => xorFingerprints(prev, curr));
+    const bruteForceRangeFingerprint = testFingerprintTimestamps(
+      timestampRows.map((row) => row.t),
+    );
 
     expect(fingerprintRanges[i].fingerprint, i.toString()).toStrictEqual(
       bruteForceRangeFingerprint,
@@ -198,6 +185,19 @@ const testTimestamps = async (
 };
 
 const longTimeout = { timeout: 10 * 60 * 1000 };
+
+test("testFingerprintTimestamps XORs timestamp fingerprints", () => {
+  const timestamps = testTimestampsAsc.slice(0, 2);
+  const fingerprints = timestamps.map(timestampBytesToFingerprint);
+
+  expect(testFingerprintTimestamps(timestamps)).toStrictEqual(
+    Uint8Array.from(
+      fingerprints[0],
+      (byte, index) => byte ^ fingerprints[1][index],
+    ),
+  );
+  expect(testFingerprintTimestamps([])).toStrictEqual(zeroFingerprint);
+});
 
 test(
   "insertTimestamp/getSize/fingerprintRanges/fingerprint",
