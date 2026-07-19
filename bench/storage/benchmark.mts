@@ -479,6 +479,6 @@ if (updateBaseline) {
   process.stderr.write("\nUpdated storage benchmark baseline\n");
 } else if (!existingBaseline) {
   throw new Error(
-    `Storage benchmark cannot check regressions because no baseline matches this environment. Add this entry to benchmarks/storage/baselines.json:\n${JSON.stringify(nextBaseline, null, 2)}`,
+    `Storage benchmark cannot check regressions because no baseline matches this environment. Add this entry to bench/storage/baselines.json:\n${JSON.stringify(nextBaseline, null, 2)}`,
   );
 }

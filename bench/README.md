@@ -8,14 +8,14 @@ Benchmarks measure performance characteristics that ordinary correctness tests d
 
 ## Commands
 
-Each suite exposes one script in the `benchmark:<suite>` namespace and uses
+Each suite exposes one script in the `bench:<suite>` namespace and uses
 these mutually exclusive modes:
 
 ```bash
-pnpm benchmark:<suite>
-pnpm benchmark:<suite> --mode=default
-pnpm benchmark:<suite> --mode=update-baseline
-pnpm benchmark:<suite> --mode=force-update-baseline
+pnpm bench:<suite>
+pnpm bench:<suite> --mode=default
+pnpm bench:<suite> --mode=update-baseline
+pnpm bench:<suite> --mode=force-update-baseline
 ```
 
 Omitting `--mode` selects `default`.
@@ -57,7 +57,7 @@ Baseline updates must be explicit and complete. A normal update rejects regressi
 Create a directory containing:
 
 ```text
-benchmarks/<suite>/
+bench/<suite>/
   README.md
   benchmark.mts
   baselines.json

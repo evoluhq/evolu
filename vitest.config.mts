@@ -16,8 +16,8 @@ export default defineConfig({
       },
       {
         test: {
-          name: "benchmarks",
-          include: ["benchmarks/**/*.test.mts"],
+          name: "bench",
+          include: ["bench/**/*.test.mts"],
         },
       },
     ],

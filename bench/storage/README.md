@@ -32,7 +32,7 @@ The benchmark uses three independent in-memory repeats for most methods and five
 Run the benchmark after building packages:
 
 ```bash
-pnpm benchmark:storage
+pnpm bench:storage
 ```
 
 Every complete result is compared with the exact matching environment baseline. The command fails when any result is more than 10% slower or when no baseline matches.
@@ -44,13 +44,13 @@ Every complete result is compared with the exact matching environment baseline. 
 Run the benchmark in update mode to add or replace the current environment's baseline:
 
 ```bash
-pnpm benchmark:storage --mode=update-baseline
+pnpm bench:storage --mode=update-baseline
 ```
 
 Updates require all five results and all benchmark integrity checks. A normal update rejects regressions over 10%. Use the forced mode only when such a regression is understood and intentional:
 
 ```bash
-pnpm benchmark:storage --mode=force-update-baseline
+pnpm bench:storage --mode=force-update-baseline
 ```
 
 Forced updates bypass only the regression guard. Either update mode creates an initial baseline when none matches.
