@@ -158,7 +158,7 @@ const Todos: FC = () => {
             if (e.key === "Enter") addTodo();
           }}
           placeholder="Add a new todo..."
-          className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+          className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 sm:text-sm/6"
         />
         <Button title="Add" onClick={addTodo} variant="primary" />
       </div>
@@ -206,7 +206,7 @@ const TodoItem: FC<{
           type="checkbox"
           checked={!!isCompleted}
           onChange={handleToggleCompletedClick}
-          className="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white checked:border-blue-600 checked:bg-blue-600 indeterminate:border-blue-600 indeterminate:bg-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:checked:bg-gray-100 forced-colors:appearance-auto"
+          className="col-start-1 row-start-1 appearance-none rounded-sm border border-gray-300 bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 forced-colors:appearance-auto"
         />
         <span
           className={clsx(
@@ -309,7 +309,7 @@ const OwnerActions: FC = () => {
               value={evolu.appOwner.mnemonic}
               readOnly
               rows={3}
-              className="w-full border-b border-gray-300 bg-white px-2 py-1 font-mono text-xs focus:border-blue-500 focus:outline-none"
+              className="w-full border-b border-gray-300 bg-white px-2 py-1 font-mono text-xs focus:outline-none"
             />
           </div>
         )}
