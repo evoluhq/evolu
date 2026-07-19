@@ -10,6 +10,7 @@ dist
 .vitest-attachments
 next-env.d.ts
 node_modules
+.pnpm-store/v11/index.db
 test-identicons
 tmp
 
@@ -31,4 +32,3 @@ examples/react-expo/android
 
 # packages/svelte
 packages/svelte/.svelte-kit
-
