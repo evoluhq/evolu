@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/common/tsconfig.build.json" },
+    { "path": "./packages/nodejs/tsconfig.build.json" },
+    { "path": "./packages/react/tsconfig.build.json" },
+    { "path": "./packages/react-native/tsconfig.build.json" },
+    { "path": "./packages/react-web/tsconfig.build.json" },
+    { "path": "./packages/svelte/tsconfig.build.json" },
+    { "path": "./packages/vue/tsconfig.build.json" },
+    { "path": "./packages/web/tsconfig.build.json" },
+    { "path": "./apps/relay" }
+  ]
+}
