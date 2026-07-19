@@ -17,35 +17,20 @@ const withMDX = nextMDX({
 const nextConfig = {
   reactStrictMode: true,
   pageExtensions: ["js", "jsx", "ts", "tsx", "mdx"],
-
-  ...(globalThis.process?.env.NODE_ENV === "development"
-    ? {
-        webpack: (config) => {
-          // Resolve only @evolu packages to source. Avoid global "source"
-          // condition because third-party packages can expose raw TS there.
-          config.resolve.alias = {
-            ...config.resolve.alias,
-            ...Object.fromEntries(
-              ["common", "react", "react-web", "web"].map((name) => [
-                `@evolu/${name}`,
-                new globalThis.URL(
-                  `../../packages/${name}/src`,
-                  import.meta.url,
-                ).pathname,
-              ]),
-            ),
-          };
-
-          // TypeScript source uses .js extensions in imports (ESM standard).
-          // Tell webpack to try .ts/.tsx when resolving .js imports.
-          config.resolve.extensionAlias = {
-            ...config.resolve.extensionAlias,
-            ".js": [".ts", ".tsx", ".js"],
-          };
-          return config;
-        },
-      }
-    : {}),
+  transpilePackages: [
+    "@evolu/common",
+    "@evolu/react",
+    "@evolu/react-web",
+    "@evolu/web",
+  ],
+  webpack: (config) => {
+    // Source files refer to workers by their emitted .js names.
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      ".js": [".ts", ".tsx", ".js"],
+    };
+    return config;
+  },
 
   outputFileTracingIncludes: {
     "/**/*": ["./src/app/**/*.mdx"],

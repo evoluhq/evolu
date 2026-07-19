@@ -20,10 +20,10 @@
   "exports": {
     ".": {
       "types": "./dist/index.svelte.d.ts",
-      "svelte": "./dist/index.svelte.js"
+      "svelte": "./src/lib/index.svelte.ts",
+      "default": "./src/lib/index.svelte.ts"
     }
   },
-  "svelte": "./dist/index.svelte.js",
   "types": "./dist/index.svelte.d.ts",
   "files": [
     "dist",
@@ -31,7 +31,7 @@
     "!dist/**/*.spec.*"
   ],
   "scripts": {
-    "build": "tsc --build && pnpm package",
+    "build": "tsc --build tsconfig.build.json && pnpm package",
     "prepack": "pnpm build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "package": "svelte-package",
@@ -54,6 +54,13 @@
     "svelte": ">=5"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "types": "./dist/index.svelte.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.svelte.d.ts",
+        "svelte": "./dist/index.svelte.js"
+      }
+    }
   }
 }

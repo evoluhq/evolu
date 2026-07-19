@@ -24,31 +24,29 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "react-native": "./dist/src/index.js",
-      "default": "./dist/src/index.js"
+      "default": "./src/index.ts"
     },
     "./polyfills": {
       "types": "./dist/src/Polyfills.d.ts",
-      "react-native": "./dist/src/Polyfills.js",
-      "default": "./dist/src/Polyfills.js"
+      "default": "./src/Polyfills.ts"
     },
     "./expo-sqlite": {
       "types": "./dist/src/exports/expo-sqlite.d.ts",
-      "react-native": "./dist/src/exports/expo-sqlite.js",
-      "browser": "./dist/src/web.js",
-      "default": "./dist/src/exports/expo-sqlite.js"
+      "react-native": "./src/exports/expo-sqlite.ts",
+      "browser": "./src/web.ts",
+      "default": "./src/exports/expo-sqlite.ts"
     },
     "./expo-op-sqlite": {
       "types": "./dist/src/exports/expo-op-sqlite.d.ts",
-      "react-native": "./dist/src/exports/expo-op-sqlite.js",
-      "browser": "./dist/src/web.js",
-      "default": "./dist/src/exports/expo-op-sqlite.js"
+      "react-native": "./src/exports/expo-op-sqlite.ts",
+      "browser": "./src/web.ts",
+      "default": "./src/exports/expo-op-sqlite.ts"
     },
     "./bare-op-sqlite": {
       "types": "./dist/src/exports/bare-op-sqlite.d.ts",
-      "react-native": "./dist/src/exports/bare-op-sqlite.js",
-      "browser": "./dist/src/web.js",
-      "default": "./dist/src/exports/bare-op-sqlite.js"
+      "react-native": "./src/exports/bare-op-sqlite.ts",
+      "browser": "./src/web.ts",
+      "default": "./src/exports/bare-op-sqlite.ts"
     }
   },
   "typesVersions": {
@@ -150,7 +148,37 @@
     }
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "react-native": "./dist/src/index.js",
+        "default": "./dist/src/index.js"
+      },
+      "./polyfills": {
+        "types": "./dist/src/Polyfills.d.ts",
+        "react-native": "./dist/src/Polyfills.js",
+        "default": "./dist/src/Polyfills.js"
+      },
+      "./expo-sqlite": {
+        "types": "./dist/src/exports/expo-sqlite.d.ts",
+        "react-native": "./dist/src/exports/expo-sqlite.js",
+        "browser": "./dist/src/web.js",
+        "default": "./dist/src/exports/expo-sqlite.js"
+      },
+      "./expo-op-sqlite": {
+        "types": "./dist/src/exports/expo-op-sqlite.d.ts",
+        "react-native": "./dist/src/exports/expo-op-sqlite.js",
+        "browser": "./dist/src/web.js",
+        "default": "./dist/src/exports/expo-op-sqlite.js"
+      },
+      "./bare-op-sqlite": {
+        "types": "./dist/src/exports/bare-op-sqlite.d.ts",
+        "react-native": "./dist/src/exports/bare-op-sqlite.js",
+        "browser": "./dist/src/web.js",
+        "default": "./dist/src/exports/bare-op-sqlite.js"
+      }
+    }
   },
   "engines": {
     "node": ">=24.0.0"

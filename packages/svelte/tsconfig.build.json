@@ -3,8 +3,6 @@
   "compilerOptions": {
     "tsBuildInfoFile": "dist/tsconfig.build.tsbuildinfo"
   },
-  "include": ["src"],
-  "exclude": ["dist", "node_modules", "test", "vitest.config.ts"],
   "references": [
     { "path": "../common/tsconfig.build.json" },
     { "path": "../web/tsconfig.build.json" }

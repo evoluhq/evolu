@@ -21,7 +21,7 @@
     },
     "web#dev": {
       "persistent": true,
-      "dependsOn": []
+      "dependsOn": ["^build"]
     },
     "start": {
       "cache": false,

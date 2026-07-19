@@ -5,7 +5,7 @@
     "rootDir": ".",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "tsBuildInfoFile": "dist/.tsBuildInfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "include": ["src", "test", "vitest.config.ts"],
   "exclude": ["dist", "node_modules"],

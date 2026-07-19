@@ -17,8 +17,15 @@
     "**/*.ts",
     "**/*.tsx",
     "**/*.mts",
+    "src/**/*.mjs",
     ".next/types/**/*.ts",
     "tailwind.config.js"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
+  "references": [
+    { "path": "../../packages/common" },
+    { "path": "../../packages/react" },
+    { "path": "../../packages/react-web" },
+    { "path": "../../packages/web" }
+  ]
 }

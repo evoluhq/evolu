@@ -17,8 +17,7 @@
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "default": "./dist/src/index.js"
+      "default": "./src/index.ts"
     }
   },
   "files": [
@@ -50,6 +49,14 @@
     "node": ">=24.0.0"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "types": "./dist/src/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "import": "./dist/src/index.js",
+        "default": "./dist/src/index.js"
+      }
+    }
   }
 }

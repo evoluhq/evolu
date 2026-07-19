@@ -5,7 +5,7 @@
     "rootDir": ".",
     "types": ["node"],
     "resolveJsonModule": true,
-    "tsBuildInfoFile": "dist/.tsBuildInfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "include": [
     "src",

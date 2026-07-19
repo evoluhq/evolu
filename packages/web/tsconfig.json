@@ -4,7 +4,7 @@
     "outDir": "dist",
     "rootDir": ".",
     "types": ["user-agent-data-types"],
-    "tsBuildInfoFile": "dist/.tsBuildInfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "include": ["src", "test", "vitest.config.ts"],
   "exclude": ["dist", "node_modules"],
