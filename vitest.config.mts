@@ -7,6 +7,7 @@ export default defineConfig({
       "packages/common/vitest.browser.config.ts",
       "packages/web",
       "packages/nodejs",
+      "packages/react",
       "packages/react-native",
       {
         test: {

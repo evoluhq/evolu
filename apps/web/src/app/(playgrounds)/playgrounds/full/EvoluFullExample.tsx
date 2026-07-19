@@ -117,7 +117,7 @@ run.deps.evoluError.subscribe(() => {
 });
 
 const { EvoluContext, useEvolu, useQuery, useQueries } =
-  createEvoluBinding(AppSchema);
+  createEvoluBinding<typeof AppSchema>();
 
 // Create Evolu App.
 const evoluFiber = run.ok(

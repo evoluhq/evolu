@@ -48,7 +48,8 @@ const run = createRun(
   }),
 );
 
-const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(AppSchema);
+const { EvoluContext, useEvolu, useQuery } =
+  createEvoluBinding<typeof AppSchema>();
 
 const appPromise = run.ok(
   Evolu.createEvolu(AppSchema, {

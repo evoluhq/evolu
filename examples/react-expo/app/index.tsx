@@ -55,7 +55,8 @@ const todosQuery = createQuery((db) =>
 // Extract the row type from the query for type-safe component props.
 type TodosRow = typeof todosQuery.Row;
 
-const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(AppSchema);
+const { EvoluContext, useEvolu, useQuery } =
+  createEvoluBinding<typeof AppSchema>();
 
 const console = Evolu.createConsole({
   level: "debug",

@@ -86,9 +86,9 @@ run.deps.evoluError.subscribe(() => {
   alert("🚨 Evolu error occurred! Check the console.");
 });
 
-const { RunContext, useRun } = createRunBinding(run);
-const device = createEvoluBinding(DeviceSchema);
-const app = createEvoluBinding(AppSchema);
+const { RunContext, useRun } = createRunBinding<typeof run>();
+const device = createEvoluBinding<typeof DeviceSchema>();
+const app = createEvoluBinding<typeof AppSchema>();
 
 // Memory only for now, TODO: Use DeviceAppOwner.
 const devicePromise = run.ok(
@@ -344,9 +344,7 @@ const AppEvoluContext: FC<
   PropsWithChildren<{ readonly appOwner: Evolu.AppOwner }>
 > = ({ appOwner, children }) => {
   const run = useRun();
-  const [appEvolu, setAppEvolu] = useState<Evolu.Evolu<
-    typeof AppSchema
-  > | null>(null);
+  const [appEvolu, setAppEvolu] = useState<Evolu.Evolu<typeof AppSchema>>();
 
   useEffect(() => {
     const disposer = new AsyncDisposableStack();

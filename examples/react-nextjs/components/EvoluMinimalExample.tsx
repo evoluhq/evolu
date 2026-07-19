@@ -68,7 +68,8 @@ run.deps.evoluError.subscribe(() => {
   alert("🚨 Evolu error occurred! Check the console.");
 });
 
-const { EvoluContext, useEvolu, useQuery } = createEvoluBinding(AppSchema);
+const { EvoluContext, useEvolu, useQuery } =
+  createEvoluBinding<typeof AppSchema>();
 
 export const EvoluMinimalExample: FC = () => (
   <div className="min-h-screen px-8 py-8">

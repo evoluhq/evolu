@@ -100,12 +100,19 @@ export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
  * The created binding contains the context component and all hooks needed by
  * React components using an {@link Evolu} instance created from that schema.
  *
- * TODO: Example from playground example.
+ * The {@link EvoluSchema} type argument configures the binding without passing
+ * the schema at runtime.
+ *
+ * ### Example
+ *
+ * ```tsx
+ * const { EvoluContext, useEvolu, useQuery } =
+ *   createEvoluBinding<typeof AppSchema>();
+ * ```
  */
-export const createEvoluBinding = <S extends EvoluSchema>(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  schema: S,
-): ReactBinding<S> => {
+export const createEvoluBinding = <
+  S extends EvoluSchema = EvoluSchema,
+>(): ReactBinding<S> => {
   const EvoluContext = createContext<Evolu<S> | null>(null);
 
   const useEvolu = (): Evolu<S> => {
