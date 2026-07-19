@@ -173,13 +173,8 @@ export type WidenLiteral<T extends Literal> = T extends string
         ? bigint
         : T;
 
-/**
- * Removes `readonly` modifier from all properties of a type.
- *
- * Useful for constructing immutable objects step-by-step (e.g. builder pattern)
- * before casting them back to the readonly type.
- */
-export type Mutable<T> = {
+/** Removes `readonly` modifier from all properties of a type. */
+export type Writable<T> = {
   -readonly [P in keyof T]: T[P];
 };
 

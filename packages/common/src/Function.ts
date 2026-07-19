@@ -6,7 +6,7 @@
 
 import { assertNotDisposed } from "./Assert.js";
 import { isFunction } from "./Object.js";
-import type { Mutable } from "./Types.js";
+import type { Writable } from "./Types.js";
 
 /**
  * Helper function to ensure exhaustive matching in a switch statement. Throws
@@ -180,7 +180,7 @@ export function disposable<T extends object>(
   value: T,
   disposer: DisposableStack | AsyncDisposableStack | null = null,
 ): T & (Disposable | AsyncDisposable) {
-  const mutableValue = value as Mutable<Record<string, unknown>>;
+  const mutableValue = value as Writable<Record<string, unknown>>;
   const ownedDisposer = disposer?.move() ?? new DisposableStack();
 
   for (const [key, property] of Object.entries(value)) {

@@ -107,7 +107,7 @@ import {
 import type {
   Awaitable,
   isPromiseLike,
-  Mutable,
+  Writable,
   ParameterIntersection,
   Predicate,
 } from "./Types.js";
@@ -1967,12 +1967,12 @@ export function testCreateRun<D extends object>(
   } as TestRunDefaultDeps & D);
 }
 
-type RunInternal<D extends object> = Mutable<DisposableRun<D>> & {
+type RunInternal<D extends object> = Writable<DisposableRun<D>> & {
   (
     task: TaskInternal,
     taskDeps?: object,
     options?: { abortable?: boolean },
-  ): Mutable<Fiber<any, any, any>>;
+  ): Writable<Fiber<any, any, any>>;
 
   // Internal
   abortMask: AbortMask;
@@ -2298,12 +2298,12 @@ const createRunInternal = <D extends object>(
       throw taskExit.error;
     };
 
-    const fiber = runTask() as Mutable<AnyFiber>;
+    const fiber = runTask() as Writable<AnyFiber>;
 
     fiber.run = taskRun;
 
     if (abortable) {
-      const abortableFiber = fiber as Mutable<AbortableFiber>;
+      const abortableFiber = fiber as Writable<AbortableFiber>;
       abortableFiber.abort = taskRun.requestAbort;
       abortableFiber[Symbol.asyncDispose] = async () => {
         abortableFiber.abort();
