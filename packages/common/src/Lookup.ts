@@ -4,10 +4,10 @@
  * @module
  */
 
-import { assert } from "./Assert.js";
-import type { Brand } from "./Brand.js";
-import { isPlainObject } from "./Object.js";
-import { Uint8Array, uint8ArrayToBase64Url } from "./Type.js";
+import { assert } from "./Assert.ts";
+import type { Brand } from "./Brand.ts";
+import { isPlainObject } from "./Object.ts";
+import { Uint8Array, uint8ArrayToBase64Url } from "./Type.ts";
 
 /**
  * Derives the native lookup key used by lookup-based collections.

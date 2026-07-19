@@ -4,9 +4,9 @@
  * @module
  */
 
-import { assertNotDisposed } from "./Assert.js";
-import { isFunction } from "./Object.js";
-import type { Writable } from "./Types.js";
+import { assertNotDisposed } from "./Assert.ts";
+import { isFunction } from "./Object.ts";
+import type { Writable } from "./Types.ts";
 
 /**
  * Helper function to ensure exhaustive matching in a switch statement. Throws

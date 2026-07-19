@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { Eq, eqFromOrder } from "./Eq.js";
+import type { Eq, eqFromOrder } from "./Eq.ts";
 
 /**
  * Compares two values of type `A` and returns their ordering.

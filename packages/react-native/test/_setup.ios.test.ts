@@ -1,3 +1,3 @@
-import { installPolyfills } from "../src/Polyfills.js";
+import { installPolyfills } from "../src/Polyfills.ts";
 
 installPolyfills();

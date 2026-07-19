@@ -5,7 +5,7 @@
  */
 
 import * as Kysely from "kysely";
-import type { TypeName } from "./Type.js";
+import type { TypeName } from "./Type.ts";
 
 /**
  * A function that receives a value and returns nothing.

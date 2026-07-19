@@ -4,8 +4,8 @@
  * @module
  */
 
-import type { Result } from "./Result.js";
-import { NonNegativeInt, zeroNonNegativeInt } from "./Type.js";
+import type { Result } from "./Result.ts";
+import { NonNegativeInt, zeroNonNegativeInt } from "./Type.ts";
 export {
   bytesToHex,
   bytesToUtf8,

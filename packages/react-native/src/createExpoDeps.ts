@@ -15,7 +15,7 @@
 // import * as Expo from "expo";
 // import * as SecureStore from "expo-secure-store";
 // import KVStore from "expo-sqlite/kv-store";
-// import { createSharedEvoluDeps, createSharedLocalAuth } from "./shared.js";
+// import { createSharedEvoluDeps, createSharedLocalAuth } from "./shared.ts";
 
 // const reloadApp: ReloadApp = () => {
 //   void Expo.reloadAppAsync();

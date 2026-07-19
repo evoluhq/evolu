@@ -32,9 +32,9 @@
  * @module
  */
 
-import type { NonEmptyReadonlyArray } from "./Array.js";
-import type { Brand } from "./Brand.js";
-import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
+import type { NonEmptyReadonlyArray } from "./Array.ts";
+import type { Brand } from "./Brand.ts";
+import type { PredicateWithIndex, RefinementWithIndex } from "./Types.ts";
 
 /**
  * An empty readonly set.

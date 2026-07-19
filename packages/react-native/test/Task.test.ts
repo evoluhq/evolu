@@ -1,6 +1,6 @@
 import { testGlobalUncaughtErrors } from "@evolu/common";
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
-import { createRun } from "../src/Task.js";
+import { createRun } from "../src/Task.ts";
 
 describe("createRun", () => {
   afterEach(() => {

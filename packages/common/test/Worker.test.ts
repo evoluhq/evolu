@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { assertNonNullable } from "../src/Assert.js";
-import { lazyVoid } from "../src/Function.js";
-import type { NativeMessagePort } from "../src/Worker.js";
+import { assertNonNullable } from "../src/Assert.ts";
+import { lazyVoid } from "../src/Function.ts";
+import type { NativeMessagePort } from "../src/Worker.ts";
 import {
   createWorker,
   createSharedWorker,
@@ -12,7 +12,7 @@ import {
   testCreateMessagePort,
   testCreateBroadcastChannel,
   testWaitForWorkerMessage,
-} from "../src/Worker.js";
+} from "../src/Worker.ts";
 
 const expectArrayAfterWorkerMessage = async <T>(
   actual: ReadonlyArray<T>,

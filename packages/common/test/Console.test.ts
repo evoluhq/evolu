@@ -9,8 +9,8 @@ import {
   testCreateConsole,
   type ConsoleEntry,
   type ConsoleOutput,
-} from "../src/Console.js";
-import { testCreateTime, type Millis } from "../src/Time.js";
+} from "../src/Console.ts";
+import { testCreateTime, type Millis } from "../src/Time.ts";
 
 const createTimeDep = (startAt?: Millis) => ({
   time: testCreateTime(startAt != null ? { startAt } : undefined),

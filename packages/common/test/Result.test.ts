@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it, test } from "vitest";
-import type { NonEmptyReadonlyArray } from "../src/Array.js";
+import type { NonEmptyReadonlyArray } from "../src/Array.ts";
 import type {
   Done,
   Err,
@@ -10,7 +10,7 @@ import type {
   NextResult,
   OnlyDone,
   Result,
-} from "../src/Result.js";
+} from "../src/Result.ts";
 import {
   allResult,
   anyResult,
@@ -25,8 +25,8 @@ import {
   ok,
   tryAsync,
   trySync,
-} from "../src/Result.js";
-import { parseStackTrace } from "../src/StackTrace.js";
+} from "../src/Result.ts";
+import { parseStackTrace } from "../src/StackTrace.ts";
 
 describe("ok", () => {
   it("creates Ok with a value", () => {

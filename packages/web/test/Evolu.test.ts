@@ -1,6 +1,6 @@
 import type { NativeMessagePort } from "@evolu/common";
 import { describe, expect, test, vi } from "vitest";
-import { createEvoluDeps } from "../src/local-first/Evolu.js";
+import { createEvoluDeps } from "../src/local-first/Evolu.ts";
 
 describe("createEvoluDeps", () => {
   test("createEvoluDeps calls callback when one-tab SharedWorker polyfill is already open", () => {

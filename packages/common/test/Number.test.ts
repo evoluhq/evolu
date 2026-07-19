@@ -13,15 +13,15 @@ import {
   type Percentage,
   type PercentageLiteral,
   percentageToRatio,
-} from "../src/Number.js";
-import { err, ok } from "../src/Result.js";
+} from "../src/Number.ts";
+import { err, ok } from "../src/Result.ts";
 import {
   maxPositiveInt,
   NonNegativeInt,
   onePositiveInt,
   PositiveInt,
   Ratio,
-} from "../src/Type.js";
+} from "../src/Type.ts";
 
 test("Percentage accepts canonical literals or Ratio", () => {
   expectTypeOf<"0%">().toExtend<PercentageLiteral>();

@@ -6,7 +6,7 @@ import type {
   QueryRows,
 } from "@evolu/common/local-first";
 import type { Ref } from "vue";
-import { useQuery } from "./useQuery.js";
+import { useQuery } from "./useQuery.ts";
 
 export type QueriesToQueryRowsRef<Q extends Queries> = {
   [P in keyof Q]: Q[P] extends Query<any, infer R> ? Ref<QueryRows<R>> : never;

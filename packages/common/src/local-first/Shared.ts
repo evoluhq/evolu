@@ -10,42 +10,42 @@ import {
   isNonEmptyArray,
   shiftFromArray,
   type NonEmptyReadonlyArray,
-} from "../Array.js";
-import { assert } from "../Assert.js";
-import type { Brand } from "../Brand.js";
-import { createCallbacks } from "../Callbacks.js";
-import type { ConsoleEntry, ConsoleLevel } from "../Console.js";
-import type { EncryptionKey } from "../Crypto.js";
-import { disposable } from "../Function.js";
-import { acquireLeaderLock, type LockManagerDep } from "../LockManager.js";
+} from "../Array.ts";
+import { assert } from "../Assert.ts";
+import type { Brand } from "../Brand.ts";
+import { createCallbacks } from "../Callbacks.ts";
+import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
+import type { EncryptionKey } from "../Crypto.ts";
+import { disposable } from "../Function.ts";
+import { acquireLeaderLock, type LockManagerDep } from "../LockManager.ts";
 import {
   createLookupMap,
   structuralLookup,
   type LookupMap,
   type StructuralLookupKey,
-} from "../Lookup.js";
-import { createRefCountByKey, type RefCountByKey } from "../RefCount.js";
+} from "../Lookup.ts";
+import { createRefCountByKey, type RefCountByKey } from "../RefCount.ts";
 import {
   createSharedResourceByKey,
   createSharedResourceByKeyWithClaims,
   type BorrowedResource,
   type ClaimLease,
   type SharedResourceByKeyWithClaims,
-} from "../Resource.js";
-import { ok, type Result } from "../Result.js";
-import type { NonEmptyReadonlySet } from "../Set.js";
-import type { SqliteSchema } from "../Sqlite.js";
-import { createStore, type Store } from "../Store.js";
+} from "../Resource.ts";
+import { ok, type Result } from "../Result.ts";
+import type { NonEmptyReadonlySet } from "../Set.ts";
+import type { SqliteSchema } from "../Sqlite.ts";
+import { createStore, type Store } from "../Store.ts";
 import {
   AbortError,
   createMutex,
   unabortable,
   type Mutex,
   type Task,
-} from "../Task.js";
-import { type Id, type Name, type Typed } from "../Type.js";
-import type { Callback, ExtractType } from "../Types.js";
-import type { CreateWebSocketDep, WebSocket } from "../WebSocket.js";
+} from "../Task.ts";
+import { type Id, type Name, type Typed } from "../Type.ts";
+import type { Callback, ExtractType } from "../Types.ts";
+import type { CreateWebSocketDep, WebSocket } from "../WebSocket.ts";
 import type {
   SharedWorker as CommonSharedWorker,
   CreateBroadcastChannelDep,
@@ -54,10 +54,10 @@ import type {
   NativeMessagePort,
   SharedWorkerSelf,
   WorkerDeps,
-} from "../Worker.js";
-import type { DbWorkerInit } from "./Db.js";
-import type { EvoluError } from "./Error.js";
-import type { Owner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.js";
+} from "../Worker.ts";
+import type { DbWorkerInit } from "./Db.ts";
+import type { EvoluError } from "./Error.ts";
+import type { Owner, OwnerId, OwnerTransport, SyncOwner } from "./Owner.ts";
 import {
   createProtocolMessageForUnsubscribe,
   createProtocolMessageFromCrdtMessages,
@@ -65,16 +65,16 @@ import {
   type ApplyProtocolMessageAsClientResult,
   type ProtocolError,
   type ProtocolMessage,
-} from "./Protocol.js";
+} from "./Protocol.ts";
 import {
   makePatches,
   type Patch,
   type Query,
   type Row,
   type RowsByQueryMap,
-} from "./Query.js";
-import type { MutationChange } from "./Schema.js";
-import type { CrdtMessage } from "./Storage.js";
+} from "./Query.ts";
+import type { MutationChange } from "./Schema.ts";
+import type { CrdtMessage } from "./Storage.ts";
 
 export type SharedWorker = CommonSharedWorker<
   SharedWorkerInput,

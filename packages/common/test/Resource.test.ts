@@ -1,6 +1,6 @@
 import { assert, describe, expect, expectTypeOf, test } from "vitest";
-import type { NonEmptyArray, NonEmptyReadonlyArray } from "../src/Array.js";
-import { lazyVoid } from "../src/Function.js";
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "../src/Array.ts";
+import { lazyVoid } from "../src/Function.ts";
 import {
   createSharedResourceByKeyWithClaims,
   createSharedResource,
@@ -11,8 +11,8 @@ import {
   type SharedResource,
   type SharedResourceByKey,
   type SharedResourceByKeyWithClaims,
-} from "../src/Resource.js";
-import { err, ok } from "../src/Result.js";
+} from "../src/Resource.ts";
+import { err, ok } from "../src/Result.ts";
 import {
   AbortError,
   createGate,
@@ -20,8 +20,8 @@ import {
   testAbortReason,
   testCreateRun,
   type Task,
-} from "../src/Task.js";
-import { expectConditionAfterMicrotasks } from "./_vitest.js";
+} from "../src/Task.ts";
+import { expectConditionAfterMicrotasks } from "./_vitest.ts";
 
 /** Creates a fresh Disposable per create call and records lifecycle counts. */
 const createTestResources = () => {

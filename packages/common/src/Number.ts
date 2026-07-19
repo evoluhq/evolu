@@ -4,11 +4,11 @@
  * @module
  */
 
-import type { NonEmptyReadonlyArray } from "./Array.js";
-import { assertNonEmptyReadonlyArray } from "./Assert.js";
-import type { IsBranded } from "./Brand.js";
-import type { Result } from "./Result.js";
-import { err, ok } from "./Result.js";
+import type { NonEmptyReadonlyArray } from "./Array.ts";
+import { assertNonEmptyReadonlyArray } from "./Assert.ts";
+import type { IsBranded } from "./Brand.ts";
+import type { Result } from "./Result.ts";
+import { err, ok } from "./Result.ts";
 import {
   brand,
   lessThanOrEqualTo,
@@ -16,14 +16,14 @@ import {
   NonNegativeInt,
   PositiveInt,
   Ratio,
-} from "./Type.js";
+} from "./Type.ts";
 import type {
   Digit,
   Digit1To9,
   Digit1To99,
   Predicate,
   WidenLiteral,
-} from "./Types.js";
+} from "./Types.ts";
 
 /** Percentage represented as a readable literal or a validated ratio. */
 export type Percentage = PercentageLiteral | Ratio;

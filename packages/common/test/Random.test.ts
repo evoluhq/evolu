@@ -4,7 +4,7 @@ import {
   createRandomLib,
   testCreateRandom,
   testCreateRandomLib,
-} from "../src/Random.js";
+} from "../src/Random.ts";
 
 const { randomLibConstructor, randomLibNext } = vi.hoisted(() => ({
   randomLibConstructor: vi.fn(),

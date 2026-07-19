@@ -4,16 +4,16 @@
  * @module
  */
 
-import { assert } from "./Assert.js";
-import { lazyTrue } from "./Function.js";
-import type { Result } from "./Result.js";
-import { err, ok } from "./Result.js";
-import type { Schedule } from "./Schedule.js";
-import { exponential, jitter, maxDelay } from "./Schedule.js";
-import type { RetryError, Task } from "./Task.js";
-import { callback, retry } from "./Task.js";
-import type { Millis } from "./Time.js";
-import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.js";
+import { assert } from "./Assert.ts";
+import { lazyTrue } from "./Function.ts";
+import type { Result } from "./Result.ts";
+import { err, ok } from "./Result.ts";
+import type { Schedule } from "./Schedule.ts";
+import { exponential, jitter, maxDelay } from "./Schedule.ts";
+import type { RetryError, Task } from "./Task.ts";
+import { callback, retry } from "./Task.ts";
+import type { Millis } from "./Time.ts";
+import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
 
 /**
  * WebSocket with auto-reconnect.

@@ -8,27 +8,27 @@ import { utf8ToBytes } from "@noble/ciphers/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import type { Brand } from "./Brand.js";
-import type { RandomBytesDep } from "./Crypto.js";
-import { exhaustiveCheck } from "./Function.js";
+import type { Brand } from "./Brand.ts";
+import type { RandomBytesDep } from "./Crypto.ts";
+import { exhaustiveCheck } from "./Function.ts";
 import type {
   Percentage,
   PercentageLiteral,
   percentageToRatio,
-} from "./Number.js";
-import { isFunction, isPlainObject } from "./Object.js";
-import { hasNodeBuffer } from "./Platform.js";
-import type { NextResult, Result } from "./Result.js";
-import { err, getOrNull, getOrThrow, ok, trySync } from "./Result.js";
-import { safelyStringifyUnknownValue } from "./String.js";
-import type { TimeDep } from "./Time.js";
+} from "./Number.ts";
+import { isFunction, isPlainObject } from "./Object.ts";
+import { hasNodeBuffer } from "./Platform.ts";
+import type { NextResult, Result } from "./Result.ts";
+import { err, getOrNull, getOrThrow, ok, trySync } from "./Result.ts";
+import { safelyStringifyUnknownValue } from "./String.ts";
+import type { TimeDep } from "./Time.ts";
 import type {
   Int1To100,
   Literal,
   Refinement,
   Simplify,
   WidenLiteral,
-} from "./Types.js";
+} from "./Types.ts";
 
 /**
  * Evolu {@link Type} is like a type guard that returns typed errors (via

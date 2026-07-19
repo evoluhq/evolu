@@ -4,9 +4,9 @@
  * @module
  */
 
-import type { RandomBytesDep } from "../Crypto.js";
-import type { Mnemonic } from "../Type.js";
-import type { AppOwner } from "./Owner.js";
+import type { RandomBytesDep } from "../Crypto.ts";
+import type { Mnemonic } from "../Type.ts";
+import type { AppOwner } from "./Owner.ts";
 import {
   createAppOwner,
   createOwnerSecret,
@@ -14,7 +14,7 @@ import {
   OwnerEncryptionKey,
   OwnerId,
   OwnerWriteKey,
-} from "./Owner.js";
+} from "./Owner.ts";
 
 /**
  * Local authentication and authorization system for Evolu. This is API is

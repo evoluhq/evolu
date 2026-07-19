@@ -4,7 +4,7 @@
  * @module
  */
 
-import { assertType } from "./Assert.js";
+import { assertType } from "./Assert.ts";
 import {
   fibonacciAt,
   FibonacciIndex,
@@ -13,10 +13,10 @@ import {
   min,
   type Percentage,
   percentageToRatio,
-} from "./Number.js";
-import type { RandomDep } from "./Random.js";
-import { done, err, type NextResult, ok } from "./Result.js";
-import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task.js";
+} from "./Number.ts";
+import type { RandomDep } from "./Random.ts";
+import { done, err, type NextResult, ok } from "./Result.ts";
+import type { repeat, RepeatAttempt, retry, RetryAttempt } from "./Task.ts";
 import {
   type Duration,
   type DurationLiteral,
@@ -26,7 +26,7 @@ import {
   PositiveMillis,
   saturateMillis,
   type TimeDep,
-} from "./Time.js";
+} from "./Time.ts";
 import {
   type Int0To100OrNonNegativeInt,
   NonNaNNumber,
@@ -34,8 +34,8 @@ import {
   type NonNegativeInt,
   PositiveInt,
   type Ratio,
-} from "./Type.js";
-import type { Predicate } from "./Types.js";
+} from "./Type.ts";
+import type { Predicate } from "./Types.ts";
 
 /**
  * Composable scheduling strategies for {@link retry}, {@link repeat}, rate

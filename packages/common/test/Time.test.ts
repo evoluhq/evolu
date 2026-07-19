@@ -6,7 +6,7 @@ import type {
   PerformanceTime,
   PerformanceTimeOrigin,
   PositiveDuration,
-} from "../src/Time.js";
+} from "../src/Time.ts";
 import {
   createTime,
   durationToMillis,
@@ -19,8 +19,8 @@ import {
   PositiveMillis,
   saturateMillis,
   testCreateTime,
-} from "../src/Time.js";
-import { type DateIso, NonNaNNumber } from "../src/Type.js";
+} from "../src/Time.ts";
+import { type DateIso, NonNaNNumber } from "../src/Type.ts";
 
 const negativeMillisCause = {
   type: "Millis",

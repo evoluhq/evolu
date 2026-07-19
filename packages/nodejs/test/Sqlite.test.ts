@@ -2,7 +2,7 @@ import { createSqlite, Name, sql, testCreateRun } from "@evolu/common";
 import BetterSQLite from "better-sqlite3";
 import { existsSync, rmSync } from "fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { createBetterSqliteDriver } from "../src/Sqlite.js";
+import { createBetterSqliteDriver } from "../src/Sqlite.ts";
 
 const testName = Name.orThrow("Test");
 

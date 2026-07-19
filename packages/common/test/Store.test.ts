@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createStore } from "../src/Store.js";
+import { createStore } from "../src/Store.ts";
 
 describe("get", () => {
   test("get returns initial state", () => {

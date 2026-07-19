@@ -86,7 +86,7 @@ export const Utils = { ok, trySync };
 const nativeSharedWorker = new globalThis.SharedWorker(url);
 
 // Avoid - Aliasing to work around global name clash
-import { SharedWorker as SharedWorkerType } from "./Worker.js";
+import { SharedWorker as SharedWorkerType } from "./Worker.ts";
 ```
 
 ## Functions

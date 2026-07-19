@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { lazyVoid } from "../src/Function.js";
-import { err, ok } from "../src/Result.js";
+import { lazyVoid } from "../src/Function.ts";
+import { err, ok } from "../src/Result.ts";
 import {
   booleanToSqliteBoolean,
   createPreparedStatementsCache,
@@ -22,10 +22,10 @@ import {
   type SqliteQuery,
   type SqliteQueryString,
   type SqliteValue,
-} from "../src/Sqlite.js";
-import { createAbortError, sleep, testCreateRun } from "../src/Task.js";
-import { testName } from "../src/Type.js";
-import { setupSqlite } from "./_deps.js";
+} from "../src/Sqlite.ts";
+import { createAbortError, sleep, testCreateRun } from "../src/Task.ts";
+import { testName } from "../src/Type.ts";
+import { setupSqlite } from "./_deps.ts";
 
 describe("eqSqliteValue", () => {
   test("equal Uint8Arrays return true", () => {

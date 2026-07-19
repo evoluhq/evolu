@@ -1,6 +1,6 @@
 import { expect, expectTypeOf, test } from "vitest";
-import type { Brand } from "../src/Brand.js";
-import type { ReadonlyRecord } from "../src/Object.js";
+import type { Brand } from "../src/Brand.ts";
+import type { ReadonlyRecord } from "../src/Object.ts";
 import {
   createObjectURL,
   createRecord,
@@ -13,7 +13,7 @@ import {
   objectFrom,
   objectFromEntries,
   objectToEntries,
-} from "../src/Object.js";
+} from "../src/Object.ts";
 
 test("isPlainObject", () => {
   expect(isPlainObject({})).toBe(true);

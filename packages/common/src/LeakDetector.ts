@@ -4,8 +4,8 @@
  * @module
  */
 
-import { type ConsoleDep } from "./Console.js";
-import { lazyVoid } from "./Function.js";
+import { type ConsoleDep } from "./Console.ts";
+import { lazyVoid } from "./Function.ts";
 
 /**
  * Detects handles that are garbage-collected while still considered held.

@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
 import * as z from "zod";
-import type { Brand } from "../../src/Brand.js";
+import type { Brand } from "../../src/Brand.ts";
 import type {
   MutationValues,
   ValidateColumnTypes,
@@ -8,14 +8,14 @@ import type {
   ValidateNoSystemColumns,
   ValidateSchema,
   ValidateSchemaHasId,
-} from "../../src/local-first/Schema.js";
-import { ensureSqliteSchema } from "../../src/local-first/Schema.js";
+} from "../../src/local-first/Schema.ts";
+import { ensureSqliteSchema } from "../../src/local-first/Schema.ts";
 import {
   getSqliteSchema,
   sql,
   SqliteBoolean,
   type SqliteSchema,
-} from "../../src/Sqlite.js";
+} from "../../src/Sqlite.ts";
 import {
   Boolean,
   Id,
@@ -23,8 +23,8 @@ import {
   NonEmptyString100,
   nullOr,
   type InferType,
-} from "../../src/Type.js";
-import { setupSqlite } from "../_deps.js";
+} from "../../src/Type.ts";
+import { setupSqlite } from "../_deps.ts";
 
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;

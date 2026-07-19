@@ -6,7 +6,7 @@ import {
   type Row,
 } from "@evolu/common/local-first";
 import { onScopeDispose, type Ref, shallowReadonly, shallowRef } from "vue";
-import { useEvolu } from "./useEvolu.js";
+import { useEvolu } from "./useEvolu.ts";
 
 /**
  * Load and subscribe to the query, returning a ref that stays in sync with

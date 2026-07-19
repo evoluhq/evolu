@@ -27,7 +27,7 @@ import {
   initSharedWorker,
   startDbWorker,
 } from "@evolu/common/local-first";
-import { lockManager } from "./LockManager.js";
+import { lockManager } from "./LockManager.ts";
 
 /** Creates Evolu dependencies for React Native. */
 export const createEvoluDeps = (

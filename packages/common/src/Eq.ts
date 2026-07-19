@@ -4,13 +4,13 @@
  * @module
  */
 
-import type { Order } from "./Order.js";
+import type { Order } from "./Order.ts";
 import type {
   JsonArray,
   JsonObject,
   JsonValue,
   JsonValueInput,
-} from "./Type.js";
+} from "./Type.ts";
 
 /**
  * Compares two values of the same type `A` for equality.

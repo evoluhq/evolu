@@ -5,7 +5,7 @@
  */
 
 import * as Kysely from "kysely";
-import { getProperty, mapObject, type ReadonlyRecord } from "../Object.js";
+import { getProperty, mapObject, type ReadonlyRecord } from "../Object.ts";
 import {
   eqSqliteIndex,
   getSqliteSchema,
@@ -19,8 +19,8 @@ import {
   type SqliteQueryOptions,
   type SqliteSchema,
   SqliteValue,
-} from "../Sqlite.js";
-import type { InferType } from "../Type.js";
+} from "../Sqlite.ts";
+import type { InferType } from "../Type.ts";
 import {
   DateIso,
   type Id,
@@ -28,18 +28,18 @@ import {
   nullOr,
   object,
   type StandardSchemaV1,
-} from "../Type.js";
-import type { Simplify } from "../Types.js";
-import type { AppOwner } from "./Owner.js";
-import { OwnerId } from "./Owner.js";
+} from "../Type.ts";
+import type { Simplify } from "../Types.ts";
+import type { AppOwner } from "./Owner.ts";
+import { OwnerId } from "./Owner.ts";
 import type {
   evoluJsonArrayFrom,
   evoluJsonObjectFrom,
   Query,
   Row,
-} from "./Query.js";
-import type { CrdtMessage, DbChange } from "./Storage.js";
-import { TimestampBytes } from "./Timestamp.js";
+} from "./Query.ts";
+import type { CrdtMessage, DbChange } from "./Storage.ts";
+import { TimestampBytes } from "./Timestamp.ts";
 
 /** Any {@link StandardSchemaV1}. */
 export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;

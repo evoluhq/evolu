@@ -8,7 +8,7 @@ import {
   type SqliteValue,
 } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
-import { createWasmSqliteDriver } from "../src/Sqlite.js";
+import { createWasmSqliteDriver } from "../src/Sqlite.ts";
 
 installPolyfills();
 

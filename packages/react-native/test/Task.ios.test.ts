@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { ok } from "../../common/src/Result.js";
-import { testCreateRun } from "../../common/src/Task.js";
-import "./_setup.ios.test.js";
+import { ok, testCreateRun } from "@evolu/common";
+import "./_setup.ios.test.ts";
 
 describe("Task", () => {
   test("polyfills AbortSignal.throwIfAborted", () => {

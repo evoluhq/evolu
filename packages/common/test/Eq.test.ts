@@ -7,9 +7,9 @@ import {
   eqNumber,
   eqSameValueZero,
   eqStrict,
-} from "../src/Eq.js";
-import { orderNumber } from "../src/Order.js";
-import type { JsonValueInput } from "../src/Type.js";
+} from "../src/Eq.ts";
+import { orderNumber } from "../src/Order.ts";
+import type { JsonValueInput } from "../src/Type.ts";
 
 test("eqStrict", () => {
   expect(eqStrict(1, 1)).toBe(true);

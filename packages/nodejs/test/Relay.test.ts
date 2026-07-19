@@ -25,14 +25,14 @@ import {
 import { EventEmitter } from "events";
 import { existsSync, unlinkSync } from "fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { testSetupWebSocket } from "../../common/src/WebSocket.js";
+import { testSetupWebSocket } from "@evolu/common";
 import {
   createRelayDeps,
   createRelay,
   testSendWebSocketUpgradeRequest,
   testSetupWebSocketUpgradeRequest,
   type NodeJsRelayConfig,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 const testRelayAppOwner2 = createAppOwner(
   createOwnerSecret(testCreateDeps({ seed: "nodejs-relay-owner-2" })),
@@ -153,7 +153,7 @@ const loadRelayModuleWithMockedTransport = async () => {
     },
   }));
 
-  const relayModule = await import("../src/local-first/Relay.js");
+  const relayModule = await import("../src/local-first/Relay.ts");
 
   return { relayModule, server, wss };
 };

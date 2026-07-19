@@ -4,9 +4,9 @@
  * @module
  */
 
-import { assert } from "./Assert.js";
-import type { Brand } from "./Brand.js";
-import type { Eq } from "./Eq.js";
+import { assert } from "./Assert.ts";
+import type { Brand } from "./Brand.ts";
+import type { Eq } from "./Eq.ts";
 
 /**
  * A wrapper type that prevents sensitive values from being accidentally exposed

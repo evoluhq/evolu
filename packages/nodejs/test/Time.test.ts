@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { Millis } from "@evolu/common";
-import type { HrDuration, HrTime, NodejsTime } from "../src/index.js";
+import type { HrDuration, HrTime, NodejsTime } from "../src/index.ts";
 import {
   createNodejsTime,
   hrDurationBetween,
   hrDurationToMillis,
   millisToHrDuration,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 describe("NodejsTime", () => {
   afterEach(() => {

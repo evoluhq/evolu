@@ -9,7 +9,7 @@ import {
   type Option,
   some,
   type Some,
-} from "../src/Option.js";
+} from "../src/Option.ts";
 
 test("some creates Some", () => {
   const option = some(42);

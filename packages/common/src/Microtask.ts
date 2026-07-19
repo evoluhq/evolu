@@ -4,8 +4,8 @@
  * @module
  */
 
-import { appendToArray, type NonEmptyReadonlyArray } from "./Array.js";
-import { disposable } from "./Function.js";
+import { appendToArray, type NonEmptyReadonlyArray } from "./Array.ts";
+import { disposable } from "./Function.ts";
 
 /**
  * Batches values and flushes them in a single microtask.

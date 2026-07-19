@@ -1,1 +1,1 @@
-export * from "./EvoluIdenticon.js";
+export * from "./EvoluIdenticon.tsx";

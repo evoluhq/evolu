@@ -1,6 +1,6 @@
 import { expectTypeOf, test } from "vitest";
-import type { Brand, IsBranded } from "../src/Brand.js";
-import { lazyVoid } from "../src/Function.js";
+import type { Brand, IsBranded } from "../src/Brand.ts";
+import { lazyVoid } from "../src/Function.ts";
 
 test("Brand", () => {
   type UserId = string & Brand<"UserId">;

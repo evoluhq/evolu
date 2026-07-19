@@ -9,8 +9,8 @@
 // import { type ReloadApp } from "@evolu/common";
 // import { DevSettings } from "react-native";
 // import { SensitiveInfo } from "react-native-sensitive-info";
-// import { createSharedEvoluDeps, createSharedLocalAuth } from "../shared.js";
-// import { createOpSqliteDriver } from "../sqlite-drivers/createOpSqliteDriver.js";
+// import { createSharedEvoluDeps, createSharedLocalAuth } from "../shared.ts";
+// import { createOpSqliteDriver } from "../sqlite-drivers/createOpSqliteDriver.ts";
 //
 // const reloadApp: ReloadApp = () => {
 //   if (process.env.NODE_ENV === "development") {

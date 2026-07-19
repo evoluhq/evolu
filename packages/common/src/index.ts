@@ -4,63 +4,63 @@
  * @module
  */
 
-export * from "./Array.js";
-export * from "./Assert.js";
-export * from "./BigInt.js";
-export * from "./Brand.js";
-export * from "./Buffer.js";
-export * from "./Cache.js";
-export * from "./Callbacks.js";
-export * from "./Console.js";
-export * from "./Crypto.js";
-export * from "./Eq.js";
-export * from "./Error.js";
-export * from "./Function.js";
-export * from "./Http.js";
-export * from "./Identicon.js";
-export * from "./LeakDetector.js";
-export * from "./LockManager.js";
-export * from "./Lookup.js";
-export * from "./Microtask.js";
-export * from "./Number.js";
-export * from "./Object.js";
-export * from "./Option.js";
-export * from "./Order.js";
-export * from "./Platform.js";
-export * from "./Random.js";
-export * from "./Redacted.js";
-export * from "./Ref.js";
-export * from "./RefCount.js";
-export * from "./Relation.js";
-export * from "./Resource.js";
-export * from "./Result.js";
-export * from "./Schedule.js";
-export * from "./Set.js";
-export * from "./Sqlite.js";
-export * from "./Store.js";
-export * from "./String.js";
-export * from "./Task.js";
-export * from "./Test.js";
-export * from "./Time.js";
-export * from "./Tracer.js";
-export * from "./Type.js";
-export * from "./Types.js";
-export * from "./WebSocket.js";
-export * from "./Worker.js";
+export * from "./Array.ts";
+export * from "./Assert.ts";
+export * from "./BigInt.ts";
+export * from "./Brand.ts";
+export * from "./Buffer.ts";
+export * from "./Cache.ts";
+export * from "./Callbacks.ts";
+export * from "./Console.ts";
+export * from "./Crypto.ts";
+export * from "./Eq.ts";
+export * from "./Error.ts";
+export * from "./Function.ts";
+export * from "./Http.ts";
+export * from "./Identicon.ts";
+export * from "./LeakDetector.ts";
+export * from "./LockManager.ts";
+export * from "./Lookup.ts";
+export * from "./Microtask.ts";
+export * from "./Number.ts";
+export * from "./Object.ts";
+export * from "./Option.ts";
+export * from "./Order.ts";
+export * from "./Platform.ts";
+export * from "./Random.ts";
+export * from "./Redacted.ts";
+export * from "./Ref.ts";
+export * from "./RefCount.ts";
+export * from "./Relation.ts";
+export * from "./Resource.ts";
+export * from "./Result.ts";
+export * from "./Schedule.ts";
+export * from "./Set.ts";
+export * from "./Sqlite.ts";
+export * from "./Store.ts";
+export * from "./String.ts";
+export * from "./Task.ts";
+export * from "./Test.ts";
+export * from "./Time.ts";
+export * from "./Tracer.ts";
+export * from "./Type.ts";
+export * from "./Types.ts";
+export * from "./WebSocket.ts";
+export * from "./Worker.ts";
 
 // Local-first essentials.
-export type { EvoluError } from "./local-first/Error.js";
-export { AppName, createEvolu } from "./local-first/Evolu.js";
+export type { EvoluError } from "./local-first/Error.ts";
+export { AppName, createEvolu } from "./local-first/Evolu.ts";
 export type {
   AppNameError,
   Evolu,
   EvoluConfig,
   EvoluDeps,
   UnuseOwner,
-} from "./local-first/Evolu.js";
-export * from "./local-first/LocalAuth.js";
-export * from "./local-first/Owner.js";
-export type { SyncOwner } from "./local-first/Owner.js";
+} from "./local-first/Evolu.ts";
+export * from "./local-first/LocalAuth.ts";
+export * from "./local-first/Owner.ts";
+export type { SyncOwner } from "./local-first/Owner.ts";
 export {
   evoluJsonArrayFrom,
   evoluJsonBuildObject,
@@ -72,8 +72,8 @@ export {
   type Query,
   type QueryRows,
   type Row,
-} from "./local-first/Query.js";
-export { createQueryBuilder } from "./local-first/Schema.js";
+} from "./local-first/Query.ts";
+export { createQueryBuilder } from "./local-first/Schema.ts";
 export type {
   AnyStandardSchemaV1,
   EvoluSchema,
@@ -88,22 +88,22 @@ export type {
   TableSchema,
   UpdateValues,
   UpsertValues,
-} from "./local-first/Schema.js";
+} from "./local-first/Schema.ts";
 export type {
   // NetworkError,
   // PaymentRequiredError,
   // ServerError,
   SyncState,
-} from "./local-first/Shared.js";
+} from "./local-first/Shared.ts";
 export {
   Timestamp,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
-} from "./local-first/Timestamp.js";
+} from "./local-first/Timestamp.ts";
 export type {
   TimestampBytes,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampError,
   TimestampTimeOutOfRangeError,
-} from "./local-first/Timestamp.js";
+} from "./local-first/Timestamp.ts";

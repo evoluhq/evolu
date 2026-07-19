@@ -4,10 +4,10 @@
  * @module
  */
 
-import { assert } from "./Assert.js";
-import { disposable, identity } from "./Function.js";
-import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.js";
-import { NonNegativeInt, PositiveInt, zeroNonNegativeInt } from "./Type.js";
+import { assert } from "./Assert.ts";
+import { disposable, identity } from "./Function.ts";
+import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.ts";
+import { NonNegativeInt, PositiveInt, zeroNonNegativeInt } from "./Type.ts";
 
 /**
  * Reference count for one retained value.

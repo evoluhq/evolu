@@ -4,7 +4,7 @@ import type {
   OwnerTransport,
   ReadonlyOwner,
 } from "@evolu/common";
-import { useEvolu } from "./useEvolu.js";
+import { useEvolu } from "./useEvolu.ts";
 
 /**
  * Vue composable for Evolu `useOwner` method.

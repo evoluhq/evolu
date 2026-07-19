@@ -10,6 +10,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "moduleResolution": "node16",
+    "rewriteRelativeImportExtensions": true,
     "types": ["node"]
   }
 }

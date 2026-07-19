@@ -1,5 +1,5 @@
 import { installPolyfills } from "@evolu/common/polyfills";
-import { createWorkerSelf } from "../../src/Worker.js";
+import { createWorkerSelf } from "../../src/Worker.ts";
 
 installPolyfills();
 

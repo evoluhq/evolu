@@ -11,7 +11,7 @@
  *   WebKit.
  */
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { installPolyfills } from "../src/Polyfills.js";
+import { installPolyfills } from "../src/Polyfills.ts";
 
 const isNodeRuntime =
   (

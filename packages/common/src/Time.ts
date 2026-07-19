@@ -4,9 +4,9 @@
  * @module
  */
 
-import { assert } from "./Assert.js";
-import type { Brand } from "./Brand.js";
-import type { yieldNow } from "./Task.js";
+import { assert } from "./Assert.ts";
+import type { Brand } from "./Brand.ts";
+import type { yieldNow } from "./Task.ts";
 import {
   brand,
   type DateIso,
@@ -14,7 +14,7 @@ import {
   type NonNaNNumber,
   NonNegativeInt,
   positive,
-} from "./Type.js";
+} from "./Type.ts";
 import type {
   Digit,
   Digit1To23,
@@ -23,7 +23,7 @@ import type {
   Digit1To6,
   Digit1To9,
   Digit1To99,
-} from "./Types.js";
+} from "./Types.ts";
 
 /** Time and timer operations. */
 export interface Time {

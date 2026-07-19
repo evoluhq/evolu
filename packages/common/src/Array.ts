@@ -128,8 +128,8 @@
  * @module
  */
 
-import { identity } from "./Function.js";
-import type { PredicateWithIndex, RefinementWithIndex } from "./Types.js";
+import { identity } from "./Function.ts";
+import type { PredicateWithIndex, RefinementWithIndex } from "./Types.ts";
 
 /**
  * An array with at least one element.

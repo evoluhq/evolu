@@ -3,7 +3,7 @@ import {
   createLookupMap,
   createLookupSet,
   structuralLookup,
-} from "../src/Lookup.js";
+} from "../src/Lookup.ts";
 
 describe("createLookupMap", () => {
   test("LookupMap is not assignable to native Map", () => {

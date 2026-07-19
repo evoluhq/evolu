@@ -1,15 +1,15 @@
 import { compress, init } from "@bokuweb/zstd-wasm";
 import * as fc from "fast-check";
 import { assert, beforeAll, describe, expect, it, test } from "vitest";
-import { createBuffer } from "../../src/Buffer.js";
-import { lazyFalse, lazyTrue } from "../../src/Function.js";
-import type { NonEmptyReadonlyArray, RunDefaultDeps } from "../../src/index.js";
-import { assertNonEmptyArray, EncryptionKey } from "../../src/index.js";
+import { createBuffer } from "../../src/Buffer.ts";
+import { lazyFalse, lazyTrue } from "../../src/Function.ts";
+import type { NonEmptyReadonlyArray, RunDefaultDeps } from "../../src/index.ts";
+import { assertNonEmptyArray, EncryptionKey } from "../../src/index.ts";
 import {
   ownerIdToOwnerIdBytes,
   type OwnerIdBytes,
-} from "../../src/local-first/Owner.js";
-import type { TimestampsRangeWithTimestampsBuffer } from "../../src/local-first/Protocol.js";
+} from "../../src/local-first/Owner.ts";
+import type { TimestampsRangeWithTimestampsBuffer } from "../../src/local-first/Protocol.ts";
 import {
   applyProtocolMessageAsClient,
   applyProtocolMessageAsRelay,
@@ -42,47 +42,47 @@ import {
   ProtocolValueType,
   protocolVersion,
   SubscriptionFlags,
-} from "../../src/local-first/Protocol.js";
+} from "../../src/local-first/Protocol.ts";
 import type {
   CrdtMessage,
   EncryptedCrdtMessage,
   EncryptedDbChange,
   Storage,
   StorageDep,
-} from "../../src/local-first/Storage.js";
+} from "../../src/local-first/Storage.ts";
 import {
   DbChange,
   InfiniteUpperBound,
   RangeType,
   timestampBytesToFingerprint,
-} from "../../src/local-first/Storage.js";
+} from "../../src/local-first/Storage.ts";
 import {
   createInitialTimestamp,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
-} from "../../src/local-first/Timestamp.js";
-import { err, getOrThrow, ok } from "../../src/Result.js";
-import { SqliteValue } from "../../src/Sqlite.js";
+} from "../../src/local-first/Timestamp.ts";
+import { err, getOrThrow, ok } from "../../src/Result.ts";
+import { SqliteValue } from "../../src/Sqlite.ts";
 import {
   testCreateDeps,
   testCreateRun,
   type TestRunDefaultDeps as TestDeps,
-} from "../../src/Task.js";
+} from "../../src/Task.ts";
 import {
   createId,
   dateToDateIso,
   NonNegativeInt,
   PositiveInt,
   zeroNonNegativeInt,
-} from "../../src/Type.js";
-import { setupSqliteAndRelayStorage } from "../_deps.js";
+} from "../../src/Type.ts";
+import { setupSqliteAndRelayStorage } from "../_deps.ts";
 import {
   maxTimestamp,
   testAppOwner,
   testAppOwnerIdBytes,
   testTimestampsAsc,
   testTimestampsRandom,
-} from "./_fixtures.js";
+} from "./_fixtures.ts";
 
 beforeAll(async () => {
   await init();

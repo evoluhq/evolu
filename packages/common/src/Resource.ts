@@ -4,17 +4,17 @@
  * @module
  */
 
-import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.js";
-import { assert, assertNonNullable } from "./Assert.js";
-import { identity, type disposable } from "./Function.js";
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.ts";
+import { assert, assertNonNullable } from "./Assert.ts";
+import { identity, type disposable } from "./Function.ts";
 import {
   createLookupMap,
   createLookupSet,
   type Lookup,
   type LookupOption,
-} from "./Lookup.js";
-import { createRefCountedRelation } from "./Relation.js";
-import { ok } from "./Result.js";
+} from "./Lookup.ts";
+import { createRefCountedRelation } from "./Relation.ts";
+import { ok } from "./Result.ts";
 import {
   createMutex,
   createMutexByKey,
@@ -23,10 +23,10 @@ import {
   type DisposableRun,
   type SemaphoreSnapshot,
   type Task,
-} from "./Task.js";
-import { type PositiveDuration } from "./Time.js";
-import { NonNegativeInt } from "./Type.js";
-import { type DistributiveOmit } from "./Types.js";
+} from "./Task.ts";
+import { type PositiveDuration } from "./Time.ts";
+import { NonNegativeInt } from "./Type.ts";
+import { type DistributiveOmit } from "./Types.ts";
 
 /**
  * Disposable resource.

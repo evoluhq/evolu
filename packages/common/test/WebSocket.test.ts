@@ -7,21 +7,21 @@ import {
   test,
   vi,
 } from "vitest";
-import { utf8ToBytes } from "../src/Buffer.js";
-import { isServer } from "../src/Platform.js";
-import type { RandomNumber } from "../src/Random.js";
-import { ok } from "../src/Result.js";
-import { spaced, take } from "../src/Schedule.js";
+import { utf8ToBytes } from "../src/Buffer.ts";
+import { isServer } from "../src/Platform.ts";
+import type { RandomNumber } from "../src/Random.ts";
+import { ok } from "../src/Result.ts";
+import { spaced, take } from "../src/Schedule.ts";
 import {
   AbortError,
   createRun,
   testCreateDeps,
   testCreateRun,
-} from "../src/Task.js";
+} from "../src/Task.ts";
 import {
   startTestWebSocketServer,
   stopTestWebSocketServer,
-} from "./_webSocketTestServerControl.js";
+} from "./_webSocketTestServerControl.ts";
 import {
   createWebSocket,
   testSetupWebSocket,
@@ -29,7 +29,7 @@ import {
   webSocketReconnectSchedule,
   type WebSocketRetryError,
   type WebSocketError,
-} from "../src/WebSocket.js";
+} from "../src/WebSocket.ts";
 
 let port: number | undefined;
 

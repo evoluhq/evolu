@@ -178,9 +178,9 @@
  */
 
 import { Packr } from "msgpackr";
-import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.js";
-import { assert } from "../Assert.js";
-import type { Brand } from "../Brand.js";
+import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.ts";
+import { assert } from "../Assert.ts";
+import type { Brand } from "../Brand.ts";
 import {
   type Buffer,
   bytesToHex,
@@ -188,8 +188,8 @@ import {
   createBuffer,
   hexToBytes,
   utf8ToBytes,
-} from "../Buffer.js";
-import type { ConsoleDep } from "../Console.js";
+} from "../Buffer.ts";
+import type { ConsoleDep } from "../Console.ts";
 import {
   createPadmePadding,
   decryptWithXChaCha20Poly1305,
@@ -200,14 +200,14 @@ import {
   type RandomBytesDep,
   XChaCha20Poly1305Ciphertext,
   xChaCha20Poly1305NonceLength,
-} from "../Crypto.js";
-import { eqArrayNumber } from "../Eq.js";
-import { computeBalancedBuckets } from "../Number.js";
-import { createRecord, objectToEntries } from "../Object.js";
-import { err, ok, type Result } from "../Result.js";
-import { SqliteValue } from "../Sqlite.js";
-import { AbortError, type Task } from "../Task.js";
-import { Millis } from "../Time.js";
+} from "../Crypto.ts";
+import { eqArrayNumber } from "../Eq.ts";
+import { computeBalancedBuckets } from "../Number.ts";
+import { createRecord, objectToEntries } from "../Object.ts";
+import { err, ok, type Result } from "../Result.ts";
+import { SqliteValue } from "../Sqlite.ts";
+import { AbortError, type Task } from "../Task.ts";
+import { Millis } from "../Time.ts";
 import {
   Base64Url,
   base64UrlToUint8Array,
@@ -228,8 +228,8 @@ import {
   type Typed,
   uint8ArrayToBase64Url,
   zeroNonNegativeInt,
-} from "../Type.js";
-import type { Predicate } from "../Types.js";
+} from "../Type.ts";
+import type { Predicate } from "../Types.ts";
 import {
   type Owner,
   type OwnerError,
@@ -238,7 +238,7 @@ import {
   ownerIdToOwnerIdBytes,
   OwnerWriteKey,
   ownerWriteKeyLength,
-} from "./Owner.js";
+} from "./Owner.ts";
 import {
   type BaseRange,
   type CrdtMessage,
@@ -255,7 +255,7 @@ import {
   type SkipRange,
   type StorageDep,
   type TimestampsRange,
-} from "./Storage.js";
+} from "./Storage.ts";
 import {
   Counter,
   eqTimestamp,
@@ -265,7 +265,7 @@ import {
   timestampBytesLength,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
-} from "./Timestamp.js";
+} from "./Timestamp.ts";
 
 /**
  * Evolu uses MessagePack for numbers and JSONs.

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { createLruCache } from "../src/Cache.js";
-import { onePositiveInt, PositiveInt } from "../src/Type.js";
+import { createLruCache } from "../src/Cache.ts";
+import { onePositiveInt, PositiveInt } from "../src/Type.ts";
 
 test("LRU cache - basic set and get", () => {
   const cache = createLruCache<string, number>(PositiveInt.orThrow(3));

@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import {
   testSendWebSocketUpgradeRequest,
   testSetupWebSocketUpgradeRequest,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 const websocketAccept = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 

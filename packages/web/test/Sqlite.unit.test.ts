@@ -141,11 +141,11 @@ vi.mock("@evolu/sqlite-wasm", () => ({
   }),
 }));
 
-let createWasmSqliteDriver: typeof import("../src/Sqlite.js").createWasmSqliteDriver;
+let createWasmSqliteDriver: typeof import("../src/Sqlite.ts").createWasmSqliteDriver;
 
 beforeAll(async () => {
   vi.spyOn(console, "warn").mockImplementation(sqliteMock.consoleWarn);
-  ({ createWasmSqliteDriver } = await import("../src/Sqlite.js"));
+  ({ createWasmSqliteDriver } = await import("../src/Sqlite.ts"));
 });
 
 describe("createWasmSqliteDriver coverage helpers", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createMicrotaskBatch } from "../src/Microtask.js";
+import { createMicrotaskBatch } from "../src/Microtask.ts";
 
 describe("createMicrotaskBatch", () => {
   test("coalesces multiple pushes in one tick into one flush", async () => {

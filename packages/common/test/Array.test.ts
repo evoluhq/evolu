@@ -22,10 +22,10 @@ import {
   zipArray,
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
-} from "../src/Array.js";
-import { identity } from "../src/Function.js";
-import { err, ok } from "../src/Result.js";
-import { NonEmptyString, PositiveInt } from "../src/Type.js";
+} from "../src/Array.ts";
+import { identity } from "../src/Function.ts";
+import { err, ok } from "../src/Result.ts";
+import { NonEmptyString, PositiveInt } from "../src/Type.ts";
 
 describe("Types", () => {
   test("NonEmptyArray requires at least one element", () => {

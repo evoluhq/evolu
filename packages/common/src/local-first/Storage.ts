@@ -5,19 +5,19 @@
  */
 
 import { sha256 } from "@noble/hashes/sha2.js";
-import type { NonEmptyReadonlyArray } from "../Array.js";
-import { firstInArray, isNonEmptyArray } from "../Array.js";
-import { assert } from "../Assert.js";
-import type { Brand } from "../Brand.js";
-import { concatBytes } from "../Buffer.js";
-import { decrement } from "../Number.js";
-import type { RandomDep } from "../Random.js";
-import { err, ok } from "../Result.js";
-import type { SqliteDep } from "../Sqlite.js";
-import { sql, SqliteValue } from "../Sqlite.js";
-import type { Task } from "../Task.js";
-import { Millis } from "../Time.js";
-import type { InferType, Int64String, Typed, TypeError } from "../Type.js";
+import type { NonEmptyReadonlyArray } from "../Array.ts";
+import { firstInArray, isNonEmptyArray } from "../Array.ts";
+import { assert } from "../Assert.ts";
+import type { Brand } from "../Brand.ts";
+import { concatBytes } from "../Buffer.ts";
+import { decrement } from "../Number.ts";
+import type { RandomDep } from "../Random.ts";
+import { err, ok } from "../Result.ts";
+import type { SqliteDep } from "../Sqlite.ts";
+import { sql, SqliteValue } from "../Sqlite.ts";
+import type { Task } from "../Task.ts";
+import { Millis } from "../Time.ts";
+import type { InferType, Int64String, Typed, TypeError } from "../Type.ts";
 import {
   Boolean,
   brand,
@@ -28,17 +28,17 @@ import {
   PositiveInt,
   record,
   String,
-} from "../Type.js";
-import type { Awaitable } from "../Types.js";
-import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.js";
-import { OwnerId, OwnerWriteKey } from "./Owner.js";
-import { systemColumnsWithId } from "./Schema.js";
+} from "../Type.ts";
+import type { Awaitable } from "../Types.ts";
+import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.ts";
+import { OwnerId, OwnerWriteKey } from "./Owner.ts";
+import { systemColumnsWithId } from "./Schema.ts";
 import {
   createTimestamp,
   orderTimestampBytes,
   Timestamp,
   TimestampBytes,
-} from "./Timestamp.js";
+} from "./Timestamp.ts";
 
 export interface StorageConfig {
   /**

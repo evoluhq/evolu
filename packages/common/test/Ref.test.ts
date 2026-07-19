@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createRef } from "../src/Ref.js";
+import { createRef } from "../src/Ref.ts";
 
 describe("Ref", () => {
   describe("get", () => {

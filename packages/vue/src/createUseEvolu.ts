@@ -1,5 +1,5 @@
 import type { Evolu, EvoluSchema } from "@evolu/common";
-import { useEvolu } from "./useEvolu.js";
+import { useEvolu } from "./useEvolu.ts";
 
 /**
  * Creates a helper function returning a type-aware instance of {@link Evolu}.

@@ -4,7 +4,7 @@
  * @module
  */
 
-import { type InferType, typed, Unknown } from "./Type.js";
+import { type InferType, typed, Unknown } from "./Type.ts";
 
 /**
  * A wrapper for unknown errors caught at runtime.

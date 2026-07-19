@@ -1,9 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
-import { isHermes, isServer } from "../src/Platform.js";
+import { isHermes, isServer } from "../src/Platform.ts";
 import {
   testGlobalUncaughtErrors,
   testGlobalUnhandledRejections,
-} from "./_vitest.js";
+} from "./_vitest.ts";
 
 test("isServer matches environment", () => {
   expect(isServer).toBe(typeof document === "undefined");

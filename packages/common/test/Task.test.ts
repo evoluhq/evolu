@@ -1,13 +1,13 @@
 import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
-import { emptyArray, type NonEmptyReadonlyArray } from "../src/Array.js";
-import { emptyRecord } from "../src/Object.js";
-import { none, some, type Option } from "../src/Option.js";
-import { isDev, isServer } from "../src/Platform.js";
-import type { Random, RandomDep, RandomNumber } from "../src/Random.js";
-import { createRef } from "../src/Ref.js";
-import { done, err, ok, type Done, type Result } from "../src/Result.js";
-import { fixed, spaced, take, type Schedule } from "../src/Schedule.js";
-import { parseStackTrace } from "../src/StackTrace.js";
+import { emptyArray, type NonEmptyReadonlyArray } from "../src/Array.ts";
+import { emptyRecord } from "../src/Object.ts";
+import { none, some, type Option } from "../src/Option.ts";
+import { isDev, isServer } from "../src/Platform.ts";
+import type { Random, RandomDep, RandomNumber } from "../src/Random.ts";
+import { createRef } from "../src/Ref.ts";
+import { done, err, ok, type Done, type Result } from "../src/Result.ts";
+import { fixed, spaced, take, type Schedule } from "../src/Schedule.ts";
+import { parseStackTrace } from "../src/StackTrace.ts";
 import {
   daemon,
   AbortError,
@@ -79,8 +79,8 @@ import {
   type TestReportDefectDep,
   type TestRunDefaultDeps,
   type TimeoutError,
-} from "../src/Task.js";
-import { Millis, testCreateTime, type Time } from "../src/Time.js";
+} from "../src/Task.ts";
+import { Millis, testCreateTime, type Time } from "../src/Time.ts";
 import {
   type Int1To100OrPositiveInt,
   maxPositiveInt,
@@ -88,12 +88,12 @@ import {
   PositiveInt,
   type DateIso,
   type Id,
-} from "../src/Type.js";
+} from "../src/Type.ts";
 import {
   expectContinuationAfterMicrotasks,
   testGlobalUncaughtErrors,
   testGlobalUnhandledRejections,
-} from "./_vitest.js";
+} from "./_vitest.ts";
 
 const panic = (defect: unknown): AbortError =>
   createAbortError({ type: "PanicAbortReason", defect });
@@ -603,8 +603,8 @@ describe("Run", () => {
         }
         vi.resetModules();
 
-        const platformModule = await import("../src/Platform.js");
-        const taskModule = await import("../src/Task.js");
+        const platformModule = await import("../src/Platform.ts");
+        const taskModule = await import("../src/Task.ts");
         expect(platformModule.isDev).toBe(false);
         await using run = taskModule.testCreateRun();
         const malformedTask = (() =>

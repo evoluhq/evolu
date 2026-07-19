@@ -1,6 +1,7 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
+    "rewriteRelativeImportExtensions": true,
     "strict": true,
     "paths": {
       "@/*": [

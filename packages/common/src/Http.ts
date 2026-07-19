@@ -4,10 +4,10 @@
  * @module
  */
 
-import { err, ok, tryAsync, type Err, type Result } from "./Result.js";
-import type { AbortError, retry, Task, timeout } from "./Task.js";
-import type { Typed } from "./Type.js";
-import type { Awaitable } from "./Types.js";
+import { err, ok, tryAsync, type Err, type Result } from "./Result.ts";
+import type { AbortError, retry, Task, timeout } from "./Task.ts";
+import type { Typed } from "./Type.ts";
+import type { Awaitable } from "./Types.ts";
 
 /**
  * WHATWG-fetch-compatible function used by {@link fetch}.

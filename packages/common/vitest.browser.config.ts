@@ -47,12 +47,12 @@ export default defineProject({
       commands: {
         startWsServer: async () => {
           const { createServer } =
-            await import("./test/_webSocketTestServer.js");
+            await import("./test/_webSocketTestServer.ts");
           return createServer();
         },
         stopWsServer: async (_, port: number) => {
           const { closeServer } =
-            await import("./test/_webSocketTestServer.js");
+            await import("./test/_webSocketTestServer.ts");
           await closeServer(port);
         },
       },

@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { AnyType, InferType, Type } from "./Type.js";
+import type { AnyType, InferType, Type } from "./Type.ts";
 
 /**
  * Ensures a condition is true, throwing an error with the provided message if

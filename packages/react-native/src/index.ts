@@ -1,3 +1,3 @@
-export * from "./components/EvoluIdenticon.js";
-export * from "./LockManager.js";
-export * from "./Task.js";
+export * from "./components/EvoluIdenticon.tsx";
+export * from "./LockManager.ts";
+export * from "./Task.ts";

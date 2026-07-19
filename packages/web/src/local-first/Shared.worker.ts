@@ -10,13 +10,13 @@ import type {
   SharedWorkerOutput,
 } from "@evolu/common/local-first";
 import { initSharedWorker } from "@evolu/common/local-first";
-import type { SharedWorkerUnsupported } from "./Evolu.js";
-import { createRun } from "../Task.js";
+import type { SharedWorkerUnsupported } from "./Evolu.ts";
+import { createRun } from "../Task.ts";
 import {
   createOneTabSharedWorkerSelfPolyfill,
   createSharedWorkerSelf,
   createWorkerDeps,
-} from "../Worker.js";
+} from "../Worker.ts";
 
 const run = createRun({
   ...createWorkerDeps(),

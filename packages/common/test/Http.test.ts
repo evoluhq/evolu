@@ -6,8 +6,8 @@ import {
   type FetchError,
   type FetchResponse,
   type FetchTransportError,
-} from "../src/Http.js";
-import { err, ok, type Result } from "../src/Result.js";
+} from "../src/Http.ts";
+import { err, ok, type Result } from "../src/Result.ts";
 import {
   createAbortError,
   createPanicAbortReason,
@@ -15,7 +15,7 @@ import {
   testAbortReason,
   testCreateRun,
   type Task,
-} from "../src/Task.js";
+} from "../src/Task.ts";
 
 describe("fetch", () => {
   test("uses deps.nativeFetch with init and the Task Run signal", async () => {

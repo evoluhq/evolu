@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { assert } from "../../src/Assert.js";
-import type { ConsoleEntry } from "../../src/Console.js";
-import { createOwnerWebSocketTransport } from "../../src/local-first/Owner.js";
-import { createProtocolMessageForUnsubscribe } from "../../src/local-first/Protocol.js";
-import type { MutationChange } from "../../src/local-first/Schema.js";
+import { assert } from "../../src/Assert.ts";
+import type { ConsoleEntry } from "../../src/Console.ts";
+import { createOwnerWebSocketTransport } from "../../src/local-first/Owner.ts";
+import { createProtocolMessageForUnsubscribe } from "../../src/local-first/Protocol.ts";
+import type { MutationChange } from "../../src/local-first/Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
   type EvoluInstanceId,
@@ -15,22 +15,22 @@ import {
   type EvoluOutput,
   type SharedWorkerInput,
   type SharedWorkerOutput,
-} from "../../src/local-first/Shared.js";
-import { testCreateCrdtMessage } from "../../src/local-first/Storage.js";
+} from "../../src/local-first/Shared.ts";
+import { testCreateCrdtMessage } from "../../src/local-first/Storage.ts";
 import {
   acquireLeaderLock,
   testCreateLockManager,
-} from "../../src/LockManager.js";
-import { createSet } from "../../src/Set.js";
-import type { SqliteSchema } from "../../src/Sqlite.js";
-import { createStore } from "../../src/Store.js";
-import { testCreateRun } from "../../src/Task.js";
-import { testCreateId } from "../../src/Test.js";
-import { createId, testName, type Id, type Name } from "../../src/Type.js";
+} from "../../src/LockManager.ts";
+import { createSet } from "../../src/Set.ts";
+import type { SqliteSchema } from "../../src/Sqlite.ts";
+import { createStore } from "../../src/Store.ts";
+import { testCreateRun } from "../../src/Task.ts";
+import { testCreateId } from "../../src/Test.ts";
+import { createId, testName, type Id, type Name } from "../../src/Type.ts";
 import {
   testCreateWebSocket,
   type CreateWebSocket,
-} from "../../src/WebSocket.js";
+} from "../../src/WebSocket.ts";
 import {
   testCreateBroadcastChannel,
   testCreateMessageChannel,
@@ -38,8 +38,8 @@ import {
   testCreateSharedWorker,
   testWaitForWorkerMessage,
   type TestMessageChannel,
-} from "../../src/Worker.js";
-import { testAppOwner, testAppOwner2, testQuery } from "./_fixtures.js";
+} from "../../src/Worker.ts";
+import { testAppOwner, testAppOwner2, testQuery } from "./_fixtures.ts";
 
 const testSqliteSchema: SqliteSchema = {
   tables: {

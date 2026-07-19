@@ -4,12 +4,12 @@
  * @module
  */
 
-import { createRandomBytes } from "./Crypto.js";
-import { lazyVoid } from "./Function.js";
-import { ok } from "./Result.js";
-import type { Task } from "./Task.js";
-import { createId } from "./Type.js";
-import type { Callback } from "./Types.js";
+import { createRandomBytes } from "./Crypto.ts";
+import { lazyVoid } from "./Function.ts";
+import { ok } from "./Result.ts";
+import type { Task } from "./Task.ts";
+import { createId } from "./Type.ts";
+import type { Callback } from "./Types.ts";
 
 /**
  * Dependency wrapper for {@link LockManager}.

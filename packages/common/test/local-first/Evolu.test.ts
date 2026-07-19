@@ -1,23 +1,23 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { assert } from "../../src/Assert.js";
-import type { Brand } from "../../src/Brand.js";
-import type { ConsoleEntry, TestConsole } from "../../src/Console.js";
+import { assert } from "../../src/Assert.ts";
+import type { Brand } from "../../src/Brand.ts";
+import type { ConsoleEntry, TestConsole } from "../../src/Console.ts";
 import {
   createConsoleStoreOutput,
   testCreateConsole,
-} from "../../src/Console.js";
-import { lazyVoid } from "../../src/Function.js";
-import type { DbWorkerInit } from "../../src/local-first/Db.js";
-import { startDbWorker } from "../../src/local-first/Db.js";
+} from "../../src/Console.ts";
+import { lazyVoid } from "../../src/Function.ts";
+import type { DbWorkerInit } from "../../src/local-first/Db.ts";
+import { startDbWorker } from "../../src/local-first/Db.ts";
 import {
   AppName,
   createEvolu,
   createEvoluDeps,
   testAppName,
   type EvoluPlatformDeps,
-} from "../../src/local-first/Evolu.js";
-import { createOwnerWebSocketTransport } from "../../src/local-first/Owner.js";
-import { createQueryBuilder } from "../../src/local-first/Schema.js";
+} from "../../src/local-first/Evolu.ts";
+import { createOwnerWebSocketTransport } from "../../src/local-first/Owner.ts";
+import { createQueryBuilder } from "../../src/local-first/Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
   initSharedWorker,
@@ -29,26 +29,26 @@ import {
   type SharedWorker,
   type SharedWorkerInput,
   type SharedWorkerOutput,
-} from "../../src/local-first/Shared.js";
-import { testCreateLockManager } from "../../src/LockManager.js";
-import { err, ok } from "../../src/Result.js";
+} from "../../src/local-first/Shared.ts";
+import { testCreateLockManager } from "../../src/LockManager.ts";
+import { err, ok } from "../../src/Result.ts";
 import {
   createSqlite,
   getSqliteSnapshot,
   SqliteBoolean,
   type CreateSqliteDriver,
   type SqliteDriverOptions,
-} from "../../src/Sqlite.js";
-import { explicitAbortReason, testCreateRun } from "../../src/Task.js";
+} from "../../src/Sqlite.ts";
+import { explicitAbortReason, testCreateRun } from "../../src/Task.ts";
 import {
   createIdFromString,
   id,
   NonEmptyString100,
   nullOr,
   testName,
-} from "../../src/Type.js";
-import type { ExtractType } from "../../src/Types.js";
-import { testCreateWebSocket } from "../../src/WebSocket.js";
+} from "../../src/Type.ts";
+import type { ExtractType } from "../../src/Types.ts";
+import { testCreateWebSocket } from "../../src/WebSocket.ts";
 import {
   createBroadcastChannel,
   createMessageChannel,
@@ -62,9 +62,9 @@ import {
   testCreateWorker,
   testWaitForWorkerMessage,
   type MessagePort,
-} from "../../src/Worker.js";
-import { testCreateSqliteDep } from "../_deps.js";
-import { testAppOwner } from "./_fixtures.js";
+} from "../../src/Worker.ts";
+import { testCreateSqliteDep } from "../_deps.ts";
+import { testAppOwner } from "./_fixtures.ts";
 
 const TodoId = id("Todo");
 type TodoId = typeof TodoId.Type;

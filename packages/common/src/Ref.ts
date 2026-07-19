@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { Store } from "./Store.js";
+import type { Store } from "./Store.ts";
 
 /**
  * Mutable reference to an immutable value.

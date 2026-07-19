@@ -4,17 +4,17 @@
  * @module
  */
 
-import { bytesToHex } from "../Buffer.js";
-import type { RandomBytesDep } from "../Crypto.js";
-import { createEqObject, eqNumber, eqString } from "../Eq.js";
-import { increment } from "../Number.js";
-import type { Order } from "../Order.js";
-import { orderUint8Array } from "../Order.js";
-import type { Result } from "../Result.js";
-import { err, ok } from "../Result.js";
-import type { TimeDep } from "../Time.js";
-import { Millis, minMillis } from "../Time.js";
-import type { DateIso, InferType, Typed } from "../Type.js";
+import { bytesToHex } from "../Buffer.ts";
+import type { RandomBytesDep } from "../Crypto.ts";
+import { createEqObject, eqNumber, eqString } from "../Eq.ts";
+import { increment } from "../Number.ts";
+import type { Order } from "../Order.ts";
+import { orderUint8Array } from "../Order.ts";
+import type { Result } from "../Result.ts";
+import { err, ok } from "../Result.ts";
+import type { TimeDep } from "../Time.ts";
+import { Millis, minMillis } from "../Time.ts";
+import type { DateIso, InferType, Typed } from "../Type.ts";
 import {
   brand,
   length,
@@ -24,7 +24,7 @@ import {
   regex,
   String,
   Uint8Array,
-} from "../Type.js";
+} from "../Type.ts";
 
 export interface TimestampConfig {
   /**

@@ -1,3 +1,3 @@
-export * from "./local-first/createEvoluBinding.js";
-export * from "./local-first/useIsSsr.js";
-export * from "./Task.js";
+export * from "./local-first/createEvoluBinding.tsx";
+export * from "./local-first/useIsSsr.ts";
+export * from "./Task.tsx";

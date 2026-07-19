@@ -6,9 +6,9 @@ installPolyfills();
 
 import { createRandomBytes } from "@evolu/common";
 import { startDbWorker } from "@evolu/common/local-first";
-import { createWasmSqliteDriver } from "../Sqlite.js";
-import { createRun } from "../Task.js";
-import { createWorkerDeps, createWorkerSelf } from "../Worker.js";
+import { createWasmSqliteDriver } from "../Sqlite.ts";
+import { createRun } from "../Task.ts";
+import { createWorkerDeps, createWorkerSelf } from "../Worker.ts";
 
 const run = createRun({
   ...createWorkerDeps(),

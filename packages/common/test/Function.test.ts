@@ -10,7 +10,7 @@ import {
   exhaustiveCheck,
   identity,
   todo,
-} from "../src/Function.js";
+} from "../src/Function.ts";
 
 describe("exhaustiveCheck", () => {
   test("throws error for unhandled case", () => {

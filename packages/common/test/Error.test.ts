@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { UnknownError, createUnknownError } from "../src/Error.js";
+import { UnknownError, createUnknownError } from "../src/Error.ts";
 
 describe("createUnknownError", () => {
   test("UnknownError validates unknown error values", () => {

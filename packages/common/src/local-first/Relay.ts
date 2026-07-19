@@ -10,35 +10,35 @@ import {
   firstInArray,
   isNonEmptyArray,
   mapArray,
-} from "../Array.js";
-import { assert } from "../Assert.js";
-import type { TimingSafeEqualDep } from "../Crypto.js";
-import { err, ok } from "../Result.js";
-import type { SqliteDep } from "../Sqlite.js";
-import { sql } from "../Sqlite.js";
-import { createMutexByKey } from "../Task.js";
-import { Name, PositiveInt, uint8ArrayToBase64Url } from "../Type.js";
-import { isPromiseLike, type Awaitable } from "../Types.js";
+} from "../Array.ts";
+import { assert } from "../Assert.ts";
+import type { TimingSafeEqualDep } from "../Crypto.ts";
+import { err, ok } from "../Result.ts";
+import type { SqliteDep } from "../Sqlite.ts";
+import { sql } from "../Sqlite.ts";
+import { createMutexByKey } from "../Task.ts";
+import { Name, PositiveInt, uint8ArrayToBase64Url } from "../Type.ts";
+import { isPromiseLike, type Awaitable } from "../Types.ts";
 import {
   OwnerId,
   ownerIdBytesToOwnerId,
   // OwnerTransport,
   OwnerWriteKey,
-} from "./Owner.js";
+} from "./Owner.ts";
 import type {
   EncryptedDbChange,
   SqliteStorageDeps,
   Storage,
   StorageConfig,
   StorageQuotaError,
-} from "./Storage.js";
+} from "./Storage.ts";
 import {
   createBaseSqliteStorage,
   getTimestampInsertStrategy,
   readOwnerUsageOrDefault,
   updateOwnerUsage,
-} from "./Storage.js";
-import { timestampToTimestampBytes } from "./Timestamp.js";
+} from "./Storage.ts";
+import { timestampToTimestampBytes } from "./Timestamp.ts";
 
 export interface RelayConfig extends StorageConfig {
   /**

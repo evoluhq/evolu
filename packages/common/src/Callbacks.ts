@@ -4,10 +4,10 @@
  * @module
  */
 
-import type { RandomBytesDep } from "./Crypto.js";
-import type { Result } from "./Result.js";
-import { createId, Id } from "./Type.js";
-import type { Callback } from "./Types.js";
+import type { RandomBytesDep } from "./Crypto.ts";
+import type { Result } from "./Result.ts";
+import { createId, Id } from "./Type.ts";
+import type { Callback } from "./Types.ts";
 
 /**
  * Request-response correlation for callbacks across boundaries.

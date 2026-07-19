@@ -5,8 +5,8 @@ import {
   createAppOwner,
   createIdenticon,
   createOwnerSecret,
-} from "../src/index.js";
-import { testCreateDeps } from "../src/Task.js";
+} from "../src/index.ts";
+import { testCreateDeps } from "../src/Task.ts";
 
 test.skip("generates visually distinct identicons", () => {
   const deps = testCreateDeps();

@@ -8,14 +8,14 @@ import type {
   SharedWorkerOutput,
 } from "@evolu/common/local-first";
 import { createEvoluDeps as createCommonEvoluDeps } from "@evolu/common/local-first";
-import { reloadApp } from "../Platform.js";
+import { reloadApp } from "../Platform.ts";
 import {
   createBroadcastChannel,
   createMessageChannel,
   createSharedWorker,
   createWorker,
   installOneTabSharedWorkerPolyfill,
-} from "../Worker.js";
+} from "../Worker.ts";
 
 // // TODO: Redesign.
 // // eslint-disable-next-line evolu/require-pure-annotation

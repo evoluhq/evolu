@@ -9,12 +9,12 @@ import {
   emptyArray,
   isNonEmptyArray,
   type NonEmptyReadonlyArray,
-} from "./Array.js";
-import { assert } from "./Assert.js";
-import { exhaustiveCheck, type Lazy } from "./Function.js";
-import { createRecord, emptyRecord, isIterable } from "./Object.js";
-import type { Typed } from "./Type.js";
-import type { Awaitable } from "./Types.js";
+} from "./Array.ts";
+import { assert } from "./Assert.ts";
+import { exhaustiveCheck, type Lazy } from "./Function.ts";
+import { createRecord, emptyRecord, isIterable } from "./Object.ts";
+import type { Typed } from "./Type.ts";
+import type { Awaitable } from "./Types.ts";
 
 /**
  * The problem with `throw` in JavaScript is that the caught value is always of

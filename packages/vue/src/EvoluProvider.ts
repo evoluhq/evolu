@@ -1,6 +1,6 @@
 import type { Evolu } from "@evolu/common/local-first";
 import { defineComponent } from "vue";
-import { provideEvolu } from "./provideEvolu.js";
+import { provideEvolu } from "./provideEvolu.ts";
 
 export const EvoluProvider = /*#__PURE__*/ defineComponent({
   name: "EvoluProvider",

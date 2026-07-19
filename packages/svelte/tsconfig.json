@@ -13,6 +13,7 @@
     "strict": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "rewriteRelativeImportExtensions": true,
     "composite": true,
     "incremental": true,
     "declaration": true,

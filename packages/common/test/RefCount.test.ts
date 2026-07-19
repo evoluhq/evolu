@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createRefCount, createRefCountByKey } from "../src/RefCount.js";
+import { createRefCount, createRefCountByKey } from "../src/RefCount.ts";
 
 describe("createRefCount", () => {
   test("increments and decrements the count", () => {

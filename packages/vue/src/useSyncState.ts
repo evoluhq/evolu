@@ -1,6 +1,6 @@
 import type { SyncState } from "@evolu/common/local-first";
 import type { Ref } from "vue";
-// import { useEvolu } from "./useEvolu.js";
+// import { useEvolu } from "./useEvolu.ts";
 
 /** Subscribe to {@link SyncState} changes. */
 export const useSyncState = (): Ref<SyncState> => {

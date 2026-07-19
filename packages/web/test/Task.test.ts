@@ -1,5 +1,5 @@
 import { assert, describe, expect, test, vi } from "vitest";
-import { createRun } from "../src/Task.js";
+import { createRun } from "../src/Task.ts";
 
 describe("createRun", () => {
   test("createRun reports defects with global reportError", async () => {

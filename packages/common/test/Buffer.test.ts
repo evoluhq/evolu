@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { BufferError, createBuffer } from "../src/Buffer.js";
-import { NonNegativeInt } from "../src/Type.js";
+import { BufferError, createBuffer } from "../src/Buffer.ts";
+import { NonNegativeInt } from "../src/Type.ts";
 
 test("BufferError should be instanceof Error", () => {
   const error = new BufferError("test error");

@@ -6,17 +6,17 @@
 
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import type { NonEmptyReadonlyArray } from "../Array.js";
-import type { RandomBytesDep } from "../Crypto.js";
+import type { NonEmptyReadonlyArray } from "../Array.ts";
+import type { RandomBytesDep } from "../Crypto.ts";
 import {
   createSlip21,
   EncryptionKey,
   Entropy16,
   Entropy32,
   testCreateRandomBytes,
-} from "../Crypto.js";
-import { testCreateRandomLib } from "../Random.js";
-import { getOrNull } from "../Result.js";
+} from "../Crypto.ts";
+import { testCreateRandomLib } from "../Random.ts";
+import { getOrNull } from "../Result.ts";
 import {
   brand,
   Id,
@@ -26,9 +26,9 @@ import {
   Mnemonic,
   NonNegativeInt,
   type Typed,
-} from "../Type.js";
-import type { EncryptedDbChange, Storage } from "./Storage.js";
-import { TimestampBytes } from "./Timestamp.js";
+} from "../Type.ts";
+import type { EncryptedDbChange, Storage } from "./Storage.ts";
+import { TimestampBytes } from "./Timestamp.ts";
 
 /**
  * {@link Owner} without a {@link OwnerWriteKey}.

@@ -1,18 +1,18 @@
 import { describe, expect, test } from "vitest";
-import { err, getOrThrow } from "../src/Result.js";
+import { err, getOrThrow } from "../src/Result.ts";
 import {
   acquireLeaderLock,
   acquireLeaderLockCallback,
   testCreateLockManager,
-} from "../src/LockManager.js";
+} from "../src/LockManager.ts";
 import {
   createAbortError,
   createPanicAbortReason,
   runDisposedAbortReason,
   testCreateRun,
   yieldNow,
-} from "../src/Task.js";
-import { Name } from "../src/Type.js";
+} from "../src/Task.ts";
+import { Name } from "../src/Type.ts";
 
 describe("testCreateLockManager", () => {
   test("isolates same visible names across wrappers", async () => {

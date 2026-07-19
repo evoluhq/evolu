@@ -6,8 +6,8 @@
 //  * performance.
 //  */
 //
-// import { createExpoDeps } from "../createExpoDeps.js";
-// import { createOpSqliteDriver } from "../sqlite-drivers/createOpSqliteDriver.js";
+// import { createExpoDeps } from "../createExpoDeps.ts";
+// import { createOpSqliteDriver } from "../sqlite-drivers/createOpSqliteDriver.ts";
 //
 // // eslint-disable-next-line evolu/require-pure-annotation
 // export const { evoluReactNativeDeps, localAuth } = createExpoDeps({

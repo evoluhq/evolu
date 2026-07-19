@@ -5,8 +5,8 @@
  */
 
 import { md5 } from "@noble/hashes/legacy.js";
-import type { Brand } from "./Brand.js";
-import { Id, idToIdBytes } from "./Type.js";
+import type { Brand } from "./Brand.ts";
+import { Id, idToIdBytes } from "./Type.ts";
 
 /**
  * SVG string representing a visual identicon for an {@link Id}, created with

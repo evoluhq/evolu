@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { testCreateConsole } from "../src/Console.js";
+import { testCreateConsole } from "../src/Console.ts";
 import {
   createLeakDetector,
   noopLeakDetector,
   testCreateLeakDetector,
-} from "../src/LeakDetector.js";
+} from "../src/LeakDetector.ts";
 
 describe("createLeakDetector", () => {
   test("accepts track and untrack calls", () => {

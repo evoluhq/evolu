@@ -9,7 +9,7 @@ import {
   isNonEmptySet,
   mapSet,
   type NonEmptyReadonlySet,
-} from "../src/Set.js";
+} from "../src/Set.ts";
 
 describe("Constants", () => {
   describe("emptySet", () => {

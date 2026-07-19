@@ -4,11 +4,11 @@ import {
   createAppOwner,
   createOwnerSecret,
   ownerIdToOwnerIdBytes,
-} from "../../src/index.js";
+} from "../../src/index.ts";
 import {
   createQueryBuilder,
   type EvoluSchema,
-} from "../../src/local-first/Schema.js";
+} from "../../src/local-first/Schema.ts";
 import {
   Counter,
   createTimestamp,
@@ -17,10 +17,10 @@ import {
   NodeId,
   orderTimestampBytes,
   timestampToTimestampBytes,
-} from "../../src/local-first/Timestamp.js";
-import { testCreateDeps } from "../../src/Task.js";
-import { maxMillis, Millis } from "../../src/Time.js";
-import { id, String } from "../../src/Type.js";
+} from "../../src/local-first/Timestamp.ts";
+import { testCreateDeps } from "../../src/Task.ts";
+import { maxMillis, Millis } from "../../src/Time.ts";
+import { id, String } from "../../src/Type.ts";
 
 const deps = testCreateDeps();
 

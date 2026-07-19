@@ -8,8 +8,8 @@
 import type { ConsoleDep } from "@evolu/common";
 import type { EvoluDeps } from "@evolu/common/local-first";
 import * as Expo from "expo";
-import { createEvoluDeps as createSharedEvoluDeps } from "../shared.js";
-import { createExpoSqliteDriver } from "../sqlite-drivers/createExpoSqliteDriver.js";
+import { createEvoluDeps as createSharedEvoluDeps } from "../shared.ts";
+import { createExpoSqliteDriver } from "../sqlite-drivers/createExpoSqliteDriver.ts";
 
 /** Creates Evolu dependencies for Expo. */
 export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps =>
@@ -21,8 +21,8 @@ export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps =>
     },
   });
 
-// import { createExpoDeps } from "../createExpoDeps.js";
-// import { createExpoSqliteDriver } from "../sqlite-drivers/createExpoSqliteDriver.js";
+// import { createExpoDeps } from "../createExpoDeps.ts";
+// import { createExpoSqliteDriver } from "../sqlite-drivers/createExpoSqliteDriver.ts";
 //
 // // eslint-disable-next-line evolu/require-pure-annotation
 // export const { evoluReactNativeDeps, localAuth } = createExpoDeps({

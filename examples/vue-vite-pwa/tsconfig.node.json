@@ -6,7 +6,7 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
     "noEmit": true,

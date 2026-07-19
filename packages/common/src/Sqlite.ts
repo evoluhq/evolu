@@ -4,17 +4,17 @@
  * @module
  */
 
-import type { Brand } from "./Brand.js";
-import { bytesToHex, hexToBytes } from "./Buffer.js";
-import type { EncryptionKey } from "./Crypto.js";
-import type { Eq } from "./Eq.js";
-import { createEqObject, eqArrayNumber, eqString } from "./Eq.js";
-import { disposable } from "./Function.js";
-import { createRecord, objectToEntries } from "./Object.js";
-import type { Result } from "./Result.js";
-import { ok } from "./Result.js";
-import { testCreateRun, type Task, type TestRunDep } from "./Task.js";
-import type { InferType, Name, Typed } from "./Type.js";
+import type { Brand } from "./Brand.ts";
+import { bytesToHex, hexToBytes } from "./Buffer.ts";
+import type { EncryptionKey } from "./Crypto.ts";
+import type { Eq } from "./Eq.ts";
+import { createEqObject, eqArrayNumber, eqString } from "./Eq.ts";
+import { disposable } from "./Function.ts";
+import { createRecord, objectToEntries } from "./Object.ts";
+import type { Result } from "./Result.ts";
+import { ok } from "./Result.ts";
+import { testCreateRun, type Task, type TestRunDep } from "./Task.ts";
+import type { InferType, Name, Typed } from "./Type.ts";
 import {
   array,
   Null,
@@ -26,7 +26,7 @@ import {
   testName,
   Uint8Array,
   union,
-} from "./Type.js";
+} from "./Type.ts";
 
 /**
  * Platform-agnostic SQLite wrapping a {@link SqliteDriver}.

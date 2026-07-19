@@ -4,7 +4,7 @@ import type {
   ExtractType,
   ParameterIntersection,
   WidenLiteral,
-} from "../src/Types.js";
+} from "../src/Types.ts";
 
 test("WidenLiteral", () => {
   expectTypeOf<WidenLiteral<"foo">>().toEqualTypeOf<string>();

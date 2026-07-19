@@ -4,7 +4,7 @@ import {
   decrementBigInt,
   incrementBigInt,
   isBetweenBigInt,
-} from "../src/BigInt.js";
+} from "../src/BigInt.ts";
 
 test("incrementBigInt", () => {
   expect(incrementBigInt(1n)).toEqual(2n);

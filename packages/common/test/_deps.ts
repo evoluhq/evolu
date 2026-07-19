@@ -1,29 +1,29 @@
 import BetterSQLite, { type Statement } from "better-sqlite3";
 import { timingSafeEqual } from "crypto";
 import { rmSync } from "fs";
-import type { TimingSafeEqual } from "../src/Crypto.js";
-import { lazyTrue, lazyVoid } from "../src/Function.js";
+import type { TimingSafeEqual } from "../src/Crypto.ts";
+import { lazyTrue, lazyVoid } from "../src/Function.ts";
 import {
   createRelaySqliteStorage,
   createRelayStorageTables,
-} from "../src/local-first/Relay.js";
+} from "../src/local-first/Relay.ts";
 import {
   createBaseSqliteStorageTables,
   type StorageConfig,
   type StorageDep,
-} from "../src/local-first/Storage.js";
-import { ok } from "../src/Result.js";
+} from "../src/local-first/Storage.ts";
+import { ok } from "../src/Result.ts";
 import type {
   CreateSqliteDriver,
   CreateSqliteDriverDep,
   SqliteDep,
   SqliteRow,
-} from "../src/Sqlite.js";
+} from "../src/Sqlite.ts";
 import {
   createPreparedStatementsCache,
   testSetupSqlite,
-} from "../src/Sqlite.js";
-import type { DisposableRun } from "../src/Task.js";
+} from "../src/Sqlite.ts";
+import type { DisposableRun } from "../src/Task.ts";
 
 export const testTimingSafeEqual: TimingSafeEqual = timingSafeEqual;
 

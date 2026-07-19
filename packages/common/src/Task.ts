@@ -8,15 +8,15 @@ import {
   isNonEmptyArray,
   mapArray,
   type NonEmptyReadonlyArray,
-} from "./Array.js";
+} from "./Array.ts";
 import {
   assert,
   assertNonEmptyReadonlyArray,
   assertNonNullable,
   assertNotDisposed,
   assertType,
-} from "./Assert.js";
-import type { Brand } from "./Brand.js";
+} from "./Assert.ts";
+import type { Brand } from "./Brand.ts";
 import {
   createConsole,
   testCreateConsole,
@@ -24,16 +24,16 @@ import {
   type ConsoleDep,
   type TestConsole,
   type TestConsoleDep,
-} from "./Console.js";
+} from "./Console.ts";
 import {
   createRandomBytes,
   testCreateRandomBytes,
   type RandomBytes,
   type RandomBytesDep,
-} from "./Crypto.js";
-import { eqArrayStrict } from "./Eq.js";
-import { identity, lazyTrue, lazyVoid } from "./Function.js";
-import type { fetch, NativeFetch, NativeFetchDep } from "./Http.js";
+} from "./Crypto.ts";
+import { eqArrayStrict } from "./Eq.ts";
+import { identity, lazyTrue, lazyVoid } from "./Function.ts";
+import type { fetch, NativeFetch, NativeFetchDep } from "./Http.ts";
 import {
   createLeakDetector,
   noopLeakDetector,
@@ -41,17 +41,17 @@ import {
   type LeakDetector,
   type LeakDetectorDep,
   type TestLeakDetectorDep,
-} from "./LeakDetector.js";
-import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.js";
-import { decrement, increment, incrementPositiveInt } from "./Number.js";
+} from "./LeakDetector.ts";
+import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.ts";
+import { decrement, increment, incrementPositiveInt } from "./Number.ts";
 import {
   emptyRecord,
   mapObject,
   objectFromEntries,
   objectToEntries,
-} from "./Object.js";
-import { none, some, type Option } from "./Option.js";
-import { isDev } from "./Platform.js";
+} from "./Object.ts";
+import { none, some, type Option } from "./Option.ts";
+import { isDev } from "./Platform.ts";
 import {
   createRandom,
   testCreateRandom,
@@ -60,8 +60,8 @@ import {
   type RandomDep,
   type RandomLibDep,
   type RandomNumber,
-} from "./Random.js";
-import { createRef, type Ref } from "./Ref.js";
+} from "./Random.ts";
+import { createRef, type Ref } from "./Ref.ts";
 import {
   err,
   getOk,
@@ -74,9 +74,9 @@ import {
   type Result,
   type tryAsync,
   type trySync,
-} from "./Result.js";
-import type { Schedule, ScheduleStep } from "./Schedule.js";
-import { emptySet } from "./Set.js";
+} from "./Result.ts";
+import type { Schedule, ScheduleStep } from "./Schedule.ts";
+import { emptySet } from "./Set.ts";
 import {
   createTime,
   PositiveMillis,
@@ -86,7 +86,7 @@ import {
   type Time,
   type TimeDep,
   type TestTimeDep,
-} from "./Time.js";
+} from "./Time.ts";
 import {
   createId,
   maxPositiveInt,
@@ -103,14 +103,14 @@ import {
   type InferType,
   type Int1To100OrPositiveInt,
   type Typed,
-} from "./Type.js";
+} from "./Type.ts";
 import type {
   Awaitable,
   isPromiseLike,
   Writable,
   ParameterIntersection,
   Predicate,
-} from "./Types.js";
+} from "./Types.ts";
 
 // Core
 

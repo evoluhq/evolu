@@ -1,7 +1,7 @@
 import type { Evolu } from "@evolu/common/local-first";
 import { getCurrentInstance, inject } from "vue";
-import { EvoluContext, evoluInstanceMap } from "./provideEvolu.js";
-import type { createUseEvolu } from "./createUseEvolu.js";
+import { EvoluContext, evoluInstanceMap } from "./provideEvolu.ts";
+import type { createUseEvolu } from "./createUseEvolu.ts";
 
 /**
  * Vue composable returning a generic instance of {@link Evolu}.

@@ -4,22 +4,22 @@
  * @module
  */
 
-import { emptyArray } from "./Array.js";
-import { assert } from "./Assert.js";
-import { identity } from "./Function.js";
+import { emptyArray } from "./Array.ts";
+import { assert } from "./Assert.ts";
+import { identity } from "./Function.ts";
 import {
   createLookupMap,
   createLookupSet,
   type Lookup,
   type LookupMap,
   type LookupSet,
-} from "./Lookup.js";
+} from "./Lookup.ts";
 import {
   NonNegativeInt,
   onePositiveInt,
   PositiveInt,
   zeroNonNegativeInt,
-} from "./Type.js";
+} from "./Type.ts";
 
 /**
  * Bidirectional relation between two types.

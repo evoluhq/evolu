@@ -6,7 +6,7 @@ import {
   orderString,
   orderUint8Array,
   reverseOrder,
-} from "../src/Order.js";
+} from "../src/Order.ts";
 
 test("createOrder", () => {
   const orderNumber = createOrder<number>((x, y) => x < y);

@@ -7,7 +7,7 @@ import {
 } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { describe, expect, test } from "vitest";
-import { createWasmSqliteDriver } from "../src/Sqlite.js";
+import { createWasmSqliteDriver } from "../src/Sqlite.ts";
 
 installPolyfills();
 

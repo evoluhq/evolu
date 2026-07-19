@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { isHermes, isServer } from "../src/Platform.js";
-import { parseStackTrace } from "../src/StackTrace.js";
+import { isHermes, isServer } from "../src/Platform.ts";
+import { parseStackTrace } from "../src/StackTrace.ts";
 
 type JsEngine = "v8" | "spidermonkey" | "jsc" | "hermes";
 

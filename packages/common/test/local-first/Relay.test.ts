@@ -3,28 +3,28 @@ import type {
   NonNegativeInt,
   OwnerIdBytes,
   SqliteDep,
-} from "../../src/index.js";
+} from "../../src/index.ts";
 import {
   err,
   lazyFalse,
   sql,
   timestampToTimestampBytes,
   timestampBytesToTimestamp,
-} from "../../src/index.js";
+} from "../../src/index.ts";
 import type {
   EncryptedCrdtMessage,
   EncryptedDbChange,
-} from "../../src/local-first/Storage.js";
-import { createInitialTimestamp } from "../../src/local-first/Timestamp.js";
-import { testCreateDeps, testCreateRun } from "../../src/Task.js";
-import { setupSqliteAndRelayStorage } from "../_deps.js";
+} from "../../src/local-first/Storage.ts";
+import { createInitialTimestamp } from "../../src/local-first/Timestamp.ts";
+import { testCreateDeps, testCreateRun } from "../../src/Task.ts";
+import { setupSqliteAndRelayStorage } from "../_deps.ts";
 import {
   testAppOwner,
   testAppOwner2,
   testAppOwner2IdBytes,
   testAppOwnerIdBytes,
   testTimestampsAsc,
-} from "./_fixtures.js";
+} from "./_fixtures.ts";
 
 test("validateWriteKey", async () => {
   await using setup = await setupSqliteAndRelayStorage();

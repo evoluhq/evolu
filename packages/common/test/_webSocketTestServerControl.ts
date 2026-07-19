@@ -1,4 +1,4 @@
-import { isServer } from "../src/Platform.js";
+import { isServer } from "../src/Platform.ts";
 
 declare module "vitest/browser" {
   interface BrowserCommands {
@@ -9,7 +9,7 @@ declare module "vitest/browser" {
 
 export const startTestWebSocketServer = async (): Promise<number> => {
   if (isServer) {
-    const { createServer } = await import("./_webSocketTestServer.js");
+    const { createServer } = await import("./_webSocketTestServer.ts");
     return createServer();
   }
 
@@ -19,7 +19,7 @@ export const startTestWebSocketServer = async (): Promise<number> => {
 
 export const stopTestWebSocketServer = async (port: number): Promise<void> => {
   if (isServer) {
-    const { closeServer } = await import("./_webSocketTestServer.js");
+    const { closeServer } = await import("./_webSocketTestServer.ts");
     await closeServer(port);
     return;
   }

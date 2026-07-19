@@ -1,8 +1,8 @@
 import { assert, describe, expect, expectTypeOf, test } from "vitest";
-import type { Brand } from "../src/Brand.js";
-import { exhaustiveCheck, lazyVoid } from "../src/Function.js";
-import { err, ok } from "../src/Result.js";
-import { testCreateDeps } from "../src/Task.js";
+import type { Brand } from "../src/Brand.ts";
+import { exhaustiveCheck, lazyVoid } from "../src/Function.ts";
+import { err, ok } from "../src/Result.ts";
+import { testCreateDeps } from "../src/Task.ts";
 import type {
   AnyType,
   ArrayBufferError,
@@ -51,7 +51,7 @@ import type {
   TypeErrors,
   UndefinedError,
   UnionError,
-} from "../src/Type.js";
+} from "../src/Type.ts";
 import {
   array,
   ArrayBuffer,
@@ -150,7 +150,7 @@ import {
   union,
   Unknown,
   UrlSafeString,
-} from "../src/Type.js";
+} from "../src/Type.ts";
 
 test("Base Types", () => {
   expect(Unknown.from(42)).toEqual({ ok: true, value: 42 });

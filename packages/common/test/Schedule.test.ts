@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
-import type { RandomNumber } from "../src/Random.js";
-import type { NextResult } from "../src/Result.js";
-import { done, err, ok } from "../src/Result.js";
-import type { Schedule } from "../src/Schedule.js";
+import type { RandomNumber } from "../src/Random.ts";
+import type { NextResult } from "../src/Result.ts";
+import { done, err, ok } from "../src/Result.ts";
+import type { Schedule } from "../src/Schedule.ts";
 import {
   addDelay,
   always,
@@ -48,16 +48,16 @@ import {
   whileScheduleInput,
   whileScheduleOutput,
   windowed,
-} from "../src/Schedule.js";
-import { testCreateDeps } from "../src/Task.js";
+} from "../src/Schedule.ts";
+import { testCreateDeps } from "../src/Task.ts";
 import {
   maxMillis,
   Millis,
   minMillis,
   PositiveMillis,
   testCreateTime,
-} from "../src/Time.js";
-import { type DateIso, NonNegativeInt, Ratio } from "../src/Type.js";
+} from "../src/Time.ts";
+import { type DateIso, NonNegativeInt, Ratio } from "../src/Type.ts";
 
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {

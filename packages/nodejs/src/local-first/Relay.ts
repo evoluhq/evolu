@@ -29,8 +29,8 @@ import { once } from "events";
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import { createTimingSafeEqual } from "../Crypto.js";
-import { createBetterSqliteDriver } from "../Sqlite.js";
+import { createTimingSafeEqual } from "../Crypto.ts";
+import { createBetterSqliteDriver } from "../Sqlite.ts";
 
 export interface NodeJsRelayConfig extends RelayConfig {
   /** The port number for the HTTP server. */

@@ -11,7 +11,7 @@ import {
   createWorkerDeps,
   createWorkerSelf,
   installOneTabSharedWorkerPolyfill,
-} from "../src/Worker.js";
+} from "../src/Worker.ts";
 
 interface WorkerInput {
   readonly type: "echo";

@@ -4,17 +4,17 @@
  * @module
  */
 
-import { objectFrom } from "./Object.js";
-import type { ReadonlyStore } from "./Store.js";
-import { createStore } from "./Store.js";
-import type { Task } from "./Task.js";
+import { objectFrom } from "./Object.ts";
+import type { ReadonlyStore } from "./Store.ts";
+import { createStore } from "./Store.ts";
+import type { Task } from "./Task.ts";
 import {
   createTime,
   formatMillisAsClockTime,
   formatMillisAsDuration,
   type Millis,
   type TimeDep,
-} from "./Time.js";
+} from "./Time.ts";
 
 /**
  * Platform-agnostic console with structured logging.

@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
-import type { Brand } from "../src/Brand.js";
-import { testCreateId } from "../src/Test.js";
-import type { Id } from "../src/Type.js";
+import type { Brand } from "../src/Brand.ts";
+import { testCreateId } from "../src/Test.ts";
+import type { Id } from "../src/Type.ts";
 
 describe("testCreateId", () => {
   test("creates file-local stable pseudo-random ids", () => {

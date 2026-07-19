@@ -7,7 +7,7 @@ import type {
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
-} from "../../src/local-first/Timestamp.js";
+} from "../../src/local-first/Timestamp.ts";
 import {
   Counter,
   createInitialTimestamp,
@@ -21,19 +21,19 @@ import {
   sendTimestamp,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
-} from "../../src/local-first/Timestamp.js";
-import { increment } from "../../src/Number.js";
-import { orderNumber } from "../../src/Order.js";
-import type { Result } from "../../src/Result.js";
-import { ok } from "../../src/Result.js";
-import { testCreateDeps } from "../../src/Task.js";
-import type { TimeDep } from "../../src/Time.js";
+} from "../../src/local-first/Timestamp.ts";
+import { increment } from "../../src/Number.ts";
+import { orderNumber } from "../../src/Order.ts";
+import type { Result } from "../../src/Result.ts";
+import { ok } from "../../src/Result.ts";
+import { testCreateDeps } from "../../src/Task.ts";
+import type { TimeDep } from "../../src/Time.ts";
 import {
   maxMillis,
   Millis,
   minMillis,
   testCreateTime,
-} from "../../src/Time.js";
+} from "../../src/Time.ts";
 
 test("Millis", () => {
   expect(Millis.from(-1).ok).toBe(false);

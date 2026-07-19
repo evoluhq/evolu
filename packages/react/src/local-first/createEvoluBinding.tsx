@@ -20,7 +20,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useIsSsr } from "./useIsSsr.js";
+import { useIsSsr } from "./useIsSsr.ts";
 
 export interface ReactBinding<S extends EvoluSchema = EvoluSchema> {
   /** Provides {@link Evolu} to React descendants consumed via `useEvolu`. */

@@ -4,10 +4,10 @@
  * @module
  */
 
-import { assert } from "./Assert.js";
-import type { Brand } from "./Brand.js";
-import type { ConsoleDep, ConsoleStoreOutputEntryDep } from "./Console.js";
-import { disposable } from "./Function.js";
+import { assert } from "./Assert.ts";
+import type { Brand } from "./Brand.ts";
+import type { ConsoleDep, ConsoleStoreOutputEntryDep } from "./Console.ts";
+import { disposable } from "./Function.ts";
 
 /**
  * Typed, disposable Worker.

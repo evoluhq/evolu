@@ -3,8 +3,8 @@ import {
   createRefCountedRelation,
   createRelation,
   type RefCountedRelation,
-} from "../src/Relation.js";
-import { type NonNegativeInt, type PositiveInt } from "../src/Type.js";
+} from "../src/Relation.ts";
+import { type NonNegativeInt, type PositiveInt } from "../src/Type.ts";
 
 describe("Relation", () => {
   test("add and iterateA/iterateB", () => {

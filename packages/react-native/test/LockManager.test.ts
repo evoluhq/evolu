@@ -1,6 +1,6 @@
 import { testName } from "@evolu/common";
 import { describe, expect, test } from "vitest";
-import { lockManager } from "../src/LockManager.js";
+import { lockManager } from "../src/LockManager.ts";
 
 describe("lockManager", () => {
   describe("request", () => {

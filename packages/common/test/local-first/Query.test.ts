@@ -1,6 +1,6 @@
 import { ColumnNode, type SelectQueryNode } from "kysely";
 import { expect, test } from "vitest";
-import type { Query, Row } from "../../src/local-first/Query.js";
+import type { Query, Row } from "../../src/local-first/Query.ts";
 import {
   applyPatches,
   evoluJsonArrayFrom,
@@ -10,10 +10,10 @@ import {
   kyselyJsonIdentifier,
   kyselySql,
   makePatches,
-} from "../../src/local-first/Query.js";
-import { createQueryBuilder } from "../../src/local-first/Schema.js";
-import { sqliteQueryStringToSqliteQuery } from "../../src/Sqlite.js";
-import { id, NonEmptyString100 } from "../../src/Type.js";
+} from "../../src/local-first/Query.ts";
+import { createQueryBuilder } from "../../src/local-first/Schema.ts";
+import { sqliteQueryStringToSqliteQuery } from "../../src/Sqlite.ts";
+import { id, NonEmptyString100 } from "../../src/Type.ts";
 
 const PersonId = id("Person");
 const PetId = id("Pet");

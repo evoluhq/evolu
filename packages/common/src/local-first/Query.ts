@@ -21,15 +21,15 @@ import {
   TableNode,
   ValueNode,
 } from "kysely";
-import type { Brand } from "../Brand.js";
-import { createRandomBytes } from "../Crypto.js";
-import type { ReadonlyRecord } from "../Object.js";
-import { createRecord, isPlainObject } from "../Object.js";
-import type { SqliteQueryString } from "../Sqlite.js";
-import { eqSqliteValue, SqliteValue } from "../Sqlite.js";
-import { createId, String } from "../Type.js";
-import type { Simplify } from "../Types.js";
-import type { EvoluSchema } from "./Schema.js";
+import type { Brand } from "../Brand.ts";
+import { createRandomBytes } from "../Crypto.ts";
+import type { ReadonlyRecord } from "../Object.ts";
+import { createRecord, isPlainObject } from "../Object.ts";
+import type { SqliteQueryString } from "../Sqlite.ts";
+import { eqSqliteValue, SqliteValue } from "../Sqlite.ts";
+import { createId, String } from "../Type.ts";
+import type { Simplify } from "../Types.ts";
+import type { EvoluSchema } from "./Schema.ts";
 
 export { sql as kyselySql } from "kysely";
 export type { NotNull as KyselyNotNull } from "kysely";

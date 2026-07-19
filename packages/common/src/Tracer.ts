@@ -4,8 +4,8 @@
  * @module
  */
 
-import type { Ref } from "./Ref.js";
-import type { Run } from "./Task.js";
+import type { Ref } from "./Ref.ts";
+import type { Run } from "./Task.ts";
 
 /**
  * Minimal tracer interface for observability.

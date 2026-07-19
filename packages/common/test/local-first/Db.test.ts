@@ -1,41 +1,41 @@
 import { describe, expect, test } from "vitest";
-import { assert } from "../../src/Assert.js";
+import { assert } from "../../src/Assert.ts";
 import {
   createConsoleStoreOutput,
   testCreateConsole,
   type ConsoleEntry,
   type ConsoleStoreOutput,
-} from "../../src/Console.js";
-import { lazyVoid } from "../../src/Function.js";
-import { startDbWorker, type DbWorkerInit } from "../../src/local-first/Db.js";
+} from "../../src/Console.ts";
+import { lazyVoid } from "../../src/Function.ts";
+import { startDbWorker, type DbWorkerInit } from "../../src/local-first/Db.ts";
 import {
   applyProtocolMessageAsRelay,
   createProtocolMessageFromCrdtMessages,
   decryptAndDecodeDbChange,
-} from "../../src/local-first/Protocol.js";
-import { createQueryBuilder } from "../../src/local-first/Schema.js";
+} from "../../src/local-first/Protocol.ts";
+import { createQueryBuilder } from "../../src/local-first/Schema.ts";
 import type {
   ConsoleEntryOrError,
   DbWorkerInput,
   DbWorkerOutput,
   DbWorkerRequest,
   EvoluInstanceId,
-} from "../../src/local-first/Shared.js";
-import { consoleEntryOrErrorBroadcastChannelName } from "../../src/local-first/Shared.js";
-import { DbChange } from "../../src/local-first/Storage.js";
+} from "../../src/local-first/Shared.ts";
+import { consoleEntryOrErrorBroadcastChannelName } from "../../src/local-first/Shared.ts";
+import { DbChange } from "../../src/local-first/Storage.ts";
 import {
   createTimestamp,
   TimestampBytes,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
-} from "../../src/local-first/Timestamp.js";
+} from "../../src/local-first/Timestamp.ts";
 import {
   acquireLeaderLock,
   testCreateLockManager,
   type LockManagerDep,
-} from "../../src/LockManager.js";
-import { err, ok } from "../../src/Result.js";
-import { createSet, emptySet } from "../../src/Set.js";
+} from "../../src/LockManager.ts";
+import { err, ok } from "../../src/Result.ts";
+import { createSet, emptySet } from "../../src/Set.ts";
 import {
   createSqlite,
   getSqliteSnapshot,
@@ -44,12 +44,12 @@ import {
   type Sqlite,
   type SqliteSchema,
   type SqliteValue,
-} from "../../src/Sqlite.js";
-import { testCreateDeps, testCreateRun } from "../../src/Task.js";
-import { testCreateId } from "../../src/Test.js";
-import { Millis, testCreateTime, type TestTime } from "../../src/Time.js";
-import { id, String, testName, type Id, type Name } from "../../src/Type.js";
-import type { ExtractType } from "../../src/Types.js";
+} from "../../src/Sqlite.ts";
+import { testCreateDeps, testCreateRun } from "../../src/Task.ts";
+import { testCreateId } from "../../src/Test.ts";
+import { Millis, testCreateTime, type TestTime } from "../../src/Time.ts";
+import { id, String, testName, type Id, type Name } from "../../src/Type.ts";
+import type { ExtractType } from "../../src/Types.ts";
 import {
   createMessagePort,
   createWorker,
@@ -58,13 +58,13 @@ import {
   testWaitForWorkerMessage,
   type MessagePort,
   type WorkerSelf,
-} from "../../src/Worker.js";
-import { setupSqliteAndRelayStorage, testCreateSqliteDep } from "../_deps.js";
+} from "../../src/Worker.ts";
+import { setupSqliteAndRelayStorage, testCreateSqliteDep } from "../_deps.ts";
 import {
   testAppOwner,
   testAppOwner2,
   testAppOwnerIdBytes,
-} from "./_fixtures.js";
+} from "./_fixtures.ts";
 
 const TestSchema = {
   testTable: {

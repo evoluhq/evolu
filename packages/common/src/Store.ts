@@ -4,10 +4,10 @@
  * @module
  */
 
-import type { Eq } from "./Eq.js";
-import { eqSameValueZero } from "./Eq.js";
-import type { Ref } from "./Ref.js";
-import { createRef } from "./Ref.js";
+import type { Eq } from "./Eq.ts";
+import { eqSameValueZero } from "./Eq.ts";
+import type { Ref } from "./Ref.ts";
+import { createRef } from "./Ref.ts";
 
 /**
  * A store for managing state with change notifications. Like a {@link Ref} with

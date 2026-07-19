@@ -9,25 +9,25 @@ import {
   firstInArray,
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
-} from "../Array.js";
-import { assert, assertNonEmptyReadonlyArray, assertType } from "../Assert.js";
-import type { ConsoleLevel } from "../Console.js";
+} from "../Array.ts";
+import { assert, assertNonEmptyReadonlyArray, assertType } from "../Assert.ts";
+import type { ConsoleLevel } from "../Console.ts";
 import {
   EncryptionKey,
   type DecryptWithXChaCha20Poly1305Error,
   type RandomBytesDep,
-} from "../Crypto.js";
-import { lazyFalse, lazyVoid } from "../Function.js";
-import type { LockManagerDep } from "../LockManager.js";
-import { acquireLeaderLock } from "../LockManager.js";
-import { createRecord, getProperty, objectToEntries } from "../Object.js";
-import { ok, type Result } from "../Result.js";
+} from "../Crypto.ts";
+import { lazyFalse, lazyVoid } from "../Function.ts";
+import type { LockManagerDep } from "../LockManager.ts";
+import { acquireLeaderLock } from "../LockManager.ts";
+import { createRecord, getProperty, objectToEntries } from "../Object.ts";
+import { ok, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
   SqliteDep,
   SqliteRow,
   SqliteSchema,
-} from "../Sqlite.js";
+} from "../Sqlite.ts";
 import {
   booleanToSqliteBoolean,
   createSqlite,
@@ -36,27 +36,27 @@ import {
   sqliteBooleanToBoolean,
   sqliteQueryStringToSqliteQuery,
   SqliteValue,
-} from "../Sqlite.js";
-import { callback, type Run, type Task } from "../Task.js";
-import { Millis, millisToDateIso, type TimeDep } from "../Time.js";
-import type { Name } from "../Type.js";
+} from "../Sqlite.ts";
+import { callback, type Run, type Task } from "../Task.ts";
+import { Millis, millisToDateIso, type TimeDep } from "../Time.ts";
+import type { Name } from "../Type.ts";
 import {
   Id,
   IdBytes,
   idBytesToId,
   idToIdBytes,
   onePositiveInt,
-} from "../Type.js";
-import type { ExtractType } from "../Types.js";
+} from "../Type.ts";
+import type { ExtractType } from "../Types.ts";
 import type {
   CreateBroadcastChannelDep,
   NativeMessagePort,
   Worker,
   WorkerDeps,
   WorkerSelf,
-} from "../Worker.js";
-import type { OwnerId, OwnerIdBytes } from "./Owner.js";
-import { ownerIdBytesToOwnerId, ownerIdToOwnerIdBytes } from "./Owner.js";
+} from "../Worker.ts";
+import type { OwnerId, OwnerIdBytes } from "./Owner.ts";
+import { ownerIdBytesToOwnerId, ownerIdToOwnerIdBytes } from "./Owner.ts";
 import {
   applyProtocolMessageAsClient,
   createProtocolMessageForSync,
@@ -67,22 +67,22 @@ import {
   type ProtocolInvalidDataError,
   type ProtocolMessage,
   type ProtocolTimestampMismatchError,
-} from "./Protocol.js";
-import type { Query, RowsByQueryMap } from "./Query.js";
-import type { MutationChange, SqliteSchemaDep } from "./Schema.js";
+} from "./Protocol.ts";
+import type { Query, RowsByQueryMap } from "./Query.ts";
+import type { MutationChange, SqliteSchemaDep } from "./Schema.ts";
 import {
   ensureSqliteSchema,
   getEvoluSqliteSchema,
   systemColumns,
-} from "./Schema.js";
+} from "./Schema.ts";
 import type {
   ConsoleEntryOrError,
   DbWorkerInput,
   DbWorkerOutput,
   DbWorkerQueuedResponse,
   DbWorkerRequest,
-} from "./Shared.js";
-import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.js";
+} from "./Shared.ts";
+import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -94,13 +94,13 @@ import {
   type BaseSqliteStorageDep,
   type CrdtMessage,
   type Storage,
-} from "./Storage.js";
+} from "./Storage.ts";
 import type {
   Timestamp,
   TimestampCounterOverflowError,
   TimestampDriftError,
   TimestampTimeOutOfRangeError,
-} from "./Timestamp.js";
+} from "./Timestamp.ts";
 import {
   createInitialTimestamp,
   defaultTimestampMaxDrift,
@@ -110,7 +110,7 @@ import {
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
   type TimestampConfigDep,
-} from "./Timestamp.js";
+} from "./Timestamp.ts";
 
 export type DbWorker = Worker<DbWorkerInit>;
 

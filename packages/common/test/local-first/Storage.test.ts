@@ -1,7 +1,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { assert, expect, test } from "vitest";
-import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.js";
-import type { StorageInsertTimestampStrategy } from "../../src/local-first/Storage.js";
+import { ownerIdToOwnerIdBytes } from "../../src/local-first/Owner.ts";
+import type { StorageInsertTimestampStrategy } from "../../src/local-first/Storage.ts";
 import {
   createBaseSqliteStorage,
   createBaseSqliteStorageTables,
@@ -12,29 +12,29 @@ import {
   testFingerprintTimestamps,
   timestampBytesToFingerprint,
   zeroFingerprint,
-} from "../../src/local-first/Storage.js";
+} from "../../src/local-first/Storage.ts";
 import {
   Counter,
   createTimestamp,
   orderTimestampBytes,
   TimestampBytes,
   timestampToTimestampBytes,
-} from "../../src/local-first/Timestamp.js";
-import { computeBalancedBuckets } from "../../src/Number.js";
-import type { RandomNumber } from "../../src/Random.js";
-import { createRandom } from "../../src/Random.js";
-import { getOrThrow, ok } from "../../src/Result.js";
-import type { SqliteQuery } from "../../src/Sqlite.js";
-import { sql } from "../../src/Sqlite.js";
-import { testCreateDeps } from "../../src/Task.js";
-import type { Millis } from "../../src/Time.js";
+} from "../../src/local-first/Timestamp.ts";
+import { computeBalancedBuckets } from "../../src/Number.ts";
+import type { RandomNumber } from "../../src/Random.ts";
+import { createRandom } from "../../src/Random.ts";
+import { getOrThrow, ok } from "../../src/Result.ts";
+import type { SqliteQuery } from "../../src/Sqlite.ts";
+import { sql } from "../../src/Sqlite.ts";
+import { testCreateDeps } from "../../src/Task.ts";
+import type { Millis } from "../../src/Time.ts";
 import {
   createId,
   NonNegativeInt,
   PositiveInt,
   zeroNonNegativeInt,
-} from "../../src/Type.js";
-import { setupSqlite } from "../_deps.js";
+} from "../../src/Type.ts";
+import { setupSqlite } from "../_deps.ts";
 import {
   testAnotherTimestampsAsc,
   testAppOwner2,
@@ -42,7 +42,7 @@ import {
   testTimestampsAsc,
   testTimestampsDesc,
   testTimestampsRandom,
-} from "./_fixtures.js";
+} from "./_fixtures.ts";
 
 const setupSqliteAndStorage = async () => {
   const setup = await setupSqlite();

@@ -9,42 +9,42 @@ import {
   isNonEmptyArray,
   mapArray,
   type NonEmptyReadonlyArray,
-} from "../Array.js";
-import { assert, assertNonEmptyReadonlyArray } from "../Assert.js";
-import { createCallbacks } from "../Callbacks.js";
-import type { ConsoleDep } from "../Console.js";
-import { createConsole } from "../Console.js";
-import { createUnknownError } from "../Error.js";
-import { disposable, exhaustiveCheck, todo } from "../Function.js";
+} from "../Array.ts";
+import { assert, assertNonEmptyReadonlyArray } from "../Assert.ts";
+import { createCallbacks } from "../Callbacks.ts";
+import type { ConsoleDep } from "../Console.ts";
+import { createConsole } from "../Console.ts";
+import { createUnknownError } from "../Error.ts";
+import { disposable, exhaustiveCheck, todo } from "../Function.ts";
 import {
   acquireLeaderLock,
   acquireLeaderLockCallback,
   type LockManagerDep,
-} from "../LockManager.js";
-import { createMicrotaskBatch } from "../Microtask.js";
-import type { FlushSyncDep, ReloadAppDep } from "../Platform.js";
-import { createRefCountByKey } from "../RefCount.js";
-import { err, ok } from "../Result.js";
-import { isNonEmptySet } from "../Set.js";
-import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.js";
-import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.js";
-import { createStore } from "../Store.js";
-import type { Task } from "../Task.js";
-import type { Id, TypeError } from "../Type.js";
+} from "../LockManager.ts";
+import { createMicrotaskBatch } from "../Microtask.ts";
+import type { FlushSyncDep, ReloadAppDep } from "../Platform.ts";
+import { createRefCountByKey } from "../RefCount.ts";
+import { err, ok } from "../Result.ts";
+import { isNonEmptySet } from "../Set.ts";
+import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.ts";
+import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.ts";
+import { createStore } from "../Store.ts";
+import type { Task } from "../Task.ts";
+import type { Id, TypeError } from "../Type.ts";
 import {
   brand,
   createId,
   createIdFromString,
   Name,
   UrlSafeString,
-} from "../Type.js";
-import type { ExtractType } from "../Types.js";
+} from "../Type.ts";
+import type { ExtractType } from "../Types.ts";
 import type {
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,
-} from "../Worker.js";
-import type { CreateDbWorkerDep } from "./Db.js";
-import type { EvoluError } from "./Error.js";
+} from "../Worker.ts";
+import type { CreateDbWorkerDep } from "./Db.ts";
+import type { EvoluError } from "./Error.ts";
 import type {
   AppOwner,
   Owner,
@@ -52,8 +52,8 @@ import type {
   OwnerTransport,
   ReadonlyOwner,
   SyncOwner,
-} from "./Owner.js";
-import { createOwnerWebSocketTransport } from "./Owner.js";
+} from "./Owner.ts";
+import { createOwnerWebSocketTransport } from "./Owner.ts";
 import type {
   Queries,
   QueriesToQueryRowsPromises,
@@ -61,25 +61,25 @@ import type {
   QueryRows,
   Row,
   RowsByQueryMap,
-} from "./Query.js";
-import { applyPatches } from "./Query.js";
+} from "./Query.ts";
+import { applyPatches } from "./Query.ts";
 import type {
   EvoluSchema,
   IndexesConfig,
   Mutation,
   MutationChange,
   ValidateSchema,
-} from "./Schema.js";
-import { evoluSchemaToSqliteSchema } from "./Schema.js";
+} from "./Schema.ts";
+import { evoluSchemaToSqliteSchema } from "./Schema.ts";
 import type {
   ConsoleEntryOrError,
   EvoluInput,
   EvoluOutput,
   SharedWorkerDep,
-} from "./Shared.js";
-import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.js";
-import { DbChange } from "./Storage.js";
-import type { Timestamp } from "./Timestamp.js";
+} from "./Shared.ts";
+import { consoleEntryOrErrorBroadcastChannelName } from "./Shared.ts";
+import { DbChange } from "./Storage.ts";
+import type { Timestamp } from "./Timestamp.ts";
 
 export interface EvoluConfig {
   /**

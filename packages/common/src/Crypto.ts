@@ -12,10 +12,10 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha512 } from "@noble/hashes/sha2.js";
 import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
-import { arrayFrom } from "./Array.js";
-import type { RandomLibDep } from "./Random.js";
-import type { Result } from "./Result.js";
-import { trySync } from "./Result.js";
+import { arrayFrom } from "./Array.ts";
+import type { RandomLibDep } from "./Random.ts";
+import type { Result } from "./Result.ts";
+import { trySync } from "./Result.ts";
 import {
   brand,
   length,
@@ -23,7 +23,7 @@ import {
   Uint8Array,
   type Typed,
   zeroNonNegativeInt,
-} from "./Type.js";
+} from "./Type.ts";
 
 export interface RandomBytes {
   /**

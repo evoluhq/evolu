@@ -9,6 +9,7 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "inlineSources": false,
+    "rewriteRelativeImportExtensions": true,
     "verbatimModuleSyntax": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,

@@ -8,12 +8,12 @@ import {
   decryptWithXChaCha20Poly1305,
   encryptWithXChaCha20Poly1305,
   XChaCha20Poly1305Ciphertext,
-} from "../src/Crypto.js";
-import { mnemonicToOwnerSecret } from "../src/index.js";
-import { ok } from "../src/Result.js";
-import { testCreateDeps } from "../src/Task.js";
-import { Mnemonic, NonNegativeInt } from "../src/Type.js";
-import { testAppOwner } from "./local-first/_fixtures.js";
+} from "../src/Crypto.ts";
+import { mnemonicToOwnerSecret } from "../src/index.ts";
+import { ok } from "../src/Result.ts";
+import { testCreateDeps } from "../src/Task.ts";
+import { Mnemonic, NonNegativeInt } from "../src/Type.ts";
+import { testAppOwner } from "./local-first/_fixtures.ts";
 
 test("encryptWithXChaCha20Poly1305 / decryptWithXChaCha20Poly1305", () => {
   const deps = testCreateDeps();

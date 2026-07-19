@@ -26,7 +26,7 @@
  */
 
 /** Optional value. */
-import type { Typed } from "./Type.js";
+import type { Typed } from "./Type.ts";
 
 /** Optional value. */
 export type Option<T> = Some<T> | None;

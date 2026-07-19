@@ -7,13 +7,13 @@ import {
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   ownerSecretToMnemonic,
-} from "../../src/index.js";
-import { testCreateDeps } from "../../src/Task.js";
+} from "../../src/index.ts";
+import { testCreateDeps } from "../../src/Task.ts";
 import {
   testAppOwner,
   testAppOwnerSecret,
   testAppOwner2Secret,
-} from "./_fixtures.js";
+} from "./_fixtures.ts";
 
 test("ownerIdToOwnerIdBytes/ownerIdBytesToOwnerId", () => {
   const id = testAppOwner.id;

@@ -1,11 +1,11 @@
 import { expect } from "vitest";
-import { lazyVoid } from "../src/Function.js";
+import { lazyVoid } from "../src/Function.ts";
 import {
   isHermes,
   testGlobalUncaughtErrors as testGlobalUncaughtErrorsBase,
   testGlobalUnhandledRejections as testGlobalUnhandledRejectionsBase,
   type TestGlobalErrors,
-} from "../src/Platform.js";
+} from "../src/Platform.ts";
 
 // Vitest browser logs expected global error events through console.error even
 // when a test installs a listener and asserts the event. Silence that echo while
