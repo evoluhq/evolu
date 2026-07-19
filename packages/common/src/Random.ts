@@ -67,11 +67,12 @@ export interface RandomLibDep {
   readonly randomLib: RandomLib;
 }
 
-/** Creates {@link RandomLib}. */
+/** Creates a random number generator from the NPM `random` package. */
 export const createRandomLib = (): RandomLib => new RandomLib();
 
 /**
- * Creates a seeded {@link RandomLib} for deterministic tests.
+ * Creates a seeded random number generator from the NPM `random` package for
+ * deterministic tests.
  *
  * Default seed "evolu".
  */
