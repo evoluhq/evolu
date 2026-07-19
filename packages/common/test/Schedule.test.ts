@@ -57,7 +57,7 @@ import {
   PositiveMillis,
   testCreateTime,
 } from "../src/Time.js";
-import { NonNegativeInt, Ratio } from "../src/Type.js";
+import { type DateIso, NonNegativeInt, Ratio } from "../src/Type.js";
 
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {
@@ -70,11 +70,17 @@ const createScheduleDepsWithNow = (...times: ReadonlyArray<number>) => {
   const deps = testCreateDeps();
   let index = 0;
   const time = testCreateTime({ startAt: Millis.orThrow(times[0] ?? 0) });
+  function now(): Millis;
+  function now(type: "DateIso"): DateIso;
+  function now(type?: "DateIso"): Millis | DateIso {
+    if (type === "DateIso") return time.now(type);
+    return Millis.orThrow(times[Math.min(index++, times.length - 1)]);
+  }
   return {
     ...deps,
     time: {
       ...time,
-      now: () => Millis.orThrow(times[Math.min(index++, times.length - 1)]),
+      now,
     },
   };
 };

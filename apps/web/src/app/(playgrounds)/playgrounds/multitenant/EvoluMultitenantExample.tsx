@@ -161,7 +161,7 @@ const AppOwners: FC<{
     evolu.upsert("_appOwner", {
       id: appOwner.id,
       secret,
-      lastOpenedAt: run.deps.time.nowDateIso(),
+      lastOpenedAt: run.deps.time.now("DateIso"),
       isDeleted: Evolu.sqliteFalse,
     });
   };

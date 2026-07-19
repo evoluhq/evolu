@@ -27,16 +27,39 @@ import type {
 
 /** Time and timer operations. */
 export interface Time {
-  /** Returns current time as Unix epoch milliseconds. */
-  readonly now: () => Millis;
+  readonly now: {
+    /** Returns current time as Unix epoch milliseconds. */
+    (): Millis;
 
-  /** Returns current time as an ISO 8601 UTC string. */
-  readonly nowDateIso: () => DateIso;
+    /** Returns current time as an ISO 8601 UTC string. */
+    (type: "DateIso"): DateIso;
+  };
+
+  readonly performance: {
+    /** Unix epoch timestamp used as the origin for `performance.now()`. */
+    readonly timeOrigin: PerformanceTimeOrigin;
+
+    /**
+     * Returns a high-resolution timestamp in milliseconds relative to
+     * `performance.timeOrigin`.
+     *
+     * Unlike {@link Time.now}, this value is not Unix epoch time and is
+     * unaffected by system clock adjustments. Like Node.js
+     * `process.hrtime.bigint()`, it is suitable for measuring elapsed time, but
+     * it uses the Web Performance API's number representation rather than
+     * nanoseconds as a bigint.
+     */
+    readonly now: () => PerformanceTime;
+  };
 
   /** Schedules a callback after the specified positive delay. */
   readonly setTimeout: (fn: () => void, delay: PositiveDuration) => TimeoutId;
 
-  /** Cancels a timeout scheduled with {@link Time.setTimeout}. */
+  /**
+   * Cancels a timeout scheduled with this instance's {@link Time.setTimeout}.
+   *
+   * Throws if the timeout was scheduled by another {@link Time} instance.
+   */
   readonly clearTimeout: (id: TimeoutId) => void;
 }
 
@@ -51,68 +74,95 @@ export interface TimeDep {
  */
 export type TimeoutId = Brand<"TimeoutId">;
 
+interface TimeoutIdInternal {
+  readonly owner: symbol;
+  readonly clear: () => void;
+}
+
 /**
- * Creates a {@link Time} using `Date.now()` and `globalThis.setTimeout`.
+ * Creates a {@link Time} using `Date.now()`, `performance`, and
+ * `globalThis.setTimeout`.
  *
- * Timeout deadlines use the wall clock so time spent in system suspension
- * counts toward the delay. System clock adjustments can therefore shorten or
- * lengthen pending timeouts.
+ * Long timeouts are split into native timer chunks and tracked against an
+ * absolute wall-clock deadline so late callback execution and system suspension
+ * do not extend the requested delay. System clock adjustments can therefore
+ * shorten or lengthen long timeouts.
  *
  * Throws if the system clock returns an out-of-range value. This is intentional
  * — there's no reasonable fallback for a misconfigured clock.
  */
 export const createTime = (): Time => {
-  const getNowMillis = (): Millis => Millis.orThrow(globalThis.Date.now());
+  const timeoutOwner = Symbol("Time");
+  function now(): Millis;
+  function now(type: "DateIso"): DateIso;
+  function now(type?: "DateIso"): Millis | DateIso {
+    const millis = getSystemNowMillis();
+    return type === "DateIso" ? millisToDateIso(millis) : millis;
+  }
 
   return {
-    now: () => getNowMillis(),
+    now,
 
-    nowDateIso: () => millisToDateIso(getNowMillis()),
+    performance: {
+      timeOrigin: globalThis.performance.timeOrigin as PerformanceTimeOrigin,
+      now: () => globalThis.performance.now() as PerformanceTime,
+    },
 
-    setTimeout: scheduleNativeTimeout,
+    setTimeout: (callback, duration) =>
+      scheduleNativeTimeout(timeoutOwner, callback, duration),
 
     clearTimeout: (id) => {
-      (id as unknown as () => void)();
+      clearTimeoutId(timeoutOwner, id);
     },
   };
 };
 
 const scheduleNativeTimeout = (
+  owner: symbol,
   callback: () => void,
   duration: PositiveDuration,
 ): TimeoutId => {
   const delay = durationToMillis(duration);
-  // Recompute each chunk from one absolute deadline so time elapsed while the
-  // event loop is suspended, for example during system sleep, is not added again.
-  const deadline = globalThis.Date.now() + delay;
   let cancelled = false;
   let nativeId: ReturnType<typeof globalThis.setTimeout>;
 
-  const onTimeout = (): void => {
-    if (cancelled) return;
+  if (delay <= maxNativeTimeoutMillis) {
+    nativeId = globalThis.setTimeout(() => {
+      if (cancelled) return;
+      cancelled = true;
+      callback();
+    }, delay);
+  } else {
+    // Recompute each chunk from one absolute deadline so time elapsed while the
+    // event loop is suspended, for example during system sleep, is not added again.
+    const deadline = getSystemNowMillis() + delay;
 
-    const remaining = deadline - globalThis.Date.now();
-    if (remaining > 0) {
-      nativeId = globalThis.setTimeout(
-        onTimeout,
-        Math.min(remaining, maxNativeTimeoutMillis),
-      );
-      return;
-    }
+    const onTimeout = (): void => {
+      if (cancelled) return;
 
-    cancelled = true;
-    callback();
-  };
+      const remaining = deadline - getSystemNowMillis();
+      if (remaining > 0) {
+        nativeId = globalThis.setTimeout(
+          onTimeout,
+          Math.min(remaining, maxNativeTimeoutMillis),
+        );
+        return;
+      }
 
-  nativeId = globalThis.setTimeout(
-    onTimeout,
-    Math.min(delay, maxNativeTimeoutMillis),
-  );
+      cancelled = true;
+      callback();
+    };
 
-  return (() => {
-    cancelled = true;
-    globalThis.clearTimeout(nativeId);
-  }) as unknown as TimeoutId;
+    nativeId = globalThis.setTimeout(onTimeout, maxNativeTimeoutMillis);
+  }
+
+  return {
+    owner,
+    clear: () => {
+      cancelled = true;
+      globalThis.clearTimeout(nativeId);
+    },
+  } as unknown as TimeoutId;
 };
 
 /**
@@ -121,6 +171,17 @@ const scheduleNativeTimeout = (
  * logical delays are scheduled in chunks to avoid native timer overflow.
  */
 const maxNativeTimeoutMillis = 2 ** 31 - 1;
+
+const getSystemNowMillis = (): Millis => Millis.orThrow(globalThis.Date.now());
+
+const clearTimeoutId = (owner: symbol, id: TimeoutId): void => {
+  const internal = id as unknown as TimeoutIdInternal;
+  assert(
+    internal.owner === owner,
+    "TimeoutId was created by another Time instance",
+  );
+  internal.clear();
+};
 
 /**
  * Test {@link Time} with controllable timers.
@@ -148,21 +209,23 @@ export interface TestTimeDep {
  * called. Timeouts scheduled via `setTimeout` fire when time is advanced past
  * their deadline.
  *
- * Set `autoIncrement` to automatically increment time by 1ms after each `now()`
- * call. `"microtask"` increments after the current turn, while `"sync"`
- * increments immediately after each read. Omit it to keep time fixed until
- * `advance()` is called.
+ * Set `autoIncrement` to automatically increment time by 1ms after each
+ * wall-clock or performance `now()` call. `"microtask"` increments after the
+ * current turn, while `"sync"` increments immediately after each read. Omit it
+ * to keep time fixed until `advance()` is called.
  */
 export const testCreateTime = (options?: {
   readonly startAt?: Millis;
   readonly autoIncrement?: "microtask" | "sync";
 }): TestTime => {
-  let now = options?.startAt ?? minMillis;
+  const startAt = options?.startAt ?? minMillis;
   const autoIncrement = options?.autoIncrement;
+  const timeoutOwner = Symbol("TestTime");
+  let now = startAt;
   let nextId = 1;
   let advancing = false;
 
-  const pending = new Map<number, { callback: () => void; runAt: number }>();
+  const pending = new Map<number, { callback: () => void; runAt: Millis }>();
   const incrementNow = (): void => {
     now = Millis.orThrow(now + 1);
   };
@@ -179,20 +242,35 @@ export const testCreateTime = (options?: {
     }
     return result;
   };
+  function getNow(): Millis;
+  function getNow(type: "DateIso"): DateIso;
+  function getNow(type?: "DateIso"): Millis | DateIso {
+    const millis = getNowMillis();
+    return type === "DateIso" ? millisToDateIso(millis) : millis;
+  }
 
   return {
-    now: () => getNowMillis(),
+    now: getNow,
 
-    nowDateIso: () => millisToDateIso(getNowMillis()),
+    performance: {
+      timeOrigin: Number(startAt) as PerformanceTimeOrigin,
+      now: () => (getNowMillis() - startAt) as PerformanceTime,
+    },
 
     setTimeout: (callback, delay) => {
+      const runAt = Millis.orThrow(now + durationToMillis(delay));
       const id = nextId++;
-      pending.set(id, { callback, runAt: now + durationToMillis(delay) });
-      return id as unknown as TimeoutId;
+      pending.set(id, { callback, runAt });
+      return {
+        owner: timeoutOwner,
+        clear: () => {
+          pending.delete(id);
+        },
+      } as unknown as TimeoutId;
     },
 
     clearTimeout: (id) => {
-      pending.delete(id as unknown as number);
+      clearTimeoutId(timeoutOwner, id);
     },
 
     advance: (duration) => {
@@ -202,20 +280,20 @@ export const testCreateTime = (options?: {
 
       try {
         while (pending.size > 0) {
-          let nextId: number | null = null;
+          let earliestId: number | null = null;
           let nextRunAt = Number.POSITIVE_INFINITY;
 
           for (const [id, timeout] of pending) {
             if (timeout.runAt <= target && timeout.runAt < nextRunAt) {
-              nextId = id;
+              earliestId = id;
               nextRunAt = timeout.runAt;
             }
           }
 
-          if (nextId === null) break;
+          if (earliestId === null) break;
 
-          const timeout = pending.get(nextId)!;
-          pending.delete(nextId);
+          const timeout = pending.get(earliestId)!;
+          pending.delete(earliestId);
           now = Millis.orThrow(Math.max(now, nextRunAt));
           timeout.callback();
         }
@@ -274,6 +352,28 @@ export const saturateMillis = (value: NonNaNNumber): Millis =>
  */
 export const millisToDateIso = (value: Millis): DateIso =>
   new globalThis.Date(value).toISOString() as DateIso;
+
+/** Unix epoch milliseconds used as the origin for {@link PerformanceTime}. */
+export type PerformanceTimeOrigin = number & Brand<"PerformanceTimeOrigin">;
+
+/** High-resolution milliseconds elapsed since {@link PerformanceTimeOrigin}. */
+export type PerformanceTime = number & Brand<"PerformanceTime">;
+
+/** Elapsed fractional milliseconds measured using {@link PerformanceTime}. */
+export type PerformanceDuration = number & Brand<"PerformanceDuration">;
+
+/**
+ * Returns the elapsed fractional milliseconds between two performance times.
+ *
+ * Throws if `end` precedes `start`.
+ */
+export const performanceDurationBetween = (
+  start: PerformanceTime,
+  end: PerformanceTime,
+): PerformanceDuration => {
+  assert(end >= start, "Performance end time must not precede start time");
+  return (end - start) as PerformanceDuration;
+};
 
 /**
  * Duration can be either a {@link DurationLiteral} or milliseconds as
@@ -450,7 +550,12 @@ export const msLongTask = 50 as Millis;
  *
  * - Under 1 minute: `1.234s`
  * - Under 1 hour: `1m30.000s`
- * - 1 hour or more: `1h30m45.000s`
+ * - Under 1 day: `1h30m45.000s`
+ * - Under 1 week: `1d2h30m45.000s`
+ * - Under 1 year: `1w2d3h30m45.000s`
+ * - 1 year or more: `1y2w3d4h30m45.000s`
+ *
+ * Weeks are 7 days and years are 365 days.
  *
  * ### Example
  *
@@ -458,22 +563,32 @@ export const msLongTask = 50 as Millis;
  * formatMillisAsDuration(1234 as Millis); // "1.234s"
  * formatMillisAsDuration(90000 as Millis); // "1m30.000s"
  * formatMillisAsDuration(3661000 as Millis); // "1h1m1.000s"
+ * formatMillisAsDuration(90061000 as Millis); // "1d1h1m1.000s"
  * ```
  */
 export const formatMillisAsDuration = (millis: Millis): string => {
-  const elapsed = millis / 1000;
-  if (elapsed < 60) {
-    return `${elapsed.toFixed(3)}s`;
-  } else if (elapsed < 3600) {
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = (elapsed % 60).toFixed(3);
-    return `${minutes}m${seconds}s`;
-  } else {
-    const hours = Math.floor(elapsed / 3600);
-    const minutes = Math.floor((elapsed % 3600) / 60);
-    const seconds = (elapsed % 60).toFixed(3);
-    return `${hours}h${minutes}m${seconds}s`;
-  }
+  const seconds = ((millis % durationUnits.m) / durationUnits.s).toFixed(3);
+  if (millis < durationUnits.m) return `${seconds}s`;
+
+  const minutes = Math.floor(millis / durationUnits.m) % 60;
+  if (millis < durationUnits.h) return `${minutes}m${seconds}s`;
+
+  const hours = Math.floor(millis / durationUnits.h) % 24;
+  if (millis < durationUnits.d) return `${hours}h${minutes}m${seconds}s`;
+
+  const daysAfterYears = Math.floor(
+    (millis % durationUnits.y) / durationUnits.d,
+  );
+  const days = daysAfterYears % 7;
+  if (millis < durationUnits.w)
+    return `${days}d${hours}h${minutes}m${seconds}s`;
+
+  const weeks = Math.floor(daysAfterYears / 7);
+  if (millis < durationUnits.y)
+    return `${weeks}w${days}d${hours}h${minutes}m${seconds}s`;
+
+  const years = Math.floor(millis / durationUnits.y);
+  return `${years}y${weeks}w${days}d${hours}h${minutes}m${seconds}s`;
 };
 
 /**

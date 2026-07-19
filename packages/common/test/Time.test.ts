@@ -2,6 +2,9 @@ import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import type {
   Duration,
   DurationLiteral,
+  PerformanceDuration,
+  PerformanceTime,
+  PerformanceTimeOrigin,
   PositiveDuration,
 } from "../src/Time.js";
 import {
@@ -12,11 +15,18 @@ import {
   maxMillis,
   Millis,
   millisToDateIso,
+  performanceDurationBetween,
   PositiveMillis,
   saturateMillis,
   testCreateTime,
 } from "../src/Time.js";
-import { NonNaNNumber } from "../src/Type.js";
+import { type DateIso, NonNaNNumber } from "../src/Type.js";
+
+const negativeMillisCause = {
+  type: "Millis",
+  value: -1,
+  parentError: { type: "NonNegative", value: -1 },
+};
 
 describe("Time", () => {
   afterEach(() => {
@@ -30,13 +40,24 @@ describe("Time", () => {
       expect(createTime().now()).toBe(123);
     });
 
-    test("nowDateIso returns current time as ISO string", () => {
+    test('now with "DateIso" returns current time as ISO string', () => {
       const time = createTime();
-      const result = time.nowDateIso();
+      const result: DateIso = time.now("DateIso");
       expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       const parsed = Date.parse(result);
       expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
       expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
+    });
+
+    test("performance exposes the native clock", () => {
+      vi.spyOn(globalThis.performance, "now").mockReturnValue(123.456);
+
+      const time = createTime();
+      const now: PerformanceTime = time.performance.now();
+      const timeOrigin: PerformanceTimeOrigin = time.performance.timeOrigin;
+
+      expect(now).toBe(123.456);
+      expect(timeOrigin).toBe(globalThis.performance.timeOrigin);
     });
 
     describe("setTimeout", () => {
@@ -62,6 +83,59 @@ describe("Time", () => {
         now += 10;
         callbacks[0]();
 
+        expect(callback).toHaveBeenCalledOnce();
+      });
+
+      test("native-range timeout ignores wall-clock changes", () => {
+        let now = 1000;
+        const callbacks: Array<() => void> = [];
+        const setTimeout = vi
+          .spyOn(globalThis, "setTimeout")
+          .mockImplementation((scheduledCallback) => {
+            callbacks.push(scheduledCallback);
+            return callbacks.length as unknown as ReturnType<
+              typeof globalThis.setTimeout
+            >;
+          });
+        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
+        const callback = vi.fn();
+
+        createTime().setTimeout(callback, "10ms");
+        now -= 1000;
+        callbacks[0]();
+
+        expect(setTimeout).toHaveBeenCalledOnce();
+        expect(callback).toHaveBeenCalledOnce();
+      });
+
+      test("maximum native delay uses one native timer", () => {
+        const maxNativeTimeoutMillis = 2 ** 31 - 1;
+        const callbacks: Array<() => void> = [];
+        const setTimeout = vi
+          .spyOn(globalThis, "setTimeout")
+          .mockImplementation((scheduledCallback) => {
+            callbacks.push(scheduledCallback);
+            return callbacks.length as unknown as ReturnType<
+              typeof globalThis.setTimeout
+            >;
+          });
+        const dateNow = vi.spyOn(globalThis.Date, "now");
+        const callback = vi.fn();
+
+        createTime().setTimeout(
+          callback,
+          PositiveMillis.orThrow(maxNativeTimeoutMillis),
+        );
+
+        expect(setTimeout).toHaveBeenCalledWith(
+          callbacks[0],
+          maxNativeTimeoutMillis,
+        );
+        expect(dateNow).not.toHaveBeenCalled();
+
+        callbacks[0]();
+
+        expect(setTimeout).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledOnce();
       });
 
@@ -102,6 +176,55 @@ describe("Time", () => {
         callbacks[1]();
 
         expect(callback).toHaveBeenCalledOnce();
+      });
+
+      test("rejects an invalid clock when scheduling a long timeout", () => {
+        const setTimeout = vi
+          .spyOn(globalThis, "setTimeout")
+          .mockReturnValue(
+            1 as unknown as ReturnType<typeof globalThis.setTimeout>,
+          );
+        vi.spyOn(globalThis.Date, "now").mockReturnValue(-1);
+
+        expect(() =>
+          createTime().setTimeout(
+            () => undefined,
+            PositiveMillis.orThrow(2 ** 31),
+          ),
+        ).toThrow(
+          expect.objectContaining({
+            message: "getOrThrow",
+            cause: negativeMillisCause,
+          }),
+        );
+        expect(setTimeout).not.toHaveBeenCalled();
+      });
+
+      test("rejects an invalid clock while processing a long timeout", () => {
+        const callbacks: Array<() => void> = [];
+        let now = 1000;
+        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
+        vi.spyOn(globalThis, "setTimeout").mockImplementation(
+          (scheduledCallback) => {
+            callbacks.push(scheduledCallback);
+            return callbacks.length as unknown as ReturnType<
+              typeof globalThis.setTimeout
+            >;
+          },
+        );
+        createTime().setTimeout(
+          () => undefined,
+          PositiveMillis.orThrow(2 ** 31),
+        );
+        now = -1;
+
+        expect(() => callbacks[0]()).toThrow(
+          expect.objectContaining({
+            message: "getOrThrow",
+            cause: negativeMillisCause,
+          }),
+        );
+        expect(callbacks).toHaveLength(1);
       });
 
       test("clearTimeout cancels the active chunk of a long delay", () => {
@@ -163,6 +286,19 @@ describe("Time", () => {
         expect(clearTimeout).toHaveBeenCalledWith(1);
         expect(callback).not.toHaveBeenCalled();
       });
+
+      test("clearTimeout rejects an id created by another Time instance", () => {
+        vi.spyOn(globalThis, "setTimeout").mockReturnValue(
+          1 as unknown as ReturnType<typeof globalThis.setTimeout>,
+        );
+        const firstTime = createTime();
+        const secondTime = createTime();
+        const id = firstTime.setTimeout(() => undefined, "10ms");
+
+        expect(() => secondTime.clearTimeout(id)).toThrow(
+          "TimeoutId was created by another Time instance",
+        );
+      });
     });
   });
 
@@ -205,31 +341,49 @@ describe("Time", () => {
 
       expect(time.now()).toBe(0);
       expect(time.now()).toBe(1);
-      expect(time.nowDateIso()).toBe("1970-01-01T00:00:00.002Z");
+      expect(time.now("DateIso")).toBe("1970-01-01T00:00:00.002Z");
       expect(time.now()).toBe(3);
     });
 
-    test("nowDateIso respects autoIncrement", async () => {
+    test('now with "DateIso" respects autoIncrement', async () => {
       const time = testCreateTime({
         autoIncrement: "microtask",
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
       });
 
-      const first = time.nowDateIso();
+      const first = time.now("DateIso");
 
       await Promise.resolve();
 
-      const second = time.nowDateIso();
+      const second = time.now("DateIso");
 
       expect(first).toBe("2026-01-28T14:30:00.000Z");
       expect(second).toBe("2026-01-28T14:30:00.001Z");
     });
 
-    test("nowDateIso returns ISO string for current time", () => {
+    test('now with "DateIso" returns ISO string for current time', () => {
       const time = testCreateTime({
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
       });
-      expect(time.nowDateIso()).toBe("2026-01-28T14:30:00.000Z");
+      expect(time.now("DateIso")).toBe("2026-01-28T14:30:00.000Z");
+    });
+
+    test("performance starts at its time origin and advances with time", () => {
+      const time = testCreateTime({ startAt: Millis.orThrow(1000) });
+
+      expect(time.performance.timeOrigin).toBe(1000);
+      expect(time.performance.now()).toBe(0);
+
+      time.advance("100ms");
+
+      expect(time.performance.now()).toBe(100);
+    });
+
+    test("performance respects sync autoIncrement", () => {
+      const time = testCreateTime({ autoIncrement: "sync" });
+
+      expect(time.performance.now()).toBe(0);
+      expect(time.now()).toBe(1);
     });
 
     test("setTimeout fires callback when time is advanced past deadline", () => {
@@ -249,6 +403,25 @@ describe("Time", () => {
       expect(called).toBe(true);
     });
 
+    test("setTimeout rejects a deadline after maxMillis", () => {
+      const time = testCreateTime({ startAt: maxMillis });
+
+      expect(() => time.setTimeout(() => undefined, "1ms")).toThrow(
+        expect.objectContaining({
+          message: "getOrThrow",
+          cause: {
+            type: "Millis",
+            value: maxMillis + 1,
+            parentError: {
+              type: "LessThan",
+              value: maxMillis + 1,
+              max: maxMillis + 1,
+            },
+          },
+        }),
+      );
+    });
+
     test("clearTimeout cancels pending timeout", () => {
       const time = testCreateTime();
       let called = false;
@@ -263,6 +436,21 @@ describe("Time", () => {
       expect(called).toBe(false);
     });
 
+    test("clearTimeout rejects an id created by another Time instance", () => {
+      const firstTime = testCreateTime();
+      const secondTime = testCreateTime();
+      const secondCallback = vi.fn();
+      const id = firstTime.setTimeout(() => undefined, "100ms");
+      secondTime.setTimeout(secondCallback, "100ms");
+
+      expect(() => secondTime.clearTimeout(id)).toThrow(
+        "TimeoutId was created by another Time instance",
+      );
+
+      secondTime.advance("100ms");
+      expect(secondCallback).toHaveBeenCalledOnce();
+    });
+
     test("multiple timeouts fire in deadline order", () => {
       const time = testCreateTime();
       const order: Array<number> = [];
@@ -274,6 +462,19 @@ describe("Time", () => {
       time.advance("200ms");
 
       expect(order).toEqual([2, 1, 3]);
+    });
+
+    test("timeouts with identical deadlines fire in scheduling order", () => {
+      const time = testCreateTime();
+      const order: Array<number> = [];
+
+      time.setTimeout(() => order.push(1), "50ms");
+      time.setTimeout(() => order.push(2), "50ms");
+      time.setTimeout(() => order.push(3), "50ms");
+
+      time.advance("50ms");
+
+      expect(order).toEqual([1, 2, 3]);
     });
 
     test("timeout callbacks observe their deadlines", () => {
@@ -363,6 +564,15 @@ describe("Time", () => {
     });
   });
 
+  describe("PositiveMillis", () => {
+    test("accepts only positive millis", () => {
+      const _millis: Millis = PositiveMillis.orThrow(1);
+      expect(PositiveMillis.is(1)).toBe(true);
+      expect(PositiveMillis.is(maxMillis)).toBe(true);
+      expect(PositiveMillis.is(0)).toBe(false);
+    });
+  });
+
   describe("saturateMillis", () => {
     test("requires NonNaNNumber", () => {
       saturateMillis(NonNaNNumber.orThrow(1));
@@ -392,26 +602,6 @@ describe("Time", () => {
     });
   });
 
-  describe("PositiveMillis", () => {
-    test("accepts only positive millis", () => {
-      const _millis: Millis = PositiveMillis.orThrow(1);
-      expect(PositiveMillis.is(1)).toBe(true);
-      expect(PositiveMillis.is(maxMillis)).toBe(true);
-      expect(PositiveMillis.is(0)).toBe(false);
-    });
-  });
-
-  describe("PositiveDuration", () => {
-    test("accepts only positive durations", () => {
-      const time = testCreateTime();
-      const duration: PositiveDuration = PositiveMillis.orThrow(1);
-
-      time.setTimeout(() => undefined, duration);
-      // @ts-expect-error - Zero Millis is not a positive duration.
-      time.setTimeout(() => undefined, 0 as Millis);
-    });
-  });
-
   describe("millisToDateIso", () => {
     test("millisToDateIso returns current time as ISO string", () => {
       const time = createTime();
@@ -429,6 +619,38 @@ describe("Time", () => {
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
       });
       expect(millisToDateIso(time.now())).toBe("2026-01-28T14:30:00.000Z");
+    });
+  });
+
+  describe("performanceDurationBetween", () => {
+    test("preserves fractional milliseconds", () => {
+      const result = performanceDurationBetween(
+        100.125 as PerformanceTime,
+        100.375 as PerformanceTime,
+      );
+
+      expectTypeOf(result).toEqualTypeOf<PerformanceDuration>();
+      expect(result).toBe(0.25);
+    });
+
+    test("rejects an end time before the start time", () => {
+      expect(() =>
+        performanceDurationBetween(
+          100.375 as PerformanceTime,
+          100.125 as PerformanceTime,
+        ),
+      ).toThrow("Performance end time must not precede start time");
+    });
+  });
+
+  describe("PositiveDuration", () => {
+    test("accepts only positive durations", () => {
+      const time = testCreateTime();
+      const duration: PositiveDuration = PositiveMillis.orThrow(1);
+
+      time.setTimeout(() => undefined, duration);
+      // @ts-expect-error - Zero Millis is not a positive duration.
+      time.setTimeout(() => undefined, 0 as Millis);
     });
   });
 
@@ -551,6 +773,30 @@ describe("Time", () => {
       expect(formatMillisAsDuration(3661000 as Millis)).toBe("1h1m1.000s");
       expect(formatMillisAsDuration(5400000 as Millis)).toBe("1h30m0.000s");
       expect(formatMillisAsDuration(86399999 as Millis)).toBe("23h59m59.999s");
+    });
+
+    test("formats day, week, and year durations", () => {
+      expect(formatMillisAsDuration(durationToMillis("1d"))).toBe(
+        "1d0h0m0.000s",
+      );
+      expect(formatMillisAsDuration(durationToMillis("1w"))).toBe(
+        "1w0d0h0m0.000s",
+      );
+      expect(formatMillisAsDuration(durationToMillis("1y"))).toBe(
+        "1y0w0d0h0m0.000s",
+      );
+      expect(
+        formatMillisAsDuration(
+          Millis.orThrow(
+            durationToMillis("1y") +
+              2 * durationToMillis("1w") +
+              3 * durationToMillis("1d") +
+              durationToMillis("4h") +
+              durationToMillis("5m") +
+              durationToMillis("6s"),
+          ),
+        ),
+      ).toBe("1y2w3d4h5m6.000s");
     });
   });
 

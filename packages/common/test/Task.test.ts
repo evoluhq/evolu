@@ -80,16 +80,13 @@ import {
   type TestRunDefaultDeps,
   type TimeoutError,
 } from "../src/Task.js";
-import {
-  Millis,
-  testCreateTime,
-  type Time,
-} from "../src/Time.js";
+import { Millis, testCreateTime, type Time } from "../src/Time.js";
 import {
   type Int1To100OrPositiveInt,
   maxPositiveInt,
   onePositiveInt,
   PositiveInt,
+  type DateIso,
   type Id,
 } from "../src/Type.js";
 import {
@@ -2336,16 +2333,23 @@ describe("Run", () => {
     test("reports Run event emission defects without interrupting Task settlement", async () => {
       const error = new Error("event emission failed");
       let nowDefected = false;
+      function now(): Millis;
+      function now(type: "DateIso"): DateIso;
+      function now(type?: "DateIso"): Millis | DateIso {
+        if (!nowDefected) {
+          nowDefected = true;
+          throw error;
+        }
+        return type === "DateIso"
+          ? ("1970-01-01T00:00:00.000Z" as DateIso)
+          : (0 as Millis);
+      }
       const throwingTime: Time = {
-        now: () => {
-          if (!nowDefected) {
-            nowDefected = true;
-            throw error;
-          }
-          return 0 as ReturnType<Time["now"]>;
+        now,
+        performance: {
+          timeOrigin: 0 as Time["performance"]["timeOrigin"],
+          now: () => 0 as ReturnType<Time["performance"]["now"]>,
         },
-        nowDateIso: () =>
-          "1970-01-01T00:00:00.000Z" as ReturnType<Time["nowDateIso"]>,
         setTimeout: () => 0 as unknown as ReturnType<Time["setTimeout"]>,
         clearTimeout: () => undefined,
       };
@@ -5023,10 +5027,19 @@ describe("sleep", () => {
   test("clears timeout when aborted", async () => {
     const timeoutId = 1 as unknown as ReturnType<Time["setTimeout"]>;
     let clearedTimeoutId: ReturnType<Time["setTimeout"]> | undefined;
+    function now(): Millis;
+    function now(type: "DateIso"): DateIso;
+    function now(type?: "DateIso"): Millis | DateIso {
+      return type === "DateIso"
+        ? ("1970-01-01T00:00:00.000Z" as DateIso)
+        : (0 as Millis);
+    }
     const time: Time = {
-      now: () => 0 as ReturnType<Time["now"]>,
-      nowDateIso: () =>
-        "1970-01-01T00:00:00.000Z" as ReturnType<Time["nowDateIso"]>,
+      now,
+      performance: {
+        timeOrigin: 0 as Time["performance"]["timeOrigin"],
+        now: () => 0 as ReturnType<Time["performance"]["now"]>,
+      },
       setTimeout: () => timeoutId,
       clearTimeout: (id) => {
         clearedTimeoutId = id;
