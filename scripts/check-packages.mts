@@ -23,7 +23,7 @@ type Json =
   | null
   | number
   | string
-  | readonly Json[]
+  | ReadonlyArray<Json>
   | { readonly [key: string]: Json };
 
 interface PackageJson {
@@ -36,10 +36,10 @@ interface PackageJson {
   };
 }
 
-const getTargets = (value: Json): readonly string[] => {
+const getTargets = (value: Json): ReadonlyArray<string> => {
   if (typeof value === "string") return [value];
   if (value == null || typeof value !== "object") return [];
-  if (Array.isArray(value)) return value.flatMap(getTargets);
+  if (value instanceof Array) return value.flatMap(getTargets);
   return Object.values(value).flatMap(getTargets);
 };
 
@@ -75,8 +75,9 @@ const assertWorkspaceTargets = (
     return;
   }
   if (value == null || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    for (const item of value) assertWorkspaceTargets(packageName, item, condition);
+  if (value instanceof Array) {
+    for (const item of value)
+      assertWorkspaceTargets(packageName, item, condition);
     return;
   }
   for (const [key, target] of Object.entries(value)) {
@@ -98,7 +99,7 @@ try {
       assertWorkspaceTargets(packageJson.name, packageJson.exports);
       ok(
         getTargets(packageJson.exports).some((target) =>
-          /^\.\/src\//.test(target),
+          target.startsWith("./src/"),
         ),
         `${packageJson.name} has no workspace source runtime export`,
       );
@@ -170,6 +171,7 @@ try {
   await rm(temporaryDirectory, { recursive: true });
 }
 
+// eslint-disable-next-line no-console -- Report successful CLI completion.
 console.log(
   "Workspace source runtime exports, declaration types, and packed dist exports are valid.",
 );
