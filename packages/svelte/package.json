@@ -27,6 +27,7 @@
   "types": "./dist/index.svelte.d.ts",
   "files": [
     "dist",
+    "src/**",
     "!dist/**/*.test.*",
     "!dist/**/*.spec.*"
   ],
