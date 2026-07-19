@@ -388,18 +388,15 @@ class Counter {
 
 ## Disposing
 
-Use `Disposable` and `AsyncDisposable` when an object owns cleanup.
+Create disposable objects with
+[`disposable`](/docs/api-reference/common/Function/functions/disposable). It
+adds the appropriate disposal method and guards the object's functions against
+use after disposal.
 
-Prefer `DisposableStack` and `AsyncDisposableStack` over manual cleanup loops,
-cleanup arrays, or `let disposed` / `isDisposed` flags.
-
-Guard synchronous public methods with `assertNotDisposed` when use-after-dispose
-is a programmer error.
-
-For code using `move()`, prefer role-based naming:
-
-- `using disposer = new DisposableStack()` while registering resources
-- `const disposables = disposer.move()` for the transferred owner
+When the object owns cleanup resources, register them in a `DisposableStack` or
+`AsyncDisposableStack` and pass the stack to `disposable`. The helper moves the
+stack into the returned object. Omit the stack when disposal only needs to make
+the object unusable.
 
 For full disposal patterns, anti-patterns, and `move()` examples, see
 [Resource management](/docs/resource-management).
