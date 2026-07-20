@@ -46,7 +46,7 @@
     }
   ],
   "externalSymbolLinkMappings": {
-    "typescript": {
+    "@typescript/old": {
       "ArrayBuffer": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/ArrayBuffer",
       "AbortController": "https://developer.mozilla.org/en-US/docs/Web/API/AbortController",
       "AbortSignal": "https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal",
