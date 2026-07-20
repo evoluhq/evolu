@@ -42,9 +42,9 @@
     "@evolu/web": "workspace:*",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "react": "catalog:react19",
     "react-dom": "catalog:react19",
-    "typescript": "^6",
     "user-agent-data-types": "^0.4.2"
   },
   "peerDependencies": {

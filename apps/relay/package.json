@@ -19,7 +19,7 @@
   "devDependencies": {
     "@evolu/typescript-config": "workspace:*",
     "@types/node": "^24.10.9",
-    "typescript": "^6"
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "engines": {
     "node": ">=24.0.0"

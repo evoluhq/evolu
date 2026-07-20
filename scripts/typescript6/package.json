@@ -1,0 +1,15 @@
+{
+  "name": "@test/typescript6-consumer",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@evolu/common": "workspace:*",
+    "@evolu/nodejs": "workspace:*",
+    "@evolu/react": "workspace:*",
+    "@evolu/react-native": "workspace:*",
+    "@evolu/react-web": "workspace:*",
+    "@evolu/svelte": "workspace:*",
+    "@evolu/vue": "workspace:*",
+    "@evolu/web": "workspace:*"
+  }
+}

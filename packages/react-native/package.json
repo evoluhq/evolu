@@ -99,6 +99,7 @@
     "@op-engineering/op-sqlite": "^17.1.2",
     "@react-native/metro-config": "0.86.0",
     "@types/react": "catalog:react19",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "expo": "^57.0.4",
     "expo-secure-store": "~57.0.0",
     "expo-sqlite": "~57.0.0",
@@ -109,7 +110,7 @@
     "react-native-sensitive-info": "6.1.5",
     "react-native-svg": "15.15.4",
     "react-native-worklets": "0.10.0",
-    "typescript": "^6"
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "peerDependencies": {
     "@evolu/common": "^8.0.0-next.0",

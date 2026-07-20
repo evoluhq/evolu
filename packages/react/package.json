@@ -40,8 +40,8 @@
     "@evolu/typescript-config": "workspace:*",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
-    "react": "catalog:react19",
-    "typescript": "^6"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "react": "catalog:react19"
   },
   "peerDependencies": {
     "@evolu/common": "^8.0.0-next.0",

@@ -40,7 +40,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
-    "typescript": "^6"
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "peerDependencies": {
     "@evolu/common": "^8.0.0-next.0"

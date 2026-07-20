@@ -19,10 +19,10 @@
   "devDependencies": {
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@vitejs/plugin-react": "^6.0.3",
     "electron": "43.1.0",
     "electron-builder": "^26.8.1",
-    "typescript": "^6",
     "vite": "^8.1.4",
     "vite-plugin-electron": "^1.1.0",
     "vite-plugin-electron-renderer": "^1.0.0"

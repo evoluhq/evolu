@@ -36,7 +36,7 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
-    "typescript": "^6"
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "peerDependencies": {
     "@evolu/common": "^8.0.0-next.0",

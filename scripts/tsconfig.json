@@ -12,5 +12,6 @@
     "moduleResolution": "node16",
     "rewriteRelativeImportExtensions": true,
     "types": ["node"]
-  }
+  },
+  "exclude": ["./typescript6"]
 }

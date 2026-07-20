@@ -59,7 +59,7 @@
     "@noble/ciphers": "^2.1.1",
     "@noble/hashes": "^2.0.1",
     "@scure/bip39": "^2.0.1",
-    "kysely": "^0.29.2",
+    "kysely": "^0.29.4",
     "msgpackr": "^2.0.4",
     "random": "^5.4.1"
   },
@@ -69,10 +69,11 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "better-sqlite3": "^12.6.2",
     "fast-check": "^4.5.3",
     "playwright": "^1.58.1",
-    "typescript": "^6",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "webpack": "^5.98.0",
     "ws": "^8.19.0",
     "zod": "^4.3.6"

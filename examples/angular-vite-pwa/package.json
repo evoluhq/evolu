@@ -19,9 +19,10 @@
     "@angular/build": "^22.0.6",
     "@angular/compiler-cli": "^22.0.6",
     "@tailwindcss/vite": "^4.1.18",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@vite-pwa/assets-generator": "^1.0.2",
     "tailwindcss": "^4.1.18",
-    "typescript": "^6",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vite": "^8.1.4",
     "vite-plugin-pwa": "^1.2.0"
   }

@@ -15,10 +15,11 @@
     "@evolu/web": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@tsconfig/svelte": "^5.0.6",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "svelte": "^5.48.2",
     "svelte-check": "^4.3.6",
     "tslib": "^2.8.1",
-    "typescript": "^6",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vite": "^8.1.4",
     "vite-plugin-pwa": "^1.2.0"
   }

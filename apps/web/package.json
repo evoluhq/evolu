@@ -52,7 +52,7 @@
     "shiki": "^4.0.0",
     "simple-functional-loader": "^1.2.1",
     "tailwindcss": "^4.1.18",
-    "typescript": "^6",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "unist-util-filter": "^5.0.1",
     "unist-util-visit": "^5.0.0",
     "zustand": "^5.0.10"
@@ -65,6 +65,7 @@
     "@types/react-dom": "catalog:react19",
     "@types/react-highlight-words": "^0.20.1",
     "@types/rss": "^0.0.32",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "cross-env": "^10.1.0",
     "sharp": "^0.35.3"
   }
