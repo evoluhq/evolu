@@ -10,7 +10,7 @@ dist
 .vitest-attachments
 next-env.d.ts
 node_modules
-.pnpm-store/v11/index.db
+.pnpm-store
 test-identicons
 tmp
 
