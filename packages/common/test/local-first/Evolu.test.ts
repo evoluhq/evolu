@@ -46,8 +46,8 @@ import {
   NonEmptyString100,
   nullOr,
   testName,
+  type ExtractType,
 } from "../../src/Type.ts";
-import type { ExtractType } from "../../src/Types.ts";
 import { testCreateWebSocket } from "../../src/WebSocket.ts";
 import {
   createBroadcastChannel,

@@ -3584,6 +3584,31 @@ export interface Typed<T extends TypeName> {
 }
 
 /**
+ * Extracts members of a {@link Typed} union by their `type` literal.
+ *
+ * Constrains `TType` to valid `type` values, so typos fail at the type argument
+ * instead of silently producing `never`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * type Message =
+ *   | { readonly type: "Create"; readonly id: string }
+ *   | { readonly type: "Delete"; readonly id: string };
+ *
+ * type CreateMessage = ExtractType<Message, "Create">;
+ * // { readonly type: "Create"; readonly id: string }
+ *
+ * // Type error: "Cretae" is not a valid Message type
+ * type _Typo = ExtractType<Message, "Cretae">;
+ * ```
+ */
+export type ExtractType<
+  TUnion extends Typed<TypeName>,
+  TType extends TUnion["type"],
+> = Extract<TUnion, { readonly type: TType }>;
+
+/**
  * Creates a runtime-validated typed object with a `type` discriminant.
  *
  * ### Example

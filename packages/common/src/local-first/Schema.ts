@@ -150,7 +150,7 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
     >,
   ) => Kysely.SelectQueryBuilder<any, any, R>,
   options?: SqliteQueryOptions,
-) => Query<S, Simplify<R>>;
+) => Query<S, Kysely.Simplify<R>>;
 
 /**
  * System columns that are implicitly defined by Evolu.

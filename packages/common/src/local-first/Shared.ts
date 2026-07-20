@@ -43,8 +43,8 @@ import {
   type Mutex,
   type Task,
 } from "../Task.ts";
-import { type Id, type Name, type Typed } from "../Type.ts";
-import type { Callback, ExtractType } from "../Types.ts";
+import { type ExtractType, type Id, type Name, type Typed } from "../Type.ts";
+import type { Callback } from "../Types.ts";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.ts";
 import type {
   SharedWorker as CommonSharedWorker,

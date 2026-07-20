@@ -30,7 +30,7 @@ import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.ts";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.ts";
 import { createStore } from "../Store.ts";
 import type { Task } from "../Task.ts";
-import type { Id, TypeError } from "../Type.ts";
+import type { ExtractType, Id, TypeError } from "../Type.ts";
 import {
   brand,
   createId,
@@ -38,7 +38,6 @@ import {
   Name,
   UrlSafeString,
 } from "../Type.ts";
-import type { ExtractType } from "../Types.ts";
 import type {
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,

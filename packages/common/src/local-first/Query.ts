@@ -28,7 +28,6 @@ import { createRecord, isPlainObject } from "../Object.ts";
 import type { SqliteQueryString } from "../Sqlite.ts";
 import { eqSqliteValue, SqliteValue } from "../Sqlite.ts";
 import { createId, String } from "../Type.ts";
-import type { Simplify } from "../Types.ts";
 import type { EvoluSchema } from "./Schema.ts";
 
 export { sql as kyselySql } from "kysely";
@@ -232,7 +231,7 @@ export const getJsonObjectArgs = (
 
 /** Rows returned by a query. */
 export type QueryRows<R extends Row = Row> = ReadonlyArray<
-  Readonly<Simplify<R>>
+  Readonly<KyselySimplify<R>>
 >;
 
 export type Queries<

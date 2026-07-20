@@ -4,9 +4,6 @@
  * @module
  */
 
-import * as Kysely from "kysely";
-import type { TypeName } from "./Type.ts";
-
 /**
  * A function that receives a value and returns nothing.
  *
@@ -196,7 +193,9 @@ export type Writable<T> = {
  * // { a: string; b: number }
  * ```
  */
-export type Simplify<T> = Kysely.Simplify<T>;
+export type Simplify<T> = {
+  [K in keyof T]: T[K];
+} & {};
 
 /**
  * Makes a specific property of an object optional while keeping others
@@ -303,6 +302,15 @@ export type Int1To100 = Int1To99 | 100;
 export type NumberFromString<T extends string> =
   T extends `${infer N extends number}` ? N : never;
 
+/** Returns whether a type is a union. */
+export type IsUnion<T, Whole = T> = [T] extends [never]
+  ? false
+  : T extends Whole
+    ? [Whole] extends [T]
+      ? false
+      : true
+    : never;
+
 /** Converts a union to an intersection. */
 export type UnionToIntersection<U> = (
   U extends unknown ? (k: U) => void : never
@@ -335,28 +343,3 @@ export type ParameterIntersection<T> = [T] extends [(value: infer I) => void]
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
   ? Omit<T, K>
   : never;
-
-/**
- * Extracts members of a discriminated union by their `type` literal.
- *
- * Constrains `TType` to valid `type` values, so typos fail at the type argument
- * instead of silently producing `never`.
- *
- * ### Example
- *
- * ```ts
- * type Message =
- *   | { readonly type: "Create"; readonly id: string }
- *   | { readonly type: "Delete"; readonly id: string };
- *
- * type CreateMessage = ExtractType<Message, "Create">;
- * // { readonly type: "Create"; readonly id: string }
- *
- * // Type error: "Cretae" is not a valid Message type
- * type _Typo = ExtractType<Message, "Cretae">;
- * ```
- */
-export type ExtractType<
-  TUnion extends { readonly type: TypeName },
-  TType extends TUnion["type"],
-> = Extract<TUnion, { readonly type: TType }>;

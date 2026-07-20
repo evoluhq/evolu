@@ -10,6 +10,7 @@ import type {
   BigIntError,
   BooleanError,
   BrandWithoutRefineError,
+  ExtractType,
   FiniteError,
   InferError,
   InferInput,
@@ -3806,6 +3807,22 @@ describe("Standard Schema V1", () => {
 });
 
 describe("typed", () => {
+  test("ExtractType", () => {
+    type Message =
+      | { readonly type: "Mutate"; readonly payload: { readonly id: string } }
+      | { readonly type: "Query"; readonly payload: { readonly sql: string } };
+
+    type Mutate = ExtractType<Message, "Mutate">;
+
+    expectTypeOf<Mutate>().toEqualTypeOf<{
+      readonly type: "Mutate";
+      readonly payload: { readonly id: string };
+    }>();
+
+    // @ts-expect-error - typos must fail at the type argument.
+    type _Invalid = ExtractType<Message, "Mutaet">;
+  });
+
   test("creates typed object with only tag (no props)", () => {
     const Empty = typed("Empty");
 

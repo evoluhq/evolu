@@ -39,7 +39,7 @@ import {
 } from "../Sqlite.ts";
 import { callback, type Run, type Task } from "../Task.ts";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.ts";
-import type { Name } from "../Type.ts";
+import type { ExtractType, Name } from "../Type.ts";
 import {
   Id,
   IdBytes,
@@ -47,7 +47,6 @@ import {
   idToIdBytes,
   onePositiveInt,
 } from "../Type.ts";
-import type { ExtractType } from "../Types.ts";
 import type {
   CreateBroadcastChannelDep,
   NativeMessagePort,

@@ -48,8 +48,14 @@ import {
 import { testCreateDeps, testCreateRun } from "../../src/Task.ts";
 import { testCreateId } from "../../src/Test.ts";
 import { Millis, testCreateTime, type TestTime } from "../../src/Time.ts";
-import { id, String, testName, type Id, type Name } from "../../src/Type.ts";
-import type { ExtractType } from "../../src/Types.ts";
+import {
+  id,
+  String,
+  testName,
+  type ExtractType,
+  type Id,
+  type Name,
+} from "../../src/Type.ts";
 import {
   createMessagePort,
   createWorker,
