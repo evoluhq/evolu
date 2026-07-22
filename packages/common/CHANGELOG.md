@@ -1,5 +1,106 @@
 # @evolu/common
 
+## 8.0.0-next.6
+
+### Major Changes
+
+- 252ede2: Added Task and Resource APIs for structured asynchronous lifetimes.
+
+  Task provides JavaScript-native structured concurrency. A Run starts Tasks, owns their child lifetimes, propagates abort, waits for cleanup, reports defects, provides dependencies, and exposes lifecycle state. Tasks return domain outcomes as Results, while Fibers provide Promise-compatible handles for running work.
+
+  Task includes helpers for collection, racing, bounded concurrency, scheduling, retry, repetition, timeouts, callbacks, HTTP requests, abortability, daemons, resource bracketing, and concurrency primitives.
+
+  Resource provides concurrency-safe ownership and reuse of Disposable and AsyncDisposable values. Shared resources are created lazily, retained through disposable leases, and disposed after their final lease is released. Resources can be indexed by logical keys, retained by claims, observed through snapshots, kept alive for configurable idle periods, and checked for leaked ownership in development.
+
+- b85837f: Improved wall-clock, performance, and monotonic time APIs.
+
+  **Common:**
+
+  - Replaced `Time.nowDateIso()` with the `Time.now("DateIso")` overload.
+  - Added `Time.performance` with a high-resolution clock and time origin, plus branded `PerformanceTime`, `PerformanceTimeOrigin`, and `PerformanceDuration` values.
+  - Added `performanceDurationBetween()` for measuring elapsed performance time.
+  - Made timeout IDs instance-owned so clearing an ID with another `Time` instance throws.
+  - Made native-range timeouts independent of wall-clock changes while retaining absolute-deadline handling for longer timeouts.
+  - Extended `formatMillisAsDuration()` to format days, weeks, and years.
+
+  **Node.js:**
+
+  - Added `NodejsTime` and `createNodejsTime()` with `hrtime()` for monotonic nanosecond readings.
+  - Added branded `HrTime` and `HrDuration` values with `hrDurationBetween()`.
+  - Added `hrDurationToMillis()` and `millisToHrDuration()` conversions.
+
+- 66cfc01: Renamed the exported `Mutable<T>` utility type to `Writable<T>`.
+
+### Minor Changes
+
+- 5a21b73: Added `disposable` and `isDisposable` for safe object disposal
+
+  `disposable` adds synchronous or asynchronous disposal to an object and prevents its methods from being called after disposal. It can own an existing `DisposableStack` or `AsyncDisposableStack`, transferring the stack's resources to the returned object.
+
+  `isDisposable` checks whether a value implements synchronous or asynchronous JavaScript disposal.
+
+- 705c6af: Added the `IsUnion` TypeScript utility type.
+- 555627d: Added `LeakDetector` for development-time leak detection
+
+  `LeakDetector` uses `FinalizationRegistry` to report handles that are garbage-collected without explicit cleanup, including the stack where each handle was tracked. It is a no-op in production and in runtimes without `FinalizationRegistry`.
+
+  Evolu developers do not need to use `LeakDetector` directly. The upcoming Evolu Task and Resource APIs enable it by default in development mode.
+
+- 86726aa: Added `RefCountedRelation` for bidirectional retain counts
+
+  `createRefCountedRelation` tracks a retain count for each pair while indexing canonical values in both directions. It supports custom lookup functions, reports pair transitions through `increment` and `decrement`, and returns snapshots that remain stable while the relation is mutated.
+
+- 5f9602c: Improved `trySync` and `tryAsync` exception handling
+
+  `trySync` and `tryAsync` now return the original thrown or rejected value as `Err` when no error mapper is provided. Error mappers can throw when a failure must be escalated instead of represented as a `Result`.
+
+  `tryAsync` now accepts synchronous and asynchronous return values while preserving its asynchronous boundary.
+
+- 3247415: Added readable percentage inputs to the Number module.
+
+  `Percentage` follows the same pattern as `Duration`: APIs accept a readable,
+  compile-time-validated literal for values written in code, or a validated
+  numeric value for computed and dynamic inputs.
+
+  ```ts
+  // Readable static values.
+  jitter("25%")(schedule);
+  spaced("30s");
+
+  // Validated computed values.
+  jitter(Ratio.orThrow(computedRatio))(schedule);
+  spaced(Millis.orThrow(computedMillis));
+  ```
+
+  This keeps call sites self-explanatory (`"25%"` instead of the ambiguous `0.25`)
+  without sacrificing numeric precision or runtime validation.
+
+  - `PercentageLiteral` represents canonical values from `"0%"` to `"100%"` with up to one decimal place.
+  - `Percentage` accepts either a `PercentageLiteral` or a validated `Ratio`.
+  - `percentageToRatio` converts either representation to a numeric `Ratio`.
+
+- 2c8576e: Added SameValueZero equality and used it for number equality and Store change detection.
+- 252ede2: Added Task-aware HTTP helpers.
+
+  `fetch` consumes the native `Response` within the Task lifetime and supports text, JSON, bytes, headers-only, and custom response consumers. It distinguishes transport, HTTP status, and response body errors while preserving Task abort semantics.
+
+  `NativeFetchDep` makes the underlying fetch implementation replaceable at the composition root. Added deterministic native fetch test helpers for recording requests, queueing responses, and testing response body failures.
+
+- 2516e46: Added `Ratio` to the Type module for validated finite numbers from 0 to 1, inclusive.
+
+  A ratio is the numeric representation of a percentage: `0.25` represents `25%`.
+
+- 65a86e2: Added `webSocketReconnectSchedule` as the default WebSocket reconnect policy.
+
+  The schedule retries indefinitely with exponential backoff, a 100ms base, a
+  30s cap, and full jitter.
+
+### Patch Changes
+
+- e6b166a: Preserved the native console receiver when writing console output.
+- 151e73b: Updated Kysely to 0.29.4 and removed its unnecessary runtime import from TypeScript utilities.
+- 39084b3: Updated Kysely to 0.29 and msgpackr to 2.
+
 ## 8.0.0-next.5
 
 ### Minor Changes

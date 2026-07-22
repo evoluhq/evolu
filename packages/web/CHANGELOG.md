@@ -1,5 +1,11 @@
 # @evolu/web
 
+## 3.0.0-next.2
+
+### Minor Changes
+
+- 66941ed: Added `availableParallelism()` with a validated `PositiveInt` return value.
+
 ## 3.0.0-next.1
 
 ### Patch Changes

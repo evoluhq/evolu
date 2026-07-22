@@ -1,5 +1,11 @@
 # @evolu/react
 
+## 11.0.0-next.1
+
+### Major Changes
+
+- ec3bc7a: Changed `createRunBinding` and `createEvoluBinding` to accept type arguments instead of unused runtime arguments. `createRunBinding` now accepts a `DisposableRun` type while exposing `Run` to React components.
+
 ## 11.0.0-next.0
 
 ### Major Changes
