@@ -395,9 +395,10 @@ describe("installPolyfills", () => {
       any: typeof any;
     };
 
-    expect(AbortSignalStatic.abort).toBe(abort);
-    expect(AbortSignalStatic.timeout).toBe(timeout);
-    expect(AbortSignalStatic.any).toBe(any);
+    const descriptors = Object.getOwnPropertyDescriptors(AbortSignalStatic);
+    expect(descriptors.abort.value).toBe(abort);
+    expect(descriptors.timeout.value).toBe(timeout);
+    expect(descriptors.any.value).toBe(any);
   });
 
   test("AbortSignal.any handles empty input", () => {
