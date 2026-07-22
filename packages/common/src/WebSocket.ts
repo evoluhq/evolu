@@ -128,7 +128,10 @@ export interface WebSocketOptions {
   /** Callback when message data is received. */
   readonly onMessage?: (data: string | ArrayBuffer | Blob) => void;
 
-  /** Retry schedule for reconnection. Defaults to {@link webSocketReconnectSchedule}. */
+  /**
+   * Retry schedule for reconnection. Defaults to
+   * {@link webSocketReconnectSchedule}.
+   */
   readonly schedule?: Schedule<Millis, WebSocketRetryError>;
 
   /**
@@ -181,12 +184,10 @@ export interface WebSocketConnectionCloseError extends Typed<"WebSocketConnectio
  * Uses unlimited exponential backoff with a 100ms base, 30s cap, and full
  * jitter.
  */
-export const webSocketReconnectSchedule: Schedule<
-  Millis,
-  WebSocketRetryError
-> = /*#__PURE__*/ jitter("100%")(
-  /*#__PURE__*/ maxDelay("30s")(/*#__PURE__*/ exponential("100ms")),
-);
+export const webSocketReconnectSchedule: Schedule<Millis, WebSocketRetryError> =
+  /*#__PURE__*/ jitter("100%")(
+    /*#__PURE__*/ maxDelay("30s")(/*#__PURE__*/ exponential("100ms")),
+  );
 
 /** Create a new {@link WebSocket}. */
 export const createWebSocket: CreateWebSocket =

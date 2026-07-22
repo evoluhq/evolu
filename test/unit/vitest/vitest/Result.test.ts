@@ -23,10 +23,8 @@ describe("expectOk", () => {
   });
 
   test("narrows a heterogeneous Result union", () => {
-    const createResult = (): Result<number, "NumberError"> | Result<
-      string,
-      "StringError"
-    > => ok(42);
+    const createResult = ():
+      Result<number, "NumberError"> | Result<string, "StringError"> => ok(42);
     const result = createResult();
 
     expectOk(result, 42);
@@ -53,10 +51,9 @@ describe("expectErr", () => {
   });
 
   test("narrows a heterogeneous Result union", () => {
-    const createResult = (): Result<number, "NumberError"> | Result<
-      string,
-      "StringError"
-    > => err("NumberError");
+    const createResult = ():
+      Result<number, "NumberError"> | Result<string, "StringError"> =>
+      err("NumberError");
     const result = createResult();
 
     expectErr(result, "NumberError");

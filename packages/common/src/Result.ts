@@ -438,7 +438,9 @@ export function trySync<T, E>(
  * ### Example
  *
  * ```ts
- * const readConfig = (path: string): Promise<Result<string, ReadConfigError>> =>
+ * const readConfig = (
+ *   path: string,
+ * ): Promise<Result<string, ReadConfigError>> =>
  *   tryAsync(
  *     () => fs.readFile(path, "utf8"),
  *     (error) => ({ type: "ReadConfigError", error }),

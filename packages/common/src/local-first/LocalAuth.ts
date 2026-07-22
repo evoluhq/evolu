@@ -439,17 +439,11 @@ export interface MutationResult {
  * storing a value.
  */
 export type SecurityLevel =
-  | "secureEnclave"
-  | "strongBox"
-  | "biometry"
-  | "deviceCredential"
-  | "software";
+  "secureEnclave" | "strongBox" | "biometry" | "deviceCredential" | "software";
 
 /** Enumerates the native storage backend used to persist sensitive data. */
 export type StorageBackend =
-  | "keychain"
-  | "androidKeystore"
-  | "encryptedSharedPreferences";
+  "keychain" | "androidKeystore" | "encryptedSharedPreferences";
 
 /**
  * Enumerates the access-control policy enforced by the underlying secure

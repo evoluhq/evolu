@@ -283,9 +283,7 @@ export const createWorkerDeps = (): WorkerDeps &
 
 const wrap = <Input, Output>(
   native:
-    | DedicatedWorkerGlobalScope
-    | globalThis.MessagePort
-    | globalThis.Worker,
+    DedicatedWorkerGlobalScope | globalThis.MessagePort | globalThis.Worker,
 ): MessagePort<Input, Output> => {
   let onMessageHandler: ((message: Output) => void) | null = null;
 

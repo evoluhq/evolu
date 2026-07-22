@@ -305,17 +305,21 @@ export type Structural<T> = T extends StructuralScalar
       ? never
       : T extends object
         ? {
-            readonly [K in keyof T as K extends symbol
-              ? never
-              : Extract<T[K], StructuralFunction> extends never
-                ? K
-                : never]: Structural<Exclude<T[K], StructuralFunction>>;
-          } & {
-            readonly [K in keyof T as K extends symbol
-              ? K
-              : Extract<T[K], StructuralFunction> extends never
+            readonly [
+              K in keyof T as K extends symbol
                 ? never
-                : K]?: never;
+                : Extract<T[K], StructuralFunction> extends never
+                  ? K
+                  : never
+            ]: Structural<Exclude<T[K], StructuralFunction>>;
+          } & {
+            readonly [
+              K in keyof T as K extends symbol
+                ? K
+                : Extract<T[K], StructuralFunction> extends never
+                  ? never
+                  : K
+            ]?: never;
           }
         : never;
 

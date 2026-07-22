@@ -557,6 +557,7 @@ export const getSqliteSchema =
         ? ` and name not like '${excludeIndexNamePrefix.replaceAll("'", "''")}%'`
         : "";
 
+    // prettier-ignore
     const indexesRows = deps.sqlite.exec<{ name: string; sql: string }>(
       sql`
         select name, sql

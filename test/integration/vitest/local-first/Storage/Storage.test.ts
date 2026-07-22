@@ -256,6 +256,7 @@ test("insertTimestamp updates use primary-key query plans", async () => {
       parent: number;
       detail: string;
     }>({
+      // prettier-ignore
       ...sql`explain query plan ${sql.raw(query.sql)}`,
       parameters: query.parameters,
     });
@@ -321,6 +322,7 @@ test("insertTimestamp append uses primary-key query plans", async () => {
     parent: number;
     detail: string;
   }>({
+    // prettier-ignore
     ...sql`explain query plan ${sql.raw(query.sql)}`,
     parameters: query.parameters,
   });

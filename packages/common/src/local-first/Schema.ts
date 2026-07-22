@@ -316,10 +316,7 @@ export type ValidateNoSystemColumns<S extends EvoluSchema> =
       ? keyof S[TableName] extends infer ColumnName
         ? ColumnName extends keyof S[TableName]
           ? ColumnName extends
-              | "createdAt"
-              | "updatedAt"
-              | "isDeleted"
-              | "ownerId"
+              "createdAt" | "updatedAt" | "isDeleted" | "ownerId"
             ? SchemaValidationError<`Table "${TableName & string}" uses system column name "${ColumnName & string}". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.`>
             : never
           : never
@@ -343,8 +340,10 @@ export type ValidateColumnTypes<S extends EvoluSchema> =
     : never;
 
 /** Schema validation error that shows clear, readable messages */
-export type SchemaValidationError<Message extends string> =
-  CompileTimeError<"Schema", Message>;
+export type SchemaValidationError<Message extends string> = CompileTimeError<
+  "Schema",
+  Message
+>;
 
 /** Makes columns whose output type includes `null` optional. */
 export type NullableColumnsToOptional<T extends TableSchema> = {
@@ -382,12 +381,10 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
   );
 
   const indexes = indexesConfig
-    ? indexesConfig(createIndex).map(
-        (index): SqliteIndex => ({
-          name: index.toOperationNode().name.name,
-          sql: index.compile().sql,
-        }),
-      )
+    ? indexesConfig(createIndex).map((index): SqliteIndex => ({
+        name: index.toOperationNode().name.name,
+        sql: index.compile().sql,
+      }))
     : [];
 
   return { tables, indexes };
