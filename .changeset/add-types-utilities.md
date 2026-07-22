@@ -9,3 +9,5 @@ Added utilities for awaitable values, numeric ranges, and type intersections
 `Digit`, `Digit1To9`, `Digit1To6`, `Digit1To23`, `Digit1To51`, `Digit1To59`, and `Digit1To99` provide bounded numeric string types for validating values such as days, hours, weeks, minutes, seconds, and years.
 
 `UnionToIntersection<U>` converts a union to an intersection. `ParameterIntersection<T>` infers the intersection of parameter types from a union of unary functions without allowing an `unknown` parameter to erase the concrete parameter types.
+
+`CompileTimeError<Context, Message>` was added for consistent, readable compiler-facing error messages, and Schema validation errors were updated to use it.

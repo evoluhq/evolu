@@ -29,7 +29,7 @@ import {
   object,
   type StandardSchemaV1,
 } from "../Type.ts";
-import type { Simplify } from "../Types.ts";
+import type { CompileTimeError, Simplify } from "../Types.ts";
 import type { AppOwner } from "./Owner.ts";
 import { OwnerId } from "./Owner.ts";
 import type {
@@ -344,7 +344,7 @@ export type ValidateColumnTypes<S extends EvoluSchema> =
 
 /** Schema validation error that shows clear, readable messages */
 export type SchemaValidationError<Message extends string> =
-  `❌ Schema Error: ${Message}`;
+  CompileTimeError<"Schema", Message>;
 
 /** Makes columns whose output type includes `null` optional. */
 export type NullableColumnsToOptional<T extends TableSchema> = {

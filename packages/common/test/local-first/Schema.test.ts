@@ -37,7 +37,7 @@ describe("ValidateSchema", () => {
       };
 
       type Result = ValidateSchemaHasId<typeof _SchemaWithoutId>;
-      expectTypeOf<Result>().toEqualTypeOf<'❌ Schema Error: Table "todo" is missing required id column.'>();
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema Error: Table "todo" is missing required id column.'>();
     });
 
     test("passes for valid schema", () => {
@@ -57,7 +57,7 @@ describe("ValidateSchema", () => {
       };
 
       type Result = ValidateIdColumnType<typeof _SchemaWithBadId>;
-      expectTypeOf<Result>().toEqualTypeOf<'❌ Schema Error: Table "todo" id column output type must extend Id. Use id("todo") from Evolu Type.'>();
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema Error: Table "todo" id column output type must extend Id. Use id("todo") from Evolu Type.'>();
     });
 
     test("passes for branded id", () => {
@@ -75,28 +75,28 @@ describe("ValidateSchema", () => {
       type Result = ValidateNoSystemColumns<{
         todo: { id: typeof TodoId; createdAt: typeof NonEmptyString100 };
       }>;
-      expectTypeOf<Result>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "createdAt". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema Error: Table "todo" uses system column name "createdAt". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
     });
 
     test("reports updatedAt system column", () => {
       type Result = ValidateNoSystemColumns<{
         todo: { id: typeof TodoId; updatedAt: typeof NonEmptyString100 };
       }>;
-      expectTypeOf<Result>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "updatedAt". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema Error: Table "todo" uses system column name "updatedAt". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
     });
 
     test("reports isDeleted system column", () => {
       type Result = ValidateNoSystemColumns<{
         todo: { id: typeof TodoId; isDeleted: typeof NonEmptyString100 };
       }>;
-      expectTypeOf<Result>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "isDeleted". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema Error: Table "todo" uses system column name "isDeleted". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
     });
 
     test("reports ownerId system column", () => {
       type Result = ValidateNoSystemColumns<{
         todo: { id: typeof TodoId; ownerId: typeof NonEmptyString100 };
       }>;
-      expectTypeOf<Result>().toEqualTypeOf<'❌ Schema Error: Table "todo" uses system column name "ownerId". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema Error: Table "todo" uses system column name "ownerId". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
     });
 
     test("passes for valid schema", () => {
@@ -123,7 +123,7 @@ describe("ValidateSchema", () => {
       };
 
       type Result = ValidateColumnTypes<typeof _SchemaWithBadCol>;
-      expectTypeOf<Result>().toEqualTypeOf<'❌ Schema Error: Table "todo" column "data" type is not compatible with SQLite. Column types must extend SqliteValue (string, number, Uint8Array, or null).'>();
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema Error: Table "todo" column "data" type is not compatible with SQLite. Column types must extend SqliteValue (string, number, Uint8Array, or null).'>();
     });
 
     test("passes for valid schema", () => {

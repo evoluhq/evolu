@@ -302,6 +302,12 @@ export type Int1To100 = Int1To99 | 100;
 export type NumberFromString<T extends string> =
   T extends `${infer N extends number}` ? N : never;
 
+/** Creates a readable compiler-facing error message. */
+export type CompileTimeError<
+  Context extends string,
+  Message extends string,
+> = `⛔ ${Context} Error: ${Message}`;
+
 /** Returns whether a type is a union. */
 export type IsUnion<T, Whole = T> = [T] extends [never]
   ? false
