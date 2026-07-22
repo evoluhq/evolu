@@ -18,10 +18,12 @@ if (isNonEmptyArray(readonlyArr)) { ... }
 if (isNonEmptyArray(mutableArr)) { ... }
 ```
 
-**Renamed mutation functions** for consistency with the `...Array` suffix pattern:
+**Removed mutable array helpers:**
 
-- `shiftArray` → `shiftFromArray`
-- `popArray` → `popFromArray`
+- `shiftArray`
+- `popArray`
+
+Use native `.shift()` and `.pop()` when mutation is necessary.
 
 ### New Constants
 
@@ -45,11 +47,8 @@ if (isNonEmptyArray(mutableArr)) { ... }
 -import { isNonEmptyReadonlyArray } from "@evolu/common";
 +import { isNonEmptyArray } from "@evolu/common";
 
-// shiftArray → shiftFromArray
--import { shiftArray } from "@evolu/common";
-+import { shiftFromArray } from "@evolu/common";
-
-// popArray → popFromArray
--import { popArray } from "@evolu/common";
-+import { popFromArray } from "@evolu/common";
+// Mutable array helpers were removed.
+-import { popArray, shiftArray } from "@evolu/common";
++const first = items.shift();
++const last = items.pop();
 ```

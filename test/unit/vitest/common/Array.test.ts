@@ -13,10 +13,8 @@ import {
   lastInArray,
   mapArray,
   partitionArray,
-  popFromArray,
   prependToArray,
   reverseArray,
-  shiftFromArray,
   sortArray,
   spliceArray,
   zipArray,
@@ -153,8 +151,7 @@ describe("Type guards", () => {
       const arr: Array<number> = [1, 2, 3];
       if (isNonEmptyArray(arr)) {
         expectTypeOf(arr).toEqualTypeOf<NonEmptyArray<number>>();
-        // Should work with mutation functions
-        shiftFromArray(arr);
+        firstInArray(arr);
       }
     });
 
@@ -261,55 +258,22 @@ describe("Transformations", () => {
       expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
     });
 
-    // test("benchmarks mapArray vs for loop (informational)", () => {
-    //   const mapArrayForLoop = <T, U>(
-    //     array: ReadonlyArray<T>,
-    //     mapper: (item: T, index: number) => U,
-    //   ): ReadonlyArray<U> => {
-    //     const length = array.length;
-    //     const result = new Array<U>(length);
-    //     for (let i = 0; i < length; i++) {
-    //       result[i] = mapper(array[i], i);
-    //     }
-    //     return result as ReadonlyArray<U>;
-    //   };
+    test("skips and preserves holes in sparse arrays", () => {
+      const sparse = new Array<number>(3);
+      sparse[1] = 1;
+      const visitedIndices: Array<number> = [];
 
-    //   const size = 20_000;
-    //   const iterations = 200;
-    //   const data = Array.from({ length: size }, (_, i) => i);
-    //   const mapper = (value: number) => value * 2;
+      const result = mapArray(sparse, (value, index) => {
+        visitedIndices.push(index);
+        return value * 2;
+      });
 
-    //   for (let i = 0; i < 20; i++) {
-    //     mapArray(data, mapper);
-    //     mapArrayForLoop(data, mapper);
-    //   }
-
-    //   const mapStart = performance.now();
-    //   for (let i = 0; i < iterations; i++) {
-    //     mapArray(data, mapper);
-    //   }
-    //   const _mapDuration = performance.now() - mapStart;
-
-    //   const loopStart = performance.now();
-    //   for (let i = 0; i < iterations; i++) {
-    //     mapArrayForLoop(data, mapper);
-    //   }
-    //   const _loopDuration = performance.now() - loopStart;
-
-    //   const mapResult = mapArray(data, mapper);
-    //   const loopResult = mapArrayForLoop(data, mapper);
-
-    //   expect(mapResult.length).toBe(loopResult.length);
-    //   expect(mapResult[0]).toBe(loopResult[0]);
-    //   expect(mapResult[mapResult.length - 1]).toBe(
-    //     loopResult[loopResult.length - 1],
-    //   );
-
-    //   // mapArray: 29.11ms, for-loop: 7.97ms
-    //   // console.info(
-    //   //   `mapArray: ${mapDuration.toFixed(2)}ms, for-loop: ${loopDuration.toFixed(2)}ms`,
-    //   // );
-    // });
+      expect(visitedIndices).toEqual([1]);
+      expect(result.length).toBe(3);
+      expect(0 in result).toBe(false);
+      expect(result[1]).toBe(2);
+      expect(2 in result).toBe(false);
+    });
   });
 
   describe("flatMapArray", () => {
@@ -342,10 +306,7 @@ describe("Transformations", () => {
 
     test("preserves non-empty type when mapper returns non-empty", () => {
       const nonEmpty: NonEmptyReadonlyArray<number> = [1, 2, 3];
-      const result = flatMapArray(
-        nonEmpty,
-        (x): NonEmptyReadonlyArray<number> => [x, x * 10],
-      );
+      const result = flatMapArray(nonEmpty, (x) => [x, x * 10]);
       expect(result).toEqual([1, 10, 2, 20, 3, 30]);
       expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
     });
@@ -711,6 +672,16 @@ describe("Transformations", () => {
       const first = firstInArray(result);
       expect(first).toEqual([1, "a"]);
     });
+
+    test("returns possibly empty tuples when any input is possibly empty", () => {
+      const numbers: NonEmptyReadonlyArray<number> = [1, 2, 3];
+      const strings: ReadonlyArray<string> = ["a", "b", "c"];
+      const result = zipArray([numbers, strings]);
+
+      expectTypeOf(result).toEqualTypeOf<
+        ReadonlyArray<Readonly<[number, string]>>
+      >();
+    });
   });
 });
 
@@ -766,76 +737,6 @@ describe("Accessors", () => {
       const arr: NonEmptyArray<number> = [10, 20, 30];
       const result = lastInArray(arr);
       expect(result).toBe(30);
-    });
-  });
-});
-
-describe("Mutations", () => {
-  describe("shiftFromArray", () => {
-    test("removes first element from array", () => {
-      const arr: NonEmptyArray<number> = [1, 2, 3];
-      const result = shiftFromArray(arr);
-      expect(result).toBe(1);
-      expect(arr).toEqual([2, 3]);
-    });
-
-    test("removes from single element array", () => {
-      const arr: NonEmptyArray<number> = [42];
-      const result = shiftFromArray(arr);
-      expect(result).toBe(42);
-      expect(arr).toEqual([]);
-    });
-
-    test("mutates the original array", () => {
-      const arr: NonEmptyArray<string> = ["a", "b", "c"];
-      shiftFromArray(arr);
-      expect(arr).toEqual(["b", "c"]);
-    });
-
-    test("only accepts mutable arrays", () => {
-      const mutableArr: NonEmptyArray<number> = [1, 2, 3];
-      const result = shiftFromArray(mutableArr);
-      expect(result).toBe(1);
-      expect(mutableArr).toEqual([2, 3]);
-      expectTypeOf(result).toEqualTypeOf<number>();
-
-      // Verify readonly arrays are NOT accepted by TypeScript
-      // @ts-expect-error - readonly arrays cannot be mutated
-      shiftFromArray([1, 2, 3] as NonEmptyReadonlyArray<number>);
-    });
-  });
-
-  describe("popFromArray", () => {
-    test("removes last element from array", () => {
-      const arr: NonEmptyArray<number> = [1, 2, 3];
-      const result = popFromArray(arr);
-      expect(result).toBe(3);
-      expect(arr).toEqual([1, 2]);
-    });
-
-    test("removes from single element array", () => {
-      const arr: NonEmptyArray<number> = [42];
-      const result = popFromArray(arr);
-      expect(result).toBe(42);
-      expect(arr).toEqual([]);
-    });
-
-    test("mutates the original array", () => {
-      const arr: NonEmptyArray<string> = ["a", "b", "c"];
-      popFromArray(arr);
-      expect(arr).toEqual(["a", "b"]);
-    });
-
-    test("only accepts mutable arrays", () => {
-      const mutableArr: NonEmptyArray<number> = [1, 2, 3];
-      const result = popFromArray(mutableArr);
-      expect(result).toBe(3);
-      expect(mutableArr).toEqual([1, 2]);
-      expectTypeOf(result).toEqualTypeOf<number>();
-
-      // Verify readonly arrays are NOT accepted by TypeScript
-      // @ts-expect-error - readonly arrays cannot be mutated
-      popFromArray([1, 2, 3] as NonEmptyReadonlyArray<number>);
     });
   });
 });

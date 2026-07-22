@@ -8,7 +8,6 @@ import {
   emptyArray,
   firstInArray,
   isNonEmptyArray,
-  shiftFromArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
 import { assert } from "../Assert.ts";
@@ -564,7 +563,7 @@ const createEvoluTenant =
         }
 
         // Complete the current queue item and continue with the next one.
-        shiftFromArray(queue);
+        queue.shift();
         queueRequestInFlight = false;
         runQueue();
       });

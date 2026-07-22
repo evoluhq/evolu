@@ -12,7 +12,6 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha512 } from "@noble/hashes/sha2.js";
 import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
-import { arrayFrom } from "./Array.ts";
 import type { RandomLibDep } from "./Random.ts";
 import type { Result } from "./Result.ts";
 import { trySync } from "./Result.ts";
@@ -87,10 +86,10 @@ export const createRandomBytes = (): RandomBytes => ({
 /** Creates seeded random bytes for deterministic tests. */
 export const testCreateRandomBytes = (deps: RandomLibDep): RandomBytes =>
   ({
-    create: (bytesLength: number) => {
-      const array = arrayFrom(bytesLength, () => deps.randomLib.int(0, 255));
-      return new globalThis.Uint8Array(array);
-    },
+    create: (bytesLength: number) =>
+      globalThis.Uint8Array.from({ length: bytesLength }, () =>
+        deps.randomLib.int(0, 255),
+      ),
   }) as RandomBytes;
 
 /**

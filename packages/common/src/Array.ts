@@ -51,10 +51,6 @@
  * like database queries or network requests. Using non-empty arrays whenever
  * possible is a good convention.
  *
- * For performance-critical cases where mutation is needed, Evolu provides
- * {@link shiftFromArray} and {@link popFromArray} — but only because they improve
- * type safety by returning a guaranteed `T` rather than an optional value.
- *
  * ### When to use native methods
  *
  * These helpers only exist where they add type-level value. Native methods like
@@ -90,11 +86,6 @@
  * // Accessors
  * const first = firstInArray(["a", "b", "c"]); // "a"
  * const last = lastInArray(["a", "b", "c"]); // "c"
- *
- * // Mutations
- * const mutable: NonEmptyArray<number> = [1, 2, 3];
- * shiftFromArray(mutable); // 1 (guaranteed to exist)
- * mutable; // [2, 3]
  * ```
  *
  * ## Composition
@@ -160,7 +151,7 @@ export const emptyArray: ReadonlyArray<never> = [];
  * - Returns readonly arrays
  * - Accepts length directly: `arrayFrom(3, fn)` instead of `Array.from({ length:
  *   3 }, fn)`
- * - Skips copying if iterable is already an array (safe because readonly)
+ * - Returns existing arrays unchanged
  *
  * ### Example
  *
@@ -240,7 +231,7 @@ export const arrayFromAsync = async <T>(
  * // Mutable array narrows to NonEmptyArray
  * const arr: Array<number> = [1, 2, 3];
  * if (isNonEmptyArray(arr)) {
- *   shiftFromArray(arr); // arr is NonEmptyArray<number>
+ *   firstInArray(arr); // arr is NonEmptyArray<number>
  * }
  *
  * // Readonly array narrows to NonEmptyReadonlyArray
@@ -278,6 +269,8 @@ export const appendToArray = <T>(
   array: ReadonlyArray<T>,
   item: T,
 ): NonEmptyReadonlyArray<T> =>
+  // The appended item guarantees non-emptiness, but TypeScript cannot infer a
+  // leading element after spreading a possibly empty array.
   [...array, item] as ReadonlyArray<T> as NonEmptyReadonlyArray<T>;
 
 /**
@@ -294,7 +287,7 @@ export const appendToArray = <T>(
 export const prependToArray = <T>(
   array: ReadonlyArray<T>,
   item: T,
-): NonEmptyReadonlyArray<T> => [item, ...array] as NonEmptyReadonlyArray<T>;
+): NonEmptyReadonlyArray<T> => [item, ...array];
 
 /**
  * Maps an array using a mapper function, returning a new readonly array.
@@ -310,23 +303,19 @@ export const prependToArray = <T>(
  * @group Transformations
  */
 export function mapArray<T, U>(
-  array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
+  array: NonEmptyReadonlyArray<T>,
   mapper: (item: T, index: number) => U,
 ): NonEmptyReadonlyArray<U>;
 /** Possibly empty array. */
 export function mapArray<T, U>(
-  array: ReadonlyArray<T> | Array<T>,
+  array: ReadonlyArray<T>,
   mapper: (item: T, index: number) => U,
 ): ReadonlyArray<U>;
 export function mapArray<T, U>(
-  array: ReadonlyArray<T> | Array<T>,
+  array: ReadonlyArray<T>,
   mapper: (item: T, index: number) => U,
 ): ReadonlyArray<U> {
-  // For loop is faster than array.map.
-  const length = array.length;
-  const result = new Array<U>(length);
-  for (let i = 0; i < length; i++) result[i] = mapper(array[i], i);
-  return result;
+  return array.map(mapper);
 }
 
 /**
@@ -361,38 +350,28 @@ export function mapArray<T, U>(
  * @group Transformations
  */
 export function flatMapArray<T>(
-  array:
-    | NonEmptyReadonlyArray<NonEmptyReadonlyArray<T> | NonEmptyArray<T>>
-    | NonEmptyArray<NonEmptyReadonlyArray<T> | NonEmptyArray<T>>,
+  array: NonEmptyReadonlyArray<NonEmptyReadonlyArray<T>>,
 ): NonEmptyReadonlyArray<T>;
 /** Possibly empty nested arrays. */
 export function flatMapArray<T>(
-  array:
-    | ReadonlyArray<ReadonlyArray<T> | Array<T>>
-    | Array<ReadonlyArray<T> | Array<T>>,
+  array: ReadonlyArray<ReadonlyArray<T>>,
 ): ReadonlyArray<T>;
 /** Non-empty with mapper returning non-empty. */
 export function flatMapArray<T, U>(
-  array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
-  mapper: (
-    item: T,
-    index: number,
-  ) => NonEmptyReadonlyArray<U> | NonEmptyArray<U>,
+  array: NonEmptyReadonlyArray<T>,
+  mapper: (item: T, index: number) => NonEmptyReadonlyArray<U>,
 ): NonEmptyReadonlyArray<U>;
 /** With mapper function. */
 export function flatMapArray<T, U>(
-  array: ReadonlyArray<T> | Array<T>,
-  mapper: (item: T, index: number) => ReadonlyArray<U> | Array<U>,
+  array: ReadonlyArray<T>,
+  mapper: (item: T, index: number) => ReadonlyArray<U>,
 ): ReadonlyArray<U>;
 export function flatMapArray<T, U>(
-  array: ReadonlyArray<T> | Array<T>,
-  mapper: (
+  array: ReadonlyArray<T>,
+  mapper: (item: T, index: number) => ReadonlyArray<U> = identity as (
     item: T,
     index: number,
-  ) => ReadonlyArray<U> | Array<U> = identity as (
-    item: T,
-    index: number,
-  ) => ReadonlyArray<U> | Array<U>,
+  ) => ReadonlyArray<U>,
 ): ReadonlyArray<U> {
   return array.flatMap(mapper);
 }
@@ -413,24 +392,24 @@ export function flatMapArray<T, U>(
  * @group Transformations
  */
 export function concatArrays<T>(
-  first: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
-  second: ReadonlyArray<T> | Array<T>,
+  first: NonEmptyReadonlyArray<T>,
+  second: ReadonlyArray<T>,
 ): NonEmptyReadonlyArray<T>;
 /** Second non-empty. */
 export function concatArrays<T>(
-  first: ReadonlyArray<T> | Array<T>,
-  second: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
+  first: ReadonlyArray<T>,
+  second: NonEmptyReadonlyArray<T>,
 ): NonEmptyReadonlyArray<T>;
 /** Both possibly empty. */
 export function concatArrays<T>(
-  first: ReadonlyArray<T> | Array<T>,
-  second: ReadonlyArray<T> | Array<T>,
+  first: ReadonlyArray<T>,
+  second: ReadonlyArray<T>,
 ): ReadonlyArray<T>;
 export function concatArrays<T>(
-  first: ReadonlyArray<T> | Array<T>,
-  second: ReadonlyArray<T> | Array<T>,
+  first: ReadonlyArray<T>,
+  second: ReadonlyArray<T>,
 ): ReadonlyArray<T> {
-  return [...first, ...second] as ReadonlyArray<T>;
+  return [...first, ...second];
 }
 
 /**
@@ -479,10 +458,9 @@ export function filterArray<T>(
 }
 
 /**
- * Returns a new readonly array with duplicate items removed. If `by` is
- * provided, it will be used to derive the key for uniqueness; otherwise values
- * are used directly. Dedupes by reference equality of values (or extracted keys
- * when `by` is used).
+ * Returns a new readonly array with duplicate items removed. Items are compared
+ * using `Set` equality (SameValueZero): primitives by value, and objects and
+ * arrays by reference. If `by` is provided, it derives the comparison key.
  *
  * Preserves non-empty type.
  *
@@ -506,12 +484,12 @@ export function filterArray<T>(
  * @group Transformations
  */
 export function dedupeArray<T>(
-  array: NonEmptyReadonlyArray<T> | NonEmptyArray<T>,
+  array: NonEmptyReadonlyArray<T>,
   by?: (item: T) => unknown,
 ): NonEmptyReadonlyArray<T>;
 /** Possibly empty array. */
 export function dedupeArray<T>(
-  array: ReadonlyArray<T> | Array<T>,
+  array: ReadonlyArray<T>,
   by?: (item: T) => unknown,
 ): ReadonlyArray<T>;
 export function dedupeArray<T>(
@@ -708,7 +686,7 @@ export function zipArray<
   T extends NonEmptyReadonlyArray<NonEmptyReadonlyArray<unknown>>,
 >(arrays: T): NonEmptyReadonlyArray<Readonly<ZipArrayResult<T>>>;
 /** Possibly empty arrays. */
-export function zipArray<T extends ReadonlyArray<ReadonlyArray<unknown>>>(
+export function zipArray<const T extends ReadonlyArray<ReadonlyArray<unknown>>>(
   arrays: T,
 ): ReadonlyArray<Readonly<ZipArrayResult<T>>>;
 export function zipArray<T extends ReadonlyArray<ReadonlyArray<unknown>>>(
@@ -752,43 +730,3 @@ export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
  */
 export const lastInArray = <T>(array: NonEmptyReadonlyArray<T>): T =>
   array[array.length - 1];
-
-/**
- * Shifts (removes and returns) the first element from a non-empty mutable
- * array.
- *
- * **Mutates** the original array.
- *
- * ### Example
- *
- * ```ts
- * // Process a queue of callbacks
- * const waitingQueue: Array<() => void> = [callback1, callback2];
- * if (isNonEmptyArray(waitingQueue)) {
- *   shiftFromArray(waitingQueue)(); // Remove and immediately invoke
- * }
- * ```
- *
- * @group Mutations
- */
-export const shiftFromArray = <T>(array: NonEmptyArray<T>): T =>
-  array.shift() as T;
-
-/**
- * Pops (removes and returns) the last element from a non-empty mutable array.
- *
- * **Mutates** the original array.
- *
- * ### Example
- *
- * ```ts
- * // Process a stack of callbacks (LIFO)
- * const callbackStack: Array<() => void> = [callback1, callback2];
- * if (isNonEmptyArray(callbackStack)) {
- *   popFromArray(callbackStack)(); // Remove and immediately invoke
- * }
- * ```
- *
- * @group Mutations
- */
-export const popFromArray = <T>(array: NonEmptyArray<T>): T => array.pop() as T;
