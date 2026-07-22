@@ -1,0 +1,21 @@
+{
+  "extends": "../packages/typescript-config/universal-esm.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "paths": {
+      "@evolu/common": ["../packages/common/src/index.ts"],
+      "@evolu/common/local-first": [
+        "../packages/common/src/local-first/index.ts"
+      ],
+      "@evolu/common/polyfills": ["../packages/common/src/Polyfills.ts"],
+      "@evolu/vitest": ["../packages/vitest/src/index.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}

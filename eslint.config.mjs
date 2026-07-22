@@ -114,8 +114,8 @@ export default defineConfig(
   {
     files: [
       "packages/common/src/Task.ts",
-      "packages/common/test/Resource.test.ts",
-      "packages/common/test/Task.test.ts",
+      "test/unit/vitest/common/Resource.test.ts",
+      "test/integration/vitest/Task/Task.test.ts",
       "packages/nodejs/test/Task.test.ts",
     ],
     rules: {

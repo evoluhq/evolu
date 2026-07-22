@@ -6,6 +6,7 @@
     { "path": "./packages/react" },
     { "path": "./packages/react-native" },
     { "path": "./packages/react-web" },
+    { "path": "./packages/vitest" },
     { "path": "./packages/vue" },
     { "path": "./packages/web" }
   ]

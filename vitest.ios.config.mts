@@ -106,22 +106,22 @@ export default defineConfig({
             // vitest-mobile iOS runs are currently slow and flaky, even when the
             // tested code itself is fast.
 
-            "packages/common/test/Array.test.ts",
-            "packages/common/test/Assert.test.ts",
-            "packages/common/test/BigInt.test.ts",
-            "packages/common/test/Brand.test.ts",
-            "packages/common/test/Cache.test.ts",
-            "packages/common/test/Callbacks.test.ts",
+            "test/unit/vitest/common/Array.test.ts",
+            "test/unit/vitest/common/Assert.test.ts",
+            "test/unit/vitest/common/BigInt.test.ts",
+            "test/unit/vitest/common/Brand.test.ts",
+            "test/unit/vitest/common/Cache.test.ts",
+            "test/unit/vitest/common/Callbacks.test.ts",
             "packages/react-native/test/Task.ios.test.ts",
 
             // Uses inline snapshots, which vitest-mobile does not support yet.
-            // "packages/common/test/Buffer.test.ts",
+            // "test/unit/vitest/common/Buffer.test.ts",
 
             // Task.test.ts imports Vitest's vi and assert for other
             // coverage. vitest-mobile's runtime shim does not provide those
             // APIs, and a correct mobile implementation needs more than a
             // simple re-export.
-            // "packages/common/test/Task.test.ts",
+            // "test/integration/vitest/Task/Task.test.ts",
           ],
           exclude: ["packages/react-native/test/_setup.ios.test.ts"],
           setupFiles: ["packages/react-native/test/_setup.ios.test.ts"],

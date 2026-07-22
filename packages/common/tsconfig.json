@@ -7,11 +7,6 @@
     "resolveJsonModule": true,
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
-  "include": [
-    "src",
-    "test",
-    "test/_webSocketTestServerControl.ts",
-    "vitest.*.config.ts"
-  ],
+  "include": ["src"],
   "exclude": ["dist", "node_modules"]
 }

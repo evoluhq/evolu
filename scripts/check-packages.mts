@@ -14,6 +14,7 @@ const packageDirectories = [
   "packages/react-native",
   "packages/react-web",
   "packages/svelte",
+  "packages/vitest",
   "packages/vue",
   "packages/web",
 ] as const;

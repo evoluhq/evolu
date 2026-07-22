@@ -29,6 +29,9 @@ importers:
       '@biomejs/biome':
         specifier: ^2.4.10
         version: 2.5.4
+      '@bokuweb/zstd-wasm':
+        specifier: 0.0.27
+        version: 0.0.27
       '@changesets/cli':
         specifier: ^2.30.0
         version: 2.31.1(@types/node@24.13.3)
@@ -41,15 +44,24 @@ importers:
       '@evolu/nodejs':
         specifier: workspace:*
         version: link:packages/nodejs
+      '@evolu/vitest':
+        specifier: workspace:*
+        version: link:packages/vitest
       '@paulmillr/jsbt':
         specifier: 0.6.1
         version: 0.6.1(patch_hash=979d4745ee31a3e68861b375f46271b8891387e46b4f6cf9d4ad14167ebd670b)
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/inquirer':
         specifier: ^9.0.9
         version: 9.0.10
       '@types/node':
         specifier: ^24.10.9
         version: 24.13.3
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       '@typescript-eslint/parser':
         specifier: ^8.64.0
         version: 8.64.0(@typescript/typescript6@6.0.2)(eslint@10.7.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)
@@ -65,6 +77,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.2
         version: 4.1.10(@vitest/browser@4.1.10)(vitest@4.1.10)
+      better-sqlite3:
+        specifier: ^12.6.2
+        version: 12.11.1
       eslint:
         specifier: ^10.1.0
         version: 10.7.0(jiti@2.7.0)(supports-color@8.1.1)
@@ -74,6 +89,12 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^7.0.1
         version: 7.1.1(eslint@10.7.0(jiti@2.7.0)(supports-color@8.1.1))(supports-color@8.1.1)
+      fast-check:
+        specifier: ^4.5.3
+        version: 4.9.0
+      playwright:
+        specifier: ^1.58.1
+        version: 1.61.1
       prettier:
         specifier: ^3.8.1
         version: 3.9.5
@@ -110,6 +131,15 @@ importers:
       vitest-mobile:
         specifier: ^0.4.3
         version: 0.4.3(patch_hash=c7f7be0dde85fe8c1982a4661ca03bebce2691152ed2eba35325c5c8b1bd17fe)(@vitest/expect@4.1.10)(@vitest/runner@4.1.10)(@vitest/utils@4.1.10)(react-native@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.17)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(vitest@4.1.10)
+      webpack:
+        specifier: ^5.98.0
+        version: 5.108.4(esbuild@0.28.1)(lightningcss@1.32.0)(postcss@8.5.19)
+      ws:
+        specifier: ^8.19.0
+        version: 8.21.1
+      zod:
+        specifier: ^4.3.6
+        version: 4.4.3
 
   apps/relay:
     dependencies:
@@ -716,45 +746,18 @@ importers:
         specifier: ^5.4.1
         version: 5.4.1
     devDependencies:
-      '@bokuweb/zstd-wasm':
-        specifier: 0.0.27
-        version: 0.0.27
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
-      '@types/better-sqlite3':
-        specifier: ^7.6.13
-        version: 7.6.13
       '@types/node':
         specifier: ^24.10.9
         version: 24.13.3
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      better-sqlite3:
-        specifier: ^12.6.2
-        version: 12.11.1
-      fast-check:
-        specifier: ^4.5.3
-        version: 4.9.0
-      playwright:
-        specifier: ^1.58.1
-        version: 1.61.1
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
-      webpack:
-        specifier: ^5.98.0
-        version: 5.108.4(esbuild@0.28.1)(lightningcss@1.32.0)(postcss@8.5.19)
-      ws:
-        specifier: ^8.19.0
-        version: 8.21.1
-      zod:
-        specifier: ^4.3.6
-        version: 4.4.3
 
   packages/nodejs:
     dependencies:
@@ -960,6 +963,21 @@ importers:
         version: '@typescript/typescript6@6.0.2'
 
   packages/typescript-config: {}
+
+  packages/vitest:
+    devDependencies:
+      '@evolu/common':
+        specifier: workspace:*
+        version: link:../common
+      '@evolu/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@typescript/native':
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.2
+        version: 4.1.10(@types/node@24.13.3)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-v8@4.1.10)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.49.0)(yaml@2.9.0))
 
   packages/vue:
     dependencies:
