@@ -429,10 +429,12 @@ export const createConsole = ({
 export const createNativeConsoleOutput = (): ConsoleOutput => ({
   write: (entry, formatter) => {
     const args = formatter ? formatter(entry) : entry.args;
-    const fn = globalThis.console[entry.method] as (
-      ...args: Array<unknown>
-    ) => void;
-    fn(...args);
+    (
+      globalThis.console as unknown as Record<
+        ConsoleMethod,
+        (...args: Array<unknown>) => void
+      >
+    )[entry.method](...args);
   },
 });
 

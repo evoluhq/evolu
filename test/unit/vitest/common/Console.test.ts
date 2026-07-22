@@ -272,7 +272,7 @@ describe("createConsole", () => {
 });
 
 describe("createNativeConsoleOutput", () => {
-  test("calls native console", () => {
+  test("calls the native console method with its console receiver", () => {
     const logSpy = vi
       .spyOn(globalThis.console, "info")
       .mockImplementation(() => undefined);
@@ -285,6 +285,7 @@ describe("createNativeConsoleOutput", () => {
     });
 
     expect(logSpy).toHaveBeenCalledWith("hello", "world");
+    expect(logSpy.mock.contexts[0]).toBe(globalThis.console);
     logSpy.mockRestore();
   });
 
