@@ -1,5 +1,27 @@
 # @evolu/nodejs
 
+## 3.0.0-next.4
+
+### Minor Changes
+
+- 66941ed: Added `availableParallelism()` with a validated `PositiveInt` return value.
+- b85837f: Improved wall-clock, performance, and monotonic time APIs.
+
+  **Common:**
+
+  - Replaced `Time.nowDateIso()` with the `Time.now("DateIso")` overload.
+  - Added `Time.performance` with a high-resolution clock and time origin, plus branded `PerformanceTime`, `PerformanceTimeOrigin`, and `PerformanceDuration` values.
+  - Added `performanceDurationBetween()` for measuring elapsed performance time.
+  - Made timeout IDs instance-owned so clearing an ID with another `Time` instance throws.
+  - Made native-range timeouts independent of wall-clock changes while retaining absolute-deadline handling for longer timeouts.
+  - Extended `formatMillisAsDuration()` to format days, weeks, and years.
+
+  **Node.js:**
+
+  - Added `NodejsTime` and `createNodejsTime()` with `hrtime()` for monotonic nanosecond readings.
+  - Added branded `HrTime` and `HrDuration` values with `hrDurationBetween()`.
+  - Added `hrDurationToMillis()` and `millisToHrDuration()` conversions.
+
 ## 3.0.0-next.3
 
 ### Patch Changes

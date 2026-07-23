@@ -1,5 +1,11 @@
 # @evolu/react-native
 
+## 15.0.0-next.3
+
+### Patch Changes
+
+- eb9de1a: Added a polyfill for `AbortSignal.throwIfAborted`.
+
 ## 15.0.0-next.2
 
 ### Patch Changes
