@@ -258,6 +258,18 @@ describe("Transformations", () => {
       expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
     });
 
+    test("passes the source array to the mapper", () => {
+      const array: ReadonlyArray<number> = [1, 2, 3];
+      const sourceArrays: Array<ReadonlyArray<number>> = [];
+
+      mapArray(array, (_value, _index, sourceArray) => {
+        expectTypeOf(sourceArray).toEqualTypeOf<ReadonlyArray<number>>();
+        sourceArrays.push(sourceArray);
+      });
+
+      expect(sourceArrays).toEqual([array, array, array]);
+    });
+
     test("skips and preserves holes in sparse arrays", () => {
       const sparse = new Array<number>(3);
       sparse[1] = 1;
@@ -323,10 +335,17 @@ describe("Transformations", () => {
       expect(arr).toEqual([1, 2, 3]);
     });
 
-    test("passes index to mapper", () => {
+    test("passes index and source array to mapper", () => {
       const arr: ReadonlyArray<string> = ["a", "b"];
-      const result = flatMapArray(arr, (x, i) => [x, String(i)]);
+      const sourceArrays: Array<ReadonlyArray<string>> = [];
+      const result = flatMapArray(arr, (x, i, sourceArray) => {
+        expectTypeOf(sourceArray).toEqualTypeOf<ReadonlyArray<string>>();
+        sourceArrays.push(sourceArray);
+        return [x, String(i)];
+      });
+
       expect(result).toEqual(["a", "0", "b", "1"]);
+      expect(sourceArrays).toEqual([arr, arr]);
     });
 
     test("filters and maps in one pass using [] and [value] pattern", () => {
@@ -406,6 +425,23 @@ describe("Transformations", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3, 4, 5];
       filterArray(arr, (x) => x % 2 === 0);
       expect(arr).toEqual([1, 2, 3, 4, 5]);
+    });
+
+    test("passes index and source array to predicate", () => {
+      const arr: ReadonlyArray<number> = [1, 2, 3];
+      const calls: Array<readonly [number, number, ReadonlyArray<number>]> = [];
+
+      filterArray(arr, (value, index, sourceArray) => {
+        expectTypeOf(sourceArray).toEqualTypeOf<ReadonlyArray<number>>();
+        calls.push([value, index, sourceArray]);
+        return true;
+      });
+
+      expect(calls).toEqual([
+        [1, 0, arr],
+        [2, 1, arr],
+        [3, 2, arr],
+      ]);
     });
 
     test("works with refinements", () => {
@@ -497,14 +533,20 @@ describe("Transformations", () => {
       expect(mutableArr).toEqual([1, 2, 3, 4]);
     });
 
-    test("passes index to predicate", () => {
+    test("passes index and source array to predicate", () => {
       const arr: ReadonlyArray<string> = ["a", "b", "c"];
+      const sourceArrays: Array<ReadonlyArray<string>> = [];
       const [evenIndices, oddIndices] = partitionArray(
         arr,
-        (_, i) => i % 2 === 0,
+        (_, i, sourceArray) => {
+          expectTypeOf(sourceArray).toEqualTypeOf<ReadonlyArray<string>>();
+          sourceArrays.push(sourceArray);
+          return i % 2 === 0;
+        },
       );
       expect(evenIndices).toEqual(["a", "c"]);
       expect(oddIndices).toEqual(["b"]);
+      expect(sourceArrays).toEqual([arr, arr, arr]);
     });
 
     test("works with refinements and type narrowing", () => {

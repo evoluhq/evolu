@@ -2856,7 +2856,7 @@ const mapInput = (
   fn: (value: any, indexOrKey: any) => AnyTask,
 ): ReadonlyArray<AnyTask> | TaskRecord =>
   Array.isArray(input)
-    ? mapArray(input, fn)
+    ? mapArray(input, (value, index) => fn(value, index))
     : mapObject(input as Readonly<Record<string, unknown>>, fn);
 
 /**

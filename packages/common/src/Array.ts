@@ -120,7 +120,6 @@
  */
 
 import { identity } from "./Function.ts";
-import type { PredicateWithIndex, RefinementWithIndex } from "./Types.ts";
 
 /**
  * An array with at least one element.
@@ -300,20 +299,22 @@ export const prependToArray = <T>(
  * mapArray([1, 2, 3], (x) => x * 2); // [2, 4, 6]
  * ```
  *
+ * The mapper receives `(item, index, array)`, matching native `Array.map`.
+ *
  * @group Transformations
  */
 export function mapArray<T, U>(
   array: NonEmptyReadonlyArray<T>,
-  mapper: (item: T, index: number) => U,
+  mapper: (item: T, index: number, array: ReadonlyArray<T>) => U,
 ): NonEmptyReadonlyArray<U>;
 /** Possibly empty array. */
 export function mapArray<T, U>(
   array: ReadonlyArray<T>,
-  mapper: (item: T, index: number) => U,
+  mapper: (item: T, index: number, array: ReadonlyArray<T>) => U,
 ): ReadonlyArray<U>;
 export function mapArray<T, U>(
   array: ReadonlyArray<T>,
-  mapper: (item: T, index: number) => U,
+  mapper: (item: T, index: number, array: ReadonlyArray<T>) => U,
 ): ReadonlyArray<U> {
   return array.map(mapper);
 }
@@ -347,6 +348,8 @@ export function mapArray<T, U>(
  * });
  * ```
  *
+ * The mapper receives `(item, index, array)`, matching native `Array.flatMap`.
+ *
  * @group Transformations
  */
 export function flatMapArray<T>(
@@ -359,18 +362,27 @@ export function flatMapArray<T>(
 /** Non-empty with mapper returning non-empty. */
 export function flatMapArray<T, U>(
   array: NonEmptyReadonlyArray<T>,
-  mapper: (item: T, index: number) => NonEmptyReadonlyArray<U>,
+  mapper: (
+    item: T,
+    index: number,
+    array: ReadonlyArray<T>,
+  ) => NonEmptyReadonlyArray<U>,
 ): NonEmptyReadonlyArray<U>;
 /** With mapper function. */
 export function flatMapArray<T, U>(
   array: ReadonlyArray<T>,
-  mapper: (item: T, index: number) => ReadonlyArray<U>,
+  mapper: (item: T, index: number, array: ReadonlyArray<T>) => ReadonlyArray<U>,
 ): ReadonlyArray<U>;
 export function flatMapArray<T, U>(
   array: ReadonlyArray<T>,
-  mapper: (item: T, index: number) => ReadonlyArray<U> = identity as (
+  mapper: (
     item: T,
     index: number,
+    array: ReadonlyArray<T>,
+  ) => ReadonlyArray<U> = identity as (
+    item: T,
+    index: number,
+    array: ReadonlyArray<T>,
   ) => ReadonlyArray<U>,
 ): ReadonlyArray<U> {
   return array.flatMap(mapper);
@@ -439,20 +451,27 @@ export function concatArrays<T>(
  * // positiveInts: ReadonlyArray<PositiveInt> (narrowed type)
  * ```
  *
+ * The predicate receives `(item, index, array)`, matching native
+ * `Array.filter`.
+ *
  * @group Transformations
  */
 export function filterArray<T, S extends T>(
   array: ReadonlyArray<T>,
-  refinement: RefinementWithIndex<T, S>,
+  refinement: (
+    item: T,
+    index: number,
+    array: ReadonlyArray<T>,
+  ) => item is S,
 ): ReadonlyArray<S>;
 /** With predicate. */
 export function filterArray<T>(
   array: ReadonlyArray<T>,
-  predicate: PredicateWithIndex<T>,
+  predicate: (item: T, index: number, array: ReadonlyArray<T>) => boolean,
 ): ReadonlyArray<T>;
 export function filterArray<T>(
   array: ReadonlyArray<T>,
-  predicate: PredicateWithIndex<T>,
+  predicate: (item: T, index: number, array: ReadonlyArray<T>) => boolean,
 ): ReadonlyArray<T> {
   return array.filter(predicate);
 }
@@ -545,26 +564,32 @@ export function dedupeArray<T>(
  * // strings: ReadonlyArray<NonEmptyString> (Exclude<T, PositiveInt>)
  * ```
  *
+ * The predicate receives `(item, index, array)`.
+ *
  * @group Transformations
  */
 export function partitionArray<T, S extends T>(
   array: ReadonlyArray<T>,
-  refinement: RefinementWithIndex<T, S>,
+  refinement: (
+    item: T,
+    index: number,
+    array: ReadonlyArray<T>,
+  ) => item is S,
 ): readonly [ReadonlyArray<S>, ReadonlyArray<Exclude<T, S>>];
 /** With predicate. */
 export function partitionArray<T>(
   array: ReadonlyArray<T>,
-  predicate: PredicateWithIndex<T>,
+  predicate: (item: T, index: number, array: ReadonlyArray<T>) => boolean,
 ): readonly [ReadonlyArray<T>, ReadonlyArray<T>];
 export function partitionArray<T>(
   array: ReadonlyArray<T>,
-  predicate: PredicateWithIndex<T>,
+  predicate: (item: T, index: number, array: ReadonlyArray<T>) => boolean,
 ): readonly [ReadonlyArray<T>, ReadonlyArray<T>] {
   const trueArray: Array<T> = [];
   const falseArray: Array<T> = [];
 
   for (let i = 0; i < array.length; i++) {
-    if (predicate(array[i], i)) {
+    if (predicate(array[i], i, array)) {
       trueArray.push(array[i]);
     } else {
       falseArray.push(array[i]);
