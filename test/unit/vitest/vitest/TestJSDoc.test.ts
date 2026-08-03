@@ -271,7 +271,7 @@ test("testJSDocExamples runs examples without compilation errors", async () => {
   }
 });
 
-test("testJSDocExamples supports colon-formatted TypeScript diagnostics", async () => {
+test("testJSDocExamples supports colored colon-formatted TypeScript diagnostics", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
   const temporaryDirectory = mkdtempSync(
     join(temporaryRoot, "evolu-test-jsdoc-"),
@@ -327,7 +327,7 @@ test("testJSDocExamples supports colon-formatted TypeScript diagnostics", async 
         "const [firstFile] = files;",
         'if (firstFile === undefined) throw new Error("No files provided.");',
         "process.stderr.write(",
-        "  `${firstFile}:5:1 - error TS2304: Cannot find name 'missingFunction'.\\n`,",
+        "  `\\u001b[96m${firstFile}\\u001b[0m:\\u001b[93m5\\u001b[0m:\\u001b[93m1\\u001b[0m - error TS2304: Cannot find name 'missingFunction'.\\n`,",
         ");",
         "process.exit(1);",
       ].join("\n"),
