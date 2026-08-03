@@ -306,132 +306,132 @@ describe("Type2 tree shaking", () => {
       {
         "Array(String)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2105,
-            "rawSizeInBytes": 4834,
+            "gzipSizeInBytes": 2116,
+            "rawSizeInBytes": 4866,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2118,
-            "rawSizeInBytes": 4895,
+            "gzipSizeInBytes": 2125,
+            "rawSizeInBytes": 4927,
           },
         },
         "InstanceOf(Error)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 781,
-            "rawSizeInBytes": 1529,
+            "gzipSizeInBytes": 798,
+            "rawSizeInBytes": 1561,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 780,
-            "rawSizeInBytes": 1531,
+            "gzipSizeInBytes": 794,
+            "rawSizeInBytes": 1563,
           },
         },
         "NonEmptyString": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1180,
-            "rawSizeInBytes": 2462,
+            "gzipSizeInBytes": 1192,
+            "rawSizeInBytes": 2494,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1181,
-            "rawSizeInBytes": 2494,
+            "gzipSizeInBytes": 1193,
+            "rawSizeInBytes": 2526,
           },
         },
         "NumberFromString": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1323,
-            "rawSizeInBytes": 2894,
+            "gzipSizeInBytes": 1335,
+            "rawSizeInBytes": 2926,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1314,
-            "rawSizeInBytes": 2933,
+            "gzipSizeInBytes": 1325,
+            "rawSizeInBytes": 2965,
           },
         },
         "Object(NonEmptyString)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3007,
-            "rawSizeInBytes": 8183,
+            "gzipSizeInBytes": 3010,
+            "rawSizeInBytes": 8215,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3012,
-            "rawSizeInBytes": 8265,
+            "gzipSizeInBytes": 3020,
+            "rawSizeInBytes": 8297,
           },
         },
         "Object(Number, Record(String, Number))": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3637,
-            "rawSizeInBytes": 10538,
+            "gzipSizeInBytes": 3645,
+            "rawSizeInBytes": 10570,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3651,
-            "rawSizeInBytes": 10683,
+            "gzipSizeInBytes": 3659,
+            "rawSizeInBytes": 10715,
           },
         },
         "Record(String, Number)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2231,
-            "rawSizeInBytes": 5224,
+            "gzipSizeInBytes": 2238,
+            "rawSizeInBytes": 5256,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2232,
-            "rawSizeInBytes": 5284,
+            "gzipSizeInBytes": 2239,
+            "rawSizeInBytes": 5316,
           },
         },
         "String": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 695,
-            "rawSizeInBytes": 1311,
+            "gzipSizeInBytes": 711,
+            "rawSizeInBytes": 1343,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 690,
-            "rawSizeInBytes": 1314,
+            "gzipSizeInBytes": 704,
+            "rawSizeInBytes": 1346,
           },
         },
         "Tuple(String, Number)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2219,
-            "rawSizeInBytes": 5134,
+            "gzipSizeInBytes": 2229,
+            "rawSizeInBytes": 5166,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2208,
-            "rawSizeInBytes": 5156,
+            "gzipSizeInBytes": 2218,
+            "rawSizeInBytes": 5188,
           },
         },
         "Union(String, Number)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1626,
-            "rawSizeInBytes": 3567,
+            "gzipSizeInBytes": 1633,
+            "rawSizeInBytes": 3599,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1628,
-            "rawSizeInBytes": 3614,
+            "gzipSizeInBytes": 1635,
+            "rawSizeInBytes": 3646,
           },
         },
         "discriminatedUnion(Created, Deleted)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3774,
-            "rawSizeInBytes": 11025,
+            "gzipSizeInBytes": 3783,
+            "rawSizeInBytes": 11057,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3788,
-            "rawSizeInBytes": 11166,
+            "gzipSizeInBytes": 3796,
+            "rawSizeInBytes": 11198,
           },
         },
         "lazy(Object(Array))": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3988,
-            "rawSizeInBytes": 11500,
+            "gzipSizeInBytes": 3997,
+            "rawSizeInBytes": 11532,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 4010,
-            "rawSizeInBytes": 11661,
+            "gzipSizeInBytes": 4014,
+            "rawSizeInBytes": 11693,
           },
         },
         "typed(Pending)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3140,
-            "rawSizeInBytes": 8569,
+            "gzipSizeInBytes": 3150,
+            "rawSizeInBytes": 8601,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3146,
-            "rawSizeInBytes": 8662,
+            "gzipSizeInBytes": 3154,
+            "rawSizeInBytes": 8694,
           },
         },
       }
@@ -479,12 +479,12 @@ describe("Type2 tree shaking", () => {
       {
         "localizeTypes(Label)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1644,
-            "rawSizeInBytes": 3652,
+            "gzipSizeInBytes": 1652,
+            "rawSizeInBytes": 3684,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1659,
-            "rawSizeInBytes": 3712,
+            "gzipSizeInBytes": 1666,
+            "rawSizeInBytes": 3744,
           },
         },
       }
@@ -526,12 +526,12 @@ describe("Type2 tree shaking", () => {
       {
         "typed Todo list": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 5218,
-            "rawSizeInBytes": 15651,
+            "gzipSizeInBytes": 5224,
+            "rawSizeInBytes": 15683,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 5254,
-            "rawSizeInBytes": 15886,
+            "gzipSizeInBytes": 5261,
+            "rawSizeInBytes": 15918,
           },
         },
       }
