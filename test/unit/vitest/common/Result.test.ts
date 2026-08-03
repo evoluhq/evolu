@@ -1552,8 +1552,7 @@ describe("flatMapResult", () => {
       readonly type: "SecondError";
     }
 
-    const first = (): Result<number, FirstError> =>
-      err({ type: "FirstError" });
+    const first = (): Result<number, FirstError> => err({ type: "FirstError" });
     let called = false;
     const result = flatMapResult(first(), (): Result<string, SecondError> => {
       called = true;

@@ -562,17 +562,15 @@ const prependRuntimeTypeIssuePath = (
 type RuntimeCollectionIssue = {
   readonly kind: string;
   readonly error?: TypeError;
-} & (
-  | { readonly index: number }
-  | { readonly key: string | symbol }
-);
+} & ({ readonly index: number } | { readonly key: string | symbol });
 
-const createCollectionRuntimeTypeIssues = (
-  name: "Array" | "Tuple" | "Record",
-  issuesKind: "Items" | "Entries",
-  defaultFormatter: TypeErrorFormatter<TypeError>,
-  getNestedType: (issue: RuntimeCollectionIssue) => RuntimeTypeNode,
-): RuntimeGetTypeIssues =>
+const createCollectionRuntimeTypeIssues =
+  (
+    name: "Array" | "Tuple" | "Record",
+    issuesKind: "Items" | "Entries",
+    defaultFormatter: TypeErrorFormatter<TypeError>,
+    getNestedType: (issue: RuntimeCollectionIssue) => RuntimeTypeNode,
+  ): RuntimeGetTypeIssues =>
   (error, mode) => {
     const reason = (
       error as TypeError & {
@@ -590,33 +588,28 @@ const createCollectionRuntimeTypeIssues = (
     const allIssues = reason.issues!;
     const issues = mode === "first" ? ([allIssues[0]] as const) : allIssues;
 
-    return issues.flatMap(
-      (issue): ReadonlyArray<RuntimeTypeIssue> => {
-        const path = "key" in issue ? issue.key : issue.index;
+    return issues.flatMap((issue): ReadonlyArray<RuntimeTypeIssue> => {
+      const path = "key" in issue ? issue.key : issue.index;
 
-        if (issue.error !== undefined) {
-          return prependRuntimeTypeIssuePath(
-            path,
-            getNestedType(issue)[getRuntimeTypeIssuesSymbol](
-              issue.error,
-              mode,
-            ),
-          );
-        }
-
-        return singleRuntimeTypeIssue(
-          name,
-          mode === "first"
-            ? error
-            : ({
-                type: name,
-                reason: { kind: issuesKind, issues: [issue] },
-              } as TypeError),
-          defaultFormatter,
-          [path],
+      if (issue.error !== undefined) {
+        return prependRuntimeTypeIssuePath(
+          path,
+          getNestedType(issue)[getRuntimeTypeIssuesSymbol](issue.error, mode),
         );
-      },
-    ) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
+      }
+
+      return singleRuntimeTypeIssue(
+        name,
+        mode === "first"
+          ? error
+          : ({
+              type: name,
+              reason: { kind: issuesKind, issues: [issue] },
+            } as TypeError),
+        defaultFormatter,
+        [path],
+      );
+    }) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   };
 
 const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
@@ -685,10 +678,10 @@ const assertTypeOutput = <Error extends TypeError>(
  * inferred recursively from structured errors, including mutually recursive
  * Lazy error interfaces.
  *
- * All localized Types for one locale share the same formatter set.
- * The result preserves the selected names and exact TypeScript types under
- * every locale key, making one localized set easy to provide through dependency
- * injection or application context. Canonical Types remain unchanged.
+ * All localized Types for one locale share the same formatter set. The result
+ * preserves the selected names and exact TypeScript types under every locale
+ * key, making one localized set easy to provide through dependency injection or
+ * application context. Canonical Types remain unchanged.
  *
  * Localization is scoped to the Types an app imports instead of a package-wide
  * translation registry. Ordinary static imports give bundlers an explicit
@@ -701,11 +694,7 @@ const assertTypeOutput = <Error extends TypeError>(
  * ### Example
  *
  * ```ts
- * import {
- *   String,
- *   localizeTypes,
- *   minLength,
- * } from "@evolu/common";
+ * import { String, localizeTypes, minLength } from "@evolu/common";
  * import { cs } from "@evolu/common/intl";
  *
  * const Label = minLength(1)(String);
@@ -849,7 +838,9 @@ type LocalizedErrorEntry<
     ? never
     : Error extends TypeOfError<infer Name>
       ? LocalizedErrorEntryValue<Name, Error>
-      : Error extends { readonly outputError: infer OutputError extends TypeError }
+      : Error extends {
+            readonly outputError: infer OutputError extends TypeError;
+          }
         ? LocalizedErrorEntry<OutputError, Seen | Error>
         : Error extends { readonly type: "Union" }
           ? LocalizedErrorEntryValue<"Union", Error>
@@ -857,9 +848,7 @@ type LocalizedErrorEntry<
             ? LocalizedDiscriminatedUnionErrorEntry<Error, Seen | Error>
             : Error extends {
                   readonly type: infer Name extends
-                    | "Array"
-                    | "Tuple"
-                    | "Record";
+                    "Array" | "Tuple" | "Record";
                   readonly reason: infer Reason;
                 }
               ? | LocalizedErrorEntryValue<Name, Error>
@@ -881,30 +870,34 @@ interface LocalizedErrorEntryValue<
   readonly error: Error;
 }
 
-type LocalizedIssuesErrorEntry<Reason, Seen extends TypeError> =
-  Reason extends {
-    readonly issues: ReadonlyArray<infer Issue>;
-  }
-    ? Issue extends { readonly error: infer Error extends TypeError }
-      ? LocalizedErrorEntry<Error, Seen>
-      : never
-    : never;
+type LocalizedIssuesErrorEntry<
+  Reason,
+  Seen extends TypeError,
+> = Reason extends {
+  readonly issues: ReadonlyArray<infer Issue>;
+}
+  ? Issue extends { readonly error: infer Error extends TypeError }
+    ? LocalizedErrorEntry<Error, Seen>
+    : never
+  : never;
 
-type LocalizedObjectErrorEntry<Reason, Seen extends TypeError> =
-  Reason extends {
-    readonly kind: "Properties";
-    readonly errors: infer Errors;
-  }
-    ? LocalizedErrorEntry<
-        Exclude<
-          Extract<LocalizedObjectErrorValue<Errors>, TypeError>,
-          | ObjectMissingPropertyError
-          | ObjectPropertyAccessError
-          | ObjectExcessPropertyError
-        >,
-        Seen
-      >
-    : never;
+type LocalizedObjectErrorEntry<
+  Reason,
+  Seen extends TypeError,
+> = Reason extends {
+  readonly kind: "Properties";
+  readonly errors: infer Errors;
+}
+  ? LocalizedErrorEntry<
+      Exclude<
+        Extract<LocalizedObjectErrorValue<Errors>, TypeError>,
+        | ObjectMissingPropertyError
+        | ObjectPropertyAccessError
+        | ObjectExcessPropertyError
+      >,
+      Seen
+    >
+  : never;
 
 type LocalizedObjectErrorValue<Errors> = Errors extends object
   ? Errors[keyof Errors]
@@ -1684,7 +1677,7 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
     | "from"
     | "to"
     | "orThrow"
-      | "orNull"
+    | "orNull"
   >,
   formatIssue: RuntimeFormatTypeIssue = formatDefaultRuntimeTypeIssue,
 ): Node => {
@@ -3445,8 +3438,7 @@ export const PositiveDecimalString = /*#__PURE__*/ brand(
 );
 export type PositiveDecimalString = typeof PositiveDecimalString.Output;
 
-export interface PositiveDecimalStringError
-  extends TypeError<"PositiveDecimalString"> {
+export interface PositiveDecimalStringError extends TypeError<"PositiveDecimalString"> {
   readonly value: string;
 }
 
@@ -3494,8 +3486,8 @@ type MultipleOfDivisorError = CompileTimeError<
  * `divisor`.
  *
  * The literal divisor is validated against {@link PositiveDecimalString} and
- * encoded in the resulting Brand name. A runtime string cannot define this
- * Type because its exact value is not available to TypeScript for that name.
+ * encoded in the resulting Brand name. A runtime string cannot define this Type
+ * because its exact value is not available to TypeScript for that name.
  * Validation does not round: `"0.1"` accepts `0.3`, but rejects `0.1 + 0.2`
  * because that expression evaluates to `0.30000000000000004`.
  *
@@ -3514,54 +3506,53 @@ type MultipleOfDivisorError = CompileTimeError<
  * });
  * ```
  */
-export const multipleOf =
-  <const Divisor extends string>(
-    divisor: ValidateMultipleOfDivisor<Divisor>,
-  ): BrandFactory<`MultipleOf${Divisor}`, number, MultipleOfError<Divisor>> => {
-    assertType(PositiveDecimalString, divisor);
+export const multipleOf = <const Divisor extends string>(
+  divisor: ValidateMultipleOfDivisor<Divisor>,
+): BrandFactory<`MultipleOf${Divisor}`, number, MultipleOfError<Divisor>> => {
+  assertType(PositiveDecimalString, divisor);
 
-    const name = `MultipleOf${divisor}` as `MultipleOf${Divisor}`;
-    const decimalDivisor = decimalStringToParts(divisor);
+  const name = `MultipleOf${divisor}` as `MultipleOf${Divisor}`;
+  const decimalDivisor = decimalStringToParts(divisor);
 
-    return (parent) =>
-      brand(
-        name,
-        parent,
-        (value) => {
-          let isMultiple = false;
+  return (parent) =>
+    brand(
+      name,
+      parent,
+      (value) => {
+        let isMultiple = false;
 
-          if (globalThis.Number.isFinite(value)) {
-            const decimalValue = decimalStringToParts(value.toString());
-            const exponentDifference =
-              decimalValue.exponent - decimalDivisor.exponent;
+        if (globalThis.Number.isFinite(value)) {
+          const decimalValue = decimalStringToParts(value.toString());
+          const exponentDifference =
+            decimalValue.exponent - decimalDivisor.exponent;
 
-            if (exponentDifference >= 0) {
-              isMultiple =
-                (decimalValue.coefficient *
-                  10n ** globalThis.BigInt(exponentDifference)) %
-                  decimalDivisor.coefficient ===
-                0n;
-            } else {
-              isMultiple =
-                decimalValue.coefficient %
-                  (decimalDivisor.coefficient *
-                    10n ** globalThis.BigInt(-exponentDifference)) ===
-                0n;
-            }
+          if (exponentDifference >= 0) {
+            isMultiple =
+              (decimalValue.coefficient *
+                10n ** globalThis.BigInt(exponentDifference)) %
+                decimalDivisor.coefficient ===
+              0n;
+          } else {
+            isMultiple =
+              decimalValue.coefficient %
+                (decimalDivisor.coefficient *
+                  10n ** globalThis.BigInt(-exponentDifference)) ===
+              0n;
           }
+        }
 
-          return isMultiple
-            ? ok()
-            : err<MultipleOfError<Divisor>>({
-                type: name,
-                value,
-                divisor,
-              });
-        },
-        (error) =>
-          `The value ${safelyStringifyUnknownValue(error.value)} must be a multiple of ${error.divisor}.`,
-      );
-  };
+        return isMultiple
+          ? ok()
+          : err<MultipleOfError<Divisor>>({
+              type: name,
+              value,
+              divisor,
+            });
+      },
+      (error) =>
+        `The value ${safelyStringifyUnknownValue(error.value)} must be a multiple of ${error.divisor}.`,
+    );
+};
 
 export interface MultipleOfError<
   Divisor extends string = string,
@@ -4326,8 +4317,7 @@ const createTupleType = (
     "Tuple",
     "Items",
     formatError as TypeErrorFormatter<TypeError>,
-    (issue) =>
-      typeElements[(issue as { readonly index: number }).index],
+    (issue) => typeElements[(issue as { readonly index: number }).index],
   );
 
   return createTypeNode(
@@ -4602,11 +4592,12 @@ const validateTupleItems = (
       });
 };
 
-const createObjectRuntimeTypeIssues = (
-  defaultFormatter: TypeErrorFormatter<TypeError>,
-  props?: Readonly<Record<string, RuntimeObjectProperty>>,
-  recordType?: RuntimeRecordTypeNode,
-): RuntimeGetTypeIssues =>
+const createObjectRuntimeTypeIssues =
+  (
+    defaultFormatter: TypeErrorFormatter<TypeError>,
+    props?: Readonly<Record<string, RuntimeObjectProperty>>,
+    recordType?: RuntimeRecordTypeNode,
+  ): RuntimeGetTypeIssues =>
   (error, mode) => {
     const objectError = error as ObjectError;
 
@@ -4651,12 +4642,9 @@ const createObjectRuntimeTypeIssues = (
           } as TypeError;
         }
 
-        return singleRuntimeTypeIssue(
-          "Object",
-          ownError,
-          defaultFormatter,
-          [key],
-        );
+        return singleRuntimeTypeIssue("Object", ownError, defaultFormatter, [
+          key,
+        ]);
       }
 
       if (property !== undefined) {
@@ -4678,7 +4666,9 @@ type PlainObjectError = ObjectError<
   ObjectPropertyAccessError | TypeOfError<"String">
 >;
 
-const formatPlainObjectError: TypeErrorFormatter<PlainObjectError> = (error) => {
+const formatPlainObjectError: TypeErrorFormatter<PlainObjectError> = (
+  error,
+) => {
   if (error.reason.kind !== "Properties") {
     return formatPlainObjectRootError(error.reason);
   }
@@ -4938,7 +4928,7 @@ export const record = <
         return `A record property ${safelyStringifyUnknownValue(issue.key)} must be enumerable.`;
       case "Collision":
         return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} and ${safelyStringifyUnknownValue(issue.key)} decode to the same key ${safelyStringifyUnknownValue(issue.outputKey)}.`;
-      }
+    }
   };
   const rootKey = getTerminalRuntimeNode(typeKey);
   const rootValue = getTerminalRuntimeNode(typeValue);
@@ -6088,10 +6078,7 @@ type ObjectWithRecordType<
   ObjectWithRecordShape<Props, Rest, "Input">,
   ObjectWithRecordShape<Props, Rest, "Output">,
   [ObjectWithRecordParents<Props, Rest>] extends [null]
-    ? ObjectError<
-        ObjectDeclaredErrors<Props>,
-        ObjectRestFromUnknownError<Rest>
-      >
+    ? ObjectError<ObjectDeclaredErrors<Props>, ObjectRestFromUnknownError<Rest>>
     : ObjectPropertiesError<
         ObjectFromParentPropertyErrors<Props>,
         ObjectRestFromParentError<Rest>
@@ -7244,8 +7231,7 @@ export function lazy(getType: Thunk<TypeNode>): TypeNode {
     (value, options) => resolve().root[outputValidationSymbol](value, options),
     ok,
     parentTo,
-    (error, mode) =>
-      resolve().root[getRuntimeTypeIssuesSymbol](error, mode),
+    (error, mode) => resolve().root[getRuntimeTypeIssuesSymbol](error, mode),
   );
   const fromUnknown = (
     value: unknown,
@@ -7265,8 +7251,7 @@ export function lazy(getType: Thunk<TypeNode>): TypeNode {
       resolve().target[outputValidationSymbol](value, options),
     from,
     (value) => resolve().target[encoderSymbol](value),
-    (error, mode) =>
-      resolve().target[getRuntimeTypeIssuesSymbol](error, mode),
+    (error, mode) => resolve().target[getRuntimeTypeIssuesSymbol](error, mode),
   );
   lazyTypeNodes.add(parent);
   lazyTypeNodes.add(type);

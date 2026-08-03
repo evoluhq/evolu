@@ -8,10 +8,7 @@ import { err, ok } from "../../../../../packages/common/src/Result.ts";
 const NonEmptyString = /*#__PURE__*/ brand(
   "NonEmptyString",
   String,
-  (value) =>
-    value.length > 0
-      ? ok()
-      : err({ type: "NonEmptyString", value }),
+  (value) => (value.length > 0 ? ok() : err({ type: "NonEmptyString", value })),
   () => "Enter some text.",
 );
 

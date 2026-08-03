@@ -4,7 +4,10 @@
  * @module
  */
 
-/** Escapes regular-expression syntax so a string can be used as a literal pattern. */
+/**
+ * Escapes regular-expression syntax so a string can be used as a literal
+ * pattern.
+ */
 export const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

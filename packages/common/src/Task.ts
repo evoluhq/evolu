@@ -533,8 +533,8 @@ import type {
  * - **Async** → Task, Run, {@link Fiber}, `await using` / `AsyncDisposableStack`
  *
  * A Task is an async ownership boundary, not a general unit of program
- * decomposition. Calling `run(task)` always creates a child Run by design.
- * Use ordinary promises when an async operation does not need its own Run.
+ * decomposition. Calling `run(task)` always creates a child Run by design. Use
+ * ordinary promises when an async operation does not need its own Run.
  *
  * Benefits:
  *

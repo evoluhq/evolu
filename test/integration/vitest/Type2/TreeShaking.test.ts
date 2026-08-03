@@ -80,10 +80,7 @@ const fixtures: ReadonlyArray<{
   {
     name: "NonEmptyString",
     fileName: "NonEmptyString.ts",
-    expected: [
-      "A value 42 is not a string.",
-      "Enter some text.",
-    ],
+    expected: ["A value 42 is not a string.", "Enter some text."],
     excludedCodeFragments: [
       ...unrelatedTypeFragments,
       '"Array"',
@@ -107,10 +104,7 @@ const fixtures: ReadonlyArray<{
   {
     name: "Array(String)",
     fileName: "StringArray.ts",
-    expected: [
-      "A value null is not an array.",
-      "A value 42 is not a string.",
-    ],
+    expected: ["A value null is not an array.", "A value 42 is not a string."],
     excludedCodeFragments: [
       ...unrelatedTypeFragments,
       '"NonEmptyString"',

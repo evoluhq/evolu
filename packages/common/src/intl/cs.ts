@@ -61,8 +61,7 @@ const formatValueMustBe = (value: unknown, expected: string): string =>
 
 const formatPlainObjectRootError = (
   reason:
-    | ObjectNotObjectError["reason"]
-    | ObjectUnexpectedPrototypeError["reason"],
+    ObjectNotObjectError["reason"] | ObjectUnexpectedPrototypeError["reason"],
 ): string =>
   reason.kind === "NotObject"
     ? `Hodnota ${safelyStringifyUnknownValue(reason.value)} není objekt.`
@@ -73,24 +72,29 @@ export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} není platná pro typ Never.`;
 
 /** Formats a String TypeOfError in Czech. */
-export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> =
-  () => "Hodnota musí být text.";
+export const formatStringError: TypeErrorFormatter<
+  TypeOfError<"String">
+> = () => "Hodnota musí být text.";
 
 /** Formats a Number TypeOfError in Czech. */
-export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> =
-  (error) => formatValueMustBe(error.value, "číslo");
+export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> = (
+  error,
+) => formatValueMustBe(error.value, "číslo");
 
 /** Formats a BigInt TypeOfError in Czech. */
-export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
-  (error) => formatValueMustBe(error.value, "celé číslo typu bigint");
+export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> = (
+  error,
+) => formatValueMustBe(error.value, "celé číslo typu bigint");
 
 /** Formats a Boolean TypeOfError in Czech. */
-export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
-  (error) => formatValueMustBe(error.value, "logická hodnota");
+export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> = (
+  error,
+) => formatValueMustBe(error.value, "logická hodnota");
 
 /** Formats a Symbol TypeOfError in Czech. */
-export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
-  (error) => formatValueMustBe(error.value, "symbol");
+export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> = (
+  error,
+) => formatValueMustBe(error.value, "symbol");
 
 /** Formats a Function TypeOfError in Czech. */
 export const formatFunctionError: TypeErrorFormatter<
@@ -98,9 +102,10 @@ export const formatFunctionError: TypeErrorFormatter<
 > = (error) => formatValueMustBe(error.value, "funkce");
 
 /** Formats an InstanceOfError in Czech. */
-export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> =
-  (error) =>
-    `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být instancí ${error.constructorName}.`;
+export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být instancí ${error.constructorName}.`;
 
 /** Formats a LiteralError in Czech. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
@@ -123,9 +128,10 @@ export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platné 64bitové celé číslo bez znaménka (UInt64).`;
 
 /** Formats a CapitalizedError in Czech. */
-export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> =
-  (error) =>
-    `Text ${safelyStringifyUnknownValue(error.value)} musí začínat velkým písmenem.`;
+export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
+  error,
+) =>
+  `Text ${safelyStringifyUnknownValue(error.value)} musí začínat velkým písmenem.`;
 
 /** Formats a TrimmedError in Czech. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
@@ -154,14 +160,13 @@ export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} neodpovídá regulárnímu výrazu /${error.source}/${error.flags}.`;
 
 /** Formats a NonNegativeError in Czech. */
-export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> =
-  (error) =>
-    `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být nezáporná (>= 0).`;
-
-/** Formats a PositiveError in Czech. */
-export const formatPositiveError: TypeErrorFormatter<PositiveError> = (
+export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
   error,
 ) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být nezáporná (>= 0).`;
+
+/** Formats a PositiveError in Czech. */
+export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kladná (> 0).`;
 
 /** Formats a PositiveDecimalStringError in Czech. */
@@ -171,14 +176,13 @@ export const formatPositiveDecimalStringError: TypeErrorFormatter<
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kanonický řetězec představující kladné desetinné číslo.`;
 
 /** Formats a NonPositiveError in Czech. */
-export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> =
-  (error) =>
-    `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být nekladná (<= 0).`;
-
-/** Formats a NegativeError in Czech. */
-export const formatNegativeError: TypeErrorFormatter<NegativeError> = (
+export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
   error,
 ) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být nekladná (<= 0).`;
+
+/** Formats a NegativeError in Czech. */
+export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být záporná (< 0).`;
 
 /** Formats an IntError in Czech. */

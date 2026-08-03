@@ -153,9 +153,8 @@ const loadRelayModuleWithMockedTransport = async () => {
     },
   }));
 
-  const relayModule = await import(
-    "../../../../../../packages/nodejs/src/local-first/Relay.ts"
-  );
+  const relayModule =
+    await import("../../../../../../packages/nodejs/src/local-first/Relay.ts");
 
   return { relayModule, server, wss };
 };

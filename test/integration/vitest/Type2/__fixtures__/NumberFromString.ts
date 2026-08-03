@@ -10,8 +10,7 @@ import {
   type Result,
 } from "../../../../../packages/common/src/Result.ts";
 
-interface NumberFromStringError
-  extends TypeValueError<"NumberFromString"> {
+interface NumberFromStringError extends TypeValueError<"NumberFromString"> {
   readonly value: string;
 }
 

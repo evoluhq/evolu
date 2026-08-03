@@ -12,9 +12,10 @@ import {
 vi.mock(
   "../../../../packages/nodejs/src/Platform.ts",
   async (importOriginal) => {
-    const platform = await importOriginal<
-      typeof import("../../../../packages/nodejs/src/Platform.ts")
-    >();
+    const platform =
+      await importOriginal<
+        typeof import("../../../../packages/nodejs/src/Platform.ts")
+      >();
     return {
       ...platform,
       availableParallelism: vi.fn(platform.availableParallelism),
@@ -22,10 +23,7 @@ vi.mock(
   },
 );
 
-const fixturePath = resolve(
-  import.meta.dirname,
-  "__fixtures__/TestBundle.ts",
-);
+const fixturePath = resolve(import.meta.dirname, "__fixtures__/TestBundle.ts");
 const aliasFixturePath = resolve(
   import.meta.dirname,
   "__fixtures__/TestBundleAlias.ts",
@@ -131,21 +129,9 @@ describe("testBundle", { timeout: 30_000 }, () => {
   });
 
   test.each([
-    [
-      "evaluation error",
-      "evaluation-error",
-      "evaluation failed",
-    ],
-    [
-      "rejected return value",
-      "rejected-return-value",
-      "return rejected",
-    ],
-    [
-      "unhandled rejection",
-      "unhandled-rejection",
-      "unhandled rejection",
-    ],
+    ["evaluation error", "evaluation-error", "evaluation failed"],
+    ["rejected return value", "rejected-return-value", "return rejected"],
+    ["unhandled rejection", "unhandled-rejection", "unhandled rejection"],
     [
       "uncaught asynchronous error",
       "uncaught-asynchronous-error",

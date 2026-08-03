@@ -146,7 +146,9 @@ describe("constant", () => {
   });
 
   test("constUndefined returns undefined", () => {
-    expectTypeOf<ReturnType<typeof constUndefined>>().toEqualTypeOf<undefined>();
+    expectTypeOf<
+      ReturnType<typeof constUndefined>
+    >().toEqualTypeOf<undefined>();
   });
 
   test("constNull returns null", () => {

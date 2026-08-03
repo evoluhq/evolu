@@ -14,11 +14,10 @@ interface StringTree {
   readonly children: ReadonlyArray<StringTree>;
 }
 
-interface StringTreeError
-  extends ObjectError<{
-    readonly value: TypeOfError<"String">;
-    readonly children: ArrayError<StringTreeError>;
-  }> {}
+interface StringTreeError extends ObjectError<{
+  readonly value: TypeOfError<"String">;
+  readonly children: ArrayError<StringTreeError>;
+}> {}
 
 const StringTree: LazyType<
   StringTree,

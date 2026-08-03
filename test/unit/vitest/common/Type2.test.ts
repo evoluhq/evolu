@@ -760,10 +760,7 @@ describe("Standard Schema", () => {
   });
 
   test("locates Tuple issues", async () => {
-    const result = await tuple(String, Number)["~standard"].validate([
-      1,
-      "2",
-    ]);
+    const result = await tuple(String, Number)["~standard"].validate([1, "2"]);
 
     expect(result).toEqual({
       issues: [
@@ -877,9 +874,7 @@ describe("Standard Schema", () => {
     expect(
       await Event["~standard"].validate({ type: "Created", value: 1 }),
     ).toEqual({
-      issues: [
-        { message: "A value 1 is not a string.", path: ["value"] },
-      ],
+      issues: [{ message: "A value 1 is not a string.", path: ["value"] }],
     });
   });
 
@@ -1132,8 +1127,7 @@ describe("localizeTypes", () => {
       value: "1",
     } as const;
     for (const operation of [
-      () =>
-        Types.PositiveNumber.from.parent.parent("1" as unknown as number),
+      () => Types.PositiveNumber.from.parent.parent("1" as unknown as number),
       () => Types.PositiveNumber.orThrow("1" as unknown as number),
       () => Types.PositiveNumber.orNull("1" as unknown as number),
     ]) {
@@ -1144,10 +1138,7 @@ describe("localizeTypes", () => {
   test("routes Tuple and Record child errors", () => {
     const Pair = tuple(String, Number);
     const Values = record(String, Number);
-    const KeyedValues = record(
-      regex("RecordKey", /^value$/)(String),
-      Number,
-    );
+    const KeyedValues = record(regex("RecordKey", /^value$/)(String), Number);
     const Model = object({ fixed: String }, record(String, String));
     const Types = localizeTypes(
       { KeyedValues, Model, Pair, Values },
@@ -1317,10 +1308,7 @@ describe("localizeTypes", () => {
       Object: () => "Localized Object.",
       String: () => "Localized String.",
     };
-    const Types = localizeTypes(
-      { Tree },
-      { test: formatters },
-    ).test;
+    const Types = localizeTypes({ Tree }, { test: formatters }).test;
     const InputTypes = localizeTypes(
       { TreeInput: Tree.parent },
       { test: formatters },
@@ -2638,7 +2626,7 @@ describe("createInstanceOfType", () => {
     for (const operation of operations) {
       expectAssertionError(
         operation,
-        "A value {\"name\":\"Ada\"} is not an instance of User.",
+        'A value {"name":"Ada"} is not an instance of User.',
         error,
       );
     }
@@ -4657,9 +4645,9 @@ describe("brand", () => {
             PositiveDecimalStringError
           >
         >();
-        expectTypeOf<
-          typeof PositiveDecimalString.Output
-        >().toEqualTypeOf<string & Brand<"PositiveDecimalString">>();
+        expectTypeOf<typeof PositiveDecimalString.Output>().toEqualTypeOf<
+          string & Brand<"PositiveDecimalString">
+        >();
       });
 
       test("accepts one canonical spelling of every positive decimal", () => {
@@ -4690,9 +4678,7 @@ describe("brand", () => {
             type: "PositiveDecimalString",
             value: "0.30",
           }),
-        ).toBe(
-          'The value "0.30" must be a canonical positive decimal string.',
-        );
+        ).toBe('The value "0.30" must be a canonical positive decimal string.');
       });
     });
   });

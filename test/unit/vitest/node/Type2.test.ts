@@ -47,15 +47,13 @@ test("requires explicit conversion of structured values from another realm", () 
   const jsonArrayResult = JsonValue.fromUnknown(arrayValue);
 
   expect(value).not.toBeInstanceOf(globalThis.Object);
-  expect(modelResult).toEqual(
-    {
-      ok: false,
-      error: {
-        type: "Object",
-        reason: { kind: "UnexpectedPrototype", value },
-      },
+  expect(modelResult).toEqual({
+    ok: false,
+    error: {
+      type: "Object",
+      reason: { kind: "UnexpectedPrototype", value },
     },
-  );
+  });
   expect(Model.is(value)).toBe(false);
   expect(objectResult).toEqual({
     ok: false,

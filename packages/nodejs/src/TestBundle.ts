@@ -211,80 +211,82 @@ export const testBundle = async ({
       availableParallelism(),
       mapSettled(
         jobs,
-        ({ caseName, testCase, bundler }, jobIndex) => async (run) =>
-          tryAsync(
-            async () => {
-              const sourceEntryPath = resolve(testCase.entryPath);
-              const bundlerDirectory = join(
-                temporaryDirectory,
-                `${jobIndex}-${bundler.name}`,
-              );
-              await mkdir(bundlerDirectory, { recursive: true });
-
-              const bundlingResult = await run(
-                timeout(
-                  runTestBundler(bundler.name, {
-                    entryPath: sourceEntryPath,
-                    outputDirectory: bundlerDirectory,
-                    aliases,
-                  }),
-                  bundlingTimeout,
-                ),
-              );
-              if (!bundlingResult.ok) {
-                if (TimeoutError.is(bundlingResult.error)) {
-                  throw new Error(
-                    `Bundle production timed out after ${durationToMillis(bundlingTimeout)} ms.`,
-                  );
-                }
-                throw bundlingResult.error;
-              }
-
-              const output = bundlingResult.value;
-              const executablePath = join(bundlerDirectory, "bundle.mjs");
-              await writeFile(executablePath, output.code);
-
-              let persistedOutputPath: string | null = null;
-              if (outputDirectory) {
-                persistedOutputPath = join(
-                  outputDirectory,
-                  `${encodeURIComponent(caseName)}.${bundler.name}.mjs`,
+        ({ caseName, testCase, bundler }, jobIndex) =>
+          async (run) =>
+            tryAsync(
+              async () => {
+                const sourceEntryPath = resolve(testCase.entryPath);
+                const bundlerDirectory = join(
+                  temporaryDirectory,
+                  `${jobIndex}-${bundler.name}`,
                 );
-                await mkdir(outputDirectory, { recursive: true });
-                await writeFile(persistedOutputPath, output.code);
-              }
+                await mkdir(bundlerDirectory, { recursive: true });
 
-              const bundle: TestBundle = {
-                bundler: `${bundler.name}@${output.version}`,
-                code: output.code,
-                outputPath: persistedOutputPath,
-                rawSizeInBytes: Buffer.byteLength(output.code),
-                gzipSizeInBytes: gzipSync(output.code, { level: 9 }).byteLength,
-              };
-              const executionResult = await run(
-                timeout(runTestBundle(executablePath), executionTimeout),
-              );
-              if (!executionResult.ok) {
-                if (TimeoutError.is(executionResult.error)) {
-                  throw new Error(
-                    `Bundle execution timed out after ${durationToMillis(executionTimeout)} ms.`,
-                  );
+                const bundlingResult = await run(
+                  timeout(
+                    runTestBundler(bundler.name, {
+                      entryPath: sourceEntryPath,
+                      outputDirectory: bundlerDirectory,
+                      aliases,
+                    }),
+                    bundlingTimeout,
+                  ),
+                );
+                if (!bundlingResult.ok) {
+                  if (TimeoutError.is(bundlingResult.error)) {
+                    throw new Error(
+                      `Bundle production timed out after ${durationToMillis(bundlingTimeout)} ms.`,
+                    );
+                  }
+                  throw bundlingResult.error;
                 }
-                throw executionResult.error;
-              }
 
-              await testCase.verify(executionResult.value, bundle);
-              return { caseName, bundle } satisfies TestBundleJobOutput;
-            },
-            (error) => {
-              run.signal.throwIfAborted();
-              return {
-                caseName,
-                bundler: bundler.name,
-                error,
-              } satisfies TestBundlerFailure;
-            },
-          ),
+                const output = bundlingResult.value;
+                const executablePath = join(bundlerDirectory, "bundle.mjs");
+                await writeFile(executablePath, output.code);
+
+                let persistedOutputPath: string | null = null;
+                if (outputDirectory) {
+                  persistedOutputPath = join(
+                    outputDirectory,
+                    `${encodeURIComponent(caseName)}.${bundler.name}.mjs`,
+                  );
+                  await mkdir(outputDirectory, { recursive: true });
+                  await writeFile(persistedOutputPath, output.code);
+                }
+
+                const bundle: TestBundle = {
+                  bundler: `${bundler.name}@${output.version}`,
+                  code: output.code,
+                  outputPath: persistedOutputPath,
+                  rawSizeInBytes: Buffer.byteLength(output.code),
+                  gzipSizeInBytes: gzipSync(output.code, { level: 9 })
+                    .byteLength,
+                };
+                const executionResult = await run(
+                  timeout(runTestBundle(executablePath), executionTimeout),
+                );
+                if (!executionResult.ok) {
+                  if (TimeoutError.is(executionResult.error)) {
+                    throw new Error(
+                      `Bundle execution timed out after ${durationToMillis(executionTimeout)} ms.`,
+                    );
+                  }
+                  throw executionResult.error;
+                }
+
+                await testCase.verify(executionResult.value, bundle);
+                return { caseName, bundle } satisfies TestBundleJobOutput;
+              },
+              (error) => {
+                run.signal.throwIfAborted();
+                return {
+                  caseName,
+                  bundler: bundler.name,
+                  error,
+                } satisfies TestBundlerFailure;
+              },
+            ),
       ),
     ),
   );
@@ -478,9 +480,10 @@ const runTestBundlerWorker = async ({
     const bundler = testBundlers.find(({ name }) => name === bundlerName);
     assert(bundler, `Unknown test bundler "${bundlerName}".`);
     const value = await bundler.bundle(options);
-    parentPort?.postMessage(
-      { ok: true, value } satisfies TestBundlerWorkerMessage,
-    );
+    parentPort?.postMessage({
+      ok: true,
+      value,
+    } satisfies TestBundlerWorkerMessage);
   } catch (error) {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
@@ -499,10 +502,11 @@ if (!isMainThread && isTestBundlerWorkerData(workerData)) {
   void runTestBundlerWorker(workerData);
 }
 
-const runTestBundler = (
-  bundlerName: string,
-  options: TestBundlerOptions,
-): Task<TestBundlerOutput, Error> =>
+const runTestBundler =
+  (
+    bundlerName: string,
+    options: TestBundlerOptions,
+  ): Task<TestBundlerOutput, Error> =>
   async (run) =>
     tryAsync(
       async () => {
@@ -517,13 +521,9 @@ const runTestBundler = (
               !argument.startsWith("--input-type=") &&
               !argument.startsWith("--eval=") &&
               !argument.startsWith("--print=") &&
-              ![
-                "--input-type",
-                "--eval",
-                "-e",
-                "--print",
-                "-p",
-              ].includes(execArgv[index - 1] ?? ""),
+              !["--input-type", "--eval", "-e", "--print", "-p"].includes(
+                execArgv[index - 1] ?? "",
+              ),
           ),
           workerData: {
             type: testBundlerWorkerType,

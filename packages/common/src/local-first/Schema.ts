@@ -22,13 +22,7 @@ import {
   SqliteValue,
 } from "../Sqlite.ts";
 import type { InferType } from "../Type.ts";
-import {
-  DateIso,
-  type Id,
-  IdBytes,
-  nullOr,
-  object,
-} from "../Type.ts";
+import { DateIso, type Id, IdBytes, nullOr, object } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
 import type { AppOwner } from "./Owner.ts";
 import { OwnerId } from "./Owner.ts";

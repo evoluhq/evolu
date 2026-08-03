@@ -22,7 +22,9 @@ const TodoList = array(Todo);
 const parse = (value: unknown): string => {
   const result = TodoList.fromUnknown(value);
 
-  return result.ok ? result.value[0]?.type ?? "Empty" : TodoList.formatError(result.error);
+  return result.ok
+    ? (result.value[0]?.type ?? "Empty")
+    : TodoList.formatError(result.error);
 };
 
 export default (): ReadonlyArray<string> => [

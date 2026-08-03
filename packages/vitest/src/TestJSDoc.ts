@@ -74,8 +74,8 @@ const packageNamePattern = /^(?:@[a-z\d][a-z\d._~-]*\/)?[a-z\d][a-z\d._~-]*$/i;
 const packageSubpathSegmentPattern = /^[a-z\d][a-z\d._~-]*$/i;
 
 /**
- * Compiles and executes every TypeScript example in the included JSDoc
- * comments and Markdown files.
+ * Compiles and executes every TypeScript example in the included JSDoc comments
+ * and Markdown files.
  *
  * Examples are compiled together as isolated TypeScript modules. Examples
  * without compilation errors are then run concurrently, bounded by the CPU
@@ -138,9 +138,7 @@ export const testJSDocExamples = async ({
   const temporaryRoot = join(workingDirectory, "tmp");
   mkdirSync(temporaryRoot, { recursive: true });
 
-  const temporaryDirectory = mkdtempSync(
-    join(temporaryRoot, "evolu-jsdoc-"),
-  );
+  const temporaryDirectory = mkdtempSync(join(temporaryRoot, "evolu-jsdoc-"));
 
   try {
     writeFileSync(
@@ -248,9 +246,7 @@ const getExamplesWithoutCompilationErrors = (
 
   if (examplesWithErrors.length === 0) return [];
 
-  return examples.filter(
-    (example) => !examplesWithErrors.includes(example),
-  );
+  return examples.filter((example) => !examplesWithErrors.includes(example));
 };
 
 const extractDocumentationExamples = (
@@ -264,13 +260,7 @@ const extractDocumentationExamples = (
   const examples: Array<JSDocExample> = [];
   for (const jsdoc of source.matchAll(jsdocPattern)) {
     examples.push(
-      ...extractFencedExamples(
-        source,
-        jsdoc[0],
-        filePath,
-        jsdoc.index,
-        true,
-      ),
+      ...extractFencedExamples(source, jsdoc[0], filePath, jsdoc.index, true),
     );
   }
 
@@ -299,9 +289,7 @@ const extractFencedExamples = (
       `${filePath}:${line} has an unclosed TypeScript example fence.`,
     );
     const exampleSource = (
-      stripJSDocPrefixes
-        ? fence[2].replace(/^[ \t]*\* ?/gm, "")
-        : fence[2]
+      stripJSDocPrefixes ? fence[2].replace(/^[ \t]*\* ?/gm, "") : fence[2]
     ).trim();
     assert(
       exampleSource.length > 0,
@@ -344,9 +332,7 @@ const resolveTypeScriptCompiler = (
     readFileSync(packagePath, "utf8"),
   ) as TypeScriptPackage;
   const compiler =
-    typeof packageJson.bin === "string"
-      ? packageJson.bin
-      : packageJson.bin.tsc;
+    typeof packageJson.bin === "string" ? packageJson.bin : packageJson.bin.tsc;
   assert(
     compiler !== undefined,
     `${typescriptPackage} does not expose a tsc executable.`,
@@ -362,20 +348,22 @@ const runJSDocExamples = async (
   const results = await run.ok(
     concurrently(
       PositiveInt.orThrow(availableParallelism()),
-      mapSettled(examples, (example) => async (run) =>
-        tryAsync(
-          () =>
-            runProcess(
-              process.execPath,
-              [example.generatedPath],
-              workingDirectory,
-              "Node.js execution",
-            ),
-          (error) => {
-            run.signal.throwIfAborted();
-            return { error, example } satisfies JSDocExampleFailure;
-          },
-        ),
+      mapSettled(
+        examples,
+        (example) => async (run) =>
+          tryAsync(
+            () =>
+              runProcess(
+                process.execPath,
+                [example.generatedPath],
+                workingDirectory,
+                "Node.js execution",
+              ),
+            (error) => {
+              run.signal.throwIfAborted();
+              return { error, example } satisfies JSDocExampleFailure;
+            },
+          ),
       ),
     ),
   );
@@ -385,7 +373,12 @@ const runJSDocExamples = async (
 
   const errors = mapArray(
     failures,
-    ({ error: { error, example: { filePath, line } } }) => {
+    ({
+      error: {
+        error,
+        example: { filePath, line },
+      },
+    }) => {
       const message =
         error instanceof Error
           ? error.message
@@ -508,9 +501,12 @@ const runProcess = (
     });
     child.once("error", (error) => {
       reject(
-        new Error([`${operation} failed.`, details].filter(Boolean).join("\n"), {
-          cause: error,
-        }),
+        new Error(
+          [`${operation} failed.`, details].filter(Boolean).join("\n"),
+          {
+            cause: error,
+          },
+        ),
       );
     });
     child.once("close", (code, signal) => {

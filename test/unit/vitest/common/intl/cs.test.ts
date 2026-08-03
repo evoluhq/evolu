@@ -69,9 +69,7 @@ describe("Czech Type error formatters", () => {
     ).toBe("Hodnota {} musí být instancí Date.");
     expect(
       cs.formatLiteralError({ type: "Literal", expected: "yes", value: "no" }),
-    ).toBe(
-      'Hodnota "no" se musí přesně rovnat očekávanému literálu yes.',
-    );
+    ).toBe('Hodnota "no" se musí přesně rovnat očekávanému literálu yes.');
     expect(
       cs.formatUnionError({
         type: "Union",
@@ -83,9 +81,7 @@ describe("Czech Type error formatters", () => {
         ],
       }),
     ).toBe("Hodnota neodpovídá žádné z povolených variant.");
-    expect(
-      cs.formatDateIsoError({ type: "DateIso", value: "invalid" }),
-    ).toBe(
+    expect(cs.formatDateIsoError({ type: "DateIso", value: "invalid" })).toBe(
       'Hodnota "invalid" musí být datum a čas v kanonickém formátu ISO.',
     );
     expect(cs.formatInt64Error({ type: "Int64", value: 2n ** 63n })).toBe(
@@ -100,14 +96,14 @@ describe("Czech Type error formatters", () => {
     expect(cs.formatTrimmedError({ type: "Trimmed", value: " Evolu " })).toBe(
       'Text " Evolu " nesmí obsahovat bílé znaky na začátku ani na konci.',
     );
-    expect(cs.formatRegexError({
-      type: "Code",
-      value: "x",
-      source: "^[0-9]+$",
-      flags: "u",
-    })).toBe(
-      'Hodnota "x" neodpovídá regulárnímu výrazu /^[0-9]+$/u.',
-    );
+    expect(
+      cs.formatRegexError({
+        type: "Code",
+        value: "x",
+        source: "^[0-9]+$",
+        flags: "u",
+      }),
+    ).toBe('Hodnota "x" neodpovídá regulárnímu výrazu /^[0-9]+$/u.');
   });
 
   test("formats reusable length errors", () => {
@@ -130,9 +126,9 @@ describe("Czech Type error formatters", () => {
   });
 
   test("formats reusable numeric errors", () => {
-    expect(
-      cs.formatNonNegativeError({ type: "NonNegative", value: -1 }),
-    ).toBe("Hodnota -1 musí být nezáporná (>= 0).");
+    expect(cs.formatNonNegativeError({ type: "NonNegative", value: -1 })).toBe(
+      "Hodnota -1 musí být nezáporná (>= 0).",
+    );
     expect(cs.formatPositiveError({ type: "Positive", value: 0 })).toBe(
       "Hodnota 0 musí být kladná (> 0).",
     );
@@ -144,9 +140,9 @@ describe("Czech Type error formatters", () => {
     ).toBe(
       'Hodnota "0.30" musí být kanonický řetězec představující kladné desetinné číslo.',
     );
-    expect(
-      cs.formatNonPositiveError({ type: "NonPositive", value: 1 }),
-    ).toBe("Hodnota 1 musí být nekladná (<= 0).");
+    expect(cs.formatNonPositiveError({ type: "NonPositive", value: 1 })).toBe(
+      "Hodnota 1 musí být nekladná (<= 0).",
+    );
     expect(cs.formatNegativeError({ type: "Negative", value: 0 })).toBe(
       "Hodnota 0 musí být záporná (< 0).",
     );
@@ -500,15 +496,16 @@ describe("Czech Type error formatters", () => {
   });
 
   test("formats DiscriminatedUnion routing issues", () => {
-    const errors: ReadonlyArray<
-      readonly [DiscriminatedUnionError, string]
-    > = [
+    const errors: ReadonlyArray<readonly [DiscriminatedUnionError, string]> = [
       [
         {
           type: "DiscriminatedUnion",
           reason: {
             kind: "Object",
-            error: { type: "Object", reason: { kind: "NotObject", value: null } },
+            error: {
+              type: "Object",
+              reason: { kind: "NotObject", value: null },
+            },
           },
         },
         "Hodnota null není objekt.",
@@ -589,11 +586,21 @@ describe("Czech Type error formatters", () => {
         "Číslo v JSON musí být konečné.",
       ],
       [
-        { kind: "UnexpectedPrototype", path: [], container: "Array", value: [] },
+        {
+          kind: "UnexpectedPrototype",
+          path: [],
+          container: "Array",
+          value: [],
+        },
         "Output typu JsonValue musí používat Array.prototype",
       ],
       [
-        { kind: "UnexpectedPrototype", path: [], container: "Object", value: {} },
+        {
+          kind: "UnexpectedPrototype",
+          path: [],
+          container: "Object",
+          value: {},
+        },
         "Object.prototype z tohoto JavaScriptového realmu nebo null",
       ],
       [
@@ -608,10 +615,7 @@ describe("Czech Type error formatters", () => {
         { kind: "SymbolProperty", path: [globalThis.Symbol("value")] },
         "Klíč vlastnosti JSON Object musí být text.",
       ],
-      [
-        { kind: "Hole", path: [0] },
-        "V JSON Array chybí prvek.",
-      ],
+      [{ kind: "Hole", path: [0] }, "V JSON Array chybí prvek."],
       [
         { kind: "ExcessProperty", path: ["metadata"] },
         "JSON Array obsahuje nepovolenou vlastní vlastnost.",

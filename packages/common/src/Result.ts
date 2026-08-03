@@ -154,13 +154,11 @@ import type { Awaitable } from "./Types.ts";
  *
  * ## Composition
  *
- * Some patterns are common enough to deserve helpers. Sequential operations
- * can be composed with {@link flatMapResult}:
+ * Some patterns are common enough to deserve helpers. Sequential operations can
+ * be composed with {@link flatMapResult}:
  *
  * ```ts
- * const profile = flatMapResult(getUser(), (user) =>
- *   getProfile(user.id),
- * );
+ * const profile = flatMapResult(getUser(), (user) => getProfile(user.id));
  * ```
  *
  * A collection can be mapped with {@link mapResult}:
@@ -554,9 +552,7 @@ export type InferDone<R extends Result<any, any>> =
  * ### Example
  *
  * ```ts
- * const profile = flatMapResult(getUser(), (user) =>
- *   getProfile(user.id),
- * );
+ * const profile = flatMapResult(getUser(), (user) => getProfile(user.id));
  * ```
  *
  * @group Composition

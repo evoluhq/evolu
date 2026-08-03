@@ -140,11 +140,7 @@ export type NonEmptyReadonlyArray<T> = readonly [T, ...ReadonlyArray<T>];
  *
  * @group Types
  */
-export type AtLeastTwoReadonlyArray<T> = readonly [
-  T,
-  T,
-  ...ReadonlyArray<T>,
-];
+export type AtLeastTwoReadonlyArray<T> = readonly [T, T, ...ReadonlyArray<T>];
 
 /**
  * An empty readonly array.
@@ -469,11 +465,7 @@ export function concatArrays<T>(
  */
 export function filterArray<T, S extends T>(
   array: ReadonlyArray<T>,
-  refinement: (
-    item: T,
-    index: number,
-    array: ReadonlyArray<T>,
-  ) => item is S,
+  refinement: (item: T, index: number, array: ReadonlyArray<T>) => item is S,
 ): ReadonlyArray<S>;
 /** With predicate. */
 export function filterArray<T>(
@@ -581,11 +573,7 @@ export function dedupeArray<T>(
  */
 export function partitionArray<T, S extends T>(
   array: ReadonlyArray<T>,
-  refinement: (
-    item: T,
-    index: number,
-    array: ReadonlyArray<T>,
-  ) => item is S,
+  refinement: (item: T, index: number, array: ReadonlyArray<T>) => item is S,
 ): readonly [ReadonlyArray<S>, ReadonlyArray<Exclude<T, S>>];
 /** With predicate. */
 export function partitionArray<T>(

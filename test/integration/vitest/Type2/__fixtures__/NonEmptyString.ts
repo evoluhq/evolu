@@ -5,8 +5,7 @@ import {
 } from "../../../../../packages/common/src/Type2.ts";
 import { err, ok } from "../../../../../packages/common/src/Result.ts";
 
-export interface NonEmptyStringError
-  extends TypeValueError<"NonEmptyString"> {
+export interface NonEmptyStringError extends TypeValueError<"NonEmptyString"> {
   readonly value: string;
 }
 

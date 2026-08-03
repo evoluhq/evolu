@@ -13,10 +13,7 @@ test("spawn succeeds with inherited stdio and a configured cwd", async () => {
   const result = await run(
     spawn(
       process.execPath,
-      [
-        "-e",
-        'process.exit(process.cwd().endsWith("scripts") ? 0 : 1)',
-      ],
+      ["-e", 'process.exit(process.cwd().endsWith("scripts") ? 0 : 1)'],
       { cwd: scriptsDirectory },
     ),
   );
@@ -26,9 +23,7 @@ test("spawn succeeds with inherited stdio and a configured cwd", async () => {
 
 test("spawn returns a start error", async () => {
   await using run = testCreateRun();
-  const result = await run(
-    spawn("evolu-command-that-does-not-exist", []),
-  );
+  const result = await run(spawn("evolu-command-that-does-not-exist", []));
 
   expect(result).toEqual(
     err({
@@ -45,9 +40,7 @@ test("spawn returns a start error", async () => {
 
 test("spawn returns a non-zero exit error", async () => {
   await using run = testCreateRun();
-  const result = await run(
-    spawn(process.execPath, ["-e", "process.exit(7)"]),
-  );
+  const result = await run(spawn(process.execPath, ["-e", "process.exit(7)"]));
   const command = `${process.execPath} -e process.exit(7)`;
 
   expect(result).toEqual(
@@ -64,10 +57,7 @@ test("spawn returns a non-zero exit error", async () => {
 test("spawn returns a signal exit error", async () => {
   await using run = testCreateRun();
   const result = await run(
-    spawn(process.execPath, [
-      "-e",
-      'process.kill(process.pid, "SIGTERM")',
-    ]),
+    spawn(process.execPath, ["-e", 'process.kill(process.pid, "SIGTERM")']),
   );
   const command = `${process.execPath} -e process.kill(process.pid, "SIGTERM")`;
 
