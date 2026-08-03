@@ -135,7 +135,7 @@ import type { Awaitable } from "./Types.ts";
  *
  * ## Style
  *
- * Imperative code is the preferred way to compose sequential {@link Result}
+ * Prefer explicit control flow when composing several sequential {@link Result}
  * operations.
  *
  * ```ts
@@ -148,17 +148,22 @@ import type { Awaitable } from "./Types.ts";
  * return ok({ user: user.value, profile: profile.value });
  * ```
  *
- * This is an intentional style choice. Evolu does not provide helper
- * combinators for every sequential pattern because that would duplicate plain
- * control flow and create API ambiguity. Use helpers when they add semantics
- * over ordinary control flow, such as operating on collections of results.
- * While it may seem verbose, it is explicit, transparent, and avoids pipes and
- * nested helpers, which are harder to debug.
+ * Explicit control flow remains easy to debug as a workflow grows. For small
+ * local compositions, use a Result combinator when it makes the code easier to
+ * read.
  *
  * ## Composition
  *
- * Some patterns are common enough that deserve helpers. The previous example
- * can be written with {@link mapResult}:
+ * Some patterns are common enough to deserve helpers. Sequential operations
+ * can be composed with {@link flatMapResult}:
+ *
+ * ```ts
+ * const profile = flatMapResult(getUser(), (user) =>
+ *   getProfile(user.id),
+ * );
+ * ```
+ *
+ * A collection can be mapped with {@link mapResult}:
  *
  * ```ts
  * const result = mapResult(users, validateUser);
@@ -539,6 +544,27 @@ export type InferDone<R extends Result<any, any>> =
       ? D
       : never
     : never;
+
+/**
+ * Composes a successful {@link Result} with another Result-returning operation.
+ *
+ * Returns the existing error without calling the operation when the Result has
+ * failed.
+ *
+ * ### Example
+ *
+ * ```ts
+ * const profile = flatMapResult(getUser(), (user) =>
+ *   getProfile(user.id),
+ * );
+ * ```
+ *
+ * @group Composition
+ */
+export const flatMapResult = <T, E, U, F>(
+  result: Result<T, E>,
+  fn: (value: T) => Result<U, F>,
+): Result<U, E | F> => (result.ok ? fn(result.value) : result);
 
 /**
  * Extracts all values from an array of {@link Result}s.

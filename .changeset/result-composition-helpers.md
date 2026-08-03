@@ -4,6 +4,7 @@
 
 Added Result composition helpers for arrays and structs.
 
+- **`flatMapResult`** — composes a successful Result with another Result-returning operation
 - **`allResult`** — extracts all values from an array/struct of Results, returning the first error if any fails
 - **`mapResult`** — maps items to Results and extracts all values, returning the first error if any fails
 - **`anyResult`** — returns the first successful Result, or the last error if all fail

@@ -17,6 +17,7 @@ import {
   anyResult,
   done,
   err,
+  flatMapResult,
   getOk,
   getOrNull,
   getOrThrow,
@@ -1531,6 +1532,45 @@ describe("generator-based composition", () => {
     expect(runGen(program("-5"))).toStrictEqual(
       err({ type: "ValidationError" }),
     );
+  });
+});
+
+describe("flatMapResult", () => {
+  it("composes an Ok with another Result-returning operation", () => {
+    const result = flatMapResult(ok(21), (value) => ok(value * 2));
+
+    expect(result).toStrictEqual(ok(42));
+    expectTypeOf(result).toEqualTypeOf<Result<number>>();
+  });
+
+  it("returns the existing Err without calling the operation", () => {
+    interface FirstError {
+      readonly type: "FirstError";
+    }
+
+    interface SecondError {
+      readonly type: "SecondError";
+    }
+
+    const first = (): Result<number, FirstError> =>
+      err({ type: "FirstError" });
+    let called = false;
+    const result = flatMapResult(first(), (): Result<string, SecondError> => {
+      called = true;
+      return err({ type: "SecondError" });
+    });
+
+    expect(result).toStrictEqual(err({ type: "FirstError" }));
+    expect(called).toBe(false);
+    expectTypeOf(result).toEqualTypeOf<
+      Result<string, FirstError | SecondError>
+    >();
+  });
+
+  it("returns an error from the next operation", () => {
+    const result = flatMapResult(ok(42), () => err("fail"));
+
+    expect(result).toStrictEqual(err("fail"));
   });
 });
 
