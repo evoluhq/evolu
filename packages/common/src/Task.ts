@@ -532,6 +532,10 @@ import type {
  * - **Sync** → {@link Result}, native `using` / `DisposableStack`
  * - **Async** → Task, Run, {@link Fiber}, `await using` / `AsyncDisposableStack`
  *
+ * A Task is an async ownership boundary, not a general unit of program
+ * decomposition. Calling `run(task)` always creates a child Run by design.
+ * Use ordinary promises when an async operation does not need its own Run.
+ *
  * Benefits:
  *
  * - **No API ambiguity** — Task is async, Result is sync
@@ -3539,6 +3543,13 @@ export const firstNSettled =
     );
     return ok(results);
   };
+
+// TODO: Make concurrency explicit on collection helpers instead of inheriting
+// it through Run. For example, `all(tasks, { concurrency })` should control
+// only that `all` call. The inherited setting makes a reusable Task's nested
+// helpers change behavior based on its caller, while still not imposing a
+// shared limit across the Task subtree because every nested helper creates its
+// own worker pool. Use an explicit Semaphore for shared resource limits.
 
 /**
  * Runs Tasks concurrently instead of sequentially.

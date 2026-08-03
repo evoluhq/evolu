@@ -98,7 +98,7 @@ export interface RunMainOptions {
  * ### Command Example
  *
  * ```ts
- * await runMain(runCommand, { mode: "command" });
+ * await runMain(command, { mode: "command" });
  * ```
  *
  * @group Node.js Task
