@@ -116,7 +116,7 @@ export default defineConfig(
       "packages/common/src/Task.ts",
       "test/unit/vitest/common/Resource.test.ts",
       "test/integration/vitest/Task/Task.test.ts",
-      "packages/nodejs/test/Task.test.ts",
+      "test/integration/vitest/Task/nodejs/RunMain.test.ts",
     ],
     rules: {
       // Buggy: overflows while traversing Task's recursive Task -> Run -> Task types.

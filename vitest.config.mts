@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 import commonIntegrationBrowser from "./test/integration/vitest/vitest.browser.config.ts";
-import commonIntegrationNode from "./test/integration/vitest/vitest.node.config.ts";
+import integrationNode from "./test/integration/vitest/vitest.node.config.ts";
 import commonUnitBrowser from "./test/unit/vitest/vitest.browser.config.ts";
 import unitNode from "./test/unit/vitest/vitest.node.config.ts";
 
@@ -9,10 +9,9 @@ export default defineConfig({
     projects: [
       unitNode,
       commonUnitBrowser,
-      commonIntegrationNode,
+      integrationNode,
       commonIntegrationBrowser,
       "packages/web",
-      "packages/nodejs",
       "packages/react",
       "packages/react-native",
       {

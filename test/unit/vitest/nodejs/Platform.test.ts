@@ -1,6 +1,8 @@
 import { PositiveInt } from "@evolu/common";
 import { expect, expectTypeOf, test, vi } from "vitest";
-import { availableParallelism } from "../src/index.ts";
+import {
+  availableParallelism,
+} from "../../../../packages/nodejs/src/Platform.ts";
 
 const { nodeAvailableParallelism } = vi.hoisted(() => ({
   nodeAvailableParallelism: vi.fn(),

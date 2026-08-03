@@ -13,11 +13,15 @@ test/
   integration/
     <test-runner>/
       <common-module>/
+        <platform>/
 ```
 
-Integration tests use `<common-module>` instead of `<package>` because they
-exercise platform-independent behavior from `@evolu/common` through real
-implementations supplied by platform packages.
+Integration tests follow the `packages/common/src` module hierarchy because
+they exercise platform-independent behavior from `@evolu/common` through real
+implementations supplied by platform packages. Tests specific to one platform
+are nested under that module, such as `test/integration/vitest/Task/nodejs`.
+Standalone integration features without a common module use their own module
+name, such as `test/integration/vitest/TestBundle`.
 
 ## Unit tests
 

@@ -8,7 +8,7 @@ export default defineProject({
       "./test/unit/vitest/common/local-first/_uint8ArraySerializer.ts",
     ],
     include: ["test/integration/vitest/**/*.test.ts"],
-    name: "@evolu/common integration (nodejs)",
+    name: "integration-nodejs",
     environment: "node",
     setupFiles: ["./test/unit/vitest/common/_setup.ts"],
   },

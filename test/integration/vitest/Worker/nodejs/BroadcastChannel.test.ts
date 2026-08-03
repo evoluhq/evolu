@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { createBroadcastChannel } from "../src/index.ts";
+import { createBroadcastChannel } from "../../../../../packages/nodejs/src/Worker.ts";
 
 test("createBroadcastChannel wraps native BroadcastChannel", async () => {
   const channelName = `test-channel-${crypto.randomUUID()}`;

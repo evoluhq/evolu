@@ -32,7 +32,7 @@ import {
   testSendWebSocketUpgradeRequest,
   testSetupWebSocketUpgradeRequest,
   type NodeJsRelayConfig,
-} from "../src/index.ts";
+} from "../../../../../../packages/nodejs/src/index.ts";
 
 const testRelayAppOwner2 = createAppOwner(
   createOwnerSecret(testCreateDeps({ seed: "nodejs-relay-owner-2" })),
@@ -153,7 +153,9 @@ const loadRelayModuleWithMockedTransport = async () => {
     },
   }));
 
-  const relayModule = await import("../src/local-first/Relay.ts");
+  const relayModule = await import(
+    "../../../../../../packages/nodejs/src/local-first/Relay.ts"
+  );
 
   return { relayModule, server, wss };
 };

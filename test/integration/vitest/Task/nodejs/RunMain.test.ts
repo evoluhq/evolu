@@ -18,7 +18,7 @@ import {
   test,
   vi,
 } from "vitest";
-import { runMain } from "../src/Task.ts";
+import { runMain } from "../../../../../packages/nodejs/src/Task.ts";
 
 describe("runMain", () => {
   let previousExitCode: typeof process.exitCode;

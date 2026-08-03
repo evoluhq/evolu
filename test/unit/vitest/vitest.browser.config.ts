@@ -29,7 +29,7 @@ export default defineProject({
       "./test/unit/vitest/common/local-first/_uint8ArraySerializer.ts",
     ],
     include: ["test/unit/vitest/common/*.test.ts"],
-    name: "@evolu/common unit (browser)",
+    name: "browser",
     setupFiles: ["./test/unit/vitest/common/_setup.ts"],
     browser: {
       enabled: true,

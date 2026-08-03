@@ -28,7 +28,7 @@ export default defineProject({
       "test/integration/vitest/Task/*.test.ts",
       "test/integration/vitest/WebSocket/*.test.ts",
     ],
-    name: "@evolu/common integration (browser)",
+    name: "integration-browser",
     setupFiles: ["./test/unit/vitest/common/_setup.ts"],
     browser: {
       enabled: true,
