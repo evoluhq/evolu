@@ -26,6 +26,10 @@
       "types": "./dist/src/index.d.ts",
       "default": "./src/index.ts"
     },
+    "./intl": {
+      "types": "./dist/src/intl/index.d.ts",
+      "default": "./src/intl/index.ts"
+    },
     "./local-first": {
       "types": "./dist/src/local-first/index.d.ts",
       "default": "./src/local-first/index.ts"
@@ -39,6 +43,9 @@
     "*": {
       "polyfills": [
         "./dist/src/Polyfills.d.ts"
+      ],
+      "intl": [
+        "./dist/src/intl/index.d.ts"
       ],
       "local-first": [
         "./dist/src/local-first/index.d.ts"
@@ -80,6 +87,11 @@
         "browser": "./dist/src/index.js",
         "react-native": "./dist/src/index.js",
         "default": "./dist/src/index.js"
+      },
+      "./intl": {
+        "types": "./dist/src/intl/index.d.ts",
+        "import": "./dist/src/intl/index.js",
+        "default": "./dist/src/intl/index.js"
       },
       "./local-first": {
         "types": "./dist/src/local-first/index.d.ts",

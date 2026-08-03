@@ -444,6 +444,59 @@ describe("Type2 tree shaking", () => {
     `);
   }, 60000);
 
+  test("bundles every selected locale and no unrelated Type formatter", async () => {
+    const results = await testBundle({
+      cases: {
+        "localizeTypes(Label)": {
+          entryPath: resolve(fixturesDirectory, "LocalizedTypes.ts"),
+          verify: (value, bundle) => {
+            expect(value).toEqual([
+              "Hodnota musí být text.",
+              "Text nesmí být prázdný.",
+              "Text must not be empty.",
+            ]);
+            for (const fragment of [
+              "musí být text.",
+              "musí mít délku alespoň",
+              "Text must not be empty.",
+              "The value must be text.",
+            ]) {
+              expect(bundle.code).toContain(fragment);
+            }
+            for (const fragment of [
+              ...unrelatedTypeFragments,
+              '"Array"',
+              "is not an array",
+              '"NonEmptyString"',
+              "Enter some text",
+              "musí být číslo",
+              "neodpovídá regulárnímu výrazu",
+              ...objectTypeFragments,
+            ]) {
+              expect(bundle.code).not.toContain(fragment);
+            }
+          },
+        },
+      },
+      outputDirectory: resolve(outputDirectory, "localizeTypes"),
+    });
+
+    expect(results).toMatchInlineSnapshot(`
+      {
+        "localizeTypes(Label)": {
+          "vite@8.1.5": {
+            "gzipSizeInBytes": 1617,
+            "rawSizeInBytes": 3567,
+          },
+          "webpack@5.108.4": {
+            "gzipSizeInBytes": 1632,
+            "rawSizeInBytes": 3625,
+          },
+        },
+      }
+    `);
+  }, 60000);
+
   test("bundles a realistic Todo list schema", async () => {
     const results = await testBundle({
       cases: {

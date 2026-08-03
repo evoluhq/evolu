@@ -9,6 +9,9 @@
     "noEmit": true,
     "paths": {
       "@evolu/common": ["../packages/common/src/index.ts"],
+      "@evolu/common/intl": [
+        "../packages/common/src/intl/index.ts"
+      ],
       "@evolu/common/local-first": [
         "../packages/common/src/local-first/index.ts"
       ],
@@ -20,5 +23,5 @@
     },
     "types": ["node"]
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts", "**/*.mts"]
 }

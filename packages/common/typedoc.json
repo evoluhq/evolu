@@ -52,6 +52,46 @@
      * ```
      */
     "Type.Type",
-    "SelectQueryBuilderExpression"
+    "SelectQueryBuilderExpression",
+    /**
+     * Type2 is intentionally excluded from generated API docs until it replaces
+     * Type. The intl entry point already references its structured error types.
+     */
+    "ArrayError",
+    "BetweenError",
+    "CapitalizedError",
+    "DateIsoError",
+    "DiscriminatedUnionError",
+    "FiniteError",
+    "GreaterThanError",
+    "GreaterThanOrEqualToError",
+    "InstanceOfError",
+    "Int64Error",
+    "IntError",
+    "JsonError",
+    "JsonValueError",
+    "LengthError",
+    "LessThanError",
+    "LessThanOrEqualToError",
+    "LiteralError",
+    "MaxLengthError",
+    "MinLengthError",
+    "MultipleOfError",
+    "NegativeError",
+    "NeverError",
+    "NonNaNError",
+    "NonNegativeError",
+    "NonPositiveError",
+    "ObjectError",
+    "PositiveDecimalStringError",
+    "PositiveError",
+    "RecordError",
+    "RegexError",
+    "TrimmedError",
+    "TupleError",
+    "TypeErrorFormatter",
+    "TypeOfError",
+    "UInt64Error",
+    "UnionError"
   ]
 }
