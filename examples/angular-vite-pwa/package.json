@@ -23,7 +23,7 @@
     "@vite-pwa/assets-generator": "^1.0.2",
     "tailwindcss": "^4.1.18",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vite": "^8.1.4",
+    "vite": "^8.1.5",
     "vite-plugin-pwa": "^1.2.0"
   }
 }

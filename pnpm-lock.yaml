@@ -132,7 +132,7 @@ importers:
         specifier: ^0.4.3
         version: 0.4.3(patch_hash=c7f7be0dde85fe8c1982a4661ca03bebce2691152ed2eba35325c5c8b1bd17fe)(@vitest/expect@4.1.10)(@vitest/runner@4.1.10)(@vitest/utils@4.1.10)(react-native@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.17)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(vitest@4.1.10)
       webpack:
-        specifier: ^5.98.0
+        specifier: ^5.108.4
         version: 5.108.4(esbuild@0.28.1)(lightningcss@1.32.0)(postcss@8.5.19)
       ws:
         specifier: ^8.19.0
@@ -357,7 +357,7 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
       vite:
-        specifier: ^8.1.4
+        specifier: ^8.1.5
         version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.49.0)(yaml@2.9.0)
       vite-plugin-pwa:
         specifier: ^1.2.0
@@ -403,7 +403,7 @@ importers:
         specifier: ^26.8.1
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)(supports-color@8.1.1)
       vite:
-        specifier: ^8.1.4
+        specifier: ^8.1.5
         version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.49.0)(yaml@2.9.0)
       vite-plugin-electron:
         specifier: ^1.1.0
@@ -634,7 +634,7 @@ importers:
         specifier: ^17.3.0
         version: 17.7.0
       vite:
-        specifier: ^8.1.4
+        specifier: ^8.1.5
         version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.49.0)(yaml@2.9.0)
       vite-plugin-pwa:
         specifier: ^1.2.0
@@ -679,7 +679,7 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
       vite:
-        specifier: ^8.1.4
+        specifier: ^8.1.5
         version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.49.0)(yaml@2.9.0)
       vite-plugin-pwa:
         specifier: ^1.2.0
@@ -716,7 +716,7 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
       vite:
-        specifier: ^8.1.4
+        specifier: ^8.1.5
         version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.49.0)(yaml@2.9.0)
       vite-plugin-pwa:
         specifier: ^1.2.0
@@ -786,6 +786,12 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
+      vite:
+        specifier: ^8.1.5
+        version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.99.0)(terser@5.49.0)(yaml@2.9.0)
+      webpack:
+        specifier: ^5.108.4
+        version: 5.108.4(esbuild@0.28.1)(lightningcss@1.32.0)(postcss@8.5.22)
 
   packages/react:
     devDependencies:
@@ -18508,7 +18514,6 @@ snapshots:
       esbuild: 0.28.1
       lightningcss: 1.32.0
       postcss: 8.5.22
-    optional: true
 
   minipass@4.2.8: {}
 
@@ -21117,7 +21122,6 @@ snapshots:
       - lightningcss
       - postcss
       - uglify-js
-    optional: true
 
   whatwg-fetch@3.6.20: {}
 

@@ -31,3 +31,5 @@ const keep = {
 (
   globalThis as typeof globalThis & { __evoluTreeShaking?: unknown }
 ).__evoluTreeShaking = keep;
+
+export default 42;

@@ -18,6 +18,17 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./TestBundle": {
+      "types": "./dist/src/TestBundle.d.ts",
+      "default": "./src/TestBundle.ts"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "TestBundle": [
+        "./dist/src/TestBundle.d.ts"
+      ]
     }
   },
   "files": [
@@ -40,10 +51,22 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
-    "@typescript/native": "npm:typescript@^7.0.2"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "vite": "^8.1.5",
+    "webpack": "^5.108.4"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.0.0-next.0"
+    "@evolu/common": "^8.0.0-next.0",
+    "vite": ">=8.0.0",
+    "webpack": ">=5.108.4"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    },
+    "webpack": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=24.0.0"
@@ -56,6 +79,11 @@
         "types": "./dist/src/index.d.ts",
         "import": "./dist/src/index.js",
         "default": "./dist/src/index.js"
+      },
+      "./TestBundle": {
+        "types": "./dist/src/TestBundle.d.ts",
+        "import": "./dist/src/TestBundle.js",
+        "default": "./dist/src/TestBundle.js"
       }
     }
   }

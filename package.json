@@ -75,7 +75,7 @@
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.2",
     "vitest-mobile": "^0.4.3",
-    "webpack": "^5.98.0",
+    "webpack": "^5.108.4",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
