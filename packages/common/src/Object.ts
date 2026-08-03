@@ -282,9 +282,7 @@ export function createMutableRecord<
 export function createMutableRecord<T extends object>(
   source: T,
 ): { -readonly [K in keyof T]: T[K] };
-export function createMutableRecord(
-  source?: object,
-): Record<string, unknown> {
+export function createMutableRecord(source?: object): Record<string, unknown> {
   const record = Object.create(null) as Record<string, unknown>;
   return source === undefined ? record : Object.assign(record, source);
 }

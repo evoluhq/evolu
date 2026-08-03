@@ -80,8 +80,8 @@ const packageSubpathSegmentPattern = /^[a-z\d][a-z\d._~-]*$/i;
  * Examples are compiled together as isolated TypeScript modules. Examples
  * without compilation errors are then run concurrently, bounded by the CPU
  * parallelism available to the process. Compilation and execution failures are
- * reported together. Vitest's `assert`, `expect`, and `expectTypeOf`, along with
- * Evolu's `expectOk` and `expectErr`, are injected into each module.
+ * reported together. Vitest's `assert`, `expect`, and `expectTypeOf`, along
+ * with Evolu's `expectOk` and `expectErr`, are injected into each module.
  *
  * Package aliases are useful for examples documenting an entry point that is
  * not exported yet. Package subpaths can be aliased independently. Each alias

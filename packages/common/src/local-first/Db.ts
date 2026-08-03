@@ -20,11 +20,7 @@ import {
 import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import { acquireLeaderLock } from "../LockManager.ts";
-import {
-  createMutableRecord,
-  getOwnProp,
-  objectToEntries,
-} from "../Object.ts";
+import { createMutableRecord, getOwnProp, objectToEntries } from "../Object.ts";
 import { ok, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,

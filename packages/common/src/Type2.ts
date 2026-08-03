@@ -6282,8 +6282,8 @@ type StrictObjectFromUnknownPropertyErrors<Props extends ObjectProps> = {
 export interface ObjectMissingPropertyError extends TypeError<"ObjectMissingProperty"> {}
 
 /**
- * An error returned when a present {@link object} property is not represented
- * as an enumerable data property.
+ * An error returned when a present {@link object} property is not represented as
+ * an enumerable data property.
  *
  * `ObjectPropertyAccess` is reserved for this structural failure. Property
  * {@link Type | Types} must use another error tag.
