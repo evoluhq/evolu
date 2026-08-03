@@ -3,7 +3,7 @@ import {
   createTimingSafeEqual,
 } from "../../../packages/nodejs/src/index.ts";
 import type { TimingSafeEqual } from "../../../packages/common/src/Crypto.ts";
-import { lazyTrue } from "../../../packages/common/src/Function.ts";
+import { constTrue } from "../../../packages/common/src/Function.ts";
 import {
   createRelaySqliteStorage,
   createRelayStorageTables,
@@ -52,7 +52,7 @@ export const setupSqliteAndRelayStorage = async (
     ...run.deps,
     timingSafeEqual: testTimingSafeEqual,
   })({
-    isOwnerWithinQuota: lazyTrue,
+    isOwnerWithinQuota: constTrue,
     ...config,
   });
   const runWithStorage = disposer.use(run.create({ storage }));

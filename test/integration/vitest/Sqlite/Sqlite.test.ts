@@ -1,6 +1,6 @@
 import { expectErr, expectOk } from "@evolu/vitest";
 import { describe, expect, expectTypeOf, test } from "vitest";
-import { lazyVoid } from "../../../../packages/common/src/Function.ts";
+import { constVoid } from "../../../../packages/common/src/Function.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
 import {
   booleanToSqliteBoolean,
@@ -210,7 +210,7 @@ describe("transactions", () => {
           return { rows: [], changes: 0 };
         },
         export: () => new Uint8Array(),
-        deleteDatabase: lazyVoid,
+        deleteDatabase: constVoid,
         [Symbol.dispose]: () => {
           // No cleanup needed
         },
@@ -263,7 +263,7 @@ describe("transactions", () => {
           throw new Error("Query failed");
         },
         export: () => new Uint8Array(),
-        deleteDatabase: lazyVoid,
+        deleteDatabase: constVoid,
         [Symbol.dispose]: () => {
           // No cleanup needed
         },
@@ -303,8 +303,8 @@ describe("transactions", () => {
           return { rows: [], changes: 0 };
         },
         export: () => new Uint8Array(),
-        deleteDatabase: lazyVoid,
-        [Symbol.dispose]: lazyVoid,
+        deleteDatabase: constVoid,
+        [Symbol.dispose]: constVoid,
       };
       return ok(driver);
     };
@@ -340,8 +340,8 @@ describe("export", () => {
         export: () => {
           throw new Error("Export failed");
         },
-        deleteDatabase: lazyVoid,
-        [Symbol.dispose]: lazyVoid,
+        deleteDatabase: constVoid,
+        [Symbol.dispose]: constVoid,
       };
       return ok(driver);
     };
@@ -437,7 +437,7 @@ test("async dispose is idempotent", async () => {
       const driver: SqliteDriver = {
         exec: () => ({ rows: [], changes: 0 }),
         export: () => new Uint8Array(),
-        deleteDatabase: lazyVoid,
+        deleteDatabase: constVoid,
         [Symbol.dispose]: () => {
           driverDisposeCount++;
         },
@@ -467,8 +467,8 @@ test("sync methods throw after sqlite is disposed", async () => {
           exportCalls++;
           return new Uint8Array();
         },
-        deleteDatabase: lazyVoid,
-        [Symbol.dispose]: lazyVoid,
+        deleteDatabase: constVoid,
+        [Symbol.dispose]: constVoid,
       };
       return ok(driver);
     },
@@ -497,8 +497,8 @@ test("createSqlite returns error when driver creation is aborted", async () => {
     return ok({
       exec: () => ({ rows: [], changes: 0 }),
       export: () => new Uint8Array(),
-      deleteDatabase: lazyVoid,
-      [Symbol.dispose]: lazyVoid,
+      deleteDatabase: constVoid,
+      [Symbol.dispose]: constVoid,
     });
   };
 
@@ -518,7 +518,7 @@ describe("createPreparedStatementsCache", () => {
   test("returns null when prepare option is not set", () => {
     const cache = createPreparedStatementsCache(
       (s) => ({ prepared: s }),
-      lazyVoid,
+      constVoid,
     );
     const query = { sql: "select 1;" as SafeSql, parameters: [] };
     expect(cache.get(query)).toBeNull();
@@ -529,7 +529,7 @@ describe("createPreparedStatementsCache", () => {
     const cache = createPreparedStatementsCache((s) => {
       factoryCalls++;
       return { prepared: s };
-    }, lazyVoid);
+    }, constVoid);
     const query = {
       sql: "select 1;" as SafeSql,
       parameters: [],
@@ -547,7 +547,7 @@ describe("createPreparedStatementsCache", () => {
   test("creates statement when alwaysPrepare is true", () => {
     const cache = createPreparedStatementsCache(
       (s) => ({ prepared: s }),
-      lazyVoid,
+      constVoid,
     );
     const query = { sql: "select 1;" as SafeSql, parameters: [] };
 
@@ -597,7 +597,7 @@ describe("createPreparedStatementsCache", () => {
   test("get throws after dispose", () => {
     const cache = createPreparedStatementsCache(
       (s) => ({ prepared: s }),
-      lazyVoid,
+      constVoid,
     );
 
     cache[Symbol.dispose]();

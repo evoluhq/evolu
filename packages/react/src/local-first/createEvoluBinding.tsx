@@ -1,6 +1,6 @@
 "use client";
 
-import { assert, emptyArray, lazyVoid } from "@evolu/common";
+import { constVoid, assert, emptyArray } from "@evolu/common";
 import type {
   Evolu,
   EvoluSchema,
@@ -132,7 +132,7 @@ export const createEvoluBinding = <
 
     if (once) {
       /* eslint-disable react-hooks/rules-of-hooks */
-      useEffect(() => evolu.subscribeQuery(query)(lazyVoid), [evolu, query]);
+      useEffect(() => evolu.subscribeQuery(query)(constVoid), [evolu, query]);
       return evolu.getQueryRows(query);
     }
 

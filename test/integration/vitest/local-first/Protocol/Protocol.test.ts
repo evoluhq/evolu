@@ -4,8 +4,8 @@ import * as fc from "fast-check";
 import { assert, beforeAll, describe, expect, it, test } from "vitest";
 import { createBuffer } from "../../../../../packages/common/src/Buffer.ts";
 import {
-  lazyFalse,
-  lazyTrue,
+  constFalse,
+  constTrue,
 } from "../../../../../packages/common/src/Function.ts";
 import type {
   NonEmptyReadonlyArray,
@@ -936,7 +936,7 @@ describe("E2E errors", () => {
       await using run = testCreateRun({
         storage: {
           ...shouldNotBeCalledStorageDep.storage,
-          validateWriteKey: lazyFalse,
+          validateWriteKey: constFalse,
         },
       });
       const response = await run.orThrow(
@@ -1070,7 +1070,7 @@ describe("E2E relay options", () => {
     await using run = testCreateRun({
       storage: {
         ...shouldNotBeCalledStorageDep.storage,
-        validateWriteKey: lazyTrue,
+        validateWriteKey: constTrue,
         writeMessages: () => () => ok(),
       },
     });

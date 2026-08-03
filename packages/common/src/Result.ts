@@ -11,7 +11,7 @@ import {
   type NonEmptyReadonlyArray,
 } from "./Array.ts";
 import { assert } from "./Assert.ts";
-import { exhaustiveCheck, type Lazy } from "./Function.ts";
+import { exhaustiveCheck, type Thunk } from "./Function.ts";
 import { createRecord, emptyRecord, isIterable } from "./Object.ts";
 import type { Typed } from "./Type.ts";
 import type { Awaitable } from "./Types.ts";
@@ -448,18 +448,18 @@ export function trySync<T, E>(
  * ```
  */
 export function tryAsync<T>(
-  lazyPromise: Lazy<Awaitable<T>>,
+  promiseThunk: Thunk<Awaitable<T>>,
 ): Promise<Result<T, unknown>>;
 export function tryAsync<T, E>(
-  lazyPromise: Lazy<Awaitable<T>>,
+  promiseThunk: Thunk<Awaitable<T>>,
   mapError: (error: unknown) => E,
 ): Promise<Result<T, E>>;
 export async function tryAsync<T, E>(
-  lazyPromise: Lazy<Awaitable<T>>,
+  promiseThunk: Thunk<Awaitable<T>>,
   mapError?: (error: unknown) => E,
 ): Promise<Result<T, E | unknown>> {
   try {
-    return ok(await lazyPromise());
+    return ok(await promiseThunk());
   } catch (error) {
     return err(mapError ? mapError(error) : error);
   }

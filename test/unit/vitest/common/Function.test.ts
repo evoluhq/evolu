@@ -1,14 +1,16 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
 import {
+  constFalse,
+  constNull,
+  constTrue,
+  constUndefined,
+  constVoid,
+  constant,
   disposable,
   isDisposable,
-  lazyFalse,
-  lazyNull,
-  lazyTrue,
-  lazyUndefined,
-  lazyVoid,
   exhaustiveCheck,
   identity,
+  type Thunk,
   todo,
 } from "../../../../packages/common/src/Function.ts";
 
@@ -117,7 +119,7 @@ test("disposable", async () => {
 
 describe("isDisposable", () => {
   test("recognizes synchronous and asynchronous disposable objects", () => {
-    expect(isDisposable({ [Symbol.dispose]: lazyVoid })).toBe(true);
+    expect(isDisposable({ [Symbol.dispose]: constVoid })).toBe(true);
     expect(
       isDisposable({ [Symbol.asyncDispose]: () => Promise.resolve() }),
     ).toBe(true);
@@ -130,25 +132,33 @@ describe("isDisposable", () => {
   });
 });
 
-describe("lazy", () => {
-  test("lazyVoid returns void", () => {
-    expectTypeOf<ReturnType<typeof lazyVoid>>().toEqualTypeOf<void>();
+describe("constant", () => {
+  test("creates a Thunk returning the same value", () => {
+    const value = { id: 1 };
+    const getValue = constant(value);
+
+    expectTypeOf(getValue).toEqualTypeOf<Thunk<typeof value>>();
+    expect(getValue()).toBe(value);
   });
 
-  test("lazyUndefined returns undefined", () => {
-    expectTypeOf<ReturnType<typeof lazyUndefined>>().toEqualTypeOf<undefined>();
+  test("constVoid returns void", () => {
+    expectTypeOf<ReturnType<typeof constVoid>>().toEqualTypeOf<void>();
   });
 
-  test("lazyNull returns null", () => {
-    expect(lazyNull()).toBe(null);
+  test("constUndefined returns undefined", () => {
+    expectTypeOf<ReturnType<typeof constUndefined>>().toEqualTypeOf<undefined>();
   });
 
-  test("lazyTrue returns true", () => {
-    expect(lazyTrue()).toBe(true);
+  test("constNull returns null", () => {
+    expect(constNull()).toBe(null);
   });
 
-  test("lazyFalse returns false", () => {
-    expect(lazyFalse()).toBe(false);
+  test("constTrue returns true", () => {
+    expect(constTrue()).toBe(true);
+  });
+
+  test("constFalse returns false", () => {
+    expect(constFalse()).toBe(false);
   });
 });
 

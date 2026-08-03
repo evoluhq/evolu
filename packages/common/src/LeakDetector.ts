@@ -5,7 +5,7 @@
  */
 
 import { type ConsoleDep } from "./Console.ts";
-import { lazyVoid } from "./Function.ts";
+import { constVoid } from "./Function.ts";
 
 /**
  * Detects handles that are garbage-collected while still considered held.
@@ -86,8 +86,8 @@ export const createLeakDetector = (deps: ConsoleDep): LeakDetector => {
 
 /** No-op {@link LeakDetector} for production. */
 export const noopLeakDetector: LeakDetector = {
-  track: lazyVoid,
-  untrack: lazyVoid,
+  track: constVoid,
+  untrack: constVoid,
 };
 
 interface TrackedLeak extends Leak {

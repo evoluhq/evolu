@@ -5,7 +5,7 @@
  */
 
 import { createRandomBytes } from "./Crypto.ts";
-import { lazyVoid } from "./Function.ts";
+import { constVoid } from "./Function.ts";
 import { ok } from "./Result.ts";
 import type { Task } from "./Task.ts";
 import { createId } from "./Type.ts";
@@ -162,7 +162,7 @@ export const acquireLeaderLockCallback =
         await released.promise;
       },
     );
-    void request.catch(lazyVoid);
+    void request.catch(constVoid);
 
     return {
       [Symbol.dispose]: () => {

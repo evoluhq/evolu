@@ -9,7 +9,7 @@ import {
   createConsoleStoreOutput,
   testCreateConsole,
 } from "../../../../../packages/common/src/Console.ts";
-import { lazyVoid } from "../../../../../packages/common/src/Function.ts";
+import { constVoid } from "../../../../../packages/common/src/Function.ts";
 import type { DbWorkerInit } from "../../../../../packages/common/src/local-first/Db.ts";
 import { startDbWorker } from "../../../../../packages/common/src/local-first/Db.ts";
 import {
@@ -168,9 +168,9 @@ describe("unit tests", () => {
                 sharedWorker.port.onMessage = value;
               },
               native: sharedWorker.port.native,
-              [Symbol.dispose]: lazyVoid,
+              [Symbol.dispose]: constVoid,
             },
-            [Symbol.dispose]: lazyVoid,
+            [Symbol.dispose]: constVoid,
           }
         : sharedWorker;
 
@@ -179,7 +179,7 @@ describe("unit tests", () => {
       createBroadcastChannel: testCreateBroadcastChannel,
       createMessageChannel: testCreateMessageChannel,
       lockManager: testCreateLockManager(),
-      reloadApp: lazyVoid,
+      reloadApp: constVoid,
       sharedWorker: sharedWorkerDep,
       ...overrides,
     };
@@ -249,7 +249,7 @@ describe("unit tests", () => {
           createMessageChannel: testCreateMessageChannel,
           lockManager: testCreateLockManager(),
           sharedWorker: worker,
-          reloadApp: lazyVoid,
+          reloadApp: constVoid,
           console,
         }),
       );
@@ -305,7 +305,7 @@ describe("unit tests", () => {
       >();
       worker.self.onConnect = (port) => {
         sharedWorkerPort.value = port;
-        port.onMessage = lazyVoid;
+        port.onMessage = constVoid;
       };
       worker.connect();
 
@@ -321,7 +321,7 @@ describe("unit tests", () => {
         createMessageChannel: testCreateMessageChannel,
         lockManager: testCreateLockManager(),
         sharedWorker: worker,
-        reloadApp: lazyVoid,
+        reloadApp: constVoid,
       });
 
       await testWaitForWorkerMessage();
@@ -381,7 +381,7 @@ describe("unit tests", () => {
           createMessageChannel: testCreateMessageChannel,
           lockManager: testCreateLockManager(),
           sharedWorker: worker,
-          reloadApp: lazyVoid,
+          reloadApp: constVoid,
         });
 
         await testWaitForWorkerMessage();
@@ -524,7 +524,7 @@ describe("unit tests", () => {
           SharedWorkerInput,
           SharedWorkerOutput
         >(),
-        reloadApp: lazyVoid,
+        reloadApp: constVoid,
       });
 
       const onMessage = consoleEntryOrErrorBroadcastChannel.value?.onMessage;
@@ -541,7 +541,7 @@ describe("unit tests", () => {
         SharedWorkerOutput
       >();
       worker.self.onConnect = (port) => {
-        port.onMessage = lazyVoid;
+        port.onMessage = constVoid;
       };
       worker.connect();
 
@@ -566,7 +566,7 @@ describe("unit tests", () => {
         createMessageChannel: testCreateMessageChannel,
         lockManager: testCreateLockManager(),
         sharedWorker,
-        reloadApp: lazyVoid,
+        reloadApp: constVoid,
       });
 
       expect(broadcastChannels).toHaveLength(1);
@@ -616,7 +616,7 @@ describe("unit tests", () => {
         createBroadcastChannel: testCreateBroadcastChannel,
         createMessageChannel: testCreateMessageChannel,
         lockManager: testCreateLockManager(),
-        reloadApp: lazyVoid,
+        reloadApp: constVoid,
         sharedWorker,
       });
 
@@ -928,7 +928,7 @@ describe("unit tests", () => {
       }).toThrow(disposedMessage);
 
       expect(() => {
-        evolu.subscribeQuery(todoTitleQuery)(lazyVoid);
+        evolu.subscribeQuery(todoTitleQuery)(constVoid);
       }).toThrow(disposedMessage);
 
       expect(() => {
@@ -1011,7 +1011,7 @@ describe("unit tests", () => {
       const { run, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      evolu.subscribeQuery(todoTitleQuery)(lazyVoid);
+      evolu.subscribeQuery(todoTitleQuery)(constVoid);
       const loadPromise = evolu.loadQuery(todoTitleQuery);
 
       await testWaitForWorkerMessage();
@@ -1319,7 +1319,7 @@ describe("unit tests", () => {
       const { run, evoluInputs } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(lazyVoid);
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
 
       await testWaitForWorkerMessage();
 
@@ -1335,7 +1335,7 @@ describe("unit tests", () => {
       const { run } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(lazyVoid);
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
 
       await evolu[Symbol.asyncDispose]();
 
@@ -1371,7 +1371,7 @@ describe("unit tests", () => {
       const { run, evoluInputs, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(lazyVoid);
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
 
       postEvoluOutput({ type: "RefreshQueries" });
 
@@ -1444,7 +1444,7 @@ describe("unit tests", () => {
       const { run, evoluInputs, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(lazyVoid);
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
       void evolu.loadQuery(todoTitleQuery);
       await testWaitForWorkerMessage();
 
@@ -1465,7 +1465,7 @@ describe("unit tests", () => {
       const { run, postEvoluOutput } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(lazyVoid);
+      const unsubscribe = evolu.subscribeQuery(todoTitleQuery)(constVoid);
 
       const firstLoad = evolu.loadQuery(todoTitleQuery);
       await testWaitForWorkerMessage();
@@ -1758,7 +1758,7 @@ describe("unit tests", () => {
       evolu.insert(
         "todo",
         { title: NonEmptyString100.orThrow("With callback") },
-        { ownerId: testAppOwner.id, onComplete: lazyVoid },
+        { ownerId: testAppOwner.id, onComplete: constVoid },
       );
 
       await testWaitForWorkerMessage();
@@ -1998,7 +1998,7 @@ describe("integration tests", () => {
       run.create({
         ...run.deps,
         createDbWorker,
-        reloadApp: lazyVoid,
+        reloadApp: constVoid,
         sharedWorker,
       }),
     );
@@ -2256,7 +2256,7 @@ describe("integration tests", () => {
     await evolu1[Symbol.asyncDispose]();
 
     const evolu2 = await run.ok(createIntegrationEvolu);
-    const unsubscribe = evolu2.subscribeQuery(todoByCreatedAtQuery)(lazyVoid);
+    const unsubscribe = evolu2.subscribeQuery(todoByCreatedAtQuery)(constVoid);
 
     await expect(evolu2.loadQuery(todoByCreatedAtQuery)).resolves.toEqual([
       {
@@ -2325,7 +2325,7 @@ describe("integration tests", () => {
       {
         ...run.deps,
         createDbWorker,
-        reloadApp: lazyVoid,
+        reloadApp: constVoid,
         sharedWorker,
       },
     );

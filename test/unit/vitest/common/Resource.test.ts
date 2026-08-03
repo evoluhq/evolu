@@ -3,7 +3,7 @@ import type {
   NonEmptyArray,
   NonEmptyReadonlyArray,
 } from "../../../../packages/common/src/Array.ts";
-import { lazyVoid } from "../../../../packages/common/src/Function.ts";
+import { constVoid } from "../../../../packages/common/src/Function.ts";
 import {
   createSharedResourceByKeyWithClaims,
   createSharedResource,
@@ -86,7 +86,7 @@ describe("SharedResource", () => {
       await using run = testCreateRun();
 
       let createCount = 0;
-      const resource: Disposable = { [Symbol.dispose]: lazyVoid };
+      const resource: Disposable = { [Symbol.dispose]: constVoid };
 
       await using sharedResource = await run.ok(
         createSharedResource(() => {
@@ -190,7 +190,7 @@ describe("SharedResource", () => {
       const gate = createGate();
 
       let createCount = 0;
-      const resource: Disposable = { [Symbol.dispose]: lazyVoid };
+      const resource: Disposable = { [Symbol.dispose]: constVoid };
       const create: Task<Disposable> = async (run) => {
         createCount++;
         await run.ok(gate.wait);
@@ -213,7 +213,7 @@ describe("SharedResource", () => {
       await using run = testCreateRun();
       const gate = createGate();
 
-      const resource: Disposable = { [Symbol.dispose]: lazyVoid };
+      const resource: Disposable = { [Symbol.dispose]: constVoid };
       const create: Task<Disposable> = async (run) => {
         await run.ok(gate.wait);
         return ok(resource);
@@ -244,7 +244,7 @@ describe("SharedResource", () => {
 
       await using sharedResource = await run.ok(
         createSharedResource<TestResource, TestDep>(({ deps }) =>
-          ok({ value: deps.value, [Symbol.dispose]: lazyVoid }),
+          ok({ value: deps.value, [Symbol.dispose]: constVoid }),
         ),
         { value: "captured" },
       );
@@ -718,7 +718,7 @@ describe("SharedResource", () => {
       await using sharedResource = await run.ok(
         createSharedResource(async (run) => {
           await run.ok(gate.wait);
-          return ok({ [Symbol.dispose]: lazyVoid });
+          return ok({ [Symbol.dispose]: constVoid });
         }),
       );
 
@@ -737,7 +737,7 @@ describe("SharedResource", () => {
       await using sharedResource = await run.ok(
         createSharedResource(async (run) => {
           await run.ok(gate.wait);
-          return ok({ [Symbol.dispose]: lazyVoid });
+          return ok({ [Symbol.dispose]: constVoid });
         }),
       );
 
@@ -850,7 +850,7 @@ describe("SharedResource", () => {
         createSharedResource(async (run) => {
           createStarted.resolve();
           await run.ok(gate.wait);
-          return ok({ [Symbol.dispose]: lazyVoid });
+          return ok({ [Symbol.dispose]: constVoid });
         }),
       );
 
@@ -1287,7 +1287,7 @@ describe("SharedResource", () => {
       >();
 
       const _sharedResource = createSharedResource((() =>
-        ok({ [Symbol.dispose]: lazyVoid })) as Task<
+        ok({ [Symbol.dispose]: constVoid })) as Task<
         Disposable,
         never,
         TestDep
@@ -1314,7 +1314,7 @@ describe("SharedResource", () => {
       }
 
       const create: Task<TestDb> = () =>
-        ok({ query: () => "result", [Symbol.dispose]: lazyVoid });
+        ok({ query: () => "result", [Symbol.dispose]: constVoid });
 
       await using sharedResource = await run.ok(createSharedResource(create));
 
@@ -1341,7 +1341,7 @@ describe("SharedResourceByKey", () => {
         (key: string): Task<Disposable> =>
         () => {
           createCountsByKey.set(key, (createCountsByKey.get(key) ?? 0) + 1);
-          return ok({ [Symbol.dispose]: lazyVoid });
+          return ok({ [Symbol.dispose]: constVoid });
         };
 
       await using sharedResourceByKey = await run.ok(
@@ -1365,7 +1365,7 @@ describe("SharedResourceByKey", () => {
       const create = (): Task<Disposable> => async (run) => {
         createCount++;
         await run.ok(gate.wait);
-        return ok({ [Symbol.dispose]: lazyVoid });
+        return ok({ [Symbol.dispose]: constVoid });
       };
 
       await using sharedResourceByKey = await run.ok(
@@ -1423,7 +1423,7 @@ describe("SharedResourceByKey", () => {
         (key: string): Task<Disposable> =>
         async (run) => {
           if (key === "a") await run.ok(gate.wait);
-          return ok({ [Symbol.dispose]: lazyVoid });
+          return ok({ [Symbol.dispose]: constVoid });
         };
 
       await using sharedResourceByKey = await run.ok(
@@ -2202,7 +2202,7 @@ describe("SharedResourceByKey", () => {
 
       await run.ok(
         createSharedResourceByKey(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
 
@@ -2223,7 +2223,7 @@ describe("SharedResourceByKey", () => {
 
       const sharedResourceByKey = await run.ok(
         createSharedResourceByKey(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       await sharedResourceByKey[Symbol.asyncDispose]();
@@ -2323,7 +2323,7 @@ describe("SharedResourceByKey", () => {
       >().toEqualTypeOf<(key: string) => Task<Lease<TestDb>>>();
 
       const create = ((_key: string) => () =>
-        ok({ [Symbol.dispose]: lazyVoid })) as (
+        ok({ [Symbol.dispose]: constVoid })) as (
         key: string,
       ) => Task<Disposable, never, TestDep>;
 
@@ -2359,7 +2359,7 @@ describe("SharedResourceByKey", () => {
       const create =
         (_key: string): Task<TestDb> =>
         () =>
-          ok({ query: () => "result", [Symbol.dispose]: lazyVoid });
+          ok({ query: () => "result", [Symbol.dispose]: constVoid });
 
       await using sharedResourceByKey = await run.ok(
         createSharedResourceByKey(create),
@@ -2395,7 +2395,7 @@ describe("SharedResourceByKeyWithClaims", () => {
       createSharedResourceByKeyWithClaims(
         (_key: string): Task<Disposable> =>
           () =>
-            ok({ [Symbol.dispose]: lazyVoid }),
+            ok({ [Symbol.dispose]: constVoid }),
       );
     });
 
@@ -2442,7 +2442,7 @@ describe("SharedResourceByKeyWithClaims", () => {
       const task = createSharedResourceByKeyWithClaims(
         (_key: ResourceKey): Task<Disposable> =>
           () =>
-            ok({ [Symbol.dispose]: lazyVoid }),
+            ok({ [Symbol.dispose]: constVoid }),
         {
           resourceLookup: (key) => key.id,
           claimLookup: (claim: Claim) => claim.id,
@@ -2765,7 +2765,7 @@ describe("SharedResourceByKeyWithClaims", () => {
                 createStarted.resolve();
                 await continueCreate.promise;
               }
-              return ok({ [Symbol.dispose]: lazyVoid });
+              return ok({ [Symbol.dispose]: constVoid });
             },
         ),
       );
@@ -2798,7 +2798,7 @@ describe("SharedResourceByKeyWithClaims", () => {
           (_key: string): Task<Disposable, never, TestDep> =>
             ({ deps }) => {
               createValues.push(deps.value);
-              return ok({ [Symbol.dispose]: lazyVoid });
+              return ok({ [Symbol.dispose]: constVoid });
             },
         ),
         { value: "captured" },
@@ -2834,7 +2834,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: ResourceKey) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: ResourceKey) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             resourceLookup: (key) => key.id,
             claimLookup: (claim: Claim) => claim.id,
@@ -2890,7 +2890,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: ResourceKey) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: ResourceKey) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             resourceLookup: (key) => key.id,
             claimLookup: (claim: Claim) => claim.id,
@@ -2939,7 +2939,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: ResourceKey) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: ResourceKey) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             resourceLookup: (key) => key.id,
             claimLookup: (claim: Claim) => claim.id,
@@ -3040,7 +3040,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       const claimLease = await run.ok(
@@ -3127,7 +3127,7 @@ describe("SharedResourceByKeyWithClaims", () => {
         createSharedResourceByKeyWithClaims(
           (key: string): Task<TestResource> =>
             () =>
-              ok({ id: key, [Symbol.dispose]: lazyVoid }),
+              ok({ id: key, [Symbol.dispose]: constVoid }),
           {
             onFirstClaimAdded: (claim: string, resource, resourceKey) => {
               calls.push([claim, resource.id, resourceKey]);
@@ -3164,7 +3164,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             onFirstClaimAdded: (claim: string, _resource, resourceKey) => {
               if (resourceKey !== "a") return;
@@ -3242,7 +3242,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             onLastClaimRemoved: (claim: string, _resource, resourceKey) => {
               if (claim !== "claim") return;
@@ -3281,7 +3281,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             onLastClaimRemoved: (claim: string) => {
               calls.push(claim);
@@ -3310,7 +3310,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             onFirstClaimAdded: (claim: string) => {
               firstCalls.push(claim);
@@ -3373,7 +3373,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       const sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             onLastClaimRemoved: (claim: string) => {
               lastClaimRemoved.push(claim);
@@ -3733,7 +3733,7 @@ describe("SharedResourceByKeyWithClaims", () => {
               createCount++;
               createStarted.resolve();
               await run.ok(continueCreate.wait);
-              return ok({ [Symbol.dispose]: lazyVoid });
+              return ok({ [Symbol.dispose]: constVoid });
             },
         ),
       );
@@ -3767,7 +3767,7 @@ describe("SharedResourceByKeyWithClaims", () => {
             async (run) => {
               createStarted.resolve();
               await run.ok(continueCreate.wait);
-              return ok({ [Symbol.dispose]: lazyVoid });
+              return ok({ [Symbol.dispose]: constVoid });
             },
         ),
       );
@@ -3800,7 +3800,7 @@ describe("SharedResourceByKeyWithClaims", () => {
               startedKeys.add(key);
               if (startedKeys.size === 2) bothCreatesStarted.open();
               await run.ok(bothCreatesStarted.wait);
-              return ok({ [Symbol.dispose]: lazyVoid });
+              return ok({ [Symbol.dispose]: constVoid });
             },
         ),
       );
@@ -3831,7 +3831,7 @@ describe("SharedResourceByKeyWithClaims", () => {
                 blockedCreateStarted.resolve();
                 await run.ok(continueBlockedCreate.wait);
               }
-              return ok({ [Symbol.dispose]: lazyVoid });
+              return ok({ [Symbol.dispose]: constVoid });
             },
         ),
       );
@@ -3871,7 +3871,7 @@ describe("SharedResourceByKeyWithClaims", () => {
                 await run.ok(continueTrailingCreate.wait);
               }
               createCountsByKey.set(key, (createCountsByKey.get(key) ?? 0) + 1);
-              return ok({ key, [Symbol.dispose]: lazyVoid });
+              return ok({ key, [Symbol.dispose]: constVoid });
             },
         ),
       );
@@ -4070,7 +4070,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       const sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       const claimLease = await run.ok(
@@ -4087,7 +4087,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       const sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       const claimLease = await run.ok(
@@ -4107,7 +4107,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       const sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       await run.ok(sharedResourceByKeyWithClaims.claim("claim", ["resource"]));
@@ -4220,7 +4220,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       const sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       await sharedResourceByKeyWithClaims[Symbol.asyncDispose]();
@@ -4243,7 +4243,7 @@ describe("SharedResourceByKeyWithClaims", () => {
       const ownerRun = testCreateRun();
       const sharedResourceByKeyWithClaims = await ownerRun.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       await ownerRun[Symbol.asyncDispose]();
@@ -4270,7 +4270,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
 
@@ -4297,7 +4297,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
 
@@ -4324,7 +4324,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       const claimLease = await run.ok(
@@ -4347,7 +4347,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       const sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
       await run.ok(sharedResourceByKeyWithClaims.claim("claim", ["resource"]));
@@ -4393,7 +4393,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             resourceLookup: (_key): string => {
               throw defect;
@@ -4419,7 +4419,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await using sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
           {
             claimLookup: (_claim): string => {
               throw defect;
@@ -4446,7 +4446,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       const sharedResourceByKeyWithClaims = await run.ok(
         createSharedResourceByKeyWithClaims(
-          (_key: string) => () => ok({ [Symbol.dispose]: lazyVoid }),
+          (_key: string) => () => ok({ [Symbol.dispose]: constVoid }),
         ),
       );
 

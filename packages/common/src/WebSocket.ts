@@ -5,7 +5,7 @@
  */
 
 import { assert } from "./Assert.ts";
-import { lazyTrue } from "./Function.ts";
+import { constTrue } from "./Function.ts";
 import type { Result } from "./Result.ts";
 import { err, ok } from "./Result.ts";
 import type { Schedule } from "./Schedule.ts";
@@ -198,7 +198,7 @@ export const createWebSocket: CreateWebSocket =
       binaryType,
       onOpen,
       onClose,
-      shouldRetryOnClose = lazyTrue,
+      shouldRetryOnClose = constTrue,
       onMessage,
       onError,
       schedule = webSocketReconnectSchedule,

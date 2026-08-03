@@ -3,7 +3,7 @@ import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../../../../packages/common/src/Brand.ts";
 import {
   exhaustiveCheck,
-  lazyVoid,
+  constVoid,
 } from "../../../../packages/common/src/Function.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
 import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
@@ -853,7 +853,7 @@ test("DateIso", () => {
 });
 
 test("Function/EvoluType/CurrencyCode/Name/Mnemonic", () => {
-  expect(Function.fromUnknown(lazyVoid)).toEqual(ok(lazyVoid));
+  expect(Function.fromUnknown(constVoid)).toEqual(ok(constVoid));
   expect(Function.fromUnknown(1)).toEqual(err({ type: "Function", value: 1 }));
 
   expect(EvoluType.fromUnknown(String)).toEqual(ok(String));
@@ -2416,7 +2416,7 @@ test("JsonValue", () => {
 
   const invalidJsonValues = [
     undefined,
-    lazyVoid,
+    constVoid,
     Symbol("symbol"),
     BigInt(123),
     { circular: undefined },
@@ -2468,12 +2468,12 @@ test("JsonArray", () => {
 
   const invalidJsonArrays = [
     undefined,
-    lazyVoid,
+    constVoid,
     Symbol("symbol"),
     BigInt(123),
     { key: "value" },
     ["valid", undefined],
-    [1, "string", lazyVoid],
+    [1, "string", constVoid],
     [{ circular: undefined }],
   ];
 
@@ -2529,7 +2529,7 @@ test("JsonObject", () => {
     42,
     "string",
     BigInt(123),
-    lazyVoid,
+    constVoid,
     { key: undefined }, // Undefined is not a valid JsonValue
     { validKey: "value", invalidKey: undefined }, // Mixed validity
     { key: Symbol("symbol") }, // Symbol is not valid

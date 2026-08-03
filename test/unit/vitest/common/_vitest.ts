@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { lazyVoid } from "../../../../packages/common/src/Function.ts";
+import { constVoid } from "../../../../packages/common/src/Function.ts";
 import {
   isHermes,
   testGlobalUncaughtErrors as testGlobalUncaughtErrorsBase,
@@ -25,7 +25,7 @@ const withDisabledConsoleError = (
   using disposableStack = new DisposableStack();
   const globalConsole = globalThis.console;
   const consoleError = globalConsole.error;
-  globalConsole.error = lazyVoid;
+  globalConsole.error = constVoid;
   disposableStack.defer(() => {
     globalConsole.error = consoleError;
   });

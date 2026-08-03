@@ -1,7 +1,7 @@
 import {
   assert,
-  lazyFalse,
-  lazyTrue,
+  constFalse,
+  constTrue,
   sql,
   testCreateConsole,
   testCreateId,
@@ -193,7 +193,7 @@ describe("createRelay", () => {
 
   test("rejects websocket upgrades without ownerId", async () => {
     await using setup = await startTestRelay({
-      isOwnerAllowed: lazyTrue,
+      isOwnerAllowed: constTrue,
     });
 
     const response = await testSendWebSocketUpgradeRequest(
@@ -206,7 +206,7 @@ describe("createRelay", () => {
 
   test("rejects unauthorized owner websocket upgrades", async () => {
     await using setup = await startTestRelay({
-      isOwnerAllowed: lazyFalse,
+      isOwnerAllowed: constFalse,
     });
 
     const response = await testSendWebSocketUpgradeRequest(
@@ -794,7 +794,7 @@ describe("createRelay", () => {
         relayModule.createRelay({
           port: 0,
           name: testName,
-          isOwnerAllowed: lazyTrue,
+          isOwnerAllowed: constTrue,
           isOwnerWithinQuota: () => true,
         }),
       );
@@ -837,7 +837,7 @@ describe("createRelay", () => {
         relayModule.createRelay({
           port: 0,
           name: testName,
-          isOwnerAllowed: lazyTrue,
+          isOwnerAllowed: constTrue,
           isOwnerWithinQuota: () => true,
         }),
       );

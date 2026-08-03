@@ -1,6 +1,6 @@
 import {
+  constVoid,
   createPreparedStatementsCache,
-  lazyVoid,
   ok,
   type CreateSqliteDriver,
   type SqliteRow,
@@ -30,7 +30,7 @@ export const createBetterSqliteDriver: CreateSqliteDriver =
         (sql) => db.prepare(sql),
         // Not needed.
         // https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md#class-statement
-        lazyVoid,
+        constVoid,
       ),
     );
 

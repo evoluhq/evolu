@@ -32,7 +32,7 @@ import {
   type RandomBytesDep,
 } from "./Crypto.ts";
 import { eqArrayStrict } from "./Eq.ts";
-import { identity, lazyTrue, lazyVoid } from "./Function.ts";
+import { constTrue, constVoid, identity } from "./Function.ts";
 import type { fetch, NativeFetch, NativeFetchDep } from "./Http.ts";
 import {
   createLeakDetector,
@@ -2293,7 +2293,7 @@ const createRunInternal = <D extends object>(
       // reported, aborts are control flow, and forgotten Fibers are a lint
       // concern. Attach this late so V8 captures the defect stack before any
       // catch observes the Fiber.
-      void fiber.catch(lazyVoid);
+      void fiber.catch(constVoid);
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- AbortError is Task abort control flow; aborts intentionally carry no stack.
       throw taskExit.error;
     };
@@ -3164,7 +3164,7 @@ export const retry =
     task: Task<T, E, D>,
     schedule: Schedule<Output, Exclude<E, AbortError>>,
     {
-      shouldRetry = lazyTrue,
+      shouldRetry = constTrue,
       onRetry,
     }: RetryOptions<Exclude<E, AbortError>, Output> = {},
   ): Task<T, RetryTaskError<E>, D> =>
@@ -3298,7 +3298,7 @@ export const repeat =
   <T, E, D = unknown, Output = unknown>(
     task: Task<T, E, D>,
     schedule: Schedule<Output, T>,
-    { shouldRepeat = lazyTrue, onRepeat }: RepeatOptions<T, Output> = {},
+    { shouldRepeat = constTrue, onRepeat }: RepeatOptions<T, Output> = {},
   ): Task<T, E, D> =>
   async (run) => {
     const step = schedule(run.deps);
@@ -3742,7 +3742,7 @@ export const each =
     // Guard against hanging on an empty array.
     assertNonEmptyReadonlyArray(tasks);
 
-    const parked = new Promise<never>(lazyVoid);
+    const parked = new Promise<never>(constVoid);
     const wake = Promise.withResolvers<void>();
     using _ = run.onAbort(wake.reject);
 

@@ -6,7 +6,7 @@ import {
   type ConsoleEntry,
   type ConsoleStoreOutput,
 } from "../../../../../packages/common/src/Console.ts";
-import { lazyVoid } from "../../../../../packages/common/src/Function.ts";
+import { constVoid } from "../../../../../packages/common/src/Function.ts";
 import {
   startDbWorker,
   type DbWorkerInit,
@@ -205,7 +205,7 @@ const setupDb = async ({
       exec: (query) => driver.exec(query),
       export: () => driver.export(),
       deleteDatabase: () => driver.deleteDatabase(),
-      [Symbol.dispose]: lazyVoid,
+      [Symbol.dispose]: constVoid,
     });
 
   const sqlite = disposer.use(
@@ -391,7 +391,7 @@ describe("worker startup", () => {
     await using dbSetup = await setupDb();
     let workerSelfDisposeCount = 0;
     const self: WorkerSelf<DbWorkerInit> = {
-      postMessage: lazyVoid,
+      postMessage: constVoid,
       onMessage: null,
       native: {} as WorkerSelf<DbWorkerInit>["native"],
       [Symbol.dispose]: () => {
@@ -608,7 +608,7 @@ describe("worker startup", () => {
     const workerSelfDisposed = Promise.withResolvers<void>();
     let workerSelfDisposeCount = 0;
     const self: WorkerSelf<DbWorkerInit> = {
-      postMessage: lazyVoid,
+      postMessage: constVoid,
       onMessage: null,
       native: {} as WorkerSelf<DbWorkerInit>["native"],
       [Symbol.dispose]: () => {

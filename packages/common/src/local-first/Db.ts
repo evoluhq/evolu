@@ -17,7 +17,7 @@ import {
   type DecryptWithXChaCha20Poly1305Error,
   type RandomBytesDep,
 } from "../Crypto.ts";
-import { lazyFalse, lazyVoid } from "../Function.ts";
+import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import { acquireLeaderLock } from "../LockManager.ts";
 import { createRecord, getProperty, objectToEntries } from "../Object.ts";
@@ -647,8 +647,8 @@ const createClientStorage =
       didWriteMessages: () => didWriteMessages,
 
       // Not implemented yet.
-      validateWriteKey: lazyFalse,
-      setWriteKey: lazyVoid,
+      validateWriteKey: constFalse,
+      setWriteKey: constVoid,
 
       writeMessages: (ownerIdBytes, encryptedMessages) => () => {
         // TODO: Add quota checking for collaborative scenarios.

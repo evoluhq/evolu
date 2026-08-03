@@ -214,12 +214,11 @@ export const isDisposable = (
 };
 
 /**
- * A function that takes no arguments and returns a value of type T. Also known
- * as a thunk.
+ * A function that takes no arguments and returns a value.
  *
  * Useful for:
  *
- * - Providing default callbacks (see {@link lazyVoid}, {@link lazyTrue}, etc.)
+ * - Providing default callbacks (see {@link constVoid}, {@link constTrue}, etc.)
  * - Delaying expensive operations until actually needed
  * - Deferring side effects so the callee controls when they run
  *
@@ -227,25 +226,25 @@ export const isDisposable = (
  *
  * ```ts
  * // Default callback
- * const notify = (onDone: Lazy<void> = lazyVoid) => {
+ * const notify = (onDone: Thunk<void> = constVoid) => {
  *   onDone();
  * };
  *
  * // Delay computation
- * const getData: Lazy<Data> = () => compute();
+ * const getData: Thunk<Data> = () => compute();
  * const data = getData();
  *
  * // Defer side effects
- * const schedule = (job: Lazy<void>) => {
+ * const schedule = (job: Thunk<void>) => {
  *   queueMicrotask(job);
  * };
  * schedule(() => logMetric("loaded"));
  * ```
  */
-export type Lazy<T> = () => T;
+export type Thunk<T> = () => T;
 
 /**
- * Creates a {@link Lazy} from a precomputed value.
+ * Creates a {@link Thunk} that always returns a precomputed value.
  *
  * Use when the value is expensive to compute and want to compute it once at
  * definition time rather than on every call.
@@ -254,31 +253,32 @@ export type Lazy<T> = () => T;
  *
  * ```ts
  * // Computed once at definition, returned on every call
- * const getConfig = lazy(parseConfig(rawConfig));
+ * const getConfig = constant(parseConfig(rawConfig));
  *
  * // vs. computed on every call
  * const getConfig = () => parseConfig(rawConfig);
  * ```
  */
-export const lazy =
-  <T>(value: T): Lazy<T> =>
+export const constant =
+  <T>(value: T): Thunk<T> =>
   () =>
     value;
 
-/** A {@link Lazy} that returns `true`. */
-export const lazyTrue: Lazy<true> = /*#__PURE__*/ lazy(true);
+/** A {@link Thunk} that returns `true`. */
+export const constTrue: Thunk<true> = /*#__PURE__*/ constant(true);
 
-/** A {@link Lazy} that returns `false`. */
-export const lazyFalse: Lazy<false> = /*#__PURE__*/ lazy(false);
+/** A {@link Thunk} that returns `false`. */
+export const constFalse: Thunk<false> = /*#__PURE__*/ constant(false);
 
-/** A {@link Lazy} that returns `null`. */
-export const lazyNull: Lazy<null> = /*#__PURE__*/ lazy(null);
+/** A {@link Thunk} that returns `null`. */
+export const constNull: Thunk<null> = /*#__PURE__*/ constant(null);
 
-/** A {@link Lazy} that returns `undefined`. */
-export const lazyUndefined: Lazy<undefined> = /*#__PURE__*/ lazy(undefined);
+/** A {@link Thunk} that returns `undefined`. */
+export const constUndefined: Thunk<undefined> =
+  /*#__PURE__*/ constant(undefined);
 
-/** A {@link Lazy} that returns `undefined` for void callbacks. */
-export const lazyVoid: Lazy<void> = lazyUndefined;
+/** A {@link Thunk} that returns `undefined` for void callbacks. */
+export const constVoid: Thunk<void> = constUndefined;
 
 /**
  * Development placeholder that always throws.

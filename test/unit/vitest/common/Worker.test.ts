@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { assertNonNullable } from "../../../../packages/common/src/Assert.ts";
-import { lazyVoid } from "../../../../packages/common/src/Function.ts";
+import { constVoid } from "../../../../packages/common/src/Function.ts";
 import type { NativeMessagePort } from "../../../../packages/common/src/Worker.ts";
 import {
   createWorker,
@@ -132,8 +132,8 @@ describe("testCreateMessageChannel", () => {
 
   test("dispose nulls out handlers", () => {
     const channel = testCreateMessageChannel<string>();
-    channel.port1.onMessage = lazyVoid;
-    channel.port2.onMessage = lazyVoid;
+    channel.port1.onMessage = constVoid;
+    channel.port2.onMessage = constVoid;
     expect(channel.port1.onMessage).not.toBeNull();
     expect(channel.port2.onMessage).not.toBeNull();
     channel[Symbol.dispose]();
@@ -210,7 +210,7 @@ describe("testCreateMessageChannel", () => {
     const channel = testCreateMessageChannel<string>();
 
     channel.port2[Symbol.dispose]();
-    channel.port2.onMessage = lazyVoid;
+    channel.port2.onMessage = constVoid;
     channel.port2[Symbol.dispose]();
 
     expect(channel.port2.onMessage).toBeNull();
@@ -527,8 +527,8 @@ describe("testCreateWorker", () => {
 
   test("worker dispose clears handlers", () => {
     const worker = testCreateWorker<string>();
-    worker.onMessage = lazyVoid;
-    worker.self.onMessage = lazyVoid;
+    worker.onMessage = constVoid;
+    worker.self.onMessage = constVoid;
 
     worker[Symbol.dispose]();
 
@@ -538,7 +538,7 @@ describe("testCreateWorker", () => {
 
   test("self dispose clears self handler", () => {
     const worker = testCreateWorker<string>();
-    worker.self.onMessage = lazyVoid;
+    worker.self.onMessage = constVoid;
 
     worker.self[Symbol.dispose]();
 
@@ -600,7 +600,7 @@ describe("testCreateSharedWorker", () => {
 
   test("worker dispose disposes channel", () => {
     const worker = testCreateSharedWorker<string>();
-    worker.port.onMessage = lazyVoid;
+    worker.port.onMessage = constVoid;
     expect(worker.port.onMessage).not.toBeNull();
     worker[Symbol.dispose]();
     expect(worker.port.onMessage).toBeNull();
@@ -608,7 +608,7 @@ describe("testCreateSharedWorker", () => {
 
   test("self dispose nulls onConnect", () => {
     const worker = testCreateSharedWorker<string>();
-    worker.self.onConnect = lazyVoid;
+    worker.self.onConnect = constVoid;
     expect(worker.self.onConnect).not.toBeNull();
     worker.self[Symbol.dispose]();
     expect(worker.self.onConnect).toBeNull();

@@ -7,7 +7,7 @@ import type {
 } from "../../../../../packages/common/src/index.ts";
 import {
   err,
-  lazyFalse,
+  constFalse,
   sql,
   timestampToTimestampBytes,
   timestampBytesToTimestamp,
@@ -235,7 +235,7 @@ describe("writeMessages", () => {
 
   test("transaction rollback on quota error", async () => {
     await using setup = await setupSqliteAndRelayStorage({
-      isOwnerWithinQuota: lazyFalse,
+      isOwnerWithinQuota: constFalse,
     });
     const { run, storage, sqlite } = setup;
 
@@ -328,7 +328,7 @@ describe("writeMessages", () => {
 
     test("fails when isOwnerWithinQuota returns false", async () => {
       await using setup = await setupSqliteAndRelayStorage({
-        isOwnerWithinQuota: lazyFalse,
+        isOwnerWithinQuota: constFalse,
       });
       const { run, storage } = setup;
 
