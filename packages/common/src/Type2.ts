@@ -116,13 +116,20 @@ import type {
  * ### Example
  *
  * ```ts
- * import { String, type Result, type TypeOfError } from "@evolu/common";
+ * import { String, type Result } from "@evolu/common";
  *
  * const value: unknown = "hello";
  * const result = String.fromUnknown(value);
  *
  * expectTypeOf(result).toEqualTypeOf<
- *   Result<string, TypeOfError<"String">>
+ *   Result<
+ *     string,
+ *     {
+ *       readonly type: "TypeOf";
+ *       readonly expected: "string";
+ *       readonly value: unknown;
+ *     }
+ *   >
  * >();
  * expectOk(result, "hello");
  * ```
@@ -626,11 +633,17 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
  * ### Example
  *
  * ```ts
- * import { NonEmptyTrimmedString100, assertType } from "@evolu/common";
+ * import {
+ *   NonEmptyTrimmedString100,
+ *   assertType,
+ *   type Brand,
+ * } from "@evolu/common";
  *
  * const value: unknown = "Evolu";
  * assertType(NonEmptyTrimmedString100, value);
- * expectTypeOf(value).toEqualTypeOf<NonEmptyTrimmedString100>();
+ * expectTypeOf(value).toEqualTypeOf<
+ *   string & Brand<"Trimmed"> & Brand<"MinLength1"> & Brand<"MaxLength100">
+ * >();
  * ```
  */
 type AssertTypeFn = <T extends TypeNode>(
@@ -3654,77 +3667,26 @@ export interface BetweenError<
  *
  * ```ts
  * import {
- *   Number,
  *   String,
  *   array,
  *   brand,
- *   err,
- *   ok,
- *   transform,
- *   type ArrayElementsError,
- *   type ArrayError,
  *   type Brand,
  *   type Result,
- *   type TypeError,
- *   type TypeOfError,
  * } from "@evolu/common";
  *
- * const NumberFromString = transform("NumberFromString", String, Number, {
- *   from: (value) => ok(globalThis.Number(value)),
- *   to: globalThis.String,
+ * const UserId = brand("UserId", String);
+ * const UserIds = array(UserId);
+ * const result = UserIds.from.parent(["ada", "grace"]);
+ *
+ * expectTypeOf(result).toEqualTypeOf<
+ *   Result<ReadonlyArray<string & Brand<"UserId">>, never>
+ * >();
+ * expectOk(result, ["ada", "grace"]);
+ * expectOk(UserIds.fromUnknown(["ada", "grace"]), ["ada", "grace"]);
+ * expectErr(UserIds.fromUnknown("ada"), {
+ *   type: "Array",
+ *   reason: { kind: "NotArray", value: "ada" },
  * });
- *
- * const Port = brand(
- *   "Port",
- *   NumberFromString,
- *   (value) =>
- *     globalThis.Number.isInteger(value) && value >= 0 && value <= 65_535
- *       ? ok()
- *       : err<PortError>({ type: "Port", value }),
- *   () => "Expected an integer between 0 and 65535.",
- * );
- * type Port = typeof Port.Output;
- *
- * expectTypeOf<Port>().toEqualTypeOf<number & Brand<"Port">>();
- *
- * interface PortError extends TypeError<"Port"> {
- *   readonly value: number;
- * }
- *
- * const ServerPort = brand("ServerPort", Port);
- * type ServerPort = typeof ServerPort.Output;
- *
- * expectTypeOf<ServerPort>().toEqualTypeOf<
- *   number & Brand<"Port"> & Brand<"ServerPort">
- * >();
- *
- * const ServerPorts = array(ServerPort);
- *
- * // Validate an unknown value.
- * const serverPortsFromUnknown = ServerPorts.fromUnknown(["80", "443"]);
- *
- * expectTypeOf(serverPortsFromUnknown).toEqualTypeOf<
- *   Result<
- *     ReadonlyArray<ServerPort>,
- *     ArrayError<TypeOfError<"String"> | PortError>
- *   >
- * >();
- *
- * expectOk(serverPortsFromUnknown, [80, 443]);
- *
- * // Validate parsed numbers.
- * const parsedNumbers = [
- *   NumberFromString.orThrow("80"),
- *   NumberFromString.orThrow("443"),
- * ];
- * const serverPortsFromNumbers =
- *   ServerPorts.from.parent.parent(parsedNumbers);
- *
- * expectTypeOf(serverPortsFromNumbers).toEqualTypeOf<
- *   Result<ReadonlyArray<ServerPort>, ArrayElementsError<PortError>>
- * >();
- *
- * expectOk(serverPortsFromNumbers, [80, 443]);
  * ```
  */
 export const array = <ElementType extends ConcreteTypeNode>(
@@ -4856,7 +4818,7 @@ const formatPlainObjectRootError = (
  * const scoresFromInput = ScoresByUser.from.parent(scoresInput.value);
  *
  * expectTypeOf(scoresFromInput).toEqualTypeOf<
- *   Result<ScoresByUser, never>
+ *   Result<Readonly<Partial<Record<string, number>>>, never>
  * >();
  *
  * expectOk(scoresFromInput, { ada: 10, grace: 20 });
@@ -5501,9 +5463,14 @@ type ObjectProperty = ObjectProps[string];
  * expectOk(userInput, { name: "Ada", age: "42" });
  *
  * // Run the remaining property stages.
- * const userFromInput = User.from.parent(userInput.value);
+ * const userFromInput: Result<
+ *   { readonly name: string; readonly age: number },
+ *   never
+ * > = User.from.parent(userInput.value);
  *
- * expectTypeOf(userFromInput).toEqualTypeOf<Result<User, never>>();
+ * expectTypeOf(userFromInput).toEqualTypeOf<
+ *   Result<{ readonly name: string; readonly age: number }, never>
+ * >();
  * expectOk(userFromInput, { name: "Ada", age: 42 });
  * ```
  *
