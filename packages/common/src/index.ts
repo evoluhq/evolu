@@ -37,6 +37,7 @@ export * from "./Result.ts";
 export * from "./Schedule.ts";
 export * from "./Set.ts";
 export * from "./Sqlite.ts";
+export type { StandardSchemaV1 } from "@standard-schema/spec";
 export * from "./Store.ts";
 export * from "./String.ts";
 export * from "./Task.ts";

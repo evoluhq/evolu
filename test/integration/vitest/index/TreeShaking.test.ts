@@ -68,6 +68,16 @@ describe("tree-shaking", () => {
             "rawSizeInBytes": 4626,
           },
         },
+        "type2-object": {
+          "vite@8.1.5": {
+            "gzipSizeInBytes": 2822,
+            "rawSizeInBytes": 7827,
+          },
+          "webpack@5.108.4": {
+            "gzipSizeInBytes": 2831,
+            "rawSizeInBytes": 7904,
+          },
+        },
       }
     `);
   }, 60000);

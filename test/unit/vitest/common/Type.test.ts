@@ -1,4 +1,5 @@
 import { expectErr, expectOk } from "@evolu/vitest";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assert, describe, expect, expectTypeOf, test } from "vitest";
 import type { Brand } from "../../../../packages/common/src/Brand.ts";
 import {
@@ -44,7 +45,6 @@ import type {
   RecordError,
   RegexError,
   SetError,
-  StandardSchemaV1,
   StringError,
   TableIdError,
   TrimmedError,

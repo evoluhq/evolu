@@ -5,6 +5,7 @@
  */
 
 import * as Kysely from "kysely";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { getProperty, mapObject, type ReadonlyRecord } from "../Object.ts";
 import {
   eqSqliteIndex,
@@ -27,7 +28,6 @@ import {
   IdBytes,
   nullOr,
   object,
-  type StandardSchemaV1,
 } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
 import type { AppOwner } from "./Owner.ts";
@@ -41,7 +41,7 @@ import type {
 import type { CrdtMessage, DbChange } from "./Storage.ts";
 import { TimestampBytes } from "./Timestamp.ts";
 
-/** Any {@link StandardSchemaV1}. */
+/** Any Standard Schema V1 declaration. */
 export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
 
 /**

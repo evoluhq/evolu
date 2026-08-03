@@ -18,6 +18,8 @@ export default defineConfig(
       "**/out/",
       "**/tmp/",
       "**/*.d.ts",
+      // Compiler workloads are validated by pnpm bench:type.
+      "bench/type/fixtures/**",
       // To validate examples, uncomment apps/** and packages/** otherwise
       // FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
       "examples/**",
@@ -91,6 +93,15 @@ export default defineConfig(
       "jsdoc/check-tag-names": ["error", { definedTags: ["group"] }],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
+    },
+  },
+  {
+    // Type correctness and intentionally expensive inference are validated by
+    // pnpm typecheck and pnpm bench:type.
+    files: ["bench/type/**/*.mts"],
+    extends: [tseslint.configs.disableTypeChecked],
+    rules: {
+      "evolu/no-direct-task-call": "off",
     },
   },
   {

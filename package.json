@@ -17,6 +17,7 @@
     "playwright:install": "playwright install chromium firefox webkit",
     "test:watch": "vitest",
     "bench:storage": "node bench/storage/benchmark.mts",
+    "bench:type": "node bench/type/benchmark.mts",
     "check:packages": "node scripts/check-packages.mts && tsc6 --project scripts/typescript6/tsconfig.json",
     "start": "turbo start",
     "lint": "eslint --cache --cache-strategy content",

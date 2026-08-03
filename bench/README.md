@@ -5,6 +5,7 @@ Benchmarks measure performance characteristics that ordinary correctness tests d
 ## Suites
 
 - [Storage](./storage/README.md) measures SQLite timestamp Skiplist operations.
+- [Type](./type/README.md) measures deterministic TypeScript compiler work for Evolu Type APIs.
 
 ## Commands
 
