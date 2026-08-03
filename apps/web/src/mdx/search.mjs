@@ -58,7 +58,8 @@ function extractSections() {
 export default function Search(nextConfig = {}) {
   let cache = new Map();
 
-  return Object.assign({}, nextConfig, {
+  return {
+    ...nextConfig,
     webpack(config, options) {
       config.module.rules.push({
         test: __filename,
@@ -116,5 +117,5 @@ export default function Search(nextConfig = {}) {
 
       return config;
     },
-  });
+  };
 }

@@ -40,12 +40,12 @@ describe("tree-shaking", () => {
       {
         "result-all": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 704,
-            "rawSizeInBytes": 1597,
+            "gzipSizeInBytes": 727,
+            "rawSizeInBytes": 1669,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 689,
-            "rawSizeInBytes": 1648,
+            "gzipSizeInBytes": 711,
+            "rawSizeInBytes": 1724,
           },
         },
         "task-example": {
@@ -70,12 +70,12 @@ describe("tree-shaking", () => {
         },
         "type2-object": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2822,
-            "rawSizeInBytes": 7827,
+            "gzipSizeInBytes": 2793,
+            "rawSizeInBytes": 7650,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2831,
-            "rawSizeInBytes": 7904,
+            "gzipSizeInBytes": 2801,
+            "rawSizeInBytes": 7719,
           },
         },
       }

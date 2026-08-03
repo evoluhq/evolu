@@ -318,8 +318,6 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
     switch ((propertyError as ObjectPropertyAccessError).reason) {
       case "Accessor":
         return "Vlastnost Object musí být datová vlastnost. Před použitím tohoto Type materializujte hodnotu accessoru do prostých dat nebo použijte jiný Type.";
-      case "Inherited":
-        return "Vlastnost Object musí být vlastní vlastnost.";
       case "NonEnumerable":
         return "Vlastnost Object musí být enumerable.";
     }

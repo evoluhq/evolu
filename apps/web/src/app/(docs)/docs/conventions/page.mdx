@@ -90,7 +90,17 @@ const newItems = [...items, 4];
 items === newItems; // false
 ```
 
-Mutation causes unintended side effects, makes code harder to predict, and complicates debugging. Prefer immutable update patterns unless mutation is necessary for performance reasons. Use readonly types to describe immutable APIs, but do not mistake them for runtime immutability.
+Mutation causes unintended side effects, makes code harder to predict, and
+complicates debugging. Evolu public functions do not mutate application data
+passed to them. Low-level APIs may mutate explicitly mutable values, such as
+buffers, when mutation is part of their contract. Prefer immutable update
+patterns for application data.
+
+Local mutation is allowed as an implementation detail when useful for
+performance. A function may mutate a value it exclusively owns while
+constructing its result, but mutation must stop before the result leaves that
+function. Use readonly types to describe immutable APIs, but do not mistake them
+for runtime immutability or an ownership system.
 
 ### Readonly types
 
@@ -113,9 +123,10 @@ interface Example {
 }
 ```
 
-Readonly in TypeScript is only a static constraint. It prevents mutation through
-that particular type, but it does not freeze the value or prove the value is
-actually immutable.
+Readonly in TypeScript is only a static constraint. It prevents direct mutation
+through that particular type, but it does not freeze the value or prove the
+value is actually immutable. A mutable alias can still change it, and TypeScript
+can allow a readonly object to be passed to a function accepting a mutable type.
 
 ```ts
 const mutable = [1, 2, 3];
@@ -123,12 +134,19 @@ const items: ReadonlyArray<number> = mutable;
 
 mutable.push(4);
 items; // [1, 2, 3, 4]
+
+const mutateRecord = (value: Record<string, number>): void => {
+  value.count = 1;
+};
+
+const record: Readonly<Record<string, number>> = {};
+mutateRecord(record); // TypeScript allows this.
 ```
 
 Treat readonly types as a contract for APIs that already maintain immutability.
-Do not cast mutable values to readonly just to satisfy the type checker. If a
-value is exposed as readonly, ensure it is produced immutably and that no
-mutable alias can still change it behind the scenes.
+Do not cast mutable values to readonly just to satisfy the type checker. A value
+may be built through local mutation and then returned as readonly, provided that
+it is not mutated after leaving the constructing function.
 
 Evolu also provides helpers in the [Array](/docs/api-reference/common/Array)
 and [Object](/docs/api-reference/common/Object) modules that do not mutate and

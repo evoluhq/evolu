@@ -3,9 +3,10 @@ import type { Brand } from "../../../../packages/common/src/Brand.ts";
 import type { ReadonlyRecord } from "../../../../packages/common/src/Object.ts";
 import {
   createObjectURL,
-  createRecord,
+  createMutableRecord,
+  emptyRecord,
   excludeProp,
-  getProperty,
+  getOwnProp,
   isFunction,
   isIterable,
   isPlainObject,
@@ -143,8 +144,8 @@ test("excludeProp", () => {
   expect(excluded).toEqual({ b: 2, c: 3 });
 });
 
-test("createRecord", () => {
-  const values = createRecord<string, number>();
+test("createMutableRecord", () => {
+  const values = createMutableRecord<string, number>();
   values.__proto__ = 123;
 
   expect(values.__proto__).toBe(123);
@@ -152,15 +153,51 @@ test("createRecord", () => {
   // Ensure Object.prototype was not changed
   const protoValue = (Object.prototype as any).__proto__;
   expect((Object.prototype as any).__proto__).toBe(protoValue);
+
+  interface Source {
+    readonly name: string;
+    readonly age?: number;
+  }
+
+  const source: Source = { name: "Ada" };
+  const copy = createMutableRecord(source);
+
+  copy.name = "Grace";
+
+  expectTypeOf(copy).toEqualTypeOf<{ name: string; age?: number }>();
+  expect(copy).toEqual({ name: "Grace" });
+  expect(source).toEqual({ name: "Ada" });
+  expect(Object.getPrototypeOf(copy)).toBeNull();
+
+  const compileTimeAssertions = () => {
+    // @ts-expect-error createMutableRecord source must be an object.
+    createMutableRecord("Ada");
+  };
+  expectTypeOf(compileTimeAssertions).toBeFunction();
 });
 
-test("getProperty", () => {
-  const record = { a: 1, b: 2 };
+test("emptyRecord", () => {
+  expect(Object.getPrototypeOf(emptyRecord)).toBeNull();
+  expect(Object.isFrozen(emptyRecord)).toBe(true);
+});
 
-  expect(getProperty(record, "a")).toBe(1);
-  expect(getProperty(record, "b")).toBe(2);
+test("getOwnProp", () => {
+  const record = { a: 1, b: 2 };
+  const stringRecord: Readonly<Record<string, number>> = record;
+  const nullPrototypeRecord = createMutableRecord<string, number>();
+  const value = getOwnProp(record, "a");
+
+  expectTypeOf(value).toEqualTypeOf<number | undefined>();
+  expect(value).toBe(1);
+  expect(getOwnProp(record, "b")).toBe(2);
   // @ts-expect-error c does not exists
-  expect(getProperty(record, "c")).toBe(undefined);
+  expect(getOwnProp(record, "c")).toBe(undefined);
+  expect(getOwnProp(stringRecord, "toString")).toBeUndefined();
+  expect(getOwnProp(nullPrototypeRecord, "toString")).toBeUndefined();
+
+  Reflect.set(nullPrototypeRecord, "toString", 1);
+
+  expect(getOwnProp(nullPrototypeRecord, "toString")).toBe(1);
 });
 
 test("createObjectURL", () => {

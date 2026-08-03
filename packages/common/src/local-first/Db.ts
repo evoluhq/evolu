@@ -20,7 +20,11 @@ import {
 import { constFalse, constVoid } from "../Function.ts";
 import type { LockManagerDep } from "../LockManager.ts";
 import { acquireLeaderLock } from "../LockManager.ts";
-import { createRecord, getProperty, objectToEntries } from "../Object.ts";
+import {
+  createMutableRecord,
+  getOwnProp,
+  objectToEntries,
+} from "../Object.ts";
 import { ok, type Result } from "../Result.ts";
 import type {
   CreateSqliteDriverDep,
@@ -530,7 +534,7 @@ const tryApplyQuarantinedMessages = (
 const validateColumnValue =
   (deps: SqliteSchemaDep) =>
   (table: string, column: string, _value: SqliteValue): boolean => {
-    const schemaColumns = getProperty(deps.sqliteSchema.tables, table);
+    const schemaColumns = getOwnProp(deps.sqliteSchema.tables, table);
     return (
       schemaColumns != null &&
       (systemColumnsWithoutOwnerId.has(column) || schemaColumns.has(column))
@@ -716,7 +720,7 @@ const createClientStorage =
         assertNonEmptyReadonlyArray(rows, "Every timestamp must have rows");
         const firstRow = firstInArray(rows);
 
-        const values = createRecord<string, SqliteValue>();
+        const values = createMutableRecord<string, SqliteValue>();
         let isInsert: DbChange["isInsert"] = false;
         let isDelete: DbChange["isDelete"] = null;
 

@@ -24,7 +24,7 @@ import {
 import type { Brand } from "../Brand.ts";
 import { createRandomBytes } from "../Crypto.ts";
 import type { ReadonlyRecord } from "../Object.ts";
-import { createRecord, isPlainObject } from "../Object.ts";
+import { createMutableRecord, isPlainObject } from "../Object.ts";
 import type { SqliteQueryString } from "../Sqlite.ts";
 import { eqSqliteValue, SqliteValue } from "../Sqlite.ts";
 import { createId, String } from "../Type.ts";
@@ -395,7 +395,7 @@ const parse = (obj: unknown): unknown => {
 const parseObject = (
   obj: ReadonlyRecord<string, unknown>,
 ): ReadonlyRecord<string, unknown> => {
-  const result = createRecord();
+  const result = createMutableRecord();
   for (const key in obj) {
     result[key] = parse(obj[key]);
   }

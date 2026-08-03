@@ -426,18 +426,6 @@ describe("Czech Type error formatters", () => {
           reason: {
             kind: "Properties",
             errors: {
-              value: { type: "ObjectPropertyAccess", reason: "Inherited" },
-            },
-          },
-        },
-        "musí být vlastní vlastnost",
-      ],
-      [
-        {
-          type: "Object",
-          reason: {
-            kind: "Properties",
-            errors: {
               value: { type: "ObjectPropertyAccess", reason: "NonEnumerable" },
             },
           },

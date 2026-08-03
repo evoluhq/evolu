@@ -23,6 +23,7 @@ test("testJSDocExamples injects Vitest assertions", async () => {
         ' * const value: unknown = "Evolu";',
         ' * assert(typeof value === "string");',
         " * const upperCaseValue = value.toUpperCase();",
+        ' * expect(upperCaseValue).toBe("EVOLU");',
         " * expectTypeOf(upperCaseValue).toEqualTypeOf<",
         " *   ReturnType<() => string>",
         " * >();",

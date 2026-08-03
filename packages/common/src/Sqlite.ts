@@ -10,7 +10,7 @@ import type { EncryptionKey } from "./Crypto.ts";
 import type { Eq } from "./Eq.ts";
 import { createEqObject, eqArrayNumber, eqString } from "./Eq.ts";
 import { disposable } from "./Function.ts";
-import { createRecord, objectToEntries } from "./Object.ts";
+import { createMutableRecord, objectToEntries } from "./Object.ts";
 import type { Result } from "./Result.ts";
 import { ok } from "./Result.ts";
 import { testCreateRun, type Task, type TestRunDep } from "./Task.ts";
@@ -534,7 +534,7 @@ export const getSqliteSchema =
      */
     excludeIndexNamePrefix?: string;
   } = {}): SqliteSchema => {
-    const tables = createRecord<string, Set<string>>();
+    const tables = createMutableRecord<string, Set<string>>();
 
     const tableAndColumnInfoRows = deps.sqlite.exec<{
       tableName: string;

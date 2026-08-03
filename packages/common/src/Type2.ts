@@ -12,7 +12,7 @@ import type {
 import { assert, assertNonNullable } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import { identity, type Thunk } from "./Function.ts";
-import { createRecord } from "./Object.ts";
+import { createMutableRecord } from "./Object.ts";
 import {
   err,
   flatMapResult,
@@ -718,7 +718,7 @@ export const localizeTypes = ((
   typesByName: Readonly<Record<string, ConcreteTypeNode>>,
   formatErrorByTypeByLocale: Readonly<Record<string, unknown>>,
 ) => {
-  const typesByNameByLocale = createRecord<
+  const typesByNameByLocale = createMutableRecord<
     string,
     Readonly<Record<string, ConcreteTypeNode>>
   >();
@@ -727,7 +727,7 @@ export const localizeTypes = ((
     const inputFormatErrorByType = formatErrorByTypeByLocale[
       locale
     ] as RuntimeFormatErrorByType;
-    const formatErrorByType = createRecord<
+    const formatErrorByType = createMutableRecord<
       string,
       TypeErrorFormatter<TypeError>
     >();
@@ -736,7 +736,10 @@ export const localizeTypes = ((
       formatErrorByType[name] = inputFormatErrorByType[name];
     }
 
-    const localizedTypesByName = createRecord<string, ConcreteTypeNode>();
+    const localizedTypesByName = createMutableRecord<
+      string,
+      ConcreteTypeNode
+    >();
     const localizedTypeBySource = new WeakMap<
       RuntimeTypeNode,
       RuntimeTypeNode
@@ -4631,7 +4634,7 @@ const createObjectRuntimeTypeIssues =
         let ownError = error;
 
         if (mode === "all") {
-          const errors = createRecord<string, TypeError>() as Record<
+          const errors = createMutableRecord<string, TypeError>() as Record<
             PropertyKey,
             TypeError
           >;
@@ -4757,7 +4760,7 @@ export const Object: Type<
 
       if (propertyError === undefined) continue;
 
-      errors ??= createRecord<string, TypeError>();
+      errors ??= createMutableRecord<string, TypeError>();
       errors[key] = propertyError;
       if (options.errors === "first") break;
     }
@@ -4807,8 +4810,9 @@ const formatPlainObjectRootError = (
  * A Record must use this realm's `Object.prototype` or `null`. Class instances,
  * custom-prototype objects, and foreign-realm objects are rejected. Every own
  * property must be an enumerable data property whose key and value satisfy
- * their Types. When decoding changes an entry, the constructed Record uses a
- * `null` prototype so keys such as `__proto__` remain ordinary data.
+ * their Types. When decoding or encoding changes an entry, the constructed
+ * Record uses a `null` prototype so keys such as `__proto__` remain ordinary
+ * data.
  *
  * If transformed keys collide, validation fails instead of overwriting an
  * entry.
@@ -4857,6 +4861,44 @@ const formatPlainObjectRootError = (
  *
  * expectOk(scoresFromInput, { ada: 10, grace: 20 });
  * ```
+ *
+ * Note that TypeScript does not model an object's runtime prototype. This can
+ * make a plain TypeScript Record interpret an inherited `Object.prototype` name
+ * as a Record entry:
+ *
+ * ```ts
+ * type Values = Partial<Record<"toString", number>>;
+ * const values: Values = {};
+ *
+ * // TypeScript treats the inherited function as `number | undefined`.
+ * const value: number | undefined = values.toString;
+ *
+ * expect(typeof value).toBe("function");
+ * expect(() => {
+ *   if (value !== undefined) value.toFixed();
+ * }).toThrow(TypeError);
+ * ```
+ *
+ * Evolu Record Outputs use the same TypeScript Record representation.
+ *
+ * ```ts
+ * import { Number, literal, record } from "@evolu/common";
+ *
+ * const Values = record(literal("toString"), Number);
+ * const result = Values.fromUnknown({});
+ *
+ * expectOk(result, {});
+ *
+ * const value: number | undefined = result.value.toString;
+ *
+ * expect(typeof value).toBe("function");
+ * expect(() => {
+ *   if (value !== undefined) value.toFixed();
+ * }).toThrow(TypeError);
+ * ```
+ *
+ * In other words, treat Record Outputs as string-keyed data rather than calling
+ * inherited object methods through them.
  */
 export const record = <
   KeyType extends ConcreteTypeNode,
@@ -4967,7 +5009,7 @@ export const record = <
     encodeKey === identity && encodeValue === identity
       ? identity
       : (input: Readonly<Record<string, unknown>>) => {
-          const output = createRecord<string, unknown>();
+          const output = createMutableRecord<string, unknown>();
           let changed = false;
 
           for (const inputKey of globalThis.Object.keys(input)) {
@@ -5253,8 +5295,8 @@ const validateRecordEntries = (
 > => {
   let issues:
     Array<RecordIssue<TypeError, TypeError, RecordStructuralIssue>> | undefined;
-  const output = createRecord<string, unknown>();
-  const inputKeyByOutputKey = createRecord<string, string | symbol>();
+  const output = createMutableRecord<string, unknown>();
+  const inputKeyByOutputKey = createMutableRecord<string, string | symbol>();
   let changed = false;
 
   for (const inputKey of Reflect.ownKeys(input)) {
@@ -5396,9 +5438,9 @@ export type ObjectProps = Readonly<
 type ObjectProperty = ObjectProps[string];
 
 /**
- * Object {@link Type}.
+ * Plain object {@link Type}.
  *
- * Use `object(Props)` for objects with fixed property names. Properties are
+ * Use `object(props)` for objects with fixed property names. Properties are
  * required unless wrapped with {@link optional}. An optional property may be
  * absent, but a present value is still validated and does not implicitly accept
  * `undefined`.
@@ -5407,20 +5449,21 @@ type ObjectProperty = ObjectProps[string];
  * a {@link record} with the predefined {@link String} key Type to validate and
  * preserve additional string-keyed properties.
  *
- * `fromUnknown` requires a plain object whose accepted properties are own
- * enumerable data properties, then runs the complete property Type pipelines.
- * It rejects class instances, custom and foreign-realm prototypes, accessors,
- * non-enumerable accepted properties, and inherited properties. Use
- * {@link createInstanceOfType} when a class instance is the intended Output, or
- * an explicit {@link transform} when an instance should decode into plain data.
- * `from` accepts the Object Output. When any property Type has a parent,
- * `from.parent` accepts an object of root property Outputs and runs their
- * remaining stages without checking required or additional properties again.
- * This collapsed input boundary keeps an Object to at most one `.parent`
- * suffix.
+ * `fromUnknown` requires a plain object. Plain object Types model only own
+ * enumerable data properties, so Object prototype properties neither satisfy
+ * required properties nor make optional properties present. This keeps Outputs
+ * valid after ordinary object spread restores `Object.prototype`.
+ *
+ * Class instances, custom and foreign-realm prototypes, accessors, and
+ * non-enumerable properties are rejected. Use {@link createInstanceOfType} for
+ * class Outputs or {@link transform} to decode instances into plain data.
+ *
+ * When decoding changes no property, it preserves the input. When decoding or
+ * encoding changes a property, it constructs an object with a `null`
+ * prototype.
  *
  * By default, validation returns the first property issue. Pass `{ errors:
- * "all" }` to collect issues across the whole Object.
+ * "all" }` to collect all issues.
  *
  * ### Example
  *
@@ -5463,6 +5506,48 @@ type ObjectProperty = ObjectProps[string];
  * expectTypeOf(userFromInput).toEqualTypeOf<Result<User, never>>();
  * expectOk(userFromInput, { name: "Ada", age: 42 });
  * ```
+ *
+ * Note that TypeScript does not model an object's runtime prototype. This can
+ * make a plain TypeScript object interpret an inherited `Object.prototype` name
+ * as an object property:
+ *
+ * ```ts
+ * interface Values {
+ *   readonly toString?: number;
+ * }
+ *
+ * const nullPrototypeValues = globalThis.Object.create(null) as Values;
+ * const values = { ...nullPrototypeValues };
+ *
+ * // TypeScript treats the inherited function as `number | undefined`.
+ * const value: number | undefined = values.toString;
+ *
+ * expect(typeof value).toBe("function");
+ * expect(() => {
+ *   if (value !== undefined) value.toFixed();
+ * }).toThrow(TypeError);
+ * ```
+ *
+ * Evolu Object Outputs use the same TypeScript object representation.
+ *
+ * ```ts
+ * import { Number, object, optional } from "@evolu/common";
+ *
+ * const Values = object({ toString: optional(Number) });
+ * const result = Values.fromUnknown({});
+ *
+ * expectOk(result, {});
+ *
+ * const value: number | undefined = result.value.toString;
+ *
+ * expect(typeof value).toBe("function");
+ * expect(() => {
+ *   if (value !== undefined) value.toFixed();
+ * }).toThrow(TypeError);
+ * ```
+ *
+ * In other words, treat Object Outputs as data rather than calling inherited
+ * object methods through them.
  */
 export function object<const Props extends ObjectProps>(
   props: Props,
@@ -5523,44 +5608,33 @@ const createObjectType = (
       });
     }
     let errors: RuntimeObjectPropertyErrors | undefined;
-    const output = exactOutput
-      ? undefined
-      : (globalThis.Object.create(null) as Record<string | symbol, unknown>);
-    let keepNullPrototype = false;
-    const inputKeys = new globalThis.Set<string | symbol>(keys);
+    let output: Record<string | symbol, unknown> | undefined;
+    const inputDescriptorByKey = new Map<
+      string | symbol,
+      PropertyDescriptor | undefined
+    >();
 
-    for (const key of Reflect.ownKeys(input)) inputKeys.add(key);
+    for (const key of keys) inputDescriptorByKey.set(key, undefined);
+    for (const key of Reflect.ownKeys(input)) {
+      inputDescriptorByKey.set(key, undefined);
+    }
 
     const setError = (key: string | symbol, error: TypeError): void => {
-      errors ??= createRecord<string, TypeError>();
+      errors ??= createMutableRecord<string, TypeError>();
       errors[key] = error;
     };
 
-    for (const key of inputKeys) {
+    for (const [key] of inputDescriptorByKey) {
       const property =
         typeof key === "string" && globalThis.Object.hasOwn(runtimeProps, key)
           ? runtimeProps[key]
           : undefined;
       const descriptor = globalThis.Object.getOwnPropertyDescriptor(input, key);
+      inputDescriptorByKey.set(key, descriptor);
 
       if (descriptor === undefined) {
-        if (key in input) {
-          const propertyError: ObjectPropertyAccessError = {
-            type: "ObjectPropertyAccess",
-            reason: "Inherited",
-          };
-          setError(key, propertyError);
-          if (options.errors === "first") break;
-          continue;
-        }
         assert(property !== undefined, "Object property is missing.");
         if (isOptionalProperty(property)) {
-          if (
-            output !== undefined &&
-            globalThis.Object.hasOwn(globalThis.Object.prototype, key)
-          ) {
-            keepNullPrototype = true;
-          }
           continue;
         }
         setError(key, { type: "ObjectMissingProperty" });
@@ -5636,7 +5710,34 @@ const createObjectType = (
         continue;
       }
 
-      if (output !== undefined) output[key] = result.value;
+      if (errors !== undefined) continue;
+      if (exactOutput) continue;
+      if (
+        output === undefined &&
+        globalThis.Object.is(result.value, propertyValue)
+      ) {
+        continue;
+      }
+
+      if (output === undefined) {
+        output = globalThis.Object.create(null) as Record<
+          string | symbol,
+          unknown
+        >;
+
+        for (const [previousKey, previousDescriptor] of inputDescriptorByKey) {
+          if (previousKey === key) break;
+
+          if (
+            previousDescriptor !== undefined &&
+            "value" in previousDescriptor &&
+            previousDescriptor.enumerable
+          ) {
+            output[previousKey] = previousDescriptor.value;
+          }
+        }
+      }
+      output[key] = result.value;
     }
 
     if (errors !== undefined) {
@@ -5647,11 +5748,6 @@ const createObjectType = (
     }
 
     if (output === undefined) return ok(input);
-
-    if (!keepNullPrototype) {
-      globalThis.Object.setPrototypeOf(output, globalThis.Object.prototype);
-    }
-
     return ok(output);
   };
   const fromUnknown = (
@@ -5677,8 +5773,6 @@ const createObjectType = (
       switch ((propertyError as ObjectPropertyAccessError).reason) {
         case "Accessor":
           return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-        case "Inherited":
-          return "An Object property must be an own property.";
         case "NonEnumerable":
           return "An Object property must be enumerable.";
       }
@@ -5691,7 +5785,7 @@ const createObjectType = (
     }
     return "An excess property is not allowed. Remove it or use a different Type.";
   };
-  const rootProps = createRecord<string, RuntimeObjectProperty>();
+  const rootProps = createMutableRecord<string, RuntimeObjectProperty>();
   let hasNonRootType = false;
   let canSkipTo =
     recordType === undefined || recordType.value[encoderSymbol] === identity;
@@ -5718,7 +5812,7 @@ const createObjectType = (
             RuntimeRecordTypeNode | undefined,
         )
       : null;
-  const inputFromByKey = createRecord<
+  const inputFromByKey = createMutableRecord<
     string,
     RuntimeOperation<Result<unknown, TypeError>>
   >();
@@ -5744,12 +5838,13 @@ const createObjectType = (
 
             if (result.ok) {
               if (!globalThis.Object.is(result.value, propertyValue)) {
-                (output ??= copyObject(value))[key] = result.value;
+                (output ??= createMutableRecord(value))[key] = result.value;
               }
               continue;
             }
 
-            (errors ??= createRecord<string, TypeError>())[key] = result.error;
+            (errors ??= createMutableRecord<string, TypeError>())[key] =
+              result.error;
             if (options.errors === "first") break;
           }
 
@@ -5767,12 +5862,12 @@ const createObjectType = (
 
               if (result.ok) {
                 if (!globalThis.Object.is(result.value, propertyValue)) {
-                  (output ??= copyObject(value))[key] = result.value;
+                  (output ??= createMutableRecord(value))[key] = result.value;
                 }
                 continue;
               }
 
-              (errors ??= createRecord<string, TypeError>())[key] =
+              (errors ??= createMutableRecord<string, TypeError>())[key] =
                 createRecordPropertyError({
                   kind: "Value",
                   key,
@@ -5804,7 +5899,7 @@ const createObjectType = (
           ](propertyValue as never);
 
           if (!globalThis.Object.is(encoded, propertyValue)) {
-            (output ??= copyObject(value))[key] = encoded;
+            (output ??= createMutableRecord(value))[key] = encoded;
           }
         }
 
@@ -5817,7 +5912,7 @@ const createObjectType = (
             );
 
             if (!globalThis.Object.is(propertyValue, outputValue)) {
-              (output ??= copyObject(value))[key] = outputValue;
+              (output ??= createMutableRecord(value))[key] = outputValue;
             }
           }
         }
@@ -5833,7 +5928,7 @@ const createObjectType = (
       const descriptor = globalThis.Object.getOwnPropertyDescriptor(value, key);
 
       if (descriptor === undefined) {
-        if (!isOptionalProperty(property) || key in value) return false;
+        if (!isOptionalProperty(property)) return false;
         continue;
       }
 
@@ -5892,22 +5987,15 @@ const createObjectType = (
   );
 };
 
-const copyObject = (
-  object: Readonly<Record<string, unknown>>,
-): Record<string, unknown> =>
-  globalThis.Object.getPrototypeOf(object) === null
-    ? globalThis.Object.assign(createRecord(), object)
-    : { ...object };
-
 // Read descriptors instead of spreading so accessors are not invoked,
 // non-enumerable declarations are retained, and later mutations are isolated.
 const snapshotObjectProps = (
   props: ObjectProps,
-  runtimeProps: Record<string, ObjectProperty> = createRecord<
+  runtimeProps: Record<string, ObjectProperty> = createMutableRecord<
     string,
     ObjectProperty
   >(),
-): Record<string, ObjectProperty> => {
+): ObjectProps => {
   const errorMessage =
     "Object schema properties must be own string-keyed data properties.";
   const prototype: unknown = globalThis.Object.getPrototypeOf(props);
@@ -6232,14 +6320,14 @@ type StrictObjectFromUnknownPropertyErrors<Props extends ObjectProps> = {
 export interface ObjectMissingPropertyError extends TypeError<"ObjectMissingProperty"> {}
 
 /**
- * An error returned when an {@link object} property is not represented as an own
- * enumerable data property.
+ * An error returned when a present {@link object} property is not represented
+ * as an enumerable data property.
  *
  * `ObjectPropertyAccess` is reserved for this structural failure. Property
  * {@link Type | Types} must use another error tag.
  */
 export interface ObjectPropertyAccessError extends TypeError<"ObjectPropertyAccess"> {
-  readonly reason: "Accessor" | "Inherited" | "NonEnumerable";
+  readonly reason: "Accessor" | "NonEnumerable";
 }
 
 /** An error returned when an {@link object} input is not an object. */
@@ -6461,7 +6549,7 @@ export function typed(
     !globalThis.Object.hasOwn(props, "type"),
     'The "type" schema property is reserved by typed.',
   );
-  const typedProps = createRecord<string, ObjectProperty>();
+  const typedProps = createMutableRecord<string, ObjectProperty>();
   typedProps.type = literal(tag as never);
 
   return createObjectType(

@@ -6333,8 +6333,8 @@ describe("array", () => {
       const result = Items.fromUnknown(input);
 
       expectOk(result, input);
-      expect(result.value).not.toBe(input);
-      expect(result.value[0]).not.toBe(input[0]);
+      expect(result.value).toBe(input);
+      expect(result.value[0]).toBe(input[0]);
       expect(result.value[0].values).toBe(input[0].values);
       expect(Items.is(result.value)).toBe(true);
     });
@@ -8488,6 +8488,23 @@ describe("record", () => {
       expect(first).toBe(1);
     });
 
+    test("ignores inherited properties", () => {
+      const Values = record(literal("toString"), Number);
+      const input = {};
+      const result = Values.fromUnknown(input);
+
+      expectOk(result, input);
+      expect(result.value).toBe(input);
+      expect(globalThis.Object.hasOwn(result.value, "toString")).toBe(false);
+      expect(Values.is(input)).toBe(true);
+      expectOk(Values.from(result.value), input);
+      expect(Values.to(result.value)).toBe(input);
+
+      const value: number | undefined = result.value.toString;
+      expectTypeOf(value).toEqualTypeOf<number | undefined>();
+      expect(typeof value).toBe("function");
+    });
+
     test("rejects class instances and custom prototypes", () => {
       const Values = record(String, Number);
       class ValueRecord {
@@ -8530,6 +8547,20 @@ describe("record", () => {
       expectOk(result, input);
       expect(result.value).toBe(input);
       expect(Values.is(input)).toBe(true);
+    });
+
+    test("accepts an Output after ordinary object spread", () => {
+      const Values = record(literal("toString"), Number);
+      const output = getOrThrow(Values.fromUnknown(createNullRecord({})));
+      const spread = { ...output };
+
+      expect(globalThis.Object.getPrototypeOf(spread)).toBe(
+        globalThis.Object.prototype,
+      );
+      expect(globalThis.Object.hasOwn(spread, "toString")).toBe(false);
+      expect(Values.is(spread)).toBe(true);
+      expectOk(Values.from(spread), spread);
+      expect(Values.to(spread)).toBe(spread);
     });
 
     test("rejects non-enumerable properties from unknown", () => {
@@ -9568,7 +9599,7 @@ describe("object", () => {
       const result = Model.parent.fromUnknown(value, { errors: "all" });
 
       expectOk(result, value);
-      expect(result.value).not.toBe(value);
+      expect(result.value).toBe(value);
       expect(validations).toEqual([]);
     });
 
@@ -9810,7 +9841,7 @@ describe("object", () => {
       expect(Model.parent).toBeNull();
       expect("parent" in Model.from).toBe(false);
       expect(Model.is(input)).toBe(true);
-      expect(output).not.toBe(input);
+      expect(output).toBe(input);
       expect(output.values).toBe(input.values);
       expect(Model.is(output)).toBe(true);
       expect(Model.from(input)).toEqual(ok(input));
@@ -9914,18 +9945,18 @@ describe("object", () => {
       const result = Model.fromUnknown(input);
 
       expectOk(result, input);
-      expect(result.value).not.toBe(input);
+      expect(result.value).toBe(input);
       expect(result.value.values).toBe(input.values);
       expect(Model.is(result.value)).toBe(true);
     });
 
-    test("decodes and encodes with the plain-object representation", () => {
+    test("constructs null-prototype decoded and encoded objects", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({
         name: String,
         age: NumberFromString,
       });
-      const encoded = globalThis.Object.create(null) as Record<string, unknown>;
+      const encoded: Record<string, unknown> = {};
       globalThis.Object.defineProperties(encoded, {
         name: {
           configurable: false,
@@ -9945,9 +9976,7 @@ describe("object", () => {
 
       expectOk(result, { name: "Ada", age: 42 });
       expect(result.value).not.toBe(encoded);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBe(
-        globalThis.Object.prototype,
-      );
+      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
       expect(
         globalThis.Object.getOwnPropertyDescriptor(result.value, "name"),
       ).toEqual({
@@ -9969,9 +9998,7 @@ describe("object", () => {
       const reencoded = Model.to(result.value);
 
       expect(reencoded).not.toBe(result.value);
-      expect(globalThis.Object.getPrototypeOf(reencoded)).toBe(
-        globalThis.Object.prototype,
-      );
+      expect(globalThis.Object.getPrototypeOf(reencoded)).toBeNull();
       expect(
         globalThis.Object.getOwnPropertyDescriptor(reencoded, "name"),
       ).toEqual({
@@ -9989,6 +10016,41 @@ describe("object", () => {
         writable: true,
       });
       expect(Model.parent.is(reencoded)).toBe(true);
+    });
+
+    test("does not reread validated descriptors while constructing a decoded object", () => {
+      const NumberFromString = setupNumberFromString();
+      const Model = object({
+        name: String,
+        age: NumberFromString,
+      });
+      let nameDescriptorReads = 0;
+      const input = new Proxy(
+        { name: "Ada", age: "42" },
+        {
+          getOwnPropertyDescriptor: (target, key) => {
+            const descriptor = globalThis.Object.getOwnPropertyDescriptor(
+              target,
+              key,
+            );
+
+            if (key !== "name" || descriptor === undefined) return descriptor;
+
+            nameDescriptorReads++;
+            return nameDescriptorReads === 1
+              ? descriptor
+              : { ...descriptor, value: 42 };
+          },
+        },
+      );
+
+      const result = Model.fromUnknown(input);
+
+      expectOk(result, { name: "Ada", age: 42 });
+      expect(nameDescriptorReads).toBe(1);
+      expect(result.value).not.toBe(input);
+      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
+      expect(Model.is(result.value)).toBe(true);
     });
 
     test("rejects class instances instead of stripping their prototype", () => {
@@ -10087,12 +10149,15 @@ describe("object", () => {
       const output = { value: 42 };
       const absentResult = Model.fromUnknown(absent);
       const result = Model.from.parent(encoded);
+      const reencoded = Model.to(output);
 
       expectOk(absentResult, absent);
-      expect(absentResult.value).not.toBe(absent);
+      expect(absentResult.value).toBe(absent);
       expectOk(result, output);
       expect(result.value).not.toBe(encoded);
-      expect(Model.to(output)).toEqual(encoded);
+      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
+      expect(reencoded).toEqual(encoded);
+      expect(globalThis.Object.getPrototypeOf(reencoded)).toBeNull();
       expect(Model.from.parent({ value: "no" })).toEqual(
         err({
           type: "Object",
@@ -10116,6 +10181,20 @@ describe("object", () => {
           { readonly value: number }
         >
       >();
+    });
+
+    test("keeps an earlier absent optional property absent while decoding a later property", () => {
+      const NumberFromString = setupNumberFromString();
+      const Model = object({
+        note: optional(String),
+        value: NumberFromString,
+      });
+
+      const result = Model.fromUnknown({ value: "42" });
+
+      expectOk(result, { value: 42 });
+      expect(globalThis.Object.hasOwn(result.value, "note")).toBe(false);
+      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
     });
 
     test("preserves a null prototype while transforming typed values", () => {
@@ -10340,17 +10419,6 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              age: { type: "ObjectPropertyAccess", reason: "Inherited" },
-            },
-          },
-        }),
-      ).toBe("An Object property must be an own property.");
-      expect(
-        Model.formatError({
-          type: "Object",
-          reason: {
-            kind: "Properties",
-            errors: {
               age: {
                 type: "ObjectPropertyAccess",
                 reason: "NonEnumerable",
@@ -10445,12 +10513,12 @@ describe("object", () => {
   });
 
   describe("is", () => {
-    test("rejects inherited declared properties regardless of their values", () => {
+    test("ignores inherited optional properties in Outputs", () => {
       const Matching = object({ constructor: optional(Function) });
       const Invalid = object({ toString: optional(String) });
 
-      expect(Matching.is({})).toBe(false);
-      expect(Invalid.is({})).toBe(false);
+      expect(Matching.is({})).toBe(true);
+      expect(Invalid.is({})).toBe(true);
     });
 
     test("accepts ordinary and null-prototype plain objects", () => {
@@ -10571,7 +10639,7 @@ describe("object", () => {
       );
     });
 
-    test("rejects an inherited required property", () => {
+    test("treats an inherited required property as missing", () => {
       const Model = object({ constructor: Function });
       const value = {};
       const result = Model.fromUnknown(value);
@@ -10582,60 +10650,34 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              constructor: {
-                type: "ObjectPropertyAccess",
-                reason: "Inherited",
-              },
+              constructor: { type: "ObjectMissingProperty" },
             },
           },
         }),
       );
     });
 
-    test("rejects inherited optional properties when present", () => {
+    test("ignores inherited optional properties", () => {
       const Matching = object({ constructor: optional(Function) });
       const Invalid = object({ toString: optional(String) });
+      const value = {};
+      const matchingResult = Matching.fromUnknown(value);
+      const invalidResult = Invalid.fromUnknown(value);
 
-      expect(Matching.fromUnknown({})).toEqual(
-        err({
-          type: "Object",
-          reason: {
-            kind: "Properties",
-            errors: {
-              constructor: {
-                type: "ObjectPropertyAccess",
-                reason: "Inherited",
-              },
-            },
-          },
-        }),
-      );
-      expect(Invalid.fromUnknown({})).toEqual(
-        err({
-          type: "Object",
-          reason: {
-            kind: "Properties",
-            errors: {
-              toString: {
-                type: "ObjectPropertyAccess",
-                reason: "Inherited",
-              },
-            },
-          },
-        }),
-      );
+      expectOk(matchingResult, value);
+      expectOk(invalidResult, value);
+      expect(matchingResult.value).toBe(value);
+      expect(invalidResult.value).toBe(value);
     });
 
-    test("accepts absent optional properties on null-prototype objects", () => {
+    test("preserves absent optional properties on null-prototype objects", () => {
       const Model = object({ note: optional(String) });
       const value = globalThis.Object.create(null) as Record<string, unknown>;
       const result = Model.fromUnknown(value);
 
       expectOk(result, value);
-      expect(result.value).not.toBe(value);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBe(
-        globalThis.Object.prototype,
-      );
+      expect(result.value).toBe(value);
+      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
       expect(Model.is(value)).toBe(true);
       expect(Model.is(result.value)).toBe(true);
     });
@@ -11103,10 +11145,6 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              toString: {
-                type: "ObjectPropertyAccess",
-                reason: "Inherited",
-              },
               name: { type: "TypeOf", expected: "string", value: 42 },
               age: { type: "ObjectMissingProperty" },
             },
@@ -11187,9 +11225,38 @@ describe("object", () => {
       ]);
     });
 
+    test("accepts closed and open Outputs after ordinary object spread", () => {
+      const Closed = object({ toString: optional(String) });
+      const Open = object(
+        { toString: optional(String) },
+        record(String, String),
+      );
+      const input = globalThis.Object.create(null) as Record<string, unknown>;
+      const closed = getOrThrow(Closed.fromUnknown(input));
+      const open = getOrThrow(Open.fromUnknown(input));
+      const closedSpread = { ...closed };
+      const openSpread = { ...open };
+
+      for (const spread of [closedSpread, openSpread]) {
+        expect(globalThis.Object.getPrototypeOf(spread)).toBe(
+          globalThis.Object.prototype,
+        );
+        expect(globalThis.Object.hasOwn(spread, "toString")).toBe(false);
+      }
+      expectOk(Closed.from(closedSpread), closedSpread);
+      expectOk(Open.from(openSpread), openSpread);
+      expect(Closed.to(closedSpread)).toBe(closedSpread);
+      expect(Open.to(openSpread)).toBe(openSpread);
+    });
+
     test("asserts exact own properties", () => {
       const Model = object({ name: String });
       const value = { name: "Ada", searchWords: ["ada"] };
+      const ownToString = globalThis.Object.defineProperty(
+        { name: "Ada" },
+        "toString",
+        { enumerable: true, value: "own" },
+      );
 
       const message =
         "An excess property is not allowed. Remove it or use a different Type.";
@@ -11197,6 +11264,7 @@ describe("object", () => {
       expect(() => Model.to(value)).toThrow(message);
       expect(() => Model.orThrow(value)).toThrow(message);
       expect(() => Model.orNull(value)).toThrow(message);
+      expect(() => Model.to(ownToString)).toThrow(message);
     });
 
     test("validates nested exact Outputs without decoding them", () => {
@@ -11272,15 +11340,14 @@ describe("object", () => {
       );
     });
 
-    test("asserts property ownership at typed boundaries", () => {
+    test("ignores inherited optional properties at typed boundaries", () => {
       const Model = object({ constructor: optional(literal("value")) });
       const input = {} as typeof Model.Output;
 
-      const message = "An Object property must be an own property.";
-      expect(() => Model.from(input)).toThrow(message);
-      expect(() => Model.orThrow(input)).toThrow(message);
-      expect(() => Model.orNull(input)).toThrow(message);
-      expect(() => Model.to(input)).toThrow(message);
+      expectOk(Model.from(input), input);
+      expect(Model.orThrow(input)).toBe(input);
+      expect(Model.orNull(input)).toBe(input);
+      expect(Model.to(input)).toBe(input);
     });
   });
 
@@ -12373,9 +12440,8 @@ describe("discriminatedUnion", () => {
       const result = Event.fromUnknown(nullPrototypeInput);
 
       expectOk(result, { type: "Deleted", value: "value" });
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBe(
-        globalThis.Object.prototype,
-      );
+      expect(result.value).toBe(nullPrototypeInput);
+      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
     });
   });
 

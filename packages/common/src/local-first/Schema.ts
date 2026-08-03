@@ -6,7 +6,7 @@
 
 import * as Kysely from "kysely";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { getProperty, mapObject, type ReadonlyRecord } from "../Object.ts";
+import { getOwnProp, mapObject, type ReadonlyRecord } from "../Object.ts";
 import {
   eqSqliteIndex,
   getSqliteSchema,
@@ -440,7 +440,7 @@ export const ensureSqliteSchema =
     currentSchema ??= getEvoluSqliteSchema(deps)();
 
     for (const [tableName, newColumns] of Object.entries(newSchema.tables)) {
-      const currentColumns = getProperty(currentSchema.tables, tableName);
+      const currentColumns = getOwnProp(currentSchema.tables, tableName);
       if (!currentColumns) {
         queries.push(createAppTable(tableName, newColumns));
       } else {

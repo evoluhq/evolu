@@ -203,7 +203,7 @@ import {
 } from "../Crypto.ts";
 import { eqArrayNumber } from "../Eq.ts";
 import { computeBalancedBuckets } from "../Number.ts";
-import { createRecord, objectToEntries } from "../Object.ts";
+import { createMutableRecord, objectToEntries } from "../Object.ts";
 import { err, ok, type Result } from "../Result.ts";
 import { SqliteValue } from "../Sqlite.ts";
 import { AbortError, type Task } from "../Task.ts";
@@ -1948,7 +1948,7 @@ export const decryptAndDecodeDbChange = (
     const id = decodeId(buffer);
 
     const length = decodeLength(buffer);
-    const values = createRecord<string, SqliteValue>();
+    const values = createMutableRecord<string, SqliteValue>();
 
     for (let i = 0; i < length; i++) {
       const column = decodeString(buffer);

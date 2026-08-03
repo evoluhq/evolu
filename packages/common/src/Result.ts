@@ -12,7 +12,7 @@ import {
 } from "./Array.ts";
 import { assert } from "./Assert.ts";
 import { exhaustiveCheck, type Thunk } from "./Function.ts";
-import { createRecord, emptyRecord, isIterable } from "./Object.ts";
+import { createMutableRecord, emptyRecord, isIterable } from "./Object.ts";
 import type { Typed } from "./Type.ts";
 import type { Awaitable } from "./Types.ts";
 
@@ -658,7 +658,7 @@ export function allResult(
     index++;
   }
 
-  const record = createRecord();
+  const record = createMutableRecord();
   for (let i = 0; i < length; i++) {
     const result = results[i];
     if (!result.ok) return result;
@@ -748,7 +748,7 @@ export function mapResult(
     index++;
   }
 
-  const record = createRecord();
+  const record = createMutableRecord();
   for (let i = 0; i < length; i++) {
     const result = fn(items[i]);
     if (!result.ok) return result;

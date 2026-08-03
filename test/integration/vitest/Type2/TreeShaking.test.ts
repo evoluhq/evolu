@@ -346,32 +346,32 @@ describe("Type2 tree shaking", () => {
         },
         "Object(NonEmptyString)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3030,
-            "rawSizeInBytes": 8369,
+            "gzipSizeInBytes": 3004,
+            "rawSizeInBytes": 8192,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3036,
-            "rawSizeInBytes": 8459,
+            "gzipSizeInBytes": 3008,
+            "rawSizeInBytes": 8274,
           },
         },
         "Object(Number, Record(String, Number))": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3659,
-            "rawSizeInBytes": 10724,
+            "gzipSizeInBytes": 3634,
+            "rawSizeInBytes": 10547,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3672,
-            "rawSizeInBytes": 10877,
+            "gzipSizeInBytes": 3650,
+            "rawSizeInBytes": 10692,
           },
         },
         "Record(String, Number)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2218,
-            "rawSizeInBytes": 5176,
+            "gzipSizeInBytes": 2230,
+            "rawSizeInBytes": 5233,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2220,
-            "rawSizeInBytes": 5238,
+            "gzipSizeInBytes": 2232,
+            "rawSizeInBytes": 5293,
           },
         },
         "String": {
@@ -406,32 +406,32 @@ describe("Type2 tree shaking", () => {
         },
         "discriminatedUnion(Created, Deleted)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3787,
-            "rawSizeInBytes": 11211,
+            "gzipSizeInBytes": 3766,
+            "rawSizeInBytes": 11034,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3805,
-            "rawSizeInBytes": 11360,
+            "gzipSizeInBytes": 3780,
+            "rawSizeInBytes": 11175,
           },
         },
         "lazy(Object(Array))": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3997,
-            "rawSizeInBytes": 11686,
+            "gzipSizeInBytes": 3987,
+            "rawSizeInBytes": 11509,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 4025,
-            "rawSizeInBytes": 11855,
+            "gzipSizeInBytes": 4008,
+            "rawSizeInBytes": 11670,
           },
         },
         "typed(Pending)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3161,
-            "rawSizeInBytes": 8755,
+            "gzipSizeInBytes": 3131,
+            "rawSizeInBytes": 8578,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3167,
-            "rawSizeInBytes": 8856,
+            "gzipSizeInBytes": 3138,
+            "rawSizeInBytes": 8671,
           },
         },
       }
@@ -479,12 +479,12 @@ describe("Type2 tree shaking", () => {
       {
         "localizeTypes(Label)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1617,
-            "rawSizeInBytes": 3567,
+            "gzipSizeInBytes": 1628,
+            "rawSizeInBytes": 3620,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1632,
-            "rawSizeInBytes": 3625,
+            "gzipSizeInBytes": 1648,
+            "rawSizeInBytes": 3680,
           },
         },
       }
@@ -526,12 +526,12 @@ describe("Type2 tree shaking", () => {
       {
         "typed Todo list": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 5217,
-            "rawSizeInBytes": 15840,
+            "gzipSizeInBytes": 5209,
+            "rawSizeInBytes": 15660,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 5256,
-            "rawSizeInBytes": 16085,
+            "gzipSizeInBytes": 5246,
+            "rawSizeInBytes": 15895,
           },
         },
       }
