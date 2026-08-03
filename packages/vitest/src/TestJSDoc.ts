@@ -240,7 +240,9 @@ const getExamplesWithoutCompilationErrors = (
 ): ReadonlyArray<GeneratedJSDocExample> => {
   const examplesWithErrors = examples.filter(({ generatedPath }) =>
     [generatedPath, relative(workingDirectory, generatedPath)].some((path) =>
-      compilationError.message.includes(`${path}(`),
+      [`${path}(`, `${path}:`].some((segment) =>
+        compilationError.message.includes(segment),
+      ),
     ),
   );
 

@@ -271,6 +271,83 @@ test("testJSDocExamples runs examples without compilation errors", async () => {
   }
 });
 
+test("testJSDocExamples supports colon-formatted TypeScript diagnostics", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "MixedFailures.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        " * missingFunction();",
+        " * ```",
+        " */",
+        "export const compilationFailure = true;",
+        "/**",
+        " * ```ts",
+        ' * assert.equal("actual", "expected");',
+        " * ```",
+        " */",
+        "export const executionFailure = true;",
+      ].join("\n"),
+    );
+    const compilerPackagePath = join(
+      temporaryDirectory,
+      "node_modules",
+      "typescript-colon-diagnostics",
+    );
+    mkdirSync(compilerPackagePath, { recursive: true });
+    writeFileSync(
+      join(temporaryDirectory, "package.json"),
+      JSON.stringify({ private: true, type: "module" }),
+    );
+    writeFileSync(
+      join(compilerPackagePath, "package.json"),
+      JSON.stringify({
+        name: "typescript-colon-diagnostics",
+        type: "module",
+        bin: "./tsc.js",
+      }),
+    );
+    writeFileSync(
+      join(compilerPackagePath, "tsc.js"),
+      [
+        'import { readFileSync } from "node:fs";',
+        "",
+        'const projectIndex = process.argv.indexOf("--project");',
+        "const projectPath =",
+        "  projectIndex === -1 ? undefined : process.argv[projectIndex + 1];",
+        'if (projectPath === undefined) throw new Error("Missing --project.");',
+        'const { files } = JSON.parse(readFileSync(projectPath, "utf8"));',
+        "const [firstFile] = files;",
+        'if (firstFile === undefined) throw new Error("No files provided.");',
+        "process.stderr.write(",
+        "  `${firstFile}:5:1 - error TS2304: Cannot find name 'missingFunction'.\\n`,",
+        ");",
+        "process.exit(1);",
+      ].join("\n"),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: temporaryDirectory,
+      include: [sourcePath],
+      typescriptPackage: "typescript-colon-diagnostics",
+    }).catch((error: unknown) => error);
+
+    assert(error instanceof AggregateError);
+    expect(error.message).toMatch(/TypeScript compilation failed/);
+    expect(error.message).toMatch(/JSDoc example execution failed/);
+    expect(error.errors).toHaveLength(2);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
 test("testJSDocExamples rejects an incorrect inferred type", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
   const temporaryDirectory = mkdtempSync(
