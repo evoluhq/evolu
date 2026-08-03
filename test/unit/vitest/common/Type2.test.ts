@@ -8331,6 +8331,55 @@ describe("Object", () => {
     expectAssertionError(() => Object.from(typed), message, result.error);
     expectAssertionError(() => Object.to(typed), message, result.error);
   });
+
+  test("retains every invalid typed representation error when requested", () => {
+    const value = globalThis.Object.defineProperties(
+      {},
+      {
+        name: {
+          enumerable: true,
+          get: () => "Ada",
+        },
+        hidden: {
+          enumerable: false,
+          value: "value",
+        },
+      },
+    );
+    const result = Object.fromUnknown(value, { errors: "all" });
+
+    expectErr(result, {
+      type: "Object",
+      reason: {
+        kind: "Properties",
+        errors: {
+          name: {
+            type: "ObjectPropertyAccess",
+            reason: "Accessor",
+          },
+          hidden: {
+            type: "ObjectPropertyAccess",
+            reason: "NonEnumerable",
+          },
+        },
+      },
+    });
+
+    const typed = value as typeof Object.Output;
+    const message =
+      "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
+
+    expectAssertionError(
+      () => Object.from(typed, { errors: "all" }),
+      message,
+      result.error,
+    );
+    expectAssertionError(
+      () => Object.orThrow(typed, { errors: "all" }),
+      message,
+      result.error,
+    );
+  });
 });
 
 describe("record", () => {

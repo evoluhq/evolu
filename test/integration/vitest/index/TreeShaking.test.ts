@@ -70,12 +70,12 @@ describe("tree-shaking", () => {
         },
         "type2-object": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2793,
-            "rawSizeInBytes": 7650,
+            "gzipSizeInBytes": 2795,
+            "rawSizeInBytes": 7641,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2801,
-            "rawSizeInBytes": 7719,
+            "gzipSizeInBytes": 2802,
+            "rawSizeInBytes": 7710,
           },
         },
       }

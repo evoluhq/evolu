@@ -1265,7 +1265,10 @@ const assertRefinementIdentity =
 
 const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
   name: Name,
-  fromUnknown: (value: unknown) => Result<Output, Error>,
+  fromUnknown: (
+    value: unknown,
+    options?: ValidationOptions,
+  ) => Result<Output, Error>,
   formatError: TypeErrorFormatter<Error>,
   getTypeIssues?: RuntimeGetTypeIssues,
 ): Type<Name, Output, Output, Error> => {
@@ -1279,12 +1282,22 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
         runtimeFormatError,
       ));
   const is = (value: unknown): value is Output => fromUnknown(value).ok;
-  const from: RuntimeOperation<Result<unknown, TypeError>> = (value: never) => {
-    assertTypeOutput(is, fromUnknown, formatError, value);
+  const from: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => {
+    assertTypeOutput(is, fromUnknown, formatError, value, options);
     return ok(value);
   };
   const to = (value: never): unknown => {
     assertTypeOutput(is, fromUnknown, formatError, value);
+    return value;
+  };
+  const orThrow: RuntimeOperation<unknown> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => {
+    assertTypeOutput(is, fromUnknown, formatError, value, options);
     return value;
   };
 
@@ -1296,7 +1309,7 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
     is,
     from,
     to,
-    orThrow: to,
+    orThrow,
     orNull: to,
     "~standard": createStandardSchemaProps(
       fromUnknown,
