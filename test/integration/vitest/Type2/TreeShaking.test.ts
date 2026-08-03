@@ -316,12 +316,12 @@ describe("Type2 tree shaking", () => {
         },
         "InstanceOf(Error)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 757,
-            "rawSizeInBytes": 1473,
+            "gzipSizeInBytes": 781,
+            "rawSizeInBytes": 1529,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 756,
-            "rawSizeInBytes": 1475,
+            "gzipSizeInBytes": 780,
+            "rawSizeInBytes": 1531,
           },
         },
         "NonEmptyString": {

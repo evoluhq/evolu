@@ -1887,25 +1887,13 @@ export const Symbol = /*#__PURE__*/ createTypeOfType("Symbol");
 export const Function = /*#__PURE__*/ createTypeOfType("Function");
 
 /**
- * Instance {@link Type}.
+ * Creates a {@link Type} for instances of one constructor.
  *
- * Constructor identity and prototype behavior are part of this Type's domain.
- * Consequently, an instance created by an equivalent constructor in another
- * JavaScript realm is rejected. {@link object} also rejects class instances; use
- * an explicit {@link transform} from this Instance Type when an instance should
- * convert to readonly plain data.
+ * Membership uses the intrinsic prototype chain, so subclasses are accepted,
+ * equivalent constructors from other realms are rejected, and custom
+ * `Symbol.hasInstance` implementations are ignored.
  *
- * TypeScript class types containing only public members are structural, so a
- * value that is not an actual instance can still be assignable to the class
- * type. Such a value is not this Type's Output: typed operations assert
- * `instanceof` membership and throw a developer error, including `orNull`. Use
- * {@link object} when only the public data structure matters. Add a private or
- * protected class member when constructor identity should also be enforced by
- * TypeScript.
- *
- * The constructor must retain one concrete class-constructor type. To accept
- * multiple constructors, create one Instance Type for each and compose them
- * with {@link union}.
+ * Use {@link object} instead when only the structure matters.
  *
  * ### Example
  *
@@ -1932,7 +1920,10 @@ export const createInstanceOfType = <Constructor extends InstanceConstructor>(
   const concreteConstructor = constructor as Constructor;
   const constructorName = concreteConstructor.name;
   const is = (value: unknown): value is InstanceOfOutput<Constructor> =>
-    value instanceof concreteConstructor;
+    globalThis.Function.prototype[globalThis.Symbol.hasInstance].call(
+      concreteConstructor,
+      value,
+    );
   const fromUnknown = (
     value: unknown,
   ): Result<InstanceOfOutput<Constructor>, InstanceOfError> =>

@@ -2609,6 +2609,32 @@ describe("createInstanceOfType", () => {
     expect(UserInstance.orNull(user)).toBe(user);
   });
 
+  test("ignores overridden Symbol.hasInstance", () => {
+    class Overridden {
+      readonly kind = "Overridden";
+
+      static [globalThis.Symbol.hasInstance](value: unknown): boolean {
+        return value === 42;
+      }
+    }
+
+    const OverriddenInstance = createInstanceOfType(Overridden);
+    const instance = new Overridden();
+
+    expect(Overridden[globalThis.Symbol.hasInstance](42)).toBe(true);
+    expect(instance instanceof Overridden).toBe(false);
+    expect(OverriddenInstance.fromUnknown(42)).toEqual(
+      err({
+        type: "InstanceOf",
+        constructorName: "Overridden",
+        value: 42,
+      }),
+    );
+    expect(OverriddenInstance.is(42)).toBe(false);
+    expectOk(OverriddenInstance.fromUnknown(instance), instance);
+    expect(OverriddenInstance.is(instance)).toBe(true);
+  });
+
   test("asserts structurally typed values that are not instances", () => {
     const value: User = { name: "Ada" };
     const error = {
