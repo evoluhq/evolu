@@ -1,3 +1,9 @@
+/**
+ * @module
+ * @mergeModuleWith <project>
+ */
+
+export * from "./Cli.ts";
 export * from "./Crypto.ts";
 export * from "./local-first/Relay.ts";
 export * from "./Platform.ts";
