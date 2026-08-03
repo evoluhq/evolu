@@ -24,6 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install build dependencies
+        run: apt-get update && apt-get install -y build-essential
+
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
