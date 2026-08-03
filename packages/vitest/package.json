@@ -1,7 +1,7 @@
 {
   "name": "@evolu/vitest",
   "version": "1.0.0-next.0",
-  "description": "Vitest assertions for Evolu",
+  "description": "Vitest assertions and test utilities for Evolu",
   "keywords": [
     "evolu",
     "vitest"
@@ -22,6 +22,17 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./TestJSDoc": {
+      "types": "./dist/src/TestJSDoc.d.ts",
+      "default": "./src/TestJSDoc.ts"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "TestJSDoc": [
+        "./dist/src/TestJSDoc.d.ts"
+      ]
     }
   },
   "files": [
@@ -51,6 +62,10 @@
       ".": {
         "types": "./dist/src/index.d.ts",
         "import": "./dist/src/index.js"
+      },
+      "./TestJSDoc": {
+        "types": "./dist/src/TestJSDoc.d.ts",
+        "import": "./dist/src/TestJSDoc.js"
       }
     }
   },

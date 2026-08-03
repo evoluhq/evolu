@@ -41,6 +41,11 @@ runtime compatibility. For example, selected tests from
 provides the JavaScript features used by `@evolu/common`. The test source is
 neither moved nor duplicated for that execution.
 
+Runnable TypeScript examples from JSDoc comments and Markdown files are tested
+by the Vitest Node.js project. The reusable `@evolu/vitest/TestJSDoc` entry
+point extracts the documented TypeScript, compiles it, and executes each
+example as an isolated Node.js ESM module with explicitly imported assertions.
+
 ## Integration tests
 
 Integration tests exercise real platform implementations, external systems, or

@@ -1,6 +1,6 @@
 # Evolu Vitest
 
-Vitest assertions for Evolu.
+Vitest assertions and test utilities for Evolu.
 
 ## Documentation
 

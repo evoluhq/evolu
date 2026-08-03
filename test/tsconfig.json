@@ -13,7 +13,10 @@
         "../packages/common/src/local-first/index.ts"
       ],
       "@evolu/common/polyfills": ["../packages/common/src/Polyfills.ts"],
-      "@evolu/vitest": ["../packages/vitest/src/index.ts"]
+      "@evolu/vitest": ["../packages/vitest/src/index.ts"],
+      "@evolu/vitest/TestJSDoc": [
+        "../packages/vitest/src/TestJSDoc.ts"
+      ]
     },
     "types": ["node"]
   },
