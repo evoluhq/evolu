@@ -42,18 +42,18 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^13.0.2",
     "ws": "^8.19.0"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "vite": "^8.1.5",
-    "webpack": "^5.108.4"
+    "vite": "^8.2.0",
+    "webpack": "^5.109.2"
   },
   "peerDependencies": {
     "@evolu/common": "^8.0.0-next.0",

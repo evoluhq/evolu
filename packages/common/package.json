@@ -68,7 +68,7 @@
     "@scure/bip39": "^2.0.1",
     "@standard-schema/spec": "^1.1.0",
     "kysely": "^0.29.4",
-    "msgpackr": "^2.0.4",
+    "msgpackr": "^2.0.5",
     "random": "^5.4.1"
   },
   "devDependencies": {

@@ -39,41 +39,41 @@ describe("tree-shaking", () => {
     expect(results).toMatchInlineSnapshot(`
       {
         "result-all": {
-          "vite@8.1.5": {
+          "vite@8.2.0": {
             "gzipSizeInBytes": 704,
             "rawSizeInBytes": 1597,
           },
-          "webpack@5.108.4": {
+          "webpack@5.109.2": {
             "gzipSizeInBytes": 689,
             "rawSizeInBytes": 1648,
           },
         },
         "task-example": {
-          "vite@8.1.5": {
-            "gzipSizeInBytes": 6008,
-            "rawSizeInBytes": 16336,
+          "vite@8.2.0": {
+            "gzipSizeInBytes": 5997,
+            "rawSizeInBytes": 16322,
           },
-          "webpack@5.108.4": {
-            "gzipSizeInBytes": 6122,
-            "rawSizeInBytes": 16613,
+          "webpack@5.109.2": {
+            "gzipSizeInBytes": 6106,
+            "rawSizeInBytes": 16520,
           },
         },
         "type-object": {
-          "vite@8.1.5": {
+          "vite@8.2.0": {
             "gzipSizeInBytes": 1599,
             "rawSizeInBytes": 4725,
           },
-          "webpack@5.108.4": {
+          "webpack@5.109.2": {
             "gzipSizeInBytes": 1512,
             "rawSizeInBytes": 4626,
           },
         },
         "type2-object": {
-          "vite@8.1.5": {
+          "vite@8.2.0": {
             "gzipSizeInBytes": 2822,
             "rawSizeInBytes": 7827,
           },
-          "webpack@5.108.4": {
+          "webpack@5.109.2": {
             "gzipSizeInBytes": 2831,
             "rawSizeInBytes": 7904,
           },

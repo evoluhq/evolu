@@ -74,21 +74,21 @@ describe("testBundle", { timeout: 30_000 }, () => {
     expect(result).toMatchInlineSnapshot(`
       {
         "fixture": {
-          "vite@8.1.5": {
+          "vite@8.2.0": {
             "gzipSizeInBytes": 90,
             "rawSizeInBytes": 70,
           },
-          "webpack@5.108.4": {
+          "webpack@5.109.2": {
             "gzipSizeInBytes": 92,
             "rawSizeInBytes": 72,
           },
         },
         "fixture-copy": {
-          "vite@8.1.5": {
+          "vite@8.2.0": {
             "gzipSizeInBytes": 90,
             "rawSizeInBytes": 70,
           },
-          "webpack@5.108.4": {
+          "webpack@5.109.2": {
             "gzipSizeInBytes": 92,
             "rawSizeInBytes": 72,
           },
