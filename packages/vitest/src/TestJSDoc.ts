@@ -35,6 +35,7 @@ import { findPackageJSON } from "node:module";
 import { availableParallelism } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 
 /** Options for compiling and executing TypeScript documentation examples. */
 export interface TestJSDocExamplesOptions {
@@ -238,10 +239,13 @@ const getExamplesWithoutCompilationErrors = (
   compilationError: Error,
   workingDirectory: string,
 ): ReadonlyArray<GeneratedJSDocExample> => {
+  const compilationErrorMessage = stripVTControlCharacters(
+    compilationError.message,
+  );
   const examplesWithErrors = examples.filter(({ generatedPath }) =>
     [generatedPath, relative(workingDirectory, generatedPath)].some((path) =>
       [`${path}(`, `${path}:`].some((segment) =>
-        compilationError.message.includes(segment),
+        compilationErrorMessage.includes(segment),
       ),
     ),
   );
