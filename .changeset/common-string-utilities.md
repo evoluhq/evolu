@@ -2,5 +2,6 @@
 "@evolu/common": minor
 ---
 
-Added utilities for escaping strings for regular expressions and safely
-formatting unknown diagnostic values.
+Added `escapeRegExp` for escaping strings used in regular expressions and
+improved `safelyStringifyUnknownValue` for formatting unknown diagnostic
+values.

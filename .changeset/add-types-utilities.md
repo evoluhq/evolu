@@ -12,4 +12,6 @@ Added utilities for awaitable values, numeric ranges, and type intersections
 
 `KeysOfUnion<T>` returns every property key present in any member of a union.
 
+`ValueWithLength` was added for values with a readonly numeric `length`.
+
 `CompileTimeError<Context, Message>` was added for consistent, readable compiler-facing error messages, and Schema validation errors were updated to use it.
