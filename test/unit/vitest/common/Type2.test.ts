@@ -518,7 +518,7 @@ describe("Type", () => {
 
   test("exposes its typed default error formatter", () => {
     expect(
-      String.formatError({ type: "TypeOf", expected: "string", value: 42 }),
+      String.formatError({ type: "TypeOf", expected: "String", value: 42 }),
     ).toBe("A value 42 is not a string.");
     expectTypeOf(String.formatError)
       .parameter(0)
@@ -661,7 +661,7 @@ describe("assertType", () => {
         type: "NumberFromString",
         outputError: {
           type: "TypeOf",
-          expected: "number",
+          expected: "Number",
           value: "42",
         },
       },
@@ -1123,7 +1123,7 @@ describe("localizeTypes", () => {
 
     const numberError = {
       type: "TypeOf",
-      expected: "number",
+      expected: "Number",
       value: "1",
     } as const;
     for (const operation of [
@@ -1251,6 +1251,64 @@ describe("localizeTypes", () => {
 
     assert(!result.ok);
     expect(Types.Root.formatError(result.error)).toBe("Localized RootError.");
+  });
+
+  test("routes custom root TypeOf errors by their expected Types", async () => {
+    const Text = createType(
+      "Text",
+      (value): Result<string, TypeOfError<"String">> =>
+        typeof value === "string"
+          ? ok(value)
+          : err({ type: "TypeOf", expected: "String", value }),
+      () => "Text error.",
+    );
+    const LocalizedText = localizeTypes(
+      { Text },
+      {
+        test: {
+          String: (error) => {
+            expectTypeOf(error).toEqualTypeOf<TypeOfError<"String">>();
+            return "Localized String.";
+          },
+        },
+      },
+    ).test.Text;
+    const BigInteger = createType(
+      "BigInteger",
+      (value): Result<bigint, TypeOfError<"BigInt">> =>
+        typeof value === "bigint"
+          ? ok(value)
+          : err({ type: "TypeOf", expected: "BigInt", value }),
+      () => "BigInteger error.",
+    );
+    const LocalizedBigInteger = localizeTypes(
+      { BigInteger },
+      {
+        test: {
+          BigInt: (error) => {
+            expectTypeOf(error).toEqualTypeOf<TypeOfError<"BigInt">>();
+            return "Localized BigInt.";
+          },
+        },
+      },
+    ).test.BigInteger;
+    const textResult = LocalizedText.fromUnknown(1);
+    const bigIntegerResult = LocalizedBigInteger.fromUnknown(1);
+
+    assert(!textResult.ok);
+    expect(LocalizedText.formatError(textResult.error)).toBe(
+      "Localized String.",
+    );
+    expect(await LocalizedText["~standard"].validate(1)).toEqual({
+      issues: [{ message: "Localized String.", path: [] }],
+    });
+    assert(!bigIntegerResult.ok);
+    expect(LocalizedBigInteger.formatError(bigIntegerResult.error)).toBe(
+      "Localized BigInt.",
+    );
+    expect(await LocalizedBigInteger["~standard"].validate(1)).toEqual({
+      issues: [{ message: "Localized BigInt.", path: [] }],
+    });
   });
 
   test("routes parent, own, and output transformation errors", () => {
@@ -1476,7 +1534,7 @@ describe("createType", () => {
 
     expect(NonEmptyString.fromUnknown("Evolu")).toEqual(ok("Evolu"));
     expect(NonEmptyString.fromUnknown(42)).toEqual(
-      err({ type: "TypeOf", expected: "string", value: 42 }),
+      err({ type: "TypeOf", expected: "String", value: 42 }),
     );
     expect(NonEmptyString.fromUnknown("")).toEqual(
       err({ type: "NonEmptyString", value: "" }),
@@ -1487,7 +1545,7 @@ describe("createType", () => {
     expect(
       NonEmptyString.formatError({
         type: "TypeOf",
-        expected: "string",
+        expected: "String",
         value: 42,
       }),
     ).toBe("A value 42 is not a string.");
@@ -1625,7 +1683,7 @@ describe("createType", () => {
     expect(
       RefinedString.formatError({
         type: "TypeOf",
-        expected: "string",
+        expected: "String",
         value: 42,
       }),
     ).toBe("A value 42 is not a string.");
@@ -1865,7 +1923,7 @@ describe("transform", () => {
     expect(NumberFromString.fromUnknown("42")).toEqual(ok(42));
     expect(NumberFromString.from.parent("42")).toEqual(ok(42));
     expect(NumberFromString.fromUnknown(42)).toEqual(
-      err({ type: "TypeOf", expected: "string", value: 42 }),
+      err({ type: "TypeOf", expected: "String", value: 42 }),
     );
     expect(NumberFromString.from.parent("not a number")).toEqual(
       err({
@@ -2106,7 +2164,7 @@ describe("transform", () => {
     expect(
       NumberFromString.formatError({
         type: "TypeOf",
-        expected: "string",
+        expected: "String",
         value: 42,
       }),
     ).toBe("A value 42 is not a string.");
@@ -2266,7 +2324,7 @@ describe("transform", () => {
         type: "NumberFromString",
         outputError: {
           type: "TypeOf",
-          expected: "number",
+          expected: "Number",
           value: "42",
         },
       },
@@ -2366,7 +2424,7 @@ describe("transform", () => {
               type: "NumberFromString",
               outputError: {
                 type: "TypeOf",
-                expected: "number",
+                expected: "Number",
                 value,
               },
             }),
@@ -2426,7 +2484,7 @@ describe("TypeOf", () => {
       >
     >();
     expectTypeOf<TypeOfError<"String">>().toExtend<TypeValueError<"TypeOf">>();
-    expectTypeOf<TypeOfError<"String">["expected"]>().toEqualTypeOf<"string">();
+    expectTypeOf<TypeOfError<"String">["expected"]>().toEqualTypeOf<"String">();
   });
 
   describe("Type", () => {
@@ -2442,13 +2500,13 @@ describe("TypeOf", () => {
           expect(result.value).toBe(value);
         });
 
-        test("reports the expected typeof and rejected value", () => {
+        test("reports the expected Type and rejected value", () => {
           const value: unknown = null;
 
           expect(type.fromUnknown(value)).toEqual(
             err({
               type: "TypeOf",
-              expected: typeof globalThis[name](0),
+              expected: name,
               value,
             }),
           );
@@ -2738,7 +2796,7 @@ describe("literal", () => {
     expect(Hello.fromUnknown("Hello")).toEqual(ok("Hello"));
     expect(Hello.fromUnknown("World")).toEqual(expectedError);
     expect(Hello.fromUnknown(42)).toEqual(
-      err({ type: "TypeOf", expected: "string", value: 42 }),
+      err({ type: "TypeOf", expected: "String", value: 42 }),
     );
     expect(Hello.from("Hello")).toEqual(ok("Hello"));
     expect(Hello.from.parent("World")).toEqual(expectedError);
@@ -2784,7 +2842,7 @@ describe("literal", () => {
     const FortyTwo = literal(42);
 
     expect(FortyTwo.fromUnknown("42")).toEqual(
-      err({ type: "TypeOf", expected: "number", value: "42" }),
+      err({ type: "TypeOf", expected: "Number", value: "42" }),
     );
     expect(FortyTwo.fromUnknown(43)).toEqual(
       err({ type: "Literal", expected: 42, value: 43 }),
@@ -2807,7 +2865,7 @@ describe("literal", () => {
     expect(
       Hello.formatError({
         type: "TypeOf",
-        expected: "string",
+        expected: "String",
         value: 42,
       }),
     ).toBe("A value 42 is not a string.");
@@ -2951,7 +3009,7 @@ describe("union", () => {
         errors: [
           {
             index: 0,
-            error: { type: "TypeOf", expected: "string", value: true },
+            error: { type: "TypeOf", expected: "String", value: true },
           },
         ],
       }),
@@ -2967,7 +3025,7 @@ describe("union", () => {
       errors: [
         {
           index: 0,
-          error: { type: "TypeOf", expected: "string", value: true },
+          error: { type: "TypeOf", expected: "String", value: true },
         },
       ],
     } as const;
@@ -3095,7 +3153,7 @@ describe("union", () => {
         errors: [
           {
             index: 0,
-            error: { type: "TypeOf", expected: "string", value: 42 },
+            error: { type: "TypeOf", expected: "String", value: 42 },
           },
         ],
       }),
@@ -3287,7 +3345,7 @@ describe("union", () => {
         errors: [
           {
             index: 0,
-            error: { type: "TypeOf", expected: "string", value: true },
+            error: { type: "TypeOf", expected: "String", value: true },
           },
         ],
       }),
@@ -3305,11 +3363,11 @@ describe("union", () => {
       errors: [
         {
           index: 0,
-          error: { type: "TypeOf", expected: "string", value: true },
+          error: { type: "TypeOf", expected: "String", value: true },
         },
         {
           index: 1,
-          error: { type: "TypeOf", expected: "number", value: true },
+          error: { type: "TypeOf", expected: "Number", value: true },
         },
       ],
     });
@@ -3342,11 +3400,11 @@ describe("union", () => {
       errors: [
         {
           index: 0,
-          error: { type: "TypeOf", expected: "string", value: true },
+          error: { type: "TypeOf", expected: "String", value: true },
         },
         {
           index: 1,
-          error: { type: "TypeOf", expected: "number", value: true },
+          error: { type: "TypeOf", expected: "Number", value: true },
         },
       ],
     });
@@ -3412,7 +3470,7 @@ describe("union", () => {
                     index: 0,
                     error: {
                       type: "TypeOf",
-                      expected: "string",
+                      expected: "String",
                       value: true,
                     },
                   },
@@ -3421,7 +3479,7 @@ describe("union", () => {
                     index: 1,
                     error: {
                       type: "TypeOf",
-                      expected: "string",
+                      expected: "String",
                       value: false,
                     },
                   },
@@ -3441,7 +3499,7 @@ describe("union", () => {
                     index: 0,
                     error: {
                       type: "TypeOf",
-                      expected: "number",
+                      expected: "Number",
                       value: true,
                     },
                   },
@@ -3450,7 +3508,7 @@ describe("union", () => {
                     index: 1,
                     error: {
                       type: "TypeOf",
-                      expected: "number",
+                      expected: "Number",
                       value: false,
                     },
                   },
@@ -3671,7 +3729,7 @@ describe("union", () => {
                     index: 1,
                     error: {
                       type: "TypeOf",
-                      expected: "number",
+                      expected: "Number",
                       value: "World",
                     },
                   },
@@ -3696,7 +3754,7 @@ describe("union", () => {
                     index: 1,
                     error: {
                       type: "TypeOf",
-                      expected: "number",
+                      expected: "Number",
                       value: "No",
                     },
                   },
@@ -3822,7 +3880,7 @@ describe("undefinedOr", () => {
         errors: [
           {
             index: 0,
-            error: { type: "TypeOf", expected: "string", value: 42 },
+            error: { type: "TypeOf", expected: "String", value: 42 },
           },
         ],
       }),
@@ -4203,7 +4261,7 @@ describe("brand", () => {
         const { Label, validations } = setupLabel();
 
         expect(Label.fromUnknown(42)).toEqual(
-          err({ type: "TypeOf", expected: "string", value: 42 }),
+          err({ type: "TypeOf", expected: "String", value: 42 }),
         );
         expect(validations).toEqual([]);
       }
@@ -4517,7 +4575,7 @@ describe("brand", () => {
         const value: unknown = 42;
 
         expect(DateIso.fromUnknown(value)).toEqual(
-          err({ type: "TypeOf", expected: "string", value }),
+          err({ type: "TypeOf", expected: "String", value }),
         );
       });
 
@@ -4530,7 +4588,7 @@ describe("brand", () => {
         expect(
           DateIso.formatError({
             type: "TypeOf",
-            expected: "string",
+            expected: "String",
             value: 42,
           }),
         ).toBe("A value 42 is not a string.");
@@ -4582,7 +4640,7 @@ describe("brand", () => {
         expect(
           Int64.formatError({
             type: "TypeOf",
-            expected: "bigint",
+            expected: "BigInt",
             value: 42,
           }),
         ).toBe("A value 42 is not a bigint.");
@@ -4637,7 +4695,7 @@ describe("brand", () => {
         expect(
           UInt64.formatError({
             type: "TypeOf",
-            expected: "bigint",
+            expected: "BigInt",
             value: 42,
           }),
         ).toBe("A value 42 is not a bigint.");
@@ -4775,7 +4833,7 @@ describe("BrandFactory", () => {
     expect(
       NonEmptyString.formatError({
         type: "TypeOf",
-        expected: "string",
+        expected: "String",
         value: 1,
       }),
     ).toBe("A value 1 is not a string.");
@@ -5994,12 +6052,12 @@ describe("array", () => {
               {
                 kind: "Element",
                 index: 2,
-                error: { type: "TypeOf", expected: "string", value: 42 },
+                error: { type: "TypeOf", expected: "String", value: 42 },
               },
               {
                 kind: "Element",
                 index: 4,
-                error: { type: "TypeOf", expected: "string", value: true },
+                error: { type: "TypeOf", expected: "String", value: true },
               },
             ],
           },
@@ -6489,7 +6547,7 @@ describe("array", () => {
               {
                 kind: "Element",
                 index: 0,
-                error: { type: "TypeOf", expected: "string", value: 42 },
+                error: { type: "TypeOf", expected: "String", value: 42 },
               },
             ],
           },
@@ -6533,7 +6591,7 @@ describe("array", () => {
               {
                 kind: "Element",
                 index: 1,
-                error: { type: "TypeOf", expected: "number", value: "2" },
+                error: { type: "TypeOf", expected: "Number", value: "2" },
               },
             ],
           },
@@ -6611,7 +6669,7 @@ describe("array", () => {
               {
                 kind: "Element",
                 index: 1,
-                error: { type: "TypeOf", expected: "number", value: "x" },
+                error: { type: "TypeOf", expected: "Number", value: "x" },
               },
               {
                 kind: "Element",
@@ -6660,7 +6718,7 @@ describe("array", () => {
               {
                 kind: "Element",
                 index: 0,
-                error: { type: "TypeOf", expected: "string", value: 0 },
+                error: { type: "TypeOf", expected: "String", value: 0 },
               },
               { kind: "Accessor", index: 1 },
               { kind: "Hole", index: 2 },
@@ -6669,7 +6727,7 @@ describe("array", () => {
                 index: 3,
                 error: {
                   type: "TypeOf",
-                  expected: "string",
+                  expected: "String",
                   value: false,
                 },
               },
@@ -6730,7 +6788,7 @@ describe("array", () => {
                         index: 1,
                         error: {
                           type: "TypeOf",
-                          expected: "number",
+                          expected: "Number",
                           value: "2",
                         },
                       },
@@ -6775,7 +6833,7 @@ describe("array", () => {
                         index: 0,
                         error: {
                           type: "TypeOf",
-                          expected: "number",
+                          expected: "Number",
                           value: "a",
                         },
                       },
@@ -6784,7 +6842,7 @@ describe("array", () => {
                         index: 1,
                         error: {
                           type: "TypeOf",
-                          expected: "number",
+                          expected: "Number",
                           value: "b",
                         },
                       },
@@ -6805,7 +6863,7 @@ describe("array", () => {
                         index: 1,
                         error: {
                           type: "TypeOf",
-                          expected: "number",
+                          expected: "Number",
                           value: "c",
                         },
                       },
@@ -7670,7 +7728,7 @@ describe("tuple", () => {
               {
                 kind: "Element",
                 index: 1,
-                error: { type: "TypeOf", expected: "number", value: "1" },
+                error: { type: "TypeOf", expected: "Number", value: "1" },
               },
             ],
           },
@@ -7738,7 +7796,7 @@ describe("tuple", () => {
               {
                 kind: "Element",
                 index: 0,
-                error: { type: "TypeOf", expected: "string", value: 42 },
+                error: { type: "TypeOf", expected: "String", value: 42 },
               },
             ],
           },
@@ -7753,12 +7811,12 @@ describe("tuple", () => {
               {
                 kind: "Element",
                 index: 0,
-                error: { type: "TypeOf", expected: "string", value: 42 },
+                error: { type: "TypeOf", expected: "String", value: 42 },
               },
               {
                 kind: "Element",
                 index: 1,
-                error: { type: "TypeOf", expected: "number", value: "1" },
+                error: { type: "TypeOf", expected: "Number", value: "1" },
               },
             ],
           },
@@ -8021,7 +8079,7 @@ describe("tuple", () => {
                                     index: 0,
                                     error: {
                                       type: "TypeOf",
-                                      expected: "string",
+                                      expected: "String",
                                       value: 42,
                                     },
                                   },
@@ -8148,7 +8206,7 @@ describe("Object", () => {
             },
             [symbol]: {
               type: "TypeOf",
-              expected: "string",
+              expected: "String",
               value: symbol,
             },
           },
@@ -8181,7 +8239,7 @@ describe("Object", () => {
           errors: {
             [globalThis.Symbol.toStringTag]: {
               type: "TypeOf",
-              expected: "string",
+              expected: "String",
               value: globalThis.Symbol.toStringTag,
             },
           },
@@ -8235,7 +8293,7 @@ describe("Object", () => {
           errors: {
             [globalThis.Symbol.iterator]: {
               type: "TypeOf",
-              expected: "string",
+              expected: "String",
               value: globalThis.Symbol.iterator,
             },
           },
@@ -8709,7 +8767,7 @@ describe("record", () => {
               key: "third",
               error: {
                 type: "TypeOf" as const,
-                expected: "number" as const,
+                expected: "Number" as const,
                 value: "wrong",
               },
             },
@@ -8752,7 +8810,7 @@ describe("record", () => {
                 key: globalThis.Symbol.toStringTag,
                 error: {
                   type: "TypeOf",
-                  expected: "string",
+                  expected: "String",
                   value: globalThis.Symbol.toStringTag,
                 },
               },
@@ -8786,7 +8844,7 @@ describe("record", () => {
                 key,
                 error: {
                   type: "TypeOf",
-                  expected: "string",
+                  expected: "String",
                   value: key,
                 },
               },
@@ -8807,7 +8865,7 @@ describe("record", () => {
                 key,
                 error: {
                   type: "TypeOf",
-                  expected: "string",
+                  expected: "String",
                   value: key,
                 },
               },
@@ -8881,7 +8939,7 @@ describe("record", () => {
                 key: "wrong",
                 error: {
                   type: "TypeOf",
-                  expected: "number",
+                  expected: "Number",
                   value: "x",
                 },
               },
@@ -8890,7 +8948,7 @@ describe("record", () => {
                 key: "allowed",
                 error: {
                   type: "TypeOf",
-                  expected: "number",
+                  expected: "Number",
                   value: "y",
                 },
               },
@@ -8909,7 +8967,7 @@ describe("record", () => {
                 key: "value",
                 error: {
                   type: "TypeOf",
-                  expected: "number",
+                  expected: "Number",
                   value: "wrong",
                 },
               },
@@ -9160,7 +9218,7 @@ describe("record", () => {
             {
               kind: "Value",
               key: "allowed",
-              error: { type: "TypeOf", expected: "number", value: "x" },
+              error: { type: "TypeOf", expected: "Number", value: "x" },
             },
           ],
         },
@@ -9652,7 +9710,7 @@ describe("object", () => {
                     index: 0,
                     error: {
                       type: "TypeOf",
-                      expected: "string",
+                      expected: "String",
                       value: true,
                     },
                   },
@@ -10459,7 +10517,7 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              age: { type: "TypeOf", expected: "number", value: "42" },
+              age: { type: "TypeOf", expected: "Number", value: "42" },
             },
           },
         }),
@@ -10480,7 +10538,7 @@ describe("object", () => {
                       index: 1,
                       error: {
                         type: "TypeOf",
-                        expected: "number",
+                        expected: "Number",
                         value: "2",
                       },
                     },
@@ -10507,7 +10565,7 @@ describe("object", () => {
                       key: "wrong",
                       error: {
                         type: "TypeOf",
-                        expected: "number",
+                        expected: "Number",
                         value: "wrong",
                       },
                     },
@@ -10656,7 +10714,7 @@ describe("object", () => {
             errors: {
               optional: {
                 type: "TypeOf",
-                expected: "string",
+                expected: "String",
                 value: undefined,
               },
             },
@@ -10782,7 +10840,7 @@ describe("object", () => {
               },
               second: {
                 type: "TypeOf",
-                expected: "number",
+                expected: "Number",
                 value: "wrong",
               },
             },
@@ -10945,8 +11003,8 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              count: { type: "TypeOf", expected: "number", value: "2" },
-              age: { type: "TypeOf", expected: "number", value: "42" },
+              count: { type: "TypeOf", expected: "Number", value: "2" },
+              age: { type: "TypeOf", expected: "Number", value: "42" },
               wrong: {
                 type: "Record",
                 reason: {
@@ -10957,7 +11015,7 @@ describe("object", () => {
                       key: "wrong",
                       error: {
                         type: "TypeOf",
-                        expected: "number",
+                        expected: "Number",
                         value: "value",
                       },
                     },
@@ -10997,7 +11055,7 @@ describe("object", () => {
                       key,
                       error: {
                         type: "TypeOf",
-                        expected: "string",
+                        expected: "String",
                         value: key,
                       },
                     },
@@ -11026,7 +11084,7 @@ describe("object", () => {
                       key,
                       error: {
                         type: "TypeOf",
-                        expected: "string",
+                        expected: "String",
                         value: key,
                       },
                     },
@@ -11056,8 +11114,8 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              name: { type: "TypeOf", expected: "string", value: 42 },
-              age: { type: "TypeOf", expected: "number", value: "42" },
+              name: { type: "TypeOf", expected: "String", value: 42 },
+              age: { type: "TypeOf", expected: "Number", value: "42" },
               role: { type: "ObjectExcessProperty" },
             },
           },
@@ -11145,11 +11203,11 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              name: { type: "TypeOf", expected: "string", value: 42 },
-              age: { type: "TypeOf", expected: "number", value: "42" },
+              name: { type: "TypeOf", expected: "String", value: 42 },
+              age: { type: "TypeOf", expected: "Number", value: "42" },
               active: {
                 type: "TypeOf",
-                expected: "boolean",
+                expected: "Boolean",
                 value: "yes",
               },
             },
@@ -11171,7 +11229,7 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              name: { type: "TypeOf", expected: "string", value: 42 },
+              name: { type: "TypeOf", expected: "String", value: 42 },
               age: { type: "ObjectMissingProperty" },
             },
           },
@@ -11190,7 +11248,7 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              title: { type: "TypeOf", expected: "string", value: 42 },
+              title: { type: "TypeOf", expected: "String", value: 42 },
               count: { type: "Positive", value: 0 },
             },
           },
@@ -11220,7 +11278,7 @@ describe("object", () => {
                       index: 1,
                       error: {
                         type: "TypeOf",
-                        expected: "number",
+                        expected: "Number",
                         value: "2",
                       },
                     },
@@ -11310,7 +11368,7 @@ describe("object", () => {
           reason: {
             kind: "Properties",
             errors: {
-              label: { type: "TypeOf", expected: "string", value: 42 },
+              label: { type: "TypeOf", expected: "String", value: 42 },
             },
           },
         },
@@ -11720,7 +11778,7 @@ describe("typed", () => {
                       key: "score",
                       error: {
                         type: "TypeOf",
-                        expected: "string",
+                        expected: "String",
                         value: 1,
                       },
                     },
@@ -12118,7 +12176,7 @@ describe("discriminatedUnion", () => {
             reason: {
               kind: "Properties",
               errors: {
-                id: { type: "TypeOf", expected: "number", value: "no" },
+                id: { type: "TypeOf", expected: "Number", value: "no" },
               },
             },
           },
@@ -12290,8 +12348,8 @@ describe("discriminatedUnion", () => {
               reason: {
                 kind: "Properties",
                 errors: {
-                  name: { type: "TypeOf", expected: "string", value: 1 },
-                  email: { type: "TypeOf", expected: "string", value: 2 },
+                  name: { type: "TypeOf", expected: "String", value: 1 },
+                  email: { type: "TypeOf", expected: "String", value: 2 },
                 },
               },
             },
@@ -12573,7 +12631,7 @@ describe("lazy", () => {
   test("asserts exact resolved Outputs at both Lazy boundaries", () => {
     const Value = lazy(() => String);
     const invalid = 1 as unknown as string;
-    const cause = { type: "TypeOf", expected: "string", value: 1 } as const;
+    const cause = { type: "TypeOf", expected: "String", value: 1 } as const;
 
     expectAssertionError(
       () => Value.from(invalid),
@@ -12663,7 +12721,7 @@ describe("lazy", () => {
                           errors: {
                             value: {
                               type: "TypeOf",
-                              expected: "string",
+                              expected: "String",
                               value: 42,
                             },
                           },
@@ -12795,7 +12853,7 @@ describe("lazy", () => {
         reason: {
           kind: "Properties",
           errors: {
-            value: { type: "TypeOf", expected: "string", value: 1 },
+            value: { type: "TypeOf", expected: "String", value: 1 },
           },
         },
       });
@@ -13368,7 +13426,7 @@ describe("Json", () => {
       err({ type: "Json", value: "1e400" }),
     );
     expect(Json.fromUnknown(1)).toEqual(
-      err({ type: "TypeOf", expected: "string", value: 1 }),
+      err({ type: "TypeOf", expected: "String", value: 1 }),
     );
     expect(Json.formatError({ type: "Json", value: "invalid" })).toBe(
       'The value "invalid" cannot be parsed into a JsonValue.',

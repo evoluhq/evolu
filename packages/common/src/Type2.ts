@@ -126,7 +126,7 @@ import type {
  *     string,
  *     {
  *       readonly type: "TypeOf";
- *       readonly expected: "string";
+ *       readonly expected: "String";
  *       readonly value: unknown;
  *     }
  *   >
@@ -758,7 +758,11 @@ export const localizeTypes = ((
       RuntimeTypeNode
     >();
     const formatIssue: RuntimeFormatTypeIssue = (issue) =>
-      formatErrorByType[issue.name](issue.error);
+      formatErrorByType[
+        issue.error.type === "TypeOf"
+          ? (issue.error as TypeOfError<keyof TypeOfOutputByName>).expected
+          : issue.name
+      ](issue.error);
 
     for (const name of globalThis.Object.keys(typesByName)) {
       const source = typesByName[name] as ConcreteTypeNode & RuntimeTypeNode;
@@ -1820,16 +1824,16 @@ const createTypeOfType = <Name extends keyof TypeOfOutputByName>(
   TypeOfOutputByName[Name],
   TypeOfError<Name>
 > => {
-  const expected = name.toLowerCase() as Lowercase<Name>;
+  const typeOf = name.toLowerCase() as Lowercase<Name>;
 
   return createRootType(
     name,
     (value): Result<TypeOfOutputByName[Name], TypeOfError<Name>> =>
-      typeof value === expected
+      typeof value === typeOf
         ? ok(value as TypeOfOutputByName[Name])
-        : err({ type: "TypeOf", expected, value }),
+        : err({ type: "TypeOf", expected: name, value }),
     (error) =>
-      `A value ${safelyStringifyUnknownValue(error.value)} is not a ${error.expected}.`,
+      `A value ${safelyStringifyUnknownValue(error.value)} is not a ${typeOf}.`,
   );
 };
 
@@ -1845,7 +1849,7 @@ interface TypeOfOutputByName {
 export interface TypeOfError<
   Name extends keyof TypeOfOutputByName,
 > extends TypeError<"TypeOf"> {
-  readonly expected: Lowercase<Name>;
+  readonly expected: Name;
   readonly value: unknown;
 }
 
@@ -2122,11 +2126,11 @@ export const Null = /*#__PURE__*/ literal(null);
  *   errors: [
  *     {
  *       index: 0,
- *       error: { type: "TypeOf", expected: "string", value: true },
+ *       error: { type: "TypeOf", expected: "String", value: true },
  *     },
  *     {
  *       index: 1,
- *       error: { type: "TypeOf", expected: "number", value: true },
+ *       error: { type: "TypeOf", expected: "Number", value: true },
  *     },
  *   ],
  * });
@@ -4687,7 +4691,7 @@ export const Object: Type<
         ObjectPropertyAccessError | TypeOfError<"String"> | undefined;
 
       if (typeof key !== "string") {
-        propertyError = { type: "TypeOf", expected: "string", value: key };
+        propertyError = { type: "TypeOf", expected: "String", value: key };
       } else {
         const descriptor = globalThis.Object.getOwnPropertyDescriptor(
           value,
@@ -5616,7 +5620,7 @@ const createObjectType = (
             key,
             error: {
               type: "TypeOf",
-              expected: "string",
+              expected: "String",
               value: key,
             },
           }),

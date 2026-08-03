@@ -21,42 +21,42 @@ describe("Czech Type error formatters", () => {
     expect(
       cs.formatStringError({
         type: "TypeOf",
-        expected: "string",
+        expected: "String",
         value: 1,
       }),
     ).toBe("Hodnota musí být text.");
     expect(
       cs.formatNumberError({
         type: "TypeOf",
-        expected: "number",
+        expected: "Number",
         value: null,
       }),
     ).toBe("Hodnota null musí být číslo.");
     expect(
       cs.formatBigIntError({
         type: "TypeOf",
-        expected: "bigint",
+        expected: "BigInt",
         value: null,
       }),
     ).toBe("Hodnota null musí být celé číslo typu bigint.");
     expect(
       cs.formatBooleanError({
         type: "TypeOf",
-        expected: "boolean",
+        expected: "Boolean",
         value: null,
       }),
     ).toBe("Hodnota null musí být logická hodnota.");
     expect(
       cs.formatSymbolError({
         type: "TypeOf",
-        expected: "symbol",
+        expected: "Symbol",
         value: null,
       }),
     ).toBe("Hodnota null musí být symbol.");
     expect(
       cs.formatFunctionError({
         type: "TypeOf",
-        expected: "function",
+        expected: "Function",
         value: null,
       }),
     ).toBe("Hodnota null musí být funkce.");
