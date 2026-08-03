@@ -10,4 +10,6 @@ Added utilities for awaitable values, numeric ranges, and type intersections
 
 `UnionToIntersection<U>` converts a union to an intersection. `ParameterIntersection<T>` infers the intersection of parameter types from a union of unary functions without allowing an `unknown` parameter to erase the concrete parameter types.
 
+`KeysOfUnion<T>` returns every property key present in any member of a union.
+
 `CompileTimeError<Context, Message>` was added for consistent, readable compiler-facing error messages, and Schema validation errors were updated to use it.

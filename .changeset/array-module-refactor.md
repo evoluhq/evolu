@@ -29,6 +29,10 @@ Use native `.shift()` and `.pop()` when mutation is necessary.
 
 - **`emptyArray`** — use as a default or initial value to avoid allocating new empty arrays
 
+### New Types
+
+- Added **`AtLeastTwoReadonlyArray`** for readonly arrays with at least two elements
+
 ### Changed Functions
 
 - **`mapArray`, `flatMapArray`, `filterArray`, and `partitionArray`** — passed the source array as the callback's third argument; the native wrappers matched their native counterparts

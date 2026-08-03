@@ -136,6 +136,17 @@ export type NonEmptyArray<T> = [T, ...Array<T>];
 export type NonEmptyReadonlyArray<T> = readonly [T, ...ReadonlyArray<T>];
 
 /**
+ * A readonly array with at least two elements.
+ *
+ * @group Types
+ */
+export type AtLeastTwoReadonlyArray<T> = readonly [
+  T,
+  T,
+  ...ReadonlyArray<T>,
+];
+
+/**
  * An empty readonly array.
  *
  * Use as a default or initial value to avoid allocating new empty arrays.

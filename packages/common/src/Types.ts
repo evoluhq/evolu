@@ -143,6 +143,11 @@ export type NullablePartial<
   NP = Pick<T, Exclude<keyof T, NK>> & Partial<Pick<T, NK>>,
 > = { [K in keyof NP]: NP[K] };
 
+/** A value with a numeric length. */
+export interface ValueWithLength {
+  readonly length: number;
+}
+
 /**
  * String, number, bigint, boolean, undefined, null
  *
@@ -306,7 +311,7 @@ export type NumberFromString<T extends string> =
 export type CompileTimeError<
   Context extends string,
   Message extends string,
-> = `⛔ ${Context} Error: ${Message}`;
+> = `⛔ ${Context} error: ${Message}`;
 
 /** Returns whether a type is a union. */
 export type IsUnion<T, Whole = T> = [T] extends [never]
@@ -316,6 +321,9 @@ export type IsUnion<T, Whole = T> = [T] extends [never]
       ? false
       : true
     : never;
+
+/** Returns every property key present in any member of a union. */
+export type KeysOfUnion<T> = T extends T ? keyof T : never;
 
 /** Converts a union to an intersection. */
 export type UnionToIntersection<U> = (

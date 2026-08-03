@@ -18,6 +18,7 @@ import {
   sortArray,
   spliceArray,
   zipArray,
+  type AtLeastTwoReadonlyArray,
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../../../../packages/common/src/Array.ts";
@@ -39,6 +40,14 @@ describe("Types", () => {
     const _valid: NonEmptyReadonlyArray<string> = ["a", "b"];
     // @ts-expect-error - empty array is not a valid NonEmptyReadonlyArray
     const _invalid: NonEmptyReadonlyArray<string> = [];
+  });
+
+  test("AtLeastTwoReadonlyArray requires at least two elements", () => {
+    const _valid: AtLeastTwoReadonlyArray<string> = ["a", "b"];
+    // @ts-expect-error - empty array is not a valid AtLeastTwoReadonlyArray
+    const _empty: AtLeastTwoReadonlyArray<string> = [];
+    // @ts-expect-error - one element is not a valid AtLeastTwoReadonlyArray
+    const _single: AtLeastTwoReadonlyArray<string> = ["a"];
   });
 });
 

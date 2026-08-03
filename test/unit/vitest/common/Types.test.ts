@@ -24,7 +24,9 @@ import {
   type Int1To99,
   type Int1To100,
   type NumberFromString,
+  type CompileTimeError,
   type IsUnion,
+  type KeysOfUnion,
   type UnionToIntersection,
   type ParameterIntersection,
   type DistributiveOmit,
@@ -254,6 +256,12 @@ test("NumberFromString", () => {
   expectTypeOf<NumberFromString<"value">>().toEqualTypeOf<never>();
 });
 
+test("CompileTimeError", () => {
+  expectTypeOf<
+    CompileTimeError<"Type", "Something went wrong">
+  >().toEqualTypeOf<"⛔ Type error: Something went wrong">();
+});
+
 test("IsUnion", () => {
   expectTypeOf<IsUnion<string>>().toEqualTypeOf<false>();
   expectTypeOf<IsUnion<string | number>>().toEqualTypeOf<true>();
@@ -268,6 +276,15 @@ test("IsUnion", () => {
     IsUnion<{ readonly a: string } | { readonly b: number }>
   >().toEqualTypeOf<true>();
   expectTypeOf<IsUnion<[string | number]>>().toEqualTypeOf<false>();
+});
+
+test("KeysOfUnion", () => {
+  expectTypeOf<
+    KeysOfUnion<
+      | { readonly id: string; readonly name: string }
+      | { readonly id: string; readonly count: number }
+    >
+  >().toEqualTypeOf<"id" | "name" | "count">();
 });
 
 test("UnionToIntersection", () => {
