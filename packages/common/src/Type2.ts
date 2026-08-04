@@ -4,6 +4,10 @@
  * @module
  */
 
+import { utf8ToBytes } from "@noble/ciphers/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import * as bip39 from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   AtLeastTwoReadonlyArray,
@@ -11,8 +15,10 @@ import type {
 } from "./Array.ts";
 import { assert, assertNonNullable } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
+import type { RandomBytesDep } from "./Crypto.ts";
 import { identity, type Thunk } from "./Function.ts";
 import { createMutableRecord } from "./Object.ts";
+import { hasNodeBuffer } from "./Platform.ts";
 import {
   err,
   flatMapResult,
@@ -24,16 +30,20 @@ import {
 } from "./Result.ts";
 import { safelyStringifyUnknownValue } from "./String.ts";
 import type { Task } from "./Task.ts";
-import type {
-  CompileTimeError,
-  Digit,
-  Digit1To9,
-  Int1To100,
-  IsUnion,
-  Literal,
-  Simplify,
-  ValueWithLength,
-  WidenLiteral,
+import type { TimeDep } from "./Time.ts";
+import {
+  instance,
+  isInstance,
+  type CompileTimeError,
+  type Digit,
+  type Digit1To9,
+  type Instance,
+  type Int1To100,
+  type IsUnion,
+  type Literal,
+  type Simplify,
+  type ValueWithLength,
+  type WidenLiteral,
 } from "./Types.ts";
 
 /**
@@ -68,7 +78,14 @@ import type {
  * Evolu Type assumes that all executing code, including third-party
  * dependencies, has been audited and is trusted. It validates data contracts
  * under that assumption. Trusting code does not require trusting every value it
- * returns, so uncertain data can still be decoded at an explicit boundary.
+ * returns, so uncertain values from legacy code or another realm can still be
+ * decoded at an explicit boundary. Realm identity alone does not make an
+ * otherwise legitimate representation invalid.
+ *
+ * Evolu Type does not attempt to contain hostile executable object behavior
+ * such as sabotaged Proxies, forged built-ins, or throwing traps. Such behavior
+ * violates the trusted-code assumption and may throw. Type validation is not a
+ * security boundary for untrusted JavaScript.
  *
  * Type declarations and their callbacks are trusted TypeScript construction
  * code. Runtime assertions enforce contracts TypeScript cannot express, such as
@@ -91,18 +108,20 @@ import type {
  *
  * Decoding accepts a representation outside the Output domain only when the
  * Type explicitly declares that representation, such as a transformation Input.
- * Structural Types do not implicitly repair exotic or foreign-realm JavaScript
- * representations. In particular, {@link array} and {@link tuple} require dense
- * own data elements, while the predefined {@link Object}, {@link object}, and
- * {@link record} require own enumerable data properties. They do not invoke
+ * Structural Types do not implicitly repair another JavaScript representation.
+ * In particular, {@link array} and {@link tuple} require dense own data elements,
+ * while the predefined {@link Object}, {@link object}, and {@link record} require
+ * plain objects with own enumerable data properties. They do not invoke
  * accessors or materialize inherited and non-enumerable properties.
  *
  * TypeScript object types are structural and do not encode JavaScript realm
- * identity. {@link array} accepts this realm's `Array.prototype`. The predefined
- * {@link Object} and plain-object Types created by {@link object} and
- * {@link record} accept this realm's `Object.prototype` or a `null` prototype.
- * When Record decoding must construct a normalized value, it uses a `null`
- * prototype so every string key remains ordinary data.
+ * identity. Structural Types therefore accept legitimate representations from
+ * other realms. Prototype checks remain when the prototype defines the semantic
+ * domain. Plain-object Types accept a `null` prototype or an immediate root
+ * prototype whose own prototype is `null`; ordinary class instances and deeper
+ * prototype chains are rejected. When Record decoding must construct a
+ * normalized value, it uses a `null` prototype so every string key remains
+ * ordinary data.
  *
  * Evolu Type expects TypeScript's `exactOptionalPropertyTypes` compiler option
  * to be enabled.
@@ -252,24 +271,21 @@ import type {
  *
  * ### How should values from another realm be handled?
  *
- * Code trust and data validation are separate decisions. When an application or
- * library trusts both the producer and its return contract, it should cast the
- * boundary API's `unknown` instead of decoding the same internal value again.
- * Some transports, including worker messaging, already recreate structured
- * values in the receiving realm.
+ * Code trust and data validation are separate decisions. Values returned by
+ * trusted legacy code or another realm can still be uncertain and should be
+ * validated. Realm-neutral Types accept an otherwise legitimate representation
+ * without requiring conversion merely because its built-ins belong to another
+ * realm.
  *
- * When returned data still needs runtime checking, its validator or
- * transformation should be tailored to that API's documented representation.
- * Evolu Type deliberately does not guess how a foreign representation should be
- * projected into local data. {@link array} and {@link tuple} accept only this
- * realm's `Array.prototype`; the predefined {@link Object}, {@link object}, and
- * {@link record} accept only this realm's `Object.prototype` or `null`.
+ * When an application trusts both the producer and its return contract, it can
+ * cast the boundary API's `unknown` because validation is redundant. Use a
+ * specialized Type or explicit transformation when the producer actually uses a
+ * different representation that needs adaptation or normalization.
  *
- * A cast does not convert a direct foreign object into an Evolu Type Output. If
- * such a value must pass through Type operations, explicitly convert it to the
- * local representation and validate it with a boundary-specific Type. The
- * decision to trust, validate, or adapt a value therefore remains visible in
- * application code.
+ * All executing JavaScript remains trusted. Deliberately forged built-ins,
+ * hostile Proxies, throwing traps, or sabotaged executable behavior can throw;
+ * Evolu Type does not selectively contain them or claim to be a security
+ * boundary for untrusted code.
  *
  * ### Why doesn't Evolu Type extract data from rich objects?
  *
@@ -285,15 +301,17 @@ import type {
  * predefined {@link Object} defines an open plain-object representation with
  * unknown values, {@link object} defines a closed plain-object representation,
  * and {@link record} defines a plain-dictionary representation whose complete
- * set of own properties are its entries. They accept only this realm's
- * `Object.prototype` or `null`. Every property must be an enumerable data
- * property; inherited members are not entries, while accessors and hidden
- * properties are invalid instead of being invoked or ignored. {@link array}
- * similarly defines a dense sequence whose only own properties are `length` and
- * its indexed data properties; {@link tuple} applies the same representation
- * rules with a fixed length and a distinct Type for each position. Only an
- * explicit {@link transform} changes the representation. Consequently, `is`
- * tests exact Output membership and `to` stays total for valid Outputs.
+ * set of own properties are its entries. Their realm-neutral plain-object rule
+ * accepts a `null` prototype or an immediate root prototype whose own prototype
+ * is `null`; ordinary class instances and deeper prototype chains are rejected.
+ * Every property must be an enumerable data property; inherited members are not
+ * entries, while accessors and hidden properties are invalid instead of being
+ * invoked or ignored. {@link array} similarly defines a dense sequence whose
+ * only own properties are `length` and its indexed data properties;
+ * {@link tuple} applies the same representation rules with a fixed length and a
+ * distinct Type for each position. Only an explicit {@link transform} changes
+ * the representation. Consequently, `is` tests exact Output membership and `to`
+ * stays total for valid Outputs.
  *
  * ### Why is JsonValue stricter than JSON.stringify?
  *
@@ -573,7 +591,7 @@ type RuntimeCollectionIssue = {
 
 const createCollectionRuntimeTypeIssues =
   (
-    name: "Array" | "Tuple" | "Record",
+    name: "Array" | "Tuple" | "Record" | "Set",
     issuesKind: "Items" | "Entries",
     defaultFormatter: TypeErrorFormatter<TypeError>,
     getNestedType: (issue: RuntimeCollectionIssue) => RuntimeTypeNode,
@@ -691,6 +709,13 @@ const assertTypeOutput = <Error extends TypeError>(
  * inferred recursively from structured errors, including mutually recursive
  * Lazy error interfaces.
  *
+ * Parents and Types exposed through public reflection are localized recursively
+ * through one shared cache. Lazy definitions stay opaque and are not evaluated;
+ * their declared error types provide the formatter requirements instead.
+ *
+ * The selected Type map, locale map, and each formatter map must be plain
+ * objects whose entries are own enumerable string-keyed data properties.
+ *
  * All localized Types for one locale share the same formatter set. The result
  * preserves the selected names and exact TypeScript types under every locale
  * key, making one localized set easy to provide through dependency injection or
@@ -731,21 +756,24 @@ export const localizeTypes = ((
   typesByName: Readonly<Record<string, ConcreteTypeNode>>,
   formatErrorByTypeByLocale: Readonly<Record<string, unknown>>,
 ) => {
+  const typeNames = getLocalizationMapKeys(typesByName);
+  const locales = getLocalizationMapKeys(formatErrorByTypeByLocale);
   const typesByNameByLocale = createMutableRecord<
     string,
     Readonly<Record<string, ConcreteTypeNode>>
   >();
 
-  for (const locale of globalThis.Object.keys(formatErrorByTypeByLocale)) {
+  for (const locale of locales) {
     const inputFormatErrorByType = formatErrorByTypeByLocale[
       locale
     ] as RuntimeFormatErrorByType;
+    const formatterNames = getLocalizationMapKeys(inputFormatErrorByType);
     const formatErrorByType = createMutableRecord<
       string,
       TypeErrorFormatter<TypeError>
     >();
 
-    for (const name of globalThis.Object.keys(inputFormatErrorByType)) {
+    for (const name of formatterNames) {
       formatErrorByType[name] = inputFormatErrorByType[name];
     }
 
@@ -764,7 +792,7 @@ export const localizeTypes = ((
           : issue.name
       ](issue.error);
 
-    for (const name of globalThis.Object.keys(typesByName)) {
+    for (const name of typeNames) {
       const source = typesByName[name] as ConcreteTypeNode & RuntimeTypeNode;
       localizedTypesByName[name] = withFormatError(
         source,
@@ -778,6 +806,27 @@ export const localizeTypes = ((
 
   return typesByNameByLocale;
 }) as LocalizeTypes;
+
+const getLocalizationMapKeys = (value: unknown): ReadonlyArray<string> => {
+  const errorMessage =
+    "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.";
+  assert(value !== null && typeof value === "object", errorMessage);
+  const prototype: unknown = globalThis.Object.getPrototypeOf(value);
+  assert(
+    prototype === null || globalThis.Object.getPrototypeOf(prototype) === null,
+    errorMessage,
+  );
+
+  const keys = Reflect.ownKeys(value);
+  for (const key of keys) {
+    const descriptor = globalThis.Object.getOwnPropertyDescriptor(value, key)!;
+    assert(
+      typeof key === "string" && "value" in descriptor && descriptor.enumerable,
+      errorMessage,
+    );
+  }
+  return keys as ReadonlyArray<string>;
+};
 
 const withFormatError = (
   source: RuntimeTypeNode,
@@ -794,6 +843,11 @@ const withFormatError = (
         localizedTypeBySource,
       )
     : null;
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) =>
+    source[getRuntimeTypeIssuesSymbol](error, mode).map((issue) => ({
+      ...issue,
+      formatError: () => formatIssue(issue),
+    })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   const derived = createTypeNode<RuntimeTypeNode>(
     source.name,
     parent,
@@ -802,44 +856,114 @@ const withFormatError = (
     source[outputValidationSymbol],
     source[fromSymbol],
     source[encoderSymbol],
-    source[getRuntimeTypeIssuesSymbol],
+    getTypeIssues,
     undefined,
     formatIssue,
   );
+
+  localizedTypeBySource.set(source, derived);
 
   // Preserve feature reflection such as element, props, members, and output.
   for (const key of Reflect.ownKeys(source)) {
     if (globalThis.Object.hasOwn(derived, key)) continue;
 
-    globalThis.Object.defineProperty(
-      derived,
-      key,
-      globalThis.Object.getOwnPropertyDescriptor(source, key)!,
-    );
+    const descriptor = globalThis.Object.getOwnPropertyDescriptor(source, key)!;
+    if ("value" in descriptor) {
+      descriptor.value = localizeTypeReflection(
+        descriptor.value,
+        formatIssue,
+        localizedTypeBySource,
+      );
+    }
+    globalThis.Object.defineProperty(derived, key, descriptor);
   }
 
-  localizedTypeBySource.set(source, derived);
   return derived;
 };
 
-/* eslint-disable @typescript-eslint/consistent-indexed-object-style -- This
-mapped return type is cheaper than the equivalent Readonly<Record<...>>. Changes
-are measured by `pnpm bench:type`. */
+const localizeTypeReflection = (
+  value: unknown,
+  formatIssue: RuntimeFormatTypeIssue,
+  localizedTypeBySource: WeakMap<RuntimeTypeNode, RuntimeTypeNode>,
+): unknown => {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    globalThis.Object.hasOwn(value, "~evolu/instance") &&
+    (value as Instance<string>)["~evolu/instance"] === "Type"
+  ) {
+    return withFormatError(
+      value as RuntimeTypeNode,
+      formatIssue,
+      localizedTypeBySource,
+    );
+  }
+  if (globalThis.Array.isArray(value)) {
+    return (value as ReadonlyArray<unknown>).map((value) =>
+      localizeTypeReflection(value, formatIssue, localizedTypeBySource),
+    );
+  }
+  if (value === null || typeof value !== "object" || !isPlainObject(value)) {
+    return value;
+  }
+
+  const localized = globalThis.Object.create(
+    globalThis.Object.getPrototypeOf(value) as object | null,
+  ) as Record<string | symbol, unknown>;
+
+  for (const key of Reflect.ownKeys(value)) {
+    localized[key] = localizeTypeReflection(
+      (value as Record<string | symbol, unknown>)[key],
+      formatIssue,
+      localizedTypeBySource,
+    );
+  }
+
+  return localized;
+};
+
 type LocalizeTypes = <
   const TypesByName extends Readonly<Record<string, ConcreteTypeNode>>,
-  const Locale extends string,
->(
-  typesByName: TypesByName,
-  formatErrorByTypeByLocale: Readonly<
-    Record<
-      Locale,
-      FormatErrorByType<InferErrors<TypesByName[keyof TypesByName]>>
-    >
+  const FormatErrorByTypeByLocale extends Readonly<
+    Record<string, SelectedFormatErrorByType<TypesByName>>
   >,
+>(
+  typesByName: TypesByName & NoNonStringKeys<TypesByName>,
+  formatErrorByTypeByLocale: FormatErrorByTypeByLocale &
+    NoNonStringKeys<FormatErrorByTypeByLocale> &
+    ValidateFormatErrorByTypeByLocale<
+      FormatErrorByTypeByLocale,
+      SelectedFormatErrorByType<TypesByName>
+    >,
 ) => {
-  readonly [Name in Locale]: TypesByName;
+  readonly [Locale in keyof FormatErrorByTypeByLocale]: TypesByName;
 };
-/* eslint-enable @typescript-eslint/consistent-indexed-object-style */
+
+type ValidateFormatErrorByTypeByLocale<
+  FormatErrorByTypeByLocale,
+  ExpectedFormatErrorByType,
+> =
+  Exclude<
+    KeysOfUnion<FormatErrorByTypeByLocale[keyof FormatErrorByTypeByLocale]>,
+    keyof ExpectedFormatErrorByType
+  > extends never
+    ? unknown
+    : never;
+
+/* eslint-disable-next-line @typescript-eslint/consistent-indexed-object-style --
+This mapped validation type is cheaper than the equivalent Record. Changes are
+measured by `pnpm bench:type`. */
+type NoNonStringKeys<Value> = {
+  readonly [Key in Exclude<keyof Value, string>]: never;
+};
+
+type KeysOfUnion<Value> = Value extends unknown ? keyof Value : never;
+
+type ValuesOfUnion<Value> = Value extends unknown ? Value[keyof Value] : never;
+
+type SelectedFormatErrorByType<
+  TypesByName extends Readonly<Record<string, ConcreteTypeNode>>,
+> = FormatErrorByType<InferLocalizationErrors<ValuesOfUnion<TypesByName>>>;
 
 type FormatErrorByType<Error extends TypeError> = Readonly<{
   [Entry in LocalizedErrorEntry<Error> as Entry["name"]]: TypeErrorFormatter<
@@ -868,7 +992,7 @@ type LocalizedErrorEntry<
             ? LocalizedDiscriminatedUnionErrorEntry<Error, Seen | Error>
             : Error extends {
                   readonly type: infer Name extends
-                    "Array" | "Tuple" | "Record";
+                    "Array" | "Tuple" | "Record" | "Set";
                   readonly reason: infer Reason;
                 }
               ? | LocalizedErrorEntryValue<Name, Error>
@@ -937,10 +1061,51 @@ type LocalizedDiscriminatedUnionErrorEntry<
 
 declare const concreteTypeSymbol: unique symbol;
 declare const errorsSymbol: unique symbol;
+declare const lazyTypeSymbol: unique symbol;
+// Direct public reflection edges cached by composite Type declarations. Lazy
+// intentionally has none because resolving its definition would break laziness.
+declare const reflectedTypesSymbol: unique symbol;
 declare const customFromSymbol: unique symbol;
 
 /** The union of errors a {@link Type} can return from `fromUnknown`. */
 export type InferErrors<T extends TypeNode> = T[typeof errorsSymbol];
+
+type InferLocalizationErrors<
+  T extends TypeNode,
+  Seen extends TypeNode = never,
+> = T extends TypeNode
+  ? [T] extends [Seen]
+    ? never
+    : typeof lazyTypeSymbol extends keyof T
+      ? InferErrors<T>
+      : | InferErrors<T>
+        | ParentLocalizationErrors<T["parent"], Seen | T>
+        | ReflectedLocalizationErrors<T, Seen | T>
+  : never;
+
+type ParentLocalizationErrors<Parent, Seen extends TypeNode> = [
+  Parent,
+] extends [infer P extends TypeNode]
+  ? [TypeNode] extends [P]
+    ? never
+    : InferLocalizationErrors<P, Seen>
+  : never;
+
+type ReflectedLocalizationErrors<T extends TypeNode, Seen extends TypeNode> =
+  ReflectedTypes<T> extends infer Reflected extends TypeNode
+    ? InferLocalizationErrors<Reflected, Seen>
+    : never;
+
+type ReflectedTypes<T extends TypeNode> =
+  typeof reflectedTypesSymbol extends keyof T
+    ? Extract<T[typeof reflectedTypesSymbol], TypeNode>
+    : T extends {
+          readonly name: "Object";
+          readonly props: infer Props extends ObjectProps;
+          readonly record?: infer Rest;
+        }
+      ? ObjectPropertyType<Props[keyof Props]> | Extract<Rest, TypeNode>
+      : never;
 
 type RootType<T extends TypeNode> = T extends {
   readonly parent: infer Parent extends TypeNode;
@@ -1074,7 +1239,7 @@ export interface ValidationOptions {
 // Keeps partially erased TypeNode values out of Type composition without
 // recursively analyzing parent chains. Changes are measured by
 // `pnpm bench:type`.
-type ConcreteTypeNode = TypeNode & { readonly [concreteTypeSymbol]: true };
+type ConcreteTypeNode = AnyType;
 
 declare const validationFailureSymbol: unique symbol;
 
@@ -1302,6 +1467,7 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
   };
 
   return {
+    ...instance("Type"),
     name,
     parent: null,
     fromUnknown,
@@ -1564,6 +1730,7 @@ export interface TransformType<
     TransformError<Name, FromError, TypeFromError<OutputType>>
   >
 > {
+  readonly [reflectedTypesSymbol]?: OutputType;
   readonly output: OutputType;
 }
 
@@ -1706,6 +1873,7 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
     Node,
     | keyof TypeNode
     | typeof concreteTypeSymbol
+    | typeof reflectedTypesSymbol
     | "formatError"
     | "from"
     | "to"
@@ -1734,6 +1902,7 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
   };
 
   const type = {
+    ...instance("Type"),
     name,
     parent,
     fromUnknown,
@@ -1904,6 +2073,154 @@ export const Symbol = /*#__PURE__*/ createTypeOfType("Symbol");
 export const Function = /*#__PURE__*/ createTypeOfType("Function");
 
 /**
+ * An Evolu {@link Type} validating other Evolu Types.
+ *
+ * This is useful when a Type itself crosses an unknown boundary or must be
+ * asserted with {@link assertType}.
+ */
+export const EvoluType = /*#__PURE__*/ createType(
+  "EvoluType",
+  (value): Result<AnyType, EvoluTypeError> =>
+    isInstance<AnyType & Instance<"Type">>("Type")(value)
+      ? ok(value)
+      : err({ type: "EvoluType", value }),
+  (error) =>
+    `A value ${safelyStringifyUnknownValue(error.value)} is not an Evolu Type.`,
+);
+
+/**
+ * Any concrete {@link Type}, regardless of its particular type parameters.
+ *
+ * This describes Type values such as {@link String} and Types created by
+ * factories. It is not the specific predefined {@link Unknown} Type.
+ *
+ * Runtime Type objects carry {@link Instance} identity. The marker stays out of
+ * the recursive `TypeNode` shape so composing Types does not repeatedly add its
+ * compiler cost; {@link EvoluType} bridges that runtime evidence to this type.
+ */
+export interface AnyType extends TypeNode {
+  readonly [concreteTypeSymbol]: true;
+}
+
+/** Error returned when a value is not an Evolu {@link Type}. */
+export interface EvoluTypeError extends TypeValueError<"EvoluType"> {}
+
+/** Nominal evidence that a value has one object tag. */
+export interface ObjectTag<Name extends TypeName> {
+  readonly [objectTagSymbol]: Name;
+}
+
+/** The {@link Type} returned by {@link createObjectTagType}. */
+export interface ObjectTagType<
+  Name extends TypeName,
+  OutputType extends TypeNode & { readonly Output: object },
+> extends Type<
+  "ObjectTag",
+  OutputType["Input"],
+  OutputType["Output"] & ObjectTag<Name>,
+  ObjectTagError<Name>,
+  OutputType,
+  ObjectTagError<Name> | InferErrors<OutputType>,
+  ChildCustomFrom<
+    OutputType,
+    OutputType["Output"] & ObjectTag<Name>,
+    ObjectTagError<Name>
+  >
+> {
+  /** The object tag required by this Type. */
+  readonly expected: Name;
+}
+
+/** An error returned when an object does not report the expected tag. */
+export interface ObjectTagError<
+  Expected extends TypeName = TypeName,
+> extends TypeError<"ObjectTag"> {
+  readonly expected: Expected;
+  readonly value: unknown;
+}
+
+interface ObjectTagOutputByName {
+  readonly Date: globalThis.Date;
+  readonly Uint8Array: globalThis.Uint8Array;
+  readonly ArrayBuffer: globalThis.ArrayBuffer;
+}
+
+/**
+ * Creates a realm-neutral {@link Type} for one object tag.
+ *
+ * Predefined built-in tags use their native Output type. A custom tag refines
+ * the supplied Type and adds nominal evidence to its Output, so only a value
+ * validated by the resulting Type is accepted by its typed operations.
+ *
+ * `Object.prototype.toString` recognizes legitimate built-ins from another
+ * realm. A trusted object can customize the result with `Symbol.toStringTag`,
+ * so this classification is intentionally forgeable and is not a security
+ * boundary. Primitive Outputs are rejected at compile time.
+ */
+export function createObjectTagType<Name extends keyof ObjectTagOutputByName>(
+  name: ValidateConcreteTypeName<Name>,
+): Type<
+  Name,
+  ObjectTagOutputByName[Name],
+  ObjectTagOutputByName[Name],
+  ObjectTagError<Name>
+>;
+export function createObjectTagType<
+  Name extends TypeName,
+  OutputType extends ConcreteTypeNode & { readonly Output: object },
+>(
+  name: ValidateConcreteTypeName<Name>,
+  outputType: ValidateOutput<OutputType>,
+): ObjectTagType<Name, OutputType>;
+export function createObjectTagType(
+  name: TypeName,
+  outputType?: ConcreteTypeNode & { readonly Output: object },
+): TypeNode {
+  if (outputType === undefined) {
+    return createRootType(
+      name,
+      (value): Result<object, ObjectTagError> =>
+        hasObjectTag(value, name)
+          ? ok(value as object)
+          : err({ type: "ObjectTag", expected: name, value }),
+      formatObjectTagError,
+    );
+  }
+
+  return globalThis.Object.assign(
+    createChildType(
+      "ObjectTag",
+      outputType,
+      (value): Result<object & ObjectTag<TypeName>, ObjectTagError> =>
+        hasObjectTag(value, name)
+          ? ok(value as object & ObjectTag<TypeName>)
+          : err({ type: "ObjectTag", expected: name, value }),
+      formatObjectTagError,
+    ),
+    { expected: name },
+  );
+}
+
+declare const objectTagSymbol: unique symbol;
+
+const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (error) =>
+  `A value ${safelyStringifyUnknownValue(error.value)} does not have the object tag ${safelyStringifyUnknownValue(error.expected)}.`;
+
+const hasObjectTag = (value: unknown, expected: string): boolean =>
+  value !== null &&
+  (typeof value === "object" || typeof value === "function") &&
+  globalThis.Object.prototype.toString.call(value) === `[object ${expected}]`;
+
+/** A realm-neutral JavaScript Date {@link Type}. */
+export const Date = /*#__PURE__*/ createObjectTagType("Date");
+
+/** A realm-neutral JavaScript Uint8Array {@link Type}. */
+export const Uint8Array = /*#__PURE__*/ createObjectTagType("Uint8Array");
+
+/** A realm-neutral JavaScript ArrayBuffer {@link Type}. */
+export const ArrayBuffer = /*#__PURE__*/ createObjectTagType("ArrayBuffer");
+
+/**
  * Creates a {@link Type} for instances of one constructor.
  *
  * Membership uses the intrinsic prototype chain, so subclasses are accepted,
@@ -1994,18 +2311,6 @@ type InstanceConstructorCompileTimeError = CompileTimeError<
   "Type",
   "Constructor must preserve one concrete constructor. Create a Union Type from separate Instance Types instead of passing a union or erased constructor."
 >;
-
-/** A same-realm JavaScript Date Instance {@link Type}. */
-export const Date = /*#__PURE__*/ (() =>
-  createInstanceOfType(globalThis.Date))();
-
-/** A same-realm JavaScript Uint8Array Instance {@link Type}. */
-export const Uint8Array = /*#__PURE__*/ (() =>
-  createInstanceOfType(globalThis.Uint8Array))();
-
-/** A same-realm JavaScript ArrayBuffer Instance {@link Type}. */
-export const ArrayBuffer = /*#__PURE__*/ (() =>
-  createInstanceOfType(globalThis.ArrayBuffer))();
 
 /**
  * Literal {@link Type}.
@@ -2344,8 +2649,21 @@ export interface UnionType<
   UnionInputParent<Members>,
   UnionTypeError<Members>
 > {
+  readonly [reflectedTypesSymbol]?: Members[number];
   readonly members: Members;
 }
+
+interface RuntimeUnionTypeNode extends RuntimeTypeNode {
+  readonly name: "Union";
+  readonly members: ReadonlyArray<TypeNode>;
+}
+
+const isRuntimeUnionTypeNode = (
+  type: RuntimeTypeNode,
+): type is RuntimeUnionTypeNode =>
+  type.name === "Union" &&
+  "members" in type &&
+  globalThis.Array.isArray(type.members);
 
 /** A root {@link Type} validating the encoded Inputs accepted by {@link union}. */
 export type UnionInputType<Input, Error extends TypeError> = Type<
@@ -2644,6 +2962,26 @@ export interface DateIsoError extends TypeError<"DateIso"> {
   readonly value: string;
 }
 
+/** Safely transforms a {@link Date} into a canonical {@link DateIso}. */
+export const DateIsoFromDate = /*#__PURE__*/ transform(
+  "DateIsoFromDate",
+  Date,
+  DateIso,
+  {
+    from: (value) =>
+      trySync(
+        () => globalThis.Date.prototype.toISOString.call(value),
+        (): DateIsoFromDateError => ({ type: "DateIsoFromDate", value }),
+      ),
+    to: (value) => new globalThis.Date(value),
+  },
+  () => "The Date cannot be represented as DateIso.",
+);
+
+export interface DateIsoFromDateError extends TypeError<"DateIsoFromDate"> {
+  readonly value: globalThis.Date;
+}
+
 /** Signed 64-bit {@link BigInt}. */
 export const Int64 = /*#__PURE__*/ brand(
   "Int64",
@@ -2743,8 +3081,9 @@ export type BrandFactory<
  *
  * Numeric parameters encoded in a {@link Brand} name must preserve their literal
  * types. Inline literals and `const` values do. Arithmetic expressions and
- * runtime numbers widen to `number` and are rejected so distinct constraints do
- * not all share one broad Brand.
+ * runtime numbers widen to `number`, while branded numbers can contain many
+ * runtime values. Both are rejected so distinct constraints do not all share
+ * one broad Brand.
  *
  * ### Example
  *
@@ -2799,14 +3138,14 @@ export type BrandFactory<
  */
 export type ValidateBrandFactoryNumber<Value extends number> =
   IsUnion<Value> extends false
-    ? number extends Value
+    ? {} extends Record<`${Value}`, never>
       ? Value & Readonly<Record<BrandFactoryNumberError, never>>
       : Value
     : Value & Readonly<Record<BrandFactoryNumberError, never>>;
 
 type BrandFactoryNumberError = CompileTimeError<
   "Brand Factory",
-  "Parameter must preserve one concrete numeric literal type instead of widening to number or using a union."
+  "Parameter must be one concrete numeric literal instead of a widened, union, or branded number."
 >;
 
 /**
@@ -3073,6 +3412,297 @@ export const UrlSafeString = /*#__PURE__*/ regex(
   /^[A-Za-z0-9_-]+$/,
 )(String);
 export type UrlSafeString = typeof UrlSafeString.Output;
+
+const base64UrlOptions = {
+  alphabet: "base64url",
+  omitPadding: true,
+} as const;
+
+const uint8ArrayToBase64UrlString = (bytes: Uint8Array): string => {
+  if (hasNodeBuffer) {
+    return globalThis.Buffer.from(bytes).toString("base64url");
+  }
+  const uint8ArrayPrototype: object = globalThis.Uint8Array.prototype;
+  if ("toBase64" in uint8ArrayPrototype) {
+    return bytes.toBase64(base64UrlOptions);
+  }
+
+  const binaryString = globalThis.Array.from(bytes, (byte) =>
+    globalThis.String.fromCodePoint(byte),
+  ).join("");
+  const base64 = globalThis.btoa(binaryString);
+
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+};
+
+const base64UrlStringToUint8Array = (value: string): Uint8Array => {
+  if (hasNodeBuffer) {
+    const buffer = globalThis.Buffer.from(value, "base64url");
+    return new globalThis.Uint8Array(buffer);
+  }
+  const uint8ArrayConstructor: object = globalThis.Uint8Array;
+  if ("fromBase64" in uint8ArrayConstructor) {
+    return globalThis.Uint8Array.fromBase64(value, base64UrlOptions);
+  }
+
+  let base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  while (base64.length % 4 !== 0) base64 += "=";
+
+  const binaryString = globalThis.atob(base64);
+  return globalThis.Uint8Array.from(binaryString, (character) =>
+    character.charCodeAt(0),
+  );
+};
+
+/** Base64Url text without padding. */
+export const Base64Url = /*#__PURE__*/ brand(
+  "Base64Url",
+  String,
+  (value) => {
+    const decoded = trySync(() => base64UrlStringToUint8Array(value));
+
+    return decoded.ok && uint8ArrayToBase64UrlString(decoded.value) === value
+      ? ok()
+      : err<Base64UrlError>({ type: "Base64Url", value });
+  },
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Base64Url string.`,
+);
+export type Base64Url = typeof Base64Url.Output;
+
+export interface Base64UrlError extends TypeError<"Base64Url"> {
+  readonly value: string;
+}
+
+/** Encodes bytes as {@link Base64Url}. */
+export const uint8ArrayToBase64Url = (bytes: Uint8Array): Base64Url =>
+  uint8ArrayToBase64UrlString(bytes) as Base64Url;
+
+/** Decodes {@link Base64Url} as bytes. */
+export const base64UrlToUint8Array = (value: Base64Url): Uint8Array =>
+  base64UrlStringToUint8Array(value);
+
+/** A non-empty URL-safe name containing at most 64 UTF-16 code units. */
+export const Name = /*#__PURE__*/ brand(
+  "Name",
+  UrlSafeString,
+  (value) =>
+    value.length <= 64 ? ok() : err<NameError>({ type: "Name", value }),
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Name.`,
+);
+export type Name = typeof Name.Output;
+
+export interface NameError extends TypeError<"Name"> {
+  readonly value: string;
+}
+
+/** Stable valid {@link Name} for tests and internal fixtures. */
+export const testName = /*#__PURE__*/ Name.orThrow("Name");
+
+/** A trimmed password containing between 8 and 64 UTF-16 code units. */
+export const SimplePassword = /*#__PURE__*/ brand(
+  "SimplePassword",
+  /*#__PURE__*/ minLength(8)(/*#__PURE__*/ maxLength(64)(TrimmedString)),
+);
+export type SimplePassword = typeof SimplePassword.Output;
+
+/** A valid English BIP39 mnemonic. */
+export const Mnemonic = /*#__PURE__*/ brand(
+  "Mnemonic",
+  NonEmptyTrimmedString,
+  (value) =>
+    bip39.validateMnemonic(value, wordlist)
+      ? ok()
+      : err<MnemonicError>({ type: "Mnemonic", value }),
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid BIP39 mnemonic.`,
+);
+export type Mnemonic = typeof Mnemonic.Output;
+
+export interface MnemonicError extends TypeError<"Mnemonic"> {
+  readonly value: string;
+}
+
+/** Evolu Id: 16 bytes encoded as a 22-character {@link Base64Url}. */
+export const Id = /*#__PURE__*/ brand(
+  "Id",
+  String,
+  (value) =>
+    value.length === 22 && Base64Url.from.parent(value).ok
+      ? ok()
+      : err<IdError>({ type: "Id", value }),
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Id.`,
+);
+export type Id = typeof Id.Output;
+
+export interface IdError extends TypeError<"Id"> {
+  readonly value: string;
+}
+
+/** Creates a cryptographically random {@link Id}. */
+export const createId = <B extends string = never>(
+  deps: RandomBytesDep,
+  ..._validation: IdBrandValidation<B>
+): CreatedId<B> =>
+  uint8ArrayToBase64Url(deps.randomBytes.create(16)) as unknown as CreatedId<B>;
+
+/** Deterministically creates an {@link Id} from the first 16 SHA-256 bytes. */
+export const createIdFromString = <B extends string = never>(
+  value: string,
+  ..._validation: IdBrandValidation<B>
+): CreatedId<B> =>
+  idBytesToId(
+    sha256(utf8ToBytes(value)).slice(0, 16) as IdBytes,
+  ) as CreatedId<B>;
+
+/** Creates an {@link Id} whose bytes use the UUID v7 timestamp layout. */
+export const createIdAsUuidv7 = <B extends string = never>(
+  deps: RandomBytesDep & TimeDep,
+  ..._validation: IdBrandValidation<B>
+): CreatedId<B> => {
+  const bytes = deps.randomBytes.create(16);
+  const timestamp = globalThis.BigInt(deps.time.now());
+
+  bytes[0] = globalThis.Number((timestamp >> 40n) & 0xffn);
+  bytes[1] = globalThis.Number((timestamp >> 32n) & 0xffn);
+  bytes[2] = globalThis.Number((timestamp >> 24n) & 0xffn);
+  bytes[3] = globalThis.Number((timestamp >> 16n) & 0xffn);
+  bytes[4] = globalThis.Number((timestamp >> 8n) & 0xffn);
+  bytes[5] = globalThis.Number(timestamp & 0xffn);
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  return uint8ArrayToBase64Url(bytes) as unknown as CreatedId<B>;
+};
+
+/** A table-specific {@link Id} Type. */
+export const id = <Table extends TypeName>(
+  table: ValidateTableName<Table>,
+): TableId<Table> => {
+  const concreteTable = table as Table;
+
+  return globalThis.Object.assign(
+    createType(
+      "TableId",
+      String,
+      (value): Result<Id & Brand<Table>, TableIdError<Table>> =>
+        Id.from.parent(value).ok
+          ? ok(value as Id & Brand<Table>)
+          : err({ type: "TableId", table: concreteTable, value }),
+      (error) =>
+        `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Id for table ${error.table}.`,
+    ),
+    { table: concreteTable },
+  );
+};
+
+export interface TableId<Table extends TypeName> extends Type<
+  "TableId",
+  string,
+  Id & Brand<Table>,
+  TableIdError<Table>,
+  typeof String
+> {
+  readonly table: Table;
+}
+
+export interface TableIdError<
+  Table extends TypeName = TypeName,
+> extends TypeError<"TableId"> {
+  readonly table: Table;
+  readonly value: string;
+}
+
+type ValidateTableName<Table extends TypeName> =
+  IsTypeNameUnion<Table> extends false
+    ? {} extends Readonly<Record<Table, never>>
+      ? ConcreteTableNameError
+      : Table
+    : ConcreteTableNameError;
+
+type ConcreteTableNameError = CompileTimeError<
+  "TableId",
+  "Table name must be one concrete literal, not a union or widened TypeName."
+>;
+
+type CreatedId<B extends string> = [B] extends [never] ? Id : Id & Brand<B>;
+
+type IdBrandValidation<B extends string> = [IdBrandValidationError<B>] extends [
+  never,
+]
+  ? []
+  : [ValidationFailure<IdBrandValidationError<B>>];
+
+type IdBrandValidationError<B extends string> = [B] extends [never]
+  ? never
+  : IsUnion<B> extends false
+    ? {} extends Readonly<Record<B, never>>
+      ? ConcreteIdBrandError
+      : never
+    : ConcreteIdBrandError;
+
+type ConcreteIdBrandError = CompileTimeError<
+  "Id",
+  "Brand must be one concrete string literal, not a union or widened string."
+>;
+
+/** Binary representation of an {@link Id}. */
+export const IdBytes = /*#__PURE__*/ brand(
+  "IdBytes",
+  /*#__PURE__*/ length(16)(Uint8Array),
+);
+export type IdBytes = typeof IdBytes.Output;
+
+export const idBytesTypeValueLength = 16 as NonNegativeInt;
+
+export const idToIdBytes = (value: Id): IdBytes =>
+  base64UrlToUint8Array(value as unknown as Base64Url) as IdBytes;
+
+export const idBytesToId = (value: IdBytes): Id =>
+  uint8ArrayToBase64Url(value) as unknown as Id;
+
+/** Decimal string representation of a signed {@link Int64}. */
+export const Int64String = /*#__PURE__*/ brand(
+  "Int64String",
+  NonEmptyTrimmedString,
+  (value) => {
+    const negative = value.startsWith("-");
+
+    if (
+      value.length > (negative ? 20 : 19) ||
+      !/^(?:0|-?[1-9]\d*)$/.test(value)
+    ) {
+      return err<Int64StringError>({ type: "Int64String", value });
+    }
+
+    const digits = negative ? value.slice(1) : value;
+    const max = negative ? "9223372036854775808" : "9223372036854775807";
+
+    return digits.length < 19 || digits <= max
+      ? ok()
+      : err<Int64StringError>({ type: "Int64String", value });
+  },
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid Int64 string.`,
+);
+export type Int64String = typeof Int64String.Output;
+
+export interface Int64StringError extends TypeError<"Int64String"> {
+  readonly value: string;
+}
+
+/** Transforms an {@link Int64String} into an {@link Int64}. */
+export const Int64FromInt64String = /*#__PURE__*/ transform(
+  "Int64FromInt64String",
+  Int64String,
+  Int64,
+  {
+    from: (value) => ok(globalThis.BigInt(value)),
+    to: (value) => globalThis.String(value) as Int64String,
+  },
+);
 
 /** Adds a {@link Brand} requiring a number greater than or equal to zero. */
 export const nonNegative: BrandFactory<
@@ -3665,11 +4295,11 @@ export interface BetweenError<
  * remaining element stages. Additional suffixes move that boundary toward the
  * element's root Type.
  *
- * An Array must use this realm's `Array.prototype`, be dense, and have no own
+ * An Array must be recognized by `Array.isArray`, be dense, and have no own
  * properties other than `length` and the indexed data properties from `0`
- * through `length - 1`. Array subclasses, custom-prototype arrays,
- * foreign-realm arrays, sparse arrays, accessor elements, and excess properties
- * are rejected.
+ * through `length - 1`. Subclasses, custom-prototype arrays, and foreign-realm
+ * arrays are accepted when their own data representation is valid. Sparse
+ * arrays, accessor elements, and excess properties are rejected.
  *
  * ### Example
  *
@@ -3699,145 +4329,11 @@ export interface BetweenError<
  */
 export const array = <ElementType extends ConcreteTypeNode>(
   element: ValidateElement<ElementType>,
-): ArrayType<ElementType> => {
-  const typeElement = element as unknown as ElementType & RuntimeTypeNode;
-  const cached = arrayTypeByElement.get(typeElement);
-
-  if (cached) return cached as ArrayType<ElementType>;
-
-  const validate = (
-    value: unknown,
-    validateElement: RuntimeOutputValidation,
-    options: ValidationOptions,
-  ): Result<ReadonlyArray<unknown>, ArrayError> => {
-    if (!Array.isArray(value)) {
-      return err({
-        type: "Array",
-        reason: { kind: "NotArray", value },
-      });
-    }
-    if (!hasCurrentRealmArrayPrototype(value)) {
-      return err({
-        type: "Array",
-        reason: { kind: "UnexpectedPrototype", value },
-      });
-    }
-
-    return validateArrayItems(value, validateElement, options, true);
-  };
-  const fromUnknown = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) => validate(value, typeElement.fromUnknown, options);
-  const validateOutput = (
-    value: unknown,
-    options: ValidationOptions = firstValidationOptions,
-  ) => validate(value, typeElement[outputValidationSymbol], options);
-  const formatError: TypeErrorFormatter<ArrayError> = (error) => {
-    if (error.reason.kind === "NotArray") {
-      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not an array.`;
-    }
-    if (error.reason.kind !== "Items") {
-      return `The value is an array, but an Array Output must use this realm's Array.prototype. ${boundaryRepresentationGuidance}`;
-    }
-
-    const issue = error.reason.issues[0] as ArrayStructuralIssue;
-
-    switch (issue.kind) {
-      case "Hole":
-        return `An array element at index ${issue.index} is missing.`;
-      case "Accessor":
-        return `An array element at index ${issue.index} must be a data property.`;
-      case "ExcessProperty":
-        return "An excess Array property is not allowed. Remove it or use a different Type.";
-    }
-  };
-  const parent = typeElement.parent
-    ? (array as unknown as (element: ConcreteTypeNode) => TypeNode)(
-        typeElement.parent as ConcreteTypeNode,
-      )
-    : null;
-
-  const encodeElement = typeElement[encoderSymbol];
-  const canSkipTo = encodeElement === identity;
-
-  const fromParent = typeElement[fromSymbol].parent
-    ? mapRuntimeOperations(
-        typeElement[fromSymbol].parent,
-        (operation) =>
-          (
-            value: ReadonlyArray<unknown>,
-            options: ValidationOptions = firstValidationOptions,
-          ) =>
-            validateArrayItems(
-              value,
-              operation as (
-                value: unknown,
-                options: ValidationOptions,
-              ) => Result<unknown, TypeError>,
-              options,
-              false,
-            ),
-      )
-    : undefined;
-  const from = createFromOperation(fromParent);
-  const to: RuntimeEncoder = canSkipTo
-    ? identity
-    : (value: ReadonlyArray<unknown>) => {
-        let output: Array<unknown> | undefined;
-
-        for (let index = 0; index < value.length; index++) {
-          const item = value[index];
-          const encoded = encodeElement(item as never);
-
-          if (!globalThis.Object.is(encoded, item)) {
-            output ??= copyArrayPrefix(value, index);
-          }
-          if (output) output[index] = encoded;
-        }
-
-        return output ?? value;
-      };
-
-  const is = (value: unknown): boolean => {
-    if (!Array.isArray(value)) return false;
-    if (!hasCurrentRealmArrayPrototype(value)) return false;
-    if (Reflect.ownKeys(value).length !== value.length + 1) return false;
-
-    for (let index = 0; index < value.length; index++) {
-      const descriptor = globalThis.Object.getOwnPropertyDescriptor(
-        value,
-        index,
-      );
-      if (descriptor === undefined || !("value" in descriptor)) return false;
-      if (!typeElement.is(descriptor.value)) return false;
-    }
-
-    return true;
-  };
-  const getTypeIssues = createCollectionRuntimeTypeIssues(
-    "Array",
-    "Items",
-    formatError as TypeErrorFormatter<TypeError>,
-    () => typeElement,
-  );
-
-  const type = createTypeNode<ArrayType<ElementType>>(
-    "Array",
-    parent,
-    fromUnknown,
-    is,
-    validateOutput,
-    from,
-    to,
-    getTypeIssues,
-    { element: typeElement },
-  );
-
-  arrayTypeByElement.set(typeElement, type);
-
-  return type;
-};
+): ArrayType<ElementType> =>
+  createHomogeneousCollectionType(
+    element as unknown as RuntimeTypeNode,
+    arrayRuntimeConfig,
+  ) as ArrayType<ElementType>;
 
 export interface ArrayType<ElementType extends TypeNode> extends Type<
   "Array",
@@ -3848,6 +4344,7 @@ export interface ArrayType<ElementType extends TypeNode> extends Type<
   ArrayError<InferErrors<ElementType>>,
   ArrayCustomFrom<ElementType>
 > {
+  readonly [reflectedTypesSymbol]?: ElementType;
   readonly element: ElementType;
 }
 
@@ -3915,22 +4412,12 @@ type ArrayNodeError<ElementType extends TypeNode> = [
   : ArrayError<ElementType["Error"]>;
 
 export type ArrayError<Error extends TypeError = TypeError> =
-  | ArrayNotArrayError
-  | ArrayUnexpectedPrototypeError
-  | ArrayItemsErrorValue<Error, true>;
+  ArrayNotArrayError | ArrayItemsErrorValue<Error, true>;
 
 export interface ArrayNotArrayError extends TypeError<"Array"> {
   readonly reason: {
     readonly kind: "NotArray";
     readonly value: unknown;
-  };
-}
-
-/** An error returned when an {@link array} input has an unexpected prototype. */
-export interface ArrayUnexpectedPrototypeError extends TypeError<"Array"> {
-  readonly reason: {
-    readonly kind: "UnexpectedPrototype";
-    readonly value: ReadonlyArray<unknown>;
   };
 }
 
@@ -3987,6 +4474,87 @@ interface ArrayItemsErrorValue<
   };
 }
 
+const arrayTypeByElement = /*#__PURE__*/ new WeakMap<TypeNode, TypeNode>();
+
+const validateArrayCollection = (
+  value: unknown,
+  validateElement: RuntimeOutputValidation,
+  options: ValidationOptions,
+): Result<ReadonlyArray<unknown>, ArrayError> => {
+  if (!Array.isArray(value)) {
+    return err({
+      type: "Array",
+      reason: { kind: "NotArray", value },
+    });
+  }
+  return validateArrayItems(value, validateElement, options, true);
+};
+
+const encodeArrayCollection = (
+  value: ReadonlyArray<unknown>,
+  encodeElement: RuntimeEncoder,
+): ReadonlyArray<unknown> => {
+  let output: Array<unknown> | undefined;
+
+  for (let index = 0; index < value.length; index++) {
+    const item = value[index];
+    const encoded = encodeElement(item as never);
+
+    if (!globalThis.Object.is(encoded, item)) {
+      output ??= copyArrayPrefix(value, index);
+    }
+    if (output) output[index] = encoded;
+  }
+
+  return output ?? value;
+};
+
+const isArrayCollection = (
+  value: unknown,
+  isElement: (value: unknown) => boolean,
+): boolean => {
+  if (!Array.isArray(value)) return false;
+  if (Reflect.ownKeys(value).length !== value.length + 1) return false;
+
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = globalThis.Object.getOwnPropertyDescriptor(value, index);
+    if (descriptor === undefined || !("value" in descriptor)) return false;
+    if (!isElement(descriptor.value)) return false;
+  }
+
+  return true;
+};
+
+const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
+  if (error.reason.kind === "NotArray") {
+    return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not an array.`;
+  }
+
+  const issue = error.reason.issues[0] as ArrayStructuralIssue;
+
+  switch (issue.kind) {
+    case "Hole":
+      return `An array element at index ${issue.index} is missing.`;
+    case "Accessor":
+      return `An array element at index ${issue.index} must be a data property.`;
+    case "ExcessProperty":
+      return "An excess Array property is not allowed. Remove it or use a different Type.";
+  }
+};
+
+const arrayRuntimeConfig: HomogeneousCollectionRuntimeConfig<
+  ReadonlyArray<unknown>
+> = {
+  name: "Array",
+  typeByElement: arrayTypeByElement,
+  validate: validateArrayCollection,
+  validateItems: (value, validateElement, options) =>
+    validateArrayItems(value, validateElement, options, false),
+  encode: encodeArrayCollection,
+  is: isArrayCollection,
+  formatError: formatArrayError as TypeErrorFormatter<TypeError>,
+};
+
 const validateArrayItems = (
   value: ReadonlyArray<unknown>,
   validate: (
@@ -3995,8 +4563,44 @@ const validateArrayItems = (
   ) => Result<unknown, TypeError>,
   options: ValidationOptions,
   checkStructure: boolean,
-): Result<ReadonlyArray<unknown>, ArrayItemsError<TypeError>> => {
-  let issues: Array<ArrayIssue<TypeError>> | undefined;
+): Result<ReadonlyArray<unknown>, ArrayItemsError<TypeError>> =>
+  validateIndexedArrayItems(
+    "Array",
+    value,
+    validate,
+    options,
+    checkStructure,
+  );
+
+type IndexedArrayName = "Array" | "Tuple";
+
+type IndexedArrayIssue =
+  | ArrayStructuralIssue
+  | ArrayElementIssue<TypeError>;
+
+interface IndexedArrayItemsError<Name extends IndexedArrayName>
+  extends TypeError<Name> {
+  readonly reason: {
+    readonly kind: "Items";
+    readonly issues: NonEmptyReadonlyArray<IndexedArrayIssue>;
+  };
+}
+
+// Array and Tuple share their structural and element validation traversal.
+// Encoding and Output membership stay feature-local because sharing those
+// shorter hot paths measurably increases standalone bundles.
+const validateIndexedArrayItems = <Name extends IndexedArrayName>(
+  name: Name,
+  value: ReadonlyArray<unknown>,
+  validate: (
+    value: unknown,
+    options: ValidationOptions,
+    index: number,
+  ) => Result<unknown, TypeError>,
+  options: ValidationOptions,
+  checkStructure: boolean,
+): Result<ReadonlyArray<unknown>, IndexedArrayItemsError<Name>> => {
+  let issues: Array<IndexedArrayIssue> | undefined;
   let output: Array<unknown> | undefined;
 
   if (checkStructure) {
@@ -4043,7 +4647,7 @@ const validateArrayItems = (
     } else {
       item = value[index];
     }
-    const result = validate(item, options);
+    const result = validate(item, options, index);
 
     if (result.ok) {
       if (issues !== undefined) continue;
@@ -4063,12 +4667,10 @@ const validateArrayItems = (
   return issues == null
     ? ok(output ?? value)
     : err({
-        type: "Array",
+        type: name,
         reason: {
           kind: "Items",
-          issues: issues as unknown as NonEmptyReadonlyArray<
-            ArrayIssue<TypeError>
-          >,
+          issues: issues as unknown as NonEmptyReadonlyArray<IndexedArrayIssue>,
         },
       });
 };
@@ -4086,15 +4688,380 @@ const copyArrayPrefix = (
   return output;
 };
 
-const arrayTypeByElement = /*#__PURE__*/ new WeakMap<TypeNode, unknown>();
+/**
+ * Set {@link Type} whose every element must match one Type.
+ *
+ * Direct Sets from this or another realm are accepted. Set subclasses are
+ * rejected. A Set must have no own properties; its elements are validated in
+ * iteration order. Classification uses the realm-neutral object tag and
+ * prototype structure under Evolu Type's trusted JavaScript policy.
+ */
+export const set = <ElementType extends ConcreteTypeNode>(
+  element: ValidateElement<ElementType>,
+): SetType<ElementType> =>
+  createHomogeneousCollectionType(
+    element as unknown as RuntimeTypeNode,
+    setRuntimeConfig,
+  ) as SetType<ElementType>;
 
-const boundaryRepresentationGuidance =
-  "For a trusted return contract, cast and skip this Type; otherwise, use boundary-specific validation or transformation.";
+export interface SetType<ElementType extends TypeNode> extends Type<
+  "Set",
+  ReadonlySet<ElementType["Input"]>,
+  ReadonlySet<ElementType["Output"]>,
+  SetNodeError<ElementType>,
+  SetParent<ElementType>,
+  SetError<InferErrors<ElementType>>,
+  SetCustomFrom<ElementType>
+> {
+  readonly [reflectedTypesSymbol]?: ElementType;
+  readonly element: ElementType;
+}
 
-const hasCurrentRealmArrayPrototype = (
-  value: ReadonlyArray<unknown>,
-): boolean =>
-  globalThis.Object.getPrototypeOf(value) === globalThis.Array.prototype;
+type SetCustomFrom<ElementType extends TypeNode> = [
+  ElementType["parent"],
+] extends [TypeNode]
+  ? SetFromOperation<ElementType>
+  : never;
+
+type SetFromOperation<ElementType extends TypeNode> = [
+  ElementType["parent"],
+] extends [infer Parent extends TypeNode]
+  ? TypeOperationFn<
+      "from",
+      ReadonlySet<ElementType["Output"]>,
+      ReadonlySet<ElementType["Output"]>,
+      never
+    > &
+      SetFromParentOperations<
+        ElementType["Output"],
+        ElementType["Error"],
+        Parent
+      >
+  : TypeOperationFn<
+      "from",
+      ReadonlySet<ElementType["Output"]>,
+      ReadonlySet<ElementType["Output"]>,
+      never
+    >;
+
+interface SetFromParentOperations<
+  Output,
+  Error extends TypeError,
+  Boundary extends TypeNode,
+> {
+  readonly parent: TypeOperationFn<
+    "from",
+    ReadonlySet<Boundary["Output"]>,
+    ReadonlySet<Output>,
+    SetElementsError<Error>
+  > &
+    ([Boundary["parent"]] extends [infer Parent extends TypeNode]
+      ? SetFromParentOperations<Output, Error | Boundary["Error"], Parent>
+      : unknown);
+}
+
+type SetParent<ElementType extends TypeNode> = [ElementType["parent"]] extends [
+  infer ParentElement extends TypeNode,
+]
+  ? SetType<ParentElement>
+  : null;
+
+type SetNodeError<ElementType extends TypeNode> = [
+  ElementType["parent"],
+] extends [TypeNode]
+  ? SetElementsError<ElementType["Error"]>
+  : SetError<ElementType["Error"]>;
+
+export type SetError<Error extends TypeError = TypeError> =
+  | SetNotSetError
+  | SetUnexpectedPrototypeError
+  | SetItemsErrorValue<Error, true>;
+
+export interface SetNotSetError extends TypeError<"Set"> {
+  readonly reason: {
+    readonly kind: "NotSet";
+    readonly value: unknown;
+  };
+}
+
+/** An error returned when a {@link set} input is a Set subclass. */
+export interface SetUnexpectedPrototypeError extends TypeError<"Set"> {
+  readonly reason: {
+    readonly kind: "UnexpectedPrototype";
+    readonly value: ReadonlySet<unknown>;
+  };
+}
+
+export interface SetExcessPropertyIssue {
+  readonly kind: "ExcessProperty";
+  readonly key: string | symbol;
+}
+
+type SetStructuralIssue = SetExcessPropertyIssue;
+
+export type SetElementIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Element";
+      readonly index: number;
+      readonly error: Error;
+    }
+  : never;
+
+export type SetItemsError<Error extends TypeError> = SetItemsErrorValue<
+  Error,
+  true
+>;
+
+export type SetElementsError<Error extends TypeError> = [Error] extends [never]
+  ? never
+  : SetItemsErrorValue<Error, false>;
+
+interface SetItemsErrorValue<
+  Error extends TypeError,
+  IncludeStructuralIssues extends boolean,
+> extends TypeError<"Set"> {
+  readonly reason: {
+    readonly kind: "Items";
+    readonly issues: NonEmptyReadonlyArray<
+      | (true extends IncludeStructuralIssues ? SetStructuralIssue : never)
+      | SetElementIssue<Error>
+    >;
+  };
+}
+
+type HomogeneousCollectionName = "Array" | "Set";
+
+interface HomogeneousCollectionRuntimeConfig<Collection> {
+  readonly name: HomogeneousCollectionName;
+  readonly typeByElement: WeakMap<TypeNode, TypeNode>;
+  readonly validate: (
+    value: unknown,
+    validateElement: RuntimeOutputValidation,
+    options: ValidationOptions,
+  ) => Result<Collection, TypeError>;
+  readonly validateItems: (
+    value: Collection,
+    validateElement: RuntimeOutputValidation,
+    options: ValidationOptions,
+  ) => Result<Collection, TypeError>;
+  readonly encode: (
+    value: Collection,
+    encodeElement: RuntimeEncoder,
+  ) => Collection;
+  readonly is: (
+    value: unknown,
+    isElement: (value: unknown) => boolean,
+  ) => boolean;
+  readonly formatError: TypeErrorFormatter<TypeError>;
+}
+
+// Intentional tree-shaking trade-off (Vite/Webpack): sharing costs
+// Array(String) +82/+63 B gzip, while Array(String)+Set(String) is 2501/2492 B
+// and Set adds only +303/+304 B once Array is present. See TreeShaking.test.ts.
+const createHomogeneousCollectionType = <Collection>(
+  typeElement: RuntimeTypeNode,
+  config: HomogeneousCollectionRuntimeConfig<Collection>,
+): TypeNode => {
+  const cached = config.typeByElement.get(typeElement);
+
+  if (cached) return cached;
+
+  const fromUnknown = (
+    value: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ) => config.validate(value, typeElement.fromUnknown, options);
+  const validateOutput = (
+    value: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ) => config.validate(value, typeElement[outputValidationSymbol], options);
+  const parent = typeElement.parent
+    ? createHomogeneousCollectionType(
+        typeElement.parent as RuntimeTypeNode,
+        config,
+      )
+    : null;
+  const fromParent = typeElement[fromSymbol].parent
+    ? mapRuntimeOperations(
+        typeElement[fromSymbol].parent,
+        (operation) =>
+          (value: Collection, options = firstValidationOptions) =>
+            config.validateItems(
+              value,
+              operation as RuntimeOutputValidation,
+              options,
+            ),
+      )
+    : undefined;
+  const from = createFromOperation(fromParent);
+  const encodeElement = typeElement[encoderSymbol];
+  const to: RuntimeEncoder =
+    encodeElement === identity
+      ? identity
+      : (value: Collection) => config.encode(value, encodeElement);
+  const getTypeIssues = createCollectionRuntimeTypeIssues(
+    config.name,
+    "Items",
+    config.formatError,
+    () => typeElement,
+  );
+  const type = createTypeNode(
+    config.name,
+    parent,
+    fromUnknown,
+    (value) => config.is(value, typeElement.is),
+    validateOutput,
+    from,
+    to,
+    getTypeIssues,
+    { element: typeElement },
+  );
+
+  config.typeByElement.set(typeElement, type);
+
+  return type;
+};
+
+const setTypeByElement = /*#__PURE__*/ new WeakMap<TypeNode, TypeNode>();
+
+const validateSetCollection = (
+  value: unknown,
+  validateElement: RuntimeOutputValidation,
+  options: ValidationOptions,
+): Result<ReadonlySet<unknown>, SetError> => {
+  if (!hasObjectTag(value, "Set")) {
+    return err({
+      type: "Set",
+      reason: { kind: "NotSet", value },
+    });
+  }
+  if (!hasDirectSetPrototype(value as object)) {
+    return err({
+      type: "Set",
+      reason: {
+        kind: "UnexpectedPrototype",
+        value: value as ReadonlySet<unknown>,
+      },
+    });
+  }
+
+  return validateSetItems(
+    value as ReadonlySet<unknown>,
+    validateElement,
+    options,
+    true,
+  );
+};
+
+const encodeSetCollection = (
+  value: ReadonlySet<unknown>,
+  encodeElement: RuntimeEncoder,
+): ReadonlySet<unknown> => {
+  let changed = false;
+  const output = new globalThis.Set<unknown>();
+
+  for (const item of value) {
+    const encoded = encodeElement(item as never);
+    if (!globalThis.Object.is(encoded, item)) changed = true;
+    output.add(encoded);
+  }
+
+  return changed ? output : value;
+};
+
+const isSetCollection = (
+  value: unknown,
+  isElement: (value: unknown) => boolean,
+): boolean => {
+  if (!hasObjectTag(value, "Set")) return false;
+  if (!hasDirectSetPrototype(value as object)) return false;
+  if (Reflect.ownKeys(value as object).length !== 0) return false;
+  for (const item of value as ReadonlySet<unknown>) {
+    if (!isElement(item)) return false;
+  }
+  return true;
+};
+
+const formatSetError: TypeErrorFormatter<SetError> = (error) => {
+  if (error.reason.kind === "NotSet") {
+    return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Set.`;
+  }
+  if (error.reason.kind === "UnexpectedPrototype") {
+    return "The value is a Set subclass, but a Set Output must be a direct Set.";
+  }
+
+  const issue = error.reason.issues[0] as SetStructuralIssue;
+  return `An excess Set property ${safelyStringifyUnknownValue(issue.key)} is not allowed.`;
+};
+
+const hasDirectSetPrototype = (value: object): boolean => {
+  const prototype: unknown = globalThis.Object.getPrototypeOf(value);
+  if (prototype === null) return false;
+
+  const objectPrototype: unknown = globalThis.Object.getPrototypeOf(prototype);
+
+  return (
+    objectPrototype !== null &&
+    globalThis.Object.getPrototypeOf(objectPrototype) === null
+  );
+};
+
+const setRuntimeConfig: HomogeneousCollectionRuntimeConfig<
+  ReadonlySet<unknown>
+> = {
+  name: "Set",
+  typeByElement: setTypeByElement,
+  validate: validateSetCollection,
+  validateItems: (value, validateElement, options) =>
+    validateSetItems(value, validateElement, options, false),
+  encode: encodeSetCollection,
+  is: isSetCollection,
+  formatError: formatSetError as TypeErrorFormatter<TypeError>,
+};
+
+const validateSetItems = (
+  value: ReadonlySet<unknown>,
+  validate: RuntimeOutputValidation,
+  options: ValidationOptions,
+  checkStructure: boolean,
+): Result<ReadonlySet<unknown>, SetItemsError<TypeError>> => {
+  let issues:
+    Array<SetStructuralIssue | SetElementIssue<TypeError>> | undefined;
+  let changed = false;
+  const output = new globalThis.Set<unknown>();
+
+  if (checkStructure) {
+    for (const key of Reflect.ownKeys(value)) {
+      (issues ??= []).push({ kind: "ExcessProperty", key });
+      if (options.errors === "first") break;
+    }
+  }
+
+  let index = 0;
+  for (const item of value) {
+    if (issues !== undefined && options.errors === "first") break;
+    const result = validate(item, options);
+
+    if (result.ok) {
+      if (!globalThis.Object.is(result.value, item)) changed = true;
+      output.add(result.value);
+    } else {
+      (issues ??= []).push({ kind: "Element", index, error: result.error });
+    }
+    index++;
+  }
+
+  return issues === undefined
+    ? ok(changed ? output : value)
+    : err({
+        type: "Set",
+        reason: {
+          kind: "Items",
+          issues: issues as unknown as NonEmptyReadonlyArray<
+            SetStructuralIssue | SetElementIssue<TypeError>
+          >,
+        },
+      });
+};
 
 /**
  * Tuple {@link Type}.
@@ -4111,10 +5078,11 @@ const hasCurrentRealmArrayPrototype = (
  * element stages. This collapsed input boundary keeps a Tuple to at most one
  * `.parent` suffix even when its element Types have different pipeline depths.
  *
- * A Tuple must use this realm's `Array.prototype`, have exactly the declared
+ * A Tuple must be recognized by `Array.isArray`, have exactly the declared
  * length, be dense, and have no own properties other than `length` and the
  * indexed data properties for its elements. Array subclasses, custom-prototype
- * arrays, foreign-realm arrays, sparse arrays, accessor elements, and excess
+ * arrays, and foreign-realm arrays are accepted when their own data
+ * representation is valid. Sparse arrays, accessor elements, and excess
  * properties are rejected.
  *
  * ### Example
@@ -4157,12 +5125,6 @@ const createTupleType = (
       return err({
         type: "Tuple",
         reason: { kind: "NotArray", value },
-      });
-    }
-    if (!hasCurrentRealmArrayPrototype(value)) {
-      return err({
-        type: "Tuple",
-        reason: { kind: "UnexpectedPrototype", value },
       });
     }
     if (value.length !== expectedLength) {
@@ -4211,20 +5173,16 @@ const createTupleType = (
     if (error.reason.kind === "InvalidLength") {
       return `A Tuple must contain exactly ${error.reason.expected} elements, but the value contains ${error.reason.actual}.`;
     }
-    if (error.reason.kind === "Items") {
-      const issue = error.reason.issues[0] as TupleStructuralIssue;
+    const issue = error.reason.issues[0] as TupleStructuralIssue;
 
-      switch (issue.kind) {
-        case "Hole":
-          return `A Tuple element at index ${issue.index} is missing.`;
-        case "Accessor":
-          return `A Tuple element at index ${issue.index} must be a data property.`;
-        case "ExcessProperty":
-          return "An excess Tuple property is not allowed. Remove it or use a different Type.";
-      }
+    switch (issue.kind) {
+      case "Hole":
+        return `A Tuple element at index ${issue.index} is missing.`;
+      case "Accessor":
+        return `A Tuple element at index ${issue.index} must be a data property.`;
+      case "ExcessProperty":
+        return "An excess Tuple property is not allowed. Remove it or use a different Type.";
     }
-
-    return `The value is an array, but a Tuple Output must use this realm's Array.prototype. ${boundaryRepresentationGuidance}`;
   };
   const rootElements = typeElements.map(
     getTerminalRuntimeNode,
@@ -4271,7 +5229,6 @@ const createTupleType = (
       };
   const is = (value: unknown): boolean => {
     if (!Array.isArray(value)) return false;
-    if (!hasCurrentRealmArrayPrototype(value)) return false;
     if (value.length !== expectedLength) return false;
     if (Reflect.ownKeys(value).length !== expectedLength + 1) return false;
 
@@ -4319,6 +5276,7 @@ export interface TupleType<Elements extends TupleElements> extends Type<
     : RootTupleType<RootTupleElements<Elements>>,
   TupleError<InferErrors<Elements[number]>>
 > {
+  readonly [reflectedTypesSymbol]?: Elements[number];
   readonly elements: Elements;
 }
 
@@ -4350,7 +5308,10 @@ type RootTupleType<Elements extends TupleElements> = Type<
   TupleShape<Elements, "Input">,
   TupleShape<Elements, "Output">,
   TupleError<Elements[number]["Error"]>
-> & { readonly elements: Elements };
+> & {
+  readonly [reflectedTypesSymbol]?: Elements[number];
+  readonly elements: Elements;
+};
 
 type TupleValidation<Elements extends TupleElements> = [
   ValidateTupleElements<Elements>,
@@ -4386,7 +5347,6 @@ type TupleElementConcreteTypeError = CompileTimeError<
 /** An error returned while validating a {@link tuple}. */
 export type TupleError<Error extends TypeError = TypeError> =
   | TupleNotArrayError
-  | TupleUnexpectedPrototypeError
   | TupleInvalidLengthError
   | TupleItemsErrorValue<Error, true>;
 
@@ -4395,14 +5355,6 @@ export interface TupleNotArrayError extends TypeError<"Tuple"> {
   readonly reason: {
     readonly kind: "NotArray";
     readonly value: unknown;
-  };
-}
-
-/** An error returned when a {@link tuple} input has an unexpected prototype. */
-export interface TupleUnexpectedPrototypeError extends TypeError<"Tuple"> {
-  readonly reason: {
-    readonly kind: "UnexpectedPrototype";
-    readonly value: ReadonlyArray<unknown>;
   };
 }
 
@@ -4486,84 +5438,15 @@ const validateTupleItems = (
   ) => Result<unknown, TypeError>,
   options: ValidationOptions,
   checkStructure: boolean,
-): Result<ReadonlyArray<unknown>, TupleItemsError<TypeError>> => {
-  let issues: Array<TupleIssue<TypeError>> | undefined;
-  let output: Array<unknown> | undefined;
-
-  if (checkStructure) {
-    for (const key of Reflect.ownKeys(value)) {
-      if (key === "length") continue;
-      if (typeof key === "string") {
-        const index = globalThis.Number(key) >>> 0;
-        if (index < value.length && globalThis.String(index) === key) {
-          continue;
-        }
-      }
-
-      (issues ??= []).push({ kind: "ExcessProperty", key });
-      if (options.errors === "first") break;
-    }
-  }
-
-  for (
-    let index = 0;
-    (issues === undefined || options.errors === "all") &&
-    index < elements.length;
-    index++
-  ) {
-    let item: unknown;
-
-    if (checkStructure) {
-      const descriptor = globalThis.Object.getOwnPropertyDescriptor(
-        value,
-        index,
-      );
-
-      if (descriptor === undefined) {
-        (issues ??= []).push({ kind: "Hole", index });
-
-        if (options.errors === "first") break;
-        continue;
-      }
-      if (!("value" in descriptor)) {
-        (issues ??= []).push({ kind: "Accessor", index });
-
-        if (options.errors === "first") break;
-        continue;
-      }
-      item = descriptor.value;
-    } else {
-      item = value[index];
-    }
-    const result = validate(elements[index], item, options, index);
-
-    if (result.ok) {
-      if (issues !== undefined) continue;
-
-      if (!globalThis.Object.is(result.value, item)) {
-        output ??= copyArrayPrefix(value, index);
-      }
-      if (output) output[index] = result.value;
-      continue;
-    }
-
-    (issues ??= []).push({ kind: "Element", index, error: result.error });
-
-    if (options.errors === "first") break;
-  }
-
-  return issues === undefined
-    ? ok(output ?? value)
-    : err({
-        type: "Tuple",
-        reason: {
-          kind: "Items",
-          issues: issues as unknown as NonEmptyReadonlyArray<
-            TupleIssue<TypeError>
-          >,
-        },
-      });
-};
+): Result<ReadonlyArray<unknown>, TupleItemsError<TypeError>> =>
+  validateIndexedArrayItems(
+    "Tuple",
+    value,
+    (value, elementOptions, index) =>
+      validate(elements[index], value, elementOptions, index),
+    options,
+    checkStructure,
+  );
 
 const createObjectRuntimeTypeIssues =
   (
@@ -4636,7 +5519,7 @@ const createObjectRuntimeTypeIssues =
 
 type PlainObjectError = ObjectError<
   Readonly<Record<never, never>>,
-  ObjectPropertyAccessError | TypeOfError<"String">
+  ObjectPropertyAccessError | ObjectExcessPropertyError
 >;
 
 const formatPlainObjectError: TypeErrorFormatter<PlainObjectError> = (
@@ -4663,11 +5546,11 @@ const formatPlainObjectError: TypeErrorFormatter<PlainObjectError> = (
  * A {@link Type} for readonly plain objects with unknown property values.
  *
  * `Object` is the runtime counterpart of a `Readonly<Record<string, unknown>>`
- * data boundary. It accepts ordinary objects from this realm and objects with a
- * `null` prototype. Every own property must have a string key and be an
- * enumerable data property. It rejects class instances, custom and
- * foreign-realm prototypes, accessors, non-enumerable properties, and symbol
- * properties without reading their values.
+ * data boundary. Its realm-neutral prototype rule accepts a `null` prototype or
+ * an immediate root prototype whose own prototype is `null`. Every own property
+ * must have a string key and be an enumerable data property. It rejects
+ * ordinary class instances, deeper prototype chains, accessors, non-enumerable
+ * properties, and symbol properties without reading their values.
  *
  * Use {@link object} when property names are fixed, {@link record} when keys and
  * values have their own Types, and {@link createInstanceOfType} when an instance
@@ -4690,7 +5573,7 @@ export const Object: Type<
         reason: { kind: "NotObject", value },
       });
     }
-    if (!hasPlainObjectPrototype(value)) {
+    if (!isPlainObject(value)) {
       return err({
         type: "Object",
         reason: { kind: "UnexpectedPrototype", value },
@@ -4701,10 +5584,10 @@ export const Object: Type<
 
     for (const key of Reflect.ownKeys(value)) {
       let propertyError:
-        ObjectPropertyAccessError | TypeOfError<"String"> | undefined;
+        ObjectPropertyAccessError | ObjectExcessPropertyError | undefined;
 
       if (typeof key !== "string") {
-        propertyError = { type: "TypeOf", expected: "String", value: key };
+        propertyError = { type: "ObjectExcessProperty" };
       } else {
         const descriptor = globalThis.Object.getOwnPropertyDescriptor(
           value,
@@ -4748,9 +5631,11 @@ export const Object: Type<
   ),
 );
 
-const hasPlainObjectPrototype = (value: object): boolean => {
+const isPlainObject = (value: object): boolean => {
   const prototype: unknown = globalThis.Object.getPrototypeOf(value);
-  return prototype === globalThis.Object.prototype || prototype === null;
+  return (
+    prototype === null || globalThis.Object.getPrototypeOf(prototype) === null
+  );
 };
 
 const formatPlainObjectRootError = (
@@ -4759,7 +5644,7 @@ const formatPlainObjectRootError = (
 ): string =>
   reason.kind === "NotObject"
     ? `A value ${safelyStringifyUnknownValue(reason.value)} is not an object.`
-    : `The value is an object, but an Object Output must use this realm's Object.prototype or null. ${boundaryRepresentationGuidance}`;
+    : "The value is an object, but an Object Output must be a plain object or have a null prototype.";
 
 /**
  * Record {@link Type}.
@@ -4777,12 +5662,12 @@ const formatPlainObjectRootError = (
  * By default, validation returns the first issue. Pass `{ errors: "all" }` to
  * collect issues across the whole Record.
  *
- * A Record must use this realm's `Object.prototype` or `null`. Class instances,
- * custom-prototype objects, and foreign-realm objects are rejected. Every own
- * property must be an enumerable data property whose key and value satisfy
- * their Types. When decoding or encoding changes an entry, the constructed
- * Record uses a `null` prototype so keys such as `__proto__` remain ordinary
- * data.
+ * A Record must have a `null` prototype or an immediate root prototype whose
+ * own prototype is `null`. Ordinary class instances and deeper prototype chains
+ * are rejected. Every own property must be an enumerable data property whose
+ * key and value satisfy their Types. When decoding or encoding changes an
+ * entry, the constructed Record uses a `null` prototype so keys such as
+ * `__proto__` remain ordinary data.
  *
  * If transformed keys collide, validation fails instead of overwriting an
  * entry.
@@ -4892,7 +5777,7 @@ export const record = <
         reason: { kind: "NotRecord", value: input },
       });
     }
-    if (!hasPlainObjectPrototype(input)) {
+    if (!isPlainObject(input)) {
       return err({
         type: "Record",
         reason: { kind: "NotPlainRecord", value: input },
@@ -4928,7 +5813,7 @@ export const record = <
       return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a record.`;
     }
     if (error.reason.kind === "NotPlainRecord") {
-      return `The value is an object, but a Record Output must use this realm's Object.prototype or null. ${boundaryRepresentationGuidance}`;
+      return "The value is an object, but a Record Output must be a plain object or have a null prototype.";
     }
 
     const issue = error.reason.issues[0] as RecordStructuralIssue;
@@ -5005,7 +5890,7 @@ export const record = <
         };
   const is = (input: unknown): boolean => {
     if (input === null || typeof input !== "object") return false;
-    if (!hasPlainObjectPrototype(input)) return false;
+    if (!isPlainObject(input)) return false;
 
     for (const key of Reflect.ownKeys(input)) {
       if (typeof key !== "string" || !typeKey.is(key)) return false;
@@ -5058,6 +5943,7 @@ export interface RecordType<
     RecordCollisionFor<KeyType>
   >
 > {
+  readonly [reflectedTypesSymbol]?: KeyType | ValueType;
   readonly key: KeyType;
   readonly value: ValueType;
 }
@@ -5385,13 +6271,17 @@ export interface OptionalProperty<T extends TypeNode> {
  */
 export const optional = <T extends TypeNode>(
   type: ValidateOptionalPropertyType<T>,
-): OptionalProperty<T> =>
-  ({
-    type: type as T,
-    [optionalPropertySymbol]: true,
-  }) as OptionalProperty<T>;
+): OptionalProperty<T> => createOptionalProperty(type as T);
 
 const optionalPropertySymbol = /*#__PURE__*/ globalThis.Symbol();
+
+const createOptionalProperty = <T extends TypeNode>(
+  type: T,
+): OptionalProperty<T> =>
+  ({
+    type,
+    [optionalPropertySymbol]: true,
+  }) as OptionalProperty<T>;
 
 type ValidateOptionalPropertyType<T extends TypeNode> =
   IsUnion<T> extends false
@@ -5424,9 +6314,11 @@ type ObjectProperty = ObjectProps[string];
  * required properties nor make optional properties present. This keeps Outputs
  * valid after ordinary object spread restores `Object.prototype`.
  *
- * Class instances, custom and foreign-realm prototypes, accessors, and
- * non-enumerable properties are rejected. Use {@link createInstanceOfType} for
- * class Outputs or {@link transform} to decode instances into plain data.
+ * A `null` prototype or an immediate root prototype whose own prototype is
+ * `null` is accepted. Ordinary class instances, deeper prototype chains,
+ * accessors, and non-enumerable properties are rejected. Use
+ * {@link createInstanceOfType} for class Outputs or {@link transform} to decode
+ * instances into plain data.
  *
  * When decoding changes no property, it preserves the input. When decoding or
  * encoding changes a property, it constructs an object with a `null`
@@ -5576,7 +6468,7 @@ const createObjectType = (
       });
     }
     const input = value as Readonly<Record<string, unknown>>;
-    if (!hasPlainObjectPrototype(input)) {
+    if (!isPlainObject(input)) {
       return err({
         type: "Object",
         reason: { kind: "UnexpectedPrototype", value: input },
@@ -5896,7 +6788,7 @@ const createObjectType = (
       };
   const is = (value: unknown): boolean => {
     if (value === null || typeof value !== "object") return false;
-    if (!hasPlainObjectPrototype(value)) return false;
+    if (!isPlainObject(value)) return false;
 
     for (const key of keys) {
       const property = runtimeProps[key];
@@ -5973,11 +6865,7 @@ const snapshotObjectProps = (
 ): ObjectProps => {
   const errorMessage =
     "Object schema properties must be own string-keyed data properties.";
-  const prototype: unknown = globalThis.Object.getPrototypeOf(props);
-  assert(
-    prototype === globalThis.Object.prototype || prototype === null,
-    errorMessage,
-  );
+  assert(isPlainObject(props), errorMessage);
 
   for (const key of Reflect.ownKeys(props)) {
     const descriptor = globalThis.Object.getOwnPropertyDescriptor(props, key);
@@ -6131,7 +7019,9 @@ type StrictObjectType<Props extends ObjectProps> = Type<
     ? null
     : StrictRootObjectType<RootObjectProps<Props>>,
   StrictObjectFromUnknownError<StrictObjectFromUnknownPropertyErrors<Props>>
-> & { readonly props: Readonly<Props> };
+> & {
+  readonly props: Readonly<Props>;
+};
 
 type ObjectWithRecordType<
   Props extends ObjectProps,
@@ -6227,7 +7117,9 @@ type StrictRootObjectType<Props extends ObjectProps> = Type<
   StrictObjectShape<Props, "Input">,
   StrictObjectShape<Props, "Output">,
   StrictObjectFromUnknownError<StrictObjectFromUnknownPropertyErrors<Props>>
-> & { readonly props: Readonly<Props> };
+> & {
+  readonly props: Readonly<Props>;
+};
 
 type RootObjectWithRecordType<
   Props extends ObjectProps,
@@ -6313,7 +7205,17 @@ export interface ObjectNotObjectError extends TypeError<"Object"> {
   };
 }
 
-/** An error returned when an {@link object} input has an unexpected prototype. */
+/**
+ * An error returned when an {@link object} input falls outside its supported
+ * plain-object prototype boundary.
+ *
+ * Object Types accept a `null` prototype or a prototype whose own prototype is
+ * `null`. This includes ordinary and cross-realm plain objects as well as
+ * objects created from an immediate root prototype. Arrays, built-in objects,
+ * class instances, and objects with deeper custom prototype chains return this
+ * error instead of having their prototype or inherited state discarded.
+ * `reason.value` is the rejected object.
+ */
 export interface ObjectUnexpectedPrototypeError extends TypeError<"Object"> {
   readonly reason: {
     readonly kind: "UnexpectedPrototype";
@@ -6322,12 +7224,14 @@ export interface ObjectUnexpectedPrototypeError extends TypeError<"Object"> {
 }
 
 /**
- * An error returned for an input property not declared by an {@link object}
- * schema.
+ * An error returned for an input property outside an Object Type's allowed key
+ * domain.
  *
- * The property key locates this error in the containing Object error map.
- * `ObjectExcessProperty` is reserved for this structural failure. Property
- * {@link Type | Types} must use another error tag.
+ * This includes a property not declared by an {@link object} schema and a symbol
+ * property on the predefined {@link Object}. The property key locates this error
+ * in the containing Object error map. `ObjectExcessProperty` is reserved for
+ * this structural failure. Property {@link Type | Types} must use another error
+ * tag.
  */
 export interface ObjectExcessPropertyError extends TypeError<"ObjectExcessProperty"> {}
 
@@ -6451,6 +7355,174 @@ const createRecordPropertyError = <Error extends TypeError>(
   reason: { kind: "Entries", issues: [issue] },
 });
 
+/** Creates an {@link object} Type with every property optional. */
+export const partial = <const Props extends ObjectProps>(
+  props: Props,
+  ..._validation: [ObjectValidationError<Props>] extends [never]
+    ? []
+    : [ValidationFailure<ObjectValidationError<Props>>]
+): ObjectType<PartialObjectProps<Props>> => {
+  const source = snapshotObjectProps(props);
+  const partialProps = createMutableRecord<string, ObjectProperty>();
+
+  for (const key of globalThis.Object.keys(source)) {
+    const property = source[key] as RuntimeObjectProperty;
+    partialProps[key] = isOptionalProperty(property)
+      ? property
+      : createOptionalProperty(property);
+  }
+
+  return createObjectType(partialProps) as unknown as ObjectType<
+    PartialObjectProps<Props>
+  >;
+};
+
+export type PartialObjectProps<Props extends ObjectProps> = {
+  readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
+    ? Props[Key]
+    : Props[Key] extends TypeNode
+      ? OptionalProperty<Props[Key]>
+      : never;
+};
+
+/** Makes every property whose Union Type includes {@link Null} optional. */
+export const nullableToOptional = <const Props extends ObjectProps>(
+  props: Props,
+  ..._validation: [ObjectValidationError<Props>] extends [never]
+    ? []
+    : [ValidationFailure<ObjectValidationError<Props>>]
+): ObjectType<NullableToOptionalProps<Props>> => {
+  const source = snapshotObjectProps(props);
+  const optionalProps = createMutableRecord<string, ObjectProperty>();
+
+  for (const key of globalThis.Object.keys(source)) {
+    const property = source[key] as RuntimeObjectProperty;
+
+    if (isOptionalProperty(property)) {
+      optionalProps[key] = property;
+      continue;
+    }
+
+    optionalProps[key] =
+      isRuntimeUnionTypeNode(property) &&
+      property.members.some(
+        (member) =>
+          member.name === "Literal" &&
+          "expected" in member &&
+          member.expected === null,
+      )
+        ? createOptionalProperty(property)
+        : property;
+  }
+
+  return createObjectType(optionalProps) as unknown as ObjectType<
+    NullableToOptionalProps<Props>
+  >;
+};
+
+export type NullableToOptionalProps<Props extends ObjectProps> = {
+  readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
+    ? Props[Key]
+    : Props[Key] extends UnionType<infer Members>
+      ? typeof Null extends Members[number]
+        ? OptionalProperty<Props[Key]>
+        : Props[Key]
+      : Props[Key];
+};
+
+/** Creates an {@link object} Type without the selected declared properties. */
+export const omit = <
+  const Props extends ObjectProps,
+  const Keys extends ReadonlyArray<keyof Props>,
+  Rest extends ObjectRecordTypeNode | undefined = undefined,
+>(
+  objectType: ObjectType<Props, Rest>,
+  ...keys: Keys &
+    ([ValidateOmitKeys<Keys>] extends [never]
+      ? unknown
+      : readonly [ValidationFailure<ValidateOmitKeys<Keys>>])
+): ObjectType<Omit<Props, Keys[number]>, Rest> => {
+  const props = createMutableRecord<string, ObjectProperty>();
+  const runtimeObjectType = objectType as ObjectTypeNode;
+
+  for (const key of globalThis.Object.keys(objectType.props)) {
+    if (!keys.includes(key)) props[key] = objectType.props[key];
+  }
+
+  return createObjectType(
+    props,
+    runtimeObjectType.record as RuntimeRecordTypeNode | undefined,
+  ) as unknown as ObjectType<Omit<Props, Keys[number]>, Rest>;
+};
+
+type ValidateOmitKeys<Keys extends ReadonlyArray<PropertyKey>> =
+  number extends Keys["length"]
+    ? OmitKeysTupleError
+    : IsUnion<Keys["length"]> extends false
+      ? {
+          readonly [Index in keyof Keys & `${number}`]: IsUnion<
+            Keys[Index]
+          > extends false
+            ? {} extends Readonly<Record<Keys[Index], never>>
+              ? OmitKeyConcreteTypeError
+              : never
+            : OmitKeyConcreteTypeError;
+        }[keyof Keys & `${number}`]
+      : OmitKeysTupleError;
+
+type OmitKeysTupleError = CompileTimeError<
+  "Type",
+  "Omitted keys must use one concrete finite tuple."
+>;
+
+type OmitKeyConcreteTypeError = CompileTimeError<
+  "Type",
+  "Each omitted key must be one concrete property key."
+>;
+
+/** Creates a {@link Type} for {@link Result} values. */
+export function result<
+  OkType extends ConcreteTypeNode,
+  ErrorType extends ConcreteTypeNode,
+>(
+  okType: ValidateElement<OkType>,
+  errorType: ValidateElement<ErrorType>,
+): DiscriminatedUnionType<
+  "ok",
+  readonly [
+    ObjectType<{
+      readonly ok: LiteralType<true>;
+      readonly value: OkType;
+    }>,
+    ObjectType<{
+      readonly ok: LiteralType<false>;
+      readonly error: ErrorType;
+    }>,
+  ]
+>;
+export function result(okType: TypeNode, errorType: TypeNode): TypeNode {
+  return (
+    discriminatedUnion as unknown as (
+      key: string,
+      ...members: ReadonlyArray<ObjectTypeNode>
+    ) => TypeNode
+  )(
+    "ok",
+    createObjectType({
+      ok: literal(true),
+      value: okType,
+    }),
+    createObjectType({
+      ok: literal(false),
+      error: errorType,
+    }),
+  );
+}
+
+/** A {@link result} Type for `Result<unknown, unknown>`. */
+export const UnknownResult = /*#__PURE__*/ result(Unknown, Unknown);
+export type UnknownResult = typeof UnknownResult.Output;
+
 /**
  * Tagged {@link ObjectType}.
  *
@@ -6571,6 +7643,51 @@ type TypedTypePropertyError = CompileTimeError<
   'Additional properties must not declare the reserved "type" property.'
 >;
 
+/** Creates a {@link Type} for a producer's value, error, or done Result. */
+export function nextResult<
+  ValueType extends ConcreteTypeNode,
+  ErrorType extends ConcreteTypeNode,
+  DoneType extends ConcreteTypeNode,
+>(
+  valueType: ValidateElement<ValueType>,
+  errorType: ValidateElement<ErrorType>,
+  doneType: ValidateElement<DoneType>,
+): ReturnType<
+  typeof result<
+    ValueType,
+    UnionType<
+      readonly [ErrorType, TypedType<"Done", { readonly done: DoneType }>]
+    >
+  >
+>;
+export function nextResult(
+  valueType: TypeNode,
+  errorType: TypeNode,
+  doneType: TypeNode,
+): TypeNode {
+  const errorUnion = (
+    union as unknown as (...members: ReadonlyArray<TypeNode>) => TypeNode
+  )(
+    errorType,
+    createObjectType({
+      type: literal("Done"),
+      done: doneType,
+    }),
+  );
+
+  return (
+    result as unknown as (valueType: TypeNode, errorType: TypeNode) => TypeNode
+  )(valueType, errorUnion);
+}
+
+/** A {@link nextResult} Type for unknown values, errors, and done values. */
+export const UnknownNextResult = /*#__PURE__*/ nextResult(
+  Unknown,
+  Unknown,
+  Unknown,
+);
+export type UnknownNextResult = typeof UnknownNextResult.Output;
+
 /**
  * Discriminated Union {@link Type}.
  *
@@ -6578,12 +7695,12 @@ type TypedTypePropertyError = CompileTimeError<
  * {@link typed} is used. Pass a key first to discriminate
  * {@link ObjectType | Object Types} using a different property.
  *
- * Every member must be an Object Type with a unique required string
- * {@link LiteralType} at the discriminator key. Unlike {@link union}, only the
- * selected member is decoded, checked, or encoded. The Discriminated Union
- * Input therefore narrows each member's discriminator from its widened string
- * Input to the exact literal that selects that member. Use `fromUnknown` when a
- * value does not yet have that correlated Input type.
+ * Every member must be an Object Type with a unique required string, number,
+ * bigint, or boolean {@link LiteralType} at the discriminator key. Unlike
+ * {@link union}, only the selected member is decoded, checked, or encoded. The
+ * Discriminated Union Input therefore narrows each member's discriminator from
+ * its widened Input to the exact literal that selects that member. Use
+ * `fromUnknown` when a value does not yet have that correlated Input type.
  *
  * ### Example
  *
@@ -6620,14 +7737,15 @@ export function discriminatedUnion(
   const members = (
     hasExplicitKey ? keyOrMembers.slice(1) : keyOrMembers
   ) as ReadonlyArray<RuntimeDiscriminatedUnionMember>;
-  const expected: Array<string> = [];
+  const expected: Array<DiscriminatedUnionLiteral> = [];
   const membersByDiscriminator = new Map<
-    string,
+    unknown,
     RuntimeDiscriminatedUnionMember
   >();
 
   for (const member of members) {
-    const value = (member.props[key] as LiteralType<string>).expected;
+    const value = (member.props[key] as LiteralType<DiscriminatedUnionLiteral>)
+      .expected;
     expected.push(value);
     membersByDiscriminator.set(value, member);
   }
@@ -6640,7 +7758,7 @@ export function discriminatedUnion(
       ObjectNotObjectError | ObjectUnexpectedPrototypeError
     > = value === null || typeof value !== "object"
       ? err({ type: "Object", reason: { kind: "NotObject", value } })
-      : !hasPlainObjectPrototype(value)
+      : !isPlainObject(value)
         ? err({
             type: "Object",
             reason: { kind: "UnexpectedPrototype", value },
@@ -6679,10 +7797,7 @@ export function discriminatedUnion(
     } else {
       discriminator = descriptor.value;
     }
-    const member =
-      typeof discriminator === "string"
-        ? membersByDiscriminator.get(discriminator)
-        : undefined;
+    const member = membersByDiscriminator.get(discriminator);
 
     if (member === undefined) {
       return err({
@@ -6708,7 +7823,9 @@ export function discriminatedUnion(
           type: "DiscriminatedUnion",
           reason: {
             kind: "Member",
-            discriminator: (member.props[key] as LiteralType<string>).expected,
+            discriminator: (
+              member.props[key] as LiteralType<DiscriminatedUnionLiteral>
+            ).expected,
             error: result.error,
           },
         });
@@ -6738,12 +7855,12 @@ export function discriminatedUnion(
     const descriptor = globalThis.Object.getOwnPropertyDescriptor(value, key);
 
     return descriptor !== undefined && "value" in descriptor
-      ? membersByDiscriminator.get(descriptor.value as string)
+      ? membersByDiscriminator.get(descriptor.value)
       : undefined;
   };
   const route = (value: unknown): RuntimeDiscriminatedUnionMember =>
     membersByDiscriminator.get(
-      Reflect.get(value as Readonly<Record<string, unknown>>, key) as string,
+      Reflect.get(value as Readonly<Record<string, unknown>>, key),
     )!;
   const formatError: TypeErrorFormatter<DiscriminatedUnionError> = (error) => {
     const reason = error.reason as Exclude<
@@ -6802,7 +7919,7 @@ export function discriminatedUnion(
   const parentValidateOutput = (value: unknown, options?: ValidationOptions) =>
     validateUnknown(value, options, true, true);
   const parentTo: RuntimeEncoder = (value: never) =>
-    (route(value).parent as RuntimeTypeNode)[encoderSymbol](value);
+    route(value).parent[encoderSymbol](value);
   const parent = createTypeNode<
     DiscriminatedUnionInputType<unknown, DiscriminatedUnionError>
   >(
@@ -6860,6 +7977,7 @@ export interface DiscriminatedUnionType<
   >,
   DiscriminatedUnionCompleteError<Key, Members>
 > {
+  readonly [reflectedTypesSymbol]?: Members[number];
   readonly key: Key;
   readonly members: Members;
 }
@@ -6875,7 +7993,7 @@ export type DiscriminatedUnionInputType<Input, Error extends TypeError> = Type<
 /** An error returned while selecting a member in {@link discriminatedUnion}. */
 export type DiscriminatedUnionError<
   Key extends string = string,
-  Expected extends string = string,
+  Expected extends Literal = Literal,
   MemberIssue extends DiscriminatedUnionMemberIssue =
     DiscriminatedUnionMemberIssue<Expected>,
 > =
@@ -6909,7 +8027,7 @@ export interface DiscriminatedUnionPropertyAccessError<
 /** An error returned when no member of {@link discriminatedUnion} matches. */
 export interface DiscriminatedUnionDiscriminatorError<
   Key extends string = string,
-  Expected extends string = string,
+  Expected extends Literal = Literal,
 > extends TypeError<"DiscriminatedUnion"> {
   readonly reason: {
     readonly kind: "Discriminator";
@@ -6921,7 +8039,7 @@ export interface DiscriminatedUnionDiscriminatorError<
 
 /** A selected-member issue returned by {@link discriminatedUnion}. */
 export interface DiscriminatedUnionMemberIssue<
-  Discriminator extends string = string,
+  Discriminator extends Literal = Literal,
   Error extends TypeError = TypeError,
 > {
   readonly kind: "Member";
@@ -6941,6 +8059,8 @@ type DiscriminatedUnionObjectType = ObjectTypeNode & ConcreteTypeNode;
 type DiscriminatedUnionMembers =
   AtLeastTwoReadonlyArray<DiscriminatedUnionObjectType>;
 
+type DiscriminatedUnionLiteral = string | number | bigint | boolean;
+
 type DiscriminatedUnionInput<
   Key extends string,
   Members extends DiscriminatedUnionMembers,
@@ -6957,7 +8077,9 @@ type DiscriminatorValue<
   Key extends string,
   Member extends DiscriminatedUnionObjectType,
 > = Key extends keyof Member["props"]
-  ? Member["props"][Key] extends LiteralType<infer Expected extends string>
+  ? Member["props"][Key] extends LiteralType<
+      infer Expected extends DiscriminatedUnionLiteral
+    >
     ? Expected
     : never
   : never;
@@ -7097,11 +8219,11 @@ type DiscriminatedUnionValues<
 
 type ValidateUniqueDiscriminatorValues<
   Key extends string,
-  Values extends ReadonlyArray<string>,
-  Seen extends string = never,
+  Values extends ReadonlyArray<DiscriminatedUnionLiteral>,
+  Seen extends DiscriminatedUnionLiteral = never,
 > = Values extends readonly [
-  infer Expected extends string,
-  ...infer Rest extends ReadonlyArray<string>,
+  infer Expected extends DiscriminatedUnionLiteral,
+  ...infer Rest extends ReadonlyArray<DiscriminatedUnionLiteral>,
 ]
   ? Expected extends Seen
     ? DiscriminatedUnionDuplicateValueError<Key, Expected>
@@ -7125,12 +8247,12 @@ type DiscriminatedUnionMemberConcreteTypeError = CompileTimeError<
 
 type DiscriminatedUnionPropertyError<Key extends string> = CompileTimeError<
   "Type",
-  `Property "${Key}" must be a required string Literal Type in every member.`
+  `Property "${Key}" must be a required String, Number, BigInt, or Boolean Literal Type in every member.`
 >;
 
 type DiscriminatedUnionDuplicateValueError<
   Key extends string,
-  Expected extends string,
+  Expected extends DiscriminatedUnionLiteral,
 > = CompileTimeError<
   "Type",
   `Duplicate value "${Expected}" at property "${Key}".`
@@ -7139,7 +8261,7 @@ type DiscriminatedUnionDuplicateValueError<
 type RuntimeObjectTypeNode = ObjectTypeNode & RuntimeTypeNode;
 
 type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
-  // A required Literal discriminator makes Object create one immediate,
+  // A non-root Literal discriminator makes Object create one immediate,
   // terminal parent containing the encoded roots of every property and its
   // optional Record. That parent is the member's encoded boundary.
   readonly parent: RuntimeObjectTypeNode & { readonly parent: null };
@@ -7354,6 +8476,7 @@ export interface LazyType<
   Type<"Lazy", Input, Input, InputError>,
   Errors
 > {
+  readonly [lazyTypeSymbol]: true;
   /** Formats an error returned by any Lazy Type decoding operation. */
   readonly formatError: TypeErrorFormatter<Errors | FromError>;
 }
@@ -7430,7 +8553,7 @@ export type JsonValueIssue =
   | {
       readonly kind: "UnexpectedPrototype";
       readonly path: ReadonlyArray<string | number | symbol>;
-      readonly container: "Array" | "Object";
+      readonly container: "Object";
       readonly value: object;
     }
   | {
@@ -7482,6 +8605,7 @@ export interface JsonObjectType extends Type<
   JsonObject,
   RecordError<TypeOfError<"String">, JsonValueError, never>
 > {
+  readonly [reflectedTypesSymbol]?: typeof String | JsonValueType;
   readonly key: typeof String;
   readonly value: JsonValueType;
 }
@@ -7602,18 +8726,13 @@ const validateJsonValue = (
     }
 
     const isArray = globalThis.Array.isArray(value);
-    const prototype: unknown = globalThis.Object.getPrototypeOf(value);
 
-    if (
-      isArray
-        ? prototype !== globalThis.Array.prototype
-        : prototype !== globalThis.Object.prototype && prototype !== null
-    ) {
+    if (!isArray && !isPlainObject(value)) {
       if (
         addIssue({
           kind: "UnexpectedPrototype",
           path: jsonValuePathToArray(path),
-          container: isArray ? "Array" : "Object",
+          container: "Object",
           value,
         })
       ) {
@@ -7778,7 +8897,7 @@ const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (error) => {
     case "NonFiniteNumber":
       return "A JSON number must be finite.";
     case "UnexpectedPrototype":
-      return `The value is ${issue.container === "Array" ? "an array" : "an object"}, but a JsonValue Output must use this realm's ${issue.container}.prototype${issue.container === "Object" ? " or null" : ""}. ${boundaryRepresentationGuidance}`;
+      return "The value is an object, but a JsonValue Object must be a plain object or have a null prototype.";
     case "Accessor":
       return "A JSON property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
     case "NonEnumerable":

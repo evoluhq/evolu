@@ -4,7 +4,7 @@ import { test } from "vitest";
 
 const repositoryDirectory = resolve(import.meta.dirname, "../../../..");
 
-test("packages/common JSDoc examples compile and run", async () => {
+test("Type2 documentation examples compile and run", async () => {
   await testJSDocExamples({
     aliases: {
       "@evolu/common": join(import.meta.dirname, "Type2JSDocFacade.mts"),

@@ -40,6 +40,7 @@ import type {
   ObjectError,
   ObjectNotObjectError,
   ObjectPropertyAccessError,
+  ObjectTagError,
   ObjectUnexpectedPrototypeError,
   PositiveDecimalStringError,
   PositiveError,
@@ -53,9 +54,6 @@ import type {
   UnionError,
 } from "../Type2.ts";
 
-const boundaryRepresentationGuidance =
-  "Pokud důvěřujete kontraktu vrácené hodnoty, přetypujte ji a tento Type nepoužívejte; jinak použijte validaci nebo transformaci určenou pro dané rozhraní.";
-
 const formatValueMustBe = (value: unknown, expected: string): string =>
   `Hodnota ${safelyStringifyUnknownValue(value)} musí být ${expected}.`;
 
@@ -65,7 +63,7 @@ const formatPlainObjectRootError = (
 ): string =>
   reason.kind === "NotObject"
     ? `Hodnota ${safelyStringifyUnknownValue(reason.value)} není objekt.`
-    : `Hodnota je objekt, ale Output typu Object musí používat Object.prototype z tohoto JavaScriptového realmu nebo null. ${boundaryRepresentationGuidance}`;
+    : "Hodnota je objekt, ale Output typu Object musí být prostý objekt nebo mít prototyp null.";
 
 /** Formats a NeverError in Czech. */
 export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
@@ -100,6 +98,12 @@ export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> = (
 export const formatFunctionError: TypeErrorFormatter<
   TypeOfError<"Function">
 > = (error) => formatValueMustBe(error.value, "funkce");
+
+/** Formats an ObjectTagError in Czech. */
+export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nemá očekávaný tag objektu ${safelyStringifyUnknownValue(error.expected)}.`;
 
 /** Formats an InstanceOfError in Czech. */
 export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
@@ -234,10 +238,6 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} není pole.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return `Hodnota je pole, ale Output typu Array musí používat Array.prototype z tohoto JavaScriptového realmu. ${boundaryRepresentationGuidance}`;
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -256,9 +256,6 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
 export const formatTupleError: TypeErrorFormatter<TupleError> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} není tuple.`;
-  }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return `Hodnota je pole, ale Output typu Tuple musí používat Array.prototype z tohoto JavaScriptového realmu. ${boundaryRepresentationGuidance}`;
   }
   if (error.reason.kind === "InvalidLength") {
     return `Požadovaná délka Tuple je ${error.reason.expected}, ale hodnota má délku ${error.reason.actual}.`;
@@ -284,7 +281,7 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
     return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} není Record.`;
   }
   if (error.reason.kind === "NotPlainRecord") {
-    return `Hodnota je objekt, ale Output typu Record musí používat Object.prototype z tohoto JavaScriptového realmu nebo null. ${boundaryRepresentationGuidance}`;
+    return "Hodnota je objekt, ale Output typu Record musí být prostý objekt nebo mít prototyp null.";
   }
 
   const issue = error.reason.issues[0];
@@ -370,7 +367,7 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "NonFiniteNumber":
       return "Číslo v JSON musí být konečné.";
     case "UnexpectedPrototype":
-      return `Hodnota je ${issue.container === "Array" ? "pole" : "objekt"}, ale Output typu JsonValue musí používat ${issue.container}.prototype z tohoto JavaScriptového realmu${issue.container === "Object" ? " nebo null" : ""}. ${boundaryRepresentationGuidance}`;
+      return "Hodnota je objekt, ale JsonValue Object musí být prostý objekt nebo mít prototyp null.";
     case "Accessor":
       return "Vlastnost JSON musí být datová vlastnost. Před použitím tohoto Type materializujte hodnotu accessoru do prostých dat nebo použijte jiný Type.";
     case "NonEnumerable":

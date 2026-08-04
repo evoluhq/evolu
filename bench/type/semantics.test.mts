@@ -19,6 +19,23 @@ import type {
   Output as SemanticArrayOutput,
 } from "./fixtures/array-semantic-all-32.mts";
 import type {
+  Errors as SetErrors,
+  From32Input as SetDeepestFromInput,
+  From32Result as SetDeepestFromResult,
+  FromInput as SetSelfFromInput,
+  FromResult as SetSelfFromResult,
+  FromUnknownInput as SetFromUnknownInput,
+  FromUnknownResult as SetFromUnknownResult,
+  Output as SetOutput,
+} from "./fixtures/set-all-32.mts";
+import type {
+  Errors as SemanticSetErrors,
+  From32Input as SemanticSetDeepestFromInput,
+  From32Result as SemanticSetDeepestFromResult,
+  FromResult as SemanticSetFromResult,
+  Output as SemanticSetOutput,
+} from "./fixtures/set-semantic-all-32.mts";
+import type {
   Errors as ArrayChildErrors,
   From1Result as ArrayChildFrom1Result,
   From2Input as ArrayChildFrom2Input,
@@ -91,6 +108,8 @@ import type {
   RecordCollisionIssue,
   RecordEntriesError,
   RecordError,
+  SetElementsError,
+  SetError,
   TransformError,
   TrimmedError,
   TypeOfError,
@@ -157,6 +176,12 @@ import type {
   FromUnknownResult as NestedArrayFromUnknownResult,
   Output as NestedArrayOutput,
 } from "./fixtures/nested-array-all-32.mts";
+import type {
+  Errors as NestedSetErrors,
+  FromResult as NestedSetFromResult,
+  FromUnknownResult as NestedSetFromUnknownResult,
+  Output as NestedSetOutput,
+} from "./fixtures/nested-set-all-32.mts";
 import type {
   Errors as NestedObjectErrors,
   FromParentResult as NestedObjectFromParentResult,
@@ -598,6 +623,18 @@ type NestedArrayError<Error extends ArrayError | ExpectedErrors, Depth extends R
     ? ArrayError<NestedArrayError<Error, Rest>>
     : Error;
 
+type NestedSet<Value, Depth extends ReadonlyArray<unknown>> =
+  Depth extends readonly [unknown, ...infer Rest]
+    ? ReadonlySet<NestedSet<Value, Rest>>
+    : Value;
+
+type NestedSetError<
+  Error extends SetError | ExpectedErrors,
+  Depth extends ReadonlyArray<unknown>,
+> = Depth extends readonly [unknown, ...infer Rest]
+  ? SetError<NestedSetError<Error, Rest>>
+  : Error;
+
 type NestedObject<Value, Depth extends ReadonlyArray<unknown>> =
   Depth extends readonly [unknown, ...infer Rest]
     ? ExpectedStrictObject<{ readonly value: NestedObject<Value, Rest> }>
@@ -729,6 +766,38 @@ test("the depth-32 fixture preserves its semantics", () => {
     SemanticArrayOutput
   >();
   expectTypeOf<InferErr<SemanticArrayDeepestFromResult>>().toEqualTypeOf<never>();
+  expectTypeOf<SetOutput>().toEqualTypeOf<ReadonlySet<Output>>();
+  expectTypeOf<SetErrors>().toEqualTypeOf<SetError<ExpectedErrors>>();
+  expectTypeOf<SetFromUnknownInput>().toEqualTypeOf<unknown>();
+  expectTypeOf<InferOk<SetFromUnknownResult>>().toEqualTypeOf<SetOutput>();
+  expectTypeOf<InferErr<SetFromUnknownResult>>().toEqualTypeOf<
+    SetError<ExpectedErrors>
+  >();
+  expectTypeOf<SetSelfFromInput>().toEqualTypeOf<SetOutput>();
+  expectTypeOf<InferOk<SetSelfFromResult>>().toEqualTypeOf<SetOutput>();
+  expectTypeOf<InferErr<SetSelfFromResult>>().toEqualTypeOf<never>();
+  expectTypeOf<SetDeepestFromInput>().toEqualTypeOf<
+    ReadonlySet<DeepestFromInput>
+  >();
+  expectTypeOf<InferOk<SetDeepestFromResult>>().toEqualTypeOf<SetOutput>();
+  expectTypeOf<InferErr<SetDeepestFromResult>>().toEqualTypeOf<
+    SetElementsError<ExpectedFromErrors>
+  >();
+  expectTypeOf<SemanticSetOutput>().toEqualTypeOf<ReadonlySet<SemanticOutput>>();
+  expectTypeOf<SemanticSetErrors>().toEqualTypeOf<
+    SetError<Extract<ExpectedErrors, { readonly type: "E0" }>>
+  >();
+  expectTypeOf<InferOk<SemanticSetFromResult>>().toEqualTypeOf<
+    SemanticSetOutput
+  >();
+  expectTypeOf<InferErr<SemanticSetFromResult>>().toEqualTypeOf<never>();
+  expectTypeOf<SemanticSetDeepestFromInput>().toEqualTypeOf<
+    ReadonlySet<string>
+  >();
+  expectTypeOf<InferOk<SemanticSetDeepestFromResult>>().toEqualTypeOf<
+    SemanticSetOutput
+  >();
+  expectTypeOf<InferErr<SemanticSetDeepestFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<LiteralStringOutput>().toEqualTypeOf<"Hello">();
   expectTypeOf<LiteralStringErrors>().toEqualTypeOf<
     TypeOfError<"String"> | LiteralError<"Hello">
@@ -785,6 +854,18 @@ test("the depth-32 fixture preserves its semantics", () => {
     NestedArrayOutput
   >();
   expectTypeOf<InferErr<NestedArrayFromResult>>().toEqualTypeOf<never>();
+  expectTypeOf<NestedSetOutput>().toEqualTypeOf<NestedSet<string, Depth32>>();
+  expectTypeOf<NestedSetErrors>().toEqualTypeOf<
+    NestedSetError<Extract<ExpectedErrors, { readonly type: "E0" }>, Depth32>
+  >();
+  expectTypeOf<InferOk<NestedSetFromUnknownResult>>().toEqualTypeOf<
+    NestedSetOutput
+  >();
+  expectTypeOf<InferErr<NestedSetFromUnknownResult>>().toEqualTypeOf<
+    NestedSetErrors
+  >();
+  expectTypeOf<InferOk<NestedSetFromResult>>().toEqualTypeOf<NestedSetOutput>();
+  expectTypeOf<InferErr<NestedSetFromResult>>().toEqualTypeOf<never>();
 });
 
 test("the reusable Brand Factory preserves its parent and boundaries", () => {

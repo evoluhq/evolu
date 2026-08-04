@@ -61,6 +61,13 @@ describe("Czech Type error formatters", () => {
       }),
     ).toBe("Hodnota null musí být funkce.");
     expect(
+      cs.formatObjectTagError({
+        type: "ObjectTag",
+        expected: "Date",
+        value: {},
+      }),
+    ).toBe('Hodnota {} nemá očekávaný tag objektu "Date".');
+    expect(
       cs.formatInstanceOfError({
         type: "InstanceOf",
         constructorName: "Date",
@@ -199,10 +206,6 @@ describe("Czech Type error formatters", () => {
         "Hodnota null není pole.",
       ],
       [
-        { type: "Array", reason: { kind: "UnexpectedPrototype", value: [] } },
-        "Output typu Array",
-      ],
-      [
         {
           type: "Array",
           reason: { kind: "Items", issues: [{ kind: "Hole", index: 1 }] },
@@ -254,10 +257,6 @@ describe("Czech Type error formatters", () => {
       [
         { type: "Tuple", reason: { kind: "NotArray", value: null } },
         "Hodnota null není tuple.",
-      ],
-      [
-        { type: "Tuple", reason: { kind: "UnexpectedPrototype", value: [] } },
-        "Output typu Tuple",
       ],
       [
         {
@@ -577,19 +576,10 @@ describe("Czech Type error formatters", () => {
         {
           kind: "UnexpectedPrototype",
           path: [],
-          container: "Array",
-          value: [],
-        },
-        "Output typu JsonValue musí používat Array.prototype",
-      ],
-      [
-        {
-          kind: "UnexpectedPrototype",
-          path: [],
           container: "Object",
           value: {},
         },
-        "Object.prototype z tohoto JavaScriptového realmu nebo null",
+        "JsonValue Object musí být prostý objekt nebo mít prototyp null",
       ],
       [
         { kind: "Accessor", path: ["value"] },

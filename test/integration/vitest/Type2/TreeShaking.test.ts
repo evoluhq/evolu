@@ -6,6 +6,8 @@ import { describe, expect, test } from "vitest";
 const fixturesDirectory = resolve(import.meta.dirname, "__fixtures__");
 const outputDirectory = resolve(import.meta.dirname, "tmp");
 
+const base64CapabilityFragments = ["toBase64", "fromBase64", "base64url"];
+
 const unrelatedRecordTypeFragments = [
   '"Never"',
   "not valid for type Never",
@@ -35,13 +37,20 @@ const unrelatedTypeFragments = [
   ...unrelatedRecordTypeFragments,
   ...recordTypeFragments,
   ...instanceTypeFragments,
-  "Object Output must use",
+  "Object Output must be a plain object",
 ];
 
 const objectTypeFragments = [
   '"Object"',
-  "Object Output must use",
+  "Object Output must be a plain object",
   "required property is missing",
+];
+
+const setTypeFragments = [
+  '"Set"',
+  "is not a Set",
+  "Set Output must be a direct Set",
+  "excess Set property",
 ];
 
 const fixtures: ReadonlyArray<{
@@ -57,7 +66,7 @@ const fixtures: ReadonlyArray<{
     excludedCodeFragments: [
       ...unrelatedRecordTypeFragments,
       ...recordTypeFragments,
-      "Object Output must use",
+      "Object Output must be a plain object",
       '"Array"',
       "is not an array",
       ...objectTypeFragments,
@@ -109,6 +118,20 @@ const fixtures: ReadonlyArray<{
       ...unrelatedTypeFragments,
       '"NonEmptyString"',
       "Enter some text",
+      ...setTypeFragments,
+      ...objectTypeFragments,
+    ],
+  },
+  {
+    name: "Set(String)",
+    fileName: "StringSet.ts",
+    expected: ["A value null is not a Set.", "A value 42 is not a string."],
+    excludedCodeFragments: [
+      ...unrelatedTypeFragments,
+      '"Array"',
+      "is not an array",
+      '"NonEmptyString"',
+      "Enter some text",
       ...objectTypeFragments,
     ],
   },
@@ -149,7 +172,7 @@ const fixtures: ReadonlyArray<{
     excludedCodeFragments: [
       '"Never"',
       "not valid for type Never",
-      "Object Output must use",
+      "Object Output must be a plain object",
       '"DateIso"',
       "canonical ISO date-time string",
       '"Int64"',
@@ -292,7 +315,10 @@ describe("Type2 tree shaking", () => {
             entryPath: resolve(fixturesDirectory, fixture.fileName),
             verify: (value, bundle) => {
               expect(value).toEqual(fixture.expected);
-              for (const fragment of fixture.excludedCodeFragments) {
+              for (const fragment of [
+                ...base64CapabilityFragments,
+                ...fixture.excludedCodeFragments,
+              ]) {
                 expect(bundle.code).not.toContain(fragment);
               }
             },
@@ -306,132 +332,142 @@ describe("Type2 tree shaking", () => {
       {
         "Array(String)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2116,
-            "rawSizeInBytes": 4866,
+            "gzipSizeInBytes": 2075,
+            "rawSizeInBytes": 4788,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2125,
-            "rawSizeInBytes": 4927,
+            "gzipSizeInBytes": 2056,
+            "rawSizeInBytes": 4820,
           },
         },
         "InstanceOf(Error)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 798,
-            "rawSizeInBytes": 1561,
+            "gzipSizeInBytes": 823,
+            "rawSizeInBytes": 1607,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 794,
-            "rawSizeInBytes": 1563,
+            "gzipSizeInBytes": 816,
+            "rawSizeInBytes": 1605,
           },
         },
         "NonEmptyString": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1192,
-            "rawSizeInBytes": 2494,
+            "gzipSizeInBytes": 1225,
+            "rawSizeInBytes": 2557,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1193,
-            "rawSizeInBytes": 2526,
+            "gzipSizeInBytes": 1215,
+            "rawSizeInBytes": 2571,
           },
         },
         "NumberFromString": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1335,
-            "rawSizeInBytes": 2926,
+            "gzipSizeInBytes": 1366,
+            "rawSizeInBytes": 2989,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1325,
-            "rawSizeInBytes": 2965,
+            "gzipSizeInBytes": 1350,
+            "rawSizeInBytes": 3020,
           },
         },
         "Object(NonEmptyString)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3010,
-            "rawSizeInBytes": 8215,
+            "gzipSizeInBytes": 2954,
+            "rawSizeInBytes": 8097,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3020,
-            "rawSizeInBytes": 8297,
+            "gzipSizeInBytes": 2970,
+            "rawSizeInBytes": 8170,
           },
         },
         "Object(Number, Record(String, Number))": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3645,
-            "rawSizeInBytes": 10570,
+            "gzipSizeInBytes": 3588,
+            "rawSizeInBytes": 10448,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3659,
-            "rawSizeInBytes": 10715,
+            "gzipSizeInBytes": 3602,
+            "rawSizeInBytes": 10585,
           },
         },
         "Record(String, Number)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2238,
-            "rawSizeInBytes": 5256,
+            "gzipSizeInBytes": 2187,
+            "rawSizeInBytes": 5203,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2239,
-            "rawSizeInBytes": 5316,
+            "gzipSizeInBytes": 2189,
+            "rawSizeInBytes": 5264,
+          },
+        },
+        "Set(String)": {
+          "vite@8.2.0": {
+            "gzipSizeInBytes": 1953,
+            "rawSizeInBytes": 4441,
+          },
+          "webpack@5.109.2": {
+            "gzipSizeInBytes": 1923,
+            "rawSizeInBytes": 4480,
           },
         },
         "String": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 711,
-            "rawSizeInBytes": 1343,
+            "gzipSizeInBytes": 739,
+            "rawSizeInBytes": 1389,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 704,
-            "rawSizeInBytes": 1346,
+            "gzipSizeInBytes": 728,
+            "rawSizeInBytes": 1388,
           },
         },
         "Tuple(String, Number)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2229,
-            "rawSizeInBytes": 5166,
+            "gzipSizeInBytes": 2126,
+            "rawSizeInBytes": 4881,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2218,
-            "rawSizeInBytes": 5188,
+            "gzipSizeInBytes": 2109,
+            "rawSizeInBytes": 4891,
           },
         },
         "Union(String, Number)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1633,
-            "rawSizeInBytes": 3599,
+            "gzipSizeInBytes": 1669,
+            "rawSizeInBytes": 3662,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1635,
-            "rawSizeInBytes": 3646,
+            "gzipSizeInBytes": 1662,
+            "rawSizeInBytes": 3701,
           },
         },
         "discriminatedUnion(Created, Deleted)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3783,
-            "rawSizeInBytes": 11057,
+            "gzipSizeInBytes": 3719,
+            "rawSizeInBytes": 10913,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3796,
-            "rawSizeInBytes": 11198,
+            "gzipSizeInBytes": 3742,
+            "rawSizeInBytes": 11055,
           },
         },
         "lazy(Object(Array))": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3997,
-            "rawSizeInBytes": 11532,
+            "gzipSizeInBytes": 3961,
+            "rawSizeInBytes": 11396,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 4014,
-            "rawSizeInBytes": 11693,
+            "gzipSizeInBytes": 3997,
+            "rawSizeInBytes": 11532,
           },
         },
         "typed(Pending)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3150,
-            "rawSizeInBytes": 8601,
+            "gzipSizeInBytes": 3098,
+            "rawSizeInBytes": 8483,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3154,
-            "rawSizeInBytes": 8694,
+            "gzipSizeInBytes": 3111,
+            "rawSizeInBytes": 8577,
           },
         },
       }
@@ -458,6 +494,7 @@ describe("Type2 tree shaking", () => {
               expect(bundle.code).toContain(fragment);
             }
             for (const fragment of [
+              ...base64CapabilityFragments,
               ...unrelatedTypeFragments,
               '"Array"',
               "is not an array",
@@ -479,12 +516,12 @@ describe("Type2 tree shaking", () => {
       {
         "localizeTypes(Label)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1652,
-            "rawSizeInBytes": 3684,
+            "gzipSizeInBytes": 2009,
+            "rawSizeInBytes": 4698,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1666,
-            "rawSizeInBytes": 3744,
+            "gzipSizeInBytes": 2003,
+            "rawSizeInBytes": 4774,
           },
         },
       }
@@ -504,6 +541,7 @@ describe("Type2 tree shaking", () => {
               "Todo",
             ]);
             for (const fragment of [
+              ...base64CapabilityFragments,
               '"Never"',
               "not valid for type Never",
               '"DateIso"',
@@ -526,12 +564,12 @@ describe("Type2 tree shaking", () => {
       {
         "typed Todo list": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 5224,
-            "rawSizeInBytes": 15683,
+            "gzipSizeInBytes": 5175,
+            "rawSizeInBytes": 15545,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 5261,
-            "rawSizeInBytes": 15918,
+            "gzipSizeInBytes": 5232,
+            "rawSizeInBytes": 15746,
           },
         },
       }

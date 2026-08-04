@@ -44,7 +44,7 @@ depend on it.
 - Scaling fixtures test whether brand-chain depth causes nonlinear growth or
   compiler depth failures.
 
-The Type2 suite contains twenty isolated depth-scaling workloads at depths
+The Type2 suite contains twenty-six isolated depth-scaling workloads at depths
 1, 2, 4, 8, 16, and 32, six width-scaling workloads at widths 2, 4, 8, 16,
 and 32, plus nineteen standalone workloads:
 
@@ -63,8 +63,16 @@ and 32, plus nineteen standalone workloads:
 - `array-all` forces output, errors, `fromUnknown`, and every callable
   `from.parent` suffix.
 - `array-semantic-all` forces the same channels over a semantic brand chain.
+- `set-output` forces the output of a Set Type over a validated brand chain.
+- `set-errors` forces its complete structural and element error union.
+- `set-from-unknown` forces its public unknown-input validation operation.
+- `set-all` forces output, errors, `fromUnknown`, and every callable
+  `from.parent` suffix.
+- `set-semantic-all` forces the same channels over a semantic brand chain.
 - `nested-array-all` forces output, errors, `fromUnknown`, and `from` through
   recursively nested Array Types.
+- `nested-set-all` forces output, errors, `fromUnknown`, and `from` through
+  recursively nested Set Types.
 - `nested-object-all` forces input, output, errors, `fromUnknown`, `from`, and
   `to` through recursively nested Object Types around a transformed leaf.
 - `object-all` forces required and optional property output, errors,

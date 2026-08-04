@@ -1,5 +1,5 @@
 import { expectErr, expectOk } from "@evolu/vitest";
-import { assert, describe, expect, expectTypeOf, test } from "vitest";
+import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
 import type { NonEmptyReadonlyArray } from "../../../../packages/common/src/Array.ts";
 import type { Brand } from "../../../../packages/common/src/Brand.ts";
 import * as cs from "../../../../packages/common/src/intl/cs.ts";
@@ -11,11 +11,14 @@ import {
   ok,
   type Result,
 } from "../../../../packages/common/src/Result.ts";
+import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   array,
   ArrayBuffer,
   assertType,
+  Base64Url,
+  base64UrlToUint8Array,
   between,
   BigInt,
   Boolean,
@@ -23,10 +26,16 @@ import {
   capitalized,
   CapitalizedString,
   createInstanceOfType,
+  createObjectTagType,
+  createId,
+  createIdAsUuidv7,
+  createIdFromString,
   createType,
   Date,
   DateIso,
+  DateIsoFromDate,
   discriminatedUnion,
+  EvoluType,
   finite,
   FiniteNumber,
   Function,
@@ -35,6 +44,14 @@ import {
   int,
   Int,
   Int64,
+  Int64FromInt64String,
+  Int64String,
+  Id,
+  IdBytes,
+  idBytesToId,
+  idBytesTypeValueLength,
+  id,
+  idToIdBytes,
   Json,
   JsonArray,
   JsonObject,
@@ -51,11 +68,13 @@ import {
   maxLength,
   maxPositiveInt,
   minLength,
+  Mnemonic,
   multipleOf,
   negative,
   NegativeInt,
   NegativeNumber,
   Never,
+  Name,
   NonEmptyTrimmedString,
   NonEmptyTrimmedString100,
   NonEmptyTrimmedString1000,
@@ -71,11 +90,14 @@ import {
   Null,
   nullishOr,
   nullOr,
+  nullableToOptional,
   Number,
   Object,
   object,
+  omit,
   onePositiveInt,
   optional,
+  partial,
   positive,
   PositiveDecimalString,
   PositiveInt,
@@ -83,8 +105,13 @@ import {
   Ratio,
   record,
   regex,
+  result,
+  nextResult,
+  set,
   String,
   Symbol,
+  SimplePassword,
+  testName,
   transform,
   trim,
   trimmed,
@@ -97,8 +124,12 @@ import {
   undefinedOr,
   union,
   Unknown,
+  UnknownNextResult,
+  UnknownResult,
+  uint8ArrayToBase64Url,
   UrlSafeString,
   zeroNonNegativeInt,
+  type AnyType,
   type ArrayElementIssue,
   type ArrayElementsError,
   type ArrayError,
@@ -108,12 +139,15 @@ import {
   type ArrayType,
   type BrandFactory,
   type BrandType,
+  type Base64UrlError,
   type CapitalizedError,
   type DateIsoError,
+  type DateIsoFromDateError,
   type DiscriminatedUnionError,
   type DiscriminatedUnionMemberError,
   type DiscriminatedUnionMemberIssue,
   type DiscriminatedUnionType,
+  type EvoluTypeError,
   type FiniteError,
   type GreaterThanError,
   type InferErrors,
@@ -121,7 +155,9 @@ import {
   type InstanceOfError,
   type InstanceOfType,
   type Int64Error,
+  type Int64StringError,
   type IntError,
+  type IdError,
   type JsonArrayInput,
   type JsonError,
   type JsonObjectInput,
@@ -136,18 +172,25 @@ import {
   type LiteralType,
   type MaxLengthError,
   type MinLengthError,
+  type MnemonicError,
+  type NameError,
   type NegativeError,
   type NeverError,
+  type NullableToOptionalProps,
   type NonNaNError,
   type NonNegativeError,
   type NonPositiveError,
   type ObjectError,
   type ObjectExcessPropertyError,
   type ObjectMissingPropertyError,
+  type ObjectTag,
+  type ObjectTagError,
+  type ObjectTagType,
   type ObjectPropertiesError,
   type ObjectPropertyAccessError,
   type ObjectType,
   type OptionalProperty,
+  type PartialObjectProps,
   type PositiveDecimalStringError,
   type PositiveError,
   type RecordAccessorIssue,
@@ -161,7 +204,16 @@ import {
   type RecordNotRecordError,
   type RecordType,
   type RecordValueIssue,
+  type SetElementIssue,
+  type SetElementsError,
+  type SetError,
+  type SetExcessPropertyIssue,
+  type SetItemsError,
+  type SetNotSetError,
+  type SetType,
+  type SetUnexpectedPrototypeError,
   type TransformError,
+  type TransformOutputError,
   type TransformType,
   type TrimmedError,
   type TupleElementIssue,
@@ -180,6 +232,7 @@ import {
   type TypeNode,
   type TypeOfError,
   type TypeValueError,
+  type TableIdError,
   type UInt64Error,
   type UnionError,
   type UnionInputType,
@@ -301,15 +354,22 @@ describe("Type", () => {
 
     const exportedTypes = {
       ArrayBuffer,
+      Base64Url,
       BigInt,
       Boolean,
       CapitalizedString,
       Date,
       DateIso,
+      DateIsoFromDate,
+      EvoluType,
       FiniteNumber,
       Function,
+      Id,
+      IdBytes,
       Int,
       Int64,
+      Int64FromInt64String,
+      Int64String,
       Json,
       JsonArray,
       JsonObject,
@@ -318,6 +378,8 @@ describe("Type", () => {
       NegativeInt,
       NegativeNumber,
       Never,
+      Mnemonic,
+      Name,
       NonEmptyTrimmedString,
       NonEmptyTrimmedString100,
       NonEmptyTrimmedString1000,
@@ -334,6 +396,7 @@ describe("Type", () => {
       PositiveDecimalString,
       PositiveNumber,
       Ratio,
+      SimplePassword,
       String,
       Symbol,
       TrimmedString,
@@ -341,6 +404,8 @@ describe("Type", () => {
       Uint8Array,
       Undefined,
       Unknown,
+      UnknownNextResult,
+      UnknownResult,
       UrlSafeString,
     } as const satisfies Readonly<Record<ExportedTypeKey, TypeNode>>;
 
@@ -382,6 +447,7 @@ describe("Type", () => {
       array(minLength(2)(String)),
       tuple(String, NumberFromString),
       record(regex("IntrospectionKey", /^key/)(String), NumberFromString),
+      set(minLength(2)(String)),
       object(
         {
           required: String,
@@ -401,19 +467,28 @@ describe("Type", () => {
     ] as const;
     const expectedNames = [
       "Array",
+      "ArrayBuffer",
+      "Base64Url",
       "Between6-7",
       "BigInt",
       "Boolean",
       "Capitalized",
+      "Date",
       "DateIso",
+      "DateIsoFromDate",
       "DiscriminatedUnion",
+      "EvoluType",
       "Finite",
       "Function",
       "GreaterThan1",
       "GreaterThanOrEqualTo2",
+      "Id",
+      "IdBytes",
       "InstanceOf",
       "Int",
       "Int64",
+      "Int64FromInt64String",
+      "Int64String",
       "IntrospectionChild",
       "IntrospectionKey",
       "IntrospectionRegex",
@@ -421,6 +496,7 @@ describe("Type", () => {
       "Json",
       "JsonValue",
       "JsonValueFromJson",
+      "Length16",
       "Length4",
       "LessThan3",
       "LessThanOrEqualTo1",
@@ -429,9 +505,13 @@ describe("Type", () => {
       "MaxLength100",
       "MaxLength1000",
       "MaxLength3",
+      "MaxLength64",
       "MinLength1",
       "MinLength2",
+      "MinLength8",
+      "Mnemonic",
       "MultipleOf5",
+      "Name",
       "Negative",
       "Never",
       "NonNaN",
@@ -444,11 +524,14 @@ describe("Type", () => {
       "PositiveDecimalString",
       "Ratio",
       "Record",
+      "Set",
+      "SimplePassword",
       "String",
       "Symbol",
       "Trimmed",
       "Tuple",
       "UInt64",
+      "Uint8Array",
       "Union",
       "Unknown",
       "UrlSafeString",
@@ -472,11 +555,7 @@ describe("Type", () => {
     }
 
     const isTypeNode = (value: unknown): value is TypeNode =>
-      typeof value === "object" &&
-      value !== null &&
-      "name" in value &&
-      "parent" in value &&
-      "fromUnknown" in value;
+      EvoluType.is(value);
     const names = new Set<TypeName>();
     const visited = new Set<TypeNode>();
     const visit = (type: TypeNode): void => {
@@ -1094,10 +1173,168 @@ describe("localizeTypes", () => {
     );
   });
 
+  test("localizes reflected Type graphs", () => {
+    const NumberFromString = setupNumberFromString();
+    const Pair = tuple(String, Number);
+    const StringSet = set(String);
+    const Strings = array(String);
+    const Value = union(String, Number);
+    const Values = record(String, String);
+    const User = object({ name: String, nickname: optional(String) }, Values);
+    // Composite Types come first to prove their reflected children populate the
+    // same cache later used for explicitly selected leaf Types.
+    const Types = localizeTypes(
+      {
+        NumberFromString,
+        Pair,
+        StringSet,
+        Strings,
+        User,
+        Value,
+        Values,
+        Number,
+        String,
+      },
+      {
+        test: {
+          Array: () => "Localized Array.",
+          Number: () => "Localized Number.",
+          NumberFromString: () => "Localized NumberFromString.",
+          Object: () => "Localized Object.",
+          Record: () => "Localized Record.",
+          Set: () => "Localized Set.",
+          String: () => "Localized String.",
+          Tuple: () => "Localized Tuple.",
+          Union: () => "Localized Union.",
+        },
+      },
+    ).test;
+
+    expect(Types.NumberFromString.parent).toBe(Types.String);
+    expect(Types.NumberFromString.output).toBe(Types.Number);
+    expect(Types.Pair.elements).toEqual([Types.String, Types.Number]);
+    expect(Types.StringSet.element).toBe(Types.String);
+    expect(Types.Strings.element).toBe(Types.String);
+    expect(Types.User.props.name).toBe(Types.String);
+    expect(Types.User.props.nickname.type).toBe(Types.String);
+    expect(Types.User.record).toBe(Types.Values);
+    expect(Types.Value.members).toEqual([Types.String, Types.Number]);
+    expect(Types.Values.key).toBe(Types.String);
+    expect(Types.Values.value).toBe(Types.String);
+
+    const ReflectedStrings = array(Types.User.props.name);
+    const result = ReflectedStrings.fromUnknown([1]);
+
+    assert(!result.ok);
+    expect(ReflectedStrings.formatError(result.error)).toBe(
+      "Localized String.",
+    );
+  });
+
+  test("preserves localized child errors when composed afterward", async () => {
+    const LocalizedString = localizeTypes(
+      { String },
+      { test: { String: () => "Localized String." } },
+    ).test.String;
+    const Strings = array(LocalizedString);
+    const NonEmptyString = minLength(1)(LocalizedString);
+    const stringsResult = Strings.fromUnknown([1]);
+    const nonEmptyStringResult = NonEmptyString.fromUnknown(1);
+
+    assert(!stringsResult.ok);
+    expect(Strings.formatError(stringsResult.error)).toBe("Localized String.");
+    expect(await Strings["~standard"].validate([1])).toEqual({
+      issues: [{ message: "Localized String.", path: [0] }],
+    });
+
+    assert(!nonEmptyStringResult.ok);
+    expect(NonEmptyString.formatError(nonEmptyStringResult.error)).toBe(
+      "Localized String.",
+    );
+  });
+
+  test("does not depend on selected Type or formatter order", async () => {
+    const Label = minLength(1)(String);
+    const LabelFirst = localizeTypes(
+      { Label, Int64, String },
+      {
+        test: {
+          BigInt: () => "Localized BigInt.",
+          Int64: () => "Localized Int64.",
+          MinLength1: () => "Localized MinLength1.",
+          String: () => "Localized String.",
+        },
+      },
+    ).test;
+    const StringFirst = localizeTypes(
+      { String, Int64, Label },
+      {
+        test: {
+          String: () => "Localized String.",
+          MinLength1: () => "Localized MinLength1.",
+          Int64: () => "Localized Int64.",
+          BigInt: () => "Localized BigInt.",
+        },
+      },
+    ).test;
+
+    for (const Types of [LabelFirst, StringFirst]) {
+      expect(Types.Label.parent).toBe(Types.String);
+
+      const labelTypeResult = Types.Label.fromUnknown(1);
+      assert(!labelTypeResult.ok);
+      expect(Types.Label.formatError(labelTypeResult.error)).toBe(
+        "Localized String.",
+      );
+
+      const labelLengthResult = Types.Label.fromUnknown("");
+      assert(!labelLengthResult.ok);
+      expect(Types.Label.formatError(labelLengthResult.error)).toBe(
+        "Localized MinLength1.",
+      );
+
+      const int64TypeResult = Types.Int64.fromUnknown(1);
+      assert(!int64TypeResult.ok);
+      expect(Types.Int64.formatError(int64TypeResult.error)).toBe(
+        "Localized BigInt.",
+      );
+
+      const int64RangeResult = Types.Int64.fromUnknown(1n << 63n);
+      assert(!int64RangeResult.ok);
+      expect(Types.Int64.formatError(int64RangeResult.error)).toBe(
+        "Localized Int64.",
+      );
+
+      expect(await Types.Label["~standard"].validate(1)).toEqual({
+        issues: [{ message: "Localized String.", path: [] }],
+      });
+      expect(await Types.Int64["~standard"].validate(1n << 63n)).toEqual({
+        issues: [{ message: "Localized Int64.", path: [] }],
+      });
+    }
+  });
+
+  test("requires only the Object formatter for the predefined Object", async () => {
+    const LocalizedObject = localizeTypes(
+      { Object },
+      { test: { Object: () => "Localized Object." } },
+    ).test.Object;
+    const symbol = globalThis.Symbol("metadata");
+    const result = LocalizedObject.fromUnknown({ [symbol]: true });
+
+    assert(!result.ok);
+    expect(LocalizedObject.formatError(result.error)).toBe("Localized Object.");
+    expect(
+      await LocalizedObject["~standard"].validate({ [symbol]: true }),
+    ).toEqual({
+      issues: [{ message: "Localized Object.", path: [symbol] }],
+    });
+  });
+
   test("preserves Type APIs and formats typed boundary assertions", () => {
     const Strings = array(String);
     const Types = localizeTypes(
-      { PositiveNumber, Strings },
+      { PositiveNumber, String, Strings },
       {
         test: {
           Array: () => "Localized Array.",
@@ -1110,7 +1347,7 @@ describe("localizeTypes", () => {
     ).test;
 
     expectTypeOf(Types.Strings).toEqualTypeOf(Strings);
-    expect(Types.Strings.element).toBe(String);
+    expect(Types.Strings.element).toBe(Types.String);
     expect(Types.Strings.to(["Evolu"])).toEqual(["Evolu"]);
 
     const positiveError = { type: "Positive", value: 0 } as const;
@@ -1190,16 +1427,160 @@ describe("localizeTypes", () => {
     );
   });
 
-  test("lets a Union own its complete failure", () => {
+  test("routes Set child errors and requires both formatters", () => {
+    const Strings = set(String);
+    const Types = localizeTypes(
+      { Strings },
+      {
+        test: {
+          Set: () => "Localized Set.",
+          String: () => "Localized String.",
+        },
+      },
+    ).test;
+
+    const notSet = Types.Strings.fromUnknown(null);
+    assert(!notSet.ok);
+    expect(Types.Strings.formatError(notSet.error)).toBe("Localized Set.");
+
+    const invalidElement = Types.Strings.fromUnknown(new globalThis.Set([1]));
+    assert(!invalidElement.ok);
+    expect(Types.Strings.formatError(invalidElement.error)).toBe(
+      "Localized String.",
+    );
+
+    const compileTimeAssertions = () => {
+      localizeTypes(
+        { Strings },
+        {
+          // @ts-expect-error String is missing.
+          missingString: { Set: () => "Set." },
+        },
+      );
+      localizeTypes(
+        { Strings },
+        {
+          // @ts-expect-error Set is missing.
+          missingSet: { String: () => "String." },
+        },
+      );
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("lets a Union own its complete failure and localizes its members", () => {
     const Value = union(String, Number);
     const Types = localizeTypes(
       { Value },
-      { test: { Union: () => "Localized Union." } },
+      {
+        test: {
+          Number: () => "Localized Number.",
+          String: () => "Localized String.",
+          Union: () => "Localized Union.",
+        },
+      },
     ).test;
     const result = Types.Value.fromUnknown(null);
+    const stringResult = Types.Value.members[0].fromUnknown(1);
 
     assert(!result.ok);
     expect(Types.Value.formatError(result.error)).toBe("Localized Union.");
+    expect(Types.Value.members[0]).not.toBe(String);
+    expect(Types.Value.members[1]).not.toBe(Number);
+    assert(!stringResult.ok);
+    expect(Types.Value.members[0].formatError(stringResult.error)).toBe(
+      "Localized String.",
+    );
+
+    const compileTimeAssertions = () => {
+      localizeTypes(
+        { Value },
+        {
+          // @ts-expect-error Reflected Union members require their formatters.
+          test: { Union: () => "Union." },
+        },
+      );
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("localizes fallible members of an infallible Union", () => {
+    const Value = union(String, Unknown);
+    const Types = localizeTypes(
+      { Value },
+      { test: { String: () => "Localized String." } },
+    ).test;
+    const result = Types.Value.members[0].fromUnknown(1);
+
+    expectTypeOf(Types.Value.Error).toEqualTypeOf<never>();
+    expect(Types.Value.members[0]).not.toBe(String);
+    expect(Types.Value.members[1]).not.toBe(Unknown);
+    assert(!result.ok);
+    expect(Types.Value.members[0].formatError(result.error)).toBe(
+      "Localized String.",
+    );
+
+    const compileTimeAssertions = () => {
+      localizeTypes(
+        { Value },
+        {
+          // @ts-expect-error The reflected String member requires its formatter.
+          test: {},
+        },
+      );
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("requires fallible Types reachable only through reflection", () => {
+    const Value = union(String, Unknown);
+    const Values = array(Value);
+    const NonEmptyValues = minLength(1)(Values);
+    const Model = object({
+      value: Value,
+      optionalValue: optional(Value),
+    });
+    const Types = localizeTypes(
+      { Model, NonEmptyValues },
+      {
+        test: {
+          Array: () => "Localized Array.",
+          MinLength1: () => "Localized MinLength1.",
+          Object: () => "Localized Object.",
+          String: () => "Localized String.",
+        },
+      },
+    ).test;
+
+    expect(Types.Model.props.value).toBe(Types.NonEmptyValues.parent.element);
+    expect(Types.Model.props.optionalValue.type).toBe(
+      Types.NonEmptyValues.parent.element,
+    );
+
+    const result = Types.Model.props.value.members[0].fromUnknown(1);
+    assert(!result.ok);
+    expect(Types.Model.props.value.members[0].formatError(result.error)).toBe(
+      "Localized String.",
+    );
+
+    const compileTimeAssertions = () => {
+      localizeTypes(
+        { Model, NonEmptyValues },
+        {
+          // @ts-expect-error Reflected String is reachable through the Object property and Array parent.
+          test: {
+            Array: () => "Array.",
+            MinLength1: () => "MinLength1.",
+            Object: () => "Object.",
+          },
+        },
+      );
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
   });
 
   test("routes DiscriminatedUnion member errors", () => {
@@ -1326,6 +1707,7 @@ describe("localizeTypes", () => {
       { NumberFromString, PositiveFromString },
       {
         test: {
+          Number: () => "Localized Number.",
           NumberFromString: () => "Localized NumberFromString.",
           Positive: () => "Localized Positive.",
           String: () => "Localized String.",
@@ -1446,9 +1828,82 @@ describe("localizeTypes", () => {
     expect(Types.Text).toBe(Types.String);
   });
 
+  test("requires plain string-keyed maps", () => {
+    const selected = globalThis.Symbol("selected");
+    const locale = globalThis.Symbol("locale");
+    const compileTimeAssertions = () => {
+      localizeTypes(
+        // @ts-expect-error Selected Type names must be strings.
+        { [selected]: String },
+        { en: { String: () => "String." } },
+      );
+      localizeTypes(
+        { String },
+        // @ts-expect-error Locale names must be strings.
+        { [locale]: { String: () => "String." } },
+      );
+    };
+
+    const selectedByName = { [selected]: String } as unknown as {
+      readonly String: typeof String;
+    };
+    expect(() =>
+      localizeTypes(selectedByName, {
+        en: { String: () => "String." },
+      }),
+    ).toThrow(
+      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    );
+
+    const formatters = { String: () => "String." };
+    const formattersByLocale = globalThis.Object.defineProperty({}, "en", {
+      value: formatters,
+      enumerable: false,
+    }) as { readonly en: typeof formatters };
+    expect(() => localizeTypes({ String }, formattersByLocale)).toThrow(
+      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    );
+
+    let reads = 0;
+    const accessorFormatters = globalThis.Object.defineProperty({}, "String", {
+      enumerable: true,
+      get: () => {
+        reads++;
+        return () => "String.";
+      },
+    }) as { readonly String: () => string };
+    expect(() => localizeTypes({ String }, { en: accessorFormatters })).toThrow(
+      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    );
+    expect(reads).toBe(0);
+
+    class EnglishFormatters {
+      String(): string {
+        return "String.";
+      }
+    }
+    expect(() =>
+      localizeTypes({ String }, { en: new EnglishFormatters() }),
+    ).toThrow(
+      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    );
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
   test("requires exactly the reachable formatters", () => {
     const Label = minLength(1)(String);
+    // A stored map bypasses TypeScript's object-literal excess-property check.
+    const formatters = {
+      MinLength1: () => "MinLength1.",
+      String: () => "String.",
+    };
+    const excessFormatters = {
+      ...formatters,
+      Number: () => "Number.",
+    };
     const compileTimeAssertions = () => {
+      localizeTypes({ Label }, { valid: formatters });
       localizeTypes(
         { Label },
         {
@@ -1458,15 +1913,60 @@ describe("localizeTypes", () => {
       );
       localizeTypes(
         { Label },
+        // @ts-expect-error Number is not reachable.
         {
           excess: {
             MinLength1: () => "MinLength1.",
             String: () => "String.",
-            // @ts-expect-error Number is not reachable.
             Number: () => "Number.",
           },
         },
       );
+      localizeTypes(
+        { Label },
+        // @ts-expect-error Number is not reachable through a stored formatter map.
+        {
+          excessStored: excessFormatters,
+        },
+      );
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("requires formatters for every union-typed selection branch", () => {
+    type Selected =
+      | { readonly String: typeof String }
+      | { readonly Number: typeof Number };
+    const localize = (selected: Selected) =>
+      localizeTypes(selected, {
+        test: {
+          Number: () => "Localized Number.",
+          String: () => "Localized String.",
+        },
+      }).test;
+
+    const StringTypes = localize({ String });
+    assert("String" in StringTypes);
+    const stringResult = StringTypes.String.fromUnknown(1);
+    assert(!stringResult.ok);
+    expect(StringTypes.String.formatError(stringResult.error)).toBe(
+      "Localized String.",
+    );
+
+    const NumberTypes = localize({ Number });
+    assert("Number" in NumberTypes);
+    const numberResult = NumberTypes.Number.fromUnknown("1");
+    assert(!numberResult.ok);
+    expect(NumberTypes.Number.formatError(numberResult.error)).toBe(
+      "Localized Number.",
+    );
+
+    const compileTimeAssertions = (selected: Selected) => {
+      localizeTypes(selected, {
+        // @ts-expect-error Every possible selection branch requires its formatter.
+        test: {},
+      });
     };
 
     expectTypeOf(compileTimeAssertions).toBeFunction();
@@ -1842,6 +2342,70 @@ describe("createType", () => {
           Result<unknown, never>
         >();
         expectTypeOf(Unknown.formatError).parameter(0).toEqualTypeOf<never>();
+      });
+    });
+
+    describe("EvoluType", () => {
+      test("has the expected root Type definition", () => {
+        expect(EvoluType.name).toBe("EvoluType");
+        expectTypeOf(EvoluType).toEqualTypeOf<
+          Type<"EvoluType", AnyType, AnyType, EvoluTypeError>
+        >();
+        expectTypeOf<EvoluTypeError>().toExtend<TypeValueError<"EvoluType">>();
+      });
+
+      test("recognizes root, composed, and localized Types", () => {
+        const LocalizedString = localizeTypes(
+          { String },
+          { test: { String: () => "Localized String." } },
+        ).test.String;
+        const types: ReadonlyArray<AnyType> = [
+          String,
+          NonEmptyTrimmedString,
+          array(String),
+          union(String, Number),
+          LocalizedString,
+          EvoluType,
+        ];
+
+        for (const type of types) {
+          expect(EvoluType.is(type)).toBe(true);
+          expect(EvoluType.fromUnknown(type)).toEqual(ok(type));
+        }
+      });
+
+      test("rejects values without the Type instance identity", () => {
+        const values: ReadonlyArray<unknown> = [
+          undefined,
+          null,
+          "Type",
+          () => undefined,
+          {},
+          { "~evolu/instance": "Other" },
+        ];
+
+        for (const value of values) {
+          expect(EvoluType.is(value)).toBe(false);
+          expect(EvoluType.fromUnknown(value)).toEqual(
+            err({ type: "EvoluType", value }),
+          );
+        }
+      });
+
+      test("formats its validation error", () => {
+        expect(
+          EvoluType.formatError({ type: "EvoluType", value: "Type" }),
+        ).toBe('A value "Type" is not an Evolu Type.');
+      });
+
+      test("asserts an unknown value as a composable Type", () => {
+        const value: unknown = String;
+
+        assertType(EvoluType, value);
+        expectTypeOf(value).toEqualTypeOf<AnyType>();
+
+        const Values = array(value);
+        expect(Values.fromUnknown(["value"])).toEqual(ok(["value"]));
       });
     });
 
@@ -2516,6 +3080,234 @@ describe("TypeOf", () => {
   });
 });
 
+describe("createObjectTagType", () => {
+  const DateFromFactory = createObjectTagType("Date");
+  const builtInTypes = [
+    {
+      name: "Date",
+      type: Date,
+      value: new globalThis.Date(0),
+    },
+    {
+      name: "Uint8Array",
+      type: Uint8Array,
+      value: new globalThis.Uint8Array(0),
+    },
+    {
+      name: "ArrayBuffer",
+      type: ArrayBuffer,
+      value: new globalThis.ArrayBuffer(0),
+    },
+  ] as const;
+
+  test("creates the predefined built-in Types", () => {
+    expectTypeOf(DateFromFactory).toEqualTypeOf<
+      Type<"Date", globalThis.Date, globalThis.Date, ObjectTagError<"Date">>
+    >();
+    expectTypeOf(Date).toEqualTypeOf<
+      Type<"Date", globalThis.Date, globalThis.Date, ObjectTagError<"Date">>
+    >();
+    expectTypeOf(Uint8Array).toEqualTypeOf<
+      Type<
+        "Uint8Array",
+        globalThis.Uint8Array,
+        globalThis.Uint8Array,
+        ObjectTagError<"Uint8Array">
+      >
+    >();
+    expectTypeOf(ArrayBuffer).toEqualTypeOf<
+      Type<
+        "ArrayBuffer",
+        globalThis.ArrayBuffer,
+        globalThis.ArrayBuffer,
+        ObjectTagError<"ArrayBuffer">
+      >
+    >();
+    expectTypeOf<
+      globalThis.Uint8Array<globalThis.SharedArrayBuffer>
+    >().toExtend<typeof Uint8Array.Output>();
+
+    for (const { name, type, value } of builtInTypes) {
+      expect(type.name).toBe(name);
+      expect(type.parent).toBeNull();
+      expectOk(type.fromUnknown(value), value);
+      expect(type.is(value)).toBe(true);
+      expect(type.to(value as never)).toBe(value);
+    }
+  });
+
+  test("classifies trusted object tags without claiming intrinsic hardening", () => {
+    const forgedDate = { [globalThis.Symbol.toStringTag]: "Date" };
+    const sabotagedSet = globalThis.Object.create(
+      globalThis.Set.prototype,
+    ) as ReadonlySet<string>;
+
+    expectOk(Date.fromUnknown(forgedDate), forgedDate);
+    expect(() => globalThis.Date.prototype.getTime.call(forgedDate)).toThrow(
+      TypeError,
+    );
+    expect(() => set(String).fromUnknown(sabotagedSet)).toThrow(TypeError);
+  });
+
+  test("refines a supplied Type with nominal object-tag evidence", () => {
+    class TaggedValue {
+      readonly tag: string;
+
+      constructor(tag: string) {
+        this.tag = tag;
+      }
+
+      get [globalThis.Symbol.toStringTag](): string {
+        return this.tag;
+      }
+    }
+
+    const TaggedValueInstance = createInstanceOfType(TaggedValue);
+    const Tagged = createObjectTagType("Tagged", TaggedValueInstance);
+    const TaggedValueFromString = transform(
+      "TaggedValueFromString",
+      String,
+      TaggedValueInstance,
+      {
+        from: (value) => ok(new TaggedValue(value)),
+        to: (value) => value.tag,
+      },
+    );
+    const TaggedFromString = createObjectTagType(
+      "Tagged",
+      TaggedValueFromString,
+    );
+    const value = new TaggedValue("Tagged");
+    const result = Tagged.fromUnknown(value);
+    const fromParentResult = Tagged.from.parent(value);
+    const transformedResult = TaggedFromString.fromUnknown("Tagged");
+    const wrongTag = new TaggedValue("Other");
+    const compileTimeAssertions = () => {
+      // @ts-expect-error A raw parent Output has no validated object-tag evidence.
+      Tagged.to(value);
+    };
+
+    expectTypeOf(Tagged).toEqualTypeOf<
+      ObjectTagType<"Tagged", typeof TaggedValueInstance>
+    >();
+    expectTypeOf<typeof Tagged.Output>().toEqualTypeOf<
+      TaggedValue & ObjectTag<"Tagged">
+    >();
+    expect(Tagged.name).toBe("ObjectTag");
+    expect(Tagged.expected).toBe("Tagged");
+    expect(Tagged.parent).toBe(TaggedValueInstance);
+    expectOk(result, value);
+    expectOk(fromParentResult, value);
+    expect(Tagged.to(result.value)).toBe(value);
+    expectTypeOf<typeof TaggedFromString.Input>().toEqualTypeOf<string>();
+    expectTypeOf<typeof TaggedFromString.Output>().toEqualTypeOf<
+      TaggedValue & ObjectTag<"Tagged">
+    >();
+    assert(transformedResult.ok);
+    expect(transformedResult.value).toBeInstanceOf(TaggedValue);
+    expect(TaggedFromString.to(transformedResult.value)).toBe("Tagged");
+    expect(Tagged.fromUnknown(wrongTag)).toEqual(
+      err<ObjectTagError<"Tagged">>({
+        type: "ObjectTag",
+        expected: "Tagged",
+        value: wrongTag,
+      }),
+    );
+    const forgedTag = { [globalThis.Symbol.toStringTag]: "Tagged" };
+    expect(Tagged.fromUnknown(forgedTag)).toEqual(
+      err<InstanceOfError>({
+        type: "InstanceOf",
+        constructorName: "TaggedValue",
+        value: forgedTag,
+      }),
+    );
+    expect(
+      Tagged.formatError({
+        type: "ObjectTag",
+        expected: "Tagged",
+        value: wrongTag,
+      }),
+    ).toBe('A value {"tag":"Other"} does not have the object tag "Tagged".');
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("requires one concrete tag name and a Type for custom tags", () => {
+    class TaggedValue {
+      readonly [globalThis.Symbol.toStringTag] = "Tagged";
+    }
+    class OtherValue {
+      readonly [globalThis.Symbol.toStringTag] = "Other";
+    }
+
+    const TaggedValueInstance = createInstanceOfType(TaggedValue);
+    const _OtherValueInstance = createInstanceOfType(OtherValue);
+    const unionName = "Tagged" as "Tagged" | "Other";
+    const builtInUnionName = "Date" as "Date" | "Uint8Array";
+    const broadName = "Tagged" as TypeName;
+    const patternedName = "Tagged" as `Tagged${string}`;
+    const outputType = TaggedValueInstance as
+      typeof TaggedValueInstance | typeof _OtherValueInstance;
+    const erasedOutputType: TypeNode = TaggedValueInstance;
+    const genericNameAssertion = <Name extends "Tagged" | "Other">(
+      name: Name,
+    ): Name => {
+      // @ts-expect-error An unresolved generic could be instantiated with a tag union.
+      createObjectTagType(name, TaggedValueInstance);
+      return name;
+    };
+    const genericOutputAssertion = <
+      OutputType extends
+        typeof TaggedValueInstance | typeof _OtherValueInstance,
+    >(
+      outputType: OutputType,
+    ): OutputType => {
+      // @ts-expect-error An unresolved generic could be instantiated with an output Type union.
+      createObjectTagType("Tagged", outputType);
+      return outputType;
+    };
+    const compileTimeAssertions = () => {
+      // @ts-expect-error A union does not identify one concrete object tag.
+      createObjectTagType(unionName, TaggedValueInstance);
+      // @ts-expect-error A union does not identify one predefined object tag.
+      createObjectTagType(builtInUnionName);
+      // @ts-expect-error A widened name does not identify one concrete object tag.
+      createObjectTagType(broadName, TaggedValueInstance);
+      // @ts-expect-error A template pattern does not identify one concrete object tag.
+      createObjectTagType(patternedName, TaggedValueInstance);
+      // @ts-expect-error A custom Object Tag requires an output Type.
+      createObjectTagType("Tagged");
+      // @ts-expect-error The output Type must produce objects.
+      createObjectTagType("Tagged", String);
+      // @ts-expect-error The output must use one concrete Type node.
+      createObjectTagType("Tagged", outputType);
+      // @ts-expect-error The output Type must retain its concrete information.
+      createObjectTagType("Tagged", erasedOutputType);
+    };
+
+    expectTypeOf(genericNameAssertion).toBeFunction();
+    expectTypeOf(genericOutputAssertion).toBeFunction();
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("infers ObjectTag localization", () => {
+    const Types = localizeTypes(
+      { Date },
+      {
+        test: {
+          ObjectTag: (error) => {
+            expectTypeOf(error).toEqualTypeOf<ObjectTagError<"Date">>();
+            return "Localized ObjectTag.";
+          },
+        },
+      },
+    ).test;
+    const result = Types.Date.fromUnknown({});
+
+    assert(!result.ok);
+    expect(Types.Date.formatError(result.error)).toBe("Localized ObjectTag.");
+  });
+});
+
 describe("createInstanceOfType", () => {
   class User {
     readonly name: string;
@@ -2536,24 +3328,6 @@ describe("createInstanceOfType", () => {
   };
 
   const UserInstance = createInstanceOfType(User);
-  const builtInTypes = [
-    {
-      constructorName: "Date",
-      type: Date,
-      value: new globalThis.Date(0),
-    },
-    {
-      constructorName: "Uint8Array",
-      type: Uint8Array,
-      value: new globalThis.Uint8Array(0),
-    },
-    {
-      constructorName: "ArrayBuffer",
-      type: ArrayBuffer,
-      value: new globalThis.ArrayBuffer(0),
-    },
-  ] as const;
-
   test("creates the expected root Type", () => {
     expectTypeOf(User).toExtend<InstanceConstructor<User>>();
     expectTypeOf(UserInstance).toEqualTypeOf<InstanceOfType<typeof User>>();
@@ -2565,32 +3339,6 @@ describe("createInstanceOfType", () => {
     expect(UserInstance.name).toBe("InstanceOf");
     expect(UserInstance.constructor).toBe(User);
     expect(UserInstance.parent).toBeNull();
-  });
-
-  test("creates the predefined built-in Types", () => {
-    expectTypeOf(Date).toEqualTypeOf<InstanceOfType<typeof globalThis.Date>>();
-    expectTypeOf(Uint8Array).toEqualTypeOf<
-      InstanceOfType<typeof globalThis.Uint8Array>
-    >();
-    expectTypeOf(ArrayBuffer).toEqualTypeOf<
-      InstanceOfType<typeof globalThis.ArrayBuffer>
-    >();
-    expectTypeOf<typeof Date.Output>().toEqualTypeOf<globalThis.Date>();
-    expectTypeOf<
-      typeof Uint8Array.Output
-    >().toEqualTypeOf<globalThis.Uint8Array>();
-    expectTypeOf<
-      globalThis.Uint8Array<globalThis.SharedArrayBuffer>
-    >().toExtend<typeof Uint8Array.Output>();
-    expectTypeOf<
-      typeof ArrayBuffer.Output
-    >().toEqualTypeOf<globalThis.ArrayBuffer>();
-
-    for (const { constructorName, type } of builtInTypes) {
-      expect(type.name).toBe("InstanceOf");
-      expect(type.constructor).toBe(globalThis[constructorName]);
-      expect(type.parent).toBeNull();
-    }
   });
 
   test("requires one concrete constructor", () => {
@@ -2713,32 +3461,6 @@ describe("createInstanceOfType", () => {
         'A value {"name":"Ada"} is not an instance of User.',
         error,
       );
-    }
-  });
-
-  test("predefined built-in Types preserve matching instances", () => {
-    for (const { type, value } of builtInTypes) {
-      const result = type.fromUnknown(value);
-
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(type.is(value)).toBe(true);
-    }
-  });
-
-  test("predefined built-in Types reject matching object-tag impostors", () => {
-    for (const { constructorName, type } of builtInTypes) {
-      const value: unknown = {
-        [globalThis.Symbol.toStringTag]: constructorName,
-      };
-
-      expect(globalThis.Object.prototype.toString.call(value)).toBe(
-        `[object ${constructorName}]`,
-      );
-      expect(type.fromUnknown(value)).toEqual(
-        err({ type: "InstanceOf", constructorName, value }),
-      );
-      expect(type.is(value)).toBe(false);
     }
   });
 
@@ -4598,6 +5320,50 @@ describe("brand", () => {
       });
     });
 
+    describe("DateIsoFromDate", () => {
+      test("safely transforms a Date to DateIso and back", () => {
+        const value = new globalThis.Date("2023-01-01T12:00:00.000Z");
+        const result = DateIsoFromDate.from.parent(value);
+
+        type ExpectedResult = Result<
+          DateIso,
+          | DateIsoFromDateError
+          | TransformOutputError<"DateIsoFromDate", DateIsoError>
+        >;
+        expectTypeOf(result).toEqualTypeOf<ExpectedResult>();
+        expectOk(result, "2023-01-01T12:00:00.000Z");
+        expect(DateIsoFromDate.to(result.value)).toEqual(value);
+        expectTypeOf(
+          DateIsoFromDate.to(result.value),
+        ).toEqualTypeOf<globalThis.Date>();
+      });
+
+      test("maps a thrown toISOString error", () => {
+        const value = new globalThis.Date(globalThis.Number.NaN);
+
+        expect(DateIsoFromDate.from.parent(value)).toEqual(
+          err({ type: "DateIsoFromDate", value }),
+        );
+        expect(
+          DateIsoFromDate.formatError({ type: "DateIsoFromDate", value }),
+        ).toBe("The Date cannot be represented as DateIso.");
+      });
+
+      test("rejects a Date whose ISO text is not canonical DateIso", () => {
+        const value = new globalThis.Date("+010000-01-01T00:00:00.000Z");
+
+        expect(DateIsoFromDate.from.parent(value)).toEqual(
+          err({
+            type: "DateIsoFromDate",
+            outputError: {
+              type: "DateIso",
+              value: "+010000-01-01T00:00:00.000Z",
+            },
+          }),
+        );
+      });
+    });
+
     describe("Int64", () => {
       test("is branded from BigInt", () => {
         expect(Int64.name).toBe("Int64");
@@ -4702,67 +5468,6 @@ describe("brand", () => {
         expectTypeOf(UInt64.formatError)
           .parameter(0)
           .toEqualTypeOf<TypeOfError<"BigInt"> | UInt64Error>();
-      });
-    });
-
-    describe("Ratio", () => {
-      test("accepts finite numbers from zero to one", () => {
-        expect(Ratio.from.parent.parent.parent.parent.parent(0)).toEqual(ok(0));
-        expect(Ratio.from.parent.parent.parent.parent.parent(1)).toEqual(ok(1));
-        expect(Ratio.from.parent.parent.parent.parent.parent(1.1)).toEqual(
-          err({ type: "LessThanOrEqualTo1", value: 1.1, max: 1 }),
-        );
-        expect(Ratio.from.parent.parent.parent.parent.parent(-0.1)).toEqual(
-          err({ type: "NonNegative", value: -0.1 }),
-        );
-      });
-    });
-
-    describe("PositiveDecimalString", () => {
-      test("is branded from String", () => {
-        expect(PositiveDecimalString.name).toBe("PositiveDecimalString");
-        expect(PositiveDecimalString.parent).toBe(String);
-        expectTypeOf(PositiveDecimalString).toEqualTypeOf<
-          BrandType<
-            typeof String,
-            "PositiveDecimalString",
-            PositiveDecimalStringError
-          >
-        >();
-        expectTypeOf<typeof PositiveDecimalString.Output>().toEqualTypeOf<
-          string & Brand<"PositiveDecimalString">
-        >();
-      });
-
-      test("accepts one canonical spelling of every positive decimal", () => {
-        for (const value of ["1", "25", "0.3", "0.01", "10.25"]) {
-          expect(PositiveDecimalString.from.parent(value)).toEqual(ok(value));
-        }
-      });
-
-      test("rejects zero and non-canonical decimal spellings", () => {
-        for (const value of [
-          "0",
-          "-0.3",
-          "+0.3",
-          ".3",
-          "0.30",
-          "00.3",
-          "3e-1",
-        ]) {
-          expect(PositiveDecimalString.from.parent(value)).toEqual(
-            err({ type: "PositiveDecimalString", value }),
-          );
-        }
-      });
-
-      test("formats its validation error", () => {
-        expect(
-          PositiveDecimalString.formatError({
-            type: "PositiveDecimalString",
-            value: "0.30",
-          }),
-        ).toBe('The value "0.30" must be a canonical positive decimal string.');
       });
     });
   });
@@ -4971,9 +5676,10 @@ describe("BrandFactory", () => {
   });
 
   describe("ValidateBrandFactoryNumber", () => {
-    test("rejects widened and union numeric parameters", () => {
+    test("rejects widened, union, and branded numeric parameters", () => {
       const value = globalThis.Number(1);
       const unionValue = 1 as 1 | 2;
+      const nonNegativeInt = NonNegativeInt.orThrow(1);
       const compileTimeAssertions = () => {
         // @ts-expect-error Numeric Brand parameters must not widen to number.
         minLength(1 + 1);
@@ -4989,6 +5695,8 @@ describe("BrandFactory", () => {
         between(1, 1 + 1);
         // @ts-expect-error Numeric Brand parameters must not use a union.
         minLength(unionValue);
+        // @ts-expect-error A branded runtime number does not identify one literal.
+        maxLength(nonNegativeInt);
       };
 
       expectTypeOf(compileTimeAssertions).toBeFunction();
@@ -5356,6 +6064,387 @@ describe("BrandFactory", () => {
       });
     });
 
+    describe("Domain Types", () => {
+      describe("Base64Url", () => {
+        test("validates canonical unpadded text and converts bytes losslessly", () => {
+          const values = [
+            new globalThis.Uint8Array(),
+            new globalThis.Uint8Array([0]),
+            new globalThis.Uint8Array([255]),
+            new globalThis.Uint8Array([72, 101, 108, 108, 111]),
+          ];
+
+          for (const value of values) {
+            const encoded = uint8ArrayToBase64Url(value);
+
+            expect(Base64Url.from.parent(encoded)).toEqual(ok(encoded));
+            expect(base64UrlToUint8Array(encoded)).toEqual(value);
+          }
+          expect(uint8ArrayToBase64Url(values[3])).toBe("SGVsbG8");
+          expectTypeOf(
+            uint8ArrayToBase64Url(values[0]),
+          ).toEqualTypeOf<Base64Url>();
+          expectTypeOf(
+            base64UrlToUint8Array(Base64Url.orThrow("")),
+          ).toEqualTypeOf<globalThis.Uint8Array>();
+        });
+
+        test("falls back to browser Base64 primitives", () => {
+          if (typeof document === "undefined") return;
+
+          const toBase64Descriptor = globalThis.Object.getOwnPropertyDescriptor(
+            globalThis.Uint8Array.prototype,
+            "toBase64",
+          );
+          const fromBase64Descriptor =
+            globalThis.Object.getOwnPropertyDescriptor(
+              globalThis.Uint8Array,
+              "fromBase64",
+            );
+
+          try {
+            expect(
+              Reflect.deleteProperty(
+                globalThis.Uint8Array.prototype,
+                "toBase64",
+              ),
+            ).toBe(true);
+            expect(
+              Reflect.deleteProperty(globalThis.Uint8Array, "fromBase64"),
+            ).toBe(true);
+
+            const encoded = uint8ArrayToBase64Url(
+              new globalThis.Uint8Array([251, 255]),
+            );
+
+            expect(encoded).toBe("-_8");
+            expect(base64UrlToUint8Array(Base64Url.orThrow(encoded))).toEqual(
+              new globalThis.Uint8Array([251, 255]),
+            );
+          } finally {
+            if (toBase64Descriptor) {
+              globalThis.Object.defineProperty(
+                globalThis.Uint8Array.prototype,
+                "toBase64",
+                toBase64Descriptor,
+              );
+            }
+            if (fromBase64Descriptor) {
+              globalThis.Object.defineProperty(
+                globalThis.Uint8Array,
+                "fromBase64",
+                fromBase64Descriptor,
+              );
+            }
+          }
+        });
+
+        test("rejects non-canonical text", () => {
+          for (const value of ["A", "AB", "AAz", "*"]) {
+            expect(Base64Url.from.parent(value)).toEqual(
+              err({ type: "Base64Url", value }),
+            );
+          }
+          expect(Base64Url.formatError({ type: "Base64Url", value: "*" })).toBe(
+            'The value "*" is not a valid Base64Url string.',
+          );
+          expectTypeOf<
+            typeof Base64Url.Error
+          >().toEqualTypeOf<Base64UrlError>();
+        });
+      });
+
+      describe("Name", () => {
+        test("accepts bounded URL-safe names", () => {
+          expect(Name.fromUnknown("valid_name-1")).toEqual(ok("valid_name-1"));
+          expect(Name.fromUnknown("not valid").ok).toBe(false);
+
+          const value = "a".repeat(65);
+          expect(Name.fromUnknown(value)).toEqual(err({ type: "Name", value }));
+          expect(Name.formatError({ type: "Name", value })).toBe(
+            `The value "${value}" is not a valid Name.`,
+          );
+          expect(testName).toBe("Name");
+          expectTypeOf<typeof Name.Error>().toEqualTypeOf<NameError>();
+        });
+      });
+
+      describe("SimplePassword", () => {
+        test("requires trimmed text containing between 8 and 64 characters", () => {
+          expect(SimplePassword.fromUnknown("validPass123")).toEqual(
+            ok("validPass123"),
+          );
+          expect(SimplePassword.fromUnknown("short")).toEqual(
+            err({ type: "MinLength8", value: "short", min: 8 }),
+          );
+          const long = "a".repeat(65);
+          expect(SimplePassword.fromUnknown(long)).toEqual(
+            err({ type: "MaxLength64", value: long, max: 64 }),
+          );
+          expect(SimplePassword.fromUnknown(" validPass123 ")).toEqual(
+            err({ type: "Trimmed", value: " validPass123 " }),
+          );
+        });
+      });
+
+      describe("Mnemonic", () => {
+        test("validates English BIP39 mnemonics", () => {
+          const value =
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+          expect(Mnemonic.fromUnknown(value)).toEqual(ok(value));
+          expect(Mnemonic.fromUnknown("abandon abandon abandon")).toEqual(
+            err({
+              type: "Mnemonic",
+              value: "abandon abandon abandon",
+            }),
+          );
+          expect(
+            Mnemonic.formatError({
+              type: "Mnemonic",
+              value: "abandon abandon abandon",
+            }),
+          ).toBe(
+            'The value "abandon abandon abandon" is not a valid BIP39 mnemonic.',
+          );
+          expectTypeOf<typeof Mnemonic.Error>().toEqualTypeOf<MnemonicError>();
+        });
+      });
+
+      describe("Id", () => {
+        test("creates random, deterministic, and UUID v7-layout Ids", () => {
+          const deps = testCreateDeps();
+          const random = createId(deps);
+          const deterministic = createIdFromString("external-id");
+          const sameDeterministic = createIdFromString("external-id");
+          const uuidv7 = createIdAsUuidv7(deps);
+          const todoRandom = createId<"Todo">(deps);
+          const todoDeterministic = createIdFromString<"Todo">("todo");
+          const todoUuidv7 = createIdAsUuidv7<"Todo">(deps);
+
+          for (const value of [
+            random,
+            deterministic,
+            uuidv7,
+            todoRandom,
+            todoDeterministic,
+            todoUuidv7,
+          ]) {
+            expect(Id.is(value)).toBe(true);
+            expect(value).toHaveLength(22);
+          }
+          expect(deterministic).toBe(sameDeterministic);
+          expect(idToIdBytes(uuidv7)[6] >> 4).toBe(0x7);
+          expect(idToIdBytes(uuidv7)[8] & 0xc0).toBe(0x80);
+          expectTypeOf(random).toEqualTypeOf<Id>();
+          expectTypeOf(deterministic).toEqualTypeOf<Id>();
+          expectTypeOf(uuidv7).toEqualTypeOf<Id>();
+          expectTypeOf(todoRandom).toEqualTypeOf<Id & Brand<"Todo">>();
+          expectTypeOf(todoDeterministic).toEqualTypeOf<Id & Brand<"Todo">>();
+          expectTypeOf(todoUuidv7).toEqualTypeOf<Id & Brand<"Todo">>();
+
+          const _unionBrand = "Todo" as "Todo" | "User";
+          const _broadBrand = "Todo" as string;
+          const _patternedBrand = "Todo" as `Todo${string}`;
+          const genericBrandAssertion = <B extends "Todo" | "User">(
+            brand: B,
+          ): B => {
+            // @ts-expect-error An unresolved generic brand might be a union.
+            createId<B>(deps);
+            return brand;
+          };
+
+          const compileTimeAssertions = () => {
+            // @ts-expect-error A union would assign multiple brands to one Id.
+            createId<typeof _unionBrand>(deps);
+            // @ts-expect-error Every Id creator rejects union brands.
+            createIdFromString<typeof _unionBrand>("todo");
+            // @ts-expect-error Every Id creator rejects union brands.
+            createIdAsUuidv7<typeof _unionBrand>(deps);
+            // @ts-expect-error A widened string does not identify one Id brand.
+            createId<typeof _broadBrand>(deps);
+            // @ts-expect-error A template pattern does not identify one Id brand.
+            createId<typeof _patternedBrand>(deps);
+            // @ts-expect-error A raw Id has no table identity.
+            const _todoId: Id & Brand<"Todo"> = random;
+            // @ts-expect-error A Todo Id must not satisfy a User Id API.
+            const _userId: Id & Brand<"User"> = todoRandom;
+          };
+
+          expectTypeOf(genericBrandAssertion).toBeFunction();
+          expectTypeOf(compileTimeAssertions).toBeFunction();
+        });
+
+        test("validates the encoded representation", () => {
+          const valid = createIdFromString("valid");
+
+          expect(Id.fromUnknown(valid)).toEqual(ok(valid));
+          expect(Id.fromUnknown("short")).toEqual(
+            err({ type: "Id", value: "short" }),
+          );
+          const invalid = "*".repeat(22);
+          expect(Id.fromUnknown(invalid)).toEqual(
+            err({ type: "Id", value: invalid }),
+          );
+          expect(Id.formatError({ type: "Id", value: "short" })).toBe(
+            'The value "short" is not a valid Id.',
+          );
+          expectTypeOf<typeof Id.Error>().toEqualTypeOf<IdError>();
+        });
+
+        test("creates table-specific Id Types", () => {
+          const TodoId = id("Todo");
+          const rawValue = createIdFromString("todo");
+          const value = TodoId.orThrow(rawValue);
+
+          expect(TodoId.fromUnknown(rawValue)).toEqual(ok(value));
+          expect(TodoId.fromUnknown("invalid")).toEqual(
+            err({ type: "TableId", table: "Todo", value: "invalid" }),
+          );
+          expect(
+            TodoId.formatError({
+              type: "TableId",
+              table: "Todo",
+              value: "invalid",
+            }),
+          ).toBe('The value "invalid" is not a valid Id for table Todo.');
+          expect(TodoId.table).toBe("Todo");
+          expectTypeOf<typeof TodoId.Output>().toEqualTypeOf<
+            Id & Brand<"Todo">
+          >();
+          expectTypeOf<typeof TodoId.Error>().toEqualTypeOf<
+            TableIdError<"Todo">
+          >();
+          expectTypeOf(value).toEqualTypeOf<Id & Brand<"Todo">>();
+
+          const compileTimeAssertions = () => {
+            // @ts-expect-error A Todo Id must not satisfy a User Id API.
+            const _userId: Id & Brand<"User"> = value;
+          };
+
+          expectTypeOf(compileTimeAssertions).toBeFunction();
+        });
+
+        test("requires one concrete table name", () => {
+          const unionTable = "Todo" as "Todo" | "User";
+          const broadTable = "Todo" as TypeName;
+          const patternedTable = "Todo" as `Todo${string}`;
+          const genericTableAssertion = <Table extends "Todo" | "User">(
+            table: Table,
+          ): Table => {
+            // @ts-expect-error An unresolved generic table might be a union.
+            id(table);
+            return table;
+          };
+          const compileTimeAssertions = () => {
+            // @ts-expect-error A union would assign multiple table brands to one Id.
+            id(unionTable);
+            // @ts-expect-error A widened TypeName does not identify one table.
+            id(broadTable);
+            // @ts-expect-error A template pattern does not identify one table.
+            id(patternedTable);
+          };
+
+          expectTypeOf(genericTableAssertion).toBeFunction();
+          expectTypeOf(compileTimeAssertions).toBeFunction();
+        });
+
+        test("converts to and from its 16-byte representation", () => {
+          const value = createIdFromString("bytes");
+          const bytes = idToIdBytes(value);
+
+          expect(IdBytes.is(bytes)).toBe(true);
+          expect(bytes).toHaveLength(16);
+          expect(idBytesTypeValueLength).toBe(16);
+          expect(idBytesToId(bytes)).toBe(value);
+        });
+      });
+
+      describe("Int64String", () => {
+        test("accepts only canonical decimal strings in the signed 64-bit range", () => {
+          for (const value of [
+            "-9223372036854775808",
+            "-1",
+            "0",
+            "1",
+            "9223372036854775807",
+          ]) {
+            expect(Int64String.fromUnknown(value)).toEqual(ok(value));
+          }
+          for (const value of [
+            "-9223372036854775809",
+            "9223372036854775808",
+            "0x10",
+            "+1",
+            "01",
+            "-0",
+            "not-a-number",
+          ]) {
+            expect(Int64String.fromUnknown(value)).toEqual(
+              err({ type: "Int64String", value }),
+            );
+          }
+          expect(
+            Int64String.formatError({
+              type: "Int64String",
+              value: "not-a-number",
+            }),
+          ).toBe('The value "not-a-number" is not a valid Int64 string.');
+          expectTypeOf<
+            typeof Int64String.Error
+          >().toEqualTypeOf<Int64StringError>();
+        });
+
+        test("rejects excessive decimal strings before parsing them as BigInt", () => {
+          const value = "9".repeat(1000);
+          const bigInt = vi
+            .spyOn(globalThis, "BigInt")
+            .mockImplementation(() => {
+              throw new Error("BigInt must not be called.");
+            });
+
+          try {
+            expect(Int64String.fromUnknown(value)).toEqual(
+              err({ type: "Int64String", value }),
+            );
+            expect(bigInt).not.toHaveBeenCalled();
+          } finally {
+            bigInt.mockRestore();
+          }
+        });
+      });
+
+      describe("Int64FromInt64String", () => {
+        test("transforms canonical decimal strings to Int64 and back", () => {
+          const values = [
+            ["-9223372036854775808", -9223372036854775808n],
+            ["0", 0n],
+            ["9223372036854775807", 9223372036854775807n],
+          ] as const;
+
+          expectTypeOf(Int64FromInt64String).toEqualTypeOf<
+            TransformType<
+              typeof Int64String,
+              typeof Int64,
+              "Int64FromInt64String",
+              never
+            >
+          >();
+
+          for (const [string, bigint] of values) {
+            const input = Int64String.orThrow(string);
+            const output = Int64.orThrow(bigint);
+
+            expect(Int64FromInt64String.from.parent(input)).toEqual(ok(output));
+            expect(Int64FromInt64String.to(output)).toBe(input);
+            expectTypeOf(
+              Int64FromInt64String.to(output),
+            ).toEqualTypeOf<string>();
+          }
+        });
+      });
+    });
+
     describe("nonNegative", () => {
       test("creates a reusable Brand Factory accepting zero and positive numbers", () => {
         const NonNegative = nonNegative(Number);
@@ -5376,21 +6465,6 @@ describe("BrandFactory", () => {
         describe("NonNegativeNumber", () => {
           test("accepts zero", () => {
             expect(NonNegativeNumber.from.parent(0)).toEqual(ok(0));
-          });
-        });
-
-        describe("NonNegativeInt", () => {
-          test("accepts zero and provides its minimum value", () => {
-            expect(NonNegativeInt.from.parent.parent(0)).toEqual(ok(0));
-            expect(zeroNonNegativeInt).toBe(0);
-          });
-        });
-
-        describe("NonNegativeFiniteNumber", () => {
-          test("accepts zero", () => {
-            expect(
-              NonNegativeFiniteNumber.from.parent.parent.parent(0),
-            ).toEqual(ok(0));
           });
         });
       });
@@ -5418,17 +6492,6 @@ describe("BrandFactory", () => {
             expect(PositiveNumber.from.parent.parent(1)).toEqual(ok(1));
           });
         });
-
-        describe("PositiveInt", () => {
-          test("has the expected brands and boundary values", () => {
-            expect(PositiveInt.from.parent.parent.parent(1)).toEqual(ok(1));
-            expect(onePositiveInt).toBe(1);
-            expect(maxPositiveInt).toBe(globalThis.Number.MAX_SAFE_INTEGER);
-            expectTypeOf<typeof PositiveInt.Output>().toEqualTypeOf<
-              number & Brand<"Int"> & Brand<"NonNegative"> & Brand<"Positive">
-            >();
-          });
-        });
       });
     });
 
@@ -5454,12 +6517,6 @@ describe("BrandFactory", () => {
             expect(NonPositiveNumber.from.parent(0)).toEqual(ok(0));
           });
         });
-
-        describe("NonPositiveInt", () => {
-          test("accepts zero", () => {
-            expect(NonPositiveInt.from.parent.parent(0)).toEqual(ok(0));
-          });
-        });
       });
     });
 
@@ -5483,12 +6540,6 @@ describe("BrandFactory", () => {
         describe("NegativeNumber", () => {
           test("accepts negative numbers", () => {
             expect(NegativeNumber.from.parent.parent(-1)).toEqual(ok(-1));
-          });
-        });
-
-        describe("NegativeInt", () => {
-          test("accepts negative integers", () => {
-            expect(NegativeInt.from.parent.parent.parent(-1)).toEqual(ok(-1));
           });
         });
       });
@@ -5517,6 +6568,36 @@ describe("BrandFactory", () => {
             expect(Int.from.parent(1.5)).toEqual(
               err({ type: "Int", value: 1.5 }),
             );
+          });
+        });
+
+        describe("NonNegativeInt", () => {
+          test("accepts zero and provides its minimum value", () => {
+            expect(NonNegativeInt.from.parent.parent(0)).toEqual(ok(0));
+            expect(zeroNonNegativeInt).toBe(0);
+          });
+        });
+
+        describe("PositiveInt", () => {
+          test("has the expected brands and boundary values", () => {
+            expect(PositiveInt.from.parent.parent.parent(1)).toEqual(ok(1));
+            expect(onePositiveInt).toBe(1);
+            expect(maxPositiveInt).toBe(globalThis.Number.MAX_SAFE_INTEGER);
+            expectTypeOf<typeof PositiveInt.Output>().toEqualTypeOf<
+              number & Brand<"Int"> & Brand<"NonNegative"> & Brand<"Positive">
+            >();
+          });
+        });
+
+        describe("NonPositiveInt", () => {
+          test("accepts zero", () => {
+            expect(NonPositiveInt.from.parent.parent(0)).toEqual(ok(0));
+          });
+        });
+
+        describe("NegativeInt", () => {
+          test("accepts negative integers", () => {
+            expect(NegativeInt.from.parent.parent.parent(-1)).toEqual(ok(-1));
           });
         });
       });
@@ -5685,6 +6766,83 @@ describe("BrandFactory", () => {
               }),
             ).toBe("The value Infinity must be finite.");
           });
+        });
+
+        describe("NonNegativeFiniteNumber", () => {
+          test("accepts zero", () => {
+            expect(
+              NonNegativeFiniteNumber.from.parent.parent.parent(0),
+            ).toEqual(ok(0));
+          });
+        });
+      });
+    });
+
+    describe("Domain Types", () => {
+      describe("Ratio", () => {
+        test("accepts finite numbers from zero to one", () => {
+          expect(Ratio.from.parent.parent.parent.parent.parent(0)).toEqual(
+            ok(0),
+          );
+          expect(Ratio.from.parent.parent.parent.parent.parent(1)).toEqual(
+            ok(1),
+          );
+          expect(Ratio.from.parent.parent.parent.parent.parent(1.1)).toEqual(
+            err({ type: "LessThanOrEqualTo1", value: 1.1, max: 1 }),
+          );
+          expect(Ratio.from.parent.parent.parent.parent.parent(-0.1)).toEqual(
+            err({ type: "NonNegative", value: -0.1 }),
+          );
+        });
+      });
+
+      describe("PositiveDecimalString", () => {
+        test("is branded from String", () => {
+          expect(PositiveDecimalString.name).toBe("PositiveDecimalString");
+          expect(PositiveDecimalString.parent).toBe(String);
+          expectTypeOf(PositiveDecimalString).toEqualTypeOf<
+            BrandType<
+              typeof String,
+              "PositiveDecimalString",
+              PositiveDecimalStringError
+            >
+          >();
+          expectTypeOf<typeof PositiveDecimalString.Output>().toEqualTypeOf<
+            string & Brand<"PositiveDecimalString">
+          >();
+        });
+
+        test("accepts one canonical spelling of every positive decimal", () => {
+          for (const value of ["1", "25", "0.3", "0.01", "10.25"]) {
+            expect(PositiveDecimalString.from.parent(value)).toEqual(ok(value));
+          }
+        });
+
+        test("rejects zero and non-canonical decimal spellings", () => {
+          for (const value of [
+            "0",
+            "-0.3",
+            "+0.3",
+            ".3",
+            "0.30",
+            "00.3",
+            "3e-1",
+          ]) {
+            expect(PositiveDecimalString.from.parent(value)).toEqual(
+              err({ type: "PositiveDecimalString", value }),
+            );
+          }
+        });
+
+        test("formats its validation error", () => {
+          expect(
+            PositiveDecimalString.formatError({
+              type: "PositiveDecimalString",
+              value: "0.30",
+            }),
+          ).toBe(
+            'The value "0.30" must be a canonical positive decimal string.',
+          );
         });
       });
     });
@@ -6038,14 +7196,6 @@ describe("array", () => {
       expect(
         Strings.formatError({
           type: "Array",
-          reason: { kind: "UnexpectedPrototype", value: [] },
-        }),
-      ).toBe(
-        "The value is an array, but an Array Output must use this realm's Array.prototype. For a trusted return contract, cast and skip this Type; otherwise, use boundary-specific validation or transformation.",
-      );
-      expect(
-        Strings.formatError({
-          type: "Array",
           reason: {
             kind: "Items",
             issues: [
@@ -6243,9 +7393,16 @@ describe("array", () => {
       >();
     });
 
-    test("rejects arrays with a custom prototype before reading inherited elements", () => {
+    test("reports inherited elements as holes without reading them", () => {
       const Strings = array(String);
-      const prototype: Array<unknown> = ["inherited"];
+      let reads = 0;
+      const prototype = globalThis.Object.create(null) as object;
+      globalThis.Object.defineProperty(prototype, 0, {
+        get: () => {
+          reads++;
+          return "inherited";
+        },
+      });
       const sparseStrings = new Array<string>(1);
       globalThis.Object.setPrototypeOf(sparseStrings, prototype);
 
@@ -6253,28 +7410,33 @@ describe("array", () => {
       expect(Strings.fromUnknown(sparseStrings)).toEqual(
         err({
           type: "Array",
-          reason: { kind: "UnexpectedPrototype", value: sparseStrings },
+          reason: {
+            kind: "Items",
+            issues: [{ kind: "Hole", index: 0 }],
+          },
         }),
       );
+      expect(reads).toBe(0);
     });
 
-    test("rejects Array subclasses at unknown and typed boundaries", () => {
+    test("accepts Array subclasses and custom prototypes by identity", () => {
       const Values = array(Number);
 
       class NumberArray extends globalThis.Array<number> {}
 
-      const value = new NumberArray(1);
-      const error = err({
-        type: "Array",
-        reason: { kind: "UnexpectedPrototype", value },
-      });
+      const subclass = new NumberArray(1, 2);
+      const customPrototype = [1, 2];
+      globalThis.Object.setPrototypeOf(customPrototype, null);
 
-      expect(Values.fromUnknown(value)).toEqual(error);
-      expect(Values.is(value)).toBe(false);
-      const message =
-        "The value is an array, but an Array Output must use this realm's Array.prototype.";
-      expect(() => Values.from(value)).toThrow(message);
-      expect(() => Values.to(value)).toThrow(message);
+      for (const value of [subclass, customPrototype]) {
+        const result = Values.fromUnknown(value);
+
+        expectOk(result, value);
+        expect(result.value).toBe(value);
+        expect(Values.is(value)).toBe(true);
+        expect(Values.from(value)).toEqual(ok(value));
+        expect(Values.to(value)).toBe(value);
+      }
     });
 
     test("locates decoding transformation errors by element", () => {
@@ -7534,6 +8696,214 @@ describe("array", () => {
   });
 });
 
+describe("set", () => {
+  test("constructs and caches a Set Type", () => {
+    const Strings = set(String);
+
+    expect(Strings.name).toBe("Set");
+    expect(Strings.element).toBe(String);
+    expect(set(String)).toBe(Strings);
+    expectTypeOf<typeof Strings.Output>().toEqualTypeOf<ReadonlySet<string>>();
+    expectTypeOf<typeof Strings.Input>().toEqualTypeOf<ReadonlySet<string>>();
+
+    const uncertain = Math.random() ? String : Number;
+    const erased: FormattableTypeNode = String;
+    const compileTimeAssertions = () => {
+      // @ts-expect-error An element must use one concrete Type node.
+      set(uncertain);
+      // @ts-expect-error An element must preserve its concrete Type.
+      set(erased);
+    };
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("validates the Set boundary and elements", () => {
+    const Strings = set(String);
+    const value = new globalThis.Set(["a", "b"]);
+    const result = Strings.fromUnknown(value);
+
+    expectOk(result, value);
+    expect(result.value).toBe(value);
+    expect(Strings.fromUnknown(["a", "b"])).toEqual(
+      err({ type: "Set", reason: { kind: "NotSet", value: ["a", "b"] } }),
+    );
+
+    class StringSet extends globalThis.Set<string> {}
+    const subclass = new StringSet(["a"]);
+    expect(Strings.fromUnknown(subclass)).toEqual(
+      err<SetUnexpectedPrototypeError>({
+        type: "Set",
+        reason: { kind: "UnexpectedPrototype", value: subclass },
+      }),
+    );
+    expect(Strings.is(subclass)).toBe(false);
+
+    const withProperty = globalThis.Object.assign(
+      new globalThis.Set<unknown>([1]),
+      { metadata: true },
+    );
+    expect(Strings.fromUnknown(withProperty, { errors: "all" })).toEqual(
+      err<SetItemsError<TypeOfError<"String">>>({
+        type: "Set",
+        reason: {
+          kind: "Items",
+          issues: [
+            { kind: "ExcessProperty", key: "metadata" },
+            {
+              kind: "Element",
+              index: 0,
+              error: { type: "TypeOf", expected: "String", value: 1 },
+            },
+          ],
+        },
+      }),
+    );
+    expect(Strings.fromUnknown(withProperty)).toEqual(
+      err<SetItemsError<TypeOfError<"String">>>({
+        type: "Set",
+        reason: {
+          kind: "Items",
+          issues: [{ kind: "ExcessProperty", key: "metadata" }],
+        },
+      }),
+    );
+
+    const nullPrototype = globalThis.Object.assign(
+      globalThis.Object.create(null) as object,
+      { [globalThis.Symbol.toStringTag]: "Set" },
+    );
+    expect(Strings.fromUnknown(nullPrototype)).toEqual(
+      err<SetUnexpectedPrototypeError>({
+        type: "Set",
+        reason: {
+          kind: "UnexpectedPrototype",
+          value: nullPrototype as unknown as ReadonlySet<unknown>,
+        },
+      }),
+    );
+  });
+
+  test("supports element decoding, parent operations, and encoding", () => {
+    const NumbersFromStrings = set(setupNumberFromString());
+    const input = new globalThis.Set(["1", "2"]);
+    const output = new globalThis.Set([1, 2]);
+
+    expectOk(NumbersFromStrings.fromUnknown(input), output);
+    expect(NumbersFromStrings.to(output)).toEqual(input);
+    expect(NumbersFromStrings.is(output)).toBe(true);
+    expect(NumbersFromStrings.is(input)).toBe(false);
+
+    const NumbersOrNumbersFromStrings = set(
+      union(Number, setupNumberFromString()),
+    );
+    const unchanged = new globalThis.Set([1, 2]);
+    expect(NumbersOrNumbersFromStrings.to(unchanged)).toBe(unchanged);
+
+    const LongStrings = set(minLength(2)(String));
+    const valid = new globalThis.Set(["ok"]);
+    const invalid = new globalThis.Set(["x"]);
+    const validResult = LongStrings.from.parent(valid);
+
+    expectOk(validResult, valid);
+    expect(validResult.value).toBe(valid);
+    expect(LongStrings.from.parent(invalid)).toEqual(
+      err<SetElementsError<MinLengthError<2>>>({
+        type: "Set",
+        reason: {
+          kind: "Items",
+          issues: [
+            {
+              kind: "Element",
+              index: 0,
+              error: { type: "MinLength2", value: "x", min: 2 },
+            },
+          ],
+        },
+      }),
+    );
+    expectTypeOf(LongStrings).toEqualTypeOf<
+      SetType<typeof LongStrings.element>
+    >();
+  });
+
+  test("checks exact Output representation", () => {
+    const Strings = set(String);
+    const value = new globalThis.Set(["a"]);
+    const withProperty = globalThis.Object.assign(new globalThis.Set(["a"]), {
+      metadata: true,
+    });
+
+    class StringSet extends globalThis.Set<string> {}
+    expect(Strings.is(value)).toBe(true);
+    expect(Strings.is("a")).toBe(false);
+    expect(Strings.is(new StringSet(["a"]))).toBe(false);
+    expect(Strings.is(withProperty)).toBe(false);
+    expect(Strings.is(new globalThis.Set([1]))).toBe(false);
+    expect(Strings.to(value)).toBe(value);
+  });
+
+  test("formats structural and nested errors", () => {
+    const Strings = set(String);
+
+    expect(
+      Strings.formatError({
+        type: "Set",
+        reason: { kind: "NotSet", value: null },
+      }),
+    ).toBe("A value null is not a Set.");
+    expect(
+      Strings.formatError({
+        type: "Set",
+        reason: {
+          kind: "UnexpectedPrototype",
+          value: new (class extends globalThis.Set<string> {})(["value"]),
+        },
+      }),
+    ).toBe(
+      "The value is a Set subclass, but a Set Output must be a direct Set.",
+    );
+    expect(
+      Strings.formatError({
+        type: "Set",
+        reason: {
+          kind: "Items",
+          issues: [{ kind: "ExcessProperty", key: "metadata" }],
+        },
+      }),
+    ).toBe('An excess Set property "metadata" is not allowed.');
+    expect(
+      Strings.formatError({
+        type: "Set",
+        reason: {
+          kind: "Items",
+          issues: [
+            {
+              kind: "Element",
+              index: 0,
+              error: { type: "TypeOf", expected: "String", value: 1 },
+            },
+          ],
+        },
+      }),
+    ).toBe("A value 1 is not a string.");
+
+    expectTypeOf<SetError<TypeOfError<"String">>>().toEqualTypeOf<
+      | SetNotSetError
+      | SetUnexpectedPrototypeError
+      | SetItemsError<TypeOfError<"String">>
+    >();
+    expectTypeOf<SetElementIssue<TypeOfError<"String">>>().toEqualTypeOf<{
+      readonly kind: "Element";
+      readonly index: number;
+      readonly error: TypeOfError<"String">;
+    }>();
+    expectTypeOf<SetExcessPropertyIssue>().toEqualTypeOf<{
+      readonly kind: "ExcessProperty";
+      readonly key: string | symbol;
+    }>();
+  });
+});
+
 describe("tuple", () => {
   const setupEntryElements = () => {
     const NumberFromString = setupNumberFromString();
@@ -7677,14 +9047,6 @@ describe("tuple", () => {
       expect(
         Pair.formatError({
           type: "Tuple",
-          reason: { kind: "UnexpectedPrototype", value: [] },
-        }),
-      ).toBe(
-        "The value is an array, but a Tuple Output must use this realm's Array.prototype. For a trusted return contract, cast and skip this Type; otherwise, use boundary-specific validation or transformation.",
-      );
-      expect(
-        Pair.formatError({
-          type: "Tuple",
           reason: { kind: "InvalidLength", expected: 2, actual: 1 },
         }),
       ).toBe(
@@ -7755,10 +9117,12 @@ describe("tuple", () => {
       expect(Entry.is(result.value)).toBe(true);
     });
 
-    test("rejects non-arrays, wrong lengths, and unexpected Array prototypes", () => {
+    test("rejects non-arrays and wrong lengths but accepts legitimate Array prototypes", () => {
       const Pair = tuple(String, Number);
       const customPrototype = ["count", 1] as Array<string | number>;
       globalThis.Object.setPrototypeOf(customPrototype, null);
+      class PairArray extends globalThis.Array<string | number> {}
+      const subclass = new PairArray("count", 1);
 
       expect(Pair.fromUnknown(null)).toEqual(
         err({
@@ -7772,15 +9136,18 @@ describe("tuple", () => {
           reason: { kind: "InvalidLength", expected: 2, actual: 1 },
         }),
       );
-      expect(Pair.fromUnknown(customPrototype)).toEqual(
-        err({
-          type: "Tuple",
-          reason: { kind: "UnexpectedPrototype", value: customPrototype },
-        }),
-      );
       expect(Pair.is(null)).toBe(false);
       expect(Pair.is(["count"])).toBe(false);
-      expect(Pair.is(customPrototype)).toBe(false);
+      for (const value of [customPrototype, subclass]) {
+        const result = Pair.fromUnknown(value);
+
+        expectOk(result, value);
+        expect(result.value).toBe(value);
+        expect(Pair.is(value)).toBe(true);
+        expect(Pair.to(value as unknown as readonly [string, number])).toBe(
+          value,
+        );
+      }
     });
 
     test("returns the first element error by default and every error on request", () => {
@@ -8101,6 +9468,80 @@ describe("tuple", () => {
   });
 });
 
+describe("plain-object classification", () => {
+  test("rejects deeper prototypes that identify their constructor as Object", () => {
+    const prototype = { constructor: globalThis.Object, inherited: "rich" };
+    const value = globalThis.Object.assign(
+      globalThis.Object.create(prototype) as Record<string, string>,
+      { type: "Created", name: "Ada" },
+    );
+    const Model = object({ type: literal("Created"), name: String });
+    const Values = record(String, String);
+    const Created = typed("Created", { name: String });
+    const Deleted = typed("Deleted", { name: String });
+    const Event = discriminatedUnion(Created, Deleted);
+
+    expect(Object.fromUnknown(value)).toEqual(
+      err({
+        type: "Object",
+        reason: { kind: "UnexpectedPrototype", value },
+      }),
+    );
+    expect(Model.fromUnknown(value)).toEqual(
+      err({
+        type: "Object",
+        reason: { kind: "UnexpectedPrototype", value },
+      }),
+    );
+    expect(Values.fromUnknown(value)).toEqual(
+      err({
+        type: "Record",
+        reason: { kind: "NotPlainRecord", value },
+      }),
+    );
+    expect(Event.fromUnknown(value)).toEqual(
+      err({
+        type: "DiscriminatedUnion",
+        reason: {
+          kind: "Object",
+          error: {
+            type: "Object",
+            reason: { kind: "UnexpectedPrototype", value },
+          },
+        },
+      }),
+    );
+    expect(JsonValue.fromUnknown(value)).toEqual(
+      err({
+        type: "JsonValue",
+        reason: {
+          kind: "Issues",
+          issues: [
+            {
+              kind: "UnexpectedPrototype",
+              path: [],
+              container: "Object",
+              value,
+            },
+          ],
+        },
+      }),
+    );
+
+    for (const type of [Object, Model, Values, Event, JsonValue]) {
+      expect(type.is(value)).toBe(false);
+    }
+
+    const props: { readonly name: typeof String } = globalThis.Object.assign(
+      globalThis.Object.create(prototype),
+      { name: String },
+    );
+    expect(() => object(props)).toThrow(
+      "Object schema properties must be own string-keyed data properties.",
+    );
+  });
+});
+
 describe("Object", () => {
   test("has the expected root definition", () => {
     expectTypeOf(Object).toEqualTypeOf<
@@ -8110,21 +9551,26 @@ describe("Object", () => {
         Readonly<Record<string, unknown>>,
         ObjectError<
           Readonly<Record<never, never>>,
-          ObjectPropertyAccessError | TypeOfError<"String">
+          ObjectPropertyAccessError | ObjectExcessPropertyError
         >
       >
     >();
     expect(Object.parent).toBeNull();
   });
 
-  test("accepts ordinary and null-prototype objects without copying them", () => {
+  test("accepts ordinary, null, and immediate root prototypes without copying", () => {
     const ordinary: unknown = { name: "Ada" };
     const nullPrototype: unknown = globalThis.Object.assign(
       globalThis.Object.create(null) as Record<string, unknown>,
       { name: "Ada" },
     );
+    const rootPrototype = globalThis.Object.create(null) as object;
+    const immediateRootPrototype: unknown = globalThis.Object.assign(
+      globalThis.Object.create(rootPrototype) as Record<string, unknown>,
+      { name: "Ada" },
+    );
 
-    for (const value of [ordinary, nullPrototype]) {
+    for (const value of [ordinary, nullPrototype, immediateRootPrototype]) {
       const result = Object.fromUnknown(value);
 
       expectOk(result, value);
@@ -8137,7 +9583,7 @@ describe("Object", () => {
     expect(Object.to(typed)).toBe(typed);
   });
 
-  test("rejects non-objects, instances, and custom prototypes", () => {
+  test("rejects non-objects, instances, and deeper prototypes", () => {
     class Example {
       readonly value = 1;
     }
@@ -8149,7 +9595,7 @@ describe("Object", () => {
       expect(Object.is(value)).toBe(false);
     }
 
-    const prototype = globalThis.Object.create(null) as object;
+    const prototype = { constructor: globalThis.Object };
     for (const value of [
       [],
       new globalThis.Date(),
@@ -8205,9 +9651,7 @@ describe("Object", () => {
               reason: "NonEnumerable",
             },
             [symbol]: {
-              type: "TypeOf",
-              expected: "String",
-              value: symbol,
+              type: "ObjectExcessProperty",
             },
           },
         },
@@ -8238,9 +9682,7 @@ describe("Object", () => {
           kind: "Properties",
           errors: {
             [globalThis.Symbol.toStringTag]: {
-              type: "TypeOf",
-              expected: "String",
-              value: globalThis.Symbol.toStringTag,
+              type: "ObjectExcessProperty",
             },
           },
         },
@@ -8292,9 +9734,7 @@ describe("Object", () => {
           kind: "Properties",
           errors: {
             [globalThis.Symbol.iterator]: {
-              type: "TypeOf",
-              expected: "String",
-              value: globalThis.Symbol.iterator,
+              type: "ObjectExcessProperty",
             },
           },
         },
@@ -8665,7 +10105,7 @@ describe("record", () => {
           }),
         );
         const message =
-          "The value is an object, but a Record Output must use this realm's Object.prototype or null.";
+          "The value is an object, but a Record Output must be a plain object or have a null prototype.";
         expect(() => Values.from(input)).toThrow(message);
         expect(() => Values.to(input)).toThrow(message);
       }
@@ -9235,7 +10675,7 @@ describe("record", () => {
         reason: { kind: "NotPlainRecord", value: [] },
       }),
     ).toBe(
-      "The value is an object, but a Record Output must use this realm's Object.prototype or null. For a trusted return contract, cast and skip this Type; otherwise, use boundary-specific validation or transformation.",
+      "The value is an object, but a Record Output must be a plain object or have a null prototype.",
     );
     expect(
       Values.formatError({
@@ -10211,21 +11651,18 @@ describe("object", () => {
       expect(Model.is(user)).toBe(false);
     });
 
-    test("rejects custom prototypes instead of treating them as another realm", () => {
+    test("accepts an immediate root prototype", () => {
       const Model = object({ name: String });
       const prototype = globalThis.Object.create(null) as object;
       const value = globalThis.Object.assign(
         globalThis.Object.create(prototype),
         { name: "Ada" },
       );
+      const result = Model.fromUnknown(value);
 
-      expect(Model.fromUnknown(value)).toEqual(
-        err({
-          type: "Object",
-          reason: { kind: "UnexpectedPrototype", value },
-        }),
-      );
-      expect(Model.is(value)).toBe(false);
+      expectOk(result, value);
+      expect(result.value).toBe(value);
+      expect(Model.is(value)).toBe(true);
     });
 
     test("rejects declared accessors without reading them", () => {
@@ -10511,7 +11948,7 @@ describe("object", () => {
           },
         }),
       ).toBe(
-        "The value is an object, but an Object Output must use this realm's Object.prototype or null. For a trusted return contract, cast and skip this Type; otherwise, use boundary-specific validation or transformation.",
+        "The value is an object, but an Object Output must be a plain object or have a null prototype.",
       );
       expect(
         Model.formatError({
@@ -11544,6 +12981,246 @@ describe("object", () => {
       >();
     });
   });
+
+  describe("schema helpers", () => {
+    test("partial makes required properties optional and preserves optional properties", () => {
+      const nickname = optional(String);
+      const props = { name: String, nickname };
+      const Model = partial(props);
+
+      expect(Model.props.name.type).toBe(String);
+      expect(Model.props.nickname).toBe(nickname);
+      expectOk(Model.fromUnknown({}), {});
+      expectOk(Model.fromUnknown({ name: "Ada" }), { name: "Ada" });
+      expect(Model.fromUnknown({ name: 1 }).ok).toBe(false);
+      expectTypeOf(Model).toEqualTypeOf<
+        ObjectType<PartialObjectProps<typeof props>>
+      >();
+    });
+
+    test("nullableToOptional makes only nullable Union properties optional", () => {
+      const nickname = optional(String);
+      const props = {
+        name: nullOr(String),
+        count: Number,
+        nickname,
+      };
+      const Model = nullableToOptional(props);
+
+      expect(Model.props.name.type).toBe(props.name);
+      expect(Model.props.count).toBe(Number);
+      expect(Model.props.nickname).toBe(nickname);
+      expectOk(Model.fromUnknown({ count: 1 }), { count: 1 });
+      expectOk(Model.fromUnknown({ name: null, count: 1 }), {
+        name: null,
+        count: 1,
+      });
+      expect(Model.fromUnknown({ name: "Ada" }).ok).toBe(false);
+      expectTypeOf(Model).toEqualTypeOf<
+        ObjectType<NullableToOptionalProps<typeof props>>
+      >();
+    });
+
+    test("nullableToOptional recognizes literal null semantically", () => {
+      const Value = union(null, String);
+      const Model = nullableToOptional({ value: Value });
+      const output: typeof Model.Output = {};
+
+      expect(Model.props.value.type).toBe(Value);
+      expectOk(Model.fromUnknown({}), {});
+      expectOk(Model.from(output), output);
+    });
+
+    test("preserves Object schema validation", () => {
+      const dynamic: Readonly<Record<string, typeof String>> = {
+        name: String,
+      };
+      const uncertain = String as typeof String | typeof Number;
+      const compileTimeAssertions = () => {
+        // @ts-expect-error Partial Object properties require fixed keys.
+        partial(dynamic);
+        // @ts-expect-error Nullable Object properties require fixed keys.
+        nullableToOptional(dynamic);
+        // @ts-expect-error Partial Object properties require one concrete Type node.
+        partial({ value: uncertain });
+        // @ts-expect-error Nullable Object properties require one concrete Type node.
+        nullableToOptional({ value: uncertain });
+      };
+
+      expectTypeOf(compileTimeAssertions).toBeFunction();
+    });
+
+    test("omit removes declared properties and preserves an Object Record", () => {
+      const User = object({ name: String, age: Number });
+      const WithoutAge = omit(User, "age");
+      const WithoutNameAndAge = omit(User, "name", "age");
+      const keys = ["name", "age"] as const;
+      const Empty = omit(User, ...keys);
+
+      expect(WithoutAge.props).toEqual({ name: String });
+      expectOk(WithoutAge.fromUnknown({ name: "Ada" }), { name: "Ada" });
+      expect(WithoutAge.fromUnknown({ name: "Ada", age: 1 }).ok).toBe(false);
+      expectTypeOf(WithoutAge).toEqualTypeOf<
+        ObjectType<{ readonly name: typeof String }>
+      >();
+      expect(WithoutNameAndAge.props).toEqual({});
+      expectOk(WithoutNameAndAge.fromUnknown({}), {});
+      expectTypeOf(WithoutNameAndAge).toEqualTypeOf<ObjectType<{}>>();
+      expect(Empty.props).toEqual({});
+      expectTypeOf(Empty).toEqualTypeOf<ObjectType<{}>>();
+
+      const compileTimeAssertions = (
+        key: "name" | "age",
+        keys: ReadonlyArray<"name" | "age">,
+      ) => {
+        // @ts-expect-error A runtime key must identify one statically known property.
+        omit(User, key);
+        // @ts-expect-error A runtime array does not guarantee which properties are omitted.
+        omit(User, ...keys);
+      };
+
+      const Metadata = object(
+        { name: String, age: Number },
+        record(String, Unknown),
+      );
+      const MetadataWithoutAge = omit(Metadata, "age");
+
+      expect(MetadataWithoutAge.record).toBe(Metadata.record);
+      expectTypeOf(MetadataWithoutAge).toEqualTypeOf<
+        ObjectType<
+          { readonly name: typeof String },
+          RecordType<typeof String, typeof Unknown>
+        >
+      >();
+      expectOk(
+        MetadataWithoutAge.fromUnknown({ name: "Ada", age: "unknown" }),
+        { name: "Ada", age: "unknown" },
+      );
+      expectTypeOf(compileTimeAssertions).toBeFunction();
+    });
+  });
+});
+
+describe("result", () => {
+  test("validates Ok and Err values", async () => {
+    const StringResult = result(String, Number);
+    const UndefinedResult = result(Undefined, Undefined);
+    const Pair = tuple(String, Number);
+    const PairResult = result(Pair, Pair);
+    const NeverResult = result(Never, Never);
+    const compileTimeAssertions = () => {
+      // @ts-expect-error The exact ok discriminator must select the value branch.
+      StringResult.from({ ok: false, value: "value" });
+    };
+
+    expect(StringResult.name).toBe("DiscriminatedUnion");
+    expect(StringResult.key).toBe("ok");
+    expectTypeOf(StringResult).toEqualTypeOf<
+      DiscriminatedUnionType<
+        "ok",
+        readonly [
+          ObjectType<{
+            readonly ok: LiteralType<true>;
+            readonly value: typeof String;
+          }>,
+          ObjectType<{
+            readonly ok: LiteralType<false>;
+            readonly error: typeof Number;
+          }>,
+        ]
+      >
+    >();
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+    expectOk(StringResult.fromUnknown({ ok: true, value: "value" }), {
+      ok: true,
+      value: "value",
+    });
+    expectOk(StringResult.fromUnknown({ ok: false, error: 1 }), {
+      ok: false,
+      error: 1,
+    });
+    expect(StringResult.fromUnknown({ ok: true, value: 1 }).ok).toBe(false);
+    const missingValue = StringResult.fromUnknown({ ok: true });
+    const notObject = StringResult.fromUnknown(null);
+    const memberNotObject = StringResult.members[0].fromUnknown(null);
+    const excessProperty = StringResult.fromUnknown({
+      ok: true,
+      value: "value",
+      extra: true,
+    });
+    assert(!missingValue.ok);
+    assert(!notObject.ok);
+    assert(!memberNotObject.ok);
+    assert(!excessProperty.ok);
+    expect(StringResult.formatError(missingValue.error)).toBe(
+      "A required property is missing.",
+    );
+    expect(StringResult.formatError(notObject.error)).toBe(
+      "A value null is not an object.",
+    );
+    expect(StringResult.members[0].formatError(memberNotObject.error)).toBe(
+      "A value null is not an object.",
+    );
+    expect(StringResult.formatError(excessProperty.error)).toBe(
+      "An excess property is not allowed. Remove it or use a different Type.",
+    );
+    expect(
+      await StringResult["~standard"].validate({ ok: true, extra: true }),
+    ).toEqual({
+      issues: [
+        {
+          message: "A required property is missing.",
+          path: ["value"],
+        },
+        {
+          message:
+            "An excess property is not allowed. Remove it or use a different Type.",
+          path: ["extra"],
+        },
+      ],
+    });
+    expectOk(UndefinedResult.fromUnknown({ ok: true, value: undefined }), {
+      ok: true,
+      value: undefined,
+    });
+    expectOk(UndefinedResult.fromUnknown({ ok: false, error: undefined }), {
+      ok: false,
+      error: undefined,
+    });
+    expectOk(PairResult.fromUnknown({ ok: true, value: ["value", 1] }), {
+      ok: true,
+      value: ["value", 1],
+    });
+    expectOk(PairResult.fromUnknown({ ok: false, error: ["error", 2] }), {
+      ok: false,
+      error: ["error", 2],
+    });
+    expect(NeverResult.fromUnknown({ ok: true, value: undefined }).ok).toBe(
+      false,
+    );
+    expect(NeverResult.fromUnknown({ ok: false, error: undefined }).ok).toBe(
+      false,
+    );
+
+    expectTypeOf(UnknownResult).toEqualTypeOf<
+      DiscriminatedUnionType<
+        "ok",
+        readonly [
+          ObjectType<{
+            readonly ok: LiteralType<true>;
+            readonly value: typeof Unknown;
+          }>,
+          ObjectType<{
+            readonly ok: LiteralType<false>;
+            readonly error: typeof Unknown;
+          }>,
+        ]
+      >
+    >();
+    expect(UnknownResult.is({ ok: true, value: undefined })).toBe(true);
+    expect(UnknownResult.is({ ok: false, error: undefined })).toBe(true);
+    expect(UnknownResult.is({ ok: true })).toBe(false);
+  });
 });
 
 describe("typed", () => {
@@ -11971,6 +13648,91 @@ describe("typed", () => {
   });
 });
 
+describe("nextResult", () => {
+  test("validates value, error, and done outcomes", () => {
+    const StringNextResult = nextResult(String, Number, Boolean);
+    const Pair = tuple(String, Number);
+    const AnyComponentNextResult = nextResult(Undefined, Pair, Never);
+    const PairDoneNextResult = nextResult(String, Undefined, Pair);
+
+    expect(StringNextResult.name).toBe("DiscriminatedUnion");
+    expect(StringNextResult.key).toBe("ok");
+    expectTypeOf(StringNextResult).toEqualTypeOf<
+      DiscriminatedUnionType<
+        "ok",
+        readonly [
+          ObjectType<{
+            readonly ok: LiteralType<true>;
+            readonly value: typeof String;
+          }>,
+          ObjectType<{
+            readonly ok: LiteralType<false>;
+            readonly error: UnionType<
+              readonly [
+                typeof Number,
+                TypedType<"Done", { readonly done: typeof Boolean }>,
+              ]
+            >;
+          }>,
+        ]
+      >
+    >();
+    expectOk(StringNextResult.fromUnknown({ ok: true, value: "value" }), {
+      ok: true,
+      value: "value",
+    });
+    expectOk(StringNextResult.fromUnknown({ ok: false, error: 1 }), {
+      ok: false,
+      error: 1,
+    });
+    expectOk(
+      StringNextResult.fromUnknown({
+        ok: false,
+        error: { type: "Done", done: true },
+      }),
+      { ok: false, error: { type: "Done", done: true } },
+    );
+    expectOk(
+      AnyComponentNextResult.fromUnknown({ ok: true, value: undefined }),
+      { ok: true, value: undefined },
+    );
+    expectOk(
+      AnyComponentNextResult.fromUnknown({ ok: false, error: ["error", 1] }),
+      { ok: false, error: ["error", 1] },
+    );
+    expectOk(
+      PairDoneNextResult.fromUnknown({
+        ok: false,
+        error: { type: "Done", done: ["done", 2] },
+      }),
+      { ok: false, error: { type: "Done", done: ["done", 2] } },
+    );
+
+    expectTypeOf(UnknownNextResult).toEqualTypeOf<
+      DiscriminatedUnionType<
+        "ok",
+        readonly [
+          ObjectType<{
+            readonly ok: LiteralType<true>;
+            readonly value: typeof Unknown;
+          }>,
+          ObjectType<{
+            readonly ok: LiteralType<false>;
+            readonly error: UnionType<
+              readonly [
+                typeof Unknown,
+                TypedType<"Done", { readonly done: typeof Unknown }>,
+              ]
+            >;
+          }>,
+        ]
+      >
+    >();
+    expect(UnknownNextResult.is({ ok: true, value: undefined })).toBe(true);
+    expect(UnknownNextResult.is({ ok: false, error: undefined })).toBe(true);
+  });
+});
+
 describe("discriminatedUnion", () => {
   describe("construction", () => {
     test("creates a routed Type with exact discriminated Inputs", () => {
@@ -12062,13 +13824,27 @@ describe("discriminatedUnion", () => {
       );
     });
 
-    test("requires a concrete key and unique required string literal props", () => {
+    test("supports string, number, bigint, and boolean discriminators", () => {
+      const Text = object({ kind: literal("text") });
+      const Count = object({ kind: literal(1) });
+      const BigCount = object({ kind: literal(1n) });
+      const Enabled = object({ kind: literal(true) });
+      const Event = discriminatedUnion("kind", Text, Count, BigCount, Enabled);
+
+      for (const kind of ["text", 1, 1n, true] as const) {
+        expectOk(Event.fromUnknown({ kind }), { kind });
+        expectOk(Event.parent.fromUnknown({ kind }), { kind });
+      }
+    });
+
+    test("requires a concrete key and unique required Literal props", () => {
       const Valid = typed("Valid");
       const Duplicate = typed("Valid");
       const Missing = object({ value: String });
       const Optional = object({ type: optional(literal("Optional")) });
       const Broad = object({ type: String });
-      const NumberTag = object({ type: literal(1) });
+      const NullTag = object({ type: literal(null) });
+      const UndefinedTag = object({ type: literal(undefined) });
       const _Other = typed("Other");
       const uncertain = Valid as typeof Valid | typeof _Other;
       const broadKey = "type" as string;
@@ -12087,8 +13863,10 @@ describe("discriminatedUnion", () => {
         discriminatedUnion(Valid, Optional);
         // @ts-expect-error The discriminator property must be a Literal Type.
         discriminatedUnion(Valid, Broad);
-        // @ts-expect-error The discriminator property must be a string Literal Type.
-        discriminatedUnion(Valid, NumberTag);
+        // @ts-expect-error Null does not provide a widened discriminator parent.
+        discriminatedUnion(Valid, NullTag);
+        // @ts-expect-error Undefined does not provide a widened discriminator parent.
+        discriminatedUnion(Valid, UndefinedTag);
         // @ts-expect-error Discriminator values must be unique.
         discriminatedUnion(Valid, Duplicate);
         // @ts-expect-error Every member slot must use one concrete Object Type.
@@ -13199,7 +14977,7 @@ describe("JsonValue", () => {
       readonly value = 1;
     }
 
-    expect(JsonValue.fromUnknown(new Model())).toEqual(
+    expect(JsonValue.fromUnknown(new Model(), { errors: "all" })).toEqual(
       err({
         type: "JsonValue",
         reason: {
@@ -13284,24 +15062,14 @@ describe("JsonValue", () => {
       }),
     );
 
-    const customPrototype: ReadonlyArray<JsonValueInput> = [];
+    const customPrototype: ReadonlyArray<JsonValueInput> = [1, "two"];
     globalThis.Object.setPrototypeOf(customPrototype, {});
-    expect(JsonValue.fromUnknown(customPrototype, { errors: "all" })).toEqual(
-      err({
-        type: "JsonValue",
-        reason: {
-          kind: "Issues",
-          issues: [
-            {
-              kind: "UnexpectedPrototype",
-              path: [],
-              container: "Array",
-              value: customPrototype,
-            },
-          ],
-        },
-      }),
-    );
+    const customPrototypeResult = JsonValue.fromUnknown(customPrototype, {
+      errors: "all",
+    });
+    expectOk(customPrototypeResult, customPrototype);
+    expect(customPrototypeResult.value).toBe(customPrototype);
+    expect(JsonValue.is(customPrototype)).toBe(true);
   });
 
   test("rejects circular references but allows shared subtrees", () => {
@@ -13409,10 +15177,10 @@ describe("JsonValue", () => {
         {
           kind: "UnexpectedPrototype",
           path: [],
-          container: "Array",
-          value: [],
+          container: "Object",
+          value: new globalThis.Date(),
         },
-        "The value is an array, but a JsonValue Output must use this realm's Array.prototype. For a trusted return contract, cast and skip this Type; otherwise, use boundary-specific validation or transformation.",
+        "The value is an object, but a JsonValue Object must be a plain object or have a null prototype.",
       ],
       [
         { kind: "Accessor", path: ["value"] },

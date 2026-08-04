@@ -83,6 +83,7 @@
     "NonNegativeError",
     "NonPositiveError",
     "ObjectError",
+    "ObjectTagError",
     "PositiveDecimalStringError",
     "PositiveError",
     "RecordError",
