@@ -6,6 +6,9 @@ import {
   type PredicateWithIndex,
   type Refinement,
   type RefinementWithIndex,
+  type Instance,
+  instance,
+  isInstance,
   type NullablePartial,
   type Literal,
   type WidenLiteral,
@@ -76,6 +79,46 @@ test("RefinementWithIndex", () => {
   expectTypeOf<RefinementWithIndex<Animal, Dog>>().toEqualTypeOf<
     (value: Animal, index: number) => value is Dog
   >();
+});
+
+test("Instance", () => {
+  interface Foo extends Instance<"Foo"> {
+    readonly value: string;
+  }
+
+  const foo: Foo = {
+    ...instance("Foo"),
+    value: "value",
+  };
+  const isFoo = isInstance<Foo>("Foo");
+
+  expectTypeOf(instance("Foo")).toEqualTypeOf<Instance<"Foo">>();
+  expect(Object.keys(foo)).toContain("~evolu/instance");
+  expect(isFoo(foo)).toBe(true);
+
+  const value: unknown = foo;
+  if (isFoo(value)) expectTypeOf(value).toEqualTypeOf<Foo>();
+
+  const compileTimeAssertions = () => {
+    // @ts-expect-error The runtime name must match the interface name.
+    isInstance<Foo>("Bar");
+  };
+  expectTypeOf(compileTimeAssertions).toBeFunction();
+});
+
+test("isInstance checks its own marker", () => {
+  const isFoo = isInstance<Instance<"Foo">>("Foo");
+  const nullPrototype = globalThis.Object.assign(
+    globalThis.Object.create(null) as object,
+    instance("Foo"),
+  );
+
+  expect(isFoo(nullPrototype)).toBe(true);
+  expect(isFoo(null)).toBe(false);
+  expect(isFoo("Foo")).toBe(false);
+  expect(isFoo({})).toBe(false);
+  expect(isFoo(instance("Bar"))).toBe(false);
+  expect(isFoo(globalThis.Object.create(instance("Foo")))).toBe(false);
 });
 
 test("NullablePartial", () => {

@@ -114,6 +114,67 @@ export type RefinementWithIndex<in A, out B extends A> = (
 ) => a is B;
 
 /**
+ * Realm-neutral runtime identity for a TypeScript interface.
+ *
+ * Extend this interface and add its runtime evidence with {@link instance} when
+ * constructing a value. Unlike JavaScript `instanceof`, the identity does not
+ * depend on a constructor or prototype and therefore survives realms, package
+ * duplication, object spreading, and structured cloning.
+ *
+ * The marker is intentionally forgeable. It identifies values created by
+ * trusted constructors; it is not structural validation or a security
+ * boundary.
+ *
+ * ### Example
+ *
+ * ```ts
+ * interface Foo extends Instance<"Foo"> {
+ *   readonly value: string;
+ * }
+ *
+ * const foo: Foo = {
+ *   ...instance("Foo"),
+ *   value: "value",
+ * };
+ * ```
+ */
+export interface Instance<Name extends string> {
+  readonly "~evolu/instance": Name;
+}
+
+/** Creates the runtime identity property required by {@link Instance}. */
+export const instance = <const Name extends string>(
+  name: Name,
+): Instance<Name> => ({ "~evolu/instance": name });
+
+/**
+ * Creates a realm-neutral predicate for one {@link Instance} name.
+ *
+ * The identity must be stored directly on the value; inherited markers are
+ * ignored.
+ *
+ * The explicit value type can include the rest of an interface whose trusted
+ * constructors attach the matching identity.
+ *
+ * ### Example
+ *
+ * ```ts
+ * interface Foo extends Instance<"Foo"> {
+ *   readonly value: string;
+ * }
+ *
+ * const isFoo = isInstance<Foo>("Foo");
+ * ```
+ */
+export const isInstance =
+  <Value extends Instance<string>>(name: Value["~evolu/instance"]) =>
+  (value: unknown): value is Value =>
+    value !== null &&
+    typeof value === "object" &&
+    globalThis.Object.hasOwn(value, "~evolu/instance") &&
+    (value as Instance<string>)["~evolu/instance"] === name;
+
+/**
  * Makes properties optional if they accept `null` as a value.
  *
  * For each property in `T`, if `null` is a valid value for that property, the
