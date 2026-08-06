@@ -95,16 +95,18 @@ import {
  * declaration must be exercised by tests, including its expected successes and
  * failures.
  *
- * `fromUnknown` validates untyped input through the complete pipeline. Typed
- * operations use their declared boundary to determine which remaining stages
- * can return validation errors, but assert that boundary at runtime. A failed
- * assertion means application code violated its static contract; it is a
- * developer error, not an expected validation failure. The thrown Error formats
- * the exact Output validation error and preserves its structured value as the
- * cause. Use `fromUnknown` for values entering the typed program from an
- * external source. `is` means exact membership in the output domain, not merely
- * that output-side parsing could succeed. A successful `fromUnknown` result
- * always satisfies `is`.
+ * `fromUnknown` validates untyped input through the complete pipeline. `from`
+ * and its `.parent` operations use their declared boundary to determine which
+ * remaining stages can return validation errors, but assert that boundary at
+ * runtime. `orThrow` and `orNull` reuse the deepest `from` operation accepting
+ * `Input`, while `to` asserts its Output boundary. A failed assertion means
+ * application code violated its static contract; it is a developer error, not
+ * an expected validation failure. Its message identifies the expected Type and
+ * its cause preserves the exact structured Output validation error. Use
+ * `fromUnknown` for values entering the typed program from an external source.
+ * `is` means exact membership in the output domain, not merely that output-side
+ * parsing could succeed. A successful `fromUnknown` result always satisfies
+ * `is`.
  *
  * Decoding accepts a representation outside the Output domain only when the
  * Type explicitly declares that representation, such as a transformation Input.
@@ -254,10 +256,13 @@ import {
  * excess properties where a narrower object type is expected.
  *
  * `fromUnknown` treats such invalid external values as expected data and
- * returns a typed error. Typed operations instead assert the boundary promised
- * by their parameter type. If application code claims an accessor-backed object
- * or an object with excess properties is an Object Output, the assertion throws
- * because the application contract is broken.
+ * returns a typed error. Typed boundaries instead assert the domain promised by
+ * their parameter type. If application code claims an accessor-backed object or
+ * an object with excess properties is an Object Output, the assertion throws
+ * because the application contract is broken. `orThrow` and `orNull` preserve
+ * the assertion at their typed `Input` boundary, then apply {@link getOrThrow}
+ * or {@link getOrNull} only to validation failures returned by the remaining
+ * pipeline.
  *
  * Materialize accessor values into plain data, remove properties the Type does
  * not represent, or use a different Type. Silently discarding excess data would
@@ -446,8 +451,8 @@ export interface Type<
    *
    * Every entry point asserts its selected boundary before running the
    * remaining pipeline. Assertion failures throw because they indicate a
-   * developer error. The Error message formats the exact boundary validation
-   * error and its cause preserves the structured error value. Only failures
+   * developer error. The Error message identifies the expected boundary Type,
+   * and its cause preserves the structured validation error. Only failures
    * introduced after that boundary are returned through `Result`.
    */
   readonly from: [CustomFrom] extends [never]
@@ -460,23 +465,59 @@ export interface Type<
   readonly to: (value: Output) => Input;
 
   /**
-   * Runs the complete remaining pipeline from the typed `Input` boundary,
-   * throwing if validation fails.
+   * Shorthand for calling {@link getOrThrow} with the result of the deepest
+   * `from` operation, which accepts this Type's `Input`.
    *
-   * This is a flat whole-conversion convenience. To throw from another typed
-   * boundary, compose {@link getOrThrow} with the corresponding `from.parent`
-   * suffix.
+   * The typed `Input` boundary is asserted before the remaining pipeline runs.
+   * A boundary violation throws a developer error directly; `getOrThrow` maps
+   * only a validation error returned after that boundary.
+   *
+   * `Type.orThrow.parent(value)` does not exist. To throw after starting from a
+   * typed boundary, call `getOrThrow` with the corresponding `from` operation.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { getOrThrow, minLength, String } from "@evolu/common";
+   *
+   * const NonEmptyString = minLength(1)(String);
+   *
+   * const value = NonEmptyString.orThrow("Evolu");
+   *
+   * // Equivalent because `from.parent` is this Type's deepest `from` operation:
+   * const sameValue = getOrThrow(
+   *   NonEmptyString.from.parent("Evolu"),
+   * );
+   * ```
    */
   readonly orThrow: TypeOperationFn<"orThrow", Input, Output, never>;
 
   /**
-   * Runs the complete remaining pipeline from the typed `Input` boundary,
-   * returning `null` if validation fails.
+   * Shorthand for calling {@link getOrNull} with the result of the deepest
+   * `from` operation, which accepts this Type's `Input`.
    *
-   * This is a flat whole-conversion convenience. To return `null` from another
-   * typed boundary, compose {@link getOrNull} with the corresponding
-   * `from.parent` suffix. Exceptions thrown by Type operations are not
-   * converted to `null`.
+   * The typed `Input` boundary is asserted before the remaining pipeline runs.
+   * A boundary violation throws a developer error directly; `getOrNull` maps
+   * only a validation error returned after that boundary to `null`.
+   *
+   * `Type.orNull.parent(value)` does not exist. To return `null` after starting
+   * from a typed boundary, call `getOrNull` with the corresponding `from`
+   * operation.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { getOrNull, minLength, String } from "@evolu/common";
+   *
+   * const NonEmptyString = minLength(1)(String);
+   *
+   * const value = NonEmptyString.orNull("Evolu");
+   *
+   * // Equivalent because `from.parent` is this Type's deepest `from` operation:
+   * const sameValue = getOrNull(
+   *   NonEmptyString.from.parent("Evolu"),
+   * );
+   * ```
    */
   readonly orNull: TypeOperationFn<"orNull", Input, Output, never>;
 }
@@ -645,8 +686,8 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
  *
  * Use this for internal invariants, not external input. Validate external input
  * with `Type.fromUnknown` so expected failures remain typed values. A failed
- * assertion formats the exact Output validation error and preserves its
- * structured value as the thrown Error's cause.
+ * assertion uses the Type name for its message and preserves the exact Output
+ * validation error as the thrown Error's cause.
  *
  * ### Example
  *
@@ -664,28 +705,28 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
  * >();
  * ```
  */
-type AssertTypeFn = <T extends TypeNode>(
+export const assertType: <T extends TypeNode>(
   type: T,
   value: unknown,
-) => asserts value is T["Output"];
-
-export const assertType: AssertTypeFn = (type, value) => {
+) => asserts value is T["Output"] = (type, value) => {
+  // TODO: When Type2 replaces Type, make assert prepend "Expected " and accept
+  // an optional third cause argument. Then use it here and migrate every other
+  // assertion to pass an expectation fragment.
   const runtimeType = type as RuntimeTypeNode;
-  assertTypeOutput(
-    runtimeType.is,
-    runtimeType[outputValidationSymbol],
-    runtimeType.formatError,
-    value,
-  );
+  const result = runtimeType[outputValidationSymbol](value);
+
+  if (!result.ok) {
+    throw new Error(`Expected ${runtimeType.name}.`, { cause: result.error });
+  }
 };
 
 const assertTypeOutput = <Error extends TypeError>(
+  name: TypeName,
   is: (value: unknown) => boolean,
   validateOutput: (
     value: unknown,
     options?: ValidationOptions,
   ) => Result<unknown, Error>,
-  formatError: TypeErrorFormatter<Error>,
   value: unknown,
   options: ValidationOptions = firstValidationOptions,
 ): void => {
@@ -694,9 +735,7 @@ const assertTypeOutput = <Error extends TypeError>(
   const result = validateOutput(value, options);
   const error = (result as { readonly ok: false; readonly error: Error }).error;
 
-  throw new Error(formatError(error), {
-    cause: error,
-  });
+  throw new Error(`Expected ${name}.`, { cause: error });
 };
 
 /**
@@ -1451,18 +1490,18 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
     value: never,
     options = firstValidationOptions,
   ) => {
-    assertTypeOutput(is, fromUnknown, formatError, value, options);
+    assertTypeOutput(name, is, fromUnknown, value, options);
     return ok(value);
   };
   const to = (value: never): unknown => {
-    assertTypeOutput(is, fromUnknown, formatError, value);
+    assertTypeOutput(name, is, fromUnknown, value);
     return value;
   };
   const orThrow: RuntimeOperation<unknown> = (
     value: never,
     options = firstValidationOptions,
   ) => {
-    assertTypeOutput(is, fromUnknown, formatError, value, options);
+    assertTypeOutput(name, is, fromUnknown, value, options);
     return value;
   };
 
@@ -1673,9 +1712,9 @@ export function transform(
   const to: RuntimeEncoder = (value: never) => {
     const parentValue = transformTo(typeOutput[encoderSymbol](value));
     assertTypeOutput(
+      typeParent.name,
       typeParent.is,
       typeParent[outputValidationSymbol],
-      typeParent.formatError,
       parentValue,
     );
     return typeParent[encoderSymbol](parentValue as never);
@@ -1888,16 +1927,16 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
       ? runtimeParent.formatError
       : (error) => formatIssue(getTypeIssues(error, "first")[0]);
   const typedFrom = addRuntimeAssertions(
+    name,
     is,
     validateOutput,
-    runtimeFormatError,
     parent,
     from,
   );
 
   const fromInput = getTerminalRuntimeNode(typedFrom);
   const typedTo: RuntimeEncoder = (value: never) => {
-    assertTypeOutput(is, validateOutput, runtimeFormatError, value);
+    assertTypeOutput(name, is, validateOutput, value);
     return to(value);
   };
 
@@ -1952,9 +1991,9 @@ const createStandardSchemaProps = (
 });
 
 const addRuntimeAssertions = (
+  name: TypeName,
   is: (value: unknown) => boolean,
   validateOutput: RuntimeOutputValidation,
-  formatError: TypeErrorFormatter<TypeError>,
   parent: TypeNode | null,
   operation: RuntimeOperation<Result<unknown, TypeError>>,
 ): RuntimeOperation<Result<unknown, TypeError>> => {
@@ -1962,7 +2001,7 @@ const addRuntimeAssertions = (
     value: never,
     options = firstValidationOptions,
   ) => {
-    assertTypeOutput(is, validateOutput, formatError, value, options);
+    assertTypeOutput(name, is, validateOutput, value, options);
     return operation(value, options);
   };
 
@@ -1970,9 +2009,9 @@ const addRuntimeAssertions = (
     const typeParent = parent!;
     const runtimeParent = typeParent as RuntimeTypeNode;
     asserted.parent = addRuntimeAssertions(
+      runtimeParent.name,
       runtimeParent.is,
       runtimeParent[outputValidationSymbol],
-      runtimeParent.formatError,
       runtimeParent.parent,
       operation.parent,
     );
@@ -4163,6 +4202,9 @@ type MultipleOfDivisorError = CompileTimeError<
 export const multipleOf = <const Divisor extends string>(
   divisor: ValidateMultipleOfDivisor<Divisor>,
 ): BrandFactory<`MultipleOf${Divisor}`, number, MultipleOfError<Divisor>> => {
+  // TODO: Define the positive-decimal literal domain with templateLiteral so
+  // its TypeScript type is inferred from runtime Type code, then require that
+  // literal Type here instead of accepting a string guarded by assertType.
   assertType(PositiveDecimalString, divisor);
 
   const name = `MultipleOf${divisor}` as `MultipleOf${Divisor}`;

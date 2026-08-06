@@ -1,5 +1,11 @@
 export type { Brand } from "../../../../packages/common/src/Brand.ts";
-export { err, ok, type Result } from "../../../../packages/common/src/Result.ts";
+export {
+  err,
+  getOrNull,
+  getOrThrow,
+  ok,
+  type Result,
+} from "../../../../packages/common/src/Result.ts";
 export {
   BigInt,
   Function,

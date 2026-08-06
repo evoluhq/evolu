@@ -735,7 +735,7 @@ describe("assertType", () => {
 
     expectAssertionError(
       () => assertType(NumberFromString, "42"),
-      'A value "42" is not a number.',
+      "Expected NumberFromString.",
       {
         type: "NumberFromString",
         outputError: {
@@ -1331,7 +1331,7 @@ describe("localizeTypes", () => {
     });
   });
 
-  test("preserves Type APIs and formats typed boundary assertions", () => {
+  test("preserves Type APIs without localizing typed boundary assertions", () => {
     const Strings = array(String);
     const Types = localizeTypes(
       { PositiveNumber, String, Strings },
@@ -1355,7 +1355,7 @@ describe("localizeTypes", () => {
       () => Types.PositiveNumber.from(0 as PositiveNumber),
       () => Types.PositiveNumber.to(0 as PositiveNumber),
     ]) {
-      expectAssertionError(operation, "Localized Positive.", positiveError);
+      expectAssertionError(operation, "Expected Positive.", positiveError);
     }
 
     const numberError = {
@@ -1368,7 +1368,7 @@ describe("localizeTypes", () => {
       () => Types.PositiveNumber.orThrow("1" as unknown as number),
       () => Types.PositiveNumber.orNull("1" as unknown as number),
     ]) {
-      expectAssertionError(operation, "Localized Number.", numberError);
+      expectAssertionError(operation, "Expected Number.", numberError);
     }
   });
 
@@ -1936,8 +1936,7 @@ describe("localizeTypes", () => {
 
   test("requires formatters for every union-typed selection branch", () => {
     type Selected =
-      | { readonly String: typeof String }
-      | { readonly Number: typeof Number };
+      { readonly String: typeof String } | { readonly Number: typeof Number };
     const localize = (selected: Selected) =>
       localizeTypes(selected, {
         test: {
@@ -2004,7 +2003,7 @@ describe("createType", () => {
       () => Answer.orThrow(invalid),
       () => Answer.orNull(invalid),
     ]) {
-      expectAssertionError(operation, "The answer must be 42.", cause);
+      expectAssertionError(operation, "Expected Answer.", cause);
     }
   });
 
@@ -2865,12 +2864,8 @@ describe("transform", () => {
       to: globalThis.String,
     });
 
-    expect(() => Invalid.fromUnknown("value")).toThrow(
-      'A value "not a number" is not a number.',
-    );
-    expect(() => Invalid.from.parent("value")).toThrow(
-      'A value "not a number" is not a number.',
-    );
+    expect(() => Invalid.fromUnknown("value")).toThrow("Expected Number.");
+    expect(() => Invalid.from.parent("value")).toThrow("Expected Number.");
   });
 
   test("asserts encoding inputs and callback results", () => {
@@ -2883,7 +2878,7 @@ describe("transform", () => {
     expect(NumberFromString.fromUnknown("42")).toEqual(ok(42));
     expectAssertionError(
       () => NumberFromString.to("42" as unknown as number),
-      'A value "42" is not a number.',
+      "Expected NumberFromString.",
       {
         type: "NumberFromString",
         outputError: {
@@ -2893,7 +2888,7 @@ describe("transform", () => {
         },
       },
     );
-    expect(() => Invalid.to(42)).toThrow("A value 42 is not a string.");
+    expect(() => Invalid.to(42)).toThrow("Expected String.");
   });
 
   test("rejects fallible parent and output Types with erased concrete information", () => {
@@ -3458,7 +3453,7 @@ describe("createInstanceOfType", () => {
     for (const operation of operations) {
       expectAssertionError(
         operation,
-        'A value {"name":"Ada"} is not an instance of User.',
+        "Expected InstanceOf.",
         error,
       );
     }
@@ -3754,12 +3749,12 @@ describe("union", () => {
 
     expectAssertionError(
       () => StringOrNumber.from(invalid),
-      "A value does not match any union member.",
+      "Expected Union.",
       cause,
     );
     expectAssertionError(
       () => StringOrNumber.from.parent(invalid),
-      "A value does not match any union member.",
+      "Expected Union.",
       cause,
     );
   });
@@ -6885,7 +6880,7 @@ describe("BrandFactory", () => {
 
         expectAssertionError(
           () => multipleOf(divisor),
-          'The value "0.10" must be a canonical positive decimal string.',
+          "Expected PositiveDecimalString.",
           { type: "PositiveDecimalString", value: "0.10" },
         );
       });
@@ -7288,13 +7283,10 @@ describe("array", () => {
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
       });
-      const message =
-        "An excess Array property is not allowed. Remove it or use a different Type.";
-
       expect(Numbers.is(output)).toBe(false);
       expect(Numbers.fromUnknown(input)).toEqual(error);
-      expect(() => Numbers.from.parent(input)).toThrow(message);
-      expect(() => Numbers.to(output)).toThrow(message);
+      expect(() => Numbers.from.parent(input)).toThrow("Expected Array.");
+      expect(() => Numbers.to(output)).toThrow("Expected Array.");
     });
 
     test("rejects excess properties even when element encoding is identity", () => {
@@ -7309,13 +7301,10 @@ describe("array", () => {
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
       });
-      const message =
-        "An excess Array property is not allowed. Remove it or use a different Type.";
-
       expect(Numbers.is(value)).toBe(false);
       expect(Numbers.fromUnknown(value)).toEqual(error);
-      expect(() => Numbers.from(value)).toThrow(message);
-      expect(() => Numbers.to(value)).toThrow(message);
+      expect(() => Numbers.from(value)).toThrow("Expected Array.");
+      expect(() => Numbers.to(value)).toThrow("Expected Array.");
     });
 
     test("rejects non-enumerable and symbol properties without reading them", () => {
@@ -8071,9 +8060,10 @@ describe("array", () => {
       const Values = array(Number);
       const sparse = new Array<number>(1);
 
-      expect(() => Values.to(sparse)).toThrow(
-        "An array element at index 0 is missing.",
-      );
+      expectAssertionError(() => Values.to(sparse), "Expected Array.", {
+        type: "Array",
+        reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
+      });
     });
   });
 
@@ -8082,9 +8072,10 @@ describe("array", () => {
       const Values = array(Number);
       const sparse = new Array<number>(1);
 
-      expect(() => Values.from(sparse)).toThrow(
-        "An array element at index 0 is missing.",
-      );
+      expectAssertionError(() => Values.from(sparse), "Expected Array.", {
+        type: "Array",
+        reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
+      });
     });
 
     test("asserts its own Output elements", () => {
@@ -8426,8 +8417,13 @@ describe("array", () => {
       const Values = array(literal(1));
       const sparse = new Array<number>(1);
 
-      expect(() => Values.from.parent(sparse)).toThrow(
-        "An array element at index 0 is missing.",
+      expectAssertionError(
+        () => Values.from.parent(sparse),
+        "Expected Array.",
+        {
+          type: "Array",
+          reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
+        },
       );
     });
 
@@ -8624,9 +8620,10 @@ describe("array", () => {
       const Values = array(literal(1));
       const sparse = new Array<number>(1);
 
-      expect(() => Values.orThrow(sparse)).toThrow(
-        "An array element at index 0 is missing.",
-      );
+      expectAssertionError(() => Values.orThrow(sparse), "Expected Array.", {
+        type: "Array",
+        reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
+      });
     });
 
     test("returns the same array or throws the first failing element error", () => {
@@ -8681,9 +8678,10 @@ describe("array", () => {
       const Values = array(literal(1));
       const sparse = new Array<number>(1);
 
-      expect(() => Values.orNull(sparse)).toThrow(
-        "An array element at index 0 is missing.",
-      );
+      expectAssertionError(() => Values.orNull(sparse), "Expected Array.", {
+        type: "Array",
+        reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
+      });
     });
 
     test("returns the same array or null for a failing element", () => {
@@ -9342,14 +9340,9 @@ describe("tuple", () => {
         value: "1",
         enumerable: true,
       });
-      const message =
-        "An excess Tuple property is not allowed. Remove it or use a different Type.";
-
-      expect(() => Pair.from(excess)).toThrow(message);
-      expect(() => Pair.to(excess)).toThrow(message);
-      expect(() => Pair.from(invalidElement)).toThrow(
-        'A value "1" is not a number.',
-      );
+      expect(() => Pair.from(excess)).toThrow("Expected Tuple.");
+      expect(() => Pair.to(excess)).toThrow("Expected Tuple.");
+      expect(() => Pair.from(invalidElement)).toThrow("Expected Tuple.");
     });
 
     test("asserts the root parent representation before reading elements", () => {
@@ -9365,9 +9358,7 @@ describe("tuple", () => {
         },
       });
 
-      expect(() => Entry.from.parent(input)).toThrow(
-        "A Tuple element at index 0 must be a data property.",
-      );
+      expect(() => Entry.from.parent(input)).toThrow("Expected Tuple.");
       expect(reads).toBe(0);
     });
   });
@@ -9765,11 +9756,16 @@ describe("Object", () => {
     });
 
     const typed = value as typeof Object.Output;
-    const message =
-      "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-
-    expectAssertionError(() => Object.from(typed), message, result.error);
-    expectAssertionError(() => Object.to(typed), message, result.error);
+    expectAssertionError(
+      () => Object.from(typed),
+      "Expected Object.",
+      result.error,
+    );
+    expectAssertionError(
+      () => Object.to(typed),
+      "Expected Object.",
+      result.error,
+    );
   });
 
   test("retains every invalid typed representation error when requested", () => {
@@ -9806,17 +9802,14 @@ describe("Object", () => {
     });
 
     const typed = value as typeof Object.Output;
-    const message =
-      "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-
     expectAssertionError(
       () => Object.from(typed, { errors: "all" }),
-      message,
+      "Expected Object.",
       result.error,
     );
     expectAssertionError(
       () => Object.orThrow(typed, { errors: "all" }),
-      message,
+      "Expected Object.",
       result.error,
     );
   });
@@ -10104,10 +10097,8 @@ describe("record", () => {
             reason: { kind: "NotPlainRecord", value: input },
           }),
         );
-        const message =
-          "The value is an object, but a Record Output must be a plain object or have a null prototype.";
-        expect(() => Values.from(input)).toThrow(message);
-        expect(() => Values.to(input)).toThrow(message);
+        expect(() => Values.from(input)).toThrow("Expected Record.");
+        expect(() => Values.to(input)).toThrow("Expected Record.");
       }
       expect(inheritedReads).toBe(0);
     });
@@ -10155,12 +10146,8 @@ describe("record", () => {
         }),
       );
       expect(Values.is(input)).toBe(false);
-      expect(() => Values.from(input)).toThrow(
-        'A record property "value" must be enumerable.',
-      );
-      expect(() => Values.to(input)).toThrow(
-        'A record property "value" must be enumerable.',
-      );
+      expect(() => Values.from(input)).toThrow("Expected Record.");
+      expect(() => Values.to(input)).toThrow("Expected Record.");
     });
 
     test("rejects non-plain values and accessors without reading them", () => {
@@ -10205,7 +10192,7 @@ describe("record", () => {
       expect(reads).toBe(0);
       expect(Values.is(accessor)).toBe(false);
       expect(() => Values.to(accessor as Record<string, number>)).toThrow(
-        'A record property "value" must be a data property.',
+        "Expected Record.",
       );
       expect(reads).toBe(0);
     });
@@ -10380,9 +10367,7 @@ describe("record", () => {
 
       const output = createNullRecord({ value: 1 });
       globalThis.Reflect.set(output, key, 2);
-      expect(() => Values.to(output)).toThrow(
-        "A value Symbol(key) is not a string.",
-      );
+      expect(() => Values.to(output)).toThrow("Expected Record.");
     });
 
     test("collects key and value issues in own-key order", () => {
@@ -10650,11 +10635,10 @@ describe("record", () => {
         },
       );
 
-      const message = 'A record property "value" must be a data property.';
-      expect(() => Values.from(value)).toThrow(message);
-      expect(() => Values.orThrow(value)).toThrow(message);
-      expect(() => Values.orNull(value)).toThrow(message);
-      expect(() => Values.to(value)).toThrow(message);
+      expect(() => Values.from(value)).toThrow("Expected Record.");
+      expect(() => Values.orThrow(value)).toThrow("Expected Record.");
+      expect(() => Values.orNull(value)).toThrow("Expected Record.");
+      expect(() => Values.to(value)).toThrow("Expected Record.");
       expect(accessError).toBeInstanceOf(Error);
     });
   });
@@ -12828,13 +12812,11 @@ describe("object", () => {
         { enumerable: true, value: "own" },
       );
 
-      const message =
-        "An excess property is not allowed. Remove it or use a different Type.";
-      expect(() => Model.from(value)).toThrow(message);
-      expect(() => Model.to(value)).toThrow(message);
-      expect(() => Model.orThrow(value)).toThrow(message);
-      expect(() => Model.orNull(value)).toThrow(message);
-      expect(() => Model.to(ownToString)).toThrow(message);
+      expect(() => Model.from(value)).toThrow("Expected Object.");
+      expect(() => Model.to(value)).toThrow("Expected Object.");
+      expect(() => Model.orThrow(value)).toThrow("Expected Object.");
+      expect(() => Model.orNull(value)).toThrow("Expected Object.");
+      expect(() => Model.to(ownToString)).toThrow("Expected Object.");
     });
 
     test("validates nested exact Outputs without decoding them", () => {
@@ -12848,7 +12830,7 @@ describe("object", () => {
 
       expectAssertionError(
         () => Model.from(invalid),
-        "A value 42 is not a string.",
+        "Expected Object.",
         {
           type: "Object",
           reason: {
@@ -14012,12 +13994,12 @@ describe("discriminatedUnion", () => {
 
       expectAssertionError(
         () => Event.from(invalid),
-        'A value "no" is not a number.',
+        "Expected DiscriminatedUnion.",
         cause,
       );
       expectAssertionError(
         () => Event.from.parent(invalid),
-        'A value "no" is not a number.',
+        "Expected DiscriminatedUnion.",
         cause,
       );
     });
@@ -14462,12 +14444,12 @@ describe("lazy", () => {
 
     expectAssertionError(
       () => Value.from(invalid),
-      "A value 1 is not a string.",
+      "Expected Lazy.",
       cause,
     );
     expectAssertionError(
       () => Value.from.parent(invalid),
-      "A value 1 is not a string.",
+      "Expected Lazy.",
       cause,
     );
   });
@@ -15158,7 +15140,7 @@ describe("JsonValue", () => {
 
     expectAssertionError(
       () => JsonValue.to(value),
-      "A JsonValue must not contain circular references.",
+      "Expected JsonValue.",
       error,
     );
   });
@@ -15492,9 +15474,7 @@ describe("design decisions", () => {
         }),
       );
       expect(Model.is(exotic)).toBe(false);
-      expect(() => Model.to(exotic)).toThrow(
-        "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.",
-      );
+      expect(() => Model.to(exotic)).toThrow("Expected Object.");
       expect(reads).toBe(0);
     });
 
@@ -15522,7 +15502,7 @@ describe("design decisions", () => {
       // Evolu does not silently discard code and data that the schema cannot
       // represent. The assertion exposes the broken application contract.
       expect(() => encodeTodoForStorage(todoWithSearchWords)).toThrow(
-        "An excess property is not allowed. Remove it or use a different Type.",
+        "Expected Object.",
       );
     });
   });
