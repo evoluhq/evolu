@@ -68,8 +68,9 @@ import {
  *   support so users can change language offline.
  * - **Consistent constraints through {@link Brand}** – every constraint is
  *   represented in the TypeScript type.
- * - **Typed inputs** – `from` and its `.parent` entry points connect precise
- *   producer and consumer contracts while preserving typed remaining errors.
+ * - **Typed inputs** – prefer `from` and its `.parent` entry points to connect
+ *   precise producer and consumer contracts while preserving typed remaining
+ *   errors; reserve `fromUnknown` for genuinely unknown values.
  * - **Lawful codecs** – Types partially decode `Input` to `Output` and totally
  *   encode every legitimate `Output` back to canonical `Input`.
  * - **A top-down implementation** – the source is intended to be read from
@@ -102,11 +103,15 @@ import {
  * `Input`, while `to` asserts its Output boundary. A failed assertion means
  * application code violated its static contract; it is a developer error, not
  * an expected validation failure. Its message identifies the expected Type and
- * its cause preserves the exact structured Output validation error. Use
- * `fromUnknown` for values entering the typed program from an external source.
- * `is` means exact membership in the output domain, not merely that output-side
- * parsing could succeed. A successful `fromUnknown` result always satisfies
- * `is`.
+ * its cause preserves the exact structured Output validation error.
+ *
+ * Prefer the most precise typed boundary available. A value is not unknown
+ * merely because it originated outside the application: forms, components, and
+ * other producers often expose a `string` or a branded value that can connect
+ * directly to a matching `from` boundary. Reserve `fromUnknown` for values whose
+ * TypeScript type is genuinely `unknown`. `is` means exact membership in the
+ * output domain, not merely that output-side parsing could succeed. A successful
+ * `fromUnknown` result always satisfies `is`.
  *
  * Decoding accepts a representation outside the Output domain only when the
  * Type explicitly declares that representation, such as a transformation Input.
@@ -263,6 +268,17 @@ import {
  * the assertion at their typed `Input` boundary, then apply {@link getOrThrow}
  * or {@link getOrNull} only to validation failures returned by the remaining
  * pipeline.
+ *
+ * Consequently, structural representation errors such as sparse Arrays,
+ * accessors, and excess properties normally do not enter user-facing validation
+ * in typed application flows. They violate the producer's declared contract and
+ * throw as developer errors. At a genuinely unknown boundary, such as a
+ * schema-authoring tool, import, or external protocol, the same issues are
+ * legitimate typed validation errors and their formatter messages are useful.
+ *
+ * This distinction applies to data failures. Any Type operation, including
+ * `fromUnknown`, can throw when trusted Type-declaration code, such as a
+ * successful transformation callback, violates its declared contract.
  *
  * Materialize accessor values into plain data, remove properties the Type does
  * not represent, or use a different Type. Silently discarding excess data would
