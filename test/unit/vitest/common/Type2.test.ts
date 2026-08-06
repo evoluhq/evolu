@@ -748,6 +748,66 @@ describe("assertType", () => {
   });
 });
 
+describe("Type operations", () => {
+  test("assert each selected boundary with its name and structured error", () => {
+    const positiveError = { type: "Positive", value: 0 } as const;
+    const nonNegativeError = { type: "NonNegative", value: -1 } as const;
+    const numberError = {
+      type: "TypeOf",
+      expected: "Number",
+      value: "1",
+    } as const;
+
+    for (const [operation, message, cause] of [
+      [
+        () => PositiveNumber.from(0 as PositiveNumber),
+        "Expected Positive.",
+        positiveError,
+      ],
+      [
+        () =>
+          PositiveNumber.from.parent(-1 as unknown as NonNegativeNumber),
+        "Expected NonNegative.",
+        nonNegativeError,
+      ],
+      [
+        () =>
+          PositiveNumber.from.parent.parent("1" as unknown as number),
+        "Expected Number.",
+        numberError,
+      ],
+      [
+        () => PositiveNumber.to(0 as PositiveNumber),
+        "Expected Positive.",
+        positiveError,
+      ],
+      [
+        () => PositiveNumber.orThrow("1" as unknown as number),
+        "Expected Number.",
+        numberError,
+      ],
+      [
+        () => PositiveNumber.orNull("1" as unknown as number),
+        "Expected Number.",
+        numberError,
+      ],
+    ] as const) {
+      expectAssertionError(operation, message, cause);
+    }
+  });
+
+  test("map only errors returned after the typed Input boundary", () => {
+    const error = { type: "Positive", value: 0 } as const;
+
+    expectAssertionError(
+      () => PositiveNumber.orThrow(0),
+      "getOrThrow",
+      error,
+    );
+    expect(PositiveNumber.orNull(0)).toBeNull();
+  });
+});
+
 describe("Standard Schema", () => {
   test("infers the exact Input and Output", () => {
     const _NumberFromString = setupNumberFromString();
@@ -2864,8 +2924,22 @@ describe("transform", () => {
       to: globalThis.String,
     });
 
-    expect(() => Invalid.fromUnknown("value")).toThrow("Expected Number.");
-    expect(() => Invalid.from.parent("value")).toThrow("Expected Number.");
+    const cause = {
+      type: "TypeOf",
+      expected: "Number",
+      value: "not a number",
+    } as const;
+
+    expectAssertionError(
+      () => Invalid.fromUnknown("value"),
+      "Expected Number.",
+      cause,
+    );
+    expectAssertionError(
+      () => Invalid.from.parent("value"),
+      "Expected Number.",
+      cause,
+    );
   });
 
   test("asserts encoding inputs and callback results", () => {
@@ -2888,7 +2962,11 @@ describe("transform", () => {
         },
       },
     );
-    expect(() => Invalid.to(42)).toThrow("Expected String.");
+    expectAssertionError(() => Invalid.to(42), "Expected String.", {
+      type: "TypeOf",
+      expected: "String",
+      value: 42,
+    });
   });
 
   test("rejects fallible parent and output Types with erased concrete information", () => {
@@ -7276,17 +7354,25 @@ describe("array", () => {
       const output = globalThis.Object.assign([1], {
         metadata: "important",
       });
-      const error = err({
+      const cause = {
         type: "Array",
         reason: {
           kind: "Items",
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
-      });
+      } as const;
       expect(Numbers.is(output)).toBe(false);
-      expect(Numbers.fromUnknown(input)).toEqual(error);
-      expect(() => Numbers.from.parent(input)).toThrow("Expected Array.");
-      expect(() => Numbers.to(output)).toThrow("Expected Array.");
+      expect(Numbers.fromUnknown(input)).toEqual(err(cause));
+      expectAssertionError(
+        () => Numbers.from.parent(input),
+        "Expected Array.",
+        cause,
+      );
+      expectAssertionError(
+        () => Numbers.to(output),
+        "Expected Array.",
+        cause,
+      );
     });
 
     test("rejects excess properties even when element encoding is identity", () => {
@@ -7294,17 +7380,25 @@ describe("array", () => {
       const value = globalThis.Object.assign([1], {
         metadata: "important",
       });
-      const error = err({
+      const cause = {
         type: "Array",
         reason: {
           kind: "Items",
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
-      });
+      } as const;
       expect(Numbers.is(value)).toBe(false);
-      expect(Numbers.fromUnknown(value)).toEqual(error);
-      expect(() => Numbers.from(value)).toThrow("Expected Array.");
-      expect(() => Numbers.to(value)).toThrow("Expected Array.");
+      expect(Numbers.fromUnknown(value)).toEqual(err(cause));
+      expectAssertionError(
+        () => Numbers.from(value),
+        "Expected Array.",
+        cause,
+      );
+      expectAssertionError(
+        () => Numbers.to(value),
+        "Expected Array.",
+        cause,
+      );
     });
 
     test("rejects non-enumerable and symbol properties without reading them", () => {
@@ -9340,9 +9434,44 @@ describe("tuple", () => {
         value: "1",
         enumerable: true,
       });
-      expect(() => Pair.from(excess)).toThrow("Expected Tuple.");
-      expect(() => Pair.to(excess)).toThrow("Expected Tuple.");
-      expect(() => Pair.from(invalidElement)).toThrow("Expected Tuple.");
+      const excessResult = Pair.fromUnknown(excess);
+      const invalidElementResult = Pair.fromUnknown(invalidElement);
+
+      expectErr(excessResult, {
+        type: "Tuple",
+        reason: {
+          kind: "Items",
+          issues: [{ kind: "ExcessProperty", key: "metadata" }],
+        },
+      });
+      expectErr(invalidElementResult, {
+        type: "Tuple",
+        reason: {
+          kind: "Items",
+          issues: [
+            {
+              kind: "Element",
+              index: 1,
+              error: { type: "TypeOf", expected: "Number", value: "1" },
+            },
+          ],
+        },
+      });
+      expectAssertionError(
+        () => Pair.from(excess),
+        "Expected Tuple.",
+        excessResult.error,
+      );
+      expectAssertionError(
+        () => Pair.to(excess),
+        "Expected Tuple.",
+        excessResult.error,
+      );
+      expectAssertionError(
+        () => Pair.from(invalidElement),
+        "Expected Tuple.",
+        invalidElementResult.error,
+      );
     });
 
     test("asserts the root parent representation before reading elements", () => {
@@ -9358,7 +9487,20 @@ describe("tuple", () => {
         },
       });
 
-      expect(() => Entry.from.parent(input)).toThrow("Expected Tuple.");
+      const result = Entry.parent.fromUnknown(input);
+
+      expectErr(result, {
+        type: "Tuple",
+        reason: {
+          kind: "Items",
+          issues: [{ kind: "Accessor", index: 0 }],
+        },
+      });
+      expectAssertionError(
+        () => Entry.from.parent(input),
+        "Expected Tuple.",
+        result.error,
+      );
       expect(reads).toBe(0);
     });
   });
@@ -10091,14 +10233,21 @@ describe("record", () => {
 
       for (const input of [instance, customPrototype]) {
         expect(Values.is(input)).toBe(false);
-        expect(Values.fromUnknown(input)).toEqual(
-          err({
-            type: "Record",
-            reason: { kind: "NotPlainRecord", value: input },
-          }),
+        const result = Values.fromUnknown(input);
+        expectErr(result, {
+          type: "Record",
+          reason: { kind: "NotPlainRecord", value: input },
+        });
+        expectAssertionError(
+          () => Values.from(input),
+          "Expected Record.",
+          result.error,
         );
-        expect(() => Values.from(input)).toThrow("Expected Record.");
-        expect(() => Values.to(input)).toThrow("Expected Record.");
+        expectAssertionError(
+          () => Values.to(input),
+          "Expected Record.",
+          result.error,
+        );
       }
       expect(inheritedReads).toBe(0);
     });
@@ -10136,18 +10285,24 @@ describe("record", () => {
       );
       const result = Values.fromUnknown(input);
 
-      expect(result).toEqual(
-        err({
-          type: "Record",
-          reason: {
-            kind: "Entries",
-            issues: [{ kind: "NonEnumerable", key: "value" }],
-          },
-        }),
-      );
+      expectErr(result, {
+        type: "Record",
+        reason: {
+          kind: "Entries",
+          issues: [{ kind: "NonEnumerable", key: "value" }],
+        },
+      });
       expect(Values.is(input)).toBe(false);
-      expect(() => Values.from(input)).toThrow("Expected Record.");
-      expect(() => Values.to(input)).toThrow("Expected Record.");
+      expectAssertionError(
+        () => Values.from(input),
+        "Expected Record.",
+        result.error,
+      );
+      expectAssertionError(
+        () => Values.to(input),
+        "Expected Record.",
+        result.error,
+      );
     });
 
     test("rejects non-plain values and accessors without reading them", () => {
@@ -10180,19 +10335,19 @@ describe("record", () => {
       );
       const result = Values.fromUnknown(accessor);
 
-      expect(result).toEqual(
-        err({
-          type: "Record",
-          reason: {
-            kind: "Entries",
-            issues: [{ kind: "Accessor", key: "value" }],
-          },
-        }),
-      );
+      expectErr(result, {
+        type: "Record",
+        reason: {
+          kind: "Entries",
+          issues: [{ kind: "Accessor", key: "value" }],
+        },
+      });
       expect(reads).toBe(0);
       expect(Values.is(accessor)).toBe(false);
-      expect(() => Values.to(accessor as Record<string, number>)).toThrow(
+      expectAssertionError(
+        () => Values.to(accessor as Record<string, number>),
         "Expected Record.",
+        result.error,
       );
       expect(reads).toBe(0);
     });
@@ -10367,7 +10522,30 @@ describe("record", () => {
 
       const output = createNullRecord({ value: 1 });
       globalThis.Reflect.set(output, key, 2);
-      expect(() => Values.to(output)).toThrow("Expected Record.");
+      const result = Values.fromUnknown(output);
+
+      expectErr(result, {
+        type: "Record",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Key",
+              key,
+              error: {
+                type: "TypeOf",
+                expected: "String",
+                value: key,
+              },
+            },
+          ],
+        },
+      });
+      expectAssertionError(
+        () => Values.to(output),
+        "Expected Record.",
+        result.error,
+      );
     });
 
     test("collects key and value issues in own-key order", () => {
@@ -10635,10 +10813,23 @@ describe("record", () => {
         },
       );
 
-      expect(() => Values.from(value)).toThrow("Expected Record.");
-      expect(() => Values.orThrow(value)).toThrow("Expected Record.");
-      expect(() => Values.orNull(value)).toThrow("Expected Record.");
-      expect(() => Values.to(value)).toThrow("Expected Record.");
+      const result = Values.fromUnknown(value);
+
+      expectErr(result, {
+        type: "Record",
+        reason: {
+          kind: "Entries",
+          issues: [{ kind: "Accessor", key: "value" }],
+        },
+      });
+      for (const operation of [
+        () => Values.from(value),
+        () => Values.orThrow(value),
+        () => Values.orNull(value),
+        () => Values.to(value),
+      ]) {
+        expectAssertionError(operation, "Expected Record.", result.error);
+      }
       expect(accessError).toBeInstanceOf(Error);
     });
   });
@@ -12812,11 +13003,40 @@ describe("object", () => {
         { enumerable: true, value: "own" },
       );
 
-      expect(() => Model.from(value)).toThrow("Expected Object.");
-      expect(() => Model.to(value)).toThrow("Expected Object.");
-      expect(() => Model.orThrow(value)).toThrow("Expected Object.");
-      expect(() => Model.orNull(value)).toThrow("Expected Object.");
-      expect(() => Model.to(ownToString)).toThrow("Expected Object.");
+      const result = Model.fromUnknown(value);
+      const ownToStringResult = Model.fromUnknown(ownToString);
+
+      expectErr(result, {
+        type: "Object",
+        reason: {
+          kind: "Properties",
+          errors: {
+            searchWords: { type: "ObjectExcessProperty" },
+          },
+        },
+      });
+      expectErr(ownToStringResult, {
+        type: "Object",
+        reason: {
+          kind: "Properties",
+          errors: {
+            toString: { type: "ObjectExcessProperty" },
+          },
+        },
+      });
+      for (const operation of [
+        () => Model.from(value),
+        () => Model.to(value),
+        () => Model.orThrow(value),
+        () => Model.orNull(value),
+      ]) {
+        expectAssertionError(operation, "Expected Object.", result.error);
+      }
+      expectAssertionError(
+        () => Model.to(ownToString),
+        "Expected Object.",
+        ownToStringResult.error,
+      );
     });
 
     test("validates nested exact Outputs without decoding them", () => {
@@ -15459,22 +15679,25 @@ describe("design decisions", () => {
         },
       );
 
-      expect(Model.fromUnknown(exotic)).toEqual(
-        err({
-          type: "Object",
-          reason: {
-            kind: "Properties",
-            errors: {
-              count: {
-                type: "ObjectPropertyAccess",
-                reason: "Accessor",
-              },
+      const result = Model.fromUnknown(exotic);
+      expectErr(result, {
+        type: "Object",
+        reason: {
+          kind: "Properties",
+          errors: {
+            count: {
+              type: "ObjectPropertyAccess",
+              reason: "Accessor",
             },
           },
-        }),
-      );
+        },
+      });
       expect(Model.is(exotic)).toBe(false);
-      expect(() => Model.to(exotic)).toThrow("Expected Object.");
+      expectAssertionError(
+        () => Model.to(exotic),
+        "Expected Object.",
+        result.error,
+      );
       expect(reads).toBe(0);
     });
 
@@ -15501,8 +15724,20 @@ describe("design decisions", () => {
 
       // Evolu does not silently discard code and data that the schema cannot
       // represent. The assertion exposes the broken application contract.
-      expect(() => encodeTodoForStorage(todoWithSearchWords)).toThrow(
+      const result = Todo.fromUnknown(todoWithSearchWords);
+      expectErr(result, {
+        type: "Object",
+        reason: {
+          kind: "Properties",
+          errors: {
+            titleSearchWords: { type: "ObjectExcessProperty" },
+          },
+        },
+      });
+      expectAssertionError(
+        () => encodeTodoForStorage(todoWithSearchWords),
         "Expected Object.",
+        result.error,
       );
     });
   });
