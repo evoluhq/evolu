@@ -8382,10 +8382,10 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
  *
  * The definition must return one concrete non-Lazy Type. Use {@link union} for
  * alternatives. Every recursive Lazy reference must be nested behind an
- * {@link object}, {@link array}, {@link tuple}, or {@link record} structural
- * boundary. Union does not guard recursion because it passes the same value to
- * every member. Lazy defers schema construction; it does not make cyclic
- * runtime object graphs or arbitrarily deep values stack-safe.
+ * {@link object}, {@link array}, {@link tuple}, {@link record}, or {@link set}
+ * structural boundary. Union does not guard recursion because it passes the
+ * same value to every member. Lazy defers schema construction; it does not make
+ * cyclic runtime object graphs or arbitrarily deep values stack-safe.
  *
  * ### Example
  *
@@ -8487,6 +8487,7 @@ export function lazy(getType: Thunk<TypeNode>): TypeNode {
               "A Lazy Type definition must not use a Lazy Type in its parent chain.",
             );
           }
+          assertLazyReferencesAreGuarded(target);
           const resolved: ResolvedLazyType = {
             state: "resolved",
             target,
@@ -8603,6 +8604,27 @@ interface ResolvedLazyType {
 }
 
 const lazyTypeNodes = /*#__PURE__*/ new WeakSet<TypeNode>();
+
+const assertLazyReferencesAreGuarded = (type: RuntimeTypeNode): void => {
+  for (;;) {
+    assert(
+      !lazyTypeNodes.has(type),
+      "A Lazy Type definition must place every Lazy Type behind a structural boundary.",
+    );
+
+    if ("members" in type && globalThis.Array.isArray(type.members)) {
+      for (const member of type.members as ReadonlyArray<RuntimeTypeNode>)
+        assertLazyReferencesAreGuarded(member);
+    }
+
+    if ("output" in type) {
+      assertLazyReferencesAreGuarded(type.output as RuntimeTypeNode);
+    }
+
+    if (!type.parent) return;
+    type = type.parent as RuntimeTypeNode;
+  }
+};
 
 /**
  * A candidate JSON value before exact runtime validation.

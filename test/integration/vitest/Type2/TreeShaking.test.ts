@@ -452,12 +452,12 @@ describe("Type2 tree shaking", () => {
         },
         "lazy(Object(Array))": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 4022,
-            "rawSizeInBytes": 11541,
+            "gzipSizeInBytes": 4126,
+            "rawSizeInBytes": 11798,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 4060,
-            "rawSizeInBytes": 11681,
+            "gzipSizeInBytes": 4159,
+            "rawSizeInBytes": 11938,
           },
         },
         "typed(Pending)": {

@@ -15100,6 +15100,81 @@ describe("lazy", () => {
       );
       expect(targetResolutions).toBe(0);
     });
+
+    test("rejects an unguarded self-reference as the first Union member", () => {
+      interface SelfError extends TypeError<"Union"> {
+        readonly errors: NonEmptyReadonlyArray<
+          | UnionMemberError<SelfError, 0>
+          | UnionMemberError<TypeOfError<"String">, 1>
+        >;
+      }
+      let resolutions = 0;
+      const Self: LazyType<
+        string,
+        string,
+        SelfError,
+        SelfError,
+        SelfError
+      > = lazy(() => {
+        resolutions++;
+        return union(Self, String);
+      });
+      const message =
+        "A Lazy Type definition must place every Lazy Type behind a structural boundary.";
+
+      expect(() => Self.fromUnknown("value")).toThrow(message);
+      expect(() => Self.fromUnknown("value")).toThrow(message);
+      expect(resolutions).toBe(1);
+    });
+
+    test("rejects an unguarded self-reference as the second Union member", () => {
+      interface SelfError extends TypeError<"Union"> {
+        readonly errors: NonEmptyReadonlyArray<
+          | UnionMemberError<TypeOfError<"String">, 0>
+          | UnionMemberError<SelfError, 1>
+        >;
+      }
+      let resolutions = 0;
+      const Self: LazyType<
+        string,
+        string,
+        SelfError,
+        SelfError,
+        SelfError
+      > = lazy(() => {
+        resolutions++;
+        return union(String, Self);
+      });
+      const message =
+        "A Lazy Type definition must place every Lazy Type behind a structural boundary.";
+
+      expect(() => Self.fromUnknown("value")).toThrow(message);
+      expect(() => Self.fromUnknown("value")).toThrow(message);
+      expect(resolutions).toBe(1);
+    });
+
+    test("rejects an unguarded self-reference through Transform output", () => {
+      let resolutions = 0;
+      const Self: LazyType<
+        string,
+        string,
+        never,
+        TypeOfError<"String">,
+        TypeOfError<"String">
+      > = lazy(() => {
+        resolutions++;
+        return transform("RecursiveTransform", String, Self, {
+          from: (value) => ok(value),
+          to: (value) => value,
+        });
+      });
+      const message =
+        "A Lazy Type definition must place every Lazy Type behind a structural boundary.";
+
+      expect(() => Self.fromUnknown("value")).toThrow(message);
+      expect(() => Self.fromUnknown("value")).toThrow(message);
+      expect(resolutions).toBe(1);
+    });
   });
 });
 
