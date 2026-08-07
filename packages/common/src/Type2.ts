@@ -2265,7 +2265,10 @@ export function createObjectTagType<
   OutputType extends ConcreteTypeNode & { readonly Output: object },
 >(
   name: ValidateConcreteTypeName<Name>,
-  outputType: ValidateOutput<OutputType>,
+  outputType: ValidateOutput<OutputType> &
+    ([ChildTypeNameValidationError<"ObjectTag", OutputType>] extends [never]
+      ? unknown
+      : ChildTypeNameValidationError<"ObjectTag", OutputType>),
 ): ObjectTagType<Name, OutputType>;
 export function createObjectTagType(
   name: TypeName,

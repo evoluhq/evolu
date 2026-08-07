@@ -3428,6 +3428,26 @@ describe("createObjectTagType", () => {
     expectTypeOf(compileTimeAssertions).toBeFunction();
   });
 
+  test("rejects an ObjectTag error inherited from the output Type", () => {
+    class TaggedValue {
+      readonly [globalThis.Symbol.toStringTag] = "Tagged";
+    }
+
+    const Tagged = createObjectTagType(
+      "Tagged",
+      createInstanceOfType(TaggedValue),
+    );
+    const compileTimeAssertions = () => {
+      createObjectTagType(
+        "Other",
+        // @ts-expect-error An ObjectTag error must not duplicate one inherited from the output Type.
+        Tagged,
+      );
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
   test("infers ObjectTag localization", () => {
     const Types = localizeTypes(
       { Date },
