@@ -620,12 +620,24 @@ describe("Type", () => {
     expectTypeOf(DateIso.to(dateIso)).toEqualTypeOf<string>();
   });
 
-  test("does not expose partial encoding operations", () => {
+  test("exposes partial encoding operations for every parent boundary", () => {
     const A = brand("OperationA", String);
     const B = brand("OperationB", A);
+    const value = B.orThrow("value");
+    const bToParent = B.to.parent;
 
-    expectTypeOf<"parent">().not.toExtend<keyof typeof B.to>();
-    expect("parent" in B.to).toBe(false);
+    expect(B.to(value)).toBe("value");
+    expect(B.to.parent(value)).toBe("value");
+    expect(B.to.parent.parent(value)).toBe("value");
+    expectTypeOf(B.to.parent(value)).toEqualTypeOf<typeof A.Output>();
+    expectTypeOf(B.to.parent.parent(value)).toEqualTypeOf<string>();
+    expect("parent" in B.to.parent.parent).toBe(false);
+
+    brand("OperationC", B);
+
+    expect(B.to.parent).toBe(bToParent);
+    expect("parent" in B.to.parent.parent).toBe(false);
+    expect("parent" in String.to).toBe(false);
   });
 
   describe("variance", () => {
@@ -2781,6 +2793,43 @@ describe("transform", () => {
     expect(ReencodedNumber.to(1.5)).toBe("1.5");
   });
 
+  test("stops encoding at each typed parent boundary", () => {
+    const NumberFromString = setupNumberFromString();
+    const BooleanFromNumberString = transform(
+      "BooleanFromNumberString",
+      NumberFromString,
+      Boolean,
+      {
+        from: (value) => ok(value !== 0),
+        to: (value) => (value ? 1 : 0),
+      },
+    );
+
+    expect(BooleanFromNumberString.to(true)).toBe("1");
+    expect(BooleanFromNumberString.to.parent(true)).toBe(1);
+    expect(BooleanFromNumberString.to.parent.parent(true)).toBe("1");
+    expectTypeOf(BooleanFromNumberString.to.parent(true)).toEqualTypeOf<
+      typeof NumberFromString.Output
+    >();
+    expectTypeOf(
+      BooleanFromNumberString.to.parent.parent(true),
+    ).toEqualTypeOf<string>();
+    expect("parent" in BooleanFromNumberString.to.parent.parent).toBe(false);
+
+    const Values = array(BooleanFromNumberString);
+    const values = [true, false];
+
+    expect(Values.to(values)).toEqual(["1", "0"]);
+    expect(Values.to.parent(values)).toEqual([1, 0]);
+    expect(Values.to.parent.parent(values)).toEqual(["1", "0"]);
+    expectTypeOf(Values.to.parent(values)).toEqualTypeOf<
+      ReadonlyArray<number>
+    >();
+    expectTypeOf(Values.to.parent.parent(values)).toEqualTypeOf<
+      ReadonlyArray<string>
+    >();
+  });
+
   test("formats inherited and own transformation errors", () => {
     const NumberFromString = setupNumberFromString();
 
@@ -2962,7 +3011,24 @@ describe("transform", () => {
         },
       },
     );
+    expectAssertionError(
+      () => NumberFromString.to.parent("42" as unknown as number),
+      "Expected NumberFromString.",
+      {
+        type: "NumberFromString",
+        outputError: {
+          type: "TypeOf",
+          expected: "Number",
+          value: "42",
+        },
+      },
+    );
     expectAssertionError(() => Invalid.to(42), "Expected String.", {
+      type: "TypeOf",
+      expected: "String",
+      value: 42,
+    });
+    expectAssertionError(() => Invalid.to.parent(42), "Expected String.", {
       type: "TypeOf",
       expected: "String",
       value: 42,
@@ -14181,6 +14247,11 @@ describe("discriminatedUnion", () => {
       expect(Event.parent.fromUnknown(input)).toEqual(ok(input));
       expect(Event.parent.from(input)).toEqual(ok(input));
       expect(Event.parent.to(input)).toEqual(input);
+      expect(Event.to.parent(output)).toEqual(input);
+      expectTypeOf(Event.to.parent(output)).toEqualTypeOf<
+        typeof Event.parent.Output
+      >();
+      expect("parent" in Event.to.parent).toBe(false);
       expect(Event.parent.is(input)).toBe(true);
       expect(Event.is(input)).toBe(false);
       expect(Event.orThrow(input)).toEqual(output);
@@ -14978,6 +15049,24 @@ describe("lazy", () => {
       expect(targetResolutions).toBe(0);
     });
 
+    test("rejects a localized Lazy Type returned as another Lazy definition", () => {
+      let targetResolutions = 0;
+      const Target = lazy(() => {
+        targetResolutions++;
+        return String;
+      });
+      const LocalizedTarget = localizeTypes(
+        { Target },
+        { test: { String: () => "Localized String." } },
+      ).test.Target;
+      const Alias = lazy(() => LocalizedTarget);
+
+      expect(() => Alias.fromUnknown("value")).toThrow(
+        "A Lazy Type definition must return a non-Lazy Type.",
+      );
+      expect(targetResolutions).toBe(0);
+    });
+
     test("rejects a Lazy Type in its definition parent chain", () => {
       const ParentCycle: LazyType<
         string,
@@ -14990,6 +15079,26 @@ describe("lazy", () => {
       expect(() => ParentCycle.fromUnknown("value")).toThrow(
         "A Lazy Type definition must not use a Lazy Type in its parent chain.",
       );
+    });
+
+    test("rejects a localized Lazy Type in its definition parent chain", () => {
+      let targetResolutions = 0;
+      const Target = lazy(() => {
+        targetResolutions++;
+        return String;
+      });
+      const LocalizedTarget = localizeTypes(
+        { Target },
+        { test: { String: () => "Localized String." } },
+      ).test.Target;
+      const Alias = lazy(() =>
+        createType("LocalizedParentCycle", LocalizedTarget.parent, ok),
+      );
+
+      expect(() => Alias.fromUnknown("value")).toThrow(
+        "A Lazy Type definition must not use a Lazy Type in its parent chain.",
+      );
+      expect(targetResolutions).toBe(0);
     });
   });
 });

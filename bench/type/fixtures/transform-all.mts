@@ -89,3 +89,8 @@ export type From4Result = ReturnType<
   typeof _T4.from.parent.parent.parent.parent
 >;
 export type ToResult = ReturnType<typeof _T4.to>;
+export type To1Result = ReturnType<typeof _T4.to.parent>;
+export type To3Result = ReturnType<typeof _T4.to.parent.parent.parent>;
+export type To4Result = ReturnType<
+  typeof _T4.to.parent.parent.parent.parent
+>;

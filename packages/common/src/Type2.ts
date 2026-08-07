@@ -477,8 +477,16 @@ export interface Type<
       : TypeOperationFn<"from", Output, Output, never>
     : CustomFrom;
 
-  /** Asserts and encodes an `Output` as its canonical `Input` representation. */
-  readonly to: (value: Output) => Input;
+  /**
+   * Asserts and encodes an `Output` toward its canonical `Input` representation.
+   *
+   * `to` runs the complete encoding pipeline. Its first `.parent` stops at the
+   * immediate parent Output, and each additional suffix stops one Type closer
+   * to the root. Every entry point accepts this Type's `Output`.
+   */
+  readonly to: [Parent] extends [infer P extends TypeNode]
+    ? ToOperation<Output, Input, P>
+    : (value: Output) => Input;
 
   /**
    * Shorthand for calling {@link getOrThrow} with the result of the deepest
@@ -910,13 +918,14 @@ const withFormatError = (
     source.is,
     source[outputValidationSymbol],
     source[fromSymbol],
-    source[encoderSymbol],
+    source[encoderSymbol].parent ?? source[encoderSymbol],
     getTypeIssues,
     undefined,
     formatIssue,
   );
 
   localizedTypeBySource.set(source, derived);
+  if (lazyTypeNodes.has(source)) lazyTypeNodes.add(derived);
 
   // Preserve feature reflection such as element, props, members, and output.
   for (const key of Reflect.ownKeys(source)) {
@@ -1273,6 +1282,18 @@ interface FromParentOperations<
       : unknown);
 }
 
+type ToOperation<Output, Input, Parent extends TypeNode> = ((
+  value: Output,
+) => Input) &
+  ToParentOperations<Output, Parent>;
+
+interface ToParentOperations<Output, Boundary extends TypeNode> {
+  readonly parent: ((value: Output) => Boundary["Output"]) &
+    ([Boundary["parent"]] extends [infer Parent extends TypeNode]
+      ? ToParentOperations<Output, Parent>
+      : unknown);
+}
+
 type TypeOperationFn<
   Kind extends "from" | "orThrow" | "orNull",
   Input,
@@ -1589,7 +1610,7 @@ const createChildType = <
     value: unknown,
     options: ValidationOptions = firstValidationOptions,
   ) => mapFromParent(typeParent[outputValidationSymbol](value, options));
-  const to = typeParent[encoderSymbol];
+  const to = identity;
 
   return createTypeNode<
     Type<
@@ -1733,7 +1754,7 @@ export function transform(
       typeParent[outputValidationSymbol],
       parentValue,
     );
-    return typeParent[encoderSymbol](parentValue as never);
+    return parentValue;
   };
   const defaultFormatter = formatOwnError!;
   const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
@@ -1839,7 +1860,7 @@ type RuntimeOperation<Value> = RuntimeOperationFn<Value> & {
   parent?: RuntimeOperation<Value>;
 };
 
-type RuntimeEncoder = (value: never) => unknown;
+type RuntimeEncoder = RuntimeOperation<unknown>;
 
 declare const encoderSymbolType: unique symbol;
 declare const fromSymbolType: unique symbol;
@@ -1902,6 +1923,22 @@ const createFromOperation = (
   return from;
 };
 
+const createToOperation = (
+  parent: RuntimeEncoder,
+  own: RuntimeEncoder,
+): RuntimeEncoder => {
+  const mapOwnToParent = (operation: RuntimeEncoder): RuntimeEncoder =>
+    (value: never) => operation(own(value) as never);
+  const to = mapOwnToParent(parent);
+  const toParent = mapRuntimeResult(own, identity);
+
+  if (parent.parent) {
+    toParent.parent = mapRuntimeOperations(parent.parent, mapOwnToParent);
+  }
+  to.parent = toParent;
+  return to;
+};
+
 function getTerminalRuntimeNode<Value>(
   node: RuntimeOperation<Value>,
 ): RuntimeOperation<Value>;
@@ -1922,7 +1959,7 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
   is: (value: unknown) => boolean,
   validateOutput: RuntimeOutputValidation,
   from: RuntimeOperation<Result<unknown, TypeError>>,
-  to: RuntimeEncoder,
+  ownTo: RuntimeEncoder,
   getTypeIssues: RuntimeGetTypeIssues,
   additionalProperties?: Omit<
     Node,
@@ -1938,6 +1975,9 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
   formatIssue: RuntimeFormatTypeIssue = formatDefaultRuntimeTypeIssue,
 ): Node => {
   const runtimeParent = parent as RuntimeTypeNode | null;
+  const to = runtimeParent
+    ? createToOperation(runtimeParent[encoderSymbol], ownTo)
+    : ownTo;
   const runtimeFormatError: TypeErrorFormatter<TypeError> =
     runtimeParent?.[getRuntimeTypeIssuesSymbol] === getTypeIssues
       ? runtimeParent.formatError
@@ -1951,10 +1991,10 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
   );
 
   const fromInput = getTerminalRuntimeNode(typedFrom);
-  const typedTo: RuntimeEncoder = (value: never) => {
+  const typedTo = mapRuntimeOperations(to, (operation) => (value: never) => {
     assertTypeOutput(name, is, validateOutput, value);
-    return to(value);
-  };
+    return operation(value);
+  });
 
   const type = {
     ...instance("Type"),
@@ -4951,7 +4991,9 @@ const createHomogeneousCollectionType = <Collection>(
       )
     : undefined;
   const from = createFromOperation(fromParent);
-  const encodeElement = typeElement[encoderSymbol];
+  const encodeElement = parent
+    ? typeElement[encoderSymbol].parent!
+    : typeElement[encoderSymbol];
   const to: RuntimeEncoder =
     encodeElement === identity
       ? identity
