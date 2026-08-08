@@ -108,10 +108,10 @@ import {
  * Prefer the most precise typed boundary available. A value is not unknown
  * merely because it originated outside the application: forms, components, and
  * other producers often expose a `string` or a branded value that can connect
- * directly to a matching `from` boundary. Reserve `fromUnknown` for values whose
- * TypeScript type is genuinely `unknown`. `is` means exact membership in the
- * output domain, not merely that output-side parsing could succeed. A successful
- * `fromUnknown` result always satisfies `is`.
+ * directly to a matching `from` boundary. Reserve `fromUnknown` for values
+ * whose TypeScript type is genuinely `unknown`. `is` means exact membership in
+ * the output domain, not merely that output-side parsing could succeed. A
+ * successful `fromUnknown` result always satisfies `is`.
  *
  * Decoding accepts a representation outside the Output domain only when the
  * Type explicitly declares that representation, such as a transformation Input.
@@ -478,7 +478,8 @@ export interface Type<
     : CustomFrom;
 
   /**
-   * Asserts and encodes an `Output` toward its canonical `Input` representation.
+   * Asserts and encodes an `Output` toward its canonical `Input`
+   * representation.
    *
    * `to` runs the complete encoding pipeline. Its first `.parent` stops at the
    * immediate parent Output, and each additional suffix stops one Type closer
@@ -509,9 +510,7 @@ export interface Type<
    * const value = NonEmptyString.orThrow("Evolu");
    *
    * // Equivalent because `from.parent` is this Type's deepest `from` operation:
-   * const sameValue = getOrThrow(
-   *   NonEmptyString.from.parent("Evolu"),
-   * );
+   * const sameValue = getOrThrow(NonEmptyString.from.parent("Evolu"));
    * ```
    */
   readonly orThrow: TypeOperationFn<"orThrow", Input, Output, never>;
@@ -538,9 +537,7 @@ export interface Type<
    * const value = NonEmptyString.orNull("Evolu");
    *
    * // Equivalent because `from.parent` is this Type's deepest `from` operation:
-   * const sameValue = getOrNull(
-   *   NonEmptyString.from.parent("Evolu"),
-   * );
+   * const sameValue = getOrNull(NonEmptyString.from.parent("Evolu"));
    * ```
    */
   readonly orNull: TypeOperationFn<"orNull", Input, Output, never>;
@@ -1927,8 +1924,10 @@ const createToOperation = (
   parent: RuntimeEncoder,
   own: RuntimeEncoder,
 ): RuntimeEncoder => {
-  const mapOwnToParent = (operation: RuntimeEncoder): RuntimeEncoder =>
-    (value: never) => operation(own(value) as never);
+  const mapOwnToParent =
+    (operation: RuntimeEncoder): RuntimeEncoder =>
+    (value: never) =>
+      operation(own(value) as never);
   const to = mapOwnToParent(parent);
   const toParent = mapRuntimeResult(own, identity);
 
@@ -2157,6 +2156,72 @@ export interface TypeOfError<
  */
 export const String = /*#__PURE__*/ createTypeOfType("String");
 
+/**
+ * A JavaScript number, including `NaN`, `Infinity`, and `-Infinity`.
+ *
+ * Use this Type directly only when those special values are meaningful. Most
+ * numeric domains should exclude `NaN` with the {@link nonNaN} Type Factory or
+ * the predefined {@link NonNaNNumber}. That is still insufficient for JSON and
+ * other finite representations because it permits infinities; use
+ * {@link FiniteNumber} at those boundaries.
+ *
+ * Even `FiniteNumber` is usually only a foundation for domain constraints.
+ * {@link Int} additionally requires a safely representable integer because
+ * JavaScript numbers outside the safe integer range cannot preserve exact
+ * integer identity. Add sign, range, and domain Brands as required.
+ *
+ * ### Example
+ *
+ * An age is a non-negative safe integer below 200:
+ *
+ * ```ts
+ * import {
+ *   Age,
+ *   FiniteNumber,
+ *   Int,
+ *   NonNaNNumber,
+ *   NonNegativeInt,
+ *   Number,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * // Note how every additional constraint accumulates its Brand.
+ * expectTypeOf<typeof Number.Output>().toEqualTypeOf<number>();
+ * expectTypeOf<typeof NonNaNNumber.Output>().toEqualTypeOf<
+ *   number & Brand<"NonNaN">
+ * >();
+ * expectTypeOf<typeof FiniteNumber.Output>().toEqualTypeOf<
+ *   number & Brand<"NonNaN"> & Brand<"Finite">
+ * >();
+ * expectTypeOf<typeof Int.Output>().toEqualTypeOf<
+ *   number & Brand<"NonNaN"> & Brand<"Finite"> & Brand<"Int">
+ * >();
+ * expectTypeOf<typeof NonNegativeInt.Output>().toEqualTypeOf<
+ *   number &
+ *     Brand<"NonNaN"> &
+ *     Brand<"Finite"> &
+ *     Brand<"Int"> &
+ *     Brand<"NonNegative">
+ * >();
+ *
+ * expectTypeOf<typeof Age.Output>().toEqualTypeOf<
+ *   number &
+ *     Brand<"NonNaN"> &
+ *     Brand<"Finite"> &
+ *     Brand<"Int"> &
+ *     Brand<"NonNegative"> &
+ *     Brand<"LessThan200"> &
+ *     Brand<"Age">
+ * >();
+ *
+ * expectOk(Age.fromUnknown(122), 122);
+ * expectErr(Age.fromUnknown(200), {
+ *   type: "LessThan200",
+ *   value: 200,
+ *   max: 200,
+ * });
+ * ```
+ */
 export const Number = /*#__PURE__*/ createTypeOfType("Number");
 
 export const BigInt = /*#__PURE__*/ createTypeOfType("BigInt");
@@ -3900,6 +3965,51 @@ export interface NegativeError extends TypeError<"Negative"> {
 export const NegativeNumber = /*#__PURE__*/ negative(NonPositiveNumber);
 export type NegativeNumber = typeof NegativeNumber.Output;
 
+/** Adds a {@link Brand} requiring a number other than `NaN`. */
+export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
+  brand(
+    "NonNaN",
+    parent,
+    (value) =>
+      globalThis.Number.isNaN(value)
+        ? err<NonNaNError>({ type: "NonNaN", value })
+        : ok(),
+    () => "The value must not be NaN.",
+  );
+
+export interface NonNaNError extends TypeError<"NonNaN"> {
+  readonly value: number;
+}
+
+/** {@link Number} other than `NaN`; infinities are allowed. */
+export const NonNaNNumber = /*#__PURE__*/ nonNaN(Number);
+export type NonNaNNumber = typeof NonNaNNumber.Output;
+
+/** Adds a {@link Brand} requiring a finite number. */
+export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
+  brand(
+    "Finite",
+    parent,
+    (value) =>
+      globalThis.Number.isFinite(value)
+        ? ok()
+        : err<FiniteError>({ type: "Finite", value }),
+    (error) =>
+      `The value ${safelyStringifyUnknownValue(error.value)} must be finite.`,
+  );
+
+export interface FiniteError extends TypeError<"Finite"> {
+  readonly value: number;
+}
+
+/** Finite {@link Number}. */
+export const FiniteNumber = /*#__PURE__*/ finite(NonNaNNumber);
+export type FiniteNumber = typeof FiniteNumber.Output;
+
+/** Non-negative {@link FiniteNumber}. */
+export const NonNegativeFiniteNumber = /*#__PURE__*/ nonNegative(FiniteNumber);
+export type NonNegativeFiniteNumber = typeof NonNegativeFiniteNumber.Output;
+
 /**
  * Safe integer {@link Brand}.
  *
@@ -3936,8 +4046,8 @@ export interface IntError extends TypeError<"Int"> {
   readonly value: number;
 }
 
-/** Safe integer {@link Number}. */
-export const Int = /*#__PURE__*/ int(Number);
+/** Safe integer {@link FiniteNumber}. */
+export const Int = /*#__PURE__*/ int(FiniteNumber);
 export type Int = typeof Int.Output;
 
 /** Non-negative {@link Int}. */
@@ -4071,6 +4181,13 @@ export interface LessThanError<
   readonly max: Max;
 }
 
+/** A person's age as a {@link NonNegativeInt} less than 200. */
+export const Age = /*#__PURE__*/ brand(
+  "Age",
+  /*#__PURE__*/ lessThan(200)(NonNegativeInt),
+);
+export type Age = typeof Age.Output;
+
 /** Adds a {@link Brand} requiring a number less than or equal to `max`. */
 export const lessThanOrEqualTo =
   <Max extends number>(
@@ -4101,51 +4218,6 @@ export interface LessThanOrEqualToError<
   readonly value: number;
   readonly max: Max;
 }
-
-/** Adds a {@link Brand} requiring a number other than `NaN`. */
-export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
-  brand(
-    "NonNaN",
-    parent,
-    (value) =>
-      globalThis.Number.isNaN(value)
-        ? err<NonNaNError>({ type: "NonNaN", value })
-        : ok(),
-    () => "The value must not be NaN.",
-  );
-
-export interface NonNaNError extends TypeError<"NonNaN"> {
-  readonly value: number;
-}
-
-/** {@link Number} other than `NaN`; infinities are allowed. */
-export const NonNaNNumber = /*#__PURE__*/ nonNaN(Number);
-export type NonNaNNumber = typeof NonNaNNumber.Output;
-
-/** Adds a {@link Brand} requiring a finite number. */
-export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
-  brand(
-    "Finite",
-    parent,
-    (value) =>
-      globalThis.Number.isFinite(value)
-        ? ok()
-        : err<FiniteError>({ type: "Finite", value }),
-    (error) =>
-      `The value ${safelyStringifyUnknownValue(error.value)} must be finite.`,
-  );
-
-export interface FiniteError extends TypeError<"Finite"> {
-  readonly value: number;
-}
-
-/** Finite {@link Number}. */
-export const FiniteNumber = /*#__PURE__*/ finite(NonNaNNumber);
-export type FiniteNumber = typeof FiniteNumber.Output;
-
-/** Non-negative {@link FiniteNumber}. */
-export const NonNegativeFiniteNumber = /*#__PURE__*/ nonNegative(FiniteNumber);
-export type NonNegativeFiniteNumber = typeof NonNegativeFiniteNumber.Output;
 
 /** Finite {@link Number} from zero to one, inclusive. */
 export const Ratio = /*#__PURE__*/ brand(
@@ -4665,22 +4737,15 @@ const validateArrayItems = (
   options: ValidationOptions,
   checkStructure: boolean,
 ): Result<ReadonlyArray<unknown>, ArrayItemsError<TypeError>> =>
-  validateIndexedArrayItems(
-    "Array",
-    value,
-    validate,
-    options,
-    checkStructure,
-  );
+  validateIndexedArrayItems("Array", value, validate, options, checkStructure);
 
 type IndexedArrayName = "Array" | "Tuple";
 
-type IndexedArrayIssue =
-  | ArrayStructuralIssue
-  | ArrayElementIssue<TypeError>;
+type IndexedArrayIssue = ArrayStructuralIssue | ArrayElementIssue<TypeError>;
 
-interface IndexedArrayItemsError<Name extends IndexedArrayName>
-  extends TypeError<Name> {
+interface IndexedArrayItemsError<
+  Name extends IndexedArrayName,
+> extends TypeError<Name> {
   readonly reason: {
     readonly kind: "Items";
     readonly issues: NonEmptyReadonlyArray<IndexedArrayIssue>;

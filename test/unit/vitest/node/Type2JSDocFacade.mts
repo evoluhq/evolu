@@ -7,10 +7,14 @@ export {
   type Result,
 } from "../../../../packages/common/src/Result.ts";
 export {
+  Age,
   BigInt,
   Function,
   FiniteNumber,
+  Int,
   NonEmptyTrimmedString100,
+  NonNaNNumber,
+  NonNegativeInt,
   Number,
   String,
   array,

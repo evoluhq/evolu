@@ -14,6 +14,7 @@ import {
 import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
+  Age,
   array,
   ArrayBuffer,
   assertType,
@@ -353,6 +354,7 @@ describe("Type", () => {
       : never;
 
     const exportedTypes = {
+      Age,
       ArrayBuffer,
       Base64Url,
       BigInt,
@@ -466,6 +468,7 @@ describe("Type", () => {
       combinations,
     ] as const;
     const expectedNames = [
+      "Age",
       "Array",
       "ArrayBuffer",
       "Base64Url",
@@ -498,6 +501,7 @@ describe("Type", () => {
       "JsonValueFromJson",
       "Length16",
       "Length4",
+      "LessThan200",
       "LessThan3",
       "LessThanOrEqualTo1",
       "LessThanOrEqualTo4",
@@ -777,14 +781,12 @@ describe("Type operations", () => {
         positiveError,
       ],
       [
-        () =>
-          PositiveNumber.from.parent(-1 as unknown as NonNegativeNumber),
+        () => PositiveNumber.from.parent(-1 as unknown as NonNegativeNumber),
         "Expected NonNegative.",
         nonNegativeError,
       ],
       [
-        () =>
-          PositiveNumber.from.parent.parent("1" as unknown as number),
+        () => PositiveNumber.from.parent.parent("1" as unknown as number),
         "Expected Number.",
         numberError,
       ],
@@ -811,11 +813,7 @@ describe("Type operations", () => {
   test("map only errors returned after the typed Input boundary", () => {
     const error = { type: "Positive", value: 0 } as const;
 
-    expectAssertionError(
-      () => PositiveNumber.orThrow(0),
-      "getOrThrow",
-      error,
-    );
+    expectAssertionError(() => PositiveNumber.orThrow(0), "getOrThrow", error);
     expect(PositiveNumber.orNull(0)).toBeNull();
   });
 });
@@ -3615,11 +3613,7 @@ describe("createInstanceOfType", () => {
     ];
 
     for (const operation of operations) {
-      expectAssertionError(
-        operation,
-        "Expected InstanceOf.",
-        error,
-      );
+      expectAssertionError(operation, "Expected InstanceOf.", error);
     }
   });
 
@@ -6723,8 +6717,26 @@ describe("BrandFactory", () => {
       describe("Type", () => {
         describe("Int", () => {
           test("accepts only safe integers", () => {
-            expect(Int.from.parent(42)).toEqual(ok(42));
-            expect(Int.from.parent(1.5)).toEqual(
+            expect(Int.fromUnknown(globalThis.Number.NaN)).toEqual(
+              err({ type: "NonNaN", value: globalThis.Number.NaN }),
+            );
+            expect(
+              Int.fromUnknown(globalThis.Number.POSITIVE_INFINITY),
+            ).toEqual(
+              err({
+                type: "Finite",
+                value: globalThis.Number.POSITIVE_INFINITY,
+              }),
+            );
+            expect(Int.fromUnknown(1.5)).toEqual(
+              err({ type: "Int", value: 1.5 }),
+            );
+            expectTypeOf<typeof Int.Output>().toEqualTypeOf<
+              number & Brand<"NonNaN"> & Brand<"Finite"> & Brand<"Int">
+            >();
+
+            expect(Int.from.parent.parent.parent(42)).toEqual(ok(42));
+            expect(Int.from.parent.parent.parent(1.5)).toEqual(
               err({ type: "Int", value: 1.5 }),
             );
           });
@@ -6732,31 +6744,44 @@ describe("BrandFactory", () => {
 
         describe("NonNegativeInt", () => {
           test("accepts zero and provides its minimum value", () => {
-            expect(NonNegativeInt.from.parent.parent(0)).toEqual(ok(0));
+            expect(NonNegativeInt.from.parent.parent.parent.parent(0)).toEqual(
+              ok(0),
+            );
             expect(zeroNonNegativeInt).toBe(0);
           });
         });
 
         describe("PositiveInt", () => {
           test("has the expected brands and boundary values", () => {
-            expect(PositiveInt.from.parent.parent.parent(1)).toEqual(ok(1));
+            expect(
+              PositiveInt.from.parent.parent.parent.parent.parent(1),
+            ).toEqual(ok(1));
             expect(onePositiveInt).toBe(1);
             expect(maxPositiveInt).toBe(globalThis.Number.MAX_SAFE_INTEGER);
             expectTypeOf<typeof PositiveInt.Output>().toEqualTypeOf<
-              number & Brand<"Int"> & Brand<"NonNegative"> & Brand<"Positive">
+              number &
+                Brand<"NonNaN"> &
+                Brand<"Finite"> &
+                Brand<"Int"> &
+                Brand<"NonNegative"> &
+                Brand<"Positive">
             >();
           });
         });
 
         describe("NonPositiveInt", () => {
           test("accepts zero", () => {
-            expect(NonPositiveInt.from.parent.parent(0)).toEqual(ok(0));
+            expect(NonPositiveInt.from.parent.parent.parent.parent(0)).toEqual(
+              ok(0),
+            );
           });
         });
 
         describe("NegativeInt", () => {
           test("accepts negative integers", () => {
-            expect(NegativeInt.from.parent.parent.parent(-1)).toEqual(ok(-1));
+            expect(
+              NegativeInt.from.parent.parent.parent.parent.parent(-1),
+            ).toEqual(ok(-1));
           });
         });
       });
@@ -6845,31 +6870,37 @@ describe("BrandFactory", () => {
         >();
       });
 
-      test("composes with PositiveInt into a branded Age", () => {
-        const Age = brand("Age", lessThanOrEqualTo(99)(PositiveInt));
-        type Age = typeof Age.Output;
+      test("composes with PositiveInt into a branded Score", () => {
+        const Score = brand("Score", lessThanOrEqualTo(99)(PositiveInt));
+        type Score = typeof Score.Output;
         const positiveInt = PositiveInt.orThrow(42);
-        const result = Age.from.parent.parent(positiveInt);
+        const result = Score.from.parent.parent(positiveInt);
 
-        expect(Age.from.parent.parent.parent.parent.parent(1)).toEqual(ok(1));
-        expect(Age.from.parent.parent.parent.parent.parent(99)).toEqual(ok(99));
-        expect(Age.from.parent.parent.parent.parent.parent(0)).toEqual(
-          err({ type: "Positive", value: 0 }),
-        );
-        expect(Age.from.parent.parent.parent.parent.parent(100)).toEqual(
-          err({ type: "LessThanOrEqualTo99", value: 100, max: 99 }),
-        );
+        expect(
+          Score.from.parent.parent.parent.parent.parent.parent.parent(1),
+        ).toEqual(ok(1));
+        expect(
+          Score.from.parent.parent.parent.parent.parent.parent.parent(99),
+        ).toEqual(ok(99));
+        expect(
+          Score.from.parent.parent.parent.parent.parent.parent.parent(0),
+        ).toEqual(err({ type: "Positive", value: 0 }));
+        expect(
+          Score.from.parent.parent.parent.parent.parent.parent.parent(100),
+        ).toEqual(err({ type: "LessThanOrEqualTo99", value: 100, max: 99 }));
         expectTypeOf(result).toEqualTypeOf<
-          Result<Age, LessThanOrEqualToError<99>>
+          Result<Score, LessThanOrEqualToError<99>>
         >();
         expectOk(result, 42);
-        expectTypeOf<Age>().toEqualTypeOf<
+        expectTypeOf<Score>().toEqualTypeOf<
           number &
+            Brand<"NonNaN"> &
+            Brand<"Finite"> &
             Brand<"Int"> &
             Brand<"NonNegative"> &
             Brand<"Positive"> &
             Brand<"LessThanOrEqualTo99"> &
-            Brand<"Age">
+            Brand<"Score">
         >();
       });
     });
@@ -6938,6 +6969,32 @@ describe("BrandFactory", () => {
     });
 
     describe("Domain Types", () => {
+      describe("Age", () => {
+        test("accepts non-negative safe integers below 200", () => {
+          expect(Age.fromUnknown(0)).toEqual(ok(0));
+          expect(Age.fromUnknown(122)).toEqual(ok(122));
+          expect(Age.fromUnknown(199)).toEqual(ok(199));
+          expect(Age.fromUnknown(-1)).toEqual(
+            err({ type: "NonNegative", value: -1 }),
+          );
+          expect(Age.fromUnknown(1.5)).toEqual(
+            err({ type: "Int", value: 1.5 }),
+          );
+          expect(Age.fromUnknown(200)).toEqual(
+            err({ type: "LessThan200", value: 200, max: 200 }),
+          );
+          expectTypeOf<typeof Age.Output>().toEqualTypeOf<
+            number &
+              Brand<"NonNaN"> &
+              Brand<"Finite"> &
+              Brand<"Int"> &
+              Brand<"NonNegative"> &
+              Brand<"LessThan200"> &
+              Brand<"Age">
+          >();
+        });
+      });
+
       describe("Ratio", () => {
         test("accepts finite numbers from zero to one", () => {
           expect(Ratio.from.parent.parent.parent.parent.parent(0)).toEqual(
@@ -7454,11 +7511,7 @@ describe("array", () => {
         "Expected Array.",
         cause,
       );
-      expectAssertionError(
-        () => Numbers.to(output),
-        "Expected Array.",
-        cause,
-      );
+      expectAssertionError(() => Numbers.to(output), "Expected Array.", cause);
     });
 
     test("rejects excess properties even when element encoding is identity", () => {
@@ -7475,16 +7528,8 @@ describe("array", () => {
       } as const;
       expect(Numbers.is(value)).toBe(false);
       expect(Numbers.fromUnknown(value)).toEqual(err(cause));
-      expectAssertionError(
-        () => Numbers.from(value),
-        "Expected Array.",
-        cause,
-      );
-      expectAssertionError(
-        () => Numbers.to(value),
-        "Expected Array.",
-        cause,
-      );
+      expectAssertionError(() => Numbers.from(value), "Expected Array.", cause);
+      expectAssertionError(() => Numbers.to(value), "Expected Array.", cause);
     });
 
     test("rejects non-enumerable and symbol properties without reading them", () => {
@@ -13134,19 +13179,15 @@ describe("object", () => {
         label: 42,
       } as unknown as typeof Model.Output;
 
-      expectAssertionError(
-        () => Model.from(invalid),
-        "Expected Object.",
-        {
-          type: "Object",
-          reason: {
-            kind: "Properties",
-            errors: {
-              label: { type: "TypeOf", expected: "String", value: 42 },
-            },
+      expectAssertionError(() => Model.from(invalid), "Expected Object.", {
+        type: "Object",
+        reason: {
+          kind: "Properties",
+          errors: {
+            label: { type: "TypeOf", expected: "String", value: 42 },
           },
         },
-      );
+      });
     });
 
     test("validates every property chain from its parent in declaration order", () => {
@@ -14753,11 +14794,7 @@ describe("lazy", () => {
     const invalid = 1 as unknown as string;
     const cause = { type: "TypeOf", expected: "String", value: 1 } as const;
 
-    expectAssertionError(
-      () => Value.from(invalid),
-      "Expected Lazy.",
-      cause,
-    );
+    expectAssertionError(() => Value.from(invalid), "Expected Lazy.", cause);
     expectAssertionError(
       () => Value.from.parent(invalid),
       "Expected Lazy.",
@@ -15129,16 +15166,11 @@ describe("lazy", () => {
         >;
       }
       let resolutions = 0;
-      const Self: LazyType<
-        string,
-        string,
-        SelfError,
-        SelfError,
-        SelfError
-      > = lazy(() => {
-        resolutions++;
-        return union(Self, String);
-      });
+      const Self: LazyType<string, string, SelfError, SelfError, SelfError> =
+        lazy(() => {
+          resolutions++;
+          return union(Self, String);
+        });
       const message =
         "A Lazy Type definition must place every Lazy Type behind a structural boundary.";
 
@@ -15155,16 +15187,11 @@ describe("lazy", () => {
         >;
       }
       let resolutions = 0;
-      const Self: LazyType<
-        string,
-        string,
-        SelfError,
-        SelfError,
-        SelfError
-      > = lazy(() => {
-        resolutions++;
-        return union(String, Self);
-      });
+      const Self: LazyType<string, string, SelfError, SelfError, SelfError> =
+        lazy(() => {
+          resolutions++;
+          return union(String, Self);
+        });
       const message =
         "A Lazy Type definition must place every Lazy Type behind a structural boundary.";
 

@@ -39,7 +39,7 @@ export type PositiveIntOutput = typeof PositiveInt.Output;
 export type AgeErrors = InferErrors<typeof Age>;
 export type AgeFromResult = ReturnType<typeof Age.from>;
 export type AgeFromNumberResult = ReturnType<
-  typeof Age.from.parent.parent.parent.parent.parent
+  typeof Age.from.parent.parent.parent.parent.parent.parent.parent
 >;
 export type AgeFromPositiveIntInput = Parameters<
   typeof Age.from.parent.parent

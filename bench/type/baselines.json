@@ -1535,10 +1535,10 @@
         "constraints-all": {
           "files": -1,
           "lines": 26,
-          "identifiers": 64,
-          "instantiations": 911,
-          "types": 261,
-          "symbols": 338
+          "identifiers": 66,
+          "instantiations": 932,
+          "types": 267,
+          "symbols": 341
         },
         "literal-all": {
           "files": 0,
@@ -1646,27 +1646,27 @@
         },
         "lazy-mutual-all": {
           "files": -2,
-          "lines": -26,
-          "identifiers": 21,
+          "lines": -28,
+          "identifiers": 17,
           "instantiations": 2563,
           "types": 507,
-          "symbols": 591
+          "symbols": 589
         },
         "localize-lazy-direct-all": {
           "files": -2,
-          "lines": -42,
-          "identifiers": -55,
+          "lines": -44,
+          "identifiers": -59,
           "instantiations": 2615,
           "types": 580,
-          "symbols": 735
+          "symbols": 733
         },
         "localize-lazy-mutual-all": {
           "files": -2,
-          "lines": -28,
-          "identifiers": -26,
+          "lines": -30,
+          "identifiers": -30,
           "instantiations": 4375,
           "types": 826,
-          "symbols": 812
+          "symbols": 810
         }
       }
     }

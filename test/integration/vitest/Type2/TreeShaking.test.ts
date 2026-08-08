@@ -564,12 +564,12 @@ describe("Type2 tree shaking", () => {
       {
         "typed Todo list": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 5219,
-            "rawSizeInBytes": 15674,
+            "gzipSizeInBytes": 5273,
+            "rawSizeInBytes": 15917,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 5287,
-            "rawSizeInBytes": 15888,
+            "gzipSizeInBytes": 5342,
+            "rawSizeInBytes": 16131,
           },
         },
       }

@@ -94,6 +94,7 @@ import type {
   DiscriminatedUnionError,
   DiscriminatedUnionMemberError,
   DiscriminatedUnionMemberIssue,
+  FiniteError,
   InferErrors,
   IntError,
   LiteralError,
@@ -101,6 +102,7 @@ import type {
   MaxLengthError,
   MinLengthError,
   NonNegativeError,
+  NonNaNError,
   ObjectError,
   ObjectPropertyAccessError,
   ObjectMissingPropertyError,
@@ -937,6 +939,8 @@ test("the constraint fixture preserves Label and Age boundaries", () => {
 
   expectTypeOf<AgeOutput>().toEqualTypeOf<
     number &
+      Brand<"NonNaN"> &
+      Brand<"Finite"> &
       Brand<"Int"> &
       Brand<"NonNegative"> &
       Brand<"Positive"> &
@@ -945,6 +949,8 @@ test("the constraint fixture preserves Label and Age boundaries", () => {
   >();
   expectTypeOf<AgeErrors>().toEqualTypeOf<
     | TypeOfError<"Number">
+    | NonNaNError
+    | FiniteError
     | IntError
     | NonNegativeError
     | PositiveError
@@ -953,7 +959,12 @@ test("the constraint fixture preserves Label and Age boundaries", () => {
   expectTypeOf<InferOk<AgeFromResult>>().toEqualTypeOf<AgeOutput>();
   expectTypeOf<InferErr<AgeFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<InferErr<AgeFromNumberResult>>().toEqualTypeOf<
-    IntError | NonNegativeError | PositiveError | LessThanOrEqualToError<99>
+    | NonNaNError
+    | FiniteError
+    | IntError
+    | NonNegativeError
+    | PositiveError
+    | LessThanOrEqualToError<99>
   >();
   expectTypeOf<AgeFromPositiveIntInput>().toEqualTypeOf<PositiveIntOutput>();
   expectTypeOf<InferOk<AgeFromPositiveIntResult>>().toEqualTypeOf<AgeOutput>();
