@@ -24,6 +24,8 @@ export {
   createInstanceOfType,
   discriminatedUnion,
   int,
+  Json,
+  json,
   lessThan,
   lazy,
   literal,

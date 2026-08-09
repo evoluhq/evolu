@@ -22,6 +22,7 @@ import { hasNodeBuffer } from "./Platform.ts";
 import {
   err,
   flatMapResult,
+  getOk,
   getOrNull,
   getOrThrow,
   ok,
@@ -72,7 +73,8 @@ import {
  *   precise producer and consumer contracts while preserving typed remaining
  *   errors; reserve `fromUnknown` for genuinely unknown values.
  * - **Lawful codecs** – Types partially decode `Input` to `Output` and totally
- *   encode every legitimate `Output` back to canonical `Input`.
+ *   encode every legitimate `Output` to `CanonicalInput`, the subset of `Input`
+ *   produced by complete encoding.
  * - **A top-down implementation** – the source is intended to be read from
  *   beginning to end.
  *
@@ -167,15 +169,18 @@ import {
  * A Type is a lawful, pure codec for an exact semantic domain:
  *
  * ```text
- * Input  ──partial decode──▶ Output
- * Input  ◀─── total encode ── Output
+ * Input           ── partial decode ──▶ Output
+ * CanonicalInput  ◀─── total encode ─── Output
+ *
+ * CanonicalInput ⊆ Input
  * ```
  *
- * Read each line in the direction of its arrowhead: an Input might decode into
- * an Output because not every Input is valid, while every valid Output can be
- * encoded back to an Input. `fromUnknown` and the `from` operations decode;
- * `to` encodes. `Input` is the encoded representation; `Output` is the semantic
- * value that representation denotes.
+ * Read each line in the direction of its arrowhead. `Input` is the complete
+ * typed decoding boundary, including candidates that validation can reject and
+ * noncanonical representations that decoding can normalize. `Output` is the
+ * validated semantic value. `CanonicalInput` is the precise subset of `Input`
+ * that the complete `to` operation can produce. `fromUnknown` and the `from`
+ * operations decode; `to` encodes.
  *
  * A lawful Type round-trips every Output:
  *
@@ -205,6 +210,15 @@ import {
  * first member accepting the Input. Member ordering is lawful only when those
  * choices agree semantically. Encoded representations can overlap even when
  * member Output types are disjoint.
+ *
+ * A refinement can narrow `CanonicalInput` without changing its JavaScript
+ * representation. For example, {@link FiniteNumber} has `number` as its Input,
+ * while its Output and CanonicalInput are `FiniteNumber`: decoding can reject
+ * non-finite number candidates, and encoding only receives validated finite
+ * Outputs. A transformation can change the representation entirely. For
+ * {@link Int64FromInt64String}, Input is `string`, Output is `Int64`, and
+ * CanonicalInput is `Int64String`. Structural Type factories derive their
+ * CanonicalInput recursively from their contained Types.
  *
  * ### Why is to total?
  *
@@ -380,10 +394,11 @@ export interface Type<
     | Error
     | ([Parent] extends [infer P extends TypeNode] ? InferErrors<P> : never),
   in out CustomFrom extends CustomFromOperation = never,
+  in out CanonicalInput extends Input = Input,
+  in out IdentityEncoding extends boolean = true,
 > extends TypeNode {
-  // `Input`, `Output`, `Parent`, `Errors`, and `CustomFrom` are explicitly
-  // invariant to reduce compiler work in recursive Type comparisons. Changes
-  // are measured by `pnpm bench:type`.
+  // Type parameters are explicitly invariant to reduce compiler work in
+  // recursive Type comparisons. Changes are measured by `pnpm bench:type`.
   /** The name identifying this Type node. */
   readonly name: Name;
 
@@ -397,13 +412,28 @@ export interface Type<
   readonly "~standard": StandardSchemaV1.Props<Input, Output>;
 
   /**
-   * The encoded representation accepted by `orThrow`, `orNull`, and the deepest
-   * available `from` boundary, and produced by `to`.
+   * The complete typed decoding boundary accepted by `orThrow`, `orNull`, and
+   * the deepest available `from` operation.
+   *
+   * Input includes candidates that validation can reject and noncanonical
+   * representations that decoding can normalize.
    *
    * This is a type-only phantom property. Use it through `typeof Type.Input`;
    * it does not exist at runtime.
    */
   readonly Input: Input;
+
+  /**
+   * The precise subset of {@link Input} produced by the complete `to` operation.
+   *
+   * Unlike Input, CanonicalInput excludes invalid candidates and alternative
+   * representations that encoding never emits. Structural Types derive it from
+   * the CanonicalInput of their contained Types.
+   *
+   * This is a type-only phantom property. Use it through `typeof
+   * Type.CanonicalInput`; it does not exist at runtime.
+   */
+  readonly CanonicalInput: CanonicalInput;
 
   /**
    * The semantic value produced by decoding and accepted by bare `from` and
@@ -434,6 +464,9 @@ export interface Type<
   // Private type-level specialized `from` operation. It does not exist at
   // runtime.
   readonly [customFromSymbol]: CustomFrom;
+
+  // Caches whether complete encoding preserves the exact Output value.
+  readonly [identityEncodingSymbol]: IdentityEncoding;
 
   /** The one preceding Type node, or `null` for a root Type. */
   readonly parent: Parent;
@@ -486,8 +519,8 @@ export interface Type<
    * to the root. Every entry point accepts this Type's `Output`.
    */
   readonly to: [Parent] extends [infer P extends TypeNode]
-    ? ToOperation<Output, Input, P>
-    : (value: Output) => Input;
+    ? ToOperation<Output, CanonicalInput, P>
+    : (value: Output) => CanonicalInput;
 
   /**
    * Shorthand for calling {@link getOrThrow} with the result of the deepest
@@ -559,6 +592,12 @@ export interface TypeError<Name extends TypeName = TypeName> {
   readonly type: Name;
 }
 
+declare const transparentTypeErrorSymbol: unique symbol;
+
+interface TransparentTypeError<Error extends TypeError> {
+  readonly [transparentTypeErrorSymbol]: Error;
+}
+
 /**
  * A structured error that directly describes a rejected value.
  *
@@ -584,11 +623,14 @@ export interface TypeNode {
   /** A type-only phantom property that does not exist at runtime. */
   readonly Input: unknown;
   /** A type-only phantom property that does not exist at runtime. */
+  readonly CanonicalInput: unknown;
+  /** A type-only phantom property that does not exist at runtime. */
   readonly Output: unknown;
   /** A type-only phantom property that does not exist at runtime. */
   readonly Error: TypeError;
   readonly [errorsSymbol]: TypeError;
   readonly [customFromSymbol]: unknown;
+  readonly [identityEncodingSymbol]: boolean;
   readonly parent: TypeNode | null;
   readonly fromUnknown: (
     value: unknown,
@@ -733,7 +775,7 @@ export const assertType: <T extends TypeNode>(
   // TODO: When Type2 replaces Type, make assert prepend "Expected " and accept
   // an optional third cause argument. Then use it here and migrate every other
   // assertion to pass an expectation fragment.
-  const runtimeType = type as RuntimeTypeNode;
+  const runtimeType = type as unknown as RuntimeTypeNode;
   const result = runtimeType[outputValidationSymbol](value);
 
   if (!result.ok) {
@@ -1047,9 +1089,12 @@ type LocalizedErrorEntry<
             readonly outputError: infer OutputError extends TypeError;
           }
         ? LocalizedErrorEntry<OutputError, Seen | Error>
-        : Error extends { readonly type: "Union" }
+        : Error extends { readonly type: "Union"; readonly errors: unknown }
           ? LocalizedErrorEntryValue<"Union", Error>
-          : Error extends { readonly type: "DiscriminatedUnion" }
+          : Error extends {
+                readonly type: "DiscriminatedUnion";
+                readonly reason: unknown;
+              }
             ? LocalizedDiscriminatedUnionErrorEntry<Error, Seen | Error>
             : Error extends {
                   readonly type: infer Name extends
@@ -1064,7 +1109,11 @@ type LocalizedErrorEntry<
                   }
                 ? | LocalizedErrorEntryValue<"Object", Error>
                   | LocalizedObjectErrorEntry<Reason, Seen | Error>
-                : LocalizedErrorEntryValue<Error["type"], Error>
+                : Error extends TransparentTypeError<
+                      infer NestedError extends TypeError
+                    >
+                  ? LocalizedErrorEntry<NestedError, Seen | Error>
+                  : LocalizedErrorEntryValue<Error["type"], Error>
   : never;
 
 interface LocalizedErrorEntryValue<
@@ -1127,9 +1176,43 @@ declare const lazyTypeSymbol: unique symbol;
 // intentionally has none because resolving its definition would break laziness.
 declare const reflectedTypesSymbol: unique symbol;
 declare const customFromSymbol: unique symbol;
+declare const identityEncodingSymbol: unique symbol;
 
 /** The union of errors a {@link Type} can return from `fromUnknown`. */
 export type InferErrors<T extends TypeNode> = T[typeof errorsSymbol];
+
+type CanonicalInputOf<T extends TypeNode> = T extends TypeNode
+  ? T["CanonicalInput"]
+  : never;
+
+type CanonicalInputSubset<Input, CanonicalInput> = CanonicalInput extends Input
+  ? CanonicalInput
+  : CanonicalInput & Input;
+
+type CanonicalInputForChild<ParentType extends TypeNode, Output> =
+  IdentityEncodingOf<ParentType> extends true
+    ? Output
+    : CanonicalInputOf<ParentType>;
+
+type CanonicalInputForParent<ParentType extends TypeNode | null, Output> = [
+  ParentType,
+] extends [infer Parent extends TypeNode]
+  ? CanonicalInputForChild<Parent, Output>
+  : Output;
+
+type IdentityEncodingOf<T extends TypeNode> = T[typeof identityEncodingSymbol];
+
+type IdentityEncodingForParent<ParentType extends TypeNode | null> = [
+  ParentType,
+] extends [infer Parent extends TypeNode]
+  ? IdentityEncodingOf<Parent>
+  : true;
+
+type AllTypesUseIdentityEncoding<T extends TypeNode> = false extends (
+  T extends TypeNode ? IdentityEncodingOf<T> : never
+)
+  ? false
+  : true;
 
 type InferLocalizationErrors<
   T extends TypeNode,
@@ -1419,7 +1502,7 @@ export function createType<
   fromUnknown: (value: unknown) => Result<Output, Error>,
   // Validation alone determines Error; broad formatters must not widen it.
   formatError: TypeErrorFormatter<NoInfer<Error>>,
-): Type<Name, Output, Output, Error>;
+): Type<Name, Output, Output, Error, null, Error, never, Output>;
 export function createType<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
@@ -1436,7 +1519,9 @@ export function createType<
   never,
   ParentType,
   InferErrors<ParentType>,
-  ChildCustomFrom<ParentType, ParentType["Output"], never>
+  ChildCustomFrom<ParentType, ParentType["Output"], never>,
+  CanonicalInputForChild<ParentType, ParentType["Output"]>,
+  IdentityEncodingOf<ParentType>
 >;
 export function createType<
   Name extends TypeName,
@@ -1458,7 +1543,9 @@ export function createType<
   Error,
   ParentType,
   Error | InferErrors<ParentType>,
-  ChildCustomFrom<ParentType, Output, Error>
+  ChildCustomFrom<ParentType, Output, Error>,
+  CanonicalInputForChild<ParentType, Output>,
+  IdentityEncodingOf<ParentType>
 >;
 export function createType(
   name: TypeName,
@@ -1509,7 +1596,7 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
   ) => Result<Output, Error>,
   formatError: TypeErrorFormatter<Error>,
   getTypeIssues?: RuntimeGetTypeIssues,
-): Type<Name, Output, Output, Error> => {
+): Type<Name, Output, Output, Error, null, Error, never, Output> => {
   const runtimeFormatError = formatError as TypeErrorFormatter<TypeError>;
   const runtimeGetTypeIssues: RuntimeGetTypeIssues =
     getTypeIssues ??
@@ -1559,7 +1646,7 @@ const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
     [fromSymbol]: ok,
     [encoderSymbol]: identity,
     [getRuntimeTypeIssuesSymbol]: runtimeGetTypeIssues,
-  } as unknown as Type<Name, Output, Output, Error>;
+  } as unknown as Type<Name, Output, Output, Error, null, Error, never, Output>;
 };
 
 const createChildType = <
@@ -1570,8 +1657,13 @@ const createChildType = <
 >(
   name: Name,
   parent: ParentType,
-  fromParent: (value: ParentType["Output"]) => Result<Output, Error>,
+  fromParent: (
+    value: ParentType["Output"],
+    options: ValidationOptions,
+  ) => Result<Output, Error>,
   formatOwnError?: TypeErrorFormatter<Error>,
+  // Wrapped child errors can delegate their structured issues.
+  getTypeIssuesOverride?: RuntimeGetTypeIssues,
 ): Type<
   Name,
   ParentType["Input"],
@@ -1579,20 +1671,28 @@ const createChildType = <
   Error,
   ParentType,
   Error | InferErrors<ParentType>,
-  ChildCustomFrom<ParentType, Output, Error>
+  ChildCustomFrom<ParentType, Output, Error>,
+  CanonicalInputForChild<ParentType, Output>,
+  IdentityEncodingOf<ParentType>
 > => {
   const typeParent = parent as ParentType & RuntimeTypeNode;
-  const validate = fromParent as (value: unknown) => Result<unknown, Error>;
-  const mapFromParent = (result: Result<unknown, TypeError>) =>
-    result.ok ? validate(result.value) : result;
   const defaultFormatter = formatOwnError! as TypeErrorFormatter<TypeError>;
-  const getTypeIssues: RuntimeGetTypeIssues = formatOwnError
-    ? (error, mode) =>
-        error.type === name
-          ? singleRuntimeTypeIssue(name, error, defaultFormatter)
-          : typeParent[getRuntimeTypeIssuesSymbol](error, mode)
-    : typeParent[getRuntimeTypeIssuesSymbol];
-
+  const getTypeIssues: RuntimeGetTypeIssues =
+    getTypeIssuesOverride ??
+    (formatOwnError
+      ? (error, mode) =>
+          error.type === name
+            ? singleRuntimeTypeIssue(name, error, defaultFormatter)
+            : typeParent[getRuntimeTypeIssuesSymbol](error, mode)
+      : typeParent[getRuntimeTypeIssuesSymbol]);
+  const validate = fromParent as (
+    value: unknown,
+    options: ValidationOptions,
+  ) => Result<unknown, Error>;
+  const mapFromParent = (
+    result: Result<unknown, TypeError>,
+    options: ValidationOptions,
+  ) => (result.ok ? validate(result.value, options) : result);
   const fromParentOperation = mapRuntimeOperations(
     typeParent[fromSymbol],
     (operation) => mapRuntimeResult(operation, mapFromParent),
@@ -1602,11 +1702,12 @@ const createChildType = <
   const fromUnknown = (
     value: unknown,
     options: ValidationOptions = firstValidationOptions,
-  ) => mapFromParent(typeParent.fromUnknown(value, options));
+  ) => mapFromParent(typeParent.fromUnknown(value, options), options);
   const validateOutput = (
     value: unknown,
     options: ValidationOptions = firstValidationOptions,
-  ) => mapFromParent(typeParent[outputValidationSymbol](value, options));
+  ) =>
+    mapFromParent(typeParent[outputValidationSymbol](value, options), options);
   const to = identity;
 
   return createTypeNode<
@@ -1617,13 +1718,16 @@ const createChildType = <
       Error,
       ParentType,
       Error | InferErrors<ParentType>,
-      ChildCustomFrom<ParentType, Output, Error>
+      ChildCustomFrom<ParentType, Output, Error>,
+      CanonicalInputForChild<ParentType, Output>,
+      IdentityEncodingOf<ParentType>
     >
   >(
     name,
     typeParent,
     fromUnknown,
-    (value) => typeParent.is(value) && validate(value).ok,
+    (value) =>
+      typeParent.is(value) && validate(value, firstValidationOptions).ok,
     validateOutput,
     from,
     to,
@@ -1670,6 +1774,7 @@ export function transform<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
   OutputType extends ConcreteTypeNode,
+  ToOutput extends ParentType["Output"],
 >(
   name: ValidateChildTypeName<Name, ParentType>,
   parent: ValidateParent<ParentType>,
@@ -1678,13 +1783,14 @@ export function transform<
     readonly from: (
       value: ParentType["Output"],
     ) => Result<OutputType["Input"], never>;
-    readonly to: (value: OutputType["Input"]) => ParentType["Output"];
+    readonly to: (value: CanonicalInputOf<OutputType>) => ToOutput;
   },
-): TransformType<ParentType, OutputType, Name, never>;
+): TransformType<ParentType, OutputType, Name, never, ToOutput>;
 export function transform<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
   OutputType extends ConcreteTypeNode,
+  ToOutput extends ParentType["Output"],
   FromError extends {
     readonly type: Name;
     readonly outputError?: never;
@@ -1697,12 +1803,12 @@ export function transform<
     readonly from: (
       value: ParentType["Output"],
     ) => Result<OutputType["Input"], FromError>;
-    readonly to: (value: OutputType["Input"]) => ParentType["Output"];
+    readonly to: (value: CanonicalInputOf<OutputType>) => ToOutput;
   },
   formatError: [FromError] extends [never]
     ? never
     : TypeErrorFormatter<NoInfer<FromError>>,
-): TransformType<ParentType, OutputType, Name, FromError>;
+): TransformType<ParentType, OutputType, Name, FromError, ToOutput>;
 export function transform(
   name: TypeName,
   parent: unknown,
@@ -1789,6 +1895,7 @@ export interface TransformType<
   OutputType extends TypeNode,
   Name extends TypeName,
   FromError extends TypeError<Name>,
+  ToOutput extends ParentType["Output"] = ParentType["Output"],
 > extends Type<
   Name,
   ParentType["Input"],
@@ -1801,7 +1908,9 @@ export interface TransformType<
     ParentType,
     OutputType["Output"],
     TransformError<Name, FromError, TypeFromError<OutputType>>
-  >
+  >,
+  CanonicalInputForChild<ParentType, ToOutput>,
+  false
 > {
   readonly [reflectedTypesSymbol]?: OutputType;
   readonly output: OutputType;
@@ -1890,10 +1999,10 @@ type RuntimeTypeNode = Omit<TypeNode, typeof customFromSymbol> & {
 const mapRuntimeResult =
   <Input, Output>(
     operation: RuntimeOperation<Input>,
-    map: (value: Input) => Output,
+    map: (value: Input, options: ValidationOptions) => Output,
   ): RuntimeOperation<Output> =>
   (value: never, options = firstValidationOptions) =>
-    map(operation(value, options));
+    map(operation(value, options), options);
 
 // `map` must return a fresh operation because this function can attach `.parent`.
 const mapRuntimeOperations = <Input, Output>(
@@ -2098,7 +2207,11 @@ const createTypeOfType = <Name extends keyof TypeOfOutputByName>(
   Name,
   TypeOfOutputByName[Name],
   TypeOfOutputByName[Name],
-  TypeOfError<Name>
+  TypeOfError<Name>,
+  null,
+  TypeOfError<Name>,
+  never,
+  TypeOfOutputByName[Name]
 > => {
   const typeOf = name.toLowerCase() as Lowercase<Name>;
 
@@ -2285,7 +2398,9 @@ export interface ObjectTagType<
     OutputType,
     OutputType["Output"] & ObjectTag<Name>,
     ObjectTagError<Name>
-  >
+  >,
+  CanonicalInputForChild<OutputType, OutputType["Output"] & ObjectTag<Name>>,
+  IdentityEncodingOf<OutputType>
 > {
   /** The object tag required by this Type. */
   readonly expected: Name;
@@ -2323,7 +2438,11 @@ export function createObjectTagType<Name extends keyof ObjectTagOutputByName>(
   Name,
   ObjectTagOutputByName[Name],
   ObjectTagOutputByName[Name],
-  ObjectTagError<Name>
+  ObjectTagError<Name>,
+  null,
+  ObjectTagError<Name>,
+  never,
+  ObjectTagOutputByName[Name]
 >;
 export function createObjectTagType<
   Name extends TypeName,
@@ -2449,7 +2568,11 @@ export interface InstanceOfType<
   "InstanceOf",
   InstanceOfOutput<Constructor>,
   InstanceOfOutput<Constructor>,
-  InstanceOfError
+  InstanceOfError,
+  null,
+  InstanceOfError,
+  never,
+  InstanceOfOutput<Constructor>
 > {
   readonly constructor: Constructor;
 }
@@ -2526,7 +2649,14 @@ export interface LiteralType<Expected extends Literal> extends Type<
   WidenLiteral<Expected>,
   Expected,
   LiteralError<Expected>,
-  LiteralParent<Expected>
+  LiteralParent<Expected>,
+  LiteralError<Expected> | LiteralParentErrors<Expected>,
+  never,
+  CanonicalInputSubset<
+    WidenLiteral<Expected>,
+    CanonicalInputForParent<LiteralParent<Expected>, Expected>
+  >,
+  IdentityEncodingForParent<LiteralParent<Expected>>
 > {
   readonly expected: Expected;
 }
@@ -2540,6 +2670,11 @@ type LiteralParent<Expected extends Literal> = Expected extends string
       : Expected extends boolean
         ? typeof Boolean
         : null;
+
+type LiteralParentErrors<Expected extends Literal> =
+  LiteralParent<Expected> extends infer Parent extends TypeNode
+    ? InferErrors<Parent>
+    : never;
 
 type ValidateLiteral<Expected extends Literal> =
   IsUnion<Expected> extends false
@@ -2810,7 +2945,10 @@ export interface UnionType<
   Members[number]["Output"],
   UnionTypeError<Members>,
   UnionInputParent<Members>,
-  UnionTypeError<Members>
+  UnionTypeError<Members>,
+  never,
+  CanonicalInputOf<Members[number]>,
+  AllTypesUseIdentityEncoding<Members[number]>
 > {
   readonly [reflectedTypesSymbol]?: Members[number];
   readonly members: Members;
@@ -2833,7 +2971,11 @@ export type UnionInputType<Input, Error extends TypeError> = Type<
   "Union",
   Input,
   Input,
-  Error
+  Error,
+  null,
+  Error,
+  never,
+  Input
 >;
 
 type UnionInputParent<Members extends AtLeastTwoReadonlyArray<TypeNode>> =
@@ -3100,7 +3242,9 @@ export interface BrandType<
   Error,
   ParentType,
   Error | InferErrors<ParentType>,
-  ChildCustomFrom<ParentType, ParentType["Output"] & Brand<Name>, Error>
+  ChildCustomFrom<ParentType, ParentType["Output"] & Brand<Name>, Error>,
+  CanonicalInputForChild<ParentType, ParentType["Output"] & Brand<Name>>,
+  IdentityEncodingOf<ParentType>
 > {}
 
 /**
@@ -3766,7 +3910,11 @@ export interface TableId<Table extends TypeName> extends Type<
   string,
   Id & Brand<Table>,
   TableIdError<Table>,
-  typeof String
+  typeof String,
+  TableIdError<Table> | InferErrors<typeof String>,
+  ChildCustomFrom<typeof String, Id & Brand<Table>, TableIdError<Table>>,
+  CanonicalInputForChild<typeof String, Id & Brand<Table>>,
+  IdentityEncodingOf<typeof String>
 > {
   readonly table: Table;
 }
@@ -4515,7 +4663,9 @@ export interface ArrayType<ElementType extends TypeNode> extends Type<
   ArrayNodeError<ElementType>,
   ArrayParent<ElementType>,
   ArrayError<InferErrors<ElementType>>,
-  ArrayCustomFrom<ElementType>
+  ArrayCustomFrom<ElementType>,
+  ReadonlyArray<CanonicalInputOf<ElementType>>,
+  AllTypesUseIdentityEncoding<ElementType>
 > {
   readonly [reflectedTypesSymbol]?: ElementType;
   readonly element: ElementType;
@@ -4877,7 +5027,9 @@ export interface SetType<ElementType extends TypeNode> extends Type<
   SetNodeError<ElementType>,
   SetParent<ElementType>,
   SetError<InferErrors<ElementType>>,
-  SetCustomFrom<ElementType>
+  SetCustomFrom<ElementType>,
+  ReadonlySet<CanonicalInputOf<ElementType>>,
+  AllTypesUseIdentityEncoding<ElementType>
 > {
   readonly [reflectedTypesSymbol]?: ElementType;
   readonly element: ElementType;
@@ -5442,7 +5594,10 @@ export interface TupleType<Elements extends TupleElements> extends Type<
   [TupleParents<Elements>] extends [null]
     ? null
     : RootTupleType<RootTupleElements<Elements>>,
-  TupleError<InferErrors<Elements[number]>>
+  TupleError<InferErrors<Elements[number]>>,
+  never,
+  TupleShape<Elements, "CanonicalInput">,
+  AllTypesUseIdentityEncoding<Elements[number]>
 > {
   readonly [reflectedTypesSymbol]?: Elements[number];
   readonly elements: Elements;
@@ -5452,9 +5607,13 @@ type TupleElements = NonEmptyReadonlyArray<TypeNode>;
 
 type TupleShape<
   Elements extends TupleElements,
-  Field extends "Input" | "Output",
+  Field extends "Input" | "Output" | "CanonicalInput",
 > = {
-  readonly [Index in keyof Elements]: Elements[Index][Field];
+  readonly [Index in keyof Elements]: Elements[Index] extends TypeNode
+    ? Field extends "CanonicalInput"
+      ? CanonicalInputOf<Elements[Index]>
+      : Elements[Index][Field]
+    : never;
 };
 
 type TupleParents<Elements extends TupleElements> = Elements[number]["parent"];
@@ -5475,7 +5634,12 @@ type RootTupleType<Elements extends TupleElements> = Type<
   "Tuple",
   TupleShape<Elements, "Input">,
   TupleShape<Elements, "Output">,
-  TupleError<Elements[number]["Error"]>
+  TupleError<Elements[number]["Error"]>,
+  null,
+  TupleError<Elements[number]["Error"]>,
+  never,
+  TupleShape<Elements, "CanonicalInput">,
+  AllTypesUseIdentityEncoding<Elements[number]>
 > & {
   readonly [reflectedTypesSymbol]?: Elements[number];
   readonly elements: Elements;
@@ -5728,7 +5892,11 @@ export const Object: Type<
   "Object",
   Readonly<Record<string, unknown>>,
   Readonly<Record<string, unknown>>,
-  PlainObjectError
+  PlainObjectError,
+  null,
+  PlainObjectError,
+  never,
+  Readonly<Record<string, unknown>>
 > = /*#__PURE__*/ createRootType(
   "Object",
   (
@@ -6109,7 +6277,13 @@ export interface RecordType<
     InferErrors<KeyType>,
     InferErrors<ValueType>,
     RecordCollisionFor<KeyType>
-  >
+  >,
+  never,
+  CanonicalInputSubset<
+    RecordShape<KeyType, ValueType, "Input">,
+    RecordShape<KeyType, ValueType, "CanonicalInput">
+  >,
+  AllTypesUseIdentityEncoding<KeyType | ValueType>
 > {
   readonly [reflectedTypesSymbol]?: KeyType | ValueType;
   readonly key: KeyType;
@@ -6147,12 +6321,22 @@ interface RuntimeRecordTypeNode extends RuntimeTypeNode {
 type RecordShape<
   KeyType extends TypeNode,
   ValueType extends TypeNode,
-  Field extends "Input" | "Output",
-> = [Extract<KeyType[Field], string>] extends [never]
+  Field extends "Input" | "Output" | "CanonicalInput",
+> = [Extract<RecordTypeField<KeyType, Field>, string>] extends [never]
   ? Readonly<Record<string, never>>
   : Readonly<
-      Partial<Record<Extract<KeyType[Field], string>, ValueType[Field]>>
+      Partial<
+        Record<
+          Extract<RecordTypeField<KeyType, Field>, string>,
+          RecordTypeField<ValueType, Field>
+        >
+      >
     >;
+
+type RecordTypeField<
+  T extends TypeNode,
+  Field extends "Input" | "Output" | "CanonicalInput",
+> = Field extends "CanonicalInput" ? CanonicalInputOf<T> : T[Field];
 
 type RecordParent<KeyType extends TypeNode, ValueType extends TypeNode> = [
   KeyType["parent"] | ValueType["parent"],
@@ -7186,7 +7370,10 @@ type StrictObjectType<Props extends ObjectProps> = Type<
   [StrictObjectParents<Props>] extends [null]
     ? null
     : StrictRootObjectType<RootObjectProps<Props>>,
-  StrictObjectFromUnknownError<StrictObjectFromUnknownPropertyErrors<Props>>
+  StrictObjectFromUnknownError<StrictObjectFromUnknownPropertyErrors<Props>>,
+  never,
+  StrictObjectShape<Props, "CanonicalInput">,
+  AllTypesUseIdentityEncoding<ObjectPropertyType<Props[keyof Props]>>
 > & {
   readonly props: Readonly<Props>;
 };
@@ -7207,52 +7394,64 @@ type ObjectWithRecordType<
   [ObjectWithRecordParents<Props, Rest>] extends [null]
     ? null
     : RootObjectWithRecordType<RootObjectProps<Props>, RootObjectRecord<Rest>>,
-  ObjectError<ObjectDeclaredErrors<Props>, ObjectRestFromUnknownError<Rest>>
+  ObjectError<ObjectDeclaredErrors<Props>, ObjectRestFromUnknownError<Rest>>,
+  never,
+  ObjectWithRecordShape<Props, Rest, "CanonicalInput">,
+  AllTypesUseIdentityEncoding<ObjectPropertyType<Props[keyof Props]> | Rest>
 > &
   ObjectWithRecordReflection<Props, Rest>;
 
 type StrictObjectShape<
   Props extends ObjectProps,
-  Field extends "Input" | "Output",
+  Field extends "Input" | "Output" | "CanonicalInput",
 > = keyof Props extends never
   ? Readonly<Record<string, never>>
   : {
-      readonly [Key in RequiredObjectKeys<Props>]: ObjectPropertyType<
-        Props[Key]
-      >[Field];
+      readonly [Key in RequiredObjectKeys<Props>]: ObjectTypeField<
+        ObjectPropertyType<Props[Key]>,
+        Field
+      >;
     } & {
-      readonly [Key in OptionalObjectKeys<Props>]?: ObjectPropertyType<
-        Props[Key]
-      >[Field];
+      readonly [Key in OptionalObjectKeys<Props>]?: ObjectTypeField<
+        ObjectPropertyType<Props[Key]>,
+        Field
+      >;
     };
 
 type ObjectWithRecordShape<
   Props extends ObjectProps,
   Rest extends ObjectRecordTypeNode,
-  Field extends "Input" | "Output",
+  Field extends "Input" | "Output" | "CanonicalInput",
 > = keyof Props extends never
   ? ObjectRestShape<Rest, Field>
   : ObjectDeclaredShape<Props, Field> & ObjectRestShape<Rest, Field>;
 
 type ObjectDeclaredShape<
   Props extends ObjectProps,
-  Field extends "Input" | "Output",
+  Field extends "Input" | "Output" | "CanonicalInput",
 > = Simplify<
   {
-    readonly [Key in RequiredObjectKeys<Props>]: ObjectPropertyType<
-      Props[Key]
-    >[Field];
+    readonly [Key in RequiredObjectKeys<Props>]: ObjectTypeField<
+      ObjectPropertyType<Props[Key]>,
+      Field
+    >;
   } & {
-    readonly [Key in OptionalObjectKeys<Props>]?: ObjectPropertyType<
-      Props[Key]
-    >[Field];
+    readonly [Key in OptionalObjectKeys<Props>]?: ObjectTypeField<
+      ObjectPropertyType<Props[Key]>,
+      Field
+    >;
   }
 >;
 
 type ObjectRestShape<
   Rest extends ObjectRecordTypeNode,
-  Field extends "Input" | "Output",
-> = Readonly<Partial<Record<string, Rest["value"][Field]>>>;
+  Field extends "Input" | "Output" | "CanonicalInput",
+> = Readonly<Partial<Record<string, ObjectTypeField<Rest["value"], Field>>>>;
+
+type ObjectTypeField<
+  T extends TypeNode,
+  Field extends "Input" | "Output" | "CanonicalInput",
+> = Field extends "CanonicalInput" ? CanonicalInputOf<T> : T[Field];
 
 type RequiredObjectKeys<Props extends ObjectProps> = Exclude<
   keyof Props,
@@ -7284,7 +7483,12 @@ type StrictRootObjectType<Props extends ObjectProps> = Type<
   "Object",
   StrictObjectShape<Props, "Input">,
   StrictObjectShape<Props, "Output">,
-  StrictObjectFromUnknownError<StrictObjectFromUnknownPropertyErrors<Props>>
+  StrictObjectFromUnknownError<StrictObjectFromUnknownPropertyErrors<Props>>,
+  null,
+  StrictObjectFromUnknownError<StrictObjectFromUnknownPropertyErrors<Props>>,
+  never,
+  StrictObjectShape<Props, "CanonicalInput">,
+  AllTypesUseIdentityEncoding<ObjectPropertyType<Props[keyof Props]>>
 > & {
   readonly props: Readonly<Props>;
 };
@@ -7296,7 +7500,12 @@ type RootObjectWithRecordType<
   "Object",
   ObjectWithRecordShape<Props, Rest, "Input">,
   ObjectWithRecordShape<Props, Rest, "Output">,
-  ObjectError<ObjectDeclaredErrors<Props>, ObjectRestFromUnknownError<Rest>>
+  ObjectError<ObjectDeclaredErrors<Props>, ObjectRestFromUnknownError<Rest>>,
+  null,
+  ObjectError<ObjectDeclaredErrors<Props>, ObjectRestFromUnknownError<Rest>>,
+  never,
+  ObjectWithRecordShape<Props, Rest, "CanonicalInput">,
+  AllTypesUseIdentityEncoding<ObjectPropertyType<Props[keyof Props]> | Rest>
 > &
   ObjectWithRecordReflection<Props, Rest>;
 
@@ -8143,7 +8352,13 @@ export interface DiscriminatedUnionType<
     DiscriminatedUnionInput<Key, Members>,
     DiscriminatedUnionParentError<Key, Members>
   >,
-  DiscriminatedUnionCompleteError<Key, Members>
+  DiscriminatedUnionCompleteError<Key, Members>,
+  never,
+  CanonicalInputSubset<
+    DiscriminatedUnionInput<Key, Members>,
+    CanonicalInputOf<Members[number]>
+  >,
+  AllTypesUseIdentityEncoding<Members[number]>
 > {
   readonly [reflectedTypesSymbol]?: Members[number];
   readonly key: Key;
@@ -8155,7 +8370,11 @@ export type DiscriminatedUnionInputType<Input, Error extends TypeError> = Type<
   "DiscriminatedUnion",
   Input,
   Input,
-  Error
+  Error,
+  null,
+  Error,
+  never,
+  Input
 >;
 
 /** An error returned while selecting a member in {@link discriminatedUnion}. */
@@ -8520,7 +8739,9 @@ export function lazy<Target extends ConcreteTypeNode>(
   Target["Output"],
   TypeFromError<Target>,
   InferErrors<RootType<Target>>,
-  InferErrors<Target>
+  InferErrors<Target>,
+  CanonicalInputOf<Target>,
+  IdentityEncodingOf<Target>
 >;
 export function lazy(getType: Thunk<TypeNode>): TypeNode {
   let resolution: LazyResolution = { state: "unresolved" };
@@ -8637,13 +8858,18 @@ export interface LazyType<
   in out FromError extends TypeError,
   in out InputError extends TypeError,
   in out Errors extends TypeError,
+  in out CanonicalInput extends Input = Input,
+  in out UsesIdentityEncoding extends boolean = true,
 > extends Type<
   "Lazy",
   Input,
   Output,
   FromError,
-  Type<"Lazy", Input, Input, InputError>,
-  Errors
+  Type<"Lazy", Input, Input, InputError, null, InputError, never, Input>,
+  Errors,
+  never,
+  CanonicalInput,
+  UsesIdentityEncoding
 > {
   readonly [lazyTypeSymbol]: true;
   /** Formats an error returned by any Lazy Type decoding operation. */
@@ -8785,7 +9011,11 @@ export interface JsonValueType extends Type<
   "JsonValue",
   JsonValue,
   JsonValue,
-  JsonValueError
+  JsonValueError,
+  null,
+  JsonValueError,
+  never,
+  JsonValue
 > {}
 
 /** The exact top-level JSON object {@link Type}. */
@@ -8793,7 +9023,11 @@ export interface JsonObjectType extends Type<
   "Record",
   JsonObject,
   JsonObject,
-  RecordError<TypeOfError<"String">, JsonValueError, never>
+  RecordError<TypeOfError<"String">, JsonValueError, never>,
+  null,
+  RecordError<TypeOfError<"String">, JsonValueError, never>,
+  never,
+  JsonObject
 > {
   readonly [reflectedTypesSymbol]?: typeof String | JsonValueType;
   readonly key: typeof String;
@@ -9124,16 +9358,6 @@ const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
   })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
 };
 
-const validateJson = (value: string): Result<void, JsonError> => {
-  const result = trySync(
-    (): unknown => globalThis.JSON.parse(value) as unknown,
-  );
-
-  return result.ok && validateJsonValue(result.value).ok
-    ? ok()
-    : err({ type: "Json", value });
-};
-
 const parseJson = (value: string): JsonValue =>
   globalThis.JSON.parse(value) as JsonValue;
 
@@ -9236,7 +9460,15 @@ export const JsonObject = /*#__PURE__*/ record(
 export const Json = /*#__PURE__*/ brand(
   "Json",
   String,
-  validateJson,
+  (value) => {
+    const result = trySync(
+      (): unknown => globalThis.JSON.parse(value) as unknown,
+    );
+
+    return result.ok && validateJsonValue(result.value).ok
+      ? ok()
+      : err<JsonError>({ type: "Json", value });
+  },
   (error) =>
     `The value ${safelyStringifyUnknownValue(error.value)} cannot be parsed into a JsonValue.`,
 );
@@ -9264,3 +9496,247 @@ export const JsonValueFromJson = /*#__PURE__*/ transform(
     to: stringifyJsonValue,
   },
 );
+
+/**
+ * Creates a branded {@link Json} Type and total conversions for another Type.
+ *
+ * Use this factory when a domain value must be stored as JSON text while its
+ * exact Type remains visible to TypeScript, such as a JSON column in an Evolu
+ * Schema. The returned tuple contains the branded Json Type, an encoder from
+ * the supplied Type's Output to Json, and a decoder from Json back to that
+ * Output.
+ *
+ * The supplied Type's `CanonicalInput` must be JSON-compatible. The encoder
+ * first uses the Type's canonical `to` operation, then encodes that
+ * representation as canonical Json. Runtime representation constraints
+ * TypeScript cannot prove, such as dense Arrays and enumerable data properties,
+ * are asserted as developer errors.
+ *
+ * The branded Json Type is the validation boundary for unknown JSON text. It
+ * grants its {@link Brand} only when the text is valid Json and decoding it
+ * through the supplied Type succeeds. The supplied Type is responsible for
+ * preserving semantic Outputs across canonical JSON encoding and decoding. This
+ * law cannot be checked generically because Types do not define semantic
+ * equality. Before granting the Brand, the encoder asserts the weaker runtime
+ * guarantee that the final Json successfully decodes through the supplied Type.
+ * Failed decodability therefore throws as a developer error.
+ *
+ * Consequently, the two typed conversions return their values directly without
+ * exposing a validation {@link Result}: an Output satisfying the JSON
+ * representation contract of a correctly declared Type can always be encoded,
+ * and the branded Json proves decoding will succeed. Decoding still runs the
+ * Type pipeline because transformations may need to construct different Output
+ * values.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   Age,
+ *   json,
+ *   object,
+ *   String,
+ *   type Brand,
+ *   type Json,
+ * } from "@evolu/common";
+ *
+ * const Person = object({ name: String, age: Age });
+ * type Person = typeof Person.Output;
+ *
+ * const [PersonJson, personToPersonJson, personJsonToPerson] = json(
+ *   Person,
+ *   "PersonJson",
+ * );
+ * type PersonJson = typeof PersonJson.Output;
+ *
+ * expectTypeOf<PersonJson>().toEqualTypeOf<Json & Brand<"PersonJson">>();
+ *
+ * const person = Person.orThrow({ name: "Ada", age: 42 });
+ * const personJson = personToPersonJson(person);
+ * const decodedPerson = personJsonToPerson(personJson);
+ *
+ * expect(decodedPerson).toEqual(person);
+ * ```
+ */
+export const json = <T extends ConcreteTypeNode, Name extends TypeName>(
+  type: T,
+  name: ValidateChildTypeName<Name, typeof Json>,
+  ..._validation: [JsonTypeValidationError<T>] extends [never]
+    ? []
+    : [ValidationFailure<JsonTypeValidationError<T>>]
+): readonly [
+  jsonType: BrandType<
+    typeof Json,
+    Name,
+    TypeError<Name> &
+      TransparentTypeError<InferErrors<T>> & {
+        readonly error: InferErrors<T>;
+      }
+  >,
+  outputToJson: (value: T["Output"]) => Json & Brand<Name>,
+  jsonToOutput: (value: Json & Brand<Name>) => T["Output"],
+] => {
+  interface JsonTypeError
+    extends TypeError<Name>, TransparentTypeError<InferErrors<T>> {
+    readonly error: InferErrors<T>;
+  }
+
+  const runtimeType = type as unknown as RuntimeTypeNode;
+  const jsonToTypeOutput = (
+    value: Json,
+    options: ValidationOptions = firstValidationOptions,
+  ): Result<T["Output"], InferErrors<T>> =>
+    runtimeType.fromUnknown(jsonToJsonValue(value), options);
+  const BrandedJson: BrandType<typeof Json, Name, JsonTypeError> =
+    createChildType<Name, typeof Json, Json & Brand<Name>, JsonTypeError>(
+      name as Name,
+      Json,
+      (value, options) => {
+        const result = jsonToTypeOutput(value, options);
+
+        return result.ok
+          ? ok(value as Json & Brand<Name>)
+          : err<JsonTypeError>({
+              type: name as Name,
+              error: result.error,
+            } as JsonTypeError);
+      },
+      undefined,
+      (error, mode) =>
+        error.type === name
+          ? runtimeType[getRuntimeTypeIssuesSymbol](
+              (error as JsonTypeError).error,
+              mode,
+            )
+          : (Json as unknown as RuntimeTypeNode)[getRuntimeTypeIssuesSymbol](
+              error,
+              mode,
+            ),
+    );
+
+  return [
+    BrandedJson,
+    (value: T["Output"]): typeof BrandedJson.Output => {
+      const json = jsonValueToJson(runtimeType.to(value as never) as JsonValue);
+
+      assertType(BrandedJson, json);
+
+      return json;
+    },
+    (value: typeof BrandedJson.Output): T["Output"] =>
+      getOk(jsonToTypeOutput(value) as Result<T["Output"]>),
+  ] as const;
+};
+
+type JsonTypeValidationError<T extends TypeNode> =
+  IsJsonTypeCompatible<T> extends true
+    ? never
+    : CompileTimeError<"Json", "Type CanonicalInput must be JSON-compatible.">;
+
+// An identity-encoded child preserves a subset of its parent Outputs. The
+// parent can therefore prove compatibility hidden by nominal Output markers.
+type IsJsonTypeCompatible<T extends TypeNode> =
+  IsJsonCompatible<CanonicalInputOf<T>> extends true
+    ? true
+    : IdentityEncodingOf<T> extends true
+      ? T["parent"] extends infer Parent extends TypeNode
+        ? IsJsonTypeCompatible<Parent>
+        : false
+      : false;
+
+type IsJsonCompatible<
+  Value,
+  Seen extends ReadonlyArray<unknown> = readonly [],
+> =
+  IsExactlyJsonValue<Value> extends true
+    ? true
+    : false extends JsonCompatibleMember<Value, Seen>
+      ? false
+      : true;
+
+type IsExactlyJsonValue<Value> = IsSameType<Value, JsonValue>;
+
+type JsonCompatibleMember<
+  Value,
+  Seen extends ReadonlyArray<unknown>,
+> = Value extends unknown
+  ? IsJsonCompatibilityCycle<Value, Seen> extends true
+    ? true
+    : Value extends string | boolean | null
+      ? true
+      : Value extends number
+        ? JsonNumberCompatible<Value>
+        : Value extends ReadonlyArray<infer Item>
+          ? Exclude<keyof Value, AllowedJsonArrayKeys<Value>> extends never
+            ? IsJsonCompatible<Item, readonly [...Seen, Value]>
+            : false
+          : Value extends globalThis.Function
+            ? false
+            : Value extends object
+              ? JsonObjectCompatible<Value, readonly [...Seen, Value]>
+              : false
+  : never;
+
+type AllowedJsonArrayKeys<Value extends ReadonlyArray<unknown>> =
+  | keyof ReadonlyArray<unknown>
+  | (Value extends globalThis.Array<unknown>
+      ? keyof globalThis.Array<unknown>
+      : never)
+  | JsonTupleIndexKeys<Value>;
+
+type JsonTupleIndexKeys<Value extends ReadonlyArray<unknown>> =
+  Value extends readonly [...infer Elements]
+    ? Exclude<keyof Elements, keyof globalThis.Array<unknown>>
+    : never;
+
+type IsJsonCompatibilityCycle<
+  Value,
+  Seen extends ReadonlyArray<unknown>,
+> = Seen extends readonly [infer Candidate, ...infer Rest]
+  ? IsSameType<Value, Candidate> extends true
+    ? true
+    : IsJsonCompatibilityCycle<Value, Rest>
+  : false;
+
+/* eslint-disable @typescript-eslint/no-unnecessary-type-parameters -- The
+generic-function comparison distinguishes recursive types that mutual
+assignability cannot. */
+type IsSameType<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+    ? (<T>() => T extends B ? 1 : 2) extends <T>() => T extends A ? 1 : 2
+      ? true
+      : false
+    : false;
+/* eslint-enable @typescript-eslint/no-unnecessary-type-parameters */
+
+type JsonNumberCompatible<Value extends number> = [Value] extends [FiniteNumber]
+  ? true
+  : [Value] extends [Brand<string>]
+    ? false
+    : number extends Value
+      ? false
+      : true;
+
+type JsonObjectCompatible<
+  Value extends object,
+  Seen extends ReadonlyArray<unknown>,
+> = [keyof Value] extends [never]
+  ? false
+  : string extends keyof Value
+    ? Exclude<keyof Value, string | number> extends never
+      ? Value extends Readonly<Partial<Record<string, infer Item>>>
+        ? IsJsonCompatible<Item, Seen>
+        : false
+      : false
+    : false extends {
+          readonly [Key in keyof Value]-?: Key extends string
+            ? IsJsonCompatible<
+                {} extends Pick<Value, Key>
+                  ? Required<Pick<Value, Key>>[Key]
+                  : Value[Key],
+                Seen
+              >
+            : false;
+        }[keyof Value]
+      ? false
+      : true;

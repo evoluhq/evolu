@@ -49,7 +49,9 @@ const _Tree: LazyType<
   TreeOutput,
   TreeFromError,
   TreeInputError,
-  TreeError
+  TreeError,
+  TreeInput,
+  false
 > = lazy(() =>
   object({ value: NumberFromString, children: array(_Tree) }),
 );

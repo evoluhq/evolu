@@ -1154,7 +1154,7 @@ test("the depth-32 Record fixture preserves normalized entry errors", () => {
   >();
   expectTypeOf<RecordParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<RecordParent["parent"]>().toEqualTypeOf<null>();
-  expectTypeOf<RecordToResult>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<RecordToResult>().toEqualTypeOf<ExpectedOutput>();
 });
 
 test("the Object Record fixture preserves declared and dynamic properties", () => {
@@ -1243,7 +1243,9 @@ test("the transformed Record fixture preserves collisions and child errors", () 
     ExpectedNodeError
   >();
   expectTypeOf<RecordTransformParent["Output"]>().toEqualTypeOf<ExpectedInput>();
-  expectTypeOf<RecordTransformToResult>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<RecordTransformToResult>().toEqualTypeOf<
+    Readonly<Partial<Record<RecordTransformLowercaseKey, string>>>
+  >();
   expectTypeOf<RecordTransformImportedErrors>().toEqualTypeOf<
     ExpectedRecordErrors
   >();
@@ -1400,7 +1402,9 @@ test("the Array child fixture preserves specialized from operations", () => {
     ArrayDeepestFromInput
   >();
   expectTypeOf<ArrayChildToInput>().toEqualTypeOf<ArrayChildOutput>();
-  expectTypeOf<ArrayChildToResult>().toEqualTypeOf<ArrayChildInput>();
+  expectTypeOf<ArrayChildToResult>().toEqualTypeOf<
+    typeof ValidatedValues.Output
+  >();
 });
 
 test("the width-32 discriminated Object Union fixture preserves correlations", () => {
@@ -1412,6 +1416,12 @@ test("the width-32 discriminated Object Union fixture preserves correlations", (
     readonly [I in PositiveIndex]: ExpectedStrictObject<{
       readonly kind: `O${I}`;
       readonly value: number;
+    }>;
+  }[PositiveIndex];
+  type ExpectedCanonicalInput = {
+    readonly [I in PositiveIndex]: ExpectedStrictObject<{
+      readonly kind: `O${I}`;
+      readonly value: string;
     }>;
   }[PositiveIndex];
 
@@ -1445,7 +1455,9 @@ test("the width-32 discriminated Object Union fixture preserves correlations", (
   >();
   expectTypeOf<ObjectUnionParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<ObjectUnionToInput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<ObjectUnionToResult>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<ObjectUnionToResult>().toEqualTypeOf<
+    ExpectedCanonicalInput
+  >();
 });
 
 test("the width-32 Discriminated Union fixture preserves routed correlations", () => {
@@ -1461,6 +1473,12 @@ test("the width-32 Discriminated Union fixture preserves routed correlations", (
     readonly [I in PositiveIndex]: ExpectedStrictObject<{
       readonly kind: `O${I}`;
       readonly value: number;
+    }>;
+  }[PositiveIndex];
+  type ExpectedCanonicalInput = {
+    readonly [I in PositiveIndex]: ExpectedStrictObject<{
+      readonly kind: `O${I}`;
+      readonly value: string;
     }>;
   }[PositiveIndex];
   type MemberDiscriminator<Member> = Member extends {
@@ -1596,7 +1614,9 @@ test("the width-32 Discriminated Union fixture preserves routed correlations", (
     ExpectedNodeError
   >();
   expectTypeOf<DiscriminatedUnionToInput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<DiscriminatedUnionToResult>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<DiscriminatedUnionToResult>().toEqualTypeOf<
+    ExpectedCanonicalInput
+  >();
   expectTypeOf<DiscriminatedUnionParent["Input"]>().toEqualTypeOf<
     ExpectedInput
   >();
@@ -1659,7 +1679,7 @@ test("the width-32 Union Object-property fixture preserves optionality and error
   >();
   expectTypeOf<UnionObjectParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<UnionObjectToInput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<UnionObjectToResult>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<UnionObjectToResult>().toEqualTypeOf<ExpectedOutput>();
 });
 
 test("the transformed Object-property fixture preserves both representations", () => {
@@ -1707,6 +1727,10 @@ test("the typed fixture preserves its discriminator and Object semantics", () =>
     { readonly type: "Model"; readonly required: number },
     { readonly optional: number }
   >;
+  type ExpectedCanonicalInput = ExpectedStrictObject<
+    { readonly type: "Model"; readonly required: string },
+    { readonly optional: string }
+  >;
   type ExpectedNodeError = ObjectPropertiesError<{
     readonly type: LiteralError<"Model">;
     readonly required: NumberFromStringError;
@@ -1739,7 +1763,7 @@ test("the typed fixture preserves its discriminator and Object semantics", () =>
   >();
   expectTypeOf<TypedParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<TypedToInput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<TypedToResult>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<TypedToResult>().toEqualTypeOf<ExpectedCanonicalInput>();
   expectTypeOf<TypedProps["type"]["expected"]>().toEqualTypeOf<"Model">();
 });
 
@@ -1893,7 +1917,7 @@ test("the Object child fixture keeps own errors outside property errors", () => 
     ObjectChildImportedError
   >();
   expectTypeOf<ObjectChildToInput>().toEqualTypeOf<ObjectChildOutput>();
-  expectTypeOf<ObjectChildToResult>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<ObjectChildToResult>().toEqualTypeOf<ObjectChildOutput>();
 });
 
 test("the direct Lazy fixture preserves every manually declared channel", () => {

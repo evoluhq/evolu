@@ -53,6 +53,7 @@ import {
   idBytesTypeValueLength,
   id,
   idToIdBytes,
+  json,
   Json,
   JsonArray,
   JsonObject,
@@ -621,7 +622,7 @@ describe("Type", () => {
 
     expect(String.to("value")).toBe("value");
     expect(DateIso.to(dateIso)).toBe("2024-01-01T00:00:00.000Z");
-    expectTypeOf(DateIso.to(dateIso)).toEqualTypeOf<string>();
+    expectTypeOf(DateIso.to(dateIso)).toEqualTypeOf<DateIso>();
   });
 
   test("exposes partial encoding operations for every parent boundary", () => {
@@ -6592,7 +6593,7 @@ describe("BrandFactory", () => {
             expect(Int64FromInt64String.to(output)).toBe(input);
             expectTypeOf(
               Int64FromInt64String.to(output),
-            ).toEqualTypeOf<string>();
+            ).toEqualTypeOf<Int64String>();
           }
         });
       });
@@ -14922,7 +14923,9 @@ describe("lazy", () => {
         TreeOutput,
         TreeFromError,
         TreeInputError,
-        TreeError
+        TreeError,
+        TreeInput,
+        false
       > = lazy(() =>
         object({ value: NumberFromString, children: array(Tree) }),
       );
@@ -15078,7 +15081,8 @@ describe("lazy", () => {
         string,
         never,
         TypeOfError<"String">,
-        TypeOfError<"String">
+        TypeOfError<"String">,
+        string
       > = lazy(() => {
         resolutions++;
         Reentrant.is("value");
@@ -15130,7 +15134,9 @@ describe("lazy", () => {
         string,
         never,
         TypeOfError<"String">,
-        TypeOfError<"String">
+        TypeOfError<"String">,
+        string,
+        false
       > = lazy(() => createType("ParentCycle", ParentCycle, ok));
 
       expect(() => ParentCycle.fromUnknown("value")).toThrow(
@@ -15207,7 +15213,9 @@ describe("lazy", () => {
         string,
         never,
         TypeOfError<"String">,
-        TypeOfError<"String">
+        TypeOfError<"String">,
+        string,
+        false
       > = lazy(() => {
         resolutions++;
         return transform("RecursiveTransform", String, Self, {
@@ -15731,7 +15739,7 @@ describe("JsonValueFromJson", () => {
     );
 
     expect(JsonValueFromJson.to(value)).toBe('{"value":1}');
-    expectTypeOf(JsonValueFromJson.to(value)).toEqualTypeOf<string>();
+    expectTypeOf(JsonValueFromJson.to(value)).toEqualTypeOf<Json>();
     expect(jsonValueToJson(value)).toBe('{"value":1}');
     expect(jsonValueToJson(values)).toBe(
       '{"escaped\\"key":[null,true,false,"line\\nbreak",1.5],"emptyArray":[],"emptyObject":{}}',
@@ -15784,6 +15792,643 @@ describe("JsonValueFromJson", () => {
 
     expect(depth).toBe(20_000);
     expect(decoded).toBe(null);
+  });
+});
+
+describe("json", () => {
+  test("tracks the canonical Input produced by complete encoding", () => {
+    const _One = literal(1);
+    const Key = brand("Key", String);
+    const _Values = record(Key, String);
+    const FiniteThroughTransform = transform(
+      "FiniteThroughTransform",
+      Number,
+      FiniteNumber,
+      {
+        from: (value) => ok(value),
+        to: (value) => value,
+      },
+    );
+    const _RefinedFiniteThroughTransform = brand(
+      "RefinedFiniteThroughTransform",
+      FiniteThroughTransform,
+    );
+    const Person = object({
+      name: String,
+      age: Age,
+      sequence: Int64FromInt64String,
+    });
+
+    expectTypeOf<typeof Number.CanonicalInput>().toEqualTypeOf<number>();
+    expectTypeOf<
+      typeof NonNaNNumber.CanonicalInput
+    >().toEqualTypeOf<NonNaNNumber>();
+    expectTypeOf<
+      typeof FiniteNumber.CanonicalInput
+    >().toEqualTypeOf<FiniteNumber>();
+    expectTypeOf<typeof Age.CanonicalInput>().toEqualTypeOf<Age>();
+    expectTypeOf<
+      typeof Int64FromInt64String.CanonicalInput
+    >().toEqualTypeOf<Int64String>();
+    expectTypeOf<
+      typeof FiniteThroughTransform.CanonicalInput
+    >().toEqualTypeOf<FiniteNumber>();
+    expectTypeOf<
+      typeof _RefinedFiniteThroughTransform.CanonicalInput
+    >().toEqualTypeOf<FiniteNumber>();
+    expectTypeOf<typeof _One.CanonicalInput>().toEqualTypeOf<1>();
+    expectTypeOf<typeof _Values.CanonicalInput>().toExtend<
+      typeof _Values.Input
+    >();
+    expectTypeOf<typeof FiniteNumber.CanonicalInput>().toExtend<
+      typeof FiniteNumber.Input
+    >();
+    expectTypeOf<typeof Int64FromInt64String.CanonicalInput>().toExtend<
+      typeof Int64FromInt64String.Input
+    >();
+    interface PersonCanonicalInput {
+      readonly name: string;
+      readonly age: Age;
+      readonly sequence: Int64String;
+    }
+
+    expectTypeOf<
+      typeof Person.CanonicalInput
+    >().toExtend<PersonCanonicalInput>();
+    expectTypeOf<PersonCanonicalInput>().toExtend<
+      typeof Person.CanonicalInput
+    >();
+    expectTypeOf<typeof Person.CanonicalInput>().toExtend<
+      typeof Person.Input
+    >();
+    expectTypeOf(Person.to).returns.toEqualTypeOf<
+      typeof Person.CanonicalInput
+    >();
+
+    const compileTimeAssertions = () => {
+      type InvalidCanonicalInput = Type<
+        "InvalidCanonicalInput",
+        string,
+        string,
+        TypeError<"InvalidCanonicalInput">,
+        null,
+        TypeError<"InvalidCanonicalInput">,
+        never,
+        // @ts-expect-error CanonicalInput must extend Input.
+        number
+      >;
+
+      expectTypeOf<InvalidCanonicalInput>().toBeObject();
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("creates a branded Json Type and total typed conversions", () => {
+    const Person = object({
+      name: String,
+      age: Age,
+      sequence: Int64FromInt64String,
+    });
+    type Person = typeof Person.Output;
+    const [PersonJson, personToPersonJson, personJsonToPerson] = json(
+      Person,
+      "PersonJson",
+    );
+    type PersonJson = typeof PersonJson.Output;
+    const person = Person.orThrow({ name: "Ada", age: 42, sequence: "1" });
+
+    expectTypeOf<typeof PersonJson.Input>().toEqualTypeOf<string>();
+    expectTypeOf<PersonJson>().toEqualTypeOf<Json & Brand<"PersonJson">>();
+    expectTypeOf(personToPersonJson).toEqualTypeOf<
+      (value: Person) => PersonJson
+    >();
+    expectTypeOf(personJsonToPerson).toEqualTypeOf<
+      (value: PersonJson) => Person
+    >();
+    expectTypeOf(person.sequence).toEqualTypeOf<Int64>();
+
+    const personJson = personToPersonJson(person);
+
+    expectTypeOf(personJson).toEqualTypeOf<PersonJson>();
+    expect(personJson).toBe('{"name":"Ada","age":42,"sequence":"1"}');
+    expect(personJsonToPerson(personJson)).toEqual(person);
+    expectTypeOf(personJsonToPerson(personJson)).toEqualTypeOf<Person>();
+    expectOk(PersonJson.fromUnknown(personJson), personJson);
+    expect(PersonJson.is(personJson)).toBe(true);
+
+    const invalidJson = '{"name":"Ada","age":200,"sequence":"1"}';
+    const invalid = PersonJson.fromUnknown(invalidJson);
+
+    assert(!invalid.ok);
+    expect(PersonJson.is(invalidJson)).toBe(false);
+    expect(PersonJson.is("{ invalid }")).toBe(false);
+    expect(invalid.error).toMatchObject({
+      type: "PersonJson",
+      error: { type: "Object" },
+    });
+    expect(PersonJson.formatError(invalid.error)).toBe(
+      "The value 200 must be less than 200.",
+    );
+  });
+
+  test("accepts only Types with a JSON-compatible canonical Input", () => {
+    const compileTimeAssertions = () => {
+      interface StringTree {
+        readonly value: string;
+        readonly children: ReadonlyArray<StringTree>;
+      }
+      interface StringTreeError extends ObjectError<{
+        readonly value: TypeOfError<"String">;
+        readonly children: ArrayError<StringTreeError>;
+      }> {}
+      const StringTree: LazyType<
+        StringTree,
+        StringTree,
+        never,
+        StringTreeError,
+        StringTreeError
+      > = lazy(() => object({ value: String, children: array(StringTree) }));
+      interface InvalidTree {
+        readonly value: undefined;
+        readonly children: ReadonlyArray<InvalidTree>;
+      }
+      interface InvalidTreeError extends ObjectError<{
+        readonly value: InferErrors<typeof Undefined>;
+        readonly children: ArrayError<InvalidTreeError>;
+      }> {}
+      const InvalidTree: LazyType<
+        InvalidTree,
+        InvalidTree,
+        never,
+        InvalidTreeError,
+        InvalidTreeError
+      > = lazy(() =>
+        object({ value: Undefined, children: array(InvalidTree) }),
+      );
+      interface Left {
+        readonly right?: Right;
+      }
+      interface Right {
+        readonly left?: Left;
+      }
+      interface LeftError extends ObjectError<{
+        readonly right?: RightError;
+      }> {}
+      interface RightError extends ObjectError<{
+        readonly left?: LeftError;
+      }> {}
+      const Left: LazyType<Left, Left, never, LeftError, LeftError> = lazy(() =>
+        object({ right: optional(Right) }),
+      );
+      const Right: LazyType<Right, Right, never, RightError, RightError> = lazy(
+        () => object({ left: optional(Left) }),
+      );
+      interface InvalidLeft {
+        readonly child?: InvalidRight;
+      }
+      interface InvalidRight {
+        readonly child?: InvalidLeft;
+        readonly bad?: undefined;
+      }
+      interface InvalidLeftError extends ObjectError<{
+        readonly child?: InvalidRightError;
+      }> {}
+      interface InvalidRightError extends ObjectError<{
+        readonly child?: InvalidLeftError;
+        readonly bad?: InferErrors<typeof Undefined>;
+      }> {}
+      const InvalidLeft: LazyType<
+        InvalidLeft,
+        InvalidLeft,
+        never,
+        InvalidLeftError,
+        InvalidLeftError
+      > = lazy(() => object({ child: optional(InvalidRight) }));
+      const InvalidRight: LazyType<
+        InvalidRight,
+        InvalidRight,
+        never,
+        InvalidRightError,
+        InvalidRightError
+      > = lazy(() =>
+        object({
+          child: optional(InvalidLeft),
+          bad: optional(Undefined),
+        }),
+      );
+      interface RecursiveA {
+        readonly child?: RecursiveB;
+      }
+      interface RecursiveB {
+        readonly child?: RecursiveB | RecursiveBad;
+      }
+      interface RecursiveBad {
+        readonly child?: RecursiveA;
+        readonly bad?: undefined;
+      }
+      interface CompileTimeTypeError<
+        Name extends TypeName,
+      > extends TypeError<Name> {
+        readonly value: unknown;
+      }
+      const RecursiveA = createType(
+        "RecursiveA",
+        (value): Result<RecursiveA, CompileTimeTypeError<"RecursiveA">> => {
+          const seen = new Set<object>();
+          const isRecursiveA = (value: unknown): value is RecursiveA => {
+            if (value === null || typeof value !== "object") return false;
+            if (seen.has(value)) return true;
+            seen.add(value);
+
+            if ("bad" in value && value.bad !== undefined) return false;
+            return (
+              !("child" in value) ||
+              value.child === undefined ||
+              isRecursiveA(value.child)
+            );
+          };
+
+          return isRecursiveA(value)
+            ? ok(value)
+            : err({ type: "RecursiveA", value });
+        },
+        () => "",
+      );
+      interface AnyObjectError extends TypeError<"AnyObject"> {
+        readonly value: unknown;
+      }
+      const AnyObject = createType(
+        "AnyObject",
+        (value): Result<object, AnyObjectError> =>
+          value !== null && typeof value === "object"
+            ? ok(value)
+            : err({ type: "AnyObject", value }),
+        () => "Expected an object.",
+      );
+      const metadata = globalThis.Symbol("metadata");
+      interface SymbolProperty {
+        readonly value: string;
+        readonly [metadata]: undefined;
+      }
+      const isSymbolProperty = (value: unknown): value is SymbolProperty =>
+        value !== null &&
+        typeof value === "object" &&
+        globalThis.Object.hasOwn(value, "value") &&
+        typeof globalThis.Reflect.get(value, "value") === "string" &&
+        globalThis.Object.hasOwn(value, metadata) &&
+        globalThis.Reflect.get(value, metadata) === undefined;
+      const SymbolProperty = createType(
+        "SymbolProperty",
+        (
+          value,
+        ): Result<SymbolProperty, CompileTimeTypeError<"SymbolProperty">> =>
+          isSymbolProperty(value)
+            ? ok(value)
+            : err({ type: "SymbolProperty", value }),
+        () => "",
+      );
+      // The alias is assignable to JsonObject; an interface does not reproduce
+      // the IsExactlyJsonValue mutual-assignability false positive.
+      // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+      type SymbolJsonObject = {
+        readonly value: string;
+        readonly [metadata]: undefined;
+      };
+      const SymbolJsonObject = createType(
+        "SymbolJsonObject",
+        (
+          value,
+        ): Result<
+          SymbolJsonObject,
+          CompileTimeTypeError<"SymbolJsonObject">
+        > =>
+          isSymbolProperty(value)
+            ? ok(value)
+            : err({ type: "SymbolJsonObject", value }),
+        () => "",
+      );
+      const isStringArrayWithOwnProperty = <Key extends PropertyKey, Property>(
+        value: unknown,
+        key: Key,
+        isProperty: (value: unknown) => value is Property,
+      ): value is ReadonlyArray<string> & Readonly<Record<Key, Property>> =>
+        globalThis.Array.isArray(value) &&
+        value.every((item): item is string => typeof item === "string") &&
+        globalThis.Object.hasOwn(value, key) &&
+        isProperty(globalThis.Reflect.get(value, key));
+      interface ArrayWithExtra extends ReadonlyArray<string> {
+        readonly extra: undefined;
+      }
+      const ArrayWithExtra = createType(
+        "ArrayWithExtra",
+        (
+          value,
+        ): Result<ArrayWithExtra, CompileTimeTypeError<"ArrayWithExtra">> =>
+          isStringArrayWithOwnProperty(
+            value,
+            "extra",
+            (value): value is undefined => value === undefined,
+          )
+            ? ok(value)
+            : err({ type: "ArrayWithExtra", value }),
+        () => "",
+      );
+      interface WeirdArray extends ReadonlyArray<string> {
+        readonly push: () => number;
+      }
+      const WeirdArray = createType(
+        "WeirdArray",
+        (value): Result<WeirdArray, CompileTimeTypeError<"WeirdArray">> =>
+          isStringArrayWithOwnProperty(
+            value,
+            "push",
+            (value): value is () => number => typeof value === "function",
+          )
+            ? ok(value)
+            : err({ type: "WeirdArray", value }),
+        () => "",
+      );
+      interface NegativeArrayIndex extends ReadonlyArray<string> {
+        readonly "-1": string;
+      }
+      const NegativeArrayIndex = createType(
+        "NegativeArrayIndex",
+        (
+          value,
+        ): Result<
+          NegativeArrayIndex,
+          CompileTimeTypeError<"NegativeArrayIndex">
+        > =>
+          isStringArrayWithOwnProperty(
+            value,
+            "-1",
+            (value): value is string => typeof value === "string",
+          )
+            ? ok(value)
+            : err({ type: "NegativeArrayIndex", value }),
+        () => "",
+      );
+      interface FractionalArrayIndex extends ReadonlyArray<string> {
+        readonly "1.5": string;
+      }
+      const FractionalArrayIndex = createType(
+        "FractionalArrayIndex",
+        (
+          value,
+        ): Result<
+          FractionalArrayIndex,
+          CompileTimeTypeError<"FractionalArrayIndex">
+        > =>
+          isStringArrayWithOwnProperty(
+            value,
+            "1.5",
+            (value): value is string => typeof value === "string",
+          )
+            ? ok(value)
+            : err({ type: "FractionalArrayIndex", value }),
+        () => "",
+      );
+      interface NonCanonicalArrayIndex extends ReadonlyArray<string> {
+        readonly "01": string;
+      }
+      const NonCanonicalArrayIndex = createType(
+        "NonCanonicalArrayIndex",
+        (
+          value,
+        ): Result<
+          NonCanonicalArrayIndex,
+          CompileTimeTypeError<"NonCanonicalArrayIndex">
+        > =>
+          isStringArrayWithOwnProperty(
+            value,
+            "01",
+            (value): value is string => typeof value === "string",
+          )
+            ? ok(value)
+            : err({ type: "NonCanonicalArrayIndex", value }),
+        () => "",
+      );
+      const Invalid = object({ value: Undefined });
+      const OptionalUndefined = object({
+        value: optional(undefinedOr(String)),
+      });
+      const UndefinedRecord = record(String, Undefined);
+      const One = brand("One", literal(1));
+      const JsonValueWithSymbolProperty = union(JsonValue, SymbolJsonObject);
+
+      json(FiniteNumber, "FiniteNumberJson");
+      json(Age, "AgeJson");
+      json(literal(1), "OneJson");
+      json(array(FiniteNumber), "FiniteNumbersJson");
+      json(tuple(String, Int64FromInt64String), "TupleJson");
+      json(record(String, FiniteNumber), "RecordJson");
+      json(object({}), "EmptyObjectJson");
+      json(object({ value: optional(String) }), "OptionalStringJson");
+      json(union(String, FiniteNumber), "UnionJson");
+      json(
+        lazy(() => object({ value: FiniteNumber })),
+        "LazyJson",
+      );
+      json(JsonValue, "JsonValueJson");
+      json(JsonArray, "JsonArrayJson");
+      json(JsonObject, "JsonObjectJson");
+      json(StringTree, "StringTreeJson");
+      json(Left, "LeftJson");
+      json(One, "OneJson");
+      json(array(One), "OnesJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(Number, "NumberJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(NonNaNNumber, "NonNaNNumberJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(literal(1n), "OneBigIntJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(set(String), "StringSetJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(Invalid, "InvalidJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(OptionalUndefined, "OptionalUndefinedJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(UndefinedRecord, "UndefinedRecordJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(InvalidTree, "InvalidTreeJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(InvalidLeft, "InvalidLeftJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(RecursiveA, "RecursiveAJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(AnyObject, "AnyObjectJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(SymbolProperty, "SymbolPropertyJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(JsonValueWithSymbolProperty, "JsonValueWithSymbolPropertyJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(ArrayWithExtra, "ArrayWithExtraJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(WeirdArray, "WeirdArrayJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(NegativeArrayIndex, "NegativeArrayIndexJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(FractionalArrayIndex, "FractionalArrayIndexJson");
+
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(NonCanonicalArrayIndex, "NonCanonicalArrayIndexJson");
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("forwards ValidationOptions to the represented Type", () => {
+    const Model = object({ name: String, age: FiniteNumber });
+    const [ModelJson] = json(Model, "ModelJson");
+    const value = Json.orThrow('{"name":1,"age":"wrong"}');
+    const expected = err({
+      type: "ModelJson",
+      error: {
+        type: "Object",
+        reason: {
+          kind: "Properties",
+          errors: {
+            name: {
+              type: "TypeOf",
+              expected: "String",
+              value: 1,
+            },
+            age: {
+              type: "TypeOf",
+              expected: "Number",
+              value: "wrong",
+            },
+          },
+        },
+      },
+    });
+
+    expect(ModelJson.fromUnknown(value, { errors: "all" })).toEqual(expected);
+    expect(ModelJson.from.parent(value, { errors: "all" })).toEqual(expected);
+  });
+
+  test("reports every represented Type issue through Standard Schema", async () => {
+    const Model = object({ name: String, age: FiniteNumber });
+    const [ModelJson] = json(Model, "ModelJson");
+
+    expect(
+      await ModelJson["~standard"].validate('{"name":1,"age":"wrong"}'),
+    ).toEqual({
+      issues: [
+        { message: "A value 1 is not a string.", path: ["name"] },
+        {
+          message: 'A value "wrong" is not a number.',
+          path: ["age"],
+        },
+      ],
+    });
+    expect(await ModelJson["~standard"].validate("{ invalid }")).toEqual({
+      issues: [
+        {
+          message: 'The value "{ invalid }" cannot be parsed into a JsonValue.',
+          path: [],
+        },
+      ],
+    });
+  });
+
+  test("localizes represented Type issues transparently", async () => {
+    const Model = object({ name: String, active: Boolean });
+    const [ModelJson] = json(Model, "ModelJson");
+    const LocalizedModelJson = localizeTypes(
+      { ModelJson },
+      {
+        test: {
+          Boolean: (error) => {
+            expectTypeOf(error).toEqualTypeOf<TypeOfError<"Boolean">>();
+            return "Localized Boolean.";
+          },
+          Json: (error) => {
+            expectTypeOf(error).toEqualTypeOf<JsonError>();
+            return "Localized Json.";
+          },
+          Object: () => "Localized Object.",
+          String: (error) => {
+            expectTypeOf(error).toEqualTypeOf<TypeOfError<"String">>();
+            return "Localized String.";
+          },
+        },
+      },
+    ).test.ModelJson;
+
+    expect(
+      await LocalizedModelJson["~standard"].validate(
+        '{"name":1,"active":"wrong"}',
+      ),
+    ).toEqual({
+      issues: [
+        { message: "Localized String.", path: ["name"] },
+        { message: "Localized Boolean.", path: ["active"] },
+      ],
+    });
+    expect(await LocalizedModelJson["~standard"].validate("[]")).toEqual({
+      issues: [{ message: "Localized Object.", path: [] }],
+    });
+    expect(
+      await LocalizedModelJson["~standard"].validate("{ invalid }"),
+    ).toEqual({
+      issues: [{ message: "Localized Json.", path: [] }],
+    });
+  });
+
+  test("asserts the encoded Json still decodes through the Type", () => {
+    interface FrozenJsonObjectError extends TypeError<"FrozenJsonObject"> {
+      readonly value: JsonObject;
+    }
+
+    const FrozenJsonObject = brand(
+      "FrozenJsonObject",
+      JsonObject,
+      (value) =>
+        globalThis.Object.isFrozen(value)
+          ? ok()
+          : err<FrozenJsonObjectError>({
+              type: "FrozenJsonObject",
+              value,
+            }),
+      () => "Expected a frozen JsonObject.",
+    );
+    const [FrozenJson, frozenJsonObjectToFrozenJson] = json(
+      FrozenJsonObject,
+      "FrozenJson",
+    );
+    const value = globalThis.Object.freeze(
+      getOrThrow(JsonObject.fromUnknown({ answer: 42 })),
+    );
+    assertType(FrozenJsonObject, value);
+    const encoded = jsonValueToJson(FrozenJsonObject.to(value));
+    const result = FrozenJson.fromUnknown(encoded);
+
+    assert(!result.ok);
+    expectAssertionError(
+      () => frozenJsonObjectToFrozenJson(value),
+      "Expected FrozenJson.",
+      result.error,
+    );
   });
 });
 
