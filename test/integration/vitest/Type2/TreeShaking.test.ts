@@ -53,6 +53,12 @@ const setTypeFragments = [
   "excess Set property",
 ];
 
+// Bundle-size policy: realistic aggregate fixtures are the primary optimization
+// target because applications compose many Types and can benefit from shared
+// runtime code. The isolated fixtures below are regression guardrails for
+// accidentally retaining unrelated validators, formatters, or dependencies;
+// small changes in those snapshots do not decide a refactoring by themselves.
+
 const fixtures: ReadonlyArray<{
   readonly name: string;
   readonly fileName: string;
@@ -305,8 +311,44 @@ const fixtures: ReadonlyArray<{
 ];
 
 describe("Type2 tree shaking", () => {
-  test("bundles only the validation and formatting code used by each Type", async () => {
+  test("bundles a realistic app using common Types", async () => {
     await rm(outputDirectory, { recursive: true, force: true });
+    const results = await testBundle({
+      cases: {
+        "real app": {
+          entryPath: resolve(fixturesDirectory, "RealApp.ts"),
+          verify: (value) => {
+            expect(value).toEqual([
+              "A value null is not an object.",
+              'The value "" does not meet the minimum length of 1.',
+              "User",
+              '{"theme":"System","compact":true,"shortcuts":[]}',
+              "System",
+              "1",
+            ]);
+          },
+        },
+      },
+      outputDirectory: resolve(outputDirectory, "RealApp"),
+    });
+
+    expect(results).toMatchInlineSnapshot(`
+      {
+        "real app": {
+          "vite@8.2.0": {
+            "gzipSizeInBytes": 8676,
+            "rawSizeInBytes": 27611,
+          },
+          "webpack@5.109.2": {
+            "gzipSizeInBytes": 8728,
+            "rawSizeInBytes": 27962,
+          },
+        },
+      }
+    `);
+  }, 60000);
+
+  test("bundles only the validation and formatting code used by each Type", async () => {
     const results = await testBundle({
       cases: Object.fromEntries(
         fixtures.map((fixture) => [
