@@ -73,8 +73,8 @@ import {
  *   precise producer and consumer contracts while preserving typed remaining
  *   errors; reserve `fromUnknown` for genuinely unknown values.
  * - **Lawful codecs** – Types partially decode `Input` to `Output` and totally
- *   encode every legitimate `Output` to `CanonicalInput`, the subset of `Input`
- *   produced by complete encoding.
+ *   encode every legitimate `Output` to `CanonicalInput`, the statically known
+ *   subtype of `Input` returned by complete encoding.
  * - **A top-down implementation** – the source is intended to be read from
  *   beginning to end.
  *
@@ -178,9 +178,12 @@ import {
  * Read each line in the direction of its arrowhead. `Input` is the complete
  * typed decoding boundary, including candidates that validation can reject and
  * noncanonical representations that decoding can normalize. `Output` is the
- * validated semantic value. `CanonicalInput` is the precise subset of `Input`
- * that the complete `to` operation can produce. `fromUnknown` and the `from`
- * operations decode; `to` encodes.
+ * validated semantic value. `CanonicalInput` is the statically known subtype of
+ * `Input` returned by the complete `to` operation. It can be wider than the
+ * values actually emitted when a refinement follows an arbitrary
+ * transformation because TypeScript cannot determine which values its encoder
+ * returns for the narrowed Output. `fromUnknown` and the `from` operations
+ * decode; `to` encodes.
  *
  * A lawful Type round-trips every Output:
  *
@@ -211,11 +214,12 @@ import {
  * choices agree semantically. Encoded representations can overlap even when
  * member Output types are disjoint.
  *
- * A refinement can narrow `CanonicalInput` without changing its JavaScript
- * representation. For example, {@link FiniteNumber} has `number` as its Input,
- * while its Output and CanonicalInput are `FiniteNumber`: decoding can reject
- * non-finite number candidates, and encoding only receives validated finite
- * Outputs. A transformation can change the representation entirely. For
+ * When encoding returns a refined value unchanged, the refinement can narrow
+ * `CanonicalInput` without changing its JavaScript representation. For example,
+ * {@link FiniteNumber} has `number` as its Input, while its Output and
+ * CanonicalInput are `FiniteNumber`: decoding can reject non-finite number
+ * candidates, and encoding only receives validated finite Outputs. A
+ * transformation can change the representation entirely. For
  * {@link Int64FromInt64String}, Input is `string`, Output is `Int64`, and
  * CanonicalInput is `Int64String`. Structural Type factories derive their
  * CanonicalInput recursively from their contained Types.
@@ -424,11 +428,14 @@ export interface Type<
   readonly Input: Input;
 
   /**
-   * The precise subset of {@link Input} produced by the complete `to` operation.
+   * The statically known subtype of {@link Input} returned by the complete `to`
+   * operation.
    *
-   * Unlike Input, CanonicalInput excludes invalid candidates and alternative
-   * representations that encoding never emits. Structural Types derive it from
-   * the CanonicalInput of their contained Types.
+   * Compared with Input, CanonicalInput can exclude invalid candidates and
+   * alternative representations that encoding cannot emit. It can remain wider
+   * than the values actually emitted when a refinement follows an arbitrary
+   * transformation. Structural Types derive it from the CanonicalInput of their
+   * contained Types.
    *
    * This is a type-only phantom property. Use it through `typeof
    * Type.CanonicalInput`; it does not exist at runtime.
@@ -1189,6 +1196,9 @@ type CanonicalInputSubset<Input, CanonicalInput> = CanonicalInput extends Input
   ? CanonicalInput
   : CanonicalInput & Input;
 
+// Identity encoding preserves a narrowed Output. For an arbitrary encoder,
+// TypeScript cannot determine its result for a narrower child Output, so retain
+// the parent's statically known encoding return type.
 type CanonicalInputForChild<ParentType extends TypeNode, Output> =
   IdentityEncodingOf<ParentType> extends true
     ? Output

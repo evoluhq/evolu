@@ -15796,7 +15796,7 @@ describe("JsonValueFromJson", () => {
 });
 
 describe("json", () => {
-  test("tracks the canonical Input produced by complete encoding", () => {
+  test("tracks the statically known CanonicalInput", () => {
     const _One = literal(1);
     const Key = brand("Key", String);
     const _Values = record(Key, String);
@@ -15813,6 +15813,16 @@ describe("json", () => {
       "RefinedFiniteThroughTransform",
       FiniteThroughTransform,
     );
+    const NumberThroughTransform = transform(
+      "NumberThroughTransform",
+      Number,
+      Number,
+      {
+        from: (value) => ok(value),
+        to: (value) => value,
+      },
+    );
+    const _FiniteAfterNumberTransform = finite(NumberThroughTransform);
     const Person = object({
       name: String,
       age: Age,
@@ -15836,6 +15846,9 @@ describe("json", () => {
     expectTypeOf<
       typeof _RefinedFiniteThroughTransform.CanonicalInput
     >().toEqualTypeOf<FiniteNumber>();
+    expectTypeOf<
+      typeof _FiniteAfterNumberTransform.CanonicalInput
+    >().toEqualTypeOf<number>();
     expectTypeOf<typeof _One.CanonicalInput>().toEqualTypeOf<1>();
     expectTypeOf<typeof _Values.CanonicalInput>().toExtend<
       typeof _Values.Input
@@ -15879,6 +15892,10 @@ describe("json", () => {
       >;
 
       expectTypeOf<InvalidCanonicalInput>().toBeObject();
+
+      // The encoder's actual image is finite, but CanonicalInput is number.
+      // @ts-expect-error Type CanonicalInput must be JSON-compatible.
+      json(_FiniteAfterNumberTransform, "FiniteAfterNumberTransformJson");
     };
 
     expectTypeOf(compileTimeAssertions).toBeFunction();
