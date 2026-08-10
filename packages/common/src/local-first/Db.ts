@@ -39,7 +39,8 @@ import {
 } from "../Sqlite.ts";
 import { callback, type Run, type Task } from "../Task.ts";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.ts";
-import type { ExtractType, Name } from "../Type.ts";
+import type { Name } from "../Type.ts";
+import type { ExtractOutputType } from "../Type2.ts";
 import {
   Id,
   IdBytes,
@@ -764,8 +765,8 @@ const handleMutation =
       TimestampConfigDep,
   ) =>
   (
-    message: ExtractType<
-      ExtractType<DbWorkerRequest, "ForEvolu">["message"],
+    message: ExtractOutputType<
+      ExtractOutputType<DbWorkerRequest, "ForEvolu">["message"],
       "Mutate"
     >,
   ): Result<

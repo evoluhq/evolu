@@ -42,7 +42,8 @@ import {
   type Mutex,
   type Task,
 } from "../Task.ts";
-import { type ExtractType, type Id, type Name, type Typed } from "../Type.ts";
+import { type Id, type Name, type Typed } from "../Type.ts";
+import type { ExtractOutputType } from "../Type2.ts";
 import type { Callback } from "../Types.ts";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.ts";
 import type {
@@ -162,7 +163,9 @@ export type DbWorkerRequest =
   | {
       readonly type: "ForEvolu";
       readonly id: EvoluInstanceId;
-      readonly message: ExtractType<EvoluInput, "Mutate" | "Query" | "Export">;
+      readonly message: {
+        readonly [Message in EvoluInput as Message["type"]]: Message;
+      }["Mutate" | "Query" | "Export"];
     }
   | {
       readonly type: "ForSharedWorker";
@@ -240,7 +243,7 @@ export type SharedWorkerDeps = WorkerDeps &
 
 interface EvoluTenant extends AsyncDisposable {
   readonly addInstance: (
-    message: ExtractType<SharedWorkerInput, "CreateEvolu">,
+    message: ExtractOutputType<SharedWorkerInput, "CreateEvolu">,
     onDisposed: () => void,
   ) => void;
 
@@ -424,7 +427,7 @@ export const initSharedWorker =
     const tenantsByName = disposer.use(
       await sharedWorkerRun.ok(
         createSharedResourceByKey(
-          (message: ExtractType<SharedWorkerInput, "CreateEvolu">) =>
+          (message: ExtractOutputType<SharedWorkerInput, "CreateEvolu">) =>
             createEvoluTenant(message, currentTenantsByName),
           {
             idleDisposeAfter: "3s",
@@ -453,7 +456,7 @@ const createEvoluTenant =
       sqliteSchema,
       encryptionKey,
       memoryOnly,
-    }: ExtractType<SharedWorkerInput, "CreateEvolu">,
+    }: ExtractOutputType<SharedWorkerInput, "CreateEvolu">,
     currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
   ): Task<EvoluTenant, never, EvoluTenantDeps> =>
   async (run) => {
@@ -537,7 +540,7 @@ const createEvoluTenant =
 
     const queue: Array<DbWorkerRequest> = [];
     const callbacks = disposer.use(
-      createCallbacks<ExtractType<DbWorkerOutput, "OnQueuedResponse">>(
+      createCallbacks<ExtractOutputType<DbWorkerOutput, "OnQueuedResponse">>(
         run.deps,
       ),
     );
@@ -591,7 +594,7 @@ const createEvoluTenant =
     await dbWorkerInited.promise;
 
     const handleResponseForEvolu = (
-      response: ExtractType<DbWorkerQueuedResponse, "ForEvolu">,
+      response: ExtractOutputType<DbWorkerQueuedResponse, "ForEvolu">,
       first: DbWorkerRequest,
     ): void => {
       const instance = instancesById.get(response.id);
@@ -668,7 +671,7 @@ const createEvoluTenant =
     };
 
     const handleResponseForSharedWorker = (
-      response: ExtractType<DbWorkerQueuedResponse, "ForSharedWorker">,
+      response: ExtractOutputType<DbWorkerQueuedResponse, "ForSharedWorker">,
     ): void => {
       switch (response.message.type) {
         case "CreateSyncMessages":

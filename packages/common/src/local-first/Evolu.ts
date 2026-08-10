@@ -30,7 +30,8 @@ import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.ts";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.ts";
 import { createStore } from "../Store.ts";
 import type { Task } from "../Task.ts";
-import type { ExtractType, Id, TypeError } from "../Type.ts";
+import type { Id, TypeError } from "../Type.ts";
+import type { ExtractOutputType } from "../Type2.ts";
 import {
   brand,
   createId,
@@ -886,7 +887,7 @@ export const createEvolu =
 
     const useOwnerBatch = disposer.use(
       createMicrotaskBatch<
-        ExtractType<EvoluInput, "UseOwner">["actions"][number]
+        ExtractOutputType<EvoluInput, "UseOwner">["actions"][number]
       >((actions) => {
         if (disposed) return;
         postMessage({ type: "UseOwner", actions });

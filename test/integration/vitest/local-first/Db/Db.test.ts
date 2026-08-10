@@ -62,10 +62,10 @@ import {
   id,
   String,
   testName,
-  type ExtractType,
   type Id,
   type Name,
 } from "../../../../../packages/common/src/Type.ts";
+import type { ExtractOutputType } from "../../../../../packages/common/src/Type2.ts";
 import {
   createMessagePort,
   createWorker,
@@ -357,8 +357,8 @@ const postRequest = async (
   return setup.outputs.splice(0);
 };
 
-type QueuedResponse = ExtractType<DbWorkerOutput, "OnQueuedResponse">;
-type SharedWorkerResponse = ExtractType<
+type QueuedResponse = ExtractOutputType<DbWorkerOutput, "OnQueuedResponse">;
+type SharedWorkerResponse = ExtractOutputType<
   QueuedResponse["response"],
   "ForSharedWorker"
 >;
@@ -369,7 +369,7 @@ const getQueuedSharedWorkerMessage = <
 >(
   outputs: ReadonlyArray<DbWorkerOutput>,
   type: TType,
-): ExtractType<SharedWorkerResponseMessage, TType> => {
+): ExtractOutputType<SharedWorkerResponseMessage, TType> => {
   const firstOutput = outputs[0];
   assert(firstOutput, "Expected queued response");
   assert(firstOutput.type === "OnQueuedResponse", "Expected queued response");
@@ -383,7 +383,7 @@ const getQueuedSharedWorkerMessage = <
   const message = response.message;
   assert(message.type === type, `Expected ${type} message`);
 
-  return message as ExtractType<SharedWorkerResponseMessage, TType>;
+  return message as ExtractOutputType<SharedWorkerResponseMessage, TType>;
 };
 
 describe("worker startup", () => {

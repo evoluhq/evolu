@@ -150,6 +150,7 @@ import {
   type DiscriminatedUnionMemberIssue,
   type DiscriminatedUnionType,
   type EvoluTypeError,
+  type ExtractOutputType,
   type FiniteError,
   type GreaterThanError,
   type InferErrors,
@@ -1845,9 +1846,7 @@ describe("localizeTypes", () => {
     expect(Types.PositiveFromString.formatError(invalidOutput.error)).toBe(
       "Localized Positive.",
     );
-    expect(
-      await Types.PositiveFromString["~standard"].validate("0"),
-    ).toEqual({
+    expect(await Types.PositiveFromString["~standard"].validate("0")).toEqual({
       issues: [{ message: "Localized Positive.", path: [] }],
     });
   });
@@ -11418,10 +11417,7 @@ describe("object", () => {
         },
       );
       const AValues = record(String, A);
-      const CompatibleModel = object(
-        { fixed: CompatibleAFromString },
-        AValues,
-      );
+      const CompatibleModel = object({ fixed: CompatibleAFromString }, AValues);
       const fakeRecord = {
         ...String,
         key: String,
@@ -11483,8 +11479,9 @@ describe("object", () => {
       expectTypeOf<typeof _Open.Output>().toEqualTypeOf<
         Readonly<Partial<Record<string, number>>>
       >();
-      expect(CompatibleModel.to(CompatibleModel.orThrow({ fixed: "input" })))
-        .toEqual({ fixed: "a" });
+      expect(
+        CompatibleModel.to(CompatibleModel.orThrow({ fixed: "input" })),
+      ).toEqual({ fixed: "a" });
       expectTypeOf<typeof Model.Error>().toEqualTypeOf<
         ObjectError<
           Errors,
@@ -13628,6 +13625,22 @@ describe("result", () => {
 
 describe("typed", () => {
   describe("construction", () => {
+    test("ExtractOutputType selects only existing Typed union members", () => {
+      const Create = typed("Create", { id: String });
+      const Delete = typed("Delete", { id: String });
+      const Message = discriminatedUnion(Create, Delete);
+      type Message = typeof Message.Output;
+      type CreateMessage = ExtractOutputType<Message, "Create">;
+      const compileTimeAssertions = () => {
+        // @ts-expect-error The selected type must exist in the Output union.
+        type Typo = ExtractOutputType<Message, "Cretae">;
+        expectTypeOf<Typo>().toBeNever();
+      };
+
+      expectTypeOf<CreateMessage>().toEqualTypeOf<typeof Create.Output>();
+      expectTypeOf(compileTimeAssertions).toBeFunction();
+    });
+
     test("creates a strict Object with only a literal type property", () => {
       const Empty = typed("Empty");
 
@@ -13911,8 +13924,9 @@ describe("typed", () => {
           readonly label: string;
         } & Readonly<Partial<Record<string, string>>>
       >();
-      expect(Compatible.to(Compatible.orThrow({ type: "Open", fixed: "x" })))
-        .toEqual({ type: "Open", fixed: "a" });
+      expect(
+        Compatible.to(Compatible.orThrow({ type: "Open", fixed: "x" })),
+      ).toEqual({ type: "Open", fixed: "a" });
       expectOk(Open.fromUnknown(value), value);
       expect(Open.is(value)).toBe(true);
       expect(Open.fromUnknown({ ...value, score: 1 })).toEqual(

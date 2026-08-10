@@ -52,8 +52,8 @@ import {
   NonEmptyString100,
   nullOr,
   testName,
-  type ExtractType,
 } from "../../../../../packages/common/src/Type.ts";
+import type { ExtractOutputType } from "../../../../../packages/common/src/Type2.ts";
 import { testCreateWebSocket } from "../../../../../packages/common/src/WebSocket.ts";
 import {
   createBroadcastChannel,
@@ -1115,7 +1115,7 @@ describe("unit tests", () => {
 
       await testWaitForWorkerMessage();
 
-      const mutate = evoluInputs[0] as ExtractType<EvoluInput, "Mutate">;
+      const mutate = evoluInputs[0] as ExtractOutputType<EvoluInput, "Mutate">;
       const [onCompleteId] = mutate.onCompleteIds;
 
       await evolu[Symbol.asyncDispose]();
@@ -1149,7 +1149,7 @@ describe("unit tests", () => {
 
       await testWaitForWorkerMessage();
 
-      const mutate = evoluInputs[0] as ExtractType<EvoluInput, "Mutate">;
+      const mutate = evoluInputs[0] as ExtractOutputType<EvoluInput, "Mutate">;
       const [onCompleteId] = mutate.onCompleteIds;
 
       postEvoluOutput({
@@ -1189,7 +1189,7 @@ describe("unit tests", () => {
 
       await testWaitForWorkerMessage();
 
-      const mutate = evoluInputs[0] as ExtractType<EvoluInput, "Mutate">;
+      const mutate = evoluInputs[0] as ExtractOutputType<EvoluInput, "Mutate">;
       const [onCompleteId] = mutate.onCompleteIds;
 
       postEvoluOutput({
