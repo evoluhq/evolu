@@ -1705,6 +1705,51 @@ describe("localizeTypes", () => {
     expect(Types.Root.formatError(result.error)).toBe("Localized RootError.");
   });
 
+  test("does not treat an arbitrary outputError property as transparent", async () => {
+    interface RefinedError extends TypeError<"Refined"> {
+      readonly outputError: TypeOfError<"String">;
+    }
+    const Refined = createType(
+      "Refined",
+      (value): Result<string, RefinedError> =>
+        err({
+          type: "Refined",
+          outputError: { type: "TypeOf", expected: "String", value },
+        }),
+      () => "Refined error.",
+    );
+    const LocalizedRefined = localizeTypes(
+      { Refined },
+      {
+        test: {
+          Refined: (error) => {
+            expectTypeOf(error).toEqualTypeOf<RefinedError>();
+            return "Localized Refined.";
+          },
+        },
+      },
+    ).test.Refined;
+    const result = LocalizedRefined.fromUnknown("value");
+    const compileTimeAssertions = () => {
+      localizeTypes(
+        { Refined },
+        {
+          // @ts-expect-error Refined is required; outputError is not transparent.
+          test: { String: () => "Localized String." },
+        },
+      );
+    };
+
+    assert(!result.ok);
+    expect(LocalizedRefined.formatError(result.error)).toBe(
+      "Localized Refined.",
+    );
+    expect(await LocalizedRefined["~standard"].validate("value")).toEqual({
+      issues: [{ message: "Localized Refined.", path: [] }],
+    });
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
   test("routes custom root TypeOf errors by their expected Types", async () => {
     const Text = createType(
       "Text",
@@ -1763,7 +1808,7 @@ describe("localizeTypes", () => {
     });
   });
 
-  test("routes parent, own, and output transformation errors", () => {
+  test("routes parent, own, and output transformation errors", async () => {
     const NumberFromString = setupNumberFromString();
     const PositiveFromString = transform(
       "PositiveFromString",
@@ -1800,6 +1845,11 @@ describe("localizeTypes", () => {
     expect(Types.PositiveFromString.formatError(invalidOutput.error)).toBe(
       "Localized Positive.",
     );
+    expect(
+      await Types.PositiveFromString["~standard"].validate("0"),
+    ).toEqual({
+      issues: [{ message: "Localized Positive.", path: [] }],
+    });
   });
 
   test("infers formatters through directly recursive Lazy errors", () => {
@@ -11353,6 +11403,25 @@ describe("object", () => {
       });
       const transformedKeys = record(ReversedString, Number);
       const NumberFromString = setupNumberFromString();
+      const A = literal("a");
+      const AFromString = transform("AFromString", String, A, {
+        from: () => ok("a" as const),
+        to: () => "not-a" as const,
+      });
+      const CompatibleAFromString = transform(
+        "CompatibleAFromString",
+        String,
+        A,
+        {
+          from: () => ok("a" as const),
+          to: () => "a" as const,
+        },
+      );
+      const AValues = record(String, A);
+      const CompatibleModel = object(
+        { fixed: CompatibleAFromString },
+        AValues,
+      );
       const fakeRecord = {
         ...String,
         key: String,
@@ -11389,6 +11458,8 @@ describe("object", () => {
         object({ value: Number }, numbersFromStrings);
         // @ts-expect-error The declared Output must extend the Record value Output.
         object({ value: String }, numbersFromStrings);
+        // @ts-expect-error The declared CanonicalInput must extend the Record value CanonicalInput.
+        object({ fixed: AFromString }, AValues);
         // @ts-expect-error Undeclared properties must match the Record value Input.
         Model.from({ count: 0, other: "not a number" });
         // @ts-expect-error Undeclared properties must match the Record value Output.
@@ -11412,6 +11483,8 @@ describe("object", () => {
       expectTypeOf<typeof _Open.Output>().toEqualTypeOf<
         Readonly<Partial<Record<string, number>>>
       >();
+      expect(CompatibleModel.to(CompatibleModel.orThrow({ fixed: "input" })))
+        .toEqual({ fixed: "a" });
       expectTypeOf<typeof Model.Error>().toEqualTypeOf<
         ObjectError<
           Errors,
@@ -13794,10 +13867,32 @@ describe("typed", () => {
     test("composes additional properties through a Record", () => {
       const Values = record(String, String);
       const Open = typed("Open", { label: String }, Values);
+      const A = literal("a");
+      const AFromString = transform("AFromString", String, A, {
+        from: () => ok("a" as const),
+        to: () => "not-a" as const,
+      });
+      const CompatibleAFromString = transform(
+        "CompatibleAFromString",
+        String,
+        A,
+        {
+          from: () => ok("a" as const),
+          to: () => "a" as const,
+        },
+      );
+      const ValuesWithTag = record(String, union("Open", "a"));
+      const Compatible = typed(
+        "Open",
+        { fixed: CompatibleAFromString },
+        ValuesWithTag,
+      );
       const value = { type: "Open", label: "Label", note: "Note" } as const;
       const compileTimeAssertions = () => {
         // @ts-expect-error Additional properties must match the Record value Type.
         Open.from({ type: "Open", label: "Label", score: 1 });
+        // @ts-expect-error The declared CanonicalInput must extend the Record value CanonicalInput.
+        typed("Open", { fixed: AFromString }, ValuesWithTag);
       };
 
       expect(Open.record).toBe(Values);
@@ -13816,6 +13911,8 @@ describe("typed", () => {
           readonly label: string;
         } & Readonly<Partial<Record<string, string>>>
       >();
+      expect(Compatible.to(Compatible.orThrow({ type: "Open", fixed: "x" })))
+        .toEqual({ type: "Open", fixed: "a" });
       expectOk(Open.fromUnknown(value), value);
       expect(Open.is(value)).toBe(true);
       expect(Open.fromUnknown({ ...value, score: 1 })).toEqual(
@@ -15947,6 +16044,146 @@ describe("json", () => {
     expect(PersonJson.formatError(invalid.error)).toBe(
       "The value 200 must be less than 200.",
     );
+  });
+
+  test("preserves the Json and String from boundaries", () => {
+    const Value = object({ count: Int });
+    const [ValueJson] = json(Value, "ValueJson");
+    const invalidValue = Json.orThrow('{"count":1.5}');
+    const invalidValueResult = ValueJson.from.parent(invalidValue);
+
+    expect(invalidValueResult).toMatchObject({
+      ok: false,
+      error: {
+        type: "ValueJson",
+        error: { type: "Object" },
+      },
+    });
+    expect(ValueJson.from.parent.parent("{ invalid }")).toEqual(
+      err({ type: "Json", value: "{ invalid }" }),
+    );
+    expect(ValueJson.fromUnknown(1)).toEqual(
+      err({ type: "TypeOf", expected: "String", value: 1 }),
+    );
+    expectAssertionError(
+      () => ValueJson.from.parent("{ invalid }" as Json),
+      "Expected Json.",
+      { type: "Json", value: "{ invalid }" },
+    );
+    expectAssertionError(
+      () => ValueJson.from.parent(1 as unknown as Json),
+      "Expected Json.",
+      { type: "TypeOf", expected: "String", value: 1 },
+    );
+    expectAssertionError(
+      () => ValueJson.from.parent.parent(1 as unknown as string),
+      "Expected String.",
+      { type: "TypeOf", expected: "String", value: 1 },
+    );
+  });
+
+  test("parses once before validating the represented Type", async () => {
+    const Value = object({ count: Int });
+    const [ValueJson, valueToValueJson, valueJsonToValue] = json(
+      Value,
+      "ValueJson",
+    );
+    const value = Value.orThrow({ count: 1 });
+    const encodedForComposition = valueToValueJson(value);
+    const secondEncoded = valueToValueJson(Value.orThrow({ count: 2 }));
+    const ChildValueJson = brand("ChildValueJson", ValueJson);
+    const Container = object({ first: ValueJson, second: ValueJson });
+    const [ContainerJson, containerToContainerJson] = json(
+      Container,
+      "ContainerJson",
+    );
+    const container = {
+      first: encodedForComposition,
+      second: secondEncoded,
+    };
+    const containerJson = containerToContainerJson(container);
+    const duplicateContainerJson = containerToContainerJson({
+      first: encodedForComposition,
+      second: encodedForComposition,
+    });
+    const parse = vi.spyOn(globalThis.JSON, "parse");
+
+    try {
+      const encoded = valueToValueJson(value);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expectOk(ValueJson.fromUnknown(encoded), encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expect(ValueJson.is(encoded)).toBe(true);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expect(await ValueJson["~standard"].validate(encoded)).toEqual({
+        value: encoded,
+      });
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expectOk(ValueJson.from(encoded), encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expectOk(ValueJson.from.parent(encoded), encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expectOk(ValueJson.from.parent.parent(encoded), encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expect(ValueJson.orThrow(encoded)).toBe(encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expect(ValueJson.orNull(encoded)).toBe(encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expect(ValueJson.to(encoded)).toBe(encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expect(ChildValueJson.orThrow(encoded)).toBe(encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      expect(Container.orThrow(container)).toEqual(container);
+      expect(parse).toHaveBeenCalledTimes(2);
+
+      parse.mockClear();
+      expect(Container.orNull(container)).toEqual(container);
+      expect(parse).toHaveBeenCalledTimes(2);
+
+      parse.mockClear();
+      expect(ContainerJson.orThrow(containerJson)).toBe(containerJson);
+      expect(parse).toHaveBeenCalledTimes(3);
+
+      parse.mockClear();
+      expect(ContainerJson.orThrow(duplicateContainerJson)).toBe(
+        duplicateContainerJson,
+      );
+      expect(parse).toHaveBeenCalledTimes(3);
+
+      parse.mockClear();
+      expect(valueJsonToValue(encoded)).toEqual(value);
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      parse.mockClear();
+      const firstParsed = jsonToJsonValue(encoded);
+      const secondParsed = jsonToJsonValue(encoded);
+      expect(firstParsed).not.toBe(secondParsed);
+      expect(parse).toHaveBeenCalledTimes(2);
+    } finally {
+      parse.mockRestore();
+    }
   });
 
   test("accepts only Types with a JSON-compatible canonical Input", () => {

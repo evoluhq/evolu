@@ -601,8 +601,8 @@ export interface TypeError<Name extends TypeName = TypeName> {
 
 declare const transparentTypeErrorSymbol: unique symbol;
 
-interface TransparentTypeError<Error extends TypeError> {
-  readonly [transparentTypeErrorSymbol]: Error;
+interface TransparentTypeError {
+  readonly [transparentTypeErrorSymbol]?: true;
 }
 
 /**
@@ -1092,11 +1092,7 @@ type LocalizedErrorEntry<
     ? never
     : Error extends TypeOfError<infer Name>
       ? LocalizedErrorEntryValue<Name, Error>
-      : Error extends {
-            readonly outputError: infer OutputError extends TypeError;
-          }
-        ? LocalizedErrorEntry<OutputError, Seen | Error>
-        : Error extends { readonly type: "Union"; readonly errors: unknown }
+      : Error extends { readonly type: "Union"; readonly errors: unknown }
           ? LocalizedErrorEntryValue<"Union", Error>
           : Error extends {
                 readonly type: "DiscriminatedUnion";
@@ -1116,12 +1112,23 @@ type LocalizedErrorEntry<
                   }
                 ? | LocalizedErrorEntryValue<"Object", Error>
                   | LocalizedObjectErrorEntry<Reason, Seen | Error>
-                : Error extends TransparentTypeError<
-                      infer NestedError extends TypeError
+                : Error extends TransparentTypeError
+                  ? LocalizedErrorEntry<
+                      TransparentTypeErrorNested<Error>,
+                      Seen | Error
                     >
-                  ? LocalizedErrorEntry<NestedError, Seen | Error>
                   : LocalizedErrorEntryValue<Error["type"], Error>
   : never;
+
+type TransparentTypeErrorNested<Error extends TypeError> = Error extends {
+  readonly outputError: infer NestedError extends TypeError;
+}
+  ? NestedError
+  : Error extends {
+        readonly error: infer NestedError extends TypeError;
+      }
+    ? NestedError
+    : never;
 
 interface LocalizedErrorEntryValue<
   Name extends TypeName,
@@ -1940,7 +1947,7 @@ export type TransformError<
 export interface TransformOutputError<
   Name extends TypeName,
   OutputError extends TypeError,
-> extends TypeError<Name> {
+> extends TypeError<Name>, TransparentTypeError {
   /** The error returned by the output Type. */
   readonly outputError: OutputError;
 }
@@ -7284,14 +7291,38 @@ type ObjectRecordValidationError<
   IsUnion<Rest> extends false
     ? Rest["key"] extends typeof String
       ? typeof String extends Rest["key"]
-        ? [ObjectPropertyInputs<Props>] extends [Rest["value"]["Input"]]
-          ? [ObjectPropertyOutputs<Props>] extends [Rest["value"]["Output"]]
-            ? never
-            : ObjectRecordOutputTypeError
-          : ObjectRecordInputTypeError
+        ? ObjectRecordPropertyValidationError<Props, Rest["value"]>
         : ObjectRecordKeyTypeError
       : ObjectRecordKeyTypeError
     : ObjectRecordTypeError;
+
+type ObjectRecordPropertyValidationError<
+  Props extends ObjectProps,
+  ValueType extends TypeNode,
+> = [
+  ObjectPropertyType<Props[keyof Props]>["Input"],
+  ObjectPropertyType<Props[keyof Props]>["Output"],
+  ObjectPropertyType<Props[keyof Props]>["CanonicalInput"],
+] extends [
+  ValueType["Input"],
+  ValueType["Output"],
+  ValueType["CanonicalInput"],
+]
+  ? never
+  : ObjectRecordPropertyTypeError<Props, ValueType>;
+
+type ObjectRecordPropertyTypeError<
+  Props extends ObjectProps,
+  ValueType extends TypeNode,
+> = [ObjectPropertyType<Props[keyof Props]>["Input"]] extends [
+  ValueType["Input"],
+]
+  ? [ObjectPropertyType<Props[keyof Props]>["Output"]] extends [
+      ValueType["Output"],
+    ]
+    ? ObjectRecordCanonicalInputTypeError
+    : ObjectRecordOutputTypeError
+  : ObjectRecordInputTypeError;
 
 type ObjectPropertyValidationError<Property extends ObjectProperty> =
   IsUnion<Property> extends false
@@ -7375,6 +7406,11 @@ type ObjectRecordInputTypeError = CompileTimeError<
 type ObjectRecordOutputTypeError = CompileTimeError<
   "Type",
   "Every declared property Type Output must extend the Object Record value Type Output."
+>;
+
+type ObjectRecordCanonicalInputTypeError = CompileTimeError<
+  "Type",
+  "Every declared property Type CanonicalInput must extend the Object Record value Type CanonicalInput."
 >;
 
 export type ObjectType<
@@ -7494,14 +7530,6 @@ type OptionalObjectKeys<Props extends ObjectProps> = {
 
 type ObjectPropertyType<Property extends ObjectProperty> =
   Property extends OptionalProperty<infer T> ? T : Property;
-
-type ObjectPropertyInputs<Props extends ObjectProps> = ObjectPropertyType<
-  Props[keyof Props]
->["Input"];
-
-type ObjectPropertyOutputs<Props extends ObjectProps> = ObjectPropertyType<
-  Props[keyof Props]
->["Output"];
 
 type ObjectFromParentPropertyErrors<Props extends ObjectProps> = {
   readonly [Key in keyof Props]: TypeFromError<ObjectPropertyType<Props[Key]>>;
@@ -9389,6 +9417,16 @@ const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
 const parseJson = (value: string): JsonValue =>
   globalThis.JSON.parse(value) as JsonValue;
 
+const jsonToJsonValueResult = (
+  value: string,
+): Result<JsonValue, JsonError> => {
+  const result = trySync((): unknown => parseJson(value));
+
+  return result.ok && validateJsonValue(result.value).ok
+    ? ok(result.value as JsonValue)
+    : err({ type: "Json", value });
+};
+
 const stringifyJsonValue = (value: JsonValue): Json => {
   const chunks: Array<string> = [];
   const work: Array<JsonValueStringifyWork> = [{ kind: "Value", value }];
@@ -9489,13 +9527,9 @@ export const Json = /*#__PURE__*/ brand(
   "Json",
   String,
   (value) => {
-    const result = trySync(
-      (): unknown => globalThis.JSON.parse(value) as unknown,
-    );
+    const result = jsonToJsonValueResult(value);
 
-    return result.ok && validateJsonValue(result.value).ok
-      ? ok()
-      : err<JsonError>({ type: "Json", value });
+    return result.ok ? ok() : result;
   },
   (error) =>
     `The value ${safelyStringifyUnknownValue(error.value)} cannot be parsed into a JsonValue.`,
@@ -9597,7 +9631,7 @@ export const json = <T extends ConcreteTypeNode, Name extends TypeName>(
     typeof Json,
     Name,
     TypeError<Name> &
-      TransparentTypeError<InferErrors<T>> & {
+      TransparentTypeError & {
         readonly error: InferErrors<T>;
       }
   >,
@@ -9605,42 +9639,110 @@ export const json = <T extends ConcreteTypeNode, Name extends TypeName>(
   jsonToOutput: (value: Json & Brand<Name>) => T["Output"],
 ] => {
   interface JsonTypeError
-    extends TypeError<Name>, TransparentTypeError<InferErrors<T>> {
+    extends TypeError<Name>, TransparentTypeError {
     readonly error: InferErrors<T>;
   }
 
   const runtimeType = type as unknown as RuntimeTypeNode;
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) =>
+    error.type === name
+      ? runtimeType[getRuntimeTypeIssuesSymbol](
+          (error as JsonTypeError).error,
+          mode,
+        )
+      : (Json as unknown as RuntimeTypeNode)[getRuntimeTypeIssuesSymbol](
+          error,
+          mode,
+        );
   const jsonToTypeOutput = (
     value: Json,
     options: ValidationOptions = firstValidationOptions,
   ): Result<T["Output"], InferErrors<T>> =>
-    runtimeType.fromUnknown(jsonToJsonValue(value), options);
-  const BrandedJson: BrandType<typeof Json, Name, JsonTypeError> =
-    createChildType<Name, typeof Json, Json & Brand<Name>, JsonTypeError>(
-      name as Name,
-      Json,
-      (value, options) => {
-        const result = jsonToTypeOutput(value, options);
+    runtimeType.fromUnknown(parseJson(value), options);
+  const jsonStringToBrandedJson = (
+    value: string,
+    options: ValidationOptions,
+  ): Result<Json & Brand<Name>, JsonError | JsonTypeError> => {
+    const jsonValueResult = jsonToJsonValueResult(value);
 
-        return result.ok
-          ? ok(value as Json & Brand<Name>)
-          : err<JsonTypeError>({
-              type: name as Name,
-              error: result.error,
-            } as JsonTypeError);
-      },
-      undefined,
-      (error, mode) =>
-        error.type === name
-          ? runtimeType[getRuntimeTypeIssuesSymbol](
-              (error as JsonTypeError).error,
-              mode,
-            )
-          : (Json as unknown as RuntimeTypeNode)[getRuntimeTypeIssuesSymbol](
-              error,
-              mode,
-            ),
-    );
+    if (!jsonValueResult.ok) return jsonValueResult;
+
+    const result = runtimeType.fromUnknown(jsonValueResult.value, options);
+
+    return result.ok
+      ? ok(value as Json & Brand<Name>)
+      : err<JsonTypeError>({
+          type: name as Name,
+          error: result.error,
+        });
+  };
+  const fromUnknown = (
+    value: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ): Result<
+    Json & Brand<Name>,
+    InferErrors<typeof Json> | JsonTypeError
+  > =>
+    typeof value === "string"
+      ? jsonStringToBrandedJson(value, options)
+      : err({ type: "TypeOf", expected: "String", value });
+  const validateOutput = fromUnknown as RuntimeOutputValidation;
+  const is = (value: unknown): value is Json & Brand<Name> =>
+    fromUnknown(value).ok;
+  // Generic child composition would validate the Json parent first and discard
+  // its parsed value. These operations parse while validating the represented
+  // Type so this generated Type's own boundaries need only one parse. A Type
+  // composed from it can still reassert an intermediate Json boundary and
+  // parse again because RuntimeOperation does not preserve parsed evidence.
+  const fromJson: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => {
+    if (typeof value !== "string") assertType(Json, value);
+
+    const result = jsonStringToBrandedJson(value, options);
+
+    if (!result.ok && result.error.type === "Json") {
+      throw new Error("Expected Json.", { cause: result.error });
+    }
+    return result;
+  };
+  const fromString: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => {
+    assertType(String, value);
+    return jsonStringToBrandedJson(value, options);
+  };
+  fromJson.parent = fromString;
+  const rawFrom = createFromOperation(fromJson);
+  const typeNode = createTypeNode<
+    BrandType<typeof Json, Name, JsonTypeError>
+  >(
+    name as Name,
+    Json,
+    fromUnknown,
+    is,
+    validateOutput,
+    rawFrom,
+    identity,
+    getTypeIssues,
+  );
+  const from: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => {
+    assertTypeOutput(name, is, validateOutput, value, options);
+    return ok(value);
+  };
+  from.parent = fromJson;
+  const fromInput = getTerminalRuntimeNode(from);
+  const BrandedJson = {
+    ...typeNode,
+    from,
+    orThrow: mapRuntimeResult(fromInput, getOrThrow),
+    orNull: mapRuntimeResult(fromInput, getOrNull),
+  } as BrandType<typeof Json, Name, JsonTypeError>;
 
   return [
     BrandedJson,
