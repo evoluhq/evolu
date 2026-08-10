@@ -2431,16 +2431,20 @@ interface ObjectTagOutputByName {
 }
 
 /**
- * Creates a realm-neutral {@link Type} for one object tag.
+ * Creates a realm-neutral {@link Type} that trusts an object's reported tag.
  *
- * Predefined built-in tags use their native Output type. A custom tag refines
- * the supplied Type and adds nominal evidence to its Output, so only a value
- * validated by the resulting Type is accepted by its typed operations.
+ * Predefined built-in tags expose their native Output type under the assumption
+ * that trusted code does not forge their tags. They do not verify native
+ * internal slots. A custom tag refines the supplied Type and adds nominal
+ * evidence to its Output, so only a value validated by the resulting Type is
+ * accepted by its typed operations.
  *
  * `Object.prototype.toString` recognizes legitimate built-ins from another
- * realm. A trusted object can customize the result with `Symbol.toStringTag`,
- * so this classification is intentionally forgeable and is not a security
- * boundary. Primitive Outputs are rejected at compile time.
+ * realm, but any object can customize the result with `Symbol.toStringTag`.
+ * Types returned by this factory therefore classify trusted values; they are
+ * not security boundaries. Passing a forged built-in tag violates the trust
+ * assumption of the predefined Type. Primitive Outputs are rejected at compile
+ * time.
  */
 export function createObjectTagType<Name extends keyof ObjectTagOutputByName>(
   name: ValidateConcreteTypeName<Name>,
@@ -2503,13 +2507,27 @@ const hasObjectTag = (value: unknown, expected: string): boolean =>
   (typeof value === "object" || typeof value === "function") &&
   globalThis.Object.prototype.toString.call(value) === `[object ${expected}]`;
 
-/** A realm-neutral JavaScript Date {@link Type}. */
+/**
+ * A realm-neutral JavaScript Date {@link Type} for trusted values.
+ *
+ * It trusts the reported object tag and does not verify Date internal slots.
+ */
 export const Date = /*#__PURE__*/ createObjectTagType("Date");
 
-/** A realm-neutral JavaScript Uint8Array {@link Type}. */
+/**
+ * A realm-neutral JavaScript Uint8Array {@link Type} for trusted values.
+ *
+ * It trusts the reported object tag and does not verify Uint8Array internal
+ * slots.
+ */
 export const Uint8Array = /*#__PURE__*/ createObjectTagType("Uint8Array");
 
-/** A realm-neutral JavaScript ArrayBuffer {@link Type}. */
+/**
+ * A realm-neutral JavaScript ArrayBuffer {@link Type} for trusted values.
+ *
+ * It trusts the reported object tag and does not verify ArrayBuffer internal
+ * slots.
+ */
 export const ArrayBuffer = /*#__PURE__*/ createObjectTagType("ArrayBuffer");
 
 /**

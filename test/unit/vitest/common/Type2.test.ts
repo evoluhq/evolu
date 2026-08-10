@@ -3274,7 +3274,7 @@ describe("createObjectTagType", () => {
     }
   });
 
-  test("classifies trusted object tags without claiming intrinsic hardening", () => {
+  test("trusts reported object tags without verifying native internal slots", () => {
     const forgedDate = { [globalThis.Symbol.toStringTag]: "Date" };
     const sabotagedSet = globalThis.Object.create(
       globalThis.Set.prototype,
