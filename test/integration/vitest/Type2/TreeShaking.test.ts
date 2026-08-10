@@ -558,12 +558,12 @@ describe("Type2 tree shaking", () => {
       {
         "localizeTypes(Label)": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2082,
-            "rawSizeInBytes": 4877,
+            "gzipSizeInBytes": 2105,
+            "rawSizeInBytes": 4953,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2106,
-            "rawSizeInBytes": 4971,
+            "gzipSizeInBytes": 2133,
+            "rawSizeInBytes": 5047,
           },
         },
       }

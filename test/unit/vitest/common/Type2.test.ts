@@ -16200,6 +16200,28 @@ describe("json", () => {
     }
   });
 
+  test("preserves one-parse Json parent validation after localization", () => {
+    const [ValueJson] = json(String, "ValueJson");
+    const LocalizedValueJson = localizeTypes(
+      { ValueJson },
+      {
+        test: {
+          Json: () => "Localized Json.",
+          String: () => "Localized String.",
+        },
+      },
+    ).test.ValueJson;
+    const encoded = Json.orThrow('"value"');
+    const parse = vi.spyOn(globalThis.JSON, "parse");
+
+    try {
+      expectOk(LocalizedValueJson.from.parent(encoded), encoded);
+      expect(parse).toHaveBeenCalledTimes(1);
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
   test("accepts only Types with a JSON-compatible canonical Input", () => {
     const compileTimeAssertions = () => {
       interface StringTree {

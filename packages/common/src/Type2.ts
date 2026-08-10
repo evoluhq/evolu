@@ -1014,6 +1014,15 @@ const withFormatError = (
     formatIssue,
   );
 
+  // Localization changes error rendering, not conversion semantics. Preserve
+  // specialized public input operations such as json's single-parse Json
+  // boundary. Private operation chains on derived still support composition.
+  globalThis.Object.assign(derived, {
+    from: source.from,
+    orThrow: source.orThrow,
+    orNull: source.orNull,
+  });
+
   localizedTypeBySource.set(source, derived);
   if (lazyTypeNodes.has(source)) lazyTypeNodes.add(derived);
 
@@ -2090,6 +2099,8 @@ type RuntimeTypeNode = Omit<TypeNode, typeof customFromSymbol> & {
   readonly formatError: TypeErrorFormatter<TypeError>;
   readonly from: RuntimeOperation<Result<unknown, TypeError>>;
   readonly to: RuntimeEncoder;
+  readonly orThrow: RuntimeOperation<unknown>;
+  readonly orNull: RuntimeOperation<unknown>;
   readonly [outputValidationSymbolType]: RuntimeOutputValidation;
   readonly [fromSymbolType]: RuntimeOperation<Result<unknown, TypeError>>;
   // Composed encoders reuse the implementation after their enclosing Output
@@ -8389,8 +8400,8 @@ type OmitKeyConcreteTypeError = CompileTimeError<
  * Creates a {@link Type} for {@link Result} values.
  *
  * Use this to validate Results crossing a storage, worker, API, or other
- * serialization boundary. The operation returns an outer validation Result.
- * Its successful value is the inner domain Result described by `okType` and
+ * serialization boundary. The operation returns an outer validation Result. Its
+ * successful value is the inner domain Result described by `okType` and
  * `errorType`.
  *
  * ### Example
@@ -8419,16 +8430,21 @@ type OmitKeyConcreteTypeError = CompileTimeError<
  *     : response.error.message;
  * };
  *
- * expect(describeResponse({
- *   ok: true,
- *   value: { timestamp: 42 },
- * })).toBe("Synced at 42");
- * expect(describeResponse({
- *   ok: false,
- *   error: { type: "SyncError", message: "Offline" },
- * })).toBe("Offline");
- * expect(describeResponse({ ok: true, value: { timestamp: -1 } }))
- *   .toBe("Invalid response");
+ * expect(
+ *   describeResponse({
+ *     ok: true,
+ *     value: { timestamp: 42 },
+ *   }),
+ * ).toBe("Synced at 42");
+ * expect(
+ *   describeResponse({
+ *     ok: false,
+ *     error: { type: "SyncError", message: "Offline" },
+ *   }),
+ * ).toBe("Offline");
+ * expect(describeResponse({ ok: true, value: { timestamp: -1 } })).toBe(
+ *   "Invalid response",
+ * );
  * ```
  *
  * @group Results
@@ -8571,8 +8587,8 @@ export function typed(
  *
  * Typed unions model mutually exclusive states as separate variants instead of
  * combinations of flags and optional properties. TypeScript narrows a union by
- * its literal `type` property. To enforce exhaustive handling, return from every
- * case of a value-producing switch or assert that the remaining value is
+ * its literal `type` property. To enforce exhaustive handling, return from
+ * every case of a value-producing switch or assert that the remaining value is
  * `never` in the `default` case of a side-effecting switch.
  *
  * ### Example
@@ -8703,14 +8719,18 @@ type TypedTypePropertyError = CompileTimeError<
  * };
  *
  * expect(describeNext({ ok: true, value: "item" })).toBe("Value: item");
- * expect(describeNext({
- *   ok: false,
- *   error: { type: "Done", done: "complete" },
- * })).toBe("Done: complete");
- * expect(describeNext({
- *   ok: false,
- *   error: { type: "ProducerError", message: "Offline" },
- * })).toBe("Error: Offline");
+ * expect(
+ *   describeNext({
+ *     ok: false,
+ *     error: { type: "Done", done: "complete" },
+ *   }),
+ * ).toBe("Done: complete");
+ * expect(
+ *   describeNext({
+ *     ok: false,
+ *     error: { type: "ProducerError", message: "Offline" },
+ *   }),
+ * ).toBe("Error: Offline");
  * ```
  *
  * @group Results
@@ -8754,8 +8774,8 @@ export function nextResult(
 /**
  * A {@link nextResult} Type with unknown value, error, and done components.
  *
- * Use `UnknownNextResult.is(value)` when only the outer Result structure must be
- * checked and its contained values intentionally remain unknown. Because the
+ * Use `UnknownNextResult.is(value)` when only the outer Result structure must
+ * be checked and its contained values intentionally remain unknown. Because the
  * unknown error component also accepts Done-shaped values, this Type cannot
  * distinguish normal completion from an arbitrary error. Use {@link nextResult}
  * with concrete error and done Types when that distinction must be validated.
