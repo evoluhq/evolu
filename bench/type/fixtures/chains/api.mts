@@ -1,4 +1,4 @@
-import type { TypeError } from "../../../../packages/common/src/Type2.ts";
+import type { TypeError } from "../../../../packages/common/src/Type.ts";
 
 export { err, ok } from "../../../../packages/common/src/Result.ts";
 export {
@@ -63,7 +63,7 @@ export {
   type UnionError,
   type UnionMemberError,
   type UnionType,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 export const formatBenchmarkTypeError = (error: TypeError): string =>
   error.type;

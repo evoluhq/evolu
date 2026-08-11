@@ -2,7 +2,7 @@
 
 The Type benchmark measures the TypeScript compiler cost of Evolu Type APIs. It compiles isolated Type programs with TypeScript 7's `tsc --extendedDiagnostics` to expose generic instantiation growth that ordinary correctness tests cannot detect.
 
-The current Type2 benchmark has committed deterministic baselines. Run it
+The current Type benchmark has committed deterministic baselines. Run it
 explicitly when changing Evolu Type declarations or benchmark infrastructure;
 it fails when compiler work regresses.
 
@@ -44,7 +44,7 @@ depend on it.
 - Scaling fixtures test whether brand-chain depth causes nonlinear growth or
   compiler depth failures.
 
-The Type2 suite contains twenty-six isolated depth-scaling workloads at depths
+The Type suite contains twenty-six isolated depth-scaling workloads at depths
 1, 2, 4, 8, 16, and 32, six width-scaling workloads at widths 2, 4, 8, 16,
 and 32, plus nineteen standalone workloads:
 
@@ -157,12 +157,12 @@ source generation.
 
 ## Roadmap
 
-The current brand-chain suite is sufficient for developing the Type2 semantic
+The current brand-chain suite is sufficient for developing the Type semantic
 core. It measures the parent-derived error union, callable `from.parent`
 suffixes, and the difference between manually declared Types and factory
 inference across a depth curve.
 
-Development should extend the benchmark together with the Type2 API:
+Development should extend the benchmark together with the Type API:
 
 1. Use the existing suite to evaluate changes to the core Type and brand
    declarations. Isolate alternative factory signatures in separate fixtures
@@ -178,9 +178,8 @@ Development should extend the benchmark together with the Type2 API:
    shape are stable. Use stress fixtures to find compiler limits only when a
    scaling curve or real API composition indicates that the limit matters.
 
-TODO: Once Type2 is publicly exported, add consumer fixtures that import it
-through `@evolu/common` so the benchmark also measures the published declaration
-and export surface.
+TODO: Add consumer fixtures that import Type through `@evolu/common` so the
+benchmark also measures the published declaration and export surface.
 
 ## Metrics
 

@@ -7,7 +7,7 @@ import {
   type LazyType,
   type ObjectError,
   type TypeOfError,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 
 interface StringTree {
   readonly value: string;

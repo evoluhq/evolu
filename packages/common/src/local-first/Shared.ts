@@ -42,7 +42,7 @@ import {
   type Mutex,
   type Task,
 } from "../Task.ts";
-import type { ExtractTyped, Id, Name, Typed } from "../Type2.ts";
+import type { ExtractTyped, Id, Name, Typed } from "../Type.ts";
 import type { Callback } from "../Types.ts";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.ts";
 import type {

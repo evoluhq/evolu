@@ -6,7 +6,7 @@
 
 import { err, ok, tryAsync, type Err, type Result } from "./Result.ts";
 import type { AbortError, retry, Task, timeout } from "./Task.ts";
-import type { Typed } from "./Type2.ts";
+import type { Typed } from "./Type.ts";
 import type { Awaitable } from "./Types.ts";
 
 /**

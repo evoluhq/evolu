@@ -7,7 +7,7 @@ import {
 import {
   type NonNegativeInt,
   type PositiveInt,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 describe("Relation", () => {
   test("add and iterateA/iterateB", () => {

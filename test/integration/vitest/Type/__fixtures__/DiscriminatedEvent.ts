@@ -2,7 +2,7 @@ import {
   discriminatedUnion,
   String,
   typed,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 
 const Created = typed("Created", { value: String });
 const Deleted = typed("Deleted", { value: String });

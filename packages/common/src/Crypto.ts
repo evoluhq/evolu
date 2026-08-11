@@ -22,7 +22,7 @@ import {
   Uint8Array,
   type Typed,
   zeroNonNegativeInt,
-} from "./Type2.ts";
+} from "./Type.ts";
 
 export interface RandomBytes {
   /**

@@ -2,7 +2,7 @@ import {
   brand,
   object,
   String,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 import { err, ok } from "../../../../../packages/common/src/Result.ts";
 
 const NonEmptyString = /*#__PURE__*/ brand(

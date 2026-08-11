@@ -10,7 +10,7 @@ import {
   type ObjectError,
   type ObjectPropertiesError,
   type TypeOfError,
-} from "../../../packages/common/src/Type2.ts";
+} from "../../../packages/common/src/Type.ts";
 import {
   NumberFromString,
   type NumberFromStringError,

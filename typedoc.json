@@ -6,7 +6,7 @@
   "exclude": ["packages/typescript-config"],
   "packageOptions": {
     "entryPoints": ["src/**/*.ts"],
-    "exclude": ["src/**/index.ts", "src/Type.ts"]
+    "exclude": ["src/**/index.ts"]
   },
   "plugin": ["typedoc-plugin-markdown", "./scripts/typedoc-plugin-evolu.mts"],
   "publicPath": "/docs/api-reference",

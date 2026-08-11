@@ -3,7 +3,7 @@ import {
   String,
   transform,
   type TypeValueError,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 import {
   err,
   ok,

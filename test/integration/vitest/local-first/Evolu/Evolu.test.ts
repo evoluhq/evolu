@@ -52,8 +52,8 @@ import {
   NonEmptyTrimmedString100,
   nullOr,
   testName,
-} from "../../../../../packages/common/src/Type2.ts";
-import type { ExtractTyped } from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
+import type { ExtractTyped } from "../../../../../packages/common/src/Type.ts";
 import { testCreateWebSocket } from "../../../../../packages/common/src/WebSocket.ts";
 import {
   createBroadcastChannel,

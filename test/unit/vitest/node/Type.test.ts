@@ -15,7 +15,7 @@ import {
   tuple,
   typed,
   Uint8Array,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 test("accepts legitimate structured values from another realm by identity", () => {
   const Model = object({ name: String });

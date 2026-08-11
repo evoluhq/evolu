@@ -23,7 +23,7 @@ import {
   id,
   NonEmptyTrimmedString100,
   nullOr,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 import { setupSqlite } from "../../_deps.ts";
 
 const TodoId = id("Todo");

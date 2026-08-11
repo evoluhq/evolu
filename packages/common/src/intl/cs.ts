@@ -52,7 +52,7 @@ import type {
   TypeOfError,
   UInt64Error,
   UnionError,
-} from "../Type2.ts";
+} from "../Type.ts";
 
 const formatValueMustBe = (value: unknown, expected: string): string =>
   `Hodnota ${safelyStringifyUnknownValue(value)} musí být ${expected}.`;

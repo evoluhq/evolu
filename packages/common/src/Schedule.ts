@@ -34,7 +34,7 @@ import {
   type NonNegativeInt,
   PositiveInt,
   type Ratio,
-} from "./Type2.ts";
+} from "./Type.ts";
 import type { Predicate } from "./Types.ts";
 
 /**

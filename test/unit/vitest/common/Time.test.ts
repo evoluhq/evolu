@@ -23,7 +23,7 @@ import {
 import {
   type DateIso,
   NonNaNNumber,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 const negativeMillisCause = {
   type: "NonNegative",

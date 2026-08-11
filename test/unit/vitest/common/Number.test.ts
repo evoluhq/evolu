@@ -21,7 +21,7 @@ import {
   onePositiveInt,
   PositiveInt,
   Ratio,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 test("Percentage accepts canonical literals or Ratio", () => {
   expectTypeOf<"0%">().toExtend<PercentageLiteral>();

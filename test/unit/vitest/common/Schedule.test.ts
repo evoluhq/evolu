@@ -61,7 +61,7 @@ import {
   type DateIso,
   NonNegativeInt,
   Ratio,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {

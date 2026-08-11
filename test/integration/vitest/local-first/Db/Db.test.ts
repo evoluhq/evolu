@@ -64,8 +64,8 @@ import {
   testName,
   type Id,
   type Name,
-} from "../../../../../packages/common/src/Type2.ts";
-import type { ExtractTyped } from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
+import type { ExtractTyped } from "../../../../../packages/common/src/Type.ts";
 import {
   createMessagePort,
   createWorker,

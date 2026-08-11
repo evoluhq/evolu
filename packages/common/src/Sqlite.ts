@@ -32,7 +32,7 @@ import {
   type Typed,
   Uint8Array,
   union,
-} from "./Type2.ts";
+} from "./Type.ts";
 
 /**
  * Platform-agnostic SQLite wrapping a {@link SqliteDriver}.

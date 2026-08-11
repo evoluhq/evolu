@@ -1,4 +1,4 @@
-import { set, String } from "../../../../../packages/common/src/Type2.ts";
+import { set, String } from "../../../../../packages/common/src/Type.ts";
 
 const Strings = set(String);
 

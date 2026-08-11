@@ -2,7 +2,7 @@ import {
   Number,
   String,
   tuple,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 
 const Pair = tuple(String, Number);
 

@@ -34,7 +34,7 @@ import {
   type Typed,
   type TypeError,
   type UnionType,
-} from "../Type2.ts";
+} from "../Type.ts";
 import type { Awaitable } from "../Types.ts";
 import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.ts";
 import { OwnerId, OwnerWriteKey } from "./Owner.ts";

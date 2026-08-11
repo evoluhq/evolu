@@ -2,7 +2,7 @@ import {
   Number,
   record,
   String,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 
 const Values = record(String, Number);
 

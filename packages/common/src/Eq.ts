@@ -10,7 +10,7 @@ import type {
   JsonObject,
   JsonValue,
   JsonValueInput,
-} from "./Type2.ts";
+} from "./Type.ts";
 
 /**
  * Compares two values of the same type `A` for equality.

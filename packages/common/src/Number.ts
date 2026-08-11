@@ -16,7 +16,7 @@ import {
   NonNegativeInt,
   PositiveInt,
   Ratio,
-} from "./Type2.ts";
+} from "./Type.ts";
 import type {
   Digit,
   Digit1To9,

@@ -106,7 +106,7 @@ import {
   type RecordType,
   type Typed,
   type TypedType,
-} from "./Type2.ts";
+} from "./Type.ts";
 import type {
   Awaitable,
   isPromiseLike,

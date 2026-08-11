@@ -52,7 +52,7 @@ import {
   idToIdBytes,
   type Name,
   onePositiveInt,
-} from "../Type2.ts";
+} from "../Type.ts";
 import type {
   CreateBroadcastChannelDep,
   NativeMessagePort,

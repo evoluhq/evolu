@@ -39,7 +39,7 @@ import {
   Name,
   type TypeError,
   UrlSafeString,
-} from "../Type2.ts";
+} from "../Type.ts";
 import type {
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,

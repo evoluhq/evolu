@@ -228,7 +228,7 @@ import {
   type Typed,
   uint8ArrayToBase64Url,
   zeroNonNegativeInt,
-} from "../Type2.ts";
+} from "../Type.ts";
 import type { Predicate } from "../Types.ts";
 import {
   type Owner,

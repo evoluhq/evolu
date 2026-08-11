@@ -7,7 +7,7 @@ import {
   record,
   typed,
   undefinedOr,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 
 const Todo = typed("Todo", {
   title: NonEmptyTrimmedString100,

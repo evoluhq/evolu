@@ -4,7 +4,7 @@
  * @module
  */
 
-import { type InferType, typed, type TypedType, Unknown } from "./Type2.ts";
+import { type InferType, typed, type TypedType, Unknown } from "./Type.ts";
 
 /**
  * A wrapper for unknown errors caught at runtime.

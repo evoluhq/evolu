@@ -48,6 +48,60 @@ Input, Output, CanonicalInput, validation errors, and composition. This supports
 lawful codecs such as `Int64FromInt64String` and `DateIsoFromDate` rather than
 limiting Types to validation-only refinements.
 
+#### JSON codecs
+
+Added the `json(Type, Name)` factory for creating a branded `Json` Type that
+stores another Type as JSON text. It statically requires the supplied Type's
+`CanonicalInput` to be JSON-compatible and returns total Type-to-Json and
+Json-to-Type conversions.
+
+```ts
+// Age is built in; its definition is shown to make the constraint explicit.
+const Age = brand("Age", lessThan(200)(NonNegativeInt));
+
+const Person = object({
+  name: String,
+  age: Age,
+});
+type Person = typeof Person.Output;
+
+const [PersonJson, personToPersonJson, personJsonToPerson] = json(
+  Person,
+  "PersonJson",
+);
+type PersonJson = typeof PersonJson.Output;
+
+const person = Person.orThrow({ name: "Ada", age: 42 });
+const stored = personToPersonJson(person);
+
+expectTypeOf(stored).toEqualTypeOf<PersonJson>();
+expect(stored).toBe('{"name":"Ada","age":42}');
+
+const restored = personJsonToPerson(stored);
+
+expectTypeOf(restored).toEqualTypeOf<Person>();
+expect(restored).toEqual(person);
+```
+
+The branded Type validates both the JSON text and the represented Type before
+accepting unknown storage values:
+
+```ts
+expectOk(PersonJson.fromUnknown('{"name":"Ada","age":42}'), stored);
+
+const invalid = PersonJson.fromUnknown('{"name":"Ada","age":200}');
+
+assert(!invalid.ok);
+expect(PersonJson.formatError(invalid.error)).toBe(
+  "The value 200 must be less than 200.",
+);
+```
+
+The factory encodes through the supplied Type's canonical representation,
+rejects Types without a JSON-safe `CanonicalInput`, validates branded JSON
+against the represented Type, and parses text only once in the generated Type's
+specialized Json-parent operation.
+
 - Added Type-owned `formatError` and the `localizeTypes` derivation API. Every
   Type can format its structured errors directly, while `localizeTypes` creates
   fully typed localized Type collections.
@@ -97,10 +151,6 @@ limiting Types to validation-only refinements.
   child Types.
 - Made recursive validation and canonical JSON encoding stack-safe, including
   direct and mutually recursive `lazy` Types.
-- Made `json(Type, Name)` encode through the supplied Type's canonical
-  representation, reject Types without a JSON-safe `CanonicalInput`, validate
-  branded JSON against the represented Type, and parse text only once in the
-  generated Type's specialized Json-parent operation.
 
 ### Fixed
 

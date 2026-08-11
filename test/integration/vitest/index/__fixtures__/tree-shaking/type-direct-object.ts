@@ -2,7 +2,7 @@ import {
   Number,
   object,
   String,
-} from "../../../../../../packages/common/dist/src/Type2.js";
+} from "../../../../../../packages/common/dist/src/Type.js";
 
 const Person = object({
   name: String,

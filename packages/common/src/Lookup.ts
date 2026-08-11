@@ -7,7 +7,7 @@
 import { assert } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import { isPlainObject } from "./Object.ts";
-import { Uint8Array, uint8ArrayToBase64Url } from "./Type2.ts";
+import { Uint8Array, uint8ArrayToBase64Url } from "./Type.ts";
 
 /**
  * Derives the native lookup key used by lookup-based collections.

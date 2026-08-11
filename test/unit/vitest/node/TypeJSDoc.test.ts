@@ -4,7 +4,7 @@ import { test } from "vitest";
 
 const repositoryDirectory = resolve(import.meta.dirname, "../../../..");
 
-test("Type2 documentation examples compile and run", async () => {
+test("Type documentation examples compile and run", async () => {
   await testJSDocExamples({
     aliases: {
       "@evolu/common": join(
@@ -21,7 +21,7 @@ test("Type2 documentation examples compile and run", async () => {
       ),
     },
     cwd: repositoryDirectory,
-    include: ["packages/common/src/Type2.ts", "packages/common/src/intl/cs.ts"],
+    include: ["packages/common/src/Type.ts", "packages/common/src/intl/cs.ts"],
     typescriptPackage: "@typescript/native",
   });
 }, 30000);

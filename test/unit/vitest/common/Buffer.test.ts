@@ -3,7 +3,7 @@ import {
   BufferError,
   createBuffer,
 } from "../../../../packages/common/src/Buffer.ts";
-import { NonNegativeInt } from "../../../../packages/common/src/Type2.ts";
+import { NonNegativeInt } from "../../../../packages/common/src/Type.ts";
 
 test("BufferError should be instanceof Error", () => {
   const error = new BufferError("test error");

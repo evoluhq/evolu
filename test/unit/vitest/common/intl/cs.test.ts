@@ -10,7 +10,7 @@ import {
   type RecordError,
   type TupleError,
   type TypeOfError,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
 describe("Czech Type error formatters", () => {

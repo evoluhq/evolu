@@ -32,7 +32,7 @@ import {
   object,
   type ObjectType,
   type UnionType,
-} from "../Type2.ts";
+} from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
 import type { AppOwner } from "./Owner.ts";
 import { OwnerId } from "./Owner.ts";

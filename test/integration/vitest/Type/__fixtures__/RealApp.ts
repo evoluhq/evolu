@@ -18,7 +18,7 @@ import {
   typed,
   undefinedOr,
   union,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 
 const Theme = union("System", "Light", "Dark");
 

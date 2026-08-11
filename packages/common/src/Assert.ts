@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { Type } from "./Type2.ts";
+import type { Type } from "./Type.ts";
 
 /**
  * Ensures a condition is true, throwing an error with the provided message if

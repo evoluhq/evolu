@@ -438,7 +438,7 @@ await runMain(
       : { ...fixture, failure: result.error };
   });
 
-  console.log(`Type2 compiler benchmark (Version ${typescriptVersion})`);
+  console.log(`Type compiler benchmark (Version ${typescriptVersion})`);
   console.log(`Compiler concurrency: ${compilerConcurrency}`);
   if (filteredBenchmark) {
     console.log(`Fixture filters: ${fixtureFilters.join(", ")}`);

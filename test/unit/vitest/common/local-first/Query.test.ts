@@ -19,7 +19,7 @@ import { sqliteQueryStringToSqliteQuery } from "../../../../../packages/common/s
 import {
   id,
   NonEmptyTrimmedString100,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 
 const PersonId = id("Person");
 const PetId = id("Pet");

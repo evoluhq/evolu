@@ -6,7 +6,7 @@
 
 import type { RandomBytesDep } from "./Crypto.ts";
 import type { Result } from "./Result.ts";
-import { createId, Id } from "./Type2.ts";
+import { createId, Id } from "./Type.ts";
 import type { Callback } from "./Types.ts";
 
 /**

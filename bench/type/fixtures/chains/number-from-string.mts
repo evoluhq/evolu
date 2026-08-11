@@ -7,7 +7,7 @@ import {
   transform,
   type TypeError,
 } from "./api.mts";
-import { Number } from "../../../../packages/common/src/Type2.ts";
+import { Number } from "../../../../packages/common/src/Type.ts";
 
 export interface NumberFromStringError
   extends TypeError<"NumberFromString"> {

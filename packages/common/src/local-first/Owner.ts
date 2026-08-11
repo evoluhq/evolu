@@ -26,7 +26,7 @@ import {
   Mnemonic,
   NonNegativeInt,
   type Typed,
-} from "../Type2.ts";
+} from "../Type.ts";
 import type { EncryptedDbChange, Storage } from "./Storage.ts";
 import { TimestampBytes } from "./Timestamp.ts";
 

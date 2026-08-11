@@ -22,7 +22,7 @@ export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
  * Object.prototype` so it also works for plain objects coming from another
  * JavaScript realm.
  *
- * TODO: deprecated Use `Object.is` from Type2. Define a dedicated Type when
+ * TODO: deprecated Use `Object.is` from Type. Define a dedicated Type when
  * another object domain is required.
  *
  * ### Example

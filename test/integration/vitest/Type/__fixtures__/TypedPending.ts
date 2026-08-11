@@ -1,4 +1,4 @@
-import { typed } from "../../../../../packages/common/src/Type2.ts";
+import { typed } from "../../../../../packages/common/src/Type.ts";
 
 const Pending = typed("Pending");
 

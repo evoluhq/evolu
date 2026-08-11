@@ -10,7 +10,7 @@ import {
   type InferErrors,
   type TypeError,
 } from "./chains/api.mts";
-import { Number } from "../../../packages/common/src/Type2.ts";
+import { Number } from "../../../packages/common/src/Type.ts";
 
 interface NonEmptyTitleError extends TypeError<"NonEmptyTitle"> {
   readonly value: string;

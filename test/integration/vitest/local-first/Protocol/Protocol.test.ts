@@ -88,7 +88,7 @@ import {
   NonNegativeInt,
   PositiveInt,
   zeroNonNegativeInt,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 import { setupSqliteAndRelayStorage } from "../../_deps.ts";
 import {
   maxTimestamp,

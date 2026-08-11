@@ -243,7 +243,7 @@ import {
   type UnionMemberError,
   type UnionType,
   type ValidationOptions,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 const formatTestTypeError: TypeErrorFormatter<TypeError> = (error) =>
   error.type;
@@ -314,13 +314,12 @@ describe("Type", () => {
   });
 
   test("exposes every non-Lazy Type name through introspection", () => {
-    type Type2Module =
-      typeof import("../../../../packages/common/src/Type2.ts");
+    type TypeModule = typeof import("../../../../packages/common/src/Type.ts");
     type ExportedTypeKey = {
-      readonly [Key in keyof Type2Module]: Type2Module[Key] extends TypeNode
+      readonly [Key in keyof TypeModule]: TypeModule[Key] extends TypeNode
         ? Key
         : never;
-    }[keyof Type2Module];
+    }[keyof TypeModule];
     type PropertyType<Property> =
       Property extends OptionalProperty<infer T extends TypeNode>
         ? T
@@ -6008,9 +6007,9 @@ describe("BrandFactory", () => {
 
       describe("Type", () => {
         test("does not predefine NonEmptyString", () => {
-          type Type2Exports =
-            keyof typeof import("../../../../packages/common/src/Type2.ts");
-          type RemovedStringExports = Extract<Type2Exports, "NonEmptyString">;
+          type TypeExports =
+            keyof typeof import("../../../../packages/common/src/Type.ts");
+          type RemovedStringExports = Extract<TypeExports, "NonEmptyString">;
 
           expectTypeOf<RemovedStringExports>().toEqualTypeOf<never>();
         });
@@ -6065,10 +6064,10 @@ describe("BrandFactory", () => {
 
       describe("Type", () => {
         test("exports only the recommended bounded String Types", () => {
-          type Type2Exports =
-            keyof typeof import("../../../../packages/common/src/Type2.ts");
+          type TypeExports =
+            keyof typeof import("../../../../packages/common/src/Type.ts");
           type RemovedBoundedStringExports = Extract<
-            Type2Exports,
+            TypeExports,
             | "String100"
             | "String1000"
             | "NonEmptyString100"

@@ -1,4 +1,4 @@
-import { String } from "../../../../../packages/common/src/Type2.ts";
+import { String } from "../../../../../packages/common/src/Type.ts";
 
 export default (): string => {
   const result = String.fromUnknown(42);

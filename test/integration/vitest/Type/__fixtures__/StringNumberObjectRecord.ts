@@ -3,7 +3,7 @@ import {
   object,
   record,
   String,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 
 const Model = object({ count: Number }, record(String, Number));
 

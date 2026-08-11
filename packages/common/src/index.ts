@@ -44,7 +44,7 @@ export * from "./Task.ts";
 export * from "./Test.ts";
 export * from "./Time.ts";
 export * from "./Tracer.ts";
-export * from "./Type2.ts";
+export * from "./Type.ts";
 export * from "./Types.ts";
 export * from "./WebSocket.ts";
 export * from "./Worker.ts";

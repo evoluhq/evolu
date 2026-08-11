@@ -1,4 +1,4 @@
-import { array, String } from "../../../../../packages/common/src/Type2.ts";
+import { array, String } from "../../../../../packages/common/src/Type.ts";
 
 const Strings = array(String);
 

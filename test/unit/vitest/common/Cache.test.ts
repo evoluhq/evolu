@@ -3,7 +3,7 @@ import { createLruCache } from "../../../../packages/common/src/Cache.ts";
 import {
   onePositiveInt,
   PositiveInt,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 test("LRU cache - basic set and get", () => {
   const cache = createLruCache<string, number>(PositiveInt.orThrow(3));

@@ -58,6 +58,16 @@ describe("tree-shaking", () => {
             "rawSizeInBytes": 23553,
           },
         },
+        "type-direct-object": {
+          "vite@8.2.0": {
+            "gzipSizeInBytes": 2830,
+            "rawSizeInBytes": 7754,
+          },
+          "webpack@5.109.2": {
+            "gzipSizeInBytes": 2847,
+            "rawSizeInBytes": 7830,
+          },
+        },
         "type-object": {
           "vite@8.2.0": {
             "gzipSizeInBytes": 3192,
@@ -66,16 +76,6 @@ describe("tree-shaking", () => {
           "webpack@5.109.2": {
             "gzipSizeInBytes": 3220,
             "rawSizeInBytes": 8879,
-          },
-        },
-        "type2-object": {
-          "vite@8.2.0": {
-            "gzipSizeInBytes": 2830,
-            "rawSizeInBytes": 7754,
-          },
-          "webpack@5.109.2": {
-            "gzipSizeInBytes": 2847,
-            "rawSizeInBytes": 7830,
           },
         },
       }

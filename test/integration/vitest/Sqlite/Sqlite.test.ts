@@ -30,7 +30,7 @@ import {
   sleep,
   testCreateRun,
 } from "../../../../packages/common/src/Task.ts";
-import { testName } from "../../../../packages/common/src/Type2.ts";
+import { testName } from "../../../../packages/common/src/Type.ts";
 import { setupSqlite } from "../_deps.ts";
 
 describe("eqSqliteValue", () => {

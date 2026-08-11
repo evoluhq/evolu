@@ -27,7 +27,7 @@ import {
   String,
   type Typed,
   Uint8Array,
-} from "../Type2.ts";
+} from "../Type.ts";
 
 export interface TimestampConfig {
   /**

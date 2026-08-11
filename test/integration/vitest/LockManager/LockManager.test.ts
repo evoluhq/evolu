@@ -12,7 +12,7 @@ import {
   testCreateRun,
   yieldNow,
 } from "../../../../packages/common/src/Task.ts";
-import { Name } from "../../../../packages/common/src/Type2.ts";
+import { Name } from "../../../../packages/common/src/Type.ts";
 
 describe("testCreateLockManager", () => {
   test("isolates same visible names across wrappers", async () => {

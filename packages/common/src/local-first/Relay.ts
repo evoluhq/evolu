@@ -17,7 +17,7 @@ import { err, ok } from "../Result.ts";
 import type { SqliteDep } from "../Sqlite.ts";
 import { sql } from "../Sqlite.ts";
 import { createMutexByKey } from "../Task.ts";
-import { Name, PositiveInt, uint8ArrayToBase64Url } from "../Type2.ts";
+import { Name, PositiveInt, uint8ArrayToBase64Url } from "../Type.ts";
 import { isPromiseLike, type Awaitable } from "../Types.ts";
 import {
   OwnerId,

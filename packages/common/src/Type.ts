@@ -833,9 +833,9 @@ export const assertType: <T extends TypeNode>(
   type: T,
   value: unknown,
 ) => asserts value is T["Output"] = (type, value) => {
-  // TODO: When Type2 replaces Type, make assert prepend "Expected " and accept
-  // an optional third cause argument. Then use it here and migrate every other
-  // assertion to pass an expectation fragment.
+  // TODO: Make assert prepend "Expected " and accept an optional third cause
+  // argument. Then use it here and migrate every other assertion to pass an
+  // expectation fragment.
   const runtimeType = type as unknown as RuntimeTypeNode;
   const result = runtimeType[outputValidationSymbol](value);
 

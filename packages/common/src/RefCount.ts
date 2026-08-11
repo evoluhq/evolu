@@ -7,7 +7,7 @@
 import { assert } from "./Assert.ts";
 import { disposable, identity } from "./Function.ts";
 import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.ts";
-import { NonNegativeInt, PositiveInt, zeroNonNegativeInt } from "./Type2.ts";
+import { NonNegativeInt, PositiveInt, zeroNonNegativeInt } from "./Type.ts";
 
 /**
  * Reference count for one retained value.

@@ -1,4 +1,4 @@
-import { instanceOf } from "../../../../../packages/common/src/Type2.ts";
+import { instanceOf } from "../../../../../packages/common/src/Type.ts";
 
 const ErrorInstance = instanceOf(globalThis.Error);
 

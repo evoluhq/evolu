@@ -27,7 +27,7 @@ import { err, ok } from "../../../../packages/common/src/Result.ts";
 import {
   NonEmptyTrimmedString,
   PositiveInt,
-} from "../../../../packages/common/src/Type2.ts";
+} from "../../../../packages/common/src/Type.ts";
 
 describe("Types", () => {
   test("NonEmptyArray requires at least one element", () => {

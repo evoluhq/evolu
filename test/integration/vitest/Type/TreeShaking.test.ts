@@ -310,7 +310,7 @@ const fixtures: ReadonlyArray<{
   },
 ];
 
-describe("Type2 tree shaking", () => {
+describe("Type tree shaking", () => {
   test("bundles a realistic app using common Types", async () => {
     await rm(outputDirectory, { recursive: true, force: true });
     const results = await testBundle({

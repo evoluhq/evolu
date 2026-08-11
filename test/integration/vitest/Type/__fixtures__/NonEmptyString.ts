@@ -2,7 +2,7 @@ import {
   brand,
   String,
   type TypeValueError,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 import { err, ok } from "../../../../../packages/common/src/Result.ts";
 
 export interface NonEmptyStringError extends TypeValueError<"NonEmptyString"> {

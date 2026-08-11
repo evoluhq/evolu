@@ -2,7 +2,7 @@ import {
   String,
   localizeTypes,
   minLength,
-} from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type.ts";
 import { cs } from "@evolu/common/intl";
 
 const Label = /*#__PURE__*/ minLength(1)(String);
