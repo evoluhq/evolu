@@ -54,8 +54,6 @@ import {
   explicitAbortReason,
   firstN,
   firstNSettled,
-  map,
-  mapSettled,
   prioritized,
   race,
   repeat,
@@ -80,8 +78,6 @@ import {
   type InferFiberDeps,
   type InferFiberErr,
   type InferFiberOk,
-  type InferMapOk,
-  type InferMapSettled,
   type InferTaskDeps,
   type InferTaskDone,
   type InferTaskErr,
@@ -3484,6 +3480,7 @@ describe("collection helpers", () => {
     for (const helper of [
       {
         name: "all",
+        mapsValues: false,
         resultMode: "values",
         errorMode: "failFast",
         fromArray: (tasks: ReadonlyArray<AnyTask>) => all(tasks),
@@ -3491,6 +3488,7 @@ describe("collection helpers", () => {
       },
       {
         name: "allSettled",
+        mapsValues: false,
         resultMode: "results",
         errorMode: "settled",
         fromArray: (tasks: ReadonlyArray<AnyTask>) => allSettled(tasks),
@@ -3498,22 +3496,24 @@ describe("collection helpers", () => {
           allSettled(tasks),
       },
       {
-        name: "map",
+        name: "all mapping overload",
+        mapsValues: true,
         resultMode: "values",
         errorMode: "failFast",
         fromArray: (tasks: ReadonlyArray<AnyTask>) =>
-          map(tasks, (task) => task),
+          all(tasks, (task) => task),
         fromRecord: (tasks: Readonly<Record<string, AnyTask>>) =>
-          map(tasks, (task) => task),
+          all(tasks, (task) => task),
       },
       {
-        name: "mapSettled",
+        name: "allSettled mapping overload",
+        mapsValues: true,
         resultMode: "results",
         errorMode: "settled",
         fromArray: (tasks: ReadonlyArray<AnyTask>) =>
-          mapSettled(tasks, (task) => task),
+          allSettled(tasks, (task) => task),
         fromRecord: (tasks: Readonly<Record<string, AnyTask>>) =>
-          mapSettled(tasks, (task) => task),
+          allSettled(tasks, (task) => task),
       },
     ] as const) {
       const expectedArrayValue = (
@@ -3532,10 +3532,7 @@ describe("collection helpers", () => {
             )
           : values;
 
-      const taskNoun =
-        helper.name === "map" || helper.name === "mapSettled"
-          ? "mapped Tasks"
-          : "Tasks";
+      const taskNoun = helper.mapsValues ? "mapped Tasks" : "Tasks";
       const taskSingular = taskNoun === "Tasks" ? "Task" : "mapped Task";
 
       describe(helper.name, () => {
@@ -3618,7 +3615,7 @@ describe("collection helpers", () => {
             });
           }
 
-          if (helper.name === "map" || helper.name === "mapSettled") {
+          if (helper.mapsValues) {
             test("maps values to Tasks", async () => {
               interface Deps {
                 readonly prefix: string;
@@ -3629,7 +3626,7 @@ describe("collection helpers", () => {
 
               await using run = createRun<Deps>({ prefix: "#" });
 
-              if (helper.name === "map") {
+              if (helper.errorMode === "failFast") {
                 const calls: Array<ReadonlyArray<unknown>> = [];
                 const mapper = (
                   ...args: [number, ...ReadonlyArray<unknown>]
@@ -3638,7 +3635,7 @@ describe("collection helpers", () => {
                   const [value] = args;
                   return (run) => ok(`${run.deps.prefix}${value}`);
                 };
-                const task = map([1, 2, 3], mapper);
+                const task = all([1, 2, 3], mapper);
 
                 expect(calls).toEqual([
                   [1, 0],
@@ -3664,7 +3661,7 @@ describe("collection helpers", () => {
                       ? err(taskError)
                       : ok(`${run.deps.prefix}${value}`);
                 };
-                const task = mapSettled([1, 2, 3], mapper);
+                const task = allSettled([1, 2, 3], mapper);
 
                 expect(calls).toEqual([
                   [1, 0],
@@ -3694,7 +3691,7 @@ describe("collection helpers", () => {
 
               const values = { one: 1, two: 2, three: 3 } as const;
 
-              if (helper.name === "map") {
+              if (helper.errorMode === "failFast") {
                 const calls: Array<ReadonlyArray<unknown>> = [];
                 const mapper = (
                   ...args: [number, ...ReadonlyArray<unknown>]
@@ -3703,7 +3700,7 @@ describe("collection helpers", () => {
                   const [value] = args;
                   return (run) => ok(`${run.deps.prefix}${value}`);
                 };
-                const task = map(values, mapper);
+                const task = all(values, mapper);
 
                 expect(calls).toEqual([
                   [1, "one"],
@@ -3731,7 +3728,7 @@ describe("collection helpers", () => {
                       ? err(taskError)
                       : ok(`${run.deps.prefix}${value}`);
                 };
-                const task = mapSettled(values, mapper);
+                const task = allSettled(values, mapper);
 
                 expect(calls).toEqual([
                   [1, "one"],
@@ -4099,14 +4096,14 @@ describe("collection helpers", () => {
       });
     }
 
-    test("map and mapSettled throw when mapper defects", () => {
+    test("all and allSettled mapping overloads throw when mapper defects", () => {
       const defect = new Error("boom");
       const defectingMapper = (): Task<string> => {
         throw defect;
       };
 
-      expect(() => map([1], defectingMapper)).toThrow(defect);
-      expect(() => mapSettled([1], defectingMapper)).toThrow(defect);
+      expect(() => all([1], defectingMapper)).toThrow(defect);
+      expect(() => allSettled([1], defectingMapper)).toThrow(defect);
     });
   });
 
@@ -4462,25 +4459,7 @@ describe("collection helpers", () => {
       });
     });
 
-    test("InferMapOk maps input arrays and records to mapped Task Ok values", () => {
-      interface MyError {
-        readonly type: "MyError";
-      }
-
-      type MappingTask = Task<number, MyError, DbDep>;
-
-      expectTypeOf<
-        InferMapOk<readonly [string, boolean], MappingTask>
-      >().toEqualTypeOf<readonly [number, number]>();
-      expectTypeOf<
-        InferMapOk<ReadonlyArray<string>, MappingTask>
-      >().toEqualTypeOf<ReadonlyArray<number>>();
-      expectTypeOf<
-        InferMapOk<{ readonly a: string; readonly b: boolean }, MappingTask>
-      >().toEqualTypeOf<{ readonly a: number; readonly b: number }>();
-    });
-
-    describe("map", () => {
+    describe("all mapping overload", () => {
       describe("returns", () => {
         test("mapped tuple values", () => {
           interface Deps {
@@ -4490,7 +4469,7 @@ describe("collection helpers", () => {
             readonly type: "TaskError";
           }
 
-          const task = map(
+          const task = all(
             [1, 2, 3],
             (value): Task<string, TaskError, Deps> =>
               (run) =>
@@ -4504,7 +4483,7 @@ describe("collection helpers", () => {
 
         test("error union", () => {
           const taskError = { type: "TaskError" } as const;
-          const task = map(
+          const task = all(
             [1, 2],
             (value): Task<string, typeof taskError> =>
               () =>
@@ -4520,21 +4499,21 @@ describe("collection helpers", () => {
       describe("accepts", () => {
         test("an empty array", () => {
           const values: ReadonlyArray<number> = emptyArray;
-          const task = map(values, (value) => () => ok(String(value)));
+          const task = all(values, (value) => () => ok(String(value)));
 
           expectTypeOf(task).toEqualTypeOf<Task<ReadonlyArray<string>>>();
         });
 
         test("an array", () => {
           const values: ReadonlyArray<number> = [1, 2];
-          const task = map(values, (value) => () => ok(String(value)));
+          const task = all(values, (value) => () => ok(String(value)));
 
           expectTypeOf(task).toEqualTypeOf<Task<ReadonlyArray<string>>>();
         });
 
         test("an array mapper with indexes", () => {
           const values = ["Ada", "Grace"] as const;
-          const task = map(values, (value, index) => {
+          const task = all(values, (value, index) => {
             expectTypeOf(value).toEqualTypeOf<"Ada" | "Grace">();
             expectTypeOf(index).toEqualTypeOf<number>();
             return () => ok(`${index}:${value}`);
@@ -4545,7 +4524,7 @@ describe("collection helpers", () => {
 
         test("a non-empty array", () => {
           const values: NonEmptyReadonlyArray<number> = [1];
-          const task = map(values, (value) => () => ok(String(value)));
+          const task = all(values, (value) => () => ok(String(value)));
 
           expectTypeOf(task).toEqualTypeOf<
             Task<NonEmptyReadonlyArray<string>>
@@ -4553,25 +4532,25 @@ describe("collection helpers", () => {
         });
 
         test("an empty tuple", () => {
-          const task = map([], () => () => ok("unused"));
+          const task = all([], () => () => ok("unused"));
 
           expectTypeOf(task).toEqualTypeOf<Task<readonly []>>();
         });
 
         test("a tuple", () => {
-          const task = map(["Ada", 37], (value) => () => ok(String(value)));
+          const task = all(["Ada", 37], (value) => () => ok(String(value)));
 
           expectTypeOf(task).toEqualTypeOf<Task<readonly [string, string]>>();
         });
 
         test("an empty record", () => {
-          const task = map({}, () => () => ok("unused"));
+          const task = all({}, () => () => ok("unused"));
 
           expectTypeOf(task).toEqualTypeOf<Task<Record<never, never>>>();
         });
 
         test("a record", () => {
-          const task = map(
+          const task = all(
             { name: "Ada", age: 37, active: true },
             (value) => () => ok(String(value)),
           );
@@ -4587,7 +4566,7 @@ describe("collection helpers", () => {
 
         test("a record mapper with keys", () => {
           const values = { name: "Ada", age: 37 } as const;
-          const task = map(values, (value, key) => {
+          const task = all(values, (value, key) => {
             expectTypeOf(value).toEqualTypeOf<"Ada" | 37>();
             expectTypeOf(key).toEqualTypeOf<"name" | "age">();
             return () => ok(`${key}:${value}`);
@@ -4600,34 +4579,11 @@ describe("collection helpers", () => {
       });
     });
 
-    test("InferMapSettled maps input arrays and records to mapped Task Results", () => {
-      interface MyError {
-        readonly type: "MyError";
-      }
-
-      type MappingTask = Task<number, MyError, DbDep>;
-
-      expectTypeOf<
-        InferMapSettled<readonly [string, boolean], MappingTask>
-      >().toEqualTypeOf<
-        readonly [Result<number, MyError>, Result<number, MyError>]
-      >();
-      expectTypeOf<
-        InferMapSettled<
-          { readonly a: string; readonly b: boolean },
-          MappingTask
-        >
-      >().toEqualTypeOf<{
-        readonly a: Result<number, MyError>;
-        readonly b: Result<number, MyError>;
-      }>();
-    });
-
-    describe("mapSettled", () => {
+    describe("allSettled mapping overload", () => {
       describe("returns", () => {
         test("result tuple", () => {
           const taskError = { type: "TaskError" } as const;
-          const task = mapSettled([1, 2, 3], (value) =>
+          const task = allSettled([1, 2, 3], (value) =>
             value === 2 ? () => err(taskError) : () => ok(String(value)),
           );
 
@@ -4643,7 +4599,7 @@ describe("collection helpers", () => {
         });
 
         test("mapped Task dependencies", () => {
-          const task = mapSettled(
+          const task = allSettled(
             [1, 2],
             (value): Task<string, never, DbDep> =>
               ({ deps }) =>
@@ -4663,7 +4619,7 @@ describe("collection helpers", () => {
       describe("accepts", () => {
         test("an empty array", () => {
           const values: ReadonlyArray<number> = emptyArray;
-          const task = mapSettled(values, (value) => () => ok(String(value)));
+          const task = allSettled(values, (value) => () => ok(String(value)));
 
           expectTypeOf(task).toEqualTypeOf<
             Task<ReadonlyArray<Result<string, never>>>
@@ -4673,7 +4629,7 @@ describe("collection helpers", () => {
         test("an array", () => {
           const taskError = { type: "TaskError" } as const;
           const values: ReadonlyArray<number> = [1, 2];
-          const task = mapSettled(
+          const task = allSettled(
             values,
             (value): Task<string, typeof taskError> =>
               value === 1 ? () => ok(String(value)) : () => err(taskError),
@@ -4685,7 +4641,7 @@ describe("collection helpers", () => {
         });
 
         test("an array mapper with indexes", () => {
-          const task = mapSettled(["Ada", "Grace"] as const, (value, index) => {
+          const task = allSettled(["Ada", "Grace"] as const, (value, index) => {
             expectTypeOf(value).toEqualTypeOf<"Ada" | "Grace">();
             expectTypeOf(index).toEqualTypeOf<number>();
             return () => ok(`${index}:${value}`);
@@ -4699,7 +4655,7 @@ describe("collection helpers", () => {
         test("a non-empty array", () => {
           const taskError = { type: "TaskError" } as const;
           const values: NonEmptyReadonlyArray<number> = [1];
-          const task = mapSettled(
+          const task = allSettled(
             values,
             (): Task<string, typeof taskError> => () => err(taskError),
           );
@@ -4710,13 +4666,13 @@ describe("collection helpers", () => {
         });
 
         test("an empty tuple", () => {
-          const task = mapSettled([], () => () => ok("unused"));
+          const task = allSettled([], () => () => ok("unused"));
 
           expectTypeOf(task).toEqualTypeOf<Task<readonly []>>();
         });
 
         test("a tuple", () => {
-          const task = mapSettled(
+          const task = allSettled(
             ["Ada", 37],
             (value) => () => ok(String(value)),
           );
@@ -4727,13 +4683,13 @@ describe("collection helpers", () => {
         });
 
         test("an empty record", () => {
-          const task = mapSettled({}, () => () => ok("unused"));
+          const task = allSettled({}, () => () => ok("unused"));
 
           expectTypeOf(task).toEqualTypeOf<Task<Record<never, never>>>();
         });
 
         test("a record", () => {
-          const task = mapSettled(
+          const task = allSettled(
             { name: "Ada", age: 37, active: true },
             (value) => () => ok(String(value)),
           );
@@ -4749,7 +4705,7 @@ describe("collection helpers", () => {
 
         test("a record mapper with keys", () => {
           const values = { name: "Ada", age: 37 } as const;
-          const task = mapSettled(values, (value, key) => {
+          const task = allSettled(values, (value, key) => {
             expectTypeOf(value).toEqualTypeOf<"Ada" | 37>();
             expectTypeOf(key).toEqualTypeOf<"name" | "age">();
             return () => ok(`${key}:${value}`);

@@ -264,30 +264,28 @@ import type {
  *
  * ## Task Helpers
  *
- * | Category     | Helper                    | Description                                 |
- * | ------------ | ------------------------- | ------------------------------------------- |
- * | Collection   | {@link all}               | Return Ok values or stop on first Err       |
- * |              | {@link allSettled}        | Return every Task Result                    |
- * |              | {@link map}               | Map values to Tasks, then stop on first Err |
- * |              | {@link mapSettled}        | Map values to Tasks, then return Results    |
- * | Interop      | {@link callback}          | Wrap callback APIs                          |
- * |              | {@link fetch}             | Native fetch with bounded Response use      |
- * | Timing       | {@link sleep}             | Pause execution                             |
- * |              | {@link timeout}           | Time-bounded execution                      |
- * | Resilience   | {@link retry}             | Retry domain errors with a schedule         |
- * | Repetition   | {@link repeat}            | Repeat successes with a schedule            |
- * | Racing       | {@link any}               | First Ok wins                               |
- * |              | {@link race}              | First settled Result wins                   |
- * |              | {@link firstN}            | First n Ok values win                       |
- * |              | {@link firstNSettled}     | First n Results win                         |
- * | Concurrency  | {@link concurrently}      | Set concurrency for nested helpers          |
- * |              | {@link each}              | Handle each Task Result                     |
- * | Scheduling   | {@link prioritized}       | Assign scheduler priority                   |
- * |              | {@link yieldNow}          | Yield to the host scheduler                 |
- * | Lifetime     | {@link daemon}            | Run under root ownership                    |
- * | Abortability | {@link unabortable}       | Mask abort after a Task starts              |
- * |              | {@link unabortableMask}   | Mask acquire/release and restore use        |
- * |              | {@link acquireUseRelease} | Bracket acquire, use, and release           |
+ * | Category     | Helper                    | Description                            |
+ * | ------------ | ------------------------- | -------------------------------------- |
+ * | Collection   | {@link all}               | Return Ok values or stop on first Err  |
+ * |              | {@link allSettled}        | Return every Task Result               |
+ * | Interop      | {@link callback}          | Wrap callback APIs                     |
+ * |              | {@link fetch}             | Native fetch with bounded Response use |
+ * | Timing       | {@link sleep}             | Pause execution                        |
+ * |              | {@link timeout}           | Time-bounded execution                 |
+ * | Resilience   | {@link retry}             | Retry domain errors with a schedule    |
+ * | Repetition   | {@link repeat}            | Repeat successes with a schedule       |
+ * | Racing       | {@link any}               | First Ok wins                          |
+ * |              | {@link race}              | First settled Result wins              |
+ * |              | {@link firstN}            | First n Ok values win                  |
+ * |              | {@link firstNSettled}     | First n Results win                    |
+ * | Concurrency  | {@link concurrently}      | Set concurrency for nested helpers     |
+ * |              | {@link each}              | Handle each Task Result                |
+ * | Scheduling   | {@link prioritized}       | Assign scheduler priority              |
+ * |              | {@link yieldNow}          | Yield to the host scheduler            |
+ * | Lifetime     | {@link daemon}            | Run under root ownership               |
+ * | Abortability | {@link unabortable}       | Mask abort after a Task starts         |
+ * |              | {@link unabortableMask}   | Mask acquire/release and restore use   |
+ * |              | {@link acquireUseRelease} | Bracket acquire, use, and release      |
  *
  * Helpers that process multiple Tasks run sequentially by default. Use
  * {@link concurrently} to run them concurrently.
@@ -335,7 +333,7 @@ import type {
  *   );
  * ```
  *
- * Run composed Tasks with {@link concurrently} and {@link map}:
+ * Run composed Tasks with {@link concurrently} and {@link all}:
  *
  * ```ts
  * await using run = createRun();
@@ -347,7 +345,7 @@ import type {
  * ];
  *
  * // At most 2 concurrent requests.
- * const result = await run(concurrently(2, map(urls, fetchWithRetry)));
+ * const result = await run(concurrently(2, all(urls, fetchWithRetry)));
  * ```
  *
  * ## Concurrency Primitives
@@ -2529,6 +2527,12 @@ export type InferTasksOk<TTasks> = {
  * Err; remaining running Tasks are aborted. Sequential by default — use
  * {@link concurrently} for concurrent execution.
  *
+ * With a mapping function, maps input values to Tasks before running them. The
+ * mapper runs immediately when `all` is called, before the returned Task
+ * starts. Array mappers receive `(value, index)`. Record mappers receive
+ * `(value, key)`. Mapper defects happen at construction time, so keep mappers
+ * pure and cheap.
+ *
  * Similar to
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/all | Promise.all},
  * but runs Tasks, returns Result values, and aborts remaining Tasks on the
@@ -2562,6 +2566,9 @@ export type InferTasksOk<TTasks> = {
  * // Non-empty arrays preserve non-emptiness
  * // Result<NonEmptyReadonlyArray<User>, never>
  * const nonEmptyArrayResult = await run(all(nonEmptyUserTasks));
+ *
+ * // Map values to Tasks
+ * const usersResult = await run(all(userIds, loadUser));
  * ```
  *
  * @group Collection
@@ -2580,10 +2587,37 @@ export function all<const TTasks extends TaskRecord>(
   InferTaskErr<TTasks[keyof TTasks]>,
   InferTaskRecordDeps<TTasks>
 >;
+export function all<
+  const TValues extends ReadonlyArray<unknown>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  fn: (value: TValues[number], index: number) => TTask,
+): Task<
+  { readonly [K in keyof TValues]: InferTaskOk<TTask> },
+  InferTaskErr<TTask>,
+  InferTaskDeps<TTask>
+>;
+export function all<
+  const TValues extends Readonly<Record<string, unknown>>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
+  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
+): Task<
+  { readonly [K in keyof TValues]: InferTaskOk<TTask> },
+  InferTaskErr<TTask>,
+  InferTaskDeps<TTask>
+>;
 export function all(
-  tasks: ReadonlyArray<AnyTask> | TaskRecord,
+  input: ReadonlyArray<unknown> | Readonly<Record<string, unknown>>,
+  fn?: (value: any, indexOrKey: any) => AnyTask,
 ): Task<unknown, unknown> {
-  return collect("all", tasks);
+  return collect(
+    "all",
+    fn ? mapInput(input, fn) : (input as ReadonlyArray<AnyTask> | TaskRecord),
+  );
 }
 
 /**
@@ -2604,6 +2638,12 @@ export type InferTasksSettled<TTasks> = {
  * Runs all Tasks and returns every Task {@link Result}.
  *
  * Unlike {@link all}, {@link Err} Results do not stop later Tasks.
+ *
+ * With a mapping function, maps input values to Tasks before running them. The
+ * mapper runs immediately when `allSettled` is called, before the returned Task
+ * starts. Array mappers receive `(value, index)`. Record mappers receive
+ * `(value, key)`. Mapper defects happen at construction time, so keep mappers
+ * pure and cheap.
  *
  * Sequential by default — use {@link concurrently} for concurrent execution.
  *
@@ -2640,6 +2680,9 @@ export type InferTasksSettled<TTasks> = {
  * // Non-empty arrays preserve non-emptiness
  * // Result<NonEmptyReadonlyArray<Result<User, LoadError>>, never>
  * const nonEmptyArrayResults = await run(allSettled(nonEmptyUserTasks));
+ *
+ * // Map values to Tasks
+ * const userResults = await run(allSettled(userIds, loadUser));
  * ```
  *
  * @group Collection
@@ -2650,172 +2693,47 @@ export function allSettled<const TTasks extends ReadonlyArray<AnyTask>>(
 export function allSettled<const TTasks extends TaskRecord>(
   tasks: TTasks,
 ): Task<InferTasksSettled<TTasks>, never, InferTaskRecordDeps<TTasks>>;
+export function allSettled<
+  const TValues extends ReadonlyArray<unknown>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  fn: (value: TValues[number], index: number) => TTask,
+): Task<
+  {
+    readonly [K in keyof TValues]: Result<
+      InferTaskOk<TTask>,
+      InferTaskErr<TTask>
+    >;
+  },
+  never,
+  InferTaskDeps<TTask>
+>;
+export function allSettled<
+  const TValues extends Readonly<Record<string, unknown>>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
+  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
+): Task<
+  {
+    readonly [K in keyof TValues]: Result<
+      InferTaskOk<TTask>,
+      InferTaskErr<TTask>
+    >;
+  },
+  never,
+  InferTaskDeps<TTask>
+>;
 export function allSettled(
-  tasks: ReadonlyArray<AnyTask> | TaskRecord,
+  input: ReadonlyArray<unknown> | Readonly<Record<string, unknown>>,
+  fn?: (value: any, indexOrKey: any) => AnyTask,
 ): Task<unknown, unknown> {
-  return collect("allSettled", tasks);
-}
-
-/**
- * Maps an input array or record to the Ok values produced by a mapping Task.
- *
- * The mapped type is homomorphic, so tuples preserve their shape and records
- * preserve their keys.
- *
- * @group Type utilities
- */
-export type InferMapOk<TValues, TTask extends AnyTask> = {
-  readonly [K in keyof TValues]: InferTaskOk<TTask>;
-};
-
-/**
- * Maps values to Tasks and runs them like {@link all}.
- *
- * The mapper runs immediately when `map` is called, before the returned Task
- * starts. Array mappers receive `(value, index)`. Record mappers receive
- * `(value, key)`. Tuple inputs use the array overload and preserve their shape.
- * Mapper defects happen at construction time, so keep mappers pure and cheap.
- *
- * Sequential by default — use {@link concurrently} for concurrent execution.
- *
- * ### Example
- *
- * ```ts
- * // Tuple — values by position
- * // Result<readonly [User, User], LoadError>
- * const tupleResult = await run(
- *   map([primaryUserId, secondaryUserId], (id, _index) => loadUser(id)),
- * );
- *
- * // Record — values by key
- * // Result<
- * //   { readonly user: Entity; readonly organization: Entity },
- * //   LoadError
- * // >
- * const recordResult = await run(
- *   map(entityIds, (id, _key) => loadEntity(id)),
- * );
- *
- * // Dynamic arrays return readonly arrays
- * // Result<readonly User[], LoadError>
- * const arrayResult = await run(map(userIds, loadUser));
- *
- * // Non-empty arrays preserve non-emptiness
- * // Result<NonEmptyReadonlyArray<User>, LoadError>
- * const nonEmptyArrayResult = await run(map(nonEmptyUserIds, loadUser));
- * ```
- *
- * @group Collection
- */
-export function map<
-  const TValues extends ReadonlyArray<unknown>,
-  TTask extends AnyTask,
->(
-  values: TValues,
-  fn: (value: TValues[number], index: number) => TTask,
-): Task<InferMapOk<TValues, TTask>, InferTaskErr<TTask>, InferTaskDeps<TTask>>;
-export function map<
-  const TValues extends Readonly<Record<string, unknown>>,
-  TTask extends AnyTask,
->(
-  values: TValues,
-  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
-  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
-): Task<InferMapOk<TValues, TTask>, InferTaskErr<TTask>, InferTaskDeps<TTask>>;
-export function map(
-  values: ReadonlyArray<unknown> | Readonly<Record<string, unknown>>,
-  fn: (value: any, indexOrKey: any) => AnyTask,
-): Task<unknown, unknown> {
-  return collect("all", mapInput(values, fn));
-}
-
-/**
- * Maps an input array or record to the Result values produced by a mapping
- * Task.
- *
- * The mapped type is homomorphic, so tuples preserve their shape and records
- * preserve their keys.
- *
- * @group Type utilities
- */
-export type InferMapSettled<TValues, TTask extends AnyTask> = {
-  readonly [K in keyof TValues]: Result<
-    InferTaskOk<TTask>,
-    InferTaskErr<TTask>
-  >;
-};
-
-/**
- * Maps values to Tasks and runs them like {@link allSettled}.
- *
- * Unlike {@link map}, {@link Err} Results do not stop later mapped Tasks.
- *
- * The mapper runs immediately when `mapSettled` is called, before the returned
- * Task starts. Array mappers receive `(value, index)`. Record mappers receive
- * `(value, key)`. Tuple inputs use the array overload and preserve their shape.
- * Mapper defects happen at construction time, so keep mappers pure and cheap.
- *
- * Sequential by default — use {@link concurrently} for concurrent execution.
- *
- * ### Example
- *
- * ```ts
- * // Tuple — results by position
- * // Result<
- * //   readonly [Result<User, LoadError>, Result<User, LoadError>],
- * //   never
- * // >
- * const tupleResults = await run(
- *   mapSettled([primaryUserId, secondaryUserId], (id, _index) =>
- *     loadUser(id),
- *   ),
- * );
- *
- * // Record — results by key
- * // Result<
- * //   {
- * //     readonly user: Result<Entity, LoadError>;
- * //     readonly organization: Result<Entity, LoadError>;
- * //   },
- * //   never
- * // >
- * const recordResults = await run(
- *   mapSettled(entityIds, (id, _key) => loadEntity(id)),
- * );
- *
- * // Dynamic arrays return readonly arrays
- * // Result<readonly Result<User, LoadError>[], never>
- * const arrayResults = await run(mapSettled(userIds, loadUser));
- *
- * // Non-empty arrays preserve non-emptiness
- * // Result<NonEmptyReadonlyArray<Result<User, LoadError>>, never>
- * const nonEmptyArrayResults = await run(
- *   mapSettled(nonEmptyUserIds, loadUser),
- * );
- * ```
- *
- * @group Collection
- */
-export function mapSettled<
-  const TValues extends ReadonlyArray<unknown>,
-  TTask extends AnyTask,
->(
-  values: TValues,
-  fn: (value: TValues[number], index: number) => TTask,
-): Task<InferMapSettled<TValues, TTask>, never, InferTaskDeps<TTask>>;
-export function mapSettled<
-  const TValues extends Readonly<Record<string, unknown>>,
-  TTask extends AnyTask,
->(
-  values: TValues,
-  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
-  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
-): Task<InferMapSettled<TValues, TTask>, never, InferTaskDeps<TTask>>;
-export function mapSettled(
-  values: ReadonlyArray<unknown> | Readonly<Record<string, unknown>>,
-  fn: (value: any, indexOrKey: any) => AnyTask,
-): Task<unknown, unknown> {
-  return collect("allSettled", mapInput(values, fn));
+  return collect(
+    "allSettled",
+    fn ? mapInput(input, fn) : (input as ReadonlyArray<AnyTask> | TaskRecord),
+  );
 }
 
 const collect =
@@ -3565,8 +3483,8 @@ export const firstNSettled =
  * Runs Tasks concurrently instead of sequentially.
  *
  * Sets the {@link Int1To100OrPositiveInt} concurrency level for a {@link Task}.
- * Helpers like {@link any}, {@link all}, and {@link map} use it to control how
- * many Tasks run at once.
+ * Helpers like {@link any}, {@link all}, and {@link allSettled} use it to control
+ * how many Tasks run at once.
  *
  * Tasks run sequentially by default. This keeps helpers safe for arrays of
  * unknown size: unbounded concurrency can exhaust connection pools, trigger
@@ -3592,7 +3510,6 @@ export const firstNSettled =
  *   all,
  *   concurrently,
  *   createRun,
- *   map,
  *   ok,
  *   type Task,
  * } from "@evolu/common";
@@ -3618,13 +3535,13 @@ export const firstNSettled =
  *
  * // Limited — at most 5 Tasks run at a time
  * await run(concurrently(5, all(tasks)));
- * await run(concurrently(5, map(userIds, fetchUser)));
+ * await run(concurrently(5, all(userIds, fetchUser)));
  *
- * // Inherited — inner map() uses parent's limit
+ * // Inherited — inner all() uses parent's limit
  * const pipeline = concurrently(5, async (run) => {
- *   const users = await run(map(userIds, fetchUser)); // uses 5
+ *   const users = await run(all(userIds, fetchUser)); // uses 5
  *   if (!users.ok) return users;
- *   return run(map(users.value, enrichUser)); // also uses 5
+ *   return run(all(users.value, enrichUser)); // also uses 5
  * });
  *
  * await run(pipeline);
@@ -3697,8 +3614,6 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  * | --------------------- | ------------------------------------- |
  * | {@link all}           | Collect values, stop on the first Err |
  * | {@link allSettled}    | Collect every Result, never stop      |
- * | {@link map}           | {@link all} over mapped values        |
- * | {@link mapSettled}    | {@link allSettled} over mapped values |
  * | {@link any}           | Stop on the first Ok                  |
  * | {@link race}          | Stop on the first settled Result      |
  * | {@link firstN}        | Stop after n Ok values                |

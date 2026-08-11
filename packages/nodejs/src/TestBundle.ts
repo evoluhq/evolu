@@ -12,6 +12,7 @@
  */
 
 import {
+  allSettled,
   assert,
   assertType,
   concurrently,
@@ -22,7 +23,6 @@ import {
   filterArray,
   isErr,
   mapArray,
-  mapSettled,
   type NonEmptyReadonlyArray,
   type PositiveDuration,
   type ReadonlyRecord,
@@ -209,7 +209,7 @@ export const testBundle = async ({
   const results = await run.ok(
     concurrently(
       availableParallelism(),
-      mapSettled(
+      allSettled(
         jobs,
         ({ caseName, testCase, bundler }, jobIndex) =>
           async (run) =>

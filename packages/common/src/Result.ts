@@ -161,10 +161,10 @@ import type { Awaitable } from "./Types.ts";
  * const profile = flatMapResult(getUser(), (user) => getProfile(user.id));
  * ```
  *
- * A collection can be mapped with {@link mapResult}:
+ * A collection can be mapped with {@link allResult}:
  *
  * ```ts
- * const result = mapResult(users, validateUser);
+ * const result = allResult(users, validateUser);
  * // Result<ValidUser[], ValidateUserError>
  * ```
  *
@@ -563,7 +563,8 @@ export const flatMapResult = <T, E, U, F>(
 ): Result<U, E | F> => (result.ok ? fn(result.value) : result);
 
 /**
- * Extracts all values from an array of {@link Result}s.
+ * Extracts all values from a collection of {@link Result}s, or maps values to
+ * Results and extracts their Ok values.
  *
  * Returns the first error if any result fails.
  *
@@ -629,98 +630,38 @@ export function allResult<T, E>(
   results: NonEmptyReadonlyArray<Result<T, E>>,
 ): Result<NonEmptyReadonlyArray<T>, E>;
 
-export function allResult(
-  input: Iterable<AnyResult> | Readonly<Record<string, AnyResult>>,
-): AnyResult {
-  if (isIterable(input)) {
-    const array = arrayFrom(input);
-    if (!isNonEmptyArray(array)) return ok(emptyArray);
-
-    const length = array.length;
-    const values = new Array<unknown>(length);
-    for (let i = 0; i < length; i++) {
-      const result = array[i];
-      if (!result.ok) return result;
-      values[i] = result.value;
-    }
-    return ok(values);
-  }
-
-  const length = Object.keys(input).length;
-  if (length === 0) return ok(emptyRecord);
-
-  const keys = new Array<string>(length);
-  const results = new Array<AnyResult>(length);
-  let index = 0;
-  for (const key in input) {
-    keys[index] = key;
-    results[index] = (input as Record<string, AnyResult>)[key];
-    index++;
-  }
-
-  const record = createMutableRecord();
-  for (let i = 0; i < length; i++) {
-    const result = results[i];
-    if (!result.ok) return result;
-    record[keys[i]] = result.value;
-  }
-  return ok(record);
-}
-
 /**
- * Maps items to {@link Result}s and extracts all values.
- *
- * Returns the first error if any result fails.
- *
- * ### Example
+ * Maps a non-empty array or tuple to Results and preserves its shape.
  *
  * ```ts
- * const users = [{ id: 1 }, { id: 2 }];
- * const result = mapResult(users, validateUser);
- * // Result<ReadonlyArray<ValidUser>, ValidateUserError>
+ * const result = allResult(users, validateUser);
+ * // Result<NonEmptyReadonlyArray<ValidUser>, ValidateUserError>
  * ```
- *
- * @group Composition
  */
-export function mapResult<
+export function allResult<
   const A extends readonly [unknown, ...Array<unknown>],
   T,
   E,
 >(
-  items: A,
-  fn: (a: A[number]) => Result<T, E>,
+  values: A,
+  fn: (value: A[number]) => Result<T, E>,
 ): Result<{ [K in keyof A]: T }, E>;
 
-/**
- * For dynamic or generated item lists.
- *
- * ```ts
- * const users = [{ id: 1 }, { id: 2 }];
- * const result = mapResult(users, validateUser);
- * // Result<ReadonlyArray<ValidUser>, ValidateUserError>
- * ```
- */
-export function mapResult<A, T, E>(
-  items: Iterable<A>,
-  fn: (a: A) => Result<T, E>,
+/** For dynamic or generated value collections. */
+export function allResult<A, T, E>(
+  values: Iterable<A>,
+  fn: (value: A) => Result<T, E>,
 ): Result<ReadonlyArray<T>, E>;
 
-/**
- * Returns object with same keys.
- *
- * ```ts
- * const result = mapResult({ a: 1, b: 2 }, double);
- * // Result<{ a: number, b: number }, DoubleError>
- * ```
- */
-export function mapResult<A, T, E, K extends string>(
-  items: Readonly<Record<K, A>>,
-  fn: (a: A) => Result<T, E>,
+/** Maps record values to Results and preserves its keys. */
+export function allResult<A, T, E, K extends string>(
+  values: Readonly<Record<K, A>>,
+  fn: (value: A) => Result<T, E>,
 ): Result<Readonly<Record<K, T>>, E>;
 
-export function mapResult(
+export function allResult(
   input: Iterable<unknown> | Readonly<Record<string, unknown>>,
-  fn: (a: unknown) => AnyResult,
+  fn?: (value: unknown) => AnyResult,
 ): AnyResult {
   if (isIterable(input)) {
     const array = arrayFrom(input);
@@ -729,7 +670,7 @@ export function mapResult(
     const length = array.length;
     const values = new Array<unknown>(length);
     for (let i = 0; i < length; i++) {
-      const result = fn(array[i]);
+      const result = fn ? fn(array[i]) : (array[i] as AnyResult);
       if (!result.ok) return result;
       values[i] = result.value;
     }
@@ -740,17 +681,17 @@ export function mapResult(
   if (length === 0) return ok(emptyRecord);
 
   const keys = new Array<string>(length);
-  const items = new Array<unknown>(length);
+  const values = new Array<unknown>(length);
   let index = 0;
   for (const key in input) {
     keys[index] = key;
-    items[index] = (input as Record<string, unknown>)[key];
+    values[index] = (input as Record<string, unknown>)[key];
     index++;
   }
 
   const record = createMutableRecord();
   for (let i = 0; i < length; i++) {
-    const result = fn(items[i]);
+    const result = fn ? fn(values[i]) : (values[i] as AnyResult);
     if (!result.ok) return result;
     record[keys[i]] = result.value;
   }

@@ -1,10 +1,10 @@
 /* eslint-disable no-console */
 import {
+  allSettled,
   assertNonNullable,
   concurrently,
   err,
   getOrThrow,
-  mapSettled,
   objectFrom,
   ok,
 } from "@evolu/common";
@@ -414,7 +414,7 @@ await runMain(
     await run.ok(
       concurrently(
         compilerConcurrency,
-        mapSettled(fixtures, (fixture) => async (run) => {
+        allSettled(fixtures, (fixture) => async (run) => {
           try {
             return ok(
               await compileFixture(

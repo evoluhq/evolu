@@ -40,12 +40,12 @@ describe("tree-shaking", () => {
       {
         "result-all": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 727,
-            "rawSizeInBytes": 1669,
+            "gzipSizeInBytes": 670,
+            "rawSizeInBytes": 1312,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 711,
-            "rawSizeInBytes": 1724,
+            "gzipSizeInBytes": 655,
+            "rawSizeInBytes": 1314,
           },
         },
         "task-example": {

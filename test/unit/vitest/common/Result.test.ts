@@ -23,7 +23,6 @@ import {
   getOrThrow,
   isErr,
   isOk,
-  mapResult,
   ok,
   tryAsync,
   trySync,
@@ -1645,43 +1644,54 @@ describe("allResult", () => {
   });
 });
 
-describe("mapResult", () => {
+describe("allResult mapping overload", () => {
   it("returns emptyArray for empty array", () => {
-    const result = mapResult([], (x: number) => ok(x * 2));
+    const result = allResult([], (x: number) => ok(x * 2));
     expect(result).toStrictEqual(ok([]));
   });
 
   it("returns emptyRecord for empty record", () => {
-    const result = mapResult({}, (x: number) => ok(x * 2));
+    const result = allResult({}, (x: number) => ok(x * 2));
     expectOk(result, {});
   });
 
   it("maps items and collects results", () => {
-    const result = mapResult([1, 2, 3], (x) => ok(x * 2));
+    const result = allResult([1, 2, 3], (x) => ok(x * 2));
     expect(result).toStrictEqual(ok([2, 4, 6]));
   });
 
   it("returns first error", () => {
-    const result = mapResult([1, 2, 3], (x) =>
+    const result = allResult([1, 2, 3], (x) =>
       x === 2 ? err("fail") : ok(x * 2),
     );
     expect(result).toStrictEqual(err("fail"));
   });
 
+  it("does not map values after the first error", () => {
+    const mappedValues: Array<number> = [];
+    const result = allResult([1, 2, 3], (value) => {
+      mappedValues.push(value);
+      return value === 2 ? err("fail") : ok(value * 2);
+    });
+
+    expect(result).toStrictEqual(err("fail"));
+    expect(mappedValues).toEqual([1, 2]);
+  });
+
   it("maps struct and collects results", () => {
-    const result = mapResult({ a: 1, b: 2 }, (x) => ok(x * 2));
+    const result = allResult({ a: 1, b: 2 }, (x) => ok(x * 2));
     expectOk(result, { a: 2, b: 4 });
   });
 
   it("returns first error from struct", () => {
-    const result = mapResult({ a: 1, b: 2, c: 3 }, (x) =>
+    const result = allResult({ a: 1, b: 2, c: 3 }, (x) =>
       x === 2 ? err("fail") : ok(x * 2),
     );
     expect(result).toStrictEqual(err("fail"));
   });
 
   it("struct preserves types", () => {
-    const result = mapResult({ a: 1, b: 2 }, (x) => ok(String(x)));
+    const result = allResult({ a: 1, b: 2 }, (x) => ok(String(x)));
     if (result.ok) {
       expectTypeOf(result.value).toEqualTypeOf<
         Readonly<Record<"a" | "b", string>>
@@ -1690,7 +1700,7 @@ describe("mapResult", () => {
   });
 
   it("non-empty arrays preserve types", () => {
-    const result = mapResult([1, 2, 3], (x) => ok(x * 2));
+    const result = allResult([1, 2, 3], (x) => ok(x * 2));
     if (result.ok) {
       expectTypeOf(result.value[0]).toEqualTypeOf<number>();
       expectTypeOf(result.value[1]).toEqualTypeOf<number>();
@@ -1700,7 +1710,7 @@ describe("mapResult", () => {
 
   it("works with Iterable", () => {
     const set = new Set([1, 2, 3]);
-    const result = mapResult(set, (x) => ok(x * 2));
+    const result = allResult(set, (x) => ok(x * 2));
     expect(result).toStrictEqual(ok([2, 4, 6]));
   });
 });

@@ -9,12 +9,12 @@
  */
 
 import {
+  allSettled,
   concurrently,
   createRun,
   filterArray,
   isErr,
   mapArray,
-  mapSettled,
   PositiveInt,
   type ReadonlyRecord,
   safelyStringifyUnknownValue,
@@ -354,7 +354,7 @@ const runJSDocExamples = async (
   const results = await run.ok(
     concurrently(
       PositiveInt.orThrow(availableParallelism()),
-      mapSettled(
+      allSettled(
         examples,
         (example) => async (run) =>
           tryAsync(
