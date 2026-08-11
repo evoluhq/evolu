@@ -26,8 +26,8 @@ import {
   brand,
   capitalized,
   CapitalizedString,
-  createInstanceOfType,
-  createObjectTagType,
+  instanceOf,
+  objectTag,
   createId,
   createIdAsUuidv7,
   createIdFromString,
@@ -150,10 +150,11 @@ import {
   type DiscriminatedUnionMemberIssue,
   type DiscriminatedUnionType,
   type EvoluTypeError,
-  type ExtractOutputType,
+  type ExtractTyped,
   type FiniteError,
   type GreaterThanError,
   type InferErrors,
+  type InferType,
   type InstanceConstructor,
   type InstanceOfError,
   type InstanceOfType,
@@ -304,6 +305,14 @@ const expectAssertionError = (
 };
 
 describe("Type", () => {
+  test("extracts an object Output for an interface", () => {
+    const User = object({ name: String });
+    interface User extends InferType<typeof User> {}
+
+    expectTypeOf<User>().toExtend<typeof User.Output>();
+    expectTypeOf<typeof User.Output>().toExtend<User>();
+  });
+
   test("exposes every non-Lazy Type name through introspection", () => {
     type Type2Module =
       typeof import("../../../../packages/common/src/Type2.ts");
@@ -463,7 +472,7 @@ describe("Type", () => {
       discriminatedUnion(IntrospectionA, IntrospectionB),
       NumberFromString,
       // eslint-disable-next-line @typescript-eslint/no-extraneous-class
-      createInstanceOfType(class IntrospectionInstance {}),
+      instanceOf(class IntrospectionInstance {}),
     );
     const allTypes = [
       ...globalThis.Object.values(exportedTypes),
@@ -3267,8 +3276,8 @@ describe("TypeOf", () => {
   });
 });
 
-describe("createObjectTagType", () => {
-  const DateFromFactory = createObjectTagType("Date");
+describe("objectTag", () => {
+  const DateFromFactory = objectTag("Date");
   const builtInTypes = [
     {
       name: "Date",
@@ -3349,8 +3358,8 @@ describe("createObjectTagType", () => {
       }
     }
 
-    const TaggedValueInstance = createInstanceOfType(TaggedValue);
-    const Tagged = createObjectTagType("Tagged", TaggedValueInstance);
+    const TaggedValueInstance = instanceOf(TaggedValue);
+    const Tagged = objectTag("Tagged", TaggedValueInstance);
     const TaggedValueFromString = transform(
       "TaggedValueFromString",
       String,
@@ -3360,10 +3369,7 @@ describe("createObjectTagType", () => {
         to: (value) => value.tag,
       },
     );
-    const TaggedFromString = createObjectTagType(
-      "Tagged",
-      TaggedValueFromString,
-    );
+    const TaggedFromString = objectTag("Tagged", TaggedValueFromString);
     const value = new TaggedValue("Tagged");
     const result = Tagged.fromUnknown(value);
     const fromParentResult = Tagged.from.parent(value);
@@ -3426,8 +3432,8 @@ describe("createObjectTagType", () => {
       readonly [globalThis.Symbol.toStringTag] = "Other";
     }
 
-    const TaggedValueInstance = createInstanceOfType(TaggedValue);
-    const _OtherValueInstance = createInstanceOfType(OtherValue);
+    const TaggedValueInstance = instanceOf(TaggedValue);
+    const _OtherValueInstance = instanceOf(OtherValue);
     const unionName = "Tagged" as "Tagged" | "Other";
     const builtInUnionName = "Date" as "Date" | "Uint8Array";
     const broadName = "Tagged" as TypeName;
@@ -3439,7 +3445,7 @@ describe("createObjectTagType", () => {
       name: Name,
     ): Name => {
       // @ts-expect-error An unresolved generic could be instantiated with a tag union.
-      createObjectTagType(name, TaggedValueInstance);
+      objectTag(name, TaggedValueInstance);
       return name;
     };
     const genericOutputAssertion = <
@@ -3449,26 +3455,26 @@ describe("createObjectTagType", () => {
       outputType: OutputType,
     ): OutputType => {
       // @ts-expect-error An unresolved generic could be instantiated with an output Type union.
-      createObjectTagType("Tagged", outputType);
+      objectTag("Tagged", outputType);
       return outputType;
     };
     const compileTimeAssertions = () => {
       // @ts-expect-error A union does not identify one concrete object tag.
-      createObjectTagType(unionName, TaggedValueInstance);
+      objectTag(unionName, TaggedValueInstance);
       // @ts-expect-error A union does not identify one predefined object tag.
-      createObjectTagType(builtInUnionName);
+      objectTag(builtInUnionName);
       // @ts-expect-error A widened name does not identify one concrete object tag.
-      createObjectTagType(broadName, TaggedValueInstance);
+      objectTag(broadName, TaggedValueInstance);
       // @ts-expect-error A template pattern does not identify one concrete object tag.
-      createObjectTagType(patternedName, TaggedValueInstance);
+      objectTag(patternedName, TaggedValueInstance);
       // @ts-expect-error A custom Object Tag requires an output Type.
-      createObjectTagType("Tagged");
+      objectTag("Tagged");
       // @ts-expect-error The output Type must produce objects.
-      createObjectTagType("Tagged", String);
+      objectTag("Tagged", String);
       // @ts-expect-error The output must use one concrete Type node.
-      createObjectTagType("Tagged", outputType);
+      objectTag("Tagged", outputType);
       // @ts-expect-error The output Type must retain its concrete information.
-      createObjectTagType("Tagged", erasedOutputType);
+      objectTag("Tagged", erasedOutputType);
     };
 
     expectTypeOf(genericNameAssertion).toBeFunction();
@@ -3481,12 +3487,9 @@ describe("createObjectTagType", () => {
       readonly [globalThis.Symbol.toStringTag] = "Tagged";
     }
 
-    const Tagged = createObjectTagType(
-      "Tagged",
-      createInstanceOfType(TaggedValue),
-    );
+    const Tagged = objectTag("Tagged", instanceOf(TaggedValue));
     const compileTimeAssertions = () => {
-      createObjectTagType(
+      objectTag(
         "Other",
         // @ts-expect-error An ObjectTag error must not duplicate one inherited from the output Type.
         Tagged,
@@ -3515,7 +3518,7 @@ describe("createObjectTagType", () => {
   });
 });
 
-describe("createInstanceOfType", () => {
+describe("instanceOf", () => {
   class User {
     readonly name: string;
 
@@ -3534,7 +3537,7 @@ describe("createInstanceOfType", () => {
     }
   };
 
-  const UserInstance = createInstanceOfType(User);
+  const UserInstance = instanceOf(User);
   test("creates the expected root Type", () => {
     expectTypeOf(User).toExtend<InstanceConstructor<User>>();
     expectTypeOf(UserInstance).toEqualTypeOf<InstanceOfType<typeof User>>();
@@ -3554,27 +3557,25 @@ describe("createInstanceOfType", () => {
     }
 
     type Constructor = typeof User | typeof _Session;
-    type ConstructorParameter = Parameters<
-      typeof createInstanceOfType<Constructor>
-    >[0];
+    type ConstructorParameter = Parameters<typeof instanceOf<Constructor>>[0];
     type ErasedConstructor = InstanceConstructor<User>;
     type ErasedConstructorParameter = Parameters<
-      typeof createInstanceOfType<ErasedConstructor>
+      typeof instanceOf<ErasedConstructor>
     >[0];
     const compileTimeAssertions = (
       constructor: Constructor,
       erasedConstructor: ErasedConstructor,
     ) => {
       // @ts-expect-error An Instance Type requires one concrete constructor.
-      createInstanceOfType(constructor);
+      instanceOf(constructor);
       // @ts-expect-error An Instance Type requires concrete constructor information.
-      createInstanceOfType(erasedConstructor);
+      instanceOf(erasedConstructor);
     };
     const genericCompileTimeAssertion = <C extends Constructor>(
       constructor: C,
     ): C => {
       // @ts-expect-error An unresolved generic could be instantiated with a constructor union.
-      createInstanceOfType(constructor);
+      instanceOf(constructor);
       return constructor;
     };
 
@@ -3591,10 +3592,7 @@ describe("createInstanceOfType", () => {
       readonly id = "session";
     }
 
-    const Instance = union(
-      createInstanceOfType(User),
-      createInstanceOfType(Session),
-    );
+    const Instance = union(instanceOf(User), instanceOf(Session));
     const user = new User("Ada");
     const session = new Session();
 
@@ -3631,7 +3629,7 @@ describe("createInstanceOfType", () => {
       }
     }
 
-    const OverriddenInstance = createInstanceOfType(Overridden);
+    const OverriddenInstance = instanceOf(Overridden);
     const instance = new Overridden();
 
     expect(Overridden[globalThis.Symbol.hasInstance](42)).toBe(true);
@@ -4008,7 +4006,7 @@ describe("union", () => {
     const Values = object({ count: Number });
     const RejectedObject = brand(
       "RejectedObject",
-      createInstanceOfType(Input),
+      instanceOf(Input),
       (value): Result<void, RejectedObjectError> =>
         err({ type: "RejectedObject", value }),
       formatTestTypeError,
@@ -13625,15 +13623,15 @@ describe("result", () => {
 
 describe("typed", () => {
   describe("construction", () => {
-    test("ExtractOutputType selects only existing Typed union members", () => {
+    test("ExtractTyped selects only existing Typed union members", () => {
       const Create = typed("Create", { id: String });
       const Delete = typed("Delete", { id: String });
       const Message = discriminatedUnion(Create, Delete);
       type Message = typeof Message.Output;
-      type CreateMessage = ExtractOutputType<Message, "Create">;
+      type CreateMessage = ExtractTyped<Message, "Create">;
       const compileTimeAssertions = () => {
         // @ts-expect-error The selected type must exist in the Output union.
-        type Typo = ExtractOutputType<Message, "Cretae">;
+        type Typo = ExtractTyped<Message, "Cretae">;
         expectTypeOf<Typo>().toBeNever();
       };
 

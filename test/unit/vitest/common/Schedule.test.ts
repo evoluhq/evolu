@@ -61,7 +61,7 @@ import {
   type DateIso,
   NonNegativeInt,
   Ratio,
-} from "../../../../packages/common/src/Type.ts";
+} from "../../../../packages/common/src/Type2.ts";
 
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {
@@ -302,11 +302,13 @@ describe("exponential", () => {
   });
 
   test("throws for invalid factor", () => {
-    expect(() => exponential("100ms", Number.NaN)).toThrow("Expected Brand.");
-    expect(() => exponential("100ms", Number.POSITIVE_INFINITY)).toThrow(
-      "Expected Brand.",
+    expect(() => exponential("100ms", Number.NaN)).toThrow(
+      "Expected NonNegative.",
     );
-    expect(() => exponential("100ms", -1)).toThrow("Expected Brand.");
+    expect(() => exponential("100ms", Number.POSITIVE_INFINITY)).toThrow(
+      "Expected NonNegative.",
+    );
+    expect(() => exponential("100ms", -1)).toThrow("Expected NonNegative.");
   });
 });
 
@@ -848,7 +850,7 @@ describe("modifyDelay", () => {
 
   test("throws when the transform returns NaN", () => {
     const step = modifyDelay(() => Number.NaN)(once)(createScheduleDeps());
-    expect(() => step(undefined)).toThrow("Expected Brand.");
+    expect(() => step(undefined)).toThrow("Expected NonNaN.");
   });
 });
 

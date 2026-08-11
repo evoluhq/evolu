@@ -10,7 +10,11 @@ import {
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
-import { assert, assertNonEmptyReadonlyArray, assertType } from "../Assert.ts";
+import {
+  assert,
+  assertNonEmptyReadonlyArray,
+  assertNonNullable,
+} from "../Assert.ts";
 import type { ConsoleLevel } from "../Console.ts";
 import {
   EncryptionKey,
@@ -39,15 +43,16 @@ import {
 } from "../Sqlite.ts";
 import { callback, type Run, type Task } from "../Task.ts";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.ts";
-import type { Name } from "../Type.ts";
-import type { ExtractOutputType } from "../Type2.ts";
 import {
+  assertType,
+  type ExtractTyped,
   Id,
   IdBytes,
   idBytesToId,
   idToIdBytes,
+  type Name,
   onePositiveInt,
-} from "../Type.ts";
+} from "../Type2.ts";
 import type {
   CreateBroadcastChannelDep,
   NativeMessagePort,
@@ -765,8 +770,8 @@ const handleMutation =
       TimestampConfigDep,
   ) =>
   (
-    message: ExtractOutputType<
-      ExtractOutputType<DbWorkerRequest, "ForEvolu">["message"],
+    message: ExtractTyped<
+      ExtractTyped<DbWorkerRequest, "ForEvolu">["message"],
       "Mutate"
     >,
   ): Result<
@@ -836,6 +841,7 @@ const applyLocalOnlyChange =
       const columns = dbChangeToColumns(change, deps.time.now());
 
       for (const [column, value] of columns) {
+        assertNonNullable(value);
         deps.sqlite.exec(sql.prepared`
           insert into ${sql.identifier(change.table)}
             ("ownerId", "id", ${sql.identifier(column)})
@@ -865,6 +871,7 @@ const applyMessages =
       const timestampBytes = timestampToTimestampBytes(timestamp);
 
       for (const [column, value] of columns) {
+        assertNonNullable(value);
         if (validateColumnValue(deps)(change.table, column, value)) {
           applyColumnChange(deps)(
             ownerIdBytes,

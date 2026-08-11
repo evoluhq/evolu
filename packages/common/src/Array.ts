@@ -450,8 +450,8 @@ export function concatArrays<T>(
  * ### With refinement
  *
  * ```ts
- * const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
- *   NonEmptyString.orThrow("hello"),
+ * const mixed: ReadonlyArray<NonEmptyTrimmedString | PositiveInt> = [
+ *   NonEmptyTrimmedString.orThrow("hello"),
  *   PositiveInt.orThrow(42),
  * ];
  * const positiveInts = filterArray(mixed, PositiveInt.is);
@@ -558,13 +558,13 @@ export function dedupeArray<T>(
  * ### With refinement
  *
  * ```ts
- * const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
- *   NonEmptyString.orThrow("hello"),
+ * const mixed: ReadonlyArray<NonEmptyTrimmedString | PositiveInt> = [
+ *   NonEmptyTrimmedString.orThrow("hello"),
  *   PositiveInt.orThrow(42),
  * ];
  * const [positiveInts, strings] = partitionArray(mixed, PositiveInt.is);
  * // positiveInts: ReadonlyArray<PositiveInt> (narrowed type)
- * // strings: ReadonlyArray<NonEmptyString> (Exclude<T, PositiveInt>)
+ * // strings: ReadonlyArray<NonEmptyTrimmedString> (Exclude<T, PositiveInt>)
  * ```
  *
  * The predicate receives `(item, index, array)`.

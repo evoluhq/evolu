@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
 import * as z from "zod";
+import { assertNonNullable } from "../../../../../packages/common/src/Assert.ts";
 import type { Brand } from "../../../../../packages/common/src/Brand.ts";
 import type {
   MutationValues,
@@ -20,20 +21,19 @@ import {
   Boolean,
   Id,
   id,
-  NonEmptyString100,
+  NonEmptyTrimmedString100,
   nullOr,
-  type InferType,
-} from "../../../../../packages/common/src/Type.ts";
+} from "../../../../../packages/common/src/Type2.ts";
 import { setupSqlite } from "../../_deps.ts";
 
 const TodoId = id("Todo");
-type TodoId = typeof TodoId.Type;
+type TodoId = typeof TodoId.Output;
 
 describe("ValidateSchema", () => {
   describe("ValidateSchemaHasId", () => {
     test("reports missing id column", () => {
       const _SchemaWithoutId = {
-        todo: { title: NonEmptyString100 },
+        todo: { title: NonEmptyTrimmedString100 },
       };
 
       type Result = ValidateSchemaHasId<typeof _SchemaWithoutId>;
@@ -42,7 +42,7 @@ describe("ValidateSchema", () => {
 
     test("passes for valid schema", () => {
       const _Schema = {
-        todo: { id: TodoId, title: NonEmptyString100 },
+        todo: { id: TodoId, title: NonEmptyTrimmedString100 },
       };
 
       type Result = ValidateSchemaHasId<typeof _Schema>;
@@ -53,7 +53,10 @@ describe("ValidateSchema", () => {
   describe("ValidateIdColumnType", () => {
     test("reports non-Id output type", () => {
       const _SchemaWithBadId = {
-        todo: { id: NonEmptyString100, title: NonEmptyString100 },
+        todo: {
+          id: NonEmptyTrimmedString100,
+          title: NonEmptyTrimmedString100,
+        },
       };
 
       type Result = ValidateIdColumnType<typeof _SchemaWithBadId>;
@@ -62,7 +65,7 @@ describe("ValidateSchema", () => {
 
     test("passes for branded id", () => {
       const _Schema = {
-        todo: { id: TodoId, title: NonEmptyString100 },
+        todo: { id: TodoId, title: NonEmptyTrimmedString100 },
       };
 
       type Result = ValidateIdColumnType<typeof _Schema>;
@@ -73,28 +76,40 @@ describe("ValidateSchema", () => {
   describe("ValidateNoSystemColumns", () => {
     test("reports createdAt system column", () => {
       type Result = ValidateNoSystemColumns<{
-        todo: { id: typeof TodoId; createdAt: typeof NonEmptyString100 };
+        todo: {
+          id: typeof TodoId;
+          createdAt: typeof NonEmptyTrimmedString100;
+        };
       }>;
       expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema error: Table "todo" uses system column name "createdAt". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
     });
 
     test("reports updatedAt system column", () => {
       type Result = ValidateNoSystemColumns<{
-        todo: { id: typeof TodoId; updatedAt: typeof NonEmptyString100 };
+        todo: {
+          id: typeof TodoId;
+          updatedAt: typeof NonEmptyTrimmedString100;
+        };
       }>;
       expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema error: Table "todo" uses system column name "updatedAt". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
     });
 
     test("reports isDeleted system column", () => {
       type Result = ValidateNoSystemColumns<{
-        todo: { id: typeof TodoId; isDeleted: typeof NonEmptyString100 };
+        todo: {
+          id: typeof TodoId;
+          isDeleted: typeof NonEmptyTrimmedString100;
+        };
       }>;
       expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema error: Table "todo" uses system column name "isDeleted". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
     });
 
     test("reports ownerId system column", () => {
       type Result = ValidateNoSystemColumns<{
-        todo: { id: typeof TodoId; ownerId: typeof NonEmptyString100 };
+        todo: {
+          id: typeof TodoId;
+          ownerId: typeof NonEmptyTrimmedString100;
+        };
       }>;
       expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema error: Table "todo" uses system column name "ownerId". System columns (createdAt, updatedAt, isDeleted, ownerId) are added automatically.'>();
     });
@@ -103,7 +118,7 @@ describe("ValidateSchema", () => {
       const _Schema = {
         todo: {
           id: TodoId,
-          title: NonEmptyString100,
+          title: NonEmptyTrimmedString100,
           isCompleted: nullOr(SqliteBoolean),
         },
       };
@@ -130,7 +145,7 @@ describe("ValidateSchema", () => {
       const _Schema = {
         todo: {
           id: TodoId,
-          title: NonEmptyString100,
+          title: NonEmptyTrimmedString100,
           isCompleted: nullOr(SqliteBoolean),
         },
       };
@@ -145,7 +160,7 @@ describe("Evolu Type", () => {
   const _Schema = {
     todo: {
       id: TodoId,
-      title: NonEmptyString100,
+      title: NonEmptyTrimmedString100,
       isCompleted: nullOr(SqliteBoolean),
     },
   };
@@ -162,7 +177,7 @@ describe("Evolu Type", () => {
       type Insert = MutationValues<TodoTable, "insert">;
 
       expectTypeOf<Insert>().toEqualTypeOf<{
-        readonly title: InferType<typeof NonEmptyString100>;
+        readonly title: typeof NonEmptyTrimmedString100.Output;
         readonly isCompleted?: SqliteBoolean | null;
       }>();
     });
@@ -172,7 +187,7 @@ describe("Evolu Type", () => {
 
       expectTypeOf<Update>().toEqualTypeOf<{
         readonly id: TodoId;
-        readonly title?: InferType<typeof NonEmptyString100>;
+        readonly title?: typeof NonEmptyTrimmedString100.Output;
         readonly isCompleted?: SqliteBoolean | null;
         readonly isDeleted?: SqliteBoolean;
       }>();
@@ -183,7 +198,7 @@ describe("Evolu Type", () => {
 
       expectTypeOf<Upsert>().toEqualTypeOf<{
         readonly id: TodoId;
-        readonly title: InferType<typeof NonEmptyString100>;
+        readonly title: typeof NonEmptyTrimmedString100.Output;
         readonly isCompleted?: SqliteBoolean | null;
         readonly isDeleted?: SqliteBoolean;
       }>();
@@ -266,14 +281,15 @@ describe("ensureSqliteSchema", () => {
     ensureSqliteSchema(deps)(newSchema);
 
     const sqliteSchema = getSqliteSchema(deps)();
-    expect(sqliteSchema.tables.todo).toBeDefined();
-    expect(sqliteSchema.tables.todo.has("id")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("title")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("isCompleted")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("createdAt")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("updatedAt")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("isDeleted")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("ownerId")).toBe(true);
+    const todoColumns = sqliteSchema.tables.todo;
+    assertNonNullable(todoColumns);
+    expect(todoColumns.has("id")).toBe(true);
+    expect(todoColumns.has("title")).toBe(true);
+    expect(todoColumns.has("isCompleted")).toBe(true);
+    expect(todoColumns.has("createdAt")).toBe(true);
+    expect(todoColumns.has("updatedAt")).toBe(true);
+    expect(todoColumns.has("isDeleted")).toBe(true);
+    expect(todoColumns.has("ownerId")).toBe(true);
   });
 
   test("adds new columns to existing tables", async () => {
@@ -298,9 +314,11 @@ describe("ensureSqliteSchema", () => {
     ensureSqliteSchema(deps)(updatedSchema);
 
     const sqliteSchema = getSqliteSchema(deps)();
-    expect(sqliteSchema.tables.todo.has("title")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("isCompleted")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("priority")).toBe(true);
+    const todoColumns = sqliteSchema.tables.todo;
+    assertNonNullable(todoColumns);
+    expect(todoColumns.has("title")).toBe(true);
+    expect(todoColumns.has("isCompleted")).toBe(true);
+    expect(todoColumns.has("priority")).toBe(true);
   });
 
   test("creates multiple tables", async () => {
@@ -317,10 +335,12 @@ describe("ensureSqliteSchema", () => {
     ensureSqliteSchema(deps)(newSchema);
 
     const sqliteSchema = getSqliteSchema(deps)();
-    expect(sqliteSchema.tables.todo).toBeDefined();
-    expect(sqliteSchema.tables.category).toBeDefined();
-    expect(sqliteSchema.tables.todo.has("title")).toBe(true);
-    expect(sqliteSchema.tables.category.has("name")).toBe(true);
+    const todoColumns = sqliteSchema.tables.todo;
+    const categoryColumns = sqliteSchema.tables.category;
+    assertNonNullable(todoColumns);
+    assertNonNullable(categoryColumns);
+    expect(todoColumns.has("title")).toBe(true);
+    expect(categoryColumns.has("name")).toBe(true);
   });
 
   test("uses set difference to find new columns", async () => {
@@ -345,13 +365,15 @@ describe("ensureSqliteSchema", () => {
     ensureSqliteSchema(deps)(updatedSchema);
 
     const sqliteSchema = getSqliteSchema(deps)();
+    const todoColumns = sqliteSchema.tables.todo;
+    assertNonNullable(todoColumns);
     // Original columns still exist
-    expect(sqliteSchema.tables.todo.has("a")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("b")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("c")).toBe(true);
+    expect(todoColumns.has("a")).toBe(true);
+    expect(todoColumns.has("b")).toBe(true);
+    expect(todoColumns.has("c")).toBe(true);
     // New columns added via difference
-    expect(sqliteSchema.tables.todo.has("d")).toBe(true);
-    expect(sqliteSchema.tables.todo.has("e")).toBe(true);
+    expect(todoColumns.has("d")).toBe(true);
+    expect(todoColumns.has("e")).toBe(true);
   });
 
   test("with currentSchema parameter skips getSqliteSchema call", async () => {
@@ -378,7 +400,9 @@ describe("ensureSqliteSchema", () => {
     ensureSqliteSchema(deps)(newSchema, currentSchema);
 
     const sqliteSchema = getSqliteSchema(deps)();
-    expect(sqliteSchema.tables.todo.has("description")).toBe(true);
+    const todoColumns = sqliteSchema.tables.todo;
+    assertNonNullable(todoColumns);
+    expect(todoColumns.has("description")).toBe(true);
   });
 
   test("does not drop Evolu-managed indexes when currentSchema is omitted", async () => {

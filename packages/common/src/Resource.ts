@@ -25,7 +25,7 @@ import {
   type Task,
 } from "./Task.ts";
 import { type PositiveDuration } from "./Time.ts";
-import { NonNegativeInt } from "./Type.ts";
+import { NonNegativeInt } from "./Type2.ts";
 import { type DistributiveOmit } from "./Types.ts";
 
 /**

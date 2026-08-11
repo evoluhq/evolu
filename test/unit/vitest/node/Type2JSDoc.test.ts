@@ -7,7 +7,10 @@ const repositoryDirectory = resolve(import.meta.dirname, "../../../..");
 test("Type2 documentation examples compile and run", async () => {
   await testJSDocExamples({
     aliases: {
-      "@evolu/common": join(import.meta.dirname, "Type2JSDocFacade.mts"),
+      "@evolu/common": join(
+        repositoryDirectory,
+        "packages/common/src/index.ts",
+      ),
       "@evolu/common/intl": join(
         repositoryDirectory,
         "packages/common/src/intl/index.ts",

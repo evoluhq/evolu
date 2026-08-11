@@ -6,7 +6,6 @@ import {
   createConsole,
   createConsoleFormatter,
   createEvolu,
-  createFormatTypeError,
   createQueryBuilder,
   createRun,
   err,
@@ -15,11 +14,12 @@ import {
   FiniteNumber,
   id,
   idToIdBytes,
+  type InferType,
   json,
   type KyselyNotNull,
   maxLength,
   Mnemonic,
-  NonEmptyString,
+  NonEmptyTrimmedString,
   NonEmptyTrimmedString100,
   nullOr,
   object,
@@ -28,6 +28,7 @@ import {
   sqliteTrue,
   testAppOwner,
   type Result,
+  type TypeError,
   type Typed,
 } from "@evolu/common";
 import { createEvoluBinding } from "@evolu/react";
@@ -53,15 +54,15 @@ import {
 // TODO: Epochs and sharing.
 
 const ProjectId = id("Project");
-type ProjectId = typeof ProjectId.Type;
+type ProjectId = typeof ProjectId.Output;
 
 const TodoId = id("Todo");
-type TodoId = typeof TodoId.Type;
+type TodoId = typeof TodoId.Output;
 
 // A custom branded Type.
-const NonEmptyString50 = maxLength(50)(NonEmptyString);
+const NonEmptyString50 = maxLength(50)(NonEmptyTrimmedString);
 // string & Brand<"MinLength1"> & Brand<"MaxLength50">
-type NonEmptyString50 = typeof NonEmptyString50.Type;
+type NonEmptyString50 = typeof NonEmptyString50.Output;
 
 // SQLite supports JSON values.
 // Use JSON for semi-structured data like API responses, external integrations,
@@ -73,13 +74,13 @@ const Foo = object({
   // To prevent this, use FiniteNumber.
   bar: FiniteNumber,
 });
-type Foo = typeof Foo.Type;
+interface Foo extends InferType<typeof Foo> {}
 
 // SQLite stores JSON values as strings. Evolu provides a convenient `json`
 // Type Factory for type-safe JSON serialization and parsing.
 const [FooJson, fooToFooJson, fooJsonToFoo] = json(Foo, "FooJson");
 // string & Brand<"FooJson">
-type FooJson = typeof FooJson.Type;
+type FooJson = typeof FooJson.Output;
 
 const AppSchema = {
   project: {
@@ -433,7 +434,9 @@ const HomeTabProjectSectionTodoItem: FC<{
       .where("id", "==", idToIdBytes(id))
       .where("column", "==", "title")
       // The value isn't typed; this is how we can cast it.
-      .$narrowType<{ value: (typeof AppSchema)["todo"]["title"]["Type"] }>()
+      .$narrowType<{
+        value: (typeof AppSchema)["todo"]["title"]["Output"];
+      }>()
       .orderBy("timestamp", "desc"),
   );
 
@@ -567,7 +570,7 @@ const useAddProject = () => {
     if (!parsedName.ok) return;
 
     // Demonstrate JSON usage.
-    const foo = Foo.from({ foo: "baz", bar: 42 });
+    const foo = Foo.fromUnknown({ foo: "baz", bar: 42 });
     if (!foo.ok) return;
 
     insert("project", {
@@ -912,30 +915,27 @@ const Button: FC<{
   );
 };
 
-/**
- * Can be extended with more string Types as needed. `createFormatTypeError` can
- * be extended with custom errors as well.
- */
-type SupportedStringType = typeof NonEmptyTrimmedString100 | typeof Mnemonic;
+interface StringType<Output, Error extends TypeError> {
+  readonly fromUnknown: (value: unknown) => Result<Output, Error>;
+  readonly formatError: (error: Error) => string;
+}
 
-const parseStringWithAlert = <T extends SupportedStringType>(
-  type: T,
+const parseStringWithAlert = <Output, Error extends TypeError>(
+  type: StringType<Output, Error>,
   value: string,
-): ReturnType<T["from"]> => {
-  const parsed = type.from(value.trim()) as ReturnType<T["from"]>;
-  if (!parsed.ok) alert(formatTypeError(parsed.error));
+): Result<Output, Error> => {
+  const parsed = type.fromUnknown(value.trim());
+  if (!parsed.ok) alert(type.formatError(parsed.error));
   return parsed;
 };
 
-const formatTypeError = createFormatTypeError();
-
 interface PromptCancelledError extends Typed<"PromptCancelledError"> {}
 
-const promptStringWithAlert = <T extends SupportedStringType>(
+const promptStringWithAlert = <Output, Error extends TypeError>(
   promptMessage: string,
-  type: T,
+  type: StringType<Output, Error>,
   initialValue?: string,
-): ReturnType<T["from"]> | Result<never, PromptCancelledError> => {
+): Result<Output, Error | PromptCancelledError> => {
   const value = window.prompt(promptMessage, initialValue);
   if (value == null) return err({ type: "PromptCancelledError" });
 

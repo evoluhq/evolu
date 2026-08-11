@@ -22,7 +22,7 @@ const titleHistoryQuery = evolu.createQuery((db) =>
     .where("id", "==", idToIdBytes(id))
     .where("column", "==", "title")
     // `value` isn't typed; this is how we can narrow its type.
-    .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Type"] }>()
+    .$narrowType<{ value: (typeof Schema)["todo"]["title"]["Output"] }>()
     .orderBy("timestamp", "desc"),
 );
 

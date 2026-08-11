@@ -9,7 +9,7 @@ import {
   eqStrict,
 } from "../../../../packages/common/src/Eq.ts";
 import { orderNumber } from "../../../../packages/common/src/Order.ts";
-import type { JsonValueInput } from "../../../../packages/common/src/Type.ts";
+import type { JsonValueInput } from "../../../../packages/common/src/Type2.ts";
 
 test("eqStrict", () => {
   expect(eqStrict(1, 1)).toBe(true);

@@ -26,7 +26,7 @@ import {
   Mnemonic,
   NonNegativeInt,
   type Typed,
-} from "../Type.ts";
+} from "../Type2.ts";
 import type { EncryptedDbChange, Storage } from "./Storage.ts";
 import { TimestampBytes } from "./Timestamp.ts";
 
@@ -88,11 +88,11 @@ export interface SyncOwner {
 
 /** OwnerId is a branded {@link Id} that uniquely identifies an {@link Owner}. */
 export const OwnerId = /*#__PURE__*/ brand("OwnerId", Id);
-export type OwnerId = typeof OwnerId.Type;
+export type OwnerId = typeof OwnerId.Output;
 
 /** Bytes representation of {@link OwnerId}. */
 export const OwnerIdBytes = /*#__PURE__*/ brand("OwnerIdBytes", IdBytes);
-export type OwnerIdBytes = typeof OwnerIdBytes.Type;
+export type OwnerIdBytes = typeof OwnerIdBytes.Output;
 
 /** Converts {@link OwnerId} to {@link OwnerIdBytes}. */
 export const ownerIdToOwnerIdBytes = (ownerId: OwnerId): OwnerIdBytes =>
@@ -109,14 +109,14 @@ export const OwnerEncryptionKey = /*#__PURE__*/ brand(
   "OwnerEncryptionKey",
   EncryptionKey,
 );
-export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Type;
+export type OwnerEncryptionKey = typeof OwnerEncryptionKey.Output;
 
 /**
  * A secure token for write operations. It's derived from {@link OwnerSecret} by
  * default and can be rotated via {@link createOwnerWriteKey}.
  */
 export const OwnerWriteKey = /*#__PURE__*/ brand("OwnerWriteKey", Entropy16);
-export type OwnerWriteKey = typeof OwnerWriteKey.Type;
+export type OwnerWriteKey = typeof OwnerWriteKey.Output;
 
 /**
  * Creates a new random {@link OwnerWriteKey} for rotation.
@@ -135,7 +135,7 @@ export const createOwnerWriteKey = (deps: RandomBytesDep): OwnerWriteKey =>
  * {@link Mnemonic} using {@link mnemonicToOwnerSecret}.
  */
 export const OwnerSecret = /*#__PURE__*/ brand("OwnerSecret", Entropy32);
-export type OwnerSecret = typeof OwnerSecret.Type;
+export type OwnerSecret = typeof OwnerSecret.Output;
 
 /** Creates a {@link OwnerSecret}. */
 export const createOwnerSecret = (deps: RandomBytesDep): OwnerSecret =>

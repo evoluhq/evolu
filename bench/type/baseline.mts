@@ -1,4 +1,12 @@
-import { array, Int, object, objectFrom, record, String } from "@evolu/common";
+import {
+  array,
+  assertNonNullable,
+  Int,
+  object,
+  objectFrom,
+  record,
+  String,
+} from "@evolu/common";
 
 export const typeBenchmarkSuiteVersion = 1;
 
@@ -24,7 +32,9 @@ export interface TypeBenchmarkConfiguration {
 }
 
 export interface TypeBenchmarkBaseline extends TypeBenchmarkConfiguration {
-  readonly measurements: Readonly<Record<string, DeterministicDiagnostics>>;
+  readonly measurements: Readonly<
+    Partial<Record<string, DeterministicDiagnostics>>
+  >;
 }
 
 export interface TypeBenchmarkBaselines {
@@ -102,8 +112,8 @@ export const subtractDeterministicDiagnostics = (
   );
 
 export const compareTypeBenchmarkMeasurements = (
-  current: Readonly<Record<string, DeterministicDiagnostics>>,
-  baseline: Readonly<Record<string, DeterministicDiagnostics>>,
+  current: Readonly<Partial<Record<string, DeterministicDiagnostics>>>,
+  baseline: Readonly<Partial<Record<string, DeterministicDiagnostics>>>,
 ): TypeBenchmarkComparison => {
   const currentFixtures = Object.keys(current).sort();
   const baselineFixtures = Object.keys(baseline).sort();
@@ -116,6 +126,8 @@ export const compareTypeBenchmarkMeasurements = (
   )) {
     const currentDiagnostics = current[fixture];
     const baselineDiagnostics = baseline[fixture];
+    assertNonNullable(currentDiagnostics);
+    assertNonNullable(baselineDiagnostics);
     for (const metric of deterministicMetricNames) {
       const delta = currentDiagnostics[metric] - baselineDiagnostics[metric];
       if (delta === 0) continue;

@@ -1,7 +1,7 @@
-import { FiniteNumber, NonEmptyString100, object } from "@evolu/common";
+import { FiniteNumber, NonEmptyTrimmedString100, object } from "@evolu/common";
 
 const Person = object({
-  name: NonEmptyString100,
+  name: NonEmptyTrimmedString100,
   age: FiniteNumber,
 });
 

@@ -4,7 +4,6 @@
  * @module
  */
 
-import { assertType } from "./Assert.ts";
 import {
   fibonacciAt,
   FibonacciIndex,
@@ -28,13 +27,14 @@ import {
   type TimeDep,
 } from "./Time.ts";
 import {
+  assertType,
   type Int0To100OrNonNegativeInt,
   NonNaNNumber,
   NonNegativeFiniteNumber,
   type NonNegativeInt,
   PositiveInt,
   type Ratio,
-} from "./Type.ts";
+} from "./Type2.ts";
 import type { Predicate } from "./Types.ts";
 
 /**

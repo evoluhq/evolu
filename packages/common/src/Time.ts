@@ -14,7 +14,7 @@ import {
   type NonNaNNumber,
   NonNegativeInt,
   positive,
-} from "./Type.ts";
+} from "./Type2.ts";
 import type {
   Digit,
   Digit1To23,
@@ -325,11 +325,11 @@ export const Millis = /*#__PURE__*/ brand(
   "Millis",
   /*#__PURE__*/ lessThan(maxMillisWithInfinity)(NonNegativeInt),
 );
-export type Millis = typeof Millis.Type;
+export type Millis = typeof Millis.Output;
 
 /** Positive {@link Millis} value. */
 export const PositiveMillis = /*#__PURE__*/ positive(Millis);
-export type PositiveMillis = typeof PositiveMillis.Type;
+export type PositiveMillis = typeof PositiveMillis.Output;
 
 /** Minimum {@link Millis} value. */
 export const minMillis = 0 as Millis;

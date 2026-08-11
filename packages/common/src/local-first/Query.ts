@@ -27,7 +27,7 @@ import type { ReadonlyRecord } from "../Object.ts";
 import { createMutableRecord, isPlainObject } from "../Object.ts";
 import type { SqliteQueryString } from "../Sqlite.ts";
 import { eqSqliteValue, SqliteValue } from "../Sqlite.ts";
-import { createId, String } from "../Type.ts";
+import { createId, String } from "../Type2.ts";
 import type { EvoluSchema } from "./Schema.ts";
 
 export { sql as kyselySql } from "kysely";

@@ -21,7 +21,7 @@ import {
   onePositiveInt,
   PositiveInt,
   Ratio,
-} from "../../../../packages/common/src/Type.ts";
+} from "../../../../packages/common/src/Type2.ts";
 
 test("Percentage accepts canonical literals or Ratio", () => {
   expectTypeOf<"0%">().toExtend<PercentageLiteral>();
@@ -148,11 +148,11 @@ test("max", () => {
 });
 
 test("FibonacciIndex", () => {
-  expect(FibonacciIndex.from(1).ok).toBe(true);
-  expect(FibonacciIndex.from(78).ok).toBe(true);
-  expect(FibonacciIndex.from(79).ok).toBe(false);
-  expect(FibonacciIndex.from(0).ok).toBe(false);
-  expect(FibonacciIndex.from(-1).ok).toBe(false);
+  expect(FibonacciIndex.fromUnknown(1).ok).toBe(true);
+  expect(FibonacciIndex.fromUnknown(78).ok).toBe(true);
+  expect(FibonacciIndex.fromUnknown(79).ok).toBe(false);
+  expect(FibonacciIndex.fromUnknown(0).ok).toBe(false);
+  expect(FibonacciIndex.fromUnknown(-1).ok).toBe(false);
 });
 
 test("fibonacciAt", () => {

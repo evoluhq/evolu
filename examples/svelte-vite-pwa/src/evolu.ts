@@ -3,7 +3,7 @@ import { evoluSvelteDeps } from "@evolu/svelte";
 import { createRun } from "@evolu/web";
 
 const TodoId = Evolu.id("Todo");
-export type TodoId = typeof TodoId.Type;
+export type TodoId = typeof TodoId.Output;
 
 const Schema = {
   todo: {

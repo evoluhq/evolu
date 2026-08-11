@@ -22,7 +22,7 @@ import {
   Uint8Array,
   type Typed,
   zeroNonNegativeInt,
-} from "./Type.ts";
+} from "./Type2.ts";
 
 export interface RandomBytes {
   /**
@@ -65,19 +65,19 @@ export interface RandomBytesDep {
 }
 
 const Entropy = /*#__PURE__*/ brand("Entropy", Uint8Array);
-type Entropy = typeof Entropy.Type;
+type Entropy = typeof Entropy.Output;
 
 export const Entropy16 = /*#__PURE__*/ length(16)(Entropy);
-export type Entropy16 = typeof Entropy16.Type;
+export type Entropy16 = typeof Entropy16.Output;
 
 export const Entropy24 = /*#__PURE__*/ length(24)(Entropy);
-export type Entropy24 = typeof Entropy24.Type;
+export type Entropy24 = typeof Entropy24.Output;
 
 export const Entropy32 = /*#__PURE__*/ length(32)(Entropy);
-export type Entropy32 = typeof Entropy32.Type;
+export type Entropy32 = typeof Entropy32.Output;
 
 export const Entropy64 = /*#__PURE__*/ length(64)(Entropy);
-export type Entropy64 = typeof Entropy64.Type;
+export type Entropy64 = typeof Entropy64.Output;
 
 export const createRandomBytes = (): RandomBytes => ({
   create: randomBytes as RandomBytes["create"],
@@ -133,7 +133,7 @@ export const deriveSlip21Node = (
 
 /** The encryption key for symmetric encryption. */
 export const EncryptionKey = /*#__PURE__*/ brand("EncryptionKey", Entropy32);
-export type EncryptionKey = typeof EncryptionKey.Type;
+export type EncryptionKey = typeof EncryptionKey.Output;
 
 /** The nonce length for XChaCha20-Poly1305 encryption. */
 export const xChaCha20Poly1305NonceLength = 24;
@@ -148,7 +148,7 @@ export const XChaCha20Poly1305Ciphertext = /*#__PURE__*/ brand(
   Uint8Array,
 );
 export type XChaCha20Poly1305Ciphertext =
-  typeof XChaCha20Poly1305Ciphertext.Type;
+  typeof XChaCha20Poly1305Ciphertext.Output;
 
 /**
  * Encrypts plaintext with XChaCha20-Poly1305.

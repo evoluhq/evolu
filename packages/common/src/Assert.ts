@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { AnyType, InferType, Type } from "./Type.ts";
+import type { Type } from "./Type2.ts";
 
 /**
  * Ensures a condition is true, throwing an error with the provided message if
@@ -95,31 +95,6 @@ export const assertNonEmptyReadonlyArray: <T>(
   message = "Expected a non-empty readonly array.",
 ) => {
   assert(arr.length > 0, message);
-};
-
-/**
- * Ensures a value conforms to a {@link Type}.
- *
- * Uses the Type name for the error message and preserves the Type validation
- * error as the cause.
- *
- * ### Example
- *
- * ```ts
- * const length = buffer.getLength();
- *
- * // We know length is logically non-negative, but TypeScript doesn't.
- * assertType(NonNegativeInt, length);
- * ```
- */
-export const assertType: <T extends AnyType>(
-  type: T,
-  value: unknown,
-) => asserts value is InferType<T> = (type, value) => {
-  const result = type.fromUnknown(value);
-  if (!result.ok) {
-    throw new Error(`Expected ${type.name}.`, { cause: result.error });
-  }
 };
 
 /**

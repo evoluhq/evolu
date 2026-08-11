@@ -13,9 +13,9 @@
   let showMnemonic = $state(false);
 
   const handleAddTodo = () => {
-    const result = Evolu.NonEmptyTrimmedString100.from(newTodoTitle.trim());
+    const result = Evolu.NonEmptyTrimmedString100.fromUnknown(newTodoTitle.trim());
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -34,9 +34,9 @@
     const newTitle = window.prompt("Edit todo", currentTitle);
     if (newTitle == null) return;
 
-    const result = Evolu.NonEmptyTrimmedString100.from(newTitle.trim());
+    const result = Evolu.NonEmptyTrimmedString100.fromUnknown(newTitle.trim());
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -56,9 +56,9 @@
     const mnemonic = window.prompt("Enter your mnemonic to restore your data:");
     if (mnemonic == null) return;
 
-    const result = Evolu.Mnemonic.from(mnemonic.trim());
+    const result = Evolu.Mnemonic.fromUnknown(mnemonic.trim());
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.Mnemonic.formatError(result.error));
       return;
     }
 
@@ -84,26 +84,6 @@
     });
   };
 
-  /**
-   * Formats Evolu Type errors into user-friendly messages.
-   *
-   * Evolu Type typed errors ensure every error type used in schema must have a
-   * formatter. TypeScript enforces this at compile-time, preventing unhandled
-   * validation errors from reaching users.
-   *
-   * The `createFormatTypeError` function handles both built-in and custom
-   * errors, and lets us override default formatting for specific errors.
-   */
-  const formatTypeError = Evolu.createFormatTypeError<
-    Evolu.MinLengthError | Evolu.MaxLengthError
-  >((error): string => {
-    switch (error.type) {
-      case "MinLength":
-        return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
-      case "MaxLength":
-        return `Text is too long (maximum ${error.max} characters)`;
-    }
-  });
 </script>
 
 <div class="app-container">

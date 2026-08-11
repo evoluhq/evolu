@@ -5,7 +5,7 @@
  */
 
 import type { Result } from "./Result.ts";
-import { NonNegativeInt, zeroNonNegativeInt } from "./Type.ts";
+import { NonNegativeInt, zeroNonNegativeInt } from "./Type2.ts";
 export {
   bytesToHex,
   bytesToUtf8,

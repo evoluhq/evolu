@@ -115,7 +115,7 @@ import {
   PositiveInt,
   type DateIso,
   type Id,
-} from "../../../../packages/common/src/Type.ts";
+} from "../../../../packages/common/src/Type2.ts";
 import {
   expectContinuationAfterMicrotasks,
   testGlobalUncaughtErrors,

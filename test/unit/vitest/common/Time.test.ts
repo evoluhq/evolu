@@ -23,12 +23,11 @@ import {
 import {
   type DateIso,
   NonNaNNumber,
-} from "../../../../packages/common/src/Type.ts";
+} from "../../../../packages/common/src/Type2.ts";
 
 const negativeMillisCause = {
-  type: "Millis",
+  type: "NonNegative",
   value: -1,
-  parentError: { type: "NonNegative", value: -1 },
 };
 
 describe("Time", () => {
@@ -413,13 +412,9 @@ describe("Time", () => {
         expect.objectContaining({
           message: "getOrThrow",
           cause: {
-            type: "Millis",
+            type: "LessThan281474976710655",
             value: maxMillis + 1,
-            parentError: {
-              type: "LessThan",
-              value: maxMillis + 1,
-              max: maxMillis + 1,
-            },
+            max: maxMillis + 1,
           },
         }),
       );

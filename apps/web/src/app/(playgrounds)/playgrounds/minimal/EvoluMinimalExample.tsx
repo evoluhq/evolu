@@ -111,7 +111,7 @@ const App: FC = () => (
 
 /** Trims user input and validates it as a todo title. */
 const parseTodoTitle = (value: string) =>
-  Evolu.NonEmptyTrimmedString100.from(value.trim());
+  Evolu.NonEmptyTrimmedString100.fromUnknown(value.trim());
 
 const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
@@ -123,7 +123,7 @@ const Todos: FC = () => {
   const addTodo = () => {
     const result = parseTodoTitle(newTodoTitle);
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -185,7 +185,7 @@ const TodoItem: FC<{
 
     const result = parseTodoTitle(newTitle);
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -248,9 +248,9 @@ const OwnerActions: FC = () => {
     const mnemonic = window.prompt("Enter your mnemonic to restore your data:");
     if (mnemonic == null) return;
 
-    const result = Evolu.Mnemonic.from(mnemonic.trim());
+    const result = Evolu.Mnemonic.fromUnknown(mnemonic.trim());
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.Mnemonic.formatError(result.error));
       return;
     }
 
@@ -392,27 +392,3 @@ const Button: FC<{
     </button>
   );
 };
-
-/**
- * Formats Evolu Type errors into user-friendly messages.
- *
- * Evolu Type typed errors ensure every error type used in schema must have a
- * formatter. TypeScript enforces this at compile-time, preventing unhandled
- * validation errors from reaching users.
- *
- * The `createFormatTypeError` function handles both built-in and custom errors,
- * and lets us override default formatting for specific errors.
- *
- * Click on `createFormatTypeError` below to see how to write your own
- * formatter.
- */
-const formatTypeError = Evolu.createFormatTypeError<
-  Evolu.MinLengthError | Evolu.MaxLengthError
->((error): string => {
-  switch (error.type) {
-    case "MinLength":
-      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
-    case "MaxLength":
-      return `Text is too long (maximum ${error.max} characters)`;
-  }
-});

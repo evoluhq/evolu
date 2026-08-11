@@ -1,6 +1,6 @@
-import { createInstanceOfType } from "../../../../../packages/common/src/Type2.ts";
+import { instanceOf } from "../../../../../packages/common/src/Type2.ts";
 
-const ErrorInstance = createInstanceOfType(globalThis.Error);
+const ErrorInstance = instanceOf(globalThis.Error);
 
 export default (): ReadonlyArray<boolean | string> => {
   const value = {};

@@ -15,7 +15,7 @@ import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
 import {
   Mnemonic,
   NonNegativeInt,
-} from "../../../../packages/common/src/Type.ts";
+} from "../../../../packages/common/src/Type2.ts";
 import { testAppOwner } from "./local-first/_fixtures.ts";
 
 test("encryptWithXChaCha20Poly1305 / decryptWithXChaCha20Poly1305", () => {

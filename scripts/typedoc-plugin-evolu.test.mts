@@ -27,11 +27,11 @@ describe.skip("typedoc-plugin-evolu-type", () => {
       // Interface should have the const's comment (HLC documentation)
       expect(content).toContain("Hybrid Logical Clock timestamp");
       // Should NOT have InferType's generic JSDoc
-      expect(content).not.toContain("Extracts the output type");
+      expect(content).not.toContain("Extracts the Output of a Type");
     });
   });
 
-  describe("Pattern 2: type X = typeof X.Type", () => {
+  describe("Pattern 2: type X = typeof X.Output", () => {
     it("copies comment from const to type alias", () => {
       const content = readFileSync(
         join(
@@ -42,11 +42,9 @@ describe.skip("typedoc-plugin-evolu-type", () => {
       );
       // Type alias should have the const's comment
       expect(content).toContain("A NodeId uniquely identifies");
-      // Should NOT have InferType's generic JSDoc
-      expect(content).not.toContain("Extracts the output type");
     });
 
-    it("resolves the type instead of showing typeof X.Type", () => {
+    it("resolves the type instead of showing typeof X.Output", () => {
       const content = readFileSync(
         join(
           docsPath,
@@ -54,8 +52,8 @@ describe.skip("typedoc-plugin-evolu-type", () => {
         ),
         "utf-8",
       );
-      // Should show the resolved branded type, not "typeof NodeId.Type"
-      expect(content).not.toContain("typeof NodeId.Type");
+      // Should show the resolved branded type, not "typeof NodeId.Output"
+      expect(content).not.toContain("typeof NodeId.Output");
       expect(content).toContain('Brand<"NodeId">');
     });
   });

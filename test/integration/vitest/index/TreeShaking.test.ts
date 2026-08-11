@@ -50,22 +50,22 @@ describe("tree-shaking", () => {
         },
         "task-example": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 5997,
-            "rawSizeInBytes": 16322,
+            "gzipSizeInBytes": 9029,
+            "rawSizeInBytes": 25253,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 6106,
-            "rawSizeInBytes": 16520,
+            "gzipSizeInBytes": 8650,
+            "rawSizeInBytes": 23553,
           },
         },
         "type-object": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 1599,
-            "rawSizeInBytes": 4725,
+            "gzipSizeInBytes": 3192,
+            "rawSizeInBytes": 8778,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 1512,
-            "rawSizeInBytes": 4626,
+            "gzipSizeInBytes": 3220,
+            "rawSizeInBytes": 8879,
           },
         },
         "type2-object": {

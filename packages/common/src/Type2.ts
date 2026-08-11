@@ -54,21 +54,34 @@ import {
  * than exceptions. It represents both an encoded `Input` and its semantic
  * `Output`, supporting validation, transformation, and canonical encoding.
  *
- * Existing TypeScript validation libraries make different, reasonable
- * tradeoffs. Runtime types are foundational to Evolu, so Evolu Type is designed
- * around the same abstractions and conventions as the rest of the library:
+ * Evolu Type is designed for correctness and developer experience. Correctness
+ * is especially important for local-first data: application authors cannot
+ * inspect or repair a user's data on a server because they do not have access
+ * to it. Type declarations must reject invalid data at system boundaries, then
+ * preserve those guarantees wherever the data travels.
+ *
+ * To make correct code the easiest code to write, Evolu Type preserves as much
+ * information as TypeScript can express. Invalid declarations produce readable
+ * {@link CompileTimeError} types when the compiler can detect them, while
+ * runtime assertions enforce construction contracts it cannot prove. Together,
+ * these choices create a pit of success.
+ *
+ * The implementation is optimized for minimal bundle size. Less descriptive
+ * assertion messages could make it even smaller, but Evolu keeps actionable
+ * messages as a deliberate tradeoff for developer experience.
+ *
+ * The main properties of Evolu Type are:
  *
  * - **Result-based error handling** – expected failures are explicit values.
- * - **Standard Schema interoperability** – every Type can be passed directly to
- *   compatible tools while preserving its exact Input and Output.
  * - **Typed errors with decoupled formatters** – validation logic stays
  *   independent of user-facing messages, and errors can be handled
  *   exhaustively.
  * - **Type-safe, tree-shakeable localization** – formatter requirements are
  *   inferred from selected Types, while apps bundle exactly the locales they
  *   support so users can change language offline.
- * - **Consistent constraints through {@link Brand}** – every constraint is
- *   represented in the TypeScript type.
+ * - **Consistent constraints through {@link Brand}** – every refinement constraint
+ *   is represented in the TypeScript type, so an unconstrained parent value
+ *   cannot be used where the constrained value is required.
  * - **Typed inputs** – prefer `from` and its `.parent` entry points to connect
  *   precise producer and consumer contracts while preserving typed remaining
  *   errors; reserve `fromUnknown` for genuinely unknown values.
@@ -78,25 +91,24 @@ import {
  * - **A top-down implementation** – the source is intended to be read from
  *   beginning to end.
  *
+ * Evolu Type supports [Standard Schema](https://standardschema.dev/) for
+ * interoperability with compatible tools and frameworks while preserving each
+ * Type's exact Input and Output.
+ *
  * Evolu Type assumes that all executing code, including third-party
  * dependencies, has been audited and is trusted. It validates data contracts
  * under that assumption. Trusting code does not require trusting every value it
  * returns, so uncertain values from legacy code or another realm can still be
- * decoded at an explicit boundary. Realm identity alone does not make an
- * otherwise legitimate representation invalid.
+ * decoded at an explicit boundary. It does not protect against hostile
+ * executable behavior such as sabotaged Proxies or throwing traps; Type
+ * validation is not a security boundary for untrusted JavaScript.
  *
- * Evolu Type does not attempt to contain hostile executable object behavior
- * such as sabotaged Proxies, forged built-ins, or throwing traps. Such behavior
- * violates the trusted-code assumption and may throw. Type validation is not a
- * security boundary for untrusted JavaScript.
- *
- * Type declarations and their callbacks are trusted TypeScript construction
- * code. Runtime assertions enforce contracts TypeScript cannot express, such as
- * refinement identity and exact Output representation. Evolu Type does not try
- * to recover from construction code that defeats the type system with `any` or
- * casts, including fabricating an `Err` for `Result<_, never>`. Every Type
- * declaration must be exercised by tests, including its expected successes and
- * failures.
+ * Type declarations and their callbacks are trusted construction code. Evolu
+ * Type leverages that trust for better developer experience and does not try to
+ * recover from code that defeats the type system with `any` or casts, including
+ * fabricating an `Err` for `Result<_, never>`. Runtime assertions still enforce
+ * contracts TypeScript cannot express, and every Type declaration must be
+ * tested for its expected successes and failures.
  *
  * `fromUnknown` validates untyped input through the complete pipeline. `from`
  * and its `.parent` operations use their declared boundary to determine which
@@ -1246,6 +1258,35 @@ declare const customFromSymbol: unique symbol;
 declare const identityEncodingSymbol: unique symbol;
 
 /**
+ * Extracts the Output of a {@link Type}.
+ *
+ * Use it to declare a named object Type Output as an interface. TypeScript then
+ * preserves the interface name in tooltips and error messages instead of
+ * expanding all of its properties.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   NonEmptyTrimmedString100,
+ *   PositiveInt,
+ *   object,
+ *   optional,
+ *   type InferType,
+ * } from "@evolu/common";
+ *
+ * const User = object({
+ *   name: NonEmptyTrimmedString100,
+ *   age: optional(PositiveInt),
+ * });
+ * interface User extends InferType<typeof User> {}
+ * ```
+ *
+ * @group Type utilities
+ */
+export type InferType<T extends TypeNode> = T["Output"];
+
+/**
  * The union of errors a {@link Type} can return from `fromUnknown`.
  *
  * @group Type utilities
@@ -2000,6 +2041,7 @@ export function transform(
   );
 }
 
+/** @group Type construction */
 export interface TransformType<
   ParentType extends TypeNode,
   OutputType extends TypeNode,
@@ -2026,6 +2068,7 @@ export interface TransformType<
   readonly output: OutputType;
 }
 
+/** @group Type construction */
 export type TransformError<
   Name extends TypeName,
   OwnError extends TypeError<Name>,
@@ -2036,7 +2079,11 @@ export type TransformError<
       ? never
       : TransformOutputError<Name, OutputError>);
 
-/** Wraps an error produced by the output {@link Type} of {@link transform}. */
+/**
+ * Wraps an error produced by the output {@link Type} of {@link transform}.
+ *
+ * @group Type construction
+ */
 export interface TransformOutputError<
   Name extends TypeName,
   OutputError extends TypeError,
@@ -2350,6 +2397,7 @@ interface TypeOfOutputByName {
   readonly Function: globalThis.Function;
 }
 
+/** @group Base Types */
 export interface TypeOfError<
   Name extends keyof TypeOfOutputByName,
 > extends TypeError<"TypeOf"> {
@@ -2502,15 +2550,27 @@ export interface AnyType extends TypeNode {
   readonly [concreteTypeSymbol]: true;
 }
 
-/** Error returned when a value is not an Evolu {@link Type}. */
+/**
+ * Error returned when a value is not an Evolu {@link Type}.
+ *
+ * @group Core Types
+ */
 export interface EvoluTypeError extends TypeValueError<"EvoluType"> {}
 
-/** Nominal evidence that a value has one object tag. */
+/**
+ * Nominal evidence that a value has one object tag.
+ *
+ * @group Base Types
+ */
 export interface ObjectTag<Name extends TypeName> {
   readonly [objectTagSymbol]: Name;
 }
 
-/** The {@link Type} returned by {@link createObjectTagType}. */
+/**
+ * The {@link Type} returned by {@link objectTag}.
+ *
+ * @group Base Types
+ */
 export interface ObjectTagType<
   Name extends TypeName,
   OutputType extends TypeNode & { readonly Output: object },
@@ -2533,7 +2593,11 @@ export interface ObjectTagType<
   readonly expected: Name;
 }
 
-/** An error returned when an object does not report the expected tag. */
+/**
+ * An error returned when an object does not report the expected tag.
+ *
+ * @group Base Types
+ */
 export interface ObjectTagError<
   Expected extends TypeName = TypeName,
 > extends TypeError<"ObjectTag"> {
@@ -2565,7 +2629,7 @@ interface ObjectTagOutputByName {
  *
  * @group Base Types
  */
-export function createObjectTagType<Name extends keyof ObjectTagOutputByName>(
+export function objectTag<Name extends keyof ObjectTagOutputByName>(
   name: ValidateConcreteTypeName<Name>,
 ): Type<
   Name,
@@ -2577,7 +2641,7 @@ export function createObjectTagType<Name extends keyof ObjectTagOutputByName>(
   never,
   ObjectTagOutputByName[Name]
 >;
-export function createObjectTagType<
+export function objectTag<
   Name extends TypeName,
   OutputType extends ConcreteTypeNode & { readonly Output: object },
 >(
@@ -2587,7 +2651,7 @@ export function createObjectTagType<
       ? unknown
       : ChildTypeNameValidationError<"ObjectTag", OutputType>),
 ): ObjectTagType<Name, OutputType>;
-export function createObjectTagType(
+export function objectTag(
   name: TypeName,
   outputType?: ConcreteTypeNode & { readonly Output: object },
 ): TypeNode {
@@ -2633,7 +2697,7 @@ const hasObjectTag = (value: unknown, expected: string): boolean =>
  *
  * @group Base Types
  */
-export const Date = /*#__PURE__*/ createObjectTagType("Date");
+export const Date = /*#__PURE__*/ objectTag("Date");
 
 /**
  * A realm-neutral JavaScript Uint8Array {@link Type} for trusted values.
@@ -2643,7 +2707,7 @@ export const Date = /*#__PURE__*/ createObjectTagType("Date");
  *
  * @group Base Types
  */
-export const Uint8Array = /*#__PURE__*/ createObjectTagType("Uint8Array");
+export const Uint8Array = /*#__PURE__*/ objectTag("Uint8Array");
 
 /**
  * A realm-neutral JavaScript ArrayBuffer {@link Type} for trusted values.
@@ -2653,7 +2717,7 @@ export const Uint8Array = /*#__PURE__*/ createObjectTagType("Uint8Array");
  *
  * @group Base Types
  */
-export const ArrayBuffer = /*#__PURE__*/ createObjectTagType("ArrayBuffer");
+export const ArrayBuffer = /*#__PURE__*/ objectTag("ArrayBuffer");
 
 /**
  * Creates a {@link Type} for instances of one constructor.
@@ -2667,7 +2731,7 @@ export const ArrayBuffer = /*#__PURE__*/ createObjectTagType("ArrayBuffer");
  * ### Example
  *
  * ```ts
- * import { createInstanceOfType } from "@evolu/common";
+ * import { instanceOf } from "@evolu/common";
  *
  * class User {
  *   readonly name: string;
@@ -2677,7 +2741,7 @@ export const ArrayBuffer = /*#__PURE__*/ createObjectTagType("ArrayBuffer");
  *   }
  * }
  *
- * const UserInstance = createInstanceOfType(User);
+ * const UserInstance = instanceOf(User);
  *
  * assert(UserInstance.is(new User("Ada")));
  * assert(!UserInstance.is({ name: "Ada" }));
@@ -2685,7 +2749,7 @@ export const ArrayBuffer = /*#__PURE__*/ createObjectTagType("ArrayBuffer");
  *
  * @group Base Types
  */
-export const createInstanceOfType = <Constructor extends InstanceConstructor>(
+export const instanceOf = <Constructor extends InstanceConstructor>(
   constructor: ValidateInstanceConstructor<Constructor>,
 ): InstanceOfType<Constructor> => {
   const concreteConstructor = constructor as Constructor;
@@ -2711,12 +2775,17 @@ export const createInstanceOfType = <Constructor extends InstanceConstructor>(
   );
 };
 
-/** A JavaScript class constructor accepted by {@link createInstanceOfType}. */
+/**
+ * A JavaScript class constructor accepted by {@link instanceOf}.
+ *
+ * @group Base Types
+ */
 export type InstanceConstructor<Instance extends object = object> =
   (abstract new (...args: ReadonlyArray<never>) => Instance) & {
     readonly name: string;
   };
 
+/** @group Base Types */
 export interface InstanceOfType<
   Constructor extends InstanceConstructor,
 > extends Type<
@@ -2737,6 +2806,7 @@ type InstanceOfOutput<Constructor extends InstanceConstructor> =
     ? Output
     : InstanceType<Constructor>;
 
+/** @group Base Types */
 export interface InstanceOfError extends TypeValueError<"InstanceOf"> {
   readonly constructorName: string;
 }
@@ -2801,6 +2871,7 @@ export const literal = <const Expected extends Literal>(
   ) as unknown as LiteralType<Expected>;
 };
 
+/** @group Unions */
 export interface LiteralType<Expected extends Literal> extends Type<
   "Literal",
   WidenLiteral<Expected>,
@@ -2845,6 +2916,7 @@ type LiteralCompileTimeError = CompileTimeError<
   "Expected must be one concrete literal value."
 >;
 
+/** @group Unions */
 export interface LiteralError<
   Expected extends Literal = Literal,
 > extends TypeError<"Literal"> {
@@ -3108,6 +3180,7 @@ type NormalizeUnionMembers<
   ? Normalized
   : never;
 
+/** @group Unions */
 export interface UnionType<
   Members extends AtLeastTwoReadonlyArray<TypeNode>,
 > extends Type<
@@ -3137,7 +3210,11 @@ const isRuntimeUnionTypeNode = (
   "members" in type &&
   globalThis.Array.isArray(type.members);
 
-/** A root {@link Type} validating the encoded Inputs accepted by {@link union}. */
+/**
+ * A root {@link Type} validating the encoded Inputs accepted by {@link union}.
+ *
+ * @group Unions
+ */
 export type UnionInputType<Input, Error extends TypeError> = Type<
   "Union",
   Input,
@@ -3180,11 +3257,13 @@ type RootUnionMembers<Members extends AtLeastTwoReadonlyArray<TypeNode>> = {
   ? RootMembers
   : never;
 
+/** @group Unions */
 export type UnionError<
   Error extends TypeError = TypeError,
   MemberError extends UnionMemberError<Error> = UnionMemberError<Error>,
 > = [Error] extends [never] ? never : UnionErrorValue<Error, MemberError>;
 
+/** @group Unions */
 export interface UnionMemberError<
   Error extends TypeError,
   Index extends number = number,
@@ -3404,6 +3483,7 @@ export function brand(
   );
 }
 
+/** @group Type construction */
 export interface BrandType<
   ParentType extends TypeNode,
   Name extends TypeName,
@@ -3460,6 +3540,7 @@ export const DateIso = /*#__PURE__*/ brand(
 );
 export type DateIso = typeof DateIso.Output;
 
+/** @group String */
 export interface DateIsoError extends TypeError<"DateIso"> {
   readonly value: string;
 }
@@ -3484,6 +3565,7 @@ export const DateIsoFromDate = /*#__PURE__*/ transform(
   () => "The Date cannot be represented as DateIso.",
 );
 
+/** @group String */
 export interface DateIsoFromDateError extends TypeError<"DateIsoFromDate"> {
   readonly value: globalThis.Date;
 }
@@ -3505,6 +3587,7 @@ export const Int64 = /*#__PURE__*/ brand(
 );
 export type Int64 = typeof Int64.Output;
 
+/** @group Number */
 export interface Int64Error extends TypeError<"Int64"> {
   readonly value: bigint;
 }
@@ -3526,6 +3609,7 @@ export const UInt64 = /*#__PURE__*/ brand(
 );
 export type UInt64 = typeof UInt64.Output;
 
+/** @group Number */
 export interface UInt64Error extends TypeError<"UInt64"> {
   readonly value: bigint;
 }
@@ -3711,6 +3795,7 @@ export const capitalized: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be capitalized.`,
   );
 
+/** @group String */
 export interface CapitalizedError extends TypeError<"Capitalized"> {
   readonly value: string;
 }
@@ -3742,6 +3827,7 @@ export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
       `The value ${safelyStringifyUnknownValue(error.value)} must be trimmed.`,
   );
 
+/** @group String */
 export interface TrimmedError extends TypeError<"Trimmed"> {
   readonly value: string;
 }
@@ -3793,6 +3879,7 @@ export const minLength =
     );
   };
 
+/** @group Collection */
 export interface MinLengthError<
   Min extends number = number,
 > extends TypeError<`MinLength${Min}`> {
@@ -3842,6 +3929,7 @@ export const maxLength =
     );
   };
 
+/** @group Collection */
 export interface MaxLengthError<
   Max extends number = number,
 > extends TypeError<`MaxLength${Max}`> {
@@ -3894,6 +3982,7 @@ export const length =
     );
   };
 
+/** @group Collection */
 export interface LengthError<
   Exact extends number = number,
 > extends TypeError<`Length${Exact}`> {
@@ -3959,6 +4048,7 @@ export const regex = <const Name extends TypeName>(
     );
 };
 
+/** @group String */
 export interface RegexError<
   Name extends TypeName = TypeName,
 > extends TypeError<Name> {
@@ -4046,6 +4136,7 @@ export const Base64Url = /*#__PURE__*/ brand(
 );
 export type Base64Url = typeof Base64Url.Output;
 
+/** @group String */
 export interface Base64UrlError extends TypeError<"Base64Url"> {
   readonly value: string;
 }
@@ -4081,11 +4172,16 @@ export const Name = /*#__PURE__*/ brand(
 );
 export type Name = typeof Name.Output;
 
+/** @group String */
 export interface NameError extends TypeError<"Name"> {
   readonly value: string;
 }
 
-/** Stable valid {@link Name} for tests and internal fixtures. */
+/**
+ * Stable valid {@link Name} for tests and internal fixtures.
+ *
+ * @group String
+ */
 export const testName = /*#__PURE__*/ Name.orThrow("Name");
 
 /**
@@ -4116,6 +4212,7 @@ export const Mnemonic = /*#__PURE__*/ brand(
 );
 export type Mnemonic = typeof Mnemonic.Output;
 
+/** @group String */
 export interface MnemonicError extends TypeError<"Mnemonic"> {
   readonly value: string;
 }
@@ -4142,6 +4239,7 @@ export const Id = /*#__PURE__*/ brand(
 );
 export type Id = typeof Id.Output;
 
+/** @group String */
 export interface IdError extends TypeError<"Id"> {
   readonly value: string;
 }
@@ -4244,6 +4342,7 @@ export const id = <Table extends TypeName>(
   );
 };
 
+/** @group String */
 export interface TableId<Table extends TypeName> extends Type<
   "TableId",
   string,
@@ -4258,6 +4357,7 @@ export interface TableId<Table extends TypeName> extends Type<
   readonly table: Table;
 }
 
+/** @group String */
 export interface TableIdError<
   Table extends TypeName = TypeName,
 > extends TypeError<"TableId"> {
@@ -4309,11 +4409,14 @@ export const IdBytes = /*#__PURE__*/ brand(
 );
 export type IdBytes = typeof IdBytes.Output;
 
+/** @group String */
 export const idBytesTypeValueLength = 16 as NonNegativeInt;
 
+/** @group String */
 export const idToIdBytes = (value: Id): IdBytes =>
   base64UrlToUint8Array(value as unknown as Base64Url) as IdBytes;
 
+/** @group String */
 export const idBytesToId = (value: IdBytes): Id =>
   uint8ArrayToBase64Url(value) as unknown as Id;
 
@@ -4347,6 +4450,7 @@ export const Int64String = /*#__PURE__*/ brand(
 );
 export type Int64String = typeof Int64String.Output;
 
+/** @group Number */
 export interface Int64StringError extends TypeError<"Int64String"> {
   readonly value: string;
 }
@@ -4389,6 +4493,7 @@ export const nonNegative: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be non-negative (>= 0).`,
   );
 
+/** @group Number */
 export interface NonNegativeError extends TypeError<"NonNegative"> {
   readonly value: number;
 }
@@ -4418,6 +4523,7 @@ export const positive: BrandFactory<"Positive", number, PositiveError> = (
       `The value ${safelyStringifyUnknownValue(error.value)} must be positive (> 0).`,
   );
 
+/** @group Number */
 export interface PositiveError extends TypeError<"Positive"> {
   readonly value: number;
 }
@@ -4452,6 +4558,7 @@ export const nonPositive: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be non-positive (<= 0).`,
   );
 
+/** @group Number */
 export interface NonPositiveError extends TypeError<"NonPositive"> {
   readonly value: number;
 }
@@ -4481,6 +4588,7 @@ export const negative: BrandFactory<"Negative", number, NegativeError> = (
       `The value ${safelyStringifyUnknownValue(error.value)} must be negative (< 0).`,
   );
 
+/** @group Number */
 export interface NegativeError extends TypeError<"Negative"> {
   readonly value: number;
 }
@@ -4512,6 +4620,7 @@ export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
     () => "The value must not be NaN.",
   );
 
+/** @group Number */
 export interface NonNaNError extends TypeError<"NonNaN"> {
   readonly value: number;
 }
@@ -4546,6 +4655,7 @@ export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
       `The value ${safelyStringifyUnknownValue(error.value)} must be finite.`,
   );
 
+/** @group Number */
 export interface FiniteError extends TypeError<"Finite"> {
   readonly value: number;
 }
@@ -4600,6 +4710,7 @@ export const int: BrandFactory<"Int", number, IntError> = (parent) =>
       `The value ${safelyStringifyUnknownValue(error.value)} must be a safe integer.`,
   );
 
+/** @group Number */
 export interface IntError extends TypeError<"Int"> {
   readonly value: number;
 }
@@ -4620,10 +4731,18 @@ export type Int = typeof Int.Output;
 export const NonNegativeInt = /*#__PURE__*/ nonNegative(Int);
 export type NonNegativeInt = typeof NonNegativeInt.Output;
 
-/** 0-100 as a literal, or any already-validated {@link NonNegativeInt}. */
+/**
+ * 0-100 as a literal, or any already-validated {@link NonNegativeInt}.
+ *
+ * @group Number
+ */
 export type Int0To100OrNonNegativeInt = 0 | Int1To100 | NonNegativeInt;
 
-/** Minimum {@link NonNegativeInt} value. */
+/**
+ * Minimum {@link NonNegativeInt} value.
+ *
+ * @group Number
+ */
 export const zeroNonNegativeInt = /*#__PURE__*/ NonNegativeInt.orThrow(0);
 
 /**
@@ -4637,13 +4756,25 @@ export const zeroNonNegativeInt = /*#__PURE__*/ NonNegativeInt.orThrow(0);
 export const PositiveInt = /*#__PURE__*/ positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Output;
 
-/** 1-100 as a literal, or any already-validated {@link PositiveInt}. */
+/**
+ * 1-100 as a literal, or any already-validated {@link PositiveInt}.
+ *
+ * @group Number
+ */
 export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
 
-/** Minimum {@link PositiveInt} value. */
+/**
+ * Minimum {@link PositiveInt} value.
+ *
+ * @group Number
+ */
 export const onePositiveInt = /*#__PURE__*/ PositiveInt.orThrow(1);
 
-/** Maximum {@link PositiveInt} value. */
+/**
+ * Maximum {@link PositiveInt} value.
+ *
+ * @group Number
+ */
 export const maxPositiveInt =
   /*#__PURE__*/ PositiveInt.orThrow(9_007_199_254_740_991);
 
@@ -4690,6 +4821,7 @@ export const greaterThan =
     );
   };
 
+/** @group Number */
 export interface GreaterThanError<
   Min extends number = number,
 > extends TypeError<`GreaterThan${Min}`> {
@@ -4729,6 +4861,7 @@ export const greaterThanOrEqualTo =
     );
   };
 
+/** @group Number */
 export interface GreaterThanOrEqualToError<
   Min extends number = number,
 > extends TypeError<`GreaterThanOrEqualTo${Min}`> {
@@ -4760,6 +4893,7 @@ export const lessThan =
     );
   };
 
+/** @group Number */
 export interface LessThanError<
   Max extends number = number,
 > extends TypeError<`LessThan${Max}`> {
@@ -4806,6 +4940,7 @@ export const lessThanOrEqualTo =
     );
   };
 
+/** @group Number */
 export interface LessThanOrEqualToError<
   Max extends number = number,
 > extends TypeError<`LessThanOrEqualTo${Max}`> {
@@ -4864,6 +4999,7 @@ export const PositiveDecimalString = /*#__PURE__*/ brand(
 );
 export type PositiveDecimalString = typeof PositiveDecimalString.Output;
 
+/** @group Number */
 export interface PositiveDecimalStringError extends TypeError<"PositiveDecimalString"> {
   readonly value: string;
 }
@@ -4985,6 +5121,7 @@ export const multipleOf = <const Divisor extends string>(
     );
 };
 
+/** @group Number */
 export interface MultipleOfError<
   Divisor extends string = string,
 > extends TypeError<`MultipleOf${Divisor}`> {
@@ -5051,6 +5188,7 @@ export const between =
     );
   };
 
+/** @group Number */
 export interface BetweenError<
   Min extends number = number,
   Max extends number = number,
@@ -5118,6 +5256,7 @@ export const array = <ElementType extends ConcreteTypeNode>(
     arrayRuntimeConfig,
   ) as ArrayType<ElementType>;
 
+/** @group Collection */
 export interface ArrayType<ElementType extends TypeNode> extends Type<
   "Array",
   ReadonlyArray<ElementType["Input"]>,
@@ -5196,9 +5335,11 @@ type ArrayNodeError<ElementType extends TypeNode> = [
   ? ArrayElementsError<ElementType["Error"]>
   : ArrayError<ElementType["Error"]>;
 
+/** @group Collection */
 export type ArrayError<Error extends TypeError = TypeError> =
   ArrayNotArrayError | ArrayItemsErrorValue<Error, true>;
 
+/** @group Collection */
 export interface ArrayNotArrayError extends TypeError<"Array"> {
   readonly reason: {
     readonly kind: "NotArray";
@@ -5206,24 +5347,29 @@ export interface ArrayNotArrayError extends TypeError<"Array"> {
   };
 }
 
+/** @group Collection */
 export type ArrayItemsError<Error extends TypeError> = ArrayItemsErrorValue<
   Error,
   true
 >;
 
+/** @group Collection */
 export type ArrayIssue<Error extends TypeError> =
   ArrayStructuralIssue | ArrayElementIssue<Error>;
 
+/** @group Collection */
 export interface ArrayHoleIssue {
   readonly kind: "Hole";
   readonly index: number;
 }
 
+/** @group Collection */
 export interface ArrayAccessorIssue {
   readonly kind: "Accessor";
   readonly index: number;
 }
 
+/** @group Collection */
 export interface ArrayExcessPropertyIssue {
   readonly kind: "ExcessProperty";
   readonly key: string | symbol;
@@ -5232,6 +5378,7 @@ export interface ArrayExcessPropertyIssue {
 type ArrayStructuralIssue =
   ArrayHoleIssue | ArrayAccessorIssue | ArrayExcessPropertyIssue;
 
+/** @group Collection */
 export type ArrayElementIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Element";
@@ -5240,6 +5387,7 @@ export type ArrayElementIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
+/** @group Collection */
 export type ArrayElementsError<Error extends TypeError> = [Error] extends [
   never,
 ]
@@ -5484,6 +5632,7 @@ export const set = <ElementType extends ConcreteTypeNode>(
     setRuntimeConfig,
   ) as SetType<ElementType>;
 
+/** @group Collection */
 export interface SetType<ElementType extends TypeNode> extends Type<
   "Set",
   ReadonlySet<ElementType["Input"]>,
@@ -5554,11 +5703,13 @@ type SetNodeError<ElementType extends TypeNode> = [
   ? SetElementsError<ElementType["Error"]>
   : SetError<ElementType["Error"]>;
 
+/** @group Collection */
 export type SetError<Error extends TypeError = TypeError> =
   | SetNotSetError
   | SetUnexpectedPrototypeError
   | SetItemsErrorValue<Error, true>;
 
+/** @group Collection */
 export interface SetNotSetError extends TypeError<"Set"> {
   readonly reason: {
     readonly kind: "NotSet";
@@ -5566,7 +5717,11 @@ export interface SetNotSetError extends TypeError<"Set"> {
   };
 }
 
-/** An error returned when a {@link set} input is a Set subclass. */
+/**
+ * An error returned when a {@link set} input is a Set subclass.
+ *
+ * @group Collection
+ */
 export interface SetUnexpectedPrototypeError extends TypeError<"Set"> {
   readonly reason: {
     readonly kind: "UnexpectedPrototype";
@@ -5574,6 +5729,7 @@ export interface SetUnexpectedPrototypeError extends TypeError<"Set"> {
   };
 }
 
+/** @group Collection */
 export interface SetExcessPropertyIssue {
   readonly kind: "ExcessProperty";
   readonly key: string | symbol;
@@ -5581,6 +5737,7 @@ export interface SetExcessPropertyIssue {
 
 type SetStructuralIssue = SetExcessPropertyIssue;
 
+/** @group Collection */
 export type SetElementIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Element";
@@ -5589,11 +5746,13 @@ export type SetElementIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
+/** @group Collection */
 export type SetItemsError<Error extends TypeError> = SetItemsErrorValue<
   Error,
   true
 >;
 
+/** @group Collection */
 export type SetElementsError<Error extends TypeError> = [Error] extends [never]
   ? never
   : SetItemsErrorValue<Error, false>;
@@ -6049,7 +6208,11 @@ const createTupleType = (
   );
 };
 
-/** The fixed-length heterogeneous {@link Type} returned by {@link tuple}. */
+/**
+ * The fixed-length heterogeneous {@link Type} returned by {@link tuple}.
+ *
+ * @group Collection
+ */
 export interface TupleType<Elements extends TupleElements> extends Type<
   "Tuple",
   TupleShape<Elements, "Input">,
@@ -6142,13 +6305,21 @@ type TupleElementConcreteTypeError = CompileTimeError<
   "Element must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
 >;
 
-/** An error returned while validating a {@link tuple}. */
+/**
+ * An error returned while validating a {@link tuple}.
+ *
+ * @group Collection
+ */
 export type TupleError<Error extends TypeError = TypeError> =
   | TupleNotArrayError
   | TupleInvalidLengthError
   | TupleItemsErrorValue<Error, true>;
 
-/** An error returned when a {@link tuple} input is not an Array. */
+/**
+ * An error returned when a {@link tuple} input is not an Array.
+ *
+ * @group Collection
+ */
 export interface TupleNotArrayError extends TypeError<"Tuple"> {
   readonly reason: {
     readonly kind: "NotArray";
@@ -6156,7 +6327,11 @@ export interface TupleNotArrayError extends TypeError<"Tuple"> {
   };
 }
 
-/** An error returned when a {@link tuple} input has the wrong length. */
+/**
+ * An error returned when a {@link tuple} input has the wrong length.
+ *
+ * @group Collection
+ */
 export interface TupleInvalidLengthError extends TypeError<"Tuple"> {
   readonly reason: {
     readonly kind: "InvalidLength";
@@ -6165,29 +6340,49 @@ export interface TupleInvalidLengthError extends TypeError<"Tuple"> {
   };
 }
 
-/** An error containing structural or element issues found in a {@link tuple}. */
+/**
+ * An error containing structural or element issues found in a {@link tuple}.
+ *
+ * @group Collection
+ */
 export type TupleItemsError<Error extends TypeError> = TupleItemsErrorValue<
   Error,
   true
 >;
 
-/** One structural or element issue found in a {@link tuple}. */
+/**
+ * One structural or element issue found in a {@link tuple}.
+ *
+ * @group Collection
+ */
 export type TupleIssue<Error extends TypeError> =
   TupleStructuralIssue | TupleElementIssue<Error>;
 
-/** A missing indexed element in a {@link tuple}. */
+/**
+ * A missing indexed element in a {@link tuple}.
+ *
+ * @group Collection
+ */
 export interface TupleHoleIssue {
   readonly kind: "Hole";
   readonly index: number;
 }
 
-/** An accessor element in a {@link tuple}. */
+/**
+ * An accessor element in a {@link tuple}.
+ *
+ * @group Collection
+ */
 export interface TupleAccessorIssue {
   readonly kind: "Accessor";
   readonly index: number;
 }
 
-/** An undeclared own property in a {@link tuple}. */
+/**
+ * An undeclared own property in a {@link tuple}.
+ *
+ * @group Collection
+ */
 export interface TupleExcessPropertyIssue {
   readonly kind: "ExcessProperty";
   readonly key: string | symbol;
@@ -6196,7 +6391,11 @@ export interface TupleExcessPropertyIssue {
 type TupleStructuralIssue =
   TupleHoleIssue | TupleAccessorIssue | TupleExcessPropertyIssue;
 
-/** An error returned by one element Type in a {@link tuple}. */
+/**
+ * An error returned by one element Type in a {@link tuple}.
+ *
+ * @group Collection
+ */
 export type TupleElementIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Element";
@@ -6205,7 +6404,11 @@ export type TupleElementIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
-/** Element errors possible after a typed {@link tuple} boundary was asserted. */
+/**
+ * Element errors possible after a typed {@link tuple} boundary was asserted.
+ *
+ * @group Collection
+ */
 export type TupleElementsError<Error extends TypeError> = [Error] extends [
   never,
 ]
@@ -6351,8 +6554,8 @@ const formatPlainObjectError: TypeErrorFormatter<PlainObjectError> = (
  * properties, and symbol properties without reading their values.
  *
  * Use {@link object} when property names are fixed, {@link record} when keys and
- * values have their own Types, and {@link createInstanceOfType} when an instance
- * belongs to the domain.
+ * values have their own Types, and {@link instanceOf} when an instance belongs
+ * to the domain.
  *
  * @group Base Types
  */
@@ -6734,6 +6937,7 @@ export const record = <
   );
 };
 
+/** @group Objects */
 export interface RecordType<
   KeyType extends TypeNode,
   ValueType extends TypeNode,
@@ -6857,6 +7061,7 @@ type RecordKeyStringTypeError = CompileTimeError<
   "Record key Type Input and Output must extend string."
 >;
 
+/** @group Objects */
 export type RecordError<
   KeyError extends TypeError = TypeError,
   ValueError extends TypeError = TypeError,
@@ -6870,6 +7075,7 @@ export type RecordError<
       Collision | RecordAccessorIssue | RecordNonEnumerableIssue
     >;
 
+/** @group Objects */
 export interface RecordNotRecordError extends TypeError<"Record"> {
   readonly reason: {
     readonly kind: "NotRecord";
@@ -6877,6 +7083,7 @@ export interface RecordNotRecordError extends TypeError<"Record"> {
   };
 }
 
+/** @group Objects */
 export interface RecordNotPlainRecordError extends TypeError<"Record"> {
   readonly reason: {
     readonly kind: "NotPlainRecord";
@@ -6890,6 +7097,8 @@ export interface RecordNotPlainRecordError extends TypeError<"Record"> {
  * Property structure is omitted by default because typed operations assert
  * enumerable own data properties. {@link RecordError} includes structural issues
  * at the unknown-input boundary.
+ *
+ * @group Objects
  */
 export type RecordEntriesError<
   KeyError extends TypeError,
@@ -6899,27 +7108,38 @@ export type RecordEntriesError<
   ? never
   : RecordEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
 
+/** @group Objects */
 export type RecordIssue<
   KeyError extends TypeError,
   ValueError extends TypeError,
   StructuralIssue extends RecordStructuralIssue = RecordCollisionIssue,
 > = RecordKeyIssue<KeyError> | RecordValueIssue<ValueError> | StructuralIssue;
 
+/** @group Objects */
 export type RecordStructuralIssue =
   RecordAccessorIssue | RecordCollisionIssue | RecordNonEnumerableIssue;
 
-/** An accessor property rejected by {@link record}. */
+/**
+ * An accessor property rejected by {@link record}.
+ *
+ * @group Objects
+ */
 export interface RecordAccessorIssue {
   readonly kind: "Accessor";
   readonly key: string | symbol;
 }
 
-/** A non-enumerable property rejected by {@link record}. */
+/**
+ * A non-enumerable property rejected by {@link record}.
+ *
+ * @group Objects
+ */
 export interface RecordNonEnumerableIssue {
   readonly kind: "NonEnumerable";
   readonly key: string | symbol;
 }
 
+/** @group Objects */
 export type RecordKeyIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Key";
@@ -6928,6 +7148,7 @@ export type RecordKeyIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
+/** @group Objects */
 export type RecordValueIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Value";
@@ -6936,6 +7157,7 @@ export type RecordValueIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
+/** @group Objects */
 export interface RecordCollisionIssue {
   readonly kind: "Collision";
   readonly key: string | symbol;
@@ -7059,7 +7281,11 @@ const validateRecordEntries = (
       });
 };
 
-/** An optional property used to construct an {@link object} Type. */
+/**
+ * An optional property used to construct an {@link object} Type.
+ *
+ * @group Objects
+ */
 export interface OptionalProperty<T extends TypeNode> {
   readonly type: T;
   readonly [errorsSymbol]: InferErrors<T>;
@@ -7114,7 +7340,11 @@ type ValidateOptionalPropertyType<T extends TypeNode> =
       : ObjectPropertyTypeError
     : ObjectPropertyTypeError;
 
-/** Properties used to construct an {@link object} Type. */
+/**
+ * Properties used to construct an {@link object} Type.
+ *
+ * @group Objects
+ */
 export type ObjectProps = Readonly<
   Record<string, TypeNode | OptionalProperty<TypeNode>>
 >;
@@ -7140,9 +7370,8 @@ type ObjectProperty = ObjectProps[string];
  *
  * A `null` prototype or an immediate root prototype whose own prototype is
  * `null` is accepted. Ordinary class instances, deeper prototype chains,
- * accessors, and non-enumerable properties are rejected. Use
- * {@link createInstanceOfType} for class Outputs or {@link transform} to decode
- * instances into plain data.
+ * accessors, and non-enumerable properties are rejected. Use {@link instanceOf}
+ * for class Outputs or {@link transform} to decode instances into plain data.
  *
  * When decoding changes no property, it preserves the input. When decoding or
  * encoding changes a property, it constructs an object with a `null`
@@ -7160,6 +7389,7 @@ type ObjectProperty = ObjectProps[string];
  *   object,
  *   ok,
  *   transform,
+ *   type InferType,
  *   type Result,
  * } from "@evolu/common";
  *
@@ -7172,7 +7402,7 @@ type ObjectProperty = ObjectProps[string];
  *   name: String,
  *   age: AgeFromString,
  * });
- * type User = typeof User.Output;
+ * interface User extends InferType<typeof User> {}
  *
  * // Validate an unknown value.
  * const userFromUnknown = User.fromUnknown({ name: "Ada", age: "42" });
@@ -7848,6 +8078,7 @@ type ObjectRecordCanonicalInputTypeError = CompileTimeError<
   "Every declared property Type CanonicalInput must extend the Object Record value Type CanonicalInput."
 >;
 
+/** @group Objects */
 export type ObjectType<
   Props extends ObjectProps,
   Rest extends ObjectRecordTypeNode | undefined = undefined,
@@ -8051,6 +8282,8 @@ type StrictObjectFromUnknownPropertyErrors<Props extends ObjectProps> = {
  *
  * `ObjectMissingProperty` is reserved for absent required properties. Property
  * {@link Type | Types} must use another error tag.
+ *
+ * @group Objects
  */
 export interface ObjectMissingPropertyError extends TypeError<"ObjectMissingProperty"> {}
 
@@ -8060,12 +8293,18 @@ export interface ObjectMissingPropertyError extends TypeError<"ObjectMissingProp
  *
  * `ObjectPropertyAccess` is reserved for this structural failure. Property
  * {@link Type | Types} must use another error tag.
+ *
+ * @group Objects
  */
 export interface ObjectPropertyAccessError extends TypeError<"ObjectPropertyAccess"> {
   readonly reason: "Accessor" | "NonEnumerable";
 }
 
-/** An error returned when an {@link object} input is not an object. */
+/**
+ * An error returned when an {@link object} input is not an object.
+ *
+ * @group Objects
+ */
 export interface ObjectNotObjectError extends TypeError<"Object"> {
   readonly reason: {
     readonly kind: "NotObject";
@@ -8083,6 +8322,8 @@ export interface ObjectNotObjectError extends TypeError<"Object"> {
  * class instances, and objects with deeper custom prototype chains return this
  * error instead of having their prototype or inherited state discarded.
  * `reason.value` is the rejected object.
+ *
+ * @group Objects
  */
 export interface ObjectUnexpectedPrototypeError extends TypeError<"Object"> {
   readonly reason: {
@@ -8100,6 +8341,8 @@ export interface ObjectUnexpectedPrototypeError extends TypeError<"Object"> {
  * in the containing Object error map. `ObjectExcessProperty` is reserved for
  * this structural failure. Property {@link Type | Types} must use another error
  * tag.
+ *
+ * @group Objects
  */
 export interface ObjectExcessPropertyError extends TypeError<"ObjectExcessProperty"> {}
 
@@ -8110,6 +8353,8 @@ export interface ObjectExcessPropertyError extends TypeError<"ObjectExcessProper
  * optional keys. Object adds its structural property errors automatically, so
  * each value is only the error returned by that property's Type. The interface
  * can be extended by recursive error declarations.
+ *
+ * @group Objects
  */
 export interface ObjectError<
   Errors extends {
@@ -8126,7 +8371,11 @@ export interface ObjectError<
       >["reason"];
 }
 
-/** An error returned while validating the properties of an {@link object}. */
+/**
+ * An error returned while validating the properties of an {@link object}.
+ *
+ * @group Objects
+ */
 export interface ObjectPropertiesError<
   Errors extends {
     readonly [Key in keyof Errors]: TypeError | undefined;
@@ -8264,6 +8513,7 @@ export const partial = <const Props extends ObjectProps>(
   >;
 };
 
+/** @group Objects */
 export type PartialObjectProps<Props extends ObjectProps> = {
   readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
     ? Props[Key]
@@ -8332,6 +8582,7 @@ export const nullableToOptional = <const Props extends ObjectProps>(
   >;
 };
 
+/** @group Objects */
 export type NullableToOptionalProps<Props extends ObjectProps> = {
   readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
     ? Props[Key]
@@ -8630,7 +8881,7 @@ export interface Typed<Tag extends TypeName> {
  *   String,
  *   discriminatedUnion,
  *   typed,
- *   type ExtractOutputType,
+ *   type ExtractTyped,
  * } from "@evolu/common";
  *
  * const Create = typed("Create", { id: String });
@@ -8638,17 +8889,17 @@ export interface Typed<Tag extends TypeName> {
  * const Message = discriminatedUnion(Create, Delete);
  * type Message = typeof Message.Output;
  *
- * type CreateMessage = ExtractOutputType<Message, "Create">;
+ * type CreateMessage = ExtractTyped<Message, "Create">;
  *
  * expectTypeOf<CreateMessage>().toEqualTypeOf<typeof Create.Output>();
  *
  * // @ts-expect-error "Cretae" is not a Message type.
- * type Typo = ExtractOutputType<Message, "Cretae">;
+ * type Typo = ExtractTyped<Message, "Cretae">;
  * ```
  *
  * @group Discriminated unions
  */
-export type ExtractOutputType<
+export type ExtractTyped<
   Output extends Typed<TypeName>,
   Name extends Output["type"],
 > = Extract<Output, { readonly type: Name }>;
@@ -9065,7 +9316,11 @@ export function discriminatedUnion(
   );
 }
 
-/** The routed {@link Type} returned by {@link discriminatedUnion}. */
+/**
+ * The routed {@link Type} returned by {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
 export interface DiscriminatedUnionType<
   Key extends string,
   Members extends DiscriminatedUnionMembers,
@@ -9091,7 +9346,11 @@ export interface DiscriminatedUnionType<
   readonly members: Members;
 }
 
-/** A root {@link Type} validating Inputs accepted by {@link discriminatedUnion}. */
+/**
+ * A root {@link Type} validating Inputs accepted by {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
 export type DiscriminatedUnionInputType<Input, Error extends TypeError> = Type<
   "DiscriminatedUnion",
   Input,
@@ -9103,7 +9362,11 @@ export type DiscriminatedUnionInputType<Input, Error extends TypeError> = Type<
   Input
 >;
 
-/** An error returned while selecting a member in {@link discriminatedUnion}. */
+/**
+ * An error returned while selecting a member in {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
 export type DiscriminatedUnionError<
   Key extends string = string,
   Expected extends Literal = Literal,
@@ -9115,7 +9378,11 @@ export type DiscriminatedUnionError<
   | DiscriminatedUnionDiscriminatorError<Key, Expected>
   | DiscriminatedUnionMemberError<MemberIssue>;
 
-/** An error returned when a value cannot be routed through {@link Object}. */
+/**
+ * An error returned when a value cannot be routed through {@link Object}.
+ *
+ * @group Discriminated unions
+ */
 export interface DiscriminatedUnionObjectError extends TypeError<"DiscriminatedUnion"> {
   readonly reason: {
     readonly kind: "Object";
@@ -9126,6 +9393,8 @@ export interface DiscriminatedUnionObjectError extends TypeError<"DiscriminatedU
 /**
  * An error returned when the discriminator for {@link discriminatedUnion} is not
  * an own enumerable data property.
+ *
+ * @group Discriminated unions
  */
 export interface DiscriminatedUnionPropertyAccessError<
   Key extends string = string,
@@ -9137,7 +9406,11 @@ export interface DiscriminatedUnionPropertyAccessError<
   };
 }
 
-/** An error returned when no member of {@link discriminatedUnion} matches. */
+/**
+ * An error returned when no member of {@link discriminatedUnion} matches.
+ *
+ * @group Discriminated unions
+ */
 export interface DiscriminatedUnionDiscriminatorError<
   Key extends string = string,
   Expected extends Literal = Literal,
@@ -9150,7 +9423,11 @@ export interface DiscriminatedUnionDiscriminatorError<
   };
 }
 
-/** A selected-member issue returned by {@link discriminatedUnion}. */
+/**
+ * A selected-member issue returned by {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
 export interface DiscriminatedUnionMemberIssue<
   Discriminator extends Literal = Literal,
   Error extends TypeError = TypeError,
@@ -9160,7 +9437,11 @@ export interface DiscriminatedUnionMemberIssue<
   readonly error: Error;
 }
 
-/** An error returned by the member selected by {@link discriminatedUnion}. */
+/**
+ * An error returned by the member selected by {@link discriminatedUnion}.
+ *
+ * @group Discriminated unions
+ */
 export type DiscriminatedUnionMemberError<
   Issue extends DiscriminatedUnionMemberIssue = DiscriminatedUnionMemberIssue,
 > = [Issue] extends [never]
@@ -9704,7 +9985,11 @@ export interface JsonObject {
   readonly [key: string]: JsonValue;
 }
 
-/** One issue found while validating an exact {@link JsonValue}. */
+/**
+ * One issue found while validating an exact {@link JsonValue}.
+ *
+ * @group JSON
+ */
 export type JsonValueIssue =
   | {
       readonly kind: "InvalidType";
@@ -9748,7 +10033,11 @@ export type JsonValueIssue =
       readonly ancestorPath: ReadonlyArray<string | number | symbol>;
     };
 
-/** An error containing one or more issues found in a {@link JsonValue}. */
+/**
+ * An error containing one or more issues found in a {@link JsonValue}.
+ *
+ * @group JSON
+ */
 export interface JsonValueError extends TypeError<"JsonValue"> {
   readonly reason: {
     readonly kind: "Issues";
@@ -9756,7 +10045,11 @@ export interface JsonValueError extends TypeError<"JsonValue"> {
   };
 }
 
-/** The exact root {@link Type} of in-memory JSON data values. */
+/**
+ * The exact root {@link Type} of in-memory JSON data values.
+ *
+ * @group JSON
+ */
 export interface JsonValueType extends Type<
   "JsonValue",
   JsonValue,
@@ -9768,7 +10061,11 @@ export interface JsonValueType extends Type<
   JsonValue
 > {}
 
-/** The exact top-level JSON object {@link Type}. */
+/**
+ * The exact top-level JSON object {@link Type}.
+ *
+ * @group JSON
+ */
 export interface JsonObjectType extends Type<
   "Record",
   JsonObject,
@@ -9784,7 +10081,11 @@ export interface JsonObjectType extends Type<
   readonly value: JsonValueType;
 }
 
-/** An error returned when a string does not contain valid JSON text. */
+/**
+ * An error returned when a string does not contain valid JSON text.
+ *
+ * @group JSON
+ */
 export interface JsonError extends TypeError<"Json"> {
   readonly value: string;
 }
@@ -10315,11 +10616,12 @@ export const JsonValueFromJson = /*#__PURE__*/ transform(
  *   object,
  *   String,
  *   type Brand,
+ *   type InferType,
  *   type Json,
  * } from "@evolu/common";
  *
  * const Person = object({ name: String, age: Age });
- * type Person = typeof Person.Output;
+ * interface Person extends InferType<typeof Person> {}
  *
  * const [PersonJson, personToPersonJson, personJsonToPerson] = json(
  *   Person,

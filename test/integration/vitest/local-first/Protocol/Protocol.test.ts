@@ -84,11 +84,11 @@ import {
 } from "../../../../../packages/common/src/Task.ts";
 import {
   createId,
-  dateToDateIso,
+  DateIsoFromDate,
   NonNegativeInt,
   PositiveInt,
   zeroNonNegativeInt,
-} from "../../../../../packages/common/src/Type.ts";
+} from "../../../../../packages/common/src/Type2.ts";
 import { setupSqliteAndRelayStorage } from "../../_deps.ts";
 import {
   maxTimestamp,
@@ -292,11 +292,36 @@ test("encodeSqliteValue/decodeSqliteValue", () => {
     [16383, 3], // NonNegativeInt
     ['{"compact":true,"schema":0}', 20], // 18 bytes msgpackr + 2 bytes protocol overhead
     // Protocol encoding ensures 6 bytes till the year 2108.
-    [getOrThrow(dateToDateIso(new Date("0000-01-01T00:00:00.000Z"))), 10],
-    [getOrThrow(dateToDateIso(new Date("2024-10-31T00:00:00.000Z"))), 7],
-    [getOrThrow(dateToDateIso(new Date("2108-10-31T00:00:00.000Z"))), 7],
-    [getOrThrow(dateToDateIso(new Date("2109-10-31T00:00:00.000Z"))), 8],
-    [getOrThrow(dateToDateIso(new Date("9999-12-31T23:59:59.999Z"))), 8],
+    [
+      getOrThrow(
+        DateIsoFromDate.from.parent(new Date("0000-01-01T00:00:00.000Z")),
+      ),
+      10,
+    ],
+    [
+      getOrThrow(
+        DateIsoFromDate.from.parent(new Date("2024-10-31T00:00:00.000Z")),
+      ),
+      7,
+    ],
+    [
+      getOrThrow(
+        DateIsoFromDate.from.parent(new Date("2108-10-31T00:00:00.000Z")),
+      ),
+      7,
+    ],
+    [
+      getOrThrow(
+        DateIsoFromDate.from.parent(new Date("2109-10-31T00:00:00.000Z")),
+      ),
+      8,
+    ],
+    [
+      getOrThrow(
+        DateIsoFromDate.from.parent(new Date("9999-12-31T23:59:59.999Z")),
+      ),
+      8,
+    ],
   ];
 
   const buffer = createBuffer();
@@ -442,7 +467,7 @@ const createDbChange = (deps: RunDefaultDeps) =>
     id: createId(deps),
     values: {
       name: "Victoria",
-      hiredAt: getOrThrow(dateToDateIso(new Date("2024-10-31"))),
+      hiredAt: getOrThrow(DateIsoFromDate.from.parent(new Date("2024-10-31"))),
       officeId: createId(deps),
     },
     isInsert: true,

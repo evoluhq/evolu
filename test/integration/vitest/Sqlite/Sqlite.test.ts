@@ -1,5 +1,6 @@
 import { expectErr, expectOk } from "@evolu/vitest";
 import { describe, expect, expectTypeOf, test } from "vitest";
+import { assertNonNullable } from "../../../../packages/common/src/Assert.ts";
 import { constVoid } from "../../../../packages/common/src/Function.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
 import {
@@ -29,7 +30,7 @@ import {
   sleep,
   testCreateRun,
 } from "../../../../packages/common/src/Task.ts";
-import { testName } from "../../../../packages/common/src/Type.ts";
+import { testName } from "../../../../packages/common/src/Type2.ts";
 import { setupSqlite } from "../_deps.ts";
 
 describe("eqSqliteValue", () => {
@@ -779,7 +780,10 @@ describe("getSqliteSchema", () => {
         tables: Object.fromEntries(
           Object.entries(schema.tables)
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([tableName, columns]) => [tableName, [...columns].sort()]),
+            .map(([tableName, columns]) => {
+              assertNonNullable(columns);
+              return [tableName, [...columns].sort()];
+            }),
         ),
         indexes: [...schema.indexes]
           .map(({ name, sql }) => ({ name, sql }))
@@ -940,7 +944,9 @@ describe("getSqliteSnapshot", () => {
 
     const snapshot = getSqliteSnapshot(deps);
 
-    expect([...snapshot.schema.tables.t]).toEqual(["id", "value"]);
+    const columns = snapshot.schema.tables.t;
+    assertNonNullable(columns);
+    expect([...columns]).toEqual(["id", "value"]);
     expect(snapshot.schema.indexes).toEqual([
       {
         name: "idx_t_value",

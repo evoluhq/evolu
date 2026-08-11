@@ -1,18 +1,18 @@
 import {
   EvoluSchema,
   id,
-  NonEmptyString100,
+  NonEmptyTrimmedString100,
   nullOr,
   SqliteBoolean,
 } from "@evolu/common";
 
 // Define the typed IDs
 export const TodoId = id("Todo");
-export type TodoId = typeof TodoId.Type;
+export type TodoId = typeof TodoId.Output;
 
 const TodoSchema = {
   id: TodoId,
-  title: NonEmptyString100,
+  title: NonEmptyTrimmedString100,
   isCompleted: nullOr(SqliteBoolean),
 } as const;
 

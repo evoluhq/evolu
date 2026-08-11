@@ -19,7 +19,7 @@ import {
   onePositiveInt,
   PositiveInt,
   zeroNonNegativeInt,
-} from "./Type.ts";
+} from "./Type2.ts";
 
 /**
  * Bidirectional relation between two types.

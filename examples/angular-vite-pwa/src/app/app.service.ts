@@ -4,11 +4,10 @@ import {
   createQueryBuilder,
   InferRow,
   Mnemonic,
-  NonEmptyString100,
+  NonEmptyTrimmedString100,
   sqliteTrue,
 } from "@evolu/common";
 import { EVOLU } from "./app.config";
-import { formatTypeError } from "./error-formatter";
 import { Schema, TodoId } from "./schema";
 
 const createQuery = createQueryBuilder(Schema);
@@ -45,9 +44,9 @@ export class AppService implements OnDestroy {
   /** Todos */
 
   addTodo(title: string) {
-    const result = NonEmptyString100.from(title.trim());
+    const result = NonEmptyTrimmedString100.fromUnknown(title.trim());
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -57,9 +56,9 @@ export class AppService implements OnDestroy {
   }
 
   renameTodo(id: string, title: string) {
-    const result = NonEmptyString100.from(title.trim());
+    const result = NonEmptyTrimmedString100.fromUnknown(title.trim());
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -91,9 +90,9 @@ export class AppService implements OnDestroy {
       return;
     }
 
-    const mnemonicResult = Mnemonic.from(trimmedMnemonic);
+    const mnemonicResult = Mnemonic.fromUnknown(trimmedMnemonic);
     if (!mnemonicResult.ok) {
-      alert(formatTypeError(mnemonicResult.error));
+      alert(Mnemonic.formatError(mnemonicResult.error));
       return;
     }
 

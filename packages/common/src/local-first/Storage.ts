@@ -17,18 +17,24 @@ import type { SqliteDep } from "../Sqlite.ts";
 import { sql, SqliteValue } from "../Sqlite.ts";
 import type { Task } from "../Task.ts";
 import { Millis } from "../Time.ts";
-import type { InferType, Int64String, Typed, TypeError } from "../Type.ts";
 import {
   Boolean,
   brand,
   Id,
+  type InferType,
+  type Int64String,
   NonNegativeInt,
+  Null,
   nullOr,
   object,
+  type ObjectType,
   PositiveInt,
   record,
   String,
-} from "../Type.ts";
+  type Typed,
+  type TypeError,
+  type UnionType,
+} from "../Type2.ts";
 import type { Awaitable } from "../Types.ts";
 import type { Owner, OwnerError, OwnerIdBytes } from "./Owner.ts";
 import { OwnerId, OwnerWriteKey } from "./Owner.ts";
@@ -270,7 +276,7 @@ export const testCreateCrdtMessage = (
 });
 
 export const DbChangeValues = /*#__PURE__*/ record(String, SqliteValue);
-export type DbChangeValues = typeof DbChangeValues.Type;
+export type DbChangeValues = typeof DbChangeValues.Output;
 
 export const ValidDbChangeValues = /*#__PURE__*/ brand(
   "ValidDbChangeValues",
@@ -284,12 +290,15 @@ export const ValidDbChangeValues = /*#__PURE__*/ brand(
         invalidColumns,
       });
 
-    return ok(value);
+    return ok();
   },
+  (error) =>
+    `DbChange values contain reserved system columns: ${error.invalidColumns.join(", ")}.`,
 );
-export type ValidDbChangeValues = typeof ValidDbChangeValues.Type;
+export type ValidDbChangeValues = typeof ValidDbChangeValues.Output;
 
 export interface ValidDbChangeValuesError extends TypeError<"ValidDbChangeValues"> {
+  readonly value: DbChangeValues;
   readonly invalidColumns: ReadonlyArray<string>;
 }
 
@@ -297,7 +306,13 @@ export interface ValidDbChangeValuesError extends TypeError<"ValidDbChangeValues
  * A DbChange is a change to a table row. Together with a unique
  * {@link Timestamp}, it forms a {@link CrdtMessage}.
  */
-export const DbChange = /*#__PURE__*/ object({
+export const DbChange: ObjectType<{
+  readonly table: typeof String;
+  readonly id: typeof Id;
+  readonly values: typeof ValidDbChangeValues;
+  readonly isInsert: typeof Boolean;
+  readonly isDelete: UnionType<readonly [typeof Boolean, typeof Null]>;
+}> = /*#__PURE__*/ object({
   table: String,
   id: Id,
   values: ValidDbChangeValues,

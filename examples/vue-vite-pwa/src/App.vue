@@ -2,37 +2,36 @@
 import {
   AppName,
   booleanToSqliteBoolean,
-  NonEmptyString,
-  NonEmptyString1000,
+  NonEmptyTrimmedString,
+  NonEmptyTrimmedString1000,
   SqliteBoolean,
   sqliteTrue,
   createEvolu,
-  createFormatTypeError,
   createQueryBuilder,
   id,
   maxLength,
   nullOr,
   testAppOwner,
   type EvoluSchema,
-  type InferType,
   type KyselyNotNull,
-  type MinLengthError,
+  type Result,
+  type TypeError,
   union,
 } from "@evolu/common";
 import { createEvoluDeps, createRun } from "@evolu/web";
 import { provideEvolu, useQuery } from "@evolu/vue";
 
 const TodoId = id("Todo");
-type TodoId = typeof TodoId.Type;
+type TodoId = typeof TodoId.Output;
 
 const TodoCategoryId = id("TodoCategory");
-type TodoCategoryIdType = typeof TodoCategoryId.Type;
+type TodoCategoryIdType = typeof TodoCategoryId.Output;
 
-const NonEmptyString50 = maxLength(50)(NonEmptyString);
-type NonEmptyString50 = typeof NonEmptyString50.Type;
+const NonEmptyString50 = maxLength(50)(NonEmptyTrimmedString);
+type NonEmptyString50 = typeof NonEmptyString50.Output;
 
 const TodoPriority = union("low", "high");
-type TodoPriority = typeof TodoPriority.Type;
+type TodoPriority = typeof TodoPriority.Output;
 
 const PriorityList = TodoPriority.members.map(
   (member: (typeof TodoPriority.members)[number]) => member.expected,
@@ -41,7 +40,7 @@ const PriorityList = TodoPriority.members.map(
 const DatabaseSchema = {
   todo: {
     id: TodoId,
-    title: NonEmptyString1000,
+    title: NonEmptyTrimmedString1000,
     isCompleted: nullOr(SqliteBoolean),
     categoryId: nullOr(TodoCategoryId),
     priority: TodoPriority,
@@ -104,7 +103,7 @@ const allCategories = useQuery(todoCategories);
 const { insert, update } = evolu;
 
 const createNewTodo = () => {
-  customPrompt(NonEmptyString1000, "New Todo", (title) => {
+  customPrompt(NonEmptyTrimmedString1000, "New Todo", (title) => {
     insert("todo", { title, priority: "low" });
   });
 };
@@ -131,7 +130,7 @@ const handleToggleCompletedClick = (id: TodoId, isCompleted: boolean) => {
 };
 
 const handleRenameTodoClick = (id: TodoId) => {
-  customPrompt(NonEmptyString1000, "New Name", (title) => {
+  customPrompt(NonEmptyTrimmedString1000, "New Name", (title) => {
     update("todo", { id, title });
   });
 };
@@ -150,32 +149,24 @@ const handleDeleteCategoryClick = (id: TodoCategoryIdType) => {
   update("todoCategory", { id, isDeleted: sqliteTrue });
 };
 
-const customPrompt = <
-  Type extends typeof NonEmptyString1000 | typeof NonEmptyString50,
->(
-  type: Type,
+const customPrompt = <Output, Error extends TypeError>(
+  type: {
+    readonly fromUnknown: (value: unknown) => Result<Output, Error>;
+    readonly formatError: (error: Error) => string;
+  },
   message: string,
-  onSuccess: (value: InferType<Type>) => void,
+  onSuccess: (value: Output) => void,
 ): void => {
   const value = window.prompt(message);
   if (value == null) return;
 
-  const result = type.from(value);
+  const result = type.fromUnknown(value);
   if (!result.ok) {
-    alert(formatTypeError(result.error));
+    alert(type.formatError(result.error));
     return;
   }
-  onSuccess(result.value as never);
+  onSuccess(result.value);
 };
-
-const formatTypeError = createFormatTypeError<MinLengthError>(
-  (error): string => {
-    switch (error.type) {
-      case "MinLength":
-        return `Minimal length is: ${error.min}`;
-    }
-  },
-);
 
 function onCategoryChange(event: Event, id: TodoId) {
   if (!(event.target instanceof HTMLSelectElement)) return;

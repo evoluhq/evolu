@@ -8,7 +8,7 @@ import { createRandomBytes } from "./Crypto.ts";
 import { constVoid } from "./Function.ts";
 import { ok } from "./Result.ts";
 import type { Task } from "./Task.ts";
-import { createId } from "./Type.ts";
+import { createId } from "./Type2.ts";
 import type { Callback } from "./Types.ts";
 
 /**

@@ -5,7 +5,7 @@
  */
 
 import type { RandomBytesDep } from "../Crypto.ts";
-import type { Mnemonic } from "../Type.ts";
+import type { Mnemonic } from "../Type2.ts";
 import type { AppOwner } from "./Owner.ts";
 import {
   createAppOwner,

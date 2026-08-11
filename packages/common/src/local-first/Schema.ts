@@ -6,6 +6,7 @@
 
 import * as Kysely from "kysely";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { assertNonNullable } from "../Assert.ts";
 import { getOwnProp, mapObject, type ReadonlyRecord } from "../Object.ts";
 import {
   eqSqliteIndex,
@@ -21,8 +22,17 @@ import {
   type SqliteSchema,
   SqliteValue,
 } from "../Sqlite.ts";
-import type { InferType } from "../Type.ts";
-import { DateIso, type Id, IdBytes, nullOr, object } from "../Type.ts";
+import {
+  DateIso,
+  type Id,
+  IdBytes,
+  type InferType,
+  Null,
+  nullOr,
+  object,
+  type ObjectType,
+  type UnionType,
+} from "../Type2.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
 import type { AppOwner } from "./Owner.ts";
 import { OwnerId } from "./Owner.ts";
@@ -52,12 +62,12 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  * ```ts
  * // With Evolu Type
  * const TodoId = id("Todo");
- * type TodoId = typeof TodoId.Type;
+ * type TodoId = typeof TodoId.Output;
  *
  * const Schema = {
  *   todo: {
  *     id: TodoId,
- *     title: NonEmptyString100,
+ *     title: NonEmptyTrimmedString100,
  *     isCompleted: nullOr(SqliteBoolean),
  *   },
  * };
@@ -155,7 +165,12 @@ export type CreateQuery<S extends EvoluSchema> = <R extends Row>(
  *   mark rows as deleted.
  * - `ownerId`: Represents ownership and logically partitions the database.
  */
-export const SystemColumns = /*#__PURE__*/ object({
+export const SystemColumns: ObjectType<{
+  readonly createdAt: typeof DateIso;
+  readonly updatedAt: typeof DateIso;
+  readonly isDeleted: UnionType<readonly [typeof SqliteBoolean, typeof Null]>;
+  readonly ownerId: typeof OwnerId;
+}> = /*#__PURE__*/ object({
   createdAt: DateIso,
   updatedAt: DateIso,
   isDeleted: /*#__PURE__*/ nullOr(SqliteBoolean),
@@ -399,7 +414,7 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  * const Schema = {
  *   todo: {
  *     id: id("Todo"),
- *     title: NonEmptyString100,
+ *     title: NonEmptyTrimmedString100,
  *     isCompleted: nullOr(SqliteBoolean),
  *   },
  * };
@@ -440,6 +455,7 @@ export const ensureSqliteSchema =
     currentSchema ??= getEvoluSqliteSchema(deps)();
 
     for (const [tableName, newColumns] of Object.entries(newSchema.tables)) {
+      assertNonNullable(newColumns);
       const currentColumns = getOwnProp(currentSchema.tables, tableName);
       if (!currentColumns) {
         queries.push(createAppTable(tableName, newColumns));

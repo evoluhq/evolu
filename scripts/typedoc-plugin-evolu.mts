@@ -4,7 +4,7 @@
  * Handles Evolu Type patterns:
  *
  * 1. `interface X extends InferType<typeof X>` - copies comment from `const X`
- * 2. `type X = typeof X.Type` - copies comment and resolves the type
+ * 2. `type X = typeof X.Output` - copies comment and resolves the type
  * 3. `const X = <EvoluType>` - shows source instead of expanded type
  *
  * The plugin runs in two phases:
@@ -44,7 +44,7 @@ export const load = (app: Application): void => {
   app.converter.on(
     Converter.EVENT_CREATE_DECLARATION,
     (context: Context, refl: DeclarationReflection) => {
-      // Pattern 2: type X = typeof X.Type
+      // Pattern 2: type X = typeof X.Output
       if (refl.kindOf(ReflectionKind.TypeAlias)) {
         const symbol = context.getSymbolFromReflection(refl);
         const declaration = symbol
@@ -55,7 +55,7 @@ export const load = (app: Application): void => {
         const typeNode = declaration.type;
         if (!ts.isTypeQueryNode(typeNode)) return;
         const exprName = typeNode.exprName;
-        if (!ts.isQualifiedName(exprName) || exprName.right.text !== "Type")
+        if (!ts.isQualifiedName(exprName) || exprName.right.text !== "Output")
           return;
 
         const checker = context.program.getTypeChecker();
@@ -108,7 +108,7 @@ export const load = (app: Application): void => {
           }
         }
 
-        // Pattern 2: type X = typeof X.Type
+        // Pattern 2: type X = typeof X.Output
         if (
           refl.kindOf(ReflectionKind.TypeAlias) &&
           resolvedTypes.has(getReflKey(refl))
@@ -133,7 +133,7 @@ export const load = (app: Application): void => {
         refl.type = new IntrinsicType(source);
       }
 
-      // Pattern 2: type X = typeof X.Type
+      // Pattern 2: type X = typeof X.Output
       const typeString = resolvedTypes.get(key);
       if (typeString && refl.kindOf(ReflectionKind.TypeAlias)) {
         refl.type = new IntrinsicType(typeString);
@@ -143,11 +143,13 @@ export const load = (app: Application): void => {
 };
 
 /**
- * Check if a type is an Evolu Type by looking for the EvoluTypeSymbol property.
- * The symbol appears as `__@EvoluTypeSymbol@<id>` in the type system.
+ * Check if a type is an Evolu Type by looking for the concrete Type marker. The
+ * symbol appears as `__@concreteTypeSymbol@<id>` in the type system.
  */
 const isEvoluType = (type: ts.Type): boolean =>
-  type.getProperties().some((p) => p.name.startsWith("__@EvoluTypeSymbol"));
+  type
+    .getProperties()
+    .some((property) => property.name.startsWith("__@concreteTypeSymbol"));
 
 /**
  * Extract source code for call expressions that return an Evolu Type. Returns

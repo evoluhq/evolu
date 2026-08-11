@@ -42,8 +42,7 @@ import {
   type Mutex,
   type Task,
 } from "../Task.ts";
-import { type Id, type Name, type Typed } from "../Type.ts";
-import type { ExtractOutputType } from "../Type2.ts";
+import type { ExtractTyped, Id, Name, Typed } from "../Type2.ts";
 import type { Callback } from "../Types.ts";
 import type { CreateWebSocketDep, WebSocket } from "../WebSocket.ts";
 import type {
@@ -243,7 +242,7 @@ export type SharedWorkerDeps = WorkerDeps &
 
 interface EvoluTenant extends AsyncDisposable {
   readonly addInstance: (
-    message: ExtractOutputType<SharedWorkerInput, "CreateEvolu">,
+    message: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
     onDisposed: () => void,
   ) => void;
 
@@ -427,7 +426,7 @@ export const initSharedWorker =
     const tenantsByName = disposer.use(
       await sharedWorkerRun.ok(
         createSharedResourceByKey(
-          (message: ExtractOutputType<SharedWorkerInput, "CreateEvolu">) =>
+          (message: ExtractTyped<SharedWorkerInput, "CreateEvolu">) =>
             createEvoluTenant(message, currentTenantsByName),
           {
             idleDisposeAfter: "3s",
@@ -456,7 +455,7 @@ const createEvoluTenant =
       sqliteSchema,
       encryptionKey,
       memoryOnly,
-    }: ExtractOutputType<SharedWorkerInput, "CreateEvolu">,
+    }: ExtractTyped<SharedWorkerInput, "CreateEvolu">,
     currentTenantsByName: Map<Name, BorrowedResource<EvoluTenant>>,
   ): Task<EvoluTenant, never, EvoluTenantDeps> =>
   async (run) => {
@@ -540,7 +539,7 @@ const createEvoluTenant =
 
     const queue: Array<DbWorkerRequest> = [];
     const callbacks = disposer.use(
-      createCallbacks<ExtractOutputType<DbWorkerOutput, "OnQueuedResponse">>(
+      createCallbacks<ExtractTyped<DbWorkerOutput, "OnQueuedResponse">>(
         run.deps,
       ),
     );
@@ -594,7 +593,7 @@ const createEvoluTenant =
     await dbWorkerInited.promise;
 
     const handleResponseForEvolu = (
-      response: ExtractOutputType<DbWorkerQueuedResponse, "ForEvolu">,
+      response: ExtractTyped<DbWorkerQueuedResponse, "ForEvolu">,
       first: DbWorkerRequest,
     ): void => {
       const instance = instancesById.get(response.id);
@@ -671,7 +670,7 @@ const createEvoluTenant =
     };
 
     const handleResponseForSharedWorker = (
-      response: ExtractOutputType<DbWorkerQueuedResponse, "ForSharedWorker">,
+      response: ExtractTyped<DbWorkerQueuedResponse, "ForSharedWorker">,
     ): void => {
       switch (response.message.type) {
         case "CreateSyncMessages":
@@ -796,7 +795,10 @@ const createEvoluTenant =
             id: message.id,
             claimLeasesBySyncOwner: createLookupMap({
               lookup: (syncOwner: SyncOwner) =>
-                structuralLookup({
+                structuralLookup<{
+                  readonly ownerId: OwnerId;
+                  readonly transports: ReadonlyArray<StructuralLookupKey>;
+                }>({
                   ownerId: syncOwner.owner.id,
                   transports: syncOwner.transports
                     .map(structuralLookup)

@@ -25,9 +25,9 @@ import {
 import { identity } from "../../../../packages/common/src/Function.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
 import {
-  NonEmptyString,
+  NonEmptyTrimmedString,
   PositiveInt,
-} from "../../../../packages/common/src/Type.ts";
+} from "../../../../packages/common/src/Type2.ts";
 
 describe("Types", () => {
   test("NonEmptyArray requires at least one element", () => {
@@ -454,10 +454,10 @@ describe("Transformations", () => {
     });
 
     test("works with refinements", () => {
-      const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
-        NonEmptyString.orThrow("hello"),
+      const mixed: ReadonlyArray<NonEmptyTrimmedString | PositiveInt> = [
+        NonEmptyTrimmedString.orThrow("hello"),
         PositiveInt.orThrow(42),
-        NonEmptyString.orThrow("world"),
+        NonEmptyTrimmedString.orThrow("world"),
         PositiveInt.orThrow(100),
       ];
 
@@ -560,22 +560,24 @@ describe("Transformations", () => {
 
     test("works with refinements and type narrowing", () => {
       // Using PositiveInt.is as a type guard with partitionArray
-      // With actual Evolu types: NonEmptyString | PositiveInt
-      const mixed: ReadonlyArray<NonEmptyString | PositiveInt> = [
-        NonEmptyString.orThrow("hello"),
+      // With actual Evolu types: NonEmptyTrimmedString | PositiveInt
+      const mixed: ReadonlyArray<NonEmptyTrimmedString | PositiveInt> = [
+        NonEmptyTrimmedString.orThrow("hello"),
         PositiveInt.orThrow(42),
-        NonEmptyString.orThrow("world"),
+        NonEmptyTrimmedString.orThrow("world"),
         PositiveInt.orThrow(100),
       ];
 
       // Using partitionArray with PositiveInt.is type guard
       const [positiveInts, strings] = partitionArray(mixed, PositiveInt.is);
 
-      // Type narrowing with Exclude: positiveInts is PositiveInt, strings is NonEmptyString
+      // Type narrowing with Exclude: positiveInts is PositiveInt, strings is NonEmptyTrimmedString
       expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
-      expectTypeOf(strings).toEqualTypeOf<ReadonlyArray<NonEmptyString>>();
+      expectTypeOf(strings).toEqualTypeOf<
+        ReadonlyArray<NonEmptyTrimmedString>
+      >();
 
-      // PositiveInt values are separated from NonEmptyString values
+      // PositiveInt values are separated from NonEmptyTrimmedString values
       expect(positiveInts.length).toBe(2);
       expect(strings.length).toBe(2);
 
@@ -584,9 +586,9 @@ describe("Transformations", () => {
         expect(PositiveInt.is(value)).toBe(true);
       }
 
-      // All values that don't pass PositiveInt.is are strings (NonEmptyString)
+      // All values that don't pass PositiveInt.is are strings (NonEmptyTrimmedString)
       for (const value of strings) {
-        expect(NonEmptyString.is(value)).toBe(true);
+        expect(NonEmptyTrimmedString.is(value)).toBe(true);
       }
     });
   });

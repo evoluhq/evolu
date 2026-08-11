@@ -14,17 +14,20 @@ import type { Result } from "../Result.ts";
 import { err, ok } from "../Result.ts";
 import type { TimeDep } from "../Time.ts";
 import { Millis, minMillis } from "../Time.ts";
-import type { DateIso, InferType, Typed } from "../Type.ts";
 import {
   brand,
+  type DateIso,
+  type InferType,
   length,
   lessThanOrEqualTo,
   NonNegativeInt,
   object,
+  type ObjectType,
   regex,
   String,
+  type Typed,
   Uint8Array,
-} from "../Type.ts";
+} from "../Type2.ts";
 
 export interface TimestampConfig {
   /**
@@ -60,7 +63,7 @@ export const Counter = /*#__PURE__*/ brand(
   "Counter",
   /*#__PURE__*/ lessThanOrEqualTo(65535)(NonNegativeInt),
 );
-export type Counter = typeof Counter.Type;
+export type Counter = typeof Counter.Output;
 
 export const minCounter = 0 as Counter;
 export const maxCounter = 65535 as Counter;
@@ -91,7 +94,7 @@ export const maxCounter = 65535 as Counter;
  * resolved by resetting one device to generate a new NodeId.
  */
 export const NodeId = /*#__PURE__*/ regex("NodeId", /^[a-f0-9]{16}$/)(String);
-export type NodeId = typeof NodeId.Type;
+export type NodeId = typeof NodeId.Output;
 
 export const minNodeId = "0000000000000000" as NodeId;
 export const maxNodeId = "ffffffffffffffff" as NodeId;
@@ -156,7 +159,11 @@ export const maxNodeId = "ffffffffffffffff" as NodeId;
  * real usage patterns. This preserves real-time collaboration but increases
  * storage and bandwidth usage.
  */
-export const Timestamp = /*#__PURE__*/ object({
+export const Timestamp: ObjectType<{
+  readonly millis: typeof Millis;
+  readonly counter: typeof Counter;
+  readonly nodeId: typeof NodeId;
+}> = /*#__PURE__*/ object({
   millis: Millis,
   counter: Counter,
   nodeId: NodeId,
@@ -186,7 +193,7 @@ const getNextMillis =
   (
     millis: ReadonlyArray<Millis>,
   ): Result<Millis, TimestampTimeOutOfRangeError | TimestampDriftError> => {
-    const now = Millis.from(deps.time.now());
+    const now = Millis.fromUnknown(deps.time.now());
     if (!now.ok) {
       return err({ type: "TimestampTimeOutOfRangeError" });
     }
@@ -203,7 +210,7 @@ const getNextMillis =
 const incrementCounter = (
   counter: Counter,
 ): Result<Counter, TimestampCounterOverflowError> => {
-  const next = Counter.from(increment(counter));
+  const next = Counter.fromUnknown(increment(counter));
   if (!next.ok) return err({ type: "TimestampCounterOverflowError" });
   return ok(next.value);
 };
@@ -271,7 +278,7 @@ export const TimestampBytes = /*#__PURE__*/ brand(
   "TimestampBytes",
   /*#__PURE__*/ length(16)(Uint8Array),
 );
-export type TimestampBytes = typeof TimestampBytes.Type;
+export type TimestampBytes = typeof TimestampBytes.Output;
 
 export const timestampBytesLength = /*#__PURE__*/ NonNegativeInt.orThrow(16);
 

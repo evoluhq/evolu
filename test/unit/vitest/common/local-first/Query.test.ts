@@ -18,8 +18,8 @@ import { createQueryBuilder } from "../../../../../packages/common/src/local-fir
 import { sqliteQueryStringToSqliteQuery } from "../../../../../packages/common/src/Sqlite.ts";
 import {
   id,
-  NonEmptyString100,
-} from "../../../../../packages/common/src/Type.ts";
+  NonEmptyTrimmedString100,
+} from "../../../../../packages/common/src/Type2.ts";
 
 const PersonId = id("Person");
 const PetId = id("Pet");
@@ -27,11 +27,11 @@ const PetId = id("Pet");
 const QuerySchema = {
   person: {
     id: PersonId,
-    name: NonEmptyString100,
+    name: NonEmptyTrimmedString100,
   },
   pet: {
     id: PetId,
-    name: NonEmptyString100,
+    name: NonEmptyTrimmedString100,
     ownerId: PersonId,
   },
 };
@@ -42,7 +42,7 @@ const NoteId = id("Note");
 const AnotherQuerySchema = {
   note: {
     id: NoteId,
-    title: NonEmptyString100,
+    title: NonEmptyTrimmedString100,
   },
 };
 

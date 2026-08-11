@@ -20,7 +20,7 @@ import {
 } from "../../../../../packages/common/src/local-first/Timestamp.ts";
 import { testCreateDeps } from "../../../../../packages/common/src/Task.ts";
 import { maxMillis, Millis } from "../../../../../packages/common/src/Time.ts";
-import { id, String } from "../../../../../packages/common/src/Type.ts";
+import { id, String } from "../../../../../packages/common/src/Type2.ts";
 
 const deps = testCreateDeps();
 

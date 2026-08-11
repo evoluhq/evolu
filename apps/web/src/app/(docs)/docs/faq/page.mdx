@@ -60,7 +60,7 @@ Use a separate local-only Evolu instance with `transports: []` for device-specif
 
 ```ts
 const PreferencesId = id("Preferences");
-type PreferencesId = typeof PreferencesId.Type;
+type PreferencesId = typeof PreferencesId.Output;
 
 const DeviceSchema = {
   preferences: {
@@ -94,14 +94,14 @@ const Schema = {
   // Regular synced table
   document: {
     id: DocumentId,
-    title: NonEmptyString1000,
-    content: NonEmptyString,
+    title: NonEmptyTrimmedString1000,
+    content: NonEmptyTrimmedString,
   },
   // Local-only table (underscore prefix)
   _documentDraft: {
     id: DocumentId,
-    title: NonEmptyString1000,
-    content: NonEmptyString,
+    title: NonEmptyTrimmedString1000,
+    content: NonEmptyTrimmedString,
   },
 };
 

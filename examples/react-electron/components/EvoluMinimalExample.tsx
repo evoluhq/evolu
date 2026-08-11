@@ -9,7 +9,7 @@ import { FC, Suspense, use, useState } from "react";
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
 const TodoId = Evolu.id("Todo");
-type TodoId = typeof TodoId.Type;
+type TodoId = typeof TodoId.Output;
 
 // Schema defines database structure with runtime validation.
 // Column types validate data on insert/update/upsert.
@@ -17,7 +17,7 @@ const AppSchema = {
   todo: {
     id: TodoId,
     // Branded type ensuring titles are non-empty and ≤100 chars.
-    title: Evolu.NonEmptyString100,
+    title: Evolu.NonEmptyTrimmedString100,
     // SQLite doesn't support the boolean type; it uses 0 and 1 instead.
     isCompleted: Evolu.nullOr(Evolu.SqliteBoolean),
   },
@@ -97,7 +97,7 @@ const App: FC = () => (
 );
 
 const parseTodoTitle = (value: string) =>
-  Evolu.NonEmptyTrimmedString100.from(value.trim());
+  Evolu.NonEmptyTrimmedString100.fromUnknown(value.trim());
 
 const Todos: FC = () => {
   // useQuery returns live data - component re-renders when data changes.
@@ -108,7 +108,7 @@ const Todos: FC = () => {
   const addTodo = () => {
     const result = parseTodoTitle(newTodoTitle);
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -168,7 +168,7 @@ const TodoItem: FC<{
 
     const result = parseTodoTitle(newTitle);
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.NonEmptyTrimmedString100.formatError(result.error));
       return;
     }
 
@@ -231,9 +231,9 @@ const OwnerActions: FC = () => {
     const mnemonic = window.prompt("Enter your mnemonic to restore your data:");
     if (mnemonic == null) return;
 
-    const result = Evolu.Mnemonic.from(mnemonic.trim());
+    const result = Evolu.Mnemonic.fromUnknown(mnemonic.trim());
     if (!result.ok) {
-      alert(formatTypeError(result.error));
+      alert(Evolu.Mnemonic.formatError(result.error));
       return;
     }
 
@@ -328,27 +328,3 @@ const Button: FC<{
     </button>
   );
 };
-
-/**
- * Formats Evolu Type errors into user-friendly messages.
- *
- * Evolu Type typed errors ensure every error type used in schema must have a
- * formatter. TypeScript enforces this at compile-time, preventing unhandled
- * validation errors from reaching users.
- *
- * The `createFormatTypeError` function handles both built-in and custom errors,
- * and lets us override default formatting for specific errors.
- *
- * Click on `createFormatTypeError` below to see how to write your own
- * formatter.
- */
-const formatTypeError = Evolu.createFormatTypeError<
-  Evolu.MinLengthError | Evolu.MaxLengthError
->((error): string => {
-  switch (error.type) {
-    case "MinLength":
-      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
-    case "MaxLength":
-      return `Text is too long (maximum ${error.max} characters)`;
-  }
-});

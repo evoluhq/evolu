@@ -33,7 +33,7 @@ const TodoId = id("Todo");
 const Schema = {
   todo: {
     id: TodoId,
-    title: NonEmptyString100,
+    title: NonEmptyTrimmedString100,
     isCompleted: nullOr(SqliteBoolean),
   },
 };

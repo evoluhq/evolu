@@ -31,7 +31,7 @@ import {
   testName,
   type Id,
   type Name,
-} from "../../../../../packages/common/src/Type.ts";
+} from "../../../../../packages/common/src/Type2.ts";
 import {
   testCreateWebSocket,
   type CreateWebSocket,

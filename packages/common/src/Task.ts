@@ -14,7 +14,6 @@ import {
   assertNonEmptyReadonlyArray,
   assertNonNullable,
   assertNotDisposed,
-  assertType,
 } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import {
@@ -88,7 +87,9 @@ import {
   type TestTimeDep,
 } from "./Time.ts";
 import {
+  assertType,
   createId,
+  type InferType,
   maxPositiveInt,
   NonNegativeInt,
   object,
@@ -100,10 +101,12 @@ import {
   Unknown,
   UnknownResult,
   type Id,
-  type InferType,
   type Int1To100OrPositiveInt,
+  type ObjectType,
+  type RecordType,
   type Typed,
-} from "./Type.ts";
+  type TypedType,
+} from "./Type2.ts";
 import type {
   Awaitable,
   isPromiseLike,
@@ -1361,7 +1364,10 @@ export type AbortMask = NonNegativeInt & Brand<"AbortMask">;
  *
  * @group Core
  */
-export const AbortReason = /*#__PURE__*/ object(
+export const AbortReason: ObjectType<
+  { readonly type: typeof String },
+  RecordType<typeof String, typeof Unknown>
+> = /*#__PURE__*/ object(
   { type: String },
   /*#__PURE__*/ record(String, Unknown),
 );
@@ -1391,7 +1397,10 @@ export interface AbortReason extends InferType<typeof AbortReason> {}
  *
  * @group Core
  */
-export const AbortError = /*#__PURE__*/ typed("AbortError", {
+export const AbortError: TypedType<
+  "AbortError",
+  { readonly reason: typeof AbortReason }
+> = /*#__PURE__*/ typed("AbortError", {
   reason: AbortReason,
 });
 export interface AbortError extends InferType<typeof AbortError> {}
@@ -2993,7 +3002,8 @@ export const sleep = (duration: PositiveDuration): Task<void> =>
  *
  * @group Timing
  */
-export const TimeoutError = /*#__PURE__*/ typed("TimeoutError");
+export const TimeoutError: TypedType<"TimeoutError"> =
+  /*#__PURE__*/ typed("TimeoutError");
 export interface TimeoutError extends InferType<typeof TimeoutError> {}
 
 /**

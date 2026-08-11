@@ -106,17 +106,17 @@ Evolu has [Type](/docs/api-reference/common/Type)—a validation library similar
 // Branded constraints
 const NonEmptyString = minLength(1)(String);
 // string & Brand<"MinLength1">
-type NonEmptyString = typeof NonEmptyString.Type;
+type NonEmptyString = typeof NonEmptyString.Output;
 
 // Basic validation with Result
-const result = NonEmptyString.from("hello"); // Ok<NonEmptyString>
-const error = NonEmptyString.from(""); // Err<MinLengthError<1>>
+const result = NonEmptyString.fromUnknown("hello"); // Ok<NonEmptyString>
+const error = NonEmptyString.fromUnknown(""); // Err<MinLengthError<1>>
 
 // Many factories
 export const Name = regex("Name", /^[a-z0-9-]{1,42}$/i)(NonEmptyString);
 
 // string & Brand<"MinLength1"> & Brand<"Name">
-export type Name = typeof Name.Type;
+export type Name = typeof Name.Output;
 
 // Complex objects
 const User = object({

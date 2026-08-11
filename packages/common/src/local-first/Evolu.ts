@@ -30,15 +30,16 @@ import { SqliteBoolean, sqliteBooleanToBoolean } from "../Sqlite.ts";
 import type { Listener, ReadonlyStore, Unsubscribe } from "../Store.ts";
 import { createStore } from "../Store.ts";
 import type { Task } from "../Task.ts";
-import type { Id, TypeError } from "../Type.ts";
-import type { ExtractOutputType } from "../Type2.ts";
 import {
   brand,
   createId,
   createIdFromString,
+  type ExtractTyped,
+  type Id,
   Name,
+  type TypeError,
   UrlSafeString,
-} from "../Type.ts";
+} from "../Type2.ts";
 import type {
   CreateBroadcastChannelDep,
   CreateMessageChannelDep,
@@ -246,13 +247,20 @@ export interface EvoluConfig {
  * Uses the same safe alphabet as {@link UrlSafeString} (letters, digits, `-`,
  * `_`) and must be between 1 and 41 characters.
  */
-export const AppName = /*#__PURE__*/ brand("AppName", UrlSafeString, (value) =>
-  value.length >= 1 && value.length <= 41
-    ? ok(value)
-    : err<AppNameError>({ type: "AppName", value }),
+export const AppName = /*#__PURE__*/ brand(
+  "AppName",
+  UrlSafeString,
+  (value) =>
+    value.length >= 1 && value.length <= 41
+      ? ok()
+      : err<AppNameError>({ type: "AppName", value }),
+  (error) =>
+    `The value ${JSON.stringify(error.value)} is not between 1 and 41 characters.`,
 );
-export type AppName = typeof AppName.Type;
-export interface AppNameError extends TypeError<"AppName"> {}
+export type AppName = typeof AppName.Output;
+export interface AppNameError extends TypeError<"AppName"> {
+  readonly value: UrlSafeString;
+}
 
 export const testAppName = /*#__PURE__*/ AppName.orThrow("AppName");
 
@@ -285,13 +293,13 @@ export interface Evolu<
    *
    * ```ts
    * const { id } = evolu.insert("todo", {
-   *   title: NonEmptyString100.orThrow("Learn Evolu"),
+   *   title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
    * });
    *
    * // With onComplete callback
    * evolu.insert(
    *   "todo",
-   *   { title: NonEmptyString100.orThrow("Another todo") },
+   *   { title: NonEmptyTrimmedString100.orThrow("Another todo") },
    *   { onComplete: () => console.log("Insert completed") },
    * );
    * ```
@@ -310,7 +318,7 @@ export interface Evolu<
    * ```ts
    * const { id } = evolu.update("todo", {
    *   id: todoId,
-   *   title: NonEmptyString100.orThrow("Updated title"),
+   *   title: NonEmptyTrimmedString100.orThrow("Updated title"),
    * });
    *
    * // Soft delete
@@ -339,7 +347,7 @@ export interface Evolu<
    * const stableId = createIdFromString("my-todo-1");
    * const { id } = evolu.upsert("todo", {
    *   id: stableId,
-   *   title: NonEmptyString100.orThrow("Learn Evolu"),
+   *   title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
    * });
    * ```
    *
@@ -887,7 +895,7 @@ export const createEvolu =
 
     const useOwnerBatch = disposer.use(
       createMicrotaskBatch<
-        ExtractOutputType<EvoluInput, "UseOwner">["actions"][number]
+        ExtractTyped<EvoluInput, "UseOwner">["actions"][number]
       >((actions) => {
         if (disposed) return;
         postMessage({ type: "UseOwner", actions });

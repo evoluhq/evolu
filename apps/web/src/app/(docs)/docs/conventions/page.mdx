@@ -168,18 +168,23 @@ Use `type` only when necessary:
 
 ### Evolu Type objects
 
-For Evolu Type objects created with `object()`, use interface with `InferType` instead of type alias. TypeScript displays the interface name instead of expanding all properties.
+For Evolu Type objects created with `object()` or `typed()`, use an interface with `InferType`. TypeScript displays the interface name instead of expanding all properties.
 
 ```ts
-import { object, String, Number, InferType } from "@evolu/common";
+import { object, String, Number, type InferType } from "@evolu/common";
 
-// Use interface for objects
 const User = object({ name: String, age: Number });
 interface User extends InferType<typeof User> {}
+```
 
-// Avoid - TypeScript expands all properties in tooltips
+Avoid a type alias because TypeScript expands all properties in tooltips and error messages:
+
+```ts
+import { object, String, Number } from "@evolu/common";
+
 const User = object({ name: String, age: Number });
-type User = typeof User.Type;
+// Avoid: don't use a type alias for object Outputs.
+type User = typeof User.Output;
 ```
 
 ## Arrow functions

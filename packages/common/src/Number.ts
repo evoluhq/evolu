@@ -16,7 +16,7 @@ import {
   NonNegativeInt,
   PositiveInt,
   Ratio,
-} from "./Type.ts";
+} from "./Type2.ts";
 import type {
   Digit,
   Digit1To9,
@@ -136,7 +136,7 @@ export const FibonacciIndex = /*#__PURE__*/ brand(
   "FibonacciIndex",
   /*#__PURE__*/ lessThanOrEqualTo(78)(PositiveInt),
 );
-export type FibonacciIndex = typeof FibonacciIndex.Type;
+export type FibonacciIndex = typeof FibonacciIndex.Output;
 
 /** Returns the Fibonacci number at the given index (1-indexed: 1,1,2,3,5,8,...). */
 export const fibonacciAt = (index: FibonacciIndex): PositiveInt => {

@@ -13,7 +13,7 @@ import {
 import { assert } from "./Assert.ts";
 import { exhaustiveCheck, type Thunk } from "./Function.ts";
 import { createMutableRecord, emptyRecord, isIterable } from "./Object.ts";
-import type { Typed } from "./Type.ts";
+import type { Typed } from "./Type2.ts";
 import type { Awaitable } from "./Types.ts";
 
 /**

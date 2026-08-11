@@ -10,7 +10,7 @@
 import type { Brand } from "./Brand.ts";
 import { testCreateRandomBytes } from "./Crypto.ts";
 import { testCreateRandomLib } from "./Random.ts";
-import { createId, type Id } from "./Type.ts";
+import { createId, type Id } from "./Type2.ts";
 
 export type TestCreateId = <B extends string = never>() => [B] extends [never]
   ? Id
@@ -45,7 +45,5 @@ export const testCreateId = (): TestCreateId => {
     randomLib: testCreateRandomLib(),
   });
 
-  return <B extends string = never>(): [B] extends [never]
-    ? Id
-    : Id & Brand<B> => createId<B>({ randomBytes });
+  return (() => createId<never>({ randomBytes })) as TestCreateId;
 };

@@ -49,11 +49,11 @@ import {
 import {
   createIdFromString,
   id,
-  NonEmptyString100,
+  NonEmptyTrimmedString100,
   nullOr,
   testName,
-} from "../../../../../packages/common/src/Type.ts";
-import type { ExtractOutputType } from "../../../../../packages/common/src/Type2.ts";
+} from "../../../../../packages/common/src/Type2.ts";
+import type { ExtractTyped } from "../../../../../packages/common/src/Type2.ts";
 import { testCreateWebSocket } from "../../../../../packages/common/src/WebSocket.ts";
 import {
   createBroadcastChannel,
@@ -73,12 +73,12 @@ import { testCreateSqliteDep } from "../../_deps.ts";
 import { testAppOwner } from "../../../../unit/vitest/common/local-first/_fixtures.ts";
 
 const TodoId = id("Todo");
-type TodoId = typeof TodoId.Type;
+type TodoId = typeof TodoId.Output;
 
 const Schema = {
   todo: {
     id: TodoId,
-    title: NonEmptyString100,
+    title: NonEmptyTrimmedString100,
     isCompleted: nullOr(SqliteBoolean),
   },
 };
@@ -195,17 +195,17 @@ describe("unit tests", () => {
   };
 
   test("AppName", () => {
-    expect(AppName.from("my-app")).toEqual(ok("my-app"));
-    expect(AppName.from("")).toEqual(
+    expect(AppName.fromUnknown("my-app")).toEqual(ok("my-app"));
+    expect(AppName.fromUnknown("")).toEqual(
       err({
-        type: "Regex",
-        name: "UrlSafeString",
-        pattern: /^[A-Za-z0-9_-]+$/,
+        type: "UrlSafeString",
+        source: "^[A-Za-z0-9_-]+$",
+        flags: "",
         value: "",
       }),
     );
-    expect(AppName.from("a".repeat(41))).toEqual(ok("a".repeat(41)));
-    expect(AppName.from("a".repeat(42))).toEqual(
+    expect(AppName.fromUnknown("a".repeat(41))).toEqual(ok("a".repeat(41)));
+    expect(AppName.fromUnknown("a".repeat(42))).toEqual(
       err({
         type: "AppName",
         value: "a".repeat(42),
@@ -215,7 +215,7 @@ describe("unit tests", () => {
     const appName = AppName.orThrow("my-app");
     expectTypeOf(appName).toExtend<string & Brand<"AppName">>();
     expectTypeOf(AppName.Input).toEqualTypeOf<string>();
-    expectTypeOf(AppName.Parent).toEqualTypeOf<
+    expectTypeOf<typeof AppName.parent.Output>().toEqualTypeOf<
       string & Brand<"UrlSafeString">
     >();
   });
@@ -788,7 +788,7 @@ describe("unit tests", () => {
 
         evolu.useOwner(testAppOwner, [testOwnerTransport]);
         evolu.insert("todo", {
-          title: NonEmptyString100.orThrow("Queued after useOwner"),
+          title: NonEmptyTrimmedString100.orThrow("Queued after useOwner"),
         });
 
         await testWaitForWorkerMessage();
@@ -901,21 +901,21 @@ describe("unit tests", () => {
 
       expect(() => {
         evolu.insert("todo", {
-          title: NonEmptyString100.orThrow("Inserted after dispose"),
+          title: NonEmptyTrimmedString100.orThrow("Inserted after dispose"),
         });
       }).toThrow(disposedMessage);
 
       expect(() => {
         evolu.update("todo", {
           id: TodoId.orThrow(createIdFromString("todo-update-after-dispose")),
-          title: NonEmptyString100.orThrow("Updated after dispose"),
+          title: NonEmptyTrimmedString100.orThrow("Updated after dispose"),
         });
       }).toThrow(disposedMessage);
 
       expect(() => {
         evolu.upsert("todo", {
           id: TodoId.orThrow(createIdFromString("todo-upsert-after-dispose")),
-          title: NonEmptyString100.orThrow("Upserted after dispose"),
+          title: NonEmptyTrimmedString100.orThrow("Upserted after dispose"),
         });
       }).toThrow(disposedMessage);
 
@@ -1035,7 +1035,7 @@ describe("unit tests", () => {
       const evolu = await run.ok(testCreateEvolu);
 
       evolu.insert("todo", {
-        title: NonEmptyString100.orThrow("Queued then disposed"),
+        title: NonEmptyTrimmedString100.orThrow("Queued then disposed"),
       });
 
       await evolu[Symbol.asyncDispose]();
@@ -1105,7 +1105,7 @@ describe("unit tests", () => {
       let called = 0;
       evolu.insert(
         "todo",
-        { title: NonEmptyString100.orThrow("With completion") },
+        { title: NonEmptyTrimmedString100.orThrow("With completion") },
         {
           onComplete: () => {
             called += 1;
@@ -1115,7 +1115,7 @@ describe("unit tests", () => {
 
       await testWaitForWorkerMessage();
 
-      const mutate = evoluInputs[0] as ExtractOutputType<EvoluInput, "Mutate">;
+      const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
       const [onCompleteId] = mutate.onCompleteIds;
 
       await evolu[Symbol.asyncDispose]();
@@ -1139,7 +1139,7 @@ describe("unit tests", () => {
       let called = 0;
       evolu.insert(
         "todo",
-        { title: NonEmptyString100.orThrow("With completion") },
+        { title: NonEmptyTrimmedString100.orThrow("With completion") },
         {
           onComplete: () => {
             called += 1;
@@ -1149,7 +1149,7 @@ describe("unit tests", () => {
 
       await testWaitForWorkerMessage();
 
-      const mutate = evoluInputs[0] as ExtractOutputType<EvoluInput, "Mutate">;
+      const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
       const [onCompleteId] = mutate.onCompleteIds;
 
       postEvoluOutput({
@@ -1179,7 +1179,7 @@ describe("unit tests", () => {
       let called = 0;
       evolu.insert(
         "todo",
-        { title: NonEmptyString100.orThrow("With completion") },
+        { title: NonEmptyTrimmedString100.orThrow("With completion") },
         {
           onComplete: () => {
             called += 1;
@@ -1189,7 +1189,7 @@ describe("unit tests", () => {
 
       await testWaitForWorkerMessage();
 
-      const mutate = evoluInputs[0] as ExtractOutputType<EvoluInput, "Mutate">;
+      const mutate = evoluInputs[0] as ExtractTyped<EvoluInput, "Mutate">;
       const [onCompleteId] = mutate.onCompleteIds;
 
       postEvoluOutput({
@@ -1394,7 +1394,7 @@ describe("unit tests", () => {
 
       evoluInputs.length = 0;
 
-      evolu.insert("todo", { title: NonEmptyString100.orThrow("M") });
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("M") });
       await testWaitForWorkerMessage();
 
       postEvoluOutput({
@@ -1557,7 +1557,7 @@ describe("unit tests", () => {
       const evolu = await run.ok(testCreateEvolu);
 
       evolu.insert("todo", {
-        title: NonEmptyString100.orThrow("Todo 1"),
+        title: NonEmptyTrimmedString100.orThrow("Todo 1"),
       });
 
       await testWaitForWorkerMessage();
@@ -1608,13 +1608,13 @@ describe("unit tests", () => {
 
       evolu.update("todo", {
         id: updateId,
-        title: NonEmptyString100.orThrow("Updated"),
+        title: NonEmptyTrimmedString100.orThrow("Updated"),
         isDeleted: 1,
       });
 
       evolu.upsert("todo", {
         id: upsertId,
-        title: NonEmptyString100.orThrow("Upserted"),
+        title: NonEmptyTrimmedString100.orThrow("Upserted"),
       });
 
       await testWaitForWorkerMessage();
@@ -1676,14 +1676,14 @@ describe("unit tests", () => {
       const updateId = TodoId.orThrow(createIdFromString("todo-batch-update"));
       const upsertId = TodoId.orThrow(createIdFromString("todo-batch-upsert"));
 
-      evolu.insert("todo", { title: NonEmptyString100.orThrow("A") });
+      evolu.insert("todo", { title: NonEmptyTrimmedString100.orThrow("A") });
       evolu.update("todo", {
         id: updateId,
-        title: NonEmptyString100.orThrow("B"),
+        title: NonEmptyTrimmedString100.orThrow("B"),
       });
       evolu.upsert("todo", {
         id: upsertId,
-        title: NonEmptyString100.orThrow("C"),
+        title: NonEmptyTrimmedString100.orThrow("C"),
       });
 
       await testWaitForWorkerMessage();
@@ -1757,7 +1757,7 @@ describe("unit tests", () => {
 
       evolu.insert(
         "todo",
-        { title: NonEmptyString100.orThrow("With callback") },
+        { title: NonEmptyTrimmedString100.orThrow("With callback") },
         { ownerId: testAppOwner.id, onComplete: constVoid },
       );
 
@@ -2026,7 +2026,7 @@ describe("integration tests", () => {
     evolu.insert(
       "todo",
       {
-        title: NonEmptyString100.orThrow("Integration todo"),
+        title: NonEmptyTrimmedString100.orThrow("Integration todo"),
       },
       {
         onComplete: () => {
@@ -2240,7 +2240,7 @@ describe("integration tests", () => {
     evolu1.insert(
       "todo",
       {
-        title: NonEmptyString100.orThrow("Persisted after recreate"),
+        title: NonEmptyTrimmedString100.orThrow("Persisted after recreate"),
       },
       {
         onComplete: () => {

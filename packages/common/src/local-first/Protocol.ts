@@ -179,7 +179,7 @@
 
 import { Packr } from "msgpackr";
 import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.ts";
-import { assert } from "../Assert.ts";
+import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import {
   type Buffer,
@@ -228,7 +228,7 @@ import {
   type Typed,
   uint8ArrayToBase64Url,
   zeroNonNegativeInt,
-} from "../Type.ts";
+} from "../Type2.ts";
 import type { Predicate } from "../Types.ts";
 import {
   type Owner,
@@ -299,7 +299,7 @@ export const ProtocolMessageMaxSize = /*#__PURE__*/ between(
   maxProtocolMessageMaxSize,
 )(Int);
 
-export type ProtocolMessageMaxSize = typeof ProtocolMessageMaxSize.Type;
+export type ProtocolMessageMaxSize = typeof ProtocolMessageMaxSize.Output;
 
 /**
  * Default {@link ProtocolMessageMaxSize} (1MB).
@@ -326,7 +326,7 @@ export const ProtocolMessageRangesMaxSize = /*#__PURE__*/ between(
   100_000,
 )(Int);
 export type ProtocolMessageRangesMaxSize =
-  typeof ProtocolMessageRangesMaxSize.Type;
+  typeof ProtocolMessageRangesMaxSize.Output;
 
 /**
  * Default {@link ProtocolMessageRangesMaxSize} (30KB).
@@ -1703,14 +1703,14 @@ const decodeTimestamps = (
   const millises = new Array<Millis>(length);
   for (let i = 0; i < length; i++) {
     const deltaMillis = decodeNonNegativeInt(buffer);
-    const millis = Millis.from(previousMillis + deltaMillis);
+    const millis = Millis.fromUnknown(previousMillis + deltaMillis);
     if (!millis.ok) throw new ProtocolDecodeError(millis.error.type);
     millises[i] = millis.value;
     previousMillis = millis.value;
   }
 
   const counters = decodeRle(buffer, length, (): Counter => {
-    const counter = Counter.from(decodeNonNegativeInt(buffer));
+    const counter = Counter.fromUnknown(decodeNonNegativeInt(buffer));
     if (!counter.ok) throw new ProtocolDecodeError(counter.error.type);
     return counter.value;
   });
@@ -1878,6 +1878,7 @@ export const encodeAndEncryptDbChange =
 
     encodeLength(buffer, entries);
     for (const [column, value] of entries) {
+      assertNonNullable(value);
       encodeString(buffer, column);
       encodeSqliteValue(buffer, value);
     }
@@ -2023,7 +2024,7 @@ export const decodeNonNegativeInt = (buffer: Buffer): NonNegativeInt => {
     shift += 7n;
   }
 
-  const int = NonNegativeInt.from(globalThis.Number(result));
+  const int = NonNegativeInt.fromUnknown(globalThis.Number(result));
   if (!int.ok) throw new ProtocolDecodeError(int.error.type);
 
   return int.value;
@@ -2102,7 +2103,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const dateIso = DateIso.fromParent(value);
+      const dateIso = DateIso.from.parent(value);
       if (dateIso.ok) {
         const time = new Date(dateIso.value).getTime();
         if (NonNegativeInt.is(time)) {
@@ -2121,14 +2122,14 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const id = Id.fromParent(value);
+      const id = Id.from.parent(value);
       if (id.ok) {
         encodeNonNegativeInt(buffer, ProtocolValueType.Id);
         buffer.extend(idToIdBytes(id.value));
         return;
       }
 
-      const json = Json.fromParent(value);
+      const json = Json.from.parent(value);
       // Only encode as Json if it survives JSON.parse/JSON.stringify round-trip.
       // Some valid JSON strings like "-0E0" get normalized to "0" during parsing,
       // which would cause data corruption if we don't verify round-trip safety.
@@ -2140,7 +2141,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
         return;
       }
 
-      const base64Url = Base64Url.fromParent(value);
+      const base64Url = Base64Url.from.parent(value);
       if (base64Url.ok) {
         encodeNonNegativeInt(buffer, ProtocolValueType.Base64Url);
         const bytes = base64UrlToUint8Array(base64Url.value);
@@ -2215,7 +2216,7 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
         type === ProtocolValueType.DateIsoWithNonNegativeTime
           ? decodeNonNegativeInt(buffer)
           : decodeNumber(buffer);
-      const dateIso = DateIso.fromParent(new Date(time).toISOString());
+      const dateIso = DateIso.from.parent(new Date(time).toISOString());
       if (!dateIso.ok) throw new ProtocolDecodeError(dateIso.error.type);
       return dateIso.value;
     }

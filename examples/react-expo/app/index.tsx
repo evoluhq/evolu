@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 // Primary keys are branded types, preventing accidental use of IDs across
 // different tables (e.g., a TodoId can't be used where a UserId is expected).
 const TodoId = Evolu.id("Todo");
-type TodoId = typeof TodoId.Type;
+type TodoId = typeof TodoId.Output;
 
 // We use Evolu Type, but any Standard Schema library can be used.
 const AppSchema = {
@@ -98,7 +98,7 @@ type EvoluFiber = ReturnType<typeof createEvoluFiber>;
 
 /** Trims user input and validates it as a todo title. */
 const parseTodoTitle = (value: string) =>
-  Evolu.NonEmptyTrimmedString100.from(value.trim());
+  Evolu.NonEmptyTrimmedString100.fromUnknown(value.trim());
 
 export default function Index() {
   const [evoluFiber, setEvoluFiber] = useState<EvoluFiber>(createEvoluFiber);
@@ -210,7 +210,10 @@ const Todos: FC = () => {
   const handleAddTodo = () => {
     const result = parseTodoTitle(newTodoTitle);
     if (!result.ok) {
-      Alert.alert("Validation error", formatTypeError(result.error));
+      Alert.alert(
+        "Validation error",
+        Evolu.NonEmptyTrimmedString100.formatError(result.error),
+      );
       return;
     }
 
@@ -285,7 +288,10 @@ const TodoItem: FC<{
 
             const result = parseTodoTitle(newTitle);
             if (!result.ok) {
-              Alert.alert("Validation error", formatTypeError(result.error));
+              Alert.alert(
+                "Validation error",
+                Evolu.NonEmptyTrimmedString100.formatError(result.error),
+              );
               return;
             }
 
@@ -359,9 +365,12 @@ const OwnerActions: FC = () => {
           onPress: (mnemonic?: string) => {
             if (mnemonic == null) return;
 
-            const result = Evolu.Mnemonic.from(mnemonic.trim());
+            const result = Evolu.Mnemonic.fromUnknown(mnemonic.trim());
             if (!result.ok) {
-              Alert.alert("Validation error", formatTypeError(result.error));
+              Alert.alert(
+                "Validation error",
+                Evolu.Mnemonic.formatError(result.error),
+              );
               return;
             }
 
@@ -707,27 +716,6 @@ const styles = StyleSheet.create({
   flexButton: {
     flex: 1,
   },
-});
-
-/**
- * Formats Evolu Type errors into user-friendly messages.
- *
- * Evolu Type typed errors ensure every error type used in schema must have a
- * formatter. TypeScript enforces this at compile-time, preventing unhandled
- * validation errors from reaching users.
- *
- * The `createFormatTypeError` function handles both built-in and custom errors,
- * and lets us override default formatting for specific errors.
- */
-const formatTypeError = Evolu.createFormatTypeError<
-  Evolu.MinLengthError | Evolu.MaxLengthError
->((error): string => {
-  switch (error.type) {
-    case "MinLength":
-      return `Text must be at least ${error.min} character${error.min === 1 ? "" : "s"} long`;
-    case "MaxLength":
-      return `Text is too long (maximum ${error.max} characters)`;
-  }
 });
 
 /*

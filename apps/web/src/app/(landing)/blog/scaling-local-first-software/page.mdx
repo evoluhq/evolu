@@ -92,7 +92,7 @@ Without Effect, I could no longer use Effect Schema. I hoped another library mig
 
 - **Result-based error handling**: Built on top of Result, not exceptions.
 - **Consistent constraints**: Uses Brand for enforcing constraints uniformly.
-- **Typed errors with decoupled formatters**: Keeps error messages separate from validation logic.
+- **Structured typed errors**: Keeps validation failures explicit and composable.
 - **No user-land chaining**: Designed to work cleanly with the upcoming ES pipe operator.
 - **Selective validation and transformation**: Skips redundant parent validations when TypeScript’s type system already guarantees safety.
 - **Bidirectional transformations**: Supports mapping values in both directions.
@@ -101,27 +101,29 @@ Without Effect, I could no longer use Effect Schema. I hoped another library mig
 **Done. TDD FTW.** Here are a few examples of what it looks like:
 
 ```ts
-const CurrencyCode = brand("CurrencyCode", String, (value) =>
-  /^[A-Z]{3}$/.test(value)
-    ? ok(value)
-    : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
-);
-
-// string & Brand<"CurrencyCode">
-type CurrencyCode = typeof CurrencyCode.Type;
-
-interface CurrencyCodeError extends TypeError<"CurrencyCode"> {}
-
-const formatCurrencyCodeError = createTypeErrorFormatter<CurrencyCodeError>(
+const CurrencyCode = brand(
+  "CurrencyCode",
+  String,
+  (value) =>
+    /^[A-Z]{3}$/.test(value)
+      ? ok()
+      : err<CurrencyCodeError>({ type: "CurrencyCode", value }),
   (error) => `Invalid currency code: ${error.value}`,
 );
 
+// string & Brand<"CurrencyCode">
+type CurrencyCode = typeof CurrencyCode.Output;
+
+interface CurrencyCodeError extends TypeError<"CurrencyCode"> {
+  readonly value: string;
+}
+
 // Usage
-const result = CurrencyCode.from("USD");
+const result = CurrencyCode.fromUnknown("USD");
 if (result.ok) {
   console.log("Valid currency code:", result.value);
 } else {
-  console.error(formatCurrencyCodeError(result.error));
+  console.error(CurrencyCode.formatError(result.error));
 }
 ```
 
@@ -129,22 +131,24 @@ Branded Types are often better as reusable factories—for example, instead of a
 
 ```ts
 const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (parent) =>
-  brand("Trimmed", parent, (value) =>
-    value.trim().length === value.length
-      ? ok(value)
-      : err<TrimmedError>({ type: "Trimmed", value }),
+  brand(
+    "Trimmed",
+    parent,
+    (value) =>
+      value.trim().length === value.length
+        ? ok()
+        : err<TrimmedError>({ type: "Trimmed", value }),
+    (error) => `A value ${error.value} is not trimmed`,
   );
 
-interface TrimmedError extends TypeError<"Trimmed"> {}
-
-const formatTrimmedError = createTypeErrorFormatter<TrimmedError>(
-  (error) => `A value ${error.value} is not trimmed`,
-);
+interface TrimmedError extends TypeError<"Trimmed"> {
+  readonly value: string;
+}
 
 const TrimmedString = trimmed(String);
 
 // string & Brand<"Trimmed">
-type TrimmedString = typeof TrimmedString.Type;
+type TrimmedString = typeof TrimmedString.Output;
 
 const TrimmedNote = trimmed(Note);
 ```
@@ -157,7 +161,7 @@ const SimplePassword = brand(
   minLength(8)(maxLength(64)(TrimmedString)),
 );
 // string & Brand<"Trimmed"> & Brand<"MinLength8"> & Brand<"MaxLength64"> & Brand<"SimplePassword">
-type SimplePassword = typeof SimplePassword.Type;
+type SimplePassword = typeof SimplePassword.Output;
 ```
 
 It turns out we don’t need pipe or chaining at all—just `Result` and plain functions. Evolu Type lives in a single file, yet does a lot.

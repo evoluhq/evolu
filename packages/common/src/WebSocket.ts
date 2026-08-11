@@ -13,7 +13,7 @@ import { exponential, jitter, maxDelay } from "./Schedule.ts";
 import type { RetryError, Task } from "./Task.ts";
 import { callback, retry } from "./Task.ts";
 import type { Millis } from "./Time.ts";
-import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
+import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type2.ts";
 
 /**
  * WebSocket with auto-reconnect.

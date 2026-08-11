@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 import {
+  assertNonNullable,
   concurrently,
   err,
   getOrThrow,
@@ -542,7 +543,11 @@ await runMain(
               (fixture) =>
                 matchesTypeBenchmarkFilter(fixture, fixtureFilters),
             ),
-            (fixture) => existingBaseline.measurements[fixture],
+            (fixture) => {
+              const measurement = existingBaseline.measurements[fixture];
+              assertNonNullable(measurement);
+              return measurement;
+            },
           )
         : existingBaseline.measurements;
       const comparison = compareTypeBenchmarkMeasurements(

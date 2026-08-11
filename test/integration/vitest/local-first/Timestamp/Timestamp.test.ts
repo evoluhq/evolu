@@ -36,25 +36,25 @@ import {
 } from "../../../../../packages/common/src/Time.ts";
 
 test("Millis", () => {
-  expect(Millis.from(-1).ok).toBe(false);
-  expect(Millis.from(0).ok).toBe(true);
-  expect(Millis.from(maxMillis).ok).toBe(true);
-  expect(Millis.from(maxMillis + 1).ok).toBe(false);
+  expect(Millis.fromUnknown(-1).ok).toBe(false);
+  expect(Millis.fromUnknown(0).ok).toBe(true);
+  expect(Millis.fromUnknown(maxMillis).ok).toBe(true);
+  expect(Millis.fromUnknown(maxMillis + 1).ok).toBe(false);
 });
 
 test("Counter", () => {
-  expect(Counter.from(-1).ok).toBe(false);
-  expect(Counter.from(0).ok).toBe(true);
-  expect(Counter.from(maxCounter).ok).toBe(true);
-  expect(Counter.from(maxCounter + 1).ok).toBe(false);
+  expect(Counter.fromUnknown(-1).ok).toBe(false);
+  expect(Counter.fromUnknown(0).ok).toBe(true);
+  expect(Counter.fromUnknown(maxCounter).ok).toBe(true);
+  expect(Counter.fromUnknown(maxCounter + 1).ok).toBe(false);
 });
 
 test("NodeId", () => {
-  expect(NodeId.from("").ok).toBe(false);
-  expect(NodeId.from("0000000000000000").ok).toBe(true);
-  expect(NodeId.from("aaaaaaaaaaaaaaaa").ok).toBe(true);
-  expect(NodeId.from("Aaaaaaaaaaaaaaaa").ok).toBe(false);
-  expect(NodeId.from("aaaaaaaaaaaaaaaaa").ok).toBe(false);
+  expect(NodeId.fromUnknown("").ok).toBe(false);
+  expect(NodeId.fromUnknown("0000000000000000").ok).toBe(true);
+  expect(NodeId.fromUnknown("aaaaaaaaaaaaaaaa").ok).toBe(true);
+  expect(NodeId.fromUnknown("Aaaaaaaaaaaaaaaa").ok).toBe(false);
+  expect(NodeId.fromUnknown("aaaaaaaaaaaaaaaaa").ok).toBe(false);
 });
 
 test("createTimestamp", () => {

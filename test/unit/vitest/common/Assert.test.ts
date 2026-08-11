@@ -5,9 +5,9 @@ import {
   assertNonEmptyReadonlyArray,
   assertNonNullable,
   assertNotDisposed,
-  assertType,
 } from "../../../../packages/common/src/Assert.ts";
 import { AbortError } from "../../../../packages/common/src/Task.ts";
+import { assertType } from "../../../../packages/common/src/Type2.ts";
 
 test("assert", () => {
   // Should not throw when the condition is true

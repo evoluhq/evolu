@@ -14,19 +14,25 @@ import { createMutableRecord, objectToEntries } from "./Object.ts";
 import type { Result } from "./Result.ts";
 import { ok } from "./Result.ts";
 import { testCreateRun, type Task, type TestRunDep } from "./Task.ts";
-import type { InferType, Name, Typed } from "./Type.ts";
 import {
   array,
+  type ArrayType,
+  type InferType,
+  type Name,
   Null,
   Number,
   object,
+  type ObjectType,
   record,
+  type RecordType,
   set,
+  type SetType,
   String,
   testName,
+  type Typed,
   Uint8Array,
   union,
-} from "./Type.ts";
+} from "./Type2.ts";
 
 /**
  * Platform-agnostic SQLite wrapping a {@link SqliteDriver}.
@@ -95,7 +101,7 @@ export const SqliteValue = /*#__PURE__*/ union(
   Number,
   Uint8Array,
 );
-export type SqliteValue = typeof SqliteValue.Type;
+export type SqliteValue = typeof SqliteValue.Output;
 
 /** Equality comparison for {@link SqliteValue}. */
 export const eqSqliteValue: Eq<SqliteValue> = (x, y) =>
@@ -502,7 +508,10 @@ sql.prepared = (
 };
 
 /** Index metadata stored in `sqlite_master` for a {@link Sqlite} database. */
-export const SqliteIndex = /*#__PURE__*/ object({ name: String, sql: String });
+export const SqliteIndex: ObjectType<{
+  readonly name: typeof String;
+  readonly sql: typeof String;
+}> = /*#__PURE__*/ object({ name: String, sql: String });
 export interface SqliteIndex extends InferType<typeof SqliteIndex> {}
 
 /** {@link Eq} instance for {@link SqliteIndex}. */
@@ -516,7 +525,10 @@ export const eqSqliteIndex: Eq<SqliteIndex> = /*#__PURE__*/ createEqObject({
  *
  * Includes table-column mappings and user-visible indexes.
  */
-export const SqliteSchema = /*#__PURE__*/ object({
+export const SqliteSchema: ObjectType<{
+  readonly tables: RecordType<typeof String, SetType<typeof String>>;
+  readonly indexes: ArrayType<typeof SqliteIndex>;
+}> = /*#__PURE__*/ object({
   tables: /*#__PURE__*/ record(String, /*#__PURE__*/ set(String)),
   indexes: /*#__PURE__*/ array(SqliteIndex),
 });
@@ -635,7 +647,7 @@ export const getSqliteSnapshot = (deps: SqliteDep): SqliteSnapshot => {
  *   converting between JavaScript booleans and SQLite boolean values.
  */
 export const SqliteBoolean = /*#__PURE__*/ union(0, 1);
-export type SqliteBoolean = typeof SqliteBoolean.Type;
+export type SqliteBoolean = typeof SqliteBoolean.Output;
 
 /**
  * Represents the {@link SqliteBoolean} value for `true`.

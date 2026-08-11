@@ -4,7 +4,7 @@
  * @module
  */
 
-import { type InferType, typed, Unknown } from "./Type.ts";
+import { type InferType, typed, type TypedType, Unknown } from "./Type2.ts";
 
 /**
  * A wrapper for unknown errors caught at runtime.
@@ -18,7 +18,10 @@ import { type InferType, typed, Unknown } from "./Type.ts";
  *
  * Use {@link createUnknownError} to create instances.
  */
-export const UnknownError = /*#__PURE__*/ typed("UnknownError", {
+export const UnknownError: TypedType<
+  "UnknownError",
+  { readonly error: typeof Unknown }
+> = /*#__PURE__*/ typed("UnknownError", {
   error: Unknown,
 });
 export interface UnknownError extends InferType<typeof UnknownError> {}
