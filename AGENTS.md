@@ -34,13 +34,16 @@ The repository requires Node.js 24 or newer and pnpm.
 - `pnpm exec vitest run <test-file>` — run one test file.
 - `pnpm test` — run all tests.
 - `pnpm test:coverage` — run all tests with coverage.
+- `pnpm test:jsdoc <file-or-glob>...` — compile and run JSDoc examples from
+  specific source files, or omit arguments to test every configured source.
 - `pnpm build` — build publishable packages and the relay. Run it once after a
   clone or pull to generate IDE package types.
 - `pnpm check:packages` — validate package source and distribution exports.
 - `pnpm biome` — check Biome rules and import cycles.
 - `pnpm lint` — run ESLint.
 - `pnpm verify` — run type-checking, builds, package checks, coverage, Biome,
-  monorepo linting, documentation generation, and ESLint.
+  monorepo linting, documentation generation, and ESLint. It uses the available
+  CPU cores, so do not run other CPU-intensive commands concurrently.
 - `pnpm format` — write Prettier formatting changes.
 - `pnpm bench:type` — compare Type compiler metrics with committed baselines.
   Run it after changing Type declarations or `bench/type` infrastructure. It is
@@ -148,6 +151,15 @@ Run standalone TypeScript scripts directly with Node.js, for example
 - Do not repeat TypeScript parameter and return types in JSDoc prose.
 - Do not use `@param`, `@return`, or `@example`.
 - Put examples under a `### Example` Markdown heading.
+- Write every TypeScript code fence as a standalone, deterministic example that
+  can be compiled and run by `testJSDocExamples`. Import its dependencies; the
+  harness injects Vitest's `assert`, `expect`, and `expectTypeOf`, plus Evolu's
+  `expectOk` and `expectErr`.
+- Prove documented contracts in examples instead of describing expected output
+  only in comments: use `expectTypeOf` for static contracts and an appropriate
+  runtime assertion such as `expect`, `expectOk`, or `expectErr` for behavior.
+- After changing documentation examples, run `pnpm test:jsdoc <changed-file>`
+  during development. The exhaustive JSDoc test remains part of `pnpm verify`.
 - Use `{@link}` on the first mention of an exported symbol.
 - Do not put a pipe character in the first sentence; TypeDoc inserts that
   sentence into Markdown tables.
