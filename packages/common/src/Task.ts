@@ -168,7 +168,7 @@ import type {
  * bracketing. The code is covered by carefully written, readable tests, so they
  * serve as documentation too.
  *
- * ### Example
+ * ## Example
  *
  * This intentionally naive wrapper is useful for learning Task dependencies,
  * Result errors, and native AbortSignal interop. Do not copy it as a production
@@ -188,6 +188,8 @@ import type {
  *   createRun,
  *   err,
  *   ok,
+ *   type AbortableFiber,
+ *   type Result,
  *   type Task,
  * } from "@evolu/common";
  *
@@ -214,36 +216,55 @@ import type {
  *     }
  *   };
  *
+ * const nativeFetch: typeof globalThis.fetch = async (input, init) => {
+ *   if (String(input).endsWith("/123")) {
+ *     return new Response(null, { status: 204 });
+ *   }
+ *
+ *   return new Promise<Response>((_resolve, reject) => {
+ *     const { signal } = init ?? {};
+ *     if (signal?.aborted) {
+ *       reject(signal.reason);
+ *       return;
+ *     }
+ *     signal?.addEventListener("abort", () => reject(signal.reason), {
+ *       once: true,
+ *     });
+ *   });
+ * };
+ *
  * // Provide dependencies at the composition root.
  * const deps: NativeFetchDep = {
- *   nativeFetch: globalThis.fetch.bind(globalThis),
+ *   nativeFetch,
  * };
  *
  * // Create a Run with those dependencies.
  * await using run = createRun(deps);
  *
  * // Running a Task returns a Fiber; awaiting it gives a Result.
- * // Result<Response, NaiveFetchError>
  * const result = await run(naiveFetch("/users/123"));
+ * expectTypeOf(result).toEqualTypeOf<Result<Response, NaiveFetchError>>();
+ * assert(result.ok);
+ * expect(result.value.status).toBe(204);
+ *
+ * // So what is naive about it? The Response ok value.
+ * // Wrong: the Task settled, so its Run disposed and aborted `signal`.
+ * // The Response body is a live resource tied to that signal. Whether
+ * // this read fails immediately or appears to work depends on the
+ * // runtime and on how much of the body was already buffered — it is
+ * // timing-dependent behavior, not an API you can rely on.
+ * // await result.value.json();
  *
  * // Abort works when native fetch rejects with signal.reason. Some hosts use
  * // their own abort error, which this naive wrapper does not normalize.
  * const fiber = run.abortable(naiveFetch("/users/456"));
  * fiber.abort();
- * // Result<Response, NaiveFetchError | AbortError>
  * const abortResult = await fiber;
- *
- * // So what is naive about it? The Response ok value.
- * if (result.ok) {
- *   console.log(result.value.status); // OK: status is already a value.
- *
- *   // Wrong: the Task settled, so its Run disposed and aborted `signal`.
- *   // The Response body is a live resource tied to that signal. Whether
- *   // this read fails immediately or appears to work depends on the
- *   // runtime and on how much of the body was already buffered — it is
- *   // timing-dependent behavior, not an API you can rely on.
- *   await result.value.json();
- * }
+ * expectTypeOf(fiber).toEqualTypeOf<
+ *   AbortableFiber<Response, NaiveFetchError, NativeFetchDep>
+ * >();
+ * assert(!abortResult.ok);
+ * expect(AbortError.is(abortResult.error)).toBe(true);
  * ```
  *
  * Evolu's {@link fetch} is not fancier than the naive wrapper; it is correctly
@@ -251,8 +272,20 @@ import type {
  * signal is still alive, and returns a plain value:
  *
  * ```ts
- * // Result<string, FetchError>
+ * import {
+ *   createRun,
+ *   fetch,
+ *   type FetchError,
+ *   type Result,
+ * } from "@evolu/common";
+ *
+ * const nativeFetch: typeof globalThis.fetch = async () =>
+ *   new Response("readme");
+ * await using run = createRun({ nativeFetch });
+ *
  * const text = await run(fetch("/readme.txt", "text"));
+ * expectTypeOf(text).toEqualTypeOf<Result<string, FetchError>>();
+ * expectOk(text, "readme");
  * ```
  *
  * In composition roots, prefer the lifecycle API from the matching Evolu
@@ -262,7 +295,7 @@ import type {
  * - Web: `@evolu/web`
  * - React Native: `@evolu/react-native`
  *
- * ## Task Helpers
+ * ## Composition
  *
  * | Category     | Helper                    | Description                            |
  * | ------------ | ------------------------- | -------------------------------------- |
@@ -293,19 +326,61 @@ import type {
  * For ordinary sequential composition, use imperative code:
  *
  * ```ts
- * const user = await run(loadUser(id));
- * if (!user.ok) return user;
+ * import { createRun, ok, type Result, type Task } from "@evolu/common";
  *
- * const profile = await run(loadProfile(user.value.profileId));
- * if (!profile.ok) return profile;
+ * interface User {
+ *   readonly id: string;
+ *   readonly profileId: string;
+ * }
+ * interface Profile {
+ *   readonly id: string;
+ * }
  *
- * return ok({ user: user.value, profile: profile.value });
+ * const loadUser =
+ *   (id: string): Task<User, "UserError"> =>
+ *   () =>
+ *     ok({ id, profileId: "profile-1" });
+ * const loadProfile =
+ *   (id: string): Task<Profile, "ProfileError"> =>
+ *   () =>
+ *     ok({ id });
+ *
+ * const loadUserWithProfile =
+ *   (
+ *     id: string,
+ *   ): Task<
+ *     { readonly user: User; readonly profile: Profile },
+ *     "UserError" | "ProfileError"
+ *   > =>
+ *   async (run) => {
+ *     const user = await run(loadUser(id));
+ *     if (!user.ok) return user;
+ *
+ *     const profile = await run(loadProfile(user.value.profileId));
+ *     if (!profile.ok) return profile;
+ *
+ *     return ok({ user: user.value, profile: profile.value });
+ *   };
+ *
+ * await using run = createRun();
+ * const result = await run(loadUserWithProfile("user-1"));
+ * expectTypeOf(result).toEqualTypeOf<
+ *   Result<
+ *     { readonly user: User; readonly profile: Profile },
+ *     "UserError" | "ProfileError"
+ *   >
+ * >();
+ * expectOk(result, {
+ *   user: { id: "user-1", profileId: "profile-1" },
+ *   profile: { id: "profile-1" },
+ * });
  * ```
  *
  * Evolu intentionally avoids pipe APIs, chainable methods, and generator-based
  * effect DSLs. Plain async/await with early returns is easier to read, review,
  * and debug, and it lets TypeScript narrow Result values through ordinary
- * control flow.
+ * control flow. For the tradeoffs behind that choice, see “Why not generators?”
+ * in the {@link Result} FAQ.
  *
  * ### Building a Resilient Fetch Task
  *
@@ -314,28 +389,66 @@ import type {
  * run:
  *
  * ```ts
- * // (url: string) =>
- * //   Task<string, FetchError | TimeoutError>
+ * import {
+ *   fetch,
+ *   timeout,
+ *   type FetchError,
+ *   type Task,
+ *   type TimeoutError,
+ * } from "@evolu/common";
+ *
  * const fetchWithTimeout = (url: string) =>
  *   timeout(fetch(url, "text"), "30s");
+ *
+ * expectTypeOf(fetchWithTimeout).returns.toEqualTypeOf<
+ *   Task<string, FetchError | TimeoutError>
+ * >();
  * ```
  *
  * Add {@link retry} for recoverable domain failures:
  *
  * ```ts
- * // (url: string) =>
- * //   Task<string, RetryTaskError<FetchError | TimeoutError>>
+ * import {
+ *   exponential,
+ *   fetch,
+ *   jitter,
+ *   maxDelay,
+ *   retry,
+ *   take,
+ *   timeout,
+ *   type FetchError,
+ *   type RetryTaskError,
+ *   type Task,
+ *   type TimeoutError,
+ * } from "@evolu/common";
+ *
+ * const fetchWithTimeout = (url: string) =>
+ *   timeout(fetch(url, "text"), "30s");
+ *
  * const fetchWithRetry = (url: string) =>
  *   retry(
  *     fetchWithTimeout(url),
  *     // A jittered, capped, limited exponential backoff.
  *     jitter("100%")(maxDelay("20s")(take(2)(exponential("100ms")))),
  *   );
+ *
+ * expectTypeOf(fetchWithRetry).returns.toEqualTypeOf<
+ *   Task<string, RetryTaskError<FetchError | TimeoutError>>
+ * >();
  * ```
  *
  * Run composed Tasks with {@link concurrently} and {@link all}:
  *
  * ```ts
+ * import {
+ *   all,
+ *   concurrently,
+ *   createRun,
+ *   ok,
+ *   sleep,
+ *   type Task,
+ * } from "@evolu/common";
+ *
  * await using run = createRun();
  *
  * const urls = [
@@ -343,9 +456,22 @@ import type {
  *   "https://api.example.com/posts",
  *   "https://api.example.com/comments",
  * ];
+ * let activeRequests = 0;
+ * let maxActiveRequests = 0;
+ * const fetchUrl =
+ *   (url: string): Task<string> =>
+ *   async (run) => {
+ *     activeRequests += 1;
+ *     maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+ *     await run.ok(sleep("1ms"));
+ *     activeRequests -= 1;
+ *     return ok(url);
+ *   };
  *
  * // At most 2 concurrent requests.
- * const result = await run(concurrently(2, all(urls, fetchWithRetry)));
+ * const result = await run(concurrently(2, all(urls, fetchUrl)));
+ * expectOk(result, urls);
+ * expect(maxActiveRequests).toBe(2);
  * ```
  *
  * ## Concurrency Primitives
@@ -394,29 +520,38 @@ import type {
  * For example, using Console:
  *
  * ```ts
- * import { ok, type Task } from "@evolu/common";
+ * import { createRun, ok, type Task } from "@evolu/common";
  *
  * const myTask: Task<void> = async (run) => {
  *   const { console } = run.deps;
  *   console.log("started");
  *   return ok();
  * };
+ *
+ * expectTypeOf(myTask).toEqualTypeOf<Task<void>>();
+ * await using run = createRun();
+ * expectOk(await run(myTask), undefined);
  * ```
  *
  * Custom Console with formatted output:
  *
  * ```ts
  * import {
+ *   createConsoleArrayOutput,
  *   createConsole,
  *   createConsoleFormatter,
  *   createRun,
+ *   type ConsoleEntry,
  * } from "@evolu/common";
  *
+ * const entries: Array<ConsoleEntry> = [];
+ * const formatter = createConsoleFormatter()({
+ *   timestampFormat: "absolute",
+ * });
  * const deps = {
  *   console: createConsole({
- *     formatter: createConsoleFormatter()({
- *       timestampFormat: "absolute",
- *     }),
+ *     output: createConsoleArrayOutput(entries),
+ *     formatter,
  *   }),
  * };
  *
@@ -424,7 +559,14 @@ import type {
  * const console = run.deps.console.child("main");
  *
  * console.log("started");
+ * expect(console.name).toBe("main");
+ * expect(entries).toHaveLength(1);
+ * expect(entries[0]?.path).toEqual(["main"]);
+ * assert(entries[0]);
+ * const formattedArgs = formatter(entries[0]);
  * // 21:20:25.588 [main] started
+ * expect(formattedArgs[0]).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3} \[main\]$/);
+ * expect(formattedArgs[1]).toBe("started");
  * ```
  *
  * For testing, use {@link testCreateRun} to get deterministic, controllable
@@ -459,6 +601,31 @@ import type {
  * `undefined` should represent valid absence, not failure.
  *
  * ```ts
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * interface ConnectionError {
+ *   readonly type: "ConnectionError";
+ * }
+ * interface Socket extends AsyncDisposable {
+ *   readonly send: (message: string) => string;
+ * }
+ * interface Connection extends AsyncDisposable {
+ *   readonly send: (message: string) => string;
+ * }
+ *
+ * let socketDisposed = false;
+ * const openSocket: Task<Socket, ConnectionError> = () =>
+ *   ok({
+ *     send: (message) => message,
+ *     [Symbol.asyncDispose]: async () => {
+ *       socketDisposed = true;
+ *     },
+ *   });
+ * const handshake =
+ *   (_socket: Socket): Task<void, ConnectionError> =>
+ *   () =>
+ *     ok();
+ *
  * const createConnection: Task<Connection, ConnectionError> = async (
  *   run,
  * ) => {
@@ -477,20 +644,53 @@ import type {
  *     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
  *   });
  * };
+ *
+ * await using run = createRun();
+ * const result = await run(createConnection);
+ * assert(result.ok);
+ * expect(socketDisposed).toBe(false);
+ * expect(result.value.send("hello")).toBe("hello");
+ * await result.value[Symbol.asyncDispose]();
+ * expect(socketDisposed).toBe(true);
  * ```
  *
  * Factories that return disposable values and do not fail can be used directly
  * with {@link Run.ok} and `await using`:
  *
  * ```ts
- * await using foo = await run.ok(createFoo());
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * interface Foo extends AsyncDisposable {
+ *   readonly value: string;
+ * }
+ *
+ * let disposed = false;
+ * const createFoo = (): Task<Foo> => () =>
+ *   ok({
+ *     value: "foo",
+ *     [Symbol.asyncDispose]: async () => {
+ *       disposed = true;
+ *     },
+ *   });
+ *
+ * await using run = createRun();
+ * {
+ *   await using foo = await run.ok(createFoo());
+ *   expect(foo.value).toBe("foo");
+ * }
+ * expect(disposed).toBe(true);
  * ```
  *
  * Use {@link acquireUseRelease} when acquisition and release are separate
  * operations rather than a disposable value:
  *
  * ```ts
- * import { acquireUseRelease, ok, type Task } from "@evolu/common";
+ * import {
+ *   acquireUseRelease,
+ *   createRun,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
  *
  * interface User {
  *   readonly id: string;
@@ -509,22 +709,36 @@ import type {
  *   () =>
  *     ok(connection.loadUser("user-1"));
  *
+ * let connectionClosed = false;
  * const closeConnection =
  *   (_connection: Connection): Task<void> =>
- *   () =>
- *     ok();
+ *   () => {
+ *     connectionClosed = true;
+ *     return ok();
+ *   };
  *
  * const queryUser = acquireUseRelease(
  *   openConnection,
  *   loadUser,
  *   closeConnection,
  * );
+ *
+ * await using run = createRun();
+ * const result = await run(queryUser);
+ * expectOk(result, { id: "user-1", name: "Ada" });
+ * expect(connectionClosed).toBe(true);
  * ```
  *
  * ## Awaitable
  *
  * ```ts
+ * import type { Awaitable as EvoluAwaitable } from "@evolu/common";
+ *
  * type Awaitable<T> = T | PromiseLike<T>;
+ *
+ * expectTypeOf<Awaitable<number>>().toEqualTypeOf<
+ *   EvoluAwaitable<number>
+ * >();
  * ```
  *
  * Even though {@link Task} returns {@link Awaitable}, allowing sync or async
@@ -676,6 +890,18 @@ import type {
  * each iteration reuses the same stack frame:
  *
  * ```ts
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * interface TreeNode {
+ *   readonly value: string;
+ *   readonly children: ReadonlyArray<TreeNode>;
+ * }
+ *
+ * const visited: Array<string> = [];
+ * const visit = (node: TreeNode): void => {
+ *   visited.push(node.value);
+ * };
+ *
  * const visitTree =
  *   (root: TreeNode): Task<void> =>
  *   () => {
@@ -690,6 +916,14 @@ import type {
  *
  *     return ok();
  *   };
+ *
+ * const tree: TreeNode = {
+ *   value: "root",
+ *   children: [{ value: "child", children: [] }],
+ * };
+ * await using run = createRun();
+ * expectOk(await run(visitTree(tree)), undefined);
+ * expect(visited).toEqual(["root", "child"]);
  * ```
  *
  * Task favors direct native execution, `async`/`await`, and native tooling over
@@ -704,8 +938,17 @@ import type {
  * propagation point is visible.
  *
  * ```ts
- * const user = await run(loadUser);
- * if (!user.ok) return user;
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * const loadUser: Task<string, "LoadUserError"> = () => ok("Ada");
+ * const greetUser: Task<string, "LoadUserError"> = async (run) => {
+ *   const user = await run(loadUser);
+ *   if (!user.ok) return user;
+ *   return ok(`Hello, ${user.value}`);
+ * };
+ *
+ * await using run = createRun();
+ * expectOk(await run(greetUser), "Hello, Ada");
  * ```
  *
  * This is slightly more verbose than fluent or generator-based syntax, but it's
@@ -887,8 +1130,27 @@ export interface Run<D = unknown> {
    * ### Example
    *
    * ```ts
+   * import { createRun, ok, type Task } from "@evolu/common";
+   *
+   * interface Db {
+   *   readonly name: string;
+   * }
+   * interface DbDep {
+   *   readonly db: Db;
+   * }
+   *
+   * const db: Db = { name: "main" };
+   * const loadUser: Task<string> = () => ok("Ada");
+   * const saveUser: Task<void, never, DbDep> = ({ deps }) => {
+   *   expect(deps.db).toBe(db);
+   *   return ok();
+   * };
+   *
+   * await using run = createRun();
    * const userResult = await run(loadUser);
    * const savedResult = await run(saveUser, { db });
+   * expectOk(userResult, "Ada");
+   * expectOk(savedResult, undefined);
    * ```
    */
   <T, E>(task: Task<T, E, D>): Fiber<T, E, D>;
@@ -946,10 +1208,33 @@ export interface Run<D = unknown> {
    * ### Example
    *
    * ```ts
+   * import {
+   *   AbortError,
+   *   createRun,
+   *   ok,
+   *   sleep,
+   *   type AbortableFiber,
+   *   type Task,
+   * } from "@evolu/common";
+   *
+   * interface DbDep {
+   *   readonly db: { readonly name: string };
+   * }
+   * const db = { name: "main" };
+   * const loadUser: Task<string, "LoadUserError", DbDep> = async (run) => {
+   *   await run.ok(sleep("1s"));
+   *   return ok(run.deps.db.name);
+   * };
+   *
+   * await using run = createRun();
    * const fiber = run.abortable(loadUser, { db });
+   * expectTypeOf(fiber).toEqualTypeOf<
+   *   AbortableFiber<string, "LoadUserError", DbDep>
+   * >();
    * fiber.abort();
-   * // Result<User, LoadUserError | AbortError>
    * const userResult = await fiber;
+   * assert(!userResult.ok);
+   * expect(AbortError.is(userResult.error)).toBe(true);
    * ```
    */
   readonly abortable: {
@@ -986,16 +1271,32 @@ export interface Run<D = unknown> {
    * un-aborted, because detached work must not spawn under a scope that is
    * shutting down.
    *
+   * ### Example
+   *
    * ```ts
-   * unabortable(async (run) => {
+   * import { createRun, ok, unabortable, type Task } from "@evolu/common";
+   *
+   * const syncUsers: Task<string> = () => ok("synced");
+   * const syncParent = unabortable(async (run) => {
+   *   expect(run.snapshot().abortMask).toBe(1);
+   *
    *   // Plain daemon — the caller's mask does not follow it, so abort
    *   // requests are observed.
    *   const fiber = run.daemon(syncUsers);
+   *   expect(fiber.run.snapshot().abortMask).toBe(0);
    *
    *   // Explicitly masked daemon — finishes once started.
    *   const maskedFiber = run.daemon(unabortable(syncUsers));
-   *   // ...
+   *   expect(maskedFiber.run.snapshot().abortMask).toBe(1);
+   *   const firstResult = await fiber;
+   *   const secondResult = await maskedFiber;
+   *   assert(firstResult.ok);
+   *   assert(secondResult.ok);
+   *   return ok([firstResult.value, secondResult.value] as const);
    * });
+   *
+   * await using run = createRun();
+   * expectOk(await run(syncParent), ["synced", "synced"]);
    * ```
    *
    * For a long-lived reusable {@link Run}, use {@link Run.create}.
@@ -1003,14 +1304,50 @@ export interface Run<D = unknown> {
    * ### Example
    *
    * ```ts
+   * import {
+   *   AbortError,
+   *   createRun,
+   *   ok,
+   *   sleep,
+   *   type Task,
+   * } from "@evolu/common";
+   *
+   * interface DbDep {
+   *   readonly db: { readonly name: string };
+   * }
+   * const db = { name: "main" };
+   * const syncUsers: Task<void, never, DbDep> = async (run) => {
+   *   await run.ok(sleep("1s"));
+   *   return ok();
+   * };
+   *
+   * await using run = createRun();
    * const fiber = run.daemon(syncUsers, { db });
    * fiber.abort();
    * const syncResult = await fiber;
+   * assert(!syncResult.ok);
+   * expect(AbortError.is(syncResult.error)).toBe(true);
    * ```
    *
    * ```ts
-   * await using syncFiber = run.daemon(syncUsers, { db });
-   * const userResult = await run(loadUser);
+   * import { createRun, ok, waitForAbort, type Task } from "@evolu/common";
+   *
+   * let syncStopped = false;
+   * const syncUsers: Task<never> = async (run) => {
+   *   using _ = run.onAbort(() => {
+   *     syncStopped = true;
+   *   });
+   *   return await run(waitForAbort);
+   * };
+   * const loadUser: Task<string> = () => ok("Ada");
+   *
+   * await using run = createRun();
+   * {
+   *   // Async disposal requests abort and waits for the daemon to stop.
+   *   await using _syncFiber = run.daemon(syncUsers);
+   *   expectOk(await run(loadUser), "Ada");
+   * }
+   * expect(syncStopped).toBe(true);
    * ```
    */
   readonly daemon: {
@@ -1040,9 +1377,26 @@ export interface Run<D = unknown> {
    * ### Example
    *
    * ```ts
+   * import { createRun, ok, type Task } from "@evolu/common";
+   *
+   * interface DbDep {
+   *   readonly db: { readonly users: Array<string> };
+   * }
+   * const db = { users: ["Ada"] };
+   * const loadUser: Task<string, never, DbDep> = ({ deps }) =>
+   *   ok(deps.db.users[0] ?? "Unknown");
+   * const saveUser: Task<void, never, DbDep> = ({ deps }) => {
+   *   deps.db.users.push("Grace");
+   *   return ok();
+   * };
+   *
+   * await using run = createRun();
    * await using createdRun = run.create({ db });
    * const userResult = await createdRun(loadUser);
    * const savedResult = await createdRun(saveUser);
+   * expectOk(userResult, "Ada");
+   * expectOk(savedResult, undefined);
+   * expect(db.users).toEqual(["Ada", "Grace"]);
    * ```
    */
   readonly create: {
@@ -1104,15 +1458,32 @@ export interface Run<D = unknown> {
    * ### Example
    *
    * ```ts
+   * import { AbortError, createRun, ok, sleep } from "@evolu/common";
+   *
+   * let socketClosed = false;
+   * const openSocket = () => ({
+   *   close: () => {
+   *     socketClosed = true;
+   *   },
+   *   read: async () => "message",
+   * });
+   *
+   * await using run = createRun();
    * const fiber = run.abortable(async (run) => {
    *   const socket = openSocket();
    *   using closeOnAbort = run.onAbort(() => {
    *     socket.close();
    *   });
    *
+   *   await run.ok(sleep("1s"));
    *   const message = await socket.read();
    *   return ok(message);
    * });
+   * fiber.abort();
+   * const result = await fiber;
+   * assert(!result.ok);
+   * expect(AbortError.is(result.error)).toBe(true);
+   * expect(socketClosed).toBe(true);
    * ```
    */
   readonly onAbort: (
@@ -1164,6 +1535,38 @@ export type RunCustomDeps<D extends object> = D & {
  *
  * Sync disposal starts shutdown without waiting. Async disposal waits for child
  * Tasks and registered cleanup to finish.
+ *
+ * Use {@link createRun} at composition roots such as app, server, worker, or
+ * test entry points. The common factory is platform-agnostic; platform adapters
+ * can wrap it to add global error handling or shutdown integration.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * await using run = createRun();
+ * const loadData: Task<string> = () => ok("data");
+ *
+ * expectOk(await run(loadData), "data");
+ * ```
+ *
+ * ### Example with custom dependencies
+ *
+ * ```ts
+ * import { createRun, type DisposableRun } from "@evolu/common";
+ *
+ * interface ConfigDep {
+ *   readonly config: { readonly apiUrl: string };
+ * }
+ *
+ * await using run = createRun<ConfigDep>({
+ *   config: { apiUrl: "https://api.example.com" },
+ * });
+ *
+ * expectTypeOf(run).toEqualTypeOf<DisposableRun<ConfigDep>>();
+ * expect(run.deps.config.apiUrl).toBe("https://api.example.com");
+ * ```
  *
  * @group Core
  */
@@ -1249,15 +1652,19 @@ export interface DisposableRun<D = unknown>
  * ### Example
  *
  * ```ts
- * import { createRun, ok, type Task } from "@evolu/common";
+ * import { createRun, ok, type Fiber, type Task } from "@evolu/common";
  *
  * await using run = createRun();
  *
  * const loadUser: Task<string> = () => ok("Ada");
  *
- * const fiber = run(loadUser);
+ * const fiber = run<string, never>(loadUser);
  * const userResult = await fiber;
  * const snapshot = fiber.run.snapshot();
+ *
+ * expectTypeOf(fiber).toEqualTypeOf<Fiber<string, never>>();
+ * expectOk(userResult, "Ada");
+ * expect(snapshot.id).toBe(fiber.run.id);
  * ```
  *
  * @group Core
@@ -1315,7 +1722,14 @@ export type InferFiberDeps<TFiber extends AnyFiber> =
  * ### Example
  *
  * ```ts
- * import { createRun, ok, sleep, type Task } from "@evolu/common";
+ * import {
+ *   AbortError,
+ *   createRun,
+ *   ok,
+ *   sleep,
+ *   type AbortableFiber,
+ *   type Task,
+ * } from "@evolu/common";
  *
  * await using run = createRun();
  *
@@ -1324,9 +1738,12 @@ export type InferFiberDeps<TFiber extends AnyFiber> =
  *   return ok("data");
  * };
  *
- * const fiber = run.abortable(fetchData);
+ * const fiber = run.abortable<string, never>(fetchData);
+ * expectTypeOf(fiber).toEqualTypeOf<AbortableFiber<string, never>>();
  * fiber.abort();
  * const result = await fiber;
+ * assert(!result.ok);
+ * expect(AbortError.is(result.error)).toBe(true);
  * ```
  *
  * @group Core
@@ -1704,6 +2121,9 @@ export const reportDefectAfterMicrotask: ReportDefect = (defect) => {
  * detection, native fetch, randomness, error reporting, time, and optional Run
  * monitoring configuration.
  *
+ * The {@link LeakDetector} is enabled only in development builds; production
+ * uses a no-op implementation.
+ *
  * @group Run
  */
 export type RunDefaultDeps = ConsoleDep &
@@ -1716,10 +2136,7 @@ export type RunDefaultDeps = ConsoleDep &
   Partial<RunConfigDep>;
 
 /**
- * Creates default dependencies for a root {@link Run}.
- *
- * The {@link LeakDetector} is enabled only in development builds; production
- * gets a no-op with zero overhead.
+ * Creates {@link RunDefaultDeps}.
  *
  * @group Run
  */
@@ -1751,46 +2168,6 @@ export interface CreateRun {
 
 /**
  * Creates a root {@link DisposableRun}.
- *
- * The root Run owns an async lifetime. Tasks started from it are descendants,
- * and disposing it requests abort and waits for child Tasks to settle.
- *
- * Use it at composition roots such as app, server, worker, or test entry
- * points. Dispose it on shutdown. For reusable async resources inside an
- * existing Task, use {@link Run.create}.
- *
- * This common createRun is platform-agnostic. Platform adapters can wrap it to
- * add global error handling or shutdown integration.
- *
- * {@link RunDefaultDeps} provides default dependencies for {@link Console},
- * {@link LeakDetector}, {@link NativeFetch}, {@link Random}, {@link RandomBytes},
- * {@link ReportDefect}, and {@link Time}.
- *
- * ### Example
- *
- * ```ts
- * import { createRun, ok, type Task } from "@evolu/common";
- *
- * await using run = createRun();
- *
- * const loadData: Task<string> = () => ok("data");
- *
- * const result = await run(loadData);
- * ```
- *
- * ### Example with custom dependencies
- *
- * ```ts
- * import { createRun } from "@evolu/common";
- *
- * interface ConfigDep {
- *   readonly config: { readonly apiUrl: string };
- * }
- *
- * const run = createRun<ConfigDep>({
- *   config: { apiUrl: "https://api.example.com" },
- * });
- * ```
  *
  * @group Run
  */
@@ -2527,6 +2904,10 @@ export type InferTasksOk<TTasks> = {
  * Err; remaining running Tasks are aborted. Sequential by default — use
  * {@link concurrently} for concurrent execution.
  *
+ * Pass `{ collect: false }` when only collective success or failure matters.
+ * The returned Task produces `void` on success and does not store the Ok
+ * values.
+ *
  * With a mapping function, maps input values to Tasks before running them. The
  * mapper runs immediately when `all` is called, before the returned Task
  * starts. Array mappers receive `(value, index)`. Record mappers receive
@@ -2541,34 +2922,58 @@ export type InferTasksOk<TTasks> = {
  * ### Example
  *
  * ```ts
- * // Tuple — values by position
- * // Result<
- * //   readonly [User, readonly Post[], readonly Comment[]],
- * //   never
- * // >
- * const tupleResult = await run(
- *   all([fetchUser, fetchPosts, fetchComments]),
+ * import {
+ *   all,
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ * interface Post {
+ *   readonly id: string;
+ * }
+ * const fetchUser: Task<User> = () => ok({ id: "user-1" });
+ * const fetchPosts: Task<ReadonlyArray<Post>> = () =>
+ *   ok([{ id: "post-1" }]);
+ * await using run = createRun();
+ *
+ * const dashboard = await run(all([fetchUser, fetchPosts]));
+ * expectTypeOf(dashboard).toEqualTypeOf<
+ *   Result<readonly [User, ReadonlyArray<Post>]>
+ * >();
+ * expectOk(dashboard, [{ id: "user-1" }, [{ id: "post-1" }]]);
+ *
+ * // Skip collecting Ok values when they aren't needed.
+ * interface SaveUserError {
+ *   readonly type: "SaveUserError";
+ *   readonly userId: string;
+ * }
+ * const savedUserIds: Array<string> = [];
+ * const saveUser =
+ *   (id: string): Task<number, SaveUserError> =>
+ *   () => {
+ *     if (id === "missing") {
+ *       return err({ type: "SaveUserError", userId: id });
+ *     }
+ *     savedUserIds.push(id);
+ *     return ok(1);
+ *   };
+ * const saveResult = await run(
+ *   all(["user-1", "missing", "user-3"], saveUser, {
+ *     collect: false,
+ *   }),
  * );
- *
- * // Record — values by key
- * // Result<
- * //   { readonly user: User; readonly posts: readonly Post[] },
- * //   never
- * // >
- * const recordResult = await run(
- *   all({ user: fetchUser, posts: fetchPosts }),
- * );
- *
- * // Dynamic arrays return readonly arrays
- * // Result<readonly User[], never>
- * const arrayResult = await run(all(userTasks));
- *
- * // Non-empty arrays preserve non-emptiness
- * // Result<NonEmptyReadonlyArray<User>, never>
- * const nonEmptyArrayResult = await run(all(nonEmptyUserTasks));
- *
- * // Map values to Tasks
- * const usersResult = await run(all(userIds, loadUser));
+ * expectTypeOf(saveResult).toEqualTypeOf<Result<void, SaveUserError>>();
+ * expectErr(saveResult, {
+ *   type: "SaveUserError",
+ *   userId: "missing",
+ * });
+ * expect(savedUserIds).toEqual(["user-1"]);
  * ```
  *
  * @group Collection
@@ -2580,6 +2985,44 @@ export function all<const TTasks extends ReadonlyArray<AnyTask>>(
   InferTaskErr<TTasks[number]>,
   InferTasksDeps<TTasks>
 >;
+
+/**
+ * Runs a Task record and preserves its keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   all,
+ *   createRun,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ * interface Post {
+ *   readonly id: string;
+ * }
+ *
+ * const fetchUser: Task<User> = () => ok({ id: "user-1" });
+ * const fetchPosts: Task<ReadonlyArray<Post>> = () =>
+ *   ok([{ id: "post-1" }]);
+ *
+ * await using run = createRun();
+ * const result = await run(all({ user: fetchUser, posts: fetchPosts }));
+ *
+ * expectTypeOf(result).toEqualTypeOf<
+ *   Result<{ readonly user: User; readonly posts: ReadonlyArray<Post> }>
+ * >();
+ * expectOk(result, {
+ *   user: { id: "user-1" },
+ *   posts: [{ id: "post-1" }],
+ * });
+ * ```
+ */
 export function all<const TTasks extends TaskRecord>(
   tasks: TTasks,
 ): Task<
@@ -2587,6 +3030,57 @@ export function all<const TTasks extends TaskRecord>(
   InferTaskErr<TTasks[keyof TTasks]>,
   InferTaskRecordDeps<TTasks>
 >;
+
+/** Runs a Task array without collecting its Ok values. */
+export function all<const TTasks extends ReadonlyArray<AnyTask>>(
+  tasks: TTasks,
+  options: { readonly collect: false },
+): Task<void, InferTaskErr<TTasks[number]>, InferTasksDeps<TTasks>>;
+
+/** Runs a Task record without collecting its Ok values. */
+export function all<const TTasks extends TaskRecord>(
+  tasks: TTasks,
+  options: { readonly collect: false },
+): Task<void, InferTaskErr<TTasks[keyof TTasks]>, InferTaskRecordDeps<TTasks>>;
+
+/**
+ * Maps an array to Tasks and preserves its shape.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   all,
+ *   createRun,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ * const loadUser =
+ *   (id: string): Task<User> =>
+ *   () =>
+ *     ok({ id });
+ *
+ * const userIds = ["user-1", "user-2"] as const;
+ * const indexes: Array<number> = [];
+ * const loadUsers = all(userIds, (id, index) => {
+ *   indexes.push(index);
+ *   return loadUser(id);
+ * });
+ *
+ * // Mapping is eager: it happens before the returned Task starts.
+ * expect(indexes).toEqual([0, 1]);
+ *
+ * await using run = createRun();
+ * const result = await run(loadUsers);
+ * expectTypeOf(result).toEqualTypeOf<Result<readonly [User, User]>>();
+ * expectOk(result, [{ id: "user-1" }, { id: "user-2" }]);
+ * ```
+ */
 export function all<
   const TValues extends ReadonlyArray<unknown>,
   TTask extends AnyTask,
@@ -2596,8 +3090,55 @@ export function all<
 ): Task<
   { readonly [K in keyof TValues]: InferTaskOk<TTask> },
   InferTaskErr<TTask>,
-  InferTaskDeps<TTask>
+  InferTasksDeps<ReadonlyArray<TTask>>
 >;
+
+/**
+ * Maps record values to Tasks and preserves its keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   all,
+ *   createRun,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ * const loadUser =
+ *   (id: string): Task<User> =>
+ *   () =>
+ *     ok({ id });
+ *
+ * const userIdsByRole = {
+ *   admin: "user-1",
+ *   reviewer: "user-2",
+ * } as const;
+ * const roles: Array<keyof typeof userIdsByRole> = [];
+ * const loadUsersByRole = all(userIdsByRole, (id, role) => {
+ *   roles.push(role);
+ *   return loadUser(id);
+ * });
+ *
+ * // Mapping is eager: it happens before the returned Task starts.
+ * expect(roles).toEqual(["admin", "reviewer"]);
+ *
+ * await using run = createRun();
+ * const result = await run(loadUsersByRole);
+ * expectTypeOf(result).toEqualTypeOf<
+ *   Result<{ readonly admin: User; readonly reviewer: User }>
+ * >();
+ * expectOk(result, {
+ *   admin: { id: "user-1" },
+ *   reviewer: { id: "user-2" },
+ * });
+ * ```
+ */
 export function all<
   const TValues extends Readonly<Record<string, unknown>>,
   TTask extends AnyTask,
@@ -2608,15 +3149,45 @@ export function all<
 ): Task<
   { readonly [K in keyof TValues]: InferTaskOk<TTask> },
   InferTaskErr<TTask>,
-  InferTaskDeps<TTask>
+  InferTasksDeps<ReadonlyArray<TTask>>
 >;
+
+/** Maps array values to Tasks without collecting their Ok values. */
+export function all<
+  const TValues extends ReadonlyArray<unknown>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  fn: (value: TValues[number], index: number) => TTask,
+  options: { readonly collect: false },
+): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
+
+/** Maps record values to Tasks without collecting their Ok values. */
+export function all<
+  const TValues extends Readonly<Record<string, unknown>>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
+  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
+  options: { readonly collect: false },
+): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
 export function all(
   input: ReadonlyArray<unknown> | Readonly<Record<string, unknown>>,
-  fn?: (value: any, indexOrKey: any) => AnyTask,
+  fnOrOptions?:
+    ((value: any, indexOrKey: any) => AnyTask) | { readonly collect: false },
+  options?: { readonly collect: false },
 ): Task<unknown, unknown> {
+  const fn = typeof fnOrOptions === "function" ? fnOrOptions : undefined;
+  const collectValues =
+    typeof fnOrOptions === "function"
+      ? options?.collect !== false
+      : fnOrOptions?.collect !== false;
+
   return collect(
     "all",
     fn ? mapInput(input, fn) : (input as ReadonlyArray<AnyTask> | TaskRecord),
+    collectValues,
   );
 }
 
@@ -2654,35 +3225,40 @@ export type InferTasksSettled<TTasks> = {
  * ### Example
  *
  * ```ts
- * // Tuple — results by position
- * // Result<
- * //   readonly [Result<User, never>, Result<string, LoadError>],
- * //   never
- * // >
- * const tupleResults = await run(allSettled([fetchUser, fetchProfile]));
+ * import {
+ *   allSettled,
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
  *
- * // Record — results by key
- * // Result<
- * //   {
- * //     readonly user: Result<User, never>;
- * //     readonly profile: Result<string, LoadError>;
- * //   },
- * //   never
- * // >
- * const recordResults = await run(
- *   allSettled({ user: fetchUser, profile: fetchProfile }),
- * );
+ * interface LoadError {
+ *   readonly type: "LoadError";
+ * }
  *
- * // Dynamic arrays return readonly arrays
- * // Result<readonly Result<User, LoadError>[], never>
- * const arrayResults = await run(allSettled(userTasks));
+ * const loadProfile: Task<string, LoadError> = () =>
+ *   err({ type: "LoadError" });
+ * let activityLoaded = false;
+ * const loadActivity: Task<ReadonlyArray<string>> = () => {
+ *   activityLoaded = true;
+ *   return ok(["signed-in"]);
+ * };
  *
- * // Non-empty arrays preserve non-emptiness
- * // Result<NonEmptyReadonlyArray<Result<User, LoadError>>, never>
- * const nonEmptyArrayResults = await run(allSettled(nonEmptyUserTasks));
- *
- * // Map values to Tasks
- * const userResults = await run(allSettled(userIds, loadUser));
+ * await using run = createRun();
+ * const results = await run(allSettled([loadProfile, loadActivity]));
+ * expectTypeOf(results).toEqualTypeOf<
+ *   Result<
+ *     readonly [Result<string, LoadError>, Result<ReadonlyArray<string>>]
+ *   >
+ * >();
+ * expectOk(results, [
+ *   { ok: false, error: { type: "LoadError" } },
+ *   { ok: true, value: ["signed-in"] },
+ * ]);
+ * // Unlike all, a later Task still runs after an Err.
+ * expect(activityLoaded).toBe(true);
  * ```
  *
  * @group Collection
@@ -2690,9 +3266,100 @@ export type InferTasksSettled<TTasks> = {
 export function allSettled<const TTasks extends ReadonlyArray<AnyTask>>(
   tasks: TTasks,
 ): Task<InferTasksSettled<TTasks>, never, InferTasksDeps<TTasks>>;
+
+/**
+ * Runs a Task record and preserves its keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   allSettled,
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ * interface LoadError {
+ *   readonly type: "LoadError";
+ * }
+ * const fetchUser: Task<User> = () => ok({ id: "user-1" });
+ * const fetchProfile: Task<string, LoadError> = () =>
+ *   err({ type: "LoadError" });
+ *
+ * await using run = createRun();
+ * const results = await run(
+ *   allSettled({ user: fetchUser, profile: fetchProfile }),
+ * );
+ *
+ * expectTypeOf(results).toEqualTypeOf<
+ *   Result<{
+ *     readonly user: Result<User>;
+ *     readonly profile: Result<string, LoadError>;
+ *   }>
+ * >();
+ * expectOk(results, {
+ *   user: { ok: true, value: { id: "user-1" } },
+ *   profile: { ok: false, error: { type: "LoadError" } },
+ * });
+ * ```
+ */
 export function allSettled<const TTasks extends TaskRecord>(
   tasks: TTasks,
 ): Task<InferTasksSettled<TTasks>, never, InferTaskRecordDeps<TTasks>>;
+
+/**
+ * Maps an array to Tasks and preserves its shape.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   allSettled,
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ * interface LoadError {
+ *   readonly type: "LoadError";
+ * }
+ * const loadUser =
+ *   (id: string): Task<User, LoadError> =>
+ *   () =>
+ *     id === "missing" ? err({ type: "LoadError" }) : ok({ id });
+ *
+ * const userIds = ["user-1", "missing"] as const;
+ * const indexes: Array<number> = [];
+ * const loadUsers = allSettled(userIds, (id, index) => {
+ *   indexes.push(index);
+ *   return loadUser(id);
+ * });
+ *
+ * // Mapping is eager: it happens before the returned Task starts.
+ * expect(indexes).toEqual([0, 1]);
+ *
+ * await using run = createRun();
+ * const results = await run(loadUsers);
+ * expectTypeOf(results).toEqualTypeOf<
+ *   Result<readonly [Result<User, LoadError>, Result<User, LoadError>]>
+ * >();
+ * expectOk(results, [
+ *   { ok: true, value: { id: "user-1" } },
+ *   { ok: false, error: { type: "LoadError" } },
+ * ]);
+ * ```
+ */
 export function allSettled<
   const TValues extends ReadonlyArray<unknown>,
   TTask extends AnyTask,
@@ -2707,8 +3374,59 @@ export function allSettled<
     >;
   },
   never,
-  InferTaskDeps<TTask>
+  InferTasksDeps<ReadonlyArray<TTask>>
 >;
+
+/**
+ * Maps record values to Tasks and preserves its keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   allSettled,
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ * interface LoadError {
+ *   readonly type: "LoadError";
+ * }
+ * const loadUser =
+ *   (id: string): Task<User, LoadError> =>
+ *   () =>
+ *     id === "missing" ? err({ type: "LoadError" }) : ok({ id });
+ *
+ * const userIdsByRole = { admin: "user-1", reviewer: "missing" } as const;
+ * const roles: Array<keyof typeof userIdsByRole> = [];
+ * const loadUsersByRole = allSettled(userIdsByRole, (id, role) => {
+ *   roles.push(role);
+ *   return loadUser(id);
+ * });
+ *
+ * // Mapping is eager: it happens before the returned Task starts.
+ * expect(roles).toEqual(["admin", "reviewer"]);
+ *
+ * await using run = createRun();
+ * const results = await run(loadUsersByRole);
+ * expectTypeOf(results).toEqualTypeOf<
+ *   Result<{
+ *     readonly admin: Result<User, LoadError>;
+ *     readonly reviewer: Result<User, LoadError>;
+ *   }>
+ * >();
+ * expectOk(results, {
+ *   admin: { ok: true, value: { id: "user-1" } },
+ *   reviewer: { ok: false, error: { type: "LoadError" } },
+ * });
+ * ```
+ */
 export function allSettled<
   const TValues extends Readonly<Record<string, unknown>>,
   TTask extends AnyTask,
@@ -2724,7 +3442,7 @@ export function allSettled<
     >;
   },
   never,
-  InferTaskDeps<TTask>
+  InferTasksDeps<ReadonlyArray<TTask>>
 >;
 export function allSettled(
   input: ReadonlyArray<unknown> | Readonly<Record<string, unknown>>,
@@ -2740,32 +3458,37 @@ const collect =
   (
     type: "all" | "allSettled",
     input: ReadonlyArray<AnyTask> | TaskRecord,
+    collectValues = true,
   ): Task<unknown, unknown> =>
   async (run) => {
     let tasks: NonEmptyReadonlyArray<AnyTask>;
     let getValue: (values: ReadonlyArray<unknown>) => unknown;
 
     if (Array.isArray(input)) {
-      if (!isNonEmptyArray(input)) return ok(emptyArray);
+      if (!isNonEmptyArray(input)) {
+        return collectValues ? ok(emptyArray) : ok();
+      }
 
       tasks = input;
       getValue = identity;
     } else {
       const entries = objectToEntries(input as TaskRecord);
-      if (!isNonEmptyArray(entries)) return ok(emptyRecord);
+      if (!isNonEmptyArray(entries)) {
+        return collectValues ? ok(emptyRecord) : ok();
+      }
 
       tasks = mapArray(entries, ([, task]) => task);
       getValue = (values) =>
         objectFromEntries(entries.map(([key], index) => [key, values[index]]));
     }
 
-    const values: Array<unknown> = [];
+    const values: Array<unknown> | undefined = collectValues ? [] : undefined;
     let firstErr: Err<unknown> | undefined;
 
     await run(
       each(tasks, (result, index) => {
         if (type === "allSettled") {
-          values[index] = result;
+          values![index] = result;
           return "continue";
         }
 
@@ -2774,12 +3497,12 @@ const collect =
           return "stop";
         }
 
-        values[index] = result.value;
+        if (values) values[index] = result.value;
         return "continue";
       }),
     );
 
-    return firstErr ?? ok(getValue(values));
+    return firstErr ?? (values ? ok(getValue(values)) : ok());
   };
 
 const mapInput = (
@@ -2830,52 +3553,26 @@ const mapInput = (
  * ### Example
  *
  * ```ts
- * // The sleep helper is implemented with callback.
- * import { readFile as nodeReadFile } from "node:fs";
- * import {
- *   callback,
- *   err,
- *   ok,
- *   type PositiveDuration,
- *   type Task,
- * } from "@evolu/common";
+ * import { callback, createRun, ok, type Task } from "@evolu/common";
  *
- * const sleep = (duration: PositiveDuration): Task<void> =>
- *   callback(({ run: { deps }, resolve }) => {
- *     const id = deps.time.setTimeout(() => resolve(ok()), duration);
- *     return () => deps.time.clearTimeout(id);
- *   });
+ * const listeners = new Set<(message: string) => void>();
+ * const subscribe = (
+ *   listener: (message: string) => void,
+ * ): (() => void) => {
+ *   listeners.add(listener);
+ *   return () => listeners.delete(listener);
+ * };
+ * const nextMessage: Task<string> = callback(({ resolve }) =>
+ *   subscribe((message) => resolve(ok(message))),
+ * );
  *
- * // Multi-step setup with cleanup for partially acquired resources.
- * const waitForReady = (): Task<void> =>
- *   callback(({ resolve }) => {
- *     using disposer = new DisposableStack();
- *
- *     const id = setInterval(() => resolve(ok()), 1000);
- *     disposer.defer(() => clearInterval(id));
- *
- *     startSomethingThatMayThrow();
- *
- *     const disposables = disposer.move();
- *     return () => disposables.dispose();
- *   });
- *
- * // Wrap an event listener and let AbortSignal remove it.
- * const waitForClick = (element: HTMLElement): Task<MouseEvent> =>
- *   callback(({ run: { signal }, resolve }) => {
- *     element.addEventListener("click", (event) => resolve(ok(event)), {
- *       once: true,
- *       signal,
- *     });
- *   });
- *
- * // Wrap Node.js callback API.
- * const readFile = (path: string): Task<string, NodeJS.ErrnoException> =>
- *   callback(({ resolve }) => {
- *     nodeReadFile(path, "utf8", (error, data) => {
- *       resolve(error ? err(error) : ok(data));
- *     });
- *   });
+ * await using run = createRun();
+ * const fiber = run(nextMessage);
+ * expect(listeners.size).toBe(1);
+ * for (const listener of listeners) listener("ready");
+ * expectOk(await fiber, "ready");
+ * // The callback cleanup unsubscribes after settlement.
+ * expect(listeners.size).toBe(0);
  * ```
  *
  * @group Interop
@@ -2943,16 +3640,20 @@ export const timeoutError: TimeoutError = { type: "TimeoutError" };
  * ### Example
  *
  * ```ts
- * import { createRun, ok, timeout, type Task } from "@evolu/common";
+ * import {
+ *   createRun,
+ *   timeout,
+ *   timeoutError,
+ *   waitForAbort,
+ *   type Result,
+ *   type TimeoutError,
+ * } from "@evolu/common";
  *
  * await using run = createRun();
  *
- * const fetchData: Task<string> = () => ok("data");
- *
- * const result = await run(timeout(fetchData, "5s"));
- * if (!result.ok && result.error.type === "TimeoutError") {
- *   console.log("Request timed out");
- * }
+ * const result = await run(timeout(waitForAbort, "1ms"));
+ * expectTypeOf(result).toEqualTypeOf<Result<never, TimeoutError>>();
+ * expectErr(result, timeoutError);
  * ```
  *
  * @group Timing
@@ -3052,7 +3753,15 @@ export type RetryTaskError<E> =
  * ### Example
  *
  * ```ts
- * import { createRun, err, recurs, retry, type Task } from "@evolu/common";
+ * import {
+ *   createRun,
+ *   err,
+ *   recurs,
+ *   retry,
+ *   type Result,
+ *   type RetryTaskError,
+ *   type Task,
+ * } from "@evolu/common";
  *
  * await using run = createRun();
  *
@@ -3066,26 +3775,37 @@ export type RetryTaskError<E> =
  * const fetchWithRetry = retry(fetchData, recurs(2));
  *
  * const result = await run(fetchWithRetry);
- * if (!result.ok) {
- *   console.log(`Failed after ${result.error.attempts} attempts`);
- *   console.log("Last error", result.error.lastError);
- * }
+ * expectTypeOf(result).toEqualTypeOf<
+ *   Result<string, RetryTaskError<FetchDataError>>
+ * >();
+ * expectErr(result, {
+ *   type: "RetryError",
+ *   attempts: 3,
+ *   lastError: { type: "FetchDataError" },
+ * });
  * ```
  *
  * ### Example
  *
  * ```ts
- * import { err, recurs, retry, type Task } from "@evolu/common";
+ * import { createRun, err, recurs, retry, type Task } from "@evolu/common";
  *
  * interface FetchDataError {
  *   readonly type: "RecoverableError" | "FatalError";
  * }
  *
  * const fetchData: Task<string, FetchDataError> = () =>
- *   err({ type: "RecoverableError" });
+ *   err({ type: "FatalError" });
  *
  * const fetchWithRetry = retry(fetchData, recurs(5), {
  *   shouldRetry: (error) => error.type !== "FatalError",
+ * });
+ *
+ * await using run = createRun();
+ * expectErr(await run(fetchWithRetry), {
+ *   type: "RetryError",
+ *   attempts: 1,
+ *   lastError: { type: "FatalError" },
  * });
  * ```
  *
@@ -3188,11 +3908,19 @@ export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
  * ### Example
  *
  * ```ts
- * import { ok, recurs, repeat, type Task } from "@evolu/common";
+ * import { createRun, ok, recurs, repeat, type Task } from "@evolu/common";
  *
- * const checkStatus: Task<string> = () => ok("pending");
+ * let attempts = 0;
+ * const checkStatus: Task<string> = () => {
+ *   attempts += 1;
+ *   return ok("pending");
+ * };
  *
  * const poll = repeat(checkStatus, recurs(3));
+ *
+ * await using run = createRun();
+ * expectOk(await run(poll), "pending");
+ * expect(attempts).toBe(4);
  * ```
  *
  * ### Example
@@ -3221,7 +3949,9 @@ export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
  *   return item ? ok(item) : err(done());
  * };
  *
- * const result = await run(repeat(processQueue, spaced("100ms")));
+ * const result = await run(repeat(processQueue, spaced("1ms")));
+ * expectErr(result, done());
+ * expect(queue).toEqual([]);
  * ```
  *
  * @group Repetition
@@ -3276,6 +4006,34 @@ export type InferTasksResult<TTasks extends NonEmptyReadonlyArray<AnyTask>> =
  * Similar to
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/any | Promise.any},
  * but races Tasks, returns Result values, and aborts losers.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   any,
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * const unavailable: Task<string, "Unavailable"> = () =>
+ *   err("Unavailable");
+ * let fallbackStarted = false;
+ * const fallback: Task<string> = () => {
+ *   fallbackStarted = true;
+ *   return ok("fallback");
+ * };
+ *
+ * await using run = createRun();
+ * const result = await run(any([unavailable, fallback]));
+ *
+ * expectTypeOf(result).toEqualTypeOf<Result<string, "Unavailable">>();
+ * expectOk(result, "fallback");
+ * expect(fallbackStarted).toBe(true);
+ * ```
  *
  * @group Racing
  */
@@ -3336,26 +4094,53 @@ export const any =
  * arrays whose emptiness is only known at runtime, guard with
  * {@link isNonEmptyArray}:
  *
+ * ### Example
+ *
  * ```ts
+ * import {
+ *   createRun,
+ *   isNonEmptyArray,
+ *   ok,
+ *   race,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * const tasks: ReadonlyArray<Task<string>> = [() => ok("first")];
+ * await using run = createRun();
  * if (isNonEmptyArray(tasks)) {
- *   await run(race(tasks));
+ *   const result = await run(race(tasks));
+ *   expectOk(result, "first");
  * }
  * ```
  *
  * ### Example
  *
  * ```ts
- * import { createRun, ok, race, sleep, type Task } from "@evolu/common";
+ * import {
+ *   createRun,
+ *   ok,
+ *   race,
+ *   sleep,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
  *
  * await using run = createRun();
  *
  * const fast: Task<string> = () => ok("fast");
+ * let slowCompleted = false;
  * const slow: Task<string> = async (run) => {
- *   await run(sleep("10ms"));
+ *   await run.ok(sleep("10ms"));
+ *   slowCompleted = true;
  *   return ok("slow");
  * };
  *
- * const result = await run(race([fast, slow]));
+ * // Input order does not matter: the first settled Result wins, and the
+ * // still-running loser is aborted.
+ * const result = await run(race([slow, fast]));
+ * expectTypeOf(result).toEqualTypeOf<Result<string>>();
+ * expectOk(result, "fast");
+ * expect(slowCompleted).toBe(false);
  * ```
  *
  * @group Racing
@@ -3402,8 +4187,34 @@ export const race =
  * ### Example
  *
  * ```ts
- * // At most 4 running at once, done after 10 succeed.
- * const result = await run(concurrently(4, firstN(tasks, 10)));
+ * import {
+ *   concurrently,
+ *   createRun,
+ *   err,
+ *   firstN,
+ *   ok,
+ *   sleep,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * let slowCompleted = false;
+ * const slow: Task<string, "Failed"> = async (run) => {
+ *   await run.ok(sleep("10ms"));
+ *   slowCompleted = true;
+ *   return ok("slow");
+ * };
+ * const tasks = [
+ *   slow,
+ *   () => err("Failed" as const),
+ *   () => ok("fast-1"),
+ *   () => ok("fast-2"),
+ * ] as const;
+ * await using run = createRun();
+ *
+ * // Errs do not count. After two Ok values settle, the slow Task is aborted.
+ * const result = await run(concurrently(4, firstN(tasks, 2)));
+ * expectOk(result, ["fast-1", "fast-2"]);
+ * expect(slowCompleted).toBe(false);
  * ```
  *
  * @group Racing
@@ -3444,8 +4255,36 @@ export const firstN =
  * ### Example
  *
  * ```ts
- * // At most 4 running at once, done after 10 settle.
- * const result = await run(concurrently(4, firstNSettled(tasks, 10)));
+ * import {
+ *   concurrently,
+ *   createRun,
+ *   err,
+ *   firstNSettled,
+ *   ok,
+ *   sleep,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * let slowCompleted = false;
+ * const slow: Task<string, "Failed"> = async (run) => {
+ *   await run.ok(sleep("10ms"));
+ *   slowCompleted = true;
+ *   return ok("slow");
+ * };
+ * const tasks = [
+ *   slow,
+ *   () => err("Failed" as const),
+ *   () => ok("fast"),
+ * ] as const;
+ * await using run = createRun();
+ *
+ * // Err and Ok both count, and Results use settlement order.
+ * const result = await run(concurrently(3, firstNSettled(tasks, 2)));
+ * expectOk(result, [
+ *   { ok: false, error: "Failed" },
+ *   { ok: true, value: "fast" },
+ * ]);
+ * expect(slowCompleted).toBe(false);
  * ```
  *
  * @group Racing
@@ -3511,40 +4350,27 @@ export const firstNSettled =
  *   concurrently,
  *   createRun,
  *   ok,
+ *   sleep,
  *   type Task,
  * } from "@evolu/common";
  *
  * await using run = createRun();
  *
- * const fetchA: Task<string> = () => ok("a");
- * const fetchB: Task<string> = () => ok("b");
- * const fetchC: Task<string> = () => ok("c");
- * const tasks = [fetchA, fetchB, fetchC];
  * const userIds = ["user-1", "user-2", "user-3"];
+ * let activeFetches = 0;
+ * let maxActiveFetches = 0;
  * const fetchUser =
  *   (id: string): Task<string> =>
- *   () =>
- *     ok(id);
- * const enrichUser =
- *   (id: string): Task<string> =>
- *   () =>
- *     ok(`${id}:enriched`);
- *
- * // Unlimited (omit the limit)
- * await run(concurrently(all([fetchA, fetchB, fetchC])));
- *
- * // Limited — at most 5 Tasks run at a time
- * await run(concurrently(5, all(tasks)));
- * await run(concurrently(5, all(userIds, fetchUser)));
- *
- * // Inherited — inner all() uses parent's limit
- * const pipeline = concurrently(5, async (run) => {
- *   const users = await run(all(userIds, fetchUser)); // uses 5
- *   if (!users.ok) return users;
- *   return run(all(users.value, enrichUser)); // also uses 5
- * });
- *
- * await run(pipeline);
+ *   async (run) => {
+ *     activeFetches += 1;
+ *     maxActiveFetches = Math.max(maxActiveFetches, activeFetches);
+ *     await run.ok(sleep("1ms"));
+ *     activeFetches -= 1;
+ *     return ok(id);
+ *   };
+ * const result = await run(concurrently(2, all(userIds, fetchUser)));
+ * expectOk(result, userIds);
+ * expect(maxActiveFetches).toBe(2);
  * ```
  *
  * @group Concurrency
@@ -3620,37 +4446,49 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  * | {@link firstNSettled} | Stop after n Results                  |
  *
  * Use `each` directly to build a collection policy the helpers don't cover. For
- * example, this is how {@link firstN} is implemented:
+ * example, keep the first successful value together with its original input
+ * index:
  *
  * ### Example
  *
  * ```ts
- * export const firstN =
- *   <TTasks extends NonEmptyReadonlyArray<AnyTask>>(
- *     tasks: TTasks,
- *     count: Int1To100OrPositiveInt,
- *   ): Task<
- *     ReadonlyArray<InferTaskOk<TTasks[number]>>,
- *     never,
- *     InferTasksDeps<TTasks>
- *   > =>
- *   async (run) => {
- *     assertType(PositiveInt, count);
+ * import {
+ *   concurrently,
+ *   createRun,
+ *   each,
+ *   err,
+ *   ok,
+ *   sleep,
+ *   type Task,
+ * } from "@evolu/common";
  *
- *     const values: Array<InferTaskOk<TTasks[number]>> = [];
- *     await run(
- *       each(tasks, (result) => {
- *         if (result.ok) values.push(result.value);
- *         return values.length < count ? "continue" : "stop";
- *       }),
- *     );
- *     return ok(values);
- *   };
- * ```
+ * let slowCompleted = false;
+ * const slow: Task<string> = async (run) => {
+ *   await run.ok(sleep("10ms"));
+ *   slowCompleted = true;
+ *   return ok("slow");
+ * };
+ * const tasks = [
+ *   slow,
+ *   () => err("Unavailable" as const),
+ *   () => ok("fast"),
+ * ] as const;
+ * let first: readonly [string, number] | undefined;
+ * await using run = createRun();
+ * const result = await run(
+ *   concurrently(
+ *     2,
+ *     each(tasks, (result, index) => {
+ *       if (!result.ok) return "continue";
+ *       first = [result.value, index];
+ *       return "stop";
+ *     }),
+ *   ),
+ * );
  *
- * ```ts
- * // At most 4 running at once, done after 10 succeed.
- * const result = await run(concurrently(4, firstN(tasks, 10)));
+ * expectOk(result, undefined);
+ * expect(first).toEqual(["fast", 2]);
+ * expect(slowCompleted).toBe(false);
  * ```
  *
  * `onResult` is a synchronous scheduling decision, not a place to do work. It
@@ -3753,6 +4591,18 @@ export type TaskPriority = "user-blocking" | "user-visible" | "background";
  * `scheduler.postTask` must reject queued aborts with `AbortSignal.reason`.
  * Other host-specific abort objects are treated as defects.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { createRun, ok, prioritized, type Task } from "@evolu/common";
+ *
+ * const rebuildSearchIndex: Task<string> = () => ok("indexed");
+ * const backgroundIndexing = prioritized("background", rebuildSearchIndex);
+ *
+ * await using run = createRun();
+ * expectOk(await run(backgroundIndexing), "indexed");
+ * ```
+ *
  * @group Scheduling
  */
 export const prioritized = <T, E, D = unknown>(
@@ -3774,6 +4624,8 @@ export const prioritized = <T, E, D = unknown>(
  * ### Example
  *
  * ```ts
+ * import { createRun, ok, yieldNow, type Task } from "@evolu/common";
+ *
  * const sumTo =
  *   (count: number): Task<number> =>
  *   async (run) => {
@@ -3786,6 +4638,9 @@ export const prioritized = <T, E, D = unknown>(
  *
  *     return ok(sum);
  *   };
+ *
+ * await using run = createRun();
+ * expectOk(await run(sumTo(1001)), 500500);
  * ```
  *
  * @group Scheduling
@@ -3823,10 +4678,49 @@ export const yieldNow: Task<void> = async (run) => {
  * ### Example
  *
  * ```ts
+ * import {
+ *   AbortError,
+ *   createRun,
+ *   ok,
+ *   waitForAbort,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface ServerDep {
+ *   readonly port: number;
+ * }
+ * interface Server extends AsyncDisposable {}
+ *
+ * const serverStarted = Promise.withResolvers<void>();
+ * let serverStopped = false;
+ * const startServer: Task<Server, never, ServerDep> = ({ deps }) => {
+ *   expect(deps.port).toBe(3000);
+ *   serverStarted.resolve();
+ *   return ok({
+ *     [Symbol.asyncDispose]: async () => {
+ *       serverStopped = true;
+ *     },
+ *   });
+ * };
+ *
  * const serve = (): Task<never, never, ServerDep> => async (run) => {
  *   await using server = await run.ok(startServer);
  *   return await run(waitForAbort);
  * };
+ *
+ * expectTypeOf(serve).returns.toEqualTypeOf<
+ *   Task<never, never, ServerDep>
+ * >();
+ *
+ * await using run = createRun();
+ * const fiber = run.abortable(serve(), { port: 3000 });
+ * await serverStarted.promise;
+ * fiber.abort();
+ *
+ * const result = await fiber;
+ * assert(!result.ok);
+ * expect(AbortError.is(result.error)).toBe(true);
+ * expect(serverStopped).toBe(true);
  * ```
  *
  * @group Abortability
@@ -3880,22 +4774,79 @@ export const waitForAbort: Task<never> = async (run) => {
  * ### Example
  *
  * ```ts
- * const result = await run(timeout(daemon(taskNotUsingAbort), "5s"));
+ * import {
+ *   createRun,
+ *   daemon,
+ *   ok,
+ *   timeout,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * let finished = false;
+ * let finishTask = (): void => {};
+ * const taskNotUsingAbort: Task<string> = () =>
+ *   new Promise((resolve) => {
+ *     finishTask = () => {
+ *       finished = true;
+ *       resolve(ok("done"));
+ *     };
+ *   });
+ *
+ * {
+ *   await using run = createRun();
+ *   const result = await run(timeout(daemon(taskNotUsingAbort), "1ms"));
+ *   assert(!result.ok);
+ *   expect(result.error.type).toBe("TimeoutError");
+ *   expect(finished).toBe(false);
+ *   finishTask();
+ * }
+ * expect(finished).toBe(true);
  * ```
  *
  * Promise-producing operations should start inside the Task, not before it.
  *
  * ```ts
+ * import { createRun, ok, type Result, type Task } from "@evolu/common";
+ *
+ * type ResultValue = string;
+ * interface MyError {
+ *   readonly type: "MyError";
+ * }
+ * const createPromiseReturningResult = (): Promise<
+ *   Result<ResultValue, MyError>
+ * > => Promise.resolve(ok("value"));
+ *
  * const task: Task<ResultValue, MyError> = () =>
  *   createPromiseReturningResult();
+ *
+ * await using run = createRun();
+ * expectOk(await run(task), "value");
  * ```
  *
  * Do not reuse an already-running Promise. It started outside the Task, so the
  * Run cannot own its lifetime or request abort before it begins.
  *
  * ```ts
+ * import { ok, type Result, type Task } from "@evolu/common";
+ *
+ * type ResultValue = string;
+ * interface MyError {
+ *   readonly type: "MyError";
+ * }
+ * let promiseStarted = false;
+ * const createPromiseReturningResult = (): Promise<
+ *   Result<ResultValue, MyError>
+ * > => {
+ *   promiseStarted = true;
+ *   return Promise.resolve(ok("value"));
+ * };
+ *
+ * // Wrong: the Promise starts now, before a Run starts the Task.
  * const promise = createPromiseReturningResult();
  * const task: Task<ResultValue, MyError> = () => promise;
+ *
+ * expect(promiseStarted).toBe(true);
+ * expectTypeOf(task).toEqualTypeOf<Task<ResultValue, MyError>>();
  * ```
  *
  * @group Lifetime
@@ -3930,6 +4881,29 @@ export const daemon =
  * Apply at most one abort behavior helper to a Task: do not wrap the same Task
  * with both unabortable and restore, or apply either helper more than once.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { createRun, ok, unabortable, type Task } from "@evolu/common";
+ *
+ * const commitStarted = Promise.withResolvers<void>();
+ * const finishCommit = Promise.withResolvers<void>();
+ * const commit: Task<string> = unabortable(async ({ signal }) => {
+ *   commitStarted.resolve();
+ *   await finishCommit.promise;
+ *   expect(signal.aborted).toBe(false);
+ *   return ok("committed");
+ * });
+ *
+ * await using run = createRun();
+ * const fiber = run.abortable(commit);
+ * await commitStarted.promise;
+ * fiber.abort();
+ * finishCommit.resolve();
+ *
+ * expectOk(await fiber, "committed");
+ * ```
+ *
  * @group Abortability
  */
 export const unabortable = /*#__PURE__*/ withTaskMeta({
@@ -3958,10 +4932,11 @@ export const unabortable = /*#__PURE__*/ withTaskMeta({
  *
  * ```ts
  * import {
- *   assert,
+ *   AbortError,
  *   createRun,
  *   ok,
  *   unabortableMask,
+ *   waitForAbort,
  *   type Task,
  * } from "@evolu/common";
  *
@@ -3972,34 +4947,45 @@ export const unabortable = /*#__PURE__*/ withTaskMeta({
  * }
  *
  * const acquire: Task<Resource> = () => ok({ id: "resource-1" });
+ * const operationStarted = Promise.withResolvers<void>();
  * const operate =
- *   (resource: Resource): Task<string> =>
- *   () =>
- *     ok(resource.id);
+ *   (resource: Resource): Task<never> =>
+ *   async (run) => {
+ *     expect(resource.id).toBe("resource-1");
+ *     operationStarted.resolve();
+ *     return await run(waitForAbort);
+ *   };
+ * let released = false;
  * const release =
  *   (_resource: Resource): Task<void> =>
- *   () =>
- *     ok();
+ *   ({ signal }) => {
+ *     // Release inherits the mask even after abort was requested.
+ *     expect(signal.aborted).toBe(false);
+ *     released = true;
+ *     return ok();
+ *   };
  *
  * const fiber = run.abortable(
  *   unabortableMask((restore) => async (run) => {
  *     // Acquire with abort masked.
- *     const resourceResult = await run(acquire);
- *     assert(resourceResult.ok);
+ *     const resource = await run.ok(acquire);
  *
  *     try {
  *       // Use with the previous abort mask restored.
- *       return await run(restore(operate(resourceResult.value)));
+ *       return await run(restore(operate(resource)));
  *     } finally {
  *       // Release with abort masked.
- *       const releaseResult = await run(release(resourceResult.value));
- *       assert(releaseResult.ok);
+ *       await run.ok(release(resource));
  *     }
  *   }),
  * );
  *
+ * await operationStarted.promise;
  * fiber.abort();
  * const result = await fiber;
+ * assert(!result.ok);
+ * expect(AbortError.is(result.error)).toBe(true);
+ * expect(released).toBe(true);
  * ```
  *
  * @group Abortability
@@ -4058,15 +5044,43 @@ export const unabortableMask = <T, E, D = unknown>(
  * ### Example
  *
  * ```ts
+ * import {
+ *   acquireUseRelease,
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface Connection {
+ *   readonly user: string;
+ *   readonly isAvailable: boolean;
+ * }
+ *
+ * const openConnection: Task<Connection> = () =>
+ *   ok({ user: "Ada", isAvailable: false });
+ * const loadUser =
+ *   (connection: Connection): Task<string, "Unavailable"> =>
+ *   () =>
+ *     connection.isAvailable ? ok(connection.user) : err("Unavailable");
+ * let connectionClosed = false;
+ * const closeConnection =
+ *   (_connection: Connection): Task<void> =>
+ *   () => {
+ *     connectionClosed = true;
+ *     return ok();
+ *   };
+ *
  * const queryUser = acquireUseRelease(
  *   openConnection,
- *   (connection) => async (run) => {
- *     const userResult = await run(loadUser(connection));
- *     if (!userResult.ok) return userResult;
- *     return ok(userResult.value);
- *   },
+ *   loadUser,
  *   (connection) => closeConnection(connection),
  * );
+ *
+ * await using run = createRun();
+ * expectErr(await run(queryUser), "Unavailable");
+ * // Release still runs when use returns a domain error.
+ * expect(connectionClosed).toBe(true);
  * ```
  *
  * @group Abortability
@@ -4115,21 +5129,33 @@ export const acquireUseRelease = <
  * ### Example
  *
  * ```ts
- * import { createDeferred, createRun, ok } from "@evolu/common";
+ * import {
+ *   createDeferred,
+ *   createRun,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * await using run = createRun();
  * const deferred = createDeferred<string>();
  *
  * const fiber = run(deferred.task);
- * deferred.resolve(ok("ready"));
+ * expect(deferred.resolve(ok("ready"))).toBe(true);
  *
- * const result = await fiber; // ok("ready")
+ * const result = await fiber;
+ * expectTypeOf(result).toEqualTypeOf<Result<string>>();
+ * expectOk(result, "ready");
+ *
+ * // A Deferred is one-shot: later resolutions are ignored, and future
+ * // waiters receive the original Result.
+ * expect(deferred.resolve(ok("late"))).toBe(false);
+ * expectOk(await run(deferred.task), "ready");
  * ```
  *
  * ### Example
  *
  * ```ts
- * import { createDeferred, createRun, ok } from "@evolu/common";
+ * import { AbortError, createDeferred, createRun } from "@evolu/common";
  *
  * await using run = createRun();
  * const deferred = createDeferred<string>();
@@ -4137,7 +5163,9 @@ export const acquireUseRelease = <
  * const fiber = run.abortable(deferred.task);
  * fiber.abort({ type: "NoLongerNeeded" });
  *
- * const result = await fiber; // err(AbortError)
+ * const result = await fiber;
+ * assert(!result.ok);
+ * expect(AbortError.is(result.error)).toBe(true);
  * ```
  *
  * @group Concurrency primitives
@@ -4195,6 +5223,9 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
  * Closing only affects future waiters. Releasing allows current waiters to pass
  * while keeping future waiters blocked.
  *
+ * {@link createGate} creates a closed Gate by default. Pass `isOpen: true` when
+ * work should proceed immediately.
+ *
  * ### Example
  *
  * ```ts
@@ -4203,17 +5234,24 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
  * await using run = createRun();
  * const networkGate = createGate();
  *
- * const uploadNextItem: Task<void> = () => ok();
+ * const uploadedItems: Array<string> = [];
+ * const syncOnce =
+ *   (item: string): Task<void> =>
+ *   async (run) => {
+ *     await run.ok(networkGate.wait);
+ *     uploadedItems.push(item);
+ *     return ok();
+ *   };
  *
- * const syncOnce: Task<void> = async (run) => {
- *   await run.ok(networkGate.wait);
- *   await run.ok(uploadNextItem);
- *   return ok();
- * };
+ * const first = run(syncOnce("first"));
+ * const second = run(syncOnce("second"));
+ * expect(uploadedItems).toEqual([]);
  *
- * const fiber = run(syncOnce);
  * networkGate.open();
- * await fiber;
+ * expectOk(await first, undefined);
+ * expectOk(await second, undefined);
+ * expect(uploadedItems).toEqual(["first", "second"]);
+ * expect(networkGate.isOpen()).toBe(true);
  * ```
  *
  * @group Concurrency primitives
@@ -4237,7 +5275,7 @@ export interface Gate {
 }
 
 /**
- * Creates a {@link Gate}. Closed by default.
+ * Creates a {@link Gate}.
  *
  * @group Concurrency primitives
  */
@@ -4288,6 +5326,9 @@ export const createGate = ({
  *
  * Acquisition uses the `"fifo"` {@link SemaphorePolicy} by default.
  *
+ * Capacity is always positive. Use {@link Gate} when work should start closed
+ * and be released later.
+ *
  * `Semaphore` is permit-counting, not owner tracking. Acquiring permits while
  * already holding permits consumes additional permits and can wait if not
  * enough permits are available.
@@ -4327,7 +5368,8 @@ export const createGate = ({
  * ]);
  *
  * const savedUsers = results.map(getOk);
- * const maxConcurrentSaves = maxActiveSaves; // 2
+ * expect(savedUsers).toEqual(["saved:1", "saved:2", "saved:3"]);
+ * expect(maxActiveSaves).toBe(2);
  * ```
  *
  * @group Concurrency primitives
@@ -4468,13 +5510,7 @@ export interface SemaphoreSnapshot {
 }
 
 /**
- * Creates a {@link Semaphore} with the specified initial permit count.
- *
- * Uses the `"fifo"` {@link SemaphorePolicy} by default.
- *
- * Semaphore capacity is always positive: `initialPermits` and values passed to
- * {@link Semaphore.resize} must be greater than 0. Use {@link Gate} when work
- * should start closed and be released later.
+ * Creates a {@link Semaphore}.
  *
  * @group Concurrency primitives
  */
@@ -4625,6 +5661,37 @@ export const createSemaphore = (
  * `Mutex` is non-reentrant. A Task that tries to acquire the same Mutex while
  * already holding it waits on itself and will not progress.
  *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createMutex,
+ *   createRun,
+ *   ok,
+ *   sleep,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * const mutex = createMutex();
+ * let balance = 0;
+ * const deposit = (amount: number): Task<void> =>
+ *   mutex.withLock(async (run) => {
+ *     const currentBalance = balance;
+ *     await run.ok(sleep("1ms"));
+ *     balance = currentBalance + amount;
+ *     return ok();
+ *   });
+ *
+ * await using run = createRun();
+ * const [first, second] = await Promise.all([
+ *   run(deposit(2)),
+ *   run(deposit(3)),
+ * ]);
+ * expectOk(first, undefined);
+ * expectOk(second, undefined);
+ * expect(balance).toBe(5);
+ * ```
+ *
  * @group Concurrency primitives
  */
 export interface Mutex {
@@ -4662,6 +5729,54 @@ export const createMutex = (): Mutex => {
  * operations or resize a permit pool. Use `SemaphoreByKey` when permit
  * ownership should be tied to one Task lifetime and idle keys can be forgotten
  * automatically.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createGate,
+ *   createRun,
+ *   createSemaphoreByKey,
+ *   getOk,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * // Each host gets an independent two-download limit.
+ * const downloadsByHost = createSemaphoreByKey<string>(2);
+ * const finishDownloads = createGate();
+ * const firstBatchStarted = Promise.withResolvers<void>();
+ * const started: Array<string> = [];
+ * const download = (host: string, file: string): Task<string> =>
+ *   downloadsByHost.withPermit(host, async (run) => {
+ *     started.push(`${host}/${file}`);
+ *     if (started.length === 3) firstBatchStarted.resolve();
+ *     await run.ok(finishDownloads.wait);
+ *     return ok(`${host}/${file}`);
+ *   });
+ *
+ * await using run = createRun();
+ * const downloads = [
+ *   run(download("a.example", "1.json")),
+ *   run(download("a.example", "2.json")),
+ *   run(download("a.example", "3.json")),
+ *   run(download("b.example", "1.json")),
+ * ];
+ * await firstBatchStarted.promise;
+ * expect(started).toEqual([
+ *   "a.example/1.json",
+ *   "a.example/2.json",
+ *   "b.example/1.json",
+ * ]);
+ *
+ * finishDownloads.open();
+ * expect((await Promise.all(downloads)).map(getOk)).toEqual([
+ *   "a.example/1.json",
+ *   "a.example/2.json",
+ *   "a.example/3.json",
+ *   "b.example/1.json",
+ * ]);
+ * ```
  *
  * @group Concurrency primitives
  */
@@ -4740,6 +5855,47 @@ export function createSemaphoreByKey<K, L = K>(
 /**
  * Runs Tasks one at a time independently for each key, like {@link Mutex}.
  *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createGate,
+ *   createMutexByKey,
+ *   createRun,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * const accountLocks = createMutexByKey<string>();
+ * const finishDeposits = createGate();
+ * const firstBatchStarted = Promise.withResolvers<void>();
+ * const started: Array<string> = [];
+ * const balancesByAccount = new Map<string, number>();
+ * const deposit = (account: string, amount: number): Task<number> =>
+ *   accountLocks.withLock(account, async (run) => {
+ *     started.push(account);
+ *     if (started.length === 2) firstBatchStarted.resolve();
+ *     await run.ok(finishDeposits.wait);
+ *     const balance = (balancesByAccount.get(account) ?? 0) + amount;
+ *     balancesByAccount.set(account, balance);
+ *     return ok(balance);
+ *   });
+ *
+ * await using run = createRun();
+ * const first = run(deposit("checking", 2));
+ * const second = run(deposit("checking", 3));
+ * const third = run(deposit("savings", 4));
+ * await firstBatchStarted.promise;
+ * // Different accounts proceed together; the second checking deposit waits.
+ * expect(started).toEqual(["checking", "savings"]);
+ *
+ * finishDeposits.open();
+ * expectOk(await first, 2);
+ * expectOk(await second, 5);
+ * expectOk(await third, 4);
+ * expect(started).toEqual(["checking", "savings", "checking"]);
+ * ```
+ *
  * @group Concurrency primitives
  */
 export interface MutexByKey<K = unknown> {
@@ -4805,9 +5961,25 @@ export function createMutexByKey<K, L = K>({
  * ### Example
  *
  * ```ts
+ * import {
+ *   createGate,
+ *   createMutexRef,
+ *   createRun,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
  * await using run = createRun();
  *
- * const fetchToken: Task<string> = () => ok("fresh-token");
+ * const finishRefresh = createGate();
+ * const refreshStarted = Promise.withResolvers<void>();
+ * let fetchTokenCalls = 0;
+ * const fetchToken: Task<string> = async (run) => {
+ *   fetchTokenCalls += 1;
+ *   refreshStarted.resolve();
+ *   await run.ok(finishRefresh.wait);
+ *   return ok("fresh-token");
+ * };
  *
  * const tokenRef = createMutexRef<string | null>(null);
  *
@@ -4817,8 +5989,17 @@ export function createMutexByKey<K, L = K>({
  *   current === null ? fetchToken : () => ok(current),
  * );
  *
- * // "fresh-token"
- * const token = await run.ok(getToken);
+ * const first = run(getToken);
+ * await refreshStarted.promise;
+ * const second = run(getToken);
+ * finishRefresh.open();
+ *
+ * const [firstResult, secondResult] = await Promise.all([first, second]);
+ * expectTypeOf(getToken).toEqualTypeOf<Task<string | null>>();
+ * expectOk(firstResult, "fresh-token");
+ * expectOk(secondResult, "fresh-token");
+ * expect(fetchTokenCalls).toBe(1);
+ * expectOk(await run(tokenRef.get), "fresh-token");
  * ```
  *
  * @group Concurrency primitives
@@ -4862,7 +6043,7 @@ export interface MutexRef<T> {
 }
 
 /**
- * Creates a {@link MutexRef} with the given initial immutable value.
+ * Creates a {@link MutexRef}.
  *
  * @group Concurrency primitives
  */

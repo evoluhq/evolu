@@ -29,6 +29,42 @@ import {
 } from "../../../../packages/common/src/Result.ts";
 import { parseStackTrace } from "../../../../packages/common/src/StackTrace.ts";
 
+describe("InferOk and InferErr", () => {
+  it("infers Ok type", () => {
+    type MyResult = Result<string, { type: "MyError"; code: number }>;
+    expectTypeOf<InferOk<MyResult>>().toEqualTypeOf<string>();
+  });
+
+  it("infers Err type", () => {
+    interface MyError {
+      readonly type: "MyError";
+      readonly code: number;
+    }
+    type MyResult = Result<string, MyError>;
+    expectTypeOf<InferErr<MyResult>>().toEqualTypeOf<MyError>();
+  });
+
+  it("handles void Result", () => {
+    type VoidResult = Result<void, Error>;
+    expectTypeOf<InferOk<VoidResult>>().toEqualTypeOf<void>();
+    expectTypeOf<InferErr<VoidResult>>().toEqualTypeOf<Error>();
+  });
+
+  it("works at runtime", () => {
+    interface MyError {
+      readonly type: "MyError";
+      readonly code: number;
+    }
+    type MyResult = Result<string, MyError>;
+
+    const okValue: InferOk<MyResult> = "hello";
+    const errValue: InferErr<MyResult> = { type: "MyError", code: 404 };
+
+    expect(okValue).toBe("hello");
+    expect(errValue).toEqual({ type: "MyError", code: 404 });
+  });
+});
+
 describe("ok", () => {
   it("creates Ok with a value", () => {
     expect(ok(42)).toStrictEqual({ ok: true, value: 42 });
@@ -335,39 +371,450 @@ describe("tryAsync", () => {
   });
 });
 
-describe("InferOk and InferErr", () => {
-  it("infers Ok type", () => {
-    type MyResult = Result<string, { type: "MyError"; code: number }>;
-    expectTypeOf<InferOk<MyResult>>().toEqualTypeOf<string>();
+describe("NextResult", () => {
+  it("models success, failure, and done", () => {
+    type E = "E";
+
+    const a: NextResult<number, E, string> = ok(1);
+    const b: NextResult<number, E, string> = err(done("finished"));
+    const c: NextResult<number, E, string> = err<E>("E");
+
+    expectTypeOf(a).toEqualTypeOf<NextResult<number, E, string>>();
+    expect(b.ok).toBe(false);
+    expect(c.ok).toBe(false);
   });
 
-  it("infers Err type", () => {
-    interface MyError {
-      readonly type: "MyError";
-      readonly code: number;
+  describe("done", () => {
+    it("creates Done with done value", () => {
+      expect(done("finished")).toStrictEqual({
+        type: "Done",
+        done: "finished",
+      });
+    });
+
+    it("creates Done<void> without arguments", () => {
+      expect(done()).toStrictEqual({
+        type: "Done",
+        done: undefined,
+      });
+      expectTypeOf(done()).toEqualTypeOf<Done<void>>();
+    });
+
+    it("preserves done type", () => {
+      const value = done({ count: 1 });
+      expectTypeOf(value).toEqualTypeOf<Done<{ count: number }>>();
+      expectTypeOf(value.done).toEqualTypeOf<{ count: number }>();
+    });
+  });
+
+  describe("ExcludeDone and OnlyDone", () => {
+    it("ExcludeDone removes Done from a union", () => {
+      interface MyError {
+        readonly type: "MyError";
+      }
+      type E = MyError | Done<void>;
+      expectTypeOf<ExcludeDone<E>>().toEqualTypeOf<MyError>();
+    });
+
+    it("OnlyDone keeps only Done from a union", () => {
+      interface MyError {
+        readonly type: "MyError";
+      }
+      type E = MyError | Done<"done">;
+      expectTypeOf<OnlyDone<E>>().toEqualTypeOf<Done<"done">>();
+    });
+
+    it("OnlyDone returns never when there is no Done", () => {
+      type E = "E";
+      expectTypeOf<OnlyDone<E>>().toEqualTypeOf<never>();
+    });
+  });
+
+  describe("InferDone", () => {
+    it("extracts Done type from NextResult with void done", () => {
+      type R = NextResult<number, string>;
+      expectTypeOf<InferDone<R>>().toEqualTypeOf<void>();
+    });
+
+    it("extracts Done type from NextResult with complex done", () => {
+      type R = NextResult<
+        number,
+        string,
+        { count: number; items: Array<string> }
+      >;
+      expectTypeOf<InferDone<R>>().toEqualTypeOf<{
+        count: number;
+        items: Array<string>;
+      }>();
+    });
+
+    it("returns never for Result without Done", () => {
+      type R = Result<number, string>;
+      expectTypeOf<InferDone<R>>().toEqualTypeOf<never>();
+    });
+
+    it("works with union errors containing Done", () => {
+      interface MyError {
+        readonly type: "MyError";
+      }
+      type R = Result<number, MyError | Done<string>>;
+      expectTypeOf<InferDone<R>>().toEqualTypeOf<string>();
+    });
+  });
+
+  it("extracts all type parameters from NextResult", () => {
+    type MyNextResult = NextResult<number, string, { summary: string }>;
+
+    expectTypeOf<InferOk<MyNextResult>>().toEqualTypeOf<number>();
+    expectTypeOf<InferErr<MyNextResult>>().toEqualTypeOf<
+      string | Done<{ summary: string }>
+    >();
+    expectTypeOf<InferDone<MyNextResult>>().toEqualTypeOf<{
+      summary: string;
+    }>();
+  });
+});
+
+describe("flatMapResult", () => {
+  it("composes an Ok with another Result-returning operation", () => {
+    const result = flatMapResult(ok(21), (value) => ok(value * 2));
+
+    expect(result).toStrictEqual(ok(42));
+    expectTypeOf(result).toEqualTypeOf<Result<number>>();
+  });
+
+  it("returns the existing Err without calling the operation", () => {
+    interface FirstError {
+      readonly type: "FirstError";
     }
-    type MyResult = Result<string, MyError>;
-    expectTypeOf<InferErr<MyResult>>().toEqualTypeOf<MyError>();
-  });
 
-  it("handles void Result", () => {
-    type VoidResult = Result<void, Error>;
-    expectTypeOf<InferOk<VoidResult>>().toEqualTypeOf<void>();
-    expectTypeOf<InferErr<VoidResult>>().toEqualTypeOf<Error>();
-  });
-
-  it("works at runtime", () => {
-    interface MyError {
-      readonly type: "MyError";
-      readonly code: number;
+    interface SecondError {
+      readonly type: "SecondError";
     }
-    type MyResult = Result<string, MyError>;
 
-    const okValue: InferOk<MyResult> = "hello";
-    const errValue: InferErr<MyResult> = { type: "MyError", code: 404 };
+    const first = (): Result<number, FirstError> => err({ type: "FirstError" });
+    let called = false;
+    const result = flatMapResult(first(), (): Result<string, SecondError> => {
+      called = true;
+      return err({ type: "SecondError" });
+    });
 
-    expect(okValue).toBe("hello");
-    expect(errValue).toEqual({ type: "MyError", code: 404 });
+    expect(result).toStrictEqual(err({ type: "FirstError" }));
+    expect(called).toBe(false);
+    expectTypeOf(result).toEqualTypeOf<
+      Result<string, FirstError | SecondError>
+    >();
+  });
+
+  it("returns an error from the next operation", () => {
+    const result = flatMapResult(ok(42), () => err("fail"));
+
+    expect(result).toStrictEqual(err("fail"));
+  });
+});
+
+describe("allResult", () => {
+  it("returns emptyArray for empty array", () => {
+    const result = allResult([]);
+    expect(result).toStrictEqual(ok([]));
+  });
+
+  it("returns emptyRecord for empty record", () => {
+    const result = allResult({});
+    expectOk(result, {});
+  });
+
+  it("extracts all values from array of Ok results", () => {
+    const results = [ok(1), ok(2), ok(3)];
+    expect(allResult(results)).toStrictEqual(ok([1, 2, 3]));
+  });
+
+  it("returns first error from array", () => {
+    interface E1 {
+      readonly type: "E1";
+    }
+    interface E2 {
+      readonly type: "E2";
+    }
+    const results: NonEmptyReadonlyArray<Result<number, E1 | E2>> = [
+      ok(1),
+      err({ type: "E1" }),
+      err({ type: "E2" }),
+    ];
+    expect(allResult(results)).toStrictEqual(err({ type: "E1" }));
+  });
+
+  it("extracts all values from struct", () => {
+    const result = allResult({ a: ok(1), b: ok("two") });
+    expectOk(result, { a: 1, b: "two" });
+  });
+
+  it("returns first error from struct", () => {
+    const result = allResult({ a: ok(1), b: err("fail"), c: ok(3) });
+    expect(result).toStrictEqual(err("fail"));
+  });
+
+  it("tuple preserves types", () => {
+    const result = allResult([ok(1), ok("two"), ok(true)]);
+    if (result.ok) {
+      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
+      expectTypeOf(result.value[1]).toEqualTypeOf<string>();
+      expectTypeOf(result.value[2]).toEqualTypeOf<boolean>();
+    }
+  });
+
+  it("struct preserves types", () => {
+    const result = allResult({ a: ok(1), b: ok("two") });
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<{ a: number; b: string }>();
+    }
+  });
+
+  it("non-empty arrays preserve types", () => {
+    const result = allResult([ok(1), ok(2)]);
+    if (result.ok) {
+      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
+      expectTypeOf(result.value[1]).toEqualTypeOf<number>();
+    }
+  });
+
+  it("works with Iterable", () => {
+    const set = new Set([ok(1), ok(2), ok(3)]);
+    const result = allResult(set);
+    expect(result).toStrictEqual(ok([1, 2, 3]));
+  });
+
+  it("returns an empty array for an empty non-array Iterable", () => {
+    const results = new Set<Result<number>>();
+    const result = allResult(results);
+
+    expectTypeOf(result).toEqualTypeOf<Result<ReadonlyArray<number>>>();
+    expect(result).toStrictEqual(ok([]));
+  });
+
+  it("stops consuming an Iterable on the first error", () => {
+    const consumedValues: Array<number> = [];
+    const createResults = function* (): Generator<Result<number, string>> {
+      consumedValues.push(1);
+      yield ok(1);
+      consumedValues.push(2);
+      yield err("fail");
+      consumedValues.push(3);
+      yield ok(3);
+    };
+
+    const result = allResult(createResults());
+
+    expectErr(result, "fail");
+    expect(consumedValues).toEqual([1, 2]);
+  });
+
+  it("ignores inherited record properties", () => {
+    const results = Object.assign(
+      Object.create({ inherited: err("fail") }) as Record<
+        string,
+        Result<number, string>
+      >,
+      { own: ok(1) },
+    );
+
+    const result = allResult(results);
+
+    expectOk(result, { own: 1 });
+  });
+
+  it("does not collect Ok values", () => {
+    interface FirstError {
+      readonly type: "FirstError";
+    }
+    interface SecondError {
+      readonly type: "SecondError";
+    }
+
+    const first: Result<number, FirstError> = ok(1);
+    const second: Result<string, SecondError> = ok("two");
+
+    const result = allResult([first, second], { collect: false });
+
+    expectTypeOf(result).toEqualTypeOf<
+      Result<void, FirstError | SecondError>
+    >();
+    expectOk(result, undefined);
+  });
+
+  it("returns the first Err without collecting Ok values", () => {
+    const result = allResult([ok(1), err("first"), err("second")], {
+      collect: false,
+    });
+
+    expectErr(result, "first");
+  });
+
+  it("does not collect Ok values from a record", () => {
+    const result = allResult(
+      { first: ok(1), second: err("fail") },
+      { collect: false },
+    );
+
+    expectTypeOf(result).toEqualTypeOf<Result<void, string>>();
+    expectErr(result, "fail");
+  });
+});
+
+describe("allResult mapping overload", () => {
+  it("returns emptyArray for empty array", () => {
+    const result = allResult([], (x: number) => ok(x * 2));
+    expect(result).toStrictEqual(ok([]));
+  });
+
+  it("returns emptyRecord for empty record", () => {
+    const result = allResult({}, (x: number) => ok(x * 2));
+    expectOk(result, {});
+  });
+
+  it("maps items and collects results", () => {
+    const result = allResult([1, 2, 3], (x) => ok(x * 2));
+    expect(result).toStrictEqual(ok([2, 4, 6]));
+  });
+
+  it("returns first error", () => {
+    const result = allResult([1, 2, 3], (x) =>
+      x === 2 ? err("fail") : ok(x * 2),
+    );
+    expect(result).toStrictEqual(err("fail"));
+  });
+
+  it("does not map values after the first error", () => {
+    const mappedValues: Array<number> = [];
+    const result = allResult([1, 2, 3], (value) => {
+      mappedValues.push(value);
+      return value === 2 ? err("fail") : ok(value * 2);
+    });
+
+    expect(result).toStrictEqual(err("fail"));
+    expect(mappedValues).toEqual([1, 2]);
+  });
+
+  it("infers heterogeneous mapper errors", () => {
+    interface FirstError {
+      readonly type: "FirstError";
+    }
+    interface SecondError {
+      readonly type: "SecondError";
+    }
+
+    const first = (): Result<void, FirstError> => ok();
+    const second = (): Result<void, SecondError> =>
+      err({ type: "SecondError" });
+    const result = allResult([first, second], (operation) => operation());
+
+    expectTypeOf(result).toEqualTypeOf<
+      Result<readonly [void, void], FirstError | SecondError>
+    >();
+    expectErr(result, { type: "SecondError" });
+  });
+
+  it("does not collect mapped Ok values", () => {
+    const result = allResult([1, 2, 3], (value) => ok(value * 2), {
+      collect: false,
+    });
+
+    expectTypeOf(result).toEqualTypeOf<Result<void>>();
+    expectOk(result, undefined);
+  });
+
+  it("stops mapping without collecting on the first Err", () => {
+    interface FirstError {
+      readonly type: "FirstError";
+    }
+    interface SecondError {
+      readonly type: "SecondError";
+    }
+
+    const calls: Array<string> = [];
+    const first = (): Result<number, FirstError> => {
+      calls.push("first");
+      return ok(1);
+    };
+    const second = (): Result<number, SecondError> => {
+      calls.push("second");
+      return err({ type: "SecondError" });
+    };
+    const result = allResult([first, second], (operation) => operation(), {
+      collect: false,
+    });
+
+    expectTypeOf(result).toEqualTypeOf<
+      Result<void, FirstError | SecondError>
+    >();
+    expectErr(result, { type: "SecondError" });
+    expect(calls).toEqual(["first", "second"]);
+  });
+
+  it("maps struct and collects results", () => {
+    const result = allResult({ a: 1, b: 2 }, (x) => ok(x * 2));
+    expectOk(result, { a: 2, b: 4 });
+  });
+
+  it("maps a record without collecting Ok values", () => {
+    const result = allResult({ a: 1, b: 2 }, (x) => ok(x * 2), {
+      collect: false,
+    });
+
+    expectTypeOf(result).toEqualTypeOf<Result<void>>();
+    expectOk(result, undefined);
+  });
+
+  it("returns first error from struct", () => {
+    const result = allResult({ a: 1, b: 2, c: 3 }, (x) =>
+      x === 2 ? err("fail") : ok(x * 2),
+    );
+    expect(result).toStrictEqual(err("fail"));
+  });
+
+  it("struct preserves types", () => {
+    const result = allResult({ a: 1, b: 2 }, (x) => ok(String(x)));
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<
+        Readonly<Record<"a" | "b", string>>
+      >();
+    }
+  });
+
+  it("non-empty arrays preserve types", () => {
+    const result = allResult([1, 2, 3], (x) => ok(x * 2));
+    if (result.ok) {
+      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
+      expectTypeOf(result.value[1]).toEqualTypeOf<number>();
+      expectTypeOf(result.value[2]).toEqualTypeOf<number>();
+    }
+  });
+
+  it("works with Iterable", () => {
+    const set = new Set([1, 2, 3]);
+    const result = allResult(set, (x) => ok(x * 2));
+    expect(result).toStrictEqual(ok([2, 4, 6]));
+  });
+});
+
+describe("anyResult", () => {
+  it("returns first success", () => {
+    expect(anyResult([err("a"), ok(42), err("b")])).toStrictEqual(ok(42));
+  });
+
+  it("returns last error when all fail", () => {
+    expect(anyResult([err("a"), err("b"), err("c")])).toStrictEqual(err("c"));
+  });
+
+  it("returns first Ok even if it's first", () => {
+    expect(anyResult([ok(1), ok(2), ok(3)])).toStrictEqual(ok(1));
+  });
+
+  it("preserves types", () => {
+    const result = anyResult([err({ type: "E1" as const }), ok(42)]);
+    if (result.ok) {
+      expectTypeOf(result.value).toEqualTypeOf<number>();
+    }
   });
 });
 
@@ -390,52 +837,6 @@ test("example: parseJson with early return", () => {
   if (!json.ok) return json;
 
   expectTypeOf(json.value).toBeUnknown();
-});
-
-test.skip("Result wrapping vs unwrapped performance", () => {
-  const MESSAGE_SIZE = 50_000;
-  const AVG_ITEM_SIZE = 8;
-  const NUM_ITEMS = Math.floor(MESSAGE_SIZE / AVG_ITEM_SIZE);
-
-  const data = new Uint8Array(MESSAGE_SIZE);
-  data.fill(1);
-
-  const readWrapped = (
-    bytes: Uint8Array,
-    offset: number,
-    size: number,
-  ): Result<Uint8Array, string> => ok(bytes.subarray(offset, offset + size));
-
-  const readUnwrapped = (
-    bytes: Uint8Array,
-    offset: number,
-    size: number,
-  ): Uint8Array => bytes.subarray(offset, offset + size);
-
-  const wrappedStart = performance.now();
-  for (let offset = 0, i = 0; i < NUM_ITEMS; i++, offset += AVG_ITEM_SIZE) {
-    const result = readWrapped(data, offset, AVG_ITEM_SIZE);
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    if (result.ok) result.value;
-  }
-  const wrappedTime = performance.now() - wrappedStart;
-
-  const unwrappedStart = performance.now();
-  for (let offset = 0, i = 0; i < NUM_ITEMS; i++, offset += AVG_ITEM_SIZE) {
-    const chunk = readUnwrapped(data, offset, AVG_ITEM_SIZE);
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    chunk;
-  }
-  const unwrappedTime = performance.now() - unwrappedStart;
-
-  // eslint-disable-next-line no-console
-  console.log(`Wrapped: ${wrappedTime.toFixed(2)} ms for ${NUM_ITEMS} items`);
-  // eslint-disable-next-line no-console
-  console.log(
-    `Unwrapped: ${unwrappedTime.toFixed(2)} ms for ${NUM_ITEMS} items`,
-  );
-  // eslint-disable-next-line no-console
-  console.log(`Difference: ${(wrappedTime - unwrappedTime).toFixed(2)} ms`);
 });
 
 // --- Result with resource management ---
@@ -936,802 +1337,428 @@ describe("Result with Resource management", () => {
   });
 });
 
-describe("NextResult", () => {
-  it("models success, failure, and done", () => {
-    type E = "E";
-
-    const a: NextResult<number, E, string> = ok(1);
-    const b: NextResult<number, E, string> = err(done("finished"));
-    const c: NextResult<number, E, string> = err<E>("E");
-
-    expectTypeOf(a).toEqualTypeOf<NextResult<number, E, string>>();
-    expect(b.ok).toBe(false);
-    expect(c.ok).toBe(false);
-  });
-
-  describe("done", () => {
-    it("creates Done with done value", () => {
-      expect(done("finished")).toStrictEqual({
-        type: "Done",
-        done: "finished",
-      });
-    });
-
-    it("creates Done<void> without arguments", () => {
-      expect(done()).toStrictEqual({
-        type: "Done",
-        done: undefined,
-      });
-      expectTypeOf(done()).toEqualTypeOf<Done<void>>();
-    });
-
-    it("preserves done type", () => {
-      const value = done({ count: 1 });
-      expectTypeOf(value).toEqualTypeOf<Done<{ count: number }>>();
-      expectTypeOf(value.done).toEqualTypeOf<{ count: number }>();
-    });
-  });
-
-  it("extracts all type parameters from NextResult", () => {
-    type MyNextResult = NextResult<number, string, { summary: string }>;
-
-    expectTypeOf<InferOk<MyNextResult>>().toEqualTypeOf<number>();
-    expectTypeOf<InferErr<MyNextResult>>().toEqualTypeOf<
-      string | Done<{ summary: string }>
-    >();
-    expectTypeOf<InferDone<MyNextResult>>().toEqualTypeOf<{
-      summary: string;
-    }>();
-  });
-
-  describe("InferDone", () => {
-    it("extracts Done type from NextResult with void done", () => {
-      type R = NextResult<number, string>;
-      expectTypeOf<InferDone<R>>().toEqualTypeOf<void>();
-    });
-
-    it("extracts Done type from NextResult with complex done", () => {
-      type R = NextResult<
-        number,
-        string,
-        { count: number; items: Array<string> }
-      >;
-      expectTypeOf<InferDone<R>>().toEqualTypeOf<{
-        count: number;
-        items: Array<string>;
-      }>();
-    });
-
-    it("returns never for Result without Done", () => {
-      type R = Result<number, string>;
-      expectTypeOf<InferDone<R>>().toEqualTypeOf<never>();
-    });
-
-    it("works with union errors containing Done", () => {
-      interface MyError {
-        readonly type: "MyError";
-      }
-      type R = Result<number, MyError | Done<string>>;
-      expectTypeOf<InferDone<R>>().toEqualTypeOf<string>();
-    });
-  });
-
-  describe("ExcludeDone and OnlyDone", () => {
-    it("ExcludeDone removes Done from a union", () => {
-      interface MyError {
-        readonly type: "MyError";
-      }
-      type E = MyError | Done<void>;
-      expectTypeOf<ExcludeDone<E>>().toEqualTypeOf<MyError>();
-    });
-
-    it("OnlyDone keeps only Done from a union", () => {
-      interface MyError {
-        readonly type: "MyError";
-      }
-      type E = MyError | Done<"done">;
-      expectTypeOf<OnlyDone<E>>().toEqualTypeOf<Done<"done">>();
-    });
-
-    it("OnlyDone returns never when there is no Done", () => {
-      type E = "E";
-      expectTypeOf<OnlyDone<E>>().toEqualTypeOf<never>();
-    });
-  });
-});
-
 /**
- * This test demonstrates generator-based monadic composition patterns for
- * Result types, comparing Evolu's plain object approach with Effect's iterator
- * protocol approach.
+ * Evolu uses plain Result objects and explicit checks instead of
+ * generator-based composition.
  *
- * ## Imperative pattern
+ * Generators make sequential workflows more concise because `yield*` combines
+ * error propagation with unwrapping the success value. That concision adds
+ * generator machinery and makes control flow less explicit. With AI coding
+ * tools, writing `if (!result.ok) return result` is cheap, so saving those
+ * lines is less important.
  *
- * ```ts
- * const imperative = (
- *   input: string,
- * ): Result<number, ParseError | ValidationError> => {
- *   const parsed = parse(input);
- *   if (!parsed.ok) return parsed;
+ * Generators also do not prevent accidental omission. A lazy operation called
+ * without `yield*` is left out of the workflow, just as a Result can be
+ * ignored. Dedicated tooling can detect either mistake, while tests remain the
+ * runnable specification for successful and failing paths.
  *
- *   const validated = validate(parsed.value);
- *   if (!validated.ok) return validated;
- *
- *   const doubled = double(validated.value);
- *   if (!doubled.ok) return doubled;
- *
- *   return ok(doubled.value);
- * };
- * ```
- *
- * Pros:
- *
- * - Explicit control flow, easy to follow
- * - No extra abstractions beyond Result itself
- * - No generator/iterator
- * - Easy debugging: `console.log(parsed)` between any steps
- *
- * Cons:
- *
- * - Repetitive `if (!x.ok) return x` boilerplate (but composable with helpers)
- *
- * ## Generator pattern (with gen() wrapper)
- *
- * ```ts
- * const program = function* (
- *   input: string,
- * ): Gen<number, ParseError | ValidationError> {
- *   const parsed = yield* gen(parse(input));
- *   const validated = yield* gen(validate(parsed));
- *   const doubled = yield* gen(double(validated));
- *   return doubled;
- * };
- * ```
- *
- * ## Generator pattern (with iterator protocol, like Effect)
- *
- * ```ts
- * const program = function* (
- *   input: string,
- * ): Gen<number, ParseError | ValidationError> {
- *   const parsed = yield* parse(input); // No gen() needed
- *   const validated = yield* validate(parsed);
- *   const doubled = yield* double(validated);
- *   return doubled;
- * };
- * ```
- *
- * Pros:
- *
- * - Automatic error propagation via `yield*` (no need to access Result's value
- *   property)
- *
- * Cons:
- *
- * - Requires understanding generators plus the Gen/runGen helpers
- * - Less familiar to many JS/TS developers
- *
- * ## Performance (Apple M1, 500K iterations, 3-step chain)
+ * A historical Apple M1 microbenchmark used 500,000 iterations of a three-step
+ * Result chain and produced these rough numbers:
  *
  * - Imperative: ~25 ms
- * - Generator (gen wrapper): ~330 ms (~13x slower)
- * - Iterator protocol (IIFE): ~1200 ms (~48x slower)
- * - Iterator protocol (hoisted): ~990 ms (~40x slower)
+ * - Generator with a wrapper: ~330 ms (~13x slower)
+ * - Iterable Result with an inline generator: ~1200 ms (~48x slower)
+ * - Iterable Result with a hoisted generator: ~990 ms (~40x slower)
  *
- * The overhead comes from iterator object allocations and GC pressure. V8 can't
- * inline or escape-analyze generator code as effectively as plain functions.
- *
- * ## Conclusion
- *
- * While the performance comparison looks dramatic, it's an artificial
- * microbenchmark—people rarely call 500K functions in a tight loop. This
- * doesn't mean generators are slow in practice. Evolu decided not to use
- * generators for different reasons:
- *
- * ### Debugging cost
- *
- * Generators require all-in adoption to be worthwhile, and that adoption comes
- * with debugging costs: noisier stack traces, non-intuitive debugger stepping,
- * and exception locations obscured by iterator machinery.
- *
- * ### Syntax sugar trade-off
- *
- * Generator composition (`yield*`) is just syntax sugar over `if (!x.ok) return
- * x`. Effect also requires wrapping all values in Effect containers.
- *
- * ### Relation to Task
- *
- * Evolu also considered generators for Task and Run. The same debugging
- * concerns apply, but with higher stakes—async code is already harder to debug,
- * and adding generator machinery on top compounds the problem.
- *
- * ### Serialization
- *
- * Plain object Results can be easily serialized (e.g., for IPC, storage,
- * logging). Results with `[Symbol.iterator]` methods require custom
- * serialization and deserialization—cognitive load for every boundary.
- *
- * Evolu keeps concerns separate: Result for sync errors, Task for async +
- * cancellation + structured concurrency, dependency injection for
- * dependencies.
- *
- * Therefore, Evolu doesn't use generators.
+ * This artificial workload does not predict application performance. It only
+ * demonstrates that generator composition has measurable runtime overhead in a
+ * tight synchronous loop. The skipped test below preserves the experiment.
  */
-describe("generator-based composition", () => {
-  interface ParseError {
-    readonly type: "ParseError";
-  }
-
-  interface ValidationError {
-    readonly type: "ValidationError";
-  }
-
-  /** A generator that yields errors and returns a value on success. */
-  type Gen<T, E> = Generator<Err<E>, T>;
-
-  /**
-   * Converts a Result to a Gen for use with yield*.
-   *
-   * @yields {Err<E>} Err if the result is an error
-   */
-  // eslint-disable-next-line func-style -- generators require function keyword
-  function* gen<T, E>(result: Result<T, E>): Gen<T, E> {
-    if (result.ok) {
-      return result.value;
-    } else {
-      yield result;
-      // This line is never reached - the runner exits on first yielded Err
-      throw new Error("Unreachable");
+describe("design decisions", () => {
+  describe("generators", () => {
+    interface ParseError {
+      readonly type: "ParseError";
     }
-  }
 
-  /** Runs a Gen and returns the Result. */
-  const runGen = <T, E>(gen: Gen<T, E>): Result<T, E> => {
-    const next = gen.next();
-    if (!next.done) {
-      // Generator yielded an Err - force cleanup by calling return()
-      // This triggers finally blocks and `using` disposal in the generator
-      gen.return(undefined as T);
-      return next.value;
+    interface ValidationError {
+      readonly type: "ValidationError";
     }
-    return ok(next.value);
-  };
 
-  const parse = (input: string): Result<number, ParseError> => {
-    const n = parseInt(input, 10);
-    return isNaN(n) ? err({ type: "ParseError" }) : ok(n);
-  };
+    /** A generator that yields errors and returns a value on success. */
+    type Gen<T, E> = Generator<Err<E>, T>;
 
-  const validate = (n: number): Result<number, ValidationError> =>
-    n > 0 ? ok(n) : err({ type: "ValidationError" });
+    /**
+     * Converts a Result to a Gen for use with yield*.
+     *
+     * @yields {Err<E>} Err if the result is an error
+     */
+    // eslint-disable-next-line func-style -- generators require function keyword
+    function* gen<T, E>(result: Result<T, E>): Gen<T, E> {
+      if (result.ok) {
+        return result.value;
+      } else {
+        yield result;
+        // This line is never reached - the runner exits on first yielded Err
+        throw new Error("Unreachable");
+      }
+    }
 
-  const double = (n: number): Result<number> => ok(n * 2);
-
-  it("composes multiple Results with generators", () => {
-    const program = function* (
-      input: string,
-    ): Gen<number, ParseError | ValidationError> {
-      const parsed = yield* gen(parse(input));
-      const validated = yield* gen(validate(parsed));
-      const doubled = yield* gen(double(validated));
-      return doubled;
+    /** Runs a Gen and returns the Result. */
+    const runGen = <T, E>(gen: Gen<T, E>): Result<T, E> => {
+      const next = gen.next();
+      if (!next.done) {
+        // Generator yielded an Err - force cleanup by calling return()
+        // This triggers finally blocks and `using` disposal in the generator
+        gen.return(undefined as T);
+        return next.value;
+      }
+      return ok(next.value);
     };
 
-    // Success case
-    const success = runGen(program("21"));
-    expect(success).toStrictEqual(ok(42));
+    const parse = (input: string): Result<number, ParseError> => {
+      const n = parseInt(input, 10);
+      return isNaN(n) ? err({ type: "ParseError" }) : ok(n);
+    };
 
-    // Parse error
-    const parseErr = runGen(program("not a number"));
-    expect(parseErr).toStrictEqual(err({ type: "ParseError" }));
+    const validate = (n: number): Result<number, ValidationError> =>
+      n > 0 ? ok(n) : err({ type: "ValidationError" });
 
-    // Validation error
-    const validationErr = runGen(program("-5"));
-    expect(validationErr).toStrictEqual(err({ type: "ValidationError" }));
-  });
+    const double = (n: number): Result<number> => ok(n * 2);
 
-  it("is equivalent to imperative pattern", () => {
-    // Generator version
-    const withGenerator = (
-      input: string,
-    ): Result<number, ParseError | ValidationError> => {
-      const program = function* (): Gen<number, ParseError | ValidationError> {
+    it("composes multiple Results with generators", () => {
+      const program = function* (
+        input: string,
+      ): Gen<number, ParseError | ValidationError> {
         const parsed = yield* gen(parse(input));
         const validated = yield* gen(validate(parsed));
         const doubled = yield* gen(double(validated));
         return doubled;
       };
-      return runGen(program());
-    };
 
-    // Imperative version
-    const imperative = (
-      input: string,
-    ): Result<number, ParseError | ValidationError> => {
-      const parsed = parse(input);
-      if (!parsed.ok) return parsed;
+      // Success case
+      const success = runGen(program("21"));
+      expect(success).toStrictEqual(ok(42));
 
-      const validated = validate(parsed.value);
-      if (!validated.ok) return validated;
+      // Parse error
+      const parseErr = runGen(program("not a number"));
+      expect(parseErr).toStrictEqual(err({ type: "ParseError" }));
 
-      const doubled = double(validated.value);
-      if (!doubled.ok) return doubled;
+      // Validation error
+      const validationErr = runGen(program("-5"));
+      expect(validationErr).toStrictEqual(err({ type: "ValidationError" }));
+    });
 
-      return ok(doubled.value);
-    };
-
-    // Both produce identical results
-    expect(withGenerator("21")).toStrictEqual(imperative("21"));
-    expect(withGenerator("abc")).toStrictEqual(imperative("abc"));
-    expect(withGenerator("-5")).toStrictEqual(imperative("-5"));
-  });
-
-  it("shows type inference works correctly", () => {
-    const program = function* (): Gen<number, ParseError | ValidationError> {
-      const a = yield* gen(parse("10"));
-      const b = yield* gen(validate(a));
-      return b * 2;
-    };
-
-    const result = runGen(program());
-
-    expectTypeOf(result).toEqualTypeOf<
-      Result<number, ParseError | ValidationError>
-    >();
-  });
-
-  test.skip("generator vs imperative performance", () => {
-    const ITERATIONS = 500_000;
-
-    // Generator version (requires gen() wrapper)
-    const withGenerator = (input: string): Result<number, ParseError> =>
-      runGen(
-        (function* (): Gen<number, ParseError> {
-          const a = yield* gen(parse(input));
-          const b = yield* gen(parse(String(a + 1)));
-          const c = yield* gen(parse(String(b + 1)));
-          return c;
-        })(),
-      );
-
-    // Effect-style Result with iterator protocol (no gen() wrapper needed)
-    type EffectResult<T, E> =
-      | { readonly ok: true; readonly value: T; [Symbol.iterator](): Gen<T, E> }
-      | {
-          readonly ok: false;
-          readonly error: E;
-          [Symbol.iterator](): Gen<T, E>;
+    it("is equivalent to imperative pattern", () => {
+      // Generator version
+      const withGenerator = (
+        input: string,
+      ): Result<number, ParseError | ValidationError> => {
+        const program = function* (): Gen<
+          number,
+          ParseError | ValidationError
+        > {
+          const parsed = yield* gen(parse(input));
+          const validated = yield* gen(validate(parsed));
+          const doubled = yield* gen(double(validated));
+          return doubled;
         };
+        return runGen(program());
+      };
 
-    const effectOk = <T, E = never>(value: T): EffectResult<T, E> => ({
-      ok: true,
-      value,
-      // eslint-disable-next-line require-yield
-      *[Symbol.iterator]() {
-        return value;
-      },
+      // Imperative version
+      const imperative = (
+        input: string,
+      ): Result<number, ParseError | ValidationError> => {
+        const parsed = parse(input);
+        if (!parsed.ok) return parsed;
+
+        const validated = validate(parsed.value);
+        if (!validated.ok) return validated;
+
+        const doubled = double(validated.value);
+        if (!doubled.ok) return doubled;
+
+        return ok(doubled.value);
+      };
+
+      // Both produce identical results
+      expect(withGenerator("21")).toStrictEqual(imperative("21"));
+      expect(withGenerator("abc")).toStrictEqual(imperative("abc"));
+      expect(withGenerator("-5")).toStrictEqual(imperative("-5"));
     });
 
-    const effectErr = <E, T = never>(error: E): EffectResult<T, E> => ({
-      ok: false,
-      error,
-      *[Symbol.iterator]() {
-        yield { ok: false, error };
-        throw new Error("Unreachable");
-      },
-    });
+    it("shows type inference works correctly", () => {
+      const program = function* (): Gen<number, ParseError | ValidationError> {
+        const a = yield* gen(parse("10"));
+        const b = yield* gen(validate(a));
+        return b * 2;
+      };
 
-    const parseEffect = (input: string): EffectResult<number, ParseError> => {
-      const n = parseInt(input, 10);
-      return isNaN(n) ? effectErr({ type: "ParseError" }) : effectOk(n);
-    };
+      const result = runGen(program());
 
-    // Effect-style generator (no gen() wrapper)
-    const withEffectIterator = (input: string): Result<number, ParseError> =>
-      runGen(
-        (function* (): Gen<number, ParseError> {
-          const a = yield* parseEffect(input);
-          const b = yield* parseEffect(String(a + 1));
-          const c = yield* parseEffect(String(b + 1));
-          return c;
-        })(),
-      );
-
-    // Effect-style with hoisted generator function
-    const effectProgram = function* (input: string): Gen<number, ParseError> {
-      const a = yield* parseEffect(input);
-      const b = yield* parseEffect(String(a + 1));
-      const c = yield* parseEffect(String(b + 1));
-      return c;
-    };
-    const withEffectIteratorHoisted = (
-      input: string,
-    ): Result<number, ParseError> => runGen(effectProgram(input));
-
-    // Imperative version
-    const imperative = (input: string): Result<number, ParseError> => {
-      const a = parse(input);
-      if (!a.ok) return a;
-      const b = parse(String(a.value + 1));
-      if (!b.ok) return b;
-      const c = parse(String(b.value + 1));
-      if (!c.ok) return c;
-      return ok(c.value);
-    };
-
-    const generatorStart = performance.now();
-    for (let i = 0; i < ITERATIONS; i++) {
-      withGenerator("1");
-    }
-    const generatorTime = performance.now() - generatorStart;
-
-    const effectStart = performance.now();
-    for (let i = 0; i < ITERATIONS; i++) {
-      withEffectIterator("1");
-    }
-    const effectTime = performance.now() - effectStart;
-
-    const effectHoistedStart = performance.now();
-    for (let i = 0; i < ITERATIONS; i++) {
-      withEffectIteratorHoisted("1");
-    }
-    const effectHoistedTime = performance.now() - effectHoistedStart;
-
-    const imperativeStart = performance.now();
-    for (let i = 0; i < ITERATIONS; i++) {
-      imperative("1");
-    }
-    const imperativeTime = performance.now() - imperativeStart;
-
-    // eslint-disable-next-line no-console
-    console.log(`Generator (gen wrapper):     ${generatorTime.toFixed(2)} ms`);
-    // eslint-disable-next-line no-console
-    console.log(`Iterator (IIFE):             ${effectTime.toFixed(2)} ms`);
-    // eslint-disable-next-line no-console
-    console.log(
-      `Iterator (hoisted):          ${effectHoistedTime.toFixed(2)} ms`,
-    );
-    // eslint-disable-next-line no-console
-    console.log(`Imperative:                  ${imperativeTime.toFixed(2)} ms`);
-    // eslint-disable-next-line no-console
-    console.log(
-      `gen wrapper is ${(generatorTime / imperativeTime).toFixed(1)}x slower`,
-    );
-    // eslint-disable-next-line no-console
-    console.log(
-      `iterator IIFE is ${(effectTime / imperativeTime).toFixed(1)}x slower`,
-    );
-    // eslint-disable-next-line no-console
-    console.log(
-      `iterator hoisted is ${(effectHoistedTime / imperativeTime).toFixed(1)}x slower`,
-    );
-  });
-
-  it("disposes resources when generator exits early on error", () => {
-    // This test demonstrates that runGen properly cleans up resources
-    // by calling gen.return() when it encounters an error.
-    // This triggers finally blocks and `using` disposal in the generator.
-
-    const disposed: Array<string> = [];
-
-    const createTestResource = (
-      id: string,
-      shouldFail: boolean,
-    ): Result<Disposable, ParseError> => {
-      if (shouldFail) return err({ type: "ParseError" });
-      return ok({
-        [Symbol.dispose]: () => {
-          disposed.push(id);
-        },
-      });
-    };
-
-    const program = function* (): Gen<string, ParseError> {
-      using disposer = new DisposableStack();
-
-      const r1 = yield* gen(createTestResource("db", false));
-      disposer.use(r1);
-
-      // This fails - generator yields Err and runGen calls gen.return()
-      const r2 = yield* gen(createTestResource("file", true));
-      disposer.use(r2);
-
-      return "done";
-    };
-
-    const result = runGen(program());
-
-    expectErr(result, { type: "ParseError" });
-    // Resources ARE disposed because runGen calls gen.return() on error
-    expect(disposed).toEqual(["db"]);
-  });
-
-  it("disposes resources when generator completes successfully", () => {
-    const disposed: Array<string> = [];
-
-    const createTestResource = (id: string): Result<Disposable, ParseError> =>
-      ok({
-        [Symbol.dispose]: () => {
-          disposed.push(id);
-        },
-      });
-
-    const program = function* (): Gen<string, ParseError> {
-      using disposer = new DisposableStack();
-
-      const r1 = yield* gen(createTestResource("db"));
-      disposer.use(r1);
-
-      const r2 = yield* gen(createTestResource("file"));
-      disposer.use(r2);
-
-      return "done";
-    };
-
-    const result = runGen(program());
-
-    expectOk(result, "done");
-    // Resources ARE disposed on successful completion
-    expect(disposed).toEqual(["file", "db"]);
-  });
-
-  /**
-   * Effect's Result (Either) implements `[Symbol.iterator]`, allowing direct
-   * `yield*` without a wrapper. This test demonstrates that pattern.
-   */
-  it("shows Effect-style iterator protocol (no gen wrapper needed)", () => {
-    // Effect-style Result with built-in iterator protocol
-    type EffectResult<T, E> =
-      | { readonly ok: true; readonly value: T; [Symbol.iterator](): Gen<T, E> }
-      | {
-          readonly ok: false;
-          readonly error: E;
-          [Symbol.iterator](): Gen<T, E>;
-        };
-
-    // Factory functions that add iterator protocol
-    const effectOk = <T, E = never>(value: T): EffectResult<T, E> => ({
-      ok: true,
-      value,
-      // eslint-disable-next-line require-yield
-      *[Symbol.iterator]() {
-        return value;
-      },
-    });
-
-    const effectErr = <E, T = never>(error: E): EffectResult<T, E> => ({
-      ok: false,
-      error,
-      *[Symbol.iterator]() {
-        yield { ok: false, error };
-        throw new Error("Unreachable");
-      },
-    });
-
-    // Operations returning Effect-style Result
-    const parse = (input: string): EffectResult<number, ParseError> => {
-      const n = parseInt(input, 10);
-      return isNaN(n) ? effectErr({ type: "ParseError" }) : effectOk(n);
-    };
-
-    const validate = (n: number): EffectResult<number, ValidationError> =>
-      n > 0 ? effectOk(n) : effectErr({ type: "ValidationError" });
-
-    // With iterator protocol: direct yield* without gen() wrapper
-    const program = function* (
-      input: string,
-    ): Gen<number, ParseError | ValidationError> {
-      const parsed = yield* parse(input); // No gen() needed!
-      const validated = yield* validate(parsed); // No gen() needed!
-      return validated * 2;
-    };
-
-    expect(runGen(program("21"))).toStrictEqual(ok(42));
-    expect(runGen(program("abc"))).toStrictEqual(err({ type: "ParseError" }));
-    expect(runGen(program("-5"))).toStrictEqual(
-      err({ type: "ValidationError" }),
-    );
-  });
-});
-
-describe("flatMapResult", () => {
-  it("composes an Ok with another Result-returning operation", () => {
-    const result = flatMapResult(ok(21), (value) => ok(value * 2));
-
-    expect(result).toStrictEqual(ok(42));
-    expectTypeOf(result).toEqualTypeOf<Result<number>>();
-  });
-
-  it("returns the existing Err without calling the operation", () => {
-    interface FirstError {
-      readonly type: "FirstError";
-    }
-
-    interface SecondError {
-      readonly type: "SecondError";
-    }
-
-    const first = (): Result<number, FirstError> => err({ type: "FirstError" });
-    let called = false;
-    const result = flatMapResult(first(), (): Result<string, SecondError> => {
-      called = true;
-      return err({ type: "SecondError" });
-    });
-
-    expect(result).toStrictEqual(err({ type: "FirstError" }));
-    expect(called).toBe(false);
-    expectTypeOf(result).toEqualTypeOf<
-      Result<string, FirstError | SecondError>
-    >();
-  });
-
-  it("returns an error from the next operation", () => {
-    const result = flatMapResult(ok(42), () => err("fail"));
-
-    expect(result).toStrictEqual(err("fail"));
-  });
-});
-
-describe("allResult", () => {
-  it("returns emptyArray for empty array", () => {
-    const result = allResult([]);
-    expect(result).toStrictEqual(ok([]));
-  });
-
-  it("returns emptyRecord for empty record", () => {
-    const result = allResult({});
-    expectOk(result, {});
-  });
-
-  it("extracts all values from array of Ok results", () => {
-    const results = [ok(1), ok(2), ok(3)];
-    expect(allResult(results)).toStrictEqual(ok([1, 2, 3]));
-  });
-
-  it("returns first error from array", () => {
-    interface E1 {
-      readonly type: "E1";
-    }
-    interface E2 {
-      readonly type: "E2";
-    }
-    const results: NonEmptyReadonlyArray<Result<number, E1 | E2>> = [
-      ok(1),
-      err({ type: "E1" }),
-      err({ type: "E2" }),
-    ];
-    expect(allResult(results)).toStrictEqual(err({ type: "E1" }));
-  });
-
-  it("extracts all values from struct", () => {
-    const result = allResult({ a: ok(1), b: ok("two") });
-    expectOk(result, { a: 1, b: "two" });
-  });
-
-  it("returns first error from struct", () => {
-    const result = allResult({ a: ok(1), b: err("fail"), c: ok(3) });
-    expect(result).toStrictEqual(err("fail"));
-  });
-
-  it("tuple preserves types", () => {
-    const result = allResult([ok(1), ok("two"), ok(true)]);
-    if (result.ok) {
-      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
-      expectTypeOf(result.value[1]).toEqualTypeOf<string>();
-      expectTypeOf(result.value[2]).toEqualTypeOf<boolean>();
-    }
-  });
-
-  it("struct preserves types", () => {
-    const result = allResult({ a: ok(1), b: ok("two") });
-    if (result.ok) {
-      expectTypeOf(result.value).toEqualTypeOf<{ a: number; b: string }>();
-    }
-  });
-
-  it("non-empty arrays preserve types", () => {
-    const result = allResult([ok(1), ok(2)]);
-    if (result.ok) {
-      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
-      expectTypeOf(result.value[1]).toEqualTypeOf<number>();
-    }
-  });
-
-  it("works with Iterable", () => {
-    const set = new Set([ok(1), ok(2), ok(3)]);
-    const result = allResult(set);
-    expect(result).toStrictEqual(ok([1, 2, 3]));
-  });
-});
-
-describe("allResult mapping overload", () => {
-  it("returns emptyArray for empty array", () => {
-    const result = allResult([], (x: number) => ok(x * 2));
-    expect(result).toStrictEqual(ok([]));
-  });
-
-  it("returns emptyRecord for empty record", () => {
-    const result = allResult({}, (x: number) => ok(x * 2));
-    expectOk(result, {});
-  });
-
-  it("maps items and collects results", () => {
-    const result = allResult([1, 2, 3], (x) => ok(x * 2));
-    expect(result).toStrictEqual(ok([2, 4, 6]));
-  });
-
-  it("returns first error", () => {
-    const result = allResult([1, 2, 3], (x) =>
-      x === 2 ? err("fail") : ok(x * 2),
-    );
-    expect(result).toStrictEqual(err("fail"));
-  });
-
-  it("does not map values after the first error", () => {
-    const mappedValues: Array<number> = [];
-    const result = allResult([1, 2, 3], (value) => {
-      mappedValues.push(value);
-      return value === 2 ? err("fail") : ok(value * 2);
-    });
-
-    expect(result).toStrictEqual(err("fail"));
-    expect(mappedValues).toEqual([1, 2]);
-  });
-
-  it("maps struct and collects results", () => {
-    const result = allResult({ a: 1, b: 2 }, (x) => ok(x * 2));
-    expectOk(result, { a: 2, b: 4 });
-  });
-
-  it("returns first error from struct", () => {
-    const result = allResult({ a: 1, b: 2, c: 3 }, (x) =>
-      x === 2 ? err("fail") : ok(x * 2),
-    );
-    expect(result).toStrictEqual(err("fail"));
-  });
-
-  it("struct preserves types", () => {
-    const result = allResult({ a: 1, b: 2 }, (x) => ok(String(x)));
-    if (result.ok) {
-      expectTypeOf(result.value).toEqualTypeOf<
-        Readonly<Record<"a" | "b", string>>
+      expectTypeOf(result).toEqualTypeOf<
+        Result<number, ParseError | ValidationError>
       >();
-    }
-  });
+    });
 
-  it("non-empty arrays preserve types", () => {
-    const result = allResult([1, 2, 3], (x) => ok(x * 2));
-    if (result.ok) {
-      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
-      expectTypeOf(result.value[1]).toEqualTypeOf<number>();
-      expectTypeOf(result.value[2]).toEqualTypeOf<number>();
-    }
-  });
+    test.skip("generator vs imperative performance", () => {
+      const ITERATIONS = 500_000;
 
-  it("works with Iterable", () => {
-    const set = new Set([1, 2, 3]);
-    const result = allResult(set, (x) => ok(x * 2));
-    expect(result).toStrictEqual(ok([2, 4, 6]));
-  });
-});
+      const withGenerator = (input: string): Result<number, ParseError> =>
+        runGen(
+          (function* (): Gen<number, ParseError> {
+            const a = yield* gen(parse(input));
+            const b = yield* gen(parse(String(a + 1)));
+            const c = yield* gen(parse(String(b + 1)));
+            return c;
+          })(),
+        );
 
-describe("anyResult", () => {
-  it("returns first success", () => {
-    expect(anyResult([err("a"), ok(42), err("b")])).toStrictEqual(ok(42));
-  });
+      type IterableResult<T, E> =
+        | {
+            readonly ok: true;
+            readonly value: T;
+            [Symbol.iterator](): Gen<T, E>;
+          }
+        | {
+            readonly ok: false;
+            readonly error: E;
+            [Symbol.iterator](): Gen<T, E>;
+          };
 
-  it("returns last error when all fail", () => {
-    expect(anyResult([err("a"), err("b"), err("c")])).toStrictEqual(err("c"));
-  });
+      const iterableOk = <T, E = never>(value: T): IterableResult<T, E> => ({
+        ok: true,
+        value,
+        // eslint-disable-next-line require-yield
+        *[Symbol.iterator]() {
+          return value;
+        },
+      });
 
-  it("returns first Ok even if it's first", () => {
-    expect(anyResult([ok(1), ok(2), ok(3)])).toStrictEqual(ok(1));
-  });
+      const iterableErr = <E, T = never>(error: E): IterableResult<T, E> => ({
+        ok: false,
+        error,
+        *[Symbol.iterator]() {
+          yield { ok: false, error };
+          throw new Error("Unreachable");
+        },
+      });
 
-  it("preserves types", () => {
-    const result = anyResult([err({ type: "E1" as const }), ok(42)]);
-    if (result.ok) {
-      expectTypeOf(result.value).toEqualTypeOf<number>();
-    }
+      const parseIterable = (
+        input: string,
+      ): IterableResult<number, ParseError> => {
+        const n = parseInt(input, 10);
+        return isNaN(n) ? iterableErr({ type: "ParseError" }) : iterableOk(n);
+      };
+
+      const withIterableIterator = (
+        input: string,
+      ): Result<number, ParseError> =>
+        runGen(
+          (function* (): Gen<number, ParseError> {
+            const a = yield* parseIterable(input);
+            const b = yield* parseIterable(String(a + 1));
+            const c = yield* parseIterable(String(b + 1));
+            return c;
+          })(),
+        );
+
+      const iterableProgram = function* (
+        input: string,
+      ): Gen<number, ParseError> {
+        const a = yield* parseIterable(input);
+        const b = yield* parseIterable(String(a + 1));
+        const c = yield* parseIterable(String(b + 1));
+        return c;
+      };
+      const withIterableIteratorHoisted = (
+        input: string,
+      ): Result<number, ParseError> => runGen(iterableProgram(input));
+
+      const imperative = (input: string): Result<number, ParseError> => {
+        const a = parse(input);
+        if (!a.ok) return a;
+        const b = parse(String(a.value + 1));
+        if (!b.ok) return b;
+        const c = parse(String(b.value + 1));
+        if (!c.ok) return c;
+        return ok(c.value);
+      };
+
+      const generatorStart = performance.now();
+      for (let i = 0; i < ITERATIONS; i++) {
+        withGenerator("1");
+      }
+      const generatorTime = performance.now() - generatorStart;
+
+      const iterableStart = performance.now();
+      for (let i = 0; i < ITERATIONS; i++) {
+        withIterableIterator("1");
+      }
+      const iterableTime = performance.now() - iterableStart;
+
+      const iterableHoistedStart = performance.now();
+      for (let i = 0; i < ITERATIONS; i++) {
+        withIterableIteratorHoisted("1");
+      }
+      const iterableHoistedTime = performance.now() - iterableHoistedStart;
+
+      const imperativeStart = performance.now();
+      for (let i = 0; i < ITERATIONS; i++) {
+        imperative("1");
+      }
+      const imperativeTime = performance.now() - imperativeStart;
+
+      // eslint-disable-next-line no-console
+      console.log(`Generator (wrapper): ${generatorTime.toFixed(2)} ms`);
+      // eslint-disable-next-line no-console
+      console.log(`Iterable (inline): ${iterableTime.toFixed(2)} ms`);
+      // eslint-disable-next-line no-console
+      console.log(`Iterable (hoisted): ${iterableHoistedTime.toFixed(2)} ms`);
+      // eslint-disable-next-line no-console
+      console.log(`Imperative: ${imperativeTime.toFixed(2)} ms`);
+      // eslint-disable-next-line no-console
+      console.log(
+        `Generator wrapper is ${(generatorTime / imperativeTime).toFixed(1)}x slower`,
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        `Iterable inline is ${(iterableTime / imperativeTime).toFixed(1)}x slower`,
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        `Iterable hoisted is ${(iterableHoistedTime / imperativeTime).toFixed(1)}x slower`,
+      );
+    });
+
+    it("does not run a lazy generator called without yield*", () => {
+      let operationRun = false;
+
+      // eslint-disable-next-line require-yield -- generator bodies are lazy even without yield
+      const lazyOperation = function* (): Gen<number, never> {
+        operationRun = true;
+        return 1;
+      };
+
+      const program = function* (): Gen<void, never> {
+        lazyOperation();
+        return yield* gen(ok());
+      };
+
+      expectOk(runGen(program()), undefined);
+      expect(operationRun).toBe(false);
+    });
+
+    it("disposes resources when generator exits early on error", () => {
+      // This test demonstrates that runGen properly cleans up resources
+      // by calling gen.return() when it encounters an error.
+      // This triggers finally blocks and `using` disposal in the generator.
+
+      const disposed: Array<string> = [];
+
+      const createTestResource = (
+        id: string,
+        shouldFail: boolean,
+      ): Result<Disposable, ParseError> => {
+        if (shouldFail) return err({ type: "ParseError" });
+        return ok({
+          [Symbol.dispose]: () => {
+            disposed.push(id);
+          },
+        });
+      };
+
+      const program = function* (): Gen<string, ParseError> {
+        using disposer = new DisposableStack();
+
+        const r1 = yield* gen(createTestResource("db", false));
+        disposer.use(r1);
+
+        // This fails - generator yields Err and runGen calls gen.return()
+        const r2 = yield* gen(createTestResource("file", true));
+        disposer.use(r2);
+
+        return "done";
+      };
+
+      const result = runGen(program());
+
+      expectErr(result, { type: "ParseError" });
+      // Resources ARE disposed because runGen calls gen.return() on error
+      expect(disposed).toEqual(["db"]);
+    });
+
+    it("disposes resources when generator completes successfully", () => {
+      const disposed: Array<string> = [];
+
+      const createTestResource = (id: string): Result<Disposable, ParseError> =>
+        ok({
+          [Symbol.dispose]: () => {
+            disposed.push(id);
+          },
+        });
+
+      const program = function* (): Gen<string, ParseError> {
+        using disposer = new DisposableStack();
+
+        const r1 = yield* gen(createTestResource("db"));
+        disposer.use(r1);
+
+        const r2 = yield* gen(createTestResource("file"));
+        disposer.use(r2);
+
+        return "done";
+      };
+
+      const result = runGen(program());
+
+      expectOk(result, "done");
+      // Resources ARE disposed on successful completion
+      expect(disposed).toEqual(["file", "db"]);
+    });
+
+    it("supports direct yield* with the iterator protocol", () => {
+      type IterableResult<T, E> =
+        | {
+            readonly ok: true;
+            readonly value: T;
+            [Symbol.iterator](): Gen<T, E>;
+          }
+        | {
+            readonly ok: false;
+            readonly error: E;
+            [Symbol.iterator](): Gen<T, E>;
+          };
+
+      const iterableOk = <T, E = never>(value: T): IterableResult<T, E> => ({
+        ok: true,
+        value,
+        // eslint-disable-next-line require-yield
+        *[Symbol.iterator]() {
+          return value;
+        },
+      });
+
+      const iterableErr = <E, T = never>(error: E): IterableResult<T, E> => ({
+        ok: false,
+        error,
+        *[Symbol.iterator]() {
+          yield { ok: false, error };
+          throw new Error("Unreachable");
+        },
+      });
+
+      const parse = (input: string): IterableResult<number, ParseError> => {
+        const n = parseInt(input, 10);
+        return isNaN(n) ? iterableErr({ type: "ParseError" }) : iterableOk(n);
+      };
+
+      const validate = (n: number): IterableResult<number, ValidationError> =>
+        n > 0 ? iterableOk(n) : iterableErr({ type: "ValidationError" });
+
+      const program = function* (
+        input: string,
+      ): Gen<number, ParseError | ValidationError> {
+        const parsed = yield* parse(input);
+        const validated = yield* validate(parsed);
+        return validated * 2;
+      };
+
+      expect(runGen(program("21"))).toStrictEqual(ok(42));
+      expect(runGen(program("abc"))).toStrictEqual(err({ type: "ParseError" }));
+      expect(runGen(program("-5"))).toStrictEqual(
+        err({ type: "ValidationError" }),
+      );
+    });
   });
 });
