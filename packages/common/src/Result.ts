@@ -365,8 +365,7 @@ import type { Awaitable } from "./Types.ts";
  * before direct `yield*` works. Generator machinery also makes control flow,
  * debugger stepping, and stack traces less direct while adding runtime
  * overhead. Evolu instead keeps Result as plain data and makes error
- * propagation explicit. With AI coding tools, explicit checks are cheap to
- * write.
+ * propagation explicit. With AI, explicit checks are cheap to write.
  *
  * Generators do not make accidental omission impossible: a function returning a
  * lazy operation can be called without composing the returned value with
@@ -377,9 +376,9 @@ import type { Awaitable } from "./Types.ts";
  *
  * The intended way to write Evolu code is with test-driven development (TDD).
  * Tests document the intended behavior and serve as its runnable specification,
- * including failure paths. AI coding tools make writing and maintaining those
- * tests cheap. {@link exhaustiveCheck} complements tests by having TypeScript
- * report newly added error variants.
+ * including failure paths. AI makes writing and maintaining those tests cheap.
+ * {@link exhaustiveCheck} complements tests by having TypeScript report newly
+ * added error variants.
  *
  * ### What if a function doesn't return a value on success?
  *
