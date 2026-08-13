@@ -1,6 +1,5 @@
 import {
   all,
-  concurrently,
   ok,
   type Task,
 } from "@evolu/common";
@@ -30,9 +29,8 @@ export const verify: Task<
   AvailableParallelismDep
 > = async (run) => {
   const sourceChecks = await run(
-    concurrently(
-      run.deps.availableParallelism(),
-      all([
+    all(
+      [
         async (run) => {
           const typecheck = await run(verifyCommand("typecheck"));
           if (!typecheck.ok) return typecheck;
@@ -41,19 +39,20 @@ export const verify: Task<
         },
         verifyCommand("biome"),
         verifyCommand("lint-monorepo"),
-      ]),
+      ],
+      { concurrency: run.deps.availableParallelism() },
     ),
   );
   if (!sourceChecks.ok) return sourceChecks;
 
   const builtArtifactChecks = await run(
-    concurrently(
-      run.deps.availableParallelism(),
-      all([
+    all(
+      [
         verifyCommand("check:packages"),
         verifyCommand("build:docs"),
         verifyCommand("lint"),
-      ]),
+      ],
+      { concurrency: run.deps.availableParallelism() },
     ),
   );
   if (!builtArtifactChecks.ok) return builtArtifactChecks;

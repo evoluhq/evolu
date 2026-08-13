@@ -2,7 +2,6 @@
 import {
   allSettled,
   assertNonNullable,
-  concurrently,
   err,
   getOrThrow,
   objectFrom,
@@ -336,7 +335,7 @@ await runMain(
   { availableParallelism },
   { mode: "command" },
 )(async (run) => {
-  const compilerConcurrency = run.deps.availableParallelism();
+  const availableParallelism = run.deps.availableParallelism();
   const normalizeAbort = async <T,>(promise: Promise<T>): Promise<T> => {
     try {
       return await promise;
@@ -396,7 +395,7 @@ await runMain(
     run.signal,
   );
   console.log(
-    `Measuring ${fixtures.length} fixtures with concurrency ${compilerConcurrency}...`,
+    `Measuring ${fixtures.length} fixtures with concurrency ${availableParallelism}...`,
   );
   let completedFixtureCount = 0;
   const reportCompletedFixture = (): void => {
@@ -412,9 +411,9 @@ await runMain(
   };
   const results: ReadonlyArray<FixtureResult> = (
     await run.ok(
-      concurrently(
-        compilerConcurrency,
-        allSettled(fixtures, (fixture) => async (run) => {
+      allSettled(
+        fixtures,
+        (fixture) => async (run) => {
           try {
             return ok(
               await compileFixture(
@@ -428,7 +427,8 @@ await runMain(
           } finally {
             reportCompletedFixture();
           }
-        }),
+        },
+        { concurrency: availableParallelism },
       ),
     )
   ).map((result, index) => {
@@ -439,7 +439,7 @@ await runMain(
   });
 
   console.log(`Type compiler benchmark (Version ${typescriptVersion})`);
-  console.log(`Compiler concurrency: ${compilerConcurrency}`);
+  console.log(`Compiler concurrency: ${availableParallelism}`);
   if (filteredBenchmark) {
     console.log(`Fixture filters: ${fixtureFilters.join(", ")}`);
   }

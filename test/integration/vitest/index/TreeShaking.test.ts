@@ -50,12 +50,12 @@ describe("tree-shaking", () => {
         },
         "task-example": {
           "vite@8.2.0": {
-            "brotliSizeInBytes": 8225,
-            "rawSizeInBytes": 25253,
+            "brotliSizeInBytes": 8093,
+            "rawSizeInBytes": 24806,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 7886,
-            "rawSizeInBytes": 23553,
+            "brotliSizeInBytes": 7750,
+            "rawSizeInBytes": 23081,
           },
         },
         "type-direct-object": {

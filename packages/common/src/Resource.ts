@@ -112,6 +112,14 @@ export interface Lease<T extends Resource> extends Disposable {
  * ### Example
  *
  * ```ts
+ * import {
+ *   all,
+ *   createRun,
+ *   createSharedResource,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
  * interface Connection extends Disposable {
  *   readonly send: (message: string) => void;
  * }
@@ -142,7 +150,7 @@ export interface Lease<T extends Resource> extends Disposable {
  *
  * // Concurrent callers share one connection. Releasing the last lease
  * // starts idle disposal; a new acquire within 5s reuses the connection.
- * await run.ok(concurrently(all([send("hello"), send("world")])));
+ * await run.ok(all([send("hello"), send("world")], { concurrency: 2 }));
  *
  * // Acquire explicitly when ownership spans several operations.
  * using lease = await run.ok(sharedConnection.acquire);
@@ -503,6 +511,14 @@ export const createSharedResource =
  * ### Example
  *
  * ```ts
+ * import {
+ *   all,
+ *   createRun,
+ *   createSharedResourceByKey,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
  * interface Connection extends Disposable {
  *   readonly send: (message: string) => void;
  *   readonly flush: () => void;
@@ -539,12 +555,13 @@ export const createSharedResource =
  * // The first two Tasks share one connection; the third uses another key and
  * // can progress independently.
  * await run.ok(
- *   concurrently(
- *     all([
+ *   all(
+ *     [
  *       send("owner-1", "first"),
  *       send("owner-1", "second"),
  *       send("owner-2", "hello"),
- *     ]),
+ *     ],
+ *     { concurrency: 3 },
  *   ),
  * );
  *
@@ -860,6 +877,14 @@ export function createSharedResourceByKey<
  * also uses a local-network transport:
  *
  * ```ts
+ * import {
+ *   createRun,
+ *   createSharedResourceByKeyWithClaims,
+ *   ok,
+ *   type Brand,
+ *   type Task,
+ * } from "@evolu/common";
+ *
  * type AccountId = string & Brand<"AccountId">;
  * type TransportUrl = string & Brand<"TransportUrl">;
  *

@@ -39,7 +39,6 @@ import {
   any,
   each,
   callback,
-  concurrently,
   createAbortError,
   createDeferred,
   createGate,
@@ -69,6 +68,7 @@ import {
   unabortableMask,
   waitForAbort,
   yieldNow,
+  type AllOptions,
   type AbortableFiber,
   type AbortReason,
   type AnyTask,
@@ -93,6 +93,7 @@ import {
   type RunEvent,
   type RunSnapshot,
   type Task,
+  type TaskCollectionOptions,
   type TaskPriority,
   type TestReportDefectDep,
   type TestRunDefaultDeps,
@@ -111,6 +112,7 @@ import {
   type DateIso,
   type Id,
 } from "../../../../packages/common/src/Type.ts";
+import type { AvailableParallelism } from "../../../../packages/nodejs/src/Platform.ts";
 import {
   testGlobalUncaughtErrors,
   testGlobalUnhandledRejections,
@@ -118,6 +120,8 @@ import {
 
 const panic = (defect: unknown): AbortError =>
   createAbortError({ type: "PanicAbortReason", defect });
+
+const availableParallelism: AvailableParallelism = () => PositiveInt.orThrow(2);
 
 const expectPanicAbortError: (
   error: unknown,
@@ -1001,49 +1005,6 @@ describe("Run", () => {
       expect(await daemonFiber).toEqual(err(daemonFiber.run.signal.reason));
     });
 
-    test("inherits current concurrency", async () => {
-      await using run = createRun();
-      const concurrency = 2;
-      let daemonConcurrency: Int1To100OrPositiveInt | undefined;
-
-      const result = await run(
-        concurrently(concurrency, async (run) => {
-          const daemonFiber = run.daemon((run) => {
-            daemonConcurrency = run.concurrency;
-            return ok();
-          });
-
-          return await daemonFiber;
-        }),
-      );
-
-      expectOk(result, undefined);
-      expect(daemonConcurrency).toBe(concurrency);
-    });
-
-    test("uses explicit Task concurrency over current concurrency", async () => {
-      await using run = createRun();
-      const currentConcurrency = 2;
-      const explicitConcurrency = 3;
-      let daemonConcurrency: Int1To100OrPositiveInt | undefined;
-
-      const result = await run(
-        concurrently(currentConcurrency, async (run) => {
-          const daemonFiber = run.daemon(
-            concurrently(explicitConcurrency, (run) => {
-              daemonConcurrency = run.concurrency;
-              return ok();
-            }),
-          );
-
-          return await daemonFiber;
-        }),
-      );
-
-      expectOk(result, undefined);
-      expect(daemonConcurrency).toBe(explicitConcurrency);
-    });
-
     test("throws when current Task was aborted before daemon starts", async () => {
       await using run = createRun();
       const continueTask = Promise.withResolvers<void>();
@@ -1213,23 +1174,6 @@ describe("Run", () => {
       completeCreatedTask.resolve();
 
       expect(await createdFiber).toEqual(ok("created"));
-    });
-
-    test("inherits current concurrency", async () => {
-      await using run = createRun();
-      const concurrency = 2;
-      let createdConcurrency: Int1To100OrPositiveInt | undefined;
-
-      const result = await run(
-        concurrently(concurrency, (run) => {
-          using createdRun = run.create();
-          createdConcurrency = createdRun.concurrency;
-          return ok();
-        }),
-      );
-
-      expectOk(result, undefined);
-      expect(createdConcurrency).toBe(concurrency);
     });
 
     test("created Run runs multiple Tasks and rejects later starts after disposal", async () => {
@@ -3182,9 +3126,13 @@ describe("collection helpers", () => {
       readonly mapsValues: boolean;
       readonly resultMode: "values" | "results" | "void";
       readonly errorMode: "failFast" | "settled";
-      readonly fromArray: (tasks: ReadonlyArray<AnyTask>) => AnyTask;
+      readonly fromArray: (
+        tasks: ReadonlyArray<AnyTask>,
+        options?: TaskCollectionOptions,
+      ) => AnyTask;
       readonly fromRecord: (
         tasks: Readonly<Record<string, AnyTask>>,
+        options?: TaskCollectionOptions,
       ) => AnyTask;
     }> = [
       {
@@ -3192,57 +3140,54 @@ describe("collection helpers", () => {
         mapsValues: false,
         resultMode: "values",
         errorMode: "failFast",
-        fromArray: (tasks: ReadonlyArray<AnyTask>) => all(tasks),
-        fromRecord: (tasks: Readonly<Record<string, AnyTask>>) => all(tasks),
+        fromArray: (tasks, options) => all(tasks, options),
+        fromRecord: (tasks, options) => all(tasks, options),
       },
       {
         name: "allSettled",
         mapsValues: false,
         resultMode: "results",
         errorMode: "settled",
-        fromArray: (tasks: ReadonlyArray<AnyTask>) => allSettled(tasks),
-        fromRecord: (tasks: Readonly<Record<string, AnyTask>>) =>
-          allSettled(tasks),
+        fromArray: (tasks, options) => allSettled(tasks, options),
+        fromRecord: (tasks, options) => allSettled(tasks, options),
       },
       {
         name: "all mapping overload",
         mapsValues: true,
         resultMode: "values",
         errorMode: "failFast",
-        fromArray: (tasks: ReadonlyArray<AnyTask>) =>
-          all(tasks, (task) => task),
-        fromRecord: (tasks: Readonly<Record<string, AnyTask>>) =>
-          all(tasks, (task) => task),
+        fromArray: (tasks, options) => all(tasks, (task) => task, options),
+        fromRecord: (tasks, options) => all(tasks, (task) => task, options),
       },
       {
         name: "allSettled mapping overload",
         mapsValues: true,
         resultMode: "results",
         errorMode: "settled",
-        fromArray: (tasks: ReadonlyArray<AnyTask>) =>
-          allSettled(tasks, (task) => task),
-        fromRecord: (tasks: Readonly<Record<string, AnyTask>>) =>
-          allSettled(tasks, (task) => task),
+        fromArray: (tasks, options) =>
+          allSettled(tasks, (task) => task, options),
+        fromRecord: (tasks, options) =>
+          allSettled(tasks, (task) => task, options),
       },
       {
         name: "all without collecting",
         mapsValues: false,
         resultMode: "void",
         errorMode: "failFast",
-        fromArray: (tasks: ReadonlyArray<AnyTask>) =>
-          all(tasks, { collect: false }),
-        fromRecord: (tasks: Readonly<Record<string, AnyTask>>) =>
-          all(tasks, { collect: false }),
+        fromArray: (tasks, options) =>
+          all(tasks, { ...options, collect: false }),
+        fromRecord: (tasks, options) =>
+          all(tasks, { ...options, collect: false }),
       },
       {
         name: "all mapping overload without collecting",
         mapsValues: true,
         resultMode: "void",
         errorMode: "failFast",
-        fromArray: (tasks: ReadonlyArray<AnyTask>) =>
-          all(tasks, (task) => task, { collect: false }),
-        fromRecord: (tasks: Readonly<Record<string, AnyTask>>) =>
-          all(tasks, (task) => task, { collect: false }),
+        fromArray: (tasks, options) =>
+          all(tasks, (task) => task, { ...options, collect: false }),
+        fromRecord: (tasks, options) =>
+          all(tasks, (task) => task, { ...options, collect: false }),
       },
     ];
 
@@ -3557,7 +3502,7 @@ describe("collection helpers", () => {
               };
 
               const fiber = run(
-                concurrently(2, helper.fromArray([first, second])),
+                helper.fromArray([first, second], { concurrency: 2 }),
               );
 
               completeSecond.resolve();
@@ -3665,7 +3610,7 @@ describe("collection helpers", () => {
           });
         });
 
-        describe("with concurrently", () => {
+        describe("with concurrency", () => {
           test(`runs ${taskNoun} concurrently`, async () => {
             await using run = createRun();
             const completeTasks = Promise.withResolvers<void>();
@@ -3681,10 +3626,9 @@ describe("collection helpers", () => {
               };
 
             const fiber = run(
-              concurrently(
-                2,
-                helper.fromArray([createTask(1), createTask(2), createTask(3)]),
-              ),
+              helper.fromArray([createTask(1), createTask(2), createTask(3)], {
+                concurrency: 2,
+              }),
             );
 
             try {
@@ -3731,7 +3675,7 @@ describe("collection helpers", () => {
               };
 
               const helperFiber = run(
-                concurrently(2, helper.fromArray([slow, failing, later])),
+                helper.fromArray([slow, failing, later], { concurrency: 2 }),
               );
               let helperFiberSettled = false;
               void helperFiber.then(() => {
@@ -3793,7 +3737,9 @@ describe("collection helpers", () => {
 
                 expect(
                   await run(
-                    concurrently(2, helper.fromArray([syncOk, syncErr, slow])),
+                    helper.fromArray([syncOk, syncErr, slow], {
+                      concurrency: 2,
+                    }),
                   ),
                 ).toEqual(err(taskError));
                 expect(slowStarted).toBe(true);
@@ -3816,7 +3762,7 @@ describe("collection helpers", () => {
                 err(taskError);
 
               const fiber = run(
-                concurrently(2, helper.fromArray([slow, failing])),
+                helper.fromArray([slow, failing], { concurrency: 2 }),
               );
 
               expect(slowSettled).toBe(false);
@@ -3846,7 +3792,7 @@ describe("collection helpers", () => {
             };
 
             const fiber = run(
-              concurrently(2, helper.fromArray([slow, defecting])),
+              helper.fromArray([slow, defecting], { concurrency: 2 }),
             );
 
             expect(await slowAborted.promise).toEqual({
@@ -3861,6 +3807,45 @@ describe("collection helpers", () => {
         });
       });
     }
+
+    test("nested collections resolve concurrency independently", async () => {
+      await using run = createRun();
+      const completeInnerFirst = Promise.withResolvers<void>();
+      const events: Array<string> = [];
+
+      const innerFirst: Task<string> = async () => {
+        events.push("inner first start");
+        await completeInnerFirst.promise;
+        events.push("inner first end");
+        return ok("inner first");
+      };
+      const innerSecond: Task<string> = () => {
+        events.push("inner second start");
+        return ok("inner second");
+      };
+      const nested: Task<readonly [string, string]> = (run) =>
+        run(all([innerFirst, innerSecond]));
+      const sibling: Task<string> = () => {
+        events.push("outer sibling start");
+        return ok("outer sibling");
+      };
+
+      const fiber = run(all([nested, sibling], { concurrency: 2 }));
+
+      expect(events).toEqual(["inner first start", "outer sibling start"]);
+
+      completeInnerFirst.resolve();
+
+      expect(await fiber).toEqual(
+        ok([["inner first", "inner second"], "outer sibling"]),
+      );
+      expect(events).toEqual([
+        "inner first start",
+        "outer sibling start",
+        "inner first end",
+        "inner second start",
+      ]);
+    });
 
     test("collection mapping overloads throw when mapper defects", () => {
       const defect = new Error("boom");
@@ -3954,6 +3939,146 @@ describe("collection helpers", () => {
       expectTypeOf<ReturnType<typeof any<Tasks>>>().toEqualTypeOf<
         Task<Value, never, Deps>
       >();
+    });
+
+    test("collection concurrency options preserve overload types", () => {
+      const stringTask: Task<string, "TaskError", DbDep> = ({ deps }) =>
+        ok(deps.db.query("value"));
+      const numberTask: Task<number, never, SessionDep> = ({ deps }) =>
+        ok(deps.session.userId.length);
+      const tasks: ReadonlyArray<typeof stringTask> = [stringTask];
+      const tuple = [stringTask, numberTask] as const;
+      const record = { string: stringTask, number: numberTask } as const;
+      const values: ReadonlyArray<number> = [1, 2];
+      const valuesByKey = { first: 1, second: 2 } as const;
+      const toTask =
+        (value: number): Task<string, "TaskError", DbDep> =>
+        ({ deps }) =>
+          ok(deps.db.query(String(value)));
+
+      expectTypeOf(all(tasks, { concurrency: 1 })).toEqualTypeOf<
+        Task<ReadonlyArray<string>, "TaskError", DbDep>
+      >();
+      expectTypeOf(all(tuple, { concurrency: 100 })).toEqualTypeOf<
+        Task<readonly [string, number], "TaskError", DbDep & SessionDep>
+      >();
+      expectTypeOf(
+        all(record, { concurrency: PositiveInt.orThrow(101) }),
+      ).toEqualTypeOf<
+        Task<
+          { readonly string: string; readonly number: number },
+          "TaskError",
+          DbDep & SessionDep
+        >
+      >();
+      expectTypeOf(
+        all(values, toTask, { concurrency: availableParallelism() }),
+      ).toEqualTypeOf<Task<ReadonlyArray<string>, "TaskError", DbDep>>();
+      expectTypeOf(
+        all(valuesByKey, toTask, { concurrency: maxPositiveInt }),
+      ).toEqualTypeOf<
+        Task<
+          { readonly first: string; readonly second: string },
+          "TaskError",
+          DbDep
+        >
+      >();
+
+      const allOptions: AllOptions = {
+        collect: false,
+        concurrency: 2,
+      };
+      expectTypeOf(all(tasks, allOptions)).toEqualTypeOf<
+        Task<void, "TaskError", DbDep>
+      >();
+      expectTypeOf(
+        all(tasks, { collect: false, concurrency: 2 }),
+      ).toEqualTypeOf<Task<void, "TaskError", DbDep>>();
+      expectTypeOf(
+        all(record, { collect: false, concurrency: 2 }),
+      ).toEqualTypeOf<Task<void, "TaskError", DbDep & SessionDep>>();
+      expectTypeOf(
+        all(values, toTask, { collect: false, concurrency: 2 }),
+      ).toEqualTypeOf<Task<void, "TaskError", DbDep>>();
+      expectTypeOf(
+        all(valuesByKey, toTask, { collect: false, concurrency: 2 }),
+      ).toEqualTypeOf<Task<void, "TaskError", DbDep>>();
+
+      expectTypeOf(allSettled(tasks, { concurrency: 2 })).toEqualTypeOf<
+        Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
+      >();
+      expectTypeOf(allSettled(tuple, { concurrency: 2 })).toEqualTypeOf<
+        Task<
+          readonly [Result<string, "TaskError">, Result<number, never>],
+          never,
+          DbDep & SessionDep
+        >
+      >();
+      expectTypeOf(allSettled(record, { concurrency: 2 })).toEqualTypeOf<
+        Task<
+          {
+            readonly string: Result<string, "TaskError">;
+            readonly number: Result<number, never>;
+          },
+          never,
+          DbDep & SessionDep
+        >
+      >();
+      expectTypeOf(
+        allSettled(values, toTask, { concurrency: 2 }),
+      ).toEqualTypeOf<
+        Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
+      >();
+      expectTypeOf(
+        allSettled(valuesByKey, toTask, { concurrency: 2 }),
+      ).toEqualTypeOf<
+        Task<
+          {
+            readonly first: Result<string, "TaskError">;
+            readonly second: Result<string, "TaskError">;
+          },
+          never,
+          DbDep
+        >
+      >();
+
+      expectTypeOf(any([stringTask], { concurrency: 2 })).toEqualTypeOf<
+        Task<string, "TaskError", DbDep>
+      >();
+      expectTypeOf(firstN([stringTask], 1, { concurrency: 2 })).toEqualTypeOf<
+        Task<ReadonlyArray<string>, never, DbDep>
+      >();
+      expectTypeOf(
+        firstNSettled([stringTask], 1, { concurrency: 2 }),
+      ).toEqualTypeOf<
+        Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
+      >();
+      expectTypeOf(
+        each([stringTask], () => "continue", { concurrency: 2 }),
+      ).toEqualTypeOf<Task<void, never, DbDep>>();
+
+      const assertRejectedConcurrencyTypes = () => {
+        // @ts-expect-error - concurrency must be positive.
+        void all([stringTask], { concurrency: 0 });
+        // @ts-expect-error - raw integer literals above 100 must be validated as PositiveInt.
+        void all([stringTask], { concurrency: 101 });
+        // @ts-expect-error - booleans are not concurrency limits.
+        void all([stringTask], { concurrency: true });
+        // @ts-expect-error - booleans are not concurrency limits.
+        void all([stringTask], { concurrency: false });
+        // @ts-expect-error - string sentinels are not concurrency limits.
+        void all([stringTask], { concurrency: "availableParallelism" });
+        // @ts-expect-error - string sentinels are not concurrency limits.
+        void all([stringTask], { concurrency: "available" });
+        // @ts-expect-error - string sentinels are not concurrency limits.
+        void all([stringTask], { concurrency: "unbounded" });
+        // @ts-expect-error - string sentinels are not concurrency limits.
+        void all([stringTask], { concurrency: "all" });
+        // @ts-expect-error - string sentinels are not concurrency limits.
+        void all([stringTask], { concurrency: "full" });
+      };
+
+      void assertRejectedConcurrencyTypes;
     });
 
     test("InferTasksOk maps Task arrays and records to Ok values", () => {
@@ -5667,22 +5792,29 @@ describe("any", () => {
     void assertAnyTypes;
   });
 
-  test("returns first Ok result", async () => {
+  test("runs sequentially by default and returns the first Ok result", async () => {
     await using run = createRun();
     const completeFast = Promise.withResolvers<void>();
     const fastError = { type: "FastError" } as const;
+    let fallbackStarted = false;
 
     const fast: Task<string, typeof fastError> = async () => {
       await completeFast.promise;
       return err(fastError);
     };
-    const slow: Task<string, typeof fastError> = () => ok("slow");
+    const slow: Task<string, typeof fastError> = () => {
+      fallbackStarted = true;
+      return ok("slow");
+    };
 
     const resultPromise = run(any([fast, slow]));
+
+    expect(fallbackStarted).toBe(false);
 
     completeFast.resolve();
 
     expect(await resultPromise).toEqual(ok("slow"));
+    expect(fallbackStarted).toBe(true);
   });
 
   test("returns sync Ok after sync Err", async () => {
@@ -5713,7 +5845,7 @@ describe("any", () => {
 
     // With concurrency 2, second errs while first is still pending; the
     // earlier-index Err settling later must not replace the last Err.
-    const resultPromise = run(concurrently(2, any([first, second])));
+    const resultPromise = run(any([first, second], { concurrency: 2 }));
 
     completeFirst.resolve();
 
@@ -5749,13 +5881,13 @@ describe("any", () => {
       return err(thirdError);
     };
 
-    expect(await run(concurrently(1, any([first, second, third])))).toEqual(
+    expect(await run(any([first, second, third], { concurrency: 1 }))).toEqual(
       err(thirdError),
     );
     expect(events).toEqual(["first", "second", "third"]);
   });
 
-  test("uses inherited concurrency", async () => {
+  test("uses local concurrency and refills worker slots", async () => {
     await using run = createRun();
     const completeTasks = Promise.withResolvers<void>();
     const taskError = { type: "TaskError" } as const;
@@ -5771,7 +5903,7 @@ describe("any", () => {
       };
 
     const fiber = run(
-      concurrently(2, any([createTask(1), createTask(2), createTask(3)])),
+      any([createTask(1), createTask(2), createTask(3)], { concurrency: 2 }),
     );
 
     try {
@@ -5801,7 +5933,7 @@ describe("any", () => {
     };
     const fast: Task<string> = () => ok("fast");
 
-    const anyFiber = run(concurrently(2, any([slow, fast])));
+    const anyFiber = run(any([slow, fast], { concurrency: 2 }));
     let anyFiberSettled = false;
     void anyFiber.then(() => {
       anyFiberSettled = true;
@@ -5832,6 +5964,24 @@ describe("any", () => {
 
     expect(await anyFiber).toEqual(ok("fast"));
     expect(slowSettled).toBe(true);
+  });
+
+  test("does not start queued Tasks after the first Ok", async () => {
+    await using run = createRun();
+    const slowAborted = Promise.withResolvers<void>();
+    const later = vi.fn(() => ok("later"));
+
+    const slow: Task<string> = async (run) => {
+      using _ = run.onAbort(() => slowAborted.resolve());
+      await slowAborted.promise;
+      return ok("slow");
+    };
+    const fast: Task<string> = () => ok("fast");
+
+    expect(await run(any([slow, fast, later], { concurrency: 2 }))).toEqual(
+      ok("fast"),
+    );
+    expect(later).not.toHaveBeenCalled();
   });
 
   test("aborts running Tasks when aborted", async () => {
@@ -5885,7 +6035,7 @@ describe("race", () => {
     void assertRaceTypes;
   });
 
-  test("asserts non-empty Task array at runtime before setting concurrency", async () => {
+  test("asserts a non-empty Task array at runtime", async () => {
     await using run = testCreateRun();
     const tasks: ReadonlyArray<Task<string>> = [];
     const defect = expect.objectContaining({
@@ -6066,11 +6216,29 @@ describe("firstN", () => {
     const fastErr: Task<string, typeof taskError> = () => err(taskError);
     const fastOk: Task<string, typeof taskError> = () => ok("fast");
 
-    const fiber = run(concurrently(3, firstN([slow, fastErr, fastOk], 2)));
+    const fiber = run(firstN([slow, fastErr, fastOk], 2, { concurrency: 3 }));
 
     completeSlow.resolve();
 
     expect(await fiber).toEqual(ok(["fast", "slow"]));
+  });
+
+  test("runs sequentially by default", async () => {
+    await using run = createRun();
+    const completeFirst = Promise.withResolvers<void>();
+    const second = vi.fn(() => ok("second"));
+    const first: Task<string> = async () => {
+      await completeFirst.promise;
+      return ok("first");
+    };
+
+    const fiber = run(firstN([first, second], 2));
+
+    expect(second).not.toHaveBeenCalled();
+    completeFirst.resolve();
+
+    expect(await fiber).toEqual(ok(["first", "second"]));
+    expect(second).toHaveBeenCalledOnce();
   });
 
   test("returns available Ok values when fewer than count Tasks succeed", async () => {
@@ -6097,8 +6265,9 @@ describe("firstN", () => {
       return ok("slow");
     };
     const fast: Task<string> = () => ok("fast");
+    const later = vi.fn(() => ok("later"));
 
-    const fiber = run(concurrently(2, firstN([slow, fast], 1)));
+    const fiber = run(firstN([slow, fast, later], 1, { concurrency: 2 }));
 
     try {
       expect(await slowAborted.promise).toBe(runDisposedAbortReason);
@@ -6109,6 +6278,7 @@ describe("firstN", () => {
 
     expect(await fiber).toEqual(ok(["fast"]));
     expect(slowSettled).toBe(true);
+    expect(later).not.toHaveBeenCalled();
   });
 
   test("asserts positive count at runtime", async () => {
@@ -6172,7 +6342,7 @@ describe("firstNSettled", () => {
     const fastOk: Task<string, typeof taskError> = () => ok("fast");
 
     const fiber = run(
-      concurrently(3, firstNSettled([slow, fastErr, fastOk], 2)),
+      firstNSettled([slow, fastErr, fastOk], 2, { concurrency: 3 }),
     );
 
     try {
@@ -6182,6 +6352,41 @@ describe("firstNSettled", () => {
     }
 
     expect(await fiber).toEqual(ok([err(taskError), ok("fast")]));
+  });
+
+  test("runs sequentially by default", async () => {
+    await using run = createRun();
+    const completeFirst = Promise.withResolvers<void>();
+    const second = vi.fn(() => ok("second"));
+    const first: Task<string> = async () => {
+      await completeFirst.promise;
+      return ok("first");
+    };
+
+    const fiber = run(firstNSettled([first, second], 2));
+
+    expect(second).not.toHaveBeenCalled();
+    completeFirst.resolve();
+
+    expect(await fiber).toEqual(ok([ok("first"), ok("second")]));
+    expect(second).toHaveBeenCalledOnce();
+  });
+
+  test("stops at the threshold and does not start queued Tasks", async () => {
+    await using run = createRun();
+    const slowAborted = Promise.withResolvers<void>();
+    const later = vi.fn(() => ok("later"));
+    const slow: Task<string> = async (run) => {
+      using _ = run.onAbort(() => slowAborted.resolve());
+      await slowAborted.promise;
+      return ok("slow");
+    };
+    const fast: Task<string> = () => ok("fast");
+
+    expect(
+      await run(firstNSettled([slow, fast, later], 1, { concurrency: 2 })),
+    ).toEqual(ok([ok("fast")]));
+    expect(later).not.toHaveBeenCalled();
   });
 
   test("returns all Results when count exceeds Task count", async () => {
@@ -6209,77 +6414,6 @@ describe("firstNSettled", () => {
 });
 
 describe("concurrency", () => {
-  test("sets and inherits Run concurrency", async () => {
-    await using run = createRun();
-    const concurrency = 2;
-    const observedConcurrency: Array<Int1To100OrPositiveInt> = [];
-
-    expect(run.concurrency).toBe(onePositiveInt);
-
-    const result = await run(
-      concurrently(concurrency, async (run) => {
-        observedConcurrency.push(run.concurrency);
-
-        await run.ok((childRun) => {
-          observedConcurrency.push(childRun.concurrency);
-          return ok();
-        });
-
-        return ok();
-      }),
-    );
-
-    expectOk(result, undefined);
-    expect(observedConcurrency).toEqual([concurrency, concurrency]);
-  });
-
-  describe("concurrently", () => {
-    test("preserves Task type and runs wrapped Task", async () => {
-      interface MyError {
-        readonly type: "MyError";
-      }
-
-      const task: Task<string, MyError, DbDep> = ({ deps }) =>
-        ok(deps.db.query("select user"));
-
-      const wrapped = concurrently(2, task);
-
-      expectTypeOf(wrapped).toEqualTypeOf<Task<string, MyError, DbDep>>();
-
-      await using run = createRun(dbDep);
-
-      expect(await run(wrapped)).toEqual(ok("result:select user"));
-    });
-
-    test("runs wrapped Task without explicit concurrency", async () => {
-      await using run = createRun();
-
-      const wrapped = concurrently((run) => ok(run.concurrency));
-
-      expect(await run(wrapped)).toEqual(ok(maxPositiveInt));
-    });
-
-    test("throws when concurrency is invalid", () => {
-      const task: Task<void> = () => ok();
-      const concurrency = 0 as unknown as Int1To100OrPositiveInt;
-
-      expect(() => concurrently(concurrency, task)).toThrow();
-    });
-
-    test("uses the outer concurrency wrapper", async () => {
-      await using run = createRun();
-
-      const result = await run(
-        concurrently(
-          3,
-          concurrently(2, (run) => ok(run.concurrency)),
-        ),
-      );
-
-      expectOk(result, 3);
-    });
-  });
-
   describe("each", () => {
     describe("input", () => {
       test("requires at least one Task", () => {
@@ -6332,7 +6466,7 @@ describe("concurrency", () => {
         expect(events).toEqual(["first start", "first end", "second start"]);
       });
 
-      test("uses inherited concurrency by default", async () => {
+      test("uses local concurrency and refills worker slots", async () => {
         await using run = createRun();
         const completeTasks = Promise.withResolvers<void>();
         const startedIds: Array<number> = [];
@@ -6346,12 +6480,12 @@ describe("concurrency", () => {
           };
 
         const fiber = run(
-          concurrently(
-            2,
-            each(
-              [createTask(1), createTask(2), createTask(3)],
-              () => "continue",
-            ),
+          each(
+            [createTask(1), createTask(2), createTask(3)],
+            () => "continue",
+            {
+              concurrency: 2,
+            },
           ),
         );
 
@@ -6401,12 +6535,13 @@ describe("concurrency", () => {
         const fast: Task<string> = () => ok("fast");
 
         const fiber = run(
-          concurrently(
-            2,
-            each([slow, fast], (_result, index) => {
+          each(
+            [slow, fast],
+            (_result, index) => {
               if (index === 1) fastReported.resolve();
               return "continue";
-            }),
+            },
+            { concurrency: 2 },
           ),
         ).then((result) => {
           settled = true;
@@ -6462,12 +6597,10 @@ describe("concurrency", () => {
           return ok("slow");
         };
         const fast: Task<string> = () => ok("fast");
+        const later = vi.fn(() => ok("later"));
 
         const fiber = run(
-          concurrently(
-            2,
-            each([slow, fast], () => "stop"),
-          ),
+          each([slow, fast, later], () => "stop", { concurrency: 2 }),
         );
 
         try {
@@ -6492,6 +6625,7 @@ describe("concurrency", () => {
           },
           exit: ok(ok()),
         });
+        expect(later).not.toHaveBeenCalled();
       });
     });
 
@@ -6602,10 +6736,7 @@ describe("concurrency", () => {
         };
 
         const fiber = run.abortable(
-          concurrently(
-            2,
-            each([aborting, slow], () => "continue"),
-          ),
+          each([aborting, slow], () => "continue", { concurrency: 2 }),
         );
 
         completeSlow.resolve();
@@ -6628,10 +6759,7 @@ describe("concurrency", () => {
         });
 
         const fiber = run.abortable(
-          concurrently(
-            2,
-            each([slow, aborting], () => "continue"),
-          ),
+          each([slow, aborting], () => "continue", { concurrency: 2 }),
         );
 
         expect(await fiber).toEqual(err(abortError));
@@ -6649,7 +6777,7 @@ describe("concurrency", () => {
         const succeeding: Task<string> = () => ok("succeeding");
 
         const fiber = run.abortable(
-          concurrently(2, each([aborting, succeeding], onResult)),
+          each([aborting, succeeding], onResult, { concurrency: 2 }),
         );
 
         expect(await fiber).toEqual(err(abortError));
@@ -6689,11 +6817,12 @@ describe("concurrency", () => {
         const fast: Task<string> = () => ok("fast");
 
         const fiber = run(
-          concurrently(
-            2,
-            each([slow, fast], () => {
+          each(
+            [slow, fast],
+            () => {
               throw defect;
-            }),
+            },
+            { concurrency: 2 },
           ),
         );
 
@@ -6724,10 +6853,7 @@ describe("concurrency", () => {
         };
 
         const fiber = run(
-          concurrently(
-            2,
-            each([slow, defecting], () => "continue"),
-          ),
+          each([slow, defecting], () => "continue", { concurrency: 2 }),
         );
 
         const panicAbortError = await run.deps.reportDefect.next();
@@ -6752,10 +6878,7 @@ describe("concurrency", () => {
 
         const fiber = run(async (run) => {
           const eachFiber = run(
-            concurrently(
-              1,
-              each([first, second], () => "continue"),
-            ),
+            each([first, second], () => "continue", { concurrency: 1 }),
           );
           void run(() => {
             throw defect;
@@ -6799,7 +6922,7 @@ describe("concurrency", () => {
         const onResult = vi.fn(() => "continue" as const);
 
         const fiber = run(
-          concurrently(2, each([first, staleRestore], onResult)),
+          each([first, staleRestore], onResult, { concurrency: 2 }),
         );
 
         const panicAbortError = await run.deps.reportDefect.next();
@@ -6839,10 +6962,7 @@ describe("concurrency", () => {
         const later = vi.fn(() => ok("later"));
 
         const fiber = run(
-          concurrently(
-            3,
-            each([staleRestore, later], () => "continue"),
-          ),
+          each([staleRestore, later], () => "continue", { concurrency: 3 }),
         );
 
         const panicAbortError = await run.deps.reportDefect.next();
@@ -6866,12 +6986,7 @@ describe("concurrency", () => {
         };
         const fast: Task<string> = () => ok("fast");
 
-        const fiber = run(
-          concurrently(
-            2,
-            each([slow, fast], () => "stop"),
-          ),
-        );
+        const fiber = run(each([slow, fast], () => "stop", { concurrency: 2 }));
 
         expect(await slowAborted.promise).toBe(runDisposedAbortReason);
 
@@ -7307,26 +7422,6 @@ describe("daemon", () => {
     await expect(daemon(() => ok("done"))(childRun)).rejects.toThrow(
       "Cannot use a disposed object.",
     );
-  });
-
-  test("preserves explicit concurrency through daemon Task", async () => {
-    await using run = createRun();
-    let taskConcurrency: Int1To100OrPositiveInt | undefined;
-
-    const result = await run(
-      concurrently(
-        2,
-        daemon(
-          concurrently(3, (run) => {
-            taskConcurrency = run.concurrency;
-            return ok("done");
-          }),
-        ),
-      ),
-    );
-
-    expectOk(result, "done");
-    expect(taskConcurrency).toBe(3);
   });
 
   test("settles and reports panic abort when the wrapped Task defects", async () => {

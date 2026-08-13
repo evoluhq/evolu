@@ -15,7 +15,6 @@ import {
   allSettled,
   assert,
   assertType,
-  concurrently,
   instanceOf,
   createRun,
   durationToMillis,
@@ -217,90 +216,88 @@ export const testBundle = async ({
   await using run = createRun();
 
   const results = await run.ok(
-    concurrently(
-      availableParallelism(),
-      allSettled(
-        jobs,
-        ({ caseName, testCase, bundler }, jobIndex) =>
-          async (run) =>
-            tryAsync(
-              async () => {
-                const sourceEntryPath = resolve(testCase.entryPath);
-                const bundlerDirectory = join(
-                  temporaryDirectory,
-                  `${jobIndex}-${bundler.name}`,
-                );
-                await mkdir(bundlerDirectory, { recursive: true });
+    allSettled(
+      jobs,
+      ({ caseName, testCase, bundler }, jobIndex) =>
+        async (run) =>
+          tryAsync(
+            async () => {
+              const sourceEntryPath = resolve(testCase.entryPath);
+              const bundlerDirectory = join(
+                temporaryDirectory,
+                `${jobIndex}-${bundler.name}`,
+              );
+              await mkdir(bundlerDirectory, { recursive: true });
 
-                const bundlingResult = await run(
-                  timeout(
-                    runTestBundler(bundler.name, {
-                      entryPath: sourceEntryPath,
-                      outputDirectory: bundlerDirectory,
-                      aliases,
-                    }),
-                    bundlingTimeout,
-                  ),
-                );
-                if (!bundlingResult.ok) {
-                  if (TimeoutError.is(bundlingResult.error)) {
-                    throw new Error(
-                      `Bundle production timed out after ${durationToMillis(bundlingTimeout)} ms.`,
-                    );
-                  }
-                  throw bundlingResult.error;
-                }
-
-                const output = bundlingResult.value;
-                const executablePath = join(bundlerDirectory, "bundle.mjs");
-                await writeFile(executablePath, output.code);
-
-                let persistedOutputPath: string | null = null;
-                if (outputDirectory) {
-                  persistedOutputPath = join(
-                    outputDirectory,
-                    `${encodeURIComponent(caseName)}.${bundler.name}.mjs`,
+              const bundlingResult = await run(
+                timeout(
+                  runTestBundler(bundler.name, {
+                    entryPath: sourceEntryPath,
+                    outputDirectory: bundlerDirectory,
+                    aliases,
+                  }),
+                  bundlingTimeout,
+                ),
+              );
+              if (!bundlingResult.ok) {
+                if (TimeoutError.is(bundlingResult.error)) {
+                  throw new Error(
+                    `Bundle production timed out after ${durationToMillis(bundlingTimeout)} ms.`,
                   );
-                  await mkdir(outputDirectory, { recursive: true });
-                  await writeFile(persistedOutputPath, output.code);
                 }
+                throw bundlingResult.error;
+              }
 
-                const bundle: TestBundle = {
-                  bundler: `${bundler.name}@${output.version}`,
-                  code: output.code,
-                  outputPath: persistedOutputPath,
-                  rawSizeInBytes: Buffer.byteLength(output.code),
-                  brotliSizeInBytes: brotliCompressSync(output.code, {
-                    params: {
-                      [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
-                    },
-                  }).byteLength,
-                };
-                const executionResult = await run(
-                  timeout(runTestBundle(executablePath), executionTimeout),
+              const output = bundlingResult.value;
+              const executablePath = join(bundlerDirectory, "bundle.mjs");
+              await writeFile(executablePath, output.code);
+
+              let persistedOutputPath: string | null = null;
+              if (outputDirectory) {
+                persistedOutputPath = join(
+                  outputDirectory,
+                  `${encodeURIComponent(caseName)}.${bundler.name}.mjs`,
                 );
-                if (!executionResult.ok) {
-                  if (TimeoutError.is(executionResult.error)) {
-                    throw new Error(
-                      `Bundle execution timed out after ${durationToMillis(executionTimeout)} ms.`,
-                    );
-                  }
-                  throw executionResult.error;
-                }
+                await mkdir(outputDirectory, { recursive: true });
+                await writeFile(persistedOutputPath, output.code);
+              }
 
-                await testCase.verify(executionResult.value, bundle);
-                return { caseName, bundle } satisfies TestBundleJobOutput;
-              },
-              (error) => {
-                run.signal.throwIfAborted();
-                return {
-                  caseName,
-                  bundler: bundler.name,
-                  error,
-                } satisfies TestBundlerFailure;
-              },
-            ),
-      ),
+              const bundle: TestBundle = {
+                bundler: `${bundler.name}@${output.version}`,
+                code: output.code,
+                outputPath: persistedOutputPath,
+                rawSizeInBytes: Buffer.byteLength(output.code),
+                brotliSizeInBytes: brotliCompressSync(output.code, {
+                  params: {
+                    [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+                  },
+                }).byteLength,
+              };
+              const executionResult = await run(
+                timeout(runTestBundle(executablePath), executionTimeout),
+              );
+              if (!executionResult.ok) {
+                if (TimeoutError.is(executionResult.error)) {
+                  throw new Error(
+                    `Bundle execution timed out after ${durationToMillis(executionTimeout)} ms.`,
+                  );
+                }
+                throw executionResult.error;
+              }
+
+              await testCase.verify(executionResult.value, bundle);
+              return { caseName, bundle } satisfies TestBundleJobOutput;
+            },
+            (error) => {
+              run.signal.throwIfAborted();
+              return {
+                caseName,
+                bundler: bundler.name,
+                error,
+              } satisfies TestBundlerFailure;
+            },
+          ),
+      { concurrency: availableParallelism() },
     ),
   );
 

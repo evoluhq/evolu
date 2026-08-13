@@ -301,6 +301,7 @@ import type {
  * | ------------ | ------------------------- | -------------------------------------- |
  * | Collection   | {@link all}               | Return Ok values or stop on first Err  |
  * |              | {@link allSettled}        | Return every Task Result               |
+ * |              | {@link each}              | Handle each Task Result                |
  * | Interop      | {@link callback}          | Wrap callback APIs                     |
  * |              | {@link fetch}             | Native fetch with bounded Response use |
  * | Timing       | {@link sleep}             | Pause execution                        |
@@ -311,8 +312,6 @@ import type {
  * |              | {@link race}              | First settled Result wins              |
  * |              | {@link firstN}            | First n Ok values win                  |
  * |              | {@link firstNSettled}     | First n Results win                    |
- * | Concurrency  | {@link concurrently}      | Set concurrency for nested helpers     |
- * |              | {@link each}              | Handle each Task Result                |
  * | Scheduling   | {@link prioritized}       | Assign scheduler priority              |
  * |              | {@link yieldNow}          | Yield to the host scheduler            |
  * | Lifetime     | {@link daemon}            | Run under root ownership               |
@@ -320,8 +319,8 @@ import type {
  * |              | {@link unabortableMask}   | Mask acquire/release and restore use   |
  * |              | {@link acquireUseRelease} | Bracket acquire, use, and release      |
  *
- * Helpers that process multiple Tasks run sequentially by default. Use
- * {@link concurrently} to run them concurrently.
+ * Helpers that process multiple Tasks run sequentially by default. Use a
+ * `concurrency` option to run more than one Task at a time.
  *
  * For ordinary sequential composition, use imperative code:
  *
@@ -437,17 +436,10 @@ import type {
  * >();
  * ```
  *
- * Run composed Tasks with {@link concurrently} and {@link all}:
+ * Run composed Tasks with a concurrency limit and {@link all}:
  *
  * ```ts
- * import {
- *   all,
- *   concurrently,
- *   createRun,
- *   ok,
- *   sleep,
- *   type Task,
- * } from "@evolu/common";
+ * import { all, createRun, ok, sleep, type Task } from "@evolu/common";
  *
  * await using run = createRun();
  *
@@ -469,7 +461,7 @@ import type {
  *   };
  *
  * // At most 2 concurrent requests.
- * const result = await run(concurrently(2, all(urls, fetchUrl)));
+ * const result = await run(all(urls, fetchUrl, { concurrency: 2 }));
  * expectOk(result, urls);
  * expect(maxActiveRequests).toBe(2);
  * ```
@@ -1059,8 +1051,7 @@ export type TaskWithError<TTask extends AnyTask> = TTask &
  *
  * A Run is both a function and an object. Calling `run(task)` starts the Task
  * in a child Run and returns a {@link Fiber}. The object exposes the Run's
- * dependencies, abort signal, abort state, concurrency, snapshots, and
- * monitoring events.
+ * dependencies, abort signal, abort state, snapshots, and monitoring events.
  *
  * Each Task started with `run(task)` gets its own child Run. The child is
  * tracked while the Task runs. When the Task settles, the child Run is
@@ -1114,8 +1105,7 @@ export interface Run<D = unknown> {
    *
    * The optional deps argument replaces the custom deps available to the Task.
    * Default deps ({@link RunDefaultDeps}) are inherited unless replaced with
-   * assignable alternatives. Current concurrency is inherited unless the Task
-   * is wrapped with {@link concurrently}.
+   * assignable alternatives.
    *
    * The Fiber rejects when the Task observes abort by throwing
    * {@link AbortError}. It also rejects with AbortError whose reason is
@@ -1258,8 +1248,6 @@ export interface Run<D = unknown> {
    * root Run: `deps` replace that Run's custom deps for the daemon Task, while
    * lifetime is attached to the root Run. Default deps ({@link RunDefaultDeps})
    * are inherited unless explicitly replaced with assignable alternatives.
-   * Current concurrency is inherited unless the Task is wrapped with
-   * {@link concurrently}.
    *
    * The caller's abort mask is not inherited. A daemon detaches to the root, so
    * a mask-inheriting daemon could never observe abort and would hang root
@@ -1360,7 +1348,7 @@ export interface Run<D = unknown> {
 
   /**
    * Creates a {@link DisposableRun} attached to the root Run with this Run's
-   * deps and concurrency.
+   * deps.
    *
    * Use it when you need a Run that can be reused across multiple operations.
    * For a single long-lived Task, use {@link Run.daemon}.
@@ -1412,12 +1400,6 @@ export interface Run<D = unknown> {
 
   /** Dependencies available to the Task, including {@link RunDefaultDeps}. */
   readonly deps: RunDefaultDeps & D;
-
-  /**
-   * Maximum number of operations composition helpers should run at once. See
-   * {@link Int1To100OrPositiveInt}.
-   */
-  readonly concurrency: Int1To100OrPositiveInt;
 
   /**
    * Abort signal for the {@link Task}.
@@ -2376,7 +2358,6 @@ type TaskInternal<T = any, E = any, D = any> = Task<T, E, D> & {
 
 interface TaskMeta {
   readonly abortBehavior?: AbortBehavior;
-  readonly concurrency?: Int1To100OrPositiveInt;
   readonly priority?: TaskPriority;
 }
 
@@ -2720,11 +2701,7 @@ const createRunInternal = <D extends object>(
     // Invariant: daemons detach to the root lifetime, so they must never start
     // after this Run records abort, even if a mask hides it from run.signal.
     run.requestAbortSignal.throwIfAborted();
-    const daemonTask =
-      task[taskMetaSymbol]?.concurrency === undefined
-        ? withTaskMeta({ concurrency: run.concurrency })(task)
-        : task;
-    return root.abortable(daemonTask, createChildDeps(taskDeps));
+    return root.abortable(task, createChildDeps(taskDeps));
   }) as Run<D>["daemon"];
 
   run.create = ((runDeps) =>
@@ -2736,8 +2713,6 @@ const createRunInternal = <D extends object>(
   run.id = createId(deps);
   run.parent = parent ?? null;
   run.deps = deps;
-  run.concurrency =
-    taskMeta?.concurrency ?? parent?.concurrency ?? onePositiveInt;
   run.signal = signalController.signal;
   run.requestAbortSignal = requestController.signal;
 
@@ -2884,6 +2859,33 @@ export type InferTaskRecordDeps<TTasks extends TaskRecord> = InferTasksDeps<
 >;
 
 /**
+ * Options shared by Task collection helpers.
+ *
+ * `concurrency` controls how many Tasks run at once. It defaults to `1`. A
+ * platform `availableParallelism()` result is often a good limit for CPU-bound
+ * Tasks. For network or database Tasks, choose a limit based on the transport,
+ * server, connection pool, and rate limits.
+ *
+ * Keep concurrency bounded. In rare cases where running every Task concurrently
+ * is safe, use {@link maxPositiveInt}.
+ *
+ * @group Collection
+ */
+export interface TaskCollectionOptions {
+  readonly concurrency?: Int1To100OrPositiveInt;
+}
+
+/**
+ * Options for {@link all}.
+ *
+ * @group Collection
+ */
+export interface AllOptions extends TaskCollectionOptions {
+  /** Disables collecting Ok values. */
+  readonly collect: false;
+}
+
+/**
  * Maps a Task array or record to the Ok values produced by its Tasks.
  *
  * The mapped type is homomorphic, so tuples preserve their shape and records
@@ -2901,8 +2903,8 @@ export type InferTasksOk<TTasks> = {
  * Runs Tasks until all return {@link Ok} or one returns {@link Err}.
  *
  * Returns Ok with all values when every Task returns Ok. Stops on the first
- * Err; remaining running Tasks are aborted. Sequential by default — use
- * {@link concurrently} for concurrent execution.
+ * Err; remaining running Tasks are aborted. Sequential by default; pass a
+ * `concurrency` option to run more than one Task at a time.
  *
  * Pass `{ collect: false }` when only collective success or failure matters.
  * The returned Task produces `void` on success and does not store the Ok
@@ -2980,6 +2982,18 @@ export type InferTasksOk<TTasks> = {
  */
 export function all<const TTasks extends ReadonlyArray<AnyTask>>(
   tasks: TTasks,
+  options: AllOptions,
+): Task<void, InferTaskErr<TTasks[number]>, InferTasksDeps<TTasks>>;
+
+/** Runs a Task record without collecting its Ok values. */
+export function all<const TTasks extends TaskRecord>(
+  tasks: TTasks,
+  options: AllOptions,
+): Task<void, InferTaskErr<TTasks[keyof TTasks]>, InferTaskRecordDeps<TTasks>>;
+
+export function all<const TTasks extends ReadonlyArray<AnyTask>>(
+  tasks: TTasks,
+  options?: TaskCollectionOptions,
 ): Task<
   InferTasksOk<TTasks>,
   InferTaskErr<TTasks[number]>,
@@ -3025,23 +3039,12 @@ export function all<const TTasks extends ReadonlyArray<AnyTask>>(
  */
 export function all<const TTasks extends TaskRecord>(
   tasks: TTasks,
+  options?: TaskCollectionOptions,
 ): Task<
   InferTasksOk<TTasks>,
   InferTaskErr<TTasks[keyof TTasks]>,
   InferTaskRecordDeps<TTasks>
 >;
-
-/** Runs a Task array without collecting its Ok values. */
-export function all<const TTasks extends ReadonlyArray<AnyTask>>(
-  tasks: TTasks,
-  options: { readonly collect: false },
-): Task<void, InferTaskErr<TTasks[number]>, InferTasksDeps<TTasks>>;
-
-/** Runs a Task record without collecting its Ok values. */
-export function all<const TTasks extends TaskRecord>(
-  tasks: TTasks,
-  options: { readonly collect: false },
-): Task<void, InferTaskErr<TTasks[keyof TTasks]>, InferTaskRecordDeps<TTasks>>;
 
 /**
  * Maps an array to Tasks and preserves its shape.
@@ -3087,6 +3090,27 @@ export function all<
 >(
   values: TValues,
   fn: (value: TValues[number], index: number) => TTask,
+  options: AllOptions,
+): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
+
+/** Maps record values to Tasks without collecting their Ok values. */
+export function all<
+  const TValues extends Readonly<Record<string, unknown>>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
+  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
+  options: AllOptions,
+): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
+
+export function all<
+  const TValues extends ReadonlyArray<unknown>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  fn: (value: TValues[number], index: number) => TTask,
+  options?: TaskCollectionOptions,
 ): Task<
   { readonly [K in keyof TValues]: InferTaskOk<TTask> },
   InferTaskErr<TTask>,
@@ -3146,47 +3170,32 @@ export function all<
   values: TValues,
   // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
   fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
+  options?: TaskCollectionOptions,
 ): Task<
   { readonly [K in keyof TValues]: InferTaskOk<TTask> },
   InferTaskErr<TTask>,
   InferTasksDeps<ReadonlyArray<TTask>>
 >;
-
-/** Maps array values to Tasks without collecting their Ok values. */
-export function all<
-  const TValues extends ReadonlyArray<unknown>,
-  TTask extends AnyTask,
->(
-  values: TValues,
-  fn: (value: TValues[number], index: number) => TTask,
-  options: { readonly collect: false },
-): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
-
-/** Maps record values to Tasks without collecting their Ok values. */
-export function all<
-  const TValues extends Readonly<Record<string, unknown>>,
-  TTask extends AnyTask,
->(
-  values: TValues,
-  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
-  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
-  options: { readonly collect: false },
-): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
 export function all(
   input: ReadonlyArray<unknown> | Readonly<Record<string, unknown>>,
   fnOrOptions?:
-    ((value: any, indexOrKey: any) => AnyTask) | { readonly collect: false },
-  options?: { readonly collect: false },
+    | ((value: any, indexOrKey: any) => AnyTask)
+    | AllOptions
+    | TaskCollectionOptions,
+  options?: AllOptions | TaskCollectionOptions,
 ): Task<unknown, unknown> {
   const fn = typeof fnOrOptions === "function" ? fnOrOptions : undefined;
+  const collectionOptions =
+    typeof fnOrOptions === "function" ? options : fnOrOptions;
   const collectValues =
-    typeof fnOrOptions === "function"
-      ? options?.collect !== false
-      : fnOrOptions?.collect !== false;
+    collectionOptions === undefined ||
+    !("collect" in collectionOptions) ||
+    collectionOptions.collect !== false;
 
   return collect(
     "all",
     fn ? mapInput(input, fn) : (input as ReadonlyArray<AnyTask> | TaskRecord),
+    collectionOptions,
     collectValues,
   );
 }
@@ -3216,7 +3225,8 @@ export type InferTasksSettled<TTasks> = {
  * `(value, key)`. Mapper defects happen at construction time, so keep mappers
  * pure and cheap.
  *
- * Sequential by default — use {@link concurrently} for concurrent execution.
+ * Sequential by default; pass a `concurrency` option to run more than one Task
+ * at a time.
  *
  * Similar to
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/allSettled | Promise.allSettled},
@@ -3265,6 +3275,7 @@ export type InferTasksSettled<TTasks> = {
  */
 export function allSettled<const TTasks extends ReadonlyArray<AnyTask>>(
   tasks: TTasks,
+  options?: TaskCollectionOptions,
 ): Task<InferTasksSettled<TTasks>, never, InferTasksDeps<TTasks>>;
 
 /**
@@ -3311,6 +3322,7 @@ export function allSettled<const TTasks extends ReadonlyArray<AnyTask>>(
  */
 export function allSettled<const TTasks extends TaskRecord>(
   tasks: TTasks,
+  options?: TaskCollectionOptions,
 ): Task<InferTasksSettled<TTasks>, never, InferTaskRecordDeps<TTasks>>;
 
 /**
@@ -3366,6 +3378,7 @@ export function allSettled<
 >(
   values: TValues,
   fn: (value: TValues[number], index: number) => TTask,
+  options?: TaskCollectionOptions,
 ): Task<
   {
     readonly [K in keyof TValues]: Result<
@@ -3434,6 +3447,7 @@ export function allSettled<
   values: TValues,
   // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
   fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
+  options?: TaskCollectionOptions,
 ): Task<
   {
     readonly [K in keyof TValues]: Result<
@@ -3446,11 +3460,15 @@ export function allSettled<
 >;
 export function allSettled(
   input: ReadonlyArray<unknown> | Readonly<Record<string, unknown>>,
-  fn?: (value: any, indexOrKey: any) => AnyTask,
+  fnOrOptions?:
+    ((value: any, indexOrKey: any) => AnyTask) | TaskCollectionOptions,
+  options?: TaskCollectionOptions,
 ): Task<unknown, unknown> {
+  const fn = typeof fnOrOptions === "function" ? fnOrOptions : undefined;
   return collect(
     "allSettled",
     fn ? mapInput(input, fn) : (input as ReadonlyArray<AnyTask> | TaskRecord),
+    typeof fnOrOptions === "function" ? options : fnOrOptions,
   );
 }
 
@@ -3458,6 +3476,7 @@ const collect =
   (
     type: "all" | "allSettled",
     input: ReadonlyArray<AnyTask> | TaskRecord,
+    options?: TaskCollectionOptions,
     collectValues = true,
   ): Task<unknown, unknown> =>
   async (run) => {
@@ -3486,20 +3505,24 @@ const collect =
     let firstErr: Err<unknown> | undefined;
 
     await run(
-      each(tasks, (result, index) => {
-        if (type === "allSettled") {
-          values![index] = result;
+      each(
+        tasks,
+        (result, index) => {
+          if (type === "allSettled") {
+            values![index] = result;
+            return "continue";
+          }
+
+          if (!result.ok) {
+            firstErr = result;
+            return "stop";
+          }
+
+          if (values) values[index] = result.value;
           return "continue";
-        }
-
-        if (!result.ok) {
-          firstErr = result;
-          return "stop";
-        }
-
-        if (values) values[index] = result.value;
-        return "continue";
-      }),
+        },
+        options,
+      ),
     );
 
     return firstErr ?? (values ? ok(getValue(values)) : ok());
@@ -4001,7 +4024,8 @@ export type InferTasksResult<TTasks extends NonEmptyReadonlyArray<AnyTask>> =
  * order. Other Err results are discarded; use {@link allSettled} when you need
  * every error.
  *
- * Sequential by default — use {@link concurrently} for concurrent execution.
+ * Sequential by default; pass a `concurrency` option to run more than one Task
+ * at a time.
  *
  * Similar to
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/any | Promise.any},
@@ -4040,6 +4064,7 @@ export type InferTasksResult<TTasks extends NonEmptyReadonlyArray<AnyTask>> =
 export const any =
   <TTasks extends NonEmptyReadonlyArray<AnyTask>>(
     tasks: TTasks,
+    options?: TaskCollectionOptions,
   ): Task<
     InferTaskOk<TTasks[number]>,
     InferTaskErr<TTasks[number]>,
@@ -4051,19 +4076,23 @@ export const any =
     let lastErrIndex = -1;
 
     await run(
-      each(tasks, (result, index) => {
-        if (result.ok) {
-          firstOk = result;
-          return "stop";
-        }
+      each(
+        tasks,
+        (result, index) => {
+          if (result.ok) {
+            firstOk = result;
+            return "stop";
+          }
 
-        if (index > lastErrIndex) {
-          lastErrIndex = index;
-          lastErr = result;
-        }
+          if (index > lastErrIndex) {
+            lastErrIndex = index;
+            lastErr = result;
+          }
 
-        return "continue";
-      }),
+          return "continue";
+        },
+        options,
+      ),
     );
 
     if (firstOk) return firstOk;
@@ -4082,8 +4111,8 @@ export const any =
  *
  * Losing Tasks are aborted.
  *
- * Tasks always run concurrently; inherited concurrency does not apply because
- * racing sequentially would be meaningless.
+ * Tasks always run concurrently because racing sequentially would be
+ * meaningless.
  *
  * Similar to
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/race | Promise.race},
@@ -4159,12 +4188,13 @@ export const race =
     let firstResult: InferTasksResult<TTasks> | undefined;
 
     await run(
-      concurrently(
-        tasks.length as PositiveInt,
-        each(tasks, (result) => {
+      each(
+        tasks,
+        (result) => {
           firstResult = result;
           return "stop";
-        }),
+        },
+        { concurrency: tasks.length as PositiveInt },
       ),
     );
 
@@ -4180,15 +4210,14 @@ export const race =
  * remaining Tasks are aborted. If fewer than `count` Tasks return Ok, returns
  * the Ok values that did settle.
  *
- * Sequential by default — use {@link concurrently} for concurrent execution. The
- * count uses {@link Int1To100OrPositiveInt}: pass `1` to `100` as a literal, or
- * a validated {@link PositiveInt} for larger values.
+ * Sequential by default; pass a `concurrency` option to run more than one Task
+ * at a time. The count uses {@link Int1To100OrPositiveInt}: pass `1` to
+ * `100` as a literal, or a validated {@link PositiveInt} for larger values.
  *
  * ### Example
  *
  * ```ts
  * import {
- *   concurrently,
  *   createRun,
  *   err,
  *   firstN,
@@ -4212,7 +4241,7 @@ export const race =
  * await using run = createRun();
  *
  * // Errs do not count. After two Ok values settle, the slow Task is aborted.
- * const result = await run(concurrently(4, firstN(tasks, 2)));
+ * const result = await run(firstN(tasks, 2, { concurrency: 4 }));
  * expectOk(result, ["fast-1", "fast-2"]);
  * expect(slowCompleted).toBe(false);
  * ```
@@ -4223,6 +4252,7 @@ export const firstN =
   <TTasks extends NonEmptyReadonlyArray<AnyTask>>(
     tasks: TTasks,
     count: Int1To100OrPositiveInt,
+    options?: TaskCollectionOptions,
   ): Task<
     ReadonlyArray<InferTaskOk<TTasks[number]>>,
     never,
@@ -4233,10 +4263,14 @@ export const firstN =
 
     const values: Array<InferTaskOk<TTasks[number]>> = [];
     await run(
-      each(tasks, (result) => {
-        if (result.ok) values.push(result.value);
-        return values.length < count ? "continue" : "stop";
-      }),
+      each(
+        tasks,
+        (result) => {
+          if (result.ok) values.push(result.value);
+          return values.length < count ? "continue" : "stop";
+        },
+        options,
+      ),
     );
     return ok(values);
   };
@@ -4248,15 +4282,14 @@ export const firstN =
  * order. When `count` Results have settled, remaining Tasks are aborted. If
  * fewer than `count` Tasks settle, returns the Results that did settle.
  *
- * Sequential by default — use {@link concurrently} for concurrent execution. The
- * count uses {@link Int1To100OrPositiveInt}: pass `1` to `100` as a literal, or
- * a validated {@link PositiveInt} for larger values.
+ * Sequential by default; pass a `concurrency` option to run more than one Task
+ * at a time. The count uses {@link Int1To100OrPositiveInt}: pass `1` to
+ * `100` as a literal, or a validated {@link PositiveInt} for larger values.
  *
  * ### Example
  *
  * ```ts
  * import {
- *   concurrently,
  *   createRun,
  *   err,
  *   firstNSettled,
@@ -4279,7 +4312,7 @@ export const firstN =
  * await using run = createRun();
  *
  * // Err and Ok both count, and Results use settlement order.
- * const result = await run(concurrently(3, firstNSettled(tasks, 2)));
+ * const result = await run(firstNSettled(tasks, 2, { concurrency: 3 }));
  * expectOk(result, [
  *   { ok: false, error: "Failed" },
  *   { ok: true, value: "fast" },
@@ -4293,6 +4326,7 @@ export const firstNSettled =
   <TTasks extends NonEmptyReadonlyArray<AnyTask>>(
     tasks: TTasks,
     count: Int1To100OrPositiveInt,
+    options?: TaskCollectionOptions,
   ): Task<
     ReadonlyArray<InferTasksResult<TTasks>>,
     never,
@@ -4303,101 +4337,17 @@ export const firstNSettled =
 
     const results: Array<InferTasksResult<TTasks>> = [];
     await run(
-      each(tasks, (result) => {
-        results.push(result);
-        return results.length < count ? "continue" : "stop";
-      }),
+      each(
+        tasks,
+        (result) => {
+          results.push(result);
+          return results.length < count ? "continue" : "stop";
+        },
+        options,
+      ),
     );
     return ok(results);
   };
-
-// TODO: Make concurrency explicit on collection helpers instead of inheriting
-// it through Run. For example, `all(tasks, { concurrency })` should control
-// only that `all` call. The inherited setting makes a reusable Task's nested
-// helpers change behavior based on its caller, while still not imposing a
-// shared limit across the Task subtree because every nested helper creates its
-// own worker pool. Use an explicit Semaphore for shared resource limits.
-
-/**
- * Runs Tasks concurrently instead of sequentially.
- *
- * Sets the {@link Int1To100OrPositiveInt} concurrency level for a {@link Task}.
- * Helpers like {@link any}, {@link all}, and {@link allSettled} use it to control
- * how many Tasks run at once.
- *
- * Tasks run sequentially by default. This keeps helpers safe for arrays of
- * unknown size: unbounded concurrency can exhaust connection pools, trigger
- * rate limits, and increase memory use. A fixed default limit would be
- * arbitrary, so callers opt into concurrency explicitly.
- *
- * Concurrency is a wrapper rather than a helper option because it belongs to
- * the {@link Run} that starts child Tasks, not to a single helper call. Child
- * Tasks inherit it through Run and can override it at any level, so one wrapper
- * configures every nested helper in the subtree — including helpers it cannot
- * see, like those inside Tasks it calls. Helpers do not override inherited
- * concurrency unless semantically required — {@link race} always runs its Tasks
- * concurrently.
- *
- * Use `concurrently(all([taskA, taskB, taskC]))` — without a limit — for
- * unlimited concurrency when the number of Tasks is known and small. For arrays
- * of unknown length, always specify a limit: `concurrently(5, all(tasks))`.
- *
- * ### Example
- *
- * ```ts
- * import {
- *   all,
- *   concurrently,
- *   createRun,
- *   ok,
- *   sleep,
- *   type Task,
- * } from "@evolu/common";
- *
- * await using run = createRun();
- *
- * const userIds = ["user-1", "user-2", "user-3"];
- * let activeFetches = 0;
- * let maxActiveFetches = 0;
- * const fetchUser =
- *   (id: string): Task<string> =>
- *   async (run) => {
- *     activeFetches += 1;
- *     maxActiveFetches = Math.max(maxActiveFetches, activeFetches);
- *     await run.ok(sleep("1ms"));
- *     activeFetches -= 1;
- *     return ok(id);
- *   };
- * const result = await run(concurrently(2, all(userIds, fetchUser)));
- * expectOk(result, userIds);
- * expect(maxActiveFetches).toBe(2);
- * ```
- *
- * @group Concurrency
- */
-export function concurrently<T, E, D = unknown>(
-  concurrency: Int1To100OrPositiveInt,
-  task: Task<T, E, D>,
-): Task<T, E, D>;
-/**
- * Unlimited.
- *
- * @group Concurrency
- */
-export function concurrently<T, E, D = unknown>(
-  task: Task<T, E, D>,
-): Task<T, E, D>;
-export function concurrently<T, E, D = unknown>(
-  concurrencyOrTask: Int1To100OrPositiveInt | Task<T, E, D>,
-  task?: Task<T, E, D>,
-): Task<T, E, D> {
-  const isTask = typeof concurrencyOrTask === "function";
-  if (!isTask) assertType(PositiveInt, concurrencyOrTask);
-
-  return withTaskMeta({
-    concurrency: isTask ? maxPositiveInt : concurrencyOrTask,
-  })(isTask ? concurrencyOrTask : task!);
-}
 
 /**
  * Decision returned by an {@link each} result handler.
@@ -4424,7 +4374,7 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
 ) => EachDecision;
 
 /**
- * Runs Tasks under the inherited concurrency and calls `onResult` for each Task
+ * Runs Tasks under a concurrency limit and calls `onResult` for each Task
  * {@link Result} as it settles.
  *
  * `onResult` receives the Result and the original input index; call order is
@@ -4453,7 +4403,6 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  *
  * ```ts
  * import {
- *   concurrently,
  *   createRun,
  *   each,
  *   err,
@@ -4476,13 +4425,14 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  * let first: readonly [string, number] | undefined;
  * await using run = createRun();
  * const result = await run(
- *   concurrently(
- *     2,
- *     each(tasks, (result, index) => {
+ *   each(
+ *     tasks,
+ *     (result, index) => {
  *       if (!result.ok) return "continue";
  *       first = [result.value, index];
  *       return "stop";
- *     }),
+ *     },
+ *     { concurrency: 2 },
  *   ),
  * );
  *
@@ -4500,10 +4450,10 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  * {@link RetryOptions.onRetry}, `onResult` must not throw: a thrown exception is
  * a defect that panics the Run tree.
  *
- * Sequential by default — use {@link concurrently} for concurrent execution.
- * Defects from child Tasks keep caller-linked async stack traces; building on
- * `each` preserves diagnostics that a hand-rolled scheduling loop typically
- * loses.
+ * Sequential by default; pass a `concurrency` option to run more than one Task
+ * at a time. Defects from child Tasks keep caller-linked async stack
+ * traces; building on `each` preserves diagnostics that a hand-rolled
+ * scheduling loop typically loses.
  *
  * @group Concurrency
  */
@@ -4511,6 +4461,7 @@ export const each =
   <TTasks extends NonEmptyReadonlyArray<AnyTask>>(
     tasks: TTasks,
     onResult: EachCallback<TTasks>,
+    options: TaskCollectionOptions = {},
   ): Task<void, never, InferTasksDeps<TTasks>> =>
   async (run) => {
     // Guard against hanging on an empty array.
@@ -4522,7 +4473,10 @@ export const each =
 
     let stopped = false;
     let nextIndex = 0;
-    const workerCount = Math.min(run.concurrency, tasks.length);
+    const workerCount = Math.min(
+      options.concurrency ?? onePositiveInt,
+      tasks.length,
+    );
     let active = workerCount;
 
     // This topology is measured by StackTrace.test.ts ("pool parked" and

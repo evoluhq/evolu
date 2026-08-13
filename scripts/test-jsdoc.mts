@@ -39,6 +39,10 @@ export const testEvoluJSDocExamples = async (
         repositoryDirectory,
         "packages/vitest/src/index.ts",
       ),
+      "@evolu/vitest/TestJSDoc": join(
+        repositoryDirectory,
+        "packages/vitest/src/TestJSDoc.ts",
+      ),
     },
     cwd: repositoryDirectory,
     include,

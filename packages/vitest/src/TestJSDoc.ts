@@ -10,7 +10,6 @@
 
 import {
   allSettled,
-  concurrently,
   createRun,
   filterArray,
   isErr,
@@ -101,10 +100,32 @@ const polyfillsPath = fileURLToPath(
  *
  * ```ts
  * import { testJSDocExamples } from "@evolu/vitest/TestJSDoc";
+ * import { mkdtemp, rm, writeFile } from "node:fs/promises";
+ * import { tmpdir } from "node:os";
+ * import { join } from "node:path";
  *
- * await testJSDocExamples({
- *   include: ["packages/common/src/*.ts", "docs/*.md"],
- * });
+ * const directory = await mkdtemp(join(tmpdir(), "evolu-jsdoc-example-"));
+ * try {
+ *   const sourcePath = join(directory, "Example.ts");
+ *   await writeFile(
+ *     sourcePath,
+ *     [
+ *       "/**",
+ *       " * ``" + "`ts",
+ *       " * expect(1 + 1).toBe(2);",
+ *       " * ``" + "`",
+ *       " *" + "/",
+ *       "export {};",
+ *     ].join("\n"),
+ *   );
+ *   await testJSDocExamples({
+ *     cwd: process.cwd(),
+ *     include: sourcePath,
+ *     typescriptPackage: "@typescript/native",
+ *   });
+ * } finally {
+ *   await rm(directory, { force: true, recursive: true });
+ * }
  * ```
  */
 export const testJSDocExamples = async ({
@@ -368,25 +389,23 @@ const runJSDocExamples = async (
 ): Promise<void> => {
   await using run = createRun();
   const results = await run.ok(
-    concurrently(
-      PositiveInt.orThrow(availableParallelism()),
-      allSettled(
-        examples,
-        (example) => async (run) =>
-          tryAsync(
-            () =>
-              runProcess(
-                process.execPath,
-                [example.generatedPath],
-                workingDirectory,
-                "Node.js execution",
-              ),
-            (error) => {
-              run.signal.throwIfAborted();
-              return { error, example } satisfies JSDocExampleFailure;
-            },
-          ),
-      ),
+    allSettled(
+      examples,
+      (example) => async (run) =>
+        tryAsync(
+          () =>
+            runProcess(
+              process.execPath,
+              [example.generatedPath],
+              workingDirectory,
+              "Node.js execution",
+            ),
+          (error) => {
+            run.signal.throwIfAborted();
+            return { error, example } satisfies JSDocExampleFailure;
+          },
+        ),
+      { concurrency: PositiveInt.orThrow(availableParallelism()) },
     ),
   );
 
