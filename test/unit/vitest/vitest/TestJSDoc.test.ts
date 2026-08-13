@@ -45,6 +45,38 @@ test("testJSDocExamples injects Vitest assertions", async () => {
   }
 });
 
+test("testJSDocExamples installs Evolu polyfills", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        " * const values = new Map<string, number>();",
+        ' * const value = values.getOrInsertComputed("answer", () => 42);',
+        " * expect(value).toBe(42);",
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+
+    await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: [sourcePath],
+      typescriptPackage: "@typescript/native",
+    });
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
 test("testJSDocExamples supports package subpath aliases", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
   const temporaryDirectory = mkdtempSync(

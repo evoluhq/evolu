@@ -34,7 +34,7 @@ import {
 import { findPackageJSON } from "node:module";
 import { availableParallelism } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
 /** Options for compiling and executing TypeScript documentation examples. */
@@ -73,6 +73,9 @@ const fencePattern = /(?:```|~~~)([^\n]*)\n([\s\S]*?)(?:(```|~~~)|$)/g;
 const markdownFilePattern = /\.mdx?$/i;
 const packageNamePattern = /^(?:@[a-z\d][a-z\d._~-]*\/)?[a-z\d][a-z\d._~-]*$/i;
 const packageSubpathSegmentPattern = /^[a-z\d][a-z\d._~-]*$/i;
+const polyfillsPath = fileURLToPath(
+  import.meta.resolve("@evolu/common/polyfills"),
+);
 
 /**
  * Compiles and executes every TypeScript example in the included JSDoc comments
@@ -83,6 +86,11 @@ const packageSubpathSegmentPattern = /^[a-z\d][a-z\d._~-]*$/i;
  * parallelism available to the process. Compilation and execution failures are
  * reported together. Vitest's `assert`, `expect`, and `expectTypeOf`, along
  * with Evolu's `expectOk` and `expectErr`, are injected into each module.
+ *
+ * Write every TypeScript fence as a standalone, deterministic example and
+ * import its dependencies. Use `expectTypeOf` to prove static contracts and an
+ * appropriate runtime assertion such as `expect`, `expectOk`, or `expectErr`
+ * instead of describing expected behavior only in comments.
  *
  * Package aliases are useful for examples documenting an entry point that is
  * not exported yet. Package subpaths can be aliased independently. Each alias
@@ -150,7 +158,10 @@ export const testJSDocExamples = async ({
 
     const generatedExamples = examples.map((example, index) => {
       const generatedPath = join(temporaryDirectory, `example-${index}.ts`);
-      writeFileSync(generatedPath, transformJSDocExample(example));
+      writeFileSync(
+        generatedPath,
+        transformJSDocExample(example, generatedPath),
+      );
       return { ...example, generatedPath } satisfies GeneratedJSDocExample;
     });
     const compilerConfigPath = join(temporaryDirectory, "tsconfig.json");
@@ -315,10 +326,15 @@ const getLineNumber = (source: string, offset: number): number => {
   return line;
 };
 
-const transformJSDocExample = (example: JSDocExample): string =>
+const transformJSDocExample = (
+  example: JSDocExample,
+  generatedPath: string,
+): string =>
   [
+    `import { installPolyfills } from ${JSON.stringify(pathToImportSpecifier(generatedPath, polyfillsPath))};`,
     'import { expectErr, expectOk } from "@evolu/vitest";',
     'import { assert, expect, expectTypeOf } from "vitest";',
+    "installPolyfills();",
     example.source,
   ].join("\n\n");
 

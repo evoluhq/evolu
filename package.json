@@ -12,6 +12,7 @@
     "typecheck": "tsc --build tsconfig.typecheck.json && tsc --project scripts/tsconfig.json --noEmit && tsc --project bench/tsconfig.json --noEmit && tsc --project test/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:jsdoc": "node scripts/test-jsdoc.mts",
     "test:ios": "NODE_ENV=development vitest run --config vitest.ios.config.mts",
     "test:ios:bootstrap": "vitest-mobile bootstrap --platform ios",
     "playwright:install": "playwright install chromium firefox webkit",
