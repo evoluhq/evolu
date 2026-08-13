@@ -45,7 +45,7 @@ import {
   Worker,
   workerData,
 } from "node:worker_threads";
-import { gzipSync } from "node:zlib";
+import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 import { availableParallelism } from "./Platform.ts";
 
 /** The input shared by every test bundler adapter. */
@@ -80,7 +80,8 @@ interface TestBundlerFailure {
 /** The measured sizes of one bundle. */
 export interface TestBundleSize {
   readonly rawSizeInBytes: number;
-  readonly gzipSizeInBytes: number;
+  /** The Brotli-compressed size using quality 11. */
+  readonly brotliSizeInBytes: number;
 }
 
 /** Bundle sizes keyed by bundler name and version. */
@@ -151,29 +152,38 @@ interface TestBundleJobOutput {
  * Cases and bundlers form one flattened job list that runs concurrently,
  * bounded by the CPU parallelism available to the process. If multiple jobs
  * fail, all failures are reported together with their case and bundler names.
- * The returned record contains only raw and gzip byte counts grouped by case
+ * The returned record contains only raw and Brotli byte counts grouped by case
  * and versioned bundler name, so it can be compared directly with an inline
  * snapshot.
  *
  * ### Example
  *
  * ```ts
- * import assert from "node:assert/strict";
- * import { fileURLToPath } from "node:url";
+ * import { mkdtemp, rm, writeFile } from "node:fs/promises";
+ * import { tmpdir } from "node:os";
+ * import { join } from "node:path";
  * import { testBundle } from "@evolu/nodejs/TestBundle";
  *
- * const result = await testBundle({
- *   cases: {
- *     example: {
- *       entryPath: fileURLToPath(
- *         new URL("./bundle-fixture.ts", import.meta.url),
- *       ),
- *       verify: (value) => {
- *         assert.deepStrictEqual(value, { answer: 42 });
+ * const directory = await mkdtemp(join(tmpdir(), "evolu-test-bundle-"));
+ * try {
+ *   const entryPath = join(directory, "entry.ts");
+ *   await writeFile(entryPath, "export default { answer: 42 };\n");
+ *   const result = await testBundle({
+ *     cases: {
+ *       example: {
+ *         entryPath,
+ *         verify: (value) => {
+ *           expect(value).toEqual({ answer: 42 });
+ *         },
  *       },
  *     },
- *   },
- * });
+ *   });
+ *   for (const size of Object.values(result.example)) {
+ *     expect(size.brotliSizeInBytes).toBeGreaterThan(0);
+ *   }
+ * } finally {
+ *   await rm(directory, { recursive: true });
+ * }
  * ```
  */
 export const testBundle = async ({
@@ -260,8 +270,11 @@ export const testBundle = async ({
                   code: output.code,
                   outputPath: persistedOutputPath,
                   rawSizeInBytes: Buffer.byteLength(output.code),
-                  gzipSizeInBytes: gzipSync(output.code, { level: 9 })
-                    .byteLength,
+                  brotliSizeInBytes: brotliCompressSync(output.code, {
+                    params: {
+                      [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+                    },
+                  }).byteLength,
                 };
                 const executionResult = await run(
                   timeout(runTestBundle(executablePath), executionTimeout),
@@ -330,7 +343,7 @@ export const testBundle = async ({
       bundle.bundler,
       {
         rawSizeInBytes: bundle.rawSizeInBytes,
-        gzipSizeInBytes: bundle.gzipSizeInBytes,
+        brotliSizeInBytes: bundle.brotliSizeInBytes,
       },
     ]);
   }

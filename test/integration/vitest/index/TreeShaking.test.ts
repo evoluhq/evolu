@@ -40,41 +40,41 @@ describe("tree-shaking", () => {
       {
         "result-all": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 674,
+            "brotliSizeInBytes": 621,
             "rawSizeInBytes": 1474,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 668,
+            "brotliSizeInBytes": 614,
             "rawSizeInBytes": 1499,
           },
         },
         "task-example": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 9029,
+            "brotliSizeInBytes": 8225,
             "rawSizeInBytes": 25253,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 8650,
+            "brotliSizeInBytes": 7886,
             "rawSizeInBytes": 23553,
           },
         },
         "type-direct-object": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 2830,
+            "brotliSizeInBytes": 2566,
             "rawSizeInBytes": 7754,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 2847,
+            "brotliSizeInBytes": 2592,
             "rawSizeInBytes": 7830,
           },
         },
         "type-object": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 3192,
+            "brotliSizeInBytes": 2894,
             "rawSizeInBytes": 8778,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 3220,
+            "brotliSizeInBytes": 2945,
             "rawSizeInBytes": 8879,
           },
         },

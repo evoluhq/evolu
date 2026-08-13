@@ -73,21 +73,21 @@ describe("testBundle", { timeout: 30_000 }, () => {
       {
         "fixture": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 90,
+            "brotliSizeInBytes": 65,
             "rawSizeInBytes": 70,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 92,
+            "brotliSizeInBytes": 68,
             "rawSizeInBytes": 72,
           },
         },
         "fixture-copy": {
           "vite@8.2.0": {
-            "gzipSizeInBytes": 90,
+            "brotliSizeInBytes": 65,
             "rawSizeInBytes": 70,
           },
           "webpack@5.109.2": {
-            "gzipSizeInBytes": 92,
+            "brotliSizeInBytes": 68,
             "rawSizeInBytes": 72,
           },
         },
