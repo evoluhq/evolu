@@ -43,7 +43,6 @@ export * from "./String.ts";
 export * from "./Task.ts";
 export * from "./Test.ts";
 export * from "./Time.ts";
-export * from "./Tracer.ts";
 export * from "./Type.ts";
 export * from "./Types.ts";
 export * from "./WebSocket.ts";
