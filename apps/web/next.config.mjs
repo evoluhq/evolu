@@ -24,6 +24,8 @@ const nextConfig = {
     "@evolu/web",
   ],
   webpack: (config) => {
+    if (process.env.VERCEL) config.cache = false;
+
     // Source files refer to workers by their emitted .js names.
     config.resolve.extensionAlias = {
       ...config.resolve.extensionAlias,
@@ -33,7 +35,9 @@ const nextConfig = {
   },
 
   outputFileTracingIncludes: {
-    "/**/*": ["./src/app/**/*.mdx"],
+    "/api/docs-md/*": ["./src/app/(docs)/docs/**/*.mdx"],
+    "/llms-full.txt": ["./src/app/**/*.mdx"],
+    "/llms.txt": ["./src/app/**/*.mdx"],
   },
 
   async rewrites() {
