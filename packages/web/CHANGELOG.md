@@ -1,5 +1,140 @@
 # @evolu/web
 
+## 3.0.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+- 0528425: - Merged `@evolu/common/local-first/Platform.ts` into `@evolu/common/Platform.ts`
+  - Made `@evolu/react-web` re-export everything from `@evolu/web`, allowing React users to install only `@evolu/react-web`
+- 2abf93d: Refactored SQLite integration to use Task and throw-first semantics
+
+  - Changed `createSqlite` to `Task<Sqlite, never, CreateSqliteDriverDep>`
+  - Changed `CreateSqliteDriver` to `Task<SqliteDriver>`
+  - Removed `SqliteError` from SQLite driver/task APIs
+  - Changed `Sqlite.exec` to return `SqliteExecResult` directly (no `Result<..., SqliteError>`)
+  - Changed `Sqlite.transaction` to support callbacks returning either `Result<T, E>` or `void` (no `SqliteError` in the error channel)
+  - Changed `Sqlite.export` to return `Uint8Array` directly (no `Result<..., SqliteError>`)
+  - Simplified `SqliteDriver.exec` by removing the `isMutation` parameter, so the driver determines read vs write internally
+  - Replaced `options.memory` and `options.encryptionKey` with a discriminated `options.mode` field (`"memory"` | `"encrypted"`)
+  - Updated Expo and op-sqlite drivers to match the new API
+  - Added SQLite schema metadata primitives (`SqliteSchema`, `SqliteIndex`, `eqSqliteIndex`, `getSqliteSchema`, `getSqliteSnapshot`)
+  - Added `testSetupSqlite` helper for SQLite tests
+
+  Why `SqliteError` was removed:
+
+  - In Evolu, SQLite runs in-process. Failures are infrastructure-level and unrecoverable at the call site.
+  - Wrapping these failures as `Result` values did not create meaningful recovery paths; callers still had to fail.
+  - Such failures now throw as Task defects, panic the owning Run tree, and are reported through its `ReportDefect` dependency.
+  - Platform Run adapters provide native defect reporters, and applications can inject a custom reporter at the composition root.
+
+  Boundary handling:
+
+  - At protocol boundaries (for example Protocol ↔ Storage), error handling remains explicit.
+  - Since storage implementations may throw, boundary code uses `try/catch`, logs with `console.error(error)`, and returns protocol-level outcomes.
+  - Protocol handles all thrown errors as boundary concerns, without coupling to SQLite-specific error types.
+
+- 953c1fb: Replaced interface-based symmetric encryption with direct function-based API
+
+  ### Breaking Changes
+
+  **Removed:**
+
+  - `SymmetricCrypto` interface
+  - `SymmetricCryptoDep` interface
+  - `createSymmetricCrypto()` factory function
+  - `SymmetricCryptoDecryptError` error type
+
+  **Added:**
+
+  - `encryptWithXChaCha20Poly1305()` - Direct encryption function with explicit algorithm name
+  - `decryptWithXChaCha20Poly1305()` - Direct decryption function
+  - `XChaCha20Poly1305Ciphertext` - Branded type for ciphertext
+  - `Entropy24` - Branded type for 24-byte nonces
+  - `DecryptWithXChaCha20Poly1305Error` - Algorithm-specific error type
+  - `xChaCha20Poly1305NonceLength` - Constant for nonce length (24)
+
+  ### Migration Guide
+
+  **Before:**
+
+  ```ts
+  const symmetricCrypto = createSymmetricCrypto({ randomBytes });
+  const { nonce, ciphertext } = symmetricCrypto.encrypt(plaintext, key);
+  const result = symmetricCrypto.decrypt(ciphertext, key, nonce);
+  ```
+
+  **After:**
+
+  ```ts
+  const [ciphertext, nonce] = encryptWithXChaCha20Poly1305({ randomBytes })(
+    plaintext,
+    key,
+  );
+  const result = decryptWithXChaCha20Poly1305(ciphertext, nonce, key);
+  ```
+
+  **Error handling:**
+
+  ```ts
+  // Before
+  if (!result.ok && result.error.type === "SymmetricCryptoDecryptError") { ... }
+
+  // After
+  if (!result.ok && result.error.type === "DecryptWithXChaCha20Poly1305Error") { ... }
+  ```
+
+  **Dependency injection:**
+
+  ```ts
+  // Before
+  interface Deps extends SymmetricCryptoDep { ... }
+
+  // After - only encrypt needs RandomBytesDep
+  interface Deps extends RandomBytesDep { ... }
+  ```
+
+  ### Rationale
+
+  This change improves API extensibility by using explicit function names instead of a generic interface. Adding new encryption algorithms (e.g., `encryptWithAES256GCM`) is now straightforward without breaking existing code.
+
+- 5c55b05: Changed the local database and ownership layout.
+
+  Upgrading an existing Evolu 7 application to Evolu 8 is not yet supported.
+  Applications containing Evolu 7 user data should remain on Evolu 7 until
+  migration support is released. New Evolu 8 applications and applications
+  already using Evolu 8 preview releases are unaffected.
+
+- 4be336d: Refactored worker abstraction to support all platforms uniformly:
+
+  - Added platform-agnostic worker interfaces: `Worker<Input, Output>`, `SharedWorker<Input, Output>`, `MessagePort<Input, Output>`, `MessageChannel<Input, Output>`
+  - Added worker-side interfaces: `WorkerSelf<Input, Output>` and `SharedWorkerSelf<Input, Output>` for typed worker `self` wrappers
+  - Changed `onMessage` from a method to a property for consistency with Web APIs
+  - Made all worker and message port interfaces `Disposable` for proper resource cleanup
+  - Added default generic parameters (`Output = never`) for simpler one-way communication patterns
+  - Added complete web platform implementations: `createWorker`, `createSharedWorker`, `createMessageChannel`, `createWorkerSelf`, `createSharedWorkerSelf`, `createMessagePort`
+  - Added React Native polyfills for Workers and MessageChannel
+
+### Minor Changes
+
+- 66941ed: Added `availableParallelism()` with a validated `PositiveInt` return value.
+
+### Patch Changes
+
+- c1f97ff: Fixed the SharedWorker fallback on older Chrome Android versions without native SharedWorker support.
+
+  Apps can pass `onSharedWorkerUnsupported` to show a custom message when another fallback tab is already running:
+
+  ```ts
+  createEvoluDeps({
+    onSharedWorkerUnsupported: () => {
+      alert(
+        "This browser supports Evolu in one tab only. Close this tab and use the already open tab.",
+      );
+    },
+  });
+  ```
+
 ## 3.0.0-next.1
 
 ### Patch Changes

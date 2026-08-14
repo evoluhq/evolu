@@ -1,5 +1,80 @@
 # relay
 
+## 3.0.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+
+### Patch Changes
+
+- Updated dependencies [5a21b73]
+- Updated dependencies [705c6af]
+- Updated dependencies [555627d]
+- Updated dependencies [86726aa]
+- Updated dependencies [6fc3bba]
+- Updated dependencies [2f39c8e]
+- Updated dependencies [98a4b6c]
+- Updated dependencies [ce83b24]
+- Updated dependencies [c0250e9]
+- Updated dependencies [408307b]
+- Updated dependencies [97f5314]
+- Updated dependencies [5275b07]
+- Updated dependencies [b096543]
+- Updated dependencies [1a04b81]
+- Updated dependencies [cd6b74d]
+- Updated dependencies [e6b166a]
+- Updated dependencies [5a4d172]
+- Updated dependencies [a883a8c]
+- Updated dependencies [5f9602c]
+- Updated dependencies [f7d505a]
+- Updated dependencies [0af46e1]
+- Updated dependencies [87780a3]
+- Updated dependencies [f0bbebb]
+- Updated dependencies [332dfca]
+- Updated dependencies [6202f42]
+- Updated dependencies [e10699b]
+- Updated dependencies [65c1fe6]
+- Updated dependencies [3247415]
+- Updated dependencies [7da2364]
+- Updated dependencies [66941ed]
+- Updated dependencies [cebf659]
+- Updated dependencies [6f1d6ea]
+- Updated dependencies [0528425]
+- Updated dependencies [29d37c7]
+- Updated dependencies [3e3a93e]
+- Updated dependencies [5f97e83]
+- Updated dependencies [7fe328d]
+- Updated dependencies [78a1a64]
+- Updated dependencies [2c8576e]
+- Updated dependencies [3ba2a92]
+- Updated dependencies [a70d933]
+- Updated dependencies [5720b0b]
+- Updated dependencies [0fbb5e7]
+- Updated dependencies [ef7f242]
+- Updated dependencies [e948269]
+- Updated dependencies [d1f817f]
+- Updated dependencies [2abf93d]
+- Updated dependencies [252ede2]
+- Updated dependencies [252ede2]
+- Updated dependencies [e96c8dd]
+- Updated dependencies [d30b95a]
+- Updated dependencies [b85837f]
+- Updated dependencies [953c1fb]
+- Updated dependencies [9ba5442]
+- Updated dependencies [2516e46]
+- Updated dependencies [3b74e48]
+- Updated dependencies [c24ec2f]
+- Updated dependencies [9373afa]
+- Updated dependencies [151e73b]
+- Updated dependencies [39084b3]
+- Updated dependencies [5c55b05]
+- Updated dependencies [65a86e2]
+- Updated dependencies [4be336d]
+- Updated dependencies [66cfc01]
+  - @evolu/common@8.0.0
+  - @evolu/nodejs@3.0.0
+
 ## 3.0.0-next.5
 
 ### Patch Changes
