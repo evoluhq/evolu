@@ -1,5 +1,22 @@
 # @evolu/react-web
 
+## 3.0.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+- 0528425: - Merged `@evolu/common/local-first/Platform.ts` into `@evolu/common/Platform.ts`
+  - Made `@evolu/react-web` re-export everything from `@evolu/web`, allowing React users to install only `@evolu/react-web`
+- 4be336d: Refactored worker abstraction to support all platforms uniformly:
+
+  - Added platform-agnostic worker interfaces: `Worker<Input, Output>`, `SharedWorker<Input, Output>`, `MessagePort<Input, Output>`, `MessageChannel<Input, Output>`
+  - Added worker-side interfaces: `WorkerSelf<Input, Output>` and `SharedWorkerSelf<Input, Output>` for typed worker `self` wrappers
+  - Changed `onMessage` from a method to a property for consistency with Web APIs
+  - Made all worker and message port interfaces `Disposable` for proper resource cleanup
+  - Added default generic parameters (`Output = never`) for simpler one-way communication patterns
+  - Added complete web platform implementations: `createWorker`, `createSharedWorker`, `createMessageChannel`, `createWorkerSelf`, `createSharedWorkerSelf`, `createMessagePort`
+  - Added React Native polyfills for Workers and MessageChannel
+
 ## 3.0.0-next.0
 
 ### Major Changes

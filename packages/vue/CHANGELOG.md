@@ -1,5 +1,11 @@
 # @evolu/vue
 
+## 2.0.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+
 ## 2.0.0-next.0
 
 ### Major Changes

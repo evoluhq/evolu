@@ -1,5 +1,95 @@
 # @evolu/nodejs
 
+## 3.0.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+- a883a8c: Added signal-aware relay authorization and exposed the actual bound port from Node.js relays.
+
+  Added WebSocket test helpers for native client setup and raw upgrade requests.
+
+  Made relay storage count duplicate timestamped messages only once when computing owner usage.
+
+  Renamed the Node.js `startRelay` API to `createRelay` and made it return a Resource-producing Task whose disposal owns the relay lifecycle.
+
+  Replaced the Node.js `createRun` and `ShutdownDep` APIs with `runMain`, which owns the root Run, handles termination signals, disposes returned resources, reports defects, and supports service and command exit behavior.
+
+- 2abf93d: Refactored SQLite integration to use Task and throw-first semantics
+
+  - Changed `createSqlite` to `Task<Sqlite, never, CreateSqliteDriverDep>`
+  - Changed `CreateSqliteDriver` to `Task<SqliteDriver>`
+  - Removed `SqliteError` from SQLite driver/task APIs
+  - Changed `Sqlite.exec` to return `SqliteExecResult` directly (no `Result<..., SqliteError>`)
+  - Changed `Sqlite.transaction` to support callbacks returning either `Result<T, E>` or `void` (no `SqliteError` in the error channel)
+  - Changed `Sqlite.export` to return `Uint8Array` directly (no `Result<..., SqliteError>`)
+  - Simplified `SqliteDriver.exec` by removing the `isMutation` parameter, so the driver determines read vs write internally
+  - Replaced `options.memory` and `options.encryptionKey` with a discriminated `options.mode` field (`"memory"` | `"encrypted"`)
+  - Updated Expo and op-sqlite drivers to match the new API
+  - Added SQLite schema metadata primitives (`SqliteSchema`, `SqliteIndex`, `eqSqliteIndex`, `getSqliteSchema`, `getSqliteSnapshot`)
+  - Added `testSetupSqlite` helper for SQLite tests
+
+  Why `SqliteError` was removed:
+
+  - In Evolu, SQLite runs in-process. Failures are infrastructure-level and unrecoverable at the call site.
+  - Wrapping these failures as `Result` values did not create meaningful recovery paths; callers still had to fail.
+  - Such failures now throw as Task defects, panic the owning Run tree, and are reported through its `ReportDefect` dependency.
+  - Platform Run adapters provide native defect reporters, and applications can inject a custom reporter at the composition root.
+
+  Boundary handling:
+
+  - At protocol boundaries (for example Protocol ↔ Storage), error handling remains explicit.
+  - Since storage implementations may throw, boundary code uses `try/catch`, logs with `console.error(error)`, and returns protocol-level outcomes.
+  - Protocol handles all thrown errors as boundary concerns, without coupling to SQLite-specific error types.
+
+- 5c55b05: Changed the local database and ownership layout.
+
+  Upgrading an existing Evolu 7 application to Evolu 8 is not yet supported.
+  Applications containing Evolu 7 user data should remain on Evolu 7 until
+  migration support is released. New Evolu 8 applications and applications
+  already using Evolu 8 preview releases are unaffected.
+
+### Minor Changes
+
+- 6202f42: Added an abort-aware `spawn` Task for running CLI commands with inherited stdio and typed unsuccessful-exit errors.
+- e10699b: Added production bundle testing utilities.
+
+  The new `@evolu/nodejs/TestBundle` entry point bundles named cases with every
+  supported bundler and records their raw and Brotli-compressed sizes together
+  with the bundler names and versions. The returned record is ready for inline
+  size snapshots. Assertions run outside the measured bundles, so test code does
+  not affect size results. All case and bundler jobs share one concurrent Evolu
+  Task pool bounded by the CPU parallelism available to the process.
+
+  Each emitted bundle is executed in an isolated worker. Evaluation errors,
+  rejected results, unhandled rejections, early exits, and timeouts fail the test,
+  ensuring that size and tree-shaking assertions describe code that actually
+  runs. Bundle production also runs in isolated workers with its own timeout, so
+  a stuck bundler cannot hang the test process. Failures from multiple jobs are
+  reported together with their case and bundler names.
+
+- 66941ed: Added `availableParallelism()` with a validated `PositiveInt` return value.
+- b85837f: Improved wall-clock, performance, and monotonic time APIs.
+
+  **Common:**
+
+  - Replaced `Time.nowDateIso()` with the `Time.now("DateIso")` overload.
+  - Added `Time.performance` with a high-resolution clock and time origin, plus branded `PerformanceTime`, `PerformanceTimeOrigin`, and `PerformanceDuration` values.
+  - Added `performanceDurationBetween()` for measuring elapsed performance time.
+  - Made timeout IDs instance-owned so clearing an ID with another `Time` instance throws.
+  - Made native-range timeouts independent of wall-clock changes while retaining absolute-deadline handling for longer timeouts.
+  - Extended `formatMillisAsDuration()` to format days, weeks, and years.
+
+  **Node.js:**
+
+  - Added `NodejsTime` and `createNodejsTime()` with `hrtime()` for monotonic nanosecond readings.
+  - Added branded `HrTime` and `HrDuration` values with `hrDurationBetween()`.
+  - Added `hrDurationToMillis()` and `millisToHrDuration()` conversions.
+
+### Patch Changes
+
+- 65c1fe6: Documented `createTimingSafeEqual` in the Node.js crypto module.
+
 ## 3.0.0-next.3
 
 ### Patch Changes

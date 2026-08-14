@@ -1,6 +1,6 @@
 {
   "name": "@evolu/vitest",
-  "version": "1.0.0-next.0",
+  "version": "1.0.0",
   "description": "Vitest assertions and test utilities for Evolu",
   "keywords": [
     "evolu",

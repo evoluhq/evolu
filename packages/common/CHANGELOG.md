@@ -1,5 +1,892 @@
 # @evolu/common
 
+## 8.0.0
+
+### Major Changes
+
+- 98a4b6c: Refactored the Array module with breaking changes, better naming, and new helpers.
+
+  ### Breaking Changes
+
+  **Removed `isNonEmptyReadonlyArray`** — use `isNonEmptyArray` instead. The function now handles both mutable and readonly arrays via overloads:
+
+  ```ts
+  // Before
+  if (isNonEmptyReadonlyArray(readonlyArr)) { ... }
+  if (isNonEmptyArray(mutableArr)) { ... }
+
+  // After — one function for both
+  if (isNonEmptyArray(readonlyArr)) { ... }
+  if (isNonEmptyArray(mutableArr)) { ... }
+  ```
+
+  **Removed mutable array helpers:**
+
+  - `shiftArray`
+  - `popArray`
+
+  Use native `.shift()` and `.pop()` when mutation is necessary.
+
+  ### New Constants
+  - **`emptyArray`** — use as a default or initial value to avoid allocating new empty arrays
+
+  ### New Types
+  - Added **`AtLeastTwoReadonlyArray`** for readonly arrays with at least two elements
+
+  ### Changed Functions
+  - **`mapArray`, `flatMapArray`, `filterArray`, and `partitionArray`** — passed the source array as the callback's third argument; the native wrappers matched their native counterparts
+
+  ### New Functions
+  - **`arrayFrom`** — creates a readonly array from an iterable or by generating elements with a length and mapper
+  - **`arrayFromAsync`** — creates a readonly array from an async iterable (or iterable of promises) and awaits all values
+  - **`flatMapArray`** — maps each element to an array and flattens the result, preserving non-empty type when applicable
+  - **`concatArrays`** — concatenates two arrays, returning non-empty when at least one input is non-empty
+  - **`sortArray`** — returns a new sorted array (wraps `toSorted`), preserving non-empty type
+  - **`reverseArray`** — returns a new reversed array (wraps `toReversed`), preserving non-empty type
+  - **`spliceArray`** — returns a new array with elements removed/replaced (wraps `toSpliced`)
+  - **`zipArray`** — combines multiple arrays into an array of tuples, preserving non-empty type
+
+  ### Migration
+
+  ```ts
+  // isNonEmptyReadonlyArray → isNonEmptyArray
+  -import { isNonEmptyReadonlyArray } from "@evolu/common";
+  +import { isNonEmptyArray } from "@evolu/common";
+
+  // Mutable array helpers were removed.
+  -import { popArray, shiftArray } from "@evolu/common";
+  +const first = items.shift();
+  +const last = items.pop();
+  ```
+
+- c0250e9: Consolidated collection mapping into overloads of `allResult`, `all`, and
+  `allSettled`. Removed `mapResult`, `map`, `mapSettled`, `InferMapOk`, and
+  `InferMapSettled`. The `allResult` mapping overloads inferred unions of
+  heterogeneous Result errors returned by the mapper. Task mapping overloads
+  inferred intersections of heterogeneous Task dependencies returned by the
+  mapper.
+
+  Added an explicit `{ collect: false }` option to `allResult` and `all` for
+  operations whose success values weren't needed. They stopped on the first
+  error, returned `Result<void, E>` and `Task<void, E, D>` respectively, and did
+  not allocate a collection for the success values. Generic Result iterables were
+  consumed incrementally and stopped advancing on the first error.
+
+  ```ts
+  allResult(values, toResult);
+  allResult(results, { collect: false });
+  allResult(values, toResult, { collect: false });
+  all(values, toTask);
+  all(tasks, { collect: false });
+  all(values, toTask, { collect: false });
+  allSettled(values, toTask);
+  ```
+
+- 97f5314: Redesigned Console with structured logging and pluggable outputs
+
+  **Breaking changes:**
+
+  - Replaced `enabled` property with `ConsoleLevel` filtering (trace < debug < log < info < warn < error < silent)
+  - Removed `enableLogging` config option - use `level` instead
+  - Removed `createConsoleWithTime` - use `createConsoleFormatter` with `format` option
+  - Removed `assert` method
+  - Changed `TestConsole.getLogsSnapshot()` to `getEntriesSnapshot()` returning `ConsoleEntry` objects
+  - Changed `TestConsole.clearLogs()` to `clearEntries()`
+
+  **New features:**
+
+  - Structured `ConsoleEntry` objects with method, path, and args
+  - Pluggable `ConsoleOutput` interface for custom destinations (file, network, array)
+  - `Console.child(name)` creates derived consoles with path prefixes
+  - `children: ReadonlySet<Console>` tracks child consoles for batch operations
+  - `name` property identifies consoles
+  - `getLevel()`, `setLevel(level | null)`, `hasOwnLevel()` for runtime level control
+  - `createConsoleFormatter` for timestamps (relative, absolute, iso) and path prefixes
+  - `createNativeConsoleOutput` and `createConsoleArrayOutput` built-in outputs
+  - Static level inheritance - children inherit parent's level at creation, then are independent
+  - `createConsoleStoreOutput` — a `ConsoleOutput` that stores the latest entry in a `ReadonlyStore` for observing log entries (e.g., forwarding from workers to main thread)
+  - `createMultiOutput` — fans out entries to multiple outputs (e.g., native console + store)
+  - Simplified `testCreateConsole` to delegate to `createConsole` internally
+
+- 5275b07: Replaced `evolu.createQuery` with standalone `createQueryBuilder` function
+
+  Queries are now created using a standalone `createQueryBuilder` function instead of `evolu.createQuery` method. This enables query creation without an Evolu instance, improving code organization and enabling schema-first development.
+
+  ```ts
+  // Before
+  const todosQuery = evolu.createQuery((db) =>
+    db.selectFrom("todo").selectAll(),
+  );
+
+  // After
+  const createQuery = createQueryBuilder(Schema);
+  const todosQuery = createQuery((db) => db.selectFrom("todo").selectAll());
+  ```
+
+- cd6b74d: Removed the root `kysely` namespace export and exposed Evolu's SQLite JSON helpers as explicit named exports.
+
+  Use `evoluJsonArrayFrom`, `evoluJsonObjectFrom`, `evoluJsonBuildObject`, `kyselySql`, and `KyselyNotNull` from `@evolu/common` instead of `kysely.jsonArrayFrom`, `kysely.jsonObjectFrom`, `kysely.jsonBuildObject`, `kysely.sql`, and `kysely.NotNull`.
+
+  ```ts
+  // Before
+  import { kysely } from "@evolu/common";
+
+  kysely.jsonArrayFrom(...)
+  type Name = kysely.NotNull;
+
+  // After
+  import {
+    evoluJsonArrayFrom,
+    evoluJsonBuildObject,
+    evoluJsonObjectFrom,
+    kyselySql,
+    type KyselyNotNull,
+  } from "@evolu/common";
+
+  evoluJsonArrayFrom(...)
+  type Name = KyselyNotNull;
+  ```
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+- 87780a3: Renamed `LazyValue<T>` to `Thunk<T>`, renamed the constant thunk helpers to `const*`, and added the `constant` factory
+- 0528425: - Merged `@evolu/common/local-first/Platform.ts` into `@evolu/common/Platform.ts`
+  - Made `@evolu/react-web` re-export everything from `@evolu/web`, allowing React users to install only `@evolu/react-web`
+- 29d37c7: Renamed `createRecord` to `createMutableRecord` and `getProperty` to
+  `getOwnProp`, added source-copying support to `createMutableRecord`, and froze
+  `emptyRecord`.
+- 3e3a93e: Replaced the legacy Evolu Type implementation with a lawful, composable codec
+  system.
+
+  ### Added
+
+  #### CanonicalInput
+
+  Added `CanonicalInput` alongside the existing `Input` and `Output`. Type now
+  distinguishes its complete decoding boundary from the statically known subtype
+  returned by complete encoding:
+
+  ```text
+  Input           ── partial decode ──▶ Output
+  CanonicalInput  ◀─── total encode ─── Output
+
+  CanonicalInput ⊆ Input
+  ```
+
+  `CanonicalInput` is the declared return type of `to`. It contains every encoded
+  result and is itself contained by `Input`, but can be wider than the values
+  actually emitted. `Output` describes the semantic value, which can use a
+  different representation.
+
+  For `FiniteNumber`, `Output` also describes the encoded result precisely. Its
+  `Input` is correctly `number`, allowing decoding to reject `NaN` and
+  infinities, while its `Output` and `CanonicalInput` are `FiniteNumber`. Encoding
+  preserves that finite-number guarantee.
+
+  For `Int64FromInt64String`, `Output` cannot describe the encoded result. Its
+  `Input` is `string`, its `Output` is `Int64`, and its `CanonicalInput` is
+  `Int64String`. Encoding an `Int64` produces the validated string representation,
+  not an unrefined `string` or another `Int64`.
+
+  Structural Type factories derive `CanonicalInput` recursively. When a refinement
+  follows an arbitrary transformation, it conservatively retains the
+  transformation's return type because TypeScript cannot determine which values
+  the encoder returns for the narrowed `Output`.
+
+  #### Transformations
+
+  Added first-class `transform` Types and total `to` encoding. Transformations can
+  change runtime representations in both directions while preserving precise
+  Input, Output, CanonicalInput, validation errors, and composition. This supports
+  lawful codecs such as `Int64FromInt64String` and `DateIsoFromDate` rather than
+  limiting Types to validation-only refinements.
+
+  #### JSON codecs
+
+  Added the `json(Type, Name)` factory for creating a branded `Json` Type that
+  stores another Type as JSON text. It statically requires the supplied Type's
+  `CanonicalInput` to be JSON-compatible and returns total Type-to-Json and
+  Json-to-Type conversions.
+
+  ```ts
+  // Age is built in; its definition is shown to make the constraint explicit.
+  const Age = brand("Age", lessThan(200)(NonNegativeInt));
+
+  const Person = object({
+    name: String,
+    age: Age,
+  });
+  type Person = typeof Person.Output;
+
+  const [PersonJson, personToPersonJson, personJsonToPerson] = json(
+    Person,
+    "PersonJson",
+  );
+  type PersonJson = typeof PersonJson.Output;
+
+  const person = Person.orThrow({ name: "Ada", age: 42 });
+  const stored = personToPersonJson(person);
+
+  expectTypeOf(stored).toEqualTypeOf<PersonJson>();
+  expect(stored).toBe('{"name":"Ada","age":42}');
+
+  const restored = personJsonToPerson(stored);
+
+  expectTypeOf(restored).toEqualTypeOf<Person>();
+  expect(restored).toEqual(person);
+  ```
+
+  The branded Type validates both the JSON text and the represented Type before
+  accepting unknown storage values:
+
+  ```ts
+  expectOk(PersonJson.fromUnknown('{"name":"Ada","age":42}'), stored);
+
+  const invalid = PersonJson.fromUnknown('{"name":"Ada","age":200}');
+
+  assert(!invalid.ok);
+  expect(PersonJson.formatError(invalid.error)).toBe(
+    "The value 200 must be less than 200.",
+  );
+  ```
+
+  The factory encodes through the supplied Type's canonical representation,
+  rejects Types without a JSON-safe `CanonicalInput`, validates branded JSON
+  against the represented Type, and parses text only once in the generated Type's
+  specialized Json-parent operation.
+
+  - Added Type-owned `formatError` and the `localizeTypes` derivation API. Every
+    Type can format its structured errors directly, while `localizeTypes` creates
+    fully typed localized Type collections.
+  - Added typed `from` and `from.parent` entry points. Callers can begin at the
+    most precise Type boundary they already satisfy, and the returned `Result`
+    contains only errors introduced after that boundary. `fromUnknown` remains
+    the complete validation boundary for genuinely unknown values.
+  - Added `createType`, `lazy`, `discriminatedUnion`, and `objectTag` for custom
+    validation, recursive Types, efficient discriminated routing, and object-tag
+    domains.
+  - Added predefined Types including `Never`, `Object`, `Symbol`, `UInt64`,
+    `Age`, `PositiveDecimalString`, `DateIsoFromDate`,
+    `Int64FromInt64String`, and `JsonValueFromJson`.
+  - Added structured issue models for Arrays, Sets, Tuples, Objects, Records,
+    Unions, discriminated Unions, transformations, and JSON values. Validation
+    can stop at the first error or retain every reachable issue.
+
+  ### Improved
+  - Made `is` test exact Output membership. A transformed Type no longer reports
+    that an encoded Input belongs to its semantic Output domain merely because it
+    can be decoded.
+  - Improved localization to follow composed error graphs without coupling
+    validation logic to messages or bundling unused locales. Localized Types
+    preserve their structured errors, recursive composition, and specialized
+    public operations.
+  - Improved `instanceOf` to require one concrete constructor and use intrinsic
+    prototype-chain membership, accepting subclasses while ignoring custom
+    `Symbol.hasInstance` implementations.
+  - Kept `InferType` for declaring named Object and Typed Type Outputs as
+    interfaces, preserving concise interface names in TypeScript tooltips and
+    error messages.
+  - Kept Standard Schema V1 interoperability and improved it to collect
+    structural issues across nested values with exact property paths and the
+    selected Type's localized messages. Standard Schema Input and Output
+    inference now follows the Type's actual codec contract.
+  - Made structural Types validate exact JavaScript representations. Arrays and
+    Tuples require dense own data elements; Objects and Records require own,
+    enumerable data properties; closed Objects reject excess properties; and
+    accessors are rejected without being invoked.
+  - Made structural validation realm-neutral where realm identity is not part of
+    the semantic domain. Plain objects, Arrays, Sets, and supported built-ins from
+    another realm are accepted when their representations are otherwise valid.
+  - Made Type construction reject invalid declarations that TypeScript cannot
+    express, including refinements that replace values, transformation callbacks
+    returning the wrong representation, incompatible error names, and ambiguous
+    child Types.
+  - Made recursive validation and canonical JSON encoding stack-safe, including
+    direct and mutually recursive `lazy` Types.
+
+  ### Fixed
+  - Fixed typed operations silently accepting structurally assignable values that
+    violate runtime invariants. Such violations now throw `Expected <Type name>.`
+    errors with the exact structured validation error preserved as `cause`.
+  - Fixed Object and Record validation accepting inherited, hidden,
+    accessor-backed, or unexpected properties and fixed Array, Set, and Tuple
+    validation accepting invalid structural representations.
+  - Fixed composed transformations losing output-side validation errors or using
+    the wrong decoding and encoding boundary.
+  - Fixed Union dispatch, error inference, literal shorthand, and composition
+    with transformed and structural member Types.
+  - Fixed localized Types losing specialized public operations, including the
+    generated JSON Type's single-parse `from.parent` operation.
+
+  ### Changed and removed
+  - Renamed `ExtractType` to `ExtractTyped` to clarify that it selects a
+    discriminated member from a `Typed` Output union rather than extracting the
+    Output of an Evolu Type.
+  - Replaced legacy `base` and `recursive` construction with `createType` and
+    `lazy`.
+  - Replaced the legacy global formatter registry and standalone formatter
+    functions with Type-owned `formatError` and tree-shakeable localized Type
+    collections.
+  - Removed `CurrencyCode` because its validation modeled currency identifiers
+    incorrectly.
+  - Removed redundant predefined String Types such as `NonEmptyString`,
+    `String100`, and `NonEmptyString100`. Applications can compose the exact
+    String constraints their domain requires, while Evolu retains the recommended
+    trimmed, non-empty defaults.
+
+- 7fe328d: Changed `ok()` to return `Result<T, never>` and `err()` to return `Result<never, E>` for correct type inference.
+- 2abf93d: Refactored SQLite integration to use Task and throw-first semantics
+
+  - Changed `createSqlite` to `Task<Sqlite, never, CreateSqliteDriverDep>`
+  - Changed `CreateSqliteDriver` to `Task<SqliteDriver>`
+  - Removed `SqliteError` from SQLite driver/task APIs
+  - Changed `Sqlite.exec` to return `SqliteExecResult` directly (no `Result<..., SqliteError>`)
+  - Changed `Sqlite.transaction` to support callbacks returning either `Result<T, E>` or `void` (no `SqliteError` in the error channel)
+  - Changed `Sqlite.export` to return `Uint8Array` directly (no `Result<..., SqliteError>`)
+  - Simplified `SqliteDriver.exec` by removing the `isMutation` parameter, so the driver determines read vs write internally
+  - Replaced `options.memory` and `options.encryptionKey` with a discriminated `options.mode` field (`"memory"` | `"encrypted"`)
+  - Updated Expo and op-sqlite drivers to match the new API
+  - Added SQLite schema metadata primitives (`SqliteSchema`, `SqliteIndex`, `eqSqliteIndex`, `getSqliteSchema`, `getSqliteSnapshot`)
+  - Added `testSetupSqlite` helper for SQLite tests
+
+  Why `SqliteError` was removed:
+
+  - In Evolu, SQLite runs in-process. Failures are infrastructure-level and unrecoverable at the call site.
+  - Wrapping these failures as `Result` values did not create meaningful recovery paths; callers still had to fail.
+  - Such failures now throw as Task defects, panic the owning Run tree, and are reported through its `ReportDefect` dependency.
+  - Platform Run adapters provide native defect reporters, and applications can inject a custom reporter at the composition root.
+
+  Boundary handling:
+
+  - At protocol boundaries (for example Protocol ↔ Storage), error handling remains explicit.
+  - Since storage implementations may throw, boundary code uses `try/catch`, logs with `console.error(error)`, and returns protocol-level outcomes.
+  - Protocol handles all thrown errors as boundary concerns, without coupling to SQLite-specific error types.
+
+- 252ede2: Added Task and Resource APIs for structured asynchronous lifetimes.
+
+  Task provides JavaScript-native structured concurrency. A Run starts Tasks, owns their child lifetimes, propagates abort, waits for cleanup, reports defects, provides dependencies, and exposes lifecycle state. Tasks return domain outcomes as Results, while Fibers provide Promise-compatible handles for running work.
+
+  Task includes helpers for collection, racing, bounded concurrency, scheduling, retry, repetition, timeouts, callbacks, HTTP requests, abortability, daemons, resource bracketing, and concurrency primitives.
+
+  Resource provides concurrency-safe ownership and reuse of Disposable and AsyncDisposable values. Shared resources are created lazily, retained through disposable leases, and disposed after their final lease is released. Resources can be indexed by logical keys, retained by claims, observed through snapshots, kept alive for configurable idle periods, and checked for leaked ownership in development.
+
+- e96c8dd: Replaced inherited Task concurrency with collection options
+
+  Removed `concurrently` and `Run.concurrency`. Added a `concurrency` option to `all`, `allSettled`, `any`, `firstN`, `firstNSettled`, and `each`. Each helper defaulted to running one Task at a time, while `race` continued to run every Task concurrently.
+
+- d30b95a: Refactored Time module for type safety, consistency, and better abstractions.
+
+  **Type safety:**
+
+  - Changed `Time.now()` return type from `number` to `Millis`
+  - Added `Millis` branded type with efficient 6-byte serialization (max value: year 10889)
+  - Added `minMillis` and `maxMillis` constants
+  - `now()` now throw on invalid values for consistent error handling
+
+  **Timer abstraction:**
+
+  - Added `Time.setTimeout` and `Time.clearTimeout` for platform-agnostic timers
+  - Added `TimeoutId` opaque type for timeout handles
+  - Added `TestTime` interface with `advance()` for controllable time in tests
+  - Added `testCreateTime` with `startAt` and `autoIncrement: "microtask" | "sync"` options
+
+  **Duration literals:**
+
+  - Renamed `DurationString` to `DurationLiteral`
+  - Each duration has exactly one canonical form (e.g., "1000ms" must be written as "1s")
+  - Added decimal support: "1.5s" (1500ms), "1.5h" (90 minutes)
+  - Added weeks ("1w" to "51w") and years ("1y" to "99y")
+  - Removed combination syntax ("1h 30m") in favor of decimals ("1.5h")
+  - Months not supported (variable length)
+
+  **UI responsiveness constants:**
+
+  - `ms60fps` (16ms frame budget at 60fps)
+  - `ms120fps` (8ms frame budget at 120fps)
+  - `msLongTask` (50ms long task threshold for use with `yieldNow`)
+
+  **Formatting utilities:**
+
+  - Added `formatMillisAsDuration(millis)` - formats as human-readable duration (`1.234s`, `1m30.000s`, `1h30m45.000s`)
+  - Added `formatMillisAsClockTime(millis)` - formats as clock time (`HH:MM:SS.mmm`)
+  - Added `/*#__PURE__*/` annotation to `Millis` for better tree-shaking
+
+- b85837f: Improved wall-clock, performance, and monotonic time APIs.
+
+  **Common:**
+
+  - Replaced `Time.nowDateIso()` with the `Time.now("DateIso")` overload.
+  - Added `Time.performance` with a high-resolution clock and time origin, plus branded `PerformanceTime`, `PerformanceTimeOrigin`, and `PerformanceDuration` values.
+  - Added `performanceDurationBetween()` for measuring elapsed performance time.
+  - Made timeout IDs instance-owned so clearing an ID with another `Time` instance throws.
+  - Made native-range timeouts independent of wall-clock changes while retaining absolute-deadline handling for longer timeouts.
+  - Extended `formatMillisAsDuration()` to format days, weeks, and years.
+
+  **Node.js:**
+
+  - Added `NodejsTime` and `createNodejsTime()` with `hrtime()` for monotonic nanosecond readings.
+  - Added branded `HrTime` and `HrDuration` values with `hrDurationBetween()`.
+  - Added `hrDurationToMillis()` and `millisToHrDuration()` conversions.
+
+- 953c1fb: Replaced interface-based symmetric encryption with direct function-based API
+
+  ### Breaking Changes
+
+  **Removed:**
+
+  - `SymmetricCrypto` interface
+  - `SymmetricCryptoDep` interface
+  - `createSymmetricCrypto()` factory function
+  - `SymmetricCryptoDecryptError` error type
+
+  **Added:**
+
+  - `encryptWithXChaCha20Poly1305()` - Direct encryption function with explicit algorithm name
+  - `decryptWithXChaCha20Poly1305()` - Direct decryption function
+  - `XChaCha20Poly1305Ciphertext` - Branded type for ciphertext
+  - `Entropy24` - Branded type for 24-byte nonces
+  - `DecryptWithXChaCha20Poly1305Error` - Algorithm-specific error type
+  - `xChaCha20Poly1305NonceLength` - Constant for nonce length (24)
+
+  ### Migration Guide
+
+  **Before:**
+
+  ```ts
+  const symmetricCrypto = createSymmetricCrypto({ randomBytes });
+  const { nonce, ciphertext } = symmetricCrypto.encrypt(plaintext, key);
+  const result = symmetricCrypto.decrypt(ciphertext, key, nonce);
+  ```
+
+  **After:**
+
+  ```ts
+  const [ciphertext, nonce] = encryptWithXChaCha20Poly1305({ randomBytes })(
+    plaintext,
+    key,
+  );
+  const result = decryptWithXChaCha20Poly1305(ciphertext, nonce, key);
+  ```
+
+  **Error handling:**
+
+  ```ts
+  // Before
+  if (!result.ok && result.error.type === "SymmetricCryptoDecryptError") { ... }
+
+  // After
+  if (!result.ok && result.error.type === "DecryptWithXChaCha20Poly1305Error") { ... }
+  ```
+
+  **Dependency injection:**
+
+  ```ts
+  // Before
+  interface Deps extends SymmetricCryptoDep { ... }
+
+  // After - only encrypt needs RandomBytesDep
+  interface Deps extends RandomBytesDep { ... }
+  ```
+
+  ### Rationale
+
+  This change improves API extensibility by using explicit function names instead of a generic interface. Adding new encryption algorithms (e.g., `encryptWithAES256GCM`) is now straightforward without breaking existing code.
+
+- 9ba5442: Renamed `TransferableError` to `UnknownError` to better reflect its purpose as a wrapper for unknown errors caught at runtime, not just errors that need to be transferred between contexts
+- c24ec2f: **Breaking:** Standard Schema validation now returns JSON-serialized errors instead of formatted messages
+
+  Users who need human-readable messages should deserialize the error and format it using appropriate `TypeErrorFormatter`s:
+
+  ```ts
+  const result = MyType["~standard"].validate(input);
+  if (!result.ok) {
+    for (const issue of result.issues) {
+      const error = JSON.parse(issue.message);
+      const message = formatTypeError(error);
+      // use message...
+    }
+  }
+  ```
+
+  This gives consumers full control over error formatting while keeping the Standard Schema integration simple.
+
+- 5c55b05: Changed the local database and ownership layout.
+
+  Upgrading an existing Evolu 7 application to Evolu 8 is not yet supported.
+  Applications containing Evolu 7 user data should remain on Evolu 7 until
+  migration support is released. New Evolu 8 applications and applications
+  already using Evolu 8 preview releases are unaffected.
+
+- 4be336d: Refactored worker abstraction to support all platforms uniformly:
+
+  - Added platform-agnostic worker interfaces: `Worker<Input, Output>`, `SharedWorker<Input, Output>`, `MessagePort<Input, Output>`, `MessageChannel<Input, Output>`
+  - Added worker-side interfaces: `WorkerSelf<Input, Output>` and `SharedWorkerSelf<Input, Output>` for typed worker `self` wrappers
+  - Changed `onMessage` from a method to a property for consistency with Web APIs
+  - Made all worker and message port interfaces `Disposable` for proper resource cleanup
+  - Added default generic parameters (`Output = never`) for simpler one-way communication patterns
+  - Added complete web platform implementations: `createWorker`, `createSharedWorker`, `createMessageChannel`, `createWorkerSelf`, `createSharedWorkerSelf`, `createMessagePort`
+  - Added React Native polyfills for Workers and MessageChannel
+
+- 66cfc01: Renamed the exported `Mutable<T>` utility type to `Writable<T>`.
+
+### Minor Changes
+
+- 5a21b73: Added `disposable` and `isDisposable` for safe object disposal
+
+  `disposable` adds synchronous or asynchronous disposal to an object and prevents its methods from being called after disposal. It can own an existing `DisposableStack` or `AsyncDisposableStack`, transferring the stack's resources to the returned object.
+
+  `isDisposable` checks whether a value implements synchronous or asynchronous JavaScript disposal.
+
+- 705c6af: Added the `IsUnion` TypeScript utility type.
+- 555627d: Added `LeakDetector` for development-time leak detection
+
+  `LeakDetector` uses `FinalizationRegistry` to report handles that are garbage-collected without explicit cleanup, including the stack where each handle was tracked. It is a no-op in production and in runtimes without `FinalizationRegistry`.
+
+  Evolu developers do not need to use `LeakDetector` directly. The upcoming Evolu Task and Resource APIs enable it by default in development mode.
+
+- 86726aa: Added `RefCountedRelation` for bidirectional retain counts
+
+  `createRefCountedRelation` tracks a retain count for each pair while indexing canonical values in both directions. It supports custom lookup functions, reports pair transitions through `increment` and `decrement`, and returns snapshots that remain stable while the relation is mutated.
+
+- 6fc3bba: Added `todo` function, a development placeholder that always throws
+
+  Use to sketch function bodies before implementing them. TypeScript infers the return type from context, so surrounding code still type-checks. Use an explicit generic when there is no return type annotation.
+
+  ```ts
+  // Type inferred from return type annotation
+  const fetchUser = (id: UserId): Result<User, FetchError> => todo();
+
+  expectTypeOf(fetchUser).returns.toEqualTypeOf<Result<User, FetchError>>();
+
+  // Explicit generic when no return type
+  const getConfig = () => todo<Config>();
+
+  expectTypeOf(getConfig).returns.toEqualTypeOf<Config>();
+  ```
+
+- 2f39c8e: Added utilities for awaitable values, numeric ranges, and type intersections
+
+  `Awaitable<T>` represents a value that can be returned synchronously or as a `PromiseLike`, while `isPromiseLike` narrows an awaitable value for code that handles the synchronous path without an unnecessary await.
+
+  `Digit`, `Digit1To9`, `Digit1To6`, `Digit1To23`, `Digit1To51`, `Digit1To59`, and `Digit1To99` provide bounded numeric string types for validating values such as days, hours, weeks, minutes, seconds, and years.
+
+  `UnionToIntersection<U>` converts a union to an intersection. `ParameterIntersection<T>` infers the intersection of parameter types from a union of unary functions without allowing an `unknown` parameter to erase the concrete parameter types.
+
+  `KeysOfUnion<T>` returns every property key present in any member of a union.
+
+  `ValueWithLength` was added for values with a readonly numeric `length`.
+
+  `CompileTimeError<Context, Message>` was added for consistent, readable compiler-facing error messages, and Schema validation errors were updated to use it.
+
+- ce83b24: Added assertion utilities for Evolu Types and non-nullable values
+
+  `assertType` validates a value against an Evolu Type and narrows it to the inferred TypeScript type. It uses the Type name for the error message and preserves the Type validation error as the cause.
+
+  `assertNonNullable` verifies that a value is neither `null` nor `undefined` and narrows it to `NonNullable<T>` for invariants that TypeScript cannot prove statically.
+
+  ```ts
+  const length = buffer.getLength();
+  assertType(NonNegativeInt, length);
+  ```
+
+- 408307b: Added `escapeRegExp` for escaping strings used in regular expressions and
+  improved `safelyStringifyUnknownValue` for formatting unknown diagnostic
+  values.
+- 1a04b81: Added tree-shakeable Czech Evolu Type error formatters under `@evolu/common/intl`.
+- a883a8c: Added signal-aware relay authorization and exposed the actual bound port from Node.js relays.
+
+  Added WebSocket test helpers for native client setup and raw upgrade requests.
+
+  Made relay storage count duplicate timestamped messages only once when computing owner usage.
+
+  Renamed the Node.js `startRelay` API to `createRelay` and made it return a Resource-producing Task whose disposal owns the relay lifecycle.
+
+  Replaced the Node.js `createRun` and `ShutdownDep` APIs with `runMain`, which owns the root Run, handles termination signals, disposes returned resources, reports defects, and supports service and command exit behavior.
+
+- 5f9602c: Improved `trySync` and `tryAsync` exception handling
+
+  `trySync` and `tryAsync` now return the original thrown or rejected value as `Err` when no error mapper is provided. Error mappers can throw when a failure must be escalated instead of represented as a `Result`.
+
+  `tryAsync` now accepts synchronous and asynchronous return values while preserving its asynchronous boundary.
+
+- 0af46e1: Added Map and WeakMap upsert helpers and binary-type improvements to `@evolu/common`.
+
+  - Added `LookupMap.getOrInsert` and `LookupMap.getOrInsertComputed` for lookup-key-aware insert-or-read operations that preserve the first logical key representative.
+  - Added the `ArrayBuffer` base `Type` and formatter support.
+  - Installed `Map` and `WeakMap` collection upsert polyfills in `installPolyfills()` for runtimes that do not provide them yet.
+  - Normalized `WebSocket.send` binary payload handling so `Uint8Array` views backed by `ArrayBuffer` stay zero-copy while `SharedArrayBuffer`-backed views are cloned into a sendable `Uint8Array`.
+
+- f0bbebb: Added `createObjectURL` helper for safe, disposable `URL.createObjectURL` usage using JS Resource management so the URL is disposed automatically when the scope ends.
+
+  Example:
+
+  ```ts
+  const handleDownloadDatabaseClick = () => {
+    void evolu.exportDatabase().then((data) => {
+      using objectUrl = createObjectURL(
+        new Blob([data], { type: "application/x-sqlite3" }),
+      );
+
+      const link = document.createElement("a");
+      link.href = objectUrl.url;
+      link.download = `${evolu.name}.sqlite3`;
+      link.click();
+    });
+  };
+  ```
+
+- 332dfca: Added pull-based protocol types for modeling three-outcome operations
+
+  New types and utilities for iterators and streams where completion is a normal outcome, not an error:
+
+  - `Done<D>` - Signal type for normal completion with optional summary value
+  - `done(value)` - Factory function to create Done instances
+  - `NextResult<A, E, D>` - Result that can complete with value, error, or done
+  - `nextResult(ok, err, done)` - Factory for creating NextResult Type instances
+  - `UnknownNextResult` - Type instance for runtime `.is()` checks
+  - `InferDone<R>` - Extracts the done value type from a NextResult
+  - `NextTask<T, E, D>` - Task that can complete with value, error, or done
+  - `InferTaskDone<T>` - Extracts the done value type from a NextTask
+
+  The naming follows the existing pattern: `Result` → `NextResult`, `Task` → `NextTask`.
+
+- 3247415: Added readable percentage inputs to the Number module.
+
+  `Percentage` follows the same pattern as `Duration`: APIs accept a readable,
+  compile-time-validated literal for values written in code, or a validated
+  numeric value for computed and dynamic inputs.
+
+  ```ts
+  // Readable static values.
+  jitter("25%")(schedule);
+  spaced("30s");
+
+  // Validated computed values.
+  jitter(Ratio.orThrow(computedRatio))(schedule);
+  spaced(Millis.orThrow(computedMillis));
+  ```
+
+  This keeps call sites self-explanatory (`"25%"` instead of the ambiguous `0.25`)
+  without sacrificing numeric precision or runtime validation.
+
+  - `PercentageLiteral` represents canonical values from `"0%"` to `"100%"` with up to one decimal place.
+  - `Percentage` accepts either a `PercentageLiteral` or a validated `Ratio`.
+  - `percentageToRatio` converts either representation to a numeric `Ratio`.
+
+- 7da2364: Added Option module for distinguishing absence from nullable values.
+
+  Use Option when the value itself can be `null` or `undefined`. For APIs where `null` means "not found", just use `T | null` directly.
+
+  **Types:**
+
+  - `Option<T>` — `Some<T> | None`
+  - `Some<T>` — present value
+  - `None` — absent value
+  - `InferOption<O>` — extracts value type from Option or Some
+
+  **Functions:**
+
+  - `some(value)` — creates a Some
+  - `none` — shared None instance
+  - `isSome(option)` — type guard for Some
+  - `isNone(option)` — type guard for None
+  - `fromNullable(value)` — converts nullable to Option
+
+- 6f1d6ea: Added `RandomNumber` branded type for type-safe random values
+
+  - `RandomNumber` — branded `number` type for values in [0, 1) range
+  - `Random.next()` now returns `RandomNumber` instead of `number`
+  - Prevents accidentally passing arbitrary numbers where random values are expected
+
+- 5f97e83: Added Result composition helpers for arrays and structs.
+
+  - **`flatMapResult`** — composes a successful Result with another Result-returning operation
+  - **`allResult`** — extracts all values from an array/struct of Results, returning the first error if any fails
+  - **`mapResult`** — maps items to Results and extracts all values, returning the first error if any fails
+  - **`anyResult`** — returns the first successful Result, or the last error if all fail
+
+  ```ts
+  // Extract values from array of Results
+  const results = [ok(1), ok(2), ok(3)];
+  const all = allResult(results); // ok([1, 2, 3])
+
+  // Map items to Results
+  const users = mapResult(userIds, fetchUser);
+  // Result<ReadonlyArray<User>, FetchError>
+
+  // First success wins
+  const result = anyResult([err("a"), ok(42), err("b")]); // ok(42)
+
+  // Struct support
+  const struct = allResult({ a: ok(1), b: ok("two") });
+  // ok({ a: 1, b: "two" })
+  ```
+
+- 78a1a64: Added runtime identity for interfaces.
+
+  `Instance`, `instance`, and `isInstance` provide a realm-neutral alternative to
+  `instanceof` for trusted objects defined by interfaces. `EvoluType` uses the
+  same identity to validate Evolu Types.
+
+  ```ts
+  interface Foo extends Instance<"Foo"> {
+    readonly value: string;
+  }
+
+  const foo: Foo = { ...instance("Foo"), value: "value" };
+  const isFoo = isInstance<Foo>("Foo");
+
+  expect(isFoo(foo)).toBe(true);
+  ```
+
+- 2c8576e: Added SameValueZero equality and used it for number equality and Store change detection.
+- 3ba2a92: Added Schedule module for composable scheduling strategies.
+
+  **Schedule** is a composable abstraction for retry, repeat, and rate limiting. Each schedule is a state machine: calling `schedule(deps)` creates a step function, and each `step(input)` returns `Ok([Output, Millis])` or `Err(Done<void>)` to stop.
+
+  **Constructors:**
+
+  - `forever` — never stops, no delay (base for composition)
+  - `once` — runs exactly once
+  - `recurs(n)` — runs n times
+  - `spaced(duration)` — constant delay
+  - `exponential(base, factor?)` — exponential backoff
+  - `linear(base)` — linear backoff
+  - `fibonacci(initial)` — Fibonacci backoff
+  - `fixed(interval)` — window-aligned intervals
+  - `windowed(interval)` — sleeps until next window boundary
+  - `fromDelay(duration)` — single delay
+  - `fromDelays(...durations)` — sequence of delays
+  - `elapsed` — outputs elapsed time
+  - `during(duration)` — runs for specified duration
+  - `always(value)` — constant output
+  - `unfoldSchedule(initial, next)` — state machine
+
+  **Combinators:**
+
+  - Limiting: `take`, `maxElapsed`, `maxDelay`
+  - Delay: `jitter` (downward or mean-preserving around jitter), `delayed`, `addDelay`, `modifyDelay`, `compensate`
+  - Filtering: `whileScheduleInput`, `untilScheduleInput`, `whileScheduleOutput`, `untilScheduleOutput`, `resetScheduleAfter`
+  - Transform: `mapSchedule`, `passthrough`, `foldSchedule`, `repetitions`, `delays`
+  - Collection: `collectAllScheduleOutputs`, `collectScheduleInputs`, `collectWhileScheduleOutput`, `collectUntilScheduleOutput`
+  - Composition: `sequenceSchedules`, `intersectSchedules`, `unionSchedules`, `whenInput`
+  - Side effects: `tapScheduleOutput`, `tapScheduleInput`
+
+  **Presets:**
+
+  - `retryStrategyAws` — AWS SDK for Java 2.1 ordinary-failure timing with exponential backoff (50ms base), max 2 retries, 20s cap, and full jitter
+
+- 5720b0b: Added Set module with type-safe helpers for immutable set operations.
+
+  **Types:**
+
+  - `NonEmptyReadonlySet<T>` — branded type for sets with at least one element (no mutable variant because `clear()`/`delete()` would break the guarantee)
+
+  **Constants:**
+
+  - `emptySet` — singleton empty set to avoid allocations
+
+  **Type guards:**
+
+  - `isNonEmptySet` — narrows to branded `NonEmptyReadonlySet`
+
+  **Transformations:**
+
+  - `addToSet` — returns branded non-empty set with item added
+  - `deleteFromSet` — returns new set with item removed
+  - `mapSet` — maps over set, preserves non-empty type
+  - `filterSet` — filters set with predicate or refinement
+
+  **Accessors:**
+
+  - `firstInSet` — returns first element by insertion order (requires branded type)
+
+- ef7f242: Added Web Locks helpers in `@evolu/common`: `LockManagerDep`,
+  `testCreateLockManager`, and `acquireLeaderLock`.
+
+  `testCreateLockManager` is a native-backed test helper because native `LockManager` cannot be instantiated per test. It isolates lock usage per instance with internal namespacing while preserving visible lock names and native Web Locks behavior in tests.
+
+  `acquireLeaderLock` acquires an exclusive leader-election lease for a name and returns an async-disposable handle that holds leadership until disposed.
+
+  Added a React Native `lockManager` ponyfill in `@evolu/react-native` because React Native does not support [Web Locks](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API) yet.
+
+- e948269: Added optional equality function to `Ref` and `ReadonlyStore` interface. `Ref.set` and `Ref.modify` now return `boolean` indicating whether state was updated. `Store` now uses `Ref` internally for state management.
+- d1f817f: Added Resource management polyfills
+
+  Provides `Symbol.dispose`, `Symbol.asyncDispose`, `DisposableStack`, and `AsyncDisposableStack` for environments without native support (e.g., Safari). This enables the `using` and `await using` declarations for automatic resource cleanup.
+
+  Polyfills are installed automatically when importing `@evolu/common`.
+
+  See `Result.test.ts` for usage patterns combining `Result` with `using`, `DisposableStack`, and `AsyncDisposableStack`.
+
+- 252ede2: Added Task-aware HTTP helpers.
+
+  `fetch` consumes the native `Response` within the Task lifetime and supports text, JSON, bytes, headers-only, and custom response consumers. It distinguishes transport, HTTP status, and response body errors while preserving Task abort semantics.
+
+  `NativeFetchDep` makes the underlying fetch implementation replaceable at the composition root. Added deterministic native fetch test helpers for recording requests, queueing responses, and testing response body failures.
+
+- 2516e46: Added `Ratio` to the Type module for validated finite numbers from 0 to 1, inclusive.
+
+  A ratio is the numeric representation of a percentage: `0.25` represents `25%`.
+
+- 3b74e48: Added `result` Type factory and `typed` overload for props-less discriminants
+
+  **Result Type factory:**
+
+  - `result(okType, errType)` — creates a Type for validating serialized Results from storage, APIs, or message passing
+  - `UnknownResult` — validates `Result<unknown, unknown>` for runtime `.is()` checks
+
+  **typed overload:**
+
+  - `typed(tag)` now accepts just a tag without props for simple discriminants like `typed("Pending")`
+  - Added `TypedType<Tag, Props?>` helper type for the return type of `typed`
+
+- 9373afa: Added `Typed` interface and `typed` factory for discriminated unions
+
+  Discriminated unions model mutually exclusive states where each variant is a distinct type. This makes illegal states unrepresentable — invalid combinations cannot exist.
+
+  ```ts
+  // Type-only usage for static discrimination
+  interface Pending extends Typed<"Pending"> {
+    readonly createdAt: DateIso;
+  }
+  interface Shipped extends Typed<"Shipped"> {
+    readonly trackingNumber: TrackingNumber;
+  }
+  type OrderState = Pending | Shipped;
+
+  // Runtime validation with typed() factory
+  const Pending = typed("Pending", { createdAt: DateIso });
+  const Shipped = typed("Shipped", { trackingNumber: TrackingNumber });
+  ```
+
+- 65a86e2: Added `webSocketReconnectSchedule` as the default WebSocket reconnect policy.
+
+  The schedule retries indefinitely with exponential backoff, a 100ms base, a
+  30s cap, and full jitter.
+
+### Patch Changes
+
+- b096543: Added test coverage proving that `createSlip21` normalizes numeric path elements to strings.
+- e6b166a: Preserved the native console receiver when writing console output.
+- f7d505a: Fixed in-memory transferred message port lifetime so transferred ports stayed usable while ownership moved between wrappers during disposal and re-creation.
+- cebf659: Preserved specialized Type input operations during localization so generated JSON Types parse their Json parent only once.
+- a70d933: Improved Schedule timing safety and validation.
+
+  Schedule now:
+
+  - Saturates computed delays to valid `Millis` values instead of throwing on overflow.
+  - Handles backwards-clock elapsed deltas without producing invalid branded values.
+  - Validates numeric Schedule options.
+
+  Also added:
+
+  - `saturateMillis` in the Time module for converting numbers to valid `Millis` values with overflow saturation.
+  - `NonNegativeFiniteNumber` in the Type module for validating non-negative finite numbers.
+
+- 0fbb5e7: Kept SharedWorker Evolu tenants alive briefly after the last instance was released so immediate dispose-and-recreate flows continue using the same local-first runtime.
+- 151e73b: Updated Kysely to 0.29.4 and removed its unnecessary runtime import from TypeScript utilities.
+- 39084b3: Updated Kysely to 0.29 and msgpackr to 2.
+
 ## 8.0.0-next.5
 
 ### Minor Changes
