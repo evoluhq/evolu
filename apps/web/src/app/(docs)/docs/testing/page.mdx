@@ -1,0 +1,278 @@
+export const metadata = {
+  title: "Testing",
+};
+
+# Testing
+
+Test Evolu code by making dependencies explicit and passing deterministic test
+implementations. You do not need a dependency injection container or module
+mocks: dependencies are ordinary values, so a test can construct exactly what
+the unit needs.
+
+The examples use [Vitest](https://vitest.dev/), but the test helpers exported by
+`@evolu/common` are test-runner independent.
+
+## Setup
+
+Install Vitest and Evolu's Vitest assertions:
+
+```bash
+npm install --save-dev vitest @evolu/vitest
+```
+
+`@evolu/vitest` provides `expectOk` and `expectErr`. They compare a
+[`Result`](/docs/api-reference/common/Result/type-aliases/Result) with Vitest's
+`toEqual` and narrow its type. The deterministic dependencies and test doubles
+come from `@evolu/common`.
+
+## Test through dependencies
+
+Define the smallest dependency interface that production code needs. In a test,
+provide a small implementation of that interface and assert the result and any
+observable calls.
+
+```ts
+import { err, ok, type Result } from "@evolu/common";
+import { expectErr, expectOk } from "@evolu/vitest";
+import { expect, test } from "vitest";
+
+interface UserNotFoundError {
+  readonly type: "UserNotFoundError";
+  readonly id: string;
+}
+
+interface Users {
+  readonly findName: (id: string) => Result<string, UserNotFoundError>;
+}
+
+interface UsersDep {
+  readonly users: Users;
+}
+
+const greetUser =
+  (deps: UsersDep) =>
+  (id: string): Result<string, UserNotFoundError> => {
+    const name = deps.users.findName(id);
+    if (!name.ok) return name;
+
+    return ok(`Hello, ${name.value}`);
+  };
+
+test("greets an existing user", () => {
+  const requestedIds: Array<string> = [];
+  const deps: UsersDep = {
+    users: {
+      findName: (id) => {
+        requestedIds.push(id);
+        return ok("Ada");
+      },
+    },
+  };
+
+  const result = greetUser(deps)("user-1");
+
+  expectOk(result, "Hello, Ada");
+  expect(requestedIds).toEqual(["user-1"]);
+});
+
+test("preserves a domain error", () => {
+  const error: UserNotFoundError = {
+    type: "UserNotFoundError",
+    id: "missing",
+  };
+  const deps: UsersDep = {
+    users: { findName: () => err(error) },
+  };
+
+  expectErr(greetUser(deps)("missing"), error);
+});
+```
+
+This tests the unit's contract without replacing imported modules. If several
+tests need the same arrangement, extract a local `setupFoo` helper that returns
+fresh dependencies and any state the test needs to inspect.
+
+<Note>
+  A caller may pass more dependencies than a function requires, but the function
+  should declare only the dependencies it actually uses. A broad test deps
+  object is not a reason to broaden a production function's dependency type.
+</Note>
+
+See [Dependency injection](/docs/dependency-injection) for the production
+conventions behind this pattern.
+
+## Test Tasks
+
+Use [`testCreateRun`](/docs/api-reference/common/Task/functions/testCreateRun)
+instead of `createRun` in Task tests. It creates a root Run with deterministic,
+controllable default dependencies and merges in the custom dependencies passed
+by the test.
+
+```ts
+import { err, ok, testCreateRun, type Result, type Task } from "@evolu/common";
+import { expectErr, expectOk } from "@evolu/vitest";
+import { test } from "vitest";
+
+interface UserNotFoundError {
+  readonly type: "UserNotFoundError";
+}
+
+interface Users {
+  readonly findName: () => Result<string, UserNotFoundError>;
+}
+
+interface UsersDep {
+  readonly users: Users;
+}
+
+const greetUser: Task<string, UserNotFoundError, UsersDep> = ({ deps }) => {
+  const name = deps.users.findName();
+  if (!name.ok) return name;
+
+  return ok(`Hello, ${name.value}`);
+};
+
+test("runs a Task with test dependencies", async () => {
+  await using run = testCreateRun({
+    users: { findName: () => ok("Ada") },
+  });
+
+  expectOk(await run(greetUser), "Hello, Ada");
+});
+
+test("asserts a Task error", async () => {
+  const error: UserNotFoundError = { type: "UserNotFoundError" };
+  await using run = testCreateRun({
+    users: { findName: () => err(error) },
+  });
+
+  expectErr(await run(greetUser), error);
+});
+```
+
+Create the Run inside each test and dispose it with `await using`. Run Tasks with
+`run(task)`, never `task(run)`. Use `run.ok(task)` for test fixtures or internal
+setup Tasks whose error type is `never`; when an error is behavior under test,
+assert the returned Result instead.
+
+## Deterministic default dependencies
+
+Use
+[`testCreateDeps`](/docs/api-reference/common/Task/functions/testCreateDeps)
+for synchronous code that needs Evolu's default dependencies. Use
+`testCreateRun` for Tasks. Each call creates independent state.
+
+| Dependency                           | Test behavior and controls                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `time`                               | Starts at zero and advances only when `time.advance(duration)` is called.                              |
+| `random`, `randomBytes`, `randomLib` | Produce deterministic values from the default `"evolu"` seed or a seed passed to `testCreateDeps`.     |
+| `console`                            | Captures entries for `console.getEntriesSnapshot()` instead of writing them.                           |
+| `leakDetector`                       | Exposes `collect()` and `getTrackedCount()` so collection is explicit.                                 |
+| `reportDefect`                       | Records defects and exposes `next()`, `getDefects()`, and `getDefectsSnapshot()`.                      |
+| `nativeFetch`                        | Throws until the test provides a fetch implementation, so unexpected network access fails immediately. |
+
+Controllable time makes timing tests instant and independent of the wall clock:
+
+```ts
+import { sleep, testCreateRun } from "@evolu/common";
+import { expectOk } from "@evolu/vitest";
+import { test } from "vitest";
+
+test("sleeps without waiting for real time", async () => {
+  await using run = testCreateRun();
+
+  const fiber = run(sleep("1s"));
+  run.deps.time.advance("1s");
+
+  expectOk(await fiber, undefined);
+});
+```
+
+Override only the boundary relevant to the test. For example,
+[`testCreateNativeFetch`](/docs/api-reference/common/Http/functions/testCreateNativeFetch)
+provides a queued, inspectable fetch implementation:
+
+```ts
+import {
+  ok,
+  testCreateNativeFetch,
+  testCreateRun,
+  type Task,
+} from "@evolu/common";
+import { expectOk } from "@evolu/vitest";
+import { expect, test } from "vitest";
+
+const loadGreeting: Task<string> = async ({ deps }) => {
+  const response = await deps.nativeFetch("https://example.com/greeting");
+  return ok(await response.text());
+};
+
+test("loads a greeting", async () => {
+  const nativeFetch = testCreateNativeFetch(() => new Response("Hello, Ada"));
+  await using run = testCreateRun({ nativeFetch });
+
+  expectOk(await run(loadGreeting), "Hello, Ada");
+  expect(nativeFetch.calls).toHaveLength(1);
+});
+```
+
+## Stable test data
+
+Use [`testCreateId`](/docs/api-reference/common/Test/functions/testCreateId)
+when fixtures need valid, deterministic IDs. It returns a test-local ID factory
+whose successive calls produce distinct IDs. Recreating the factory replays the
+same sequence.
+
+```ts
+import { testCreateId, type Brand, type Id } from "@evolu/common";
+import { expect, expectTypeOf, test } from "vitest";
+
+test("creates stable branded IDs", () => {
+  const createId = testCreateId();
+  const firstTodoId = createId<"Todo">();
+  const secondTodoId = createId<"Todo">();
+
+  const replayCreateId = testCreateId();
+  expect(replayCreateId<"Todo">()).toBe(firstTodoId);
+  expect(secondTodoId).not.toBe(firstTodoId);
+  expectTypeOf(firstTodoId).toEqualTypeOf<Id & Brand<"Todo">>();
+});
+```
+
+Create the ID factory per test or per `setupFoo` helper. Do not share one across
+an entire test file: adding an ID in one test would shift the sequence used by
+later tests.
+
+## Find the right test helper
+
+Test helpers are normally colocated with the API they replace, which makes them
+easy to discover next to the production implementation:
+
+- [`testCreateTime`](/docs/api-reference/common/Time/functions/testCreateTime)
+  provides a controllable clock.
+- [`testCreateConsole`](/docs/api-reference/common/Console/functions/testCreateConsole)
+  captures structured console entries.
+- [`testCreateNativeFetch`](/docs/api-reference/common/Http/functions/testCreateNativeFetch)
+  queues handlers and records calls.
+- [`testCreateWebSocket`](/docs/api-reference/common/WebSocket/functions/testCreateWebSocket)
+  creates inspectable in-memory sockets.
+- [`testCreateWorker`](/docs/api-reference/common/Worker/functions/testCreateWorker)
+  and related helpers connect both sides of an in-memory worker.
+- [`testSetupSqlite`](/docs/api-reference/common/Sqlite/functions/testSetupSqlite)
+  creates a disposable in-memory SQLite setup from a platform driver.
+
+The `Test` module is reserved for cross-module helpers that cannot be colocated
+without creating dependency cycles. Test helpers exported by library modules
+use the `testX` prefix. Reusable helpers local to a test suite use `setupX`.
+
+## Unit and integration tests
+
+Prefer unit tests for domain decisions, error branches, scheduling, and
+dependency interactions. Use integration tests when the platform behavior is
+part of the contract—for example a real SQLite driver, Worker, WebSocket, or
+framework binding.
+
+Whether a test uses a test double or a real platform implementation, keep its
+resources local to the test and release them with `using` or `await using`. See
+[Resource management](/docs/resource-management) for ownership and cleanup
+patterns.

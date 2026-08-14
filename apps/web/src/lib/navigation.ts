@@ -34,6 +34,7 @@ export const navigation: Array<NavGroup> = [
         href: "/docs/api-reference/common/Type/interfaces/Type",
       },
       { title: "Conventions", href: "/docs/conventions" },
+      { title: "Testing", href: "/docs/testing" },
     ],
   },
   {
