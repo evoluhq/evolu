@@ -15,34 +15,37 @@ const transformUsing = {
       : undefined,
 };
 
-// Coverage with v8 only works with a single browser instance. The VS Code
-// Vitest extension enables coverage internally instead of passing --coverage,
-// so extension runs need the same browser setup.
-const isSingleBrowserRun =
-  process.argv.includes("--coverage") || process.env.VITEST_VSCODE === "true";
-
-export default defineProject({
+export default defineProject(({ mode }) => ({
   root: resolve(import.meta.dirname, "../../.."),
+  cacheDir: resolve(
+    import.meta.dirname,
+    `../../../node_modules/.vite/browser-unit-${mode}`,
+  ),
   plugins: [transformUsing],
   test: {
     snapshotSerializers: [
       "./test/unit/vitest/common/local-first/_uint8ArraySerializer.ts",
     ],
     include: ["test/unit/vitest/common/*.test.ts"],
-    name: "browser",
+    name: "browser-unit",
     setupFiles: ["./test/unit/vitest/common/_setup.ts"],
     browser: {
       enabled: true,
       provider: playwright(),
+      api: { port: 63315 },
       headless: true,
       fileParallelism: false,
-      instances: isSingleBrowserRun
-        ? [{ browser: "chromium" }]
-        : [
-            { browser: "chromium" },
-            { browser: "firefox" },
-            { browser: "webkit" },
-          ],
+      instances:
+        // V8 coverage only works with Chromium.
+        process.argv.includes("--coverage")
+          ? [{ browser: "chromium" }]
+          : mode === "firefox-webkit"
+            ? [{ browser: "firefox" }, { browser: "webkit" }]
+            : [
+                { browser: "chromium" },
+                { browser: "firefox" },
+                { browser: "webkit" },
+              ],
     },
   },
-});
+}));

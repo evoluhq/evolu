@@ -31,9 +31,13 @@ The repository requires Node.js 24 or newer and pnpm.
 - `pnpm playwright:install` — install browsers for Playwright-based tests and
   `pnpm verify`. Run it after Playwright updates or browser-cache removal.
 - `pnpm typecheck` — type-check packages, scripts, and benchmarks.
-- `pnpm exec vitest run <test-file>` — run one test file.
-- `pnpm test` — run all tests.
-- `pnpm test:coverage` — run all tests with coverage.
+- `pnpm test <test-file>` — run one Node test file.
+- For focused coverage, run one test file with `--project`, `--coverage`,
+  `--coverage.include=<source-file>`, and `--coverage.thresholds.100`.
+- `pnpm test` — run Node-based tests.
+- `pnpm test:browsers` — run browser tests in Chromium, Firefox, and WebKit.
+- `pnpm test:bundle` — run production bundle and tree-shaking tests.
+- `pnpm test:coverage` — run Node, Chromium, and bundle tests with coverage.
 - `pnpm test:jsdoc <file-or-glob>...` — compile and run JSDoc examples from
   specific source files, or omit arguments to test every configured source.
 - `pnpm build` — build publishable packages and the relay. Run it once after a
@@ -41,8 +45,9 @@ The repository requires Node.js 24 or newer and pnpm.
 - `pnpm check:packages` — validate package source and distribution exports.
 - `pnpm biome` — check Biome rules and import cycles.
 - `pnpm lint` — run ESLint.
-- `pnpm verify` — run type-checking, builds, package checks, coverage, Biome,
-  monorepo linting, documentation generation, and ESLint. It uses the available
+- `pnpm verify` — run type-checking, builds, package checks, coverage,
+  Firefox/WebKit compatibility tests, Biome, monorepo linting, documentation
+  generation, and ESLint serially. Its underlying tools can use all available
   CPU cores, so do not run other CPU-intensive commands concurrently.
 - `pnpm format` — write Prettier formatting changes.
 - `pnpm bench:type` — compare Type compiler metrics with committed baselines.
@@ -171,7 +176,7 @@ Run standalone TypeScript scripts directly with Node.js, for example
 - Every feature addition and bug fix includes a test that fails without the
   change.
 - After changing a module that has an existing test file, run that test file with
-  `pnpm exec vitest run <test-file>`.
+  `pnpm test <test-file>`.
 - Test locations are defined by each Vitest project and are not limited to
   `packages/*/test`.
 - Use `expectTypeOf` for compile-time contracts and `@ts-expect-error` for

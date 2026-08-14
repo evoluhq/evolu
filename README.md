@@ -69,8 +69,8 @@ Linting
 Testing
 
 - `pnpm playwright:install` - Install browsers required by Playwright-based Vitest projects
-- `pnpm test` - Run tests
-- [Vitest VS Code extension](https://github.com/vitest-dev/vscode)
+- `pnpm test` - Run Node-based tests
+- `pnpm test:browsers` - Run browser tests in Chromium, Firefox, and WebKit
 
 Release
 

@@ -7,8 +7,9 @@ export default defineProject({
     snapshotSerializers: [
       "./test/unit/vitest/common/local-first/_uint8ArraySerializer.ts",
     ],
+    exclude: ["test/integration/vitest/{Bundle,TestBundle}/*.test.ts"],
     include: ["test/integration/vitest/**/*.test.ts"],
-    name: "integration-nodejs",
+    name: "node-integration",
     environment: "node",
     setupFiles: ["./test/unit/vitest/common/_setup.ts"],
   },

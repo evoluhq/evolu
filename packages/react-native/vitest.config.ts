@@ -4,5 +4,6 @@ export default defineProject({
   test: {
     exclude: ["**/node_modules/**", "**/dist/**", "test/**/*.ios.test.ts"],
     include: ["test/**/*.test.ts"],
+    name: "node-react-native",
   },
 });

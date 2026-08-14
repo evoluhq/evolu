@@ -1,11 +1,13 @@
+import { resolve } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
 import { transformWithEsbuild } from "vite";
 import { defineProject } from "vitest/config";
 
-// Coverage with v8 only works with a single browser instance
-const isCoverage = process.argv.includes("--coverage");
-
-export default defineProject({
+export default defineProject(({ mode }) => ({
+  cacheDir: resolve(
+    import.meta.dirname,
+    `../../node_modules/.vite/browser-web-${mode}`,
+  ),
   // Transpile `using`/`await using` for WebKit which doesn't support it yet
   plugins: [
     {
@@ -26,20 +28,24 @@ export default defineProject({
   test: {
     exclude: ["**/node_modules/**", "**/dist/**"],
     include: ["test/**/*.test.ts"],
+    name: "browser-web",
     setupFiles: ["./test/_setup.ts"],
     browser: {
       enabled: true,
       // WebKit OPFS sync access handles fail in Playwright's ephemeral context.
       provider: playwright({ persistentContext: true }),
+      api: { port: 63317 },
       headless: true,
       fileParallelism: false, // false is faster for some reason.
-      instances: isCoverage
+      instances: process.argv.includes("--coverage")
         ? [{ browser: "chromium" }]
-        : [
-            { browser: "chromium" },
-            { browser: "firefox" },
-            { browser: "webkit" },
-          ],
+        : mode === "firefox-webkit"
+          ? [{ browser: "firefox" }, { browser: "webkit" }]
+          : [
+              { browser: "chromium" },
+              { browser: "firefox" },
+              { browser: "webkit" },
+            ],
     },
   },
-});
+}));

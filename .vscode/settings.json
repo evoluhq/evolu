@@ -20,7 +20,6 @@
   "files.associations": {
     "*.mdx": "markdown"
   },
-  "vitest.rootConfig": "vitest.config.mts",
   "[svelte]": {
     "editor.defaultFormatter": "svelte.svelte-vscode"
   },

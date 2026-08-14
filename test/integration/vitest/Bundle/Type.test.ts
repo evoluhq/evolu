@@ -4,7 +4,7 @@ import { testBundle } from "@evolu/nodejs/TestBundle";
 import { describe, expect, test } from "vitest";
 
 const fixturesDirectory = resolve(import.meta.dirname, "__fixtures__");
-const outputDirectory = resolve(import.meta.dirname, "tmp");
+const outputDirectory = resolve(import.meta.dirname, "tmp/Type");
 
 const base64CapabilityFragments = ["toBase64", "fromBase64", "base64url"];
 

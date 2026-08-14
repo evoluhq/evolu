@@ -8,7 +8,7 @@ export default defineProject({
       "./test/unit/vitest/common/local-first/_uint8ArraySerializer.ts",
     ],
     include: ["test/unit/vitest/**/*.test.ts"],
-    name: "nodejs",
+    name: "node-unit",
     environment: "node",
     setupFiles: ["./test/unit/vitest/common/_setup.ts"],
   },
