@@ -1,5 +1,12 @@
 # @evolu/react
 
+## 11.0.0
+
+### Major Changes
+
+- 5a4d172: Updated minimum Node.js version from 22 to 24 (current LTS)
+- ec3bc7a: Changed `createRunBinding` and `createEvoluBinding` to accept type arguments instead of unused runtime arguments. `createRunBinding` now accepts a `DisposableRun` type while exposing `Run` to React components.
+
 ## 11.0.0-next.0
 
 ### Major Changes
