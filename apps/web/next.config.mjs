@@ -1,3 +1,4 @@
+import { env } from "node:process";
 import nextMDX from "@next/mdx";
 
 import { recmaPlugins } from "./src/mdx/recma.mjs";
@@ -24,6 +25,8 @@ const nextConfig = {
     "@evolu/web",
   ],
   webpack: (config) => {
+    if (env.VERCEL) config.cache = false;
+
     // Source files refer to workers by their emitted .js names.
     config.resolve.extensionAlias = {
       ...config.resolve.extensionAlias,
@@ -33,7 +36,9 @@ const nextConfig = {
   },
 
   outputFileTracingIncludes: {
-    "/**/*": ["./src/app/**/*.mdx"],
+    "/api/docs-md/*": ["./src/app/(docs)/docs/**/*.mdx"],
+    "/llms-full.txt": ["./src/app/**/*.mdx"],
+    "/llms.txt": ["./src/app/**/*.mdx"],
   },
 
   async rewrites() {
