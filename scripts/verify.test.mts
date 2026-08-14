@@ -1,19 +1,7 @@
-import {
-  err,
-  ok,
-  PositiveInt,
-  testCreateRun,
-  type Task,
-} from "@evolu/common";
+import { err, ok, PositiveInt, testCreateRun, type Task } from "@evolu/common";
 import { describe, expect, test, vi } from "vitest";
-import {
-  spawn,
-  type SpawnError,
-} from "../packages/nodejs/src/Cli.ts";
-import {
-  verify,
-  type VerifyCommand,
-} from "./verify.mts";
+import { spawn, type SpawnError } from "../packages/nodejs/src/Cli.ts";
+import { verify, type VerifyCommand } from "./verify.mts";
 
 vi.mock("../packages/nodejs/src/Cli.ts", () => ({ spawn: vi.fn() }));
 
@@ -27,9 +15,7 @@ const nonTestCommands: ReadonlyArray<VerifyCommand> = [
   "lint",
 ];
 
-type TestVerifyCommand = (
-  command: VerifyCommand,
-) => Task<void, SpawnError>;
+type TestVerifyCommand = (command: VerifyCommand) => Task<void, SpawnError>;
 
 const mockVerifyCommand = (verifyCommand: TestVerifyCommand): void => {
   vi.mocked(spawn).mockImplementation((file, args) => {
@@ -38,9 +24,7 @@ const mockVerifyCommand = (verifyCommand: TestVerifyCommand): void => {
   });
 };
 
-const argsToVerifyCommand = (
-  args: ReadonlyArray<string>,
-): VerifyCommand => {
+const argsToVerifyCommand = (args: ReadonlyArray<string>): VerifyCommand => {
   switch (args[0]) {
     case "biome":
     case "build":
@@ -49,6 +33,7 @@ const argsToVerifyCommand = (
     case "lint":
     case "lint-monorepo":
     case "test:coverage":
+    case "test:jsdoc":
     case "typecheck":
       return args[0];
     default:
@@ -57,7 +42,7 @@ const argsToVerifyCommand = (
 };
 
 describe("verify", () => {
-  test("runs hardware-limited waves before exclusive coverage", async () => {
+  test("runs hardware-limited waves before serial JSDoc and coverage", async () => {
     const startedCommands: Array<VerifyCommand> = [];
     const completedCommands = new Set<VerifyCommand>();
     let activeCommands = 0;
@@ -76,17 +61,20 @@ describe("verify", () => {
         expect(completedCommands.has("biome")).toBe(true);
         expect(completedCommands.has("lint-monorepo")).toBe(true);
       }
-      if (command === "test:coverage") {
+      if (command === "test:jsdoc") {
         expect(activeCommands).toBe(0);
         expect(completedCommands).toEqual(new Set(nonTestCommands));
+      }
+      if (command === "test:coverage") {
+        expect(activeCommands).toBe(0);
+        expect(completedCommands).toEqual(
+          new Set([...nonTestCommands, "test:jsdoc"]),
+        );
       }
 
       startedCommands.push(command);
       activeCommands++;
-      maximumActiveCommands = Math.max(
-        maximumActiveCommands,
-        activeCommands,
-      );
+      maximumActiveCommands = Math.max(maximumActiveCommands, activeCommands);
       await new Promise<void>((resolve) => setImmediate(resolve));
       activeCommands--;
       completedCommands.add(command);
@@ -101,7 +89,32 @@ describe("verify", () => {
 
     expect(result).toEqual(ok());
     expect(maximumActiveCommands).toBe(2);
-    expect(startedCommands.at(-1)).toBe("test:coverage");
+    expect(startedCommands.slice(-2)).toEqual(["test:jsdoc", "test:coverage"]);
+  });
+
+  test("stops before coverage after a failed JSDoc check", async () => {
+    const startedCommands: Array<VerifyCommand> = [];
+    const failure: SpawnError = {
+      type: "SpawnError",
+      command: "pnpm test:jsdoc",
+      exitCode: 1,
+      signal: null,
+      message: "pnpm test:jsdoc exited with code 1.",
+    };
+    const verifyCommand: TestVerifyCommand = (command) => () => {
+      startedCommands.push(command);
+      return command === "test:jsdoc" ? err(failure) : ok();
+    };
+    mockVerifyCommand(verifyCommand);
+
+    await using run = testCreateRun({
+      availableParallelism: () => PositiveInt.orThrow(2),
+    });
+    const result = await run(verify);
+
+    expect(result).toEqual(err(failure));
+    expect(startedCommands.at(-1)).toBe("test:jsdoc");
+    expect(startedCommands).not.toContain("test:coverage");
   });
 
   test("stops before later commands after a failed check", async () => {

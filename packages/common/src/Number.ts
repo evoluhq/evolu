@@ -63,9 +63,12 @@ export const clamp =
  * ### Example
  *
  * ```ts
+ * import { isBetween } from "@evolu/common";
+ *
  * const isBetween10And20 = isBetween(10, 20);
- * console.log(isBetween10And20(15)); // true
- * console.log(isBetween10And20(25)); // false
+ *
+ * expect(isBetween10And20(20)).toBe(true);
+ * expect(isBetween10And20(25)).toBe(false);
  * ```
  */
 export const isBetween =
@@ -93,8 +96,28 @@ export const max = <T extends number>(
  * ### Example
  *
  * ```ts
- * computeBalancedBuckets(10, 3, 2); // Returns ok([4, 7, 10])
- * computeBalancedBuckets(5, 3, 2); // Returns err(6)
+ * import {
+ *   computeBalancedBuckets,
+ *   NonNegativeInt,
+ *   PositiveInt,
+ * } from "@evolu/common";
+ *
+ * expectOk(
+ *   computeBalancedBuckets(
+ *     NonNegativeInt.orThrow(10),
+ *     PositiveInt.orThrow(3),
+ *     PositiveInt.orThrow(2),
+ *   ),
+ *   [4, 7, 10],
+ * );
+ * expectErr(
+ *   computeBalancedBuckets(
+ *     NonNegativeInt.orThrow(5),
+ *     PositiveInt.orThrow(3),
+ *     PositiveInt.orThrow(2),
+ *   ),
+ *   6,
+ * );
  * ```
  */
 export const computeBalancedBuckets = (

@@ -124,38 +124,43 @@ export interface Lease<T extends Resource> extends Disposable {
  *   readonly send: (message: string) => void;
  * }
  *
- * const createConnection: Task<Connection> = () =>
- *   ok({
- *     send: (message) => {
- *       // ...
- *     },
- *     [Symbol.dispose]: () => {
- *       // close
- *     },
+ * let createdCount = 0;
+ * const createConnection: Task<Connection> = () => {
+ *   createdCount += 1;
+ *   return ok({
+ *     send: (_message) => {},
+ *     [Symbol.dispose]: () => {},
  *   });
+ * };
  *
  * await using run = createRun();
- *
- * // Nothing is created yet; the first acquire creates the connection.
  * await using sharedConnection = await run.ok(
  *   createSharedResource(createConnection, { idleDisposeAfter: "5s" }),
  * );
  *
- * // `use` holds a Lease until its callback Task settles.
+ * // Creating the owner is lazy; no connection is open yet.
+ * expect(createdCount).toBe(0);
+ *
+ * // `use` owns and releases a lease around each operation.
  * const send = (message: string): Task<void> =>
  *   sharedConnection.use((connection) => () => {
  *     connection.send(message);
  *     return ok();
  *   });
  *
- * // Concurrent callers share one connection. Releasing the last lease
- * // starts idle disposal; a new acquire within 5s reuses the connection.
- * await run.ok(all([send("hello"), send("world")], { concurrency: 2 }));
+ * {
+ *   // An explicit lease can span several operations. Concurrent `use` calls
+ *   // share the connection kept alive by this lease.
+ *   using batchLease = await run.ok(sharedConnection.acquire);
+ *   batchLease.resource.send("first");
+ *   batchLease.resource.send("second");
+ *   await run.ok(all([send("hello"), send("world")], { concurrency: 2 }));
+ * }
  *
- * // Acquire explicitly when ownership spans several operations.
- * using lease = await run.ok(sharedConnection.acquire);
- * lease.resource.send("first");
- * lease.resource.send("second");
+ * // Reacquiring during the idle delay reuses the same generation.
+ * using reusedLease = await run.ok(sharedConnection.acquire);
+ * expect(reusedLease.created).toBe(false);
+ * expect(createdCount).toBe(1);
  * ```
  *
  * ## FAQ
@@ -520,24 +525,24 @@ export const createSharedResource =
  * } from "@evolu/common";
  *
  * interface Connection extends Disposable {
+ *   readonly ownerId: string;
  *   readonly send: (message: string) => void;
- *   readonly flush: () => void;
+ *   readonly flush: () => ReadonlyArray<string>;
  * }
  *
  * const createConnection =
  *   (ownerId: string): Task<Connection> =>
- *   () =>
- *     ok({
+ *   () => {
+ *     const pendingMessages: Array<string> = [];
+ *     return ok({
+ *       ownerId,
  *       send: (message) => {
- *         // buffer message for ownerId
+ *         pendingMessages.push(message);
  *       },
- *       flush: () => {
- *         // send buffered messages
- *       },
- *       [Symbol.dispose]: () => {
- *         // close connection
- *       },
+ *       flush: () => pendingMessages.splice(0),
+ *       [Symbol.dispose]: () => {},
  *     });
+ *   };
  *
  * await using run = createRun();
  * await using connections = await run.ok(
@@ -545,15 +550,14 @@ export const createSharedResource =
  *     idleDisposeAfter: "30s",
  *   }),
  * );
- *
  * const send = (ownerId: string, message: string): Task<void> =>
  *   connections.use(ownerId, (connection) => () => {
  *     connection.send(message);
  *     return ok();
  *   });
  *
- * // The first two Tasks share one connection; the third uses another key and
- * // can progress independently.
+ * // Same-key calls share one connection. Work for different keys remains
+ * // independent, so all three operations can run concurrently.
  * await run.ok(
  *   all(
  *     [
@@ -565,12 +569,22 @@ export const createSharedResource =
  *   ),
  * );
  *
- * // The 30s idle delay keeps released connections current, so flush sees them.
- * // Absent keys are never created.
+ * // `acquireCurrent` does not create absent keys. The idle delay keeps the two
+ * // existing connections available to enumerate and flush.
+ * using missingLease = await run.ok(connections.acquireCurrent("owner-3"));
+ * const messagesByOwnerId = new Map<string, ReadonlyArray<string>>();
  * await run.ok(
  *   connections.forEachCurrent((connection) => {
- *     connection.flush();
+ *     messagesByOwnerId.set(connection.ownerId, connection.flush());
  *   }),
+ * );
+ *
+ * expect(missingLease).toBeUndefined();
+ * expect(messagesByOwnerId).toEqual(
+ *   new Map([
+ *     ["owner-1", ["first", "second"]],
+ *     ["owner-2", ["hello"]],
+ *   ]),
  * );
  * ```
  */
@@ -871,10 +885,8 @@ export function createSharedResourceByKey<
  * leases by key and the application does not need to associate those leases
  * with logical owners.
  *
- * ### Example
- *
- * Two accounts can sync through the same relay connection while one account
- * also uses a local-network transport:
+ * Two accounts can share a relay connection while one also uses a local-network
+ * transport:
  *
  * ```ts
  * import {
@@ -889,24 +901,20 @@ export function createSharedResourceByKey<
  * type TransportUrl = string & Brand<"TransportUrl">;
  *
  * interface Connection extends Disposable {
- *   readonly send: (message: string) => void;
+ *   readonly url: TransportUrl;
  * }
  *
  * const createConnection =
  *   (url: TransportUrl): Task<Connection> =>
  *   () =>
  *     ok({
- *       send: (message) => {
- *         // send message through url
- *       },
- *       [Symbol.dispose]: () => {
- *         // close connection
- *       },
+ *       url,
+ *       [Symbol.dispose]: () => {},
  *     });
- *
+ * // These literals stand in for values validated at application boundaries.
  * const accountA = "account-a" as AccountId;
  * const accountB = "account-b" as AccountId;
- * const relay = "wss://relay" as TransportUrl;
+ * const relay = "wss://relay.example.com" as TransportUrl;
  * const localNetwork = "ws://local-network" as TransportUrl;
  *
  * await using run = createRun();
@@ -919,22 +927,33 @@ export function createSharedResourceByKey<
  * );
  *
  * {
- *   // Creates and retains the relay and local-network connections.
+ *   // Account A retains both transports.
  *   using accountATransports = await run.ok(
  *     transports.claim(accountA, [relay, localNetwork]),
  *   );
  *
  *   {
- *     // Reuses the relay connection already retained by account A.
- *     using accountBTransports = await run.ok(
+ *     // Account B reuses the relay already retained by account A.
+ *     using accountBRelay = await run.ok(
  *       transports.claim(accountB, [relay]),
+ *     );
+ *     expect(transports.getClaimsForResource(relay)).toEqual(
+ *       new Set([accountA, accountB]),
+ *     );
+ *     expect(transports.getResourceKeysForClaim(accountA)).toEqual(
+ *       new Set([relay, localNetwork]),
  *     );
  *   }
  *
- *   // Account B is released, but account A still retains the relay.
+ *   // Releasing account B leaves account A's relay retain intact.
+ *   expect(transports.getClaimsForResource(relay)).toEqual(
+ *     new Set([accountA]),
+ *   );
  * }
  *
- * // Account A is released. No claim retains either connection now.
+ * // Releasing the final claim removes the relation for both transports.
+ * expect(transports.getClaimsForResource(relay)).toEqual(new Set());
+ * expect(transports.getClaimsForResource(localNetwork)).toEqual(new Set());
  * ```
  */
 export interface SharedResourceByKeyWithClaims<

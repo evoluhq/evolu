@@ -8,25 +8,30 @@
  * Use {@link isNonEmptySet} to narrow to {@link NonEmptyReadonlySet} before
  * calling functions like {@link firstInSet} that require a non-empty set.
  *
- * ### Example
+ * ### Composing immutable and native operations
  *
  * ```ts
- * // Type guards
- * const set: ReadonlySet<number> = new Set([1, 2, 3]);
- * if (isNonEmptySet(set)) {
- *   firstInSet(set);
- * }
+ * import {
+ *   addToSet,
+ *   deleteFromSet,
+ *   filterSet,
+ *   firstInSet,
+ *   isNonEmptySet,
+ *   mapSet,
+ * } from "@evolu/common";
  *
- * // Immutable transformations
- * const added = addToSet(new Set([1, 2]), 3); // Set {1, 2, 3}
- * const removed = deleteFromSet(new Set([1, 2, 3]), 2); // Set {1, 3}
- * const mapped = mapSet(new Set([1, 2, 3]), (x) => x * 2); // Set {2, 4, 6}
- * const filtered = filterSet(new Set([1, 2, 3, 4]), (x) => x % 2 === 0); // Set {2, 4}
+ * const values = addToSet(new Set([1, 2]), 3);
+ * const withoutOne = deleteFromSet(values, 1);
+ * const doubled = mapSet(withoutOne, (x) => x * 2);
+ * const atLeastFour = filterSet(doubled, (x) => x >= 4);
  *
- * // Set operations
- * const union = unionSets(new Set([1, 2]), new Set([2, 3])); // Set {1, 2, 3}
- * const intersection = intersectSets(new Set([1, 2]), new Set([2, 3])); // Set {2}
- * const difference = differenceSets(new Set([1, 2, 3]), new Set([2])); // Set {1, 3}
+ * // Evolu's readonly results compose with native Set operations.
+ * const union = atLeastFour.union(new Set([6, 8]));
+ * const intersection = union.intersection(new Set([4, 6, 8, 10]));
+ * const difference = intersection.difference(new Set([4]));
+ *
+ * if (!isNonEmptySet(difference)) throw new Error("Expected values");
+ * expect(firstInSet(difference)).toBe(6);
  * ```
  *
  * @module
@@ -50,11 +55,17 @@ export const emptySet: ReadonlySet<never> = /*#__PURE__*/ new Set();
  *
  * Preserves non-empty type when the input array is non-empty.
  *
- * ### Example
+ * ### Preserving non-empty inputs
  *
  * ```ts
- * createSet([1, 2, 3]); // NonEmptyReadonlySet<number>
- * createSet([] as ReadonlyArray<number>); // ReadonlySet<number>
+ * import { createSet, type NonEmptyReadonlySet } from "@evolu/common";
+ *
+ * const values = createSet([1, 2, 3]);
+ * const empty = createSet([] as ReadonlyArray<number>);
+ *
+ * expectTypeOf(values).toEqualTypeOf<NonEmptyReadonlySet<number>>();
+ * expectTypeOf(empty).toEqualTypeOf<ReadonlySet<number>>();
+ * expect(values).toEqual(new Set([1, 2, 3]));
  * ```
  *
  * @group Constructors
@@ -94,13 +105,16 @@ export type NonEmptyReadonlySet<T> = ReadonlySet<T> & Brand<"NonEmpty">;
  * negated guard is better than `.size === 0` for early returns because
  * TypeScript narrows the type after the check.
  *
- * ### Example
+ * ### Narrowing before access
  *
  * ```ts
+ * import { isNonEmptySet, type NonEmptyReadonlySet } from "@evolu/common";
+ *
  * const set: ReadonlySet<number> = new Set([1, 2, 3]);
- * if (isNonEmptySet(set)) {
- *   firstInSet(set); // set is NonEmptyReadonlySet<number>
- * }
+ * if (!isNonEmptySet(set)) throw new Error("Expected a non-empty set");
+ *
+ * expectTypeOf(set).toEqualTypeOf<NonEmptyReadonlySet<number>>();
+ * expect(set.size).toBe(3);
  * ```
  *
  * @group Type guards
@@ -115,11 +129,18 @@ export const isNonEmptySet = <T>(
  * If the item already exists, returns a new set with the same elements (still a
  * new reference for change detection).
  *
- * ### Example
+ * ### Adding without mutation
  *
  * ```ts
- * addToSet(new Set([1, 2]), 3); // Set {1, 2, 3}
- * addToSet(new Set([1, 2]), 2); // Set {1, 2} (new reference)
+ * import { addToSet, type NonEmptyReadonlySet } from "@evolu/common";
+ *
+ * const original: ReadonlySet<number> = new Set([1, 2]);
+ * const added = addToSet(original, 3);
+ * const unchanged = addToSet(original, 2);
+ *
+ * expectTypeOf(added).toEqualTypeOf<NonEmptyReadonlySet<number>>();
+ * expect(added).toEqual(new Set([1, 2, 3]));
+ * expect(unchanged).not.toBe(original);
  * ```
  *
  * @group Transformations
@@ -139,11 +160,14 @@ export const addToSet = <T>(
  * If the item doesn't exist, returns a new set with the same elements (still a
  * new reference for change detection).
  *
- * ### Example
+ * ### Deleting without mutation
  *
  * ```ts
- * deleteFromSet(new Set([1, 2, 3]), 2); // Set {1, 3}
- * deleteFromSet(new Set([1, 2]), 5); // Set {1, 2} (new reference)
+ * import { deleteFromSet } from "@evolu/common";
+ *
+ * const original = new Set([1, 2, 3]);
+ * expect(deleteFromSet(original, 2)).toEqual(new Set([1, 3]));
+ * expect(deleteFromSet(original, 5)).not.toBe(original);
  * ```
  *
  * @group Transformations
@@ -165,11 +189,22 @@ export const deleteFromSet = <T>(
  * Note: If the mapper produces duplicate values, the resulting set will have
  * fewer elements.
  *
- * ### Example
+ * ### Mapping non-empty sets
  *
  * ```ts
- * mapSet(new Set([1, 2, 3]), (x) => x * 2); // Set {2, 4, 6}
- * mapSet(new Set([1, 2, 3]), (x) => x % 2); // Set {1, 0} (duplicates merged)
+ * import {
+ *   createSet,
+ *   mapSet,
+ *   type NonEmptyReadonlySet,
+ * } from "@evolu/common";
+ *
+ * const original = createSet([1, 2, 3]);
+ * const doubled = mapSet(original, (x) => x * 2);
+ * const parity = mapSet(original, (x) => x % 2);
+ *
+ * expectTypeOf(doubled).toEqualTypeOf<NonEmptyReadonlySet<number>>();
+ * expect(doubled).toEqual(new Set([2, 4, 6]));
+ * expect(parity).toEqual(new Set([1, 0]));
  * ```
  *
  * @group Transformations
@@ -201,10 +236,21 @@ export function mapSet<T, U>(
  * When used with a refinement function (with `value is Type` syntax),
  * TypeScript will narrow the result type.
  *
- * ### Example
+ * ### Filtering and refining
  *
  * ```ts
- * filterSet(new Set([1, 2, 3, 4, 5]), (x) => x % 2 === 0); // Set {2, 4}
+ * import { filterSet } from "@evolu/common";
+ *
+ * const evens = filterSet(new Set([1, 2, 3, 4, 5]), (x) => x % 2 === 0);
+ * expect(evens).toEqual(new Set([2, 4]));
+ *
+ * const mixed: ReadonlySet<string | number> = new Set([1, "a", 2, "b"]);
+ * const strings = filterSet(
+ *   mixed,
+ *   (value): value is string => typeof value === "string",
+ * );
+ * expectTypeOf(strings).toEqualTypeOf<ReadonlySet<string>>();
+ * expect(strings).toEqual(new Set(["a", "b"]));
  * ```
  *
  * @group Transformations
@@ -235,10 +281,13 @@ export function filterSet<T>(
 /**
  * Returns the first element of a non-empty set (by insertion order).
  *
- * ### Example
+ * ### Reading the first value
  *
  * ```ts
- * firstInSet(new Set(["a", "b", "c"])); // "a"
+ * import { createSet, firstInSet } from "@evolu/common";
+ *
+ * const set = createSet(["a", "b", "c"]);
+ * expect(firstInSet(set)).toBe("a");
  * ```
  *
  * @group Accessors

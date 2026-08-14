@@ -484,14 +484,13 @@ export type DurationLiteralYears =
  * ### Example
  *
  * ```ts
- * durationToMillis("1ms"); // 1
- * durationToMillis("500ms"); // 500
- * durationToMillis("1.5s"); // 1500
- * durationToMillis("30s"); // 30000
- * durationToMillis("5m"); // 300000
- * durationToMillis("12h"); // 43200000
- * durationToMillis("1w"); // 604800000
- * durationToMillis(Millis.orThrow(5000)); // 5000 (already Millis)
+ * import { durationToMillis, Millis } from "@evolu/common";
+ *
+ * expect(durationToMillis("1.5s")).toBe(1500);
+ * expect(durationToMillis("5m")).toBe(300000);
+ * expect(durationToMillis("12h")).toBe(43200000);
+ * expect(durationToMillis("1w")).toBe(604800000);
+ * expect(durationToMillis(Millis.orThrow(5000))).toBe(5000);
  * ```
  */
 export function durationToMillis(
@@ -560,10 +559,13 @@ export const msLongTask = 50 as Millis;
  * ### Example
  *
  * ```ts
- * formatMillisAsDuration(1234 as Millis); // "1.234s"
- * formatMillisAsDuration(90000 as Millis); // "1m30.000s"
- * formatMillisAsDuration(3661000 as Millis); // "1h1m1.000s"
- * formatMillisAsDuration(90061000 as Millis); // "1d1h1m1.000s"
+ * import { formatMillisAsDuration, Millis } from "@evolu/common";
+ *
+ * expect(formatMillisAsDuration(Millis.orThrow(1234))).toBe("1.234s");
+ * expect(formatMillisAsDuration(Millis.orThrow(90000))).toBe("1m30.000s");
+ * expect(formatMillisAsDuration(Millis.orThrow(90061000))).toBe(
+ *   "1d1h1m1.000s",
+ * );
  * ```
  */
 export const formatMillisAsDuration = (millis: Millis): string => {
@@ -597,7 +599,20 @@ export const formatMillisAsDuration = (millis: Millis): string => {
  * ### Example
  *
  * ```ts
- * formatMillisAsClockTime(Millis.orThrow(Date.now())); // "14:32:15.234"
+ * import { formatMillisAsClockTime, Millis } from "@evolu/common";
+ *
+ * const timestamp = new globalThis.Date(
+ *   2026,
+ *   0,
+ *   28,
+ *   14,
+ *   32,
+ *   15,
+ *   234,
+ * ).getTime();
+ * expect(formatMillisAsClockTime(Millis.orThrow(timestamp))).toBe(
+ *   "14:32:15.234",
+ * );
  * ```
  */
 export const formatMillisAsClockTime = (millis: Millis): string => {

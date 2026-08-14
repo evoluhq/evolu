@@ -51,18 +51,34 @@ export class BufferError extends Error {
  * ### Example
  *
  * ```ts
- * const buffer = createBuffer();
- * encodeNonNegativeInt(buffer, someInt);
- * encodeId(buffer, someId);
- * const result = buffer.unwrap(); // Final serialized data
+ * import {
+ *   createBuffer,
+ *   createIdFromString,
+ *   IdBytes,
+ *   idBytesToId,
+ *   idBytesTypeValueLength,
+ *   idToIdBytes,
+ *   NonNegativeInt,
+ * } from "@evolu/common";
+ * import {
+ *   decodeNonNegativeInt,
+ *   encodeNonNegativeInt,
+ * } from "@evolu/common/local-first";
  *
- * // Decoding example (throws on error)
- * try {
- *   const num = decodeNonNegativeInt(buffer);
- *   const id = decodeId(buffer);
- * } catch (e) {
- *   console.error(e.stack); // Stack trace for debugging
- * }
+ * const buffer = createBuffer();
+ * const id = createIdFromString("buffer-example");
+ * encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(300));
+ * buffer.extend(idToIdBytes(id));
+ *
+ * const decoder = createBuffer(buffer.unwrap());
+ * expect(decodeNonNegativeInt(decoder)).toBe(300);
+ * const decodedId = idBytesToId(
+ *   IdBytes.orThrow(decoder.shiftN(idBytesTypeValueLength)),
+ * );
+ * expect(decodedId).toBe(id);
+ * expect(() => decodeNonNegativeInt(decoder)).toThrow(
+ *   "Buffer parse ended prematurely",
+ * );
  * ```
  *
  * For more on exponential growth, see:

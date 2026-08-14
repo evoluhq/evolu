@@ -37,20 +37,35 @@ export interface RandomBytes {
    *
    * Returns specific branded types for common sizes:
    *
-   * - `Random16` for 16-byte values (128 bits)
-   * - `Random24` for 24-byte values (192 bits)
-   * - `Random32` for 32-byte values (256 bits)
-   * - `Random64` for 64-byte values (512 bits)
-   * - `Random` for any other size
+   * - `Entropy16` for 16-byte values (128 bits)
+   * - `Entropy24` for 24-byte values (192 bits)
+   * - `Entropy32` for 32-byte values (256 bits)
+   * - `Entropy64` for 64-byte values (512 bits)
+   * - `Entropy` for any other size
    *
    * ### Example
    *
    * ```ts
-   * const nonce = randomBytes.create(16); // Type: Random16
-   * const nonce24 = randomBytes.create(24); // Type: Random24
-   * const key = randomBytes.create(32); // Type: Random32
-   * const seed = randomBytes.create(64); // Type: Random64
-   * const custom = randomBytes.create(48); // Type: Random
+   * import {
+   *   createRandomBytes,
+   *   type Entropy16,
+   *   type Entropy24,
+   *   type Entropy32,
+   *   type Entropy64,
+   * } from "@evolu/common";
+   *
+   * const randomBytes = createRandomBytes();
+   * const nonce16 = randomBytes.create(16);
+   * const nonce24 = randomBytes.create(24);
+   * const key = randomBytes.create(32);
+   * const seed = randomBytes.create(64);
+   * const custom = randomBytes.create(48);
+   *
+   * expectTypeOf(nonce16).toEqualTypeOf<Entropy16>();
+   * expectTypeOf(nonce24).toEqualTypeOf<Entropy24>();
+   * expectTypeOf(key).toEqualTypeOf<Entropy32>();
+   * expectTypeOf(seed).toEqualTypeOf<Entropy64>();
+   * expect(custom).toHaveLength(48);
    * ```
    */
   create(bytesLength: 16): Entropy16;
@@ -159,11 +174,22 @@ export type XChaCha20Poly1305Ciphertext =
  * ### Example
  *
  * ```ts
- * const deps = { randomBytes: createRandomBytes() };
- * const [ciphertext, nonce] = encryptWithXChaCha20Poly1305(deps)(
- *   utf8ToBytes("secret message"),
- *   encryptionKey,
- * );
+ * import {
+ *   createRandomBytes,
+ *   EncryptionKey,
+ *   encryptWithXChaCha20Poly1305,
+ *   type XChaCha20Poly1305Ciphertext,
+ *   utf8ToBytes,
+ * } from "@evolu/common";
+ *
+ * const plaintext = utf8ToBytes("secret message");
+ * const encryptionKey = EncryptionKey.orThrow(new Uint8Array(32).fill(7));
+ * const [ciphertext, nonce] = encryptWithXChaCha20Poly1305({
+ *   randomBytes: createRandomBytes(),
+ * })(plaintext, encryptionKey);
+ *
+ * expectTypeOf(ciphertext).toEqualTypeOf<XChaCha20Poly1305Ciphertext>();
+ * expect(nonce).toHaveLength(24);
  * ```
  *
  * @see https://github.com/paulmillr/noble-ciphers
@@ -195,16 +221,33 @@ export interface DecryptWithXChaCha20Poly1305Error extends Typed<"DecryptWithXCh
  * ### Example
  *
  * ```ts
- * const result = decryptWithXChaCha20Poly1305(
- *   ciphertext,
- *   nonce,
- *   encryptionKey,
- * );
- * if (!result.ok) {
- *   // Handle decryption error
- *   return result;
- * }
- * const plaintext = result.value;
+ * import {
+ *   bytesToUtf8,
+ *   createRandomBytes,
+ *   decryptWithXChaCha20Poly1305,
+ *   EncryptionKey,
+ *   encryptWithXChaCha20Poly1305,
+ *   ok,
+ *   utf8ToBytes,
+ * } from "@evolu/common";
+ *
+ * const plaintext = utf8ToBytes("secret message");
+ * const encryptionKey = EncryptionKey.orThrow(new Uint8Array(32).fill(7));
+ * const [ciphertext, nonce] = encryptWithXChaCha20Poly1305({
+ *   randomBytes: createRandomBytes(),
+ * })(plaintext, encryptionKey);
+ *
+ * const decryptMessage = () => {
+ *   const result = decryptWithXChaCha20Poly1305(
+ *     ciphertext,
+ *     nonce,
+ *     encryptionKey,
+ *   );
+ *   if (!result.ok) return result;
+ *   return ok(bytesToUtf8(result.value));
+ * };
+ *
+ * expectOk(decryptMessage(), "secret message");
  * ```
  */
 export const decryptWithXChaCha20Poly1305 = (

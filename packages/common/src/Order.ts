@@ -33,10 +33,12 @@ export type Ordering = -1 | 0 | 1;
  * ### Example
  *
  * ```ts
+ * import { createOrder } from "@evolu/common";
+ *
  * const orderNumber = createOrder<number>((x, y) => x < y);
- * expect(orderNumber(1, 2)).toEqual(-1);
- * expect(orderNumber(2, 1)).toEqual(1);
- * expect(orderNumber(1, 1)).toEqual(0);
+ * expect(orderNumber(1, 2)).toBe(-1);
+ * expect(orderNumber(2, 1)).toBe(1);
+ * expect(orderNumber(1, 1)).toBe(0);
  * ```
  */
 export const createOrder =
@@ -50,9 +52,10 @@ export const createOrder =
  * ### Example
  *
  * ```ts
- * reverseOrder(orderNumber)(1, 2); // 1
- * reverseOrder(orderNumber)(2, 1); // -1
- * reverseOrder(orderNumber)(1, 1); // 0
+ * import { orderNumber, reverseOrder } from "@evolu/common";
+ *
+ * const descendingOrderNumber = reverseOrder(orderNumber);
+ * expect([3, 1, 2].toSorted(descendingOrderNumber)).toEqual([3, 2, 1]);
  * ```
  */
 export const reverseOrder =
@@ -66,10 +69,9 @@ export const reverseOrder =
  * ### Example
  *
  * ```ts
- * orderString("a", "b"); // -1
- * orderString("b", "a"); // 1
- * orderString("a", "a"); // 0
- * ["c", "b", "a"].toSorted(orderString); // ["a", "b", "c"]
+ * import { orderString } from "@evolu/common";
+ *
+ * expect(["c", "b", "a"].toSorted(orderString)).toEqual(["a", "b", "c"]);
  * ```
  */
 export const orderString: Order<string> = /*#__PURE__*/ createOrder(
@@ -82,13 +84,9 @@ export const orderString: Order<string> = /*#__PURE__*/ createOrder(
  * ### Example
  *
  * ```ts
- * orderNumber(1, 2); // -1
- * orderNumber(2, 1); // 1
- * orderNumber(1, 1); // 0
- * [2, 1, 3].toSorted(orderNumber); // [1, 2, 3]
- * reverseOrder(orderNumber)(1, 2); // 1
- * reverseOrder(orderNumber)(2, 1); // -1
- * reverseOrder(orderNumber)(1, 1); // 0
+ * import { orderNumber } from "@evolu/common";
+ *
+ * expect([2, 1, 3].toSorted(orderNumber)).toEqual([1, 2, 3]);
  * ```
  */
 export const orderNumber = /*#__PURE__*/ createOrder<number>((a, b) => a < b);
@@ -99,10 +97,9 @@ export const orderNumber = /*#__PURE__*/ createOrder<number>((a, b) => a < b);
  * ### Example
  *
  * ```ts
- * orderBigInt(1n, 2n); // -1
- * orderBigInt(2n, 1n); // 1
- * orderBigInt(1n, 1n); // 0
- * [2n, 1n, 3n].toSorted(orderBigInt); // [1n, 2n, 3n]
+ * import { orderBigInt } from "@evolu/common";
+ *
+ * expect([2n, 1n, 3n].toSorted(orderBigInt)).toEqual([1n, 2n, 3n]);
  * ```
  */
 export const orderBigInt = /*#__PURE__*/ createOrder<bigint>((a, b) => a < b);

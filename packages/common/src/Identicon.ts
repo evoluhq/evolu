@@ -32,13 +32,22 @@ export type IdenticonStyle = "github" | "quadrant" | "gradient" | "sutnar";
  * ### Example
  *
  * ```ts
- * const svg = createIdenticon(id);
- * const quadrantStyle = createIdenticon(id, "quadrant");
- * const gradientStyle = createIdenticon(id, "gradient");
- * const sutnarStyle = createIdenticon(id, "sutnar");
+ * import { createIdFromString, createIdenticon } from "@evolu/common";
  *
- * // Works with branded IDs
- * const ownerSvg = createIdenticon(ownerId);
+ * const id = createIdFromString("identicon-example");
+ * const svg = createIdenticon(id);
+ * const styles = ["quadrant", "gradient", "sutnar"] as const;
+ * const alternativeSvgs = styles.map((style) =>
+ *   createIdenticon(id, style),
+ * );
+ *
+ * // Branded IDs work too.
+ * const todoId = createIdFromString<"Todo">("todo-1");
+ * const todoSvg = createIdenticon(todoId);
+ *
+ * expect(svg.startsWith("<svg")).toBe(true);
+ * expect(new Set([svg, ...alternativeSvgs]).size).toBe(4);
+ * expect(todoSvg.startsWith("<svg")).toBe(true);
  * ```
  */
 export const createIdenticon = (

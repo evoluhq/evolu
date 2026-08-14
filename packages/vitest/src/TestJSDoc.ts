@@ -185,6 +185,9 @@ export const testJSDocExamples = async ({
       );
       return { ...example, generatedPath } satisfies GeneratedJSDocExample;
     });
+    // TODO: Lint generated examples with Oxc after the repository migration.
+    // Treat top-level declarations as example output and ignore `using`
+    // bindings whose disposal is their purpose.
     const compilerConfigPath = join(temporaryDirectory, "tsconfig.json");
     writeFileSync(
       compilerConfigPath,

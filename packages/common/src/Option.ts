@@ -9,17 +9,20 @@
  * ### Example
  *
  * ```ts
- * // A cache that can store any value, including null and undefined
+ * import { isNone, isSome, none, type Option, some } from "@evolu/common";
+ *
  * const cache = new Map<string, Option<unknown>>();
  *
  * const get = (key: string): Option<unknown> => cache.get(key) ?? none;
  *
- * cache.set("a", some(null)); // Stored null
- * cache.set("b", some(undefined)); // Stored undefined
+ * cache.set("a", some(null));
+ * cache.set("b", some(undefined));
  *
- * isSome(get("a")); // true — value is null
- * isSome(get("b")); // true — value is undefined
- * isNone(get("c")); // true — key doesn't exist
+ * const a = get("a");
+ * assert(isSome(a));
+ * expect(a.value).toBeNull();
+ * expect(isSome(get("b"))).toBe(true);
+ * expect(isNone(get("c"))).toBe(true);
  * ```
  *
  * @module

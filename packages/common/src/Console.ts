@@ -42,31 +42,47 @@ import {
  *   {@link ReadonlyStore} for subscribing
  * - {@link createMultiOutput} — fans out to multiple outputs
  *
+ * Wrap logged values in named objects such as `{ config }` so developer tools
+ * display useful, expandable labels.
+ *
  * ### Example
  *
  * ```ts
- * // Basic usage - defaults to "log"
- * const console = createConsole();
+ * import {
+ *   createConsole,
+ *   createConsoleArrayOutput,
+ *   type Console,
+ *   type ConsoleEntry,
+ *   type ConsoleLevel,
+ * } from "@evolu/common";
  *
- * // With formatting (timestamps and path prefixes)
- * const console = createConsole({
- *   level: "info",
- *   formatter: createConsoleFormatter()({ timestampFormat: "relative" }),
+ * const entries: Array<ConsoleEntry> = [];
+ * const root = createConsole({
+ *   output: createConsoleArrayOutput(entries),
  * });
+ * const relay = root.child("relay");
+ * // Silence a noisy subsystem without affecting root logs.
+ * relay.setLevel("silent");
+ * relay.info("polling");
+ * root.info("Creating instance", { config: { port: 4000 } });
  *
- * // Children inherit level at creation, then are independent
- * const console = run.deps.console.child("relay");
- * console.setLevel("silent");
+ * expect(root.getLevel()).toBe("log");
+ * expect(relay.getLevel()).toBe("silent");
+ * expect(entries[0]?.args).toEqual([
+ *   "Creating instance",
+ *   { config: { port: 4000 } },
+ * ]);
  *
- * // Tip: Wrap logged values in objects for labeled output in DevTools
- * console.info("Creating instance", { config }); // Good — expandable "config:" label
- * console.info("Creating instance", config); // Avoid — anonymous object, no label
- *
- * // Batch update via children
- * const setLevelRecursive = (c: Console, level: ConsoleLevel): void => {
- *   c.setLevel(level);
- *   for (const child of c.children) setLevelRecursive(child, level);
+ * const setLevelRecursive = (
+ *   console: Console,
+ *   level: ConsoleLevel,
+ * ): void => {
+ *   console.setLevel(level);
+ *   for (const child of console.children) setLevelRecursive(child, level);
  * };
+ * setLevelRecursive(root, "warn");
+ * expect(root.getLevel()).toBe("warn");
+ * expect(relay.getLevel()).toBe("warn");
  * ```
  *
  * Console intentionally does not use {@link Task}. Logging must be as fast as
@@ -299,12 +315,26 @@ export type ConsoleEntryTimestampFormat =
  * ### Example
  *
  * ```ts
+ * import {
+ *   createConsole,
+ *   createConsoleStoreOutput,
+ *   type ConsoleEntry,
+ * } from "@evolu/common";
+ *
  * const storeOutput = createConsoleStoreOutput();
  * const console = createConsole({ output: storeOutput });
+ * let forwardedEntry: ConsoleEntry | null = null;
+ * const unsubscribe = storeOutput.entry.subscribe(() => {
+ *   forwardedEntry = storeOutput.entry.get();
+ * });
  *
- * storeOutput.entry.subscribe(() => {
- *   const entry = storeOutput.entry.get();
- *   if (entry) forwardToClient(entry);
+ * console.child("relay").info("connected");
+ * unsubscribe();
+ *
+ * expect(forwardedEntry).toEqual({
+ *   method: "info",
+ *   path: ["relay"],
+ *   args: ["connected"],
  * });
  * ```
  */
@@ -423,7 +453,15 @@ export const createConsole = ({
  * ### Example
  *
  * ```ts
+ * import {
+ *   createNativeConsoleOutput,
+ *   type ConsoleOutput,
+ * } from "@evolu/common";
+ *
  * const output = createNativeConsoleOutput();
+ *
+ * expectTypeOf(output).toEqualTypeOf<ConsoleOutput>();
+ * expect(output.write).toBeTypeOf("function");
  * ```
  */
 export const createNativeConsoleOutput = (): ConsoleOutput => ({
@@ -446,23 +484,52 @@ export const createNativeConsoleOutput = (): ConsoleOutput => ({
  * ### Example
  *
  * ```ts
- * const root = createConsole({
- *   formatter: createConsoleFormatter()({
- *     timestampFormat: "relative",
- *   }),
+ * import {
+ *   createConsoleFormatter,
+ *   Millis,
+ *   testCreateTime,
+ *   type ConsoleEntry,
+ * } from "@evolu/common";
+ *
+ * const time = testCreateTime({ startAt: Millis.orThrow(0) });
+ * const formatRelative = createConsoleFormatter({ time })({
+ *   timestampFormat: "relative",
  * });
+ * const connected: ConsoleEntry = {
+ *   method: "log",
+ *   path: ["relay"],
+ *   args: ["connected"],
+ * };
  *
- * // Relative — elapsed since start
- * const relay = root.child("relay");
- * relay.log("connected"); // +0.000s [relay] connected
- * relay.log("synced"); // +1.500s [relay] synced
+ * expect(formatRelative(connected)).toEqual([
+ *   "+0.000s [relay]",
+ *   "connected",
+ * ]);
+ * time.advance("1.5s");
+ * expect(
+ *   formatRelative({
+ *     ...connected,
+ *     path: ["relay", "db"],
+ *     args: ["opened"],
+ *   }),
+ * ).toEqual(["+1.500s [relay] [db]", "opened"]);
  *
- * // Nested children
- * const db = relay.child("db");
- * db.log("opened"); // +1.500s [relay] [db] opened
- *
- * // Absolute — local clock time (HH:MM:SS.mmm)
- * // relay.log("connected"); // 15:30:15.123 [relay] connected
+ * const localTimestamp = new globalThis.Date(
+ *   2026,
+ *   0,
+ *   28,
+ *   14,
+ *   30,
+ *   15,
+ *   123,
+ * ).getTime();
+ * const formatAbsolute = createConsoleFormatter({
+ *   time: testCreateTime({ startAt: Millis.orThrow(localTimestamp) }),
+ * })({ timestampFormat: "absolute" });
+ * expect(formatAbsolute(connected)).toEqual([
+ *   "14:30:15.123 [relay]",
+ *   "connected",
+ * ]);
  * ```
  */
 export const createConsoleFormatter =
@@ -517,11 +584,20 @@ export const createConsoleStoreOutput = (): ConsoleStoreOutput => {
  * ### Example
  *
  * ```ts
- * const entries: Array<ConsoleEntry> = [];
- * const output = createConsoleArrayOutput(entries);
+ * import {
+ *   createConsole,
+ *   createConsoleArrayOutput,
+ *   type ConsoleEntry,
+ * } from "@evolu/common";
  *
- * // After logging...
- * expect(entries).toMatchInlineSnapshot();
+ * const entries: Array<ConsoleEntry> = [];
+ * const console = createConsole({
+ *   output: createConsoleArrayOutput(entries),
+ * });
+ * console.info("connected");
+ * expect(entries).toEqual([
+ *   { method: "info", path: [], args: ["connected"] },
+ * ]);
  * ```
  */
 export const createConsoleArrayOutput = (
@@ -541,10 +617,25 @@ export const createConsoleArrayOutput = (
  * ### Example
  *
  * ```ts
+ * import {
+ *   createConsole,
+ *   createConsoleArrayOutput,
+ *   createConsoleStoreOutput,
+ *   createMultiOutput,
+ *   type ConsoleEntry,
+ * } from "@evolu/common";
+ *
+ * const entries: Array<ConsoleEntry> = [];
  * const storeOutput = createConsoleStoreOutput();
  * const console = createConsole({
- *   output: createMultiOutput([createNativeConsoleOutput(), storeOutput]),
+ *   output: createMultiOutput([
+ *     createConsoleArrayOutput(entries),
+ *     storeOutput,
+ *   ]),
  * });
+ * console.error("disconnected");
+ *
+ * expect(storeOutput.entry.get()).toEqual(entries[0]);
  * ```
  */
 export const createMultiOutput = (
@@ -558,33 +649,21 @@ export const createMultiOutput = (
 /**
  * Creates a {@link TestConsole} that captures all output for testing.
  *
- * Unlike {@link createConsole}, this doesn't require dependencies and uses a
- * simple incrementing counter for timestamps (starting at 0).
+ * Unlike {@link createConsole}, this doesn't require dependencies and captures
+ * entries in memory.
  *
  * ### Example
  *
  * ```ts
- * test("logging", () => {
- *   const console = testCreateConsole();
- *   console.info("Hello");
+ * import { testCreateConsole } from "@evolu/common";
  *
- *   expect(console.getEntriesSnapshot()).toMatchInlineSnapshot(`
- *     [
- *       {
- *         "method": "info",
- *         "path": [],
- *         "args": ["Hello"]
- *       }
- *     ]
- *   `);
- * });
+ * const console = testCreateConsole({ level: "info" });
+ * console.debug("ignored");
+ * console.child("relay").info("connected");
  *
- * test("level filtering", () => {
- *   const console = testCreateConsole({ level: "warn" });
- *   console.debug("ignored");
- *   console.warn("logged");
- *   expect(console.getEntriesSnapshot()).toHaveLength(1);
- * });
+ * expect(console.getEntriesSnapshot()).toEqual([
+ *   { method: "info", path: ["relay"], args: ["connected"] },
+ * ]);
  * ```
  */
 export const testCreateConsole = ({

@@ -22,27 +22,38 @@ import type { Callback } from "./Types.ts";
  * The `execute` method intentionally does not use try-catch or {@link Result}
  * because it's the callback's responsibility to handle its own errors.
  *
- * ### Example
+ * ### Correlating callback responses
  *
  * ```ts
- * // No-argument callbacks
- * const callbacks = createCallbacks(deps);
- * const id = callbacks.register(() => console.log("called"));
- * callbacks.execute(id);
+ * import { createCallbacks, testCreateDeps } from "@evolu/common";
  *
- * // With argument callbacks
- * const stringCallbacks = createCallbacks<string>(deps);
- * const id = stringCallbacks.register((value) => {
- *   console.log(value);
+ * const deps = testCreateDeps();
+ *
+ * // No-argument callback
+ * using callbacks = createCallbacks(deps);
+ * let noArgumentCalls = 0;
+ * const noArgumentId = callbacks.register(() => {
+ *   noArgumentCalls++;
  * });
- * stringCallbacks.execute(id, "hello");
+ * callbacks.execute(noArgumentId);
+ * callbacks.execute(noArgumentId);
+ * expect(noArgumentCalls).toBe(1);
  *
- * // Promise.withResolvers pattern
- * const promiseCallbacks = createCallbacks<string>(deps);
+ * // Typed callback
+ * using stringCallbacks = createCallbacks<string>(deps);
+ * let received = "";
+ * const stringCallbackId = stringCallbacks.register((value) => {
+ *   received = value;
+ * });
+ * stringCallbacks.execute(stringCallbackId, "hello");
+ * expect(received).toBe("hello");
+ *
+ * // Promise.withResolvers
+ * using promiseCallbacks = createCallbacks<string>(deps);
  * const { promise, resolve } = Promise.withResolvers<string>();
- * const id = promiseCallbacks.register(resolve);
- * promiseCallbacks.execute(id, "resolved value");
- * await promise; // "resolved value"
+ * const promiseCallbackId = promiseCallbacks.register(resolve);
+ * promiseCallbacks.execute(promiseCallbackId, "resolved value");
+ * expect(await promise).toBe("resolved value");
  * ```
  *
  * @template T - The type of argument passed to callbacks (defaults to undefined

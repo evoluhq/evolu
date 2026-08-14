@@ -21,18 +21,26 @@ import type { Store } from "./Store.ts";
  * ### Example
  *
  * ```ts
+ * import { createRef } from "@evolu/common";
+ *
  * const count = createRef(0);
  * count.set(1);
  * count.update((n) => n + 1);
- * console.log(count.get()); // 2
+ * expect(count.get()).toBe(2);
  * ```
  *
- * ### Example of using Ref as a dependency
+ * ### As a dependency
  *
  * ```ts
+ * import { createRef, type Ref } from "@evolu/common";
+ *
  * interface CounterRefDep {
  *   readonly counterRef: Ref<number>;
  * }
+ *
+ * const deps: CounterRefDep = { counterRef: createRef(0) };
+ * deps.counterRef.update((count) => count + 1);
+ * expect(deps.counterRef.get()).toBe(1);
  * ```
  */
 export interface Ref<T> {

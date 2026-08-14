@@ -31,13 +31,18 @@ export type TestCreateId = <B extends string = never>() => [B] extends [never]
  * ### Example
  *
  * ```ts
- * test("creates stable ids", () => {
- *   const createId = testCreateId();
+ * import { testCreateId, type Brand, type Id } from "@evolu/common";
  *
- *   const callbackId = createId();
- *   const secondCallbackId = createId();
- *   const todoId = createId<"Todo">();
- * });
+ * const createId = testCreateId();
+ *
+ * const callbackId = createId();
+ * const secondCallbackId = createId();
+ * const todoId = createId<"Todo">();
+ * expect(new Set([callbackId, secondCallbackId, todoId]).size).toBe(3);
+ *
+ * const replayCreateId = testCreateId();
+ * expect(replayCreateId()).toBe(callbackId);
+ * expectTypeOf(todoId).toEqualTypeOf<Id & Brand<"Todo">>();
  * ```
  */
 export const testCreateId = (): TestCreateId => {

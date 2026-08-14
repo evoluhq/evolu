@@ -4,17 +4,12 @@ import { join, resolve } from "node:path";
 
 const repositoryDirectory = resolve(import.meta.dirname, "..");
 
-export const jsdocSourceFiles = [
-  "packages/common/src/Object.ts",
-  "packages/common/src/Result.ts",
-  "packages/common/src/Task.ts",
-  "packages/common/src/Type.ts",
-] as const;
+export const jsdocSourcePattern = "packages/common/src/**/*.ts";
 
 export const selectJSDocIncludes = (
   args: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
-  if (args.length === 0) return jsdocSourceFiles;
+  if (args.length === 0) return [jsdocSourcePattern];
 
   for (const arg of args) {
     assert(!arg.startsWith("-"), `Unknown option: ${arg}`);
@@ -23,7 +18,7 @@ export const selectJSDocIncludes = (
 };
 
 export const testEvoluJSDocExamples = async (
-  include: string | ReadonlyArray<string> = jsdocSourceFiles,
+  include: string | ReadonlyArray<string> = jsdocSourcePattern,
 ): Promise<void> => {
   await testJSDocExamples({
     aliases: {
@@ -34,6 +29,14 @@ export const testEvoluJSDocExamples = async (
       "@evolu/common/intl": join(
         repositoryDirectory,
         "packages/common/src/intl/index.ts",
+      ),
+      "@evolu/common/local-first": join(
+        repositoryDirectory,
+        "packages/common/src/local-first/index.ts",
+      ),
+      "@evolu/react-native": join(
+        repositoryDirectory,
+        "packages/react-native/src/LockManager.ts",
       ),
       "@evolu/vitest": join(
         repositoryDirectory,
@@ -54,7 +57,5 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const include = selectJSDocIncludes(args);
   await testEvoluJSDocExamples(include);
-  process.stdout.write(
-    `JSDoc examples passed for ${String(include.length)} source file${include.length === 1 ? "" : "s"}.\n`,
-  );
+  process.stdout.write("JSDoc examples passed.\n");
 }

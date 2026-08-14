@@ -15,32 +15,36 @@ import type { Writable } from "./Types.ts";
  * ### Example
  *
  * ```ts
+ * import { exhaustiveCheck } from "@evolu/common";
+ *
  * type Color = "red" | "green" | "blue";
+ * const handled: Array<string> = [];
  *
  * const handleColor = (color: Color): void => {
  *   switch (color) {
  *     case "red":
- *       console.log("Handling red");
+ *       handled.push("Handling red");
  *       break;
  *     case "green":
- *       console.log("Handling green");
+ *       handled.push("Handling green");
  *       break;
  *     case "blue":
- *       console.log("Handling blue");
+ *       handled.push("Handling blue");
  *       break;
  *     default:
- *       exhaustiveCheck(color); // Ensures all cases are handled
+ *       exhaustiveCheck(color);
  *   }
  * };
+ *
+ * handleColor("blue");
+ * expect(handled).toEqual(["Handling blue"]);
  * ```
  *
  * Use this primarily in side-effect switches (`void` branches). For
  * value-producing switches, TypeScript can enforce exhaustiveness without a
- * `default` branch.
+ * `default` branch in either of the following styles.
  *
- * ### Example
- *
- * Return from each case for value-producing switches.
+ * ### Return from every case
  *
  * ```ts
  * type Color = "red" | "green" | "blue";
@@ -55,11 +59,11 @@ import type { Writable } from "./Types.ts";
  *       return "#0000ff";
  *   }
  * };
+ *
+ * expect(colorToHex("green")).toBe("#00ff00");
  * ```
  *
- * ### Example
- *
- * Use assignment + no `default` to get exhaustiveness by definite assignment.
+ * ### Assign in every case
  *
  * ```ts
  * type Input =
@@ -67,7 +71,7 @@ import type { Writable } from "./Types.ts";
  *   | { readonly type: "Query" }
  *   | { readonly type: "Export" };
  *
- * const onInput = (input: Input): void => {
+ * const inputToKind = (input: Input): "A" | "B" | "C" => {
  *   let result: "A" | "B" | "C";
  *
  *   switch (input.type) {
@@ -82,12 +86,10 @@ import type { Writable } from "./Types.ts";
  *       break;
  *   }
  *
- *   handleKind(result);
+ *   return result;
  * };
  *
- * const handleKind = (kind: "A" | "B" | "C"): void => {
- *   console.log(kind);
- * };
+ * expect(inputToKind({ type: "Query" })).toBe("B");
  * ```
  */
 export const exhaustiveCheck = (value: never): never => {
@@ -103,11 +105,16 @@ export const exhaustiveCheck = (value: never): never => {
  * ### Example
  *
  * ```ts
- * const values = [1, 2, 3];
- * const same = values.map(identity); // [1, 2, 3]
+ * import { identity } from "@evolu/common";
  *
+ * const values = [1, 2, 3];
+ * const object = { value: 1 };
  * const getTransform = (shouldDouble: boolean) =>
- *   shouldDouble ? (x: number) => x * 2 : identity;
+ *   shouldDouble ? (value: number) => value * 2 : identity;
+ *
+ * expect(values.map(identity)).toEqual([1, 2, 3]);
+ * expect(identity(object)).toBe(object);
+ * expect(getTransform(false)(2)).toBe(2);
  * ```
  */
 export const identity = <A>(a: A): A => a;
@@ -132,40 +139,23 @@ export const identity = <A>(a: A): A => a;
  * ### Example
  *
  * ```ts
- * interface Queue extends Disposable {
- *   readonly push: (value: string) => void;
- *   readonly drain: () => ReadonlyArray<string>;
- * }
+ * import { disposable } from "@evolu/common";
  *
- * const createQueue = (): Queue => {
+ * let cleaned = false;
+ * const createResource = () => {
  *   using disposer = new DisposableStack();
- *   let values: ReadonlyArray<string> = [];
- *
  *   disposer.defer(() => {
- *     values = [];
+ *     cleaned = true;
  *   });
- *
- *   return disposable<Queue>(
- *     {
- *       push: (value) => {
- *         values = [...values, value];
- *       },
- *
- *       drain: () => {
- *         const drained = values;
- *         values = [];
- *         return drained;
- *       },
- *     },
- *     disposer,
- *   );
+ *   return disposable({ read: () => "ready" }, disposer);
  * };
  *
- * const queue = createQueue();
- * queue.push("hello");
- * queue.drain(); // ["hello"]
- * queue[Symbol.dispose]();
- * queue.push("again"); // Throws "Cannot use a disposed object."
+ * const resource = createResource();
+ * expect(resource.read()).toBe("ready");
+ * resource[Symbol.dispose]();
+ *
+ * expect(cleaned).toBe(true);
+ * expect(() => resource.read()).toThrow("Cannot use a disposed object.");
  * ```
  */
 export function disposable<T extends object>(
@@ -225,20 +215,25 @@ export const isDisposable = (
  * ### Example
  *
  * ```ts
- * // Default callback
- * const notify = (onDone: Thunk<void> = constVoid) => {
- *   onDone();
- * };
+ * import { constVoid, type Thunk } from "@evolu/common";
  *
- * // Delay computation
- * const getData: Thunk<Data> = () => compute();
- * const data = getData();
+ * const notify = (onDone: Thunk<void> = constVoid) => onDone();
+ * notify();
  *
- * // Defer side effects
- * const schedule = (job: Thunk<void>) => {
- *   queueMicrotask(job);
+ * let value = 0;
+ * const compute: Thunk<number> = () => ++value;
+ * const jobs: Array<Thunk<void>> = [];
+ * const schedule = (job: Thunk<void>): void => {
+ *   jobs.push(job);
  * };
- * schedule(() => logMetric("loaded"));
+ * schedule(() => {
+ *   value += 10;
+ * });
+ *
+ * const computed = compute();
+ * jobs.shift()?.();
+ * expect(computed).toBe(1);
+ * expect(value).toBe(11);
  * ```
  */
 export type Thunk<T> = () => T;
@@ -246,17 +241,23 @@ export type Thunk<T> = () => T;
 /**
  * Creates a {@link Thunk} that always returns a precomputed value.
  *
- * Use when the value is expensive to compute and want to compute it once at
+ * Use when the value is expensive to compute and you want to compute it once at
  * definition time rather than on every call.
  *
  * ### Example
  *
  * ```ts
- * // Computed once at definition, returned on every call
- * const getConfig = constant(parseConfig(rawConfig));
+ * import { constant } from "@evolu/common";
  *
- * // vs. computed on every call
- * const getConfig = () => parseConfig(rawConfig);
+ * let version = 0;
+ * const readConfig = () => ({ version: ++version });
+ * const getConstantConfig = constant(readConfig());
+ * const getFreshConfig = () => readConfig();
+ *
+ * expect(getConstantConfig()).toBe(getConstantConfig());
+ * expect(getConstantConfig().version).toBe(1);
+ * expect(getFreshConfig().version).toBe(2);
+ * expect(getFreshConfig().version).toBe(3);
  * ```
  */
 export const constant =
@@ -290,17 +291,19 @@ export const constVoid: Thunk<void> = constUndefined;
  * ### Example
  *
  * ```ts
- * // Type inferred from return type annotation
- * const fetchUser = (id: UserId): Result<User, FetchError> => todo();
+ * import { todo } from "@evolu/common";
  *
- * expectTypeOf(fetchUser).returns.toEqualTypeOf<
- *   Result<User, FetchError>
- * >();
+ * interface Config {
+ *   readonly theme: string;
+ * }
  *
- * // Explicit generic when no return type
+ * const getCount = (): number => todo();
  * const getConfig = () => todo<Config>();
  *
- * expectTypeOf(getConfig).returns.toEqualTypeOf<Config>();
+ * expectTypeOf<
+ *   [ReturnType<typeof getCount>, ReturnType<typeof getConfig>]
+ * >().toEqualTypeOf<[number, Config]>();
+ * expect(getCount).toThrow("not yet implemented");
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters

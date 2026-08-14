@@ -29,9 +29,12 @@ import type {
  * ### Example
  *
  * ```ts
+ * import { createEqObject, eqNumber } from "@evolu/common";
+ *
  * const eqPoint = createEqObject({ x: eqNumber, y: eqNumber });
- * eqPoint({ x: 1, y: 2 }, { x: 1, y: 2 }); // true
- * eqPoint({ x: 1, y: 2 }, { x: 2, y: 1 }); // false
+ *
+ * expect(eqPoint({ x: 1, y: 2 }, { x: 1, y: 2 })).toBe(true);
+ * expect(eqPoint({ x: 1, y: 2 }, { x: 2, y: 1 })).toBe(false);
  * ```
  */
 export type Eq<in A> = (x: A, y: A) => boolean;
@@ -54,9 +57,11 @@ export const eqStrict = <A>(x: A, y: A): boolean => x === y;
  * ### Example
  *
  * ```ts
- * eqSameValueZero(NaN, NaN); // true
- * eqSameValueZero(0, -0); // true
- * eqSameValueZero({}, {}); // false
+ * import { eqSameValueZero } from "@evolu/common";
+ *
+ * expect(eqSameValueZero(NaN, NaN)).toBe(true);
+ * expect(eqSameValueZero(0, -0)).toBe(true);
+ * expect(eqSameValueZero({}, {})).toBe(false);
  * ```
  */
 export const eqSameValueZero = <A>(x: A, y: A): boolean =>
@@ -93,10 +98,15 @@ export const eqFromOrder =
  * ### Example
  *
  * ```ts
+ * import { createEqArrayLike, eqNumber } from "@evolu/common";
+ *
  * const eqArrayNumber = createEqArrayLike(eqNumber);
- * eqArrayNumber([1, 2, 3], [1, 2, 3]); // true (works with regular arrays)
- * eqArrayNumber(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3])); // true (works with Uint8Array)
- * eqArrayNumber([1, 2, 3], [1, 2, 4]); // false
+ *
+ * expect(eqArrayNumber([1, 2, 3], [1, 2, 3])).toBe(true);
+ * expect(
+ *   eqArrayNumber(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3])),
+ * ).toBe(true);
+ * expect(eqArrayNumber([1, 2, 3], [1, 2, 4])).toBe(false);
  * ```
  */
 export const createEqArrayLike =
@@ -120,10 +130,12 @@ export const createEqArrayLike =
  * ### Example
  *
  * ```ts
+ * import { eqArrayStrict } from "@evolu/common";
+ *
  * const a = { x: 1 };
  * const b = { x: 1 };
- * eqArrayStrict([a, a], [a, a]); // true (same references)
- * eqArrayStrict([a], [b]); // false (different references, even if equal values)
+ * expect(eqArrayStrict([a, a], [a, a])).toBe(true);
+ * expect(eqArrayStrict([a], [b])).toBe(false);
  * ```
  */
 export const eqArrayStrict = /*#__PURE__*/ createEqArrayLike(eqStrict);
@@ -134,9 +146,9 @@ export const eqArrayStrict = /*#__PURE__*/ createEqArrayLike(eqStrict);
  * ### Example
  *
  * ```ts
- * eqArrayNumber([1, 2, 3], [1, 2, 3]); // true (works with regular arrays)
- * eqArrayNumber(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3])); // true (works with Uint8Array)
- * eqArrayNumber([1, 2, 3], [1, 2, 4]); // false
+ * import { eqArrayNumber } from "@evolu/common";
+ *
+ * expect(eqArrayNumber([1, NaN], [1, NaN])).toBe(true);
  * ```
  */
 export const eqArrayNumber = /*#__PURE__*/ createEqArrayLike(eqNumber);
@@ -148,9 +160,12 @@ export const eqArrayNumber = /*#__PURE__*/ createEqArrayLike(eqNumber);
  * ### Example
  *
  * ```ts
+ * import { createEqObject, eqNumber } from "@evolu/common";
+ *
  * const eqObjectNumber = createEqObject({ a: eqNumber });
- * eqObjectNumber({ a: 1 }, { a: 1 }); // true
- * eqObjectNumber({ a: 1 }, { a: 2 }); // false
+ *
+ * expect(eqObjectNumber({ a: 1 }, { a: 1 })).toBe(true);
+ * expect(eqObjectNumber({ a: 1 }, { a: 2 })).toBe(false);
  * ```
  */
 export const createEqObject =
@@ -181,15 +196,12 @@ export const createEqObject =
  * ### Example
  *
  * ```ts
- * const obj1: JsonValue = {
- *   name: "Alice",
- *   hobbies: ["reading", "hiking"],
- * };
- * const obj2: JsonValue = {
- *   name: "Alice",
- *   hobbies: ["reading", "hiking"],
- * };
- * console.log(eqJsonValue(obj1, obj2)); // true
+ * import { eqJsonValue, type JsonValue } from "@evolu/common";
+ *
+ * const first: JsonValue = { profile: { name: "Ada" } };
+ * const second: JsonValue = { profile: { name: "Ada" } };
+ *
+ * expect(eqJsonValue(first, second)).toBe(true);
  * ```
  */
 export const eqJsonValue = (a: JsonValue, b: JsonValue): boolean => {
@@ -278,15 +290,12 @@ export const eqJsonValue = (a: JsonValue, b: JsonValue): boolean => {
  * ### Example
  *
  * ```ts
- * const obj1: JsonValueInput = {
- *   name: "Alice",
- *   hobbies: ["reading", "hiking"],
- * };
- * const obj2: JsonValueInput = {
- *   name: "Alice",
- *   hobbies: ["reading", "hiking"],
- * };
- * console.log(eqJsonValueInput(obj1, obj2)); // true
+ * import { eqJsonValueInput, type JsonValueInput } from "@evolu/common";
+ *
+ * const first: JsonValueInput = { profile: { name: "Ada" } };
+ * const second: JsonValueInput = { profile: { name: "Ada" } };
+ *
+ * expect(eqJsonValueInput(first, second)).toBe(true);
  * ```
  */
 export const eqJsonValueInput = (

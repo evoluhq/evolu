@@ -4211,8 +4211,8 @@ export const race =
  * the Ok values that did settle.
  *
  * Sequential by default; pass a `concurrency` option to run more than one Task
- * at a time. The count uses {@link Int1To100OrPositiveInt}: pass `1` to
- * `100` as a literal, or a validated {@link PositiveInt} for larger values.
+ * at a time. The count uses {@link Int1To100OrPositiveInt}: pass `1` to `100` as
+ * a literal, or a validated {@link PositiveInt} for larger values.
  *
  * ### Example
  *
@@ -4283,8 +4283,8 @@ export const firstN =
  * fewer than `count` Tasks settle, returns the Results that did settle.
  *
  * Sequential by default; pass a `concurrency` option to run more than one Task
- * at a time. The count uses {@link Int1To100OrPositiveInt}: pass `1` to
- * `100` as a literal, or a validated {@link PositiveInt} for larger values.
+ * at a time. The count uses {@link Int1To100OrPositiveInt}: pass `1` to `100` as
+ * a literal, or a validated {@link PositiveInt} for larger values.
  *
  * ### Example
  *
@@ -4451,9 +4451,9 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  * a defect that panics the Run tree.
  *
  * Sequential by default; pass a `concurrency` option to run more than one Task
- * at a time. Defects from child Tasks keep caller-linked async stack
- * traces; building on `each` preserves diagnostics that a hand-rolled
- * scheduling loop typically loses.
+ * at a time. Defects from child Tasks keep caller-linked async stack traces;
+ * building on `each` preserves diagnostics that a hand-rolled scheduling loop
+ * typically loses.
  *
  * @group Concurrency
  */

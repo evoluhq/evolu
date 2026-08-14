@@ -62,18 +62,37 @@ export interface StorageConfig {
    * The callback returns a boolean rather than an error because error handling
    * and logging are the responsibility of the callback implementation.
    *
+   * Relay deployments configure this callback. Client applications can observe
+   * a denied relay write as a `ProtocolQuotaError` by subscribing once to the
+   * shared `EvoluErrorDep.evoluError` store returned by `createEvoluDeps`.
+   *
    * ### Example
    *
    * ```ts
-   * // Client
-   * // evolu.subscribeError
+   * import {
+   *   createAppOwner,
+   *   createOwnerSecret,
+   *   createRandomBytes,
+   *   PositiveInt,
+   * } from "@evolu/common";
+   * import type { StorageConfig } from "@evolu/common/local-first";
    *
-   * // Relay
-   * isOwnerWithinQuota: (ownerId, requiredBytes) => {
-   *   console.log(ownerId, requiredBytes);
-   *   // Check error via evolu.subscribeError
-   *   return true;
+   * // Create once, persist the mnemonic securely, and restore it on later runs.
+   * const appOwner = createAppOwner(
+   *   createOwnerSecret({ randomBytes: createRandomBytes() }),
+   * );
+   * const maxBytes = PositiveInt.orThrow(1024);
+   * const relayStorageConfig: StorageConfig = {
+   *   isOwnerWithinQuota: (ownerId, requiredBytes) =>
+   *     ownerId === appOwner.id && requiredBytes <= maxBytes,
    * };
+   *
+   * expect(
+   *   await relayStorageConfig.isOwnerWithinQuota(
+   *     appOwner.id,
+   *     PositiveInt.orThrow(2048),
+   *   ),
+   * ).toBe(false);
    * ```
    */
   readonly isOwnerWithinQuota: (

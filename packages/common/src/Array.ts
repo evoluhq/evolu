@@ -20,8 +20,9 @@
  *
  * const scores = [3, 1, 2];
  * const leaderboard = sortScores(scores);
- * leaderboard; // [1, 2, 3]
- * scores; // [1, 2, 3] — original order lost!
+ * expect(leaderboard).toEqual([1, 2, 3]);
+ * expect(scores).toEqual([1, 2, 3]);
+ * expect(leaderboard).toBe(scores);
  * ```
  *
  * Imagine every method doing that.
@@ -30,21 +31,30 @@
  * instead:
  *
  * ```ts
+ * import { sortArray } from "@evolu/common";
+ *
  * const sortScores = (arr: ReadonlyArray<number>) =>
  *   sortArray(arr, (a, b) => a - b);
  *
  * const scores: ReadonlyArray<number> = [3, 1, 2];
  * const leaderboard = sortScores(scores);
- * leaderboard; // [1, 2, 3]
- * scores; // [3, 1, 2] — safe!
+ * expect(leaderboard).toEqual([1, 2, 3]);
+ * expect(scores).toEqual([3, 1, 2]);
+ * expect(leaderboard).not.toBe(scores);
  * ```
  *
  * Even better, require a {@link NonEmptyReadonlyArray} — there's nothing to sort
  * if the array is empty anyway:
  *
  * ```ts
+ * import { sortArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ *
  * const sortScores = (arr: NonEmptyReadonlyArray<number>) =>
  *   sortArray(arr, (a, b) => a - b);
+ *
+ * const leaderboard = sortScores([3, 1, 2]);
+ * expect(leaderboard).toEqual([1, 2, 3]);
+ * expectTypeOf(leaderboard).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
  * ```
  *
  * Sorting an empty array isn't expensive, but functions can have side effects
@@ -57,35 +67,14 @@
  * `find`, `some`, `every`, `includes`, `indexOf`, and `findIndex` work well on
  * readonly arrays without mutation — use them directly.
  *
- * ## Examples
- *
  * ```ts
- * // Types - compile-time guarantee of at least one element
- * const _valid: NonEmptyReadonlyArray<number> = [1, 2, 3];
- * // ts-expect-error - empty array is not a valid NonEmptyReadonlyArray
- * const _invalid: NonEmptyReadonlyArray<number> = [];
+ * import { type NonEmptyReadonlyArray } from "@evolu/common";
  *
- * // Type guards
- * const arr: ReadonlyArray<number> = [1, 2, 3];
- * if (isNonEmptyArray(arr)) {
- *   firstInArray(arr);
- * }
+ * const valid: NonEmptyReadonlyArray<number> = [1, 2, 3];
+ * // @ts-expect-error An empty array is not non-empty.
+ * const invalid: NonEmptyReadonlyArray<number> = [];
  *
- * // Transformations
- * const appended = appendToArray([1, 2, 3], 4); // [1, 2, 3, 4]
- * const prepended = prependToArray([2, 3], 1); // [1, 2, 3]
- * const readonly: ReadonlyArray<number> = [1, 2, 3];
- * const mapped = mapArray(readonly, (x) => x * 2); // [2, 4, 6]
- * const filtered = filterArray(readonly, (x) => x > 1); // [2, 3]
- * const deduped = dedupeArray([1, 2, 1, 3, 2]); // [1, 2, 3]
- * const [evens, odds] = partitionArray(
- *   [1, 2, 3, 4, 5],
- *   (x) => x % 2 === 0,
- * );
- *
- * // Accessors
- * const first = firstInArray(["a", "b", "c"]); // "a"
- * const last = lastInArray(["a", "b", "c"]); // "c"
+ * expect(valid.find((value) => value === 2)).toBe(2);
  * ```
  *
  * ## Composition
@@ -94,16 +83,51 @@
  * because it's natural for single operations:
  *
  * ```ts
+ * import { mapArray } from "@evolu/common";
+ *
+ * interface Message {
+ *   readonly timestamp: number;
+ * }
+ *
+ * const messages: ReadonlyArray<Message> = [
+ *   { timestamp: 10 },
+ *   { timestamp: 20 },
+ * ];
  * const timestamps = mapArray(messages, (m) => m.timestamp);
+ * expect(timestamps).toEqual([10, 20]);
  * ```
  *
  * Data-first style also reads well for a few operations, often fitting on a
  * line:
  *
  * ```ts
- * const cheapest = firstInArray(sortArray(prices, orderNumber));
+ * import {
+ *   dedupeArray,
+ *   filterArray,
+ *   firstInArray,
+ *   isNonEmptyArray,
+ *   lastInArray,
+ *   mapArray,
+ *   orderNumber,
+ *   sortArray,
+ * } from "@evolu/common";
+ *
+ * const cheapest = firstInArray(sortArray([30, 10, 20], orderNumber));
+ * expect(cheapest).toBe(10);
+ *
+ * const users = [{ name: "Ada" }, { name: "Linus" }, { name: "Ada" }];
  * const uniqueNames = dedupeArray(mapArray(users, (u) => u.name));
- * const latestDone = lastInArray(filterArray(jobs, isCompletedJob));
+ * expect(uniqueNames).toEqual(["Ada", "Linus"]);
+ *
+ * const jobs = [
+ *   { id: 1, done: false },
+ *   { id: 2, done: true },
+ * ];
+ * const completedJobs = filterArray(jobs, (job) => job.done);
+ * if (!isNonEmptyArray(completedJobs)) throw new Error("Expected a job");
+ * const latestDone = lastInArray(completedJobs);
+ *
+ * expect(latestDone).toEqual({ id: 2, done: true });
  * ```
  *
  * For more operations, create a function like `getOldestActiveUser` or a
@@ -159,12 +183,19 @@ export const emptyArray: ReadonlyArray<never> = [];
  *   3 }, fn)`
  * - Returns existing arrays unchanged
  *
- * ### Example
+ * ### Creating from iterables and lengths
  *
  * ```ts
- * arrayFrom(new Set([1, 2, 3])); // ReadonlyArray<number>
- * arrayFrom(3, (i) => i * 10); // [0, 10, 20]
- * arrayFrom(iterableMaybeArray); // no unnecessary copy
+ * import { arrayFrom } from "@evolu/common";
+ *
+ * const fromSet = arrayFrom(new Set([1, 2, 3]));
+ * expect(fromSet).toEqual([1, 2, 3]);
+ * expectTypeOf(fromSet).toEqualTypeOf<ReadonlyArray<number>>();
+ *
+ * expect(arrayFrom(3, (i) => i * 10)).toEqual([0, 10, 20]);
+ *
+ * const existing: ReadonlyArray<number> = [1, 2, 3];
+ * expect(arrayFrom(existing)).toBe(existing);
  * ```
  *
  * Unlike `Array.from`, there's no map parameter for iterables — use
@@ -200,16 +231,22 @@ export function arrayFrom<T>(
  * Returns a readonly array and awaits promised items from sync or async
  * iterables.
  *
- * ### Example
+ * ### Awaiting sync and async iterables
  *
  * ```ts
- * await arrayFromAsync(new Set([1, 2, 3])); // ReadonlyArray<number>
- * await arrayFromAsync(
+ * import { arrayFromAsync } from "@evolu/common";
+ *
+ * const fromIterable = await arrayFromAsync(new Set([1, 2, 3]));
+ * expect(fromIterable).toEqual([1, 2, 3]);
+ *
+ * const fromAsyncIterable = await arrayFromAsync(
  *   (async function* () {
  *     yield Promise.resolve(1);
  *     yield Promise.resolve(2);
  *   })(),
- * ); // [1, 2]
+ * );
+ * expect(fromAsyncIterable).toEqual([1, 2]);
+ * expectTypeOf(fromAsyncIterable).toEqualTypeOf<ReadonlyArray<number>>();
  * ```
  *
  * Unlike `Array.fromAsync`, there's no map parameter — map the result with
@@ -231,20 +268,25 @@ export const arrayFromAsync = async <T>(
  * negated guard is better than `.length === 0` for early returns because
  * TypeScript narrows the type after the check.
  *
- * ### Example
+ * ### Narrowing mutable and readonly arrays
  *
  * ```ts
- * // Mutable array narrows to NonEmptyArray
- * const arr: Array<number> = [1, 2, 3];
- * if (isNonEmptyArray(arr)) {
- *   firstInArray(arr); // arr is NonEmptyArray<number>
+ * import {
+ *   firstInArray,
+ *   isNonEmptyArray,
+ *   type NonEmptyArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
+ *
+ * const mutable: Array<number> = [1, 2, 3];
+ * const readonly: ReadonlyArray<number> = [1, 2, 3];
+ * if (!isNonEmptyArray(mutable) || !isNonEmptyArray(readonly)) {
+ *   throw new Error("Expected values");
  * }
  *
- * // Readonly array narrows to NonEmptyReadonlyArray
- * const readonly: ReadonlyArray<number> = [1, 2, 3];
- * if (isNonEmptyArray(readonly)) {
- *   firstInArray(readonly); // readonly is NonEmptyReadonlyArray<number>
- * }
+ * expectTypeOf(mutable).toEqualTypeOf<NonEmptyArray<number>>();
+ * expectTypeOf(readonly).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * expect(firstInArray(readonly)).toBe(1);
  * ```
  *
  * @group Types
@@ -263,10 +305,17 @@ export function isNonEmptyArray<T>(
 /**
  * Appends an item to an array, returning a new non-empty readonly array.
  *
- * ### Example
+ * ### Appending a value
  *
  * ```ts
- * appendToArray([1, 2, 3], 4); // [1, 2, 3, 4]
+ * import {
+ *   appendToArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
+ *
+ * const values = appendToArray([1, 2, 3], 4);
+ * expect(values).toEqual([1, 2, 3, 4]);
+ * expectTypeOf(values).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -282,10 +331,17 @@ export const appendToArray = <T>(
 /**
  * Prepends an item to an array, returning a new non-empty readonly array.
  *
- * ### Example
+ * ### Prepending a value
  *
  * ```ts
- * prependToArray([2, 3], 1); // [1, 2, 3]
+ * import {
+ *   prependToArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
+ *
+ * const values = prependToArray([2, 3], 1);
+ * expect(values).toEqual([1, 2, 3]);
+ * expectTypeOf(values).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -300,10 +356,20 @@ export const prependToArray = <T>(
  *
  * Preserves non-empty type.
  *
- * ### Example
+ * ### Mapping with indexes while preserving non-emptiness
  *
  * ```ts
- * mapArray([1, 2, 3], (x) => x * 2); // [2, 4, 6]
+ * import { mapArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ *
+ * const values: ReadonlyArray<number> = [1, 2, 3];
+ * const indexed = mapArray(values, (value, index) => value + index);
+ * expect(indexed).toEqual([1, 3, 5]);
+ * expectTypeOf(indexed).toEqualTypeOf<ReadonlyArray<number>>();
+ *
+ * const nonEmpty: NonEmptyReadonlyArray<number> = [1, 2, 3];
+ * expectTypeOf(mapArray(nonEmpty, (x) => x * 2)).toEqualTypeOf<
+ *   NonEmptyReadonlyArray<number>
+ * >();
  * ```
  *
  * The mapper receives `(item, index, array)`, matching native `Array.map`.
@@ -333,15 +399,23 @@ export function mapArray<T, U>(
  * non-empty arrays. When called without a mapper, flattens nested arrays using
  * {@link identity}.
  *
- * ### Example
+ * ### Flattening and expanding values
  *
  * ```ts
- * flatMapArray([
+ * import { flatMapArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ *
+ * const flattened = flatMapArray([
  *   [1, 2],
  *   [3, 4],
- * ]); // [1, 2, 3, 4]
- *
- * flatMapArray([1, 2, 3], (x) => [x, x * 10]); // [1, 10, 2, 20, 3, 30]
+ * ]);
+ * const values: NonEmptyReadonlyArray<number> = [1, 2, 3];
+ * const expanded = flatMapArray(
+ *   values,
+ *   (value, index): NonEmptyReadonlyArray<number> => [value, index],
+ * );
+ * expect(flattened).toEqual([1, 2, 3, 4]);
+ * expectTypeOf(expanded).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * expect(expanded).toEqual([1, 0, 2, 1, 3, 2]);
  * ```
  *
  * ### Filter and map in one pass
@@ -349,10 +423,16 @@ export function mapArray<T, U>(
  * Return `[]` to filter out, `[value]` to keep:
  *
  * ```ts
+ * import { err, flatMapArray, ok } from "@evolu/common";
+ *
+ * const validate = (value: number) =>
+ *   value > 0 ? ok(value) : err(`${value} is not positive`);
+ * const fields = [1, -2, 3, -4];
  * const errors = flatMapArray(fields, (f) => {
  *   const result = validate(f);
  *   return result.ok ? [] : [result.error];
  * });
+ * expect(errors).toEqual(["-2 is not positive", "-4 is not positive"]);
  * ```
  *
  * The mapper receives `(item, index, array)`, matching native `Array.flatMap`.
@@ -400,12 +480,19 @@ export function flatMapArray<T, U>(
  *
  * Returns a non-empty array when at least one input is non-empty.
  *
- * ### Example
+ * ### Concatenating non-empty inputs
  *
  * ```ts
- * concatArrays([1, 2], [3, 4]); // [1, 2, 3, 4]
- * concatArrays([], [1]); // [1] (non-empty)
- * concatArrays([1], []); // [1] (non-empty)
+ * import { concatArrays, type NonEmptyReadonlyArray } from "@evolu/common";
+ *
+ * const nonEmpty: NonEmptyReadonlyArray<number> = [1];
+ * const joined = concatArrays([1, 2], [3, 4]);
+ * const fromLeft = concatArrays(nonEmpty, []);
+ * const fromRight = concatArrays([], nonEmpty);
+ *
+ * expect(joined).toEqual([1, 2, 3, 4]);
+ * expectTypeOf(fromLeft).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * expectTypeOf(fromRight).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -439,23 +526,31 @@ export function concatArrays<T>(
  * TypeScript will narrow the result type to the narrowed type, making it useful
  * for filtering with Evolu Types like `PositiveInt.is`.
  *
- * ### Example
- *
  * ### With predicate
  *
  * ```ts
- * filterArray([1, 2, 3, 4, 5], (x) => x % 2 === 0); // [2, 4]
+ * import { filterArray } from "@evolu/common";
+ *
+ * const evens = filterArray([1, 2, 3, 4, 5], (x) => x % 2 === 0);
+ * expect(evens).toEqual([2, 4]);
  * ```
  *
  * ### With refinement
  *
  * ```ts
+ * import {
+ *   filterArray,
+ *   NonEmptyTrimmedString,
+ *   PositiveInt,
+ * } from "@evolu/common";
+ *
  * const mixed: ReadonlyArray<NonEmptyTrimmedString | PositiveInt> = [
  *   NonEmptyTrimmedString.orThrow("hello"),
  *   PositiveInt.orThrow(42),
  * ];
  * const positiveInts = filterArray(mixed, PositiveInt.is);
- * // positiveInts: ReadonlyArray<PositiveInt> (narrowed type)
+ * expect(positiveInts).toEqual([42]);
+ * expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
  * ```
  *
  * The predicate receives `(item, index, array)`, matching native
@@ -486,21 +581,26 @@ export function filterArray<T>(
  *
  * Preserves non-empty type.
  *
- * ### Example
+ * ### Deduplicating by value or key
  *
  * ```ts
- * // Dedupe primitives by value
- * dedupeArray([1, 2, 1, 3, 2]); // [1, 2, 3]
+ * import { dedupeArray, type NonEmptyReadonlyArray } from "@evolu/common";
  *
- * // Dedupe objects by property
- * dedupeArray(
+ * const numbers = dedupeArray([1, 2, 1, 3, 2]);
+ * const people = dedupeArray(
  *   [
  *     { id: 1, name: "Alice" },
  *     { id: 2, name: "Bob" },
  *     { id: 1, name: "Alice 2" },
  *   ],
  *   (item) => item.id,
- * ); // [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }]
+ * );
+ * expectTypeOf(numbers).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * expect(numbers).toEqual([1, 2, 3]);
+ * expect(people).toEqual([
+ *   { id: 1, name: "Alice" },
+ *   { id: 2, name: "Bob" },
+ * ]);
  * ```
  *
  * @group Transformations
@@ -542,29 +642,38 @@ export function dedupeArray<T>(
  * TypeScript will narrow the first array to the narrowed type, making it useful
  * for filtering with Evolu Types like `PositiveInt.is`.
  *
- * ### Example
- *
  * ### With predicate
  *
  * ```ts
+ * import { partitionArray } from "@evolu/common";
+ *
  * const [evens, odds] = partitionArray(
  *   [1, 2, 3, 4, 5],
  *   (x) => x % 2 === 0,
  * );
- * evens; // [2, 4]
- * odds; // [1, 3, 5]
+ * expect(evens).toEqual([2, 4]);
+ * expect(odds).toEqual([1, 3, 5]);
  * ```
  *
  * ### With refinement
  *
  * ```ts
+ * import {
+ *   NonEmptyTrimmedString,
+ *   partitionArray,
+ *   PositiveInt,
+ * } from "@evolu/common";
+ *
  * const mixed: ReadonlyArray<NonEmptyTrimmedString | PositiveInt> = [
  *   NonEmptyTrimmedString.orThrow("hello"),
  *   PositiveInt.orThrow(42),
  * ];
  * const [positiveInts, strings] = partitionArray(mixed, PositiveInt.is);
- * // positiveInts: ReadonlyArray<PositiveInt> (narrowed type)
- * // strings: ReadonlyArray<NonEmptyTrimmedString> (Exclude<T, PositiveInt>)
+ * expect(positiveInts).toEqual([42]);
+ * expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
+ * expectTypeOf(strings).toEqualTypeOf<
+ *   ReadonlyArray<NonEmptyTrimmedString>
+ * >();
  * ```
  *
  * The predicate receives `(item, index, array)`.
@@ -603,10 +712,15 @@ export function partitionArray<T>(
  *
  * Wraps native `toSorted`. Preserves non-empty type.
  *
- * ### Example
+ * ### Sorting without mutation
  *
  * ```ts
- * sortArray([3, 1, 2], (a, b) => a - b); // [1, 2, 3]
+ * import { sortArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ *
+ * const values: NonEmptyReadonlyArray<number> = [3, 1, 2];
+ * const sorted = sortArray(values, (a, b) => a - b);
+ * expect(sorted).toEqual([1, 2, 3]);
+ * expectTypeOf(sorted).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -632,10 +746,15 @@ export function sortArray<T>(
  *
  * Wraps native `toReversed`. Preserves non-empty type.
  *
- * ### Example
+ * ### Reversing without mutation
  *
  * ```ts
- * reverseArray([1, 2, 3]); // [3, 2, 1]
+ * import { reverseArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ *
+ * const values: NonEmptyReadonlyArray<number> = [1, 2, 3];
+ * const reversed = reverseArray(values);
+ * expect(reversed).toEqual([3, 2, 1]);
+ * expectTypeOf(reversed).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -654,11 +773,15 @@ export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T> {
  *
  * Wraps native `toSpliced`.
  *
- * ### Example
+ * ### Removing and replacing values
  *
  * ```ts
- * spliceArray([1, 2, 3, 4], 1, 2); // [1, 4]
- * spliceArray([1, 2, 3], 1, 1, 10, 11); // [1, 10, 11, 3]
+ * import { spliceArray } from "@evolu/common";
+ *
+ * const values: ReadonlyArray<number> = [1, 2, 3, 4];
+ * expect(spliceArray(values, 1, 2)).toEqual([1, 4]);
+ * expect(spliceArray([1, 2, 3], 1, 1, 10, 11)).toEqual([1, 10, 11, 3]);
+ * expect(values).toEqual([1, 2, 3, 4]);
  * ```
  *
  * @group Transformations
@@ -687,21 +810,33 @@ export type ZipArrayResult<T extends ReadonlyArray<ReadonlyArray<unknown>>> = {
  * {@link https://github.com/tc39/proposal-array-zip | TC39 Array.zip proposal}
  * for the pattern this follows.
  *
- * ### Example
+ * ### Zipping to the shortest input
  *
  * ```ts
- * zipArray([
+ * import { zipArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ *
+ * const pairs = zipArray([
  *   [1, 2, 3],
  *   ["a", "b", "c"],
  * ]);
- * // [[1, "a"], [2, "b"], [3, "c"]]
- *
- * zipArray([
- *   [1, 2],
- *   ["a", "b", "c"],
- *   [true, false],
+ * expect(pairs).toEqual([
+ *   [1, "a"],
+ *   [2, "b"],
+ *   [3, "c"],
  * ]);
- * // [[1, "a", true], [2, "b", false]]
+ * expect(
+ *   zipArray([
+ *     [1, 2],
+ *     ["a", "b", "c"],
+ *     [true, false],
+ *   ]),
+ * ).toEqual([
+ *   [1, "a", true],
+ *   [2, "b", false],
+ * ]);
+ * expectTypeOf(pairs).toEqualTypeOf<
+ *   NonEmptyReadonlyArray<Readonly<[number, string]>>
+ * >();
  * ```
  *
  * @group Transformations
@@ -731,10 +866,12 @@ export function zipArray<T extends ReadonlyArray<ReadonlyArray<unknown>>>(
 /**
  * Returns the first element of a non-empty array.
  *
- * ### Example
+ * ### Reading the first value
  *
  * ```ts
- * firstInArray(["a", "b", "c"]); // "a"
+ * import { firstInArray } from "@evolu/common";
+ *
+ * expect(firstInArray(["a", "b", "c"])).toBe("a");
  * ```
  *
  * @group Accessors
@@ -744,10 +881,12 @@ export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
 /**
  * Returns the last element of a non-empty array.
  *
- * ### Example
+ * ### Reading the last value
  *
  * ```ts
- * lastInArray(["a", "b", "c"]); // "c"
+ * import { lastInArray } from "@evolu/common";
+ *
+ * expect(lastInArray(["a", "b", "c"])).toBe("c");
  * ```
  *
  * @group Accessors

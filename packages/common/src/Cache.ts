@@ -43,11 +43,16 @@ export interface Cache<K, V> {
  * ### Example
  *
  * ```ts
- * const cache = createLruCache<string, number>(2);
+ * import { createLruCache, PositiveInt } from "@evolu/common";
+ *
+ * const cache = createLruCache<string, number>(PositiveInt.orThrow(2));
  * cache.set("a", 1);
  * cache.set("b", 2);
- * cache.set("c", 3); // Evicts "a"
- * cache.has("a"); // false
+ * // Reading "a" makes "b" the least recently used entry.
+ * expect(cache.get("a")).toBe(1);
+ * cache.set("c", 3);
+ *
+ * expect(cache.has("b")).toBe(false);
  * ```
  */
 export const createLruCache = <K, V>(capacity: PositiveInt): Cache<K, V> => {

@@ -1807,7 +1807,13 @@ export const decodeNumber = (buffer: Buffer): number => {
  * ### Example
  *
  * ```ts
- * encodeFlags(buffer, [true, false, true]); // Encodes bits 0, 1, 2
+ * import { createBuffer } from "@evolu/common";
+ * import { encodeFlags } from "@evolu/common/local-first";
+ *
+ * const buffer = createBuffer();
+ * encodeFlags(buffer, [true, false, true]);
+ *
+ * expect(buffer.unwrap()).toEqual(new Uint8Array([0b101]));
  * ```
  */
 export const encodeFlags = (
@@ -1829,7 +1835,14 @@ export const encodeFlags = (
  * ### Example
  *
  * ```ts
- * const flags = decodeFlags(buffer, 3); // Decode 3 flags
+ * import { createBuffer, PositiveInt } from "@evolu/common";
+ * import { decodeFlags } from "@evolu/common/local-first";
+ *
+ * const buffer = createBuffer([0b101]);
+ * const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
+ *
+ * expect(flags).toEqual([true, false, true]);
+ * expect(buffer.getLength()).toBe(0);
  * ```
  */
 export const decodeFlags = (

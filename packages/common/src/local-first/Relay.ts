@@ -77,20 +77,50 @@ export interface RelayConfig extends StorageConfig {
    * ### Example
    *
    * ```ts
-   * // Client
+   * import {
+   *   AppName,
+   *   createAppOwner,
+   *   createEvolu,
+   *   createOwnerWebSocketTransport,
+   *   createOwnerSecret,
+   *   createRandomBytes,
+   *   id,
+   *   type AnyTask,
+   * } from "@evolu/common";
+   * import type { RelayConfig } from "@evolu/common/local-first";
+   *
+   * // Create once, persist the mnemonic securely, and restore it on later runs.
+   * const appOwner = createAppOwner(
+   *   createOwnerSecret({ randomBytes: createRandomBytes() }),
+   * );
+   * // Client: include the OwnerId so the relay can authenticate the connection.
    * const transport = createOwnerWebSocketTransport({
    *   url: "wss://relay.evolu.dev",
-   *   ownerId: owner.id,
+   *   ownerId: appOwner.id,
    * });
    *
-   * const evolu = createEvolu(deps)(Schema, {
-   *   transports: [transport],
-   * });
+   * const createTodoEvolu = createEvolu(
+   *   { todo: { id: id("Todo") } },
+   *   {
+   *     appName: AppName.orThrow("AuthenticatedRelayExample"),
+   *     appOwner,
+   *     transports: [transport],
+   *   },
+   * );
+   * expectTypeOf(createTodoEvolu).toExtend<AnyTask>();
    *
+   * // Relay: accept owners allowed by the app's access policy.
+   * type IsOwnerAllowed = NonNullable<RelayConfig["isOwnerAllowed"]>;
+   * const allowedOwnerIds = new Set([appOwner.id]);
+   * const isOwnerAllowed: IsOwnerAllowed = (ownerId, { signal }) =>
+   *   !signal.aborted && allowedOwnerIds.has(ownerId);
    *
-   * // Relay
-   * isOwnerAllowed: (ownerId, { signal: _signal }) =>
-   *   Promise.resolve(ownerId === "6jy_2F4RT5qqeLgJ14_dnQ"),
+   * expect(
+   *   isOwnerAllowed(appOwner.id, {
+   *     signal: new AbortController().signal,
+   *   }),
+   * ).toBe(true);
+   * expect(transport.url).toContain(`ownerId=${appOwner.id}`);
    * ```
    */
   readonly isOwnerAllowed?: (

@@ -60,7 +60,15 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  * ### Example
  *
  * ```ts
- * // With Evolu Type
+ * import * as z from "zod";
+ * import {
+ *   id,
+ *   NonEmptyTrimmedString100,
+ *   nullOr,
+ *   SqliteBoolean,
+ * } from "@evolu/common";
+ *
+ * // Evolu Type
  * const TodoId = id("Todo");
  * type TodoId = typeof TodoId.Output;
  *
@@ -71,15 +79,17 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  *     isCompleted: nullOr(SqliteBoolean),
  *   },
  * };
+ * expectOk(Schema.todo.title.fromUnknown("Write docs"), "Write docs");
  *
- * // With Zod (or any Standard Schema library)
- * const Schema = {
+ * // Zod, or another Standard Schema library
+ * const ZodSchema = {
  *   todo: {
- *     id: TodoId, // Evolu id() for branded IDs
+ *     id: TodoId,
  *     title: z.string().min(1).max(100),
  *     isCompleted: z.union([z.literal(0), z.literal(1)]).nullable(),
  *   },
  * };
+ * expect(ZodSchema.todo.title.safeParse("Write docs").success).toBe(true);
  * ```
  */
 export type EvoluSchema = ReadonlyRecord<
@@ -227,24 +237,50 @@ export interface MutationOptions {
    * ### Example
    *
    * ```ts
-   * // Partition your own data by project (derived from your AppOwner)
+   * import {
+   *   createAppOwner,
+   *   createOwnerSecret,
+   *   createRandomBytes,
+   *   createSharedOwner,
+   *   deriveShardOwner,
+   *   id,
+   *   NonEmptyTrimmedString100,
+   *   type Evolu,
+   * } from "@evolu/common";
+   *
+   * const Schema = {
+   *   task: { id: id("Task"), title: NonEmptyTrimmedString100 },
+   *   comment: { id: id("Comment"), text: NonEmptyTrimmedString100 },
+   * };
+   * const randomBytes = createRandomBytes();
+   * // Create once, persist the mnemonic securely, and restore it on later runs.
+   * const appOwner = createAppOwner(createOwnerSecret({ randomBytes }));
    * const projectOwner = deriveShardOwner(appOwner, [
    *   "project",
-   *   projectId,
+   *   "project-1",
    * ]);
-   * evolu.insert(
-   *   "task",
-   *   { title: "Task 1" },
-   *   { ownerId: projectOwner.id },
+   * const sharedOwner = createSharedOwner(
+   *   createOwnerSecret({ randomBytes }),
    * );
    *
-   * // Collaborative data (independent owner shared with others)
-   * const sharedOwner = createSharedOwner(sharedSecret);
-   * evolu.insert(
-   *   "comment",
-   *   { text: "Hello" },
-   *   { ownerId: sharedOwner.id },
-   * );
+   * const insertOwnedRows = (evolu: Evolu<typeof Schema>): void => {
+   *   // Partition app data by project.
+   *   evolu.insert(
+   *     "task",
+   *     { title: NonEmptyTrimmedString100.orThrow("Task 1") },
+   *     { ownerId: projectOwner.id },
+   *   );
+   *
+   *   // Put collaborative data under a shared owner.
+   *   evolu.insert(
+   *     "comment",
+   *     { text: NonEmptyTrimmedString100.orThrow("Hello") },
+   *     { ownerId: sharedOwner.id },
+   *   );
+   * };
+   *
+   * expect(projectOwner.type).toBe("ShardOwner");
+   * expect(sharedOwner.type).toBe("SharedOwner");
    * ```
    */
   readonly ownerId?: OwnerId;
@@ -411,21 +447,36 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  * ### Example
  *
  * ```ts
+ * import {
+ *   createQueryBuilder,
+ *   id,
+ *   NonEmptyTrimmedString100,
+ *   nullOr,
+ *   SqliteBoolean,
+ * } from "@evolu/common";
+ *
+ * const TodoId = id("Todo");
+ * type TodoId = typeof TodoId.Output;
  * const Schema = {
  *   todo: {
- *     id: id("Todo"),
+ *     id: TodoId,
  *     title: NonEmptyTrimmedString100,
  *     isCompleted: nullOr(SqliteBoolean),
  *   },
  * };
  *
- * // Create a typed query builder (once per schema)
+ * // Create one typed builder per schema and reuse it for every query.
  * const createQuery = createQueryBuilder(Schema);
- *
- * // Use it for all queries
  * const todosQuery = createQuery((db) =>
  *   db.selectFrom("todo").select(["id", "title", "isCompleted"]),
  * );
+ *
+ * expectTypeOf<typeof todosQuery.Row>().toEqualTypeOf<{
+ *   id: TodoId;
+ *   title: NonEmptyTrimmedString100 | null;
+ *   isCompleted: SqliteBoolean | null;
+ * }>();
+ * expect(todosQuery).toBeTypeOf("string");
  * ```
  */
 export const createQueryBuilder = <S extends EvoluSchema>(

@@ -49,20 +49,42 @@ import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
  *   - A Blob (default: "blob")
  *   - An ArrayBuffer ("arraybuffer")
  *
- * ### Example
+ * ### Connecting and sending
  *
  * ```ts
- * const ws = await run(
- *   createWebSocket("wss://example.com", {
- *     onMessage: (data) => console.log("Received:", data),
- *     onOpen: () => console.log("Connected"),
- *     onClose: () => console.log("Disconnected"),
- *   }),
- * );
- * if (ws.ok) {
- *   ws.value.send("Hello");
- *   // Later: await ws.value[Symbol.asyncDispose]();
- * }
+ * import {
+ *   createRun,
+ *   createWebSocket,
+ *   testCreateWebSocket,
+ *   type CreateWebSocket,
+ *   type Task,
+ *   type WebSocketSendError,
+ * } from "@evolu/common";
+ *
+ * const connectAndSend =
+ *   (
+ *     createSocket: CreateWebSocket = createWebSocket,
+ *   ): Task<void, WebSocketSendError> =>
+ *   async (run) => {
+ *     await using socket = await run.ok(
+ *       createSocket("wss://example.com", {
+ *         protocols: ["evolu"],
+ *         binaryType: "arraybuffer",
+ *         onOpen: () => console.log("Connected"),
+ *         onMessage: (data) => console.log("Received:", data),
+ *         onClose: () => console.log("Disconnected"),
+ *       }),
+ *     );
+ *     return socket.send("Hello");
+ *   };
+ *
+ * const socketFactory = testCreateWebSocket();
+ * await using run = createRun();
+ *
+ * expectOk(await run(connectAndSend(socketFactory)), undefined);
+ * expect(socketFactory.sentMessages).toEqual([
+ *   { url: "wss://example.com", data: "Hello" },
+ * ]);
  * ```
  */
 export interface WebSocket extends AsyncDisposable {

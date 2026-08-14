@@ -20,8 +20,12 @@ import type { Type } from "./Type.ts";
  * ### Example
  *
  * ```ts
- * assert(true, "true is not true"); // no-op
- * assert(false, "true is not true"); // throws Error
+ * import { assert as assertInvariant } from "@evolu/common";
+ *
+ * expect(() => assertInvariant(true, "Expected true.")).not.toThrow();
+ * expect(() => assertInvariant(false, "Expected true.")).toThrow(
+ *   "Expected true.",
+ * );
  * ```
  */
 export const assert: (
@@ -59,8 +63,13 @@ export const assertNonNullable: <T>(
  * ### Example
  *
  * ```ts
- * assertNonEmptyArray([1, 2, 3]); // no-op
- * assertNonEmptyArray([]); // throws Error
+ * import { assertNonEmptyArray } from "@evolu/common";
+ *
+ * const values = [1, 2, 3];
+ * assertNonEmptyArray(values);
+ * expectTypeOf(values).toEqualTypeOf<[number, ...Array<number>]>();
+ * expect(values[0]).toBe(1);
+ * expect(() => assertNonEmptyArray([])).toThrow();
  * ```
  */
 export const assertNonEmptyArray: <T>(
@@ -83,8 +92,15 @@ export const assertNonEmptyArray: <T>(
  * ### Example
  *
  * ```ts
- * assertNonEmptyReadonlyArray([1, 2, 3]); // no-op
- * assertNonEmptyReadonlyArray([]); // throws Error
+ * import { assertNonEmptyReadonlyArray } from "@evolu/common";
+ *
+ * const values: ReadonlyArray<number> = [1, 2, 3];
+ * assertNonEmptyReadonlyArray(values);
+ * expectTypeOf(values).toEqualTypeOf<
+ *   readonly [number, ...Array<number>]
+ * >();
+ * expect(values[0]).toBe(1);
+ * expect(() => assertNonEmptyReadonlyArray([])).toThrow();
  * ```
  */
 export const assertNonEmptyReadonlyArray: <T>(
@@ -105,10 +121,14 @@ export const assertNonEmptyReadonlyArray: <T>(
  * ### Example
  *
  * ```ts
- * using disposer = new globalThis.AsyncDisposableStack();
- * assertNotDisposed(disposer); // no-op
+ * import { assertNotDisposed } from "@evolu/common";
+ *
+ * await using disposer = new globalThis.AsyncDisposableStack();
+ * expect(() => assertNotDisposed(disposer)).not.toThrow();
  * await disposer.disposeAsync();
- * assertNotDisposed(disposer); // throws Error
+ * expect(() => assertNotDisposed(disposer)).toThrow(
+ *   "Cannot use a disposed object.",
+ * );
  * ```
  *
  * This is the JavaScript equivalent of the .NET `ObjectDisposedException`

@@ -343,16 +343,33 @@ export type StructuralFunction = (...args: ReadonlyArray<unknown>) => unknown;
  * ### Example
  *
  * ```ts
- * const byFilter = createLookupMap<
- *   { readonly table: string; readonly where: readonly [string, string] },
- *   string,
- *   StructuralLookupKey
- * >({
+ * import {
+ *   createLookupMap,
+ *   structuralLookup,
+ *   type StructuralLookupKey,
+ * } from "@evolu/common";
+ *
+ * interface Filter {
+ *   readonly table: string;
+ *   readonly where: readonly [string, string];
+ * }
+ *
+ * const byFilter = createLookupMap<Filter, string, StructuralLookupKey>({
  *   lookup: structuralLookup,
  * });
  *
- * byFilter.set({ table: "todo", where: ["owner", "ada"] }, "cached");
- * byFilter.get({ table: "todo", where: ["owner", "ada"] }); // "cached"
+ * const cachedFilter: Filter = {
+ *   table: "todo",
+ *   where: ["owner", "ada"],
+ * };
+ * const equivalentFilter: Filter = {
+ *   where: ["owner", "ada"],
+ *   table: "todo",
+ * };
+ * byFilter.set(cachedFilter, "cached");
+ *
+ * expect(byFilter.get(equivalentFilter)).toBe("cached");
+ * expect(byFilter.getKey(equivalentFilter)).toBe(cachedFilter);
  * ```
  *
  * @see {@link StructuralKey}

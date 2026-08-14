@@ -42,9 +42,12 @@ provides the JavaScript features used by `@evolu/common`. The test source is
 neither moved nor duplicated for that execution.
 
 Runnable TypeScript examples from JSDoc comments and Markdown files are tested
-by the Vitest Node.js project. The reusable `@evolu/vitest/TestJSDoc` entry
-point extracts the documented TypeScript, compiles it, and executes each
-example as an isolated Node.js ESM module with explicitly imported assertions.
+by `pnpm test:jsdoc`. `pnpm verify` runs this command serially before the Vitest
+coverage suite so the runner's CPU-limited child processes do not compete with
+Vitest workers. The reusable `@evolu/vitest/TestJSDoc` entry point extracts the
+documented TypeScript, compiles it, and executes each example as an isolated
+Node.js ESM module with explicitly imported assertions. Its behavior is covered
+by the Vitest Node.js unit project.
 
 ## Integration tests
 

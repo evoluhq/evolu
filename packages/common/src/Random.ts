@@ -22,13 +22,23 @@ export type RandomNumber = number & Brand<"RandomNumber">;
  * ### Example
  *
  * ```ts
- * // For apps
- * const random = createRandom();
- * random.next();
+ * import {
+ *   createRandom,
+ *   testCreateRandom,
+ *   type RandomNumber,
+ * } from "@evolu/common";
  *
- * // For tests
- * const random = testCreateRandom("test");
- * random.next();
+ * // For apps, use the Math.random-backed implementation.
+ * const random = createRandom();
+ * const value = random.next();
+ * expectTypeOf(value).toEqualTypeOf<RandomNumber>();
+ * expect(value).toBeGreaterThanOrEqual(0);
+ * expect(value).toBeLessThan(1);
+ *
+ * // For tests, use a seed.
+ * const firstTestRandom = testCreateRandom("test");
+ * const secondTestRandom = testCreateRandom("test");
+ * expect(firstTestRandom.next()).toBe(secondTestRandom.next());
  * ```
  */
 export interface Random {

@@ -51,20 +51,33 @@ import {
  * The input parameter types of `lookupA` and `lookupB` determine which values
  * the returned relation accepts on each side.
  *
- * ### Example
+ * ### Reference identity
  *
  * Use the default identity semantics.
  *
  * ```ts
- * const relation = createRelation<WebSocket, string>();
+ * import { createRelation } from "@evolu/common";
+ *
+ * interface Socket {
+ *   readonly id: string;
+ * }
+ *
+ * const relation = createRelation<Socket, string>();
+ * const socket = { id: "socket-1" };
+ *
  * relation.add(socket, "owner-1");
+ *
+ * expect(relation.has(socket, "owner-1")).toBe(true);
+ * expect(relation.has({ id: "socket-1" }, "owner-1")).toBe(false);
  * ```
  *
- * ### Example
+ * ### Lookup-derived equality
  *
  * Use lookup-derived equality.
  *
  * ```ts
+ * import { createRelation } from "@evolu/common";
+ *
  * interface Person {
  *   readonly id: string;
  *   readonly name: string;
@@ -76,7 +89,10 @@ import {
  * });
  *
  * relation.add({ id: "1", name: "Ada" }, { id: "admins" });
- * relation.has({ id: "1", name: "Grace" }, { id: "admins" }); // true
+ *
+ * expect(relation.has({ id: "1", name: "Grace" }, { id: "admins" })).toBe(
+ *   true,
+ * );
  * ```
  *
  * @see {@link createRelation}

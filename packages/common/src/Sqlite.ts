@@ -432,27 +432,32 @@ export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
  * ### Example
  *
  * ```ts
+ * import { sql } from "@evolu/common";
+ *
  * const id = 42;
  * const name = "Alice";
- *
- * const result = sqlite.exec(sql`
- *   select *
- *   from users
- *   where id = ${id} and name = ${name};
- * `);
- *
- * // For identifiers
+ * const select = sql`
+ *   select * from users where id = ${id} and name = ${name};
+ * `;
  * const tableName = "users";
- * sqlite.exec(sql`
+ * const createTable = sql`
  *   create table ${sql.identifier(tableName)} (
  *     "id" text primary key,
  *     "name" text not null
  *   );
- * `);
- *
- * // For raw SQL (use with caution)
+ * `;
+ * // Use sql.raw only with trusted SQL fragments.
  * const orderBy = "created_at desc";
- * sqlite.exec(sql`select * from users order by ${sql.raw(orderBy)};`);
+ * const ordered = sql`select * from users order by ${sql.raw(orderBy)};`;
+ *
+ * expect(select).toEqual({
+ *   sql: "select * from users where id = ? and name = ?;",
+ *   parameters: [42, "Alice"],
+ * });
+ * expect(createTable.sql).toContain('create table "users"');
+ * expect(ordered.sql).toBe(
+ *   "select * from users order by created_at desc;",
+ * );
  * ```
  *
  * ## TIP
@@ -669,8 +674,9 @@ export const sqliteFalse = 0;
  * ### Example
  *
  * ```ts
- * const isActive = true;
- * const sqlValue = booleanToSqliteBoolean(isActive); // Returns 1
+ * import { booleanToSqliteBoolean } from "@evolu/common";
+ *
+ * expect(booleanToSqliteBoolean(true)).toBe(1);
  * ```
  */
 export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
@@ -682,8 +688,9 @@ export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
  * ### Example
  *
  * ```ts
- * const sqlValue: SqliteBoolean = 1;
- * const bool = sqliteBooleanToBoolean(sqlValue); // Returns true
+ * import { sqliteBooleanToBoolean } from "@evolu/common";
+ *
+ * expect(sqliteBooleanToBoolean(1)).toBe(true);
  * ```
  */
 export const sqliteBooleanToBoolean = (value: SqliteBoolean): boolean =>

@@ -60,13 +60,28 @@ export interface MessagePort<Input, Output = never> extends Disposable {
   /**
    * The native underlying port for transferring via `postMessage`.
    *
-   * ### Example
+   * Prepare a port for transfer:
    *
    * ```ts
-   * sharedWorker.port.postMessage(
-   *   { type: "InitConsole", port: consoleChannel.port1.native },
-   *   [consoleChannel.port1.native],
-   * );
+   * import {
+   *   createMessageChannel,
+   *   type NativeMessagePort,
+   * } from "@evolu/common";
+   *
+   * interface ConsoleMessage {
+   *   readonly type: "ConsoleEntry";
+   *   readonly text: string;
+   * }
+   *
+   * using consoleChannel = createMessageChannel<ConsoleMessage>();
+   * const init = {
+   *   type: "InitConsole",
+   *   port: consoleChannel.port1.native,
+   * };
+   *
+   * expectTypeOf(init.port).toEqualTypeOf<
+   *   NativeMessagePort<ConsoleMessage>
+   * >();
    * ```
    */
   readonly native: NativeMessagePort<Input, Output>;
@@ -126,36 +141,80 @@ export type WorkerDeps = ConsoleDep &
  *
  * For one-way communication, omit `Output` (defaults to `never`).
  *
- * ### Example
- *
- * Transfer a channel port to a SharedWorker for async initialization:
+ * Transfer a channel port to a SharedWorker and use the retained port
+ * immediately:
  *
  * ```ts
- * // Main thread: create channel, transfer port1, use port2 immediately.
- * const channel = createMessageChannel<EvoluRequest, EvoluResponse>();
+ * import {
+ *   createMessageChannel,
+ *   createMessagePort,
+ *   createSharedWorker,
+ *   type NativeMessagePort,
+ * } from "@evolu/common";
  *
- * sharedWorker.port.postMessage(
- *   { type: "CreateEvolu", port: channel.port1.native },
- *   [channel.port1.native],
- * );
+ * interface Query {
+ *   readonly text: string;
+ * }
+ * interface QueryResult {
+ *   readonly rows: ReadonlyArray<string>;
+ * }
+ * interface ConnectToEvolu {
+ *   readonly port: NativeMessagePort<QueryResult, Query>;
+ * }
  *
- * // Safe to send immediately — messages queue until worker is ready.
- * channel.port2.postMessage({ type: "Query", query });
- * channel.port2.onMessage = (response) => {
- *   handleResponse(response);
- * };
+ * const response = Promise.withResolvers<QueryResult>();
+ * using sharedWorker = createSharedWorker<ConnectToEvolu>((self) => {
+ *   self.onConnect = (controlPort) => {
+ *     controlPort.onMessage = ({ port }) => {
+ *       const workerQueries = createMessagePort<QueryResult, Query>(port);
+ *       workerQueries.onMessage = (query) => {
+ *         workerQueries.postMessage({ rows: [query.text] });
+ *         workerQueries[Symbol.dispose]();
+ *       };
+ *     };
+ *   };
+ * });
+ * using queryChannel = createMessageChannel<Query, QueryResult>();
+ * queryChannel.port1.onMessage = response.resolve;
+ *
+ * // The main thread retains port1 and transfers the worker-facing port2.
+ * sharedWorker.port.postMessage({ port: queryChannel.port2.native }, [
+ *   queryChannel.port2.native,
+ * ]);
+ * queryChannel.port1.postMessage({ text: "all todos" });
+ *
+ * expect(await response.promise).toEqual({ rows: ["all todos"] });
  * ```
  *
+ * On the worker side, attach the handler after asynchronous initialization;
+ * messages sent earlier remain queued:
+ *
  * ```ts
- * // Worker: receive the port, do async init, then start listening.
- * const evoluPort = createMessagePort<EvoluResponse, EvoluRequest>(
- *   message.port,
- * );
- * await openDatabase(name);
- * evoluPort.onMessage = (request) => {
- *   handleRequest(request);
+ * import { createMessageChannel, createMessagePort } from "@evolu/common";
+ *
+ * interface Query {
+ *   readonly text: string;
+ * }
+ *
+ * using channel = createMessageChannel<Query>();
+ * using workerPort = createMessagePort<never, Query>(channel.port2.native);
+ * const received: Array<Query> = [];
+ * const allReceived = Promise.withResolvers<void>();
+ * // The main thread can send several messages while the worker initializes.
+ * channel.port1.postMessage({ text: "all todos" });
+ * channel.port1.postMessage({ text: "completed todos" });
+ *
+ * await Promise.resolve();
+ * workerPort.onMessage = (query) => {
+ *   received.push(query);
+ *   if (received.length === 2) allReceived.resolve();
  * };
- * // Queued messages are now delivered in order.
+ * await allReceived.promise;
+ *
+ * expect(received).toEqual([
+ *   { text: "all todos" },
+ *   { text: "completed todos" },
+ * ]);
  * ```
  *
  * @see https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel

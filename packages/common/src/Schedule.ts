@@ -50,30 +50,55 @@ import type { Predicate } from "./Types.ts";
  * `Err(Done<void>)` is terminal. After a step returns it, every subsequent call
  * to that step must also return `Err(Done<void>)`.
  *
- * ### Example
+ * With {@link retry} and {@link repeat}, the initial Task execution happens
+ * before the first schedule step. Schedule outputs therefore describe
+ * recurrences, not the initial execution. Time-based schedules establish their
+ * time origin on the first step call, not when `schedule(deps)` creates the
+ * step.
+ *
+ * ### Composing a retry policy
  *
  * ```ts
  * import {
+ *   err,
  *   exponential,
  *   jitter,
  *   maxDelay,
+ *   ok,
  *   retry,
  *   take,
+ *   testCreateRun,
+ *   type RandomNumber,
+ *   type Task,
  * } from "@evolu/common";
+ *
+ * let attempts = 0;
+ * const fetchData: Task<string, { readonly type: "FetchError" }> = () => {
+ *   attempts++;
+ *   return attempts < 2 ? err({ type: "FetchError" }) : ok("data");
+ * };
  *
  * const fetchWithRetry = retry(
  *   fetchData,
  *   // A jittered, capped, limited exponential backoff.
  *   jitter("100%")(maxDelay("20s")(take(2)(exponential("100ms")))),
  * );
+ *
+ * await using run = testCreateRun({
+ *   random: { next: () => 0 as RandomNumber },
+ * });
+ * expectOk(await run(fetchWithRetry), "data");
  * ```
  *
  * Or use a preset:
  *
  * ```ts
- * import { retryStrategyAws, retry } from "@evolu/common";
+ * import { ok, retry, retryStrategyAws, type Task } from "@evolu/common";
  *
+ * const fetchData: Task<string> = () => ok("data");
  * const fetchWithRetry = retry(fetchData, retryStrategyAws);
+ *
+ * expect(fetchWithRetry).toBeTypeOf("function");
  * ```
  */
 export type Schedule<out Output, in Input = unknown> = (
@@ -102,7 +127,7 @@ export interface ScheduleStep<Output> {
   /** Output from the {@link Schedule} step. */
   readonly output: Output;
 
-  /** Delay before this step executes. */
+  /** Delay before the scheduled recurrence executes. */
   readonly delay: Millis;
 }
 
@@ -112,11 +137,15 @@ export interface ScheduleStep<Output> {
  * Outputs the attempt count (0, 1, 2, ...). Useful as a base for composition or
  * for immediate retry without backoff.
  *
- * ### Example
+ * ### Recurring immediately
  *
  * ```ts
- * // Retry immediately, up to 5 times
+ * import { forever, take, testCreateDeps } from "@evolu/common";
+ *
+ * // Retry immediately, up to 5 times.
  * const immediate = take(5)(forever);
+ * const step = immediate(testCreateDeps());
+ * expectOk(step(undefined), [0, 0]);
  * ```
  *
  * @group Constructors
@@ -131,11 +160,16 @@ export const forever: Schedule<number> = () => {
  *
  * Equivalent to `take(1)(forever)`. Useful for one-shot operations.
  *
- * ### Example
+ * ### Scheduling one recurrence
  *
  * ```ts
- * // Execute once, no retry
+ * import { done, once, testCreateDeps } from "@evolu/common";
+ *
+ * // Produce one scheduled recurrence, then stop.
  * const oneShot = once;
+ * const step = oneShot(testCreateDeps());
+ * expectOk(step(undefined), [0, 0]);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -158,11 +192,18 @@ export const once: Schedule<number> = () => {
  * `n` uses {@link Int0To100OrNonNegativeInt}: pass `0` to `100` as a literal, or
  * a validated {@link NonNegativeInt} for larger or dynamic values.
  *
- * ### Example
+ * ### Limiting recurrence count
  *
  * ```ts
- * // Retry up to 3 times (4 total attempts including initial)
+ * import { done, recurs, testCreateDeps } from "@evolu/common";
+ *
+ * // Retry up to 3 times (4 total attempts including the initial operation).
  * const retry = recurs(3);
+ * const step = retry(testCreateDeps());
+ * expectOk(step(undefined), [0, 0]);
+ * step(undefined);
+ * step(undefined);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -176,17 +217,20 @@ export const recurs = (n: Int0To100OrNonNegativeInt): Schedule<number> =>
  * Always waits the same duration after each execution completes. Never stops —
  * combine with {@link take} or {@link maxElapsed} to limit.
  *
- * ### Example
+ * ### Constant spacing
  *
  * ```ts
- * // 1s, 1s, 1s, ... (polling)
+ * import { spaced, take, testCreateDeps } from "@evolu/common";
+ *
+ * // Poll every second, retry three times, or run a long-lived heartbeat.
  * const poll = spaced("1s");
- *
- * // Retry 3 times with 500ms between each
  * const retry = take(3)(spaced("500ms"));
- *
- * // Heartbeat schedule
  * const heartbeat = spaced("30s");
+ * const deps = testCreateDeps();
+ *
+ * expectOk(poll(deps)(undefined), [1000, 1000]);
+ * expectOk(retry(deps)(undefined), [500, 500]);
+ * expectOk(heartbeat(deps)(undefined), [30000, 30000]);
  * ```
  *
  * @group Constructors
@@ -201,23 +245,29 @@ export const spaced =
 /**
  * Exponential backoff schedule.
  *
- * Computes delay as `base * factor^(attempt - 1)`:
+ * Computes delay as `base * factor^(step - 1)`:
  *
- * - Attempt 1: `base`
- * - Attempt 2: `base * factor`
- * - Attempt 3: `base * factor²`
+ * - Step 1: `base`
+ * - Step 2: `base * factor`
+ * - Step 3: `base * factor²`
  * - ...
  *
  * Never stops — combine with {@link take} or {@link maxElapsed} to limit.
  *
- * ### Example
+ * ### Exponential growth factors
  *
  * ```ts
- * // 100ms, 200ms, 400ms, 800ms, ...
- * const exp = exponential("100ms");
+ * import { exponential, testCreateDeps } from "@evolu/common";
  *
- * // 100ms, 150ms, 225ms, 338ms, ... (gentler growth)
+ * // Standard doubling and gentler 1.5× growth.
+ * const standard = exponential("100ms");
  * const gentle = exponential("100ms", 1.5);
+ * const standardStep = standard(testCreateDeps());
+ * const gentleStep = gentle(testCreateDeps());
+ * expectOk(standardStep(undefined), [100, 100]);
+ * expectOk(standardStep(undefined), [200, 200]);
+ * expectOk(gentleStep(undefined), [100, 100]);
+ * expectOk(gentleStep(undefined), [150, 150]);
  * ```
  *
  * @group Constructors
@@ -246,20 +296,24 @@ const saturateComputedMillis = (value: number): Millis => {
 /**
  * Linear backoff schedule.
  *
- * Delay increases linearly: `base * attempt`:
+ * Delay increases linearly: `base * step`:
  *
- * - Attempt 1: `base`
- * - Attempt 2: `base * 2`
- * - Attempt 3: `base * 3`
+ * - Step 1: `base`
+ * - Step 2: `base * 2`
+ * - Step 3: `base * 3`
  * - ...
  *
  * Never stops — combine with {@link take} or {@link maxElapsed} to limit.
  *
- * ### Example
+ * ### Linear growth
  *
  * ```ts
+ * import { linear, testCreateDeps } from "@evolu/common";
+ *
  * // 100ms, 200ms, 300ms, 400ms, ...
- * const lin = linear("100ms");
+ * const step = linear("100ms")(testCreateDeps());
+ * expectOk(step(undefined), [100, 100]);
+ * expectOk(step(undefined), [200, 200]);
  * ```
  *
  * @group Constructors
@@ -281,20 +335,25 @@ export const linear =
  *
  * Delays follow the Fibonacci sequence, growing more slowly than exponential:
  *
- * - Attempt 1: `initial`
- * - Attempt 2: `initial`
- * - Attempt 3: `initial * 2`
- * - Attempt 4: `initial * 3`
- * - Attempt 5: `initial * 5`
+ * - Step 1: `initial`
+ * - Step 2: `initial`
+ * - Step 3: `initial * 2`
+ * - Step 4: `initial * 3`
+ * - Step 5: `initial * 5`
  * - ...
  *
  * Never stops — combine with {@link take} or {@link maxElapsed} to limit.
  *
- * ### Example
+ * ### Fibonacci growth
  *
  * ```ts
- * // 100ms, 100ms, 200ms, 300ms, 500ms, 800ms, ...
- * const fib = fibonacci("100ms");
+ * import { fibonacci, testCreateDeps } from "@evolu/common";
+ *
+ * // 100ms, 100ms, 200ms, 300ms, 500ms, ...
+ * const step = fibonacci("100ms")(testCreateDeps());
+ * expectOk(step(undefined), [100, 100]);
+ * expectOk(step(undefined), [100, 100]);
+ * expectOk(step(undefined), [200, 200]);
  * ```
  *
  * @group Constructors
@@ -316,20 +375,27 @@ export const fibonacci =
  *
  * Recurs on a fixed interval, outputting the repetition count (0, 1, 2, ...).
  * Unlike {@link spaced}, which waits a duration _after_ each execution, `fixed`
- * maintains a consistent cadence from when the schedule started.
+ * maintains a consistent cadence from the first schedule step.
  *
  * If execution falls behind by one or more intervals, missed recurrences happen
  * immediately until the schedule catches up to the original cadence. Use
  * {@link windowed} to skip missed recurrences instead.
  *
- * ### Example
+ * ### Maintaining a fixed cadence
  *
  * ```ts
- * // Health check every 5 seconds, aligned to windows
- * const healthCheck = take(10)(fixed("5s"));
+ * import { fixed, take, testCreateDeps } from "@evolu/common";
  *
- * // Cron-like behavior: run at consistent intervals
+ * // A bounded health check and an unbounded cron-like cadence.
+ * const healthCheck = take(10)(fixed("5s"));
  * const cronLike = fixed("1m");
+ *
+ * const healthDeps = testCreateDeps();
+ * const healthStep = healthCheck(healthDeps);
+ * expectOk(healthStep(undefined), [0, 5000]);
+ * healthDeps.time.advance("3s");
+ * expectOk(healthStep(undefined), [1, 2000]);
+ * expectOk(cronLike(testCreateDeps())(undefined), [0, 60000]);
  * ```
  *
  * @group Constructors
@@ -359,7 +425,7 @@ export const fixed =
  * The schedule computes this internally from deps.time.now().
  */
 interface ScheduleStepMetrics {
-  /** Milliseconds elapsed since the schedule started. */
+  /** Milliseconds elapsed since the first step. */
   readonly elapsed: Millis;
   /** Milliseconds since the previous step. On first step, this is 0. */
   readonly elapsedSincePrevious: Millis;
@@ -393,14 +459,24 @@ const createScheduleStepMetrics = (
  * Similar to {@link fixed}, but skips missed recurrences and always sleeps until
  * the next window boundary. Outputs the repetition count.
  *
- * Useful for aligning executions to regular intervals from the start time.
+ * Useful for aligning executions to regular intervals from the first step.
  *
- * ### Example
+ * ### Aligning to time windows
  *
  * ```ts
- * // Execute at regular 5-second boundaries from start
- * const aligned = windowed("5s");
- * // If elapsed is 3s, waits 2s. If elapsed is 7s, waits 3s.
+ * import { testCreateDeps, windowed } from "@evolu/common";
+ *
+ * const stepAfter = (elapsed: "3s" | "7s") => {
+ *   const deps = testCreateDeps();
+ *   const step = windowed("5s")(deps);
+ *   step(undefined);
+ *   deps.time.advance(elapsed);
+ *   return step(undefined);
+ * };
+ *
+ * // At 3s the next boundary is 2s away; at 7s it is 3s away.
+ * expectOk(stepAfter("3s"), [1, 2000]);
+ * expectOk(stepAfter("7s"), [1, 3000]);
  * ```
  *
  * @group Constructors
@@ -424,11 +500,15 @@ export const windowed =
  *
  * Convenience for `take(1)(spaced(delay))`. Useful for simple one-shot delays.
  *
- * ### Example
+ * ### Scheduling one delayed recurrence
  *
  * ```ts
- * // Wait 1 second then stop
- * const oneShot = fromDelay("1s");
+ * import { done, fromDelay, testCreateDeps } from "@evolu/common";
+ *
+ * // Wait one second, then stop.
+ * const step = fromDelay("1s")(testCreateDeps());
+ * expectOk(step(undefined), [1000, 1000]);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -442,11 +522,18 @@ export const fromDelay = (delay: Duration): Schedule<Millis> =>
  * Convenience for sequencing single-delay schedules. Useful for predefined
  * retry patterns. With no delays, returns a schedule that stops immediately.
  *
- * ### Example
+ * ### Sequencing custom delays
  *
  * ```ts
- * // Custom retry sequence: 100ms, 500ms, 2s
+ * import { done, fromDelays, testCreateDeps } from "@evolu/common";
+ *
+ * // A custom retry sequence: 100ms, 500ms, then 2s.
  * const custom = fromDelays("100ms", "500ms", "2s");
+ * const step = custom(testCreateDeps());
+ * expectOk(step(undefined), [100, 100]);
+ * expectOk(step(undefined), [500, 500]);
+ * expectOk(step(undefined), [2000, 2000]);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -456,22 +543,37 @@ export const fromDelays = (
 ): Schedule<Millis> => sequenceSchedules(...delays.map((d) => fromDelay(d)));
 
 /**
- * A schedule that outputs the total elapsed time since the schedule started.
+ * A schedule that outputs the total elapsed time since its first step.
  *
  * Never stops — combine with {@link take} or {@link maxElapsed} to limit. Useful
  * for tracking how long a retry sequence has been running.
  *
- * ### Example
+ * ### Tracking elapsed time
  *
  * ```ts
- * // Track elapsed time alongside retries
- * const withTiming = intersectSchedules(exponential("100ms"), elapsed);
- * // Outputs: [[100, 0], [200, ~100], [400, ~300], ...]
+ * import {
+ *   done,
+ *   elapsed,
+ *   exponential,
+ *   intersectSchedules,
+ *   testCreateDeps,
+ *   whileScheduleOutput,
+ *   type Millis,
+ * } from "@evolu/common";
  *
- * // Stop after 30 seconds of elapsed time
+ * // Track elapsed time alongside each backoff step.
+ * const withTiming = intersectSchedules(exponential("100ms"), elapsed);
+ * expectOk(withTiming(testCreateDeps())(undefined), [[100, 0], 100]);
+ *
+ * // Or stop a schedule after 30 seconds of elapsed time.
  * const timeLimited = whileScheduleOutput((ms: Millis) => ms < 30000)(
  *   elapsed,
  * );
+ * const deps = testCreateDeps();
+ * const step = timeLimited(deps);
+ * step(undefined);
+ * deps.time.advance("30s");
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -487,17 +589,31 @@ export const elapsed: Schedule<Millis> = (deps) => {
  * Outputs the elapsed time. Useful for time-boxed operations or combining with
  * other schedules to create time-limited variants.
  *
- * ### Example
+ * ### Time-boxing a schedule
  *
  * ```ts
- * // Run for at most 30 seconds
- * const timeLimited = during("30s");
+ * import {
+ *   done,
+ *   during,
+ *   exponential,
+ *   intersectSchedules,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
- * // Combine with exponential for time-boxed retry
+ * // Run for at most 30 seconds.
+ * const timeLimited = during("30s");
+ * const deps = testCreateDeps();
+ * const step = timeLimited(deps);
+ * expectOk(step(undefined), [0, 0]);
+ * deps.time.advance("30.1s");
+ * expectErr(step(undefined), done());
+ *
+ * // Combine elapsed time with backoff for a time-boxed retry.
  * const timedRetry = intersectSchedules(
  *   exponential("100ms"),
  *   during("10s"),
  * );
+ * expectOk(timedRetry(testCreateDeps())(undefined), [[100, 0], 100]);
  * ```
  *
  * @group Constructors
@@ -512,17 +628,29 @@ export const during = (duration: Duration): Schedule<Millis> =>
  *
  * Never stops — combine with {@link take} or {@link maxElapsed} to limit.
  *
- * ### Example
+ * ### Adding constant output
  *
  * ```ts
- * // Always output "retry"
- * const labeled = always("retry");
+ * import {
+ *   always,
+ *   exponential,
+ *   intersectSchedules,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
- * // Combine with timing
+ * // Always emit the same label.
+ * const labeled = always("retry");
+ * expectOk(labeled(testCreateDeps())(undefined), ["retry", 0]);
+ *
+ * // Add a label while preserving exponential timing.
  * const withLabel = intersectSchedules(
  *   exponential("100ms"),
  *   always("backoff"),
  * );
+ * expectOk(withLabel(testCreateDeps())(undefined), [
+ *   [100, "backoff"],
+ *   100,
+ * ]);
  * ```
  *
  * @group Constructors
@@ -537,18 +665,17 @@ export const always = <A>(value: A): Schedule<A> =>
  * provided function. Never stops — combine with {@link take} or
  * {@link maxElapsed} to limit.
  *
- * ### Example
+ * ### Unfolding state
  *
  * ```ts
- * // Counter: 0, 1, 2, 3, ...
- * const counter = unfoldSchedule(0, (n) => n + 1);
+ * import { testCreateDeps, unfoldSchedule } from "@evolu/common";
  *
- * // Custom backoff: 100, 150, 225, 338, ... (×1.5 each time)
+ * // Unfold counters, custom backoff values, or state machines.
+ * const counter = unfoldSchedule(0, (n) => n + 1);
  * const customBackoff = unfoldSchedule(100, (delay) =>
  *   Math.round(delay * 1.5),
  * );
  *
- * // State machine
  * type Phase = "init" | "warmup" | "active";
  * const phases = unfoldSchedule<Phase>("init", (phase) => {
  *   switch (phase) {
@@ -560,6 +687,16 @@ export const always = <A>(value: A): Schedule<A> =>
  *       return "active";
  *   }
  * });
+ *
+ * const counterStep = counter(testCreateDeps());
+ * const backoffStep = customBackoff(testCreateDeps());
+ * const phaseStep = phases(testCreateDeps());
+ * expectOk(counterStep(undefined), [0, 0]);
+ * expectOk(counterStep(undefined), [1, 0]);
+ * backoffStep(undefined);
+ * phaseStep(undefined);
+ * expectOk(backoffStep(undefined), [150, 0]);
+ * expectOk(phaseStep(undefined), ["warmup", 0]);
  * ```
  *
  * @group Constructors
@@ -576,19 +713,24 @@ export const unfoldSchedule =
   };
 
 /**
- * Limits a schedule to a maximum number of attempts.
+ * Limits a schedule to a maximum number of steps.
  *
- * After `n` attempts, returns `Err(Done<void>)` (stop).
+ * After `n` steps, returns `Err(Done<void>)` (stop).
  *
  * `n` uses {@link Int0To100OrNonNegativeInt}: pass `0` to `100` as a literal, or
  * a validated {@link NonNegativeInt} for larger or dynamic values.
  *
- * ### Example
+ * ### Limiting a schedule
  *
  * ```ts
- * // Exponential backoff, max 3 retries
- * const limited = take(3)(exponential("100ms"));
- * // Attempt 1: 100ms, Attempt 2: 200ms, Attempt 3: 400ms, Attempt 4: Err(Done<void>)
+ * import { done, exponential, take, testCreateDeps } from "@evolu/common";
+ *
+ * // Three exponential retries, then Done.
+ * const step = take(3)(exponential("100ms"))(testCreateDeps());
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Limiting
@@ -607,16 +749,26 @@ export const take =
   };
 
 /**
- * Limits schedule execution to a maximum elapsed time.
+ * Limits schedule execution to a maximum elapsed time since its first step.
  *
- * After `duration` has elapsed since the schedule started, returns
- * `Err(Done<void>)`.
+ * After `duration` has elapsed since the first step, returns `Err(Done<void>)`.
  *
- * ### Example
+ * ### Limiting elapsed time
  *
  * ```ts
- * // Retry for at most 30 seconds
- * const timeLimited = maxElapsed("30s")(exponential("1s"));
+ * import {
+ *   done,
+ *   exponential,
+ *   maxElapsed,
+ *   testCreateDeps,
+ * } from "@evolu/common";
+ *
+ * // Retry for at most 30 seconds.
+ * const deps = testCreateDeps();
+ * const step = maxElapsed("30s")(exponential("1s"))(deps);
+ * expectOk(step(undefined), [1000, 1000]);
+ * deps.time.advance("30s");
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Limiting
@@ -647,12 +799,18 @@ export const maxElapsed = (duration: Duration) => {
  *
  * If the schedule returns a delay greater than `max`, returns `max` instead.
  *
- * ### Example
+ * ### Capping delays
  *
  * ```ts
- * // Exponential capped at 10 seconds
- * const capped = maxDelay("10s")(exponential("1s"));
- * // 1s, 2s, 4s, 8s, 10s, 10s, 10s, ...
+ * import { exponential, maxDelay, testCreateDeps } from "@evolu/common";
+ *
+ * // Exponential delays grow 1s, 2s, 4s, 8s, then stay capped at 10s.
+ * const step = maxDelay("10s")(exponential("1s"))(testCreateDeps());
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * expectOk(step(undefined), [16000, 10000]);
  * ```
  *
  * @group Limiting
@@ -689,14 +847,29 @@ export const maxDelay = (max: Duration) => {
  * - `"50%"` — varies by up to 50% below or above the original delay
  * - `"100%"` — varies by up to 100% below or above the original delay
  *
- * ### Example
+ * ### Jittering below or around a delay
  *
  * ```ts
- * // Shorten by at most 25%
- * const conservative = jitter("25%")(exponential("1s"));
+ * import {
+ *   exponential,
+ *   jitter,
+ *   spaced,
+ *   testCreateDeps,
+ *   type RandomNumber,
+ * } from "@evolu/common";
  *
+ * const deps = {
+ *   ...testCreateDeps(),
+ *   random: { next: () => 0.5 as RandomNumber },
+ * };
+ *
+ * // Shorten retry delays by at most 25%.
+ * const conservative = jitter("25%")(exponential("1s"));
  * // Poll around a 30s target cadence, from 27s to 33s.
  * const polling = jitter("10%", "around")(spaced("30s"));
+ *
+ * expectOk(conservative(deps)(undefined), [1000, 875]);
+ * expectOk(polling(deps)(undefined), [30000, 30000]);
  * ```
  *
  * @group Delay
@@ -734,11 +907,15 @@ const createJitter =
  * The first successful step uses `initialDelay` instead of the delay produced
  * by the schedule. Subsequent steps use the schedule's delays unchanged.
  *
- * ### Example
+ * ### Replacing the first delay
  *
  * ```ts
- * const withInitialDelay = delayed("1s")(exponential("100ms"));
- * // 1s, 200ms, 400ms, 800ms, ...
+ * import { delayed, exponential, testCreateDeps } from "@evolu/common";
+ *
+ * const step = delayed("1s")(exponential("100ms"))(testCreateDeps());
+ * // Only the first delay is replaced; later exponential delays are unchanged.
+ * expectOk(step(undefined), [100, 1000]);
+ * expectOk(step(undefined), [200, 200]);
  * ```
  *
  * @group Delay
@@ -766,12 +943,14 @@ export const delayed = (initialDelay: Duration) => {
 /**
  * Adds a fixed delay to the schedule's existing delay.
  *
- * ### Example
+ * ### Adding to every delay
  *
  * ```ts
- * // Add 500ms to each delay
- * const slower = addDelay("500ms")(exponential("100ms"));
- * // Delays: 600ms, 700ms, 900ms, 1300ms, ...
+ * import { addDelay, exponential, testCreateDeps } from "@evolu/common";
+ *
+ * // Add 500ms to every exponential delay.
+ * const step = addDelay("500ms")(exponential("100ms"))(testCreateDeps());
+ * expectOk(step(undefined), [100, 600]);
  * ```
  *
  * @group Delay
@@ -790,14 +969,21 @@ export const addDelay = (
  *
  * More flexible than {@link maxDelay} — can implement any delay transformation.
  *
- * ### Example
+ * ### Transforming delays
  *
  * ```ts
- * // Double all delays
- * const slower = modifyDelay((d) => d * 2)(exponential("100ms"));
+ * import { exponential, modifyDelay, testCreateDeps } from "@evolu/common";
  *
- * // Cap at 10s (equivalent to maxDelay)
- * const capped = modifyDelay((d) => Math.min(d, 10000))(exponential("1s"));
+ * // Arbitrary transformations can double or cap delays.
+ * const slower = modifyDelay((delay) => delay * 2)(exponential("100ms"));
+ * // Equivalent to maxDelay("10s") for this schedule.
+ * const capped = modifyDelay((delay) => Math.min(delay, 10000))(
+ *   exponential("20s"),
+ * );
+ * const deps = testCreateDeps();
+ *
+ * expectOk(slower(deps)(undefined), [100, 200]);
+ * expectOk(capped(deps)(undefined), [20000, 10000]);
  * ```
  *
  * @group Delay
@@ -829,12 +1015,24 @@ export const modifyDelay =
  *
  * For window-aligned scheduling, use {@link fixed} instead.
  *
- * ### Example
+ * ### Compensating for execution time
  *
  * ```ts
- * // Poll every 5s, accounting for execution time
- * const polling = compensate(spaced("5s"));
- * // If poll takes 1s → wait 4s. If poll takes 6s → wait 0s.
+ * import { compensate, spaced, testCreateDeps } from "@evolu/common";
+ *
+ * const fastDeps = testCreateDeps();
+ * const fastStep = compensate(spaced("5s"))(fastDeps);
+ * expectOk(fastStep(undefined), [5000, 5000]);
+ * // Five seconds waiting plus one second working leaves four seconds.
+ * fastDeps.time.advance("6s");
+ * expectOk(fastStep(undefined), [5000, 4000]);
+ *
+ * const slowDeps = testCreateDeps();
+ * const slowStep = compensate(spaced("5s"))(slowDeps);
+ * expectOk(slowStep(undefined), [5000, 5000]);
+ * // Five seconds waiting plus six seconds working leaves no delay.
+ * slowDeps.time.advance("11s");
+ * expectOk(slowStep(undefined), [5000, 0]);
  * ```
  *
  * @group Delay
@@ -866,15 +1064,26 @@ export const compensate =
  * Useful for input-aware retry strategies, e.g., only retry certain error
  * types.
  *
- * ### Example
+ * ### Continuing by input
  *
  * ```ts
+ * import {
+ *   done,
+ *   exponential,
+ *   testCreateDeps,
+ *   whileScheduleInput,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
  * interface MyError extends Typed<"Transient" | "Fatal"> {}
  *
- * // Only retry transient errors
+ * // Retry only transient errors.
  * const retryTransient = whileScheduleInput(
  *   (error: MyError) => error.type === "Transient",
  * )(exponential("100ms"));
+ * const step = retryTransient(testCreateDeps());
+ * expectOk(step({ type: "Transient" }), [100, 100]);
+ * expectErr(step({ type: "Fatal" }), done());
  * ```
  *
  * @group Filtering
@@ -901,15 +1110,26 @@ export const whileScheduleInput =
  * Stops (returns `Err(Done<void>)`) when {@link Predicate} returns `true`.
  * Useful for stopping retry on specific error conditions.
  *
- * ### Example
+ * ### Stopping by input
  *
  * ```ts
+ * import {
+ *   done,
+ *   exponential,
+ *   testCreateDeps,
+ *   untilScheduleInput,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
  * interface MyError extends Typed<"Transient" | "Fatal"> {}
  *
- * // Stop retrying on fatal errors
+ * // Stop retrying when an error is fatal.
  * const stopOnFatal = untilScheduleInput(
  *   (error: MyError) => error.type === "Fatal",
  * )(exponential("100ms"));
+ * const step = stopOnFatal(testCreateDeps());
+ * expectOk(step({ type: "Transient" }), [100, 100]);
+ * expectErr(step({ type: "Fatal" }), done());
  * ```
  *
  * @group Filtering
@@ -935,13 +1155,26 @@ export const untilScheduleInput =
  *
  * Stops (returns `Err(Done<void>)`) when {@link Predicate} returns `false`.
  *
- * ### Example
+ * ### Continuing by output
  *
  * ```ts
- * // Continue while delay is under 5 seconds
+ * import {
+ *   done,
+ *   exponential,
+ *   testCreateDeps,
+ *   whileScheduleOutput,
+ *   type Millis,
+ * } from "@evolu/common";
+ *
+ * // Continue while the exponential delay is below five seconds.
  * const capped = whileScheduleOutput((delay: Millis) => delay < 5000)(
  *   exponential("1s"),
  * );
+ * const step = capped(testCreateDeps());
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Filtering
@@ -969,13 +1202,27 @@ export const whileScheduleOutput =
  *
  * Stops (returns `Err(Done<void>)`) when {@link Predicate} returns `true`.
  *
- * ### Example
+ * ### Stopping by output
  *
  * ```ts
- * // Stop when delay reaches 1 second
+ * import {
+ *   done,
+ *   exponential,
+ *   testCreateDeps,
+ *   untilScheduleOutput,
+ *   type Millis,
+ * } from "@evolu/common";
+ *
+ * // Stop once the exponential delay reaches at least one second.
  * const limited = untilScheduleOutput((delay: Millis) => delay >= 1000)(
  *   exponential("100ms"),
  * );
+ * const step = limited(testCreateDeps());
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Filtering
@@ -1005,11 +1252,21 @@ export const untilScheduleOutput =
  * replaces the wrapped schedule with fresh state. Once the wrapped schedule
  * returns `Done`, termination is final.
  *
- * ### Example
+ * ### Resetting after inactivity
  *
  * ```ts
- * // Restart exponential backoff at 1s after one minute between inputs.
+ * import {
+ *   exponential,
+ *   resetScheduleAfter,
+ *   testCreateDeps,
+ * } from "@evolu/common";
+ *
  * const backoff = resetScheduleAfter("1m")(exponential("1s"));
+ * const deps = testCreateDeps();
+ * const step = backoff(deps);
+ * expectOk(step(undefined), [1000, 1000]);
+ * deps.time.advance("1m");
+ * expectOk(step(undefined), [1000, 1000]);
  * ```
  *
  * @group State
@@ -1043,15 +1300,22 @@ export const resetScheduleAfter = (
  *
  * The delay (second tuple element) remains unchanged.
  *
- * ### Example
+ * ### Mapping schedule output
  *
  * ```ts
- * import { exponential, mapSchedule } from "@evolu/common";
+ * import {
+ *   exponential,
+ *   mapSchedule,
+ *   testCreateDeps,
+ *   type Millis,
+ * } from "@evolu/common";
  *
- * const schedule = mapSchedule((delay) => ({
+ * const schedule = mapSchedule((delay: Millis) => ({
  *   delay,
  *   doubled: delay * 2,
  * }))(exponential("100ms"));
+ * const step = schedule(testCreateDeps());
+ * expectOk(step(undefined), [{ delay: 100, doubled: 200 }, 100]);
  * ```
  *
  * @group Transform
@@ -1077,20 +1341,23 @@ export const mapSchedule =
  * directly (the "identity" schedule). When called with a schedule, wraps it to
  * preserve timing behavior but replace output with input.
  *
- * ### Example
+ * ### Passing through input
  *
  * ```ts
- * import { exponential, passthrough } from "@evolu/common";
+ * import { exponential, passthrough, testCreateDeps } from "@evolu/common";
  *
  * interface MyError {
  *   readonly message: string;
  * }
  *
- * // Constructor: output equals input
+ * // Constructor form emits input immediately; combinator form keeps timing.
  * const identity = passthrough<MyError>();
- *
- * // Combinator: preserve timing, replace output
  * const withInput = passthrough(exponential("100ms"));
+ * const error = { message: "Unavailable" };
+ * const deps = testCreateDeps();
+ *
+ * expectOk(identity(deps)(error), [error, 0]);
+ * expectOk(withInput(deps)(error), [error, 100]);
  * ```
  *
  * @group Constructors
@@ -1122,31 +1389,45 @@ export function passthrough<Output, Input>(
  * Each step outputs the accumulated value. Useful for tracking totals,
  * collecting outputs, or building up metadata across attempts.
  *
- * ### Example
+ * ### Folding schedule output
  *
  * ```ts
- * // Track total delay spent
+ * import {
+ *   exponential,
+ *   foldSchedule,
+ *   minMillis,
+ *   spaced,
+ *   take,
+ *   testCreateDeps,
+ *   type Millis,
+ * } from "@evolu/common";
+ *
+ * // Accumulate totals, complete output histories, or structured metadata.
  * const withTotal = foldSchedule(
  *   0,
  *   (total: number, delay: Millis) => total + delay,
  * )(exponential("100ms"));
- * // Outputs: 100, 300, 700, 1500, ... (cumulative)
- *
- * // Collect all outputs
  * const collected = foldSchedule<ReadonlyArray<Millis>, Millis>(
  *   [],
- *   (acc, delay) => [...acc, delay],
+ *   (outputs, delay) => [...outputs, delay],
  * )(take(3)(spaced("1s")));
- * // Outputs: [1000], [1000, 1000], [1000, 1000, 1000]
- *
- * // Count attempts with custom output
  * const counted = foldSchedule(
  *   { attempts: 0, lastDelay: minMillis },
- *   (acc, delay: Millis) => ({
- *     attempts: acc.attempts + 1,
+ *   (state, delay: Millis) => ({
+ *     attempts: state.attempts + 1,
  *     lastDelay: delay,
  *   }),
  * )(exponential("100ms"));
+ *
+ * const deps = testCreateDeps();
+ * const totalStep = withTotal(deps);
+ * totalStep(undefined);
+ * expectOk(totalStep(undefined), [300, 200]);
+ * expectOk(collected(deps)(undefined), [[1000], 1000]);
+ * expectOk(counted(deps)(undefined), [
+ *   { attempts: 1, lastDelay: 100 },
+ *   100,
+ * ]);
  * ```
  *
  * @group Transform
@@ -1173,12 +1454,15 @@ export const foldSchedule =
  * Outputs 0, 1, 2, ... while preserving the underlying schedule's timing and
  * termination behavior.
  *
- * ### Example
+ * ### Counting repetitions
  *
  * ```ts
- * // Track how many retries occurred
- * const counted = repetitions(exponential("100ms"));
- * // Outputs: 0, 1, 2, ... with exponential delays
+ * import { exponential, repetitions, testCreateDeps } from "@evolu/common";
+ *
+ * // Count retries while preserving exponential timing.
+ * const step = repetitions(exponential("100ms"))(testCreateDeps());
+ * expectOk(step(undefined), [0, 100]);
+ * expectOk(step(undefined), [1, 200]);
  * ```
  *
  * @group Transform
@@ -1193,17 +1477,28 @@ export const repetitions = <Output, Input>(
  * Wraps a schedule to output its delay (in milliseconds) instead of the
  * original output. Useful for monitoring or logging delay patterns.
  *
- * ### Example
+ * ### Exposing and observing delays
  *
  * ```ts
- * // Monitor exponential delays
- * const monitorDelays = delays(exponential("100ms"));
- * // Outputs: 100, 200, 400, 800, ... (the delays themselves)
+ * import {
+ *   delays,
+ *   exponential,
+ *   tapScheduleOutput,
+ *   testCreateDeps,
+ *   type Millis,
+ * } from "@evolu/common";
  *
- * // Log delays for debugging
- * const logged = tapScheduleOutput(console.log)(
- *   delays(exponential("100ms")),
- * );
+ * // Expose delays for monitoring, or observe them without changing output.
+ * const monitorDelays = delays(exponential("100ms"));
+ * const observed: Array<Millis> = [];
+ * const logged = tapScheduleOutput((delay: Millis) => {
+ *   observed.push(delay);
+ * })(delays(exponential("100ms")));
+ * const deps = testCreateDeps();
+ *
+ * expectOk(monitorDelays(deps)(undefined), [100, 100]);
+ * expectOk(logged(deps)(undefined), [100, 100]);
+ * expect(observed).toEqual([100]);
  * ```
  *
  * @group Transform
@@ -1227,12 +1522,21 @@ export const delays =
  * outputs are retained and copied on each step, use this combinator with finite
  * schedules.
  *
- * ### Example
+ * ### Collecting outputs
  *
  * ```ts
- * // Collect all delays
+ * import {
+ *   collectAllScheduleOutputs,
+ *   spaced,
+ *   take,
+ *   testCreateDeps,
+ * } from "@evolu/common";
+ *
+ * // Retain every delay produced by the finite schedule.
  * const collected = collectAllScheduleOutputs(take(3)(spaced("100ms")));
- * // Outputs: [100], [100, 100], [100, 100, 100]
+ * const step = collected(testCreateDeps());
+ * step(undefined);
+ * expectOk(step(undefined), [[100, 100], 100]);
  * ```
  *
  * @group Collection
@@ -1250,14 +1554,24 @@ export const collectAllScheduleOutputs = <Output, Input>(
  * Each step outputs an array containing all inputs received so far. Mirror of
  * {@link collectAllScheduleOutputs} but for inputs.
  *
- * ### Example
+ * ### Collecting inputs
  *
  * ```ts
- * // Collect all errors during retry
- * const errorHistory = collectScheduleInputs(
- *   take(3)(exponential("100ms")),
- * );
- * // After 3 retries, outputs array of all error inputs
+ * import {
+ *   collectScheduleInputs,
+ *   exponential,
+ *   take,
+ *   testCreateDeps,
+ *   type Millis,
+ *   type Schedule,
+ * } from "@evolu/common";
+ *
+ * const retries: Schedule<Millis, string> = take(3)(exponential("100ms"));
+ * // Keep every error received during retry.
+ * const errorHistory = collectScheduleInputs(retries);
+ * const step = errorHistory(testCreateDeps());
+ * step("network");
+ * expectOk(step("timeout"), [["network", "timeout"], 200]);
  * ```
  *
  * @group Collection
@@ -1273,14 +1587,27 @@ export const collectScheduleInputs = <Output, Input>(
  * More flexible than {@link collectAllScheduleOutputs} — stops collecting when
  * the predicate returns false.
  *
- * ### Example
+ * ### Collecting while output matches
  *
  * ```ts
- * // Collect delays while under 1 second
+ * import {
+ *   collectWhileScheduleOutput,
+ *   done,
+ *   exponential,
+ *   testCreateDeps,
+ *   type Millis,
+ * } from "@evolu/common";
+ *
+ * // Collect delays only while they remain below one second.
  * const smallDelays = collectWhileScheduleOutput(
  *   (delay: Millis) => delay < 1000,
  * )(exponential("100ms"));
- * // Outputs: [100], [100, 200], [100, 200, 400], [100, 200, 400, 800], stops
+ * const step = smallDelays(testCreateDeps());
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * expectOk(step(undefined), [[100, 200, 400, 800], 800]);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Collection
@@ -1298,14 +1625,27 @@ export const collectWhileScheduleOutput =
  * Mirror of {@link collectWhileScheduleOutput} — stops collecting when the
  * predicate returns true.
  *
- * ### Example
+ * ### Collecting until output matches
  *
  * ```ts
- * // Collect delays until reaching 1 second
+ * import {
+ *   collectUntilScheduleOutput,
+ *   done,
+ *   exponential,
+ *   testCreateDeps,
+ *   type Millis,
+ * } from "@evolu/common";
+ *
+ * // Collect delays until the next delay reaches at least one second.
  * const untilLarge = collectUntilScheduleOutput(
  *   (delay: Millis) => delay >= 1000,
  * )(exponential("100ms"));
- * // Outputs: [100], [100, 200], [100, 200, 400], [100, 200, 400, 800], stops
+ * const step = untilLarge(testCreateDeps());
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * expectOk(step(undefined), [[100, 200, 400, 800], 800]);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Collection
@@ -1323,16 +1663,27 @@ export const collectUntilScheduleOutput =
  * Useful for adaptive strategies that start aggressive and become more
  * conservative over time.
  *
- * ### Example
+ * ### Sequencing strategies
  *
  * ```ts
- * // Fast retries first, then slower, then final fallback
- * const adaptive = sequenceSchedules(
+ * import {
+ *   exponential,
+ *   fixed,
+ *   sequenceSchedules,
+ *   take,
+ *   testCreateDeps,
+ * } from "@evolu/common";
+ *
+ * // Fast retries first, then slower retries, then a steady fallback.
+ * const step = sequenceSchedules(
  *   take(3)(exponential("100ms")),
  *   take(5)(fixed("500ms")),
  *   fixed("1s"),
- * );
- * // Runs: 100ms, 200ms, 400ms, then 500ms×5, then 1s forever
+ * )(testCreateDeps());
+ * step(undefined);
+ * step(undefined);
+ * step(undefined);
+ * expectOk(step(undefined), [0, 500]);
  * ```
  *
  * @group Composition
@@ -1364,14 +1715,28 @@ export const sequenceSchedules =
  *
  * Continues only while both schedules want to continue. Uses the maximum delay.
  *
- * ### Example
+ * ### Combining constraints with AND
  *
  * ```ts
- * // Retry up to 5 times AND within 30 seconds (both conditions must be met)
- * const both = intersectSchedules(
+ * import {
+ *   done,
+ *   exponential,
+ *   forever,
+ *   intersectSchedules,
+ *   maxElapsed,
+ *   take,
+ *   testCreateDeps,
+ * } from "@evolu/common";
+ *
+ * // Retry at most 5 times and only within 30 seconds.
+ * const deps = testCreateDeps();
+ * const step = intersectSchedules(
  *   take(5)(exponential("1s")),
  *   maxElapsed("30s")(forever),
- * );
+ * )(deps);
+ * expectOk(step(undefined), [[1000, 0], 1000]);
+ * deps.time.advance("30s");
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Composition
@@ -1404,14 +1769,26 @@ export const intersectSchedules =
  *
  * Continues while either schedule wants to continue. Uses the minimum delay.
  *
- * ### Example
+ * ### Combining constraints with OR
  *
  * ```ts
- * // Retry up to 5 times OR up to 30 seconds, whichever is longer
+ * import {
+ *   done,
+ *   spaced,
+ *   take,
+ *   testCreateDeps,
+ *   unionSchedules,
+ * } from "@evolu/common";
+ *
+ * // The second policy keeps the union alive after the first one stops.
  * const either = unionSchedules(
- *   take(5)(exponential("1s")),
- *   maxElapsed("30s")(forever),
+ *   take(1)(spaced("100ms")),
+ *   take(2)(spaced("200ms")),
  * );
+ * const step = either(testCreateDeps());
+ * expectOk(step(undefined), [100, 100]);
+ * expectOk(step(undefined), [200, 200]);
+ * expectErr(step(undefined), done());
  * ```
  *
  * @group Composition
@@ -1460,18 +1837,33 @@ export const unionSchedules =
  * Each branch has independent state. Place combinators such as {@link take}
  * outside `whenInput` when their state must be shared across both branches.
  *
- * ### Example
+ * ### Selecting a schedule by input
  *
  * ```ts
+ * import {
+ *   done,
+ *   exponential,
+ *   take,
+ *   testCreateDeps,
+ *   whenInput,
+ *   type Millis,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
  * interface MyError extends Typed<"Throttled" | "NetworkError"> {}
  *
- * // At most 3 retries total across both error types.
+ * // The outer take shares one retry limit across both error branches.
  * const awsWithThrottling = take(3)(
  *   whenInput<MyError, Millis>(
  *     (error) => error.type === "Throttled",
- *     exponential("1s"), // throttled: 1s base
- *   )(exponential("100ms")), // normal: 100ms base
+ *     exponential("1s"),
+ *   )(exponential("100ms")),
  * );
+ * const step = awsWithThrottling(testCreateDeps());
+ * expectOk(step({ type: "Throttled" }), [1000, 1000]);
+ * expectOk(step({ type: "NetworkError" }), [100, 100]);
+ * expectOk(step({ type: "Throttled" }), [2000, 2000]);
+ * expectErr(step({ type: "NetworkError" }), done());
  * ```
  *
  * @group Composition
@@ -1500,19 +1892,34 @@ export const whenInput =
  * Useful for logging, monitoring, or debugging without changing schedule
  * behavior.
  *
- * ### Example
+ * ### Observing schedule output
  *
  * ```ts
- * // Log each delay for debugging
+ * import {
+ *   exponential,
+ *   retryStrategyAws,
+ *   tapScheduleOutput,
+ *   testCreateDeps,
+ *   type Millis,
+ * } from "@evolu/common";
+ *
+ * // Log each delay for debugging.
+ * const messages: Array<string> = [];
  * const logged = tapScheduleOutput((delay: Millis) => {
- *   console.log(`Next delay: ${delay}ms`);
+ *   messages.push(`Next delay: ${delay}ms`);
  * })(exponential("100ms"));
  *
- * // Track metrics
- * const recorded: Array<Millis> = [];
- * const tracked = tapScheduleOutput((delay: Millis) => {
- *   recorded.push(delay);
+ * // Track the preset's pre-jitter delay candidates without changing it.
+ * const recordedCandidates: Array<Millis> = [];
+ * const tracked = tapScheduleOutput((candidate: Millis) => {
+ *   recordedCandidates.push(candidate);
  * })(retryStrategyAws);
+ * const deps = testCreateDeps();
+ * logged(deps)(undefined);
+ * tracked(deps)(undefined);
+ *
+ * expect(messages).toEqual(["Next delay: 100ms"]);
+ * expect(recordedCandidates).toEqual([50]);
  * ```
  *
  * @group Side effects
@@ -1536,23 +1943,38 @@ export const tapScheduleOutput =
  * Useful for logging errors during retry or monitoring what values are being
  * processed.
  *
- * ### Example
+ * ### Observing schedule input
  *
  * ```ts
- * interface MyError extends Typed<string> {}
+ * import {
+ *   exponential,
+ *   tapScheduleInput,
+ *   testCreateDeps,
+ *   type Millis,
+ *   type Schedule,
+ *   type Typed,
+ * } from "@evolu/common";
  *
+ * interface MyError extends Typed<"NetworkError" | "Timeout"> {}
  * const retrySchedule: Schedule<Millis, MyError> = exponential("100ms");
- *
- * // Log each error during retry
+ * // Log errors for debugging.
+ * const messages: Array<string> = [];
  * const logged = tapScheduleInput((error: MyError) => {
- *   console.log(`Retrying after error: ${error.type}`);
+ *   messages.push(`Retrying after error: ${error.type}`);
  * })(retrySchedule);
  *
- * // Track retry reasons
+ * // Or retain just the retry reasons for metrics.
  * const reasons: Array<string> = [];
  * const tracked = tapScheduleInput((error: MyError) => {
  *   reasons.push(error.type);
  * })(retrySchedule);
+ * const deps = testCreateDeps();
+ * const error: MyError = { type: "NetworkError" };
+ * logged(deps)(error);
+ * tracked(deps)(error);
+ *
+ * expect(messages).toEqual(["Retrying after error: NetworkError"]);
+ * expect(reasons).toEqual(["NetworkError"]);
  * ```
  *
  * @group Side effects

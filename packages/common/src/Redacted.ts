@@ -29,35 +29,38 @@ import type { Eq } from "./Eq.ts";
  * ### Example
  *
  * ```ts
- * // Define branded types for your secrets
+ * import {
+ *   createRedacted,
+ *   revealRedacted,
+ *   type Brand,
+ *   type Redacted,
+ * } from "@evolu/common";
+ *
  * type ApiKey = string & Brand<"ApiKey">;
  * type DbPassword = string & Brand<"DbPassword">;
- *
- * // Wrap them with Redacted for safe passing
  * type RedactedApiKey = Redacted<ApiKey>;
- * type RedactedDbPassword = Redacted<DbPassword>;
  *
- * // Create a redacted secret
+ * // Apply brands only after validation or at another trusted boundary.
  * const apiKey: ApiKey = "secret-123" as ApiKey;
- * const redactedKey: RedactedApiKey = createRedacted(apiKey);
+ * using redactedKey: RedactedApiKey = createRedacted(apiKey);
+ * const fetchUser = (key: RedactedApiKey): ApiKey => revealRedacted(key);
  *
- * console.log(redactedKey); // <redacted>
- * console.log(revealRedacted(redactedKey)); // secret-123
+ * expect(redactedKey.toString()).toBe("<redacted>");
+ * expect(JSON.stringify({ apiKey: redactedKey })).toBe(
+ *   '{"apiKey":"<redacted>"}',
+ * );
+ * expect(fetchUser(redactedKey)).toBe(apiKey);
  *
- * // Type safety: RedactedApiKey ≠ RedactedDbPassword
- * const fetchUser = (key: RedactedApiKey) => {
- *   const value: ApiKey = revealRedacted(key);
- *   // use value...
- * };
+ * using password = createRedacted("password" as DbPassword);
+ * // @ts-expect-error Redacted secrets retain their distinct branded types.
+ * fetchUser(password);
  *
- * fetchUser(redactedKey); // ok
- * // fetchUser(createRedacted("x" as DbPassword)); // type error
- *
- * // Automatic cleanup with `using`
- * {
- *   using secret = createRedacted("sensitive" as ApiKey);
- *   // ... use secret ...
- * } // automatically wiped from memory
+ * const disposedKey = (() => {
+ *   using key = createRedacted(apiKey);
+ *   return key;
+ * })();
+ * // Leaving the `using` scope removes the value from memory.
+ * expect(() => revealRedacted(disposedKey)).toThrow();
  * ```
  */
 export interface Redacted<A> extends Brand<"Redacted">, Disposable {
@@ -108,12 +111,23 @@ export const isRedacted = (value: unknown): value is Redacted<unknown> =>
  * ### Example
  *
  * ```ts
+ * import {
+ *   createEqRedacted,
+ *   createRedacted,
+ *   eqString,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
  * type ApiKey = string & Brand<"ApiKey">;
  * const eqRedactedApiKey = createEqRedacted<ApiKey>(eqString);
  *
- * const a = createRedacted("x" as ApiKey);
- * const b = createRedacted("x" as ApiKey);
- * eqRedactedApiKey(a, b); // true
+ * // Apply brands only after validation or at another trusted boundary.
+ * using a = createRedacted("x" as ApiKey);
+ * using b = createRedacted("x" as ApiKey);
+ * using c = createRedacted("y" as ApiKey);
+ *
+ * expect(eqRedactedApiKey(a, b)).toBe(true);
+ * expect(eqRedactedApiKey(a, c)).toBe(false);
  * ```
  */
 export const createEqRedacted =

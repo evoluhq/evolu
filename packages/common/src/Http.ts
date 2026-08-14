@@ -200,6 +200,7 @@ export type FetchConsume<T, E = never> = (
  *   retry,
  *   take,
  *   timeout,
+ *   type NativeFetch,
  * } from "@evolu/common";
  *
  * const fetchWithRetry = (url: string) =>
@@ -208,8 +209,18 @@ export type FetchConsume<T, E = never> = (
  *     take(2)(exponential("100ms")),
  *   );
  *
- * await using run = createRun();
- * const result = await run(fetchWithRetry("/api/user"));
+ * let requestCount = 0;
+ * const nativeFetch: NativeFetch = () => {
+ *   requestCount++;
+ *   return Promise.resolve(
+ *     requestCount === 1
+ *       ? new Response("Try again", { status: 503 })
+ *       : new Response('{"name":"Ada"}'),
+ *   );
+ * };
+ * await using run = createRun({ nativeFetch });
+ *
+ * expectOk(await run(fetchWithRetry("/api/user")), { name: "Ada" });
  * ```
  *
  * App conventions belong in small app-owned helpers. For example, posting JSON
@@ -221,6 +232,7 @@ export type FetchConsume<T, E = never> = (
  *   createRun,
  *   fetch,
  *   type FetchError,
+ *   type NativeFetch,
  *   type Task,
  * } from "@evolu/common";
  *
@@ -234,19 +246,34 @@ export type FetchConsume<T, E = never> = (
  *     body: JSON.stringify(data),
  *   });
  *
- * await using run = createRun();
- * const created = await run(postJson("/api/users", { name: "Ada" }));
+ * const nativeFetch: NativeFetch = () =>
+ *   Promise.resolve(new Response('{"id":"user-1"}'));
+ * await using run = createRun({ nativeFetch });
+ *
+ * expectOk(await run(postJson("/api/users", { name: "Ada" })), {
+ *   id: "user-1",
+ * });
  * ```
  *
  * Your app's version will grow your conventions — auth, envelopes, error
  * mapping — which is why it belongs to the app, not to `fetch`.
+ *
+ * ### Intercepting requests
  *
  * Request-wide behavior belongs to a replacement {@link NativeFetch} installed
  * at the composition root. This is the equivalent of interceptors or hooks in
  * libraries that expose client instances.
  *
  * ```ts
- * import { createRun, type NativeFetch } from "@evolu/common";
+ * import { createRun, fetch, type NativeFetch } from "@evolu/common";
+ *
+ * const token = "secret-token";
+ * const baseUrl = "https://api.example.com/v1/";
+ * let interceptedRequest: Request | undefined;
+ * const baseFetch: NativeFetch = (input, init) => {
+ *   interceptedRequest = new Request(input, init);
+ *   return Promise.resolve(new Response("ok"));
+ * };
  *
  * const nativeFetch: NativeFetch = (input, init) => {
  *   const headers = new Headers(init?.headers);
@@ -256,58 +283,90 @@ export type FetchConsume<T, E = never> = (
  *   // inputs are passed through unchanged.
  *   const url =
  *     typeof input === "string" ? new URL(input, baseUrl) : input;
- *   return globalThis.fetch(url, { ...init, headers });
+ *   return baseFetch(url, { ...init, headers });
  * };
  *
  * await using run = createRun({ nativeFetch });
+ * expectOk(await run(fetch("users", "text")), "ok");
+ * expect({
+ *   url: interceptedRequest?.url,
+ *   authorization: interceptedRequest?.headers.get("authorization"),
+ * }).toEqual({
+ *   url: "https://api.example.com/v1/users",
+ *   authorization: "Bearer secret-token",
+ * });
  * ```
  *
- * Response interpretation belongs in a consumer. Typed decoders, response
- * envelopes, streaming, and custom status semantics can be built on top without
- * changing `fetch`.
+ * ### Consuming responses
  *
- * ### Example
+ * Built-in modes handle common bodies. Specialized response interpretation
+ * belongs in a consumer. Typed decoders, response envelopes, streaming, and
+ * custom status semantics can be built on top without changing `fetch`.
  *
  * ```ts
- * import { createRun, fetch, ok } from "@evolu/common";
+ * import {
+ *   createRun,
+ *   fetch,
+ *   ok,
+ *   type FetchTransportError,
+ *   type NativeFetch,
+ *   type Task,
+ * } from "@evolu/common";
  *
- * await using run = createRun();
+ * const nativeFetch: NativeFetch = (input) =>
+ *   Promise.resolve(
+ *     String(input).endsWith("/metadata")
+ *       ? new Response(null, {
+ *           status: 204,
+ *           headers: { "cache-control": "max-age=60" },
+ *         })
+ *       : new Response('{"name":"Ada"}'),
+ *   );
+ * await using run = createRun({ nativeFetch });
  *
- * // Result<unknown, FetchError>
  * const user = await run(fetch("/api/user", "json"));
- *
- * // A consumer keeps native status semantics and returns plain values.
- * // Result<{ status: number; cache: string | null }, FetchTransportError>
- * const metadata = await run(
- *   fetch("/api/user", (response) =>
- *     ok({
- *       status: response.status,
- *       cache: response.headers.get("cache-control"),
- *     }),
- *   ),
+ * const metadata = fetch("/api/user/metadata", (response) =>
+ *   ok({
+ *     status: response.status,
+ *     cache: response.headers.get("cache-control"),
+ *   }),
  * );
+ * expectTypeOf(metadata).toEqualTypeOf<
+ *   Task<{ status: number; cache: string | null }, FetchTransportError>
+ * >();
+ * expectOk(user, { name: "Ada" });
+ * expectOk(await run(metadata), { status: 204, cache: "max-age=60" });
  * ```
  *
- * ### Example
+ * ### Aborting fetch
  *
  * Abort follows the standard Task rules: a Fiber from `run(fetch(...))` rejects
  * with {@link AbortError}, and `run.abortable(fetch(...))` returns it as a
  * Result error.
  *
  * ```ts
- * import { AbortError, createRun, fetch } from "@evolu/common";
+ * import {
+ *   AbortError,
+ *   createRun,
+ *   fetch,
+ *   type NativeFetch,
+ * } from "@evolu/common";
  *
- * await using run = createRun();
+ * const nativeFetch: NativeFetch = (_input, init) =>
+ *   new Promise<Response>((_resolve, reject) => {
+ *     const signal = init?.signal;
+ *     if (!signal) throw new Error("Missing signal");
+ *     signal.addEventListener("abort", () => reject(signal.reason), {
+ *       once: true,
+ *     });
+ *   });
+ * await using run = createRun({ nativeFetch });
  *
  * const fiber = run.abortable(fetch("/api/user", "json"));
  * fiber.abort();
- *
- * // Result<unknown, FetchError | AbortError>
  * const result = await fiber;
  *
- * if (!result.ok && AbortError.is(result.error)) {
- *   console.log("Request was aborted");
- * }
+ * expect(!result.ok && AbortError.is(result.error)).toBe(true);
  * ```
  *
  * @group Fetch

@@ -1,17 +1,7 @@
-import {
-  all,
-  ok,
-  type Task,
-} from "@evolu/common";
-import {
-  availableParallelism,
-  runMain,
-} from "@evolu/nodejs";
+import { all, ok, type Task } from "@evolu/common";
+import { availableParallelism, runMain } from "@evolu/nodejs";
 import type { AvailableParallelismDep } from "../packages/nodejs/src/Platform.ts";
-import {
-  spawn,
-  type SpawnError,
-} from "../packages/nodejs/src/Cli.ts";
+import { spawn, type SpawnError } from "../packages/nodejs/src/Cli.ts";
 
 export type VerifyCommand =
   | "biome"
@@ -21,13 +11,12 @@ export type VerifyCommand =
   | "lint"
   | "lint-monorepo"
   | "test:coverage"
+  | "test:jsdoc"
   | "typecheck";
 
-export const verify: Task<
-  void,
-  SpawnError,
-  AvailableParallelismDep
-> = async (run) => {
+export const verify: Task<void, SpawnError, AvailableParallelismDep> = async (
+  run,
+) => {
   const sourceChecks = await run(
     all(
       [
@@ -57,12 +46,14 @@ export const verify: Task<
   );
   if (!builtArtifactChecks.ok) return builtArtifactChecks;
 
+  const jsdocExamples = await run(verifyCommand("test:jsdoc"));
+  if (!jsdocExamples.ok) return jsdocExamples;
+
   return run(verifyCommand("test:coverage"));
 };
 
-const verifyCommand = (
-  command: VerifyCommand,
-): Task<void, SpawnError> =>
+const verifyCommand =
+  (command: VerifyCommand): Task<void, SpawnError> =>
   (run) =>
     run(
       spawn("pnpm", [command], {

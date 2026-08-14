@@ -9,11 +9,24 @@
  *
  * Use for event handlers, observers, and async completion handlers.
  *
- * ### Example
+ * ### Completion callbacks
  *
  * ```ts
- * const onComplete: Callback<string> = (value) => console.log(value);
- * const queue = new Set<Callback<Result<Data, Error>>>();
+ * import { ok, type Callback, type Result } from "@evolu/common";
+ *
+ * const completedValues: Array<string> = [];
+ * const onComplete: Callback<string> = (value) => {
+ *   completedValues.push(value);
+ * };
+ * const queue = new Set<Callback<Result<string, Error>>>();
+ * queue.add((result) => {
+ *   if (result.ok) completedValues.push(result.value);
+ * });
+ *
+ * onComplete("direct");
+ * for (const callback of queue) callback(ok("queued"));
+ *
+ * expect(completedValues).toEqual(["direct", "queued"]);
  * ```
  */
 export type Callback<T> = (value: T) => void;
@@ -23,13 +36,29 @@ export type Callback<T> = (value: T) => void;
  *
  * Use for subscriptions or callbacks that need abort-time teardown.
  *
- * ### Example
+ * ### Subscription teardown
  *
  * ```ts
+ * import type { CallbackWithTeardown } from "@evolu/common";
+ *
+ * interface EventSource {
+ *   readonly start: () => void;
+ *   readonly stop: () => void;
+ * }
+ *
+ * const events: Array<string> = [];
+ * const source: EventSource = {
+ *   start: () => events.push("started"),
+ *   stop: () => events.push("stopped"),
+ * };
  * const subscribe: CallbackWithTeardown<EventSource> = (source) => {
  *   source.start();
- *   return () => source.stop();
+ *   return source.stop;
  * };
+ * const teardown = subscribe(source);
+ * if (teardown) teardown();
+ *
+ * expect(events).toEqual(["started", "stopped"]);
  * ```
  */
 export type CallbackWithTeardown<T> = (value: T) => void | (() => void);
@@ -39,13 +68,14 @@ export type CallbackWithTeardown<T> = (value: T) => void | (() => void);
  *
  * A predicate starts with an 'is' prefix, e.g., `isEven`.
  *
- * ### Example
+ * ### Filtering values
  *
  * ```ts
+ * import type { Predicate } from "@evolu/common";
+ *
  * const isEven: Predicate<number> = (n) => n % 2 === 0;
  *
- * const numbers = [1, 2, 3, 4];
- * const evenNumbers = numbers.filter(isEven); // [2, 4]
+ * expect([1, 2, 3, 4].filter(isEven)).toEqual([2, 4]);
  * ```
  */
 export type Predicate<T> = (value: T) => boolean;
@@ -55,14 +85,15 @@ export type Predicate<T> = (value: T) => boolean;
  *
  * Useful for callbacks that need both the element and its position.
  *
- * ### Example
+ * ### Filtering by position
  *
  * ```ts
+ * import type { PredicateWithIndex } from "@evolu/common";
+ *
  * const isEvenIndex: PredicateWithIndex<string> = (value, index) =>
  *   index % 2 === 0;
  *
- * const items = ["a", "b", "c", "d"];
- * const evenIndexItems = items.filter(isEvenIndex); // ["a", "c"]
+ * expect(["a", "b", "c", "d"].filter(isEvenIndex)).toEqual(["a", "c"]);
  * ```
  */
 export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
@@ -70,20 +101,25 @@ export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
 /**
  * A type guard function that refines type `A` to a narrower type `B`.
  *
- * ### Example
+ * ### Narrowing a value
  *
  * ```ts
- * type Animal = { name: string };
- * type Dog = Animal & { breed: string };
+ * import type { Refinement } from "@evolu/common";
+ *
+ * interface Animal {
+ *   readonly name: string;
+ * }
+ * interface Dog extends Animal {
+ *   readonly breed: string;
+ * }
  *
  * const isDog: Refinement<Animal, Dog> = (animal): animal is Dog =>
  *   "breed" in animal;
- *
  * const dog: Dog = { name: "Dog", breed: "Beagle" };
  * const animal: Animal = dog;
- * if (isDog(animal)) {
- *   console.log(animal.breed); // Safe access to `breed`
- * }
+ * if (!isDog(animal)) throw new Error("Expected a dog");
+ *
+ * expect(animal.breed).toBe("Beagle");
  * ```
  */
 export type Refinement<in A, out B extends A> = (a: A) => a is B;
@@ -95,17 +131,30 @@ export type Refinement<in A, out B extends A> = (a: A) => a is B;
  * Useful for callbacks that need both the element and its position while
  * maintaining type narrowing.
  *
- * ### Example
+ * ### Indexed refinement
  *
  * ```ts
- * type Item = { type: "number" | "string"; value: unknown };
+ * import { partitionArray, type RefinementWithIndex } from "@evolu/common";
  *
- * const isNumberItem: RefinementWithIndex<Item, Item & { type: "number" }> =
- *   (item, index): item is Item & { type: "number" } =>
- *     index > 0 && item.type === "number";
+ * type Item = {
+ *   readonly type: "number" | "string";
+ *   readonly value: unknown;
+ * };
+ * type NumberItem = Item & { readonly type: "number" };
  *
- * const items: ReadonlyArray<Item> = [...];
+ * const isNumberItem: RefinementWithIndex<Item, NumberItem> = (
+ *   item,
+ *   index,
+ * ): item is NumberItem => index > 0 && item.type === "number";
+ * const items: ReadonlyArray<Item> = [
+ *   { type: "number", value: 1 },
+ *   { type: "number", value: 2 },
+ * ];
  * const [numbers, others] = partitionArray(items, isNumberItem);
+ *
+ * expectTypeOf(numbers).toEqualTypeOf<ReadonlyArray<NumberItem>>();
+ * expect(numbers[0]?.value).toBe(2);
+ * expect(others[0]?.value).toBe(1);
  * ```
  */
 export type RefinementWithIndex<in A, out B extends A> = (
@@ -125,9 +174,11 @@ export type RefinementWithIndex<in A, out B extends A> = (
  * trusted constructors; it is not structural validation or a security
  * boundary.
  *
- * ### Example
+ * ### Adding runtime identity
  *
  * ```ts
+ * import { instance, type Instance } from "@evolu/common";
+ *
  * interface Foo extends Instance<"Foo"> {
  *   readonly value: string;
  * }
@@ -136,6 +187,8 @@ export type RefinementWithIndex<in A, out B extends A> = (
  *   ...instance("Foo"),
  *   value: "value",
  * };
+ *
+ * expect(foo["~evolu/instance"]).toBe("Foo");
  * ```
  */
 export interface Instance<Name extends string> {
@@ -156,14 +209,19 @@ export const instance = <const Name extends string>(
  * The explicit value type can include the rest of an interface whose trusted
  * constructors attach the matching identity.
  *
- * ### Example
+ * ### Checking runtime identity
  *
  * ```ts
+ * import { instance, isInstance, type Instance } from "@evolu/common";
+ *
  * interface Foo extends Instance<"Foo"> {
  *   readonly value: string;
  * }
  *
  * const isFoo = isInstance<Foo>("Foo");
+ * const value: unknown = { ...instance("Foo"), value: "value" };
+ *
+ * expect(isFoo(value)).toBe(true);
  * ```
  */
 export const isInstance =
@@ -180,20 +238,20 @@ export const isInstance =
  * For each property in `T`, if `null` is a valid value for that property, the
  * property will be made optional in the resulting type.
  *
- * ### Example
+ * ### Optional nullable properties
  *
  * ```ts
+ * import type { NullablePartial } from "@evolu/common";
+ *
  * type Example = {
  *   required: string;
  *   optionalWithNull: string | null;
  * };
  *
- * type Result = NullablePartial<Example>;
- * // Result is:
- * // {
- * //   required: string;
- * //   optionalWithNull?: string | null;
- * // }
+ * expectTypeOf<NullablePartial<Example>>().toEqualTypeOf<{
+ *   required: string;
+ *   optionalWithNull?: string | null;
+ * }>();
  * ```
  */
 export type NullablePartial<
@@ -247,16 +305,18 @@ export type Writable<T> = {
  * This utility forces TypeScript to "flatten" an intersection type into a
  * single object type so that tooltips and error messages are easier to read.
  *
- * ### Example
+ * ### Flattening an intersection
  *
  * ```ts
- * type A = { a: string } & { b: number };
- * // Without Simplify, TypeScript may display A as:
- * // { a: string } & { b: number }
+ * import type { Simplify } from "@evolu/common";
  *
+ * type A = { a: string } & { b: number };
  * type B = Simplify<A>;
- * // B is equivalent to:
- * // { a: string; b: number }
+ *
+ * expectTypeOf<B>().toEqualTypeOf<{
+ *   a: string;
+ *   b: number;
+ * }>();
  * ```
  */
 export type Simplify<T> = {
@@ -276,21 +336,21 @@ export type PartialProp<T, K extends keyof T> = Omit<T, K> &
  * Use when a function may complete synchronously or asynchronously depending on
  * runtime conditions (e.g., cache hit vs network fetch).
  *
- * ### Example
+ * ### Sync and async completion
  *
  * ```ts
- * const getData = (id: string): Awaitable<Data> => {
- *   const cached = cache.get(id);
- *   if (cached !== undefined) return cached; // Sync path
- *   return fetchData(id); // Async path
- * };
+ * import { isPromiseLike, type Awaitable } from "@evolu/common";
  *
- * // Always works
- * const data = await getData(id);
+ * const cache = new Map([["cached", "from cache"]]);
+ * const getData = (id: string): Awaitable<string> =>
+ *   cache.get(id) ?? Promise.resolve(`fetched ${id}`);
  *
- * // Or optimize for sync path
- * const result = getData(id);
- * const data = isPromiseLike(result) ? await result : result;
+ * const fetched = await getData("missing");
+ * const result = getData("cached");
+ * const cached = isPromiseLike(result) ? await result : result;
+ *
+ * expect(fetched).toBe("fetched missing");
+ * expect(cached).toBe("from cache");
  * ```
  */
 export type Awaitable<T> = T | PromiseLike<T>;
@@ -301,17 +361,19 @@ export type Awaitable<T> = T | PromiseLike<T>;
  * Use with {@link Awaitable} to conditionally `await` only when necessary,
  * avoiding microtask overhead for synchronous values.
  *
- * ### Example
+ * ### Conditional awaiting
  *
  * ```ts
- * const validate = (id: string): Awaitable<boolean> => {
- *   const cached = cache.get(id);
- *   if (cached !== undefined) return cached; // Sync path
- *   return fetchValidation(id); // Async path
- * };
+ * import { isPromiseLike, type Awaitable } from "@evolu/common";
  *
- * const result = validate(id);
+ * const cache = new Map([["cached", true]]);
+ * const validate = (id: string): Awaitable<boolean> =>
+ *   cache.get(id) ?? Promise.resolve(false);
+ *
+ * const result = validate("cached");
  * const isValid = isPromiseLike(result) ? await result : result;
+ *
+ * expect(isValid).toBe(true);
  * ```
  */
 export const isPromiseLike = <T>(
@@ -404,15 +466,20 @@ export type ParameterIntersection<T> = [T] extends [(value: infer I) => void]
  * Use when {@link Omit} would collapse a discriminated union into a single
  * shared shape.
  *
- * ### Example
+ * ### Preserving discriminated unions
  *
  * ```ts
+ * import type { DistributiveOmit } from "@evolu/common";
+ *
  * type Event =
  *   | { type: "a"; a: string; shared: number }
  *   | { type: "b"; b: number; shared: number };
  *
  * type Payload = DistributiveOmit<Event, "shared">;
- * // { type: "a"; a: string } | { type: "b"; b: number }
+ *
+ * expectTypeOf<Payload>().toEqualTypeOf<
+ *   { type: "a"; a: string } | { type: "b"; b: number }
+ * >();
  * ```
  */
 export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown

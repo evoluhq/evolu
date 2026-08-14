@@ -15,57 +15,42 @@
  * Avoid primitive types in domain code—brand everything. Evolu Type provides
  * many brand helpers.
  *
- * ### Single Brand
+ * ### Single brand
  *
  * ```ts
- * // A branded type definition
+ * import type { Brand } from "@evolu/common";
+ *
  * type UserId = number & Brand<"UserId">;
  *
- * // A function that creates `UserId` values.
- * // Casting with `as UserId` is unsafe, so `createUserId` must be unit-tested.
- * const createUserId = (): UserId => {
- *   return 123 as UserId; // Unsafe casting
- * };
- *
- * const userId = createUserId();
- *
- * // A function that accepts only `UserId`.
- * const getUser = (id: UserId) => {
- *   // Implementation
- * };
- *
- * getUser(userId); // Valid
- * getUser(123); // TypeScript error
- * getUser("123"); // TypeScript error
+ * // Branding does not validate at runtime, so isolate the cast in a trusted
+ * // factory.
+ * const createUserId = (value: number): UserId => value as UserId;
+ * const getUser = (id: UserId): number => id;
+ * const userId = createUserId(123);
+ * expect(getUser(userId)).toBe(123);
+ * // @ts-expect-error A plain number is not a UserId.
+ * getUser(123);
  * ```
  *
- * ### Multiple Brands (to act like flags)
+ * ### Multiple brands
  *
  * ```ts
- * // Define branded types
+ * import type { Brand } from "@evolu/common";
+ *
  * type Min1 = string & Brand<"Min1">;
  * type Max100 = string & Brand<"Max100">;
  * type Min1Max100 = string & Brand<"Min1" | "Max100">;
  *
- * // Functions requiring specific brands
- * const requiresMin1 = (value: Min1): void => {};
- * const requiresMax100 = (value: Max100): void => {};
+ * const requiresMin1 = (value: Min1): string => value;
+ * const requiresMax100 = (value: Max100): string => value;
  *
- * // Values with single brands
- * const min1Value: Min1 = "hello" as Min1;
- * const max100Value: Max100 = "world" as Max100;
- *
- * // Value with multiple brands
  * const min1Max100Value: Min1Max100 = "typescript" as Min1Max100;
  *
- * // Valid cases
- * requiresMin1(min1Value); // Valid
- * requiresMax100(max100Value); // Valid
- * requiresMin1(min1Max100Value); // Valid: Min1Max100 satisfies Min1
- * requiresMax100(min1Max100Value); // Valid: Min1Max100 satisfies Max100
+ * expect(requiresMin1(min1Max100Value)).toBe("typescript");
+ * expect(requiresMax100(min1Max100Value)).toBe("typescript");
  * ```
  *
- * ### Standalone Brand
+ * ### Standalone brand
  *
  * Brand can be used alone without a base type for purely nominal typing. This
  * is useful for opaque values where the internal structure is hidden and type
@@ -74,15 +59,17 @@
  * code platform-agnostic.
  *
  * ```ts
- * // A nominal type with no underlying structure exposed
+ * import type { Brand } from "@evolu/common";
+ *
  * type NativePort = Brand<"NativePort">;
  *
- * // Only values explicitly cast to NativePort are accepted
- * const requiresNativePort = (port: NativePort): void => {};
+ * const requiresNativePort = (port: NativePort): NativePort => port;
  *
- * const port: NativePort = nativeValue as NativePort;
- * requiresNativePort(port); // Valid
- * requiresNativePort(nativeValue); // TypeScript error
+ * const nativeValue: unknown = { id: 1 };
+ * const port = nativeValue as NativePort;
+ * expect(requiresNativePort(port)).toBe(nativeValue);
+ * // @ts-expect-error An unknown value is not a NativePort.
+ * requiresNativePort(nativeValue);
  * ```
  */
 export interface Brand<B extends string> {

@@ -97,7 +97,10 @@ export interface EvoluConfig {
    * ### Example
    *
    * ```ts
-   * // appName: AppName.orThrow("MyApp")
+   * import { AppName } from "@evolu/common";
+   *
+   * const appName = AppName.orThrow("MyApp");
+   * expect(appName).toBe("MyApp");
    * ```
    */
   readonly appName: AppName;
@@ -105,20 +108,20 @@ export interface EvoluConfig {
   /**
    * {@link AppOwner} used to create this {@link Evolu} instance.
    *
-   * Exposed as {@link Evolu.appOwner}. If `appOwner` is not passed, Evolu
-   * creates one.
+   * Exposed as {@link Evolu.appOwner}. Create an AppOwner before the first run,
+   * or restore one from secure storage before creating Evolu.
    *
    * AppOwner controls access to the encrypted local SQLite database. If its
    * secret material (Owner secret / Mnemonic) is not stored safely, data
    * written by that instance is permanently inaccessible.
    *
-   * Best onboarding UX is accountless first use: let users try a ready-to-use
-   * app, then prompt backup of `evolu.appOwner`.
+   * Best onboarding UX is accountless first use: create an AppOwner, let users
+   * try a ready-to-use app, then prompt backup of `evolu.appOwner`.
    *
    * Recommended usage:
    *
-   * - Omit `appOwner` for first run, then persist `evolu.appOwner` after user
-   *   activity and guide the user to back it up.
+   * - Create and persist an `appOwner` for first run, then guide the user to back
+   *   it up after user activity.
    * - Pass `appOwner` restored from secure storage (for example, Expo
    *   SecureStore, WebAuthn-backed storage, or app-managed account recovery
    *   flow).
@@ -155,33 +158,51 @@ export interface EvoluConfig {
    *
    * The default value is:
    *
-   * `{ type: "WebSocket", url: "wss://free.evoluhq.com" }`.
+   * `[{ type: "WebSocket", url: "wss://free.evoluhq.com" }]`.
    *
    * ### Example
    *
    * ```ts
-   * // Single WebSocket relay
-   * transports: [{ type: "WebSocket", url: "wss://relay1.example.com" }];
+   * import {
+   *   createAppOwner,
+   *   createOwnerWebSocketTransport,
+   *   createOwnerSecret,
+   *   createRandomBytes,
+   *   type OwnerTransport,
+   * } from "@evolu/common";
    *
-   * // Multiple WebSocket relays for redundancy
-   * transports: [
+   * // Create once, persist the mnemonic securely, and restore it on later runs.
+   * const appOwner = createAppOwner(
+   *   createOwnerSecret({ randomBytes: createRandomBytes() }),
+   * );
+   *
+   * // Use one relay.
+   * const singleRelay = [
+   *   { type: "WebSocket", url: "wss://relay1.example.com" },
+   * ] satisfies ReadonlyArray<OwnerTransport>;
+   *
+   * // Use independent relays for redundancy.
+   * const redundantRelays = [
    *   { type: "WebSocket", url: "wss://relay1.example.com" },
    *   { type: "WebSocket", url: "wss://relay2.example.com" },
-   *   { type: "WebSocket", url: "wss://relay3.example.com" },
-   * ];
+   * ] satisfies ReadonlyArray<OwnerTransport>;
    *
-   * // Local-only instance (no sync) - useful for device settings or when relay
-   * // URL will be provided later (e.g., after authentication), allowing users
-   * // to work offline before the app connects
-   * transports: [];
+   * // Start local-only before authentication. After authentication, pass an
+   * // owner-scoped transport to evolu.useOwner.
+   * const localOnlyBeforeAuthentication =
+   *   [] satisfies ReadonlyArray<OwnerTransport>;
    *
-   * // Using createOwnerWebSocketTransport helper for relay authentication
-   * transports: [
+   * // Include the OwnerId when the relay authenticates owners.
+   * const authenticatedRelay = [
    *   createOwnerWebSocketTransport({
-   *     url: "ws://localhost:4000",
-   *     ownerId,
+   *     url: "wss://relay.example.com",
+   *     ownerId: appOwner.id,
    *   }),
    * ];
+   *
+   * expect(authenticatedRelay[0]?.url).toBe(
+   *   `wss://relay.example.com?ownerId=${appOwner.id}`,
+   * );
    * ```
    */
   readonly transports?: ReadonlyArray<OwnerTransport>;
@@ -208,7 +229,28 @@ export interface EvoluConfig {
    * ### Example
    *
    * ```ts
-   * const evolu = createEvolu(evoluReactDeps)(Schema, {
+   * import {
+   *   AppName,
+   *   createAppOwner,
+   *   createEvolu,
+   *   createOwnerSecret,
+   *   createRandomBytes,
+   *   id,
+   * } from "@evolu/common";
+   *
+   * const Schema = {
+   *   todo: { id: id("Todo") },
+   *   todoCategory: { id: id("TodoCategory") },
+   * };
+   * // Create once, persist the mnemonic securely, and restore it on later runs.
+   * const appOwner = createAppOwner(
+   *   createOwnerSecret({ randomBytes: createRandomBytes() }),
+   * );
+   *
+   * const createTodoEvolu = createEvolu(Schema, {
+   *   appName: AppName.orThrow("IndexedTodos"),
+   *   appOwner,
+   *   transports: [],
    *   indexes: (create) => [
    *     create("todoCreatedAt").on("todo").column("createdAt"),
    *     create("todoCategoryCreatedAt")
@@ -216,6 +258,8 @@ export interface EvoluConfig {
    *       .column("createdAt"),
    *   ],
    * });
+   *
+   * expect(createTodoEvolu).toBeTypeOf("function");
    * ```
    */
   readonly indexes?: IndexesConfig;
@@ -289,19 +333,45 @@ export interface Evolu<
    * every row has a globally unique, conflict-free identifier without
    * coordination.
    *
+   * Pass `onComplete` when follow-up work must wait until the mutation and its
+   * query patches have been applied.
+   *
    * ### Example
    *
    * ```ts
-   * const { id } = evolu.insert("todo", {
-   *   title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
-   * });
+   * import {
+   *   id,
+   *   NonEmptyTrimmedString100,
+   *   type Evolu,
+   * } from "@evolu/common";
    *
-   * // With onComplete callback
-   * evolu.insert(
-   *   "todo",
-   *   { title: NonEmptyTrimmedString100.orThrow("Another todo") },
-   *   { onComplete: () => console.log("Insert completed") },
-   * );
+   * const TodoId = id("Todo");
+   * type TodoId = typeof TodoId.Output;
+   * const Schema = {
+   *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
+   * };
+   *
+   * const insertTodo = (evolu: Evolu<typeof Schema>) =>
+   *   evolu.insert("todo", {
+   *     title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
+   *   }).id;
+   *
+   * const insertTodoAndNotify = (
+   *   evolu: Evolu<typeof Schema>,
+   *   onComplete: () => void,
+   * ) =>
+   *   evolu.insert(
+   *     "todo",
+   *     { title: NonEmptyTrimmedString100.orThrow("Another todo") },
+   *     { onComplete },
+   *   ).id;
+   *
+   * expectTypeOf<
+   *   [
+   *     ReturnType<typeof insertTodo>,
+   *     ReturnType<typeof insertTodoAndNotify>,
+   *   ]
+   * >().toEqualTypeOf<[TodoId, TodoId]>();
    * ```
    *
    * @see {@link Mutation}
@@ -316,13 +386,31 @@ export interface Evolu<
    * ### Example
    *
    * ```ts
-   * const { id } = evolu.update("todo", {
-   *   id: todoId,
-   *   title: NonEmptyTrimmedString100.orThrow("Updated title"),
-   * });
+   * import {
+   *   id,
+   *   NonEmptyTrimmedString100,
+   *   sqliteTrue,
+   *   type Evolu,
+   * } from "@evolu/common";
    *
-   * // Soft delete
-   * evolu.update("todo", { id: todoId, isDeleted: sqliteTrue });
+   * const TodoId = id("Todo");
+   * type TodoId = typeof TodoId.Output;
+   * const Schema = {
+   *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
+   * };
+   *
+   * const renameTodo = (evolu: Evolu<typeof Schema>, todoId: TodoId) =>
+   *   evolu.update("todo", {
+   *     id: todoId,
+   *     title: NonEmptyTrimmedString100.orThrow("Updated title"),
+   *   }).id;
+   *
+   * const softDeleteTodo = (evolu: Evolu<typeof Schema>, todoId: TodoId) =>
+   *   evolu.update("todo", { id: todoId, isDeleted: sqliteTrue }).id;
+   *
+   * expectTypeOf<
+   *   [ReturnType<typeof renameTodo>, ReturnType<typeof softDeleteTodo>]
+   * >().toEqualTypeOf<[TodoId, TodoId]>();
    * ```
    *
    * @see {@link Mutation}
@@ -344,11 +432,26 @@ export interface Evolu<
    * ### Example
    *
    * ```ts
-   * const stableId = createIdFromString("my-todo-1");
-   * const { id } = evolu.upsert("todo", {
-   *   id: stableId,
-   *   title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
-   * });
+   * import {
+   *   createIdFromString,
+   *   id,
+   *   NonEmptyTrimmedString100,
+   *   type Evolu,
+   * } from "@evolu/common";
+   *
+   * const TodoId = id("Todo");
+   * type TodoId = typeof TodoId.Output;
+   * const Schema = {
+   *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
+   * };
+   * const stableId = TodoId.orThrow(createIdFromString("my-todo-1"));
+   * const upsertTodo = (evolu: Evolu<typeof Schema>) =>
+   *   evolu.upsert("todo", {
+   *     id: stableId,
+   *     title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
+   *   }).id;
+   *
+   * expectTypeOf(upsertTodo).returns.toEqualTypeOf<TodoId>();
    * ```
    *
    * @see {@link Mutation}
@@ -373,13 +476,29 @@ export interface Evolu<
    * ### Example
    *
    * ```ts
+   * import {
+   *   createQueryBuilder,
+   *   id,
+   *   NonEmptyTrimmedString100,
+   *   type Evolu,
+   *   type QueryRows,
+   * } from "@evolu/common";
+   *
+   * const Schema = {
+   *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+   * };
    * const createQuery = createQueryBuilder(Schema);
    * const allTodos = createQuery((db) =>
    *   db.selectFrom("todo").selectAll(),
    * );
-   * evolu.loadQuery(allTodos).then((rows) => {
-   *   console.log(rows);
-   * });
+   * const loadTodos = async (evolu: Evolu<typeof Schema>) => {
+   *   const rows = await evolu.loadQuery(allTodos);
+   *   return rows;
+   * };
+   *
+   * expectTypeOf(loadTodos).returns.toEqualTypeOf<
+   *   Promise<QueryRows<typeof allTodos.Row>>
+   * >();
    * ```
    */
   readonly loadQuery: <R extends Row>(
@@ -387,14 +506,47 @@ export interface Evolu<
   ) => Promise<QueryRows<R>>;
 
   /**
-   * Load an array of {@link Query} queries and return an array of
+   * Load an array of {@link Query} values and return an array of
    * {@link QueryRows} promises. It's like `queries.map(loadQuery)` but with
    * proper types for returned promises.
    *
    * ### Example
    *
    * ```ts
-   * evolu.loadQueries([allTodos, todoById(1)]);
+   * import {
+   *   createIdFromString,
+   *   createQueryBuilder,
+   *   id,
+   *   NonEmptyTrimmedString100,
+   *   type Evolu,
+   *   type QueryRows,
+   * } from "@evolu/common";
+   *
+   * const TodoId = id("Todo");
+   * type TodoId = typeof TodoId.Output;
+   * const Schema = {
+   *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
+   * };
+   * const createQuery = createQueryBuilder(Schema);
+   * const allTodos = createQuery((db) =>
+   *   db.selectFrom("todo").select(["id", "title"]),
+   * );
+   * const todoById = (todoId: TodoId) =>
+   *   createQuery((db) =>
+   *     db.selectFrom("todo").select("title").where("id", "=", todoId),
+   *   );
+   * const firstTodo = todoById(
+   *   TodoId.orThrow(createIdFromString("first-todo")),
+   * );
+   * const loadTodoQueries = (evolu: Evolu<typeof Schema>) =>
+   *   evolu.loadQueries([allTodos, firstTodo]);
+   *
+   * expectTypeOf(loadTodoQueries).returns.toEqualTypeOf<
+   *   [
+   *     Promise<QueryRows<typeof allTodos.Row>>,
+   *     Promise<QueryRows<typeof firstTodo.Row>>,
+   *   ]
+   * >();
    * ```
    */
   readonly loadQueries: <Q extends Queries<S>>(
@@ -407,9 +559,31 @@ export interface Evolu<
    * ### Example
    *
    * ```ts
-   * const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
-   *   const rows = evolu.getQueryRows(allTodos);
-   * });
+   * import {
+   *   createQueryBuilder,
+   *   id,
+   *   NonEmptyTrimmedString100,
+   *   type Evolu,
+   *   type QueryRows,
+   *   type Unsubscribe,
+   * } from "@evolu/common";
+   *
+   * const Schema = {
+   *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+   * };
+   * const createQuery = createQueryBuilder(Schema);
+   * const allTodos = createQuery((db) =>
+   *   db.selectFrom("todo").select("title"),
+   * );
+   * const subscribeToTodos = (
+   *   evolu: Evolu<typeof Schema>,
+   *   onRows: (rows: QueryRows<typeof allTodos.Row>) => void,
+   * ) =>
+   *   evolu.subscribeQuery(allTodos)(() => {
+   *     onRows(evolu.getQueryRows(allTodos));
+   *   });
+   *
+   * expectTypeOf(subscribeToTodos).returns.toEqualTypeOf<Unsubscribe>();
    * ```
    */
   readonly subscribeQuery: (
@@ -422,9 +596,27 @@ export interface Evolu<
    * ### Example
    *
    * ```ts
-   * const unsubscribe = evolu.subscribeQuery(allTodos)(() => {
-   *   const rows = evolu.getQueryRows(allTodos);
-   * });
+   * import {
+   *   createQueryBuilder,
+   *   id,
+   *   NonEmptyTrimmedString100,
+   *   type Evolu,
+   *   type QueryRows,
+   * } from "@evolu/common";
+   *
+   * const Schema = {
+   *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+   * };
+   * const createQuery = createQueryBuilder(Schema);
+   * const allTodos = createQuery((db) =>
+   *   db.selectFrom("todo").select("title"),
+   * );
+   * const getTodos = (evolu: Evolu<typeof Schema>) =>
+   *   evolu.getQueryRows(allTodos);
+   *
+   * expectTypeOf(getTodos).returns.toEqualTypeOf<
+   *   QueryRows<typeof allTodos.Row>
+   * >();
    * ```
    */
   readonly getQueryRows: <R extends Row>(query: Query<S, R>) => QueryRows<R>;
@@ -456,6 +648,8 @@ export interface Evolu<
    *
    * All instances identified by {@link Evolu.name} will be self-disposed. Use
    * {@link EvoluConfig.onDatabaseDeleted} to update app UI when that happens.
+   *
+   * Currently not implemented.
    */
   readonly deleteDatabase: () => void;
 
@@ -467,6 +661,8 @@ export interface Evolu<
    *
    * It also stops using that owner across all tabs and instances. Use
    * {@link EvoluConfig.onOwnerDeleted} to update app UI when that happens.
+   *
+   * Currently not implemented.
    */
   readonly deleteOwner: (owner: Owner) => void;
 
@@ -486,20 +682,51 @@ export interface Evolu<
    * ### Example
    *
    * ```ts
-   * // Use an Owner (starts syncing).
-   * const unuseOwner = evolu.useOwner(shardOwner, [
-   *   createOwnerWebSocketTransport({
-   *     url: "ws://localhost:4000",
-   *     ownerId: shardOwner.id,
-   *   }),
-   * ]);
+   * import {
+   *   createAppOwner,
+   *   createOwnerWebSocketTransport,
+   *   createOwnerSecret,
+   *   createRandomBytes,
+   *   deriveShardOwner,
+   *   type Evolu,
+   *   type ReadonlyOwner,
+   *   type UnuseOwner,
+   * } from "@evolu/common";
    *
-   * // Later, stop using the Owner.
-   * unuseOwner();
+   * // Create once, persist the mnemonic securely, and restore it on later runs.
+   * const appOwner = createAppOwner(
+   *   createOwnerSecret({ randomBytes: createRandomBytes() }),
+   * );
+   * const shardOwner = deriveShardOwner(appOwner, ["todos", 1]);
+   * const shardTransport = createOwnerWebSocketTransport({
+   *   url: "wss://relay.example.com",
+   *   ownerId: shardOwner.id,
+   * });
+   * const useShardOwner = (evolu: Evolu): UnuseOwner =>
+   *   evolu.useOwner(shardOwner, [shardTransport]);
    *
-   * // Bulk operations.
-   * const unuseOwners = owners.map(evolu.useOwner);
-   * // Later: for (const unuse of unuseOwners) unuse();
+   * const useOwners = (
+   *   evolu: Evolu,
+   *   owners: ReadonlyArray<ReadonlyOwner>,
+   * ): UnuseOwner => {
+   *   const unuseOwners = owners.map((owner) =>
+   *     evolu.useOwner(owner, [
+   *       createOwnerWebSocketTransport({
+   *         url: "wss://relay.example.com",
+   *         ownerId: owner.id,
+   *       }),
+   *     ]),
+   *   );
+   *   return () => {
+   *     for (const unuse of unuseOwners) unuse();
+   *   };
+   * };
+   *
+   * // Call each returned UnuseOwner once to stop syncing.
+   * expect(shardTransport).toEqual({
+   *   type: "WebSocket",
+   *   url: `wss://relay.example.com?ownerId=${shardOwner.id}`,
+   * });
    * ```
    */
   readonly useOwner: (
@@ -521,12 +748,23 @@ export interface EvoluErrorDep {
    * ### Example
    *
    * ```ts
+   * import { createStore, Millis, type EvoluError } from "@evolu/common";
+   * import type { EvoluErrorDep } from "@evolu/common/local-first";
+   *
+   * // Stand-in for run.deps.evoluError from createEvoluDeps.
+   * using evoluError = createStore<EvoluError | null>(null);
+   * const deps = { evoluError } satisfies EvoluErrorDep;
+   * let displayedMessage = "";
+   * const showMessage = (message: string) => {
+   *   displayedMessage = message;
+   * };
+   *
    * deps.evoluError.subscribe(() => {
    *   const error = deps.evoluError.get();
    *   if (!error) return;
    *
    *   switch (error.type) {
-   *     case "InvalidComputerClock":
+   *     case "TimestampDriftError":
    *       // Show guidance specific to the detected error.
    *       showMessage(
    *         "Your system clock appears incorrect. Please fix it.",
@@ -537,6 +775,15 @@ export interface EvoluErrorDep {
    *       showMessage("Something went wrong. Please try again.");
    *   }
    * });
+   *
+   * deps.evoluError.set({
+   *   type: "TimestampDriftError",
+   *   next: Millis.orThrow(360000),
+   *   now: Millis.orThrow(0),
+   * });
+   * expect(displayedMessage).toBe(
+   *   "Your system clock appears incorrect. Please fix it.",
+   * );
    * ```
    */
   readonly evoluError: ReadonlyStore<EvoluError | null>;

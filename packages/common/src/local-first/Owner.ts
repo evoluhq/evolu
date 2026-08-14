@@ -359,15 +359,37 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  * ### Example
  *
  * ```ts
- * // Create transport "wss://relay.evolu.dev?ownerId=..."
+ * import {
+ *   AppName,
+ *   createAppOwner,
+ *   createEvolu,
+ *   createOwnerWebSocketTransport,
+ *   createOwnerSecret,
+ *   createRandomBytes,
+ *   id,
+ * } from "@evolu/common";
+ *
+ * // Create once, persist the mnemonic securely, and restore it on later runs.
+ * const appOwner = createAppOwner(
+ *   createOwnerSecret({ randomBytes: createRandomBytes() }),
+ * );
  * const transport = createOwnerWebSocketTransport({
  *   url: "wss://relay.evolu.dev",
- *   ownerId: owner.id,
+ *   ownerId: appOwner.id,
  * });
+ * const createTodoEvolu = createEvolu(
+ *   { todo: { id: id("Todo") } },
+ *   {
+ *     appName: AppName.orThrow("OwnerTransportExample"),
+ *     appOwner,
+ *     transports: [transport],
+ *   },
+ * );
  *
- * // Use with createEvolu
- * const evolu = createEvolu(deps)(Schema, {
- *   transports: [transport],
+ * expect(createTodoEvolu).toBeTypeOf("function");
+ * expect(transport).toEqual({
+ *   type: "WebSocket",
+ *   url: `wss://relay.evolu.dev?ownerId=${appOwner.id}`,
  * });
  * ```
  */
@@ -389,10 +411,25 @@ export const createOwnerWebSocketTransport = (config: {
  * ### Example
  *
  * ```ts
- * parseOwnerIdFromOwnerWebSocketTransportUrl(
- *   "/sync?ownerId=_12345678abcdefgh",
+ * import {
+ *   createAppOwner,
+ *   createOwnerSecret,
+ *   createRandomBytes,
+ *   parseOwnerIdFromOwnerWebSocketTransportUrl,
+ * } from "@evolu/common";
+ *
+ * // Create once, persist the mnemonic securely, and restore it on later runs.
+ * const appOwner = createAppOwner(
+ *   createOwnerSecret({ randomBytes: createRandomBytes() }),
  * );
- * // Returns: OwnerId or null
+ * const url = `/sync?ownerId=${appOwner.id}`;
+ *
+ * expect(parseOwnerIdFromOwnerWebSocketTransportUrl(url)).toBe(
+ *   appOwner.id,
+ * );
+ * expect(
+ *   parseOwnerIdFromOwnerWebSocketTransportUrl("/sync?ownerId=invalid"),
+ * ).toBeNull();
  * ```
  */
 export const parseOwnerIdFromOwnerWebSocketTransportUrl = (

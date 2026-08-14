@@ -17,24 +17,33 @@ import type { Callback } from "./Types.ts";
  * For React Native, use the `lockManager` ponyfill from `@evolu/react-native`.
  * For tests, use {@link testCreateLockManager}.
  *
- * ### Example
+ * ### Web and Node.js 24+
  *
  * ```ts
- * // Web or Node.js 24+
- * import { testCreateLockManager } from "@evolu/common";
+ * import type { LockManagerDep } from "@evolu/common";
  *
  * const deps: LockManagerDep = {
- *   lockManager: testCreateLockManager(),
+ *   lockManager: globalThis.navigator.locks,
  * };
+ *
+ * const result = await deps.lockManager.request("example", (lock) => {
+ *   return lock?.name;
+ * });
+ * expect(result).toBe("example");
  * ```
  *
- * ### Example
+ * ### React Native
  *
  * ```ts
- * // React Native
+ * import type { LockManagerDep } from "@evolu/common";
  * import { lockManager } from "@evolu/react-native";
  *
  * const deps: LockManagerDep = { lockManager };
+ *
+ * const result = await deps.lockManager.request("example", (lock) => {
+ *   return lock?.name;
+ * });
+ * expect(result).toBe("example");
  * ```
  */
 

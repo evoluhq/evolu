@@ -39,9 +39,27 @@ export type { NotNull as KyselyNotNull } from "kysely";
  * ### Example
  *
  * ```ts
+ * import {
+ *   createQueryBuilder,
+ *   id,
+ *   NonEmptyTrimmedString100,
+ *   type Query,
+ * } from "@evolu/common";
+ *
+ * const TodoId = id("Todo");
+ * type TodoId = typeof TodoId.Output;
+ * const Schema = {
+ *   todo: { id: TodoId, title: NonEmptyTrimmedString100 },
+ * };
  * const createQuery = createQueryBuilder(Schema);
  * const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
+ *
  * type AllTodosRow = typeof allTodos.Row;
+ * expectTypeOf<typeof allTodos>().toExtend<Query<typeof Schema>>();
+ * expectTypeOf<AllTodosRow["id"]>().toEqualTypeOf<TodoId>();
+ * expectTypeOf<
+ *   AllTodosRow["title"]
+ * >().toEqualTypeOf<NonEmptyTrimmedString100 | null>();
  * ```
  */
 export type Query<
@@ -58,11 +76,25 @@ export type Query<
      * ### Example
      *
      * ```ts
+     * import {
+     *   createQueryBuilder,
+     *   id,
+     *   type InferRow,
+     *   NonEmptyTrimmedString100,
+     * } from "@evolu/common";
+     *
+     * const Schema = {
+     *   todo: { id: id("Todo"), title: NonEmptyTrimmedString100 },
+     * };
      * const createQuery = createQueryBuilder(Schema);
      * const allTodos = createQuery((db) =>
      *   db.selectFrom("todo").selectAll(),
      * );
+     *
      * type AllTodosRow = typeof allTodos.Row;
+     * expectTypeOf<AllTodosRow>().toEqualTypeOf<
+     *   InferRow<typeof allTodos>
+     * >();
      * ```
      */
     Row: R;
@@ -90,25 +122,42 @@ export interface Row {
  * ### Example
  *
  * ```ts
- * import { evoluJsonArrayFrom } from "@evolu/common";
+ * import {
+ *   createQueryBuilder,
+ *   evoluJsonArrayFrom,
+ *   id,
+ *   NonEmptyTrimmedString100,
+ * } from "@evolu/common";
  *
- * const result = await db
- *   .selectFrom("person")
- *   .select((eb) => [
- *     "id",
- *     evoluJsonArrayFrom(
- *       eb
- *         .selectFrom("pet")
- *         .select(["pet.id as pet_id", "pet.name"])
- *         .whereRef("pet.owner_id", "=", "person.id")
- *         .orderBy("pet.name"),
- *     ).as("pets"),
- *   ])
- *   .execute();
+ * const PersonId = id("Person");
+ * const Schema = {
+ *   person: { id: PersonId },
+ *   pet: {
+ *     id: id("Pet"),
+ *     name: NonEmptyTrimmedString100,
+ *     personId: PersonId,
+ *   },
+ * };
+ * const createQuery = createQueryBuilder(Schema);
+ * const people = createQuery((db) =>
+ *   db
+ *     .selectFrom("person")
+ *     .select(["person.id"])
+ *     .select((eb) => [
+ *       evoluJsonArrayFrom(
+ *         eb
+ *           .selectFrom("pet")
+ *           .select(["pet.id as petId", "pet.name"])
+ *           .whereRef("pet.personId", "=", "person.id")
+ *           .orderBy("pet.name"),
+ *       ).as("pets"),
+ *     ]),
+ * );
  *
- * result[0]?.id;
- * result[0]?.pets[0].pet_id;
- * result[0]?.pets[0].name;
+ * expectTypeOf<(typeof people.Row.pets)[number]>().toEqualTypeOf<{
+ *   petId: typeof Schema.pet.id.Output;
+ *   name: NonEmptyTrimmedString100 | null;
+ * }>();
  * ```
  */
 export const evoluJsonArrayFrom = <O>(
@@ -132,25 +181,44 @@ export const evoluJsonArrayFrom = <O>(
  * ### Example
  *
  * ```ts
- * import { evoluJsonObjectFrom } from "@evolu/common";
+ * import {
+ *   createQueryBuilder,
+ *   evoluJsonObjectFrom,
+ *   id,
+ *   NonEmptyTrimmedString100,
+ *   SqliteBoolean,
+ * } from "@evolu/common";
  *
- * const result = await db
- *   .selectFrom("person")
- *   .select((eb) => [
- *     "id",
- *     evoluJsonObjectFrom(
- *       eb
- *         .selectFrom("pet")
- *         .select(["pet.id as pet_id", "pet.name"])
- *         .whereRef("pet.owner_id", "=", "person.id")
- *         .where("pet.is_favorite", "=", true),
- *     ).as("favorite_pet"),
- *   ])
- *   .execute();
+ * const PersonId = id("Person");
+ * const Schema = {
+ *   person: { id: PersonId },
+ *   pet: {
+ *     id: id("Pet"),
+ *     name: NonEmptyTrimmedString100,
+ *     personId: PersonId,
+ *     isFavorite: SqliteBoolean,
+ *   },
+ * };
+ * const createQuery = createQueryBuilder(Schema);
+ * const people = createQuery((db) =>
+ *   db
+ *     .selectFrom("person")
+ *     .select(["person.id"])
+ *     .select((eb) => [
+ *       evoluJsonObjectFrom(
+ *         eb
+ *           .selectFrom("pet")
+ *           .select(["pet.id as petId", "pet.name"])
+ *           .whereRef("pet.personId", "=", "person.id")
+ *           .where("pet.isFavorite", "=", 1),
+ *       ).as("favoritePet"),
+ *     ]),
+ * );
  *
- * result[0]?.id;
- * result[0]?.favorite_pet?.pet_id;
- * result[0]?.favorite_pet?.name;
+ * expectTypeOf<typeof people.Row.favoritePet>().toEqualTypeOf<{
+ *   petId: typeof Schema.pet.id.Output;
+ *   name: NonEmptyTrimmedString100 | null;
+ * } | null>();
  * ```
  */
 export const evoluJsonObjectFrom = <O>(
@@ -172,24 +240,42 @@ export const evoluJsonObjectFrom = <O>(
  * ### Example
  *
  * ```ts
- * import { evoluJsonBuildObject, kyselySql } from "@evolu/common";
+ * import {
+ *   createQueryBuilder,
+ *   evoluJsonBuildObject,
+ *   id,
+ *   kyselySql,
+ *   NonEmptyTrimmedString100,
+ * } from "@evolu/common";
  *
- * const result = await db
- *   .selectFrom("person")
- *   .select((eb) => [
- *     "id",
- *     evoluJsonBuildObject({
- *       first: eb.ref("first_name"),
- *       last: eb.ref("last_name"),
- *       full: kyselySql<string>`first_name || ' ' || last_name`,
- *     }).as("name"),
- *   ])
- *   .execute();
+ * const Schema = {
+ *   person: {
+ *     id: id("Person"),
+ *     firstName: NonEmptyTrimmedString100,
+ *     lastName: NonEmptyTrimmedString100,
+ *   },
+ * };
+ * const createQuery = createQueryBuilder(Schema);
+ * const people = createQuery((db) =>
+ *   db
+ *     .selectFrom("person")
+ *     .select("person.id")
+ *     .select((eb) => [
+ *       evoluJsonBuildObject({
+ *         first: eb.ref("firstName"),
+ *         last: eb.ref("lastName"),
+ *         full: kyselySql<string>`${eb.ref("firstName")} || ' ' || ${eb.ref(
+ *           "lastName",
+ *         )}`,
+ *       }).as("name"),
+ *     ]),
+ * );
  *
- * result[0]?.id;
- * result[0]?.name.first;
- * result[0]?.name.last;
- * result[0]?.name.full;
+ * expectTypeOf<typeof people.Row.name>().toEqualTypeOf<{
+ *   first: NonEmptyTrimmedString100 | null;
+ *   last: NonEmptyTrimmedString100 | null;
+ *   full: string;
+ * }>();
  * ```
  */
 export const evoluJsonBuildObject = <
