@@ -52,7 +52,7 @@
     "vitest": "^4.1.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.0.0-next.0",
+    "@evolu/common": "^8.0.0",
     "vitest": "^4.1.2"
   },
   "publishConfig": {
