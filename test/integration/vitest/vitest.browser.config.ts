@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
 import { transformWithEsbuild } from "vite";
 import { defineProject } from "vitest/config";
+import { createBrowserInstances } from "../../../packages/typescript-config/vitest.ts";
 
 export default defineProject(({ mode }) => ({
   root: resolve(import.meta.dirname, "../../.."),
@@ -49,17 +50,10 @@ export default defineProject(({ mode }) => ({
           await closeServer(port);
         },
       },
-      instances:
-        // V8 coverage only works with Chromium.
-        process.argv.includes("--coverage")
-          ? [{ browser: "chromium" }]
-          : mode === "firefox-webkit"
-            ? [{ browser: "firefox" }, { browser: "webkit" }]
-            : [
-                { browser: "chromium" },
-                { browser: "firefox" },
-                { browser: "webkit" },
-              ],
+      instances: createBrowserInstances({
+        coverage: process.argv.includes("--coverage"),
+        mode,
+      }),
     },
   },
 }));

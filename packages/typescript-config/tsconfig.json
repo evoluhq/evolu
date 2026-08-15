@@ -1,0 +1,11 @@
+{
+  "extends": "./universal-esm.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["vitest.ts"]
+}

@@ -1,9 +1,11 @@
 import { resolve } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
+import { createBrowserInstances } from "@evolu/typescript-config/vitest.ts";
 import { transformWithEsbuild } from "vite";
 import { defineProject } from "vitest/config";
 
 export default defineProject(({ mode }) => ({
+  root: import.meta.dirname,
   cacheDir: resolve(
     import.meta.dirname,
     `../../node_modules/.vite/browser-web-${mode}`,
@@ -37,15 +39,10 @@ export default defineProject(({ mode }) => ({
       api: { port: 63317 },
       headless: true,
       fileParallelism: false, // false is faster for some reason.
-      instances: process.argv.includes("--coverage")
-        ? [{ browser: "chromium" }]
-        : mode === "firefox-webkit"
-          ? [{ browser: "firefox" }, { browser: "webkit" }]
-          : [
-              { browser: "chromium" },
-              { browser: "firefox" },
-              { browser: "webkit" },
-            ],
+      instances: createBrowserInstances({
+        coverage: process.argv.includes("--coverage"),
+        mode,
+      }),
     },
   },
 }));

@@ -8,33 +8,24 @@ on:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
-permissions:
-  id-token: write # Required for OIDC trusted publishing
-  contents: write # Required for creating releases
-  pull-requests: write # Required for changesets to update PRs
+permissions: {}
 
 jobs:
-  verify:
-    name: Verify
-    runs-on: ubuntu-latest
-    # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
-    container:
-      image: mcr.microsoft.com/playwright:v1.62.1-noble
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup
-        uses: ./.github/actions/setup-node-pnpm-install
-
-      - name: Verify
-        run: pnpm verify
+  checks:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/checks.yaml
 
   release:
     # prevents this action from running on forks
     if: github.repository == 'evoluhq/evolu'
     name: Release
-    needs: verify
+    needs: checks
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for OIDC trusted publishing
+      contents: write # Required for creating releases
+      pull-requests: write # Required for changesets to update PRs
     steps:
       - uses: actions/checkout@v6
 

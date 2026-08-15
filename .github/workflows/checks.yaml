@@ -1,0 +1,123 @@
+name: Checks
+
+on:
+  workflow_call:
+
+permissions: {}
+
+env:
+  FORCE_COLOR: 3
+
+jobs:
+  static:
+    name: Static
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Biome
+        run: pnpm biome
+
+      - name: Monorepo lint
+        run: pnpm lint-monorepo
+
+      - name: ESLint
+        run: pnpm lint
+
+  packages:
+    name: Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Check packages
+        run: pnpm check:packages
+
+      - name: Test JSDoc
+        run: pnpm test:jsdoc
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Build docs
+        run: pnpm build:docs
+
+      - name: Test docs app
+        run: pnpm --dir apps/web test
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test coverage
+        run: pnpm test:coverage
+
+  browser-compatibility:
+    name: Browser compatibility (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    env:
+      # The Playwright container runs as root, but GitHub otherwise sets HOME
+      # to /github/home, which is owned by pwuser and breaks Firefox.
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm-install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test ${{ matrix.browser }}
+        run: pnpm test:browsers --mode=${{ matrix.browser }}

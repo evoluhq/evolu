@@ -3,8 +3,6 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  push:
-    branches: ["**"]
   merge_group:
   workflow_dispatch:
 
@@ -12,20 +10,21 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-env:
-  FORCE_COLOR: 3
+permissions: {}
 
 jobs:
+  checks:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/checks.yaml
+
   ci:
+    name: ci
+    if: always()
+    needs: checks
     runs-on: ubuntu-latest
-    # Keep in sync with the Playwright version resolved in pnpm-lock.yaml.
-    container:
-      image: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup
-        uses: ./.github/actions/setup-node-pnpm-install
-
-      - name: Verify
-        run: pnpm verify
+      - name: Require successful checks
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+        run: test "$CHECKS_RESULT" = success
