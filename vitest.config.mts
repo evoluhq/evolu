@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import webBrowser from "./packages/web/vitest.config.ts";
 import commonIntegrationBrowser from "./test/integration/vitest/vitest.browser.config.ts";
 import integrationNode from "./test/integration/vitest/vitest.node.config.ts";
 import commonUnitBrowser from "./test/unit/vitest/vitest.browser.config.ts";
@@ -26,7 +27,7 @@ const nodeProjects = [
 const browserProjects = [
   commonUnitBrowser,
   commonIntegrationBrowser,
-  "packages/web",
+  webBrowser,
 ];
 
 const bundleProject = {

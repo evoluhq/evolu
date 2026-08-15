@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
 import { transformWithEsbuild } from "vite";
 import { defineProject } from "vitest/config";
+import { createBrowserInstances } from "../../../packages/typescript-config/vitest.ts";
 
 // Transpile `using`/`await using` for WebKit which doesn't support it yet.
 const transformUsing = {
@@ -35,17 +36,10 @@ export default defineProject(({ mode }) => ({
       api: { port: 63315 },
       headless: true,
       fileParallelism: false,
-      instances:
-        // V8 coverage only works with Chromium.
-        process.argv.includes("--coverage")
-          ? [{ browser: "chromium" }]
-          : mode === "firefox-webkit"
-            ? [{ browser: "firefox" }, { browser: "webkit" }]
-            : [
-                { browser: "chromium" },
-                { browser: "firefox" },
-                { browser: "webkit" },
-              ],
+      instances: createBrowserInstances({
+        coverage: process.argv.includes("--coverage"),
+        mode,
+      }),
     },
   },
 }));
