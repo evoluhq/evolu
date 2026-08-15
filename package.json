@@ -45,7 +45,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
     "@bokuweb/zstd-wasm": "0.0.27",
-    "@changesets/cli": "^2.30.0",
+    "@changesets/cli": "^3.0.0",
     "@eslint/js": "^10.0.1",
     "@evolu/common": "workspace:*",
     "@evolu/nodejs": "workspace:*",
