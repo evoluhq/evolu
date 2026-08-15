@@ -420,14 +420,16 @@ describe("createWebSocket", () => {
         : { type: e.type },
     );
 
-    // Platform difference: Server/WebKit fires WebSocketConnectionError, Chromium/Firefox doesn't
-    const isWebKit =
+    // Platform difference: Server and macOS WebKit fire
+    // WebSocketConnectionError, while Chromium, Firefox, and Linux WebKit don't.
+    const isMacOsWebKit =
       !isServer &&
       (await import("vitest/browser").then(
-        (m) => m.server.browser === "webkit",
+        ({ server }) =>
+          server.browser === "webkit" && server.platform === "darwin",
       ));
 
-    if (isServer || isWebKit) {
+    if (isServer || isMacOsWebKit) {
       expect(mapped).toMatchInlineSnapshot(`
       [
         {

@@ -86,11 +86,13 @@ const writeStagedReference = async (
 };
 
 const waitFor = async (predicate: () => boolean | Promise<boolean>) => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  const timeoutAt = Date.now() + 5_000;
+
+  for (;;) {
     if (await predicate()) return;
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    if (Date.now() >= timeoutAt) assert.fail("Condition was not met.");
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
-  assert.fail("Condition was not met.");
 };
 
 void describe("API reference watcher", () => {
