@@ -39,7 +39,7 @@
     "@typescript/native": "npm:typescript@^7.0.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.0.0-next.0",
+    "@evolu/common": "^8.0.0",
     "vue": ">=3.5.24"
   },
   "publishConfig": {

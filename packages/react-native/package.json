@@ -113,8 +113,8 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.0.0-next.0",
-    "@evolu/react": "^11.0.0-next.0",
+    "@evolu/common": "^8.0.0",
+    "@evolu/react": "^11.0.0",
     "@op-engineering/op-sqlite": ">=12",
     "expo": ">=55",
     "expo-secure-store": ">=55",
