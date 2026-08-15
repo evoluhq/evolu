@@ -1,9 +1,14 @@
 import {
   AbortError,
+  createTime,
   err,
   ok,
+  repeat,
+  spaced,
   testCreateRun,
+  timeout,
   waitForAbort,
+  yieldNow,
 } from "@evolu/common";
 import type { Spawn } from "@evolu/nodejs";
 import assert from "node:assert/strict";
@@ -85,15 +90,13 @@ const writeStagedReference = async (
   );
 };
 
-const waitFor = async (predicate: () => boolean | Promise<boolean>) => {
-  const timeoutAt = Date.now() + 5_000;
-
-  for (;;) {
-    if (await predicate()) return;
-    if (Date.now() >= timeoutAt) assert.fail("Condition was not met.");
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
-  }
-};
+const waitFor = (predicate: () => boolean | Promise<boolean>) =>
+  timeout(
+    repeat(async () => ok(await predicate()), spaced("10ms"), {
+      shouldRepeat: (conditionMet) => !conditionMet,
+    }),
+    "5s",
+  );
 
 void describe("API reference watcher", () => {
   void it("waits for the initial generation, coalesces changes, and disposes in-flight work", async (context) => {
@@ -122,6 +125,7 @@ void describe("API reference watcher", () => {
     await using run = testCreateRun({
       spawn,
       subscribe: subscription.subscribe,
+      time: createTime(),
     });
     const watcher = await run.ok(createApiReferenceWatcher(directories));
 
@@ -132,7 +136,7 @@ void describe("API reference watcher", () => {
     assert.equal(generationCount, 1);
 
     subscription.emit(path.join(directories.repositoryDir, "apps/web/page.ts"));
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await run.ok(yieldNow);
     assert.equal(generationCount, 1);
 
     subscription.emit(
@@ -151,22 +155,26 @@ void describe("API reference watcher", () => {
       path.join(directories.repositoryDir, "scripts/typedoc-plugin-evolu.mts"),
     );
     continueSecondGeneration.resolve();
-    await waitFor(async () => {
-      if (generationCount !== 3) return false;
-      const sections = JSON.parse(
-        await fs.readFile(directories.sectionsPath, "utf8"),
-      ) as Record<string, Array<{ title: string }>>;
-      return sections["/docs/api-reference"].at(0)?.title === "Generation 3";
-    });
+    await run.orThrow(
+      waitFor(async () => {
+        if (generationCount !== 3) return false;
+        const sections = JSON.parse(
+          await fs.readFile(directories.sectionsPath, "utf8"),
+        ) as Record<string, Array<{ title: string }>>;
+        return sections["/docs/api-reference"].at(0)?.title === "Generation 3";
+      }),
+    );
 
     subscription.emit(path.join(directories.repositoryDir, "typedoc.json"));
-    await waitFor(() => generationCount === 4);
-    await waitFor(() =>
-      run.deps.console
-        .getEntriesSnapshot()
-        .some((entry) =>
-          String(entry.args[0]).endsWith("0 changed, 0 removed."),
-        ),
+    await run.orThrow(waitFor(() => generationCount === 4));
+    await run.orThrow(
+      waitFor(() =>
+        run.deps.console
+          .getEntriesSnapshot()
+          .some((entry) =>
+            String(entry.args[0]).endsWith("0 changed, 0 removed."),
+          ),
+      ),
     );
     subscription.emit(path.join(directories.repositoryDir, "typedoc.dev.json"));
     await fifthGenerationStarted.promise;
@@ -192,32 +200,37 @@ void describe("API reference watcher", () => {
     await using run = testCreateRun({
       spawn,
       subscribe: subscription.subscribe,
+      time: createTime(),
     });
     const watcher = await run.ok(createApiReferenceWatcher(directories));
 
-    await waitFor(() =>
-      run.deps.console
-        .getEntriesSnapshot()
-        .some(
-          (entry) =>
-            entry.args[0] === "Generating documentation sections failed.",
-        ),
+    await run.orThrow(
+      waitFor(() =>
+        run.deps.console
+          .getEntriesSnapshot()
+          .some(
+            (entry) =>
+              entry.args[0] === "Generating documentation sections failed.",
+          ),
+      ),
     );
     await fs.rm(directories.sectionsPath, { recursive: true });
     subscription.emit(path.join(directories.repositoryDir, "typedoc.dev.json"));
 
-    await waitFor(async () => {
-      try {
-        const sections = JSON.parse(
-          await fs.readFile(directories.sectionsPath, "utf8"),
-        ) as Record<string, Array<{ title: string }>>;
-        return (
-          sections["/docs/api-reference"].at(0)?.title === "Retried sections"
-        );
-      } catch {
-        return false;
-      }
-    });
+    await run.orThrow(
+      waitFor(async () => {
+        try {
+          const sections = JSON.parse(
+            await fs.readFile(directories.sectionsPath, "utf8"),
+          ) as Record<string, Array<{ title: string }>>;
+          return (
+            sections["/docs/api-reference"].at(0)?.title === "Retried sections"
+          );
+        } catch {
+          return false;
+        }
+      }),
+    );
     assert.equal(generationCount, 2);
     await watcher[Symbol.asyncDispose]();
   });
@@ -245,36 +258,43 @@ void describe("API reference watcher", () => {
     await using run = testCreateRun({
       spawn,
       subscribe: subscription.subscribe,
+      time: createTime(),
     });
     const watcher = await run.ok(createApiReferenceWatcher(directories));
 
-    await waitFor(() =>
-      run.deps.console
-        .getEntriesSnapshot()
-        .some((entry) => entry.args[0] === "TypeDoc failed."),
+    await run.orThrow(
+      waitFor(() =>
+        run.deps.console
+          .getEntriesSnapshot()
+          .some((entry) => entry.args[0] === "TypeDoc failed."),
+      ),
     );
     subscription.emit(
       path.join(directories.repositoryDir, "packages/common/tsconfig.json"),
     );
-    await waitFor(() =>
-      run.deps.console
-        .getEntriesSnapshot()
-        .some(
-          (entry) => entry.args[0] === "Publishing the API reference failed.",
-        ),
+    await run.orThrow(
+      waitFor(() =>
+        run.deps.console
+          .getEntriesSnapshot()
+          .some(
+            (entry) => entry.args[0] === "Publishing the API reference failed.",
+          ),
+      ),
     );
     subscription.emit(
       path.join(directories.repositoryDir, "packages/common/typedoc.json"),
     );
-    await waitFor(() => generationCount === 3);
-    await waitFor(async () => {
-      try {
-        await fs.access(directories.sectionsPath);
-        return true;
-      } catch {
-        return false;
-      }
-    });
+    await run.orThrow(waitFor(() => generationCount === 3));
+    await run.orThrow(
+      waitFor(async () => {
+        try {
+          await fs.access(directories.sectionsPath);
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    );
 
     const watcherError = new Error("Watcher failed.");
     const reportedDefect = run.deps.reportDefect.next();
