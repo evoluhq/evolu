@@ -1,6 +1,6 @@
 "use client";
 
-import type { Result } from "@/mdx/search.mjs";
+import type { Result } from "@/mdx/searchClient";
 import {
   type AutocompleteApi,
   type AutocompleteCollection,
@@ -75,7 +75,7 @@ const useAutocomplete = ({ close }: { close: () => void }) => {
         navigate,
       },
       getSources({ query }) {
-        return import("@/mdx/search.mjs").then(({ search }) => [
+        return import("@/mdx/searchClient").then(({ search }) => [
           {
             sourceId: "documentation",
             getItems() {

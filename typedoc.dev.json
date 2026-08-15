@@ -1,0 +1,10 @@
+{
+  "$schema": "https://typedoc-plugin-markdown.org/schema.json",
+  "extends": ["./typedoc.json"],
+  "outputs": [
+    {
+      "name": "markdown",
+      "path": "./tmp/api-reference"
+    }
+  ]
+}

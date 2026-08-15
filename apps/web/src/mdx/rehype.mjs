@@ -117,3 +117,5 @@ export const rehypePlugins = [
     }),
   ],
 ];
+
+export default { plugins: rehypePlugins };

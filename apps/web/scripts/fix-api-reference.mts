@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 import { compile } from "@mdx-js/mdx";
+import { assertNonNullable } from "@evolu/common";
 import glob from "fast-glob";
 import fs from "node:fs";
 import path from "node:path";
@@ -7,52 +8,159 @@ import path from "node:path";
 import { rehypePlugins } from "../src/mdx/rehype.mjs";
 import { remarkPlugins } from "../src/mdx/remark.mjs";
 
-const reference = path.join(
+const defaultReferenceDir = path.join(
   import.meta.dirname,
-  "..",
-  "src/app/(docs)/docs/api-reference",
+  "../src/app/(docs)/docs/api-reference",
+);
+const defaultDocsDir = path.join(import.meta.dirname, "../src/app/(docs)");
+const defaultSectionsPath = path.join(
+  import.meta.dirname,
+  "../src/data/sections.json",
 );
 
-const rearrangeMdxFilesRecursively = (dir: string): void => {
+export interface PublishApiReferenceResult {
+  readonly changedMdxPaths: ReadonlyArray<string>;
+  readonly deletedMdxPaths: ReadonlyArray<string>;
+}
+
+export const fixApiReference = (referenceDir: string): void => {
+  rearrangeMdxFilesRecursively(referenceDir, referenceDir);
+};
+
+export const publishApiReference = (
+  sourceDir: string,
+  targetDir: string,
+): PublishApiReferenceResult => {
+  const sourceMdxPaths = glob.sync("**/*.mdx", { cwd: sourceDir }).sort();
+  const targetMdxPaths = glob.sync("**/*.mdx", { cwd: targetDir }).sort();
+  const sourceMdxPathSet = new Set(sourceMdxPaths);
+  const changedMdxPaths: Array<string> = [];
+  const deletedMdxPaths: Array<string> = [];
+
+  for (const mdxPath of sourceMdxPaths) {
+    const sourcePath = path.join(sourceDir, mdxPath);
+    const targetPath = path.join(targetDir, mdxPath);
+    const content = fs.readFileSync(sourcePath);
+
+    if (
+      fs.existsSync(targetPath) &&
+      content.equals(fs.readFileSync(targetPath))
+    ) {
+      continue;
+    }
+
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    const temporaryPath = `${targetPath}.tmp`;
+    fs.writeFileSync(temporaryPath, content);
+    fs.renameSync(temporaryPath, targetPath);
+    changedMdxPaths.push(mdxPath);
+  }
+
+  for (const mdxPath of targetMdxPaths) {
+    if (sourceMdxPathSet.has(mdxPath)) continue;
+
+    fs.rmSync(path.join(targetDir, mdxPath));
+    deletedMdxPaths.push(mdxPath);
+  }
+
+  return { changedMdxPaths, deletedMdxPaths };
+};
+
+export const generateSections = async ({
+  docsDir,
+  mdxPaths,
+  outputPath,
+}: {
+  readonly docsDir: string;
+  readonly mdxPaths?: ReadonlyArray<string>;
+  readonly outputPath: string;
+}): Promise<boolean> => {
+  const isPartial = mdxPaths !== undefined && fs.existsSync(outputPath);
+  const pages = (
+    isPartial
+      ? [...new Set(mdxPaths)]
+      : await glob("**/*.mdx", { cwd: docsDir })
+  ).sort();
+  const sectionsByRoute = isPartial
+    ? (JSON.parse(fs.readFileSync(outputPath, "utf8")) as Record<
+        string,
+        Array<{ title: string; id: string }>
+      >)
+    : {};
+
+  for (const filename of pages) {
+    const route = `/${filename.replace(/(^|\/)page\.mdx$/, "")}`;
+    const filePath = path.join(docsDir, filename);
+
+    if (!fs.existsSync(filePath)) {
+      Reflect.deleteProperty(sectionsByRoute, route);
+      continue;
+    }
+
+    const compiled = await compile(fs.readFileSync(filePath, "utf8"), {
+      remarkPlugins,
+      rehypePlugins,
+    });
+    const match = /export const sections = (\[[\s\S]*?\]);/.exec(
+      String(compiled.value),
+    );
+    assertNonNullable(match);
+
+    sectionsByRoute[route] = eval(match[1]) as Array<{
+      title: string;
+      id: string;
+    }>;
+  }
+
+  const output = JSON.stringify(sectionsByRoute, null, 2);
+  if (
+    fs.existsSync(outputPath) &&
+    fs.readFileSync(outputPath, "utf8") === output
+  )
+    return false;
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, output);
+
+  return true;
+};
+
+const rearrangeMdxFilesRecursively = (
+  dir: string,
+  referenceDir: string,
+): void => {
   for (const item of fs.readdirSync(dir)) {
     const fullPath = path.join(dir, item);
     const stat = fs.statSync(fullPath);
     if (stat.isDirectory()) {
-      rearrangeMdxFilesRecursively(fullPath);
+      rearrangeMdxFilesRecursively(fullPath, referenceDir);
     } else if (item.endsWith(".mdx")) {
       if (item !== "page.mdx") {
         const baseName = path.basename(item, ".mdx");
         const newFolder = path.join(dir, baseName);
         fs.mkdirSync(newFolder, { recursive: true });
-        fs.renameSync(fullPath, path.join(newFolder, "page.mdx"));
-        fixMdxFile(
-          path.join(newFolder, "page.mdx"),
-          `${baseName} - API reference`,
-        );
+        const newPath = path.join(newFolder, "page.mdx");
+        fs.renameSync(fullPath, newPath);
+        fixMdxFile(newPath, `${baseName} - API reference`, referenceDir);
       } else {
         const title =
-          dir === reference
+          dir === referenceDir
             ? "API reference"
             : `${path.basename(dir)} - API reference`;
-        fixMdxFile(fullPath, title);
+        fixMdxFile(fullPath, title, referenceDir);
       }
     }
   }
 };
 
-const fixMdxFile = (filePath: string, title: string): void => {
-  const content = fs.readFileSync(filePath, "utf-8");
-  // first let's replace /page.mdx with /
+const fixMdxFile = (
+  filePath: string,
+  title: string,
+  referenceDir: string,
+): void => {
+  const content = fs.readFileSync(filePath, "utf8");
   let newContent = content.replace(/\/page\.mdx/g, "");
-  // Remove .mdx from Markdown link destinations, preserving query/hash.
-  // Examples:
-  // - [X](/docs/Foo.mdx) -> [X](/docs/Foo)
-  // - [X](/docs/Foo.mdx#bar) -> [X](/docs/Foo#bar)
-  // - [X](../Foo.mdx?x=1#bar) -> [X](../Foo?x=1#bar)
   newContent = newContent.replace(/\]\(([^)]*?)\.mdx(?=[)#?])/g, "]($1");
-
-  // fix API reference breadcrumb link and separator
-  // Breadcrumb is the first line starting with `[API` - replace link text and separators
   newContent = newContent.replace(
     /^(\[API Reference\]\([^)]*\))(.*)/m,
     (_match, _apiLink, rest: string) => {
@@ -60,32 +168,19 @@ const fixMdxFile = (filePath: string, title: string): void => {
       return `[API reference](/docs/api-reference)${fixedRest}`;
     },
   );
-
-  // Prevent line breaks in displayed "local-first" labels without changing URLs.
   newContent = newContent
     .replace(/\[local-first\//g, "[local‑first/")
     .replace(/ › local-first\//g, " › local‑first/");
 
-  // Remove redundant sections (heading + content until next heading of same or higher level)
   const lines = newContent.split("\n");
   const result: Array<string> = [];
-  let skipUntilLevel = 0; // 0 = not skipping, otherwise skip until heading with <= this many #
+  let skipUntilLevel = 0;
 
   for (const line of lines) {
     const headingMatch = /^(#{2,4}) /.exec(line);
     if (headingMatch) {
       const level = headingMatch[1].length;
-      if (
-        line.startsWith("## Type Parameter") ||
-        line.startsWith("## Parameter") ||
-        line.startsWith("## Return") ||
-        line.startsWith("### Type Parameter") ||
-        line.startsWith("### Parameter") ||
-        line.startsWith("### Return") ||
-        line.startsWith("#### Type Parameter") ||
-        line.startsWith("#### Parameter") ||
-        line.startsWith("#### Return")
-      ) {
+      if (/^#{2,4} (?:Type Parameter|Parameter|Return)/.test(line)) {
         skipUntilLevel = level;
         continue;
       }
@@ -97,7 +192,7 @@ const fixMdxFile = (filePath: string, title: string): void => {
   }
   newContent = result.join("\n");
 
-  if (filePath === path.join(reference, "page.mdx")) {
+  if (filePath === path.join(referenceDir, "page.mdx")) {
     newContent = newContent
       .replace(/^## Modules\b/m, "## Packages")
       .replace(/\bModule\b/g, "Package");
@@ -106,64 +201,23 @@ const fixMdxFile = (filePath: string, title: string): void => {
   newContent = newContent
     .replace(/^export const metadata = \{ title: [^}]*\};\s*\r?\n\s*/, "")
     .replace(/^export const sections = .*;\s*\r?\n\s*/m, "");
-
   newContent = `export const metadata = { title: '${title}' };
-	
+\t
 ${newContent}`;
 
   fs.writeFileSync(filePath, newContent);
 };
 
-// Run the script
-rearrangeMdxFilesRecursively(reference);
-
-console.log("--------------------------------------");
-console.log("API reference rearranged successfully.");
-console.log("--------------------------------------");
-
-// Generate sections.json
-const docsDir = path.join(import.meta.dirname, "..", "src/app/(docs)");
-const outputPath = path.join(
-  import.meta.dirname,
-  "..",
-  "src/data/sections.json",
-);
-
-const generateSections = async (): Promise<void> => {
-  const pages = await glob("**/*.mdx", { cwd: docsDir });
-  const allSections: Record<string, Array<{ title: string; id: string }>> = {};
-
-  for (const filename of pages) {
-    const filePath = path.join(docsDir, filename);
-    const content = fs.readFileSync(filePath, "utf-8");
-
-    const compiled = await compile(content, {
-      remarkPlugins,
-      rehypePlugins,
-    });
-
-    // Extract sections from compiled output
-    const match = /export const sections = (\[[\s\S]*?\]);/.exec(
-      String(compiled.value),
-    );
-
-    const routePath = "/" + filename.replace(/(^|\/)page\.mdx$/, "");
-
-    if (match) {
-      const sections = eval(match[1]) as Array<{ title: string; id: string }>;
-      allSections[routePath] = sections;
-    } else {
-      allSections[routePath] = [];
-    }
-  }
-
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, JSON.stringify(allSections, null, 2));
-
-  console.log("--------------------------------------");
-  console.log(`Sections generated: ${outputPath}`);
-  console.log(`Total pages: ${Object.keys(allSections).length}`);
-  console.log("--------------------------------------");
-};
-
-await generateSections();
+/* node:coverage ignore next 12 */
+if (import.meta.main) {
+  fixApiReference(defaultReferenceDir);
+  console.log("API reference rearranged successfully.");
+  console.log(
+    (await generateSections({
+      docsDir: defaultDocsDir,
+      outputPath: defaultSectionsPath,
+    }))
+      ? "Documentation sections generated."
+      : "Documentation sections are up to date.",
+  );
+}

@@ -1,4 +1,4 @@
-import { type MDXComponents } from "mdx/types";
+import type { MDXComponents } from "mdx/types";
 
 import * as mdxComponents from "@/components/mdx";
 

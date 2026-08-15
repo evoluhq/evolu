@@ -20,6 +20,7 @@ apps/relay/data/*
 
 # apps/web
 apps/web/src/app/(docs)/docs/api-reference/**
+apps/web/src/data/searchIndex.json
 apps/web/src/data/sections.json
 
 # examples

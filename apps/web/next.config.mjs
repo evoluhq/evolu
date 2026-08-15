@@ -1,16 +1,11 @@
-import { env } from "node:process";
+import path from "node:path";
 import nextMDX from "@next/mdx";
-
-import { recmaPlugins } from "./src/mdx/recma.mjs";
-import { rehypePlugins } from "./src/mdx/rehype.mjs";
-import { remarkPlugins } from "./src/mdx/remark.mjs";
-import withSearch from "./src/mdx/search.mjs";
 
 const withMDX = nextMDX({
   options: {
-    remarkPlugins,
-    rehypePlugins,
-    recmaPlugins,
+    remarkPlugins: [path.join(import.meta.dirname, "src/mdx/remark.mjs")],
+    rehypePlugins: [path.join(import.meta.dirname, "src/mdx/rehype.mjs")],
+    recmaPlugins: [path.join(import.meta.dirname, "src/mdx/recma.mjs")],
   },
 });
 
@@ -24,17 +19,16 @@ const nextConfig = {
     "@evolu/react-web",
     "@evolu/web",
   ],
-  webpack: (config) => {
-    if (env.VERCEL) config.cache = false;
-
-    // Source files refer to workers by their emitted .js names.
-    config.resolve.extensionAlias = {
-      ...config.resolve.extensionAlias,
-      ".js": [".ts", ".tsx", ".js"],
-    };
-    return config;
+  experimental: {
+    // @typescript/typescript6 exposes the compiler API and tsc6, not tsc.
+    useTypeScriptCli: false,
   },
-
+  turbopack: {
+    resolveAlias: {
+      "Db.worker.js": "../../packages/web/src/local-first/Db.worker.ts",
+      "Shared.worker.js": "../../packages/web/src/local-first/Shared.worker.ts",
+    },
+  },
   outputFileTracingIncludes: {
     "/api/docs-md/*": ["./src/app/(docs)/docs/**/*.mdx"],
     "/llms-full.txt": ["./src/app/**/*.mdx"],
@@ -57,4 +51,4 @@ const nextConfig = {
   },
 };
 
-export default withSearch(withMDX(nextConfig));
+export default withMDX(nextConfig);

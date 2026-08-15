@@ -3,12 +3,13 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "build": "cross-env NODE_OPTIONS='--max-old-space-size-percentage=75' next build --webpack",
-    "dev": "next dev --webpack",
+    "build": "node ./scripts/generate-search-index.mts && next build",
+    "dev": "node ./scripts/dev.mts",
+    "dev:docs": "node ./scripts/dev-docs.mts",
     "fix:docs": "node ./scripts/fix-api-reference.mts",
-    "lint": "next lint",
+    "lint": "eslint .",
     "start": "next start",
-    "_test": "node --test ./src/mdx/search.test.mjs"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-coverage --test-coverage-include='scripts/dev-docs.mts' --test-coverage-include='scripts/dev.mts' --test-coverage-include='scripts/fix-api-reference.mts' --test-coverage-include='scripts/generate-search-index.mts' --test-coverage-include='src/mdx/searchClient.ts' --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100 ./scripts/dev-docs.test.mts ./scripts/dev.test.mts ./scripts/fix-api-reference.test.mts ./src/mdx/searchClient.test.mts"
   },
   "browserslist": [
     "baseline newly available",
@@ -27,7 +28,7 @@
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/mdx": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
-    "@next/mdx": "16.2.12",
+    "@next/mdx": "16.3.1",
     "@sindresorhus/slugify": "^3.0.0",
     "@tabler/icons-react": "^3.46.0",
     "@tailwindcss/forms": "^0.5.11",
@@ -36,11 +37,10 @@
     "acorn": "^8.18.0",
     "clsx": "^2.1.1",
     "fast-glob": "^3.3.3",
-    "flexsearch": "^0.8.212",
     "mdast-util-to-string": "^4.0.0",
     "mdx-annotations": "^0.1.4",
     "motion": "^12.43.0",
-    "next": "16.2.12",
+    "next": "16.3.1",
     "next-themes": "^0.4.6",
     "react": "catalog:react19",
     "react-dom": "catalog:react19",
@@ -50,15 +50,15 @@
     "remark-mdx": "^3.1.1",
     "rss": "^1.2.2",
     "shiki": "^4.4.1",
-    "simple-functional-loader": "^1.2.1",
     "tailwindcss": "^4.1.18",
-    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "unist-util-filter": "^5.0.1",
     "unist-util-visit": "^5.0.0",
     "zustand": "^5.0.10"
   },
   "devDependencies": {
+    "@evolu/nodejs": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
+    "@parcel/watcher": "^2.6.0",
     "@types/mdx": "^2.0.13",
     "@types/node": "^24.10.9",
     "@types/react": "catalog:react19",
@@ -66,7 +66,7 @@
     "@types/react-highlight-words": "^0.20.1",
     "@types/rss": "^0.0.32",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "cross-env": "^10.1.0",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }
