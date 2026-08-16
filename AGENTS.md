@@ -56,6 +56,7 @@ The repository requires Node.js 24 or newer and pnpm.
   not part of `pnpm verify`.
 - `pnpm bench:storage` — run storage benchmarks. Run it after changing storage
   algorithms, SQL, indexes, or query plans.
+- Run GitHub CLI commands with network access.
 
 Run standalone TypeScript scripts directly with Node.js, for example
 `node script.mts`.
