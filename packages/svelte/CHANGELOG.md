@@ -1,5 +1,11 @@
 # @evolu/svelte
 
+## 3.0.1
+
+### Patch Changes
+
+- 13ee2e8: Updated internal peer dependency ranges to require stable releases.
+
 ## 3.0.0
 
 ## 3.0.0-next.0
