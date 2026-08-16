@@ -1,9 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { jsdocSourcePattern, selectJSDocIncludes } from "./test-jsdoc.mts";
+import {
+  changesetSourcePattern,
+  jsdocSourcePattern,
+  selectJSDocIncludes,
+} from "./test-jsdoc.mts";
 
 describe("selectJSDocIncludes", () => {
-  test("selects every common source file by default", () => {
-    expect(selectJSDocIncludes([])).toEqual([jsdocSourcePattern]);
+  test("selects common JSDoc and changeset Markdown by default", () => {
+    expect(selectJSDocIncludes([])).toEqual([
+      jsdocSourcePattern,
+      changesetSourcePattern,
+    ]);
   });
 
   test("preserves explicit files and globs", () => {

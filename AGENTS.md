@@ -38,8 +38,9 @@ The repository requires Node.js 24 or newer and pnpm.
 - `pnpm test:browsers` — run browser tests in Chromium, Firefox, and WebKit.
 - `pnpm test:bundle` — run production bundle and tree-shaking tests.
 - `pnpm test:coverage` — run Node, Chromium, and bundle tests with coverage.
-- `pnpm test:jsdoc <file-or-glob>...` — compile and run JSDoc examples from
-  specific source files, or omit arguments to test every configured source.
+- `pnpm test:jsdoc <file-or-glob>...` — compile and run documentation examples
+  from specific source or Markdown files. Omit arguments to test every
+  configured JSDoc source and changeset.
 - `pnpm build` — build publishable packages and the relay. Run it once after a
   clone or pull to generate IDE package types.
 - `pnpm check:packages` — validate package source and distribution exports.
@@ -195,6 +196,13 @@ Run standalone TypeScript scripts directly with Node.js, for example
   period.
 - Changes to a published package’s exported API or runtime behavior require a
   changeset created with `pnpm changeset`.
-- Changeset descriptions use past tense.
+- Write changesets as release notes for package users, not implementation logs.
+  The first body paragraph is the changelog title: keep it short, standalone,
+  sentence case, in past tense, and without a trailing period. Use the following
+  paragraphs to explain observable behavior or migration impact. Include one or
+  more TypeScript usage examples that follow the JSDoc example rules above. For
+  a breaking migration, prove that the old usage is rejected and show the
+  replacement in the same tested example. Put unrelated user-facing changes in
+  separate changesets.
 - Fixes use patch changesets, additive features use minor changesets, and
   breaking public APIs use major changesets, including during preview releases.

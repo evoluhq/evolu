@@ -5,11 +5,16 @@ import { join, resolve } from "node:path";
 const repositoryDirectory = resolve(import.meta.dirname, "..");
 
 export const jsdocSourcePattern = "packages/common/src/**/*.ts";
+export const changesetSourcePattern = ".changeset/*.md";
+export const documentationSourcePatterns = [
+  jsdocSourcePattern,
+  changesetSourcePattern,
+] as const;
 
 export const selectJSDocIncludes = (
   args: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
-  if (args.length === 0) return [jsdocSourcePattern];
+  if (args.length === 0) return documentationSourcePatterns;
 
   for (const arg of args) {
     assert(!arg.startsWith("-"), `Unknown option: ${arg}`);
@@ -18,7 +23,7 @@ export const selectJSDocIncludes = (
 };
 
 export const testEvoluJSDocExamples = async (
-  include: string | ReadonlyArray<string> = jsdocSourcePattern,
+  include: string | ReadonlyArray<string> = documentationSourcePatterns,
 ): Promise<void> => {
   await testJSDocExamples({
     aliases: {
@@ -57,5 +62,5 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const include = selectJSDocIncludes(args);
   await testEvoluJSDocExamples(include);
-  process.stdout.write("JSDoc examples passed.\n");
+  process.stdout.write("Documentation examples passed.\n");
 }
