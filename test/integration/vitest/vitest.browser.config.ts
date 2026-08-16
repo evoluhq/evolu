@@ -10,6 +10,12 @@ export default defineProject(({ mode }) => ({
     import.meta.dirname,
     `../../../node_modules/.vite/browser-integration-${mode}`,
   ),
+  server: {
+    forwardConsole: {
+      unhandledErrors: false,
+      logLevels: ["error", "warn"],
+    },
+  },
   plugins: [
     {
       name: "transform-using",

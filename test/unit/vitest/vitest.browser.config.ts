@@ -22,6 +22,12 @@ export default defineProject(({ mode }) => ({
     import.meta.dirname,
     `../../../node_modules/.vite/browser-unit-${mode}`,
   ),
+  server: {
+    forwardConsole: {
+      unhandledErrors: false,
+      logLevels: ["error", "warn"],
+    },
+  },
   plugins: [transformUsing],
   test: {
     snapshotSerializers: [
