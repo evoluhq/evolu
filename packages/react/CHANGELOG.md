@@ -1,5 +1,11 @@
 # @evolu/react
 
+## 11.0.1
+
+### Patch Changes
+
+- 13ee2e8: Updated internal peer dependency ranges to require stable releases.
+
 ## 11.0.0
 
 ### Major Changes
