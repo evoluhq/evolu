@@ -102,6 +102,7 @@ import {
   partial,
   positive,
   PositiveDecimalString,
+  PositiveFiniteNumber,
   PositiveInt,
   PositiveNumber,
   Ratio,
@@ -404,8 +405,9 @@ describe("Type", () => {
       Null,
       Number,
       Object,
-      PositiveInt,
       PositiveDecimalString,
+      PositiveFiniteNumber,
+      PositiveInt,
       PositiveNumber,
       Ratio,
       SimplePassword,
@@ -7012,6 +7014,24 @@ describe("BrandFactory", () => {
             ).toEqual(ok(0));
           });
         });
+
+        describe("PositiveFiniteNumber", () => {
+          test("accepts positive finite numbers", () => {
+            expect(
+              PositiveFiniteNumber.from.parent.parent.parent.parent(0.1),
+            ).toEqual(ok(0.1));
+            expect(
+              PositiveFiniteNumber.from.parent.parent.parent.parent(0),
+            ).toEqual(err({ type: "Positive", value: 0 }));
+            expectTypeOf<typeof PositiveFiniteNumber.Output>().toEqualTypeOf<
+              number &
+                Brand<"NonNaN"> &
+                Brand<"Finite"> &
+                Brand<"NonNegative"> &
+                Brand<"Positive">
+            >();
+          });
+        });
       });
     });
 
@@ -7111,21 +7131,30 @@ describe("BrandFactory", () => {
     });
 
     describe("multipleOf", () => {
-      test("accepts a canonical literal divisor", () => {
+      test("accepts a canonical positive decimal string literal", () => {
         const MultipleOf3 = multipleOf("3")(Number);
+        const Tenths = multipleOf("0.1")(Number);
 
         expectTypeOf(MultipleOf3.name).toEqualTypeOf<"MultipleOf3">();
+        expectTypeOf(Tenths.name).toEqualTypeOf<"MultipleOf0.1">();
+        expect(Tenths.from.parent(0.3)).toEqual(ok(0.3));
+        expect(Tenths.from.parent(0.31)).toEqual(
+          err({ type: "MultipleOf0.1", value: 0.31, divisor: "0.1" }),
+        );
       });
 
-      test("rejects invalid literal and unvalidated dynamic divisors at compile time", () => {
+      test("rejects non-canonical and non-literal divisors at compile time", () => {
         const value = globalThis.String("0.1");
         const unionValue = "0.1" as "0.1" | "0.2";
+        const positiveDecimalString = PositiveDecimalString.orThrow("0.1");
         const compileTimeAssertions = () => {
           // @ts-expect-error The divisor must be an exact decimal string.
           multipleOf(0.1);
+          // @ts-expect-error Arithmetic expressions are numbers, not exact decimal strings.
+          multipleOf(0.1 + 0.2);
           // @ts-expect-error Zero is not a positive divisor.
           multipleOf("0");
-          // @ts-expect-error Negative divisors are not positive.
+          // @ts-expect-error Negative decimal strings are not positive.
           multipleOf("-0.1");
           // @ts-expect-error Trailing fractional zeroes are not canonical.
           multipleOf("0.10");
@@ -7133,27 +7162,16 @@ describe("BrandFactory", () => {
           multipleOf("1e-1");
           // @ts-expect-error A runtime string cannot produce one concrete Brand name.
           multipleOf(value);
-          const divisor = PositiveDecimalString.orThrow("0.1");
-          // @ts-expect-error A runtime value cannot produce one concrete Brand name.
-          multipleOf(divisor);
           // @ts-expect-error A divisor must not be a union.
           multipleOf(unionValue);
+          // @ts-expect-error A validated runtime string still has no literal value.
+          multipleOf(positiveDecimalString);
         };
 
         expectTypeOf(compileTimeAssertions).toBeFunction();
       });
 
-      test("asserts invalid construction values that bypass the static contract", () => {
-        const divisor = "0.10" as unknown as "0.1";
-
-        expectAssertionError(
-          () => multipleOf(divisor),
-          "Expected PositiveDecimalString.",
-          { type: "PositiveDecimalString", value: "0.10" },
-        );
-      });
-
-      test("creates a Brand Factory requiring an integer multiple", () => {
+      test("creates a Brand Factory requiring an exact multiple", () => {
         const MultipleOf3 = multipleOf("3")(Number);
 
         expect(MultipleOf3.from.parent(6)).toEqual(ok(6));
@@ -7211,6 +7229,9 @@ describe("BrandFactory", () => {
           }),
         );
         expect(Thousands.from.parent(1e21)).toEqual(ok(1e21));
+        expect(Thousands.from.parent(1)).toEqual(
+          err({ type: "MultipleOf1000", value: 1, divisor: "1000" }),
+        );
       });
 
       test("rejects non-finite numbers", () => {

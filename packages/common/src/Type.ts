@@ -4677,6 +4677,16 @@ export const NonNegativeFiniteNumber = /*#__PURE__*/ nonNegative(FiniteNumber);
 export type NonNegativeFiniteNumber = typeof NonNegativeFiniteNumber.Output;
 
 /**
+ * Positive {@link FiniteNumber}.
+ *
+ * @group Number
+ */
+export const PositiveFiniteNumber = /*#__PURE__*/ positive(
+  NonNegativeFiniteNumber,
+);
+export type PositiveFiniteNumber = typeof PositiveFiniteNumber.Output;
+
+/**
  * Safe integer {@link Brand}.
  *
  * Requires a {@link Number} to be an integer within JavaScript's safe integer
@@ -4962,11 +4972,15 @@ export const Ratio = /*#__PURE__*/ brand(
 export type Ratio = typeof Ratio.Output;
 
 /**
- * Canonical string representation of a positive base-10 decimal.
+ * Canonical string representation of a positive base-10 decimal value.
  *
- * Each value has one spelling: leading zeroes, trailing fractional zeroes,
- * signs, and exponent notation are rejected. This preserves exact decimal
- * meaning without representing the value as an IEEE-754 number.
+ * Use this Type when a decimal value must remain exact instead of being
+ * converted to an IEEE-754 number. Equivalent values have one accepted
+ * representation, so leading zeroes, trailing fractional zeroes, signs, and
+ * exponent notation are rejected.
+ *
+ * The decoded value remains a string. Arithmetic requires an explicit decimal
+ * or fixed-point representation.
  *
  * ### Example
  *
@@ -4975,7 +4989,12 @@ export type Ratio = typeof Ratio.Output;
  *
  * expectOk(PositiveDecimalString.fromUnknown("0.3"), "0.3");
  * expectOk(PositiveDecimalString.fromUnknown("25"), "25");
+ * expectOk(PositiveDecimalString.fromUnknown("10.01"), "10.01");
  *
+ * expectErr(PositiveDecimalString.fromUnknown("0"), {
+ *   type: "PositiveDecimalString",
+ *   value: "0",
+ * });
  * expectErr(PositiveDecimalString.fromUnknown("0.30"), {
  *   type: "PositiveDecimalString",
  *   value: "0.30",
@@ -5002,6 +5021,89 @@ export type PositiveDecimalString = typeof PositiveDecimalString.Output;
 /** @group Number */
 export interface PositiveDecimalStringError extends TypeError<"PositiveDecimalString"> {
   readonly value: string;
+}
+
+/**
+ * Adds a {@link Brand} requiring a number to be a multiple of an exact decimal
+ * `divisor`.
+ *
+ * The divisor must be one canonical positive decimal string literal because its
+ * exact value is encoded in the resulting Brand name. The declaration is
+ * validated at compile time and is never converted to an IEEE-754 number.
+ *
+ * Validation treats each finite Number as its canonical decimal representation
+ * and checks exact base-10 divisibility. It does not use floating-point
+ * remainder, apply a tolerance, or round to the divisor's precision.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { FiniteNumber, multipleOf, type Brand } from "@evolu/common";
+ *
+ * const Tenths = multipleOf("0.1")(FiniteNumber);
+ *
+ * expectTypeOf<typeof Tenths.Output>().toEqualTypeOf<
+ *   FiniteNumber & Brand<"MultipleOf0.1">
+ * >();
+ *
+ * expectOk(Tenths.fromUnknown(0.3), 0.3);
+ * expectErr(Tenths.fromUnknown(0.31), {
+ *   type: "MultipleOf0.1",
+ *   value: 0.31,
+ *   divisor: "0.1",
+ * });
+ * ```
+ *
+ * @group Number
+ */
+export const multipleOf = <const Divisor extends string>(
+  divisor: ValidateMultipleOfDivisor<Divisor>,
+): BrandFactory<`MultipleOf${Divisor}`, number, MultipleOfError<Divisor>> => {
+  const name = `MultipleOf${divisor}` as `MultipleOf${Divisor}`;
+  const decimalDivisor = decimalStringToParts(divisor);
+
+  return (parent) =>
+    brand(
+      name,
+      parent,
+      (value) => {
+        let isMultiple = false;
+
+        if (globalThis.Number.isFinite(value)) {
+          const decimalValue = decimalStringToParts(value.toString());
+          const exponent = Math.min(
+            decimalValue.exponent,
+            decimalDivisor.exponent,
+          );
+          const valueCoefficient =
+            decimalValue.coefficient *
+            10n ** globalThis.BigInt(decimalValue.exponent - exponent);
+          const divisorCoefficient =
+            decimalDivisor.coefficient *
+            10n ** globalThis.BigInt(decimalDivisor.exponent - exponent);
+
+          isMultiple = valueCoefficient % divisorCoefficient === 0n;
+        }
+
+        return isMultiple
+          ? ok()
+          : err<MultipleOfError<Divisor>>({
+              type: name,
+              value,
+              divisor,
+            });
+      },
+      (error) =>
+        `The value ${safelyStringifyUnknownValue(error.value)} must be a multiple of ${error.divisor}.`,
+    );
+};
+
+/** @group Number */
+export interface MultipleOfError<
+  Divisor extends string = string,
+> extends TypeError<`MultipleOf${Divisor}`> {
+  readonly value: number;
+  readonly divisor: Divisor;
 }
 
 type ValidateMultipleOfDivisor<Divisor extends string> =
@@ -5042,92 +5144,6 @@ type MultipleOfDivisorError = CompileTimeError<
   "MultipleOf",
   'Divisor must be one canonical positive decimal string literal such as "0.1".'
 >;
-
-/**
- * Adds a {@link Brand} requiring a number to be a multiple of an exact decimal
- * `divisor`.
- *
- * The literal divisor is validated against {@link PositiveDecimalString} and
- * encoded in the resulting Brand name. A runtime string cannot define this Type
- * because its exact value is not available to TypeScript for that name.
- * Validation does not round: `"0.1"` accepts `0.3`, but rejects `0.1 + 0.2`
- * because that expression evaluates to `0.30000000000000004`.
- *
- * ### Example
- *
- * ```ts
- * import { FiniteNumber, multipleOf } from "@evolu/common";
- *
- * const Tenths = multipleOf("0.1")(FiniteNumber);
- *
- * expectOk(Tenths.fromUnknown(0.3), 0.3);
- * expectErr(Tenths.fromUnknown(0.31), {
- *   type: "MultipleOf0.1",
- *   value: 0.31,
- *   divisor: "0.1",
- * });
- * ```
- *
- * @group Number
- */
-export const multipleOf = <const Divisor extends string>(
-  divisor: ValidateMultipleOfDivisor<Divisor>,
-): BrandFactory<`MultipleOf${Divisor}`, number, MultipleOfError<Divisor>> => {
-  // TODO: Define the positive-decimal literal domain with templateLiteral so
-  // its TypeScript type is inferred from runtime Type code, then require that
-  // literal Type here instead of accepting a string guarded by assertType.
-  assertType(PositiveDecimalString, divisor);
-
-  const name = `MultipleOf${divisor}` as `MultipleOf${Divisor}`;
-  const decimalDivisor = decimalStringToParts(divisor);
-
-  return (parent) =>
-    brand(
-      name,
-      parent,
-      (value) => {
-        let isMultiple = false;
-
-        if (globalThis.Number.isFinite(value)) {
-          const decimalValue = decimalStringToParts(value.toString());
-          const exponentDifference =
-            decimalValue.exponent - decimalDivisor.exponent;
-
-          if (exponentDifference >= 0) {
-            isMultiple =
-              (decimalValue.coefficient *
-                10n ** globalThis.BigInt(exponentDifference)) %
-                decimalDivisor.coefficient ===
-              0n;
-          } else {
-            isMultiple =
-              decimalValue.coefficient %
-                (decimalDivisor.coefficient *
-                  10n ** globalThis.BigInt(-exponentDifference)) ===
-              0n;
-          }
-        }
-
-        return isMultiple
-          ? ok()
-          : err<MultipleOfError<Divisor>>({
-              type: name,
-              value,
-              divisor,
-            });
-      },
-      (error) =>
-        `The value ${safelyStringifyUnknownValue(error.value)} must be a multiple of ${error.divisor}.`,
-    );
-};
-
-/** @group Number */
-export interface MultipleOfError<
-  Divisor extends string = string,
-> extends TypeError<`MultipleOf${Divisor}`> {
-  readonly value: number;
-  readonly divisor: Divisor;
-}
 
 interface DecimalParts {
   readonly coefficient: bigint;
