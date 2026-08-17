@@ -11,21 +11,86 @@ import type { Result } from "./Result.ts";
 import { err, ok } from "./Result.ts";
 import {
   brand,
+  Digit1To9,
+  Digit1To99,
   lessThanOrEqualTo,
   onePositiveInt,
   NonNegativeInt,
   PositiveInt,
   Ratio,
+  templateLiteral,
+  union,
 } from "./Type.ts";
-import type {
-  Digit,
-  Digit1To9,
-  Digit1To99,
-  Predicate,
-  WidenLiteral,
-} from "./Types.ts";
+import type { Predicate, WidenLiteral } from "./Types.ts";
 
-/** Percentage represented as a readable literal or a validated ratio. */
+/** Integer literal from `1` to `99`. */
+export type Int1To99 = Digit1To99 extends `${infer Value extends number}`
+  ? Value
+  : never;
+
+/** Integer literal from `1` to `100`. */
+export type Int1To100 = Int1To99 | 100;
+
+/**
+ * Integer literal from 0 to 100 or {@link NonNegativeInt}.
+ *
+ * Convenience input accepting integer literals from 0 to 100 or an
+ * already-validated {@link NonNegativeInt} for larger or dynamic values.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   NonNegativeInt,
+ *   type Int0To100OrNonNegativeInt,
+ * } from "@evolu/common";
+ *
+ * const literal: Int0To100OrNonNegativeInt = 10;
+ * const validated: Int0To100OrNonNegativeInt = NonNegativeInt.orThrow(101);
+ *
+ * assert(literal === 10);
+ * assert(validated === 101);
+ * ```
+ */
+export type Int0To100OrNonNegativeInt = 0 | Int1To100 | NonNegativeInt;
+
+/**
+ * {@link Int1To100} or {@link PositiveInt}.
+ *
+ * Convenience input accepting integer literals from 1 to 100 or an
+ * already-validated {@link PositiveInt} for larger or dynamic values.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { PositiveInt, type Int1To100OrPositiveInt } from "@evolu/common";
+ *
+ * const literal: Int1To100OrPositiveInt = 10;
+ * const validated: Int1To100OrPositiveInt = PositiveInt.orThrow(101);
+ *
+ * assert(literal === 10);
+ * assert(validated === 101);
+ * ```
+ */
+export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
+
+/**
+ * {@link PercentageLiteral} or {@link Ratio}.
+ *
+ * Convenience input accepting a readable {@link PercentageLiteral} or a
+ * validated {@link Ratio}. APIs normalize it to `Ratio`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Ratio, jitter } from "@evolu/common";
+ *
+ * const readableJitter = jitter("50%");
+ * const computedJitter = jitter(Ratio.orThrow(0.5));
+ *
+ * expectTypeOf(readableJitter).toEqualTypeOf(computedJitter);
+ * ```
+ */
 export type Percentage = PercentageLiteral | Ratio;
 
 /**
@@ -34,8 +99,18 @@ export type Percentage = PercentageLiteral | Ratio;
  * Decimal literals support one decimal place. Use {@link Ratio} for computed
  * values or greater precision.
  */
-export type PercentageLiteral =
-  "0%" | "100%" | `${Digit1To99}%` | `${Digit | Digit1To99}.${Digit1To9}%`;
+export const PercentageLiteral = /*#__PURE__*/ union(
+  "0%",
+  "100%",
+  /*#__PURE__*/ templateLiteral(Digit1To99, "%"),
+  /*#__PURE__*/ templateLiteral(
+    /*#__PURE__*/ union("0", Digit1To99),
+    ".",
+    Digit1To9,
+    "%",
+  ),
+);
+export type PercentageLiteral = typeof PercentageLiteral.Output;
 
 /** Converts a {@link Percentage} to its numeric {@link Ratio}. */
 export const percentageToRatio = (percentage: Percentage): Ratio =>

@@ -5,6 +5,7 @@ import {
   type NonEmptyReadonlyArray,
 } from "../../../../packages/common/src/Array.ts";
 import { emptyRecord } from "../../../../packages/common/src/Object.ts";
+import type { Int1To100OrPositiveInt } from "../../../../packages/common/src/Number.ts";
 import {
   none,
   some,
@@ -105,7 +106,6 @@ import {
   type Time,
 } from "../../../../packages/common/src/Time.ts";
 import {
-  type Int1To100OrPositiveInt,
   maxPositiveInt,
   onePositiveInt,
   PositiveInt,

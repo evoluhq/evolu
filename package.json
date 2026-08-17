@@ -20,7 +20,7 @@
     "playwright:install": "playwright install chromium firefox webkit",
     "bench:storage": "node bench/storage/benchmark.mts",
     "bench:type": "node bench/type/benchmark.mts",
-    "check:packages": "node scripts/check-packages.mts && tsc6 --project scripts/typescript6/tsconfig.json",
+    "check:packages": "node scripts/check-packages.mts",
     "start": "turbo start",
     "lint": "eslint --cache --cache-strategy content",
     "biome": "biome check",

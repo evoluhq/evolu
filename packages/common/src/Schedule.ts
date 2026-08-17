@@ -8,6 +8,7 @@ import {
   fibonacciAt,
   FibonacciIndex,
   increment,
+  type Int0To100OrNonNegativeInt,
   max,
   min,
   type Percentage,
@@ -28,7 +29,6 @@ import {
 } from "./Time.ts";
 import {
   assertType,
-  type Int0To100OrNonNegativeInt,
   NonNaNNumber,
   NonNegativeFiniteNumber,
   type NonNegativeInt,

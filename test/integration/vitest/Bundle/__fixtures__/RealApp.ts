@@ -14,6 +14,7 @@ import {
   object,
   PositiveInt,
   record,
+  templateLiteralParser,
   tuple,
   typed,
   undefinedOr,
@@ -60,10 +61,11 @@ const Comment = typed("Comment", {
 });
 
 const AppEvent = discriminatedUnion(User, Todo, Comment);
+const Cursor = templateLiteralParser("cursor:", Int64FromInt64String);
 
 const AppPayload = object({
   events: array(AppEvent),
-  cursor: Int64FromInt64String,
+  cursor: Cursor,
   positionsByUser: record(Id, tuple(FiniteNumber, FiniteNumber)),
 });
 
@@ -104,7 +106,7 @@ const validPayload: typeof AppPayload.Input = {
       completed: false,
     },
   ],
-  cursor: "1",
+  cursor: "cursor:1",
   positionsByUser: { [id]: [45, 16] },
 };
 

@@ -7,11 +7,15 @@ import {
   FibonacciIndex,
   increment,
   incrementPositiveInt,
+  type Int0To100OrNonNegativeInt,
+  type Int1To100,
+  type Int1To100OrPositiveInt,
+  type Int1To99,
   isBetween,
   max,
   min,
   type Percentage,
-  type PercentageLiteral,
+  PercentageLiteral,
   percentageToRatio,
 } from "../../../../packages/common/src/Number.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
@@ -23,6 +27,28 @@ import {
   Ratio,
 } from "../../../../packages/common/src/Type.ts";
 
+test("bounded integer literal types", () => {
+  expectTypeOf<1>().toExtend<Int1To99>();
+  expectTypeOf<50>().toExtend<Int1To99>();
+  expectTypeOf<99>().toExtend<Int1To99>();
+  expectTypeOf<0>().not.toExtend<Int1To99>();
+  expectTypeOf<100>().not.toExtend<Int1To99>();
+  expectTypeOf<"1">().not.toExtend<Int1To99>();
+
+  expectTypeOf<1>().toExtend<Int1To100>();
+  expectTypeOf<100>().toExtend<Int1To100>();
+  expectTypeOf<0>().not.toExtend<Int1To100>();
+  expectTypeOf<101>().not.toExtend<Int1To100>();
+
+  expectTypeOf<0>().toExtend<Int0To100OrNonNegativeInt>();
+  expectTypeOf<100>().toExtend<Int0To100OrNonNegativeInt>();
+  expectTypeOf<NonNegativeInt>().toExtend<Int0To100OrNonNegativeInt>();
+
+  expectTypeOf<1>().toExtend<Int1To100OrPositiveInt>();
+  expectTypeOf<100>().toExtend<Int1To100OrPositiveInt>();
+  expectTypeOf<PositiveInt>().toExtend<Int1To100OrPositiveInt>();
+});
+
 test("Percentage accepts canonical literals or Ratio", () => {
   expectTypeOf<"0%">().toExtend<PercentageLiteral>();
   expectTypeOf<"25%">().toExtend<PercentageLiteral>();
@@ -32,6 +58,13 @@ test("Percentage accepts canonical literals or Ratio", () => {
   expectTypeOf<"10.0%">().not.toExtend<PercentageLiteral>();
   expectTypeOf<"100.1%">().not.toExtend<PercentageLiteral>();
   expectTypeOf<Ratio>().toExtend<Percentage>();
+  expect(PercentageLiteral.is("0%")).toBe(true);
+  expect(PercentageLiteral.is("25%")).toBe(true);
+  expect(PercentageLiteral.is("12.5%")).toBe(true);
+  expect(PercentageLiteral.is("100%")).toBe(true);
+  expect(PercentageLiteral.is("01%")).toBe(false);
+  expect(PercentageLiteral.is("10.0%")).toBe(false);
+  expect(PercentageLiteral.is("100.1%")).toBe(false);
 });
 
 test("percentageToRatio converts percentage literals and preserves Ratio", () => {

@@ -486,6 +486,11 @@ import type {
   Locales as LocalizedMutualLocales,
   Right as LocalizedMutualRight,
 } from "./fixtures/localize-lazy-mutual-all.mts";
+import type {
+  CanonicalInput as TemplateLiteralCanonicalInput,
+  Output as TemplateLiteralOutput,
+  Parts as TemplateLiteralParts,
+} from "./fixtures/template-literal-canonical-input-16.mts";
 import type { ArrayChild1Error } from "./fixtures/chains/array-child-01.mts";
 import type { ValidatedValues } from "./fixtures/chains/array-child-root.mts";
 import type {
@@ -1078,6 +1083,15 @@ test("the width-32 Union fixture preserves its semantics", () => {
   expectTypeOf<UnionArrayParent["Output"]>().toEqualTypeOf<
     ReadonlyArray<string>
   >();
+});
+
+test("the 16-position TemplateLiteral fixture preserves its exact types", () => {
+  expectTypeOf<TemplateLiteralParts["length"]>().toEqualTypeOf<16>();
+  expectTypeOf<TemplateLiteralOutput["length"]>().toEqualTypeOf<16>();
+  expectTypeOf<"0000000000000000">().toExtend<TemplateLiteralCanonicalInput>();
+  expectTypeOf<"0101010101010101">().toExtend<TemplateLiteralCanonicalInput>();
+  expectTypeOf<"1111111111111111">().toExtend<TemplateLiteralCanonicalInput>();
+  expectTypeOf<string>().not.toExtend<TemplateLiteralCanonicalInput>();
 });
 
 test("the depth-32 Object fixture preserves its semantics", () => {

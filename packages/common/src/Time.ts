@@ -10,12 +10,6 @@ import type { yieldNow } from "./Task.ts";
 import {
   brand,
   type DateIso,
-  lessThan,
-  type NonNaNNumber,
-  NonNegativeInt,
-  positive,
-} from "./Type.ts";
-import type {
   Digit,
   Digit1To23,
   Digit1To51,
@@ -23,7 +17,13 @@ import type {
   Digit1To6,
   Digit1To9,
   Digit1To99,
-} from "./Types.ts";
+  lessThan,
+  type NonNaNNumber,
+  NonNegativeInt,
+  positive,
+  templateLiteral,
+  union,
+} from "./Type.ts";
 
 /** Time and timer operations. */
 export interface Time {
@@ -376,16 +376,114 @@ export const performanceDurationBetween = (
 };
 
 /**
- * Duration can be either a {@link DurationLiteral} or milliseconds as
- * {@link Millis}.
+ * {@link DurationLiteral} or {@link Millis}.
+ *
+ * Convenience input accepting a human-readable {@link DurationLiteral} or
+ * validated milliseconds as {@link Millis}. APIs normalize it to `Millis`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Millis, spaced } from "@evolu/common";
+ *
+ * const readableSchedule = spaced("1s");
+ * const validatedSchedule = spaced(Millis.orThrow(1000));
+ *
+ * expectTypeOf(readableSchedule).toEqualTypeOf(validatedSchedule);
+ * ```
  */
 export type Duration = DurationLiteral | Millis;
 
-/** Positive duration accepted by timer-based APIs. */
+/**
+ * {@link DurationLiteral} or {@link PositiveMillis}.
+ *
+ * Convenience input accepting a human-readable {@link DurationLiteral} or
+ * validated milliseconds as {@link PositiveMillis} for timer-based APIs.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { PositiveMillis, sleep } from "@evolu/common";
+ *
+ * const readableSleep = sleep("1s");
+ * const validatedSleep = sleep(PositiveMillis.orThrow(1000));
+ *
+ * expectTypeOf(readableSleep).toEqualTypeOf(validatedSleep);
+ * ```
+ */
 export type PositiveDuration = DurationLiteral | PositiveMillis;
 
+/** Milliseconds duration: `"1ms"` to `"999ms"`. See {@link DurationLiteral}. */
+export const DurationLiteralMilliseconds = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To9, "ms"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "ms"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "ms"),
+);
+export type DurationLiteralMilliseconds =
+  typeof DurationLiteralMilliseconds.Output;
+
 /**
- * Duration literal with compile-time validation.
+ * Seconds duration: `"1s"` to `"59s"` or `"1.1s"` to `"59.9s"`. See
+ * {@link DurationLiteral}.
+ */
+export const DurationLiteralSeconds = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To59, "s"),
+  /*#__PURE__*/ templateLiteral(Digit1To59, ".", Digit1To9, "s"),
+);
+export type DurationLiteralSeconds = typeof DurationLiteralSeconds.Output;
+
+/**
+ * Minutes duration: `"1m"` to `"59m"` or `"1.1m"` to `"59.9m"`. See
+ * {@link DurationLiteral}.
+ */
+export const DurationLiteralMinutes = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To59, "m"),
+  /*#__PURE__*/ templateLiteral(Digit1To59, ".", Digit1To9, "m"),
+);
+export type DurationLiteralMinutes = typeof DurationLiteralMinutes.Output;
+
+/**
+ * Hours duration: `"1h"` to `"23h"` or `"1.1h"` to `"23.9h"`. See
+ * {@link DurationLiteral}.
+ */
+export const DurationLiteralHours = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To23, "h"),
+  /*#__PURE__*/ templateLiteral(Digit1To23, ".", Digit1To9, "h"),
+);
+export type DurationLiteralHours = typeof DurationLiteralHours.Output;
+
+/**
+ * Days duration: `"1d"` to `"6d"` or `"1.1d"` to `"6.9d"`. See
+ * {@link DurationLiteral}.
+ */
+export const DurationLiteralDays = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To6, "d"),
+  /*#__PURE__*/ templateLiteral(Digit1To6, ".", Digit1To9, "d"),
+);
+export type DurationLiteralDays = typeof DurationLiteralDays.Output;
+
+/**
+ * Weeks duration: `"1w"` to `"51w"` or `"1.1w"` to `"51.9w"`. See
+ * {@link DurationLiteral}.
+ */
+export const DurationLiteralWeeks = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To51, "w"),
+  /*#__PURE__*/ templateLiteral(Digit1To51, ".", Digit1To9, "w"),
+);
+export type DurationLiteralWeeks = typeof DurationLiteralWeeks.Output;
+
+/**
+ * Years duration: `"1y"` to `"99y"` or `"1.1y"` to `"99.9y"`. See
+ * {@link DurationLiteral}.
+ */
+export const DurationLiteralYears = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To99, "y"),
+  /*#__PURE__*/ templateLiteral(Digit1To99, ".", Digit1To9, "y"),
+);
+export type DurationLiteralYears = typeof DurationLiteralYears.Output;
+
+/**
+ * Duration literal Type with compile-time and runtime validation.
  *
  * Supported formats:
  *
@@ -412,68 +510,16 @@ export type PositiveDuration = DurationLiteral | PositiveMillis;
  * See {@link Duration} for a type that also accepts {@link Millis}. Use
  * {@link durationToMillis} to convert to milliseconds.
  */
-export type DurationLiteral =
-  | DurationLiteralMilliseconds
-  | DurationLiteralSeconds
-  | DurationLiteralMinutes
-  | DurationLiteralHours
-  | DurationLiteralDays
-  | DurationLiteralWeeks
-  | DurationLiteralYears;
-
-/** Milliseconds duration: `"1ms"` to `"999ms"`. See {@link DurationLiteral}. */
-export type DurationLiteralMilliseconds =
-  | `${Digit1To9}ms` // 1-9
-  | `${Digit1To9}${Digit}ms` // 10-99
-  | `${Digit1To9}${Digit}${Digit}ms`; // 100-999
-
-/**
- * Seconds duration: `"1s"` to `"59s"` or `"1.1s"` to `"59.9s"`. See
- * {@link DurationLiteral}.
- */
-export type DurationLiteralSeconds =
-  | `${Digit1To59}s` // 1-59
-  | `${Digit1To59}.${Digit1To9}s`; // 1.1-59.9
-
-/**
- * Minutes duration: `"1m"` to `"59m"` or `"1.1m"` to `"59.9m"`. See
- * {@link DurationLiteral}.
- */
-export type DurationLiteralMinutes =
-  | `${Digit1To59}m` // 1-59
-  | `${Digit1To59}.${Digit1To9}m`; // 1.1-59.9
-
-/**
- * Hours duration: `"1h"` to `"23h"` or `"1.1h"` to `"23.9h"`. See
- * {@link DurationLiteral}.
- */
-export type DurationLiteralHours =
-  | `${Digit1To23}h` // 1-23
-  | `${Digit1To23}.${Digit1To9}h`; // 1.1-23.9
-
-/**
- * Days duration: `"1d"` to `"6d"` or `"1.1d"` to `"6.9d"`. See
- * {@link DurationLiteral}.
- */
-export type DurationLiteralDays =
-  | `${Digit1To6}d` // 1-6
-  | `${Digit1To6}.${Digit1To9}d`; // 1.1-6.9
-
-/**
- * Weeks duration: `"1w"` to `"51w"` or `"1.1w"` to `"51.9w"`. See
- * {@link DurationLiteral}.
- */
-export type DurationLiteralWeeks =
-  | `${Digit1To51}w` // 1-51
-  | `${Digit1To51}.${Digit1To9}w`; // 1.1-51.9
-
-/**
- * Years duration: `"1y"` to `"99y"` or `"1.1y"` to `"99.9y"`. See
- * {@link DurationLiteral}.
- */
-export type DurationLiteralYears =
-  | `${Digit1To99}y` // 1-99
-  | `${Digit1To99}.${Digit1To9}y`; // 1.1-99.9
+export const DurationLiteral = /*#__PURE__*/ union(
+  DurationLiteralMilliseconds,
+  DurationLiteralSeconds,
+  DurationLiteralMinutes,
+  DurationLiteralHours,
+  DurationLiteralDays,
+  DurationLiteralWeeks,
+  DurationLiteralYears,
+);
+export type DurationLiteral = typeof DurationLiteral.Output;
 
 /**
  * Converts a duration to milliseconds.

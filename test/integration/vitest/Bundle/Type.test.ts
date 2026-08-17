@@ -160,6 +160,29 @@ const fixtures: ReadonlyArray<{
     ],
   },
   {
+    name: 'templateLiteralParser(String, "px")',
+    fileName: "StringPixelsTemplateLiteral.ts",
+    expected: [
+      "10",
+      "10px",
+      'The value "10em" does not match the template literal.',
+    ],
+    excludedCodeFragments: [
+      "not valid for type Never",
+      "canonical ISO date-time string",
+      "signed 64-bit integer",
+      "unsigned 64-bit integer",
+      ...recordTypeFragments,
+      ...instanceTypeFragments,
+      '"Array"',
+      "is not an array",
+      '"NonEmptyString"',
+      "Enter some text",
+      ...setTypeFragments,
+      ...objectTypeFragments,
+    ],
+  },
+  {
     name: "lazy(Object(Array))",
     fileName: "LazyStringTree.ts",
     expected: ["leaf", "A value 42 is not a string.", true],
@@ -324,7 +347,7 @@ describe("Type tree shaking", () => {
               "User",
               '{"theme":"System","compact":true,"shortcuts":[]}',
               "System",
-              "1",
+              "cursor:1",
             ]);
           },
         },
@@ -336,12 +359,12 @@ describe("Type tree shaking", () => {
       {
         "real app": {
           "vite@8.2.0": {
-            "brotliSizeInBytes": 8007,
-            "rawSizeInBytes": 28063,
+            "brotliSizeInBytes": 8816,
+            "rawSizeInBytes": 31086,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 8066,
-            "rawSizeInBytes": 28438,
+            "brotliSizeInBytes": 8857,
+            "rawSizeInBytes": 31519,
           },
         },
       }
@@ -468,28 +491,28 @@ describe("Type tree shaking", () => {
             "rawSizeInBytes": 5080,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 1978,
-            "rawSizeInBytes": 5096,
+            "brotliSizeInBytes": 1995,
+            "rawSizeInBytes": 5126,
           },
         },
         "Union(String, Number)": {
           "vite@8.2.0": {
-            "brotliSizeInBytes": 1559,
-            "rawSizeInBytes": 3795,
+            "brotliSizeInBytes": 1565,
+            "rawSizeInBytes": 3831,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 1608,
-            "rawSizeInBytes": 3850,
+            "brotliSizeInBytes": 1615,
+            "rawSizeInBytes": 3886,
           },
         },
         "discriminatedUnion(Created, Deleted)": {
           "vite@8.2.0": {
-            "brotliSizeInBytes": 3426,
-            "rawSizeInBytes": 11046,
+            "brotliSizeInBytes": 3427,
+            "rawSizeInBytes": 11075,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 3463,
-            "rawSizeInBytes": 11204,
+            "brotliSizeInBytes": 3472,
+            "rawSizeInBytes": 11233,
           },
         },
         "lazy(Object(Array))": {
@@ -502,14 +525,24 @@ describe("Type tree shaking", () => {
             "rawSizeInBytes": 11940,
           },
         },
-        "typed(Pending)": {
+        "templateLiteralParser(String, "px")": {
           "vite@8.2.0": {
-            "brotliSizeInBytes": 2852,
-            "rawSizeInBytes": 8616,
+            "brotliSizeInBytes": 2838,
+            "rawSizeInBytes": 8053,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 2890,
-            "rawSizeInBytes": 8726,
+            "brotliSizeInBytes": 2869,
+            "rawSizeInBytes": 8159,
+          },
+        },
+        "typed(Pending)": {
+          "vite@8.2.0": {
+            "brotliSizeInBytes": 2857,
+            "rawSizeInBytes": 8645,
+          },
+          "webpack@5.109.2": {
+            "brotliSizeInBytes": 2889,
+            "rawSizeInBytes": 8755,
           },
         },
       }
@@ -606,12 +639,12 @@ describe("Type tree shaking", () => {
       {
         "typed Todo list": {
           "vite@8.2.0": {
-            "brotliSizeInBytes": 4780,
-            "rawSizeInBytes": 15938,
+            "brotliSizeInBytes": 4787,
+            "rawSizeInBytes": 15977,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 4840,
-            "rawSizeInBytes": 16152,
+            "brotliSizeInBytes": 4850,
+            "rawSizeInBytes": 16194,
           },
         },
       }

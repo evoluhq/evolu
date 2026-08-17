@@ -91,6 +91,14 @@ describe("Czech Type error formatters", () => {
     expect(cs.formatDateIsoError({ type: "DateIso", value: "invalid" })).toBe(
       'Hodnota "invalid" musí být datum a čas v kanonickém formátu ISO.',
     );
+    expect(
+      cs.formatDecimalStringError({
+        type: "DecimalString",
+        value: "0.30",
+      }),
+    ).toBe(
+      'Hodnota "0.30" musí být kanonický řetězec představující desetinné číslo.',
+    );
     expect(cs.formatInt64Error({ type: "Int64", value: 2n ** 63n })).toBe(
       "Hodnota 9223372036854775808 musí být platné 64bitové celé číslo se znaménkem (Int64).",
     );
@@ -136,6 +144,14 @@ describe("Czech Type error formatters", () => {
     expect(cs.formatNonNegativeError({ type: "NonNegative", value: -1 })).toBe(
       "Hodnota -1 musí být nezáporná (>= 0).",
     );
+    expect(
+      cs.formatNonNegativeDecimalStringError({
+        type: "NonNegativeDecimalString",
+        value: "0.30",
+      }),
+    ).toBe(
+      'Hodnota "0.30" musí být řetězec představující nezáporné desetinné číslo.',
+    );
     expect(cs.formatPositiveError({ type: "Positive", value: 0 })).toBe(
       "Hodnota 0 musí být kladná (> 0).",
     );
@@ -145,13 +161,29 @@ describe("Czech Type error formatters", () => {
         value: "0.30",
       }),
     ).toBe(
-      'Hodnota "0.30" musí být kanonický řetězec představující kladné desetinné číslo.',
+      'Hodnota "0.30" musí být řetězec představující kladné desetinné číslo.',
     );
     expect(cs.formatNonPositiveError({ type: "NonPositive", value: 1 })).toBe(
       "Hodnota 1 musí být nekladná (<= 0).",
     );
+    expect(
+      cs.formatNonPositiveDecimalStringError({
+        type: "NonPositiveDecimalString",
+        value: "0.3",
+      }),
+    ).toBe(
+      'Hodnota "0.3" musí být řetězec představující nekladné desetinné číslo.',
+    );
     expect(cs.formatNegativeError({ type: "Negative", value: 0 })).toBe(
       "Hodnota 0 musí být záporná (< 0).",
+    );
+    expect(
+      cs.formatNegativeDecimalStringError({
+        type: "NegativeDecimalString",
+        value: "0",
+      }),
+    ).toBe(
+      'Hodnota "0" musí být řetězec představující záporné desetinné číslo.',
     );
     expect(cs.formatIntError({ type: "Int", value: 1.5 })).toBe(
       "Hodnota 1.5 musí být bezpečné celé číslo.",

@@ -16,6 +16,7 @@ import type {
   BetweenError,
   CapitalizedError,
   DateIsoError,
+  DecimalStringError,
   DiscriminatedUnionError,
   FiniteError,
   GreaterThanError,
@@ -32,10 +33,13 @@ import type {
   MaxLengthError,
   MinLengthError,
   MultipleOfError,
+  NegativeDecimalStringError,
   NegativeError,
   NeverError,
   NonNaNError,
+  NonNegativeDecimalStringError,
   NonNegativeError,
+  NonPositiveDecimalStringError,
   NonPositiveError,
   ObjectError,
   ObjectNotObjectError,
@@ -46,6 +50,7 @@ import type {
   PositiveError,
   RecordError,
   RegexError,
+  TemplateLiteralError,
   TrimmedError,
   TupleError,
   TypeErrorFormatter,
@@ -73,6 +78,12 @@ export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
 export const formatStringError: TypeErrorFormatter<
   TypeOfError<"String">
 > = () => "Hodnota musí být text.";
+
+/** Formats a TemplateLiteralError in Czech. */
+export const formatTemplateLiteralError: TypeErrorFormatter<
+  TemplateLiteralError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} neodpovídá šablonovému řetězci.`;
 
 /** Formats a Number TypeOfError in Czech. */
 export const formatNumberError: TypeErrorFormatter<TypeOfError<"Number">> = (
@@ -123,6 +134,12 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být datum a čas v kanonickém formátu ISO.`;
 
+/** Formats a DecimalStringError in Czech. */
+export const formatDecimalStringError: TypeErrorFormatter<
+  DecimalStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kanonický řetězec představující desetinné číslo.`;
+
 /** Formats an Int64Error in Czech. */
 export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platné 64bitové celé číslo se znaménkem (Int64).`;
@@ -169,6 +186,12 @@ export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být nezáporná (>= 0).`;
 
+/** Formats a NonNegativeDecimalStringError in Czech. */
+export const formatNonNegativeDecimalStringError: TypeErrorFormatter<
+  NonNegativeDecimalStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být řetězec představující nezáporné desetinné číslo.`;
+
 /** Formats a PositiveError in Czech. */
 export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kladná (> 0).`;
@@ -177,7 +200,7 @@ export const formatPositiveError: TypeErrorFormatter<PositiveError> = (error) =>
 export const formatPositiveDecimalStringError: TypeErrorFormatter<
   PositiveDecimalStringError
 > = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být kanonický řetězec představující kladné desetinné číslo.`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být řetězec představující kladné desetinné číslo.`;
 
 /** Formats a NonPositiveError in Czech. */
 export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
@@ -185,9 +208,21 @@ export const formatNonPositiveError: TypeErrorFormatter<NonPositiveError> = (
 ) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být nekladná (<= 0).`;
 
+/** Formats a NonPositiveDecimalStringError in Czech. */
+export const formatNonPositiveDecimalStringError: TypeErrorFormatter<
+  NonPositiveDecimalStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být řetězec představující nekladné desetinné číslo.`;
+
 /** Formats a NegativeError in Czech. */
 export const formatNegativeError: TypeErrorFormatter<NegativeError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být záporná (< 0).`;
+
+/** Formats a NegativeDecimalStringError in Czech. */
+export const formatNegativeDecimalStringError: TypeErrorFormatter<
+  NegativeDecimalStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být řetězec představující záporné desetinné číslo.`;
 
 /** Formats an IntError in Czech. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>

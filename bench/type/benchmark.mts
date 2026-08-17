@@ -39,6 +39,7 @@ const tscPath = resolve(
 );
 const depths = [1, 2, 4, 8, 16, 32] as const;
 const widths = [2, 4, 8, 16, 32] as const;
+const templateLiteralWidths = [4, 8, 12, 16] as const;
 const fixtureKinds = [
   "factory-output",
   "factory-errors",
@@ -74,6 +75,9 @@ const widthFixtureKinds = [
   "object-width-all",
   "object-union-all",
   "discriminated-union-all",
+] as const;
+const templateLiteralFixtureKinds = [
+  "template-literal-canonical-input",
 ] as const;
 const standaloneFixtureKinds = [
   "brand-direct-all",
@@ -137,6 +141,7 @@ const typecheckFixtures = [
   "lazy-mutual-all.mts",
   "localize-lazy-direct-all.mts",
   "localize-lazy-mutual-all.mts",
+  "template-literal-canonical-input-16.mts",
 ] as const;
 const { tokens: benchmarkArgumentTokens, values: benchmarkArgumentValues } =
   parseArgs({
@@ -192,6 +197,7 @@ const typeBenchmarkBaselinesUrl = new URL("./baselines.json", import.meta.url);
 type FixtureKind =
   | (typeof fixtureKinds)[number]
   | (typeof widthFixtureKinds)[number]
+  | (typeof templateLiteralFixtureKinds)[number]
   | (typeof standaloneFixtureKinds)[number];
 
 interface Fixture {
@@ -221,6 +227,9 @@ const allFixtures: ReadonlyArray<Fixture> = [
   ),
   ...widthFixtureKinds.flatMap((kind) =>
     widths.map((width) => ({ kind, width })),
+  ),
+  ...templateLiteralFixtureKinds.flatMap((kind) =>
+    templateLiteralWidths.map((width) => ({ kind, width })),
   ),
   ...standaloneFixtureKinds.map((kind) => ({ kind })),
 ];

@@ -35,6 +35,14 @@ import {
   Date,
   DateIso,
   DateIsoFromDate,
+  DecimalString,
+  Digit,
+  Digit1To6,
+  Digit1To9,
+  Digit1To23,
+  Digit1To51,
+  Digit1To59,
+  Digit1To99,
   discriminatedUnion,
   EvoluType,
   finite,
@@ -73,6 +81,8 @@ import {
   Mnemonic,
   multipleOf,
   negative,
+  negativeDecimalString,
+  NegativeDecimalString,
   NegativeInt,
   NegativeNumber,
   Never,
@@ -83,10 +93,14 @@ import {
   nonNaN,
   NonNaNNumber,
   nonNegative,
+  nonNegativeDecimalString,
+  NonNegativeDecimalString,
   NonNegativeFiniteNumber,
   NonNegativeInt,
   NonNegativeNumber,
   nonPositive,
+  nonPositiveDecimalString,
+  NonPositiveDecimalString,
   NonPositiveInt,
   NonPositiveNumber,
   Null,
@@ -101,6 +115,7 @@ import {
   optional,
   partial,
   positive,
+  positiveDecimalString,
   PositiveDecimalString,
   PositiveFiniteNumber,
   PositiveInt,
@@ -115,6 +130,8 @@ import {
   Symbol,
   SimplePassword,
   testName,
+  templateLiteral,
+  templateLiteralParser,
   transform,
   trim,
   trimmed,
@@ -146,6 +163,7 @@ import {
   type CapitalizedError,
   type DateIsoError,
   type DateIsoFromDateError,
+  type DecimalStringError,
   type DiscriminatedUnionError,
   type DiscriminatedUnionMemberError,
   type DiscriminatedUnionMemberIssue,
@@ -179,11 +197,14 @@ import {
   type MinLengthError,
   type MnemonicError,
   type NameError,
+  type NegativeDecimalStringError,
   type NegativeError,
   type NeverError,
   type NullableToOptionalProps,
   type NonNaNError,
   type NonNegativeError,
+  type NonNegativeDecimalStringError,
+  type NonPositiveDecimalStringError,
   type NonPositiveError,
   type ObjectError,
   type ObjectExcessPropertyError,
@@ -217,6 +238,9 @@ import {
   type SetNotSetError,
   type SetType,
   type SetUnexpectedPrototypeError,
+  type TemplateLiteralError,
+  type TemplateLiteralParserType,
+  type TemplateLiteralType,
   type TransformError,
   type TransformOutputError,
   type TransformType,
@@ -286,6 +310,27 @@ const setupNumberFromString = () =>
     },
     (error) => `The value ${error.value} is not a number.`,
   );
+
+const setupLowercaseFromString = () => {
+  const Lowercase = brand(
+    "Lowercase",
+    String,
+    (value) =>
+      value === value.toLowerCase() ? ok() : err({ type: "Lowercase", value }),
+    formatTestTypeError,
+  );
+  const LowercaseFromString = transform(
+    "LowercaseFromString",
+    String,
+    Lowercase,
+    {
+      from: (value) => ok(value.toLowerCase()),
+      to: (value) => value,
+    },
+  );
+
+  return { Lowercase, LowercaseFromString };
+};
 
 const expectAssertionError = (
   operation: () => unknown,
@@ -374,6 +419,14 @@ describe("Type", () => {
       Date,
       DateIso,
       DateIsoFromDate,
+      DecimalString,
+      Digit,
+      Digit1To6,
+      Digit1To9,
+      Digit1To23,
+      Digit1To51,
+      Digit1To59,
+      Digit1To99,
       EvoluType,
       FiniteNumber,
       Function,
@@ -388,6 +441,7 @@ describe("Type", () => {
       JsonObject,
       JsonValue,
       JsonValueFromJson,
+      NegativeDecimalString,
       NegativeInt,
       NegativeNumber,
       Never,
@@ -397,9 +451,11 @@ describe("Type", () => {
       NonEmptyTrimmedString100,
       NonEmptyTrimmedString1000,
       NonNaNNumber,
+      NonNegativeDecimalString,
       NonNegativeFiniteNumber,
       NonNegativeInt,
       NonNegativeNumber,
+      NonPositiveDecimalString,
       NonPositiveInt,
       NonPositiveNumber,
       Null,
@@ -491,6 +547,7 @@ describe("Type", () => {
       "Date",
       "DateIso",
       "DateIsoFromDate",
+      "DecimalString",
       "DiscriminatedUnion",
       "EvoluType",
       "Finite",
@@ -529,10 +586,13 @@ describe("Type", () => {
       "MultipleOf5",
       "Name",
       "Negative",
+      "NegativeDecimalString",
       "Never",
       "NonNaN",
       "NonNegative",
+      "NonNegativeDecimalString",
       "NonPositive",
+      "NonPositiveDecimalString",
       "Number",
       "NumberFromString",
       "Object",
@@ -544,6 +604,7 @@ describe("Type", () => {
       "SimplePassword",
       "String",
       "Symbol",
+      "TemplateLiteral",
       "Trimmed",
       "Tuple",
       "UInt64",
@@ -1318,6 +1379,7 @@ describe("localizeTypes", () => {
       { String },
       { test: { String: () => "Localized String." } },
     ).test.String;
+    const Prefixed = templateLiteralParser("prefix-", LocalizedString);
     const Strings = array(LocalizedString);
     const NonEmptyString = minLength(1)(LocalizedString);
     const stringsResult = Strings.fromUnknown([1]);
@@ -1328,6 +1390,11 @@ describe("localizeTypes", () => {
     expect(await Strings["~standard"].validate([1])).toEqual({
       issues: [{ message: "Localized String.", path: [0] }],
     });
+    expectOk(Prefixed.fromUnknown("prefix-value"), ["value"]);
+    expectTypeOf<typeof Prefixed.Output>().toEqualTypeOf<readonly [string]>();
+    expectTypeOf<
+      typeof Prefixed.CanonicalInput
+    >().toEqualTypeOf<`prefix-${string}`>();
 
     assert(!nonEmptyStringResult.ok);
     expect(NonEmptyString.formatError(nonEmptyStringResult.error)).toBe(
@@ -1581,6 +1648,48 @@ describe("localizeTypes", () => {
         {
           // @ts-expect-error Reflected Union members require their formatters.
           test: { Union: () => "Union." },
+        },
+      );
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("localizes TemplateLiteral captures and their reflected Tuple", () => {
+    const Part = literal("a");
+    const Value = templateLiteralParser(Part);
+    const Types = localizeTypes(
+      { Value },
+      {
+        test: {
+          Literal: () => "Localized Literal.",
+          String: () => "Localized String.",
+          TemplateLiteral: () => "Localized TemplateLiteral.",
+          Tuple: () => "Localized Tuple.",
+        },
+      },
+    ).test;
+    const result = Types.Value.parts[0].fromUnknown("b");
+
+    expect(Types.Value.parts[0]).not.toBe(Part);
+    expect(Types.Value.output.elements[0]).toBe(Types.Value.parts[0]);
+    expect(Types.Value.parent.output).toBe(Types.Value.output);
+    expect(Types.Value.parent.parts[0]).toBe(Types.Value.parts[0]);
+    assert(!result.ok);
+    expect(Types.Value.parts[0].formatError(result.error)).toBe(
+      "Localized Literal.",
+    );
+
+    const compileTimeAssertions = () => {
+      localizeTypes(
+        { Value },
+        {
+          // @ts-expect-error Reflected TemplateLiteral captures require their formatters.
+          test: {
+            String: () => "String.",
+            TemplateLiteral: () => "TemplateLiteral.",
+            Tuple: () => "Tuple.",
+          },
         },
       );
     };
@@ -4784,6 +4893,875 @@ describe("union", () => {
   });
 });
 
+describe("digit Types", () => {
+  test("Digit", () => {
+    expectTypeOf<typeof Digit.Output>().toEqualTypeOf<
+      "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+    >();
+    expect(Digit.is("0")).toBe(true);
+    expect(Digit.is("10")).toBe(false);
+  });
+
+  test("Digit1To9", () => {
+    expectTypeOf<typeof Digit1To9.Output>().toEqualTypeOf<
+      "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+    >();
+    expect(Digit1To9.is("1")).toBe(true);
+    expect(Digit1To9.is("0")).toBe(false);
+  });
+
+  test("Digit1To6", () => {
+    expectTypeOf<typeof Digit1To6.Output>().toEqualTypeOf<
+      "1" | "2" | "3" | "4" | "5" | "6"
+    >();
+    expect(Digit1To6.is("6")).toBe(true);
+    expect(Digit1To6.is("7")).toBe(false);
+  });
+
+  test("Digit1To23", () => {
+    expectTypeOf<"1">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"9">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"10">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"19">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"20">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"23">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"0">().not.toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"24">().not.toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"01">().not.toExtend<typeof Digit1To23.Output>();
+    expect(Digit1To23.is("23")).toBe(true);
+    expect(Digit1To23.is("24")).toBe(false);
+  });
+
+  test("Digit1To51", () => {
+    expectTypeOf<"1">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"9">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"10">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"49">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"50">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"51">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"0">().not.toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"52">().not.toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"01">().not.toExtend<typeof Digit1To51.Output>();
+    expect(Digit1To51.is("51")).toBe(true);
+    expect(Digit1To51.is("52")).toBe(false);
+  });
+
+  test("Digit1To99", () => {
+    expectTypeOf<"1">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"9">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"10">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"50">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"99">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"0">().not.toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"100">().not.toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"01">().not.toExtend<typeof Digit1To99.Output>();
+    expect(Digit1To99.is("99")).toBe(true);
+    expect(Digit1To99.is("100")).toBe(false);
+  });
+
+  test("Digit1To59", () => {
+    expectTypeOf<"1">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"9">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"10">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"50">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"59">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"0">().not.toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"60">().not.toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"99">().not.toExtend<typeof Digit1To59.Output>();
+    expect(Digit1To59.is("59")).toBe(true);
+    expect(Digit1To59.is("60")).toBe(false);
+  });
+});
+
+describe("templateLiteral", () => {
+  test("creates the canonical string Type directly", () => {
+    const B = literal("b");
+    const Value = templateLiteral("a", B, "c");
+
+    expect(Value.name).toBe("TemplateLiteral");
+    expect(Value.parent).toBe(String);
+    expect(Value.parts).toEqual(["a", B, "c"]);
+    expectTypeOf(Value).toEqualTypeOf<
+      TemplateLiteralType<readonly ["a", typeof B, "c"]>
+    >();
+    expectTypeOf<typeof Value.Input>().toEqualTypeOf<string>();
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"abc">();
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<"abc">();
+    expectOk(Value.fromUnknown("abc"), "abc");
+    expect(Value.is("abc")).toBe(true);
+    expect(Value.is("adc")).toBe(false);
+    expect(Value.is(["b"])).toBe(false);
+  });
+
+  test("uses the same reversible framing rules as templateLiteralParser", () => {
+    const Value = templateLiteral(String, "::");
+    const Parser = templateLiteralParser(String, "::");
+    const compileTimeAssertions = () => {
+      // @ts-expect-error At most one Type capture can have a variable-width string representation.
+      templateLiteral(String, ":", String);
+    };
+
+    expectOk(Value.fromUnknown("a::::"), "a::::");
+    expect(Value.is("a::::")).toBe(Parser.parent.is("a::::"));
+    void compileTimeAssertions;
+  });
+});
+
+describe("templateLiteralParser", () => {
+  test("accepts opaque root Types canonically encoded as strings", () => {
+    interface TextError extends TypeError<"Text"> {
+      readonly value: unknown;
+    }
+    const Text = createType(
+      "Text",
+      (value): Result<string, TextError> =>
+        typeof value === "string" ? ok(value) : err({ type: "Text", value }),
+      () => "Expected text.",
+    );
+    const Value = templateLiteralParser("x:", Text);
+    const _UnframedValue = templateLiteralParser(Text);
+
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<readonly [string]>();
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<`x:${string}`>();
+    expectTypeOf<InferErrors<typeof _UnframedValue>>().toEqualTypeOf<
+      TypeOfError<"String">
+    >();
+    expectOk(Value.fromUnknown("x:value"), ["value"]);
+    expect(Value.to(["value"])).toBe("x:value");
+  });
+
+  test("returns opaque root capture errors from untrusted substrings", () => {
+    interface AError extends TypeError<"A"> {
+      readonly value: unknown;
+    }
+    const A = createType(
+      "A",
+      (value): Result<"a", AError> =>
+        value === "a" ? ok(value) : err({ type: "A", value }),
+      () => "Expected a.",
+    );
+    const Value = templateLiteralParser(A);
+    const result = Value.fromUnknown("b");
+
+    expectTypeOf(result).toEqualTypeOf<
+      Result<
+        readonly ["a"],
+        | TypeOfError<"String">
+        | TransformOutputError<"TemplateLiteral", TupleElementsError<AError>>
+      >
+    >();
+    expectErr(result, {
+      type: "TemplateLiteral",
+      outputError: {
+        type: "Tuple",
+        reason: {
+          kind: "Items",
+          issues: [
+            {
+              kind: "Element",
+              index: 0,
+              error: { type: "A", value: "b" },
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  test("keeps String-rooted capture errors staged", () => {
+    const A = literal("a");
+    const Value = templateLiteralParser(A);
+    const result = Value.fromUnknown("b");
+
+    expectTypeOf(result).toEqualTypeOf<
+      Result<
+        readonly ["a"],
+        | TypeOfError<"String">
+        | TemplateLiteralError
+        | TransformOutputError<
+            "TemplateLiteral",
+            TupleElementsError<LiteralError<"a">>
+          >
+      >
+    >();
+    expectErr(result, {
+      type: "TemplateLiteral",
+      outputError: {
+        type: "Tuple",
+        reason: {
+          kind: "Items",
+          issues: [
+            {
+              kind: "Element",
+              index: 0,
+              error: { type: "Literal", expected: "a", value: "b" },
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  test("treats opaque Type names independently of built-in framing", () => {
+    interface OpaqueLiteralError extends TypeError<"Literal"> {
+      readonly value: unknown;
+    }
+    const OpaqueLiteral = globalThis.Object.assign(
+      createType(
+        "Literal",
+        (value): Result<string, OpaqueLiteralError> =>
+          typeof value === "string"
+            ? ok(value)
+            : err({ type: "Literal", value }),
+        () => "Expected text.",
+      ),
+      { expected: "a" as const },
+    );
+    const Value = templateLiteralParser(OpaqueLiteral);
+
+    expectOk(Value.fromUnknown("value"), ["value"]);
+    expect(Value.to(["value"])).toBe("value");
+  });
+
+  test("does not infer built-in framing from custom child reflection", () => {
+    const CustomLiteral = globalThis.Object.assign(
+      createType("Literal", String, ok),
+      { expected: "a" as const },
+    );
+    const Value = templateLiteralParser(CustomLiteral);
+    const encoded = Value.to(["long"]);
+
+    expectTypeOf<InferErrors<typeof Value>>().toEqualTypeOf<
+      TypeOfError<"String">
+    >();
+    expect(encoded).toBe("long");
+    expectOk(Value.fromUnknown(encoded), ["long"]);
+  });
+
+  test("omits impossible framing errors", () => {
+    const Value = templateLiteralParser(String);
+
+    expectTypeOf<InferErrors<typeof Value>>().toEqualTypeOf<
+      TypeOfError<"String">
+    >();
+    expectOk(Value.fromUnknown("anything"), ["anything"]);
+  });
+
+  test("creates a transforming Type with an exact canonical template string", () => {
+    const B = literal("b");
+    const Value = templateLiteralParser("a", B, "c");
+
+    expect(Value.name).toBe("TemplateLiteral");
+    expect(Value.parent.name).toBe("TemplateLiteral");
+    expect(Value.parent.parent).toBe(String);
+    expect(Value.parts).toEqual(["a", B, "c"]);
+    expectTypeOf(Value).toEqualTypeOf<
+      TemplateLiteralParserType<readonly ["a", typeof B, "c"]>
+    >();
+    expectTypeOf<typeof Value.Input>().toEqualTypeOf<string>();
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"abc">();
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<readonly ["b"]>();
+    expectOk(Value.fromUnknown("abc"), ["b"]);
+    expectOk(Value.from.parent("abc"), ["b"]);
+    expectOk(Value.from(["b"]), ["b"]);
+    expect(Value.is(["b"])).toBe(true);
+    expect(Value.is("abc")).toBe(false);
+    expect(Value.to(["b"])).toBe("abc");
+  });
+
+  test("infers the capture Tuple and exact canonical template string", () => {
+    const Digit = union("0", "1", "2");
+    const Value = templateLiteralParser("user-", Digit);
+
+    expect(Value.parts).toEqual(["user-", Digit]);
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<
+      readonly ["0" | "1" | "2"]
+    >();
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<
+      "user-0" | "user-1" | "user-2"
+    >();
+    expectOk(Value.fromUnknown("user-1"), ["1"]);
+    expect(Value.to(["2"])).toBe("user-2");
+  });
+
+  test("omits raw framing strings from the capture Tuple", () => {
+    const A = literal("a");
+    const One = literal("1");
+    const Value = templateLiteralParser("(", A, ":", One, ")");
+
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<readonly ["a", "1"]>();
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"(a:1)">();
+    expectOk(Value.fromUnknown("(a:1)"), ["a", "1"]);
+    expect(Value.to(["a", "1"])).toBe("(a:1)");
+  });
+
+  test("distributes fixed-width capture unions in CanonicalInput", () => {
+    const Letter = union("a", "b");
+    const Digit = union("1", "2");
+    const Value = templateLiteralParser(Letter, Digit);
+
+    expect(Value.parts).toEqual([Letter, Digit]);
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<
+      readonly ["a" | "b", "1" | "2"]
+    >();
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<
+      "a1" | "a2" | "b1" | "b2"
+    >();
+    expectOk(Value.fromUnknown("b2"), ["b", "2"]);
+    expect(Value.to(["a", "1"])).toBe("a1");
+  });
+
+  test("frames variable-width and fixed-width Unicode captures", () => {
+    const Unicode = templateLiteralParser("🙂", String, "✓");
+    const Fixed = templateLiteralParser(literal("🙂"), literal("✓"));
+
+    expectTypeOf<typeof Unicode.Output>().toEqualTypeOf<readonly [string]>();
+    expectTypeOf<
+      typeof Unicode.CanonicalInput
+    >().toEqualTypeOf<`🙂${string}✓`>();
+    expectOk(Unicode.fromUnknown("🙂value✓"), ["value"]);
+    expectOk(Unicode.fromUnknown("🙂✓"), [""]);
+    expect(Unicode.to(["🙂value"])).toBe("🙂🙂value✓");
+    expectOk(Fixed.fromUnknown("🙂✓"), ["🙂", "✓"]);
+    expect(Fixed.to(["🙂", "✓"])).toBe("🙂✓");
+    expectErr(Unicode.fromUnknown("🙂value"), {
+      type: "TemplateLiteral",
+      value: "🙂value",
+    });
+  });
+
+  test("uses Unicode code-point widths consistently", () => {
+    const FixedWidth = union("🙂", "a");
+    const VariableWidth = union("🙂", "ab");
+    const Value = templateLiteralParser(FixedWidth, String);
+    const compileTimeAssertions = () => {
+      // @ts-expect-error At most one Type capture can have a variable-width string representation.
+      templateLiteralParser(VariableWidth, String);
+    };
+
+    expectOk(Value.fromUnknown("🙂value"), ["🙂", "value"]);
+    expectOk(Value.fromUnknown("avalue"), ["a", "value"]);
+    void compileTimeAssertions;
+  });
+
+  test("rejects surrogate pairs formed across part boundaries", () => {
+    const HighSurrogate = literal("\uD83D");
+    const LowSurrogate = literal("\uDE42");
+    const HighSurrogateOrEmoji = union("\uD83D", "🙂");
+    const createFromCaptureAndFraming = () =>
+      templateLiteralParser(HighSurrogate, "\uDE42");
+    const createFromFramingAndCapture = () =>
+      templateLiteralParser("\uD83D", LowSurrogate);
+    const createAcrossEmptyCapture = () =>
+      templateLiteralParser(HighSurrogate, literal(""), "\uDE42");
+    const createFromCaptureLanguages = () =>
+      templateLiteralParser(HighSurrogateOrEmoji, String);
+
+    for (const create of [
+      createFromCaptureAndFraming,
+      createFromFramingAndCapture,
+      createAcrossEmptyCapture,
+      createFromCaptureLanguages,
+    ]) {
+      expect(create).toThrow(
+        "A TemplateLiteral cannot form a Unicode surrogate pair across part boundaries.",
+      );
+    }
+  });
+
+  test("does not interpret custom Type names as built-in framing", () => {
+    const LiteralName = brand("Literal", String);
+    const UnionName = brand("Union", String);
+    const TemplateLiteralName = brand("TemplateLiteral", String);
+    const StringName = brand("String", literal("a"));
+    const LiteralValue = templateLiteralParser(LiteralName);
+    const UnionValue = templateLiteralParser(UnionName);
+    const TemplateLiteralValue = templateLiteralParser(TemplateLiteralName);
+    const StringValue = templateLiteralParser(StringName, String);
+
+    expectOk(LiteralValue.fromUnknown("value"), ["value"]);
+    expectOk(UnionValue.fromUnknown("value"), ["value"]);
+    expectOk(TemplateLiteralValue.fromUnknown("value"), ["value"]);
+    expectOk(StringValue.fromUnknown("avalue"), ["a", "value"]);
+  });
+
+  test("preserves built-in framing metadata through localization", () => {
+    const A = literal("a");
+    const LocalizedA = localizeTypes(
+      { A },
+      {
+        test: {
+          Literal: () => "Localized Literal.",
+          String: () => "Localized String.",
+        },
+      },
+    ).test.A;
+    const Value = templateLiteralParser(LocalizedA, String);
+
+    expectOk(Value.fromUnknown("avalue"), ["a", "value"]);
+  });
+
+  test("decodes and encodes a branded string capture", () => {
+    const DecimalText = templateLiteralParser(
+      "decimal:",
+      NonNegativeDecimalString,
+    );
+    type DecimalLiteral = typeof DecimalText.parent.Output;
+    const zero = NonNegativeDecimalString.orThrow("0");
+    const value = NonNegativeDecimalString.orThrow("10.5");
+    const encoded = DecimalText.to([value]);
+
+    expectTypeOf<typeof DecimalText.Output>().toEqualTypeOf<
+      readonly [NonNegativeDecimalString]
+    >();
+    expectTypeOf<DecimalLiteral>().toEqualTypeOf<`decimal:${NonNegativeDecimalString}`>();
+    expectTypeOf(encoded).toEqualTypeOf<DecimalLiteral>();
+    expectOk(DecimalText.fromUnknown("decimal:0"), [zero]);
+    expectOk(DecimalText.fromUnknown("decimal:10.5"), [value]);
+    expect(encoded).toBe("decimal:10.5");
+  });
+
+  test("decodes transformations and encodes their canonical strings", () => {
+    const NumberFromString = setupNumberFromString();
+    const NumberValue = templateLiteralParser("number:", NumberFromString);
+    type NumberLiteral = typeof NumberValue.parent.Output;
+    type NumberShape = `number:${string}`;
+    const encoded = NumberValue.to([42]);
+
+    expectTypeOf<typeof NumberValue.Output>().toEqualTypeOf<
+      readonly [number]
+    >();
+    expectTypeOf<NumberLiteral>().toExtend<NumberShape>();
+    expectTypeOf<NumberShape>().not.toExtend<NumberLiteral>();
+    expectTypeOf(encoded).toEqualTypeOf<NumberLiteral>();
+    expectOk(NumberValue.fromUnknown("number:42"), [42]);
+    expect(encoded).toBe("number:42");
+    expect(NumberValue.parent.is(encoded)).toBe(true);
+    expect(NumberValue.parent.is("number:not-a-number")).toBe(false);
+    expectOk(NumberValue.from.parent(encoded), [42]);
+
+    const compileTimeAssertions = () => {
+      // @ts-expect-error A matching string is not necessarily canonical.
+      const validLooking: NumberLiteral = "number:42";
+      // @ts-expect-error An invalid string is not canonical.
+      const invalid: NumberLiteral = "number:not-a-number";
+      return [validLooking, invalid];
+    };
+    void compileTimeAssertions;
+  });
+
+  test("distinguishes transforming templates with the same string shape", () => {
+    const NumberFromString = setupNumberFromString();
+    const BooleanFromString = transform(
+      "BooleanFromString",
+      String,
+      Boolean,
+      {
+        from: (value) =>
+          value === "true"
+            ? ok(true)
+            : value === "false"
+              ? ok(false)
+              : err({ type: "BooleanFromString", value }),
+        // Widen the return type so both transformations expose the same shape.
+        to: (value): string => globalThis.String(value),
+      },
+      (error) => `The value ${error.value} is not a boolean.`,
+    );
+    const NumberValue = templateLiteralParser("value:", NumberFromString);
+    const BooleanValue = templateLiteralParser("value:", BooleanFromString);
+    type NumberLiteral = typeof NumberValue.parent.Output;
+    type BooleanLiteral = typeof BooleanValue.parent.Output;
+    const numberLiteral = NumberValue.to([1.5]);
+    const booleanLiteral = BooleanValue.to([true]);
+
+    expectTypeOf<NumberLiteral>().toExtend<`value:${string}`>();
+    expectTypeOf<BooleanLiteral>().toExtend<`value:${string}`>();
+    expectTypeOf<NumberLiteral>().not.toExtend<BooleanLiteral>();
+    expectTypeOf<BooleanLiteral>().not.toExtend<NumberLiteral>();
+    expect(numberLiteral).toBe("value:1.5");
+    expect(booleanLiteral).toBe("value:true");
+    expectOk(NumberValue.fromUnknown(numberLiteral), [1.5]);
+    expectOk(BooleanValue.fromUnknown(booleanLiteral), [true]);
+  });
+
+  test("normalizes a capture once and encodes its canonical value", () => {
+    const { Lowercase, LowercaseFromString } = setupLowercaseFromString();
+    const Value = templateLiteralParser("tag:", LowercaseFromString);
+    type ValueLiteral = typeof Value.parent.Output;
+    const lowercase = Lowercase.orThrow("evolu");
+    const encoded = Value.to([lowercase]);
+
+    expectTypeOf<ValueLiteral>().toExtend<`tag:${string}`>();
+    expectTypeOf<`tag:${string}`>().not.toExtend<ValueLiteral>();
+    expectOk(Value.fromUnknown("tag:EVOLU"), [lowercase]);
+    expectTypeOf(encoded).toEqualTypeOf<ValueLiteral>();
+    expect(encoded).toBe("tag:evolu");
+  });
+
+  test("uses the final framing position without delimiter backtracking", () => {
+    const Value = templateLiteralParser(String, "::");
+
+    expectOk(Value.fromUnknown("a::::"), ["a::"]);
+    expect(Value.to(["a::"])).toBe("a::::");
+  });
+
+  test("rejects ambiguous variable-width captures statically", () => {
+    const VariableUnion = union("a", "bb");
+    const Inner = templateLiteralParser("<", String, ">");
+    const compileTimeAssertions = () => {
+      // @ts-expect-error At most one Type capture can have a variable-width string representation.
+      templateLiteralParser(String, ":", String);
+      // @ts-expect-error At most one Type capture can have a variable-width string representation.
+      templateLiteralParser(VariableUnion, String);
+      // @ts-expect-error At most one Type capture can have a variable-width string representation.
+      templateLiteralParser(Inner, String);
+    };
+
+    void compileTimeAssertions;
+  });
+
+  test("requires a capture and canonically string-encoded concrete parts", () => {
+    const widened = "value" as string;
+    const uncertain = String as typeof String | typeof Number;
+    const parts: ReadonlyArray<typeof String> = [String];
+    const compileTimeAssertions = () => {
+      // @ts-expect-error At least one part must be a Type capture.
+      templateLiteralParser("value");
+      // @ts-expect-error Part must be a raw string literal or a Type canonically encoded as a string.
+      templateLiteralParser(1, String);
+      // @ts-expect-error Part must be a raw string literal or a Type canonically encoded as a string.
+      templateLiteralParser(literal(1));
+      // @ts-expect-error Expected must be one concrete literal value.
+      templateLiteralParser(widened, String);
+      // @ts-expect-error Part must be a raw string literal or a Type canonically encoded as a string.
+      templateLiteralParser(Number);
+      // @ts-expect-error Part must be a raw string literal or a Type canonically encoded as a string.
+      templateLiteralParser(uncertain);
+      // @ts-expect-error Parts must use one concrete finite non-empty tuple.
+      templateLiteralParser(...parts);
+    };
+
+    void compileTimeAssertions;
+  });
+
+  test("decodes every capture exactly once", () => {
+    let calls = 0;
+    const Capture = brand("TemplateLiteralCapture", String, () => {
+      calls++;
+      return ok();
+    });
+    const Value = templateLiteralParser("<", Capture, ">");
+
+    expectOk(Value.fromUnknown("<value>"), ["value"]);
+    expect(calls).toBe(1);
+  });
+
+  test("composes nested transforming TemplateLiteral captures", () => {
+    const Inner = templateLiteralParser("a", literal("b"));
+    const Value = templateLiteralParser("<", Inner, ">");
+    type ValueLiteral = typeof Value.parent.Output;
+    const encoded = Value.to([["b"]]);
+
+    expectTypeOf<typeof Inner.Output>().toEqualTypeOf<readonly ["b"]>();
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<
+      readonly [readonly ["b"]]
+    >();
+    expectTypeOf<ValueLiteral>().toExtend<"<ab>">();
+    expectTypeOf<"<ab>">().not.toExtend<ValueLiteral>();
+    expectTypeOf(encoded).toEqualTypeOf<ValueLiteral>();
+    expectOk(Value.fromUnknown("<ab>"), [["b"]]);
+    expect(encoded).toBe("<ab>");
+  });
+
+  test("composes canonical literal parents as fixed-width captures", () => {
+    const A = templateLiteralParser(literal("a")).parent;
+    const B = templateLiteralParser(literal("b")).parent;
+    const Value = templateLiteralParser(A, B);
+
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<readonly ["a", "b"]>();
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"ab">();
+    expectOk(Value.fromUnknown("ab"), ["a", "b"]);
+    expect(Value.to(["a", "b"])).toBe("ab");
+  });
+
+  test("distinguishes input, framing, and capture errors", () => {
+    const Value = templateLiteralParser("<", PositiveDecimalString, ">");
+    const inputResult = Value.fromUnknown(1);
+    const captureResult = Value.fromUnknown("<0>");
+
+    expect(inputResult).toEqual(
+      err({ type: "TypeOf", expected: "String", value: 1 }),
+    );
+    expect(Value.fromUnknown("10")).toEqual(
+      err({ type: "TemplateLiteral", value: "10" }),
+    );
+    expect(Value.fromUnknown("")).toEqual(
+      err({ type: "TemplateLiteral", value: "" }),
+    );
+    expect(captureResult).toEqual(
+      err({
+        type: "TemplateLiteral",
+        outputError: {
+          type: "Tuple",
+          reason: {
+            kind: "Items",
+            issues: [
+              {
+                kind: "Element",
+                index: 0,
+                error: { type: "PositiveDecimalString", value: "0" },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    assert(!inputResult.ok);
+    expect(Value.formatError(inputResult.error)).toBe(
+      "A value 1 is not a string.",
+    );
+    assert(!captureResult.ok);
+    expect(Value.formatError(captureResult.error)).toBe(
+      'The value "0" must be a positive decimal string.',
+    );
+    expectTypeOf(Value.fromUnknown("<1>")).toEqualTypeOf<
+      Result<typeof Value.Output, InferErrors<typeof Value>>
+    >();
+  });
+
+  test("formats and localizes TemplateLiteral errors", () => {
+    const Value = templateLiteralParser("a", literal("b"));
+    const Localized = localizeTypes(
+      { Value },
+      {
+        cs: {
+          Literal: () => "Literál.",
+          String: cs.formatStringError,
+          TemplateLiteral: cs.formatTemplateLiteralError,
+          Tuple: () => "N-tice.",
+        },
+      },
+    ).cs.Value;
+
+    expect(Value.formatError({ type: "TemplateLiteral", value: "b" })).toBe(
+      'The value "b" does not match the template literal.',
+    );
+    expect(Localized.formatError({ type: "TemplateLiteral", value: "b" })).toBe(
+      'Hodnota "b" neodpovídá šablonovému řetězci.',
+    );
+    expect(
+      Localized.parent.formatError({ type: "TemplateLiteral", value: "b" }),
+    ).toBe('Hodnota "b" neodpovídá šablonovému řetězci.');
+  });
+
+  test("keeps fixed-width union combinations symbolic at runtime", () => {
+    const Bit = union("0", "1");
+    const Value = templateLiteralParser(Bit, Bit, Bit, Bit);
+
+    expect(Value.parts).toEqual([Bit, Bit, Bit, Bit]);
+    expectOk(Value.fromUnknown("0101"), ["0", "1", "0", "1"]);
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<
+      | "0000"
+      | "0001"
+      | "0010"
+      | "0011"
+      | "0100"
+      | "0101"
+      | "0110"
+      | "0111"
+      | "1000"
+      | "1001"
+      | "1010"
+      | "1011"
+      | "1100"
+      | "1101"
+      | "1110"
+      | "1111"
+    >();
+  });
+
+  test("models the Percentage capture and canonical string directly", () => {
+    const Digit1To99 = union("1", "9", "10", "99");
+    const Percentage = templateLiteralParser(Digit1To99, "%");
+    type PercentageLiteral = typeof Percentage.parent.Output;
+    const percentage: PercentageLiteral = "10%";
+
+    expectTypeOf<typeof Percentage.Output>().toEqualTypeOf<
+      readonly ["1" | "9" | "10" | "99"]
+    >();
+    expectTypeOf<PercentageLiteral>().toEqualTypeOf<
+      "1%" | "9%" | "10%" | "99%"
+    >();
+    expect(percentage).toBe("10%");
+    expectOk(Percentage.fromUnknown("99%"), ["99"]);
+    expect(Percentage.to(["10"])).toBe("10%");
+  });
+
+  test("preserves exact syntax through an outer application transform", () => {
+    const PixelDigits = union("0", "1", "2");
+    const PixelsSyntax = templateLiteralParser(PixelDigits, "px");
+    const PixelsValue = brand("Pixels", union(0, 1, 2));
+    const Pixels = transform("PixelsFromString", PixelsSyntax, PixelsValue, {
+      from: ([digits]) => ok(digits === "0" ? 0 : digits === "1" ? 1 : 2),
+      to: (pixels) => [pixels === 0 ? "0" : pixels === 1 ? "1" : "2"] as const,
+    });
+    type Pixels = typeof Pixels.Output;
+    type PixelsLiteral = typeof Pixels.CanonicalInput;
+    const literal: PixelsLiteral = "2px";
+    const two = PixelsValue.orThrow(2);
+
+    expectTypeOf<Pixels>().toEqualTypeOf<typeof PixelsValue.Output>();
+    expectTypeOf<PixelsLiteral>().toEqualTypeOf<"0px" | "1px" | "2px">();
+    expectOk(Pixels.fromUnknown(literal), two);
+    expect(Pixels.to(two)).toBe("2px");
+  });
+
+  test("stages canonical string validation before capture parsing", () => {
+    const Language = union("en", "cs");
+    const Region = union("US", "CZ");
+    const SupportedLocale = templateLiteralParser(Language, "-", Region);
+    type SupportedLocale = typeof SupportedLocale.Output;
+    type SupportedLocaleLiteral = typeof SupportedLocale.parent.Output;
+    const locale: SupportedLocale = ["cs", "CZ"];
+    const input: unknown = "cs-CZ";
+
+    expect(SupportedLocale.name).toBe("TemplateLiteral");
+    expect(SupportedLocale.parent.name).toBe("TemplateLiteral");
+    expect(SupportedLocale.parent.parent).toBe(String);
+    expectTypeOf(SupportedLocale).toEqualTypeOf<
+      TemplateLiteralParserType<readonly [typeof Language, "-", typeof Region]>
+    >();
+    expectTypeOf<typeof SupportedLocale.Input>().toEqualTypeOf<string>();
+    expectTypeOf<SupportedLocaleLiteral>().toEqualTypeOf<
+      "en-US" | "en-CZ" | "cs-US" | "cs-CZ"
+    >();
+    expectTypeOf<SupportedLocale>().toEqualTypeOf<
+      readonly ["en" | "cs", "US" | "CZ"]
+    >();
+    expectTypeOf<
+      typeof SupportedLocale.CanonicalInput
+    >().toEqualTypeOf<SupportedLocaleLiteral>();
+
+    assert(SupportedLocale.parent.is(input));
+    expectTypeOf(input).toEqualTypeOf<SupportedLocaleLiteral>();
+    expect(SupportedLocale.parent.is("fr-CZ")).toBe(false);
+    expectOk(SupportedLocale.parent.fromUnknown("cs-CZ"), "cs-CZ");
+    expectErr(SupportedLocale.fromUnknown(null), {
+      type: "TypeOf",
+      expected: "String",
+      value: null,
+    });
+    expectOk(SupportedLocale.fromUnknown("cs-CZ"), locale);
+    expectOk(SupportedLocale.from.parent("cs-CZ"), locale);
+    expectOk(SupportedLocale.from.parent.parent("cs-CZ"), locale);
+    const invalidResult = SupportedLocale.from.parent.parent("fr-CZ");
+    assert(!invalidResult.ok);
+    expect(invalidResult.error.type).toBe("TemplateLiteral");
+    expect(() =>
+      SupportedLocale.from.parent("fr-CZ" as SupportedLocaleLiteral),
+    ).toThrow("Expected TemplateLiteral.");
+    expect(SupportedLocale.to(["en", "US"])).toBe("en-US");
+
+    const compileTimeAssertions = () => {
+      const supported: SupportedLocaleLiteral = "cs-CZ";
+      // @ts-expect-error Unsupported language.
+      const unsupported: SupportedLocaleLiteral = "fr-CZ";
+      return [supported, unsupported];
+    };
+    void compileTimeAssertions;
+  });
+
+  test("normalizes broader capture input into a canonical literal", () => {
+    const { Lowercase, LowercaseFromString } = setupLowercaseFromString();
+    const Tag = templateLiteralParser("tag:", LowercaseFromString);
+    type TagLiteral = typeof Tag.parent.Output;
+    const lowercase = Lowercase.orThrow("evolu");
+
+    expectTypeOf<typeof Tag.Output>().toEqualTypeOf<
+      readonly [string & Brand<"Lowercase">]
+    >();
+    expect(Tag.parent.is(null)).toBe(false);
+    expect(Tag.parent.is("tag:evolu")).toBe(true);
+    expect(Tag.parent.is("tag:EVOLU")).toBe(false);
+    expectErr(Tag.parent.fromUnknown(null), {
+      type: "TypeOf",
+      expected: "String",
+      value: null,
+    });
+    expectOk(Tag.parent.fromUnknown("tag:EVOLU"), "tag:evolu");
+    expectOk(Tag.fromUnknown("tag:EVOLU"), [lowercase]);
+    expectOk(Tag.from.parent.parent("tag:EVOLU"), [lowercase]);
+    expect(() => Tag.from.parent("tag:EVOLU" as TagLiteral)).toThrow(
+      "Expected TemplateLiteral.",
+    );
+    expect(Tag.to([lowercase])).toBe("tag:evolu");
+
+    const compileTimeAssertions = () => {
+      // @ts-expect-error Encoding requires a lowercase branded Output.
+      Tag.to(["EVOLU"]);
+    };
+    void compileTimeAssertions;
+  });
+
+  test("exposes canonical and parsed Standard Schema stages", async () => {
+    const { Lowercase, LowercaseFromString } = setupLowercaseFromString();
+    const Tag = templateLiteralParser("tag:", LowercaseFromString);
+    const lowercase = Lowercase.orThrow("evolu");
+
+    expect(await Tag.parent["~standard"].validate("tag:EVOLU")).toEqual({
+      value: "tag:evolu",
+    });
+    expect(await Tag["~standard"].validate("tag:EVOLU")).toEqual({
+      value: [lowercase],
+    });
+  });
+
+  test("runs only the capture operations required at each boundary", () => {
+    let decodeCalls = 0;
+    let encodeCalls = 0;
+    const Capture = transform("TemplateLiteralCapture", String, String, {
+      from: (value) => {
+        decodeCalls++;
+        return ok(value);
+      },
+      to: (value) => {
+        encodeCalls++;
+        return value;
+      },
+    });
+    const Value = templateLiteralParser("<", Capture, ">");
+
+    expectOk(Value.fromUnknown("<value>"), ["value"]);
+    expect(decodeCalls).toBe(1);
+    expect(encodeCalls).toBe(0);
+
+    decodeCalls = 0;
+    encodeCalls = 0;
+    const canonical = Value.parent.orThrow("<value>");
+    expect(decodeCalls).toBe(1);
+    expect(encodeCalls).toBe(1);
+
+    decodeCalls = 0;
+    encodeCalls = 0;
+    expectOk(Value.from.parent(canonical), ["value"]);
+    expect(decodeCalls).toBe(1);
+    expect(encodeCalls).toBe(1);
+
+    decodeCalls = 0;
+    encodeCalls = 0;
+    expectOk(Value.from.parent.parent("<value>"), ["value"]);
+    expect(decodeCalls).toBe(1);
+    expect(encodeCalls).toBe(0);
+
+    decodeCalls = 0;
+    encodeCalls = 0;
+    expect(Value.to(["value"])).toBe("<value>");
+    expect(decodeCalls).toBe(0);
+    expect(encodeCalls).toBe(1);
+  });
+});
+
 describe("undefinedOr", () => {
   test("creates a Union with the supplied Type before Undefined", () => {
     const UndefinedOrString = undefinedOr(String);
@@ -7079,53 +8057,261 @@ describe("BrandFactory", () => {
         });
       });
 
-      describe("PositiveDecimalString", () => {
-        test("is branded from String", () => {
-          expect(PositiveDecimalString.name).toBe("PositiveDecimalString");
-          expect(PositiveDecimalString.parent).toBe(String);
-          expectTypeOf(PositiveDecimalString).toEqualTypeOf<
-            BrandType<
-              typeof String,
-              "PositiveDecimalString",
-              PositiveDecimalStringError
-            >
-          >();
-          expectTypeOf<typeof PositiveDecimalString.Output>().toEqualTypeOf<
-            string & Brand<"PositiveDecimalString">
-          >();
-        });
-
-        test("accepts one canonical spelling of every positive decimal", () => {
-          for (const value of ["1", "25", "0.3", "0.01", "10.25"]) {
-            expect(PositiveDecimalString.from.parent(value)).toEqual(ok(value));
+      describe("DecimalString", () => {
+        test("accepts one canonical spelling of every signed decimal", () => {
+          for (const value of [
+            "-25",
+            "-10.25",
+            "-0.3",
+            "-0.01",
+            "0",
+            "0.01",
+            "0.3",
+            "10.25",
+            "25",
+          ]) {
+            expect(DecimalString.from.parent(value)).toEqual(ok(value));
           }
         });
 
-        test("rejects zero and non-canonical decimal spellings", () => {
+        test("rejects non-canonical decimal spellings", () => {
           for (const value of [
-            "0",
-            "-0.3",
+            "",
+            "-0",
             "+0.3",
             ".3",
+            "-.3",
+            "0.",
+            "0.0",
             "0.30",
+            "00",
             "00.3",
+            "-00.3",
             "3e-1",
           ]) {
-            expect(PositiveDecimalString.from.parent(value)).toEqual(
-              err({ type: "PositiveDecimalString", value }),
+            expect(DecimalString.from.parent(value)).toEqual(
+              err({ type: "DecimalString", value }),
             );
           }
         });
 
+        test("is branded from String", () => {
+          expect(DecimalString.name).toBe("DecimalString");
+          expect(DecimalString.parent).toBe(String);
+          expectTypeOf(DecimalString).toEqualTypeOf<
+            BrandType<typeof String, "DecimalString", DecimalStringError>
+          >();
+          expectTypeOf<typeof DecimalString.Output>().toEqualTypeOf<
+            string & Brand<"DecimalString">
+          >();
+        });
+
         test("formats its validation error", () => {
           expect(
-            PositiveDecimalString.formatError({
-              type: "PositiveDecimalString",
+            DecimalString.formatError({
+              type: "DecimalString",
               value: "0.30",
             }),
-          ).toBe(
-            'The value "0.30" must be a canonical positive decimal string.',
+          ).toBe('The value "0.30" must be a canonical decimal string.');
+        });
+      });
+
+      describe("nonNegativeDecimalString", () => {
+        test("creates a reusable Brand Factory", () => {
+          const NonNegative = nonNegativeDecimalString(DecimalString);
+          const negativeValue = DecimalString.orThrow("-0.1");
+
+          expect(NonNegative.from.parent(DecimalString.orThrow("0"))).toEqual(
+            ok("0"),
           );
+          expect(NonNegative.from.parent(negativeValue)).toEqual(
+            err({ type: "NonNegativeDecimalString", value: "-0.1" }),
+          );
+          expect(
+            NonNegative.formatError({
+              type: "NonNegativeDecimalString",
+              value: "-0.1",
+            }),
+          ).toBe('The value "-0.1" must be a non-negative decimal string.');
+          expectTypeOf(nonNegativeDecimalString).toEqualTypeOf<
+            BrandFactory<
+              "NonNegativeDecimalString",
+              DecimalString,
+              NonNegativeDecimalStringError
+            >
+          >();
+        });
+
+        test("requires a DecimalString parent", () => {
+          const compileTimeAssertions = () => {
+            // @ts-expect-error The parent must output DecimalString.
+            nonNegativeDecimalString(String);
+          };
+
+          expectTypeOf(compileTimeAssertions).toBeFunction();
+        });
+
+        describe("Type", () => {
+          describe("NonNegativeDecimalString", () => {
+            test("is branded from DecimalString", () => {
+              expect(NonNegativeDecimalString.parent).toBe(DecimalString);
+              expectTypeOf(NonNegativeDecimalString).toEqualTypeOf<
+                BrandType<
+                  typeof DecimalString,
+                  "NonNegativeDecimalString",
+                  NonNegativeDecimalStringError
+                >
+              >();
+              expectTypeOf<
+                typeof NonNegativeDecimalString.Output
+              >().toEqualTypeOf<
+                string &
+                  Brand<"DecimalString"> &
+                  Brand<"NonNegativeDecimalString">
+              >();
+              expectTypeOf<NonNegativeDecimalString>().toExtend<DecimalString>();
+            });
+
+            test("inherits canonical syntax and rejects negative decimals", () => {
+              expect(NonNegativeDecimalString.fromUnknown("0.3")).toEqual(
+                ok("0.3"),
+              );
+              expect(NonNegativeDecimalString.fromUnknown("-0.3")).toEqual(
+                err({ type: "NonNegativeDecimalString", value: "-0.3" }),
+              );
+              expect(NonNegativeDecimalString.fromUnknown("0.30")).toEqual(
+                err({ type: "DecimalString", value: "0.30" }),
+              );
+            });
+          });
+        });
+      });
+
+      describe("positiveDecimalString", () => {
+        test("creates a reusable Brand Factory", () => {
+          const Positive = positiveDecimalString(DecimalString);
+
+          expect(Positive.from.parent(DecimalString.orThrow("-0.1"))).toEqual(
+            err({ type: "PositiveDecimalString", value: "-0.1" }),
+          );
+          expect(
+            Positive.formatError({
+              type: "PositiveDecimalString",
+              value: "0",
+            }),
+          ).toBe('The value "0" must be a positive decimal string.');
+          expectTypeOf(positiveDecimalString).toEqualTypeOf<
+            BrandFactory<
+              "PositiveDecimalString",
+              DecimalString,
+              PositiveDecimalStringError
+            >
+          >();
+        });
+
+        describe("Type", () => {
+          describe("PositiveDecimalString", () => {
+            test("also satisfies NonNegativeDecimalString", () => {
+              expect(PositiveDecimalString.parent).toBe(
+                NonNegativeDecimalString,
+              );
+              expectTypeOf<typeof PositiveDecimalString.Output>().toEqualTypeOf<
+                string &
+                  Brand<"DecimalString"> &
+                  Brand<"NonNegativeDecimalString"> &
+                  Brand<"PositiveDecimalString">
+              >();
+              expectTypeOf<PositiveDecimalString>().toExtend<NonNegativeDecimalString>();
+            });
+
+            test("accepts positive decimals and rejects zero", () => {
+              expect(PositiveDecimalString.fromUnknown("0.3")).toEqual(
+                ok("0.3"),
+              );
+              expect(PositiveDecimalString.fromUnknown("0")).toEqual(
+                err({ type: "PositiveDecimalString", value: "0" }),
+              );
+            });
+          });
+        });
+      });
+
+      describe("nonPositiveDecimalString", () => {
+        test("creates a reusable Brand Factory", () => {
+          expect(
+            NonPositiveDecimalString.formatError({
+              type: "NonPositiveDecimalString",
+              value: "0.1",
+            }),
+          ).toBe('The value "0.1" must be a non-positive decimal string.');
+          expectTypeOf(nonPositiveDecimalString).toEqualTypeOf<
+            BrandFactory<
+              "NonPositiveDecimalString",
+              DecimalString,
+              NonPositiveDecimalStringError
+            >
+          >();
+        });
+
+        describe("Type", () => {
+          describe("NonPositiveDecimalString", () => {
+            test("accepts negative decimals and zero", () => {
+              expect(NonPositiveDecimalString.fromUnknown("-0.3")).toEqual(
+                ok("-0.3"),
+              );
+              expect(NonPositiveDecimalString.fromUnknown("0")).toEqual(
+                ok("0"),
+              );
+              expect(NonPositiveDecimalString.fromUnknown("0.3")).toEqual(
+                err({ type: "NonPositiveDecimalString", value: "0.3" }),
+              );
+              expectTypeOf<NonPositiveDecimalString>().toExtend<DecimalString>();
+            });
+          });
+        });
+      });
+
+      describe("negativeDecimalString", () => {
+        test("creates a reusable Brand Factory", () => {
+          expect(
+            NegativeDecimalString.formatError({
+              type: "NegativeDecimalString",
+              value: "0",
+            }),
+          ).toBe('The value "0" must be a negative decimal string.');
+          expectTypeOf(negativeDecimalString).toEqualTypeOf<
+            BrandFactory<
+              "NegativeDecimalString",
+              DecimalString,
+              NegativeDecimalStringError
+            >
+          >();
+        });
+
+        describe("Type", () => {
+          describe("NegativeDecimalString", () => {
+            test("also satisfies NonPositiveDecimalString", () => {
+              expect(NegativeDecimalString.parent).toBe(
+                NonPositiveDecimalString,
+              );
+              expectTypeOf<typeof NegativeDecimalString.Output>().toEqualTypeOf<
+                string &
+                  Brand<"DecimalString"> &
+                  Brand<"NonPositiveDecimalString"> &
+                  Brand<"NegativeDecimalString">
+              >();
+              expectTypeOf<NegativeDecimalString>().toExtend<NonPositiveDecimalString>();
+            });
+
+            test("accepts negative decimals and rejects zero", () => {
+              expect(NegativeDecimalString.fromUnknown("-0.3")).toEqual(
+                ok("-0.3"),
+              );
+              expect(NegativeDecimalString.fromUnknown("0")).toEqual(
+                err({ type: "NegativeDecimalString", value: "0" }),
+              );
+            });
+          });
         });
       });
     });

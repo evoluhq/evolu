@@ -993,7 +993,7 @@
           "lines": 47,
           "identifiers": 88,
           "instantiations": 1106,
-          "types": 210,
+          "types": 211,
           "symbols": 587
         },
         "nested-object-all-02": {
@@ -1001,7 +1001,7 @@
           "lines": 52,
           "identifiers": 94,
           "instantiations": 1642,
-          "types": 308,
+          "types": 309,
           "symbols": 721
         },
         "nested-object-all-04": {
@@ -1009,7 +1009,7 @@
           "lines": 59,
           "identifiers": 104,
           "instantiations": 2714,
-          "types": 505,
+          "types": 506,
           "symbols": 985
         },
         "nested-object-all-08": {
@@ -1017,7 +1017,7 @@
           "lines": 70,
           "identifiers": 122,
           "instantiations": 4858,
-          "types": 900,
+          "types": 901,
           "symbols": 1509
         },
         "nested-object-all-16": {
@@ -1025,7 +1025,7 @@
           "lines": 89,
           "identifiers": 156,
           "instantiations": 9146,
-          "types": 1691,
+          "types": 1692,
           "symbols": 2553
         },
         "nested-object-all-32": {
@@ -1033,7 +1033,7 @@
           "lines": 124,
           "identifiers": 222,
           "instantiations": 17722,
-          "types": 3274,
+          "types": 3275,
           "symbols": 4637
         },
         "object-all-01": {
@@ -1280,121 +1280,121 @@
           "files": 0,
           "lines": -1,
           "identifiers": 28,
-          "instantiations": 412,
-          "types": 98,
-          "symbols": 565
+          "instantiations": 384,
+          "types": 88,
+          "symbols": 529
         },
         "union-all-04": {
           "files": 1,
           "lines": 10,
           "identifiers": 39,
-          "instantiations": 708,
-          "types": 171,
-          "symbols": 846
+          "instantiations": 680,
+          "types": 151,
+          "symbols": 805
         },
         "union-all-08": {
           "files": 2,
           "lines": 23,
           "identifiers": 52,
-          "instantiations": 1278,
-          "types": 302,
-          "symbols": 1269
+          "instantiations": 1250,
+          "types": 275,
+          "symbols": 1228
         },
         "union-all-16": {
           "files": 3,
           "lines": 40,
           "identifiers": 69,
-          "instantiations": 2396,
-          "types": 545,
-          "symbols": 1976
+          "instantiations": 2368,
+          "types": 516,
+          "symbols": 1935
         },
         "union-all-32": {
           "files": 4,
           "lines": 65,
           "identifiers": 94,
-          "instantiations": 4610,
-          "types": 1012,
-          "symbols": 3251
+          "instantiations": 4582,
+          "types": 983,
+          "symbols": 3210
         },
         "literal-union-all-02": {
           "files": 0,
           "lines": -4,
           "identifiers": 25,
-          "instantiations": 448,
-          "types": 117,
-          "symbols": 480
+          "instantiations": 352,
+          "types": 83,
+          "symbols": 444
         },
         "literal-union-all-04": {
           "files": 1,
           "lines": 7,
           "identifiers": 33,
-          "instantiations": 789,
-          "types": 206,
-          "symbols": 645
+          "instantiations": 625,
+          "types": 139,
+          "symbols": 604
         },
         "literal-union-all-08": {
           "files": 2,
           "lines": 20,
           "identifiers": 41,
-          "instantiations": 1454,
-          "types": 368,
-          "symbols": 870
+          "instantiations": 1154,
+          "types": 249,
+          "symbols": 829
         },
         "literal-union-all-16": {
           "files": 3,
           "lines": 37,
           "identifiers": 49,
-          "instantiations": 2767,
-          "types": 674,
-          "symbols": 1215
+          "instantiations": 2399,
+          "types": 529,
+          "symbols": 1174
         },
         "literal-union-all-32": {
           "files": 4,
           "lines": 62,
           "identifiers": 57,
-          "instantiations": 5376,
-          "types": 1268,
-          "symbols": 1800
+          "instantiations": 5008,
+          "types": 1123,
+          "symbols": 1759
         },
         "mixed-union-all-02": {
           "files": 0,
           "lines": 10,
           "identifiers": 35,
-          "instantiations": 898,
-          "types": 258,
-          "symbols": 695
+          "instantiations": 657,
+          "types": 116,
+          "symbols": 658
         },
         "mixed-union-all-04": {
           "files": 1,
           "lines": 32,
           "identifiers": 53,
-          "instantiations": 1553,
-          "types": 411,
-          "symbols": 1108
+          "instantiations": 1278,
+          "types": 245,
+          "symbols": 1066
         },
         "mixed-union-all-08": {
           "files": 2,
           "lines": 61,
           "identifiers": 78,
-          "instantiations": 2816,
-          "types": 693,
-          "symbols": 1696
+          "instantiations": 2473,
+          "types": 496,
+          "symbols": 1654
         },
         "mixed-union-all-16": {
           "files": 3,
           "lines": 104,
           "identifiers": 117,
-          "instantiations": 5295,
-          "types": 1229,
-          "symbols": 2634
+          "instantiations": 4918,
+          "types": 1018,
+          "symbols": 2592
         },
         "mixed-union-all-32": {
           "files": 4,
           "lines": 175,
           "identifiers": 184,
-          "instantiations": 10206,
-          "types": 2273,
-          "symbols": 4272
+          "instantiations": 9829,
+          "types": 2062,
+          "symbols": 4230
         },
         "object-width-all-02": {
           "files": 1,
@@ -1441,7 +1441,7 @@
           "lines": 62,
           "identifiers": 105,
           "instantiations": 3075,
-          "types": 443,
+          "types": 444,
           "symbols": 1301
         },
         "object-union-all-04": {
@@ -1449,38 +1449,38 @@
           "lines": 84,
           "identifiers": 130,
           "instantiations": 5401,
-          "types": 740,
-          "symbols": 1978
+          "types": 731,
+          "symbols": 1973
         },
         "object-union-all-08": {
           "files": 3,
           "lines": 118,
           "identifiers": 169,
           "instantiations": 10031,
-          "types": 1319,
-          "symbols": 3191
+          "types": 1303,
+          "symbols": 3186
         },
         "object-union-all-16": {
           "files": 4,
           "lines": 176,
           "identifiers": 236,
           "instantiations": 19269,
-          "types": 2458,
-          "symbols": 5476
+          "types": 2440,
+          "symbols": 5471
         },
         "object-union-all-32": {
           "files": 5,
           "lines": 282,
           "identifiers": 359,
           "instantiations": 37723,
-          "types": 4717,
-          "symbols": 9905
+          "types": 4699,
+          "symbols": 9900
         },
         "discriminated-union-all-02": {
           "files": 2,
           "lines": 72,
           "identifiers": 116,
-          "instantiations": 3385,
+          "instantiations": 3375,
           "types": 693,
           "symbols": 1544
         },
@@ -1488,33 +1488,65 @@
           "files": 3,
           "lines": 94,
           "identifiers": 141,
-          "instantiations": 5675,
-          "types": 1014,
-          "symbols": 2347
+          "instantiations": 5665,
+          "types": 997,
+          "symbols": 2336
         },
         "discriminated-union-all-08": {
           "files": 4,
           "lines": 128,
           "identifiers": 180,
           "instantiations": 10247,
-          "types": 1689,
-          "symbols": 3867
+          "types": 1632,
+          "symbols": 3831
         },
         "discriminated-union-all-16": {
           "files": 5,
           "lines": 186,
           "identifiers": 247,
           "instantiations": 19485,
-          "types": 3120,
-          "symbols": 6959
+          "types": 3045,
+          "symbols": 6912
         },
         "discriminated-union-all-32": {
           "files": 6,
           "lines": 292,
           "identifiers": 370,
           "instantiations": 38323,
-          "types": 6351,
-          "symbols": 13771
+          "types": 6276,
+          "symbols": 13724
+        },
+        "template-literal-canonical-input-04": {
+          "files": 1,
+          "lines": 18,
+          "identifiers": 23,
+          "instantiations": 513,
+          "types": 114,
+          "symbols": 403
+        },
+        "template-literal-canonical-input-08": {
+          "files": 2,
+          "lines": 35,
+          "identifiers": 36,
+          "instantiations": 1042,
+          "types": 942,
+          "symbols": 1011
+        },
+        "template-literal-canonical-input-12": {
+          "files": 3,
+          "lines": 50,
+          "identifiers": 49,
+          "instantiations": 1697,
+          "types": 12599,
+          "symbols": 1686
+        },
+        "template-literal-canonical-input-16": {
+          "files": 4,
+          "lines": 65,
+          "identifiers": 62,
+          "instantiations": 2458,
+          "types": 197114,
+          "symbols": 2450
         },
         "brand-direct-all": {
           "files": 6,
@@ -1537,32 +1569,32 @@
           "lines": 26,
           "identifiers": 66,
           "instantiations": 970,
-          "types": 271,
+          "types": 272,
           "symbols": 352
         },
         "literal-all": {
           "files": 0,
           "lines": 23,
           "identifiers": 69,
-          "instantiations": 551,
-          "types": 137,
-          "symbols": 352
+          "instantiations": 548,
+          "types": 135,
+          "symbols": 311
         },
         "transform-all": {
           "files": -1,
           "lines": 73,
           "identifiers": 123,
-          "instantiations": 846,
-          "types": 238,
-          "symbols": 302
+          "instantiations": 838,
+          "types": 237,
+          "symbols": 301
         },
         "union-array-all": {
           "files": 4,
           "lines": 63,
           "identifiers": 82,
-          "instantiations": 4727,
-          "types": 1025,
-          "symbols": 3122
+          "instantiations": 4695,
+          "types": 994,
+          "symbols": 3040
         },
         "array-child-all": {
           "files": 6,
@@ -1576,16 +1608,16 @@
           "files": 4,
           "lines": 77,
           "identifiers": 112,
-          "instantiations": 5529,
-          "types": 1151,
-          "symbols": 3496
+          "instantiations": 5497,
+          "types": 1120,
+          "symbols": 3453
         },
         "transform-object-all": {
           "files": 0,
           "lines": 53,
           "identifiers": 89,
           "instantiations": 1187,
-          "types": 220,
+          "types": 221,
           "symbols": 562
         },
         "typed-all": {
@@ -1593,7 +1625,7 @@
           "lines": 52,
           "identifiers": 94,
           "instantiations": 1441,
-          "types": 254,
+          "types": 255,
           "symbols": 680
         },
         "object-transform-all": {
@@ -1601,7 +1633,7 @@
           "lines": 77,
           "identifiers": 138,
           "instantiations": 2310,
-          "types": 395,
+          "types": 396,
           "symbols": 974
         },
         "object-array-all": {
@@ -1609,7 +1641,7 @@
           "lines": 56,
           "identifiers": 100,
           "instantiations": 1482,
-          "types": 259,
+          "types": 260,
           "symbols": 658
         },
         "object-child-all": {
@@ -1617,7 +1649,7 @@
           "lines": 76,
           "identifiers": 150,
           "instantiations": 2233,
-          "types": 398,
+          "types": 399,
           "symbols": 921
         },
         "object-record-all": {
@@ -1625,47 +1657,47 @@
           "lines": 56,
           "identifiers": 91,
           "instantiations": 1727,
-          "types": 286,
+          "types": 287,
           "symbols": 528
         },
         "record-transform-all": {
           "files": 0,
           "lines": 84,
           "identifiers": 133,
-          "instantiations": 1124,
-          "types": 249,
-          "symbols": 419
+          "instantiations": 1121,
+          "types": 247,
+          "symbols": 378
         },
         "lazy-direct-all": {
           "files": 0,
           "lines": 99,
           "identifiers": 185,
-          "instantiations": 2448,
-          "types": 559,
-          "symbols": 918
+          "instantiations": 2438,
+          "types": 554,
+          "symbols": 916
         },
         "lazy-mutual-all": {
           "files": -2,
           "lines": -28,
           "identifiers": 17,
-          "instantiations": 2748,
-          "types": 479,
+          "instantiations": 2740,
+          "types": 476,
           "symbols": 605
         },
         "localize-lazy-direct-all": {
           "files": -2,
           "lines": -44,
           "identifiers": -59,
-          "instantiations": 2694,
-          "types": 548,
+          "instantiations": 2686,
+          "types": 543,
           "symbols": 735
         },
         "localize-lazy-mutual-all": {
           "files": -2,
           "lines": -30,
           "identifiers": -30,
-          "instantiations": 3856,
-          "types": 598,
+          "instantiations": 3848,
+          "types": 593,
           "symbols": 804
         }
       }

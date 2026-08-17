@@ -20,6 +20,7 @@ names or workload prefixes while developing a workload:
 pnpm bench:type --filter=array-child-all
 pnpm bench:type --filter=nested-object-all --filter=object-union-all
 pnpm bench:type --filter=nested-object-all-32
+pnpm bench:type --filter=template-literal-canonical-input
 ```
 
 A filtered run reports the same diagnostics and compares any matching committed
@@ -46,7 +47,8 @@ depend on it.
 
 The Type suite contains twenty-six isolated depth-scaling workloads at depths
 1, 2, 4, 8, 16, and 32, six width-scaling workloads at widths 2, 4, 8, 16,
-and 32, plus nineteen standalone workloads:
+and 32, one TemplateLiteral scaling workload at 4, 8, 12, and 16 binary
+positions, plus nineteen standalone workloads:
 
 - `factory-output` forces only the final output of a factory-created chain.
 - `factory-errors` forces only the complete error union of a factory-created chain.
@@ -91,6 +93,8 @@ and 32, plus nineteen standalone workloads:
   `from.parent` boundaries.
 - `literal-all` forces string and number Literal Type outputs and errors together
   with Array Type composition.
+- `template-literal-canonical-input` forces exact TemplateLiteral CanonicalInput
+  expansion across repeated binary Union captures.
 - `union-all` forces output, errors, `fromUnknown`, `from`, members, and parent
   across a widening flat Union.
 - `literal-union-all` forces the same channels through the literal-value Union

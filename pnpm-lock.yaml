@@ -1031,33 +1031,6 @@ importers:
         specifier: ^0.4.2
         version: 0.4.3
 
-  scripts/typescript6:
-    devDependencies:
-      '@evolu/common':
-        specifier: workspace:*
-        version: link:../../packages/common
-      '@evolu/nodejs':
-        specifier: workspace:*
-        version: link:../../packages/nodejs
-      '@evolu/react':
-        specifier: workspace:*
-        version: link:../../packages/react
-      '@evolu/react-native':
-        specifier: workspace:*
-        version: link:../../packages/react-native
-      '@evolu/react-web':
-        specifier: workspace:*
-        version: link:../../packages/react-web
-      '@evolu/svelte':
-        specifier: workspace:*
-        version: link:../../packages/svelte
-      '@evolu/vue':
-        specifier: workspace:*
-        version: link:../../packages/vue
-      '@evolu/web':
-        specifier: workspace:*
-        version: link:../../packages/web
-
 packages:
 
   '@adobe/css-tools@4.5.0':

@@ -17,16 +17,6 @@ import {
   type PartialProp,
   type Awaitable,
   isPromiseLike,
-  type Digit,
-  type Digit1To9,
-  type Digit1To6,
-  type Digit1To23,
-  type Digit1To51,
-  type Digit1To99,
-  type Digit1To59,
-  type Int1To99,
-  type Int1To100,
-  type NumberFromString,
   type CompileTimeError,
   type IsUnion,
   type KeysOfUnion,
@@ -209,94 +199,6 @@ test("isPromiseLike", () => {
     }
   };
   expectTypeOf(narrow).toBeFunction();
-});
-
-test("Digit", () => {
-  expectTypeOf<Digit>().toEqualTypeOf<
-    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
-  >();
-});
-
-test("Digit1To9", () => {
-  expectTypeOf<Digit1To9>().toEqualTypeOf<
-    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
-  >();
-});
-
-test("Digit1To6", () => {
-  expectTypeOf<Digit1To6>().toEqualTypeOf<"1" | "2" | "3" | "4" | "5" | "6">();
-});
-
-test("Digit1To23", () => {
-  expectTypeOf<"1">().toExtend<Digit1To23>();
-  expectTypeOf<"9">().toExtend<Digit1To23>();
-  expectTypeOf<"10">().toExtend<Digit1To23>();
-  expectTypeOf<"19">().toExtend<Digit1To23>();
-  expectTypeOf<"20">().toExtend<Digit1To23>();
-  expectTypeOf<"23">().toExtend<Digit1To23>();
-  expectTypeOf<"0">().not.toExtend<Digit1To23>();
-  expectTypeOf<"24">().not.toExtend<Digit1To23>();
-  expectTypeOf<"01">().not.toExtend<Digit1To23>();
-});
-
-test("Digit1To51", () => {
-  expectTypeOf<"1">().toExtend<Digit1To51>();
-  expectTypeOf<"9">().toExtend<Digit1To51>();
-  expectTypeOf<"10">().toExtend<Digit1To51>();
-  expectTypeOf<"49">().toExtend<Digit1To51>();
-  expectTypeOf<"50">().toExtend<Digit1To51>();
-  expectTypeOf<"51">().toExtend<Digit1To51>();
-  expectTypeOf<"0">().not.toExtend<Digit1To51>();
-  expectTypeOf<"52">().not.toExtend<Digit1To51>();
-  expectTypeOf<"01">().not.toExtend<Digit1To51>();
-});
-
-test("Digit1To99", () => {
-  expectTypeOf<"1">().toExtend<Digit1To99>();
-  expectTypeOf<"9">().toExtend<Digit1To99>();
-  expectTypeOf<"10">().toExtend<Digit1To99>();
-  expectTypeOf<"50">().toExtend<Digit1To99>();
-  expectTypeOf<"99">().toExtend<Digit1To99>();
-  expectTypeOf<"0">().not.toExtend<Digit1To99>();
-  expectTypeOf<"100">().not.toExtend<Digit1To99>();
-  expectTypeOf<"01">().not.toExtend<Digit1To99>();
-});
-
-test("Digit1To59", () => {
-  expectTypeOf<"1">().toExtend<Digit1To59>();
-  expectTypeOf<"9">().toExtend<Digit1To59>();
-  expectTypeOf<"10">().toExtend<Digit1To59>();
-  expectTypeOf<"50">().toExtend<Digit1To59>();
-  expectTypeOf<"59">().toExtend<Digit1To59>();
-  expectTypeOf<"0">().not.toExtend<Digit1To59>();
-  expectTypeOf<"60">().not.toExtend<Digit1To59>();
-  expectTypeOf<"99">().not.toExtend<Digit1To59>();
-});
-
-test("Int1To99", () => {
-  expectTypeOf<1>().toExtend<Int1To99>();
-  expectTypeOf<50>().toExtend<Int1To99>();
-  expectTypeOf<99>().toExtend<Int1To99>();
-  expectTypeOf<0>().not.toExtend<Int1To99>();
-  expectTypeOf<100>().not.toExtend<Int1To99>();
-  expectTypeOf<"1">().not.toExtend<Int1To99>();
-});
-
-test("Int1To100", () => {
-  expectTypeOf<1>().toExtend<Int1To100>();
-  expectTypeOf<50>().toExtend<Int1To100>();
-  expectTypeOf<100>().toExtend<Int1To100>();
-  expectTypeOf<0>().not.toExtend<Int1To100>();
-  expectTypeOf<101>().not.toExtend<Int1To100>();
-  expectTypeOf<"100">().not.toExtend<Int1To100>();
-});
-
-test("NumberFromString", () => {
-  expectTypeOf<NumberFromString<"0">>().toEqualTypeOf<0>();
-  expectTypeOf<NumberFromString<"42">>().toEqualTypeOf<42>();
-  expectTypeOf<NumberFromString<"-1">>().toEqualTypeOf<-1>();
-  expectTypeOf<NumberFromString<"1.5">>().toEqualTypeOf<1.5>();
-  expectTypeOf<NumberFromString<"value">>().toEqualTypeOf<never>();
 });
 
 test("CompileTimeError", () => {

@@ -42,7 +42,12 @@ import {
   type TestLeakDetectorDep,
 } from "./LeakDetector.ts";
 import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.ts";
-import { decrement, increment, incrementPositiveInt } from "./Number.ts";
+import {
+  decrement,
+  increment,
+  incrementPositiveInt,
+  type Int1To100OrPositiveInt,
+} from "./Number.ts";
 import {
   emptyRecord,
   mapObject,
@@ -101,7 +106,6 @@ import {
   Unknown,
   UnknownResult,
   type Id,
-  type Int1To100OrPositiveInt,
   type ObjectType,
   type RecordType,
   type Typed,

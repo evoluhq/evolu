@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import type {
   Duration,
-  DurationLiteral,
   PerformanceDuration,
   PerformanceTime,
   PerformanceTimeOrigin,
@@ -9,6 +8,14 @@ import type {
 } from "../../../../packages/common/src/Time.ts";
 import {
   createTime,
+  DurationLiteral,
+  DurationLiteralDays,
+  DurationLiteralHours,
+  DurationLiteralMilliseconds,
+  DurationLiteralMinutes,
+  DurationLiteralSeconds,
+  DurationLiteralWeeks,
+  DurationLiteralYears,
   durationToMillis,
   formatMillisAsClockTime,
   formatMillisAsDuration,
@@ -700,6 +707,25 @@ describe("Time", () => {
       expectTypeOf<"100y">().not.toExtend<DurationLiteral>();
       expectTypeOf<"1000ms">().not.toExtend<DurationLiteral>();
       expectTypeOf<"1.0s">().not.toExtend<DurationLiteral>();
+    });
+
+    test("validates durations at runtime", () => {
+      expect(DurationLiteralMilliseconds.is("999ms")).toBe(true);
+      expect(DurationLiteralMilliseconds.is("1000ms")).toBe(false);
+      expect(DurationLiteralSeconds.is("59.9s")).toBe(true);
+      expect(DurationLiteralSeconds.is("60s")).toBe(false);
+      expect(DurationLiteralMinutes.is("59.9m")).toBe(true);
+      expect(DurationLiteralMinutes.is("60m")).toBe(false);
+      expect(DurationLiteralHours.is("23.9h")).toBe(true);
+      expect(DurationLiteralHours.is("24h")).toBe(false);
+      expect(DurationLiteralDays.is("6.9d")).toBe(true);
+      expect(DurationLiteralDays.is("7d")).toBe(false);
+      expect(DurationLiteralWeeks.is("51.9w")).toBe(true);
+      expect(DurationLiteralWeeks.is("52w")).toBe(false);
+      expect(DurationLiteralYears.is("99.9y")).toBe(true);
+      expect(DurationLiteralYears.is("100y")).toBe(false);
+      expect(DurationLiteral.is("1.5s")).toBe(true);
+      expect(DurationLiteral.is("0.5s")).toBe(false);
     });
   });
 

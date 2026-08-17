@@ -36,10 +36,7 @@ import {
   instance,
   isInstance,
   type CompileTimeError,
-  type Digit,
-  type Digit1To9,
   type Instance,
-  type Int1To100,
   type IsUnion,
   type Literal,
   type Simplify,
@@ -144,8 +141,8 @@ import {
  * normalized value, it uses a `null` prototype so every string key remains
  * ordinary data.
  *
- * Evolu Type expects TypeScript's `exactOptionalPropertyTypes` compiler option
- * to be enabled.
+ * Evolu Type requires TypeScript 7 or newer and expects the
+ * `exactOptionalPropertyTypes` compiler option to be enabled.
  *
  * Predefined Types intentionally use the names of corresponding JavaScript
  * built-ins because they represent those familiar value categories. If an
@@ -863,7 +860,7 @@ const assertTypeOutput = <Error extends TypeError>(
 };
 
 /**
- * Creates localized copies of selected {@link Type | Types} for every locale.
+ * Localized copies of selected {@link Type} declarations for every locale.
  *
  * Each locale supplies one formatter for every Type that can own a formatted
  * error. Structural Types use their own formatter for structural failures and
@@ -2128,10 +2125,13 @@ type RuntimeEncoder = RuntimeOperation<unknown>;
 
 declare const encoderSymbolType: unique symbol;
 declare const fromSymbolType: unique symbol;
+declare const templateLiteralSyntaxSymbolType: unique symbol;
 const encoderSymbol: typeof encoderSymbolType =
   /*#__PURE__*/ globalThis.Symbol() as typeof encoderSymbolType;
 const fromSymbol: typeof fromSymbolType =
   /*#__PURE__*/ globalThis.Symbol() as typeof fromSymbolType;
+const templateLiteralSyntaxSymbol: typeof templateLiteralSyntaxSymbolType =
+  /*#__PURE__*/ globalThis.Symbol() as typeof templateLiteralSyntaxSymbolType;
 
 /**
  * Type-erased {@link Type} used to traverse and invoke heterogeneous Type nodes
@@ -2154,6 +2154,7 @@ type RuntimeTypeNode = Omit<TypeNode, typeof customFromSymbol> & {
   // assertion, avoiding repeated validation and preserving identity fast paths.
   readonly [encoderSymbolType]: RuntimeEncoder;
   readonly [getRuntimeTypeIssuesSymbolType]: RuntimeGetTypeIssues;
+  readonly [templateLiteralSyntaxSymbolType]?: true;
 };
 
 const mapRuntimeResult =
@@ -2612,7 +2613,7 @@ interface ObjectTagOutputByName {
 }
 
 /**
- * Creates a realm-neutral {@link Type} that trusts an object's reported tag.
+ * Realm-neutral {@link Type} trusting an object's reported tag.
  *
  * Predefined built-in tags expose their native Output type under the assumption
  * that trusted code does not forge their tags. They do not verify native
@@ -2720,7 +2721,7 @@ export const Uint8Array = /*#__PURE__*/ objectTag("Uint8Array");
 export const ArrayBuffer = /*#__PURE__*/ objectTag("ArrayBuffer");
 
 /**
- * Creates a {@link Type} for instances of one constructor.
+ * Instance {@link Type} for one constructor.
  *
  * Membership uses the intrinsic prototype chain, so subclasses are accepted,
  * equivalent constructors from other realms are rejected, and custom
@@ -2831,6 +2832,26 @@ type InstanceConstructorCompileTimeError = CompileTimeError<
  * primitive through `from.parent`. The expected value must have one exact
  * literal type. Validation uses `===`, so `-0` matches `0`.
  *
+ * In {@link templateLiteralParser}, use a string Literal Type when the literal
+ * should be decoded into the Output Tuple. Use a raw string when it should only
+ * frame the canonical string.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { literal } from "@evolu/common";
+ *
+ * const Ready = literal("ready");
+ *
+ * expectTypeOf<typeof Ready.Output>().toEqualTypeOf<"ready">();
+ * expectOk(Ready.fromUnknown("ready"), "ready");
+ * expectErr(Ready.fromUnknown("pending"), {
+ *   type: "Literal",
+ *   expected: "ready",
+ *   value: "pending",
+ * });
+ * ```
+ *
  * @group Unions
  */
 export const literal = <const Expected extends Literal>(
@@ -2867,7 +2888,10 @@ export const literal = <const Expected extends Literal>(
           formatError,
         )
       : createRootType("Literal", validate, formatError),
-    { expected: literalExpected },
+    {
+      expected: literalExpected,
+      [templateLiteralSyntaxSymbol]: true,
+    },
   ) as unknown as LiteralType<Expected>;
 };
 
@@ -2886,6 +2910,7 @@ export interface LiteralType<Expected extends Literal> extends Type<
   >,
   IdentityEncodingForParent<LiteralParent<Expected>>
 > {
+  readonly [templateLiteralSyntaxSymbol]: true;
   readonly expected: Expected;
 }
 
@@ -3072,7 +3097,7 @@ export function union(
     from,
     to,
     getTypeIssues,
-    { members },
+    { members, [templateLiteralSyntaxSymbol]: true },
   );
 }
 
@@ -3116,7 +3141,7 @@ const createUnionValidation =
   };
 
 /**
- * Shorthand for passing a {@link Type} and `undefined` to {@link union}.
+ * Union {@link Type} containing the supplied Type and `undefined`.
  *
  * This does not make an object property optional. It changes only the values
  * accepted when the property is present.
@@ -3128,7 +3153,7 @@ export const undefinedOr = <ValueType extends TypeNode>(
 ): UnionType<readonly [ValueType, typeof Undefined]> => union(type, Undefined);
 
 /**
- * Shorthand for passing a {@link Type} and `null` to {@link union}.
+ * Union {@link Type} containing the supplied Type and `null`.
  *
  * @group Unions
  */
@@ -3137,7 +3162,7 @@ export const nullOr = <ValueType extends TypeNode>(
 ): UnionType<readonly [ValueType, typeof Null]> => union(type, Null);
 
 /**
- * Shorthand for passing a {@link Type}, `null`, and `undefined` to {@link union}.
+ * Union {@link Type} containing the supplied Type, `null`, and `undefined`.
  *
  * @group Unions
  */
@@ -3194,6 +3219,7 @@ export interface UnionType<
   CanonicalInputOf<Members[number]>,
   AllTypesUseIdentityEncoding<Members[number]>
 > {
+  readonly [templateLiteralSyntaxSymbol]: true;
   readonly [reflectedTypesSymbol]?: Members[number];
   readonly members: Members;
 }
@@ -3325,6 +3351,849 @@ interface UnionErrorValue<
 > extends TypeError<"Union"> {
   readonly errors: NonEmptyReadonlyArray<MemberError>;
 }
+
+/**
+ * Template literal {@link Type} for validation and parsing.
+ *
+ * Parses and creates structured strings.
+ *
+ * Accepts the same template parts as {@link templateLiteral}: fixed string
+ * literals and Types canonically encoded as strings. Instead of keeping Output
+ * as a string, fixed literals define the framing and Output is a readonly Tuple
+ * of the decoded Type parts. `to` encodes that Tuple back into the canonical
+ * string represented by the parent Type. At least one Type part is required.
+ *
+ * When every capture uses identity encoding, the parent Output is the exact
+ * TypeScript template literal type. A transforming capture makes it nominal;
+ * create such strings with `to` or validate them with the parent Type.
+ *
+ * Deterministic framing is a core correctness guarantee. It preserves
+ * reversibility and keeps capture boundaries unambiguous. Different capture
+ * Tuples must never encode to the same string. The parser provides predictable
+ * parsing without pathological backtracking and decodes each capture once, so
+ * adversarial input cannot trigger exponential parser work. Fixed-width captures
+ * may be adjacent, but only one variable-width capture is allowed. Declarations
+ * that could join UTF-16 surrogate halves across parts are rejected during
+ * construction.
+ *
+ * Keep capture unions reasonably small to avoid excessive compiler work.
+ *
+ * TypeScript template literal types can describe a fixed number of digit
+ * positions, but not an arbitrarily long sequence of digits. Such grammars use
+ * branded Types such as {@link DecimalString}; `templateLiteralParser` preserves
+ * that exactness by requiring a validated branded capture when encoding.
+ *
+ * ### Example
+ *
+ * A template literal Type defines both a canonical string representation and
+ * the structured data decoded from it:
+ *
+ * ```ts
+ * import { templateLiteralParser, union } from "@evolu/common";
+ *
+ * const Language = union("en", "cs");
+ * const Region = union("US", "CZ");
+ *
+ * // Define a Type for "en-US" | "en-CZ" | "cs-US" | "cs-CZ".
+ * const SupportedLocale = templateLiteralParser(Language, "-", Region);
+ *
+ * // Output is the decoded language and region.
+ * type SupportedLocale = typeof SupportedLocale.Output;
+ * expectTypeOf<SupportedLocale>().toEqualTypeOf<
+ *   readonly ["en" | "cs", "US" | "CZ"]
+ * >();
+ *
+ * // The parent Output is the canonical locale string.
+ * type SupportedLocaleLiteral = typeof SupportedLocale.parent.Output;
+ * expectTypeOf<SupportedLocaleLiteral>().toEqualTypeOf<
+ *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ"
+ * >();
+ *
+ * // Parse an unknown string into structured data.
+ * const result = SupportedLocale.fromUnknown("cs-CZ");
+ * assert(result.ok);
+ * const locale = result.value;
+ * expectTypeOf(locale).toEqualTypeOf<SupportedLocale>();
+ * expect(locale).toEqual(["cs", "CZ"]);
+ * expectErr(SupportedLocale.fromUnknown("cs/CZ"), {
+ *   type: "TemplateLiteral",
+ *   value: "cs/CZ",
+ * });
+ *
+ * // Encode structured data into its canonical string.
+ * const localeLiteral = SupportedLocale.to(locale);
+ * expectTypeOf(localeLiteral).toEqualTypeOf<SupportedLocaleLiteral>();
+ * expect(localeLiteral).toBe("cs-CZ");
+ *
+ * // Validate a string configuration value.
+ * const configValue: unknown = "cs-CZ";
+ * assert(SupportedLocale.parent.is(configValue));
+ * expectTypeOf(configValue).toEqualTypeOf<SupportedLocaleLiteral>();
+ * expect(SupportedLocale.parent.is("fr-CZ")).toBe(false);
+ * ```
+ *
+ * `SupportedLocale` is structured data for application code.
+ * `SupportedLocaleLiteral` is its canonical representation for configuration
+ * and other APIs that require a string, such as URL parameters, environment
+ * variables, and storage keys.
+ *
+ * Use branded captures for strings that TypeScript template literal types
+ * cannot express exactly, such as arbitrary-length canonical decimals:
+ *
+ * ```ts
+ * import {
+ *   NonNegativeDecimalString,
+ *   templateLiteralParser,
+ * } from "@evolu/common";
+ *
+ * const DecimalText = templateLiteralParser(
+ *   "decimal:",
+ *   NonNegativeDecimalString,
+ * );
+ *
+ * // DecimalText.to requires a validated NonNegativeDecimalString.
+ * const zero = NonNegativeDecimalString.orThrow("0");
+ *
+ * expectOk(DecimalText.fromUnknown("decimal:0"), [zero]);
+ * expect(DecimalText.to([zero])).toBe("decimal:0");
+ * ```
+ *
+ * Capture Types (the Type arguments passed to `templateLiteralParser`) can use
+ * transformations to decode substrings into non-string data:
+ *
+ * ```ts
+ * import {
+ *   Int64FromInt64String,
+ *   templateLiteralParser,
+ * } from "@evolu/common";
+ *
+ * const ItemId = templateLiteralParser("item-", Int64FromInt64String);
+ * type ItemId = typeof ItemId.Output;
+ * type ItemIdLiteral = typeof ItemId.parent.Output;
+ *
+ * // Decode the string into structured data.
+ * const result = ItemId.fromUnknown("item-42");
+ * assert(result.ok);
+ * const itemId = result.value;
+ * expectTypeOf(itemId).toEqualTypeOf<ItemId>();
+ * expect(itemId).toEqual([42n]);
+ *
+ * // Encode the structured data into its canonical string.
+ * const itemIdLiteral = ItemId.to(itemId);
+ * expectTypeOf(itemIdLiteral).toEqualTypeOf<ItemIdLiteral>();
+ * expect(itemIdLiteral).toBe("item-42");
+ *
+ * // TypeScript cannot prove from the literal alone that "42" is a valid Int64 encoding.
+ * // @ts-expect-error Validate it with ItemId.parent or create it with ItemId.to.
+ * const invalidItemIdLiteral: ItemIdLiteral = "item-42";
+ * ```
+ *
+ * Fixed-width captures can be adjacent:
+ *
+ * ```ts
+ * import { templateLiteralParser, union } from "@evolu/common";
+ *
+ * const Digit = union("0", "1", "2", "3", "4", "5", "6", "7", "8", "9");
+ * const TwoDigits = templateLiteralParser(Digit, Digit);
+ * type TwoDigits = typeof TwoDigits.Output;
+ * type TwoDigitsLiteral = typeof TwoDigits.parent.Output;
+ *
+ * const twoDigits: TwoDigits = ["4", "2"];
+ * const twoDigitsLiteral: TwoDigitsLiteral = "42";
+ * // @ts-expect-error TwoDigitsLiteral requires exactly two digits.
+ * const threeDigitsLiteral: TwoDigitsLiteral = "123";
+ *
+ * expectOk(TwoDigits.from.parent(twoDigitsLiteral), twoDigits);
+ * expect(TwoDigits.to(twoDigits)).toBe(twoDigitsLiteral);
+ * ```
+ *
+ * TypeScript rejects multiple variable-width captures because their encoded
+ * boundaries would be ambiguous:
+ *
+ * ```ts
+ * import { String, templateLiteralParser } from "@evolu/common";
+ *
+ * // @ts-expect-error At most one Type capture can have a variable-width string representation.
+ * templateLiteralParser(String, ":", String);
+ * ```
+ *
+ * This restriction keeps encoding reversible: different capture Tuples must
+ * never produce the same string. A delimiter alone is not enough because it can
+ * also occur inside a capture. Some formats could provide stronger guarantees,
+ * such as captures that exclude a delimiter; support for those can be added
+ * when concrete use cases justify the additional framing rules.
+ *
+ * @group Template literals
+ */
+export const templateLiteralParser = <const Parts extends TemplateLiteralParts>(
+  ...parts: {
+    readonly [Index in keyof Parts]: ValidateTemplateLiteralPart<Parts[Index]>;
+  } & TemplateLiteralValidation<Parts>
+): TemplateLiteralParserType<Parts> =>
+  createTemplateLiteralParserType(parts as unknown as Parts);
+
+const createTemplateLiteralParserType = <
+  const Parts extends TemplateLiteralParts,
+>(
+  templateParts: Parts,
+): TemplateLiteralParserType<Parts> => {
+  const captureTypes = templateParts.filter(
+    (part): part is TypeNode => typeof part !== "string",
+  ) as unknown as TemplateLiteralCaptureTypes<Parts>;
+  const runtimeCaptureTypes =
+    captureTypes as unknown as NonEmptyReadonlyArray<RuntimeTypeNode>;
+  const output = tuple(...captureTypes);
+  const runtimeOutput = output as TemplateLiteralCaptureTuple<Parts> &
+    RuntimeTypeNode;
+  const reflection = {
+    output,
+    parts: templateParts,
+    [templateLiteralSyntaxSymbol]: true as const,
+  };
+  const parse = compileTemplateLiteralParser(templateParts);
+  const decodeString = (
+    value: string,
+    options: ValidationOptions = firstValidationOptions,
+  ): Result<
+    TemplateLiteralCaptureTuple<Parts>["Output"],
+    TemplateLiteralRuntimeParseError<Parts>
+  > => {
+    const parseResult = parse(value);
+    if (!parseResult.ok) return parseResult;
+
+    const outputResult = validateTupleItems(
+      parseResult.value,
+      runtimeCaptureTypes,
+      (capture, value, captureOptions) =>
+        capture.fromUnknown(value, captureOptions),
+      options,
+      false,
+    );
+    return (outputResult.ok
+      ? outputResult
+      : err({
+          type: "TemplateLiteral",
+          outputError: outputResult.error,
+        })) as Result<
+      TemplateLiteralCaptureTuple<Parts>["Output"],
+      TemplateLiteralRuntimeParseError<Parts>
+    >;
+  };
+  const encodeCaptures = (
+    captures: TemplateLiteralCaptureTuple<Parts>["Output"],
+  ): TemplateLiteralStringOutput<Parts> => {
+    const encodedCaptures = runtimeOutput[encoderSymbol](
+      captures as never,
+    ) as ReadonlyArray<string>;
+    let value = "";
+    let captureIndex = 0;
+
+    for (const part of templateParts) {
+      value +=
+        typeof part === "string" ? part : encodedCaptures[captureIndex++];
+    }
+    return value as TemplateLiteralStringOutput<Parts>;
+  };
+  const canonicalizeString = (
+    value: string,
+    options: ValidationOptions,
+  ): Result<
+    TemplateLiteralStringOutput<Parts>,
+    TemplateLiteralRuntimeParseError<Parts>
+  > => {
+    const result = decodeString(value, options);
+    return result.ok ? ok(encodeCaptures(result.value)) : result;
+  };
+  const validateCanonicalString = (
+    value: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ): Result<
+    TemplateLiteralStringOutput<Parts>,
+    TypeOfError<"String"> | TemplateLiteralRuntimeParseError<Parts>
+  > => {
+    const stringResult = String.fromUnknown(value, options);
+    if (!stringResult.ok) return stringResult;
+
+    const result = canonicalizeString(stringResult.value, options);
+    if (!result.ok || result.value === stringResult.value) return result;
+
+    return err({ type: "TemplateLiteral", value: stringResult.value });
+  };
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+    if (error.type !== "TemplateLiteral") {
+      return (String as unknown as RuntimeTypeNode)[getRuntimeTypeIssuesSymbol](
+        error,
+        mode,
+      );
+    }
+    if ("outputError" in error) {
+      return runtimeOutput[getRuntimeTypeIssuesSymbol](
+        error.outputError as TypeError,
+        mode,
+      );
+    }
+    return singleRuntimeTypeIssue(
+      "TemplateLiteral",
+      error,
+      formatTemplateLiteralError as TypeErrorFormatter<TypeError>,
+    );
+  };
+  const canonicalStringFromUnknown = (
+    value: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ): Result<
+    TemplateLiteralStringOutput<Parts>,
+    TypeOfError<"String"> | TemplateLiteralRuntimeParseError<Parts>
+  > => {
+    const stringResult = String.fromUnknown(value, options);
+    return stringResult.ok
+      ? canonicalizeString(stringResult.value, options)
+      : stringResult;
+  };
+  const canonicalStringFrom = createFromOperation(
+    (value, options = firstValidationOptions) =>
+      canonicalizeString(value, options),
+  );
+  const stringType = createTypeNode<TemplateLiteralType<Parts>>(
+    "TemplateLiteral",
+    String,
+    canonicalStringFromUnknown,
+    (value) => validateCanonicalString(value, firstValidationOptions).ok,
+    validateCanonicalString,
+    canonicalStringFrom,
+    identity,
+    getTypeIssues,
+    reflection,
+  ) as TemplateLiteralType<Parts> & RuntimeTypeNode;
+  const fromUnknown = (
+    value: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ): Result<
+    TemplateLiteralCaptureTuple<Parts>["Output"],
+    InferErrors<TemplateLiteralType<Parts>>
+  > => {
+    const stringResult = String.fromUnknown(value, options);
+    if (!stringResult.ok) return stringResult;
+
+    // The internal parser has one broad signature, but a statically frameless
+    // declaration cannot return its framing error.
+    return decodeString(stringResult.value, options) as Result<
+      TemplateLiteralCaptureTuple<Parts>["Output"],
+      InferErrors<TemplateLiteralType<Parts>>
+    >;
+  };
+  const fromCanonicalString: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => {
+    String.from(value);
+    const result = decodeString(value, options);
+    if (!result.ok || encodeCaptures(result.value) !== value) {
+      throw new Error("Expected TemplateLiteral.", {
+        cause: result.ok
+          ? ({
+              type: "TemplateLiteral",
+              value,
+            } satisfies TemplateLiteralError)
+          : result.error,
+      });
+    }
+    return result;
+  };
+  const fromString: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options = firstValidationOptions,
+  ) => {
+    String.from(value);
+    return decodeString(value, options);
+  };
+  fromCanonicalString.parent = fromString;
+  const from = createFromOperation(fromCanonicalString);
+  const type = createTypeNode<TemplateLiteralParserType<Parts>>(
+    "TemplateLiteral",
+    stringType,
+    fromUnknown,
+    runtimeOutput.is,
+    runtimeOutput[outputValidationSymbol],
+    from,
+    encodeCaptures,
+    getTypeIssues,
+    reflection,
+  );
+  (type.from as RuntimeOperation<Result<unknown, TypeError>>).parent =
+    fromCanonicalString;
+
+  return type;
+};
+
+/** @group Template literals */
+export interface TemplateLiteralParserType<
+  Parts extends TemplateLiteralParts,
+> extends Type<
+  "TemplateLiteral",
+  string,
+  TemplateLiteralCaptureTuple<Parts>["Output"],
+  never,
+  TemplateLiteralType<Parts>,
+  InferErrors<TemplateLiteralType<Parts>>,
+  never,
+  TemplateLiteralStringOutput<Parts>,
+  false
+> {
+  readonly [templateLiteralSyntaxSymbol]: true;
+  readonly [reflectedTypesSymbol]?: TemplateLiteralCaptureTuple<Parts>;
+  readonly output: TemplateLiteralCaptureTuple<Parts>;
+  readonly parts: Parts;
+}
+
+/** @group Template literals */
+export interface TemplateLiteralType<
+  Parts extends TemplateLiteralParts,
+> extends Type<
+  "TemplateLiteral",
+  string,
+  TemplateLiteralStringOutput<Parts>,
+  TemplateLiteralParseError<Parts>,
+  typeof String,
+  TypeOfError<"String"> | TemplateLiteralParseError<Parts>,
+  never,
+  TemplateLiteralStringOutput<Parts>,
+  true
+> {
+  readonly [templateLiteralSyntaxSymbol]: true;
+  readonly [reflectedTypesSymbol]?: TemplateLiteralCaptureTuple<Parts>;
+  readonly output: TemplateLiteralCaptureTuple<Parts>;
+  readonly parts: Parts;
+}
+
+/**
+ * Template literal {@link Type} for validation.
+ *
+ * Creates a canonical string Type from fixed strings and string-encoded Types.
+ *
+ * Use this factory when Output should remain a string. Switch to
+ * {@link templateLiteralParser} when the individual Type parts should be
+ * decoded into a Tuple.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { templateLiteral, union } from "@evolu/common";
+ *
+ * const Language = union("en", "cs");
+ * const Region = union("US", "CZ");
+ * const Locale = templateLiteral(Language, "-", Region);
+ *
+ * expectTypeOf<typeof Locale.Output>().toEqualTypeOf<
+ *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ"
+ * >();
+ * expectOk(Locale.fromUnknown("cs-CZ"), "cs-CZ");
+ * expect(Locale.is("fr-CZ")).toBe(false);
+ * ```
+ *
+ * @group Template literals
+ */
+export const templateLiteral = <const Parts extends TemplateLiteralParts>(
+  ...parts: {
+    readonly [Index in keyof Parts]: ValidateTemplateLiteralPart<Parts[Index]>;
+  } & TemplateLiteralValidation<Parts>
+): TemplateLiteralType<Parts> =>
+  createTemplateLiteralParserType(parts as unknown as Parts).parent;
+
+type TemplateLiteralParseError<Parts extends TemplateLiteralParts> =
+  TransformError<
+    "TemplateLiteral",
+    TemplateLiteralIsFrameless<Parts> extends true
+      ? never
+      : TemplateLiteralError,
+    TemplateLiteralCaptureTupleError<Parts>
+  >;
+
+type TemplateLiteralRuntimeParseError<Parts extends TemplateLiteralParts> =
+  TransformError<
+    "TemplateLiteral",
+    TemplateLiteralError,
+    TemplateLiteralCaptureTupleError<Parts>
+  >;
+
+type TemplateLiteralCaptureTupleError<Parts extends TemplateLiteralParts> =
+  TupleElementsError<
+    TemplateLiteralCaptureFromStringError<
+      TemplateLiteralCaptureTypes<Parts>[number]
+    >
+  >;
+
+type TemplateLiteralCaptureFromStringError<T extends TypeNode> =
+  T extends TypeNode
+    ? string extends RootType<T>["Output"]
+      ? TypeFromError<T>
+      : InferErrors<T>
+    : never;
+
+/** @group Template literals */
+export interface TemplateLiteralError extends TypeError<"TemplateLiteral"> {
+  readonly value: string;
+}
+
+const formatTemplateLiteralError: TypeErrorFormatter<TemplateLiteralError> =
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} does not match the template literal.`;
+
+declare const templateLiteralStringBrandSymbol: unique symbol;
+
+interface TemplateLiteralStringBrand<Parts extends TemplateLiteralParts> {
+  readonly [templateLiteralStringBrandSymbol]: Parts;
+}
+
+type TemplateLiteralPart = string | TypeNode;
+
+type TemplateLiteralParts = NonEmptyReadonlyArray<TemplateLiteralPart>;
+
+type TemplateLiteralValidation<Parts extends TemplateLiteralParts> =
+  number extends Parts["length"]
+    ? readonly [ValidationFailure<TemplateLiteralPartsTupleError>]
+    : IsUnion<Parts["length"]> extends true
+      ? readonly [ValidationFailure<TemplateLiteralPartsTupleError>]
+      : [Extract<Parts[number], TypeNode>] extends [never]
+        ? readonly [ValidationFailure<TemplateLiteralCaptureRequiredError>]
+        : TemplateLiteralHasAmbiguousCaptures<Parts> extends true
+          ? readonly [ValidationFailure<TemplateLiteralAmbiguousCapturesError>]
+          : unknown;
+
+type TemplateLiteralPartsTupleError = CompileTimeError<
+  "TemplateLiteral",
+  "Parts must use one concrete finite non-empty tuple."
+>;
+
+type TemplateLiteralCaptureRequiredError = CompileTimeError<
+  "TemplateLiteral",
+  "At least one part must be a Type capture."
+>;
+
+type TemplateLiteralAmbiguousCapturesError = CompileTimeError<
+  "TemplateLiteral",
+  "At most one Type capture can have a variable-width string representation."
+>;
+
+type TemplateLiteralCaptureTypes<
+  Parts extends ReadonlyArray<TemplateLiteralPart>,
+  Captures extends ReadonlyArray<TypeNode> = readonly [],
+> = Parts extends readonly [infer Head, ...infer Tail]
+  ? TemplateLiteralCaptureTypes<
+      Extract<Tail, ReadonlyArray<TemplateLiteralPart>>,
+      Head extends TypeNode ? readonly [...Captures, Head] : Captures
+    >
+  : Extract<Captures, NonEmptyReadonlyArray<TypeNode>>;
+
+type TemplateLiteralCaptureTuple<Parts extends TemplateLiteralParts> =
+  TupleType<TemplateLiteralCaptureTypes<Parts>>;
+
+type TemplateLiteralCanonicalInput<
+  Parts extends ReadonlyArray<TemplateLiteralPart>,
+  Input extends string = "",
+> = Parts extends readonly [infer Head, ...infer Tail]
+  ? TemplateLiteralCanonicalInput<
+      Extract<Tail, ReadonlyArray<TemplateLiteralPart>>,
+      `${Input}${TemplateLiteralPartCanonicalInput<Extract<Head, TemplateLiteralPart>>}`
+    >
+  : Input;
+
+type TemplateLiteralStringOutput<Parts extends TemplateLiteralParts> =
+  AllTypesUseIdentityEncoding<Extract<Parts[number], TypeNode>> extends true
+    ? TemplateLiteralCanonicalInput<Parts>
+    : TemplateLiteralCanonicalInput<Parts> & TemplateLiteralStringBrand<Parts>;
+
+type TemplateLiteralPartCanonicalInput<Part extends TemplateLiteralPart> =
+  Part extends string
+    ? Part
+    : Part extends TypeNode
+      ? Extract<CanonicalInputOf<Part>, string>
+      : never;
+
+type ValidateTemplateLiteralPart<Part extends TemplateLiteralPart> =
+  IsUnion<Part> extends false
+    ? Part extends string
+      ? ValidateLiteral<Part>
+      : Part extends ConcreteTypeNode
+        ? IsTemplateLiteralPartType<Part> extends true
+          ? Part
+          : TemplateLiteralPartCompileTimeError
+        : TemplateLiteralPartCompileTimeError
+    : TemplateLiteralPartCompileTimeError;
+
+type IsTemplateLiteralPartType<T extends TypeNode> = [
+  CanonicalInputOf<T>,
+] extends [never]
+  ? false
+  : [CanonicalInputOf<T>] extends [string]
+    ? true
+    : false;
+
+type TemplateLiteralPartCompileTimeError = CompileTimeError<
+  "TemplateLiteral",
+  "Part must be a raw string literal or a Type canonically encoded as a string."
+>;
+
+type TemplateLiteralHasAmbiguousCaptures<
+  Parts extends ReadonlyArray<TemplateLiteralPart>,
+  VariableCaptures extends ReadonlyArray<unknown> = readonly [],
+> = Parts extends readonly [infer Head, ...infer Tail]
+  ? Head extends TypeNode
+    ? [TemplateLiteralTypeWidth<Head>] extends [null]
+      ? VariableCaptures extends readonly [unknown]
+        ? true
+        : TemplateLiteralHasAmbiguousCaptures<
+            Extract<Tail, ReadonlyArray<TemplateLiteralPart>>,
+            readonly [unknown]
+          >
+      : TemplateLiteralHasAmbiguousCaptures<
+          Extract<Tail, ReadonlyArray<TemplateLiteralPart>>,
+          VariableCaptures
+        >
+    : TemplateLiteralHasAmbiguousCaptures<
+        Extract<Tail, ReadonlyArray<TemplateLiteralPart>>,
+        VariableCaptures
+      >
+  : false;
+
+type TemplateLiteralTypeWidth<T extends TypeNode> =
+  T extends LiteralType<infer Expected extends string>
+    ? TemplateLiteralStringWidth<Expected>
+    : T extends UnionType<infer Members>
+      ? NormalizeTemplateLiteralWidth<TemplateLiteralTypeWidth<Members[number]>>
+      : T extends TemplateLiteralParserType<infer Parts>
+        ? TemplateLiteralPartsWidth<Parts>
+        : T extends TemplateLiteralType<infer Parts>
+          ? TemplateLiteralPartsWidth<Parts>
+          : T["parent"] extends infer Parent extends TypeNode
+            ? TemplateLiteralTypeWidth<Parent>
+            : null;
+
+type NormalizeTemplateLiteralWidth<Width> =
+  IsUnion<Width> extends true
+    ? null
+    : Width extends ReadonlyArray<unknown>
+      ? Width
+      : null;
+
+type TemplateLiteralPartsWidth<
+  Parts extends ReadonlyArray<TemplateLiteralPart>,
+  Width extends ReadonlyArray<unknown> = readonly [],
+> = Parts extends readonly [infer Head, ...infer Tail]
+  ? TemplateLiteralPartWidth<
+      Extract<Head, TemplateLiteralPart>
+    > extends infer PartWidth
+    ? [PartWidth] extends [ReadonlyArray<unknown>]
+      ? TemplateLiteralPartsWidth<
+          Extract<Tail, ReadonlyArray<TemplateLiteralPart>>,
+          readonly [...Width, ...PartWidth]
+        >
+      : null
+    : never
+  : Width;
+
+type TemplateLiteralPartWidth<Part extends TemplateLiteralPart> =
+  Part extends string
+    ? TemplateLiteralStringWidth<Part>
+    : Part extends TypeNode
+      ? TemplateLiteralTypeWidth<Part>
+      : never;
+
+type TemplateLiteralIsFrameless<
+  Parts extends ReadonlyArray<TemplateLiteralPart>,
+  HasVariableCapture extends boolean = false,
+> = Parts extends readonly [infer Head, ...infer Tail]
+  ? TemplateLiteralPartWidth<
+      Extract<Head, TemplateLiteralPart>
+    > extends infer Width
+    ? [Width] extends [null]
+      ? HasVariableCapture extends true
+        ? false
+        : TemplateLiteralIsFrameless<
+            Extract<Tail, ReadonlyArray<TemplateLiteralPart>>,
+            true
+          >
+      : [Width] extends [readonly []]
+        ? TemplateLiteralIsFrameless<
+            Extract<Tail, ReadonlyArray<TemplateLiteralPart>>,
+            HasVariableCapture
+          >
+        : false
+    : false
+  : HasVariableCapture;
+
+type TemplateLiteralStringWidth<
+  Value extends string,
+  Width extends ReadonlyArray<unknown> = readonly [],
+> = string extends Value
+  ? null
+  : Value extends ""
+    ? Width
+    : Value extends `${infer _CodePoint}${infer Tail}`
+      ? TemplateLiteralStringWidth<Tail, readonly [...Width, unknown]>
+      : null;
+
+interface TemplateLiteralFraming {
+  readonly width: number | null;
+  readonly canBeEmpty: boolean;
+  readonly canStartWithLowSurrogate: boolean;
+  readonly canEndWithHighSurrogate: boolean;
+}
+
+const compileTemplateLiteralParser = <Parts extends TemplateLiteralParts>(
+  parts: Parts,
+): ((
+  input: string,
+) => Result<
+  TemplateLiteralCaptureTuple<Parts>["Input"],
+  TemplateLiteralError
+>) => {
+  let framing = emptyTemplateLiteralFraming;
+  let fixedPartsWidth = 0;
+  const compiledParts = parts.map((part) => {
+    const partFraming = getTemplateLiteralPartFraming(part);
+    framing = concatenateTemplateLiteralFraming(framing, partFraming);
+    fixedPartsWidth += partFraming.width ?? 0;
+    return [part, partFraming.width] as const;
+  });
+
+  return (input) => {
+    const inputCodePoints = globalThis.Array.from(input);
+    const variableWidth = inputCodePoints.length - fixedPartsWidth;
+    if (variableWidth < 0) {
+      return err({ type: "TemplateLiteral", value: input });
+    }
+
+    const captures: Array<string> = [];
+    let position = 0;
+
+    for (const [part, width] of compiledParts) {
+      const partWidth = width ?? variableWidth;
+      const value = inputCodePoints
+        .slice(position, position + partWidth)
+        .join("");
+
+      if (typeof part === "string") {
+        if (value !== part) {
+          return err({ type: "TemplateLiteral", value: input });
+        }
+      } else {
+        captures.push(value);
+      }
+      position += partWidth;
+    }
+
+    return position === inputCodePoints.length
+      ? ok(
+          captures as unknown as TemplateLiteralCaptureTuple<Parts>["Input"],
+        )
+      : err({ type: "TemplateLiteral", value: input });
+  };
+};
+
+const emptyTemplateLiteralFraming: TemplateLiteralFraming = {
+  width: 0,
+  canBeEmpty: true,
+  canStartWithLowSurrogate: false,
+  canEndWithHighSurrogate: false,
+};
+
+const unknownTemplateLiteralFraming: TemplateLiteralFraming = {
+  width: null,
+  canBeEmpty: true,
+  canStartWithLowSurrogate: true,
+  canEndWithHighSurrogate: true,
+};
+
+const concatenateTemplateLiteralFraming = (
+  left: TemplateLiteralFraming,
+  right: TemplateLiteralFraming,
+): TemplateLiteralFraming => {
+  assert(
+    !(left.canEndWithHighSurrogate && right.canStartWithLowSurrogate),
+    "A TemplateLiteral cannot form a Unicode surrogate pair across part boundaries.",
+  );
+
+  return {
+    width:
+      left.width !== null && right.width !== null
+        ? left.width + right.width
+        : null,
+    canBeEmpty: left.canBeEmpty && right.canBeEmpty,
+    canStartWithLowSurrogate:
+      left.canStartWithLowSurrogate ||
+      (left.canBeEmpty && right.canStartWithLowSurrogate),
+    canEndWithHighSurrogate:
+      right.canEndWithHighSurrogate ||
+      (right.canBeEmpty && left.canEndWithHighSurrogate),
+  };
+};
+
+const getStringTemplateLiteralFraming = (
+  value: string,
+): TemplateLiteralFraming => {
+  const firstCodeUnit = value.charCodeAt(0);
+  const lastCodeUnit = value.charCodeAt(value.length - 1);
+
+  return {
+    width: globalThis.Array.from(value).length,
+    canBeEmpty: value.length === 0,
+    canStartWithLowSurrogate:
+      firstCodeUnit >= 0xdc00 && firstCodeUnit <= 0xdfff,
+    canEndWithHighSurrogate: lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff,
+  };
+};
+
+const getTemplateLiteralPartFraming = (
+  part: TemplateLiteralPart,
+): TemplateLiteralFraming => {
+  if (typeof part === "string") return getStringTemplateLiteralFraming(part);
+
+  const type = part as RuntimeTypeNode;
+  if (type[templateLiteralSyntaxSymbol] === true) {
+    if (type.name === "Literal") {
+      return getStringTemplateLiteralFraming(
+        (type as unknown as LiteralType<string>).expected,
+      );
+    }
+    if (type.name === "Union") {
+      const memberFramings = (
+        type as unknown as RuntimeUnionTypeNode
+      ).members.map(getTemplateLiteralPartFraming);
+      const width = memberFramings[0].width;
+
+      return {
+        width:
+          width !== null &&
+          memberFramings.every((framing) => framing.width === width)
+            ? width
+            : null,
+        canBeEmpty: memberFramings.some((framing) => framing.canBeEmpty),
+        canStartWithLowSurrogate: memberFramings.some(
+          (framing) => framing.canStartWithLowSurrogate,
+        ),
+        canEndWithHighSurrogate: memberFramings.some(
+          (framing) => framing.canEndWithHighSurrogate,
+        ),
+      };
+    }
+    if (type.name === "TemplateLiteral") {
+      return (
+        type as unknown as { readonly parts: TemplateLiteralParts }
+      ).parts.reduce(
+        (framing, part) =>
+          concatenateTemplateLiteralFraming(
+            framing,
+            getTemplateLiteralPartFraming(part),
+          ),
+        emptyTemplateLiteralFraming,
+      );
+    }
+  }
+  if (type.parent === null) return unknownTemplateLiteralFraming;
+
+  return getTemplateLiteralPartFraming(type.parent);
+};
 
 /**
  * Branded {@link Type}.
@@ -3809,7 +4678,7 @@ export const CapitalizedString = /*#__PURE__*/ capitalized(String);
 export type CapitalizedString = typeof CapitalizedString.Output;
 
 /**
- * Adds a {@link Brand} requiring a string without surrounding whitespace.
+ * String {@link Brand} without surrounding whitespace.
  *
  * @group String
  */
@@ -3855,7 +4724,7 @@ export const trim = (value: string): TrimmedString =>
   value.trim() as TrimmedString;
 
 /**
- * Adds a {@link Brand} requiring a value to have at least `min` items.
+ * Minimum-length {@link Brand} requiring a value to have at least `min` items.
  *
  * @group String
  * @group Collection
@@ -3905,7 +4774,7 @@ export const NonEmptyTrimmedString = /*#__PURE__*/ minLength(1)(TrimmedString);
 export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Output;
 
 /**
- * Adds a {@link Brand} requiring a value to have at most `max` items.
+ * Maximum-length {@link Brand} requiring a value to have at most `max` items.
  *
  * @group String
  * @group Collection
@@ -3958,7 +4827,7 @@ export const NonEmptyTrimmedString1000 = /*#__PURE__*/ maxLength(1000)(
 export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Output;
 
 /**
- * Adds a {@link Brand} requiring a value to have exactly `exact` items.
+ * Exact-length {@link Brand} requiring a value to have exactly `exact` items.
  *
  * @group String
  * @group Collection
@@ -3991,7 +4860,7 @@ export interface LengthError<
 }
 
 /**
- * Creates a string {@link Brand} that must match a regular expression.
+ * String {@link Brand} constrained by a regular expression.
  *
  * ### Example
  *
@@ -4318,7 +5187,7 @@ export const createIdAsUuidv7 = <B extends string = never>(
 };
 
 /**
- * A table-specific {@link Id} Type.
+ * Table-specific {@link Id} Type.
  *
  * @group String
  */
@@ -4475,7 +5344,7 @@ export const Int64FromInt64String = /*#__PURE__*/ transform(
 );
 
 /**
- * Adds a {@link Brand} requiring a number greater than or equal to zero.
+ * Number {@link Brand} requiring a value greater than or equal to zero.
  *
  * @group Number
  */
@@ -4507,7 +5376,7 @@ export const NonNegativeNumber = /*#__PURE__*/ nonNegative(Number);
 export type NonNegativeNumber = typeof NonNegativeNumber.Output;
 
 /**
- * Adds a {@link Brand} requiring a number greater than zero.
+ * Number {@link Brand} requiring a value greater than zero.
  *
  * @group Number
  */
@@ -4540,7 +5409,7 @@ export const PositiveNumber = /*#__PURE__*/ positive(NonNegativeNumber);
 export type PositiveNumber = typeof PositiveNumber.Output;
 
 /**
- * Adds a {@link Brand} requiring a number less than or equal to zero.
+ * Number {@link Brand} requiring a value less than or equal to zero.
  *
  * @group Number
  */
@@ -4572,7 +5441,7 @@ export const NonPositiveNumber = /*#__PURE__*/ nonPositive(Number);
 export type NonPositiveNumber = typeof NonPositiveNumber.Output;
 
 /**
- * Adds a {@link Brand} requiring a number less than zero.
+ * Number {@link Brand} requiring a value less than zero.
  *
  * @group Number
  */
@@ -4605,7 +5474,7 @@ export const NegativeNumber = /*#__PURE__*/ negative(NonPositiveNumber);
 export type NegativeNumber = typeof NegativeNumber.Output;
 
 /**
- * Adds a {@link Brand} requiring a number other than `NaN`.
+ * Number {@link Brand} requiring a value other than `NaN`.
  *
  * @group Number
  */
@@ -4639,7 +5508,7 @@ export const NonNaNNumber = /*#__PURE__*/ nonNaN(Number);
 export type NonNaNNumber = typeof NonNaNNumber.Output;
 
 /**
- * Adds a {@link Brand} requiring a finite number.
+ * Number {@link Brand} requiring a finite value.
  *
  * @group Number
  */
@@ -4742,13 +5611,6 @@ export const NonNegativeInt = /*#__PURE__*/ nonNegative(Int);
 export type NonNegativeInt = typeof NonNegativeInt.Output;
 
 /**
- * 0-100 as a literal, or any already-validated {@link NonNegativeInt}.
- *
- * @group Number
- */
-export type Int0To100OrNonNegativeInt = 0 | Int1To100 | NonNegativeInt;
-
-/**
  * Minimum {@link NonNegativeInt} value.
  *
  * @group Number
@@ -4765,13 +5627,6 @@ export const zeroNonNegativeInt = /*#__PURE__*/ NonNegativeInt.orThrow(0);
  */
 export const PositiveInt = /*#__PURE__*/ positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Output;
-
-/**
- * 1-100 as a literal, or any already-validated {@link PositiveInt}.
- *
- * @group Number
- */
-export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
 
 /**
  * Minimum {@link PositiveInt} value.
@@ -4808,7 +5663,7 @@ export const NegativeInt = /*#__PURE__*/ negative(NonPositiveInt);
 export type NegativeInt = typeof NegativeInt.Output;
 
 /**
- * Adds a {@link Brand} requiring a number greater than `min`.
+ * Number {@link Brand} requiring a value greater than `min`.
  *
  * @group Number
  */
@@ -4840,7 +5695,7 @@ export interface GreaterThanError<
 }
 
 /**
- * Adds a {@link Brand} requiring a number greater than or equal to `min`.
+ * Number {@link Brand} requiring a value greater than or equal to `min`.
  *
  * @group Number
  */
@@ -4880,7 +5735,7 @@ export interface GreaterThanOrEqualToError<
 }
 
 /**
- * Adds a {@link Brand} requiring a number less than `max`.
+ * Number {@link Brand} requiring a value less than `max`.
  *
  * @group Number
  */
@@ -4923,7 +5778,7 @@ export const Age = /*#__PURE__*/ brand(
 export type Age = typeof Age.Output;
 
 /**
- * Adds a {@link Brand} requiring a number less than or equal to `max`.
+ * Number {@link Brand} requiring a value less than or equal to `max`.
  *
  * @group Number
  */
@@ -4972,51 +5827,124 @@ export const Ratio = /*#__PURE__*/ brand(
 export type Ratio = typeof Ratio.Output;
 
 /**
- * Canonical string representation of a positive base-10 decimal value.
+ * Canonical string representation of a signed base-10 decimal value.
  *
  * Use this Type when a decimal value must remain exact instead of being
  * converted to an IEEE-754 number. Equivalent values have one accepted
- * representation, so leading zeroes, trailing fractional zeroes, signs, and
- * exponent notation are rejected.
+ * representation, so leading zeroes, trailing fractional zeroes, `-0`, plus
+ * signs, and exponent notation are rejected.
  *
  * The decoded value remains a string. Arithmetic requires an explicit decimal
  * or fixed-point representation.
  *
+ * TypeScript template literal types can describe a fixed number of digit
+ * positions, but not the arbitrarily long integer and fractional parts accepted
+ * here. `DecimalString` therefore uses a {@link Brand} so its TypeScript type
+ * does not accept strings that have not been validated.
+ *
+ * Use these predefined Types or their corresponding factories to add sign
+ * constraints to compatible decimal string Types:
+ *
+ * - {@link NonNegativeDecimalString} / {@link nonNegativeDecimalString}
+ * - {@link PositiveDecimalString} / {@link positiveDecimalString}
+ * - {@link NonPositiveDecimalString} / {@link nonPositiveDecimalString}
+ * - {@link NegativeDecimalString} / {@link negativeDecimalString}
+ *
  * ### Example
  *
  * ```ts
- * import { PositiveDecimalString } from "@evolu/common";
+ * import { DecimalString } from "@evolu/common";
  *
- * expectOk(PositiveDecimalString.fromUnknown("0.3"), "0.3");
- * expectOk(PositiveDecimalString.fromUnknown("25"), "25");
- * expectOk(PositiveDecimalString.fromUnknown("10.01"), "10.01");
+ * expectOk(DecimalString.fromUnknown("-10.25"), "-10.25");
+ * expectOk(DecimalString.fromUnknown("0"), "0");
+ * expectOk(DecimalString.fromUnknown("10.25"), "10.25");
  *
- * expectErr(PositiveDecimalString.fromUnknown("0"), {
- *   type: "PositiveDecimalString",
- *   value: "0",
- * });
- * expectErr(PositiveDecimalString.fromUnknown("0.30"), {
- *   type: "PositiveDecimalString",
- *   value: "0.30",
+ * expectErr(DecimalString.fromUnknown("10.250"), {
+ *   type: "DecimalString",
+ *   value: "10.250",
  * });
  * ```
  *
  * @group Number
  */
-export const PositiveDecimalString = /*#__PURE__*/ brand(
-  "PositiveDecimalString",
+export const DecimalString = /*#__PURE__*/ brand(
+  "DecimalString",
   String,
   (value) =>
-    /^(?:[1-9]\d*|(?:0|[1-9]\d*)\.\d*[1-9])$/.test(value)
+    /^(?:0|-?(?:[1-9]\d*|(?:0|[1-9]\d*)\.\d*[1-9]))$/.test(value)
       ? ok()
-      : err<PositiveDecimalStringError>({
-          type: "PositiveDecimalString",
-          value,
-        }),
+      : err<DecimalStringError>({ type: "DecimalString", value }),
   (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} must be a canonical positive decimal string.`,
+    `The value ${safelyStringifyUnknownValue(error.value)} must be a canonical decimal string.`,
 );
-export type PositiveDecimalString = typeof PositiveDecimalString.Output;
+export type DecimalString = typeof DecimalString.Output;
+
+/** @group Number */
+export interface DecimalStringError extends TypeError<"DecimalString"> {
+  readonly value: string;
+}
+
+/**
+ * {@link DecimalString} Brand requiring a value greater than or equal to zero.
+ *
+ * @group Number
+ */
+export const nonNegativeDecimalString: BrandFactory<
+  "NonNegativeDecimalString",
+  DecimalString,
+  NonNegativeDecimalStringError
+> = (parent) =>
+  brand(
+    "NonNegativeDecimalString",
+    parent,
+    (value) =>
+      value[0] !== "-"
+        ? ok()
+        : err<NonNegativeDecimalStringError>({
+            type: "NonNegativeDecimalString",
+            value,
+          }),
+    (error) =>
+      `The value ${safelyStringifyUnknownValue(error.value)} must be a non-negative decimal string.`,
+  );
+
+/** @group Number */
+export interface NonNegativeDecimalStringError extends TypeError<"NonNegativeDecimalString"> {
+  readonly value: string;
+}
+
+/**
+ * Non-negative {@link DecimalString}.
+ *
+ * @group Number
+ */
+export const NonNegativeDecimalString =
+  /*#__PURE__*/ nonNegativeDecimalString(DecimalString);
+export type NonNegativeDecimalString = typeof NonNegativeDecimalString.Output;
+
+/**
+ * {@link DecimalString} Brand requiring a value greater than zero.
+ *
+ * @group Number
+ */
+export const positiveDecimalString: BrandFactory<
+  "PositiveDecimalString",
+  DecimalString,
+  PositiveDecimalStringError
+> = (parent) =>
+  brand(
+    "PositiveDecimalString",
+    parent,
+    (value) =>
+      value !== "0" && value[0] !== "-"
+        ? ok()
+        : err<PositiveDecimalStringError>({
+            type: "PositiveDecimalString",
+            value,
+          }),
+    (error) =>
+      `The value ${safelyStringifyUnknownValue(error.value)} must be a positive decimal string.`,
+  );
 
 /** @group Number */
 export interface PositiveDecimalStringError extends TypeError<"PositiveDecimalString"> {
@@ -5024,8 +5952,100 @@ export interface PositiveDecimalStringError extends TypeError<"PositiveDecimalSt
 }
 
 /**
- * Adds a {@link Brand} requiring a number to be a multiple of an exact decimal
- * `divisor`.
+ * Positive {@link DecimalString}.
+ *
+ * Also satisfies {@link NonNegativeDecimalString}, so it can be used wherever a
+ * non-negative decimal string is required.
+ *
+ * @group Number
+ */
+export const PositiveDecimalString = /*#__PURE__*/ positiveDecimalString(
+  NonNegativeDecimalString,
+);
+export type PositiveDecimalString = typeof PositiveDecimalString.Output;
+
+/**
+ * {@link DecimalString} Brand requiring a value less than or equal to zero.
+ *
+ * @group Number
+ */
+export const nonPositiveDecimalString: BrandFactory<
+  "NonPositiveDecimalString",
+  DecimalString,
+  NonPositiveDecimalStringError
+> = (parent) =>
+  brand(
+    "NonPositiveDecimalString",
+    parent,
+    (value) =>
+      value === "0" || value[0] === "-"
+        ? ok()
+        : err<NonPositiveDecimalStringError>({
+            type: "NonPositiveDecimalString",
+            value,
+          }),
+    (error) =>
+      `The value ${safelyStringifyUnknownValue(error.value)} must be a non-positive decimal string.`,
+  );
+
+/** @group Number */
+export interface NonPositiveDecimalStringError extends TypeError<"NonPositiveDecimalString"> {
+  readonly value: string;
+}
+
+/**
+ * Non-positive {@link DecimalString}.
+ *
+ * @group Number
+ */
+export const NonPositiveDecimalString =
+  /*#__PURE__*/ nonPositiveDecimalString(DecimalString);
+export type NonPositiveDecimalString = typeof NonPositiveDecimalString.Output;
+
+/**
+ * {@link DecimalString} Brand requiring a value less than zero.
+ *
+ * @group Number
+ */
+export const negativeDecimalString: BrandFactory<
+  "NegativeDecimalString",
+  DecimalString,
+  NegativeDecimalStringError
+> = (parent) =>
+  brand(
+    "NegativeDecimalString",
+    parent,
+    (value) =>
+      value[0] === "-"
+        ? ok()
+        : err<NegativeDecimalStringError>({
+            type: "NegativeDecimalString",
+            value,
+          }),
+    (error) =>
+      `The value ${safelyStringifyUnknownValue(error.value)} must be a negative decimal string.`,
+  );
+
+/** @group Number */
+export interface NegativeDecimalStringError extends TypeError<"NegativeDecimalString"> {
+  readonly value: string;
+}
+
+/**
+ * Negative {@link DecimalString}.
+ *
+ * Also satisfies {@link NonPositiveDecimalString}, so it can be used wherever a
+ * non-positive decimal string is required.
+ *
+ * @group Number
+ */
+export const NegativeDecimalString = /*#__PURE__*/ negativeDecimalString(
+  NonPositiveDecimalString,
+);
+export type NegativeDecimalString = typeof NegativeDecimalString.Output;
+
+/**
+ * Number {@link Brand} requiring an exact decimal multiple of `divisor`.
  *
  * The divisor must be one canonical positive decimal string literal because its
  * exact value is encoded in the resulting Brand name. The declaration is
@@ -5175,7 +6195,7 @@ const decimalStringToParts = (value: string): DecimalParts => {
 };
 
 /**
- * Adds a {@link Brand} requiring a number to be within an inclusive range.
+ * Number {@link Brand} requiring a value within an inclusive range.
  *
  * @group Number
  */
@@ -6464,6 +7484,106 @@ const validateTupleItems = (
     options,
     checkStructure,
   );
+
+/**
+ * Decimal digit from `"0"` to `"9"`.
+ *
+ * @group String
+ */
+export const Digit = /*#__PURE__*/ union(
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+);
+export type Digit = typeof Digit.Output;
+
+/**
+ * Decimal digit from `"1"` to `"9"`.
+ *
+ * @group String
+ */
+export const Digit1To9 = /*#__PURE__*/ union(
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+);
+export type Digit1To9 = typeof Digit1To9.Output;
+
+/**
+ * Decimal string from `"1"` to `"6"`.
+ *
+ * @group String
+ */
+export const Digit1To6 = /*#__PURE__*/ union("1", "2", "3", "4", "5", "6");
+export type Digit1To6 = typeof Digit1To6.Output;
+
+/**
+ * Decimal string from `"1"` to `"23"`.
+ *
+ * @group String
+ */
+export const Digit1To23 = /*#__PURE__*/ union(
+  Digit1To9,
+  /*#__PURE__*/ templateLiteral("1", Digit),
+  /*#__PURE__*/ templateLiteral(
+    "2",
+    /*#__PURE__*/ union("0", "1", "2", "3"),
+  ),
+);
+export type Digit1To23 = typeof Digit1To23.Output;
+
+/**
+ * Decimal string from `"1"` to `"51"`.
+ *
+ * @group String
+ */
+export const Digit1To51 = /*#__PURE__*/ union(
+  Digit1To9,
+  /*#__PURE__*/ templateLiteral(
+    /*#__PURE__*/ union("1", "2", "3", "4"),
+    Digit,
+  ),
+  /*#__PURE__*/ templateLiteral("5", /*#__PURE__*/ union("0", "1")),
+);
+export type Digit1To51 = typeof Digit1To51.Output;
+
+/**
+ * Decimal string from `"1"` to `"99"`.
+ *
+ * @group String
+ */
+export const Digit1To99 = /*#__PURE__*/ union(
+  Digit1To9,
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit),
+);
+export type Digit1To99 = typeof Digit1To99.Output;
+
+/**
+ * Decimal string from `"1"` to `"59"`.
+ *
+ * @group String
+ */
+export const Digit1To59 = /*#__PURE__*/ union(
+  Digit1To9,
+  /*#__PURE__*/ templateLiteral(
+    /*#__PURE__*/ union("1", "2", "3", "4", "5"),
+    Digit,
+  ),
+);
+export type Digit1To59 = typeof Digit1To59.Output;
 
 const createObjectRuntimeTypeIssues =
   (
@@ -8489,7 +9609,7 @@ const createRecordPropertyError = <Error extends TypeError>(
 });
 
 /**
- * Creates an {@link object} Type with every property optional.
+ * Object {@link Type} with every property optional.
  *
  * No property is required, but every present property must still satisfy its
  * Type.
@@ -8539,7 +9659,8 @@ export type PartialObjectProps<Props extends ObjectProps> = {
 };
 
 /**
- * Makes every property whose Union Type includes {@link Null} optional.
+ * Object {@link Type} making every property whose Union Type includes
+ * {@link Null} optional.
  *
  * The property retains its original Union Type, so consumers may omit it, set
  * it to `null`, or provide any other member of that Union. Properties without
@@ -8610,7 +9731,7 @@ export type NullableToOptionalProps<Props extends ObjectProps> = {
 };
 
 /**
- * Creates an {@link object} Type without the selected declared properties.
+ * Object {@link Type} without the selected declared properties.
  *
  * @group Objects
  */
@@ -8664,7 +9785,7 @@ type OmitKeyConcreteTypeError = CompileTimeError<
 >;
 
 /**
- * Creates a {@link Type} for {@link Result} values.
+ * {@link Result} {@link Type} for typed success and error values.
  *
  * Use this to validate Results crossing a storage, worker, API, or other
  * serialization boundary. The operation returns an outer validation Result. Its
@@ -8958,7 +10079,7 @@ type TypedTypePropertyError = CompileTimeError<
 >;
 
 /**
- * Creates a {@link Type} for a producer's value, error, or done {@link Result}.
+ * Producer-result {@link Type} for value, error, or done outcomes.
  *
  * The three outcomes are `Ok<Value>`, `Err<Error>`, and `Err<Typed<"Done"> & {
  * done: Done }>`. This keeps normal completion distinct from failure while
@@ -10593,7 +11714,7 @@ export const JsonValueFromJson = /*#__PURE__*/ transform(
 );
 
 /**
- * Creates a branded {@link Json} Type and total conversions for another Type.
+ * Branded {@link Json} Type and total conversions for another Type.
  *
  * Use this factory when a domain value must be stored as JSON text while its
  * exact Type remains visible to TypeScript, such as a JSON column in an Evolu

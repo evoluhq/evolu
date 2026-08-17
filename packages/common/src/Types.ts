@@ -381,55 +381,6 @@ export const isPromiseLike = <T>(
 ): value is PromiseLike<T> =>
   typeof (value as PromiseLike<T> | null | undefined)?.then === "function";
 
-/** Decimal digit from `"0"` to `"9"`. */
-export type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
-
-/** Decimal digit from `"1"` to `"9"`. */
-export type Digit1To9 = Exclude<Digit, "0">;
-
-/** Decimal string from `"1"` to `"6"`. */
-export type Digit1To6 = "1" | "2" | "3" | "4" | "5" | "6";
-
-/** Decimal string from `"1"` to `"23"`. */
-export type Digit1To23 =
-  | Digit1To9 // 1-9
-  | `1${Digit}` // 10-19
-  | `2${"0" | "1" | "2" | "3"}`; // 20-23
-
-/** Decimal string from `"1"` to `"51"`. */
-export type Digit1To51 =
-  | Digit1To9 // 1-9
-  | `${"1" | "2" | "3" | "4"}${Digit}` // 10-49
-  | `5${"0" | "1"}`; // 50-51
-
-/** Decimal string from `"1"` to `"99"`. */
-export type Digit1To99 =
-  | Digit1To9 // 1-9
-  | `${Digit1To9}${Digit}`; // 10-99
-
-/** Decimal string from `"1"` to `"59"`. */
-export type Digit1To59 =
-  | Digit1To9 // 1-9
-  | `1${Digit}` // 10-19
-  | `2${Digit}` // 20-29
-  | `3${Digit}` // 30-39
-  | `4${Digit}` // 40-49
-  | `5${Digit}`; // 50-59
-
-/** Numeric literal 1-99. */
-export type Int1To99 = NumberFromString<Digit1To99>;
-
-/** Numeric literal 1-100. */
-export type Int1To100 = Int1To99 | 100;
-
-/**
- * Parses a numeric literal type from a string literal.
- *
- * Used by {@link Int1To99}.
- */
-export type NumberFromString<T extends string> =
-  T extends `${infer N extends number}` ? N : never;
-
 /** Creates a readable compiler-facing error message. */
 export type CompileTimeError<
   Context extends string,
