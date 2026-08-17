@@ -45,7 +45,10 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["packages/*/src/**/*.ts"],
-      exclude: ["packages/*/src/**/index.ts"],
+      exclude: [
+        "packages/*/src/**/index.ts",
+        "packages/common/src/intl/**/*.ts",
+      ],
       reporter: ["text", "html"],
       // TODO: Enforce 100% coverage thresholds for every package.
     },

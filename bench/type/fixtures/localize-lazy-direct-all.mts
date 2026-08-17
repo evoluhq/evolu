@@ -25,7 +25,7 @@ const Tree: LazyType<Tree, Tree, never, TreeError, TreeError> = lazy(() =>
   object({ value: String, children: array(Tree) }),
 );
 
-const TypesByLocale = localizeTypes(
+const typesByLocale = localizeTypes(
   { Tree },
   {
     cs: {
@@ -41,9 +41,9 @@ const TypesByLocale = localizeTypes(
   },
 );
 
-export type Locales = keyof typeof TypesByLocale;
-export type CzechTree = typeof TypesByLocale.cs.Tree;
-export type EnglishTree = typeof TypesByLocale.en.Tree;
+export type Locales = keyof typeof typesByLocale;
+export type CzechTree = typeof typesByLocale.cs.Tree;
+export type EnglishTree = typeof typesByLocale.en.Tree;
 export type CzechTreeError = Parameters<
-  typeof TypesByLocale.cs.Tree.formatError
+  typeof typesByLocale.cs.Tree.formatError
 >[0];

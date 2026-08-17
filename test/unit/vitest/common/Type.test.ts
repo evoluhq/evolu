@@ -928,10 +928,13 @@ describe("Standard Schema", () => {
         { message: "A value 1 is not a string.", path: ["labels", 0] },
         { message: "A value 2 is not a string.", path: ["labels", 1] },
         { message: 'A value "1" is not a number.', path: ["count"] },
-        { message: "A required property is missing.", path: ["required"] },
+        {
+          message: 'The required property "required" is missing.',
+          path: ["required"],
+        },
         {
           message:
-            "An excess property is not allowed. Remove it or use a different Type.",
+            'The property "excess" is not allowed. Remove it or use a different Type.',
           path: ["excess"],
         },
       ],
@@ -1041,7 +1044,7 @@ describe("Standard Schema", () => {
           path: ["hidden"],
         },
         {
-          message: 'A record property "hidden" must be enumerable.',
+          message: 'A Record property "hidden" must be enumerable.',
           path: ["hidden"],
         },
       ],
@@ -1072,7 +1075,7 @@ describe("Standard Schema", () => {
     expect(result).toEqual({
       issues: [
         {
-          message: "A value does not match any union member.",
+          message: "A value does not match any allowed variant.",
           path: ["value"],
         },
       ],
@@ -1208,7 +1211,7 @@ describe("Standard Schema", () => {
 
     expect(result).toEqual({
       issues: [
-        { message: "Hodnota musí být text.", path: ["labels", 0] },
+        { message: "Hodnota 1 musí být text.", path: ["labels", 0] },
         { message: "Text nesmí být prázdný.", path: ["labels", 1] },
       ],
     });
@@ -1233,7 +1236,7 @@ describe("Standard Schema", () => {
 describe("localizeTypes", () => {
   test("creates localized Type collections for every locale", () => {
     const Label = minLength(1)(String);
-    const Types = localizeTypes(
+    const typesByLocale = localizeTypes(
       { Label },
       {
         cs: {
@@ -1253,22 +1256,22 @@ describe("localizeTypes", () => {
       },
     );
 
-    expectTypeOf<keyof typeof Types>().toEqualTypeOf<"cs" | "en">();
-    expectTypeOf(Types.cs.Label).toEqualTypeOf(Label);
-    expect(Types.cs.Label).not.toBe(Label);
+    expectTypeOf<keyof typeof typesByLocale>().toEqualTypeOf<"cs" | "en">();
+    expectTypeOf(typesByLocale.cs.Label).toEqualTypeOf(Label);
+    expect(typesByLocale.cs.Label).not.toBe(Label);
 
-    const invalidType = Types.cs.Label.fromUnknown(1);
+    const invalidType = typesByLocale.cs.Label.fromUnknown(1);
     assert(!invalidType.ok);
-    expect(Types.cs.Label.formatError(invalidType.error)).toBe(
+    expect(typesByLocale.cs.Label.formatError(invalidType.error)).toBe(
       "Hodnota musí být text.",
     );
 
-    const invalidLength = Types.cs.Label.fromUnknown("");
+    const invalidLength = typesByLocale.cs.Label.fromUnknown("");
     assert(!invalidLength.ok);
-    expect(Types.cs.Label.formatError(invalidLength.error)).toBe(
+    expect(typesByLocale.cs.Label.formatError(invalidLength.error)).toBe(
       "Text nesmí být prázdný.",
     );
-    expect(Types.en.Label.formatError(invalidLength.error)).toBe(
+    expect(typesByLocale.en.Label.formatError(invalidLength.error)).toBe(
       "Text must not be empty.",
     );
     expect(Label.formatError(invalidLength.error)).toBe(
@@ -1280,7 +1283,7 @@ describe("localizeTypes", () => {
     const Label = minLength(1)(String);
     const Labels = array(Label);
     const Model = object({ labels: Labels });
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Label, Labels, Model, String },
       {
         test: {
@@ -1292,7 +1295,7 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    expect(Types.Label.parent).toBe(Types.String);
+    expect(types.Label.parent).toBe(types.String);
 
     for (const [value, message] of [
       [null, "Localized Object."],
@@ -1300,18 +1303,18 @@ describe("localizeTypes", () => {
       [{ labels: [1] }, "Localized String."],
       [{ labels: [""] }, "Localized MinLength1."],
     ] as const) {
-      const result = Types.Model.fromUnknown(value);
+      const result = types.Model.fromUnknown(value);
       assert(!result.ok);
-      expect(Types.Model.formatError(result.error)).toBe(message);
+      expect(types.Model.formatError(result.error)).toBe(message);
     }
 
-    const labelResult = Types.Label.fromUnknown(1);
+    const labelResult = types.Label.fromUnknown(1);
     assert(!labelResult.ok);
     assert(labelResult.error.type === "TypeOf");
-    expect(Types.Label.formatError(labelResult.error)).toBe(
+    expect(types.Label.formatError(labelResult.error)).toBe(
       "Localized String.",
     );
-    expect(Types.Label.parent.formatError(labelResult.error)).toBe(
+    expect(types.Label.parent.formatError(labelResult.error)).toBe(
       "Localized String.",
     );
   });
@@ -1326,7 +1329,7 @@ describe("localizeTypes", () => {
     const User = object({ name: String, nickname: optional(String) }, Values);
     // Composite Types come first to prove their reflected children populate the
     // same cache later used for explicitly selected leaf Types.
-    const Types = localizeTypes(
+    const types = localizeTypes(
       {
         NumberFromString,
         Pair,
@@ -1353,19 +1356,19 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    expect(Types.NumberFromString.parent).toBe(Types.String);
-    expect(Types.NumberFromString.output).toBe(Types.Number);
-    expect(Types.Pair.elements).toEqual([Types.String, Types.Number]);
-    expect(Types.StringSet.element).toBe(Types.String);
-    expect(Types.Strings.element).toBe(Types.String);
-    expect(Types.User.props.name).toBe(Types.String);
-    expect(Types.User.props.nickname.type).toBe(Types.String);
-    expect(Types.User.record).toBe(Types.Values);
-    expect(Types.Value.members).toEqual([Types.String, Types.Number]);
-    expect(Types.Values.key).toBe(Types.String);
-    expect(Types.Values.value).toBe(Types.String);
+    expect(types.NumberFromString.parent).toBe(types.String);
+    expect(types.NumberFromString.output).toBe(types.Number);
+    expect(types.Pair.elements).toEqual([types.String, types.Number]);
+    expect(types.StringSet.element).toBe(types.String);
+    expect(types.Strings.element).toBe(types.String);
+    expect(types.User.props.name).toBe(types.String);
+    expect(types.User.props.nickname.type).toBe(types.String);
+    expect(types.User.record).toBe(types.Values);
+    expect(types.Value.members).toEqual([types.String, types.Number]);
+    expect(types.Values.key).toBe(types.String);
+    expect(types.Values.value).toBe(types.String);
 
-    const ReflectedStrings = array(Types.User.props.name);
+    const ReflectedStrings = array(types.User.props.name);
     const result = ReflectedStrings.fromUnknown([1]);
 
     assert(!result.ok);
@@ -1404,7 +1407,7 @@ describe("localizeTypes", () => {
 
   test("does not depend on selected Type or formatter order", async () => {
     const Label = minLength(1)(String);
-    const LabelFirst = localizeTypes(
+    const labelFirstTypes = localizeTypes(
       { Label, Int64, String },
       {
         test: {
@@ -1415,7 +1418,7 @@ describe("localizeTypes", () => {
         },
       },
     ).test;
-    const StringFirst = localizeTypes(
+    const stringFirstTypes = localizeTypes(
       { String, Int64, Label },
       {
         test: {
@@ -1427,37 +1430,37 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    for (const Types of [LabelFirst, StringFirst]) {
-      expect(Types.Label.parent).toBe(Types.String);
+    for (const types of [labelFirstTypes, stringFirstTypes]) {
+      expect(types.Label.parent).toBe(types.String);
 
-      const labelTypeResult = Types.Label.fromUnknown(1);
+      const labelTypeResult = types.Label.fromUnknown(1);
       assert(!labelTypeResult.ok);
-      expect(Types.Label.formatError(labelTypeResult.error)).toBe(
+      expect(types.Label.formatError(labelTypeResult.error)).toBe(
         "Localized String.",
       );
 
-      const labelLengthResult = Types.Label.fromUnknown("");
+      const labelLengthResult = types.Label.fromUnknown("");
       assert(!labelLengthResult.ok);
-      expect(Types.Label.formatError(labelLengthResult.error)).toBe(
+      expect(types.Label.formatError(labelLengthResult.error)).toBe(
         "Localized MinLength1.",
       );
 
-      const int64TypeResult = Types.Int64.fromUnknown(1);
+      const int64TypeResult = types.Int64.fromUnknown(1);
       assert(!int64TypeResult.ok);
-      expect(Types.Int64.formatError(int64TypeResult.error)).toBe(
+      expect(types.Int64.formatError(int64TypeResult.error)).toBe(
         "Localized BigInt.",
       );
 
-      const int64RangeResult = Types.Int64.fromUnknown(1n << 63n);
+      const int64RangeResult = types.Int64.fromUnknown(1n << 63n);
       assert(!int64RangeResult.ok);
-      expect(Types.Int64.formatError(int64RangeResult.error)).toBe(
+      expect(types.Int64.formatError(int64RangeResult.error)).toBe(
         "Localized Int64.",
       );
 
-      expect(await Types.Label["~standard"].validate(1)).toEqual({
+      expect(await types.Label["~standard"].validate(1)).toEqual({
         issues: [{ message: "Localized String.", path: [] }],
       });
-      expect(await Types.Int64["~standard"].validate(1n << 63n)).toEqual({
+      expect(await types.Int64["~standard"].validate(1n << 63n)).toEqual({
         issues: [{ message: "Localized Int64.", path: [] }],
       });
     }
@@ -1482,7 +1485,7 @@ describe("localizeTypes", () => {
 
   test("preserves Type APIs without localizing typed boundary assertions", () => {
     const Strings = array(String);
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { PositiveNumber, String, Strings },
       {
         test: {
@@ -1495,14 +1498,14 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    expectTypeOf(Types.Strings).toEqualTypeOf(Strings);
-    expect(Types.Strings.element).toBe(Types.String);
-    expect(Types.Strings.to(["Evolu"])).toEqual(["Evolu"]);
+    expectTypeOf(types.Strings).toEqualTypeOf(Strings);
+    expect(types.Strings.element).toBe(types.String);
+    expect(types.Strings.to(["Evolu"])).toEqual(["Evolu"]);
 
     const positiveError = { type: "Positive", value: 0 } as const;
     for (const operation of [
-      () => Types.PositiveNumber.from(0 as PositiveNumber),
-      () => Types.PositiveNumber.to(0 as PositiveNumber),
+      () => types.PositiveNumber.from(0 as PositiveNumber),
+      () => types.PositiveNumber.to(0 as PositiveNumber),
     ]) {
       expectAssertionError(operation, "Expected Positive.", positiveError);
     }
@@ -1513,9 +1516,9 @@ describe("localizeTypes", () => {
       value: "1",
     } as const;
     for (const operation of [
-      () => Types.PositiveNumber.from.parent.parent("1" as unknown as number),
-      () => Types.PositiveNumber.orThrow("1" as unknown as number),
-      () => Types.PositiveNumber.orNull("1" as unknown as number),
+      () => types.PositiveNumber.from.parent.parent("1" as unknown as number),
+      () => types.PositiveNumber.orThrow("1" as unknown as number),
+      () => types.PositiveNumber.orNull("1" as unknown as number),
     ]) {
       expectAssertionError(operation, "Expected Number.", numberError);
     }
@@ -1526,7 +1529,7 @@ describe("localizeTypes", () => {
     const Values = record(String, Number);
     const KeyedValues = record(regex("RecordKey", /^value$/)(String), Number);
     const Model = object({ fixed: String }, record(String, String));
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { KeyedValues, Model, Pair, Values },
       {
         test: {
@@ -1540,45 +1543,45 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    const notTuple = Types.Pair.fromUnknown(null);
+    const notTuple = types.Pair.fromUnknown(null);
     assert(!notTuple.ok);
-    expect(Types.Pair.formatError(notTuple.error)).toBe("Localized Tuple.");
+    expect(types.Pair.formatError(notTuple.error)).toBe("Localized Tuple.");
 
-    const invalidTupleElement = Types.Pair.fromUnknown(["value", false]);
+    const invalidTupleElement = types.Pair.fromUnknown(["value", false]);
     assert(!invalidTupleElement.ok);
-    expect(Types.Pair.formatError(invalidTupleElement.error)).toBe(
+    expect(types.Pair.formatError(invalidTupleElement.error)).toBe(
       "Localized Number.",
     );
 
-    const notRecord = Types.Values.fromUnknown(null);
+    const notRecord = types.Values.fromUnknown(null);
     assert(!notRecord.ok);
-    expect(Types.Values.formatError(notRecord.error)).toBe("Localized Record.");
+    expect(types.Values.formatError(notRecord.error)).toBe("Localized Record.");
 
-    const invalidRecordValue = Types.Values.fromUnknown({ value: false });
+    const invalidRecordValue = types.Values.fromUnknown({ value: false });
     assert(!invalidRecordValue.ok);
-    expect(Types.Values.formatError(invalidRecordValue.error)).toBe(
+    expect(types.Values.formatError(invalidRecordValue.error)).toBe(
       "Localized Number.",
     );
 
-    const invalidRecordKey = Types.KeyedValues.fromUnknown({ invalid: 1 });
+    const invalidRecordKey = types.KeyedValues.fromUnknown({ invalid: 1 });
     assert(!invalidRecordKey.ok);
-    expect(Types.KeyedValues.formatError(invalidRecordKey.error)).toBe(
+    expect(types.KeyedValues.formatError(invalidRecordKey.error)).toBe(
       "Localized RecordKey.",
     );
 
-    const invalidObjectRest = Types.Model.fromUnknown({
+    const invalidObjectRest = types.Model.fromUnknown({
       fixed: "fixed",
       value: false,
     });
     assert(!invalidObjectRest.ok);
-    expect(Types.Model.formatError(invalidObjectRest.error)).toBe(
+    expect(types.Model.formatError(invalidObjectRest.error)).toBe(
       "Localized String.",
     );
   });
 
   test("routes Set child errors and requires both formatters", () => {
     const Strings = set(String);
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Strings },
       {
         test: {
@@ -1588,13 +1591,13 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    const notSet = Types.Strings.fromUnknown(null);
+    const notSet = types.Strings.fromUnknown(null);
     assert(!notSet.ok);
-    expect(Types.Strings.formatError(notSet.error)).toBe("Localized Set.");
+    expect(types.Strings.formatError(notSet.error)).toBe("Localized Set.");
 
-    const invalidElement = Types.Strings.fromUnknown(new globalThis.Set([1]));
+    const invalidElement = types.Strings.fromUnknown(new globalThis.Set([1]));
     assert(!invalidElement.ok);
-    expect(Types.Strings.formatError(invalidElement.error)).toBe(
+    expect(types.Strings.formatError(invalidElement.error)).toBe(
       "Localized String.",
     );
 
@@ -1620,7 +1623,7 @@ describe("localizeTypes", () => {
 
   test("lets a Union own its complete failure and localizes its members", () => {
     const Value = union(String, Number);
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Value },
       {
         test: {
@@ -1630,15 +1633,15 @@ describe("localizeTypes", () => {
         },
       },
     ).test;
-    const result = Types.Value.fromUnknown(null);
-    const stringResult = Types.Value.members[0].fromUnknown(1);
+    const result = types.Value.fromUnknown(null);
+    const stringResult = types.Value.members[0].fromUnknown(1);
 
     assert(!result.ok);
-    expect(Types.Value.formatError(result.error)).toBe("Localized Union.");
-    expect(Types.Value.members[0]).not.toBe(String);
-    expect(Types.Value.members[1]).not.toBe(Number);
+    expect(types.Value.formatError(result.error)).toBe("Localized Union.");
+    expect(types.Value.members[0]).not.toBe(String);
+    expect(types.Value.members[1]).not.toBe(Number);
     assert(!stringResult.ok);
-    expect(Types.Value.members[0].formatError(stringResult.error)).toBe(
+    expect(types.Value.members[0].formatError(stringResult.error)).toBe(
       "Localized String.",
     );
 
@@ -1658,7 +1661,7 @@ describe("localizeTypes", () => {
   test("localizes TemplateLiteral captures and their reflected Tuple", () => {
     const Part = literal("a");
     const Value = templateLiteralParser(Part);
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Value },
       {
         test: {
@@ -1669,14 +1672,14 @@ describe("localizeTypes", () => {
         },
       },
     ).test;
-    const result = Types.Value.parts[0].fromUnknown("b");
+    const result = types.Value.parts[0].fromUnknown("b");
 
-    expect(Types.Value.parts[0]).not.toBe(Part);
-    expect(Types.Value.output.elements[0]).toBe(Types.Value.parts[0]);
-    expect(Types.Value.parent.output).toBe(Types.Value.output);
-    expect(Types.Value.parent.parts[0]).toBe(Types.Value.parts[0]);
+    expect(types.Value.parts[0]).not.toBe(Part);
+    expect(types.Value.output.elements[0]).toBe(types.Value.parts[0]);
+    expect(types.Value.parent.output).toBe(types.Value.output);
+    expect(types.Value.parent.parts[0]).toBe(types.Value.parts[0]);
     assert(!result.ok);
-    expect(Types.Value.parts[0].formatError(result.error)).toBe(
+    expect(types.Value.parts[0].formatError(result.error)).toBe(
       "Localized Literal.",
     );
 
@@ -1699,17 +1702,17 @@ describe("localizeTypes", () => {
 
   test("localizes fallible members of an infallible Union", () => {
     const Value = union(String, Unknown);
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Value },
       { test: { String: () => "Localized String." } },
     ).test;
-    const result = Types.Value.members[0].fromUnknown(1);
+    const result = types.Value.members[0].fromUnknown(1);
 
-    expectTypeOf(Types.Value.Error).toEqualTypeOf<never>();
-    expect(Types.Value.members[0]).not.toBe(String);
-    expect(Types.Value.members[1]).not.toBe(Unknown);
+    expectTypeOf(types.Value.Error).toEqualTypeOf<never>();
+    expect(types.Value.members[0]).not.toBe(String);
+    expect(types.Value.members[1]).not.toBe(Unknown);
     assert(!result.ok);
-    expect(Types.Value.members[0].formatError(result.error)).toBe(
+    expect(types.Value.members[0].formatError(result.error)).toBe(
       "Localized String.",
     );
 
@@ -1734,7 +1737,7 @@ describe("localizeTypes", () => {
       value: Value,
       optionalValue: optional(Value),
     });
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Model, NonEmptyValues },
       {
         test: {
@@ -1746,14 +1749,14 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    expect(Types.Model.props.value).toBe(Types.NonEmptyValues.parent.element);
-    expect(Types.Model.props.optionalValue.type).toBe(
-      Types.NonEmptyValues.parent.element,
+    expect(types.Model.props.value).toBe(types.NonEmptyValues.parent.element);
+    expect(types.Model.props.optionalValue.type).toBe(
+      types.NonEmptyValues.parent.element,
     );
 
-    const result = Types.Model.props.value.members[0].fromUnknown(1);
+    const result = types.Model.props.value.members[0].fromUnknown(1);
     assert(!result.ok);
-    expect(Types.Model.props.value.members[0].formatError(result.error)).toBe(
+    expect(types.Model.props.value.members[0].formatError(result.error)).toBe(
       "Localized String.",
     );
 
@@ -1778,7 +1781,7 @@ describe("localizeTypes", () => {
     const Created = typed("Created", { value: String });
     const Deleted = typed("Deleted", { reason: Number });
     const Event = discriminatedUnion(Created, Deleted);
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Event },
       {
         test: {
@@ -1797,9 +1800,9 @@ describe("localizeTypes", () => {
       [{ type: "Created", value: 1 }, "Localized String."],
       [{ type: "Deleted", reason: false }, "Localized Number."],
     ] as const) {
-      const result = Types.Event.fromUnknown(value);
+      const result = types.Event.fromUnknown(value);
       assert(!result.ok);
-      expect(Types.Event.formatError(result.error)).toBe(message);
+      expect(types.Event.formatError(result.error)).toBe(message);
     }
   });
 
@@ -1815,14 +1818,14 @@ describe("localizeTypes", () => {
           : err({ type: "RootError", value }),
       () => "Root error.",
     );
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Root },
       { test: { RootError: () => "Localized RootError." } },
     ).test;
-    const result = Types.Root.fromUnknown(1);
+    const result = types.Root.fromUnknown(1);
 
     assert(!result.ok);
-    expect(Types.Root.formatError(result.error)).toBe("Localized RootError.");
+    expect(types.Root.formatError(result.error)).toBe("Localized RootError.");
   });
 
   test("does not treat an arbitrary outputError property as transparent", async () => {
@@ -1939,7 +1942,7 @@ describe("localizeTypes", () => {
         to: globalThis.String,
       },
     );
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { NumberFromString, PositiveFromString },
       {
         test: {
@@ -1955,17 +1958,17 @@ describe("localizeTypes", () => {
       [null, "Localized String."],
       ["invalid", "Localized NumberFromString."],
     ] as const) {
-      const result = Types.NumberFromString.fromUnknown(value);
+      const result = types.NumberFromString.fromUnknown(value);
       assert(!result.ok);
-      expect(Types.NumberFromString.formatError(result.error)).toBe(message);
+      expect(types.NumberFromString.formatError(result.error)).toBe(message);
     }
 
-    const invalidOutput = Types.PositiveFromString.fromUnknown("0");
+    const invalidOutput = types.PositiveFromString.fromUnknown("0");
     assert(!invalidOutput.ok);
-    expect(Types.PositiveFromString.formatError(invalidOutput.error)).toBe(
+    expect(types.PositiveFromString.formatError(invalidOutput.error)).toBe(
       "Localized Positive.",
     );
-    expect(await Types.PositiveFromString["~standard"].validate("0")).toEqual({
+    expect(await types.PositiveFromString["~standard"].validate("0")).toEqual({
       issues: [{ message: "Localized Positive.", path: [] }],
     });
   });
@@ -1987,25 +1990,25 @@ describe("localizeTypes", () => {
       Object: () => "Localized Object.",
       String: () => "Localized String.",
     };
-    const Types = localizeTypes({ Tree }, { test: formatters }).test;
-    const InputTypes = localizeTypes(
+    const types = localizeTypes({ Tree }, { test: formatters }).test;
+    const inputTypes = localizeTypes(
       { TreeInput: Tree.parent },
       { test: formatters },
     ).test;
-    const result = Types.Tree.fromUnknown({
+    const result = types.Tree.fromUnknown({
       value: "root",
       children: [{ value: 1, children: [] }],
     });
 
     assert(!result.ok);
-    expect(Types.Tree.formatError(result.error)).toBe("Localized String.");
+    expect(types.Tree.formatError(result.error)).toBe("Localized String.");
 
-    const inputResult = InputTypes.TreeInput.fromUnknown({
+    const inputResult = inputTypes.TreeInput.fromUnknown({
       value: 1,
       children: [],
     });
     assert(!inputResult.ok);
-    expect(InputTypes.TreeInput.formatError(inputResult.error)).toBe(
+    expect(inputTypes.TreeInput.formatError(inputResult.error)).toBe(
       "Localized String.",
     );
   });
@@ -2033,7 +2036,7 @@ describe("localizeTypes", () => {
     const Right: LazyType<Right, Right, never, RightError, RightError> = lazy(
       () => object({ count: Number, left: optional(Left) }),
     );
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Left, Right },
       {
         test: {
@@ -2043,28 +2046,28 @@ describe("localizeTypes", () => {
         },
       },
     ).test;
-    const result = Types.Left.fromUnknown({
+    const result = types.Left.fromUnknown({
       label: "left",
       right: { count: "invalid" },
     });
 
     assert(!result.ok);
-    expect(Types.Left.formatError(result.error)).toBe("Localized Number.");
+    expect(types.Left.formatError(result.error)).toBe("Localized Number.");
   });
 
   test("snapshots each locale formatter set", () => {
     const formatters = { String: () => "First formatter." };
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { String, Text: String },
       { test: formatters },
     ).test;
 
     formatters.String = () => "Replacement formatter.";
 
-    const result = Types.String.fromUnknown(1);
+    const result = types.String.fromUnknown(1);
     assert(!result.ok);
-    expect(Types.String.formatError(result.error)).toBe("First formatter.");
-    expect(Types.Text).toBe(Types.String);
+    expect(types.String.formatError(result.error)).toBe("First formatter.");
+    expect(types.Text).toBe(types.String);
   });
 
   test("requires plain string-keyed maps", () => {
@@ -3530,7 +3533,9 @@ describe("objectTag", () => {
         expected: "Tagged",
         value: wrongTag,
       }),
-    ).toBe('A value {"tag":"Other"} does not have the object tag "Tagged".');
+    ).toBe(
+      'A value {"tag":"Other"} does not have the expected object tag "Tagged".',
+    );
     expectTypeOf(compileTimeAssertions).toBeFunction();
   });
 
@@ -3610,7 +3615,7 @@ describe("objectTag", () => {
   });
 
   test("infers ObjectTag localization", () => {
-    const Types = localizeTypes(
+    const types = localizeTypes(
       { Date },
       {
         test: {
@@ -3621,10 +3626,10 @@ describe("objectTag", () => {
         },
       },
     ).test;
-    const result = Types.Date.fromUnknown({});
+    const result = types.Date.fromUnknown({});
 
     assert(!result.ok);
-    expect(Types.Date.formatError(result.error)).toBe("Localized ObjectTag.");
+    expect(types.Date.formatError(result.error)).toBe("Localized ObjectTag.");
   });
 });
 
@@ -4443,7 +4448,7 @@ describe("union", () => {
     });
 
     expect(StringOrNumber.formatError(result.error)).toBe(
-      "A value does not match any union member.",
+      "A value does not match any allowed variant.",
     );
     expectTypeOf(StringOrNumber.formatError)
       .parameter(0)
@@ -7385,7 +7390,7 @@ describe("BrandFactory", () => {
               value: "abandon abandon abandon",
             }),
           ).toBe(
-            'The value "abandon abandon abandon" is not a valid BIP39 mnemonic.',
+            'The value "abandon abandon abandon" is not a valid English BIP39 mnemonic.',
           );
           expectTypeOf<typeof Mnemonic.Error>().toEqualTypeOf<MnemonicError>();
         });
@@ -10337,7 +10342,7 @@ describe("set", () => {
         },
       }),
     ).toBe(
-      "The value is a Set subclass, but a Set Output must be a direct Set.",
+      "The value is an instance of a Set subclass, but a Set Output must be a direct Set instance.",
     );
     expect(
       Strings.formatError({
@@ -11258,7 +11263,7 @@ describe("Object", () => {
         },
       }),
     ).toBe(
-      "An Object property key must be a string. Remove it or use a different Type.",
+      "An Object property key must be a string. Remove the symbol property or use a different Type.",
     );
   });
 
@@ -11794,7 +11799,7 @@ describe("record", () => {
         err(allErrors),
       );
       expect(Values.formatError(allErrors)).toBe(
-        'A record property "first" must be a data property.',
+        'A Record property "first" must be a data property.',
       );
       expect(reads).toBe(0);
     });
@@ -12228,7 +12233,7 @@ describe("record", () => {
         type: "Record",
         reason: { kind: "NotRecord", value: 1 },
       }),
-    ).toBe("A value 1 is not a record.");
+    ).toBe("A value 1 is not a Record.");
     expect(
       Values.formatError({
         type: "Record",
@@ -12281,7 +12286,7 @@ describe("record", () => {
           issues: [{ kind: "Accessor", key: "allowed" }],
         },
       }),
-    ).toBe('A record property "allowed" must be a data property.');
+    ).toBe('A Record property "allowed" must be a data property.');
     expect(
       Values.formatError({
         type: "Record",
@@ -12290,7 +12295,7 @@ describe("record", () => {
           issues: [{ kind: "NonEnumerable", key: "allowed" }],
         },
       }),
-    ).toBe('A record property "allowed" must be enumerable.');
+    ).toBe('A Record property "allowed" must be enumerable.');
     expect(
       Transformed.formatError({
         type: "Record",
@@ -13540,7 +13545,7 @@ describe("object", () => {
           },
         }),
       ).toBe(
-        "An excess property is not allowed. Remove it or use a different Type.",
+        'The property "role" is not allowed. Remove it or use a different Type.',
       );
       expect(
         Model.formatError({
@@ -13550,7 +13555,7 @@ describe("object", () => {
             errors: { name: { type: "ObjectMissingProperty" } },
           },
         }),
-      ).toBe("A required property is missing.");
+      ).toBe('The required property "name" is missing.');
       expect(
         Model.formatError({
           type: "Object",
@@ -13577,7 +13582,9 @@ describe("object", () => {
             },
           },
         }),
-      ).toBe("An Object property must be enumerable.");
+      ).toBe(
+        "An Object property must be enumerable. Make it enumerable or use a different Type.",
+      );
       expect(
         Model.formatError({
           type: "Object",
@@ -14757,7 +14764,7 @@ describe("result", () => {
     assert(!memberNotObject.ok);
     assert(!excessProperty.ok);
     expect(StringResult.formatError(missingValue.error)).toBe(
-      "A required property is missing.",
+      'The required property "value" is missing.',
     );
     expect(StringResult.formatError(notObject.error)).toBe(
       "A value null is not an object.",
@@ -14766,19 +14773,19 @@ describe("result", () => {
       "A value null is not an object.",
     );
     expect(StringResult.formatError(excessProperty.error)).toBe(
-      "An excess property is not allowed. Remove it or use a different Type.",
+      'The property "extra" is not allowed. Remove it or use a different Type.',
     );
     expect(
       await StringResult["~standard"].validate({ ok: true, extra: true }),
     ).toEqual({
       issues: [
         {
-          message: "A required property is missing.",
+          message: 'The required property "value" is missing.',
           path: ["value"],
         },
         {
           message:
-            "An excess property is not allowed. Remove it or use a different Type.",
+            'The property "extra" is not allowed. Remove it or use a different Type.',
           path: ["extra"],
         },
       ],
@@ -15899,7 +15906,7 @@ describe("discriminatedUnion", () => {
         'The discriminator property "type" has an unexpected value "Other".',
       );
       expect(Event.formatError(memberResult.error)).toBe(
-        "A required property is missing.",
+        'The required property "name" is missing.',
       );
       expect(Event.formatError(accessResult.error)).toBe(
         'The discriminator property "type" must be a data property.',
@@ -16936,7 +16943,7 @@ describe("JsonValue", () => {
           container: "Object",
           value: new globalThis.Date(),
         },
-        "The value is an object, but a JsonValue Object must be a plain object or have a null prototype.",
+        "The value is an object, but a JsonValue object must be a plain object or have a null prototype.",
       ],
       [
         { kind: "Accessor", path: ["value"] },
@@ -16944,16 +16951,16 @@ describe("JsonValue", () => {
       ],
       [
         { kind: "NonEnumerable", path: ["value"] },
-        "A JSON Object property must be enumerable. Remove it or use a different Type.",
+        "A JSON object property must be enumerable. Remove it or use a different Type.",
       ],
       [
         { kind: "SymbolProperty", path: [globalThis.Symbol("value")] },
-        "A JSON Object property key must be a string. Remove the symbol property or use a different Type.",
+        "A JSON object property key must be a string. Remove the symbol property or use a different Type.",
       ],
-      [{ kind: "Hole", path: [0] }, "A JSON Array element is missing."],
+      [{ kind: "Hole", path: [0] }, "A JSON array element is missing."],
       [
         { kind: "ExcessProperty", path: ["metadata"] },
-        "An excess JSON Array property is not allowed. Remove it or use a different Type.",
+        "An excess JSON array property is not allowed. Remove it or use a different Type.",
       ],
       [
         { kind: "CircularReference", path: [0], ancestorPath: [] },

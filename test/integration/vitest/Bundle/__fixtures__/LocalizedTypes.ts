@@ -7,7 +7,7 @@ import { cs } from "@evolu/common/intl";
 
 const Label = /*#__PURE__*/ minLength(1)(String);
 
-const TypesByLocale = /*#__PURE__*/ localizeTypes(
+const typesByLocale = /*#__PURE__*/ localizeTypes(
   { Label },
   {
     cs: {
@@ -22,19 +22,19 @@ const TypesByLocale = /*#__PURE__*/ localizeTypes(
 );
 
 export default (): ReadonlyArray<string> => {
-  const invalidType = TypesByLocale.cs.Label.fromUnknown(42);
-  const invalidCzechLength = TypesByLocale.cs.Label.fromUnknown("");
-  const invalidEnglishLength = TypesByLocale.en.Label.fromUnknown("");
+  const invalidType = typesByLocale.cs.Label.fromUnknown(42);
+  const invalidCzechLength = typesByLocale.cs.Label.fromUnknown("");
+  const invalidEnglishLength = typesByLocale.en.Label.fromUnknown("");
 
   return [
     invalidType.ok
       ? invalidType.value
-      : TypesByLocale.cs.Label.formatError(invalidType.error),
+      : typesByLocale.cs.Label.formatError(invalidType.error),
     invalidCzechLength.ok
       ? invalidCzechLength.value
-      : TypesByLocale.cs.Label.formatError(invalidCzechLength.error),
+      : typesByLocale.cs.Label.formatError(invalidCzechLength.error),
     invalidEnglishLength.ok
       ? invalidEnglishLength.value
-      : TypesByLocale.en.Label.formatError(invalidEnglishLength.error),
+      : typesByLocale.en.Label.formatError(invalidEnglishLength.error),
   ];
 };

@@ -150,7 +150,7 @@ import {
  * through `globalThis`, JavaScript's standard cross-environment global object,
  * such as `globalThis.String` or `globalThis.Date`.
  *
- * ### Example
+ * ## Example
  *
  * ```ts
  * import { String, type Result } from "@evolu/common";
@@ -889,6 +889,56 @@ const assertTypeOutput = <Error extends TypeError>(
  * network connection. Different localized Type sets can coexist on one page or
  * in separate dependency-injection scopes.
  *
+ * ### Locales
+ *
+ * The following locales are available:
+ *
+ * - Arabic (`ar`)
+ * - Bengali (`bn`)
+ * - Catalan (`ca`)
+ * - Chinese, Simplified (`zhCN`)
+ * - Chinese, Traditional (`zhTW`)
+ * - Croatian (`hr`)
+ * - Czech (`cs`)
+ * - Danish (`da`)
+ * - Dutch (`nl`)
+ * - Filipino (`fil`)
+ * - Finnish (`fi`)
+ * - French (`fr`)
+ * - German (`de`)
+ * - Greek (`el`)
+ * - Hebrew (`he`)
+ * - Hindi (`hi`)
+ * - Hungarian (`hu`)
+ * - Indonesian (`id`)
+ * - Italian (`it`)
+ * - Japanese (`ja`)
+ * - Korean (`ko`)
+ * - Malay (`ms`)
+ * - Malayalam (`ml`)
+ * - Marathi (`mr`)
+ * - Norwegian Bokmål (`nb`)
+ * - Persian (`fa`)
+ * - Polish (`pl`)
+ * - Portuguese (`pt`)
+ * - Portuguese, Brazilian (`ptBR`)
+ * - Punjabi (`pa`)
+ * - Romanian (`ro`)
+ * - Slovak (`sk`)
+ * - Slovenian (`sl`)
+ * - Spanish (`es`)
+ * - Swahili (`sw`)
+ * - Swedish (`sv`)
+ * - Tamil (`ta`)
+ * - Telugu (`te`)
+ * - Thai (`th`)
+ * - Turkish (`tr`)
+ * - Ukrainian (`uk`)
+ * - Urdu (`ur`)
+ * - Vietnamese (`vi`)
+ *
+ * English is built in; use {@link Type} directly for its default formatters.
+ *
  * ### Example
  *
  * ```ts
@@ -897,7 +947,7 @@ const assertTypeOutput = <Error extends TypeError>(
  *
  * const Label = minLength(1)(String);
  *
- * const TypesByLocale = localizeTypes(
+ * const typesByLocale = localizeTypes(
  *   { Label },
  *   {
  *     cs: {
@@ -907,7 +957,7 @@ const assertTypeOutput = <Error extends TypeError>(
  *   },
  * );
  *
- * expectTypeOf<typeof TypesByLocale.cs.Label>().toEqualTypeOf<
+ * expectTypeOf<typeof typesByLocale.cs.Label>().toEqualTypeOf<
  *   typeof Label
  * >();
  * ```
@@ -2656,6 +2706,9 @@ export function objectTag(
   name: TypeName,
   outputType?: ConcreteTypeNode & { readonly Output: object },
 ): TypeNode {
+  const formatError: TypeErrorFormatter<ObjectTagError> = (error) =>
+    `A value ${safelyStringifyUnknownValue(error.value)} does not have the expected object tag ${safelyStringifyUnknownValue(error.expected)}.`;
+
   if (outputType === undefined) {
     return createRootType(
       name,
@@ -2663,7 +2716,7 @@ export function objectTag(
         hasObjectTag(value, name)
           ? ok(value as object)
           : err({ type: "ObjectTag", expected: name, value }),
-      formatObjectTagError,
+      formatError,
     );
   }
 
@@ -2675,16 +2728,13 @@ export function objectTag(
         hasObjectTag(value, name)
           ? ok(value as object & ObjectTag<TypeName>)
           : err({ type: "ObjectTag", expected: name, value }),
-      formatObjectTagError,
+      formatError,
     ),
     { expected: name },
   );
 }
 
 declare const objectTagSymbol: unique symbol;
-
-const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (error) =>
-  `A value ${safelyStringifyUnknownValue(error.value)} does not have the object tag ${safelyStringifyUnknownValue(error.expected)}.`;
 
 const hasObjectTag = (value: unknown, expected: string): boolean =>
   value !== null &&
@@ -3046,7 +3096,8 @@ export function union(
     inputMembers,
     (member, value, options) => member[outputValidationSymbol](value, options),
   );
-  const defaultFormatter = formatUnionError as TypeErrorFormatter<TypeError>;
+  const defaultFormatter = (() =>
+    "A value does not match any allowed variant.") as TypeErrorFormatter<TypeError>;
   const getTypeIssues: RuntimeGetTypeIssues = (error) =>
     singleRuntimeTypeIssue("Union", error, defaultFormatter);
   const input = createTypeNode<
@@ -3100,9 +3151,6 @@ export function union(
     { members, [templateLiteralSyntaxSymbol]: true },
   );
 }
-
-const formatUnionError: TypeErrorFormatter<UnionErrorValue<TypeError>> = () =>
-  "A value does not match any union member.";
 
 const createUnionValidation =
   (
@@ -3371,10 +3419,10 @@ interface UnionErrorValue<
  * reversibility and keeps capture boundaries unambiguous. Different capture
  * Tuples must never encode to the same string. The parser provides predictable
  * parsing without pathological backtracking and decodes each capture once, so
- * adversarial input cannot trigger exponential parser work. Fixed-width captures
- * may be adjacent, but only one variable-width capture is allowed. Declarations
- * that could join UTF-16 surrogate halves across parts are rejected during
- * construction.
+ * adversarial input cannot trigger exponential parser work. Fixed-width
+ * captures may be adjacent, but only one variable-width capture is allowed.
+ * Declarations that could join UTF-16 surrogate halves across parts are
+ * rejected during construction.
  *
  * Keep capture unions reasonably small to avoid excessive compiler work.
  *
@@ -3569,12 +3617,14 @@ const createTemplateLiteralParserType = <
       options,
       false,
     );
-    return (outputResult.ok
-      ? outputResult
-      : err({
-          type: "TemplateLiteral",
-          outputError: outputResult.error,
-        })) as Result<
+    return (
+      outputResult.ok
+        ? outputResult
+        : err({
+            type: "TemplateLiteral",
+            outputError: outputResult.error,
+          })
+    ) as Result<
       TemplateLiteralCaptureTuple<Parts>["Output"],
       TemplateLiteralRuntimeParseError<Parts>
     >;
@@ -3635,7 +3685,8 @@ const createTemplateLiteralParserType = <
     return singleRuntimeTypeIssue(
       "TemplateLiteral",
       error,
-      formatTemplateLiteralError as TypeErrorFormatter<TypeError>,
+      ((error: TemplateLiteralError) =>
+        `The value ${safelyStringifyUnknownValue(error.value)} does not match the template literal.`) as TypeErrorFormatter<TypeError>,
     );
   };
   const canonicalStringFromUnknown = (
@@ -3772,8 +3823,8 @@ export interface TemplateLiteralType<
  * Creates a canonical string Type from fixed strings and string-encoded Types.
  *
  * Use this factory when Output should remain a string. Switch to
- * {@link templateLiteralParser} when the individual Type parts should be
- * decoded into a Tuple.
+ * {@link templateLiteralParser} when the individual Type parts should be decoded
+ * into a Tuple.
  *
  * ### Example
  *
@@ -3834,10 +3885,6 @@ type TemplateLiteralCaptureFromStringError<T extends TypeNode> =
 export interface TemplateLiteralError extends TypeError<"TemplateLiteral"> {
   readonly value: string;
 }
-
-const formatTemplateLiteralError: TypeErrorFormatter<TemplateLiteralError> =
-  (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} does not match the template literal.`;
 
 declare const templateLiteralStringBrandSymbol: unique symbol;
 
@@ -4084,9 +4131,7 @@ const compileTemplateLiteralParser = <Parts extends TemplateLiteralParts>(
     }
 
     return position === inputCodePoints.length
-      ? ok(
-          captures as unknown as TemplateLiteralCaptureTuple<Parts>["Input"],
-        )
+      ? ok(captures as unknown as TemplateLiteralCaptureTuple<Parts>["Input"])
       : err({ type: "TemplateLiteral", value: input });
   };
 };
@@ -5077,7 +5122,7 @@ export const Mnemonic = /*#__PURE__*/ brand(
       ? ok()
       : err<MnemonicError>({ type: "Mnemonic", value }),
   (error) =>
-    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid BIP39 mnemonic.`,
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a valid English BIP39 mnemonic.`,
 );
 export type Mnemonic = typeof Mnemonic.Output;
 
@@ -6494,23 +6539,6 @@ const isArrayCollection = (
   return true;
 };
 
-const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
-  if (error.reason.kind === "NotArray") {
-    return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not an array.`;
-  }
-
-  const issue = error.reason.issues[0] as ArrayStructuralIssue;
-
-  switch (issue.kind) {
-    case "Hole":
-      return `An array element at index ${issue.index} is missing.`;
-    case "Accessor":
-      return `An array element at index ${issue.index} must be a data property.`;
-    case "ExcessProperty":
-      return "An excess Array property is not allowed. Remove it or use a different Type.";
-  }
-};
-
 const arrayRuntimeConfig: HomogeneousCollectionRuntimeConfig<
   ReadonlyArray<unknown>
 > = {
@@ -6521,7 +6549,23 @@ const arrayRuntimeConfig: HomogeneousCollectionRuntimeConfig<
     validateArrayItems(value, validateElement, options, false),
   encode: encodeArrayCollection,
   is: isArrayCollection,
-  formatError: formatArrayError as TypeErrorFormatter<TypeError>,
+  formatError: ((error: ArrayError) => {
+    if (error.reason.kind === "NotArray") {
+      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not an array.`;
+    }
+    const issue = error.reason.issues[0];
+
+    switch (issue.kind) {
+      case "Hole":
+        return `An array element at index ${issue.index} is missing.`;
+      case "Accessor":
+        return `An array element at index ${issue.index} must be a data property.`;
+      case "ExcessProperty":
+        return "An excess Array property is not allowed. Remove it or use a different Type.";
+      case "Element":
+        return `An array element at index ${issue.index} is invalid.`;
+    }
+  }) as TypeErrorFormatter<TypeError>,
 };
 
 const validateArrayItems = (
@@ -6960,18 +7004,6 @@ const isSetCollection = (
   return true;
 };
 
-const formatSetError: TypeErrorFormatter<SetError> = (error) => {
-  if (error.reason.kind === "NotSet") {
-    return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Set.`;
-  }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "The value is a Set subclass, but a Set Output must be a direct Set.";
-  }
-
-  const issue = error.reason.issues[0] as SetStructuralIssue;
-  return `An excess Set property ${safelyStringifyUnknownValue(issue.key)} is not allowed.`;
-};
-
 const hasDirectSetPrototype = (value: object): boolean => {
   const prototype: unknown = globalThis.Object.getPrototypeOf(value);
   if (prototype === null) return false;
@@ -6994,7 +7026,19 @@ const setRuntimeConfig: HomogeneousCollectionRuntimeConfig<
     validateSetItems(value, validateElement, options, false),
   encode: encodeSetCollection,
   is: isSetCollection,
-  formatError: formatSetError as TypeErrorFormatter<TypeError>,
+  formatError: ((error: SetError) => {
+    if (error.reason.kind === "NotSet")
+      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Set.`;
+    if (error.reason.kind === "UnexpectedPrototype")
+      return "The value is an instance of a Set subclass, but a Set Output must be a direct Set instance.";
+    const issue = error.reason.issues[0];
+    switch (issue.kind) {
+      case "ExcessProperty":
+        return `An excess Set property ${safelyStringifyUnknownValue(issue.key)} is not allowed.`;
+      case "Element":
+        return `A Set element at index ${issue.index} is invalid.`;
+    }
+  }) as TypeErrorFormatter<TypeError>,
 };
 
 const validateSetItems = (
@@ -7148,14 +7192,11 @@ const createTupleType = (
       options,
     );
   const formatError: TypeErrorFormatter<TupleError> = (error) => {
-    if (error.reason.kind === "NotArray") {
+    if (error.reason.kind === "NotArray")
       return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a tuple.`;
-    }
-    if (error.reason.kind === "InvalidLength") {
+    if (error.reason.kind === "InvalidLength")
       return `A Tuple must contain exactly ${error.reason.expected} elements, but the value contains ${error.reason.actual}.`;
-    }
-    const issue = error.reason.issues[0] as TupleStructuralIssue;
-
+    const issue = error.reason.issues[0];
     switch (issue.kind) {
       case "Hole":
         return `A Tuple element at index ${issue.index} is missing.`;
@@ -7163,6 +7204,8 @@ const createTupleType = (
         return `A Tuple element at index ${issue.index} must be a data property.`;
       case "ExcessProperty":
         return "An excess Tuple property is not allowed. Remove it or use a different Type.";
+      case "Element":
+        return `A Tuple element at index ${issue.index} is invalid.`;
     }
   };
   const rootElements = typeElements.map(
@@ -7538,10 +7581,7 @@ export type Digit1To6 = typeof Digit1To6.Output;
 export const Digit1To23 = /*#__PURE__*/ union(
   Digit1To9,
   /*#__PURE__*/ templateLiteral("1", Digit),
-  /*#__PURE__*/ templateLiteral(
-    "2",
-    /*#__PURE__*/ union("0", "1", "2", "3"),
-  ),
+  /*#__PURE__*/ templateLiteral("2", /*#__PURE__*/ union("0", "1", "2", "3")),
 );
 export type Digit1To23 = typeof Digit1To23.Output;
 
@@ -7552,10 +7592,7 @@ export type Digit1To23 = typeof Digit1To23.Output;
  */
 export const Digit1To51 = /*#__PURE__*/ union(
   Digit1To9,
-  /*#__PURE__*/ templateLiteral(
-    /*#__PURE__*/ union("1", "2", "3", "4"),
-    Digit,
-  ),
+  /*#__PURE__*/ templateLiteral(/*#__PURE__*/ union("1", "2", "3", "4"), Digit),
   /*#__PURE__*/ templateLiteral("5", /*#__PURE__*/ union("0", "1")),
 );
 export type Digit1To51 = typeof Digit1To51.Output;
@@ -7654,30 +7691,18 @@ const createObjectRuntimeTypeIssues =
     }) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   };
 
+const formatPlainObjectRootError = (
+  reason:
+    ObjectNotObjectError["reason"] | ObjectUnexpectedPrototypeError["reason"],
+): string =>
+  reason.kind === "NotObject"
+    ? `A value ${safelyStringifyUnknownValue(reason.value)} is not an object.`
+    : "The value is an object, but an Object Output must be a plain object or have a null prototype.";
+
 type PlainObjectError = ObjectError<
   Readonly<Record<never, never>>,
   ObjectPropertyAccessError | ObjectExcessPropertyError
 >;
-
-const formatPlainObjectError: TypeErrorFormatter<PlainObjectError> = (
-  error,
-) => {
-  if (error.reason.kind !== "Properties") {
-    return formatPlainObjectRootError(error.reason);
-  }
-
-  const key = Reflect.ownKeys(error.reason.errors).at(0);
-  assertNonNullable(key);
-  const propertyError = error.reason.errors[key];
-  assertNonNullable(propertyError);
-
-  if (propertyError.type === "ObjectPropertyAccess") {
-    return propertyError.reason === "Accessor"
-      ? "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type."
-      : "An Object property must be enumerable. Make it enumerable or use a different Type.";
-  }
-  return "An Object property key must be a string. Remove it or use a different Type.";
-};
 
 /**
  * A {@link Type} for readonly plain objects with unknown property values.
@@ -7768,10 +7793,52 @@ export const Object: Type<
           reason: { kind: "Properties", errors },
         } as PlainObjectError);
   },
-  formatPlainObjectError,
-  /*#__PURE__*/ createObjectRuntimeTypeIssues(
-    formatPlainObjectError as TypeErrorFormatter<TypeError>,
-  ),
+  (error: ObjectError) => {
+    if (error.reason.kind !== "Properties")
+      return formatPlainObjectRootError(error.reason);
+    const key = Reflect.ownKeys(error.reason.errors).at(0);
+    assertNonNullable(key);
+    const propertyError = error.reason.errors[key];
+    assertNonNullable(propertyError);
+    if (propertyError.type === "ObjectPropertyAccess") {
+      switch ((propertyError as ObjectPropertyAccessError).reason) {
+        case "Accessor":
+          return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
+        case "NonEnumerable":
+          return "An Object property must be enumerable. Make it enumerable or use a different Type.";
+      }
+    }
+    if (propertyError.type === "ObjectMissingProperty")
+      return `The required property ${safelyStringifyUnknownValue(key)} is missing.`;
+    if (typeof key === "symbol")
+      return "An Object property key must be a string. Remove the symbol property or use a different Type.";
+    if (propertyError.type === "ObjectExcessProperty")
+      return `The property ${safelyStringifyUnknownValue(key)} is not allowed. Remove it or use a different Type.`;
+    return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
+  },
+  /*#__PURE__*/ createObjectRuntimeTypeIssues(((error: ObjectError) => {
+    if (error.reason.kind !== "Properties")
+      return formatPlainObjectRootError(error.reason);
+    const key = Reflect.ownKeys(error.reason.errors).at(0);
+    assertNonNullable(key);
+    const propertyError = error.reason.errors[key];
+    assertNonNullable(propertyError);
+    if (propertyError.type === "ObjectPropertyAccess") {
+      switch ((propertyError as ObjectPropertyAccessError).reason) {
+        case "Accessor":
+          return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
+        case "NonEnumerable":
+          return "An Object property must be enumerable. Make it enumerable or use a different Type.";
+      }
+    }
+    if (propertyError.type === "ObjectMissingProperty")
+      return `The required property ${safelyStringifyUnknownValue(key)} is missing.`;
+    if (typeof key === "symbol")
+      return "An Object property key must be a string. Remove the symbol property or use a different Type.";
+    if (propertyError.type === "ObjectExcessProperty")
+      return `The property ${safelyStringifyUnknownValue(key)} is not allowed. Remove it or use a different Type.`;
+    return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
+  }) as TypeErrorFormatter<TypeError>),
 );
 
 const isPlainObject = (value: object): boolean => {
@@ -7780,14 +7847,6 @@ const isPlainObject = (value: object): boolean => {
     prototype === null || globalThis.Object.getPrototypeOf(prototype) === null
   );
 };
-
-const formatPlainObjectRootError = (
-  reason:
-    ObjectNotObjectError["reason"] | ObjectUnexpectedPrototypeError["reason"],
-): string =>
-  reason.kind === "NotObject"
-    ? `A value ${safelyStringifyUnknownValue(reason.value)} is not an object.`
-    : "The value is an object, but an Object Output must be a plain object or have a null prototype.";
 
 /**
  * Record {@link Type}.
@@ -7954,20 +8013,20 @@ export const record = <
       options,
     );
   const formatError: TypeErrorFormatter<RecordError> = (error) => {
-    if (error.reason.kind === "NotRecord") {
-      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a record.`;
-    }
-    if (error.reason.kind === "NotPlainRecord") {
+    if (error.reason.kind === "NotRecord")
+      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Record.`;
+    if (error.reason.kind === "NotPlainRecord")
       return "The value is an object, but a Record Output must be a plain object or have a null prototype.";
-    }
-
-    const issue = error.reason.issues[0] as RecordStructuralIssue;
-
+    const issue = error.reason.issues[0];
     switch (issue.kind) {
+      case "Key":
+        return `Property key ${safelyStringifyUnknownValue(issue.key)} is invalid.`;
+      case "Value":
+        return `The value of property ${safelyStringifyUnknownValue(issue.key)} is invalid.`;
       case "Accessor":
-        return `A record property ${safelyStringifyUnknownValue(issue.key)} must be a data property.`;
+        return `A Record property ${safelyStringifyUnknownValue(issue.key)} must be a data property.`;
       case "NonEnumerable":
-        return `A record property ${safelyStringifyUnknownValue(issue.key)} must be enumerable.`;
+        return `A Record property ${safelyStringifyUnknownValue(issue.key)} must be enumerable.`;
       case "Collision":
         return `Record keys ${safelyStringifyUnknownValue(issue.previousKey)} and ${safelyStringifyUnknownValue(issue.key)} decode to the same key ${safelyStringifyUnknownValue(issue.outputKey)}.`;
     }
@@ -8818,31 +8877,27 @@ const createObjectType = (
     options: ValidationOptions = firstValidationOptions,
   ) => validate(value, options, true);
   const formatError: TypeErrorFormatter<ObjectError> = (error) => {
-    if (error.reason.kind !== "Properties") {
+    if (error.reason.kind !== "Properties")
       return formatPlainObjectRootError(error.reason);
-    }
-
     const key = Reflect.ownKeys(error.reason.errors).at(0);
     assertNonNullable(key);
-    const propertyError = (
-      error.reason.errors as Readonly<Partial<Record<PropertyKey, TypeError>>>
-    )[key]!;
-
+    const propertyError = error.reason.errors[key];
+    assertNonNullable(propertyError);
     if (propertyError.type === "ObjectPropertyAccess") {
       switch ((propertyError as ObjectPropertyAccessError).reason) {
         case "Accessor":
           return "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
         case "NonEnumerable":
-          return "An Object property must be enumerable.";
+          return "An Object property must be enumerable. Make it enumerable or use a different Type.";
       }
     }
-    if (
-      typeof key === "string" &&
-      globalThis.Object.hasOwn(runtimeProps, key)
-    ) {
-      return "A required property is missing.";
-    }
-    return "An excess property is not allowed. Remove it or use a different Type.";
+    if (propertyError.type === "ObjectMissingProperty")
+      return `The required property ${safelyStringifyUnknownValue(key)} is missing.`;
+    if (typeof key === "symbol")
+      return "An Object property key must be a string. Remove the symbol property or use a different Type.";
+    if (propertyError.type === "ObjectExcessProperty")
+      return `The property ${safelyStringifyUnknownValue(key)} is not allowed. Remove it or use a different Type.`;
+    return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
   };
   const rootProps = createMutableRecord<string, RuntimeObjectProperty>();
   let hasNonRootType = false;
@@ -10354,26 +10409,21 @@ export function discriminatedUnion(
       Reflect.get(value as Readonly<Record<string, unknown>>, key),
     )!;
   const formatError: TypeErrorFormatter<DiscriminatedUnionError> = (error) => {
-    const reason = error.reason as Exclude<
-      DiscriminatedUnionError["reason"],
-      DiscriminatedUnionMemberIssue
-    >;
-
-    switch (reason.kind) {
+    switch (error.reason.kind) {
       case "Object":
-        return formatPlainObjectRootError(reason.error.reason);
+        return formatPlainObjectRootError(error.reason.error.reason);
       case "PropertyAccess": {
-        const property = `The discriminator property ${safelyStringifyUnknownValue(reason.key)}`;
-        if (reason.reason === "Accessor") {
+        const property = `The discriminator property ${safelyStringifyUnknownValue(error.reason.key)}`;
+        if (error.reason.reason === "Accessor")
           return `${property} must be a data property.`;
-        }
-        if (reason.reason === "Inherited") {
+        if (error.reason.reason === "Inherited")
           return `${property} must be an own property.`;
-        }
         return `${property} must be enumerable.`;
       }
       case "Discriminator":
-        return `The discriminator property ${safelyStringifyUnknownValue(reason.key)} has an unexpected value ${safelyStringifyUnknownValue(reason.value)}.`;
+        return `The discriminator property ${safelyStringifyUnknownValue(error.reason.key)} has an unexpected value ${safelyStringifyUnknownValue(error.reason.value)}.`;
+      case "Member":
+        return `The selected variant ${safelyStringifyUnknownValue(error.reason.discriminator)} is invalid.`;
     }
   };
   const defaultFormatter = formatError as TypeErrorFormatter<TypeError>;
@@ -11500,31 +11550,6 @@ const validateJsonValue = (
       });
 };
 
-const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (error) => {
-  const issue = error.reason.issues[0];
-
-  switch (issue.kind) {
-    case "InvalidType":
-      return `A value ${safelyStringifyUnknownValue(issue.value)} is not a JSON value.`;
-    case "NonFiniteNumber":
-      return "A JSON number must be finite.";
-    case "UnexpectedPrototype":
-      return "The value is an object, but a JsonValue Object must be a plain object or have a null prototype.";
-    case "Accessor":
-      return "A JSON property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
-    case "NonEnumerable":
-      return "A JSON Object property must be enumerable. Remove it or use a different Type.";
-    case "SymbolProperty":
-      return "A JSON Object property key must be a string. Remove the symbol property or use a different Type.";
-    case "Hole":
-      return "A JSON Array element is missing.";
-    case "ExcessProperty":
-      return "An excess JSON Array property is not allowed. Remove it or use a different Type.";
-    case "CircularReference":
-      return "A JsonValue must not contain circular references.";
-  }
-};
-
 const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
   const jsonValueError = error as JsonValueError;
   const issues =
@@ -11542,7 +11567,29 @@ const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
             reason: { kind: "Issues", issues: [issue] },
           },
     path: issue.path,
-    formatError: formatJsonValueError as TypeErrorFormatter<TypeError>,
+    formatError: ((error: JsonValueError) => {
+      const issue = error.reason.issues[0];
+      switch (issue.kind) {
+        case "InvalidType":
+          return `A value ${safelyStringifyUnknownValue(issue.value)} is not a JSON value.`;
+        case "NonFiniteNumber":
+          return "A JSON number must be finite.";
+        case "UnexpectedPrototype":
+          return "The value is an object, but a JsonValue object must be a plain object or have a null prototype.";
+        case "Accessor":
+          return "A JSON property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
+        case "NonEnumerable":
+          return "A JSON object property must be enumerable. Remove it or use a different Type.";
+        case "SymbolProperty":
+          return "A JSON object property key must be a string. Remove the symbol property or use a different Type.";
+        case "Hole":
+          return "A JSON array element is missing.";
+        case "ExcessProperty":
+          return "An excess JSON array property is not allowed. Remove it or use a different Type.";
+        case "CircularReference":
+          return "A JsonValue must not contain circular references.";
+      }
+    }) as TypeErrorFormatter<TypeError>,
   })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
 };
 

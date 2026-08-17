@@ -1,11 +1,6 @@
 /**
  * Czech Evolu Type error formatters.
  *
- * Every formatter is exported separately so applications bundle only messages
- * referenced by their localized Type collections. Parameterized Type factories
- * reuse one formatter for every parameter value; for example,
- * {@link formatMinLengthError} formats both `MinLength1` and `MinLength100`.
- *
  * @module
  */
 
@@ -13,17 +8,22 @@ import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
+  Base64UrlError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
+  DateIsoFromDateError,
   DecimalStringError,
   DiscriminatedUnionError,
+  EvoluTypeError,
   FiniteError,
   GreaterThanError,
   GreaterThanOrEqualToError,
   InstanceOfError,
   Int64Error,
+  Int64StringError,
   IntError,
+  IdError,
   JsonError,
   JsonValueError,
   LengthError,
@@ -32,9 +32,11 @@ import type {
   LiteralError,
   MaxLengthError,
   MinLengthError,
+  MnemonicError,
   MultipleOfError,
   NegativeDecimalStringError,
   NegativeError,
+  NameError,
   NeverError,
   NonNaNError,
   NonNegativeDecimalStringError,
@@ -50,9 +52,13 @@ import type {
   PositiveError,
   RecordError,
   RegexError,
+  SetError,
+  TableIdError,
   TemplateLiteralError,
   TrimmedError,
+  TupleElementsError,
   TupleError,
+  TypeError,
   TypeErrorFormatter,
   TypeOfError,
   UInt64Error,
@@ -75,9 +81,9 @@ export const formatNeverError: TypeErrorFormatter<NeverError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} není platná pro typ Never.`;
 
 /** Formats a String TypeOfError in Czech. */
-export const formatStringError: TypeErrorFormatter<
-  TypeOfError<"String">
-> = () => "Hodnota musí být text.";
+export const formatStringError: TypeErrorFormatter<TypeOfError<"String">> = (
+  error,
+) => formatValueMustBe(error.value, "text");
 
 /** Formats a TemplateLiteralError in Czech. */
 export const formatTemplateLiteralError: TypeErrorFormatter<
@@ -110,6 +116,11 @@ export const formatFunctionError: TypeErrorFormatter<
   TypeOfError<"Function">
 > = (error) => formatValueMustBe(error.value, "funkce");
 
+/** Formats an EvoluTypeError in Czech. */
+export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
+  error,
+) => `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být Evolu Type.`;
+
 /** Formats an ObjectTagError in Czech. */
 export const formatObjectTagError: TypeErrorFormatter<ObjectTagError> = (
   error,
@@ -132,7 +143,12 @@ export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
 
 /** Formats a DateIsoError in Czech. */
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být datum a čas v kanonickém formátu ISO.`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být řetězec s datem a časem v kanonickém formátu ISO.`;
+
+/** Formats a DateIsoFromDateError in Czech. */
+export const formatDateIsoFromDateError: TypeErrorFormatter<
+  DateIsoFromDateError
+> = () => "Datum nelze převést na DateIso.";
 
 /** Formats a DecimalStringError in Czech. */
 export const formatDecimalStringError: TypeErrorFormatter<
@@ -148,11 +164,16 @@ export const formatInt64Error: TypeErrorFormatter<Int64Error> = (error) =>
 export const formatUInt64Error: TypeErrorFormatter<UInt64Error> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platné 64bitové celé číslo bez znaménka (UInt64).`;
 
+/** Formats an Int64StringError in Czech. */
+export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný řetězec Int64.`;
+
 /** Formats a CapitalizedError in Czech. */
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
-) =>
-  `Text ${safelyStringifyUnknownValue(error.value)} musí začínat velkým písmenem.`;
+) => `Text ${safelyStringifyUnknownValue(error.value)} musí být kapitalizován.`;
 
 /** Formats a TrimmedError in Czech. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
@@ -179,6 +200,28 @@ export const formatLengthError: TypeErrorFormatter<LengthError> = (error) =>
 /** Formats a RegexError in Czech. */
 export const formatRegexError: TypeErrorFormatter<RegexError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} neodpovídá regulárnímu výrazu /${error.source}/${error.flags}.`;
+
+/** Formats a Base64UrlError in Czech. */
+export const formatBase64UrlError: TypeErrorFormatter<Base64UrlError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný řetězec Base64Url.`;
+
+/** Formats a NameError in Czech. */
+export const formatNameError: TypeErrorFormatter<NameError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platný název.`;
+
+/** Formats a MnemonicError in Czech. */
+export const formatMnemonicError: TypeErrorFormatter<MnemonicError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platná anglická BIP39 mnemotechnická fráze.`;
+
+/** Formats an IdError in Czech. */
+export const formatIdError: TypeErrorFormatter<IdError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platné Id.`;
+
+/** Formats a TableIdError in Czech. */
+export const formatTableIdError: TypeErrorFormatter<TableIdError> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být platné Id pro tabulku ${safelyStringifyUnknownValue(error.table)}.`;
 
 /** Formats a NonNegativeError in Czech. */
 export const formatNonNegativeError: TypeErrorFormatter<NonNegativeError> = (
@@ -287,13 +330,34 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   }
 };
 
+/** Formats a SetError in Czech. */
+export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
+  if (error.reason.kind === "NotSet") {
+    return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} není Set.`;
+  }
+  if (error.reason.kind === "UnexpectedPrototype") {
+    return "Hodnota je instancí podtřídy Setu, ale Output typu Set musí být přímou instancí Setu.";
+  }
+
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Set obsahuje nepovolenou vlastní vlastnost ${safelyStringifyUnknownValue(issue.key)}.`;
+    case "Element":
+      return `Prvek Setu na indexu ${issue.index} není platný.`;
+  }
+};
+
 /** Formats a TupleError in Czech. */
-export const formatTupleError: TypeErrorFormatter<TupleError> = (error) => {
+export const formatTupleError: TypeErrorFormatter<
+  TupleError | TupleElementsError<TypeError>
+> = (error) => {
   if (error.reason.kind === "NotArray") {
     return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} není tuple.`;
   }
   if (error.reason.kind === "InvalidLength") {
-    return `Požadovaná délka Tuple je ${error.reason.expected}, ale hodnota má délku ${error.reason.actual}.`;
+    return `Tuple musí mít délku ${error.reason.expected}, ale hodnota má délku ${error.reason.actual}.`;
   }
 
   const issue = error.reason.issues[0];
@@ -327,11 +391,11 @@ export const formatRecordError: TypeErrorFormatter<RecordError> = (error) => {
     case "Value":
       return `Hodnota vlastnosti ${safelyStringifyUnknownValue(issue.key)} není platná.`;
     case "Accessor":
-      return `Vlastnost Record ${safelyStringifyUnknownValue(issue.key)} musí být datová vlastnost.`;
+      return `Vlastnost Recordu ${safelyStringifyUnknownValue(issue.key)} musí být datová vlastnost.`;
     case "NonEnumerable":
-      return `Vlastnost Record ${safelyStringifyUnknownValue(issue.key)} musí být enumerable.`;
+      return `Vlastnost Recordu ${safelyStringifyUnknownValue(issue.key)} musí být enumerovatelná (enumerable).`;
     case "Collision":
-      return `Klíče Record ${safelyStringifyUnknownValue(issue.previousKey)} a ${safelyStringifyUnknownValue(issue.key)} se dekódují na stejný klíč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+      return `Klíče Recordu ${safelyStringifyUnknownValue(issue.previousKey)} a ${safelyStringifyUnknownValue(issue.key)} se dekódují na stejný klíč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 
@@ -349,19 +413,19 @@ export const formatObjectError: TypeErrorFormatter<ObjectError> = (error) => {
   if (propertyError.type === "ObjectPropertyAccess") {
     switch ((propertyError as ObjectPropertyAccessError).reason) {
       case "Accessor":
-        return "Vlastnost Object musí být datová vlastnost. Před použitím tohoto Type materializujte hodnotu accessoru do prostých dat nebo použijte jiný Type.";
+        return "Vlastnost typu Object musí být datová vlastnost. Před použitím tohoto Type materializujte hodnotu accessoru do prostých dat nebo použijte jiný Type.";
       case "NonEnumerable":
-        return "Vlastnost Object musí být enumerable.";
+        return "Vlastnost typu Object musí být enumerovatelná (enumerable).";
     }
   }
   if (propertyError.type === "ObjectMissingProperty") {
     return `Povinná vlastnost ${safelyStringifyUnknownValue(key)} chybí.`;
   }
+  if (typeof key === "symbol") {
+    return "Klíč vlastnosti typu Object musí být text. Odstraňte symbolovou vlastnost nebo použijte jiný Type.";
+  }
   if (propertyError.type === "ObjectExcessProperty") {
     return `Vlastnost ${safelyStringifyUnknownValue(key)} není povolena. Odstraňte ji nebo použijte jiný Type.`;
-  }
-  if (propertyError.type === "TypeOf" && typeof key === "symbol") {
-    return "Klíč vlastnosti Object musí být text. Odstraňte symbolovou vlastnost nebo použijte jiný Type.";
   }
   return `Vlastnost ${safelyStringifyUnknownValue(key)} není platná.`;
 };
@@ -374,17 +438,17 @@ export const formatDiscriminatedUnionError: TypeErrorFormatter<
     case "Object":
       return formatPlainObjectRootError(error.reason.error.reason);
     case "PropertyAccess": {
-      const property = `Diskriminační vlastnost ${safelyStringifyUnknownValue(error.reason.key)}`;
+      const property = `Rozlišovací vlastnost ${safelyStringifyUnknownValue(error.reason.key)}`;
       if (error.reason.reason === "Accessor") {
         return `${property} musí být datová vlastnost.`;
       }
       if (error.reason.reason === "Inherited") {
         return `${property} musí být vlastní vlastnost.`;
       }
-      return `${property} musí být enumerable.`;
+      return `${property} musí být enumerovatelná (enumerable).`;
     }
     case "Discriminator":
-      return `Diskriminační vlastnost ${safelyStringifyUnknownValue(error.reason.key)} má neočekávanou hodnotu ${safelyStringifyUnknownValue(error.reason.value)}.`;
+      return `Rozlišovací vlastnost ${safelyStringifyUnknownValue(error.reason.key)} má neočekávanou hodnotu ${safelyStringifyUnknownValue(error.reason.value)}.`;
     case "Member":
       return `Vybraná varianta ${safelyStringifyUnknownValue(error.reason.discriminator)} není platná.`;
   }
@@ -402,17 +466,17 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
     case "NonFiniteNumber":
       return "Číslo v JSON musí být konečné.";
     case "UnexpectedPrototype":
-      return "Hodnota je objekt, ale JsonValue Object musí být prostý objekt nebo mít prototyp null.";
+      return "Hodnota je objekt, ale objekt v JsonValue musí být prostý objekt nebo mít prototyp null.";
     case "Accessor":
-      return "Vlastnost JSON musí být datová vlastnost. Před použitím tohoto Type materializujte hodnotu accessoru do prostých dat nebo použijte jiný Type.";
+      return "Vlastnost objektu JSON musí být datová vlastnost. Před použitím tohoto Type materializujte hodnotu accessoru do prostých dat nebo použijte jiný Type.";
     case "NonEnumerable":
-      return "Vlastnost JSON Object musí být enumerable. Odstraňte ji nebo použijte jiný Type.";
+      return "Vlastnost objektu JSON musí být enumerovatelná (enumerable). Odstraňte ji nebo použijte jiný Type.";
     case "SymbolProperty":
-      return "Klíč vlastnosti JSON Object musí být text. Odstraňte symbolovou vlastnost nebo použijte jiný Type.";
+      return "Klíč vlastnosti objektu JSON musí být text. Odstraňte symbolovou vlastnost nebo použijte jiný Type.";
     case "Hole":
-      return "V JSON Array chybí prvek.";
+      return "V poli JSON chybí prvek.";
     case "ExcessProperty":
-      return "JSON Array obsahuje nepovolenou vlastní vlastnost. Odstraňte ji nebo použijte jiný Type.";
+      return "Pole JSON obsahuje nepovolenou vlastní vlastnost. Odstraňte ji nebo použijte jiný Type.";
     case "CircularReference":
       return "JsonValue nesmí obsahovat cyklické reference.";
   }
@@ -420,4 +484,4 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 
 /** Formats a JsonError in Czech. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
-  `Hodnotu ${safelyStringifyUnknownValue(error.value)} nelze převést na JsonValue.`;
+  `Hodnotu ${safelyStringifyUnknownValue(error.value)} nelze parsovat jako JsonValue.`;

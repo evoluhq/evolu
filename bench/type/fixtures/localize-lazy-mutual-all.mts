@@ -40,7 +40,7 @@ const Right: LazyType<Right, Right, never, RightError, RightError> = lazy(() =>
   object({ count: Number, left: optional(Left) }),
 );
 
-const TypesByLocale = localizeTypes(
+const typesByLocale = localizeTypes(
   { Left, Right },
   {
     cs: {
@@ -56,8 +56,8 @@ const TypesByLocale = localizeTypes(
   },
 );
 
-export type Locales = keyof typeof TypesByLocale;
-export type CzechLeft = typeof TypesByLocale.cs.Left;
-export type CzechRight = typeof TypesByLocale.cs.Right;
-export type EnglishLeft = typeof TypesByLocale.en.Left;
-export type EnglishRight = typeof TypesByLocale.en.Right;
+export type Locales = keyof typeof typesByLocale;
+export type CzechLeft = typeof typesByLocale.cs.Left;
+export type CzechRight = typeof typesByLocale.cs.Right;
+export type EnglishLeft = typeof typesByLocale.en.Left;
+export type EnglishRight = typeof typesByLocale.en.Right;
