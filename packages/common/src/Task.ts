@@ -42,12 +42,7 @@ import {
   type TestLeakDetectorDep,
 } from "./LeakDetector.ts";
 import { createLookupMap, type Lookup, type LookupOption } from "./Lookup.ts";
-import {
-  decrement,
-  increment,
-  incrementPositiveInt,
-  type Int1To100OrPositiveInt,
-} from "./Number.ts";
+import { decrement, increment, type Int1To100OrPositiveInt } from "./Number.ts";
 import {
   emptyRecord,
   mapObject,
@@ -3875,7 +3870,7 @@ export const retry =
 
       const [output, delay] = next.value;
       onRetry?.({ error, attempt, output, delay });
-      attempt = incrementPositiveInt(attempt);
+      attempt = PositiveInt.orThrow(increment(attempt));
       if (delay > 0) await run.ok(sleep(PositiveMillis.orThrow(delay)));
     }
   };
@@ -4004,7 +3999,7 @@ export const repeat =
 
       const [output, delay] = next.value;
       onRepeat?.({ value: result.value, attempt, output, delay });
-      attempt = incrementPositiveInt(attempt);
+      attempt = PositiveInt.orThrow(increment(attempt));
       if (delay > 0) await run.ok(sleep(PositiveMillis.orThrow(delay)));
     }
   };

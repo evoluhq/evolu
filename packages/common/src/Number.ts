@@ -120,10 +120,6 @@ export const percentageToRatio = (percentage: Percentage): Ratio =>
 
 export const increment = (n: number): number => n + 1;
 
-/** Increments a positive integer, saturating at the maximum safe integer. */
-export const incrementPositiveInt = (n: PositiveInt): PositiveInt =>
-  PositiveInt.orNull(increment(n)) ?? n;
-
 export const decrement = (n: number): number => n - 1;
 
 /** Clamps a number within a given range. */

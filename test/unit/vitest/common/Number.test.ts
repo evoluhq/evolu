@@ -6,7 +6,6 @@ import {
   fibonacciAt,
   FibonacciIndex,
   increment,
-  incrementPositiveInt,
   type Int0To100OrNonNegativeInt,
   type Int1To100,
   type Int1To100OrPositiveInt,
@@ -20,9 +19,7 @@ import {
 } from "../../../../packages/common/src/Number.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
 import {
-  maxPositiveInt,
   NonNegativeInt,
-  onePositiveInt,
   PositiveInt,
   Ratio,
 } from "../../../../packages/common/src/Type.ts";
@@ -78,11 +75,6 @@ test("percentageToRatio converts percentage literals and preserves Ratio", () =>
 
 test("increment", () => {
   expect(increment(1)).toEqual(2);
-});
-
-test("incrementPositiveInt saturates at maxPositiveInt", () => {
-  expect(incrementPositiveInt(onePositiveInt)).toEqual(2);
-  expect(incrementPositiveInt(maxPositiveInt)).toBe(maxPositiveInt);
 });
 
 test("decrement", () => {
