@@ -183,6 +183,10 @@ Run standalone TypeScript scripts directly with Node.js, for example
   `packages/*/test`.
 - Use `expectTypeOf` for compile-time contracts and `@ts-expect-error` for
   rejected programs.
+- Every `@ts-expect-error` must describe the specific expected rejection. When
+  an Evolu API provides a `CompileTimeError` message, copy that message verbatim.
+  Otherwise, state the rejected TypeScript contract precisely. Do not use
+  generic descriptions such as "should fail."
 - Create fresh dependencies in each test; do not share mutable dependency
   instances between tests.
 - Library-exported test helpers use the `testX` prefix. Reusable setup helpers

@@ -144,6 +144,30 @@ describe("require-pure-annotation", () => {
       "export const Registry = /*#__PURE__*/ freeze(/*#__PURE__*/ new Map());",
     );
   });
+
+  test("reports property access on a call result", async () => {
+    const result = await lintText(
+      "export const Value = /*#__PURE__*/ createValue().parent;",
+    );
+
+    expect(result.messages).toMatchObject([
+      {
+        ruleId: "evolu/require-pure-annotation",
+        messageId: "callResultMemberAccess",
+      },
+    ]);
+  });
+
+  test("allows property access inside an annotated factory", async () => {
+    const result = await lintText(
+      [
+        "const createValueParent = () => createValue().parent;",
+        "export const Value = /*#__PURE__*/ createValueParent();",
+      ].join("\n"),
+    );
+
+    expect(result.messages).toHaveLength(0);
+  });
 });
 
 describe("no-direct-task-call", { timeout: 30_000 }, () => {

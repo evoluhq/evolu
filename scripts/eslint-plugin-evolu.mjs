@@ -21,6 +21,8 @@ const requirePureAnnotation = {
     messages: {
       missingPure:
         "Call expression within exported const '{{name}}' needs /*#__PURE__*/ annotation for tree-shaking.",
+      callResultMemberAccess:
+        "Property access on a call result within exported const '{{name}}' is not made tree-shakable by /*#__PURE__*/. Move the access behind an annotated factory call.",
     },
     schema: [],
   },
@@ -73,6 +75,15 @@ const requirePureAnnotation = {
         .some((comment) => comment.value.includes("#__PURE__"));
 
     /**
+     * @param {import("estree").Node | null | undefined} node
+     * @returns {boolean}
+     */
+    const isCallResultMemberAccess = (node) =>
+      node?.type === "MemberExpression" &&
+      (node.object.type === "CallExpression" ||
+        node.object.type === "NewExpression");
+
+    /**
      * @param {unknown} value
      * @returns {value is import("estree").Node}
      */
@@ -85,12 +96,28 @@ const requirePureAnnotation = {
     /**
      * @param {import("estree").Node | null | undefined} node
      * @param {string} exportName
+     * @param {import("estree").Node | null} parent
      * @returns {void}
      */
-    const visitNode = (node, exportName) => {
+    const visitNode = (node, exportName, parent = null) => {
       if (node == null || isFunctionBoundary(node)) return;
 
-      if (isPureCandidate(node) && !hasPureAnnotation(node)) {
+      if (isCallResultMemberAccess(node)) {
+        context.report({
+          node,
+          messageId: "callResultMemberAccess",
+          data: { name: exportName },
+        });
+      }
+
+      const isMemberAccessObject =
+        parent?.type === "MemberExpression" && parent.object === node;
+
+      if (
+        isPureCandidate(node) &&
+        !isMemberAccessObject &&
+        !hasPureAnnotation(node)
+      ) {
         context.report({
           node,
           messageId: "missingPure",
@@ -108,12 +135,12 @@ const requirePureAnnotation = {
 
         if (Array.isArray(child)) {
           for (const item of child) {
-            if (isNode(item)) visitNode(item, exportName);
+            if (isNode(item)) visitNode(item, exportName, node);
           }
           continue;
         }
 
-        if (isNode(child)) visitNode(child, exportName);
+        if (isNode(child)) visitNode(child, exportName, node);
       }
     };
 
