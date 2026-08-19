@@ -1,5 +1,15 @@
 # @evolu/web
 
+## 3.0.2
+
+### Patch Changes
+
+- 34fa9df: Improved API documentation
+
+  Expanded the Result, Task, Type, and Owner documentation with module
+  introductions, semantic API groups, and tested examples. Improved the platform
+  `createRun` documentation for Web and React Native.
+
 ## 3.0.1
 
 ### Patch Changes
