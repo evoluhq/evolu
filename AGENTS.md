@@ -221,10 +221,11 @@ Run standalone TypeScript scripts directly with Node.js, for example
 - Write changesets as release notes for package users, not implementation logs.
   The first body paragraph is the changelog title: keep it short, standalone,
   sentence case, in past tense, and without a trailing period. Use the following
-  paragraphs to explain observable behavior or migration impact. Include one or
-  more TypeScript usage examples that follow the JSDoc example rules above. For
-  a breaking migration, prove that the old usage is rejected and show the
-  replacement in the same tested example. Put unrelated user-facing changes in
-  separate changesets.
+  paragraphs to explain observable behavior or migration impact. When a change
+  affects TypeScript usage, include one or more examples that follow the JSDoc
+  example rules above. Documentation-only and tooling-only changesets do not
+  need an example. For a breaking migration, prove that the old usage is
+  rejected and show the replacement in the same tested example. Put unrelated
+  user-facing changes in separate changesets.
 - Fixes use patch changesets, additive features use minor changesets, and
   breaking public APIs use major changesets, including during preview releases.
