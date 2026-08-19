@@ -279,6 +279,8 @@ export function createMutableRecord<
   K extends string = string,
   V = unknown,
 >(): Record<K, V>;
+
+/** Creates a mutable null-prototype copy of an object. */
 export function createMutableRecord<T extends object>(
   source: T,
 ): { -readonly [K in keyof T]: T[K] };

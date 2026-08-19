@@ -181,6 +181,8 @@ export interface CreateRelationOptions<A, B, LA = A, LB = B> {
 
 /** Creates a {@link Relation}. */
 export function createRelation<A, B>(): Relation<A, B>;
+
+/** Creates a {@link Relation} with custom logical key lookups. */
 export function createRelation<A, B, LA, LB>(
   options: CreateRelationOptions<A, B, LA, LB>,
 ): Relation<A, B>;
@@ -371,6 +373,8 @@ export interface RefCountedRelation<A, B> {
 
 /** Creates a {@link RefCountedRelation}. */
 export function createRefCountedRelation<A, B>(): RefCountedRelation<A, B>;
+
+/** Creates a {@link RefCountedRelation} with custom logical key lookups. */
 export function createRefCountedRelation<A, B, LA, LB>(
   options: CreateRelationOptions<A, B, LA, LB>,
 ): RefCountedRelation<A, B>;

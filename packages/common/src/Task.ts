@@ -1,5 +1,647 @@
 /**
+ * ## Intro
+ *
  * JavaScript-native structured concurrency.
+ *
+ * Structured concurrency makes ownership of asynchronous work explicit.
+ * Operations form a tree where every child belongs to a parent. A parent waits
+ * for its children before it completes, and abort follows the tree: aborting a
+ * parent requests abort of all its descendants. Races and fail-fast operations
+ * also abort their remaining sibling branches.
+ *
+ * With plain {@link AbortController} code, these guarantees depend on call-site
+ * discipline: someone must remember the `finally` that aborts started work and
+ * the await that waits for cleanup. {@link Run} makes both structural:
+ * `run(task)` registers every child before it starts, and the parent settles
+ * only after child cleanup finishes.
+ *
+ * Evolu models structured concurrency with ordinary JavaScript:
+ *
+ * - A {@link Task} describes an asynchronous operation and its dependencies.
+ * - A {@link Run} starts Tasks and owns their lifetimes.
+ * - A {@link Fiber} is the Promise-backed handle returned when a Run starts a
+ *   Task.
+ * - An {@link AbortableFiber} adds explicit abort and async disposal.
+ *
+ * The runtime core is deliberately small: ordinary functions, a callable Run
+ * with closed-over state, Promise-backed Fibers, {@link AbortSignal}
+ * propagation, and JavaScript resource management. Together, these primitives
+ * provide abort, cleanup, defect handling, dependency injection, monitoring,
+ * concurrency, and resource bracketing.
+ *
+ * Tasks return domain success or failure as {@link Result}. Abort is control
+ * flow represented by {@link AbortError}. If a Task throws or rejects with
+ * anything else, that is a defect: the root Run reports it and shuts down its
+ * tree so code does not continue in a potentially invalid state.
+ *
+ * ```ts
+ * import {
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ *   readonly name: string;
+ * }
+ *
+ * interface Db {
+ *   readonly usersById: ReadonlyMap<string, User>;
+ * }
+ *
+ * interface DbDep {
+ *   readonly db: Db;
+ * }
+ *
+ * const getUser =
+ *   (id: string): Task<User, UserNotFoundError, DbDep> =>
+ *   (run) => {
+ *     const user = run.deps.db.usersById.get(id);
+ *     return user ? ok(user) : err({ type: "UserNotFound", id });
+ *   };
+ *
+ * // Typed declares the `type` discriminant without repeating the property.
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {
+ *   readonly id: string;
+ * }
+ *
+ * const user: User = { id: "user-1", name: "Ada" };
+ *
+ * // Provide dependencies at the composition root. `await using` disposes the
+ * // Run and waits for its child Tasks before leaving this scope.
+ * await using run = createRun({
+ *   db: { usersById: new Map([[user.id, user]]) },
+ * });
+ *
+ * const result = await run(getUser(user.id));
+ * expectTypeOf(result).toEqualTypeOf<Result<User, UserNotFoundError>>();
+ * expectOk(result, user);
+ * ```
+ *
+ * In composition roots, prefer the lifecycle API from the matching Evolu
+ * platform package:
+ *
+ * - Node.js: `@evolu/nodejs`
+ * - Web: `@evolu/web`
+ * - React Native: `@evolu/react-native`
+ *
+ * ## Composition
+ *
+ * | Category     | Helper                    | Description                                           |
+ * | ------------ | ------------------------- | ----------------------------------------------------- |
+ * | Collection   | {@link all}               | Return {@link Ok} values or stop on first {@link Err} |
+ * |              | {@link allSettled}        | Return every Task Result                              |
+ * |              | {@link each}              | Handle each Task Result                               |
+ * | Interop      | {@link callback}          | Wrap callback APIs                                    |
+ * |              | {@link fetch}             | Native fetch with bounded Response use                |
+ * | Timing       | {@link sleep}             | Pause execution                                       |
+ * |              | {@link timeout}           | Time-bounded execution                                |
+ * | Resilience   | {@link retry}             | Retry domain errors with a schedule                   |
+ * | Repetition   | {@link repeat}            | Repeat successes with a schedule                      |
+ * | Racing       | {@link any}               | First Ok wins                                         |
+ * |              | {@link race}              | First settled Result wins                             |
+ * |              | {@link firstN}            | First n Ok values win                                 |
+ * |              | {@link firstNSettled}     | First n Results win                                   |
+ * | Scheduling   | {@link prioritized}       | Assign scheduler priority                             |
+ * |              | {@link yieldNow}          | Yield to the host scheduler                           |
+ * | Lifetime     | {@link daemon}            | Run under root ownership                              |
+ * |              | {@link acquireUseRelease} | Bracket acquire, use, and release                     |
+ * | Abortability | {@link unabortable}       | Mask abort after a Task starts                        |
+ * |              | {@link unabortableMask}   | Mask abort and selectively restore it                 |
+ *
+ * Helpers that process multiple Tasks run sequentially by default. Use a
+ * `concurrency` option to run more than one Task at a time.
+ *
+ * ### Sequential composition
+ *
+ * For ordinary sequential composition, use imperative code:
+ *
+ * ```ts
+ * import {
+ *   createRun,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ *   readonly profileId: string;
+ * }
+ *
+ * interface Profile {
+ *   readonly id: string;
+ * }
+ *
+ * const getUser =
+ *   (id: string): Task<User, UserNotFoundError> =>
+ *   () =>
+ *     id === "user-1"
+ *       ? ok({ id, profileId: "profile-1" })
+ *       : err({ type: "UserNotFound", id });
+ *
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {
+ *   readonly id: string;
+ * }
+ *
+ * const getProfile =
+ *   (id: string): Task<Profile, ProfileNotFoundError> =>
+ *   () =>
+ *     id === "profile-1"
+ *       ? ok({ id })
+ *       : err({ type: "ProfileNotFound", id });
+ *
+ * interface ProfileNotFoundError extends Typed<"ProfileNotFound"> {
+ *   readonly id: string;
+ * }
+ *
+ * const getUserWithProfile =
+ *   (
+ *     id: string,
+ *   ): Task<
+ *     { readonly user: User; readonly profile: Profile },
+ *     UserNotFoundError | ProfileNotFoundError
+ *   > =>
+ *   async (run) => {
+ *     const user = await run(getUser(id));
+ *     if (!user.ok) return user;
+ *
+ *     const profile = await run(getProfile(user.value.profileId));
+ *     if (!profile.ok) return profile;
+ *
+ *     return ok({ user: user.value, profile: profile.value });
+ *   };
+ *
+ * await using run = createRun();
+ * const result = await run(getUserWithProfile("user-1"));
+ * expectTypeOf(result).toEqualTypeOf<
+ *   Result<
+ *     { readonly user: User; readonly profile: Profile },
+ *     UserNotFoundError | ProfileNotFoundError
+ *   >
+ * >();
+ * expectOk(result, {
+ *   user: { id: "user-1", profileId: "profile-1" },
+ *   profile: { id: "profile-1" },
+ * });
+ * ```
+ *
+ * Evolu intentionally avoids pipe APIs, chainable methods, and generator-based
+ * effect DSLs. Plain async/await with early returns is easier to read, review,
+ * and debug, and it lets TypeScript narrow Result values through ordinary
+ * control flow.
+ *
+ * ### Resilient fetch
+ *
+ * {@link fetch} with a body mode already returns a plain value, so resilience is
+ * ordinary Task composition. Combine {@link timeout} and {@link retry} to bound
+ * each attempt and retry recoverable domain failures:
+ *
+ * ```ts
+ * import {
+ *   exponential,
+ *   fetch,
+ *   jitter,
+ *   maxDelay,
+ *   retry,
+ *   take,
+ *   timeout,
+ *   type FetchError,
+ *   type RetryTaskError,
+ *   type Task,
+ *   type TimeoutError,
+ * } from "@evolu/common";
+ *
+ * const fetchWithRetry = (url: string) =>
+ *   retry(
+ *     timeout(fetch(url, "text"), "30s"),
+ *     // A jittered, capped, limited exponential backoff.
+ *     jitter("100%")(maxDelay("20s")(take(2)(exponential("100ms")))),
+ *   );
+ *
+ * expectTypeOf(fetchWithRetry).returns.toEqualTypeOf<
+ *   Task<string, RetryTaskError<FetchError | TimeoutError>>
+ * >();
+ * ```
+ *
+ * ### Concurrent composition
+ *
+ * Run composed Tasks with a `concurrency` option and {@link all}:
+ *
+ * ```ts
+ * import { all, createRun, ok, sleep, type Task } from "@evolu/common";
+ *
+ * await using run = createRun();
+ *
+ * const urls = [
+ *   "https://api.example.com/users",
+ *   "https://api.example.com/posts",
+ *   "https://api.example.com/comments",
+ * ];
+ * let activeRequests = 0;
+ * let maxActiveRequests = 0;
+ * const fetchUrl =
+ *   (url: string): Task<string> =>
+ *   async (run) => {
+ *     activeRequests += 1;
+ *     maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+ *     await run.ok(sleep("1ms"));
+ *     activeRequests -= 1;
+ *     return ok(url);
+ *   };
+ *
+ * // At most 2 concurrent requests.
+ * const result = await run(all(urls, fetchUrl, { concurrency: 2 }));
+ * expectOk(result, urls);
+ * expect(maxActiveRequests).toBe(2);
+ * ```
+ *
+ * Task helpers compose Tasks; concurrency primitives are stateful objects that
+ * coordinate Tasks across call sites. Create them with their `createX`
+ * factories and share them where coordination is needed.
+ *
+ * | Primitive              | Description                                  |
+ * | ---------------------- | -------------------------------------------- |
+ * | {@link Deferred}       | One-shot value resolved from outside         |
+ * | {@link Gate}           | Block and release Tasks repeatedly           |
+ * | {@link Semaphore}      | Limit concurrent Tasks with permits          |
+ * | {@link Mutex}          | Run Tasks one at a time                      |
+ * | {@link SemaphoreByKey} | Per-key permits with automatic cleanup       |
+ * | {@link MutexByKey}     | Per-key one-at-a-time execution              |
+ * | {@link MutexRef}       | {@link Ref} with serialized Task transitions |
+ *
+ * ## Dependency injection
+ *
+ * Task DI is
+ * {@link https://www.evolu.dev/docs/dependency-injection | Evolu Pure DI}
+ * applied to {@link Run}. A {@link Task} declares required capabilities with its
+ * `D` type parameter and reads them from {@link Run.deps}.
+ *
+ * {@link createRun} supplies dependencies to the root Run and its children. A
+ * Run can also start one child Task with runtime-created dependencies by
+ * calling `run(task, deps)`, where `deps` is checked as {@link RunCustomDeps}.
+ *
+ * Use normal Task arguments for per-call values and `D` for capabilities,
+ * resources, or services shared by all code running inside a Run.
+ *
+ * ```ts
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * interface GreetingFormatter {
+ *   readonly format: (name: string) => string;
+ * }
+ *
+ * interface GreetingFormatterDep {
+ *   readonly greetingFormatter: GreetingFormatter;
+ * }
+ *
+ * const greet =
+ *   (name: string): Task<string, never, GreetingFormatterDep> =>
+ *   (run) =>
+ *     ok(run.deps.greetingFormatter.format(name));
+ *
+ * const formal: GreetingFormatter = {
+ *   format: (name) => `Hello, ${name}`,
+ * };
+ * const casual: GreetingFormatter = {
+ *   format: (name) => `Hi, ${name}`,
+ * };
+ *
+ * await using run = createRun({ greetingFormatter: formal });
+ *
+ * // Root dependencies are inherited.
+ * expectOk(await run(greet("Ada")), "Hello, Ada");
+ *
+ * // Child-specific dependencies replace the root's custom dependencies.
+ * expectOk(
+ *   await run(greet("Ada"), { greetingFormatter: casual }),
+ *   "Hi, Ada",
+ * );
+ * ```
+ *
+ * ### Default dependencies
+ *
+ * {@link createRun} provides default {@link RunDefaultDeps} available to all
+ * Tasks without declaring `D`:
+ *
+ * - {@link Console} — logging with hierarchical context via `child()`
+ * - {@link LeakDetector} — development-time leaked-handle detection
+ * - {@link NativeFetch} — WHATWG-compatible native fetch
+ * - {@link Random} — random number generation
+ * - {@link RandomBytes} — cryptographic random bytes
+ * - {@link ReportDefect} — defect reporting
+ * - {@link Time} — current time
+ *
+ * For testing, use {@link testCreateRun} to get deterministic, controllable
+ * implementations of all RunDefaultDeps.
+ *
+ * ## Resource management
+ *
+ * JavaScript provides standard
+ * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management | resource management}.
+ * Evolu adds {@link DisposableRun.defer} for closure-held state owned by a
+ * reusable Run.
+ *
+ * Choose the ownership primitive by where the resource is reachable:
+ *
+ * - Synchronous stack frame: `using` or {@link DisposableStack}
+ * - Async Task stack frame: `await using` or {@link AsyncDisposableStack}
+ * - Closure-held state bounded by a reusable {@link DisposableRun}:
+ *   {@link DisposableRun.defer}
+ *
+ * ### Returning resources from Tasks
+ *
+ * A Task that successfully returns a disposable resource transfers ownership of
+ * a live resource to its caller. The resource must remain live after the Task
+ * settles. Do not register its disposal with the creating Task's
+ * {@link DisposableRun.defer}, because that child Run is disposed when the Task
+ * settles.
+ *
+ * Use {@link AsyncDisposableStack} while creating a resource. On a Result error,
+ * abort, or defect, stack unwinding disposes partially created resources. On
+ * success, {@link AsyncDisposableStack.move} transfers ownership to the returned
+ * resource. A recoverable creation failure should be a typed Result error;
+ * `undefined` should represent valid absence, not failure.
+ *
+ * ```ts
+ * import { createRun, ok, type Task, type Typed } from "@evolu/common";
+ *
+ * interface Socket extends AsyncDisposable {
+ *   readonly send: (message: string) => string;
+ * }
+ *
+ * interface Connection extends AsyncDisposable {
+ *   readonly send: (message: string) => string;
+ * }
+ *
+ * let socketDisposed = false;
+ * const openSocket: Task<Socket, ConnectionFailedError> = () =>
+ *   ok({
+ *     send: (message) => message,
+ *     [Symbol.asyncDispose]: async () => {
+ *       socketDisposed = true;
+ *     },
+ *   });
+ *
+ * interface ConnectionFailedError extends Typed<"ConnectionFailed"> {}
+ *
+ * const handshake =
+ *   (_socket: Socket): Task<void, ConnectionFailedError> =>
+ *   () =>
+ *     ok();
+ *
+ * const createConnection: Task<Connection, ConnectionFailedError> = async (
+ *   run,
+ * ) => {
+ *   await using disposer = new AsyncDisposableStack();
+ *
+ *   const socketResult = await run(openSocket);
+ *   if (!socketResult.ok) return socketResult;
+ *   const socket = disposer.use(socketResult.value);
+ *
+ *   const handshakeResult = await run(handshake(socket));
+ *   if (!handshakeResult.ok) return handshakeResult;
+ *
+ *   const disposables = disposer.move();
+ *   return ok({
+ *     send: (message) => socket.send(message),
+ *     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
+ *   });
+ * };
+ *
+ * await using run = createRun();
+ * const result = await run(createConnection);
+ * assert(result.ok);
+ * expect(socketDisposed).toBe(false);
+ * expect(result.value.send("hello")).toBe("hello");
+ * await result.value[Symbol.asyncDispose]();
+ * expect(socketDisposed).toBe(true);
+ * ```
+ *
+ * Use {@link Run.ok} with `await using` when an infallible Task returns a
+ * disposable value. Use {@link acquireUseRelease} when acquisition and release
+ * are separate operations rather than a disposable value.
+ *
+ * ## Awaitable
+ *
+ * A {@link Task} returns {@link Awaitable}, so its body may produce a
+ * {@link Result} immediately or asynchronously. {@link Run} is always async and
+ * returns a {@link Fiber}; callers use the same ownership model either way.
+ *
+ * - **Sync** → {@link Result}, native `using` / `DisposableStack`
+ * - **Async** → Task, Run, {@link Fiber}, `await using` / `AsyncDisposableStack`
+ *
+ * A Task is an async ownership boundary, not a general unit of program
+ * decomposition. Calling `run(task)` always creates a child Run by design. Use
+ * ordinary promises when an async operation does not need its own Run.
+ *
+ * A unified sync/async effect API is technically possible. It can detect
+ * Promise-like values with {@link isPromiseLike}, dispose synchronous resources
+ * first, continue with asynchronous disposal when necessary, and track whether
+ * callers must await the result. Evolu deliberately keeps the two models
+ * separate instead: plain functions and Result for synchronous code, Task and
+ * Run for asynchronous ownership. Most effects involve inherently asynchronous
+ * I/O, while synchronous code benefits from a simpler API and no Task
+ * overhead.
+ *
+ * Keep synchronous computation as plain functions returning Result. Prefer
+ * passing values rather than dependencies, following the
+ * {@link https://blog.ploeh.dk/2017/02/02/dependency-rejection/ | impure/pure/impure sandwich}
+ * pattern where impure code gathers data, pure functions process it, and impure
+ * code performs effects with the result. For example, a pure function can
+ * accept a {@link RandomNumber} value instead of depending on {@link Random}.
+ *
+ * Large CPU-bound operations, such as parsing large JSON, sorting millions of
+ * items, or complex cryptography, belong in a worker. Model the asynchronous
+ * call to that worker as a Task so Run can provide timeout, abort, cleanup, and
+ * monitoring.
+ *
+ * ## Glossary
+ *
+ * - **Defect** — a thrown or rejected value other than {@link AbortError}, rather
+ *   than a declared {@link Result} error.
+ * - **Outcome** — a Fiber's settlement: resolution with the Task {@link Result},
+ *   or rejection with {@link AbortError}. The original defect is reported
+ *   through {@link ReportDefectDep} whether or not the Fiber is observed; the
+ *   Fiber boundary represents the panic with AbortError whose reason is
+ *   {@link PanicAbortReason}.
+ * - **Create** — construct a new value or a resource.
+ * - **Acquire** — obtain a usable resource. Acquisition may create a new
+ *   resource, borrow one, open one, or take a lease/lock.
+ * - **Release** — relinquish a previously acquired resource or lease. Release
+ *   pairs with acquire and need not mean disposal; examples include unlock,
+ *   logout, or returning a pooled resource.
+ * - **Dispose / disposal** — owner-driven resource finalization via JavaScript
+ *   resource management (`Symbol.dispose`, `Symbol.asyncDispose`, `using`,
+ *   `AsyncDisposableStack`).
+ *
+ * ## FAQ
+ *
+ * ### Why is AbortError not part of every Task error type?
+ *
+ * The `E` type parameter represents declared domain errors. Abort is
+ * structured-concurrency control flow, not a domain error. A direct `run(task)`
+ * rejects with {@link AbortError} when the Task observes abort. Use
+ * `run.abortable(task)` when abort should be handled as an ordinary
+ * {@link Result} error at the Fiber boundary, or `daemon(task)` when waiting for
+ * a Task should stop immediately after abort.
+ *
+ * ### Do I have to await every Fiber?
+ *
+ * No. Awaiting a Fiber is join: it makes the child outcome part of the current
+ * control flow. When the outcome does not matter — a fire-and-forget side
+ * effect — discard the Fiber explicitly with `void run(task)`.
+ *
+ * That is safe because the Run tree supervises every Fiber it creates. A
+ * discarded Fiber whose Task observes abort (for example during Run disposal)
+ * never surfaces as an unhandled rejection, and cleanup is not lost — disposal
+ * already aborts and awaits the child. Defects are different: they still panic
+ * the root Run and are reported through {@link ReportDefectDep}, so discarding a
+ * Fiber never hides bugs.
+ *
+ * Choose the boundary explicitly:
+ *
+ * - `void run(task)` — the outcome does not matter. Abort is silent; defects are
+ *   still reported.
+ * - `await run(task)` — the continuation depends on the Result, so abort rejects
+ *   into the awaiter and the boundary must handle it.
+ * - `run.abortable(task)` — abort is an expected outcome handled as a
+ *   {@link Result} error.
+ *
+ * ### What should Task code do with defects?
+ *
+ * Nothing. Once a defect reaches the {@link Run}, it is too late: the root Run
+ * panics, running Tasks are aborted, and the Run tree shuts down. If an
+ * operation can throw or reject for a recoverable reason, wrap that operation
+ * with {@link trySync} or {@link tryAsync} so the failure becomes a typed
+ * {@link Result} error. Let unrecoverable failures propagate as defects.
+ *
+ * ### Why does a defect panic the whole Run tree?
+ *
+ * The obvious alternative is partial recovery: only the failing subtree shuts
+ * down or restarts while the rest keeps running. Erlang/OTP made this "let it
+ * crash" model with supervisors the benchmark for fault-tolerant runtime
+ * design.
+ *
+ * Erlang can recover partially because of process isolation: each process owns
+ * its heap, so a crashed process cannot leave another process's state
+ * corrupted. JavaScript Tasks share a heap. A defect may throw after partially
+ * updating shared state, and the Run cannot prove which invariants are still
+ * valid. A subtree panic would stop the failing Task while leaving any
+ * corrupted shared state available to surviving Tasks. Locks make it worse: a
+ * defect inside a critical section may leave protected invariants half-updated.
+ * In-process restart is not a reliable recovery boundary either, because the
+ * restarted code may still share the same module state, closures, caches, or
+ * resources.
+ *
+ * JavaScript does have a boundary with Erlang-like isolation: workers. A worker
+ * has its own heap and structured-clone messaging, so corruption cannot cross
+ * the boundary, and respawning a worker starts from clean state. A defect can
+ * panic the worker's Run tree, the worker boundary can be torn down, and the
+ * supervising side decides whether to respawn — {@link retry} with a
+ * {@link Schedule} around a "spawn worker, run until exit" Task is a one-for-one
+ * supervisor. Multiple root Runs that share no mutable state are a lighter
+ * alternative, but the share-nothing guarantee is then architectural discipline
+ * rather than enforced isolation, so keep it opt-in and rare.
+ *
+ * ### Why imperative code instead of monadic effect composition?
+ *
+ * Monads give pure functional languages a way to sequence effects while keeping
+ * functions pure. JavaScript already has native effect sequencing: loops, early
+ * returns, `try`/`finally`, exceptions, and `async`/`await`.
+ *
+ * A monadic effect wrapper moves that control flow into a library DSL. The
+ * wrapper type becomes viral, and ordinary debugging, profiling, stack traces,
+ * and TypeScript narrowing have to work through the DSL instead of the
+ * language.
+ *
+ * Task follows the opposite approach: Tasks are ordinary async functions, Run
+ * owns lifetimes and scoped context, {@link Result} carries expected domain
+ * errors, and defects keep real exceptions with real stacks. Result propagation
+ * is explicit at each async boundary, so TypeScript narrows it through ordinary
+ * control flow and readers can see where an error is handled or returned.
+ *
+ * ### Are recursive Tasks stack-safe?
+ *
+ * Tasks have native JavaScript stack behavior. A deeply recursive Task can
+ * exceed the call stack when each step starts the next step synchronously.
+ * `await` alone does not prevent this: JavaScript evaluates its operand before
+ * suspending, and `run(nextTask)` starts the child Task immediately.
+ *
+ * Implement deep recursive algorithms with a loop and an explicit worklist so
+ * each iteration reuses the same stack frame:
+ *
+ * ```ts
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * interface TreeNode {
+ *   readonly value: string;
+ *   readonly children: ReadonlyArray<TreeNode>;
+ * }
+ *
+ * const visitTree =
+ *   (root: TreeNode): Task<ReadonlyArray<string>> =>
+ *   () => {
+ *     const remaining = [root];
+ *     const visited: Array<string> = [];
+ *
+ *     while (remaining.length > 0) {
+ *       const node = remaining.pop();
+ *       if (!node) continue;
+ *       visited.push(node.value);
+ *       for (const child of node.children) remaining.push(child);
+ *     }
+ *
+ *     return ok(visited);
+ *   };
+ *
+ * await using run = createRun();
+ * expectOk(
+ *   await run(
+ *     visitTree({
+ *       value: "root",
+ *       children: [{ value: "child", children: [] }],
+ *     }),
+ *   ),
+ *   ["root", "child"],
+ * );
+ * ```
+ *
+ * Task favors direct native execution, `async`/`await`, and native tooling over
+ * interpreted control flow. The trade-off is no transparent stack safety or
+ * automatic scheduling fairness. Use loops or worklists for deep algorithms,
+ * periodically await {@link yieldNow} for cooperative scheduling, and move
+ * CPU-bound work to a worker.
+ *
+ * ### Should a Task be called directly?
+ *
+ * Only inside Task internals that explicitly require same-Run execution. A
+ * direct call, `task(run)`, uses the current Run instead of creating a child
+ * Run, so it bypasses child lifetime tracking, scheduling metadata, and child
+ * disposal boundaries. Application code should use `run(task)`.
+ *
+ * ### Where are fork and join?
+ *
+ * Calling `run(task)` is fork: it starts a child Task and returns a
+ * {@link Fiber}. Awaiting or returning that Fiber is join: it makes the child
+ * Result or rejection part of the parent Task control flow.
+ *
+ * ### What runtime features does Task require?
+ *
+ * Task uses modern JavaScript APIs such as `Promise.withResolvers`,
+ * `AbortSignal.throwIfAborted`, `Symbol.dispose`, `Symbol.asyncDispose`,
+ * `DisposableStack`, and `AsyncDisposableStack`. Evolu provides polyfills for
+ * supported runtimes that need them: call `installPolyfills` from
+ * `@evolu/common/polyfills`, or from the platform package such as
+ * `@evolu/react-native/polyfills`. The `using` and `await using` syntax is
+ * emitted by TypeScript; the polyfills provide the runtime resource-management
+ * globals.
  *
  * @module
  */
@@ -117,858 +759,12 @@ import type {
 // Core
 
 /**
- * JavaScript-native structured concurrency.
+ * An operation run by {@link Run} that returns a {@link Result} synchronously or
+ * asynchronously and declares its dependencies through `D`.
  *
- * A Task is a function that receives a {@link Run} and returns an
- * {@link Awaitable | awaitable} {@link Result}.
+ * Its return type is {@link Awaitable}.
  *
- * Structured concurrency is a simple idea: asynchronous operations form a tree
- * where every child belongs to a parent. A parent waits for its children before
- * it completes, and abort follows the tree: aborting a parent requests abort of
- * all its descendants, while races and fail-fast operations also abort
- * remaining sibling branches. This prevents detached work and gives
- * cancellation, failure, and cleanup explicit ownership. The tree also makes
- * running work and its ownership observable.
- *
- * With plain {@link AbortController} code, these guarantees depend on call-site
- * discipline: someone must remember the `finally` that aborts started work and
- * the await that waits for its cleanup. Run makes them structural — `run(task)`
- * registers every child before it starts, and the parent settles only after
- * child cleanup finishes, so the wait cannot be forgotten.
- *
- * Evolu keeps the programming model close to idiomatic JavaScript: Tasks are
- * ordinary functions, Fibers are Promise-backed handles, abort uses
- * {@link AbortSignal}, and lifetimes compose with `using` and `await using`. The
- * core abstractions are:
- *
- * - {@link Task}: a function that receives a {@link Run} and returns an awaitable
- *   {@link Result}
- * - {@link Run}: a callable object that starts Tasks, owns their lifetimes,
- *   provides dependencies, and exposes monitoring state
- * - {@link Fiber}: a Promise-backed handle returned by a Run when it starts a Task
- * - {@link AbortableFiber}: a Fiber with explicit abort and async disposal
- *
- * Calling `run(task)` creates a child Run for that Task. Calling `task(run)`
- * directly reuses the current Run and bypasses those child lifetime
- * boundaries.
- *
- * Tasks return domain success or failure as a Result. Abort is control flow: a
- * Fiber from `run(task)` rejects with {@link AbortError} when the Task is
- * aborted, while `run.abortable(task)` catches abort and returns it as an
- * {@link Err}. If the Task itself throws or rejects, that is a defect. A defect
- * panics the Run tree, and a Fiber rejects with AbortError whose reason is
- * {@link PanicAbortReason}; an AbortableFiber returns that AbortError as an
- * Err.
- *
- * The core is intentionally small: ordinary Task functions, a callable Run with
- * closed-over state, Promise-backed Fibers, AbortSignal propagation, and
- * JavaScript resource management. That minimal model still covers abort,
- * cleanup, panic, dependency injection, monitoring, concurrency, and resource
- * bracketing. The code is covered by carefully written, readable tests, so they
- * serve as documentation too.
- *
- * ## Example
- *
- * This intentionally naive wrapper is useful for learning Task dependencies,
- * Result errors, and native AbortSignal interop. Do not copy it as a production
- * fetch helper: a Response is not a plain value — its unread body is tied to
- * the request signal, which aborts when the Task settles. The returned Response
- * escapes the scope that keeps it alive. Evolu's {@link fetch} exists to close
- * this gap.
- *
- * `nativeFetch` is already a {@link RunDefaultDeps | default dependency}; this
- * example declares the same shape locally to demonstrate how Tasks declare
- * capabilities, and passes it to {@link createRun} to show that default
- * dependencies can be replaced like custom ones.
- *
- * ```ts
- * import {
- *   AbortError,
- *   createRun,
- *   err,
- *   ok,
- *   type AbortableFiber,
- *   type Result,
- *   type Task,
- * } from "@evolu/common";
- *
- * // A dependency - wraps native fetch for testability.
- * interface NativeFetchDep {
- *   readonly nativeFetch: typeof globalThis.fetch;
- * }
- *
- * interface NaiveFetchError {
- *   readonly type: "NaiveFetchError";
- *   readonly error: unknown;
- * }
- *
- * // A naive Task wrapping native fetch - adds abortability.
- * const naiveFetch =
- *   (url: string): Task<Response, NaiveFetchError, NativeFetchDep> =>
- *   async ({ deps, signal }) => {
- *     try {
- *       const response = await deps.nativeFetch(url, { signal });
- *       return ok(response);
- *     } catch (error) {
- *       if (AbortError.is(error)) throw error;
- *       return err({ type: "NaiveFetchError", error });
- *     }
- *   };
- *
- * const nativeFetch: typeof globalThis.fetch = async (input, init) => {
- *   if (String(input).endsWith("/123")) {
- *     return new Response(null, { status: 204 });
- *   }
- *
- *   return new Promise<Response>((_resolve, reject) => {
- *     const { signal } = init ?? {};
- *     if (signal?.aborted) {
- *       reject(signal.reason);
- *       return;
- *     }
- *     signal?.addEventListener("abort", () => reject(signal.reason), {
- *       once: true,
- *     });
- *   });
- * };
- *
- * // Provide dependencies at the composition root.
- * const deps: NativeFetchDep = {
- *   nativeFetch,
- * };
- *
- * // Create a Run with those dependencies.
- * await using run = createRun(deps);
- *
- * // Running a Task returns a Fiber; awaiting it gives a Result.
- * const result = await run(naiveFetch("/users/123"));
- * expectTypeOf(result).toEqualTypeOf<Result<Response, NaiveFetchError>>();
- * assert(result.ok);
- * expect(result.value.status).toBe(204);
- *
- * // So what is naive about it? The Response ok value.
- * // Wrong: the Task settled, so its Run disposed and aborted `signal`.
- * // The Response body is a live resource tied to that signal. Whether
- * // this read fails immediately or appears to work depends on the
- * // runtime and on how much of the body was already buffered — it is
- * // timing-dependent behavior, not an API you can rely on.
- * // await result.value.json();
- *
- * // Abort works when native fetch rejects with signal.reason. Some hosts use
- * // their own abort error, which this naive wrapper does not normalize.
- * const fiber = run.abortable(naiveFetch("/users/456"));
- * fiber.abort();
- * const abortResult = await fiber;
- * expectTypeOf(fiber).toEqualTypeOf<
- *   AbortableFiber<Response, NaiveFetchError, NativeFetchDep>
- * >();
- * assert(!abortResult.ok);
- * expect(AbortError.is(abortResult.error)).toBe(true);
- * ```
- *
- * Evolu's {@link fetch} is not fancier than the naive wrapper; it is correctly
- * bounded. It consumes the Response body inside the Task, while the request
- * signal is still alive, and returns a plain value:
- *
- * ```ts
- * import {
- *   createRun,
- *   fetch,
- *   type FetchError,
- *   type Result,
- * } from "@evolu/common";
- *
- * const nativeFetch: typeof globalThis.fetch = async () =>
- *   new Response("readme");
- * await using run = createRun({ nativeFetch });
- *
- * const text = await run(fetch("/readme.txt", "text"));
- * expectTypeOf(text).toEqualTypeOf<Result<string, FetchError>>();
- * expectOk(text, "readme");
- * ```
- *
- * In composition roots, prefer the lifecycle API from the matching Evolu
- * platform package:
- *
- * - Node.js: `@evolu/nodejs`
- * - Web: `@evolu/web`
- * - React Native: `@evolu/react-native`
- *
- * ## Composition
- *
- * | Category     | Helper                    | Description                            |
- * | ------------ | ------------------------- | -------------------------------------- |
- * | Collection   | {@link all}               | Return Ok values or stop on first Err  |
- * |              | {@link allSettled}        | Return every Task Result               |
- * |              | {@link each}              | Handle each Task Result                |
- * | Interop      | {@link callback}          | Wrap callback APIs                     |
- * |              | {@link fetch}             | Native fetch with bounded Response use |
- * | Timing       | {@link sleep}             | Pause execution                        |
- * |              | {@link timeout}           | Time-bounded execution                 |
- * | Resilience   | {@link retry}             | Retry domain errors with a schedule    |
- * | Repetition   | {@link repeat}            | Repeat successes with a schedule       |
- * | Racing       | {@link any}               | First Ok wins                          |
- * |              | {@link race}              | First settled Result wins              |
- * |              | {@link firstN}            | First n Ok values win                  |
- * |              | {@link firstNSettled}     | First n Results win                    |
- * | Scheduling   | {@link prioritized}       | Assign scheduler priority              |
- * |              | {@link yieldNow}          | Yield to the host scheduler            |
- * | Lifetime     | {@link daemon}            | Run under root ownership               |
- * | Abortability | {@link unabortable}       | Mask abort after a Task starts         |
- * |              | {@link unabortableMask}   | Mask acquire/release and restore use   |
- * |              | {@link acquireUseRelease} | Bracket acquire, use, and release      |
- *
- * Helpers that process multiple Tasks run sequentially by default. Use a
- * `concurrency` option to run more than one Task at a time.
- *
- * For ordinary sequential composition, use imperative code:
- *
- * ```ts
- * import { createRun, ok, type Result, type Task } from "@evolu/common";
- *
- * interface User {
- *   readonly id: string;
- *   readonly profileId: string;
- * }
- * interface Profile {
- *   readonly id: string;
- * }
- *
- * const loadUser =
- *   (id: string): Task<User, "UserError"> =>
- *   () =>
- *     ok({ id, profileId: "profile-1" });
- * const loadProfile =
- *   (id: string): Task<Profile, "ProfileError"> =>
- *   () =>
- *     ok({ id });
- *
- * const loadUserWithProfile =
- *   (
- *     id: string,
- *   ): Task<
- *     { readonly user: User; readonly profile: Profile },
- *     "UserError" | "ProfileError"
- *   > =>
- *   async (run) => {
- *     const user = await run(loadUser(id));
- *     if (!user.ok) return user;
- *
- *     const profile = await run(loadProfile(user.value.profileId));
- *     if (!profile.ok) return profile;
- *
- *     return ok({ user: user.value, profile: profile.value });
- *   };
- *
- * await using run = createRun();
- * const result = await run(loadUserWithProfile("user-1"));
- * expectTypeOf(result).toEqualTypeOf<
- *   Result<
- *     { readonly user: User; readonly profile: Profile },
- *     "UserError" | "ProfileError"
- *   >
- * >();
- * expectOk(result, {
- *   user: { id: "user-1", profileId: "profile-1" },
- *   profile: { id: "profile-1" },
- * });
- * ```
- *
- * Evolu intentionally avoids pipe APIs, chainable methods, and generator-based
- * effect DSLs. Plain async/await with early returns is easier to read, review,
- * and debug, and it lets TypeScript narrow Result values through ordinary
- * control flow. For the tradeoffs behind that choice, see “Why not generators?”
- * in the {@link Result} FAQ.
- *
- * ### Building a Resilient Fetch Task
- *
- * {@link fetch} with a body mode already returns a plain value, so resilience is
- * ordinary Task composition. Use {@link timeout} to limit how long a request may
- * run:
- *
- * ```ts
- * import {
- *   fetch,
- *   timeout,
- *   type FetchError,
- *   type Task,
- *   type TimeoutError,
- * } from "@evolu/common";
- *
- * const fetchWithTimeout = (url: string) =>
- *   timeout(fetch(url, "text"), "30s");
- *
- * expectTypeOf(fetchWithTimeout).returns.toEqualTypeOf<
- *   Task<string, FetchError | TimeoutError>
- * >();
- * ```
- *
- * Add {@link retry} for recoverable domain failures:
- *
- * ```ts
- * import {
- *   exponential,
- *   fetch,
- *   jitter,
- *   maxDelay,
- *   retry,
- *   take,
- *   timeout,
- *   type FetchError,
- *   type RetryTaskError,
- *   type Task,
- *   type TimeoutError,
- * } from "@evolu/common";
- *
- * const fetchWithTimeout = (url: string) =>
- *   timeout(fetch(url, "text"), "30s");
- *
- * const fetchWithRetry = (url: string) =>
- *   retry(
- *     fetchWithTimeout(url),
- *     // A jittered, capped, limited exponential backoff.
- *     jitter("100%")(maxDelay("20s")(take(2)(exponential("100ms")))),
- *   );
- *
- * expectTypeOf(fetchWithRetry).returns.toEqualTypeOf<
- *   Task<string, RetryTaskError<FetchError | TimeoutError>>
- * >();
- * ```
- *
- * Run composed Tasks with a concurrency limit and {@link all}:
- *
- * ```ts
- * import { all, createRun, ok, sleep, type Task } from "@evolu/common";
- *
- * await using run = createRun();
- *
- * const urls = [
- *   "https://api.example.com/users",
- *   "https://api.example.com/posts",
- *   "https://api.example.com/comments",
- * ];
- * let activeRequests = 0;
- * let maxActiveRequests = 0;
- * const fetchUrl =
- *   (url: string): Task<string> =>
- *   async (run) => {
- *     activeRequests += 1;
- *     maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
- *     await run.ok(sleep("1ms"));
- *     activeRequests -= 1;
- *     return ok(url);
- *   };
- *
- * // At most 2 concurrent requests.
- * const result = await run(all(urls, fetchUrl, { concurrency: 2 }));
- * expectOk(result, urls);
- * expect(maxActiveRequests).toBe(2);
- * ```
- *
- * ## Concurrency Primitives
- *
- * Task helpers compose Tasks; concurrency primitives are stateful objects that
- * coordinate Tasks across call sites. Create them with their `createX`
- * factories and share them where coordination is needed.
- *
- * | Primitive              | Description                            |
- * | ---------------------- | -------------------------------------- |
- * | {@link Deferred}       | One-shot value resolved from outside   |
- * | {@link Gate}           | Block and release Tasks repeatedly     |
- * | {@link Semaphore}      | Limit concurrent Tasks with permits    |
- * | {@link Mutex}          | Run Tasks one at a time                |
- * | {@link SemaphoreByKey} | Per-key permits with automatic cleanup |
- * | {@link MutexByKey}     | Per-key one-at-a-time execution        |
- * | {@link MutexRef}       | Ref with serialized Task transitions   |
- *
- * ## Dependency Injection
- *
- * Task DI is
- * {@link https://www.evolu.dev/docs/dependency-injection | Evolu Pure DI}
- * applied to {@link Run}. A {@link Task} declares required capabilities with its
- * `D` type parameter and reads them from {@link Run.deps}.
- *
- * {@link createRun} supplies dependencies to the root Run and its children. A
- * Run can also start one child Task with runtime-created dependencies by
- * calling `run(task, deps)`, where `deps` is checked as {@link RunCustomDeps}.
- *
- * Use normal Task arguments for per-call values and `D` for capabilities,
- * resources, or services shared by all code running inside a Run.
- *
- * ### Default Dependencies
- *
- * {@link createRun} provides default {@link RunDefaultDeps} available to all
- * Tasks without declaring `D`:
- *
- * - {@link Console} — logging with hierarchical context via `child()`
- * - {@link LeakDetector} — development-time leaked-handle detection
- * - {@link NativeFetch} — WHATWG-compatible native fetch
- * - {@link Random} — random number generation
- * - {@link RandomBytes} — cryptographic random bytes
- * - {@link ReportDefect} — defect reporting
- * - {@link Time} — current time
- *
- * For example, using Console:
- *
- * ```ts
- * import { createRun, ok, type Task } from "@evolu/common";
- *
- * const myTask: Task<void> = async (run) => {
- *   const { console } = run.deps;
- *   console.log("started");
- *   return ok();
- * };
- *
- * expectTypeOf(myTask).toEqualTypeOf<Task<void>>();
- * await using run = createRun();
- * expectOk(await run(myTask), undefined);
- * ```
- *
- * Custom Console with formatted output:
- *
- * ```ts
- * import {
- *   createConsoleArrayOutput,
- *   createConsole,
- *   createConsoleFormatter,
- *   createRun,
- *   type ConsoleEntry,
- * } from "@evolu/common";
- *
- * const entries: Array<ConsoleEntry> = [];
- * const formatter = createConsoleFormatter()({
- *   timestampFormat: "absolute",
- * });
- * const deps = {
- *   console: createConsole({
- *     output: createConsoleArrayOutput(entries),
- *     formatter,
- *   }),
- * };
- *
- * await using run = createRun(deps);
- * const console = run.deps.console.child("main");
- *
- * console.log("started");
- * expect(console.name).toBe("main");
- * expect(entries).toHaveLength(1);
- * expect(entries[0]?.path).toEqual(["main"]);
- * assert(entries[0]);
- * const formattedArgs = formatter(entries[0]);
- * // 21:20:25.588 [main] started
- * expect(formattedArgs[0]).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3} \[main\]$/);
- * expect(formattedArgs[1]).toBe("started");
- * ```
- *
- * For testing, use {@link testCreateRun} to get deterministic, controllable
- * implementations of all RunDefaultDeps.
- *
- * ## Resource Management
- *
- * JavaScript provides standard
- * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management | resource management}.
- * Evolu adds {@link DisposableRun.defer} for closure-held state owned by a
- * reusable Run.
- *
- * Choose the ownership primitive by where the resource is reachable:
- *
- * - Synchronous stack frame: `using` or {@link DisposableStack}
- * - Async Task stack frame: `await using` or {@link AsyncDisposableStack}
- * - Closure-held state bounded by a reusable {@link DisposableRun}:
- *   {@link DisposableRun.defer}
- *
- * ### Returning Resources from Tasks
- *
- * A Task that successfully returns a disposable resource transfers ownership of
- * a live resource to its caller. The resource must remain live after the Task
- * settles. Do not register its disposal with the creating Task's
- * {@link DisposableRun.defer}, because that child Run is disposed when the Task
- * settles.
- *
- * Use {@link AsyncDisposableStack} while creating a resource. On a Result error,
- * abort, or defect, stack unwinding disposes partially created resources. On
- * success, {@link AsyncDisposableStack.move} transfers ownership to the returned
- * resource. A recoverable creation failure should be a typed Result error;
- * `undefined` should represent valid absence, not failure.
- *
- * ```ts
- * import { createRun, ok, type Task } from "@evolu/common";
- *
- * interface ConnectionError {
- *   readonly type: "ConnectionError";
- * }
- * interface Socket extends AsyncDisposable {
- *   readonly send: (message: string) => string;
- * }
- * interface Connection extends AsyncDisposable {
- *   readonly send: (message: string) => string;
- * }
- *
- * let socketDisposed = false;
- * const openSocket: Task<Socket, ConnectionError> = () =>
- *   ok({
- *     send: (message) => message,
- *     [Symbol.asyncDispose]: async () => {
- *       socketDisposed = true;
- *     },
- *   });
- * const handshake =
- *   (_socket: Socket): Task<void, ConnectionError> =>
- *   () =>
- *     ok();
- *
- * const createConnection: Task<Connection, ConnectionError> = async (
- *   run,
- * ) => {
- *   await using disposer = new AsyncDisposableStack();
- *
- *   const socketResult = await run(openSocket);
- *   if (!socketResult.ok) return socketResult;
- *   const socket = disposer.use(socketResult.value);
- *
- *   const handshakeResult = await run(handshake(socket));
- *   if (!handshakeResult.ok) return handshakeResult;
- *
- *   const disposables = disposer.move();
- *   return ok({
- *     send: (message) => socket.send(message),
- *     [Symbol.asyncDispose]: () => disposables.disposeAsync(),
- *   });
- * };
- *
- * await using run = createRun();
- * const result = await run(createConnection);
- * assert(result.ok);
- * expect(socketDisposed).toBe(false);
- * expect(result.value.send("hello")).toBe("hello");
- * await result.value[Symbol.asyncDispose]();
- * expect(socketDisposed).toBe(true);
- * ```
- *
- * Factories that return disposable values and do not fail can be used directly
- * with {@link Run.ok} and `await using`:
- *
- * ```ts
- * import { createRun, ok, type Task } from "@evolu/common";
- *
- * interface Foo extends AsyncDisposable {
- *   readonly value: string;
- * }
- *
- * let disposed = false;
- * const createFoo = (): Task<Foo> => () =>
- *   ok({
- *     value: "foo",
- *     [Symbol.asyncDispose]: async () => {
- *       disposed = true;
- *     },
- *   });
- *
- * await using run = createRun();
- * {
- *   await using foo = await run.ok(createFoo());
- *   expect(foo.value).toBe("foo");
- * }
- * expect(disposed).toBe(true);
- * ```
- *
- * Use {@link acquireUseRelease} when acquisition and release are separate
- * operations rather than a disposable value:
- *
- * ```ts
- * import {
- *   acquireUseRelease,
- *   createRun,
- *   ok,
- *   type Task,
- * } from "@evolu/common";
- *
- * interface User {
- *   readonly id: string;
- *   readonly name: string;
- * }
- *
- * interface Connection {
- *   readonly loadUser: (id: string) => User;
- * }
- *
- * const openConnection: Task<Connection> = () =>
- *   ok({ loadUser: (id) => ({ id, name: "Ada" }) });
- *
- * const loadUser =
- *   (connection: Connection): Task<User> =>
- *   () =>
- *     ok(connection.loadUser("user-1"));
- *
- * let connectionClosed = false;
- * const closeConnection =
- *   (_connection: Connection): Task<void> =>
- *   () => {
- *     connectionClosed = true;
- *     return ok();
- *   };
- *
- * const queryUser = acquireUseRelease(
- *   openConnection,
- *   loadUser,
- *   closeConnection,
- * );
- *
- * await using run = createRun();
- * const result = await run(queryUser);
- * expectOk(result, { id: "user-1", name: "Ada" });
- * expect(connectionClosed).toBe(true);
- * ```
- *
- * ## Awaitable
- *
- * ```ts
- * import type { Awaitable as EvoluAwaitable } from "@evolu/common";
- *
- * type Awaitable<T> = T | PromiseLike<T>;
- *
- * expectTypeOf<Awaitable<number>>().toEqualTypeOf<
- *   EvoluAwaitable<number>
- * >();
- * ```
- *
- * Even though {@link Task} returns {@link Awaitable}, allowing sync or async
- * results, {@link Run} is always async. This is a deliberate design choice:
- *
- * - **Sync** → {@link Result}, native `using` / `DisposableStack`
- * - **Async** → Task, Run, {@link Fiber}, `await using` / `AsyncDisposableStack`
- *
- * A Task is an async ownership boundary, not a general unit of program
- * decomposition. Calling `run(task)` always creates a child Run by design. Use
- * ordinary promises when an async operation does not need its own Run.
- *
- * Benefits:
- *
- * - **No API ambiguity** — Task is async, Result is sync
- * - **No Task overhead for sync code** — plain sync functions can return Result
- *
- * While a unified sync/async API is technically possible — with
- * {@link isPromiseLike} detection and two-phase disposal (sync first, async if
- * needed, and a flag for callers) — Evolu prefers plain functions for sync code
- * because most operations involve I/O, which is inherently async, and when sync
- * is needed, it is for simplicity (ideally no dependencies) and performance
- * (zero abstraction overhead).
- *
- * Sync functions should be fast, so there is no need to monitor them. They
- * should take values, not dependencies — following the
- * {@link https://blog.ploeh.dk/2017/02/02/dependency-rejection/ | impure/pure/impure sandwich}
- * pattern where impure code gathers data, pure functions process it, and impure
- * code performs effects with the result. Sync functions taking deps often
- * indicate a design that could be improved. For example, a function taking
- * {@link Random} could instead accept {@link RandomNumber} as a value.
- *
- * Slow sync operations such as parsing large JSON, sorting millions of items,
- * or complex cryptography belong in workers. The async boundary to the worker
- * is a Task with full Run lifetime control: timeout, abort, cleanup, and
- * monitoring. The sync code inside the worker needs no monitoring; the async
- * call to the worker provides it.
- *
- * ## Glossary
- *
- * - **Defect** — a thrown exception or rejected Promise from a Task body.
- * - **Outcome** — a Fiber's settlement: resolution with the Task {@link Result},
- *   or rejection with {@link AbortError}. Defects are not outcomes; they are
- *   reported through {@link ReportDefectDep} whether or not the Fiber is
- *   observed.
- * - **Create** — construct a new value or a resource.
- * - **Acquire** — obtain a usable resource. Acquisition may create a new
- *   resource, borrow one, open one, or take a lease/lock.
- * - **Release** — relinquish a previously acquired resource or lease. Release
- *   pairs with acquire and need not mean disposal; examples include unlock,
- *   logout, or returning a pooled resource.
- * - **Dispose / disposal** — owner-driven resource finalization via JavaScript
- *   management (`Symbol.dispose`, `Symbol.asyncDispose`, `using`,
- *   `AsyncDisposableStack`).
- *
- * ## FAQ
- *
- * ### Why is AbortError not part of every Task error type?
- *
- * The `E` type parameter represents declared domain errors. Abort is
- * structured-concurrency control flow, not a domain error. A direct `run(task)`
- * rejects with {@link AbortError} when the Task observes abort. Use
- * `run.abortable(task)` when abort should be handled as an ordinary
- * {@link Result} error at the Fiber boundary, or `daemon(task)` when waiting for
- * a Task should stop immediately after abort.
- *
- * ### Do I have to await every Fiber?
- *
- * No. Awaiting a Fiber is join: it makes the child outcome part of the current
- * control flow. When the outcome does not matter — a fire-and-forget side
- * effect — discard the Fiber explicitly with `void run(task)`.
- *
- * That is safe because the Run tree supervises every Fiber it creates. A
- * discarded Fiber whose Task observes abort (for example during Run disposal)
- * never surfaces as an unhandled rejection, and cleanup is not lost — disposal
- * already aborts and awaits the child. Defects are different: they still panic
- * the root Run and are reported through {@link ReportDefectDep}, so discarding a
- * Fiber never hides bugs.
- *
- * Choose the boundary explicitly:
- *
- * - `void run(task)` — the outcome does not matter. Abort is silent; defects are
- *   still reported.
- * - `await run(task)` — the continuation depends on the Result, so abort rejects
- *   into the awaiter and the boundary must handle it.
- * - `run.abortable(task)` — abort is an expected outcome handled as a
- *   {@link Result} error.
- *
- * ### What should Task code do with defects?
- *
- * Nothing. Once a defect happens, it is too late: the root Run panics, running
- * Tasks are aborted, and the Run tree shuts down. If a defect is recoverable,
- * wrap the code that throws or rejects with {@link trySync} or {@link tryAsync}
- * so it becomes a typed {@link Result} error. Do not wrap every defect;
- * unrecoverable defects should remain defects because an {@link Err} would not
- * be useful anyway.
- *
- * ### Why does a defect panic the whole Run tree?
- *
- * The obvious alternative is partial recovery: only the failing subtree shuts
- * down or restarts while the rest keeps running. Erlang/OTP made this "let it
- * crash" model with supervisors the benchmark for fault-tolerant runtime
- * design.
- *
- * Erlang can recover partially because of process isolation: each process owns
- * its heap, so a crashed process cannot leave another process's state
- * corrupted. JavaScript Tasks share a heap. A defect may throw after partially
- * updating shared state, and the Run cannot prove which invariants are still
- * valid. A subtree panic would stop the failing Task while leaving any
- * corrupted shared state available to surviving Tasks. Locks make it worse: a
- * defect inside a critical section may leave protected invariants half-updated.
- * In-process restart is not a reliable recovery boundary either, because the
- * restarted code may still share the same module state, closures, caches, or
- * resources.
- *
- * JavaScript does have a boundary with Erlang-like isolation: workers. A worker
- * has its own heap and structured-clone messaging, so corruption cannot cross
- * the boundary, and respawning a worker starts from clean state. A defect can
- * panic the worker's Run tree, the worker boundary can be torn down, and the
- * supervising side decides whether to respawn — {@link retry} with a
- * {@link Schedule} around a "spawn worker, run until exit" Task is a one-for-one
- * supervisor. Multiple root Runs that share no mutable state are a lighter
- * alternative, but the share-nothing guarantee is then architectural discipline
- * rather than enforced isolation, so keep it opt-in and rare.
- *
- * ### Why imperative code instead of monadic effect composition?
- *
- * Monads give pure functional languages a way to sequence effects while keeping
- * functions pure. JavaScript already has native effect sequencing: loops, early
- * returns, `try`/`finally`, exceptions, and `async`/`await`.
- *
- * A monadic effect wrapper moves that control flow into a library DSL. The
- * wrapper type becomes viral, and ordinary debugging, profiling, stack traces,
- * and TypeScript narrowing have to work through the DSL instead of the
- * language.
- *
- * Task follows the opposite approach: Tasks are ordinary async functions, Run
- * owns lifetimes and scoped context, {@link Result} carries expected domain
- * errors, and defects keep real exceptions with real stacks.
- *
- * ### Are recursive Tasks stack-safe?
- *
- * Tasks have native JavaScript stack behavior. A deeply recursive Task can
- * exceed the call stack when each step starts the next step synchronously.
- * `await` alone does not prevent this: JavaScript evaluates its operand before
- * suspending, and `run(nextTask)` starts the child Task immediately.
- *
- * Implement deep recursive algorithms with a loop and an explicit worklist so
- * each iteration reuses the same stack frame:
- *
- * ```ts
- * import { createRun, ok, type Task } from "@evolu/common";
- *
- * interface TreeNode {
- *   readonly value: string;
- *   readonly children: ReadonlyArray<TreeNode>;
- * }
- *
- * const visited: Array<string> = [];
- * const visit = (node: TreeNode): void => {
- *   visited.push(node.value);
- * };
- *
- * const visitTree =
- *   (root: TreeNode): Task<void> =>
- *   () => {
- *     const remaining = [root];
- *
- *     while (remaining.length > 0) {
- *       const node = remaining.pop();
- *       if (!node) continue;
- *       visit(node);
- *       for (const child of node.children) remaining.push(child);
- *     }
- *
- *     return ok();
- *   };
- *
- * const tree: TreeNode = {
- *   value: "root",
- *   children: [{ value: "child", children: [] }],
- * };
- * await using run = createRun();
- * expectOk(await run(visitTree(tree)), undefined);
- * expect(visited).toEqual(["root", "child"]);
- * ```
- *
- * Task favors direct native execution, `async`/`await`, and native tooling over
- * interpreted control flow. The trade-off is no transparent stack safety or
- * automatic scheduling fairness. Use loops or worklists for deep algorithms,
- * periodically await {@link yieldNow} for cooperative scheduling, and move
- * CPU-bound work to a worker.
- *
- * ### Why does Task use explicit Result handling?
- *
- * Task uses native TypeScript control flow so each async boundary and error
- * propagation point is visible.
- *
- * ```ts
- * import { createRun, ok, type Task } from "@evolu/common";
- *
- * const loadUser: Task<string, "LoadUserError"> = () => ok("Ada");
- * const greetUser: Task<string, "LoadUserError"> = async (run) => {
- *   const user = await run(loadUser);
- *   if (!user.ok) return user;
- *   return ok(`Hello, ${user.value}`);
- * };
- *
- * await using run = createRun();
- * expectOk(await run(greetUser), "Hello, Ada");
- * ```
- *
- * This is slightly more verbose than fluent or generator-based syntax, but it's
- * simple to read, easy to debug, friendly to TypeScript narrowing, and works
- * well with generated code.
- *
- * ### Can a Task be called directly?
- *
- * Yes. A direct call, `task(run)`, uses the current Run instead of creating a
- * child Run, so it bypasses child lifetime tracking, scheduling metadata, and
- * child disposal boundaries. It is reserved for Task internals that explicitly
- * need same-Run execution; use `run(task)` in application code.
- *
- * ### Where are fork and join?
- *
- * Calling `run(task)` is fork: it starts a child Task and returns a
- * {@link Fiber}. Awaiting or returning that Fiber is join: it makes the child
- * Result or rejection part of the parent Task control flow.
- *
- * ### What runtime features does Task require?
- *
- * Task uses modern JavaScript APIs such as `Promise.withResolvers`,
- * `AbortSignal.throwIfAborted`, `Symbol.dispose`, `Symbol.asyncDispose`,
- * `DisposableStack`, and `AsyncDisposableStack`. Evolu provides polyfills for
- * supported runtimes that need them: call `installPolyfills` from
- * `@evolu/common/polyfills`, or from the platform package such as
- * `@evolu/react-native/polyfills`. The `using` and `await using` syntax is
- * emitted by TypeScript; the polyfills provide the runtime resource-management
- * globals.
+ * See the {@link @evolu/common!Task | Task overview}.
  *
  * @group Core
  */
@@ -984,7 +780,7 @@ export type Task<T, E = never, D = unknown> = (
 export type AnyTask = Task<any, any, any>;
 
 /**
- * Extracts the Ok value type from a {@link Task}.
+ * Extracts the {@link Ok} value type from a {@link Task}.
  *
  * @group Type utilities
  */
@@ -992,7 +788,7 @@ export type InferTaskOk<TTask extends AnyTask> =
   TTask extends Task<infer T, any, any> ? T : never;
 
 /**
- * Extracts the Result error type from a {@link Task}.
+ * Extracts the {@link Result} error type from a {@link Task}.
  *
  * @group Type utilities
  */
@@ -1008,10 +804,11 @@ export type InferTaskDeps<TTask extends AnyTask> =
   TTask extends Task<any, any, infer D> ? D : never;
 
 /**
- * A {@link Task} that can return a value, signal done, or return a Result error.
+ * A {@link Task} that can return a value, signal done, or return a {@link Result}
+ * error.
  *
- * Use for pull-based protocols where `Done<D>` signals normal completion rather
- * than an error.
+ * Use for pull-based protocols where {@link Done | Done<D>} signals normal
+ * completion rather than an error.
  *
  * @group Core
  */
@@ -1037,8 +834,8 @@ export type InferTaskDone<TTask extends AnyTask> =
  * A {@link Task} whose error type is not `never`.
  *
  * Used by {@link Run.orThrow} to accept only Tasks that can return a declared
- * {@link Err}. Tasks without declared Result errors should use {@link Run.ok}
- * instead.
+ * {@link Err}. Tasks without declared {@link Result} errors should use
+ * {@link Run.ok} instead.
  *
  * @group Type utilities
  */
@@ -1063,7 +860,7 @@ export type TaskWithError<TTask extends AnyTask> = TTask &
  * the child Fiber from the parent. If a parent Task returns before awaiting or
  * returning a child Fiber, cleanup still waits for the child. A child defect
  * during that cleanup panics and aborts the root Run, but the parent Fiber
- * keeps the Result already returned by the parent Task.
+ * keeps the {@link Result} already returned by the parent Task.
  *
  * Disposing a Run requests abort and prevents new child Tasks from starting.
  * Async disposal waits for current children to settle. Abort requests propagate
@@ -1102,9 +899,7 @@ export interface Run<D = unknown> {
    * defects are still reported. Use {@link Run.daemon} for work that should
    * outlive the current Task.
    *
-   * The optional deps argument replaces the custom deps available to the Task.
-   * Default deps ({@link RunDefaultDeps}) are inherited unless replaced with
-   * assignable alternatives.
+   * The Task uses this Run's current dependencies.
    *
    * The Fiber rejects when the Task observes abort by throwing
    * {@link AbortError}. It also rejects with AbortError whose reason is
@@ -1124,26 +919,33 @@ export interface Run<D = unknown> {
    * interface Db {
    *   readonly name: string;
    * }
+   *
    * interface DbDep {
    *   readonly db: Db;
    * }
    *
    * const db: Db = { name: "main" };
    * const loadUser: Task<string> = () => ok("Ada");
-   * const saveUser: Task<void, never, DbDep> = ({ deps }) => {
-   *   expect(deps.db).toBe(db);
+   * const saveUser: Task<void, never, DbDep> = (run) => {
+   *   expect(run.deps.db).toBe(db);
    *   return ok();
    * };
    *
-   * await using run = createRun();
+   * await using run = createRun({ db });
    * const userResult = await run(loadUser);
-   * const savedResult = await run(saveUser, { db });
+   * const savedResult = await run(saveUser);
    * expectOk(userResult, "Ada");
    * expectOk(savedResult, undefined);
    * ```
    */
   <T, E>(task: Task<T, E, D>): Fiber<T, E, D>;
 
+  /**
+   * Starts a {@link Task} with replacement custom dependencies.
+   *
+   * Default deps ({@link RunDefaultDeps}) are inherited unless replaced with
+   * assignable alternatives.
+   */
   <T, E, Deps extends object>(
     task: Task<T, E, Deps>,
     deps: RunCustomDeps<Deps>,
@@ -1156,6 +958,20 @@ export interface Run<D = unknown> {
    * This is the Task equivalent of {@link getOrThrow}. Use it where a declared
    * Result error should crash the current flow instead of being handled
    * locally.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { createRun, ok, type Task, type Typed } from "@evolu/common";
+   *
+   * const loadConfig: Task<string, ConfigInvalidError> = () =>
+   *   ok("config");
+   *
+   * interface ConfigInvalidError extends Typed<"ConfigInvalid"> {}
+   *
+   * await using run = createRun();
+   * expect(await run.orThrow(loadConfig)).toBe("config");
+   * ```
    */
   readonly orThrow: {
     <TTask extends Task<any, any, D>>(
@@ -1168,9 +984,36 @@ export interface Run<D = unknown> {
   };
 
   /**
-   * Runs a {@link Task} whose error type is `never` and returns its Ok value.
+   * Runs a {@link Task} whose error type is `never` and returns its {@link Ok}
+   * value.
    *
    * This is the Task equivalent of {@link getOk}.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { createRun, ok, type Task } from "@evolu/common";
+   *
+   * interface Resource extends AsyncDisposable {
+   *   readonly value: string;
+   * }
+   *
+   * let disposed = false;
+   * const openResource: Task<Resource> = () =>
+   *   ok({
+   *     value: "resource",
+   *     [Symbol.asyncDispose]: async () => {
+   *       disposed = true;
+   *     },
+   *   });
+   *
+   * await using run = createRun();
+   * {
+   *   await using resource = await run.ok(openResource);
+   *   expect(resource.value).toBe("resource");
+   * }
+   * expect(disposed).toBe(true);
+   * ```
    */
   readonly ok: {
     <T>(task: Task<T, never, D>): Promise<T>;
@@ -1209,8 +1052,9 @@ export interface Run<D = unknown> {
    * interface DbDep {
    *   readonly db: { readonly name: string };
    * }
+   *
    * const db = { name: "main" };
-   * const loadUser: Task<string, "LoadUserError", DbDep> = async (run) => {
+   * const loadUser: Task<string, never, DbDep> = async (run) => {
    *   await run.ok(sleep("1s"));
    *   return ok(run.deps.db.name);
    * };
@@ -1218,7 +1062,7 @@ export interface Run<D = unknown> {
    * await using run = createRun();
    * const fiber = run.abortable(loadUser, { db });
    * expectTypeOf(fiber).toEqualTypeOf<
-   *   AbortableFiber<string, "LoadUserError", DbDep>
+   *   AbortableFiber<string, never, DbDep>
    * >();
    * fiber.abort();
    * const userResult = await fiber;
@@ -1240,8 +1084,8 @@ export interface Run<D = unknown> {
    * Normal child Runs are disposed after their Task settles. Tasks started by
    * `run.daemon` detach their lifetime from the current Task and attach to the
    * root Run, so they keep running until they settle or the root Run is
-   * disposed. Calling `.abort()` or async-disposing the returned Fiber requests
-   * abort. Keep the returned Fiber for lifetime control.
+   * disposed. Calling `.abort()` or async-disposing the returned {@link Fiber}
+   * requests abort. Keep the returned Fiber for lifetime control.
    *
    * The daemon receives deps derived from the Run that starts it, not from the
    * root Run: `deps` replace that Run's custom deps for the daemon Task, while
@@ -1258,7 +1102,9 @@ export interface Run<D = unknown> {
    * un-aborted, because detached work must not spawn under a scope that is
    * shutting down.
    *
-   * ### Example
+   * For a long-lived reusable {@link Run}, use {@link Run.create}.
+   *
+   * ### Abort masks
    *
    * ```ts
    * import { createRun, ok, unabortable, type Task } from "@evolu/common";
@@ -1286,9 +1132,7 @@ export interface Run<D = unknown> {
    * expectOk(await run(syncParent), ["synced", "synced"]);
    * ```
    *
-   * For a long-lived reusable {@link Run}, use {@link Run.create}.
-   *
-   * ### Example
+   * ### Aborting a daemon
    *
    * ```ts
    * import {
@@ -1302,6 +1146,7 @@ export interface Run<D = unknown> {
    * interface DbDep {
    *   readonly db: { readonly name: string };
    * }
+   *
    * const db = { name: "main" };
    * const syncUsers: Task<void, never, DbDep> = async (run) => {
    *   await run.ok(sleep("1s"));
@@ -1315,6 +1160,8 @@ export interface Run<D = unknown> {
    * assert(!syncResult.ok);
    * expect(AbortError.is(syncResult.error)).toBe(true);
    * ```
+   *
+   * ### Disposing a daemon
    *
    * ```ts
    * import { createRun, ok, waitForAbort, type Task } from "@evolu/common";
@@ -1346,11 +1193,11 @@ export interface Run<D = unknown> {
   };
 
   /**
-   * Creates a {@link DisposableRun} attached to the root Run with this Run's
-   * deps.
+   * Creates a {@link DisposableRun} attached to the root {@link Run} with this
+   * Run's deps.
    *
    * Use it when you need a Run that can be reused across multiple operations.
-   * For a single long-lived Task, use {@link Run.daemon}.
+   * For a single long-lived {@link Task}, use {@link Run.daemon}.
    *
    * Use deps to replace the created Run's custom deps. Default deps
    * ({@link RunDefaultDeps}) are inherited unless explicitly replaced with
@@ -1369,11 +1216,12 @@ export interface Run<D = unknown> {
    * interface DbDep {
    *   readonly db: { readonly users: Array<string> };
    * }
+   *
    * const db = { users: ["Ada"] };
-   * const loadUser: Task<string, never, DbDep> = ({ deps }) =>
-   *   ok(deps.db.users[0] ?? "Unknown");
-   * const saveUser: Task<void, never, DbDep> = ({ deps }) => {
-   *   deps.db.users.push("Grace");
+   * const loadUser: Task<string, never, DbDep> = (run) =>
+   *   ok(run.deps.db.users[0] ?? "Unknown");
+   * const saveUser: Task<void, never, DbDep> = (run) => {
+   *   run.deps.db.users.push("Grace");
    *   return ok();
    * };
    *
@@ -1397,7 +1245,7 @@ export interface Run<D = unknown> {
   /** The parent {@link Run}, if this Run was created as a child. */
   readonly parent: Run | null;
 
-  /** Dependencies available to the Task, including {@link RunDefaultDeps}. */
+  /** Dependencies available to the {@link Task}, including {@link RunDefaultDeps}. */
   readonly deps: RunDefaultDeps & D;
 
   /**
@@ -1480,7 +1328,7 @@ export interface Run<D = unknown> {
   /**
    * Callback for monitoring Run events emitted by this Run or descendants.
    *
-   * Event handlers are observers, not part of Task control flow. Handler
+   * Event handlers are observers, not part of {@link Task} control flow. Handler
    * defects are reported via {@link ReportDefectDep.reportDefect}; they do not
    * panic the root Run or change Run state.
    *
@@ -1511,43 +1359,12 @@ export type RunCustomDeps<D extends object> = D & {
  *
  * {@link createRun} creates a root DisposableRun. {@link Run.create} creates one
  * attached to that root, typically to give a reusable resource its own
- * lifetime. A DisposableRun owns its child Tasks and closure-held cleanup
- * registered with {@link DisposableRun.defer}; disposing it shuts down both.
+ * lifetime. A DisposableRun owns its child {@link Task}s and closure-held
+ * cleanup registered with {@link DisposableRun.defer}; disposing it shuts down
+ * both.
  *
  * Sync disposal starts shutdown without waiting. Async disposal waits for child
  * Tasks and registered cleanup to finish.
- *
- * Use {@link createRun} at composition roots such as app, server, worker, or
- * test entry points. The common factory is platform-agnostic; platform adapters
- * can wrap it to add global error handling or shutdown integration.
- *
- * ### Example
- *
- * ```ts
- * import { createRun, ok, type Task } from "@evolu/common";
- *
- * await using run = createRun();
- * const loadData: Task<string> = () => ok("data");
- *
- * expectOk(await run(loadData), "data");
- * ```
- *
- * ### Example with custom dependencies
- *
- * ```ts
- * import { createRun, type DisposableRun } from "@evolu/common";
- *
- * interface ConfigDep {
- *   readonly config: { readonly apiUrl: string };
- * }
- *
- * await using run = createRun<ConfigDep>({
- *   config: { apiUrl: "https://api.example.com" },
- * });
- *
- * expectTypeOf(run).toEqualTypeOf<DisposableRun<ConfigDep>>();
- * expect(run.deps.config.apiUrl).toBe("https://api.example.com");
- * ```
  *
  * @group Core
  */
@@ -1556,8 +1373,8 @@ export interface DisposableRun<D = unknown>
   /**
    * Registers closure-held cleanup owned by this Run.
    *
-   * Finalizers run in LIFO order after child Tasks settle and are awaited by
-   * async disposal. The Run is in `Aborted` state while they run and
+   * Finalizers run in LIFO order after child {@link Task}s settle and are
+   * awaited by async disposal. The Run is in `Aborted` state while they run and
    * transitions to `Settled` afterward, so a finalizer cannot start Tasks on
    * it. Use `using` for resources owned by a Task stack frame; use `defer` for
    * closure-held state whose lifetime is bounded by a reusable DisposableRun.
@@ -1568,6 +1385,23 @@ export interface DisposableRun<D = unknown>
    * with the same already-reported {@link AbortError}.
    *
    * Calling `defer` after disposal starts is a programmer error.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { createRun } from "@evolu/common";
+   *
+   * let connectionClosed = false;
+   * {
+   *   await using run = createRun();
+   *   run.defer(() => {
+   *     connectionClosed = true;
+   *   });
+   *
+   *   expect(connectionClosed).toBe(false);
+   * }
+   * expect(connectionClosed).toBe(true);
+   * ```
    */
   readonly defer: (finalizer: () => Awaitable<void>) => void;
 
@@ -1585,8 +1419,8 @@ export interface DisposableRun<D = unknown>
    * {@link ReportDefectDep}. The original defect is available as
    * `abortError.reason.defect` for diagnostics. The first panic records the
    * AbortError as the root Run's aborted exit and starts root disposal, which
-   * aborts running Tasks, prevents new Tasks from starting, and waits for
-   * running Tasks to settle. Later panics still report and return their own
+   * aborts running {@link Task}s, prevents new Tasks from starting, and waits
+   * for running Tasks to settle. Later panics still report and return their own
    * AbortError, but do not replace the root Run exit.
    */
   readonly panic: (defect: unknown) => AbortError;
@@ -1595,8 +1429,8 @@ export interface DisposableRun<D = unknown>
 /**
  * A Promise-backed handle to a {@link Task} started by a {@link Run}.
  *
- * Await a Fiber to use the Task Result in the current control flow. The Fiber
- * resolves with the Task {@link Result} when the Task returns normally. A Fiber
+ * Await a Fiber to use the Task {@link Result} in the current control flow. The
+ * Fiber resolves with the Task Result when the Task returns normally. A Fiber
  * returned by `run(task)` rejects with {@link AbortError} when the Task observes
  * abort or when a defect panics the Run tree. Panic uses
  * {@link PanicAbortReason}; the original defect is available on the reason for
@@ -1653,6 +1487,7 @@ export interface DisposableRun<D = unknown>
 export interface Fiber<T = unknown, E = unknown, D = unknown> extends Promise<
   Result<T, E>
 > {
+  /** The child {@link Run} that executes this Fiber's {@link Task}. */
   readonly run: Run<D>;
 }
 
@@ -1664,7 +1499,7 @@ export interface Fiber<T = unknown, E = unknown, D = unknown> extends Promise<
 export type AnyFiber = Fiber<any, any, any>;
 
 /**
- * Extracts the Ok value type from a {@link Fiber}.
+ * Extracts the {@link Ok} value type from a {@link Fiber}.
  *
  * @group Type utilities
  */
@@ -1672,7 +1507,7 @@ export type InferFiberOk<TFiber extends AnyFiber> =
   TFiber extends Fiber<infer T, any, any> ? T : never;
 
 /**
- * Extracts the Result error type from a {@link Fiber}.
+ * Extracts the {@link Result} error type from a {@link Fiber}.
  *
  * @group Type utilities
  */
@@ -1691,8 +1526,8 @@ export type InferFiberDeps<TFiber extends AnyFiber> =
  * A {@link Fiber} with explicit abort and async-disposal controls.
  *
  * Calling `.abort()` requests abort for the Fiber's child {@link Run}. If the
- * Task observes abort or a defect panics the Run tree, the Fiber resolves with
- * an {@link Err} containing the {@link AbortError}. Panic uses
+ * {@link Task} observes abort or a defect panics the Run tree, the Fiber
+ * resolves with an {@link Err} containing the {@link AbortError}. Panic uses
  * {@link PanicAbortReason}; the original defect is available on the reason for
  * diagnostics.
  *
@@ -1731,6 +1566,7 @@ export type InferFiberDeps<TFiber extends AnyFiber> =
  */
 export interface AbortableFiber<T = unknown, E = unknown, D = unknown>
   extends Fiber<T, E | AbortError, D>, AsyncDisposable {
+  /** Requests abort with an optional {@link AbortReason}. */
   readonly abort: (reason?: AbortReason) => void;
 }
 
@@ -1742,16 +1578,16 @@ export interface AbortableFiber<T = unknown, E = unknown, D = unknown>
  * scopes. Abort requests are still recorded, but the Run's observed abort
  * signal is aborted only when the mask is `0`.
  *
- * Plain child Tasks inherit their parent's mask. `unabortable` increments the
- * mask for the wrapped Task, and `unabortableMask` provides `restore` to run
- * selected child Tasks with the previous mask.
+ * Plain child {@link Task}s inherit their parent's mask. `unabortable`
+ * increments the mask for the wrapped Task, and `unabortableMask` provides
+ * `restore` to run selected child Tasks with the previous mask.
  *
  * @group Abortability
  */
 export type AbortMask = NonNegativeInt & Brand<"AbortMask">;
 
 /**
- * Typed object explaining why a {@link Run} was aborted.
+ * Runtime Type for structured data explaining why a {@link Run} was aborted.
  *
  * A reason has a `type` discriminant and optional structured data, so abort
  * causes can carry typed domain data. Well-known reasons are
@@ -1767,14 +1603,20 @@ export const AbortReason: ObjectType<
   { type: String },
   /*#__PURE__*/ record(String, Unknown),
 );
+
+/**
+ * Structured data explaining why a {@link Run} was aborted.
+ *
+ * @group Core
+ */
 export interface AbortReason extends InferType<typeof AbortReason> {}
 
 /**
- * Typed object representing structured-concurrency abort control flow.
+ * Runtime Type for structured-concurrency abort control flow.
  *
- * AbortError is thrown to stop Task execution when a Run observes an abort
- * request. AbortableFiber catches AbortError and returns it as a {@link Result}
- * error, so abort can be handled as an ordinary Task outcome.
+ * AbortError is thrown to stop {@link Task} execution when a {@link Run} observes
+ * an abort request. {@link AbortableFiber} catches AbortError and returns it as
+ * a {@link Result} error, so abort can be handled as an ordinary Task outcome.
  *
  * The reason explains why the Run was aborted. It can be an explicit abort
  * reason, {@link runDisposedAbortReason} for normal Run cleanup, or
@@ -1799,6 +1641,12 @@ export const AbortError: TypedType<
 > = /*#__PURE__*/ typed("AbortError", {
   reason: AbortReason,
 });
+
+/**
+ * Structured-concurrency abort control-flow value.
+ *
+ * @group Core
+ */
 export interface AbortError extends InferType<typeof AbortError> {}
 
 /**
@@ -1814,9 +1662,9 @@ export const createAbortError = (reason: AbortReason): AbortError => ({
 /**
  * Final outcome recorded by a {@link Run}.
  *
- * A Run exit is an outer {@link Result}. {@link Ok} means the Task returned a
- * Result; {@link Err} means the Run aborted with {@link AbortError}. Panic is
- * recorded as an AbortError whose reason is {@link PanicAbortReason}.
+ * A Run exit is an outer {@link Result}. {@link Ok} means the {@link Task}
+ * returned a Result; {@link Err} means the Run aborted with {@link AbortError}.
+ * Panic is recorded as an AbortError whose reason is {@link PanicAbortReason}.
  *
  * @group Core
  */
@@ -1881,7 +1729,7 @@ export interface RunStateSettled extends Typed<"Settled">, RunAbortState {
  * same object reference. This lets UI and debugging tools compare snapshots by
  * identity and skip unchanged branches.
  *
- * @group Core
+ * @group Monitoring
  * @see {@link Run.snapshot}
  */
 export interface RunSnapshot {
@@ -1907,7 +1755,7 @@ export type RunEventData =
   RunEventDataChildAdded | RunEventDataChildRemoved | RunEventDataStateChanged;
 
 /**
- * A child Run was added to the emitting Run.
+ * A child {@link Run} was added to the emitting Run.
  *
  * @group Monitoring
  */
@@ -1917,7 +1765,7 @@ export interface RunEventDataChildAdded extends Typed<"ChildAdded"> {
 }
 
 /**
- * A child Run was removed from the emitting Run.
+ * A child {@link Run} was removed from the emitting Run.
  *
  * @group Monitoring
  */
@@ -1958,9 +1806,9 @@ export interface RunEvent {
 /**
  * Shared abort reason used for ordinary {@link Run} cleanup.
  *
- * Disposal requests abort so child Tasks stop while the Run waits for them to
- * settle. This reason distinguishes that cleanup path from explicit abort and
- * {@link PanicAbortReason}.
+ * Disposal requests abort so child {@link Task}s stop while the Run waits for
+ * them to settle. This reason distinguishes that cleanup path from explicit
+ * abort and {@link PanicAbortReason}.
  *
  * @group Run
  */
@@ -1983,7 +1831,7 @@ export const explicitAbortReason = {
 /**
  * Shared abort reason for tests that need a non-production abort reason.
  *
- * @group Run
+ * @group Testing
  */
 export const testAbortReason = {
   type: "TestAbortReason",
@@ -1992,26 +1840,25 @@ export const testAbortReason = {
 /**
  * Shared {@link AbortError} for tests, created from {@link testAbortReason}.
  *
- * @group Run
+ * @group Testing
  */
 export const testAbortError = /*#__PURE__*/ createAbortError(testAbortReason);
 
 /**
- * A root-level abort caused by a defect.
+ * Abort reason recorded when a defect panics the root {@link Run}.
  *
- * Panic is a root-level abort caused by a defect: a thrown exception or
- * rejected Promise. Recoverable domain errors belong in Result. Unexpected or
- * unrecoverable conditions, such as storage engine errors the Task cannot
- * usefully handle, may throw or reject. {@link AbortError} is abort control
- * flow, not a defect.
+ * A defect is a thrown or rejected value other than {@link AbortError}.
+ * Recoverable domain errors belong in {@link Result}. Bugs and unrecoverable
+ * failures, such as storage engine errors the {@link Task} cannot usefully
+ * handle, may throw or reject.
  *
  * {@link Run.onEvent} handler defects are different: event handlers are
  * monitoring code, so their defects are reported globally but do not panic the
  * root Run.
  *
- * When Run observes a defect, it aborts the root Run and starts disposal
+ * When {@link Run} observes a defect, it aborts the root Run and starts disposal
  * immediately. This prevents later Tasks from starting after the defect. A
- * Fiber rejects with AbortError whose reason is PanicAbortReason; an
+ * {@link Fiber} rejects with AbortError whose reason is PanicAbortReason; an
  * {@link AbortableFiber} returns that AbortError as an {@link Err}.
  *
  * @group Core
@@ -2059,10 +1906,10 @@ export interface RunConfigDep {
 /**
  * Reports a defect.
  *
- * Run uses this dependency in two cases: {@link DisposableRun.panic} reports the
- * {@link AbortError} whose reason is {@link PanicAbortReason}, and event
- * monitoring reports observer defects without panicking the Run. The original
- * panic defect is available at `abortError.reason.defect`.
+ * {@link Run} uses this dependency in two cases: {@link DisposableRun.panic}
+ * reports the {@link AbortError} whose reason is {@link PanicAbortReason}, and
+ * event monitoring reports observer defects without panicking the Run. The
+ * original panic defect is available at `abortError.reason.defect`.
  *
  * @group Run
  */
@@ -2098,9 +1945,9 @@ export const reportDefectAfterMicrotask: ReportDefect = (defect) => {
 /**
  * Default dependencies provided by {@link createRun}.
  *
- * Root Runs include platform-independent implementations for console, leak
- * detection, native fetch, randomness, error reporting, time, and optional Run
- * monitoring configuration.
+ * Root {@link Run}s include platform-independent implementations for console,
+ * leak detection, native fetch, randomness, error reporting, time, and optional
+ * Run monitoring configuration.
  *
  * The {@link LeakDetector} is enabled only in development builds; production
  * uses a no-op implementation.
@@ -2140,15 +1987,40 @@ export const createRunDefaultDeps = (): RunDefaultDeps => {
  * @group Run
  */
 export interface CreateRun {
-  /** Creates a root Run with only {@link RunDefaultDeps}. */
+  /** Creates a root {@link Run} with only {@link RunDefaultDeps}. */
   (): DisposableRun;
 
-  /** Creates a root Run with custom deps merged over {@link RunDefaultDeps}. */
+  /**
+   * Creates a root {@link Run} with custom deps merged over
+   * {@link RunDefaultDeps}.
+   */
   <D extends object>(deps: RunCustomDeps<D>): DisposableRun<D>;
 }
 
 /**
  * Creates a root {@link DisposableRun}.
+ *
+ * Use at composition roots such as app, server, worker, or test entry points.
+ * The common factory is platform-agnostic; platform adapters can wrap it to add
+ * global error handling or shutdown integration.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * interface ConfigDep {
+ *   readonly config: { readonly apiUrl: string };
+ * }
+ *
+ * const loadApiUrl: Task<string, never, ConfigDep> = (run) =>
+ *   ok(run.deps.config.apiUrl);
+ *
+ * await using run = createRun({
+ *   config: { apiUrl: "https://api.example.com" },
+ * });
+ * expectOk(await run(loadApiUrl), "https://api.example.com");
+ * ```
  *
  * @group Run
  */
@@ -2189,7 +2061,11 @@ export type TestRunDefaultDeps = Omit<
   TestTimeDep &
   RandomLibDep;
 
-/** Provides a test {@link Run} with deterministic default dependencies. */
+/**
+ * Provides a test {@link Run} with deterministic default dependencies.
+ *
+ * @group Testing
+ */
 export interface TestRunDep<D = unknown> {
   readonly run: Run<TestRunDefaultDeps & D>;
 }
@@ -2317,12 +2193,42 @@ export const testCreateDeps = (options?: {
 /**
  * Creates a root {@link DisposableRun} with {@link TestRunDefaultDeps}.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { ok, testCreateRun, type Task } from "@evolu/common";
+ *
+ * const readTime: Task<number> = (run) => ok(run.deps.time.now());
+ *
+ * await using run = testCreateRun();
+ * expectOk(await run(readTime), 0);
+ * ```
+ *
  * @group Testing
  */
 export function testCreateRun(
   deps?: TestRunDefaultDeps,
 ): DisposableRun<TestRunDefaultDeps>;
 
+/**
+ * Merges custom dependencies into {@link TestRunDefaultDeps}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { ok, testCreateRun, type Task } from "@evolu/common";
+ *
+ * interface FeatureDep {
+ *   readonly feature: { readonly enabled: boolean };
+ * }
+ *
+ * const isFeatureEnabled: Task<boolean, never, FeatureDep> = (run) =>
+ *   ok(run.deps.feature.enabled);
+ *
+ * await using run = testCreateRun({ feature: { enabled: true } });
+ * expectOk(await run(isFeatureEnabled), true);
+ * ```
+ */
 export function testCreateRun<D extends object>(
   deps: RunCustomDeps<D>,
 ): DisposableRun<TestRunDefaultDeps & D>;
@@ -2835,7 +2741,8 @@ const withTaskMeta =
 export type TaskRecord = Readonly<Record<string, AnyTask>>;
 
 /**
- * Extracts the dependency intersection required by a readonly Task array.
+ * Extracts the dependency intersection required by a readonly {@link Task}
+ * array.
  *
  * @group Type utilities
  */
@@ -2849,7 +2756,7 @@ export type InferTasksDeps<TTasks extends ReadonlyArray<AnyTask>> =
   >;
 
 /**
- * Extracts the dependency intersection required by a Task record.
+ * Extracts the dependency intersection required by a {@link Task} record.
  *
  * @group Type utilities
  */
@@ -2858,12 +2765,13 @@ export type InferTaskRecordDeps<TTasks extends TaskRecord> = InferTasksDeps<
 >;
 
 /**
- * Options shared by Task collection helpers.
+ * Options shared by {@link Task} collection helpers.
  *
- * `concurrency` controls how many Tasks run at once. It defaults to `1`. A
- * platform `availableParallelism()` result is often a good limit for CPU-bound
- * Tasks. For network or database Tasks, choose a limit based on the transport,
- * server, connection pool, and rate limits.
+ * `concurrency` controls how many Tasks run at once. It defaults to `1`. For
+ * CPU-bound Tasks backed by workers or parallel native operations, a platform
+ * `availableParallelism()` result is often a good limit. For network or
+ * database Tasks, choose a limit based on the transport, server, connection
+ * pool, and rate limits.
  *
  * Keep concurrency bounded. In rare cases where running every Task concurrently
  * is safe, use {@link maxPositiveInt}.
@@ -2871,6 +2779,7 @@ export type InferTaskRecordDeps<TTasks extends TaskRecord> = InferTasksDeps<
  * @group Collection
  */
 export interface TaskCollectionOptions {
+  /** Maximum number of {@link Task}s run concurrently. Defaults to `1`. */
   readonly concurrency?: Int1To100OrPositiveInt;
 }
 
@@ -2880,12 +2789,13 @@ export interface TaskCollectionOptions {
  * @group Collection
  */
 export interface AllOptions extends TaskCollectionOptions {
-  /** Disables collecting Ok values. */
+  /** Disables collecting {@link Ok} values. */
   readonly collect: false;
 }
 
 /**
- * Maps a Task array or record to the Ok values produced by its Tasks.
+ * Maps a {@link Task} array or record to the {@link Ok} values produced by its
+ * Tasks.
  *
  * The mapped type is homomorphic, so tuples preserve their shape and records
  * preserve their keys.
@@ -2899,7 +2809,7 @@ export type InferTasksOk<TTasks> = {
 };
 
 /**
- * Runs Tasks until all return {@link Ok} or one returns {@link Err}.
+ * Runs {@link Task}s until all return {@link Ok} or one returns {@link Err}.
  *
  * Returns Ok with all values when every Task returns Ok. Stops on the first
  * Err; remaining running Tasks are aborted. Sequential by default; pass a
@@ -2917,8 +2827,8 @@ export type InferTasksOk<TTasks> = {
  *
  * Similar to
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/all | Promise.all},
- * but runs Tasks, returns Result values, and aborts remaining Tasks on the
- * first Err.
+ * but runs Tasks, returns {@link Result} values, and aborts remaining Tasks on
+ * the first Err.
  *
  * ### Example
  *
@@ -2930,48 +2840,35 @@ export type InferTasksOk<TTasks> = {
  *   ok,
  *   type Result,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
- * interface User {
- *   readonly id: string;
- * }
- * interface Post {
- *   readonly id: string;
- * }
- * const fetchUser: Task<User> = () => ok({ id: "user-1" });
- * const fetchPosts: Task<ReadonlyArray<Post>> = () =>
- *   ok([{ id: "post-1" }]);
- * await using run = createRun();
- *
- * const dashboard = await run(all([fetchUser, fetchPosts]));
- * expectTypeOf(dashboard).toEqualTypeOf<
- *   Result<readonly [User, ReadonlyArray<Post>]>
- * >();
- * expectOk(dashboard, [{ id: "user-1" }, [{ id: "post-1" }]]);
- *
- * // Skip collecting Ok values when they aren't needed.
- * interface SaveUserError {
- *   readonly type: "SaveUserError";
- *   readonly userId: string;
- * }
  * const savedUserIds: Array<string> = [];
  * const saveUser =
- *   (id: string): Task<number, SaveUserError> =>
+ *   (id: string): Task<number, SaveUserFailedError> =>
  *   () => {
  *     if (id === "missing") {
- *       return err({ type: "SaveUserError", userId: id });
+ *       return err({ type: "SaveUserFailed", userId: id });
  *     }
  *     savedUserIds.push(id);
  *     return ok(1);
  *   };
+ *
+ * interface SaveUserFailedError extends Typed<"SaveUserFailed"> {
+ *   readonly userId: string;
+ * }
+ *
+ * await using run = createRun();
  * const saveResult = await run(
- *   all(["user-1", "missing", "user-3"], saveUser, {
+ *   all([saveUser("user-1"), saveUser("missing"), saveUser("user-3")], {
  *     collect: false,
  *   }),
  * );
- * expectTypeOf(saveResult).toEqualTypeOf<Result<void, SaveUserError>>();
+ * expectTypeOf(saveResult).toEqualTypeOf<
+ *   Result<void, SaveUserFailedError>
+ * >();
  * expectErr(saveResult, {
- *   type: "SaveUserError",
+ *   type: "SaveUserFailed",
  *   userId: "missing",
  * });
  * expect(savedUserIds).toEqual(["user-1"]);
@@ -2984,23 +2881,14 @@ export function all<const TTasks extends ReadonlyArray<AnyTask>>(
   options: AllOptions,
 ): Task<void, InferTaskErr<TTasks[number]>, InferTasksDeps<TTasks>>;
 
-/** Runs a Task record without collecting its Ok values. */
+/** Runs a {@link Task} record without collecting its {@link Ok} values. */
 export function all<const TTasks extends TaskRecord>(
   tasks: TTasks,
   options: AllOptions,
 ): Task<void, InferTaskErr<TTasks[keyof TTasks]>, InferTaskRecordDeps<TTasks>>;
 
-export function all<const TTasks extends ReadonlyArray<AnyTask>>(
-  tasks: TTasks,
-  options?: TaskCollectionOptions,
-): Task<
-  InferTasksOk<TTasks>,
-  InferTaskErr<TTasks[number]>,
-  InferTasksDeps<TTasks>
->;
-
 /**
- * Runs a Task record and preserves its keys.
+ * Runs a {@link Task} array and preserves its shape.
  *
  * ### Example
  *
@@ -3016,6 +2904,50 @@ export function all<const TTasks extends ReadonlyArray<AnyTask>>(
  * interface User {
  *   readonly id: string;
  * }
+ *
+ * interface Post {
+ *   readonly id: string;
+ * }
+ *
+ * const fetchUser: Task<User> = () => ok({ id: "user-1" });
+ * const fetchPosts: Task<ReadonlyArray<Post>> = () =>
+ *   ok([{ id: "post-1" }]);
+ *
+ * await using run = createRun();
+ * const dashboard = await run(all([fetchUser, fetchPosts]));
+ * expectTypeOf(dashboard).toEqualTypeOf<
+ *   Result<readonly [User, ReadonlyArray<Post>]>
+ * >();
+ * expectOk(dashboard, [{ id: "user-1" }, [{ id: "post-1" }]]);
+ * ```
+ */
+export function all<const TTasks extends ReadonlyArray<AnyTask>>(
+  tasks: TTasks,
+  options?: TaskCollectionOptions,
+): Task<
+  InferTasksOk<TTasks>,
+  InferTaskErr<TTasks[number]>,
+  InferTasksDeps<TTasks>
+>;
+
+/**
+ * Runs a {@link Task} record and preserves its keys.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   all,
+ *   createRun,
+ *   ok,
+ *   type Result,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ *
  * interface Post {
  *   readonly id: string;
  * }
@@ -3045,8 +2977,30 @@ export function all<const TTasks extends TaskRecord>(
   InferTaskRecordDeps<TTasks>
 >;
 
+/** Maps an array to {@link Task}s without collecting their {@link Ok} values. */
+export function all<
+  const TValues extends ReadonlyArray<unknown>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  fn: (value: TValues[number], index: number) => TTask,
+  options: AllOptions,
+): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
+
+/** Maps record values to {@link Task}s without collecting their {@link Ok} values. */
+export function all<
+  const TValues extends Readonly<Record<string, unknown>>,
+  TTask extends AnyTask,
+>(
+  values: TValues,
+  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
+  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
+  options: AllOptions,
+): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
+
 /**
- * Maps an array to Tasks and preserves its shape.
+ * Maps an array to {@link Task}s and collects their {@link Ok} values in the same
+ * shape.
  *
  * ### Example
  *
@@ -3062,6 +3016,7 @@ export function all<const TTasks extends TaskRecord>(
  * interface User {
  *   readonly id: string;
  * }
+ *
  * const loadUser =
  *   (id: string): Task<User> =>
  *   () =>
@@ -3089,26 +3044,6 @@ export function all<
 >(
   values: TValues,
   fn: (value: TValues[number], index: number) => TTask,
-  options: AllOptions,
-): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
-
-/** Maps record values to Tasks without collecting their Ok values. */
-export function all<
-  const TValues extends Readonly<Record<string, unknown>>,
-  TTask extends AnyTask,
->(
-  values: TValues,
-  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
-  fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
-  options: AllOptions,
-): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
-
-export function all<
-  const TValues extends ReadonlyArray<unknown>,
-  TTask extends AnyTask,
->(
-  values: TValues,
-  fn: (value: TValues[number], index: number) => TTask,
   options?: TaskCollectionOptions,
 ): Task<
   { readonly [K in keyof TValues]: InferTaskOk<TTask> },
@@ -3117,7 +3052,7 @@ export function all<
 >;
 
 /**
- * Maps record values to Tasks and preserves its keys.
+ * Maps record values to {@link Task}s and preserves the record's keys.
  *
  * ### Example
  *
@@ -3133,6 +3068,7 @@ export function all<
  * interface User {
  *   readonly id: string;
  * }
+ *
  * const loadUser =
  *   (id: string): Task<User> =>
  *   () =>
@@ -3200,7 +3136,8 @@ export function all(
 }
 
 /**
- * Maps a Task array or record to the Result values produced by its Tasks.
+ * Maps a {@link Task} array or record to the {@link Result} values produced by
+ * its Tasks.
  *
  * The mapped type is homomorphic, so tuples preserve their shape and records
  * preserve their keys.
@@ -3214,7 +3151,7 @@ export type InferTasksSettled<TTasks> = {
 };
 
 /**
- * Runs all Tasks and returns every Task {@link Result}.
+ * Runs all {@link Task}s and returns every Task {@link Result}.
  *
  * Unlike {@link all}, {@link Err} Results do not stop later Tasks.
  *
@@ -3241,14 +3178,14 @@ export type InferTasksSettled<TTasks> = {
  *   ok,
  *   type Result,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
- * interface LoadError {
- *   readonly type: "LoadError";
- * }
+ * const loadProfile: Task<string, ProfileNotFoundError> = () =>
+ *   err({ type: "ProfileNotFound" });
  *
- * const loadProfile: Task<string, LoadError> = () =>
- *   err({ type: "LoadError" });
+ * interface ProfileNotFoundError extends Typed<"ProfileNotFound"> {}
+ *
  * let activityLoaded = false;
  * const loadActivity: Task<ReadonlyArray<string>> = () => {
  *   activityLoaded = true;
@@ -3259,11 +3196,14 @@ export type InferTasksSettled<TTasks> = {
  * const results = await run(allSettled([loadProfile, loadActivity]));
  * expectTypeOf(results).toEqualTypeOf<
  *   Result<
- *     readonly [Result<string, LoadError>, Result<ReadonlyArray<string>>]
+ *     readonly [
+ *       Result<string, ProfileNotFoundError>,
+ *       Result<ReadonlyArray<string>>,
+ *     ]
  *   >
  * >();
  * expectOk(results, [
- *   { ok: false, error: { type: "LoadError" } },
+ *   { ok: false, error: { type: "ProfileNotFound" } },
  *   { ok: true, value: ["signed-in"] },
  * ]);
  * // Unlike all, a later Task still runs after an Err.
@@ -3278,7 +3218,7 @@ export function allSettled<const TTasks extends ReadonlyArray<AnyTask>>(
 ): Task<InferTasksSettled<TTasks>, never, InferTasksDeps<TTasks>>;
 
 /**
- * Runs a Task record and preserves its keys.
+ * Runs a {@link Task} record and preserves its keys.
  *
  * ### Example
  *
@@ -3290,17 +3230,18 @@ export function allSettled<const TTasks extends ReadonlyArray<AnyTask>>(
  *   ok,
  *   type Result,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
  * interface User {
  *   readonly id: string;
  * }
- * interface LoadError {
- *   readonly type: "LoadError";
- * }
+ *
  * const fetchUser: Task<User> = () => ok({ id: "user-1" });
- * const fetchProfile: Task<string, LoadError> = () =>
- *   err({ type: "LoadError" });
+ * const fetchProfile: Task<string, ProfileNotFoundError> = () =>
+ *   err({ type: "ProfileNotFound" });
+ *
+ * interface ProfileNotFoundError extends Typed<"ProfileNotFound"> {}
  *
  * await using run = createRun();
  * const results = await run(
@@ -3310,12 +3251,12 @@ export function allSettled<const TTasks extends ReadonlyArray<AnyTask>>(
  * expectTypeOf(results).toEqualTypeOf<
  *   Result<{
  *     readonly user: Result<User>;
- *     readonly profile: Result<string, LoadError>;
+ *     readonly profile: Result<string, ProfileNotFoundError>;
  *   }>
  * >();
  * expectOk(results, {
  *   user: { ok: true, value: { id: "user-1" } },
- *   profile: { ok: false, error: { type: "LoadError" } },
+ *   profile: { ok: false, error: { type: "ProfileNotFound" } },
  * });
  * ```
  */
@@ -3325,7 +3266,7 @@ export function allSettled<const TTasks extends TaskRecord>(
 ): Task<InferTasksSettled<TTasks>, never, InferTaskRecordDeps<TTasks>>;
 
 /**
- * Maps an array to Tasks and preserves its shape.
+ * Maps an array to {@link Task}s and preserves its shape.
  *
  * ### Example
  *
@@ -3337,18 +3278,19 @@ export function allSettled<const TTasks extends TaskRecord>(
  *   ok,
  *   type Result,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
  * interface User {
  *   readonly id: string;
  * }
- * interface LoadError {
- *   readonly type: "LoadError";
- * }
+ *
  * const loadUser =
- *   (id: string): Task<User, LoadError> =>
+ *   (id: string): Task<User, UserNotFoundError> =>
  *   () =>
- *     id === "missing" ? err({ type: "LoadError" }) : ok({ id });
+ *     id === "missing" ? err({ type: "UserNotFound" }) : ok({ id });
+ *
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {}
  *
  * const userIds = ["user-1", "missing"] as const;
  * const indexes: Array<number> = [];
@@ -3363,11 +3305,16 @@ export function allSettled<const TTasks extends TaskRecord>(
  * await using run = createRun();
  * const results = await run(loadUsers);
  * expectTypeOf(results).toEqualTypeOf<
- *   Result<readonly [Result<User, LoadError>, Result<User, LoadError>]>
+ *   Result<
+ *     readonly [
+ *       Result<User, UserNotFoundError>,
+ *       Result<User, UserNotFoundError>,
+ *     ]
+ *   >
  * >();
  * expectOk(results, [
  *   { ok: true, value: { id: "user-1" } },
- *   { ok: false, error: { type: "LoadError" } },
+ *   { ok: false, error: { type: "UserNotFound" } },
  * ]);
  * ```
  */
@@ -3390,7 +3337,7 @@ export function allSettled<
 >;
 
 /**
- * Maps record values to Tasks and preserves its keys.
+ * Maps record values to {@link Task}s and preserves the record's keys.
  *
  * ### Example
  *
@@ -3402,18 +3349,19 @@ export function allSettled<
  *   ok,
  *   type Result,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
  * interface User {
  *   readonly id: string;
  * }
- * interface LoadError {
- *   readonly type: "LoadError";
- * }
+ *
  * const loadUser =
- *   (id: string): Task<User, LoadError> =>
+ *   (id: string): Task<User, UserNotFoundError> =>
  *   () =>
- *     id === "missing" ? err({ type: "LoadError" }) : ok({ id });
+ *     id === "missing" ? err({ type: "UserNotFound" }) : ok({ id });
+ *
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {}
  *
  * const userIdsByRole = { admin: "user-1", reviewer: "missing" } as const;
  * const roles: Array<keyof typeof userIdsByRole> = [];
@@ -3429,13 +3377,13 @@ export function allSettled<
  * const results = await run(loadUsersByRole);
  * expectTypeOf(results).toEqualTypeOf<
  *   Result<{
- *     readonly admin: Result<User, LoadError>;
- *     readonly reviewer: Result<User, LoadError>;
+ *     readonly admin: Result<User, UserNotFoundError>;
+ *     readonly reviewer: Result<User, UserNotFoundError>;
  *   }>
  * >();
  * expectOk(results, {
  *   admin: { ok: true, value: { id: "user-1" } },
- *   reviewer: { ok: false, error: { type: "LoadError" } },
+ *   reviewer: { ok: false, error: { type: "UserNotFound" } },
  * });
  * ```
  */
@@ -3542,10 +3490,11 @@ const mapInput = (
  * callbacks. Resolve with `ok(value)` or `err(error)`, or reject with a defect,
  * to complete the Task. Settlement is one-shot: the first `resolve` or `reject`
  * wins, and later settlement calls are ignored, matching Promise semantics.
- * When `reject` wins settlement, the defect panics the Run tree and is observed
- * at Fiber boundaries as {@link AbortError} with {@link PanicAbortReason}.
- * Rejecting AbortError is reserved for Task abort control flow: direct
- * `run(task)` rejects with it, and `run.abortable(task)` returns it as an Err.
+ * When `reject` wins settlement, the defect panics the {@link Run} tree and is
+ * observed at {@link Fiber} boundaries as {@link AbortError} with
+ * {@link PanicAbortReason}. Rejecting AbortError is reserved for Task abort
+ * control flow: direct `run(task)` rejects with it, and `run.abortable(task)`
+ * returns it as an {@link Err}.
  *
  * This helper is a callback bridge. If `reject` forwards an Error created in a
  * separate async chain, V8 cannot reconstruct the caller's zero-cost async
@@ -3560,10 +3509,10 @@ const mapInput = (
  * Optionally return a synchronous cleanup callback. It runs when the Task Run
  * signal aborts, including normal completion and explicit abort. The callback
  * must not throw. Cleanup defects panic the root Run; if the callback Task
- * already settled, its Fiber keeps the original Result while the root still
- * reports the panic. Cleanup must be synchronous; returned promises are not
- * awaited. For async cleanup, prefer {@link acquireUseRelease}, `await using`
- * with {@link AsyncDisposableStack}, or a Task that owns the resource
+ * already settled, its Fiber keeps the original {@link Result} while the root
+ * still reports the panic. Cleanup must be synchronous; returned promises are
+ * not awaited. For async cleanup, prefer {@link acquireUseRelease}, `await
+ * using` with {@link AsyncDisposableStack}, or a Task that owns the resource
  * explicitly.
  *
  * If setup can throw after acquiring any resource, use a local
@@ -3624,7 +3573,16 @@ export const callback =
 /**
  * Pauses execution for a specified {@link PositiveDuration}.
  *
- * Aborting the Task clears the scheduled timeout.
+ * Aborting the {@link Task} clears the scheduled timeout.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { createRun, sleep } from "@evolu/common";
+ *
+ * await using run = createRun();
+ * expectOk(await run(sleep("1ms")), undefined);
+ * ```
  *
  * @group Timing
  */
@@ -3633,22 +3591,6 @@ export const sleep = (duration: PositiveDuration): Task<void> =>
     const id = deps.time.setTimeout(() => resolve(ok()), duration);
     return () => deps.time.clearTimeout(id);
   });
-
-/**
- * Typed error returned by {@link timeout} when a Task exceeds its duration.
- *
- * @group Timing
- */
-export const TimeoutError: TypedType<"TimeoutError"> =
-  /*#__PURE__*/ typed("TimeoutError");
-export interface TimeoutError extends InferType<typeof TimeoutError> {}
-
-/**
- * The {@link TimeoutError} instance returned by {@link timeout}.
- *
- * @group Timing
- */
-export const timeoutError: TimeoutError = { type: "TimeoutError" };
 
 /**
  * Limits how long a {@link Task} may run.
@@ -3693,6 +3635,29 @@ export const timeout = <T, E, D = unknown>(
   ]);
 
 /**
+ * Runtime Type for the error returned by {@link timeout} when a {@link Task}
+ * exceeds its duration.
+ *
+ * @group Timing
+ */
+export const TimeoutError: TypedType<"TimeoutError"> =
+  /*#__PURE__*/ typed("TimeoutError");
+
+/**
+ * Error returned by {@link timeout} when a {@link Task} exceeds its duration.
+ *
+ * @group Timing
+ */
+export interface TimeoutError extends InferType<typeof TimeoutError> {}
+
+/**
+ * The {@link TimeoutError} instance returned by {@link timeout}.
+ *
+ * @group Timing
+ */
+export const timeoutError: TimeoutError = { type: "TimeoutError" };
+
+/**
  * Options for {@link retry}.
  *
  * @group Resilience
@@ -3704,7 +3669,7 @@ export interface RetryOptions<E, Output> {
    * Returning `false` stops retrying and returns {@link RetryError}. The
    * original error is stored as `lastError` instead of returned directly. The
    * predicate must not throw: a thrown exception is a defect that panics the
-   * Run tree.
+   * {@link Run} tree.
    */
   readonly shouldRetry?: Predicate<E>;
 
@@ -3714,8 +3679,8 @@ export interface RetryOptions<E, Output> {
    * `attempt` is the failed attempt that caused this retry, not the upcoming
    * attempt number. The callback runs after {@link RetryOptions.shouldRetry} and
    * the {@link Schedule} approve a retry, and before the retry delay. The
-   * callback must not throw: a thrown exception is a defect that panics the Run
-   * tree.
+   * callback must not throw: a thrown exception is a defect that panics the
+   * {@link Run} tree.
    */
   readonly onRetry?: (attempt: RetryAttempt<E, Output>) => void;
 }
@@ -3731,48 +3696,23 @@ export interface RetryAttempt<E, Output> extends ScheduleStep<Output> {
 }
 
 /**
- * Error returned by {@link retry} when retrying stops after a domain error.
- *
- * @group Resilience
- */
-export interface RetryError<E> extends Typed<"RetryError"> {
-  /** The final domain error that stopped retrying. */
-  readonly lastError: E;
-  /** The number of attempts that were started. */
-  readonly attempts: PositiveInt;
-}
-
-/**
- * Error type returned by {@link retry}.
- *
- * @group Resilience
- */
-export type RetryTaskError<E> =
-  // Wrap all non-abort errors in one RetryError, preserving their union.
-  | ([Exclude<E, AbortError>] extends [never]
-      ? never
-      : RetryError<Exclude<E, AbortError>>)
-  // AbortError is control flow, so retry returns it unchanged.
-  | Extract<E, AbortError>;
-
-/**
- * Retries a Task according to a {@link Schedule}.
+ * Retries a {@link Task} according to a {@link Schedule}.
  *
  * Use `retry` for failure recovery: it repeats after {@link Err} and wraps the
  * final domain error. Use {@link repeat} for success-driven loops: it repeats
- * after {@link Ok} and returns the Task's natural Result.
+ * after {@link Ok} and returns the Task's natural {@link Result}.
  *
  * {@link AbortError} passes through unchanged when returned as a Result error,
- * such as from {@link daemon}. Abort from `run(task)` remains Fiber control
- * flow. Other errors are domain errors: retrying continues while the schedule
- * yields another delay and {@link RetryOptions.shouldRetry} returns `true`. When
- * retrying stops, `retry` returns {@link RetryError} with the final domain error
- * as `lastError`.
+ * such as from {@link daemon}. Abort from `run(task)` remains {@link Fiber}
+ * control flow. Other errors are domain errors: retrying continues while the
+ * schedule yields another delay and {@link RetryOptions.shouldRetry} returns
+ * `true`. When retrying stops, `retry` returns {@link RetryError} with the final
+ * domain error as `lastError`.
  *
  * AbortError recognition is structural. Domain errors, especially values parsed
  * from untrusted input, must not use the reserved AbortError shape.
  *
- * ### Example
+ * ### Retrying failures
  *
  * ```ts
  * import {
@@ -3783,51 +3723,58 @@ export type RetryTaskError<E> =
  *   type Result,
  *   type RetryTaskError,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
- * await using run = createRun();
+ * const fetchData: Task<string, ServiceUnavailableError> = () =>
+ *   err({ type: "ServiceUnavailable" });
  *
- * interface FetchDataError {
- *   readonly type: "FetchDataError";
- * }
- *
- * const fetchData: Task<string, FetchDataError> = () =>
- *   err({ type: "FetchDataError" });
+ * interface ServiceUnavailableError extends Typed<"ServiceUnavailable"> {}
  *
  * const fetchWithRetry = retry(fetchData, recurs(2));
  *
+ * await using run = createRun();
  * const result = await run(fetchWithRetry);
  * expectTypeOf(result).toEqualTypeOf<
- *   Result<string, RetryTaskError<FetchDataError>>
+ *   Result<string, RetryTaskError<ServiceUnavailableError>>
  * >();
  * expectErr(result, {
  *   type: "RetryError",
  *   attempts: 3,
- *   lastError: { type: "FetchDataError" },
+ *   lastError: { type: "ServiceUnavailable" },
  * });
  * ```
  *
- * ### Example
+ * ### Filtering retries
  *
  * ```ts
- * import { createRun, err, recurs, retry, type Task } from "@evolu/common";
+ * import {
+ *   createRun,
+ *   err,
+ *   recurs,
+ *   retry,
+ *   type Task,
+ *   type Typed,
+ * } from "@evolu/common";
  *
- * interface FetchDataError {
- *   readonly type: "RecoverableError" | "FatalError";
- * }
+ * const fetchData: Task<
+ *   string,
+ *   TemporaryFailureError | PermanentFailureError
+ * > = () => err({ type: "PermanentFailure" });
  *
- * const fetchData: Task<string, FetchDataError> = () =>
- *   err({ type: "FatalError" });
+ * interface TemporaryFailureError extends Typed<"TemporaryFailure"> {}
+ *
+ * interface PermanentFailureError extends Typed<"PermanentFailure"> {}
  *
  * const fetchWithRetry = retry(fetchData, recurs(5), {
- *   shouldRetry: (error) => error.type !== "FatalError",
+ *   shouldRetry: (error) => error.type !== "PermanentFailure",
  * });
  *
  * await using run = createRun();
  * expectErr(await run(fetchWithRetry), {
  *   type: "RetryError",
  *   attempts: 1,
- *   lastError: { type: "FatalError" },
+ *   lastError: { type: "PermanentFailure" },
  * });
  * ```
  *
@@ -3876,16 +3823,41 @@ export const retry =
   };
 
 /**
+ * Error returned by {@link retry} when retrying stops after a domain error.
+ *
+ * @group Resilience
+ */
+export interface RetryError<E> extends Typed<"RetryError"> {
+  /** The final domain error that stopped retrying. */
+  readonly lastError: E;
+  /** The number of attempts that were started. */
+  readonly attempts: PositiveInt;
+}
+
+/**
+ * Error type returned by {@link retry}.
+ *
+ * @group Resilience
+ */
+export type RetryTaskError<E> =
+  // Wrap all non-abort errors in one RetryError, preserving their union.
+  | ([Exclude<E, AbortError>] extends [never]
+      ? never
+      : RetryError<Exclude<E, AbortError>>)
+  // AbortError is control flow, so retry returns it unchanged.
+  | Extract<E, AbortError>;
+
+/**
  * Options for {@link repeat}.
  *
  * @group Repetition
  */
 export interface RepeatOptions<T, Output> {
   /**
-   * Decides whether an Ok value should schedule another repeat.
+   * Decides whether an {@link Ok} value should schedule another repeat.
    *
    * The predicate must not throw: a thrown exception is a defect that panics
-   * the Run tree.
+   * the {@link Run} tree.
    */
   readonly shouldRepeat?: Predicate<T>;
 
@@ -3896,7 +3868,7 @@ export interface RepeatOptions<T, Output> {
    * upcoming attempt number. The callback runs after
    * {@link RepeatOptions.shouldRepeat} and the {@link Schedule} approve a repeat,
    * and before the repeat delay. The callback must not throw: a thrown
-   * exception is a defect that panics the Run tree.
+   * exception is a defect that panics the {@link Run} tree.
    */
   readonly onRepeat?: (attempt: RepeatAttempt<T, Output>) => void;
 }
@@ -3907,18 +3879,19 @@ export interface RepeatOptions<T, Output> {
  * @group Repetition
  */
 export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
-  /** The Ok value returned by the completed attempt. */
+  /** The {@link Ok} value returned by the completed attempt. */
   readonly value: T;
 }
 
 /**
- * Repeats a Task according to a {@link Schedule}.
+ * Repeats a {@link Task} according to a {@link Schedule}.
  *
  * Runs the Task once, then repeats while the Task returns {@link Ok}, the
  * schedule yields another delay, and {@link RepeatOptions.shouldRepeat} returns
- * `true`. When repeating stops, `repeat` returns the last successful Result. If
- * the Task returns {@link Err}, including {@link Done} from a {@link NextTask},
- * `repeat` returns that error without scheduling another attempt.
+ * `true`. When repeating stops, `repeat` returns the last successful
+ * {@link Result}. If the Task returns {@link Err}, including {@link Done} from a
+ * {@link NextTask}, `repeat` returns that error without scheduling another
+ * attempt.
  *
  * Use `repeat` for success-driven loops such as polling or consuming a
  * NextTask: it repeats after Ok and returns the Task's natural Result. Use
@@ -3927,7 +3900,7 @@ export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
  *
  * With `take(n)`, the Task runs n+1 times: the initial attempt plus n repeats.
  *
- * ### Example
+ * ### Repeating successes
  *
  * ```ts
  * import { createRun, ok, recurs, repeat, type Task } from "@evolu/common";
@@ -3945,7 +3918,7 @@ export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
  * expect(attempts).toBe(4);
  * ```
  *
- * ### Example
+ * ### Stopping with Done
  *
  * ```ts
  * import {
@@ -3958,8 +3931,6 @@ export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
  *   type NextTask,
  * } from "@evolu/common";
  *
- * await using run = createRun();
- *
  * interface Item {
  *   readonly id: string;
  * }
@@ -3971,6 +3942,7 @@ export interface RepeatAttempt<T, Output> extends ScheduleStep<Output> {
  *   return item ? ok(item) : err(done());
  * };
  *
+ * await using run = createRun();
  * const result = await run(repeat(processQueue, spaced("1ms")));
  * expectErr(result, done());
  * expect(queue).toEqual([]);
@@ -4005,30 +3977,31 @@ export const repeat =
   };
 
 /**
- * Extracts the Result type produced by one Task in a non-empty Task array.
+ * Extracts the {@link Result} type produced by one {@link Task} in a non-empty
+ * Task array.
  *
- * @internal
+ * @group Type utilities
  */
 export type InferTasksResult<TTasks extends NonEmptyReadonlyArray<AnyTask>> =
   Result<InferTaskOk<TTasks[number]>, InferTaskErr<TTasks[number]>>;
 
 /**
- * Runs Tasks until one returns {@link Ok} or all return {@link Err}.
+ * Runs {@link Task}s until one returns {@link Ok} or all return {@link Err}.
  *
- * Use {@link race} to return the first settled Result instead, whether Ok or
- * {@link Err}.
+ * Use {@link race} to return the first settled {@link Result} instead, whether Ok
+ * or {@link Err}.
  *
- * Returns the first {@link Ok} Result. Losing Tasks are aborted. If no Task
- * returns Ok, returns the last Err by input order, regardless of completion
- * order. Other Err results are discarded; use {@link allSettled} when you need
- * every error.
+ * Returns the first {@link Ok} Result. Queued Tasks are not started, and other
+ * running Tasks are aborted. If no Task returns Ok, returns the last Err by
+ * input order, regardless of completion order. Other Err results are discarded;
+ * use {@link allSettled} when you need every error.
  *
  * Sequential by default; pass a `concurrency` option to run more than one Task
  * at a time.
  *
  * Similar to
  * {@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/any | Promise.any},
- * but races Tasks, returns Result values, and aborts losers.
+ * but runs Tasks, returns Result values, and stops after the first Ok.
  *
  * ### Example
  *
@@ -4040,10 +4013,14 @@ export type InferTasksResult<TTasks extends NonEmptyReadonlyArray<AnyTask>> =
  *   ok,
  *   type Result,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
- * const unavailable: Task<string, "Unavailable"> = () =>
- *   err("Unavailable");
+ * const unavailable: Task<string, ServiceUnavailableError> = () =>
+ *   err({ type: "ServiceUnavailable" });
+ *
+ * interface ServiceUnavailableError extends Typed<"ServiceUnavailable"> {}
+ *
  * let fallbackStarted = false;
  * const fallback: Task<string> = () => {
  *   fallbackStarted = true;
@@ -4053,7 +4030,9 @@ export type InferTasksResult<TTasks extends NonEmptyReadonlyArray<AnyTask>> =
  * await using run = createRun();
  * const result = await run(any([unavailable, fallback]));
  *
- * expectTypeOf(result).toEqualTypeOf<Result<string, "Unavailable">>();
+ * expectTypeOf(result).toEqualTypeOf<
+ *   Result<string, ServiceUnavailableError>
+ * >();
  * expectOk(result, "fallback");
  * expect(fallbackStarted).toBe(true);
  * ```
@@ -4101,7 +4080,7 @@ export const any =
   };
 
 /**
- * Runs Tasks until the first Task settles.
+ * Runs {@link Task}s until the first Task settles.
  *
  * Returns the first Task {@link Result} to settle, whether {@link Ok} or
  * {@link Err}.
@@ -4122,7 +4101,7 @@ export const any =
  * arrays whose emptiness is only known at runtime, guard with
  * {@link isNonEmptyArray}:
  *
- * ### Example
+ * ### Runtime arrays
  *
  * ```ts
  * import {
@@ -4141,7 +4120,7 @@ export const any =
  * }
  * ```
  *
- * ### Example
+ * ### First settlement
  *
  * ```ts
  * import {
@@ -4202,12 +4181,12 @@ export const race =
   };
 
 /**
- * Runs Tasks until `count` Tasks return {@link Ok} or all Tasks settle.
+ * Runs {@link Task}s until `count` Tasks return {@link Ok} or all Tasks settle.
  *
  * Returns {@link Ok} with Ok values in settlement order, not input order.
- * {@link Err} Results are ignored. When `count` Ok values have settled,
- * remaining Tasks are aborted. If fewer than `count` Tasks return Ok, returns
- * the Ok values that did settle.
+ * {@link Err} {@link Result}s are ignored. When `count` Ok values have settled,
+ * queued Tasks are not started and remaining running Tasks are aborted. If
+ * fewer than `count` Tasks return Ok, returns the Ok values that did settle.
  *
  * Sequential by default; pass a `concurrency` option to run more than one Task
  * at a time. The count uses {@link Int1To100OrPositiveInt}: pass `1` to `100` as
@@ -4223,17 +4202,23 @@ export const race =
  *   ok,
  *   sleep,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
  * let slowCompleted = false;
- * const slow: Task<string, "Failed"> = async (run) => {
+ * const slow: Task<string> = async (run) => {
  *   await run.ok(sleep("10ms"));
  *   slowCompleted = true;
  *   return ok("slow");
  * };
+ * const unavailable: Task<never, ServiceUnavailableError> = () =>
+ *   err({ type: "ServiceUnavailable" });
+ *
+ * interface ServiceUnavailableError extends Typed<"ServiceUnavailable"> {}
+ *
  * const tasks = [
  *   slow,
- *   () => err("Failed" as const),
+ *   unavailable,
  *   () => ok("fast-1"),
  *   () => ok("fast-2"),
  * ] as const;
@@ -4275,11 +4260,12 @@ export const firstN =
   };
 
 /**
- * Runs Tasks until `count` Tasks settle or all Tasks settle.
+ * Runs {@link Task}s until `count` Tasks settle or all Tasks settle.
  *
  * Returns {@link Ok} with Task {@link Result}s in settlement order, not input
- * order. When `count` Results have settled, remaining Tasks are aborted. If
- * fewer than `count` Tasks settle, returns the Results that did settle.
+ * order. When `count` Results have settled, queued Tasks are not started and
+ * remaining running Tasks are aborted. If fewer than `count` Tasks settle,
+ * returns the Results that did settle.
  *
  * Sequential by default; pass a `concurrency` option to run more than one Task
  * at a time. The count uses {@link Int1To100OrPositiveInt}: pass `1` to `100` as
@@ -4295,25 +4281,27 @@ export const firstN =
  *   ok,
  *   sleep,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
  * let slowCompleted = false;
- * const slow: Task<string, "Failed"> = async (run) => {
+ * const slow: Task<string> = async (run) => {
  *   await run.ok(sleep("10ms"));
  *   slowCompleted = true;
  *   return ok("slow");
  * };
- * const tasks = [
- *   slow,
- *   () => err("Failed" as const),
- *   () => ok("fast"),
- * ] as const;
+ * const unavailable: Task<never, ServiceUnavailableError> = () =>
+ *   err({ type: "ServiceUnavailable" });
+ *
+ * interface ServiceUnavailableError extends Typed<"ServiceUnavailable"> {}
+ *
+ * const tasks = [slow, unavailable, () => ok("fast")] as const;
  * await using run = createRun();
  *
  * // Err and Ok both count, and Results use settlement order.
  * const result = await run(firstNSettled(tasks, 2, { concurrency: 3 }));
  * expectOk(result, [
- *   { ok: false, error: "Failed" },
+ *   { ok: false, error: { type: "ServiceUnavailable" } },
  *   { ok: true, value: "fast" },
  * ]);
  * expect(slowCompleted).toBe(false);
@@ -4351,21 +4339,21 @@ export const firstNSettled =
 /**
  * Decision returned by an {@link each} result handler.
  *
- * `continue` allows queued Tasks to start when concurrency capacity is
+ * `continue` allows queued {@link Task}s to start when concurrency capacity is
  * available. `stop` prevents queued Tasks from starting and aborts already
- * running Tasks through structured Run disposal.
+ * running Tasks through structured {@link Run} disposal.
  *
- * @group Concurrency
+ * @group Collection
  */
 export type EachDecision = "continue" | "stop";
 
 /**
- * Handles one settled Task Result from {@link each}.
+ * Handles one settled {@link Task} {@link Result} from {@link each}.
  *
  * The index is the original input index. Callback order follows settlement
  * order, not input order.
  *
- * @group Concurrency
+ * @group Collection
  */
 export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
   result: InferTasksResult<TTasks>,
@@ -4373,26 +4361,27 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
 ) => EachDecision;
 
 /**
- * Runs Tasks under a concurrency limit and calls `onResult` for each Task
- * {@link Result} as it settles.
+ * Runs {@link Task}s under a concurrency limit and calls `onResult` for each
+ * Task {@link Result} as it settles.
  *
- * `onResult` receives the Result and the original input index; call order is
- * settlement order, not input order. Returning `continue` lets queued Tasks
- * start when capacity is available. Returning `stop` prevents queued Tasks from
- * starting and aborts already-running Tasks through structured Run disposal —
- * `each` still waits for them to settle before returning.
+ * `onResult` receives the {@link Result} and the original input index; call
+ * order is settlement order, not input order. Returning `continue` lets queued
+ * Tasks start when capacity is available. Returning `stop` prevents queued
+ * Tasks from starting and aborts already-running Tasks through structured
+ * {@link Run} disposal — `each` still waits for them to settle before
+ * returning.
  *
  * `each` is the scheduling primitive under the collection helpers. Each one is
  * a small `onResult` policy:
  *
- * | Helper                | Policy                                |
- * | --------------------- | ------------------------------------- |
- * | {@link all}           | Collect values, stop on the first Err |
- * | {@link allSettled}    | Collect every Result, never stop      |
- * | {@link any}           | Stop on the first Ok                  |
- * | {@link race}          | Stop on the first settled Result      |
- * | {@link firstN}        | Stop after n Ok values                |
- * | {@link firstNSettled} | Stop after n Results                  |
+ * | Helper                | Policy                                        |
+ * | --------------------- | --------------------------------------------- |
+ * | {@link all}           | Collect values, stop on the first {@link Err} |
+ * | {@link allSettled}    | Collect every Result, never stop              |
+ * | {@link any}           | Stop on the first {@link Ok}                  |
+ * | {@link race}          | Stop on the first settled Result              |
+ * | {@link firstN}        | Stop after n Ok values                        |
+ * | {@link firstNSettled} | Stop after n Results                          |
  *
  * Use `each` directly to build a collection policy the helpers don't cover. For
  * example, keep the first successful value together with its original input
@@ -4408,6 +4397,7 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  *   ok,
  *   sleep,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
  * let slowCompleted = false;
@@ -4416,11 +4406,12 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  *   slowCompleted = true;
  *   return ok("slow");
  * };
- * const tasks = [
- *   slow,
- *   () => err("Unavailable" as const),
- *   () => ok("fast"),
- * ] as const;
+ * const unavailable: Task<never, ServiceUnavailableError> = () =>
+ *   err({ type: "ServiceUnavailable" });
+ *
+ * interface ServiceUnavailableError extends Typed<"ServiceUnavailable"> {}
+ *
+ * const tasks = [slow, unavailable, () => ok("fast")] as const;
  * let first: readonly [string, number] | undefined;
  * await using run = createRun();
  * const result = await run(
@@ -4454,7 +4445,7 @@ export type EachCallback<TTasks extends NonEmptyReadonlyArray<AnyTask>> = (
  * building on `each` preserves diagnostics that a hand-rolled scheduling loop
  * typically loses.
  *
- * @group Concurrency
+ * @group Collection
  */
 export const each =
   <TTasks extends NonEmptyReadonlyArray<AnyTask>>(
@@ -4522,10 +4513,9 @@ export const each =
   };
 
 /**
- * Scheduler priority for Tasks started through a native scheduler.
+ * Scheduler priority for {@link Task}s started through a native scheduler.
  *
- * Only static priorities are supported. Mutable scheduler priorities will be
- * added in a future release.
+ * A Task's priority is static while it runs.
  *
  * @group Scheduling
  */
@@ -4567,9 +4557,9 @@ export const prioritized = <T, E, D = unknown>(
  * Yields execution to the host scheduler.
  *
  * Uses native `scheduler.yield()` when available, `setImmediate` when
- * available, and `setTimeout` elsewhere. Because this is a Task, `await
- * run(yieldNow)` is an explicit abortable checkpoint and is visible in Run
- * monitoring.
+ * available, and `setTimeout` elsewhere. Because this is a {@link Task}, `await
+ * run(yieldNow)` is an explicit abortable checkpoint and is visible in
+ * {@link Run} monitoring.
  *
  * For example, call it periodically in a long-running synchronous loop to let
  * the host process rendering, input, and other scheduled work.
@@ -4642,12 +4632,13 @@ export const yieldNow: Task<void> = async (run) => {
  * interface ServerDep {
  *   readonly port: number;
  * }
+ *
  * interface Server extends AsyncDisposable {}
  *
  * const serverStarted = Promise.withResolvers<void>();
  * let serverStopped = false;
- * const startServer: Task<Server, never, ServerDep> = ({ deps }) => {
- *   expect(deps.port).toBe(3000);
+ * const startServer: Task<Server, never, ServerDep> = (run) => {
+ *   expect(run.deps.port).toBe(3000);
  *   serverStarted.resolve();
  *   return ok({
  *     [Symbol.asyncDispose]: async () => {
@@ -4702,7 +4693,7 @@ export const waitForAbort: Task<never> = async (run) => {
  * Do not wrap a Task that keeps using a resource the caller may release after
  * this wrapper returns, unless the Task reliably observes abort before using
  * that resource. The daemon Task can continue after the caller stops waiting.
- * Later domain `Err` results from the daemon Task are discarded after the
+ * Later domain {@link Err} results from the daemon Task are discarded after the
  * caller stops waiting. Defects from the daemon Task remain visible to the root
  * Run: if it later throws or rejects, the root Run still panics and reports the
  * defect.
@@ -4712,10 +4703,10 @@ export const waitForAbort: Task<never> = async (run) => {
  * to settle, keeping cleanup and late defects inside the caller's lifetime. A
  * Task that ignores abort can keep them waiting.
  *
- * `run.abortable(task)` returns an owned child Fiber and requests abort through
- * that Fiber; `daemon(task)` starts a daemon child and stops waiting when the
- * current Run aborts. {@link unabortable} masks abort for a Task that must
- * finish once started; daemon lets a Task outlive the caller.
+ * `run.abortable(task)` returns an owned child {@link Fiber} and requests abort
+ * through that Fiber; `daemon(task)` starts a daemon child and stops waiting
+ * when the current Run aborts. {@link unabortable} masks abort for a Task that
+ * must finish once started; daemon lets a Task outlive the caller.
  *
  * Because the Task starts with {@link Run.daemon}, a recorded abort request
  * returns AbortError before the Task starts — including a request masked by
@@ -4762,15 +4753,10 @@ export const waitForAbort: Task<never> = async (run) => {
  * import { createRun, ok, type Result, type Task } from "@evolu/common";
  *
  * type ResultValue = string;
- * interface MyError {
- *   readonly type: "MyError";
- * }
- * const createPromiseReturningResult = (): Promise<
- *   Result<ResultValue, MyError>
- * > => Promise.resolve(ok("value"));
+ * const createPromiseReturningResult = (): Promise<Result<ResultValue>> =>
+ *   Promise.resolve(ok("value"));
  *
- * const task: Task<ResultValue, MyError> = () =>
- *   createPromiseReturningResult();
+ * const task: Task<ResultValue> = () => createPromiseReturningResult();
  *
  * await using run = createRun();
  * expectOk(await run(task), "value");
@@ -4783,12 +4769,9 @@ export const waitForAbort: Task<never> = async (run) => {
  * import { ok, type Result, type Task } from "@evolu/common";
  *
  * type ResultValue = string;
- * interface MyError {
- *   readonly type: "MyError";
- * }
  * let promiseStarted = false;
  * const createPromiseReturningResult = (): Promise<
- *   Result<ResultValue, MyError>
+ *   Result<ResultValue>
  * > => {
  *   promiseStarted = true;
  *   return Promise.resolve(ok("value"));
@@ -4796,10 +4779,10 @@ export const waitForAbort: Task<never> = async (run) => {
  *
  * // Wrong: the Promise starts now, before a Run starts the Task.
  * const promise = createPromiseReturningResult();
- * const task: Task<ResultValue, MyError> = () => promise;
+ * const task: Task<ResultValue> = () => promise;
  *
  * expect(promiseStarted).toBe(true);
- * expectTypeOf(task).toEqualTypeOf<Task<ResultValue, MyError>>();
+ * expectTypeOf(task).toEqualTypeOf<Task<ResultValue>>();
  * ```
  *
  * @group Lifetime
@@ -4828,8 +4811,8 @@ export const daemon =
  * Abort requests are masked while the Task runs, so `run.signal.aborted`
  * remains false inside the Task. This does not force the Task to start after an
  * abort request has already reached its Run; unabortable means the Task is not
- * interrupted once it has started. Disposing the enclosing Run still waits for
- * the Task to settle.
+ * interrupted once it has started. Disposing the enclosing {@link Run} still
+ * waits for the Task to settle.
  *
  * Apply at most one abort behavior helper to a Task: do not wrap the same Task
  * with both unabortable and restore, or apply either helper more than once.
@@ -4841,10 +4824,10 @@ export const daemon =
  *
  * const commitStarted = Promise.withResolvers<void>();
  * const finishCommit = Promise.withResolvers<void>();
- * const commit: Task<string> = unabortable(async ({ signal }) => {
+ * const commit: Task<string> = unabortable(async (run) => {
  *   commitStarted.resolve();
  *   await finishCommit.promise;
- *   expect(signal.aborted).toBe(false);
+ *   expect(run.signal.aborted).toBe(false);
  *   return ok("committed");
  * });
  *
@@ -4864,8 +4847,8 @@ export const unabortable = /*#__PURE__*/ withTaskMeta({
 });
 
 /**
- * Like {@link unabortable}, but provides `restore` for child Tasks that should
- * run with the previous abort mask.
+ * Like {@link unabortable}, but provides `restore` for child {@link Task}s that
+ * should run with the previous abort mask.
  *
  * Use this for acquire/use/release flows where acquire and release must finish
  * once started, while use should remain abortable. Child Tasks inherit the mask
@@ -4893,8 +4876,6 @@ export const unabortable = /*#__PURE__*/ withTaskMeta({
  *   type Task,
  * } from "@evolu/common";
  *
- * await using run = createRun();
- *
  * interface Resource {
  *   readonly id: string;
  * }
@@ -4911,13 +4892,14 @@ export const unabortable = /*#__PURE__*/ withTaskMeta({
  * let released = false;
  * const release =
  *   (_resource: Resource): Task<void> =>
- *   ({ signal }) => {
+ *   (run) => {
  *     // Release inherits the mask even after abort was requested.
- *     expect(signal.aborted).toBe(false);
+ *     expect(run.signal.aborted).toBe(false);
  *     released = true;
  *     return ok();
  *   };
  *
+ * await using run = createRun();
  * const fiber = run.abortable(
  *   unabortableMask((restore) => async (run) => {
  *     // Acquire with abort masked.
@@ -5003,6 +4985,7 @@ export const unabortableMask = <T, E, D = unknown>(
  *   err,
  *   ok,
  *   type Task,
+ *   type Typed,
  * } from "@evolu/common";
  *
  * interface Connection {
@@ -5013,9 +4996,14 @@ export const unabortableMask = <T, E, D = unknown>(
  * const openConnection: Task<Connection> = () =>
  *   ok({ user: "Ada", isAvailable: false });
  * const loadUser =
- *   (connection: Connection): Task<string, "Unavailable"> =>
+ *   (connection: Connection): Task<string, UserUnavailableError> =>
  *   () =>
- *     connection.isAvailable ? ok(connection.user) : err("Unavailable");
+ *     connection.isAvailable
+ *       ? ok(connection.user)
+ *       : err({ type: "UserUnavailable" });
+ *
+ * interface UserUnavailableError extends Typed<"UserUnavailable"> {}
+ *
  * let connectionClosed = false;
  * const closeConnection =
  *   (_connection: Connection): Task<void> =>
@@ -5031,12 +5019,12 @@ export const unabortableMask = <T, E, D = unknown>(
  * );
  *
  * await using run = createRun();
- * expectErr(await run(queryUser), "Unavailable");
+ * expectErr(await run(queryUser), { type: "UserUnavailable" });
  * // Release still runs when use returns a domain error.
  * expect(connectionClosed).toBe(true);
  * ```
  *
- * @group Abortability
+ * @group Lifetime
  */
 export const acquireUseRelease = <
   Resource,
@@ -5070,14 +5058,28 @@ export const acquireUseRelease = <
 /**
  * A one-shot value resolved from outside the waiting {@link Task}.
  *
- * Use Deferred when Task code must wait for a Result completed by an external
- * callback or another Task. Deferred is `Promise.withResolvers` with Task
- * semantics: each waiter uses its waiting Run lifetime, can abort
+ * Use Deferred when Task code must wait for a {@link Result} completed by an
+ * external callback or another Task. Deferred is `Promise.withResolvers` with
+ * Task semantics: each waiter uses its waiting {@link Run} lifetime, can abort
  * independently, appears in Run observability, and settles with Result-based
  * errors.
  *
  * The Deferred resolves once. Later calls to {@link Deferred.resolve} return
  * `false` and do not change the Result.
+ *
+ * @group Concurrency primitives
+ * @see {@link createDeferred}
+ */
+export interface Deferred<T, E = never> {
+  /** Waits until {@link Deferred.resolve} resolves the Deferred. */
+  readonly task: Task<T, E>;
+
+  /** Resolves the Deferred, returning whether this call completed it. */
+  readonly resolve: (result: Result<T, E>) => boolean;
+}
+
+/**
+ * Creates a {@link Deferred}.
  *
  * ### Example
  *
@@ -5105,7 +5107,7 @@ export const acquireUseRelease = <
  * expectOk(await run(deferred.task), "ready");
  * ```
  *
- * ### Example
+ * ### Aborting a waiter
  *
  * ```ts
  * import { AbortError, createDeferred, createRun } from "@evolu/common";
@@ -5120,20 +5122,6 @@ export const acquireUseRelease = <
  * assert(!result.ok);
  * expect(AbortError.is(result.error)).toBe(true);
  * ```
- *
- * @group Concurrency primitives
- * @see {@link createDeferred}
- */
-export interface Deferred<T, E = never> {
-  /** Waits until {@link Deferred.resolve} resolves the Deferred. */
-  readonly task: Task<T, E>;
-
-  /** Resolves the Deferred, returning whether this call completed it. */
-  readonly resolve: (result: Result<T, E>) => boolean;
-}
-
-/**
- * Creates a {@link Deferred}.
  *
  * @group Concurrency primitives
  */
@@ -5165,7 +5153,7 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
 };
 
 /**
- * A reusable gate for blocking and releasing Tasks.
+ * A reusable gate for blocking and releasing {@link Task}s.
  *
  * - **Closed**: Tasks wait.
  * - **Open**: Tasks proceed.
@@ -5178,6 +5166,29 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
  *
  * {@link createGate} creates a closed Gate by default. Pass `isOpen: true` when
  * work should proceed immediately.
+ *
+ * @group Concurrency primitives
+ * @see {@link createGate}
+ */
+export interface Gate {
+  /** Waits while the gate is closed. */
+  readonly wait: Task<void>;
+
+  /** Opens the gate, releasing all waiters. Returns false when already open. */
+  readonly open: () => boolean;
+
+  /** Closes the gate. Returns false when already closed. */
+  readonly close: () => boolean;
+
+  /** Releases the current closed wait cycle. Returns false when already open. */
+  readonly release: () => boolean;
+
+  /** Returns whether the gate is open. */
+  readonly isOpen: () => boolean;
+}
+
+/**
+ * Creates a {@link Gate}.
  *
  * ### Example
  *
@@ -5206,29 +5217,6 @@ export const createDeferred = <T, E = never>(): Deferred<T, E> => {
  * expect(uploadedItems).toEqual(["first", "second"]);
  * expect(networkGate.isOpen()).toBe(true);
  * ```
- *
- * @group Concurrency primitives
- * @see {@link createGate}
- */
-export interface Gate {
-  /** Waits while the gate is closed. */
-  readonly wait: Task<void>;
-
-  /** Opens the gate, releasing all waiters. Returns false when already open. */
-  readonly open: () => boolean;
-
-  /** Closes the gate. Returns false when already closed. */
-  readonly close: () => boolean;
-
-  /** Releases the current closed wait cycle. Returns false when already open. */
-  readonly release: () => boolean;
-
-  /** Returns whether the gate is open. */
-  readonly isOpen: () => boolean;
-}
-
-/**
- * Creates a {@link Gate}.
  *
  * @group Concurrency primitives
  */
@@ -5267,7 +5255,7 @@ export const createGate = ({
 };
 
 /**
- * Coordinates concurrent Tasks by acquiring and releasing permits.
+ * Coordinates concurrent {@link Task}s by acquiring and releasing permits.
  *
  * Use {@link Semaphore.withPermit} or {@link Semaphore.withPermits} to acquire
  * permits for one Task and release them when it settles. Use
@@ -5285,45 +5273,6 @@ export const createGate = ({
  * `Semaphore` is permit-counting, not owner tracking. Acquiring permits while
  * already holding permits consumes additional permits and can wait if not
  * enough permits are available.
- *
- * ### Example
- *
- * ```ts
- * import {
- *   createRun,
- *   createSemaphore,
- *   getOk,
- *   ok,
- *   sleep,
- *   type Task,
- * } from "@evolu/common";
- *
- * await using run = createRun();
- *
- * const semaphore = createSemaphore(2);
- * let activeSaves = 0;
- * let maxActiveSaves = 0;
- *
- * const saveUser =
- *   (id: string): Task<string> =>
- *   async (run) => {
- *     activeSaves += 1;
- *     maxActiveSaves = Math.max(maxActiveSaves, activeSaves);
- *     await run.ok(sleep("10ms"));
- *     activeSaves -= 1;
- *     return ok(`saved:${id}`);
- *   };
- *
- * const results = await Promise.all([
- *   run(semaphore.withPermit(saveUser("1"))),
- *   run(semaphore.withPermit(saveUser("2"))),
- *   run(semaphore.withPermit(saveUser("3"))),
- * ]);
- *
- * const savedUsers = results.map(getOk);
- * expect(savedUsers).toEqual(["saved:1", "saved:2", "saved:3"]);
- * expect(maxActiveSaves).toBe(2);
- * ```
  *
  * @group Concurrency primitives
  * @see {@link createSemaphore}
@@ -5351,8 +5300,8 @@ export interface Semaphore {
   /**
    * Acquires permits and returns an owned {@link SemaphorePermit}.
    *
-   * The Task waits until enough permits are available. Dispose or release the
-   * returned permit to make them available again.
+   * The {@link Task} waits until enough permits are available. Dispose or
+   * release the returned permit to make them available again.
    *
    * When the request exceeds the current total permit count, the Task remains
    * pending until {@link Semaphore.resize} increases capacity or the Task is
@@ -5464,6 +5413,45 @@ export interface SemaphoreSnapshot {
 
 /**
  * Creates a {@link Semaphore}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createRun,
+ *   createSemaphore,
+ *   getOk,
+ *   ok,
+ *   sleep,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * await using run = createRun();
+ *
+ * const semaphore = createSemaphore(2);
+ * let activeSaves = 0;
+ * let maxActiveSaves = 0;
+ *
+ * const saveUser =
+ *   (id: string): Task<string> =>
+ *   async (run) => {
+ *     activeSaves += 1;
+ *     maxActiveSaves = Math.max(maxActiveSaves, activeSaves);
+ *     await run.ok(sleep("10ms"));
+ *     activeSaves -= 1;
+ *     return ok(`saved:${id}`);
+ *   };
+ *
+ * const results = await Promise.all([
+ *   run(semaphore.withPermit(saveUser("1"))),
+ *   run(semaphore.withPermit(saveUser("2"))),
+ *   run(semaphore.withPermit(saveUser("3"))),
+ * ]);
+ *
+ * const savedUsers = results.map(getOk);
+ * expect(savedUsers).toEqual(["saved:1", "saved:2", "saved:3"]);
+ * expect(maxActiveSaves).toBe(2);
+ * ```
  *
  * @group Concurrency primitives
  */
@@ -5609,10 +5597,23 @@ export const createSemaphore = (
 };
 
 /**
- * Runs Tasks one at a time.
+ * Runs {@link Task}s one at a time.
  *
  * `Mutex` is non-reentrant. A Task that tries to acquire the same Mutex while
  * already holding it waits on itself and will not progress.
+ *
+ * @group Concurrency primitives
+ */
+export interface Mutex {
+  /** Runs a {@link Task} while holding the lock. */
+  readonly withLock: <T, E, D>(task: Task<T, E, D>) => Task<T, E, D>;
+
+  /** Returns the current lock state for monitoring and debugging. */
+  readonly snapshot: () => SemaphoreSnapshot;
+}
+
+/**
+ * Creates a {@link Mutex}.
  *
  * ### Example
  *
@@ -5647,19 +5648,6 @@ export const createSemaphore = (
  *
  * @group Concurrency primitives
  */
-export interface Mutex {
-  /** Runs a {@link Task} while holding the lock. */
-  readonly withLock: <T, E, D>(task: Task<T, E, D>) => Task<T, E, D>;
-
-  /** Returns the current lock state for monitoring and debugging. */
-  readonly snapshot: () => SemaphoreSnapshot;
-}
-
-/**
- * Creates a {@link Mutex}.
- *
- * @group Concurrency primitives
- */
 export const createMutex = (): Mutex => {
   const semaphore = createSemaphore(1);
 
@@ -5670,7 +5658,7 @@ export const createMutex = (): Mutex => {
 };
 
 /**
- * Coordinates concurrent Tasks independently for each key.
+ * Coordinates concurrent {@link Task}s independently for each key.
  *
  * `SemaphoreByKey` intentionally exposes only Task-scoped acquisition helpers,
  * not the complete {@link Semaphore} API. Methods like {@link Semaphore.take} and
@@ -5682,54 +5670,6 @@ export const createMutex = (): Mutex => {
  * operations or resize a permit pool. Use `SemaphoreByKey` when permit
  * ownership should be tied to one Task lifetime and idle keys can be forgotten
  * automatically.
- *
- * ### Example
- *
- * ```ts
- * import {
- *   createGate,
- *   createRun,
- *   createSemaphoreByKey,
- *   getOk,
- *   ok,
- *   type Task,
- * } from "@evolu/common";
- *
- * // Each host gets an independent two-download limit.
- * const downloadsByHost = createSemaphoreByKey<string>(2);
- * const finishDownloads = createGate();
- * const firstBatchStarted = Promise.withResolvers<void>();
- * const started: Array<string> = [];
- * const download = (host: string, file: string): Task<string> =>
- *   downloadsByHost.withPermit(host, async (run) => {
- *     started.push(`${host}/${file}`);
- *     if (started.length === 3) firstBatchStarted.resolve();
- *     await run.ok(finishDownloads.wait);
- *     return ok(`${host}/${file}`);
- *   });
- *
- * await using run = createRun();
- * const downloads = [
- *   run(download("a.example", "1.json")),
- *   run(download("a.example", "2.json")),
- *   run(download("a.example", "3.json")),
- *   run(download("b.example", "1.json")),
- * ];
- * await firstBatchStarted.promise;
- * expect(started).toEqual([
- *   "a.example/1.json",
- *   "a.example/2.json",
- *   "b.example/1.json",
- * ]);
- *
- * finishDownloads.open();
- * expect((await Promise.all(downloads)).map(getOk)).toEqual([
- *   "a.example/1.json",
- *   "a.example/2.json",
- *   "a.example/3.json",
- *   "b.example/1.json",
- * ]);
- * ```
  *
  * @group Concurrency primitives
  */
@@ -5763,12 +5703,37 @@ export interface CreateSemaphoreByKeyOptions<K, L = K> extends LookupOption<
 /**
  * Creates a {@link SemaphoreByKey}.
  *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createRun,
+ *   createSemaphoreByKey,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * // Each host gets an independent two-download limit.
+ * const downloadsByHost = createSemaphoreByKey<string>(2);
+ * const download = (host: string, file: string): Task<string> =>
+ *   downloadsByHost.withPermit(host, () => ok(`${host}/${file}`));
+ *
+ * await using run = createRun();
+ * expectOk(
+ *   await run(download("a.example", "index.json")),
+ *   "a.example/index.json",
+ * );
+ * expect(downloadsByHost.isIdle("a.example")).toBe(true);
+ * ```
+ *
  * @group Concurrency primitives
  */
 export function createSemaphoreByKey<K = unknown>(
   initialPermits: Int1To100OrPositiveInt,
   options?: CreateSemaphoreByKeyOptions<K, unknown>,
 ): SemaphoreByKey<K>;
+
+/** Creates a {@link SemaphoreByKey} with custom logical key lookup. */
 export function createSemaphoreByKey<K, L>(
   initialPermits: Int1To100OrPositiveInt,
   options: CreateSemaphoreByKeyOptions<K, L>,
@@ -5806,48 +5771,8 @@ export function createSemaphoreByKey<K, L = K>(
 }
 
 /**
- * Runs Tasks one at a time independently for each key, like {@link Mutex}.
- *
- * ### Example
- *
- * ```ts
- * import {
- *   createGate,
- *   createMutexByKey,
- *   createRun,
- *   ok,
- *   type Task,
- * } from "@evolu/common";
- *
- * const accountLocks = createMutexByKey<string>();
- * const finishDeposits = createGate();
- * const firstBatchStarted = Promise.withResolvers<void>();
- * const started: Array<string> = [];
- * const balancesByAccount = new Map<string, number>();
- * const deposit = (account: string, amount: number): Task<number> =>
- *   accountLocks.withLock(account, async (run) => {
- *     started.push(account);
- *     if (started.length === 2) firstBatchStarted.resolve();
- *     await run.ok(finishDeposits.wait);
- *     const balance = (balancesByAccount.get(account) ?? 0) + amount;
- *     balancesByAccount.set(account, balance);
- *     return ok(balance);
- *   });
- *
- * await using run = createRun();
- * const first = run(deposit("checking", 2));
- * const second = run(deposit("checking", 3));
- * const third = run(deposit("savings", 4));
- * await firstBatchStarted.promise;
- * // Different accounts proceed together; the second checking deposit waits.
- * expect(started).toEqual(["checking", "savings"]);
- *
- * finishDeposits.open();
- * expectOk(await first, 2);
- * expectOk(await second, 5);
- * expectOk(await third, 4);
- * expect(started).toEqual(["checking", "savings", "checking"]);
- * ```
+ * Runs {@link Task}s one at a time independently for each key, like
+ * {@link Mutex}.
  *
  * @group Concurrency primitives
  */
@@ -5872,11 +5797,38 @@ export interface CreateMutexByKeyOptions<K, L = K> extends LookupOption<K, L> {}
 /**
  * Creates a {@link MutexByKey}.
  *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createMutexByKey,
+ *   createRun,
+ *   ok,
+ *   type Task,
+ * } from "@evolu/common";
+ *
+ * const accountLocks = createMutexByKey<string>();
+ * const balancesByAccount = new Map<string, number>();
+ * const deposit = (account: string, amount: number): Task<number> =>
+ *   accountLocks.withLock(account, () => {
+ *     const balance = (balancesByAccount.get(account) ?? 0) + amount;
+ *     balancesByAccount.set(account, balance);
+ *     return ok(balance);
+ *   });
+ *
+ * await using run = createRun();
+ * expectOk(await run(deposit("checking", 2)), 2);
+ * expectOk(await run(deposit("checking", 3)), 5);
+ * expect(accountLocks.isIdle("checking")).toBe(true);
+ * ```
+ *
  * @group Concurrency primitives
  */
 export function createMutexByKey<K = unknown>(
   options?: CreateMutexByKeyOptions<K, unknown>,
 ): MutexByKey<K>;
+
+/** Creates a {@link MutexByKey} with custom logical key lookup. */
 export function createMutexByKey<K, L>(
   options: CreateMutexByKeyOptions<K, L>,
 ): MutexByKey<K>;
@@ -5903,57 +5855,13 @@ export function createMutexByKey<K, L = K>({
  * internal Mutex, so calling another method on the same MutexRef from inside
  * one of them waits on itself and will not progress.
  *
- * Use it for state whose transitions are Tasks: atomic async read-modify-write.
- * Plain Ref cannot express that — between a sync read and a later write, a
- * concurrent transition can interleave and get lost.
+ * Use it for state whose transitions are {@link Task}s: atomic async
+ * read-modify-write. Plain Ref cannot express that — between a sync read and a
+ * later write, a concurrent transition can interleave and get lost.
  *
- * `MutexRef` operations are Tasks and incur normal Run lifecycle overhead. Use
- * {@link Ref} instead for synchronous state transitions, especially on
- * allocation-sensitive hot paths.
- *
- * ### Example
- *
- * ```ts
- * import {
- *   createGate,
- *   createMutexRef,
- *   createRun,
- *   ok,
- *   type Task,
- * } from "@evolu/common";
- *
- * await using run = createRun();
- *
- * const finishRefresh = createGate();
- * const refreshStarted = Promise.withResolvers<void>();
- * let fetchTokenCalls = 0;
- * const fetchToken: Task<string> = async (run) => {
- *   fetchTokenCalls += 1;
- *   refreshStarted.resolve();
- *   await run.ok(finishRefresh.wait);
- *   return ok("fresh-token");
- * };
- *
- * const tokenRef = createMutexRef<string | null>(null);
- *
- * // Concurrent callers never trigger duplicate refreshes: the first caller
- * // runs fetchToken under the lock; later callers reuse the stored token.
- * const getToken = tokenRef.updateAndGet((current) =>
- *   current === null ? fetchToken : () => ok(current),
- * );
- *
- * const first = run(getToken);
- * await refreshStarted.promise;
- * const second = run(getToken);
- * finishRefresh.open();
- *
- * const [firstResult, secondResult] = await Promise.all([first, second]);
- * expectTypeOf(getToken).toEqualTypeOf<Task<string | null>>();
- * expectOk(firstResult, "fresh-token");
- * expectOk(secondResult, "fresh-token");
- * expect(fetchTokenCalls).toBe(1);
- * expectOk(await run(tokenRef.get), "fresh-token");
- * ```
+ * `MutexRef` operations are Tasks and incur normal {@link Run} lifecycle
+ * overhead. Use {@link Ref} instead for synchronous state transitions,
+ * especially on allocation-sensitive hot paths.
  *
  * @group Concurrency primitives
  * @see {@link createMutexRef}
@@ -5997,6 +5905,19 @@ export interface MutexRef<T> {
 
 /**
  * Creates a {@link MutexRef}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { createMutexRef, createRun, ok } from "@evolu/common";
+ *
+ * const counter = createMutexRef(0);
+ * const increment = counter.updateAndGet((value) => () => ok(value + 1));
+ *
+ * await using run = createRun();
+ * expectOk(await run(increment), 1);
+ * expectOk(await run(counter.get), 1);
+ * ```
  *
  * @group Concurrency primitives
  */
@@ -6055,7 +5976,7 @@ export const createMutexRef = <T>(initialValue: T): MutexRef<T> => {
   };
 };
 
-// TODO: Add Run observability after Task migration.
+// TODO: Expand Run observability.
 // - Structured logging with levels, inherited log annotations, JSON output,
 //   filtering, and pluggable log sinks.
 // - Tracing spans with names, timing, parent-child relationships, attributes,

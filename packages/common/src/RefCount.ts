@@ -88,6 +88,8 @@ export interface CreateRefCountByKeyOptions<
 
 /** Creates {@link RefCountByKey}. */
 export function createRefCountByKey<TKey = unknown>(): RefCountByKey<TKey>;
+
+/** Creates {@link RefCountByKey} with custom logical key lookup. */
 export function createRefCountByKey<TKey, L>(
   options: CreateRefCountByKeyOptions<TKey, L>,
 ): RefCountByKey<TKey>;

@@ -542,6 +542,8 @@ export type DurationLiteral = typeof DurationLiteral.Output;
 export function durationToMillis(
   duration: DurationLiteral | PositiveMillis,
 ): PositiveMillis;
+
+/** Converts a general {@link Duration}, including zero, to milliseconds. */
 export function durationToMillis(duration: Duration): Millis;
 export function durationToMillis(duration: Duration): Millis {
   if (typeof duration === "number") return duration;

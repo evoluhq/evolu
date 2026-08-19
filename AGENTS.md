@@ -64,8 +64,10 @@ Run standalone TypeScript scripts directly with Node.js, for example
 ## Module structure
 
 - Group declarations by feature, not by export visibility. For each feature,
-  order exported types, exported code, then internal code. Finish that feature
-  before starting the next one.
+  place ordinary exported interfaces and types before exported code, then
+  internal code. Place a function-specific error interface immediately after
+  that function, separated by an empty line, so the happy path comes first.
+  Finish that feature before starting the next one.
 - Within a feature, place orchestration code before the lower-level operations it
   calls so the feature can be read from start to end. Define a `const` helper
   first when a module initializer invokes it during module evaluation.
@@ -110,7 +112,12 @@ Run standalone TypeScript scripts directly with Node.js, for example
 
 - Fallible public APIs return `Result<T, E>` for typed domain errors instead of
   throwing them.
-- Domain errors are exact plain objects, not `Error` instances.
+- Domain errors are exact plain objects, not `Error` instances. Name an error
+  interface `XError`. When `X` already clearly describes a failure, extend
+  `Typed<"X">` and omit the redundant `Error` suffix from the discriminant,
+  for example `UserNotFoundError extends Typed<"UserNotFound">`. Keep the
+  suffix when it is needed to make the discriminant unambiguously an error, as
+  in `TimeoutError`, `RetryError`, and `AbortError`.
 - Operations without a success value return `Result<void, E>` with `ok()`.
 - Use `trySync` and `tryAsync` when converting thrown or rejected values into a
   `Result`.
@@ -170,6 +177,16 @@ Run standalone TypeScript scripts directly with Node.js, for example
 - Use `{@link}` on the first mention of an exported symbol.
 - Do not put a pipe character in the first sentence; TypeDoc inserts that
   sentence into Markdown tables.
+- Use TypeDoc's generated declaration-kind groups for simple modules. If a
+  module uses any custom `@group`, assign every exported declaration to a
+  semantic group; do not mix custom groups with generated groups such as
+  Functions, Interfaces, and Type Aliases.
+- Name custom groups by their purpose within the module, using short contextual
+  names such as Creation, Guards, Model, or Pull, and define their order
+  explicitly. Keep all module prose before the generated API groups, with FAQ
+  last when present. Put API-specific guidance and examples on the relevant
+  declarations instead of using `@groupDescription` or custom renderer logic to
+  reposition module prose.
 - Do not make alignment-only JSDoc edits.
 - TypeDoc warnings fail CI. Resolve every warning emitted by `pnpm build:docs`.
 

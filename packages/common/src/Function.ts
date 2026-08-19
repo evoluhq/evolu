@@ -162,6 +162,8 @@ export function disposable<T extends object>(
   value: T extends Disposable ? Omit<T, typeof Symbol.dispose> : T,
   disposer?: DisposableStack,
 ): T extends Disposable ? T : T & Disposable;
+
+/** Creates an asynchronously disposable object. */
 export function disposable<T extends object>(
   value: T extends AsyncDisposable ? Omit<T, typeof Symbol.asyncDispose> : T,
   disposer: AsyncDisposableStack,

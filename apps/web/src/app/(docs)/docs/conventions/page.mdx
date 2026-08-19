@@ -39,6 +39,7 @@ export const Utils = { ok, trySync };
 - **Accessors** — position + `InX`: `firstInArray`, `lastInArray`, `firstInSet`
 - **Indexed collections** — value + `By` + key (`vByK`): `rowsByQuery`, `messagesByOwnerId`, `usersById`
 - **Dependencies** — `XDep`: `TimeDep`, `RandomDep`, `ConsoleDep`
+- **Domain errors** — interface `XError`, discriminant `"X"`: `UserNotFoundError` extends `Typed<"UserNotFound">`
 
 Reusable test setup helpers should be named after what they set up: use `setupFoo`
 for local helpers and helpers shared from test-only files such as `_deps.ts`.
@@ -72,6 +73,24 @@ const foo = () => {
 const bar = () => {
   //
 };
+```
+
+Ordinary interfaces and types describe the happy-path contract, so place them
+before the code that uses them. A function-specific error describes the
+non-happy path: place its interface immediately after that function, separated
+by an empty line.
+
+```ts
+import { err, ok, type Result, type Typed } from "@evolu/common";
+
+interface User {
+  readonly id: string;
+}
+
+const getUser = (id: string): Result<User, UserNotFoundError> =>
+  id === "user-1" ? ok({ id }) : err({ type: "UserNotFound" });
+
+interface UserNotFoundError extends Typed<"UserNotFound"> {}
 ```
 
 ## Immutability

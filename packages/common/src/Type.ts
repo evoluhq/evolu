@@ -1,175 +1,100 @@
 /**
- * Runtime types.
+ * ## Intro
  *
- * @module
- */
-
-import { utf8ToBytes } from "@noble/ciphers/utils.js";
-import { sha256 } from "@noble/hashes/sha2.js";
-import * as bip39 from "@scure/bip39";
-import { wordlist } from "@scure/bip39/wordlists/english.js";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type {
-  AtLeastTwoReadonlyArray,
-  NonEmptyReadonlyArray,
-} from "./Array.ts";
-import { assert, assertNonNullable } from "./Assert.ts";
-import type { Brand } from "./Brand.ts";
-import type { RandomBytesDep } from "./Crypto.ts";
-import { identity, type Thunk } from "./Function.ts";
-import { createMutableRecord } from "./Object.ts";
-import { hasNodeBuffer } from "./Platform.ts";
-import {
-  err,
-  flatMapResult,
-  getOk,
-  getOrNull,
-  getOrThrow,
-  ok,
-  trySync,
-  type Result,
-} from "./Result.ts";
-import { safelyStringifyUnknownValue } from "./String.ts";
-import type { Task } from "./Task.ts";
-import type { TimeDep } from "./Time.ts";
-import {
-  instance,
-  isInstance,
-  type CompileTimeError,
-  type Instance,
-  type IsUnion,
-  type Literal,
-  type Simplify,
-  type ValueWithLength,
-  type WidenLiteral,
-} from "./Types.ts";
-
-/**
- * A runtime representation of a TypeScript type with typed structured errors.
+ * Runtime validation with precise TypeScript types and structured errors.
  *
- * Evolu Type reports expected decoding failures through {@link Result} rather
- * than exceptions. It represents both an encoded `Input` and its semantic
- * `Output`, supporting validation, transformation, and canonical encoding.
+ * Evolu {@link Type} is a pure, synchronous codec for defining semantic domains.
+ * It partially decodes an `Input` into an `Output` and totally encodes every
+ * valid `Output` into a `CanonicalInput`. Types can validate, refine,
+ * transform, and compose without losing the contracts TypeScript can express.
  *
- * Evolu Type is designed for correctness and developer experience. Correctness
- * is especially important for local-first data: application authors cannot
- * inspect or repair a user's data on a server because they do not have access
- * to it. Type declarations must reject invalid data at system boundaries, then
- * preserve those guarantees wherever the data travels.
+ * ```ts
+ * import {
+ *   NonEmptyTrimmedString100,
+ *   PositiveInt,
+ *   object,
+ *   type InferType,
+ * } from "@evolu/common";
  *
- * To make correct code the easiest code to write, Evolu Type preserves as much
- * information as TypeScript can express. Invalid declarations produce readable
- * {@link CompileTimeError} types when the compiler can detect them, while
- * runtime assertions enforce construction contracts it cannot prove. Together,
- * these choices create a pit of success.
+ * const User = object({
+ *   name: NonEmptyTrimmedString100,
+ *   age: PositiveInt,
+ * });
+ * interface User extends InferType<typeof User> {}
  *
- * The implementation is optimized for minimal bundle size. Less descriptive
- * assertion messages could make it even smaller, but Evolu keeps actionable
- * messages as a deliberate tradeoff for developer experience.
+ * const value: unknown = { name: "Ada", age: 37 };
+ * const user = User.fromUnknown(value);
  *
- * The main properties of Evolu Type are:
+ * expectOk(user, { name: "Ada", age: 37 });
+ * expectTypeOf(user.value).toExtend<User>();
+ * ```
  *
- * - **Result-based error handling** – expected failures are explicit values.
- * - **Typed errors with decoupled formatters** – validation logic stays
- *   independent of user-facing messages, and errors can be handled
- *   exhaustively.
- * - **Type-safe, tree-shakeable localization** – formatter requirements are
- *   inferred from selected Types, while apps bundle exactly the locales they
- *   support so users can change language offline.
- * - **Consistent constraints through {@link Brand}** – every refinement constraint
- *   is represented in the TypeScript type, so an unconstrained parent value
- *   cannot be used where the constrained value is required.
- * - **Typed inputs** – prefer `from` and its `.parent` entry points to connect
- *   precise producer and consumer contracts while preserving typed remaining
- *   errors; reserve `fromUnknown` for genuinely unknown values.
- * - **Lawful codecs** – Types partially decode `Input` to `Output` and totally
- *   encode every legitimate `Output` to `CanonicalInput`, the statically known
- *   subtype of `Input` returned by complete encoding.
- * - **A top-down implementation** – the source is intended to be read from
- *   beginning to end.
+ * Decoding failures are explicit {@link Result} values. Error formatters are
+ * separate from validation, so structured errors remain exhaustively typed and
+ * can be localized without changing the Type.
  *
- * Evolu Type supports [Standard Schema](https://standardschema.dev/) for
- * interoperability with compatible tools and frameworks while preserving each
- * Type's exact Input and Output.
+ * Evolu Type is designed to make correct code the easiest code to write:
  *
- * Evolu Type assumes that all executing code, including third-party
- * dependencies, has been audited and is trusted. It validates data contracts
- * under that assumption. Trusting code does not require trusting every value it
- * returns, so uncertain values from legacy code or another realm can still be
- * decoded at an explicit boundary. It does not protect against hostile
- * executable behavior such as sabotaged Proxies or throwing traps; Type
- * validation is not a security boundary for untrusted JavaScript.
+ * - {@link Brand} carries every refinement constraint into TypeScript.
+ * - Invalid declarations produce readable {@link CompileTimeError} types when the
+ *   compiler can detect them; runtime assertions enforce construction contracts
+ *   it cannot prove.
+ * - Typed `from` boundaries allow connecting value producers to domain fields
+ *   through their exact TypeScript types, so incompatible contract changes are
+ *   compile-time errors rather than runtime validation errors.
+ * - Lawful codecs compose without creating unencodable values: every valid
+ *   Output has a canonical Input representation and round-trips to the same
+ *   semantic value.
+ * - Type-safe localization infers the required error formatters from selected
+ *   Types, so missing validation messages are compile-time errors.
  *
- * Type declarations and their callbacks are trusted construction code. Evolu
- * Type leverages that trust for better developer experience and does not try to
- * recover from code that defeats the type system with `any` or casts, including
- * fabricating an `Err` for `Result<_, never>`. Runtime assertions still enforce
- * contracts TypeScript cannot express, and every Type declaration must be
- * tested for its expected successes and failures.
+ * Correctness is especially important for local-first data: application authors
+ * cannot inspect or repair a user's data on a server. Type declarations reject
+ * invalid data at system boundaries, then preserve those guarantees wherever
+ * the data travels.
+ *
+ * Evolu Type supports [Standard Schema](https://standardschema.dev/) while
+ * preserving each Type's exact Input and Output. Its implementation is
+ * optimized for small bundles, but keeps actionable assertion messages as a
+ * deliberate developer-experience tradeoff.
+ *
+ * Evolu Type requires TypeScript 7 or newer and `exactOptionalPropertyTypes`.
+ * Predefined Types use the names of corresponding JavaScript built-ins. When
+ * one shadows a built-in, access the built-in through `globalThis`, such as
+ * `globalThis.String` or `globalThis.Date`.
+ *
+ * ## Boundaries
  *
  * `fromUnknown` validates untyped input through the complete pipeline. `from`
- * and its `.parent` operations use their declared boundary to determine which
- * remaining stages can return validation errors, but assert that boundary at
- * runtime. `orThrow` and `orNull` reuse the deepest `from` operation accepting
- * `Input`, while `to` asserts its Output boundary. A failed assertion means
- * application code violated its static contract; it is a developer error, not
- * an expected validation failure. Its message identifies the expected Type and
- * its cause preserves the exact structured Output validation error.
+ * and its `.parent` operations assert their declared boundary, then return only
+ * errors from the remaining stages. `orThrow` and `orNull` reuse the deepest
+ * `from` operation accepting `Input`, while `to` asserts its Output boundary. A
+ * failed assertion is a developer error; its cause preserves the exact
+ * structured Output validation error.
  *
  * Prefer the most precise typed boundary available. A value is not unknown
  * merely because it originated outside the application: forms, components, and
  * other producers often expose a `string` or a branded value that can connect
  * directly to a matching `from` boundary. Reserve `fromUnknown` for values
  * whose TypeScript type is genuinely `unknown`. `is` means exact membership in
- * the output domain, not merely that output-side parsing could succeed. A
- * successful `fromUnknown` result always satisfies `is`.
+ * the Output domain, not merely that an encoded Input can be decoded.
  *
- * Decoding accepts a representation outside the Output domain only when the
- * Type explicitly declares that representation, such as a transformation Input.
- * Structural Types do not implicitly repair another JavaScript representation.
- * In particular, {@link array} and {@link tuple} require dense own data elements,
- * while the predefined {@link Object}, {@link object}, and {@link record} require
- * plain objects with own enumerable data properties. They do not invoke
- * accessors or materialize inherited and non-enumerable properties.
+ * Typed boundaries also connect producer and domain constraints at compile
+ * time. Suppose a form and its domain field both use
+ * {@link NonEmptyTrimmedString100}. If the form is later relaxed to
+ * {@link NonEmptyTrimmedString1000}, the domain Type will still reject longer
+ * values, so invalid data cannot be stored. But a boundary accepting only
+ * `unknown` or `string` cannot reveal that the producer contract changed. The
+ * application still compiles, and users discover the incompatibility only when
+ * a valid form value fails to save.
  *
- * TypeScript object types are structural and do not encode JavaScript realm
- * identity. Structural Types therefore accept legitimate representations from
- * other realms. Prototype checks remain when the prototype defines the semantic
- * domain. Plain-object Types accept a `null` prototype or an immediate root
- * prototype whose own prototype is `null`; ordinary class instances and deeper
- * prototype chains are rejected. When Record decoding must construct a
- * normalized value, it uses a `null` prototype so every string key remains
- * ordinary data.
+ * Passing the precise branded value to `from` makes that incompatibility a
+ * compile-time error. The developer must preserve the original form limit or
+ * introduce a new field for the wider domain instead of shipping a broken form.
  *
- * Evolu Type requires TypeScript 7 or newer and expects the
- * `exactOptionalPropertyTypes` compiler option to be enabled.
- *
- * Predefined Types intentionally use the names of corresponding JavaScript
- * built-ins because they represent those familiar value categories. If an
- * imported Type shadows a built-in in the same scope, access the built-in
- * through `globalThis`, JavaScript's standard cross-environment global object,
- * such as `globalThis.String` or `globalThis.Date`.
- *
- * ## Example
- *
- * ```ts
- * import { String, type Result } from "@evolu/common";
- *
- * const value: unknown = "hello";
- * const result = String.fromUnknown(value);
- *
- * expectTypeOf(result).toEqualTypeOf<
- *   Result<
- *     string,
- *     {
- *       readonly type: "TypeOf";
- *       readonly expected: "String";
- *       readonly value: unknown;
- *     }
- *   >
- * >();
- * expectOk(result, "hello");
- * ```
+ * A weaker producer is sometimes intentional. In that case, a matching
+ * `.parent` boundary validates only the constraints the producer does not
+ * already guarantee, while preserving its existing guarantees in the type.
  *
  * ## FAQ
  *
@@ -287,10 +212,10 @@ import {
  * is own, enumerable, or a data property. It also permits a wider object with
  * excess properties where a narrower object type is expected.
  *
- * `fromUnknown` treats such invalid external values as expected data and
- * returns a typed error. Typed boundaries instead assert the domain promised by
- * their parameter type. If application code claims an accessor-backed object or
- * an object with excess properties is an Object Output, the assertion throws
+ * `fromUnknown` treats such invalid external values as input data and returns a
+ * typed error. Typed boundaries instead assert the domain promised by their
+ * parameter type. If application code claims an accessor-backed object or an
+ * object with excess properties is an Object Output, the assertion throws
  * because the application contract is broken. `orThrow` and `orNull` preserve
  * the assertion at their typed `Input` boundary, then apply {@link getOrThrow}
  * or {@link getOrNull} only to validation failures returned by the remaining
@@ -325,10 +250,12 @@ import {
  * without requiring conversion merely because its built-ins belong to another
  * realm.
  *
- * When an application trusts both the producer and its return contract, it can
- * cast the boundary API's `unknown` because validation is redundant. Use a
- * specialized Type or explicit transformation when the producer actually uses a
- * different representation that needs adaptation or normalization.
+ * When an application trusts both the producer and its return contract, expose
+ * that contract as an accurate TypeScript type and use the typed value directly.
+ * If the boundary returns `unknown`, validate it instead of bypassing the
+ * boundary with a cast. Use a specialized Type or explicit transformation when
+ * the producer uses a different representation that needs adaptation or
+ * normalization.
  *
  * All executing JavaScript remains trusted. Deliberately forged built-ins,
  * hostile Proxies, throwing traps, or sabotaged executable behavior can throw;
@@ -384,8 +311,8 @@ import {
  * value to a Task. A pure synchronous conversion that can fail can be an
  * ordinary function returning Result.
  *
- * Keeping those responsibilities separate prevents an Evolu Type from becoming
- * a hidden application workflow. It also keeps validation deterministic,
+ * Keeping those responsibilities separate prevents Evolu Type from becoming a
+ * hidden application workflow. It also keeps validation deterministic,
  * dependency-free, immediately composable, and straightforward to test.
  *
  * ### What if only decoding is needed?
@@ -397,7 +324,55 @@ import {
  * irreversible operation is a separate function or Task, not a Type
  * transformation.
  *
- * @group Core Types
+ * @module
+ */
+import { utf8ToBytes } from "@noble/ciphers/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import * as bip39 from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type {
+  AtLeastTwoReadonlyArray,
+  NonEmptyReadonlyArray,
+} from "./Array.ts";
+import { assert, assertNonNullable } from "./Assert.ts";
+import type { Brand } from "./Brand.ts";
+import type { RandomBytesDep } from "./Crypto.ts";
+import { identity, type Thunk } from "./Function.ts";
+import { createMutableRecord } from "./Object.ts";
+import { hasNodeBuffer } from "./Platform.ts";
+import {
+  err,
+  flatMapResult,
+  getOk,
+  getOrNull,
+  getOrThrow,
+  ok,
+  trySync,
+  type Result,
+} from "./Result.ts";
+import { safelyStringifyUnknownValue } from "./String.ts";
+import type { Task } from "./Task.ts";
+import type { TimeDep } from "./Time.ts";
+import {
+  instance,
+  isInstance,
+  type CompileTimeError,
+  type Instance,
+  type IsUnion,
+  type Literal,
+  type Simplify,
+  type ValueWithLength,
+  type WidenLiteral,
+} from "./Types.ts";
+
+/**
+ * A runtime representation of a TypeScript type, including its encoded input,
+ * semantic output, structured errors, and canonical encoding.
+ *
+ * See the {@link @evolu/common!Type | Type overview}.
+ *
+ * @group Core
  */
 export interface Type<
   Name extends TypeName,
@@ -489,7 +464,20 @@ export interface Type<
   /** The one preceding Type node, or `null` for a root Type. */
   readonly parent: Parent;
 
-  /** Decodes an unknown value through the complete Type pipeline. */
+  /**
+   * Decodes an unknown value through the complete Type pipeline.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { PositiveInt } from "@evolu/common";
+   *
+   * const value: unknown = 42;
+   * const result = PositiveInt.fromUnknown(value);
+   *
+   * expectOk(result, 42);
+   * ```
+   */
   readonly fromUnknown: (
     value: unknown,
     options?: ValidationOptions,
@@ -503,6 +491,19 @@ export interface Type<
    * Structural errors retain nested errors and their locations in the typed
    * error value. This formatter does not encode paths or enumerate nested
    * errors in its message.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { String } from "@evolu/common";
+   *
+   * const result = String.fromUnknown(42);
+   *
+   * expectErr(result, { type: "TypeOf", expected: "String", value: 42 });
+   * expect(String.formatError(result.error)).toBe(
+   *   "A value 42 is not a string.",
+   * );
+   * ```
    */
   readonly formatError: TypeErrorFormatter<Errors>;
 
@@ -540,6 +541,52 @@ export interface Type<
    * developer error. The Error message identifies the expected boundary Type,
    * and its cause preserves the structured validation error. Only failures
    * introduced after that boundary are returned through `Result`.
+   *
+   * ### Example
+   *
+   * A form already guarantees every constraint on a title, while a new note
+   * input guarantees only trimmed text. The note's parent boundary validates
+   * only the constraints that the form does not guarantee:
+   *
+   * ```ts
+   * import {
+   *   flatMapResult,
+   *   NonEmptyTrimmedString100,
+   *   object,
+   *   TrimmedString,
+   *   type MaxLengthError,
+   *   type MinLengthError,
+   *   type Result,
+   * } from "@evolu/common";
+   *
+   * const Todo = object({
+   *   title: NonEmptyTrimmedString100,
+   *   note: NonEmptyTrimmedString100,
+   * });
+   *
+   * const saveTodo = (
+   *   title: NonEmptyTrimmedString100,
+   *   note: TrimmedString,
+   * ) => {
+   *   // @ts-expect-error TrimmedString does not guarantee a non-empty value
+   *   // with at most 100 characters.
+   *   Todo.from({ title, note });
+   *
+   *   return flatMapResult(
+   *     Todo.props.note.from.parent.parent(note),
+   *     (note) => Todo.from({ title, note }),
+   *   );
+   * };
+   *
+   * const title = NonEmptyTrimmedString100.orThrow("Buy milk");
+   * const note = TrimmedString.orThrow("Remember oat milk");
+   * const result = saveTodo(title, note);
+   *
+   * expectTypeOf(result).toEqualTypeOf<
+   *   Result<typeof Todo.Output, MaxLengthError<100> | MinLengthError<1>>
+   * >();
+   * expectOk(result, { title, note });
+   * ```
    */
   readonly from: [CustomFrom] extends [never]
     ? [Parent] extends [infer P extends TypeNode]
@@ -554,6 +601,16 @@ export interface Type<
    * `to` runs the complete encoding pipeline. Its first `.parent` stops at the
    * immediate parent Output, and each additional suffix stops one Type closer
    * to the root. Every entry point accepts this Type's `Output`.
+   *
+   * ### Example
+   *
+   * ```ts
+   * import { Int64, Int64FromInt64String } from "@evolu/common";
+   *
+   * const value = Int64.orThrow(42n);
+   *
+   * expect(Int64FromInt64String.to(value)).toBe("42");
+   * ```
    */
   readonly to: [Parent] extends [infer P extends TypeNode]
     ? ToOperation<Output, CanonicalInput, P>
@@ -586,6 +643,9 @@ export interface Type<
    *
    * // Equivalent because `from.parent` is this Type's deepest `from` operation:
    * const sameValue = getOrThrow(NonEmptyString.from.parent("Evolu"));
+   *
+   * expect(value).toBe("Evolu");
+   * expect(sameValue).toBe(value);
    * ```
    */
   readonly orThrow: TypeOperationFn<"orThrow", Input, Output, never>;
@@ -617,12 +677,20 @@ export interface Type<
    *
    * // Equivalent because `from.parent` is this Type's deepest `from` operation:
    * const sameValue = getOrNull(NonEmptyString.from.parent("Evolu"));
+   *
+   * expect(value).toBe("Evolu");
+   * expect(sameValue).toBe(value);
+   * expect(NonEmptyString.orNull("")).toBeNull();
    * ```
    */
   readonly orNull: TypeOperationFn<"orNull", Input, Output, never>;
 }
 
-/** @group Core Types */
+/**
+ * A capitalized name identifying a {@link Type} node.
+ *
+ * @group Core
+ */
 export type TypeName = Capitalize<string>;
 
 /**
@@ -635,7 +703,7 @@ export type TypeName = Capitalize<string>;
  * only when it intentionally represents the same error contract. Accidental
  * reuse prevents reliable discriminated-union narrowing.
  *
- * @group Core Types
+ * @group Core
  */
 export interface TypeError<Name extends TypeName = TypeName> {
   readonly type: Name;
@@ -653,7 +721,7 @@ interface TransparentTypeError {
  * Structural errors such as Array and Union errors extend {@link TypeError}
  * instead because they locate nested errors rather than own one value.
  *
- * @group Core Types
+ * @group Core
  */
 // Built-in errors intentionally repeat narrower `value` properties. Making
 // `value` generic here and sharing this base regresses `pnpm bench:type`.
@@ -666,13 +734,18 @@ export interface TypeValueError<
 /**
  * Formats a structured {@link TypeError} as a human-readable message.
  *
- * @group Core Types
+ * @group Core
  */
 export type TypeErrorFormatter<Error extends TypeError> = (
   error: Error,
 ) => string;
 
-/** @group Core Types */
+/**
+ * The common structural shape of every {@link Type}, with its specific type
+ * parameters erased.
+ *
+ * @group Core
+ */
 export interface TypeNode {
   readonly name: TypeName;
   readonly "~standard": StandardSchemaV1.Props<unknown, unknown>;
@@ -804,7 +877,7 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
  * Asserts that a value belongs to a {@link Type} Output domain.
  *
  * Use this for internal invariants, not external input. Validate external input
- * with `Type.fromUnknown` so expected failures remain typed values. A failed
+ * with `Type.fromUnknown` so validation failures remain typed values. A failed
  * assertion uses the Type name for its message and preserves the exact Output
  * validation error as the thrown Error's cause.
  *
@@ -824,7 +897,7 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
  * >();
  * ```
  *
- * @group Core Types
+ * @group Core
  */
 export const assertType: <T extends TypeNode>(
   type: T,
@@ -860,38 +933,66 @@ const assertTypeOutput = <Error extends TypeError>(
 };
 
 /**
- * Localized copies of selected {@link Type} declarations for every locale.
+ * Creates localized copies of selected {@link Type} declarations.
  *
- * Each locale supplies one formatter for every Type that can own a formatted
- * error. Structural Types use their own formatter for structural failures and
- * delegate contained failures to the Type that produced them. A Union owns its
- * complete failure because no member matched. Formatter requirements are
- * inferred recursively from structured errors, including mutually recursive
- * Lazy error interfaces.
+ * Pass the Types used together in one localization scope and formatter maps
+ * keyed by locale. TypeScript infers every formatter required by the selected
+ * Types, including errors from nested structural Types and recursive Lazy
+ * Types. Every locale must provide the complete inferred formatter set;
+ * missing and unrelated formatters are compile-time errors.
  *
- * Parents and Types exposed through public reflection are localized recursively
- * through one shared cache. Lazy definitions stay opaque and are not evaluated;
- * their declared error types provide the formatter requirements instead.
+ * The result preserves the locale names, selected Type names, and exact
+ * TypeScript types. A localized Type validates exactly like its source Type;
+ * only its human-readable `formatError` and Standard Schema messages change.
+ * The source Types remain unchanged.
  *
- * The selected Type map, locale map, and each formatter map must be plain
- * objects whose entries are own enumerable string-keyed data properties.
+ * Parents and reflected child Types are localized with the same formatter set.
+ * Structural Types retain error paths and delegate nested messages to the Type
+ * that produced them. Different localized Type sets can coexist in separate
+ * application or dependency-injection scopes.
  *
- * All localized Types for one locale share the same formatter set. The result
- * preserves the selected names and exact TypeScript types under every locale
- * key, making one localized set easy to provide through dependency injection or
- * application context. Canonical Types remain unchanged.
+ * Localization is scoped to the selected Types instead of a package-wide
+ * translation registry. Static imports give bundlers an explicit dependency
+ * graph, so unrelated Types, locales, and formatters can be removed. Bundling
+ * every locale an app supports also allows language changes without a network
+ * connection.
  *
- * Localization is scoped to the Types an app imports instead of a package-wide
- * translation registry. Ordinary static imports give bundlers an explicit
- * dependency graph from those Types to their formatters, so unrelated Type and
- * localization code can be removed. An app supplies all locales it supports in
- * the same self-contained bundle, allowing users to change language without a
- * network connection. Different localized Type sets can coexist on one page or
- * in separate dependency-injection scopes.
+ * The selected Type map, locale map, and formatter maps must be plain objects
+ * with own enumerable string-keyed data properties.
  *
- * ### Locales
+ * ### Example
  *
- * The following locales are available:
+ * ```ts
+ * import { String, localizeTypes, minLength } from "@evolu/common";
+ * import { cs } from "@evolu/common/intl";
+ *
+ * const Label = minLength(1)(String);
+ *
+ * const typesByLocale = localizeTypes(
+ *   { Label },
+ *   {
+ *     cs: {
+ *       MinLength1: cs.formatMinLengthError,
+ *       String: cs.formatStringError,
+ *     },
+ *   },
+ * );
+ *
+ * expectTypeOf<typeof typesByLocale.cs.Label>().toEqualTypeOf<
+ *   typeof Label
+ * >();
+ *
+ * const result = typesByLocale.cs.Label.fromUnknown("");
+ * expectErr(result, { type: "MinLength1", min: 1, value: "" });
+ * expect(typesByLocale.cs.Label.formatError(result.error)).toBe(
+ *   "Text nesmí být prázdný.",
+ * );
+ * ```
+ *
+ * ### Supported locales
+ *
+ * English is built in; use {@link Type} directly for its default formatters.
+ * The following additional locales are available:
  *
  * - Arabic (`ar`)
  * - Bengali (`bn`)
@@ -936,31 +1037,6 @@ const assertTypeOutput = <Error extends TypeError>(
  * - Ukrainian (`uk`)
  * - Urdu (`ur`)
  * - Vietnamese (`vi`)
- *
- * English is built in; use {@link Type} directly for its default formatters.
- *
- * ### Example
- *
- * ```ts
- * import { String, localizeTypes, minLength } from "@evolu/common";
- * import { cs } from "@evolu/common/intl";
- *
- * const Label = minLength(1)(String);
- *
- * const typesByLocale = localizeTypes(
- *   { Label },
- *   {
- *     cs: {
- *       MinLength1: cs.formatMinLengthError,
- *       String: cs.formatStringError,
- *     },
- *   },
- * );
- *
- * expectTypeOf<typeof typesByLocale.cs.Label>().toEqualTypeOf<
- *   typeof Label
- * >();
- * ```
  *
  * @group Localization
  */
@@ -1327,16 +1403,21 @@ declare const identityEncodingSymbol: unique symbol;
  *   age: optional(PositiveInt),
  * });
  * interface User extends InferType<typeof User> {}
+ *
+ * const user = User.orThrow({ name: "Ada", age: 37 });
+ *
+ * expectTypeOf(user).toExtend<User>();
+ * expect(user.name).toBe("Ada");
  * ```
  *
- * @group Type utilities
+ * @group Core
  */
 export type InferType<T extends TypeNode> = T["Output"];
 
 /**
  * The union of errors a {@link Type} can return from `fromUnknown`.
  *
- * @group Type utilities
+ * @group Core
  */
 export type InferErrors<T extends TypeNode> = T[typeof errorsSymbol];
 
@@ -1551,7 +1632,7 @@ type TypeOperationFn<
 /**
  * Configures how container {@link Type} operations report errors.
  *
- * @group Core Types
+ * @group Core
  */
 export interface ValidationOptions {
   /** Controls whether container {@link Type} operations return one or all errors. */
@@ -1687,7 +1768,7 @@ type ConcreteChildTypeNameError = CompileTimeError<
  * expectErr(Text.fromUnknown(42), { type: "Text", value: 42 });
  * ```
  *
- * @group Type construction
+ * @group Construction
  */
 export function createType<
   Name extends TypeName,
@@ -1699,6 +1780,8 @@ export function createType<
   // Validation alone determines Error; broad formatters must not widen it.
   formatError: TypeErrorFormatter<NoInfer<Error>>,
 ): Type<Name, Output, Output, Error, null, Error, never, Output>;
+
+/** Creates an infallible child Type that preserves its parent's Output. */
 export function createType<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
@@ -1719,6 +1802,8 @@ export function createType<
   CanonicalInputForChild<ParentType, ParentType["Output"]>,
   IdentityEncodingOf<ParentType>
 >;
+
+/** Creates a fallible child Type that narrows its parent's Output. */
 export function createType<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
@@ -1937,12 +2022,19 @@ const createChildType = <
  * `from` accepts the semantic Output. `from.parent` converts the parent Output
  * to the output Type Input, then runs the complete output Type pipeline. `to`
  * canonically encodes every output Type value before converting it back through
- * the parent Type. Transformation callbacks are Type construction code. Their
- * successful results are asserted against the declared boundary so a broken
- * callback fails as a developer error rather than becoming a validation error.
- * Like all Type-construction callbacks, they are trusted to follow their
- * declared TypeScript types. A `Result<_, never>` callback is therefore trusted
- * never to return an `Err`.
+ * the parent Type.
+ *
+ * The callbacks must form a lawful codec: decoding `to(output)` must reproduce
+ * the same semantic Output for every valid output value. Encoding may
+ * canonicalize multiple parent representations, but it must be total and must
+ * not lose distinctions present in the Output domain.
+ *
+ * Transformation callbacks are Type construction code. Their successful
+ * results are asserted against the declared boundary so a broken callback fails
+ * as a developer error rather than becoming a validation error. Like all
+ * Type-construction callbacks, they are trusted to follow their declared
+ * TypeScript types. A `Result<_, never>` callback is therefore trusted never to
+ * return an `Err`.
  *
  * Errors from the parent and the forward callback remain unchanged. A forward
  * callback error must use the transformation name as its type. Errors from the
@@ -1955,18 +2047,30 @@ const createChildType = <
  * ### Example
  *
  * ```ts
- * import { Number, String, ok, transform } from "@evolu/common";
+ * import {
+ *   Boolean,
+ *   literal,
+ *   ok,
+ *   transform,
+ *   union,
+ * } from "@evolu/common";
  *
- * const NumberFromString = transform("NumberFromString", String, Number, {
- *   from: (value) => ok(globalThis.Number(value)),
- *   to: globalThis.String,
- * });
+ * const BooleanString = union(literal("false"), literal("true"));
+ * const BooleanFromString = transform(
+ *   "BooleanFromString",
+ *   BooleanString,
+ *   Boolean,
+ *   {
+ *     from: (value) => ok(value === "true"),
+ *     to: (value) => (value ? "true" : "false"),
+ *   },
+ * );
  *
- * expectOk(NumberFromString.from.parent("42"), 42);
- * assert(NumberFromString.to(42) === "42");
+ * expectOk(BooleanFromString.from.parent("true"), true);
+ * expect(BooleanFromString.to(false)).toBe("false");
  * ```
  *
- * @group Type construction
+ * @group Construction
  */
 export function transform<
   Name extends TypeName,
@@ -1984,6 +2088,8 @@ export function transform<
     readonly to: (value: CanonicalInputOf<OutputType>) => ToOutput;
   },
 ): TransformType<ParentType, OutputType, Name, never, ToOutput>;
+
+/** Creates a fallible transformed Type with its own error formatter. */
 export function transform<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
@@ -2088,7 +2194,11 @@ export function transform(
   );
 }
 
-/** @group Type construction */
+/**
+ * The {@link Type} returned by {@link transform}.
+ *
+ * @group Construction
+ */
 export interface TransformType<
   ParentType extends TypeNode,
   OutputType extends TypeNode,
@@ -2115,7 +2225,12 @@ export interface TransformType<
   readonly output: OutputType;
 }
 
-/** @group Type construction */
+/**
+ * An error produced by {@link transform} while decoding or validating its
+ * output.
+ *
+ * @group Construction
+ */
 export type TransformError<
   Name extends TypeName,
   OwnError extends TypeError<Name>,
@@ -2129,7 +2244,7 @@ export type TransformError<
 /**
  * Wraps an error produced by the output {@link Type} of {@link transform}.
  *
- * @group Type construction
+ * @group Construction
  */
 export interface TransformOutputError<
   Name extends TypeName,
@@ -2395,14 +2510,22 @@ const addRuntimeAssertions = (
   return asserted;
 };
 
-/** @group Base Types */
+/**
+ * An infallible {@link Type} accepting every value.
+ *
+ * @group Base
+ */
 export const Unknown = /*#__PURE__*/ createRootType<"Unknown", unknown, never>(
   "Unknown",
   ok,
   identity,
 );
 
-/** @group Base Types */
+/**
+ * A {@link Type} rejecting every value.
+ *
+ * @group Base
+ */
 export const Never = /*#__PURE__*/ createRootType(
   "Never",
   (value): Result<never, NeverError> => err({ type: "Never", value }),
@@ -2410,6 +2533,11 @@ export const Never = /*#__PURE__*/ createRootType(
     `A value ${safelyStringifyUnknownValue(error.value)} is not valid for type Never.`,
 );
 
+/**
+ * Error returned by {@link Never} for every value.
+ *
+ * @group Base
+ */
 export interface NeverError extends TypeError<"Never"> {
   readonly value: unknown;
 }
@@ -2448,7 +2576,11 @@ interface TypeOfOutputByName {
   readonly Function: globalThis.Function;
 }
 
-/** @group Base Types */
+/**
+ * Error returned when `typeof` does not match the expected JavaScript type.
+ *
+ * @group Base
+ */
 export interface TypeOfError<
   Name extends keyof TypeOfOutputByName,
 > extends TypeError<"TypeOf"> {
@@ -2479,6 +2611,8 @@ export interface TypeOfError<
  * expectTypeOf<WireValue100>().toEqualTypeOf<
  *   string & Brand<"MaxLength100">
  * >();
+ * expectOk(WireValue100.fromUnknown(""), "");
+ * expectOk(WireValue100.fromUnknown(" value "), " value ");
  * ```
  *
  * @group String
@@ -2555,25 +2689,41 @@ export const String = /*#__PURE__*/ createTypeOfType("String");
  */
 export const Number = /*#__PURE__*/ createTypeOfType("Number");
 
-/** @group Base Types */
+/**
+ * A JavaScript bigint {@link Type}.
+ *
+ * @group Base
+ */
 export const BigInt = /*#__PURE__*/ createTypeOfType("BigInt");
 
-/** @group Base Types */
+/**
+ * A JavaScript boolean {@link Type}.
+ *
+ * @group Base
+ */
 export const Boolean = /*#__PURE__*/ createTypeOfType("Boolean");
 
-/** @group Base Types */
+/**
+ * A JavaScript symbol {@link Type}.
+ *
+ * @group Base
+ */
 export const Symbol = /*#__PURE__*/ createTypeOfType("Symbol");
 
-/** @group Base Types */
+/**
+ * A JavaScript function {@link Type}.
+ *
+ * @group Base
+ */
 export const Function = /*#__PURE__*/ createTypeOfType("Function");
 
 /**
- * An Evolu {@link Type} validating other Evolu Types.
+ * A {@link Type} validating Evolu Type declarations.
  *
  * This is useful when a Type itself crosses an unknown boundary or must be
  * asserted with {@link assertType}.
  *
- * @group Core Types
+ * @group Core
  */
 export const EvoluType = /*#__PURE__*/ createType(
   "EvoluType",
@@ -2595,23 +2745,23 @@ export const EvoluType = /*#__PURE__*/ createType(
  * the recursive `TypeNode` shape so composing Types does not repeatedly add its
  * compiler cost; {@link EvoluType} bridges that runtime evidence to this type.
  *
- * @group Core Types
+ * @group Core
  */
 export interface AnyType extends TypeNode {
   readonly [concreteTypeSymbol]: true;
 }
 
 /**
- * Error returned when a value is not an Evolu {@link Type}.
+ * Error returned when {@link EvoluType} rejects a value.
  *
- * @group Core Types
+ * @group Core
  */
 export interface EvoluTypeError extends TypeValueError<"EvoluType"> {}
 
 /**
  * Nominal evidence that a value has one object tag.
  *
- * @group Base Types
+ * @group Base
  */
 export interface ObjectTag<Name extends TypeName> {
   readonly [objectTagSymbol]: Name;
@@ -2620,7 +2770,7 @@ export interface ObjectTag<Name extends TypeName> {
 /**
  * The {@link Type} returned by {@link objectTag}.
  *
- * @group Base Types
+ * @group Base
  */
 export interface ObjectTagType<
   Name extends TypeName,
@@ -2647,7 +2797,7 @@ export interface ObjectTagType<
 /**
  * An error returned when an object does not report the expected tag.
  *
- * @group Base Types
+ * @group Base
  */
 export interface ObjectTagError<
   Expected extends TypeName = TypeName,
@@ -2678,7 +2828,18 @@ interface ObjectTagOutputByName {
  * assumption of the predefined Type. Primitive Outputs are rejected at compile
  * time.
  *
- * @group Base Types
+ * ### Example
+ *
+ * ```ts
+ * import { objectTag } from "@evolu/common";
+ *
+ * const DateType = objectTag("Date");
+ * const date = new globalThis.Date("2025-01-01T00:00:00.000Z");
+ *
+ * expectOk(DateType.fromUnknown(date), date);
+ * ```
+ *
+ * @group Base
  */
 export function objectTag<Name extends keyof ObjectTagOutputByName>(
   name: ValidateConcreteTypeName<Name>,
@@ -2692,6 +2853,8 @@ export function objectTag<Name extends keyof ObjectTagOutputByName>(
   never,
   ObjectTagOutputByName[Name]
 >;
+
+/** Creates an object-tag Type by refining an existing object Type. */
 export function objectTag<
   Name extends TypeName,
   OutputType extends ConcreteTypeNode & { readonly Output: object },
@@ -2746,7 +2909,7 @@ const hasObjectTag = (value: unknown, expected: string): boolean =>
  *
  * It trusts the reported object tag and does not verify Date internal slots.
  *
- * @group Base Types
+ * @group Base
  */
 export const Date = /*#__PURE__*/ objectTag("Date");
 
@@ -2756,7 +2919,7 @@ export const Date = /*#__PURE__*/ objectTag("Date");
  * It trusts the reported object tag and does not verify Uint8Array internal
  * slots.
  *
- * @group Base Types
+ * @group Base
  */
 export const Uint8Array = /*#__PURE__*/ objectTag("Uint8Array");
 
@@ -2766,7 +2929,7 @@ export const Uint8Array = /*#__PURE__*/ objectTag("Uint8Array");
  * It trusts the reported object tag and does not verify ArrayBuffer internal
  * slots.
  *
- * @group Base Types
+ * @group Base
  */
 export const ArrayBuffer = /*#__PURE__*/ objectTag("ArrayBuffer");
 
@@ -2798,7 +2961,7 @@ export const ArrayBuffer = /*#__PURE__*/ objectTag("ArrayBuffer");
  * assert(!UserInstance.is({ name: "Ada" }));
  * ```
  *
- * @group Base Types
+ * @group Base
  */
 export const instanceOf = <Constructor extends InstanceConstructor>(
   constructor: ValidateInstanceConstructor<Constructor>,
@@ -2829,14 +2992,18 @@ export const instanceOf = <Constructor extends InstanceConstructor>(
 /**
  * A JavaScript class constructor accepted by {@link instanceOf}.
  *
- * @group Base Types
+ * @group Base
  */
 export type InstanceConstructor<Instance extends object = object> =
   (abstract new (...args: ReadonlyArray<never>) => Instance) & {
     readonly name: string;
   };
 
-/** @group Base Types */
+/**
+ * The {@link Type} returned by {@link instanceOf}.
+ *
+ * @group Base
+ */
 export interface InstanceOfType<
   Constructor extends InstanceConstructor,
 > extends Type<
@@ -2857,7 +3024,11 @@ type InstanceOfOutput<Constructor extends InstanceConstructor> =
     ? Output
     : InstanceType<Constructor>;
 
-/** @group Base Types */
+/**
+ * Error returned when a value is not an instance of the expected constructor.
+ *
+ * @group Base
+ */
 export interface InstanceOfError extends TypeValueError<"InstanceOf"> {
   readonly constructorName: string;
 }
@@ -2945,7 +3116,11 @@ export const literal = <const Expected extends Literal>(
   ) as unknown as LiteralType<Expected>;
 };
 
-/** @group Unions */
+/**
+ * The {@link Type} returned by {@link literal}.
+ *
+ * @group Unions
+ */
 export interface LiteralType<Expected extends Literal> extends Type<
   "Literal",
   WidenLiteral<Expected>,
@@ -2991,7 +3166,11 @@ type LiteralCompileTimeError = CompileTimeError<
   "Expected must be one concrete literal value."
 >;
 
-/** @group Unions */
+/**
+ * Error returned when a value does not equal the expected literal.
+ *
+ * @group Unions
+ */
 export interface LiteralError<
   Expected extends Literal = Literal,
 > extends TypeError<"Literal"> {
@@ -2999,10 +3178,18 @@ export interface LiteralError<
   readonly value: unknown;
 }
 
-/** @group Unions */
+/**
+ * Literal {@link Type} accepting only `undefined`.
+ *
+ * @group Unions
+ */
 export const Undefined = /*#__PURE__*/ literal(undefined);
 
-/** @group Unions */
+/**
+ * Literal {@link Type} accepting only `null`.
+ *
+ * @group Unions
+ */
 export const Null = /*#__PURE__*/ literal(null);
 
 /**
@@ -3028,7 +3215,10 @@ export const Null = /*#__PURE__*/ literal(null);
  * within each member.
  *
  * Member order matters when multiple members accept the same value: validation
- * and encoding use the first matching member.
+ * and encoding use the first matching member. When member Inputs overlap,
+ * decoding the value emitted by the first member selected for an Output must
+ * reproduce that semantic Output; otherwise the Union violates the round-trip
+ * law.
  *
  * ### Example
  *
@@ -3067,11 +3257,15 @@ export function union<const Expected extends AtLeastTwoReadonlyArray<Literal>>(
 ): UnionType<{
   readonly [Index in keyof Expected]: LiteralType<Expected[Index]>;
 }>;
+
+/** Creates a Union Type from Type members. */
 export function union<const Members extends AtLeastTwoReadonlyArray<TypeNode>>(
   ...members: {
     readonly [Index in keyof Members]: ValidateUnionTypeMember<Members[Index]>;
   }
 ): UnionType<Members>;
+
+/** Creates a Union Type from Type and literal members. */
 export function union<
   const Members extends AtLeastTwoReadonlyArray<TypeNode | Literal>,
 >(
@@ -3194,6 +3388,16 @@ const createUnionValidation =
  * This does not make an object property optional. It changes only the values
  * accepted when the property is present.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { String, undefinedOr } from "@evolu/common";
+ *
+ * const StringOrUndefined = undefinedOr(String);
+ *
+ * expectOk(StringOrUndefined.fromUnknown(undefined), undefined);
+ * ```
+ *
  * @group Unions
  */
 export const undefinedOr = <ValueType extends TypeNode>(
@@ -3203,6 +3407,16 @@ export const undefinedOr = <ValueType extends TypeNode>(
 /**
  * Union {@link Type} containing the supplied Type and `null`.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { String, nullOr } from "@evolu/common";
+ *
+ * const NullableString = nullOr(String);
+ *
+ * expectOk(NullableString.fromUnknown(null), null);
+ * ```
+ *
  * @group Unions
  */
 export const nullOr = <ValueType extends TypeNode>(
@@ -3211,6 +3425,17 @@ export const nullOr = <ValueType extends TypeNode>(
 
 /**
  * Union {@link Type} containing the supplied Type, `null`, and `undefined`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { String, nullishOr } from "@evolu/common";
+ *
+ * const NullishString = nullishOr(String);
+ *
+ * expectOk(NullishString.fromUnknown(undefined), undefined);
+ * expectOk(NullishString.fromUnknown(null), null);
+ * ```
  *
  * @group Unions
  */
@@ -3253,7 +3478,11 @@ type NormalizeUnionMembers<
   ? Normalized
   : never;
 
-/** @group Unions */
+/**
+ * The {@link Type} returned by {@link union}.
+ *
+ * @group Unions
+ */
 export interface UnionType<
   Members extends AtLeastTwoReadonlyArray<TypeNode>,
 > extends Type<
@@ -3331,13 +3560,21 @@ type RootUnionMembers<Members extends AtLeastTwoReadonlyArray<TypeNode>> = {
   ? RootMembers
   : never;
 
-/** @group Unions */
+/**
+ * Error returned when every member of a {@link union} rejects an input.
+ *
+ * @group Unions
+ */
 export type UnionError<
   Error extends TypeError = TypeError,
   MemberError extends UnionMemberError<Error> = UnionMemberError<Error>,
 > = [Error] extends [never] ? never : UnionErrorValue<Error, MemberError>;
 
-/** @group Unions */
+/**
+ * An error returned by one {@link union} member and its index.
+ *
+ * @group Unions
+ */
 export interface UnionMemberError<
   Error extends TypeError,
   Index extends number = number,
@@ -3401,9 +3638,7 @@ interface UnionErrorValue<
 }
 
 /**
- * Template literal {@link Type} for validation and parsing.
- *
- * Parses and creates structured strings.
+ * Template literal {@link Type} that parses canonical strings into Tuples.
  *
  * Accepts the same template parts as {@link templateLiteral}: fixed string
  * literals and Types canonically encoded as strings. Instead of keeping Output
@@ -3459,10 +3694,9 @@ interface UnionErrorValue<
  *
  * // Parse an unknown string into structured data.
  * const result = SupportedLocale.fromUnknown("cs-CZ");
- * assert(result.ok);
+ * expectOk(result, ["cs", "CZ"]);
  * const locale = result.value;
  * expectTypeOf(locale).toEqualTypeOf<SupportedLocale>();
- * expect(locale).toEqual(["cs", "CZ"]);
  * expectErr(SupportedLocale.fromUnknown("cs/CZ"), {
  *   type: "TemplateLiteral",
  *   value: "cs/CZ",
@@ -3521,10 +3755,9 @@ interface UnionErrorValue<
  *
  * // Decode the string into structured data.
  * const result = ItemId.fromUnknown("item-42");
- * assert(result.ok);
+ * expectOk(result, [42n]);
  * const itemId = result.value;
  * expectTypeOf(itemId).toEqualTypeOf<ItemId>();
- * expect(itemId).toEqual([42n]);
  *
  * // Encode the structured data into its canonical string.
  * const itemIdLiteral = ItemId.to(itemId);
@@ -3777,7 +4010,11 @@ const createTemplateLiteralParserType = <
   return type;
 };
 
-/** @group Template literals */
+/**
+ * The parsing {@link Type} returned by {@link templateLiteralParser}.
+ *
+ * @group Template literals
+ */
 export interface TemplateLiteralParserType<
   Parts extends TemplateLiteralParts,
 > extends Type<
@@ -3797,7 +4034,11 @@ export interface TemplateLiteralParserType<
   readonly parts: Parts;
 }
 
-/** @group Template literals */
+/**
+ * The validating string {@link Type} returned by {@link templateLiteral}.
+ *
+ * @group Template literals
+ */
 export interface TemplateLiteralType<
   Parts extends TemplateLiteralParts,
 > extends Type<
@@ -3881,7 +4122,11 @@ type TemplateLiteralCaptureFromStringError<T extends TypeNode> =
       : InferErrors<T>
     : never;
 
-/** @group Template literals */
+/**
+ * Error returned when a string does not match a template literal declaration.
+ *
+ * @group Template literals
+ */
 export interface TemplateLiteralError extends TypeError<"TemplateLiteral"> {
   readonly value: string;
 }
@@ -4299,68 +4544,10 @@ const getTemplateLiteralPartFraming = (
  * });
  * ```
  *
- * To reuse a Brand constraint with different parent Types, define a
- * {@link BrandFactory}. Brand Factories can then be composed:
+ * To reuse and compose a Brand constraint with different parent Types, define a
+ * {@link BrandFactory}.
  *
- * ```ts
- * import {
- *   String,
- *   brand,
- *   err,
- *   minLength,
- *   ok,
- *   type Brand,
- *   type BrandFactory,
- *   type TypeError,
- * } from "@evolu/common";
- *
- * const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
- *   parent,
- * ) =>
- *   brand(
- *     "Trimmed",
- *     parent,
- *     (value) =>
- *       value === value.trim()
- *         ? ok()
- *         : err<TrimmedError>({ type: "Trimmed", value }),
- *     () => "Expected a string without surrounding whitespace.",
- *   );
- *
- * const TrimmedString = trimmed(String);
- * type TrimmedString = typeof TrimmedString.Output;
- *
- * expectTypeOf<TrimmedString>().toEqualTypeOf<string & Brand<"Trimmed">>();
- *
- * const NonEmptyString = minLength(1)(String);
- * type NonEmptyString = typeof NonEmptyString.Output;
- *
- * expectTypeOf<NonEmptyString>().toEqualTypeOf<
- *   string & Brand<"MinLength1">
- * >();
- *
- * const NonEmptyTrimmedString = minLength(1)(TrimmedString);
- * type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Output;
- *
- * expectTypeOf<NonEmptyTrimmedString>().toEqualTypeOf<
- *   string & Brand<"Trimmed"> & Brand<"MinLength1">
- * >();
- *
- * interface TrimmedError extends TypeError<"Trimmed"> {
- *   readonly value: string;
- * }
- *
- * // Validation from unknown.
- * expectOk(NonEmptyTrimmedString.fromUnknown("Evolu"), "Evolu");
- *
- * // The typed input selects TrimmedString as the validated boundary.
- * expectOk(
- *   NonEmptyTrimmedString.from.parent(TrimmedString.orThrow("Evolu")),
- *   "Evolu",
- * );
- * ```
- *
- * @group Type construction
+ * @group Construction
  */
 export function brand<
   Name extends TypeName,
@@ -4370,6 +4557,8 @@ export function brand<
   parent: ValidateParent<ParentType>,
   validate?: (value: ParentType["Output"]) => Result<void, never>,
 ): BrandType<ParentType, Name, never>;
+
+/** Creates a validated Brand Type with its own error formatter. */
 export function brand<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
@@ -4397,7 +4586,11 @@ export function brand(
   );
 }
 
-/** @group Type construction */
+/**
+ * The {@link Type} returned by {@link brand}.
+ *
+ * @group Construction
+ */
 export interface BrandType<
   ParentType extends TypeNode,
   Name extends TypeName,
@@ -4454,13 +4647,29 @@ export const DateIso = /*#__PURE__*/ brand(
 );
 export type DateIso = typeof DateIso.Output;
 
-/** @group String */
+/**
+ * Error returned when a string is not a canonical {@link DateIso}.
+ *
+ * @group String
+ */
 export interface DateIsoError extends TypeError<"DateIso"> {
   readonly value: string;
 }
 
 /**
  * Safely transforms a {@link Date} into a canonical {@link DateIso}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { DateIsoFromDate } from "@evolu/common";
+ *
+ * const date = new globalThis.Date("2025-01-01T12:00:00.000Z");
+ * const result = DateIsoFromDate.fromUnknown(date);
+ *
+ * expectOk(result, "2025-01-01T12:00:00.000Z");
+ * expect(DateIsoFromDate.to(result.value)).toEqual(date);
+ * ```
  *
  * @group String
  */
@@ -4479,7 +4688,11 @@ export const DateIsoFromDate = /*#__PURE__*/ transform(
   () => "The Date cannot be represented as DateIso.",
 );
 
-/** @group String */
+/**
+ * Error returned when a {@link Date} cannot be represented as {@link DateIso}.
+ *
+ * @group String
+ */
 export interface DateIsoFromDateError extends TypeError<"DateIsoFromDate"> {
   readonly value: globalThis.Date;
 }
@@ -4501,7 +4714,11 @@ export const Int64 = /*#__PURE__*/ brand(
 );
 export type Int64 = typeof Int64.Output;
 
-/** @group Number */
+/**
+ * Error returned when a bigint is outside the signed 64-bit {@link Int64} range.
+ *
+ * @group Number
+ */
 export interface Int64Error extends TypeError<"Int64"> {
   readonly value: bigint;
 }
@@ -4523,7 +4740,12 @@ export const UInt64 = /*#__PURE__*/ brand(
 );
 export type UInt64 = typeof UInt64.Output;
 
-/** @group Number */
+/**
+ * Error returned when a bigint is outside the unsigned 64-bit {@link UInt64}
+ * range.
+ *
+ * @group Number
+ */
 export interface UInt64Error extends TypeError<"UInt64"> {
   readonly value: bigint;
 }
@@ -4580,7 +4802,7 @@ export interface UInt64Error extends TypeError<"UInt64"> {
  * For numeric parameters encoded in a Brand name, use
  * {@link ValidateBrandFactoryNumber}.
  *
- * @group Type construction
+ * @group Construction
  */
 export type BrandFactory<
   Name extends TypeName,
@@ -4650,7 +4872,7 @@ export type BrandFactory<
  * lessThan(100 - 1)(Number);
  * ```
  *
- * @group Type utilities
+ * @group Construction
  */
 export type ValidateBrandFactoryNumber<Value extends number> =
   IsUnion<Value> extends false
@@ -4709,7 +4931,11 @@ export const capitalized: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be capitalized.`,
   );
 
-/** @group String */
+/**
+ * Error returned when {@link capitalized} rejects a string.
+ *
+ * @group String
+ */
 export interface CapitalizedError extends TypeError<"Capitalized"> {
   readonly value: string;
 }
@@ -4724,6 +4950,16 @@ export type CapitalizedString = typeof CapitalizedString.Output;
 
 /**
  * String {@link Brand} without surrounding whitespace.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { String, trimmed } from "@evolu/common";
+ *
+ * const Trimmed = trimmed(String);
+ *
+ * expectOk(Trimmed.fromUnknown("Evolu"), "Evolu");
+ * ```
  *
  * @group String
  */
@@ -4741,7 +4977,11 @@ export const trimmed: BrandFactory<"Trimmed", string, TrimmedError> = (
       `The value ${safelyStringifyUnknownValue(error.value)} must be trimmed.`,
   );
 
-/** @group String */
+/**
+ * Error returned when {@link trimmed} rejects a string.
+ *
+ * @group String
+ */
 export interface TrimmedError extends TypeError<"Trimmed"> {
   readonly value: string;
 }
@@ -4763,13 +5003,33 @@ export type TrimmedString = typeof TrimmedString.Output;
 /**
  * Trims a string and returns a {@link TrimmedString}.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { trim } from "@evolu/common";
+ *
+ * expect(trim("  Evolu  ")).toBe("Evolu");
+ * ```
+ *
  * @group String
  */
 export const trim = (value: string): TrimmedString =>
   value.trim() as TrimmedString;
 
 /**
- * Minimum-length {@link Brand} requiring a value to have at least `min` items.
+ * Minimum-length {@link Brand} for values whose `length` is at least `min`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { String, array, minLength } from "@evolu/common";
+ *
+ * const AtLeastThreeCharacters = minLength(3)(String);
+ * const AtLeastTwoItems = minLength(2)(array(String));
+ *
+ * expectOk(AtLeastThreeCharacters.fromUnknown("abc"), "abc");
+ * expectOk(AtLeastTwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
+ * ```
  *
  * @group String
  * @group Collection
@@ -4793,7 +5053,11 @@ export const minLength =
     );
   };
 
-/** @group Collection */
+/**
+ * Error returned when {@link minLength} rejects a value.
+ *
+ * @group Collection
+ */
 export interface MinLengthError<
   Min extends number = number,
 > extends TypeError<`MinLength${Min}`> {
@@ -4819,7 +5083,19 @@ export const NonEmptyTrimmedString = /*#__PURE__*/ minLength(1)(TrimmedString);
 export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Output;
 
 /**
- * Maximum-length {@link Brand} requiring a value to have at most `max` items.
+ * Maximum-length {@link Brand} for values whose `length` is at most `max`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { String, array, maxLength } from "@evolu/common";
+ *
+ * const AtMostThreeCharacters = maxLength(3)(String);
+ * const AtMostTwoItems = maxLength(2)(array(String));
+ *
+ * expectOk(AtMostThreeCharacters.fromUnknown("abc"), "abc");
+ * expectOk(AtMostTwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
+ * ```
  *
  * @group String
  * @group Collection
@@ -4843,7 +5119,11 @@ export const maxLength =
     );
   };
 
-/** @group Collection */
+/**
+ * Error returned when {@link maxLength} rejects a value.
+ *
+ * @group Collection
+ */
 export interface MaxLengthError<
   Max extends number = number,
 > extends TypeError<`MaxLength${Max}`> {
@@ -4872,7 +5152,19 @@ export const NonEmptyTrimmedString1000 = /*#__PURE__*/ maxLength(1000)(
 export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Output;
 
 /**
- * Exact-length {@link Brand} requiring a value to have exactly `exact` items.
+ * Exact-length {@link Brand} for values whose `length` equals `exact`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { String, array, length } from "@evolu/common";
+ *
+ * const ThreeCharacters = length(3)(String);
+ * const TwoItems = length(2)(array(String));
+ *
+ * expectOk(ThreeCharacters.fromUnknown("abc"), "abc");
+ * expectOk(TwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
+ * ```
  *
  * @group String
  * @group Collection
@@ -4896,7 +5188,11 @@ export const length =
     );
   };
 
-/** @group Collection */
+/**
+ * Error returned when {@link length} rejects a value.
+ *
+ * @group Collection
+ */
 export interface LengthError<
   Exact extends number = number,
 > extends TypeError<`Length${Exact}`> {
@@ -4962,7 +5258,12 @@ export const regex = <const Name extends TypeName>(
     );
 };
 
-/** @group String */
+/**
+ * Error returned when a string does not match the regular expression supplied
+ * to {@link regex}.
+ *
+ * @group String
+ */
 export interface RegexError<
   Name extends TypeName = TypeName,
 > extends TypeError<Name> {
@@ -5050,13 +5351,27 @@ export const Base64Url = /*#__PURE__*/ brand(
 );
 export type Base64Url = typeof Base64Url.Output;
 
-/** @group String */
+/**
+ * Error returned when a string is not valid {@link Base64Url} text.
+ *
+ * @group String
+ */
 export interface Base64UrlError extends TypeError<"Base64Url"> {
   readonly value: string;
 }
 
 /**
  * Encodes bytes as {@link Base64Url}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { uint8ArrayToBase64Url } from "@evolu/common";
+ *
+ * expect(uint8ArrayToBase64Url(new Uint8Array([0, 1, 2, 255]))).toBe(
+ *   "AAEC_w",
+ * );
+ * ```
  *
  * @group String
  */
@@ -5065,6 +5380,18 @@ export const uint8ArrayToBase64Url = (bytes: Uint8Array): Base64Url =>
 
 /**
  * Decodes {@link Base64Url} as bytes.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Base64Url, base64UrlToUint8Array } from "@evolu/common";
+ *
+ * const value = Base64Url.orThrow("AAEC_w");
+ *
+ * expect(base64UrlToUint8Array(value)).toEqual(
+ *   new Uint8Array([0, 1, 2, 255]),
+ * );
+ * ```
  *
  * @group String
  */
@@ -5086,7 +5413,11 @@ export const Name = /*#__PURE__*/ brand(
 );
 export type Name = typeof Name.Output;
 
-/** @group String */
+/**
+ * Error returned when a string is not a valid {@link Name}.
+ *
+ * @group String
+ */
 export interface NameError extends TypeError<"Name"> {
   readonly value: string;
 }
@@ -5126,7 +5457,11 @@ export const Mnemonic = /*#__PURE__*/ brand(
 );
 export type Mnemonic = typeof Mnemonic.Output;
 
-/** @group String */
+/**
+ * Error returned when a string is not a valid English BIP39 {@link Mnemonic}.
+ *
+ * @group String
+ */
 export interface MnemonicError extends TypeError<"Mnemonic"> {
   readonly value: string;
 }
@@ -5153,7 +5488,11 @@ export const Id = /*#__PURE__*/ brand(
 );
 export type Id = typeof Id.Output;
 
-/** @group String */
+/**
+ * Error returned when a string is not a valid {@link Id}.
+ *
+ * @group String
+ */
 export interface IdError extends TypeError<"Id"> {
   readonly value: string;
 }
@@ -5163,6 +5502,22 @@ export interface IdError extends TypeError<"Id"> {
  *
  * This is the recommended default because it does not encode creation time.
  * Pass a Brand name when the returned Id belongs to one domain entity.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   Id,
+ *   createId,
+ *   createRandomBytes,
+ *   type Brand,
+ * } from "@evolu/common";
+ *
+ * const userId = createId<"User">({ randomBytes: createRandomBytes() });
+ *
+ * expect(Id.is(userId)).toBe(true);
+ * expectTypeOf(userId).toEqualTypeOf<Id & Brand<"User">>();
+ * ```
  *
  * @group String
  */
@@ -5210,6 +5565,26 @@ export const createIdFromString = <B extends string = never>(
  * logs, URLs, and exports. Prefer {@link createId} unless that tradeoff is
  * deliberate.
  *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createIdAsUuidv7,
+ *   createRandomBytes,
+ *   createTime,
+ *   idToIdBytes,
+ * } from "@evolu/common";
+ *
+ * const value = createIdAsUuidv7({
+ *   randomBytes: createRandomBytes(),
+ *   time: createTime(),
+ * });
+ * const bytes = idToIdBytes(value);
+ *
+ * expect(bytes[6] >> 4).toBe(0x7);
+ * expect(bytes[8] & 0xc0).toBe(0x80);
+ * ```
+ *
  * @group String
  */
 export const createIdAsUuidv7 = <B extends string = never>(
@@ -5234,6 +5609,22 @@ export const createIdAsUuidv7 = <B extends string = never>(
 /**
  * Table-specific {@link Id} Type.
  *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createIdFromString,
+ *   id,
+ *   type Brand,
+ *   type Id,
+ * } from "@evolu/common";
+ *
+ * const TodoId = id("Todo");
+ * const todoId = TodoId.orThrow(createIdFromString("todo"));
+ *
+ * expectTypeOf(todoId).toEqualTypeOf<Id & Brand<"Todo">>();
+ * ```
+ *
  * @group String
  */
 export const id = <Table extends TypeName>(
@@ -5256,7 +5647,11 @@ export const id = <Table extends TypeName>(
   );
 };
 
-/** @group String */
+/**
+ * The {@link Type} returned by {@link id} for one table.
+ *
+ * @group String
+ */
 export interface TableId<Table extends TypeName> extends Type<
   "TableId",
   string,
@@ -5271,7 +5666,11 @@ export interface TableId<Table extends TypeName> extends Type<
   readonly table: Table;
 }
 
-/** @group String */
+/**
+ * Error returned when a string is not a valid {@link Id} for the expected table.
+ *
+ * @group String
+ */
 export interface TableIdError<
   Table extends TypeName = TypeName,
 > extends TypeError<"TableId"> {
@@ -5323,14 +5722,50 @@ export const IdBytes = /*#__PURE__*/ brand(
 );
 export type IdBytes = typeof IdBytes.Output;
 
-/** @group String */
+/**
+ * Byte length of an {@link IdBytes} value.
+ *
+ * @group String
+ */
 export const idBytesTypeValueLength = 16 as NonNegativeInt;
 
-/** @group String */
+/**
+ * Converts an {@link Id} to {@link IdBytes}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { createIdFromString, idToIdBytes } from "@evolu/common";
+ *
+ * const bytes = idToIdBytes(createIdFromString("todo"));
+ *
+ * expect(bytes).toHaveLength(16);
+ * ```
+ *
+ * @group String
+ */
 export const idToIdBytes = (value: Id): IdBytes =>
   base64UrlToUint8Array(value as unknown as Base64Url) as IdBytes;
 
-/** @group String */
+/**
+ * Converts {@link IdBytes} to an {@link Id}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   createIdFromString,
+ *   idBytesToId,
+ *   idToIdBytes,
+ * } from "@evolu/common";
+ *
+ * const value = createIdFromString("todo");
+ *
+ * expect(idBytesToId(idToIdBytes(value))).toBe(value);
+ * ```
+ *
+ * @group String
+ */
 export const idBytesToId = (value: IdBytes): Id =>
   uint8ArrayToBase64Url(value) as unknown as Id;
 
@@ -5364,7 +5799,11 @@ export const Int64String = /*#__PURE__*/ brand(
 );
 export type Int64String = typeof Int64String.Output;
 
-/** @group Number */
+/**
+ * Error returned when a string is not a canonical {@link Int64String}.
+ *
+ * @group Number
+ */
 export interface Int64StringError extends TypeError<"Int64String"> {
   readonly value: string;
 }
@@ -5375,6 +5814,17 @@ export interface Int64StringError extends TypeError<"Int64String"> {
  * This is useful at boundaries that expose signed 64-bit integers as decimal
  * text, including SQLite queries that cast INTEGER values to TEXT to avoid a
  * lossy JavaScript number conversion.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Int64FromInt64String } from "@evolu/common";
+ *
+ * const result = Int64FromInt64String.fromUnknown("9223372036854775807");
+ *
+ * expectOk(result, 9223372036854775807n);
+ * expect(Int64FromInt64String.to(result.value)).toBe("9223372036854775807");
+ * ```
  *
  * @group Number
  */
@@ -5390,6 +5840,16 @@ export const Int64FromInt64String = /*#__PURE__*/ transform(
 
 /**
  * Number {@link Brand} requiring a value greater than or equal to zero.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, nonNegative } from "@evolu/common";
+ *
+ * const NonNegative = nonNegative(Number);
+ *
+ * expectOk(NonNegative.fromUnknown(0), 0);
+ * ```
  *
  * @group Number
  */
@@ -5407,7 +5867,11 @@ export const nonNegative: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be non-negative (>= 0).`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link nonNegative} rejects a number.
+ *
+ * @group Number
+ */
 export interface NonNegativeError extends TypeError<"NonNegative"> {
   readonly value: number;
 }
@@ -5423,6 +5887,16 @@ export type NonNegativeNumber = typeof NonNegativeNumber.Output;
 /**
  * Number {@link Brand} requiring a value greater than zero.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, positive } from "@evolu/common";
+ *
+ * const Positive = positive(Number);
+ *
+ * expectOk(Positive.fromUnknown(1), 1);
+ * ```
+ *
  * @group Number
  */
 export const positive: BrandFactory<"Positive", number, PositiveError> = (
@@ -5437,7 +5911,11 @@ export const positive: BrandFactory<"Positive", number, PositiveError> = (
       `The value ${safelyStringifyUnknownValue(error.value)} must be positive (> 0).`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link positive} rejects a number.
+ *
+ * @group Number
+ */
 export interface PositiveError extends TypeError<"Positive"> {
   readonly value: number;
 }
@@ -5456,6 +5934,16 @@ export type PositiveNumber = typeof PositiveNumber.Output;
 /**
  * Number {@link Brand} requiring a value less than or equal to zero.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, nonPositive } from "@evolu/common";
+ *
+ * const NonPositive = nonPositive(Number);
+ *
+ * expectOk(NonPositive.fromUnknown(0), 0);
+ * ```
+ *
  * @group Number
  */
 export const nonPositive: BrandFactory<
@@ -5472,7 +5960,11 @@ export const nonPositive: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be non-positive (<= 0).`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link nonPositive} rejects a number.
+ *
+ * @group Number
+ */
 export interface NonPositiveError extends TypeError<"NonPositive"> {
   readonly value: number;
 }
@@ -5488,6 +5980,16 @@ export type NonPositiveNumber = typeof NonPositiveNumber.Output;
 /**
  * Number {@link Brand} requiring a value less than zero.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, negative } from "@evolu/common";
+ *
+ * const Negative = negative(Number);
+ *
+ * expectOk(Negative.fromUnknown(-1), -1);
+ * ```
+ *
  * @group Number
  */
 export const negative: BrandFactory<"Negative", number, NegativeError> = (
@@ -5502,7 +6004,11 @@ export const negative: BrandFactory<"Negative", number, NegativeError> = (
       `The value ${safelyStringifyUnknownValue(error.value)} must be negative (< 0).`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link negative} rejects a number.
+ *
+ * @group Number
+ */
 export interface NegativeError extends TypeError<"Negative"> {
   readonly value: number;
 }
@@ -5521,6 +6027,16 @@ export type NegativeNumber = typeof NegativeNumber.Output;
 /**
  * Number {@link Brand} requiring a value other than `NaN`.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, nonNaN } from "@evolu/common";
+ *
+ * const NonNaN = nonNaN(Number);
+ *
+ * expectOk(NonNaN.fromUnknown(Infinity), Infinity);
+ * ```
+ *
  * @group Number
  */
 export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
@@ -5534,7 +6050,11 @@ export const nonNaN: BrandFactory<"NonNaN", number, NonNaNError> = (parent) =>
     () => "The value must not be NaN.",
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link nonNaN} rejects `NaN`.
+ *
+ * @group Number
+ */
 export interface NonNaNError extends TypeError<"NonNaN"> {
   readonly value: number;
 }
@@ -5555,6 +6075,16 @@ export type NonNaNNumber = typeof NonNaNNumber.Output;
 /**
  * Number {@link Brand} requiring a finite value.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, finite } from "@evolu/common";
+ *
+ * const Finite = finite(Number);
+ *
+ * expectOk(Finite.fromUnknown(42), 42);
+ * ```
+ *
  * @group Number
  */
 export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
@@ -5569,7 +6099,11 @@ export const finite: BrandFactory<"Finite", number, FiniteError> = (parent) =>
       `The value ${safelyStringifyUnknownValue(error.value)} must be finite.`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link finite} rejects a non-finite number.
+ *
+ * @group Number
+ */
 export interface FiniteError extends TypeError<"Finite"> {
   readonly value: number;
 }
@@ -5634,7 +6168,11 @@ export const int: BrandFactory<"Int", number, IntError> = (parent) =>
       `The value ${safelyStringifyUnknownValue(error.value)} must be a safe integer.`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link int} rejects a number that is not a safe integer.
+ *
+ * @group Number
+ */
 export interface IntError extends TypeError<"Int"> {
   readonly value: number;
 }
@@ -5710,6 +6248,16 @@ export type NegativeInt = typeof NegativeInt.Output;
 /**
  * Number {@link Brand} requiring a value greater than `min`.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, greaterThan } from "@evolu/common";
+ *
+ * const GreaterThanTen = greaterThan(10)(Number);
+ *
+ * expectOk(GreaterThanTen.fromUnknown(11), 11);
+ * ```
+ *
  * @group Number
  */
 export const greaterThan =
@@ -5731,7 +6279,11 @@ export const greaterThan =
     );
   };
 
-/** @group Number */
+/**
+ * Error returned when {@link greaterThan} rejects a number.
+ *
+ * @group Number
+ */
 export interface GreaterThanError<
   Min extends number = number,
 > extends TypeError<`GreaterThan${Min}`> {
@@ -5741,6 +6293,16 @@ export interface GreaterThanError<
 
 /**
  * Number {@link Brand} requiring a value greater than or equal to `min`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, greaterThanOrEqualTo } from "@evolu/common";
+ *
+ * const AtLeastTen = greaterThanOrEqualTo(10)(Number);
+ *
+ * expectOk(AtLeastTen.fromUnknown(10), 10);
+ * ```
  *
  * @group Number
  */
@@ -5771,7 +6333,11 @@ export const greaterThanOrEqualTo =
     );
   };
 
-/** @group Number */
+/**
+ * Error returned when {@link greaterThanOrEqualTo} rejects a number.
+ *
+ * @group Number
+ */
 export interface GreaterThanOrEqualToError<
   Min extends number = number,
 > extends TypeError<`GreaterThanOrEqualTo${Min}`> {
@@ -5781,6 +6347,16 @@ export interface GreaterThanOrEqualToError<
 
 /**
  * Number {@link Brand} requiring a value less than `max`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, lessThan } from "@evolu/common";
+ *
+ * const LessThanTen = lessThan(10)(Number);
+ *
+ * expectOk(LessThanTen.fromUnknown(9), 9);
+ * ```
  *
  * @group Number
  */
@@ -5803,7 +6379,11 @@ export const lessThan =
     );
   };
 
-/** @group Number */
+/**
+ * Error returned when {@link lessThan} rejects a number.
+ *
+ * @group Number
+ */
 export interface LessThanError<
   Max extends number = number,
 > extends TypeError<`LessThan${Max}`> {
@@ -5824,6 +6404,16 @@ export type Age = typeof Age.Output;
 
 /**
  * Number {@link Brand} requiring a value less than or equal to `max`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, lessThanOrEqualTo } from "@evolu/common";
+ *
+ * const AtMostTen = lessThanOrEqualTo(10)(Number);
+ *
+ * expectOk(AtMostTen.fromUnknown(10), 10);
+ * ```
  *
  * @group Number
  */
@@ -5850,7 +6440,11 @@ export const lessThanOrEqualTo =
     );
   };
 
-/** @group Number */
+/**
+ * Error returned when {@link lessThanOrEqualTo} rejects a number.
+ *
+ * @group Number
+ */
 export interface LessThanOrEqualToError<
   Max extends number = number,
 > extends TypeError<`LessThanOrEqualTo${Max}`> {
@@ -5924,13 +6518,27 @@ export const DecimalString = /*#__PURE__*/ brand(
 );
 export type DecimalString = typeof DecimalString.Output;
 
-/** @group Number */
+/**
+ * Error returned when a string is not a canonical {@link DecimalString}.
+ *
+ * @group Number
+ */
 export interface DecimalStringError extends TypeError<"DecimalString"> {
   readonly value: string;
 }
 
 /**
  * {@link DecimalString} Brand requiring a value greater than or equal to zero.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { DecimalString, nonNegativeDecimalString } from "@evolu/common";
+ *
+ * const NonNegative = nonNegativeDecimalString(DecimalString);
+ *
+ * expectOk(NonNegative.fromUnknown("0.5"), "0.5");
+ * ```
  *
  * @group Number
  */
@@ -5953,7 +6561,11 @@ export const nonNegativeDecimalString: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be a non-negative decimal string.`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link nonNegativeDecimalString} rejects a decimal string.
+ *
+ * @group Number
+ */
 export interface NonNegativeDecimalStringError extends TypeError<"NonNegativeDecimalString"> {
   readonly value: string;
 }
@@ -5969,6 +6581,16 @@ export type NonNegativeDecimalString = typeof NonNegativeDecimalString.Output;
 
 /**
  * {@link DecimalString} Brand requiring a value greater than zero.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { DecimalString, positiveDecimalString } from "@evolu/common";
+ *
+ * const Positive = positiveDecimalString(DecimalString);
+ *
+ * expectOk(Positive.fromUnknown("0.5"), "0.5");
+ * ```
  *
  * @group Number
  */
@@ -5991,7 +6613,11 @@ export const positiveDecimalString: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be a positive decimal string.`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link positiveDecimalString} rejects a decimal string.
+ *
+ * @group Number
+ */
 export interface PositiveDecimalStringError extends TypeError<"PositiveDecimalString"> {
   readonly value: string;
 }
@@ -6011,6 +6637,16 @@ export type PositiveDecimalString = typeof PositiveDecimalString.Output;
 
 /**
  * {@link DecimalString} Brand requiring a value less than or equal to zero.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { DecimalString, nonPositiveDecimalString } from "@evolu/common";
+ *
+ * const NonPositive = nonPositiveDecimalString(DecimalString);
+ *
+ * expectOk(NonPositive.fromUnknown("-0.5"), "-0.5");
+ * ```
  *
  * @group Number
  */
@@ -6033,7 +6669,11 @@ export const nonPositiveDecimalString: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be a non-positive decimal string.`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link nonPositiveDecimalString} rejects a decimal string.
+ *
+ * @group Number
+ */
 export interface NonPositiveDecimalStringError extends TypeError<"NonPositiveDecimalString"> {
   readonly value: string;
 }
@@ -6049,6 +6689,16 @@ export type NonPositiveDecimalString = typeof NonPositiveDecimalString.Output;
 
 /**
  * {@link DecimalString} Brand requiring a value less than zero.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { DecimalString, negativeDecimalString } from "@evolu/common";
+ *
+ * const Negative = negativeDecimalString(DecimalString);
+ *
+ * expectOk(Negative.fromUnknown("-0.5"), "-0.5");
+ * ```
  *
  * @group Number
  */
@@ -6071,7 +6721,11 @@ export const negativeDecimalString: BrandFactory<
       `The value ${safelyStringifyUnknownValue(error.value)} must be a negative decimal string.`,
   );
 
-/** @group Number */
+/**
+ * Error returned when {@link negativeDecimalString} rejects a decimal string.
+ *
+ * @group Number
+ */
 export interface NegativeDecimalStringError extends TypeError<"NegativeDecimalString"> {
   readonly value: string;
 }
@@ -6163,7 +6817,11 @@ export const multipleOf = <const Divisor extends string>(
     );
 };
 
-/** @group Number */
+/**
+ * Error returned when {@link multipleOf} rejects a number.
+ *
+ * @group Number
+ */
 export interface MultipleOfError<
   Divisor extends string = string,
 > extends TypeError<`MultipleOf${Divisor}`> {
@@ -6242,6 +6900,16 @@ const decimalStringToParts = (value: string): DecimalParts => {
 /**
  * Number {@link Brand} requiring a value within an inclusive range.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { Number, between } from "@evolu/common";
+ *
+ * const Percentage = between(0, 100)(Number);
+ *
+ * expectOk(Percentage.fromUnknown(75), 75);
+ * ```
+ *
  * @group Number
  */
 export const between =
@@ -6269,7 +6937,11 @@ export const between =
     );
   };
 
-/** @group Number */
+/**
+ * Error returned when {@link between} rejects a number.
+ *
+ * @group Number
+ */
 export interface BetweenError<
   Min extends number = number,
   Max extends number = number,
@@ -6337,7 +7009,11 @@ export const array = <ElementType extends ConcreteTypeNode>(
     arrayRuntimeConfig,
   ) as ArrayType<ElementType>;
 
-/** @group Collection */
+/**
+ * The homogeneous readonly-array {@link Type} returned by {@link array}.
+ *
+ * @group Collection
+ */
 export interface ArrayType<ElementType extends TypeNode> extends Type<
   "Array",
   ReadonlyArray<ElementType["Input"]>,
@@ -6416,11 +7092,19 @@ type ArrayNodeError<ElementType extends TypeNode> = [
   ? ArrayElementsError<ElementType["Error"]>
   : ArrayError<ElementType["Error"]>;
 
-/** @group Collection */
+/**
+ * Error returned by {@link array} for a non-array value or invalid array items.
+ *
+ * @group Collection
+ */
 export type ArrayError<Error extends TypeError = TypeError> =
   ArrayNotArrayError | ArrayItemsErrorValue<Error, true>;
 
-/** @group Collection */
+/**
+ * Error returned when an {@link array} input is not an array.
+ *
+ * @group Collection
+ */
 export interface ArrayNotArrayError extends TypeError<"Array"> {
   readonly reason: {
     readonly kind: "NotArray";
@@ -6428,29 +7112,49 @@ export interface ArrayNotArrayError extends TypeError<"Array"> {
   };
 }
 
-/** @group Collection */
+/**
+ * An {@link array} error containing structural or element issues.
+ *
+ * @group Collection
+ */
 export type ArrayItemsError<Error extends TypeError> = ArrayItemsErrorValue<
   Error,
   true
 >;
 
-/** @group Collection */
+/**
+ * One structural or element issue found by {@link array}.
+ *
+ * @group Collection
+ */
 export type ArrayIssue<Error extends TypeError> =
   ArrayStructuralIssue | ArrayElementIssue<Error>;
 
-/** @group Collection */
+/**
+ * A missing array element.
+ *
+ * @group Collection
+ */
 export interface ArrayHoleIssue {
   readonly kind: "Hole";
   readonly index: number;
 }
 
-/** @group Collection */
+/**
+ * An array element defined by an accessor instead of a data property.
+ *
+ * @group Collection
+ */
 export interface ArrayAccessorIssue {
   readonly kind: "Accessor";
   readonly index: number;
 }
 
-/** @group Collection */
+/**
+ * An own array property other than `length` or an indexed element.
+ *
+ * @group Collection
+ */
 export interface ArrayExcessPropertyIssue {
   readonly kind: "ExcessProperty";
   readonly key: string | symbol;
@@ -6459,7 +7163,11 @@ export interface ArrayExcessPropertyIssue {
 type ArrayStructuralIssue =
   ArrayHoleIssue | ArrayAccessorIssue | ArrayExcessPropertyIssue;
 
-/** @group Collection */
+/**
+ * An invalid array element and its index.
+ *
+ * @group Collection
+ */
 export type ArrayElementIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Element";
@@ -6468,7 +7176,11 @@ export type ArrayElementIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
-/** @group Collection */
+/**
+ * An {@link array} error containing element errors from a typed boundary.
+ *
+ * @group Collection
+ */
 export type ArrayElementsError<Error extends TypeError> = [Error] extends [
   never,
 ]
@@ -6702,6 +7414,17 @@ const copyArrayPrefix = (
  * iteration order. Classification uses the realm-neutral object tag and
  * prototype structure under Evolu Type's trusted JavaScript policy.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { String, set } from "@evolu/common";
+ *
+ * const Tags = set(String);
+ * const tags = new Set(["local-first", "offline"]);
+ *
+ * expectOk(Tags.fromUnknown(tags), tags);
+ * ```
+ *
  * @group Collection
  */
 export const set = <ElementType extends ConcreteTypeNode>(
@@ -6712,7 +7435,11 @@ export const set = <ElementType extends ConcreteTypeNode>(
     setRuntimeConfig,
   ) as SetType<ElementType>;
 
-/** @group Collection */
+/**
+ * The homogeneous readonly-set {@link Type} returned by {@link set}.
+ *
+ * @group Collection
+ */
 export interface SetType<ElementType extends TypeNode> extends Type<
   "Set",
   ReadonlySet<ElementType["Input"]>,
@@ -6783,13 +7510,22 @@ type SetNodeError<ElementType extends TypeNode> = [
   ? SetElementsError<ElementType["Error"]>
   : SetError<ElementType["Error"]>;
 
-/** @group Collection */
+/**
+ * Error returned by {@link set} for a non-Set value, an invalid Set prototype,
+ * or invalid Set items.
+ *
+ * @group Collection
+ */
 export type SetError<Error extends TypeError = TypeError> =
   | SetNotSetError
   | SetUnexpectedPrototypeError
   | SetItemsErrorValue<Error, true>;
 
-/** @group Collection */
+/**
+ * Error returned when a {@link set} input is not a Set.
+ *
+ * @group Collection
+ */
 export interface SetNotSetError extends TypeError<"Set"> {
   readonly reason: {
     readonly kind: "NotSet";
@@ -6809,7 +7545,11 @@ export interface SetUnexpectedPrototypeError extends TypeError<"Set"> {
   };
 }
 
-/** @group Collection */
+/**
+ * An own property found on a Set value.
+ *
+ * @group Collection
+ */
 export interface SetExcessPropertyIssue {
   readonly kind: "ExcessProperty";
   readonly key: string | symbol;
@@ -6817,7 +7557,11 @@ export interface SetExcessPropertyIssue {
 
 type SetStructuralIssue = SetExcessPropertyIssue;
 
-/** @group Collection */
+/**
+ * An invalid Set element and its iteration index.
+ *
+ * @group Collection
+ */
 export type SetElementIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Element";
@@ -6826,13 +7570,21 @@ export type SetElementIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
-/** @group Collection */
+/**
+ * A {@link set} error containing structural or element issues.
+ *
+ * @group Collection
+ */
 export type SetItemsError<Error extends TypeError> = SetItemsErrorValue<
   Error,
   true
 >;
 
-/** @group Collection */
+/**
+ * A {@link set} error containing element errors from a typed boundary.
+ *
+ * @group Collection
+ */
 export type SetElementsError<Error extends TypeError> = [Error] extends [never]
   ? never
   : SetItemsErrorValue<Error, false>;
@@ -7111,17 +7863,12 @@ const validateSetItems = (
  * ### Example
  *
  * ```ts
- * import { Number, String, ok, transform, tuple } from "@evolu/common";
+ * import { Int64FromInt64String, String, tuple } from "@evolu/common";
  *
- * const NumberFromString = transform("NumberFromString", String, Number, {
- *   from: (value) => ok(globalThis.Number(value)),
- *   to: globalThis.String,
- * });
+ * const Entry = tuple(String, Int64FromInt64String);
  *
- * const Entry = tuple(String, NumberFromString);
- *
- * expectOk(Entry.fromUnknown(["count", "1"]), ["count", 1]);
- * expectOk(Entry.from.parent(["count", "1"]), ["count", 1]);
+ * expectOk(Entry.fromUnknown(["count", "1"]), ["count", 1n]);
+ * expectOk(Entry.from.parent(["count", "1"]), ["count", 1n]);
  * ```
  *
  * @group Collection
@@ -7718,7 +8465,7 @@ type PlainObjectError = ObjectError<
  * values have their own Types, and {@link instanceOf} when an instance belongs
  * to the domain.
  *
- * @group Base Types
+ * @group Base
  */
 export const Object: Type<
   "Object",
@@ -7878,20 +8625,13 @@ const isPlainObject = (value: object): boolean => {
  *
  * ```ts
  * import {
- *   Number,
+ *   Int64FromInt64String,
  *   String,
- *   ok,
  *   record,
- *   transform,
- *   type Result,
+ *   type Int64,
  * } from "@evolu/common";
  *
- * const ScoreFromString = transform("ScoreFromString", String, Number, {
- *   from: (value) => ok(globalThis.Number(value)),
- *   to: globalThis.String,
- * });
- *
- * const ScoresByUser = record(String, ScoreFromString);
+ * const ScoresByUser = record(String, Int64FromInt64String);
  * type ScoresByUser = typeof ScoresByUser.Output;
  *
  * // Validate an unknown value.
@@ -7900,7 +8640,7 @@ const isPlainObject = (value: object): boolean => {
  *   grace: "20",
  * });
  *
- * expectOk(scoresFromUnknown, { ada: 10, grace: 20 });
+ * expectOk(scoresFromUnknown, { ada: 10n, grace: 20n });
  *
  * // Validate keys and values with their root Types.
  * const scoresInput = ScoresByUser.parent.fromUnknown({
@@ -7912,11 +8652,10 @@ const isPlainObject = (value: object): boolean => {
  * // Run the remaining key and value stages.
  * const scoresFromInput = ScoresByUser.from.parent(scoresInput.value);
  *
- * expectTypeOf(scoresFromInput).toEqualTypeOf<
- *   Result<Readonly<Partial<Record<string, number>>>, never>
+ * expectOk(scoresFromInput, { ada: 10n, grace: 20n });
+ * expectTypeOf(scoresFromInput.value).toEqualTypeOf<
+ *   Readonly<Partial<Record<string, Int64>>>
  * >();
- *
- * expectOk(scoresFromInput, { ada: 10, grace: 20 });
  * ```
  *
  * Note that TypeScript does not model an object's runtime prototype. This can
@@ -8132,7 +8871,11 @@ export const record = <
   );
 };
 
-/** @group Objects */
+/**
+ * The {@link Type} returned by {@link record}.
+ *
+ * @group Objects
+ */
 export interface RecordType<
   KeyType extends TypeNode,
   ValueType extends TypeNode,
@@ -8256,7 +8999,11 @@ type RecordKeyStringTypeError = CompileTimeError<
   "Record key Type Input and Output must extend string."
 >;
 
-/** @group Objects */
+/**
+ * Error returned while validating a {@link record} and its entries.
+ *
+ * @group Objects
+ */
 export type RecordError<
   KeyError extends TypeError = TypeError,
   ValueError extends TypeError = TypeError,
@@ -8270,7 +9017,11 @@ export type RecordError<
       Collision | RecordAccessorIssue | RecordNonEnumerableIssue
     >;
 
-/** @group Objects */
+/**
+ * Error returned when a {@link record} input is not an object.
+ *
+ * @group Objects
+ */
 export interface RecordNotRecordError extends TypeError<"Record"> {
   readonly reason: {
     readonly kind: "NotRecord";
@@ -8278,7 +9029,11 @@ export interface RecordNotRecordError extends TypeError<"Record"> {
   };
 }
 
-/** @group Objects */
+/**
+ * Error returned when a {@link record} input is not a plain object.
+ *
+ * @group Objects
+ */
 export interface RecordNotPlainRecordError extends TypeError<"Record"> {
   readonly reason: {
     readonly kind: "NotPlainRecord";
@@ -8303,14 +9058,22 @@ export type RecordEntriesError<
   ? never
   : RecordEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
 
-/** @group Objects */
+/**
+ * An invalid key, value, or property structure in a {@link record}.
+ *
+ * @group Objects
+ */
 export type RecordIssue<
   KeyError extends TypeError,
   ValueError extends TypeError,
   StructuralIssue extends RecordStructuralIssue = RecordCollisionIssue,
 > = RecordKeyIssue<KeyError> | RecordValueIssue<ValueError> | StructuralIssue;
 
-/** @group Objects */
+/**
+ * A property-structure issue returned by {@link record}.
+ *
+ * @group Objects
+ */
 export type RecordStructuralIssue =
   RecordAccessorIssue | RecordCollisionIssue | RecordNonEnumerableIssue;
 
@@ -8334,7 +9097,11 @@ export interface RecordNonEnumerableIssue {
   readonly key: string | symbol;
 }
 
-/** @group Objects */
+/**
+ * An invalid key and its source property key in a {@link record}.
+ *
+ * @group Objects
+ */
 export type RecordKeyIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Key";
@@ -8343,7 +9110,11 @@ export type RecordKeyIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
-/** @group Objects */
+/**
+ * An invalid value and its property key in a {@link record}.
+ *
+ * @group Objects
+ */
 export type RecordValueIssue<Error extends TypeError> = Error extends TypeError
   ? {
       readonly kind: "Value";
@@ -8352,7 +9123,11 @@ export type RecordValueIssue<Error extends TypeError> = Error extends TypeError
     }
   : never;
 
-/** @group Objects */
+/**
+ * Two {@link record} keys that decode to the same output key.
+ *
+ * @group Objects
+ */
 export interface RecordCollisionIssue {
   readonly kind: "Collision";
   readonly key: string | symbol;
@@ -8579,48 +9354,38 @@ type ObjectProperty = ObjectProps[string];
  *
  * ```ts
  * import {
- *   Number,
+ *   Int64FromInt64String,
  *   String,
  *   object,
- *   ok,
- *   transform,
  *   type InferType,
- *   type Result,
  * } from "@evolu/common";
- *
- * const AgeFromString = transform("AgeFromString", String, Number, {
- *   from: (value) => ok(globalThis.Number(value)),
- *   to: globalThis.String,
- * });
  *
  * const User = object({
  *   name: String,
- *   age: AgeFromString,
+ *   loginCount: Int64FromInt64String,
  * });
  * interface User extends InferType<typeof User> {}
  *
  * // Validate an unknown value.
- * const userFromUnknown = User.fromUnknown({ name: "Ada", age: "42" });
+ * const userFromUnknown = User.fromUnknown({
+ *   name: "Ada",
+ *   loginCount: "42",
+ * });
  *
- * expectOk(userFromUnknown, { name: "Ada", age: 42 });
+ * expectOk(userFromUnknown, { name: "Ada", loginCount: 42n });
  *
  * // Validate the object and root property Types.
  * const userInput = User.parent.fromUnknown({
  *   name: "Ada",
- *   age: "42",
+ *   loginCount: "42",
  * });
- * expectOk(userInput, { name: "Ada", age: "42" });
+ * expectOk(userInput, { name: "Ada", loginCount: "42" });
  *
  * // Run the remaining property stages.
- * const userFromInput: Result<
- *   { readonly name: string; readonly age: number },
- *   never
- * > = User.from.parent(userInput.value);
+ * const userFromInput = User.from.parent(userInput.value);
  *
- * expectTypeOf(userFromInput).toEqualTypeOf<
- *   Result<{ readonly name: string; readonly age: number }, never>
- * >();
- * expectOk(userFromInput, { name: "Ada", age: 42 });
+ * expectOk(userFromInput, { name: "Ada", loginCount: 42n });
+ * expectTypeOf(userFromInput.value).toExtend<User>();
  * ```
  *
  * Note that TypeScript does not model an object's runtime prototype. This can
@@ -8673,6 +9438,8 @@ export function object<const Props extends ObjectProps>(
     ? []
     : [ValidationFailure<ObjectValidationError<Props>>]
 ): StrictObjectType<Props>;
+
+/** Creates an Object Type with additional record properties. */
 export function object<
   const Props extends ObjectProps,
   const Rest extends RecordTypeNode & ConcreteTypeNode,
@@ -9269,7 +10036,11 @@ type ObjectRecordCanonicalInputTypeError = CompileTimeError<
   "Every declared property Type CanonicalInput must extend the Object Record value Type CanonicalInput."
 >;
 
-/** @group Objects */
+/**
+ * The {@link Type} returned by {@link object}.
+ *
+ * @group Objects
+ */
 export type ObjectType<
   Props extends ObjectProps,
   Rest extends ObjectRecordTypeNode | undefined = undefined,
@@ -9704,7 +10475,11 @@ export const partial = <const Props extends ObjectProps>(
   >;
 };
 
-/** @group Objects */
+/**
+ * Maps every required object property Type to an optional property.
+ *
+ * @group Objects
+ */
 export type PartialObjectProps<Props extends ObjectProps> = {
   readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
     ? Props[Key]
@@ -9774,7 +10549,12 @@ export const nullableToOptional = <const Props extends ObjectProps>(
   >;
 };
 
-/** @group Objects */
+/**
+ * Maps object properties whose Union Type includes {@link Null} to optional
+ * properties.
+ *
+ * @group Objects
+ */
 export type NullableToOptionalProps<Props extends ObjectProps> = {
   readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
     ? Props[Key]
@@ -9787,6 +10567,17 @@ export type NullableToOptionalProps<Props extends ObjectProps> = {
 
 /**
  * Object {@link Type} without the selected declared properties.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { String, object, omit } from "@evolu/common";
+ *
+ * const User = object({ name: String, password: String });
+ * const PublicUser = omit(User, "password");
+ *
+ * expectOk(PublicUser.fromUnknown({ name: "Ada" }), { name: "Ada" });
+ * ```
  *
  * @group Objects
  */
@@ -9840,11 +10631,11 @@ type OmitKeyConcreteTypeError = CompileTimeError<
 >;
 
 /**
- * {@link Result} {@link Type} for typed success and error values.
+ * Creates a {@link Type} for {@link Result} values.
  *
  * Use this to validate Results crossing a storage, worker, API, or other
- * serialization boundary. The operation returns an outer validation Result. Its
- * successful value is the inner domain Result described by `okType` and
+ * serialization boundary. `fromUnknown` returns an outer validation Result.
+ * Its successful value is the inner domain Result described by `okType` and
  * `errorType`.
  *
  * ### Example
@@ -9860,34 +10651,16 @@ type OmitKeyConcreteTypeError = CompileTimeError<
  *
  * const SyncResponse = result(
  *   object({ timestamp: NonNegativeInt }),
- *   typed("SyncError", { message: String }),
+ *   typed("SyncFailed", { message: String }),
  * );
  *
- * const describeResponse = (input: unknown): string => {
- *   const validated = SyncResponse.fromUnknown(input);
- *   if (!validated.ok) return "Invalid response";
+ * const validated = SyncResponse.fromUnknown({
+ *   ok: true,
+ *   value: { timestamp: 42 },
+ * });
  *
- *   const response = validated.value;
- *   return response.ok
- *     ? `Synced at ${response.value.timestamp}`
- *     : response.error.message;
- * };
- *
- * expect(
- *   describeResponse({
- *     ok: true,
- *     value: { timestamp: 42 },
- *   }),
- * ).toBe("Synced at 42");
- * expect(
- *   describeResponse({
- *     ok: false,
- *     error: { type: "SyncError", message: "Offline" },
- *   }),
- * ).toBe("Offline");
- * expect(describeResponse({ ok: true, value: { timestamp: -1 } })).toBe(
- *   "Invalid response",
- * );
+ * expectOk(validated, { ok: true, value: { timestamp: 42 } });
+ * expectOk(validated.value, { timestamp: 42 });
  * ```
  *
  * @group Results
@@ -9942,7 +10715,7 @@ export const UnknownResult = /*#__PURE__*/ result(Unknown, Unknown);
 export type UnknownResult = typeof UnknownResult.Output;
 
 /**
- * Tagged {@link ObjectType}.
+ * Creates an {@link ObjectType} with a literal `type` property.
  *
  * The discriminator belongs to `typed`, so additional properties cannot declare
  * `type`. The discriminator Input is `string`, inherited from {@link String},
@@ -9954,21 +10727,15 @@ export type UnknownResult = typeof UnknownResult.Output;
  * ### Example
  *
  * ```ts
- * import { String, discriminatedUnion, typed } from "@evolu/common";
+ * import { String, typed } from "@evolu/common";
  *
  * const Pending = typed("Pending", {
  *   label: String,
  * });
  *
- * const Completed = typed("Completed");
- * const Status = discriminatedUnion(Pending, Completed);
- *
- * expectOk(Status.fromUnknown({ type: "Pending", label: "Waiting" }), {
+ * expectOk(Pending.fromUnknown({ type: "Pending", label: "Waiting" }), {
  *   type: "Pending",
  *   label: "Waiting",
- * });
- * expectOk(Status.fromUnknown({ type: "Completed" }), {
- *   type: "Completed",
  * });
  * ```
  *
@@ -9977,6 +10744,8 @@ export type UnknownResult = typeof UnknownResult.Output;
 export function typed<const Tag extends TypeName>(
   tag: ValidateTypedTag<Tag>,
 ): TypedType<Tag>;
+
+/** Creates a Tagged Object Type with declared properties. */
 export function typed<
   const Tag extends TypeName,
   const Props extends ObjectProps,
@@ -9987,6 +10756,8 @@ export function typed<
     ? []
     : [ValidationFailure<TypedValidationError<Props>>]
 ): TypedType<Tag, Props>;
+
+/** Creates a Tagged Object Type with additional record properties. */
 export function typed<
   const Tag extends TypeName,
   const Props extends ObjectProps,
@@ -10026,7 +10797,14 @@ export function typed(
 }
 
 /**
- * A structurally tagged value created by {@link typed}.
+ * A TypeScript interface with a literal `type` property.
+ *
+ * Use `Typed` for both domain objects in discriminated unions and plain domain
+ * errors returned by {@link Result}. Name a domain error interface `XError`.
+ * When `X` already describes a failure, use `X` for its `type` discriminant
+ * because `Error` describes the interface's role rather than the runtime error
+ * kind. Keep `Error` when it is needed to make the discriminant unambiguous,
+ * such as `TimeoutError`.
  *
  * Typed unions model mutually exclusive states as separate variants instead of
  * combinations of flags and optional properties. TypeScript narrows a union by
@@ -10037,20 +10815,23 @@ export function typed(
  * ### Example
  *
  * ```ts
- * import { type Typed } from "@evolu/common";
+ * import { err, ok, type Result, type Typed } from "@evolu/common";
  *
- * type Status = Typed<"Pending"> | Typed<"Completed">;
+ * interface User extends Typed<"User"> {
+ *   readonly id: string;
+ * }
  *
- * const getStatusMessage = (status: Status): string => {
- *   switch (status.type) {
- *     case "Pending":
- *       return "Waiting";
- *     case "Completed":
- *       return "Done";
- *   }
- * };
+ * const getUser = (id: string): Result<User, UserNotFoundError> =>
+ *   id === "user-1"
+ *     ? ok({ type: "User", id })
+ *     : err({ type: "UserNotFound", id });
  *
- * expect(getStatusMessage({ type: "Pending" })).toBe("Waiting");
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {
+ *   readonly id: string;
+ * }
+ *
+ * expectOk(getUser("user-1"), { type: "User", id: "user-1" });
+ * expectErr(getUser("missing"), { type: "UserNotFound", id: "missing" });
  * ```
  *
  * @group Discriminated unions
@@ -10062,9 +10843,8 @@ export interface Typed<Tag extends TypeName> {
 /**
  * Extracts members of a {@link Typed} Output union by their `type` literal.
  *
- * The requested name is constrained to the union's actual discriminator values,
- * so a misspelling is a TypeScript error instead of silently producing
- * `never`.
+ * The requested tag is constrained to the union's actual discriminator values,
+ * so a misspelling is a TypeScript error instead of silently producing `never`.
  *
  * ### Example
  *
@@ -10134,7 +10914,8 @@ type TypedTypePropertyError = CompileTimeError<
 >;
 
 /**
- * Producer-result {@link Type} for value, error, or done outcomes.
+ * Creates a {@link Type} for producer Results with value, error, or done
+ * outcomes.
  *
  * The three outcomes are `Ok<Value>`, `Err<Error>`, and `Err<Typed<"Done"> & {
  * done: Done }>`. This keeps normal completion distinct from failure while
@@ -10147,7 +10928,7 @@ type TypedTypePropertyError = CompileTimeError<
  *
  * const StringNextResult = nextResult(
  *   String,
- *   typed("ProducerError", { message: String }),
+ *   typed("ReadFailed", { message: String }),
  *   String,
  * );
  *
@@ -10171,7 +10952,7 @@ type TypedTypePropertyError = CompileTimeError<
  * expect(
  *   describeNext({
  *     ok: false,
- *     error: { type: "ProducerError", message: "Offline" },
+ *     error: { type: "ReadFailed", message: "Offline" },
  *   }),
  * ).toBe("Error: Offline");
  * ```
@@ -10233,7 +11014,7 @@ export const UnknownNextResult = /*#__PURE__*/ nextResult(
 export type UnknownNextResult = typeof UnknownNextResult.Output;
 
 /**
- * Discriminated Union {@link Type}.
+ * Discriminated union {@link Type}.
  *
  * With no explicit key, the conventional `type` property created by
  * {@link typed} is used. Pass a key first to discriminate
@@ -10268,6 +11049,35 @@ export function discriminatedUnion<
 >(
   ...members: Members & DiscriminatedUnionValidation<"type", Members>
 ): DiscriminatedUnionType<"type", Members>;
+
+/**
+ * Creates a Discriminated Union Type with an explicit discriminator key.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   Number,
+ *   String,
+ *   discriminatedUnion,
+ *   literal,
+ *   object,
+ * } from "@evolu/common";
+ *
+ * const Added = object({ kind: literal("added"), value: String });
+ * const Removed = object({ kind: literal("removed"), id: Number });
+ * const Event = discriminatedUnion("kind", Added, Removed);
+ *
+ * expectOk(Event.fromUnknown({ kind: "added", value: "Evolu" }), {
+ *   kind: "added",
+ *   value: "Evolu",
+ * });
+ * expectOk(Event.fromUnknown({ kind: "removed", id: 1 }), {
+ *   kind: "removed",
+ *   id: 1,
+ * });
+ * ```
+ */
 export function discriminatedUnion<
   const Key extends string,
   const Members extends DiscriminatedUnionMembers,
@@ -10849,10 +11659,10 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
 };
 
 /**
- * Lazy {@link Type} for recursive definitions.
+ * Creates a lazy {@link Type} for recursive definitions.
  *
- * Lazy defers and caches a Type definition, allowing recursive data such as
- * trees and mutually recursive models.
+ * The definition is evaluated on first use and then cached, allowing recursive
+ * data such as trees and mutually recursive models.
  *
  * A recursive declaration refers to its own variable while that variable is
  * being initialized, so TypeScript cannot infer it reliably. Getter-based
@@ -10872,12 +11682,10 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
  *
  * ```ts
  * import {
- *   Number,
  *   String,
  *   array,
  *   lazy,
  *   object,
- *   optional,
  *   type ArrayError,
  *   type LazyType,
  *   type ObjectError,
@@ -10898,35 +11706,19 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
  *   () => object({ value: String, children: array(Tree) }),
  * );
  *
- * interface Left {
- *   readonly label: string;
- *   readonly right?: Right;
- * }
+ * const result = Tree.fromUnknown({
+ *   value: "root",
+ *   children: [{ value: "leaf", children: [] }],
+ * });
  *
- * interface Right {
- *   readonly count: number;
- *   readonly left?: Left;
- * }
- *
- * interface LeftError extends ObjectError<{
- *   readonly label: TypeOfError<"String">;
- *   readonly right?: RightError;
- * }> {}
- *
- * interface RightError extends ObjectError<{
- *   readonly count: TypeOfError<"Number">;
- *   readonly left?: LeftError;
- * }> {}
- *
- * const Left: LazyType<Left, Left, never, LeftError, LeftError> = lazy(
- *   () => object({ label: String, right: optional(Right) }),
- * );
- *
- * const Right: LazyType<Right, Right, never, RightError, RightError> =
- *   lazy(() => object({ count: Number, left: optional(Left) }));
+ * expectOk(result, {
+ *   value: "root",
+ *   children: [{ value: "leaf", children: [] }],
+ * });
+ * expectTypeOf(result.value).toEqualTypeOf<Tree>();
  * ```
  *
- * @group Recursive Types
+ * @group Recursive
  */
 export function lazy<Target extends ConcreteTypeNode>(
   getType: Thunk<ValidateLazyTarget<Target>>,
@@ -11045,7 +11837,7 @@ export function lazy(getType: Thunk<TypeNode>): TypeNode {
  * recursive declaration finite for TypeScript while preserving structured
  * errors at every boundary.
  *
- * @group Recursive Types
+ * @group Recursive
  */
 export interface LazyType<
   // Explicit invariance prevents recursive comparisons from repeatedly
@@ -11173,7 +11965,7 @@ export interface JsonObject {
 }
 
 /**
- * One issue found while validating an exact {@link JsonValue}.
+ * One issue found while validating a candidate as an exact {@link JsonValue}.
  *
  * @group JSON
  */
@@ -11221,7 +12013,8 @@ export type JsonValueIssue =
     };
 
 /**
- * An error containing one or more issues found in a {@link JsonValue}.
+ * An error containing one or more issues found while validating a candidate as
+ * an exact {@link JsonValue}.
  *
  * @group JSON
  */
@@ -11674,6 +12467,21 @@ const stringifyJsonValue = (value: JsonValue): Json => {
 /**
  * Exact root Type for {@link JsonValue} data trees.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { JsonValue, type JsonValueInput } from "@evolu/common";
+ *
+ * const input: JsonValueInput = {
+ *   name: "Ada",
+ *   scores: [10, 20],
+ * };
+ * const result = JsonValue.fromUnknown(input);
+ *
+ * expectOk(result, input);
+ * expectTypeOf(result.value).toEqualTypeOf<JsonValue>();
+ * ```
+ *
  * @group JSON
  */
 export const JsonValue: JsonValueType =
@@ -11730,6 +12538,16 @@ export type Json = typeof Json.Output;
 /**
  * Totally parses proven {@link Json} text into an exact {@link JsonValue}.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { Json, jsonToJsonValue } from "@evolu/common";
+ *
+ * const value = jsonToJsonValue(Json.orThrow('{"name":"Ada"}'));
+ *
+ * expect(value).toEqual({ name: "Ada" });
+ * ```
+ *
  * @group JSON
  */
 export const jsonToJsonValue = (value: Json): JsonValue => parseJson(value);
@@ -11737,16 +12555,37 @@ export const jsonToJsonValue = (value: Json): JsonValue => parseJson(value);
 /**
  * Totally encodes an exact {@link JsonValue} as canonical {@link Json} text.
  *
+ * ### Example
+ *
+ * ```ts
+ * import { jsonValueToJson, type JsonValue } from "@evolu/common";
+ *
+ * const value: JsonValue = { name: "Ada" };
+ *
+ * expect(jsonValueToJson(value)).toBe('{"name":"Ada"}');
+ * ```
+ *
  * @group JSON
  */
 export const jsonValueToJson = (value: JsonValue): Json =>
   stringifyJsonValue(JsonValue.to(value));
 
 /**
- * {@link Json} to {@link JsonValue} transformation.
+ * Transformation {@link Type} that parses {@link Json} into {@link JsonValue}.
  *
  * Decoding unknown input first validates the Json Brand. Starting from the
  * typed Json parent is infallible. Encoding canonicalizes JSON text.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { JsonValueFromJson } from "@evolu/common";
+ *
+ * const result = JsonValueFromJson.fromUnknown('{ "name": "Ada" }');
+ *
+ * expectOk(result, { name: "Ada" });
+ * expect(JsonValueFromJson.to(result.value)).toBe('{"name":"Ada"}');
+ * ```
  *
  * @group JSON
  */

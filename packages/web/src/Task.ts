@@ -20,17 +20,28 @@ import {
  * ### Example
  *
  * ```ts
+ * import {
+ *   createConsole,
+ *   createConsoleFormatter,
+ *   ok,
+ * } from "@evolu/common";
+ * import { createRun } from "@evolu/web";
+ *
  * const console = createConsole({
  *   formatter: createConsoleFormatter()({
  *     timestampFormat: "relative",
  *   }),
  * });
  *
- * const run = createRun({ console });
- * const appPromise = run.ok(startApp());
+ * await using run = createRun({ console });
+ * const appPromise = run.ok(() => ok("started"));
+ *
+ * expect(await appPromise).toBe("started");
  * ```
  */
 export function createRun(): DisposableRun;
+
+/** Creates a root {@link Run} for the browser with custom dependencies. */
 export function createRun<D extends object>(
   deps: RunCustomDeps<D>,
 ): DisposableRun<D>;

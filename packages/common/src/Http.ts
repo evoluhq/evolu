@@ -377,24 +377,33 @@ export function fetch(
   init?: Omit<RequestInit, "signal">,
 ): Task<string, FetchError>;
 
+/** Fetches a resource and parses a successful response body as JSON. */
 export function fetch(
   input: RequestInfo | URL,
   mode: "json",
   init?: Omit<RequestInit, "signal">,
 ): Task<unknown, FetchError>;
 
+/** Fetches a resource and reads a successful response body as bytes. */
 export function fetch(
   input: RequestInfo | URL,
   mode: "bytes",
   init?: Omit<RequestInit, "signal">,
 ): Task<Uint8Array<ArrayBuffer>, FetchError>;
 
+/**
+ * Fetches a resource and returns its body-free response metadata.
+ *
+ * HTTP status is returned as data rather than interpreted as success or
+ * failure.
+ */
 export function fetch(
   input: RequestInfo | URL,
   mode: "headers",
   init?: Omit<RequestInit, "signal">,
 ): Task<FetchResponse, FetchTransportError>;
 
+/** Fetches a resource and consumes its response with a custom callback. */
 export function fetch<T, E = never>(
   input: RequestInfo | URL,
   consume: FetchConsume<T, E>,

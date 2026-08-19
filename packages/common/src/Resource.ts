@@ -705,6 +705,8 @@ export function createSharedResourceByKey<
 >(
   create: (key: K) => Task<T, never, D>,
 ): Task<SharedResourceByKey<K, T>, never, D>;
+
+/** Creates {@link SharedResourceByKey} with lookup or lifecycle options. */
 export function createSharedResourceByKey<K, T extends Resource, D, L = K>(
   create: (key: K) => Task<T, never, D>,
   options: SharedResourceByKeyOptions<K, L>,

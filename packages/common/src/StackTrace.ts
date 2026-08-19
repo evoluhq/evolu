@@ -43,6 +43,8 @@ export function parseStackTrace(
   stack: string | undefined,
   options?: StackTraceOptions,
 ): StackTrace;
+
+/** Runs an async callback and parses the stack of the error it throws. */
 export function parseStackTrace(
   run: () => Promise<never>,
   options?: StackTraceOptions,
