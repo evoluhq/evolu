@@ -21,17 +21,17 @@ export const navigation: Array<NavGroup> = [
       },
       {
         title: "Result",
-        href: "/docs/api-reference/common/Result/type-aliases/Result",
+        href: "/docs/api-reference/common/Result",
       },
       { title: "Dependency injection", href: "/docs/dependency-injection" },
       { title: "Resource management", href: "/docs/resource-management" },
       {
         title: "Task",
-        href: "/docs/api-reference/common/Task/type-aliases/Task",
+        href: "/docs/api-reference/common/Task",
       },
       {
         title: "Type",
-        href: "/docs/api-reference/common/Type/interfaces/Type",
+        href: "/docs/api-reference/common/Type",
       },
       { title: "Conventions", href: "/docs/conventions" },
       { title: "Testing", href: "/docs/testing" },
@@ -45,7 +45,7 @@ export const navigation: Array<NavGroup> = [
       { title: "Examples", href: "/docs/examples" },
       {
         title: "Owners",
-        href: "/docs/api-reference/common/local-first/Owner/interfaces/Owner",
+        href: "/docs/api-reference/common/local-first/Owner",
       },
       { title: "Relay", href: "/docs/relay" },
       { title: "Migrations", href: "/docs/migrations" },
@@ -62,7 +62,6 @@ export const navigation: Array<NavGroup> = [
   {
     title: "Other",
     links: [
-      { title: "API reference", href: "/docs/api-reference" },
       { title: "Comparison", href: "/docs/comparison" },
       { title: "Showcase", href: "/docs/showcase" },
       { title: "Changelog", href: "https://github.com/evoluhq/evolu/releases" },

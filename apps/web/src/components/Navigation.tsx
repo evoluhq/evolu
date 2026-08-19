@@ -238,27 +238,39 @@ const NavigationGroup = ({
 
 export const Navigation = (
   props: React.ComponentPropsWithoutRef<"nav">,
-): React.ReactElement => (
-  <nav {...props}>
-    <ul role="list">
-      <TopLevelNavItem href="/blog">Blog</TopLevelNavItem>
-      <TopLevelNavItem target="_blank" href="https://github.com/evoluhq/evolu">
-        GitHub <IconArrowUpRight />
-      </TopLevelNavItem>
-      <TopLevelNavItem
-        target="_blank"
-        href="https://github.com/evoluhq/evolu/releases"
-      >
-        Releases <IconArrowUpRight />
-      </TopLevelNavItem>
+): React.ReactElement => {
+  const pathname = usePathname();
 
-      {navigation.map((group, groupIndex) => (
-        <NavigationGroup
-          key={group.title}
-          group={group}
-          className={groupIndex === 0 ? "md:mt-0" : ""}
-        />
-      ))}
-    </ul>
-  </nav>
-);
+  return (
+    <nav {...props}>
+      <ul role="list">
+        {pathname.startsWith("/docs") && (
+          <TopLevelNavItem href="/docs/api-reference">
+            API reference
+          </TopLevelNavItem>
+        )}
+        <TopLevelNavItem href="/blog">Blog</TopLevelNavItem>
+        <TopLevelNavItem
+          target="_blank"
+          href="https://github.com/evoluhq/evolu"
+        >
+          GitHub <IconArrowUpRight />
+        </TopLevelNavItem>
+        <TopLevelNavItem
+          target="_blank"
+          href="https://github.com/evoluhq/evolu/releases"
+        >
+          Releases <IconArrowUpRight />
+        </TopLevelNavItem>
+
+        {navigation.map((group, groupIndex) => (
+          <NavigationGroup
+            key={group.title}
+            group={group}
+            className={groupIndex === 0 ? "md:mt-0" : ""}
+          />
+        ))}
+      </ul>
+    </nav>
+  );
+};

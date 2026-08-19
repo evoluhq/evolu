@@ -180,7 +180,7 @@ const fixMdxFile = (
     const headingMatch = /^(#{2,4}) /.exec(line);
     if (headingMatch) {
       const level = headingMatch[1].length;
-      if (/^#{2,4} (?:Type Parameter|Parameter|Return)/.test(line)) {
+      if (/^#{2,4} (?:Type Parameters?|Parameters?|Returns?)$/.test(line)) {
         skipUntilLevel = level;
         continue;
       }

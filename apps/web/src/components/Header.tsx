@@ -229,6 +229,11 @@ export const Header = /*#__PURE__*/ forwardRef<
       <div className="flex items-center gap-5">
         <nav className="hidden md:block">
           <ul role="list" className="flex items-center gap-8">
+            {pathname.startsWith("/docs") && (
+              <TopLevelNavItem href="/docs/api-reference">
+                API reference
+              </TopLevelNavItem>
+            )}
             {pathname.startsWith("/blog") && (
               <TopLevelNavItem href="/">Home</TopLevelNavItem>
             )}

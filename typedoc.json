@@ -6,7 +6,7 @@
   "exclude": ["packages/typescript-config"],
   "packageOptions": {
     "entryPoints": ["src/**/*.ts"],
-    "exclude": ["src/**/index.ts"]
+    "exclude": ["src/**/index.ts", "src/intl/*.ts"]
   },
   "plugin": ["typedoc-plugin-markdown", "./scripts/typedoc-plugin-evolu.mts"],
   "publicPath": "/docs/api-reference",
@@ -21,7 +21,6 @@
   "expandObjects": true,
   "expandParameters": true,
   "readme": "none",
-  "hideGroupHeadings": true,
   "indexFormat": "table",
   "parametersFormat": "table",
   "interfacePropertiesFormat": "list",

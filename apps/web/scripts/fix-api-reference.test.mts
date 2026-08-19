@@ -43,6 +43,10 @@ Removed.
 ## Example
 
 Kept.
+
+### Returning resources from Tasks
+
+Also kept.
 `,
     );
 
@@ -56,6 +60,8 @@ Kept.
     assert.match(fixed, /\[API reference\]\(\/docs\/api-reference\) › common/);
     assert.doesNotMatch(fixed, /## Parameters/);
     assert.match(fixed, /## Example/);
+    assert.match(fixed, /### Returning resources from Tasks/);
+    assert.match(fixed, /Also kept\./);
     assert.match(
       await fs.readFile(path.join(sourceDir, "page.mdx"), "utf8"),
       /## Packages\n\nPackage/,
@@ -91,7 +97,7 @@ Kept.
     const pagePath = path.join(docsDir, mdxPath);
     const outputPath = path.join(directory, "sections.json");
     await fs.mkdir(path.dirname(pagePath), { recursive: true });
-    await fs.writeFile(pagePath, "## First\n");
+    await fs.writeFile(pagePath, "## First\n\n## Call Signature\n");
     await fs.mkdir(path.join(docsDir, "docs/empty"));
     await fs.writeFile(path.join(docsDir, "docs/empty/page.mdx"), "Empty.\n");
 
@@ -102,7 +108,7 @@ Kept.
     });
     assert.equal(await generateSections({ docsDir, outputPath }), false);
 
-    await fs.writeFile(pagePath, "## Second\n");
+    await fs.writeFile(pagePath, "## Second\n\n## Call Signature\n");
     assert.equal(
       await generateSections({
         docsDir,
