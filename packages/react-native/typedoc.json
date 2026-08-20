@@ -3,8 +3,6 @@
   "tsconfig": "tsconfig.build.json",
   "entryPoints": [
     "src/web.ts",
-    "src/exports/expo-sqlite.ts",
-    "src/exports/expo-op-sqlite.ts",
-    "src/exports/bare-op-sqlite.ts"
+    "src/exports/expo-sqlite.ts"
   ]
 }

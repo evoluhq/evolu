@@ -24,7 +24,7 @@ npm install @evolu/common @evolu/react @evolu/react-web
 
 ```bash {{ title: 'React Native' }}
 npm install @evolu/common @evolu/react @evolu/react-native \
-  @op-engineering/op-sqlite react-native-quick-crypto
+  expo expo-sqlite react-native-quick-crypto
 ```
 
 ```bash {{ title: 'Expo' }}
@@ -48,8 +48,14 @@ npm install @evolu/common @evolu/web
 
 <ConditionalPlatformAlert platform={["Expo"]} type="warning">
   **Expo Go is not supported** as it requires native dependencies
-  (`react-native-quick-crypto`). Use `expo-sqlite` for standard performance or
-  `expo-op-sqlite` for better performance.
+  (`react-native-quick-crypto`).
+</ConditionalPlatformAlert>
+
+<ConditionalPlatformAlert platform={["React Native"]} type="info">
+  Evolu uses `expo-sqlite` in React Native. Expo SDK packages work in existing
+  React Native apps after [installing Expo
+  modules](https://docs.expo.dev/bare/installing-expo-modules/); adopting Expo
+  modules does not require removing your native projects.
 </ConditionalPlatformAlert>
 
 <ConditionalPlatformAlert platform={["Expo", "React Native"]} type="info">
@@ -124,9 +130,9 @@ const { insert, update } = useEvolu();
 ```ts {{ title: 'React Native', language: 'tsx' }}
 import { createEvolu, Name } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
-import { evoluReactNativeDeps } from "@evolu/react-native/bare-op-sqlite";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
 
-const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
+const evolu = createEvolu(createEvoluDeps())(Schema, {
  appName: Name.orThrow("your-app-name"),
  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });
@@ -146,9 +152,9 @@ const { insert, update } = useEvolu();
 ```ts {{ title: 'Expo', language: 'tsx' }}
 import { createEvolu, Name } from "@evolu/common";
 import { createUseEvolu, EvoluProvider } from "@evolu/react";
-import { evoluReactNativeDeps } from "@evolu/react-native/expo-sqlite";
+import { createEvoluDeps } from "@evolu/react-native/expo-sqlite";
 
-const evolu = createEvolu(evoluReactNativeDeps)(Schema, {
+const evolu = createEvolu(createEvoluDeps())(Schema, {
  appName: Name.orThrow("your-app-name"),
  transports: [{ type: "WebSocket", url: "wss://your-sync-url" }], // optional, defaults to free.evoluhq.com
 });

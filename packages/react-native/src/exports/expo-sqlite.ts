@@ -2,7 +2,8 @@
  * Public entry point for Expo SQLite. Exported as
  * "@evolu/react-native/expo-sqlite" in package.json.
  *
- * Use this with Expo projects that use expo-sqlite.
+ * Use this with Expo projects and existing React Native projects configured
+ * with Expo modules.
  */
 
 import type { ConsoleDep } from "@evolu/common";
@@ -20,11 +21,3 @@ export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps =>
       void Expo.reloadAppAsync();
     },
   });
-
-// import { createExpoDeps } from "../createExpoDeps.ts";
-// import { createExpoSqliteDriver } from "../sqlite-drivers/createExpoSqliteDriver.ts";
-//
-// // eslint-disable-next-line evolu/require-pure-annotation
-// export const { evoluReactNativeDeps, localAuth } = createExpoDeps({
-//   createSqliteDriver: createExpoSqliteDriver,
-// });
