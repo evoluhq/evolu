@@ -1,4 +1,9 @@
-import { bench, section, utils } from "@paulmillr/jsbt/bench.js";
+import {
+  bench,
+  calcStats,
+  formatDuration,
+  section,
+} from "@paulmillr/jsbt/benchmark.js";
 import { strictEqual } from "node:assert";
 import { readFile, writeFile } from "node:fs/promises";
 import { cpus } from "node:os";
@@ -248,8 +253,7 @@ for (const strategy of strategies) {
             checkpoint,
           ),
         {
-          mode: "runOnce",
-          returnStats: true,
+          mode: "once",
           throughput: {
             amount: checkpointSize,
             unit: "inserts",
@@ -265,7 +269,9 @@ for (const strategy of strategies) {
 
   benchmarkResults.push({
     method: strategy,
-    durationNs: hrDurationFromJsbt(utils.calcStats([...runTotals]).median),
+    durationNs: hrDurationFromJsbt(
+      calcStats(Float64Array.from(runTotals, Number)).p50,
+    ),
     runCount: runTotals.length,
     amount: timestampCount,
     unit: "inserts",
@@ -310,8 +316,7 @@ for (let run = 1; run <= repeatCount; run++) {
       return timestamp;
     },
     {
-      mode: "runOnce",
-      returnStats: true,
+      mode: "once",
       throughput: { amount: getTimestampByIndexCount, unit: "calls" },
     },
   );
@@ -325,7 +330,7 @@ for (let run = 1; run <= repeatCount; run++) {
 benchmarkResults.push({
   method: "getTimestampByIndex",
   durationNs: hrDurationFromJsbt(
-    utils.calcStats([...getTimestampByIndexMeasurements]).median,
+    calcStats(Float64Array.from(getTimestampByIndexMeasurements, Number)).p50,
   ),
   runCount: getTimestampByIndexMeasurements.length,
   amount: getTimestampByIndexCount,
@@ -362,8 +367,7 @@ for (let run = 1; run <= fingerprintRangesRepeatCount; run++) {
       return fingerprintRanges.length;
     },
     {
-      mode: "runOnce",
-      returnStats: true,
+      mode: "once",
       throughput: { amount: fingerprintRangesCount, unit: "calls" },
     },
   );
@@ -374,7 +378,7 @@ for (let run = 1; run <= fingerprintRangesRepeatCount; run++) {
 benchmarkResults.push({
   method: "fingerprintRanges",
   durationNs: hrDurationFromJsbt(
-    utils.calcStats([...fingerprintRangesMeasurements]).min,
+    calcStats(Float64Array.from(fingerprintRangesMeasurements, Number)).min,
   ),
   runCount: fingerprintRangesMeasurements.length,
   amount: fingerprintRangesCount,
@@ -413,10 +417,10 @@ for (const result of benchmarkResults) {
       ? undefined
       : millisToHrDuration(baselineMeasurement);
   const change = baselineDuration
-    ? `, baseline ${utils.formatDuration(baselineDuration)}, ${formatChange(result.durationNs, baselineDuration)}`
+    ? `, baseline ${formatDuration(baselineDuration)}, ${formatChange(result.durationNs, baselineDuration)}`
     : "";
   process.stderr.write(
-    `${result.method}: ${utils.formatDuration(result.durationNs)}, ${((BigInt(result.amount) * 1_000_000_000n) / result.durationNs).toLocaleString()} ${result.unit}/sec, n=${result.runCount}${change}\n`,
+    `${result.method}: ${formatDuration(result.durationNs)}, ${((BigInt(result.amount) * 1_000_000_000n) / result.durationNs).toLocaleString()} ${result.unit}/sec, n=${result.runCount}${change}\n`,
   );
   if (
     baselineDuration !== undefined &&

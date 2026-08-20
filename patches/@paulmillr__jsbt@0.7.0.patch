@@ -1,0 +1,18 @@
+diff --git a/benchmark.js b/benchmark.js
+--- a/benchmark.js
++++ b/benchmark.js
+@@ -523,6 +523,6 @@ export async function bench(label, fnOrMode, fnOrOpts, modeOpts) {
+     if (csvOn) {
+         printBenchCsv(label, result, mode === 'once' || mode === 'time' ? undefined : rate);
+-        return;
++        return result;
+     }
+     let OUTPUT = `${label} `;
+     if (mode === 'once') {
+@@ -552,5 +552,5 @@ export async function bench(label, fnOrMode, fnOrOpts, modeOpts) {
+     }
+     printOutput(OUTPUT);
+-    return;
++    return result;
+ }
+ export default bench;

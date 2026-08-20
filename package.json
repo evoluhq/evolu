@@ -50,7 +50,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/nodejs": "workspace:*",
     "@evolu/vitest": "workspace:*",
-    "@paulmillr/jsbt": "0.6.1",
+    "@paulmillr/jsbt": "0.7.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^24.10.9",
