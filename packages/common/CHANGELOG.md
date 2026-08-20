@@ -1,5 +1,15 @@
 # @evolu/common
 
+## 8.3.1
+
+### Patch Changes
+
+- 726e982: Improved Type documentation
+
+  Expanded the Type overview with tested examples for branded constraints,
+  structured errors, localized messages, and typed boundaries. Clarified runtime
+  assertions, trust assumptions, and conversion terminology.
+
 ## 8.3.0
 
 ### Minor Changes
