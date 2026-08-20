@@ -412,19 +412,19 @@ describe("testCreateRun", () => {
       },
     }).toEqual({
       customSeed: {
-        random: 0.2016834503330904,
-        randomBytes: [245, 134, 211, 214, 27, 3, 165, 56],
-        randomLib: 154,
+        random: 0.12083238029952814,
+        randomBytes: [53, 205, 232, 45, 93, 200, 245, 107],
+        randomLib: 149,
       },
       defaultSeed: {
-        random: 0.1257169227085495,
-        randomBytes: [93, 169, 86, 19, 180, 45, 103, 217],
-        randomLib: 823,
+        random: 0.6133348181104821,
+        randomBytes: [246, 87, 195, 248, 64, 124, 159, 31],
+        randomLib: 633,
       },
       repeatedCustomSeed: {
-        random: 0.2016834503330904,
-        randomBytes: [245, 134, 211, 214, 27, 3, 165, 56],
-        randomLib: 154,
+        random: 0.12083238029952814,
+        randomBytes: [53, 205, 232, 45, 93, 200, 245, 107],
+        randomLib: 149,
       },
     });
   });
@@ -1926,8 +1926,8 @@ describe("Run", () => {
       expect(await fiber).toEqual(ok("enabled"));
       expect(events).toEqual([
         {
-          data: { childId: "mg8id41Qk7HxDoApjp0mZA", type: "ChildAdded" },
-          id: "IGNl5t4ulaaQpdnwDhgoCA",
+          data: { childId: "in2khoBFZNo9ESZlzuacxA", type: "ChildAdded" },
+          id: "ncqMQ1uwd5-zf5YKUbT3VA",
           timestamp: 0,
         },
         {
@@ -1941,7 +1941,7 @@ describe("Run", () => {
             },
             type: "StateChanged",
           },
-          id: "mg8id41Qk7HxDoApjp0mZA",
+          id: "in2khoBFZNo9ESZlzuacxA",
           timestamp: 0,
         },
         {
@@ -1956,12 +1956,12 @@ describe("Run", () => {
             },
             type: "StateChanged",
           },
-          id: "mg8id41Qk7HxDoApjp0mZA",
+          id: "in2khoBFZNo9ESZlzuacxA",
           timestamp: 0,
         },
         {
-          data: { childId: "mg8id41Qk7HxDoApjp0mZA", type: "ChildRemoved" },
-          id: "IGNl5t4ulaaQpdnwDhgoCA",
+          data: { childId: "in2khoBFZNo9ESZlzuacxA", type: "ChildRemoved" },
+          id: "ncqMQ1uwd5-zf5YKUbT3VA",
           timestamp: 0,
         },
       ]);

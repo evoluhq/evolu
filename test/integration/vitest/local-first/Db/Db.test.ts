@@ -558,7 +558,7 @@ describe("worker startup", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,0,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -710,15 +710,15 @@ describe("query and mutation flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "mg8id41Qk7HxDoApjp0mZA",
+          "callbackId": "in2khoBFZNo9ESZlzuacxA",
           "response": {
-            "id": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "ncqMQ1uwd5-zf5YKUbT3VA",
             "message": {
               "messagesByOwnerId": Map {},
               "rowsByQuery": Map {
                 "["select \\"id\\", \\"value\\" from \\"_localTable\\"",[],[]]" => [
                   {
-                    "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                    "id": "ofZXw_hAfJ8fIcpFxi6nag",
                     "value": "local only",
                   },
                 ],
@@ -833,7 +833,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,0,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -862,9 +862,9 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                "id": "ofZXw_hAfJ8fIcpFxi6nag",
                 "isDeleted": null,
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "updatedAt": null,
                 "value": "local only",
               },
@@ -896,15 +896,15 @@ describe("query and mutation flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "ane2ljnnecsBgmb_vbBHKw",
+          "callbackId": "dXpWgmgRSqCJV_tQPAS7Ug",
           "response": {
-            "id": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "ncqMQ1uwd5-zf5YKUbT3VA",
             "message": {
               "messagesByOwnerId": Map {},
               "rowsByQuery": Map {
                 "["select \\"id\\", \\"value\\" from \\"_localTable\\"",[],[]]" => [
                   {
-                    "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                    "id": "ofZXw_hAfJ8fIcpFxi6nag",
                     "value": "local only updated",
                   },
                 ],
@@ -1019,7 +1019,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,0,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -1048,9 +1048,9 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                "id": "ofZXw_hAfJ8fIcpFxi6nag",
                 "isDeleted": null,
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "updatedAt": "1970-01-01T00:00:00.000Z",
                 "value": "local only updated",
               },
@@ -1082,9 +1082,9 @@ describe("query and mutation flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "T-vftdB4K_reh6yT2RUm8w",
+          "callbackId": "uOCPavv1rW_A-VrpXIfUZA",
           "response": {
-            "id": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "ncqMQ1uwd5-zf5YKUbT3VA",
             "message": {
               "messagesByOwnerId": Map {},
               "rowsByQuery": Map {
@@ -1200,7 +1200,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,0,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -1461,7 +1461,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,1,0,0,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -1470,18 +1470,18 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "column": "name",
-                "id": uint8:[154,15,34,119,141,80,147,177,241,14,128,41,142,157,38,100],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[138,125,164,134,128,69,100,218,61,17,38,101,206,230,156,196],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,1,0,0,197,43,199,155,149,57,12,87],
                 "value": "synced",
               },
               {
                 "column": "createdAt",
-                "id": uint8:[154,15,34,119,141,80,147,177,241,14,128,41,142,157,38,100],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[138,125,164,134,128,69,100,218,61,17,38,101,206,230,156,196],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,1,0,0,197,43,199,155,149,57,12,87],
                 "value": "1970-01-01T00:00:00.001Z",
               },
             ],
@@ -1495,11 +1495,11 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 262052944750976,
-                "h2": 29027662046710,
-                "l": 2,
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
+                "h1": 239229796330191,
+                "h2": 206460782245569,
+                "l": 1,
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
+                "t": uint8:[0,0,0,0,0,1,0,0,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -1507,9 +1507,9 @@ describe("query and mutation flow", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
-                "lastTimestamp": uint8:[0,0,0,0,0,1,0,0,243,234,155,130,38,49,244,20],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "firstTimestamp": uint8:[0,0,0,0,0,1,0,0,197,43,199,155,149,57,12,87],
+                "lastTimestamp": uint8:[0,0,0,0,0,1,0,0,197,43,199,155,149,57,12,87],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "storedBytes": 1,
               },
             ],
@@ -1519,10 +1519,10 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.001Z",
-                "id": "mg8id41Qk7HxDoApjp0mZA",
+                "id": "in2khoBFZNo9ESZlzuacxA",
                 "isDeleted": null,
                 "name": "synced",
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "updatedAt": null,
               },
             ],
@@ -1531,20 +1531,20 @@ describe("query and mutation flow", () => {
             "name": "_localTable",
             "rows": [
               {
-                "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
-                "isDeleted": null,
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
-                "updatedAt": null,
-                "value": "first local",
-              },
-              {
                 "createdAt": "1970-01-01T00:00:00.002Z",
-                "id": "ane2ljnnecsBgmb_vbBHKw",
+                "id": "dXpWgmgRSqCJV_tQPAS7Ug",
                 "isDeleted": null,
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "updatedAt": null,
                 "value": "second local",
+              },
+              {
+                "createdAt": "1970-01-01T00:00:00.000Z",
+                "id": "ofZXw_hAfJ8fIcpFxi6nag",
+                "isDeleted": null,
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
+                "updatedAt": null,
+                "value": "first local",
               },
             ],
           },
@@ -1587,14 +1587,14 @@ describe("query and mutation flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "ane2ljnnecsBgmb_vbBHKw",
+          "callbackId": "dXpWgmgRSqCJV_tQPAS7Ug",
           "response": {
-            "id": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "ncqMQ1uwd5-zf5YKUbT3VA",
             "message": {
               "rowsByQuery": Map {
                 "["select \\"id\\", \\"name\\" from \\"testTable\\"",[],[]]" => [
                   {
-                    "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                    "id": "ofZXw_hAfJ8fIcpFxi6nag",
                     "name": "queryable",
                   },
                 ],
@@ -1754,7 +1754,7 @@ describe("query and mutation flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -1763,18 +1763,18 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "column": "name",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
                 "value": "queryable",
               },
               {
                 "column": "createdAt",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
                 "value": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -1788,11 +1788,11 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 227956131342583,
-                "h2": 225641860058631,
-                "l": 2,
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "h1": 185843381343203,
+                "h2": 137893834435770,
+                "l": 1,
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
+                "t": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -1800,9 +1800,9 @@ describe("query and mutation flow", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "storedBytes": 1,
               },
             ],
@@ -1812,10 +1812,10 @@ describe("query and mutation flow", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                "id": "ofZXw_hAfJ8fIcpFxi6nag",
                 "isDeleted": null,
                 "name": "queryable",
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "updatedAt": null,
               },
             ],
@@ -1856,15 +1856,15 @@ describe("sync message flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "mg8id41Qk7HxDoApjp0mZA",
+          "callbackId": "in2khoBFZNo9ESZlzuacxA",
           "response": {
-            "id": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "ncqMQ1uwd5-zf5YKUbT3VA",
             "message": {
               "messagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => [
+                "E5r2BDDbr-93Tm-dtezmYw" => [
                   {
                     "change": {
-                      "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                      "id": "ofZXw_hAfJ8fIcpFxi6nag",
                       "isDelete": null,
                       "isInsert": true,
                       "table": "testTable",
@@ -1875,7 +1875,7 @@ describe("sync message flow", () => {
                     "timestamp": {
                       "counter": 1,
                       "millis": 0,
-                      "nodeId": "f3ea9b822631f414",
+                      "nodeId": "c52bc79b95390c57",
                     },
                   },
                 ],
@@ -1901,11 +1901,11 @@ describe("sync message flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "ane2ljnnecsBgmb_vbBHKw",
+          "callbackId": "dXpWgmgRSqCJV_tQPAS7Ug",
           "response": {
             "message": {
               "protocolMessagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,1,0,1,1,243,234,155,130,38,49,244,20,1],
+                "E5r2BDDbr-93Tm-dtezmYw" => uint8:[1,19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99,0,0,1,0,1,2,1,0,1,1,197,43,199,155,149,57,12,87,1],
               },
               "type": "CreateSyncMessages",
             },
@@ -2017,7 +2017,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -2026,18 +2026,18 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "column": "name",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
                 "value": "synced",
               },
               {
                 "column": "createdAt",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
                 "value": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -2051,11 +2051,11 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 227956131342583,
-                "h2": 225641860058631,
-                "l": 2,
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "h1": 185843381343203,
+                "h2": 137893834435770,
+                "l": 1,
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
+                "t": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -2063,9 +2063,9 @@ describe("sync message flow", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "storedBytes": 1,
               },
             ],
@@ -2075,10 +2075,10 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                "id": "ofZXw_hAfJ8fIcpFxi6nag",
                 "isDeleted": null,
                 "name": "synced",
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "updatedAt": null,
               },
             ],
@@ -2134,12 +2134,12 @@ describe("sync message flow", () => {
     expect(outputs).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "T-vftdB4K_reh6yT2RUm8w",
+          "callbackId": "uOCPavv1rW_A-VrpXIfUZA",
           "response": {
             "message": {
               "protocolMessagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,1,0,1,1,243,234,155,130,38,49,244,20,1],
-                "aTWWTYCG02eZXcwSlNkOyA" => uint8:[1,105,53,150,77,128,134,211,103,153,93,204,18,148,217,14,200,0,0,1,0,1,2,1,0,2,1,243,234,155,130,38,49,244,20,1],
+                "E5r2BDDbr-93Tm-dtezmYw" => uint8:[1,19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99,0,0,1,0,1,2,1,0,1,1,197,43,199,155,149,57,12,87,1],
+                "T_QkGwGvJSAJeh24Fhmbzw" => uint8:[1,79,244,36,27,1,175,37,32,9,122,29,184,22,25,155,207,0,0,1,0,1,2,1,0,2,1,197,43,199,155,149,57,12,87,1],
               },
               "type": "CreateSyncMessages",
             },
@@ -2184,15 +2184,15 @@ describe("sync message flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "mg8id41Qk7HxDoApjp0mZA",
+          "callbackId": "in2khoBFZNo9ESZlzuacxA",
           "response": {
-            "id": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "ncqMQ1uwd5-zf5YKUbT3VA",
             "message": {
               "messagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => [
+                "E5r2BDDbr-93Tm-dtezmYw" => [
                   {
                     "change": {
-                      "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                      "id": "ofZXw_hAfJ8fIcpFxi6nag",
                       "isDelete": null,
                       "isInsert": true,
                       "table": "testTable",
@@ -2203,12 +2203,12 @@ describe("sync message flow", () => {
                     "timestamp": {
                       "counter": 1,
                       "millis": 0,
-                      "nodeId": "f3ea9b822631f414",
+                      "nodeId": "c52bc79b95390c57",
                     },
                   },
                   {
                     "change": {
-                      "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                      "id": "ofZXw_hAfJ8fIcpFxi6nag",
                       "isDelete": null,
                       "isInsert": false,
                       "table": "testTable",
@@ -2219,7 +2219,7 @@ describe("sync message flow", () => {
                     "timestamp": {
                       "counter": 2,
                       "millis": 0,
-                      "nodeId": "f3ea9b822631f414",
+                      "nodeId": "c52bc79b95390c57",
                     },
                   },
                 ],
@@ -2227,7 +2227,7 @@ describe("sync message flow", () => {
               "rowsByQuery": Map {
                 "["select \\"id\\", \\"name\\" from \\"testTable\\"",[],[]]" => [
                   {
-                    "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                    "id": "ofZXw_hAfJ8fIcpFxi6nag",
                     "name": "after",
                   },
                 ],
@@ -2342,7 +2342,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,2,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -2351,34 +2351,34 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "column": "name",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
                 "value": "before",
               },
               {
                 "column": "createdAt",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
                 "value": "1970-01-01T00:00:00.000Z",
               },
               {
                 "column": "name",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,0,0,2,197,43,199,155,149,57,12,87],
                 "value": "after",
               },
               {
                 "column": "updatedAt",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
-                "timestamp": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
+                "timestamp": uint8:[0,0,0,0,0,0,0,2,197,43,199,155,149,57,12,87],
                 "value": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -2392,19 +2392,19 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 227956131342583,
-                "h2": 225641860058631,
-                "l": 2,
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
+                "h1": 185843381343203,
+                "h2": 137893834435770,
+                "l": 1,
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
+                "t": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
               },
               {
                 "c": 1,
-                "h1": 79205771092971,
-                "h2": 119756240965943,
+                "h1": 169477223441834,
+                "h2": 244670917634708,
                 "l": 1,
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
+                "t": uint8:[0,0,0,0,0,0,0,2,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -2412,9 +2412,9 @@ describe("sync message flow", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,243,234,155,130,38,49,244,20],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,2,243,234,155,130,38,49,244,20],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,197,43,199,155,149,57,12,87],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,2,197,43,199,155,149,57,12,87],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "storedBytes": 1,
               },
             ],
@@ -2424,10 +2424,10 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                "id": "ofZXw_hAfJ8fIcpFxi6nag",
                 "isDeleted": null,
                 "name": "after",
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "updatedAt": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -2470,11 +2470,11 @@ describe("sync message flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "mg8id41Qk7HxDoApjp0mZA",
+          "callbackId": "in2khoBFZNo9ESZlzuacxA",
           "response": {
             "message": {
               "didWriteMessages": true,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "result": {
                 "ok": true,
                 "value": {
@@ -2502,14 +2502,14 @@ describe("sync message flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "ane2ljnnecsBgmb_vbBHKw",
+          "callbackId": "dXpWgmgRSqCJV_tQPAS7Ug",
           "response": {
-            "id": "IGNl5t4ulaaQpdnwDhgoCA",
+            "id": "ncqMQ1uwd5-zf5YKUbT3VA",
             "message": {
               "rowsByQuery": Map {
                 "["select \\"id\\", \\"name\\" from \\"testTable\\"",[],[]]" => [
                   {
-                    "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                    "id": "ofZXw_hAfJ8fIcpFxi6nag",
                     "name": "synced",
                   },
                 ],
@@ -2624,7 +2624,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,1,0,1,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,1,0,1,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -2633,16 +2633,16 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "column": "name",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
                 "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                 "value": "synced",
               },
               {
                 "column": "createdAt",
-                "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "testTable",
                 "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                 "value": "1970-01-01T00:00:00.001Z",
@@ -2660,8 +2660,8 @@ describe("sync message flow", () => {
                 "c": 1,
                 "h1": 233868751958873,
                 "h2": 133743750684856,
-                "l": 2,
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "l": 1,
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "t": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
               },
             ],
@@ -2672,7 +2672,7 @@ describe("sync message flow", () => {
               {
                 "firstTimestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                 "lastTimestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "storedBytes": 1,
               },
             ],
@@ -2682,10 +2682,10 @@ describe("sync message flow", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.001Z",
-                "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                "id": "ofZXw_hAfJ8fIcpFxi6nag",
                 "isDeleted": null,
                 "name": "synced",
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "updatedAt": null,
               },
             ],
@@ -2741,11 +2741,11 @@ describe("sync message flow", () => {
     expect(outputs).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "mg8id41Qk7HxDoApjp0mZA",
+          "callbackId": "in2khoBFZNo9ESZlzuacxA",
           "response": {
             "message": {
               "didWriteMessages": false,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "result": {
                 "ok": true,
                 "value": {
@@ -2862,7 +2862,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,0,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -2936,11 +2936,11 @@ describe("sync message flow", () => {
     expect(outputs).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "mg8id41Qk7HxDoApjp0mZA",
+          "callbackId": "in2khoBFZNo9ESZlzuacxA",
           "response": {
             "message": {
               "didWriteMessages": false,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "result": {
                 "ok": true,
                 "value": {
@@ -3057,7 +3057,7 @@ describe("sync message flow", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,0,243,234,155,130,38,49,244,20],
+                "clock": uint8:[0,0,0,0,0,0,0,0,197,43,199,155,149,57,12,87],
               },
             ],
           },
@@ -3592,11 +3592,11 @@ describe("sync message flow", () => {
     expect(syncResponses).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "mg8id41Qk7HxDoApjp0mZA",
+          "callbackId": "in2khoBFZNo9ESZlzuacxA",
           "response": {
             "message": {
               "protocolMessagesByOwnerId": Map {
-                "-9AbmkcTJdXDGMs8_ycHCw" => uint8:[1,251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11,0,0,1,0,1,2,2,0,0,1,1,2,1,243,234,155,130,38,49,244,20,2],
+                "E5r2BDDbr-93Tm-dtezmYw" => uint8:[1,19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99,0,0,1,0,1,2,2,0,0,1,1,2,1,197,43,199,155,149,57,12,87,2],
               },
               "type": "CreateSyncMessages",
             },
@@ -3664,11 +3664,11 @@ describe("sync message flow", () => {
     ).toMatchInlineSnapshot(`
       [
         {
-          "callbackId": "ane2ljnnecsBgmb_vbBHKw",
+          "callbackId": "dXpWgmgRSqCJV_tQPAS7Ug",
           "response": {
             "message": {
               "didWriteMessages": false,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "result": {
                 "ok": true,
                 "value": {
@@ -3987,11 +3987,11 @@ describe("quarantine replay", () => {
       ).toMatchInlineSnapshot(`
         [
           {
-            "callbackId": "mg8id41Qk7HxDoApjp0mZA",
+            "callbackId": "in2khoBFZNo9ESZlzuacxA",
             "response": {
               "message": {
                 "didWriteMessages": true,
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "result": {
                   "ok": true,
                   "value": {
@@ -4110,7 +4110,7 @@ describe("quarantine replay", () => {
               "name": "evolu_config",
               "rows": [
                 {
-                  "clock": uint8:[0,0,0,0,0,1,0,1,243,234,155,130,38,49,244,20],
+                  "clock": uint8:[0,0,0,0,0,1,0,1,197,43,199,155,149,57,12,87],
                 },
               ],
             },
@@ -4119,24 +4119,24 @@ describe("quarantine replay", () => {
               "rows": [
                 {
                   "column": "name",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "known",
                 },
                 {
                   "column": "createdAt",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "1970-01-01T00:00:00.001Z",
                 },
                 {
                   "column": "isDeleted",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": 0,
@@ -4148,8 +4148,8 @@ describe("quarantine replay", () => {
               "rows": [
                 {
                   "column": "note",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "later",
@@ -4163,8 +4163,8 @@ describe("quarantine replay", () => {
                   "c": 1,
                   "h1": 233868751958873,
                   "h2": 133743750684856,
-                  "l": 2,
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "l": 1,
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "t": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                 },
               ],
@@ -4175,7 +4175,7 @@ describe("quarantine replay", () => {
                 {
                   "firstTimestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "lastTimestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "storedBytes": 1,
                 },
               ],
@@ -4185,10 +4185,10 @@ describe("quarantine replay", () => {
               "rows": [
                 {
                   "createdAt": "1970-01-01T00:00:00.001Z",
-                  "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                  "id": "ofZXw_hAfJ8fIcpFxi6nag",
                   "isDeleted": 0,
                   "name": "known",
-                  "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                  "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                   "updatedAt": null,
                 },
               ],
@@ -4308,7 +4308,7 @@ describe("quarantine replay", () => {
               "name": "evolu_config",
               "rows": [
                 {
-                  "clock": uint8:[0,0,0,0,0,1,0,1,243,234,155,130,38,49,244,20],
+                  "clock": uint8:[0,0,0,0,0,1,0,1,197,43,199,155,149,57,12,87],
                 },
               ],
             },
@@ -4317,24 +4317,24 @@ describe("quarantine replay", () => {
               "rows": [
                 {
                   "column": "name",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "known",
                 },
                 {
                   "column": "createdAt",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "1970-01-01T00:00:00.001Z",
                 },
                 {
                   "column": "isDeleted",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": 0,
@@ -4346,8 +4346,8 @@ describe("quarantine replay", () => {
               "rows": [
                 {
                   "column": "note",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "later",
@@ -4361,8 +4361,8 @@ describe("quarantine replay", () => {
                   "c": 1,
                   "h1": 233868751958873,
                   "h2": 133743750684856,
-                  "l": 2,
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "l": 1,
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "t": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                 },
               ],
@@ -4373,7 +4373,7 @@ describe("quarantine replay", () => {
                 {
                   "firstTimestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "lastTimestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "storedBytes": 1,
                 },
               ],
@@ -4383,10 +4383,10 @@ describe("quarantine replay", () => {
               "rows": [
                 {
                   "createdAt": "1970-01-01T00:00:00.001Z",
-                  "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                  "id": "ofZXw_hAfJ8fIcpFxi6nag",
                   "isDeleted": 0,
                   "name": "known",
-                  "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                  "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                   "updatedAt": null,
                 },
               ],
@@ -4417,14 +4417,14 @@ describe("quarantine replay", () => {
       ).toMatchInlineSnapshot(`
         [
           {
-            "callbackId": "ane2ljnnecsBgmb_vbBHKw",
+            "callbackId": "dXpWgmgRSqCJV_tQPAS7Ug",
             "response": {
-              "id": "IGNl5t4ulaaQpdnwDhgoCA",
+              "id": "ncqMQ1uwd5-zf5YKUbT3VA",
               "message": {
                 "rowsByQuery": Map {
                   "["select \\"id\\", \\"name\\", \\"note\\" from \\"testTable\\"",[],[]]" => [
                     {
-                      "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                      "id": "ofZXw_hAfJ8fIcpFxi6nag",
                       "name": "known",
                       "note": "later",
                     },
@@ -4543,7 +4543,7 @@ describe("quarantine replay", () => {
               "name": "evolu_config",
               "rows": [
                 {
-                  "clock": uint8:[0,0,0,0,0,1,0,1,243,234,155,130,38,49,244,20],
+                  "clock": uint8:[0,0,0,0,0,1,0,1,197,43,199,155,149,57,12,87],
                 },
               ],
             },
@@ -4552,32 +4552,32 @@ describe("quarantine replay", () => {
               "rows": [
                 {
                   "column": "name",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "known",
                 },
                 {
                   "column": "createdAt",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "1970-01-01T00:00:00.001Z",
                 },
                 {
                   "column": "isDeleted",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": 0,
                 },
                 {
                   "column": "note",
-                  "id": uint8:[210,93,169,86,19,180,45,103,217,209,37,156,30,227,201,137],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "id": uint8:[161,246,87,195,248,64,124,159,31,33,202,69,198,46,167,106],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "table": "testTable",
                   "timestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "value": "later",
@@ -4595,8 +4595,8 @@ describe("quarantine replay", () => {
                   "c": 1,
                   "h1": 233868751958873,
                   "h2": 133743750684856,
-                  "l": 2,
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "l": 1,
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "t": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                 },
               ],
@@ -4607,7 +4607,7 @@ describe("quarantine replay", () => {
                 {
                   "firstTimestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
                   "lastTimestamp": uint8:[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
-                  "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                  "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                   "storedBytes": 1,
                 },
               ],
@@ -4617,11 +4617,11 @@ describe("quarantine replay", () => {
               "rows": [
                 {
                   "createdAt": "1970-01-01T00:00:00.001Z",
-                  "id": "0l2pVhO0LWfZ0SWcHuPJiQ",
+                  "id": "ofZXw_hAfJ8fIcpFxi6nag",
                   "isDeleted": 0,
                   "name": "known",
                   "note": "later",
-                  "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                  "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                   "updatedAt": null,
                 },
               ],

@@ -629,7 +629,7 @@ describe("unit tests", () => {
         expect.objectContaining({
           type: "CreateEvolu",
           name: evolu.name,
-          id: "mg8id41Qk7HxDoApjp0mZA",
+          id: "in2khoBFZNo9ESZlzuacxA",
           consoleLevel: expect.any(String),
           sqliteSchema: expect.any(Object),
           encryptionKey: testAppOwner.encryptionKey,
@@ -1582,7 +1582,7 @@ describe("unit tests", () => {
               "id": Any<String>,
               "isDelete": null,
               "isInsert": true,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "table": "todo",
               "values": {
                 "title": "Todo 1",
@@ -1642,7 +1642,7 @@ describe("unit tests", () => {
               "id": "VPIPiOGb2m2OlsM-pg18CA",
               "isDelete": true,
               "isInsert": false,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "table": "todo",
               "values": {
                 "title": "Updated",
@@ -1652,7 +1652,7 @@ describe("unit tests", () => {
               "id": "j4rh6UkYDIqXKLCOX4ru2A",
               "isDelete": null,
               "isInsert": true,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "table": "todo",
               "values": {
                 "title": "Upserted",
@@ -1714,7 +1714,7 @@ describe("unit tests", () => {
               "id": Any<String>,
               "isDelete": null,
               "isInsert": true,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "table": "todo",
               "values": {
                 "title": "A",
@@ -1724,7 +1724,7 @@ describe("unit tests", () => {
               "id": "fOTG65tQ_ZYHpSBp3GbogA",
               "isDelete": null,
               "isInsert": false,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "table": "todo",
               "values": {
                 "title": "B",
@@ -1734,7 +1734,7 @@ describe("unit tests", () => {
               "id": "3I1Sfwp5IxdacWcpAna5qg",
               "isDelete": null,
               "isInsert": true,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "table": "todo",
               "values": {
                 "title": "C",
@@ -1784,7 +1784,7 @@ describe("unit tests", () => {
               "id": Any<String>,
               "isDelete": null,
               "isInsert": true,
-              "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+              "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
               "table": "todo",
               "values": {
                 "title": "With callback",
@@ -2143,7 +2143,7 @@ describe("integration tests", () => {
             "name": "evolu_config",
             "rows": [
               {
-                "clock": uint8:[0,0,0,0,0,0,0,1,128,235,188,230,255,82,201,35],
+                "clock": uint8:[0,0,0,0,0,0,0,1,10,107,242,21,194,198,154,76],
               },
             ],
           },
@@ -2152,18 +2152,18 @@ describe("integration tests", () => {
             "rows": [
               {
                 "column": "title",
-                "id": uint8:[22,197,7,1,100,149,97,228,166,127,70,188,77,91,185,183],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[50,31,231,180,49,214,154,211,212,81,200,67,99,120,205,142],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "todo",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,128,235,188,230,255,82,201,35],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,10,107,242,21,194,198,154,76],
                 "value": "Integration todo",
               },
               {
                 "column": "createdAt",
-                "id": uint8:[22,197,7,1,100,149,97,228,166,127,70,188,77,91,185,183],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "id": uint8:[50,31,231,180,49,214,154,211,212,81,200,67,99,120,205,142],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "table": "todo",
-                "timestamp": uint8:[0,0,0,0,0,0,0,1,128,235,188,230,255,82,201,35],
+                "timestamp": uint8:[0,0,0,0,0,0,0,1,10,107,242,21,194,198,154,76],
                 "value": "1970-01-01T00:00:00.000Z",
               },
             ],
@@ -2177,11 +2177,11 @@ describe("integration tests", () => {
             "rows": [
               {
                 "c": 1,
-                "h1": 139890708283703,
-                "h2": 13632778320585,
-                "l": 2,
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
-                "t": uint8:[0,0,0,0,0,0,0,1,128,235,188,230,255,82,201,35],
+                "h1": 203560577542550,
+                "h2": 200327465842175,
+                "l": 1,
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
+                "t": uint8:[0,0,0,0,0,0,0,1,10,107,242,21,194,198,154,76],
               },
             ],
           },
@@ -2189,9 +2189,9 @@ describe("integration tests", () => {
             "name": "evolu_usage",
             "rows": [
               {
-                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,128,235,188,230,255,82,201,35],
-                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,128,235,188,230,255,82,201,35],
-                "ownerId": uint8:[251,208,27,154,71,19,37,213,195,24,203,60,255,39,7,11],
+                "firstTimestamp": uint8:[0,0,0,0,0,0,0,1,10,107,242,21,194,198,154,76],
+                "lastTimestamp": uint8:[0,0,0,0,0,0,0,1,10,107,242,21,194,198,154,76],
+                "ownerId": uint8:[19,154,246,4,48,219,175,239,119,78,111,157,181,236,230,99],
                 "storedBytes": 1,
               },
             ],
@@ -2201,10 +2201,10 @@ describe("integration tests", () => {
             "rows": [
               {
                 "createdAt": "1970-01-01T00:00:00.000Z",
-                "id": "FsUHAWSVYeSmf0a8TVu5tw",
+                "id": "Mh_ntDHWmtPUUchDY3jNjg",
                 "isCompleted": null,
                 "isDeleted": null,
-                "ownerId": "-9AbmkcTJdXDGMs8_ycHCw",
+                "ownerId": "E5r2BDDbr-93Tm-dtezmYw",
                 "title": "Integration todo",
                 "updatedAt": null,
               },

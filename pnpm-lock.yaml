@@ -726,8 +726,8 @@ importers:
         specifier: ^2.0.5
         version: 2.0.5
       random:
-        specifier: ^5.4.1
-        version: 5.4.1
+        specifier: 5.5.1
+        version: 5.5.1
     devDependencies:
       '@evolu/typescript-config':
         specifier: workspace:*
@@ -8798,9 +8798,9 @@ packages:
     resolution: {integrity: sha512-WuyALRjWPDGtt/wzJiadO5AXY+8hZ80hVpe6MyivgraREW751X3SbhRvG3eLKOYN+8VEvqLcf3wdnt44Z4S4SA==}
     engines: {node: '>=10'}
 
-  random@5.4.1:
-    resolution: {integrity: sha512-HtccRkYkAXCbj9bqsyGKGlicyeZ5AsQgs49fEuUO/BvrJ7WOQqXPjdg1CZrFjBkoT75ozrWlQXJ7TcXXLv2ISQ==}
-    engines: {node: '>=18'}
+  random@5.5.1:
+    resolution: {integrity: sha512-2TIJKf/BGjy0FGeZaan2+a/vq37afbSyscquADMFC13KBjFmg+10T/TkACpP9GMHfbEruKYbHqq0rjCA9x8gNA==}
+    engines: {node: '>=20'}
 
   range-parser@1.2.1:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
@@ -19352,7 +19352,7 @@ snapshots:
 
   quick-lru@5.1.1: {}
 
-  random@5.4.1: {}
+  random@5.5.1: {}
 
   range-parser@1.2.1: {}
 

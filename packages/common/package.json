@@ -69,7 +69,7 @@
     "@standard-schema/spec": "^1.1.0",
     "kysely": "^0.29.5",
     "msgpackr": "^2.0.5",
-    "random": "^5.4.1"
+    "random": "5.5.1"
   },
   "devDependencies": {
     "@evolu/typescript-config": "workspace:*",

@@ -11,8 +11,8 @@ describe("testCreateId", () => {
 
     expect([first, second]).toMatchInlineSnapshot(`
       [
-        "IGNl5t4ulaaQpdnwDhgoCA",
-        "0l2pVhO0LWfZ0SWcHuPJiQ",
+        "ncqMQ1uwd5-zf5YKUbT3VA",
+        "ofZXw_hAfJ8fIcpFxi6nag",
       ]
     `);
     expect(second).not.toBe(first);

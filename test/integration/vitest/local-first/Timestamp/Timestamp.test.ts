@@ -74,7 +74,7 @@ test("createInitialTimestamp", () => {
     {
       "counter": 0,
       "millis": 0,
-      "nodeId": "206365e6de2e95a6",
+      "nodeId": "9dca8c435bb0779f",
     }
   `);
 });
