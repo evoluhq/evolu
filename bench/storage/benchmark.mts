@@ -208,10 +208,7 @@ const hrDurationFromJsbt = (duration: bigint): HrDuration =>
 
 const benchmarkCsv =
   envFlag(process.env.JSBT_CSV) ||
-  !wantColor(
-    process.env,
-    Boolean(process.stderr.isTTY || process.stdout.isTTY),
-  );
+  !wantColor(process.env, process.stderr.isTTY || process.stdout.isTTY);
 let benchmarkSection = "";
 let benchmarkOutputStarted = false;
 let benchmarkCsvHeaderPrinted = false;

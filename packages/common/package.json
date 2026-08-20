@@ -63,11 +63,11 @@
     "format": "prettier --write \"src/*.{ts,tsx,md}\""
   },
   "dependencies": {
-    "@noble/ciphers": "^2.1.1",
-    "@noble/hashes": "^2.0.1",
-    "@scure/bip39": "^2.0.1",
+    "@noble/ciphers": "^2.3.0",
+    "@noble/hashes": "^2.3.0",
+    "@scure/bip39": "^2.3.0",
     "@standard-schema/spec": "^1.1.0",
-    "kysely": "^0.29.4",
+    "kysely": "^0.29.5",
     "msgpackr": "^2.0.5",
     "random": "^5.4.1"
   },

@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
-    "ws": "^8.19.0"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
