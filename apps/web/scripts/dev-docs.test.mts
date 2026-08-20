@@ -21,10 +21,12 @@ import { createApiReferenceWatcher, type SubscribeDep } from "./dev-docs.mts";
 const setupSubscription = (): {
   readonly emit: (...paths: ReadonlyArray<string>) => void;
   readonly emitError: (error: Error) => void;
+  readonly getOptions: () => Parameters<SubscribeDep["subscribe"]>[2];
   readonly getUnsubscribeCount: () => number;
   readonly subscribe: SubscribeDep["subscribe"];
 } => {
   let callback: Parameters<SubscribeDep["subscribe"]>[1] | undefined;
+  let options: Parameters<SubscribeDep["subscribe"]>[2];
   let unsubscribeCount = 0;
 
   return {
@@ -39,9 +41,11 @@ const setupSubscription = (): {
       assert.ok(callback);
       callback(error, []);
     },
+    getOptions: () => options,
     getUnsubscribeCount: () => unsubscribeCount,
-    subscribe: (_directory, next) => {
+    subscribe: (_directory, next, nextOptions) => {
       callback = next;
+      options = nextOptions;
       return Promise.resolve({
         unsubscribe: () => {
           unsubscribeCount += 1;
@@ -128,6 +132,19 @@ void describe("API reference watcher", () => {
       time: createTime(),
     });
     const watcher = await run.ok(createApiReferenceWatcher(directories));
+
+    assert.deepEqual(subscription.getOptions()?.ignore, [
+      ".git",
+      ".turbo",
+      "apps",
+      "bench",
+      "examples",
+      "node_modules",
+      "packages/*/dist/**",
+      "packages/*/node_modules/**",
+      "test",
+      "tmp",
+    ]);
 
     const sections = JSON.parse(
       await fs.readFile(directories.sectionsPath, "utf8"),
