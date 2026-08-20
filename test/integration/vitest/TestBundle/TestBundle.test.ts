@@ -72,7 +72,7 @@ describe("testBundle", { timeout: 30_000 }, () => {
     expect(result).toMatchInlineSnapshot(`
       {
         "fixture": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 65,
             "rawSizeInBytes": 70,
           },
@@ -82,7 +82,7 @@ describe("testBundle", { timeout: 30_000 }, () => {
           },
         },
         "fixture-copy": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 65,
             "rawSizeInBytes": 70,
           },

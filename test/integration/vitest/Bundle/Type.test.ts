@@ -358,7 +358,7 @@ describe("Type tree shaking", () => {
     expect(results).toMatchInlineSnapshot(`
       {
         "real app": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 8900,
             "rawSizeInBytes": 31683,
           },
@@ -396,7 +396,7 @@ describe("Type tree shaking", () => {
     expect(results).toMatchInlineSnapshot(`
       {
         "Array(String)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 1944,
             "rawSizeInBytes": 5008,
           },
@@ -406,7 +406,7 @@ describe("Type tree shaking", () => {
           },
         },
         "InstanceOf(Error)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 736,
             "rawSizeInBytes": 1619,
           },
@@ -416,7 +416,7 @@ describe("Type tree shaking", () => {
           },
         },
         "NonEmptyString": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 1166,
             "rawSizeInBytes": 2690,
           },
@@ -426,7 +426,7 @@ describe("Type tree shaking", () => {
           },
         },
         "NumberFromString": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 1296,
             "rawSizeInBytes": 3109,
           },
@@ -436,7 +436,7 @@ describe("Type tree shaking", () => {
           },
         },
         "Object(NonEmptyString)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 2785,
             "rawSizeInBytes": 8455,
           },
@@ -446,7 +446,7 @@ describe("Type tree shaking", () => {
           },
         },
         "Object(Number, Record(String, Number))": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 3388,
             "rawSizeInBytes": 10993,
           },
@@ -456,7 +456,7 @@ describe("Type tree shaking", () => {
           },
         },
         "Record(String, Number)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 2076,
             "rawSizeInBytes": 5523,
           },
@@ -466,7 +466,7 @@ describe("Type tree shaking", () => {
           },
         },
         "Set(String)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 1885,
             "rawSizeInBytes": 4715,
           },
@@ -476,7 +476,7 @@ describe("Type tree shaking", () => {
           },
         },
         "String": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 653,
             "rawSizeInBytes": 1401,
           },
@@ -486,7 +486,7 @@ describe("Type tree shaking", () => {
           },
         },
         "Tuple(String, Number)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 2011,
             "rawSizeInBytes": 5150,
           },
@@ -496,7 +496,7 @@ describe("Type tree shaking", () => {
           },
         },
         "Union(String, Number)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 1564,
             "rawSizeInBytes": 3832,
           },
@@ -506,7 +506,7 @@ describe("Type tree shaking", () => {
           },
         },
         "discriminatedUnion(Created, Deleted)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 3507,
             "rawSizeInBytes": 11417,
           },
@@ -516,7 +516,7 @@ describe("Type tree shaking", () => {
           },
         },
         "lazy(Object(Array))": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 3795,
             "rawSizeInBytes": 12098,
           },
@@ -526,7 +526,7 @@ describe("Type tree shaking", () => {
           },
         },
         "templateLiteralParser(String, "px")": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 2855,
             "rawSizeInBytes": 8121,
           },
@@ -536,7 +536,7 @@ describe("Type tree shaking", () => {
           },
         },
         "typed(Pending)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 2913,
             "rawSizeInBytes": 8870,
           },
@@ -589,7 +589,7 @@ describe("Type tree shaking", () => {
     expect(results).toMatchInlineSnapshot(`
       {
         "localizeTypes(Label)": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 1914,
             "rawSizeInBytes": 4987,
           },
@@ -637,7 +637,7 @@ describe("Type tree shaking", () => {
     expect(results).toMatchInlineSnapshot(`
       {
         "typed Todo list": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 4875,
             "rawSizeInBytes": 16395,
           },

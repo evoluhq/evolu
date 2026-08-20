@@ -25,7 +25,7 @@
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "postcss": "^8.5.25",
+    "postcss": "^8.5.26",
     "tailwindcss": "^4.1.18",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }

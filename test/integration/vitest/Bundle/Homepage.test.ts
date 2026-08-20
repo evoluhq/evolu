@@ -36,7 +36,7 @@ describe("Homepage bundle sizes", () => {
     expect(results).toMatchInlineSnapshot(`
       {
         "Task": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 8417,
             "rawSizeInBytes": 26046,
           },
@@ -46,7 +46,7 @@ describe("Homepage bundle sizes", () => {
           },
         },
         "Type": {
-          "vite@8.2.0": {
+          "vite@8.2.2": {
             "brotliSizeInBytes": 2628,
             "rawSizeInBytes": 8003,
           },

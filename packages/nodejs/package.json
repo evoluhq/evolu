@@ -52,7 +52,7 @@
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "vite": "^8.2.0",
+    "vite": "^8.2.2",
     "webpack": "^5.109.2"
   },
   "peerDependencies": {
