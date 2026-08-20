@@ -39,6 +39,10 @@ const resolvedTypes = new Map<string, string>();
 /** Simplified source code for Pattern 3 (const declarations). */
 const simplifiedSources = new Map<string, string>();
 
+/** Removes build annotations that are irrelevant in displayed declarations. */
+export const stripPureAnnotations = (source: string): string =>
+  source.replace(/\/\*#__PURE__\*\/[ \t]*/g, "");
+
 export const load = (app: Application): void => {
   // Converter phase: Capture type info while we have access to the TS program
   app.converter.on(
@@ -164,7 +168,7 @@ const getEvoluTypeSource = (
   const resultType = checker.getTypeAtLocation(node);
   if (!isEvoluType(resultType)) return undefined;
 
-  return node.getText();
+  return stripPureAnnotations(node.getText());
 };
 
 /**

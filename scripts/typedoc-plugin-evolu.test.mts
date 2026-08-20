@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { stripPureAnnotations } from "./typedoc-plugin-evolu.mts";
+
 /**
- * Tests for typedoc-plugin-evolu-type output.
+ * Tests for typedoc-plugin-evolu-type helpers and output.
  *
  * These tests verify the generated documentation. Run `pnpm build:docs` before
  * running these tests.
@@ -13,6 +15,20 @@ const docsPath = join(
   import.meta.dirname,
   "../apps/web/src/app/(docs)/docs/api-reference",
 );
+
+describe("stripPureAnnotations", () => {
+  it("removes nested pure annotations from displayed source", () => {
+    expect(
+      stripPureAnnotations(`brand(
+  "Age",
+  /*#__PURE__*/ lessThan(200)(NonNegativeInt),
+)`),
+    ).toBe(`brand(
+  "Age",
+  lessThan(200)(NonNegativeInt),
+)`);
+  });
+});
 
 describe.skip("typedoc-plugin-evolu-type", () => {
   describe("Pattern 1: interface extends InferType<typeof X>", () => {
