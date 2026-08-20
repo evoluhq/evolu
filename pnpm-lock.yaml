@@ -18,7 +18,6 @@ overrides:
   react-dom: 19.2.3
 
 patchedDependencies:
-  '@paulmillr/jsbt@0.7.0': ac757656e9d88a966fe259963e6ffb7ec16f3d59fc0375fc6fc88a75a431d9fb
   vitest-mobile@0.4.3: c7f7be0dde85fe8c1982a4661ca03bebce2691152ed2eba35325c5c8b1bd17fe
 
 importers:
@@ -48,7 +47,7 @@ importers:
         version: link:packages/vitest
       '@paulmillr/jsbt':
         specifier: 0.7.0
-        version: 0.7.0(patch_hash=ac757656e9d88a966fe259963e6ffb7ec16f3d59fc0375fc6fc88a75a431d9fb)
+        version: 0.7.0
       '@types/better-sqlite3':
         specifier: ^9.6.0
         version: 9.6.0
@@ -13596,7 +13595,7 @@ snapshots:
       '@parcel/watcher-win32-arm64': 2.6.0
       '@parcel/watcher-win32-x64': 2.6.0
 
-  '@paulmillr/jsbt@0.7.0(patch_hash=ac757656e9d88a966fe259963e6ffb7ec16f3d59fc0375fc6fc88a75a431d9fb)':
+  '@paulmillr/jsbt@0.7.0':
     dependencies:
       bismar: 0.1.8
       typescript: 6.0.3

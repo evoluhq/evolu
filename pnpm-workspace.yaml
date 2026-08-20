@@ -33,5 +33,4 @@ catalogs:
     react-dom: 19.2.3
 
 patchedDependencies:
-  "@paulmillr/jsbt@0.7.0": patches/@paulmillr__jsbt@0.7.0.patch
   vitest-mobile@0.4.3: patches/vitest-mobile@0.4.3.patch

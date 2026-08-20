@@ -1,8 +1,13 @@
 import {
-  bench,
+  ansi,
+  benchmarkRaw,
   calcStats,
+  envFlag,
   formatDuration,
-  section,
+  paintFormattedDuration,
+  printCsvRow,
+  type CbFn,
+  wantColor,
 } from "@paulmillr/jsbt/benchmark.js";
 import { strictEqual } from "node:assert";
 import { readFile, writeFile } from "node:fs/promises";
@@ -201,13 +206,47 @@ interface StorageBenchmarkResult {
 const hrDurationFromJsbt = (duration: bigint): HrDuration =>
   duration as HrDuration;
 
-const getJsbtRunOnceDuration = (
+const benchmarkCsv =
+  envFlag(process.env.JSBT_CSV) ||
+  !wantColor(
+    process.env,
+    Boolean(process.stderr.isTTY || process.stdout.isTTY),
+  );
+let benchmarkSection = "";
+let benchmarkOutputStarted = false;
+let benchmarkCsvHeaderPrinted = false;
+
+const setBenchmarkSection = (title: string) => {
+  benchmarkSection = title;
+  if (benchmarkCsv) return;
+
+  process.stdout.write(
+    `${benchmarkOutputStarted ? "\n" : ""}${ansi.cyan}# ${title}${ansi.reset}\n`,
+  );
+  benchmarkOutputStarted = true;
+};
+
+const benchmarkOnce = async (
   label: string,
-  result: Awaited<ReturnType<typeof bench>>,
-): bigint => {
-  if (!result) {
-    throw new Error(`jsbt unexpectedly skipped benchmark "${label}"`);
+  callback: CbFn,
+): Promise<bigint> => {
+  const result = await benchmarkRaw(callback, 0n);
+  if (benchmarkCsv) {
+    if (!benchmarkCsvHeaderPrinted) {
+      printCsvRow(["name", "nanoseconds", "rme"]);
+      benchmarkCsvHeaderPrinted = true;
+    }
+    printCsvRow([
+      `${benchmarkSection}; ${label}`,
+      result.stats.mean,
+      result.stats.rme.toFixed(2),
+    ]);
+  } else {
+    process.stdout.write(
+      `${label} ${paintFormattedDuration(result.perItemStr, ansi.blue)}\n`,
+    );
   }
+  benchmarkOutputStarted = true;
   return result.stats.mean;
 };
 
@@ -224,7 +263,7 @@ const formatChange = (
 
 const benchmarkResults: Array<StorageBenchmarkResult> = [];
 
-section("Storage insertTimestamp");
+setBenchmarkSection("Storage insertTimestamp");
 
 for (const strategy of strategies) {
   const timestamps = timestampsByStrategy[strategy];
@@ -241,26 +280,16 @@ for (const strategy of strategies) {
       checkpoint += checkpointSize
     ) {
       const label = `${strategy} run ${run} ${checkpoint - checkpointSize}-${checkpoint} rows`;
-      const result = await bench(
-        label,
-        () =>
-          insertTimestamps(
-            sqlite,
-            storage,
-            timestamps,
-            strategy,
-            checkpoint - checkpointSize,
-            checkpoint,
-          ),
-        {
-          mode: "once",
-          throughput: {
-            amount: checkpointSize,
-            unit: "inserts",
-          },
-        },
+      runTotal += await benchmarkOnce(label, () =>
+        insertTimestamps(
+          sqlite,
+          storage,
+          timestamps,
+          strategy,
+          checkpoint - checkpointSize,
+          checkpoint,
+        ),
       );
-      runTotal += getJsbtRunOnceDuration(label, result);
     }
 
     strictEqual(storage.getSize(ownerId), timestampCount);
@@ -278,7 +307,7 @@ for (const strategy of strategies) {
   });
 }
 
-section("Storage getTimestampByIndex");
+setBenchmarkSection("Storage getTimestampByIndex");
 
 const getTimestampByIndexIndexes = Array.from(
   { length: getTimestampByIndexCount },
@@ -307,20 +336,14 @@ for (let run = 1; run <= repeatCount; run++) {
   );
   const getTimestamp = getTimestampByIndex({ sqlite });
   let timestamp = getTimestamp(ownerId, getTimestampByIndexIndexes[0]);
-  const result = await bench(
-    label,
-    () => {
+  getTimestampByIndexMeasurements.push(
+    await benchmarkOnce(label, () => {
       for (const index of getTimestampByIndexIndexes) {
         timestamp = getTimestamp(ownerId, index);
       }
       return timestamp;
-    },
-    {
-      mode: "once",
-      throughput: { amount: getTimestampByIndexCount, unit: "calls" },
-    },
+    }),
   );
-  getTimestampByIndexMeasurements.push(getJsbtRunOnceDuration(label, result));
   strictEqual(
     eqArrayNumber(timestamp, timestampsAsc[timestampCount - 1]),
     true,
@@ -337,7 +360,7 @@ benchmarkResults.push({
   unit: "calls",
 });
 
-section("Storage fingerprintRanges");
+setBenchmarkSection("Storage fingerprintRanges");
 
 const fingerprintRangesMeasurements: Array<bigint> = [];
 
@@ -358,20 +381,14 @@ for (let run = 1; run <= fingerprintRangesRepeatCount; run++) {
     computeBalancedBuckets(NonNegativeInt.orThrow(timestampCount)),
   );
   let fingerprintRanges = storage.fingerprintRanges(ownerId, buckets);
-  const result = await bench(
-    label,
-    () => {
+  fingerprintRangesMeasurements.push(
+    await benchmarkOnce(label, () => {
       for (let index = 0; index < fingerprintRangesCount; index++) {
         fingerprintRanges = storage.fingerprintRanges(ownerId, buckets);
       }
       return fingerprintRanges.length;
-    },
-    {
-      mode: "once",
-      throughput: { amount: fingerprintRangesCount, unit: "calls" },
-    },
+    }),
   );
-  fingerprintRangesMeasurements.push(getJsbtRunOnceDuration(label, result));
   strictEqual(fingerprintRanges.length, buckets.length);
 }
 
