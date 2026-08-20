@@ -36,12 +36,6 @@ production dependency graph. In particular, `@evolu/vitest` can depend on
 `@evolu/common`, while `test/unit/vitest/common` can use both without creating
 a cycle.
 
-The same unit test source can be executed by another compatible runner to check
-runtime compatibility. For example, selected tests from
-`test/unit/vitest/common` run through `vitest-mobile` to verify that Hermes
-provides the JavaScript features used by `@evolu/common`. The test source is
-neither moved nor duplicated for that execution.
-
 During development, coverage can be limited to one changed source file while
 running its focused test file:
 
@@ -71,5 +65,11 @@ Chromium, and bundle coverage. `pnpm verify` then runs the browser projects in
 one Firefox and WebKit compatibility process, so each runtime is tested exactly
 once.
 
-Node.js and browser integrations use Vitest. React Native integrations use
-`vitest-mobile` because they require a different runtime and configuration.
+Node.js and browser integrations use Vitest.
+
+React Native JavaScript compatibility was previously tested on Hermes by
+running selected shared unit tests through the experimental `vitest-mobile`
+runner. In practice, those runs were too slow to be usable, and its limited
+Vitest support would require weakening or duplicating the shared test suite.
+Until Vitest officially supports React Native, test React Native compatibility
+manually through the Evolu example applications.

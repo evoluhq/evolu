@@ -13,6 +13,8 @@ export default defineConfig(
       "**/.next/",
       "**/.svelte-kit/",
       "**/.turbo/",
+      // The removed vitest-mobile runner can leave generated output in
+      // existing worktrees.
       "**/.vitest-mobile/",
       "**/dist/",
       "**/out/",

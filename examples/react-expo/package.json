@@ -44,9 +44,7 @@
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
-    "@babel/plugin-transform-dynamic-import": "^7.27.1",
     "@babel/plugin-transform-explicit-resource-management": "^7.28.6",
-    "@babel/plugin-transform-modules-commonjs": "^7.28.6",
     "@types/react": "catalog:react19",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "~6.0.3"

@@ -13,9 +13,6 @@ module.exports = function (api) {
     // Resolve from this config file's package scope, not monorepo root.
     presets: [require.resolve("babel-preset-expo")],
     plugins: [
-      // For Kysely to work with Hermes
-      require.resolve("@babel/plugin-transform-dynamic-import"),
-      require.resolve("@babel/plugin-transform-modules-commonjs"),
       // For ECMAScript 'using' statement support
       require.resolve("@babel/plugin-transform-explicit-resource-management"),
     ],

@@ -8564,7 +8564,7 @@ type PlainObjectError = ObjectError<
  *
  * @group Base
  */
-export const Object: Type<
+const _Object: Type<
   "Object",
   Readonly<Record<string, unknown>>,
   Readonly<Record<string, unknown>>,
@@ -8684,6 +8684,13 @@ export const Object: Type<
     return `The property ${safelyStringifyUnknownValue(key)} is invalid.`;
   }) as TypeErrorFormatter<TypeError>),
 );
+
+// Avoid a local `Object` binding because Babel's CommonJS transform injects
+// `Object.defineProperty` before it is initialized:
+// https://github.com/babel/babel/issues/16943
+// https://github.com/react/metro/issues/1331
+// https://github.com/expo/expo/issues/31167
+export { _Object as Object };
 
 const isPlainObject = (value: object): boolean => {
   const prototype: unknown = globalThis.Object.getPrototypeOf(value);

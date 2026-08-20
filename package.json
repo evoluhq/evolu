@@ -15,8 +15,6 @@
     "test:bundle": "vitest run --project=bundle",
     "test:coverage": "vitest run --coverage",
     "test:jsdoc": "node scripts/test-jsdoc.mts",
-    "test:ios": "NODE_ENV=development vitest run --config vitest.ios.config.mts",
-    "test:ios:bootstrap": "vitest-mobile bootstrap --platform ios",
     "playwright:install": "playwright install chromium firefox webkit",
     "bench:storage": "node bench/storage/benchmark.mts",
     "bench:type": "node bench/type/benchmark.mts",
@@ -77,7 +75,6 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.11",
-    "vitest-mobile": "^0.4.3",
     "webpack": "^5.109.2",
     "ws": "^8.21.3",
     "zod": "^4.3.6"

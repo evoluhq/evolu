@@ -31,6 +31,3 @@ catalogs:
     "@types/react-dom": ^19.2.4
     react: 19.2.3
     react-dom: 19.2.3
-
-patchedDependencies:
-  vitest-mobile@0.4.3: patches/vitest-mobile@0.4.3.patch
