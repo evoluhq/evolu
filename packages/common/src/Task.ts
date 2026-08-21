@@ -2520,7 +2520,6 @@ const createRunInternal = <D extends object>(
           result = await scheduler.postTask(
             () => {
               startSignal.throwIfAborted();
-              // eslint-disable-next-line evolu/no-direct-task-call -- The executor invokes the Task with its child Run.
               return task(taskRun);
             },
             {
@@ -2530,7 +2529,6 @@ const createRunInternal = <D extends object>(
           );
         } else {
           startSignal.throwIfAborted();
-          // eslint-disable-next-line evolu/no-direct-task-call -- The executor invokes the Task with its child Run.
           result = await task(taskRun);
         }
 
@@ -2724,7 +2722,6 @@ const withTaskMeta =
         taskInternal[taskMetaSymbol]?.abortBehavior === undefined,
       "abort behavior helpers cannot wrap the same Task",
     );
-    // eslint-disable-next-line evolu/no-direct-task-call -- Preserve the wrapped Task's child Run.
     const wrapped: TaskInternal<T, E, D> = (run) => task(run);
     const taskMeta = taskInternal[taskMetaSymbol];
     wrapped[taskMetaSymbol] = taskMeta ? { ...taskMeta, ...meta } : meta;
@@ -5230,7 +5227,6 @@ export const createGate = ({
 
   return {
     // Direct same-Run delegation is intentional so wait observes the current deferred.
-    // eslint-disable-next-line evolu/no-direct-task-call
     wait: (run) => deferred.task(run),
     open: () => {
       if (isOpen) return false;

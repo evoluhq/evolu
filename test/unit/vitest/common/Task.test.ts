@@ -5013,7 +5013,6 @@ describe("callback", () => {
 
     const fiber = run.abortable(async (run) => {
       await continueParent.promise;
-      // eslint-disable-next-line evolu/no-direct-task-call -- Exercise abort during direct Task execution.
       return await task(run);
     });
 
@@ -7418,7 +7417,6 @@ describe("daemon", () => {
     const childRun = run.create();
     await childRun[Symbol.asyncDispose]();
 
-    // eslint-disable-next-line evolu/no-direct-task-call -- Exercise daemon with an already disposed Run.
     await expect(daemon(() => ok("done"))(childRun)).rejects.toThrow(
       "Cannot use a disposed object.",
     );
@@ -7983,7 +7981,6 @@ describe("unabortableMask", () => {
     await using run = createRun();
     const task = unabortableMask(() => () => ok());
 
-    // eslint-disable-next-line evolu/no-direct-task-call -- Verify the direct-call guard.
     expect(() => task(run)).toThrow(
       "unabortableMask requires a masked Run; use run(task), not a direct call",
     );

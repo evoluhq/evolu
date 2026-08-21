@@ -102,9 +102,6 @@ export default defineConfig(
     // pnpm typecheck and pnpm bench:type.
     files: ["bench/type/**/*.mts"],
     extends: [tseslint.configs.disableTypeChecked],
-    rules: {
-      "evolu/no-direct-task-call": "off",
-    },
   },
   {
     // https://github.com/vitest-dev/vitest/issues/4543#issuecomment-1824881253
