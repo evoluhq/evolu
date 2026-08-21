@@ -3,36 +3,34 @@
  *
  * JavaScript-native structured concurrency.
  *
- * Structured concurrency makes ownership of asynchronous work explicit.
- * Operations form a tree where every child belongs to a parent. A parent waits
- * for its children before it completes, and abort follows the tree: aborting a
- * parent requests abort of all its descendants. Races and fail-fast operations
- * also abort their remaining sibling branches.
+ * Structured concurrency organizes running tasks into a tree. Every child
+ * belongs to a parent, a parent waits for its children before it completes, and
+ * abort propagates from parents to descendants. Races and fail-fast control
+ * flow abort siblings that are no longer needed.
  *
  * With plain {@link AbortController} code, these guarantees depend on call-site
- * discipline: someone must remember the `finally` that aborts started work and
- * the await that waits for cleanup. {@link Run} makes both structural:
- * `run(task)` registers every child before it starts, and the parent settles
+ * discipline: someone must remember the `finally` that aborts started tasks and
+ * the await that waits for cleanup. Evolu makes both structural: `run(task)`
+ * registers every child before it starts, and the parent {@link Run} settles
  * only after child cleanup finishes.
  *
- * Evolu models structured concurrency with ordinary JavaScript:
+ * Evolu implements structured concurrency with:
  *
- * - A {@link Task} describes an asynchronous operation and its dependencies.
+ * - A {@link Task} is a function passed to Run that returns an {@link Awaitable}
+ *   {@link Result} and declares its dependencies.
  * - A {@link Run} starts Tasks and owns their lifetimes.
  * - A {@link Fiber} is the Promise-backed handle returned when a Run starts a
  *   Task.
  * - An {@link AbortableFiber} adds explicit abort and async disposal.
  *
- * The runtime core is deliberately small: ordinary functions, a callable Run
- * with closed-over state, Promise-backed Fibers, {@link AbortSignal}
- * propagation, and JavaScript resource management. Together, these primitives
- * provide abort, cleanup, defect handling, dependency injection, monitoring,
- * concurrency, and resource bracketing.
+ * Together, these APIs provide abort, cleanup, defect handling, dependency
+ * injection, monitoring, and resource management.
  *
- * Tasks return domain success or failure as {@link Result}. Abort is control
- * flow represented by {@link AbortError}. If a Task throws or rejects with
- * anything else, that is a defect: the root Run reports it and shuts down its
- * tree so code does not continue in a potentially invalid state.
+ * Tasks return a {@link Result} containing either success or a domain error.
+ * Abort is control flow represented by {@link AbortError}. If a Task throws or
+ * rejects with anything else, that is a defect: the root Run reports it and
+ * shuts down its tree so code does not continue in a potentially invalid
+ * state.
  *
  * ```ts
  * import {
@@ -201,7 +199,7 @@
  *
  * {@link fetch} with a body mode already returns a plain value, so resilience is
  * ordinary Task composition. Combine {@link timeout} and {@link retry} to bound
- * each attempt and retry recoverable domain failures:
+ * each attempt and retry recoverable domain errors:
  *
  * ```ts
  * import {
@@ -424,9 +422,9 @@
  * expect(socketDisposed).toBe(true);
  * ```
  *
- * Use {@link Run.ok} with `await using` when an infallible Task returns a
- * disposable value. Use {@link acquireUseRelease} when acquisition and release
- * are separate operations rather than a disposable value.
+ * Use {@link Run.ok} with `await using` when a Task whose error type is `never`
+ * returns a disposable value. Use {@link acquireUseRelease} when acquisition and
+ * release are separate steps rather than a disposable value.
  *
  * ## Awaitable
  *
@@ -439,7 +437,7 @@
  *
  * A Task is an async ownership boundary, not a general unit of program
  * decomposition. Calling `run(task)` always creates a child Run by design. Use
- * ordinary promises when an async operation does not need its own Run.
+ * a plain async function when it does not need its own Run.
  *
  * A unified sync/async effect API is technically possible. It can detect
  * Promise-like values with {@link isPromiseLike}, dispose synchronous resources
@@ -457,7 +455,7 @@
  * code performs effects with the result. For example, a pure function can
  * accept a {@link RandomNumber} value instead of depending on {@link Random}.
  *
- * Large CPU-bound operations, such as parsing large JSON, sorting millions of
+ * Large CPU-bound computations, such as parsing large JSON, sorting millions of
  * items, or complex cryptography, belong in a worker. Model the asynchronous
  * call to that worker as a Task so Run can provide timeout, abort, cleanup, and
  * monitoring.
@@ -517,10 +515,10 @@
  * ### What should Task code do with defects?
  *
  * Nothing. Once a defect reaches the {@link Run}, it is too late: the root Run
- * panics, running Tasks are aborted, and the Run tree shuts down. If an
- * operation can throw or reject for a recoverable reason, wrap that operation
- * with {@link trySync} or {@link tryAsync} so the failure becomes a typed
- * {@link Result} error. Let unrecoverable failures propagate as defects.
+ * panics, running Tasks are aborted, and the Run tree shuts down. Use
+ * {@link trySync} or {@link tryAsync} to turn recoverable exceptions and Promise
+ * rejections into typed {@link Result} errors. Let unrecoverable failures
+ * propagate as defects.
  *
  * ### Why does a defect panic the whole Run tree?
  *
@@ -618,13 +616,6 @@
  * automatic scheduling fairness. Use loops or worklists for deep algorithms,
  * periodically await {@link yieldNow} for cooperative scheduling, and move
  * CPU-bound work to a worker.
- *
- * ### Should a Task be called directly?
- *
- * Only inside Task internals that explicitly require same-Run execution. A
- * direct call, `task(run)`, uses the current Run instead of creating a child
- * Run, so it bypasses child lifetime tracking, scheduling metadata, and child
- * disposal boundaries. Application code should use `run(task)`.
  *
  * ### Where are fork and join?
  *
@@ -756,15 +747,77 @@ import type {
   Predicate,
 } from "./Types.ts";
 
-// Core
-
 /**
- * An operation run by {@link Run} that returns a {@link Result} synchronously or
- * asynchronously and declares its dependencies through `D`.
- *
- * Its return type is {@link Awaitable}.
+ * A function passed to {@link Run} that returns an {@link Awaitable}
+ * {@link Result} and declares its dependencies through `D`.
  *
  * See the {@link @evolu/common!Task | Task overview}.
+ *
+ * ### Example
+ *
+ * A Task that can't fail with a domain error:
+ *
+ * ```ts
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * const greet: Task<string> = () => ok("Hello!");
+ * const main: Task<string> = async (run) => await run(greet);
+ *
+ * await using run = createRun();
+ * expectOk(await run(main), "Hello!");
+ *
+ * // Without domain errors, `run.ok` returns the Ok value.
+ * expect(await run.ok(main)).toBe("Hello!");
+ * ```
+ *
+ * A Task that can fail with a domain error:
+ *
+ * ```ts
+ * import { createRun, err, type Task, type Typed } from "@evolu/common";
+ *
+ * const findUser =
+ *   (id: string): Task<string, UserNotFoundError> =>
+ *   () =>
+ *     err({ type: "UserNotFound", id });
+ *
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {
+ *   readonly id: string;
+ * }
+ *
+ * await using run = createRun();
+ * expectErr(await run(findUser("user-1")), {
+ *   type: "UserNotFound",
+ *   id: "user-1",
+ * });
+ * ```
+ *
+ * A Task with dependencies:
+ *
+ * ```ts
+ * import { createRun, ok, type Task } from "@evolu/common";
+ *
+ * interface Config {
+ *   readonly greeting: string;
+ * }
+ *
+ * interface ConfigDep {
+ *   readonly config: Config;
+ * }
+ *
+ * const greet: Task<string, never, ConfigDep> = (run) =>
+ *   ok(`${run.deps.config.greeting}!`);
+ *
+ * const config: Config = { greeting: "Hello" };
+ * await using run = createRun({ config });
+ * expectOk(await run(greet), "Hello!");
+ * ```
+ *
+ * Start Tasks with `run(task)`, as shown above.
+ *
+ * A Task can also be called directly as `task(run)`, but this is rarely needed.
+ * The call executes the Task inline in the current Run, as if its body were
+ * part of the parent Task, so it does not create a child Run. This is mainly
+ * useful for Task composition helpers.
  *
  * @group Core
  */
@@ -937,6 +990,13 @@ export interface Run<D = unknown> {
    * expectOk(userResult, "Ada");
    * expectOk(savedResult, undefined);
    * ```
+   *
+   * Start Tasks with `run(task)`, as shown above.
+   *
+   * A Task can also be called directly as `task(run)`, but this is rarely
+   * needed. The call executes the Task inline in the current Run, as if its
+   * body were part of the parent Task, so it does not create a child Run. This
+   * is mainly useful for Task composition helpers.
    */
   <T, E>(task: Task<T, E, D>): Fiber<T, E, D>;
 
@@ -1196,8 +1256,8 @@ export interface Run<D = unknown> {
    * Creates a {@link DisposableRun} attached to the root {@link Run} with this
    * Run's deps.
    *
-   * Use it when you need a Run that can be reused across multiple operations.
-   * For a single long-lived {@link Task}, use {@link Run.daemon}.
+   * Use it to give multiple related Tasks a shared lifetime. For a single
+   * long-lived {@link Task}, use {@link Run.daemon}.
    *
    * Use deps to replace the created Run's custom deps. Default deps
    * ({@link RunDefaultDeps}) are inherited unless explicitly replaced with
@@ -2728,8 +2788,6 @@ const withTaskMeta =
     return wrapped;
   };
 
-// Task helpers
-
 /**
  * A readonly record whose values are {@link Task}s.
  *
@@ -2765,7 +2823,7 @@ export type InferTaskRecordDeps<TTasks extends TaskRecord> = InferTasksDeps<
  * Options shared by {@link Task} collection helpers.
  *
  * `concurrency` controls how many Tasks run at once. It defaults to `1`. For
- * CPU-bound Tasks backed by workers or parallel native operations, a platform
+ * CPU-bound Tasks backed by workers or native parallelism, a platform
  * `availableParallelism()` result is often a good limit. For network or
  * database Tasks, choose a limit based on the transport, server, connection
  * pool, and rate limits.
@@ -3496,7 +3554,7 @@ const mapInput = (
  * This helper is a callback bridge. If `reject` forwards an Error created in a
  * separate async chain, V8 cannot reconstruct the caller's zero-cost async
  * stack through this bridge. Prefer native promise APIs and `await` when the
- * wrapped operation already has a promise-shaped API.
+ * wrapped API already returns a Promise.
  *
  * One-shot settlement applies only to `resolve` and `reject`. A synchronous
  * throw from the setup function is a defect that panics the Run tree even after
@@ -4606,8 +4664,6 @@ export const yieldNow: Task<void> = async (run) => {
   return ok();
 };
 
-// Abortability
-
 /**
  * Waits until the current {@link Run} aborts, then rejects with its
  * {@link AbortError}.
@@ -4682,8 +4738,8 @@ export const waitForAbort: Task<never> = async (run) => {
  * execution. The daemon Task continues under root Run ownership until it
  * settles, observes abort, or the root Run is disposed.
  *
- * This is not a replacement for direct {@link AbortSignal} support in operations
- * that can observe abort, such as {@link fetch}, timers that accept a signal, or
+ * This is not a replacement for direct {@link AbortSignal} support in APIs that
+ * can observe abort, such as {@link fetch}, timers that accept a signal, or
  * callback APIs that accept a signal. Use it as an escape hatch for Tasks that
  * ignore abort when an abort request must stop waiting immediately.
  *
@@ -4744,7 +4800,7 @@ export const waitForAbort: Task<never> = async (run) => {
  * expect(finished).toBe(true);
  * ```
  *
- * Promise-producing operations should start inside the Task, not before it.
+ * Promise-returning functions should be called inside the Task, not before it.
  *
  * ```ts
  * import { createRun, ok, type Result, type Task } from "@evolu/common";
@@ -4853,7 +4909,7 @@ export const unabortable = /*#__PURE__*/ withTaskMeta({
  *
  * An abort request before the mask Task starts prevents entering the mask. Once
  * the body starts, plain child Tasks inherit the mask, so acquire and release
- * can run after abort. Put release operations directly in the original mask's
+ * can run after abort. Start release Tasks directly in the original mask's
  * `finally`; do not wrap release in a nested `unabortableMask`, which is a new
  * critical-section entry and may not start after abort.
  *
@@ -4970,7 +5026,7 @@ export const unabortableMask = <T, E, D = unknown>(
  * Prefer native `using`, `await using`, or {@link AsyncDisposableStack} for
  * owned values that implement {@link Disposable} or {@link AsyncDisposable}. Use
  * `acquireUseRelease` when acquisition must be balanced with a separate release
- * operation, such as unlocking, returning a pooled value, releasing a lease, or
+ * step, such as unlocking, returning a pooled value, releasing a lease, or
  * logging out of a session.
  *
  * ### Example
@@ -5049,8 +5105,6 @@ export const acquireUseRelease = <
       }
     },
   );
-
-// Concurrency primitives
 
 /**
  * A one-shot value resolved from outside the waiting {@link Task}.
@@ -5255,8 +5309,8 @@ export const createGate = ({
  *
  * Use {@link Semaphore.withPermit} or {@link Semaphore.withPermits} to acquire
  * permits for one Task and release them when it settles. Use
- * {@link Semaphore.take} when permits must be held across multiple operations;
- * the returned {@link SemaphorePermit} owns release and is disposable.
+ * {@link Semaphore.take} when one permit must cover several child Tasks; the
+ * returned {@link SemaphorePermit} owns release and is disposable.
  *
  * Requests are not capped by the current permit count because
  * {@link Semaphore.resize} can increase it later.
@@ -5358,8 +5412,8 @@ export interface SemaphorePermit extends Disposable {
  * semaphore does not reorder requests to maximize utilization.
  *
  * Use `"fifo"` when fairness and predictable progress matter, such as tenant
- * sync, API quota, or database operations where large requests must not be
- * starved by a stream of smaller requests.
+ * sync, API quota, or database pools where large requests must not be starved
+ * by a stream of smaller requests.
  *
  * Use `"greedy"` when permits represent a shared budget and smaller or
  * latency-sensitive requests should proceed around larger queued requests. For
@@ -5662,8 +5716,8 @@ export const createMutex = (): Mutex => {
  * resources, making idle-key cleanup less predictable and making accidental key
  * retention easier.
  *
- * Use Semaphore directly when callers need to hold permits across multiple
- * operations or resize a permit pool. Use `SemaphoreByKey` when permit
+ * Use Semaphore directly when callers need to hold permits while starting
+ * several child Tasks or resize a permit pool. Use `SemaphoreByKey` when permit
  * ownership should be tied to one Task lifetime and idle keys can be forgotten
  * automatically.
  *
@@ -5843,9 +5897,9 @@ export function createMutexByKey<K, L = K>({
 /**
  * {@link Ref} protected by a {@link Mutex}.
  *
- * `MutexRef` serializes reads, writes, and updates through an internal Mutex,
- * so every operation observes one consistent value transition at a time. When
- * an update fails or is aborted, the previous value is preserved.
+ * `MutexRef` serializes reads, writes, and updates through an internal Mutex.
+ * Reads see a stable value, while writes and updates commit one transition at a
+ * time. When an update fails or is aborted, the previous value is preserved.
  *
  * `MutexRef` is non-reentrant. Updaters and modifiers run while holding the
  * internal Mutex, so calling another method on the same MutexRef from inside
@@ -5855,8 +5909,8 @@ export function createMutexByKey<K, L = K>({
  * read-modify-write. Plain Ref cannot express that — between a sync read and a
  * later write, a concurrent transition can interleave and get lost.
  *
- * `MutexRef` operations are Tasks and incur normal {@link Run} lifecycle
- * overhead. Use {@link Ref} instead for synchronous state transitions,
+ * `MutexRef` reads, writes, and updates are Tasks and incur normal {@link Run}
+ * lifecycle overhead. Use {@link Ref} instead for synchronous state transitions,
  * especially on allocation-sensitive hot paths.
  *
  * @group Concurrency primitives
@@ -5977,7 +6031,7 @@ export const createMutexRef = <T>(initialValue: T): MutexRef<T> => {
 //   filtering, and pluggable log sinks.
 // - Tracing spans with names, timing, parent-child relationships, attributes,
 //   error status, and helpers for annotating the current or child spans.
-// - Metrics for counters, gauges, histograms, and operation durations.
+// - Metrics for counters, gauges, histograms, and Task execution durations.
 // - Resource metadata for service name, service version, deployment
 //   environment, and user-provided attributes.
 // - Exporters for production telemetry backends, including OTLP-compatible
@@ -5990,5 +6044,5 @@ export const createMutexRef = <T>(initialValue: T): MutexRef<T> => {
 // - Run labels and structured annotations for rendering useful snapshot trees
 //   instead of anonymous ids.
 // - Snapshot and trace views should preserve ownership boundaries, so reusable
-//   resources and long-lived operations appear as labeled subtrees instead of
-//   unrelated child operations.
+//   resources and long-lived Runs appear as labeled subtrees instead of
+//   unrelated child Runs.
