@@ -1,5 +1,14 @@
 # relay
 
+## 3.0.7
+
+### Patch Changes
+
+- Updated dependencies [b973c4e]
+- Updated dependencies [b973c4e]
+  - @evolu/common@8.4.0
+  - @evolu/nodejs@3.0.1
+
 ## 3.0.6
 
 ### Patch Changes
