@@ -15,7 +15,7 @@ import type {
   WorkerSelf,
 } from "@evolu/common";
 import {
-  assert,
+  assertNonNullable,
   createConsole,
   createConsoleStoreOutput,
   disposable,
@@ -171,8 +171,8 @@ export const createSharedWorkerSelf = <Input, Output = never>(
   };
 
   nativeSelf.onconnect = (e) => {
-    assert(
-      self.onConnect != null,
+    assertNonNullable(
+      self.onConnect,
       "onConnect must be set before receiving connections",
     );
     self.onConnect(wrap<Output, Input>(e.ports[0]));

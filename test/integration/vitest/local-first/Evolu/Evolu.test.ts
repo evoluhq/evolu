@@ -108,6 +108,10 @@ const todoByCreatedAtQuery = createQuery((db) =>
   db.selectFrom("todo").select(["id", "title"]).orderBy("createdAt"),
 );
 
+const todosWithIsCompletedQuery = createQuery((db) =>
+  db.selectFrom("todo").select(["id", "title", "isCompleted"]),
+);
+
 describe("unit tests", () => {
   const setupRunWithEvoluDeps = async ({
     onSharedWorkerPostMessage,
@@ -2213,6 +2217,59 @@ describe("integration tests", () => {
         ],
       }
     `);
+  });
+
+  test("insert, update, and upsert store explicit null values", async () => {
+    await using setup = await setupRunWithEvoluDeps();
+    const { createIntegrationEvolu, run } = setup;
+
+    const evolu = await run.ok(createIntegrationEvolu);
+    const mutationsCompleted = Promise.withResolvers<void>();
+    let pendingMutations = 4;
+    const onComplete = () => {
+      pendingMutations -= 1;
+      if (pendingMutations === 0) mutationsCompleted.resolve();
+    };
+
+    const insertedId = evolu.insert(
+      "todo",
+      {
+        title: NonEmptyTrimmedString100.orThrow("Inserted null"),
+        isCompleted: null,
+      },
+      { onComplete },
+    ).id;
+    const updatedId = evolu.insert(
+      "todo",
+      {
+        title: NonEmptyTrimmedString100.orThrow("Updated null"),
+        isCompleted: SqliteBoolean.orThrow(1),
+      },
+      { onComplete },
+    ).id;
+    evolu.update("todo", { id: updatedId, isCompleted: null }, { onComplete });
+    const upsertedId = TodoId.orThrow(createIdFromString("upserted-null"));
+    evolu.upsert(
+      "todo",
+      {
+        id: upsertedId,
+        title: NonEmptyTrimmedString100.orThrow("Upserted null"),
+        isCompleted: null,
+      },
+      { onComplete },
+    );
+
+    await mutationsCompleted.promise;
+
+    const rows = await evolu.loadQuery(todosWithIsCompletedQuery);
+    expect(rows).toHaveLength(3);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { id: insertedId, title: "Inserted null", isCompleted: null },
+        { id: updatedId, title: "Updated null", isCompleted: null },
+        { id: upsertedId, title: "Upserted null", isCompleted: null },
+      ]),
+    );
   });
 
   test("dispose and recreate keeps loadQuery working", async () => {

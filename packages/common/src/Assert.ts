@@ -4,6 +4,7 @@
  * @module
  */
 
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.ts";
 import type { Type } from "./Type.ts";
 
 /**
@@ -13,9 +14,9 @@ import type { Type } from "./Type.ts";
  * Prevents invalid states from propagating through the system by halting
  * execution when a condition fails, improving reliability and debuggability.
  *
- * Do not use this instead of {@link Type}. Assertions are intended for
- * conditions that are logically guaranteed but not statically known by
- * TypeScript, or for catching and signaling developer mistakes eagerly.
+ * Do not use this instead of {@link Type}. Assertions are intended when a
+ * condition is logically guaranteed to be true but TypeScript cannot prove it,
+ * or for catching and signaling developer mistakes eagerly.
  *
  * ### Example
  *
@@ -40,8 +41,9 @@ export const assert: (
 /**
  * Asserts that a value is non-nullable.
  *
- * Narrows a nullable value to {@link NonNullable} when null or undefined is
- * logically impossible but TypeScript cannot prove it.
+ * Following TypeScript's {@link NonNullable}, non-nullable here means neither
+ * null nor undefined. Use this when a value is logically guaranteed to be
+ * non-nullable but TypeScript cannot prove it.
  */
 export const assertNonNullable: <T>(
   value: T,
@@ -54,20 +56,79 @@ export const assertNonNullable: <T>(
 };
 
 /**
- * Asserts that an array is non-empty.
+ * Asserts that a value is not null while preserving undefined.
  *
- * Ensures the provided array has at least one element, helping TypeScript infer
- * the array as non-empty when this is logically guaranteed but not statically
- * known.
+ * Use this when a value is logically guaranteed not to be null but TypeScript
+ * cannot prove it.
  *
  * ### Example
  *
  * ```ts
- * import { assertNonEmptyArray } from "@evolu/common";
+ * import { assertNotNull } from "@evolu/common";
+ *
+ * const value = undefined as string | null | undefined;
+ * assertNotNull(value);
+ * expectTypeOf(value).toEqualTypeOf<string | undefined>();
+ * expect(value).toBeUndefined();
+ * expect(() => assertNotNull(null)).toThrow(
+ *   "Expected value not to be null.",
+ * );
+ * ```
+ */
+export const assertNotNull: <T>(
+  value: T,
+  message?: string,
+) => asserts value is T & ({} | undefined) = (
+  value,
+  message = "Expected value not to be null.",
+) => {
+  assert(value !== null, message);
+};
+
+/**
+ * Asserts that a value is not undefined while preserving null.
+ *
+ * Use this when a value is logically guaranteed not to be undefined but
+ * TypeScript cannot prove it.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertNotUndefined } from "@evolu/common";
+ *
+ * const value = null as string | null | undefined;
+ * assertNotUndefined(value);
+ * expectTypeOf(value).toEqualTypeOf<string | null>();
+ * expect(value).toBeNull();
+ * expect(() => assertNotUndefined(undefined)).toThrow(
+ *   "Expected value not to be undefined.",
+ * );
+ * ```
+ */
+export const assertNotUndefined: <T>(
+  value: T,
+  message?: string,
+) => asserts value is T & ({} | null) = (
+  value,
+  message = "Expected value not to be undefined.",
+) => {
+  assert(value !== undefined, message);
+};
+
+/**
+ * Asserts that an array is non-empty.
+ *
+ * Use this when an array is logically guaranteed to be non-empty but TypeScript
+ * cannot prove it.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertNonEmptyArray, type NonEmptyArray } from "@evolu/common";
  *
  * const values = [1, 2, 3];
  * assertNonEmptyArray(values);
- * expectTypeOf(values).toEqualTypeOf<[number, ...Array<number>]>();
+ * expectTypeOf(values).toEqualTypeOf<NonEmptyArray<number>>();
  * expect(values[0]).toBe(1);
  * expect(() => assertNonEmptyArray([])).toThrow();
  * ```
@@ -75,7 +136,7 @@ export const assertNonNullable: <T>(
 export const assertNonEmptyArray: <T>(
   arr: Array<T>,
   message?: string,
-) => asserts arr is [T, ...Array<T>] = (
+) => asserts arr is NonEmptyArray<T> = (
   arr,
   message = "Expected a non-empty array.",
 ) => {
@@ -85,20 +146,20 @@ export const assertNonEmptyArray: <T>(
 /**
  * Asserts that a readonly array is non-empty.
  *
- * Ensures the provided readonly array has at least one element, helping
- * TypeScript infer non-emptiness when this is logically guaranteed but not
- * statically known.
+ * Use this when a readonly array is logically guaranteed to be non-empty but
+ * TypeScript cannot prove it.
  *
  * ### Example
  *
  * ```ts
- * import { assertNonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertNonEmptyReadonlyArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const values: ReadonlyArray<number> = [1, 2, 3];
  * assertNonEmptyReadonlyArray(values);
- * expectTypeOf(values).toEqualTypeOf<
- *   readonly [number, ...Array<number>]
- * >();
+ * expectTypeOf(values).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
  * expect(values[0]).toBe(1);
  * expect(() => assertNonEmptyReadonlyArray([])).toThrow();
  * ```
@@ -106,7 +167,7 @@ export const assertNonEmptyArray: <T>(
 export const assertNonEmptyReadonlyArray: <T>(
   arr: ReadonlyArray<T>,
   message?: string,
-) => asserts arr is readonly [T, ...Array<T>] = (
+) => asserts arr is NonEmptyReadonlyArray<T> = (
   arr,
   message = "Expected a non-empty readonly array.",
 ) => {

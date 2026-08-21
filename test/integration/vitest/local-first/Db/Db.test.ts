@@ -683,6 +683,39 @@ describe("worker startup", () => {
 });
 
 describe("query and mutation flow", () => {
+  test("local-only mutation stores an explicit null value", async () => {
+    await using setup = await setupDbWorker();
+
+    const rowId = setup.createId();
+
+    await postRequest(setup, {
+      type: "ForEvolu",
+      id: setup.evoluInstanceId,
+      message: {
+        type: "Mutate",
+        changes: [
+          createMutationChange({
+            table: "_localTable",
+            id: rowId,
+            values: { value: null },
+            isInsert: true,
+            isDelete: null,
+          }),
+        ],
+        onCompleteIds: [],
+        subscribedQueries: emptySet,
+      },
+    });
+
+    expect(
+      setup.sqlite.exec<{ readonly value: SqliteValue }>(sql`
+        select "value"
+        from "_localTable"
+        where "id" = ${rowId};
+      `).rows,
+    ).toEqual([{ value: null }]);
+  });
+
   test("local-only mutation updates query rows and SQLite state", async () => {
     await using setup = await setupDbWorker();
 

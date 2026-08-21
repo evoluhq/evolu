@@ -1370,7 +1370,7 @@ const sync =
       nonSkipRangeAdded = true;
       if (skip) {
         skip = false;
-        assert(prevUpperBound != null, "prevUpperBound is null");
+        assertNonNullable(prevUpperBound, "prevUpperBound is null");
         // There is always a space for a skip range before adding.
         output.addRange({
           type: RangeType.Skip,

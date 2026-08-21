@@ -1,10 +1,16 @@
 import { expect, expectTypeOf, test } from "vitest";
+import type {
+  NonEmptyArray,
+  NonEmptyReadonlyArray,
+} from "../../../../packages/common/src/Array.ts";
 import {
   assert,
   assertNonEmptyArray,
   assertNonEmptyReadonlyArray,
   assertNonNullable,
   assertNotDisposed,
+  assertNotNull,
+  assertNotUndefined,
 } from "../../../../packages/common/src/Assert.ts";
 import { AbortError } from "../../../../packages/common/src/Task.ts";
 import { assertType } from "../../../../packages/common/src/Type.ts";
@@ -34,10 +40,51 @@ test("assertNonNullable", () => {
   }).toThrow("Custom error");
 });
 
+test("assertNotNull", () => {
+  const value = undefined as string | null | undefined;
+  assertNotNull(value);
+  expectTypeOf(value).toEqualTypeOf<string | undefined>();
+  expect(value).toBeUndefined();
+
+  const unknownValue: unknown = undefined;
+  assertNotNull(unknownValue);
+  expectTypeOf(unknownValue).toEqualTypeOf<{} | undefined>();
+  expect(unknownValue).toBeUndefined();
+
+  expect(() => {
+    assertNotNull(null);
+  }).toThrow("Expected value not to be null.");
+
+  expect(() => {
+    assertNotNull(null, "Custom error");
+  }).toThrow("Custom error");
+});
+
+test("assertNotUndefined", () => {
+  const value = null as string | null | undefined;
+  assertNotUndefined(value);
+  expectTypeOf(value).toEqualTypeOf<string | null>();
+  expect(value).toBeNull();
+
+  const unknownValue: unknown = null;
+  assertNotUndefined(unknownValue);
+  expectTypeOf(unknownValue).toEqualTypeOf<{} | null>();
+  expect(unknownValue).toBeNull();
+
+  expect(() => {
+    assertNotUndefined(undefined);
+  }).toThrow("Expected value not to be undefined.");
+
+  expect(() => {
+    assertNotUndefined(undefined, "Custom error");
+  }).toThrow("Custom error");
+});
+
 test("assertNonEmptyArray", () => {
   // Valid non-empty array
   const arr = [1, 2, 3];
   assertNonEmptyArray(arr);
+  expectTypeOf(arr).toEqualTypeOf<NonEmptyArray<number>>();
   expect(arr).toEqual([1, 2, 3]); // No type change, just validation
 
   // Empty array should throw
@@ -55,6 +102,7 @@ test("assertNonEmptyReadonlyArray", () => {
   // Valid non-empty readonly array
   const arr: ReadonlyArray<number> = [1, 2, 3];
   assertNonEmptyReadonlyArray(arr);
+  expectTypeOf(arr).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
   expect(arr).toEqual([1, 2, 3]); // Ensures no changes
 
   // Empty readonly array should throw

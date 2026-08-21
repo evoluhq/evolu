@@ -11,9 +11,9 @@ import {
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
 import {
-  assert,
   assertNonEmptyReadonlyArray,
   assertNonNullable,
+  assertNotUndefined,
 } from "../Assert.ts";
 import type { ConsoleLevel } from "../Console.ts";
 import {
@@ -45,13 +45,13 @@ import { callback, type Run, type Task } from "../Task.ts";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.ts";
 import {
   assertType,
-  type ExtractTyped,
   Id,
   IdBytes,
   idBytesToId,
   idToIdBytes,
-  type Name,
   onePositiveInt,
+  type ExtractTyped,
+  type Name,
 } from "../Type.ts";
 import type {
   CreateBroadcastChannelDep,
@@ -634,7 +634,10 @@ const createClientStorage =
     let didWriteMessages = false;
 
     const getEncryptionKey = (): EncryptionKey => {
-      assert(encryptionKey != null, "ClientStorage encryption key must be set");
+      assertNonNullable(
+        encryptionKey,
+        "ClientStorage encryption key must be set",
+      );
       return encryptionKey;
     };
 
@@ -841,7 +844,7 @@ const applyLocalOnlyChange =
       const columns = dbChangeToColumns(change, deps.time.now());
 
       for (const [column, value] of columns) {
-        assertNonNullable(value);
+        assertNotUndefined(value);
         deps.sqlite.exec(sql.prepared`
           insert into ${sql.identifier(change.table)}
             ("ownerId", "id", ${sql.identifier(column)})
@@ -871,7 +874,7 @@ const applyMessages =
       const timestampBytes = timestampToTimestampBytes(timestamp);
 
       for (const [column, value] of columns) {
-        assertNonNullable(value);
+        assertNotUndefined(value);
         if (validateColumnValue(deps)(change.table, column, value)) {
           applyColumnChange(deps)(
             ownerIdBytes,
