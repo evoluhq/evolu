@@ -5379,7 +5379,7 @@ export interface RegexError<
  */
 export const UrlSafeString = /*#__PURE__*/ regex(
   "UrlSafeString",
-  /^[A-Za-z0-9_-]+$/,
+  /^[A-Za-z0-9_-]+$/u,
 )(String);
 export type UrlSafeString = typeof UrlSafeString.Output;
 
@@ -5878,7 +5878,7 @@ export const Int64String = /*#__PURE__*/ brand(
 
     if (
       value.length > (negative ? 20 : 19) ||
-      !/^(?:0|-?[1-9]\d*)$/.test(value)
+      !/^(?:0|-?[1-9]\d*)$/u.test(value)
     ) {
       return err<Int64StringError>({ type: "Int64String", value });
     }
@@ -6608,7 +6608,7 @@ export const DecimalString = /*#__PURE__*/ brand(
   "DecimalString",
   String,
   (value) =>
-    /^(?:0|-?(?:[1-9]\d*|(?:0|[1-9]\d*)\.\d*[1-9]))$/.test(value)
+    /^(?:0|-?(?:[1-9]\d*|(?:0|[1-9]\d*)\.\d*[1-9]))$/u.test(value)
       ? ok()
       : err<DecimalStringError>({ type: "DecimalString", value }),
   (error) =>
