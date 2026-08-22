@@ -2186,7 +2186,52 @@ export function transform<
   },
 ): TransformType<ParentType, OutputType, Name, never, ToOutput>;
 
-/** Creates a fallible transformed Type with its own error formatter. */
+/**
+ * Creates a fallible transformed Type with its own error formatter.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   Boolean,
+ *   String,
+ *   err,
+ *   ok,
+ *   transform,
+ *   type Result,
+ *   type TypeError,
+ * } from "@evolu/common";
+ *
+ * interface BooleanFromStringError extends TypeError<"BooleanFromString"> {
+ *   readonly value: string;
+ * }
+ *
+ * const BooleanFromString = transform(
+ *   "BooleanFromString",
+ *   String,
+ *   Boolean,
+ *   {
+ *     from: (value): Result<boolean, BooleanFromStringError> =>
+ *       value === "true"
+ *         ? ok(true)
+ *         : value === "false"
+ *           ? ok(false)
+ *           : err({ type: "BooleanFromString", value }),
+ *     to: (value) => (value ? "true" : "false"),
+ *   },
+ *   () => 'Expected "true" or "false".',
+ * );
+ *
+ * expectOk(BooleanFromString.fromUnknown("true"), true);
+ * expect(BooleanFromString.to(false)).toBe("false");
+ *
+ * const invalid = BooleanFromString.fromUnknown("yes");
+ * expectErr(invalid, { type: "BooleanFromString", value: "yes" });
+ * expect(BooleanFromString.formatError(invalid.error)).toBe(
+ *   'Expected "true" or "false".',
+ * );
+ * ```
+ */
 export function transform<
   Name extends TypeName,
   ParentType extends ConcreteTypeNode,
@@ -2951,7 +2996,30 @@ export function objectTag<Name extends keyof ObjectTagOutputByName>(
   ObjectTagOutputByName[Name]
 >;
 
-/** Creates an object-tag Type by refining an existing object Type. */
+/**
+ * Creates an object-tag Type by refining an existing object Type.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { instanceOf, objectTag } from "@evolu/common";
+ *
+ * class TaggedValue {
+ *   readonly [globalThis.Symbol.toStringTag] = "TaggedValue";
+ * }
+ *
+ * const TaggedValueType = objectTag(
+ *   "TaggedValue",
+ *   instanceOf(TaggedValue),
+ * );
+ * const value = new TaggedValue();
+ * const result = TaggedValueType.fromUnknown(value);
+ *
+ * expectOk(result, value);
+ * expectTypeOf(result.value).toExtend<TaggedValue>();
+ * expect(TaggedValueType.expected).toBe("TaggedValue");
+ * ```
+ */
 export function objectTag<
   Name extends TypeName,
   OutputType extends ConcreteTypeNode & { readonly Output: object },
@@ -9548,7 +9616,32 @@ export function object<const Props extends ObjectProps>(
     : [ValidationFailure<ObjectValidationError<Props>>]
 ): StrictObjectType<Props>;
 
-/** Creates an Object Type with additional record properties. */
+/**
+ * Creates an Object Type with additional record properties.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { String, object, record } from "@evolu/common";
+ *
+ * const RequestHeaders = object(
+ *   { authorization: String },
+ *   record(String, String),
+ * );
+ * const result = RequestHeaders.fromUnknown({
+ *   authorization: "Bearer token",
+ *   "x-request-id": "request-1",
+ * });
+ *
+ * expectOk(result, {
+ *   authorization: "Bearer token",
+ *   "x-request-id": "request-1",
+ * });
+ * expectTypeOf(result.value["x-request-id"]).toEqualTypeOf<
+ *   string | undefined
+ * >();
+ * ```
+ */
 export function object<
   const Props extends ObjectProps,
   const Rest extends RecordTypeNode & ConcreteTypeNode,
@@ -10836,6 +10929,35 @@ export type UnknownResult = typeof UnknownResult.Output;
  * ### Example
  *
  * ```ts
+ * import { String, discriminatedUnion, typed } from "@evolu/common";
+ *
+ * const Loading = typed("Loading");
+ * const Loaded = typed("Loaded", { value: String });
+ * const State = discriminatedUnion(Loading, Loaded);
+ *
+ * expectOk(State.fromUnknown({ type: "Loading" }), { type: "Loading" });
+ * expectOk(State.fromUnknown({ type: "Loaded", value: "Evolu" }), {
+ *   type: "Loaded",
+ *   value: "Evolu",
+ * });
+ * expect(Loading.is({ type: "Loading", progress: 1 })).toBe(false);
+ * expectTypeOf<typeof Loading.Output>().toExtend<{
+ *   readonly type: "Loading";
+ * }>();
+ * ```
+ *
+ * @group Discriminated unions
+ */
+export function typed<const Tag extends TypeName>(
+  tag: ValidateTypedTag<Tag>,
+): TypedType<Tag>;
+
+/**
+ * Creates a Tagged Object Type with declared properties.
+ *
+ * ### Example
+ *
+ * ```ts
  * import { String, typed } from "@evolu/common";
  *
  * const Pending = typed("Pending", {
@@ -10847,14 +10969,7 @@ export type UnknownResult = typeof UnknownResult.Output;
  *   label: "Waiting",
  * });
  * ```
- *
- * @group Discriminated unions
  */
-export function typed<const Tag extends TypeName>(
-  tag: ValidateTypedTag<Tag>,
-): TypedType<Tag>;
-
-/** Creates a Tagged Object Type with declared properties. */
 export function typed<
   const Tag extends TypeName,
   const Props extends ObjectProps,
@@ -10866,7 +10981,29 @@ export function typed<
     : [ValidationFailure<TypedValidationError<Props>>]
 ): TypedType<Tag, Props>;
 
-/** Creates a Tagged Object Type with additional record properties. */
+/**
+ * Creates a Tagged Object Type with additional record properties.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { String, record, typed } from "@evolu/common";
+ *
+ * const Open = typed("Open", { label: String }, record(String, String));
+ * const result = Open.fromUnknown({
+ *   type: "Open",
+ *   label: "Ready",
+ *   note: "Connected",
+ * });
+ *
+ * expectOk(result, {
+ *   type: "Open",
+ *   label: "Ready",
+ *   note: "Connected",
+ * });
+ * expectTypeOf(result.value.note).toEqualTypeOf<string | undefined>();
+ * ```
+ */
 export function typed<
   const Tag extends TypeName,
   const Props extends ObjectProps,
