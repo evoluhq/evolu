@@ -1,5 +1,33 @@
 # @evolu/common
 
+## 8.5.0
+
+### Minor Changes
+
+- 7037216: Added fixed-length mutable Array construction
+
+  Use `createMutableArray` to preallocate an Array when its final length is known
+  and fill it with indexed writes.
+
+  ```ts
+  import { createMutableArray } from "@evolu/common";
+
+  const values = createMutableArray<number>(3);
+
+  for (let index = 0; index < values.length; index++) {
+    values[index] = index * 10;
+  }
+
+  expect(values).toEqual([0, 10, 20]);
+  ```
+
+### Patch Changes
+
+- d52ccce: Enabled Unicode-aware regular expressions
+
+  Built-in regular-expression Types now use Unicode code-point semantics and
+  include `u` in validation error flags.
+
 ## 8.4.0
 
 ### Minor Changes
