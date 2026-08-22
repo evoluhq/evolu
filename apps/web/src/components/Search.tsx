@@ -7,6 +7,7 @@ import {
   type AutocompleteState,
   createAutocomplete,
 } from "@algolia/autocomplete-core";
+import { isApplePlatform } from "@evolu/web";
 import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
 import clsx from "clsx";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -18,6 +19,7 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import Highlighter from "react-highlight-words";
 
@@ -411,9 +413,15 @@ const useSearchProps = () => {
   };
 };
 
+const subscribeToPlatform = (): (() => void) => () => {};
+const getModifierKey = (): string => (isApplePlatform() ? "⌘" : "Ctrl ");
+const getServerModifierKey = (): string => "Ctrl ";
+
 export const Search = (): React.ReactElement => {
-  const [modifierKey] = useState<string>(() =>
-    /(Mac|iPhone|iPod|iPad)/iu.test(navigator.platform) ? "⌘" : "Ctrl ",
+  const modifierKey = useSyncExternalStore(
+    subscribeToPlatform,
+    getModifierKey,
+    getServerModifierKey,
   );
   const { buttonProps, dialogProps } = useSearchProps();
 
