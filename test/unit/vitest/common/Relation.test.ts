@@ -210,10 +210,14 @@ describe("Relation", () => {
 
   test("duplicate adds and return value", () => {
     const relation = createRelation<string, number>();
-    expect(relation.add("a", 1)).toBe(true); // new
-    expect(relation.add("a", 1)).toBe(false); // duplicate
-    expect(relation.add("a", 2)).toBe(true); // new B for existing A
-    expect(relation.add("b", 2)).toBe(true); // new A referencing existing B
+    // new
+    expect(relation.add("a", 1)).toBe(true);
+    // duplicate
+    expect(relation.add("a", 1)).toBe(false);
+    // new B for existing A
+    expect(relation.add("a", 2)).toBe(true);
+    // new A referencing existing B
+    expect(relation.add("b", 2)).toBe(true);
     expect(relation.bCountForA("a")).toBe(2);
     expect(relation.aCountForB(1)).toBe(1);
     expect(relation.aCountForB(2)).toBe(2);

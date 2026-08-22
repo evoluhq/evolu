@@ -1,5 +1,10 @@
 import type { CreateSqliteDriver, SqliteRow } from "@evolu/common";
-import { bytesToHex, createPreparedStatementsCache, ok } from "@evolu/common";
+import {
+  bytesToHex,
+  createPreparedStatementsCache,
+  exhaustiveCheck,
+  ok,
+} from "@evolu/common";
 import sqlite3InitModule, {
   type Database,
   type PreparedStatement,
@@ -53,6 +58,7 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
 
     switch (options?.mode) {
       case "memory":
+        // oxlint-disable-next-line react/rules-of-hooks -- useDatabase registers disposal and is not a React Hook.
         db = useDatabase(new sqlite3.oo1.DB(":memory:"));
         break;
 
@@ -64,6 +70,7 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
         const pool = await createOpfsSAHPoolVfs({
           directory: `.${name}`,
         });
+        // oxlint-disable-next-line react/rules-of-hooks -- useDatabase registers disposal and is not a React Hook.
         db = useDatabase(
           new pool.OpfsSAHPoolDb(
             // SQLite normalizes this URI filename to SAH-pool path "/evolu1.db".
@@ -77,10 +84,15 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
         break;
       }
 
-      default: {
+      case undefined: {
         const pool = await createOpfsSAHPoolVfs({ name });
+        // oxlint-disable-next-line react/rules-of-hooks -- useDatabase registers disposal and is not a React Hook.
         db = useDatabase(new pool.OpfsSAHPoolDb(`file:${fileName}`));
+        break;
       }
+
+      default:
+        exhaustiveCheck(options);
     }
 
     const cache = disposer.use(

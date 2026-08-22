@@ -147,10 +147,10 @@ const typesByLocale = Type.localizeTypes(
     Record: Type.record(Type.String, Type.String),
     RecordWithCollision: Type.record(LowercaseString, Type.String),
     RecordWithKey: Type.record(
-      Type.regex("RecordKey", /^valid$/)(Type.String),
+      Type.regex("RecordKey", /^valid$/u)(Type.String),
       Type.String,
     ),
-    Regex: Type.regex("Regex", /^x$/)(Type.String),
+    Regex: Type.regex("Regex", /^x$/u)(Type.String),
     Set: Type.set(Type.String),
     TableId: Type.id("Todo"),
     TemplateLiteral: Type.templateLiteral("prefix:", Type.String),

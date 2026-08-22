@@ -13,6 +13,7 @@ import type {
 } from "../../../../../packages/common/src/index.ts";
 import {
   assertNonEmptyArray,
+  createMutableArray,
   EncryptionKey,
 } from "../../../../../packages/common/src/index.ts";
 import {
@@ -68,6 +69,7 @@ import {
 } from "../../../../../packages/common/src/local-first/Storage.ts";
 import {
   createInitialTimestamp,
+  NodeId,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "../../../../../packages/common/src/local-first/Timestamp.ts";
@@ -111,6 +113,7 @@ test("encodeNumber/decodeNumber", () => {
     0,
     42,
     -123,
+    // oxlint-disable-next-line oxc/approx-constant -- Pins this exact decimal's serialized bytes in the snapshot below.
     3.14159,
     Number.MAX_SAFE_INTEGER,
     Number.MIN_SAFE_INTEGER,
@@ -212,7 +215,7 @@ test("encodeNonNegativeInt/decodeNonNegativeInt", () => {
     decodeNonNegativeInt(buffer);
   }).toThrow("Int");
 
-  const malformedData = new globalThis.Array(8).fill(0xff);
+  const malformedData = createMutableArray<number>(8).fill(0xff);
   expect(() => decodeNonNegativeInt(createBuffer(malformedData))).toThrow(
     "Int",
   );
@@ -280,17 +283,25 @@ test("ProtocolValueType", () => {
 test("encodeSqliteValue/decodeSqliteValue", () => {
   const deps = testCreateDeps();
   const testCasesSuccess: Array<[SqliteValue, number]> = [
-    ["", 1], // empty string optimization - 1 byte vs 2 bytes (50% reduction)
-    [123.5, 10], // encodeNumber
-    [-123, 3], // encodeNumber
+    // empty string optimization - 1 byte vs 2 bytes (50% reduction)
+    ["", 1],
+    // encodeNumber
+    [123.5, 10],
+    // encodeNumber
+    [-123, 3],
     [null, 1],
     [new Uint8Array([1, 2, 3]), 5],
     [createId(deps), 17],
-    [0, 1], // small ints 0-19
-    [19, 1], // small ints 0-19
-    [123, 2], // NonNegativeInt
-    [16383, 3], // NonNegativeInt
-    ['{"compact":true,"schema":0}', 20], // 18 bytes msgpackr + 2 bytes protocol overhead
+    // small ints 0-19
+    [0, 1],
+    // small ints 0-19
+    [19, 1],
+    // NonNegativeInt
+    [123, 2],
+    // NonNegativeInt
+    [16383, 3],
+    // 18 bytes msgpackr + 2 bytes protocol overhead
+    ['{"compact":true,"schema":0}', 20],
     // Protocol encoding ensures 6 bytes till the year 2108.
     [
       getOrThrow(
@@ -346,38 +357,50 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
       fc.oneof(
         // Test all SqliteValue types
         fc.constant(null),
-        fc.string(), // Regular strings
-        fc.double().filter((n) => !Number.isNaN(n)), // Numbers (exclude NaN)
-        fc.uint8Array(), // Binary data
+        // Regular strings
+        fc.string(),
+        // Numbers (exclude NaN)
+        fc.double().filter((n) => !Number.isNaN(n)),
+        // Binary data
+        fc.uint8Array(),
 
         // Special number cases
         fc.constantFrom(Infinity, -Infinity, NaN),
-        fc.integer({ min: 0, max: 19 }), // Small ints (0-19) - special encoding
-        fc.integer({ min: 20, max: Number.MAX_SAFE_INTEGER }), // Non-negative ints
-        fc.integer({ min: Number.MIN_SAFE_INTEGER, max: -1 }), // Negative numbers
-        fc.float({ min: -1000, max: 1000 }), // Regular floats
+        // Small ints (0-19) - special encoding
+        fc.integer({ min: 0, max: 19 }),
+        // Non-negative ints
+        fc.integer({ min: 20, max: Number.MAX_SAFE_INTEGER }),
+        // Negative numbers
+        fc.integer({ min: Number.MIN_SAFE_INTEGER, max: -1 }),
+        // Regular floats
+        fc.float({ min: -1000, max: 1000 }),
 
         // Id optimization cases
-        fc.constantFrom(createId(deps)), // Valid Id
+        // Valid Id
+        fc.constantFrom(createId(deps)),
         fc
           .string({ minLength: 21, maxLength: 21 })
-          .map((s) => s.replace(/[^A-Za-z0-9_-]/g, "a")), // Id-like strings
+          // Id-like strings
+          .map((s) => s.replaceAll(/[^A-Za-z0-9_-]/gu, "a")),
 
         // URL-safe strings with length % 4 === 0 (Base64Url optimization)
         fc
-          .stringMatching(/^[A-Za-z0-9_-]*$/)
+          .stringMatching(/^[A-Za-z0-9_-]*$/u)
           .filter((s) => s.length % 4 === 0 && s.length > 0),
         // URL-safe strings with length % 4 !== 0 (should use regular string encoding)
         fc
-          .stringMatching(/^[A-Za-z0-9_-]*$/)
+          .stringMatching(/^[A-Za-z0-9_-]*$/u)
           .filter((s) => s.length % 4 !== 0 && s.length > 0),
 
         // Base64Url edge cases
-        fc.constant(""), // Empty string (optimization)
+        // Empty string (optimization)
+        fc.constant(""),
         fc
-          .stringMatching(/^[A-Za-z0-9_-]{4,}$/)
-          .filter((s) => s.length % 4 === 0), // Valid Base64Url
-        fc.string().filter((s) => /[^A-Za-z0-9_-]/.test(s)), // Invalid Base64Url chars
+          .stringMatching(/^[A-Za-z0-9_-]{4,}$/u)
+          // Valid Base64Url
+          .filter((s) => s.length % 4 === 0),
+        // Invalid Base64Url chars
+        fc.string().filter((s) => /[^A-Za-z0-9_-]/u.test(s)),
 
         // JSON optimization cases
         fc
@@ -389,7 +412,8 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
         fc
           .array(fc.oneof(fc.string(), fc.integer(), fc.boolean()))
           .map((arr) => JSON.stringify(arr)),
-        fc.constantFrom('{"a":1}', "[]", "null", "true", "false", '"string"'), // Simple JSON
+        // Simple JSON
+        fc.constantFrom('{"a":1}', "[]", "null", "true", "false", '"string"'),
         fc.string().filter((s) => {
           try {
             JSON.parse(s);
@@ -397,7 +421,8 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
           } catch {
             return true;
           }
-        }), // Non-JSON strings
+          // Non-JSON strings
+        }),
 
         // Date ISO strings - both valid and invalid
         fc
@@ -411,15 +436,21 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
         fc.constantFrom(
           "0000-01-01T00:00:00.000Z",
           "9999-12-31T23:59:59.999Z",
-          "not-a-date-2024-01-01T00:00:00.000Z", // Invalid date format
-          "2024-13-01T00:00:00.000Z", // Invalid month
+          // Invalid date format
+          "not-a-date-2024-01-01T00:00:00.000Z",
+          // Invalid month
+          "2024-13-01T00:00:00.000Z",
         ),
 
         // Binary data edge cases
-        fc.constant(new Uint8Array(0)), // Empty binary
-        fc.uint8Array({ minLength: 1, maxLength: 1000 }), // Variable size binary
-        fc.constant(new Uint8Array(1000).fill(255)), // Large binary with pattern
-        fc.constant(new Uint8Array([0, 1, 2, 3, 4, 5])), // Small binary pattern
+        // Empty binary
+        fc.constant(new Uint8Array(0)),
+        // Variable size binary
+        fc.uint8Array({ minLength: 1, maxLength: 1000 }),
+        // Large binary with pattern
+        fc.constant(new Uint8Array(1000).fill(255)),
+        // Small binary pattern
+        fc.constant(new Uint8Array([0, 1, 2, 3, 4, 5])),
       ),
       (value) => {
         const buffer = createBuffer();
@@ -435,11 +466,12 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
         }
 
         // Handle NaN specially since NaN !== NaN
-        if (typeof value === "number" && typeof decoded === "number") {
-          if (Number.isNaN(value)) {
-            return Number.isNaN(decoded);
-          }
-        }
+        if (
+          typeof value === "number" &&
+          typeof decoded === "number" &&
+          Number.isNaN(value)
+        )
+          return Number.isNaN(decoded);
 
         return decoded === value;
       },
@@ -519,7 +551,8 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
     encryptedMessage.change,
   ) as EncryptedDbChange;
   if (corruptedCiphertext.length > 10) {
-    corruptedCiphertext[10] = (corruptedCiphertext[10] + 1) % 256; // Modify a byte
+    // Modify a byte
+    corruptedCiphertext[10] = (corruptedCiphertext[10] + 1) % 256;
   }
   const corruptedMessage: EncryptedCrdtMessage = {
     timestamp: encryptedMessage.timestamp,
@@ -631,7 +664,7 @@ describe("decodeRle", () => {
 
   test("supports non-int values (NodeId)", () => {
     const buffer = createBuffer();
-    encodeNodeId(buffer, "0123456789abcdef" as any);
+    encodeNodeId(buffer, NodeId.orThrow("0123456789abcdef"));
     encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(2));
 
     const values = decodeRle(buffer, NonNegativeInt.orThrow(2), () =>
@@ -930,7 +963,8 @@ describe("E2E errors", () => {
   test("ProtocolInvalidDataError", async () => {
     await using run = testCreateRun(shouldNotBeCalledStorageDep);
     const malformedMessage = createBuffer();
-    encodeNonNegativeInt(malformedMessage, 1 as NonNegativeInt); // Only version, no ownerId
+    // Only version, no ownerId
+    encodeNonNegativeInt(malformedMessage, 1 as NonNegativeInt);
 
     const clientResult = await run(
       applyProtocolMessageAsClient(malformedMessage.unwrap(), {
@@ -996,7 +1030,6 @@ describe("E2E relay options", () => {
       applyProtocolMessageAsRelay(message, {
         subscribe: (ownerId) => {
           subscribeCalledWithOwnerId = ownerId;
-          return true;
         },
       }),
     );
@@ -1036,7 +1069,6 @@ describe("E2E relay options", () => {
       applyProtocolMessageAsRelay(message, {
         subscribe: () => {
           subscribeWasCalled = true;
-          return true;
         },
         unsubscribe: () => {
           unsubscribeWasCalled = true;
@@ -1061,7 +1093,6 @@ describe("E2E relay options", () => {
       applyProtocolMessageAsRelay(message, {
         subscribe: () => {
           subscribeWasCalled = true;
-          return true;
         },
         unsubscribe: () => {
           unsubscribeWasCalled = true;
@@ -1184,15 +1215,13 @@ describe("E2E sync", { timeout: 15_000 }, () => {
     let message = createProtocolMessageForSync(clientStorageDep)(
       testAppOwner.id,
     );
-    assert(message);
 
     let result;
     let turn = "relay";
     let syncSteps = 0;
     const syncSizes: Array<number> = [message.length];
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    while (message) {
+    while (true) {
       syncSteps++;
 
       if (syncSteps > 100) {

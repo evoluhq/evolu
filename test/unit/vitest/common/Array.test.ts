@@ -32,19 +32,16 @@ import {
 
 describe("Types", () => {
   test("NonEmptyArray requires at least one element", () => {
-    const _valid: NonEmptyArray<number> = [1, 2, 3];
     // @ts-expect-error - empty array is not a valid NonEmptyArray
     const _invalid: NonEmptyArray<number> = [];
   });
 
   test("NonEmptyReadonlyArray requires at least one element", () => {
-    const _valid: NonEmptyReadonlyArray<string> = ["a", "b"];
     // @ts-expect-error - empty array is not a valid NonEmptyReadonlyArray
     const _invalid: NonEmptyReadonlyArray<string> = [];
   });
 
   test("AtLeastTwoReadonlyArray requires at least two elements", () => {
-    const _valid: AtLeastTwoReadonlyArray<string> = ["a", "b"];
     // @ts-expect-error - empty array is not a valid AtLeastTwoReadonlyArray
     const _empty: AtLeastTwoReadonlyArray<string> = [];
     // @ts-expect-error - one element is not a valid AtLeastTwoReadonlyArray

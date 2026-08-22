@@ -115,8 +115,8 @@ export const compareTypeBenchmarkMeasurements = (
   current: Readonly<Partial<Record<string, DeterministicDiagnostics>>>,
   baseline: Readonly<Partial<Record<string, DeterministicDiagnostics>>>,
 ): TypeBenchmarkComparison => {
-  const currentFixtures = Object.keys(current).sort();
-  const baselineFixtures = Object.keys(baseline).sort();
+  const currentFixtures = Object.keys(current).toSorted();
+  const baselineFixtures = Object.keys(baseline).toSorted();
   const currentFixtureSet = new Set(currentFixtures);
   const baselineFixtureSet = new Set(baselineFixtures);
 

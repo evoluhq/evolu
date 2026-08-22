@@ -93,7 +93,7 @@ export const maxCounter = 65535 as Counter;
  * yet they will think they are synced. This is extremely rare and can be
  * resolved by resetting one device to generate a new NodeId.
  */
-export const NodeId = /*#__PURE__*/ regex("NodeId", /^[a-f0-9]{16}$/)(String);
+export const NodeId = /*#__PURE__*/ regex("NodeId", /^[a-f0-9]{16}$/u)(String);
 export type NodeId = typeof NodeId.Output;
 
 export const minNodeId = "0000000000000000" as NodeId;

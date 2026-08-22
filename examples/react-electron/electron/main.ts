@@ -1,8 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = import.meta.dirname;
 
 // The built directory structure
 //
@@ -17,8 +16,14 @@ process.env.APP_ROOT = path.join(__dirname, "..");
 
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
 export const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
-export const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
+export const MAIN_DIST = /*#__PURE__*/ path.join(
+  process.env.APP_ROOT,
+  "dist-electron",
+);
+export const RENDERER_DIST = /*#__PURE__*/ path.join(
+  process.env.APP_ROOT,
+  "dist",
+);
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, "public")
@@ -26,7 +31,12 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 let win: BrowserWindow | null;
 
-function createWindow() {
+const reportError = (error: unknown): void => {
+  // oxlint-disable-next-line eslint/no-console -- Electron startup failures must remain visible to developers.
+  console.error(error);
+};
+
+const createWindow = (): void => {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
     webPreferences: {
@@ -42,12 +52,11 @@ function createWindow() {
     win?.webContents.send("main-process-message", new Date().toLocaleString());
   });
 
-  if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
-  } else {
-    win.loadFile(path.join(RENDERER_DIST, "index.html"));
-  }
-}
+  const loadWindow = VITE_DEV_SERVER_URL
+    ? win.loadURL(VITE_DEV_SERVER_URL)
+    : win.loadFile(path.join(RENDERER_DIST, "index.html"));
+  void loadWindow.catch(reportError);
+};
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
@@ -67,4 +76,4 @@ app.on("activate", () => {
   }
 });
 
-app.whenReady().then(createWindow);
+void app.whenReady().then(createWindow).catch(reportError);

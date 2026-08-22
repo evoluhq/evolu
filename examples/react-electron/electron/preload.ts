@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
   on(...args: Parameters<typeof ipcRenderer.on>) {
     const [channel, listener] = args;
     return ipcRenderer.on(channel, (event, ...args) =>
+      // oxlint-disable-next-line typescript/no-unsafe-argument -- Electron declares IPC listener payloads as any[].
       listener(event, ...args),
     );
   },
@@ -14,10 +15,12 @@ contextBridge.exposeInMainWorld("ipcRenderer", {
   },
   send(...args: Parameters<typeof ipcRenderer.send>) {
     const [channel, ...omit] = args;
+    // oxlint-disable-next-line typescript/no-unsafe-argument -- Electron declares IPC message payloads as any[].
     return ipcRenderer.send(channel, ...omit);
   },
   invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
     const [channel, ...omit] = args;
+    // oxlint-disable-next-line typescript/no-unsafe-argument -- Electron declares IPC invocation payloads as any[].
     return ipcRenderer.invoke(channel, ...omit);
   },
 

@@ -1,7 +1,7 @@
 // @ts-check
 
 /**
- * Custom ESLint rules for Evolu.
+ * Custom Oxlint rules for Evolu.
  *
  * @module
  */
@@ -162,21 +162,10 @@ const requirePureAnnotation = {
 /** @type {import("eslint").ESLint.Plugin} */
 const plugin = {
   meta: {
-    name: "eslint-plugin-evolu",
-    version: "1.0.0",
+    name: "@evolu/oxlint-config",
   },
   rules: {
     "require-pure-annotation": requirePureAnnotation,
-  },
-};
-
-/** @type {Record<string, import("eslint").Linter.Config>} */
-export const configs = {
-  recommended: {
-    plugins: { evolu: plugin },
-    rules: {
-      "evolu/require-pure-annotation": "error",
-    },
   },
 };
 

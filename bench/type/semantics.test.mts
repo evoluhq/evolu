@@ -107,7 +107,6 @@ import type {
   ObjectPropertyAccessError,
   ObjectMissingPropertyError,
   ObjectPropertiesError,
-  RecordCollisionIssue,
   RecordEntriesError,
   RecordError,
   SetElementsError,
@@ -555,21 +554,21 @@ type MissingOutputBrands = {
 type FromOutput = InferOk<DeepestFromResult>;
 
 type MissingFromOutputBrands = {
-  readonly [I in PositiveIndex]: FromOutput extends Brand<`B${I}`>
-    ? never
-    : I;
+  readonly [I in PositiveIndex]: FromOutput extends Brand<`B${I}`> ? never : I;
 }[PositiveIndex];
 
 type FromUnknownOutput = InferOk<FromUnknownResult>;
 
 type MissingFromUnknownOutputBrands = {
-  readonly [I in PositiveIndex]:
-    FromUnknownOutput extends Brand<`B${I}`> ? never : I;
+  readonly [I in PositiveIndex]: FromUnknownOutput extends Brand<`B${I}`>
+    ? never
+    : I;
 }[PositiveIndex];
 
 type MissingSemanticOutputBrands = {
-  readonly [I in PositiveIndex]:
-    SemanticOutput extends Brand<`S${I}`> ? never : I;
+  readonly [I in PositiveIndex]: SemanticOutput extends Brand<`S${I}`>
+    ? never
+    : I;
 }[PositiveIndex];
 
 type ExpectedErrors = {
@@ -620,20 +619,26 @@ type Depth32 = readonly [
   unknown,
 ];
 
-type NestedArray<Value, Depth extends ReadonlyArray<unknown>> =
-  Depth extends readonly [unknown, ...infer Rest]
-    ? ReadonlyArray<NestedArray<Value, Rest>>
-    : Value;
+type NestedArray<
+  Value,
+  Depth extends ReadonlyArray<unknown>,
+> = Depth extends readonly [unknown, ...infer Rest]
+  ? ReadonlyArray<NestedArray<Value, Rest>>
+  : Value;
 
-type NestedArrayError<Error extends ArrayError | ExpectedErrors, Depth extends ReadonlyArray<unknown>> =
-  Depth extends readonly [unknown, ...infer Rest]
-    ? ArrayError<NestedArrayError<Error, Rest>>
-    : Error;
+type NestedArrayError<
+  Error extends ArrayError | ExpectedErrors,
+  Depth extends ReadonlyArray<unknown>,
+> = Depth extends readonly [unknown, ...infer Rest]
+  ? ArrayError<NestedArrayError<Error, Rest>>
+  : Error;
 
-type NestedSet<Value, Depth extends ReadonlyArray<unknown>> =
-  Depth extends readonly [unknown, ...infer Rest]
-    ? ReadonlySet<NestedSet<Value, Rest>>
-    : Value;
+type NestedSet<
+  Value,
+  Depth extends ReadonlyArray<unknown>,
+> = Depth extends readonly [unknown, ...infer Rest]
+  ? ReadonlySet<NestedSet<Value, Rest>>
+  : Value;
 
 type NestedSetError<
   Error extends SetError | ExpectedErrors,
@@ -642,14 +647,14 @@ type NestedSetError<
   ? SetError<NestedSetError<Error, Rest>>
   : Error;
 
-type NestedObject<Value, Depth extends ReadonlyArray<unknown>> =
-  Depth extends readonly [unknown, ...infer Rest]
-    ? ExpectedStrictObject<{ readonly value: NestedObject<Value, Rest> }>
-    : Value;
+type NestedObject<
+  Value,
+  Depth extends ReadonlyArray<unknown>,
+> = Depth extends readonly [unknown, ...infer Rest]
+  ? ExpectedStrictObject<{ readonly value: NestedObject<Value, Rest> }>
+  : Value;
 
-type NumberFromStringErrors =
-  | TypeOfError<"String">
-  | NumberFromStringError;
+type NumberFromStringErrors = TypeOfError<"String"> | NumberFromStringError;
 
 type UnionValue = `V${PositiveIndex}`;
 
@@ -658,22 +663,22 @@ type ExpectedUnionMemberErrors = {
 }[PositiveIndex];
 
 type ExpectedCorrelatedUnionMemberErrors = {
-  readonly [MemberIndex in keyof UnionMembers]: MemberIndex extends `${infer NumericIndex extends number}`
-    ? UnionMemberError<
-        InferErrors<UnionMembers[MemberIndex]>,
-        NumericIndex
-      >
+  readonly [
+    MemberIndex in keyof UnionMembers
+  ]: MemberIndex extends `${infer NumericIndex extends number}`
+    ? UnionMemberError<InferErrors<UnionMembers[MemberIndex]>, NumericIndex>
     : never;
 }[keyof UnionMembers];
 
 type ExpectedCorrelatedObjectUnionMemberErrors = {
-  readonly [MemberIndex in keyof ObjectUnionMembers]:
-    MemberIndex extends `${infer NumericIndex extends number}`
-      ? UnionMemberError<
-          InferErrors<ObjectUnionMembers[MemberIndex]>,
-          NumericIndex
-        >
-      : never;
+  readonly [
+    MemberIndex in keyof ObjectUnionMembers
+  ]: MemberIndex extends `${infer NumericIndex extends number}`
+    ? UnionMemberError<
+        InferErrors<ObjectUnionMembers[MemberIndex]>,
+        NumericIndex
+      >
+    : never;
 }[keyof ObjectUnionMembers];
 
 type ExpectedObjectUnionErrors = UnionError<
@@ -702,15 +707,15 @@ test("the depth-32 fixture preserves its semantics", () => {
   expectTypeOf<FromOutput>().not.toBeNever();
   expectTypeOf<FromOutput>().toExtend<string>();
   expectTypeOf<MissingFromOutputBrands>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<DeepestFromResult>>().toEqualTypeOf<
-    ExpectedFromErrors
-  >();
+  expectTypeOf<
+    InferErr<DeepestFromResult>
+  >().toEqualTypeOf<ExpectedFromErrors>();
   expectTypeOf<DeclarationOutput>().toEqualTypeOf<Output>();
   expectTypeOf<DeclarationErrors>().toEqualTypeOf<Errors>();
   expectTypeOf<DeclarationSelfFromInput>().toEqualTypeOf<DeclarationOutput>();
-  expectTypeOf<InferOk<DeclarationSelfFromResult>>().toEqualTypeOf<
-    DeclarationOutput
-  >();
+  expectTypeOf<
+    InferOk<DeclarationSelfFromResult>
+  >().toEqualTypeOf<DeclarationOutput>();
   expectTypeOf<InferErr<DeclarationSelfFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<DeclarationDeepestFromInput>().toEqualTypeOf<DeepestFromInput>();
   expectTypeOf<DeclarationDeepestFromResult>().toEqualTypeOf<DeepestFromResult>();
@@ -732,9 +737,9 @@ test("the depth-32 fixture preserves its semantics", () => {
   expectTypeOf<InferOk<SemanticFromResult>>().toEqualTypeOf<SemanticOutput>();
   expectTypeOf<InferErr<SemanticFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<SemanticDeepestFromInput>().toEqualTypeOf<string>();
-  expectTypeOf<InferOk<SemanticDeepestFromResult>>().toEqualTypeOf<
-    SemanticOutput
-  >();
+  expectTypeOf<
+    InferOk<SemanticDeepestFromResult>
+  >().toEqualTypeOf<SemanticOutput>();
   expectTypeOf<InferErr<SemanticDeepestFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<ArrayOutput>().toEqualTypeOf<ReadonlyArray<Output>>();
   expectTypeOf<ArrayErrors>().toEqualTypeOf<ArrayError<ExpectedErrors>>();
@@ -762,17 +767,19 @@ test("the depth-32 fixture preserves its semantics", () => {
   expectTypeOf<SemanticArrayErrors>().toEqualTypeOf<
     ArrayError<Extract<ExpectedErrors, { readonly type: "E0" }>>
   >();
-  expectTypeOf<InferOk<SemanticArrayFromResult>>().toEqualTypeOf<
-    SemanticArrayOutput
-  >();
+  expectTypeOf<
+    InferOk<SemanticArrayFromResult>
+  >().toEqualTypeOf<SemanticArrayOutput>();
   expectTypeOf<InferErr<SemanticArrayFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<SemanticArrayDeepestFromInput>().toEqualTypeOf<
     ReadonlyArray<string>
   >();
-  expectTypeOf<InferOk<SemanticArrayDeepestFromResult>>().toEqualTypeOf<
-    SemanticArrayOutput
-  >();
-  expectTypeOf<InferErr<SemanticArrayDeepestFromResult>>().toEqualTypeOf<never>();
+  expectTypeOf<
+    InferOk<SemanticArrayDeepestFromResult>
+  >().toEqualTypeOf<SemanticArrayOutput>();
+  expectTypeOf<
+    InferErr<SemanticArrayDeepestFromResult>
+  >().toEqualTypeOf<never>();
   expectTypeOf<SetOutput>().toEqualTypeOf<ReadonlySet<Output>>();
   expectTypeOf<SetErrors>().toEqualTypeOf<SetError<ExpectedErrors>>();
   expectTypeOf<SetFromUnknownInput>().toEqualTypeOf<unknown>();
@@ -790,20 +797,22 @@ test("the depth-32 fixture preserves its semantics", () => {
   expectTypeOf<InferErr<SetDeepestFromResult>>().toEqualTypeOf<
     SetElementsError<ExpectedFromErrors>
   >();
-  expectTypeOf<SemanticSetOutput>().toEqualTypeOf<ReadonlySet<SemanticOutput>>();
+  expectTypeOf<SemanticSetOutput>().toEqualTypeOf<
+    ReadonlySet<SemanticOutput>
+  >();
   expectTypeOf<SemanticSetErrors>().toEqualTypeOf<
     SetError<Extract<ExpectedErrors, { readonly type: "E0" }>>
   >();
-  expectTypeOf<InferOk<SemanticSetFromResult>>().toEqualTypeOf<
-    SemanticSetOutput
-  >();
+  expectTypeOf<
+    InferOk<SemanticSetFromResult>
+  >().toEqualTypeOf<SemanticSetOutput>();
   expectTypeOf<InferErr<SemanticSetFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<SemanticSetDeepestFromInput>().toEqualTypeOf<
     ReadonlySet<string>
   >();
-  expectTypeOf<InferOk<SemanticSetDeepestFromResult>>().toEqualTypeOf<
-    SemanticSetOutput
-  >();
+  expectTypeOf<
+    InferOk<SemanticSetDeepestFromResult>
+  >().toEqualTypeOf<SemanticSetOutput>();
   expectTypeOf<InferErr<SemanticSetDeepestFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<LiteralStringOutput>().toEqualTypeOf<"Hello">();
   expectTypeOf<LiteralStringErrors>().toEqualTypeOf<
@@ -813,15 +822,15 @@ test("the depth-32 fixture preserves its semantics", () => {
   expectTypeOf<InferOk<LiteralStringFromResult>>().toEqualTypeOf<"Hello">();
   expectTypeOf<InferErr<LiteralStringFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<LiteralStringFromParentInput>().toEqualTypeOf<string>();
-  expectTypeOf<InferOk<LiteralStringFromParentResult>>().toEqualTypeOf<
-    "Hello"
-  >();
+  expectTypeOf<
+    InferOk<LiteralStringFromParentResult>
+  >().toEqualTypeOf<"Hello">();
   expectTypeOf<InferErr<LiteralStringFromParentResult>>().toEqualTypeOf<
     LiteralError<"Hello">
   >();
-  expectTypeOf<InferOk<LiteralStringFromUnknownResult>>().toEqualTypeOf<
-    "Hello"
-  >();
+  expectTypeOf<
+    InferOk<LiteralStringFromUnknownResult>
+  >().toEqualTypeOf<"Hello">();
   expectTypeOf<InferErr<LiteralStringFromUnknownResult>>().toEqualTypeOf<
     TypeOfError<"String"> | LiteralError<"Hello">
   >();
@@ -838,9 +847,9 @@ test("the depth-32 fixture preserves its semantics", () => {
   expectTypeOf<LiteralArrayErrors>().toEqualTypeOf<
     ArrayError<TypeOfError<"String"> | LiteralError<"Hello">>
   >();
-  expectTypeOf<InferOk<LiteralArrayFromResult>>().toEqualTypeOf<
-    LiteralArrayOutput
-  >();
+  expectTypeOf<
+    InferOk<LiteralArrayFromResult>
+  >().toEqualTypeOf<LiteralArrayOutput>();
   expectTypeOf<InferErr<LiteralArrayFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<InferErr<LiteralArrayFromParentResult>>().toEqualTypeOf<
     ArrayElementsError<LiteralError<"Hello">>
@@ -851,26 +860,26 @@ test("the depth-32 fixture preserves its semantics", () => {
   expectTypeOf<NestedArrayErrors>().toEqualTypeOf<
     NestedArrayError<Extract<ExpectedErrors, { readonly type: "E0" }>, Depth32>
   >();
-  expectTypeOf<InferOk<NestedArrayFromUnknownResult>>().toEqualTypeOf<
-    NestedArrayOutput
-  >();
-  expectTypeOf<InferErr<NestedArrayFromUnknownResult>>().toEqualTypeOf<
-    NestedArrayErrors
-  >();
-  expectTypeOf<InferOk<NestedArrayFromResult>>().toEqualTypeOf<
-    NestedArrayOutput
-  >();
+  expectTypeOf<
+    InferOk<NestedArrayFromUnknownResult>
+  >().toEqualTypeOf<NestedArrayOutput>();
+  expectTypeOf<
+    InferErr<NestedArrayFromUnknownResult>
+  >().toEqualTypeOf<NestedArrayErrors>();
+  expectTypeOf<
+    InferOk<NestedArrayFromResult>
+  >().toEqualTypeOf<NestedArrayOutput>();
   expectTypeOf<InferErr<NestedArrayFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<NestedSetOutput>().toEqualTypeOf<NestedSet<string, Depth32>>();
   expectTypeOf<NestedSetErrors>().toEqualTypeOf<
     NestedSetError<Extract<ExpectedErrors, { readonly type: "E0" }>, Depth32>
   >();
-  expectTypeOf<InferOk<NestedSetFromUnknownResult>>().toEqualTypeOf<
-    NestedSetOutput
-  >();
-  expectTypeOf<InferErr<NestedSetFromUnknownResult>>().toEqualTypeOf<
-    NestedSetErrors
-  >();
+  expectTypeOf<
+    InferOk<NestedSetFromUnknownResult>
+  >().toEqualTypeOf<NestedSetOutput>();
+  expectTypeOf<
+    InferErr<NestedSetFromUnknownResult>
+  >().toEqualTypeOf<NestedSetErrors>();
   expectTypeOf<InferOk<NestedSetFromResult>>().toEqualTypeOf<NestedSetOutput>();
   expectTypeOf<InferErr<NestedSetFromResult>>().toEqualTypeOf<never>();
 });
@@ -882,39 +891,37 @@ test("the reusable Brand Factory preserves its parent and boundaries", () => {
   expectTypeOf<BrandFactoryOutput>().toEqualTypeOf<
     Output & Brand<"Reusable">
   >();
-  expectTypeOf<BrandFactoryErrors>().toEqualTypeOf<
-    Errors | ReusableError
-  >();
-  expectTypeOf<InferOk<BrandFactoryFromResult>>().toEqualTypeOf<
-    BrandFactoryOutput
-  >();
+  expectTypeOf<BrandFactoryErrors>().toEqualTypeOf<Errors | ReusableError>();
+  expectTypeOf<
+    InferOk<BrandFactoryFromResult>
+  >().toEqualTypeOf<BrandFactoryOutput>();
   expectTypeOf<InferErr<BrandFactoryFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<InferErr<BrandFactoryDeepestFromResult>>().toEqualTypeOf<
     Exclude<ExpectedErrors, { readonly index: 0 }> | ReusableError
   >();
   expectTypeOf<BrandFactoryFromParentInput>().toEqualTypeOf<Output>();
-  expectTypeOf<InferOk<BrandFactoryFromParentResult>>().toEqualTypeOf<
-    BrandFactoryOutput
-  >();
-  expectTypeOf<InferErr<BrandFactoryFromParentResult>>().toEqualTypeOf<
-    ReusableError
-  >();
+  expectTypeOf<
+    InferOk<BrandFactoryFromParentResult>
+  >().toEqualTypeOf<BrandFactoryOutput>();
+  expectTypeOf<
+    InferErr<BrandFactoryFromParentResult>
+  >().toEqualTypeOf<ReusableError>();
   expectTypeOf<DirectBrandOutput>().toEqualTypeOf<Output & Brand<"Direct">>();
   expectTypeOf<DirectBrandErrors>().toEqualTypeOf<Errors | DirectError>();
-  expectTypeOf<InferOk<DirectBrandFromResult>>().toEqualTypeOf<
-    DirectBrandOutput
-  >();
+  expectTypeOf<
+    InferOk<DirectBrandFromResult>
+  >().toEqualTypeOf<DirectBrandOutput>();
   expectTypeOf<InferErr<DirectBrandFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<InferErr<DirectBrandDeepestFromResult>>().toEqualTypeOf<
     Exclude<ExpectedErrors, { readonly index: 0 }> | DirectError
   >();
   expectTypeOf<DirectBrandFromParentInput>().toEqualTypeOf<Output>();
-  expectTypeOf<InferOk<DirectBrandFromParentResult>>().toEqualTypeOf<
-    DirectBrandOutput
-  >();
-  expectTypeOf<InferErr<DirectBrandFromParentResult>>().toEqualTypeOf<
-    DirectError
-  >();
+  expectTypeOf<
+    InferOk<DirectBrandFromParentResult>
+  >().toEqualTypeOf<DirectBrandOutput>();
+  expectTypeOf<
+    InferErr<DirectBrandFromParentResult>
+  >().toEqualTypeOf<DirectError>();
 });
 
 test("the constraint fixture preserves Label and Age boundaries", () => {
@@ -1022,17 +1029,17 @@ test("the width-32 Union fixture preserves its semantics", () => {
     InferErr<LiteralUnionFromUnknownResult>
   >().toEqualTypeOf<LiteralUnionErrors>();
   expectTypeOf<LiteralUnionFromInput>().toEqualTypeOf<LiteralUnionOutput>();
-  expectTypeOf<InferOk<LiteralUnionFromResult>>().toEqualTypeOf<
-    LiteralUnionOutput
-  >();
+  expectTypeOf<
+    InferOk<LiteralUnionFromResult>
+  >().toEqualTypeOf<LiteralUnionOutput>();
   expectTypeOf<InferErr<LiteralUnionFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<LiteralUnionFromParentInput>().toEqualTypeOf<string>();
-  expectTypeOf<InferOk<LiteralUnionFromParentResult>>().toEqualTypeOf<
-    LiteralUnionOutput
-  >();
-  expectTypeOf<InferErr<LiteralUnionFromParentResult>>().toEqualTypeOf<
-    LiteralUnionErrors
-  >();
+  expectTypeOf<
+    InferOk<LiteralUnionFromParentResult>
+  >().toEqualTypeOf<LiteralUnionOutput>();
+  expectTypeOf<
+    InferErr<LiteralUnionFromParentResult>
+  >().toEqualTypeOf<LiteralUnionErrors>();
   expectTypeOf<LiteralUnionMembers["length"]>().toEqualTypeOf<32>();
   expectTypeOf<LiteralUnionMembers[0]["expected"]>().toEqualTypeOf<"V1">();
   expectTypeOf<LiteralUnionMembers[31]["expected"]>().toEqualTypeOf<"V32">();
@@ -1047,17 +1054,17 @@ test("the width-32 Union fixture preserves its semantics", () => {
     InferErr<MixedUnionFromUnknownResult>
   >().toEqualTypeOf<MixedUnionErrors>();
   expectTypeOf<MixedUnionFromInput>().toEqualTypeOf<MixedUnionOutput>();
-  expectTypeOf<InferOk<MixedUnionFromResult>>().toEqualTypeOf<
-    MixedUnionOutput
-  >();
+  expectTypeOf<
+    InferOk<MixedUnionFromResult>
+  >().toEqualTypeOf<MixedUnionOutput>();
   expectTypeOf<InferErr<MixedUnionFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<MixedUnionFromParentInput>().toEqualTypeOf<string>();
-  expectTypeOf<InferOk<MixedUnionFromParentResult>>().toEqualTypeOf<
-    MixedUnionOutput
-  >();
-  expectTypeOf<InferErr<MixedUnionFromParentResult>>().toEqualTypeOf<
-    MixedUnionErrors
-  >();
+  expectTypeOf<
+    InferOk<MixedUnionFromParentResult>
+  >().toEqualTypeOf<MixedUnionOutput>();
+  expectTypeOf<
+    InferErr<MixedUnionFromParentResult>
+  >().toEqualTypeOf<MixedUnionErrors>();
   expectTypeOf<MixedUnionMembers["length"]>().toEqualTypeOf<32>();
   expectTypeOf<MixedUnionMembers[0]["name"]>().toEqualTypeOf<"V1">();
   expectTypeOf<MixedUnionMembers[1]["name"]>().toEqualTypeOf<"Literal">();
@@ -1067,15 +1074,15 @@ test("the width-32 Union fixture preserves its semantics", () => {
   expectTypeOf<MixedUnionParent["name"]>().toEqualTypeOf<"Union">();
   expectTypeOf<UnionArrayOutput>().toEqualTypeOf<ReadonlyArray<UnionOutput>>();
   expectTypeOf<UnionArrayErrors>().toEqualTypeOf<ArrayError<UnionErrors>>();
-  expectTypeOf<InferOk<UnionArrayFromUnknownResult>>().toEqualTypeOf<
-    UnionArrayOutput
-  >();
-  expectTypeOf<InferErr<UnionArrayFromUnknownResult>>().toEqualTypeOf<
-    UnionArrayErrors
-  >();
-  expectTypeOf<InferOk<UnionArrayFromResult>>().toEqualTypeOf<
-    UnionArrayOutput
-  >();
+  expectTypeOf<
+    InferOk<UnionArrayFromUnknownResult>
+  >().toEqualTypeOf<UnionArrayOutput>();
+  expectTypeOf<
+    InferErr<UnionArrayFromUnknownResult>
+  >().toEqualTypeOf<UnionArrayErrors>();
+  expectTypeOf<
+    InferOk<UnionArrayFromResult>
+  >().toEqualTypeOf<UnionArrayOutput>();
   expectTypeOf<InferErr<UnionArrayFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<InferErr<UnionArrayFromParentResult>>().toEqualTypeOf<
     ArrayElementsError<UnionErrors>
@@ -1098,9 +1105,7 @@ test("the depth-32 Object fixture preserves its semantics", () => {
   expectTypeOf<"optional">().toExtend<OptionalKeys<ObjectOutput>>();
   expectTypeOf<"required">().not.toExtend<OptionalKeys<ObjectOutput>>();
   expectTypeOf<ObjectOutput["required"]>().toEqualTypeOf<Output>();
-  expectTypeOf<ObjectOutput["optional"]>().toEqualTypeOf<
-    Output | undefined
-  >();
+  expectTypeOf<ObjectOutput["optional"]>().toEqualTypeOf<Output | undefined>();
   type PropertiesReason = Extract<
     ObjectErrors["reason"],
     { readonly kind: "Properties" }
@@ -1108,14 +1113,14 @@ test("the depth-32 Object fixture preserves its semantics", () => {
   type PropertyErrors = PropertiesReason["errors"];
 
   expectTypeOf<NonNullable<PropertyErrors["required"]>>().toEqualTypeOf<
-    | ObjectMissingPropertyError
-    | ObjectPropertyAccessError
-    | ExpectedErrors
+    ObjectMissingPropertyError | ObjectPropertyAccessError | ExpectedErrors
   >();
   expectTypeOf<NonNullable<PropertyErrors["optional"]>>().toEqualTypeOf<
     ObjectPropertyAccessError | ExpectedErrors
   >();
-  expectTypeOf<InferOk<ObjectFromUnknownResult>>().toEqualTypeOf<ObjectOutput>();
+  expectTypeOf<
+    InferOk<ObjectFromUnknownResult>
+  >().toEqualTypeOf<ObjectOutput>();
 
   expectTypeOf<InferErr<ObjectFromResult>>().toEqualTypeOf<never>();
 
@@ -1125,21 +1130,18 @@ test("the depth-32 Object fixture preserves its semantics", () => {
     { readonly index: 0 }
   >;
 
-  expectTypeOf<NonNullable<FromErrors["required"]>>().toEqualTypeOf<
-    ExpectedObjectFromErrors
-  >();
-  expectTypeOf<NonNullable<FromErrors["optional"]>>().toEqualTypeOf<
-    ExpectedObjectFromErrors
-  >();
+  expectTypeOf<
+    NonNullable<FromErrors["required"]>
+  >().toEqualTypeOf<ExpectedObjectFromErrors>();
+  expectTypeOf<
+    NonNullable<FromErrors["optional"]>
+  >().toEqualTypeOf<ExpectedObjectFromErrors>();
 });
 
 test("the depth-32 Record fixture preserves normalized entry errors", () => {
   type ExpectedInput = Readonly<Partial<Record<string, string>>>;
   type ExpectedOutput = Readonly<Partial<Record<string, Output>>>;
-  type ExpectedValueFromErrors = Exclude<
-    ExpectedErrors,
-    { readonly index: 0 }
-  >;
+  type ExpectedValueFromErrors = Exclude<ExpectedErrors, { readonly index: 0 }>;
   type ExpectedNodeError = RecordEntriesError<
     never,
     ExpectedValueFromErrors,
@@ -1155,17 +1157,17 @@ test("the depth-32 Record fixture preserves normalized entry errors", () => {
   expectTypeOf<RecordOutput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<RecordNodeError>().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<RecordErrors>().toEqualTypeOf<ExpectedRecordErrors>();
-  expectTypeOf<InferOk<RecordFromUnknownResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
-  expectTypeOf<InferErr<RecordFromUnknownResult>>().toEqualTypeOf<
-    ExpectedRecordErrors
-  >();
+  expectTypeOf<
+    InferOk<RecordFromUnknownResult>
+  >().toEqualTypeOf<ExpectedOutput>();
+  expectTypeOf<
+    InferErr<RecordFromUnknownResult>
+  >().toEqualTypeOf<ExpectedRecordErrors>();
   expectTypeOf<InferOk<RecordFromResult>>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<InferErr<RecordFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<RecordFromParentResult>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
+  expectTypeOf<
+    InferErr<RecordFromParentResult>
+  >().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<RecordParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<RecordParent["parent"]>().toEqualTypeOf<null>();
   expectTypeOf<RecordToResult>().toEqualTypeOf<ExpectedOutput>();
@@ -1175,13 +1177,11 @@ test("the Object Record fixture preserves declared and dynamic properties", () =
   type ExpectedInput = {
     readonly total: string;
     readonly count?: string;
-  } &
-    Readonly<Partial<Record<string, string>>>;
+  } & Readonly<Partial<Record<string, string>>>;
   type ExpectedOutput = {
     readonly total: number;
     readonly count?: number;
-  } &
-    Readonly<Partial<Record<string, number>>>;
+  } & Readonly<Partial<Record<string, number>>>;
   type ExpectedNodeError = ObjectPropertiesError<
     {
       readonly total: NumberFromStringError;
@@ -1194,27 +1194,23 @@ test("the Object Record fixture preserves declared and dynamic properties", () =
       readonly total: NumberFromStringErrors;
       readonly count?: NumberFromStringErrors;
     },
-    RecordEntriesError<
-      TypeOfError<"String">,
-      NumberFromStringErrors,
-      never
-    >
+    RecordEntriesError<TypeOfError<"String">, NumberFromStringErrors, never>
   >;
 
   expectTypeOf<ObjectRecordInput>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<ObjectRecordOutput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<ObjectRecordNodeError>().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<ObjectRecordErrors>().toEqualTypeOf<ExpectedObjectErrors>();
-  expectTypeOf<InferOk<ObjectRecordFromUnknownResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
-  expectTypeOf<InferErr<ObjectRecordFromUnknownResult>>().toEqualTypeOf<
-    ExpectedObjectErrors
-  >();
+  expectTypeOf<
+    InferOk<ObjectRecordFromUnknownResult>
+  >().toEqualTypeOf<ExpectedOutput>();
+  expectTypeOf<
+    InferErr<ObjectRecordFromUnknownResult>
+  >().toEqualTypeOf<ExpectedObjectErrors>();
   expectTypeOf<InferErr<ObjectRecordFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<ObjectRecordFromParentResult>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
+  expectTypeOf<
+    InferErr<ObjectRecordFromParentResult>
+  >().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<ObjectRecordParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<ObjectRecordParent["parent"]>().toEqualTypeOf<null>();
   expectTypeOf<ObjectRecordRecordType["Output"]>().toEqualTypeOf<
@@ -1236,39 +1232,37 @@ test("the transformed Record fixture preserves collisions and child errors", () 
   >;
   type ExpectedNodeError = RecordEntriesError<
     ExpectedKeyNodeError,
-    NumberFromStringError,
-    RecordCollisionIssue
+    NumberFromStringError
   >;
   type ExpectedRecordErrors = RecordError<
     TypeOfError<"String"> | ExpectedKeyNodeError,
-    NumberFromStringErrors,
-    RecordCollisionIssue
+    NumberFromStringErrors
   >;
 
   expectTypeOf<RecordTransformInput>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<RecordTransformOutput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<RecordTransformNodeError>().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<RecordTransformErrors>().toEqualTypeOf<ExpectedRecordErrors>();
-  expectTypeOf<InferErr<RecordTransformFromUnknownResult>>().toEqualTypeOf<
-    ExpectedRecordErrors
-  >();
+  expectTypeOf<
+    InferErr<RecordTransformFromUnknownResult>
+  >().toEqualTypeOf<ExpectedRecordErrors>();
   expectTypeOf<InferErr<RecordTransformFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<RecordTransformFromParentResult>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
-  expectTypeOf<RecordTransformParent["Output"]>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<
+    InferErr<RecordTransformFromParentResult>
+  >().toEqualTypeOf<ExpectedNodeError>();
+  expectTypeOf<
+    RecordTransformParent["Output"]
+  >().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<RecordTransformToResult>().toEqualTypeOf<
     Readonly<Partial<Record<RecordTransformLowercaseKey, string>>>
   >();
-  expectTypeOf<RecordTransformImportedErrors>().toEqualTypeOf<
-    ExpectedRecordErrors
-  >();
-  expectTypeOf<InferErr<RecordTransformImportedFromResult>>().toEqualTypeOf<
-    never
-  >();
-  expectTypeOf<InferErr<RecordTransformImportedFrom2Result>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
+  expectTypeOf<RecordTransformImportedErrors>().toEqualTypeOf<ExpectedRecordErrors>();
+  expectTypeOf<
+    InferErr<RecordTransformImportedFromResult>
+  >().toEqualTypeOf<never>();
+  expectTypeOf<
+    InferErr<RecordTransformImportedFrom2Result>
+  >().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<
     InferErr<RecordTransformImportedFromParentResult>
   >().toEqualTypeOf<never>();
@@ -1277,12 +1271,8 @@ test("the transformed Record fixture preserves collisions and child errors", () 
 test("the width-32 Object fixture preserves its semantics", () => {
   expectTypeOf<"optional01">().toExtend<OptionalKeys<WideObjectOutput>>();
   expectTypeOf<"optional16">().toExtend<OptionalKeys<WideObjectOutput>>();
-  expectTypeOf<"required01">().not.toExtend<
-    OptionalKeys<WideObjectOutput>
-  >();
-  expectTypeOf<"required16">().not.toExtend<
-    OptionalKeys<WideObjectOutput>
-  >();
+  expectTypeOf<"required01">().not.toExtend<OptionalKeys<WideObjectOutput>>();
+  expectTypeOf<"required16">().not.toExtend<OptionalKeys<WideObjectOutput>>();
   expectTypeOf<WideObjectOutput["required01"]>().toEqualTypeOf<
     string & Brand<"B1">
   >();
@@ -1304,14 +1294,10 @@ test("the width-32 Object fixture preserves its semantics", () => {
   type RootAndB1Errors = Extract<ExpectedErrors, { readonly index: 0 | 1 }>;
 
   expectTypeOf<NonNullable<PropertyErrors["required01"]>>().toEqualTypeOf<
-    | ObjectMissingPropertyError
-    | ObjectPropertyAccessError
-    | RootAndB1Errors
+    ObjectMissingPropertyError | ObjectPropertyAccessError | RootAndB1Errors
   >();
   expectTypeOf<NonNullable<PropertyErrors["required16"]>>().toEqualTypeOf<
-    | ObjectMissingPropertyError
-    | ObjectPropertyAccessError
-    | RootAndB1Errors
+    ObjectMissingPropertyError | ObjectPropertyAccessError | RootAndB1Errors
   >();
   expectTypeOf<NonNullable<PropertyErrors["optional01"]>>().toEqualTypeOf<
     ObjectPropertyAccessError | RootAndB1Errors
@@ -1325,8 +1311,12 @@ test("the width-32 Object fixture preserves its semantics", () => {
   type FromErrors = InferErr<WideObjectFromParentResult>["reason"]["errors"];
   type B1Error = Extract<ExpectedErrors, { readonly index: 1 }>;
 
-  expectTypeOf<NonNullable<FromErrors["required01"]>>().toEqualTypeOf<B1Error>();
-  expectTypeOf<NonNullable<FromErrors["optional16"]>>().toEqualTypeOf<B1Error>();
+  expectTypeOf<
+    NonNullable<FromErrors["required01"]>
+  >().toEqualTypeOf<B1Error>();
+  expectTypeOf<
+    NonNullable<FromErrors["optional16"]>
+  >().toEqualTypeOf<B1Error>();
 });
 
 test("the depth-32 nested Object fixture preserves its semantics", () => {
@@ -1355,15 +1345,15 @@ test("the depth-32 nested Object fixture preserves its semantics", () => {
   >().toEqualTypeOf<ObjectPropertyAccessError>();
   expectTypeOf<OuterFromPropertyError>().not.toBeAny();
   expectTypeOf<OuterFromPropertyError>().not.toBeNever();
-  expectTypeOf<InferOk<NestedObjectFromUnknownResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
-  expectTypeOf<InferErr<NestedObjectFromUnknownResult>>().toEqualTypeOf<
-    NestedObjectErrors
-  >();
-  expectTypeOf<InferOk<NestedObjectFromResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
+  expectTypeOf<
+    InferOk<NestedObjectFromUnknownResult>
+  >().toEqualTypeOf<ExpectedOutput>();
+  expectTypeOf<
+    InferErr<NestedObjectFromUnknownResult>
+  >().toEqualTypeOf<NestedObjectErrors>();
+  expectTypeOf<
+    InferOk<NestedObjectFromResult>
+  >().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<InferErr<NestedObjectFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<NestedObjectToInput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<NestedObjectToResult>().toEqualTypeOf<ExpectedInput>();
@@ -1372,8 +1362,14 @@ test("the depth-32 nested Object fixture preserves its semantics", () => {
 });
 
 test("the Array child fixture preserves specialized from operations", () => {
-  type ElementErrors = Extract<ExpectedErrors, { readonly index: 0 | 1 | 2 | 3 | 4 }>;
-  type ElementFromErrors = Extract<ElementErrors, { readonly index: 1 | 2 | 3 | 4 }>;
+  type ElementErrors = Extract<
+    ExpectedErrors,
+    { readonly index: 0 | 1 | 2 | 3 | 4 }
+  >;
+  type ElementFromErrors = Extract<
+    ElementErrors,
+    { readonly index: 1 | 2 | 3 | 4 }
+  >;
 
   expectTypeOf<ArrayChildInput>().toEqualTypeOf<ReadonlyArray<string>>();
   expectTypeOf<ArrayChildOutput>().toEqualTypeOf<
@@ -1382,12 +1378,12 @@ test("the Array child fixture preserves specialized from operations", () => {
   expectTypeOf<ArrayChildErrors>().toEqualTypeOf<
     ArrayChild1Error | ArrayError<ElementErrors>
   >();
-  expectTypeOf<InferOk<ArrayChildFromUnknownResult>>().toEqualTypeOf<
-    ArrayChildOutput
-  >();
-  expectTypeOf<InferErr<ArrayChildFromUnknownResult>>().toEqualTypeOf<
-    ArrayChildErrors
-  >();
+  expectTypeOf<
+    InferOk<ArrayChildFromUnknownResult>
+  >().toEqualTypeOf<ArrayChildOutput>();
+  expectTypeOf<
+    InferErr<ArrayChildFromUnknownResult>
+  >().toEqualTypeOf<ArrayChildErrors>();
   expectTypeOf<InferErr<ArrayChildFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<InferErr<ArrayChildFrom6Result>>().toEqualTypeOf<
     ArrayChild1Error | ArrayElementsError<ElementFromErrors>
@@ -1396,9 +1392,9 @@ test("the Array child fixture preserves specialized from operations", () => {
   expectTypeOf<ArrayChildFrom2Input>().toEqualTypeOf<
     typeof ValidatedValues.Output
   >();
-  expectTypeOf<InferErr<ArrayChildFrom2Result>>().toEqualTypeOf<
-    ArrayChild1Error
-  >();
+  expectTypeOf<
+    InferErr<ArrayChildFrom2Result>
+  >().toEqualTypeOf<ArrayChild1Error>();
   expectTypeOf<InferErr<ArrayChildFrom3Result>>().toEqualTypeOf<
     | ArrayChild1Error
     | ArrayElementsError<Extract<ElementErrors, { readonly index: 4 }>>
@@ -1408,13 +1404,9 @@ test("the Array child fixture preserves specialized from operations", () => {
   >();
   expectTypeOf<InferErr<ArrayChildFrom5Result>>().toEqualTypeOf<
     | ArrayChild1Error
-    | ArrayElementsError<
-        Extract<ElementErrors, { readonly index: 2 | 3 | 4 }>
-      >
+    | ArrayElementsError<Extract<ElementErrors, { readonly index: 2 | 3 | 4 }>>
   >();
-  expectTypeOf<ArrayChildFrom6Input>().toEqualTypeOf<
-    ArrayDeepestFromInput
-  >();
+  expectTypeOf<ArrayChildFrom6Input>().toEqualTypeOf<ArrayDeepestFromInput>();
   expectTypeOf<ArrayChildToInput>().toEqualTypeOf<ArrayChildOutput>();
   expectTypeOf<ArrayChildToResult>().toEqualTypeOf<
     typeof ValidatedValues.Output
@@ -1441,19 +1433,17 @@ test("the width-32 discriminated Object Union fixture preserves correlations", (
 
   expectTypeOf<ObjectUnionInput>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<ObjectUnionOutput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<ObjectUnionErrors>().toEqualTypeOf<
-    ExpectedObjectUnionErrors
-  >();
-  expectTypeOf<InferOk<ObjectUnionFromUnknownResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
-  expectTypeOf<InferErr<ObjectUnionFromUnknownResult>>().toEqualTypeOf<
-    ExpectedObjectUnionErrors
-  >();
+  expectTypeOf<ObjectUnionErrors>().toEqualTypeOf<ExpectedObjectUnionErrors>();
+  expectTypeOf<
+    InferOk<ObjectUnionFromUnknownResult>
+  >().toEqualTypeOf<ExpectedOutput>();
+  expectTypeOf<
+    InferErr<ObjectUnionFromUnknownResult>
+  >().toEqualTypeOf<ExpectedObjectUnionErrors>();
   expectTypeOf<InferErr<ObjectUnionFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<ObjectUnionFromParentResult>>().toEqualTypeOf<
-    ExpectedObjectUnionErrors
-  >();
+  expectTypeOf<
+    InferErr<ObjectUnionFromParentResult>
+  >().toEqualTypeOf<ExpectedObjectUnionErrors>();
   expectTypeOf<ObjectUnionMembers["length"]>().toEqualTypeOf<32>();
   expectTypeOf<ObjectUnionMembers[0]["Output"]>().toEqualTypeOf<
     ExpectedStrictObject<{
@@ -1469,9 +1459,7 @@ test("the width-32 discriminated Object Union fixture preserves correlations", (
   >();
   expectTypeOf<ObjectUnionParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<ObjectUnionToInput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<ObjectUnionToResult>().toEqualTypeOf<
-    ExpectedCanonicalInput
-  >();
+  expectTypeOf<ObjectUnionToResult>().toEqualTypeOf<ExpectedCanonicalInput>();
 });
 
 test("the width-32 Discriminated Union fixture preserves routed correlations", () => {
@@ -1503,37 +1491,39 @@ test("the width-32 Discriminated Union fixture preserves routed correlations", (
     ? Expected
     : never;
   type ExpectedNodeMemberIssues = {
-    readonly [MemberIndex in keyof DiscriminatedUnionMembers]:
-      MemberIndex extends `${number}`
-        ? DiscriminatedUnionMemberIssue<
-            MemberDiscriminator<DiscriminatedUnionMembers[MemberIndex]>,
-            DiscriminatedUnionMembers[MemberIndex]["Error"]
-          >
-        : never;
+    readonly [
+      MemberIndex in keyof DiscriminatedUnionMembers
+    ]: MemberIndex extends `${number}`
+      ? DiscriminatedUnionMemberIssue<
+          MemberDiscriminator<DiscriminatedUnionMembers[MemberIndex]>,
+          DiscriminatedUnionMembers[MemberIndex]["Error"]
+        >
+      : never;
   }[keyof DiscriminatedUnionMembers];
   type ExpectedParentMemberIssues = {
-    readonly [MemberIndex in keyof DiscriminatedUnionMembers]:
-      MemberIndex extends `${number}`
-        ? DiscriminatedUnionMemberIssue<
-            MemberDiscriminator<DiscriminatedUnionMembers[MemberIndex]>,
-            InferErrors<
-              NonNullable<DiscriminatedUnionMembers[MemberIndex]["parent"]>
-            >
+    readonly [
+      MemberIndex in keyof DiscriminatedUnionMembers
+    ]: MemberIndex extends `${number}`
+      ? DiscriminatedUnionMemberIssue<
+          MemberDiscriminator<DiscriminatedUnionMembers[MemberIndex]>,
+          InferErrors<
+            NonNullable<DiscriminatedUnionMembers[MemberIndex]["parent"]>
           >
-        : never;
+        >
+      : never;
   }[keyof DiscriminatedUnionMembers];
   type ExpectedCompleteMemberIssues = {
-    readonly [MemberIndex in keyof DiscriminatedUnionMembers]:
-      MemberIndex extends `${number}`
-        ? DiscriminatedUnionMemberIssue<
-            MemberDiscriminator<DiscriminatedUnionMembers[MemberIndex]>,
-            InferErrors<DiscriminatedUnionMembers[MemberIndex]>
-          >
-        : never;
+    readonly [
+      MemberIndex in keyof DiscriminatedUnionMembers
+    ]: MemberIndex extends `${number}`
+      ? DiscriminatedUnionMemberIssue<
+          MemberDiscriminator<DiscriminatedUnionMembers[MemberIndex]>,
+          InferErrors<DiscriminatedUnionMembers[MemberIndex]>
+        >
+      : never;
   }[keyof DiscriminatedUnionMembers];
-  type ExpectedNodeError = DiscriminatedUnionMemberError<
-    ExpectedNodeMemberIssues
-  >;
+  type ExpectedNodeError =
+    DiscriminatedUnionMemberError<ExpectedNodeMemberIssues>;
   type ExpectedParentError = DiscriminatedUnionError<
     "kind",
     ExpectedDiscriminator,
@@ -1553,18 +1543,15 @@ test("the width-32 Discriminated Union fixture preserves routed correlations", (
     ErrorReason<Error>,
     { readonly kind: Kind }
   >;
-  type CompleteMemberIssue = ReasonByKind<
-    DiscriminatedUnionErrors,
-    "Member"
-  >;
+  type CompleteMemberIssue = ReasonByKind<DiscriminatedUnionErrors, "Member">;
 
   expectTypeOf<DiscriminatedUnionKey>().toEqualTypeOf<"kind">();
   expectTypeOf<DiscriminatedUnionInput>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<DiscriminatedUnionOutput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<DiscriminatedUnionNodeError>().toEqualTypeOf<ExpectedNodeError>();
-  expectTypeOf<DiscriminatedUnionErrors["type"]>().toEqualTypeOf<
-    "DiscriminatedUnion"
-  >();
+  expectTypeOf<
+    DiscriminatedUnionErrors["type"]
+  >().toEqualTypeOf<"DiscriminatedUnion">();
   expectTypeOf<ErrorReason<DiscriminatedUnionErrors>["kind"]>().toEqualTypeOf<
     "Object" | "PropertyAccess" | "Discriminator" | "Member"
   >();
@@ -1607,52 +1594,44 @@ test("the width-32 Discriminated Union fixture preserves routed correlations", (
     MemberDiscriminator<DiscriminatedUnionMembers[31]>
   >().toEqualTypeOf<"O32">();
   expectTypeOf<DiscriminatedUnionFromUnknownInput>().toEqualTypeOf<unknown>();
-  expectTypeOf<InferOk<DiscriminatedUnionFromUnknownResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
-  expectTypeOf<InferErr<DiscriminatedUnionFromUnknownResult>>().toEqualTypeOf<
-    DiscriminatedUnionErrors
-  >();
+  expectTypeOf<
+    InferOk<DiscriminatedUnionFromUnknownResult>
+  >().toEqualTypeOf<ExpectedOutput>();
+  expectTypeOf<
+    InferErr<DiscriminatedUnionFromUnknownResult>
+  >().toEqualTypeOf<DiscriminatedUnionErrors>();
   expectTypeOf<DiscriminatedUnionFromInput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<InferOk<DiscriminatedUnionFromResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
+  expectTypeOf<
+    InferOk<DiscriminatedUnionFromResult>
+  >().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<InferErr<DiscriminatedUnionFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<DiscriminatedUnionFromParentInput>().toEqualTypeOf<
-    ExpectedInput
-  >();
-  expectTypeOf<InferOk<DiscriminatedUnionFromParentResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
-  expectTypeOf<InferErr<DiscriminatedUnionFromParentResult>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
+  expectTypeOf<DiscriminatedUnionFromParentInput>().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<
+    InferOk<DiscriminatedUnionFromParentResult>
+  >().toEqualTypeOf<ExpectedOutput>();
+  expectTypeOf<
+    InferErr<DiscriminatedUnionFromParentResult>
+  >().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<DiscriminatedUnionToInput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<DiscriminatedUnionToResult>().toEqualTypeOf<
-    ExpectedCanonicalInput
-  >();
-  expectTypeOf<DiscriminatedUnionParent["Input"]>().toEqualTypeOf<
-    ExpectedInput
-  >();
-  expectTypeOf<DiscriminatedUnionParent["Output"]>().toEqualTypeOf<
-    ExpectedInput
-  >();
+  expectTypeOf<DiscriminatedUnionToResult>().toEqualTypeOf<ExpectedCanonicalInput>();
+  expectTypeOf<
+    DiscriminatedUnionParent["Input"]
+  >().toEqualTypeOf<ExpectedInput>();
+  expectTypeOf<
+    DiscriminatedUnionParent["Output"]
+  >().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<DiscriminatedUnionParent["Error"]>().toEqualTypeOf<
     InferErrors<DiscriminatedUnionParent>
   >();
   expectTypeOf<
     ErrorReason<DiscriminatedUnionParent["Error"]>["kind"]
-  >().toEqualTypeOf<
-    "Object" | "PropertyAccess" | "Discriminator" | "Member"
-  >();
+  >().toEqualTypeOf<"Object" | "PropertyAccess" | "Discriminator" | "Member">();
   expectTypeOf<
     ReasonByKind<DiscriminatedUnionParent["Error"], "Object">
   >().toEqualTypeOf<ReasonByKind<ExpectedParentError, "Object">>();
   expectTypeOf<
     ReasonByKind<DiscriminatedUnionParent["Error"], "PropertyAccess">
-  >().toEqualTypeOf<
-    ReasonByKind<ExpectedParentError, "PropertyAccess">
-  >();
+  >().toEqualTypeOf<ReasonByKind<ExpectedParentError, "PropertyAccess">>();
   expectTypeOf<
     ReasonByKind<DiscriminatedUnionParent["Error"], "Discriminator">
   >().toEqualTypeOf<ReasonByKind<ExpectedParentError, "Discriminator">>();
@@ -1684,13 +1663,13 @@ test("the width-32 Union Object-property fixture preserves optionality and error
   expectTypeOf<UnionObjectOutput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<UnionObjectNodeError>().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<UnionObjectErrors>().toEqualTypeOf<ExpectedErrors>();
-  expectTypeOf<InferErr<UnionObjectFromUnknownResult>>().toEqualTypeOf<
-    ExpectedErrors
-  >();
+  expectTypeOf<
+    InferErr<UnionObjectFromUnknownResult>
+  >().toEqualTypeOf<ExpectedErrors>();
   expectTypeOf<InferErr<UnionObjectFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<UnionObjectFromParentResult>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
+  expectTypeOf<
+    InferErr<UnionObjectFromParentResult>
+  >().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<UnionObjectParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<UnionObjectToInput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<UnionObjectToResult>().toEqualTypeOf<ExpectedOutput>();
@@ -1718,16 +1697,16 @@ test("the transformed Object-property fixture preserves both representations", (
   expectTypeOf<TransformObjectOutput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<TransformObjectNodeError>().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<TransformObjectErrors>().toEqualTypeOf<ExpectedErrors>();
-  expectTypeOf<InferErr<TransformObjectFromUnknownResult>>().toEqualTypeOf<
-    ExpectedErrors
-  >();
+  expectTypeOf<
+    InferErr<TransformObjectFromUnknownResult>
+  >().toEqualTypeOf<ExpectedErrors>();
   expectTypeOf<InferErr<TransformObjectFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<TransformObjectFromParentResult>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
-  expectTypeOf<TransformObjectParent["Output"]>().toEqualTypeOf<
-    ExpectedInput
-  >();
+  expectTypeOf<
+    InferErr<TransformObjectFromParentResult>
+  >().toEqualTypeOf<ExpectedNodeError>();
+  expectTypeOf<
+    TransformObjectParent["Output"]
+  >().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<TransformObjectToInput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<TransformObjectToResult>().toEqualTypeOf<ExpectedInput>();
 });
@@ -1761,20 +1740,22 @@ test("the typed fixture preserves its discriminator and Object semantics", () =>
   expectTypeOf<TypedNodeError>().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<TypedErrors>().toEqualTypeOf<ExpectedErrors>();
   expectTypeOf<TypedFromUnknownInput>().toEqualTypeOf<unknown>();
-  expectTypeOf<InferOk<TypedFromUnknownResult>>().toEqualTypeOf<
-    ExpectedOutput
-  >();
-  expectTypeOf<InferErr<TypedFromUnknownResult>>().toEqualTypeOf<
-    ExpectedErrors
-  >();
+  expectTypeOf<
+    InferOk<TypedFromUnknownResult>
+  >().toEqualTypeOf<ExpectedOutput>();
+  expectTypeOf<
+    InferErr<TypedFromUnknownResult>
+  >().toEqualTypeOf<ExpectedErrors>();
   expectTypeOf<TypedFromInput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<InferOk<TypedFromResult>>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<InferErr<TypedFromResult>>().toEqualTypeOf<never>();
   expectTypeOf<TypedFromParentInput>().toEqualTypeOf<ExpectedInput>();
-  expectTypeOf<InferOk<TypedFromParentResult>>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<InferErr<TypedFromParentResult>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
+  expectTypeOf<
+    InferOk<TypedFromParentResult>
+  >().toEqualTypeOf<ExpectedOutput>();
+  expectTypeOf<
+    InferErr<TypedFromParentResult>
+  >().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<TypedParent["Output"]>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<TypedToInput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<TypedToResult>().toEqualTypeOf<ExpectedCanonicalInput>();
@@ -1814,18 +1795,10 @@ test("the Object transformation fixture preserves parent and output errors", () 
 
   expectTypeOf<ObjectTransformInput>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<ObjectTransformOutput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<ObjectTransformEncodedNodeError>().toEqualTypeOf<
-    ExpectedEncodedNodeError
-  >();
-  expectTypeOf<ObjectTransformEncodedErrors>().toEqualTypeOf<
-    ExpectedEncodedErrors
-  >();
-  expectTypeOf<ObjectTransformOutputNodeError>().toEqualTypeOf<
-    ExpectedOutputNodeError
-  >();
-  expectTypeOf<ObjectTransformOutputErrors>().toEqualTypeOf<
-    ExpectedOutputErrors
-  >();
+  expectTypeOf<ObjectTransformEncodedNodeError>().toEqualTypeOf<ExpectedEncodedNodeError>();
+  expectTypeOf<ObjectTransformEncodedErrors>().toEqualTypeOf<ExpectedEncodedErrors>();
+  expectTypeOf<ObjectTransformOutputNodeError>().toEqualTypeOf<ExpectedOutputNodeError>();
+  expectTypeOf<ObjectTransformOutputErrors>().toEqualTypeOf<ExpectedOutputErrors>();
   expectTypeOf<ObjectTransformNodeError>().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<ObjectTransformErrors>().toEqualTypeOf<
     ExpectedEncodedErrors | ExpectedNodeError
@@ -1837,25 +1810,19 @@ test("the Object transformation fixture preserves parent and output errors", () 
   expectTypeOf<InferErr<ObjectTransformFrom2Result>>().toEqualTypeOf<
     ExpectedEncodedNodeError | ExpectedNodeError
   >();
-  expectTypeOf<InferErr<ObjectTransformFrom1Result>>().toEqualTypeOf<
-    ExpectedNodeError
-  >();
+  expectTypeOf<
+    InferErr<ObjectTransformFrom1Result>
+  >().toEqualTypeOf<ExpectedNodeError>();
   expectTypeOf<ObjectTransformToInput>().toEqualTypeOf<ExpectedOutput>();
   expectTypeOf<ObjectTransformToResult>().toEqualTypeOf<ExpectedInput>();
 });
 
 test("the Object Array fixture preserves nested container errors", () => {
   type ExpectedInput = ReadonlyArray<
-    ExpectedStrictObject<
-      { readonly value: string },
-      { readonly note: string }
-    >
+    ExpectedStrictObject<{ readonly value: string }, { readonly note: string }>
   >;
   type ExpectedOutput = ReadonlyArray<
-    ExpectedStrictObject<
-      { readonly value: number },
-      { readonly note: string }
-    >
+    ExpectedStrictObject<{ readonly value: number }, { readonly note: string }>
   >;
   type ExpectedElementNodeError = ObjectPropertiesError<{
     readonly value: NumberFromStringError;
@@ -1868,12 +1835,8 @@ test("the Object Array fixture preserves nested container errors", () => {
 
   expectTypeOf<ObjectArrayInput>().toEqualTypeOf<ExpectedInput>();
   expectTypeOf<ObjectArrayOutput>().toEqualTypeOf<ExpectedOutput>();
-  expectTypeOf<ObjectArrayElementNodeError>().toEqualTypeOf<
-    ExpectedElementNodeError
-  >();
-  expectTypeOf<ObjectArrayElementErrors>().toEqualTypeOf<
-    ExpectedElementErrors
-  >();
+  expectTypeOf<ObjectArrayElementNodeError>().toEqualTypeOf<ExpectedElementNodeError>();
+  expectTypeOf<ObjectArrayElementErrors>().toEqualTypeOf<ExpectedElementErrors>();
   expectTypeOf<ObjectArrayNodeError>().toEqualTypeOf<
     ArrayElementsError<ExpectedElementNodeError>
   >();
@@ -1904,9 +1867,7 @@ test("the Object child fixture keeps own errors outside property errors", () => 
   }>;
   type ExpectedModelErrors = ObjectError<{
     readonly title:
-      | TypeOfError<"String">
-      | ObjectChildNonEmptyError
-      | ObjectChildShortError;
+      TypeOfError<"String"> | ObjectChildNonEmptyError | ObjectChildShortError;
     readonly count: TypeOfError<"Number"> | ObjectChildCountError;
     readonly note?: TypeOfError<"String">;
   }>;
@@ -1927,9 +1888,9 @@ test("the Object child fixture keeps own errors outside property errors", () => 
     ExpectedModelNodeError | ObjectChildImportedError
   >();
   expectTypeOf<InferErr<ObjectChildFrom1Result>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<ObjectChildFrom2Result>>().toEqualTypeOf<
-    ObjectChildImportedError
-  >();
+  expectTypeOf<
+    InferErr<ObjectChildFrom2Result>
+  >().toEqualTypeOf<ObjectChildImportedError>();
   expectTypeOf<ObjectChildToInput>().toEqualTypeOf<ObjectChildOutput>();
   expectTypeOf<ObjectChildToResult>().toEqualTypeOf<ObjectChildOutput>();
 });
@@ -1942,32 +1903,30 @@ test("the direct Lazy fixture preserves every manually declared channel", () => 
   expectTypeOf<LazyDirectInputError>().toEqualTypeOf<LazyDirectTreeInputError>();
   expectTypeOf<LazyDirectErrors>().toEqualTypeOf<LazyDirectTreeError>();
   expectTypeOf<LazyDirectFromUnknownInput>().toEqualTypeOf<unknown>();
-  expectTypeOf<InferOk<LazyDirectFromUnknownResult>>().toEqualTypeOf<
-    LazyDirectTreeOutput
-  >();
-  expectTypeOf<InferErr<LazyDirectFromUnknownResult>>().toEqualTypeOf<
-    LazyDirectTreeError
-  >();
+  expectTypeOf<
+    InferOk<LazyDirectFromUnknownResult>
+  >().toEqualTypeOf<LazyDirectTreeOutput>();
+  expectTypeOf<
+    InferErr<LazyDirectFromUnknownResult>
+  >().toEqualTypeOf<LazyDirectTreeError>();
   expectTypeOf<LazyDirectFromInput>().toEqualTypeOf<LazyDirectTreeOutput>();
-  expectTypeOf<InferOk<LazyDirectFromResult>>().toEqualTypeOf<
-    LazyDirectTreeOutput
-  >();
+  expectTypeOf<
+    InferOk<LazyDirectFromResult>
+  >().toEqualTypeOf<LazyDirectTreeOutput>();
   expectTypeOf<InferErr<LazyDirectFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<LazyDirectFromParentInput>().toEqualTypeOf<
-    LazyDirectTreeInput
-  >();
-  expectTypeOf<InferOk<LazyDirectFromParentResult>>().toEqualTypeOf<
-    LazyDirectTreeOutput
-  >();
-  expectTypeOf<InferErr<LazyDirectFromParentResult>>().toEqualTypeOf<
-    LazyDirectTreeFromError
-  >();
-  expectTypeOf<LazyDirectParent["Input"]>().toEqualTypeOf<
-    LazyDirectTreeInput
-  >();
-  expectTypeOf<LazyDirectParent["Output"]>().toEqualTypeOf<
-    LazyDirectTreeInput
-  >();
+  expectTypeOf<LazyDirectFromParentInput>().toEqualTypeOf<LazyDirectTreeInput>();
+  expectTypeOf<
+    InferOk<LazyDirectFromParentResult>
+  >().toEqualTypeOf<LazyDirectTreeOutput>();
+  expectTypeOf<
+    InferErr<LazyDirectFromParentResult>
+  >().toEqualTypeOf<LazyDirectTreeFromError>();
+  expectTypeOf<
+    LazyDirectParent["Input"]
+  >().toEqualTypeOf<LazyDirectTreeInput>();
+  expectTypeOf<
+    LazyDirectParent["Output"]
+  >().toEqualTypeOf<LazyDirectTreeInput>();
   expectTypeOf<LazyDirectParent["parent"]>().toEqualTypeOf<null>();
   expectTypeOf<LazyDirectToInput>().toEqualTypeOf<LazyDirectTreeOutput>();
   expectTypeOf<LazyDirectToResult>().toEqualTypeOf<LazyDirectTreeInput>();
@@ -1981,17 +1940,19 @@ test("the mutual Lazy fixture preserves both recursive declarations", () => {
   expectTypeOf<LazyMutualLeftNodeError>().toEqualTypeOf<never>();
   expectTypeOf<LazyMutualLeftInputError>().toEqualTypeOf<LazyMutualLeftError>();
   expectTypeOf<LazyMutualLeftErrors>().toEqualTypeOf<LazyMutualLeftError>();
-  expectTypeOf<InferOk<LazyMutualLeftFromUnknownResult>>().toEqualTypeOf<
-    LazyMutualLeft
-  >();
-  expectTypeOf<InferErr<LazyMutualLeftFromUnknownResult>>().toEqualTypeOf<
-    LazyMutualLeftError
-  >();
-  expectTypeOf<InferOk<LazyMutualLeftFromResult>>().toEqualTypeOf<
-    LazyMutualLeft
-  >();
+  expectTypeOf<
+    InferOk<LazyMutualLeftFromUnknownResult>
+  >().toEqualTypeOf<LazyMutualLeft>();
+  expectTypeOf<
+    InferErr<LazyMutualLeftFromUnknownResult>
+  >().toEqualTypeOf<LazyMutualLeftError>();
+  expectTypeOf<
+    InferOk<LazyMutualLeftFromResult>
+  >().toEqualTypeOf<LazyMutualLeft>();
   expectTypeOf<InferErr<LazyMutualLeftFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<LazyMutualLeftFromParentResult>>().toEqualTypeOf<never>();
+  expectTypeOf<
+    InferErr<LazyMutualLeftFromParentResult>
+  >().toEqualTypeOf<never>();
   expectTypeOf<LazyMutualLeftToResult>().toEqualTypeOf<LazyMutualLeft>();
   expectTypeOf<LazyMutualLeftParent["parent"]>().toEqualTypeOf<null>();
 
@@ -2000,17 +1961,19 @@ test("the mutual Lazy fixture preserves both recursive declarations", () => {
   expectTypeOf<LazyMutualRightNodeError>().toEqualTypeOf<never>();
   expectTypeOf<LazyMutualRightInputError>().toEqualTypeOf<LazyMutualRightError>();
   expectTypeOf<LazyMutualRightErrors>().toEqualTypeOf<LazyMutualRightError>();
-  expectTypeOf<InferOk<LazyMutualRightFromUnknownResult>>().toEqualTypeOf<
-    LazyMutualRight
-  >();
-  expectTypeOf<InferErr<LazyMutualRightFromUnknownResult>>().toEqualTypeOf<
-    LazyMutualRightError
-  >();
-  expectTypeOf<InferOk<LazyMutualRightFromResult>>().toEqualTypeOf<
-    LazyMutualRight
-  >();
+  expectTypeOf<
+    InferOk<LazyMutualRightFromUnknownResult>
+  >().toEqualTypeOf<LazyMutualRight>();
+  expectTypeOf<
+    InferErr<LazyMutualRightFromUnknownResult>
+  >().toEqualTypeOf<LazyMutualRightError>();
+  expectTypeOf<
+    InferOk<LazyMutualRightFromResult>
+  >().toEqualTypeOf<LazyMutualRight>();
   expectTypeOf<InferErr<LazyMutualRightFromResult>>().toEqualTypeOf<never>();
-  expectTypeOf<InferErr<LazyMutualRightFromParentResult>>().toEqualTypeOf<never>();
+  expectTypeOf<
+    InferErr<LazyMutualRightFromParentResult>
+  >().toEqualTypeOf<never>();
   expectTypeOf<LazyMutualRightToResult>().toEqualTypeOf<LazyMutualRight>();
   expectTypeOf<LazyMutualRightParent["parent"]>().toEqualTypeOf<null>();
 
@@ -2024,29 +1987,21 @@ test("the mutual Lazy fixture preserves both recursive declarations", () => {
 
 test("direct Lazy localization preserves every selected Type", () => {
   expectTypeOf<LocalizedDirectLocales>().toEqualTypeOf<"cs" | "en">();
-  expectTypeOf<LocalizedDirectCzechTree>().toEqualTypeOf<
-    LocalizedDirectEnglishTree
-  >();
-  expectTypeOf<LocalizedDirectCzechTree["Output"]>().toEqualTypeOf<
-    LocalizedDirectTree
-  >();
-  expectTypeOf<LocalizedDirectCzechTreeError>().toEqualTypeOf<
-    LocalizedDirectTreeError
-  >();
+  expectTypeOf<LocalizedDirectCzechTree>().toEqualTypeOf<LocalizedDirectEnglishTree>();
+  expectTypeOf<
+    LocalizedDirectCzechTree["Output"]
+  >().toEqualTypeOf<LocalizedDirectTree>();
+  expectTypeOf<LocalizedDirectCzechTreeError>().toEqualTypeOf<LocalizedDirectTreeError>();
 });
 
 test("mutual Lazy localization preserves both selected Types", () => {
   expectTypeOf<LocalizedMutualLocales>().toEqualTypeOf<"cs" | "en">();
-  expectTypeOf<LocalizedMutualCzechLeft>().toEqualTypeOf<
-    LocalizedMutualEnglishLeft
-  >();
-  expectTypeOf<LocalizedMutualCzechRight>().toEqualTypeOf<
-    LocalizedMutualEnglishRight
-  >();
-  expectTypeOf<LocalizedMutualCzechLeft["Output"]>().toEqualTypeOf<
-    LocalizedMutualLeft
-  >();
-  expectTypeOf<LocalizedMutualCzechRight["Output"]>().toEqualTypeOf<
-    LocalizedMutualRight
-  >();
+  expectTypeOf<LocalizedMutualCzechLeft>().toEqualTypeOf<LocalizedMutualEnglishLeft>();
+  expectTypeOf<LocalizedMutualCzechRight>().toEqualTypeOf<LocalizedMutualEnglishRight>();
+  expectTypeOf<
+    LocalizedMutualCzechLeft["Output"]
+  >().toEqualTypeOf<LocalizedMutualLeft>();
+  expectTypeOf<
+    LocalizedMutualCzechRight["Output"]
+  >().toEqualTypeOf<LocalizedMutualRight>();
 });

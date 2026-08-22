@@ -17,7 +17,7 @@ describe("set", () => {
 
   test("notifies listeners when state changes", () => {
     const store = createStore(0);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     store.set(1);
@@ -27,7 +27,7 @@ describe("set", () => {
 
   test("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     store.set(1);
@@ -37,7 +37,7 @@ describe("set", () => {
 
   test("does not notify listeners when repeated state is NaN", () => {
     const store = createStore(NaN);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     store.set(NaN);
@@ -56,7 +56,7 @@ describe("getAndSet", () => {
 
   test("notifies listeners when state changes", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     expect(store.getAndSet(2)).toBe(1);
@@ -65,7 +65,7 @@ describe("getAndSet", () => {
 
   test("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     expect(store.getAndSet(1)).toBe(1);
@@ -83,7 +83,7 @@ describe("setAndGet", () => {
 
   test("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     expect(store.setAndGet(1)).toBe(1);
@@ -102,7 +102,7 @@ describe("update", () => {
 
   test("notifies listeners when state changes", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     store.update((n) => n + 1);
@@ -112,7 +112,7 @@ describe("update", () => {
 
   test("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     store.update((n) => n);
@@ -131,7 +131,7 @@ describe("getAndUpdate", () => {
 
   test("notifies listeners when state changes", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     expect(store.getAndUpdate((n: number) => n + 1)).toBe(1);
@@ -140,7 +140,7 @@ describe("getAndUpdate", () => {
 
   test("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     expect(store.getAndUpdate((n) => n)).toBe(1);
@@ -158,7 +158,7 @@ describe("updateAndGet", () => {
 
   test("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     expect(store.updateAndGet((n) => n)).toBe(1);
@@ -189,7 +189,7 @@ describe("modify", () => {
 
   test("notifies listeners when state changes", () => {
     const store = createStore(0);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     const result = store.modify((current: number) => [current, current + 1]);
@@ -200,7 +200,7 @@ describe("modify", () => {
 
   test("does not notify listeners when next state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     const result = store.modify((current) => [current, current]);
@@ -213,7 +213,7 @@ describe("modify", () => {
 describe("subscribe", () => {
   test("returns unsubscribe function", () => {
     const store = createStore(0);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     const unsubscribe = store.subscribe(listener);
 
     store.set(1);
@@ -226,8 +226,8 @@ describe("subscribe", () => {
 
   test("supports multiple listeners", () => {
     const store = createStore(0);
-    const listener1 = vi.fn();
-    const listener2 = vi.fn();
+    const listener1 = vi.fn<() => void>();
+    const listener2 = vi.fn<() => void>();
 
     store.subscribe(listener1);
     store.subscribe(listener2);
@@ -242,7 +242,7 @@ describe("subscribe", () => {
 describe("dispose", () => {
   test("clears all listeners", () => {
     const store = createStore(0);
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     store[Symbol.dispose]();
@@ -257,7 +257,7 @@ describe("custom eq", () => {
     const eqModulo10 = (a: number, b: number) => a % 10 === b % 10;
     const store = createStore<number>(5, eqModulo10);
 
-    const listener = vi.fn();
+    const listener = vi.fn<() => void>();
     store.subscribe(listener);
 
     store.set(15);

@@ -1,0 +1,11 @@
+{
+  "extends": "@evolu/typescript-config/universal-esm.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["plugin.d.mts", "*.test.mts", "vitest.config.ts"]
+}

@@ -41,7 +41,7 @@ describe("createUnknownError", () => {
   });
 
   test("handles inherited stack getter", () => {
-    const prototype = Object.create(Error.prototype, {
+    const prototype: object = Object.create(Error.prototype, {
       stack: { get: () => "Inherited stack" },
     });
     const error = Object.create(prototype) as Error;
@@ -55,10 +55,9 @@ describe("createUnknownError", () => {
   });
 
   test("excludes non-clonable error properties", () => {
-    const error = new Error("Test error");
-    (error as any).nonClonable = () => {
-      //
-    };
+    const error = Object.assign(new Error("Test error"), {
+      nonClonable: () => undefined,
+    });
     const result = createUnknownError(error);
 
     expect(result.type).toBe("UnknownError");
@@ -101,8 +100,12 @@ describe("createUnknownError", () => {
   });
 
   test("handles circular references", () => {
-    const error: any = {};
-    error.self = error; // Create a circular reference
+    interface Circular {
+      self?: Circular;
+    }
+    const error: Circular = {};
+    // Create a circular reference
+    error.self = error;
     const result = createUnknownError(error);
 
     expect(result.type).toBe("UnknownError");

@@ -185,7 +185,9 @@ test("Awaitable", () => {
 
 test("isPromiseLike", () => {
   expect(isPromiseLike(Promise.resolve("value"))).toBe(true);
+  // oxlint-disable-next-line unicorn/no-thenable -- Intentionally tests a thenable object.
   expect(isPromiseLike({ then: () => undefined })).toBe(true);
+  // oxlint-disable-next-line unicorn/no-thenable -- Intentionally tests a non-callable then property.
   expect(isPromiseLike({ then: "not a function" })).toBe(false);
   expect(isPromiseLike(null)).toBe(false);
   expect(isPromiseLike(undefined)).toBe(false);
@@ -215,7 +217,9 @@ test("IsUnion", () => {
   expectTypeOf<IsUnion<unknown>>().toEqualTypeOf<false>();
   expectTypeOf<IsUnion<boolean>>().toEqualTypeOf<true>();
   expectTypeOf<IsUnion<"a" | "b">>().toEqualTypeOf<true>();
+  // oxlint-disable-next-line typescript/no-redundant-type-constituents -- Verifies IsUnion after TypeScript normalizes a string literal into string.
   expectTypeOf<IsUnion<string | "a">>().toEqualTypeOf<false>();
+  // oxlint-disable-next-line typescript/no-redundant-type-constituents -- Verifies IsUnion after TypeScript removes never from a union.
   expectTypeOf<IsUnion<string | never>>().toEqualTypeOf<false>();
   expectTypeOf<
     IsUnion<{ readonly a: string } | { readonly b: number }>

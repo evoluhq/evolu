@@ -305,7 +305,7 @@ export const createRelaySqliteStorage =
           where "ownerId" = ${ownerId} and "timestamp" = ${timestamp};
         `);
 
-        const row = result.rows[0];
+        const row = result.rows.at(0);
         assert(row, "Every timestamp must have a change");
         return row.change;
       },

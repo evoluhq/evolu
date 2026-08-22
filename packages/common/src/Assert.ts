@@ -33,6 +33,7 @@ export const assert: (
   condition: unknown,
   message: string,
 ) => asserts condition = (condition, message) => {
+  // oxlint-disable-next-line typescript/strict-boolean-expressions -- JavaScript truthiness is the contract of assert.
   if (!condition) {
     throw new Error(message);
   }

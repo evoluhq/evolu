@@ -15,7 +15,7 @@ const Schema = {
 
 const createQuery = Evolu.createQueryBuilder(Schema);
 
-export const todosQuery = createQuery((db) =>
+export const todosQuery = /*#__PURE__*/ createQuery((db) =>
   db
     .selectFrom("todo")
     .select(["id", "title", "isCompleted"])
@@ -34,6 +34,7 @@ run.deps.evoluError.subscribe(() => {
   alert("🚨 Evolu error occurred! Check the console.");
 });
 
+// oxlint-disable evolu/require-pure-annotation -- Creates the application singleton and its owned runtime resources.
 export const evolu = await run.ok(
   Evolu.createEvolu(Schema, {
     appName: Evolu.AppName.orThrow("minimal-example"),
@@ -44,3 +45,4 @@ export const evolu = await run.ok(
     }),
   }),
 );
+// oxlint-enable evolu/require-pure-annotation

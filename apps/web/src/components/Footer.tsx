@@ -44,12 +44,9 @@ const PageNavigation = () => {
     return null;
   }
 
-  const previousPage = allPages[currentPageIndex - 1]
-    ? allPages[currentPageIndex - 1]
-    : null;
-  const nextPage = allPages[currentPageIndex + 1]
-    ? allPages[currentPageIndex + 1]
-    : null;
+  const previousPage =
+    currentPageIndex === 0 ? null : (allPages.at(currentPageIndex - 1) ?? null);
+  const nextPage = allPages.at(currentPageIndex + 1) ?? null;
 
   return (
     <div className="flex">

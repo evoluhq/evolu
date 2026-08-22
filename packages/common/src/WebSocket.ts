@@ -235,9 +235,13 @@ export const createWebSocket: CreateWebSocket =
     const closeSocket = () => {
       if (!socket) return;
 
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onopen = null;
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onclose = null;
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onmessage = null;
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onerror = null;
 
       if (
@@ -266,11 +270,13 @@ export const createWebSocket: CreateWebSocket =
 
       let isOpen = false;
 
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onopen = () => {
         isOpen = true;
         onOpen?.();
       };
 
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onclose = (event) => {
         onClose?.(event);
         if (shouldRetryOnClose(event)) {
@@ -280,10 +286,12 @@ export const createWebSocket: CreateWebSocket =
         }
       };
 
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onmessage = (event: MessageEvent<string | ArrayBuffer | Blob>) => {
         onMessage?.(event.data);
       };
 
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       socket.onerror = (event) => {
         const error: WebSocketConnectionError | WebSocketConnectError = isOpen
           ? { type: "WebSocketConnectionError", event }

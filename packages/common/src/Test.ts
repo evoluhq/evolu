@@ -50,5 +50,6 @@ export const testCreateId = (): TestCreateId => {
     randomLib: testCreateRandomLib(),
   });
 
+  // oxlint-disable-next-line typescript/no-unnecessary-type-arguments -- Explicit never resolves createId's conditional brand-validation rest parameter; inference rejects the argument without it.
   return (() => createId<never>({ randomBytes })) as TestCreateId;
 };

@@ -176,6 +176,7 @@ const createTestGlobalErrors = (
       globalThis.removeEventListener(webEvent, listener);
     });
   } else {
+    // oxlint-disable-next-line unicorn/prefer-type-error -- An unsupported runtime environment is not an invalid argument type.
     throw new Error(`Unsupported platform global ${errorType} reporting.`);
   }
 

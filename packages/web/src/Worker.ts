@@ -117,6 +117,7 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
 
   disposer.defer(() => {
     disposed = true;
+    // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
     nativeBroadcastChannel.onmessage = null;
     nativeBroadcastChannel.close();
   });
@@ -134,6 +135,7 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
       set onMessage(fn) {
         if (disposed) return;
         onMessageHandler = fn;
+        // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
         nativeBroadcastChannel.onmessage = fn
           ? (event: MessageEvent<Output>) => {
               fn(event.data);
@@ -165,11 +167,13 @@ export const createSharedWorkerSelf = <Input, Output = never>(
   const self: SharedWorkerSelf<Input, Output> = {
     onConnect: null,
     [Symbol.dispose]: () => {
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       nativeSelf.onconnect = null;
       nativeSelf.close();
     },
   };
 
+  // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
   nativeSelf.onconnect = (e) => {
     assertNonNullable(
       self.onConnect,
@@ -203,12 +207,14 @@ export const createOneTabSharedWorkerSelfPolyfill = <Input, Output = never>(
     messages.length = 0;
     onConnectHandler = null;
     onMessageHandler = null;
+    // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
     nativeSelf.onmessage = null;
     nativeSelf.close();
   });
 
   const disposables = disposer.move();
 
+  // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
   nativeSelf.onmessage = (event: MessageEvent<Input>) => {
     if (disposables.disposed) return;
 
@@ -300,10 +306,12 @@ const wrap = <Input, Output>(
       onMessageHandler = fn;
       if (fn) {
         // Messages are queued until onMessage is assigned.
+        // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
         native.onmessage = (event: MessageEvent<Output>) => {
           fn(event.data);
         };
       } else {
+        // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
         native.onmessage = null;
       }
     },
@@ -311,6 +319,7 @@ const wrap = <Input, Output>(
     native: native as unknown as NativeMessagePort<Input, Output>,
 
     [Symbol.dispose]: () => {
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
       native.onmessage = null;
       if ("terminate" in native) native.terminate();
       else native.close();

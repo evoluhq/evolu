@@ -427,7 +427,7 @@ describe("logExplainQueryPlan", () => {
     const planOutput = planEntry!.args.find(
       (arg) => typeof arg === "string" && arg.includes("SCAN"),
     ) as string;
-    expect(planOutput).toMatch(/^ {2}/m);
+    expect(planOutput).toMatch(/^ {2}/mu);
   });
 });
 
@@ -560,7 +560,9 @@ describe("createPreparedStatementsCache", () => {
     const disposed: Array<string> = [];
     const cache = createPreparedStatementsCache(
       (s) => s,
-      (s) => disposed.push(s),
+      (s) => {
+        disposed.push(s);
+      },
     );
 
     cache.get({
@@ -582,7 +584,9 @@ describe("createPreparedStatementsCache", () => {
     let disposeCount = 0;
     const cache = createPreparedStatementsCache(
       (s) => s,
-      () => disposeCount++,
+      () => {
+        disposeCount++;
+      },
     );
     cache.get({
       sql: "a;" as SafeSql,
@@ -779,15 +783,15 @@ describe("getSqliteSchema", () => {
       JSON.stringify({
         tables: Object.fromEntries(
           Object.entries(schema.tables)
-            .sort(([a], [b]) => a.localeCompare(b))
+            .toSorted(([a], [b]) => a.localeCompare(b))
             .map(([tableName, columns]) => {
               assertNonNullable(columns);
-              return [tableName, [...columns].sort()];
+              return [tableName, [...columns].toSorted()];
             }),
         ),
         indexes: [...schema.indexes]
           .map(({ name, sql }) => ({ name, sql }))
-          .sort(
+          .toSorted(
             (a, b) =>
               a.name.localeCompare(b.name) || a.sql.localeCompare(b.sql),
           ),

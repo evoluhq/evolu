@@ -105,6 +105,7 @@ test("createMessagePort wraps a native port received from MessageChannel", async
   });
 
   const nativeReceived = new Promise<number>((resolve) => {
+    // oxlint-disable-next-line unicorn/prefer-add-event-listener -- Assigning onmessage also starts this MessagePort automatically.
     nativeChannel.port2.onmessage = (event) => {
       resolve(event.data as number);
     };

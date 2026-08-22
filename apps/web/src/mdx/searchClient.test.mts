@@ -123,7 +123,7 @@ Visible {"text"} hidden {{ value: "text" }}.
         sourceDir,
         targetPath: path.join(directory, "searchIndex.json"),
       }),
-      /Cannot index page\.mdx\./,
+      /Cannot index page\.mdx\./u,
     );
   });
 });

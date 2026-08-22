@@ -15,6 +15,7 @@ export interface ParseBenchmarkModeOptions {
   readonly benchmarkName: string;
 }
 
+// oxlint-disable-next-line unicorn/prefer-set-has -- Three fixed modes are checked once during process startup.
 const benchmarkModes: ReadonlyArray<BenchmarkMode> = [
   "default",
   "update-baseline",

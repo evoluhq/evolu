@@ -41,6 +41,7 @@ const platforms = [
     icon: JavaScriptLogo,
   },
 ];
+const platformIds = new Set(platforms.map(({ id }) => id));
 
 // Component with URL state - needs to be wrapped in Suspense
 const PlatformSelectorWithURL = (): React.ReactElement => {
@@ -55,13 +56,10 @@ const PlatformSelectorWithURL = (): React.ReactElement => {
   const storePlatform = preferredLanguages[preferredLanguages.length - 1];
 
   // Validate platform exists in our platforms list
-  const validPlatforms = platforms.map((p) => p.id);
   const validUrlPlatform =
-    urlPlatform && validPlatforms.includes(urlPlatform) ? urlPlatform : null;
+    urlPlatform && platformIds.has(urlPlatform) ? urlPlatform : null;
   const validStorePlatform =
-    storePlatform && validPlatforms.includes(storePlatform)
-      ? storePlatform
-      : null;
+    storePlatform && platformIds.has(storePlatform) ? storePlatform : null;
 
   const currentPlatform = validUrlPlatform ?? validStorePlatform ?? "React";
 

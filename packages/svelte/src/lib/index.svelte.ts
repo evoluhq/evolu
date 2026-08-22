@@ -6,6 +6,7 @@
 import type {
   AppOwner,
   Evolu,
+  EvoluDeps,
   EvoluSchema,
   InferRow,
   Query,
@@ -14,9 +15,10 @@ import type {
 } from "@evolu/common/local-first";
 import { createEvoluDeps } from "@evolu/web";
 
-// just in case we need to add some svelte specific deps
+// Svelte's declaration generation loses createEvoluDeps' return type here.
+// Keep the explicit public type so consumers do not receive any.
 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-export const evoluSvelteDeps = /*#__PURE__*/ createEvoluDeps();
+export const evoluSvelteDeps: EvoluDeps = /*#__PURE__*/ createEvoluDeps();
 
 /**
  * Load and subscribe to the Query, and return an object with `rows` property

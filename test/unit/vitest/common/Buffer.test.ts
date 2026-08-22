@@ -63,7 +63,8 @@ test("Buffer", () => {
 test("Buffer initial capacity with data", () => {
   const buffer = createBuffer(new Uint8Array(300));
   expect(buffer.getLength()).toBe(300);
-  expect(buffer.getCapacity()).toBe(300); // Should match input, not 512
+  // Should match input, not 512
+  expect(buffer.getCapacity()).toBe(300);
 });
 
 test("Buffer unwrap modification affects internal state", () => {

@@ -66,9 +66,10 @@ export const createLeakDetector = (deps: ConsoleDep): LeakDetector => {
   if (typeof globalThis.FinalizationRegistry !== "function")
     return noopLeakDetector;
 
-  const registry = new globalThis.FinalizationRegistry<TrackedLeak>(
-    reportLeak(deps),
-  );
+  const report = reportLeak(deps);
+  const registry = new globalThis.FinalizationRegistry<TrackedLeak>((leak) => {
+    report(leak);
+  });
 
   return {
     track: (target, leak, unregisterToken) => {

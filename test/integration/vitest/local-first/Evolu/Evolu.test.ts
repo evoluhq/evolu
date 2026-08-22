@@ -204,7 +204,7 @@ describe("unit tests", () => {
       err({
         type: "UrlSafeString",
         source: "^[A-Za-z0-9_-]+$",
-        flags: "",
+        flags: "u",
         value: "",
       }),
     );
@@ -242,7 +242,9 @@ describe("unit tests", () => {
 
       const messages: Array<SharedWorkerInput> = [];
       worker.self.onConnect = (port) => {
-        port.onMessage = (message) => messages.push(message);
+        port.onMessage = (message) => {
+          messages.push(message);
+        };
       };
       worker.connect();
 
@@ -375,7 +377,9 @@ describe("unit tests", () => {
         const messages: Array<SharedWorkerInput> = [];
 
         worker.self.onConnect = (port) => {
-          port.onMessage = (message) => messages.push(message);
+          port.onMessage = (message) => {
+            messages.push(message);
+          };
         };
         worker.connect();
 
@@ -2327,7 +2331,7 @@ describe("integration tests", () => {
 
   test("memoryOnly opens SQLite in memory mode", async () => {
     const consoleStoreOutput = createConsoleStoreOutput();
-    const sqliteDriverOptions = new Array<SqliteDriverOptions | undefined>();
+    const sqliteDriverOptions: Array<SqliteDriverOptions | undefined> = [];
     const sqliteDriverOptionsCalled = Promise.withResolvers<void>();
     const createSqliteDriver: CreateSqliteDriver = (name, options) => {
       sqliteDriverOptions.push(options);

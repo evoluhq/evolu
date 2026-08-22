@@ -21,6 +21,7 @@ import {
   TableNode,
   ValueNode,
 } from "kysely";
+import { createMutableArray } from "../Array.ts";
 import type { Brand } from "../Brand.ts";
 import { createRandomBytes } from "../Crypto.ts";
 import type { ReadonlyRecord } from "../Object.ts";
@@ -106,8 +107,10 @@ export type InferRow<T extends Query> =
 export interface Row {
   readonly [key: string]:
     | SqliteValue
-    | Row // for evoluJsonObjectFrom
-    | ReadonlyArray<Row>; // for evoluJsonArrayFrom
+    // for evoluJsonObjectFrom
+    | Row
+    // for evoluJsonArrayFrom
+    | ReadonlyArray<Row>;
 }
 
 /**
@@ -455,7 +458,7 @@ const getSqliteJsonObjectArgs = (
 export const parseSqliteJsonArray = <T>(
   arr: ReadonlyArray<T>,
 ): ReadonlyArray<T> => {
-  const result = new Array<T>(arr.length);
+  const result = createMutableArray<T>(arr.length);
   for (let i = 0; i < arr.length; ++i) {
     result[i] = parse(arr[i]) as T;
   }

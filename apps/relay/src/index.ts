@@ -24,7 +24,8 @@ await runMain({ ...createRelayDeps(), console })(
     // isOwnerAllowed: (_ownerId) => true,
 
     isOwnerWithinQuota: (_ownerId, requiredBytes) => {
-      const maxBytes = 1024 * 1024; // 1MB
+      // 1MB
+      const maxBytes = 1024 * 1024;
       return requiredBytes <= maxBytes;
     },
   }),

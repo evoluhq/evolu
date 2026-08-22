@@ -130,6 +130,7 @@ describe("Run", () => {
     }
   });
 
+  /* oxlint-disable typescript/return-await -- This test intentionally verifies direct await edges in defect stack traces. */
   test("defect stack traces link across Run boundaries", async () => {
     await using run = testCreateRun();
 
@@ -140,9 +141,9 @@ describe("Run", () => {
       // reconstructs.
       throw new Error("boom");
     };
-    const middleDefectTask: Task<never, never> = async (run) =>
+    const middleDefectTask: Task<never> = async (run) =>
       await run(childDefectTask);
-    const parentDefectTask: Task<never, never> = async (run) =>
+    const parentDefectTask: Task<never> = async (run) =>
       await run(middleDefectTask);
 
     const result = await run.abortable(parentDefectTask);
@@ -203,6 +204,8 @@ describe("Run", () => {
       ]);
     }
   });
+
+  /* oxlint-enable typescript/return-await */
 
   // The Run tree is the ultimate handler of every Fiber: a discarded Fiber
   // never reaches the global unhandled rejection handler, whether it settles
@@ -327,6 +330,7 @@ describe("Run", () => {
 
       test("for nested sync Task", async () => {
         await using run = createRun();
+        // oxlint-disable-next-line typescript/return-await -- This fixture measures the exact microtask count of a nested awaited Task.
         const fiber = run(async (run) => await run(() => ok("done")));
 
         await expectContinuationAfterMicrotasks(fiber, 8);
@@ -353,6 +357,7 @@ describe("Run", () => {
 });
 
 describe("each", () => {
+  /* oxlint-disable typescript/return-await -- This test intentionally verifies direct await edges in defect stack traces. */
   test("child defect stack traces link to the caller", async () => {
     await using run = testCreateRun();
 
@@ -427,6 +432,8 @@ describe("each", () => {
 });
 
 describe("native AbortSignal APIs", () => {
+  /* oxlint-enable typescript/return-await */
+
   test("require non-trivial plumbing", async () => {
     const abortReason = { type: "TestAbort" };
 

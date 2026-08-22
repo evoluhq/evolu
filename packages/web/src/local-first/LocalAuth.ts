@@ -226,9 +226,12 @@ const createCredentialCreationOptions =
         displayName: username,
       },
       pubKeyCredParams: [
-        { type: "public-key", alg: -8 }, // Ed25519
-        { type: "public-key", alg: -7 }, // ES256
-        { type: "public-key", alg: -257 }, // RS256
+        // Ed25519
+        { type: "public-key", alg: -8 },
+        // ES256
+        { type: "public-key", alg: -7 },
+        // RS256
+        { type: "public-key", alg: -257 },
       ],
       attestation: "none",
       authenticatorSelection: {

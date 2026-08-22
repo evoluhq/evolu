@@ -23,13 +23,10 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Biome
-        run: pnpm biome
-
       - name: Monorepo lint
         run: pnpm lint-monorepo
 
-      - name: ESLint
+      - name: Oxlint
         run: pnpm lint
 
   packages:

@@ -33,7 +33,9 @@ describe("createWorker", () => {
     worker.postMessage("queued");
 
     const received: Array<string> = [];
-    self.onMessage = (message) => received.push(message);
+    self.onMessage = (message) => {
+      received.push(message);
+    };
 
     await expectArrayAfterWorkerMessage(received, ["queued"]);
   });
@@ -52,7 +54,9 @@ describe("createSharedWorker", () => {
     worker.port.postMessage("queued");
 
     const received: Array<string> = [];
-    workerPort.onMessage = (message) => received.push(message);
+    workerPort.onMessage = (message) => {
+      received.push(message);
+    };
 
     await expectArrayAfterWorkerMessage(received, ["queued"]);
   });
@@ -70,7 +74,9 @@ describe("testCreateMessageChannel", () => {
   test("port1 postMessage delivers to port2 onMessage asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const received: Array<string> = [];
-    channel.port2.onMessage = (msg) => received.push(msg);
+    channel.port2.onMessage = (msg) => {
+      received.push(msg);
+    };
     channel.port1.postMessage("hello");
 
     await expectArrayAfterWorkerMessage(received, ["hello"]);
@@ -79,7 +85,9 @@ describe("testCreateMessageChannel", () => {
   test("port2 postMessage delivers to port1 onMessage asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const received: Array<number> = [];
-    channel.port1.onMessage = (msg) => received.push(msg);
+    channel.port1.onMessage = (msg) => {
+      received.push(msg);
+    };
     channel.port2.postMessage(42);
 
     await expectArrayAfterWorkerMessage(received, [42]);
@@ -90,7 +98,9 @@ describe("testCreateMessageChannel", () => {
     channel.port1.postMessage("a");
     channel.port1.postMessage("b");
     const received: Array<string> = [];
-    channel.port2.onMessage = (msg) => received.push(msg);
+    channel.port2.onMessage = (msg) => {
+      received.push(msg);
+    };
 
     await expectArrayAfterWorkerMessage(received, ["a", "b"]);
   });
@@ -102,14 +112,18 @@ describe("testCreateMessageChannel", () => {
     channel.port1.postMessage("buffered");
     await testWaitForWorkerMessage();
 
-    channel.port2.onMessage = (msg) => received.push(msg);
+    channel.port2.onMessage = (msg) => {
+      received.push(msg);
+    };
     await expectArrayAfterWorkerMessage(received, ["buffered"]);
   });
 
   test("messages sent after onMessage is assigned are delivered asynchronously", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
-    channel.port2.onMessage = (msg) => received.push(msg);
+    channel.port2.onMessage = (msg) => {
+      received.push(msg);
+    };
     channel.port1.postMessage("first");
     channel.port1.postMessage("second");
 
@@ -119,7 +133,9 @@ describe("testCreateMessageChannel", () => {
   test("setting onMessage to null stops future asynchronous delivery", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
-    channel.port2.onMessage = (msg) => received.push(msg);
+    channel.port2.onMessage = (msg) => {
+      received.push(msg);
+    };
     channel.port1.postMessage("delivered");
     await expectArrayAfterWorkerMessage(received, ["delivered"]);
 
@@ -149,7 +165,9 @@ describe("testCreateMessageChannel", () => {
     globalThis.clearTimeout = () => undefined;
 
     try {
-      channel.port2.onMessage = (message) => received.push(message);
+      channel.port2.onMessage = (message) => {
+        received.push(message);
+      };
       channel.port1.postMessage("queued");
       channel.port2[Symbol.dispose]();
 
@@ -196,8 +214,12 @@ describe("testCreateMessageChannel", () => {
     const strings: Array<string> = [];
     const numbers: Array<number> = [];
 
-    channel.port2.onMessage = (msg) => strings.push(msg);
-    channel.port1.onMessage = (msg) => numbers.push(msg);
+    channel.port2.onMessage = (msg) => {
+      strings.push(msg);
+    };
+    channel.port1.onMessage = (msg) => {
+      numbers.push(msg);
+    };
 
     channel.port1.postMessage("hello");
     channel.port2.postMessage(42);
@@ -220,7 +242,9 @@ describe("testCreateMessageChannel", () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
 
-    channel.port2.onMessage = (message) => received.push(message);
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+    };
     channel.port2[Symbol.dispose]();
     channel.port1.postMessage("ignored");
 
@@ -233,7 +257,9 @@ describe("testCreateMessageChannel", () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
 
-    channel.port2.onMessage = (message) => received.push(message);
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+    };
     channel.port1.postMessage("hello", [{} as NativeMessagePort]);
     channel.port1.postMessage("world", [new ArrayBuffer(8)]);
 
@@ -241,10 +267,8 @@ describe("testCreateMessageChannel", () => {
   });
 
   test("transferred native ports can be wrapped after transfer", async () => {
-    const channel = testCreateMessageChannel<
-      NativeMessagePort<never, string>,
-      never
-    >();
+    const channel =
+      testCreateMessageChannel<NativeMessagePort<never, string>>();
     const transferredChannel = testCreateMessageChannel<never, string>();
     let transferredNative: NativeMessagePort<never, string> | undefined;
 
@@ -263,7 +287,9 @@ describe("testCreateMessageChannel", () => {
 
     const wrappedPort = testCreateMessagePort<never, string>(transferredNative);
     const received: Array<string> = [];
-    wrappedPort.onMessage = (message) => received.push(message);
+    wrappedPort.onMessage = (message) => {
+      received.push(message);
+    };
 
     transferredChannel.port2.postMessage("hello");
 
@@ -294,7 +320,9 @@ describe("testCreateMessagePort", () => {
     );
 
     const received: Array<string> = [];
-    transferredPort2.onMessage = (message) => received.push(message);
+    transferredPort2.onMessage = (message) => {
+      received.push(message);
+    };
 
     channel[Symbol.dispose]();
     transferredPort1.postMessage("hello");
@@ -312,7 +340,9 @@ describe("testCreateMessagePort", () => {
     );
 
     const received: Array<string> = [];
-    transferredPort2.onMessage = (message) => received.push(message);
+    transferredPort2.onMessage = (message) => {
+      received.push(message);
+    };
 
     channel.port1[Symbol.dispose]();
     channel.port1.postMessage("ignored");
@@ -344,7 +374,9 @@ describe("createBroadcastChannel", () => {
     using channel2 = createBroadcastChannel<string>("test-channel");
     const received: Array<string> = [];
 
-    channel2.onMessage = (message) => received.push(message);
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
     channel1.postMessage("hello");
 
     expect(received).toEqual([]);
@@ -355,7 +387,9 @@ describe("createBroadcastChannel", () => {
     using channel = createBroadcastChannel<string>("test-channel-self");
     const received: Array<string> = [];
 
-    channel.onMessage = (message) => received.push(message);
+    channel.onMessage = (message) => {
+      received.push(message);
+    };
     channel.postMessage("ignored");
 
     await testWaitForWorkerMessage();
@@ -370,8 +404,12 @@ describe("createBroadcastChannel", () => {
     const received2: Array<string> = [];
     const received3: Array<string> = [];
 
-    channel2.onMessage = (message) => received2.push(message);
-    channel3.onMessage = (message) => received3.push(message);
+    channel2.onMessage = (message) => {
+      received2.push(message);
+    };
+    channel3.onMessage = (message) => {
+      received3.push(message);
+    };
     channel1.postMessage("hello");
 
     await testWaitForWorkerMessage();
@@ -385,7 +423,9 @@ describe("createBroadcastChannel", () => {
     using channel2 = createBroadcastChannel<string>("test-channel-b");
     const received: Array<string> = [];
 
-    channel2.onMessage = (message) => received.push(message);
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
     channel1.postMessage("ignored");
 
     await testWaitForWorkerMessage();
@@ -399,7 +439,9 @@ describe("createBroadcastChannel", () => {
     const received: Array<string> = [];
 
     channel1.postMessage("queued");
-    channel2.onMessage = (message) => received.push(message);
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
 
     await expectArrayAfterWorkerMessage(received, ["queued"]);
   });
@@ -411,7 +453,9 @@ describe("createBroadcastChannel", () => {
 
     channel1.postMessage("dropped");
     await testWaitForWorkerMessage();
-    channel2.onMessage = (message) => received.push(message);
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
 
     await testWaitForWorkerMessage();
 
@@ -423,7 +467,9 @@ describe("createBroadcastChannel", () => {
     using channel2 = createBroadcastChannel<string>("test-channel-null");
     const received: Array<string> = [];
 
-    channel2.onMessage = (message) => received.push(message);
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
     channel1.postMessage("dropped");
     channel2.onMessage = null;
 
@@ -437,7 +483,9 @@ describe("createBroadcastChannel", () => {
     const channel2 = createBroadcastChannel<string>("test-channel-dispose");
     const received: Array<string> = [];
 
-    channel2.onMessage = (message) => received.push(message);
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
     channel2[Symbol.dispose]();
     channel1.postMessage("ignored");
 
@@ -455,7 +503,9 @@ describe("createBroadcastChannel", () => {
     );
     const received: Array<string> = [];
 
-    channel2.onMessage = (message) => received.push(message);
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
     channel1.postMessage("queued");
     channel2[Symbol.dispose]();
 
@@ -485,9 +535,13 @@ describe("createBroadcastChannel", () => {
     );
     const received: Array<string> = [];
 
-    channel1.onMessage = (message) => received.push(message);
+    channel1.onMessage = (message) => {
+      received.push(message);
+    };
     channel1[Symbol.dispose]();
-    channel1.onMessage = (message) => received.push(message);
+    channel1.onMessage = (message) => {
+      received.push(message);
+    };
     channel2.postMessage("ignored");
 
     await testWaitForWorkerMessage();
@@ -503,8 +557,12 @@ describe("testCreateWorker", () => {
     const workerReceived: Array<number> = [];
     const selfReceived: Array<string> = [];
 
-    worker.onMessage = (msg) => workerReceived.push(msg);
-    worker.self.onMessage = (msg) => selfReceived.push(msg);
+    worker.onMessage = (msg) => {
+      workerReceived.push(msg);
+    };
+    worker.self.onMessage = (msg) => {
+      selfReceived.push(msg);
+    };
 
     worker.postMessage("to-self");
     worker.self.postMessage(123);
@@ -520,7 +578,9 @@ describe("testCreateWorker", () => {
     worker.postMessage("queued");
 
     const received: Array<string> = [];
-    worker.self.onMessage = (msg) => received.push(msg);
+    worker.self.onMessage = (msg) => {
+      received.push(msg);
+    };
 
     await expectArrayAfterWorkerMessage(received, ["queued"]);
   });
@@ -570,11 +630,15 @@ describe("testCreateSharedWorker", () => {
     const clientReceived: Array<number> = [];
 
     worker.self.onConnect = (port) => {
-      port.onMessage = (msg) => workerReceived.push(msg);
+      port.onMessage = (msg) => {
+        workerReceived.push(msg);
+      };
       port.postMessage(99);
     };
 
-    worker.port.onMessage = (msg) => clientReceived.push(msg);
+    worker.port.onMessage = (msg) => {
+      clientReceived.push(msg);
+    };
     worker.connect();
 
     worker.port.postMessage("hello");
@@ -591,7 +655,9 @@ describe("testCreateSharedWorker", () => {
 
     const received: Array<string> = [];
     worker.self.onConnect = (port) => {
-      port.onMessage = (msg) => received.push(msg);
+      port.onMessage = (msg) => {
+        received.push(msg);
+      };
     };
     worker.connect();
 
@@ -621,7 +687,9 @@ describe("testCreateBroadcastChannel", () => {
     using channel2 = testCreateBroadcastChannel<string>("test-channel-helper");
     const received: Array<string> = [];
 
-    channel2.onMessage = (message) => received.push(message);
+    channel2.onMessage = (message) => {
+      received.push(message);
+    };
     channel1.postMessage("hello");
 
     await expectArrayAfterWorkerMessage(received, ["hello"]);
@@ -642,7 +710,9 @@ describe("testWaitForWorkerMessage", () => {
   test("waits for scheduled worker message delivery", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
-    channel.port2.onMessage = (message) => received.push(message);
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+    };
     channel.port1.postMessage("delivered");
 
     expect(received).toEqual([]);
@@ -654,7 +724,9 @@ describe("testWaitForWorkerMessage", () => {
     const idle = testWaitForWorkerMessage();
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
-    channel.port2.onMessage = (message) => received.push(message);
+    channel.port2.onMessage = (message) => {
+      received.push(message);
+    };
     channel.port1.postMessage("delivered");
 
     await idle;

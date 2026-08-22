@@ -39,8 +39,10 @@ describe("createRedacted hides value", () => {
 
   test("in string interpolation", () => {
     const secret = createRedacted("my-secret-key");
-    // eslint-disable-next-line @typescript-eslint/no-base-to-string
+    /* oxlint-disable typescript/restrict-template-expressions -- This test verifies Redacted's implicit string conversion. */
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- This test verifies Redacted's implicit string conversion.
     expect(`API key: ${secret}`).toBe("API key: <redacted>");
+    /* oxlint-enable typescript/restrict-template-expressions */
   });
 });
 
@@ -70,7 +72,6 @@ describe("revealRedacted", () => {
   });
 
   test("retrieves undefined", () => {
-    // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression
     expect(revealRedacted(createRedacted(undefined))).toBe(undefined);
   });
 });
@@ -150,9 +151,8 @@ test("Redacted JSDoc example", () => {
   type ApiKey = string & Brand<"ApiKey">;
   type DbPassword = string & Brand<"DbPassword">;
 
-  // Wrap them with Redacted for safe passing
+  // Wrap it with Redacted for safe passing
   type RedactedApiKey = Redacted<ApiKey>;
-  type _RedactedDbPassword = Redacted<DbPassword>;
 
   // Create a redacted secret
   const apiKey: ApiKey = "secret-123" as ApiKey;

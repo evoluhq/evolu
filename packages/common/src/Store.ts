@@ -70,7 +70,9 @@ export const createStore = <T>(initialState: T, eq?: Eq<T>): Store<T> => {
     get: ref.get,
     subscribe: (listener) => {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
 
     set: (state) => {

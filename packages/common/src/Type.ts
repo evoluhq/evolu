@@ -1350,9 +1350,8 @@ type ValidateFormatErrorByTypeByLocale<
     ? unknown
     : never;
 
-/* eslint-disable-next-line @typescript-eslint/consistent-indexed-object-style --
-This mapped validation type is cheaper than the equivalent Record. Changes are
-measured by `pnpm bench:type`. */
+// This mapped validation type is cheaper than the equivalent Record. Changes
+// are measured by `pnpm bench:type`.
 type NoNonStringKeys<Value> = {
   readonly [Key in Exclude<keyof Value, string>]: never;
 };
@@ -1892,6 +1891,7 @@ export function createType<
   parent: ValidateParent<ParentType>,
   fromParent: (
     value: ParentType["Output"],
+    // oxlint-disable-next-line typescript/no-unnecessary-type-arguments -- Explicit defaults in recursive Type declarations are benchmarked to avoid extra compiler work.
   ) => Result<ParentType["Output"], never>,
 ): Type<
   Name,
@@ -2180,6 +2180,7 @@ export function transform<
   operations: {
     readonly from: (
       value: ParentType["Output"],
+      // oxlint-disable-next-line typescript/no-unnecessary-type-arguments -- Explicit defaults in recursive Type declarations are benchmarked to avoid extra compiler work.
     ) => Result<OutputType["Input"], never>;
     readonly to: (value: CanonicalInputOf<OutputType>) => ToOutput;
   },
@@ -2474,7 +2475,7 @@ function getTerminalRuntimeNode<Value>(
 ): RuntimeOperation<Value>;
 function getTerminalRuntimeNode(node: RuntimeTypeNode): RuntimeTypeNode;
 function getTerminalRuntimeNode(node: { readonly parent?: unknown }): unknown {
-  while (node.parent) node = node.parent;
+  while (node.parent != null) node = node.parent;
 
   return node;
 }
@@ -4146,6 +4147,7 @@ export interface TemplateLiteralType<
   TypeOfError<"String"> | TemplateLiteralParseError<Parts>,
   never,
   TemplateLiteralStringOutput<Parts>,
+  // oxlint-disable-next-line typescript/no-unnecessary-type-arguments -- TemplateLiteralType explicitly documents every Type invariant, including identity encoding.
   true
 > {
   readonly [templateLiteralSyntaxSymbol]: true;
@@ -4651,6 +4653,7 @@ export function brand<
 >(
   name: ValidateConcreteTypeName<Name>,
   parent: ValidateParent<ParentType>,
+  // oxlint-disable-next-line typescript/no-unnecessary-type-arguments -- Explicit defaults in recursive Type declarations are benchmarked to avoid extra compiler work.
   validate?: (value: ParentType["Output"]) => Result<void, never>,
 ): BrandType<ParentType, Name, never>;
 
@@ -5402,7 +5405,7 @@ const uint8ArrayToBase64UrlString = (bytes: Uint8Array): string => {
   ).join("");
   const base64 = globalThis.btoa(binaryString);
 
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  return base64.replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 };
 
 const base64UrlStringToUint8Array = (value: string): Uint8Array => {
@@ -5415,7 +5418,7 @@ const base64UrlStringToUint8Array = (value: string): Uint8Array => {
     return globalThis.Uint8Array.fromBase64(value, base64UrlOptions);
   }
 
-  let base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  let base64 = value.replaceAll("-", "+").replaceAll("_", "/");
   while (base64.length % 4 !== 0) base64 += "=";
 
   const binaryString = globalThis.atob(base64);
@@ -5757,6 +5760,7 @@ export interface TableId<Table extends TypeName> extends Type<
   TableIdError<Table> | InferErrors<typeof String>,
   ChildCustomFrom<typeof String, Id & Brand<Table>, TableIdError<Table>>,
   CanonicalInputForChild<typeof String, Id & Brand<Table>>,
+  // oxlint-disable-next-line typescript/no-unnecessary-type-arguments -- TableId must track its parent Type's identity encoding instead of hard-coding Type's default.
   IdentityEncodingOf<typeof String>
 > {
   readonly table: Table;
@@ -8912,7 +8916,7 @@ export const record = <
     encodeKey === identity && encodeValue === identity
       ? identity
       : (input: Readonly<Record<string, unknown>>) => {
-          const output = createMutableRecord<string, unknown>();
+          const output = createMutableRecord();
           let changed = false;
 
           for (const inputKey of globalThis.Object.keys(input)) {
@@ -9270,7 +9274,7 @@ const validateRecordEntries = (
 > => {
   let issues:
     Array<RecordIssue<TypeError, TypeError, RecordStructuralIssue>> | undefined;
-  const output = createMutableRecord<string, unknown>();
+  const output = createMutableRecord();
   const inputKeyByOutputKey = createMutableRecord<string, string | symbol>();
   let changed = false;
 
@@ -11243,19 +11247,19 @@ export function discriminatedUnion(
         return err({
           type: "DiscriminatedUnion",
           reason: { kind: "PropertyAccess", key, reason: "Inherited" },
-        } satisfies DiscriminatedUnionPropertyAccessError<string>);
+        } satisfies DiscriminatedUnionPropertyAccessError);
       }
       discriminator = undefined;
     } else if (!("value" in descriptor)) {
       return err({
         type: "DiscriminatedUnion",
         reason: { kind: "PropertyAccess", key, reason: "Accessor" },
-      } satisfies DiscriminatedUnionPropertyAccessError<string>);
+      } satisfies DiscriminatedUnionPropertyAccessError);
     } else if (!descriptor.enumerable) {
       return err({
         type: "DiscriminatedUnion",
         reason: { kind: "PropertyAccess", key, reason: "NonEnumerable" },
-      } satisfies DiscriminatedUnionPropertyAccessError<string>);
+      } satisfies DiscriminatedUnionPropertyAccessError);
     } else {
       discriminator = descriptor.value;
     }
@@ -12261,6 +12265,7 @@ const validateJsonValue = (
     }
     if (typeof value === "number") {
       if (!globalThis.Number.isFinite(value)) {
+        // oxlint-disable-next-line unicorn/no-lonely-if -- Keep issue construction separate from the finite-number guard.
         if (
           addIssue({
             kind: "NonFiniteNumber",
@@ -12522,6 +12527,7 @@ const stringifyJsonValue = (value: JsonValue): Json => {
       continue;
     }
 
+    // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- JsonValue excludes the additional runtime types reported by tsgolint.
     switch (typeof value) {
       case "string":
         chunks.push(globalThis.JSON.stringify(value));

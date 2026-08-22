@@ -1,6 +1,9 @@
 import { expectErr, expectOk } from "@evolu/vitest";
 import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
-import type { NonEmptyReadonlyArray } from "../../../../packages/common/src/Array.ts";
+import {
+  createMutableArray,
+  type NonEmptyReadonlyArray,
+} from "../../../../packages/common/src/Array.ts";
 import type { Brand } from "../../../../packages/common/src/Brand.ts";
 import * as cs from "../../../../packages/common/src/intl/cs.ts";
 import {
@@ -495,7 +498,7 @@ describe("Type", () => {
       minLength(2)(String),
       maxLength(3)(String),
       length(4)(String),
-      regex("IntrospectionRegex", /introspection/)(String),
+      regex("IntrospectionRegex", /introspection/u)(String),
       nonNegative(Number),
       positive(Number),
       nonPositive(Number),
@@ -516,7 +519,7 @@ describe("Type", () => {
       union(String, Number),
       array(minLength(2)(String)),
       tuple(String, NumberFromString),
-      record(regex("IntrospectionKey", /^key/)(String), NumberFromString),
+      record(regex("IntrospectionKey", /^key/u)(String), NumberFromString),
       set(minLength(2)(String)),
       object(
         {
@@ -660,7 +663,7 @@ describe("Type", () => {
 
     for (const type of allTypes) visit(type);
 
-    expect([...names].sort()).toEqual(expectedNames);
+    expect([...names].toSorted()).toEqual(expectedNames);
   });
 
   test("is nominal", () => {
@@ -734,7 +737,7 @@ describe("Type", () => {
       Errors extends TypeError = never,
     > = Type<Name, Input, Output, Error, Parent, Errors>;
 
-    type NarrowName = VarianceType<"Variance">;
+    type NarrowName = VarianceType;
     type BroadName = VarianceType<Capitalize<string>>;
     type NarrowOutput = VarianceType<"Variance", unknown, "narrow">;
     type BroadOutput = VarianceType<"Variance", unknown, string>;
@@ -943,7 +946,7 @@ describe("Standard Schema", () => {
 
   test("locates Array holes, accessors, and excess properties", async () => {
     const symbol = globalThis.Symbol("metadata");
-    const value = new globalThis.Array<unknown>(3);
+    const value = createMutableArray<unknown>(3);
     globalThis.Object.defineProperty(value, 0, {
       enumerable: true,
       get: () => "accessor",
@@ -1024,7 +1027,7 @@ describe("Standard Schema", () => {
   });
 
   test("locates Record key, value, and structural issues", async () => {
-    const Values = record(regex("RecordKey", /^value/)(String), Number);
+    const Values = record(regex("RecordKey", /^value/u)(String), Number);
     const input = { invalid: 1, value: "1" };
     globalThis.Object.defineProperty(input, "hidden", {
       enumerable: false,
@@ -1035,12 +1038,12 @@ describe("Standard Schema", () => {
     expect(result).toEqual({
       issues: [
         {
-          message: 'The value "invalid" does not match /^value/.',
+          message: 'The value "invalid" does not match /^value/u.',
           path: ["invalid"],
         },
         { message: 'A value "1" is not a number.', path: ["value"] },
         {
-          message: 'The value "hidden" does not match /^value/.',
+          message: 'The value "hidden" does not match /^value/u.',
           path: ["hidden"],
         },
         {
@@ -1527,7 +1530,7 @@ describe("localizeTypes", () => {
   test("routes Tuple and Record child errors", () => {
     const Pair = tuple(String, Number);
     const Values = record(String, Number);
-    const KeyedValues = record(regex("RecordKey", /^value$/)(String), Number);
+    const KeyedValues = record(regex("RecordKey", /^value$/u)(String), Number);
     const Model = object({ fixed: String }, record(String, String));
     const types = localizeTypes(
       { KeyedValues, Model, Pair, Values },
@@ -2302,7 +2305,7 @@ describe("createType", () => {
     );
     const InvalidRoot = createType(
       "InvalidRootRefinement",
-      (value): Result<object, never> => ok({ ...(value as object) }),
+      (value): Result<object> => ok({ ...(value as object) }),
       () => "",
     );
     const value = { value: 1 };
@@ -2358,7 +2361,7 @@ describe("createType", () => {
       createType(
         "FortyTwo",
         Number,
-        (_value): Result<42, never> => ok(42),
+        (_value): Result<42> => ok(42),
         // @ts-expect-error An infallible child Type must not provide a formatter.
         () => "Unreachable.",
       );
@@ -2580,7 +2583,7 @@ describe("createType", () => {
 
       test("cannot return a validation error", () => {
         expectTypeOf<ReturnType<typeof Unknown.fromUnknown>>().toEqualTypeOf<
-          Result<unknown, never>
+          Result<unknown>
         >();
         expectTypeOf(Unknown.formatError).parameter(0).toEqualTypeOf<never>();
       });
@@ -3729,7 +3732,7 @@ describe("instanceOf", () => {
     }
 
     expect(UserInstance.from(user)).toEqual(ok(user));
-    expectTypeOf(UserInstance.from(user)).toEqualTypeOf<Result<User, never>>();
+    expectTypeOf(UserInstance.from(user)).toEqualTypeOf<Result<User>>();
     expect(UserInstance.to(user)).toBe(user);
     expect(UserInstance.orThrow(user)).toBe(user);
     expect(UserInstance.orNull(user)).toBe(user);
@@ -3842,7 +3845,7 @@ describe("literal", () => {
       Result<"Hello", TypeOfError<"String"> | LiteralError<"Hello">>
     >();
     expectTypeOf(Hello.from).parameter(0).toEqualTypeOf<"Hello">();
-    expectTypeOf(Hello.from("Hello")).toEqualTypeOf<Result<"Hello", never>>();
+    expectTypeOf(Hello.from("Hello")).toEqualTypeOf<Result<"Hello">>();
     expectTypeOf(Hello.from.parent("Hello")).toEqualTypeOf<
       Result<"Hello", LiteralError<"Hello">>
     >();
@@ -3964,7 +3967,7 @@ describe("literal", () => {
         expect(Undefined.parent).toBeNull();
         expectTypeOf(Undefined).toEqualTypeOf<LiteralType<undefined>>();
         expectTypeOf(Undefined.from(undefined)).toEqualTypeOf<
-          Result<undefined, never>
+          Result<undefined>
         >();
       });
 
@@ -3982,7 +3985,7 @@ describe("literal", () => {
         expect(Null.expected).toBeNull();
         expect(Null.parent).toBeNull();
         expectTypeOf(Null).toEqualTypeOf<LiteralType<null>>();
-        expectTypeOf(Null.from(null)).toEqualTypeOf<Result<null, never>>();
+        expectTypeOf(Null.from(null)).toEqualTypeOf<Result<null>>();
       });
 
       test("accepts null and rejects other values", () => {
@@ -4462,7 +4465,7 @@ describe("union", () => {
     expectTypeOf<typeof StringOrUnknown.Error>().toEqualTypeOf<never>();
     expectTypeOf<typeof StringOrUnknown.parent.Error>().toEqualTypeOf<never>();
     expectTypeOf<InferErrors<typeof StringOrUnknown>>().toEqualTypeOf<never>();
-    expectTypeOf(result).toEqualTypeOf<Result<unknown, never>>();
+    expectTypeOf(result).toEqualTypeOf<Result<unknown>>();
     expectOk(result, true);
     expectOk(StringOrUnknown.parent.fromUnknown(true), true);
   });
@@ -4682,7 +4685,7 @@ describe("union", () => {
       .parameter(0)
       .toEqualTypeOf<string | number>();
     expectTypeOf(StringOrNumber.from).returns.toEqualTypeOf<
-      Result<string | number, never>
+      Result<string | number>
     >();
   });
 
@@ -4721,7 +4724,7 @@ describe("union", () => {
     expect(Value.from.parent(value)).toEqual(ok(42));
     expect(validations).toEqual([42]);
     expectTypeOf(Value.from.parent(value)).toEqualTypeOf<
-      Result<typeof Value.Output, never>
+      Result<typeof Value.Output>
     >();
   });
 
@@ -5943,7 +5946,7 @@ describe("brand", () => {
     expectTypeOf<typeof UserId.Input>().toEqualTypeOf<string>();
     expectTypeOf<typeof UserId.Error>().toEqualTypeOf<never>();
     expectTypeOf(UserId.parent).toEqualTypeOf<typeof String>();
-    expectTypeOf(result).toEqualTypeOf<Result<typeof UserId.Output, never>>();
+    expectTypeOf(result).toEqualTypeOf<Result<typeof UserId.Output>>();
     expectOk(result, "id");
     expect(UserId.formatError).toBe(String.formatError);
     expectTypeOf(UserId.formatError)
@@ -6099,10 +6102,10 @@ describe("brand", () => {
     );
     expect(Greeting.from.parent(hello)).toEqual(ok("Hello"));
     expectTypeOf(Greeting.from(greeting)).toEqualTypeOf<
-      Result<typeof Greeting.Output, never>
+      Result<typeof Greeting.Output>
     >();
     expectTypeOf(Greeting.from.parent(hello)).toEqualTypeOf<
-      Result<typeof Greeting.Output, never>
+      Result<typeof Greeting.Output>
     >();
   });
 
@@ -6139,7 +6142,7 @@ describe("brand", () => {
     const result = Label.parent.from(value);
 
     expectTypeOf(result).toEqualTypeOf<
-      Result<typeof _MaxLengthString.Output, never>
+      Result<typeof _MaxLengthString.Output>
     >();
     expectOk(result, "value");
     expect(validations).toEqual([
@@ -6270,7 +6273,7 @@ describe("brand", () => {
       const { Label } = setupLabel();
 
       expectTypeOf(Label.from).returns.toEqualTypeOf<
-        Result<typeof Label.Output, never>
+        Result<typeof Label.Output>
       >();
     });
   });
@@ -6285,7 +6288,7 @@ describe("brand", () => {
       expectTypeOf(Label.from.parent)
         .parameter(0)
         .toEqualTypeOf<typeof MaxLengthString.Output>();
-      expectTypeOf(result).toEqualTypeOf<Result<typeof Label.Output, never>>();
+      expectTypeOf(result).toEqualTypeOf<Result<typeof Label.Output>>();
     });
 
     test("infers only errors after the selected input boundary", () => {
@@ -6297,7 +6300,7 @@ describe("brand", () => {
       } = setupLabel();
 
       expectTypeOf(Label.from.parent).returns.toEqualTypeOf<
-        Result<typeof Label.Output, never>
+        Result<typeof Label.Output>
       >();
       expectTypeOf(Label.from.parent.parent).returns.toEqualTypeOf<
         Result<typeof Label.Output, typeof _MaxLengthString.Error>
@@ -7160,25 +7163,25 @@ describe("BrandFactory", () => {
         const patternedName = "Pattern" as `Pattern${string}`;
         const compileTimeAssertions = () => {
           // @ts-expect-error A union does not identify one concrete Regex name.
-          regex(unionName, /./);
+          regex(unionName, /./u);
           // @ts-expect-error A widened string does not identify one concrete Regex name.
-          regex(broadName, /./);
+          regex(broadName, /./u);
           // @ts-expect-error A template pattern does not identify one concrete Regex name.
-          regex(patternedName, /./);
+          regex(patternedName, /./u);
         };
 
         expectTypeOf(compileTimeAssertions).toBeFunction();
       });
 
       test("keeps stateful matching private and returns immutable pattern data", () => {
-        const RepeatedA = regex("RepeatedA", /a+/g)(String);
+        const RepeatedA = regex("RepeatedA", /a+/gu)(String);
         const failure = RepeatedA.from.parent("bbb");
 
         expectErr(failure, {
           type: "RepeatedA",
           value: "bbb",
           source: "a+",
-          flags: "g",
+          flags: "gu",
         });
 
         expect(RepeatedA.from.parent("aaa")).toEqual(ok("aaa"));
@@ -7187,14 +7190,14 @@ describe("BrandFactory", () => {
           type: "RepeatedA",
           value: "bbb",
           source: "a+",
-          flags: "g",
+          flags: "gu",
         });
         expect(RepeatedA.from.parent("bbb")).toEqual(
           err({
             type: "RepeatedA",
             value: "bbb",
             source: "a+",
-            flags: "g",
+            flags: "gu",
           }),
         );
         expect(
@@ -7202,15 +7205,17 @@ describe("BrandFactory", () => {
             type: "RepeatedA",
             value: "bbb",
             source: "a+",
-            flags: "g",
+            flags: "gu",
           }),
-        ).toBe('The value "bbb" does not match /a+/g.');
+        ).toBe('The value "bbb" does not match /a+/gu.');
         expectTypeOf(failure.error.source).toEqualTypeOf<string>();
         expectTypeOf(failure.error.flags).toEqualTypeOf<string>();
 
         const compileTimeAssertions = () => {
+          // oxlint-disable typescript/no-unsafe-member-access -- The unavailable matcher access is intentionally rejected below.
           // @ts-expect-error Regex errors do not expose the live matcher.
           failure.error.pattern.test = () => true;
+          // oxlint-enable typescript/no-unsafe-member-access
           // @ts-expect-error Pattern data is readonly.
           failure.error.source = ".*";
         };
@@ -7221,7 +7226,7 @@ describe("BrandFactory", () => {
       test("requires a string parent Output", () => {
         const compileTimeAssertions = () => {
           // @ts-expect-error Regex constraints require string Outputs.
-          regex("NumberPattern", /1/)(Number);
+          regex("NumberPattern", /1/u)(Number);
         };
 
         expectTypeOf(compileTimeAssertions).toBeFunction();
@@ -7238,7 +7243,7 @@ describe("BrandFactory", () => {
                 type: "UrlSafeString",
                 value: "not safe",
                 source: "^[A-Za-z0-9_-]+$",
-                flags: "",
+                flags: "u",
               }),
             );
             expectTypeOf<typeof UrlSafeString.Output>().toEqualTypeOf<
@@ -8846,7 +8851,7 @@ describe("array", () => {
       const Strings = array(String);
       const Undefineds = array(Undefined);
       const Unknowns = array(Unknown);
-      const sparse = new Array<unknown>(1);
+      const sparse = createMutableArray<unknown>(1);
       const error = err({
         type: "Array",
         reason: {
@@ -8876,7 +8881,7 @@ describe("array", () => {
           return "inherited";
         },
       });
-      const sparseStrings = new Array<string>(1);
+      const sparseStrings = createMutableArray<string>(1);
       globalThis.Object.setPrototypeOf(sparseStrings, prototype);
 
       expect(Strings.is(sparseStrings)).toBe(false);
@@ -8985,7 +8990,7 @@ describe("array", () => {
       expect(Greetings.from.parent([hello])).toEqual(ok(["Hello"]));
       expect(validations).toEqual(["Hello"]);
       expectTypeOf(Greetings.from.parent([hello])).toEqualTypeOf<
-        Result<ReadonlyArray<typeof Greeting.Output>, never>
+        Result<ReadonlyArray<typeof Greeting.Output>>
       >();
     });
 
@@ -9333,7 +9338,7 @@ describe("array", () => {
     test("collects structural and invalid element issues in index order", () => {
       const Strings = array(String);
       let reads = 0;
-      const value = new Array<unknown>(5);
+      const value = createMutableArray<unknown>(5);
       value[0] = 0;
       globalThis.Object.defineProperty(value, 1, {
         enumerable: true,
@@ -9377,7 +9382,7 @@ describe("array", () => {
     test("does not construct transformed output after collecting an issue", () => {
       const NumberFromString = setupNumberFromString();
       const Numbers = array(NumberFromString);
-      const value = new Array<unknown>(2);
+      const value = createMutableArray<unknown>(2);
       value[1] = "1";
 
       expect(Numbers.fromUnknown(value, { errors: "all" })).toEqual(
@@ -9542,7 +9547,7 @@ describe("array", () => {
   describe("to", () => {
     test("asserts its own Output", () => {
       const Values = array(Number);
-      const sparse = new Array<number>(1);
+      const sparse = createMutableArray<number>(1);
 
       expectAssertionError(() => Values.to(sparse), "Expected Array.", {
         type: "Array",
@@ -9554,7 +9559,7 @@ describe("array", () => {
   describe("from", () => {
     test("asserts its own Output", () => {
       const Values = array(Number);
-      const sparse = new Array<number>(1);
+      const sparse = createMutableArray<number>(1);
 
       expectAssertionError(() => Values.from(sparse), "Expected Array.", {
         type: "Array",
@@ -9568,9 +9573,7 @@ describe("array", () => {
       validations.length = 0;
       const result = UserIds.from(value);
 
-      expectTypeOf(result).toEqualTypeOf<
-        Result<typeof UserIds.Output, never>
-      >();
+      expectTypeOf(result).toEqualTypeOf<Result<typeof UserIds.Output>>();
       expectOk(result, value);
       expect(result.value).toBe(value);
       expect(validations).toEqual([1, 2]);
@@ -9737,7 +9740,7 @@ describe("array", () => {
         Result<typeof Reimported.Output, Error>
       >();
       expectTypeOf<ReturnType<typeof Imported.from.parent>>().toEqualTypeOf<
-        Result<typeof Imported.Output, never>
+        Result<typeof Imported.Output>
       >();
       expectTypeOf<
         ReturnType<typeof Imported.from.parent.parent>
@@ -9899,7 +9902,7 @@ describe("array", () => {
   describe("from.parent", () => {
     test("asserts the selected parent Output", () => {
       const Values = array(literal(1));
-      const sparse = new Array<number>(1);
+      const sparse = createMutableArray<number>(1);
 
       expectAssertionError(
         () => Values.from.parent(sparse),
@@ -10102,7 +10105,7 @@ describe("array", () => {
   describe("orThrow", () => {
     test("asserts its typed Input boundary", () => {
       const Values = array(literal(1));
-      const sparse = new Array<number>(1);
+      const sparse = createMutableArray<number>(1);
 
       expectAssertionError(() => Values.orThrow(sparse), "Expected Array.", {
         type: "Array",
@@ -10160,7 +10163,7 @@ describe("array", () => {
   describe("orNull", () => {
     test("does not convert a typed Input assertion into null", () => {
       const Values = array(literal(1));
-      const sparse = new Array<number>(1);
+      const sparse = createMutableArray<number>(1);
 
       expectAssertionError(() => Values.orNull(sparse), "Expected Array.", {
         type: "Array",
@@ -10449,7 +10452,7 @@ describe("tuple", () => {
         (
           value: readonly [string, number],
           options?: ValidationOptions,
-        ) => Result<readonly [string, number], never>
+        ) => Result<readonly [string, number]>
       >();
     });
 
@@ -10675,7 +10678,7 @@ describe("tuple", () => {
 
     test("rejects holes and accessors without invoking them", () => {
       const Pair = tuple(String, Number);
-      const value = new Array<unknown>(2);
+      const value = createMutableArray<unknown>(2);
       let reads = 0;
       globalThis.Object.defineProperty(value, 1, {
         enumerable: true,
@@ -10697,7 +10700,7 @@ describe("tuple", () => {
           },
         }),
       );
-      expect(Pair.fromUnknown(new Array<unknown>(2))).toEqual(
+      expect(Pair.fromUnknown(createMutableArray<unknown>(2))).toEqual(
         err({
           type: "Tuple",
           reason: {
@@ -12171,7 +12174,7 @@ describe("record", () => {
       const decoded = Values.orThrow(createNullRecord({ one: "1" }));
       expectOk(Imported.from.parent(decoded), decoded);
       expectTypeOf(Imported.from.parent(decoded)).toEqualTypeOf<
-        Result<typeof Imported.Output, never>
+        Result<typeof Imported.Output>
       >();
     });
 
@@ -12606,8 +12609,8 @@ describe("object", () => {
       const otherRecord = record(String, Boolean);
       const restrictedKeys = record(literal("score"), Number);
       const ReversedString = transform("ReversedString", String, String, {
-        from: (value) => ok(globalThis.Array.from(value).reverse().join("")),
-        to: (value) => globalThis.Array.from(value).reverse().join(""),
+        from: (value) => ok(globalThis.Array.from(value).toReversed().join("")),
+        to: (value) => globalThis.Array.from(value).toReversed().join(""),
       });
       const transformedKeys = record(ReversedString, Number);
       const NumberFromString = setupNumberFromString();
@@ -13486,7 +13489,7 @@ describe("object", () => {
       >();
       expectTypeOf<
         ReturnType<typeof ReimportedModel.from.parent>
-      >().toEqualTypeOf<Result<typeof ReimportedModel.Output, never>>();
+      >().toEqualTypeOf<Result<typeof ReimportedModel.Output>>();
       expectTypeOf<
         ReturnType<typeof ReimportedModel.from.parent.parent>
       >().toEqualTypeOf<
@@ -14373,7 +14376,7 @@ describe("object", () => {
       validations.length = 0;
       const result = Model.from(value);
 
-      expectTypeOf(result).toEqualTypeOf<Result<typeof Model.Output, never>>();
+      expectTypeOf(result).toEqualTypeOf<Result<typeof Model.Output>>();
       expectOk(result, value);
       expect(result.value).toBe(value);
       expect(validations).toEqual([
@@ -16165,9 +16168,7 @@ describe("lazy", () => {
           StringTreeError
         >
       >();
-      expectTypeOf(StringTree.from(value)).toEqualTypeOf<
-        Result<StringTree, never>
-      >();
+      expectTypeOf(StringTree.from(value)).toEqualTypeOf<Result<StringTree>>();
       expectTypeOf<
         typeof StringTree.parent.Error
       >().toEqualTypeOf<StringTreeError>();
@@ -16759,7 +16760,7 @@ describe("JsonValue", () => {
   });
 
   test("rejects non-data Array representations", () => {
-    const sparse = globalThis.Array<JsonValueInput>(1);
+    const sparse = createMutableArray<JsonValueInput>(1);
     expect(JsonValue.fromUnknown(sparse)).toEqual(
       err({
         type: "JsonValue",
@@ -16771,7 +16772,7 @@ describe("JsonValue", () => {
     );
 
     let reads = 0;
-    const accessor = globalThis.Array<JsonValueInput>(1);
+    const accessor = createMutableArray<JsonValueInput>(1);
     globalThis.Object.defineProperty(accessor, 0, {
       enumerable: true,
       get: () => {
@@ -16791,7 +16792,7 @@ describe("JsonValue", () => {
     expect(reads).toBe(0);
 
     const symbol = globalThis.Symbol("symbol");
-    const allIssues = globalThis.Array<JsonValueInput>(3);
+    const allIssues = createMutableArray<JsonValueInput>(3);
     globalThis.Object.defineProperties(allIssues, {
       0: { enumerable: true, get: () => 1 },
       2: { enumerable: true, value: undefined },
@@ -17042,7 +17043,7 @@ describe("JsonValueFromJson", () => {
 
     const json = Json.orThrow("1.000");
     const fromJson = JsonValueFromJson.from.parent(json);
-    expectTypeOf(fromJson).toEqualTypeOf<Result<JsonValue, never>>();
+    expectTypeOf(fromJson).toEqualTypeOf<Result<JsonValue>>();
     expectOk(fromJson, 1);
 
     const fromString = JsonValueFromJson.from.parent.parent("invalid");
@@ -17081,16 +17082,11 @@ describe("JsonValueFromJson", () => {
     const encoded = JsonValueFromJson.to(value);
     expect(encoded).toBe('[-0,{"value":-0}]');
 
-    const decoded = JsonValueFromJson.orThrow(encoded);
-    assert(globalThis.Array.isArray(decoded), "Expected Array.");
-    expect(globalThis.Object.is(decoded[0], -0)).toBe(true);
-    const object = decoded[1];
-    assert(
-      object !== null &&
-        typeof object === "object" &&
-        !globalThis.Array.isArray(object),
-      "Expected Object.",
+    const decoded = getOrThrow(
+      JsonArray.fromUnknown(JsonValueFromJson.orThrow(encoded)),
     );
+    expect(globalThis.Object.is(decoded[0], -0)).toBe(true);
+    const object = getOrThrow(JsonObject.fromUnknown(decoded[1]));
     expect(globalThis.Object.is(object.value, -0)).toBe(true);
 
     const normalized = JsonValueFromJson.to(JsonValueFromJson.orThrow("-0E0"));
@@ -17591,7 +17587,6 @@ describe("json", () => {
       );
       // The alias is assignable to JsonObject; an interface does not reproduce
       // the IsExactlyJsonValue mutual-assignability false positive.
-      // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
       type SymbolJsonObject = {
         readonly value: string;
         readonly [metadata]: undefined;

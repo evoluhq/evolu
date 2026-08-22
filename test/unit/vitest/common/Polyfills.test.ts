@@ -95,7 +95,6 @@ const deleteTrackedGlobal = (key: TrackedGlobalKey): void => {
     case "SuppressedError":
       delete (globalThis as { SuppressedError?: typeof SuppressedError })
         .SuppressedError;
-      return;
   }
 };
 
@@ -333,6 +332,7 @@ describeInstallPolyfills("installPolyfills", () => {
         return value;
       }
       defer(_onDispose: () => void): void {
+        // oxlint-disable-next-line eslint/no-useless-return -- Keeps this intentional no-op body explicit while ESLint remains enabled.
         return;
       }
       move(): DisposableStack {
@@ -360,6 +360,7 @@ describeInstallPolyfills("installPolyfills", () => {
         return value;
       }
       defer(_onDisposeAsync: () => void | Promise<void>): void {
+        // oxlint-disable-next-line eslint/no-useless-return -- Keeps this intentional no-op body explicit while ESLint remains enabled.
         return;
       }
       move(): AsyncDisposableStack {
@@ -551,16 +552,16 @@ describe("DisposableStack behavior", () => {
         [Symbol.dispose]: () => undefined,
       }),
     ).toThrow(
-      /Cannot call DisposableStack\.prototype\.use on an already-disposed DisposableStack/,
+      /Cannot call DisposableStack\.prototype\.use on an already-disposed DisposableStack/u,
     );
     expect(() => stack.defer(() => undefined)).toThrow(
-      /Cannot call DisposableStack\.prototype\.defer on an already-disposed DisposableStack/,
+      /Cannot call DisposableStack\.prototype\.defer on an already-disposed DisposableStack/u,
     );
     expect(() => stack.adopt("x", () => undefined)).toThrow(
-      /Cannot call DisposableStack\.prototype\.adopt on an already-disposed DisposableStack/,
+      /Cannot call DisposableStack\.prototype\.adopt on an already-disposed DisposableStack/u,
     );
     expect(() => stack.move()).toThrow(
-      /Cannot call DisposableStack\.prototype\.move on an already-disposed DisposableStack/,
+      /Cannot call DisposableStack\.prototype\.move on an already-disposed DisposableStack/u,
     );
   });
 
@@ -724,6 +725,7 @@ describe("DisposableStack behavior", () => {
     const events: Array<string> = [];
 
     const resource = function resource(): void {
+      // oxlint-disable-next-line eslint/no-useless-return -- Keeps this intentional no-op body explicit while ESLint remains enabled.
       return;
     } as (() => void) & Disposable;
     resource[Symbol.dispose] = () => {
@@ -876,7 +878,7 @@ describe("DisposableStack behavior", () => {
 
   test("Reflect.construct propagates abrupt newTarget prototype getter", () => {
     const newTarget = function () {
-      return;
+      // oxlint-disable-next-line eslint/no-extra-bind -- Binding removes the function's own prototype so the test can replace it with a getter.
     }.bind(null);
 
     let calls = 0;
@@ -889,9 +891,9 @@ describe("DisposableStack behavior", () => {
       },
     });
 
-    expect(() =>
-      Reflect.construct(globalThis.DisposableStack, [], newTarget),
-    ).toThrow(EvalError);
+    expect(() => {
+      Reflect.construct(globalThis.DisposableStack, [], newTarget);
+    }).toThrow(EvalError);
     expect(calls).toBe(1);
   });
 });
@@ -1020,16 +1022,16 @@ describe("AsyncDisposableStack behavior", () => {
         [Symbol.dispose]: () => undefined,
       }),
     ).toThrow(
-      /Cannot call AsyncDisposableStack\.prototype\.use on an already-disposed DisposableStack/,
+      /Cannot call AsyncDisposableStack\.prototype\.use on an already-disposed DisposableStack/u,
     );
     expect(() => stack.defer(() => undefined)).toThrow(
-      /Cannot call AsyncDisposableStack\.prototype\.defer on an already-disposed DisposableStack/,
+      /Cannot call AsyncDisposableStack\.prototype\.defer on an already-disposed DisposableStack/u,
     );
     expect(() => stack.adopt("x", () => undefined)).toThrow(
-      /Cannot call AsyncDisposableStack\.prototype\.adopt on an already-disposed DisposableStack/,
+      /Cannot call AsyncDisposableStack\.prototype\.adopt on an already-disposed DisposableStack/u,
     );
     expect(() => stack.move()).toThrow(
-      /Cannot call AsyncDisposableStack\.prototype\.move on an already-disposed DisposableStack/,
+      /Cannot call AsyncDisposableStack\.prototype\.move on an already-disposed DisposableStack/u,
     );
   });
 
@@ -1107,6 +1109,7 @@ describe("AsyncDisposableStack behavior", () => {
     const events: Array<string> = [];
 
     const resource = function resource(): void {
+      // oxlint-disable-next-line eslint/no-useless-return -- Keeps this intentional no-op body explicit while ESLint remains enabled.
       return;
     } as (() => void) & AsyncDisposable;
     resource[Symbol.asyncDispose] = () =>
@@ -1477,7 +1480,7 @@ describe("AsyncDisposableStack behavior", () => {
 
   test("Reflect.construct propagates abrupt newTarget prototype getter", () => {
     const newTarget = function () {
-      return;
+      // oxlint-disable-next-line eslint/no-extra-bind -- Binding removes the function's own prototype so the test can replace it with a getter.
     }.bind(null);
 
     let calls = 0;
@@ -1490,9 +1493,9 @@ describe("AsyncDisposableStack behavior", () => {
       },
     });
 
-    expect(() =>
-      Reflect.construct(globalThis.AsyncDisposableStack, [], newTarget),
-    ).toThrow(EvalError);
+    expect(() => {
+      Reflect.construct(globalThis.AsyncDisposableStack, [], newTarget);
+    }).toThrow(EvalError);
     expect(calls).toBe(1);
   });
 });

@@ -256,12 +256,13 @@ export const createSqlite =
             console.debug({ query });
 
             const label =
-              query.options?.logQueryExecutionTime &&
-              `SqliteQueryExecutionTime ${query.sql}`;
+              query.options?.logQueryExecutionTime === true
+                ? `SqliteQueryExecutionTime ${query.sql}`
+                : null;
 
-            if (label) console.time(label);
+            if (label !== null) console.time(label);
             const result = driver.exec(query);
-            if (label) console.timeEnd(label);
+            if (label !== null) console.timeEnd(label);
 
             if (query.options?.logExplainQueryPlan) {
               const result = driver.exec({
@@ -343,11 +344,12 @@ const drawSqliteQueryPlan = (rows: Array<SqliteQueryPlanRow>): string =>
       let indent = 0;
 
       do {
+        // oxlint-disable-next-line eslint/no-loop-func -- find invokes the callback synchronously before parentId changes.
         const parent = rows.find((r) => r.id === parentId);
         if (!parent) break;
         parentId = parent.parent;
         indent++;
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition, no-constant-condition
+        // oxlint-disable-next-line eslint/no-constant-condition -- A missing parent terminates the traversal above.
       } while (true);
 
       return `${"  ".repeat(indent)}${row.detail}`;
@@ -395,7 +397,7 @@ export const createPreparedStatementsCache = <P>(
         if (alwaysPrepare !== true && !query.options?.prepare)
           return null as never;
         let statement = statementsBySql.get(query.sql);
-        if (!statement) {
+        if (statement === undefined) {
           statement = factory(query.sql);
           statementsBySql.set(query.sql, statement);
         }
@@ -492,7 +494,7 @@ export const sql = (
 sql.identifier = (identifier: string): SqlIdentifier => ({
   type: "SqlIdentifier",
   // From Kysely
-  sql: `"${identifier.replace(/"/g, '""')}"` as SafeSql,
+  sql: `"${identifier.replaceAll('"', '""')}"` as SafeSql,
 });
 
 /**

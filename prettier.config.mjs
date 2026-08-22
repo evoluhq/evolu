@@ -8,7 +8,7 @@ const prettierConfig = {
   ],
 };
 
-/** @type {import("prettier-plugin-embed").PrettierPluginEmbedOptions} */
+/** @type {import("prettier-plugin-embed").PluginEmbedOptions} */
 const prettierPluginEmbedConfig = {
   embeddedSqlParser: "sqlite",
   embeddedSqlPlugin: "prettier-plugin-sql-cst",
@@ -24,6 +24,12 @@ const prettierPluginEmbedConfig = {
 const config = {
   ...prettierConfig,
   ...prettierPluginEmbedConfig,
+  overrides: [
+    {
+      files: "packages/oxlint-config/config.jsonc",
+      options: { trailingComma: "none" },
+    },
+  ],
 };
 
 export default config;

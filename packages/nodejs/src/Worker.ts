@@ -14,6 +14,7 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
 
   disposer.defer(() => {
     disposed = true;
+    // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
     nativeBroadcastChannel.onmessage = null;
     nativeBroadcastChannel.close();
   });
@@ -31,6 +32,7 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
       set onMessage(fn) {
         if (disposed) return;
         onMessageHandler = fn;
+        // oxlint-disable-next-line unicorn/prefer-add-event-listener -- This adapter owns and clears one handler.
         nativeBroadcastChannel.onmessage = fn
           ? (event: MessageEvent<Output>) => {
               fn(event.data);

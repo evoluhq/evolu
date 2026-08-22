@@ -1670,11 +1670,11 @@
         },
         "lazy-direct-all": {
           "files": 0,
-          "lines": 99,
-          "identifiers": 185,
+          "lines": 98,
+          "identifiers": 184,
           "instantiations": 2438,
           "types": 554,
-          "symbols": 916
+          "symbols": 915
         },
         "lazy-mutual-all": {
           "files": -2,

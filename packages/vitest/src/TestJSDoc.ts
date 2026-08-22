@@ -67,11 +67,11 @@ interface TypeScriptPackage {
   readonly bin: string | { readonly tsc?: string };
 }
 
-const jsdocPattern = /\/\*\*[\s\S]*?\*\//g;
-const fencePattern = /(?:```|~~~)([^\n]*)\n([\s\S]*?)(?:(```|~~~)|$)/g;
-const markdownFilePattern = /\.mdx?$/i;
-const packageNamePattern = /^(?:@[a-z\d][a-z\d._~-]*\/)?[a-z\d][a-z\d._~-]*$/i;
-const packageSubpathSegmentPattern = /^[a-z\d][a-z\d._~-]*$/i;
+const jsdocPattern = /\/\*\*[\s\S]*?\*\//gu;
+const fencePattern = /(?:```|~~~)([^\n]*)\n([\s\S]*?)(?:(```|~~~)|$)/gu;
+const markdownFilePattern = /\.mdx?$/iu;
+const packageNamePattern = /^(?:@[a-z\d][a-z\d._~-]*\/)?[a-z\d][a-z\d._~-]*$/iu;
+const packageSubpathSegmentPattern = /^[a-z\d][a-z\d._~-]*$/iu;
 const polyfillsPath = fileURLToPath(
   import.meta.resolve("@evolu/common/polyfills"),
 );
@@ -147,7 +147,7 @@ export const testJSDocExamples = async ({
         resolve(workingDirectory, filePath),
       ),
     ),
-  ).sort();
+  ).toSorted();
   assert(
     filePaths.length > 0,
     "No files matched the documentation example patterns.",
@@ -318,7 +318,7 @@ const extractFencedExamples = (
   const examples: Array<JSDocExample> = [];
 
   for (const fence of fencedSource.matchAll(fencePattern)) {
-    const metadata = fence[1].trim().toLowerCase().split(/\s+/);
+    const metadata = fence[1].trim().toLowerCase().split(/\s+/u);
     if (!["ts", "typescript"].includes(metadata[0])) {
       continue;
     }
@@ -330,7 +330,7 @@ const extractFencedExamples = (
       `${filePath}:${line} has an unclosed TypeScript example fence.`,
     );
     const exampleSource = (
-      stripJSDocPrefixes ? fence[2].replace(/^[ \t]*\* ?/gm, "") : fence[2]
+      stripJSDocPrefixes ? fence[2].replaceAll(/^[ \t]*\* ?/gmu, "") : fence[2]
     ).trim();
     assert(
       exampleSource.length > 0,

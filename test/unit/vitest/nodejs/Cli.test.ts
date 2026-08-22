@@ -78,7 +78,9 @@ test("spawn aborts its child process with the Run", async () => {
     spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"]),
   );
 
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
   fiber.abort(testAbortReason);
 
   expect(await fiber).toEqual(err(testAbortError));

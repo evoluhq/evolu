@@ -85,7 +85,8 @@ test("assertNonEmptyArray", () => {
   const arr = [1, 2, 3];
   assertNonEmptyArray(arr);
   expectTypeOf(arr).toEqualTypeOf<NonEmptyArray<number>>();
-  expect(arr).toEqual([1, 2, 3]); // No type change, just validation
+  // No type change, just validation
+  expect(arr).toEqual([1, 2, 3]);
 
   // Empty array should throw
   expect(() => {
@@ -103,7 +104,8 @@ test("assertNonEmptyReadonlyArray", () => {
   const arr: ReadonlyArray<number> = [1, 2, 3];
   assertNonEmptyReadonlyArray(arr);
   expectTypeOf(arr).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
-  expect(arr).toEqual([1, 2, 3]); // Ensures no changes
+  // Ensures no changes
+  expect(arr).toEqual([1, 2, 3]);
 
   // Empty readonly array should throw
   expect(() => {

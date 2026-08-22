@@ -2,7 +2,6 @@ import {
   array,
   lazy,
   object,
-  String,
   type ArrayElementsError,
   type ArrayError,
   type InferErrors,

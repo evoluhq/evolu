@@ -1248,6 +1248,7 @@ export const createEvolu =
       console.info("disposeEvolu");
     });
 
+    // oxlint-disable-next-line react/rules-of-hooks -- useOwner manages sync ownership and is not a React Hook.
     if (isNonEmptyArray(transports)) useOwner(appOwner);
 
     run.signal.throwIfAborted();

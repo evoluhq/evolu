@@ -33,9 +33,7 @@ test("isPlainObject", () => {
 });
 
 test("isFunction", () => {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
   expect(isFunction(() => {})).toBe(true);
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
   expect(isFunction(function () {})).toBe(true);
   expect(isFunction({})).toBe(false);
   expect(isFunction([])).toBe(false);
@@ -151,8 +149,8 @@ test("createMutableRecord", () => {
   expect(values.__proto__).toBe(123);
 
   // Ensure Object.prototype was not changed
-  const protoValue = (Object.prototype as any).__proto__;
-  expect((Object.prototype as any).__proto__).toBe(protoValue);
+  const protoValue = Reflect.get(Object.prototype, "__proto__");
+  expect(Reflect.get(Object.prototype, "__proto__")).toBe(protoValue);
 
   interface Source {
     readonly name: string;
@@ -204,7 +202,7 @@ test("createObjectURL", () => {
   const blob = new Blob(["test"], { type: "text/plain" });
   const objectUrl = createObjectURL(blob);
 
-  expect(objectUrl.url).toMatch(/^blob:/);
+  expect(objectUrl.url).toMatch(/^blob:/u);
 
   // Dispose revokes the URL
   objectUrl[Symbol.dispose]();

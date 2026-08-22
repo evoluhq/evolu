@@ -131,7 +131,7 @@ export const createEvoluBinding = <
     const { once } = useRef(options).current;
 
     if (once) {
-      /* eslint-disable react-hooks/rules-of-hooks */
+      /* oxlint-disable react/rules-of-hooks -- The once branch remains stable for the lifetime of this subscription. */
       useEffect(() => evolu.subscribeQuery(query)(constVoid), [evolu, query]);
       return evolu.getQueryRows(query);
     }
@@ -140,7 +140,7 @@ export const createEvoluBinding = <
       useMemo(() => evolu.subscribeQuery(query), [evolu, query]),
       useMemo(() => () => evolu.getQueryRows(query), [evolu, query]),
       () => emptyArray as QueryRows<R>,
-      /* eslint-enable react-hooks/rules-of-hooks */
+      /* oxlint-enable react/rules-of-hooks */
     );
   };
 
@@ -180,14 +180,15 @@ export const createEvoluBinding = <
     const wasSSR = useIsSsr();
     if (wasSSR) {
       if (!options.promises) void evolu.loadQueries(allQueries);
+    } else if (options.promises) {
+      options.promises.map(use);
     } else {
-      if (options.promises) options.promises.map(use);
-      else evolu.loadQueries(allQueries).map(use);
+      evolu.loadQueries(allQueries).map(use);
     }
 
     return allQueries.map((query, index) =>
       // Safe until the number of queries is stable.
-      // eslint-disable-next-line react-hooks/rules-of-hooks
+      // oxlint-disable-next-line react/rules-of-hooks -- The number and order of queries must remain stable.
       useQuerySubscription(query, { once: index > queries.length - 1 }),
     ) as never;
   };

@@ -12,6 +12,5 @@ import { useEvolu } from "./useEvolu.ts";
  * ```
  */
 export const createUseEvolu = <S extends EvoluSchema>(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  evolu: Evolu<S>,
+  _evolu: Evolu<S>,
 ): (() => Evolu<S>) => useEvolu as () => Evolu<S>;

@@ -1,8 +1,9 @@
 import "./PWABadge.css";
 
+import type { ReactElement } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
-function PWABadge() {
+const PWABadge = (): ReactElement => {
   // check for updates every hour
   const period = 60 * 60 * 1000;
 
@@ -24,10 +25,10 @@ function PWABadge() {
     },
   });
 
-  function close() {
+  const close = (): void => {
     setOfflineReady(false);
     setNeedRefresh(false);
-  }
+  };
 
   return (
     <div className="PWABadge" role="alert" aria-labelledby="toast-message">
@@ -46,7 +47,12 @@ function PWABadge() {
             {needRefresh && (
               <button
                 className="PWABadge-toast-button"
-                onClick={() => updateServiceWorker(true)}
+                onClick={() => {
+                  void updateServiceWorker(true).catch((error: unknown) => {
+                    // oxlint-disable-next-line eslint/no-console -- Service worker update failures must remain visible to developers.
+                    console.error(error);
+                  });
+                }}
               >
                 Reload
               </button>
@@ -59,7 +65,7 @@ function PWABadge() {
       )}
     </div>
   );
-}
+};
 
 export default PWABadge;
 
@@ -67,24 +73,29 @@ export default PWABadge;
  * This function will register a periodic sync check every hour, you can modify
  * the interval as needed.
  */
-function registerPeriodicSync(
+const registerPeriodicSync = (
   period: number,
   swUrl: string,
   r: ServiceWorkerRegistration,
-) {
+): void => {
   if (period <= 0) return;
 
-  setInterval(async () => {
+  setInterval(() => {
     if ("onLine" in navigator && !navigator.onLine) return;
 
-    const resp = await fetch(swUrl, {
-      cache: "no-store",
-      headers: {
+    void (async () => {
+      const resp = await fetch(swUrl, {
         cache: "no-store",
-        "cache-control": "no-cache",
-      },
-    });
+        headers: {
+          cache: "no-store",
+          "cache-control": "no-cache",
+        },
+      });
 
-    if (resp?.status === 200) await r.update();
+      if (resp.status === 200) await r.update();
+    })().catch((error: unknown) => {
+      // oxlint-disable-next-line eslint/no-console -- Periodic update failures must remain visible to developers.
+      console.error(error);
+    });
   }, period);
-}
+};

@@ -104,7 +104,7 @@ const sqliteMock = vi.hoisted(() => {
   };
 
   return {
-    consoleWarn: vi.fn(),
+    consoleWarn: vi.fn<typeof console.warn>(),
     pool,
     reset: () => {
       state.closedDatabases.length = 0;

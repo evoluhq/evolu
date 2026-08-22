@@ -115,6 +115,7 @@ export class PwaBadgeComponent implements OnDestroy {
 
   async handleApplyUpdate(): Promise<void> {
     if (!this.updateSW || !this.updateAvailable()) {
+      // oxlint-disable-next-line eslint/no-console -- Explains why the requested update cannot run.
       console.log("No updateSW function available!");
       return;
     }

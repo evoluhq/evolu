@@ -44,11 +44,10 @@ The repository requires Node.js 24 or newer and pnpm.
 - `pnpm build` — build publishable packages and the relay. Run it once after a
   clone or pull to generate IDE package types.
 - `pnpm check:packages` — validate package source and distribution exports.
-- `pnpm biome` — check Biome rules and import cycles.
-- `pnpm lint` — run ESLint.
+- `pnpm lint` — run Oxlint, including runtime import-cycle analysis.
 - `pnpm verify` — run type-checking, builds, package checks, coverage,
-  Firefox/WebKit compatibility tests, Biome, monorepo linting, documentation
-  generation, and ESLint serially. Its underlying tools can use all available
+  Firefox/WebKit compatibility tests, monorepo linting, documentation
+  generation, and Oxlint serially. Its underlying tools can use all available
   CPU cores, so do not run other CPU-intensive commands concurrently.
 - `pnpm format` — write Prettier formatting changes.
 - `pnpm bench:type` — compare Type compiler metrics with committed baselines.

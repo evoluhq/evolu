@@ -28,8 +28,9 @@ import {
   upsertTypeBenchmarkBaseline,
 } from "./baseline.mts";
 
+// oxlint-disable-next-line typescript/strict-void-return -- Node's callback-based execFile returns a ChildProcess that promisify intentionally ignores.
 const execFileAsync = promisify(execFile);
-const benchmarkDirectory = dirname(fileURLToPath(import.meta.url));
+const benchmarkDirectory = import.meta.dirname;
 const fixtureDirectory = join(benchmarkDirectory, "fixtures");
 const tscPath = resolve(
   dirname(
@@ -190,7 +191,8 @@ const compilerArguments = [
   "false",
 ] as const;
 const typecheckCompilerArguments = compilerArguments.filter(
-  (argument) => argument !== "--singleThreaded" && argument !== "--extendedDiagnostics",
+  (argument) =>
+    argument !== "--singleThreaded" && argument !== "--extendedDiagnostics",
 );
 const typeBenchmarkBaselinesUrl = new URL("./baselines.json", import.meta.url);
 
@@ -222,9 +224,7 @@ const getFixtureName = ({ kind, depth, width }: Fixture): string => {
 };
 
 const allFixtures: ReadonlyArray<Fixture> = [
-  ...fixtureKinds.flatMap((kind) =>
-    depths.map((depth) => ({ kind, depth })),
-  ),
+  ...fixtureKinds.flatMap((kind) => depths.map((depth) => ({ kind, depth }))),
   ...widthFixtureKinds.flatMap((kind) =>
     widths.map((width) => ({ kind, width })),
   ),
@@ -248,7 +248,7 @@ const selectedTypecheckFixtures = filteredBenchmark
   : typecheckFixtures;
 
 const parseIntegerMetric = (output: string, name: string): number => {
-  const match = new RegExp(`^${name}:\\s+([\\d,]+)`, "m").exec(output);
+  const match = new RegExp(`^${name}:\\s+([\\d,]+)`, "mu").exec(output);
   if (match == null) throw new Error(`Missing ${name} in tsc diagnostics.`);
   return Number(match[1].replaceAll(",", ""));
 };
@@ -268,7 +268,7 @@ const compileFixture = async (
       },
     );
     if (stderr.length > 0) throw new Error(stderr);
-    const checkTimeMatch = /^Check time:\s+([\d.]+)s/m.exec(stdout);
+    const checkTimeMatch = /^Check time:\s+([\d.]+)s/mu.exec(stdout);
     if (checkTimeMatch == null) {
       throw new Error("Missing Check time in tsc diagnostics.");
     }
@@ -362,7 +362,7 @@ await runMain(
     )
   ).stdout
     .trim()
-    .replace(/^Version\s+/, "");
+    .replace(/^Version\s+/u, "");
   if (!typescriptVersion.startsWith("7.")) {
     throw new Error(
       `The Type benchmark requires TypeScript 7, but resolved TypeScript ${typescriptVersion}.`,
@@ -491,10 +491,16 @@ await runMain(
       depth: result.depth ?? "-",
       width: result.width ?? "-",
       files: result.diagnostics
-        ? formatValueAndDelta(result.diagnostics.files, sharedRootBaseline.files)
+        ? formatValueAndDelta(
+            result.diagnostics.files,
+            sharedRootBaseline.files,
+          )
         : "FAIL",
       lines: result.diagnostics
-        ? formatValueAndDelta(result.diagnostics.lines, sharedRootBaseline.lines)
+        ? formatValueAndDelta(
+            result.diagnostics.lines,
+            sharedRootBaseline.lines,
+          )
         : "FAIL",
       identifiers: result.diagnostics
         ? formatValueAndDelta(
@@ -523,9 +529,7 @@ await runMain(
     const measurements: Record<string, DeterministicDiagnostics> = {};
     for (const result of results) {
       if (result.diagnostics === undefined) {
-        throw new Error(
-          `Missing diagnostics for ${getFixtureName(result)}.`,
-        );
+        throw new Error(`Missing diagnostics for ${getFixtureName(result)}.`);
       }
       measurements[getFixtureName(result)] = subtractDeterministicDiagnostics(
         toDeterministicDiagnostics(result.diagnostics),
@@ -544,13 +548,14 @@ await runMain(
           `No Type benchmark baseline matches TypeScript ${configuration.typescriptVersion} and the current compiler arguments. Run "pnpm bench:type --mode=update-baseline" to create it.\nProposed baseline:\n${JSON.stringify({ baselines: [nextBaseline] }, null, 2)}`,
         );
       }
-      console.log("No compatible Type benchmark baseline exists; creating one.");
+      console.log(
+        "No compatible Type benchmark baseline exists; creating one.",
+      );
     } else {
       const comparedBaselineMeasurements = filteredBenchmark
         ? objectFrom(
             globalThis.Object.keys(existingBaseline.measurements).filter(
-              (fixture) =>
-                matchesTypeBenchmarkFilter(fixture, fixtureFilters),
+              (fixture) => matchesTypeBenchmarkFilter(fixture, fixtureFilters),
             ),
             (fixture) => {
               const measurement = existingBaseline.measurements[fixture];
@@ -612,8 +617,8 @@ await runMain(
           filteredBenchmark
             ? "Filtered Type benchmark passed."
             : comparison.changes.length === 0
-            ? "Type benchmark passed; all deterministic metrics match."
-            : "Type benchmark passed; no gated compiler metric regressed.",
+              ? "Type benchmark passed; all deterministic metrics match."
+              : "Type benchmark passed; no gated compiler metric regressed.",
         );
       }
     }

@@ -379,7 +379,8 @@ const HomeTabProject: FC<{
           onChange={(e) => {
             setNewTodoTitle(e.target.value);
           }}
-          data-1p-ignore // ignore this input from 1password, ugly hack but works
+          // ignore this input from 1password, ugly hack but works
+          data-1p-ignore
           onKeyDown={handleKeyPress}
           placeholder="Add a new todo..."
           className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
@@ -426,7 +427,7 @@ const HomeTabProjectSectionTodoItem: FC<{
 
   // Demonstrate history tracking. Evolu automatically tracks all changes
   // in the evolu_history table, making it easy to build audit logs or undo features.
-  const _titleHistoryQuery = createQuery((db) =>
+  createQuery((db) =>
     db
       .selectFrom("evolu_history")
       .select(["value", "timestamp"])
@@ -622,7 +623,7 @@ const ProjectsTabProjectItem: FC<{
   // Demonstrate JSON deserialization. Because FooJson is a branded type,
   // we can safely deserialize without validation - TypeScript guarantees
   // only validated JSON strings can have the FooJson brand.
-  const _foo = fooJsonToFoo(project.fooJson);
+  fooJsonToFoo(project.fooJson);
 
   return (
     <div className="flex items-center gap-3 rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200">
@@ -661,6 +662,7 @@ const AccountTab: FC = () => {
       "Enter your mnemonic to restore your data:",
       Mnemonic,
     );
+    // oxlint-disable-next-line eslint/no-useless-return -- Keeps this validation guard correct when owner restoration is implemented.
     if (!result.ok) return;
 
     // void evolu.restoreAppOwner(result.value);
@@ -700,7 +702,7 @@ const AccountTab: FC = () => {
           className="w-full"
         />
 
-        {showMnemonic && appOwner.mnemonic && (
+        {showMnemonic && (
           <div className="bg-gray-50 p-3">
             <label className="mb-2 block text-xs font-medium text-gray-700">
               Your Mnemonic (keep this safe!)
@@ -836,10 +838,7 @@ const TrashTabDeletedProjectItem: FC<{
         <div className="flex-1">
           <h3 className="font-medium text-gray-900">{project.name}</h3>
           <p className="text-sm text-gray-500">
-            Deleted{" "}
-            {project.updatedAt
-              ? new Date(project.updatedAt).toLocaleString()
-              : "recently"}
+            Deleted {new Date(project.updatedAt).toLocaleString()}
           </p>
         </div>
       </div>

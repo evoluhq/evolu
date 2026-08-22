@@ -9,7 +9,7 @@
  * pattern.
  */
 export const escapeRegExp = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 /** Converts an unknown value to a compact, human-readable diagnostic string. */
 export const safelyStringifyUnknownValue = (value: unknown): string => {

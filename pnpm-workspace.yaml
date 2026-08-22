@@ -1,7 +1,6 @@
 # While Expo doesn't require hoisted anymore, Electron still needs it.
 # https://www.electronjs.org/docs/latest/tutorial/tutorial-first-app#initializing-your-npm-project
 nodeLinker: hoisted
-minimumReleaseAge: 0
 
 allowBuilds:
   "@parcel/watcher": true

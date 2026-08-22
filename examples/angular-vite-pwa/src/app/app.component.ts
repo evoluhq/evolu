@@ -156,17 +156,17 @@ export class App {
 
   /** Todos */
 
-  protected setNewTodoTitle(value: string) {
+  protected setNewTodoTitle(value: string): void {
     this.newTodoTitle.set(value);
   }
 
-  protected handleKeyDown(event: KeyboardEvent) {
+  protected handleKeyDown(event: KeyboardEvent): void {
     if (event.key === "Enter") {
       this.handleAddTodo();
     }
   }
 
-  protected handleAddTodo() {
+  protected handleAddTodo(): void {
     const title = this.newTodoTitle().trim();
     if (!title) return;
 
@@ -174,37 +174,37 @@ export class App {
     this.newTodoTitle.set("");
   }
 
-  protected handleRenameTodo(id: string, currentTitle: string) {
+  protected handleRenameTodo(id: string, currentTitle: string): void {
     const title = window.prompt("Todo Name", currentTitle);
     if (title == null) return;
 
     this.appService.renameTodo(id, title);
   }
 
-  protected handleDeleteTodo(id: string) {
+  protected handleDeleteTodo(id: string): void {
     this.appService.deleteTodo(id);
   }
 
   /** Footer button handlers */
 
-  protected handleShowMnemonic() {
+  protected handleShowMnemonic(): void {
     this.showMnemonic.update((show) => !show);
   }
 
-  protected handleRestoreOwner() {
+  protected handleRestoreOwner(): void {
     const mnemonic = window.prompt("Your Mnemonic");
     if (mnemonic == null) return;
 
-    void this.appService.restoreFromMnemonic(mnemonic);
+    this.appService.restoreFromMnemonic(mnemonic);
   }
 
-  protected handleResetOwner() {
+  protected handleResetOwner(): void {
     if (confirm("Are you sure? It will delete all your local data.")) {
-      void this.appService.resetAppOwner();
+      this.appService.resetAppOwner();
     }
   }
 
-  protected handleDownloadDatabase() {
+  protected handleDownloadDatabase(): void {
     void this.appService.downloadDatabase();
   }
 }

@@ -60,9 +60,9 @@ const toggleMode = (examplePath: string, mode: Mode): void => {
       const value = deps[dep];
       if (mode === "production" && value.startsWith("catalog:")) {
         const catalogName = value.replace("catalog:", "");
-        const catalog = catalogs[catalogName as keyof typeof catalogs];
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (catalog && dep in catalog) {
+        if (catalogName in catalogs) {
+          const catalog = catalogs[catalogName as keyof typeof catalogs];
+          if (!(dep in catalog)) continue;
           deps[dep] = catalog[dep as keyof typeof catalog];
         }
       } else if (mode === "development") {
@@ -136,7 +136,6 @@ const askForModeInteractive = async (): Promise<Mode> => {
     });
 
   // Keep prompting until valid answer
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   while (true) {
     const answer = (await prompt()).trim();
     const mode = parseModeString(answer);

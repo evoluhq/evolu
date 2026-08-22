@@ -55,20 +55,20 @@ Also kept.
     const fixed = await fs.readFile(path.join(sourceDir, mdxPath), "utf8");
     assert.match(
       fixed,
-      /export const metadata = \{ title: 'mapArray - API reference' \};/,
+      /export const metadata = \{ title: 'mapArray - API reference' \};/u,
     );
-    assert.match(fixed, /\[API reference\]\(\/docs\/api-reference\) › common/);
-    assert.doesNotMatch(fixed, /## Parameters/);
-    assert.match(fixed, /## Example/);
-    assert.match(fixed, /### Returning resources from Tasks/);
-    assert.match(fixed, /Also kept\./);
+    assert.match(fixed, /\[API reference\]\(\/docs\/api-reference\) › common/u);
+    assert.doesNotMatch(fixed, /## Parameters/u);
+    assert.match(fixed, /## Example/u);
+    assert.match(fixed, /### Returning resources from Tasks/u);
+    assert.match(fixed, /Also kept\./u);
     assert.match(
       await fs.readFile(path.join(sourceDir, "page.mdx"), "utf8"),
-      /## Packages\n\nPackage/,
+      /## Packages\n\nPackage/u,
     );
     assert.match(
       await fs.readFile(path.join(sourceDir, "existing/page.mdx"), "utf8"),
-      /title: 'existing - API reference'/,
+      /title: 'existing - API reference'/u,
     );
 
     assert.deepEqual(publishApiReference(sourceDir, targetDir), {

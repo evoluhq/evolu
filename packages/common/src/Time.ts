@@ -6,6 +6,7 @@
 
 import { assert } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
+import { exhaustiveCheck } from "./Function.ts";
 import type { yieldNow } from "./Task.ts";
 import {
   brand,
@@ -239,6 +240,10 @@ export const testCreateTime = (options?: {
       case "microtask":
         queueMicrotask(incrementNow);
         break;
+      case undefined:
+        break;
+      default:
+        exhaustiveCheck(autoIncrement);
     }
     return result;
   };
@@ -564,8 +569,10 @@ const durationUnits = {
   m: 60000,
   h: 3600000,
   d: 86400000,
-  w: 604800000, // 7 days
-  y: 31536000000, // 365 days
+  // 7 days
+  w: 604800000,
+  // 365 days
+  y: 31536000000,
 } as const;
 
 /**

@@ -27,7 +27,8 @@ const deps = testCreateDeps();
 // Random numbers are unique only for a few thousand iterations.
 // We leverage this behavior to generate counters.
 // See: https://github.com/transitive-bullshit/random/issues/45
-const numberOfTimestamps = 7000; // 473 duplicates
+// 473 duplicates
+const numberOfTimestamps = 7000;
 const oneYearMillis = 365 * 24 * 60 * 60 * 1000;
 
 const randomMillisMap = new Map<Millis, { counter: Counter; nodeId: NodeId }>();
@@ -54,7 +55,8 @@ export const testTimestampsAsc = timestamps
     timestampToTimestampBytes(createTimestamp({ millis, counter, nodeId })),
   )
   .toSorted(orderTimestampBytes)
-  .slice(0, 5000 - 2); //  for two edges
+  //  for two edges
+  .slice(0, 5000 - 2);
 
 const minTimestamp = timestampToTimestampBytes(createTimestamp());
 export const maxTimestamp = timestampToTimestampBytes(

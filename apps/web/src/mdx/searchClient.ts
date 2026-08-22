@@ -46,7 +46,7 @@ export const search = (query: string): ReadonlyArray<Result> => {
 
   return itemsByTier
     .flatMap((tier) =>
-      tier.sort((a, b) => {
+      tier.toSorted((a, b) => {
         const lengthDifference = a.name.length - b.name.length;
         if (lengthDifference !== 0) return lengthDifference;
         return Number(a.url.includes("#")) - Number(b.url.includes("#"));
@@ -63,7 +63,7 @@ interface SearchItem extends Result {
 }
 
 const normalizeApiReferenceTitle = (title: string): string =>
-  title.replace(/ - API reference$/, "");
+  title.replace(/ - API reference$/u, "");
 
 const searchPages: ReadonlyArray<SearchPage> = searchPagesJson;
 const searchItems: Array<SearchItem> = [];
@@ -77,10 +77,10 @@ for (const { url, sections } of searchPages) {
     let previousName: string;
     do {
       previousName = originalName;
-      originalName = originalName.replace(/<[^>]*>/g, "");
+      originalName = originalName.replaceAll(/<[^>]*>/gu, "");
     } while (originalName !== previousName);
 
-    const nameParts = originalName.split(/[:/]| - /);
+    const nameParts = originalName.split(/[:/]| - /u);
     originalName = title.includes(" - ")
       ? nameParts[0].trim()
       : nameParts.at(-1)!.trim();
@@ -89,9 +89,9 @@ for (const { url, sections } of searchPages) {
     if (name === "index") continue;
 
     const words = originalName
-      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replaceAll(/([a-z])([A-Z])/gu, "$1 $2")
       .toLowerCase()
-      .split(/[^a-z0-9]+/)
+      .split(/[^a-z0-9]+/u)
       .filter((word) => word.length > 0);
     const prefix = url.startsWith("/docs/api-reference")
       ? "API Reference › "

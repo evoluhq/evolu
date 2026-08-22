@@ -66,7 +66,7 @@ export const createServer = (): Promise<number> => {
   return new Promise<number>((resolve, reject) => {
     httpServer.on("listening", () => {
       const address = httpServer.address();
-      if (address && typeof address === "object") {
+      if (address !== null && typeof address === "object") {
         const port = address.port;
         servers.set(port, { httpServer, wsServer });
         resolve(port);
@@ -88,10 +88,14 @@ export const closeServer = async (port: number): Promise<void> => {
 
   const promises: Array<Promise<void>> = [];
   promises.push(
-    new Promise<void>((resolve) => instance.wsServer.close(() => resolve())),
+    new Promise<void>((resolve) => {
+      instance.wsServer.close(() => resolve());
+    }),
   );
   promises.push(
-    new Promise<void>((resolve) => instance.httpServer.close(() => resolve())),
+    new Promise<void>((resolve) => {
+      instance.httpServer.close(() => resolve());
+    }),
   );
   await Promise.all(promises);
 };

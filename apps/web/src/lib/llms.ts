@@ -7,21 +7,24 @@ import { navigation } from "./navigation";
  */
 export const cleanMdxContent = (content: string): string => {
   // Remove import statements - ensuring we catch all top-level imports
-  let cleanedContent = content.replace(/^import\s+.*?['"].*?['"];?\s*$/gm, "");
-
-  // Remove export statements including metadata objects and sections arrays
-  cleanedContent = cleanedContent.replace(
-    /export\s+const\s+metadata\s*=\s*\{[\s\S]*?\};\s*/g,
+  let cleanedContent = content.replaceAll(
+    /^import\s+.*?['"].*?['"];?\s*$/gmu,
     "",
   );
-  cleanedContent = cleanedContent.replace(
-    /export\s+const\s+sections\s*=\s*\[[\s\S]*?\];\s*/g,
+
+  // Remove export statements including metadata objects and sections arrays
+  cleanedContent = cleanedContent.replaceAll(
+    /export\s+const\s+metadata\s*=\s*\{[\s\S]*?\};\s*/gu,
+    "",
+  );
+  cleanedContent = cleanedContent.replaceAll(
+    /export\s+const\s+sections\s*=\s*\[[\s\S]*?\];\s*/gu,
     "",
   );
 
   // Convert <Heading level={2} id="...">Title</Heading> to ## Title
-  cleanedContent = cleanedContent.replace(
-    /<Heading\s+level=\{(\d)\}\s+id="[^"]*">\s*([\s\S]*?)\s*<\/Heading>/g,
+  cleanedContent = cleanedContent.replaceAll(
+    /<Heading\s+level=\{(\d)\}\s+id="[^"]*">\s*([\s\S]*?)\s*<\/Heading>/gu,
     (_match: string, level: string, title: string) => {
       const hashes = "#".repeat(Number(level));
       return `${hashes} ${title.trim()}`;
@@ -29,8 +32,8 @@ export const cleanMdxContent = (content: string): string => {
   );
 
   // Convert <Note>content</Note> to blockquote
-  cleanedContent = cleanedContent.replace(
-    /<Note>\s*([\s\S]*?)\s*<\/Note>/g,
+  cleanedContent = cleanedContent.replaceAll(
+    /<Note>\s*([\s\S]*?)\s*<\/Note>/gu,
     (_match: string, noteContent: string) => {
       const lines = noteContent.trim().split("\n");
       return lines.map((line) => `> ${line.trim()}`).join("\n");
@@ -38,35 +41,35 @@ export const cleanMdxContent = (content: string): string => {
   );
 
   // Remove self-closing JSX component tags
-  cleanedContent = cleanedContent.replace(/<[A-Z][a-zA-Z]*[^>]*\/>/g, "");
+  cleanedContent = cleanedContent.replaceAll(/<[A-Z][a-zA-Z]*[^>]*\/>/gu, "");
 
   // Remove other JSX component tags with content (generic fallback)
-  cleanedContent = cleanedContent.replace(
-    /<[A-Z][a-zA-Z]*[^>]*>[\s\S]*?<\/[A-Z][a-zA-Z]*>/g,
+  cleanedContent = cleanedContent.replaceAll(
+    /<[A-Z][a-zA-Z]*[^>]*>[\s\S]*?<\/[A-Z][a-zA-Z]*>/gu,
     "",
   );
 
   // Remove CodeGroup tags but keep their content
-  cleanedContent = cleanedContent.replace(/<CodeGroup.*?>/g, "");
-  cleanedContent = cleanedContent.replace(/<\/CodeGroup>/g, "");
+  cleanedContent = cleanedContent.replaceAll(/<CodeGroup.*?>/gu, "");
+  cleanedContent = cleanedContent.replaceAll("</CodeGroup>", "");
 
   // Convert relative links to absolute links with predefined prefix
   const baseUrl = "https://evolu.dev/";
-  cleanedContent = cleanedContent.replace(
-    /\[([^\]]+)\]\((?!https?:\/\/)([^)]+)\)/g,
+  cleanedContent = cleanedContent.replaceAll(
+    /\[([^\]]+)\]\((?!https?:\/\/)([^)]+)\)/gu,
     (match: string, text: string, url: string) => {
       // Skip conversion for anchor links that start with #
       if (url.startsWith("#")) {
         return match;
       }
       // Remove leading slash if present
-      const cleanUrl = url.startsWith("/") ? url.substring(1) : url;
+      const cleanUrl = url.startsWith("/") ? url.slice(1) : url;
       return `[${text}](${baseUrl}${cleanUrl})`;
     },
   );
 
   // Clean up multiple consecutive blank lines
-  cleanedContent = cleanedContent.replace(/\n{3,}/g, "\n\n");
+  cleanedContent = cleanedContent.replaceAll(/\n{3,}/gu, "\n\n");
 
   return cleanedContent.trim();
 };
@@ -108,7 +111,8 @@ const llmsExcludePaths = [
   "/docs/showcase",
   "/docs/examples",
   "/docs/comparison",
-  "https://", // External links
+  // External links
+  "https://",
 ];
 
 const defaultBaseUrl = "https://www.evolu.dev";
@@ -144,7 +148,7 @@ export const loadMdxContent = async (
   content: string;
 }> => {
   try {
-    const path = `/(docs)/docs/${relativePath.replace(/page\.mdx$/, "")}`;
+    const path = `/(docs)/docs/${relativePath.replace(/page\.mdx$/u, "")}`;
 
     // Read the raw MDX file content
     const rawContent = fs.readFileSync(fullPath, "utf8");
@@ -173,7 +177,7 @@ export const loadMdxContent = async (
     // eslint-disable-next-line no-console
     console.error(`Error loading ${relativePath}:`, error);
     return {
-      path: `/(docs)/docs/${relativePath.replace(/page\.mdx$/, "")}`,
+      path: `/(docs)/docs/${relativePath.replace(/page\.mdx$/u, "")}`,
       title: relativePath.split("/").pop() ?? "Error",
       sections: [],
       content: "",
@@ -209,7 +213,7 @@ export const fetchProcessedMdxPages = async (
   });
 
   // Sort files based on custom order
-  const sortedFiles = mdxFiles.sort((a, b) => {
+  const sortedFiles = mdxFiles.toSorted((a, b) => {
     const folderA = a.split("/")[0];
     const folderB = b.split("/")[0];
 
@@ -240,7 +244,7 @@ export const createLlmsIndex = async ({
   includeApiReference?: boolean;
   baseUrl?: string;
 } = {}): Promise<string> => {
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
+  const normalizedBaseUrl = baseUrl.replace(/\/$/u, "");
 
   const lines: Array<string> = [
     "# Evolu",
@@ -262,8 +266,8 @@ export const createLlmsIndex = async ({
     lines.push(
       ...apiReferencePages.map((page) => {
         const normalizedPath = page.path
-          .replace(/^\/\(docs\)\/docs/, "/docs")
-          .replace(/\/$/, "");
+          .replace(/^\/\(docs\)\/docs/u, "/docs")
+          .replace(/\/$/u, "");
         return `- [${page.title}](${normalizedBaseUrl}${normalizedPath}.md)`;
       }),
     );

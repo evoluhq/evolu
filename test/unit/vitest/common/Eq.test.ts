@@ -58,8 +58,10 @@ test("eqJsonValueInput", () => {
   expect(eqJsonValueInput(-0, -0)).toBe(true);
   expect(eqJsonValueInput(0, 0)).toBe(true);
   expect(eqJsonValueInput(42, 43)).toBe(false);
-  expect(eqJsonValueInput(0, -0)).toBe(true); // JSON treats -0 and +0 as equal
-  expect(eqJsonValueInput(-0, 0)).toBe(true); // JSON treats -0 and +0 as equal
+  // JSON treats -0 and +0 as equal
+  expect(eqJsonValueInput(0, -0)).toBe(true);
+  // JSON treats -0 and +0 as equal
+  expect(eqJsonValueInput(-0, 0)).toBe(true);
   expect(eqJsonValueInput("hello", "hello")).toBe(true);
   expect(eqJsonValueInput("hello", "world")).toBe(false);
   expect(eqJsonValueInput(true, true)).toBe(true);

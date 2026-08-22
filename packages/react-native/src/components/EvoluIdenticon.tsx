@@ -10,7 +10,7 @@ export const EvoluIdenticon: FC<{
   style?: IdenticonStyle;
 }> = ({ id, size = 32, borderRadius = 3, style }) => {
   const svg = useMemo(() => createIdenticon(id, style), [id, style]);
-  return id ? (
+  return (
     <View
       style={{
         width: size,
@@ -21,5 +21,5 @@ export const EvoluIdenticon: FC<{
     >
       <SvgXml xml={svg} width={size} height={size} />
     </View>
-  ) : null;
+  );
 };

@@ -130,7 +130,8 @@ describe("createConsole", () => {
 
     child.setLevel("debug");
     child.debug("logged");
-    console.debug("ignored"); // parent still at "info"
+    // parent still at "info"
+    console.debug("ignored");
 
     expect(output.entries.map((e) => e.entry.args[0])).toEqual(["logged"]);
   });
@@ -325,7 +326,7 @@ describe("createConsoleFormatter", () => {
 
     // Should have a relative timestamp prefix
     expect(result).toHaveLength(2);
-    expect(result[0]).toMatch(/^\+\d+\.\d{3}s$/);
+    expect(result[0]).toMatch(/^\+\d+\.\d{3}s$/u);
     expect(result[1]).toBe("message");
   });
 
@@ -445,7 +446,7 @@ describe("createConsoleFormatter", () => {
 
     // Result includes local time formatted as HH:MM:SS.mmm
     expect(result).toHaveLength(2);
-    expect(result[0]).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/);
+    expect(result[0]).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/u);
     expect(result[1]).toBe("message");
   });
 
@@ -527,7 +528,7 @@ describe("createConsoleFormatter", () => {
     absoluteRelay.log("connected");
 
     const [timestamp, message] = absoluteOutput.entries[0].formattedArgs;
-    expect(timestamp).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3} \[relay\]$/);
+    expect(timestamp).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3} \[relay\]$/u);
     expect(message).toBe("connected");
   });
 });

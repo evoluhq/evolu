@@ -8,10 +8,11 @@ describe("createRun", () => {
   });
 
   test("createRun reports defects with ErrorUtils.reportError", async () => {
-    const reportError = vi.fn();
+    const reportError = vi.fn<(error: unknown) => void>();
     globalThis.ErrorUtils = {
       getGlobalHandler: () => null,
-      setGlobalHandler: vi.fn(),
+      setGlobalHandler:
+        vi.fn<NonNullable<typeof globalThis.ErrorUtils>["setGlobalHandler"]>(),
       reportError,
     };
     await using run = createRun();
@@ -21,16 +22,20 @@ describe("createRun", () => {
 
     expect(reportError).toHaveBeenCalledOnce();
     const reported = reportError.mock.calls[0]?.[0];
-    assert(typeof reported === "object" && reported && "reason" in reported);
+    assert(
+      typeof reported === "object" && reported !== null && "reason" in reported,
+    );
     expect(reported.reason).toEqual({ type: "PanicAbortReason", defect });
   });
 
   test("createRun preserves a custom reportDefect", async () => {
-    const reportError = vi.fn();
+    const reportError =
+      vi.fn<NonNullable<typeof globalThis.ErrorUtils>["reportError"]>();
     const reportDefect = vi.fn();
     globalThis.ErrorUtils = {
       getGlobalHandler: () => null,
-      setGlobalHandler: vi.fn(),
+      setGlobalHandler:
+        vi.fn<NonNullable<typeof globalThis.ErrorUtils>["setGlobalHandler"]>(),
       reportError,
     };
     await using run = createRun({ reportDefect });

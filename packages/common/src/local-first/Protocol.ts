@@ -178,7 +178,11 @@
  */
 
 import { Packr } from "msgpackr";
-import { isNonEmptyArray, type NonEmptyReadonlyArray } from "../Array.ts";
+import {
+  createMutableArray,
+  isNonEmptyArray,
+  type NonEmptyReadonlyArray,
+} from "../Array.ts";
 import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import {
@@ -692,11 +696,16 @@ export const createProtocolMessageBuffer = (
    * approach, contributions are welcome.
    */
   const safeMargins = {
-    remainingRange: fingerprintSize + 10, // bytes: range type + possible increased count varint
-    timestamp: 30, // bytes: max millis + max count + NodeId
-    dbChangeLength: 8, // bytes: maximum encoded DbChange length varint
-    splitRange: 800, // bytes: worst case is around 650 bytes
-    timestampsRange: 50, // bytes: range type + its upperBound + possible increased count varint
+    // bytes: range type + possible increased count varint
+    remainingRange: fingerprintSize + 10,
+    // bytes: max millis + max count + NodeId
+    timestamp: 30,
+    // bytes: maximum encoded DbChange length varint
+    dbChangeLength: 8,
+    // bytes: worst case is around 650 bytes
+    splitRange: 800,
+    // bytes: range type + its upperBound + possible increased count varint
+    timestampsRange: 50,
   };
 
   const addMessageSafeMargin =
@@ -972,7 +981,7 @@ export const applyProtocolMessageAsClient =
       );
 
       if (messageType === MessageType.Response) {
-        const errorCode = input.shift() as ProtocolErrorCode;
+        const errorCode = input.shift();
         if (errorCode !== ProtocolErrorCode.NoError) {
           switch (errorCode) {
             case ProtocolErrorCode.WriteKeyError:
@@ -1318,7 +1327,7 @@ const decodeMessages = (
 ): ReadonlyArray<EncryptedCrdtMessage> => {
   const timestamps = decodeTimestamps(buffer);
 
-  const messages = new Array<EncryptedCrdtMessage>(timestamps.length);
+  const messages = createMutableArray<EncryptedCrdtMessage>(timestamps.length);
   for (let i = 0; i < timestamps.length; i++) {
     const timestamp = timestamps[i];
     const changeLength = decodeLength(buffer);
@@ -1441,21 +1450,19 @@ const sync =
 
           if (eqArrayNumber(range.fingerprint, ourFingerprint)) {
             skipRange(range);
+          } else if (output.canSplitRange()) {
+            coalesceSkipsBeforeAdd();
+            splitRange(deps)(
+              ownerIdBytes,
+              lower,
+              upper,
+              currentUpperBound,
+              output,
+            );
           } else {
-            if (output.canSplitRange()) {
-              coalesceSkipsBeforeAdd();
-              splitRange(deps)(
-                ownerIdBytes,
-                lower,
-                upper,
-                currentUpperBound,
-                output,
-              );
-            } else {
-              return addFingerprintForRemainingRange(upper)
-                ? ok(true)
-                : err(ProtocolErrorCode.SyncError);
-            }
+            return addFingerprintForRemainingRange(upper)
+              ? ok(true)
+              : err(ProtocolErrorCode.SyncError);
           }
           break;
         }
@@ -1635,7 +1642,7 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
   const timestampsCount = NonNegativeInt.orThrow(rangesCount - 1);
   const timestamps = decodeTimestamps(buffer, timestampsCount);
 
-  const rangeTypes = new Array<RangeType>(rangesCount);
+  const rangeTypes = createMutableArray<RangeType>(rangesCount);
 
   for (let i = 0; i < rangesCount; i++) {
     const rangeType = decodeNonNegativeInt(buffer);
@@ -1650,7 +1657,7 @@ const decodeRanges = (buffer: Buffer): ReadonlyArray<Range> => {
     }
   }
 
-  const ranges = new Array<Range>(rangesCount);
+  const ranges = createMutableArray<Range>(rangesCount);
 
   for (let i = 0; i < rangesCount; i++) {
     const upperBound =
@@ -1700,7 +1707,7 @@ const decodeTimestamps = (
 
   let previousMillis = 0 as Millis;
 
-  const millises = new Array<Millis>(length);
+  const millises = createMutableArray<Millis>(length);
   for (let i = 0; i < length; i++) {
     const deltaMillis = decodeNonNegativeInt(buffer);
     const millis = Millis.fromUnknown(previousMillis + deltaMillis);
@@ -1717,7 +1724,7 @@ const decodeTimestamps = (
 
   const nodeIds = decodeRle(buffer, length, (): NodeId => decodeNodeId(buffer));
 
-  const timestamps = new Array<Timestamp>(length);
+  const timestamps = createMutableArray<Timestamp>(length);
   for (let i = 0; i < length; i++) {
     timestamps[i] = {
       millis: millises[i],
@@ -1734,7 +1741,7 @@ export const decodeRle = <T>(
   length: NonNegativeInt,
   decodeValue: () => T,
 ): ReadonlyArray<T> => {
-  const values = new Array<T>(length);
+  const values = createMutableArray<T>(length);
   let index = 0;
   while (index < length) {
     const value = decodeValue();
@@ -1851,7 +1858,7 @@ export const decodeFlags = (
 ): ReadonlyArray<boolean> => {
   const byte = buffer.shift();
   const length = globalThis.Math.min(count, 8);
-  const flags = new Array<boolean>(length);
+  const flags = createMutableArray<boolean>(length);
   for (let i = 0; i < length; i++) {
     flags[i] = (byte & (1 << i)) !== 0;
   }
@@ -2088,7 +2095,8 @@ export const ProtocolValueType = {
   NonNegativeInt: /*#__PURE__*/ NonNegativeInt.orThrow(30),
 
   // String optimizations
-  EmptyString: /*#__PURE__*/ NonNegativeInt.orThrow(31), // 1 byte vs 2 bytes (50% reduction)
+  // 1 byte vs 2 bytes (50% reduction)
+  EmptyString: /*#__PURE__*/ NonNegativeInt.orThrow(31),
   Base64Url: /*#__PURE__*/ NonNegativeInt.orThrow(32),
   Id: /*#__PURE__*/ NonNegativeInt.orThrow(33),
   Json: /*#__PURE__*/ NonNegativeInt.orThrow(34),
@@ -2097,7 +2105,8 @@ export const ProtocolValueType = {
   // encoded with fixed length  - 8 bytes
   // encode as NonNegativeInt   - 6 bytes (additional 25% reduction)
   DateIsoWithNonNegativeTime: /*#__PURE__*/ NonNegativeInt.orThrow(35),
-  DateIsoWithNegativeTime: /*#__PURE__*/ NonNegativeInt.orThrow(36), // 9 bytes
+  // 9 bytes
+  DateIsoWithNegativeTime: /*#__PURE__*/ NonNegativeInt.orThrow(36),
 
   // TODO: Operations (from 40)
   // Increment, Decrement, Patch, whatever.
@@ -2109,6 +2118,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
     return;
   }
 
+  // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The remaining SqliteValue is Uint8Array and is encoded after the switch.
   switch (typeof value) {
     case "string": {
       if (value === "") {

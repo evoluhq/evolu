@@ -30,6 +30,7 @@ export default defineProject(({ mode }) => ({
   },
   plugins: [transformUsing],
   test: {
+    fileParallelism: false,
     snapshotSerializers: [
       "./test/unit/vitest/common/local-first/_uint8ArraySerializer.ts",
     ],
@@ -41,7 +42,6 @@ export default defineProject(({ mode }) => ({
       provider: playwright(),
       api: { port: 63315 },
       headless: true,
-      fileParallelism: false,
       instances: createBrowserInstances({
         coverage: process.argv.includes("--coverage"),
         mode,

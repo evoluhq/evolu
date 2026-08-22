@@ -162,7 +162,7 @@ const setupSharedWorker = async ({
 
     await output;
 
-    const initDbWorker = sharedWorkerOutputs[outputCount];
+    const initDbWorker = sharedWorkerOutputs.at(outputCount);
     expect(initDbWorker).toBeDefined();
     assert(initDbWorker, "Expected DbWorker init output");
 
@@ -1627,7 +1627,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
       await testWaitForWorkerMessage();
 
-      const initDbWorker = tabLeaderOutputs[0];
+      const initDbWorker = tabLeaderOutputs.at(0);
       expect(initDbWorker).toBeDefined();
       assert(initDbWorker, "Expected DbWorker init output");
 

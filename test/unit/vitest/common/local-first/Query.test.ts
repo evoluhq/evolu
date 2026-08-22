@@ -1,5 +1,5 @@
 import { ColumnNode, type SelectQueryNode } from "kysely";
-import { expect, test } from "vitest";
+import { expect, expectTypeOf, test } from "vitest";
 import type {
   Query,
   Row,
@@ -58,20 +58,12 @@ test("Query", () => {
 
   // Ensure queries from different schemas are not assignable.
   // @ts-expect-error - query1 should not be assignable to query2
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const shouldError: typeof query2 = query1;
 
   // @ts-expect-error - query2 should not be assignable to query1
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const shouldAlsoError: typeof query1 = query2;
 
-  // Valid assignments
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const validQuery1: typeof query1 = query1;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const validQuery2: typeof query2 = query2;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const validSchemaQuery: Query<typeof QuerySchema> = query1;
+  expectTypeOf(query1).toExtend<Query<typeof QuerySchema>>();
 });
 
 test("evoluJsonArrayFrom compiles a prefixed SQLite JSON array query", () => {

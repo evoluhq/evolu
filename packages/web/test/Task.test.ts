@@ -3,7 +3,7 @@ import { createRun } from "../src/Task.ts";
 
 describe("createRun", () => {
   test("createRun reports defects with global reportError", async () => {
-    const reportError = vi.fn();
+    const reportError = vi.fn<(error: unknown) => void>();
     vi.stubGlobal("reportError", reportError);
     await using run = createRun();
     const defect = new Error("boom");
@@ -12,7 +12,9 @@ describe("createRun", () => {
 
     expect(reportError).toHaveBeenCalledOnce();
     const reported = reportError.mock.calls[0]?.[0];
-    assert(typeof reported === "object" && reported && "reason" in reported);
+    assert(
+      typeof reported === "object" && reported !== null && "reason" in reported,
+    );
     expect(reported.reason).toEqual({ type: "PanicAbortReason", defect });
   });
 

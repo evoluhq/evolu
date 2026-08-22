@@ -250,14 +250,14 @@ export function createRelation<A, B, LA = A, LB = B>({
     removeByA: (a) => {
       const relatedB = bByA.get(a);
       if (!relatedB) return false;
-      for (const b of [...relatedB.keys()]) removePair(a, b);
+      for (const b of relatedB.keys()) removePair(a, b);
       return true;
     },
 
     removeByB: (b) => {
       const relatedA = aByB.get(b);
       if (!relatedA) return false;
-      for (const a of [...relatedA.keys()]) removePair(a, b);
+      for (const a of relatedA.keys()) removePair(a, b);
       return true;
     },
 
@@ -306,7 +306,7 @@ export function createRelation<A, B, LA = A, LB = B>({
 const assertRelationMappingConsistency: (
   condition: unknown,
 ) => asserts condition = (condition) => {
-  assert(condition, "Relation mapping inconsistency");
+  assert(Boolean(condition), "Relation mapping inconsistency");
 };
 
 /**

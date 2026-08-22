@@ -408,11 +408,11 @@ const testViteBundler: TestBundler = {
     const output = await vite.build({
       root: dirname(entryPath),
       configFile: false,
-      envFile: false,
+      envDir: false,
       logLevel: "silent",
       resolve: {
         alias: Object.entries(aliases).map(([name, replacement]) => ({
-          find: new RegExp(`^${escapeRegExp(name)}$`),
+          find: new RegExp(`^${escapeRegExp(name)}$`, "u"),
           replacement,
         })),
       },
@@ -439,14 +439,15 @@ const testViteBundler: TestBundler = {
     assert(Array.isArray(output), "Vite did not return build outputs.");
     const outputs: ReadonlyArray<ViteOutput> = output;
     assert(outputs.length === 1, "Vite did not return one build output.");
-    const viteOutput = outputs[0];
+    const viteOutput = outputs.at(0);
     assert(viteOutput, "Vite did not return a build output.");
     assert(
       viteOutput.output.length === 1,
       "Vite did not emit one JavaScript chunk.",
     );
-    const chunk = viteOutput.output[0];
+    const chunk = viteOutput.output.at(0);
     assert(chunk, "Vite did not emit a JavaScript chunk.");
+    assert(chunk.type === "chunk", "Vite did not emit a JavaScript chunk.");
     assertType(StringType, chunk.code);
 
     return {

@@ -392,7 +392,7 @@ export const createSharedResource =
         // only.
         if (sharedResourceRun.getState().type !== "Running") return true;
 
-        if (idleDisposeAfter) {
+        if (idleDisposeAfter !== undefined) {
           idleDisposeFiber = sharedResourceRun.abortable<void, never>(
             async (run) => {
               await run.ok(sleep(idleDisposeAfter));
@@ -414,7 +414,9 @@ export const createSharedResource =
         resource: current as unknown as BorrowedResource<T>,
         created,
         release,
-        [Symbol.dispose]: release,
+        [Symbol.dispose]: () => {
+          release();
+        },
       };
 
       leakDetector.track(
@@ -832,6 +834,7 @@ export function createSharedResourceByKey<
         using leaseDisposer = new DisposableStack();
         const leasesByKey: Array<readonly [Lease<T>, K]> = [];
 
+        // oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot keys because each acquisition awaits and can mutate the registry.
         for (const [key] of [...sharedResourcesByKey]) {
           const lease = await run.ok(sharedResourceByKey.acquireCurrent(key));
           if (lease) leasesByKey.push([leaseDisposer.use(lease), key]);
@@ -1346,7 +1349,9 @@ export const createSharedResourceByKeyWithClaims =
           const release = (): boolean => releaseClaimLease(heldClaimLease);
           const claimLease: ClaimLease = {
             release,
-            [Symbol.dispose]: release,
+            [Symbol.dispose]: () => {
+              release();
+            },
           };
 
           leakDetector.track(
@@ -1367,6 +1372,7 @@ export const createSharedResourceByKeyWithClaims =
               resourceKey,
             ] of firstClaimTransitions) {
               onFirstClaimAdded?.(claim, resource, resourceKey);
+              // oxlint-disable-next-line eslint/no-loop-func -- Captures this iteration's block-scoped transition values for rollback.
               compensations.defer(() => {
                 if (!succeeded) {
                   notifyLastClaimRemoved(claim, resource, resourceKey);

@@ -70,6 +70,7 @@ const CopyButton = ({ code }: { code: string }) => {
         clearTimeout(timeout);
       };
     }
+    return undefined;
   }, [copyCount]);
 
   return (
@@ -186,8 +187,8 @@ const CodePanel = ({
             if (typeof node === "number") return String(node);
             if (
               isValidElement(node) &&
-              node.props &&
               typeof node.props === "object" &&
+              node.props !== null &&
               "children" in node.props
             ) {
               return extractTextFromChildren(
@@ -339,7 +340,7 @@ const useTabGroupProps = (availableLanguages: Array<string>) => {
   const { preferredLanguages, addPreferredLanguage } =
     usePreferredLanguageStore();
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const activeLanguage = [...availableLanguages].sort(
+  const activeLanguage = availableLanguages.toSorted(
     (a, z) => preferredLanguages.indexOf(z) - preferredLanguages.indexOf(a),
   )[0];
   const languageIndex = availableLanguages.indexOf(activeLanguage);
@@ -434,7 +435,7 @@ export const SinglePlatformCodeGroup = ({
   // If no matching child found, show the first one (fallback)
   const selectedChild = matchingChild ?? Children.toArray(children)[0];
 
-  if (!selectedChild) {
+  if (selectedChild == null) {
     return <div>No code available</div>;
   }
 
@@ -468,7 +469,7 @@ export const Code = ({
 
   if (isGrouped) {
     if (typeof children !== "string") {
-      throw new Error(
+      throw new TypeError(
         "`Code` children must be a string when nested inside a `CodeGroup`.",
       );
     }

@@ -95,7 +95,7 @@ const testTimestamps = async (
   assert(txResult.ok);
 
   const count = storage.getSize(testAppOwnerIdBytes);
-  assert(count);
+  assert(count > 0);
   expect(count).toBe(timestamps.length);
 
   const buckets = getOrThrow(computeBalancedBuckets(count));
@@ -104,7 +104,6 @@ const testTimestamps = async (
     testAppOwnerIdBytes,
     buckets,
   );
-  assert(fingerprintRanges);
 
   const finiteUpperBounds = fingerprintRanges
     .map((range) => range.upperBound)
@@ -163,7 +162,6 @@ const testTimestamps = async (
       NonNegativeInt.orThrow(i > 0 ? buckets[i - 1] : 0),
       NonNegativeInt.orThrow(buckets[i]),
     );
-    assert(fingerprintResult);
     expect(fingerprintResult).toEqual(bruteForceRangeFingerprint);
   }
 
@@ -176,7 +174,6 @@ const testTimestamps = async (
   const oneRangeFingerprints = storage.fingerprintRanges(testAppOwnerIdBytes, [
     timestamps.length as PositiveInt,
   ]);
-  assert(oneRangeFingerprints);
 
   expect(oneRangeFingerprints.length).toBe(1);
   expect(oneRangeFingerprints[0].fingerprint).toStrictEqual(
@@ -270,7 +267,7 @@ test("insertTimestamp updates use primary-key query plans", async () => {
     const targetSearchIndex = topLevelDetails.findIndex(
       (detail, index) =>
         index > scanIndex &&
-        /^SEARCH evolu_timestamp USING (?:COVERING )?INDEX .* \(ownerId=\? AND t=\?\)$/.test(
+        /^SEARCH evolu_timestamp USING (?:COVERING )?INDEX .* \(ownerId=\? AND t=\?\)$/u.test(
           detail,
         ),
     );
@@ -281,7 +278,7 @@ test("insertTimestamp updates use primary-key query plans", async () => {
     if (index >= 1) {
       expect(
         plan.rows.filter((row) =>
-          /^SEARCH evolu_timestamp USING COVERING INDEX .* \(ownerId=\? AND l=\? AND t>\? AND t<\?\)$/.test(
+          /^SEARCH evolu_timestamp USING COVERING INDEX .* \(ownerId=\? AND l=\? AND t>\? AND t<\?\)$/u.test(
             row.detail,
           ),
         ),
@@ -330,12 +327,12 @@ test("insertTimestamp append uses primary-key query plans", async () => {
 
   expect(details).toContainEqual(
     expect.stringMatching(
-      /^SEARCH evolu_timestamp USING INDEX .* \(ownerId=\? AND t<\?\)$/,
+      /^SEARCH evolu_timestamp USING INDEX .* \(ownerId=\? AND t<\?\)$/u,
     ),
   );
   expect(details).toContainEqual(
     expect.stringMatching(
-      /^SEARCH node USING (?:COVERING )?INDEX .* \(ownerId=\? AND t=\?\) LEFT-JOIN$/,
+      /^SEARCH node USING (?:COVERING )?INDEX .* \(ownerId=\? AND t=\?\) LEFT-JOIN$/u,
     ),
   );
 });

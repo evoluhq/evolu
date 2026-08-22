@@ -2653,7 +2653,7 @@ const createRunInternal = <D extends object>(
     getOrThrow(await run(task, taskDeps))) as Run<D>["orThrow"];
 
   run.ok = (async (task: TaskInternal, taskDeps?: object) =>
-    getOk((await run(task, taskDeps)) as Result<any, never>)) as Run<D>["ok"];
+    getOk((await run(task, taskDeps)) as Result<any>)) as Run<D>["ok"];
   /* eslint-enable @typescript-eslint/no-unsafe-return */
 
   run.abortable = ((task: TaskInternal, deps?: object) =>
@@ -3048,7 +3048,7 @@ export function all<
   TTask extends AnyTask,
 >(
   values: TValues,
-  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
+  // Separate array and record overloads keep callback parameter inference precise.
   fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
   options: AllOptions,
 ): Task<void, InferTaskErr<TTask>, InferTasksDeps<ReadonlyArray<TTask>>>;
@@ -3158,7 +3158,7 @@ export function all<
   TTask extends AnyTask,
 >(
   values: TValues,
-  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
+  // Separate array and record overloads keep callback parameter inference precise.
   fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
   options?: TaskCollectionOptions,
 ): Task<
@@ -3447,7 +3447,7 @@ export function allSettled<
   TTask extends AnyTask,
 >(
   values: TValues,
-  // eslint-disable-next-line @typescript-eslint/unified-signatures -- Separate array and record overloads keep callback parameter inference precise.
+  // Separate array and record overloads keep callback parameter inference precise.
   fn: (value: TValues[keyof TValues], key: keyof TValues) => TTask,
   options?: TaskCollectionOptions,
 ): Task<
@@ -4539,7 +4539,7 @@ export const each =
           nextIndex += 1;
 
           const result = await run(tasks[index]);
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- stopped can flip across the await via sibling workers
+          // stopped can flip across the await via sibling workers.
           if (stopped) break;
           run.signal.throwIfAborted();
           const decision = onResult(result, index);
@@ -4557,6 +4557,7 @@ export const each =
 
       active -= 1;
       if (active === 0) wake.resolve();
+      // oxlint-disable-next-line typescript/return-await -- StackTrace.test.ts measures this direct await edge in the worker topology.
       return await parked;
     };
 
@@ -4991,7 +4992,7 @@ export const unabortableMask = <T, E, D = unknown>(
       runInternal.abortMask > abortableMask,
       "unabortableMask requires a masked Run; use run(task), not a direct call",
     );
-    const restoreToken = Symbol() as RestoreToken;
+    const restoreToken = Symbol("restore") as RestoreToken;
 
     // The token is local to this Task Run; descendant Runs inherit the token
     // set so helpers can receive restore while the mask Task is alive.
@@ -5098,7 +5099,7 @@ export const acquireUseRelease = <
       if (!resourceResult.ok) return resourceResult;
 
       try {
-        // eslint-disable-next-line react-hooks/rules-of-hooks -- `use` is an acquireUseRelease callback, not a React Hook.
+        // oxlint-disable-next-line react/rules-of-hooks -- `use` is an acquireUseRelease callback, not a React Hook.
         return await run(restore(use(resourceResult.value)));
       } finally {
         await run.ok(release(resourceResult.value));

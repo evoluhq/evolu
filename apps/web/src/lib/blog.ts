@@ -22,7 +22,7 @@ const importArticle = async (
   };
 
   return {
-    slug: articleFilename.replace(/(\/page)?\.mdx$/, ""),
+    slug: articleFilename.replace(/(\/page)?\.mdx$/u, ""),
     ...article,
   };
 };
@@ -34,5 +34,5 @@ export const getAllArticles = async (): Promise<Array<ArticleWithSlug>> => {
 
   const articles = await Promise.all(articleFilenames.map(importArticle));
 
-  return articles.sort((a, z) => +new Date(z.date) - +new Date(a.date));
+  return articles.toSorted((a, z) => +new Date(z.date) - +new Date(a.date));
 };

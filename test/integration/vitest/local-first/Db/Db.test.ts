@@ -152,16 +152,17 @@ const createBroadcastProtocolMessage = async (
   )(testAppOwner, messages);
 
   await using relay = await setupSqliteAndRelayStorage();
-  let broadcastMessage: Uint8Array | null = null;
+  const broadcastMessages: Array<Uint8Array> = [];
 
   await relay.run.orThrow(
     applyProtocolMessageAsRelay(requestMessage, {
       broadcast: (_ownerId, message) => {
-        broadcastMessage = message;
+        broadcastMessages.push(message);
       },
     }),
   );
 
+  const broadcastMessage = broadcastMessages.at(0);
   assert(broadcastMessage, "Expected relay broadcast message");
   return broadcastMessage;
 };
@@ -370,7 +371,7 @@ const getQueuedSharedWorkerMessage = <
   outputs: ReadonlyArray<DbWorkerOutput>,
   type: TType,
 ): ExtractTyped<SharedWorkerResponseMessage, TType> => {
-  const firstOutput = outputs[0];
+  const firstOutput = outputs.at(0);
   assert(firstOutput, "Expected queued response");
   assert(firstOutput.type === "OnQueuedResponse", "Expected queued response");
 
@@ -3128,18 +3129,20 @@ describe("sync message flow", () => {
       setup: DbWorkerSetup,
       query: typeof testTableQuery | typeof testTableWithNoteQuery,
     ): Promise<ReadonlyArray<Record<string, unknown>>> => {
-      const [output] = await postRequest(
-        setup,
-        {
-          type: "ForEvolu",
-          id: setup.evoluInstanceId,
-          message: {
-            type: "Query",
-            queries: createSet([query]),
+      const output = (
+        await postRequest(
+          setup,
+          {
+            type: "ForEvolu",
+            id: setup.evoluInstanceId,
+            message: {
+              type: "Query",
+              queries: createSet([query]),
+            },
           },
-        },
-        setup.createId(),
-      );
+          setup.createId(),
+        )
+      ).at(0);
 
       assert(output, "Expected query response");
       assert(output.type === "OnQueuedResponse", "Expected queued response");
@@ -4752,18 +4755,20 @@ describe("quarantine replay", () => {
         sqliteSchema: createTestSqliteSchema(["name", "note"]),
       });
 
-      const [output] = await postRequest(
-        setup,
-        {
-          type: "ForEvolu",
-          id: setup.evoluInstanceId,
-          message: {
-            type: "Query",
-            queries: createSet([testTableWithNoteQuery]),
+      const output = (
+        await postRequest(
+          setup,
+          {
+            type: "ForEvolu",
+            id: setup.evoluInstanceId,
+            message: {
+              type: "Query",
+              queries: createSet([testTableWithNoteQuery]),
+            },
           },
-        },
-        setup.createId(),
-      );
+          setup.createId(),
+        )
+      ).at(0);
 
       assert(output, "Expected query response");
       assert(output.type === "OnQueuedResponse", "Expected queued response");

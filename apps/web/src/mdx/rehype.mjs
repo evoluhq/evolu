@@ -5,22 +5,26 @@ import { mdxAnnotations } from "mdx-annotations";
 import { getSingletonHighlighter } from "shiki";
 import { visit } from "unist-util-visit";
 
-function rehypeParseCodeBlocks() {
+/** @type {() => import("unified").Transformer<import("hast").Root>} */
+const rehypeParseCodeBlocks = () => {
   return (tree) => {
     visit(tree, "element", (node, _nodeIndex, parentNode) => {
-      if (node.tagName === "code") {
-        parentNode.properties.language = node.properties.className
-          ? node.properties?.className[0]?.replace(/^language-/, "")
+      if (node.tagName !== "code" || parentNode?.type !== "element") return;
+
+      const className = node.properties.className;
+      parentNode.properties.language =
+        Array.isArray(className) && typeof className[0] === "string"
+          ? className[0].replace(/^language-/u, "")
           : "txt";
-      }
     });
   };
-}
+};
 
 /** @type {import("shiki").Highlighter} */
 let highlighter;
 
-function rehypeShiki() {
+/** @type {() => import("unified").Transformer<import("hast").Root>} */
+const rehypeShiki = () => {
   return async (tree) => {
     highlighter ??= await getSingletonHighlighter({
       themes: ["vesper"],
@@ -28,15 +32,21 @@ function rehypeShiki() {
     });
 
     visit(tree, "element", (node) => {
-      if (node.tagName === "pre" && node.children[0]?.tagName === "code") {
-        let codeNode = node.children[0];
-        let textNode = codeNode.children[0];
+      const codeNode = node.children[0];
+      if (
+        node.tagName === "pre" &&
+        codeNode?.type === "element" &&
+        codeNode.tagName === "code"
+      ) {
+        const textNode = codeNode.children[0];
+        if (textNode?.type !== "text") return;
 
         node.properties.code = textNode.value;
 
-        if (node.properties.language) {
+        const language = node.properties.language;
+        if (typeof language === "string") {
           textNode.value = highlighter.codeToHtml(textNode.value, {
-            lang: node.properties.language,
+            lang: language,
             theme: "vesper",
             defaultColor: false,
           });
@@ -44,9 +54,10 @@ function rehypeShiki() {
       }
     });
   };
-}
+};
 
-function rehypeSlugify() {
+/** @type {() => import("unified").Transformer<import("hast").Root>} */
+const rehypeSlugify = () => {
   return (tree) => {
     let slugify = slugifyWithCounter();
     visit(tree, "element", (node) => {
@@ -55,9 +66,16 @@ function rehypeSlugify() {
       }
     });
   };
-}
+};
 
-function rehypeAddMDXExports(getExports) {
+/**
+ * @type {(
+ *   getExports: (
+ *     tree: import("hast").Root,
+ *   ) => Readonly<Record<string, string>>,
+ * ) => import("unified").Transformer<import("hast").Root>}
+ */
+const rehypeAddMDXExports = (getExports) => {
   return (tree) => {
     let exports = Object.entries(getExports(tree));
 
@@ -65,7 +83,7 @@ function rehypeAddMDXExports(getExports) {
       for (let node of tree.children) {
         if (
           node.type === "mdxjsEsm" &&
-          new RegExp(`export\\s+const\\s+${name}\\s*=`).test(node.value)
+          new RegExp(`export\\s+const\\s+${name}\\s*=`, "u").test(node.value)
         ) {
           return;
         }
@@ -85,36 +103,44 @@ function rehypeAddMDXExports(getExports) {
       });
     }
   };
-}
+};
 
-function getSections(node) {
-  let sections = [];
+/** @type {(node: import("hast").Root | import("hast").Element) => string[]} */
+const getSections = (node) => {
+  /** @type {string[]} */
+  const sections = [];
 
   for (let child of node.children ?? []) {
     if (child.type === "element" && child.tagName === "h2") {
       let title = toString(child);
       if (title === "Call Signature") continue;
+      const annotation = child.properties.annotation;
+      if (annotation != null && typeof annotation !== "string") {
+        throw new TypeError("Expected the heading annotation to be a string.");
+      }
 
       sections.push(`{
         title: ${JSON.stringify(title)},
         id: ${JSON.stringify(child.properties.id)},
-        ...${child.properties.annotation}
+        ...${annotation}
       }`);
-    } else if (child.children) {
+    } else if ("children" in child && Array.isArray(child.children)) {
       sections.push(...getSections(child));
     }
   }
 
   return sections;
-}
+};
 
 export const rehypePlugins = [
+  // oxlint-disable-next-line typescript/no-unsafe-member-access -- mdx-annotations ships without types; apps/web/mdx-annotations.d.ts supplies this Unified plugin contract.
   mdxAnnotations.rehype,
   rehypeParseCodeBlocks,
   rehypeShiki,
   rehypeSlugify,
   [
     rehypeAddMDXExports,
+    /** @type {(tree: import("hast").Root) => { readonly sections: string }} */
     (tree) => ({
       sections: `[${getSections(tree).join()}]`,
     }),

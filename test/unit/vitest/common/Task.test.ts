@@ -476,11 +476,11 @@ describe("Run", () => {
       const userFiber = run(loadUser);
 
       expectTypeOf(userFiber).toEqualTypeOf<Fiber<string, never>>();
-      // Fiber must be a real Promise so no-floating-promises catches bare
-      // run(loadUser) calls: https://typescript-eslint.io/rules/no-floating-promises/
-      // A PromiseLike Fiber would be awaitable but silent.
-      expectTypeOf(userFiber).toExtend<Promise<unknown>>();
-      expectTypeOf<PromiseLike<unknown>>().not.toExtend<Promise<unknown>>();
+      const compileTimeAssertions = () => {
+        // oxlint-disable-next-line typescript/no-floating-promises -- Verifies that a Fiber must be handled or explicitly discarded with void.
+        run(loadUser);
+      };
+      expectTypeOf(compileTimeAssertions).toBeFunction();
       expect(childRun).toBeDefined();
       expect(childRun).not.toBe(run);
       expect(userFiber.run).toBe(childRun);
@@ -491,12 +491,11 @@ describe("Run", () => {
       await using run = createRun();
       let nestedTaskStarted = false;
 
-      const parentFiber = run(
-        async (run) =>
-          await run(() => {
-            nestedTaskStarted = true;
-            return ok("Ada");
-          }),
+      const parentFiber = run(async (run) =>
+        run(() => {
+          nestedTaskStarted = true;
+          return ok("Ada");
+        }),
       );
 
       expect(nestedTaskStarted).toBe(true);
@@ -520,7 +519,7 @@ describe("Run", () => {
           return ok();
         });
 
-        return await childFiber;
+        return childFiber;
       });
 
       expect(await parentFiber).toEqual(ok());
@@ -863,10 +862,10 @@ describe("Run", () => {
             return ok("grandchild");
           });
 
-          return await grandchild;
+          return grandchild;
         });
 
-        return await child;
+        return child;
       });
 
       assert(grandchildRun);
@@ -1862,7 +1861,7 @@ describe("Run", () => {
       });
 
       const snapshotWithChild = run.snapshot();
-      const childSnapshot = snapshotWithChild.children[0];
+      const childSnapshot = snapshotWithChild.children.at(0);
       assert(childSnapshot);
 
       try {
@@ -2019,10 +2018,9 @@ describe("Run", () => {
       // eventsEnabled gates the emitter, not observers: the parent still
       // emits its own ChildAdded/ChildRemoved, but the opted-out child and its
       // descendants emit nothing, even though the ancestor monitors.
-      const silencedFiber = run(
-        async (run) => await run(() => ok("grandchild")),
-        { runConfig: { eventsEnabled: createRef(false) } },
-      );
+      const silencedFiber = run(async (run) => run(() => ok("grandchild")), {
+        runConfig: { eventsEnabled: createRef(false) },
+      });
 
       expect(await silencedFiber).toEqual(ok("grandchild"));
       expect(events.map((event) => event.data.type)).toEqual([
@@ -3324,9 +3322,9 @@ describe("collection helpers", () => {
               }
 
               await using run = createRun<Deps>({ prefix: "#" });
+              const calls: Array<ReadonlyArray<unknown>> = [];
 
               if (helper.errorMode === "failFast") {
-                const calls: Array<ReadonlyArray<unknown>> = [];
                 const mapper = (
                   ...args: [number, ...ReadonlyArray<unknown>]
                 ): Task<string, TaskError, Deps> => {
@@ -3347,14 +3345,8 @@ describe("collection helpers", () => {
                 expect(await run(task)).toEqual(
                   helper.resultMode === "void" ? ok() : ok(["#1", "#2", "#3"]),
                 );
-                expect(calls).toEqual([
-                  [1, 0],
-                  [2, 1],
-                  [3, 2],
-                ]);
               } else {
                 const taskError: TaskError = { type: "TaskError" };
-                const calls: Array<ReadonlyArray<unknown>> = [];
                 const mapper = (
                   ...args: [number, ...ReadonlyArray<unknown>]
                 ): Task<string, TaskError, Deps> => {
@@ -3375,12 +3367,13 @@ describe("collection helpers", () => {
                 expect(await run(task)).toEqual(
                   ok([ok("#1"), err(taskError), ok("#3")]),
                 );
-                expect(calls).toEqual([
-                  [1, 0],
-                  [2, 1],
-                  [3, 2],
-                ]);
               }
+
+              expect(calls).toEqual([
+                [1, 0],
+                [2, 1],
+                [3, 2],
+              ]);
             });
 
             test("maps record values to Tasks", async () => {
@@ -3394,9 +3387,9 @@ describe("collection helpers", () => {
               await using run = createRun<Deps>({ prefix: "#" });
 
               const values = { one: 1, two: 2, three: 3 } as const;
+              const calls: Array<ReadonlyArray<unknown>> = [];
 
               if (helper.errorMode === "failFast") {
-                const calls: Array<ReadonlyArray<unknown>> = [];
                 const mapper = (
                   ...args: [number, ...ReadonlyArray<unknown>]
                 ): Task<string, TaskError, Deps> => {
@@ -3419,14 +3412,8 @@ describe("collection helpers", () => {
                     ? ok()
                     : ok({ one: "#1", two: "#2", three: "#3" }),
                 );
-                expect(calls).toEqual([
-                  [1, "one"],
-                  [2, "two"],
-                  [3, "three"],
-                ]);
               } else {
                 const taskError: TaskError = { type: "TaskError" };
-                const calls: Array<ReadonlyArray<unknown>> = [];
                 const mapper = (
                   ...args: [number, ...ReadonlyArray<unknown>]
                 ): Task<string, TaskError, Deps> => {
@@ -3451,12 +3438,13 @@ describe("collection helpers", () => {
                     three: ok("#3"),
                   }),
                 );
-                expect(calls).toEqual([
-                  [1, "one"],
-                  [2, "two"],
-                  [3, "three"],
-                ]);
               }
+
+              expect(calls).toEqual([
+                [1, "one"],
+                [2, "two"],
+                [3, "three"],
+              ]);
             });
 
             test("mapped Task output with metadata applied", async () => {
@@ -3468,7 +3456,7 @@ describe("collection helpers", () => {
                   options?: { readonly priority?: TaskPriority },
                 ): Promise<T> => {
                   priorities.push(options?.priority);
-                  return await callback();
+                  return callback();
                 },
               });
 
@@ -3689,14 +3677,14 @@ describe("collection helpers", () => {
                 const snapshot = helperFiber.run.snapshot();
                 expect(snapshot.state).toEqual({ type: "Running" });
 
-                const childSnapshot = snapshot.children[0];
+                const childSnapshot = snapshot.children.at(0);
                 assert(childSnapshot);
                 assert(childSnapshot.state.type === "Aborted");
                 const abortReason = childSnapshot.state.abort.request;
                 expect(abortReason).toBe(runDisposedAbortReason);
                 expect(childSnapshot.state.abort.observed).toBe(abortReason);
 
-                const grandchildSnapshot = childSnapshot.children[0];
+                const grandchildSnapshot = childSnapshot.children.at(0);
                 assert(grandchildSnapshot);
                 assert(grandchildSnapshot.state.type === "Aborted");
                 expect(grandchildSnapshot.state.abort.request).toBe(
@@ -4009,7 +3997,7 @@ describe("collection helpers", () => {
       >();
       expectTypeOf(allSettled(tuple, { concurrency: 2 })).toEqualTypeOf<
         Task<
-          readonly [Result<string, "TaskError">, Result<number, never>],
+          readonly [Result<string, "TaskError">, Result<number>],
           never,
           DbDep & SessionDep
         >
@@ -4018,7 +4006,7 @@ describe("collection helpers", () => {
         Task<
           {
             readonly string: Result<string, "TaskError">;
-            readonly number: Result<number, never>;
+            readonly number: Result<number>;
           },
           never,
           DbDep & SessionDep
@@ -4266,10 +4254,10 @@ describe("collection helpers", () => {
       }
 
       expectTypeOf<InferTasksSettled<Tasks>>().toEqualTypeOf<
-        readonly [Result<string, never>, Result<number, MyError>]
+        readonly [Result<string>, Result<number, MyError>]
       >();
       expectTypeOf<InferTasksSettled<TasksRecord>>().toEqualTypeOf<{
-        readonly name: Result<string, never>;
+        readonly name: Result<string>;
         readonly age: Result<number, MyError>;
       }>();
     });
@@ -4286,9 +4274,9 @@ describe("collection helpers", () => {
           expectTypeOf(task).toEqualTypeOf<
             Task<
               readonly [
-                Result<string, never>,
+                Result<string>,
                 Result<number, typeof taskError>,
-                Result<boolean, never>,
+                Result<boolean>,
               ]
             >
           >();
@@ -4304,8 +4292,8 @@ describe("collection helpers", () => {
           expectTypeOf(task).toEqualTypeOf<
             Task<
               {
-                readonly name: Result<string, never>;
-                readonly userId: Result<string, never>;
+                readonly name: Result<string>;
+                readonly userId: Result<string>;
               },
               never,
               DbDep & SessionDep
@@ -4320,7 +4308,7 @@ describe("collection helpers", () => {
           const task = allSettled(tasks);
 
           expectTypeOf(task).toEqualTypeOf<
-            Task<ReadonlyArray<Result<string, never>>>
+            Task<ReadonlyArray<Result<string>>>
           >();
         });
 
@@ -4362,9 +4350,7 @@ describe("collection helpers", () => {
           const task = allSettled([name, age]);
 
           expectTypeOf(task).toEqualTypeOf<
-            Task<
-              readonly [Result<string, never>, Result<number, typeof taskError>]
-            >
+            Task<readonly [Result<string>, Result<number, typeof taskError>]>
           >();
         });
 
@@ -4383,9 +4369,9 @@ describe("collection helpers", () => {
 
           expectTypeOf(task).toEqualTypeOf<
             Task<{
-              readonly name: Result<string, never>;
+              readonly name: Result<string>;
               readonly age: Result<number, typeof taskError>;
-              readonly active: Result<boolean, never>;
+              readonly active: Result<boolean>;
             }>
           >();
         });
@@ -4643,11 +4629,7 @@ describe("collection helpers", () => {
           );
 
           expectTypeOf(task).toEqualTypeOf<
-            Task<
-              readonly [Result<string, never>, Result<string, never>],
-              never,
-              DbDep
-            >
+            Task<readonly [Result<string>, Result<string>], never, DbDep>
           >();
         });
 
@@ -4727,7 +4709,7 @@ describe("collection helpers", () => {
           const task = allSettled(values, (value) => () => ok(String(value)));
 
           expectTypeOf(task).toEqualTypeOf<
-            Task<ReadonlyArray<Result<string, never>>>
+            Task<ReadonlyArray<Result<string>>>
           >();
         });
 
@@ -4753,7 +4735,7 @@ describe("collection helpers", () => {
           });
 
           expectTypeOf(task).toEqualTypeOf<
-            Task<readonly [Result<string, never>, Result<string, never>]>
+            Task<readonly [Result<string>, Result<string>]>
           >();
         });
 
@@ -4783,7 +4765,7 @@ describe("collection helpers", () => {
           );
 
           expectTypeOf(task).toEqualTypeOf<
-            Task<readonly [Result<string, never>, Result<string, never>]>
+            Task<readonly [Result<string>, Result<string>]>
           >();
         });
 
@@ -4801,9 +4783,9 @@ describe("collection helpers", () => {
 
           expectTypeOf(task).toEqualTypeOf<
             Task<{
-              readonly name: Result<string, never>;
-              readonly age: Result<string, never>;
-              readonly active: Result<string, never>;
+              readonly name: Result<string>;
+              readonly age: Result<string>;
+              readonly active: Result<string>;
             }>
           >();
         });
@@ -4818,8 +4800,8 @@ describe("collection helpers", () => {
 
           expectTypeOf(task).toEqualTypeOf<
             Task<{
-              readonly name: Result<string, never>;
-              readonly age: Result<string, never>;
+              readonly name: Result<string>;
+              readonly age: Result<string>;
             }>
           >();
         });
@@ -4911,10 +4893,14 @@ describe("callback", () => {
       using disposer = new DisposableStack();
 
       cleanupLog.push("acquire first");
-      disposer.defer(() => cleanupLog.push("release first"));
+      disposer.defer(() => {
+        cleanupLog.push("release first");
+      });
 
       cleanupLog.push("acquire second");
-      disposer.defer(() => cleanupLog.push("release second"));
+      disposer.defer(() => {
+        cleanupLog.push("release second");
+      });
 
       throw defect;
     });
@@ -5013,7 +4999,7 @@ describe("callback", () => {
 
     const fiber = run.abortable(async (run) => {
       await continueParent.promise;
-      return await task(run);
+      return task(run);
     });
 
     fiber.abort(testAbortReason);
@@ -5215,14 +5201,14 @@ describe("timeout", () => {
       const snapshot = timeoutFiber.run.snapshot();
       expect(snapshot.state).toEqual({ type: "Running" });
 
-      const childSnapshot = snapshot.children[0];
+      const childSnapshot = snapshot.children.at(0);
       assert(childSnapshot);
       assert(childSnapshot.state.type === "Aborted");
       const abortReason = childSnapshot.state.abort.request;
       expect(abortReason).toBe(runDisposedAbortReason);
       expect(childSnapshot.state.abort.observed).toBe(abortReason);
 
-      const grandchildSnapshot = childSnapshot.children[0];
+      const grandchildSnapshot = childSnapshot.children.at(0);
       assert(grandchildSnapshot);
       assert(grandchildSnapshot.state.type === "Aborted");
       expect(grandchildSnapshot.state.abort.request).toBe(abortReason);
@@ -5320,8 +5306,9 @@ describe("retry", () => {
 
     await run(
       retry(task, take(3)(spaced("1ms")), {
-        onRetry: ({ error, attempt, output, delay }) =>
-          retryLog.push({ error, attempt, output, delay }),
+        onRetry: ({ error, attempt, output, delay }) => {
+          retryLog.push({ error, attempt, output, delay });
+        },
       }),
     );
 
@@ -5429,7 +5416,7 @@ describe("retry", () => {
     const abortError = createAbortError({ type: "TestAbort" });
     const step = vi.fn((_: MyError) => ok([1, 1 as Millis] as const));
     const schedule: Schedule<number, MyError> = () => step;
-    const onRetry = vi.fn();
+    const onRetry = vi.fn<() => void>();
 
     let attempts = 0;
     const task: Task<void, MyError | AbortError> = () => {
@@ -5479,7 +5466,7 @@ describe("retry", () => {
   test("rejects panic abort without retrying and reports panic abort", async () => {
     await using run = testCreateRun();
     const error = new Error("boom");
-    const onRetry = vi.fn();
+    const onRetry = vi.fn<() => void>();
 
     let attempts = 0;
     const task: Task<void> = () => {
@@ -5585,7 +5572,7 @@ describe("repeat", () => {
       count += 1;
       return err({ type: "MyError" });
     };
-    const onRepeat = vi.fn();
+    const onRepeat = vi.fn<() => void>();
     const step = vi.fn((_: number) => ok([1, 1 as Millis] as const));
     const schedule: Schedule<number, number> = () => step;
 
@@ -5629,8 +5616,9 @@ describe("repeat", () => {
 
     await run(
       repeat(task, take(2)(spaced(0 as Millis)), {
-        onRepeat: ({ value, attempt, output, delay }) =>
-          repeatLog.push({ value, attempt, output, delay }),
+        onRepeat: ({ value, attempt, output, delay }) => {
+          repeatLog.push({ value, attempt, output, delay });
+        },
       }),
     );
 
@@ -5680,7 +5668,7 @@ describe("repeat", () => {
   test("aborts while Task is running without scheduling a repeat", async () => {
     await using run = testCreateRun();
 
-    const onRepeat = vi.fn();
+    const onRepeat = vi.fn<() => void>();
 
     let count = 0;
     const task: Task<number> = async (run) => {
@@ -5705,7 +5693,7 @@ describe("repeat", () => {
   test("rejects panic abort without repeating and reports panic abort", async () => {
     await using run = testCreateRun();
     const error = new Error("boom");
-    const onRepeat = vi.fn();
+    const onRepeat = vi.fn<() => void>();
 
     let count = 0;
     const task: Task<void> = () => {
@@ -5945,14 +5933,14 @@ describe("any", () => {
       const snapshot = anyFiber.run.snapshot();
       expect(snapshot.state).toEqual({ type: "Running" });
 
-      const childSnapshot = snapshot.children[0];
+      const childSnapshot = snapshot.children.at(0);
       assert(childSnapshot);
       assert(childSnapshot.state.type === "Aborted");
       const abortReason = childSnapshot.state.abort.request;
       expect(abortReason).toBe(runDisposedAbortReason);
       expect(childSnapshot.state.abort.observed).toBe(abortReason);
 
-      const grandchildSnapshot = childSnapshot.children[0];
+      const grandchildSnapshot = childSnapshot.children.at(0);
       assert(grandchildSnapshot);
       assert(grandchildSnapshot.state.type === "Aborted");
       expect(grandchildSnapshot.state.abort.request).toBe(abortReason);
@@ -6153,14 +6141,14 @@ describe("race", () => {
       const snapshot = raceFiber.run.snapshot();
       expect(snapshot.state).toEqual({ type: "Running" });
 
-      const childSnapshot = snapshot.children[0];
+      const childSnapshot = snapshot.children.at(0);
       assert(childSnapshot);
       assert(childSnapshot.state.type === "Aborted");
       const abortReason = childSnapshot.state.abort.request;
       expect(abortReason).toBe(runDisposedAbortReason);
       expect(childSnapshot.state.abort.observed).toBe(abortReason);
 
-      const grandchildSnapshot = childSnapshot.children[0];
+      const grandchildSnapshot = childSnapshot.children.at(0);
       assert(grandchildSnapshot);
       assert(grandchildSnapshot.state.type === "Aborted");
       expect(grandchildSnapshot.state.abort.request).toBe(abortReason);
@@ -6885,7 +6873,7 @@ describe("concurrency", () => {
 
           completeFirst.resolve();
 
-          return await eachFiber;
+          return eachFiber;
         });
 
         await expect(fiber).rejects.toEqual({
@@ -7008,7 +6996,7 @@ describe("prioritized", () => {
         options?: { readonly priority?: TaskPriority },
       ): Promise<T> => {
         priorities.push(options?.priority);
-        return await callback();
+        return callback();
       },
     });
 
@@ -7044,7 +7032,7 @@ describe("prioritized", () => {
         options?: { readonly priority?: TaskPriority },
       ): Promise<T> => {
         priorities.push(options?.priority);
-        return await callback();
+        return callback();
       },
     });
 
@@ -7075,7 +7063,7 @@ describe("prioritized", () => {
         options?: { readonly priority?: TaskPriority },
       ): Promise<T> => {
         priorities.push(options?.priority);
-        return await callback();
+        return callback();
       },
     });
 
@@ -7109,7 +7097,7 @@ describe("prioritized", () => {
         options?: { readonly priority?: TaskPriority },
       ): Promise<T> => {
         priorities.push(options?.priority);
-        return await callback();
+        return callback();
       },
     });
 
@@ -7230,7 +7218,7 @@ describe("prioritized", () => {
 
     vi.stubGlobal("scheduler", {
       postTask: async <T>(callback: () => T | PromiseLike<T>): Promise<T> =>
-        await callback(),
+        callback(),
     });
 
     try {
@@ -7537,7 +7525,7 @@ describe("daemon", () => {
 
     const fiber = run.abortable(async (run) => {
       await continueParent.promise;
-      return await run(daemon(task));
+      return run(daemon(task));
     });
 
     fiber.abort(testAbortReason);
@@ -7567,7 +7555,7 @@ describe("daemon", () => {
 
         expect(run.signal.aborted).toBe(false);
 
-        return await run(daemon(task));
+        return run(daemon(task));
       }),
     );
 
@@ -7736,7 +7724,7 @@ describe("unabortable", () => {
       await continueTask.promise;
       parentSignalAborted = run.signal.aborted;
 
-      return await run(
+      return run(
         unabortable(({ signal }) => {
           childTaskRan = true;
           expect(signal.aborted).toBe(false);
@@ -7871,10 +7859,10 @@ describe("unabortableMask", () => {
     const fiber = run.abortable(async (run) => {
       await continueParent.promise;
 
-      return await run(
+      return run(
         unabortableMask((restore) => async (run) => {
           maskBodyRan = true;
-          return await run(restore(() => ok("restored")));
+          return run(restore(() => ok("restored")));
         }),
       );
     });
@@ -7916,7 +7904,7 @@ describe("unabortableMask", () => {
       };
 
     const fiber = run.abortable(
-      unabortableMask((restore) => async (run) => await run(helper(restore))),
+      unabortableMask((restore) => async (run) => run(helper(restore))),
     );
 
     fiber.abort();
@@ -7943,7 +7931,7 @@ describe("unabortableMask", () => {
           return ok(deps.session.userId);
         };
 
-        return await run(restore(useSession), sessionDep);
+        return run(restore(useSession), sessionDep);
       },
     );
 
@@ -7951,7 +7939,7 @@ describe("unabortableMask", () => {
   });
 
   test("throws when abort behavior helpers wrap the same Task", async () => {
-    const task: Task<void, never> = () => ok();
+    const task: Task<void> = () => ok();
 
     expect(() => unabortable(unabortable(task))).toThrow(
       "abort behavior helpers cannot wrap the same Task",
@@ -8052,9 +8040,7 @@ describe("unabortableMask", () => {
         const restore = restoreFromFirst;
         assert(restore);
 
-        return await run(
-          unabortableMask(() => (run) => run(restore(() => ok()))),
-        );
+        return run(unabortableMask(() => (run) => run(restore(() => ok()))));
       });
 
       await expect(run(task)).rejects.toEqual(
@@ -8077,7 +8063,7 @@ describe("unabortableMask", () => {
           const daemonFiber = run.daemon(async (run) => {
             await continueDaemon.promise;
 
-            return await run(restore(() => ok()));
+            return run(restore(() => ok()));
           });
 
           continueDaemon.resolve();
@@ -8445,7 +8431,7 @@ describe("acquireUseRelease", () => {
     const fiber = run.abortable(async (run) => {
       await continueParent.promise;
 
-      return await run(
+      return run(
         acquireUseRelease(
           () => {
             acquired = true;
@@ -8682,7 +8668,7 @@ describe("Gate", () => {
 
       const fiber = run.abortable(async (run) => {
         await continueParent.promise;
-        return await run(gate.wait);
+        return run(gate.wait);
       });
 
       fiber.abort(testAbortReason);
@@ -8737,7 +8723,7 @@ describe("Gate", () => {
       const futureFiber = run.abortable(async (run) => {
         events.push("future waiting");
         await continueFuture.promise;
-        return await run(gate.wait);
+        return run(gate.wait);
       });
 
       expect(events).toEqual([

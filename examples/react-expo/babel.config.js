@@ -1,3 +1,4 @@
+/** @type {(api: { readonly cache: (enabled: boolean) => void }) => object} */
 module.exports = function (api) {
   api.cache(true);
 

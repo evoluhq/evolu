@@ -7,7 +7,7 @@ import {
 } from "@evolu/common";
 
 // Define the typed IDs
-export const TodoId = id("Todo");
+export const TodoId = /*#__PURE__*/ id("Todo");
 export type TodoId = typeof TodoId.Output;
 
 const TodoSchema = {

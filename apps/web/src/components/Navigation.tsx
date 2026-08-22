@@ -164,8 +164,9 @@ const NavigationGroup = ({
     isInsideMobileNavigation,
   );
 
-  const isActiveGroup =
-    group.links.findIndex((link) => isPathActive(link.href, pathname)) !== -1;
+  const isActiveGroup = group.links.some((link) =>
+    isPathActive(link.href, pathname),
+  );
 
   return (
     <li className={clsx("relative mt-6", className)}>

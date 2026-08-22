@@ -3,7 +3,7 @@
   "name": "API Reference",
   "entryPointStrategy": "packages",
   "entryPoints": ["packages/*"],
-  "exclude": ["packages/typescript-config"],
+  "exclude": ["packages/oxlint-config", "packages/typescript-config"],
   "packageOptions": {
     "entryPoints": ["src/**/*.ts"],
     "exclude": ["src/**/index.ts", "src/intl/*.ts"]

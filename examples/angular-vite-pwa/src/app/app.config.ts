@@ -39,12 +39,14 @@ const evolu = await run.ok(
 
 // This injection token allows us to use Angular's dependency injection to get
 // the Evolu instance above within Angular components and services.
-export const EVOLU = new InjectionToken<Evolu.Evolu<typeof Schema>>("Evolu");
+export const EVOLU = /*#__PURE__*/ new InjectionToken<
+  Evolu.Evolu<typeof Schema>
+>("Evolu");
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideBrowserGlobalErrorListeners(),
-    provideZonelessChangeDetection(),
+    /*#__PURE__*/ provideBrowserGlobalErrorListeners(),
+    /*#__PURE__*/ provideZonelessChangeDetection(),
     { provide: EVOLU, useValue: evolu },
   ],
 };

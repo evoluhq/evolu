@@ -37,7 +37,7 @@ import { createContext, use, type ReactNode } from "react";
  * ```
  */
 export const createRunBinding = <
-  R extends DisposableRun<any> = DisposableRun<unknown>,
+  R extends DisposableRun<any> = DisposableRun,
 >(): {
   readonly RunContext: React.FC<{
     readonly value: Run<R extends DisposableRun<infer D> ? D : never>;

@@ -91,6 +91,7 @@ const createLockManagerPonyfill = ({
         );
         pendingRequest.phase = "running";
 
+        // oxlint-disable-next-line unicorn/no-useless-promise-resolve-reject -- Normalizes generic T to Awaited<T> for the lock request contract.
         return Promise.resolve(
           pendingRequest.callback({ mode: pendingRequest.mode, name }),
         );
@@ -205,6 +206,7 @@ const createLockManagerPonyfill = ({
       }
 
       if (options.ifAvailable && !canGrantImmediately(name, mode)) {
+        // oxlint-disable-next-line unicorn/no-useless-promise-resolve-reject -- Normalizes generic T to Awaited<T> for the lock request contract.
         return Promise.resolve().then(() => Promise.resolve(callback(null)));
       }
 

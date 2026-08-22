@@ -5,8 +5,8 @@ import { createEvoluDeps } from "../src/local-first/Evolu.ts";
 describe("createEvoluDeps", () => {
   test("createEvoluDeps calls callback when one-tab SharedWorker polyfill is already open", () => {
     const nativeSharedWorkerPort = createClosableNativePort<unknown>();
-    const nativeDbWorker = createClosableNativePort<never>();
-    const onSharedWorkerUnsupported = vi.fn();
+    const nativeDbWorker = createClosableNativePort();
+    const onSharedWorkerUnsupported = vi.fn<() => void>();
 
     vi.stubGlobal(
       "SharedWorker",

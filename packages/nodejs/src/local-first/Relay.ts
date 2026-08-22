@@ -169,12 +169,11 @@ export const createRelay =
         // ignores abort. The daemon runs in the root Run, so aborting the
         // current Run does not make its Fiber wait for the service Promise to
         // settle.
-        daemon(
-          async (run) =>
-            await tryAsync(
-              () => isOwnerAllowed(ownerId, { signal: run.signal }),
-              (error) => ({ type: "OwnerAuthorizationError", error }) as const,
-            ),
+        daemon(async (run) =>
+          tryAsync(
+            () => isOwnerAllowed(ownerId, { signal: run.signal }),
+            (error) => ({ type: "OwnerAuthorizationError", error }) as const,
+          ),
         ),
       );
 
@@ -287,7 +286,10 @@ export const createRelay =
     await once(server, "listening");
 
     const address = server.address();
-    assert(address && typeof address !== "string", "Expected TCP address");
+    assert(
+      address !== null && typeof address !== "string",
+      "Expected TCP address",
+    );
 
     const disposables = disposer.move();
 

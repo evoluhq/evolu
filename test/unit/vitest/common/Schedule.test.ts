@@ -335,12 +335,18 @@ describe("fibonacci", () => {
     const deps = createScheduleDeps();
     const step = fibonacci("100ms")(deps);
     // F(1)=1, F(2)=1, F(3)=2, F(4)=3, F(5)=5, F(6)=8
-    expectOk(step(undefined), [100, 100]); // 100 * 1
-    expectOk(step(undefined), [100, 100]); // 100 * 1
-    expectOk(step(undefined), [200, 200]); // 100 * 2
-    expectOk(step(undefined), [300, 300]); // 100 * 3
-    expectOk(step(undefined), [500, 500]); // 100 * 5
-    expectOk(step(undefined), [800, 800]); // 100 * 8
+    // 100 * 1
+    expectOk(step(undefined), [100, 100]);
+    // 100 * 1
+    expectOk(step(undefined), [100, 100]);
+    // 100 * 2
+    expectOk(step(undefined), [200, 200]);
+    // 100 * 3
+    expectOk(step(undefined), [300, 300]);
+    // 100 * 5
+    expectOk(step(undefined), [500, 500]);
+    // 100 * 8
+    expectOk(step(undefined), [800, 800]);
   });
 
   test("saturates at maxMillis instead of throwing after max Fibonacci index", () => {
@@ -367,12 +373,14 @@ describe("fixed", () => {
 
     // Third at T=27 (7s into third window), outputs count 2
     // Next window boundary is at T=30, so wait 3s
-    deps.time.advance("14s"); // now at 27s
+    // now at 27s
+    deps.time.advance("14s");
     expectOk(step(undefined), [2, 3000]);
 
     // Fourth at T=35 (5s into fourth window), outputs count 3
     // Next window boundary is at T=40, so wait 5s
-    deps.time.advance("8s"); // now at 35s
+    // now at 35s
+    deps.time.advance("8s");
     expectOk(step(undefined), [3, 5000]);
   });
 
@@ -520,9 +528,12 @@ describe("elapsed", () => {
 
     const result1 = step(undefined);
     expect(result1.ok).toBe(true);
-    expect(result1.ok ? result1.value[0][0] : null).toBe(100); // spaced output
-    expect(result1.ok ? result1.value[0][1] : null).toBe(0); // elapsed output
-    expect(result1.ok ? result1.value[1] : null).toBe(100); // max delay
+    // spaced output
+    expect(result1.ok ? result1.value[0][0] : null).toBe(100);
+    // elapsed output
+    expect(result1.ok ? result1.value[0][1] : null).toBe(0);
+    // max delay
+    expect(result1.ok ? result1.value[1] : null).toBe(100);
 
     deps.time.advance("150ms");
     const result2 = step(undefined);
@@ -537,7 +548,8 @@ describe("elapsed", () => {
     expect(result3.ok ? result3.value[0][1] : null).toBe(300);
 
     deps.time.advance("100ms");
-    expectDone(step(undefined)); // take(3) exhausted
+    // take(3) exhausted
+    expectDone(step(undefined));
   });
 });
 
@@ -551,9 +563,11 @@ describe("during", () => {
     deps.time.advance("50ms");
     expectOk(step(undefined), [50, 0]);
     deps.time.advance("50ms");
-    expectOk(step(undefined), [100, 0]); // exactly at limit
+    // exactly at limit
+    expectOk(step(undefined), [100, 0]);
     deps.time.advance("1ms");
-    expectDone(step(undefined)); // over limit
+    // over limit
+    expectDone(step(undefined));
   });
 });
 
@@ -650,8 +664,10 @@ describe("maxElapsed", () => {
     expectOk(step(undefined), [100, 100]);
     deps.time.advance("100ms");
     expectOk(step(undefined), [200, 200]);
-    deps.time.advance("150ms"); // now at 250ms
-    expectDone(step(undefined)); // elapsed >= 250
+    // now at 250ms
+    deps.time.advance("150ms");
+    // elapsed >= 250
+    expectDone(step(undefined));
   });
 
   test("keeps terminal done when time moves backwards", () => {
@@ -671,8 +687,10 @@ describe("maxDelay", () => {
     const step = maxDelay("300ms")(exponential("100ms"))(deps);
     expectOk(step(undefined), [100, 100]);
     expectOk(step(undefined), [200, 200]);
-    expectOk(step(undefined), [400, 300]); // capped
-    expectOk(step(undefined), [800, 300]); // capped
+    // capped
+    expectOk(step(undefined), [400, 300]);
+    // capped
+    expectOk(step(undefined), [800, 300]);
   });
 
   test("maxDelay preserves done", () => {
@@ -793,8 +811,10 @@ describe("delayed", () => {
   test("replaces the first delay", () => {
     const deps = createScheduleDeps();
     const step = delayed("500ms")(exponential("100ms"))(deps);
-    expectOk(step(undefined), [100, 500]); // Initial delay
-    expectOk(step(undefined), [200, 200]); // Normal delays
+    // Initial delay
+    expectOk(step(undefined), [100, 500]);
+    // Normal delays
+    expectOk(step(undefined), [200, 200]);
     expectOk(step(undefined), [400, 400]);
   });
 
@@ -813,15 +833,18 @@ describe("addDelay", () => {
 
     const result1 = step(undefined);
     expect(result1.ok).toBe(true);
-    expect(result1.ok ? result1.value[1] : null).toBe(600); // 100 + 500
+    // 100 + 500
+    expect(result1.ok ? result1.value[1] : null).toBe(600);
 
     const result2 = step(undefined);
     expect(result2.ok).toBe(true);
-    expect(result2.ok ? result2.value[1] : null).toBe(700); // 200 + 500
+    // 200 + 500
+    expect(result2.ok ? result2.value[1] : null).toBe(700);
 
     const result3 = step(undefined);
     expect(result3.ok).toBe(true);
-    expect(result3.ok ? result3.value[1] : null).toBe(900); // 400 + 500
+    // 400 + 500
+    expect(result3.ok ? result3.value[1] : null).toBe(900);
   });
 });
 
@@ -945,7 +968,8 @@ describe("whileScheduleOutput", () => {
     )(deps);
     expectOk(step(undefined), [100, 100]);
     expectOk(step(undefined), [200, 200]);
-    expectDone(step(undefined)); // 400 > 300
+    // 400 > 300
+    expectDone(step(undefined));
   });
 
   test("passes through termination", () => {
@@ -965,7 +989,8 @@ describe("untilScheduleOutput", () => {
     )(deps);
     expectOk(step(undefined), [100, 100]);
     expectOk(step(undefined), [200, 200]);
-    expectDone(step(undefined)); // 400 >= 400
+    // 400 >= 400
+    expectDone(step(undefined));
   });
 
   test("passes through termination", () => {
@@ -1048,7 +1073,8 @@ describe("mapSchedule", () => {
       delay: 100,
       doubled: 200,
     });
-    expect(result1.ok ? result1.value[1] : null).toBe(100); // delay unchanged
+    // delay unchanged
+    expect(result1.ok ? result1.value[1] : null).toBe(100);
 
     const result2 = step(undefined);
     expect(result2.ok).toBe(true);
@@ -1098,10 +1124,12 @@ describe("passthrough", () => {
     const error: MyError = { code: 500 };
 
     const result1 = step(error);
-    expectOk(result1, [error, 100]); // output is input, delay from exponential
+    // output is input, delay from exponential
+    expectOk(result1, [error, 100]);
 
     const result2 = step({ code: 429 });
-    expectOk(result2, [{ code: 429 }, 200]); // exponential growth
+    // exponential growth
+    expectOk(result2, [{ code: 429 }, 200]);
 
     const result3 = step({ code: 503 });
     expectOk(result3, [{ code: 503 }, 400]);
@@ -1113,7 +1141,8 @@ describe("passthrough", () => {
 
     expectOk(step("first"), ["first", 100]);
     expectOk(step("second"), ["second", 100]);
-    expectDone(step("third")); // take(2) exhausted
+    // take(2) exhausted
+    expectDone(step("third"));
   });
 });
 
@@ -1128,10 +1157,14 @@ describe("foldSchedule", () => {
     )(take(4)(exponential("100ms")));
     const step = schedule(deps);
 
-    expectOk(step(undefined), [100, 100]); // 0 + 100
-    expectOk(step(undefined), [300, 200]); // 100 + 200
-    expectOk(step(undefined), [700, 400]); // 300 + 400
-    expectOk(step(undefined), [1500, 800]); // 700 + 800
+    // 0 + 100
+    expectOk(step(undefined), [100, 100]);
+    // 100 + 200
+    expectOk(step(undefined), [300, 200]);
+    // 300 + 400
+    expectOk(step(undefined), [700, 400]);
+    // 700 + 800
+    expectOk(step(undefined), [1500, 800]);
     expectDone(step(undefined));
   });
 });
@@ -1286,17 +1319,24 @@ describe("intersectSchedules", () => {
     const b = take(4)(spaced("200ms"));
     const step = intersectSchedules(a, b)(deps);
 
-    expectOk(step(undefined), [[100, 200], 200]); // max(100, 200)
-    expectOk(step(undefined), [[100, 200], 200]); // max(100, 200)
-    expectDone(step(undefined)); // a stopped, so intersection stops
+    // max(100, 200)
+    expectOk(step(undefined), [[100, 200], 200]);
+    // max(100, 200)
+    expectOk(step(undefined), [[100, 200], 200]);
+    // a stopped, so intersection stops
+    expectDone(step(undefined));
   });
 
   test("does not step children after the intersection stops", () => {
     let aCalls = 0;
     let bCalls = 0;
     const step = intersectSchedules(
-      tapScheduleInput(() => aCalls++)(take(1)(spaced("100ms"))),
-      tapScheduleInput(() => bCalls++)(spaced("200ms")),
+      tapScheduleInput(() => {
+        aCalls++;
+      })(take(1)(spaced("100ms"))),
+      tapScheduleInput(() => {
+        bCalls++;
+      })(spaced("200ms")),
     )(createScheduleDeps());
 
     expectOk(step(undefined), [[100, 200], 200]);
@@ -1314,11 +1354,15 @@ describe("unionSchedules", () => {
     const b = take(4)(spaced("200ms"));
     const step = unionSchedules(a, b)(deps);
 
-    expectOk(step(undefined), [100, 100]); // min(100, 200)
-    expectOk(step(undefined), [100, 100]); // min(100, 200)
-    expectOk(step(undefined), [200, 200]); // a stopped, b continues
+    // min(100, 200)
+    expectOk(step(undefined), [100, 100]);
+    // min(100, 200)
+    expectOk(step(undefined), [100, 100]);
+    // a stopped, b continues
     expectOk(step(undefined), [200, 200]);
-    expectDone(step(undefined)); // both stopped
+    expectOk(step(undefined), [200, 200]);
+    // both stopped
+    expectDone(step(undefined));
   });
 
   test("continues when second schedule stops first", () => {
@@ -1347,8 +1391,12 @@ describe("unionSchedules", () => {
     let aCalls = 0;
     let bCalls = 0;
     const step = unionSchedules(
-      tapScheduleInput(() => aCalls++)(take(1)(spaced("100ms"))),
-      tapScheduleInput(() => bCalls++)(take(3)(spaced("200ms"))),
+      tapScheduleInput(() => {
+        aCalls++;
+      })(take(1)(spaced("100ms"))),
+      tapScheduleInput(() => {
+        bCalls++;
+      })(take(3)(spaced("200ms"))),
     )(createScheduleDeps());
 
     expectOk(step(undefined), [100, 100]);
@@ -1440,7 +1488,8 @@ describe("tapScheduleOutput", () => {
 
     step(undefined);
     step(undefined);
-    step(undefined); // Err(Done<void>)
+    // Err(Done<void>)
+    step(undefined);
 
     expect(outputs).toEqual([0, 1]);
   });
@@ -1472,7 +1521,8 @@ describe("tapScheduleInput", () => {
     })(take(1)(forever))(deps);
 
     step("first");
-    step("second"); // Err(Done<void>) but tap still runs
+    // Err(Done<void>) but tap still runs
+    step("second");
 
     expect(inputs).toEqual(["first", "second"]);
   });

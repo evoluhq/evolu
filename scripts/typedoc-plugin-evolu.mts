@@ -41,7 +41,7 @@ const simplifiedSources = new Map<string, string>();
 
 /** Removes build annotations that are irrelevant in displayed declarations. */
 export const stripPureAnnotations = (source: string): string =>
-  source.replace(/\/\*#__PURE__\*\/[ \t]*/g, "");
+  source.replaceAll(/\/\*#__PURE__\*\/[ \t]*/gu, "");
 
 export const load = (app: Application): void => {
   // Converter phase: Capture type info while we have access to the TS program
@@ -185,7 +185,7 @@ const copyCommentFromConst = (refl: DeclarationReflection): void => {
     (sibling) =>
       sibling.name === refl.name &&
       sibling.kindOf(ReflectionKind.Variable) &&
-      sibling.comment?.summary.length,
+      (sibling.comment?.summary.length ?? 0) > 0,
   );
 
   if (constDecl?.comment) {

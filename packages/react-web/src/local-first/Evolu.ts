@@ -6,5 +6,7 @@ import { flushSync } from "react-dom";
 /** Creates shared Evolu dependencies for React on web with React DOM flush sync. */
 export const createEvoluDeps = (deps: Partial<ConsoleDep> = {}): EvoluDeps => ({
   ...createWebEvoluDeps(deps),
-  flushSync,
+  flushSync: (callback) => {
+    flushSync(callback);
+  },
 });

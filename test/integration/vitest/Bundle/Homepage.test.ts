@@ -15,7 +15,7 @@ describe("Homepage bundle sizes", () => {
     await rm(outputDirectory, { recursive: true, force: true });
     const fixturePaths = (await readdir(fixturesDirectory))
       .filter((file) => file.endsWith(".ts"))
-      .sort()
+      .toSorted()
       .map((file) => join(fixturesDirectory, file));
     const results = await testBundle({
       cases: Object.fromEntries(
@@ -37,22 +37,22 @@ describe("Homepage bundle sizes", () => {
       {
         "Task": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 8417,
-            "rawSizeInBytes": 26046,
+            "brotliSizeInBytes": 8428,
+            "rawSizeInBytes": 26068,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 9085,
-            "rawSizeInBytes": 27948,
+            "brotliSizeInBytes": 9086,
+            "rawSizeInBytes": 27970,
           },
         },
         "Type": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 2628,
-            "rawSizeInBytes": 8003,
+            "brotliSizeInBytes": 2629,
+            "rawSizeInBytes": 8009,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 2646,
-            "rawSizeInBytes": 8079,
+            "brotliSizeInBytes": 2647,
+            "rawSizeInBytes": 8085,
           },
         },
       }

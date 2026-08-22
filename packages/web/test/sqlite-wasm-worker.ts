@@ -6,6 +6,7 @@ const workerScope = globalThis as never as {
   postMessage: (message: unknown) => void;
 };
 
+// oxlint-disable-next-line unicorn/prefer-add-event-listener -- This worker owns the single global message handler.
 workerScope.onmessage = (e: MessageEvent) => {
   void (async () => {
     const cmd = e.data as

@@ -41,8 +41,10 @@ test("orderUint8Array", () => {
   const a = new Uint8Array([0x01, 0x02, 0x03]);
   const b = new Uint8Array([0x01, 0x02, 0x04]);
   const c = new Uint8Array([0x01, 0x02, 0x03]);
-  const d = new Uint8Array([0x01, 0x02]); // shorter
-  const e = new Uint8Array([0x01, 0x02, 0x03, 0x00]); // longer
+  // shorter
+  const d = new Uint8Array([0x01, 0x02]);
+  // longer
+  const e = new Uint8Array([0x01, 0x02, 0x03, 0x00]);
 
   expect(orderUint8Array(a, b)).toBe(-1);
   expect(orderUint8Array(b, a)).toBe(1);

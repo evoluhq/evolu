@@ -1,0 +1,244 @@
+{
+  // TODO: Review the style category rule by rule before enabling it.
+  "categories": {
+    "correctness": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "suspicious": "error"
+  },
+  // Setting plugins replaces Oxlint's default plugin list, so keep every
+  // default plugin while enabling import analysis and React.
+  "plugins": ["import", "oxc", "react", "typescript", "unicorn"],
+  "options": {
+    "typeAware": true
+  },
+  // TypeDoc can resolve project-wide links without a local import, but VS Code
+  // navigation requires linked symbols to be in scope. Oxlint has no native
+  // no-undefined-types rule, so run eslint-plugin-jsdoc inside Oxlint.
+  // https://github.com/oxc-project/oxc/issues/1170
+  "jsPlugins": [
+    {
+      "name": "jsdoc-js",
+      "specifier": "eslint-plugin-jsdoc"
+    },
+    {
+      "name": "evolu",
+      "specifier": "@evolu/oxlint-config/plugin"
+    }
+  ],
+  "rules": {
+    // Loose equality is allowed only for intentional nullish checks.
+    "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
+    // Polyfill implementations and test fakes intentionally colocate related
+    // classes.
+    "eslint/max-classes-per-file": "off",
+    // Nested cohesive algorithms are easier to follow than extracted control
+    // flow created only to satisfy a depth metric.
+    "eslint/max-depth": "off",
+    // Evolu keeps long cohesive modules and functions readable from top to
+    // bottom instead of splitting them to satisfy line-count limits.
+    "eslint/max-lines": "off",
+    "eslint/max-lines-per-function": "off",
+    // Evolu uses sequential awaits for ordering, backpressure, disposal, and
+    // retries. Concurrency is explicit and bounded where it is appropriate.
+    "eslint/no-await-in-loop": "off",
+    // Simplify post-return control flow where it stays readable.
+    "eslint/no-else-return": "error",
+    // Keep human comments on their own line. Pure and JavaScript type
+    // annotations must remain beside the expressions they annotate.
+    "eslint/no-inline-comments": [
+      "error",
+      { "ignorePattern": "#__PURE__|@type" }
+    ],
+    // Simplify nested control flow where it stays readable.
+    "eslint/no-lonely-if": "error",
+    // Closures created in loops require review at their exact usage.
+    "eslint/no-loop-func": "error",
+    // Negated conditions often keep guards and early control flow direct.
+    "eslint/no-negated-condition": "off",
+    // Promise executors must not suggest that their return values are used.
+    "eslint/no-promise-executor-return": "error",
+    // Runtime Types intentionally share names with their inferred TypeScript
+    // types. Oxlint does not implement a TypeScript-aware replacement.
+    "eslint/no-redeclare": "off",
+    // Variable shadowing is an intentional Evolu convention.
+    "eslint/no-shadow": "off",
+    // Non-Error throws are allowed only at an exact intentional test site.
+    "eslint/no-throw-literal": "error",
+    // A leading underscore marks intentionally ignored bindings.
+    "eslint/no-underscore-dangle": "off",
+    // Preserve meaningful validation guards while removing genuinely empty
+    // returns.
+    "eslint/no-useless-return": "error",
+    // TODO comments document intentional follow-up work.
+    "eslint/no-warning-comments": "off",
+    // Async functions are also used for await using, framework contracts, and
+    // Task callbacks that return Awaitable Results.
+    "eslint/require-await": "off",
+    // Use Unicode code-point semantics consistently in regular expressions.
+    "eslint/require-unicode-regexp": "error",
+    // Symbol descriptions improve diagnostics without changing identity.
+    "eslint/symbol-description": "error",
+
+    // Type-only dependency cycles disappear at runtime and are safe. Runtime
+    // dependency cycles make module initialization order unpredictable.
+    "import/no-cycle": ["error", { "ignoreTypes": true }],
+    // Cohesive modules and integration tests can legitimately coordinate many
+    // dependencies; an arbitrary import count does not improve their design.
+    "import/max-dependencies": "off",
+    // Some CommonJS-compatible packages expose the same function as both the
+    // default export and a named export. Using its canonical name is clear.
+    "import/no-named-as-default": "off",
+    // Stylesheets are loaded for their side effects. Other side-effect imports
+    // require review at their exact usage.
+    "import/no-unassigned-import": ["error", { "allow": ["**/*.css"] }],
+
+    "jsdoc-js/no-undefined-types": [
+      "error",
+      {
+        // Oxlint's JS-plugin scope does not expose ambient types from the
+        // TypeScript libraries configured by tsconfig, unlike ESLint.
+        // https://github.com/oxc-project/oxc/issues/25995
+        "definedTypes": [
+          "AbortController",
+          "AbortSignal",
+          "AsyncDisposable",
+          "Disposable",
+          "LockManager",
+          "PromiseLike",
+          "ReadonlyArray",
+          "Response"
+        ]
+      }
+    ],
+
+    // Evolu prefers immutable transformations. Mutate objects only when a
+    // benchmark demonstrates a meaningful performance improvement.
+    "oxc/no-map-spread": "off",
+
+    // This React Compiler rule overlaps with the stable rule below.
+    "react/hooks": "off",
+    // Evolu uses the automatic JSX transform.
+    "react/react-in-jsx-scope": "off",
+
+    // The deprecated rule rejects intentional {} type operations. Focused
+    // TypeScript rules cover unsafe function and wrapper object types.
+    "typescript/ban-types": "off",
+    // TypeScript's noImplicitReturns understands exhaustive unions and
+    // intentional return types more accurately than this ESLint-compatible
+    // rule.
+    "typescript/consistent-return": "off",
+    // Concise arrows are preferred when the expression is statically void;
+    // braces would add ceremony without changing the callback contract.
+    "typescript/no-confusing-void-expression": "off",
+    // Evolu validates external input with Types, while trusted implementations
+    // use assertions for brands, generic APIs, overloads, and runtime-proven
+    // invariants. This rule rejects every narrowing assertion and cannot be
+    // configured.
+    "typescript/no-unsafe-type-assertion": "off",
+    // Evolu uses readonly collections and properties for immutable APIs, but
+    // this rule requires the entire parameter type graph to be deeply readonly.
+    // It rejects valid generics, iterables, platform values, and explicitly
+    // stateful capabilities even when the function does not mutate them.
+    "typescript/prefer-readonly-parameter-types": "off",
+    // Evolu intentionally treats false, empty strings, zero, and their
+    // nullable variants as equivalent in boolean contexts. Keep checks for
+    // always-truthy objects, always-falsy nullish values, any, and mixed
+    // unions.
+    "typescript/strict-boolean-expressions": [
+      "error",
+      {
+        "allowNullableBoolean": true,
+        "allowNullableNumber": true,
+        "allowNullableString": true
+      }
+    ],
+
+    // Direct assertions are already concise and idiomatic.
+    "unicorn/consistent-assert": "off",
+    // Evolu prefers functions colocated with their usage. Hoist functions only
+    // when a benchmark demonstrates a meaningful performance improvement.
+    "unicorn/consistent-function-scoping": "off",
+    // Existing length checks already express their intent directly.
+    "unicorn/explicit-length-check": "off",
+    // Sparse arrays use Evolu's explicit mutable-array constructor.
+    "unicorn/new-for-builtins": "error",
+    // Direct callback references are concise and readable when the callback
+    // signature is intentional.
+    "unicorn/no-array-callback-reference": "off",
+    // Local mutation can construct cycles and avoid copying collections.
+    "unicorn/no-immediate-mutation": "off",
+    // Simplify nested control flow where it stays readable.
+    "unicorn/no-lonely-if": "error",
+    // Negated conditions often keep guards and early control flow direct.
+    "unicorn/no-negated-condition": "off",
+    // typeof checks are explicit and robust across optional runtime globals.
+    "unicorn/no-typeof-undefined": "off",
+    // Promise chains already assimilate returned values and rejections.
+    "unicorn/no-useless-promise-resolve-reject": "error",
+    // Keep exhaustive switches direct.
+    "unicorn/no-useless-switch-case": "error",
+    // Explicit undefined is meaningful in Types, test inputs, and APIs that
+    // require an argument.
+    "unicorn/no-useless-undefined": "off",
+    // Use the standard collection predicate instead of a manual equivalent.
+    "unicorn/prefer-array-some": "error",
+    // Indexed access avoids a non-null assertion in lastInArray and remains
+    // clear at the other sites.
+    "unicorn/prefer-at": "off",
+    // These sites intentionally process UTF-16 code units, ASCII, or bytes.
+    "unicorn/prefer-code-point": "off",
+    // appendChild is the most specific API when appending a Node.
+    "unicorn/prefer-dom-node-append": "off",
+    // Node API fakes must preserve EventEmitter behavior.
+    "unicorn/prefer-event-target": "off",
+    // Use modern import.meta properties where their semantics match.
+    "unicorn/prefer-import-meta-properties": "error",
+    // Number.parseFloat and Number.parseInt intentionally accept numeric
+    // prefixes that Number does not.
+    "unicorn/prefer-number-coercion": "off",
+    // getElementById is the most specific API for known element IDs.
+    "unicorn/prefer-query-selector": "off",
+    // Consecutive calls can represent distinct operations, especially in
+    // batching tests and stack-based algorithms.
+    "unicorn/prefer-single-call": "off",
+    // Make replacement of every regular-expression match explicit.
+    "unicorn/prefer-string-replace-all": "error",
+    // Prefer the standard string slicing method.
+    "unicorn/prefer-string-slice": "error",
+    // Top-level await can change module loading and error handling.
+    "unicorn/prefer-top-level-await": "off",
+    // Precise built-in errors improve diagnostics.
+    "unicorn/prefer-type-error": "error",
+    // Evolu uses Worker, MessagePort, and BroadcastChannel postMessage APIs,
+    // which do not accept Window's targetOrigin argument.
+    "unicorn/require-post-message-target-origin": "off"
+  },
+  "overrides": [
+    {
+      // Vitest matchers and mocks intentionally expose any values.
+      // https://github.com/vitest-dev/vitest/issues/4543
+      "files": ["**/*.test.{ts,tsx}"],
+      "rules": {
+        "typescript/no-unsafe-assignment": "off"
+      }
+    },
+    {
+      "files": ["**/*.{ts,tsx,mts}"],
+      "rules": {
+        "eslint/arrow-body-style": ["error", "as-needed"],
+        "eslint/func-style": ["error", "expression"],
+        "eslint/no-console": "error",
+        // TypeScript handles unused symbols and recognizes imports referenced
+        // by TypeDoc links. Remove this override when oxc-project/oxc#24996
+        // is implemented.
+        "eslint/no-unused-vars": "off",
+        "evolu/require-pure-annotation": "error",
+        "react/exhaustive-deps": "error",
+        "react/rules-of-hooks": "error",
+        "typescript/array-type": ["error", { "default": "generic" }],
+        "typescript/explicit-module-boundary-types": "error"
+      }
+    }
+  ]
+}

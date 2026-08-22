@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+// oxlint-disable-next-line typescript/strict-void-return -- Node's callback-based execFile returns a ChildProcess that promisify intentionally ignores.
 const execFileAsync = promisify(execFile);
 
 const packageDirectories = [
   "packages/common",
   "packages/nodejs",
+  "packages/oxlint-config",
   "packages/react",
   "packages/react-native",
   "packages/react-web",
@@ -18,6 +20,10 @@ const packageDirectories = [
   "packages/vue",
   "packages/web",
 ] as const;
+
+const staticPackageDirectories: ReadonlySet<string> = new Set([
+  "packages/oxlint-config",
+]);
 
 type Json =
   | boolean
@@ -37,10 +43,13 @@ interface PackageJson {
   };
 }
 
+const isJsonArray = (value: Json): value is ReadonlyArray<Json> =>
+  Array.isArray(value);
+
 const getTargets = (value: Json): ReadonlyArray<string> => {
   if (typeof value === "string") return [value];
   if (value == null || typeof value !== "object") return [];
-  if (value instanceof Array) return value.flatMap(getTargets);
+  if (isJsonArray(value)) return value.flatMap(getTargets);
   return Object.values(value).flatMap(getTargets);
 };
 
@@ -55,7 +64,7 @@ const assertTargets = (
   for (const target of targets) {
     match(
       target,
-      new RegExp(`^\\./${expectedDirectory}/`),
+      new RegExp(`^\\./${expectedDirectory}/`, "u"),
       `${packageName} ${kind} target ${target} must point into ${expectedDirectory}`,
     );
   }
@@ -70,13 +79,13 @@ const assertWorkspaceTargets = (
     const expectedDirectory = condition === "types" ? "dist" : "src";
     match(
       value,
-      new RegExp(`^\\./${expectedDirectory}/`),
+      new RegExp(`^\\./${expectedDirectory}/`, "u"),
       `${packageName} workspace ${condition ?? "export"} target ${value} must point into ${expectedDirectory}`,
     );
     return;
   }
   if (value == null || typeof value !== "object") return;
-  if (value instanceof Array) {
+  if (isJsonArray(value)) {
     for (const item of value)
       assertWorkspaceTargets(packageName, item, condition);
     return;
@@ -97,28 +106,39 @@ try {
         await readFile(new URL("package.json", directory), "utf8"),
       ) as PackageJson;
 
-      assertWorkspaceTargets(packageJson.name, packageJson.exports);
-      ok(
-        getTargets(packageJson.exports).some((target) =>
-          target.startsWith("./src/"),
-        ),
-        `${packageJson.name} has no workspace source runtime export`,
-      );
-      assertTargets(
-        packageJson.name,
-        "published",
-        packageJson.publishConfig.exports,
-        "dist",
-      );
-
-      if (packageJson.types != null) {
-        match(packageJson.types, /^\.\/dist\//);
-        match(packageJson.publishConfig.types ?? "", /^\.\/dist\//);
+      if (staticPackageDirectories.has(packageDirectory)) {
         deepStrictEqual(
-          packageJson.types,
-          packageJson.publishConfig.types,
-          `${packageJson.name} workspace and published types must match`,
+          packageJson.exports,
+          packageJson.publishConfig.exports,
+          `${packageJson.name} static workspace and published exports must match`,
         );
+        for (const target of getTargets(packageJson.exports)) {
+          match(target, /^\.\/[^/]/u);
+        }
+      } else {
+        assertWorkspaceTargets(packageJson.name, packageJson.exports);
+        ok(
+          getTargets(packageJson.exports).some((target) =>
+            target.startsWith("./src/"),
+          ),
+          `${packageJson.name} has no workspace source runtime export`,
+        );
+        assertTargets(
+          packageJson.name,
+          "published",
+          packageJson.publishConfig.exports,
+          "dist",
+        );
+
+        if (packageJson.types != null) {
+          match(packageJson.types, /^\.\/dist\//u);
+          match(packageJson.publishConfig.types ?? "", /^\.\/dist\//u);
+          deepStrictEqual(
+            packageJson.types,
+            packageJson.publishConfig.types,
+            `${packageJson.name} workspace and published types must match`,
+          );
+        }
       }
       const tarball = join(
         temporaryDirectory,
@@ -174,5 +194,5 @@ try {
 
 // eslint-disable-next-line no-console -- Report successful CLI completion.
 console.log(
-  "Workspace source runtime exports, declaration types, and packed dist exports are valid.",
+  "Workspace source and static exports, declaration types, and packed packages are valid.",
 );

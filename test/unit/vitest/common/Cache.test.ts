@@ -46,7 +46,8 @@ test("LRU cache - evicts least recently used on capacity", () => {
 
   cache.set("a", 1);
   cache.set("b", 2);
-  cache.set("c", 3); // Should evict "a"
+  // Should evict "a"
+  cache.set("c", 3);
 
   expect(cache.has("a")).toBe(false);
   expect(cache.has("b")).toBe(true);
@@ -58,8 +59,10 @@ test("LRU cache - get updates access order", () => {
 
   cache.set("a", 1);
   cache.set("b", 2);
-  cache.get("a"); // Access "a", making it most recent
-  cache.set("c", 3); // Should evict "b", not "a"
+  // Access "a", making it most recent
+  cache.get("a");
+  // Should evict "b", not "a"
+  cache.set("c", 3);
 
   expect(cache.has("a")).toBe(true);
   expect(cache.has("b")).toBe(false);
@@ -71,8 +74,10 @@ test("LRU cache - set updates access order for existing key", () => {
 
   cache.set("a", 1);
   cache.set("b", 2);
-  cache.set("a", 10); // Update "a", making it most recent
-  cache.set("c", 3); // Should evict "b", not "a"
+  // Update "a", making it most recent
+  cache.set("a", 10);
+  // Should evict "b", not "a"
+  cache.set("c", 3);
 
   expect(cache.get("a")).toBe(10);
   expect(cache.has("b")).toBe(false);
@@ -103,7 +108,8 @@ test("LRU cache - map view reflects cache changes", () => {
   cache.set("b", 2);
   expect(cache.map.size).toBe(2);
 
-  cache.set("c", 3); // Evicts "a"
+  // Evicts "a"
+  cache.set("c", 3);
   expect(cache.map.size).toBe(2);
   expect(cache.map.has("a")).toBe(false);
   expect(cache.map.has("b")).toBe(true);
@@ -154,7 +160,8 @@ test("LRU cache - reference-based key comparison", () => {
   const cache = createLruCache<object, number>(PositiveInt.orThrow(2));
 
   const key1 = { id: 1 };
-  const key2 = { id: 1 }; // Different object, same structure
+  // Different object, same structure
+  const key2 = { id: 1 };
 
   cache.set(key1, 100);
   cache.set(key2, 200);

@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "extends": ["./node_modules/@evolu/oxlint-config/config.jsonc"],
+  "options": {
+    "reportUnusedDisableDirectives": "error"
+  },
+  "overrides": [
+    {
+      "files": ["packages/vue/src/useOwner.ts"],
+      "rules": {
+        "react/rules-of-hooks": "off"
+      }
+    }
+  ]
+}

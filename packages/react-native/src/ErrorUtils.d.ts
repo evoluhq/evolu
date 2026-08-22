@@ -13,8 +13,9 @@ interface ErrorUtils {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
+  // var is required for a global declaration that matches the runtime binding.
   var ErrorUtils: ErrorUtils | undefined;
 }
 
+// oxlint-disable-next-line unicorn/require-module-specifiers -- Marks this declaration file as a module so declare global is valid.
 export {};

@@ -118,7 +118,7 @@ void describe("API reference watcher", () => {
       }
       if (generationCount === 5) {
         fifthGenerationStarted.resolve();
-        return await run(waitForAbort);
+        return run(waitForAbort);
       }
       await writeStagedReference(
         directories.stagedReferenceDir,

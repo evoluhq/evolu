@@ -35,6 +35,7 @@ export const useQueries = <
     const promise = options.promises?.[index];
     const queryOptions = { once: index > queries.length - 1 };
 
+    // oxlint-disable-next-line react/rules-of-hooks -- useQuery is a Vue composable and the query order must remain stable.
     return useQuery(
       query,
       promise ? { ...queryOptions, promise } : queryOptions,

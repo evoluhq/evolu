@@ -56,7 +56,7 @@ export const createEvoluDeps = (
   };
 
   const createDbWorker: CreateDbWorker = (): DbWorker =>
-    createWorker<DbWorkerInit, never>((self) => {
+    createWorker<DbWorkerInit>((self) => {
       const dbWorkerRun = createWorkerRun();
       void dbWorkerRun(startDbWorker(self));
     });

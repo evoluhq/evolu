@@ -324,7 +324,9 @@ export const initSharedWorker =
                 const tenantLease = await run.ok(
                   unabortable(tenantsByName.acquire(message)),
                 );
-                tenantLease.resource.addInstance(message, tenantLease.release);
+                tenantLease.resource.addInstance(message, () => {
+                  tenantLease.release();
+                });
                 return ok();
               });
               break;
@@ -479,7 +481,7 @@ const createEvoluTenant =
       new Map<EvoluInstanceId, EvoluInstance>(),
       async (instancesById) => {
         await using disposer = new AsyncDisposableStack();
-        for (const instance of [...instancesById.values()]) {
+        for (const instance of instancesById.values()) {
           disposer.use(instance);
         }
       },

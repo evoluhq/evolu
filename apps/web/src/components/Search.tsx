@@ -304,9 +304,11 @@ const SearchDialog = ({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  /* oxlint-disable react/exhaustive-effect-dependencies -- pathname and searchParams intentionally trigger closing the dialog after navigation. */
   useEffect(() => {
     setOpen(false);
   }, [pathname, searchParams, setOpen]);
+  /* oxlint-enable react/exhaustive-effect-dependencies */
 
   useEffect(() => {
     if (open) {
@@ -411,7 +413,7 @@ const useSearchProps = () => {
 
 export const Search = (): React.ReactElement => {
   const [modifierKey] = useState<string>(() =>
-    /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform) ? "⌘" : "Ctrl ",
+    /(Mac|iPhone|iPod|iPad)/iu.test(navigator.platform) ? "⌘" : "Ctrl ",
   );
   const { buttonProps, dialogProps } = useSearchProps();
 

@@ -189,6 +189,7 @@
  * @module
  */
 import {
+  createMutableArray,
   emptyArray,
   isNonEmptyArray,
   type NonEmptyReadonlyArray,
@@ -442,9 +443,8 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
 export const getOrThrow = <T, E>(result: Result<T, E>): T => {
   if (result.ok) {
     return result.value;
-  } else {
-    throw new Error("getOrThrow", { cause: result.error });
   }
+  throw new Error("getOrThrow", { cause: result.error });
 };
 
 /**
@@ -572,7 +572,7 @@ export function trySync<T, E>(
 export function trySync<T, E>(
   fn: () => T,
   mapError?: (error: unknown) => E,
-): Result<T, E | unknown> {
+): Result<T, unknown> {
   try {
     return ok(fn());
   } catch (error) {
@@ -644,7 +644,7 @@ export function tryAsync<T, E>(
 export async function tryAsync<T, E>(
   promiseThunk: Thunk<Awaitable<T>>,
   mapError?: (error: unknown) => E,
-): Promise<Result<T, E | unknown>> {
+): Promise<Result<T, unknown>> {
   try {
     return ok(await promiseThunk());
   } catch (error) {
@@ -1181,7 +1181,7 @@ export function allResult(
     const length = input.length;
     if (length === 0) return ok(emptyArray);
 
-    const values = new Array<unknown>(length);
+    const values = createMutableArray<unknown>(length);
     for (let i = 0; i < length; i++) {
       const result = fn ? fn(input[i]) : (input[i] as AnyResult);
       if (!result.ok) return result;

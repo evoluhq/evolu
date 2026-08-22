@@ -91,9 +91,7 @@ const useVisibleSections = (sectionStore: StoreApi<SectionState>) => {
           newVisibleSections.push("_top");
         }
 
-        const nextSection = sections[sectionIndex + 1]
-          ? sections[sectionIndex + 1]
-          : null;
+        const nextSection = sections.at(sectionIndex + 1) ?? null;
         const bottom =
           (nextSection?.headingRef?.current.getBoundingClientRect().top ??
             Infinity) +
@@ -160,6 +158,6 @@ export const useSectionStore = <T,>(
   if (!store) {
     return {} as T;
   }
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+  // oxlint-disable-next-line react/rules-of-hooks -- The store is absent only outside the provider, where no subscription can be created.
   return useStore(store, selector);
 };

@@ -384,6 +384,7 @@ const structuralLookupInternal = (
   value: unknown,
   path: Set<object> = new Set(),
 ): string => {
+  // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default rejects every unsupported unknown runtime type.
   switch (typeof value) {
     case "string":
       return `s:${JSON.stringify(value)}`;

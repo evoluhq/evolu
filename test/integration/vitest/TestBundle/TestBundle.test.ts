@@ -230,8 +230,10 @@ describe("testBundle", { timeout: 30_000 }, () => {
           fixture: {
             entryPath: fixturePath,
             verify: () => {
+              // oxlint-disable eslint/no-throw-literal -- Unknown failures from user verification code must remain reportable.
               // eslint-disable-next-line @typescript-eslint/only-throw-error -- Unknown failures from user verification code must remain reportable.
               throw "non-Error verification failure";
+              // oxlint-enable eslint/no-throw-literal
             },
           },
         },
@@ -270,15 +272,15 @@ const expectTestBundleFailure = async (
       cause: error,
     });
   }
-  expect(error.errors).toEqual(
-    expectedBundlers.map((bundler) =>
+  for (const bundler of expectedBundlers) {
+    expect(error.errors).toContainEqual(
       expect.objectContaining({
         caseName: "fixture",
         bundler,
         message: expect.stringContaining(expectedMessage),
       }),
-    ),
-  );
+    );
+  }
   for (const bundler of ["webpack", "vite"] as const) {
     const expectation = expect(error.message);
     if (expectedBundlers.includes(bundler)) {

@@ -10,6 +10,7 @@ const nodeProjects = [
   integrationNode,
   "packages/react",
   "packages/react-native",
+  "packages/oxlint-config",
   {
     test: {
       name: "node-scripts",

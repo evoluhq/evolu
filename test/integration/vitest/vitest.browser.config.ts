@@ -29,6 +29,7 @@ export default defineProject(({ mode }) => ({
     },
   ],
   test: {
+    fileParallelism: false,
     include: [
       "test/integration/vitest/LockManager/*.test.ts",
       "test/integration/vitest/Platform/*.test.ts",
@@ -43,7 +44,6 @@ export default defineProject(({ mode }) => ({
       provider: playwright(),
       api: { port: 63316 },
       headless: true,
-      fileParallelism: false,
       commands: {
         startWsServer: async () => {
           const { createServer } =

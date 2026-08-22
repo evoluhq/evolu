@@ -35,7 +35,7 @@ const nextConfig = {
     "/llms.txt": ["./src/app/**/*.mdx"],
   },
 
-  async rewrites() {
+  rewrites() {
     return [
       {
         // Rewrite /docs/index.md to the root docs page

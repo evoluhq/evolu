@@ -1,3 +1,5 @@
+/* oxlint-disable unicorn/no-single-promise-in-promise-methods -- Tests intentionally probe stack frames created by single-element Promise combinators. */
+
 import { describe, expect, test } from "vitest";
 import {
   isHermes,
@@ -252,6 +254,7 @@ describe("parseStackTrace", () => {
   // - Hermes has no JS-visible async parent-chain support in Error.stack;
   //   React Native reports generated bundle frames containing only the child
   //   throw site for every probed shape.
+  /* oxlint-disable typescript/return-await -- This test intentionally compares stack topology across direct await, Promise combinators, and resolver bridges. */
   test("documents Promise async stack linking support", async () => {
     const sourceLabelsByLine = new Map<number, string>();
     const sourceName = parseStackTrace(new Error().stack).frames[0]?.sourceName;
@@ -1367,6 +1370,8 @@ describe("parseStackTrace", () => {
       });
     }
   });
+
+  /* oxlint-enable typescript/return-await */
 
   test("ignores lines without source positions", () => {
     const stack = [

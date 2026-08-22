@@ -10,7 +10,7 @@ test("escapeRegExp", () => {
   expect(escapeRegExp(value)).toBe(
     "value\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\]\\\\end",
   );
-  expect(new RegExp(`^${escapeRegExp(value)}$`).test(value)).toBe(true);
+  expect(new RegExp(`^${escapeRegExp(value)}$`, "u").test(value)).toBe(true);
 });
 
 test("safelyStringifyUnknownValue", () => {

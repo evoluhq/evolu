@@ -1,0 +1,62 @@
+{
+  "name": "@evolu/oxlint-config",
+  "version": "0.0.1",
+  "description": "Strict Oxlint configuration and custom rules for Evolu projects",
+  "keywords": [
+    "evolu",
+    "oxlint",
+    "lint"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evoluhq/evolu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "exports": {
+    "./config.jsonc": "./config.jsonc",
+    "./plugin": {
+      "types": "./plugin.d.mts",
+      "default": "./plugin.mjs"
+    }
+  },
+  "files": [
+    "config.jsonc",
+    "plugin.d.mts",
+    "plugin.mjs",
+    "README.md"
+  ],
+  "dependencies": {
+    "eslint-plugin-jsdoc": "^64.2.1"
+  },
+  "devDependencies": {
+    "@evolu/typescript-config": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "oxlint": "^1.79.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "vitest": "^4.1.11"
+  },
+  "peerDependencies": {
+    "oxlint": "^1.79.0",
+    "oxlint-tsgolint": "7.0.2001"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./config.jsonc": "./config.jsonc",
+      "./plugin": {
+        "types": "./plugin.d.mts",
+        "default": "./plugin.mjs"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "sideEffects": false
+}

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { createMutableArray } from "../../../../packages/common/src/Array.ts";
 import {
   createLookupMap,
   createLookupSet,
@@ -296,7 +297,7 @@ describe("structuralLookup", () => {
     expect(() => structuralLookup(["a", undefined] as never)).toThrow(
       "Structural lookup keys must be JSON-like values or Uint8Array.",
     );
-    expect(() => structuralLookup(Array(1) as never)).toThrow(
+    expect(() => structuralLookup(createMutableArray(1) as never)).toThrow(
       "Structural lookup keys must be JSON-like values or Uint8Array.",
     );
     expect(() =>

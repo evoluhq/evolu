@@ -183,6 +183,7 @@ describe("createWebSocket", () => {
       }
 
       send(_data: string | BufferSource | Blob): void {
+        // oxlint-disable-next-line eslint/no-useless-return -- Keeps this intentional no-op body explicit while ESLint remains enabled.
         return;
       }
 
@@ -282,7 +283,8 @@ describe("createWebSocket", () => {
     // Use invalid port to trigger connection error
     await using _ws = await run.ok(
       createWebSocket("ws://localhost:1", {
-        schedule: take(0)(spaced("1ms")), // No retry - fail immediately
+        // No retry - fail immediately
+        schedule: take(0)(spaced("1ms")),
         onError: (error) => {
           errors.push(error);
         },
@@ -300,7 +302,8 @@ describe("createWebSocket", () => {
 
     await using _ws = await run.ok(
       createWebSocket(getServerUrl("close"), {
-        schedule: take(0)(spaced("1ms")), // No retry
+        // No retry
+        schedule: take(0)(spaced("1ms")),
         onClose: () => {
           closeCalled = true;
         },
@@ -330,7 +333,9 @@ describe("createWebSocket", () => {
     );
 
     await vi.waitFor(() => expect(closeCount).toBe(1));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
 
     expect(closeCount).toBe(1);
     expect(errors).toHaveLength(0);
@@ -345,7 +350,8 @@ describe("createWebSocket", () => {
     await using ws = await run.ok(
       createWebSocket(getServerUrl("close-after-message"), {
         binaryType: "arraybuffer",
-        schedule: spaced("1ms"), // Fast retry
+        // Fast retry
+        schedule: spaced("1ms"),
         onMessage: (data) => {
           assert(data instanceof ArrayBuffer);
           messages.push(new Uint8Array(data));
@@ -374,7 +380,8 @@ describe("createWebSocket", () => {
     // triggering retry until schedule is exhausted
     await using _ws = await run.ok(
       createWebSocket(getServerUrl("close"), {
-        schedule: take(2)(spaced("1ms")), // Allow 2 retries then exhaust
+        // Allow 2 retries then exhaust
+        schedule: take(2)(spaced("1ms")),
         onError: (error) => {
           errors.push(error);
         },
@@ -397,7 +404,8 @@ describe("createWebSocket", () => {
 
     await using _ws = await run.ok(
       createWebSocket(getServerUrl("terminate"), {
-        schedule: take(0)(spaced("1ms")), // No retry
+        // No retry
+        schedule: take(0)(spaced("1ms")),
         onError: (error) => {
           errors.push(error);
         },

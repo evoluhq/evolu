@@ -21,7 +21,7 @@ export const generateSearchIndex = async ({
   readonly sourceDir?: string;
   readonly targetPath?: string;
 } = {}): Promise<ReadonlyArray<SearchPage>> => {
-  const mdxPaths = (await glob("**/*.mdx", { cwd: sourceDir })).sort();
+  const mdxPaths = (await glob("**/*.mdx", { cwd: sourceDir })).toSorted();
   const pages: Array<SearchPage> = [];
 
   for (const mdxPath of mdxPaths) {
@@ -35,14 +35,14 @@ export const generateSearchIndex = async ({
 
       if (searchSections[0]?.hash !== null) {
         const title =
-          /export\s+const\s+metadata\s*=\s*\{\s*title:\s*['"]([^'"]+)['"]/m.exec(
+          /export\s+const\s+metadata\s*=\s*\{\s*title:\s*['"]([^'"]+)['"]/mu.exec(
             mdx,
           )?.[1] ?? null;
         if (title) searchSections.unshift({ title, hash: null, content: [] });
       }
 
       pages.push({
-        url: `/${mdxPath.replace(/(^|\/)page\.mdx$/, "")}`
+        url: `/${mdxPath.replace(/(^|\/)page\.mdx$/u, "")}`
           .replace("(docs)/", "")
           .replace("(landing)/", ""),
         sections: searchSections,
@@ -104,6 +104,8 @@ const processor = remark()
         sections.at(-1)?.content.push(nodeToSearchText(node));
         return SKIP;
       }
+
+      return undefined;
     });
   }) satisfies Plugin<[], Root>);
 

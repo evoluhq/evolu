@@ -234,6 +234,7 @@ const OwnerActions: FC = () => {
     const result = Evolu.Mnemonic.fromUnknown(mnemonic.trim());
     if (!result.ok) {
       alert(Evolu.Mnemonic.formatError(result.error));
+      // oxlint-disable-next-line eslint/no-useless-return -- Keeps this validation guard correct when owner restoration is implemented.
       return;
     }
 

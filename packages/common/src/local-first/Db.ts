@@ -924,7 +924,8 @@ const applyMessages =
      */
     updateOwnerUsage(deps)(
       ownerIdBytes,
-      onePositiveInt, // Placeholder until proper tracking implemented
+      // Placeholder until proper tracking implemented
+      onePositiveInt,
       firstTimestamp,
       lastTimestamp,
     );

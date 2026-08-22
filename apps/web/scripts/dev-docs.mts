@@ -75,10 +75,10 @@ export const createApiReferenceWatcher =
               relativePath === "typedoc.dev.json" ||
               relativePath === "typedoc.json" ||
               relativePath === "scripts/typedoc-plugin-evolu.mts" ||
-              /^packages\/[^/]+\/(?:package|tsconfig|typedoc)\.json$/.test(
+              /^packages\/[^/]+\/(?:package|tsconfig|typedoc)\.json$/u.test(
                 relativePath,
               ) ||
-              /^packages\/[^/]+\/src\/.*\.tsx?$/.test(relativePath)
+              /^packages\/[^/]+\/src\/.*\.tsx?$/u.test(relativePath)
             );
           })
         ) {

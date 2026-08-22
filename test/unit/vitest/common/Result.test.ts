@@ -837,6 +837,7 @@ test("example: parseJson with early return", () => {
   if (!json.ok) return json;
 
   expectTypeOf(json.value).toBeUnknown();
+  return undefined;
 });
 
 // --- Result with resource management ---
@@ -986,14 +987,16 @@ describe("Result with Resource management", () => {
         {
           using _ = createLock("a");
           log.push("critical-section-a");
-        } // lock "a" released here
+          // lock "a" released here
+        }
 
         log.push("between");
 
         {
           using _ = createLock("b");
           log.push("critical-section-b");
-        } // lock "b" released here
+          // lock "b" released here
+        }
 
         log.push("end");
       };
@@ -1021,12 +1024,16 @@ describe("Result with Resource management", () => {
         const resource1 = createResource("db", false);
         if (!resource1.ok) return resource1;
         disposer.use(resource1.value);
-        disposer.defer(() => disposed.push("db"));
+        disposer.defer(() => {
+          disposed.push("db");
+        });
 
         const resource2 = createResource("file", false);
         if (!resource2.ok) return resource2;
         disposer.use(resource2.value);
-        disposer.defer(() => disposed.push("file"));
+        disposer.defer(() => {
+          disposed.push("file");
+        });
 
         return ok("processed");
       };
@@ -1045,13 +1052,17 @@ describe("Result with Resource management", () => {
         const resource1 = createResource("db", false);
         if (!resource1.ok) return resource1;
         disposer.use(resource1.value);
-        disposer.defer(() => disposed.push("db"));
+        disposer.defer(() => {
+          disposed.push("db");
+        });
 
         const resource2 = createResource("file", true);
         if (!resource2.ok) return resource2;
 
         disposer.use(resource2.value);
-        disposer.defer(() => disposed.push("file"));
+        disposer.defer(() => {
+          disposed.push("file");
+        });
 
         return ok("processed");
       };
@@ -1073,7 +1084,9 @@ describe("Result with Resource management", () => {
         const resource1 = createResource("db", true);
         if (!resource1.ok) return resource1;
         disposer.use(resource1.value);
-        disposer.defer(() => disposed.push("db"));
+        disposer.defer(() => {
+          disposed.push("db");
+        });
 
         return ok("processed");
       };
@@ -1143,12 +1156,16 @@ describe("Result with Resource management", () => {
         const db = createResource("db", false);
         if (!db.ok) return db;
         disposer.use(db.value);
-        disposer.defer(() => log.push("cleanup:db"));
+        disposer.defer(() => {
+          log.push("cleanup:db");
+        });
 
         const cache = createResource("cache", false);
         if (!cache.ok) return cache;
         disposer.use(cache.value);
-        disposer.defer(() => log.push("cleanup:cache"));
+        disposer.defer(() => {
+          log.push("cleanup:cache");
+        });
 
         log.push("work:step1");
 
@@ -1176,7 +1193,9 @@ describe("Result with Resource management", () => {
         const resource1 = createResource("db", false);
         if (!resource1.ok) return resource1;
         disposer.use(resource1.value);
-        disposer.defer(() => disposed.push("db"));
+        disposer.defer(() => {
+          disposed.push("db");
+        });
 
         // Simulate unexpected error (bug in code, not a Result error)
         throw new Error("Unexpected bug!");
@@ -1202,12 +1221,16 @@ describe("Result with Resource management", () => {
         const r1 = createResource("a", false);
         if (!r1.ok) return r1;
         disposer.use(r1.value);
-        disposer.defer(() => disposed.push("a"));
+        disposer.defer(() => {
+          disposed.push("a");
+        });
 
         const r2 = createResource("b", false);
         if (!r2.ok) return r2;
         disposer.use(r2.value);
-        disposer.defer(() => disposed.push("b"));
+        disposer.defer(() => {
+          disposed.push("b");
+        });
 
         return ok(disposer.move());
       };
@@ -1386,11 +1409,10 @@ describe("design decisions", () => {
     function* gen<T, E>(result: Result<T, E>): Gen<T, E> {
       if (result.ok) {
         return result.value;
-      } else {
-        yield result;
-        // This line is never reached - the runner exits on first yielded Err
-        throw new Error("Unreachable");
       }
+      yield result;
+      // This line is never reached - the runner exits on first yielded Err
+      throw new Error("Unreachable");
     }
 
     /** Runs a Gen and returns the Result. */

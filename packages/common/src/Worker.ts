@@ -432,7 +432,7 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
         const dispatches = broadcastChannelDispatchesByName.get(name);
         assert(dispatches, "Expected broadcast channel dispatches");
 
-        for (const otherDispatch of [...dispatches]) {
+        for (const otherDispatch of dispatches) {
           if (otherDispatch === dispatch) continue;
 
           scheduleWorkerTask(() => {

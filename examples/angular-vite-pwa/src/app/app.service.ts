@@ -43,7 +43,7 @@ export class AppService implements OnDestroy {
 
   /** Todos */
 
-  addTodo(title: string) {
+  addTodo(title: string): void {
     const result = NonEmptyTrimmedString100.fromUnknown(title.trim());
     if (!result.ok) {
       alert(NonEmptyTrimmedString100.formatError(result.error));
@@ -55,7 +55,7 @@ export class AppService implements OnDestroy {
     });
   }
 
-  renameTodo(id: string, title: string) {
+  renameTodo(id: string, title: string): void {
     const result = NonEmptyTrimmedString100.fromUnknown(title.trim());
     if (!result.ok) {
       alert(NonEmptyTrimmedString100.formatError(result.error));
@@ -68,14 +68,14 @@ export class AppService implements OnDestroy {
     });
   }
 
-  toggleTodo(id: string, isCompleted: boolean) {
+  toggleTodo(id: string, isCompleted: boolean): void {
     this.evolu.update("todo", {
       id: id as TodoId,
       isCompleted: booleanToSqliteBoolean(isCompleted),
     });
   }
 
-  deleteTodo(id: string) {
+  deleteTodo(id: string): void {
     this.evolu.update("todo", {
       id: id as TodoId,
       isDeleted: sqliteTrue,
@@ -93,6 +93,7 @@ export class AppService implements OnDestroy {
     const mnemonicResult = Mnemonic.fromUnknown(trimmedMnemonic);
     if (!mnemonicResult.ok) {
       alert(Mnemonic.formatError(mnemonicResult.error));
+      // oxlint-disable-next-line eslint/no-useless-return -- Keeps this validation guard correct when owner restoration is implemented.
       return;
     }
 
@@ -123,6 +124,7 @@ export class AppService implements OnDestroy {
       });
       element.click();
     } catch (error) {
+      // oxlint-disable-next-line eslint/no-console -- Database export failures must remain visible to developers.
       console.error("Failed to download database:", error);
     }
   }
@@ -142,6 +144,7 @@ export class AppService implements OnDestroy {
         this.todos.set(rows);
       })
       .catch((error) => {
+        // oxlint-disable-next-line eslint/no-console -- Initial query failures must remain visible to developers.
         console.error("Failed to load data:", error);
       })
       .finally(() => this.isLoading.set(false));

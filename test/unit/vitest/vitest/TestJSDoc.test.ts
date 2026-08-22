@@ -255,8 +255,8 @@ test("testJSDocExamples reports execution failures in source order", async () =>
     const [firstError, secondError] = error.errors as ReadonlyArray<unknown>;
     assert(firstError instanceof Error);
     assert(secondError instanceof Error);
-    expect(firstError.message).toMatch(/RuntimeFailures\.ts:2:/);
-    expect(secondError.message).toMatch(/RuntimeFailures\.ts:8:/);
+    expect(firstError.message).toMatch(/RuntimeFailures\.ts:2:/u);
+    expect(secondError.message).toMatch(/RuntimeFailures\.ts:8:/u);
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }
@@ -295,8 +295,8 @@ test("testJSDocExamples runs examples without compilation errors", async () => {
     }).catch((error: unknown) => error);
 
     assert(error instanceof AggregateError);
-    expect(error.message).toMatch(/TypeScript compilation failed/);
-    expect(error.message).toMatch(/JSDoc example execution failed/);
+    expect(error.message).toMatch(/TypeScript compilation failed/u);
+    expect(error.message).toMatch(/JSDoc example execution failed/u);
     expect(error.errors).toHaveLength(2);
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
@@ -372,8 +372,8 @@ test("testJSDocExamples supports colored colon-formatted TypeScript diagnostics"
     }).catch((error: unknown) => error);
 
     assert(error instanceof AggregateError);
-    expect(error.message).toMatch(/TypeScript compilation failed/);
-    expect(error.message).toMatch(/JSDoc example execution failed/);
+    expect(error.message).toMatch(/TypeScript compilation failed/u);
+    expect(error.message).toMatch(/JSDoc example execution failed/u);
     expect(error.errors).toHaveLength(2);
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
@@ -407,7 +407,7 @@ test("testJSDocExamples rejects an incorrect inferred type", async () => {
         include: [sourcePath],
         typescriptPackage: "@typescript/native",
       }),
-    ).rejects.toThrow(/TypeScript compilation failed/);
+    ).rejects.toThrow(/TypeScript compilation failed/u);
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }

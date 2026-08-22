@@ -52,7 +52,7 @@ describe("Time", () => {
     test('now with "DateIso" returns current time as ISO string', () => {
       const time = createTime();
       const result: DateIso = time.now("DateIso");
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
       const parsed = Date.parse(result);
       expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
       expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
@@ -82,7 +82,7 @@ describe("Time", () => {
             >;
           });
         vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
-        const callback = vi.fn();
+        const callback = vi.fn<() => void>();
 
         createTime().setTimeout(callback, "10ms");
 
@@ -107,7 +107,7 @@ describe("Time", () => {
             >;
           });
         vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
-        const callback = vi.fn();
+        const callback = vi.fn<() => void>();
 
         createTime().setTimeout(callback, "10ms");
         now -= 1000;
@@ -129,7 +129,7 @@ describe("Time", () => {
             >;
           });
         const dateNow = vi.spyOn(globalThis.Date, "now");
-        const callback = vi.fn();
+        const callback = vi.fn<() => void>();
 
         createTime().setTimeout(
           callback,
@@ -153,7 +153,7 @@ describe("Time", () => {
         let now = 1000;
         const callbacks: Array<() => void> = [];
         const delays: Array<number | undefined> = [];
-        const callback = vi.fn();
+        const callback = vi.fn<() => void>();
 
         vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
         vi.spyOn(globalThis, "setTimeout").mockImplementation(
@@ -240,7 +240,7 @@ describe("Time", () => {
         const maxNativeTimeoutMillis = 2 ** 31 - 1;
         let now = 1000;
         const callbacks: Array<() => void> = [];
-        const callback = vi.fn();
+        const callback = vi.fn<() => void>();
         const clearTimeout = vi
           .spyOn(globalThis, "clearTimeout")
           .mockImplementation(() => undefined);
@@ -272,7 +272,7 @@ describe("Time", () => {
 
       test("clearTimeout cancels a single native timeout", () => {
         const callbacks: Array<() => void> = [];
-        const callback = vi.fn();
+        const callback = vi.fn<() => void>();
         const clearTimeout = vi
           .spyOn(globalThis, "clearTimeout")
           .mockImplementation(() => undefined);
@@ -316,7 +316,8 @@ describe("Time", () => {
       const time = testCreateTime();
 
       expect(time.now()).toBe(0);
-      expect(time.now()).toBe(0); // Still 0, no auto-increment
+      // Still 0, no auto-increment
+      expect(time.now()).toBe(0);
 
       time.advance("1ms");
       expect(time.now()).toBe(1);
@@ -444,7 +445,7 @@ describe("Time", () => {
     test("clearTimeout rejects an id created by another Time instance", () => {
       const firstTime = testCreateTime();
       const secondTime = testCreateTime();
-      const secondCallback = vi.fn();
+      const secondCallback = vi.fn<() => void>();
       const id = firstTime.setTimeout(() => undefined, "100ms");
       secondTime.setTimeout(secondCallback, "100ms");
 
@@ -460,9 +461,15 @@ describe("Time", () => {
       const time = testCreateTime();
       const order: Array<number> = [];
 
-      time.setTimeout(() => order.push(1), "100ms");
-      time.setTimeout(() => order.push(2), "50ms");
-      time.setTimeout(() => order.push(3), "150ms");
+      time.setTimeout(() => {
+        order.push(1);
+      }, "100ms");
+      time.setTimeout(() => {
+        order.push(2);
+      }, "50ms");
+      time.setTimeout(() => {
+        order.push(3);
+      }, "150ms");
 
       time.advance("200ms");
 
@@ -473,9 +480,15 @@ describe("Time", () => {
       const time = testCreateTime();
       const order: Array<number> = [];
 
-      time.setTimeout(() => order.push(1), "50ms");
-      time.setTimeout(() => order.push(2), "50ms");
-      time.setTimeout(() => order.push(3), "50ms");
+      time.setTimeout(() => {
+        order.push(1);
+      }, "50ms");
+      time.setTimeout(() => {
+        order.push(2);
+      }, "50ms");
+      time.setTimeout(() => {
+        order.push(3);
+      }, "50ms");
 
       time.advance("50ms");
 
@@ -486,8 +499,12 @@ describe("Time", () => {
       const time = testCreateTime();
       const observedTimes: Array<Millis> = [];
 
-      time.setTimeout(() => observedTimes.push(time.now()), "100ms");
-      time.setTimeout(() => observedTimes.push(time.now()), "50ms");
+      time.setTimeout(() => {
+        observedTimes.push(time.now());
+      }, "100ms");
+      time.setTimeout(() => {
+        observedTimes.push(time.now());
+      }, "50ms");
 
       time.advance("200ms");
 
@@ -501,7 +518,9 @@ describe("Time", () => {
 
       time.setTimeout(() => {
         observedTimes.push(time.now());
-        time.setTimeout(() => observedTimes.push(time.now()), "50ms");
+        time.setTimeout(() => {
+          observedTimes.push(time.now());
+        }, "50ms");
       }, "50ms");
 
       time.advance("200ms");
@@ -512,7 +531,7 @@ describe("Time", () => {
 
     test("an earlier timeout can cancel a later timeout", () => {
       const time = testCreateTime();
-      const callback = vi.fn();
+      const callback = vi.fn<() => void>();
       const laterId = time.setTimeout(callback, "100ms");
       time.setTimeout(() => time.clearTimeout(laterId), "50ms");
 
@@ -524,7 +543,7 @@ describe("Time", () => {
     test("a throwing callback aborts advance at its deadline", () => {
       const time = testCreateTime();
       const error = new Error("callback failed");
-      const laterCallback = vi.fn();
+      const laterCallback = vi.fn<() => void>();
 
       time.setTimeout(() => {
         throw error;
@@ -559,8 +578,12 @@ describe("Time", () => {
       const time = testCreateTime({ autoIncrement: "sync" });
       const observedTimes: Array<Millis> = [];
 
-      time.setTimeout(() => observedTimes.push(time.now()), "50ms");
-      time.setTimeout(() => observedTimes.push(time.now()), "50ms");
+      time.setTimeout(() => {
+        observedTimes.push(time.now());
+      }, "50ms");
+      time.setTimeout(() => {
+        observedTimes.push(time.now());
+      }, "50ms");
 
       time.advance("50ms");
 
@@ -571,7 +594,8 @@ describe("Time", () => {
 
   describe("PositiveMillis", () => {
     test("accepts only positive millis", () => {
-      const _millis: Millis = PositiveMillis.orThrow(1);
+      const millis: Millis = PositiveMillis.orThrow(1);
+      expectTypeOf(millis).toEqualTypeOf<Millis>();
       expect(PositiveMillis.is(1)).toBe(true);
       expect(PositiveMillis.is(maxMillis)).toBe(true);
       expect(PositiveMillis.is(0)).toBe(false);
@@ -612,7 +636,7 @@ describe("Time", () => {
       const time = createTime();
       const result = millisToDateIso(time.now());
       // Verify it's a valid ISO string
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
       // And it's close to now
       const parsed = Date.parse(result);
       expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
@@ -731,13 +755,13 @@ describe("Time", () => {
 
   describe("durationToMillis", () => {
     test("preserves positive duration type", () => {
-      const _literalMillis: PositiveMillis = durationToMillis("1ms");
-      const _positiveMillis: PositiveMillis = durationToMillis(
-        PositiveMillis.orThrow(1),
-      );
+      expectTypeOf(durationToMillis("1ms")).toEqualTypeOf<PositiveMillis>();
+      expectTypeOf(
+        durationToMillis(PositiveMillis.orThrow(1)),
+      ).toEqualTypeOf<PositiveMillis>();
 
       const duration: Duration = 0 as Millis;
-      const _millis: Millis = durationToMillis(duration);
+      expectTypeOf(durationToMillis(duration)).toEqualTypeOf<Millis>();
     });
 
     test("converts DurationLiteral to milliseconds", () => {

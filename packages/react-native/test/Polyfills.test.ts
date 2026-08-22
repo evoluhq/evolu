@@ -337,7 +337,9 @@ describe("installPolyfills", () => {
       }
     ).timeout(1);
 
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 5));
+    await new Promise((resolve) => {
+      globalThis.setTimeout(resolve, 5);
+    });
 
     const reason = (signal as { readonly reason: Error }).reason;
     expect(signal.aborted).toBe(true);
@@ -506,7 +508,9 @@ describe("installPolyfills", () => {
       }
     ).timeout(1);
 
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 5));
+    await new Promise((resolve) => {
+      globalThis.setTimeout(resolve, 5);
+    });
 
     const reason = (signal as { readonly reason: Error }).reason;
     expect(reason).toBeInstanceOf(Error);

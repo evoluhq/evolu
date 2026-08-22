@@ -1,3 +1,5 @@
+/* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-member-access -- Tailwind's theme helper returns any for configuration lookups. */
+
 import type { Config } from "tailwindcss";
 
 const typographyStyles: Config = {

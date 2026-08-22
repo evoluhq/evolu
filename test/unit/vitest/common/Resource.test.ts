@@ -47,7 +47,9 @@ const createTestResources = () => {
     getCreateCount: () => createCount,
     getDisposeCount: () => disposeCount,
     nextDisposed: () =>
-      new Promise<void>((resolve) => disposedWaiters.push(resolve)),
+      new Promise<void>((resolve) => {
+        disposedWaiters.push(resolve);
+      }),
   };
 };
 
@@ -1793,7 +1795,7 @@ describe("SharedResourceByKey", () => {
           keys.push(key);
         }),
       );
-      const firstAcquireRunSnapshot = forEach.run.snapshot().children[0];
+      const firstAcquireRunSnapshot = forEach.run.snapshot().children.at(0);
       assert(firstAcquireRunSnapshot);
       // forEachCurrent acquires keys sequentially. Replacing this child means
       // the first lease is held and acquisition of the blocked second key has

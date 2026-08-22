@@ -29,6 +29,8 @@ export default defineProject(({ mode }) => ({
   },
   test: {
     exclude: ["**/node_modules/**", "**/dist/**"],
+    // false is faster for some reason.
+    fileParallelism: false,
     include: ["test/**/*.test.ts"],
     name: "browser-web",
     setupFiles: ["./test/_setup.ts"],
@@ -38,7 +40,6 @@ export default defineProject(({ mode }) => ({
       provider: playwright({ persistentContext: true }),
       api: { port: 63317 },
       headless: true,
-      fileParallelism: false, // false is faster for some reason.
       instances: createBrowserInstances({
         coverage: process.argv.includes("--coverage"),
         mode,
