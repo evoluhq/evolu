@@ -11,15 +11,15 @@
  *
  * Individual changes in an append-only local-first history can only be marked
  * as deleted. An entire owner, however, can be removed from devices and relays
- * together with all of its data. The AppOwner must remain because it coordinates
- * the deletion of other owners across devices.
+ * together with all of its data. The AppOwner must remain because it
+ * coordinates the deletion of other owners across devices.
  *
  * Choose an owner by how its data should live and be shared:
  *
  * - {@link AppOwner} coordinates sync and persists for the lifetime of the app
  *   identity.
- * - {@link ShardOwner} partitions application data so it can be synced and
- *   deleted independently.
+ * - {@link ShardOwner} partitions application data so it can be synced and deleted
+ *   independently.
  * - {@link SharedOwner} grants collaborative read and write access.
  * - {@link SharedReadonlyOwner} grants read-only access to shared data.
  *
@@ -62,8 +62,8 @@ import { TimestampBytes } from "./Timestamp.ts";
 /**
  * {@link Owner} without a {@link OwnerWriteKey}.
  *
- * @see {@link createSharedReadonlyOwner}
  * @group Core
+ * @see {@link createSharedReadonlyOwner}
  */
 export interface ReadonlyOwner {
   readonly id: OwnerId;
@@ -427,9 +427,9 @@ export type OwnerTransport = OwnerWebSocketTransport;
  * Legitimate clients will be properly configured with valid credentials, so
  * automatic retry is OK.
  *
+ * @group Transport
  * @see {@link createOwnerWebSocketTransport}
  * @see {@link parseOwnerIdFromOwnerWebSocketTransportUrl}
- * @group Transport
  */
 export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
   readonly url: string;
@@ -553,7 +553,8 @@ export interface OwnerUsage {
    *
    * Measures only {@link EncryptedDbChange} data and excludes {@link Storage}
    * implementation overhead such as indexes and skip-list columns. This makes
-   * the measurement consistent across storage implementations and suitable for:
+   * the measurement consistent across storage implementations and suitable
+   * for:
    *
    * - **Predictable measurement** - same data = same byte count across all
    *   instances
