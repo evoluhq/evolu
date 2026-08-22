@@ -4,6 +4,7 @@ import {
   arrayFrom,
   arrayFromAsync,
   concatArrays,
+  createMutableArray,
   dedupeArray,
   emptyArray,
   filterArray,
@@ -74,6 +75,24 @@ describe("Constants", () => {
 
       items = [1, 2, 3];
       expect(items === emptyArray).toBe(false);
+    });
+  });
+});
+
+describe("Constructors", () => {
+  describe("createMutableArray", () => {
+    test("creates a mutable sparse Array", () => {
+      const result = createMutableArray<number>(3);
+
+      expectTypeOf(result).toEqualTypeOf<Array<number>>();
+      expect(result).toHaveLength(3);
+      expect(0 in result).toBe(false);
+
+      result[0] = 1;
+      result[1] = 2;
+      result[2] = 3;
+
+      expect(result).toEqual([1, 2, 3]);
     });
   });
 
@@ -280,7 +299,7 @@ describe("Transformations", () => {
     });
 
     test("skips and preserves holes in sparse arrays", () => {
-      const sparse = new Array<number>(3);
+      const sparse = createMutableArray<number>(3);
       sparse[1] = 1;
       const visitedIndices: Array<number> = [];
 

@@ -176,6 +176,33 @@ export type AtLeastTwoReadonlyArray<T> = readonly [T, T, ...ReadonlyArray<T>];
 export const emptyArray: ReadonlyArray<never> = [];
 
 /**
+ * Creates a mutable sparse Array with the specified length.
+ *
+ * Use it to build an Array with indexed writes when its final length is known.
+ * Assign every index before exposing the completed Array as readonly.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { createMutableArray } from "@evolu/common";
+ *
+ * const values = createMutableArray<number>(3);
+ *
+ * for (let index = 0; index < values.length; index++) {
+ *   values[index] = index * 10;
+ * }
+ *
+ * expect(values).toEqual([0, 10, 20]);
+ * expectTypeOf(values).toEqualTypeOf<Array<number>>();
+ * ```
+ *
+ * @group Constructors
+ */
+export const createMutableArray = <T>(length: number): Array<T> =>
+  // oxlint-disable-next-line unicorn/no-new-array -- Intentionally preallocates a sparse mutable Array.
+  new Array<T>(length);
+
+/**
  * Better `Array.from`.
  *
  * - Returns readonly arrays
@@ -854,7 +881,7 @@ export function zipArray<T extends ReadonlyArray<ReadonlyArray<unknown>>>(
   if (arrays.length === 0) return emptyArray;
 
   const minLength = Math.min(...mapArray(arrays, (a) => a.length));
-  const result = new Array<unknown>(minLength);
+  const result = createMutableArray<unknown>(minLength);
 
   for (let i = 0; i < minLength; i++) {
     result[i] = mapArray(arrays, (a) => a[i]);

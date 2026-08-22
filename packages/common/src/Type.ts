@@ -432,9 +432,10 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import * as bip39 from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type {
-  AtLeastTwoReadonlyArray,
-  NonEmptyReadonlyArray,
+import {
+  createMutableArray,
+  type AtLeastTwoReadonlyArray,
+  type NonEmptyReadonlyArray,
 } from "./Array.ts";
 import { assert, assertNonNullable } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
@@ -7494,7 +7495,7 @@ const copyArrayPrefix = (
   value: ReadonlyArray<unknown>,
   endIndex: number,
 ): Array<unknown> => {
-  const output = new Array<unknown>(value.length);
+  const output = createMutableArray<unknown>(value.length);
 
   for (let index = 0; index < endIndex; index++) {
     output[index] = value[index];
