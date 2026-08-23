@@ -1,5 +1,20 @@
 # @evolu/web
 
+## 3.1.0
+
+### Minor Changes
+
+- 31d2888: Added Apple platform detection
+
+  Use `isApplePlatform` to detect macOS, iOS, iPadOS, and iPod platforms in the
+  browser.
+
+  ```ts
+  import { isApplePlatform } from "@evolu/web";
+
+  expectTypeOf(isApplePlatform()).toEqualTypeOf<boolean>();
+  ```
+
 ## 3.0.2
 
 ### Patch Changes
