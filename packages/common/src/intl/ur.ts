@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -284,14 +285,28 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet")
     return `قدر ${safelyStringifyUnknownValue(error.reason.value)} Set نہیں ہے۔`;
-  if (error.reason.kind === "UnexpectedPrototype")
-    return "قدر Set subclass کی instance ہے، لیکن Set Output براہ راست Set instance ہونا چاہیے۔";
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "ExcessProperty":
       return `اضافی Set property ${safelyStringifyUnknownValue(issue.key)} کی اجازت نہیں ہے۔`;
     case "Element":
       return `index ${issue.index} پر Set element درست نہیں ہے۔`;
+  }
+};
+
+/** MapError کو اردو میں فارمیٹ کرتا ہے۔ */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap")
+    return `قدر ${safelyStringifyUnknownValue(error.reason.value)} Map نہیں ہے۔`;
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `اضافی Map property ${safelyStringifyUnknownValue(issue.key)} کی اجازت نہیں ہے۔`;
+    case "Key":
+    case "Value":
+      return `index ${issue.index} پر Map element درست نہیں ہے۔`;
+    case "Collision":
+      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} اور ${safelyStringifyUnknownValue(issue.key)} decode ہونے کے بعد ایک ہی key ${safelyStringifyUnknownValue(issue.outputKey)} بن جاتے ہیں۔`;
   }
 };
 /** TupleError کو اردو میں فارمیٹ کرتا ہے۔ */

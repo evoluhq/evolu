@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -342,10 +343,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Vrijednost ${safelyStringifyUnknownValue(error.reason.value)} nije Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Vrijednost je instanca podklase Set, ali izlaz tipa Set mora biti izravna instanca Set-a.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -353,6 +350,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Dodatno svojstvo Set-a ${safelyStringifyUnknownValue(issue.key)} nije dopušteno.`;
     case "Element":
       return `Element Set-a na indeksu ${issue.index} nije valjan.`;
+  }
+};
+
+/** Formats a MapError in Croatian. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Vrijednost ${safelyStringifyUnknownValue(error.reason.value)} nije Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Dodatno svojstvo Map-a ${safelyStringifyUnknownValue(issue.key)} nije dopušteno.`;
+    case "Key":
+    case "Value":
+      return `Element Map-a na indeksu ${issue.index} nije valjan.`;
+    case "Collision":
+      return `Ključevi Map-a ${safelyStringifyUnknownValue(issue.previousKey)} i ${safelyStringifyUnknownValue(issue.key)} dekodiraju se u isti ključ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

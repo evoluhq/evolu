@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "The value is an instance of a Set subclass, but a Set Output must be a direct Set instance.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `An excess Set property ${safelyStringifyUnknownValue(issue.key)} is not allowed.`;
     case "Element":
       return `A Set element at index ${issue.index} is invalid.`;
+  }
+};
+
+/** Formats a MapError in English. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `An excess Map property ${safelyStringifyUnknownValue(issue.key)} is not allowed.`;
+    case "Key":
+    case "Value":
+      return `A Map element at index ${issue.index} is invalid.`;
+    case "Collision":
+      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} and ${safelyStringifyUnknownValue(issue.key)} decode to the same key ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

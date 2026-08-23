@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Nilai ${safelyStringifyUnknownValue(error.reason.value)} bukan Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Nilai tersebut adalah instance subclass Set, tetapi Output Set harus berupa instance Set langsung.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Properti Set berlebih ${safelyStringifyUnknownValue(issue.key)} tidak diizinkan.`;
     case "Element":
       return `Elemen Set pada indeks ${issue.index} tidak valid.`;
+  }
+};
+
+/** Formats a MapError in Indonesian. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Nilai ${safelyStringifyUnknownValue(error.reason.value)} bukan Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Properti Map berlebih ${safelyStringifyUnknownValue(issue.key)} tidak diizinkan.`;
+    case "Key":
+    case "Value":
+      return `Elemen Map pada indeks ${issue.index} tidak valid.`;
+    case "Collision":
+      return `Kunci Map ${safelyStringifyUnknownValue(issue.previousKey)} dan ${safelyStringifyUnknownValue(issue.key)} didekode menjadi kunci yang sama, ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

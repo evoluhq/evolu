@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `${safelyStringifyUnknownValue(error.reason.value)} 값은 Set이 아닙니다.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "값은 Set 서브클래스의 인스턴스이지만 Set Output은 직접적인 Set 인스턴스여야 합니다.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `불필요한 Set 프로퍼티 ${safelyStringifyUnknownValue(issue.key)}은(는) 허용되지 않습니다.`;
     case "Element":
       return `인덱스 ${issue.index}의 Set 요소가 유효하지 않습니다.`;
+  }
+};
+
+/** MapError를 한국어로 포맷합니다. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `${safelyStringifyUnknownValue(error.reason.value)} 값은 Map이 아닙니다.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `불필요한 Map 프로퍼티 ${safelyStringifyUnknownValue(issue.key)}은(는) 허용되지 않습니다.`;
+    case "Key":
+    case "Value":
+      return `인덱스 ${issue.index}의 Map 요소가 유효하지 않습니다.`;
+    case "Collision":
+      return `Map 키 ${safelyStringifyUnknownValue(issue.previousKey)}와(과) ${safelyStringifyUnknownValue(issue.key)}은(는) 디코딩하면 동일한 키 ${safelyStringifyUnknownValue(issue.outputKey)}이(가) 됩니다.`;
   }
 };
 

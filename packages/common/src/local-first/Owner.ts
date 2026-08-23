@@ -1,6 +1,4 @@
 /**
- * ## Intro
- *
  * Cryptographic identities that define ownership, encryption, sync, and
  * deletion boundaries for Evolu data.
  *

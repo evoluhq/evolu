@@ -387,6 +387,40 @@ export type CompileTimeError<
   Message extends string,
 > = `⛔ ${Context} error: ${Message}`;
 
+/**
+ * Returns whether two types are identical according to TypeScript.
+ *
+ * Unlike mutual assignability, this distinguishes narrower literals, `any`,
+ * `unknown`, `never`, optional properties, and readonly properties.
+ * Intersection types are not normalized; apply {@link Simplify} explicitly when
+ * normalization is part of the intended comparison.
+ *
+ * ### Exact type equality
+ *
+ * ```ts
+ * import { assertType, type IsSameType } from "@evolu/common";
+ *
+ * assertType<
+ *   true,
+ *   IsSameType<{ readonly id: string }, { readonly id: string }>
+ * >();
+ * assertType<false, IsSameType<"ready", string>>();
+ * ```
+ */
+export type IsSameType<A, B> =
+  (<T>() => T extends (A & T) | T ? true : false) extends <T>() => T extends
+    (B & T) | T
+    ? true
+    : false
+    ? [A] extends [never]
+      ? [B] extends [never]
+        ? true
+        : false
+      : [B] extends [never]
+        ? false
+        : true
+    : false;
+
 /** Returns whether a type is a union. */
 export type IsUnion<T, Whole = T> = [T] extends [never]
   ? false

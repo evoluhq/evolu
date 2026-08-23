@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `مقدار ${safelyStringifyUnknownValue(error.reason.value)} یک Set نیست.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "مقدار نمونه‌ای از یک زیرکلاس Set است، اما خروجی Set باید مستقیماً نمونه‌ای از Set باشد.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `property اضافی ${safelyStringifyUnknownValue(issue.key)} روی Set مجاز نیست.`;
     case "Element":
       return `عنصر Set در اندیس ${issue.index} نامعتبر است.`;
+  }
+};
+
+/** MapError را به فارسی قالب‌بندی می‌کند. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `مقدار ${safelyStringifyUnknownValue(error.reason.value)} یک Map نیست.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `property اضافی ${safelyStringifyUnknownValue(issue.key)} روی Map مجاز نیست.`;
+    case "Key":
+    case "Value":
+      return `عنصر Map در اندیس ${issue.index} نامعتبر است.`;
+    case "Collision":
+      return `کلیدهای Map یعنی ${safelyStringifyUnknownValue(issue.previousKey)} و ${safelyStringifyUnknownValue(issue.key)} پس از decode به کلید یکسان ${safelyStringifyUnknownValue(issue.outputKey)} تبدیل می‌شوند.`;
   }
 };
 

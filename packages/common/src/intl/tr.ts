@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Değer ${safelyStringifyUnknownValue(error.reason.value)} bir Set değildir.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Değer bir Set alt sınıfının örneğidir, ancak bir Set Output doğrudan bir Set örneği olmalıdır.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Fazladan Set özelliğine ${safelyStringifyUnknownValue(issue.key)} izin verilmez.`;
     case "Element":
       return `${issue.index} dizinindeki Set öğesi geçersiz.`;
+  }
+};
+
+/** Formats a MapError in Turkish. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Değer ${safelyStringifyUnknownValue(error.reason.value)} bir Map değildir.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Fazladan Map özelliğine ${safelyStringifyUnknownValue(issue.key)} izin verilmez.`;
+    case "Key":
+    case "Value":
+      return `${issue.index} dizinindeki Map öğesi geçersiz.`;
+    case "Collision":
+      return `Map anahtarları ${safelyStringifyUnknownValue(issue.previousKey)} ve ${safelyStringifyUnknownValue(issue.key)}, aynı ${safelyStringifyUnknownValue(issue.outputKey)} anahtarına çözümleniyor.`;
   }
 };
 

@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -286,14 +287,28 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet")
     return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} nie je Set.`;
-  if (error.reason.kind === "UnexpectedPrototype")
-    return "Hodnota je inštanciou podtriedy Set, ale výstup typu Set musí byť priamou inštanciou Set.";
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "ExcessProperty":
       return `Set obsahuje nepovolenú vlastnosť ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Element":
       return `Prvok Set na indexe ${issue.index} nie je platný.`;
+  }
+};
+
+/** Formats a MapError in Slovak. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap")
+    return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} nie je Map.`;
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Map obsahuje nepovolenú vlastnosť ${safelyStringifyUnknownValue(issue.key)}.`;
+    case "Key":
+    case "Value":
+      return `Prvok Map na indexe ${issue.index} nie je platný.`;
+    case "Collision":
+      return `Kľúče Map ${safelyStringifyUnknownValue(issue.previousKey)} a ${safelyStringifyUnknownValue(issue.key)} sa dekódujú na rovnaký kľúč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 /** Formats a TupleError in Slovak. */

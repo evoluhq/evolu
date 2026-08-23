@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Il valore ${safelyStringifyUnknownValue(error.reason.value)} non è un Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Il valore è un’istanza di una sottoclasse di Set, ma l’Output di Set deve essere un’istanza diretta di Set.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `La proprietà Set in eccesso ${safelyStringifyUnknownValue(issue.key)} non è consentita.`;
     case "Element":
       return `L’elemento del Set all’indice ${issue.index} non è valido.`;
+  }
+};
+
+/** Formatta MapError in italiano. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Il valore ${safelyStringifyUnknownValue(error.reason.value)} non è un Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `La proprietà Map in eccesso ${safelyStringifyUnknownValue(issue.key)} non è consentita.`;
+    case "Key":
+    case "Value":
+      return `L’elemento del Map all’indice ${issue.index} non è valido.`;
+    case "Collision":
+      return `Le chiavi Map ${safelyStringifyUnknownValue(issue.previousKey)} e ${safelyStringifyUnknownValue(issue.key)} vengono decodificate nella stessa chiave ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

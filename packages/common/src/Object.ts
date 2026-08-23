@@ -10,20 +10,56 @@
  */
 export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
 
+/** An Object representation recognized by {@link getObjectKind}. */
+export type ObjectKind =
+  "Array" | "Date" | "Map" | "Object" | "Set" | "Uint8Array" | "Unsupported";
+
+/**
+ * Classifies Object representations supported by Evolu's structural data APIs.
+ *
+ * Plain Objects are classified from their prototype without reading their
+ * properties, including `Symbol.toStringTag`.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { getObjectKind } from "@evolu/common";
+ *
+ * expect(getObjectKind({})).toBe("Object");
+ * expect(getObjectKind(new Map())).toBe("Map");
+ * expect(getObjectKind(/value/u)).toBe("Unsupported");
+ * ```
+ */
+export const getObjectKind = (value: object): ObjectKind => {
+  if (Array.isArray(value)) return "Array";
+  if (isPlainObject(value)) return "Object";
+
+  switch (Object.prototype.toString.call(value)) {
+    case "[object Date]":
+      return "Date";
+    case "[object Map]":
+      return "Map";
+    case "[object Set]":
+      return "Set";
+    case "[object Uint8Array]":
+      return "Uint8Array";
+    default:
+      return "Unsupported";
+  }
+};
+
 /**
  * Checks if a value is a plain object (e.g., created with `{}` or `Object`).
  *
- * Accepts objects with `Object.prototype` and objects with a `null` prototype
- * created via `Object.create(null)`. Rejects class instances and other built-in
- * objects because their prototype chain includes an application-specific or
- * built-in prototype before `Object.prototype`.
+ * Accepts objects with a `null` prototype. Otherwise, it uses a realm-neutral
+ * structural heuristic: the immediate prototype must be a root object with own
+ * `hasOwnProperty` and `isPrototypeOf` properties. This recognizes ordinary
+ * Objects from another JavaScript realm without relying on prototype identity.
  *
- * The prototype-chain check uses structure instead of `prototype ===
- * Object.prototype` so it also works for plain objects coming from another
- * JavaScript realm.
- *
- * TODO: deprecated Use `Object.is` from Type. Define a dedicated Type when
- * another object domain is required.
+ * A custom root prototype with the same shape can therefore be classified as
+ * plain. This function assumes trusted JavaScript and is not a prototype
+ * authentication or security boundary. Other custom prototypes, class
+ * instances, and built-in objects are rejected.
  *
  * ### Example
  *
@@ -41,12 +77,17 @@ export type ReadonlyRecord<K extends keyof any, V> = Readonly<Record<K, V>>;
 export const isPlainObject = (
   value: unknown,
 ): value is Record<string, unknown> => {
-  if (Object.prototype.toString.call(value) !== "[object Object]") {
+  if (value === null || typeof value !== "object") {
     return false;
   }
 
   const prototype = Object.getPrototypeOf(value) as object | null;
-  return prototype === null || Object.getPrototypeOf(prototype) === null;
+  if (prototype === null) return true;
+  return (
+    Object.getPrototypeOf(prototype) === null &&
+    Object.hasOwn(prototype, "hasOwnProperty") &&
+    Object.hasOwn(prototype, "isPrototypeOf")
+  );
 };
 
 /**

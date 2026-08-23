@@ -1,12 +1,14 @@
-import { expectErr, expectOk } from "@evolu/vitest";
+import { expectOk } from "@evolu/vitest";
 import { runInNewContext } from "node:vm";
 import { expect, test } from "vitest";
 import {
   ArrayBuffer,
   array,
+  Data,
   Date,
   discriminatedUnion,
   JsonValue,
+  map,
   Object,
   object,
   record,
@@ -22,6 +24,7 @@ test("accepts legitimate structured values from another realm by identity", () =
   const Names = array(String);
   const Name = tuple(String, String);
   const Values = record(String, String);
+  const ValuesByName = map(String, String);
   const StringSet = set(String);
   const Created = typed("Created", { name: String });
   const Deleted = typed("Deleted", { name: String });
@@ -30,6 +33,7 @@ test("accepts legitimate structured values from another realm by identity", () =
     readonly arrayValue: unknown;
     readonly eventValue: unknown;
     readonly jsonValue: unknown;
+    readonly mapValue: unknown;
     readonly objectValue: unknown;
     readonly setValue: unknown;
     readonly tupleValue: unknown;
@@ -37,6 +41,7 @@ test("accepts legitimate structured values from another realm by identity", () =
     arrayValue: ["Ada"],
     eventValue: { type: "Created", name: "Ada" },
     jsonValue: { nested: ["Ada"] },
+    mapValue: new Map([["Ada", "Lovelace"]]),
     objectValue: { name: "Ada" },
     setValue: new Set(["Ada"]),
     tupleValue: ["Ada", "Lovelace"],
@@ -48,6 +53,7 @@ test("accepts legitimate structured values from another realm by identity", () =
   expect(values.setValue).not.toBeInstanceOf(globalThis.Set);
   expect(values.eventValue).not.toBeInstanceOf(globalThis.Object);
   expect(values.jsonValue).not.toBeInstanceOf(globalThis.Object);
+  expect(values.mapValue).not.toBeInstanceOf(globalThis.Map);
 
   const modelResult = Model.fromUnknown(values.objectValue);
   const objectResult = Object.fromUnknown(values.objectValue);
@@ -57,6 +63,7 @@ test("accepts legitimate structured values from another realm by identity", () =
   const setResult = StringSet.fromUnknown(values.setValue);
   const eventResult = Event.fromUnknown(values.eventValue);
   const jsonResult = JsonValue.fromUnknown(values.jsonValue);
+  const mapResult = ValuesByName.fromUnknown(values.mapValue);
 
   expectOk(modelResult, values.objectValue);
   expectOk(objectResult, values.objectValue);
@@ -66,6 +73,7 @@ test("accepts legitimate structured values from another realm by identity", () =
   expectOk(setResult, values.setValue);
   expectOk(eventResult, values.eventValue);
   expectOk(jsonResult, values.jsonValue);
+  expectOk(mapResult, values.mapValue);
 
   expect(modelResult.value).toBe(values.objectValue);
   expect(objectResult.value).toBe(values.objectValue);
@@ -75,6 +83,7 @@ test("accepts legitimate structured values from another realm by identity", () =
   expect(setResult.value).toBe(values.setValue);
   expect(eventResult.value).toBe(values.eventValue);
   expect(jsonResult.value).toBe(values.jsonValue);
+  expect(mapResult.value).toBe(values.mapValue);
 
   expect(Model.is(values.objectValue)).toBe(true);
   expect(Object.is(values.objectValue)).toBe(true);
@@ -84,20 +93,7 @@ test("accepts legitimate structured values from another realm by identity", () =
   expect(StringSet.is(values.setValue)).toBe(true);
   expect(Event.is(values.eventValue)).toBe(true);
   expect(JsonValue.is(values.jsonValue)).toBe(true);
-});
-
-test("rejects Set subclasses from another realm", () => {
-  const StringSet = set(String);
-  const value: ReadonlySet<string> = runInNewContext(
-    'new (class extends Set {})(["Ada"])',
-  );
-
-  expect(value).not.toBeInstanceOf(globalThis.Set);
-  expectErr(StringSet.fromUnknown(value), {
-    type: "Set",
-    reason: { kind: "UnexpectedPrototype", value },
-  });
-  expect(StringSet.is(value)).toBe(false);
+  expect(ValuesByName.is(values.mapValue)).toBe(true);
 });
 
 test("accepts foreign-realm Object schema property maps", () => {
@@ -125,6 +121,16 @@ test("accepts foreign null-prototype objects because they have no realm identity
   expectOk(result, value);
   expect(result.value).toBe(value);
   expect(Object.is(value)).toBe(true);
+});
+
+test("Data accepts a valid Uint8Array from another realm", () => {
+  const value: unknown = runInNewContext("new Uint8Array([1, 2, 3])");
+  const result = Data.fromUnknown(value);
+
+  expect(value).not.toBeInstanceOf(globalThis.Uint8Array);
+  expectOk(result, value);
+  expect(result.value).toBe(value);
+  expect(Data.is(value)).toBe(true);
 });
 
 test("accepts built-in instances from another realm by identity", () => {

@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -289,9 +290,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Giá trị ${safelyStringifyUnknownValue(error.reason.value)} không phải là Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Giá trị là một thể hiện của lớp con Set, nhưng Set Output phải là một thể hiện Set trực tiếp.";
-  }
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -299,6 +297,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Không cho phép thuộc tính Set dư thừa ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Element":
       return `Phần tử Set tại chỉ mục ${issue.index} không hợp lệ.`;
+  }
+};
+
+/** Định dạng MapError bằng tiếng Việt. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Giá trị ${safelyStringifyUnknownValue(error.reason.value)} không phải là Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Không cho phép thuộc tính Map dư thừa ${safelyStringifyUnknownValue(issue.key)}.`;
+    case "Key":
+    case "Value":
+      return `Phần tử Map tại chỉ mục ${issue.index} không hợp lệ.`;
+    case "Collision":
+      return `Các khóa Map ${safelyStringifyUnknownValue(issue.previousKey)} và ${safelyStringifyUnknownValue(issue.key)} giải mã thành cùng một khóa ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

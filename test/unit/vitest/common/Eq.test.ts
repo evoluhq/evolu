@@ -1,15 +1,24 @@
-import { expect, test } from "vitest";
+import { expect, expectTypeOf, test } from "vitest";
 import {
   createEqArrayLike,
   createEqObject,
+  eqArrayNumber,
+  eqData,
   eqFromOrder,
+  eqJsonValue,
   eqJsonValueInput,
   eqNumber,
   eqSameValueZero,
   eqStrict,
+  eqUint8Array,
+  type Eq,
 } from "../../../../packages/common/src/Eq.ts";
 import { orderNumber } from "../../../../packages/common/src/Order.ts";
-import type { JsonValueInput } from "../../../../packages/common/src/Type.ts";
+import type {
+  Data,
+  JsonValue,
+  JsonValueInput,
+} from "../../../../packages/common/src/Type.ts";
 
 test("eqStrict", () => {
   expect(eqStrict(1, 1)).toBe(true);
@@ -37,12 +46,24 @@ test("eqFromOrder", () => {
 });
 
 test("createEqArrayLike", () => {
-  const eqArrayNumber = createEqArrayLike(eqNumber);
+  const eqArrayNumberFromEq = createEqArrayLike(eqNumber);
   const array = [1, 2, 3];
-  expect(eqArrayNumber(array, array)).toBe(true);
-  expect(eqArrayNumber([1, 2, 3], [1, 2])).toBe(false);
-  expect(eqArrayNumber([1, 2, 3], [1, 2, 3])).toBe(true);
-  expect(eqArrayNumber([1, 2, 3], [1, 2, 4])).toBe(false);
+  expect(eqArrayNumberFromEq(array, array)).toBe(true);
+  expect(eqArrayNumberFromEq([1, 2, 3], [1, 2])).toBe(false);
+  expect(eqArrayNumberFromEq([1, 2, 3], [1, 2, 3])).toBe(true);
+  expect(eqArrayNumberFromEq([1, 2, 3], [1, 2, 4])).toBe(false);
+});
+
+test("eqUint8Array", () => {
+  expectTypeOf(eqUint8Array).toEqualTypeOf<Eq<Uint8Array>>();
+  expect(eqUint8Array).toBe(eqArrayNumber);
+  expect(eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 2]))).toBe(
+    true,
+  );
+  expect(eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 3]))).toBe(
+    false,
+  );
+  expect(eqUint8Array(new Uint8Array([1]), new Uint8Array([1, 2]))).toBe(false);
 });
 
 test("createEqObject", () => {
@@ -53,95 +74,265 @@ test("createEqObject", () => {
   expect(eqObjectNumber({ a: 1 }, { a: 2 })).toBe(false);
 });
 
-test("eqJsonValueInput", () => {
-  expect(eqJsonValueInput(42, 42)).toBe(true);
-  expect(eqJsonValueInput(-0, -0)).toBe(true);
-  expect(eqJsonValueInput(0, 0)).toBe(true);
-  expect(eqJsonValueInput(42, 43)).toBe(false);
-  // JSON treats -0 and +0 as equal
-  expect(eqJsonValueInput(0, -0)).toBe(true);
-  // JSON treats -0 and +0 as equal
-  expect(eqJsonValueInput(-0, 0)).toBe(true);
-  expect(eqJsonValueInput("hello", "hello")).toBe(true);
-  expect(eqJsonValueInput("hello", "world")).toBe(false);
-  expect(eqJsonValueInput(true, true)).toBe(true);
-  expect(eqJsonValueInput(false, false)).toBe(true);
-  expect(eqJsonValueInput(true, false)).toBe(false);
-  expect(eqJsonValueInput(null, null)).toBe(true);
+test("eqData", () => {
+  const unsafeEqData = eqData as unknown as (
+    actual: unknown,
+    expected: unknown,
+  ) => boolean;
+  const emptyData: Data = {};
 
-  // NaN vs. NaN
-  expect(eqJsonValueInput(NaN, NaN)).toBe(true);
+  expect(eqData(NaN, NaN)).toBe(true);
+  expect(eqData(0, -0)).toBe(true);
+  expect(eqData(1, 2)).toBe(false);
+  expect(eqData(1, "1")).toBe(false);
+  expect(eqData(null, emptyData)).toBe(false);
+  expect(eqData(1n, 1n)).toBe(true);
 
-  // NaN vs. Number
-  expect(eqJsonValueInput(NaN, 0)).toBe(false);
-  expect(eqJsonValueInput(NaN, 42)).toBe(false);
-  expect(eqJsonValueInput([1, 2, 3], [1, 2, 3])).toBe(true);
-  expect(eqJsonValueInput([], [])).toBe(true);
-  expect(eqJsonValueInput(["a", "b"], ["a", "b"])).toBe(true);
-  expect(eqJsonValueInput([1, 2, 3], [1, 2])).toBe(false);
-  expect(eqJsonValueInput([], [1])).toBe(false);
-  expect(eqJsonValueInput([1, 2, 3], [1, 2, 4])).toBe(false);
-  expect(eqJsonValueInput(["a", "b"], ["a", "c"])).toBe(false);
-  expect(eqJsonValueInput([1, "2", true], [1, "2", false])).toBe(false);
+  const sameReference = { value: 1 };
+  expect(eqData(sameReference, sameReference)).toBe(true);
+  expect(eqData({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
+  expect(eqData({ a: 1 }, { a: 2 })).toBe(false);
+  expect(eqData({ a: 1 }, { b: 1 })).toBe(false);
+  expect(eqData(emptyData, { value: undefined })).toBe(false);
 
-  // Arrays with Circular References
-  const arr1: Array<JsonValueInput> = [1, 2, 3];
-  arr1.push(arr1);
-  const arr2: Array<JsonValueInput> = [1, 2, 3];
-  arr2.push(arr2);
-  expect(eqJsonValueInput(arr1, arr2)).toBe(true);
-  const objA: JsonValueInput = {
-    name: "Alice",
-    hobbies: ["reading", "hiking"],
+  const nullPrototype = Object.assign(Object.create(null) as object, {
+    value: 1,
+  });
+  expect(eqData({ value: 1 }, nullPrototype)).toBe(true);
+
+  expect(eqData([1, 2], [1, 2])).toBe(true);
+  expect(eqData([1, 2], [2, 1])).toBe(false);
+  expect(eqData([1], [1, 2])).toBe(false);
+  expect(eqData([1], { 0: 1 })).toBe(false);
+
+  expect(eqData(new Date(0), new Date(0))).toBe(true);
+  expect(eqData(new Date(0), new Date(1))).toBe(false);
+  expect(eqData(new Date(0), emptyData)).toBe(false);
+
+  expect(eqData(new Uint8Array([1, 2]), new Uint8Array([1, 2]))).toBe(true);
+  expect(eqData(new Uint8Array([1, 2]), new Uint8Array([1, 3]))).toBe(false);
+  expect(eqData(new Uint8Array([1]), new Uint8Array([1, 2]))).toBe(false);
+
+  expect(unsafeEqData(new ArrayBuffer(1), new ArrayBuffer(1))).toBe(false);
+
+  expect(eqData(new Set([1, 2]), new Set([2, 1]))).toBe(true);
+  expect(
+    eqData(
+      new Set([{ value: 1 }, { value: 2 }]),
+      new Set([{ value: 2 }, { value: 1 }]),
+    ),
+  ).toBe(true);
+  expect(eqData(new Set([{ value: 1 }]), new Set([{ value: 2 }]))).toBe(false);
+  expect(eqData(new Set([1]), new Set([1, 2]))).toBe(false);
+
+  expect(
+    unsafeEqData(
+      Object.assign(new Set([1]), { metadata: true }),
+      Object.assign(new Set([1]), { metadata: true }),
+    ),
+  ).toBe(false);
+
+  expect(
+    eqData(
+      new Map<Data, Data>([[{ id: 1 }, { name: "Ada" }]]),
+      new Map<Data, Data>([[{ id: 1 }, { name: "Ada" }]]),
+    ),
+  ).toBe(true);
+  expect(
+    eqData(
+      new Map<Data, Data>([
+        [1, "one"],
+        [2, "two"],
+      ]),
+      new Map<Data, Data>([
+        [2, "two"],
+        [1, "one"],
+      ]),
+    ),
+  ).toBe(true);
+  expect(eqData(new Map([[1, "one"]]), new Map([[1, "two"]]))).toBe(false);
+  expect(eqData(new Map([[1, "one"]]), new Map([[2, "one"]]))).toBe(false);
+  expect(eqData(new Map([[1, "one"]]), new Map<number, string>())).toBe(false);
+  expect(
+    eqData(
+      new Map<Data, Data>([
+        [{ id: 1 }, "one"],
+        [{ id: 1 }, "two"],
+      ]),
+      new Map<Data, Data>([
+        [{ id: 1 }, "two"],
+        [{ id: 1 }, "one"],
+      ]),
+    ),
+  ).toBe(true);
+
+  expect(
+    unsafeEqData(
+      Object.assign(new Map([[1, "one"]]), { metadata: true }),
+      Object.assign(new Map([[1, "one"]]), { metadata: true }),
+    ),
+  ).toBe(false);
+
+  const sparse: Array<undefined> = [];
+  sparse.length = 1;
+  expect(unsafeEqData(sparse, [undefined])).toBe(false);
+
+  const arrayAccessor: Array<number> = [];
+  Object.defineProperty(arrayAccessor, 0, {
+    enumerable: true,
+    get: () => 1,
+  });
+  arrayAccessor.length = 1;
+  expect(unsafeEqData(arrayAccessor, [1])).toBe(false);
+
+  let reads = 0;
+  const accessor = Object.defineProperty({}, "value", {
+    enumerable: true,
+    get: () => {
+      reads++;
+      return 1;
+    },
+  });
+  expect(unsafeEqData(accessor, { value: 1 })).toBe(false);
+  expect(reads).toBe(0);
+  expect(
+    unsafeEqData(
+      Object.defineProperty({}, "hidden", { value: 1 }),
+      Object.defineProperty({}, "hidden", { value: 1 }),
+    ),
+  ).toBe(false);
+  const symbolKey = Symbol("value");
+  expect(unsafeEqData({ [symbolKey]: 1 }, { [symbolKey]: 1 })).toBe(false);
+  expect(unsafeEqData([1], Object.assign([1], { extra: true }))).toBe(false);
+
+  class Model {
+    readonly value = 1;
+  }
+  expect(unsafeEqData(new Model(), new Model())).toBe(false);
+  class NullBase extends null {}
+  const nullBasePrototype = NullBase.prototype;
+  expect(
+    unsafeEqData(
+      Object.create(nullBasePrototype),
+      Object.create(nullBasePrototype),
+    ),
+  ).toBe(false);
+  expect(unsafeEqData(/value/u, /value/u)).toBe(false);
+
+  interface CircularData {
+    readonly value: number;
+    self?: CircularData;
+  }
+  const circularOne: CircularData = { value: 1 };
+  circularOne.self = circularOne;
+  const circularTwo: CircularData = { value: 1 };
+  circularTwo.self = circularTwo;
+  expect(eqData(circularOne, circularTwo)).toBe(true);
+
+  const circularDifferent: CircularData = { value: 2 };
+  circularDifferent.self = circularDifferent;
+  expect(eqData(circularOne, circularDifferent)).toBe(false);
+
+  const circularSetOne = new Set<Data>();
+  circularSetOne.add(circularSetOne);
+  const circularSetTwo = new Set<Data>();
+  circularSetTwo.add(circularSetTwo);
+  expect(eqData(circularSetOne, circularSetTwo)).toBe(true);
+
+  const backtrackingSetOne = new Set<Data>();
+  backtrackingSetOne.add(backtrackingSetOne);
+  backtrackingSetOne.add({ value: 1 });
+  const backtrackingSetTwo = new Set<Data>();
+  backtrackingSetTwo.add({ value: 1 });
+  backtrackingSetTwo.add(backtrackingSetTwo);
+  expect(eqData(backtrackingSetOne, backtrackingSetTwo)).toBe(true);
+
+  const circularMapOne = new Map<Data, Data>();
+  circularMapOne.set(circularMapOne, circularSetOne);
+  const circularMapTwo = new Map<Data, Data>();
+  circularMapTwo.set(circularMapTwo, circularSetTwo);
+  expect(eqData(circularMapOne, circularMapTwo)).toBe(true);
+
+  const shared: { readonly value?: number } = {};
+  const otherEmptyData: Data = {};
+  expect(
+    eqData(
+      { first: shared, second: shared },
+      { first: emptyData, second: otherEmptyData },
+    ),
+  ).toBe(true);
+
+  interface DeepData {
+    next?: DeepData;
+  }
+  const deepOne: DeepData = {};
+  const deepTwo: DeepData = {};
+  let currentOne = deepOne;
+  let currentTwo = deepTwo;
+  for (let index = 0; index < 10_000; index++) {
+    const nextOne: DeepData = {};
+    const nextTwo: DeepData = {};
+    currentOne.next = nextOne;
+    currentTwo.next = nextTwo;
+    currentOne = nextOne;
+    currentTwo = nextTwo;
+  }
+  expect(eqData(deepOne, deepTwo)).toBe(true);
+
+  interface Service {
+    readonly run: () => void;
+  }
+  const service: Service = { run: () => undefined };
+  const broadObject: NonNullable<unknown> = new WeakMap();
+  const compileTimeAssertions = () => {
+    // @ts-expect-error ⛔ eqData error: Actual and expected values must consist only of Data.
+    eqData(service, service);
+    // @ts-expect-error ⛔ eqData error: Actual and expected values must consist only of Data.
+    eqData(broadObject, broadObject);
   };
-  const objB: JsonValueInput = {
-    name: "Alice",
-    hobbies: ["reading", "hiking"],
-  };
-  expect(eqJsonValueInput(objA, objB)).toBe(true);
-  const objC: JsonValueInput = { name: "Bob", hobbies: ["gaming"] };
-  expect(eqJsonValueInput(objA, objC)).toBe(false);
-  const objD: JsonValueInput = { name: "Alice", age: 30 };
-  expect(eqJsonValueInput(objA, objD)).toBe(false);
-  const objE: JsonValueInput = {
-    name: "Alice",
-    hobbies: ["reading", "swimming"],
-  };
-  expect(eqJsonValueInput(objA, objE)).toBe(false);
-  const nestedA: JsonValueInput = { a: { b: { c: [1, 2, { d: 4 }] } } };
-  const nestedB: JsonValueInput = { a: { b: { c: [1, 2, { d: 4 }] } } };
-  const nestedC: JsonValueInput = { a: { b: { c: [1, 2, { d: 5 }] } } };
-  expect(eqJsonValueInput(nestedA, nestedB)).toBe(true);
-  expect(eqJsonValueInput(nestedA, nestedC)).toBe(false);
-  const arr4: JsonValueInput = [1, 2, 3];
-  const objF: JsonValueInput = { 0: 1, 1: 2, 2: 3 };
-  expect(eqJsonValueInput(arr4, objF)).toBe(false);
-  // Circular References in Objects
-  const aObj: JsonValueInput = { name: "Alice" };
-  const bObj: JsonValueInput = { name: "Alice" };
-  // Creating circular references
-  // @ts-expect-error Yes, we know it's readonly.
-  aObj.self = aObj;
-  // @ts-expect-error Yes, we know it's readonly.
-  bObj.self = bObj;
-  expect(eqJsonValueInput(aObj, bObj)).toBe(true);
-  const cObj: JsonValueInput = { name: "Alice" };
-  // @ts-expect-error Yes, we know it's readonly.
-  cObj.self = aObj;
-  expect(eqJsonValueInput(aObj, cObj)).toBe(true);
-  expect(eqJsonValueInput("42", 42)).toBe(false);
-  expect(eqJsonValueInput(true, "true")).toBe(false);
+  expect(compileTimeAssertions).toBeTypeOf("function");
+});
 
-  // Nested Structures with Circular References
-  const objG: JsonValueInput = { a: 1 };
-  // @ts-expect-error Yes, we know it's readonly.
-  objG.self = { b: objG };
-  const objH: JsonValueInput = { a: 1 };
-  // @ts-expect-error Yes, we know it's readonly.
-  objH.self = { b: objH };
-  expect(eqJsonValueInput(objG, objH)).toBe(true);
-  const objI: JsonValueInput = { a: 1 };
-  // @ts-expect-error Yes, we know it's readonly.
-  objI.self = { b: { a: 1 } };
-  expect(eqJsonValueInput(objG, objI)).toBe(false);
+test("eqData compares deeply nested Set and Map data", () => {
+  type Shape = "Set" | "MapKey" | "MapValue" | "Mixed";
+
+  const setupNestedData = (shape: Shape, leaf: Data): Data => {
+    let value = leaf;
+
+    for (let index = 0; index < 10_000; index++) {
+      const currentShape =
+        shape === "Mixed" ? (index % 2 === 0 ? "Set" : "MapValue") : shape;
+
+      if (currentShape === "Set") {
+        value = new Set([value]);
+      } else if (currentShape === "MapKey") {
+        value = new Map([[value, null]]);
+      } else {
+        value = new Map([[null, value]]);
+      }
+    }
+
+    return value;
+  };
+
+  for (const shape of ["Set", "MapKey", "MapValue", "Mixed"] as const) {
+    const actual = setupNestedData(shape, 0);
+
+    expect(eqData(actual, setupNestedData(shape, 0))).toBe(true);
+    expect(eqData(actual, setupNestedData(shape, 1))).toBe(false);
+  }
+});
+
+test("JSON equality", () => {
+  expect(eqJsonValue).toBe(eqData);
+  expect(eqJsonValueInput).toBe(eqData);
+
+  const first: JsonValue = { profile: { name: "Ada" } };
+  const second: JsonValue = { profile: { name: "Ada" } };
+  const different: JsonValue = { profile: { name: "Grace" } };
+  expect(eqJsonValue(first, second)).toBe(true);
+  expect(eqJsonValue(first, different)).toBe(false);
+
+  const input: JsonValueInput = { value: Number.NaN };
+  expect(eqJsonValueInput(input, { value: Number.NaN })).toBe(true);
 });

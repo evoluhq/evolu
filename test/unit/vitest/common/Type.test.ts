@@ -35,6 +35,7 @@ import {
   createIdAsUuidv7,
   createIdFromString,
   createType,
+  Data,
   Date,
   DateIso,
   DateIsoFromDate,
@@ -80,6 +81,7 @@ import {
   localizeTypes,
   maxLength,
   maxPositiveInt,
+  map,
   minLength,
   Mnemonic,
   multipleOf,
@@ -164,6 +166,9 @@ import {
   type BrandType,
   type Base64UrlError,
   type CapitalizedError,
+  type DataError,
+  type DataIssue,
+  type DataType,
   type DateIsoError,
   type DateIsoFromDateError,
   type DecimalStringError,
@@ -178,6 +183,7 @@ import {
   type InferErrors,
   type InferType,
   type InstanceConstructor,
+  type IsData,
   type InstanceOfError,
   type InstanceOfType,
   type Int64Error,
@@ -197,6 +203,15 @@ import {
   type LiteralError,
   type LiteralType,
   type MaxLengthError,
+  type MapEntriesError,
+  type MapError,
+  type MapExcessPropertyIssue,
+  type MapIssue,
+  type MapKeyCollisionIssue,
+  type MapKeyIssue,
+  type MapNotMapError,
+  type MapType,
+  type MapValueIssue,
   type MinLengthError,
   type MnemonicError,
   type NameError,
@@ -240,7 +255,6 @@ import {
   type SetItemsError,
   type SetNotSetError,
   type SetType,
-  type SetUnexpectedPrototypeError,
   type TemplateLiteralError,
   type TemplateLiteralParserType,
   type TemplateLiteralType,
@@ -335,6 +349,32 @@ const setupLowercaseFromString = () => {
   return { Lowercase, LowercaseFromString };
 };
 
+const setupUnexpectedPrototypeValues = (): ReadonlyArray<
+  Readonly<Record<string, string>>
+> => {
+  class NullBase extends null {}
+
+  return [
+    globalThis.Object.assign(
+      globalThis.Object.create({
+        constructor: globalThis.Object,
+        inherited: "rich",
+      }) as Record<string, string>,
+      { type: "Created", name: "Ada" },
+    ),
+    globalThis.Object.assign(
+      globalThis.Object.create(
+        globalThis.Object.create(null) as object,
+      ) as Record<string, string>,
+      { type: "Created", name: "Ada" },
+    ),
+    globalThis.Object.assign(
+      globalThis.Object.create(NullBase.prototype) as Record<string, string>,
+      { type: "Created", name: "Ada" },
+    ),
+  ];
+};
+
 const expectAssertionError = (
   operation: () => unknown,
   message: string,
@@ -419,6 +459,7 @@ describe("Type", () => {
       BigInt,
       Boolean,
       CapitalizedString,
+      Data,
       Date,
       DateIso,
       DateIsoFromDate,
@@ -519,6 +560,7 @@ describe("Type", () => {
       union(String, Number),
       array(minLength(2)(String)),
       tuple(String, NumberFromString),
+      map(String, Number),
       record(regex("IntrospectionKey", /^key/u)(String), NumberFromString),
       set(minLength(2)(String)),
       object(
@@ -547,6 +589,7 @@ describe("Type", () => {
       "BigInt",
       "Boolean",
       "Capitalized",
+      "Data",
       "Date",
       "DateIso",
       "DateIsoFromDate",
@@ -578,6 +621,7 @@ describe("Type", () => {
       "LessThanOrEqualTo1",
       "LessThanOrEqualTo4",
       "Literal",
+      "Map",
       "MaxLength100",
       "MaxLength1000",
       "MaxLength3",
@@ -813,33 +857,6 @@ describe("Type", () => {
   });
 });
 
-describe("assertType", () => {
-  test("narrows values that satisfy a Type Output", () => {
-    const value: unknown = 42;
-
-    assertType(Number, value);
-
-    expectTypeOf(value).toEqualTypeOf<number>();
-  });
-
-  test("rejects values that satisfy only a transformed Type Input", () => {
-    const NumberFromString = setupNumberFromString();
-
-    expectAssertionError(
-      () => assertType(NumberFromString, "42"),
-      "Expected NumberFromString.",
-      {
-        type: "NumberFromString",
-        outputError: {
-          type: "TypeOf",
-          expected: "Number",
-          value: "42",
-        },
-      },
-    );
-  });
-});
-
 describe("Type operations", () => {
   test("assert each selected boundary with its name and structured error", () => {
     const positiveError = { type: "Positive", value: 0 } as const;
@@ -1054,6 +1071,43 @@ describe("Standard Schema", () => {
     });
   });
 
+  test("locates Map key, value, and structural issues", async () => {
+    const Values = map(String, Number);
+    const input = new globalThis.Map<unknown, unknown>([[1, "1"]]);
+    globalThis.Object.defineProperty(input, "metadata", {
+      enumerable: true,
+      value: true,
+    });
+
+    expect(await Values["~standard"].validate(input)).toEqual({
+      issues: [
+        {
+          message: 'An excess Map property "metadata" is not allowed.',
+          path: ["metadata"],
+        },
+        { message: "A value 1 is not a string.", path: [0, "key"] },
+        { message: 'A value "1" is not a number.', path: [0, "value"] },
+      ],
+    });
+
+    const NumberFromString = setupNumberFromString();
+    expect(
+      await map(NumberFromString, Number)["~standard"].validate(
+        new globalThis.Map([
+          ["01", 1],
+          ["1", 2],
+        ]),
+      ),
+    ).toEqual({
+      issues: [
+        {
+          message: "Map keys at indexes 0 and 1 decode to the same key 1.",
+          path: [1],
+        },
+      ],
+    });
+  });
+
   test("does not duplicate Object Record property paths", async () => {
     const Model = object(
       { fixed: array(Number) },
@@ -1233,6 +1287,75 @@ describe("Standard Schema", () => {
         },
       ],
     });
+  });
+
+  test("uses Data issue paths", async () => {
+    const result = await Data["~standard"].validate({
+      first: /first/u,
+      second: /second/u,
+    });
+
+    expect(result).toEqual({
+      issues: [
+        {
+          message: "A Data Object has an unexpected prototype.",
+          path: ["first"],
+        },
+        {
+          message: "A Data Object has an unexpected prototype.",
+          path: ["second"],
+        },
+      ],
+    });
+  });
+});
+
+describe("assertType", () => {
+  test("asserts compiler-identical types", () => {
+    assertType<string, string>();
+    assertType<unknown, unknown>();
+    assertType<never, never>();
+    assertType<{ readonly value?: string }, { readonly value?: string }>();
+
+    const compileTimeAssertions = () => {
+      // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
+      assertType<string, "value">();
+      // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
+      assertType<unknown, any>();
+      // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
+      assertType<{ value: string }, { readonly value: string }>();
+      // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
+      assertType<
+        { readonly value: string | undefined },
+        { readonly value?: string }
+      >();
+    };
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("narrows values that satisfy a Type Output", () => {
+    const value: unknown = 42;
+
+    assertType(Number, value);
+
+    expectTypeOf(value).toEqualTypeOf<number>();
+  });
+
+  test("rejects values that satisfy only a transformed Type Input", () => {
+    const NumberFromString = setupNumberFromString();
+
+    expectAssertionError(
+      () => assertType(NumberFromString, "42"),
+      "Expected NumberFromString.",
+      {
+        type: "NumberFromString",
+        outputError: {
+          type: "TypeOf",
+          expected: "Number",
+          value: "42",
+        },
+      },
+    );
   });
 });
 
@@ -2129,6 +2252,17 @@ describe("localizeTypes", () => {
     }
     expect(() =>
       localizeTypes({ String }, { en: new EnglishFormatters() }),
+    ).toThrow(
+      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    );
+
+    const customRoot = globalThis.Object.create(null) as object;
+    const customPrototypeFormatters = globalThis.Object.assign(
+      globalThis.Object.create(customRoot) as object,
+      { String: () => "String." },
+    ) as { readonly String: () => string };
+    expect(() =>
+      localizeTypes({ String }, { en: customPrototypeFormatters }),
     ).toThrow(
       "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
     );
@@ -4901,117 +5035,105 @@ describe("union", () => {
   });
 });
 
-describe("digit Types", () => {
-  test("Digit", () => {
-    expectTypeOf<typeof Digit.Output>().toEqualTypeOf<
-      "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+describe("undefinedOr", () => {
+  test("creates a Union with the supplied Type before Undefined", () => {
+    const UndefinedOrString = undefinedOr(String);
+    const StringOrNumber = union(String, Number);
+    const UndefinedOrStringOrNumber = undefinedOr(StringOrNumber);
+
+    expect(UndefinedOrString.members).toEqual([String, Undefined]);
+    expect(UndefinedOrStringOrNumber.members[0]).toBe(StringOrNumber);
+    expectTypeOf(UndefinedOrString).toEqualTypeOf<
+      UnionType<readonly [typeof String, typeof Undefined]>
     >();
-    expect(Digit.is("0")).toBe(true);
-    expect(Digit.is("10")).toBe(false);
-  });
-
-  test("Digit1To9", () => {
-    expectTypeOf<typeof Digit1To9.Output>().toEqualTypeOf<
-      "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+    expectTypeOf<typeof UndefinedOrString.Output>().toEqualTypeOf<
+      string | undefined
     >();
-    expect(Digit1To9.is("1")).toBe(true);
-    expect(Digit1To9.is("0")).toBe(false);
+    expect(UndefinedOrString.fromUnknown(42)).toEqual(
+      err({
+        type: "Union",
+        errors: [
+          {
+            index: 0,
+            error: { type: "TypeOf", expected: "String", value: 42 },
+          },
+        ],
+      }),
+    );
   });
 
-  test("Digit1To6", () => {
-    expectTypeOf<typeof Digit1To6.Output>().toEqualTypeOf<
-      "1" | "2" | "3" | "4" | "5" | "6"
-    >();
-    expect(Digit1To6.is("6")).toBe(true);
-    expect(Digit1To6.is("7")).toBe(false);
-  });
+  test("rejects an uncertain supplied Type", () => {
+    type Value = typeof String | typeof Number;
+    const value = String as Value;
+    const erased: FormattableTypeNode = String;
+    const compileTimeAssertions = () => {
+      // @ts-expect-error The supplied Type must use one concrete Type node.
+      undefinedOr(value);
+      // @ts-expect-error The supplied Type must preserve its concrete information.
+      undefinedOr(erased);
+    };
 
-  test("Digit1To23", () => {
-    expectTypeOf<"1">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"9">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"10">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"19">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"20">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"23">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"0">().not.toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"24">().not.toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"01">().not.toExtend<typeof Digit1To23.Output>();
-    expect(Digit1To23.is("23")).toBe(true);
-    expect(Digit1To23.is("24")).toBe(false);
-  });
-
-  test("Digit1To51", () => {
-    expectTypeOf<"1">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"9">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"10">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"49">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"50">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"51">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"0">().not.toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"52">().not.toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"01">().not.toExtend<typeof Digit1To51.Output>();
-    expect(Digit1To51.is("51")).toBe(true);
-    expect(Digit1To51.is("52")).toBe(false);
-  });
-
-  test("Digit1To99", () => {
-    expectTypeOf<"1">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"9">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"10">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"50">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"99">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"0">().not.toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"100">().not.toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"01">().not.toExtend<typeof Digit1To99.Output>();
-    expect(Digit1To99.is("99")).toBe(true);
-    expect(Digit1To99.is("100")).toBe(false);
-  });
-
-  test("Digit1To59", () => {
-    expectTypeOf<"1">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"9">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"10">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"50">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"59">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"0">().not.toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"60">().not.toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"99">().not.toExtend<typeof Digit1To59.Output>();
-    expect(Digit1To59.is("59")).toBe(true);
-    expect(Digit1To59.is("60")).toBe(false);
+    expectTypeOf(compileTimeAssertions).toBeFunction();
   });
 });
 
-describe("templateLiteral", () => {
-  test("creates the canonical string Type directly", () => {
-    const B = literal("b");
-    const Value = templateLiteral("a", B, "c");
+describe("nullOr", () => {
+  test("creates a Union with the supplied Type before Null", () => {
+    const NullOrString = nullOr(String);
+    const StringOrNumber = union(String, Number);
+    const NullOrStringOrNumber = nullOr(StringOrNumber);
 
-    expect(Value.name).toBe("TemplateLiteral");
-    expect(Value.parent).toBe(String);
-    expect(Value.parts).toEqual(["a", B, "c"]);
-    expectTypeOf(Value).toEqualTypeOf<
-      TemplateLiteralType<readonly ["a", typeof B, "c"]>
+    expect(NullOrString.members).toEqual([String, Null]);
+    expect(NullOrStringOrNumber.members[0]).toBe(StringOrNumber);
+    expectTypeOf(NullOrString).toEqualTypeOf<
+      UnionType<readonly [typeof String, typeof Null]>
     >();
-    expectTypeOf<typeof Value.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"abc">();
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<"abc">();
-    expectOk(Value.fromUnknown("abc"), "abc");
-    expect(Value.is("abc")).toBe(true);
-    expect(Value.is("adc")).toBe(false);
-    expect(Value.is(["b"])).toBe(false);
+    expectTypeOf<typeof NullOrString.Output>().toEqualTypeOf<string | null>();
   });
 
-  test("uses the same reversible framing rules as templateLiteralParser", () => {
-    const Value = templateLiteral(String, "::");
-    const Parser = templateLiteralParser(String, "::");
+  test("rejects an uncertain supplied Type", () => {
+    type Value = typeof String | typeof Number;
+    const value = String as Value;
+    const erased: FormattableTypeNode = String;
     const compileTimeAssertions = () => {
-      // @ts-expect-error At most one Type capture can have a variable-width string representation.
-      templateLiteral(String, ":", String);
+      // @ts-expect-error The supplied Type must use one concrete Type node.
+      nullOr(value);
+      // @ts-expect-error The supplied Type must preserve its concrete information.
+      nullOr(erased);
     };
 
-    expectOk(Value.fromUnknown("a::::"), "a::::");
-    expect(Value.is("a::::")).toBe(Parser.parent.is("a::::"));
-    void compileTimeAssertions;
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+});
+
+describe("nullishOr", () => {
+  test("creates a Union with the supplied Type before Null and Undefined", () => {
+    const NullishOrString = nullishOr(String);
+    const StringOrNumber = union(String, Number);
+    const NullishOrStringOrNumber = nullishOr(StringOrNumber);
+
+    expect(NullishOrString.members).toEqual([String, Null, Undefined]);
+    expect(NullishOrStringOrNumber.members[0]).toBe(StringOrNumber);
+    expectTypeOf(NullishOrString).toEqualTypeOf<
+      UnionType<readonly [typeof String, typeof Null, typeof Undefined]>
+    >();
+    expectTypeOf<typeof NullishOrString.Output>().toEqualTypeOf<
+      string | null | undefined
+    >();
+  });
+
+  test("rejects an uncertain supplied Type", () => {
+    type Value = typeof String | typeof Number;
+    const value = String as Value;
+    const erased: FormattableTypeNode = String;
+    const compileTimeAssertions = () => {
+      // @ts-expect-error The supplied Type must use one concrete Type node.
+      nullishOr(value);
+      // @ts-expect-error The supplied Type must preserve its concrete information.
+      nullishOr(erased);
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
   });
 });
 
@@ -5770,105 +5892,37 @@ describe("templateLiteralParser", () => {
   });
 });
 
-describe("undefinedOr", () => {
-  test("creates a Union with the supplied Type before Undefined", () => {
-    const UndefinedOrString = undefinedOr(String);
-    const StringOrNumber = union(String, Number);
-    const UndefinedOrStringOrNumber = undefinedOr(StringOrNumber);
+describe("templateLiteral", () => {
+  test("creates the canonical string Type directly", () => {
+    const B = literal("b");
+    const Value = templateLiteral("a", B, "c");
 
-    expect(UndefinedOrString.members).toEqual([String, Undefined]);
-    expect(UndefinedOrStringOrNumber.members[0]).toBe(StringOrNumber);
-    expectTypeOf(UndefinedOrString).toEqualTypeOf<
-      UnionType<readonly [typeof String, typeof Undefined]>
+    expect(Value.name).toBe("TemplateLiteral");
+    expect(Value.parent).toBe(String);
+    expect(Value.parts).toEqual(["a", B, "c"]);
+    expectTypeOf(Value).toEqualTypeOf<
+      TemplateLiteralType<readonly ["a", typeof B, "c"]>
     >();
-    expectTypeOf<typeof UndefinedOrString.Output>().toEqualTypeOf<
-      string | undefined
-    >();
-    expect(UndefinedOrString.fromUnknown(42)).toEqual(
-      err({
-        type: "Union",
-        errors: [
-          {
-            index: 0,
-            error: { type: "TypeOf", expected: "String", value: 42 },
-          },
-        ],
-      }),
-    );
+    expectTypeOf<typeof Value.Input>().toEqualTypeOf<string>();
+    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"abc">();
+    expectTypeOf<typeof Value.Output>().toEqualTypeOf<"abc">();
+    expectOk(Value.fromUnknown("abc"), "abc");
+    expect(Value.is("abc")).toBe(true);
+    expect(Value.is("adc")).toBe(false);
+    expect(Value.is(["b"])).toBe(false);
   });
 
-  test("rejects an uncertain supplied Type", () => {
-    type Value = typeof String | typeof Number;
-    const value = String as Value;
-    const erased: FormattableTypeNode = String;
+  test("uses the same reversible framing rules as templateLiteralParser", () => {
+    const Value = templateLiteral(String, "::");
+    const Parser = templateLiteralParser(String, "::");
     const compileTimeAssertions = () => {
-      // @ts-expect-error The supplied Type must use one concrete Type node.
-      undefinedOr(value);
-      // @ts-expect-error The supplied Type must preserve its concrete information.
-      undefinedOr(erased);
+      // @ts-expect-error At most one Type capture can have a variable-width string representation.
+      templateLiteral(String, ":", String);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
-  });
-});
-
-describe("nullOr", () => {
-  test("creates a Union with the supplied Type before Null", () => {
-    const NullOrString = nullOr(String);
-    const StringOrNumber = union(String, Number);
-    const NullOrStringOrNumber = nullOr(StringOrNumber);
-
-    expect(NullOrString.members).toEqual([String, Null]);
-    expect(NullOrStringOrNumber.members[0]).toBe(StringOrNumber);
-    expectTypeOf(NullOrString).toEqualTypeOf<
-      UnionType<readonly [typeof String, typeof Null]>
-    >();
-    expectTypeOf<typeof NullOrString.Output>().toEqualTypeOf<string | null>();
-  });
-
-  test("rejects an uncertain supplied Type", () => {
-    type Value = typeof String | typeof Number;
-    const value = String as Value;
-    const erased: FormattableTypeNode = String;
-    const compileTimeAssertions = () => {
-      // @ts-expect-error The supplied Type must use one concrete Type node.
-      nullOr(value);
-      // @ts-expect-error The supplied Type must preserve its concrete information.
-      nullOr(erased);
-    };
-
-    expectTypeOf(compileTimeAssertions).toBeFunction();
-  });
-});
-
-describe("nullishOr", () => {
-  test("creates a Union with the supplied Type before Null and Undefined", () => {
-    const NullishOrString = nullishOr(String);
-    const StringOrNumber = union(String, Number);
-    const NullishOrStringOrNumber = nullishOr(StringOrNumber);
-
-    expect(NullishOrString.members).toEqual([String, Null, Undefined]);
-    expect(NullishOrStringOrNumber.members[0]).toBe(StringOrNumber);
-    expectTypeOf(NullishOrString).toEqualTypeOf<
-      UnionType<readonly [typeof String, typeof Null, typeof Undefined]>
-    >();
-    expectTypeOf<typeof NullishOrString.Output>().toEqualTypeOf<
-      string | null | undefined
-    >();
-  });
-
-  test("rejects an uncertain supplied Type", () => {
-    type Value = typeof String | typeof Number;
-    const value = String as Value;
-    const erased: FormattableTypeNode = String;
-    const compileTimeAssertions = () => {
-      // @ts-expect-error The supplied Type must use one concrete Type node.
-      nullishOr(value);
-      // @ts-expect-error The supplied Type must preserve its concrete information.
-      nullishOr(erased);
-    };
-
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    expectOk(Value.fromUnknown("a::::"), "a::::");
+    expect(Value.is("a::::")).toBe(Parser.parent.is("a::::"));
+    void compileTimeAssertions;
   });
 });
 
@@ -8897,26 +8951,6 @@ describe("array", () => {
       expect(reads).toBe(0);
     });
 
-    test("accepts Array subclasses and custom prototypes by identity", () => {
-      const Values = array(Number);
-
-      class NumberArray extends globalThis.Array<number> {}
-
-      const subclass = new NumberArray(1, 2);
-      const customPrototype = [1, 2];
-      globalThis.Object.setPrototypeOf(customPrototype, null);
-
-      for (const value of [subclass, customPrototype]) {
-        const result = Values.fromUnknown(value);
-
-        expectOk(result, value);
-        expect(result.value).toBe(value);
-        expect(Values.is(value)).toBe(true);
-        expect(Values.from(value)).toEqual(ok(value));
-        expect(Values.to(value)).toBe(value);
-      }
-    });
-
     test("locates decoding transformation errors by element", () => {
       const NumberFromString = setupNumberFromString();
       const Numbers = array(NumberFromString);
@@ -10213,16 +10247,6 @@ describe("set", () => {
       err({ type: "Set", reason: { kind: "NotSet", value: ["a", "b"] } }),
     );
 
-    class StringSet extends globalThis.Set<string> {}
-    const subclass = new StringSet(["a"]);
-    expect(Strings.fromUnknown(subclass)).toEqual(
-      err<SetUnexpectedPrototypeError>({
-        type: "Set",
-        reason: { kind: "UnexpectedPrototype", value: subclass },
-      }),
-    );
-    expect(Strings.is(subclass)).toBe(false);
-
     const withProperty = globalThis.Object.assign(
       new globalThis.Set<unknown>([1]),
       { metadata: true },
@@ -10249,20 +10273,6 @@ describe("set", () => {
         reason: {
           kind: "Items",
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
-        },
-      }),
-    );
-
-    const nullPrototype = globalThis.Object.assign(
-      globalThis.Object.create(null) as object,
-      { [globalThis.Symbol.toStringTag]: "Set" },
-    );
-    expect(Strings.fromUnknown(nullPrototype)).toEqual(
-      err<SetUnexpectedPrototypeError>({
-        type: "Set",
-        reason: {
-          kind: "UnexpectedPrototype",
-          value: nullPrototype as unknown as ReadonlySet<unknown>,
         },
       }),
     );
@@ -10318,10 +10328,8 @@ describe("set", () => {
       metadata: true,
     });
 
-    class StringSet extends globalThis.Set<string> {}
     expect(Strings.is(value)).toBe(true);
     expect(Strings.is("a")).toBe(false);
-    expect(Strings.is(new StringSet(["a"]))).toBe(false);
     expect(Strings.is(withProperty)).toBe(false);
     expect(Strings.is(new globalThis.Set([1]))).toBe(false);
     expect(Strings.to(value)).toBe(value);
@@ -10336,17 +10344,6 @@ describe("set", () => {
         reason: { kind: "NotSet", value: null },
       }),
     ).toBe("A value null is not a Set.");
-    expect(
-      Strings.formatError({
-        type: "Set",
-        reason: {
-          kind: "UnexpectedPrototype",
-          value: new (class extends globalThis.Set<string> {})(["value"]),
-        },
-      }),
-    ).toBe(
-      "The value is an instance of a Set subclass, but a Set Output must be a direct Set instance.",
-    );
     expect(
       Strings.formatError({
         type: "Set",
@@ -10373,9 +10370,7 @@ describe("set", () => {
     ).toBe("A value 1 is not a string.");
 
     expectTypeOf<SetError<TypeOfError<"String">>>().toEqualTypeOf<
-      | SetNotSetError
-      | SetUnexpectedPrototypeError
-      | SetItemsError<TypeOfError<"String">>
+      SetNotSetError | SetItemsError<TypeOfError<"String">>
     >();
     expectTypeOf<SetElementIssue<TypeOfError<"String">>>().toEqualTypeOf<{
       readonly kind: "Element";
@@ -10386,6 +10381,455 @@ describe("set", () => {
       readonly kind: "ExcessProperty";
       readonly key: string | symbol;
     }>();
+  });
+});
+
+describe("map", () => {
+  test("constructs and caches a Map Type", () => {
+    const Scores = map(String, Number);
+
+    expect(Scores.name).toBe("Map");
+    expect(Scores.key).toBe(String);
+    expect(Scores.value).toBe(Number);
+    expect(map(String, Number)).toBe(Scores);
+    expectTypeOf<typeof Scores.Output>().toEqualTypeOf<
+      ReadonlyMap<string, number>
+    >();
+    expectTypeOf<typeof Scores.Input>().toEqualTypeOf<
+      ReadonlyMap<string, number>
+    >();
+    expectTypeOf<typeof Scores.Error>().toEqualTypeOf<
+      MapError<TypeOfError<"String">, TypeOfError<"Number">, never>
+    >();
+    expectTypeOf(Scores.from).toEqualTypeOf<
+      (
+        value: ReadonlyMap<string, number>,
+        options?: ValidationOptions,
+      ) => Result<ReadonlyMap<string, number>>
+    >();
+
+    const uncertain = Math.random() ? String : Number;
+    const erased: FormattableTypeNode = String;
+    const compileTimeAssertions = () => {
+      // @ts-expect-error Map key must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+      map(uncertain, Number);
+      // @ts-expect-error Map value must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+      map(String, uncertain);
+      // @ts-expect-error A key must preserve its concrete Type.
+      map(erased, Number);
+      // @ts-expect-error A value must preserve its concrete Type.
+      map(String, erased);
+    };
+    expectTypeOf(compileTimeAssertions).toBeFunction();
+  });
+
+  test("validates the Map boundary, structure, keys, and values", () => {
+    const Scores = map(String, Number);
+    const value = new globalThis.Map<string, number>([
+      ["Ada", 10],
+      ["Grace", 20],
+    ]);
+    const result = Scores.fromUnknown(value);
+
+    expectOk(result, value);
+    expect(result.value).toBe(value);
+    expect(Scores.fromUnknown({ Ada: 10 })).toEqual(
+      err({ type: "Map", reason: { kind: "NotMap", value: { Ada: 10 } } }),
+    );
+
+    const withProperty = globalThis.Object.assign(
+      new globalThis.Map<unknown, unknown>([[1, "bad"]]),
+      { metadata: true },
+    );
+    expect(Scores.fromUnknown(withProperty, { errors: "all" })).toEqual(
+      err({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            { kind: "ExcessProperty", key: "metadata" },
+            {
+              kind: "Key",
+              index: 0,
+              key: 1,
+              error: { type: "TypeOf", expected: "String", value: 1 },
+            },
+            {
+              kind: "Value",
+              index: 0,
+              key: 1,
+              error: {
+                type: "TypeOf",
+                expected: "Number",
+                value: "bad",
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(Scores.fromUnknown(withProperty)).toEqual(
+      err({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [{ kind: "ExcessProperty", key: "metadata" }],
+        },
+      }),
+    );
+    expect(Scores.fromUnknown(new globalThis.Map([[1, 10]]))).toEqual(
+      err({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Key",
+              index: 0,
+              key: 1,
+              error: { type: "TypeOf", expected: "String", value: 1 },
+            },
+          ],
+        },
+      }),
+    );
+    expect(Scores.fromUnknown(new globalThis.Map([["Ada", "bad"]]))).toEqual(
+      err({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Value",
+              index: 0,
+              key: "Ada",
+              error: {
+                type: "TypeOf",
+                expected: "Number",
+                value: "bad",
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(
+      Scores.fromUnknown(
+        new globalThis.Map<unknown, unknown>([
+          ["Ada", "bad"],
+          ["Grace", 20],
+        ]),
+        { errors: "all" },
+      ),
+    ).toEqual(
+      err({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Value",
+              index: 0,
+              key: "Ada",
+              error: {
+                type: "TypeOf",
+                expected: "Number",
+                value: "bad",
+              },
+            },
+          ],
+        },
+      }),
+    );
+  });
+
+  test("supports key and value decoding, parent operations, and encoding", () => {
+    const NumberFromString = setupNumberFromString();
+    const Counts = map(NumberFromString, NumberFromString);
+    const input = new globalThis.Map([["1", "2"]]);
+    const output = new globalThis.Map([[1, 2]]);
+
+    expectOk(Counts.fromUnknown(input), output);
+    expect(Counts.to(output)).toEqual(input);
+    expect(Counts.is(output)).toBe(true);
+    expect(Counts.is(input)).toBe(false);
+    expect(Counts.parent).toBe(map(String, String));
+    expectOk(Counts.from.parent(input), output);
+    expectTypeOf(Counts).toEqualTypeOf<
+      MapType<typeof Counts.key, typeof Counts.value>
+    >();
+    expectTypeOf<typeof Counts.Input>().toEqualTypeOf<
+      ReadonlyMap<string, string>
+    >();
+    expectTypeOf<typeof Counts.Output>().toEqualTypeOf<
+      ReadonlyMap<number, number>
+    >();
+    expectTypeOf<typeof Counts.Error>().toEqualTypeOf<
+      MapEntriesError<NumberFromStringError, NumberFromStringError>
+    >();
+
+    const Values = map(String, NumberFromString);
+    expect(Values.to(new globalThis.Map([["one", 1]]))).toEqual(
+      new globalThis.Map([["one", "1"]]),
+    );
+
+    const TransparentNumber = transform("TransparentNumber", Number, Number, {
+      from: ok,
+      to: (value) => value,
+    });
+    const unchanged = new globalThis.Map([["one", 1]]);
+    expect(map(String, TransparentNumber).to(unchanged)).toBe(unchanged);
+  });
+
+  test("rejects decoded key collisions and invalid encoding collisions", () => {
+    const NumberFromString = setupNumberFromString();
+    const Counts = map(NumberFromString, Number);
+    const input = new globalThis.Map<string, number>([
+      ["01", 1],
+      ["1", 2],
+    ]);
+
+    expect(Counts.fromUnknown(input)).toEqual(
+      err({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Collision",
+              index: 1,
+              key: "1",
+              previousIndex: 0,
+              previousKey: "01",
+              outputKey: 1,
+            },
+          ],
+        },
+      }),
+    );
+    expect(Counts.fromUnknown(input, { errors: "all" })).toEqual(
+      err({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Collision",
+              index: 1,
+              key: "1",
+              previousIndex: 0,
+              previousKey: "01",
+              outputKey: 1,
+            },
+          ],
+        },
+      }),
+    );
+
+    const InvalidKeyEncoding = transform("InvalidKeyEncoding", String, Number, {
+      from: (value) => ok(globalThis.Number(value)),
+      to: () => "same",
+    });
+    const InvalidMap = map(InvalidKeyEncoding, String);
+
+    expect(() =>
+      InvalidMap.to(
+        new globalThis.Map([
+          [1, "one"],
+          [2, "two"],
+        ]),
+      ),
+    ).toThrow("Map key Type encoding must not produce duplicate keys.");
+  });
+
+  test("checks exact Output representation", () => {
+    const Scores = map(String, Number);
+    const value = new globalThis.Map([["Ada", 10]]);
+    const withProperty = globalThis.Object.assign(
+      new globalThis.Map([["Ada", 10]]),
+      { metadata: true },
+    );
+
+    expect(Scores.is(value)).toBe(true);
+    expect(Scores.is({ Ada: 10 })).toBe(false);
+    expect(Scores.is(withProperty)).toBe(false);
+    expect(Scores.is(new globalThis.Map([[1, 10]]))).toBe(false);
+    expect(Scores.is(new globalThis.Map([["Ada", "10"]]))).toBe(false);
+    expect(Scores.to(value)).toBe(value);
+    expectAssertionError(
+      () =>
+        Scores.from(
+          new globalThis.Map([[1, 10]]) as unknown as ReadonlyMap<
+            string,
+            number
+          >,
+        ),
+      "Expected Map.",
+      {
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Key",
+              index: 0,
+              key: 1,
+              error: { type: "TypeOf", expected: "String", value: 1 },
+            },
+          ],
+        },
+      },
+    );
+  });
+
+  test("formats structural and nested errors", () => {
+    const Scores = map(String, Number);
+
+    expect(
+      Scores.formatError({
+        type: "Map",
+        reason: { kind: "NotMap", value: null },
+      }),
+    ).toBe("A value null is not a Map.");
+    expect(
+      Scores.formatError({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [{ kind: "ExcessProperty", key: "metadata" }],
+        },
+      }),
+    ).toBe('An excess Map property "metadata" is not allowed.');
+    expect(
+      Scores.formatError({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Key",
+              index: 0,
+              key: 1,
+              error: { type: "TypeOf", expected: "String", value: 1 },
+            },
+          ],
+        },
+      }),
+    ).toBe("A value 1 is not a string.");
+    expect(
+      Scores.formatError({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Value",
+              index: 0,
+              key: "Ada",
+              error: { type: "TypeOf", expected: "Number", value: "10" },
+            },
+          ],
+        },
+      }),
+    ).toBe('A value "10" is not a number.');
+    expect(
+      map(setupNumberFromString(), Number).formatError({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: [
+            {
+              kind: "Collision",
+              index: 1,
+              key: "1",
+              previousIndex: 0,
+              previousKey: "01",
+              outputKey: 1,
+            },
+          ],
+        },
+      }),
+    ).toBe("Map keys at indexes 0 and 1 decode to the same key 1.");
+
+    expectTypeOf<
+      MapError<TypeOfError<"String">, TypeOfError<"Number">>
+    >().toEqualTypeOf<
+      | MapNotMapError
+      | MapEntriesError<
+          TypeOfError<"String">,
+          TypeOfError<"Number">,
+          MapKeyCollisionIssue | MapExcessPropertyIssue
+        >
+    >();
+    expectTypeOf<
+      MapIssue<TypeOfError<"String">, TypeOfError<"Number">>
+    >().toEqualTypeOf<
+      | MapKeyIssue<TypeOfError<"String">>
+      | MapValueIssue<TypeOfError<"Number">>
+      | MapKeyCollisionIssue
+    >();
+  });
+
+  test("localizes structural, key, and value errors", () => {
+    const Scores = map(String, Number);
+    const LocalizedScores = localizeTypes(
+      { Scores },
+      {
+        test: {
+          Map: () => "Localized Map.",
+          Number: () => "Localized Number.",
+          String: () => "Localized String.",
+        },
+      },
+    ).test.Scores;
+    const formatError = (value: unknown): string => {
+      const result = LocalizedScores.fromUnknown(value);
+      assert(!result.ok);
+      return LocalizedScores.formatError(result.error);
+    };
+
+    expect(formatError(new globalThis.Map([[1, 10]]))).toBe(
+      "Localized String.",
+    );
+    expect(formatError(new globalThis.Map([["Ada", "bad"]]))).toBe(
+      "Localized Number.",
+    );
+    expect(formatError(null)).toBe("Localized Map.");
+
+    const compileTimeAssertions = () => {
+      localizeTypes(
+        { Scores },
+        {
+          // @ts-expect-error Map is missing.
+          missingMap: {
+            Number: () => "Number.",
+            String: () => "String.",
+          },
+        },
+      );
+      localizeTypes(
+        { Scores },
+        {
+          // @ts-expect-error Number is missing.
+          missingNumber: {
+            Map: () => "Map.",
+            String: () => "String.",
+          },
+        },
+      );
+      localizeTypes(
+        { Scores },
+        {
+          // @ts-expect-error String is missing.
+          missingString: {
+            Map: () => "Map.",
+            Number: () => "Number.",
+          },
+        },
+      );
+    };
+
+    expectTypeOf(compileTimeAssertions).toBeFunction();
   });
 });
 
@@ -10602,12 +11046,8 @@ describe("tuple", () => {
       expect(Entry.is(result.value)).toBe(true);
     });
 
-    test("rejects non-arrays and wrong lengths but accepts legitimate Array prototypes", () => {
+    test("rejects non-arrays and wrong lengths", () => {
       const Pair = tuple(String, Number);
-      const customPrototype = ["count", 1] as Array<string | number>;
-      globalThis.Object.setPrototypeOf(customPrototype, null);
-      class PairArray extends globalThis.Array<string | number> {}
-      const subclass = new PairArray("count", 1);
 
       expect(Pair.fromUnknown(null)).toEqual(
         err({
@@ -10623,16 +11063,6 @@ describe("tuple", () => {
       );
       expect(Pair.is(null)).toBe(false);
       expect(Pair.is(["count"])).toBe(false);
-      for (const value of [customPrototype, subclass]) {
-        const result = Pair.fromUnknown(value);
-
-        expectOk(result, value);
-        expect(result.value).toBe(value);
-        expect(Pair.is(value)).toBe(true);
-        expect(Pair.to(value as unknown as readonly [string, number])).toBe(
-          value,
-        );
-      }
     });
 
     test("returns the first element error by default and every error on request", () => {
@@ -10994,77 +11424,83 @@ describe("tuple", () => {
   });
 });
 
-describe("plain-object classification", () => {
-  test("rejects deeper prototypes that identify their constructor as Object", () => {
-    const prototype = { constructor: globalThis.Object, inherited: "rich" };
-    const value = globalThis.Object.assign(
-      globalThis.Object.create(prototype) as Record<string, string>,
-      { type: "Created", name: "Ada" },
-    );
-    const Model = object({ type: literal("Created"), name: String });
-    const Values = record(String, String);
-    const Created = typed("Created", { name: String });
-    const Deleted = typed("Deleted", { name: String });
-    const Event = discriminatedUnion(Created, Deleted);
+describe("digit Types", () => {
+  test("Digit", () => {
+    expectTypeOf<typeof Digit.Output>().toEqualTypeOf<
+      "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+    >();
+    expect(Digit.is("0")).toBe(true);
+    expect(Digit.is("10")).toBe(false);
+  });
 
-    expect(Object.fromUnknown(value)).toEqual(
-      err({
-        type: "Object",
-        reason: { kind: "UnexpectedPrototype", value },
-      }),
-    );
-    expect(Model.fromUnknown(value)).toEqual(
-      err({
-        type: "Object",
-        reason: { kind: "UnexpectedPrototype", value },
-      }),
-    );
-    expect(Values.fromUnknown(value)).toEqual(
-      err({
-        type: "Record",
-        reason: { kind: "NotPlainRecord", value },
-      }),
-    );
-    expect(Event.fromUnknown(value)).toEqual(
-      err({
-        type: "DiscriminatedUnion",
-        reason: {
-          kind: "Object",
-          error: {
-            type: "Object",
-            reason: { kind: "UnexpectedPrototype", value },
-          },
-        },
-      }),
-    );
-    expect(JsonValue.fromUnknown(value)).toEqual(
-      err({
-        type: "JsonValue",
-        reason: {
-          kind: "Issues",
-          issues: [
-            {
-              kind: "UnexpectedPrototype",
-              path: [],
-              container: "Object",
-              value,
-            },
-          ],
-        },
-      }),
-    );
+  test("Digit1To9", () => {
+    expectTypeOf<typeof Digit1To9.Output>().toEqualTypeOf<
+      "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+    >();
+    expect(Digit1To9.is("1")).toBe(true);
+    expect(Digit1To9.is("0")).toBe(false);
+  });
 
-    for (const type of [Object, Model, Values, Event, JsonValue]) {
-      expect(type.is(value)).toBe(false);
-    }
+  test("Digit1To6", () => {
+    expectTypeOf<typeof Digit1To6.Output>().toEqualTypeOf<
+      "1" | "2" | "3" | "4" | "5" | "6"
+    >();
+    expect(Digit1To6.is("6")).toBe(true);
+    expect(Digit1To6.is("7")).toBe(false);
+  });
 
-    const props: { readonly name: typeof String } = globalThis.Object.assign(
-      globalThis.Object.create(prototype),
-      { name: String },
-    );
-    expect(() => object(props)).toThrow(
-      "Object schema properties must be own string-keyed data properties.",
-    );
+  test("Digit1To23", () => {
+    expectTypeOf<"1">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"9">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"10">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"19">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"20">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"23">().toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"0">().not.toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"24">().not.toExtend<typeof Digit1To23.Output>();
+    expectTypeOf<"01">().not.toExtend<typeof Digit1To23.Output>();
+    expect(Digit1To23.is("23")).toBe(true);
+    expect(Digit1To23.is("24")).toBe(false);
+  });
+
+  test("Digit1To51", () => {
+    expectTypeOf<"1">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"9">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"10">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"49">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"50">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"51">().toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"0">().not.toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"52">().not.toExtend<typeof Digit1To51.Output>();
+    expectTypeOf<"01">().not.toExtend<typeof Digit1To51.Output>();
+    expect(Digit1To51.is("51")).toBe(true);
+    expect(Digit1To51.is("52")).toBe(false);
+  });
+
+  test("Digit1To99", () => {
+    expectTypeOf<"1">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"9">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"10">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"50">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"99">().toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"0">().not.toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"100">().not.toExtend<typeof Digit1To99.Output>();
+    expectTypeOf<"01">().not.toExtend<typeof Digit1To99.Output>();
+    expect(Digit1To99.is("99")).toBe(true);
+    expect(Digit1To99.is("100")).toBe(false);
+  });
+
+  test("Digit1To59", () => {
+    expectTypeOf<"1">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"9">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"10">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"50">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"59">().toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"0">().not.toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"60">().not.toExtend<typeof Digit1To59.Output>();
+    expectTypeOf<"99">().not.toExtend<typeof Digit1To59.Output>();
+    expect(Digit1To59.is("59")).toBe(true);
+    expect(Digit1To59.is("60")).toBe(false);
   });
 });
 
@@ -11084,19 +11520,13 @@ describe("Object", () => {
     expect(Object.parent).toBeNull();
   });
 
-  test("accepts ordinary, null, and immediate root prototypes without copying", () => {
+  test("accepts ordinary and null prototypes without copying", () => {
     const ordinary: unknown = { name: "Ada" };
     const nullPrototype: unknown = globalThis.Object.assign(
       globalThis.Object.create(null) as Record<string, unknown>,
       { name: "Ada" },
     );
-    const rootPrototype = globalThis.Object.create(null) as object;
-    const immediateRootPrototype: unknown = globalThis.Object.assign(
-      globalThis.Object.create(rootPrototype) as Record<string, unknown>,
-      { name: "Ada" },
-    );
-
-    for (const value of [ordinary, nullPrototype, immediateRootPrototype]) {
+    for (const value of [ordinary, nullPrototype]) {
       const result = Object.fromUnknown(value);
 
       expectOk(result, value);
@@ -11109,7 +11539,7 @@ describe("Object", () => {
     expect(Object.to(typed)).toBe(typed);
   });
 
-  test("rejects non-objects, instances, and deeper prototypes", () => {
+  test("rejects non-objects, instances, and custom prototype chains", () => {
     class Example {
       readonly value = 1;
     }
@@ -11121,12 +11551,11 @@ describe("Object", () => {
       expect(Object.is(value)).toBe(false);
     }
 
-    const prototype = { constructor: globalThis.Object };
     for (const value of [
       [],
       new globalThis.Date(),
       new Example(),
-      globalThis.Object.create(prototype) as object,
+      ...setupUnexpectedPrototypeValues(),
     ]) {
       expect(Object.fromUnknown(value)).toEqual(
         err({
@@ -11643,6 +12072,20 @@ describe("record", () => {
         );
       }
       expect(inheritedReads).toBe(0);
+    });
+
+    test("rejects custom prototype chains rooted in Object or null", () => {
+      const Values = record(String, String);
+
+      for (const value of setupUnexpectedPrototypeValues()) {
+        expect(Values.fromUnknown(value)).toEqual(
+          err({
+            type: "Record",
+            reason: { kind: "NotPlainRecord", value },
+          }),
+        );
+        expect(Values.is(value)).toBe(false);
+      }
     });
 
     test("preserves an unchanged null-prototype record", () => {
@@ -12445,6 +12888,20 @@ describe("object", () => {
       expect(reads).toBe(0);
     });
 
+    test("rejects schema properties with custom prototype chains", () => {
+      for (const value of setupUnexpectedPrototypeValues()) {
+        const prototype = globalThis.Object.getPrototypeOf(value) as object;
+        const props: { readonly name: typeof String } =
+          globalThis.Object.assign(globalThis.Object.create(prototype), {
+            name: String,
+          });
+
+        expect(() => object(props)).toThrow(
+          "Object schema properties must be own string-keyed data properties.",
+        );
+      }
+    });
+
     test("rejects symbol schema properties without invoking them", () => {
       const key = globalThis.Symbol("value");
       let reads = 0;
@@ -13240,18 +13697,18 @@ describe("object", () => {
       expect(Model.is(user)).toBe(false);
     });
 
-    test("accepts an immediate root prototype", () => {
-      const Model = object({ name: String });
-      const prototype = globalThis.Object.create(null) as object;
-      const value = globalThis.Object.assign(
-        globalThis.Object.create(prototype),
-        { name: "Ada" },
-      );
-      const result = Model.fromUnknown(value);
+    test("rejects custom prototype chains", () => {
+      const Model = object({ type: literal("Created"), name: String });
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(Model.is(value)).toBe(true);
+      for (const value of setupUnexpectedPrototypeValues()) {
+        expect(Model.fromUnknown(value)).toEqual(
+          err({
+            type: "Object",
+            reason: { kind: "UnexpectedPrototype", value },
+          }),
+        );
+        expect(Model.is(value)).toBe(false);
+      }
     });
 
     test("rejects declared accessors without reading them", () => {
@@ -16014,6 +16471,28 @@ describe("discriminatedUnion", () => {
       expect(result.value).toBe(nullPrototypeInput);
       expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
     });
+
+    test("rejects custom prototype chains", () => {
+      const Created = typed("Created", { name: String });
+      const Deleted = typed("Deleted", { name: String });
+      const Event = discriminatedUnion(Created, Deleted);
+
+      for (const value of setupUnexpectedPrototypeValues()) {
+        expect(Event.fromUnknown(value)).toEqual(
+          err({
+            type: "DiscriminatedUnion",
+            reason: {
+              kind: "Object",
+              error: {
+                type: "Object",
+                reason: { kind: "UnexpectedPrototype", value },
+              },
+            },
+          }),
+        );
+        expect(Event.is(value)).toBe(false);
+      }
+    });
   });
 
   describe("composition", () => {
@@ -16129,6 +16608,46 @@ describe("lazy", () => {
   });
 
   describe("direct recursion", () => {
+    test("accepts Map as a recursive structural boundary", () => {
+      interface RecursiveStringMap extends ReadonlyMap<
+        string,
+        RecursiveStringMap
+      > {}
+      interface RecursiveStringMapEntriesError extends TypeError<"Map"> {
+        readonly reason: {
+          readonly kind: "Entries";
+          readonly issues: NonEmptyReadonlyArray<
+            | MapExcessPropertyIssue
+            | MapKeyIssue<TypeOfError<"String">>
+            | MapValueIssue<RecursiveStringMapError>
+          >;
+        };
+      }
+      type RecursiveStringMapError =
+        MapNotMapError | RecursiveStringMapEntriesError;
+
+      const RecursiveStringMap: LazyType<
+        RecursiveStringMap,
+        RecursiveStringMap,
+        never,
+        RecursiveStringMapError,
+        RecursiveStringMapError
+      > = lazy(() => map(String, RecursiveStringMap));
+
+      const leaf: RecursiveStringMap = new globalThis.Map();
+      const value: RecursiveStringMap = new globalThis.Map([["nested", leaf]]);
+
+      expect(RecursiveStringMap.fromUnknown(value)).toEqual(ok(value));
+      expect(RecursiveStringMap.is(value)).toBe(true);
+      expect(
+        RecursiveStringMap.fromUnknown(
+          new globalThis.Map([
+            ["nested", new globalThis.Map([[1, new globalThis.Map()]])],
+          ]),
+        ).ok,
+      ).toBe(false);
+    });
+
     test("validates a recursively declared pure Object", () => {
       interface StringTree {
         readonly value: string;
@@ -16556,6 +17075,470 @@ describe("lazy", () => {
   });
 });
 
+describe("Data", () => {
+  test("exposes its exact recursive contract", () => {
+    expectTypeOf(Data).toEqualTypeOf<DataType>();
+    expectTypeOf<typeof Data.Input>().toEqualTypeOf<Data>();
+    expectTypeOf<typeof Data.Output>().toEqualTypeOf<Data>();
+    expectTypeOf<typeof Data.Error>().toEqualTypeOf<DataError>();
+    expectTypeOf(Data.parent).toEqualTypeOf<null>();
+
+    interface User {
+      readonly name: string;
+      readonly roles: ReadonlySet<string>;
+    }
+    interface Node {
+      readonly value: string;
+      readonly next?: Node;
+    }
+    interface InvalidNode {
+      readonly next?: InvalidNode;
+      readonly run: () => void;
+    }
+
+    expectTypeOf<User>().not.toExtend<Data>();
+    expectTypeOf<IsData<User>>().toEqualTypeOf<true>();
+    expectTypeOf<IsData<Node>>().toEqualTypeOf<true>();
+    expectTypeOf<IsData<InvalidNode>>().toEqualTypeOf<false>();
+    expectTypeOf<
+      IsData<string | ReadonlyArray<number>>
+    >().toEqualTypeOf<true>();
+    expectTypeOf<IsData<string | (() => void)>>().toEqualTypeOf<false>();
+    expectTypeOf<IsData<symbol>>().toEqualTypeOf<false>();
+    expectTypeOf<
+      IsData<{ readonly [key: symbol]: string }>
+    >().toEqualTypeOf<false>();
+    expectTypeOf<IsData<any>>().toEqualTypeOf<false>();
+    expectTypeOf<IsData<unknown>>().toEqualTypeOf<false>();
+    expectTypeOf<IsData<object>>().toEqualTypeOf<false>();
+    expectTypeOf<IsData<NonNullable<unknown>>>().toEqualTypeOf<false>();
+    expectTypeOf<
+      IsData<Readonly<Record<never, never>>>
+    >().toEqualTypeOf<false>();
+    expectTypeOf<IsData<globalThis.ArrayBuffer>>().toEqualTypeOf<false>();
+    expectTypeOf<IsData<never>>().toEqualTypeOf<true>();
+    expectTypeOf<IsData<void>>().toEqualTypeOf<true>();
+  });
+
+  test("accepts supported Data without changing identity", () => {
+    const nullPrototype = globalThis.Object.assign(
+      globalThis.Object.create(null) as { value?: Data },
+      { value: 1 },
+    );
+    const values: ReadonlyArray<Data> = [
+      undefined,
+      null,
+      true,
+      false,
+      "text",
+      0,
+      -0,
+      globalThis.Number.NaN,
+      globalThis.Number.POSITIVE_INFINITY,
+      1n,
+      [],
+      {},
+      [1, "two", undefined],
+      { nested: { array: [1, 2, 3] } },
+      nullPrototype,
+      new globalThis.Set([1, { nested: true }]),
+      new globalThis.Map<Data, Data>([
+        ["key", { nested: true }],
+        [{ objectKey: true }, new globalThis.Set([1, 2])],
+      ]),
+      new globalThis.Date("2025-01-01T00:00:00.000Z"),
+      new globalThis.Uint8Array(),
+      new globalThis.Uint8Array([1, 2, 3]),
+    ];
+
+    for (const value of values) {
+      const result = Data.fromUnknown(value);
+
+      expectOk(result, value);
+      expect(result.value).toBe(value);
+      expect(Data.is(result.value)).toBe(true);
+      expect(Data.to(result.value)).toBe(value);
+      expect(() => globalThis.structuredClone(value)).not.toThrow();
+    }
+  });
+
+  test("accepts cyclic and shared data graphs", () => {
+    const object: { self?: Data } = {};
+    const array: Array<Data> = [];
+    const set = new globalThis.Set<Data>();
+    const map = new globalThis.Map<Data, Data>();
+    object.self = object;
+    array.push(array);
+    set.add(set);
+    map.set(map, set);
+    map.set("object", object);
+    const shared = { value: 1 };
+    const value = { object, array, set, map, first: shared, second: shared };
+
+    expectOk(Data.fromUnknown(value), value);
+    expect(Data.is(value)).toBe(true);
+    expect(Data.to(value)).toBe(value);
+  });
+
+  test("reports invalid leaves with their paths", () => {
+    const symbol = globalThis.Symbol("symbol");
+    const value = {
+      array: [() => undefined],
+      set: new globalThis.Set([new WeakSet()]),
+      map: new globalThis.Map<unknown, unknown>([[() => undefined, /value/u]]),
+    };
+
+    expect(Data.fromUnknown(value, { errors: "all" })).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [
+            { kind: "InvalidType", path: ["array", 0], value: value.array[0] },
+            {
+              kind: "UnexpectedPrototype",
+              path: ["set", 0],
+              container: "Object",
+              value: [...value.set][0],
+            },
+            {
+              kind: "InvalidType",
+              path: ["map", 0, "key"],
+              value: [...value.map][0][0],
+            },
+            {
+              kind: "UnexpectedPrototype",
+              path: ["map", 0, "value"],
+              container: "Object",
+              value: [...value.map][0][1],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(Data.fromUnknown(symbol)).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [{ kind: "InvalidType", path: [], value: symbol }],
+        },
+      }),
+    );
+
+    for (const invalid of [
+      symbol,
+      () => undefined,
+      new WeakMap(),
+      /regexp/u,
+      new globalThis.ArrayBuffer(),
+    ]) {
+      expect(Data.fromUnknown(invalid).ok).toBe(false);
+      expect(Data.is(invalid)).toBe(false);
+    }
+  });
+
+  test("rejects detached and out-of-bounds Uint8Arrays", () => {
+    const detachedBuffer = new globalThis.ArrayBuffer(1);
+    const detached = new globalThis.Uint8Array(detachedBuffer);
+    globalThis.structuredClone(detachedBuffer, {
+      transfer: [detachedBuffer],
+    });
+
+    const resizableBuffer = new globalThis.ArrayBuffer(4, {
+      maxByteLength: 8,
+    });
+    const outOfBounds = new globalThis.Uint8Array(resizableBuffer, 2, 2);
+    resizableBuffer.resize(1);
+
+    for (const value of [detached, outOfBounds]) {
+      const result = Data.fromUnknown(value);
+
+      assert(!result.ok);
+      expect(result.error.reason.issues).toHaveLength(1);
+      const issue = result.error.reason.issues[0];
+      assert(issue.kind === "InvalidUint8Array");
+      expect(issue.path).toEqual([]);
+      expect(issue.value).toBe(value);
+      expect(Data.is(value)).toBe(false);
+      expect(Data.fromUnknown(value, { errors: "all" }).ok).toBe(false);
+      expect(() => globalThis.structuredClone(value)).toThrow();
+    }
+  });
+
+  test("rejects behavioral and hidden Object properties without reading them", () => {
+    let reads = 0;
+    const symbol = globalThis.Symbol("symbol");
+    const value = globalThis.Object.defineProperties(
+      { [symbol]: 1 },
+      {
+        accessor: {
+          enumerable: true,
+          get: () => {
+            reads++;
+            return 1;
+          },
+        },
+        hidden: { enumerable: false, value: 1 },
+      },
+    );
+
+    expect(Data.fromUnknown(value, { errors: "all" })).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [
+            { kind: "Accessor", path: ["accessor"] },
+            { kind: "NonEnumerable", path: ["hidden"] },
+            { kind: "SymbolProperty", path: [symbol] },
+          ],
+        },
+      }),
+    );
+    expect(reads).toBe(0);
+    expect(Data.fromUnknown(value)).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [{ kind: "Accessor", path: ["accessor"] }],
+        },
+      }),
+    );
+    expect(
+      Data.fromUnknown(
+        globalThis.Object.defineProperty({}, "hidden", { value: 1 }),
+      ),
+    ).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [{ kind: "NonEnumerable", path: ["hidden"] }],
+        },
+      }),
+    );
+
+    const tagged = globalThis.Object.defineProperty(
+      {},
+      globalThis.Symbol.toStringTag,
+      {
+        get: () => {
+          reads++;
+          return "Date";
+        },
+      },
+    );
+    expect(Data.fromUnknown(tagged)).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [
+            { kind: "SymbolProperty", path: [globalThis.Symbol.toStringTag] },
+          ],
+        },
+      }),
+    );
+    expect(reads).toBe(0);
+
+    class Model {
+      readonly value = 1;
+    }
+
+    const model = new Model();
+    expect(Data.fromUnknown(model)).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [
+            {
+              kind: "UnexpectedPrototype",
+              path: [],
+              container: "Object",
+              value: model,
+            },
+          ],
+        },
+      }),
+    );
+
+    class NullBase extends null {}
+
+    const nullBase = globalThis.Object.create(NullBase.prototype) as NullBase;
+    expect(Data.fromUnknown(nullBase)).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [
+            {
+              kind: "UnexpectedPrototype",
+              path: [],
+              container: "Object",
+              value: nullBase,
+            },
+          ],
+        },
+      }),
+    );
+  });
+
+  test("rejects non-data Array representations", () => {
+    const sparse = createMutableArray<Data>(1);
+    expect(Data.fromUnknown(sparse)).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [{ kind: "Hole", path: [0] }],
+        },
+      }),
+    );
+    expect(Data.fromUnknown(sparse, { errors: "all" }).ok).toBe(false);
+
+    let reads = 0;
+    const accessor = createMutableArray<Data>(1);
+    globalThis.Object.defineProperty(accessor, 0, {
+      enumerable: true,
+      get: () => {
+        reads++;
+        return 1;
+      },
+    });
+    expect(Data.fromUnknown(accessor)).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [{ kind: "Accessor", path: [0] }],
+        },
+      }),
+    );
+    expect(Data.fromUnknown(accessor, { errors: "all" }).ok).toBe(false);
+    expect(reads).toBe(0);
+
+    const symbol = globalThis.Symbol("symbol");
+    const excess = globalThis.Object.assign([1], { metadata: "important" });
+    globalThis.Object.defineProperty(excess, symbol, { value: true });
+    expect(Data.fromUnknown(excess).ok).toBe(false);
+    expect(Data.fromUnknown(excess, { errors: "all" })).toEqual(
+      err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: [
+            {
+              kind: "ExcessProperty",
+              path: ["metadata"],
+              container: "Array",
+            },
+            {
+              kind: "ExcessProperty",
+              path: [symbol],
+              container: "Array",
+            },
+          ],
+        },
+      }),
+    );
+  });
+
+  test("rejects Set and Map own properties", () => {
+    const set = globalThis.Object.assign(new globalThis.Set<Data>(), {
+      metadata: true,
+    });
+    const map = globalThis.Object.assign(new globalThis.Map<Data, Data>(), {
+      metadata: true,
+    });
+    for (const [value, container] of [
+      [set, "Set"],
+      [map, "Map"],
+    ] as const) {
+      expect(Data.fromUnknown(value)).toEqual(
+        err({
+          type: "Data",
+          reason: {
+            kind: "Issues",
+            issues: [
+              {
+                kind: "ExcessProperty",
+                path: ["metadata"],
+                container,
+              },
+            ],
+          },
+        }),
+      );
+    }
+  });
+
+  test("validates deeply nested values without recursive calls", () => {
+    let value: Data = null;
+
+    for (let depth = 0; depth < 20_000; depth++) value = [value];
+
+    expectOk(Data.fromUnknown(value), value);
+    expect(Data.is(value)).toBe(true);
+  });
+
+  test("formats every issue", () => {
+    const invalid = () => undefined;
+    const issues: ReadonlyArray<readonly [DataIssue, string]> = [
+      [
+        { kind: "InvalidType", path: [], value: invalid },
+        `A value ${globalThis.String(invalid)} is not Data.`,
+      ],
+      [
+        {
+          kind: "UnexpectedPrototype",
+          path: [],
+          container: "Object",
+          value: /regexp/u,
+        },
+        "A Data Object has an unexpected prototype.",
+      ],
+      [
+        { kind: "Accessor", path: ["value"] },
+        "A Data property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.",
+      ],
+      [
+        { kind: "NonEnumerable", path: ["value"] },
+        "A Data Object property must be enumerable. Remove it or use a different Type.",
+      ],
+      [
+        { kind: "SymbolProperty", path: [globalThis.Symbol("value")] },
+        "A Data Object property key must be a string. Remove the symbol property or use a different Type.",
+      ],
+      [{ kind: "Hole", path: [0] }, "A Data Array element is missing."],
+      [
+        {
+          kind: "InvalidUint8Array",
+          path: [],
+          value: new globalThis.Uint8Array(),
+        },
+        "A Data Uint8Array must have an attached, in-bounds ArrayBuffer.",
+      ],
+      [
+        { kind: "ExcessProperty", path: ["metadata"], container: "Map" },
+        "A Data Map must not have excess own properties. Remove the property or use a different Type.",
+      ],
+    ];
+
+    for (const [issue, message] of issues) {
+      expect(
+        Data.formatError({
+          type: "Data",
+          reason: { kind: "Issues", issues: [issue] },
+        }),
+      ).toBe(message);
+    }
+  });
+});
+
 describe("JsonValue", () => {
   test("exposes exact recursive data contracts", () => {
     expectTypeOf(JsonValue).toEqualTypeOf<JsonValueType>();
@@ -16757,6 +17740,26 @@ describe("JsonValue", () => {
         },
       }),
     );
+
+    for (const value of setupUnexpectedPrototypeValues()) {
+      expect(JsonValue.fromUnknown(value)).toEqual(
+        err({
+          type: "JsonValue",
+          reason: {
+            kind: "Issues",
+            issues: [
+              {
+                kind: "UnexpectedPrototype",
+                path: [],
+                container: "Object",
+                value,
+              },
+            ],
+          },
+        }),
+      );
+      expect(JsonValue.is(value)).toBe(false);
+    }
   });
 
   test("rejects non-data Array representations", () => {

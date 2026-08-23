@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `मान ${safelyStringifyUnknownValue(error.reason.value)} Set नहीं है।`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "मान Set subclass का instance है, लेकिन Set Output को सीधे Set का instance होना चाहिए।";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `अतिरिक्त Set property ${safelyStringifyUnknownValue(issue.key)} की अनुमति नहीं है।`;
     case "Element":
       return `index ${issue.index} पर Set element अमान्य है।`;
+  }
+};
+
+/** MapError को हिंदी में format करता है। */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `मान ${safelyStringifyUnknownValue(error.reason.value)} Map नहीं है।`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `अतिरिक्त Map property ${safelyStringifyUnknownValue(issue.key)} की अनुमति नहीं है।`;
+    case "Key":
+    case "Value":
+      return `index ${issue.index} पर Map element अमान्य है।`;
+    case "Collision":
+      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} और ${safelyStringifyUnknownValue(issue.key)} decode होकर एक ही key ${safelyStringifyUnknownValue(issue.outputKey)} बनती हैं।`;
   }
 };
 

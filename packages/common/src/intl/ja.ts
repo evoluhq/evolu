@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `値 ${safelyStringifyUnknownValue(error.reason.value)} は Set ではありません。`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "値は Set のサブクラスのインスタンスですが、Set Output は Set 自体のインスタンスである必要があります。";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `余分な Set プロパティ ${safelyStringifyUnknownValue(issue.key)} は許可されていません。`;
     case "Element":
       return `インデックス ${issue.index} の Set 要素が無効です。`;
+  }
+};
+
+/** MapError を日本語でフォーマットします。 */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `値 ${safelyStringifyUnknownValue(error.reason.value)} は Map ではありません。`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `余分な Map プロパティ ${safelyStringifyUnknownValue(issue.key)} は許可されていません。`;
+    case "Key":
+    case "Value":
+      return `インデックス ${issue.index} の Map 要素が無効です。`;
+    case "Collision":
+      return `Map キー ${safelyStringifyUnknownValue(issue.previousKey)} と ${safelyStringifyUnknownValue(issue.key)} は、デコードすると同じキー ${safelyStringifyUnknownValue(issue.outputKey)} になります。`;
   }
 };
 

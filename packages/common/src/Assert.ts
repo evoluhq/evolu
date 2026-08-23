@@ -5,7 +5,17 @@
  */
 
 import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.ts";
-import type { Type } from "./Type.ts";
+import { eqData, type Eq } from "./Eq.ts";
+import type {
+  AnyResult,
+  Err,
+  InferErr,
+  InferOk,
+  Ok,
+  Result,
+} from "./Result.ts";
+import type { Data, IsData, Type } from "./Type.ts";
+import type { CompileTimeError } from "./Types.ts";
 
 /**
  * Ensures a condition is true, throwing an error with the provided message if
@@ -38,6 +48,141 @@ export const assert: (
     throw new Error(message);
   }
 };
+
+/**
+ * Asserts that a {@link Result} is an {@link Ok}, optionally compares its value,
+ * and narrows the Result.
+ *
+ * With only a Result, this checks the variant without inspecting the value.
+ * When an expected value is provided, it uses {@link eqData} for {@link Data}.
+ * Pass a custom {@link Eq} for a value outside Data or with domain-specific
+ * equality semantics.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assert,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Ok,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly id: string;
+ * }
+ *
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {}
+ *
+ * const result: Result<User, UserNotFoundError> = ok({ id: "user-1" });
+ *
+ * assertOk(result);
+ * assertType<Ok<User>, typeof result>();
+ * assert(result.value.id === "user-1", "Expected user-1.");
+ * ```
+ */
+export function assertOk<R extends Result<unknown, unknown>>(
+  result: R,
+): asserts result is Extract<R, Ok<unknown>>;
+export function assertOk<R extends Result<unknown, unknown>>(
+  result: R,
+  expectedValue: InferOk<R>,
+  eq: Eq<InferOk<R>>,
+): asserts result is Extract<R, Ok<unknown>>;
+export function assertOk<R extends Result<unknown, unknown>>(
+  result: R,
+  expectedValue: IsData<InferOk<R>> extends true
+    ? InferOk<R>
+    : CompileTimeError<
+        "assertOk",
+        "Result value must consist only of Data when no custom Eq is provided."
+      >,
+): asserts result is Extract<R, Ok<unknown>>;
+export function assertOk(
+  result: AnyResult,
+  ...comparison: [] | [expectedValue: unknown, eq?: Eq<any>]
+): asserts result is Ok<unknown> {
+  assert(result.ok, "Expected an Ok result.");
+  if (comparison.length === 0) return;
+
+  const expectedValue = comparison[0];
+  const eq: Eq<any> = comparison[1] ?? eqData;
+  assert(
+    eq(result.value, expectedValue),
+    "Expected the value to equal the expected value.",
+  );
+}
+
+/**
+ * Asserts that a {@link Result} is an {@link Err}, optionally compares its error,
+ * and narrows the Result.
+ *
+ * With only a Result, this checks the variant without inspecting the error.
+ * When an expected error is provided, it uses {@link eqData} for {@link Data}.
+ * Pass a custom {@link Eq} for an error outside Data or with domain-specific
+ * equality semantics.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assert,
+ *   assertErr,
+ *   assertType,
+ *   err,
+ *   type Err,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
+ *
+ * interface UserNotFoundError extends Typed<"UserNotFound"> {
+ *   readonly id: string;
+ * }
+ *
+ * const result: Result<string, UserNotFoundError> = err({
+ *   type: "UserNotFound",
+ *   id: "user-1",
+ * });
+ *
+ * assertErr(result);
+ * assertType<Err<UserNotFoundError>, typeof result>();
+ * assert(result.error.id === "user-1", "Expected user-1.");
+ * ```
+ */
+export function assertErr<R extends Result<unknown, unknown>>(
+  result: R,
+): asserts result is Extract<R, Err<unknown>>;
+export function assertErr<R extends Result<unknown, unknown>>(
+  result: R,
+  expectedError: InferErr<R>,
+  eq: Eq<InferErr<R>>,
+): asserts result is Extract<R, Err<unknown>>;
+export function assertErr<R extends Result<unknown, unknown>>(
+  result: R,
+  expectedError: IsData<InferErr<R>> extends true
+    ? InferErr<R>
+    : CompileTimeError<
+        "assertErr",
+        "Result error must consist only of Data when no custom Eq is provided."
+      >,
+): asserts result is Extract<R, Err<unknown>>;
+export function assertErr(
+  result: AnyResult,
+  ...comparison: [] | [expectedError: unknown, eq?: Eq<any>]
+): asserts result is Err<unknown> {
+  assert(!result.ok, "Expected an Err result.");
+  if (comparison.length === 0) return;
+
+  const expectedError = comparison[0];
+  const eq: Eq<any> = comparison[1] ?? eqData;
+  assert(
+    eq(result.error, expectedError),
+    "Expected the error to equal the expected error.",
+  );
+}
 
 /**
  * Asserts that a value is non-nullable.

@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Ang halagang ${safelyStringifyUnknownValue(error.reason.value)} ay hindi Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Ang halaga ay instance ng Set subclass, ngunit ang Set Output ay dapat direktang Set instance.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Hindi pinapayagan ang sobrang Set property na ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Element":
       return `Hindi valid ang Set element sa index na ${issue.index}.`;
+  }
+};
+
+/** Fino-format ang MapError sa Filipino. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Ang halagang ${safelyStringifyUnknownValue(error.reason.value)} ay hindi Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Hindi pinapayagan ang sobrang Map property na ${safelyStringifyUnknownValue(issue.key)}.`;
+    case "Key":
+    case "Value":
+      return `Hindi valid ang Map element sa index na ${issue.index}.`;
+    case "Collision":
+      return `Ang Map keys na ${safelyStringifyUnknownValue(issue.previousKey)} at ${safelyStringifyUnknownValue(issue.key)} ay nade-decode sa iisang key na ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

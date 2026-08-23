@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} není Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Hodnota je instancí podtřídy Setu, ale Output typu Set musí být přímou instancí Setu.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Set obsahuje nepovolenou vlastní vlastnost ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Element":
       return `Prvek Setu na indexu ${issue.index} není platný.`;
+  }
+};
+
+/** Formats a MapError in Czech. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Hodnota ${safelyStringifyUnknownValue(error.reason.value)} není Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Map obsahuje nepovolenou vlastní vlastnost ${safelyStringifyUnknownValue(issue.key)}.`;
+    case "Key":
+    case "Value":
+      return `Prvek Mapu na indexu ${issue.index} není platný.`;
+    case "Collision":
+      return `Klíče Mapu ${safelyStringifyUnknownValue(issue.previousKey)} a ${safelyStringifyUnknownValue(issue.key)} se dekódují na stejný klíč ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -342,10 +343,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Η τιμή ${safelyStringifyUnknownValue(error.reason.value)} δεν είναι Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Η τιμή είναι στιγμιότυπο υποκλάσης Set, αλλά ένα Set Output πρέπει να είναι άμεσο στιγμιότυπο Set.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -353,6 +350,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Δεν επιτρέπεται επιπλέον ιδιότητα Set ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Element":
       return `Το στοιχείο Set στη θέση ${issue.index} δεν είναι έγκυρο.`;
+  }
+};
+
+/** Formats a MapError in Greek. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Η τιμή ${safelyStringifyUnknownValue(error.reason.value)} δεν είναι Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Δεν επιτρέπεται επιπλέον ιδιότητα Map ${safelyStringifyUnknownValue(issue.key)}.`;
+    case "Key":
+    case "Value":
+      return `Το στοιχείο Map στη θέση ${issue.index} δεν είναι έγκυρο.`;
+    case "Collision":
+      return `Τα κλειδιά Map ${safelyStringifyUnknownValue(issue.previousKey)} και ${safelyStringifyUnknownValue(issue.key)} αποκωδικοποιούνται στο ίδιο κλειδί ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

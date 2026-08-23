@@ -37,22 +37,22 @@ describe("Homepage bundle sizes", () => {
       {
         "Task": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 8428,
-            "rawSizeInBytes": 26068,
+            "brotliSizeInBytes": 8403,
+            "rawSizeInBytes": 26130,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 9086,
-            "rawSizeInBytes": 27970,
+            "brotliSizeInBytes": 9109,
+            "rawSizeInBytes": 28076,
           },
         },
         "Type": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 2629,
-            "rawSizeInBytes": 8009,
+            "brotliSizeInBytes": 2649,
+            "rawSizeInBytes": 8091,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 2647,
-            "rawSizeInBytes": 8085,
+            "brotliSizeInBytes": 2665,
+            "rawSizeInBytes": 8173,
           },
         },
       }

@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -330,10 +331,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `值 ${safelyStringifyUnknownValue(error.reason.value)} 不是 Set。`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "该值是 Set 子类的实例，但 Set Output 必须是直接的 Set 实例。";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -341,6 +338,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `不允许多余的 Set 属性 ${safelyStringifyUnknownValue(issue.key)}。`;
     case "Element":
       return `索引 ${issue.index} 处的 Set 元素无效。`;
+  }
+};
+
+/** 以简体中文格式化 MapError。 */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `值 ${safelyStringifyUnknownValue(error.reason.value)} 不是 Map。`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `不允许多余的 Map 属性 ${safelyStringifyUnknownValue(issue.key)}。`;
+    case "Key":
+    case "Value":
+      return `索引 ${issue.index} 处的 Map 元素无效。`;
+    case "Collision":
+      return `Map 键 ${safelyStringifyUnknownValue(issue.previousKey)} 和 ${safelyStringifyUnknownValue(issue.key)} 解码后得到相同的键 ${safelyStringifyUnknownValue(issue.outputKey)}。`;
   }
 };
 

@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -241,10 +242,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `A(z) ${safelyStringifyUnknownValue(error.reason.value)} érték nem Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Az érték egy Set-alosztály példánya, de a Set Outputnak közvetlen Set-példánynak kell lennie.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -252,6 +249,23 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `A többlet Set-tulajdonság ${safelyStringifyUnknownValue(issue.key)} nem engedélyezett.`;
     case "Element":
       return `A(z) ${issue.index} indexen lévő Set-elem érvénytelen.`;
+  }
+};
+
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `A(z) ${safelyStringifyUnknownValue(error.reason.value)} érték nem Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `A többlet Map-tulajdonság ${safelyStringifyUnknownValue(issue.key)} nem engedélyezett.`;
+    case "Key":
+    case "Value":
+      return `A(z) ${issue.index} indexen lévő Map-elem érvénytelen.`;
+    case "Collision":
+      return `A(z) ${safelyStringifyUnknownValue(issue.previousKey)} és ${safelyStringifyUnknownValue(issue.key)} Map-kulcs ugyanarra a(z) ${safelyStringifyUnknownValue(issue.outputKey)} kulcsra dekódolódik.`;
   }
 };
 

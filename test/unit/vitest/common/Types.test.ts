@@ -18,6 +18,7 @@ import {
   type Awaitable,
   isPromiseLike,
   type CompileTimeError,
+  type IsSameType,
   type IsUnion,
   type KeysOfUnion,
   type UnionToIntersection,
@@ -207,6 +208,36 @@ test("CompileTimeError", () => {
   expectTypeOf<
     CompileTimeError<"Type", "Something went wrong">
   >().toEqualTypeOf<"⛔ Type error: Something went wrong">();
+});
+
+test("IsSameType", () => {
+  expectTypeOf<IsSameType<string, string>>().toEqualTypeOf<true>();
+  expectTypeOf<IsSameType<"value", string>>().toEqualTypeOf<false>();
+  expectTypeOf<IsSameType<any, unknown>>().toEqualTypeOf<false>();
+  expectTypeOf<IsSameType<unknown, unknown>>().toEqualTypeOf<true>();
+  expectTypeOf<IsSameType<never, never>>().toEqualTypeOf<true>();
+  expectTypeOf<IsSameType<never, unknown>>().toEqualTypeOf<false>();
+  expectTypeOf<
+    IsSameType<{ readonly value: string }, { value: string }>
+  >().toEqualTypeOf<false>();
+  expectTypeOf<
+    IsSameType<
+      { readonly value?: string },
+      { readonly value: string | undefined }
+    >
+  >().toEqualTypeOf<false>();
+  expectTypeOf<
+    IsSameType<
+      { readonly first: 1 } & { readonly second: 2 },
+      { readonly first: 1; readonly second: 2 }
+    >
+  >().toEqualTypeOf<false>();
+  expectTypeOf<
+    IsSameType<
+      Simplify<{ readonly first: 1 } & { readonly second: 2 }>,
+      { readonly first: 1; readonly second: 2 }
+    >
+  >().toEqualTypeOf<true>();
 });
 
 test("IsUnion", () => {

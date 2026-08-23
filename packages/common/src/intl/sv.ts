@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Värdet ${safelyStringifyUnknownValue(error.reason.value)} är inte en Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Värdet är en instans av en Set-underklass, men en Set Output måste vara en direkt Set-instans.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `En extra Set-egenskap ${safelyStringifyUnknownValue(issue.key)} är inte tillåten.`;
     case "Element":
       return `Ett Set-element vid index ${issue.index} är ogiltigt.`;
+  }
+};
+
+/** Formaterar ett MapError på svenska. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Värdet ${safelyStringifyUnknownValue(error.reason.value)} är inte en Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `En extra Map-egenskap ${safelyStringifyUnknownValue(issue.key)} är inte tillåten.`;
+    case "Key":
+    case "Value":
+      return `Ett Map-element vid index ${issue.index} är ogiltigt.`;
+    case "Collision":
+      return `Map-nycklarna ${safelyStringifyUnknownValue(issue.previousKey)} och ${safelyStringifyUnknownValue(issue.key)} avkodas till samma nyckel ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

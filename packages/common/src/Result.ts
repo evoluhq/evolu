@@ -1,6 +1,4 @@
 /**
- * ## Intro
- *
  * Type-safe error handling with {@link Result}.
  *
  * The problem with exceptions in JavaScript is that a caught value is always of

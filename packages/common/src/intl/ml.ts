@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `മൂല്യം ${safelyStringifyUnknownValue(error.reason.value)} ഒരു Set അല്ല.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "മൂല്യം ഒരു Set subclass-ന്റെ instance ആണ്, എന്നാൽ Set Output നേരിട്ടുള്ള Set instance ആയിരിക്കണം.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `അധിക Set property ${safelyStringifyUnknownValue(issue.key)} അനുവദനീയമല്ല.`;
     case "Element":
       return `index ${issue.index}-ലെ Set element അസാധുവാണ്.`;
+  }
+};
+
+/** MapError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `മൂല്യം ${safelyStringifyUnknownValue(error.reason.value)} ഒരു Map അല്ല.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `അധിക Map property ${safelyStringifyUnknownValue(issue.key)} അനുവദനീയമല്ല.`;
+    case "Key":
+    case "Value":
+      return `index ${issue.index}-ലെ Map element അസാധുവാണ്.`;
+    case "Collision":
+      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} ഉം ${safelyStringifyUnknownValue(issue.key)} ഉം decode ചെയ്യുമ്പോൾ അതേ key ${safelyStringifyUnknownValue(issue.outputKey)} ലഭിക്കുന്നു.`;
   }
 };
 

@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -238,14 +239,27 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet")
     return `En verdi ${safelyStringifyUnknownValue(error.reason.value)} er ikke et Set.`;
-  if (error.reason.kind === "UnexpectedPrototype")
-    return "Verdien er en instans av en Set-underklasse, men et Set Output må være en direkte Set-instans.";
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "ExcessProperty":
       return `En overflødig Set-egenskap ${safelyStringifyUnknownValue(issue.key)} er ikke tillatt.`;
     case "Element":
       return `Et Set-element med indeks ${issue.index} er ugyldig.`;
+  }
+};
+
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap")
+    return `En verdi ${safelyStringifyUnknownValue(error.reason.value)} er ikke et Map.`;
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `En overflødig Map-egenskap ${safelyStringifyUnknownValue(issue.key)} er ikke tillatt.`;
+    case "Key":
+    case "Value":
+      return `Et Map-element med indeks ${issue.index} er ugyldig.`;
+    case "Collision":
+      return `Map-nøklene ${safelyStringifyUnknownValue(issue.previousKey)} og ${safelyStringifyUnknownValue(issue.key)} dekoder til samme nøkkel ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

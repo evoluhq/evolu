@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no és un Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "El valor és una instància d’una subclasse de Set, però l’Output de Set ha de ser una instància directa de Set.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `No es permet la propietat Set addicional ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Element":
       return `L’element de Set a l’índex ${issue.index} no és vàlid.`;
+  }
+};
+
+/** Formata MapError en català. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no és un Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `No es permet la propietat Map addicional ${safelyStringifyUnknownValue(issue.key)}.`;
+    case "Key":
+    case "Value":
+      return `L’element de Map a l’índex ${issue.index} no és vàlid.`;
+    case "Collision":
+      return `Les claus de Map ${safelyStringifyUnknownValue(issue.previousKey)} i ${safelyStringifyUnknownValue(issue.key)} es descodifiquen a la mateixa clau ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

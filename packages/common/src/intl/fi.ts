@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Arvo ${safelyStringifyUnknownValue(error.reason.value)} ei ole Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Arvo on Set-aliluokan instanssi, mutta Set Outputin on oltava suora Set-instanssi.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Ylimääräinen Set-ominaisuus ${safelyStringifyUnknownValue(issue.key)} ei ole sallittu.`;
     case "Element":
       return `Setin indeksissä ${issue.index} oleva alkio on virheellinen.`;
+  }
+};
+
+/** Muotoilee MapError-virheen suomeksi. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Arvo ${safelyStringifyUnknownValue(error.reason.value)} ei ole Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Ylimääräinen Map-ominaisuus ${safelyStringifyUnknownValue(issue.key)} ei ole sallittu.`;
+    case "Key":
+    case "Value":
+      return `Mapin indeksissä ${issue.index} oleva alkio on virheellinen.`;
+    case "Collision":
+      return `Map-avaimet ${safelyStringifyUnknownValue(issue.previousKey)} ja ${safelyStringifyUnknownValue(issue.key)} dekoodautuvat samaksi avaimeksi ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

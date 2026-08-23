@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `மதிப்பு ${safelyStringifyUnknownValue(error.reason.value)} ஒரு Set அல்ல.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "மதிப்பு Set subclass-இன் instance ஆக உள்ளது, ஆனால் Set Output நேரடியான Set instance ஆக இருக்க வேண்டும்.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `கூடுதலான Set property ${safelyStringifyUnknownValue(issue.key)} அனுமதிக்கப்படாது.`;
     case "Element":
       return `index ${issue.index}-இல் உள்ள Set element செல்லுபடியாகாது.`;
+  }
+};
+
+/** MapError-ஐ தமிழில் வடிவமைக்கிறது. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `மதிப்பு ${safelyStringifyUnknownValue(error.reason.value)} ஒரு Map அல்ல.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `கூடுதலான Map property ${safelyStringifyUnknownValue(issue.key)} அனுமதிக்கப்படாது.`;
+    case "Key":
+    case "Value":
+      return `index ${issue.index}-இல் உள்ள Map element செல்லுபடியாகாது.`;
+    case "Collision":
+      return `Map key-கள் ${safelyStringifyUnknownValue(issue.previousKey)} மற்றும் ${safelyStringifyUnknownValue(issue.key)} ஒரே key ${safelyStringifyUnknownValue(issue.outputKey)}-ஆக decode ஆகின்றன.`;
   }
 };
 

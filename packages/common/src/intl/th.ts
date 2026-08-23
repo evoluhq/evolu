@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -332,10 +333,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `ค่า ${safelyStringifyUnknownValue(error.reason.value)} ไม่ใช่ Set`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "ค่านี้เป็นอินสแตนซ์ของคลาสย่อย Set แต่ Set Output ต้องเป็นอินสแตนซ์ของ Set โดยตรง";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -343,6 +340,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `ไม่อนุญาตให้มี Set property ส่วนเกิน ${safelyStringifyUnknownValue(issue.key)}`;
     case "Element":
       return `องค์ประกอบ Set ที่ดัชนี ${issue.index} ไม่ถูกต้อง`;
+  }
+};
+
+/** จัดรูปแบบ MapError เป็นภาษาไทย */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `ค่า ${safelyStringifyUnknownValue(error.reason.value)} ไม่ใช่ Map`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `ไม่อนุญาตให้มี Map property ส่วนเกิน ${safelyStringifyUnknownValue(issue.key)}`;
+    case "Key":
+    case "Value":
+      return `องค์ประกอบ Map ที่ดัชนี ${issue.index} ไม่ถูกต้อง`;
+    case "Collision":
+      return `คีย์ Map ${safelyStringifyUnknownValue(issue.previousKey)} และ ${safelyStringifyUnknownValue(issue.key)} ถอดรหัสเป็นคีย์เดียวกัน ${safelyStringifyUnknownValue(issue.outputKey)}`;
   }
 };
 

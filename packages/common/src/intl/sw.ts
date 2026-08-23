@@ -200,14 +200,27 @@ export const formatArrayError: T.TypeErrorFormatter<T.ArrayError> = (error) => {
 export const formatSetError: T.TypeErrorFormatter<T.SetError> = (error) => {
   if (error.reason.kind === "NotSet")
     return `Thamani ${safelyStringifyUnknownValue(error.reason.value)} si Set.`;
-  if (error.reason.kind === "UnexpectedPrototype")
-    return "Thamani ni instance ya subclass ya Set, lakini Set Output lazima iwe instance ya Set ya moja kwa moja.";
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "ExcessProperty":
       return `Sifa ya Set ya ziada ${safelyStringifyUnknownValue(issue.key)} hairuhusiwi.`;
     case "Element":
       return `Kipengele cha Set katika faharasa ${issue.index} si halali.`;
+  }
+};
+
+export const formatMapError: T.TypeErrorFormatter<T.MapError> = (error) => {
+  if (error.reason.kind === "NotMap")
+    return `Thamani ${safelyStringifyUnknownValue(error.reason.value)} si Map.`;
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Sifa ya Map ya ziada ${safelyStringifyUnknownValue(issue.key)} hairuhusiwi.`;
+    case "Key":
+    case "Value":
+      return `Kipengele cha Map katika faharasa ${issue.index} si halali.`;
+    case "Collision":
+      return `Funguo za Map ${safelyStringifyUnknownValue(issue.previousKey)} na ${safelyStringifyUnknownValue(issue.key)} zinafumbuliwa kuwa ufunguo uleule ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 export const formatTupleError: T.TypeErrorFormatter<

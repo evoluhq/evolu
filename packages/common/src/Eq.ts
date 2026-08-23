@@ -5,12 +5,9 @@
  */
 
 import type { Order } from "./Order.ts";
-import type {
-  JsonArray,
-  JsonObject,
-  JsonValue,
-  JsonValueInput,
-} from "./Type.ts";
+import { getObjectKind } from "./Object.ts";
+import type { Data, IsData, JsonValue, JsonValueInput } from "./Type.ts";
+import type { CompileTimeError } from "./Types.ts";
 
 /**
  * Compares two values of the same type `A` for equality.
@@ -154,6 +151,24 @@ export const eqArrayStrict = /*#__PURE__*/ createEqArrayLike(eqStrict);
 export const eqArrayNumber = /*#__PURE__*/ createEqArrayLike(eqNumber);
 
 /**
+ * Compares two Uint8Arrays by byte value.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { eqUint8Array } from "@evolu/common";
+ *
+ * expect(
+ *   eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 2])),
+ * ).toBe(true);
+ * expect(
+ *   eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 3])),
+ * ).toBe(false);
+ * ```
+ */
+export const eqUint8Array: Eq<Uint8Array> = eqArrayNumber;
+
+/**
  * Creates an equivalence function for objects based on an equivalence for their
  * fields.
  *
@@ -183,122 +198,412 @@ export const createEqObject =
   };
 
 /**
- * Deeply compares two {@link JsonValue} values for equality.
+ * Compares two {@link Data} values.
  *
- * - Uses an iterative approach with a stack to handle large or deeply nested
- *   objects without risking stack overflow.
- * - Defensively handles circular references in runtime values without looping,
- *   although cyclic values are not valid JSON.
- * - Unlike JSON.stringify, this function directly compares values, avoiding
- *   serialization overhead and leveraging short-circuit evaluation for faster
- *   failure on mismatched structures.
+ * Primitive values use SameValueZero, so `NaN` equals itself and `0` equals
+ * `-0`. Arrays and Object properties are ordered and keyed respectively. Sets
+ * and Maps compare their elements and entries without regard to insertion
+ * order. Dates compare their time values, while Uint8Arrays compare their
+ * bytes. Cyclic and shared data graphs are supported.
+ *
+ * The compile-time validation recursively accepts ordinary interfaces whose
+ * properties consist only of Data. Runtime representation details are trusted;
+ * use the {@link Data} Type at an unknown boundary.
  *
  * ### Example
  *
  * ```ts
- * import { eqJsonValue, type JsonValue } from "@evolu/common";
+ * import { assert, eqData } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly name: string;
+ *   readonly roles: ReadonlySet<string>;
+ * }
+ *
+ * const first: User = { name: "Ada", roles: new Set(["admin", "author"]) };
+ * const second: User = {
+ *   name: "Ada",
+ *   roles: new Set(["author", "admin"]),
+ * };
+ *
+ * assert(eqData(first, second), "Expected users to contain equal Data.");
+ * ```
+ */
+export function eqData<Actual, Expected>(
+  actual: Actual,
+  expected: Expected,
+  ...dataError: EqDataError<Actual | Expected>
+): boolean;
+export function eqData(actual: Data, expected: Data): boolean {
+  return eqDataInternal(actual, expected, {
+    pairs: [],
+    rightsByLeft: new Map(),
+  });
+}
+
+/**
+ * Compares two {@link JsonValue} values using {@link eqData}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assert, eqJsonValue, type JsonValue } from "@evolu/common";
  *
  * const first: JsonValue = { profile: { name: "Ada" } };
  * const second: JsonValue = { profile: { name: "Ada" } };
  *
- * expect(eqJsonValue(first, second)).toBe(true);
+ * assert(eqJsonValue(first, second), "Expected equal JSON values.");
  * ```
  */
-export const eqJsonValue = (a: JsonValue, b: JsonValue): boolean => {
-  const stack: Array<[JsonValue, JsonValue]> = [[a, b]];
+export const eqJsonValue: Eq<JsonValue> = eqData;
 
-  const seen = new WeakMap<object, WeakSet<object>>();
+/** Compares two {@link JsonValueInput} values using {@link eqData}. */
+export const eqJsonValueInput: Eq<JsonValueInput> = eqData;
 
-  while (stack.length > 0) {
-    const [x, y] = stack.pop()!;
+type EqDataError<Value> =
+  IsData<Value> extends true
+    ? []
+    : [
+        error: CompileTimeError<
+          "eqData",
+          "Actual and expected values must consist only of Data."
+        >,
+      ];
 
-    if (x === y) continue;
+interface EqDataContext {
+  readonly pairs: Array<readonly [object, object]>;
+  readonly rightsByLeft: Map<object, Set<object>>;
+}
 
-    const typeX = typeof x;
-    const typeY = typeof y;
+interface EqDataCompareFrame {
+  readonly kind: "Compare";
+  readonly actual: Data;
+  readonly expected: Data;
+}
 
-    if (typeX !== typeY || x === null || y === null) return false;
+interface EqDataSetFrame {
+  readonly kind: "Set";
+  readonly actual: ReadonlyArray<Data>;
+  readonly actualIndex: number;
+  readonly unmatched: Array<Data>;
+  readonly candidateIndex: number;
+}
 
-    if (typeX === "number" && isNaN(x as number) && isNaN(y as number)) {
+interface EqDataMapFrame {
+  readonly kind: "Map";
+  readonly actual: ReadonlyArray<readonly [Data, Data]>;
+  readonly actualIndex: number;
+  readonly unmatched: Array<readonly [Data, Data]>;
+  readonly candidateIndex: number;
+}
+
+interface EqDataCommitSetFrame {
+  readonly kind: "CommitSet";
+  readonly match: EqDataSetFrame;
+}
+
+interface EqDataCommitMapFrame {
+  readonly kind: "CommitMap";
+  readonly match: EqDataMapFrame;
+}
+
+interface EqDataFailFrame {
+  readonly kind: "Fail";
+}
+
+type EqDataFrame =
+  | EqDataCompareFrame
+  | EqDataSetFrame
+  | EqDataMapFrame
+  | EqDataCommitSetFrame
+  | EqDataCommitMapFrame
+  | EqDataFailFrame;
+
+type EqDataCollectionFrame = EqDataSetFrame | EqDataMapFrame;
+
+interface EqDataCandidateAttempt {
+  readonly contextCheckpoint: number;
+  readonly frameCheckpoint: number;
+  readonly retry: EqDataCollectionFrame;
+}
+
+const eqDataInternal = (
+  actual: Data,
+  expected: Data,
+  context: EqDataContext,
+): boolean => {
+  const frames: Array<EqDataFrame> = [{ kind: "Compare", actual, expected }];
+  const attempts: Array<EqDataCandidateAttempt> = [];
+
+  const retryFailedCandidate = (_frame: EqDataFailFrame): boolean => {
+    const attempt = attempts.pop();
+    if (attempt === undefined) return false;
+
+    rollbackEqDataContext(context, attempt.contextCheckpoint);
+    frames.length = attempt.frameCheckpoint;
+    frames.push(attempt.retry);
+    return true;
+  };
+
+  while (frames.length > 0) {
+    const frame = frames.pop()!;
+
+    if (frame.kind === "Compare") {
+      const x = frame.actual;
+      const y = frame.expected;
+
+      if (eqSameValueZero(x, y)) continue;
+      if (typeof x !== typeof y) {
+        frames.push({ kind: "Fail" });
+        continue;
+      }
+      if (
+        typeof x !== "object" ||
+        x === null ||
+        typeof y !== "object" ||
+        y === null
+      ) {
+        frames.push({ kind: "Fail" });
+        continue;
+      }
+
+      const rights = context.rightsByLeft.get(x);
+      if (rights?.has(y)) continue;
+      if (rights === undefined) {
+        context.rightsByLeft.set(x, new Set([y]));
+      } else {
+        rights.add(y);
+      }
+      context.pairs.push([x, y]);
+
+      const xKind = getObjectKind(x);
+      const yKind = getObjectKind(y);
+      if (xKind !== yKind) {
+        frames.push({ kind: "Fail" });
+        continue;
+      }
+
+      if (xKind === "Array") {
+        const xArray = x as ReadonlyArray<Data>;
+        const yArray = y as ReadonlyArray<Data>;
+        if (
+          xArray.length !== yArray.length ||
+          Reflect.ownKeys(xArray).length !== xArray.length + 1 ||
+          Reflect.ownKeys(yArray).length !== yArray.length + 1
+        ) {
+          frames.push({ kind: "Fail" });
+          continue;
+        }
+
+        let valid = true;
+        for (let index = 0; index < xArray.length; index++) {
+          const xDescriptor = Object.getOwnPropertyDescriptor(xArray, index);
+          const yDescriptor = Object.getOwnPropertyDescriptor(yArray, index);
+          if (
+            xDescriptor === undefined ||
+            yDescriptor === undefined ||
+            !("value" in xDescriptor) ||
+            !("value" in yDescriptor)
+          ) {
+            valid = false;
+            break;
+          }
+          frames.push({
+            kind: "Compare",
+            actual: xDescriptor.value as Data,
+            expected: yDescriptor.value as Data,
+          });
+        }
+        if (!valid) frames.push({ kind: "Fail" });
+        continue;
+      }
+
+      switch (xKind) {
+        case "Date":
+          if (
+            !Object.is(
+              Date.prototype.getTime.call(x),
+              Date.prototype.getTime.call(y),
+            )
+          ) {
+            frames.push({ kind: "Fail" });
+          }
+          continue;
+        case "Uint8Array":
+          if (!eqUint8Array(x as Uint8Array, y as Uint8Array)) {
+            frames.push({ kind: "Fail" });
+          }
+          continue;
+        case "Set": {
+          const xSet = x as ReadonlySet<Data>;
+          const ySet = y as ReadonlySet<Data>;
+          if (
+            Reflect.ownKeys(x).length !== 0 ||
+            Reflect.ownKeys(y).length !== 0 ||
+            xSet.size !== ySet.size
+          ) {
+            frames.push({ kind: "Fail" });
+            continue;
+          }
+          frames.push({
+            kind: "Set",
+            actual: Array.from(xSet),
+            actualIndex: 0,
+            unmatched: Array.from(ySet),
+            candidateIndex: 0,
+          });
+          continue;
+        }
+        case "Map": {
+          const xMap = x as ReadonlyMap<Data, Data>;
+          const yMap = y as ReadonlyMap<Data, Data>;
+          if (
+            Reflect.ownKeys(x).length !== 0 ||
+            Reflect.ownKeys(y).length !== 0 ||
+            xMap.size !== yMap.size
+          ) {
+            frames.push({ kind: "Fail" });
+            continue;
+          }
+          frames.push({
+            kind: "Map",
+            actual: Array.from(xMap),
+            actualIndex: 0,
+            unmatched: Array.from(yMap),
+            candidateIndex: 0,
+          });
+          continue;
+        }
+        case "Object": {
+          const xKeys = Reflect.ownKeys(x);
+          const yKeys = Reflect.ownKeys(y);
+          if (xKeys.length !== yKeys.length) {
+            frames.push({ kind: "Fail" });
+            continue;
+          }
+
+          let valid = true;
+          for (const key of xKeys) {
+            if (typeof key !== "string") {
+              valid = false;
+              break;
+            }
+            const xDescriptor = Object.getOwnPropertyDescriptor(x, key);
+            const yDescriptor = Object.getOwnPropertyDescriptor(y, key);
+            if (
+              xDescriptor === undefined ||
+              yDescriptor === undefined ||
+              !("value" in xDescriptor) ||
+              !("value" in yDescriptor) ||
+              !xDescriptor.enumerable ||
+              !yDescriptor.enumerable
+            ) {
+              valid = false;
+              break;
+            }
+            frames.push({
+              kind: "Compare",
+              actual: xDescriptor.value as Data,
+              expected: yDescriptor.value as Data,
+            });
+          }
+          if (!valid) frames.push({ kind: "Fail" });
+          continue;
+        }
+        case "Unsupported":
+          frames.push({ kind: "Fail" });
+          continue;
+      }
+    }
+
+    if (frame.kind === "Set") {
+      if (frame.actualIndex === frame.actual.length) continue;
+      if (frame.candidateIndex === frame.unmatched.length) {
+        frames.push({ kind: "Fail" });
+        continue;
+      }
+
+      const attempt: EqDataCandidateAttempt = {
+        contextCheckpoint: context.pairs.length,
+        frameCheckpoint: frames.length,
+        retry: { ...frame, candidateIndex: frame.candidateIndex + 1 },
+      };
+      attempts.push(attempt);
+      frames.push({ kind: "CommitSet", match: frame });
+      frames.push({
+        kind: "Compare",
+        actual: frame.actual[frame.actualIndex],
+        expected: frame.unmatched[frame.candidateIndex],
+      });
       continue;
     }
 
-    if (typeX === "object") {
-      const isArrayX = Array.isArray(x);
-      const isArrayY = Array.isArray(y);
-
-      if (isArrayX !== isArrayY) return false;
-
-      const xObj = x as object;
-      const yObj = y as object;
-
-      if (seen.has(xObj)) {
-        const ySet = seen.get(xObj)!;
-        if (ySet.has(yObj)) {
-          continue;
-        }
-        ySet.add(yObj);
-      } else {
-        const ySet = new WeakSet<object>();
-        ySet.add(yObj);
-        seen.set(xObj, ySet);
+    if (frame.kind === "Map") {
+      if (frame.actualIndex === frame.actual.length) continue;
+      if (frame.candidateIndex === frame.unmatched.length) {
+        frames.push({ kind: "Fail" });
+        continue;
       }
 
-      if (isArrayX && isArrayY) {
-        const xArr = x as JsonArray;
-        const yArr = y as JsonArray;
-
-        if (xArr.length !== yArr.length) return false;
-        for (let i = 0; i < xArr.length; i++) {
-          stack.push([xArr[i], yArr[i]]);
-        }
-      } else {
-        const xObjTyped = x as JsonObject;
-        const yObjTyped = y as JsonObject;
-
-        const xKeys = Object.keys(xObjTyped);
-        const yKeys = Object.keys(yObjTyped);
-
-        if (xKeys.length !== yKeys.length) return false;
-
-        const yKeySet = new Set(yKeys);
-
-        for (const key of xKeys) {
-          if (!yKeySet.has(key)) return false;
-          stack.push([xObjTyped[key], yObjTyped[key]]);
-        }
-      }
-    } else {
-      return false;
+      const [actualKey, actualValue] = frame.actual[frame.actualIndex];
+      const [expectedKey, expectedValue] =
+        frame.unmatched[frame.candidateIndex];
+      const attempt: EqDataCandidateAttempt = {
+        contextCheckpoint: context.pairs.length,
+        frameCheckpoint: frames.length,
+        retry: { ...frame, candidateIndex: frame.candidateIndex + 1 },
+      };
+      attempts.push(attempt);
+      frames.push({ kind: "CommitMap", match: frame });
+      frames.push({
+        kind: "Compare",
+        actual: actualValue,
+        expected: expectedValue,
+      });
+      frames.push({
+        kind: "Compare",
+        actual: actualKey,
+        expected: expectedKey,
+      });
+      continue;
     }
+
+    if (frame.kind === "CommitSet") {
+      attempts.pop();
+      frame.match.unmatched.splice(frame.match.candidateIndex, 1);
+      frames.push({
+        ...frame.match,
+        actualIndex: frame.match.actualIndex + 1,
+        candidateIndex: 0,
+      });
+      continue;
+    }
+
+    if (frame.kind === "CommitMap") {
+      attempts.pop();
+      frame.match.unmatched.splice(frame.match.candidateIndex, 1);
+      frames.push({
+        ...frame.match,
+        actualIndex: frame.match.actualIndex + 1,
+        candidateIndex: 0,
+      });
+      continue;
+    }
+
+    if (!retryFailedCandidate(frame)) return false;
   }
 
   return true;
 };
 
-/**
- * Deeply compares two {@link JsonValueInput} values for equality.
- *
- * - Uses an iterative approach with a stack to handle large or deeply nested
- *   objects without risking stack overflow.
- * - Defensively handles circular references in runtime values without looping,
- *   although cyclic values are not valid JSON.
- * - Unlike JSON.stringify, this function directly compares values, avoiding
- *   serialization overhead and leveraging short-circuit evaluation for faster
- *   failure on mismatched structures.
- *
- * ### Example
- *
- * ```ts
- * import { eqJsonValueInput, type JsonValueInput } from "@evolu/common";
- *
- * const first: JsonValueInput = { profile: { name: "Ada" } };
- * const second: JsonValueInput = { profile: { name: "Ada" } };
- *
- * expect(eqJsonValueInput(first, second)).toBe(true);
- * ```
- */
-export const eqJsonValueInput = (
-  a: JsonValueInput,
-  b: JsonValueInput,
-): boolean => eqJsonValue(a as JsonValue, b as JsonValue);
+const rollbackEqDataContext = (
+  context: EqDataContext,
+  checkpoint: number,
+): void => {
+  while (context.pairs.length > checkpoint) {
+    const [left, right] = context.pairs.pop()!;
+    const rights = context.rightsByLeft.get(left)!;
+    rights.delete(right);
+    if (rights.size === 0) context.rightsByLeft.delete(left);
+  }
+};

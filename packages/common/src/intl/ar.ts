@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -285,14 +286,28 @@ export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
 export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet")
     return `القيمة ${safelyStringifyUnknownValue(error.reason.value)} ليست Set.`;
-  if (error.reason.kind === "UnexpectedPrototype")
-    return "القيمة مثيل لفئة فرعية من Set، لكن مخرج Set يجب أن يكون مثيل Set مباشراً.";
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "ExcessProperty":
       return `خاصية Set زائدة ${safelyStringifyUnknownValue(issue.key)} غير مسموح بها.`;
     case "Element":
       return `عنصر Set عند الفهرس ${issue.index} غير صالح.`;
+  }
+};
+
+/** Formats a MapError in Arabic. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap")
+    return `القيمة ${safelyStringifyUnknownValue(error.reason.value)} ليست Map.`;
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `خاصية Map زائدة ${safelyStringifyUnknownValue(issue.key)} غير مسموح بها.`;
+    case "Key":
+    case "Value":
+      return `عنصر Map عند الفهرس ${issue.index} غير صالح.`;
+    case "Collision":
+      return `مفتاحا Map ${safelyStringifyUnknownValue(issue.previousKey)} و${safelyStringifyUnknownValue(issue.key)} يُفك ترميزهما إلى المفتاح نفسه ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

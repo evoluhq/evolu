@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -334,10 +335,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `הערך ${safelyStringifyUnknownValue(error.reason.value)} אינו Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "הערך הוא מופע של תת-מחלקה של Set, אך פלט של Set חייב להיות מופע ישיר של Set.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -345,6 +342,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `מאפיין Set העודף ${safelyStringifyUnknownValue(issue.key)} אינו מותר.`;
     case "Element":
       return `איבר Set באינדקס ${issue.index} אינו חוקי.`;
+  }
+};
+
+/** מעצב שגיאת MapError בעברית. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `הערך ${safelyStringifyUnknownValue(error.reason.value)} אינו Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `מאפיין Map העודף ${safelyStringifyUnknownValue(issue.key)} אינו מותר.`;
+    case "Key":
+    case "Value":
+      return `איבר Map באינדקס ${issue.index} אינו חוקי.`;
+    case "Collision":
+      return `המפתחות ${safelyStringifyUnknownValue(issue.previousKey)} ו-${safelyStringifyUnknownValue(issue.key)} של Map מפוענחים לאותו מפתח ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

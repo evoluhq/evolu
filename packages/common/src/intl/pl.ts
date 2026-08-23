@@ -312,14 +312,30 @@ export const formatSetError: Type.TypeErrorFormatter<Type.SetError> = (
 ) => {
   if (error.reason.kind === "NotSet")
     return `Wartość ${safelyStringifyUnknownValue(error.reason.value)} nie jest Setem.`;
-  if (error.reason.kind === "UnexpectedPrototype")
-    return "Wartość jest instancją podklasy Set, ale wynik typu Set musi być bezpośrednią instancją Set.";
   const issue = error.reason.issues[0];
   switch (issue.kind) {
     case "ExcessProperty":
       return `Nadmiarowa właściwość Set ${safelyStringifyUnknownValue(issue.key)} jest niedozwolona.`;
     case "Element":
       return `Element Set o indeksie ${issue.index} jest nieprawidłowy.`;
+  }
+};
+
+/** Formats a MapError in Polish. */
+export const formatMapError: Type.TypeErrorFormatter<Type.MapError> = (
+  error,
+) => {
+  if (error.reason.kind === "NotMap")
+    return `Wartość ${safelyStringifyUnknownValue(error.reason.value)} nie jest Mapem.`;
+  const issue = error.reason.issues[0];
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Nadmiarowa właściwość Map ${safelyStringifyUnknownValue(issue.key)} jest niedozwolona.`;
+    case "Key":
+    case "Value":
+      return `Element Map o indeksie ${issue.index} jest nieprawidłowy.`;
+    case "Collision":
+      return `Klucze Map ${safelyStringifyUnknownValue(issue.previousKey)} i ${safelyStringifyUnknownValue(issue.key)} dekodują się do tego samego klucza ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

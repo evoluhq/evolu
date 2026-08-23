@@ -384,6 +384,18 @@ describe("NextResult", () => {
     expect(c.ok).toBe(false);
   });
 
+  it("extracts all type parameters", () => {
+    type MyNextResult = NextResult<number, string, { summary: string }>;
+
+    expectTypeOf<InferOk<MyNextResult>>().toEqualTypeOf<number>();
+    expectTypeOf<InferErr<MyNextResult>>().toEqualTypeOf<
+      string | Done<{ summary: string }>
+    >();
+    expectTypeOf<InferDone<MyNextResult>>().toEqualTypeOf<{
+      summary: string;
+    }>();
+  });
+
   describe("done", () => {
     it("creates Done with done value", () => {
       expect(done("finished")).toStrictEqual({
@@ -460,18 +472,6 @@ describe("NextResult", () => {
       type R = Result<number, MyError | Done<string>>;
       expectTypeOf<InferDone<R>>().toEqualTypeOf<string>();
     });
-  });
-
-  it("extracts all type parameters from NextResult", () => {
-    type MyNextResult = NextResult<number, string, { summary: string }>;
-
-    expectTypeOf<InferOk<MyNextResult>>().toEqualTypeOf<number>();
-    expectTypeOf<InferErr<MyNextResult>>().toEqualTypeOf<
-      string | Done<{ summary: string }>
-    >();
-    expectTypeOf<InferDone<MyNextResult>>().toEqualTypeOf<{
-      summary: string;
-    }>();
   });
 });
 

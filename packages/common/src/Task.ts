@@ -1,6 +1,4 @@
 /**
- * ## Intro
- *
  * JavaScript-native structured concurrency.
  *
  * Structured concurrency organizes running tasks into a tree. Every child

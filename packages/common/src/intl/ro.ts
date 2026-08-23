@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Valoarea ${safelyStringifyUnknownValue(error.reason.value)} nu este un Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Valoarea este o instanță a unei subclase Set, dar un Output Set trebuie să fie o instanță Set directă.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `O proprietate Set în exces ${safelyStringifyUnknownValue(issue.key)} nu este permisă.`;
     case "Element":
       return `Elementul Set de la indexul ${issue.index} nu este valid.`;
+  }
+};
+
+/** Formatează un MapError în română. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Valoarea ${safelyStringifyUnknownValue(error.reason.value)} nu este un Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `O proprietate Map în exces ${safelyStringifyUnknownValue(issue.key)} nu este permisă.`;
+    case "Key":
+    case "Value":
+      return `Elementul Map de la indexul ${issue.index} nu este valid.`;
+    case "Collision":
+      return `Cheile Map ${safelyStringifyUnknownValue(issue.previousKey)} și ${safelyStringifyUnknownValue(issue.key)} se decodează la aceeași cheie ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

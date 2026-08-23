@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no es un Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "El valor es una instancia de una subclase de Set, pero un Output de Set debe ser una instancia directa de Set.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `No se permite la propiedad adicional de Set ${safelyStringifyUnknownValue(issue.key)}.`;
     case "Element":
       return `El elemento de Set en el índice ${issue.index} no es válido.`;
+  }
+};
+
+/** Formatea MapError en español. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `El valor ${safelyStringifyUnknownValue(error.reason.value)} no es un Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `No se permite la propiedad adicional de Map ${safelyStringifyUnknownValue(issue.key)}.`;
+    case "Key":
+    case "Value":
+      return `El elemento de Map en el índice ${issue.index} no es válido.`;
+    case "Collision":
+      return `Las claves de Map ${safelyStringifyUnknownValue(issue.previousKey)} y ${safelyStringifyUnknownValue(issue.key)} se decodifican como la misma clave ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

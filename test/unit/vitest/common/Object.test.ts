@@ -6,6 +6,7 @@ import {
   createMutableRecord,
   emptyRecord,
   excludeProp,
+  getObjectKind,
   getOwnProp,
   isFunction,
   isIterable,
@@ -16,20 +17,85 @@ import {
   objectToEntries,
 } from "../../../../packages/common/src/Object.ts";
 
-const legacyIsPlainObject = isPlainObject;
+class NullBase extends null {}
+
+const createNullBase = (): NullBase =>
+  Object.create(NullBase.prototype) as NullBase;
+
+test("getObjectKind", () => {
+  expect(getObjectKind([])).toBe("Array");
+  expect(getObjectKind(new ArrayBuffer(0))).toBe("Unsupported");
+  expect(getObjectKind(new Date())).toBe("Date");
+  expect(getObjectKind(new Map())).toBe("Map");
+  expect(getObjectKind({})).toBe("Object");
+  expect(getObjectKind(Object.create(null) as object)).toBe("Object");
+  expect(getObjectKind(new Set())).toBe("Set");
+  expect(getObjectKind(new Uint8Array())).toBe("Uint8Array");
+  expect(getObjectKind(/value/u)).toBe("Unsupported");
+  expect(getObjectKind(createNullBase())).toBe("Unsupported");
+
+  const emptyRoot = Object.create(null) as object;
+  expect(getObjectKind(Object.create(emptyRoot) as object)).toBe("Unsupported");
+
+  const accessorRoot = Object.defineProperty(
+    Object.create(null) as object,
+    "constructor",
+    { get: () => Object },
+  );
+  expect(getObjectKind(Object.create(accessorRoot) as object)).toBe(
+    "Unsupported",
+  );
+
+  const nonFunctionRoot = Object.defineProperty(
+    Object.create(null) as object,
+    "constructor",
+    { value: 1 },
+  );
+  expect(getObjectKind(Object.create(nonFunctionRoot) as object)).toBe(
+    "Unsupported",
+  );
+
+  let reads = 0;
+  const value = Object.defineProperty({}, Symbol.toStringTag, {
+    get: () => {
+      reads++;
+      return "Custom";
+    },
+  });
+  expect(getObjectKind(value)).toBe("Object");
+  expect(reads).toBe(0);
+});
 
 test("isPlainObject", () => {
-  expect(legacyIsPlainObject({})).toBe(true);
-  expect(legacyIsPlainObject(Object.create(null))).toBe(true);
-  expect(legacyIsPlainObject(new Date())).toBe(false);
+  expect(isPlainObject({})).toBe(true);
+  expect(isPlainObject(Object.create(null))).toBe(true);
+  expect(isPlainObject(new Date())).toBe(false);
 
   class Example {
     readonly id = "a";
   }
 
-  expect(legacyIsPlainObject(new Example())).toBe(false);
-  expect(legacyIsPlainObject([])).toBe(false);
-  expect(legacyIsPlainObject(null)).toBe(false);
+  expect(isPlainObject(new Example())).toBe(false);
+  expect(isPlainObject(createNullBase())).toBe(false);
+  expect(isPlainObject([])).toBe(false);
+  expect(isPlainObject(null)).toBe(false);
+
+  const root = Object.create(null) as object;
+  expect(isPlainObject(Object.create(root))).toBe(false);
+
+  const rootWithObjectConstructor = Object.defineProperty(
+    Object.create(null) as object,
+    "constructor",
+    { value: globalThis.Object },
+  );
+  expect(isPlainObject(Object.create(rootWithObjectConstructor))).toBe(false);
+
+  const partialObjectPrototype = Object.defineProperty(
+    Object.create(null) as object,
+    "hasOwnProperty",
+    { value: () => false },
+  );
+  expect(isPlainObject(Object.create(partialObjectPrototype))).toBe(false);
 });
 
 test("isFunction", () => {

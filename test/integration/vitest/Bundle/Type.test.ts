@@ -33,10 +33,18 @@ const recordTypeFragments = ['"Record"', ...recordOnlyTypeFragments];
 
 const instanceTypeFragments = ['"InstanceOf"', "is not an instance of"];
 
+const mapTypeFragments = [
+  '"Map"',
+  "is not a Map",
+  "excess Map property",
+  "Map keys at indexes",
+];
+
 const unrelatedTypeFragments = [
   ...unrelatedRecordTypeFragments,
   ...recordTypeFragments,
   ...instanceTypeFragments,
+  ...mapTypeFragments,
   "Object Output must be a plain object",
 ];
 
@@ -46,12 +54,7 @@ const objectTypeFragments = [
   "The required property",
 ];
 
-const setTypeFragments = [
-  '"Set"',
-  "is not a Set",
-  "Set Output must be a direct Set",
-  "excess Set property",
-];
+const setTypeFragments = ['"Set"', "is not a Set", "excess Set property"];
 
 // Bundle-size policy: realistic aggregate fixtures are the primary optimization
 // target because applications compose many Types and can benefit from shared
@@ -72,6 +75,7 @@ const fixtures: ReadonlyArray<{
     excludedCodeFragments: [
       ...unrelatedRecordTypeFragments,
       ...recordTypeFragments,
+      ...mapTypeFragments,
       "Object Output must be a plain object",
       '"Array"',
       "is not an array",
@@ -142,6 +146,29 @@ const fixtures: ReadonlyArray<{
     ],
   },
   {
+    name: "Map(String, Number)",
+    fileName: "StringNumberMap.ts",
+    expected: [
+      "A value null is not a Map.",
+      'A value "x" is not a number.',
+      42,
+      true,
+    ],
+    excludedCodeFragments: [
+      ...unrelatedRecordTypeFragments,
+      '"Record"',
+      "is not a Record",
+      '"PropertyAccess"',
+      ...instanceTypeFragments,
+      '"Array"',
+      "is not an array",
+      '"NonEmptyString"',
+      "Enter some text",
+      ...setTypeFragments,
+      ...objectTypeFragments,
+    ],
+  },
+  {
     name: "Tuple(String, Number)",
     fileName: "StringNumberTuple.ts",
     expected: [
@@ -174,6 +201,7 @@ const fixtures: ReadonlyArray<{
       "unsigned 64-bit integer",
       ...recordTypeFragments,
       ...instanceTypeFragments,
+      ...mapTypeFragments,
       '"Array"',
       "is not an array",
       '"NonEmptyString"',
@@ -190,6 +218,7 @@ const fixtures: ReadonlyArray<{
       ...unrelatedRecordTypeFragments,
       ...recordOnlyTypeFragments,
       ...instanceTypeFragments,
+      ...mapTypeFragments,
       '"NonEmptyString"',
       "Enter some text",
     ],
@@ -215,6 +244,7 @@ const fixtures: ReadonlyArray<{
       ...objectTypeFragments,
       ...recordTypeFragments,
       ...instanceTypeFragments,
+      ...mapTypeFragments,
     ],
   },
   {
@@ -230,6 +260,7 @@ const fixtures: ReadonlyArray<{
       ...unrelatedRecordTypeFragments,
       ...recordOnlyTypeFragments,
       ...instanceTypeFragments,
+      ...mapTypeFragments,
       '"Array"',
       "is not an array",
     ],
@@ -246,6 +277,7 @@ const fixtures: ReadonlyArray<{
     excludedCodeFragments: [
       ...unrelatedRecordTypeFragments,
       ...instanceTypeFragments,
+      ...mapTypeFragments,
       '"Array"',
       "is not an array",
       '"NonEmptyString"',
@@ -265,6 +297,7 @@ const fixtures: ReadonlyArray<{
     excludedCodeFragments: [
       ...unrelatedRecordTypeFragments,
       ...instanceTypeFragments,
+      ...mapTypeFragments,
       '"Array"',
       "is not an array",
       '"NonEmptyString"',
@@ -295,6 +328,7 @@ const fixtures: ReadonlyArray<{
       "unsigned 64-bit integer",
       ...recordOnlyTypeFragments,
       ...instanceTypeFragments,
+      ...mapTypeFragments,
       '"Array"',
       "is not an array",
       '"NonEmptyString"',
@@ -325,6 +359,7 @@ const fixtures: ReadonlyArray<{
       "is not a Record",
       "decode to the same key",
       ...instanceTypeFragments,
+      ...mapTypeFragments,
       '"Array"',
       "is not an array",
       '"NonEmptyString"',
@@ -359,12 +394,12 @@ describe("Type tree shaking", () => {
       {
         "real app": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 8959,
-            "rawSizeInBytes": 31712,
+            "brotliSizeInBytes": 8947,
+            "rawSizeInBytes": 31714,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 8965,
-            "rawSizeInBytes": 32115,
+            "brotliSizeInBytes": 8980,
+            "rawSizeInBytes": 32134,
           },
         },
       }
@@ -415,6 +450,16 @@ describe("Type tree shaking", () => {
             "rawSizeInBytes": 1617,
           },
         },
+        "Map(String, Number)": {
+          "vite@8.2.2": {
+            "brotliSizeInBytes": 1972,
+            "rawSizeInBytes": 5018,
+          },
+          "webpack@5.109.2": {
+            "brotliSizeInBytes": 2009,
+            "rawSizeInBytes": 5069,
+          },
+        },
         "NonEmptyString": {
           "vite@8.2.2": {
             "brotliSizeInBytes": 1168,
@@ -437,42 +482,42 @@ describe("Type tree shaking", () => {
         },
         "Object(NonEmptyString)": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 2785,
-            "rawSizeInBytes": 8461,
+            "brotliSizeInBytes": 2798,
+            "rawSizeInBytes": 8543,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 2826,
-            "rawSizeInBytes": 8550,
+            "brotliSizeInBytes": 2852,
+            "rawSizeInBytes": 8638,
           },
         },
         "Object(Number, Record(String, Number))": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 3391,
-            "rawSizeInBytes": 10999,
+            "brotliSizeInBytes": 3415,
+            "rawSizeInBytes": 11081,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 3405,
-            "rawSizeInBytes": 11142,
+            "brotliSizeInBytes": 3448,
+            "rawSizeInBytes": 11230,
           },
         },
         "Record(String, Number)": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 2076,
-            "rawSizeInBytes": 5529,
+            "brotliSizeInBytes": 2092,
+            "rawSizeInBytes": 5611,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 2078,
-            "rawSizeInBytes": 5596,
+            "brotliSizeInBytes": 2090,
+            "rawSizeInBytes": 5684,
           },
         },
         "Set(String)": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 1893,
-            "rawSizeInBytes": 4721,
+            "brotliSizeInBytes": 1769,
+            "rawSizeInBytes": 4298,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 1874,
-            "rawSizeInBytes": 4766,
+            "brotliSizeInBytes": 1767,
+            "rawSizeInBytes": 4333,
           },
         },
         "String": {
@@ -507,42 +552,42 @@ describe("Type tree shaking", () => {
         },
         "discriminatedUnion(Created, Deleted)": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 3510,
-            "rawSizeInBytes": 11423,
+            "brotliSizeInBytes": 3528,
+            "rawSizeInBytes": 11505,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 3548,
-            "rawSizeInBytes": 11579,
+            "brotliSizeInBytes": 3566,
+            "rawSizeInBytes": 11667,
           },
         },
         "lazy(Object(Array))": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 3784,
-            "rawSizeInBytes": 12116,
+            "brotliSizeInBytes": 3810,
+            "rawSizeInBytes": 12187,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 3840,
-            "rawSizeInBytes": 12254,
+            "brotliSizeInBytes": 3849,
+            "rawSizeInBytes": 12331,
           },
         },
         "templateLiteralParser(String, "px")": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 2847,
-            "rawSizeInBytes": 8137,
+            "brotliSizeInBytes": 2846,
+            "rawSizeInBytes": 8115,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 2892,
-            "rawSizeInBytes": 8243,
+            "brotliSizeInBytes": 2891,
+            "rawSizeInBytes": 8221,
           },
         },
         "typed(Pending)": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 2914,
-            "rawSizeInBytes": 8876,
+            "brotliSizeInBytes": 2932,
+            "rawSizeInBytes": 8958,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 2957,
-            "rawSizeInBytes": 8986,
+            "brotliSizeInBytes": 2964,
+            "rawSizeInBytes": 9074,
           },
         },
       }
@@ -590,12 +635,12 @@ describe("Type tree shaking", () => {
       {
         "localizeTypes(Label)": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 1916,
-            "rawSizeInBytes": 4993,
+            "brotliSizeInBytes": 1909,
+            "rawSizeInBytes": 4921,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 1949,
-            "rawSizeInBytes": 5096,
+            "brotliSizeInBytes": 1936,
+            "rawSizeInBytes": 5017,
           },
         },
       }
@@ -638,12 +683,12 @@ describe("Type tree shaking", () => {
       {
         "typed Todo list": {
           "vite@8.2.2": {
-            "brotliSizeInBytes": 4876,
-            "rawSizeInBytes": 16413,
+            "brotliSizeInBytes": 4899,
+            "rawSizeInBytes": 16495,
           },
           "webpack@5.109.2": {
-            "brotliSizeInBytes": 4933,
-            "rawSizeInBytes": 16622,
+            "brotliSizeInBytes": 4960,
+            "rawSizeInBytes": 16710,
           },
         },
       }

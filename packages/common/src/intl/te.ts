@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `విలువ ${safelyStringifyUnknownValue(error.reason.value)} Set కాదు.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "విలువ Set subclass యొక్క instance, కానీ Set Output నేరుగా Set instance అయి ఉండాలి.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `అదనపు Set property ${safelyStringifyUnknownValue(issue.key)} అనుమతించబడదు.`;
     case "Element":
       return `సూచిక ${issue.index} వద్ద Set element చెల్లదు.`;
+  }
+};
+
+/** MapErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `విలువ ${safelyStringifyUnknownValue(error.reason.value)} Map కాదు.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `అదనపు Map property ${safelyStringifyUnknownValue(issue.key)} అనుమతించబడదు.`;
+    case "Key":
+    case "Value":
+      return `సూచిక ${issue.index} వద్ద Map element చెల్లదు.`;
+    case "Collision":
+      return `Map keys ${safelyStringifyUnknownValue(issue.previousKey)} మరియు ${safelyStringifyUnknownValue(issue.key)} ఒకే key ${safelyStringifyUnknownValue(issue.outputKey)} కు decode అవుతాయి.`;
   }
 };
 

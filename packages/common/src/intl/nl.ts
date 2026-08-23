@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Een waarde ${safelyStringifyUnknownValue(error.reason.value)} is geen Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "De waarde is een instantie van een Set-subklasse, maar een Set Output moet een directe Set-instantie zijn.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Een overbodige Set-eigenschap ${safelyStringifyUnknownValue(issue.key)} is niet toegestaan.`;
     case "Element":
       return `Een Set-element op index ${issue.index} is ongeldig.`;
+  }
+};
+
+/** Formatteert een MapError in het Nederlands. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Een waarde ${safelyStringifyUnknownValue(error.reason.value)} is geen Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Een overbodige Map-eigenschap ${safelyStringifyUnknownValue(issue.key)} is niet toegestaan.`;
+    case "Key":
+    case "Value":
+      return `Een Map-element op index ${issue.index} is ongeldig.`;
+    case "Collision":
+      return `Map-sleutels ${safelyStringifyUnknownValue(issue.previousKey)} en ${safelyStringifyUnknownValue(issue.key)} decoderen naar dezelfde sleutel ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

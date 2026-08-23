@@ -1,6 +1,4 @@
 /**
- * ## Intro
- *
  * Runtime validation with precise TypeScript types and structured errors.
  *
  * Evolu {@link Type} is a pure, synchronous codec for defining semantic domains.
@@ -203,6 +201,10 @@
  * cannot express. They are correctness checks, not defenses against malicious
  * code.
  *
+ * Evolu does not support subclassing native JavaScript objects. Such subclasses
+ * can be classified as their reported built-in representation, but their
+ * behavior is unspecified.
+ *
  * ## FAQ
  *
  * ### What does a Type represent?
@@ -378,16 +380,19 @@
  * unknown values, {@link object} defines a closed plain-object representation,
  * and {@link record} defines a plain-dictionary representation whose complete
  * set of own properties are its entries. Their realm-neutral plain-object rule
- * accepts a `null` prototype or an immediate root prototype whose own prototype
- * is `null`; ordinary class instances and deeper prototype chains are rejected.
- * Every property must be an enumerable data property; inherited members are not
- * entries, while accessors and hidden properties are invalid instead of being
- * invoked or ignored. {@link array} similarly defines a dense sequence whose
- * only own properties are `length` and its indexed data properties;
- * {@link tuple} applies the same representation rules with a fixed length and a
- * distinct Type for each position. Only an explicit {@link transform} changes
- * the representation. Consequently, `is` tests exact Output membership and `to`
- * stays total for valid Outputs.
+ * uses {@link isPlainObject}: it accepts a `null` prototype or an immediate root
+ * prototype with own `hasOwnProperty` and `isPrototypeOf` properties. A custom
+ * root prototype with the same shape can therefore be classified as plain;
+ * other custom prototypes and class instances are rejected. This heuristic
+ * assumes trusted JavaScript and is not a security boundary. Every property
+ * must be an enumerable data property; inherited members are not entries, while
+ * accessors and hidden properties are invalid instead of being invoked or
+ * ignored. {@link array} similarly defines a dense sequence whose only own
+ * properties are `length` and its indexed data properties; {@link tuple} applies
+ * the same representation rules with a fixed length and a distinct Type for
+ * each position. Only an explicit {@link transform} changes the representation.
+ * Consequently, `is` tests exact Output membership and `to` stays total for
+ * valid Outputs.
  *
  * ### Why is JsonValue stricter than JSON.stringify?
  *
@@ -441,7 +446,7 @@ import { assert, assertNonNullable } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import type { RandomBytesDep } from "./Crypto.ts";
 import { identity, type Thunk } from "./Function.ts";
-import { createMutableRecord } from "./Object.ts";
+import { createMutableRecord, getObjectKind, isPlainObject } from "./Object.ts";
 import { hasNodeBuffer } from "./Platform.ts";
 import {
   err,
@@ -461,6 +466,7 @@ import {
   isInstance,
   type CompileTimeError,
   type Instance,
+  type IsSameType,
   type IsUnion,
   type Literal,
   type Simplify,
@@ -624,7 +630,7 @@ export interface Type<
    * const values: ReadonlyArray<unknown> = [42n, "42", null];
    * const integers = values.filter(Int64FromInt64String.is);
    *
-   * expectTypeOf(integers).toEqualTypeOf<globalThis.Array<Int64>>();
+   * expectTypeOf(integers).toEqualTypeOf<Array<Int64>>();
    * expect(Int64FromInt64String.is(42n)).toBe(true);
    * expect(Int64FromInt64String.is("42")).toBe(false);
    * ```
@@ -976,12 +982,18 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
   issue.formatError(issue.error);
 
 /**
- * Asserts that a value belongs to a {@link Type} Output domain.
+ * Asserts exact compile-time type equality or that a value belongs to a
+ * {@link Type} Output domain.
  *
- * Use this for internal invariants, not external input. Validate external input
- * with `Type.fromUnknown` so validation failures remain typed values. A failed
- * assertion uses the Type name for its message and preserves the exact Output
- * validation error as the thrown Error's cause.
+ * - `assertType<Expected, Actual>()` requires compiler-identical types without
+ *   evaluating a value.
+ * - `assertType(type, value)` validates and narrows a runtime value to the Type's
+ *   Output.
+ *
+ * Use the runtime form for internal invariants, not external input. Validate
+ * external input with `Type.fromUnknown` so validation failures remain typed
+ * values. A failed runtime assertion uses the Type name for its message and
+ * preserves the exact Output validation error as the thrown Error's cause.
  *
  * ### Example
  *
@@ -994,17 +1006,37 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
  *
  * const value: unknown = "Evolu";
  * assertType(NonEmptyTrimmedString100, value);
- * expectTypeOf(value).toEqualTypeOf<
- *   string & Brand<"Trimmed"> & Brand<"MinLength1"> & Brand<"MaxLength100">
+ * assertType<
+ *   string &
+ *     Brand<"Trimmed"> &
+ *     Brand<"MinLength1"> &
+ *     Brand<"MaxLength100">,
+ *   typeof value
  * >();
  * ```
  *
  * @group Core
  */
-export const assertType: <T extends TypeNode>(
+export function assertType<Expected, Actual>(
+  ...error: IsSameType<Expected, Actual> extends true
+    ? []
+    : [
+        error: CompileTimeError<
+          "assertType",
+          "Expected and actual types must be identical"
+        >,
+      ]
+): void;
+export function assertType<T extends TypeNode>(
   type: T,
   value: unknown,
-) => asserts value is T["Output"] = (type, value) => {
+): asserts value is T["Output"];
+export function assertType<T extends TypeNode>(
+  type?: T,
+  value?: unknown,
+): void {
+  if (type === undefined) return;
+
   // TODO: Make assert prepend "Expected " and accept an optional third cause
   // argument. Then use it here and migrate every other assertion to pass an
   // expectation fragment.
@@ -1014,7 +1046,7 @@ export const assertType: <T extends TypeNode>(
   if (!result.ok) {
     throw new Error(`Expected ${runtimeType.name}.`, { cause: result.error });
   }
-};
+}
 
 const assertTypeOutput = <Error extends TypeError>(
   name: TypeName,
@@ -1059,8 +1091,9 @@ const assertTypeOutput = <Error extends TypeError>(
  * every locale an app supports also allows language changes without a network
  * connection.
  *
- * The selected Type map, locale map, and formatter maps must be plain objects
- * with own enumerable string-keyed data properties.
+ * The selected Type map, locale map, and formatter maps must satisfy the
+ * realm-neutral structural heuristic described by {@link isPlainObject} and have
+ * own enumerable string-keyed data properties.
  *
  * ### Example
  *
@@ -1200,12 +1233,7 @@ export const localizeTypes = ((
 const getLocalizationMapKeys = (value: unknown): ReadonlyArray<string> => {
   const errorMessage =
     "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.";
-  assert(value !== null && typeof value === "object", errorMessage);
-  const prototype: unknown = globalThis.Object.getPrototypeOf(value);
-  assert(
-    prototype === null || globalThis.Object.getPrototypeOf(prototype) === null,
-    errorMessage,
-  );
+  assert(isPlainObject(value), errorMessage);
 
   const keys = Reflect.ownKeys(value);
   for (const key of keys) {
@@ -1298,14 +1326,12 @@ const localizeTypeReflection = (
       localizedTypeBySource,
     );
   }
-  if (globalThis.Array.isArray(value)) {
+  if (Array.isArray(value)) {
     return (value as ReadonlyArray<unknown>).map((value) =>
       localizeTypeReflection(value, formatIssue, localizedTypeBySource),
     );
   }
-  if (value === null || typeof value !== "object" || !isPlainObject(value)) {
-    return value;
-  }
+  if (!isPlainObject(value)) return value;
 
   const localized = globalThis.Object.create(
     globalThis.Object.getPrototypeOf(value) as object | null,
@@ -1390,7 +1416,7 @@ type LocalizedErrorEntry<
           ? LocalizedDiscriminatedUnionErrorEntry<Error, Seen | Error>
           : Error extends {
                 readonly type: infer Name extends
-                  "Array" | "Tuple" | "Record" | "Set";
+                  "Array" | "Map" | "Tuple" | "Record" | "Set";
                 readonly reason: infer Reason;
               }
             ? | LocalizedErrorEntryValue<Name, Error>
@@ -2976,7 +3002,7 @@ interface ObjectTagOutputByName {
  * import { objectTag } from "@evolu/common";
  *
  * const DateType = objectTag("Date");
- * const date = new globalThis.Date("2025-01-01T00:00:00.000Z");
+ * const date = new Date("2025-01-01T00:00:00.000Z");
  *
  * expectOk(DateType.fromUnknown(date), date);
  * ```
@@ -3005,7 +3031,7 @@ export function objectTag<Name extends keyof ObjectTagOutputByName>(
  * import { instanceOf, objectTag } from "@evolu/common";
  *
  * class TaggedValue {
- *   readonly [globalThis.Symbol.toStringTag] = "TaggedValue";
+ *   readonly [Symbol.toStringTag] = "TaggedValue";
  * }
  *
  * const TaggedValueType = objectTag(
@@ -3674,9 +3700,7 @@ interface RuntimeUnionTypeNode extends RuntimeTypeNode {
 const isRuntimeUnionTypeNode = (
   type: RuntimeTypeNode,
 ): type is RuntimeUnionTypeNode =>
-  type.name === "Union" &&
-  "members" in type &&
-  globalThis.Array.isArray(type.members);
+  type.name === "Union" && "members" in type && Array.isArray(type.members);
 
 /**
  * A root {@link Type} validating the encoded Inputs accepted by {@link union}.
@@ -4516,7 +4540,7 @@ const compileTemplateLiteralParser = <Parts extends TemplateLiteralParts>(
   });
 
   return (input) => {
-    const inputCodePoints = globalThis.Array.from(input);
+    const inputCodePoints = Array.from(input);
     const variableWidth = inputCodePoints.length - fixedPartsWidth;
     if (variableWidth < 0) {
       return err({ type: "TemplateLiteral", value: input });
@@ -4592,7 +4616,7 @@ const getStringTemplateLiteralFraming = (
   const lastCodeUnit = value.charCodeAt(value.length - 1);
 
   return {
-    width: globalThis.Array.from(value).length,
+    width: Array.from(value).length,
     canBeEmpty: value.length === 0,
     canStartWithLowSurrogate:
       firstCodeUnit >= 0xdc00 && firstCodeUnit <= 0xdfff,
@@ -4831,7 +4855,7 @@ export interface DateIsoError extends TypeError<"DateIso"> {
  * ```ts
  * import { DateIsoFromDate } from "@evolu/common";
  *
- * const date = new globalThis.Date("2025-01-01T12:00:00.000Z");
+ * const date = new Date("2025-01-01T12:00:00.000Z");
  * const result = DateIsoFromDate.fromUnknown(date);
  *
  * expectOk(result, "2025-01-01T12:00:00.000Z");
@@ -5468,10 +5492,10 @@ const uint8ArrayToBase64UrlString = (bytes: Uint8Array): string => {
     return bytes.toBase64(base64UrlOptions);
   }
 
-  const binaryString = globalThis.Array.from(bytes, (byte) =>
+  const binaryString = Array.from(bytes, (byte) =>
     globalThis.String.fromCodePoint(byte),
   ).join("");
-  const base64 = globalThis.btoa(binaryString);
+  const base64 = btoa(binaryString);
 
   return base64.replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 };
@@ -5489,7 +5513,7 @@ const base64UrlStringToUint8Array = (value: string): Uint8Array => {
   let base64 = value.replaceAll("-", "+").replaceAll("_", "/");
   while (base64.length % 4 !== 0) base64 += "=";
 
-  const binaryString = globalThis.atob(base64);
+  const binaryString = atob(base64);
   return globalThis.Uint8Array.from(binaryString, (character) =>
     character.charCodeAt(0),
   );
@@ -7579,10 +7603,10 @@ const copyArrayPrefix = (
 /**
  * Set {@link Type} whose every element must match one Type.
  *
- * Direct Sets from this or another realm are accepted. Set subclasses are
- * rejected. A Set must have no own properties; its elements are validated in
- * iteration order. Classification uses the realm-neutral object tag and
- * prototype structure under Evolu Type's trusted JavaScript policy.
+ * Sets from this or another realm are accepted. A Set must have no own
+ * properties; its elements are validated in iteration order. Classification
+ * uses the realm-neutral object tag under Evolu Type's trusted JavaScript
+ * policy.
  *
  * ### Example
  *
@@ -7681,15 +7705,12 @@ type SetNodeError<ElementType extends TypeNode> = [
   : SetError<ElementType["Error"]>;
 
 /**
- * Error returned by {@link set} for a non-Set value, an invalid Set prototype,
- * or invalid Set items.
+ * Error returned by {@link set} for a non-Set value or invalid Set items.
  *
  * @group Collection
  */
 export type SetError<Error extends TypeError = TypeError> =
-  | SetNotSetError
-  | SetUnexpectedPrototypeError
-  | SetItemsErrorValue<Error, true>;
+  SetNotSetError | SetItemsErrorValue<Error, true>;
 
 /**
  * Error returned when a {@link set} input is not a Set.
@@ -7700,18 +7721,6 @@ export interface SetNotSetError extends TypeError<"Set"> {
   readonly reason: {
     readonly kind: "NotSet";
     readonly value: unknown;
-  };
-}
-
-/**
- * An error returned when a {@link set} input is a Set subclass.
- *
- * @group Collection
- */
-export interface SetUnexpectedPrototypeError extends TypeError<"Set"> {
-  readonly reason: {
-    readonly kind: "UnexpectedPrototype";
-    readonly value: ReadonlySet<unknown>;
   };
 }
 
@@ -7868,91 +7877,54 @@ const createHomogeneousCollectionType = <Collection>(
 
 const setTypeByElement = /*#__PURE__*/ new WeakMap<TypeNode, TypeNode>();
 
-const validateSetCollection = (
-  value: unknown,
-  validateElement: RuntimeOutputValidation,
-  options: ValidationOptions,
-): Result<ReadonlySet<unknown>, SetError> => {
-  if (!hasObjectTag(value, "Set")) {
-    return err({
-      type: "Set",
-      reason: { kind: "NotSet", value },
-    });
-  }
-  if (!hasDirectSetPrototype(value as object)) {
-    return err({
-      type: "Set",
-      reason: {
-        kind: "UnexpectedPrototype",
-        value: value as ReadonlySet<unknown>,
-      },
-    });
-  }
-
-  return validateSetItems(
-    value as ReadonlySet<unknown>,
-    validateElement,
-    options,
-    true,
-  );
-};
-
-const encodeSetCollection = (
-  value: ReadonlySet<unknown>,
-  encodeElement: RuntimeEncoder,
-): ReadonlySet<unknown> => {
-  let changed = false;
-  const output = new globalThis.Set<unknown>();
-
-  for (const item of value) {
-    const encoded = encodeElement(item as never);
-    if (!globalThis.Object.is(encoded, item)) changed = true;
-    output.add(encoded);
-  }
-
-  return changed ? output : value;
-};
-
-const isSetCollection = (
-  value: unknown,
-  isElement: (value: unknown) => boolean,
-): boolean => {
-  if (!hasObjectTag(value, "Set")) return false;
-  if (!hasDirectSetPrototype(value as object)) return false;
-  if (Reflect.ownKeys(value as object).length !== 0) return false;
-  for (const item of value as ReadonlySet<unknown>) {
-    if (!isElement(item)) return false;
-  }
-  return true;
-};
-
-const hasDirectSetPrototype = (value: object): boolean => {
-  const prototype: unknown = globalThis.Object.getPrototypeOf(value);
-  if (prototype === null) return false;
-
-  const objectPrototype: unknown = globalThis.Object.getPrototypeOf(prototype);
-
-  return (
-    objectPrototype !== null &&
-    globalThis.Object.getPrototypeOf(objectPrototype) === null
-  );
-};
-
 const setRuntimeConfig: HomogeneousCollectionRuntimeConfig<
   ReadonlySet<unknown>
 > = {
   name: "Set",
   typeByElement: setTypeByElement,
-  validate: validateSetCollection,
+  validate: (value, validateElement, options) => {
+    if (!hasObjectTag(value, "Set")) {
+      return err({
+        type: "Set",
+        reason: { kind: "NotSet", value },
+      });
+    }
+    return validateSetItems(
+      value as ReadonlySet<unknown>,
+      validateElement,
+      options,
+      true,
+    );
+  },
   validateItems: (value, validateElement, options) =>
     validateSetItems(value, validateElement, options, false),
-  encode: encodeSetCollection,
-  is: isSetCollection,
+  encode: (value, encodeElement) => {
+    let changed = false;
+    const output = new Set<unknown>();
+
+    for (const item of value) {
+      const encoded = encodeElement(item as never);
+      if (!globalThis.Object.is(encoded, item)) changed = true;
+      output.add(encoded);
+    }
+
+    return changed ? output : value;
+  },
+  is: (value, isElement) => {
+    if (
+      !hasObjectTag(value, "Set") ||
+      Reflect.ownKeys(value as object).length !== 0
+    ) {
+      return false;
+    }
+    for (const item of value as ReadonlySet<unknown>) {
+      if (!isElement(item)) return false;
+    }
+    return true;
+  },
   formatError: ((error: SetError) => {
     if (error.reason.kind === "NotSet")
       return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Set.`;
-    if (error.reason.kind === "UnexpectedPrototype")
-      return "The value is an instance of a Set subclass, but a Set Output must be a direct Set instance.";
     const issue = error.reason.issues[0];
     switch (issue.kind) {
       case "ExcessProperty":
@@ -7972,7 +7944,7 @@ const validateSetItems = (
   let issues:
     Array<SetStructuralIssue | SetElementIssue<TypeError>> | undefined;
   let changed = false;
-  const output = new globalThis.Set<unknown>();
+  const output = new Set<unknown>();
 
   if (checkStructure) {
     for (const key of Reflect.ownKeys(value)) {
@@ -8009,6 +7981,522 @@ const validateSetItems = (
 };
 
 /**
+ * Map {@link Type} whose keys and values must match their respective Types.
+ *
+ * Maps from this or another realm are accepted. A Map must have no own
+ * properties; its entries are validated in iteration order. When distinct input
+ * keys decode to the same output key, validation fails instead of discarding
+ * one associated value. Classification uses the realm-neutral object tag under
+ * Evolu Type's trusted JavaScript policy.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { PositiveInt, String, map } from "@evolu/common";
+ *
+ * const Scores = map(String, PositiveInt);
+ * const scores = new Map([
+ *   ["Ada", 10],
+ *   ["Grace", 20],
+ * ]);
+ *
+ * expectOk(Scores.fromUnknown(scores), scores);
+ * ```
+ *
+ * @group Collection
+ */
+export const map = <
+  KeyType extends ConcreteTypeNode,
+  ValueType extends ConcreteTypeNode,
+>(
+  key: ValidateMapKeyType<KeyType>,
+  value: ValidateMapValueType<ValueType>,
+): MapType<KeyType, ValueType> => {
+  const typeKey = key as unknown as KeyType & RuntimeTypeNode;
+  const typeValue = value as unknown as ValueType & RuntimeTypeNode;
+
+  let typeByValue = mapTypeByValueByKey.get(typeKey);
+  const cached = typeByValue?.get(typeValue);
+  if (cached) return cached as MapType<KeyType, ValueType>;
+
+  const validate = (
+    input: unknown,
+    validateKey: RuntimeOutputValidation,
+    validateValue: RuntimeOutputValidation,
+    options: ValidationOptions,
+  ): Result<ReadonlyMap<unknown, unknown>, MapError> => {
+    if (!hasObjectTag(input, "Map")) {
+      return err({
+        type: "Map",
+        reason: { kind: "NotMap", value: input },
+      });
+    }
+    return validateMapEntries(
+      input as ReadonlyMap<unknown, unknown>,
+      validateKey,
+      validateValue,
+      options,
+      true,
+    );
+  };
+  const fromUnknown = (
+    input: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ) => validate(input, typeKey.fromUnknown, typeValue.fromUnknown, options);
+  const validateOutput = (
+    input: unknown,
+    options: ValidationOptions = firstValidationOptions,
+  ) =>
+    validate(
+      input,
+      typeKey[outputValidationSymbol],
+      typeValue[outputValidationSymbol],
+      options,
+    );
+  const formatError: TypeErrorFormatter<MapStructuralError> = (error) => {
+    if (error.reason.kind === "NotMap")
+      return `A value ${safelyStringifyUnknownValue(error.reason.value)} is not a Map.`;
+    const issue = error.reason.issues[0];
+    switch (issue.kind) {
+      case "ExcessProperty":
+        return `An excess Map property ${safelyStringifyUnknownValue(issue.key)} is not allowed.`;
+      case "Collision":
+        return `Map keys at indexes ${issue.previousIndex} and ${issue.index} decode to the same key ${safelyStringifyUnknownValue(issue.outputKey)}.`;
+    }
+  };
+  const rootKey = getTerminalRuntimeNode(typeKey);
+  const rootValue = getTerminalRuntimeNode(typeValue);
+  const parent =
+    rootKey !== typeKey || rootValue !== typeValue
+      ? (
+          map as unknown as (
+            key: ConcreteTypeNode,
+            value: ConcreteTypeNode,
+          ) => TypeNode
+        )(
+          rootKey as unknown as ConcreteTypeNode,
+          rootValue as unknown as ConcreteTypeNode,
+        )
+      : null;
+  const fromParent = parent
+    ? (input: never, options: ValidationOptions = firstValidationOptions) =>
+        validateMapEntries(
+          input,
+          getTerminalRuntimeNode(
+            typeKey[fromSymbol],
+          ) as RuntimeOutputValidation,
+          getTerminalRuntimeNode(
+            typeValue[fromSymbol],
+          ) as RuntimeOutputValidation,
+          options,
+          false,
+        )
+    : undefined;
+  const from = createFromOperation(fromParent);
+  const encodeKey = typeKey[encoderSymbol];
+  const encodeValue = typeValue[encoderSymbol];
+  const to: RuntimeEncoder =
+    encodeKey === identity && encodeValue === identity
+      ? identity
+      : (input: ReadonlyMap<unknown, unknown>) => {
+          const output = new Map<unknown, unknown>();
+          let changed = false;
+
+          for (const [inputKey, inputValue] of input) {
+            const outputKey = encodeKey(inputKey as never);
+            const outputValue = encodeValue(inputValue as never);
+
+            assert(
+              !output.has(outputKey),
+              "Map key Type encoding must not produce duplicate keys.",
+            );
+            output.set(outputKey, outputValue);
+
+            if (
+              !globalThis.Object.is(inputKey, outputKey) ||
+              !globalThis.Object.is(inputValue, outputValue)
+            ) {
+              changed = true;
+            }
+          }
+
+          return changed ? output : input;
+        };
+  const is = (input: unknown): boolean => {
+    if (!hasObjectTag(input, "Map")) {
+      return false;
+    }
+    if (Reflect.ownKeys(input as object).length !== 0) return false;
+
+    for (const [inputKey, inputValue] of input as ReadonlyMap<
+      unknown,
+      unknown
+    >) {
+      if (!typeKey.is(inputKey) || !typeValue.is(inputValue)) return false;
+    }
+
+    return true;
+  };
+  const getTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+    const mapError = error as MapError;
+    if (mapError.reason.kind !== "Entries") {
+      return singleRuntimeTypeIssue(
+        "Map",
+        error,
+        formatError as TypeErrorFormatter<TypeError>,
+      );
+    }
+
+    const allIssues = mapError.reason.issues;
+    const issues = mode === "first" ? ([allIssues[0]] as const) : allIssues;
+
+    return issues.flatMap((issue): ReadonlyArray<RuntimeTypeIssue> => {
+      if (issue.kind === "Key" || issue.kind === "Value") {
+        return prependRuntimeTypeIssuePath(
+          issue.index,
+          prependRuntimeTypeIssuePath(
+            issue.kind === "Key" ? "key" : "value",
+            (issue.kind === "Key" ? typeKey : typeValue)[
+              getRuntimeTypeIssuesSymbol
+            ](issue.error, mode),
+          ),
+        );
+      }
+
+      return singleRuntimeTypeIssue(
+        "Map",
+        mode === "first"
+          ? error
+          : ({
+              type: "Map",
+              reason: { kind: "Entries", issues: [issue] },
+            } as TypeError),
+        formatError as TypeErrorFormatter<TypeError>,
+        [issue.kind === "ExcessProperty" ? issue.key : issue.index],
+      );
+    }) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
+  };
+  const type = createTypeNode<MapType<KeyType, ValueType>>(
+    "Map",
+    parent,
+    fromUnknown,
+    is,
+    validateOutput,
+    from,
+    to,
+    getTypeIssues,
+    { key: typeKey, value: typeValue },
+  );
+
+  if (typeByValue === undefined) {
+    typeByValue = new WeakMap();
+    mapTypeByValueByKey.set(typeKey, typeByValue);
+  }
+  typeByValue.set(typeValue, type);
+
+  return type;
+};
+
+const mapTypeByValueByKey = /*#__PURE__*/ new WeakMap<
+  TypeNode,
+  WeakMap<TypeNode, TypeNode>
+>();
+
+/**
+ * The readonly-map {@link Type} returned by {@link map}.
+ *
+ * @group Collection
+ */
+export interface MapType<
+  KeyType extends TypeNode,
+  ValueType extends TypeNode,
+> extends Type<
+  "Map",
+  ReadonlyMap<KeyType["Input"], ValueType["Input"]>,
+  ReadonlyMap<KeyType["Output"], ValueType["Output"]>,
+  MapNodeError<KeyType, ValueType>,
+  MapParent<KeyType, ValueType>,
+  MapError<
+    InferErrors<KeyType>,
+    InferErrors<ValueType>,
+    MapCollisionFor<KeyType>
+  >,
+  never,
+  CanonicalInputSubset<
+    ReadonlyMap<KeyType["Input"], ValueType["Input"]>,
+    ReadonlyMap<CanonicalInputOf<KeyType>, CanonicalInputOf<ValueType>>
+  >,
+  AllTypesUseIdentityEncoding<KeyType | ValueType>
+> {
+  readonly [reflectedTypesSymbol]?: KeyType | ValueType;
+  readonly key: KeyType;
+  readonly value: ValueType;
+}
+
+type MapParent<KeyType extends TypeNode, ValueType extends TypeNode> = [
+  KeyType["parent"] | ValueType["parent"],
+] extends [null]
+  ? null
+  : MapType<RootType<KeyType>, RootType<ValueType>>;
+
+type MapNodeError<KeyType extends TypeNode, ValueType extends TypeNode> = [
+  KeyType["parent"] | ValueType["parent"],
+] extends [null]
+  ? MapError<InferErrors<KeyType>, InferErrors<ValueType>, never>
+  : MapEntriesError<
+      TypeFromError<KeyType>,
+      TypeFromError<ValueType>,
+      MapCollisionFor<KeyType>
+    >;
+
+type MapCollisionFor<KeyType extends TypeNode> = [KeyType["parent"]] extends [
+  TypeNode,
+]
+  ? MapKeyCollisionIssue
+  : never;
+
+type ValidateMapKeyType<T extends ConcreteTypeNode> =
+  IsUnion<T> extends false
+    ? T
+    : CompileTimeError<
+        "Type",
+        "Map key must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
+      >;
+
+type ValidateMapValueType<T extends ConcreteTypeNode> =
+  IsUnion<T> extends false
+    ? T
+    : CompileTimeError<
+        "Type",
+        "Map value must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
+      >;
+
+/**
+ * Error returned while validating a {@link map} and its entries.
+ *
+ * @group Collection
+ */
+export type MapError<
+  KeyError extends TypeError = TypeError,
+  ValueError extends TypeError = TypeError,
+  Collision extends MapKeyCollisionIssue = MapKeyCollisionIssue,
+> =
+  | MapNotMapError
+  | MapEntriesErrorValue<
+      KeyError,
+      ValueError,
+      Collision | MapExcessPropertyIssue
+    >;
+
+/**
+ * Error returned when a {@link map} input is not a Map.
+ *
+ * @group Collection
+ */
+export interface MapNotMapError extends TypeError<"Map"> {
+  readonly reason: {
+    readonly kind: "NotMap";
+    readonly value: unknown;
+  };
+}
+
+/**
+ * An own property found on a Map value.
+ *
+ * @group Collection
+ */
+export interface MapExcessPropertyIssue {
+  readonly kind: "ExcessProperty";
+  readonly key: string | symbol;
+}
+
+/**
+ * An invalid key and its entry index in a {@link map}.
+ *
+ * @group Collection
+ */
+export type MapKeyIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Key";
+      readonly index: number;
+      readonly key: unknown;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * An invalid value and its entry index in a {@link map}.
+ *
+ * @group Collection
+ */
+export type MapValueIssue<Error extends TypeError> = Error extends TypeError
+  ? {
+      readonly kind: "Value";
+      readonly index: number;
+      readonly key: unknown;
+      readonly error: Error;
+    }
+  : never;
+
+/**
+ * Two {@link map} keys that decode to the same output key.
+ *
+ * @group Collection
+ */
+export interface MapKeyCollisionIssue {
+  readonly kind: "Collision";
+  readonly index: number;
+  readonly key: unknown;
+  readonly previousIndex: number;
+  readonly previousKey: unknown;
+  readonly outputKey: unknown;
+}
+
+type MapStructuralIssue = MapExcessPropertyIssue | MapKeyCollisionIssue;
+
+type MapStructuralError =
+  MapNotMapError | MapEntriesErrorValue<never, never, MapStructuralIssue>;
+
+/**
+ * An invalid key, value, or structure in a {@link map}.
+ *
+ * @group Collection
+ */
+export type MapIssue<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends MapStructuralIssue = MapKeyCollisionIssue,
+> = MapKeyIssue<KeyError> | MapValueIssue<ValueError> | StructuralIssue;
+
+/**
+ * Entry errors returned by a {@link map} operation.
+ *
+ * @group Collection
+ */
+export type MapEntriesError<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends MapStructuralIssue = MapKeyCollisionIssue,
+> = [KeyError | ValueError | StructuralIssue] extends [never]
+  ? never
+  : MapEntriesErrorValue<KeyError, ValueError, StructuralIssue>;
+
+interface MapEntriesErrorValue<
+  KeyError extends TypeError,
+  ValueError extends TypeError,
+  StructuralIssue extends MapStructuralIssue,
+> extends TypeError<"Map"> {
+  readonly reason: {
+    readonly kind: "Entries";
+    readonly issues: NonEmptyReadonlyArray<
+      MapKeyIssue<KeyError> | MapValueIssue<ValueError> | StructuralIssue
+    >;
+  };
+}
+
+const validateMapEntries = (
+  input: ReadonlyMap<unknown, unknown>,
+  validateKey: RuntimeOutputValidation,
+  validateValue: RuntimeOutputValidation,
+  options: ValidationOptions,
+  checkStructure: boolean,
+): Result<
+  ReadonlyMap<unknown, unknown>,
+  MapEntriesErrorValue<TypeError, TypeError, MapStructuralIssue>
+> => {
+  let issues:
+    Array<MapIssue<TypeError, TypeError, MapStructuralIssue>> | undefined;
+  const output = new Map<unknown, unknown>();
+  const inputByOutputKey = new Map<
+    unknown,
+    { readonly index: number; readonly key: unknown }
+  >();
+  let changed = false;
+
+  if (checkStructure) {
+    for (const key of Reflect.ownKeys(input)) {
+      (issues ??= []).push({ kind: "ExcessProperty", key });
+      if (options.errors === "first") break;
+    }
+  }
+
+  let index = 0;
+  for (const [inputKey, inputValue] of input) {
+    if (issues !== undefined && options.errors === "first") break;
+
+    const keyResult = validateKey(inputKey, options);
+    if (!keyResult.ok) {
+      (issues ??= []).push({
+        kind: "Key",
+        index,
+        key: inputKey,
+        error: keyResult.error,
+      });
+      if (options.errors === "first") break;
+    }
+
+    const valueResult = validateValue(inputValue, options);
+    if (!valueResult.ok) {
+      (issues ??= []).push({
+        kind: "Value",
+        index,
+        key: inputKey,
+        error: valueResult.error,
+      });
+      if (options.errors === "first") break;
+    }
+
+    if (!keyResult.ok) {
+      index++;
+      continue;
+    }
+    const outputKey = keyResult.value;
+    const previous = inputByOutputKey.get(outputKey);
+
+    if (previous !== undefined) {
+      (issues ??= []).push({
+        kind: "Collision",
+        index,
+        key: inputKey,
+        previousIndex: previous.index,
+        previousKey: previous.key,
+        outputKey,
+      });
+      if (options.errors === "first") break;
+      index++;
+      continue;
+    }
+
+    inputByOutputKey.set(outputKey, { index, key: inputKey });
+    if (!valueResult.ok) {
+      index++;
+      continue;
+    }
+
+    output.set(outputKey, valueResult.value);
+    if (
+      !globalThis.Object.is(inputKey, outputKey) ||
+      !globalThis.Object.is(inputValue, valueResult.value)
+    ) {
+      changed = true;
+    }
+    index++;
+  }
+
+  return issues === undefined
+    ? ok(changed ? output : input)
+    : err({
+        type: "Map",
+        reason: {
+          kind: "Entries",
+          issues: issues as unknown as NonEmptyReadonlyArray<
+            MapIssue<TypeError, TypeError, MapStructuralIssue>
+          >,
+        },
+      });
+};
+
+/**
  * Tuple {@link Type}.
  *
  * Use `tuple(First, Second, ...)` for a fixed-length readonly array in which
@@ -8025,10 +8513,9 @@ const validateSetItems = (
  *
  * A Tuple must be recognized by `Array.isArray`, have exactly the declared
  * length, be dense, and have no own properties other than `length` and the
- * indexed data properties for its elements. Array subclasses, custom-prototype
- * arrays, and foreign-realm arrays are accepted when their own data
- * representation is valid. Sparse arrays, accessor elements, and excess
- * properties are rejected.
+ * indexed data properties for its elements. Foreign-realm arrays are accepted
+ * when their own data representation is valid. Sparse arrays, accessor
+ * elements, and excess properties are rejected.
  *
  * ### Example
  *
@@ -8625,11 +9112,12 @@ type PlainObjectError = ObjectError<
  * A {@link Type} for readonly plain objects with unknown property values.
  *
  * `Object` is the runtime counterpart of a `Readonly<Record<string, unknown>>`
- * data boundary. Its realm-neutral prototype rule accepts a `null` prototype or
- * an immediate root prototype whose own prototype is `null`. Every own property
- * must have a string key and be an enumerable data property. It rejects
- * ordinary class instances, deeper prototype chains, accessors, non-enumerable
- * properties, and symbol properties without reading their values.
+ * data boundary. Its prototype rule uses the realm-neutral structural heuristic
+ * described by {@link isPlainObject}. A matching custom root prototype can be
+ * classified as plain; other custom prototypes and class instances are
+ * rejected. Every own property must have a string key and be an enumerable data
+ * property. Accessors, non-enumerable properties, and symbol properties are
+ * rejected without reading their values.
  *
  * Use {@link object} when property names are fixed, {@link record} when keys and
  * values have their own Types, and {@link instanceOf} when an instance belongs
@@ -8704,7 +9192,7 @@ const _Object: Type<
     }
 
     return errors === undefined
-      ? ok(value as Readonly<Record<string, unknown>>)
+      ? ok(value)
       : err({
           type: "Object",
           reason: { kind: "Properties", errors },
@@ -8765,13 +9253,6 @@ const _Object: Type<
 // https://github.com/expo/expo/issues/31167
 export { _Object as Object };
 
-const isPlainObject = (value: object): boolean => {
-  const prototype: unknown = globalThis.Object.getPrototypeOf(value);
-  return (
-    prototype === null || globalThis.Object.getPrototypeOf(prototype) === null
-  );
-};
-
 /**
  * Record {@link Type}.
  *
@@ -8788,12 +9269,13 @@ const isPlainObject = (value: object): boolean => {
  * By default, validation returns the first issue. Pass `{ errors: "all" }` to
  * collect issues across the whole Record.
  *
- * A Record must have a `null` prototype or an immediate root prototype whose
- * own prototype is `null`. Ordinary class instances and deeper prototype chains
- * are rejected. Every own property must be an enumerable data property whose
- * key and value satisfy their Types. When decoding or encoding changes an
- * entry, the constructed Record uses a `null` prototype so keys such as
- * `__proto__` remain ordinary data.
+ * A Record must satisfy the realm-neutral structural heuristic described by
+ * {@link isPlainObject}. A matching custom root prototype can be classified as
+ * plain; other custom prototypes and class instances are rejected. Every own
+ * property must be an enumerable data property whose key and value satisfy
+ * their Types. When decoding or encoding changes an entry, the constructed
+ * Record uses a `null` prototype so keys such as `__proto__` remain ordinary
+ * data.
  *
  * If transformed keys collide, validation fails instead of overwriting an
  * entry.
@@ -8905,7 +9387,7 @@ export const record = <
     }
 
     return validateRecordEntries(
-      input as Readonly<Record<string, unknown>>,
+      input,
       validateKey as (
         value: unknown,
         options: ValidationOptions,
@@ -9515,10 +9997,11 @@ type ObjectProperty = ObjectProps[string];
  * required properties nor make optional properties present. This keeps Outputs
  * valid after ordinary object spread restores `Object.prototype`.
  *
- * A `null` prototype or an immediate root prototype whose own prototype is
- * `null` is accepted. Ordinary class instances, deeper prototype chains,
- * accessors, and non-enumerable properties are rejected. Use {@link instanceOf}
- * for class Outputs or {@link transform} to decode instances into plain data.
+ * The prototype must satisfy the realm-neutral structural heuristic described
+ * by {@link isPlainObject}. A matching custom root prototype can be classified
+ * as plain; other custom prototypes, class instances, accessors, and
+ * non-enumerable properties are rejected. Use {@link instanceOf} for class
+ * Outputs or {@link transform} to decode instances into plain data.
  *
  * When decoding changes no property, it preserves the input. When decoding or
  * encoding changes a property, it constructs an object with a `null`
@@ -9574,7 +10057,7 @@ type ObjectProperty = ObjectProps[string];
  *   readonly toString?: number;
  * }
  *
- * const nullPrototypeValues = globalThis.Object.create(null) as Values;
+ * const nullPrototypeValues = Object.create(null) as Values;
  * const values = { ...nullPrototypeValues };
  *
  * // TypeScript treats the inherited function as `number | undefined`.
@@ -10480,12 +10963,10 @@ export interface ObjectNotObjectError extends TypeError<"Object"> {
  * An error returned when an {@link object} input falls outside its supported
  * plain-object prototype boundary.
  *
- * Object Types accept a `null` prototype or a prototype whose own prototype is
- * `null`. This includes ordinary and cross-realm plain objects as well as
- * objects created from an immediate root prototype. Arrays, JavaScript built-in
- * objects, class instances, and objects with deeper custom prototype chains
- * return this error instead of having their prototype or inherited state
- * discarded. `reason.value` is the rejected object.
+ * Object Types use the realm-neutral structural heuristic described by
+ * {@link isPlainObject}. Values that do not satisfy it return this error instead
+ * of having their prototype or inherited state discarded. `reason.value` is the
+ * rejected object.
  *
  * @group Objects
  */
@@ -11366,7 +11847,7 @@ export function discriminatedUnion(
             type: "Object",
             reason: { kind: "UnexpectedPrototype", value },
           })
-        : ok(value as Readonly<Record<string, unknown>>);
+        : ok(value);
 
     if (!objectResult.ok) {
       return err({
@@ -11920,10 +12401,11 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
  *
  * The definition must return one concrete non-Lazy Type. Use {@link union} for
  * alternatives. Every recursive Lazy reference must be nested behind an
- * {@link object}, {@link array}, {@link tuple}, {@link record}, or {@link set}
- * structural boundary. Union does not guard recursion because it passes the
- * same value to every member. Lazy defers schema construction; it does not make
- * cyclic runtime object graphs or arbitrarily deep values stack-safe.
+ * {@link object}, {@link array}, {@link tuple}, {@link record}, {@link set}, or
+ * {@link map} structural boundary. Union does not guard recursion because it
+ * passes the same value to every member. Lazy defers schema construction; it
+ * does not make cyclic runtime object graphs or arbitrarily deep values
+ * stack-safe.
  *
  * ### Example
  *
@@ -12143,7 +12625,7 @@ const assertLazyReferencesAreGuarded = (type: RuntimeTypeNode): void => {
       "A Lazy Type definition must place every Lazy Type behind a structural boundary.",
     );
 
-    if ("members" in type && globalThis.Array.isArray(type.members)) {
+    if ("members" in type && Array.isArray(type.members)) {
       for (const member of type.members as ReadonlyArray<RuntimeTypeNode>)
         assertLazyReferencesAreGuarded(member);
     }
@@ -12156,6 +12638,557 @@ const assertLazyReferencesAreGuarded = (type: RuntimeTypeNode): void => {
     type = type.parent as RuntimeTypeNode;
   }
 };
+
+/**
+ * Evolu's recursive platform-independent structured-cloneable data domain.
+ *
+ * Data is intentionally limited to values supported by the structured clone
+ * algorithm, so it can be sent through APIs such as worker `postMessage`. It
+ * includes supported JavaScript primitives and the runtime representations
+ * defined by {@link array}, {@link Object}, {@link set}, {@link map}, {@link Date},
+ * and {@link Uint8Array}. Array elements, Object properties, Set elements, and
+ * Map keys and values must also be Data. Cyclic and shared data graphs are
+ * supported. Raw {@link ArrayBuffer} values are excluded; represent bytes with a
+ * Uint8Array.
+ *
+ * Functions, arbitrary class instances, and other behavioral objects are not
+ * Data. The structural representations follow the corresponding Evolu Type
+ * rules. As with every Type operation, classification assumes trusted
+ * application code or audited dependencies; it is not a security boundary for
+ * adversarial Proxies or forged built-in object tags.
+ *
+ * TypeScript cannot express dense Arrays, exact property descriptors, object
+ * prototypes, or the absence of custom properties on built-ins. Use the runtime
+ * {@link Data} Type when a value crosses an unknown boundary.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Data, assertType } from "@evolu/common";
+ *
+ * const value: unknown = {
+ *   user: { name: "Ada" },
+ *   scores: new Map([["logic", 100]]),
+ *   roles: new Set(["admin"]),
+ * };
+ * const result = Data.fromUnknown(value);
+ *
+ * expectOk(result, value);
+ * assertType<Data, typeof result.value>();
+ * ```
+ *
+ * @group Base
+ */
+export type Data =
+  | undefined
+  | null
+  | string
+  | number
+  | bigint
+  | boolean
+  | ReadonlyArray<Data>
+  | { readonly [key: string]: Data }
+  | ReadonlySet<Data>
+  | ReadonlyMap<Data, Data>
+  | globalThis.Date
+  | globalThis.Uint8Array;
+
+/**
+ * Returns whether a TypeScript type consists only of {@link Data}.
+ *
+ * Unlike `Value extends Data`, this recursively checks the declared properties
+ * of object types, so ordinary interfaces do not need a string index signature.
+ * This is a compile-time approximation of the Data domain; representation
+ * details such as prototypes and property descriptors still require the runtime
+ * {@link Data} Type.
+ *
+ * Recursive object types are supported.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertType, type IsData } from "@evolu/common";
+ *
+ * interface User {
+ *   readonly name: string;
+ *   readonly roles: ReadonlySet<string>;
+ * }
+ *
+ * interface Service {
+ *   readonly run: () => void;
+ * }
+ *
+ * assertType<true, IsData<User>>();
+ * assertType<false, IsData<Service>>();
+ * ```
+ *
+ * @group Base
+ */
+export type IsData<Value> = IsDataValue<Value, readonly []>;
+
+type IsDataValue<Value, Seen extends ReadonlyArray<unknown>> =
+  IsAny<Value> extends true
+    ? false
+    : unknown extends Value
+      ? false
+      : [Value] extends [never]
+        ? true
+        : false extends (
+              Value extends unknown ? IsDataMember<Value, Seen> : never
+            )
+          ? false
+          : true;
+
+type IsAny<Value> = 0 extends 1 & Value ? true : false;
+
+type IsDataMember<Value, Seen extends ReadonlyArray<unknown>> =
+  IsSameType<Value, object> extends true
+    ? false
+    : IncludesSameType<Seen, Value> extends true
+      ? true
+      : Value extends void | null | string | number | bigint | boolean
+        ? true
+        : Value extends globalThis.Function
+          ? false
+          : Value extends globalThis.Date | globalThis.Uint8Array
+            ? true
+            : Value extends ReadonlyArray<infer Element>
+              ? IsDataValue<Element, readonly [...Seen, Value]>
+              : Value extends ReadonlySet<infer Element>
+                ? IsDataValue<Element, readonly [...Seen, Value]>
+                : Value extends ReadonlyMap<infer Key, infer MapValue>
+                  ? IsDataValue<Key | MapValue, readonly [...Seen, Value]>
+                  : Value extends object
+                    ? Extract<keyof Value, symbol> extends never
+                      ? IsDataObject<Value, readonly [...Seen, Value]>
+                      : false
+                    : false;
+
+type IsDataObject<Value extends object, Seen extends ReadonlyArray<unknown>> = [
+  keyof Value,
+] extends [never]
+  ? false
+  : false extends {
+        [Key in keyof Value]-?: IsDataValue<Value[Key], Seen>;
+      }[keyof Value]
+    ? false
+    : true;
+
+type IncludesSameType<
+  Values extends ReadonlyArray<unknown>,
+  Value,
+> = Values extends readonly [infer First, ...infer Rest]
+  ? IsSameType<First, Value> extends true
+    ? true
+    : IncludesSameType<Rest, Value>
+  : false;
+
+/**
+ * One issue found while validating a candidate as {@link Data}.
+ *
+ * @group Base
+ */
+export type DataIssue =
+  | {
+      readonly kind: "InvalidType";
+      readonly path: ReadonlyArray<PropertyKey>;
+      readonly value: unknown;
+    }
+  | {
+      readonly kind: "UnexpectedPrototype";
+      readonly path: ReadonlyArray<PropertyKey>;
+      readonly container: "Object";
+      readonly value: object;
+    }
+  | {
+      readonly kind: "Accessor";
+      readonly path: ReadonlyArray<PropertyKey>;
+    }
+  | {
+      readonly kind: "NonEnumerable";
+      readonly path: ReadonlyArray<PropertyKey>;
+    }
+  | {
+      readonly kind: "SymbolProperty";
+      readonly path: ReadonlyArray<PropertyKey>;
+    }
+  | {
+      readonly kind: "Hole";
+      readonly path: ReadonlyArray<PropertyKey>;
+    }
+  | {
+      readonly kind: "InvalidUint8Array";
+      readonly path: ReadonlyArray<PropertyKey>;
+      readonly value: globalThis.Uint8Array;
+    }
+  | {
+      readonly kind: "ExcessProperty";
+      readonly path: ReadonlyArray<PropertyKey>;
+      readonly container: "Array" | "Set" | "Map";
+    };
+
+/**
+ * An error containing one or more issues found while validating a candidate as
+ * {@link Data}.
+ *
+ * @group Base
+ */
+export interface DataError extends TypeError<"Data"> {
+  readonly reason: {
+    readonly kind: "Issues";
+    readonly issues: NonEmptyReadonlyArray<DataIssue>;
+  };
+}
+
+/**
+ * The root {@link Type} for Evolu {@link Data}.
+ *
+ * @group Base
+ */
+export interface DataType extends Type<
+  "Data",
+  Data,
+  Data,
+  DataError,
+  null,
+  DataError,
+  never,
+  Data
+> {}
+
+interface DataPathNode {
+  readonly parent: DataPathNode | null;
+  readonly key: PropertyKey;
+}
+
+interface DataWork {
+  readonly value: unknown;
+  readonly path: DataPathNode | null;
+}
+
+const emptyDataPath: ReadonlyArray<PropertyKey> =
+  /*#__PURE__*/ globalThis.Object.freeze([]);
+
+const dataPathToArray = (
+  path: DataPathNode | null,
+): ReadonlyArray<PropertyKey> => {
+  if (path === null) return emptyDataPath;
+
+  const keys: Array<PropertyKey> = [];
+  let node: DataPathNode | null = path;
+
+  while (node !== null) {
+    keys.push(node.key);
+    node = node.parent;
+  }
+
+  keys.reverse();
+  return globalThis.Object.freeze(keys);
+};
+
+const dataChildPath = (
+  parent: DataPathNode | null,
+  key: PropertyKey,
+): DataPathNode => ({ parent, key });
+
+const validateData = (
+  value: unknown,
+  options: ValidationOptions = firstValidationOptions,
+): Result<Data, DataError> => {
+  const work: Array<DataWork> = [{ value, path: null }];
+  const visited = new WeakSet<object>();
+  let issues: Array<DataIssue> | undefined;
+
+  const addIssue = (issue: DataIssue): boolean => {
+    (issues ??= []).push(issue);
+    return options.errors === "first";
+  };
+
+  while (work.length > 0) {
+    const current = work.pop()!;
+    const { path, value } = current;
+
+    if (
+      value === null ||
+      value === undefined ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "bigint" ||
+      typeof value === "boolean"
+    ) {
+      continue;
+    }
+    if (typeof value !== "object") {
+      if (
+        addIssue({
+          kind: "InvalidType",
+          path: dataPathToArray(path),
+          value,
+        })
+      ) {
+        break;
+      }
+      continue;
+    }
+    if (visited.has(value)) continue;
+
+    const children: Array<DataWork> = [];
+    const kind = getObjectKind(value);
+
+    if (kind === "Array") {
+      const array = value as ReadonlyArray<unknown>;
+      for (const key of Reflect.ownKeys(array)) {
+        if (key === "length") continue;
+        if (typeof key === "string") {
+          const index = globalThis.Number(key) >>> 0;
+          if (index < array.length && globalThis.String(index) === key) {
+            continue;
+          }
+        }
+
+        if (
+          addIssue({
+            kind: "ExcessProperty",
+            path: dataPathToArray(dataChildPath(path, key)),
+            container: "Array",
+          })
+        ) {
+          break;
+        }
+      }
+      if (issues !== undefined && options.errors === "first") break;
+
+      for (let index = 0; index < array.length; index++) {
+        const childPath = dataChildPath(path, index);
+        const descriptor = globalThis.Object.getOwnPropertyDescriptor(
+          array,
+          index,
+        );
+
+        if (descriptor === undefined) {
+          if (addIssue({ kind: "Hole", path: dataPathToArray(childPath) })) {
+            break;
+          }
+          continue;
+        }
+        if (!("value" in descriptor)) {
+          if (
+            addIssue({ kind: "Accessor", path: dataPathToArray(childPath) })
+          ) {
+            break;
+          }
+          continue;
+        }
+
+        children.push({ value: descriptor.value, path: childPath });
+      }
+    } else if (kind === "Object") {
+      for (const key of Reflect.ownKeys(value)) {
+        const childPath = dataChildPath(path, key);
+
+        if (typeof key === "symbol") {
+          if (
+            addIssue({
+              kind: "SymbolProperty",
+              path: dataPathToArray(childPath),
+            })
+          ) {
+            break;
+          }
+          continue;
+        }
+
+        const descriptor = globalThis.Object.getOwnPropertyDescriptor(
+          value,
+          key,
+        )!;
+        if (!("value" in descriptor)) {
+          if (
+            addIssue({ kind: "Accessor", path: dataPathToArray(childPath) })
+          ) {
+            break;
+          }
+          continue;
+        }
+        if (!descriptor.enumerable) {
+          if (
+            addIssue({
+              kind: "NonEnumerable",
+              path: dataPathToArray(childPath),
+            })
+          ) {
+            break;
+          }
+          continue;
+        }
+
+        children.push({ value: descriptor.value, path: childPath });
+      }
+    } else if (kind === "Date") {
+      visited.add(value);
+      continue;
+    } else if (kind === "Uint8Array") {
+      try {
+        void globalThis.Uint8Array.prototype.values.call(
+          value as globalThis.Uint8Array,
+        );
+      } catch {
+        if (
+          addIssue({
+            kind: "InvalidUint8Array",
+            path: dataPathToArray(path),
+            value: value as globalThis.Uint8Array,
+          })
+        ) {
+          break;
+        }
+      }
+      visited.add(value);
+      continue;
+    } else if (kind === "Set") {
+      for (const key of Reflect.ownKeys(value)) {
+        if (
+          addIssue({
+            kind: "ExcessProperty",
+            path: dataPathToArray(dataChildPath(path, key)),
+            container: "Set",
+          })
+        ) {
+          break;
+        }
+      }
+      if (issues !== undefined && options.errors === "first") break;
+
+      let index = 0;
+      for (const item of value as ReadonlySet<unknown>) {
+        children.push({ value: item, path: dataChildPath(path, index++) });
+      }
+    } else if (kind === "Map") {
+      for (const key of Reflect.ownKeys(value)) {
+        if (
+          addIssue({
+            kind: "ExcessProperty",
+            path: dataPathToArray(dataChildPath(path, key)),
+            container: "Map",
+          })
+        ) {
+          break;
+        }
+      }
+      if (issues !== undefined && options.errors === "first") break;
+
+      let index = 0;
+      for (const [key, item] of value as ReadonlyMap<unknown, unknown>) {
+        const entryPath = dataChildPath(path, index++);
+        children.push({ value: key, path: dataChildPath(entryPath, "key") });
+        children.push({
+          value: item,
+          path: dataChildPath(entryPath, "value"),
+        });
+      }
+    } else if (
+      addIssue({
+        kind: "UnexpectedPrototype",
+        path: dataPathToArray(path),
+        container: "Object",
+        value,
+      })
+    ) {
+      break;
+    }
+
+    if (issues !== undefined && options.errors === "first") break;
+
+    visited.add(value);
+    for (let index = children.length - 1; index >= 0; index--) {
+      work.push(children[index]);
+    }
+  }
+
+  return issues === undefined
+    ? ok(value as Data)
+    : err({
+        type: "Data",
+        reason: {
+          kind: "Issues",
+          issues: globalThis.Object.freeze(
+            issues,
+          ) as unknown as NonEmptyReadonlyArray<DataIssue>,
+        },
+      });
+};
+
+const getDataRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
+  const dataError = error as DataError;
+  const issues =
+    mode === "first"
+      ? ([dataError.reason.issues[0]] as const)
+      : dataError.reason.issues;
+
+  return issues.map((issue) => ({
+    name: "Data",
+    error:
+      mode === "first"
+        ? error
+        : {
+            type: "Data",
+            reason: { kind: "Issues", issues: [issue] },
+          },
+    path: issue.path,
+    formatError: ((error: DataError) => {
+      const issue = error.reason.issues[0];
+      switch (issue.kind) {
+        case "InvalidType":
+          return `A value ${safelyStringifyUnknownValue(issue.value)} is not Data.`;
+        case "UnexpectedPrototype":
+          return `A Data ${issue.container} has an unexpected prototype.`;
+        case "Accessor":
+          return "A Data property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.";
+        case "NonEnumerable":
+          return "A Data Object property must be enumerable. Remove it or use a different Type.";
+        case "SymbolProperty":
+          return "A Data Object property key must be a string. Remove the symbol property or use a different Type.";
+        case "Hole":
+          return "A Data Array element is missing.";
+        case "InvalidUint8Array":
+          return "A Data Uint8Array must have an attached, in-bounds ArrayBuffer.";
+        case "ExcessProperty":
+          return `A Data ${issue.container} must not have excess own properties. Remove the property or use a different Type.`;
+      }
+    }) as TypeErrorFormatter<TypeError>,
+  })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
+};
+
+/**
+ * Root Type for {@link Data} values.
+ *
+ * Validation is iterative and preserves the input identity. Cyclic and shared
+ * data graphs are valid.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { Data } from "@evolu/common";
+ *
+ * const value = new Map([["count", 1]]);
+ * const result = Data.fromUnknown(value);
+ *
+ * expectOk(result, value);
+ * expect(Data.is(result.value)).toBe(true);
+ * ```
+ *
+ * @group Base
+ */
+export const Data: DataType = /*#__PURE__*/ createTypeNode<DataType>(
+  "Data",
+  null,
+  validateData,
+  (value) => validateData(value).ok,
+  validateData,
+  ok,
+  identity,
+  getDataRuntimeTypeIssues,
+);
 
 /**
  * A candidate JSON value before exact runtime validation.
@@ -12428,7 +13461,7 @@ const validateJsonValue = (
       continue;
     }
 
-    const isArray = globalThis.Array.isArray(value);
+    const isArray = Array.isArray(value);
 
     if (!isArray && !isPlainObject(value)) {
       if (
@@ -12634,8 +13667,7 @@ const getJsonValueRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
   })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
 };
 
-const parseJson = (value: string): JsonValue =>
-  globalThis.JSON.parse(value) as JsonValue;
+const parseJson = (value: string): JsonValue => JSON.parse(value) as JsonValue;
 
 const jsonToJsonValueResult = (value: string): Result<JsonValue, JsonError> => {
   const result = trySync((): unknown => parseJson(value));
@@ -12667,7 +13699,7 @@ const stringifyJsonValue = (value: JsonValue): Json => {
     // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- JsonValue excludes the additional runtime types reported by tsgolint.
     switch (typeof value) {
       case "string":
-        chunks.push(globalThis.JSON.stringify(value));
+        chunks.push(JSON.stringify(value));
         break;
       case "number":
         chunks.push(
@@ -12678,7 +13710,7 @@ const stringifyJsonValue = (value: JsonValue): Json => {
         chunks.push(value ? "true" : "false");
         break;
       case "object": {
-        if (globalThis.Array.isArray(value)) {
+        if (Array.isArray(value)) {
           const array = value as JsonArray;
           chunks.push("[");
           work.push({ kind: "Text", value: "]" });
@@ -12701,7 +13733,7 @@ const stringifyJsonValue = (value: JsonValue): Json => {
           work.push({ kind: "Text", value: ":" });
           work.push({
             kind: "Text",
-            value: globalThis.JSON.stringify(key),
+            value: JSON.stringify(key),
           });
           if (index > 0) work.push({ kind: "Text", value: "," });
         }
@@ -13076,14 +14108,12 @@ type JsonCompatibleMember<
 
 type AllowedJsonArrayKeys<Value extends ReadonlyArray<unknown>> =
   | keyof ReadonlyArray<unknown>
-  | (Value extends globalThis.Array<unknown>
-      ? keyof globalThis.Array<unknown>
-      : never)
+  | (Value extends Array<unknown> ? keyof Array<unknown> : never)
   | JsonTupleIndexKeys<Value>;
 
 type JsonTupleIndexKeys<Value extends ReadonlyArray<unknown>> =
   Value extends readonly [...infer Elements]
-    ? Exclude<keyof Elements, keyof globalThis.Array<unknown>>
+    ? Exclude<keyof Elements, keyof Array<unknown>>
     : never;
 
 type IsJsonCompatibilityCycle<
@@ -13094,17 +14124,6 @@ type IsJsonCompatibilityCycle<
     ? true
     : IsJsonCompatibilityCycle<Value, Rest>
   : false;
-
-/* eslint-disable @typescript-eslint/no-unnecessary-type-parameters -- The
-generic-function comparison distinguishes recursive types that mutual
-assignability cannot. */
-type IsSameType<A, B> =
-  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
-    ? (<T>() => T extends B ? 1 : 2) extends <T>() => T extends A ? 1 : 2
-      ? true
-      : false
-    : false;
-/* eslint-enable @typescript-eslint/no-unnecessary-type-parameters */
 
 type JsonNumberCompatible<Value extends number> = [Value] extends [FiniteNumber]
   ? true

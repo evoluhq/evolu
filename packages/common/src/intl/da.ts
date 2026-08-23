@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -336,10 +337,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Værdien ${safelyStringifyUnknownValue(error.reason.value)} er ikke et Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Værdien er en instans af en Set-underklasse, men et Set Output skal være en direkte Set-instans.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -347,6 +344,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Den ekstra Set-egenskab ${safelyStringifyUnknownValue(issue.key)} er ikke tilladt.`;
     case "Element":
       return `Et Set-element på indeks ${issue.index} er ugyldigt.`;
+  }
+};
+
+/** Formaterer MapError på dansk. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Værdien ${safelyStringifyUnknownValue(error.reason.value)} er ikke et Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Den ekstra Map-egenskab ${safelyStringifyUnknownValue(issue.key)} er ikke tilladt.`;
+    case "Key":
+    case "Value":
+      return `Et Map-element på indeks ${issue.index} er ugyldigt.`;
+    case "Collision":
+      return `Map-nøglerne ${safelyStringifyUnknownValue(issue.previousKey)} og ${safelyStringifyUnknownValue(issue.key)} afkodes til den samme nøgle ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

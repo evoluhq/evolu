@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -335,10 +336,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `Vrednost ${safelyStringifyUnknownValue(error.reason.value)} ni Set.`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "Vrednost je primerek podrazreda Set, vendar mora biti izhod tipa Set neposreden primerek Set.";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -346,6 +343,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `Dodatna lastnost Set ${safelyStringifyUnknownValue(issue.key)} ni dovoljena.`;
     case "Element":
       return `Element Set na indeksu ${issue.index} ni veljaven.`;
+  }
+};
+
+/** Formats a MapError in Slovene. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `Vrednost ${safelyStringifyUnknownValue(error.reason.value)} ni Map.`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `Dodatna lastnost Map ${safelyStringifyUnknownValue(issue.key)} ni dovoljena.`;
+    case "Key":
+    case "Value":
+      return `Element Map na indeksu ${issue.index} ni veljaven.`;
+    case "Collision":
+      return `Ključa Map ${safelyStringifyUnknownValue(issue.previousKey)} in ${safelyStringifyUnknownValue(issue.key)} se dekodirata v isti ključ ${safelyStringifyUnknownValue(issue.outputKey)}.`;
   }
 };
 

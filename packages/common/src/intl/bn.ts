@@ -30,6 +30,7 @@ import type {
   LessThanError,
   LessThanOrEqualToError,
   LiteralError,
+  MapError,
   MaxLengthError,
   MinLengthError,
   MnemonicError,
@@ -334,10 +335,6 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
   if (error.reason.kind === "NotSet") {
     return `${safelyStringifyUnknownValue(error.reason.value)} মানটি Set নয়।`;
   }
-  if (error.reason.kind === "UnexpectedPrototype") {
-    return "মানটি Set subclass-এর instance, কিন্তু Set Output অবশ্যই সরাসরি Set instance হতে হবে।";
-  }
-
   const issue = error.reason.issues[0];
 
   switch (issue.kind) {
@@ -345,6 +342,24 @@ export const formatSetError: TypeErrorFormatter<SetError> = (error) => {
       return `অতিরিক্ত Set property ${safelyStringifyUnknownValue(issue.key)} অনুমোদিত নয়।`;
     case "Element":
       return `Set-এর index ${issue.index}-এর element অবৈধ।`;
+  }
+};
+
+/** Formats a MapError in Bengali. */
+export const formatMapError: TypeErrorFormatter<MapError> = (error) => {
+  if (error.reason.kind === "NotMap") {
+    return `${safelyStringifyUnknownValue(error.reason.value)} মানটি Map নয়।`;
+  }
+  const issue = error.reason.issues[0];
+
+  switch (issue.kind) {
+    case "ExcessProperty":
+      return `অতিরিক্ত Map property ${safelyStringifyUnknownValue(issue.key)} অনুমোদিত নয়।`;
+    case "Key":
+    case "Value":
+      return `Map-এর index ${issue.index}-এর element অবৈধ।`;
+    case "Collision":
+      return `Map key ${safelyStringifyUnknownValue(issue.previousKey)} এবং ${safelyStringifyUnknownValue(issue.key)} decode হয়ে একই key ${safelyStringifyUnknownValue(issue.outputKey)} হয়।`;
   }
 };
 
