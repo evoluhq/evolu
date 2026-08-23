@@ -84,7 +84,8 @@ const polyfillsPath = fileURLToPath(
  * without compilation errors are then run concurrently, bounded by the CPU
  * parallelism available to the process. Compilation and execution failures are
  * reported together. Vitest's `assert`, `expect`, and `expectTypeOf`, along
- * with Evolu's `expectOk` and `expectErr`, are injected into each module.
+ * with Evolu's `expectOk` and `expectErr`, are available as globals. An
+ * explicit import with the same name takes precedence.
  *
  * Write every TypeScript fence as a standalone, deterministic example and
  * import its dependencies. Use `expectTypeOf` to prove static contracts and an
@@ -356,8 +357,26 @@ const transformJSDocExample = (
 ): string =>
   [
     `import { installPolyfills } from ${JSON.stringify(pathToImportSpecifier(generatedPath, polyfillsPath))};`,
-    'import { expectErr, expectOk } from "@evolu/vitest";',
-    'import { assert, expect, expectTypeOf } from "vitest";',
+    'import { expectErr as injectedExpectErr, expectOk as injectedExpectOk } from "@evolu/vitest";',
+    'import { assert as injectedAssert, expect as injectedExpect, expectTypeOf as injectedExpectTypeOf } from "vitest";',
+    [
+      "declare global {",
+      "  var assert: typeof injectedAssert;",
+      "  var expect: typeof injectedExpect;",
+      "  var expectErr: typeof injectedExpectErr;",
+      "  var expectOk: typeof injectedExpectOk;",
+      "  var expectTypeOf: typeof injectedExpectTypeOf;",
+      "}",
+    ].join("\n"),
+    [
+      "Object.assign(globalThis, {",
+      "  assert: injectedAssert,",
+      "  expect: injectedExpect,",
+      "  expectErr: injectedExpectErr,",
+      "  expectOk: injectedExpectOk,",
+      "  expectTypeOf: injectedExpectTypeOf,",
+      "});",
+    ].join("\n"),
     "installPolyfills();",
     example.source,
   ].join("\n\n");

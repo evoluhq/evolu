@@ -7,7 +7,7 @@ import { assert, expect, test } from "vitest";
 const repositoryDirectory = resolve(import.meta.dirname, "../../../..");
 const temporaryRoot = join(repositoryDirectory, "tmp");
 
-test("testJSDocExamples injects Vitest assertions", async () => {
+test("testJSDocExamples provides assertion globals", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
   const temporaryDirectory = mkdtempSync(
     join(temporaryRoot, "evolu-test-jsdoc-"),
@@ -29,6 +29,38 @@ test("testJSDocExamples injects Vitest assertions", async () => {
         " * >();",
         ' * assert(upperCaseValue === "EVOLU");',
         ' * expectOk({ ok: true as const, value: upperCaseValue }, "EVOLU");',
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+
+    await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: [sourcePath],
+      typescriptPackage: "@typescript/native",
+    });
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples allows explicitly imported assertions", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        ' * import { assert } from "@evolu/common";',
+        " *",
+        ' * assert(true, "Expected true.");',
         " * ```",
         " */",
         "export const example = true;",
