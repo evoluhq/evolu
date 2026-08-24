@@ -403,8 +403,9 @@
  * const openSocket: Task<Socket, ConnectionFailedError> = () =>
  *   ok({
  *     send: (message) => message,
- *     [Symbol.asyncDispose]: async () => {
+ *     [Symbol.asyncDispose]: () => {
  *       socketDisposed = true;
+ *       return Promise.resolve();
  *     },
  *   });
  *
@@ -788,7 +789,7 @@ import type {
  * } from "@evolu/common";
  *
  * const greet: Task<string> = () => ok("Hello!");
- * const main: Task<string> = async (run) => await run(greet);
+ * const main: Task<string> = (run) => run(greet);
  *
  * await using run = createRun();
  * assertOk(await run(main), "Hello!");
@@ -1113,8 +1114,9 @@ export interface Run<D = unknown> {
    * const openResource: Task<Resource> = () =>
    *   ok({
    *     value: "resource",
-   *     [Symbol.asyncDispose]: async () => {
+   *     [Symbol.asyncDispose]: () => {
    *       disposed = true;
+   *       return Promise.resolve();
    *     },
    *   });
    *
@@ -1436,13 +1438,13 @@ export interface Run<D = unknown> {
    *   close: () => {
    *     socketClosed = true;
    *   },
-   *   read: async () => "message",
+   *   read: () => Promise.resolve("message"),
    * });
    *
    * await using run = createRun();
    * const fiber = run.abortable(async (run) => {
    *   const socket = openSocket();
-   *   using closeOnAbort = run.onAbort(() => {
+   *   using _closeOnAbort = run.onAbort(() => {
    *     socket.close();
    *   });
    *
@@ -3715,7 +3717,9 @@ const mapInput = (
  *   listener: (message: string) => void,
  * ): (() => void) => {
  *   listeners.add(listener);
- *   return () => listeners.delete(listener);
+ *   return () => {
+ *     listeners.delete(listener);
+ *   };
  * };
  * const nextMessage: Task<string> = callback(({ resolve }) =>
  *   subscribe((message) => resolve(ok(message))),
@@ -4869,14 +4873,15 @@ export const yieldNow: Task<void> = async (run) => {
  *   assertEqual(run.deps.port, 3000);
  *   serverStarted.resolve();
  *   return ok({
- *     [Symbol.asyncDispose]: async () => {
+ *     [Symbol.asyncDispose]: () => {
  *       serverStopped = true;
+ *       return Promise.resolve();
  *     },
  *   });
  * };
  *
  * const serve = (): Task<never, never, ServerDep> => async (run) => {
- *   await using server = await run.ok(startServer);
+ *   await using _ = await run.ok(startServer);
  *   return await run(waitForAbort);
  * };
  *
@@ -5135,10 +5140,10 @@ export const unabortable = /*#__PURE__*/ withTaskMeta({
  * const operationStarted = Promise.withResolvers<void>();
  * const operate =
  *   (resource: Resource): Task<never> =>
- *   async (run) => {
+ *   (run) => {
  *     assertEqual(resource.id, "resource-1");
  *     operationStarted.resolve();
- *     return await run(waitForAbort);
+ *     return run(waitForAbort);
  *   };
  * let released = false;
  * const release =

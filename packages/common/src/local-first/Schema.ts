@@ -266,7 +266,7 @@ export interface MutationOptions {
    *   createOwnerSecret({ randomBytes }),
    * );
    *
-   * const insertOwnedRows = (evolu: Evolu<typeof Schema>): void => {
+   * const _insertOwnedRows = (evolu: Evolu<typeof Schema>): void => {
    *   // Partition app data by project.
    *   evolu.insert(
    *     "task",

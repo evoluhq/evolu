@@ -939,13 +939,13 @@ export function createSharedResourceByKey<
  *
  * {
  *   // Account A retains both transports.
- *   using accountATransports = await run.ok(
+ *   using _accountATransports = await run.ok(
  *     transports.claim(accountA, [relay, localNetwork]),
  *   );
  *
  *   {
  *     // Account B reuses the relay already retained by account A.
- *     using accountBRelay = await run.ok(
+ *     using _accountBRelay = await run.ok(
  *       transports.claim(accountB, [relay]),
  *     );
  *     assertEqual(

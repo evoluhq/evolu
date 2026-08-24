@@ -48,6 +48,7 @@ import type { Eq } from "./Eq.ts";
  * using redactedKey: RedactedApiKey = createRedacted(apiKey);
  * const fetchUser = (key: RedactedApiKey): ApiKey => revealRedacted(key);
  *
+ * // oxlint-disable-next-line typescript/no-base-to-string -- Redacted intentionally implements a safe custom toString.
  * assertEqual(redactedKey.toString(), "<redacted>");
  * assertEqual(
  *   JSON.stringify({ apiKey: redactedKey }),

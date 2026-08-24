@@ -340,7 +340,7 @@ export type FetchConsume<T, E = never> = (
  *
  * const nativeFetch: NativeFetch = (input) =>
  *   Promise.resolve(
- *     String(input).endsWith("/metadata")
+ *     input === "/api/user/metadata"
  *       ? new Response(null, {
  *           status: 204,
  *           headers: { "cache-control": "max-age=60" },
@@ -385,6 +385,7 @@ export type FetchConsume<T, E = never> = (
  *   new Promise<Response>((_resolve, reject) => {
  *     const signal = init?.signal;
  *     if (!signal) throw new Error("Missing signal");
+ *     // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Fetch aborts with Task's structured AbortError.
  *     signal.addEventListener("abort", () => reject(signal.reason), {
  *       once: true,
  *     });

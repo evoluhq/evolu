@@ -45,11 +45,14 @@ pnpm test test/unit/vitest/common/Array.test.ts --coverage --coverage.include=pa
 
 Runnable TypeScript examples from JSDoc comments and Markdown files are tested
 by `pnpm test:jsdoc`. `pnpm verify` runs this command serially before the Vitest
-coverage suite so the runner's CPU-limited child processes do not compete with
-Vitest workers. The reusable `@evolu/nodejs/TestJSDoc` entry point extracts the
-documented TypeScript, compiles it, and executes each example as an isolated
-Node.js ESM module with explicitly imported assertions. Its behavior is covered
-by the Vitest Node.js unit project.
+coverage suite. The reusable `@evolu/nodejs/TestJSDoc` entry point extracts the
+documented TypeScript, lints it with `@evolu/oxlint-config`, compiles it, and
+executes each example as an isolated Node.js ESM module in one process with
+explicitly imported assertions. Compilation extends
+`@evolu/typescript-config/universal-esm.json` so examples use Evolu's strict
+compiler settings. Unused declarations are checked by Oxlint instead of
+TypeScript so an `_` prefix can explicitly mark them as intentional. Its
+behavior is covered by the Vitest Node.js unit project.
 
 ## Integration tests
 

@@ -165,8 +165,11 @@ Run standalone TypeScript scripts directly with Node.js, for example
 - Do not use `@param`, `@return`, or `@example`.
 - Put examples under a `### Example` Markdown heading.
 - Write every TypeScript code fence as a standalone, deterministic example that
-  can be compiled and run by `testJSDocExamples`. Explicitly import its
-  dependencies and assertions. The harness does not inject assertion globals.
+  can be linted, compiled, and run by `testJSDocExamples`. Explicitly import its
+  dependencies and assertions.
+- Prefix intentionally unused example declarations with `_`. The harness
+  rejects both unprefixed unused declarations and used underscore-prefixed
+  declarations.
 - Prove documented contracts in examples instead of describing expected output
   only in comments: use `assertType` for static contracts, `assertEqual` for
   Data comparisons, `assertSame` for SameValue or reference identity,

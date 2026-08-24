@@ -45,6 +45,7 @@
     "@evolu/common": "workspace:*",
     "@evolu/nodejs": "workspace:*",
     "@evolu/oxlint-config": "workspace:*",
+    "@evolu/typescript-config": "workspace:*",
     "@evolu/vitest": "workspace:*",
     "@paulmillr/jsbt": "0.7.0",
     "@types/better-sqlite3": "^9.6.0",

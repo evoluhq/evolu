@@ -53,8 +53,12 @@ export type Callback<T> = (value: T) => void;
  *
  * const events: Array<string> = [];
  * const source: EventSource = {
- *   start: () => events.push("started"),
- *   stop: () => events.push("stopped"),
+ *   start: () => {
+ *     events.push("started");
+ *   },
+ *   stop: () => {
+ *     events.push("stopped");
+ *   },
  * };
  * const subscribe: CallbackWithTeardown<EventSource> = (source) => {
  *   source.start();
@@ -95,7 +99,7 @@ export type Predicate<T> = (value: T) => boolean;
  * ```ts
  * import { assertEqual, type PredicateWithIndex } from "@evolu/common";
  *
- * const isEvenIndex: PredicateWithIndex<string> = (value, index) =>
+ * const isEvenIndex: PredicateWithIndex<string> = (_value, index) =>
  *   index % 2 === 0;
  *
  * assertEqual(["a", "b", "c", "d"].filter(isEvenIndex), ["a", "c"]);

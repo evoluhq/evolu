@@ -74,9 +74,6 @@ import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
  *       createSocket("wss://example.com", {
  *         protocols: ["evolu"],
  *         binaryType: "arraybuffer",
- *         onOpen: () => console.log("Connected"),
- *         onMessage: (data) => console.log("Received:", data),
- *         onClose: () => console.log("Disconnected"),
  *       }),
  *     );
  *     return socket.send("Hello");

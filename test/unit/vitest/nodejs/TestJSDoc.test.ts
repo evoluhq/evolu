@@ -1,11 +1,23 @@
 import { testJSDocExamples } from "@evolu/nodejs/TestJSDoc";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { assert, expect, test } from "vitest";
 
 const repositoryDirectory = resolve(import.meta.dirname, "../../../..");
 const temporaryRoot = join(repositoryDirectory, "tmp");
+
+const setupOxlintPackage = (
+  temporaryDirectory: string,
+  source: string,
+): void => {
+  const packagePath = join(temporaryDirectory, "node_modules", "oxlint");
+  mkdirSync(packagePath, { recursive: true });
+  writeFileSync(
+    join(packagePath, "package.json"),
+    JSON.stringify({ name: "oxlint", type: "module", bin: "./oxlint.js" }),
+  );
+  writeFileSync(join(packagePath, "oxlint.js"), source);
+};
 
 test("testJSDocExamples supports explicit Evolu assertions", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
@@ -39,6 +51,349 @@ test("testJSDocExamples supports explicit Evolu assertions", async () => {
       include: sourcePath,
     });
   } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples lints examples with Evolu's Oxlint config", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        ' * console.log("Not allowed in Evolu examples.");',
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: sourcePath,
+      typescriptPackage: "@typescript/native",
+    }).catch((error: unknown) => error);
+
+    assert(error instanceof AggregateError);
+    expect(error.message).toMatch(/Documentation example Oxlint failed/u);
+    expect(error.message).toMatch(/Example\.ts:3: eslint\(no-console\)/u);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples reports unused declarations with Oxlint", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        " * const unused = true;",
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: sourcePath,
+      typescriptPackage: "@typescript/native",
+    }).catch((error: unknown) => error);
+
+    assert(error instanceof AggregateError);
+    expect(error.message).toMatch(/Documentation example Oxlint failed/u);
+    expect(error.message).toMatch(/Example\.ts:3: eslint\(no-unused-vars\)/u);
+    expect(error.message).not.toMatch(/TypeScript compilation failed/u);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples allows underscore-prefixed unused declarations", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        ' * import { assertTrue } from "@evolu/common";',
+        " *",
+        " * const _unused = true;",
+        " * type _Unused = string;",
+        " * const callback = (_value: string): boolean => true;",
+        ' * assertTrue(callback("value"));',
+        " * // @ts-expect-error Type 'number' is not assignable to type 'string'.",
+        " * const _invalid: string = 1;",
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+
+    await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: sourcePath,
+      typescriptPackage: "@typescript/native",
+    });
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples rejects used underscore-prefixed declarations", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        ' * import { assertTrue } from "@evolu/common";',
+        " *",
+        " * const _value = true;",
+        " * assertTrue(_value);",
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: sourcePath,
+      typescriptPackage: "@typescript/native",
+    }).catch((error: unknown) => error);
+
+    assert(error instanceof AggregateError);
+    expect(error.message).toMatch(/Documentation example Oxlint failed/u);
+    expect(error.message).toMatch(/eslint\(no-unused-vars\)/u);
+    expect(error.message).toMatch(/_value/u);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples maps lint failures after leading blank lines", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const jsdocPath = join(temporaryDirectory, "JSDoc.ts");
+    const markdownPath = join(temporaryDirectory, "Markdown.md");
+    writeFileSync(
+      jsdocPath,
+      [
+        "/**",
+        " * ```ts",
+        " *",
+        ' * console.log("JSDoc.");',
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+    writeFileSync(
+      markdownPath,
+      ["# Example", "", "```ts", "", 'console.log("Markdown.");', "```"].join(
+        "\n",
+      ),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: [jsdocPath, markdownPath],
+      typescriptPackage: "@typescript/native",
+    }).catch((error: unknown) => error);
+
+    assert(error instanceof AggregateError);
+    expect(error.message).toMatch(/JSDoc\.ts:4: eslint\(no-console\)/u);
+    expect(error.message).toMatch(/Markdown\.md:5: eslint\(no-console\)/u);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples reports multiple unused Oxlint directives", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        " * // oxlint-disable-next-line eslint/no-console -- Intentionally unused.",
+        " * export const first = true;",
+        " * // oxlint-disable-next-line eslint/no-alert -- Intentionally unused.",
+        " * export const second = true;",
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: sourcePath,
+      typescriptPackage: "@typescript/native",
+    }).catch((error: unknown) => error);
+
+    assert(error instanceof AggregateError);
+    expect(error.errors).toHaveLength(2);
+    expect(error.message).not.toContain("undefined");
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples reports Oxlint failures without diagnostics", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        " * export {};",
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+    setupOxlintPackage(
+      temporaryDirectory,
+      [
+        "process.stdout.write(JSON.stringify({ diagnostics: [] }));",
+        'process.stderr.write("Invalid Oxlint configuration.\\n");',
+        "process.exit(1);",
+      ].join("\n"),
+    );
+
+    await expect(
+      testJSDocExamples({
+        cwd: temporaryDirectory,
+        include: sourcePath,
+        typescriptPackage: "@typescript/native",
+      }),
+    ).rejects.toThrow(/Invalid Oxlint configuration/u);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples reports malformed Oxlint output", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        " * export {};",
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+    setupOxlintPackage(
+      temporaryDirectory,
+      [
+        'process.stdout.write("Not JSON.");',
+        'process.stderr.write("Oxlint configuration failed.\\n");',
+        "process.exit(1);",
+      ].join("\n"),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: temporaryDirectory,
+      include: sourcePath,
+      typescriptPackage: "@typescript/native",
+    }).catch((error: unknown) => error);
+
+    assert(error instanceof Error);
+    expect(error.message).toMatch(
+      /Documentation example Oxlint failed while reading its output/u,
+    );
+    expect(error.message).toMatch(/Not JSON/u);
+    expect(error.message).toMatch(/Oxlint configuration failed/u);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples reports child process startup failures", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+  const execPath = process.execPath;
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        " * export {};",
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+    process.execPath = join(temporaryDirectory, "missing-node");
+
+    await expect(
+      testJSDocExamples({
+        cwd: repositoryDirectory,
+        include: sourcePath,
+        typescriptPackage: "@typescript/native",
+      }),
+    ).rejects.toThrow(/Documentation example Oxlint failed/u);
+  } finally {
+    process.execPath = execPath;
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }
 });
@@ -118,9 +473,11 @@ test("testJSDocExamples supports package subpath aliases", async () => {
   try {
     const rootPath = join(temporaryDirectory, "Root.mts");
     const featurePath = join(temporaryDirectory, "Feature.mts");
+    const unscopedPath = join(temporaryDirectory, "Unscoped.mts");
     const examplePath = join(temporaryDirectory, "Example.ts");
     writeFileSync(rootPath, 'export const root = "root";\n');
     writeFileSync(featurePath, 'export const feature = "feature";\n');
+    writeFileSync(unscopedPath, 'export const unscoped = "unscoped";\n');
     writeFileSync(
       examplePath,
       [
@@ -129,9 +486,11 @@ test("testJSDocExamples supports package subpath aliases", async () => {
         ' * import { assertEqual } from "@evolu/common";',
         ' * import { root } from "@example/package";',
         ' * import { feature } from "@example/package/feature";',
+        ' * import { unscoped } from "example-package";',
         " *",
         ' * assertEqual(root, "root");',
         ' * assertEqual(feature, "feature");',
+        ' * assertEqual(unscoped, "unscoped");',
         " * ```",
         " */",
         "export const example = true;",
@@ -142,6 +501,7 @@ test("testJSDocExamples supports package subpath aliases", async () => {
       aliases: {
         "@example/package": rootPath,
         "@example/package/feature": featurePath,
+        "example-package": unscopedPath,
       },
       cwd: repositoryDirectory,
       include: [examplePath],
@@ -202,59 +562,95 @@ test("testJSDocExamples extracts Markdown examples", async () => {
   }
 });
 
-test.skipIf(availableParallelism() < 2)(
-  "testJSDocExamples runs examples concurrently",
-  async () => {
-    mkdirSync(temporaryRoot, { recursive: true });
-    const temporaryDirectory = mkdtempSync(
-      join(temporaryRoot, "evolu-test-jsdoc-"),
-    );
+test("testJSDocExamples requires a compiler executable", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
 
-    try {
-      const firstReadyPath = join(temporaryDirectory, "first-ready");
-      const secondReadyPath = join(temporaryDirectory, "second-ready");
-      const sourcePath = join(temporaryDirectory, "ConcurrentExamples.ts");
-      const createExample = (ownReadyPath: string, peerReadyPath: string) => [
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
         "/**",
         " * ```ts",
-        ' * import { assert } from "@evolu/common";',
-        ' * import { existsSync, writeFileSync } from "node:fs";',
-        ' * import { setTimeout } from "node:timers/promises";',
-        " *",
-        ` * const ownReadyPath = ${JSON.stringify(ownReadyPath)};`,
-        ` * const peerReadyPath = ${JSON.stringify(peerReadyPath)};`,
-        ' * writeFileSync(ownReadyPath, "");',
-        " * for (",
-        " *   let attempt = 0;",
-        " *   attempt < 100 && !existsSync(peerReadyPath);",
-        " *   attempt++",
-        " * ) {",
-        " *   await setTimeout(10);",
-        " * }",
-        ' * assert(existsSync(peerReadyPath), "Expected peer readiness.");',
+        " * export {};",
         " * ```",
         " */",
-      ];
-      writeFileSync(
-        sourcePath,
-        [
-          ...createExample(firstReadyPath, secondReadyPath),
-          "export const firstExample = true;",
-          ...createExample(secondReadyPath, firstReadyPath),
-          "export const secondExample = true;",
-        ].join("\n"),
-      );
+        "export const example = true;",
+      ].join("\n"),
+    );
+    const compilerPackagePath = join(
+      temporaryDirectory,
+      "node_modules",
+      "compiler-without-tsc",
+    );
+    mkdirSync(compilerPackagePath, { recursive: true });
+    writeFileSync(
+      join(compilerPackagePath, "package.json"),
+      JSON.stringify({
+        name: "compiler-without-tsc",
+        bin: { first: "./first.js", second: "./second.js" },
+      }),
+    );
 
-      await testJSDocExamples({
-        cwd: repositoryDirectory,
-        include: [sourcePath],
-        typescriptPackage: "@typescript/native",
-      });
-    } finally {
-      rmSync(temporaryDirectory, { force: true, recursive: true });
-    }
-  },
-);
+    await expect(
+      testJSDocExamples({
+        cwd: temporaryDirectory,
+        include: sourcePath,
+        typescriptPackage: "compiler-without-tsc",
+      }),
+    ).rejects.toThrow(/compiler-without-tsc does not expose a tsc executable/u);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples runs isolated modules in source order in one process", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const processPath = join(temporaryDirectory, "process");
+    const sourcePath = join(temporaryDirectory, "Examples.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        ' * import { writeFileSync } from "node:fs";',
+        " *",
+        ' * const value = "first";',
+        ` * writeFileSync(${JSON.stringify(processPath)}, String(process.pid) + ":" + value);`,
+        " * ```",
+        " */",
+        "export const firstExample = true;",
+        "/**",
+        " * ```ts",
+        ' * import { assertEqual } from "@evolu/common";',
+        ' * import { readFileSync } from "node:fs";',
+        " *",
+        ' * const value = "second";',
+        ' * assertEqual(value, "second");',
+        ` * assertEqual(readFileSync(${JSON.stringify(processPath)}, "utf8"), String(process.pid) + ":first");`,
+        " * ```",
+        " */",
+        "export const secondExample = true;",
+      ].join("\n"),
+    );
+
+    await testJSDocExamples({
+      cwd: repositoryDirectory,
+      include: [sourcePath],
+      typescriptPackage: "@typescript/native",
+    });
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
 
 test("testJSDocExamples reports execution failures in source order", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
@@ -304,7 +700,39 @@ test("testJSDocExamples reports execution failures in source order", async () =>
   }
 });
 
-test("testJSDocExamples runs examples without compilation errors", async () => {
+test("testJSDocExamples reports examples terminated by a signal", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        ' * process.kill(process.pid, "SIGTERM");',
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+
+    await expect(
+      testJSDocExamples({
+        cwd: repositoryDirectory,
+        include: sourcePath,
+        typescriptPackage: "@typescript/native",
+      }),
+    ).rejects.toThrow(/Node\.js execution failed from signal SIGTERM/u);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples reports lint, compilation, and execution failures together", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
   const temporaryDirectory = mkdtempSync(
     join(temporaryRoot, "evolu-test-jsdoc-"),
@@ -339,9 +767,10 @@ test("testJSDocExamples runs examples without compilation errors", async () => {
     }).catch((error: unknown) => error);
 
     assert(error instanceof AggregateError);
+    expect(error.message).toMatch(/Documentation example Oxlint failed/u);
     expect(error.message).toMatch(/TypeScript compilation failed/u);
     expect(error.message).toMatch(/JSDoc example execution failed/u);
-    expect(error.errors).toHaveLength(2);
+    expect(error.errors).toHaveLength(3);
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }
@@ -420,7 +849,64 @@ test("testJSDocExamples supports colored colon-formatted TypeScript diagnostics"
     assert(error instanceof AggregateError);
     expect(error.message).toMatch(/TypeScript compilation failed/u);
     expect(error.message).toMatch(/JSDoc example execution failed/u);
-    expect(error.errors).toHaveLength(2);
+    expect(error.errors).toHaveLength(3);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+});
+
+test("testJSDocExamples skips execution when compiler diagnostics have no file", async () => {
+  mkdirSync(temporaryRoot, { recursive: true });
+  const temporaryDirectory = mkdtempSync(
+    join(temporaryRoot, "evolu-test-jsdoc-"),
+  );
+
+  try {
+    const sourcePath = join(temporaryDirectory, "Example.ts");
+    writeFileSync(
+      sourcePath,
+      [
+        "/**",
+        " * ```ts",
+        ' * import { assert } from "@evolu/common";',
+        " *",
+        ' * assert(false, "This example must not run.");',
+        " * ```",
+        " */",
+        "export const example = true;",
+      ].join("\n"),
+    );
+    const compilerPackagePath = join(
+      temporaryDirectory,
+      "node_modules",
+      "typescript-without-file-diagnostics",
+    );
+    mkdirSync(compilerPackagePath, { recursive: true });
+    writeFileSync(
+      join(compilerPackagePath, "package.json"),
+      JSON.stringify({
+        name: "typescript-without-file-diagnostics",
+        type: "module",
+        bin: "./tsc.js",
+      }),
+    );
+    writeFileSync(
+      join(compilerPackagePath, "tsc.js"),
+      [
+        'process.stderr.write("error TS9999: Unattributed failure.\\n");',
+        "process.exit(1);",
+      ].join("\n"),
+    );
+
+    const error = await testJSDocExamples({
+      cwd: temporaryDirectory,
+      include: sourcePath,
+      typescriptPackage: "typescript-without-file-diagnostics",
+    }).catch((error: unknown) => error);
+
+    assert(error instanceof Error);
+    expect(error.message).toMatch(/TypeScript compilation failed/u);
+    expect(error.message).not.toMatch(/JSDoc example execution failed/u);
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }

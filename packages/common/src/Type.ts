@@ -4107,7 +4107,7 @@ interface UnionErrorValue<
  *
  * // TypeScript cannot prove from the literal alone that "42" is a valid Int64 encoding.
  * // @ts-expect-error Validate it with ItemId.parent or create it with ItemId.to.
- * const invalidItemIdLiteral: ItemIdLiteral = "item-42";
+ * const _invalidItemIdLiteral: ItemIdLiteral = "item-42";
  * ```
  *
  * Fixed-width captures can be adjacent:
@@ -4128,7 +4128,7 @@ interface UnionErrorValue<
  * const twoDigits: TwoDigits = ["4", "2"];
  * const twoDigitsLiteral: TwoDigitsLiteral = "42";
  * // @ts-expect-error TwoDigitsLiteral requires exactly two digits.
- * const threeDigitsLiteral: TwoDigitsLiteral = "123";
+ * const _threeDigitsLiteral: TwoDigitsLiteral = "123";
  *
  * assertOk(TwoDigits.from.parent(twoDigitsLiteral), twoDigits);
  * assertEqual(TwoDigits.to(twoDigits), twoDigitsLiteral);
@@ -5607,7 +5607,10 @@ export interface LengthError<
  *   type Brand,
  * } from "@evolu/common";
  *
- * const UrlSafeString = regex("UrlSafeString", /^[A-Za-z0-9_-]+$/)(String);
+ * const UrlSafeString = regex(
+ *   "UrlSafeString",
+ *   /^[A-Za-z0-9_-]+$/u,
+ * )(String);
  * type UrlSafeString = typeof UrlSafeString.Output;
  *
  * assertType<string & Brand<"UrlSafeString">, UrlSafeString>();
@@ -5620,7 +5623,7 @@ export interface LengthError<
  *   type: "UrlSafeString",
  *   value: "not safe",
  *   source: "^[A-Za-z0-9_-]+$",
- *   flags: "",
+ *   flags: "u",
  * });
  * ```
  *
@@ -7473,7 +7476,7 @@ export interface BetweenError<
  * const result = UserIds.from.parent(["ada", "grace"]);
  *
  * assertType<
- *   Result<ReadonlyArray<string & Brand<"UserId">>, never>,
+ *   Result<ReadonlyArray<string & Brand<"UserId">>>,
  *   typeof result
  * >();
  * assertOk(result, ["ada", "grace"]);
@@ -9641,7 +9644,7 @@ export { _Object as Object };
  * assertEqual(valueType, "function");
  * const called = trySync(
  *   () => {
- *     if (value !== undefined) value.toFixed();
+ *     if (value !== undefined) value.toFixed(0);
  *   },
  *   (error) => error,
  * );
@@ -9676,7 +9679,7 @@ export { _Object as Object };
  * assertEqual(valueType, "function");
  * const called = trySync(
  *   () => {
- *     if (value !== undefined) value.toFixed();
+ *     if (value !== undefined) value.toFixed(0);
  *   },
  *   (error) => error,
  * );
@@ -10414,7 +10417,7 @@ type ObjectProperty = ObjectProps[string];
  * assertEqual(valueType, "function");
  * const called = trySync(
  *   () => {
- *     if (value !== undefined) value.toFixed();
+ *     if (value !== undefined) value.toFixed(0);
  *   },
  *   (error) => error,
  * );
@@ -10449,7 +10452,7 @@ type ObjectProperty = ObjectProps[string];
  * assertEqual(valueType, "function");
  * const called = trySync(
  *   () => {
- *     if (value !== undefined) value.toFixed();
+ *     if (value !== undefined) value.toFixed(0);
  *   },
  *   (error) => error,
  * );
@@ -12005,7 +12008,7 @@ export interface Typed<Tag extends TypeName> {
  * assertType<typeof Create.Output, CreateMessage>();
  *
  * // @ts-expect-error "Cretae" is not a Message type.
- * type Typo = ExtractTyped<Message, "Cretae">;
+ * type _Typo = ExtractTyped<Message, "Cretae">;
  * ```
  *
  * @group Discriminated unions
@@ -14350,6 +14353,7 @@ export const JsonValueFromJson = /*#__PURE__*/ transform(
  *   typeof userJson
  * >();
  * assertEqual(userJson, '{"name":"Ada","age":37}');
+ * assertEqual(UserJson.orThrow(userJson), userJson);
  * assertEqual(userJsonToUser(userJson), user);
  * ```
  *

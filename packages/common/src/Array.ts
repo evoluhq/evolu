@@ -18,7 +18,8 @@
  * ```ts
  * import { assertEqual, assertSame } from "@evolu/common";
  *
- * const sortScores = (arr: number[]) => arr.sort((a, b) => a - b);
+ * // oxlint-disable-next-line unicorn/no-array-sort -- This example intentionally demonstrates mutating Array.sort.
+ * const sortScores = (arr: Array<number>) => arr.sort((a, b) => a - b);
  *
  * const scores = [3, 1, 2];
  * const leaderboard = sortScores(scores);
@@ -79,7 +80,7 @@
  *
  * const valid: NonEmptyReadonlyArray<number> = [1, 2, 3];
  * // @ts-expect-error An empty array is not non-empty.
- * const invalid: NonEmptyReadonlyArray<number> = [];
+ * const _invalid: NonEmptyReadonlyArray<number> = [];
  *
  * assertEqual(
  *   valid.find((value) => value === 2),
@@ -286,13 +287,18 @@ export function arrayFrom<T>(
  * ```ts
  * import { assertEqual, assertType, arrayFromAsync } from "@evolu/common";
  *
- * const fromIterable = await arrayFromAsync(new Set([1, 2, 3]));
+ * const fromIterable = await arrayFromAsync([
+ *   Promise.resolve(1),
+ *   Promise.resolve(2),
+ *   Promise.resolve(3),
+ * ]);
  * assertEqual(fromIterable, [1, 2, 3]);
  *
  * const fromAsyncIterable = await arrayFromAsync(
- *   (async function* () {
- *     yield Promise.resolve(1);
- *     yield Promise.resolve(2);
+ *   (async function* (): AsyncGenerator<number> {
+ *     await Promise.resolve();
+ *     yield 1;
+ *     yield 2;
  *   })(),
  * );
  * assertEqual(fromAsyncIterable, [1, 2]);

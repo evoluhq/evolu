@@ -66,10 +66,14 @@ export const getObjectKind = (value: object): ObjectKind => {
  * ```ts
  * import { assertFalse, assertTrue, isPlainObject } from "@evolu/common";
  *
+ * class Example {
+ *   readonly value = "example";
+ * }
+ *
  * assertTrue(isPlainObject({}));
  * assertTrue(isPlainObject(Object.create(null)));
  * assertFalse(isPlainObject(new Date()));
- * assertFalse(isPlainObject(new (class Example {})()));
+ * assertFalse(isPlainObject(new Example()));
  * assertFalse(isPlainObject([]));
  * assertFalse(isPlainObject(null));
  * ```
@@ -309,6 +313,7 @@ export const excludeProp = <T extends object, K extends keyof T>(
  * const values = Object.create(null) as Record<string, number>;
  *
  * // TypeScript accepts the call, but `toString` is undefined at runtime.
+ * // oxlint-disable-next-line typescript/no-base-to-string -- Intentionally calls a method missing from the null-prototype value.
  * const result = trySync(() => values.toString());
  * assertErr(result);
  * assertTrue(result.error instanceof TypeError);
@@ -327,6 +332,7 @@ export const excludeProp = <T extends object, K extends keyof T>(
  * const values = createMutableRecord<string, number>();
  *
  * // TypeScript accepts the call, but `toString` is undefined at runtime.
+ * // oxlint-disable-next-line typescript/no-base-to-string -- Intentionally calls a method missing from the null-prototype value.
  * const result = trySync(() => values.toString());
  * assertErr(result);
  * assertTrue(result.error instanceof TypeError);
@@ -412,7 +418,7 @@ export const getOwnProp = <K extends string, V>(
  * const blob = new Blob(["hello"], { type: "text/plain" });
  * using objectUrl = createObjectURL(blob);
  *
- * assertTrue(/^blob:/.test(objectUrl.url));
+ * assertTrue(objectUrl.url.startsWith("blob:"));
  * // URL.revokeObjectURL is automatically called when the scope ends.
  * ```
  *

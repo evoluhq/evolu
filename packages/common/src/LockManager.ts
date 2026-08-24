@@ -26,9 +26,10 @@ import type { Callback } from "./Types.ts";
  *   lockManager: globalThis.navigator.locks,
  * };
  *
- * const result = await deps.lockManager.request("example", (lock) => {
- *   return lock?.name;
- * });
+ * const result = await deps.lockManager.request(
+ *   "example",
+ *   (lock) => lock?.name,
+ * );
  * assertEqual(result, "example");
  * ```
  *
@@ -40,9 +41,10 @@ import type { Callback } from "./Types.ts";
  *
  * const deps: LockManagerDep = { lockManager };
  *
- * const result = await deps.lockManager.request("example", (lock) => {
- *   return lock?.name;
- * });
+ * const result = await deps.lockManager.request(
+ *   "example",
+ *   (lock) => lock?.name,
+ * );
  * assertEqual(result, "example");
  * ```
  */

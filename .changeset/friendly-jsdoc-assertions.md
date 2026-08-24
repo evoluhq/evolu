@@ -3,26 +3,34 @@
 "@evolu/vitest": major
 ---
 
-Moved `TestJSDoc` to the Node.js package and required explicit assertions
+Removed Vitest from documentation example testing
 
-Import `testJSDocExamples` from `@evolu/nodejs/TestJSDoc` instead of
-`@evolu/vitest/TestJSDoc`. The runner no longer provides Vitest and Result
-assertion globals. Documentation examples must explicitly import
-platform-independent assertions, making each example standalone and portable.
-The default compiler is the optional `typescript` peer; pass
-`typescriptPackage` when using another compatible compiler package.
+`testJSDocExamples` no longer depends on Vitest, now lints examples with
+`@evolu/oxlint-config`, and is much faster. As a result, it moved from
+`@evolu/vitest` to `@evolu/nodejs`; import it from `@evolu/nodejs/TestJSDoc`.
+
+Documentation examples no longer receive Vitest or Result assertion globals.
+They explicitly import platform-independent assertions from `@evolu/common`,
+making each example standalone and portable. Compilation uses
+`@evolu/typescript-config`.
+
+Projects calling this helper must install its optional tooling peers as
+development dependencies:
+
+```sh
+pnpm add -D @evolu/oxlint-config @evolu/typescript-config oxlint oxlint-tsgolint typescript
+```
+
+Prefix intentionally unused example declarations with `_`; used
+underscore-prefixed declarations fail linting.
+
+Write documentation examples as standalone TypeScript modules with explicitly
+imported assertions:
 
 ```ts
 import { assertEqual } from "@evolu/common";
-import { testJSDocExamples } from "@evolu/nodejs/TestJSDoc";
 
-if (false) {
-  // @ts-expect-error Cannot find module '@evolu/vitest/TestJSDoc' or its corresponding type declarations.
-  await import("@evolu/vitest/TestJSDoc");
-  // @ts-expect-error Cannot find name 'expect'.
-  expect(1 + 1).toBe(2);
-}
+const _intentionallyUnused = "example";
 
-assertEqual(typeof testJSDocExamples, "function");
 assertEqual(1 + 1, 2);
 ```

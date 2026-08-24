@@ -178,19 +178,19 @@ export interface EvoluConfig {
    * );
    *
    * // Use one relay.
-   * const singleRelay = [
+   * const _singleRelay = [
    *   { type: "WebSocket", url: "wss://relay1.example.com" },
    * ] satisfies ReadonlyArray<OwnerTransport>;
    *
    * // Use independent relays for redundancy.
-   * const redundantRelays = [
+   * const _redundantRelays = [
    *   { type: "WebSocket", url: "wss://relay1.example.com" },
    *   { type: "WebSocket", url: "wss://relay2.example.com" },
    * ] satisfies ReadonlyArray<OwnerTransport>;
    *
    * // Start local-only before authentication. After authentication, pass an
    * // owner-scoped transport to evolu.useOwner.
-   * const localOnlyBeforeAuthentication =
+   * const _localOnlyBeforeAuthentication =
    *   [] satisfies ReadonlyArray<OwnerTransport>;
    *
    * // Include the OwnerId when the relay authenticates owners.
@@ -718,10 +718,10 @@ export interface Evolu<
    *   url: "wss://relay.example.com",
    *   ownerId: shardOwner.id,
    * });
-   * const useShardOwner = (evolu: Evolu): UnuseOwner =>
+   * const _useShardOwner = (evolu: Evolu): UnuseOwner =>
    *   evolu.useOwner(shardOwner, [shardTransport]);
    *
-   * const useOwners = (
+   * const _useOwners = (
    *   evolu: Evolu,
    *   owners: ReadonlyArray<ReadonlyOwner>,
    * ): UnuseOwner => {
@@ -784,6 +784,7 @@ export interface EvoluErrorDep {
    *   const error = deps.evoluError.get();
    *   if (!error) return;
    *
+   *   // oxlint-disable-next-line typescript/switch-exhaustiveness-check -- The default intentionally handles every other EvoluError.
    *   switch (error.type) {
    *     case "TimestampDriftError":
    *       // Show guidance specific to the detected error.

@@ -54,21 +54,40 @@
   },
   "devDependencies": {
     "@evolu/common": "workspace:*",
+    "@evolu/oxlint-config": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
+    "oxlint": "^1.79.0",
+    "oxlint-tsgolint": "7.0.2001",
     "vite": "^8.2.2",
     "webpack": "^5.109.2"
   },
   "peerDependencies": {
     "@evolu/common": "^8.0.0",
+    "@evolu/oxlint-config": "^0.1.0",
+    "@evolu/typescript-config": "^0.0.2",
+    "oxlint": "^1.79.0",
+    "oxlint-tsgolint": "7.0.2001",
     "typescript": ">=7.0.0",
     "vite": ">=8.0.0",
     "webpack": ">=5.108.4"
   },
   "peerDependenciesMeta": {
+    "@evolu/oxlint-config": {
+      "optional": true
+    },
+    "@evolu/typescript-config": {
+      "optional": true
+    },
+    "oxlint": {
+      "optional": true
+    },
+    "oxlint-tsgolint": {
+      "optional": true
+    },
     "typescript": {
       "optional": true
     },

@@ -36,6 +36,9 @@ importers:
       '@evolu/oxlint-config':
         specifier: workspace:*
         version: link:packages/oxlint-config
+      '@evolu/typescript-config':
+        specifier: workspace:*
+        version: link:packages/typescript-config
       '@evolu/vitest':
         specifier: workspace:*
         version: link:packages/vitest
@@ -730,6 +733,9 @@ importers:
       '@evolu/common':
         specifier: workspace:*
         version: link:../common
+      '@evolu/oxlint-config':
+        specifier: workspace:*
+        version: link:../oxlint-config
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
@@ -745,6 +751,12 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
+      oxlint:
+        specifier: ^1.79.0
+        version: 1.79.0(oxlint-tsgolint@7.0.2001)
+      oxlint-tsgolint:
+        specifier: 7.0.2001
+        version: 7.0.2001
       vite:
         specifier: ^8.2.2
         version: 8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.0)

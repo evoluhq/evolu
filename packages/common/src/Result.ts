@@ -63,6 +63,8 @@
  * with an error). Create them with {@link ok} and {@link err}.
  *
  * ```ts
+ * import { assertEqual } from "@evolu/common";
+ *
  * type Result<T, E = never> = Ok<T> | Err<E>;
  *
  * interface Ok<T> {
@@ -74,6 +76,9 @@
  *   readonly ok: false;
  *   readonly error: E;
  * }
+ *
+ * const result: Result<number> = { ok: true, value: 1 };
+ * assertEqual(result, { ok: true, value: 1 });
  * ```
  *
  * Use {@link trySync} and {@link tryAsync} to intentionally convert thrown values
@@ -655,9 +660,12 @@ export function trySync<T, E>(
  *
  * class LegacySeatUnavailableError extends Error {}
  *
- * const legacyReserveSeat = async (seat: string): Promise<void> => {
- *   if (seat === "A1") throw new LegacySeatUnavailableError();
- *   if (seat === "B1") throw new Error("Database error");
+ * const legacyReserveSeat = (seat: string): Promise<void> => {
+ *   if (seat === "A1") {
+ *     return Promise.reject(new LegacySeatUnavailableError());
+ *   }
+ *   if (seat === "B1") return Promise.reject(new Error("Database error"));
+ *   return Promise.resolve();
  * };
  *
  * const reserveSeat = (
