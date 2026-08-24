@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { generateSearchIndex } from "../../scripts/generate-search-index.mts";
 
 await generateSearchIndex();
-const { search } = await import("./searchClient.ts");
+const { createSearch, search } = await import("./searchClient.ts");
 
 const mapArrayUrl = "/docs/api-reference/common/Array/functions/mapArray";
 
@@ -59,6 +59,17 @@ void describe("search", () => {
 
   void it("returns nothing for an empty query", () => {
     assert.deepEqual(search("   "), []);
+  });
+
+  void it("omits index sections", () => {
+    const search = createSearch([
+      {
+        url: "/docs/api-reference/example",
+        sections: [{ title: "Index", hash: null, content: [] }],
+      },
+    ]);
+
+    assert.deepEqual(search("index"), []);
   });
 });
 
