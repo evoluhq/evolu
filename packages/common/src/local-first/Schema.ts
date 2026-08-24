@@ -62,6 +62,8 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  * ```ts
  * import * as z from "zod";
  * import {
+ *   assertOk,
+ *   assertTrue,
  *   id,
  *   NonEmptyTrimmedString100,
  *   nullOr,
@@ -79,7 +81,7 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  *     isCompleted: nullOr(SqliteBoolean),
  *   },
  * };
- * expectOk(Schema.todo.title.fromUnknown("Write docs"), "Write docs");
+ * assertOk(Schema.todo.title.fromUnknown("Write docs"), "Write docs");
  *
  * // Zod, or another Standard Schema library
  * const ZodSchema = {
@@ -89,7 +91,7 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  *     isCompleted: z.union([z.literal(0), z.literal(1)]).nullable(),
  *   },
  * };
- * expect(ZodSchema.todo.title.safeParse("Write docs").success).toBe(true);
+ * assertTrue(ZodSchema.todo.title.safeParse("Write docs").success);
  * ```
  */
 export type EvoluSchema = ReadonlyRecord<
@@ -238,6 +240,7 @@ export interface MutationOptions {
    *
    * ```ts
    * import {
+   *   assertEqual,
    *   createAppOwner,
    *   createOwnerSecret,
    *   createRandomBytes,
@@ -279,8 +282,8 @@ export interface MutationOptions {
    *   );
    * };
    *
-   * expect(projectOwner.type).toBe("ShardOwner");
-   * expect(sharedOwner.type).toBe("SharedOwner");
+   * assertEqual(projectOwner.type, "ShardOwner");
+   * assertEqual(sharedOwner.type, "SharedOwner");
    * ```
    */
   readonly ownerId?: OwnerId;
@@ -448,6 +451,8 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  *
  * ```ts
  * import {
+ *   assertTrue,
+ *   assertType,
  *   createQueryBuilder,
  *   id,
  *   NonEmptyTrimmedString100,
@@ -471,12 +476,15 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  *   db.selectFrom("todo").select(["id", "title", "isCompleted"]),
  * );
  *
- * expectTypeOf<typeof todosQuery.Row>().toEqualTypeOf<{
- *   id: TodoId;
- *   title: NonEmptyTrimmedString100 | null;
- *   isCompleted: SqliteBoolean | null;
- * }>();
- * expect(todosQuery).toBeTypeOf("string");
+ * assertType<
+ *   {
+ *     id: TodoId;
+ *     title: NonEmptyTrimmedString100 | null;
+ *     isCompleted: SqliteBoolean | null;
+ *   },
+ *   typeof todosQuery.Row
+ * >();
+ * assertTrue(typeof todosQuery === "string");
  * ```
  */
 export const createQueryBuilder = <S extends EvoluSchema>(

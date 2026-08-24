@@ -165,12 +165,14 @@ Run standalone TypeScript scripts directly with Node.js, for example
 - Do not use `@param`, `@return`, or `@example`.
 - Put examples under a `### Example` Markdown heading.
 - Write every TypeScript code fence as a standalone, deterministic example that
-  can be compiled and run by `testJSDocExamples`. Import its dependencies; the
-  harness injects Vitest's `assert`, `expect`, and `expectTypeOf`, plus Evolu's
-  `expectOk` and `expectErr`.
+  can be compiled and run by `testJSDocExamples`. Explicitly import its
+  dependencies and assertions. The harness does not inject assertion globals.
 - Prove documented contracts in examples instead of describing expected output
-  only in comments: use `expectTypeOf` for static contracts and an appropriate
-  runtime assertion such as `expect`, `expectOk`, or `expectErr` for behavior.
+  only in comments: use `assertType` for static contracts, `assertEqual` for
+  Data comparisons, `assertSame` for SameValue or reference identity,
+  `assertTrue` or `assertFalse` for boolean predicates, `assert` with a
+  descriptive message for invariants and narrowing, and `assertOk` or
+  `assertErr` for Results.
 - After changing documentation examples, run `pnpm test:jsdoc <changed-file>`
   during development. The exhaustive JSDoc test remains part of `pnpm verify`.
 - Use `{@link}` on the first mention of an exported symbol.

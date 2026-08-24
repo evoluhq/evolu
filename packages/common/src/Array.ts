@@ -16,13 +16,15 @@
  * to track:
  *
  * ```ts
+ * import { assertEqual, assertSame } from "@evolu/common";
+ *
  * const sortScores = (arr: number[]) => arr.sort((a, b) => a - b);
  *
  * const scores = [3, 1, 2];
  * const leaderboard = sortScores(scores);
- * expect(leaderboard).toEqual([1, 2, 3]);
- * expect(scores).toEqual([1, 2, 3]);
- * expect(leaderboard).toBe(scores);
+ * assertEqual(leaderboard, [1, 2, 3]);
+ * assertEqual(scores, [1, 2, 3]);
+ * assertSame(leaderboard, scores);
  * ```
  *
  * Imagine every method doing that.
@@ -31,30 +33,35 @@
  * instead:
  *
  * ```ts
- * import { sortArray } from "@evolu/common";
+ * import { assertEqual, assertTrue, sortArray } from "@evolu/common";
  *
  * const sortScores = (arr: ReadonlyArray<number>) =>
  *   sortArray(arr, (a, b) => a - b);
  *
  * const scores: ReadonlyArray<number> = [3, 1, 2];
  * const leaderboard = sortScores(scores);
- * expect(leaderboard).toEqual([1, 2, 3]);
- * expect(scores).toEqual([3, 1, 2]);
- * expect(leaderboard).not.toBe(scores);
+ * assertEqual(leaderboard, [1, 2, 3]);
+ * assertEqual(scores, [3, 1, 2]);
+ * assertTrue(leaderboard !== scores);
  * ```
  *
  * Even better, require a {@link NonEmptyReadonlyArray} — there's nothing to sort
  * if the array is empty anyway:
  *
  * ```ts
- * import { sortArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   sortArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const sortScores = (arr: NonEmptyReadonlyArray<number>) =>
  *   sortArray(arr, (a, b) => a - b);
  *
  * const leaderboard = sortScores([3, 1, 2]);
- * expect(leaderboard).toEqual([1, 2, 3]);
- * expectTypeOf(leaderboard).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * assertEqual(leaderboard, [1, 2, 3]);
+ * assertType<NonEmptyReadonlyArray<number>, typeof leaderboard>();
  * ```
  *
  * Sorting an empty array isn't expensive, but functions can have side effects
@@ -68,13 +75,16 @@
  * readonly arrays without mutation — use them directly.
  *
  * ```ts
- * import { type NonEmptyReadonlyArray } from "@evolu/common";
+ * import { assertEqual, type NonEmptyReadonlyArray } from "@evolu/common";
  *
  * const valid: NonEmptyReadonlyArray<number> = [1, 2, 3];
  * // @ts-expect-error An empty array is not non-empty.
  * const invalid: NonEmptyReadonlyArray<number> = [];
  *
- * expect(valid.find((value) => value === 2)).toBe(2);
+ * assertEqual(
+ *   valid.find((value) => value === 2),
+ *   2,
+ * );
  * ```
  *
  * ## Composition
@@ -83,7 +93,7 @@
  * because it's natural for single operations:
  *
  * ```ts
- * import { mapArray } from "@evolu/common";
+ * import { assertEqual, mapArray } from "@evolu/common";
  *
  * interface Message {
  *   readonly timestamp: number;
@@ -94,7 +104,7 @@
  *   { timestamp: 20 },
  * ];
  * const timestamps = mapArray(messages, (m) => m.timestamp);
- * expect(timestamps).toEqual([10, 20]);
+ * assertEqual(timestamps, [10, 20]);
  * ```
  *
  * Data-first style also reads well for a few operations, often fitting on a
@@ -102,6 +112,7 @@
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   dedupeArray,
  *   filterArray,
  *   firstInArray,
@@ -113,11 +124,11 @@
  * } from "@evolu/common";
  *
  * const cheapest = firstInArray(sortArray([30, 10, 20], orderNumber));
- * expect(cheapest).toBe(10);
+ * assertEqual(cheapest, 10);
  *
  * const users = [{ name: "Ada" }, { name: "Linus" }, { name: "Ada" }];
  * const uniqueNames = dedupeArray(mapArray(users, (u) => u.name));
- * expect(uniqueNames).toEqual(["Ada", "Linus"]);
+ * assertEqual(uniqueNames, ["Ada", "Linus"]);
  *
  * const jobs = [
  *   { id: 1, done: false },
@@ -127,7 +138,7 @@
  * if (!isNonEmptyArray(completedJobs)) throw new Error("Expected a job");
  * const latestDone = lastInArray(completedJobs);
  *
- * expect(latestDone).toEqual({ id: 2, done: true });
+ * assertEqual(latestDone, { id: 2, done: true });
  * ```
  *
  * For more operations, create a function like `getOldestActiveUser` or a
@@ -184,7 +195,11 @@ export const emptyArray: ReadonlyArray<never> = [];
  * ### Example
  *
  * ```ts
- * import { createMutableArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   createMutableArray,
+ * } from "@evolu/common";
  *
  * const values = createMutableArray<number>(3);
  *
@@ -192,8 +207,8 @@ export const emptyArray: ReadonlyArray<never> = [];
  *   values[index] = index * 10;
  * }
  *
- * expect(values).toEqual([0, 10, 20]);
- * expectTypeOf(values).toEqualTypeOf<Array<number>>();
+ * assertEqual(values, [0, 10, 20]);
+ * assertType<Array<number>, typeof values>();
  * ```
  *
  * @group Constructors
@@ -213,16 +228,24 @@ export const createMutableArray = <T>(length: number): Array<T> =>
  * ### Creating from iterables and lengths
  *
  * ```ts
- * import { arrayFrom } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertSame,
+ *   assertType,
+ *   arrayFrom,
+ * } from "@evolu/common";
  *
  * const fromSet = arrayFrom(new Set([1, 2, 3]));
- * expect(fromSet).toEqual([1, 2, 3]);
- * expectTypeOf(fromSet).toEqualTypeOf<ReadonlyArray<number>>();
+ * assertEqual(fromSet, [1, 2, 3]);
+ * assertType<ReadonlyArray<number>, typeof fromSet>();
  *
- * expect(arrayFrom(3, (i) => i * 10)).toEqual([0, 10, 20]);
+ * assertEqual(
+ *   arrayFrom(3, (i) => i * 10),
+ *   [0, 10, 20],
+ * );
  *
  * const existing: ReadonlyArray<number> = [1, 2, 3];
- * expect(arrayFrom(existing)).toBe(existing);
+ * assertSame(arrayFrom(existing), existing);
  * ```
  *
  * Unlike `Array.from`, there's no map parameter for iterables — use
@@ -261,10 +284,10 @@ export function arrayFrom<T>(
  * ### Awaiting sync and async iterables
  *
  * ```ts
- * import { arrayFromAsync } from "@evolu/common";
+ * import { assertEqual, assertType, arrayFromAsync } from "@evolu/common";
  *
  * const fromIterable = await arrayFromAsync(new Set([1, 2, 3]));
- * expect(fromIterable).toEqual([1, 2, 3]);
+ * assertEqual(fromIterable, [1, 2, 3]);
  *
  * const fromAsyncIterable = await arrayFromAsync(
  *   (async function* () {
@@ -272,8 +295,8 @@ export function arrayFrom<T>(
  *     yield Promise.resolve(2);
  *   })(),
  * );
- * expect(fromAsyncIterable).toEqual([1, 2]);
- * expectTypeOf(fromAsyncIterable).toEqualTypeOf<ReadonlyArray<number>>();
+ * assertEqual(fromAsyncIterable, [1, 2]);
+ * assertType<ReadonlyArray<number>, typeof fromAsyncIterable>();
  * ```
  *
  * Unlike `Array.fromAsync`, there's no map parameter — map the result with
@@ -299,6 +322,8 @@ export const arrayFromAsync = async <T>(
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   firstInArray,
  *   isNonEmptyArray,
  *   type NonEmptyArray,
@@ -311,9 +336,9 @@ export const arrayFromAsync = async <T>(
  *   throw new Error("Expected values");
  * }
  *
- * expectTypeOf(mutable).toEqualTypeOf<NonEmptyArray<number>>();
- * expectTypeOf(readonly).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
- * expect(firstInArray(readonly)).toBe(1);
+ * assertType<NonEmptyArray<number>, typeof mutable>();
+ * assertType<NonEmptyReadonlyArray<number>, typeof readonly>();
+ * assertEqual(firstInArray(readonly), 1);
  * ```
  *
  * @group Types
@@ -336,13 +361,15 @@ export function isNonEmptyArray<T>(
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   appendToArray,
  *   type NonEmptyReadonlyArray,
  * } from "@evolu/common";
  *
  * const values = appendToArray([1, 2, 3], 4);
- * expect(values).toEqual([1, 2, 3, 4]);
- * expectTypeOf(values).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * assertEqual(values, [1, 2, 3, 4]);
+ * assertType<NonEmptyReadonlyArray<number>, typeof values>();
  * ```
  *
  * @group Transformations
@@ -362,13 +389,15 @@ export const appendToArray = <T>(
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   prependToArray,
  *   type NonEmptyReadonlyArray,
  * } from "@evolu/common";
  *
  * const values = prependToArray([2, 3], 1);
- * expect(values).toEqual([1, 2, 3]);
- * expectTypeOf(values).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * assertEqual(values, [1, 2, 3]);
+ * assertType<NonEmptyReadonlyArray<number>, typeof values>();
  * ```
  *
  * @group Transformations
@@ -386,17 +415,21 @@ export const prependToArray = <T>(
  * ### Mapping with indexes while preserving non-emptiness
  *
  * ```ts
- * import { mapArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   mapArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const values: ReadonlyArray<number> = [1, 2, 3];
  * const indexed = mapArray(values, (value, index) => value + index);
- * expect(indexed).toEqual([1, 3, 5]);
- * expectTypeOf(indexed).toEqualTypeOf<ReadonlyArray<number>>();
+ * assertEqual(indexed, [1, 3, 5]);
+ * assertType<ReadonlyArray<number>, typeof indexed>();
  *
  * const nonEmpty: NonEmptyReadonlyArray<number> = [1, 2, 3];
- * expectTypeOf(mapArray(nonEmpty, (x) => x * 2)).toEqualTypeOf<
- *   NonEmptyReadonlyArray<number>
- * >();
+ * const doubled = mapArray(nonEmpty, (x) => x * 2);
+ * assertType<NonEmptyReadonlyArray<number>, typeof doubled>();
  * ```
  *
  * The mapper receives `(item, index, array)`, matching native `Array.map`.
@@ -429,7 +462,12 @@ export function mapArray<T, U>(
  * ### Flattening and expanding values
  *
  * ```ts
- * import { flatMapArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   flatMapArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const flattened = flatMapArray([
  *   [1, 2],
@@ -440,9 +478,9 @@ export function mapArray<T, U>(
  *   values,
  *   (value, index): NonEmptyReadonlyArray<number> => [value, index],
  * );
- * expect(flattened).toEqual([1, 2, 3, 4]);
- * expectTypeOf(expanded).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
- * expect(expanded).toEqual([1, 0, 2, 1, 3, 2]);
+ * assertEqual(flattened, [1, 2, 3, 4]);
+ * assertType<NonEmptyReadonlyArray<number>, typeof expanded>();
+ * assertEqual(expanded, [1, 0, 2, 1, 3, 2]);
  * ```
  *
  * ### Filter and map in one pass
@@ -450,7 +488,7 @@ export function mapArray<T, U>(
  * Return `[]` to filter out, `[value]` to keep:
  *
  * ```ts
- * import { err, flatMapArray, ok } from "@evolu/common";
+ * import { assertEqual, err, flatMapArray, ok } from "@evolu/common";
  *
  * const validate = (value: number) =>
  *   value > 0 ? ok(value) : err(`${value} is not positive`);
@@ -459,7 +497,7 @@ export function mapArray<T, U>(
  *   const result = validate(f);
  *   return result.ok ? [] : [result.error];
  * });
- * expect(errors).toEqual(["-2 is not positive", "-4 is not positive"]);
+ * assertEqual(errors, ["-2 is not positive", "-4 is not positive"]);
  * ```
  *
  * The mapper receives `(item, index, array)`, matching native `Array.flatMap`.
@@ -510,16 +548,21 @@ export function flatMapArray<T, U>(
  * ### Concatenating non-empty inputs
  *
  * ```ts
- * import { concatArrays, type NonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   concatArrays,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const nonEmpty: NonEmptyReadonlyArray<number> = [1];
  * const joined = concatArrays([1, 2], [3, 4]);
  * const fromLeft = concatArrays(nonEmpty, []);
  * const fromRight = concatArrays([], nonEmpty);
  *
- * expect(joined).toEqual([1, 2, 3, 4]);
- * expectTypeOf(fromLeft).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
- * expectTypeOf(fromRight).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * assertEqual(joined, [1, 2, 3, 4]);
+ * assertType<NonEmptyReadonlyArray<number>, typeof fromLeft>();
+ * assertType<NonEmptyReadonlyArray<number>, typeof fromRight>();
  * ```
  *
  * @group Transformations
@@ -556,16 +599,18 @@ export function concatArrays<T>(
  * ### With predicate
  *
  * ```ts
- * import { filterArray } from "@evolu/common";
+ * import { assertEqual, filterArray } from "@evolu/common";
  *
  * const evens = filterArray([1, 2, 3, 4, 5], (x) => x % 2 === 0);
- * expect(evens).toEqual([2, 4]);
+ * assertEqual(evens, [2, 4]);
  * ```
  *
  * ### With refinement
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   filterArray,
  *   NonEmptyTrimmedString,
  *   PositiveInt,
@@ -576,8 +621,8 @@ export function concatArrays<T>(
  *   PositiveInt.orThrow(42),
  * ];
  * const positiveInts = filterArray(mixed, PositiveInt.is);
- * expect(positiveInts).toEqual([42]);
- * expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
+ * assertEqual(positiveInts, [42]);
+ * assertType<ReadonlyArray<PositiveInt>, typeof positiveInts>();
  * ```
  *
  * The predicate receives `(item, index, array)`, matching native
@@ -611,7 +656,12 @@ export function filterArray<T>(
  * ### Deduplicating by value or key
  *
  * ```ts
- * import { dedupeArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   dedupeArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const numbers = dedupeArray([1, 2, 1, 3, 2]);
  * const people = dedupeArray(
@@ -622,9 +672,9 @@ export function filterArray<T>(
  *   ],
  *   (item) => item.id,
  * );
- * expectTypeOf(numbers).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
- * expect(numbers).toEqual([1, 2, 3]);
- * expect(people).toEqual([
+ * assertType<NonEmptyReadonlyArray<number>, typeof numbers>();
+ * assertEqual(numbers, [1, 2, 3]);
+ * assertEqual(people, [
  *   { id: 1, name: "Alice" },
  *   { id: 2, name: "Bob" },
  * ]);
@@ -672,20 +722,22 @@ export function dedupeArray<T>(
  * ### With predicate
  *
  * ```ts
- * import { partitionArray } from "@evolu/common";
+ * import { assertEqual, partitionArray } from "@evolu/common";
  *
  * const [evens, odds] = partitionArray(
  *   [1, 2, 3, 4, 5],
  *   (x) => x % 2 === 0,
  * );
- * expect(evens).toEqual([2, 4]);
- * expect(odds).toEqual([1, 3, 5]);
+ * assertEqual(evens, [2, 4]);
+ * assertEqual(odds, [1, 3, 5]);
  * ```
  *
  * ### With refinement
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   NonEmptyTrimmedString,
  *   partitionArray,
  *   PositiveInt,
@@ -696,11 +748,9 @@ export function dedupeArray<T>(
  *   PositiveInt.orThrow(42),
  * ];
  * const [positiveInts, strings] = partitionArray(mixed, PositiveInt.is);
- * expect(positiveInts).toEqual([42]);
- * expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
- * expectTypeOf(strings).toEqualTypeOf<
- *   ReadonlyArray<NonEmptyTrimmedString>
- * >();
+ * assertEqual(positiveInts, [42]);
+ * assertType<ReadonlyArray<PositiveInt>, typeof positiveInts>();
+ * assertType<ReadonlyArray<NonEmptyTrimmedString>, typeof strings>();
  * ```
  *
  * The predicate receives `(item, index, array)`.
@@ -742,12 +792,17 @@ export function partitionArray<T>(
  * ### Sorting without mutation
  *
  * ```ts
- * import { sortArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   sortArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const values: NonEmptyReadonlyArray<number> = [3, 1, 2];
  * const sorted = sortArray(values, (a, b) => a - b);
- * expect(sorted).toEqual([1, 2, 3]);
- * expectTypeOf(sorted).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * assertEqual(sorted, [1, 2, 3]);
+ * assertType<NonEmptyReadonlyArray<number>, typeof sorted>();
  * ```
  *
  * @group Transformations
@@ -776,12 +831,17 @@ export function sortArray<T>(
  * ### Reversing without mutation
  *
  * ```ts
- * import { reverseArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   reverseArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const values: NonEmptyReadonlyArray<number> = [1, 2, 3];
  * const reversed = reverseArray(values);
- * expect(reversed).toEqual([3, 2, 1]);
- * expectTypeOf(reversed).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+ * assertEqual(reversed, [3, 2, 1]);
+ * assertType<NonEmptyReadonlyArray<number>, typeof reversed>();
  * ```
  *
  * @group Transformations
@@ -803,12 +863,12 @@ export function reverseArray<T>(array: ReadonlyArray<T>): ReadonlyArray<T> {
  * ### Removing and replacing values
  *
  * ```ts
- * import { spliceArray } from "@evolu/common";
+ * import { assertEqual, spliceArray } from "@evolu/common";
  *
  * const values: ReadonlyArray<number> = [1, 2, 3, 4];
- * expect(spliceArray(values, 1, 2)).toEqual([1, 4]);
- * expect(spliceArray([1, 2, 3], 1, 1, 10, 11)).toEqual([1, 10, 11, 3]);
- * expect(values).toEqual([1, 2, 3, 4]);
+ * assertEqual(spliceArray(values, 1, 2), [1, 4]);
+ * assertEqual(spliceArray([1, 2, 3], 1, 1, 10, 11), [1, 10, 11, 3]);
+ * assertEqual(values, [1, 2, 3, 4]);
  * ```
  *
  * @group Transformations
@@ -840,29 +900,36 @@ export type ZipArrayResult<T extends ReadonlyArray<ReadonlyArray<unknown>>> = {
  * ### Zipping to the shortest input
  *
  * ```ts
- * import { zipArray, type NonEmptyReadonlyArray } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   zipArray,
+ *   type NonEmptyReadonlyArray,
+ * } from "@evolu/common";
  *
  * const pairs = zipArray([
  *   [1, 2, 3],
  *   ["a", "b", "c"],
  * ]);
- * expect(pairs).toEqual([
+ * assertEqual(pairs, [
  *   [1, "a"],
  *   [2, "b"],
  *   [3, "c"],
  * ]);
- * expect(
+ * assertEqual(
  *   zipArray([
  *     [1, 2],
  *     ["a", "b", "c"],
  *     [true, false],
  *   ]),
- * ).toEqual([
- *   [1, "a", true],
- *   [2, "b", false],
- * ]);
- * expectTypeOf(pairs).toEqualTypeOf<
- *   NonEmptyReadonlyArray<Readonly<[number, string]>>
+ *   [
+ *     [1, "a", true],
+ *     [2, "b", false],
+ *   ],
+ * );
+ * assertType<
+ *   NonEmptyReadonlyArray<Readonly<[number, string]>>,
+ *   typeof pairs
  * >();
  * ```
  *
@@ -896,9 +963,9 @@ export function zipArray<T extends ReadonlyArray<ReadonlyArray<unknown>>>(
  * ### Reading the first value
  *
  * ```ts
- * import { firstInArray } from "@evolu/common";
+ * import { assertEqual, firstInArray } from "@evolu/common";
  *
- * expect(firstInArray(["a", "b", "c"])).toBe("a");
+ * assertEqual(firstInArray(["a", "b", "c"]), "a");
  * ```
  *
  * @group Accessors
@@ -911,9 +978,9 @@ export const firstInArray = <T>(array: NonEmptyReadonlyArray<T>): T => array[0];
  * ### Reading the last value
  *
  * ```ts
- * import { lastInArray } from "@evolu/common";
+ * import { assertEqual, lastInArray } from "@evolu/common";
  *
- * expect(lastInArray(["a", "b", "c"])).toBe("c");
+ * assertEqual(lastInArray(["a", "b", "c"]), "c");
  * ```
  *
  * @group Accessors

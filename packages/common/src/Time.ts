@@ -389,12 +389,12 @@ export const performanceDurationBetween = (
  * ### Example
  *
  * ```ts
- * import { Millis, spaced } from "@evolu/common";
+ * import { assertType, Millis, spaced } from "@evolu/common";
  *
  * const readableSchedule = spaced("1s");
  * const validatedSchedule = spaced(Millis.orThrow(1000));
  *
- * expectTypeOf(readableSchedule).toEqualTypeOf(validatedSchedule);
+ * assertType<typeof validatedSchedule, typeof readableSchedule>();
  * ```
  */
 export type Duration = DurationLiteral | Millis;
@@ -408,12 +408,12 @@ export type Duration = DurationLiteral | Millis;
  * ### Example
  *
  * ```ts
- * import { PositiveMillis, sleep } from "@evolu/common";
+ * import { assertType, PositiveMillis, sleep } from "@evolu/common";
  *
  * const readableSleep = sleep("1s");
  * const validatedSleep = sleep(PositiveMillis.orThrow(1000));
  *
- * expectTypeOf(readableSleep).toEqualTypeOf(validatedSleep);
+ * assertType<typeof validatedSleep, typeof readableSleep>();
  * ```
  */
 export type PositiveDuration = DurationLiteral | PositiveMillis;
@@ -535,13 +535,13 @@ export type DurationLiteral = typeof DurationLiteral.Output;
  * ### Example
  *
  * ```ts
- * import { durationToMillis, Millis } from "@evolu/common";
+ * import { assertEqual, durationToMillis, Millis } from "@evolu/common";
  *
- * expect(durationToMillis("1.5s")).toBe(1500);
- * expect(durationToMillis("5m")).toBe(300000);
- * expect(durationToMillis("12h")).toBe(43200000);
- * expect(durationToMillis("1w")).toBe(604800000);
- * expect(durationToMillis(Millis.orThrow(5000))).toBe(5000);
+ * assertEqual(durationToMillis("1.5s"), 1500);
+ * assertEqual(durationToMillis("5m"), 300000);
+ * assertEqual(durationToMillis("12h"), 43200000);
+ * assertEqual(durationToMillis("1w"), 604800000);
+ * assertEqual(durationToMillis(Millis.orThrow(5000)), 5000);
  * ```
  */
 export function durationToMillis(
@@ -614,11 +614,16 @@ export const msLongTask = 50 as Millis;
  * ### Example
  *
  * ```ts
- * import { formatMillisAsDuration, Millis } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   formatMillisAsDuration,
+ *   Millis,
+ * } from "@evolu/common";
  *
- * expect(formatMillisAsDuration(Millis.orThrow(1234))).toBe("1.234s");
- * expect(formatMillisAsDuration(Millis.orThrow(90000))).toBe("1m30.000s");
- * expect(formatMillisAsDuration(Millis.orThrow(90061000))).toBe(
+ * assertEqual(formatMillisAsDuration(Millis.orThrow(1234)), "1.234s");
+ * assertEqual(formatMillisAsDuration(Millis.orThrow(90000)), "1m30.000s");
+ * assertEqual(
+ *   formatMillisAsDuration(Millis.orThrow(90061000)),
  *   "1d1h1m1.000s",
  * );
  * ```
@@ -654,7 +659,11 @@ export const formatMillisAsDuration = (millis: Millis): string => {
  * ### Example
  *
  * ```ts
- * import { formatMillisAsClockTime, Millis } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   formatMillisAsClockTime,
+ *   Millis,
+ * } from "@evolu/common";
  *
  * const timestamp = new globalThis.Date(
  *   2026,
@@ -665,7 +674,8 @@ export const formatMillisAsDuration = (millis: Millis): string => {
  *   15,
  *   234,
  * ).getTime();
- * expect(formatMillisAsClockTime(Millis.orThrow(timestamp))).toBe(
+ * assertEqual(
+ *   formatMillisAsClockTime(Millis.orThrow(timestamp)),
  *   "14:32:15.234",
  * );
  * ```

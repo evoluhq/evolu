@@ -1,9 +1,8 @@
 /**
- * Vitest utilities for testing TypeScript examples embedded in JSDoc and
- * Markdown.
+ * Utilities for testing TypeScript examples embedded in JSDoc and Markdown.
  *
- * These utilities use the dedicated `@evolu/vitest/TestJSDoc` entry point so
- * normal `@evolu/vitest` imports do not evaluate Node.js test tooling.
+ * These utilities use the dedicated `@evolu/nodejs/TestJSDoc` entry point so
+ * normal `@evolu/nodejs` imports do not evaluate TypeScript and JSDoc tooling.
  *
  * @module
  */
@@ -64,7 +63,7 @@ interface JSDocExampleFailure {
 }
 
 interface TypeScriptPackage {
-  readonly bin: string | { readonly tsc?: string };
+  readonly bin?: string | Readonly<Record<string, string>>;
 }
 
 const jsdocPattern = /\/\*\*[\s\S]*?\*\//gu;
@@ -83,14 +82,14 @@ const polyfillsPath = fileURLToPath(
  * Examples are compiled together as isolated TypeScript modules. Examples
  * without compilation errors are then run concurrently, bounded by the CPU
  * parallelism available to the process. Compilation and execution failures are
- * reported together. Vitest's `assert`, `expect`, and `expectTypeOf`, along
- * with Evolu's `expectOk` and `expectErr`, are available as globals. An
- * explicit import with the same name takes precedence.
+ * reported together. Evolu's required polyfills are installed before each
+ * example runs.
  *
  * Write every TypeScript fence as a standalone, deterministic example and
- * import its dependencies. Use `expectTypeOf` to prove static contracts and an
- * appropriate runtime assertion such as `expect`, `expectOk`, or `expectErr`
- * instead of describing expected behavior only in comments.
+ * explicitly import its dependencies and assertions. Use `assertType` to prove
+ * static contracts, `assertEqual` for Data comparisons, `assert` with a
+ * descriptive message for invariants and narrowing, and `assertOk` or
+ * `assertErr` for Results.
  *
  * Package aliases are useful for examples documenting an entry point that is
  * not exported yet. Package subpaths can be aliased independently. Each alias
@@ -100,7 +99,7 @@ const polyfillsPath = fileURLToPath(
  * ### Example
  *
  * ```ts
- * import { testJSDocExamples } from "@evolu/vitest/TestJSDoc";
+ * import { testJSDocExamples } from "@evolu/nodejs/TestJSDoc";
  * import { mkdtemp, rm, writeFile } from "node:fs/promises";
  * import { tmpdir } from "node:os";
  * import { join } from "node:path";
@@ -113,7 +112,9 @@ const polyfillsPath = fileURLToPath(
  *     [
  *       "/**",
  *       " * ``" + "`ts",
- *       " * expect(1 + 1).toBe(2);",
+ *       ' * import { assertEqual } from "@evolu/common";',
+ *       " *",
+ *       " * assertEqual(1 + 1, 2);",
  *       " * ``" + "`",
  *       " *" + "/",
  *       "export {};",
@@ -122,7 +123,6 @@ const polyfillsPath = fileURLToPath(
  *   await testJSDocExamples({
  *     cwd: process.cwd(),
  *     include: sourcePath,
- *     typescriptPackage: "@typescript/native",
  *   });
  * } finally {
  *   await rm(directory, { force: true, recursive: true });
@@ -357,26 +357,6 @@ const transformJSDocExample = (
 ): string =>
   [
     `import { installPolyfills } from ${JSON.stringify(pathToImportSpecifier(generatedPath, polyfillsPath))};`,
-    'import { expectErr as injectedExpectErr, expectOk as injectedExpectOk } from "@evolu/vitest";',
-    'import { assert as injectedAssert, expect as injectedExpect, expectTypeOf as injectedExpectTypeOf } from "vitest";',
-    [
-      "declare global {",
-      "  var assert: typeof injectedAssert;",
-      "  var expect: typeof injectedExpect;",
-      "  var expectErr: typeof injectedExpectErr;",
-      "  var expectOk: typeof injectedExpectOk;",
-      "  var expectTypeOf: typeof injectedExpectTypeOf;",
-      "}",
-    ].join("\n"),
-    [
-      "Object.assign(globalThis, {",
-      "  assert: injectedAssert,",
-      "  expect: injectedExpect,",
-      "  expectErr: injectedExpectErr,",
-      "  expectOk: injectedExpectOk,",
-      "  expectTypeOf: injectedExpectTypeOf,",
-      "});",
-    ].join("\n"),
     "installPolyfills();",
     example.source,
   ].join("\n\n");
@@ -396,8 +376,13 @@ const resolveTypeScriptCompiler = (
   const packageJson = JSON.parse(
     readFileSync(packagePath, "utf8"),
   ) as TypeScriptPackage;
+  const namedBinaries =
+    typeof packageJson.bin === "object" ? Object.values(packageJson.bin) : [];
   const compiler =
-    typeof packageJson.bin === "string" ? packageJson.bin : packageJson.bin.tsc;
+    typeof packageJson.bin === "string"
+      ? packageJson.bin
+      : (packageJson.bin?.tsc ??
+        (namedBinaries.length === 1 ? namedBinaries[0] : undefined));
   assert(
     compiler !== undefined,
     `${typescriptPackage} does not expose a tsc executable.`,

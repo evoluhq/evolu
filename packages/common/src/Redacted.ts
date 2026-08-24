@@ -30,8 +30,11 @@ import type { Eq } from "./Eq.ts";
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertEqual,
  *   createRedacted,
  *   revealRedacted,
+ *   trySync,
  *   type Brand,
  *   type Redacted,
  * } from "@evolu/common";
@@ -45,11 +48,12 @@ import type { Eq } from "./Eq.ts";
  * using redactedKey: RedactedApiKey = createRedacted(apiKey);
  * const fetchUser = (key: RedactedApiKey): ApiKey => revealRedacted(key);
  *
- * expect(redactedKey.toString()).toBe("<redacted>");
- * expect(JSON.stringify({ apiKey: redactedKey })).toBe(
+ * assertEqual(redactedKey.toString(), "<redacted>");
+ * assertEqual(
+ *   JSON.stringify({ apiKey: redactedKey }),
  *   '{"apiKey":"<redacted>"}',
  * );
- * expect(fetchUser(redactedKey)).toBe(apiKey);
+ * assertEqual(fetchUser(redactedKey), apiKey);
  *
  * using password = createRedacted("password" as DbPassword);
  * // @ts-expect-error Redacted secrets retain their distinct branded types.
@@ -60,7 +64,7 @@ import type { Eq } from "./Eq.ts";
  *   return key;
  * })();
  * // Leaving the `using` scope removes the value from memory.
- * expect(() => revealRedacted(disposedKey)).toThrow();
+ * assertErr(trySync(() => revealRedacted(disposedKey)));
  * ```
  */
 export interface Redacted<A> extends Brand<"Redacted">, Disposable {
@@ -112,6 +116,8 @@ export const isRedacted = (value: unknown): value is Redacted<unknown> =>
  *
  * ```ts
  * import {
+ *   assertFalse,
+ *   assertTrue,
  *   createEqRedacted,
  *   createRedacted,
  *   eqString,
@@ -126,8 +132,8 @@ export const isRedacted = (value: unknown): value is Redacted<unknown> =>
  * using b = createRedacted("x" as ApiKey);
  * using c = createRedacted("y" as ApiKey);
  *
- * expect(eqRedactedApiKey(a, b)).toBe(true);
- * expect(eqRedactedApiKey(a, c)).toBe(false);
+ * assertTrue(eqRedactedApiKey(a, b));
+ * assertFalse(eqRedactedApiKey(a, c));
  * ```
  */
 export const createEqRedacted =

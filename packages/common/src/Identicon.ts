@@ -32,7 +32,12 @@ export type IdenticonStyle = "github" | "quadrant" | "gradient" | "sutnar";
  * ### Example
  *
  * ```ts
- * import { createIdFromString, createIdenticon } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertTrue,
+ *   createIdFromString,
+ *   createIdenticon,
+ * } from "@evolu/common";
  *
  * const id = createIdFromString("identicon-example");
  * const svg = createIdenticon(id);
@@ -45,9 +50,9 @@ export type IdenticonStyle = "github" | "quadrant" | "gradient" | "sutnar";
  * const todoId = createIdFromString<"Todo">("todo-1");
  * const todoSvg = createIdenticon(todoId);
  *
- * expect(svg.startsWith("<svg")).toBe(true);
- * expect(new Set([svg, ...alternativeSvgs]).size).toBe(4);
- * expect(todoSvg.startsWith("<svg")).toBe(true);
+ * assertTrue(svg.startsWith("<svg"));
+ * assertEqual(new Set([svg, ...alternativeSvgs]).size, 4);
+ * assertTrue(todoSvg.startsWith("<svg"));
  * ```
  */
 export const createIdenticon = (

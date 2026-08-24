@@ -24,12 +24,12 @@ export const clampBigInt =
  * ### Example
  *
  * ```ts
- * import { isBetweenBigInt } from "@evolu/common";
+ * import { assertFalse, assertTrue, isBetweenBigInt } from "@evolu/common";
  *
  * const isBetween10And20 = isBetweenBigInt(10n, 20n);
  *
- * expect(isBetween10And20(20n)).toBe(true);
- * expect(isBetween10And20(25n)).toBe(false);
+ * assertTrue(isBetween10And20(20n));
+ * assertFalse(isBetween10And20(25n));
  * ```
  */
 export const isBetweenBigInt =

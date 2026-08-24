@@ -25,7 +25,11 @@ import type { Callback } from "./Types.ts";
  * ### Correlating callback responses
  *
  * ```ts
- * import { createCallbacks, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   createCallbacks,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * const deps = testCreateDeps();
  *
@@ -37,7 +41,7 @@ import type { Callback } from "./Types.ts";
  * });
  * callbacks.execute(noArgumentId);
  * callbacks.execute(noArgumentId);
- * expect(noArgumentCalls).toBe(1);
+ * assertEqual(noArgumentCalls, 1);
  *
  * // Typed callback
  * using stringCallbacks = createCallbacks<string>(deps);
@@ -46,14 +50,14 @@ import type { Callback } from "./Types.ts";
  *   received = value;
  * });
  * stringCallbacks.execute(stringCallbackId, "hello");
- * expect(received).toBe("hello");
+ * assertEqual(received, "hello");
  *
  * // Promise.withResolvers
  * using promiseCallbacks = createCallbacks<string>(deps);
  * const { promise, resolve } = Promise.withResolvers<string>();
  * const promiseCallbackId = promiseCallbacks.register(resolve);
  * promiseCallbacks.execute(promiseCallbackId, "resolved value");
- * expect(await promise).toBe("resolved value");
+ * assertEqual(await promise, "resolved value");
  * ```
  *
  * @template T - The type of argument passed to callbacks (defaults to undefined

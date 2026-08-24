@@ -15,7 +15,7 @@ import type { Writable } from "./Types.ts";
  * ### Example
  *
  * ```ts
- * import { exhaustiveCheck } from "@evolu/common";
+ * import { assertEqual, exhaustiveCheck } from "@evolu/common";
  *
  * type Color = "red" | "green" | "blue";
  * const handled: Array<string> = [];
@@ -37,7 +37,7 @@ import type { Writable } from "./Types.ts";
  * };
  *
  * handleColor("blue");
- * expect(handled).toEqual(["Handling blue"]);
+ * assertEqual(handled, ["Handling blue"]);
  * ```
  *
  * Use this primarily in side-effect switches (`void` branches). For
@@ -47,6 +47,8 @@ import type { Writable } from "./Types.ts";
  * ### Return from every case
  *
  * ```ts
+ * import { assertEqual } from "@evolu/common";
+ *
  * type Color = "red" | "green" | "blue";
  *
  * const colorToHex = (color: Color): string => {
@@ -60,12 +62,14 @@ import type { Writable } from "./Types.ts";
  *   }
  * };
  *
- * expect(colorToHex("green")).toBe("#00ff00");
+ * assertEqual(colorToHex("green"), "#00ff00");
  * ```
  *
  * ### Assign in every case
  *
  * ```ts
+ * import { assertEqual } from "@evolu/common";
+ *
  * type Input =
  *   | { readonly type: "Mutate" }
  *   | { readonly type: "Query" }
@@ -89,7 +93,7 @@ import type { Writable } from "./Types.ts";
  *   return result;
  * };
  *
- * expect(inputToKind({ type: "Query" })).toBe("B");
+ * assertEqual(inputToKind({ type: "Query" }), "B");
  * ```
  */
 export const exhaustiveCheck = (value: never): never => {
@@ -105,16 +109,16 @@ export const exhaustiveCheck = (value: never): never => {
  * ### Example
  *
  * ```ts
- * import { identity } from "@evolu/common";
+ * import { assertEqual, assertSame, identity } from "@evolu/common";
  *
  * const values = [1, 2, 3];
  * const object = { value: 1 };
  * const getTransform = (shouldDouble: boolean) =>
  *   shouldDouble ? (value: number) => value * 2 : identity;
  *
- * expect(values.map(identity)).toEqual([1, 2, 3]);
- * expect(identity(object)).toBe(object);
- * expect(getTransform(false)(2)).toBe(2);
+ * assertEqual(values.map(identity), [1, 2, 3]);
+ * assertSame(identity(object), object);
+ * assertEqual(getTransform(false)(2), 2);
  * ```
  */
 export const identity = <A>(a: A): A => a;
@@ -139,7 +143,14 @@ export const identity = <A>(a: A): A => a;
  * ### Example
  *
  * ```ts
- * import { disposable } from "@evolu/common";
+ * import {
+ *   assert,
+ *   assertEqual,
+ *   assertErr,
+ *   assertTrue,
+ *   disposable,
+ *   trySync,
+ * } from "@evolu/common";
  *
  * let cleaned = false;
  * const createResource = () => {
@@ -151,11 +162,17 @@ export const identity = <A>(a: A): A => a;
  * };
  *
  * const resource = createResource();
- * expect(resource.read()).toBe("ready");
+ * assertEqual(resource.read(), "ready");
  * resource[Symbol.dispose]();
  *
- * expect(cleaned).toBe(true);
- * expect(() => resource.read()).toThrow("Cannot use a disposed object.");
+ * assertTrue(cleaned);
+ * const result = trySync(() => resource.read());
+ * assertErr(result);
+ * assert(
+ *   result.error instanceof Error &&
+ *     result.error.message === "Cannot use a disposed object.",
+ *   "Expected the disposed-object error.",
+ * );
  * ```
  */
 export function disposable<T extends object>(
@@ -217,7 +234,7 @@ export const isDisposable = (
  * ### Example
  *
  * ```ts
- * import { constVoid, type Thunk } from "@evolu/common";
+ * import { assertEqual, constVoid, type Thunk } from "@evolu/common";
  *
  * const notify = (onDone: Thunk<void> = constVoid) => onDone();
  * notify();
@@ -234,8 +251,8 @@ export const isDisposable = (
  *
  * const computed = compute();
  * jobs.shift()?.();
- * expect(computed).toBe(1);
- * expect(value).toBe(11);
+ * assertEqual(computed, 1);
+ * assertEqual(value, 11);
  * ```
  */
 export type Thunk<T> = () => T;
@@ -249,17 +266,17 @@ export type Thunk<T> = () => T;
  * ### Example
  *
  * ```ts
- * import { constant } from "@evolu/common";
+ * import { assertEqual, assertSame, constant } from "@evolu/common";
  *
  * let version = 0;
  * const readConfig = () => ({ version: ++version });
  * const getConstantConfig = constant(readConfig());
  * const getFreshConfig = () => readConfig();
  *
- * expect(getConstantConfig()).toBe(getConstantConfig());
- * expect(getConstantConfig().version).toBe(1);
- * expect(getFreshConfig().version).toBe(2);
- * expect(getFreshConfig().version).toBe(3);
+ * assertSame(getConstantConfig(), getConstantConfig());
+ * assertEqual(getConstantConfig().version, 1);
+ * assertEqual(getFreshConfig().version, 2);
+ * assertEqual(getFreshConfig().version, 3);
  * ```
  */
 export const constant =
@@ -293,7 +310,13 @@ export const constVoid: Thunk<void> = constUndefined;
  * ### Example
  *
  * ```ts
- * import { todo } from "@evolu/common";
+ * import {
+ *   assert,
+ *   assertErr,
+ *   assertType,
+ *   todo,
+ *   trySync,
+ * } from "@evolu/common";
  *
  * interface Config {
  *   readonly theme: string;
@@ -302,10 +325,17 @@ export const constVoid: Thunk<void> = constUndefined;
  * const getCount = (): number => todo();
  * const getConfig = () => todo<Config>();
  *
- * expectTypeOf<
+ * assertType<
+ *   [number, Config],
  *   [ReturnType<typeof getCount>, ReturnType<typeof getConfig>]
- * >().toEqualTypeOf<[number, Config]>();
- * expect(getCount).toThrow("not yet implemented");
+ * >();
+ * const result = trySync(getCount);
+ * assertErr(result);
+ * assert(
+ *   result.error instanceof Error &&
+ *     result.error.message === "not yet implemented",
+ *   "Expected the not-yet-implemented error.",
+ * );
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters

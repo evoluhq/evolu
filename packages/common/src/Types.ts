@@ -12,7 +12,12 @@
  * ### Completion callbacks
  *
  * ```ts
- * import { ok, type Callback, type Result } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   ok,
+ *   type Callback,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const completedValues: Array<string> = [];
  * const onComplete: Callback<string> = (value) => {
@@ -26,7 +31,7 @@
  * onComplete("direct");
  * for (const callback of queue) callback(ok("queued"));
  *
- * expect(completedValues).toEqual(["direct", "queued"]);
+ * assertEqual(completedValues, ["direct", "queued"]);
  * ```
  */
 export type Callback<T> = (value: T) => void;
@@ -39,7 +44,7 @@ export type Callback<T> = (value: T) => void;
  * ### Subscription teardown
  *
  * ```ts
- * import type { CallbackWithTeardown } from "@evolu/common";
+ * import { assertEqual, type CallbackWithTeardown } from "@evolu/common";
  *
  * interface EventSource {
  *   readonly start: () => void;
@@ -58,7 +63,7 @@ export type Callback<T> = (value: T) => void;
  * const teardown = subscribe(source);
  * if (teardown) teardown();
  *
- * expect(events).toEqual(["started", "stopped"]);
+ * assertEqual(events, ["started", "stopped"]);
  * ```
  */
 export type CallbackWithTeardown<T> = (value: T) => void | (() => void);
@@ -71,11 +76,11 @@ export type CallbackWithTeardown<T> = (value: T) => void | (() => void);
  * ### Filtering values
  *
  * ```ts
- * import type { Predicate } from "@evolu/common";
+ * import { assertEqual, type Predicate } from "@evolu/common";
  *
  * const isEven: Predicate<number> = (n) => n % 2 === 0;
  *
- * expect([1, 2, 3, 4].filter(isEven)).toEqual([2, 4]);
+ * assertEqual([1, 2, 3, 4].filter(isEven), [2, 4]);
  * ```
  */
 export type Predicate<T> = (value: T) => boolean;
@@ -88,12 +93,12 @@ export type Predicate<T> = (value: T) => boolean;
  * ### Filtering by position
  *
  * ```ts
- * import type { PredicateWithIndex } from "@evolu/common";
+ * import { assertEqual, type PredicateWithIndex } from "@evolu/common";
  *
  * const isEvenIndex: PredicateWithIndex<string> = (value, index) =>
  *   index % 2 === 0;
  *
- * expect(["a", "b", "c", "d"].filter(isEvenIndex)).toEqual(["a", "c"]);
+ * assertEqual(["a", "b", "c", "d"].filter(isEvenIndex), ["a", "c"]);
  * ```
  */
 export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
@@ -104,7 +109,7 @@ export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
  * ### Narrowing a value
  *
  * ```ts
- * import type { Refinement } from "@evolu/common";
+ * import { assert, assertEqual, type Refinement } from "@evolu/common";
  *
  * interface Animal {
  *   readonly name: string;
@@ -117,9 +122,9 @@ export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
  *   "breed" in animal;
  * const dog: Dog = { name: "Dog", breed: "Beagle" };
  * const animal: Animal = dog;
- * if (!isDog(animal)) throw new Error("Expected a dog");
+ * assert(isDog(animal), "Expected a dog.");
  *
- * expect(animal.breed).toBe("Beagle");
+ * assertEqual(animal.breed, "Beagle");
  * ```
  */
 export type Refinement<in A, out B extends A> = (a: A) => a is B;
@@ -134,7 +139,12 @@ export type Refinement<in A, out B extends A> = (a: A) => a is B;
  * ### Indexed refinement
  *
  * ```ts
- * import { partitionArray, type RefinementWithIndex } from "@evolu/common";
+ * import {
+ *   assertTrue,
+ *   assertType,
+ *   partitionArray,
+ *   type RefinementWithIndex,
+ * } from "@evolu/common";
  *
  * type Item = {
  *   readonly type: "number" | "string";
@@ -152,9 +162,9 @@ export type Refinement<in A, out B extends A> = (a: A) => a is B;
  * ];
  * const [numbers, others] = partitionArray(items, isNumberItem);
  *
- * expectTypeOf(numbers).toEqualTypeOf<ReadonlyArray<NumberItem>>();
- * expect(numbers[0]?.value).toBe(2);
- * expect(others[0]?.value).toBe(1);
+ * assertType<ReadonlyArray<NumberItem>, typeof numbers>();
+ * assertTrue(numbers[0]?.value === 2);
+ * assertTrue(others[0]?.value === 1);
  * ```
  */
 export type RefinementWithIndex<in A, out B extends A> = (
@@ -177,7 +187,7 @@ export type RefinementWithIndex<in A, out B extends A> = (
  * ### Adding runtime identity
  *
  * ```ts
- * import { instance, type Instance } from "@evolu/common";
+ * import { assertEqual, instance, type Instance } from "@evolu/common";
  *
  * interface Foo extends Instance<"Foo"> {
  *   readonly value: string;
@@ -188,7 +198,7 @@ export type RefinementWithIndex<in A, out B extends A> = (
  *   value: "value",
  * };
  *
- * expect(foo["~evolu/instance"]).toBe("Foo");
+ * assertEqual(foo["~evolu/instance"], "Foo");
  * ```
  */
 export interface Instance<Name extends string> {
@@ -212,7 +222,12 @@ export const instance = <const Name extends string>(
  * ### Checking runtime identity
  *
  * ```ts
- * import { instance, isInstance, type Instance } from "@evolu/common";
+ * import {
+ *   assertTrue,
+ *   instance,
+ *   isInstance,
+ *   type Instance,
+ * } from "@evolu/common";
  *
  * interface Foo extends Instance<"Foo"> {
  *   readonly value: string;
@@ -221,7 +236,7 @@ export const instance = <const Name extends string>(
  * const isFoo = isInstance<Foo>("Foo");
  * const value: unknown = { ...instance("Foo"), value: "value" };
  *
- * expect(isFoo(value)).toBe(true);
+ * assertTrue(isFoo(value));
  * ```
  */
 export const isInstance =
@@ -241,17 +256,20 @@ export const isInstance =
  * ### Optional nullable properties
  *
  * ```ts
- * import type { NullablePartial } from "@evolu/common";
+ * import { assertType, type NullablePartial } from "@evolu/common";
  *
  * type Example = {
  *   required: string;
  *   optionalWithNull: string | null;
  * };
  *
- * expectTypeOf<NullablePartial<Example>>().toEqualTypeOf<{
- *   required: string;
- *   optionalWithNull?: string | null;
- * }>();
+ * assertType<
+ *   {
+ *     required: string;
+ *     optionalWithNull?: string | null;
+ *   },
+ *   NullablePartial<Example>
+ * >();
  * ```
  */
 export type NullablePartial<
@@ -308,15 +326,18 @@ export type Writable<T> = {
  * ### Flattening an intersection
  *
  * ```ts
- * import type { Simplify } from "@evolu/common";
+ * import { assertType, type Simplify } from "@evolu/common";
  *
  * type A = { a: string } & { b: number };
  * type B = Simplify<A>;
  *
- * expectTypeOf<B>().toEqualTypeOf<{
- *   a: string;
- *   b: number;
- * }>();
+ * assertType<
+ *   {
+ *     a: string;
+ *     b: number;
+ *   },
+ *   B
+ * >();
  * ```
  */
 export type Simplify<T> = {
@@ -339,7 +360,11 @@ export type PartialProp<T, K extends keyof T> = Omit<T, K> &
  * ### Sync and async completion
  *
  * ```ts
- * import { isPromiseLike, type Awaitable } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   isPromiseLike,
+ *   type Awaitable,
+ * } from "@evolu/common";
  *
  * const cache = new Map([["cached", "from cache"]]);
  * const getData = (id: string): Awaitable<string> =>
@@ -349,8 +374,8 @@ export type PartialProp<T, K extends keyof T> = Omit<T, K> &
  * const result = getData("cached");
  * const cached = isPromiseLike(result) ? await result : result;
  *
- * expect(fetched).toBe("fetched missing");
- * expect(cached).toBe("from cache");
+ * assertEqual(fetched, "fetched missing");
+ * assertEqual(cached, "from cache");
  * ```
  */
 export type Awaitable<T> = T | PromiseLike<T>;
@@ -364,7 +389,11 @@ export type Awaitable<T> = T | PromiseLike<T>;
  * ### Conditional awaiting
  *
  * ```ts
- * import { isPromiseLike, type Awaitable } from "@evolu/common";
+ * import {
+ *   assertTrue,
+ *   isPromiseLike,
+ *   type Awaitable,
+ * } from "@evolu/common";
  *
  * const cache = new Map([["cached", true]]);
  * const validate = (id: string): Awaitable<boolean> =>
@@ -373,7 +402,7 @@ export type Awaitable<T> = T | PromiseLike<T>;
  * const result = validate("cached");
  * const isValid = isPromiseLike(result) ? await result : result;
  *
- * expect(isValid).toBe(true);
+ * assertTrue(isValid);
  * ```
  */
 export const isPromiseLike = <T>(
@@ -454,7 +483,7 @@ export type ParameterIntersection<T> = [T] extends [(value: infer I) => void]
  * ### Preserving discriminated unions
  *
  * ```ts
- * import type { DistributiveOmit } from "@evolu/common";
+ * import { assertType, type DistributiveOmit } from "@evolu/common";
  *
  * type Event =
  *   | { type: "a"; a: string; shared: number }
@@ -462,8 +491,9 @@ export type ParameterIntersection<T> = [T] extends [(value: infer I) => void]
  *
  * type Payload = DistributiveOmit<Event, "shared">;
  *
- * expectTypeOf<Payload>().toEqualTypeOf<
- *   { type: "a"; a: string } | { type: "b"; b: number }
+ * assertType<
+ *   { type: "a"; a: string } | { type: "b"; b: number },
+ *   Payload
  * >();
  * ```
  */

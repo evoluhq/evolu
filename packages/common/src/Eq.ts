@@ -26,54 +26,68 @@ import type { CompileTimeError } from "./Types.ts";
  * ### Example
  *
  * ```ts
- * import { createEqObject, eqNumber } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertTrue,
+ *   createEqObject,
+ *   eqNumber,
+ * } from "@evolu/common";
  *
  * const eqPoint = createEqObject({ x: eqNumber, y: eqNumber });
  *
- * expect(eqPoint({ x: 1, y: 2 }, { x: 1, y: 2 })).toBe(true);
- * expect(eqPoint({ x: 1, y: 2 }, { x: 2, y: 1 })).toBe(false);
+ * assertTrue(eqPoint({ x: 1, y: 2 }, { x: 1, y: 2 }));
+ * assertFalse(eqPoint({ x: 1, y: 2 }, { x: 2, y: 1 }));
  * ```
  */
 export type Eq<in A> = (x: A, y: A) => boolean;
 
 /**
- * Compares two values with strict equality (`===`).
+ * Compares two values using SameValue equality (`Object.is`).
  *
- * Strict equality considers `NaN` unequal to itself. Use {@link eqSameValueZero}
- * when values can contain `NaN` and equality must be reflexive.
+ * SameValue considers `NaN` equal to itself, distinguishes `0` from `-0`, and
+ * compares objects by reference identity.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertFalse, assertTrue, eqStrict } from "@evolu/common";
+ *
+ * assertTrue(eqStrict(NaN, NaN));
+ * assertFalse(eqStrict(0, -0));
+ * ```
  */
-export const eqStrict = <A>(x: A, y: A): boolean => x === y;
+export const eqStrict = <A>(x: A, y: A): boolean => Object.is(x, y);
 
 /**
  * Compares two values using SameValueZero equality.
  *
  * SameValueZero is the standard equality algorithm used by `Map`, `Set`, and
- * `Array.prototype.includes`. It behaves like strict equality except that `NaN`
- * equals itself. Both algorithms consider `0` and `-0` equal.
+ * `Array.prototype.includes`. Like SameValue, it considers `NaN` equal to
+ * itself, but unlike SameValue, it considers `0` and `-0` equal.
  *
  * ### Example
  *
  * ```ts
- * import { eqSameValueZero } from "@evolu/common";
+ * import { assertFalse, assertTrue, eqSameValueZero } from "@evolu/common";
  *
- * expect(eqSameValueZero(NaN, NaN)).toBe(true);
- * expect(eqSameValueZero(0, -0)).toBe(true);
- * expect(eqSameValueZero({}, {})).toBe(false);
+ * assertTrue(eqSameValueZero(NaN, NaN));
+ * assertTrue(eqSameValueZero(0, -0));
+ * assertFalse(eqSameValueZero({}, {}));
  * ```
  */
 export const eqSameValueZero = <A>(x: A, y: A): boolean =>
   x === y || Object.is(x, y);
 
-/** An {@link Eq} for strings using strict equality. */
+/** An {@link Eq} for strings using {@link eqStrict}. */
 export const eqString: Eq<string> = eqStrict;
 
 /** An {@link Eq} for numbers using {@link eqSameValueZero}. */
 export const eqNumber: Eq<number> = eqSameValueZero;
 
-/** An {@link Eq} for bigints using strict equality. */
+/** An {@link Eq} for bigints using {@link eqStrict}. */
 export const eqBigInt: Eq<bigint> = eqStrict;
 
-/** An {@link Eq} for booleans using strict equality. */
+/** An {@link Eq} for booleans using {@link eqStrict}. */
 export const eqBoolean: Eq<boolean> = eqStrict;
 
 /** An {@link Eq} for `undefined`. */
@@ -95,15 +109,20 @@ export const eqFromOrder =
  * ### Example
  *
  * ```ts
- * import { createEqArrayLike, eqNumber } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertTrue,
+ *   createEqArrayLike,
+ *   eqNumber,
+ * } from "@evolu/common";
  *
  * const eqArrayNumber = createEqArrayLike(eqNumber);
  *
- * expect(eqArrayNumber([1, 2, 3], [1, 2, 3])).toBe(true);
- * expect(
+ * assertTrue(eqArrayNumber([1, 2, 3], [1, 2, 3]));
+ * assertTrue(
  *   eqArrayNumber(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3])),
- * ).toBe(true);
- * expect(eqArrayNumber([1, 2, 3], [1, 2, 4])).toBe(false);
+ * );
+ * assertFalse(eqArrayNumber([1, 2, 3], [1, 2, 4]));
  * ```
  */
 export const createEqArrayLike =
@@ -120,19 +139,20 @@ export const createEqArrayLike =
   };
 
 /**
- * Compares two array-like structures by strict reference equality (`===`).
+ * Compares two array-like structures element by element using {@link eqStrict}.
  *
- * Useful for structural sharing checks where elements are compared by identity.
+ * Useful for structural sharing checks where objects are compared by reference
+ * identity. `NaN` elements are equal, while `0` and `-0` elements differ.
  *
  * ### Example
  *
  * ```ts
- * import { eqArrayStrict } from "@evolu/common";
+ * import { assertFalse, assertTrue, eqArrayStrict } from "@evolu/common";
  *
  * const a = { x: 1 };
  * const b = { x: 1 };
- * expect(eqArrayStrict([a, a], [a, a])).toBe(true);
- * expect(eqArrayStrict([a], [b])).toBe(false);
+ * assertTrue(eqArrayStrict([a, a], [a, a]));
+ * assertFalse(eqArrayStrict([a], [b]));
  * ```
  */
 export const eqArrayStrict = /*#__PURE__*/ createEqArrayLike(eqStrict);
@@ -143,9 +163,9 @@ export const eqArrayStrict = /*#__PURE__*/ createEqArrayLike(eqStrict);
  * ### Example
  *
  * ```ts
- * import { eqArrayNumber } from "@evolu/common";
+ * import { assertTrue, eqArrayNumber } from "@evolu/common";
  *
- * expect(eqArrayNumber([1, NaN], [1, NaN])).toBe(true);
+ * assertTrue(eqArrayNumber([1, NaN], [1, NaN]));
  * ```
  */
 export const eqArrayNumber = /*#__PURE__*/ createEqArrayLike(eqNumber);
@@ -156,14 +176,12 @@ export const eqArrayNumber = /*#__PURE__*/ createEqArrayLike(eqNumber);
  * ### Example
  *
  * ```ts
- * import { eqUint8Array } from "@evolu/common";
+ * import { assertFalse, assertTrue, eqUint8Array } from "@evolu/common";
  *
- * expect(
- *   eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 2])),
- * ).toBe(true);
- * expect(
+ * assertTrue(eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 2])));
+ * assertFalse(
  *   eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 3])),
- * ).toBe(false);
+ * );
  * ```
  */
 export const eqUint8Array: Eq<Uint8Array> = eqArrayNumber;
@@ -175,12 +193,17 @@ export const eqUint8Array: Eq<Uint8Array> = eqArrayNumber;
  * ### Example
  *
  * ```ts
- * import { createEqObject, eqNumber } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertTrue,
+ *   createEqObject,
+ *   eqNumber,
+ * } from "@evolu/common";
  *
  * const eqObjectNumber = createEqObject({ a: eqNumber });
  *
- * expect(eqObjectNumber({ a: 1 }, { a: 1 })).toBe(true);
- * expect(eqObjectNumber({ a: 1 }, { a: 2 })).toBe(false);
+ * assertTrue(eqObjectNumber({ a: 1 }, { a: 1 }));
+ * assertFalse(eqObjectNumber({ a: 1 }, { a: 2 }));
  * ```
  */
 export const createEqObject =
@@ -213,7 +236,7 @@ export const createEqObject =
  * ### Example
  *
  * ```ts
- * import { assert, eqData } from "@evolu/common";
+ * import { assertTrue, eqData } from "@evolu/common";
  *
  * interface User {
  *   readonly name: string;
@@ -226,7 +249,7 @@ export const createEqObject =
  *   roles: new Set(["author", "admin"]),
  * };
  *
- * assert(eqData(first, second), "Expected users to contain equal Data.");
+ * assertTrue(eqData(first, second));
  * ```
  */
 export function eqData<Actual, Expected>(
@@ -247,12 +270,12 @@ export function eqData(actual: Data, expected: Data): boolean {
  * ### Example
  *
  * ```ts
- * import { assert, eqJsonValue, type JsonValue } from "@evolu/common";
+ * import { assertTrue, eqJsonValue, type JsonValue } from "@evolu/common";
  *
  * const first: JsonValue = { profile: { name: "Ada" } };
  * const second: JsonValue = { profile: { name: "Ada" } };
  *
- * assert(eqJsonValue(first, second), "Expected equal JSON values.");
+ * assertTrue(eqJsonValue(first, second));
  * ```
  */
 export const eqJsonValue: Eq<JsonValue> = eqData;

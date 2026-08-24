@@ -41,6 +41,7 @@ export type { NotNull as KyselyNotNull } from "kysely";
  *
  * ```ts
  * import {
+ *   assertType,
  *   createQueryBuilder,
  *   id,
  *   NonEmptyTrimmedString100,
@@ -56,11 +57,12 @@ export type { NotNull as KyselyNotNull } from "kysely";
  * const allTodos = createQuery((db) => db.selectFrom("todo").selectAll());
  *
  * type AllTodosRow = typeof allTodos.Row;
- * expectTypeOf<typeof allTodos>().toExtend<Query<typeof Schema>>();
- * expectTypeOf<AllTodosRow["id"]>().toEqualTypeOf<TodoId>();
- * expectTypeOf<
- *   AllTodosRow["title"]
- * >().toEqualTypeOf<NonEmptyTrimmedString100 | null>();
+ * assertType<
+ *   true,
+ *   typeof allTodos extends Query<typeof Schema> ? true : false
+ * >();
+ * assertType<TodoId, AllTodosRow["id"]>();
+ * assertType<NonEmptyTrimmedString100 | null, AllTodosRow["title"]>();
  * ```
  */
 export type Query<
@@ -78,6 +80,7 @@ export type Query<
      *
      * ```ts
      * import {
+     *   assertType,
      *   createQueryBuilder,
      *   id,
      *   type InferRow,
@@ -93,9 +96,7 @@ export type Query<
      * );
      *
      * type AllTodosRow = typeof allTodos.Row;
-     * expectTypeOf<AllTodosRow>().toEqualTypeOf<
-     *   InferRow<typeof allTodos>
-     * >();
+     * assertType<InferRow<typeof allTodos>, AllTodosRow>();
      * ```
      */
     Row: R;
@@ -126,6 +127,7 @@ export interface Row {
  *
  * ```ts
  * import {
+ *   assertType,
  *   createQueryBuilder,
  *   evoluJsonArrayFrom,
  *   id,
@@ -157,10 +159,13 @@ export interface Row {
  *     ]),
  * );
  *
- * expectTypeOf<(typeof people.Row.pets)[number]>().toEqualTypeOf<{
- *   petId: typeof Schema.pet.id.Output;
- *   name: NonEmptyTrimmedString100 | null;
- * }>();
+ * assertType<
+ *   {
+ *     petId: typeof Schema.pet.id.Output;
+ *     name: NonEmptyTrimmedString100 | null;
+ *   },
+ *   (typeof people.Row.pets)[number]
+ * >();
  * ```
  */
 export const evoluJsonArrayFrom = <O>(
@@ -185,6 +190,7 @@ export const evoluJsonArrayFrom = <O>(
  *
  * ```ts
  * import {
+ *   assertType,
  *   createQueryBuilder,
  *   evoluJsonObjectFrom,
  *   id,
@@ -218,10 +224,13 @@ export const evoluJsonArrayFrom = <O>(
  *     ]),
  * );
  *
- * expectTypeOf<typeof people.Row.favoritePet>().toEqualTypeOf<{
- *   petId: typeof Schema.pet.id.Output;
- *   name: NonEmptyTrimmedString100 | null;
- * } | null>();
+ * assertType<
+ *   {
+ *     petId: typeof Schema.pet.id.Output;
+ *     name: NonEmptyTrimmedString100 | null;
+ *   } | null,
+ *   typeof people.Row.favoritePet
+ * >();
  * ```
  */
 export const evoluJsonObjectFrom = <O>(
@@ -244,6 +253,7 @@ export const evoluJsonObjectFrom = <O>(
  *
  * ```ts
  * import {
+ *   assertType,
  *   createQueryBuilder,
  *   evoluJsonBuildObject,
  *   id,
@@ -274,11 +284,14 @@ export const evoluJsonObjectFrom = <O>(
  *     ]),
  * );
  *
- * expectTypeOf<typeof people.Row.name>().toEqualTypeOf<{
- *   first: NonEmptyTrimmedString100 | null;
- *   last: NonEmptyTrimmedString100 | null;
- *   full: string;
- * }>();
+ * assertType<
+ *   {
+ *     first: NonEmptyTrimmedString100 | null;
+ *     last: NonEmptyTrimmedString100 | null;
+ *     full: string;
+ *   },
+ *   typeof people.Row.name
+ * >();
  * ```
  */
 export const evoluJsonBuildObject = <

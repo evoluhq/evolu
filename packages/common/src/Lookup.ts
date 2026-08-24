@@ -344,6 +344,8 @@ export type StructuralFunction = (...args: ReadonlyArray<unknown>) => unknown;
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertSame,
  *   createLookupMap,
  *   structuralLookup,
  *   type StructuralLookupKey,
@@ -368,8 +370,8 @@ export type StructuralFunction = (...args: ReadonlyArray<unknown>) => unknown;
  * };
  * byFilter.set(cachedFilter, "cached");
  *
- * expect(byFilter.get(equivalentFilter)).toBe("cached");
- * expect(byFilter.getKey(equivalentFilter)).toBe(cachedFilter);
+ * assertEqual(byFilter.get(equivalentFilter), "cached");
+ * assertSame(byFilter.getKey(equivalentFilter), cachedFilter);
  * ```
  *
  * @see {@link StructuralKey}

@@ -70,6 +70,7 @@ export interface StorageConfig {
    *
    * ```ts
    * import {
+   *   assertEqual,
    *   createAppOwner,
    *   createOwnerSecret,
    *   createRandomBytes,
@@ -87,12 +88,13 @@ export interface StorageConfig {
    *     ownerId === appOwner.id && requiredBytes <= maxBytes,
    * };
    *
-   * expect(
+   * assertEqual(
    *   await relayStorageConfig.isOwnerWithinQuota(
    *     appOwner.id,
    *     PositiveInt.orThrow(2048),
    *   ),
-   * ).toBe(false);
+   *   false,
+   * );
    * ```
    */
   readonly isOwnerWithinQuota: (

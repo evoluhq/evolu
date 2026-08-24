@@ -1,4 +1,4 @@
-import { testJSDocExamples } from "@evolu/vitest/TestJSDoc";
+import { testJSDocExamples } from "@evolu/nodejs/TestJSDoc";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
@@ -7,7 +7,7 @@ import { assert, expect, test } from "vitest";
 const repositoryDirectory = resolve(import.meta.dirname, "../../../..");
 const temporaryRoot = join(repositoryDirectory, "tmp");
 
-test("testJSDocExamples provides assertion globals", async () => {
+test("testJSDocExamples supports explicit Evolu assertions", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
   const temporaryDirectory = mkdtempSync(
     join(temporaryRoot, "evolu-test-jsdoc-"),
@@ -20,15 +20,14 @@ test("testJSDocExamples provides assertion globals", async () => {
       [
         "/**",
         " * ```ts",
+        ' * import { assert, assertEqual, assertOk, assertType } from "@evolu/common";',
+        " *",
         ' * const value: unknown = "Evolu";',
-        ' * assert(typeof value === "string");',
+        ' * assert(typeof value === "string", "Expected a string.");',
         " * const upperCaseValue = value.toUpperCase();",
-        ' * expect(upperCaseValue).toBe("EVOLU");',
-        " * expectTypeOf(upperCaseValue).toEqualTypeOf<",
-        " *   ReturnType<() => string>",
-        " * >();",
-        ' * assert(upperCaseValue === "EVOLU");',
-        ' * expectOk({ ok: true as const, value: upperCaseValue }, "EVOLU");',
+        " * assertType<ReturnType<() => string>, typeof upperCaseValue>();",
+        ' * assertEqual(upperCaseValue, "EVOLU");',
+        ' * assertOk({ ok: true as const, value: upperCaseValue }, "EVOLU");',
         " * ```",
         " */",
         "export const example = true;",
@@ -37,15 +36,14 @@ test("testJSDocExamples provides assertion globals", async () => {
 
     await testJSDocExamples({
       cwd: repositoryDirectory,
-      include: [sourcePath],
-      typescriptPackage: "@typescript/native",
+      include: sourcePath,
     });
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }
 });
 
-test("testJSDocExamples allows explicitly imported assertions", async () => {
+test("testJSDocExamples does not provide assertion globals", async () => {
   mkdirSync(temporaryRoot, { recursive: true });
   const temporaryDirectory = mkdtempSync(
     join(temporaryRoot, "evolu-test-jsdoc-"),
@@ -58,20 +56,20 @@ test("testJSDocExamples allows explicitly imported assertions", async () => {
       [
         "/**",
         " * ```ts",
-        ' * import { assert } from "@evolu/common";',
-        " *",
-        ' * assert(true, "Expected true.");',
+        " * expect(true).toBe(true);",
         " * ```",
         " */",
         "export const example = true;",
       ].join("\n"),
     );
 
-    await testJSDocExamples({
-      cwd: repositoryDirectory,
-      include: [sourcePath],
-      typescriptPackage: "@typescript/native",
-    });
+    await expect(
+      testJSDocExamples({
+        cwd: repositoryDirectory,
+        include: [sourcePath],
+        typescriptPackage: "@typescript/native",
+      }),
+    ).rejects.toThrow(/TypeScript compilation failed/u);
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }
@@ -90,9 +88,11 @@ test("testJSDocExamples installs Evolu polyfills", async () => {
       [
         "/**",
         " * ```ts",
+        ' * import { assertEqual } from "@evolu/common";',
+        " *",
         " * const values = new Map<string, number>();",
         ' * const value = values.getOrInsertComputed("answer", () => 42);',
-        " * expect(value).toBe(42);",
+        " * assertEqual(value, 42);",
         " * ```",
         " */",
         "export const example = true;",
@@ -126,11 +126,12 @@ test("testJSDocExamples supports package subpath aliases", async () => {
       [
         "/**",
         " * ```ts",
+        ' * import { assertEqual } from "@evolu/common";',
         ' * import { root } from "@example/package";',
         ' * import { feature } from "@example/package/feature";',
         " *",
-        ' * assert(root === "root");',
-        ' * assert(feature === "feature");',
+        ' * assertEqual(root, "root");',
+        ' * assertEqual(feature, "feature");',
         " * ```",
         " */",
         "export const example = true;",
@@ -166,9 +167,11 @@ test("testJSDocExamples extracts Markdown examples", async () => {
         "# Markdown example",
         "",
         "```ts",
-        'const value = "Evolu";',
-        "expectTypeOf(value).toEqualTypeOf<string>();",
-        'assert(value === "Evolu");',
+        'import { assertEqual, assertType } from "@evolu/common";',
+        "",
+        'const value: string = "Evolu";',
+        "assertType<string, typeof value>();",
+        'assertEqual(value, "Evolu");',
         "```",
         "",
         "```js",
@@ -182,7 +185,9 @@ test("testJSDocExamples extracts Markdown examples", async () => {
         "# MDX example",
         "",
         "~~~typescript",
-        'expectOk({ ok: true as const, value: "Evolu" }, "Evolu");',
+        'import { assertOk } from "@evolu/common";',
+        "",
+        'assertOk({ ok: true as const, value: "Evolu" }, "Evolu");',
         "~~~",
       ].join("\n"),
     );
@@ -212,6 +217,7 @@ test.skipIf(availableParallelism() < 2)(
       const createExample = (ownReadyPath: string, peerReadyPath: string) => [
         "/**",
         " * ```ts",
+        ' * import { assert } from "@evolu/common";',
         ' * import { existsSync, writeFileSync } from "node:fs";',
         ' * import { setTimeout } from "node:timers/promises";',
         " *",
@@ -225,7 +231,7 @@ test.skipIf(availableParallelism() < 2)(
         " * ) {",
         " *   await setTimeout(10);",
         " * }",
-        " * assert(existsSync(peerReadyPath));",
+        ' * assert(existsSync(peerReadyPath), "Expected peer readiness.");',
         " * ```",
         " */",
       ];
@@ -263,13 +269,17 @@ test("testJSDocExamples reports execution failures in source order", async () =>
       [
         "/**",
         " * ```ts",
-        ' * assert.equal("first", "expected");',
+        ' * import { assert } from "@evolu/common";',
+        " *",
+        ' * assert(false, "first failure");',
         " * ```",
         " */",
         "export const firstExample = true;",
         "/**",
         " * ```ts",
-        ' * assert.equal("second", "expected");',
+        ' * import { assert } from "@evolu/common";',
+        " *",
+        ' * assert(false, "second failure");',
         " * ```",
         " */",
         "export const secondExample = true;",
@@ -288,7 +298,7 @@ test("testJSDocExamples reports execution failures in source order", async () =>
     assert(firstError instanceof Error);
     assert(secondError instanceof Error);
     expect(firstError.message).toMatch(/RuntimeFailures\.ts:2:/u);
-    expect(secondError.message).toMatch(/RuntimeFailures\.ts:8:/u);
+    expect(secondError.message).toMatch(/RuntimeFailures\.ts:10:/u);
   } finally {
     rmSync(temporaryDirectory, { force: true, recursive: true });
   }
@@ -313,7 +323,9 @@ test("testJSDocExamples runs examples without compilation errors", async () => {
         "export const compilationFailure = true;",
         "/**",
         " * ```ts",
-        ' * assert.equal("actual", "expected");',
+        ' * import { assert } from "@evolu/common";',
+        " *",
+        ' * assert(false, "execution failure");',
         " * ```",
         " */",
         "export const executionFailure = true;",
@@ -354,7 +366,9 @@ test("testJSDocExamples supports colored colon-formatted TypeScript diagnostics"
         "export const compilationFailure = true;",
         "/**",
         " * ```ts",
-        ' * assert.equal("actual", "expected");',
+        ' * import { assert } from "@evolu/common";',
+        " *",
+        ' * assert(false, "execution failure");',
         " * ```",
         " */",
         "export const executionFailure = true;",
@@ -425,8 +439,10 @@ test("testJSDocExamples rejects an incorrect inferred type", async () => {
       [
         "/**",
         " * ```ts",
+        ' * import { assertType } from "@evolu/common";',
+        " *",
         ' * const value = "Evolu" as any;',
-        " * expectTypeOf(value).toEqualTypeOf<string>();",
+        " * assertType<string, typeof value>();",
         " * ```",
         " */",
         "export const example = true;",

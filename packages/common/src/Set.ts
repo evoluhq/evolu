@@ -13,6 +13,7 @@
  * ```ts
  * import {
  *   addToSet,
+ *   assertEqual,
  *   deleteFromSet,
  *   filterSet,
  *   firstInSet,
@@ -31,7 +32,7 @@
  * const difference = intersection.difference(new Set([4]));
  *
  * if (!isNonEmptySet(difference)) throw new Error("Expected values");
- * expect(firstInSet(difference)).toBe(6);
+ * assertEqual(firstInSet(difference), 6);
  * ```
  *
  * @module
@@ -58,14 +59,19 @@ export const emptySet: ReadonlySet<never> = /*#__PURE__*/ new Set();
  * ### Preserving non-empty inputs
  *
  * ```ts
- * import { createSet, type NonEmptyReadonlySet } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   createSet,
+ *   type NonEmptyReadonlySet,
+ * } from "@evolu/common";
  *
  * const values = createSet([1, 2, 3]);
  * const empty = createSet([] as ReadonlyArray<number>);
  *
- * expectTypeOf(values).toEqualTypeOf<NonEmptyReadonlySet<number>>();
- * expectTypeOf(empty).toEqualTypeOf<ReadonlySet<number>>();
- * expect(values).toEqual(new Set([1, 2, 3]));
+ * assertType<NonEmptyReadonlySet<number>, typeof values>();
+ * assertType<ReadonlySet<number>, typeof empty>();
+ * assertEqual(values, new Set([1, 2, 3]));
  * ```
  *
  * @group Constructors
@@ -108,13 +114,18 @@ export type NonEmptyReadonlySet<T> = ReadonlySet<T> & Brand<"NonEmpty">;
  * ### Narrowing before access
  *
  * ```ts
- * import { isNonEmptySet, type NonEmptyReadonlySet } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   isNonEmptySet,
+ *   type NonEmptyReadonlySet,
+ * } from "@evolu/common";
  *
  * const set: ReadonlySet<number> = new Set([1, 2, 3]);
  * if (!isNonEmptySet(set)) throw new Error("Expected a non-empty set");
  *
- * expectTypeOf(set).toEqualTypeOf<NonEmptyReadonlySet<number>>();
- * expect(set.size).toBe(3);
+ * assertType<NonEmptyReadonlySet<number>, typeof set>();
+ * assertEqual(set.size, 3);
  * ```
  *
  * @group Type guards
@@ -132,15 +143,21 @@ export const isNonEmptySet = <T>(
  * ### Adding without mutation
  *
  * ```ts
- * import { addToSet, type NonEmptyReadonlySet } from "@evolu/common";
+ * import {
+ *   addToSet,
+ *   assertEqual,
+ *   assertTrue,
+ *   assertType,
+ *   type NonEmptyReadonlySet,
+ * } from "@evolu/common";
  *
  * const original: ReadonlySet<number> = new Set([1, 2]);
  * const added = addToSet(original, 3);
  * const unchanged = addToSet(original, 2);
  *
- * expectTypeOf(added).toEqualTypeOf<NonEmptyReadonlySet<number>>();
- * expect(added).toEqual(new Set([1, 2, 3]));
- * expect(unchanged).not.toBe(original);
+ * assertType<NonEmptyReadonlySet<number>, typeof added>();
+ * assertEqual(added, new Set([1, 2, 3]));
+ * assertTrue(unchanged !== original);
  * ```
  *
  * @group Transformations
@@ -163,11 +180,11 @@ export const addToSet = <T>(
  * ### Deleting without mutation
  *
  * ```ts
- * import { deleteFromSet } from "@evolu/common";
+ * import { assertEqual, assertTrue, deleteFromSet } from "@evolu/common";
  *
  * const original = new Set([1, 2, 3]);
- * expect(deleteFromSet(original, 2)).toEqual(new Set([1, 3]));
- * expect(deleteFromSet(original, 5)).not.toBe(original);
+ * assertEqual(deleteFromSet(original, 2), new Set([1, 3]));
+ * assertTrue(deleteFromSet(original, 5) !== original);
  * ```
  *
  * @group Transformations
@@ -193,6 +210,8 @@ export const deleteFromSet = <T>(
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   createSet,
  *   mapSet,
  *   type NonEmptyReadonlySet,
@@ -202,9 +221,9 @@ export const deleteFromSet = <T>(
  * const doubled = mapSet(original, (x) => x * 2);
  * const parity = mapSet(original, (x) => x % 2);
  *
- * expectTypeOf(doubled).toEqualTypeOf<NonEmptyReadonlySet<number>>();
- * expect(doubled).toEqual(new Set([2, 4, 6]));
- * expect(parity).toEqual(new Set([1, 0]));
+ * assertType<NonEmptyReadonlySet<number>, typeof doubled>();
+ * assertEqual(doubled, new Set([2, 4, 6]));
+ * assertEqual(parity, new Set([1, 0]));
  * ```
  *
  * @group Transformations
@@ -239,18 +258,18 @@ export function mapSet<T, U>(
  * ### Filtering and refining
  *
  * ```ts
- * import { filterSet } from "@evolu/common";
+ * import { assertEqual, assertType, filterSet } from "@evolu/common";
  *
  * const evens = filterSet(new Set([1, 2, 3, 4, 5]), (x) => x % 2 === 0);
- * expect(evens).toEqual(new Set([2, 4]));
+ * assertEqual(evens, new Set([2, 4]));
  *
  * const mixed: ReadonlySet<string | number> = new Set([1, "a", 2, "b"]);
  * const strings = filterSet(
  *   mixed,
  *   (value): value is string => typeof value === "string",
  * );
- * expectTypeOf(strings).toEqualTypeOf<ReadonlySet<string>>();
- * expect(strings).toEqual(new Set(["a", "b"]));
+ * assertType<ReadonlySet<string>, typeof strings>();
+ * assertEqual(strings, new Set(["a", "b"]));
  * ```
  *
  * @group Transformations
@@ -284,10 +303,10 @@ export function filterSet<T>(
  * ### Reading the first value
  *
  * ```ts
- * import { createSet, firstInSet } from "@evolu/common";
+ * import { assertEqual, createSet, firstInSet } from "@evolu/common";
  *
  * const set = createSet(["a", "b", "c"]);
- * expect(firstInSet(set)).toBe("a");
+ * assertEqual(firstInSet(set), "a");
  * ```
  *
  * @group Accessors

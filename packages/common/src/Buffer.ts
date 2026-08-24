@@ -52,6 +52,9 @@ export class BufferError extends Error {
  *
  * ```ts
  * import {
+ *   assert,
+ *   assertEqual,
+ *   assertErr,
  *   createBuffer,
  *   createIdFromString,
  *   IdBytes,
@@ -59,6 +62,7 @@ export class BufferError extends Error {
  *   idBytesTypeValueLength,
  *   idToIdBytes,
  *   NonNegativeInt,
+ *   trySync,
  * } from "@evolu/common";
  * import {
  *   decodeNonNegativeInt,
@@ -71,13 +75,17 @@ export class BufferError extends Error {
  * buffer.extend(idToIdBytes(id));
  *
  * const decoder = createBuffer(buffer.unwrap());
- * expect(decodeNonNegativeInt(decoder)).toBe(300);
+ * assertEqual(decodeNonNegativeInt(decoder), 300);
  * const decodedId = idBytesToId(
  *   IdBytes.orThrow(decoder.shiftN(idBytesTypeValueLength)),
  * );
- * expect(decodedId).toBe(id);
- * expect(() => decodeNonNegativeInt(decoder)).toThrow(
- *   "Buffer parse ended prematurely",
+ * assertEqual(decodedId, id);
+ * const result = trySync(() => decodeNonNegativeInt(decoder));
+ * assertErr(result);
+ * assert(
+ *   result.error instanceof Error &&
+ *     result.error.message === "Buffer parse ended prematurely",
+ *   "Expected the premature-buffer-end error.",
  * );
  * ```
  *

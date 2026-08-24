@@ -434,7 +434,7 @@ export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
  * ### Example
  *
  * ```ts
- * import { sql } from "@evolu/common";
+ * import { assertEqual, assertTrue, sql } from "@evolu/common";
  *
  * const id = 42;
  * const name = "Alice";
@@ -452,12 +452,13 @@ export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
  * const orderBy = "created_at desc";
  * const ordered = sql`select * from users order by ${sql.raw(orderBy)};`;
  *
- * expect(select).toEqual({
+ * assertEqual(select, {
  *   sql: "select * from users where id = ? and name = ?;",
  *   parameters: [42, "Alice"],
  * });
- * expect(createTable.sql).toContain('create table "users"');
- * expect(ordered.sql).toBe(
+ * assertTrue(createTable.sql.includes('create table "users"'));
+ * assertEqual(
+ *   ordered.sql,
  *   "select * from users order by created_at desc;",
  * );
  * ```
@@ -676,9 +677,9 @@ export const sqliteFalse = 0;
  * ### Example
  *
  * ```ts
- * import { booleanToSqliteBoolean } from "@evolu/common";
+ * import { assertEqual, booleanToSqliteBoolean } from "@evolu/common";
  *
- * expect(booleanToSqliteBoolean(true)).toBe(1);
+ * assertEqual(booleanToSqliteBoolean(true), 1);
  * ```
  */
 export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
@@ -690,9 +691,9 @@ export const booleanToSqliteBoolean = (value: boolean): SqliteBoolean =>
  * ### Example
  *
  * ```ts
- * import { sqliteBooleanToBoolean } from "@evolu/common";
+ * import { assertTrue, sqliteBooleanToBoolean } from "@evolu/common";
  *
- * expect(sqliteBooleanToBoolean(1)).toBe(true);
+ * assertTrue(sqliteBooleanToBoolean(1));
  * ```
  */
 export const sqliteBooleanToBoolean = (value: SqliteBoolean): boolean =>

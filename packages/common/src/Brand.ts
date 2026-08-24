@@ -18,7 +18,7 @@
  * ### Single brand
  *
  * ```ts
- * import type { Brand } from "@evolu/common";
+ * import { assertEqual, type Brand } from "@evolu/common";
  *
  * type UserId = number & Brand<"UserId">;
  *
@@ -27,7 +27,7 @@
  * const createUserId = (value: number): UserId => value as UserId;
  * const getUser = (id: UserId): number => id;
  * const userId = createUserId(123);
- * expect(getUser(userId)).toBe(123);
+ * assertEqual(getUser(userId), 123);
  * // @ts-expect-error A plain number is not a UserId.
  * getUser(123);
  * ```
@@ -35,7 +35,7 @@
  * ### Multiple brands
  *
  * ```ts
- * import type { Brand } from "@evolu/common";
+ * import { assertEqual, type Brand } from "@evolu/common";
  *
  * type Min1 = string & Brand<"Min1">;
  * type Max100 = string & Brand<"Max100">;
@@ -46,8 +46,8 @@
  *
  * const min1Max100Value: Min1Max100 = "typescript" as Min1Max100;
  *
- * expect(requiresMin1(min1Max100Value)).toBe("typescript");
- * expect(requiresMax100(min1Max100Value)).toBe("typescript");
+ * assertEqual(requiresMin1(min1Max100Value), "typescript");
+ * assertEqual(requiresMax100(min1Max100Value), "typescript");
  * ```
  *
  * ### Standalone brand
@@ -59,7 +59,7 @@
  * code platform-agnostic.
  *
  * ```ts
- * import type { Brand } from "@evolu/common";
+ * import { assertSame, type Brand } from "@evolu/common";
  *
  * type NativePort = Brand<"NativePort">;
  *
@@ -67,7 +67,7 @@
  *
  * const nativeValue: unknown = { id: 1 };
  * const port = nativeValue as NativePort;
- * expect(requiresNativePort(port)).toBe(nativeValue);
+ * assertSame(requiresNativePort(port), nativeValue);
  * // @ts-expect-error An unknown value is not a NativePort.
  * requiresNativePort(nativeValue);
  * ```

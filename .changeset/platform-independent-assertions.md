@@ -9,8 +9,9 @@ examples, and application code without depending on a test framework.
 
 `assertOk` and `assertErr` assert and narrow a Result variant. With an expected
 value or error, they compare it using `eqData`; values outside Data require an
-explicit `Eq`. Without an expected value, they leave the narrowed value or error
-available for a separate assertion.
+explicit `Eq`. Expected Data is inferred independently, so unbranded literals
+can compare primitive-branded Result values. Without an expected value, they
+leave the narrowed value or error available for a separate assertion.
 
 `IsSameType<A, B>` exposes exact type equality as a boolean type.
 `assertType<Expected, Actual>()` uses that comparison and requires a

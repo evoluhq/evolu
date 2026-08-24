@@ -15,7 +15,7 @@ localized structural Map errors. Key and value errors use their respective Type
 formatters.
 
 ```ts
-import { PositiveInt, String, assert, assertOk, map } from "@evolu/common";
+import { PositiveInt, String, assertOk, assertSame, map } from "@evolu/common";
 
 const Scores = map(String, PositiveInt);
 const scores = new Map([
@@ -26,8 +26,5 @@ const scores = new Map([
 const result = Scores.fromUnknown(scores);
 
 assertOk(result);
-assert(
-  globalThis.Object.is(result.value, scores),
-  "Expected the original Map.",
-);
+assertSame(result.value, scores);
 ```

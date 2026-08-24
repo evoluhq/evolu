@@ -1,4 +1,4 @@
-import { testJSDocExamples } from "@evolu/vitest/TestJSDoc";
+import { testJSDocExamples } from "@evolu/nodejs/TestJSDoc";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 
@@ -44,14 +44,6 @@ export const testEvoluJSDocExamples = async (
         "scripts/test-jsdoc-react-native.mts",
       ),
       "@evolu/web": join(repositoryDirectory, "scripts/test-jsdoc-web.mts"),
-      "@evolu/vitest": join(
-        repositoryDirectory,
-        "packages/vitest/src/index.ts",
-      ),
-      "@evolu/vitest/TestJSDoc": join(
-        repositoryDirectory,
-        "packages/vitest/src/TestJSDoc.ts",
-      ),
     },
     cwd: repositoryDirectory,
     include,

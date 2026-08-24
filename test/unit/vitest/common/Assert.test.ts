@@ -3,8 +3,13 @@ import type {
   NonEmptyArray,
   NonEmptyReadonlyArray,
 } from "../../../../packages/common/src/Array.ts";
+import type { Brand } from "../../../../packages/common/src/Brand.ts";
 import {
   assert,
+  assertSame,
+  assertTrue,
+  assertFalse,
+  assertEqual,
   assertOk,
   assertErr,
   assertNonNullable,
@@ -30,6 +35,73 @@ test("assert", () => {
   expect(() => {
     assert(false, "Condition failed");
   }).toThrow("Condition failed");
+});
+
+test("assertSame", () => {
+  interface User {
+    readonly name: string;
+  }
+
+  const user: User = { name: "Ada" };
+  const value: unknown = user;
+
+  assertSame(value, user);
+  expectTypeOf(value).toEqualTypeOf<User>();
+  assertSame(NaN, NaN);
+
+  expect(() => assertSame(user, { name: "Ada" })).toThrow(
+    "Expected values to be the same.",
+  );
+  expect(() => assertSame(0, -0)).toThrow("Expected values to be the same.");
+});
+
+test("assertTrue", () => {
+  const value: unknown = true;
+
+  assertTrue(value);
+  expectTypeOf(value).toEqualTypeOf<true>();
+
+  expect(() => assertTrue(1)).toThrow("Expected true.");
+});
+
+test("assertFalse", () => {
+  const value: unknown = false;
+
+  assertFalse(value);
+  expectTypeOf(value).toEqualTypeOf<false>();
+
+  expect(() => assertFalse(0)).toThrow("Expected false.");
+});
+
+test("assertEqual", () => {
+  interface User {
+    readonly name: string;
+    readonly roles: ReadonlySet<string>;
+  }
+
+  const actual: User = {
+    name: "Ada",
+    roles: new Set(["admin", "author"]),
+  };
+  const expected: User = {
+    name: "Ada",
+    roles: new Set(["author", "admin"]),
+  };
+
+  assertEqual(actual, expected);
+
+  expect(() => assertEqual(actual, { ...expected, name: "Grace" })).toThrow(
+    "Expected values to be equal.",
+  );
+
+  const compileTimeAssertions = () => {
+    const actual = (): void => undefined;
+    const expected = (): void => undefined;
+
+    // @ts-expect-error ⛔ assertEqual error: Actual and expected values must consist only of Data.
+    assertEqual(actual, expected);
+  };
+  expect(compileTimeAssertions).toBeTypeOf("function");
 });
 
 describe("assertOk and assertErr", () => {
@@ -61,6 +133,13 @@ describe("assertOk and assertErr", () => {
     assertOk(result, { value: 42 });
 
     expectTypeOf(result).toEqualTypeOf<Ok<{ readonly value: number }>>();
+  });
+
+  it("compares an Ok with an independently typed Data value", () => {
+    type Answer = number & Brand<"Answer">;
+    const result: Result<Answer, TestError> = ok(42 as Answer);
+
+    assertOk(result, 42);
   });
 
   it("asserts a void Ok", () => {
@@ -112,7 +191,7 @@ describe("assertOk and assertErr", () => {
     const service: Service = { run: () => undefined };
     const result: Result<Service, TestError> = ok(service);
     const compileTimeAssertions = () => {
-      // @ts-expect-error ⛔ assertOk error: Result value must consist only of Data when no custom Eq is provided.
+      // @ts-expect-error ⛔ assertOk error: Result value and expected value must consist only of Data when no custom Eq is provided.
       assertOk(result, service);
     };
 
@@ -124,11 +203,34 @@ describe("assertOk and assertErr", () => {
     const value: NonNullable<unknown> = new WeakMap();
     const result: Result<NonNullable<unknown>, TestError> = ok(value);
     const compileTimeAssertions = () => {
-      // @ts-expect-error ⛔ assertOk error: Result value must consist only of Data when no custom Eq is provided.
+      // @ts-expect-error ⛔ assertOk error: Result value and expected value must consist only of Data when no custom Eq is provided.
       assertOk(result, value);
     };
 
     assertOk(result, value, (x, y) => x === y);
+    expect(compileTimeAssertions).toBeTypeOf("function");
+  });
+
+  it("rejects an untyped expected value from a default Ok comparison", () => {
+    const value = JSON.parse("null");
+    const result = ok(42);
+    const compileTimeAssertions = () => {
+      /* oxlint-disable typescript/no-unsafe-argument -- This assertion verifies that assertOk rejects any. */
+      // @ts-expect-error ⛔ assertOk error: Result value and expected value must consist only of Data when no custom Eq is provided.
+      assertOk(result, value);
+      /* oxlint-enable typescript/no-unsafe-argument */
+    };
+
+    expect(compileTimeAssertions).toBeTypeOf("function");
+  });
+
+  it("rejects an untyped Result value from a default Ok comparison", () => {
+    const result = ok(JSON.parse("null"));
+    const compileTimeAssertions = () => {
+      // @ts-expect-error ⛔ assertOk error: Result value and expected value must consist only of Data when no custom Eq is provided.
+      assertOk(result, null);
+    };
+
     expect(compileTimeAssertions).toBeTypeOf("function");
   });
 
@@ -141,6 +243,21 @@ describe("assertOk and assertErr", () => {
     assertErr(result, { code: 1, type: "TestError" });
 
     expectTypeOf(result).toEqualTypeOf<Err<TestError>>();
+  });
+
+  it("compares an Err with an independently typed Data value", () => {
+    type ErrorCode = number & Brand<"ErrorCode">;
+    interface BrandedTestError {
+      readonly type: "TestError";
+      readonly code: ErrorCode;
+    }
+
+    const result: Result<number, BrandedTestError> = err({
+      type: "TestError",
+      code: 1 as ErrorCode,
+    });
+
+    assertErr(result, { type: "TestError", code: 1 });
   });
 
   it("asserts and narrows an Err without comparing its error", () => {
@@ -214,7 +331,7 @@ describe("assertOk and assertErr", () => {
     };
     const result: Result<number, ServiceError> = err(serviceError);
     const compileTimeAssertions = () => {
-      // @ts-expect-error ⛔ assertErr error: Result error must consist only of Data when no custom Eq is provided.
+      // @ts-expect-error ⛔ assertErr error: Result error and expected error must consist only of Data when no custom Eq is provided.
       assertErr(result, serviceError);
     };
 

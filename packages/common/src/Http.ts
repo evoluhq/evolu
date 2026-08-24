@@ -194,7 +194,11 @@ export type FetchConsume<T, E = never> = (
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertOk,
+ *   assertType,
  *   createRun,
+ *   Data,
  *   exponential,
  *   fetch,
  *   retry,
@@ -220,7 +224,10 @@ export type FetchConsume<T, E = never> = (
  * };
  * await using run = createRun({ nativeFetch });
  *
- * expectOk(await run(fetchWithRetry("/api/user")), { name: "Ada" });
+ * const result = await run(fetchWithRetry("/api/user"));
+ * assertOk(result);
+ * assertType(Data, result.value);
+ * assertEqual(result.value, { name: "Ada" });
  * ```
  *
  * App conventions belong in small app-owned helpers. For example, posting JSON
@@ -229,7 +236,11 @@ export type FetchConsume<T, E = never> = (
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertOk,
+ *   assertType,
  *   createRun,
+ *   Data,
  *   fetch,
  *   type FetchError,
  *   type NativeFetch,
@@ -250,9 +261,10 @@ export type FetchConsume<T, E = never> = (
  *   Promise.resolve(new Response('{"id":"user-1"}'));
  * await using run = createRun({ nativeFetch });
  *
- * expectOk(await run(postJson("/api/users", { name: "Ada" })), {
- *   id: "user-1",
- * });
+ * const result = await run(postJson("/api/users", { name: "Ada" }));
+ * assertOk(result);
+ * assertType(Data, result.value);
+ * assertEqual(result.value, { id: "user-1" });
  * ```
  *
  * Your app's version will grow your conventions — auth, envelopes, error
@@ -265,7 +277,13 @@ export type FetchConsume<T, E = never> = (
  * libraries that expose client instances.
  *
  * ```ts
- * import { createRun, fetch, type NativeFetch } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertOk,
+ *   createRun,
+ *   fetch,
+ *   type NativeFetch,
+ * } from "@evolu/common";
  *
  * const token = "secret-token";
  * const baseUrl = "https://api.example.com/v1/";
@@ -287,14 +305,17 @@ export type FetchConsume<T, E = never> = (
  * };
  *
  * await using run = createRun({ nativeFetch });
- * expectOk(await run(fetch("users", "text")), "ok");
- * expect({
- *   url: interceptedRequest?.url,
- *   authorization: interceptedRequest?.headers.get("authorization"),
- * }).toEqual({
- *   url: "https://api.example.com/v1/users",
- *   authorization: "Bearer secret-token",
- * });
+ * assertOk(await run(fetch("users", "text")), "ok");
+ * assertEqual(
+ *   {
+ *     url: interceptedRequest?.url,
+ *     authorization: interceptedRequest?.headers.get("authorization"),
+ *   },
+ *   {
+ *     url: "https://api.example.com/v1/users",
+ *     authorization: "Bearer secret-token",
+ *   },
+ * );
  * ```
  *
  * ### Consuming responses
@@ -305,7 +326,11 @@ export type FetchConsume<T, E = never> = (
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertOk,
+ *   assertType,
  *   createRun,
+ *   Data,
  *   fetch,
  *   ok,
  *   type FetchTransportError,
@@ -331,11 +356,14 @@ export type FetchConsume<T, E = never> = (
  *     cache: response.headers.get("cache-control"),
  *   }),
  * );
- * expectTypeOf(metadata).toEqualTypeOf<
- *   Task<{ status: number; cache: string | null }, FetchTransportError>
+ * assertType<
+ *   Task<{ status: number; cache: string | null }, FetchTransportError>,
+ *   typeof metadata
  * >();
- * expectOk(user, { name: "Ada" });
- * expectOk(await run(metadata), { status: 204, cache: "max-age=60" });
+ * assertOk(user);
+ * assertType(Data, user.value);
+ * assertEqual(user.value, { name: "Ada" });
+ * assertOk(await run(metadata), { status: 204, cache: "max-age=60" });
  * ```
  *
  * ### Aborting fetch
@@ -346,6 +374,7 @@ export type FetchConsume<T, E = never> = (
  *
  * ```ts
  * import {
+ *   assert,
  *   AbortError,
  *   createRun,
  *   fetch,
@@ -366,7 +395,10 @@ export type FetchConsume<T, E = never> = (
  * fiber.abort();
  * const result = await fiber;
  *
- * expect(!result.ok && AbortError.is(result.error)).toBe(true);
+ * assert(
+ *   !result.ok && AbortError.is(result.error),
+ *   "Expected an AbortError.",
+ * );
  * ```
  *
  * @group Fetch

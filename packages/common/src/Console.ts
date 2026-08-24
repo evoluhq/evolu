@@ -49,8 +49,11 @@ import {
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   createConsole,
  *   createConsoleArrayOutput,
+ *   Data,
  *   type Console,
  *   type ConsoleEntry,
  *   type ConsoleLevel,
@@ -66,12 +69,11 @@ import {
  * relay.info("polling");
  * root.info("Creating instance", { config: { port: 4000 } });
  *
- * expect(root.getLevel()).toBe("log");
- * expect(relay.getLevel()).toBe("silent");
- * expect(entries[0]?.args).toEqual([
- *   "Creating instance",
- *   { config: { port: 4000 } },
- * ]);
+ * assertEqual(root.getLevel(), "log");
+ * assertEqual(relay.getLevel(), "silent");
+ * const args = entries[0]?.args;
+ * assertType(Data, args);
+ * assertEqual(args, ["Creating instance", { config: { port: 4000 } }]);
  *
  * const setLevelRecursive = (
  *   console: Console,
@@ -81,8 +83,8 @@ import {
  *   for (const child of console.children) setLevelRecursive(child, level);
  * };
  * setLevelRecursive(root, "warn");
- * expect(root.getLevel()).toBe("warn");
- * expect(relay.getLevel()).toBe("warn");
+ * assertEqual(root.getLevel(), "warn");
+ * assertEqual(relay.getLevel(), "warn");
  * ```
  *
  * Console intentionally does not use {@link Task}. Logging must be as fast as
@@ -316,8 +318,10 @@ export type ConsoleEntryTimestampFormat =
  *
  * ```ts
  * import {
+ *   assertOk,
  *   createConsole,
  *   createConsoleStoreOutput,
+ *   Data,
  *   type ConsoleEntry,
  * } from "@evolu/common";
  *
@@ -331,7 +335,7 @@ export type ConsoleEntryTimestampFormat =
  * console.child("relay").info("connected");
  * unsubscribe();
  *
- * expect(forwardedEntry).toEqual({
+ * assertOk(Data.fromUnknown(forwardedEntry), {
  *   method: "info",
  *   path: ["relay"],
  *   args: ["connected"],
@@ -454,14 +458,16 @@ export const createConsole = ({
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   createNativeConsoleOutput,
  *   type ConsoleOutput,
  * } from "@evolu/common";
  *
  * const output = createNativeConsoleOutput();
  *
- * expectTypeOf(output).toEqualTypeOf<ConsoleOutput>();
- * expect(output.write).toBeTypeOf("function");
+ * assertType<ConsoleOutput, typeof output>();
+ * assertEqual(typeof output.write, "function");
  * ```
  */
 export const createNativeConsoleOutput = (): ConsoleOutput => ({
@@ -485,7 +491,10 @@ export const createNativeConsoleOutput = (): ConsoleOutput => ({
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   createConsoleFormatter,
+ *   Data,
  *   Millis,
  *   testCreateTime,
  *   type ConsoleEntry,
@@ -501,18 +510,17 @@ export const createNativeConsoleOutput = (): ConsoleOutput => ({
  *   args: ["connected"],
  * };
  *
- * expect(formatRelative(connected)).toEqual([
- *   "+0.000s [relay]",
- *   "connected",
- * ]);
+ * const relative = formatRelative(connected);
+ * assertType(Data, relative);
+ * assertEqual(relative, ["+0.000s [relay]", "connected"]);
  * time.advance("1.5s");
- * expect(
- *   formatRelative({
- *     ...connected,
- *     path: ["relay", "db"],
- *     args: ["opened"],
- *   }),
- * ).toEqual(["+1.500s [relay] [db]", "opened"]);
+ * const nested = formatRelative({
+ *   ...connected,
+ *   path: ["relay", "db"],
+ *   args: ["opened"],
+ * });
+ * assertType(Data, nested);
+ * assertEqual(nested, ["+1.500s [relay] [db]", "opened"]);
  *
  * const localTimestamp = new globalThis.Date(
  *   2026,
@@ -526,10 +534,9 @@ export const createNativeConsoleOutput = (): ConsoleOutput => ({
  * const formatAbsolute = createConsoleFormatter({
  *   time: testCreateTime({ startAt: Millis.orThrow(localTimestamp) }),
  * })({ timestampFormat: "absolute" });
- * expect(formatAbsolute(connected)).toEqual([
- *   "14:30:15.123 [relay]",
- *   "connected",
- * ]);
+ * const absolute = formatAbsolute(connected);
+ * assertType(Data, absolute);
+ * assertEqual(absolute, ["14:30:15.123 [relay]", "connected"]);
  * ```
  */
 export const createConsoleFormatter =
@@ -585,8 +592,10 @@ export const createConsoleStoreOutput = (): ConsoleStoreOutput => {
  *
  * ```ts
  * import {
+ *   assertOk,
  *   createConsole,
  *   createConsoleArrayOutput,
+ *   Data,
  *   type ConsoleEntry,
  * } from "@evolu/common";
  *
@@ -595,7 +604,7 @@ export const createConsoleStoreOutput = (): ConsoleStoreOutput => {
  *   output: createConsoleArrayOutput(entries),
  * });
  * console.info("connected");
- * expect(entries).toEqual([
+ * assertOk(Data.fromUnknown(entries), [
  *   { method: "info", path: [], args: ["connected"] },
  * ]);
  * ```
@@ -618,10 +627,13 @@ export const createConsoleArrayOutput = (
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   createConsole,
  *   createConsoleArrayOutput,
  *   createConsoleStoreOutput,
  *   createMultiOutput,
+ *   Data,
  *   type ConsoleEntry,
  * } from "@evolu/common";
  *
@@ -635,7 +647,10 @@ export const createConsoleArrayOutput = (
  * });
  * console.error("disconnected");
  *
- * expect(storeOutput.entry.get()).toEqual(entries[0]);
+ * const storedEntry = storeOutput.entry.get();
+ * assertType(Data, storedEntry);
+ * assertType(Data, entries[0]);
+ * assertEqual(storedEntry, entries[0]);
  * ```
  */
 export const createMultiOutput = (
@@ -655,13 +670,13 @@ export const createMultiOutput = (
  * ### Example
  *
  * ```ts
- * import { testCreateConsole } from "@evolu/common";
+ * import { assertOk, Data, testCreateConsole } from "@evolu/common";
  *
  * const console = testCreateConsole({ level: "info" });
  * console.debug("ignored");
  * console.child("relay").info("connected");
  *
- * expect(console.getEntriesSnapshot()).toEqual([
+ * assertOk(Data.fromUnknown(console.getEntriesSnapshot()), [
  *   { method: "info", path: ["relay"], args: ["connected"] },
  * ]);
  * ```

@@ -3,6 +3,7 @@ import {
   createEqArrayLike,
   createEqObject,
   eqArrayNumber,
+  eqArrayStrict,
   eqData,
   eqFromOrder,
   eqJsonValue,
@@ -22,7 +23,12 @@ import type {
 
 test("eqStrict", () => {
   expect(eqStrict(1, 1)).toBe(true);
-  expect(eqStrict(NaN, NaN)).toBe(false);
+  expect(eqStrict(NaN, NaN)).toBe(true);
+  expect(eqStrict(0, -0)).toBe(false);
+
+  const object = {};
+  expect(eqStrict(object, object)).toBe(true);
+  expect(eqStrict({}, {})).toBe(false);
 });
 
 test("eqSameValueZero", () => {
@@ -52,6 +58,15 @@ test("createEqArrayLike", () => {
   expect(eqArrayNumberFromEq([1, 2, 3], [1, 2])).toBe(false);
   expect(eqArrayNumberFromEq([1, 2, 3], [1, 2, 3])).toBe(true);
   expect(eqArrayNumberFromEq([1, 2, 3], [1, 2, 4])).toBe(false);
+});
+
+test("eqArrayStrict", () => {
+  expect(eqArrayStrict([NaN], [NaN])).toBe(true);
+  expect(eqArrayStrict([0], [-0])).toBe(false);
+
+  const object = {};
+  expect(eqArrayStrict([object], [object])).toBe(true);
+  expect(eqArrayStrict([{}], [{}])).toBe(false);
 });
 
 test("eqUint8Array", () => {

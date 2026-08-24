@@ -41,6 +41,7 @@ export type Int1To100 = Int1To99 | 100;
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   NonNegativeInt,
  *   type Int0To100OrNonNegativeInt,
  * } from "@evolu/common";
@@ -48,8 +49,8 @@ export type Int1To100 = Int1To99 | 100;
  * const literal: Int0To100OrNonNegativeInt = 10;
  * const validated: Int0To100OrNonNegativeInt = NonNegativeInt.orThrow(101);
  *
- * assert(literal === 10);
- * assert(validated === 101);
+ * assertEqual(literal, 10);
+ * assertEqual(validated, 101);
  * ```
  */
 export type Int0To100OrNonNegativeInt = 0 | Int1To100 | NonNegativeInt;
@@ -63,13 +64,17 @@ export type Int0To100OrNonNegativeInt = 0 | Int1To100 | NonNegativeInt;
  * ### Example
  *
  * ```ts
- * import { PositiveInt, type Int1To100OrPositiveInt } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   PositiveInt,
+ *   type Int1To100OrPositiveInt,
+ * } from "@evolu/common";
  *
  * const literal: Int1To100OrPositiveInt = 10;
  * const validated: Int1To100OrPositiveInt = PositiveInt.orThrow(101);
  *
- * assert(literal === 10);
- * assert(validated === 101);
+ * assertEqual(literal, 10);
+ * assertEqual(validated, 101);
  * ```
  */
 export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
@@ -83,12 +88,12 @@ export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
  * ### Example
  *
  * ```ts
- * import { Ratio, jitter } from "@evolu/common";
+ * import { Ratio, assertType, jitter } from "@evolu/common";
  *
  * const readableJitter = jitter("50%");
  * const computedJitter = jitter(Ratio.orThrow(0.5));
  *
- * expectTypeOf(readableJitter).toEqualTypeOf(computedJitter);
+ * assertType<typeof computedJitter, typeof readableJitter>();
  * ```
  */
 export type Percentage = PercentageLiteral | Ratio;
@@ -134,12 +139,12 @@ export const clamp =
  * ### Example
  *
  * ```ts
- * import { isBetween } from "@evolu/common";
+ * import { assertFalse, assertTrue, isBetween } from "@evolu/common";
  *
  * const isBetween10And20 = isBetween(10, 20);
  *
- * expect(isBetween10And20(20)).toBe(true);
- * expect(isBetween10And20(25)).toBe(false);
+ * assertTrue(isBetween10And20(20));
+ * assertFalse(isBetween10And20(25));
  * ```
  */
 export const isBetween =
@@ -168,27 +173,26 @@ export const max = <T extends number>(
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   computeBalancedBuckets,
  *   NonNegativeInt,
  *   PositiveInt,
  * } from "@evolu/common";
  *
- * expectOk(
- *   computeBalancedBuckets(
- *     NonNegativeInt.orThrow(10),
- *     PositiveInt.orThrow(3),
- *     PositiveInt.orThrow(2),
- *   ),
- *   [4, 7, 10],
+ * const balanced = computeBalancedBuckets(
+ *   NonNegativeInt.orThrow(10),
+ *   PositiveInt.orThrow(3),
+ *   PositiveInt.orThrow(2),
  * );
- * expectErr(
- *   computeBalancedBuckets(
- *     NonNegativeInt.orThrow(5),
- *     PositiveInt.orThrow(3),
- *     PositiveInt.orThrow(2),
- *   ),
- *   6,
+ * assertOk(balanced, [4, 7, 10]);
+ *
+ * const insufficient = computeBalancedBuckets(
+ *   NonNegativeInt.orThrow(5),
+ *   PositiveInt.orThrow(3),
+ *   PositiveInt.orThrow(2),
  * );
+ * assertErr(insufficient, 6);
  * ```
  */
 export const computeBalancedBuckets = (

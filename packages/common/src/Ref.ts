@@ -21,18 +21,18 @@ import type { Store } from "./Store.ts";
  * ### Example
  *
  * ```ts
- * import { createRef } from "@evolu/common";
+ * import { assertEqual, createRef } from "@evolu/common";
  *
  * const count = createRef(0);
  * count.set(1);
  * count.update((n) => n + 1);
- * expect(count.get()).toBe(2);
+ * assertEqual(count.get(), 2);
  * ```
  *
  * ### As a dependency
  *
  * ```ts
- * import { createRef, type Ref } from "@evolu/common";
+ * import { assertEqual, createRef, type Ref } from "@evolu/common";
  *
  * interface CounterRefDep {
  *   readonly counterRef: Ref<number>;
@@ -40,7 +40,7 @@ import type { Store } from "./Store.ts";
  *
  * const deps: CounterRefDep = { counterRef: createRef(0) };
  * deps.counterRef.update((count) => count + 1);
- * expect(deps.counterRef.get()).toBe(1);
+ * assertEqual(deps.counterRef.get(), 1);
  * ```
  */
 export interface Ref<T> {

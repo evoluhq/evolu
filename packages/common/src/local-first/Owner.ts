@@ -446,6 +446,8 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  * ```ts
  * import {
  *   AppName,
+ *   assertEqual,
+ *   assertTrue,
  *   createAppOwner,
  *   createEvolu,
  *   createOwnerWebSocketTransport,
@@ -471,8 +473,8 @@ export interface OwnerWebSocketTransport extends Typed<"WebSocket"> {
  *   },
  * );
  *
- * expect(createTodoEvolu).toBeTypeOf("function");
- * expect(transport).toEqual({
+ * assertTrue(typeof createTodoEvolu === "function");
+ * assertEqual(transport, {
  *   type: "WebSocket",
  *   url: `wss://relay.evolu.dev?ownerId=${appOwner.id}`,
  * });
@@ -499,6 +501,7 @@ export const createOwnerWebSocketTransport = (config: {
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   createAppOwner,
  *   createOwnerSecret,
  *   createRandomBytes,
@@ -511,12 +514,14 @@ export const createOwnerWebSocketTransport = (config: {
  * );
  * const url = `/sync?ownerId=${appOwner.id}`;
  *
- * expect(parseOwnerIdFromOwnerWebSocketTransportUrl(url)).toBe(
+ * assertEqual(
+ *   parseOwnerIdFromOwnerWebSocketTransportUrl(url),
  *   appOwner.id,
  * );
- * expect(
+ * assertEqual(
  *   parseOwnerIdFromOwnerWebSocketTransportUrl("/sync?ownerId=invalid"),
- * ).toBeNull();
+ *   null,
+ * );
  * ```
  *
  * @group Transport

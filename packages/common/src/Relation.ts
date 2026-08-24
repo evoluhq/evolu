@@ -56,7 +56,7 @@ import {
  * Use the default identity semantics.
  *
  * ```ts
- * import { createRelation } from "@evolu/common";
+ * import { assertFalse, assertTrue, createRelation } from "@evolu/common";
  *
  * interface Socket {
  *   readonly id: string;
@@ -67,8 +67,8 @@ import {
  *
  * relation.add(socket, "owner-1");
  *
- * expect(relation.has(socket, "owner-1")).toBe(true);
- * expect(relation.has({ id: "socket-1" }, "owner-1")).toBe(false);
+ * assertTrue(relation.has(socket, "owner-1"));
+ * assertFalse(relation.has({ id: "socket-1" }, "owner-1"));
  * ```
  *
  * ### Lookup-derived equality
@@ -76,7 +76,7 @@ import {
  * Use lookup-derived equality.
  *
  * ```ts
- * import { createRelation } from "@evolu/common";
+ * import { assertTrue, createRelation } from "@evolu/common";
  *
  * interface Person {
  *   readonly id: string;
@@ -90,9 +90,7 @@ import {
  *
  * relation.add({ id: "1", name: "Ada" }, { id: "admins" });
  *
- * expect(relation.has({ id: "1", name: "Grace" }, { id: "admins" })).toBe(
- *   true,
- * );
+ * assertTrue(relation.has({ id: "1", name: "Grace" }, { id: "admins" }));
  * ```
  *
  * @see {@link createRelation}

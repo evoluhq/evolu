@@ -47,6 +47,11 @@
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   Data,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
  *   Number,
  *   NonEmptyTrimmedString100,
  *   brand,
@@ -71,14 +76,15 @@
  * const Age = brand("Age", lessThan(200)(NonNegativeInt));
  * type Age = typeof Age.Output;
  *
- * expectTypeOf<Age>().toEqualTypeOf<
+ * assertType<
  *   number &
  *     Brand<"NonNaN"> &
  *     Brand<"Finite"> &
  *     Brand<"Int"> &
  *     Brand<"NonNegative"> &
  *     Brand<"LessThan200"> &
- *     Brand<"Age">
+ *     Brand<"Age">,
+ *   Age
  * >();
  *
  * const User = object({
@@ -90,12 +96,16 @@
  * const value: unknown = { name: "Ada", age: 37 };
  * const user = User.fromUnknown(value);
  *
- * expectOk(user, { name: "Ada", age: 37 });
- * expectTypeOf(user.value).toExtend<User>();
+ * assertOk(user, { name: "Ada", age: 37 });
+ * assertType<typeof User.Output, typeof user.value>();
  *
  * const invalidUser = User.fromUnknown({ name: "Ada", age: 37.5 });
  *
- * expectErr(invalidUser, {
+ * assertErr(invalidUser);
+ * // InferErrors includes every structured error User.fromUnknown can return.
+ * assertType<InferErrors<typeof User>, typeof invalidUser.error>();
+ * assertType(Data, invalidUser.error);
+ * assertEqual(invalidUser.error, {
  *   type: "Object",
  *   reason: {
  *     kind: "Properties",
@@ -104,22 +114,26 @@
  *     },
  *   },
  * });
- *
- * // InferErrors includes every structured error User.fromUnknown can return.
- * expectTypeOf(invalidUser.error).toEqualTypeOf<
- *   InferErrors<typeof User>
- * >();
  * ```
  *
  * A Type can format its structured errors into user-facing messages:
  *
  * ```ts
- * import { Age } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   Data,
+ *   assertErr,
+ *   Age,
+ * } from "@evolu/common";
  *
  * const age = Age.fromUnknown(37.5);
  *
- * expectErr(age, { type: "Int", value: 37.5 });
- * expect(Age.formatError(age.error)).toBe(
+ * assertErr(age);
+ * assertType(Data, age.error);
+ * assertEqual(age.error, { type: "Int", value: 37.5 });
+ * assertEqual(
+ *   Age.formatError(age.error),
  *   "The value 37.5 must be a safe integer.",
  * );
  * ```
@@ -136,6 +150,8 @@
  *
  * ```ts
  * import {
+ *   assertOk,
+ *   assertType,
  *   NonEmptyTrimmedString100,
  *   NonEmptyTrimmedString1000,
  *   object,
@@ -150,7 +166,7 @@
  *
  * // This is type-checked: Todo.from expects NonEmptyTrimmedString100.
  * const title = NonEmptyTrimmedString100.orThrow("Buy milk");
- * expectOk(Todo.from({ title }), { title });
+ * assertOk(Todo.from({ title }), { title });
  *
  * // Imagine the UI input component is changed to allow longer titles.
  * // TypeScript rejects the mismatch, so users never see a save error
@@ -168,13 +184,14 @@
  * );
  *
  * // No "not a string" or "not trimmed" errors: the input guarantees both.
- * expectTypeOf(validatedTitle).toEqualTypeOf<
+ * assertType<
  *   Result<
  *     NonEmptyTrimmedString100,
  *     MaxLengthError<100> | MinLengthError<1>
- *   >
+ *   >,
+ *   typeof validatedTitle
  * >();
- * expectOk(validatedTitle, "Buy milk");
+ * assertOk(validatedTitle, "Buy milk");
  * ```
  *
  * Evolu includes dozens of predefined Types and Type factories. Use Types such
@@ -578,12 +595,12 @@ export interface Type<
    * ### Example
    *
    * ```ts
-   * import { PositiveInt } from "@evolu/common";
+   * import { assertOk, PositiveInt } from "@evolu/common";
    *
    * const value: unknown = 42;
    * const result = PositiveInt.fromUnknown(value);
    *
-   * expectOk(result, 42);
+   * assertOk(result, 42);
    * ```
    */
   readonly fromUnknown: (
@@ -603,12 +620,25 @@ export interface Type<
    * ### Example
    *
    * ```ts
-   * import { String } from "@evolu/common";
+   * import {
+   *   assertEqual,
+   *   assertType,
+   *   Data,
+   *   assertErr,
+   *   String,
+   * } from "@evolu/common";
    *
    * const result = String.fromUnknown(42);
    *
-   * expectErr(result, { type: "TypeOf", expected: "String", value: 42 });
-   * expect(String.formatError(result.error)).toBe(
+   * assertErr(result);
+   * assertType(Data, result.error);
+   * assertEqual(result.error, {
+   *   type: "TypeOf",
+   *   expected: "String",
+   *   value: 42,
+   * });
+   * assertEqual(
+   *   String.formatError(result.error),
    *   "A value 42 is not a string.",
    * );
    * ```
@@ -625,14 +655,20 @@ export interface Type<
    * ### Example
    *
    * ```ts
-   * import { Int64FromInt64String, type Int64 } from "@evolu/common";
+   * import {
+   *   assertFalse,
+   *   assertType,
+   *   assertTrue,
+   *   Int64FromInt64String,
+   *   type Int64,
+   * } from "@evolu/common";
    *
    * const values: ReadonlyArray<unknown> = [42n, "42", null];
    * const integers = values.filter(Int64FromInt64String.is);
    *
-   * expectTypeOf(integers).toEqualTypeOf<Array<Int64>>();
-   * expect(Int64FromInt64String.is(42n)).toBe(true);
-   * expect(Int64FromInt64String.is("42")).toBe(false);
+   * assertType<Array<Int64>, typeof integers>();
+   * assertTrue(Int64FromInt64String.is(42n));
+   * assertFalse(Int64FromInt64String.is("42"));
    * ```
    */
   readonly is: (value: unknown) => value is Output;
@@ -658,6 +694,8 @@ export interface Type<
    *
    * ```ts
    * import {
+   *   assertOk,
+   *   assertType,
    *   flatMapResult,
    *   NonEmptyTrimmedString100,
    *   object,
@@ -690,10 +728,11 @@ export interface Type<
    * const note = TrimmedString.orThrow("Remember oat milk");
    * const result = saveTodo(title, note);
    *
-   * expectTypeOf(result).toEqualTypeOf<
-   *   Result<typeof Todo.Output, MaxLengthError<100> | MinLengthError<1>>
+   * assertType<
+   *   Result<typeof Todo.Output, MaxLengthError<100> | MinLengthError<1>>,
+   *   typeof result
    * >();
-   * expectOk(result, { title, note });
+   * assertOk(result, { title, note });
    * ```
    */
   readonly from: [CustomFrom] extends [never]
@@ -713,11 +752,15 @@ export interface Type<
    * ### Example
    *
    * ```ts
-   * import { Int64, Int64FromInt64String } from "@evolu/common";
+   * import {
+   *   assertEqual,
+   *   Int64,
+   *   Int64FromInt64String,
+   * } from "@evolu/common";
    *
    * const value = Int64.orThrow(42n);
    *
-   * expect(Int64FromInt64String.to(value)).toBe("42");
+   * assertEqual(Int64FromInt64String.to(value), "42");
    * ```
    */
   readonly to: [Parent] extends [infer P extends TypeNode]
@@ -743,7 +786,12 @@ export interface Type<
    * ### Example
    *
    * ```ts
-   * import { getOrThrow, minLength, String } from "@evolu/common";
+   * import {
+   *   assertEqual,
+   *   getOrThrow,
+   *   minLength,
+   *   String,
+   * } from "@evolu/common";
    *
    * const NonEmptyString = minLength(1)(String);
    *
@@ -752,8 +800,8 @@ export interface Type<
    * // Equivalent because `from.parent` is this Type's deepest `from` operation:
    * const sameValue = getOrThrow(NonEmptyString.from.parent("Evolu"));
    *
-   * expect(value).toBe("Evolu");
-   * expect(sameValue).toBe(value);
+   * assertEqual(value, "Evolu");
+   * assertEqual(sameValue, value);
    * ```
    */
   readonly orThrow: TypeOperationFn<"orThrow", Input, Output, never>;
@@ -777,7 +825,12 @@ export interface Type<
    * ### Example
    *
    * ```ts
-   * import { getOrNull, minLength, String } from "@evolu/common";
+   * import {
+   *   assertEqual,
+   *   getOrNull,
+   *   minLength,
+   *   String,
+   * } from "@evolu/common";
    *
    * const NonEmptyString = minLength(1)(String);
    *
@@ -786,9 +839,9 @@ export interface Type<
    * // Equivalent because `from.parent` is this Type's deepest `from` operation:
    * const sameValue = getOrNull(NonEmptyString.from.parent("Evolu"));
    *
-   * expect(value).toBe("Evolu");
-   * expect(sameValue).toBe(value);
-   * expect(NonEmptyString.orNull("")).toBeNull();
+   * assertEqual(value, "Evolu");
+   * assertEqual(sameValue, value);
+   * assertEqual(NonEmptyString.orNull(""), null);
    * ```
    */
   readonly orNull: TypeOperationFn<"orNull", Input, Output, never>;
@@ -1098,7 +1151,15 @@ const assertTypeOutput = <Error extends TypeError>(
  * ### Example
  *
  * ```ts
- * import { String, localizeTypes, minLength } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   Data,
+ *   assertErr,
+ *   assertType,
+ *   String,
+ *   localizeTypes,
+ *   minLength,
+ * } from "@evolu/common";
  * import { cs } from "@evolu/common/intl";
  *
  * const Label = minLength(1)(String);
@@ -1113,13 +1174,14 @@ const assertTypeOutput = <Error extends TypeError>(
  *   },
  * );
  *
- * expectTypeOf<typeof typesByLocale.cs.Label>().toEqualTypeOf<
- *   typeof Label
- * >();
+ * assertType<typeof Label, typeof typesByLocale.cs.Label>();
  *
  * const result = typesByLocale.cs.Label.fromUnknown("");
- * expectErr(result, { type: "MinLength1", min: 1, value: "" });
- * expect(typesByLocale.cs.Label.formatError(result.error)).toBe(
+ * assertErr(result);
+ * assertType(Data, result.error);
+ * assertEqual(result.error, { type: "MinLength1", min: 1, value: "" });
+ * assertEqual(
+ *   typesByLocale.cs.Label.formatError(result.error),
  *   "Text nesmí být prázdný.",
  * );
  * ```
@@ -1518,6 +1580,8 @@ declare const identityEncodingSymbol: unique symbol;
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   NonEmptyTrimmedString100,
  *   PositiveInt,
  *   object,
@@ -1533,8 +1597,8 @@ declare const identityEncodingSymbol: unique symbol;
  *
  * const user = User.orThrow({ name: "Ada", age: 37 });
  *
- * expectTypeOf(user).toExtend<User>();
- * expect(user.name).toBe("Ada");
+ * assertType<typeof User.Output, typeof user>();
+ * assertEqual(user.name, "Ada");
  * ```
  *
  * @group Core
@@ -1873,7 +1937,12 @@ type ConcreteChildTypeNameError = CompileTimeError<
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
  *   createType,
+ *   Data,
  *   err,
  *   ok,
  *   type Result,
@@ -1891,8 +1960,11 @@ type ConcreteChildTypeNameError = CompileTimeError<
  *   () => "Expected text.",
  * );
  *
- * expectOk(Text.fromUnknown("Evolu"), "Evolu");
- * expectErr(Text.fromUnknown(42), { type: "Text", value: 42 });
+ * assertOk(Text.fromUnknown("Evolu"), "Evolu");
+ * const invalid = Text.fromUnknown(42);
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, { type: "Text", value: 42 });
  * ```
  *
  * @group Construction
@@ -2175,7 +2247,15 @@ const createChildType = <
  * ### Example
  *
  * ```ts
- * import { Boolean, literal, ok, transform, union } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertOk,
+ *   Boolean,
+ *   literal,
+ *   ok,
+ *   transform,
+ *   union,
+ * } from "@evolu/common";
  *
  * const BooleanString = union(literal("false"), literal("true"));
  * const BooleanFromString = transform(
@@ -2188,8 +2268,8 @@ const createChildType = <
  *   },
  * );
  *
- * expectOk(BooleanFromString.from.parent("true"), true);
- * expect(BooleanFromString.to(false)).toBe("false");
+ * assertOk(BooleanFromString.from.parent("true"), true);
+ * assertEqual(BooleanFromString.to(false), "false");
  * ```
  *
  * @group Construction
@@ -2219,6 +2299,11 @@ export function transform<
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
+ *   Data,
+ *   assertErr,
+ *   assertOk,
  *   Boolean,
  *   String,
  *   err,
@@ -2248,12 +2333,15 @@ export function transform<
  *   () => 'Expected "true" or "false".',
  * );
  *
- * expectOk(BooleanFromString.fromUnknown("true"), true);
- * expect(BooleanFromString.to(false)).toBe("false");
+ * assertOk(BooleanFromString.fromUnknown("true"), true);
+ * assertEqual(BooleanFromString.to(false), "false");
  *
  * const invalid = BooleanFromString.fromUnknown("yes");
- * expectErr(invalid, { type: "BooleanFromString", value: "yes" });
- * expect(BooleanFromString.formatError(invalid.error)).toBe(
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, { type: "BooleanFromString", value: "yes" });
+ * assertEqual(
+ *   BooleanFromString.formatError(invalid.error),
  *   'Expected "true" or "false".',
  * );
  * ```
@@ -2771,16 +2859,20 @@ export interface TypeOfError<
  * and significant whitespace:
  *
  * ```ts
- * import { String, maxLength, type Brand } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   assertType,
+ *   String,
+ *   maxLength,
+ *   type Brand,
+ * } from "@evolu/common";
  *
  * const WireValue100 = maxLength(100)(String);
  * type WireValue100 = typeof WireValue100.Output;
  *
- * expectTypeOf<WireValue100>().toEqualTypeOf<
- *   string & Brand<"MaxLength100">
- * >();
- * expectOk(WireValue100.fromUnknown(""), "");
- * expectOk(WireValue100.fromUnknown(" value "), " value ");
+ * assertType<string & Brand<"MaxLength100">, WireValue100>();
+ * assertOk(WireValue100.fromUnknown(""), "");
+ * assertOk(WireValue100.fromUnknown(" value "), " value ");
  * ```
  *
  * @group String
@@ -2807,7 +2899,12 @@ export const String = /*#__PURE__*/ createTypeOfType("String");
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
  *   Age,
+ *   Data,
  *   FiniteNumber,
  *   Int,
  *   NonNaNNumber,
@@ -2817,36 +2914,41 @@ export const String = /*#__PURE__*/ createTypeOfType("String");
  * } from "@evolu/common";
  *
  * // Note how every additional constraint accumulates its Brand.
- * expectTypeOf<typeof Number.Output>().toEqualTypeOf<number>();
- * expectTypeOf<typeof NonNaNNumber.Output>().toEqualTypeOf<
- *   number & Brand<"NonNaN">
+ * assertType<number, typeof Number.Output>();
+ * assertType<number & Brand<"NonNaN">, typeof NonNaNNumber.Output>();
+ * assertType<
+ *   number & Brand<"NonNaN"> & Brand<"Finite">,
+ *   typeof FiniteNumber.Output
  * >();
- * expectTypeOf<typeof FiniteNumber.Output>().toEqualTypeOf<
- *   number & Brand<"NonNaN"> & Brand<"Finite">
+ * assertType<
+ *   number & Brand<"NonNaN"> & Brand<"Finite"> & Brand<"Int">,
+ *   typeof Int.Output
  * >();
- * expectTypeOf<typeof Int.Output>().toEqualTypeOf<
- *   number & Brand<"NonNaN"> & Brand<"Finite"> & Brand<"Int">
- * >();
- * expectTypeOf<typeof NonNegativeInt.Output>().toEqualTypeOf<
+ * assertType<
  *   number &
  *     Brand<"NonNaN"> &
  *     Brand<"Finite"> &
  *     Brand<"Int"> &
- *     Brand<"NonNegative">
+ *     Brand<"NonNegative">,
+ *   typeof NonNegativeInt.Output
  * >();
  *
- * expectTypeOf<typeof Age.Output>().toEqualTypeOf<
+ * assertType<
  *   number &
  *     Brand<"NonNaN"> &
  *     Brand<"Finite"> &
  *     Brand<"Int"> &
  *     Brand<"NonNegative"> &
  *     Brand<"LessThan200"> &
- *     Brand<"Age">
+ *     Brand<"Age">,
+ *   typeof Age.Output
  * >();
  *
- * expectOk(Age.fromUnknown(122), 122);
- * expectErr(Age.fromUnknown(200), {
+ * assertOk(Age.fromUnknown(122), 122);
+ * const invalid = Age.fromUnknown(200);
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "LessThan200",
  *   value: 200,
  *   max: 200,
@@ -2999,12 +3101,12 @@ interface ObjectTagOutputByName {
  * ### Example
  *
  * ```ts
- * import { objectTag } from "@evolu/common";
+ * import { assertOk, objectTag } from "@evolu/common";
  *
  * const DateType = objectTag("Date");
  * const date = new Date("2025-01-01T00:00:00.000Z");
  *
- * expectOk(DateType.fromUnknown(date), date);
+ * assertOk(DateType.fromUnknown(date), date);
  * ```
  *
  * @group Base
@@ -3028,7 +3130,14 @@ export function objectTag<Name extends keyof ObjectTagOutputByName>(
  * ### Example
  *
  * ```ts
- * import { instanceOf, objectTag } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertOk,
+ *   assertSame,
+ *   assertType,
+ *   instanceOf,
+ *   objectTag,
+ * } from "@evolu/common";
  *
  * class TaggedValue {
  *   readonly [Symbol.toStringTag] = "TaggedValue";
@@ -3041,9 +3150,13 @@ export function objectTag<Name extends keyof ObjectTagOutputByName>(
  * const value = new TaggedValue();
  * const result = TaggedValueType.fromUnknown(value);
  *
- * expectOk(result, value);
- * expectTypeOf(result.value).toExtend<TaggedValue>();
- * expect(TaggedValueType.expected).toBe("TaggedValue");
+ * assertOk(result);
+ * assertSame(result.value, value);
+ * assertType<
+ *   true,
+ *   typeof result.value extends TaggedValue ? true : false
+ * >();
+ * assertEqual(TaggedValueType.expected, "TaggedValue");
  * ```
  */
 export function objectTag<
@@ -3136,7 +3249,7 @@ export const ArrayBuffer = /*#__PURE__*/ objectTag("ArrayBuffer");
  * ### Example
  *
  * ```ts
- * import { instanceOf } from "@evolu/common";
+ * import { assertFalse, assertTrue, instanceOf } from "@evolu/common";
  *
  * class User {
  *   readonly name: string;
@@ -3148,8 +3261,8 @@ export const ArrayBuffer = /*#__PURE__*/ objectTag("ArrayBuffer");
  *
  * const UserInstance = instanceOf(User);
  *
- * assert(UserInstance.is(new User("Ada")));
- * assert(!UserInstance.is({ name: "Ada" }));
+ * assertTrue(UserInstance.is(new User("Ada")));
+ * assertFalse(UserInstance.is({ name: "Ada" }));
  * ```
  *
  * @group Base
@@ -3251,13 +3364,23 @@ type InstanceConstructorCompileTimeError = CompileTimeError<
  * ### Example
  *
  * ```ts
- * import { literal } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   literal,
+ * } from "@evolu/common";
  *
  * const Ready = literal("ready");
  *
- * expectTypeOf<typeof Ready.Output>().toEqualTypeOf<"ready">();
- * expectOk(Ready.fromUnknown("ready"), "ready");
- * expectErr(Ready.fromUnknown("pending"), {
+ * assertType<"ready", typeof Ready.Output>();
+ * assertOk(Ready.fromUnknown("ready"), "ready");
+ * const invalid = Ready.fromUnknown("pending");
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "Literal",
  *   expected: "ready",
  *   value: "pending",
@@ -3414,17 +3537,29 @@ export const Null = /*#__PURE__*/ literal(null);
  * ### Example
  *
  * ```ts
- * import { Number, String, union } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   Number,
+ *   String,
+ *   union,
+ * } from "@evolu/common";
  *
  * const Status = union("draft", "published");
  * const StatusOrCode = union("draft", "published", Number);
  *
- * expectOk(Status.fromUnknown("draft"), "draft");
- * expectOk(StatusOrCode.fromUnknown(42), 42);
+ * assertOk(Status.fromUnknown("draft"), "draft");
+ * assertOk(StatusOrCode.fromUnknown(42), 42);
  *
  * const TextOrNumber = union(String, Number);
  *
- * expectErr(TextOrNumber.fromUnknown(true, { errors: "all" }), {
+ * const invalid = TextOrNumber.fromUnknown(true, { errors: "all" });
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "Union",
  *   errors: [
  *     {
@@ -3582,11 +3717,11 @@ const createUnionValidation =
  * ### Example
  *
  * ```ts
- * import { String, undefinedOr } from "@evolu/common";
+ * import { assertOk, String, undefinedOr } from "@evolu/common";
  *
  * const StringOrUndefined = undefinedOr(String);
  *
- * expectOk(StringOrUndefined.fromUnknown(undefined), undefined);
+ * assertOk(StringOrUndefined.fromUnknown(undefined), undefined);
  * ```
  *
  * @group Unions
@@ -3601,11 +3736,11 @@ export const undefinedOr = <ValueType extends TypeNode>(
  * ### Example
  *
  * ```ts
- * import { String, nullOr } from "@evolu/common";
+ * import { assertOk, String, nullOr } from "@evolu/common";
  *
  * const NullableString = nullOr(String);
  *
- * expectOk(NullableString.fromUnknown(null), null);
+ * assertOk(NullableString.fromUnknown(null), null);
  * ```
  *
  * @group Unions
@@ -3620,12 +3755,12 @@ export const nullOr = <ValueType extends TypeNode>(
  * ### Example
  *
  * ```ts
- * import { String, nullishOr } from "@evolu/common";
+ * import { assertOk, String, nullishOr } from "@evolu/common";
  *
  * const NullishString = nullishOr(String);
  *
- * expectOk(NullishString.fromUnknown(undefined), undefined);
- * expectOk(NullishString.fromUnknown(null), null);
+ * assertOk(NullishString.fromUnknown(undefined), undefined);
+ * assertOk(NullishString.fromUnknown(null), null);
  * ```
  *
  * @group Unions
@@ -3861,7 +3996,16 @@ interface UnionErrorValue<
  * the structured data decoded from it:
  *
  * ```ts
- * import { templateLiteralParser, union } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   templateLiteralParser,
+ *   union,
+ * } from "@evolu/common";
  *
  * const Language = union("en", "cs");
  * const Region = union("US", "CZ");
@@ -3871,36 +4015,39 @@ interface UnionErrorValue<
  *
  * // Output is the decoded language and region.
  * type SupportedLocale = typeof SupportedLocale.Output;
- * expectTypeOf<SupportedLocale>().toEqualTypeOf<
- *   readonly ["en" | "cs", "US" | "CZ"]
- * >();
+ * assertType<readonly ["en" | "cs", "US" | "CZ"], SupportedLocale>();
  *
  * // The parent Output is the canonical locale string.
  * type SupportedLocaleLiteral = typeof SupportedLocale.parent.Output;
- * expectTypeOf<SupportedLocaleLiteral>().toEqualTypeOf<
- *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ"
+ * assertType<
+ *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ",
+ *   SupportedLocaleLiteral
  * >();
  *
  * // Parse an unknown string into structured data.
  * const result = SupportedLocale.fromUnknown("cs-CZ");
- * expectOk(result, ["cs", "CZ"]);
+ * assertOk(result, ["cs", "CZ"]);
  * const locale = result.value;
- * expectTypeOf(locale).toEqualTypeOf<SupportedLocale>();
- * expectErr(SupportedLocale.fromUnknown("cs/CZ"), {
+ * assertType<SupportedLocale, typeof locale>();
+ * const invalid = SupportedLocale.fromUnknown("cs/CZ");
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * const error: Data = invalid.error;
+ * assertEqual(error, {
  *   type: "TemplateLiteral",
  *   value: "cs/CZ",
  * });
  *
  * // Encode structured data into its canonical string.
  * const localeLiteral = SupportedLocale.to(locale);
- * expectTypeOf(localeLiteral).toEqualTypeOf<SupportedLocaleLiteral>();
- * expect(localeLiteral).toBe("cs-CZ");
+ * assertType<SupportedLocaleLiteral, typeof localeLiteral>();
+ * assertEqual(localeLiteral, "cs-CZ");
  *
  * // Validate a string configuration value.
  * const configValue: unknown = "cs-CZ";
- * assert(SupportedLocale.parent.is(configValue));
- * expectTypeOf(configValue).toEqualTypeOf<SupportedLocaleLiteral>();
- * expect(SupportedLocale.parent.is("fr-CZ")).toBe(false);
+ * assertType(SupportedLocale.parent, configValue);
+ * assertType<SupportedLocaleLiteral, typeof configValue>();
+ * assertFalse(SupportedLocale.parent.is("fr-CZ"));
  * ```
  *
  * `SupportedLocale` is structured data for application code.
@@ -3913,6 +4060,8 @@ interface UnionErrorValue<
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertOk,
  *   NonNegativeDecimalString,
  *   templateLiteralParser,
  * } from "@evolu/common";
@@ -3925,8 +4074,8 @@ interface UnionErrorValue<
  * // DecimalText.to requires a validated NonNegativeDecimalString.
  * const zero = NonNegativeDecimalString.orThrow("0");
  *
- * expectOk(DecimalText.fromUnknown("decimal:0"), [zero]);
- * expect(DecimalText.to([zero])).toBe("decimal:0");
+ * assertOk(DecimalText.fromUnknown("decimal:0"), [zero]);
+ * assertEqual(DecimalText.to([zero]), "decimal:0");
  * ```
  *
  * Capture Types (the Type arguments passed to `templateLiteralParser`) can use
@@ -3934,6 +4083,9 @@ interface UnionErrorValue<
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertOk,
+ *   assertType,
  *   Int64FromInt64String,
  *   templateLiteralParser,
  * } from "@evolu/common";
@@ -3944,14 +4096,14 @@ interface UnionErrorValue<
  *
  * // Decode the string into structured data.
  * const result = ItemId.fromUnknown("item-42");
- * expectOk(result, [42n]);
+ * assertOk(result, [42n]);
  * const itemId = result.value;
- * expectTypeOf(itemId).toEqualTypeOf<ItemId>();
+ * assertType<ItemId, typeof itemId>();
  *
  * // Encode the structured data into its canonical string.
  * const itemIdLiteral = ItemId.to(itemId);
- * expectTypeOf(itemIdLiteral).toEqualTypeOf<ItemIdLiteral>();
- * expect(itemIdLiteral).toBe("item-42");
+ * assertType<ItemIdLiteral, typeof itemIdLiteral>();
+ * assertEqual(itemIdLiteral, "item-42");
  *
  * // TypeScript cannot prove from the literal alone that "42" is a valid Int64 encoding.
  * // @ts-expect-error Validate it with ItemId.parent or create it with ItemId.to.
@@ -3961,7 +4113,12 @@ interface UnionErrorValue<
  * Fixed-width captures can be adjacent:
  *
  * ```ts
- * import { templateLiteralParser, union } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertOk,
+ *   templateLiteralParser,
+ *   union,
+ * } from "@evolu/common";
  *
  * const Digit = union("0", "1", "2", "3", "4", "5", "6", "7", "8", "9");
  * const TwoDigits = templateLiteralParser(Digit, Digit);
@@ -3973,8 +4130,8 @@ interface UnionErrorValue<
  * // @ts-expect-error TwoDigitsLiteral requires exactly two digits.
  * const threeDigitsLiteral: TwoDigitsLiteral = "123";
  *
- * expectOk(TwoDigits.from.parent(twoDigitsLiteral), twoDigits);
- * expect(TwoDigits.to(twoDigits)).toBe(twoDigitsLiteral);
+ * assertOk(TwoDigits.from.parent(twoDigitsLiteral), twoDigits);
+ * assertEqual(TwoDigits.to(twoDigits), twoDigitsLiteral);
  * ```
  *
  * TypeScript rejects multiple variable-width captures because their encoded
@@ -4260,17 +4417,24 @@ export interface TemplateLiteralType<
  * ### Example
  *
  * ```ts
- * import { templateLiteral, union } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertOk,
+ *   assertType,
+ *   templateLiteral,
+ *   union,
+ * } from "@evolu/common";
  *
  * const Language = union("en", "cs");
  * const Region = union("US", "CZ");
  * const Locale = templateLiteral(Language, "-", Region);
  *
- * expectTypeOf<typeof Locale.Output>().toEqualTypeOf<
- *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ"
+ * assertType<
+ *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ",
+ *   typeof Locale.Output
  * >();
- * expectOk(Locale.fromUnknown("cs-CZ"), "cs-CZ");
- * expect(Locale.is("fr-CZ")).toBe(false);
+ * assertOk(Locale.fromUnknown("cs-CZ"), "cs-CZ");
+ * assertFalse(Locale.is("fr-CZ"));
  * ```
  *
  * @group Template literals
@@ -4701,8 +4865,13 @@ const getTemplateLiteralPartFraming = (
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
  *   BigInt,
  *   brand,
+ *   Data,
  *   err,
  *   ok,
  *   type Brand,
@@ -4721,14 +4890,17 @@ const getTemplateLiteralPartFraming = (
  * type Int64 = typeof Int64.Output;
  *
  * // Note the Brand.
- * expectTypeOf<Int64>().toEqualTypeOf<bigint & Brand<"Int64">>();
+ * assertType<bigint & Brand<"Int64">, Int64>();
  *
  * interface Int64Error extends TypeError<"Int64"> {
  *   readonly value: bigint;
  * }
  *
- * expectOk(Int64.fromUnknown(42n), 42n);
- * expectErr(Int64.fromUnknown(2n ** 63n), {
+ * assertOk(Int64.fromUnknown(42n), 42n);
+ * const invalid = Int64.fromUnknown(2n ** 63n);
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "Int64",
  *   value: 2n ** 63n,
  * });
@@ -4812,13 +4984,21 @@ export interface BrandType<
  * ### Example
  *
  * ```ts
- * import { DateIso } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   DateIso,
+ * } from "@evolu/common";
  *
- * expectOk(
- *   DateIso.fromUnknown("2023-01-01T12:00:00.000Z"),
- *   "2023-01-01T12:00:00.000Z",
- * );
- * expectErr(DateIso.fromUnknown("2023-01-01"), {
+ * const value = "2023-01-01T12:00:00.000Z";
+ * assertOk(DateIso.fromUnknown(value), value);
+ * const invalid = DateIso.fromUnknown("2023-01-01");
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "DateIso",
  *   value: "2023-01-01",
  * });
@@ -4853,13 +5033,13 @@ export interface DateIsoError extends TypeError<"DateIso"> {
  * ### Example
  *
  * ```ts
- * import { DateIsoFromDate } from "@evolu/common";
+ * import { assertEqual, assertOk, DateIsoFromDate } from "@evolu/common";
  *
  * const date = new Date("2025-01-01T12:00:00.000Z");
  * const result = DateIsoFromDate.fromUnknown(date);
  *
- * expectOk(result, "2025-01-01T12:00:00.000Z");
- * expect(DateIsoFromDate.to(result.value)).toEqual(date);
+ * assertOk(result, "2025-01-01T12:00:00.000Z");
+ * assertEqual(DateIsoFromDate.to(result.value), date);
  * ```
  *
  * @group String
@@ -4952,6 +5132,11 @@ export interface UInt64Error extends TypeError<"UInt64"> {
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
  *   String,
  *   brand,
  *   err,
@@ -4977,14 +5162,17 @@ export interface UInt64Error extends TypeError<"UInt64"> {
  * const TrimmedString = trimmed(String);
  * type TrimmedString = typeof TrimmedString.Output;
  *
- * expectTypeOf<TrimmedString>().toEqualTypeOf<string & Brand<"Trimmed">>();
+ * assertType<string & Brand<"Trimmed">, TrimmedString>();
  *
  * interface TrimmedError extends TypeError<"Trimmed"> {
  *   readonly value: string;
  * }
  *
- * expectOk(TrimmedString.fromUnknown("Evolu"), "Evolu");
- * expectErr(TrimmedString.fromUnknown(" Evolu"), {
+ * assertOk(TrimmedString.fromUnknown("Evolu"), "Evolu");
+ * const invalid = TrimmedString.fromUnknown(" Evolu");
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "Trimmed",
  *   value: " Evolu",
  * });
@@ -5016,6 +5204,7 @@ export type BrandFactory<
  *
  * ```ts
  * import {
+ *   assertType,
  *   Number,
  *   brand,
  *   err,
@@ -5047,10 +5236,8 @@ export type BrandFactory<
  * const LessThan100 = lessThan(100)(Number);
  * type LessThan100 = typeof LessThan100.Output;
  *
- * expectTypeOf(LessThan100.name).toEqualTypeOf<"LessThan100">();
- * expectTypeOf<LessThan100>().toEqualTypeOf<
- *   number & Brand<"LessThan100">
- * >();
+ * assertType<"LessThan100", typeof LessThan100.name>();
+ * assertType<number & Brand<"LessThan100">, LessThan100>();
  *
  * interface LessThanError<
  *   Max extends number,
@@ -5085,17 +5272,27 @@ type BrandFactoryNumberError = CompileTimeError<
  * ### Example
  *
  * ```ts
- * import { String, capitalized, type Brand } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   String,
+ *   capitalized,
+ *   type Brand,
+ * } from "@evolu/common";
  *
  * const CapitalizedString = capitalized(String);
  * type CapitalizedString = typeof CapitalizedString.Output;
  *
- * expectTypeOf<CapitalizedString>().toEqualTypeOf<
- *   string & Brand<"Capitalized">
- * >();
+ * assertType<string & Brand<"Capitalized">, CapitalizedString>();
  *
- * expectOk(CapitalizedString.fromUnknown("Evolu"), "Evolu");
- * expectErr(CapitalizedString.fromUnknown("evolu"), {
+ * assertOk(CapitalizedString.fromUnknown("Evolu"), "Evolu");
+ * const invalid = CapitalizedString.fromUnknown("evolu");
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "Capitalized",
  *   value: "evolu",
  * });
@@ -5145,11 +5342,11 @@ export type CapitalizedString = typeof CapitalizedString.Output;
  * ### Example
  *
  * ```ts
- * import { String, trimmed } from "@evolu/common";
+ * import { assertOk, String, trimmed } from "@evolu/common";
  *
  * const Trimmed = trimmed(String);
  *
- * expectOk(Trimmed.fromUnknown("Evolu"), "Evolu");
+ * assertOk(Trimmed.fromUnknown("Evolu"), "Evolu");
  * ```
  *
  * @group String
@@ -5197,9 +5394,9 @@ export type TrimmedString = typeof TrimmedString.Output;
  * ### Example
  *
  * ```ts
- * import { trim } from "@evolu/common";
+ * import { assertEqual, trim } from "@evolu/common";
  *
- * expect(trim("  Evolu  ")).toBe("Evolu");
+ * assertEqual(trim("  Evolu  "), "Evolu");
  * ```
  *
  * @group String
@@ -5213,13 +5410,13 @@ export const trim = (value: string): TrimmedString =>
  * ### Example
  *
  * ```ts
- * import { String, array, minLength } from "@evolu/common";
+ * import { assertOk, String, array, minLength } from "@evolu/common";
  *
  * const AtLeastThreeCharacters = minLength(3)(String);
  * const AtLeastTwoItems = minLength(2)(array(String));
  *
- * expectOk(AtLeastThreeCharacters.fromUnknown("abc"), "abc");
- * expectOk(AtLeastTwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
+ * assertOk(AtLeastThreeCharacters.fromUnknown("abc"), "abc");
+ * assertOk(AtLeastTwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
  * ```
  *
  * @group String
@@ -5279,13 +5476,13 @@ export type NonEmptyTrimmedString = typeof NonEmptyTrimmedString.Output;
  * ### Example
  *
  * ```ts
- * import { String, array, maxLength } from "@evolu/common";
+ * import { assertOk, String, array, maxLength } from "@evolu/common";
  *
  * const AtMostThreeCharacters = maxLength(3)(String);
  * const AtMostTwoItems = maxLength(2)(array(String));
  *
- * expectOk(AtMostThreeCharacters.fromUnknown("abc"), "abc");
- * expectOk(AtMostTwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
+ * assertOk(AtMostThreeCharacters.fromUnknown("abc"), "abc");
+ * assertOk(AtMostTwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
  * ```
  *
  * @group String
@@ -5348,13 +5545,13 @@ export type NonEmptyTrimmedString1000 = typeof NonEmptyTrimmedString1000.Output;
  * ### Example
  *
  * ```ts
- * import { String, array, length } from "@evolu/common";
+ * import { assertOk, String, array, length } from "@evolu/common";
  *
  * const ThreeCharacters = length(3)(String);
  * const TwoItems = length(2)(array(String));
  *
- * expectOk(ThreeCharacters.fromUnknown("abc"), "abc");
- * expectOk(TwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
+ * assertOk(ThreeCharacters.fromUnknown("abc"), "abc");
+ * assertOk(TwoItems.fromUnknown(["a", "b"]), ["a", "b"]);
  * ```
  *
  * @group String
@@ -5399,17 +5596,27 @@ export interface LengthError<
  * A non-empty string using the URL-safe alphabet:
  *
  * ```ts
- * import { String, regex, type Brand } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   String,
+ *   regex,
+ *   type Brand,
+ * } from "@evolu/common";
  *
  * const UrlSafeString = regex("UrlSafeString", /^[A-Za-z0-9_-]+$/)(String);
  * type UrlSafeString = typeof UrlSafeString.Output;
  *
- * expectTypeOf<UrlSafeString>().toEqualTypeOf<
- *   string & Brand<"UrlSafeString">
- * >();
+ * assertType<string & Brand<"UrlSafeString">, UrlSafeString>();
  *
- * expectOk(UrlSafeString.fromUnknown("abc-123_DEF"), "abc-123_DEF");
- * expectErr(UrlSafeString.fromUnknown("not safe"), {
+ * assertOk(UrlSafeString.fromUnknown("abc-123_DEF"), "abc-123_DEF");
+ * const invalid = UrlSafeString.fromUnknown("not safe");
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "UrlSafeString",
  *   value: "not safe",
  *   source: "^[A-Za-z0-9_-]+$",
@@ -5557,9 +5764,10 @@ export interface Base64UrlError extends TypeError<"Base64Url"> {
  * ### Example
  *
  * ```ts
- * import { uint8ArrayToBase64Url } from "@evolu/common";
+ * import { assertEqual, uint8ArrayToBase64Url } from "@evolu/common";
  *
- * expect(uint8ArrayToBase64Url(new Uint8Array([0, 1, 2, 255]))).toBe(
+ * assertEqual(
+ *   uint8ArrayToBase64Url(new Uint8Array([0, 1, 2, 255])),
  *   "AAEC_w",
  * );
  * ```
@@ -5575,11 +5783,16 @@ export const uint8ArrayToBase64Url = (bytes: Uint8Array): Base64Url =>
  * ### Example
  *
  * ```ts
- * import { Base64Url, base64UrlToUint8Array } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   Base64Url,
+ *   base64UrlToUint8Array,
+ * } from "@evolu/common";
  *
  * const value = Base64Url.orThrow("AAEC_w");
  *
- * expect(base64UrlToUint8Array(value)).toEqual(
+ * assertEqual(
+ *   base64UrlToUint8Array(value),
  *   new Uint8Array([0, 1, 2, 255]),
  * );
  * ```
@@ -5698,6 +5911,8 @@ export interface IdError extends TypeError<"Id"> {
  *
  * ```ts
  * import {
+ *   assertTrue,
+ *   assertType,
  *   Id,
  *   createId,
  *   createRandomBytes,
@@ -5706,8 +5921,8 @@ export interface IdError extends TypeError<"Id"> {
  *
  * const userId = createId<"User">({ randomBytes: createRandomBytes() });
  *
- * expect(Id.is(userId)).toBe(true);
- * expectTypeOf(userId).toEqualTypeOf<Id & Brand<"User">>();
+ * assertTrue(Id.is(userId));
+ * assertType<Id & Brand<"User">, typeof userId>();
  * ```
  *
  * @group String
@@ -5728,14 +5943,20 @@ export const createId = <B extends string = never>(
  * ### Example
  *
  * ```ts
- * import { createIdFromString, type Brand, type Id } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   createIdFromString,
+ *   type Brand,
+ *   type Id,
+ * } from "@evolu/common";
  *
  * const first = createIdFromString("external-user-123");
  * const second = createIdFromString("external-user-123");
  * const todoId = createIdFromString<"Todo">("external-todo-456");
  *
- * expect(first).toBe(second);
- * expectTypeOf(todoId).toEqualTypeOf<Id & Brand<"Todo">>();
+ * assertEqual(first, second);
+ * assertType<Id & Brand<"Todo">, typeof todoId>();
  * ```
  *
  * @group String
@@ -5760,6 +5981,7 @@ export const createIdFromString = <B extends string = never>(
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   createIdAsUuidv7,
  *   createRandomBytes,
  *   createTime,
@@ -5772,8 +5994,8 @@ export const createIdFromString = <B extends string = never>(
  * });
  * const bytes = idToIdBytes(value);
  *
- * expect(bytes[6] >> 4).toBe(0x7);
- * expect(bytes[8] & 0xc0).toBe(0x80);
+ * assertEqual(bytes[6] >> 4, 0x7);
+ * assertEqual(bytes[8] & 0xc0, 0x80);
  * ```
  *
  * @group String
@@ -5804,6 +6026,7 @@ export const createIdAsUuidv7 = <B extends string = never>(
  *
  * ```ts
  * import {
+ *   assertType,
  *   createIdFromString,
  *   id,
  *   type Brand,
@@ -5813,7 +6036,7 @@ export const createIdAsUuidv7 = <B extends string = never>(
  * const TodoId = id("Todo");
  * const todoId = TodoId.orThrow(createIdFromString("todo"));
  *
- * expectTypeOf(todoId).toEqualTypeOf<Id & Brand<"Todo">>();
+ * assertType<Id & Brand<"Todo">, typeof todoId>();
  * ```
  *
  * @group String
@@ -5927,11 +6150,15 @@ export const idBytesTypeValueLength = 16 as NonNegativeInt;
  * ### Example
  *
  * ```ts
- * import { createIdFromString, idToIdBytes } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   createIdFromString,
+ *   idToIdBytes,
+ * } from "@evolu/common";
  *
  * const bytes = idToIdBytes(createIdFromString("todo"));
  *
- * expect(bytes).toHaveLength(16);
+ * assertEqual(bytes.length, 16);
  * ```
  *
  * @group String
@@ -5946,6 +6173,7 @@ export const idToIdBytes = (value: Id): IdBytes =>
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   createIdFromString,
  *   idBytesToId,
  *   idToIdBytes,
@@ -5953,7 +6181,7 @@ export const idToIdBytes = (value: Id): IdBytes =>
  *
  * const value = createIdFromString("todo");
  *
- * expect(idBytesToId(idToIdBytes(value))).toBe(value);
+ * assertEqual(idBytesToId(idToIdBytes(value)), value);
  * ```
  *
  * @group String
@@ -6010,12 +6238,17 @@ export interface Int64StringError extends TypeError<"Int64String"> {
  * ### Example
  *
  * ```ts
- * import { Int64FromInt64String } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertOk,
+ *   Int64FromInt64String,
+ * } from "@evolu/common";
  *
  * const result = Int64FromInt64String.fromUnknown("9223372036854775807");
  *
- * expectOk(result, 9223372036854775807n);
- * expect(Int64FromInt64String.to(result.value)).toBe(
+ * assertOk(result, 9223372036854775807n);
+ * assertEqual(
+ *   Int64FromInt64String.to(result.value),
  *   "9223372036854775807",
  * );
  * ```
@@ -6038,11 +6271,11 @@ export const Int64FromInt64String = /*#__PURE__*/ transform(
  * ### Example
  *
  * ```ts
- * import { Number, nonNegative } from "@evolu/common";
+ * import { assertOk, Number, nonNegative } from "@evolu/common";
  *
  * const NonNegative = nonNegative(Number);
  *
- * expectOk(NonNegative.fromUnknown(0), 0);
+ * assertOk(NonNegative.fromUnknown(0), 0);
  * ```
  *
  * @group Number
@@ -6084,11 +6317,11 @@ export type NonNegativeNumber = typeof NonNegativeNumber.Output;
  * ### Example
  *
  * ```ts
- * import { Number, positive } from "@evolu/common";
+ * import { assertOk, Number, positive } from "@evolu/common";
  *
  * const Positive = positive(Number);
  *
- * expectOk(Positive.fromUnknown(1), 1);
+ * assertOk(Positive.fromUnknown(1), 1);
  * ```
  *
  * @group Number
@@ -6131,11 +6364,11 @@ export type PositiveNumber = typeof PositiveNumber.Output;
  * ### Example
  *
  * ```ts
- * import { Number, nonPositive } from "@evolu/common";
+ * import { assertOk, Number, nonPositive } from "@evolu/common";
  *
  * const NonPositive = nonPositive(Number);
  *
- * expectOk(NonPositive.fromUnknown(0), 0);
+ * assertOk(NonPositive.fromUnknown(0), 0);
  * ```
  *
  * @group Number
@@ -6177,11 +6410,11 @@ export type NonPositiveNumber = typeof NonPositiveNumber.Output;
  * ### Example
  *
  * ```ts
- * import { Number, negative } from "@evolu/common";
+ * import { assertOk, Number, negative } from "@evolu/common";
  *
  * const Negative = negative(Number);
  *
- * expectOk(Negative.fromUnknown(-1), -1);
+ * assertOk(Negative.fromUnknown(-1), -1);
  * ```
  *
  * @group Number
@@ -6224,11 +6457,11 @@ export type NegativeNumber = typeof NegativeNumber.Output;
  * ### Example
  *
  * ```ts
- * import { Number, nonNaN } from "@evolu/common";
+ * import { assertOk, Number, nonNaN } from "@evolu/common";
  *
  * const NonNaN = nonNaN(Number);
  *
- * expectOk(NonNaN.fromUnknown(Infinity), Infinity);
+ * assertOk(NonNaN.fromUnknown(Infinity), Infinity);
  * ```
  *
  * @group Number
@@ -6272,11 +6505,11 @@ export type NonNaNNumber = typeof NonNaNNumber.Output;
  * ### Example
  *
  * ```ts
- * import { Number, finite } from "@evolu/common";
+ * import { assertOk, Number, finite } from "@evolu/common";
  *
  * const Finite = finite(Number);
  *
- * expectOk(Finite.fromUnknown(42), 42);
+ * assertOk(Finite.fromUnknown(42), 42);
  * ```
  *
  * @group Number
@@ -6337,15 +6570,28 @@ export type PositiveFiniteNumber = typeof PositiveFiniteNumber.Output;
  * ### Example
  *
  * ```ts
- * import { Number, int, type Brand } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   Number,
+ *   int,
+ *   type Brand,
+ * } from "@evolu/common";
  *
  * const Int = int(Number);
  * type Int = typeof Int.Output;
  *
- * expectTypeOf<Int>().toEqualTypeOf<number & Brand<"Int">>();
+ * assertType<number & Brand<"Int">, Int>();
  *
- * expectOk(Int.fromUnknown(42), 42);
- * expectErr(Int.fromUnknown(1.5), { type: "Int", value: 1.5 });
+ * assertOk(Int.fromUnknown(42), 42);
+ * const invalid = Int.fromUnknown(1.5);
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * const error: Data = invalid.error;
+ * assertEqual(error, { type: "Int", value: 1.5 });
  * ```
  *
  * @group Number
@@ -6445,11 +6691,11 @@ export type NegativeInt = typeof NegativeInt.Output;
  * ### Example
  *
  * ```ts
- * import { Number, greaterThan } from "@evolu/common";
+ * import { assertOk, Number, greaterThan } from "@evolu/common";
  *
  * const GreaterThanTen = greaterThan(10)(Number);
  *
- * expectOk(GreaterThanTen.fromUnknown(11), 11);
+ * assertOk(GreaterThanTen.fromUnknown(11), 11);
  * ```
  *
  * @group Number
@@ -6491,11 +6737,11 @@ export interface GreaterThanError<
  * ### Example
  *
  * ```ts
- * import { Number, greaterThanOrEqualTo } from "@evolu/common";
+ * import { assertOk, Number, greaterThanOrEqualTo } from "@evolu/common";
  *
  * const AtLeastTen = greaterThanOrEqualTo(10)(Number);
  *
- * expectOk(AtLeastTen.fromUnknown(10), 10);
+ * assertOk(AtLeastTen.fromUnknown(10), 10);
  * ```
  *
  * @group Number
@@ -6545,11 +6791,11 @@ export interface GreaterThanOrEqualToError<
  * ### Example
  *
  * ```ts
- * import { Number, lessThan } from "@evolu/common";
+ * import { assertOk, Number, lessThan } from "@evolu/common";
  *
  * const LessThanTen = lessThan(10)(Number);
  *
- * expectOk(LessThanTen.fromUnknown(9), 9);
+ * assertOk(LessThanTen.fromUnknown(9), 9);
  * ```
  *
  * @group Number
@@ -6602,11 +6848,11 @@ export type Age = typeof Age.Output;
  * ### Example
  *
  * ```ts
- * import { Number, lessThanOrEqualTo } from "@evolu/common";
+ * import { assertOk, Number, lessThanOrEqualTo } from "@evolu/common";
  *
  * const AtMostTen = lessThanOrEqualTo(10)(Number);
  *
- * expectOk(AtMostTen.fromUnknown(10), 10);
+ * assertOk(AtMostTen.fromUnknown(10), 10);
  * ```
  *
  * @group Number
@@ -6686,13 +6932,23 @@ export type Ratio = typeof Ratio.Output;
  * ### Example
  *
  * ```ts
- * import { DecimalString } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   DecimalString,
+ * } from "@evolu/common";
  *
- * expectOk(DecimalString.fromUnknown("-10.25"), "-10.25");
- * expectOk(DecimalString.fromUnknown("0"), "0");
- * expectOk(DecimalString.fromUnknown("10.25"), "10.25");
+ * assertOk(DecimalString.fromUnknown("-10.25"), "-10.25");
+ * assertOk(DecimalString.fromUnknown("0"), "0");
+ * assertOk(DecimalString.fromUnknown("10.25"), "10.25");
  *
- * expectErr(DecimalString.fromUnknown("10.250"), {
+ * const invalid = DecimalString.fromUnknown("10.250");
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "DecimalString",
  *   value: "10.250",
  * });
@@ -6727,11 +6983,15 @@ export interface DecimalStringError extends TypeError<"DecimalString"> {
  * ### Example
  *
  * ```ts
- * import { DecimalString, nonNegativeDecimalString } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   DecimalString,
+ *   nonNegativeDecimalString,
+ * } from "@evolu/common";
  *
  * const NonNegative = nonNegativeDecimalString(DecimalString);
  *
- * expectOk(NonNegative.fromUnknown("0.5"), "0.5");
+ * assertOk(NonNegative.fromUnknown("0.5"), "0.5");
  * ```
  *
  * @group Number
@@ -6779,11 +7039,15 @@ export type NonNegativeDecimalString = typeof NonNegativeDecimalString.Output;
  * ### Example
  *
  * ```ts
- * import { DecimalString, positiveDecimalString } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   DecimalString,
+ *   positiveDecimalString,
+ * } from "@evolu/common";
  *
  * const Positive = positiveDecimalString(DecimalString);
  *
- * expectOk(Positive.fromUnknown("0.5"), "0.5");
+ * assertOk(Positive.fromUnknown("0.5"), "0.5");
  * ```
  *
  * @group Number
@@ -6835,11 +7099,15 @@ export type PositiveDecimalString = typeof PositiveDecimalString.Output;
  * ### Example
  *
  * ```ts
- * import { DecimalString, nonPositiveDecimalString } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   DecimalString,
+ *   nonPositiveDecimalString,
+ * } from "@evolu/common";
  *
  * const NonPositive = nonPositiveDecimalString(DecimalString);
  *
- * expectOk(NonPositive.fromUnknown("-0.5"), "-0.5");
+ * assertOk(NonPositive.fromUnknown("-0.5"), "-0.5");
  * ```
  *
  * @group Number
@@ -6887,11 +7155,15 @@ export type NonPositiveDecimalString = typeof NonPositiveDecimalString.Output;
  * ### Example
  *
  * ```ts
- * import { DecimalString, negativeDecimalString } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   DecimalString,
+ *   negativeDecimalString,
+ * } from "@evolu/common";
  *
  * const Negative = negativeDecimalString(DecimalString);
  *
- * expectOk(Negative.fromUnknown("-0.5"), "-0.5");
+ * assertOk(Negative.fromUnknown("-0.5"), "-0.5");
  * ```
  *
  * @group Number
@@ -6951,16 +7223,29 @@ export type NegativeDecimalString = typeof NegativeDecimalString.Output;
  * ### Example
  *
  * ```ts
- * import { FiniteNumber, multipleOf, type Brand } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   FiniteNumber,
+ *   multipleOf,
+ *   type Brand,
+ * } from "@evolu/common";
  *
  * const Tenths = multipleOf("0.1")(FiniteNumber);
  *
- * expectTypeOf<typeof Tenths.Output>().toEqualTypeOf<
- *   FiniteNumber & Brand<"MultipleOf0.1">
+ * assertType<
+ *   FiniteNumber & Brand<"MultipleOf0.1">,
+ *   typeof Tenths.Output
  * >();
  *
- * expectOk(Tenths.fromUnknown(0.3), 0.3);
- * expectErr(Tenths.fromUnknown(0.31), {
+ * assertOk(Tenths.fromUnknown(0.3), 0.3);
+ * const invalid = Tenths.fromUnknown(0.31);
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "MultipleOf0.1",
  *   value: 0.31,
  *   divisor: "0.1",
@@ -7097,11 +7382,11 @@ const decimalStringToParts = (value: string): DecimalParts => {
  * ### Example
  *
  * ```ts
- * import { Number, between } from "@evolu/common";
+ * import { assertOk, Number, between } from "@evolu/common";
  *
  * const Percentage = between(0, 100)(Number);
  *
- * expectOk(Percentage.fromUnknown(75), 75);
+ * assertOk(Percentage.fromUnknown(75), 75);
  * ```
  *
  * @group Number
@@ -7171,6 +7456,11 @@ export interface BetweenError<
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
+ *   Data,
  *   String,
  *   array,
  *   brand,
@@ -7182,12 +7472,16 @@ export interface BetweenError<
  * const UserIds = array(UserId);
  * const result = UserIds.from.parent(["ada", "grace"]);
  *
- * expectTypeOf(result).toEqualTypeOf<
- *   Result<ReadonlyArray<string & Brand<"UserId">>, never>
+ * assertType<
+ *   Result<ReadonlyArray<string & Brand<"UserId">>, never>,
+ *   typeof result
  * >();
- * expectOk(result, ["ada", "grace"]);
- * expectOk(UserIds.fromUnknown(["ada", "grace"]), ["ada", "grace"]);
- * expectErr(UserIds.fromUnknown("ada"), {
+ * assertOk(result, ["ada", "grace"]);
+ * assertOk(UserIds.fromUnknown(["ada", "grace"]), ["ada", "grace"]);
+ * const invalid = UserIds.fromUnknown("ada");
+ * assertErr(invalid);
+ * assertType(Data, invalid.error);
+ * assertEqual(invalid.error, {
  *   type: "Array",
  *   reason: { kind: "NotArray", value: "ada" },
  * });
@@ -7611,12 +7905,12 @@ const copyArrayPrefix = (
  * ### Example
  *
  * ```ts
- * import { String, set } from "@evolu/common";
+ * import { assertOk, String, set } from "@evolu/common";
  *
  * const Tags = set(String);
  * const tags = new Set(["local-first", "offline"]);
  *
- * expectOk(Tags.fromUnknown(tags), tags);
+ * assertOk(Tags.fromUnknown(tags), tags);
  * ```
  *
  * @group Collection
@@ -7992,7 +8286,7 @@ const validateSetItems = (
  * ### Example
  *
  * ```ts
- * import { PositiveInt, String, map } from "@evolu/common";
+ * import { assertOk, PositiveInt, String, map } from "@evolu/common";
  *
  * const Scores = map(String, PositiveInt);
  * const scores = new Map([
@@ -8000,7 +8294,7 @@ const validateSetItems = (
  *   ["Grace", 20],
  * ]);
  *
- * expectOk(Scores.fromUnknown(scores), scores);
+ * assertOk(Scores.fromUnknown(scores), scores);
  * ```
  *
  * @group Collection
@@ -8520,12 +8814,17 @@ const validateMapEntries = (
  * ### Example
  *
  * ```ts
- * import { Int64FromInt64String, String, tuple } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   Int64FromInt64String,
+ *   String,
+ *   tuple,
+ * } from "@evolu/common";
  *
  * const Entry = tuple(String, Int64FromInt64String);
  *
- * expectOk(Entry.fromUnknown(["count", "1"]), ["count", 1n]);
- * expectOk(Entry.from.parent(["count", "1"]), ["count", 1n]);
+ * assertOk(Entry.fromUnknown(["count", "1"]), ["count", 1n]);
+ * assertOk(Entry.from.parent(["count", "1"]), ["count", 1n]);
  * ```
  *
  * @group Collection
@@ -9284,6 +9583,8 @@ export { _Object as Object };
  *
  * ```ts
  * import {
+ *   assertOk,
+ *   assertType,
  *   Int64FromInt64String,
  *   String,
  *   record,
@@ -9299,21 +9600,22 @@ export { _Object as Object };
  *   grace: "20",
  * });
  *
- * expectOk(scoresFromUnknown, { ada: 10n, grace: 20n });
+ * assertOk(scoresFromUnknown, { ada: 10n, grace: 20n });
  *
  * // Validate keys and values with their root Types.
  * const scoresInput = ScoresByUser.parent.fromUnknown({
  *   ada: "10",
  *   grace: "20",
  * });
- * expectOk(scoresInput, { ada: "10", grace: "20" });
+ * assertOk(scoresInput, { ada: "10", grace: "20" });
  *
  * // Run the remaining key and value stages.
  * const scoresFromInput = ScoresByUser.from.parent(scoresInput.value);
  *
- * expectOk(scoresFromInput, { ada: 10n, grace: 20n });
- * expectTypeOf(scoresFromInput.value).toEqualTypeOf<
- *   Readonly<Partial<Record<string, Int64>>>
+ * assertOk(scoresFromInput, { ada: 10n, grace: 20n });
+ * assertType<
+ *   Readonly<Partial<Record<string, Int64>>>,
+ *   typeof scoresFromInput.value
  * >();
  * ```
  *
@@ -9322,34 +9624,64 @@ export { _Object as Object };
  * as a Record entry:
  *
  * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertTrue,
+ *   trySync,
+ * } from "@evolu/common";
+ *
  * type Values = Partial<Record<"toString", number>>;
  * const values: Values = {};
  *
  * // TypeScript treats the inherited function as `number | undefined`.
  * const value: number | undefined = values.toString;
+ * const valueType = typeof value;
  *
- * expect(typeof value).toBe("function");
- * expect(() => {
- *   if (value !== undefined) value.toFixed();
- * }).toThrow(TypeError);
+ * assertEqual(valueType, "function");
+ * const called = trySync(
+ *   () => {
+ *     if (value !== undefined) value.toFixed();
+ *   },
+ *   (error) => error,
+ * );
+ * assertErr(called);
+ * assertTrue(called.error instanceof TypeError);
  * ```
  *
  * Evolu Record Outputs use the same TypeScript Record representation.
  *
  * ```ts
- * import { Number, literal, record } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertTrue,
+ *   trySync,
+ *   Number,
+ *   literal,
+ *   record,
+ *   type Data,
+ * } from "@evolu/common";
  *
  * const Values = record(literal("toString"), Number);
  * const result = Values.fromUnknown({});
+ * const emptyValues: Data = {};
  *
- * expectOk(result, {});
+ * assertOk(result, emptyValues);
  *
  * const value: number | undefined = result.value.toString;
+ * const valueType = typeof value;
  *
- * expect(typeof value).toBe("function");
- * expect(() => {
- *   if (value !== undefined) value.toFixed();
- * }).toThrow(TypeError);
+ * assertEqual(valueType, "function");
+ * const called = trySync(
+ *   () => {
+ *     if (value !== undefined) value.toFixed();
+ *   },
+ *   (error) => error,
+ * );
+ * assertErr(called);
+ * assertTrue(called.error instanceof TypeError);
  * ```
  *
  * In other words, treat Record Outputs as string-keyed data rather than calling
@@ -9931,7 +10263,13 @@ export interface OptionalProperty<T extends TypeNode> {
  * ### Example
  *
  * ```ts
- * import { String, object, optional, undefinedOr } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   String,
+ *   object,
+ *   optional,
+ *   undefinedOr,
+ * } from "@evolu/common";
  *
  * const User = object({
  *   name: String,
@@ -9939,8 +10277,8 @@ export interface OptionalProperty<T extends TypeNode> {
  *   preferredName: optional(undefinedOr(String)),
  * });
  *
- * expectOk(User.fromUnknown({ name: "Ada" }), { name: "Ada" });
- * expectOk(User.fromUnknown({ name: "Ada", preferredName: undefined }), {
+ * assertOk(User.fromUnknown({ name: "Ada" }), { name: "Ada" });
+ * assertOk(User.fromUnknown({ name: "Ada", preferredName: undefined }), {
  *   name: "Ada",
  *   preferredName: undefined,
  * });
@@ -10014,6 +10352,8 @@ type ObjectProperty = ObjectProps[string];
  *
  * ```ts
  * import {
+ *   assertOk,
+ *   assertType,
  *   Int64FromInt64String,
  *   String,
  *   object,
@@ -10032,20 +10372,20 @@ type ObjectProperty = ObjectProps[string];
  *   loginCount: "42",
  * });
  *
- * expectOk(userFromUnknown, { name: "Ada", loginCount: 42n });
+ * assertOk(userFromUnknown, { name: "Ada", loginCount: 42n });
  *
  * // Validate the object and root property Types.
  * const userInput = User.parent.fromUnknown({
  *   name: "Ada",
  *   loginCount: "42",
  * });
- * expectOk(userInput, { name: "Ada", loginCount: "42" });
+ * assertOk(userInput, { name: "Ada", loginCount: "42" });
  *
  * // Run the remaining property stages.
  * const userFromInput = User.from.parent(userInput.value);
  *
- * expectOk(userFromInput, { name: "Ada", loginCount: 42n });
- * expectTypeOf(userFromInput.value).toExtend<User>();
+ * assertOk(userFromInput, { name: "Ada", loginCount: 42n });
+ * assertType<typeof User.Output, typeof userFromInput.value>();
  * ```
  *
  * Note that TypeScript does not model an object's runtime prototype. This can
@@ -10053,6 +10393,13 @@ type ObjectProperty = ObjectProps[string];
  * as an object property:
  *
  * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertTrue,
+ *   trySync,
+ * } from "@evolu/common";
+ *
  * interface Values {
  *   readonly toString?: number;
  * }
@@ -10062,29 +10409,52 @@ type ObjectProperty = ObjectProps[string];
  *
  * // TypeScript treats the inherited function as `number | undefined`.
  * const value: number | undefined = values.toString;
+ * const valueType = typeof value;
  *
- * expect(typeof value).toBe("function");
- * expect(() => {
- *   if (value !== undefined) value.toFixed();
- * }).toThrow(TypeError);
+ * assertEqual(valueType, "function");
+ * const called = trySync(
+ *   () => {
+ *     if (value !== undefined) value.toFixed();
+ *   },
+ *   (error) => error,
+ * );
+ * assertErr(called);
+ * assertTrue(called.error instanceof TypeError);
  * ```
  *
  * Evolu Object Outputs use the same TypeScript object representation.
  *
  * ```ts
- * import { Number, object, optional } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertTrue,
+ *   trySync,
+ *   Number,
+ *   object,
+ *   optional,
+ *   type Data,
+ * } from "@evolu/common";
  *
  * const Values = object({ toString: optional(Number) });
  * const result = Values.fromUnknown({});
+ * const emptyValues: Data = {};
  *
- * expectOk(result, {});
+ * assertOk(result, emptyValues);
  *
  * const value: number | undefined = result.value.toString;
+ * const valueType = typeof value;
  *
- * expect(typeof value).toBe("function");
- * expect(() => {
- *   if (value !== undefined) value.toFixed();
- * }).toThrow(TypeError);
+ * assertEqual(valueType, "function");
+ * const called = trySync(
+ *   () => {
+ *     if (value !== undefined) value.toFixed();
+ *   },
+ *   (error) => error,
+ * );
+ * assertErr(called);
+ * assertTrue(called.error instanceof TypeError);
  * ```
  *
  * In other words, treat Object Outputs as data rather than calling inherited
@@ -10105,7 +10475,13 @@ export function object<const Props extends ObjectProps>(
  * ### Example
  *
  * ```ts
- * import { String, object, record } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   assertType,
+ *   String,
+ *   object,
+ *   record,
+ * } from "@evolu/common";
  *
  * const RequestHeaders = object(
  *   { authorization: String },
@@ -10116,13 +10492,11 @@ export function object<const Props extends ObjectProps>(
  *   "x-request-id": "request-1",
  * });
  *
- * expectOk(result, {
+ * assertOk(result, {
  *   authorization: "Bearer token",
  *   "x-request-id": "request-1",
  * });
- * expectTypeOf(result.value["x-request-id"]).toEqualTypeOf<
- *   string | undefined
- * >();
+ * assertType<string | undefined, (typeof result.value)["x-request-id"]>();
  * ```
  */
 export function object<
@@ -11126,13 +11500,20 @@ const createRecordPropertyError = <Error extends TypeError>(
  * ### Example
  *
  * ```ts
- * import { PositiveInt, String, partial } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertOk,
+ *   PositiveInt,
+ *   String,
+ *   partial,
+ * } from "@evolu/common";
  *
  * const PartialUser = partial({ name: String, age: PositiveInt });
+ * const emptyPartialUser: typeof PartialUser.Output = {};
  *
- * expectOk(PartialUser.fromUnknown({}), {});
- * expectOk(PartialUser.fromUnknown({ name: "Ada" }), { name: "Ada" });
- * expect(PartialUser.fromUnknown({ age: -1 }).ok).toBe(false);
+ * assertOk(PartialUser.fromUnknown({}), emptyPartialUser);
+ * assertOk(PartialUser.fromUnknown({ name: "Ada" }), { name: "Ada" });
+ * assertFalse(PartialUser.fromUnknown({ age: -1 }).ok);
  * ```
  *
  * @group Objects
@@ -11182,15 +11563,20 @@ export type PartialObjectProps<Props extends ObjectProps> = {
  * ### Example
  *
  * ```ts
- * import { String, nullOr, nullableToOptional } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   String,
+ *   nullOr,
+ *   nullableToOptional,
+ * } from "@evolu/common";
  *
  * const User = nullableToOptional({
  *   name: String,
  *   nickname: nullOr(String),
  * });
  *
- * expectOk(User.fromUnknown({ name: "Ada" }), { name: "Ada" });
- * expectOk(User.fromUnknown({ name: "Ada", nickname: null }), {
+ * assertOk(User.fromUnknown({ name: "Ada" }), { name: "Ada" });
+ * assertOk(User.fromUnknown({ name: "Ada", nickname: null }), {
  *   name: "Ada",
  *   nickname: null,
  * });
@@ -11254,12 +11640,12 @@ export type NullableToOptionalProps<Props extends ObjectProps> = {
  * ### Example
  *
  * ```ts
- * import { String, object, omit } from "@evolu/common";
+ * import { assertOk, String, object, omit } from "@evolu/common";
  *
  * const User = object({ name: String, password: String });
  * const PublicUser = omit(User, "password");
  *
- * expectOk(PublicUser.fromUnknown({ name: "Ada" }), { name: "Ada" });
+ * assertOk(PublicUser.fromUnknown({ name: "Ada" }), { name: "Ada" });
  * ```
  *
  * @group Objects
@@ -11325,6 +11711,7 @@ type OmitKeyConcreteTypeError = CompileTimeError<
  *
  * ```ts
  * import {
+ *   assertOk,
  *   NonNegativeInt,
  *   String,
  *   object,
@@ -11342,8 +11729,8 @@ type OmitKeyConcreteTypeError = CompileTimeError<
  *   value: { timestamp: 42 },
  * });
  *
- * expectOk(validated, { ok: true, value: { timestamp: 42 } });
- * expectOk(validated.value, { timestamp: 42 });
+ * assertOk(validated, { ok: true, value: { timestamp: 42 } });
+ * assertOk(validated.value, { timestamp: 42 });
  * ```
  *
  * @group Results
@@ -11410,21 +11797,31 @@ export type UnknownResult = typeof UnknownResult.Output;
  * ### Example
  *
  * ```ts
- * import { String, discriminatedUnion, typed } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertOk,
+ *   assertType,
+ *   String,
+ *   discriminatedUnion,
+ *   typed,
+ * } from "@evolu/common";
  *
  * const Loading = typed("Loading");
  * const Loaded = typed("Loaded", { value: String });
  * const State = discriminatedUnion(Loading, Loaded);
  *
- * expectOk(State.fromUnknown({ type: "Loading" }), { type: "Loading" });
- * expectOk(State.fromUnknown({ type: "Loaded", value: "Evolu" }), {
+ * assertOk(State.fromUnknown({ type: "Loading" }), { type: "Loading" });
+ * assertOk(State.fromUnknown({ type: "Loaded", value: "Evolu" }), {
  *   type: "Loaded",
  *   value: "Evolu",
  * });
- * expect(Loading.is({ type: "Loading", progress: 1 })).toBe(false);
- * expectTypeOf<typeof Loading.Output>().toExtend<{
- *   readonly type: "Loading";
- * }>();
+ * assertFalse(Loading.is({ type: "Loading", progress: 1 }));
+ * assertType<
+ *   true,
+ *   typeof Loading.Output extends { readonly type: "Loading" }
+ *     ? true
+ *     : false
+ * >();
  * ```
  *
  * @group Discriminated unions
@@ -11439,13 +11836,13 @@ export function typed<const Tag extends TypeName>(
  * ### Example
  *
  * ```ts
- * import { String, typed } from "@evolu/common";
+ * import { assertOk, String, typed } from "@evolu/common";
  *
  * const Pending = typed("Pending", {
  *   label: String,
  * });
  *
- * expectOk(Pending.fromUnknown({ type: "Pending", label: "Waiting" }), {
+ * assertOk(Pending.fromUnknown({ type: "Pending", label: "Waiting" }), {
  *   type: "Pending",
  *   label: "Waiting",
  * });
@@ -11468,7 +11865,13 @@ export function typed<
  * ### Example
  *
  * ```ts
- * import { String, record, typed } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   assertType,
+ *   String,
+ *   record,
+ *   typed,
+ * } from "@evolu/common";
  *
  * const Open = typed("Open", { label: String }, record(String, String));
  * const result = Open.fromUnknown({
@@ -11477,12 +11880,12 @@ export function typed<
  *   note: "Connected",
  * });
  *
- * expectOk(result, {
+ * assertOk(result, {
  *   type: "Open",
  *   label: "Ready",
  *   note: "Connected",
  * });
- * expectTypeOf(result.value.note).toEqualTypeOf<string | undefined>();
+ * assertType<string | undefined, typeof result.value.note>();
  * ```
  */
 export function typed<
@@ -11542,7 +11945,14 @@ export function typed(
  * ### Example
  *
  * ```ts
- * import { err, ok, type Result, type Typed } from "@evolu/common";
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
  *
  * interface User extends Typed<"User"> {
  *   readonly id: string;
@@ -11557,8 +11967,8 @@ export function typed(
  *   readonly id: string;
  * }
  *
- * expectOk(getUser("user-1"), { type: "User", id: "user-1" });
- * expectErr(getUser("missing"), { type: "UserNotFound", id: "missing" });
+ * assertOk(getUser("user-1"), { type: "User", id: "user-1" });
+ * assertErr(getUser("missing"), { type: "UserNotFound", id: "missing" });
  * ```
  *
  * @group Discriminated unions
@@ -11578,6 +11988,7 @@ export interface Typed<Tag extends TypeName> {
  *
  * ```ts
  * import {
+ *   assertType,
  *   String,
  *   discriminatedUnion,
  *   typed,
@@ -11591,7 +12002,7 @@ export interface Typed<Tag extends TypeName> {
  *
  * type CreateMessage = ExtractTyped<Message, "Create">;
  *
- * expectTypeOf<CreateMessage>().toEqualTypeOf<typeof Create.Output>();
+ * assertType<typeof Create.Output, CreateMessage>();
  *
  * // @ts-expect-error "Cretae" is not a Message type.
  * type Typo = ExtractTyped<Message, "Cretae">;
@@ -11652,7 +12063,7 @@ type TypedTypePropertyError = CompileTimeError<
  * ### Example
  *
  * ```ts
- * import { String, nextResult, typed } from "@evolu/common";
+ * import { assertEqual, String, nextResult, typed } from "@evolu/common";
  *
  * const StringNextResult = nextResult(
  *   String,
@@ -11670,19 +12081,21 @@ type TypedTypePropertyError = CompileTimeError<
  *   return `Error: ${result.error.message}`;
  * };
  *
- * expect(describeNext({ ok: true, value: "item" })).toBe("Value: item");
- * expect(
+ * assertEqual(describeNext({ ok: true, value: "item" }), "Value: item");
+ * assertEqual(
  *   describeNext({
  *     ok: false,
  *     error: { type: "Done", done: "complete" },
  *   }),
- * ).toBe("Done: complete");
- * expect(
+ *   "Done: complete",
+ * );
+ * assertEqual(
  *   describeNext({
  *     ok: false,
  *     error: { type: "ReadFailed", message: "Offline" },
  *   }),
- * ).toBe("Error: Offline");
+ *   "Error: Offline",
+ * );
  * ```
  *
  * @group Results
@@ -11758,13 +12171,18 @@ export type UnknownNextResult = typeof UnknownNextResult.Output;
  * ### Example
  *
  * ```ts
- * import { String, discriminatedUnion, typed } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   String,
+ *   discriminatedUnion,
+ *   typed,
+ * } from "@evolu/common";
  *
  * const Created = typed("Created", { id: String });
  * const Deleted = typed("Deleted", { id: String });
  * const Event = discriminatedUnion(Created, Deleted);
  *
- * expectOk(Event.fromUnknown({ type: "Created", id: "id" }), {
+ * assertOk(Event.fromUnknown({ type: "Created", id: "id" }), {
  *   type: "Created",
  *   id: "id",
  * });
@@ -11785,6 +12203,7 @@ export function discriminatedUnion<
  *
  * ```ts
  * import {
+ *   assertOk,
  *   Number,
  *   String,
  *   discriminatedUnion,
@@ -11796,11 +12215,11 @@ export function discriminatedUnion<
  * const Removed = object({ kind: literal("removed"), id: Number });
  * const Event = discriminatedUnion("kind", Added, Removed);
  *
- * expectOk(Event.fromUnknown({ kind: "added", value: "Evolu" }), {
+ * assertOk(Event.fromUnknown({ kind: "added", value: "Evolu" }), {
  *   kind: "added",
  *   value: "Evolu",
  * });
- * expectOk(Event.fromUnknown({ kind: "removed", id: 1 }), {
+ * assertOk(Event.fromUnknown({ kind: "removed", id: 1 }), {
  *   kind: "removed",
  *   id: 1,
  * });
@@ -12411,6 +12830,8 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
  *
  * ```ts
  * import {
+ *   assertOk,
+ *   assertType,
  *   String,
  *   array,
  *   lazy,
@@ -12440,11 +12861,11 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
  *   children: [{ value: "leaf", children: [] }],
  * });
  *
- * expectOk(result, {
+ * assertOk(result, {
  *   value: "root",
  *   children: [{ value: "leaf", children: [] }],
  * });
- * expectTypeOf(result.value).toEqualTypeOf<Tree>();
+ * assertType<Tree, typeof result.value>();
  * ```
  *
  * @group Recursive
@@ -12664,7 +13085,7 @@ const assertLazyReferencesAreGuarded = (type: RuntimeTypeNode): void => {
  * ### Example
  *
  * ```ts
- * import { Data, assertType } from "@evolu/common";
+ * import { assertOk, assertSame, assertType, Data } from "@evolu/common";
  *
  * const value: unknown = {
  *   user: { name: "Ada" },
@@ -12673,7 +13094,8 @@ const assertLazyReferencesAreGuarded = (type: RuntimeTypeNode): void => {
  * };
  * const result = Data.fromUnknown(value);
  *
- * expectOk(result, value);
+ * assertOk(result);
+ * assertSame(result.value, value);
  * assertType<Data, typeof result.value>();
  * ```
  *
@@ -13168,13 +13590,13 @@ const getDataRuntimeTypeIssues: RuntimeGetTypeIssues = (error, mode) => {
  * ### Example
  *
  * ```ts
- * import { Data } from "@evolu/common";
+ * import { assertOk, assertTrue, Data } from "@evolu/common";
  *
  * const value = new Map([["count", 1]]);
  * const result = Data.fromUnknown(value);
  *
- * expectOk(result, value);
- * expect(Data.is(result.value)).toBe(true);
+ * assertOk(result, value);
+ * assertTrue(Data.is(result.value));
  * ```
  *
  * @group Base
@@ -13751,7 +14173,12 @@ const stringifyJsonValue = (value: JsonValue): Json => {
  * ### Example
  *
  * ```ts
- * import { JsonValue, type JsonValueInput } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   assertType,
+ *   JsonValue,
+ *   type JsonValueInput,
+ * } from "@evolu/common";
  *
  * const input: JsonValueInput = {
  *   name: "Ada",
@@ -13759,8 +14186,8 @@ const stringifyJsonValue = (value: JsonValue): Json => {
  * };
  * const result = JsonValue.fromUnknown(input);
  *
- * expectOk(result, input);
- * expectTypeOf(result.value).toEqualTypeOf<JsonValue>();
+ * assertOk(result, input);
+ * assertType<JsonValue, typeof result.value>();
  * ```
  *
  * @group JSON
@@ -13822,11 +14249,11 @@ export type Json = typeof Json.Output;
  * ### Example
  *
  * ```ts
- * import { Json, jsonToJsonValue } from "@evolu/common";
+ * import { assertEqual, Json, jsonToJsonValue } from "@evolu/common";
  *
  * const value = jsonToJsonValue(Json.orThrow('{"name":"Ada"}'));
  *
- * expect(value).toEqual({ name: "Ada" });
+ * assertEqual(value, { name: "Ada" });
  * ```
  *
  * @group JSON
@@ -13839,11 +14266,15 @@ export const jsonToJsonValue = (value: Json): JsonValue => parseJson(value);
  * ### Example
  *
  * ```ts
- * import { jsonValueToJson, type JsonValue } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   jsonValueToJson,
+ *   type JsonValue,
+ * } from "@evolu/common";
  *
  * const value: JsonValue = { name: "Ada" };
  *
- * expect(jsonValueToJson(value)).toBe('{"name":"Ada"}');
+ * assertEqual(jsonValueToJson(value), '{"name":"Ada"}');
  * ```
  *
  * @group JSON
@@ -13860,12 +14291,12 @@ export const jsonValueToJson = (value: JsonValue): Json =>
  * ### Example
  *
  * ```ts
- * import { JsonValueFromJson } from "@evolu/common";
+ * import { assertEqual, assertOk, JsonValueFromJson } from "@evolu/common";
  *
  * const result = JsonValueFromJson.fromUnknown('{ "name": "Ada" }');
  *
- * expectOk(result, { name: "Ada" });
- * expect(JsonValueFromJson.to(result.value)).toBe('{"name":"Ada"}');
+ * assertOk(result, { name: "Ada" });
+ * assertEqual(JsonValueFromJson.to(result.value), '{"name":"Ada"}');
  * ```
  *
  * @group JSON
@@ -13892,6 +14323,8 @@ export const JsonValueFromJson = /*#__PURE__*/ transform(
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   Age,
  *   NonEmptyTrimmedString100,
  *   json,
@@ -13912,11 +14345,12 @@ export const JsonValueFromJson = /*#__PURE__*/ transform(
  * const user = User.orThrow({ name: "Ada", age: 37 });
  * const userJson = userToUserJson(user);
  *
- * expectTypeOf(userJson).toEqualTypeOf<
- *   string & Brand<"Json"> & Brand<"UserJson">
+ * assertType<
+ *   string & Brand<"Json"> & Brand<"UserJson">,
+ *   typeof userJson
  * >();
- * expect(userJson).toBe('{"name":"Ada","age":37}');
- * expect(userJsonToUser(userJson)).toEqual(user);
+ * assertEqual(userJson, '{"name":"Ada","age":37}');
+ * assertEqual(userJsonToUser(userJson), user);
  * ```
  *
  * The supplied Type must have a JSON-compatible `CanonicalInput`. The branded

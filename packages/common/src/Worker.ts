@@ -64,6 +64,7 @@ export interface MessagePort<Input, Output = never> extends Disposable {
    *
    * ```ts
    * import {
+   *   assertType,
    *   createMessageChannel,
    *   type NativeMessagePort,
    * } from "@evolu/common";
@@ -79,9 +80,7 @@ export interface MessagePort<Input, Output = never> extends Disposable {
    *   port: consoleChannel.port1.native,
    * };
    *
-   * expectTypeOf(init.port).toEqualTypeOf<
-   *   NativeMessagePort<ConsoleMessage>
-   * >();
+   * assertType<NativeMessagePort<ConsoleMessage>, typeof init.port>();
    * ```
    */
   readonly native: NativeMessagePort<Input, Output>;
@@ -146,6 +145,7 @@ export type WorkerDeps = ConsoleDep &
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   createMessageChannel,
  *   createMessagePort,
  *   createSharedWorker,
@@ -183,14 +183,18 @@ export type WorkerDeps = ConsoleDep &
  * ]);
  * queryChannel.port1.postMessage({ text: "all todos" });
  *
- * expect(await response.promise).toEqual({ rows: ["all todos"] });
+ * assertEqual(await response.promise, { rows: ["all todos"] });
  * ```
  *
  * On the worker side, attach the handler after asynchronous initialization;
  * messages sent earlier remain queued:
  *
  * ```ts
- * import { createMessageChannel, createMessagePort } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   createMessageChannel,
+ *   createMessagePort,
+ * } from "@evolu/common";
  *
  * interface Query {
  *   readonly text: string;
@@ -211,7 +215,7 @@ export type WorkerDeps = ConsoleDep &
  * };
  * await allReceived.promise;
  *
- * expect(received).toEqual([
+ * assertEqual(received, [
  *   { text: "all todos" },
  *   { text: "completed todos" },
  * ]);

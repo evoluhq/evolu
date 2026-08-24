@@ -60,6 +60,7 @@ import type { Predicate } from "./Types.ts";
  *
  * ```ts
  * import {
+ *   assertOk,
  *   err,
  *   exponential,
  *   jitter,
@@ -87,18 +88,24 @@ import type { Predicate } from "./Types.ts";
  * await using run = testCreateRun({
  *   random: { next: () => 0 as RandomNumber },
  * });
- * expectOk(await run(fetchWithRetry), "data");
+ * assertOk(await run(fetchWithRetry), "data");
  * ```
  *
  * Or use a preset:
  *
  * ```ts
- * import { ok, retry, retryStrategyAws, type Task } from "@evolu/common";
+ * import {
+ *   assertTrue,
+ *   ok,
+ *   retry,
+ *   retryStrategyAws,
+ *   type Task,
+ * } from "@evolu/common";
  *
  * const fetchData: Task<string> = () => ok("data");
  * const fetchWithRetry = retry(fetchData, retryStrategyAws);
  *
- * expect(fetchWithRetry).toBeTypeOf("function");
+ * assertTrue(typeof fetchWithRetry === "function");
  * ```
  */
 export type Schedule<out Output, in Input = unknown> = (
@@ -140,12 +147,12 @@ export interface ScheduleStep<Output> {
  * ### Recurring immediately
  *
  * ```ts
- * import { forever, take, testCreateDeps } from "@evolu/common";
+ * import { assertOk, forever, take, testCreateDeps } from "@evolu/common";
  *
  * // Retry immediately, up to 5 times.
  * const immediate = take(5)(forever);
  * const step = immediate(testCreateDeps());
- * expectOk(step(undefined), [0, 0]);
+ * assertOk(step(undefined), [0, 0]);
  * ```
  *
  * @group Constructors
@@ -163,13 +170,19 @@ export const forever: Schedule<number> = () => {
  * ### Scheduling one recurrence
  *
  * ```ts
- * import { done, once, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   done,
+ *   once,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // Produce one scheduled recurrence, then stop.
  * const oneShot = once;
  * const step = oneShot(testCreateDeps());
- * expectOk(step(undefined), [0, 0]);
- * expectErr(step(undefined), done());
+ * assertOk(step(undefined), [0, 0]);
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -195,15 +208,21 @@ export const once: Schedule<number> = () => {
  * ### Limiting recurrence count
  *
  * ```ts
- * import { done, recurs, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   done,
+ *   recurs,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // Retry up to 3 times (4 total attempts including the initial operation).
  * const retry = recurs(3);
  * const step = retry(testCreateDeps());
- * expectOk(step(undefined), [0, 0]);
+ * assertOk(step(undefined), [0, 0]);
  * step(undefined);
  * step(undefined);
- * expectErr(step(undefined), done());
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -220,7 +239,7 @@ export const recurs = (n: Int0To100OrNonNegativeInt): Schedule<number> =>
  * ### Constant spacing
  *
  * ```ts
- * import { spaced, take, testCreateDeps } from "@evolu/common";
+ * import { assertOk, spaced, take, testCreateDeps } from "@evolu/common";
  *
  * // Poll every second, retry three times, or run a long-lived heartbeat.
  * const poll = spaced("1s");
@@ -228,9 +247,9 @@ export const recurs = (n: Int0To100OrNonNegativeInt): Schedule<number> =>
  * const heartbeat = spaced("30s");
  * const deps = testCreateDeps();
  *
- * expectOk(poll(deps)(undefined), [1000, 1000]);
- * expectOk(retry(deps)(undefined), [500, 500]);
- * expectOk(heartbeat(deps)(undefined), [30000, 30000]);
+ * assertOk(poll(deps)(undefined), [1000, 1000]);
+ * assertOk(retry(deps)(undefined), [500, 500]);
+ * assertOk(heartbeat(deps)(undefined), [30000, 30000]);
  * ```
  *
  * @group Constructors
@@ -257,17 +276,17 @@ export const spaced =
  * ### Exponential growth factors
  *
  * ```ts
- * import { exponential, testCreateDeps } from "@evolu/common";
+ * import { assertOk, exponential, testCreateDeps } from "@evolu/common";
  *
  * // Standard doubling and gentler 1.5× growth.
  * const standard = exponential("100ms");
  * const gentle = exponential("100ms", 1.5);
  * const standardStep = standard(testCreateDeps());
  * const gentleStep = gentle(testCreateDeps());
- * expectOk(standardStep(undefined), [100, 100]);
- * expectOk(standardStep(undefined), [200, 200]);
- * expectOk(gentleStep(undefined), [100, 100]);
- * expectOk(gentleStep(undefined), [150, 150]);
+ * assertOk(standardStep(undefined), [100, 100]);
+ * assertOk(standardStep(undefined), [200, 200]);
+ * assertOk(gentleStep(undefined), [100, 100]);
+ * assertOk(gentleStep(undefined), [150, 150]);
  * ```
  *
  * @group Constructors
@@ -308,12 +327,12 @@ const saturateComputedMillis = (value: number): Millis => {
  * ### Linear growth
  *
  * ```ts
- * import { linear, testCreateDeps } from "@evolu/common";
+ * import { assertOk, linear, testCreateDeps } from "@evolu/common";
  *
  * // 100ms, 200ms, 300ms, 400ms, ...
  * const step = linear("100ms")(testCreateDeps());
- * expectOk(step(undefined), [100, 100]);
- * expectOk(step(undefined), [200, 200]);
+ * assertOk(step(undefined), [100, 100]);
+ * assertOk(step(undefined), [200, 200]);
  * ```
  *
  * @group Constructors
@@ -347,13 +366,13 @@ export const linear =
  * ### Fibonacci growth
  *
  * ```ts
- * import { fibonacci, testCreateDeps } from "@evolu/common";
+ * import { assertOk, fibonacci, testCreateDeps } from "@evolu/common";
  *
  * // 100ms, 100ms, 200ms, 300ms, 500ms, ...
  * const step = fibonacci("100ms")(testCreateDeps());
- * expectOk(step(undefined), [100, 100]);
- * expectOk(step(undefined), [100, 100]);
- * expectOk(step(undefined), [200, 200]);
+ * assertOk(step(undefined), [100, 100]);
+ * assertOk(step(undefined), [100, 100]);
+ * assertOk(step(undefined), [200, 200]);
  * ```
  *
  * @group Constructors
@@ -384,7 +403,7 @@ export const fibonacci =
  * ### Maintaining a fixed cadence
  *
  * ```ts
- * import { fixed, take, testCreateDeps } from "@evolu/common";
+ * import { assertOk, fixed, take, testCreateDeps } from "@evolu/common";
  *
  * // A bounded health check and an unbounded cron-like cadence.
  * const healthCheck = take(10)(fixed("5s"));
@@ -392,10 +411,10 @@ export const fibonacci =
  *
  * const healthDeps = testCreateDeps();
  * const healthStep = healthCheck(healthDeps);
- * expectOk(healthStep(undefined), [0, 5000]);
+ * assertOk(healthStep(undefined), [0, 5000]);
  * healthDeps.time.advance("3s");
- * expectOk(healthStep(undefined), [1, 2000]);
- * expectOk(cronLike(testCreateDeps())(undefined), [0, 60000]);
+ * assertOk(healthStep(undefined), [1, 2000]);
+ * assertOk(cronLike(testCreateDeps())(undefined), [0, 60000]);
  * ```
  *
  * @group Constructors
@@ -464,7 +483,7 @@ const createScheduleStepMetrics = (
  * ### Aligning to time windows
  *
  * ```ts
- * import { testCreateDeps, windowed } from "@evolu/common";
+ * import { assertOk, testCreateDeps, windowed } from "@evolu/common";
  *
  * const stepAfter = (elapsed: "3s" | "7s") => {
  *   const deps = testCreateDeps();
@@ -475,8 +494,8 @@ const createScheduleStepMetrics = (
  * };
  *
  * // At 3s the next boundary is 2s away; at 7s it is 3s away.
- * expectOk(stepAfter("3s"), [1, 2000]);
- * expectOk(stepAfter("7s"), [1, 3000]);
+ * assertOk(stepAfter("3s"), [1, 2000]);
+ * assertOk(stepAfter("7s"), [1, 3000]);
  * ```
  *
  * @group Constructors
@@ -503,12 +522,18 @@ export const windowed =
  * ### Scheduling one delayed recurrence
  *
  * ```ts
- * import { done, fromDelay, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   done,
+ *   fromDelay,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // Wait one second, then stop.
  * const step = fromDelay("1s")(testCreateDeps());
- * expectOk(step(undefined), [1000, 1000]);
- * expectErr(step(undefined), done());
+ * assertOk(step(undefined), [1000, 1000]);
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -525,15 +550,21 @@ export const fromDelay = (delay: Duration): Schedule<Millis> =>
  * ### Sequencing custom delays
  *
  * ```ts
- * import { done, fromDelays, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   done,
+ *   fromDelays,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // A custom retry sequence: 100ms, 500ms, then 2s.
  * const custom = fromDelays("100ms", "500ms", "2s");
  * const step = custom(testCreateDeps());
- * expectOk(step(undefined), [100, 100]);
- * expectOk(step(undefined), [500, 500]);
- * expectOk(step(undefined), [2000, 2000]);
- * expectErr(step(undefined), done());
+ * assertOk(step(undefined), [100, 100]);
+ * assertOk(step(undefined), [500, 500]);
+ * assertOk(step(undefined), [2000, 2000]);
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -552,6 +583,8 @@ export const fromDelays = (
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   done,
  *   elapsed,
  *   exponential,
@@ -563,7 +596,7 @@ export const fromDelays = (
  *
  * // Track elapsed time alongside each backoff step.
  * const withTiming = intersectSchedules(exponential("100ms"), elapsed);
- * expectOk(withTiming(testCreateDeps())(undefined), [[100, 0], 100]);
+ * assertOk(withTiming(testCreateDeps())(undefined), [[100, 0], 100]);
  *
  * // Or stop a schedule after 30 seconds of elapsed time.
  * const timeLimited = whileScheduleOutput((ms: Millis) => ms < 30000)(
@@ -573,7 +606,7 @@ export const fromDelays = (
  * const step = timeLimited(deps);
  * step(undefined);
  * deps.time.advance("30s");
- * expectErr(step(undefined), done());
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Constructors
@@ -593,6 +626,8 @@ export const elapsed: Schedule<Millis> = (deps) => {
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   done,
  *   during,
  *   exponential,
@@ -604,16 +639,16 @@ export const elapsed: Schedule<Millis> = (deps) => {
  * const timeLimited = during("30s");
  * const deps = testCreateDeps();
  * const step = timeLimited(deps);
- * expectOk(step(undefined), [0, 0]);
+ * assertOk(step(undefined), [0, 0]);
  * deps.time.advance("30.1s");
- * expectErr(step(undefined), done());
+ * assertErr(step(undefined), done());
  *
  * // Combine elapsed time with backoff for a time-boxed retry.
  * const timedRetry = intersectSchedules(
  *   exponential("100ms"),
  *   during("10s"),
  * );
- * expectOk(timedRetry(testCreateDeps())(undefined), [[100, 0], 100]);
+ * assertOk(timedRetry(testCreateDeps())(undefined), [[100, 0], 100]);
  * ```
  *
  * @group Constructors
@@ -632,6 +667,7 @@ export const during = (duration: Duration): Schedule<Millis> =>
  *
  * ```ts
  * import {
+ *   assertOk,
  *   always,
  *   exponential,
  *   intersectSchedules,
@@ -640,14 +676,14 @@ export const during = (duration: Duration): Schedule<Millis> =>
  *
  * // Always emit the same label.
  * const labeled = always("retry");
- * expectOk(labeled(testCreateDeps())(undefined), ["retry", 0]);
+ * assertOk(labeled(testCreateDeps())(undefined), ["retry", 0]);
  *
  * // Add a label while preserving exponential timing.
  * const withLabel = intersectSchedules(
  *   exponential("100ms"),
  *   always("backoff"),
  * );
- * expectOk(withLabel(testCreateDeps())(undefined), [
+ * assertOk(withLabel(testCreateDeps())(undefined), [
  *   [100, "backoff"],
  *   100,
  * ]);
@@ -668,7 +704,7 @@ export const always = <A>(value: A): Schedule<A> =>
  * ### Unfolding state
  *
  * ```ts
- * import { testCreateDeps, unfoldSchedule } from "@evolu/common";
+ * import { assertOk, testCreateDeps, unfoldSchedule } from "@evolu/common";
  *
  * // Unfold counters, custom backoff values, or state machines.
  * const counter = unfoldSchedule(0, (n) => n + 1);
@@ -691,12 +727,12 @@ export const always = <A>(value: A): Schedule<A> =>
  * const counterStep = counter(testCreateDeps());
  * const backoffStep = customBackoff(testCreateDeps());
  * const phaseStep = phases(testCreateDeps());
- * expectOk(counterStep(undefined), [0, 0]);
- * expectOk(counterStep(undefined), [1, 0]);
+ * assertOk(counterStep(undefined), [0, 0]);
+ * assertOk(counterStep(undefined), [1, 0]);
  * backoffStep(undefined);
  * phaseStep(undefined);
- * expectOk(backoffStep(undefined), [150, 0]);
- * expectOk(phaseStep(undefined), ["warmup", 0]);
+ * assertOk(backoffStep(undefined), [150, 0]);
+ * assertOk(phaseStep(undefined), ["warmup", 0]);
  * ```
  *
  * @group Constructors
@@ -723,14 +759,20 @@ export const unfoldSchedule =
  * ### Limiting a schedule
  *
  * ```ts
- * import { done, exponential, take, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertErr,
+ *   done,
+ *   exponential,
+ *   take,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // Three exponential retries, then Done.
  * const step = take(3)(exponential("100ms"))(testCreateDeps());
  * step(undefined);
  * step(undefined);
  * step(undefined);
- * expectErr(step(undefined), done());
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Limiting
@@ -757,6 +799,8 @@ export const take =
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   done,
  *   exponential,
  *   maxElapsed,
@@ -766,9 +810,9 @@ export const take =
  * // Retry for at most 30 seconds.
  * const deps = testCreateDeps();
  * const step = maxElapsed("30s")(exponential("1s"))(deps);
- * expectOk(step(undefined), [1000, 1000]);
+ * assertOk(step(undefined), [1000, 1000]);
  * deps.time.advance("30s");
- * expectErr(step(undefined), done());
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Limiting
@@ -802,7 +846,12 @@ export const maxElapsed = (duration: Duration) => {
  * ### Capping delays
  *
  * ```ts
- * import { exponential, maxDelay, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   exponential,
+ *   maxDelay,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // Exponential delays grow 1s, 2s, 4s, 8s, then stay capped at 10s.
  * const step = maxDelay("10s")(exponential("1s"))(testCreateDeps());
@@ -810,7 +859,7 @@ export const maxElapsed = (duration: Duration) => {
  * step(undefined);
  * step(undefined);
  * step(undefined);
- * expectOk(step(undefined), [16000, 10000]);
+ * assertOk(step(undefined), [16000, 10000]);
  * ```
  *
  * @group Limiting
@@ -851,6 +900,7 @@ export const maxDelay = (max: Duration) => {
  *
  * ```ts
  * import {
+ *   assertOk,
  *   exponential,
  *   jitter,
  *   spaced,
@@ -868,8 +918,8 @@ export const maxDelay = (max: Duration) => {
  * // Poll around a 30s target cadence, from 27s to 33s.
  * const polling = jitter("10%", "around")(spaced("30s"));
  *
- * expectOk(conservative(deps)(undefined), [1000, 875]);
- * expectOk(polling(deps)(undefined), [30000, 30000]);
+ * assertOk(conservative(deps)(undefined), [1000, 875]);
+ * assertOk(polling(deps)(undefined), [30000, 30000]);
  * ```
  *
  * @group Delay
@@ -910,12 +960,17 @@ const createJitter =
  * ### Replacing the first delay
  *
  * ```ts
- * import { delayed, exponential, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   delayed,
+ *   exponential,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * const step = delayed("1s")(exponential("100ms"))(testCreateDeps());
  * // Only the first delay is replaced; later exponential delays are unchanged.
- * expectOk(step(undefined), [100, 1000]);
- * expectOk(step(undefined), [200, 200]);
+ * assertOk(step(undefined), [100, 1000]);
+ * assertOk(step(undefined), [200, 200]);
  * ```
  *
  * @group Delay
@@ -946,11 +1001,16 @@ export const delayed = (initialDelay: Duration) => {
  * ### Adding to every delay
  *
  * ```ts
- * import { addDelay, exponential, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   addDelay,
+ *   exponential,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // Add 500ms to every exponential delay.
  * const step = addDelay("500ms")(exponential("100ms"))(testCreateDeps());
- * expectOk(step(undefined), [100, 600]);
+ * assertOk(step(undefined), [100, 600]);
  * ```
  *
  * @group Delay
@@ -972,7 +1032,12 @@ export const addDelay = (
  * ### Transforming delays
  *
  * ```ts
- * import { exponential, modifyDelay, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   exponential,
+ *   modifyDelay,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // Arbitrary transformations can double or cap delays.
  * const slower = modifyDelay((delay) => delay * 2)(exponential("100ms"));
@@ -982,8 +1047,8 @@ export const addDelay = (
  * );
  * const deps = testCreateDeps();
  *
- * expectOk(slower(deps)(undefined), [100, 200]);
- * expectOk(capped(deps)(undefined), [20000, 10000]);
+ * assertOk(slower(deps)(undefined), [100, 200]);
+ * assertOk(capped(deps)(undefined), [20000, 10000]);
  * ```
  *
  * @group Delay
@@ -1018,21 +1083,26 @@ export const modifyDelay =
  * ### Compensating for execution time
  *
  * ```ts
- * import { compensate, spaced, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   compensate,
+ *   spaced,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * const fastDeps = testCreateDeps();
  * const fastStep = compensate(spaced("5s"))(fastDeps);
- * expectOk(fastStep(undefined), [5000, 5000]);
+ * assertOk(fastStep(undefined), [5000, 5000]);
  * // Five seconds waiting plus one second working leaves four seconds.
  * fastDeps.time.advance("6s");
- * expectOk(fastStep(undefined), [5000, 4000]);
+ * assertOk(fastStep(undefined), [5000, 4000]);
  *
  * const slowDeps = testCreateDeps();
  * const slowStep = compensate(spaced("5s"))(slowDeps);
- * expectOk(slowStep(undefined), [5000, 5000]);
+ * assertOk(slowStep(undefined), [5000, 5000]);
  * // Five seconds waiting plus six seconds working leaves no delay.
  * slowDeps.time.advance("11s");
- * expectOk(slowStep(undefined), [5000, 0]);
+ * assertOk(slowStep(undefined), [5000, 0]);
  * ```
  *
  * @group Delay
@@ -1068,6 +1138,8 @@ export const compensate =
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   done,
  *   exponential,
  *   testCreateDeps,
@@ -1082,8 +1154,8 @@ export const compensate =
  *   (error: MyError) => error.type === "Transient",
  * )(exponential("100ms"));
  * const step = retryTransient(testCreateDeps());
- * expectOk(step({ type: "Transient" }), [100, 100]);
- * expectErr(step({ type: "Fatal" }), done());
+ * assertOk(step({ type: "Transient" }), [100, 100]);
+ * assertErr(step({ type: "Fatal" }), done());
  * ```
  *
  * @group Filtering
@@ -1114,6 +1186,8 @@ export const whileScheduleInput =
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   done,
  *   exponential,
  *   testCreateDeps,
@@ -1128,8 +1202,8 @@ export const whileScheduleInput =
  *   (error: MyError) => error.type === "Fatal",
  * )(exponential("100ms"));
  * const step = stopOnFatal(testCreateDeps());
- * expectOk(step({ type: "Transient" }), [100, 100]);
- * expectErr(step({ type: "Fatal" }), done());
+ * assertOk(step({ type: "Transient" }), [100, 100]);
+ * assertErr(step({ type: "Fatal" }), done());
  * ```
  *
  * @group Filtering
@@ -1159,6 +1233,7 @@ export const untilScheduleInput =
  *
  * ```ts
  * import {
+ *   assertErr,
  *   done,
  *   exponential,
  *   testCreateDeps,
@@ -1174,7 +1249,7 @@ export const untilScheduleInput =
  * step(undefined);
  * step(undefined);
  * step(undefined);
- * expectErr(step(undefined), done());
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Filtering
@@ -1206,6 +1281,7 @@ export const whileScheduleOutput =
  *
  * ```ts
  * import {
+ *   assertErr,
  *   done,
  *   exponential,
  *   testCreateDeps,
@@ -1222,7 +1298,7 @@ export const whileScheduleOutput =
  * step(undefined);
  * step(undefined);
  * step(undefined);
- * expectErr(step(undefined), done());
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Filtering
@@ -1256,6 +1332,7 @@ export const untilScheduleOutput =
  *
  * ```ts
  * import {
+ *   assertOk,
  *   exponential,
  *   resetScheduleAfter,
  *   testCreateDeps,
@@ -1264,9 +1341,9 @@ export const untilScheduleOutput =
  * const backoff = resetScheduleAfter("1m")(exponential("1s"));
  * const deps = testCreateDeps();
  * const step = backoff(deps);
- * expectOk(step(undefined), [1000, 1000]);
+ * assertOk(step(undefined), [1000, 1000]);
  * deps.time.advance("1m");
- * expectOk(step(undefined), [1000, 1000]);
+ * assertOk(step(undefined), [1000, 1000]);
  * ```
  *
  * @group State
@@ -1304,6 +1381,7 @@ export const resetScheduleAfter = (
  *
  * ```ts
  * import {
+ *   assertOk,
  *   exponential,
  *   mapSchedule,
  *   testCreateDeps,
@@ -1315,7 +1393,7 @@ export const resetScheduleAfter = (
  *   doubled: delay * 2,
  * }))(exponential("100ms"));
  * const step = schedule(testCreateDeps());
- * expectOk(step(undefined), [{ delay: 100, doubled: 200 }, 100]);
+ * assertOk(step(undefined), [{ delay: 100, doubled: 200 }, 100]);
  * ```
  *
  * @group Transform
@@ -1344,7 +1422,15 @@ export const mapSchedule =
  * ### Passing through input
  *
  * ```ts
- * import { exponential, passthrough, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertOk,
+ *   assertType,
+ *   Data,
+ *   exponential,
+ *   passthrough,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * interface MyError {
  *   readonly message: string;
@@ -1356,8 +1442,16 @@ export const mapSchedule =
  * const error = { message: "Unavailable" };
  * const deps = testCreateDeps();
  *
- * expectOk(identity(deps)(error), [error, 0]);
- * expectOk(withInput(deps)(error), [error, 100]);
+ * const identityResult = identity(deps)(error);
+ * assertOk(identityResult);
+ * assertType(Data, identityResult.value);
+ * assertEqual(identityResult.value, [error, 0]);
+ *
+ * const inputResult = withInput(deps)(error);
+ * assertOk(inputResult);
+ * assertType(Data, inputResult.value);
+ * const inputValue: Data = inputResult.value;
+ * assertEqual(inputValue, [error, 100]);
  * ```
  *
  * @group Constructors
@@ -1393,6 +1487,7 @@ export function passthrough<Output, Input>(
  *
  * ```ts
  * import {
+ *   assertOk,
  *   exponential,
  *   foldSchedule,
  *   minMillis,
@@ -1422,9 +1517,9 @@ export function passthrough<Output, Input>(
  * const deps = testCreateDeps();
  * const totalStep = withTotal(deps);
  * totalStep(undefined);
- * expectOk(totalStep(undefined), [300, 200]);
- * expectOk(collected(deps)(undefined), [[1000], 1000]);
- * expectOk(counted(deps)(undefined), [
+ * assertOk(totalStep(undefined), [300, 200]);
+ * assertOk(collected(deps)(undefined), [[1000], 1000]);
+ * assertOk(counted(deps)(undefined), [
  *   { attempts: 1, lastDelay: 100 },
  *   100,
  * ]);
@@ -1457,12 +1552,17 @@ export const foldSchedule =
  * ### Counting repetitions
  *
  * ```ts
- * import { exponential, repetitions, testCreateDeps } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   exponential,
+ *   repetitions,
+ *   testCreateDeps,
+ * } from "@evolu/common";
  *
  * // Count retries while preserving exponential timing.
  * const step = repetitions(exponential("100ms"))(testCreateDeps());
- * expectOk(step(undefined), [0, 100]);
- * expectOk(step(undefined), [1, 200]);
+ * assertOk(step(undefined), [0, 100]);
+ * assertOk(step(undefined), [1, 200]);
  * ```
  *
  * @group Transform
@@ -1481,6 +1581,8 @@ export const repetitions = <Output, Input>(
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertOk,
  *   delays,
  *   exponential,
  *   tapScheduleOutput,
@@ -1496,9 +1598,9 @@ export const repetitions = <Output, Input>(
  * })(delays(exponential("100ms")));
  * const deps = testCreateDeps();
  *
- * expectOk(monitorDelays(deps)(undefined), [100, 100]);
- * expectOk(logged(deps)(undefined), [100, 100]);
- * expect(observed).toEqual([100]);
+ * assertOk(monitorDelays(deps)(undefined), [100, 100]);
+ * assertOk(logged(deps)(undefined), [100, 100]);
+ * assertEqual(observed, [100]);
  * ```
  *
  * @group Transform
@@ -1526,6 +1628,7 @@ export const delays =
  *
  * ```ts
  * import {
+ *   assertOk,
  *   collectAllScheduleOutputs,
  *   spaced,
  *   take,
@@ -1536,7 +1639,7 @@ export const delays =
  * const collected = collectAllScheduleOutputs(take(3)(spaced("100ms")));
  * const step = collected(testCreateDeps());
  * step(undefined);
- * expectOk(step(undefined), [[100, 100], 100]);
+ * assertOk(step(undefined), [[100, 100], 100]);
  * ```
  *
  * @group Collection
@@ -1558,6 +1661,7 @@ export const collectAllScheduleOutputs = <Output, Input>(
  *
  * ```ts
  * import {
+ *   assertOk,
  *   collectScheduleInputs,
  *   exponential,
  *   take,
@@ -1571,7 +1675,7 @@ export const collectAllScheduleOutputs = <Output, Input>(
  * const errorHistory = collectScheduleInputs(retries);
  * const step = errorHistory(testCreateDeps());
  * step("network");
- * expectOk(step("timeout"), [["network", "timeout"], 200]);
+ * assertOk(step("timeout"), [["network", "timeout"], 200]);
  * ```
  *
  * @group Collection
@@ -1591,6 +1695,8 @@ export const collectScheduleInputs = <Output, Input>(
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   collectWhileScheduleOutput,
  *   done,
  *   exponential,
@@ -1606,8 +1712,8 @@ export const collectScheduleInputs = <Output, Input>(
  * step(undefined);
  * step(undefined);
  * step(undefined);
- * expectOk(step(undefined), [[100, 200, 400, 800], 800]);
- * expectErr(step(undefined), done());
+ * assertOk(step(undefined), [[100, 200, 400, 800], 800]);
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Collection
@@ -1629,6 +1735,8 @@ export const collectWhileScheduleOutput =
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   collectUntilScheduleOutput,
  *   done,
  *   exponential,
@@ -1644,8 +1752,8 @@ export const collectWhileScheduleOutput =
  * step(undefined);
  * step(undefined);
  * step(undefined);
- * expectOk(step(undefined), [[100, 200, 400, 800], 800]);
- * expectErr(step(undefined), done());
+ * assertOk(step(undefined), [[100, 200, 400, 800], 800]);
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Collection
@@ -1667,6 +1775,7 @@ export const collectUntilScheduleOutput =
  *
  * ```ts
  * import {
+ *   assertOk,
  *   exponential,
  *   fixed,
  *   sequenceSchedules,
@@ -1683,7 +1792,7 @@ export const collectUntilScheduleOutput =
  * step(undefined);
  * step(undefined);
  * step(undefined);
- * expectOk(step(undefined), [0, 500]);
+ * assertOk(step(undefined), [0, 500]);
  * ```
  *
  * @group Composition
@@ -1719,6 +1828,8 @@ export const sequenceSchedules =
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   done,
  *   exponential,
  *   forever,
@@ -1734,9 +1845,9 @@ export const sequenceSchedules =
  *   take(5)(exponential("1s")),
  *   maxElapsed("30s")(forever),
  * )(deps);
- * expectOk(step(undefined), [[1000, 0], 1000]);
+ * assertOk(step(undefined), [[1000, 0], 1000]);
  * deps.time.advance("30s");
- * expectErr(step(undefined), done());
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Composition
@@ -1773,6 +1884,8 @@ export const intersectSchedules =
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   done,
  *   spaced,
  *   take,
@@ -1786,9 +1899,9 @@ export const intersectSchedules =
  *   take(2)(spaced("200ms")),
  * );
  * const step = either(testCreateDeps());
- * expectOk(step(undefined), [100, 100]);
- * expectOk(step(undefined), [200, 200]);
- * expectErr(step(undefined), done());
+ * assertOk(step(undefined), [100, 100]);
+ * assertOk(step(undefined), [200, 200]);
+ * assertErr(step(undefined), done());
  * ```
  *
  * @group Composition
@@ -1841,6 +1954,8 @@ export const unionSchedules =
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
  *   done,
  *   exponential,
  *   take,
@@ -1860,10 +1975,10 @@ export const unionSchedules =
  *   )(exponential("100ms")),
  * );
  * const step = awsWithThrottling(testCreateDeps());
- * expectOk(step({ type: "Throttled" }), [1000, 1000]);
- * expectOk(step({ type: "NetworkError" }), [100, 100]);
- * expectOk(step({ type: "Throttled" }), [2000, 2000]);
- * expectErr(step({ type: "NetworkError" }), done());
+ * assertOk(step({ type: "Throttled" }), [1000, 1000]);
+ * assertOk(step({ type: "NetworkError" }), [100, 100]);
+ * assertOk(step({ type: "Throttled" }), [2000, 2000]);
+ * assertErr(step({ type: "NetworkError" }), done());
  * ```
  *
  * @group Composition
@@ -1896,6 +2011,7 @@ export const whenInput =
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   exponential,
  *   retryStrategyAws,
  *   tapScheduleOutput,
@@ -1918,8 +2034,8 @@ export const whenInput =
  * logged(deps)(undefined);
  * tracked(deps)(undefined);
  *
- * expect(messages).toEqual(["Next delay: 100ms"]);
- * expect(recordedCandidates).toEqual([50]);
+ * assertEqual(messages, ["Next delay: 100ms"]);
+ * assertEqual(recordedCandidates, [50]);
  * ```
  *
  * @group Side effects
@@ -1947,6 +2063,7 @@ export const tapScheduleOutput =
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   exponential,
  *   tapScheduleInput,
  *   testCreateDeps,
@@ -1973,8 +2090,8 @@ export const tapScheduleOutput =
  * logged(deps)(error);
  * tracked(deps)(error);
  *
- * expect(messages).toEqual(["Retrying after error: NetworkError"]);
- * expect(reasons).toEqual(["NetworkError"]);
+ * assertEqual(messages, ["Retrying after error: NetworkError"]);
+ * assertEqual(reasons, ["NetworkError"]);
  * ```
  *
  * @group Side effects

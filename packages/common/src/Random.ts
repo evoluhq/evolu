@@ -23,6 +23,9 @@ export type RandomNumber = number & Brand<"RandomNumber">;
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertTrue,
+ *   assertType,
  *   createRandom,
  *   testCreateRandom,
  *   type RandomNumber,
@@ -31,14 +34,14 @@ export type RandomNumber = number & Brand<"RandomNumber">;
  * // For apps, use the Math.random-backed implementation.
  * const random = createRandom();
  * const value = random.next();
- * expectTypeOf(value).toEqualTypeOf<RandomNumber>();
- * expect(value).toBeGreaterThanOrEqual(0);
- * expect(value).toBeLessThan(1);
+ * assertType<RandomNumber, typeof value>();
+ * assertTrue(value >= 0);
+ * assertTrue(value < 1);
  *
  * // For tests, use a seed.
  * const firstTestRandom = testCreateRandom("test");
  * const secondTestRandom = testCreateRandom("test");
- * expect(firstTestRandom.next()).toBe(secondTestRandom.next());
+ * assertEqual(firstTestRandom.next(), secondTestRandom.next());
  * ```
  */
 export interface Random {

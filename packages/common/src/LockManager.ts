@@ -20,7 +20,7 @@ import type { Callback } from "./Types.ts";
  * ### Web and Node.js 24+
  *
  * ```ts
- * import type { LockManagerDep } from "@evolu/common";
+ * import { assertEqual, type LockManagerDep } from "@evolu/common";
  *
  * const deps: LockManagerDep = {
  *   lockManager: globalThis.navigator.locks,
@@ -29,13 +29,13 @@ import type { Callback } from "./Types.ts";
  * const result = await deps.lockManager.request("example", (lock) => {
  *   return lock?.name;
  * });
- * expect(result).toBe("example");
+ * assertEqual(result, "example");
  * ```
  *
  * ### React Native
  *
  * ```ts
- * import type { LockManagerDep } from "@evolu/common";
+ * import { assertEqual, type LockManagerDep } from "@evolu/common";
  * import { lockManager } from "@evolu/react-native";
  *
  * const deps: LockManagerDep = { lockManager };
@@ -43,7 +43,7 @@ import type { Callback } from "./Types.ts";
  * const result = await deps.lockManager.request("example", (lock) => {
  *   return lock?.name;
  * });
- * expect(result).toBe("example");
+ * assertEqual(result, "example");
  * ```
  */
 

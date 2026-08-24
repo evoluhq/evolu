@@ -1814,13 +1814,13 @@ export const decodeNumber = (buffer: Buffer): number => {
  * ### Example
  *
  * ```ts
- * import { createBuffer } from "@evolu/common";
+ * import { assertEqual, createBuffer } from "@evolu/common";
  * import { encodeFlags } from "@evolu/common/local-first";
  *
  * const buffer = createBuffer();
  * encodeFlags(buffer, [true, false, true]);
  *
- * expect(buffer.unwrap()).toEqual(new Uint8Array([0b101]));
+ * assertEqual(buffer.unwrap(), new Uint8Array([0b101]));
  * ```
  */
 export const encodeFlags = (
@@ -1842,14 +1842,14 @@ export const encodeFlags = (
  * ### Example
  *
  * ```ts
- * import { createBuffer, PositiveInt } from "@evolu/common";
+ * import { assertEqual, createBuffer, PositiveInt } from "@evolu/common";
  * import { decodeFlags } from "@evolu/common/local-first";
  *
  * const buffer = createBuffer([0b101]);
  * const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
  *
- * expect(flags).toEqual([true, false, true]);
- * expect(buffer.getLength()).toBe(0);
+ * assertEqual(flags, [true, false, true]);
+ * assertEqual(buffer.getLength(), 0);
  * ```
  */
 export const decodeFlags = (

@@ -9,17 +9,13 @@
     "noEmit": true,
     "paths": {
       "@evolu/common": ["../packages/common/src/index.ts"],
-      "@evolu/common/intl": [
-        "../packages/common/src/intl/index.ts"
-      ],
+      "@evolu/common/intl": ["../packages/common/src/intl/index.ts"],
       "@evolu/common/local-first": [
         "../packages/common/src/local-first/index.ts"
       ],
       "@evolu/common/polyfills": ["../packages/common/src/Polyfills.ts"],
-      "@evolu/vitest": ["../packages/vitest/src/index.ts"],
-      "@evolu/vitest/TestJSDoc": [
-        "../packages/vitest/src/TestJSDoc.ts"
-      ]
+      "@evolu/nodejs/TestJSDoc": ["../packages/nodejs/src/TestJSDoc.ts"],
+      "@evolu/vitest": ["../packages/vitest/src/index.ts"]
     },
     "types": ["node"]
   },

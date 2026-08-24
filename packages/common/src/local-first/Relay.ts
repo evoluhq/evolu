@@ -79,6 +79,9 @@ export interface RelayConfig extends StorageConfig {
    * ```ts
    * import {
    *   AppName,
+   *   assertEqual,
+   *   assertTrue,
+   *   assertType,
    *   createAppOwner,
    *   createEvolu,
    *   createOwnerWebSocketTransport,
@@ -107,7 +110,10 @@ export interface RelayConfig extends StorageConfig {
    *     transports: [transport],
    *   },
    * );
-   * expectTypeOf(createTodoEvolu).toExtend<AnyTask>();
+   * assertType<
+   *   true,
+   *   typeof createTodoEvolu extends AnyTask ? true : false
+   * >();
    *
    * // Relay: accept owners allowed by the app's access policy.
    * type IsOwnerAllowed = NonNullable<RelayConfig["isOwnerAllowed"]>;
@@ -115,12 +121,13 @@ export interface RelayConfig extends StorageConfig {
    * const isOwnerAllowed: IsOwnerAllowed = (ownerId, { signal }) =>
    *   !signal.aborted && allowedOwnerIds.has(ownerId);
    *
-   * expect(
-   *   isOwnerAllowed(appOwner.id, {
+   * assertEqual(
+   *   await isOwnerAllowed(appOwner.id, {
    *     signal: new AbortController().signal,
    *   }),
-   * ).toBe(true);
-   * expect(transport.url).toContain(`ownerId=${appOwner.id}`);
+   *   true,
+   * );
+   * assertTrue(transport.url.includes(`ownerId=${appOwner.id}`));
    * ```
    */
   readonly isOwnerAllowed?: (

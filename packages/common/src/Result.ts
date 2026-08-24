@@ -15,6 +15,9 @@
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertType,
  *   err,
  *   exhaustiveCheck,
  *   type Result,
@@ -25,7 +28,7 @@
  * try {
  *   throw new Error("Not found");
  * } catch (error) {
- *   expectTypeOf(error).toEqualTypeOf<unknown>();
+ *   assertType<unknown, typeof error>();
  * }
  *
  * // With Result, errors are part of the return type.
@@ -44,16 +47,16 @@
  * if (!result.ok) {
  *   switch (result.error.type) {
  *     case "NotFound":
- *       expect(result.error).toEqual({ type: "NotFound" });
+ *       assertEqual(result.error, { type: "NotFound" });
  *       break;
  *     case "InvalidInput":
- *       expect(result.error).toEqual({ type: "InvalidInput" });
+ *       assertEqual(result.error, { type: "InvalidInput" });
  *       break;
  *     default:
  *       exhaustiveCheck(result.error);
  *   }
  * }
- * expectErr(result, { type: "NotFound" });
+ * assertErr(result, { type: "NotFound" });
  * ```
  *
  * A `Result` is either {@link Ok} (success with a value) or {@link Err} (failure
@@ -83,7 +86,13 @@
  * Since `Result` is a plain object, imperative code works naturally.
  *
  * ```ts
- * import { ok, type Result, type Typed } from "@evolu/common";
+ * import {
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
  *
  * interface User {
  *   readonly id: string;
@@ -115,10 +124,11 @@
  * };
  *
  * const profile = getCurrentProfile();
- * expectTypeOf(profile).toEqualTypeOf<
- *   Result<Profile, UserNotFoundError | ProfileNotFoundError>
+ * assertType<
+ *   Result<Profile, UserNotFoundError | ProfileNotFoundError>,
+ *   typeof profile
  * >();
- * expectOk(profile, { userId: "user-1" });
+ * assertOk(profile, { userId: "user-1" });
  * ```
  *
  * Note `user` and `profile` are named after their success values, not after the
@@ -221,15 +231,15 @@ export type AnyResult = Result<any, any>;
  * ### Example
  *
  * ```ts
- * import { ok, type Result } from "@evolu/common";
+ * import { assertOk, assertType, ok, type Result } from "@evolu/common";
  *
  * const result = ok();
  * const count = ok(42);
  *
- * expectTypeOf(result).toEqualTypeOf<Result<void>>();
- * expectTypeOf(count).toEqualTypeOf<Result<number>>();
- * expectOk(result, undefined);
- * expectOk(count, 42);
+ * assertType<Result<void>, typeof result>();
+ * assertType<Result<number>, typeof count>();
+ * assertOk(result, undefined);
+ * assertOk(count, 42);
  * ```
  *
  * @group Core
@@ -248,7 +258,14 @@ export interface Ok<out T> {
  * ### Example
  *
  * ```ts
- * import { err, ok, type Result, type Typed } from "@evolu/common";
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   err,
+ *   ok,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
  *
  * interface User {
  *   readonly id: string;
@@ -265,8 +282,8 @@ export interface Ok<out T> {
  *   readonly id: string;
  * }
  *
- * expectOk(findUser("user-1"), { id: "user-1" });
- * expectErr(findUser("missing"), {
+ * assertOk(findUser("user-1"), { id: "user-1" });
+ * assertErr(findUser("missing"), {
  *   type: "NotFound",
  *   id: "missing",
  * });
@@ -329,6 +346,8 @@ export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   isOk,
  *   ok,
  *   type Ok,
@@ -342,8 +361,8 @@ export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
  *
  * const count = getCount();
  * if (isOk(count)) {
- *   expectTypeOf(count).toEqualTypeOf<Ok<number>>();
- *   expect(count.value).toBe(2);
+ *   assertType<Ok<number>, typeof count>();
+ *   assertEqual(count.value, 2);
  * }
  * ```
  *
@@ -358,6 +377,8 @@ export const isOk = <T, E>(result: Result<T, E>): result is Ok<T> => result.ok;
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertType,
  *   err,
  *   isErr,
  *   type Err,
@@ -372,8 +393,8 @@ export const isOk = <T, E>(result: Result<T, E>): result is Ok<T> => result.ok;
  *
  * const count = getCount();
  * if (isErr(count)) {
- *   expectTypeOf(count).toEqualTypeOf<Err<CountUnavailableError>>();
- *   expect(count.error).toEqual({ type: "CountUnavailable" });
+ *   assertType<Err<CountUnavailableError>, typeof count>();
+ *   assertErr(count, { type: "CountUnavailable" });
  * }
  * ```
  *
@@ -403,9 +424,14 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
  *
  * ```ts
  * import {
+ *   assert,
+ *   assertErr,
+ *   assertEqual,
+ *   assertType,
  *   err,
  *   getOrThrow,
  *   ok,
+ *   trySync,
  *   type Result,
  *   type Typed,
  * } from "@evolu/common";
@@ -421,17 +447,21 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
  *
  * // At app startup, crash if the config is invalid.
  * const config = getOrThrow(loadConfig());
- * expectTypeOf(config).toEqualTypeOf<Config>();
- * expect(config).toEqual({ port: 3000 });
+ * assertType<Config, typeof config>();
+ * assertEqual(config.port, 3000);
  *
- * try {
- *   getOrThrow(err({ type: "InvalidConfig" }));
- *   assert.fail("Expected getOrThrow to throw");
- * } catch (error) {
- *   assert(error instanceof Error);
- *   expect(error.message).toBe("getOrThrow");
- *   expect(error.cause).toEqual({ type: "InvalidConfig" });
- * }
+ * const thrown = trySync(() => getOrThrow(err({ type: "InvalidConfig" })));
+ * assertErr(thrown);
+ * assert(thrown.error instanceof Error, "Expected an Error.");
+ * assertEqual(thrown.error.message, "getOrThrow");
+ * const cause = thrown.error.cause;
+ * assert(
+ *   typeof cause === "object" &&
+ *     cause !== null &&
+ *     "type" in cause &&
+ *     cause.type === "InvalidConfig",
+ *   "Expected InvalidConfig cause.",
+ * );
  * ```
  *
  * Throws: `Error` with the original error attached as `cause`.
@@ -458,6 +488,8 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   err,
  *   getOrNull,
  *   ok,
@@ -478,9 +510,9 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
  * const user = getOrNull(findUser("user-1"));
  * const missingUser = getOrNull(findUser("missing"));
  *
- * expectTypeOf(user).toEqualTypeOf<User | null>();
- * expect(user).toEqual({ id: "user-1" });
- * expect(missingUser).toBeNull();
+ * assertType<User | null, typeof user>();
+ * assertEqual(user, { id: "user-1" });
+ * assertEqual(missingUser, null);
  * ```
  *
  * @group Unwrapping
@@ -498,12 +530,18 @@ export const getOrNull = <T, E>(result: Result<T, E>): T | null =>
  * ### Example
  *
  * ```ts
- * import { getOk, ok, type Result } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   getOk,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const getCount = (): Result<number> => ok(2);
  * const count = getOk(getCount());
- * expectTypeOf(count).toEqualTypeOf<number>();
- * expect(count).toBe(2);
+ * assertType<number, typeof count>();
+ * assertEqual(count, 2);
  * ```
  *
  * @group Unwrapping
@@ -527,7 +565,16 @@ export const getOk = <T>(result: Result<T>): T => {
  * ### Example
  *
  * ```ts
- * import { trySync, type Result, type Typed } from "@evolu/common";
+ * import {
+ *   assert,
+ *   assertErr,
+ *   assertEqual,
+ *   assertOk,
+ *   assertType,
+ *   trySync,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
  *
  * class LegacySeatUnavailableError extends Error {}
  *
@@ -552,10 +599,13 @@ export const getOk = <T>(result: Result<T>): T => {
  * }
  *
  * const result = reserveSeat("B2");
- * expectTypeOf(result).toEqualTypeOf<Result<void, SeatUnavailableError>>();
- * expectOk(result, undefined);
- * expectErr(reserveSeat("A1"), { type: "SeatUnavailable", seat: "A1" });
- * expect(() => reserveSeat("B1")).toThrow("Database error");
+ * assertType<Result<void, SeatUnavailableError>, typeof result>();
+ * assertOk(result, undefined);
+ * assertErr(reserveSeat("A1"), { type: "SeatUnavailable", seat: "A1" });
+ * const databaseError = trySync(() => reserveSeat("B1"));
+ * assertErr(databaseError);
+ * assert(databaseError.error instanceof Error, "Expected an Error.");
+ * assertEqual(databaseError.error.message, "Database error");
  * ```
  *
  * @group Exception interop
@@ -592,7 +642,16 @@ export function trySync<T, E>(
  * ### Example
  *
  * ```ts
- * import { tryAsync, type Result, type Typed } from "@evolu/common";
+ * import {
+ *   assert,
+ *   assertErr,
+ *   assertEqual,
+ *   assertOk,
+ *   assertType,
+ *   tryAsync,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
  *
  * class LegacySeatUnavailableError extends Error {}
  *
@@ -619,13 +678,16 @@ export function trySync<T, E>(
  * }
  *
  * const result = await reserveSeat("B2");
- * expectTypeOf(result).toEqualTypeOf<Result<void, SeatUnavailableError>>();
- * expectOk(result, undefined);
- * expectErr(await reserveSeat("A1"), {
+ * assertType<Result<void, SeatUnavailableError>, typeof result>();
+ * assertOk(result, undefined);
+ * assertErr(await reserveSeat("A1"), {
  *   type: "SeatUnavailable",
  *   seat: "A1",
  * });
- * await expect(reserveSeat("B1")).rejects.toThrow("Database error");
+ * const databaseError = await tryAsync(() => reserveSeat("B1"));
+ * assertErr(databaseError);
+ * assert(databaseError.error instanceof Error, "Expected an Error.");
+ * assertEqual(databaseError.error.message, "Database error");
  * ```
  *
  * @group Exception interop
@@ -666,6 +728,9 @@ export async function tryAsync<T, E>(
  *
  * ```ts
  * import {
+ *   assertErr,
+ *   assertOk,
+ *   assertType,
  *   done,
  *   err,
  *   ok,
@@ -684,12 +749,10 @@ export async function tryAsync<T, E>(
  * interface ReadFailedError extends Typed<"ReadFailed"> {}
  *
  * const value = next(0);
- * expectTypeOf(value).toEqualTypeOf<
- *   NextResult<string, ReadFailedError, number>
- * >();
- * expectOk(value, "first");
- * expectErr(next(1), { type: "ReadFailed" });
- * expectErr(next(2), { type: "Done", done: 2 });
+ * assertType<NextResult<string, ReadFailedError, number>, typeof value>();
+ * assertOk(value, "first");
+ * assertErr(next(1), { type: "ReadFailed" });
+ * assertErr(next(2), { type: "Done", done: 2 });
  * ```
  *
  * @group Pull
@@ -708,14 +771,14 @@ export type NextResult<A, E = never, D = void> = Result<A, E | Done<D>>;
  * ### Example
  *
  * ```ts
- * import { done, type Done } from "@evolu/common";
+ * import { assertEqual, assertType, done, type Done } from "@evolu/common";
  *
  * const withoutValue = done();
  * const withValue = done(42);
- * expectTypeOf(withoutValue).toEqualTypeOf<Done<void>>();
- * expectTypeOf(withValue).toEqualTypeOf<Done<number>>();
- * expect(withoutValue).toEqual({ type: "Done", done: undefined });
- * expect(withValue).toEqual({ type: "Done", done: 42 });
+ * assertType<Done<void>, typeof withoutValue>();
+ * assertType<Done<number>, typeof withValue>();
+ * assertEqual(withoutValue, { type: "Done", done: undefined });
+ * assertEqual(withValue, { type: "Done", done: 42 });
  * ```
  *
  * @group Pull
@@ -751,13 +814,18 @@ export function done<D>(value?: D): Done<D> {
  * ### Example
  *
  * ```ts
- * import { type Done, type ExcludeDone, type Typed } from "@evolu/common";
+ * import {
+ *   assertType,
+ *   type Done,
+ *   type ExcludeDone,
+ *   type Typed,
+ * } from "@evolu/common";
  *
  * type Errors = ReadFailedError | Done<number>;
  *
  * interface ReadFailedError extends Typed<"ReadFailed"> {}
  *
- * expectTypeOf<ExcludeDone<Errors>>().toEqualTypeOf<ReadFailedError>();
+ * assertType<ReadFailedError, ExcludeDone<Errors>>();
  * ```
  *
  * @group Pull
@@ -773,13 +841,18 @@ export type ExcludeDone<E> = Exclude<E, Done<any>>;
  * ### Example
  *
  * ```ts
- * import { type Done, type OnlyDone, type Typed } from "@evolu/common";
+ * import {
+ *   assertType,
+ *   type Done,
+ *   type OnlyDone,
+ *   type Typed,
+ * } from "@evolu/common";
  *
  * type Errors = ReadFailedError | Done<number>;
  *
  * interface ReadFailedError extends Typed<"ReadFailed"> {}
  *
- * expectTypeOf<OnlyDone<Errors>>().toEqualTypeOf<Done<number>>();
+ * assertType<Done<number>, OnlyDone<Errors>>();
  * ```
  *
  * @group Pull
@@ -793,6 +866,7 @@ export type OnlyDone<E> = Extract<E, Done<any>>;
  *
  * ```ts
  * import {
+ *   assertType,
  *   type InferDone,
  *   type NextResult,
  *   type Typed,
@@ -802,7 +876,7 @@ export type OnlyDone<E> = Extract<E, Done<any>>;
  *
  * interface ReadFailedError extends Typed<"ReadFailed"> {}
  *
- * expectTypeOf<InferDone<ReadResult>>().toEqualTypeOf<number>();
+ * assertType<number, InferDone<ReadResult>>();
  * ```
  *
  * @group Pull
@@ -827,6 +901,8 @@ export type InferDone<R extends Result<any, any>> =
  *
  * ```ts
  * import {
+ *   assertOk,
+ *   assertType,
  *   flatMapResult,
  *   ok,
  *   type Result,
@@ -851,10 +927,11 @@ export type InferDone<R extends Result<any, any>> =
  *
  * const user: Result<User, UserNotFoundError> = ok({ id: "user-1" });
  * const profile = flatMapResult(user, ({ id }) => getProfile(id));
- * expectTypeOf(profile).toEqualTypeOf<
- *   Result<Profile, UserNotFoundError | ProfileNotFoundError>
+ * assertType<
+ *   Result<Profile, UserNotFoundError | ProfileNotFoundError>,
+ *   typeof profile
  * >();
- * expectOk(profile, { userId: "user-1" });
+ * assertOk(profile, { userId: "user-1" });
  * ```
  *
  * @group Composition
@@ -876,7 +953,14 @@ export const flatMapResult = <T, E, U, F>(
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result, type Typed } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ *   type Typed,
+ * } from "@evolu/common";
  *
  * const getCount = (): Result<number, CountUnavailableError> => ok(2);
  *
@@ -888,13 +972,14 @@ export const flatMapResult = <T, E, U, F>(
  * interface LabelUnavailableError extends Typed<"LabelUnavailable"> {}
  *
  * const values = allResult([getCount(), getLabel()]);
- * expectTypeOf(values).toEqualTypeOf<
+ * assertType<
  *   Result<
  *     readonly [number, string],
  *     CountUnavailableError | LabelUnavailableError
- *   >
+ *   >,
+ *   typeof values
  * >();
- * expectOk(values, [2, "books"]);
+ * assertOk(values, [2, "books"]);
  * ```
  *
  * @group Composition
@@ -909,14 +994,21 @@ export function allResult<
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const resultsByName = { a: ok(1), b: ok(2) } as const;
  * const valuesByName = allResult(resultsByName);
- * expectTypeOf(valuesByName).toEqualTypeOf<
- *   Result<{ readonly a: number; readonly b: number }>
+ * assertType<
+ *   Result<{ readonly a: number; readonly b: number }>,
+ *   typeof valuesByName
  * >();
- * expectOk(valuesByName, { a: 1, b: 2 });
+ * assertOk(valuesByName, { a: 1, b: 2 });
  * ```
  */
 export function allResult<T extends Readonly<Record<string, AnyResult>>>(
@@ -932,12 +1024,18 @@ export function allResult<T extends Readonly<Record<string, AnyResult>>>(
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const results: ReadonlyArray<Result<number>> = [ok(1), ok(2)];
  * const numbers = allResult(results);
- * expectTypeOf(numbers).toEqualTypeOf<Result<ReadonlyArray<number>>>();
- * expectOk(numbers, [1, 2]);
+ * assertType<Result<ReadonlyArray<number>>, typeof numbers>();
+ * assertOk(numbers, [1, 2]);
  * ```
  */
 export function allResult<T, E>(
@@ -952,6 +1050,8 @@ export function allResult<T, E>(
  * ```ts
  * import {
  *   allResult,
+ *   assertOk,
+ *   assertType,
  *   ok,
  *   type NonEmptyReadonlyArray,
  *   type Result,
@@ -959,10 +1059,8 @@ export function allResult<T, E>(
  *
  * const results: NonEmptyReadonlyArray<Result<number>> = [ok(1), ok(2)];
  * const numbers = allResult(results);
- * expectTypeOf(numbers).toEqualTypeOf<
- *   Result<NonEmptyReadonlyArray<number>>
- * >();
- * expectOk(numbers, [1, 2]);
+ * assertType<Result<NonEmptyReadonlyArray<number>>, typeof numbers>();
+ * assertOk(numbers, [1, 2]);
  * ```
  */
 export function allResult<T, E>(
@@ -975,11 +1073,17 @@ export function allResult<T, E>(
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const result = allResult({ a: ok(1), b: ok(2) }, { collect: false });
- * expectTypeOf(result).toEqualTypeOf<Result<void>>();
- * expectOk(result, undefined);
+ * assertType<Result<void>, typeof result>();
+ * assertOk(result, undefined);
  * ```
  */
 export function allResult<T extends Readonly<Record<string, AnyResult>>>(
@@ -996,12 +1100,18 @@ export function allResult<T extends Readonly<Record<string, AnyResult>>>(
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const results: ReadonlyArray<Result<number>> = [ok(1), ok(2)];
  * const result = allResult(results, { collect: false });
- * expectTypeOf(result).toEqualTypeOf<Result<void>>();
- * expectOk(result, undefined);
+ * assertType<Result<void>, typeof result>();
+ * assertOk(result, undefined);
  * ```
  */
 export function allResult<R extends AnyResult>(
@@ -1017,6 +1127,8 @@ export function allResult<R extends AnyResult>(
  * ```ts
  * import {
  *   allResult,
+ *   assertOk,
+ *   assertType,
  *   ok,
  *   type NonEmptyReadonlyArray,
  *   type Result,
@@ -1024,14 +1136,12 @@ export function allResult<R extends AnyResult>(
  *
  * const numbers: NonEmptyReadonlyArray<number> = [1, 2];
  * const doubled = allResult(numbers, (number) => ok(number * 2));
- * expectTypeOf(doubled).toEqualTypeOf<
- *   Result<NonEmptyReadonlyArray<number>>
- * >();
- * expectOk(doubled, [2, 4]);
+ * assertType<Result<NonEmptyReadonlyArray<number>>, typeof doubled>();
+ * assertOk(doubled, [2, 4]);
  *
  * const tuple = allResult([1, 2] as const, (number) => ok(number * 2));
- * expectTypeOf(tuple).toEqualTypeOf<Result<readonly [number, number]>>();
- * expectOk(tuple, [2, 4]);
+ * assertType<Result<readonly [number, number]>, typeof tuple>();
+ * assertOk(tuple, [2, 4]);
  * ```
  */
 export function allResult<
@@ -1048,12 +1158,18 @@ export function allResult<
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const numbers: Iterable<number> = new Set([1, 2]);
  * const doubled = allResult(numbers, (number) => ok(number * 2));
- * expectTypeOf(doubled).toEqualTypeOf<Result<ReadonlyArray<number>>>();
- * expectOk(doubled, [2, 4]);
+ * assertType<Result<ReadonlyArray<number>>, typeof doubled>();
+ * assertOk(doubled, [2, 4]);
  * ```
  */
 export function allResult<A, R extends AnyResult>(
@@ -1067,7 +1183,13 @@ export function allResult<A, R extends AnyResult>(
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * interface User {
  *   readonly id: string;
@@ -1077,10 +1199,11 @@ export function allResult<A, R extends AnyResult>(
  *
  * const userIdsByRole = { owner: "user-1", reviewer: "user-2" } as const;
  * const usersByRole = allResult(userIdsByRole, toUser);
- * expectTypeOf(usersByRole).toEqualTypeOf<
- *   Result<Readonly<Record<"owner" | "reviewer", User>>>
+ * assertType<
+ *   Result<Readonly<Record<"owner" | "reviewer", User>>>,
+ *   typeof usersByRole
  * >();
- * expectOk(usersByRole, {
+ * assertOk(usersByRole, {
  *   owner: { id: "user-1" },
  *   reviewer: { id: "user-2" },
  * });
@@ -1100,7 +1223,14 @@ export function allResult<A, R extends AnyResult, K extends string>(
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertEqual,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const visited: Array<number> = [];
  * const result = allResult(
@@ -1113,9 +1243,9 @@ export function allResult<A, R extends AnyResult, K extends string>(
  *     collect: false,
  *   },
  * );
- * expectTypeOf(result).toEqualTypeOf<Result<void>>();
- * expectOk(result, undefined);
- * expect(visited).toEqual([1, 2]);
+ * assertType<Result<void>, typeof result>();
+ * assertOk(result, undefined);
+ * assertEqual(visited, [1, 2]);
  * ```
  */
 export function allResult<A, R extends AnyResult>(
@@ -1130,13 +1260,19 @@ export function allResult<A, R extends AnyResult>(
  * ### Example
  *
  * ```ts
- * import { allResult, ok, type Result } from "@evolu/common";
+ * import {
+ *   allResult,
+ *   assertOk,
+ *   assertType,
+ *   ok,
+ *   type Result,
+ * } from "@evolu/common";
  *
  * const result = allResult({ a: 1, b: 2 }, (number) => ok(number * 2), {
  *   collect: false,
  * });
- * expectTypeOf(result).toEqualTypeOf<Result<void>>();
- * expectOk(result, undefined);
+ * assertType<Result<void>, typeof result>();
+ * assertOk(result, undefined);
  * ```
  */
 export function allResult<A, R extends AnyResult, K extends string>(
@@ -1224,6 +1360,8 @@ export function allResult(
  * ```ts
  * import {
  *   anyResult,
+ *   assertOk,
+ *   assertType,
  *   err,
  *   ok,
  *   type Result,
@@ -1236,8 +1374,8 @@ export function allResult(
  * interface CacheMissError extends Typed<"CacheMiss"> {}
  *
  * const number = anyResult([getCachedPrice(), ok(42)]);
- * expectTypeOf(number).toEqualTypeOf<Result<number, CacheMissError>>();
- * expectOk(number, 42);
+ * assertType<Result<number, CacheMissError>, typeof number>();
+ * assertOk(number, 42);
  * ```
  *
  * @group Composition

@@ -82,8 +82,8 @@ export interface TestGlobalErrors extends Disposable {
    * Platforms deliver global errors asynchronously and provide no hook for
    * "nothing was reported", so settle emits a sentinel of the same kind and
    * resolves when it arrives. Platform delivery is ordered, so all earlier
-   * errors are recorded by then. Use it to assert absence: `expect(await
-   * unhandledRejections.settle()).toEqual([])`.
+   * errors are recorded by then. Assert absence with `assertEqual(await
+   * unhandledRejections.settle(), [])`.
    */
   readonly settle: () => Promise<ReadonlyArray<unknown>>;
 }

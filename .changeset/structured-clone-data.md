@@ -28,7 +28,7 @@ heuristic assumes trusted JavaScript and is not a security boundary.
 ```ts
 import {
   Data,
-  assert,
+  assertTrue,
   eqData,
   getObjectKind,
   type IsData,
@@ -40,15 +40,12 @@ interface User {
 }
 
 const userIsData: IsData<User> = true;
-assert(userIsData, "Expected User to consist only of Data.");
+assertTrue(userIsData);
 
 const value = { name: "Ada", roles: new Set(["admin"]) };
 const result = Data.fromUnknown(value);
 
-assert(result.ok, "Expected Data.");
-assert(getObjectKind(value) === "Object", "Expected an Object.");
-assert(
-  eqData(result.value, { name: "Ada", roles: new Set(["admin"]) }),
-  "Expected equal Data.",
-);
+assertTrue(result.ok);
+assertTrue(getObjectKind(value) === "Object");
+assertTrue(eqData(result.value, { name: "Ada", roles: new Set(["admin"]) }));
 ```

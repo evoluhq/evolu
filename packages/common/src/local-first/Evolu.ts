@@ -97,10 +97,10 @@ export interface EvoluConfig {
    * ### Example
    *
    * ```ts
-   * import { AppName } from "@evolu/common";
+   * import { AppName, assertEqual } from "@evolu/common";
    *
    * const appName = AppName.orThrow("MyApp");
-   * expect(appName).toBe("MyApp");
+   * assertEqual(appName, "MyApp");
    * ```
    */
   readonly appName: AppName;
@@ -164,6 +164,7 @@ export interface EvoluConfig {
    *
    * ```ts
    * import {
+   *   assertEqual,
    *   createAppOwner,
    *   createOwnerWebSocketTransport,
    *   createOwnerSecret,
@@ -200,7 +201,8 @@ export interface EvoluConfig {
    *   }),
    * ];
    *
-   * expect(authenticatedRelay[0]?.url).toBe(
+   * assertEqual(
+   *   authenticatedRelay[0]?.url,
    *   `wss://relay.example.com?ownerId=${appOwner.id}`,
    * );
    * ```
@@ -231,6 +233,7 @@ export interface EvoluConfig {
    * ```ts
    * import {
    *   AppName,
+   *   assertTrue,
    *   createAppOwner,
    *   createEvolu,
    *   createOwnerSecret,
@@ -259,7 +262,7 @@ export interface EvoluConfig {
    *   ],
    * });
    *
-   * expect(createTodoEvolu).toBeTypeOf("function");
+   * assertTrue(typeof createTodoEvolu === "function");
    * ```
    */
   readonly indexes?: IndexesConfig;
@@ -340,6 +343,7 @@ export interface Evolu<
    *
    * ```ts
    * import {
+   *   assertType,
    *   id,
    *   NonEmptyTrimmedString100,
    *   type Evolu,
@@ -366,12 +370,13 @@ export interface Evolu<
    *     { onComplete },
    *   ).id;
    *
-   * expectTypeOf<
+   * assertType<
+   *   [TodoId, TodoId],
    *   [
    *     ReturnType<typeof insertTodo>,
    *     ReturnType<typeof insertTodoAndNotify>,
    *   ]
-   * >().toEqualTypeOf<[TodoId, TodoId]>();
+   * >();
    * ```
    *
    * @see {@link Mutation}
@@ -387,6 +392,7 @@ export interface Evolu<
    *
    * ```ts
    * import {
+   *   assertType,
    *   id,
    *   NonEmptyTrimmedString100,
    *   sqliteTrue,
@@ -408,9 +414,10 @@ export interface Evolu<
    * const softDeleteTodo = (evolu: Evolu<typeof Schema>, todoId: TodoId) =>
    *   evolu.update("todo", { id: todoId, isDeleted: sqliteTrue }).id;
    *
-   * expectTypeOf<
+   * assertType<
+   *   [TodoId, TodoId],
    *   [ReturnType<typeof renameTodo>, ReturnType<typeof softDeleteTodo>]
-   * >().toEqualTypeOf<[TodoId, TodoId]>();
+   * >();
    * ```
    *
    * @see {@link Mutation}
@@ -433,6 +440,7 @@ export interface Evolu<
    *
    * ```ts
    * import {
+   *   assertType,
    *   createIdFromString,
    *   id,
    *   NonEmptyTrimmedString100,
@@ -451,7 +459,7 @@ export interface Evolu<
    *     title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
    *   }).id;
    *
-   * expectTypeOf(upsertTodo).returns.toEqualTypeOf<TodoId>();
+   * assertType<TodoId, ReturnType<typeof upsertTodo>>();
    * ```
    *
    * @see {@link Mutation}
@@ -477,6 +485,7 @@ export interface Evolu<
    *
    * ```ts
    * import {
+   *   assertType,
    *   createQueryBuilder,
    *   id,
    *   NonEmptyTrimmedString100,
@@ -496,8 +505,9 @@ export interface Evolu<
    *   return rows;
    * };
    *
-   * expectTypeOf(loadTodos).returns.toEqualTypeOf<
-   *   Promise<QueryRows<typeof allTodos.Row>>
+   * assertType<
+   *   Promise<QueryRows<typeof allTodos.Row>>,
+   *   ReturnType<typeof loadTodos>
    * >();
    * ```
    */
@@ -514,6 +524,7 @@ export interface Evolu<
    *
    * ```ts
    * import {
+   *   assertType,
    *   createIdFromString,
    *   createQueryBuilder,
    *   id,
@@ -541,11 +552,12 @@ export interface Evolu<
    * const loadTodoQueries = (evolu: Evolu<typeof Schema>) =>
    *   evolu.loadQueries([allTodos, firstTodo]);
    *
-   * expectTypeOf(loadTodoQueries).returns.toEqualTypeOf<
+   * assertType<
    *   [
    *     Promise<QueryRows<typeof allTodos.Row>>,
    *     Promise<QueryRows<typeof firstTodo.Row>>,
-   *   ]
+   *   ],
+   *   ReturnType<typeof loadTodoQueries>
    * >();
    * ```
    */
@@ -560,6 +572,7 @@ export interface Evolu<
    *
    * ```ts
    * import {
+   *   assertType,
    *   createQueryBuilder,
    *   id,
    *   NonEmptyTrimmedString100,
@@ -583,7 +596,7 @@ export interface Evolu<
    *     onRows(evolu.getQueryRows(allTodos));
    *   });
    *
-   * expectTypeOf(subscribeToTodos).returns.toEqualTypeOf<Unsubscribe>();
+   * assertType<Unsubscribe, ReturnType<typeof subscribeToTodos>>();
    * ```
    */
   readonly subscribeQuery: (
@@ -597,6 +610,7 @@ export interface Evolu<
    *
    * ```ts
    * import {
+   *   assertType,
    *   createQueryBuilder,
    *   id,
    *   NonEmptyTrimmedString100,
@@ -614,8 +628,9 @@ export interface Evolu<
    * const getTodos = (evolu: Evolu<typeof Schema>) =>
    *   evolu.getQueryRows(allTodos);
    *
-   * expectTypeOf(getTodos).returns.toEqualTypeOf<
-   *   QueryRows<typeof allTodos.Row>
+   * assertType<
+   *   QueryRows<typeof allTodos.Row>,
+   *   ReturnType<typeof getTodos>
    * >();
    * ```
    */
@@ -683,6 +698,7 @@ export interface Evolu<
    *
    * ```ts
    * import {
+   *   assertEqual,
    *   createAppOwner,
    *   createOwnerWebSocketTransport,
    *   createOwnerSecret,
@@ -723,7 +739,7 @@ export interface Evolu<
    * };
    *
    * // Call each returned UnuseOwner once to stop syncing.
-   * expect(shardTransport).toEqual({
+   * assertEqual(shardTransport, {
    *   type: "WebSocket",
    *   url: `wss://relay.example.com?ownerId=${shardOwner.id}`,
    * });
@@ -748,7 +764,12 @@ export interface EvoluErrorDep {
    * ### Example
    *
    * ```ts
-   * import { createStore, Millis, type EvoluError } from "@evolu/common";
+   * import {
+   *   assertEqual,
+   *   createStore,
+   *   Millis,
+   *   type EvoluError,
+   * } from "@evolu/common";
    * import type { EvoluErrorDep } from "@evolu/common/local-first";
    *
    * // Stand-in for run.deps.evoluError from createEvoluDeps.
@@ -781,7 +802,8 @@ export interface EvoluErrorDep {
    *   next: Millis.orThrow(360000),
    *   now: Millis.orThrow(0),
    * });
-   * expect(displayedMessage).toBe(
+   * assertEqual(
+   *   displayedMessage,
    *   "Your system clock appears incorrect. Please fix it.",
    * );
    * ```

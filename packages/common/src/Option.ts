@@ -9,7 +9,16 @@
  * ### Example
  *
  * ```ts
- * import { isNone, isSome, none, type Option, some } from "@evolu/common";
+ * import {
+ *   assert,
+ *   assertSame,
+ *   assertTrue,
+ *   isNone,
+ *   isSome,
+ *   none,
+ *   type Option,
+ *   some,
+ * } from "@evolu/common";
  *
  * const cache = new Map<string, Option<unknown>>();
  *
@@ -19,10 +28,10 @@
  * cache.set("b", some(undefined));
  *
  * const a = get("a");
- * assert(isSome(a));
- * expect(a.value).toBeNull();
- * expect(isSome(get("b"))).toBe(true);
- * expect(isNone(get("c"))).toBe(true);
+ * assert(isSome(a), "Expected Some.");
+ * assertSame(a.value, null);
+ * assertTrue(isSome(get("b")));
+ * assertTrue(isNone(get("c")));
  * ```
  *
  * @module

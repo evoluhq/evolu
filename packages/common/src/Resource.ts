@@ -114,6 +114,8 @@ export interface Lease<T extends Resource> extends Disposable {
  * ```ts
  * import {
  *   all,
+ *   assertEqual,
+ *   assertFalse,
  *   createRun,
  *   createSharedResource,
  *   ok,
@@ -139,7 +141,7 @@ export interface Lease<T extends Resource> extends Disposable {
  * );
  *
  * // Creating the owner is lazy; no connection is open yet.
- * expect(createdCount).toBe(0);
+ * assertEqual(createdCount, 0);
  *
  * // `use` owns and releases a lease around each operation.
  * const send = (message: string): Task<void> =>
@@ -159,8 +161,8 @@ export interface Lease<T extends Resource> extends Disposable {
  *
  * // Reacquiring during the idle delay reuses the same generation.
  * using reusedLease = await run.ok(sharedConnection.acquire);
- * expect(reusedLease.created).toBe(false);
- * expect(createdCount).toBe(1);
+ * assertFalse(reusedLease.created);
+ * assertEqual(createdCount, 1);
  * ```
  *
  * ## FAQ
@@ -520,6 +522,8 @@ export const createSharedResource =
  * ```ts
  * import {
  *   all,
+ *   assertEqual,
+ *   assertSame,
  *   createRun,
  *   createSharedResourceByKey,
  *   ok,
@@ -581,8 +585,9 @@ export const createSharedResource =
  *   }),
  * );
  *
- * expect(missingLease).toBeUndefined();
- * expect(messagesByOwnerId).toEqual(
+ * assertSame(missingLease, undefined);
+ * assertEqual(
+ *   messagesByOwnerId,
  *   new Map([
  *     ["owner-1", ["first", "second"]],
  *     ["owner-2", ["hello"]],
@@ -895,6 +900,7 @@ export function createSharedResourceByKey<
  *
  * ```ts
  * import {
+ *   assertEqual,
  *   createRun,
  *   createSharedResourceByKeyWithClaims,
  *   ok,
@@ -942,23 +948,32 @@ export function createSharedResourceByKey<
  *     using accountBRelay = await run.ok(
  *       transports.claim(accountB, [relay]),
  *     );
- *     expect(transports.getClaimsForResource(relay)).toEqual(
+ *     assertEqual(
+ *       transports.getClaimsForResource(relay),
  *       new Set([accountA, accountB]),
  *     );
- *     expect(transports.getResourceKeysForClaim(accountA)).toEqual(
+ *     assertEqual(
+ *       transports.getResourceKeysForClaim(accountA),
  *       new Set([relay, localNetwork]),
  *     );
  *   }
  *
  *   // Releasing account B leaves account A's relay retain intact.
- *   expect(transports.getClaimsForResource(relay)).toEqual(
+ *   assertEqual(
+ *     transports.getClaimsForResource(relay),
  *     new Set([accountA]),
  *   );
  * }
  *
  * // Releasing the final claim removes the relation for both transports.
- * expect(transports.getClaimsForResource(relay)).toEqual(new Set());
- * expect(transports.getClaimsForResource(localNetwork)).toEqual(new Set());
+ * assertEqual(
+ *   transports.getClaimsForResource(relay),
+ *   new Set<AccountId>(),
+ * );
+ * assertEqual(
+ *   transports.getClaimsForResource(localNetwork),
+ *   new Set<AccountId>(),
+ * );
  * ```
  */
 export interface SharedResourceByKeyWithClaims<

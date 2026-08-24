@@ -47,6 +47,8 @@ export interface RandomBytes {
    *
    * ```ts
    * import {
+   *   assertEqual,
+   *   assertType,
    *   createRandomBytes,
    *   type Entropy16,
    *   type Entropy24,
@@ -61,11 +63,11 @@ export interface RandomBytes {
    * const seed = randomBytes.create(64);
    * const custom = randomBytes.create(48);
    *
-   * expectTypeOf(nonce16).toEqualTypeOf<Entropy16>();
-   * expectTypeOf(nonce24).toEqualTypeOf<Entropy24>();
-   * expectTypeOf(key).toEqualTypeOf<Entropy32>();
-   * expectTypeOf(seed).toEqualTypeOf<Entropy64>();
-   * expect(custom).toHaveLength(48);
+   * assertType<Entropy16, typeof nonce16>();
+   * assertType<Entropy24, typeof nonce24>();
+   * assertType<Entropy32, typeof key>();
+   * assertType<Entropy64, typeof seed>();
+   * assertEqual(custom.length, 48);
    * ```
    */
   create(bytesLength: 16): Entropy16;
@@ -175,6 +177,8 @@ export type XChaCha20Poly1305Ciphertext =
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   createRandomBytes,
  *   EncryptionKey,
  *   encryptWithXChaCha20Poly1305,
@@ -188,8 +192,8 @@ export type XChaCha20Poly1305Ciphertext =
  *   randomBytes: createRandomBytes(),
  * })(plaintext, encryptionKey);
  *
- * expectTypeOf(ciphertext).toEqualTypeOf<XChaCha20Poly1305Ciphertext>();
- * expect(nonce).toHaveLength(24);
+ * assertType<XChaCha20Poly1305Ciphertext, typeof ciphertext>();
+ * assertEqual(nonce.length, 24);
  * ```
  *
  * @see https://github.com/paulmillr/noble-ciphers
@@ -222,6 +226,7 @@ export interface DecryptWithXChaCha20Poly1305Error extends Typed<"DecryptWithXCh
  *
  * ```ts
  * import {
+ *   assertOk,
  *   bytesToUtf8,
  *   createRandomBytes,
  *   decryptWithXChaCha20Poly1305,
@@ -247,7 +252,7 @@ export interface DecryptWithXChaCha20Poly1305Error extends Typed<"DecryptWithXCh
  *   return ok(bytesToUtf8(result.value));
  * };
  *
- * expectOk(decryptMessage(), "secret message");
+ * assertOk(decryptMessage(), "secret message");
  * ```
  */
 export const decryptWithXChaCha20Poly1305 = (

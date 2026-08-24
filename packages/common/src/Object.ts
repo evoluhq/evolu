@@ -23,11 +23,11 @@ export type ObjectKind =
  * ### Example
  *
  * ```ts
- * import { getObjectKind } from "@evolu/common";
+ * import { assertEqual, getObjectKind } from "@evolu/common";
  *
- * expect(getObjectKind({})).toBe("Object");
- * expect(getObjectKind(new Map())).toBe("Map");
- * expect(getObjectKind(/value/u)).toBe("Unsupported");
+ * assertEqual(getObjectKind({}), "Object");
+ * assertEqual(getObjectKind(new Map()), "Map");
+ * assertEqual(getObjectKind(/value/u), "Unsupported");
  * ```
  */
 export const getObjectKind = (value: object): ObjectKind => {
@@ -64,14 +64,14 @@ export const getObjectKind = (value: object): ObjectKind => {
  * ### Example
  *
  * ```ts
- * import { isPlainObject } from "@evolu/common";
+ * import { assertFalse, assertTrue, isPlainObject } from "@evolu/common";
  *
- * expect(isPlainObject({})).toBe(true);
- * expect(isPlainObject(Object.create(null))).toBe(true);
- * expect(isPlainObject(new Date())).toBe(false);
- * expect(isPlainObject(new (class Example {})())).toBe(false);
- * expect(isPlainObject([])).toBe(false);
- * expect(isPlainObject(null)).toBe(false);
+ * assertTrue(isPlainObject({}));
+ * assertTrue(isPlainObject(Object.create(null)));
+ * assertFalse(isPlainObject(new Date()));
+ * assertFalse(isPlainObject(new (class Example {})()));
+ * assertFalse(isPlainObject([]));
+ * assertFalse(isPlainObject(null));
  * ```
  */
 export const isPlainObject = (
@@ -96,11 +96,11 @@ export const isPlainObject = (
  * ### Example
  *
  * ```ts
- * import { isFunction } from "@evolu/common";
+ * import { assertFalse, assertTrue, isFunction } from "@evolu/common";
  *
- * expect(isFunction(() => {})).toBe(true);
- * expect(isFunction(function () {})).toBe(true);
- * expect(isFunction({})).toBe(false);
+ * assertTrue(isFunction(() => {}));
+ * assertTrue(isFunction(function () {}));
+ * assertFalse(isFunction({}));
  * ```
  */
 export const isFunction = (value: unknown): value is globalThis.Function =>
@@ -112,11 +112,11 @@ export const isFunction = (value: unknown): value is globalThis.Function =>
  * ### Example
  *
  * ```ts
- * import { isIterable } from "@evolu/common";
+ * import { assertFalse, assertTrue, isIterable } from "@evolu/common";
  *
- * expect(isIterable([1, 2, 3])).toBe(true);
- * expect(isIterable("abc")).toBe(true);
- * expect(isIterable({})).toBe(false);
+ * assertTrue(isIterable([1, 2, 3]));
+ * assertTrue(isIterable("abc"));
+ * assertFalse(isIterable({}));
  * ```
  */
 export const isIterable = (value: unknown): value is Iterable<unknown> =>
@@ -130,6 +130,8 @@ export const isIterable = (value: unknown): value is Iterable<unknown> =>
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   objectToEntries,
  *   type Brand,
  *   type ReadonlyRecord,
@@ -141,8 +143,8 @@ export const isIterable = (value: unknown): value is Iterable<unknown> =>
  * const users: ReadonlyRecord<UserId, string> = { [userId]: "Alice" };
  * const entries = objectToEntries(users);
  *
- * expectTypeOf(entries).toEqualTypeOf<ReadonlyArray<[UserId, string]>>();
- * expect(entries).toEqual([[userId, "Alice"]]);
+ * assertType<ReadonlyArray<[UserId, string]>, typeof entries>();
+ * assertEqual(entries, [[userId, "Alice"]]);
  * ```
  */
 export const objectToEntries = <T extends Record<string, any>>(
@@ -163,6 +165,8 @@ type StringKeyOf<T> = Extract<keyof T, string>;
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertType,
  *   objectFromEntries,
  *   type Brand,
  *   type ReadonlyRecord,
@@ -174,8 +178,8 @@ type StringKeyOf<T> = Extract<keyof T, string>;
  * ];
  * const users = objectFromEntries(entries);
  *
- * expectTypeOf(users).toEqualTypeOf<ReadonlyRecord<UserId, string>>();
- * expect(users).toEqual({ u1: "Alice" });
+ * assertType<ReadonlyRecord<UserId, string>, typeof users>();
+ * assertEqual(users, { u1: "Alice" });
  * ```
  */
 export const objectFromEntries = <K extends string, V>(
@@ -191,17 +195,20 @@ export const objectFromEntries = <K extends string, V>(
  * ### Example
  *
  * ```ts
- * import { objectFrom, type ReadonlyRecord } from "@evolu/common";
+ * import {
+ *   assertEqual,
+ *   assertType,
+ *   objectFrom,
+ *   type ReadonlyRecord,
+ * } from "@evolu/common";
  *
  * const translations = objectFrom(
  *   ["en", "fr"] as const,
  *   (locale): string => `Hello in ${locale}`,
  * );
  *
- * expectTypeOf(translations).toEqualTypeOf<
- *   ReadonlyRecord<"en" | "fr", string>
- * >();
- * expect(translations).toEqual({
+ * assertType<ReadonlyRecord<"en" | "fr", string>, typeof translations>();
+ * assertEqual(translations, {
  *   en: "Hello in en",
  *   fr: "Hello in fr",
  * });
@@ -269,7 +276,7 @@ export const excludeProp = <T extends object, K extends keyof T>(
  * ### Example
  *
  * ```ts
- * import { createMutableRecord } from "@evolu/common";
+ * import { assertEqual, createMutableRecord } from "@evolu/common";
  *
  * const createValuesByKey = (
  *   entries: ReadonlyArray<readonly [string, number]>,
@@ -283,12 +290,13 @@ export const excludeProp = <T extends object, K extends keyof T>(
  *   return valuesByKey;
  * };
  *
- * expect(
+ * assertEqual(
  *   createValuesByKey([
  *     ["a", 1],
  *     ["b", 2],
  *   ]),
- * ).toEqual({ a: 1, b: 2 });
+ *   { a: 1, b: 2 },
+ * );
  * ```
  *
  * Note that TypeScript does not model an object's runtime prototype. A plain
@@ -296,21 +304,32 @@ export const excludeProp = <T extends object, K extends keyof T>(
  * object has a `null` prototype:
  *
  * ```ts
+ * import { assertErr, assertTrue, trySync } from "@evolu/common";
+ *
  * const values = Object.create(null) as Record<string, number>;
  *
  * // TypeScript accepts the call, but `toString` is undefined at runtime.
- * expect(() => values.toString()).toThrow(TypeError);
+ * const result = trySync(() => values.toString());
+ * assertErr(result);
+ * assertTrue(result.error instanceof TypeError);
  * ```
  *
  * `createMutableRecord` uses the same TypeScript Record representation.
  *
  * ```ts
- * import { createMutableRecord } from "@evolu/common";
+ * import {
+ *   assertErr,
+ *   assertTrue,
+ *   createMutableRecord,
+ *   trySync,
+ * } from "@evolu/common";
  *
  * const values = createMutableRecord<string, number>();
  *
  * // TypeScript accepts the call, but `toString` is undefined at runtime.
- * expect(() => values.toString()).toThrow(TypeError);
+ * const result = trySync(() => values.toString());
+ * assertErr(result);
+ * assertTrue(result.error instanceof TypeError);
  * ```
  *
  * In other words, treat the returned object as string-keyed data rather than
@@ -359,7 +378,7 @@ export const emptyRecord: Readonly<Record<string, never>> =
  * ### Example
  *
  * ```ts
- * import { getOwnProp } from "@evolu/common";
+ * import { assertEqual, assertType, getOwnProp } from "@evolu/common";
  *
  * interface User {
  *   readonly name: string;
@@ -370,9 +389,9 @@ export const emptyRecord: Readonly<Record<string, never>> =
  * };
  * const user = getOwnProp(users, "bob");
  *
- * expectTypeOf(user).toEqualTypeOf<User | undefined>();
- * expect(user).toBeUndefined();
- * expect(getOwnProp(users, "toString")).toBeUndefined();
+ * assertType<User | undefined, typeof user>();
+ * assertEqual(user, undefined);
+ * assertEqual(getOwnProp(users, "toString"), undefined);
  * ```
  */
 export const getOwnProp = <K extends string, V>(
@@ -388,12 +407,12 @@ export const getOwnProp = <K extends string, V>(
  * ### Example
  *
  * ```ts
- * import { createObjectURL } from "@evolu/common";
+ * import { assertTrue, createObjectURL } from "@evolu/common";
  *
  * const blob = new Blob(["hello"], { type: "text/plain" });
  * using objectUrl = createObjectURL(blob);
  *
- * expect(objectUrl.url).toMatch(/^blob:/);
+ * assertTrue(/^blob:/.test(objectUrl.url));
  * // URL.revokeObjectURL is automatically called when the scope ends.
  * ```
  *
