@@ -281,9 +281,6 @@ importers:
       '@types/rss':
         specifier: ^0.0.32
         version: 0.0.32
-      '@typescript/native':
-        specifier: npm:typescript@^7.0.2
-        version: typescript@7.0.2
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@24.13.3)
@@ -476,9 +473,6 @@ importers:
       '@types/react':
         specifier: catalog:react19
         version: 19.2.18
-      '@typescript/native':
-        specifier: npm:typescript@^7.0.2
-        version: typescript@7.0.2
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
@@ -528,9 +522,6 @@ importers:
       '@types/react-dom':
         specifier: catalog:react19
         version: 19.2.4(@types/react@19.2.18)
-      '@typescript/native':
-        specifier: npm:typescript@^7.0.2
-        version: typescript@7.0.2
       postcss:
         specifier: ^8.5.26
         version: 8.5.26
@@ -723,9 +714,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
 
   packages/nodejs:
     dependencies:
@@ -773,9 +761,6 @@ importers:
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
-      '@typescript/native':
-        specifier: npm:typescript@^7.0.2
-        version: typescript@7.0.2
       oxlint:
         specifier: ^1.79.0
         version: 1.79.0(oxlint-tsgolint@7.0.2001)

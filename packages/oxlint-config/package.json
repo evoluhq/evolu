@@ -36,7 +36,6 @@
   },
   "devDependencies": {
     "@evolu/typescript-config": "workspace:*",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "oxlint": "^1.79.0",
     "oxlint-tsgolint": "7.0.2001",
     "vitest": "^4.1.11"
