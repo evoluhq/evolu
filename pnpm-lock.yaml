@@ -937,7 +937,11 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
 
-  packages/typescript-config: {}
+  packages/typescript-config:
+    dependencies:
+      typescript:
+        specifier: '>=7.0.0'
+        version: 7.0.2
 
   packages/vitest:
     devDependencies:

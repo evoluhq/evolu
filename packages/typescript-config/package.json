@@ -1,6 +1,48 @@
 {
   "name": "@evolu/typescript-config",
   "version": "0.0.2",
-  "private": true,
-  "type": "module"
+  "description": "Strict TypeScript configurations for Evolu projects",
+  "keywords": [
+    "evolu",
+    "typescript",
+    "config"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evoluhq/evolu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
+  "type": "module",
+  "exports": {
+    "./base.json": "./base.json",
+    "./nextjs.json": "./nextjs.json",
+    "./universal-esm.json": "./universal-esm.json",
+    "./vitest.ts": "./vitest.ts"
+  },
+  "files": [
+    "base.json",
+    "nextjs.json",
+    "universal-esm.json",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./base.json": "./base.json",
+      "./nextjs.json": "./nextjs.json",
+      "./universal-esm.json": "./universal-esm.json"
+    }
+  },
+  "peerDependencies": {
+    "typescript": ">=7.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "sideEffects": false
 }

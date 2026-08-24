@@ -16,6 +16,7 @@ const packageDirectories = [
   "packages/react-native",
   "packages/react-web",
   "packages/svelte",
+  "packages/typescript-config",
   "packages/vitest",
   "packages/vue",
   "packages/web",
@@ -23,6 +24,7 @@ const packageDirectories = [
 
 const staticPackageDirectories: ReadonlySet<string> = new Set([
   "packages/oxlint-config",
+  "packages/typescript-config",
 ]);
 
 type Json =
@@ -107,11 +109,32 @@ try {
       ) as PackageJson;
 
       if (staticPackageDirectories.has(packageDirectory)) {
-        deepStrictEqual(
-          packageJson.exports,
-          packageJson.publishConfig.exports,
-          `${packageJson.name} static workspace and published exports must match`,
-        );
+        if (packageDirectory === "packages/typescript-config") {
+          ok(
+            !isJsonArray(packageJson.exports) &&
+              typeof packageJson.exports === "object" &&
+              packageJson.exports != null,
+            `${packageJson.name} workspace exports must be an object`,
+          );
+          const { "./vitest.ts": vitestExport, ...publishedExports } =
+            packageJson.exports;
+          deepStrictEqual(
+            vitestExport,
+            "./vitest.ts",
+            `${packageJson.name} must expose its internal Vitest helper in the workspace`,
+          );
+          deepStrictEqual(
+            publishedExports,
+            packageJson.publishConfig.exports,
+            `${packageJson.name} published exports must omit its internal Vitest helper`,
+          );
+        } else {
+          deepStrictEqual(
+            packageJson.exports,
+            packageJson.publishConfig.exports,
+            `${packageJson.name} static workspace and published exports must match`,
+          );
+        }
         for (const target of getTargets(packageJson.exports)) {
           match(target, /^\.\/[^/]/u);
         }
@@ -184,6 +207,12 @@ try {
         ok(
           packedFiles.has(`package/${target.slice(2)}`),
           `${packageJson.name} packed export target ${target} is missing`,
+        );
+      }
+      if (packageDirectory === "packages/typescript-config") {
+        ok(
+          !packedFiles.has("package/vitest.ts"),
+          `${packageJson.name} packed files must omit its internal Vitest helper`,
         );
       }
     }),
