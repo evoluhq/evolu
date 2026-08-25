@@ -568,6 +568,27 @@ test("encodeAndEncryptDbChange/decryptAndDecodeDbChange", () => {
   );
 });
 
+test("encodeAndEncryptDbChange preserves null values", () => {
+  const deps = testCreateDeps();
+  const message: CrdtMessage = {
+    timestamp: createInitialTimestamp(deps),
+    change: DbChange.orThrow({
+      table: "employee",
+      id: createId(deps),
+      values: { officeId: null },
+      isInsert: false,
+      isDelete: null,
+    }),
+  };
+  const encryptedMessage = createEncryptedCrdtMessage(deps, message);
+
+  expect(
+    getOrThrow(
+      decryptAndDecodeDbChange(encryptedMessage, testAppOwner.encryptionKey),
+    ),
+  ).toEqual(message.change);
+});
+
 test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
   const deps = testCreateDeps();
   const crdtMessage = createTestCrdtMessage(deps);

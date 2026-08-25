@@ -183,7 +183,7 @@ import {
   isNonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
-import { assert, assertNonNullable } from "../Assert.ts";
+import { assert, assertNonNullable, assertNotUndefined } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import {
   type Buffer,
@@ -1898,7 +1898,7 @@ export const encodeAndEncryptDbChange =
 
     encodeLength(buffer, entries);
     for (const [column, value] of entries) {
-      assertNonNullable(value);
+      assertNotUndefined(value);
       encodeString(buffer, column);
       encodeSqliteValue(buffer, value);
     }
