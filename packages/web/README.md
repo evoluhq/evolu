@@ -1,6 +1,12 @@
 # Evolu for Web
 
-This package provides Evolu for the web platform (browsers). We use "web" rather than "browser" because "web platform" is the standard W3C terminology for browser APIs and aligns with ecosystem conventions.
+This package provides browser-specific Evolu implementations, including
+OPFS-backed SQLite, Web Workers, Shared Workers, and browser platform
+dependencies.
+
+As runtimes increasingly implement the same Web Platform APIs, Evolu's portable
+abstractions for `WebSocket`, `MessagePort`, and Web Locks live in
+`@evolu/common`. Their concrete implementations are supplied by the runtime.
 
 ## Documentation
 
