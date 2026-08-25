@@ -116,17 +116,17 @@ try {
               packageJson.exports != null,
             `${packageJson.name} workspace exports must be an object`,
           );
-          const { "./vitest.ts": vitestExport, ...publishedExports } =
+          const { "./base.json": baseExport, ...publishedExports } =
             packageJson.exports;
           deepStrictEqual(
-            vitestExport,
-            "./vitest.ts",
-            `${packageJson.name} must expose its internal Vitest helper in the workspace`,
+            baseExport,
+            "./base.json",
+            `${packageJson.name} must expose its internal base configuration in the workspace`,
           );
           deepStrictEqual(
             publishedExports,
             packageJson.publishConfig.exports,
-            `${packageJson.name} published exports must omit its internal Vitest helper`,
+            `${packageJson.name} published exports must omit its internal base configuration`,
           );
         } else {
           deepStrictEqual(
@@ -211,8 +211,8 @@ try {
       }
       if (packageDirectory === "packages/typescript-config") {
         ok(
-          !packedFiles.has("package/vitest.ts"),
-          `${packageJson.name} packed files must omit its internal Vitest helper`,
+          packedFiles.has("package/base.json"),
+          `${packageJson.name} packed files must include its internal base configuration`,
         );
       }
     }),

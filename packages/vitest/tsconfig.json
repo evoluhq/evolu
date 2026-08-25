@@ -1,12 +1,7 @@
 {
-  "extends": "@evolu/typescript-config/universal-esm.json",
+  "extends": "@evolu/typescript-config/library.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": ".",
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
     "types": ["node"]
   },
-  "include": ["src"],
-  "exclude": ["dist", "node_modules"],
   "references": [{ "path": "../common" }]
 }

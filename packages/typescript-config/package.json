@@ -20,26 +20,39 @@
   "type": "module",
   "exports": {
     "./base.json": "./base.json",
-    "./nextjs.json": "./nextjs.json",
-    "./universal-esm.json": "./universal-esm.json",
-    "./vitest.ts": "./vitest.ts"
+    "./executable.json": "./executable.json",
+    "./library-react.json": "./library-react.json",
+    "./library.json": "./library.json",
+    "./node.json": "./node.json",
+    "./script.json": "./script.json"
   },
   "files": [
     "base.json",
-    "nextjs.json",
-    "universal-esm.json",
+    "executable.json",
+    "library-react.json",
+    "library.json",
+    "node.json",
+    "script.json",
     "README.md"
   ],
   "publishConfig": {
     "access": "public",
     "exports": {
-      "./base.json": "./base.json",
-      "./nextjs.json": "./nextjs.json",
-      "./universal-esm.json": "./universal-esm.json"
+      "./executable.json": "./executable.json",
+      "./library-react.json": "./library-react.json",
+      "./library.json": "./library.json",
+      "./node.json": "./node.json",
+      "./script.json": "./script.json"
     }
   },
   "peerDependencies": {
+    "@types/node": ">=24.0.0",
     "typescript": ">=7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/node": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=24.0.0"

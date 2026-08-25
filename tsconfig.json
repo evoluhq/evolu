@@ -1,5 +1,5 @@
 {
-  "extends": "./packages/typescript-config/universal-esm.json",
+  "extends": "./packages/typescript-config/library.json",
   "compilerOptions": {
     "noEmit": true
   },

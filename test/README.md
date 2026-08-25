@@ -48,11 +48,12 @@ by `pnpm test:jsdoc`. `pnpm verify` runs this command serially before the Vitest
 coverage suite. The reusable `@evolu/nodejs/TestJSDoc` entry point extracts the
 documented TypeScript, lints it with `@evolu/oxlint-config`, compiles it, and
 executes each example as an isolated Node.js ESM module in one process with
-explicitly imported assertions. Compilation extends
-`@evolu/typescript-config/universal-esm.json` so examples use Evolu's strict
-compiler settings. Unused declarations are checked by Oxlint instead of
-TypeScript so an `_` prefix can explicitly mark them as intentional. Its
-behavior is covered by the Vitest Node.js unit project.
+explicitly imported assertions. Compilation uses
+`@evolu/typescript-config/base.json` with an explicit module environment so
+examples use Evolu's strict compiler settings without a project layout. Unused
+declarations are checked by Oxlint instead of TypeScript so an `_` prefix can
+explicitly mark them as intentional. Its behavior is covered by the Vitest
+Node.js unit project.
 
 ## Integration tests
 

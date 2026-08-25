@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
 import { transformWithEsbuild } from "vite";
 import { defineProject } from "vitest/config";
-import { createBrowserInstances } from "../../../packages/typescript-config/vitest.ts";
+import { createBrowserInstances } from "@evolu/vitest/BrowserConfig";
 
 export default defineProject(({ mode }) => ({
   root: resolve(import.meta.dirname, "../../.."),

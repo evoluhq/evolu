@@ -181,7 +181,7 @@ export const testJSDocExamples = async ({
   );
   const typescriptConfigPath = resolve(
     dirname(resolvePackageJSON(workingDirectory, "@evolu/typescript-config")),
-    "universal-esm.json",
+    "base.json",
   );
   const temporaryRoot = join(workingDirectory, "tmp");
   mkdirSync(temporaryRoot, { recursive: true });
@@ -214,9 +214,12 @@ export const testJSDocExamples = async ({
           declaration: false,
           declarationMap: false,
           incremental: false,
+          lib: ["dom", "esnext"],
+          module: "NodeNext",
           noEmit: true,
           noUnusedLocals: false,
           noUnusedParameters: false,
+          target: "es2022",
           types: ["node"],
         },
         files: generatedExamples.map(({ generatedPath }) => generatedPath),

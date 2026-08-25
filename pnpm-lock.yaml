@@ -951,6 +951,9 @@ importers:
 
   packages/typescript-config:
     dependencies:
+      '@types/node':
+        specifier: '>=24.0.0'
+        version: 24.13.3
       typescript:
         specifier: '>=7.0.0'
         version: 7.0.2
@@ -1001,6 +1004,9 @@ importers:
       '@evolu/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      '@evolu/vitest':
+        specifier: workspace:*
+        version: link:../vitest
       '@types/node':
         specifier: ^24.10.9
         version: 24.13.3

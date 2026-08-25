@@ -1,18 +1,3 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Node 22",
-  "_version": "22.0.0",
-  "compilerOptions": {
-    "lib": ["es2023"],
-    "module": "node16",
-    "target": "es2022",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "moduleResolution": "node16",
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "rewriteRelativeImportExtensions": true,
-    "types": ["node"]
-  }
+  "extends": "@evolu/typescript-config/script.json"
 }

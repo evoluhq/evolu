@@ -1,16 +1,15 @@
 {
-  "extends": "@tsconfig/svelte/tsconfig.json",
+  "extends": [
+    "@tsconfig/svelte/tsconfig.json",
+    "@evolu/typescript-config/base.json"
+  ],
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
     "allowJs": true,
     "checkJs": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "skipLibCheck": true,
     "sourceMap": true,
-    "strict": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "rewriteRelativeImportExtensions": true,

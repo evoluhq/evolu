@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { playwright } from "@vitest/browser-playwright";
-import { createBrowserInstances } from "@evolu/typescript-config/vitest.ts";
+import { createBrowserInstances } from "@evolu/vitest/BrowserConfig";
 import { transformWithEsbuild } from "vite";
 import { defineProject } from "vitest/config";
 

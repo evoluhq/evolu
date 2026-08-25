@@ -1,12 +1,12 @@
 {
-  "extends": "../packages/typescript-config/universal-esm.json",
+  "extends": "../packages/typescript-config/base.json",
   "compilerOptions": {
-    "composite": false,
-    "declaration": false,
-    "declarationMap": false,
+    "lib": ["dom", "esnext"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
+    "rewriteRelativeImportExtensions": true,
+    "target": "es2022",
     "paths": {
       "@evolu/common": ["../packages/common/src/index.ts"],
       "@evolu/common/intl": ["../packages/common/src/intl/index.ts"],
@@ -15,7 +15,8 @@
       ],
       "@evolu/common/polyfills": ["../packages/common/src/Polyfills.ts"],
       "@evolu/nodejs/TestJSDoc": ["../packages/nodejs/src/TestJSDoc.ts"],
-      "@evolu/vitest": ["../packages/vitest/src/index.ts"]
+      "@evolu/vitest": ["../packages/vitest/src/index.ts"],
+      "@evolu/vitest/BrowserConfig": ["../packages/vitest/src/BrowserConfig.ts"]
     },
     "types": ["node"]
   },

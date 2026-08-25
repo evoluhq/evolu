@@ -22,6 +22,10 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "default": "./src/index.ts"
+    },
+    "./BrowserConfig": {
+      "types": "./dist/src/BrowserConfig.d.ts",
+      "default": "./src/BrowserConfig.ts"
     }
   },
   "files": [

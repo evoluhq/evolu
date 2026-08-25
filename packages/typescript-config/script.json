@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Evolu Node.js script",
+  "extends": "./node.json",
+  "compilerOptions": {
+    "noEmit": true
+  }
+}

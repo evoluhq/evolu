@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Evolu library",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "${configDir}/dist",
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "${configDir}",
+    "tsBuildInfoFile": "${configDir}/dist/tsconfig.tsbuildinfo",
+    "lib": ["dom", "esnext"],
+    "module": "NodeNext",
+    "target": "es2022"
+  },
+  "include": [
+    "${configDir}/src",
+    "${configDir}/test",
+    "${configDir}/vitest.config.ts"
+  ],
+  "exclude": ["${configDir}/dist", "${configDir}/node_modules"]
+}

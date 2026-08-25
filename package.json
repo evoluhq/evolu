@@ -9,7 +9,7 @@
     "build:web:fast": "rm -rf 'apps/web/src/app/(docs)/docs/api-reference' && turbo --filter web build",
     "build:docs": "typedoc && pnpm --dir apps/web fix:docs",
     "build:expo": "turbo --filter @example/react-expo build",
-    "typecheck": "tsc --build tsconfig.typecheck.json && tsc --project packages/oxlint-config/tsconfig.json --noEmit && tsc --project scripts/tsconfig.json --noEmit && tsc --project bench/tsconfig.json --noEmit && tsc --project test/tsconfig.json --noEmit",
+    "typecheck": "tsc --build tsconfig.typecheck.json && tsc --project packages/oxlint-config/tsconfig.json --noEmit && tsc --project scripts/tsconfig.json && tsc --project bench/tsconfig.json --noEmit && tsc --project test/tsconfig.json --noEmit",
     "test": "vitest run --project='node-*'",
     "test:browsers": "vitest run --project='browser-*'",
     "test:bundle": "vitest run --project=bundle",

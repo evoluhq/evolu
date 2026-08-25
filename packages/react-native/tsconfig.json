@@ -1,13 +1,8 @@
 {
-  "extends": "@evolu/typescript-config/universal-esm.json",
+  "extends": "@evolu/typescript-config/library-react.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": ".",
     "module": "esnext",
-    "moduleResolution": "bundler",
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "moduleResolution": "bundler"
   },
-  "include": ["src", "test", "vitest.config.ts"],
-  "exclude": ["dist", "node_modules"],
   "references": [{ "path": "../common" }, { "path": "../react" }]
 }

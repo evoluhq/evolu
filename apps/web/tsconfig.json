@@ -1,6 +1,16 @@
 {
-  "extends": "@evolu/typescript-config/nextjs.json",
+  "extends": "@evolu/typescript-config/base.json",
   "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "rewriteRelativeImportExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
     "paths": {
       "@/*": ["./src/*"]
     },

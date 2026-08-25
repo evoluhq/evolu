@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Evolu Node.js",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "lib": ["es2025", "esnext.array", "esnext.collection", "esnext.error"],
+    "module": "NodeNext",
+    "rewriteRelativeImportExtensions": true,
+    "target": "es2025",
+    "types": ["node"]
+  }
+}

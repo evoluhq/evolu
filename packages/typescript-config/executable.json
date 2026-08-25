@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Evolu Node.js executable",
+  "extends": "./node.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "${configDir}",
+    "outDir": "${configDir}/dist"
+  },
+  "include": ["${configDir}/src"]
+}

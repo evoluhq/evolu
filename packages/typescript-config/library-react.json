@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Evolu React library",
+  "extends": "./library.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  }
+}
