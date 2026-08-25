@@ -25,7 +25,7 @@ framework packages depend on `@evolu/common`.
 
 ## Commands
 
-The repository requires Node.js 24 or newer and pnpm.
+The repository uses the latest Node.js LTS release selected by `.nvmrc` and pnpm.
 
 - `pnpm install` — install workspace dependencies.
 - `pnpm playwright:install` — install browsers for Playwright-based tests and

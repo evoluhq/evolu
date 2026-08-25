@@ -16,17 +16,31 @@ To chat with other community members, you can join the [Evolu Discord](https://d
 
 ## Developing
 
-Evolu monorepo uses [Node.js](https://nodejs.org) and [pnpm](https://pnpm.io).
+Evolu monorepo uses the latest [Node.js](https://nodejs.org) LTS release and
+[pnpm](https://pnpm.io). With nvm, install the Node.js version selected by
+`.nvmrc`:
+
+```sh
+nvm install
+```
+
+Install Corepack independently of Node.js and enable the pnpm version pinned in
+`package.json`:
+
+```sh
+npm install --global corepack@latest
+corepack enable pnpm
+```
 
 Install dependencies:
 
-```
+```sh
 pnpm install
 ```
 
 Install Playwright browsers for local test and verify runs:
 
-```
+```sh
 pnpm playwright:install
 ```
 
