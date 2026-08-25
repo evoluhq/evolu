@@ -1,5 +1,216 @@
 # @evolu/common
 
+## 8.6.0
+
+### Minor Changes
+
+- 076dc42: Added `assertEqual`, `assertSame`, `assertTrue`, and `assertFalse`
+
+  `assertEqual` compares platform-independent Data with `eqData` and reports an
+  assertion failure when the values differ. `assertSame` compares any JavaScript
+  values with SameValue semantics through `eqStrict`, including object reference
+  identity. `assertTrue` and `assertFalse` require exact boolean values instead of
+  truthiness or falsiness. These assertions are useful in portable examples where
+  an invariant-specific assertion message would add noise.
+
+  ```ts
+  import {
+    assertEqual,
+    assertFalse,
+    assertSame,
+    assertTrue,
+  } from "@evolu/common";
+
+  assertEqual(
+    new Map([["roles", new Set(["admin", "author"])]]),
+    new Map([["roles", new Set(["author", "admin"])]]),
+  );
+
+  const scores = [100, 80];
+  const leaderboard = scores;
+  assertSame(leaderboard, scores);
+
+  assertTrue(scores.length === 2);
+  assertFalse(scores.length === 0);
+  ```
+
+- 420b03e: Added `eqUint8Array`
+
+  Use `eqUint8Array` to compare two Uint8Arrays by byte value.
+
+  ```ts
+  import { assertTrue, eqUint8Array } from "@evolu/common";
+
+  assertTrue(eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 2])));
+  ```
+
+- 420b03e: Added the `map` Type Factory
+
+  `map(Key, Value)` validates JavaScript Maps and their entries while
+  preserving the original Map when decoding does not change any key or value.
+  Own properties are rejected. If distinct input keys decode to the same output
+  key, validation returns a collision error instead of discarding an associated
+  value.
+
+  Every locale exported by `@evolu/common/intl` provides `formatMapError` for
+  localized structural Map errors. Key and value errors use their respective Type
+  formatters.
+
+  ```ts
+  import {
+    PositiveInt,
+    String,
+    assertOk,
+    assertSame,
+    map,
+  } from "@evolu/common";
+
+  const Scores = map(String, PositiveInt);
+  const scores = new Map([
+    ["Ada", 10],
+    ["Grace", 20],
+  ]);
+
+  const result = Scores.fromUnknown(scores);
+
+  assertOk(result);
+  assertSame(result.value, scores);
+  ```
+
+- 420b03e: Added `assertOk`, `assertErr`, `IsSameType`, and exact `assertType`
+
+  These platform-independent assertions can be used in tests, documentation
+  examples, and application code without depending on a test framework.
+
+  `assertOk` and `assertErr` assert and narrow a Result variant. With an expected
+  value or error, they compare it using `eqData`; values outside Data require an
+  explicit `Eq`. Expected Data is inferred independently, so unbranded literals
+  can compare primitive-branded Result values. Without an expected value, they
+  leave the narrowed value or error available for a separate assertion.
+
+  `IsSameType<A, B>` exposes exact type equality as a boolean type.
+  `assertType<Expected, Actual>()` uses that comparison and requires a
+  `CompileTimeError` argument when the types differ.
+
+  ```ts
+  import {
+    assertErr,
+    assertOk,
+    assertType,
+    err,
+    ok,
+    type Err,
+    type IsSameType,
+    type Ok,
+    type Result,
+  } from "@evolu/common";
+
+  interface ValuesNotFoundError {
+    readonly type: "ValuesNotFound";
+  }
+
+  const success: Result<ReadonlyArray<number>, ValuesNotFoundError> = ok([
+    1, 2,
+  ]);
+  assertOk(success, [1, 2]);
+  assertType<Ok<ReadonlyArray<number>>, typeof success>();
+
+  const failure: Result<ReadonlyArray<number>, ValuesNotFoundError> = err({
+    type: "ValuesNotFound",
+  });
+  assertErr(failure, { type: "ValuesNotFound" });
+  assertType<Err<ValuesNotFoundError>, typeof failure>();
+
+  const status = "ready" as const;
+  assertType<true, IsSameType<typeof status, "ready">>();
+
+  // `satisfies` checks assignability, so a narrower literal satisfies `string`.
+  status satisfies string;
+
+  // `assertType` requires exact equality, so `"ready"` and `string` differ.
+  // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
+  assertType<string, typeof status>();
+  ```
+
+- 420b03e: Added `Data`, `IsData`, `eqData`, `ObjectKind`, and `getObjectKind`
+
+  `Data` is Evolu's recursive structured-cloneable data domain. It is
+  intentionally limited to values supported by structured clone APIs such as
+  worker `postMessage`: undefined, null, strings, numbers, bigints, booleans,
+  Arrays, plain Objects, Sets, Maps, Dates, and Uint8Arrays. Cyclic and shared
+  graphs are supported. Raw ArrayBuffers are excluded; represent bytes with a
+  Uint8Array.
+
+  The `Data` Type validates unknown values at runtime, while `IsData` checks
+  declared TypeScript types, including ordinary interfaces without index
+  signatures. `eqData` compares Data structurally with support for cycles,
+  unordered Sets and Maps, Dates, and Uint8Arrays. The existing
+  `eqJsonValue` and `eqJsonValueInput` helpers use the same comparison while
+  retaining their narrower JSON-only types.
+
+  `getObjectKind` exposes the shared representation classification used by Data
+  validation and comparison. Plain Objects use a realm-neutral structural
+  heuristic: a `null` prototype or an immediate root prototype with own
+  `hasOwnProperty` and `isPrototypeOf` properties is accepted. A custom root
+  prototype with the same shape can therefore be classified as plain. This
+  heuristic assumes trusted JavaScript and is not a security boundary.
+
+  ```ts
+  import {
+    Data,
+    assertTrue,
+    eqData,
+    getObjectKind,
+    type IsData,
+  } from "@evolu/common";
+
+  interface User {
+    readonly name: string;
+    readonly roles: ReadonlySet<string>;
+  }
+
+  const userIsData: IsData<User> = true;
+  assertTrue(userIsData);
+
+  const value = { name: "Ada", roles: new Set(["admin"]) };
+  const result = Data.fromUnknown(value);
+
+  assertTrue(result.ok);
+  assertTrue(getObjectKind(value) === "Object");
+  assertTrue(eqData(result.value, { name: "Ada", roles: new Set(["admin"]) }));
+  ```
+
+### Patch Changes
+
+- 420b03e: Removed `SetUnexpectedPrototypeError` from Set validation
+
+  The `set` Type no longer reports a prototype-specific error.
+  `SetUnexpectedPrototypeError` was removed, and `SetError` now contains only
+  `SetNotSetError` and `SetItemsError`.
+
+  Evolu does not support subclassing native JavaScript objects. Code must pass
+  ordinary Sets and must not depend on how a Set subclass is classified.
+
+- 420b03e: Tightened plain-object prototype detection
+
+  Plain-object APIs now use a realm-neutral structural heuristic. They accept a
+  `null` prototype or an immediate root prototype with own `hasOwnProperty` and
+  `isPrototypeOf` properties. This recognizes ordinary Objects from another
+  JavaScript realm without relying on prototype identity.
+
+  A custom root prototype with the same shape can therefore be classified as
+  plain. The heuristic assumes trusted JavaScript and is not a prototype
+  authentication or security boundary. Other custom prototypes and class
+  instances are rejected; replace them with plain Objects and materialize required
+  inherited values as own properties.
+
+- 076dc42: Made `eqStrict` a reflexive SameValue comparison
+
+  `eqStrict` now uses `Object.is`, matching Node.js `assert.strictEqual`. It
+  considers `NaN` equal to itself and distinguishes `0` from `-0`.
+
+  `eqArrayStrict` inherits the same semantics for its elements.
+
 ## 8.5.0
 
 ### Minor Changes
