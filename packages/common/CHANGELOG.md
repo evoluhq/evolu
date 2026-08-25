@@ -1,5 +1,14 @@
 # @evolu/common
 
+## 8.6.1
+
+### Patch Changes
+
+- 9e71ebd: Fixed synchronization of nullable column updates
+
+  Setting a nullable column to `null` now synchronizes across devices instead of
+  throwing an assertion error.
+
 ## 8.6.0
 
 ### Minor Changes
