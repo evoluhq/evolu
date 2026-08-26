@@ -5,7 +5,7 @@
  */
 
 import type { Result } from "./Result.ts";
-import { NonNegativeInt, zeroNonNegativeInt } from "./Type.ts";
+import type { NonNegativeInt } from "./Type.ts";
 export {
   bytesToHex,
   bytesToUtf8,
@@ -101,7 +101,7 @@ export interface Buffer {
 
   /**
    * Appends binary data to the buffer, resizing if necessary. Throws if
-   * `arg.length` is not a non-negative integer.
+   * `arg.length` is not a non-negative safe integer.
    */
   extend: (arg: Uint8Array | ArrayLike<number>) => void;
 
@@ -144,18 +144,26 @@ export interface Buffer {
 export const createBuffer = (
   arrayLike?: Uint8Array | ArrayLike<number>,
 ): Buffer => {
+  const initialLength = arrayLike?.length ?? 0;
+  assertNonNegativeInt(initialLength, "arrayLike.length");
+
   let value = arrayLike
     ? new globalThis.Uint8Array(arrayLike)
     : new globalThis.Uint8Array(512);
-  let length = NonNegativeInt.orThrow(arrayLike ? arrayLike.length : 0);
+  let length = initialLength;
 
   const buffer: Buffer = {
-    getCapacity: () => NonNegativeInt.orThrow(value.length),
+    getCapacity: () => value.length as NonNegativeInt,
 
     getLength: () => length,
 
     extend: (arg) => {
-      const targetSize = length + arg.length;
+      const argLength = arg.length;
+      assertNonNegativeInt(argLength, "arg.length");
+
+      const targetSize = length + argLength;
+      assertNonNegativeInt(targetSize, "Buffer length");
+
       if (value.length < targetSize) {
         const oldValue = value;
         const newCapacity = Math.max(value.length * 2, targetSize);
@@ -163,26 +171,22 @@ export const createBuffer = (
         value.set(oldValue);
       }
       value.set(arg, length);
-      length = NonNegativeInt.orThrow(length + arg.length);
+      length = targetSize;
     },
 
     shift: () => {
-      if (length === 0) {
-        throw new BufferError("Buffer parse ended prematurely");
-      }
+      assertBufferHasRemainingBytes(length, 1);
       const first = value[0];
       value = value.subarray(1);
       length--;
-      return NonNegativeInt.orThrow(first);
+      return first as NonNegativeInt;
     },
 
     shiftN: (n) => {
-      if (length < n) {
-        throw new BufferError("Buffer parse ended prematurely");
-      }
+      assertBufferHasRemainingBytes(length, n);
       const subarray = value.subarray(0, n);
       value = value.subarray(n);
-      length = NonNegativeInt.orThrow(length - n);
+      length = (length - n) as NonNegativeInt;
       return subarray;
     },
 
@@ -196,11 +200,29 @@ export const createBuffer = (
     },
 
     reset: () => {
-      length = zeroNonNegativeInt;
+      length = 0 as NonNegativeInt;
     },
 
     unwrap: () => value.subarray(0, length),
   };
 
   return buffer;
+};
+
+const assertNonNegativeInt: (
+  value: number,
+  name: string,
+) => asserts value is NonNegativeInt = (value, name) => {
+  if (!globalThis.Number.isSafeInteger(value) || value < 0) {
+    throw new BufferError(`${name} must be a non-negative safe integer.`);
+  }
+};
+
+const assertBufferHasRemainingBytes = (
+  remainingBytes: number,
+  requiredBytes: number,
+): void => {
+  if (remainingBytes < requiredBytes) {
+    throw new BufferError("Buffer parse ended prematurely");
+  }
 };

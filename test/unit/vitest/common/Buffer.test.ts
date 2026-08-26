@@ -58,6 +58,11 @@ test("Buffer", () => {
   expect(() => buffer2.shift()).toThrow("Buffer parse ended prematurely");
 
   expect(buffer2.shiftN(0 as NonNegativeInt)).toStrictEqual(new Uint8Array(0));
+
+  buffer2.extend([1]);
+  buffer2.reset();
+  expect(buffer2.getLength()).toBe(0);
+  expect(buffer2.unwrap()).toStrictEqual(new Uint8Array(0));
 });
 
 test("Buffer initial capacity with data", () => {
@@ -65,6 +70,35 @@ test("Buffer initial capacity with data", () => {
   expect(buffer.getLength()).toBe(300);
   // Should match input, not 512
   expect(buffer.getCapacity()).toBe(300);
+});
+
+test.each([-1, 1.5, globalThis.Infinity, globalThis.NaN])(
+  "Buffer rejects invalid ArrayLike length %s",
+  (length) => {
+    const arrayLike: ArrayLike<number> = { length };
+
+    expect(() => createBuffer(arrayLike)).toThrow(BufferError);
+    expect(() => createBuffer(arrayLike)).toThrow(
+      "arrayLike.length must be a non-negative safe integer.",
+    );
+
+    const buffer = createBuffer();
+    expect(() => buffer.extend(arrayLike)).toThrow(BufferError);
+    expect(() => buffer.extend(arrayLike)).toThrow(
+      "arg.length must be a non-negative safe integer.",
+    );
+  },
+);
+
+test("Buffer rejects an unsafe resulting length", () => {
+  const buffer = createBuffer([0]);
+  const extend = () =>
+    buffer.extend({
+      length: globalThis.Number.MAX_SAFE_INTEGER,
+    });
+
+  expect(extend).toThrow(BufferError);
+  expect(extend).toThrow("Buffer length must be a non-negative safe integer.");
 });
 
 test("Buffer unwrap modification affects internal state", () => {
