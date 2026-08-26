@@ -1,0 +1,34 @@
+{
+  "baselines": [
+    {
+      "environment": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M5",
+        "nodeVersion": "24.19.0",
+        "msgpackrVersion": "2.0.5",
+        "msgpackrNativeAcceleration": false,
+        "batchSize": 1000,
+        "repeatCount": 5,
+        "encodedValueLengths": {
+          "smallMixed": 141,
+          "largeNested": 6255
+        }
+      },
+      "measurementsNs": {
+        "smallMixed": {
+          "evoluEncode": 266,
+          "msgpackrEncode": 313,
+          "evoluDecode": 298,
+          "msgpackrDecode": 413
+        },
+        "largeNested": {
+          "evoluEncode": 11913,
+          "msgpackrEncode": 11495,
+          "evoluDecode": 18084,
+          "msgpackrDecode": 19614
+        }
+      }
+    }
+  ]
+}

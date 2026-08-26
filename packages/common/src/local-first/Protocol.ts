@@ -170,14 +170,11 @@
  *   initiator/non-initiator terminology instead, and consolidate into a single
  *   `applyProtocolMessage` function with conditional arguments to reduce code
  *   duplication.
- * - Replace try-catch with Result + new Error (to preserve stacktraces). Measure
- *   Result overhead, it should be super small.
  * - Allow clients to broadcast messages that are not persisted by relays. This
  *   would enable real-time ephemeral data (like cursor positions, typing
  *   indicators) to be forwarded by relays without storage overhead.
  */
 
-import { Packr } from "msgpackr";
 import {
   createMutableArray,
   isNonEmptyArray,
@@ -190,6 +187,8 @@ import {
   bytesToHex,
   bytesToUtf8,
   createBuffer,
+  decodeJsonValue,
+  encodeJsonValue,
   hexToBytes,
   utf8ToBytes,
 } from "../Buffer.ts";
@@ -271,13 +270,7 @@ import {
   timestampToTimestampBytes,
 } from "./Timestamp.ts";
 
-/**
- * Evolu uses MessagePack for numbers and JSONs.
- *
- * - `variableMapSize: true` - More compact maps, ~5-10% slower encoding
- * - `useRecords: false` - Standard MessagePack without extensions
- */
-const packr = new Packr({ variableMapSize: true, useRecords: false });
+const jsonBuffer = createBuffer();
 
 const minProtocolMessageMaxSize = 1_000_000;
 const maxProtocolMessageMaxSize = 100_000_000;
@@ -1779,29 +1772,12 @@ const decodeId = (buffer: Buffer): Id => {
  * For NonNegativeInt, Evolu provides more efficient encoding.
  */
 export const encodeNumber = (buffer: Buffer, number: FiniteNumber): void => {
-  buffer.extend(packr.pack(number));
+  encodeJsonValue(buffer, number);
 };
 
 export const decodeNumber = (buffer: Buffer): FiniteNumber => {
-  let number: unknown;
-  let end: unknown;
-
-  packr.unpackMultiple(
-    buffer.unwrap(),
-    (n: unknown, _: unknown, e: unknown) => {
-      number = n;
-      end = e;
-      return false;
-    },
-  );
-
-  const endResult = NonNegativeInt.fromUnknown(end);
-  if (!endResult.ok) throw new ProtocolDecodeError(endResult.error.type);
-
-  const numberResult = FiniteNumber.fromUnknown(number);
+  const numberResult = FiniteNumber.fromUnknown(decodeJsonValue(buffer));
   if (!numberResult.ok) throw new ProtocolDecodeError(numberResult.error.type);
-
-  buffer.shiftN(endResult.value);
   return numberResult.value;
 };
 
@@ -2157,10 +2133,16 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
       // Some valid JSON strings like "-0E0" get normalized to "0" during parsing,
       // which would cause data corruption if we don't verify round-trip safety.
       if (json.ok && JSON.stringify(jsonToJsonValue(json.value)) === value) {
-        const jsonBytes = packr.pack(jsonToJsonValue(json.value));
-        encodeNonNegativeInt(buffer, ProtocolValueType.Json);
-        encodeLength(buffer, jsonBytes);
-        buffer.extend(jsonBytes);
+        jsonBuffer.reset();
+        try {
+          encodeJsonValue(jsonBuffer, jsonToJsonValue(json.value));
+          const jsonBytes = jsonBuffer.unwrap();
+          encodeNonNegativeInt(buffer, ProtocolValueType.Json);
+          encodeLength(buffer, jsonBytes);
+          buffer.extend(jsonBytes);
+        } finally {
+          jsonBuffer.reset();
+        }
         return;
       }
 
@@ -2179,7 +2161,9 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
     }
 
     case "number": {
-      if (NonNegativeInt.is(value)) {
+      // Negative zero is a non-negative integer in JavaScript, but integer
+      // encoding would lose its observable sign.
+      if (!globalThis.Object.is(value, -0) && NonNegativeInt.is(value)) {
         if (isSmallInt(value)) {
           encodeNonNegativeInt(buffer, value);
           return;
@@ -2229,8 +2213,12 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
 
     case ProtocolValueType.Json: {
       const length = decodeLength(buffer);
-      const bytes = buffer.shiftN(length);
-      return JSON.stringify(packr.unpack(bytes));
+      const lengthBeforeDecoding = buffer.getLength();
+      const value = decodeJsonValue(buffer);
+      if (lengthBeforeDecoding - buffer.getLength() !== length) {
+        throw new ProtocolDecodeError("Invalid JSON MessagePack length");
+      }
+      return JSON.stringify(value);
     }
 
     case ProtocolValueType.DateIsoWithNonNegativeTime:

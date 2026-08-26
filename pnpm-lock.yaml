@@ -75,6 +75,9 @@ importers:
       fast-check:
         specifier: ^4.5.3
         version: 4.9.0
+      msgpackr:
+        specifier: 2.0.5
+        version: 2.0.5
       oxlint:
         specifier: ^1.79.0
         version: 1.79.0(oxlint-tsgolint@7.0.2001)
@@ -701,9 +704,6 @@ importers:
       kysely:
         specifier: ^0.29.5
         version: 0.29.5
-      msgpackr:
-        specifier: ^2.0.5
-        version: 2.0.5
       random:
         specifier: 5.5.1
         version: 5.5.1

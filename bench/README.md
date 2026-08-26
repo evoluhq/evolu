@@ -4,6 +4,8 @@ Benchmarks measure performance characteristics that ordinary correctness tests d
 
 ## Suites
 
+- [JSON binary codec](./json-codec/README.md) measures `JsonValue` MessagePack
+  encoding and decoding against msgpackr.
 - [Storage](./storage/README.md) measures SQLite timestamp Skiplist operations.
 - [Type](./type/README.md) measures deterministic TypeScript compiler work for Evolu Type APIs.
 

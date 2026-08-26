@@ -111,6 +111,7 @@ const getUncompressedAndCompressedSizes = (array: Uint8Array) =>
 
 test("encodeNumber/decodeNumber", () => {
   const testCases = [
+    FiniteNumber.orThrow(-0),
     FiniteNumber.orThrow(0),
     FiniteNumber.orThrow(42),
     FiniteNumber.orThrow(-123),
@@ -131,7 +132,7 @@ test("encodeNumber/decodeNumber", () => {
   });
 
   expect(buffer.unwrap()).toMatchInlineSnapshot(
-    `uint8:[0,42,208,133,203,64,9,33,249,240,27,134,110,203,67,63,255,255,255,255,255,255,203,195,63,255,255,255,255,255,255]`,
+    `uint8:[203,128,0,0,0,0,0,0,0,0,42,208,133,203,64,9,33,249,240,27,134,110,203,67,63,255,255,255,255,255,255,203,195,63,255,255,255,255,255,255]`,
   );
 });
 
@@ -140,12 +141,14 @@ test("encodeNumber/decodeNumber", () => {
 // that protection and throws to contain the bug. If this occurs in practice,
 // Evolu will provide a case-specific migration because the correct replacement
 // depends on the app bug that produced the value.
-test.each([
-  { bytes: [203, 127, 240, 0, 0, 0, 0, 0, 0], error: "Finite" },
-  { bytes: [203, 255, 240, 0, 0, 0, 0, 0, 0], error: "Finite" },
-  { bytes: [203, 127, 248, 0, 0, 0, 0, 0, 0], error: "NonNaN" },
-])("decodeNumber rejects non-finite MessagePack number", ({ bytes, error }) => {
-  expect(() => decodeNumber(createBuffer(bytes))).toThrow(error);
+test("decodeNumber rejects a non-finite MessagePack number", () => {
+  expect(() =>
+    decodeNumber(createBuffer([203, 127, 240, 0, 0, 0, 0, 0, 0])),
+  ).toThrow("A decoded JSON number must be finite.");
+});
+
+test("decodeNumber rejects a non-number MessagePack value", () => {
+  expect(() => decodeNumber(createBuffer([0xc0]))).toThrow("TypeOf");
 });
 
 test("encodeFlags/decodeFlags", () => {
@@ -312,7 +315,7 @@ test("encodeSqliteValue/decodeSqliteValue", () => {
     [FiniteNumber.orThrow(123), 2],
     // NonNegativeInt
     [FiniteNumber.orThrow(16383), 3],
-    // 18 bytes msgpackr + 2 bytes protocol overhead
+    // 18 bytes MessagePack + 2 bytes protocol overhead
     ['{"compact":true,"schema":0}', 20],
     // Protocol encoding ensures 6 bytes till the year 2108.
     [
@@ -359,6 +362,15 @@ test("encodeSqliteValue/decodeSqliteValue", () => {
   expect(buffer.unwrap()).toMatchInlineSnapshot(
     `uint8:[31,21,203,64,94,224,0,0,0,0,0,21,208,133,22,23,3,1,2,3,33,157,202,140,67,91,176,119,159,179,127,150,10,81,180,247,84,0,19,30,123,30,255,127,34,18,130,167,99,111,109,112,97,99,116,195,166,115,99,104,101,109,97,0,36,203,194,204,69,55,130,48,0,0,35,128,232,252,254,173,50,35,128,168,131,232,192,127,35,128,128,200,165,182,128,1,35,255,183,255,144,253,206,57]`,
   );
+});
+
+test("encodeSqliteValue/decodeSqliteValue preserves an own __proto__ JSON object key", () => {
+  const value = '{"__proto__":{"safe":true}}';
+  const buffer = createBuffer();
+
+  encodeSqliteValue(buffer, value);
+
+  expect(decodeSqliteValue(buffer)).toBe(value);
 });
 
 test("encodeSqliteValue/decodeSqliteValue property tests", () => {
@@ -479,10 +491,18 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
           );
         }
 
-        return decoded === sqliteValue;
+        return globalThis.Object.is(decoded, sqliteValue);
       },
     ),
     { numRuns: 10000 },
+  );
+});
+
+test("decodeSqliteValue rejects trailing data in a JSON frame", () => {
+  const buffer = createBuffer([ProtocolValueType.Json, 2, 0xc0, 0xc0]);
+
+  expect(() => decodeSqliteValue(buffer)).toThrow(
+    "Invalid JSON MessagePack length",
   );
 });
 
@@ -593,6 +613,26 @@ test("encodeAndEncryptDbChange preserves null values", () => {
       decryptAndDecodeDbChange(encryptedMessage, testAppOwner.encryptionKey),
     ),
   ).toEqual(message.change);
+});
+
+test("encodeAndEncryptDbChange preserves negative zero", () => {
+  const deps = testCreateDeps();
+  const message: CrdtMessage = {
+    timestamp: createInitialTimestamp(deps),
+    change: DbChange.orThrow({
+      table: "employee",
+      id: createId(deps),
+      values: { score: FiniteNumber.orThrow(-0) },
+      isInsert: false,
+      isDelete: null,
+    }),
+  };
+  const encryptedMessage = createEncryptedCrdtMessage(deps, message);
+  const decrypted = getOrThrow(
+    decryptAndDecodeDbChange(encryptedMessage, testAppOwner.encryptionKey),
+  );
+
+  expect(globalThis.Object.is(decrypted.values.score, -0)).toBe(true);
 });
 
 test("decryptAndDecodeDbChange timestamp tamper-proofing", () => {
