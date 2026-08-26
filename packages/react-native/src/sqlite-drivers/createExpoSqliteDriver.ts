@@ -8,6 +8,7 @@ import {
 import {
   deleteDatabaseSync,
   openDatabaseSync,
+  type SQLiteBindValue,
   type SQLiteStatement,
 } from "expo-sqlite";
 
@@ -39,7 +40,10 @@ export const createExpoSqliteDriver: CreateSqliteDriver =
     return ok({
       exec: (query) => {
         const execStatement = (statement: SQLiteStatement) => {
-          const result = statement.executeSync(query.parameters);
+          // Expo only reads the array, but its parameter type is mutable.
+          const result = statement.executeSync(
+            query.parameters as Array<SQLiteBindValue>,
+          );
           try {
             const rows = result.getAllSync();
             const changes = result.changes;

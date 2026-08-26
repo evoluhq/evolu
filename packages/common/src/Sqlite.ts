@@ -8,19 +8,19 @@ import type { Brand } from "./Brand.ts";
 import { bytesToHex, hexToBytes } from "./Buffer.ts";
 import type { EncryptionKey } from "./Crypto.ts";
 import type { Eq } from "./Eq.ts";
-import { createEqObject, eqArrayNumber, eqString } from "./Eq.ts";
+import { createEqObject, eqString, eqUint8Array } from "./Eq.ts";
 import { disposable } from "./Function.ts";
 import { createMutableRecord, objectToEntries } from "./Object.ts";
 import type { Result } from "./Result.ts";
 import { ok } from "./Result.ts";
-import { testCreateRun, type Task, type TestRunDep } from "./Task.ts";
+import { type Task, testCreateRun, type TestRunDep } from "./Task.ts";
 import {
   array,
   type ArrayType,
+  FiniteNumber,
   type InferType,
   type Name,
   Null,
-  Number,
   object,
   type ObjectType,
   record,
@@ -79,7 +79,7 @@ export interface SqliteTransaction {
 /** Represents a SQL query to be executed on a {@link Sqlite} database. */
 export interface SqliteQuery {
   readonly sql: SafeSql;
-  readonly parameters: Array<SqliteValue>;
+  readonly parameters: SqliteQueryParameters;
   readonly options?: SqliteQueryOptions;
 }
 
@@ -92,20 +92,38 @@ export type SafeSql = string & Brand<"SafeSql">;
 /**
  * A value that can be stored in {@link Sqlite}.
  *
+ * Numeric values use {@link FiniteNumber} because JavaScript numbers also
+ * include `NaN` and infinities. SQLite binds `NaN` as `NULL`, while JSON
+ * serialization converts all non-finite numbers to `null`. Restricting numbers
+ * to finite values preserves them across storage and query serialization.
+ *
  * Note that Evolu can't support Int64 because expo-sqlite (and some others) do
  * not support it.
  */
 export const SqliteValue = /*#__PURE__*/ union(
+  FiniteNumber,
   Null,
   String,
-  Number,
   Uint8Array,
 );
 export type SqliteValue = typeof SqliteValue.Output;
 
-/** Equality comparison for {@link SqliteValue}. */
-export const eqSqliteValue: Eq<SqliteValue> = (x, y) =>
-  Uint8Array.is(x) && Uint8Array.is(y) ? eqArrayNumber(x, y) : x === y;
+/** Parameters of a {@link SqliteQuery}. */
+export const SqliteQueryParameters = /*#__PURE__*/ array(SqliteValue);
+export type SqliteQueryParameters = typeof SqliteQueryParameters.Output;
+
+/**
+ * A value used in {@link sql} template parameters and {@link Sqlite} query
+ * results.
+ *
+ * It differs from {@link SqliteValue} only by using `number` instead of
+ * {@link FiniteNumber}.
+ */
+export type SqliteValueInput = typeof SqliteValue.Input;
+
+/** Equality comparison for {@link SqliteValueInput}. */
+export const eqSqliteValue: Eq<SqliteValueInput> = (x, y) =>
+  Uint8Array.is(x) && Uint8Array.is(y) ? eqUint8Array(x, y) : x === y;
 
 /** Options for configuring {@link SqliteQuery} execution behavior. */
 export interface SqliteQueryOptions {
@@ -139,7 +157,7 @@ export const sqliteQueryToSqliteQueryString = (
   query: SqliteQuery,
 ): SqliteQueryString => {
   const params = query.parameters.map((value) =>
-    value instanceof globalThis.Uint8Array
+    Uint8Array.is(value)
       ? (["b", bytesToHex(value)] as const)
       : (["j", value] as const),
   );
@@ -157,7 +175,9 @@ export const sqliteQueryStringToSqliteQuery = (
 ): SqliteQuery => {
   const [sql, paramsArr, optionsArr] = JSON.parse(query) as [
     SafeSql,
-    Array<readonly ["b", string] | readonly ["j", string | number | null]>,
+    Array<
+      readonly ["b", string] | readonly ["j", string | FiniteNumber | null]
+    >,
     Array<Array<string | number | null>>,
   ];
 
@@ -184,9 +204,9 @@ export interface SqliteExecResult<R extends SqliteRow = SqliteRow> {
 
 /**
  * A row returned from a {@link Sqlite} query, mapping column names to
- * {@link SqliteValue}.
+ * {@link SqliteValueInput}.
  */
-export type SqliteRow = Record<string, SqliteValue>;
+export type SqliteRow = Record<string, SqliteValueInput>;
 
 /**
  * SQLite driver interface.
@@ -423,7 +443,7 @@ export interface RawSql extends Typed<"RawSql"> {
 }
 
 /** A parameter accepted by the {@link sql} tagged template. */
-export type SqlTemplateParam = SqliteValue | SqlIdentifier | RawSql;
+export type SqlTemplateParam = SqliteValueInput | SqlIdentifier | RawSql;
 
 /**
  * Creates a safe SQL query using a tagged template literal.
@@ -484,7 +504,7 @@ export const sql = (
         sql += param.sql;
       } else {
         sql += "?";
-        values.push(param);
+        values.push(SqliteValue.orThrow(param));
       }
     }
   }
@@ -646,8 +666,6 @@ export const getSqliteSnapshot = (deps: SqliteDep): SqliteSnapshot => {
  * a dedicated boolean type.
  *
  * See: https://www.sqlite.org/quirks.html#no_separate_boolean_datatype
- *
- * ## Tips
  *
  * - Use {@link sqliteTrue} and {@link sqliteFalse} constants for better
  *   readability.

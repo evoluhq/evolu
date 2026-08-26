@@ -19,11 +19,14 @@ import {
   type SqliteIndex,
   type SqliteQuery,
   type SqliteQueryOptions,
+  SqliteQueryParameters,
   type SqliteSchema,
   SqliteValue,
 } from "../Sqlite.ts";
 import {
+  assertType,
   DateIso,
+  type FiniteNumber,
   type Id,
   IdBytes,
   type InferType,
@@ -54,6 +57,11 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  * Column types are Standard Schema v1 compatible — use Evolu Type, Zod,
  * Valibot, ArkType, or any library that implements Standard Schema.
  *
+ * Each column schema's inferred output must be compatible with SQLite. Numeric
+ * outputs must be assignable to {@link FiniteNumber}. Standard Schema does not
+ * standardize nominal brands, so a library-specific finite validator whose
+ * output remains `number` must brand its validated output compatibly.
+ *
  * Table schema defines columns that are required for table rows. For optional
  * columns, use a schema whose output type includes `null`.
  *
@@ -63,7 +71,9 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  * import * as z from "zod";
  * import {
  *   assertOk,
+ *   assertType,
  *   assertTrue,
+ *   type FiniteNumber,
  *   id,
  *   NonEmptyTrimmedString100,
  *   nullOr,
@@ -84,10 +94,17 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  * assertOk(Schema.todo.title.fromUnknown("Write docs"), "Write docs");
  *
  * // Zod, or another Standard Schema library
+ * // Zod 4 numbers are finite by default; Evolu Type Number models all JavaScript numbers.
+ * const ZodFiniteNumber = z
+ *   .number()
+ *   .transform((value): FiniteNumber => value as FiniteNumber);
+ * assertType<FiniteNumber, z.output<typeof ZodFiniteNumber>>();
+ *
  * const ZodSchema = {
  *   todo: {
  *     id: TodoId,
  *     title: z.string().min(1).max(100),
+ *     position: ZodFiniteNumber,
  *     isCompleted: z.union([z.literal(0), z.literal(1)]).nullable(),
  *   },
  * };
@@ -377,11 +394,10 @@ export type ValidateColumnTypes<S extends EvoluSchema> =
     ? TableName extends keyof S
       ? keyof S[TableName] extends infer ColumnName
         ? ColumnName extends keyof S[TableName]
-          ? StandardSchemaV1.InferOutput<
-              S[TableName][ColumnName]
-            > extends SqliteValue
+          ? StandardSchemaV1.InferOutput<S[TableName][ColumnName]> extends
+              SqliteValue | SqliteBoolean
             ? never
-            : SchemaValidationError<`Table "${TableName & string}" column "${ColumnName & string}" type is not compatible with SQLite. Column types must extend SqliteValue (string, number, Uint8Array, or null).`>
+            : SchemaValidationError<`Table "${TableName & string}" column "${ColumnName & string}" type is not compatible with SQLite. Column types must extend SqliteValue (string, FiniteNumber, Uint8Array, or null).`>
           : never
         : never
       : never
@@ -492,11 +508,10 @@ export const createQueryBuilder = <S extends EvoluSchema>(
 ): CreateQuery<S> => {
   const createQuery: CreateQuery<S> = (queryCallback, options) => {
     const compiledQuery = queryCallback(kysely as never).compile();
+    assertType(SqliteQueryParameters, compiledQuery.parameters);
     const sqliteQuery: SqliteQuery = {
       sql: compiledQuery.sql as SafeSql,
-      parameters: compiledQuery.parameters as NonNullable<
-        SqliteQuery["parameters"]
-      >,
+      parameters: compiledQuery.parameters,
       ...(options && { options }),
     };
 

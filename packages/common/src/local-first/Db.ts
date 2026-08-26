@@ -45,6 +45,7 @@ import { callback, type Run, type Task } from "../Task.ts";
 import { Millis, millisToDateIso, type TimeDep } from "../Time.ts";
 import {
   assertType,
+  type FiniteNumber,
   Id,
   IdBytes,
   idBytesToId,
@@ -942,7 +943,8 @@ const dbChangeToColumns = (change: DbChange, now: Millis) => {
   if (change.isDelete != null) {
     values = appendToArray(values, [
       "isDeleted",
-      booleanToSqliteBoolean(change.isDelete),
+      // SQLite boolean values are fixed to the finite numbers 0 and 1.
+      booleanToSqliteBoolean(change.isDelete) as FiniteNumber,
     ]);
   }
 

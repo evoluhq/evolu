@@ -26,8 +26,8 @@ import type { Brand } from "../Brand.ts";
 import { createRandomBytes } from "../Crypto.ts";
 import type { ReadonlyRecord } from "../Object.ts";
 import { createMutableRecord, isPlainObject } from "../Object.ts";
-import type { SqliteQueryString } from "../Sqlite.ts";
-import { eqSqliteValue, SqliteValue } from "../Sqlite.ts";
+import type { SqliteQueryString, SqliteValueInput } from "../Sqlite.ts";
+import { eqSqliteValue } from "../Sqlite.ts";
 import { createId, String } from "../Type.ts";
 import type { EvoluSchema } from "./Schema.ts";
 
@@ -107,7 +107,7 @@ export type InferRow<T extends Query> =
 
 export interface Row {
   readonly [key: string]:
-    | SqliteValue
+    | SqliteValueInput
     // for evoluJsonObjectFrom
     | Row
     // for evoluJsonArrayFrom
@@ -400,8 +400,8 @@ export const makePatches = (
     for (const key in previousRow)
       if (
         !eqSqliteValue(
-          previousRow[key] as SqliteValue,
-          nextRow[key] as SqliteValue,
+          previousRow[key] as SqliteValueInput,
+          nextRow[key] as SqliteValueInput,
         )
       ) {
         replaceAtPatches.push({ op: "replaceAt", value: nextRow, index: i });

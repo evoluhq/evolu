@@ -87,6 +87,7 @@ import {
 import {
   createId,
   DateIsoFromDate,
+  FiniteNumber,
   NonNegativeInt,
   PositiveInt,
   zeroNonNegativeInt,
@@ -110,16 +111,13 @@ const getUncompressedAndCompressedSizes = (array: Uint8Array) =>
 
 test("encodeNumber/decodeNumber", () => {
   const testCases = [
-    0,
-    42,
-    -123,
+    FiniteNumber.orThrow(0),
+    FiniteNumber.orThrow(42),
+    FiniteNumber.orThrow(-123),
     // oxlint-disable-next-line oxc/approx-constant -- Pins this exact decimal's serialized bytes in the snapshot below.
-    3.14159,
-    Number.MAX_SAFE_INTEGER,
-    Number.MIN_SAFE_INTEGER,
-    Infinity,
-    -Infinity,
-    NaN,
+    FiniteNumber.orThrow(3.14159),
+    FiniteNumber.orThrow(Number.MAX_SAFE_INTEGER),
+    FiniteNumber.orThrow(Number.MIN_SAFE_INTEGER),
   ];
 
   const buffer = createBuffer();
@@ -133,8 +131,21 @@ test("encodeNumber/decodeNumber", () => {
   });
 
   expect(buffer.unwrap()).toMatchInlineSnapshot(
-    `uint8:[0,42,208,133,203,64,9,33,249,240,27,134,110,203,67,63,255,255,255,255,255,255,203,195,63,255,255,255,255,255,255,203,127,240,0,0,0,0,0,0,203,255,240,0,0,0,0,0,0,203,127,248,0,0,0,0,0,0]`,
+    `uint8:[0,42,208,133,203,64,9,33,249,240,27,134,110,203,67,63,255,255,255,255,255,255,203,195,63,255,255,255,255,255,255]`,
   );
+});
+
+// Non-finite numbers indicate an app bug. Evolu now prevents them from being
+// stored or synced; this decoder check covers rare legacy data created before
+// that protection and throws to contain the bug. If this occurs in practice,
+// Evolu will provide a case-specific migration because the correct replacement
+// depends on the app bug that produced the value.
+test.each([
+  { bytes: [203, 127, 240, 0, 0, 0, 0, 0, 0], error: "Finite" },
+  { bytes: [203, 255, 240, 0, 0, 0, 0, 0, 0], error: "Finite" },
+  { bytes: [203, 127, 248, 0, 0, 0, 0, 0, 0], error: "NonNaN" },
+])("decodeNumber rejects non-finite MessagePack number", ({ bytes, error }) => {
+  expect(() => decodeNumber(createBuffer(bytes))).toThrow(error);
 });
 
 test("encodeFlags/decodeFlags", () => {
@@ -282,24 +293,25 @@ test("ProtocolValueType", () => {
 
 test("encodeSqliteValue/decodeSqliteValue", () => {
   const deps = testCreateDeps();
+  const id = createId(deps);
   const testCasesSuccess: Array<[SqliteValue, number]> = [
     // empty string optimization - 1 byte vs 2 bytes (50% reduction)
     ["", 1],
     // encodeNumber
-    [123.5, 10],
+    [FiniteNumber.orThrow(123.5), 10],
     // encodeNumber
-    [-123, 3],
+    [FiniteNumber.orThrow(-123), 3],
     [null, 1],
     [new Uint8Array([1, 2, 3]), 5],
-    [createId(deps), 17],
+    [id, 17],
     // small ints 0-19
-    [0, 1],
+    [FiniteNumber.orThrow(0), 1],
     // small ints 0-19
-    [19, 1],
+    [FiniteNumber.orThrow(19), 1],
     // NonNegativeInt
-    [123, 2],
+    [FiniteNumber.orThrow(123), 2],
     // NonNegativeInt
-    [16383, 3],
+    [FiniteNumber.orThrow(16383), 3],
     // 18 bytes msgpackr + 2 bytes protocol overhead
     ['{"compact":true,"schema":0}', 20],
     // Protocol encoding ensures 6 bytes till the year 2108.
@@ -360,12 +372,10 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
         // Regular strings
         fc.string(),
         // Numbers (exclude NaN)
-        fc.double().filter((n) => !Number.isNaN(n)),
+        fc.double().filter(Number.isFinite),
         // Binary data
         fc.uint8Array(),
 
-        // Special number cases
-        fc.constantFrom(Infinity, -Infinity, NaN),
         // Small ints (0-19) - special encoding
         fc.integer({ min: 0, max: 19 }),
         // Non-negative ints
@@ -373,7 +383,7 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
         // Negative numbers
         fc.integer({ min: Number.MIN_SAFE_INTEGER, max: -1 }),
         // Regular floats
-        fc.float({ min: -1000, max: 1000 }),
+        fc.float({ min: -1000, max: 1000 }).filter(Number.isFinite),
 
         // Id optimization cases
         // Valid Id
@@ -453,27 +463,23 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
         fc.constant(new Uint8Array([0, 1, 2, 3, 4, 5])),
       ),
       (value) => {
+        const sqliteValue = SqliteValue.orThrow(value);
         const buffer = createBuffer();
-        encodeSqliteValue(buffer, value);
+        encodeSqliteValue(buffer, sqliteValue);
         const decoded = decodeSqliteValue(buffer);
 
         // Handle special cases for comparison
-        if (value instanceof Uint8Array && decoded instanceof Uint8Array) {
+        if (
+          sqliteValue instanceof Uint8Array &&
+          decoded instanceof Uint8Array
+        ) {
           return (
-            value.length === decoded.length &&
-            value.every((byte, i) => byte === decoded[i])
+            sqliteValue.length === decoded.length &&
+            sqliteValue.every((byte, i) => byte === decoded[i])
           );
         }
 
-        // Handle NaN specially since NaN !== NaN
-        if (
-          typeof value === "number" &&
-          typeof decoded === "number" &&
-          Number.isNaN(value)
-        )
-          return Number.isNaN(decoded);
-
-        return decoded === value;
+        return decoded === sqliteValue;
       },
     ),
     { numRuns: 10000 },

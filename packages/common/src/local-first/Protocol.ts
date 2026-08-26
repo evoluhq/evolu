@@ -217,6 +217,7 @@ import {
   base64UrlToUint8Array,
   between,
   DateIso,
+  FiniteNumber,
   Id,
   IdBytes,
   idBytesToId,
@@ -226,7 +227,6 @@ import {
   Json,
   jsonToJsonValue,
   NonNegativeInt,
-  Number,
   onePositiveInt,
   PositiveInt,
   type Typed,
@@ -1775,14 +1775,14 @@ const decodeId = (buffer: Buffer): Id => {
 };
 
 /**
- * Evolu uses MessagePack to handle all number variants except for
- * NonNegativeInt. For NonNegativeInt, Evolu provides more efficient encoding.
+ * Evolu uses MessagePack to handle finite numbers except for NonNegativeInt.
+ * For NonNegativeInt, Evolu provides more efficient encoding.
  */
-export const encodeNumber = (buffer: Buffer, number: number): void => {
+export const encodeNumber = (buffer: Buffer, number: FiniteNumber): void => {
   buffer.extend(packr.pack(number));
 };
 
-export const decodeNumber = (buffer: Buffer): number => {
+export const decodeNumber = (buffer: Buffer): FiniteNumber => {
   let number: unknown;
   let end: unknown;
 
@@ -1798,7 +1798,7 @@ export const decodeNumber = (buffer: Buffer): number => {
   const endResult = NonNegativeInt.fromUnknown(end);
   if (!endResult.ok) throw new ProtocolDecodeError(endResult.error.type);
 
-  const numberResult = Number.fromUnknown(number);
+  const numberResult = FiniteNumber.fromUnknown(number);
   if (!numberResult.ok) throw new ProtocolDecodeError(numberResult.error.type);
 
   buffer.shiftN(endResult.value);
@@ -2140,7 +2140,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
             buffer,
             ProtocolValueType.DateIsoWithNegativeTime,
           );
-          encodeNumber(buffer, time);
+          encodeNumber(buffer, FiniteNumber.orThrow(time));
         }
         return;
       }

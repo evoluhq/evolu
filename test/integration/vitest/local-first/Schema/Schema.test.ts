@@ -1,6 +1,10 @@
 import { describe, expect, expectTypeOf, test } from "vitest";
+import { sql as kyselySql } from "kysely";
 import * as z from "zod";
-import { assertNonNullable } from "../../../../../packages/common/src/Assert.ts";
+import {
+  assert,
+  assertNonNullable,
+} from "../../../../../packages/common/src/Assert.ts";
 import type { Brand } from "../../../../../packages/common/src/Brand.ts";
 import type {
   MutationValues,
@@ -10,7 +14,10 @@ import type {
   ValidateSchema,
   ValidateSchemaHasId,
 } from "../../../../../packages/common/src/local-first/Schema.ts";
-import { ensureSqliteSchema } from "../../../../../packages/common/src/local-first/Schema.ts";
+import {
+  createQueryBuilder,
+  ensureSqliteSchema,
+} from "../../../../../packages/common/src/local-first/Schema.ts";
 import {
   getSqliteSchema,
   sql,
@@ -19,9 +26,12 @@ import {
 } from "../../../../../packages/common/src/Sqlite.ts";
 import {
   Boolean,
+  FiniteNumber,
   Id,
   id,
   NonEmptyTrimmedString100,
+  NonNaNNumber,
+  Number,
   nullOr,
 } from "../../../../../packages/common/src/Type.ts";
 import { setupSqlite } from "../../_deps.ts";
@@ -138,7 +148,73 @@ describe("ValidateSchema", () => {
       };
 
       type Result = ValidateColumnTypes<typeof _SchemaWithBadCol>;
-      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema error: Table "todo" column "data" type is not compatible with SQLite. Column types must extend SqliteValue (string, number, Uint8Array, or null).'>();
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema error: Table "todo" column "data" type is not compatible with SQLite. Column types must extend SqliteValue (string, FiniteNumber, Uint8Array, or null).'>();
+    });
+
+    test("reports unrestricted Number column", () => {
+      const _SchemaWithNumber = {
+        todo: {
+          id: TodoId,
+          value: Number,
+        },
+      };
+
+      type Result = ValidateColumnTypes<typeof _SchemaWithNumber>;
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema error: Table "todo" column "value" type is not compatible with SQLite. Column types must extend SqliteValue (string, FiniteNumber, Uint8Array, or null).'>();
+    });
+
+    test("reports NonNaNNumber column because it permits infinities", () => {
+      const _SchemaWithNonNaNNumber = {
+        todo: {
+          id: TodoId,
+          value: NonNaNNumber,
+        },
+      };
+
+      type Result = ValidateColumnTypes<typeof _SchemaWithNonNaNNumber>;
+      expectTypeOf<Result>().toEqualTypeOf<'⛔ Schema error: Table "todo" column "value" type is not compatible with SQLite. Column types must extend SqliteValue (string, FiniteNumber, Uint8Array, or null).'>();
+    });
+
+    test("passes for FiniteNumber column", () => {
+      const _SchemaWithFiniteNumber = {
+        todo: {
+          id: TodoId,
+          value: FiniteNumber,
+        },
+      };
+
+      type Result = ValidateColumnTypes<typeof _SchemaWithFiniteNumber>;
+      expectTypeOf<Result>().toEqualTypeOf<never>();
+    });
+
+    test("requires compatible finite brands for third-party numeric schemas", () => {
+      const _SchemaWithUnbrandedZodFiniteNumber = {
+        todo: {
+          id: TodoId,
+          value: z.number(),
+        },
+      };
+      type UnbrandedResult = ValidateColumnTypes<
+        typeof _SchemaWithUnbrandedZodFiniteNumber
+      >;
+      expectTypeOf<UnbrandedResult>().toEqualTypeOf<'⛔ Schema error: Table "todo" column "value" type is not compatible with SQLite. Column types must extend SqliteValue (string, FiniteNumber, Uint8Array, or null).'>();
+
+      const ZodFiniteNumber = z
+        .number()
+        .transform((value): FiniteNumber => value as FiniteNumber);
+      const _SchemaWithBrandedZodFiniteNumber = {
+        todo: {
+          id: TodoId,
+          value: ZodFiniteNumber,
+        },
+      };
+      type BrandedResult = ValidateColumnTypes<
+        typeof _SchemaWithBrandedZodFiniteNumber
+      >;
+      expectTypeOf<BrandedResult>().toEqualTypeOf<never>();
+      expectTypeOf<
+        z.output<typeof ZodFiniteNumber>
+      >().toEqualTypeOf<FiniteNumber>();
     });
 
     test("passes for valid schema", () => {
@@ -152,6 +228,59 @@ describe("ValidateSchema", () => {
 
       type Result = ValidateColumnTypes<typeof _Schema>;
       expectTypeOf<Result>().toEqualTypeOf<never>();
+    });
+  });
+});
+
+describe("createQueryBuilder", () => {
+  test("asserts that compiled parameters are SqliteQueryParameters", () => {
+    const createQuery = createQueryBuilder({
+      todo: {
+        id: TodoId,
+        value: FiniteNumber,
+      },
+    });
+    let thrown: unknown;
+
+    try {
+      createQuery((db) =>
+        db
+          .selectFrom("todo")
+          .select(
+            kyselySql<number>`${globalThis.Number.POSITIVE_INFINITY}`.as(
+              "value",
+            ),
+          ),
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    assert(thrown instanceof Error, "Expected an Error.");
+    expect(thrown.message).toBe("Expected Array.");
+    expect(thrown.cause).toEqual({
+      type: "Array",
+      reason: {
+        kind: "Items",
+        issues: [
+          {
+            kind: "Element",
+            index: 0,
+            error: {
+              type: "Union",
+              errors: [
+                {
+                  index: 0,
+                  error: {
+                    type: "Finite",
+                    value: globalThis.Number.POSITIVE_INFINITY,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
     });
   });
 });

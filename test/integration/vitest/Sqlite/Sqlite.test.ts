@@ -22,15 +22,19 @@ import {
   type SafeSql,
   type SqliteDriver,
   type SqliteQuery,
+  SqliteQueryParameters,
   type SqliteQueryString,
-  type SqliteValue,
+  SqliteValue,
 } from "../../../../packages/common/src/Sqlite.ts";
 import {
   createAbortError,
   sleep,
   testCreateRun,
 } from "../../../../packages/common/src/Task.ts";
-import { testName } from "../../../../packages/common/src/Type.ts";
+import {
+  FiniteNumber,
+  testName,
+} from "../../../../packages/common/src/Type.ts";
 import { setupSqlite } from "../_deps.ts";
 
 describe("eqSqliteValue", () => {
@@ -58,19 +62,32 @@ describe("eqSqliteValue", () => {
     expect(eqSqliteValue(null, 0)).toBe(false);
   });
 
-  test("SqliteValue type is null | string | number | Uint8Array", () => {
+  test("SqliteValue contains only finite numbers", () => {
     expectTypeOf<SqliteValue>().toEqualTypeOf<
-      null | string | number | Uint8Array
+      null | string | FiniteNumber | Uint8Array
     >();
+    expect(SqliteValue.is(Number.NaN)).toBe(false);
+    expect(SqliteValue.is(Number.POSITIVE_INFINITY)).toBe(false);
+    expect(SqliteValue.is(Number.NEGATIVE_INFINITY)).toBe(false);
   });
 });
 
 describe("SqliteQueryString", () => {
+  test("SqliteQueryParameters contains only SqliteValue", () => {
+    expectTypeOf<SqliteQueryParameters>().toEqualTypeOf<
+      ReadonlyArray<SqliteValue>
+    >();
+    expect(SqliteQueryParameters.is([null, "a", FiniteNumber.orThrow(1)])).toBe(
+      true,
+    );
+    expect(SqliteQueryParameters.is([Number.POSITIVE_INFINITY])).toBe(false);
+  });
+
   test("sqliteQueryToSqliteQueryString and sqliteQueryStringToSqliteQuery round-trip", () => {
     const binaryData = new Uint8Array([1, 3, 2]);
     const sqliteQuery: SqliteQuery = {
       sql: "a" as SafeSql,
-      parameters: [null, "a", 1, binaryData],
+      parameters: [null, "a", FiniteNumber.orThrow(1), binaryData],
     };
 
     expect(
@@ -661,6 +678,13 @@ describe("sql", () => {
       parameters: ["Alice", 30],
     });
   });
+
+  test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "sql rejects non-finite parameter $value",
+    (value) => {
+      expect(() => sql`select ${value};`).toThrow();
+    },
+  );
 
   test("sql.identifier wraps in double quotes", () => {
     expect(sql.identifier("user_table")).toEqual({
