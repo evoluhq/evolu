@@ -506,6 +506,25 @@ test("decodeSqliteValue rejects trailing data in a JSON frame", () => {
   );
 });
 
+test("decodeSqliteValue does not decode beyond a JSON frame", () => {
+  const bytesAfterFrame = new Uint8Array([0xc0, 0xc0]);
+  const buffer = createBuffer([
+    ProtocolValueType.Json,
+    5,
+    0xdd,
+    0,
+    0,
+    0,
+    2,
+    ...bytesAfterFrame,
+  ]);
+
+  expect(() => decodeSqliteValue(buffer)).toThrow(
+    "Buffer parse ended prematurely",
+  );
+  expect(buffer.unwrap()).toStrictEqual(bytesAfterFrame);
+});
+
 test("encodeSqliteValue/decodeSqliteValue specific failing case from property tests", () => {
   // This was the specific failing case from property tests before the DateIsoString fix
   const failingInput = `["0 (      ",-100000000]`;

@@ -2213,9 +2213,9 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
 
     case ProtocolValueType.Json: {
       const length = decodeLength(buffer);
-      const lengthBeforeDecoding = buffer.getLength();
-      const value = decodeJsonValue(buffer);
-      if (lengthBeforeDecoding - buffer.getLength() !== length) {
+      const jsonValueBuffer = createBuffer(buffer.shiftN(length));
+      const value = decodeJsonValue(jsonValueBuffer);
+      if (jsonValueBuffer.getLength() !== 0) {
         throw new ProtocolDecodeError("Invalid JSON MessagePack length");
       }
       return JSON.stringify(value);
