@@ -55,6 +55,9 @@
     "@evolu/web": "^3.0.0",
     "svelte": ">=5"
   },
+  "engines": {
+    "node": ">=24.20.0"
+  },
   "publishConfig": {
     "access": "public",
     "types": "./dist/index.svelte.d.ts",

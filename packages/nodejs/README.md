@@ -1,6 +1,6 @@
 # Evolu for Node.js
 
-This package provides Evolu for [Node.js](https://nodejs.org) 24+.
+This package provides Evolu for [Node.js](https://nodejs.org) 24.20+.
 
 ## Documentation
 
