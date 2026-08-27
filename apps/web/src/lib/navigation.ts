@@ -26,12 +26,12 @@ export const navigation: Array<NavGroup> = [
       { title: "Dependency injection", href: "/docs/dependency-injection" },
       { title: "Resource management", href: "/docs/resource-management" },
       {
-        title: "Task",
-        href: "/docs/api-reference/common/Task",
-      },
-      {
         title: "Type",
         href: "/docs/api-reference/common/Type",
+      },
+      {
+        title: "Task",
+        href: "/docs/api-reference/common/Task",
       },
       { title: "Conventions", href: "/docs/conventions" },
       { title: "Testing", href: "/docs/testing" },
