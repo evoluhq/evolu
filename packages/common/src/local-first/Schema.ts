@@ -467,7 +467,6 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  *
  * ```ts
  * import {
- *   assertTrue,
  *   assertType,
  *   createQueryBuilder,
  *   id,
@@ -500,7 +499,6 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  *   },
  *   typeof todosQuery.Row
  * >();
- * assertTrue(typeof todosQuery === "string");
  * ```
  */
 export const createQueryBuilder = <S extends EvoluSchema>(

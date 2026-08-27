@@ -47,8 +47,8 @@ export const navigation: Array<NavGroup> = [
         title: "Owners",
         href: "/docs/api-reference/common/local-first/Owner",
       },
+      { title: "Schema", href: "/docs/schema" },
       { title: "Relay", href: "/docs/relay" },
-      { title: "Migrations", href: "/docs/migrations" },
       { title: "Time travel", href: "/docs/time-travel" },
       { title: "Indexes", href: "/docs/indexes" },
       {

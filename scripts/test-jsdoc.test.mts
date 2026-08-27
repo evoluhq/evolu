@@ -2,14 +2,16 @@ import { describe, expect, test } from "vitest";
 import {
   changesetSourcePattern,
   jsdocSourcePattern,
+  schemaSourcePattern,
   selectJSDocIncludes,
 } from "./test-jsdoc.mts";
 
 describe("selectJSDocIncludes", () => {
-  test("selects common JSDoc and changeset Markdown by default", () => {
+  test("selects all documentation examples by default", () => {
     expect(selectJSDocIncludes([])).toEqual([
       jsdocSourcePattern,
       changesetSourcePattern,
+      schemaSourcePattern,
     ]);
   });
 

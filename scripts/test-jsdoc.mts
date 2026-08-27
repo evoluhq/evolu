@@ -6,9 +6,15 @@ const repositoryDirectory = resolve(import.meta.dirname, "..");
 
 export const jsdocSourcePattern = "packages/common/src/**/*.ts";
 export const changesetSourcePattern = ".changeset/*.md";
+export const schemaSourcePattern =
+  "apps/web/src/app/(docs)/docs/schema/page.mdx";
+// TODO: When all documentation pages are included, exclude the Library page.
+// Its only TypeScript block documents installPolyfills, which this harness
+// already injects into every generated example.
 export const documentationSourcePatterns = [
   jsdocSourcePattern,
   changesetSourcePattern,
+  schemaSourcePattern,
 ] as const;
 
 export const selectJSDocIncludes = (

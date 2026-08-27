@@ -6,6 +6,12 @@ export const metadata = {
 
 This guide will help you get started with the Evolu local-first platform.
 
+<Announcement>
+  Upgrading from Evolu 7? Evolu 8 uses a different local storage format and does
+  not migrate existing Evolu 7 databases yet. Automatic migration is planned.
+  Until then, existing Evolu 7 data is preserved but is not shown in Evolu 8.
+</Announcement>
+
 <Note>
   Requirements: TypeScript 7 or newer with `exactOptionalPropertyTypes` enabled.
 </Note>
@@ -80,8 +86,8 @@ import * as Evolu from "@evolu/common";
 const TodoId = Evolu.id("Todo");
 type TodoId = typeof TodoId.Output;
 
-// Schema defines database structure with runtime validation.
-// Column types validate data on insert/update/upsert.
+// Schema defines the database structure and mutation/query types.
+// Validate untrusted input before insert/update/upsert.
 const Schema = {
   todo: {
     id: TodoId,

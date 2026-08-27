@@ -31,11 +31,11 @@ export const cleanMdxContent = (content: string): string => {
     },
   );
 
-  // Convert <Note>content</Note> to blockquote
+  // Convert alert content to blockquotes
   cleanedContent = cleanedContent.replaceAll(
-    /<Note>\s*([\s\S]*?)\s*<\/Note>/gu,
-    (_match: string, noteContent: string) => {
-      const lines = noteContent.trim().split("\n");
+    /<(Announcement|Note)>\s*([\s\S]*?)\s*<\/\1>/gu,
+    (_match: string, _component: string, alertContent: string) => {
+      const lines = alertContent.trim().split("\n");
       return lines.map((line) => `> ${line.trim()}`).join("\n");
     },
   );
@@ -95,7 +95,7 @@ export const customOrder: Record<string, number> = {
   "local-first": 20,
   playgrounds: 21,
   relay: 22,
-  migrations: 23,
+  schema: 23,
   "time-travel": 24,
   indexes: 25,
   privacy: 26,

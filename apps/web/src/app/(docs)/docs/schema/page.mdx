@@ -1,0 +1,134 @@
+export const metadata = {
+  title: "Schema",
+  description:
+    "How Evolu schemas define local SQLite data and evolve across app versions.",
+};
+
+# Schema
+
+An Evolu app schema is a plain object that defines the app's tables and columns. Every column is defined by a [Standard Schema](https://standardschema.dev/schema)-compatible validator. Evolu uses the schema to create local SQLite tables and infer mutation and query types.
+
+```ts {{ title: 'AppSchema.ts' }}
+import {
+  createQueryBuilder,
+  id,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+} from "@evolu/common";
+
+const AppSchema = {
+  todo: {
+    id: id("Todo"),
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+
+const _createQueryBuilder = createQueryBuilder(AppSchema);
+```
+
+Every table must have an `id` column whose output type extends [Id](/docs/api-reference/common/Type/type-aliases/Id). Other column outputs must be compatible with [SqliteValue](/docs/api-reference/common/Sqlite/type-aliases/SqliteValue).
+
+Evolu automatically adds the system columns `createdAt`, `updatedAt`, `isDeleted`, and `ownerId` to every table. Pass the same schema to [createEvolu](/docs/api-reference/common/local-first/Evolu/functions/createEvolu) and [createQueryBuilder](/docs/api-reference/common/local-first/Schema/functions/createQueryBuilder) so mutations, queries, and the local SQLite structure use the same definition.
+
+Evolu mutations accept already validated values so they do not run column validators again. Validate untrusted input with your chosen Standard Schema-compatible library before passing its output to Evolu's `insert`, `update`, or `upsert`.
+
+## Versioning
+
+A local-first app cannot assume that all its instances use the latest app schema: users update the app at different times.
+
+When an app receives changes for tables or columns that its schema does not support yet, Evolu stores them in its system quarantine table. Quarantined data does not appear in app queries, but it still syncs to other devices. Each time the app opens its local database, Evolu checks the quarantine again. After the app is updated with a schema that supports those changes, Evolu applies them and removes them from quarantine.
+
+Evolu uses GraphQL's proven pattern of [versionless schema evolution](https://graphql.org/learn/schema-design/): app schemas are append-only. Instead of running migration scripts on every local database, a released schema can only be extended with new tables and columns:
+
+- **Do not rename or remove tables**
+- **Do not rename or remove columns**
+- **Do not change column types**
+
+Relaxing a column's constraints—for example, allowing longer text or a wider numeric range—can be compatible, but do it only with explicit tests. The safest rule is never to change a released column type.
+
+Preserving existing declarations is not enough. Newer app code must also handle data created by previous versions. For example, if a string `address` column is replaced by an `addressId` column referencing a new address table, the app should use `addressId` when present and fall back to `address` otherwise.
+
+## Nullability
+
+New columns do not have to be nullable. Schema [nullability](https://graphql.org/learn/schema-design/#nullability) controls mutations made by the current app version: non-nullable columns other than `id` are required by `insert` and `upsert`, while nullable columns are optional. In the first example, `title` is required and `isCompleted` is optional.
+
+Regardless of their mutation nullability, Evolu treats every app-defined column except `id` as nullable in queries. A query must explicitly select the data shape the app can handle:
+
+```ts
+import {
+  assertType,
+  createQueryBuilder,
+  id,
+  type KyselyNotNull,
+  NonEmptyTrimmedString100,
+  nullOr,
+  SqliteBoolean,
+  sqliteTrue,
+} from "@evolu/common";
+
+const TodoId = id("Todo");
+type TodoId = typeof TodoId.Output;
+
+const AppSchema = {
+  todo: {
+    id: TodoId,
+    title: NonEmptyTrimmedString100,
+    isCompleted: nullOr(SqliteBoolean),
+  },
+};
+
+const createAppQuery = createQueryBuilder(AppSchema);
+
+const todosQuery = createAppQuery((db) =>
+  db
+    // Type-safe SQL: try autocomplete for table and column names.
+    .selectFrom("todo")
+    .select(["id", "title", "isCompleted"])
+    // Soft delete: filter out deleted rows.
+    .where("isDeleted", "is not", sqliteTrue)
+    // Filter nulls with where + $narrowType.
+    .where("title", "is not", null)
+    .$narrowType<{ title: KyselyNotNull }>()
+    // createdAt, updatedAt, isDeleted, and ownerId are added automatically.
+    .orderBy("createdAt"),
+);
+
+// Extract the row type from the query for type-safe component props.
+type TodosRow = typeof todosQuery.Row;
+
+assertType<
+  {
+    id: TodoId;
+    title: NonEmptyTrimmedString100;
+    isCompleted: SqliteBoolean | null;
+  },
+  TodosRow
+>();
+```
+
+Evolu does not rely on changes being delivered in timestamp order. An update can arrive before the corresponding insertion, leaving the row incomplete until the older change arrives. Evolu still resolves the final value of each column independently by timestamp. By explicitly filtering for the shape the current app expects, only usable rows are selected.
+
+## Standard Schema
+
+Evolu app schemas are not tied to [Type](/docs/api-reference/common/Type). You can define columns with Zod, Valibot, ArkType, or any other library implementing Standard Schema V1.
+
+The output type of every validator must still satisfy Evolu's SQLite constraints. In particular, numeric outputs must be typed as `FiniteNumber` rather than `number`. Zod 4 validates that numbers are finite at runtime but still infers `number`. Every table also requires an `id` whose output extends `Id`. These adapters provide both:
+
+```ts
+import * as z from "zod";
+import { assertType, type Brand, type FiniteNumber, Id } from "@evolu/common";
+
+const zodId = <Table extends string>(_table: Table) =>
+  z.custom<Id & Brand<Table>>(Id.is);
+
+const TodoId = zodId("Todo");
+assertType<Id & Brand<"Todo">, z.output<typeof TodoId>>();
+
+const ZodFiniteNumber = z
+  .number()
+  .transform((value): FiniteNumber => value as FiniteNumber);
+
+assertType<FiniteNumber, z.output<typeof ZodFiniteNumber>>();
+```

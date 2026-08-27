@@ -35,6 +35,21 @@ const nextConfig = {
     "/llms.txt": ["./src/app/**/*.mdx"],
   },
 
+  redirects() {
+    return [
+      {
+        source: "/docs/migrations",
+        destination: "/docs/schema",
+        permanent: true,
+      },
+      {
+        source: "/docs/migrations.md",
+        destination: "/docs/schema.md",
+        permanent: true,
+      },
+    ];
+  },
+
   rewrites() {
     return [
       {
