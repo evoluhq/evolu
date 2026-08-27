@@ -355,6 +355,8 @@ Let’s summarize why I believe Evolu can scale:
 
 - **Minimal and understandable**: The code is (hopefully) simple enough for anyone to read, with many tests. Evolu keeps dependencies to a minimum—just [SQLite](https://sqlite.org/), [Kysely](https://github.com/kysely-org/kysely), [Msgpackr](https://github.com/kriszyp/msgpackr), and cryptographic utilities from [Paulmillr](https://paulmillr.com/). All libraries used are zero-dependency.
 
+  **Update:** Evolu has since replaced msgpackr with a custom MessagePack implementation that is faster, smaller, and more reliable.
+
 - **Range-Based Set Reconciliation**: Evolu uses RBSR, which scales logarithmically with data size. From Doug’s [article](https://logperiodic.com/rbsr.html) on Negentropy:
 
   > To reconcile a set of 1 million, we expect to need 3 round-trips. For 1 billion:
