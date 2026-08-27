@@ -5876,6 +5876,12 @@ export interface MnemonicError extends TypeError<"Mnemonic"> {
 /**
  * Evolu Id: 16 bytes encoded as a 22-character {@link Base64Url}.
  *
+ * Like [Nano ID](https://github.com/ai/nanoid), it is compact and URL-safe.
+ * Unlike Nano ID's 21-character default, an Evolu Id is the canonical Base64Url
+ * encoding of a full 128-bit value, so it round-trips directly between its
+ * string and byte representations with {@link idToIdBytes} and
+ * {@link idBytesToId}. These helpers use native Base64 APIs.
+ *
  * {@link createId} is the privacy-preserving default. Use
  * {@link createIdFromString} for stable mappings from external identifiers, or
  * {@link createIdAsUuidv7} only when insertion locality is worth exposing the
