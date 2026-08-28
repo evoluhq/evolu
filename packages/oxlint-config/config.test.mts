@@ -10,6 +10,13 @@ const oxlintDirectory = dirname(
   fileURLToPath(import.meta.resolve("oxlint/package.json")),
 );
 
+const nodeTestTypes = [
+  'declare module "node:test" {',
+  "  export const describe: (name: string, run: () => void) => Promise<void>;",
+  "  export const it: (name: string, run: () => void) => Promise<void>;",
+  "}",
+].join("\n");
+
 const lintFiles = (filesByName: Readonly<Record<string, string>>) => {
   const fixtureDirectory = mkdtempSync(join(tmpdir(), "evolu-oxlint-config-"));
 
@@ -69,4 +76,33 @@ test("rejects runtime dependency cycles", () => {
 
   expect(result.status).toBe(1);
   expect(result.stdout).toContain("import(no-cycle)");
+});
+
+test("allows Node.js test registration promises", () => {
+  const result = lintFiles({
+    "node-test.d.ts": nodeTestTypes,
+    "example.test.ts": [
+      'import { describe, it } from "node:test";',
+      'describe("example", () => {',
+      '  it("works", () => undefined);',
+      "});",
+    ].join("\n"),
+  });
+
+  expect(result.status, result.stdout || result.stderr).toBe(0);
+});
+
+test("rejects other floating promises in Node.js tests", () => {
+  const result = lintFiles({
+    "node-test.d.ts": nodeTestTypes,
+    "example.test.ts": [
+      'import { describe } from "node:test";',
+      "const run = async (): Promise<void> => undefined;",
+      'describe("example", () => undefined);',
+      "run();",
+    ].join("\n"),
+  });
+
+  expect(result.status).toBe(1);
+  expect(result.stdout).toContain("typescript(no-floating-promises)");
 });

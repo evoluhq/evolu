@@ -153,6 +153,20 @@
         "allowNullableString": true
       }
     ],
+    // Node's test runner owns these registration Promises. Ignoring them is
+    // intentional, while other floating Promises in tests remain errors.
+    "typescript/no-floating-promises": [
+      "error",
+      {
+        "allowForKnownSafeCalls": [
+          {
+            "from": "package",
+            "name": ["describe", "it", "only", "skip", "todo"],
+            "package": "node:test"
+          }
+        ]
+      }
+    ],
 
     // Direct assertions are already concise and idiomatic.
     "unicorn/consistent-assert": "off",
