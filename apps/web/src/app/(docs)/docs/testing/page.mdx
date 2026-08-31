@@ -4,37 +4,98 @@ export const metadata = {
 
 # Testing
 
+Tests are executable specifications. Evolu apps and libraries should follow the
+same organization as the Evolu repository: collocated unit tests, targeted
+integration and browser tests, and type contracts tested beside runtime
+behavior.
+
+## Test organization
+
+Keep unit tests beside their source. Put cross-module and platform tests in a
+root `test` directory, adding only the categories the project needs:
+
+```text
+src/
+  Foo.ts
+  Foo.test.ts
+test/
+  integration/
+    nodejs/
+    browsers/
+    shared/
+  bundle/
+  jsdoc/
+```
+
+Use [`node:test`](https://nodejs.org/api/test.html) for unit and Node.js
+integration tests that Node.js can execute directly. Use `test` for standalone
+cases; use `describe` and `it` when several cases describe one subject. Use
+Vitest for real-browser and shared cross-runtime suites, or when framework
+tooling requires it.
+
+Do not repeat the complete unit suite in browsers. Target browser APIs, engine
+differences, polyfills, workers, and framework behavior. Use integration tests
+for real platform implementations such as SQLite drivers and WebSockets, and
+bundle tests when a published library's output, tree-shaking, execution, or size
+is part of its contract.
+
+Use Node.js's built-in coverage for unit tests. Changed source modules retain
+100% line, function, and branch coverage. Integration and bundle tests verify
+compositions and artifacts; browser suites can also collect coverage where the
+engine supports it. Documentation examples are executable tests and belong in
+the test pipeline. Use consistent script roles such as `test:unit`,
+`test:integration`, `test:bundle`, and `test:jsdoc`; `test` runs every category
+the project has.
+
+A published library should ship collocated unit tests with its TypeScript source
+while excluding them from compiled output. A published test is self-contained:
+it may import Node.js built-ins, adjacent source, declared package dependencies,
+and shipped runner-independent helpers, but not Vitest, another separate test
+framework, or unpublished monorepo files.
+
+Tests specify observable behavior. A published library versions changes to that
+behavior like other API changes; test filenames, organization, and assertion
+implementation remain internal. Avoid asserting irrelevant details such as an
+exact stack trace, private helper interaction, or unobservable scheduling
+choice.
+
+## Assertions and type tests
+
+Prefer Evolu assertions for predictable equality semantics and domain-specific
+narrowing such as `assertOk` and `assertErr`. Use `node:assert/strict` only when
+a test needs exact Node.js assertion semantics or an assertion Evolu does not
+provide.
+
+Runtime tests do not replace type-checking. Keep TypeScript contracts beside the
+runtime tests. Use `assertType<Actual, Expected>()` for exact inference,
+`satisfies` for one-way assignability, and a precise `@ts-expect-error` for a
+rejected program. Include type-checking in the test pipeline.
+
+Documentation examples must explicitly import their assertions from Evolu so
+they remain standalone and portable. They do not use assertions injected by a
+test harness.
+
+## Test through dependencies
+
 Test Evolu code by making dependencies explicit and passing deterministic test
 implementations. You do not need a dependency injection container or module
 mocks: dependencies are ordinary values, so a test can construct exactly what
 the unit needs.
-
-The examples use [Vitest](https://vitest.dev/), but the test helpers exported by
-`@evolu/common` are test-runner independent.
-
-## Setup
-
-Install Vitest and Evolu's Vitest assertions:
-
-```bash
-npm install --save-dev vitest @evolu/vitest
-```
-
-`@evolu/vitest` provides `expectOk` and `expectErr`. They compare a
-[`Result`](/docs/api-reference/common/Result/type-aliases/Result) with Vitest's
-`toEqual` and narrow its type. The deterministic dependencies and test doubles
-come from `@evolu/common`.
-
-## Test through dependencies
 
 Define the smallest dependency interface that production code needs. In a test,
 provide a small implementation of that interface and assert the result and any
 observable calls.
 
 ```ts
-import { err, ok, type Result } from "@evolu/common";
-import { expectErr, expectOk } from "@evolu/vitest";
-import { expect, test } from "vitest";
+import {
+  assertEqual,
+  assertErr,
+  assertOk,
+  err,
+  ok,
+  type Result,
+} from "@evolu/common";
+import { test } from "node:test";
 
 interface UserNotFoundError {
   readonly type: "UserNotFoundError";
@@ -71,8 +132,8 @@ test("greets an existing user", () => {
 
   const result = greetUser(deps)("user-1");
 
-  expectOk(result, "Hello, Ada");
-  expect(requestedIds).toEqual(["user-1"]);
+  assertOk(result, "Hello, Ada");
+  assertEqual(requestedIds, ["user-1"]);
 });
 
 test("preserves a domain error", () => {
@@ -84,7 +145,7 @@ test("preserves a domain error", () => {
     users: { findName: () => err(error) },
   };
 
-  expectErr(greetUser(deps)("missing"), error);
+  assertErr(greetUser(deps)("missing"), error);
 });
 ```
 
@@ -109,9 +170,16 @@ controllable default dependencies and merges in the custom dependencies passed
 by the test.
 
 ```ts
-import { err, ok, testCreateRun, type Result, type Task } from "@evolu/common";
-import { expectErr, expectOk } from "@evolu/vitest";
-import { test } from "vitest";
+import {
+  assertErr,
+  assertOk,
+  err,
+  ok,
+  testCreateRun,
+  type Result,
+  type Task,
+} from "@evolu/common";
+import { test } from "node:test";
 
 interface UserNotFoundError {
   readonly type: "UserNotFoundError";
@@ -125,8 +193,8 @@ interface UsersDep {
   readonly users: Users;
 }
 
-const greetUser: Task<string, UserNotFoundError, UsersDep> = ({ deps }) => {
-  const name = deps.users.findName();
+const greetUser: Task<string, UserNotFoundError, UsersDep> = (run) => {
+  const name = run.deps.users.findName();
   if (!name.ok) return name;
 
   return ok(`Hello, ${name.value}`);
@@ -137,7 +205,7 @@ test("runs a Task with test dependencies", async () => {
     users: { findName: () => ok("Ada") },
   });
 
-  expectOk(await run(greetUser), "Hello, Ada");
+  assertOk(await run(greetUser), "Hello, Ada");
 });
 
 test("asserts a Task error", async () => {
@@ -146,7 +214,7 @@ test("asserts a Task error", async () => {
     users: { findName: () => err(error) },
   });
 
-  expectErr(await run(greetUser), error);
+  assertErr(await run(greetUser), error);
 });
 ```
 
@@ -174,9 +242,8 @@ for synchronous code that needs Evolu's default dependencies. Use
 Controllable time makes timing tests instant and independent of the wall clock:
 
 ```ts
-import { sleep, testCreateRun } from "@evolu/common";
-import { expectOk } from "@evolu/vitest";
-import { test } from "vitest";
+import { assertOk, sleep, testCreateRun } from "@evolu/common";
+import { test } from "node:test";
 
 test("sleeps without waiting for real time", async () => {
   await using run = testCreateRun();
@@ -184,7 +251,7 @@ test("sleeps without waiting for real time", async () => {
   const fiber = run(sleep("1s"));
   run.deps.time.advance("1s");
 
-  expectOk(await fiber, undefined);
+  assertOk(await fiber, undefined);
 });
 ```
 
@@ -194,16 +261,17 @@ provides a queued, inspectable fetch implementation:
 
 ```ts
 import {
+  assertLength,
+  assertOk,
   ok,
   testCreateNativeFetch,
   testCreateRun,
   type Task,
 } from "@evolu/common";
-import { expectOk } from "@evolu/vitest";
-import { expect, test } from "vitest";
+import { test } from "node:test";
 
-const loadGreeting: Task<string> = async ({ deps }) => {
-  const response = await deps.nativeFetch("https://example.com/greeting");
+const loadGreeting: Task<string> = async (run) => {
+  const response = await run.deps.nativeFetch("https://example.com/greeting");
   return ok(await response.text());
 };
 
@@ -211,8 +279,8 @@ test("loads a greeting", async () => {
   const nativeFetch = testCreateNativeFetch(() => new Response("Hello, Ada"));
   await using run = testCreateRun({ nativeFetch });
 
-  expectOk(await run(loadGreeting), "Hello, Ada");
-  expect(nativeFetch.calls).toHaveLength(1);
+  assertOk(await run(loadGreeting), "Hello, Ada");
+  assertLength(nativeFetch.calls, 1);
 });
 ```
 
@@ -224,8 +292,14 @@ whose successive calls produce distinct IDs. Recreating the factory replays the
 same sequence.
 
 ```ts
-import { testCreateId, type Brand, type Id } from "@evolu/common";
-import { expect, expectTypeOf, test } from "vitest";
+import {
+  assertEqual,
+  assertNotEqual,
+  testCreateId,
+  type Brand,
+  type Id,
+} from "@evolu/common";
+import { test } from "node:test";
 
 test("creates stable branded IDs", () => {
   const createId = testCreateId();
@@ -233,9 +307,10 @@ test("creates stable branded IDs", () => {
   const secondTodoId = createId<"Todo">();
 
   const replayCreateId = testCreateId();
-  expect(replayCreateId<"Todo">()).toBe(firstTodoId);
-  expect(secondTodoId).not.toBe(firstTodoId);
-  expectTypeOf(firstTodoId).toEqualTypeOf<Id & Brand<"Todo">>();
+  const todoId: Id & Brand<"Todo"> = firstTodoId;
+
+  assertEqual(replayCreateId<"Todo">(), todoId);
+  assertNotEqual(secondTodoId, firstTodoId);
 });
 ```
 
@@ -261,16 +336,10 @@ easy to discover next to the production implementation:
 - [`testSetupSqlite`](/docs/api-reference/common/Sqlite/functions/testSetupSqlite)
   creates a disposable in-memory SQLite setup from a platform driver.
 
-The `Test` module is reserved for cross-module helpers that cannot be colocated
-without creating dependency cycles. Test helpers exported by library modules
-use the `testX` prefix. Reusable helpers local to a test suite use `setupX`.
-
-## Unit and integration tests
-
-Prefer unit tests for domain decisions, error branches, scheduling, and
-dependency interactions. Use integration tests when the platform behavior is
-part of the contract—for example a real SQLite driver, Worker, WebSocket, or
-framework binding.
+The `Test` module is reserved for general helpers shared by unrelated modules
+and helpers whose natural colocation would create dependency cycles. Test
+helpers exported by library modules use the `testX` prefix. Reusable helpers
+local to a test suite use `setupX`.
 
 Whether a test uses a test double or a real platform implementation, keep its
 resources local to the test and release them with `using` or `await using`. See

@@ -31,14 +31,13 @@ Use this phase when developing a feature or when the user asks to see the whole 
 1. Ask the user for one test name and what that test should do.
 2. Write exactly one new executable test for that behavior, or convert exactly one approved TODO test into an executable test.
 3. Do not write implementation code yet, except for minimal exports or empty files required for the test to compile when the user explicitly wants a new module from scratch. Use the shared `todo` helper from `@evolu/common` for placeholder implementations.
-4. Run only the new or affected test with the `runTests` tool.
+4. Run only the new or affected test with the repository's focused terminal command.
 5. Confirm the test fails for the expected reason. Do not complicate a red test only to avoid a one-time timeout; prefer a direct behavior-shaped test over diagnostic harness code when the timeout happens only during the failing demonstration.
 6. Stop and wait for the user's approval of the test.
 7. After approval, write the minimum implementation needed for that one test.
-8. Run the same focused test again with the `runTests` tool.
-9. Check workspace diagnostics for changed files with `get_errors`.
-10. If source code was changed, run focused coverage with `runTests` in coverage mode for the changed source file when practical.
-11. Stop and wait for the user's approval before asking for the next test.
+8. Run the same focused test again with the same terminal command.
+9. Run `pnpm typecheck` after changing TypeScript source.
+10. Stop and wait for the user's approval before asking for the next test.
 
 ## Rules
 
@@ -55,4 +54,15 @@ Use this phase when developing a feature or when the user asks to see the whole 
 
 ## Evolu Defaults
 
-For this repository, package source modules usually live in `packages/*/src/` and package tests in `packages/*/test/`. Apps, scripts, and tooling packages follow their local conventions. Use TypeScript only. Prefer Vitest `describe` and `test`, and use the `runTests` tool instead of terminal test commands.
+For this repository, package unit tests are collocated with their source modules
+under `packages/*/src/` and use Node's `node:test`. Name them `*.test.ts` and run
+selected files with a quoted path or glob:
+
+```sh
+pnpm test:node "<test-file-or-glob>"
+```
+
+Apps, scripts, tooling, and integration tests follow their local conventions.
+For an existing Vitest integration suite, use
+`pnpm exec vitest run <test-file> --project=<project>`, adding `--mode=chromium`
+for a browser project. Use TypeScript only.

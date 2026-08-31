@@ -51,7 +51,6 @@ Build scripts
 - `pnpm build` - Build packages (required once after clone/pull for IDE types)
 - `pnpm build:docs` - Build doc (required once after clone/pull)
 - `pnpm build:web` - Build docs and web
-- `pnpm build:web:fast` - Delete `api-reference` and build web only
 
 Web build notes
 
@@ -77,14 +76,30 @@ Examples
 
 Linting
 
-- `pnpm lint` - Lint code
-- `pnpm lint-monorepo` - Lint monorepo structure
+- `pnpm lint` - Run all linters
+- `pnpm lint:oxlint` - Lint code with Oxlint
+- `pnpm lint:sherif` - Lint monorepo structure with Sherif
+
+Formatting
+
+- `pnpm format` - Write Prettier formatting changes
+- `pnpm format:check` - Check Prettier formatting without writing changes
 
 Testing
 
 - `pnpm playwright:install` - Install browsers required by Playwright-based Vitest projects
-- `pnpm test` - Run Node-based tests
-- `pnpm test:browsers` - Run browser tests in Chromium, Firefox, and WebKit
+- `pnpm test` - Run all unit, integration, bundle, and documentation-example tests
+- `pnpm test:node "<test-file-or-glob>"` - Run selected native Node tests with coverage
+- `pnpm test:unit` - Run all unit tests with coverage
+- `pnpm test:unit-overview` - Run all unit tests with test-file durations and the per-source-file coverage table
+- `pnpm test:integration` - Run Node.js and browser integration tests
+- `pnpm test:integration:nodejs` - Run Node.js integration tests without source coverage
+- `pnpm test:integration:browsers` - Run browser integrations in Chromium with coverage and in Firefox and WebKit for compatibility
+- `pnpm test:bundle` - Run production bundle and tree-shaking tests
+- `pnpm test:jsdoc` - Compile and run documentation examples
+
+See the [testing convention](https://www.evolu.dev/docs/testing) for test
+placement, runner, and assertion guidance.
 
 Release
 

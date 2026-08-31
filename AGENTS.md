@@ -31,24 +31,40 @@ The repository uses the latest Node.js LTS release selected by `.nvmrc` and pnpm
 - `pnpm playwright:install` — install browsers for Playwright-based tests and
   `pnpm verify`. Run it after Playwright updates or browser-cache removal.
 - `pnpm typecheck` — type-check packages, scripts, and benchmarks.
-- `pnpm test <test-file>` — run one Node test file.
-- For focused coverage, run one test file with `--project`, `--coverage`,
-  `--coverage.include=<source-file>`, and `--coverage.thresholds.100`.
-- `pnpm test` — run Node-based tests.
-- `pnpm test:browsers` — run browser tests in Chromium, Firefox, and WebKit.
-- `pnpm test:bundle` — run production bundle and tree-shaking tests.
-- `pnpm test:coverage` — run Node, Chromium, and bundle tests with coverage.
+- `pnpm test:node "<test-file-or-glob>"` — run selected Node test files with the
+  shared configuration from `node.config.json`. Quote globs so Node expands them
+  consistently across shells.
+- `pnpm test` — run unit, integration, bundle, and documentation-example tests.
+- `pnpm test:unit` — run all unit tests with coverage.
+- `pnpm test:unit-overview` — run all unit tests with test-file durations sorted
+  slowest-first and the per-source-file coverage table.
+- `pnpm test:integration` — run Node.js and browser integration tests.
+- `pnpm test:integration:nodejs` — run Node.js integration tests without source
+  coverage.
+- `pnpm test:integration:browsers` — run the explicitly configured browser
+  integration projects, first in Chromium with coverage and then in Firefox and
+  WebKit without coverage. Use it after changing browser APIs,
+  platform-sensitive behavior, polyfills, workers, or browser test
+  configuration. It runs only the files selected by
+  `test/integration/browsers/vitest.config.ts` and
+  `test/integration/browsers/web/vitest.config.ts`, not the collocated
+  unit-test suite.
+- `pnpm test:bundle` — run production bundle and tree-shaking tests without
+  source coverage.
 - `pnpm test:jsdoc <file-or-glob>...` — compile and run documentation examples
   from specific source or Markdown files. Omit arguments to test every
   configured JSDoc source and changeset.
 - `pnpm build` — build publishable packages and the relay. Run it once after a
   clone or pull to generate IDE package types.
 - `pnpm check:packages` — validate package source and distribution exports.
-- `pnpm lint` — run Oxlint, including runtime import-cycle analysis.
+- `pnpm lint` — run Oxlint and monorepo structure linting.
+- `pnpm lint:oxlint` — run Oxlint, including runtime import-cycle analysis.
+- `pnpm lint:sherif` — lint the pnpm workspace structure with Sherif.
 - `pnpm verify` — run type-checking, builds, package checks, coverage,
   Firefox/WebKit compatibility tests, monorepo linting, documentation
   generation, and Oxlint serially. Its underlying tools can use all available
   CPU cores, so do not run other CPU-intensive commands concurrently.
+- `pnpm format:check` — check Prettier formatting without writing changes.
 - `pnpm format` — write Prettier formatting changes.
 - `pnpm bench:type` — compare Type compiler metrics with committed baselines.
   Run it after changing Type declarations or `bench/type` infrastructure. It is
@@ -198,11 +214,14 @@ Run standalone TypeScript scripts directly with Node.js, for example
 
 - Every feature addition and bug fix includes a test that fails without the
   change.
-- After changing a module that has an existing test file, run that test file with
-  `pnpm test <test-file>`.
-- Test locations are defined by each Vitest project and are not limited to
-  `packages/*/test`.
-- Use `expectTypeOf` for compile-time contracts and `@ts-expect-error` for
+- After changing a module with a native Node.js test, run that test file with
+  `pnpm test:node <test-file>`. Run a focused Vitest suite with
+  `pnpm exec vitest run <test-file> --project=<project>` using
+  `node-integration`, `browser-integration`, or `browser-web`; add
+  `--mode=chromium` for a browser project.
+- Vitest test locations are defined by each project and are not limited to a
+  conventional test directory.
+- Use `assertType` for compile-time contracts and `@ts-expect-error` for
   rejected programs.
 - Every `@ts-expect-error` must describe the specific expected rejection. When
   an Evolu API provides a `CompileTimeError` message, copy that message verbatim.
