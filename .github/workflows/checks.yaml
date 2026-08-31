@@ -69,6 +69,15 @@ jobs:
       - name: Build docs
         run: pnpm build:docs
 
+      - name: Test generated docs search
+        run: >-
+          pnpm test:node
+          --test-coverage-include="apps/web/src/mdx/searchClient.ts"
+          --test-coverage-branches=100
+          --test-coverage-functions=100
+          --test-coverage-lines=100
+          "apps/web/src/mdx/searchClient.docs.mts"
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
