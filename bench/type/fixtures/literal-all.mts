@@ -1,6 +1,5 @@
 import { array, type InferErrors, literal } from "./chains/api.mts";
-// oxlint-disable-next-line import/no-unassigned-import -- Includes the complete compiler-performance dependency chain.
-import "./chains/root.mts";
+import "./chains/root.mts"; // oxlint-disable-line import/no-unassigned-import -- Includes the complete compiler-performance dependency chain.
 
 const Hello = literal("Hello");
 const _Answer = literal(42);

@@ -1681,7 +1681,7 @@
           "lines": -28,
           "identifiers": 17,
           "instantiations": 2740,
-          "types": 476,
+          "types": 474,
           "symbols": 605
         },
         "localize-lazy-direct-all": {
@@ -1697,7 +1697,7 @@
           "lines": -30,
           "identifiers": -30,
           "instantiations": 3848,
-          "types": 593,
+          "types": 591,
           "symbols": 804
         }
       }

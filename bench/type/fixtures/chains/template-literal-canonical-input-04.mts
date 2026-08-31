@@ -2,8 +2,7 @@ import {
   templateLiteralParser,
   union,
 } from "../../../../packages/common/src/Type.ts";
-// oxlint-disable-next-line import/no-unassigned-import -- Loads the root of this compiler-performance dependency chain.
-import "./root.mts";
+import "./root.mts"; // oxlint-disable-line import/no-unassigned-import -- Loads the root of this compiler-performance dependency chain.
 
 export const Bit = /*#__PURE__*/ union("0", "1");
 
