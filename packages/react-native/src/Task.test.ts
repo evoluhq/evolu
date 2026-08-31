@@ -15,9 +15,7 @@ describe("createRun", () => {
     using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
       setGlobalHandler:
-        mock.fn<
-          NonNullable<typeof globalThis.ErrorUtils>["setGlobalHandler"]
-        >(),
+        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
       reportError,
     });
     await using run = createRun();
@@ -37,14 +35,12 @@ describe("createRun", () => {
 
   it("createRun preserves a custom reportDefect", async () => {
     const reportError =
-      mock.fn<NonNullable<typeof globalThis.ErrorUtils>["reportError"]>();
+      mock.fn<NonNullable<typeof ErrorUtils>["reportError"]>();
     const reportDefect = mock.fn();
     using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
       setGlobalHandler:
-        mock.fn<
-          NonNullable<typeof globalThis.ErrorUtils>["setGlobalHandler"]
-        >(),
+        mock.fn<NonNullable<typeof ErrorUtils>["setGlobalHandler"]>(),
       reportError,
     });
     await using run = createRun({ reportDefect });
@@ -57,6 +53,7 @@ describe("createRun", () => {
 
   it("createRun falls back when ErrorUtils is unavailable", async (t) => {
     using _errorUtils = testStubGlobal("ErrorUtils", undefined);
+    assertTrue(Reflect.deleteProperty(globalThis, "ErrorUtils"));
     const callbacks: Array<() => void> = [];
     t.mock.method(globalThis, "queueMicrotask", (callback: () => void) => {
       callbacks.push(callback);

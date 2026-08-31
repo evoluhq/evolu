@@ -330,8 +330,8 @@ describe("testCreateDeps", () => {
     const first = testCreateDeps();
     const second = testCreateDeps();
 
-    assertFalse(globalThis.Object.is(first, second));
-    assertFalse(globalThis.Object.is(first.console, second.console));
+    assertFalse(Object.is(first, second));
+    assertFalse(Object.is(first.console, second.console));
     assertEqual(first.random.next(), second.random.next());
     assertEqual(first.randomLib.int(0, 1000), second.randomLib.int(0, 1000));
     assertEqual(
@@ -532,7 +532,7 @@ describe("Run", () => {
         true
       >();
       assertNotUndefined(childRun);
-      assertFalse(globalThis.Object.is(childRun, run));
+      assertFalse(Object.is(childRun, run));
       assertSame(userFiber.run, childRun);
       assertEqual(await userFiber, ok("Ada"));
     });
@@ -577,8 +577,8 @@ describe("Run", () => {
       assertNotUndefined(childFiber);
       assertSame(parentRunId, parentFiber.run.id);
       assertSame(childRunId, childFiber.run.id);
-      assertFalse(globalThis.Object.is(run.id, parentFiber.run.id));
-      assertFalse(globalThis.Object.is(parentRunId, childRunId));
+      assertFalse(Object.is(run.id, parentFiber.run.id));
+      assertFalse(Object.is(parentRunId, childRunId));
     });
   });
 
@@ -1935,7 +1935,7 @@ describe("Run", () => {
         assertEqual(await childFiber, ok());
       }
 
-      assertFalse(globalThis.Object.is(run.snapshot(), snapshotWithChild));
+      assertFalse(Object.is(run.snapshot(), snapshotWithChild));
     });
 
     it("snapshot reuses unchanged aborted snapshot objects", () => {

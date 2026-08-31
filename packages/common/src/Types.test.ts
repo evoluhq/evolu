@@ -111,8 +111,8 @@ test("Instance", () => {
 
 test("isInstance checks its own marker", () => {
   const isFoo = isInstance<Instance<"Foo">>("Foo");
-  const nullPrototype = globalThis.Object.assign(
-    globalThis.Object.create(null) as object,
+  const nullPrototype = Object.assign(
+    Object.create(null) as object,
     instance("Foo"),
   );
 
@@ -121,7 +121,7 @@ test("isInstance checks its own marker", () => {
   assertFalse(isFoo("Foo"));
   assertFalse(isFoo({}));
   assertFalse(isFoo(instance("Bar")));
-  assertFalse(isFoo(globalThis.Object.create(instance("Foo"))));
+  assertFalse(isFoo(Object.create(instance("Foo"))));
 });
 
 test("NullablePartial", () => {

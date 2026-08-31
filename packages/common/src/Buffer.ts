@@ -148,9 +148,7 @@ export const createBuffer = (
   const initialLength = arrayLike?.length ?? 0;
   assertNonNegativeInt(initialLength, "arrayLike.length");
 
-  let value = arrayLike
-    ? new globalThis.Uint8Array(arrayLike)
-    : new globalThis.Uint8Array(512);
+  let value = arrayLike ? new Uint8Array(arrayLike) : new Uint8Array(512);
   let length = initialLength;
 
   const buffer: Buffer = {
@@ -168,7 +166,7 @@ export const createBuffer = (
       if (value.length < targetSize) {
         const oldValue = value;
         const newCapacity = Math.max(value.length * 2, targetSize);
-        value = new globalThis.Uint8Array(newCapacity);
+        value = new Uint8Array(newCapacity);
         value.set(oldValue);
       }
       value.set(arg, length);
@@ -281,8 +279,9 @@ export const decodeFlags = (
   count: PositiveInt,
 ): ReadonlyArray<boolean> => {
   const byte = buffer.shift();
-  const length = globalThis.Math.min(count, 8);
-  const flags = new globalThis.Array<boolean>(length);
+  const length = Math.min(count, 8);
+  // oxlint-disable-next-line unicorn/no-new-array -- Preallocation is intentional in this decoding hot path.
+  const flags = new Array<boolean>(length);
   for (let i = 0; i < length; i++) {
     flags[i] = (byte & (1 << i)) !== 0;
   }
@@ -308,7 +307,7 @@ export const encodeNonNegativeInt = (
   const bytes: Array<number> = [];
 
   while (remaining !== 0n) {
-    const byte = globalThis.Number(remaining & 127n);
+    const byte = Number(remaining & 127n);
     bytes.push(byte);
     remaining >>= 7n;
   }
@@ -344,7 +343,7 @@ export const decodeNonNegativeInt = (buffer: Buffer): NonNegativeInt => {
     );
   }
 
-  const value = globalThis.Number(result);
+  const value = Number(result);
   assertNonNegativeInt(value, "Decoded integer");
   return value;
 };
@@ -393,7 +392,7 @@ export const createRunLengthEncoder = <T>(
 
   return {
     add: (value) => {
-      if (globalThis.Object.is(value, previousValue)) {
+      if (Object.is(value, previousValue)) {
         runLength++;
         buffer.truncate(previousLength);
       } else {
@@ -417,7 +416,8 @@ export const decodeRle = <T>(
   length: NonNegativeInt,
   decodeValue: () => T,
 ): ReadonlyArray<T> => {
-  const values = new globalThis.Array<T>(length);
+  // oxlint-disable-next-line unicorn/no-new-array -- Preallocation is intentional in this decoding hot path.
+  const values = new Array<T>(length);
   let index = 0;
   while (index < length) {
     const value = decodeValue();
@@ -479,23 +479,25 @@ interface JsonKeyCacheEntry {
 const jsonKeyCacheSize = 4096;
 const maxCachedJsonKeyByteLength = 32;
 const maxJsonNestingDepth = 1_000;
-let jsonEncoderTarget = new globalThis.Uint8Array(8192);
-let jsonEncoderTargetView = new globalThis.DataView(jsonEncoderTarget.buffer);
+let jsonEncoderTarget = new Uint8Array(8192);
+let jsonEncoderTargetView = new DataView(jsonEncoderTarget.buffer);
 let jsonEncoderPosition = 0;
 let jsonEncoderDepth = 0;
 let jsonEncoderIsActive = false;
-const emptyJsonDecoderSource: Uint8Array = new globalThis.Uint8Array(0);
-const emptyJsonDecoderView: DataView = new globalThis.DataView(
+const emptyJsonDecoderSource: Uint8Array = new Uint8Array(0);
+const emptyJsonDecoderView: DataView = new DataView(
   emptyJsonDecoderSource.buffer,
 );
 let jsonDecoderSource: Uint8Array = emptyJsonDecoderSource;
 let jsonDecoderView: DataView = emptyJsonDecoderView;
 let jsonDecoderPosition = 0;
 let jsonDecoderDepth = 0;
-const jsonStringFromCharCode = globalThis.String.fromCharCode;
+const jsonStringFromCharCode = String.fromCharCode;
 // Cache only short keys and use a fixed table to bound retained memory.
-const jsonKeyCache: Array<JsonKeyCacheEntry | undefined> =
-  globalThis.Array.from({ length: jsonKeyCacheSize }, () => undefined);
+const jsonKeyCache: Array<JsonKeyCacheEntry | undefined> = Array.from(
+  { length: jsonKeyCacheSize },
+  () => undefined,
+);
 
 /**
  * Encodes a {@link JsonValue} using the MessagePack format.
@@ -572,7 +574,7 @@ export const encodeJsonValue = (buffer: Buffer, value: JsonValue): void => {
 export const decodeJsonValue = (buffer: Buffer): JsonValue => {
   const source = buffer.unwrap();
   jsonDecoderSource = source;
-  jsonDecoderView = new globalThis.DataView(
+  jsonDecoderView = new DataView(
     source.buffer,
     source.byteOffset,
     source.byteLength,
@@ -607,7 +609,7 @@ const encodeJsonValueToTarget = (value: JsonValue): void => {
       encodeJsonStringToTarget(value);
       return;
     case "number": {
-      if (globalThis.Object.is(value, -0)) {
+      if (Object.is(value, -0)) {
         ensureJsonEncoderCapacity(9);
         jsonEncoderTarget[jsonEncoderPosition++] = 0xcb;
         jsonEncoderTargetView.setFloat64(jsonEncoderPosition, value);
@@ -636,11 +638,7 @@ const encodeJsonValueToTarget = (value: JsonValue): void => {
         return;
       }
 
-      if (
-        globalThis.Number.isInteger(value) &&
-        value >= -0x80000000 &&
-        value < 0
-      ) {
+      if (Number.isInteger(value) && value >= -0x80000000 && value < 0) {
         if (value >= -0x20) {
           writeJsonEncoderByte(0x100 + value);
         } else if (value >= -0x80) {
@@ -678,7 +676,7 @@ const encodeJsonValueToTarget = (value: JsonValue): void => {
       }
       jsonEncoderDepth++;
 
-      if (globalThis.Array.isArray(value)) {
+      if (Array.isArray(value)) {
         const array = value as ReadonlyArray<JsonValue>;
         const length = array.length;
         writeJsonCollectionHeader(length, 0x90, 0xdc, 0xdd);
@@ -689,7 +687,7 @@ const encodeJsonValueToTarget = (value: JsonValue): void => {
       }
 
       const object = value as Readonly<Record<string, JsonValue>>;
-      const keys = globalThis.Object.keys(object);
+      const keys = Object.keys(object);
       writeJsonCollectionHeader(keys.length, 0x80, 0xde, 0xdf);
 
       for (const key of keys) {
@@ -825,16 +823,13 @@ const ensureJsonEncoderCapacity = (additionalLength: number): void => {
 
   if (requiredLength <= jsonEncoderTarget.length) return;
 
-  const newCapacity = globalThis.Math.max(
-    jsonEncoderTarget.length * 2,
-    requiredLength,
-  );
+  const newCapacity = Math.max(jsonEncoderTarget.length * 2, requiredLength);
   assertNonNegativeInt(newCapacity, "JSON encoder capacity");
 
   const oldTarget = jsonEncoderTarget;
-  jsonEncoderTarget = new globalThis.Uint8Array(newCapacity);
+  jsonEncoderTarget = new Uint8Array(newCapacity);
   jsonEncoderTarget.set(oldTarget.subarray(0, jsonEncoderPosition));
-  jsonEncoderTargetView = new globalThis.DataView(jsonEncoderTarget.buffer);
+  jsonEncoderTargetView = new DataView(jsonEncoderTarget.buffer);
 };
 
 const assertMessagePackLength = (length: number, name: string): void => {
@@ -914,7 +909,7 @@ const decodeJsonFloat = (byteLength: 4 | 8): JsonValue => {
       : jsonDecoderView.getFloat64(jsonDecoderPosition);
   jsonDecoderPosition += byteLength;
 
-  if (!globalThis.Number.isFinite(value)) {
+  if (!Number.isFinite(value)) {
     throw new BufferError("A decoded JSON number must be finite.");
   }
   return value as JsonValue;
@@ -1271,7 +1266,7 @@ const decodeJsonMap = (length: number): JsonValue => {
     const entryValue = decodeJsonValueFromSource();
 
     if (key === "__proto__") {
-      globalThis.Object.defineProperty(value, key, {
+      Object.defineProperty(value, key, {
         value: entryValue,
         configurable: true,
         enumerable: true,
@@ -1370,7 +1365,7 @@ const assertNonNegativeInt: (
   value: number,
   name: string,
 ) => asserts value is NonNegativeInt = (value, name) => {
-  if (!globalThis.Number.isSafeInteger(value) || value < 0) {
+  if (!Number.isSafeInteger(value) || value < 0) {
     throw new BufferError(`${name} must be a non-negative safe integer.`);
   }
 };

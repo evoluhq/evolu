@@ -1115,7 +1115,7 @@ describe("Standard Schema", () => {
     const NumberFromString = setupNumberFromString();
     assertEqual(
       await map(NumberFromString, Number)["~standard"].validate(
-        new globalThis.Map([
+        new Map([
           ["01", 1],
           ["1", 2],
         ]),
@@ -1781,7 +1781,7 @@ describe("localizeTypes", () => {
     assertErr(notSet);
     assertEqual(types.Strings.formatError(notSet.error), "Localized Set.");
 
-    const invalidElement = types.Strings.fromUnknown(new globalThis.Set([1]));
+    const invalidElement = types.Strings.fromUnknown(new Set([1]));
     assertErr(invalidElement);
     assertEqual(
       types.Strings.formatError(invalidElement.error),
@@ -3841,7 +3841,7 @@ describe("objectTag", () => {
       >
     >();
     assertType<
-      globalThis.Uint8Array<globalThis.SharedArrayBuffer> extends typeof Uint8Array.Output
+      globalThis.Uint8Array<SharedArrayBuffer> extends typeof Uint8Array.Output
         ? true
         : false,
       true
@@ -3861,7 +3861,7 @@ describe("objectTag", () => {
   it("trusts reported object tags without verifying native internal slots", () => {
     const forgedDate = { [globalThis.Symbol.toStringTag]: "Date" };
     const sabotagedSet = globalThis.Object.create(
-      globalThis.Set.prototype,
+      Set.prototype,
     ) as ReadonlySet<string>;
 
     const result = Date.fromUnknown(forgedDate);
@@ -11000,7 +11000,7 @@ describe("set", () => {
 
   it("validates the Set boundary and elements", () => {
     const Strings = set(String);
-    const value = new globalThis.Set(["a", "b"]);
+    const value = new Set(["a", "b"]);
     const result = Strings.fromUnknown(value);
 
     assertOk(result, value);
@@ -11010,10 +11010,9 @@ describe("set", () => {
       err({ type: "Set", reason: { kind: "NotSet", value: ["a", "b"] } }),
     );
 
-    const withProperty = globalThis.Object.assign(
-      new globalThis.Set<unknown>([1]),
-      { metadata: true },
-    );
+    const withProperty = globalThis.Object.assign(new Set<unknown>([1]), {
+      metadata: true,
+    });
     assertEqual(
       Strings.fromUnknown(withProperty, { errors: "all" }),
       err<SetItemsError<TypeOfError<"String">>>({
@@ -11045,8 +11044,8 @@ describe("set", () => {
 
   it("supports element decoding, parent operations, and encoding", () => {
     const NumbersFromStrings = set(setupNumberFromString());
-    const input = new globalThis.Set(["1", "2"]);
-    const output = new globalThis.Set([1, 2]);
+    const input = new Set(["1", "2"]);
+    const output = new Set([1, 2]);
 
     assertOk(NumbersFromStrings.fromUnknown(input), output);
     assertEqual(NumbersFromStrings.to(output), input);
@@ -11056,12 +11055,12 @@ describe("set", () => {
     const NumbersOrNumbersFromStrings = set(
       union(Number, setupNumberFromString()),
     );
-    const unchanged = new globalThis.Set([1, 2]);
+    const unchanged = new Set([1, 2]);
     assertSame(NumbersOrNumbersFromStrings.to(unchanged), unchanged);
 
     const LongStrings = set(minLength(2)(String));
-    const valid = new globalThis.Set(["ok"]);
-    const invalid = new globalThis.Set(["x"]);
+    const valid = new Set(["ok"]);
+    const invalid = new Set(["x"]);
     const validResult = LongStrings.from.parent(valid);
 
     assertOk(validResult, valid);
@@ -11087,15 +11086,15 @@ describe("set", () => {
 
   it("checks exact Output representation", () => {
     const Strings = set(String);
-    const value = new globalThis.Set(["a"]);
-    const withProperty = globalThis.Object.assign(new globalThis.Set(["a"]), {
+    const value = new Set(["a"]);
+    const withProperty = globalThis.Object.assign(new Set(["a"]), {
       metadata: true,
     });
 
     assertTrue(Strings.is(value));
     assertFalse(Strings.is("a"));
     assertFalse(Strings.is(withProperty));
-    assertFalse(Strings.is(new globalThis.Set([1])));
+    assertFalse(Strings.is(new Set([1])));
     assertSame(Strings.to(value), value);
   });
 
@@ -11202,7 +11201,7 @@ describe("map", () => {
 
   it("validates the Map boundary, structure, keys, and values", () => {
     const Scores = map(String, Number);
-    const value = new globalThis.Map<string, number>([
+    const value = new Map<string, number>([
       ["Ada", 10],
       ["Grace", 20],
     ]);
@@ -11216,7 +11215,7 @@ describe("map", () => {
     );
 
     const withProperty = globalThis.Object.assign(
-      new globalThis.Map<unknown, unknown>([[1, "bad"]]),
+      new Map<unknown, unknown>([[1, "bad"]]),
       { metadata: true },
     );
     assertEqual(
@@ -11258,7 +11257,7 @@ describe("map", () => {
       }),
     );
     assertEqual(
-      Scores.fromUnknown(new globalThis.Map([[1, 10]])),
+      Scores.fromUnknown(new Map([[1, 10]])),
       err({
         type: "Map",
         reason: {
@@ -11275,7 +11274,7 @@ describe("map", () => {
       }),
     );
     assertEqual(
-      Scores.fromUnknown(new globalThis.Map([["Ada", "bad"]])),
+      Scores.fromUnknown(new Map([["Ada", "bad"]])),
       err({
         type: "Map",
         reason: {
@@ -11297,7 +11296,7 @@ describe("map", () => {
     );
     assertEqual(
       Scores.fromUnknown(
-        new globalThis.Map<unknown, unknown>([
+        new Map<unknown, unknown>([
           ["Ada", "bad"],
           ["Grace", 20],
         ]),
@@ -11327,8 +11326,8 @@ describe("map", () => {
   it("supports key and value decoding, parent operations, and encoding", () => {
     const NumberFromString = setupNumberFromString();
     const Counts = map(NumberFromString, NumberFromString);
-    const input = new globalThis.Map([["1", "2"]]);
-    const output = new globalThis.Map([[1, 2]]);
+    const input = new Map([["1", "2"]]);
+    const output = new Map([[1, 2]]);
 
     assertOk(Counts.fromUnknown(input), output);
     assertEqual(Counts.to(output), input);
@@ -11348,23 +11347,20 @@ describe("map", () => {
     >();
 
     const Values = map(String, NumberFromString);
-    assertEqual(
-      Values.to(new globalThis.Map([["one", 1]])),
-      new globalThis.Map([["one", "1"]]),
-    );
+    assertEqual(Values.to(new Map([["one", 1]])), new Map([["one", "1"]]));
 
     const TransparentNumber = transform("TransparentNumber", Number, Number, {
       from: ok,
       to: (value) => value,
     });
-    const unchanged = new globalThis.Map([["one", 1]]);
+    const unchanged = new Map([["one", 1]]);
     assertSame(map(String, TransparentNumber).to(unchanged), unchanged);
   });
 
   it("rejects decoded key collisions and invalid encoding collisions", () => {
     const NumberFromString = setupNumberFromString();
     const Counts = map(NumberFromString, Number);
-    const input = new globalThis.Map<string, number>([
+    const input = new Map<string, number>([
       ["01", 1],
       ["1", 2],
     ]);
@@ -11417,7 +11413,7 @@ describe("map", () => {
     const error = assertThrowsInstanceOf(
       () =>
         InvalidMap.to(
-          new globalThis.Map([
+          new Map([
             [1, "one"],
             [2, "two"],
           ]),
@@ -11433,25 +11429,21 @@ describe("map", () => {
 
   it("checks exact Output representation", () => {
     const Scores = map(String, Number);
-    const value = new globalThis.Map([["Ada", 10]]);
-    const withProperty = globalThis.Object.assign(
-      new globalThis.Map([["Ada", 10]]),
-      { metadata: true },
-    );
+    const value = new Map([["Ada", 10]]);
+    const withProperty = globalThis.Object.assign(new Map([["Ada", 10]]), {
+      metadata: true,
+    });
 
     assertTrue(Scores.is(value));
     assertFalse(Scores.is({ Ada: 10 }));
     assertFalse(Scores.is(withProperty));
-    assertFalse(Scores.is(new globalThis.Map([[1, 10]])));
-    assertFalse(Scores.is(new globalThis.Map([["Ada", "10"]])));
+    assertFalse(Scores.is(new Map([[1, 10]])));
+    assertFalse(Scores.is(new Map([["Ada", "10"]])));
     assertSame(Scores.to(value), value);
     assertAssertionError(
       () =>
         Scores.from(
-          new globalThis.Map([[1, 10]]) as unknown as ReadonlyMap<
-            string,
-            number
-          >,
+          new Map([[1, 10]]) as unknown as ReadonlyMap<string, number>,
         ),
       "Expected Map.",
       {
@@ -11580,14 +11572,8 @@ describe("map", () => {
       return LocalizedScores.formatError(result.error);
     };
 
-    assertEqual(
-      formatError(new globalThis.Map([[1, 10]])),
-      "Localized String.",
-    );
-    assertEqual(
-      formatError(new globalThis.Map([["Ada", "bad"]])),
-      "Localized Number.",
-    );
+    assertEqual(formatError(new Map([[1, 10]])), "Localized String.");
+    assertEqual(formatError(new Map([["Ada", "bad"]])), "Localized Number.");
     assertEqual(formatError(null), "Localized Map.");
 
     const compileTimeAssertions = () => {
@@ -12434,11 +12420,7 @@ describe("Object", () => {
     assertErr(result);
     assertSame(result.error.reason.kind, "Properties");
     const { errors } = result.error.reason;
-    assertEqual(globalThis.Reflect.ownKeys(errors), [
-      "accessor",
-      "hidden",
-      symbol,
-    ]);
+    assertEqual(Reflect.ownKeys(errors), ["accessor", "hidden", symbol]);
     assertEqual(errors.accessor, {
       type: "ObjectPropertyAccess",
       reason: "Accessor",
@@ -12469,7 +12451,7 @@ describe("Object", () => {
     const result = Object.fromUnknown(value);
     assertErr(result);
     assertSame(result.error.reason.kind, "Properties");
-    assertEqual(globalThis.Reflect.ownKeys(result.error.reason.errors), [
+    assertEqual(Reflect.ownKeys(result.error.reason.errors), [
       globalThis.Symbol.toStringTag,
     ]);
     assertEqual(result.error.reason.errors[globalThis.Symbol.toStringTag], {
@@ -13200,7 +13182,7 @@ describe("record", () => {
       assertEqual(reads, 0);
 
       const canonical = createNullRecord({ value: 1 });
-      globalThis.Reflect.set(canonical, key, 2);
+      Reflect.set(canonical, key, 2);
       assertFalse(Values.is(canonical));
       assertFalse(Values.is(input));
       assertEqual(reads, 0);
@@ -13210,7 +13192,7 @@ describe("record", () => {
       );
 
       const output = createNullRecord({ value: 1 });
-      globalThis.Reflect.set(output, key, 2);
+      Reflect.set(output, key, 2);
       const result = Values.fromUnknown(output);
 
       assertErr(result, {
@@ -13708,7 +13690,7 @@ describe("object", () => {
       const props = { value: String };
       const Model = object(props);
 
-      globalThis.Reflect.set(props, "value", Number);
+      Reflect.set(props, "value", Number);
 
       assertFalse(globalThis.Object.is(Model.props, props));
       assertSame(Model.props.value, String);
@@ -13969,8 +13951,8 @@ describe("object", () => {
       const otherRecord = record(String, Boolean);
       const restrictedKeys = record(literal("score"), Number);
       const ReversedString = transform("ReversedString", String, String, {
-        from: (value) => ok(globalThis.Array.from(value).toReversed().join("")),
-        to: (value) => globalThis.Array.from(value).toReversed().join(""),
+        from: (value) => ok(Array.from(value).toReversed().join("")),
+        to: (value) => Array.from(value).toReversed().join(""),
       });
       const transformedKeys = record(ReversedString, Number);
       const NumberFromString = setupNumberFromString();
@@ -13996,7 +13978,7 @@ describe("object", () => {
         value: NumberFromString,
       };
       const numbersFromStrings = record(String, NumberFromString);
-      const recordUnion = globalThis.Math.random() > 0.5 ? Values : otherRecord;
+      const recordUnion = Math.random() > 0.5 ? Values : otherRecord;
       const erased: TypeNode = Values;
       const genericRecordAssertion = <
         Rest extends typeof Values | typeof otherRecord,
@@ -14256,13 +14238,11 @@ describe("object", () => {
     it("rejects erased property Types and a union of schemas", () => {
       const type: FormattableTypeNode = String;
       const props =
-        globalThis.Math.random() > 0.5
-          ? { root: String }
-          : { child: literal("child") };
+        Math.random() > 0.5 ? { root: String } : { child: literal("child") };
       const baseProps = { value: String };
       const extendedProps = { value: String, extra: Number };
       const getSubsumedProps = (): typeof baseProps | typeof extendedProps =>
-        globalThis.Math.random() > 0.5 ? baseProps : extendedProps;
+        Math.random() > 0.5 ? baseProps : extendedProps;
       const subsumedProps = getSubsumedProps();
       const compileTimeAssertions = () => {
         // @ts-expect-error Optional requires a property Type with concrete information.
@@ -15429,7 +15409,7 @@ describe("object", () => {
       assertEqual(result.error.reason.errors.hidden, errors.hidden);
       assertEqual(result.error.reason.errors[symbol], errors[symbol]);
       assertFalse(Model.is(value));
-      assertEqual(globalThis.Reflect.ownKeys(errors), ["hidden", symbol]);
+      assertEqual(Reflect.ownKeys(errors), ["hidden", symbol]);
     });
 
     it("rejects exotic declared and Record properties without reading them", () => {
@@ -15565,9 +15545,7 @@ describe("object", () => {
       ]) {
         assertErr(result);
         assertSame(result.error.reason.kind, "Properties");
-        assertEqual(globalThis.Reflect.ownKeys(result.error.reason.errors), [
-          key,
-        ]);
+        assertEqual(Reflect.ownKeys(result.error.reason.errors), [key]);
         assertEqual(result.error.reason.errors[key], {
           type: "Record",
           reason: {
@@ -15644,7 +15622,7 @@ describe("object", () => {
       const result = Model.fromUnknown(unreadableTag);
       assertErr(result);
       assertSame(result.error.reason.kind, "Properties");
-      assertEqual(globalThis.Reflect.ownKeys(result.error.reason.errors), [
+      assertEqual(Reflect.ownKeys(result.error.reason.errors), [
         globalThis.Symbol.toStringTag,
       ]);
       assertEqual(result.error.reason.errors[globalThis.Symbol.toStringTag], {
@@ -16400,7 +16378,7 @@ describe("typed", () => {
       const props = { value: String };
       const Model = typed("Model", props);
 
-      globalThis.Reflect.set(props, "value", Number);
+      Reflect.set(props, "value", Number);
 
       assertFalse(globalThis.Object.is(Model.props, props));
       assertSame(Model.props.value, String);
@@ -16676,12 +16654,11 @@ describe("typed", () => {
       const baseProps = { value: String };
       const extendedProps = { value: String, extra: Number };
       const getSubsumedProps = (): typeof baseProps | typeof extendedProps =>
-        globalThis.Math.random() > 0.5 ? baseProps : extendedProps;
+        Math.random() > 0.5 ? baseProps : extendedProps;
       const subsumedProps = getSubsumedProps();
       const Values = record(String, String);
       const UnknownValues = record(String, Unknown);
-      const recordUnion =
-        globalThis.Math.random() > 0.5 ? Values : UnknownValues;
+      const recordUnion = Math.random() > 0.5 ? Values : UnknownValues;
       const erasedRecord: TypeNode = Values;
       const restrictedKeys = record(literal("value"), String);
       const genericTagAssertion = <Tag extends "One" | "Two">(
@@ -17077,11 +17054,11 @@ describe("discriminatedUnion", () => {
       const ThreeWithString = typed("Three", { value: String });
       const _ThreeWithNumber = typed("Three", { value: Number });
       const members =
-        globalThis.Math.random() > 0.5
+        Math.random() > 0.5
           ? ([OneWithString, TwoWithString] as const)
           : ([OneWithNumber, TwoWithNumber] as const);
       const differentLengthMembers =
-        globalThis.Math.random() > 0.5
+        Math.random() > 0.5
           ? ([OneWithString, TwoWithString] as const)
           : ([OneWithString, TwoWithString, ThreeWithString] as const);
       const widenedMembers: readonly [
@@ -17550,10 +17527,7 @@ describe("discriminatedUnion", () => {
         );
       } finally {
         if (originalTypeDescriptor === undefined) {
-          globalThis.Reflect.deleteProperty(
-            globalThis.Object.prototype,
-            "type",
-          );
+          Reflect.deleteProperty(globalThis.Object.prototype, "type");
         } else {
           globalThis.Object.defineProperty(
             globalThis.Object.prototype,
@@ -17750,16 +17724,14 @@ describe("lazy", () => {
         RecursiveStringMapError
       > = lazy(() => map(String, RecursiveStringMap));
 
-      const leaf: RecursiveStringMap = new globalThis.Map();
-      const value: RecursiveStringMap = new globalThis.Map([["nested", leaf]]);
+      const leaf: RecursiveStringMap = new Map();
+      const value: RecursiveStringMap = new Map([["nested", leaf]]);
 
       assertEqual(RecursiveStringMap.fromUnknown(value), ok(value));
       assertTrue(RecursiveStringMap.is(value));
       assertFalse(
         RecursiveStringMap.fromUnknown(
-          new globalThis.Map([
-            ["nested", new globalThis.Map([[1, new globalThis.Map()]])],
-          ]),
+          new Map([["nested", new Map([[1, new Map()]])]]),
         ).ok,
       );
     });
@@ -18310,10 +18282,10 @@ describe("Data", () => {
       [1, "two", undefined],
       { nested: { array: [1, 2, 3] } },
       nullPrototype,
-      new globalThis.Set([1, { nested: true }]),
-      new globalThis.Map<Data, Data>([
+      new Set([1, { nested: true }]),
+      new Map<Data, Data>([
         ["key", { nested: true }],
-        [{ objectKey: true }, new globalThis.Set([1, 2])],
+        [{ objectKey: true }, new Set([1, 2])],
       ]),
       new globalThis.Date("2025-01-01T00:00:00.000Z"),
       new globalThis.Uint8Array(),
@@ -18327,15 +18299,15 @@ describe("Data", () => {
       assertSame(result.value, value);
       assertTrue(Data.is(result.value));
       assertSame(Data.to(result.value), value);
-      globalThis.structuredClone(value);
+      structuredClone(value);
     }
   });
 
   it("accepts cyclic and shared data graphs", () => {
     const object: { self?: Data } = {};
     const array: Array<Data> = [];
-    const set = new globalThis.Set<Data>();
-    const map = new globalThis.Map<Data, Data>();
+    const set = new Set<Data>();
+    const map = new Map<Data, Data>();
     object.self = object;
     array.push(array);
     set.add(set);
@@ -18353,8 +18325,8 @@ describe("Data", () => {
     const symbol = globalThis.Symbol("symbol");
     const value = {
       array: [() => undefined],
-      set: new globalThis.Set([new WeakSet()]),
-      map: new globalThis.Map<unknown, unknown>([[() => undefined, /value/u]]),
+      set: new Set([new WeakSet()]),
+      map: new Map<unknown, unknown>([[() => undefined, /value/u]]),
     };
 
     assertEqual(
@@ -18413,7 +18385,7 @@ describe("Data", () => {
   it("rejects detached and out-of-bounds Uint8Arrays", () => {
     const detachedBuffer = new globalThis.ArrayBuffer(1);
     const detached = new globalThis.Uint8Array(detachedBuffer);
-    globalThis.structuredClone(detachedBuffer, {
+    structuredClone(detachedBuffer, {
       transfer: [detachedBuffer],
     });
 
@@ -18434,10 +18406,7 @@ describe("Data", () => {
       assertSame(issue.value, value);
       assertFalse(Data.is(value));
       assertFalse(Data.fromUnknown(value, { errors: "all" }).ok);
-      assertThrowsInstanceOf(
-        () => globalThis.structuredClone(value),
-        globalThis.DOMException,
-      );
+      assertThrowsInstanceOf(() => structuredClone(value), DOMException);
     }
   });
 
@@ -18629,10 +18598,10 @@ describe("Data", () => {
   });
 
   it("rejects Set and Map own properties", () => {
-    const set = globalThis.Object.assign(new globalThis.Set<Data>(), {
+    const set = globalThis.Object.assign(new Set<Data>(), {
       metadata: true,
     });
-    const map = globalThis.Object.assign(new globalThis.Map<Data, Data>(), {
+    const map = globalThis.Object.assign(new Map<Data, Data>(), {
       metadata: true,
     });
     for (const [value, container] of [
@@ -19313,7 +19282,7 @@ describe("JsonValueFromJson", () => {
 
     let decoded = JsonValueFromJson.orThrow(encoded);
     let depth = 0;
-    while (globalThis.Array.isArray(decoded)) {
+    while (Array.isArray(decoded)) {
       depth++;
       decoded = decoded[0];
     }
@@ -19537,7 +19506,7 @@ describe("json", () => {
       first: encodedForComposition,
       second: encodedForComposition,
     });
-    const parse = mock.method(globalThis.JSON, "parse");
+    const parse = mock.method(JSON, "parse");
 
     try {
       const encoded = valueToValueJson(value);
@@ -19630,7 +19599,7 @@ describe("json", () => {
       },
     ).test.ValueJson;
     const encoded = Json.orThrow('"value"');
-    const parse = mock.method(globalThis.JSON, "parse");
+    const parse = mock.method(JSON, "parse");
 
     try {
       assertOk(LocalizedValueJson.from.parent(encoded), encoded);
@@ -19783,9 +19752,9 @@ describe("json", () => {
         value !== null &&
         typeof value === "object" &&
         globalThis.Object.hasOwn(value, "value") &&
-        typeof globalThis.Reflect.get(value, "value") === "string" &&
+        typeof Reflect.get(value, "value") === "string" &&
         globalThis.Object.hasOwn(value, metadata) &&
-        globalThis.Reflect.get(value, metadata) === undefined;
+        Reflect.get(value, metadata) === undefined;
       const SymbolProperty = createType(
         "SymbolProperty",
         (
@@ -19820,10 +19789,10 @@ describe("json", () => {
         key: Key,
         isProperty: (value: unknown) => value is Property,
       ): value is ReadonlyArray<string> & Readonly<Record<Key, Property>> =>
-        globalThis.Array.isArray(value) &&
+        Array.isArray(value) &&
         value.every((item): item is string => typeof item === "string") &&
         globalThis.Object.hasOwn(value, key) &&
-        isProperty(globalThis.Reflect.get(value, key));
+        isProperty(Reflect.get(value, key));
       interface ArrayWithExtra extends ReadonlyArray<string> {
         readonly extra: undefined;
       }

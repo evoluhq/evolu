@@ -136,7 +136,7 @@ describe("Buffer", () => {
     assertEqual(buffer.getCapacity(), 300);
   });
 
-  for (const length of [-1, 1.5, globalThis.Infinity, globalThis.NaN]) {
+  for (const length of [-1, 1.5, Infinity, NaN]) {
     it(`rejects invalid ArrayLike length ${length}`, () => {
       const arrayLike: ArrayLike<number> = { length };
 
@@ -173,7 +173,7 @@ describe("Buffer", () => {
     const buffer = createBuffer([0]);
     const extend = () =>
       buffer.extend({
-        length: globalThis.Number.MAX_SAFE_INTEGER,
+        length: Number.MAX_SAFE_INTEGER,
       });
 
     {

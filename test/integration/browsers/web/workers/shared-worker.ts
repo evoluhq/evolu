@@ -14,7 +14,7 @@ interface WorkerOutput {
 }
 
 const workerSelf = createSharedWorkerSelf<WorkerInput, WorkerOutput>(
-  self as unknown as globalThis.SharedWorkerGlobalScope,
+  self as unknown as SharedWorkerGlobalScope,
 );
 
 workerSelf.onConnect = (port) => {

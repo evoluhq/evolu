@@ -21,7 +21,7 @@ import {
 const run = createRun({
   ...createWorkerDeps(),
   createWebSocket,
-  lockManager: globalThis.navigator.locks,
+  lockManager: navigator.locks,
 });
 
 void run(async (run) => {
@@ -37,7 +37,7 @@ void run(async (run) => {
     SharedWorkerOutput
   >(self);
 
-  await globalThis.navigator.locks.request(
+  await navigator.locks.request(
     "evolu-one-tab-sharedworker-polyfill",
     { ifAvailable: true, mode: "exclusive" },
     async (lock) => {

@@ -31,8 +31,7 @@ const NumberFromString = /*#__PURE__*/ transform(
               value,
             });
     },
-    to: (value) =>
-      globalThis.Object.is(value, -0) ? "-0" : globalThis.String(value),
+    to: (value) => (Object.is(value, -0) ? "-0" : globalThis.String(value)),
   },
   () => "Enter a number.",
 );

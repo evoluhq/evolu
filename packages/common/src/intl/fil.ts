@@ -138,7 +138,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Fino-format ang LiteralError sa Filipino. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi strictly equal sa inaasahang literal: ${globalThis.String(error.expected)}.`;
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi strictly equal sa inaasahang literal: ${String(error.expected)}.`;
 
 /** Fino-format ang UnionError sa Filipino. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

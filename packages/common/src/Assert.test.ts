@@ -95,7 +95,7 @@ test("assert", () => {
 test("assert uses a compatible fallback without Node.js", async () => {
   let fallbackAssert: typeof assert = assert;
   let fallbackAssertEqual: typeof assertEqual = assertEqual;
-  const nodeProcess = globalThis.process;
+  const nodeProcess = process;
 
   if (nodeProcess?.getBuiltinModule !== undefined) {
     const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(
@@ -637,7 +637,7 @@ test("assertNonEmptyReadonlyArray", () => {
 });
 
 test("assertNotDisposed", async () => {
-  const stack = new globalThis.AsyncDisposableStack();
+  const stack = new AsyncDisposableStack();
 
   assertNotDisposed(stack);
 

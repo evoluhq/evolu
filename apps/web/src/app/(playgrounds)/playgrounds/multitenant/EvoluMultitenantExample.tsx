@@ -320,7 +320,7 @@ const AppOwnersItem: FC<{
       <div>
         <div className="font-mono text-sm text-gray-900">{row.id}</div>
         <div className="text-xs text-gray-500">
-          Last opened {new globalThis.Date(row.lastOpenedAt).toLocaleString()}
+          Last opened {new Date(row.lastOpenedAt).toLocaleString()}
         </div>
       </div>
     </div>

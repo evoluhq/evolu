@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formats a LiteralError in Turkish. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Değer ${safelyStringifyUnknownValue(error.value)} beklenen değişmezle kesin olarak eşit değildir: ${globalThis.String(error.expected)}.`;
+  `Değer ${safelyStringifyUnknownValue(error.value)} beklenen değişmezle kesin olarak eşit değildir: ${String(error.expected)}.`;
 
 /** Formats a UnionError in Turkish. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

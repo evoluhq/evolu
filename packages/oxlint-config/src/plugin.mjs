@@ -206,31 +206,22 @@ const noUnnecessaryGlobalThis = {
      * @returns {boolean}
      */
     const isOptionalAccess = (node) => {
-      let current = node;
+      const nodeRecord = /** @type {Record<string, unknown>} */ (
+        /** @type {unknown} */ (node)
+      );
+      if (nodeRecord.optional === true) return true;
 
-      while (true) {
-        const currentRecord = /** @type {Record<string, unknown>} */ (
-          /** @type {unknown} */ (current)
-        );
-        if (currentRecord.optional === true) return true;
+      const current = skipTransparentParents(node);
+      const parent = /** @type {import("estree").Node} */ (getParent(current));
 
-        const parent = /** @type {import("estree").Node} */ (
-          getParent(current)
-        );
-        const parentRecord = /** @type {Record<string, unknown>} */ (
-          /** @type {unknown} */ (parent)
-        );
-
-        if (parentRecord.optional === true) return true;
-        if (
-          (parent.type === "MemberExpression" && parent.object === current) ||
-          (parent.type === "CallExpression" && parent.callee === current)
-        ) {
-          current = parent;
-          continue;
-        }
-        return false;
-      }
+      const parentRecord = /** @type {Record<string, unknown>} */ (
+        /** @type {unknown} */ (parent)
+      );
+      return (
+        parentRecord.optional === true &&
+        ((parent.type === "MemberExpression" && parent.object === current) ||
+          (parent.type === "CallExpression" && parent.callee === current))
+      );
     };
 
     /**

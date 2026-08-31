@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formats a LiteralError in Slovene. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni strogo enaka pričakovanemu literalu: ${globalThis.String(error.expected)}.`;
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni strogo enaka pričakovanemu literalu: ${String(error.expected)}.`;
 
 /** Formats a UnionError in Slovene. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

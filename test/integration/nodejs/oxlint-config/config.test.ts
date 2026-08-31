@@ -121,10 +121,11 @@ test("rejects other floating promises in Node.js tests", () => {
   nodeAssert.match(result.stdout, /typescript\(no-floating-promises\)/u);
 });
 
-test("temporarily allows unnecessary globalThis qualification", () => {
+test("rejects unnecessary globalThis qualification", () => {
   const result = lintFiles({
     "example.ts": "export const value = globalThis.Number;",
   });
 
-  nodeAssert.equal(result.status, 0, result.stdout || result.stderr);
+  nodeAssert.equal(result.status, 1);
+  nodeAssert.match(result.stdout, /evolu\(no-unnecessary-global-this\)/u);
 });

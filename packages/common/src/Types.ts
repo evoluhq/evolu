@@ -248,7 +248,7 @@ export const isInstance =
   (value: unknown): value is Value =>
     value !== null &&
     typeof value === "object" &&
-    globalThis.Object.hasOwn(value, "~evolu/instance") &&
+    Object.hasOwn(value, "~evolu/instance") &&
     (value as Instance<string>)["~evolu/instance"] === name;
 
 /**

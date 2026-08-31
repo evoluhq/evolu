@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** LiteralError를 한국어로 포맷합니다. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `${safelyStringifyUnknownValue(error.value)} 값은 예상된 리터럴과 엄격하게 동일하지 않습니다: ${globalThis.String(error.expected)}.`;
+  `${safelyStringifyUnknownValue(error.value)} 값은 예상된 리터럴과 엄격하게 동일하지 않습니다: ${String(error.expected)}.`;
 
 /** UnionError를 한국어로 포맷합니다. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

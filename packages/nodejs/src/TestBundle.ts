@@ -582,7 +582,7 @@ interface TestBundleWorkerError {
   readonly stack: string;
 }
 
-const ErrorType = /*#__PURE__*/ instanceOf(globalThis.Error);
+const ErrorType = /*#__PURE__*/ instanceOf(Error);
 
 // TODO: Replace the evaluated CommonJS worker with an ESM module worker.
 const testBundleWorkerSource = String.raw`

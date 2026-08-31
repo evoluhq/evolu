@@ -125,6 +125,7 @@ const appendDisposeError = (
   currentError: unknown,
   previousError: unknown,
 ): unknown =>
+  // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Use the constructor installed on the global object even if a realm lexical binding shadows it.
   new globalThis.SuppressedError(
     currentError,
     previousError,
@@ -158,6 +159,7 @@ const getOrInstallSymbol = (
   key: "dispose" | "asyncDispose",
   description: string,
 ): symbol => {
+  // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Patch the global object constructor even if a realm lexical binding shadows it.
   const SymbolCtor = globalThis.Symbol as SymbolWithDisposable;
   const installedValue = Object.getOwnPropertyDescriptor(SymbolCtor, key)
     ?.value as unknown;
@@ -178,10 +180,7 @@ const getOrInstallSymbol = (
 const installSuppressedError = (): void => {
   if (typeof globalThis.SuppressedError === "function") return;
 
-  class SuppressedErrorPolyfill
-    extends Error
-    implements globalThis.SuppressedError
-  {
+  class SuppressedErrorPolyfill extends Error implements SuppressedError {
     readonly error: unknown;
     readonly suppressed: unknown;
 

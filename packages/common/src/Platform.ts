@@ -171,8 +171,10 @@ const createTestGlobalErrors = (
       record((event as Record<typeof webErrorKey, unknown>)[webErrorKey]);
     };
 
+    // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Call the same global object event API verified by the feature check.
     globalThis.addEventListener(webEvent, listener);
     disposableStack.defer(() => {
+      // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Remove the listener through the same global object event API used to add it.
       globalThis.removeEventListener(webEvent, listener);
     });
   } else {

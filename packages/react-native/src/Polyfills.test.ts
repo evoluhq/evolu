@@ -10,9 +10,9 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { installPolyfills } from "./Polyfills.ts";
 
 interface GlobalAbort {
-  readonly AbortController: typeof globalThis.AbortController | undefined;
-  readonly AbortSignal: typeof globalThis.AbortSignal | undefined;
-  readonly DOMException: typeof globalThis.DOMException | undefined;
+  readonly AbortController: typeof AbortController | undefined;
+  readonly AbortSignal: typeof AbortSignal | undefined;
+  readonly DOMException: typeof DOMException | undefined;
 }
 
 interface PromiseStatics {
@@ -132,9 +132,9 @@ describe("installPolyfills", () => {
 
   beforeEach(() => {
     originalGlobals = {
-      AbortController: globalThis.AbortController,
-      AbortSignal: globalThis.AbortSignal,
-      DOMException: globalThis.DOMException,
+      AbortController: AbortController,
+      AbortSignal: AbortSignal,
+      DOMException: DOMException,
     };
 
     originalArrayFromAsync = Object.getOwnPropertyDescriptor(
@@ -251,11 +251,11 @@ describe("installPolyfills", () => {
 
   it("polyfills reason propagation", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
-    const controller = new globalThis.AbortController();
+    const controller = new AbortController();
     const reason = new Error("stop");
     controller.abort(reason);
 
@@ -271,7 +271,7 @@ describe("installPolyfills", () => {
 
     installPolyfills();
 
-    const controller = new globalThis.AbortController();
+    const controller = new AbortController();
     controller.abort();
 
     const reason = (controller.signal as { readonly reason: Error }).reason;
@@ -281,11 +281,11 @@ describe("installPolyfills", () => {
 
   it("polyfills AbortSignal.throwIfAborted", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
-    const controller = new globalThis.AbortController();
+    const controller = new AbortController();
     controller.signal.throwIfAborted();
 
     const reason = new Error("stop");
@@ -310,23 +310,23 @@ describe("installPolyfills", () => {
     Object.defineProperty(runtime.AbortSignal.prototype, "throwIfAborted", {
       value: throwIfAborted,
     });
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
-    new globalThis.AbortController().signal.throwIfAborted();
+    new AbortController().signal.throwIfAborted();
 
     assertTrue(called);
   });
 
   it("polyfills AbortSignal.abort", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
     const signal = (
-      globalThis.AbortSignal as typeof AbortSignal & {
+      AbortSignal as typeof AbortSignal & {
         abort: (reason?: unknown) => AbortSignal;
       }
     ).abort("manual");
@@ -342,13 +342,13 @@ describe("installPolyfills", () => {
     installPolyfills();
 
     const signal = (
-      globalThis.AbortSignal as typeof AbortSignal & {
+      AbortSignal as typeof AbortSignal & {
         timeout: (milliseconds: number) => AbortSignal;
       }
     ).timeout(1);
 
     await new Promise((resolve) => {
-      globalThis.setTimeout(resolve, 5);
+      setTimeout(resolve, 5);
     });
 
     const reason = (signal as { readonly reason: Error }).reason;
@@ -358,14 +358,14 @@ describe("installPolyfills", () => {
 
   it("polyfills AbortSignal.any with first aborted reason", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
-    const controller1 = new globalThis.AbortController();
-    const controller2 = new globalThis.AbortController();
+    const controller1 = new AbortController();
+    const controller2 = new AbortController();
     const signal = (
-      globalThis.AbortSignal as typeof AbortSignal & {
+      AbortSignal as typeof AbortSignal & {
         any: (signals: ReadonlyArray<AbortSignal>) => AbortSignal;
       }
     ).any([controller1.signal, controller2.signal]);
@@ -379,12 +379,12 @@ describe("installPolyfills", () => {
 
   it("is idempotent and does not re-patch abort", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
     installPolyfills();
 
-    const controller = new globalThis.AbortController();
+    const controller = new AbortController();
     controller.abort(new Error("stop"));
 
     assertEqual(runtime.getAbortCallCount(), 1);
@@ -397,11 +397,11 @@ describe("installPolyfills", () => {
     const any = () => ({ aborted: false }) as AbortSignal;
 
     Object.assign(runtime.AbortSignal, { abort, timeout, any });
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
-    const AbortSignalStatic = globalThis.AbortSignal as typeof AbortSignal & {
+    const AbortSignalStatic = AbortSignal as typeof AbortSignal & {
       abort: typeof abort;
       timeout: typeof timeout;
       any: typeof any;
@@ -415,12 +415,12 @@ describe("installPolyfills", () => {
 
   it("AbortSignal.any handles empty input", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
     const signal = (
-      globalThis.AbortSignal as typeof AbortSignal & {
+      AbortSignal as typeof AbortSignal & {
         any: (signals: ReadonlyArray<AbortSignal>) => AbortSignal;
       }
     ).any([]);
@@ -430,15 +430,15 @@ describe("installPolyfills", () => {
 
   it("AbortSignal.any dedupes duplicate source signals", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
-    const sourceController = new globalThis.AbortController();
+    const sourceController = new AbortController();
     const sourceSignal = sourceController.signal as unknown as FakeAbortSignal;
 
     const signal = (
-      globalThis.AbortSignal as typeof AbortSignal & {
+      AbortSignal as typeof AbortSignal & {
         any: (signals: ReadonlyArray<AbortSignal>) => AbortSignal;
       }
     ).any([
@@ -458,12 +458,12 @@ describe("installPolyfills", () => {
 
   it("AbortSignal.any uses first already-aborted signal in input order", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
-    const firstController = new globalThis.AbortController();
-    const secondController = new globalThis.AbortController();
+    const firstController = new AbortController();
+    const secondController = new AbortController();
 
     const firstReason = new Error("first");
     const secondReason = new Error("second");
@@ -471,7 +471,7 @@ describe("installPolyfills", () => {
     secondController.abort(secondReason);
 
     const signal = (
-      globalThis.AbortSignal as typeof AbortSignal & {
+      AbortSignal as typeof AbortSignal & {
         any: (signals: ReadonlyArray<AbortSignal>) => AbortSignal;
       }
     ).any([firstController.signal, secondController.signal]);
@@ -493,7 +493,7 @@ describe("installPolyfills", () => {
     } as unknown as AbortSignal;
 
     const signal = (
-      globalThis.AbortSignal as typeof AbortSignal & {
+      AbortSignal as typeof AbortSignal & {
         any: (signals: ReadonlyArray<AbortSignal>) => AbortSignal;
       }
     ).any([signalWithoutReason]);
@@ -513,13 +513,13 @@ describe("installPolyfills", () => {
     installPolyfills();
 
     const signal = (
-      globalThis.AbortSignal as typeof AbortSignal & {
+      AbortSignal as typeof AbortSignal & {
         timeout: (milliseconds: number) => AbortSignal;
       }
     ).timeout(1);
 
     await new Promise((resolve) => {
-      globalThis.setTimeout(resolve, 5);
+      setTimeout(resolve, 5);
     });
 
     const reason = (signal as { readonly reason: Error }).reason;
@@ -529,14 +529,14 @@ describe("installPolyfills", () => {
 
   it("AbortSignal.any does not add unbounded listeners to a long-lived source", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
     installPolyfills();
 
-    const sourceController = new globalThis.AbortController();
+    const sourceController = new AbortController();
     const sourceSignal = sourceController.signal as unknown as FakeAbortSignal;
 
-    const AbortSignalStatic = globalThis.AbortSignal as typeof AbortSignal & {
+    const AbortSignalStatic = AbortSignal as typeof AbortSignal & {
       any: (signals: ReadonlyArray<AbortSignal>) => AbortSignal;
     };
 
@@ -549,16 +549,16 @@ describe("installPolyfills", () => {
 
   it("AbortSignal.any tolerates stale aborted references", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
-    const originalWeakRef = globalThis.WeakRef;
+    const originalWeakRef = WeakRef;
     let callCount = 0;
 
     (globalThis as { WeakRef?: unknown }).WeakRef = function (
       this: unknown,
       controller: AbortController,
     ) {
-      const preAbortedController = new globalThis.AbortController();
+      const preAbortedController = new AbortController();
       preAbortedController.abort("already-done");
 
       return {
@@ -572,9 +572,9 @@ describe("installPolyfills", () => {
     try {
       installPolyfills();
 
-      const sourceController = new globalThis.AbortController();
+      const sourceController = new AbortController();
       (
-        globalThis.AbortSignal as typeof AbortSignal & {
+        AbortSignal as typeof AbortSignal & {
           any: (signals: ReadonlyArray<AbortSignal>) => AbortSignal;
         }
       ).any([sourceController.signal]);
@@ -587,9 +587,9 @@ describe("installPolyfills", () => {
 
   it("AbortSignal.any tolerates cleared weak refs", () => {
     const runtime = createFakeAbortRuntime();
-    setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
+    setAbortGlobals({ ...runtime, DOMException: DOMException });
 
-    const originalWeakRef = globalThis.WeakRef;
+    const originalWeakRef = WeakRef;
 
     let callCount = 0;
 
@@ -608,9 +608,9 @@ describe("installPolyfills", () => {
     try {
       installPolyfills();
 
-      const sourceController = new globalThis.AbortController();
+      const sourceController = new AbortController();
       (
-        globalThis.AbortSignal as typeof AbortSignal & {
+        AbortSignal as typeof AbortSignal & {
           any: (signals: ReadonlyArray<AbortSignal>) => AbortSignal;
         }
       ).any([sourceController.signal]);

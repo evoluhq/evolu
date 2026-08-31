@@ -12,6 +12,7 @@ RuleTester.it = (name, fn) => {
 const ruleTester = new RuleTester({
   languageOptions: {
     globals: {
+      navigator: "readonly",
       Number: "readonly",
       String: "readonly",
     },
@@ -58,8 +59,12 @@ ruleTester.run(
         ].join("\n"),
       },
       {
-        name: "allows optional access to a possibly absent global",
+        name: "allows optional access that protects a possibly absent global",
         code: "globalThis.process?.versions;",
+      },
+      {
+        name: "allows an optional call that protects a possibly absent global",
+        code: 'globalThis.reportError?.("message");',
       },
       {
         name: "allows an optional globalThis member expression",
@@ -159,6 +164,17 @@ ruleTester.run(
           {
             messageId: "unnecessaryGlobalThis",
             data: { name: "Number" },
+          },
+        ],
+      },
+      {
+        name: "reports and fixes access when only a nested property is optional",
+        code: "const platform = globalThis.navigator.userAgentData?.platform;",
+        output: "const platform = navigator.userAgentData?.platform;",
+        errors: [
+          {
+            messageId: "unnecessaryGlobalThis",
+            data: { name: "navigator" },
           },
         ],
       },

@@ -121,7 +121,7 @@ export type PercentageLiteral = typeof PercentageLiteral.Output;
 export const percentageToRatio = (percentage: Percentage): Ratio =>
   typeof percentage === "number"
     ? percentage
-    : Ratio.orThrow(globalThis.Number.parseFloat(percentage) / 100);
+    : Ratio.orThrow(Number.parseFloat(percentage) / 100);
 
 export const increment = (n: number): number => n + 1;
 

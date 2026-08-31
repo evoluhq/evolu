@@ -14,8 +14,7 @@ export const escapeRegExp = (value: string): string =>
 /** Converts an unknown value to a compact, human-readable diagnostic string. */
 export const safelyStringifyUnknownValue = (value: unknown): string => {
   if (typeof value === "string") return JSON.stringify(value);
-  if (value === null || typeof value !== "object")
-    return globalThis.String(value);
+  if (value === null || typeof value !== "object") return String(value);
 
   try {
     // `JSON.stringify` can return `undefined` when `toJSON` does.
@@ -26,7 +25,8 @@ export const safelyStringifyUnknownValue = (value: unknown): string => {
   }
 
   try {
-    return globalThis.String(value);
+    // oxlint-disable-next-line typescript/no-base-to-string -- This is the intentional last-resort representation.
+    return String(value);
   } catch {
     return "[Unserializable value]";
   }

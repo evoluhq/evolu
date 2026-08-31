@@ -166,7 +166,7 @@ describe("SharedResource", () => {
       const second = await run.ok(sharedResource.acquire);
 
       assertEqual(resources.getCreateCount(), 2);
-      assertFalse(globalThis.Object.is(second.resource, firstResource));
+      assertFalse(Object.is(second.resource, firstResource));
     });
 
     it("waits for async resource disposal", async () => {
@@ -655,7 +655,7 @@ describe("SharedResource", () => {
       const secondLease = await second;
 
       assertEqual(createCount, 2);
-      assertFalse(globalThis.Object.is(secondLease.resource, first.resource));
+      assertFalse(Object.is(secondLease.resource, first.resource));
     });
   });
 
@@ -1418,7 +1418,7 @@ describe("SharedResourceByKey", () => {
       const a = await run.ok(sharedResourceByKey.acquire("a"));
       const b = await run.ok(sharedResourceByKey.acquire("b"));
 
-      assertFalse(globalThis.Object.is(b.resource, a.resource));
+      assertFalse(Object.is(b.resource, a.resource));
 
       // Releasing "a" disposes only "a".
       const aDisposed = resourcesByKey.get("a")!.nextDisposed();
@@ -1530,7 +1530,7 @@ describe("SharedResourceByKey", () => {
       const again = await run.ok(sharedResourceByKey.acquire("a"));
 
       assertEqual(resources.getCreateCount(), 2);
-      assertFalse(globalThis.Object.is(again.resource, lease.resource));
+      assertFalse(Object.is(again.resource, lease.resource));
       assertEqual(sharedResourceByKey.snapshot().resourcesByKey.size, 1);
     });
 
@@ -1825,7 +1825,7 @@ describe("SharedResourceByKey", () => {
         const { children } = forEach.run.snapshot();
         return (
           children.length === 1 &&
-          !globalThis.Object.is(children[0].id, firstAcquireRunSnapshot.id)
+          !Object.is(children[0].id, firstAcquireRunSnapshot.id)
         );
       }, 34);
 

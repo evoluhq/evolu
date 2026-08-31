@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** LiteralErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `విలువ ${safelyStringifyUnknownValue(error.value)} ఆశించిన literal కు కచ్చితంగా సమానం కాదు: ${globalThis.String(error.expected)}.`;
+  `విలువ ${safelyStringifyUnknownValue(error.value)} ఆశించిన literal కు కచ్చితంగా సమానం కాదు: ${String(error.expected)}.`;
 
 /** UnionErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

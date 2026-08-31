@@ -437,7 +437,7 @@ export interface ProtocolVersionError
 
 /** Error for invalid or corrupted protocol message data. */
 export interface ProtocolInvalidDataError extends Typed<"ProtocolInvalidDataError"> {
-  readonly data: globalThis.Uint8Array;
+  readonly data: Uint8Array;
   readonly error: unknown;
 }
 
@@ -1973,7 +1973,7 @@ export const encodeSqliteValue = (buffer: Buffer, value: SqliteValue): void => {
     case "number": {
       // Negative zero is a non-negative integer in JavaScript, but integer
       // encoding would lose its observable sign.
-      if (!globalThis.Object.is(value, -0) && NonNegativeInt.is(value)) {
+      if (!Object.is(value, -0) && NonNegativeInt.is(value)) {
         if (isSmallInt(value)) {
           encodeNonNegativeInt(buffer, value);
           return;

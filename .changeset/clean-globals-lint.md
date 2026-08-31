@@ -2,9 +2,13 @@
 "@evolu/oxlint-config": minor
 ---
 
-Added a globalThis qualification rule
+Enabled globalThis qualification linting
 
-Added an Evolu-owned Oxlint rule that rejects `globalThis` qualification when
-the global name does not conflict with a local or exported API. Optional global
-checks and intentional global mutations remain allowed. The rule is available
-for projects to enable after migrating their existing qualifications.
+The shared config now rejects `globalThis` qualification unless the global name
+conflicts with a local or exported API. Evolu APIs intentionally reuse concise
+native names such as `String` and `fetch` instead of inventing prefixed wrapper
+names. Use `globalThis.String` or `globalThis.fetch` where such an Evolu API
+shadows the native global; elsewhere, use the unqualified name.
+
+Checks for possibly absent globals and intentional global mutations remain
+allowed.

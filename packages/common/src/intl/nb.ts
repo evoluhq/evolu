@@ -115,7 +115,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 ) =>
   `En verdi ${safelyStringifyUnknownValue(error.value)} er ikke en instans av ${error.constructorName}.`;
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke strengt lik den forventede literalverdien: ${globalThis.String(error.expected)}.`;
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke strengt lik den forventede literalverdien: ${String(error.expected)}.`;
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "En verdi samsvarer ikke med noen av de tillatte variantene.";
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>

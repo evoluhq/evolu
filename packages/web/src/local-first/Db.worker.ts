@@ -13,7 +13,7 @@ import { createWorkerDeps, createWorkerSelf } from "../Worker.ts";
 const run = createRun({
   ...createWorkerDeps(),
   createSqliteDriver: createWasmSqliteDriver,
-  lockManager: globalThis.navigator.locks,
+  lockManager: navigator.locks,
   randomBytes: createRandomBytes(),
 });
 

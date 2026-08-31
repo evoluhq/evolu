@@ -92,6 +92,7 @@ const anyControllersBySignal = new WeakMap<
   AnyControllersRegistry
 >();
 
+/* oxlint-disable evolu/no-unnecessary-global-this -- Patch the global object constructors even if realm lexical bindings shadow them. */
 const installAbortControllerPolyfills = (): void => {
   installAbortReasonPolyfill(
     globalThis.AbortController,
@@ -103,6 +104,7 @@ const installAbortControllerPolyfills = (): void => {
     globalThis.AbortSignal,
   );
 };
+/* oxlint-enable evolu/no-unnecessary-global-this */
 
 const installAbortReasonPolyfill = (
   abortController: AbortControllerConstructor,
@@ -175,6 +177,7 @@ const installAbortSignalStaticMethods = (
       writable: true,
       value: (milliseconds: number): AbortSignal => {
         const controller = new abortController();
+        // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Use the global object timer even if a realm lexical binding shadows it.
         const timeoutId = globalThis.setTimeout(() => {
           controller.abort(createTimeoutError(milliseconds));
         }, milliseconds);
@@ -182,6 +185,7 @@ const installAbortSignalStaticMethods = (
         controller.signal.addEventListener(
           "abort",
           () => {
+            // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Clear the timer through the same global object API used to create it.
             globalThis.clearTimeout(timeoutId);
           },
           { once: true },
@@ -275,6 +279,7 @@ const createAnyControllersRegistry = (
 
   return {
     add: (controller) => {
+      // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Use the constructor on the global object even if a realm lexical binding shadows it.
       refs.push(new globalThis.WeakRef(controller));
       cleanup();
     },
@@ -304,6 +309,7 @@ const createAbortError = (): Error =>
 const createNamedError = (name: string, message: string): Error => {
   if (typeof globalThis.DOMException === "function") {
     try {
+      // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Construct the same global object DOMException verified by the feature check.
       return new globalThis.DOMException(message, name);
     } catch {
       // Some runtimes expose DOMException but cannot construct it reliably.

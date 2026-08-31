@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** LiteralError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} எதிர்பார்க்கப்பட்ட literal-க்கு முற்றிலும் சமமாக இல்லை: ${globalThis.String(error.expected)}.`;
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} எதிர்பார்க்கப்பட்ட literal-க்கு முற்றிலும் சமமாக இல்லை: ${String(error.expected)}.`;
 
 /** UnionError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

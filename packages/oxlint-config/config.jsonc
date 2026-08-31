@@ -243,8 +243,7 @@
         "eslint/arrow-body-style": ["error", "as-needed"],
         "eslint/func-style": ["error", "expression"],
         "eslint/no-console": "error",
-        // Enable after existing globalThis qualifications have been migrated.
-        // "evolu/no-unnecessary-global-this": "error",
+        "evolu/no-unnecessary-global-this": "error",
         // TypeScript handles unused symbols and recognizes imports referenced
         // by TypeDoc links. Remove this override when oxc-project/oxc#24996
         // is implemented.

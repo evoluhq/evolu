@@ -158,10 +158,10 @@ describe("createWebSocket", () => {
     let nativeCloseCalled = false;
 
     class FakeWebSocket {
-      static readonly CONNECTING = globalThis.WebSocket.CONNECTING;
-      static readonly OPEN = globalThis.WebSocket.OPEN;
-      static readonly CLOSING = globalThis.WebSocket.CLOSING;
-      static readonly CLOSED = globalThis.WebSocket.CLOSED;
+      static readonly CONNECTING = WebSocket.CONNECTING;
+      static readonly OPEN = WebSocket.OPEN;
+      static readonly CLOSING = WebSocket.CLOSING;
+      static readonly CLOSED = WebSocket.CLOSED;
 
       readonly url: string;
       readonly protocol = "";
@@ -198,8 +198,7 @@ describe("createWebSocket", () => {
         onOpen: () => {
           openCalled.resolve();
         },
-        WebSocketConstructor:
-          FakeWebSocket as unknown as typeof globalThis.WebSocket,
+        WebSocketConstructor: FakeWebSocket as unknown as typeof WebSocket,
       }),
     );
 
@@ -567,14 +566,14 @@ describe("testCreateWebSocket", () => {
 
     await using _ws = ws;
 
-    const buffer = new globalThis.ArrayBuffer(8);
-    const data = new globalThis.Uint8Array(buffer, 2, 3);
+    const buffer = new ArrayBuffer(8);
+    const data = new Uint8Array(buffer, 2, 3);
     data.set([1, 2, 3]);
 
     expect(ws.send(data)).toEqual({ ok: true, value: undefined });
 
     const sentData = createTestWebSocket.sentMessages[0]?.data;
-    assert(sentData instanceof globalThis.Uint8Array);
+    assert(sentData instanceof Uint8Array);
     expect(sentData).toBe(data);
     expect(sentData.buffer).toBe(buffer);
     expect(sentData.byteOffset).toBe(data.byteOffset);
@@ -594,14 +593,14 @@ describe("testCreateWebSocket", () => {
 
       await using _ws = ws;
 
-      const buffer = new globalThis.SharedArrayBuffer(8);
-      const data = new globalThis.Uint8Array(buffer, 1, 3);
+      const buffer = new SharedArrayBuffer(8);
+      const data = new Uint8Array(buffer, 1, 3);
       data.set([4, 5, 6]);
 
       expect(ws.send(data)).toEqual({ ok: true, value: undefined });
 
       const sentData = createTestWebSocket.sentMessages[0]?.data;
-      assert(sentData instanceof globalThis.Uint8Array);
+      assert(sentData instanceof Uint8Array);
       expect(sentData.buffer).not.toBe(buffer);
       expect(sentData.byteOffset).toBe(0);
       expect(sentData.byteLength).toBe(data.byteLength);

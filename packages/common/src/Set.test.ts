@@ -108,7 +108,7 @@ describe("Transformations", () => {
     it("returns new set instance each call", () => {
       const a = createSet([1, 2, 3]);
       const b = createSet([1, 2, 3]);
-      assertFalse(globalThis.Object.is(a, b));
+      assertFalse(Object.is(a, b));
     });
   });
 
@@ -136,7 +136,7 @@ describe("Transformations", () => {
       const set: ReadonlySet<number> = new Set([1, 2]);
       const result = addToSet(set, 2);
       assertEqual(result, new Set([1, 2]));
-      assertFalse(globalThis.Object.is(result, set));
+      assertFalse(Object.is(result, set));
     });
 
     it("accepts mutable set and returns readonly", () => {
@@ -166,7 +166,7 @@ describe("Transformations", () => {
       const set: ReadonlySet<number> = new Set([1, 2]);
       const result = deleteFromSet(set, 5);
       assertEqual(result, new Set([1, 2]));
-      assertFalse(globalThis.Object.is(result, set));
+      assertFalse(Object.is(result, set));
     });
 
     it("can delete to empty set", () => {

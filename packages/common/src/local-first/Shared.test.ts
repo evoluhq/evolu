@@ -454,9 +454,7 @@ describe("with one evolu instance", () => {
           queries: createSet([testQuery]),
         },
       });
-      assertFalse(
-        globalThis.Object.is(secondInput.callbackId, firstInput.callbackId),
-      );
+      assertFalse(Object.is(secondInput.callbackId, firstInput.callbackId));
     });
   });
 
@@ -1702,9 +1700,7 @@ describe("with one evolu instance", () => {
           },
         },
       });
-      assertFalse(
-        globalThis.Object.is(nextInput.callbackId, firstInput.callbackId),
-      );
+      assertFalse(Object.is(nextInput.callbackId, firstInput.callbackId));
 
       oldDbWorkerPort.postMessage({
         type: "OnQueuedResponse",

@@ -144,7 +144,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formats a LiteralError in Greek. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι αυστηρά ίση με το αναμενόμενο literal: ${globalThis.String(error.expected)}.`;
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι αυστηρά ίση με το αναμενόμενο literal: ${String(error.expected)}.`;
 
 /** Formats a UnionError in Greek. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

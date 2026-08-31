@@ -264,14 +264,14 @@ describe("Evolu", () => {
     };
 
     it("posts AnnounceTabLeader with console level to worker", async () => {
-      const console = testCreateConsole();
-      using setup = await setupCreateEvoluDeps(console);
+      const testConsole = testCreateConsole();
+      using setup = await setupCreateEvoluDeps(testConsole);
       const { messages } = setup;
 
       assertLength(messages, 1);
       assertEqual(messages[0], {
         type: "AnnounceTabLeader",
-        consoleLevel: console.getLevel(),
+        consoleLevel: testConsole.getLevel(),
       });
     });
 
@@ -347,11 +347,13 @@ describe("Evolu", () => {
     });
 
     it("falls back to default console when not provided", async () => {
-      const originalConsoleError = globalThis.console.error;
+      // oxlint-disable-next-line evolu/no-unnecessary-global-this -- This test temporarily observes the default global object console.
+      const nativeConsole = globalThis.console;
+      const originalConsoleError = nativeConsole.error;
       const consoleErrors: Array<ReadonlyArray<unknown>> = [];
-      globalThis.console.error = ((...args: ReadonlyArray<unknown>) => {
+      nativeConsole.error = ((...args: ReadonlyArray<unknown>) => {
         consoleErrors.push(args);
-      }) as typeof globalThis.console.error;
+      }) as typeof nativeConsole.error;
 
       try {
         const worker = testCreateSharedWorker<
@@ -401,13 +403,13 @@ describe("Evolu", () => {
         });
         assertEqual(consoleErrors, [["boom"]]);
       } finally {
-        globalThis.console.error = originalConsoleError;
+        nativeConsole.error = originalConsoleError;
       }
     });
 
     it("wires console channel to console.write", async () => {
-      const console = testCreateConsole();
-      using setup = await setupCreateEvoluDeps(console);
+      const testConsole = testCreateConsole();
+      using setup = await setupCreateEvoluDeps(testConsole);
       const { consoleEntryOrErrorBroadcastChannel } = setup;
 
       const entry: ConsoleEntry = {
@@ -422,7 +424,7 @@ describe("Evolu", () => {
 
       await testWaitForWorkerMessage();
 
-      assertEqual(console.getEntriesSnapshot(), [entry]);
+      assertEqual(testConsole.getEntriesSnapshot(), [entry]);
     });
 
     it("maps ConsoleEntry error output to deps.evoluError store", async () => {
@@ -817,17 +819,17 @@ describe("Evolu", () => {
 
   describe("dispose evolu", () => {
     it("logs disposeEvolu once", async () => {
-      const console = testCreateConsole();
-      await using setup = await setupRunWithEvoluDeps({ console });
+      const testConsole = testCreateConsole();
+      await using setup = await setupRunWithEvoluDeps({ console: testConsole });
       const { run } = setup;
       const evolu = await run.ok(testCreateEvolu);
 
-      console.clearEntries();
+      testConsole.clearEntries();
 
       await evolu[Symbol.asyncDispose]();
       await evolu[Symbol.asyncDispose]();
 
-      const entries = console
+      const entries = testConsole
         .getEntriesSnapshot()
         .filter((entry) => entry.args[0] === "disposeEvolu");
 

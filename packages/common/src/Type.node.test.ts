@@ -48,12 +48,14 @@ test("accepts legitimate structured values from another realm by identity", () =
   })`);
 
   assertFalse(values.objectValue instanceof globalThis.Object);
-  assertFalse(values.arrayValue instanceof globalThis.Array);
-  assertFalse(values.tupleValue instanceof globalThis.Array);
-  assertFalse(values.setValue instanceof globalThis.Set);
+  // oxlint-disable-next-line unicorn/no-instanceof-array, unicorn/no-instanceof-builtins -- This test checks cross-realm constructor identity.
+  assertFalse(values.arrayValue instanceof Array);
+  // oxlint-disable-next-line unicorn/no-instanceof-array, unicorn/no-instanceof-builtins -- This test checks cross-realm constructor identity.
+  assertFalse(values.tupleValue instanceof Array);
+  assertFalse(values.setValue instanceof Set);
   assertFalse(values.eventValue instanceof globalThis.Object);
   assertFalse(values.jsonValue instanceof globalThis.Object);
-  assertFalse(values.mapValue instanceof globalThis.Map);
+  assertFalse(values.mapValue instanceof Map);
 
   const modelResult = Model.fromUnknown(values.objectValue);
   const objectResult = Object.fromUnknown(values.objectValue);

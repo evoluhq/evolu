@@ -75,7 +75,7 @@ export const createEvoluDeps = (
                   if (deps.onSharedWorkerUnsupported) {
                     deps.onSharedWorkerUnsupported();
                   } else {
-                    globalThis.alert(
+                    alert(
                       "This browser supports Evolu in one tab only. Close this tab and use the already open tab.",
                     );
                   }
@@ -96,7 +96,7 @@ export const createEvoluDeps = (
     createDbWorker,
     createBroadcastChannel,
     createMessageChannel,
-    lockManager: globalThis.navigator.locks,
+    lockManager: navigator.locks,
     reloadApp,
     sharedWorker,
   });

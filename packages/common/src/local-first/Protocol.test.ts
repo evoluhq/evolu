@@ -307,7 +307,7 @@ test("encodeSqliteValue/decodeSqliteValue property tests", () => {
           );
         }
 
-        return globalThis.Object.is(decoded, sqliteValue);
+        return Object.is(decoded, sqliteValue);
       },
     ),
     { numRuns: 10000 },

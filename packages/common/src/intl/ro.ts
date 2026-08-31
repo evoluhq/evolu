@@ -138,7 +138,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formatează un LiteralError în română. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este strict egală cu literalul așteptat: ${globalThis.String(error.expected)}.`;
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este strict egală cu literalul așteptat: ${String(error.expected)}.`;
 
 /** Formatează un UnionError în română. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

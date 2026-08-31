@@ -5690,6 +5690,7 @@ const base64UrlOptions = {
 
 const uint8ArrayToBase64UrlString = (bytes: Uint8Array): string => {
   if (hasNodeBuffer) {
+    // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Use the global object constructor verified by hasNodeBuffer even if a realm lexical binding shadows it.
     return globalThis.Buffer.from(bytes).toString("base64url");
   }
   const uint8ArrayPrototype: object = globalThis.Uint8Array.prototype;
@@ -5707,6 +5708,7 @@ const uint8ArrayToBase64UrlString = (bytes: Uint8Array): string => {
 
 const base64UrlStringToUint8Array = (value: string): Uint8Array => {
   if (hasNodeBuffer) {
+    // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Use the global object constructor verified by hasNodeBuffer even if a realm lexical binding shadows it.
     const buffer = globalThis.Buffer.from(value, "base64url");
     return new globalThis.Uint8Array(buffer);
   }

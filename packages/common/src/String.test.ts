@@ -27,7 +27,7 @@ test("safelyStringifyUnknownValue", () => {
   assertEqual(safelyStringifyUnknownValue(Symbol("id")), "Symbol(id)");
 
   const fn = (): undefined => undefined;
-  assertSame(safelyStringifyUnknownValue(fn), globalThis.String(fn));
+  assertSame(safelyStringifyUnknownValue(fn), String(fn));
   assertEqual(safelyStringifyUnknownValue({ answer: 42 }), '{"answer":42}');
   assertEqual(
     safelyStringifyUnknownValue({ toJSON: () => undefined }),

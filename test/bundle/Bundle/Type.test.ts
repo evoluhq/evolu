@@ -401,12 +401,12 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
     assertEqual(results, {
       "real app": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 9214,
-          rawSizeInBytes: 32434,
+          brotliSizeInBytes: 9232,
+          rawSizeInBytes: 32401,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 9243,
-          rawSizeInBytes: 32842,
+          brotliSizeInBytes: 9235,
+          rawSizeInBytes: 32809,
         },
       },
     });
@@ -437,162 +437,162 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
     assertEqual(results, {
       "Array(String)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 2227,
-          rawSizeInBytes: 5731,
+          brotliSizeInBytes: 2219,
+          rawSizeInBytes: 5698,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 2229,
-          rawSizeInBytes: 5772,
+          brotliSizeInBytes: 2225,
+          rawSizeInBytes: 5739,
         },
       },
       "InstanceOf(Error)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 1038,
-          rawSizeInBytes: 2326,
+          brotliSizeInBytes: 1031,
+          rawSizeInBytes: 2269,
         },
         "webpack@5.109.2": {
           brotliSizeInBytes: 1031,
-          rawSizeInBytes: 2329,
+          rawSizeInBytes: 2274,
         },
       },
       "Map(String, Number)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 2260,
-          rawSizeInBytes: 5693,
+          brotliSizeInBytes: 2251,
+          rawSizeInBytes: 5638,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 2284,
-          rawSizeInBytes: 5745,
+          brotliSizeInBytes: 2274,
+          rawSizeInBytes: 5690,
         },
       },
       NonEmptyString: {
         "vite@8.2.2": {
-          brotliSizeInBytes: 1464,
-          rawSizeInBytes: 3403,
+          brotliSizeInBytes: 1459,
+          rawSizeInBytes: 3370,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 1477,
-          rawSizeInBytes: 3438,
+          brotliSizeInBytes: 1467,
+          rawSizeInBytes: 3405,
         },
       },
       NumberFromString: {
         "vite@8.2.2": {
-          brotliSizeInBytes: 1610,
-          rawSizeInBytes: 3822,
+          brotliSizeInBytes: 1594,
+          rawSizeInBytes: 3778,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 1602,
-          rawSizeInBytes: 3862,
+          brotliSizeInBytes: 1598,
+          rawSizeInBytes: 3818,
         },
       },
       "Object(NonEmptyString)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 3088,
-          rawSizeInBytes: 9272,
+          brotliSizeInBytes: 3070,
+          rawSizeInBytes: 9239,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 3124,
-          rawSizeInBytes: 9368,
+          brotliSizeInBytes: 3131,
+          rawSizeInBytes: 9335,
         },
       },
       "Object(Number, Record(String, Number))": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 3688,
-          rawSizeInBytes: 11810,
+          brotliSizeInBytes: 3687,
+          rawSizeInBytes: 11777,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 3721,
-          rawSizeInBytes: 11960,
+          brotliSizeInBytes: 3714,
+          rawSizeInBytes: 11927,
         },
       },
       "Record(String, Number)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 2371,
-          rawSizeInBytes: 6286,
+          brotliSizeInBytes: 2365,
+          rawSizeInBytes: 6253,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 2369,
-          rawSizeInBytes: 6360,
+          brotliSizeInBytes: 2363,
+          rawSizeInBytes: 6327,
         },
       },
       "Set(String)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 2051,
-          rawSizeInBytes: 5005,
+          brotliSizeInBytes: 2040,
+          rawSizeInBytes: 4950,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 2038,
-          rawSizeInBytes: 5045,
+          brotliSizeInBytes: 2023,
+          rawSizeInBytes: 4990,
         },
       },
       String: {
         "vite@8.2.2": {
-          brotliSizeInBytes: 963,
-          rawSizeInBytes: 2108,
+          brotliSizeInBytes: 957,
+          rawSizeInBytes: 2075,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 964,
-          rawSizeInBytes: 2112,
+          brotliSizeInBytes: 957,
+          rawSizeInBytes: 2079,
         },
       },
       "Tuple(String, Number)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 2289,
-          rawSizeInBytes: 5873,
+          brotliSizeInBytes: 2286,
+          rawSizeInBytes: 5840,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 2316,
-          rawSizeInBytes: 5926,
+          brotliSizeInBytes: 2305,
+          rawSizeInBytes: 5893,
         },
       },
       "Union(String, Number)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 1853,
-          rawSizeInBytes: 4567,
+          brotliSizeInBytes: 1848,
+          rawSizeInBytes: 4534,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 1884,
-          rawSizeInBytes: 4623,
+          brotliSizeInBytes: 1876,
+          rawSizeInBytes: 4590,
         },
       },
       "discriminatedUnion(Created, Deleted)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 3796,
-          rawSizeInBytes: 12236,
+          brotliSizeInBytes: 3809,
+          rawSizeInBytes: 12203,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 3841,
-          rawSizeInBytes: 12397,
+          brotliSizeInBytes: 3842,
+          rawSizeInBytes: 12364,
         },
       },
       "lazy(Object(Array))": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 4097,
-          rawSizeInBytes: 12918,
+          brotliSizeInBytes: 4086,
+          rawSizeInBytes: 12885,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 4149,
-          rawSizeInBytes: 13061,
+          brotliSizeInBytes: 4143,
+          rawSizeInBytes: 13028,
         },
       },
       'templateLiteralParser(String, "px")': {
         "vite@8.2.2": {
-          brotliSizeInBytes: 3128,
-          rawSizeInBytes: 8782,
+          brotliSizeInBytes: 3126,
+          rawSizeInBytes: 8749,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 3169,
-          rawSizeInBytes: 8885,
+          brotliSizeInBytes: 3155,
+          rawSizeInBytes: 8852,
         },
       },
       "typed(Pending)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 3205,
-          rawSizeInBytes: 9687,
+          brotliSizeInBytes: 3202,
+          rawSizeInBytes: 9654,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 3244,
-          rawSizeInBytes: 9804,
+          brotliSizeInBytes: 3237,
+          rawSizeInBytes: 9771,
         },
       },
     });
@@ -638,12 +638,12 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
     assertEqual(results, {
       "localizeTypes(Label)": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 2172,
-          rawSizeInBytes: 5596,
+          brotliSizeInBytes: 2175,
+          rawSizeInBytes: 5563,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 2207,
-          rawSizeInBytes: 5693,
+          brotliSizeInBytes: 2195,
+          rawSizeInBytes: 5660,
         },
       },
     });
@@ -684,12 +684,12 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
     assertEqual(results, {
       "typed Todo list": {
         "vite@8.2.2": {
-          brotliSizeInBytes: 5194,
-          rawSizeInBytes: 17227,
+          brotliSizeInBytes: 5192,
+          rawSizeInBytes: 17194,
         },
         "webpack@5.109.2": {
-          brotliSizeInBytes: 5240,
-          rawSizeInBytes: 17443,
+          brotliSizeInBytes: 5237,
+          rawSizeInBytes: 17410,
         },
       },
     });

@@ -75,7 +75,7 @@ describe("testCreateId", () => {
       [first, second],
       ["ncqMQ1uwd5-zf5YKUbT3VA", "ofZXw_hAfJ8fIcpFxi6nag"],
     );
-    assertFalse(globalThis.Object.is(second, first));
+    assertFalse(Object.is(second, first));
     assertType<typeof first, Id>();
   });
 

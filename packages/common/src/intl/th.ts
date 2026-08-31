@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** จัดรูปแบบ LiteralError เป็นภาษาไทย */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่เท่ากับลิเทอรัลที่คาดไว้แบบเคร่งครัด: ${globalThis.String(error.expected)}`;
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่เท่ากับลิเทอรัลที่คาดไว้แบบเคร่งครัด: ${String(error.expected)}`;
 
 /** จัดรูปแบบ UnionError เป็นภาษาไทย */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

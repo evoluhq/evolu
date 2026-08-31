@@ -84,7 +84,7 @@ export const formatInstanceOfError: Type.TypeErrorFormatter<
 export const formatLiteralError: Type.TypeErrorFormatter<Type.LiteralError> = (
   error,
 ) =>
-  `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest ściśle równa oczekiwanemu literałowi: ${globalThis.String(error.expected)}.`;
+  `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest ściśle równa oczekiwanemu literałowi: ${String(error.expected)}.`;
 
 /** Formats a UnionError in Polish. */
 export const formatUnionError: Type.TypeErrorFormatter<Type.UnionError> = () =>

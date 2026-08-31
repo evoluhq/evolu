@@ -125,7 +125,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   `القيمة ${safelyStringifyUnknownValue(error.value)} ليست مثيلاً لـ ${error.constructorName}.`;
 /** Formats a LiteralError in Arabic. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `القيمة ${safelyStringifyUnknownValue(error.value)} لا تساوي حرفياً القيمة المتوقعة: ${globalThis.String(error.expected)}.`;
+  `القيمة ${safelyStringifyUnknownValue(error.value)} لا تساوي حرفياً القيمة المتوقعة: ${String(error.expected)}.`;
 /** Formats a UnionError in Arabic. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "القيمة لا تطابق أي متغير مسموح به.";

@@ -253,7 +253,7 @@ describe("createRelay", () => {
       `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
     );
 
-    assertEqual(ws.socket.readyState, globalThis.WebSocket.OPEN);
+    assertEqual(ws.socket.readyState, WebSocket.OPEN);
   });
 
   it("authorizes websocket upgrades with signal-aware callback", async () => {

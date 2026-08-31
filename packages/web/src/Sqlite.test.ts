@@ -140,13 +140,11 @@ mock.module("@evolu/sqlite-wasm", {
   // @ts-expect-error -- Node.js 24.20 replaces the deprecated defaultExport option with exports, which @types/node 24.13 does not declare yet.
   exports: {
     default: mock.fn(() => {
-      const config = (
-        globalThis as {
-          readonly sqlite3ApiConfig?: {
+      const config = Reflect.get(globalThis, "sqlite3ApiConfig") as
+        | {
             readonly warn?: (arg: unknown) => void;
-          };
-        }
-      ).sqlite3ApiConfig;
+          }
+        | undefined;
       config?.warn?.("Ignoring inability to install OPFS sqlite3_vfs");
       config?.warn?.("kept warning");
       return Promise.resolve(sqliteMock.sqlite3);

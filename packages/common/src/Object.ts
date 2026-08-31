@@ -107,6 +107,7 @@ export const isPlainObject = (
  * assertFalse(isFunction({}));
  * ```
  */
+// oxlint-disable-next-line evolu/no-unnecessary-global-this -- @evolu/common also exports an Evolu Function Type, while this predicate recognizes JavaScript function objects.
 export const isFunction = (value: unknown): value is globalThis.Function =>
   typeof value === "function";
 

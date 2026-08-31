@@ -49,7 +49,7 @@ export function createRun<D extends object>(
   deps?: RunCustomDeps<D>,
 ): DisposableRun | DisposableRun<D> {
   const reportDefect = (reported: unknown): void => {
-    globalThis.reportError(reported);
+    reportError(reported);
   };
 
   return deps === undefined

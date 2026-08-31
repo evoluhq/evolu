@@ -105,8 +105,8 @@ export const createTime = (): Time => {
     now,
 
     performance: {
-      timeOrigin: globalThis.performance.timeOrigin as PerformanceTimeOrigin,
-      now: () => globalThis.performance.now() as PerformanceTime,
+      timeOrigin: performance.timeOrigin as PerformanceTimeOrigin,
+      now: () => performance.now() as PerformanceTime,
     },
 
     setTimeout: (callback, duration) =>
@@ -125,10 +125,10 @@ const scheduleNativeTimeout = (
 ): TimeoutId => {
   const delay = durationToMillis(duration);
   let cancelled = false;
-  let nativeId: ReturnType<typeof globalThis.setTimeout>;
+  let nativeId: ReturnType<typeof setTimeout>;
 
   if (delay <= maxNativeTimeoutMillis) {
-    nativeId = globalThis.setTimeout(() => {
+    nativeId = setTimeout(() => {
       if (cancelled) return;
       cancelled = true;
       callback();
@@ -143,7 +143,7 @@ const scheduleNativeTimeout = (
 
       const remaining = deadline - getSystemNowMillis();
       if (remaining > 0) {
-        nativeId = globalThis.setTimeout(
+        nativeId = setTimeout(
           onTimeout,
           Math.min(remaining, maxNativeTimeoutMillis),
         );
@@ -154,14 +154,14 @@ const scheduleNativeTimeout = (
       callback();
     };
 
-    nativeId = globalThis.setTimeout(onTimeout, maxNativeTimeoutMillis);
+    nativeId = setTimeout(onTimeout, maxNativeTimeoutMillis);
   }
 
   return {
     owner,
     clear: () => {
       cancelled = true;
-      globalThis.clearTimeout(nativeId);
+      clearTimeout(nativeId);
     },
   } as unknown as TimeoutId;
 };
@@ -173,7 +173,7 @@ const scheduleNativeTimeout = (
  */
 const maxNativeTimeoutMillis = 2 ** 31 - 1;
 
-const getSystemNowMillis = (): Millis => Millis.orThrow(globalThis.Date.now());
+const getSystemNowMillis = (): Millis => Millis.orThrow(Date.now());
 
 const clearTimeoutId = (owner: symbol, id: TimeoutId): void => {
   const internal = id as unknown as TimeoutIdInternal;
@@ -356,7 +356,7 @@ export const saturateMillis = (value: NonNaNNumber): Millis =>
  * that always produces a valid ISO string.
  */
 export const millisToDateIso = (value: Millis): DateIso =>
-  new globalThis.Date(value).toISOString() as DateIso;
+  new Date(value).toISOString() as DateIso;
 
 /** Unix epoch milliseconds used as the origin for {@link PerformanceTime}. */
 export type PerformanceTimeOrigin = number & Brand<"PerformanceTimeOrigin">;
@@ -665,15 +665,7 @@ export const formatMillisAsDuration = (millis: Millis): string => {
  *   Millis,
  * } from "@evolu/common";
  *
- * const timestamp = new globalThis.Date(
- *   2026,
- *   0,
- *   28,
- *   14,
- *   32,
- *   15,
- *   234,
- * ).getTime();
+ * const timestamp = new Date(2026, 0, 28, 14, 32, 15, 234).getTime();
  * assertEqual(
  *   formatMillisAsClockTime(Millis.orThrow(timestamp)),
  *   "14:32:15.234",
@@ -681,7 +673,7 @@ export const formatMillisAsDuration = (millis: Millis): string => {
  * ```
  */
 export const formatMillisAsClockTime = (millis: Millis): string => {
-  const date = new globalThis.Date(millis);
+  const date = new Date(millis);
   const hours = date.getHours().toString().padStart(2, "0");
   const minutes = date.getMinutes().toString().padStart(2, "0");
   const seconds = date.getSeconds().toString().padStart(2, "0");

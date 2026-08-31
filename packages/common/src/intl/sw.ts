@@ -61,7 +61,7 @@ export const formatInstanceOfError: T.TypeErrorFormatter<T.InstanceOfError> = (
 export const formatLiteralError: T.TypeErrorFormatter<T.LiteralError> = (
   error,
 ) =>
-  `Thamani ${safelyStringifyUnknownValue(error.value)} si sawa kabisa na literal inayotarajiwa: ${globalThis.String(error.expected)}.`;
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si sawa kabisa na literal inayotarajiwa: ${String(error.expected)}.`;
 export const formatUnionError: T.TypeErrorFormatter<T.UnionError> = () =>
   "Thamani hailingani na lahaja yoyote inayoruhusiwa.";
 export const formatDateIsoError: T.TypeErrorFormatter<T.DateIsoError> = (

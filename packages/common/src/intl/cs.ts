@@ -136,7 +136,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formats a LiteralError in Czech. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} se musí přesně rovnat očekávanému literálu ${globalThis.String(error.expected)}.`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} se musí přesně rovnat očekávanému literálu ${String(error.expected)}.`;
 
 /** Formats a UnionError in Czech. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

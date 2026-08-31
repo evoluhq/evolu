@@ -214,12 +214,8 @@ describe("testCreateMessageChannel", () => {
   it("each channel creates independent ports", () => {
     const channel1 = testCreateMessageChannel<string>();
     const channel2 = testCreateMessageChannel<string>();
-    assertFalse(
-      globalThis.Object.is(channel1.port1.native, channel2.port1.native),
-    );
-    assertFalse(
-      globalThis.Object.is(channel1.port2.native, channel2.port2.native),
-    );
+    assertFalse(Object.is(channel1.port1.native, channel2.port1.native));
+    assertFalse(Object.is(channel1.port2.native, channel2.port2.native));
   });
 
   it("bidirectional communication works asynchronously", async () => {

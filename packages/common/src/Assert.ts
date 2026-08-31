@@ -144,7 +144,7 @@ export const assert: (
     },
   );
 
-  globalThis.Error.captureStackTrace?.(error, stackStartFn);
+  Error.captureStackTrace?.(error, stackStartFn);
 
   throw error;
 };
@@ -881,7 +881,7 @@ export const assertNonEmptyReadonlyArray: <T>(
  *   trySync,
  * } from "@evolu/common";
  *
- * await using disposer = new globalThis.AsyncDisposableStack();
+ * await using disposer = new AsyncDisposableStack();
  * assertNotDisposed(disposer);
  * await disposer.disposeAsync();
  * const result = trySync(() => assertNotDisposed(disposer));

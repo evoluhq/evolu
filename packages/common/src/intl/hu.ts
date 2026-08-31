@@ -115,7 +115,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 ) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem ${error.constructorName} példány.`;
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem szigorúan egyenlő a várt literállal: ${globalThis.String(error.expected)}.`;
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem szigorúan egyenlő a várt literállal: ${String(error.expected)}.`;
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Az érték nem felel meg egyik engedélyezett változatnak sem.";
 export const formatDateIsoError: TypeErrorFormatter<DateIsoError> = (error) =>

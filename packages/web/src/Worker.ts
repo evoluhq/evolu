@@ -152,7 +152,7 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
  * (`self` inside a dedicated worker).
  */
 export const createWorkerSelf = <Input, Output = never>(
-  nativeSelf: globalThis.DedicatedWorkerGlobalScope,
+  nativeSelf: DedicatedWorkerGlobalScope,
 ): WorkerSelf<Input, Output> => wrap<Output, Input>(nativeSelf);
 
 /**
@@ -162,7 +162,7 @@ export const createWorkerSelf = <Input, Output = never>(
  * Disposing closes the shared worker scope for all connected clients.
  */
 export const createSharedWorkerSelf = <Input, Output = never>(
-  nativeSelf: globalThis.SharedWorkerGlobalScope,
+  nativeSelf: SharedWorkerGlobalScope,
 ): SharedWorkerSelf<Input, Output> => {
   const self: SharedWorkerSelf<Input, Output> = {
     onConnect: null,
@@ -193,7 +193,7 @@ export const createSharedWorkerSelf = <Input, Output = never>(
  * `onMessage` is set, and does not share state across tabs.
  */
 export const createOneTabSharedWorkerSelfPolyfill = <Input, Output = never>(
-  nativeSelf: globalThis.DedicatedWorkerGlobalScope,
+  nativeSelf: DedicatedWorkerGlobalScope,
 ): SharedWorkerSelf<Input, Output> => {
   using disposer = new DisposableStack();
 

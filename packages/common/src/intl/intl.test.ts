@@ -137,7 +137,7 @@ const typesByLocale = Type.localizeTypes(
     DiscriminatedUnion: Type.discriminatedUnion(Created, Deleted),
     GreaterThan: Type.greaterThan(1)(Type.Number),
     GreaterThanOrEqualTo: Type.greaterThanOrEqualTo(1)(Type.Number),
-    InstanceOf: Type.instanceOf(globalThis.Date),
+    InstanceOf: Type.instanceOf(Date),
     Length: Type.length(2)(Type.String),
     LessThan: Type.lessThan(1)(Type.Number),
     LessThanOrEqualTo: Type.lessThanOrEqualTo(1)(Type.Number),
@@ -3051,7 +3051,7 @@ describe("Type localization", () => {
   });
 
   test("formats Czech symbol property errors", () => {
-    const key = globalThis.Symbol("key");
+    const key = Symbol("key");
 
     assertEqual(
       cs.formatObjectError({

@@ -144,7 +144,7 @@ workerScope.onmessage = (e: MessageEvent) => {
           lockRelease?.resolve();
           lockRelease = null;
           workerScope.postMessage({ ok: true });
-          globalThis.setTimeout(() => workerScope.close(), 0);
+          setTimeout(() => workerScope.close(), 0);
           break;
         }
       }

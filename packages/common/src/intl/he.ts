@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** מעצב שגיאת LiteralError בעברית. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `הערך ${safelyStringifyUnknownValue(error.value)} אינו שווה באופן מחמיר לליטרל הצפוי: ${globalThis.String(error.expected)}.`;
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו שווה באופן מחמיר לליטרל הצפוי: ${String(error.expected)}.`;
 
 /** מעצב שגיאת UnionError בעברית. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

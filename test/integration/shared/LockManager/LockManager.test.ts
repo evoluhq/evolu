@@ -192,7 +192,7 @@ describe("acquireLeaderLock", () => {
   });
 
   test("works with native Node.js Web Locks", async () => {
-    const nativeLockManager = globalThis.navigator.locks;
+    const nativeLockManager = navigator.locks;
 
     await using run = testCreateRun({ lockManager: nativeLockManager });
 

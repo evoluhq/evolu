@@ -31,7 +31,7 @@ test("createWorker wraps a native worker and disposes via terminate", () => {
     terminate: mock.fn(),
   };
   const worker = createWorker<string, string>(
-    nativeWorker as unknown as globalThis.Worker,
+    nativeWorker as unknown as Worker,
   );
   const received: Array<string> = [];
 
@@ -219,7 +219,7 @@ test("createSharedWorker wraps a shared worker port and disposes via close", () 
   const nativePort = createClosableNativePort<string>();
   const nativeSharedWorker = { port: nativePort };
   const worker = createSharedWorker<string, string>(
-    nativeSharedWorker as unknown as globalThis.SharedWorker,
+    nativeSharedWorker as unknown as SharedWorker,
   );
   const received: Array<string> = [];
 
@@ -268,18 +268,18 @@ describe("one-tab SharedWorker polyfill", () => {
     const nativePort = createClosableNativePort<string>();
     const NativeSharedWorker = class {
       readonly port = nativePort;
-    } as unknown as typeof globalThis.SharedWorker;
+    } as unknown as typeof SharedWorker;
 
     using _sharedWorker = testStubGlobal("SharedWorker", NativeSharedWorker);
 
     installOneTabSharedWorkerPolyfill();
-    assertSame(globalThis.SharedWorker, NativeSharedWorker);
+    assertSame(SharedWorker, NativeSharedWorker);
   });
 
   it("createOneTabSharedWorkerSelfPolyfill creates one queued synthetic connection", () => {
     const nativeSelf = createClosableNativePort<string>();
     const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
-      nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
+      nativeSelf as unknown as DedicatedWorkerGlobalScope,
     );
     const received: Array<string> = [];
     let connectedPort!: MessagePort<string, string>;
@@ -331,7 +331,7 @@ describe("one-tab SharedWorker polyfill", () => {
   it("createOneTabSharedWorkerSelfPolyfill stops flushing when onMessage is cleared", () => {
     const nativeSelf = createClosableNativePort<string>();
     const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
-      nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
+      nativeSelf as unknown as DedicatedWorkerGlobalScope,
     );
     const received: Array<string> = [];
     let connectedPort!: MessagePort<string, string>;
@@ -353,7 +353,7 @@ describe("one-tab SharedWorker polyfill", () => {
   it("createOneTabSharedWorkerSelfPolyfill disposes from connected port", () => {
     const nativeSelf = createClosableNativePort<string>();
     const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
-      nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
+      nativeSelf as unknown as DedicatedWorkerGlobalScope,
     );
     let connectedPort!: MessagePort<string, string>;
 
@@ -376,7 +376,7 @@ describe("one-tab SharedWorker polyfill", () => {
 test("createWorkerSelf wraps dedicated worker self and disposes via close", () => {
   const nativeSelf = createClosableNativePort<string>();
   const workerSelf = createWorkerSelf<string, string>(
-    nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
+    nativeSelf as unknown as DedicatedWorkerGlobalScope,
   );
   const received: Array<string> = [];
 
@@ -402,7 +402,7 @@ test("createSharedWorkerSelf wraps connected ports and disposes the worker scope
     onconnect: null as ((event: MessageEvent) => void) | null,
   };
   const workerSelf = createSharedWorkerSelf<string, string>(
-    nativeSelf as unknown as globalThis.SharedWorkerGlobalScope,
+    nativeSelf as unknown as SharedWorkerGlobalScope,
   );
   const received: Array<string> = [];
   let connectedPort!: MessagePort<string, string>;
@@ -438,7 +438,7 @@ test("createSharedWorkerSelf asserts when a connection arrives before onConnect 
   };
 
   createSharedWorkerSelf<string, string>(
-    nativeSelf as unknown as globalThis.SharedWorkerGlobalScope,
+    nativeSelf as unknown as SharedWorkerGlobalScope,
   );
 
   const error = assertThrowsInstanceOf(() => {

@@ -152,7 +152,7 @@ const installOwnedDisposableImplementation = (): void => {
 };
 
 const createSymbolWithoutDisposableStatics = (): SymbolConstructor => {
-  const nativeSymbol = globalThis.Symbol;
+  const nativeSymbol = Symbol;
 
   const wrappedSymbol = ((description?: string) =>
     nativeSymbol(description)) as unknown as SymbolConstructor;
@@ -239,12 +239,12 @@ describe("installPolyfills Symbol statics", () => {
 
     installPolyfills();
 
-    const customMessageError = new globalThis.SuppressedError(
+    const customMessageError = new SuppressedError(
       new Error("error"),
       new Error("suppressed"),
       "custom message",
     );
-    const defaultMessageError = new globalThis.SuppressedError(
+    const defaultMessageError = new SuppressedError(
       new Error("error"),
       new Error("suppressed"),
     );
@@ -279,8 +279,8 @@ describe("installPolyfills", () => {
       assertEqual(typeof globalThis.AsyncDisposableStack, "function");
       assertEqual(typeof globalThis.SuppressedError, "function");
 
-      const disposableStack = new globalThis.DisposableStack();
-      const asyncDisposableStack = new globalThis.AsyncDisposableStack();
+      const disposableStack = new DisposableStack();
+      const asyncDisposableStack = new AsyncDisposableStack();
 
       assertEqual(typeof disposableStack[Symbol.dispose], "function");
       assertEqual(typeof asyncDisposableStack[Symbol.asyncDispose], "function");
@@ -323,8 +323,8 @@ describe("installPolyfills", () => {
       assertFalse(asyncDisposeDescriptor?.enumerable);
       assertFalse(asyncDisposeDescriptor?.writable);
 
-      const disposableStack = new globalThis.DisposableStack();
-      const asyncDisposableStack = new globalThis.AsyncDisposableStack();
+      const disposableStack = new DisposableStack();
+      const asyncDisposableStack = new AsyncDisposableStack();
 
       assertEqual(typeof disposableStack[Symbol.dispose], "function");
       assertEqual(typeof asyncDisposableStack[Symbol.asyncDispose], "function");
@@ -421,15 +421,15 @@ describe("installPolyfills", () => {
 
     installPolyfills();
 
-    assertSame(globalThis.DisposableStack, ExistingDisposableStack);
-    assertSame(globalThis.AsyncDisposableStack, ExistingAsyncDisposableStack);
-    assertSame(globalThis.SuppressedError, ExistingSuppressedError);
+    assertSame(DisposableStack, ExistingDisposableStack);
+    assertSame(AsyncDisposableStack, ExistingAsyncDisposableStack);
+    assertSame(SuppressedError, ExistingSuppressedError);
   });
 
   itInstallPolyfills("keeps explicit SuppressedError message", () => {
     installOwnedDisposableImplementation();
 
-    const suppressedError = new globalThis.SuppressedError(
+    const suppressedError = new SuppressedError(
       new Error("error"),
       new Error("suppressed"),
       "custom message",
@@ -443,7 +443,7 @@ describe("installPolyfills", () => {
     () => {
       installOwnedDisposableImplementation();
 
-      const suppressedError = new globalThis.SuppressedError(
+      const suppressedError = new SuppressedError(
         new Error("error"),
         new Error("suppressed"),
       );
@@ -469,7 +469,7 @@ describe("DisposableStack behavior", () => {
   });
 
   it("constructor creates DisposableStack instances and requires new", () => {
-    const DisposableStackCtor = globalThis.DisposableStack;
+    const DisposableStackCtor = DisposableStack;
 
     assertEqual(typeof DisposableStackCtor, "function");
 
@@ -489,12 +489,12 @@ describe("DisposableStack behavior", () => {
   });
 
   it("disposed is a prototype accessor", () => {
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
 
     assertFalse(Object.hasOwn(stack, "disposed"));
 
     const descriptor = Object.getOwnPropertyDescriptor(
-      globalThis.DisposableStack.prototype,
+      DisposableStack.prototype,
       "disposed",
     );
 
@@ -511,11 +511,11 @@ describe("DisposableStack behavior", () => {
 
   it("Symbol.dispose aliases dispose", () => {
     const symbolDispose = Object.getOwnPropertyDescriptor(
-      globalThis.DisposableStack.prototype,
+      DisposableStack.prototype,
       Symbol.dispose,
     )?.value;
     const dispose = Object.getOwnPropertyDescriptor(
-      globalThis.DisposableStack.prototype,
+      DisposableStack.prototype,
       "dispose",
     )?.value;
 
@@ -525,7 +525,7 @@ describe("DisposableStack behavior", () => {
   it("use supports nullish and disposes used resources in LIFO order", () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     assertSame(stack.use(null), null);
     stack.use(undefined);
 
@@ -550,7 +550,7 @@ describe("DisposableStack behavior", () => {
   });
 
   it("throws on invalid use/defer/adopt input and move on disposed stack", () => {
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
 
     for (const value of nonNullPrimitives) {
       assertThrowsInstanceOf(() => stack.use(value as never), TypeError);
@@ -607,7 +607,7 @@ describe("DisposableStack behavior", () => {
   });
 
   it("use reads Symbol.dispose only once", () => {
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     const resource = {
       disposeReadCount: 0,
     } as {
@@ -631,7 +631,7 @@ describe("DisposableStack behavior", () => {
   });
 
   it("throws when Symbol.dispose is present but not a function", () => {
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
 
     assertThrowsInstanceOf(
       () => stack.use({ [Symbol.dispose]: 1 } as unknown as Disposable),
@@ -642,7 +642,7 @@ describe("DisposableStack behavior", () => {
   it("adopt disposes values in LIFO order", () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     stack.adopt("a", (value) => {
       events.push(`adopt ${value}`);
     });
@@ -665,7 +665,7 @@ describe("DisposableStack behavior", () => {
       calls.push({ count: args.length, args });
     };
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     const sentinel = { sentinel: true };
 
     stack.adopt(undefined, onDispose);
@@ -685,7 +685,7 @@ describe("DisposableStack behavior", () => {
   it("move transfers ownership and old stack becomes disposed", () => {
     const events: Array<string> = [];
 
-    const disposer = new globalThis.DisposableStack();
+    const disposer = new DisposableStack();
     disposer.defer(() => {
       events.push("cleanup");
     });
@@ -715,7 +715,7 @@ describe("DisposableStack behavior", () => {
     const resource1 = createResource();
     const resource2 = createResource();
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     assertSame(stack.use(resource1), resource1);
     assertSame(stack.use(resource2), resource2);
 
@@ -740,7 +740,7 @@ describe("DisposableStack behavior", () => {
       calls.push({ thisValue: this, count: args.length, args });
     };
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     stack.defer(onDispose);
     stack.dispose();
 
@@ -750,7 +750,7 @@ describe("DisposableStack behavior", () => {
   it("dispose is reentry-safe and does not dispose twice", () => {
     let count = 0;
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     stack.use({
       [Symbol.dispose]: () => {
         count += 1;
@@ -774,7 +774,7 @@ describe("DisposableStack behavior", () => {
       events.push("disposed function");
     };
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     stack.use(resource);
     stack.dispose();
 
@@ -787,7 +787,7 @@ describe("DisposableStack behavior", () => {
     const errorA = new Error("error A");
     const errorB = new Error("error B");
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     stack.defer(() => {
       events.push("cleanup 1");
     });
@@ -802,7 +802,7 @@ describe("DisposableStack behavior", () => {
 
     const error = assertThrowsInstanceOf(
       () => stack.dispose(),
-      globalThis.SuppressedError,
+      SuppressedError,
     );
 
     const suppressedError = error as {
@@ -821,7 +821,7 @@ describe("DisposableStack behavior", () => {
     const sentinel2 = new Error("sentinel 2");
     const sentinel3 = new Error("sentinel 3");
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     stack.use({
       [Symbol.dispose]: () => {
         throw throwSentinel;
@@ -836,7 +836,7 @@ describe("DisposableStack behavior", () => {
 
     const error = assertThrowsInstanceOf(
       () => stack.dispose(),
-      globalThis.SuppressedError,
+      SuppressedError,
     );
 
     const root = error as {
@@ -845,7 +845,7 @@ describe("DisposableStack behavior", () => {
     };
 
     assertSame(root.error, throwSentinel);
-    assertInstanceOf(root.suppressed, globalThis.SuppressedError);
+    assertInstanceOf(root.suppressed, SuppressedError);
 
     const nested = root.suppressed as {
       readonly error: unknown;
@@ -859,7 +859,7 @@ describe("DisposableStack behavior", () => {
   it("preserves non-Error thrown values", () => {
     for (const nonErrorValue of [123, undefined] as const) {
       const nonError: unknown = nonErrorValue;
-      const stack = new globalThis.DisposableStack();
+      const stack = new DisposableStack();
       stack.defer(() => {
         throw nonError;
       });
@@ -871,7 +871,7 @@ describe("DisposableStack behavior", () => {
   it("is idempotent when disposed repeatedly", () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     stack.defer(() => {
       events.push("cleanup");
     });
@@ -883,7 +883,7 @@ describe("DisposableStack behavior", () => {
   });
 
   it("toStringTag reports DisposableStack", () => {
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
     assertEqual(
       Object.prototype.toString.call(stack),
       "[object DisposableStack]",
@@ -891,7 +891,7 @@ describe("DisposableStack behavior", () => {
   });
 
   it("toStringTag descriptor matches native shape", () => {
-    const stack = new globalThis.DisposableStack();
+    const stack = new DisposableStack();
 
     assertSame(
       Object.getOwnPropertyDescriptor(stack, Symbol.toStringTag),
@@ -900,7 +900,7 @@ describe("DisposableStack behavior", () => {
 
     assertEqual(
       Object.getOwnPropertyDescriptor(
-        globalThis.DisposableStack.prototype,
+        DisposableStack.prototype,
         Symbol.toStringTag,
       ),
       {
@@ -928,7 +928,7 @@ describe("DisposableStack behavior", () => {
     });
 
     assertThrowsInstanceOf(() => {
-      Reflect.construct(globalThis.DisposableStack, [], newTarget);
+      Reflect.construct(DisposableStack, [], newTarget);
     }, EvalError);
     assertEqual(calls, 1);
   });
@@ -947,7 +947,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("constructor creates AsyncDisposableStack instances and requires new", () => {
-    const AsyncDisposableStackCtor = globalThis.AsyncDisposableStack;
+    const AsyncDisposableStackCtor = AsyncDisposableStack;
 
     assertEqual(typeof AsyncDisposableStackCtor, "function");
 
@@ -972,12 +972,12 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("disposed is a prototype accessor", async () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
 
     assertFalse(Object.hasOwn(stack, "disposed"));
 
     const descriptor = Object.getOwnPropertyDescriptor(
-      globalThis.AsyncDisposableStack.prototype,
+      AsyncDisposableStack.prototype,
       "disposed",
     );
 
@@ -994,11 +994,11 @@ describe("AsyncDisposableStack behavior", () => {
 
   it("Symbol.asyncDispose aliases disposeAsync", () => {
     const symbolAsyncDispose = Object.getOwnPropertyDescriptor(
-      globalThis.AsyncDisposableStack.prototype,
+      AsyncDisposableStack.prototype,
       Symbol.asyncDispose,
     )?.value;
     const disposeAsync = Object.getOwnPropertyDescriptor(
-      globalThis.AsyncDisposableStack.prototype,
+      AsyncDisposableStack.prototype,
       "disposeAsync",
     )?.value;
 
@@ -1008,7 +1008,7 @@ describe("AsyncDisposableStack behavior", () => {
   it("accepts async and sync resources in use", async () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
 
     stack.use({
       [Symbol.dispose]: () => {
@@ -1028,7 +1028,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("use supports nullish values", async () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
 
     assertSame(stack.use(null), null);
     stack.use(undefined);
@@ -1037,7 +1037,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("throws on invalid use/defer/adopt input and move on disposed stack", async () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
 
     for (const value of nonNullPrimitives) {
       assertThrowsInstanceOf(() => stack.use(value as never), TypeError);
@@ -1094,7 +1094,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("throws when Symbol.asyncDispose is present but not a function", () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
 
     assertThrowsInstanceOf(
       () =>
@@ -1106,7 +1106,7 @@ describe("AsyncDisposableStack behavior", () => {
   it("adopt disposes values in LIFO order", async () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.adopt("a", (value) => {
       events.push(`adopt ${value}`);
     });
@@ -1129,7 +1129,7 @@ describe("AsyncDisposableStack behavior", () => {
       calls.push({ count: args.length, args });
     };
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     const sentinel = { sentinel: true };
 
     stack.adopt(undefined, onDisposeAsync);
@@ -1149,7 +1149,7 @@ describe("AsyncDisposableStack behavior", () => {
   it("move transfers ownership and old stack becomes disposed", async () => {
     const events: Array<string> = [];
 
-    const disposer = new globalThis.AsyncDisposableStack();
+    const disposer = new AsyncDisposableStack();
     disposer.defer(() =>
       Promise.resolve().then(() => {
         events.push("cleanup");
@@ -1177,7 +1177,7 @@ describe("AsyncDisposableStack behavior", () => {
         events.push("disposed function");
       });
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.use(resource);
     await stack.disposeAsync();
 
@@ -1198,7 +1198,7 @@ describe("AsyncDisposableStack behavior", () => {
       calls.push({ thisValue: this, count: args.length, args });
     };
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.defer(onDisposeAsync);
     await stack.disposeAsync();
 
@@ -1211,7 +1211,7 @@ describe("AsyncDisposableStack behavior", () => {
 
     const error = new Error("defer failed");
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.defer(() =>
       Promise.resolve().then(() => {
         events.push("first");
@@ -1234,7 +1234,7 @@ describe("AsyncDisposableStack behavior", () => {
     const sentinel2 = new Error("sentinel 2");
     const sentinel3 = new Error("sentinel 3");
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.use({
       [Symbol.asyncDispose]: () => {
         throw throwSentinel;
@@ -1249,7 +1249,7 @@ describe("AsyncDisposableStack behavior", () => {
 
     const error = await assertRejectsInstanceOf(
       stack.disposeAsync(),
-      globalThis.SuppressedError,
+      SuppressedError,
     );
 
     const root = error as {
@@ -1258,7 +1258,7 @@ describe("AsyncDisposableStack behavior", () => {
     };
 
     assertSame(root.error, throwSentinel);
-    assertInstanceOf(root.suppressed, globalThis.SuppressedError);
+    assertInstanceOf(root.suppressed, SuppressedError);
 
     const nested = root.suppressed as {
       readonly error: unknown;
@@ -1274,7 +1274,7 @@ describe("AsyncDisposableStack behavior", () => {
 
     const error = new Error("middle failure");
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.defer(() => {
       events.push("mutex cleanup");
     });
@@ -1300,7 +1300,7 @@ describe("AsyncDisposableStack behavior", () => {
     const errorA = new Error("error A");
     const errorB = new Error("error B");
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.defer(() =>
       Promise.resolve().then(() => {
         events.push("cleanup 1");
@@ -1319,7 +1319,7 @@ describe("AsyncDisposableStack behavior", () => {
 
     const error = await assertRejectsInstanceOf(
       stack.disposeAsync(),
-      globalThis.SuppressedError,
+      SuppressedError,
     );
 
     const suppressedError = error as {
@@ -1336,7 +1336,7 @@ describe("AsyncDisposableStack behavior", () => {
   it("is idempotent when disposed repeatedly", async () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.defer(() =>
       Promise.resolve().then(() => {
         events.push("cleanup");
@@ -1354,7 +1354,7 @@ describe("AsyncDisposableStack behavior", () => {
     let firstDisposeFinished = false;
     let secondDisposeFinished = false;
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.defer(async () => {
       await disposalCanFinish.promise;
     });
@@ -1366,7 +1366,7 @@ describe("AsyncDisposableStack behavior", () => {
       secondDisposeFinished = true;
     });
 
-    assertFalse(globalThis.Object.is(secondDispose, firstDispose));
+    assertFalse(Object.is(secondDispose, firstDispose));
 
     await Promise.resolve();
 
@@ -1382,7 +1382,7 @@ describe("AsyncDisposableStack behavior", () => {
   it("disposeAsync is reentry-safe and does not dispose twice", async () => {
     let count = 0;
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     stack.use({
       async [Symbol.asyncDispose]() {
         count += 1;
@@ -1398,7 +1398,7 @@ describe("AsyncDisposableStack behavior", () => {
   it("use prefers asyncDispose over dispose when both present", async () => {
     const events: Array<string> = [];
 
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
 
     const resource = {
       [Symbol.asyncDispose]: () =>
@@ -1417,7 +1417,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("use does not read Symbol.dispose when asyncDispose is present", () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     let disposeReadCount = 0;
 
     const resource = {} as Record<symbol, unknown>;
@@ -1443,7 +1443,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("use reads Symbol.dispose only once on sync fallback", async () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     const resource = {
       disposeReadCount: 0,
     } as {
@@ -1467,7 +1467,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("use reads Symbol.asyncDispose only once", async () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     const resource = {
       disposeReadCount: 0,
     } as {
@@ -1493,7 +1493,7 @@ describe("AsyncDisposableStack behavior", () => {
   it("preserves non-Error thrown values", async () => {
     for (const nonErrorValue of [123, undefined] as const) {
       const nonError: unknown = nonErrorValue;
-      const stack = new globalThis.AsyncDisposableStack();
+      const stack = new AsyncDisposableStack();
       stack.defer(() => {
         throw nonError;
       });
@@ -1503,7 +1503,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("toStringTag reports AsyncDisposableStack", () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
     assertEqual(
       Object.prototype.toString.call(stack),
       "[object AsyncDisposableStack]",
@@ -1511,7 +1511,7 @@ describe("AsyncDisposableStack behavior", () => {
   });
 
   it("toStringTag descriptor matches native shape", () => {
-    const stack = new globalThis.AsyncDisposableStack();
+    const stack = new AsyncDisposableStack();
 
     assertSame(
       Object.getOwnPropertyDescriptor(stack, Symbol.toStringTag),
@@ -1520,7 +1520,7 @@ describe("AsyncDisposableStack behavior", () => {
 
     assertEqual(
       Object.getOwnPropertyDescriptor(
-        globalThis.AsyncDisposableStack.prototype,
+        AsyncDisposableStack.prototype,
         Symbol.toStringTag,
       ),
       {
@@ -1548,7 +1548,7 @@ describe("AsyncDisposableStack behavior", () => {
     });
 
     assertThrowsInstanceOf(() => {
-      Reflect.construct(globalThis.AsyncDisposableStack, [], newTarget);
+      Reflect.construct(AsyncDisposableStack, [], newTarget);
     }, EvalError);
     assertEqual(calls, 1);
   });

@@ -125,7 +125,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   `قدر ${safelyStringifyUnknownValue(error.value)}، ${error.constructorName} کی instance نہیں ہے۔`;
 /** LiteralError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `قدر ${safelyStringifyUnknownValue(error.value)} متوقع literal کے عین برابر نہیں ہے: ${globalThis.String(error.expected)}۔`;
+  `قدر ${safelyStringifyUnknownValue(error.value)} متوقع literal کے عین برابر نہیں ہے: ${String(error.expected)}۔`;
 /** UnionError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "قدر کسی بھی منظور شدہ variant سے مطابقت نہیں رکھتی۔";

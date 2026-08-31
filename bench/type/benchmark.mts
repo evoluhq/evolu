@@ -554,7 +554,7 @@ await runMain(
     } else {
       const comparedBaselineMeasurements = filteredBenchmark
         ? objectFrom(
-            globalThis.Object.keys(existingBaseline.measurements).filter(
+            Object.keys(existingBaseline.measurements).filter(
               (fixture) => matchesTypeBenchmarkFilter(fixture, fixtureFilters),
             ),
             (fixture) => {

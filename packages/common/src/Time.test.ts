@@ -57,7 +57,7 @@ describe("Time", () => {
 
   describe("createTime", () => {
     it("now returns current time", () => {
-      mock.method(globalThis.Date, "now", () => 123);
+      mock.method(Date, "now", () => 123);
 
       assertEqual(createTime().now(), 123);
     });
@@ -72,14 +72,14 @@ describe("Time", () => {
     });
 
     it("performance exposes the native clock", () => {
-      mock.method(globalThis.performance, "now", () => 123.456);
+      mock.method(performance, "now", () => 123.456);
 
       const time = createTime();
       const now: PerformanceTime = time.performance.now();
       const timeOrigin: PerformanceTimeOrigin = time.performance.timeOrigin;
 
       assertEqual(now, 123.456);
-      assertEqual(timeOrigin, globalThis.performance.timeOrigin);
+      assertEqual(timeOrigin, performance.timeOrigin);
     });
 
     describe("setTimeout", () => {
@@ -96,7 +96,7 @@ describe("Time", () => {
             >;
           },
         );
-        mock.method(globalThis.Date, "now", () => now);
+        mock.method(Date, "now", () => now);
         const callback = mock.fn<() => void>();
 
         createTime().setTimeout(callback, "10ms");
@@ -125,7 +125,7 @@ describe("Time", () => {
             >;
           },
         );
-        mock.method(globalThis.Date, "now", () => now);
+        mock.method(Date, "now", () => now);
         const callback = mock.fn<() => void>();
 
         createTime().setTimeout(callback, "10ms");
@@ -149,7 +149,7 @@ describe("Time", () => {
             >;
           },
         );
-        const dateNow = mock.method(globalThis.Date, "now");
+        const dateNow = mock.method(Date, "now");
         const callback = mock.fn<() => void>();
 
         createTime().setTimeout(
@@ -178,16 +178,14 @@ describe("Time", () => {
         const delays: Array<number | undefined> = [];
         const callback = mock.fn<() => void>();
 
-        mock.method(globalThis.Date, "now", () => now);
+        mock.method(Date, "now", () => now);
         mock.method(
           globalThis,
           "setTimeout",
           (scheduledCallback: () => void, delay?: number) => {
             callbacks.push(scheduledCallback);
             delays.push(delay);
-            return callbacks.length as unknown as ReturnType<
-              typeof globalThis.setTimeout
-            >;
+            return callbacks.length as unknown as ReturnType<typeof setTimeout>;
           },
         );
 
@@ -218,7 +216,7 @@ describe("Time", () => {
           "setTimeout",
           () => 1 as unknown as ReturnType<typeof globalThis.setTimeout>,
         );
-        mock.method(globalThis.Date, "now", () => -1);
+        mock.method(Date, "now", () => -1);
 
         assertThrowsWithCause(
           () =>
@@ -234,15 +232,13 @@ describe("Time", () => {
       it("rejects an invalid clock while processing a long timeout", () => {
         const callbacks: Array<() => void> = [];
         let now = 1000;
-        mock.method(globalThis.Date, "now", () => now);
+        mock.method(Date, "now", () => now);
         mock.method(
           globalThis,
           "setTimeout",
           (scheduledCallback: () => void) => {
             callbacks.push(scheduledCallback);
-            return callbacks.length as unknown as ReturnType<
-              typeof globalThis.setTimeout
-            >;
+            return callbacks.length as unknown as ReturnType<typeof setTimeout>;
           },
         );
         createTime().setTimeout(
@@ -266,15 +262,13 @@ describe("Time", () => {
           () => undefined,
         );
 
-        mock.method(globalThis.Date, "now", () => now);
+        mock.method(Date, "now", () => now);
         mock.method(
           globalThis,
           "setTimeout",
           (scheduledCallback: () => void) => {
             callbacks.push(scheduledCallback);
-            return callbacks.length as unknown as ReturnType<
-              typeof globalThis.setTimeout
-            >;
+            return callbacks.length as unknown as ReturnType<typeof setTimeout>;
           },
         );
 
@@ -308,9 +302,7 @@ describe("Time", () => {
           "setTimeout",
           (scheduledCallback: () => void) => {
             callbacks.push(scheduledCallback);
-            return callbacks.length as unknown as ReturnType<
-              typeof globalThis.setTimeout
-            >;
+            return callbacks.length as unknown as ReturnType<typeof setTimeout>;
           },
         );
 
@@ -329,7 +321,7 @@ describe("Time", () => {
         mock.method(
           globalThis,
           "setTimeout",
-          () => 1 as unknown as ReturnType<typeof globalThis.setTimeout>,
+          () => 1 as unknown as ReturnType<typeof setTimeout>,
         );
         const firstTime = createTime();
         const secondTime = createTime();

@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Muotoilee LiteralError-virheen suomeksi. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole täsmälleen sama kuin odotettu literaali: ${globalThis.String(error.expected)}.`;
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole täsmälleen sama kuin odotettu literaali: ${String(error.expected)}.`;
 
 /** Muotoilee UnionError-virheen suomeksi. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

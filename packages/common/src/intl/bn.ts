@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formats a LiteralError in Bengali. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `${safelyStringifyUnknownValue(error.value)} মানটি প্রত্যাশিত literal-এর সঙ্গে strictly equal নয়: ${globalThis.String(error.expected)}।`;
+  `${safelyStringifyUnknownValue(error.value)} মানটি প্রত্যাশিত literal-এর সঙ্গে strictly equal নয়: ${String(error.expected)}।`;
 
 /** Formats a UnionError in Bengali. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

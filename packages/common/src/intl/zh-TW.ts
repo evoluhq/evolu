@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** 以繁體中文格式化 LiteralError。 */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `值 ${safelyStringifyUnknownValue(error.value)} 不與預期的字面值嚴格相等：${globalThis.String(error.expected)}。`;
+  `值 ${safelyStringifyUnknownValue(error.value)} 不與預期的字面值嚴格相等：${String(error.expected)}。`;
 
 /** 以繁體中文格式化 UnionError。 */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formats a LiteralError in Indonesian. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak sama persis dengan literal yang diharapkan: ${globalThis.String(error.expected)}.`;
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak sama persis dengan literal yang diharapkan: ${String(error.expected)}.`;
 
 /** Formats a UnionError in Indonesian. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

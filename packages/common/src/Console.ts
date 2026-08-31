@@ -473,12 +473,12 @@ export const createConsole = ({
 export const createNativeConsoleOutput = (): ConsoleOutput => ({
   write: (entry, formatter) => {
     const args = formatter ? formatter(entry) : entry.args;
-    (
-      globalThis.console as unknown as Record<
-        ConsoleMethod,
-        (...args: Array<unknown>) => void
-      >
-    )[entry.method](...args);
+    // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Write to the global object console even if a realm lexical binding shadows it.
+    const nativeConsole = globalThis.console as unknown as Record<
+      ConsoleMethod,
+      (...args: Array<unknown>) => void
+    >;
+    nativeConsole[entry.method](...args);
   },
 });
 
@@ -522,15 +522,7 @@ export const createNativeConsoleOutput = (): ConsoleOutput => ({
  * assertType(Data, nested);
  * assertEqual(nested, ["+1.500s [relay] [db]", "opened"]);
  *
- * const localTimestamp = new globalThis.Date(
- *   2026,
- *   0,
- *   28,
- *   14,
- *   30,
- *   15,
- *   123,
- * ).getTime();
+ * const localTimestamp = new Date(2026, 0, 28, 14, 30, 15, 123).getTime();
  * const formatAbsolute = createConsoleFormatter({
  *   time: testCreateTime({ startAt: Millis.orThrow(localTimestamp) }),
  * })({ timestampFormat: "absolute" });
@@ -561,7 +553,7 @@ export const createConsoleFormatter =
           timestamp = formatMillisAsClockTime(now);
           break;
         case "iso":
-          timestamp = new globalThis.Date(now).toISOString();
+          timestamp = new Date(now).toISOString();
           break;
       }
 

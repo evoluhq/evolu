@@ -27,7 +27,7 @@ describe("createLeakDetector", () => {
   });
 
   it("returns the no-op detector without FinalizationRegistry", () => {
-    const descriptor = globalThis.Object.getOwnPropertyDescriptor(
+    const descriptor = Object.getOwnPropertyDescriptor(
       globalThis,
       "FinalizationRegistry",
     );
@@ -42,11 +42,7 @@ describe("createLeakDetector", () => {
       );
     } finally {
       if (descriptor)
-        globalThis.Object.defineProperty(
-          globalThis,
-          "FinalizationRegistry",
-          descriptor,
-        );
+        Object.defineProperty(globalThis, "FinalizationRegistry", descriptor);
     }
   });
 });

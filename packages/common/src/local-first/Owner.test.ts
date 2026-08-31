@@ -56,7 +56,7 @@ test("deriveShardOwner with different paths produces different owners", () => {
   const contacts = deriveShardOwner(appOwner, ["contacts"]);
   const photos = deriveShardOwner(appOwner, ["photos"]);
 
-  assertFalse(globalThis.Object.is(contacts.id, photos.id));
+  assertFalse(Object.is(contacts.id, photos.id));
   assertFalse(eqData(contacts.encryptionKey, photos.encryptionKey));
   assertFalse(eqData(contacts.writeKey, photos.writeKey));
 });
@@ -67,7 +67,7 @@ test("deriveShardOwner with nested paths", () => {
   const project1 = deriveShardOwner(appOwner, ["projects", "project-1"]);
   const project2 = deriveShardOwner(appOwner, ["projects", "project-2"]);
 
-  assertFalse(globalThis.Object.is(project1.id, project2.id));
+  assertFalse(Object.is(project1.id, project2.id));
   assertEqual(project1.type, "ShardOwner");
   assertEqual(project2.type, "ShardOwner");
 });
@@ -79,5 +79,5 @@ test("different app owners produce different shard owners", () => {
   const shard1 = deriveShardOwner(appOwner1, ["contacts"]);
   const shard2 = deriveShardOwner(appOwner2, ["contacts"]);
 
-  assertFalse(globalThis.Object.is(shard1.id, shard2.id));
+  assertFalse(Object.is(shard1.id, shard2.id));
 });

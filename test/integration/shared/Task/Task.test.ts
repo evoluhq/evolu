@@ -89,11 +89,8 @@ describe("Run", () => {
   });
 
   test("panics in production when a Task returns a non-Result", async () => {
-    const testProcess = (
-      globalThis as unknown as {
-        readonly process?: { readonly env: { NODE_ENV: string | undefined } };
-      }
-    ).process;
+    const testProcess = Reflect.get(globalThis, "process") as unknown as
+      { readonly env: { NODE_ENV: string | undefined } } | undefined;
     const originalNodeEnv = testProcess?.env.NODE_ENV;
 
     try {

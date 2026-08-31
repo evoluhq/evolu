@@ -685,7 +685,7 @@ interface PortState<T> {
   handler: ((message: T) => void) | null;
   readonly queue: Array<T>;
   flushScheduled: boolean;
-  flushTimeoutId: ReturnType<typeof globalThis.setTimeout> | null;
+  flushTimeoutId: ReturnType<typeof setTimeout> | null;
   ownerCount: number;
   pendingTransferCount: number;
 }
@@ -755,7 +755,7 @@ const createPort = <Input, Output>({
         return;
 
       for (const transferable of transfer ?? []) {
-        if (transferable instanceof globalThis.ArrayBuffer) continue;
+        if (transferable instanceof ArrayBuffer) continue;
 
         const registration = nativePortRegistry.get(transferable);
         if (!registration) continue;
@@ -780,22 +780,19 @@ const createPort = <Input, Output>({
   };
 };
 
-const pendingWorkerTaskIds = new Set<
-  ReturnType<typeof globalThis.setTimeout>
->();
+const pendingWorkerTaskIds = new Set<ReturnType<typeof setTimeout>>();
 const workerTaskIdleWaiters = new Set<() => void>();
-let workerTaskIdleCheckTimeoutId:
-  ReturnType<typeof globalThis.setTimeout> | undefined;
+let workerTaskIdleCheckTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
 const scheduleWorkerTask = (
   callback: () => void,
-): ReturnType<typeof globalThis.setTimeout> => {
+): ReturnType<typeof setTimeout> => {
   if (workerTaskIdleCheckTimeoutId != null) {
-    globalThis.clearTimeout(workerTaskIdleCheckTimeoutId);
+    clearTimeout(workerTaskIdleCheckTimeoutId);
     workerTaskIdleCheckTimeoutId = undefined;
   }
 
-  const timeoutId = globalThis.setTimeout(() => {
+  const timeoutId = setTimeout(() => {
     pendingWorkerTaskIds.delete(timeoutId);
     try {
       callback();
@@ -807,10 +804,8 @@ const scheduleWorkerTask = (
   return timeoutId;
 };
 
-const cancelWorkerTask = (
-  timeoutId: ReturnType<typeof globalThis.setTimeout>,
-): void => {
-  globalThis.clearTimeout(timeoutId);
+const cancelWorkerTask = (timeoutId: ReturnType<typeof setTimeout>): void => {
+  clearTimeout(timeoutId);
   pendingWorkerTaskIds.delete(timeoutId);
   queueMicrotask(notifyWorkerTaskIdle);
 };
@@ -823,7 +818,7 @@ const notifyWorkerTaskIdle = (): void => {
   )
     return;
 
-  workerTaskIdleCheckTimeoutId = globalThis.setTimeout(() => {
+  workerTaskIdleCheckTimeoutId = setTimeout(() => {
     workerTaskIdleCheckTimeoutId = undefined;
     for (const resolve of workerTaskIdleWaiters) resolve();
     workerTaskIdleWaiters.clear();

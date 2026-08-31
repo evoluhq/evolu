@@ -11,12 +11,12 @@ const parse = (value: unknown): string | number => {
 };
 
 export default (): ReadonlyArray<string | number | boolean> => {
-  const input = new globalThis.Map([["answer", 42]]);
+  const input = new Map([["answer", 42]]);
   const result = Values.fromUnknown(input);
 
   return [
     parse(null),
-    parse(new globalThis.Map([["answer", "x"]])),
+    parse(new Map([["answer", "x"]])),
     result.ok ? (result.value.get("answer") ?? -1) : -1,
     result.ok && result.value === input,
   ];

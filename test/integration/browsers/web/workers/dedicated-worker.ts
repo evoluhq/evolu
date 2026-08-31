@@ -13,7 +13,7 @@ type WorkerOutput =
   | { readonly type: "echo"; readonly value: string };
 
 const workerSelf = createWorkerSelf<WorkerInput, WorkerOutput>(
-  self as unknown as globalThis.DedicatedWorkerGlobalScope,
+  self as unknown as DedicatedWorkerGlobalScope,
 );
 
 workerSelf.onMessage = (message) => {

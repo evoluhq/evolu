@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** LiteralError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} പ്രതീക്ഷിച്ച literal-ന് കൃത്യമായി തുല്യമല്ല: ${globalThis.String(error.expected)}.`;
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} പ്രതീക്ഷിച്ച literal-ന് കൃത്യമായി തുല്യമല്ല: ${String(error.expected)}.`;
 
 /** UnionError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

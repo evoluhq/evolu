@@ -125,7 +125,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť inštanciou ${error.constructorName}.`;
 /** Formats a LiteralError in Slovak. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Hodnota ${safelyStringifyUnknownValue(error.value)} sa musí presne rovnať očakávanému literálu ${globalThis.String(error.expected)}.`;
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} sa musí presne rovnať očakávanému literálu ${String(error.expected)}.`;
 /** Formats a UnionError in Slovak. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Hodnota nezodpovedá žiadnemu z povolených variantov.";

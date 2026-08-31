@@ -131,7 +131,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   `O valor ${safelyStringifyUnknownValue(error.value)} não é uma instância de ${error.constructorName}.`;
 /** Formata um LiteralError em português. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `O valor ${safelyStringifyUnknownValue(error.value)} não é estritamente igual ao literal esperado: ${globalThis.String(error.expected)}.`;
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é estritamente igual ao literal esperado: ${String(error.expected)}.`;
 /** Formata um UnionError em português. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Um valor não corresponde a nenhuma variante permitida.";

@@ -23,6 +23,7 @@ const withDisabledConsoleError = (
   if (isHermes) return createGlobalErrors();
 
   using disposableStack = new DisposableStack();
+  // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Temporarily replace the global object console method that Vitest calls.
   const globalConsole = globalThis.console;
   const consoleError = globalConsole.error;
   globalConsole.error = constVoid;

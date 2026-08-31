@@ -137,7 +137,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
 
 /** Formata um LiteralError em português brasileiro. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `O valor ${safelyStringifyUnknownValue(error.value)} não é estritamente igual ao literal esperado: ${globalThis.String(error.expected)}.`;
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é estritamente igual ao literal esperado: ${String(error.expected)}.`;
 
 /** Formata um UnionError em português brasileiro. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>

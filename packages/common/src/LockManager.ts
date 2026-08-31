@@ -23,7 +23,7 @@ import type { Callback } from "./Types.ts";
  * import { assertEqual, type LockManagerDep } from "@evolu/common";
  *
  * const deps: LockManagerDep = {
- *   lockManager: globalThis.navigator.locks,
+ *   lockManager: navigator.locks,
  * };
  *
  * const result = await deps.lockManager.request(
@@ -67,7 +67,7 @@ export interface LockManagerDep {
  * private namespace and returned with the original visible names.
  */
 export const testCreateLockManager = (
-  nativeLockManager: LockManager = globalThis.navigator.locks,
+  nativeLockManager: LockManager = navigator.locks,
 ): LockManager => {
   const namespace = createId({ randomBytes: createRandomBytes() });
 

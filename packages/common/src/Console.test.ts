@@ -286,8 +286,11 @@ describe("createConsole", () => {
 });
 
 describe("createNativeConsoleOutput", () => {
+  // oxlint-disable-next-line evolu/no-unnecessary-global-this -- These tests explicitly observe the global object console used by the native output.
+  const nativeConsole = globalThis.console;
+
   it("calls the native console method with its console receiver", (t) => {
-    const logSpy = t.mock.method(globalThis.console, "info", () => undefined);
+    const logSpy = t.mock.method(nativeConsole, "info", () => undefined);
     const output = createNativeConsoleOutput();
 
     output.write({
@@ -297,11 +300,11 @@ describe("createNativeConsoleOutput", () => {
     });
 
     assertEqual(logSpy.mock.calls[0].arguments, ["hello", "world"]);
-    assertSame(logSpy.mock.calls[0].this, globalThis.console);
+    assertSame(logSpy.mock.calls[0].this, nativeConsole);
   });
 
   it("applies formatter", (t) => {
-    const logSpy = t.mock.method(globalThis.console, "info", () => undefined);
+    const logSpy = t.mock.method(nativeConsole, "info", () => undefined);
     const output = createNativeConsoleOutput();
     const formatter = (entry: ConsoleEntry) => ["prefix", ...entry.args];
 

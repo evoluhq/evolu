@@ -125,7 +125,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   `Nilai ${safelyStringifyUnknownValue(error.value)} bukan instance ${error.constructorName}.`;
 /** Formats a LiteralError in Malay. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak sama sepenuhnya dengan literal yang dijangka: ${globalThis.String(error.expected)}.`;
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak sama sepenuhnya dengan literal yang dijangka: ${String(error.expected)}.`;
 /** Formats a UnionError in Malay. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Nilai tidak sepadan dengan mana-mana varian yang dibenarkan.";

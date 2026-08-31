@@ -126,7 +126,7 @@ export const formatInstanceOfError: TypeErrorFormatter<InstanceOfError> = (
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là một thể hiện của ${error.constructorName}.`;
 /** Định dạng LiteralError bằng tiếng Việt. */
 export const formatLiteralError: TypeErrorFormatter<LiteralError> = (error) =>
-  `Giá trị ${safelyStringifyUnknownValue(error.value)} không hoàn toàn bằng literal mong đợi: ${globalThis.String(error.expected)}.`;
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không hoàn toàn bằng literal mong đợi: ${String(error.expected)}.`;
 /** Định dạng UnionError bằng tiếng Việt. */
 export const formatUnionError: TypeErrorFormatter<UnionError> = () =>
   "Giá trị không khớp với bất kỳ biến thể nào được cho phép.";

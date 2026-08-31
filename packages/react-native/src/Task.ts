@@ -23,6 +23,7 @@ import {
  *
  * ```ts
  * import {
+ *   assertSame,
  *   createConsole,
  *   createConsoleFormatter,
  *   ok,
@@ -38,7 +39,7 @@ import {
  * await using run = createRun({ console });
  * const appPromise = run.ok(() => ok("started"));
  *
- * expect(await appPromise).toBe("started");
+ * assertSame(await appPromise, "started");
  * ```
  */
 export function createRun(): DisposableRun;
@@ -51,8 +52,12 @@ export function createRun<D extends object>(
   deps?: RunCustomDeps<D>,
 ): DisposableRun | DisposableRun<D> {
   const reportDefect = (reported: unknown): void => {
-    if (globalThis.ErrorUtils) globalThis.ErrorUtils.reportError(reported);
-    else reportDefectAfterMicrotask(reported);
+    if (globalThis.ErrorUtils) {
+      // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Report through the React Native host API on the global object even if a realm lexical binding shadows it.
+      globalThis.ErrorUtils.reportError(reported);
+    } else {
+      reportDefectAfterMicrotask(reported);
+    }
   };
 
   return deps === undefined

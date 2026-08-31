@@ -67,6 +67,7 @@ export const createLeakDetector = (deps: ConsoleDep): LeakDetector => {
     return noopLeakDetector;
 
   const report = reportLeak(deps);
+  // oxlint-disable-next-line evolu/no-unnecessary-global-this -- Construct the same global object FinalizationRegistry verified by the feature check.
   const registry = new globalThis.FinalizationRegistry<TrackedLeak>((leak) => {
     report(leak);
   });
