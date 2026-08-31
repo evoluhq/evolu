@@ -11,15 +11,16 @@
  * @module
  */
 
+import { bytesToUtf8, utf8ToBytes } from "@noble/ciphers/utils.js";
 import type { Result } from "./Result.ts";
-import type { JsonValue, NonNegativeInt } from "./Type.ts";
-export {
-  bytesToHex,
-  bytesToUtf8,
-  concatBytes,
-  hexToBytes,
-  utf8ToBytes,
-} from "@noble/ciphers/utils.js";
+import type {
+  FiniteNumber,
+  JsonValue,
+  NonNegativeInt,
+  PositiveInt,
+} from "./Type.ts";
+export { bytesToHex, concatBytes, hexToBytes } from "@noble/ciphers/utils.js";
+export { bytesToUtf8, utf8ToBytes };
 
 /**
  * Custom error for {@link Buffer}-related failures like premature end of data.
@@ -65,11 +66,9 @@ export class BufferError extends Error {
  *   idToIdBytes,
  *   NonNegativeInt,
  *   trySync,
- * } from "@evolu/common";
- * import {
  *   decodeNonNegativeInt,
  *   encodeNonNegativeInt,
- * } from "@evolu/common/local-first";
+ * } from "@evolu/common";
  *
  * const buffer = createBuffer();
  * const id = createIdFromString("buffer-example");
@@ -209,6 +208,242 @@ export const createBuffer = (
   };
 
   return buffer;
+};
+
+/**
+ * Evolu uses MessagePack to handle finite numbers except for NonNegativeInt.
+ * For NonNegativeInt, Evolu provides more efficient encoding.
+ */
+export const encodeNumber = (buffer: Buffer, number: FiniteNumber): void => {
+  encodeJsonValue(buffer, number);
+};
+
+export const decodeNumber = (buffer: Buffer): FiniteNumber => {
+  const value = decodeJsonValue(buffer);
+  if (typeof value !== "number") {
+    throw new BufferError("Expected an encoded number.");
+  }
+  return value;
+};
+
+/**
+ * Encodes an array of boolean flags into a single byte.
+ *
+ * Each element in the array corresponds to a bit (0-7). Array can have 0-8
+ * elements.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, createBuffer, encodeFlags } from "@evolu/common";
+ *
+ * const buffer = createBuffer();
+ * encodeFlags(buffer, [true, false, true]);
+ *
+ * assertEqual(buffer.unwrap(), new Uint8Array([0b101]));
+ * ```
+ */
+export const encodeFlags = (
+  buffer: Buffer,
+  flags: ReadonlyArray<boolean>,
+): void => {
+  let byte = 0;
+  for (let i = 0; i < flags.length && i < 8; i++) {
+    if (flags[i]) {
+      byte |= 1 << i;
+    }
+  }
+  buffer.extend([byte]);
+};
+
+/**
+ * Decodes a byte into an array of boolean flags.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   createBuffer,
+ *   decodeFlags,
+ *   PositiveInt,
+ * } from "@evolu/common";
+ *
+ * const buffer = createBuffer([0b101]);
+ * const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
+ *
+ * assertEqual(flags, [true, false, true]);
+ * assertEqual(buffer.getLength(), 0);
+ * ```
+ */
+export const decodeFlags = (
+  buffer: Buffer,
+  count: PositiveInt,
+): ReadonlyArray<boolean> => {
+  const byte = buffer.shift();
+  const length = globalThis.Math.min(count, 8);
+  const flags = new globalThis.Array<boolean>(length);
+  for (let i = 0; i < length; i++) {
+    flags[i] = (byte & (1 << i)) !== 0;
+  }
+  return flags;
+};
+
+/**
+ * Encodes a non-negative integer into a variable-length integer format. It's
+ * more efficient than encoding via {@link encodeNumber}.
+ *
+ * https://en.wikipedia.org/wiki/Variable-length_quantity
+ */
+export const encodeNonNegativeInt = (
+  buffer: Buffer,
+  value: NonNegativeInt,
+): void => {
+  if (value === 0) {
+    buffer.extend([0]);
+    return;
+  }
+
+  let remaining = BigInt(value);
+  const bytes: Array<number> = [];
+
+  while (remaining !== 0n) {
+    const byte = globalThis.Number(remaining & 127n);
+    bytes.push(byte);
+    remaining >>= 7n;
+  }
+
+  for (let i = 0; i < bytes.length - 1; i++) {
+    bytes[i] |= 128;
+  }
+
+  buffer.extend(bytes);
+};
+
+/**
+ * Decodes a non-negative integer from a variable-length integer format.
+ *
+ * https://en.wikipedia.org/wiki/Variable-length_quantity
+ */
+export const decodeNonNegativeInt = (buffer: Buffer): NonNegativeInt => {
+  let result = 0n;
+  let shift = 0n;
+  let byte = 0;
+
+  // 8 is the smallest required count
+  for (let byteCount = 0; byteCount < 8; byteCount++) {
+    byte = buffer.shift();
+    result |= BigInt(byte & 127) << shift;
+    if ((byte & 128) === 0) break;
+    shift += 7n;
+  }
+
+  if ((byte & 128) !== 0) {
+    throw new BufferError(
+      "Variable-length quantity must terminate within 8 bytes.",
+    );
+  }
+
+  const value = globalThis.Number(result);
+  assertNonNegativeInt(value, "Decoded integer");
+  return value;
+};
+
+/** Encodes the length of an array-like value. */
+export const encodeLength = (
+  buffer: Buffer,
+  value: ArrayLike<unknown>,
+): void => {
+  assertNonNegativeInt(value.length, "Array-like length");
+  encodeNonNegativeInt(buffer, value.length);
+};
+
+/** Decodes an array-like value length. */
+export const decodeLength = decodeNonNegativeInt;
+
+/** Encodes a length-prefixed UTF-8 string. */
+export const encodeString = (buffer: Buffer, value: string): void => {
+  const bytes = utf8ToBytes(value);
+  encodeLength(buffer, bytes);
+  buffer.extend(bytes);
+};
+
+/** Decodes a length-prefixed UTF-8 string. */
+export const decodeString = (buffer: Buffer): string => {
+  const length = decodeLength(buffer);
+  const bytes = buffer.shiftN(length);
+  return bytesToUtf8(bytes);
+};
+
+/** Incrementally encodes consecutive equal values using run-length encoding. */
+export interface RunLengthEncoder<T> {
+  readonly add: (value: T) => void;
+  readonly getLength: () => NonNegativeInt;
+  readonly unwrap: () => Uint8Array;
+}
+
+/** Creates an incremental run-length encoder. */
+export const createRunLengthEncoder = <T>(
+  encodeValue: (buffer: Buffer, value: T) => void,
+): RunLengthEncoder<T> => {
+  const buffer = createBuffer();
+  let previousLength = 0 as NonNegativeInt;
+  let previousValue = null as T | null;
+  let runLength = 0 as NonNegativeInt;
+
+  return {
+    add: (value) => {
+      if (globalThis.Object.is(value, previousValue)) {
+        runLength++;
+        buffer.truncate(previousLength);
+      } else {
+        previousValue = value;
+        runLength = 1 as NonNegativeInt;
+      }
+      previousLength = buffer.getLength();
+      encodeValue(buffer, value);
+      encodeNonNegativeInt(buffer, runLength);
+    },
+
+    getLength: () => buffer.getLength(),
+
+    unwrap: () => buffer.unwrap(),
+  };
+};
+
+/** Decodes a run-length encoded sequence. */
+export const decodeRle = <T>(
+  buffer: Buffer,
+  length: NonNegativeInt,
+  decodeValue: () => T,
+): ReadonlyArray<T> => {
+  const values = new globalThis.Array<T>(length);
+  let index = 0;
+  while (index < length) {
+    const value = decodeValue();
+    const runLength = decodeNonNegativeInt(buffer);
+
+    // Prevent infinite loop on malformed input.
+    if (runLength === 0) {
+      throw new BufferError("Invalid RLE encoding: runLength must be positive");
+    }
+
+    const remaining = length - index;
+
+    // Prevent CPU/memory amplification via oversized runLength.
+    if (runLength > remaining) {
+      throw new BufferError(
+        `Invalid RLE encoding: runLength ${runLength} exceeds remaining ${remaining}`,
+      );
+    }
+
+    for (let i = 0; i < runLength; i++) {
+      values[index] = value;
+      index++;
+    }
+  }
+
+  return values;
 };
 
 // Inspired by msgpackr 2.0.5, licensed under the MIT License.

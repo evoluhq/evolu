@@ -4,7 +4,7 @@
  * @module
  */
 
-import { bytesToHex } from "../Buffer.ts";
+import { bytesToHex, hexToBytes } from "../Buffer.ts";
 import type { RandomBytesDep } from "../Crypto.ts";
 import { createEqObject, eqNumber, eqString } from "../Eq.ts";
 import { increment } from "../Number.ts";
@@ -98,6 +98,24 @@ export type NodeId = typeof NodeId.Output;
 
 export const minNodeId = "0000000000000000" as NodeId;
 export const maxNodeId = "ffffffffffffffff" as NodeId;
+
+/** Binary representation of {@link NodeId}. */
+export const NodeIdBytes = /*#__PURE__*/ brand(
+  "NodeIdBytes",
+  /*#__PURE__*/ length(8)(Uint8Array),
+);
+export type NodeIdBytes = typeof NodeIdBytes.Output;
+
+/** Length of {@link NodeIdBytes}. */
+export const nodeIdBytesLength = /*#__PURE__*/ NonNegativeInt.orThrow(8);
+
+/** Converts {@link NodeId} to {@link NodeIdBytes}. */
+export const nodeIdToNodeIdBytes = (nodeId: NodeId): NodeIdBytes =>
+  hexToBytes(nodeId) as NodeIdBytes;
+
+/** Converts {@link NodeIdBytes} to {@link NodeId}. */
+export const nodeIdBytesToNodeId = (nodeIdBytes: NodeIdBytes): NodeId =>
+  bytesToHex(nodeIdBytes) as NodeId;
 
 /**
  * Hybrid Logical Clock timestamp.
@@ -303,11 +321,8 @@ export const timestampToTimestampBytes = (
   value[6] = (counter >> 8) & 0xff;
   value[7] = counter & 0xff;
 
-  // Encode `nodeId` (16-character hex string) into the next 8 bytes.
-  for (let i = 0; i < 8; i++) {
-    const byte = parseInt(nodeId.slice(i * 2, i * 2 + 2), 16);
-    value[8 + i] = byte;
-  }
+  // Encode `nodeId` into the next 8 bytes.
+  value.set(nodeIdToNodeIdBytes(nodeId), 8);
 
   return value as TimestampBytes;
 };
@@ -328,10 +343,7 @@ export const timestampBytesToTimestamp = (
   const counter = (timestamp[6] << 8) | timestamp[7];
 
   // Decode `nodeId` from the last 8 bytes.
-  let nodeId = "";
-  for (let i = 8; i < 16; i++) {
-    nodeId += timestamp[i].toString(16).padStart(2, "0");
-  }
+  const nodeId = nodeIdBytesToNodeId(timestamp.subarray(8) as NodeIdBytes);
 
   return { millis: Number(millis), counter, nodeId } as Timestamp;
 };

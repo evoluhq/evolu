@@ -184,13 +184,21 @@ import { assert, assertNonNullable, assertNotUndefined } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import {
   type Buffer,
-  bytesToHex,
-  bytesToUtf8,
   createBuffer,
+  createRunLengthEncoder,
+  decodeFlags,
   decodeJsonValue,
+  decodeLength,
+  decodeNonNegativeInt,
+  decodeNumber,
+  decodeRle,
+  decodeString,
+  encodeFlags,
   encodeJsonValue,
-  hexToBytes,
-  utf8ToBytes,
+  encodeLength,
+  encodeNonNegativeInt,
+  encodeNumber,
+  encodeString,
 } from "../Buffer.ts";
 import type { ConsoleDep } from "../Console.ts";
 import {
@@ -208,7 +216,7 @@ import { eqArrayNumber } from "../Eq.ts";
 import { computeBalancedBuckets } from "../Number.ts";
 import { createMutableRecord, objectToEntries } from "../Object.ts";
 import { err, ok, type Result } from "../Result.ts";
-import { SqliteValue } from "../Sqlite.ts";
+import type { SqliteValue } from "../Sqlite.ts";
 import { AbortError, type Task } from "../Task.ts";
 import { Millis } from "../Time.ts";
 import {
@@ -263,14 +271,16 @@ import {
   Counter,
   eqTimestamp,
   NodeId,
+  type NodeIdBytes,
+  nodeIdBytesLength,
+  nodeIdBytesToNodeId,
+  nodeIdToNodeIdBytes,
   Timestamp,
   TimestampBytes,
   timestampBytesLength,
   timestampBytesToTimestamp,
   timestampToTimestampBytes,
 } from "./Timestamp.ts";
-
-const jsonBuffer = createBuffer();
 
 const minProtocolMessageMaxSize = 1_000_000;
 const maxProtocolMessageMaxSize = 100_000_000;
@@ -836,7 +846,7 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
     encodeNonNegativeInt(buffer, value);
   });
   const nodeIdEncoder = createRunLengthEncoder<NodeId>((buffer, value) => {
-    encodeNodeId(buffer, value);
+    buffer.extend(nodeIdToNodeIdBytes(value));
   });
 
   return {
@@ -873,40 +883,6 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
       buffer.extend(counterEncoder.unwrap());
       buffer.extend(nodeIdEncoder.unwrap());
     },
-  };
-};
-
-interface RunLengthEncoder<T> {
-  add: (value: T) => void;
-  getLength: () => NonNegativeInt;
-  unwrap: () => Uint8Array;
-}
-
-const createRunLengthEncoder = <T>(
-  encodeValue: (buffer: Buffer, value: T) => void,
-): RunLengthEncoder<T> => {
-  const buffer = createBuffer();
-  let previousLength = zeroNonNegativeInt;
-  let previousValue = null as T | null;
-  let runLength = zeroNonNegativeInt;
-
-  return {
-    add: (value) => {
-      if (value === previousValue) {
-        runLength++;
-        buffer.truncate(previousLength);
-      } else {
-        previousValue = value;
-        runLength = NonNegativeInt.orThrow(1);
-      }
-      previousLength = buffer.getLength();
-      encodeValue(buffer, value);
-      encodeNonNegativeInt(buffer, runLength);
-    },
-
-    getLength: () => buffer.getLength(),
-
-    unwrap: () => buffer.unwrap(),
   };
 };
 
@@ -1715,7 +1691,9 @@ const decodeTimestamps = (
     return counter.value;
   });
 
-  const nodeIds = decodeRle(buffer, length, (): NodeId => decodeNodeId(buffer));
+  const nodeIds = decodeRle(buffer, length, (): NodeId =>
+    nodeIdBytesToNodeId(buffer.shiftN(nodeIdBytesLength) as NodeIdBytes),
+  );
 
   const timestamps = createMutableArray<Timestamp>(length);
   for (let i = 0; i < length; i++) {
@@ -1729,116 +1707,9 @@ const decodeTimestamps = (
   return timestamps;
 };
 
-export const decodeRle = <T>(
-  buffer: Buffer,
-  length: NonNegativeInt,
-  decodeValue: () => T,
-): ReadonlyArray<T> => {
-  const values = createMutableArray<T>(length);
-  let index = 0;
-  while (index < length) {
-    const value = decodeValue();
-    const runLength = decodeNonNegativeInt(buffer);
-
-    // Prevent infinite loop on malformed input.
-    if (runLength === 0) {
-      throw new ProtocolDecodeError(
-        "Invalid RLE encoding: runLength must be positive",
-      );
-    }
-    const remaining = length - index;
-
-    // Prevent CPU/memory amplification via oversized runLength.
-    if (runLength > remaining) {
-      throw new ProtocolDecodeError(
-        `Invalid RLE encoding: runLength ${runLength} exceeds remaining ${remaining}`,
-      );
-    }
-    for (let i = 0; i < runLength; i++) {
-      values[index] = value;
-      index++;
-    }
-  }
-  return values;
-};
-
 const decodeId = (buffer: Buffer): Id => {
   const bytes = buffer.shiftN(idBytesTypeValueLength);
   return idBytesToId(bytes as IdBytes);
-};
-
-/**
- * Evolu uses MessagePack to handle finite numbers except for NonNegativeInt.
- * For NonNegativeInt, Evolu provides more efficient encoding.
- */
-export const encodeNumber = (buffer: Buffer, number: FiniteNumber): void => {
-  encodeJsonValue(buffer, number);
-};
-
-export const decodeNumber = (buffer: Buffer): FiniteNumber => {
-  const numberResult = FiniteNumber.fromUnknown(decodeJsonValue(buffer));
-  if (!numberResult.ok) throw new ProtocolDecodeError(numberResult.error.type);
-  return numberResult.value;
-};
-
-/**
- * Encodes an array of boolean flags into a single byte.
- *
- * Each element in the array corresponds to a bit (0-7). Array can have 0-8
- * elements.
- *
- * ### Example
- *
- * ```ts
- * import { assertEqual, createBuffer } from "@evolu/common";
- * import { encodeFlags } from "@evolu/common/local-first";
- *
- * const buffer = createBuffer();
- * encodeFlags(buffer, [true, false, true]);
- *
- * assertEqual(buffer.unwrap(), new Uint8Array([0b101]));
- * ```
- */
-export const encodeFlags = (
-  buffer: Buffer,
-  flags: ReadonlyArray<boolean>,
-): void => {
-  let byte = 0;
-  for (let i = 0; i < flags.length && i < 8; i++) {
-    if (flags[i]) {
-      byte |= 1 << i;
-    }
-  }
-  buffer.extend([byte]);
-};
-
-/**
- * Decodes a byte into an array of boolean flags.
- *
- * ### Example
- *
- * ```ts
- * import { assertEqual, createBuffer, PositiveInt } from "@evolu/common";
- * import { decodeFlags } from "@evolu/common/local-first";
- *
- * const buffer = createBuffer([0b101]);
- * const flags = decodeFlags(buffer, PositiveInt.orThrow(3));
- *
- * assertEqual(flags, [true, false, true]);
- * assertEqual(buffer.getLength(), 0);
- * ```
- */
-export const decodeFlags = (
-  buffer: Buffer,
-  count: PositiveInt,
-): ReadonlyArray<boolean> => {
-  const byte = buffer.shift();
-  const length = globalThis.Math.min(count, 8);
-  const flags = createMutableArray<boolean>(length);
-  for (let i = 0; i < length; i++) {
-    flags[i] = (byte & (1 << i)) !== 0;
-  }
-  return flags;
 };
 
 /**
@@ -1972,91 +1843,30 @@ export const decryptAndDecodeDbChange = (
 };
 
 /**
- * Encodes a non-negative integer into a variable-length integer format. It's
- * more efficient than encoding via {@link encodeNumber}.
+ * Decodes a ProtocolMessage into a readable JSON object for debugging.
  *
- * https://en.wikipedia.org/wiki/Variable-length_quantity
- */
-export const encodeNonNegativeInt = (
-  buffer: Buffer,
-  int: NonNegativeInt,
-): void => {
-  if (int === 0) {
-    buffer.extend([0]);
-    return;
-  }
-
-  let remaining = BigInt(int);
-  const bytes: Array<number> = [];
-
-  while (remaining !== 0n) {
-    const byte = globalThis.Number(remaining & 127n);
-    bytes.push(byte);
-    remaining >>= 7n;
-  }
-
-  for (let i = 0; i < bytes.length - 1; i++) {
-    bytes[i] |= 128;
-  }
-
-  buffer.extend(bytes);
-};
-
-/**
- * Decodes a non-negative integer from a variable-length integer format.
+ * Note: This is a stub for future implementation. It should use:
  *
- * https://en.wikipedia.org/wiki/Variable-length_quantity
+ * - DecodeVersionAndOwner
+ * - DecodeError or decodeWriteKeys (depending on context)
+ * - DecodeMessages
+ * - DecodeRanges
+ *
+ * If you want to help, please contribute to this function.
  */
-export const decodeNonNegativeInt = (buffer: Buffer): NonNegativeInt => {
-  let result = 0n;
-  let shift = 0n;
-  let byte;
-
-  // 8 is the smallest required count
-  for (let byteCount = 0; byteCount < 8; byteCount++) {
-    byte = buffer.shift();
-    result |= BigInt(byte & 127) << shift;
-    if ((byte & 128) === 0) break;
-    shift += 7n;
-  }
-
-  const int = NonNegativeInt.fromUnknown(globalThis.Number(result));
-  if (!int.ok) throw new ProtocolDecodeError(int.error.type);
-
-  return int.value;
-};
-
-export const encodeLength = (buffer: Buffer, value: ArrayLike<any>): void => {
-  encodeNonNegativeInt(buffer, NonNegativeInt.orThrow(value.length));
-};
-
-export const decodeLength = decodeNonNegativeInt;
-
-export const encodeString = (buffer: Buffer, value: string): void => {
-  const bytes = utf8ToBytes(value);
-  encodeLength(buffer, bytes);
-  buffer.extend(bytes);
-};
-
-export const decodeString = (buffer: Buffer): string => {
-  const length = decodeLength(buffer);
-  const bytes = buffer.shiftN(length);
-  return bytesToUtf8(bytes);
-};
-
-export const encodeNodeId = (buffer: Buffer, nodeId: NodeId): void => {
-  buffer.extend(hexToBytes(nodeId));
-};
-
-export const decodeNodeId = (buffer: Buffer): NodeId => {
-  const bytes = buffer.shiftN(NonNegativeInt.orThrow(8));
-  return bytesToHex(bytes) as NodeId;
+export const decodeProtocolMessageToJson = (
+  _protocolMessage: ProtocolMessage,
+  _isInitiator: boolean,
+): unknown => {
+  // TODO: Implement using
+  // - decodeVersionAndOwner
+  // -- decodeError or decodeWriteKeys (should be refactored out),
+  // -- decodeMessages, and decodeRanges.
+  // This is a stub for PRs and community contributions.
+  throw new Error("decodeProtocolMessageToJson is not implemented yet.");
 };
 
 // Small ints are encoded into ProtocolValueType, saving one byte per int.
-const isSmallInt: Predicate<number> = (value: number) =>
-  value >= 0 && value < 20;
-
 export const ProtocolValueType = {
   // 0-19 small ints
 
@@ -2246,26 +2056,7 @@ export const decodeSqliteValue = (buffer: Buffer): SqliteValue => {
   }
 };
 
-/**
- * Decodes a ProtocolMessage into a readable JSON object for debugging.
- *
- * Note: This is a stub for future implementation. It should use:
- *
- * - DecodeVersionAndOwner
- * - DecodeError or decodeWriteKeys (depending on context)
- * - DecodeMessages
- * - DecodeRanges
- *
- * If you want to help, please contribute to this function.
- */
-export const decodeProtocolMessageToJson = (
-  _protocolMessage: ProtocolMessage,
-  _isInitiator: boolean,
-): unknown => {
-  // TODO: Implement using
-  // - decodeVersionAndOwner
-  // -- decodeError or decodeWriteKeys (should be refactored out),
-  // -- decodeMessages, and decodeRanges.
-  // This is a stub for PRs and community contributions.
-  throw new Error("decodeProtocolMessageToJson is not implemented yet.");
-};
+const jsonBuffer = createBuffer();
+
+const isSmallInt: Predicate<number> = (value: number) =>
+  value >= 0 && value < 20;
