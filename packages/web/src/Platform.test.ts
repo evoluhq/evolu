@@ -1,45 +1,45 @@
-import { PositiveInt } from "@evolu/common";
-import { afterEach, expect, expectTypeOf, test, vi } from "vitest";
-import { availableParallelism, isApplePlatform } from "../src/index.ts";
+import {
+  assertEqual,
+  assertFalse,
+  assertTrue,
+  assertType,
+  PositiveInt,
+  testStubGlobal,
+} from "@evolu/common";
+import { test } from "node:test";
+import { availableParallelism, isApplePlatform } from "./index.ts";
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
-test.each(["macOS", "MacIntel", "iPhone", "iPad", "iPod"])(
-  "isApplePlatform recognizes %s",
-  (platform) => {
-    vi.stubGlobal("navigator", {
+for (const platform of ["macOS", "MacIntel", "iPhone", "iPad", "iPod"]) {
+  test(`isApplePlatform recognizes ${platform}`, () => {
+    using _navigator = testStubGlobal("navigator", {
       platform: "Win32",
       userAgentData: { platform },
     });
 
-    expect(isApplePlatform()).toBe(true);
-  },
-);
+    assertTrue(isApplePlatform());
+  });
+}
 
 test("isApplePlatform recognizes a non-Apple platform", () => {
-  vi.stubGlobal("navigator", {
+  using _navigator = testStubGlobal("navigator", {
     platform: "MacIntel",
     userAgentData: { platform: "Windows" },
   });
 
-  expect(isApplePlatform()).toBe(false);
+  assertFalse(isApplePlatform());
 });
 
 test("isApplePlatform falls back to navigator.platform", () => {
-  vi.stubGlobal("navigator", { platform: "MacIntel" });
+  using _navigator = testStubGlobal("navigator", { platform: "MacIntel" });
 
-  expect(isApplePlatform()).toBe(true);
+  assertTrue(isApplePlatform());
 });
 
 test("availableParallelism returns the validated browser value", () => {
-  vi.spyOn(globalThis.navigator, "hardwareConcurrency", "get").mockReturnValue(
-    128,
-  );
+  using _navigator = testStubGlobal("navigator", { hardwareConcurrency: 128 });
 
   const parallelism = availableParallelism();
 
-  expectTypeOf(parallelism).toEqualTypeOf<PositiveInt>();
-  expect(parallelism).toBe(128);
+  assertType<typeof parallelism, PositiveInt>();
+  assertEqual(parallelism, 128);
 });

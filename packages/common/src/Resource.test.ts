@@ -1,9 +1,22 @@
-import { assert, describe, expect, expectTypeOf, test } from "vitest";
-import type {
-  NonEmptyArray,
-  NonEmptyReadonlyArray,
-} from "../../../../packages/common/src/Array.ts";
-import { constVoid } from "../../../../packages/common/src/Function.ts";
+import { describe, it } from "node:test";
+import {
+  assert,
+  assertConditionAfterMicrotasks,
+  assertEqual,
+  assertErr,
+  assertFalse,
+  assertInstanceOf,
+  assertLength,
+  assertNotUndefined,
+  assertOk,
+  assertRejects,
+  assertSame,
+  assertTrue,
+} from "./Assert.ts";
+
+import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.ts";
+import { constVoid } from "./Function.ts";
+import { installPolyfills } from "./Polyfills.ts";
 import {
   createSharedResourceByKeyWithClaims,
   createSharedResource,
@@ -14,8 +27,8 @@ import {
   type SharedResource,
   type SharedResourceByKey,
   type SharedResourceByKeyWithClaims,
-} from "../../../../packages/common/src/Resource.ts";
-import { err, ok } from "../../../../packages/common/src/Result.ts";
+} from "./Resource.ts";
+import { err, ok } from "./Result.ts";
 import {
   AbortError,
   createGate,
@@ -23,8 +36,10 @@ import {
   testAbortReason,
   testCreateRun,
   type Task,
-} from "../../../../packages/common/src/Task.ts";
-import { expectConditionAfterMicrotasks } from "./_vitest.ts";
+} from "./Task.ts";
+import { assertType } from "./Type.ts";
+
+installPolyfills();
 
 /** Creates a fresh Disposable per create call and records lifecycle counts. */
 const createTestResources = () => {
@@ -63,7 +78,7 @@ const idleMutexSnapshot = {
 };
 
 describe("BorrowedResource", () => {
-  test("preserves resource unions", () => {
+  it("preserves resource unions", () => {
     interface SyncResource extends Disposable {
       readonly type: "sync";
       readonly sync: () => void;
@@ -73,9 +88,8 @@ describe("BorrowedResource", () => {
       readonly async: () => void;
     }
 
-    expectTypeOf<
-      BorrowedResource<SyncResource | AsyncResource>
-    >().toEqualTypeOf<
+    assertType<
+      BorrowedResource<SyncResource | AsyncResource>,
       | { readonly type: "sync"; readonly sync: () => void }
       | { readonly type: "async"; readonly async: () => void }
     >();
@@ -84,7 +98,7 @@ describe("BorrowedResource", () => {
 
 describe("SharedResource", () => {
   describe("acquire", () => {
-    test("lazily creates the resource", async () => {
+    it("lazily creates the resource", async () => {
       await using run = testCreateRun();
 
       let createCount = 0;
@@ -97,15 +111,15 @@ describe("SharedResource", () => {
         }),
       );
 
-      expect(createCount).toBe(0);
+      assertEqual(createCount, 0);
 
       const lease = await run.ok(sharedResource.acquire);
 
-      expect(createCount).toBe(1);
-      expect(lease.resource).toBe(resource);
+      assertEqual(createCount, 1);
+      assertSame(lease.resource, resource);
     });
 
-    test("reuses the current resource while a lease is held", async () => {
+    it("reuses the current resource while a lease is held", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -116,11 +130,11 @@ describe("SharedResource", () => {
       const first = await run.ok(sharedResource.acquire);
       const second = await run.ok(sharedResource.acquire);
 
-      expect(resources.getCreateCount()).toBe(1);
-      expect(second.resource).toBe(first.resource);
+      assertEqual(resources.getCreateCount(), 1);
+      assertSame(second.resource, first.resource);
     });
 
-    test("reports whether acquire created the resource", async () => {
+    it("reports whether acquire created the resource", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -131,11 +145,11 @@ describe("SharedResource", () => {
       const first = await run.ok(sharedResource.acquire);
       const second = await run.ok(sharedResource.acquire);
 
-      expect(first.created).toBe(true);
-      expect(second.created).toBe(false);
+      assertTrue(first.created);
+      assertFalse(second.created);
     });
 
-    test("creates a fresh resource after disposal", async () => {
+    it("creates a fresh resource after disposal", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -151,11 +165,11 @@ describe("SharedResource", () => {
 
       const second = await run.ok(sharedResource.acquire);
 
-      expect(resources.getCreateCount()).toBe(2);
-      expect(second.resource).not.toBe(firstResource);
+      assertEqual(resources.getCreateCount(), 2);
+      assertFalse(globalThis.Object.is(second.resource, firstResource));
     });
 
-    test("waits for async resource disposal", async () => {
+    it("waits for async resource disposal", async () => {
       await using run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -179,15 +193,15 @@ describe("SharedResource", () => {
 
       const second = run.ok(sharedResource.acquire);
 
-      expect(createCount).toBe(1);
+      assertEqual(createCount, 1);
 
       continueDisposal.resolve();
       await second;
 
-      expect(createCount).toBe(2);
+      assertEqual(createCount, 2);
     });
 
-    test("serializes concurrent first calls so create runs once", async () => {
+    it("serializes concurrent first calls so create runs once", async () => {
       await using run = testCreateRun();
       const gate = createGate();
 
@@ -206,12 +220,12 @@ describe("SharedResource", () => {
       gate.open();
       const [firstLease, secondLease] = await Promise.all([first, second]);
 
-      expect(createCount).toBe(1);
-      expect(firstLease.resource).toBe(resource);
-      expect(secondLease.resource).toBe(resource);
+      assertEqual(createCount, 1);
+      assertSame(firstLease.resource, resource);
+      assertSame(secondLease.resource, resource);
     });
 
-    test("runs to completion when the caller aborts its Fiber", async () => {
+    it("runs to completion when the caller aborts its Fiber", async () => {
       await using run = testCreateRun();
       const gate = createGate();
 
@@ -229,12 +243,12 @@ describe("SharedResource", () => {
 
       const result = await fiber;
 
-      assert(result.ok);
-      expect(result.value.resource).toBe(resource);
-      expect(sharedResource.snapshot().leaseCount).toBe(1);
+      assertOk(result);
+      assertSame(result.value.resource, resource);
+      assertEqual(sharedResource.snapshot().leaseCount, 1);
     });
 
-    test("overprovided acquire deps do not replace deps captured for create", async () => {
+    it("overprovided acquire deps do not replace deps captured for create", async () => {
       await using run = testCreateRun();
 
       interface TestResource extends Disposable {
@@ -255,12 +269,12 @@ describe("SharedResource", () => {
         value: "replacement",
       });
 
-      expect(lease.resource.value).toBe("captured");
+      assertEqual(lease.resource.value, "captured");
     });
   });
 
   describe("acquireCurrent", () => {
-    test("returns undefined without creating a resource", async () => {
+    it("returns undefined without creating a resource", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -270,11 +284,11 @@ describe("SharedResource", () => {
 
       const lease = await run.ok(sharedResource.acquireCurrent);
 
-      expect(lease).toBeUndefined();
-      expect(resources.getCreateCount()).toBe(0);
+      assertSame(lease, undefined);
+      assertEqual(resources.getCreateCount(), 0);
     });
 
-    test("waits for in-flight creation and acquires the new resource", async () => {
+    it("waits for in-flight creation and acquires the new resource", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const gate = createGate();
@@ -293,12 +307,12 @@ describe("SharedResource", () => {
       const firstLease = await first;
       const currentLease = await current;
 
-      expect(currentLease?.resource).toBe(firstLease.resource);
-      expect(currentLease?.created).toBe(false);
-      expect(resources.getCreateCount()).toBe(1);
+      assertSame(currentLease?.resource, firstLease.resource);
+      assertFalse(currentLease?.created);
+      assertEqual(resources.getCreateCount(), 1);
     });
 
-    test("waits for in-flight disposal and returns undefined", async () => {
+    it("waits for in-flight disposal and returns undefined", async () => {
       await using run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -319,13 +333,13 @@ describe("SharedResource", () => {
       await disposalStarted.promise;
 
       const current = run.ok(sharedResource.acquireCurrent);
-      expect(sharedResource.snapshot().mutex.waiters).toEqual([{ permits: 1 }]);
+      assertEqual(sharedResource.snapshot().mutex.waiters, [{ permits: 1 }]);
       continueDisposal.resolve();
 
-      expect(await current).toBeUndefined();
+      assertSame(await current, undefined);
     });
 
-    test("acquires the current resource without creating another", async () => {
+    it("acquires the current resource without creating another", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -336,12 +350,12 @@ describe("SharedResource", () => {
       const first = await run.ok(sharedResource.acquire);
       const current = await run.ok(sharedResource.acquireCurrent);
 
-      expect(current?.resource).toBe(first.resource);
-      expect(current?.created).toBe(false);
-      expect(resources.getCreateCount()).toBe(1);
+      assertSame(current?.resource, first.resource);
+      assertFalse(current?.created);
+      assertEqual(resources.getCreateCount(), 1);
     });
 
-    test("cancels pending idle disposal and acquires the current resource", async () => {
+    it("cancels pending idle disposal and acquires the current resource", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -354,16 +368,16 @@ describe("SharedResource", () => {
 
       const current = await run.ok(sharedResource.acquireCurrent);
 
-      expect(current?.resource).toBe(first.resource);
-      expect(sharedResource.snapshot().idleDisposePending).toBe(false);
+      assertSame(current?.resource, first.resource);
+      assertFalse(sharedResource.snapshot().idleDisposePending);
 
       run.deps.time.advance("3s");
-      expect(resources.getDisposeCount()).toBe(0);
+      assertEqual(resources.getDisposeCount(), 0);
     });
   });
 
   describe("use", () => {
-    test("creates the resource and releases its lease after the Task settles", async () => {
+    it("creates the resource and releases its lease after the Task settles", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       let leaseCountDuringUse: number | undefined;
@@ -381,13 +395,13 @@ describe("SharedResource", () => {
         }),
       );
 
-      expect(value).toBe("used");
-      expect(createdDuringUse).toBe(true);
-      expect(leaseCountDuringUse).toBe(1);
-      expect(sharedResource.snapshot().leaseCount).toBe(0);
+      assertEqual(value, "used");
+      assertTrue(createdDuringUse);
+      assertEqual(leaseCountDuringUse, 1);
+      assertEqual(sharedResource.snapshot().leaseCount, 0);
     });
 
-    test("reports created false while reusing a held resource", async () => {
+    it("reports created false while reusing a held resource", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       let createdDuringUse: boolean | undefined;
@@ -404,12 +418,12 @@ describe("SharedResource", () => {
         }),
       );
 
-      expect(createdDuringUse).toBe(false);
-      expect(resources.getCreateCount()).toBe(1);
-      expect(sharedResource.snapshot().leaseCount).toBe(1);
+      assertFalse(createdDuringUse);
+      assertEqual(resources.getCreateCount(), 1);
+      assertEqual(sharedResource.snapshot().leaseCount, 1);
     });
 
-    test("releases its lease when the callback Task aborts", async () => {
+    it("releases its lease when the callback Task aborts", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const callbackStarted = Promise.withResolvers<void>();
@@ -429,23 +443,23 @@ describe("SharedResource", () => {
       );
       await callbackStarted.promise;
 
-      expect(sharedResource.snapshot().leaseCount).toBe(1);
+      assertEqual(sharedResource.snapshot().leaseCount, 1);
 
       fiber.abort(testAbortReason);
       const result = await fiber;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(testAbortReason);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, testAbortReason);
 
       await disposed;
-      expect(sharedResource.snapshot().leaseCount).toBe(0);
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(sharedResource.snapshot().leaseCount, 0);
+      assertEqual(resources.getDisposeCount(), 1);
     });
   });
 
   describe("Lease", () => {
-    test("release disposes the resource after the last lease", async () => {
+    it("release disposes the resource after the last lease", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -456,15 +470,15 @@ describe("SharedResource", () => {
       const lease = await run.ok(sharedResource.acquire);
       const disposed = resources.nextDisposed();
 
-      expect(lease.release()).toBe(true);
+      assertTrue(lease.release());
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(sharedResource.snapshot().hasResource).toBe(false);
-      expect(sharedResource.snapshot().idleDisposePending).toBe(false);
+      assertEqual(resources.getDisposeCount(), 1);
+      assertFalse(sharedResource.snapshot().hasResource);
+      assertFalse(sharedResource.snapshot().idleDisposePending);
     });
 
-    test("release keeps the resource while other leases remain", async () => {
+    it("release keeps the resource while other leases remain", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -475,14 +489,14 @@ describe("SharedResource", () => {
       const first = await run.ok(sharedResource.acquire);
       await run.ok(sharedResource.acquire);
 
-      expect(first.release()).toBe(true);
+      assertTrue(first.release());
 
-      expect(resources.getDisposeCount()).toBe(0);
-      expect(sharedResource.snapshot().hasResource).toBe(true);
-      expect(sharedResource.snapshot().leaseCount).toBe(1);
+      assertEqual(resources.getDisposeCount(), 0);
+      assertTrue(sharedResource.snapshot().hasResource);
+      assertEqual(sharedResource.snapshot().leaseCount, 1);
     });
 
-    test("release is idempotent and returns false after the first call", async () => {
+    it("release is idempotent and returns false after the first call", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -493,15 +507,15 @@ describe("SharedResource", () => {
       const first = await run.ok(sharedResource.acquire);
       await run.ok(sharedResource.acquire);
 
-      expect(first.release()).toBe(true);
-      expect(first.release()).toBe(false);
+      assertTrue(first.release());
+      assertFalse(first.release());
 
       // Double release must not release the remaining lease's hold.
-      expect(sharedResource.snapshot().leaseCount).toBe(1);
-      expect(resources.getDisposeCount()).toBe(0);
+      assertEqual(sharedResource.snapshot().leaseCount, 1);
+      assertEqual(resources.getDisposeCount(), 0);
     });
 
-    test("release remains safe after root Run disposal", async () => {
+    it("release remains safe after root Run disposal", async () => {
       const run = testCreateRun();
       const resources = createTestResources();
 
@@ -512,11 +526,11 @@ describe("SharedResource", () => {
 
       await run[Symbol.asyncDispose]();
 
-      expect(lease.release()).toBe(false);
-      expect(lease.release()).toBe(false);
+      assertFalse(lease.release());
+      assertFalse(lease.release());
     });
 
-    test("Symbol.dispose releases it", async () => {
+    it("Symbol.dispose releases it", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -528,16 +542,16 @@ describe("SharedResource", () => {
 
       {
         using _ = await run.ok(sharedResource.acquire);
-        expect(sharedResource.snapshot().leaseCount).toBe(1);
+        assertEqual(sharedResource.snapshot().leaseCount, 1);
       }
 
       await disposed;
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
   });
 
   describe("idleDisposeAfter", () => {
-    test("delays disposal after the last release", async () => {
+    it("delays disposal after the last release", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -547,19 +561,19 @@ describe("SharedResource", () => {
 
       const lease = await run.ok(sharedResource.acquire);
 
-      expect(lease.release()).toBe(true);
-      expect(resources.getDisposeCount()).toBe(0);
-      expect(sharedResource.snapshot().idleDisposePending).toBe(true);
+      assertTrue(lease.release());
+      assertEqual(resources.getDisposeCount(), 0);
+      assertTrue(sharedResource.snapshot().idleDisposePending);
 
       const disposed = resources.nextDisposed();
       run.deps.time.advance("3s");
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(sharedResource.snapshot().hasResource).toBe(false);
+      assertEqual(resources.getDisposeCount(), 1);
+      assertFalse(sharedResource.snapshot().hasResource);
     });
 
-    test("reuses the current resource when acquired before disposal", async () => {
+    it("reuses the current resource when acquired before disposal", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -569,19 +583,19 @@ describe("SharedResource", () => {
 
       const first = await run.ok(sharedResource.acquire);
       first.release();
-      expect(sharedResource.snapshot().idleDisposePending).toBe(true);
+      assertTrue(sharedResource.snapshot().idleDisposePending);
 
       const second = await run.ok(sharedResource.acquire);
 
-      expect(sharedResource.snapshot().idleDisposePending).toBe(false);
-      expect(resources.getCreateCount()).toBe(1);
-      expect(second.resource).toBe(first.resource);
+      assertFalse(sharedResource.snapshot().idleDisposePending);
+      assertEqual(resources.getCreateCount(), 1);
+      assertSame(second.resource, first.resource);
 
       run.deps.time.advance("3s");
-      expect(resources.getDisposeCount()).toBe(0);
+      assertEqual(resources.getDisposeCount(), 0);
     });
 
-    test("restarts the idle delay after reacquisition and release", async () => {
+    it("restarts the idle delay after reacquisition and release", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -597,17 +611,17 @@ describe("SharedResource", () => {
       second.release();
       run.deps.time.advance("1s");
 
-      expect(resources.getDisposeCount()).toBe(0);
-      expect(sharedResource.snapshot().idleDisposePending).toBe(true);
+      assertEqual(resources.getDisposeCount(), 0);
+      assertTrue(sharedResource.snapshot().idleDisposePending);
 
       const disposed = resources.nextDisposed();
       run.deps.time.advance("2s");
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("creates a fresh resource when acquired after the timer elapses", async () => {
+    it("creates a fresh resource when acquired after the timer elapses", async () => {
       await using run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -635,18 +649,18 @@ describe("SharedResource", () => {
       await disposalStarted.promise;
 
       const second = run.ok(sharedResource.acquire);
-      expect(createCount).toBe(1);
+      assertEqual(createCount, 1);
 
       continueDisposal.resolve();
       const secondLease = await second;
 
-      expect(createCount).toBe(2);
-      expect(secondLease.resource).not.toBe(first.resource);
+      assertEqual(createCount, 2);
+      assertFalse(globalThis.Object.is(secondLease.resource, first.resource));
     });
   });
 
   describe("snapshot", () => {
-    test("reports shared resource state", async () => {
+    it("reports shared resource state", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -654,7 +668,7 @@ describe("SharedResource", () => {
         createSharedResource(resources.create, { idleDisposeAfter: "3s" }),
       );
 
-      expect(sharedResource.snapshot()).toEqual({
+      assertEqual(sharedResource.snapshot(), {
         isIdle: true,
         leaseCount: 0,
         hasResource: false,
@@ -664,7 +678,7 @@ describe("SharedResource", () => {
 
       const lease = await run.ok(sharedResource.acquire);
 
-      expect(sharedResource.snapshot()).toEqual({
+      assertEqual(sharedResource.snapshot(), {
         isIdle: false,
         leaseCount: 1,
         hasResource: true,
@@ -674,7 +688,7 @@ describe("SharedResource", () => {
 
       lease.release();
 
-      expect(sharedResource.snapshot()).toEqual({
+      assertEqual(sharedResource.snapshot(), {
         isIdle: false,
         leaseCount: 0,
         hasResource: true,
@@ -683,7 +697,7 @@ describe("SharedResource", () => {
       });
     });
 
-    test("reports immediate disposal in progress", async () => {
+    it("reports immediate disposal in progress", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -695,7 +709,7 @@ describe("SharedResource", () => {
       const disposed = resources.nextDisposed();
       lease.release();
 
-      expect(sharedResource.snapshot()).toEqual({
+      assertEqual(sharedResource.snapshot(), {
         isIdle: false,
         leaseCount: 0,
         hasResource: true,
@@ -713,7 +727,7 @@ describe("SharedResource", () => {
       await disposed;
     });
 
-    test("reports not idle while creating the first resource", async () => {
+    it("reports not idle while creating the first resource", async () => {
       await using run = testCreateRun();
       const gate = createGate();
 
@@ -729,10 +743,10 @@ describe("SharedResource", () => {
       gate.open();
       await acquire;
 
-      expect(isIdleWhileCreating).toBe(false);
+      assertFalse(isIdleWhileCreating);
     });
 
-    test("reports mutex waiters during a contended acquire", async () => {
+    it("reports mutex waiters during a contended acquire", async () => {
       await using run = testCreateRun();
       const gate = createGate();
 
@@ -749,12 +763,12 @@ describe("SharedResource", () => {
       gate.open();
       await Promise.all([first, second]);
 
-      expect(mutexWhileContended.waiters).toEqual([{ permits: 1 }]);
+      assertEqual(mutexWhileContended.waiters, [{ permits: 1 }]);
     });
   });
 
   describe("onDisposed", () => {
-    test("does not call onDisposed when disposed before resource creation", async () => {
+    it("does not call onDisposed when disposed before resource creation", async () => {
       await using run = testCreateRun();
       let onDisposedCallCount = 0;
 
@@ -768,10 +782,10 @@ describe("SharedResource", () => {
 
       await sharedResource[Symbol.asyncDispose]();
 
-      expect(onDisposedCallCount).toBe(0);
+      assertEqual(onDisposedCallCount, 0);
     });
 
-    test("calls onDisposed during owner disposal", async () => {
+    it("calls onDisposed during owner disposal", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       let disposeCountAtCallback: number | undefined;
@@ -787,10 +801,10 @@ describe("SharedResource", () => {
 
       await sharedResource[Symbol.asyncDispose]();
 
-      expect(disposeCountAtCallback).toBe(1);
+      assertEqual(disposeCountAtCallback, 1);
     });
 
-    test("runs after the resource is disposed and cleared", async () => {
+    it("runs after the resource is disposed and cleared", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const onDisposedCalled = Promise.withResolvers<void>();
@@ -814,10 +828,10 @@ describe("SharedResource", () => {
       lease.release();
       await onDisposedCalled.promise;
 
-      expect(stateAtCallback).toEqual({ disposeCount: 1, hasResource: false });
+      assertEqual(stateAtCallback, { disposeCount: 1, hasResource: false });
     });
 
-    test("runs after delayed idle disposal", async () => {
+    it("runs after delayed idle disposal", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const onDisposedCalled = Promise.withResolvers<void>();
@@ -832,18 +846,18 @@ describe("SharedResource", () => {
       const lease = await run.ok(sharedResource.acquire);
       lease.release();
 
-      expect(resources.getDisposeCount()).toBe(0);
+      assertEqual(resources.getDisposeCount(), 0);
 
       run.deps.time.advance("3s");
       await onDisposedCalled.promise;
 
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(sharedResource.snapshot().hasResource).toBe(false);
+      assertEqual(resources.getDisposeCount(), 1);
+      assertFalse(sharedResource.snapshot().hasResource);
     });
   });
 
   describe("disposal", () => {
-    test("aborts acquire queued on the mutex when the owner is disposed", async () => {
+    it("aborts acquire queued on the mutex when the owner is disposed", async () => {
       await using run = testCreateRun();
       const createStarted = Promise.withResolvers<void>();
       const gate = createGate();
@@ -860,21 +874,21 @@ describe("SharedResource", () => {
       await createStarted.promise;
 
       const queued = run.abortable(sharedResource.acquire);
-      expect(sharedResource.snapshot().mutex.waiters).toEqual([{ permits: 1 }]);
+      assertEqual(sharedResource.snapshot().mutex.waiters, [{ permits: 1 }]);
 
       const disposal = sharedResource[Symbol.asyncDispose]();
       const result = await queued;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(runDisposedAbortReason);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, runDisposedAbortReason);
 
       gate.open();
       await first;
       await disposal;
     });
 
-    test("aborts acquire when the owner is disposed during creation", async () => {
+    it("aborts acquire when the owner is disposed during creation", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const createStarted = Promise.withResolvers<void>();
@@ -898,14 +912,14 @@ describe("SharedResource", () => {
       const result = await acquire;
       await disposal;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(runDisposedAbortReason);
-      expect(resources.getCreateCount()).toBe(1);
-      expect(resources.getDisposeCount()).toBe(1);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, runDisposedAbortReason);
+      assertEqual(resources.getCreateCount(), 1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("disposes the current resource and releases held leases", async () => {
+    it("disposes the current resource and releases held leases", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -916,12 +930,12 @@ describe("SharedResource", () => {
 
       await sharedResource[Symbol.asyncDispose]();
 
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(lease.release()).toBe(false);
-      expect(sharedResource.snapshot().hasResource).toBe(false);
+      assertEqual(resources.getDisposeCount(), 1);
+      assertFalse(lease.release());
+      assertFalse(sharedResource.snapshot().hasResource);
     });
 
-    test("clears pending idle disposal state", async () => {
+    it("clears pending idle disposal state", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -931,18 +945,17 @@ describe("SharedResource", () => {
       const lease = await run.ok(sharedResource.acquire);
       lease.release();
 
-      expect(sharedResource.snapshot().idleDisposePending).toBe(true);
+      assertTrue(sharedResource.snapshot().idleDisposePending);
 
       await sharedResource[Symbol.asyncDispose]();
 
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(sharedResource.snapshot()).toMatchObject({
-        isIdle: true,
-        idleDisposePending: false,
-      });
+      assertEqual(resources.getDisposeCount(), 1);
+      const snapshot = sharedResource.snapshot();
+      assertTrue(snapshot.isIdle);
+      assertFalse(snapshot.idleDisposePending);
     });
 
-    test("awaits async resource disposal", async () => {
+    it("awaits async resource disposal", async () => {
       await using run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -965,15 +978,15 @@ describe("SharedResource", () => {
       });
       await disposalStarted.promise;
 
-      expect(disposalSettled).toBe(false);
+      assertFalse(disposalSettled);
 
       continueDisposal.resolve();
       await disposal;
 
-      expect(disposalSettled).toBe(true);
+      assertTrue(disposalSettled);
     });
 
-    test("root Run disposal awaits current resource disposal", async () => {
+    it("root Run disposal awaits current resource disposal", async () => {
       const run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -1001,14 +1014,14 @@ describe("SharedResource", () => {
           rootDisposal.then(() => "rootDisposalSettled"),
         ]);
 
-        expect(firstSettled).toBe("resourceDisposalStarted");
-        expect(rootDisposalSettled).toBe(false);
+        assertEqual(firstSettled, "resourceDisposalStarted");
+        assertFalse(rootDisposalSettled);
 
         continueDisposal.resolve();
         await rootDisposal;
 
-        expect(sharedResource.snapshot().hasResource).toBe(false);
-        expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([]);
+        assertFalse(sharedResource.snapshot().hasResource);
+        assertEqual(run.deps.reportDefect.getDefectsSnapshot(), []);
       } finally {
         continueDisposal.resolve();
         await sharedResource[Symbol.asyncDispose]();
@@ -1016,7 +1029,7 @@ describe("SharedResource", () => {
       }
     });
 
-    test("allows late lease release as a safe no-op", async () => {
+    it("allows late lease release as a safe no-op", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1026,14 +1039,14 @@ describe("SharedResource", () => {
       const lease = await run.ok(sharedResource.acquire);
 
       const disposal = sharedResource[Symbol.asyncDispose]();
-      expect(lease.release()).toBe(true);
+      assertTrue(lease.release());
       await disposal;
 
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(lease.release()).toBe(false);
+      assertEqual(resources.getDisposeCount(), 1);
+      assertFalse(lease.release());
     });
 
-    test("owner disposal can drain a transferred lease before the caller awaits it", async () => {
+    it("owner disposal can drain a transferred lease before the caller awaits it", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1042,7 +1055,7 @@ describe("SharedResource", () => {
       );
       const acquire = run.ok(sharedResource.acquire);
 
-      await expectConditionAfterMicrotasks(
+      await assertConditionAfterMicrotasks(
         () => sharedResource.snapshot().leaseCount === 1,
         10,
       );
@@ -1050,12 +1063,12 @@ describe("SharedResource", () => {
 
       const lease = await acquire;
 
-      expect(sharedResource.snapshot().leaseCount).toBe(0);
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(lease.release()).toBe(false);
+      assertEqual(sharedResource.snapshot().leaseCount, 0);
+      assertEqual(resources.getDisposeCount(), 1);
+      assertFalse(lease.release());
     });
 
-    test("skips scheduled disposal when a new lease arrives", async () => {
+    it("skips scheduled disposal when a new lease arrives", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1075,28 +1088,29 @@ describe("SharedResource", () => {
       // disposal task ran.
       await run.ok(sharedResource.acquire);
 
-      expect(resources.getDisposeCount()).toBe(0);
-      expect(secondLease.resource).toBe(first.resource);
+      assertEqual(resources.getDisposeCount(), 0);
+      assertSame(secondLease.resource, first.resource);
     });
   });
 
   describe("leak detection", () => {
-    test("warns when an undisposed SharedResource is garbage-collected", async () => {
+    it("warns when an undisposed SharedResource is garbage-collected", async () => {
       await using run = testCreateRun();
 
       await run.ok(createSharedResource(createTestResources().create));
 
-      expect(run.deps.leakDetector.collect()).toBe(1);
+      assertEqual(run.deps.leakDetector.collect(), 1);
 
       const entries = run.deps.console.getEntriesSnapshot();
-      expect(entries).toHaveLength(1);
-      expect(entries[0].method).toBe("warn");
-      expect(entries[0].args[0]).toBe(
+      assertLength(entries, 1);
+      assertEqual(entries[0].method, "warn");
+      assertEqual(
+        entries[0].args[0],
         "SharedResource was garbage-collected without cleanup. Tracked at:",
       );
     });
 
-    test("warns when a leaked lease is garbage-collected", async () => {
+    it("warns when a leaked lease is garbage-collected", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1107,21 +1121,23 @@ describe("SharedResource", () => {
       // Acquired but never released — a leak.
       await run.ok(sharedResource.acquire);
 
-      expect(run.deps.leakDetector.collect()).toBe(2);
+      assertEqual(run.deps.leakDetector.collect(), 2);
 
       const entries = run.deps.console.getEntriesSnapshot();
-      expect(entries).toHaveLength(2);
-      expect(entries).toContainEqual(
-        expect.objectContaining({
-          method: "warn",
-          args: expect.arrayContaining([
-            "Lease was garbage-collected without cleanup. Tracked at:",
-          ]),
-        }),
+      assertLength(entries, 2);
+      assert(
+        entries.some(
+          (entry) =>
+            entry.method === "warn" &&
+            entry.args.includes(
+              "Lease was garbage-collected without cleanup. Tracked at:",
+            ),
+        ),
+        "Expected a leaked lease warning.",
       );
     });
 
-    test("release untracks the lease", async () => {
+    it("release untracks the lease", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1131,14 +1147,14 @@ describe("SharedResource", () => {
 
       const lease = await run.ok(sharedResource.acquire);
 
-      expect(run.deps.leakDetector.getTrackedCount({ name: "Lease" })).toBe(1);
+      assertEqual(run.deps.leakDetector.getTrackedCount({ name: "Lease" }), 1);
 
       lease.release();
 
-      expect(run.deps.leakDetector.getTrackedCount({ name: "Lease" })).toBe(0);
+      assertEqual(run.deps.leakDetector.getTrackedCount({ name: "Lease" }), 0);
     });
 
-    test("disposal untracks held leases", async () => {
+    it("disposal untracks held leases", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1147,17 +1163,17 @@ describe("SharedResource", () => {
       );
 
       await run.ok(sharedResource.acquire);
-      expect(run.deps.leakDetector.getTrackedCount({ name: "Lease" })).toBe(1);
+      assertEqual(run.deps.leakDetector.getTrackedCount({ name: "Lease" }), 1);
 
       await sharedResource[Symbol.asyncDispose]();
 
-      expect(run.deps.leakDetector.getTrackedCount({ name: "Lease" })).toBe(0);
-      expect(run.deps.console.getEntriesSnapshot()).toEqual([]);
+      assertEqual(run.deps.leakDetector.getTrackedCount({ name: "Lease" }), 0);
+      assertEqual(run.deps.console.getEntriesSnapshot(), []);
     });
   });
 
   describe("defects", () => {
-    test("acquire after disposal is a programmer error", async () => {
+    it("acquire after disposal is a programmer error", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1168,17 +1184,18 @@ describe("SharedResource", () => {
 
       const result = await run.abortable(sharedResource.acquire);
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBeInstanceOf(Error);
-      expect((result.error.reason.defect as Error).message).toBe(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertInstanceOf(result.error.reason.defect, Error);
+      assertEqual(
+        result.error.reason.defect.message,
         "Cannot use a disposed object.",
       );
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("throwing create Task panics the Run tree", async () => {
+    it("throwing create Task panics the Run tree", async () => {
       await using run = testCreateRun();
       const defect = new Error("create failed");
 
@@ -1190,14 +1207,14 @@ describe("SharedResource", () => {
 
       const result = await run.abortable(sharedResource.acquire);
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBe(defect);
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertSame(result.error.reason.defect, defect);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("throwing onDisposed after the last release panics the Run tree", async () => {
+    it("throwing onDisposed after the last release panics the Run tree", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const defect = new Error("onDisposed failed");
@@ -1216,12 +1233,12 @@ describe("SharedResource", () => {
       // Disposal runs on a fire-and-forget Fiber, so the defect is observable
       // only via panic reporting.
       const abortError = await run.deps.reportDefect.next();
-      assert(AbortError.is(abortError));
-      assert(abortError.reason.type === "PanicAbortReason");
-      expect(abortError.reason.defect).toBe(defect);
+      assertType(AbortError, abortError);
+      assertSame(abortError.reason.type, "PanicAbortReason");
+      assertSame(abortError.reason.defect, defect);
     });
 
-    test("throwing onDisposed during disposal reports once and rejects with AbortError", async () => {
+    it("throwing onDisposed during disposal reports once and rejects with AbortError", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const defect = new Error("onDisposed failed");
@@ -1236,22 +1253,20 @@ describe("SharedResource", () => {
 
       await run.ok(sharedResource.acquire);
 
-      let disposalError: unknown;
-      try {
-        await sharedResource[Symbol.asyncDispose]();
-      } catch (error) {
-        disposalError = error;
-      }
-
-      assert(AbortError.is(disposalError));
-      assert(disposalError.reason.type === "PanicAbortReason");
-      expect(disposalError.reason.defect).toBe(defect);
-      expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([
-        disposalError,
-      ]);
+      await assertRejects(
+        sharedResource[Symbol.asyncDispose](),
+        (disposalError) => {
+          assertType(AbortError, disposalError);
+          assertSame(disposalError.reason.type, "PanicAbortReason");
+          assertSame(disposalError.reason.defect, defect);
+          assertEqual(run.deps.reportDefect.getDefectsSnapshot(), [
+            disposalError,
+          ]);
+        },
+      );
     });
 
-    test("throwing resource disposer panics the Run tree", async () => {
+    it("throwing resource disposer panics the Run tree", async () => {
       await using run = testCreateRun();
       const defect = new Error("dispose failed");
 
@@ -1269,14 +1284,14 @@ describe("SharedResource", () => {
       lease.release();
 
       const abortError = await run.deps.reportDefect.next();
-      assert(AbortError.is(abortError));
-      assert(abortError.reason.type === "PanicAbortReason");
-      expect(abortError.reason.defect).toBe(defect);
+      assertType(AbortError, abortError);
+      assertSame(abortError.reason.type, "PanicAbortReason");
+      assertSame(abortError.reason.defect, defect);
     });
   });
 
   describe("types", () => {
-    test("keyed acquire does not require captured deps", () => {
+    it("keyed acquire does not require captured deps", () => {
       interface TestDb extends Disposable {
         readonly query: () => string;
       }
@@ -1284,9 +1299,7 @@ describe("SharedResource", () => {
         readonly value: string;
       }
 
-      expectTypeOf<SharedResource<TestDb>["acquire"]>().toEqualTypeOf<
-        Task<Lease<TestDb>>
-      >();
+      assertType<SharedResource<TestDb>["acquire"], Task<Lease<TestDb>>>();
 
       const _sharedResource = createSharedResource((() =>
         ok({ [Symbol.dispose]: constVoid })) as Task<
@@ -1294,7 +1307,8 @@ describe("SharedResource", () => {
         never,
         TestDep
       >);
-      expectTypeOf(_sharedResource).toEqualTypeOf<
+      assertType<
+        typeof _sharedResource,
         Task<SharedResource<Disposable>, never, TestDep>
       >();
 
@@ -1302,7 +1316,7 @@ describe("SharedResource", () => {
       createSharedResource(() => err({ type: "CreateError" }));
     });
 
-    test("acquireCurrent and use preserve their Task types", async () => {
+    it("acquireCurrent and use preserve their Task types", async () => {
       await using run = testCreateRun();
 
       interface TestDb extends Disposable {
@@ -1320,7 +1334,8 @@ describe("SharedResource", () => {
 
       await using sharedResource = await run.ok(createSharedResource(create));
 
-      expectTypeOf(sharedResource.acquireCurrent).toEqualTypeOf<
+      assertType<
+        typeof sharedResource.acquireCurrent,
         Task<Lease<TestDb> | undefined>
       >();
 
@@ -1328,14 +1343,14 @@ describe("SharedResource", () => {
         (): Task<"used", TestError, TestDep> => () =>
           err({ type: "TestError" }),
       );
-      expectTypeOf(use).toEqualTypeOf<Task<"used", TestError, TestDep>>();
+      assertType<typeof use, Task<"used", TestError, TestDep>>();
     });
   });
 });
 
 describe("SharedResourceByKey", () => {
   describe("acquire", () => {
-    test("lazily creates a resource per key", async () => {
+    it("lazily creates a resource per key", async () => {
       await using run = testCreateRun();
 
       const createCountsByKey = new Map<string, number>();
@@ -1350,16 +1365,16 @@ describe("SharedResourceByKey", () => {
         createSharedResourceByKey(create),
       );
 
-      expect(createCountsByKey.size).toBe(0);
+      assertEqual(createCountsByKey.size, 0);
 
       const first = await run.ok(sharedResourceByKey.acquire("a"));
       const second = await run.ok(sharedResourceByKey.acquire("a"));
 
-      expect(createCountsByKey.get("a")).toBe(1);
-      expect(second.resource).toBe(first.resource);
+      assertEqual(createCountsByKey.get("a"), 1);
+      assertSame(second.resource, first.resource);
     });
 
-    test("serializes concurrent first acquires for the same key", async () => {
+    it("serializes concurrent first acquires for the same key", async () => {
       await using run = testCreateRun();
       const gate = createGate();
 
@@ -1379,11 +1394,11 @@ describe("SharedResourceByKey", () => {
       gate.open();
       const [firstLease, secondLease] = await Promise.all([first, second]);
 
-      expect(createCount).toBe(1);
-      expect(secondLease.resource).toBe(firstLease.resource);
+      assertEqual(createCount, 1);
+      assertSame(secondLease.resource, firstLease.resource);
     });
 
-    test("creates independent resources for different keys", async () => {
+    it("creates independent resources for different keys", async () => {
       await using run = testCreateRun();
 
       const resourcesByKey = new Map<
@@ -1403,21 +1418,21 @@ describe("SharedResourceByKey", () => {
       const a = await run.ok(sharedResourceByKey.acquire("a"));
       const b = await run.ok(sharedResourceByKey.acquire("b"));
 
-      expect(b.resource).not.toBe(a.resource);
+      assertFalse(globalThis.Object.is(b.resource, a.resource));
 
       // Releasing "a" disposes only "a".
       const aDisposed = resourcesByKey.get("a")!.nextDisposed();
       a.release();
       await aDisposed;
 
-      expect(resourcesByKey.get("a")!.getDisposeCount()).toBe(1);
-      expect(resourcesByKey.get("b")!.getDisposeCount()).toBe(0);
-      expect(
+      assertEqual(resourcesByKey.get("a")!.getDisposeCount(), 1);
+      assertEqual(resourcesByKey.get("b")!.getDisposeCount(), 0);
+      assertTrue(
         sharedResourceByKey.snapshot().resourcesByKey.get("b")?.hasResource,
-      ).toBe(true);
+      );
     });
 
-    test("allows different keys to progress concurrently", async () => {
+    it("allows different keys to progress concurrently", async () => {
       await using run = testCreateRun();
       const gate = createGate();
 
@@ -1435,18 +1450,18 @@ describe("SharedResourceByKey", () => {
       const a = run.ok(sharedResourceByKey.acquire("a"));
       await run.ok(sharedResourceByKey.acquire("b"));
 
-      expect(
+      assertTrue(
         sharedResourceByKey.snapshot().resourcesByKey.get("b")?.hasResource,
-      ).toBe(true);
-      expect(
+      );
+      assertFalse(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.hasResource,
-      ).toBe(false);
+      );
 
       gate.open();
       await a;
     });
 
-    test("runs to completion after caller abort while waiting for a key", async () => {
+    it("runs to completion after caller abort while waiting for a key", async () => {
       await using run = testCreateRun();
       const gate = createGate();
       const resources = createTestResources();
@@ -1468,24 +1483,25 @@ describe("SharedResourceByKey", () => {
       const firstLease = await first;
       const result = await second;
 
-      assert(result.ok);
-      expect(
+      assertOk(result);
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.leaseCount,
-      ).toBe(2);
+        2,
+      );
 
-      expect(firstLease.release()).toBe(true);
-      expect(resources.getDisposeCount()).toBe(0);
+      assertTrue(firstLease.release());
+      assertEqual(resources.getDisposeCount(), 0);
 
       const disposed = resources.nextDisposed();
-      expect(result.value.release()).toBe(true);
+      assertTrue(result.value.release());
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
   });
 
   describe("key removal", () => {
-    test("disposes the resource and removes the key after the last lease", async () => {
+    it("disposes the resource and removes the key after the last lease", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const onDisposedCalled = Promise.withResolvers<void>();
@@ -1506,19 +1522,19 @@ describe("SharedResourceByKey", () => {
       lease.release();
       await onDisposedCalled.promise;
 
-      expect(hasKeyWhenDisposed).toBe(false);
-      expect(resources.getDisposeCount()).toBe(1);
+      assertFalse(hasKeyWhenDisposed);
+      assertEqual(resources.getDisposeCount(), 1);
 
       // The key was removed before onDisposed, so this acquire creates a fresh
       // resource.
       const again = await run.ok(sharedResourceByKey.acquire("a"));
 
-      expect(resources.getCreateCount()).toBe(2);
-      expect(again.resource).not.toBe(lease.resource);
-      expect(sharedResourceByKey.snapshot().resourcesByKey.size).toBe(1);
+      assertEqual(resources.getCreateCount(), 2);
+      assertFalse(globalThis.Object.is(again.resource, lease.resource));
+      assertEqual(sharedResourceByKey.snapshot().resourcesByKey.size, 1);
     });
 
-    test("removes the key when acquireCurrent waits for its resource disposal", async () => {
+    it("removes the key when acquireCurrent waits for its resource disposal", async () => {
       await using run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -1540,7 +1556,7 @@ describe("SharedResourceByKey", () => {
       await disposalStarted.promise;
 
       const current = run.ok(sharedResourceByKey.acquireCurrent("a"));
-      await expectConditionAfterMicrotasks(
+      await assertConditionAfterMicrotasks(
         () =>
           sharedResourceByKey.snapshot().resourcesByKey.get("a")?.mutex.waiters
             .length === 1,
@@ -1548,13 +1564,11 @@ describe("SharedResourceByKey", () => {
       );
       continueDisposal.resolve();
 
-      expect(await current).toBeUndefined();
-      expect(sharedResourceByKey.snapshot().resourcesByKey.has("a")).toBe(
-        false,
-      );
+      assertSame(await current, undefined);
+      assertFalse(sharedResourceByKey.snapshot().resourcesByKey.has("a"));
     });
 
-    test("keeps the key when its resource is reacquired before removal", async () => {
+    it("keeps the key when its resource is reacquired before removal", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1573,14 +1587,14 @@ describe("SharedResourceByKey", () => {
       // Later acquires reuse the same keyed SharedResource.
       const thirdLease = await run.ok(sharedResourceByKey.acquire("a"));
 
-      expect(resources.getCreateCount()).toBe(2);
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(thirdLease.resource).toBe(secondLease.resource);
+      assertEqual(resources.getCreateCount(), 2);
+      assertEqual(resources.getDisposeCount(), 1);
+      assertSame(thirdLease.resource, secondLease.resource);
     });
   });
 
   describe("lookup", () => {
-    test("derives logical key identity", async () => {
+    it("derives logical key identity", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1594,13 +1608,13 @@ describe("SharedResourceByKey", () => {
       const second = await run.ok(sharedResourceByKey.acquire({ id: "a" }));
       await run.ok(sharedResourceByKey.acquire({ id: "b" }));
 
-      expect(resources.getCreateCount()).toBe(2);
-      expect(second.resource).toBe(first.resource);
+      assertEqual(resources.getCreateCount(), 2);
+      assertSame(second.resource, first.resource);
     });
   });
 
   describe("acquireCurrent", () => {
-    test("returns undefined for an absent key without creating or registering it", async () => {
+    it("returns undefined for an absent key without creating or registering it", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1610,12 +1624,12 @@ describe("SharedResourceByKey", () => {
 
       const lease = await run.ok(sharedResourceByKey.acquireCurrent("a"));
 
-      expect(lease).toBeUndefined();
-      expect(resources.getCreateCount()).toBe(0);
-      expect(sharedResourceByKey.snapshot().resourcesByKey.size).toBe(0);
+      assertSame(lease, undefined);
+      assertEqual(resources.getCreateCount(), 0);
+      assertEqual(sharedResourceByKey.snapshot().resourcesByKey.size, 0);
     });
 
-    test("acquires the current resource for an existing key without creating another", async () => {
+    it("acquires the current resource for an existing key without creating another", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1626,14 +1640,14 @@ describe("SharedResourceByKey", () => {
       const first = await run.ok(sharedResourceByKey.acquire("a"));
       const current = await run.ok(sharedResourceByKey.acquireCurrent("a"));
 
-      expect(current?.resource).toBe(first.resource);
-      expect(current?.created).toBe(false);
-      expect(resources.getCreateCount()).toBe(1);
+      assertSame(current?.resource, first.resource);
+      assertFalse(current?.created);
+      assertEqual(resources.getCreateCount(), 1);
     });
   });
 
   describe("use", () => {
-    test("creates the keyed resource and releases its lease after the Task settles", async () => {
+    it("creates the keyed resource and releases its lease after the Task settles", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       let leaseCountDuringUse: number | undefined;
@@ -1654,17 +1668,18 @@ describe("SharedResourceByKey", () => {
         }),
       );
 
-      expect(value).toBe("used");
-      expect(createdDuringUse).toBe(true);
-      expect(leaseCountDuringUse).toBe(1);
-      expect(
+      assertEqual(value, "used");
+      assertTrue(createdDuringUse);
+      assertEqual(leaseCountDuringUse, 1);
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.leaseCount,
-      ).toBe(0);
+        0,
+      );
       await disposed;
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("reports created false while reusing a held keyed resource", async () => {
+    it("reports created false while reusing a held keyed resource", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       let createdDuringUse: boolean | undefined;
@@ -1681,14 +1696,15 @@ describe("SharedResourceByKey", () => {
         }),
       );
 
-      expect(createdDuringUse).toBe(false);
-      expect(resources.getCreateCount()).toBe(1);
-      expect(
+      assertFalse(createdDuringUse);
+      assertEqual(resources.getCreateCount(), 1);
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.leaseCount,
-      ).toBe(1);
+        1,
+      );
     });
 
-    test("releases its keyed lease when the callback Task aborts", async () => {
+    it("releases its keyed lease when the callback Task aborts", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const callbackStarted = Promise.withResolvers<void>();
@@ -1708,27 +1724,29 @@ describe("SharedResourceByKey", () => {
       );
       await callbackStarted.promise;
 
-      expect(
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.leaseCount,
-      ).toBe(1);
+        1,
+      );
 
       fiber.abort(testAbortReason);
       const result = await fiber;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(testAbortReason);
-      expect(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, testAbortReason);
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.leaseCount ?? 0,
-      ).toBe(0);
+        0,
+      );
 
       await disposed;
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
   });
 
   describe("forEachCurrent", () => {
-    test("delegates to every current resource while holding temporary leases", async () => {
+    it("delegates to every current resource while holding temporary leases", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1751,25 +1769,28 @@ describe("SharedResourceByKey", () => {
         }),
       );
 
-      expect(entries).toEqual([
+      assertEqual(entries, [
         [first.resource, "a"],
         [second.resource, "b"],
       ]);
-      expect(leaseCountsDuringUse).toEqual(
+      assertEqual(
+        leaseCountsDuringUse,
         new Map([
           ["a", 2],
           ["b", 2],
         ]),
       );
-      expect(
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.leaseCount,
-      ).toBe(1);
-      expect(
+        1,
+      );
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("b")?.leaseCount,
-      ).toBe(1);
+        1,
+      );
     });
 
-    test("releases collected leases when the caller aborts while acquiring a later key", async () => {
+    it("releases collected leases when the caller aborts while acquiring a later key", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const bCreateStarted = Promise.withResolvers<void>();
@@ -1796,15 +1817,15 @@ describe("SharedResourceByKey", () => {
         }),
       );
       const firstAcquireRunSnapshot = forEach.run.snapshot().children.at(0);
-      assert(firstAcquireRunSnapshot);
+      assertNotUndefined(firstAcquireRunSnapshot);
       // forEachCurrent acquires keys sequentially. Replacing this child means
       // the first lease is held and acquisition of the blocked second key has
       // started. The exact count intentionally pins that settlement pipeline.
-      await expectConditionAfterMicrotasks(() => {
+      await assertConditionAfterMicrotasks(() => {
         const { children } = forEach.run.snapshot();
         return (
           children.length === 1 &&
-          !Object.is(children[0].id, firstAcquireRunSnapshot.id)
+          !globalThis.Object.is(children[0].id, firstAcquireRunSnapshot.id)
         );
       }, 34);
 
@@ -1814,19 +1835,21 @@ describe("SharedResourceByKey", () => {
 
       const result = await forEach;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(testAbortReason);
-      expect(keys).toEqual([]);
-      expect(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, testAbortReason);
+      assertEqual(keys, []);
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.leaseCount,
-      ).toBe(1);
-      expect(
+        1,
+      );
+      assertEqual(
         sharedResourceByKey.snapshot().resourcesByKey.get("b")?.leaseCount,
-      ).toBe(1);
+        1,
+      );
     });
 
-    test("skips a resource disposed before its temporary lease is acquired", async () => {
+    it("skips a resource disposed before its temporary lease is acquired", async () => {
       await using run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -1858,12 +1881,12 @@ describe("SharedResourceByKey", () => {
       continueDisposal.resolve();
       await forEach;
 
-      expect(keys).toEqual(["b"]);
+      assertEqual(keys, ["b"]);
     });
   });
 
   describe("idleDisposeAfter", () => {
-    test("keeps a resource across release/acquire churn", async () => {
+    it("keeps a resource across release/acquire churn", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1878,8 +1901,8 @@ describe("SharedResourceByKey", () => {
 
       const second = await run.ok(sharedResourceByKey.acquire("a"));
 
-      expect(resources.getCreateCount()).toBe(1);
-      expect(second.resource).toBe(first.resource);
+      assertEqual(resources.getCreateCount(), 1);
+      assertSame(second.resource, first.resource);
 
       // After the last release, the idle delay elapses and the key is disposed.
       const disposed = resources.nextDisposed();
@@ -1887,15 +1910,15 @@ describe("SharedResourceByKey", () => {
       run.deps.time.advance("3s");
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(
+      assertEqual(resources.getDisposeCount(), 1);
+      assertFalse(
         sharedResourceByKey.snapshot().resourcesByKey.get("a")?.hasResource,
-      ).toBe(false);
+      );
     });
   });
 
   describe("snapshot", () => {
-    test("returns current states by key", async () => {
+    it("returns current states by key", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -1903,7 +1926,7 @@ describe("SharedResourceByKey", () => {
         createSharedResourceByKey(() => resources.create),
       );
 
-      expect(sharedResourceByKey.snapshot()).toEqual({
+      assertEqual(sharedResourceByKey.snapshot(), {
         resourcesByKey: new Map(),
       });
 
@@ -1911,7 +1934,7 @@ describe("SharedResourceByKey", () => {
       await run.ok(sharedResourceByKey.acquire("a"));
       await run.ok(sharedResourceByKey.acquire("b"));
 
-      expect(sharedResourceByKey.snapshot()).toEqual({
+      assertEqual(sharedResourceByKey.snapshot(), {
         resourcesByKey: new Map([
           [
             "a",
@@ -1939,7 +1962,7 @@ describe("SharedResourceByKey", () => {
   });
 
   describe("onDisposed", () => {
-    test("does not call onDisposed when registry is disposed before resource creation", async () => {
+    it("does not call onDisposed when registry is disposed before resource creation", async () => {
       await using run = testCreateRun();
       const disposedKeys: Array<string> = [];
 
@@ -1956,10 +1979,10 @@ describe("SharedResourceByKey", () => {
 
       await sharedResourceByKey[Symbol.asyncDispose]();
 
-      expect(disposedKeys).toEqual([]);
+      assertEqual(disposedKeys, []);
     });
 
-    test("calls onDisposed for every key during owner disposal", async () => {
+    it("calls onDisposed for every key during owner disposal", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const disposedKeys: Array<string> = [];
@@ -1976,11 +1999,11 @@ describe("SharedResourceByKey", () => {
 
       await sharedResourceByKey[Symbol.asyncDispose]();
 
-      expect(disposedKeys).toHaveLength(2);
-      expect(disposedKeys).toEqual(expect.arrayContaining(["a", "b"]));
+      assertLength(disposedKeys, 2);
+      assertEqual(new Set(disposedKeys), new Set(["a", "b"]));
     });
 
-    test("receives the key", async () => {
+    it("receives the key", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const disposedKeys: Array<string> = [];
@@ -1997,17 +2020,17 @@ describe("SharedResourceByKey", () => {
 
       const lease = await run.ok(sharedResourceByKey.acquire("a"));
 
-      expect(disposedKeys).toEqual([]);
+      assertEqual(disposedKeys, []);
 
       lease.release();
       await onDisposedCalled.promise;
 
-      expect(disposedKeys).toEqual(["a"]);
+      assertEqual(disposedKeys, ["a"]);
     });
   });
 
   describe("disposal", () => {
-    test("aborts acquire when the registry is disposed during creation", async () => {
+    it("aborts acquire when the registry is disposed during creation", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const createStarted = Promise.withResolvers<void>();
@@ -2031,14 +2054,14 @@ describe("SharedResourceByKey", () => {
       const result = await acquire;
       await disposal;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(runDisposedAbortReason);
-      expect(resources.getCreateCount()).toBe(1);
-      expect(resources.getDisposeCount()).toBe(1);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, runDisposedAbortReason);
+      assertEqual(resources.getCreateCount(), 1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("aborts acquireCurrent when the registry is disposed while it waits", async () => {
+    it("aborts acquireCurrent when the registry is disposed while it waits", async () => {
       await using run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -2062,7 +2085,7 @@ describe("SharedResourceByKey", () => {
       const acquireCurrent = run.abortable(
         sharedResourceByKey.acquireCurrent("a"),
       );
-      await expectConditionAfterMicrotasks(
+      await assertConditionAfterMicrotasks(
         () =>
           sharedResourceByKey.snapshot().resourcesByKey.get("a")?.mutex.waiters
             .length === 1,
@@ -2075,12 +2098,12 @@ describe("SharedResourceByKey", () => {
       const result = await acquireCurrent;
       await disposal;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(runDisposedAbortReason);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, runDisposedAbortReason);
     });
 
-    test("disposes all keyed resources", async () => {
+    it("disposes all keyed resources", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -2093,13 +2116,13 @@ describe("SharedResourceByKey", () => {
 
       await sharedResourceByKey[Symbol.asyncDispose]();
 
-      expect(resources.getDisposeCount()).toBe(2);
-      expect(leaseA.release()).toBe(false);
-      expect(leaseB.release()).toBe(false);
-      expect(sharedResourceByKey.snapshot().resourcesByKey.size).toBe(0);
+      assertEqual(resources.getDisposeCount(), 2);
+      assertFalse(leaseA.release());
+      assertFalse(leaseB.release());
+      assertEqual(sharedResourceByKey.snapshot().resourcesByKey.size, 0);
     });
 
-    test("registry disposal owns concurrently removed keys", async () => {
+    it("registry disposal owns concurrently removed keys", async () => {
       await using run = testCreateRun();
       const aDisposalStarted = Promise.withResolvers<void>();
       const continueADisposal = Promise.withResolvers<void>();
@@ -2147,13 +2170,13 @@ describe("SharedResourceByKey", () => {
       const bResult = await b;
       await registryDisposal;
 
-      assert(!bResult.ok);
-      assert(AbortError.is(bResult.error));
-      expect(bResult.error.reason).toBe(runDisposedAbortReason);
-      expect(run.snapshot().children).toEqual([]);
+      assertErr(bResult);
+      assertType(AbortError, bResult.error);
+      assertSame(bResult.error.reason, runDisposedAbortReason);
+      assertEqual(run.snapshot().children, []);
     });
 
-    test("root Run disposal awaits keyed resource disposal", async () => {
+    it("root Run disposal awaits keyed resource disposal", async () => {
       const run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -2182,14 +2205,14 @@ describe("SharedResourceByKey", () => {
           rootDisposal.then(() => "rootDisposalSettled"),
         ]);
 
-        expect(firstSettled).toBe("resourceDisposalStarted");
-        expect(rootDisposalSettled).toBe(false);
+        assertEqual(firstSettled, "resourceDisposalStarted");
+        assertFalse(rootDisposalSettled);
 
         continueDisposal.resolve();
         await rootDisposal;
 
-        expect(sharedResourceByKey.snapshot().resourcesByKey.size).toBe(0);
-        expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([]);
+        assertEqual(sharedResourceByKey.snapshot().resourcesByKey.size, 0);
+        assertEqual(run.deps.reportDefect.getDefectsSnapshot(), []);
       } finally {
         continueDisposal.resolve();
         await sharedResourceByKey[Symbol.asyncDispose]();
@@ -2199,7 +2222,7 @@ describe("SharedResourceByKey", () => {
   });
 
   describe("leak detection", () => {
-    test("warns when an undisposed SharedResourceByKey is garbage-collected", async () => {
+    it("warns when an undisposed SharedResourceByKey is garbage-collected", async () => {
       await using run = testCreateRun();
 
       await run.ok(
@@ -2208,19 +2231,20 @@ describe("SharedResourceByKey", () => {
         ),
       );
 
-      expect(run.deps.leakDetector.collect()).toBe(1);
+      assertEqual(run.deps.leakDetector.collect(), 1);
 
       const entries = run.deps.console.getEntriesSnapshot();
-      expect(entries).toHaveLength(1);
-      expect(entries[0].method).toBe("warn");
-      expect(entries[0].args[0]).toBe(
+      assertLength(entries, 1);
+      assertEqual(entries[0].method, "warn");
+      assertEqual(
+        entries[0].args[0],
         "SharedResourceByKey was garbage-collected without cleanup. Tracked at:",
       );
     });
   });
 
   describe("defects", () => {
-    test("acquire after registry disposal is a programmer error", async () => {
+    it("acquire after registry disposal is a programmer error", async () => {
       await using run = testCreateRun();
 
       const sharedResourceByKey = await run.ok(
@@ -2232,17 +2256,18 @@ describe("SharedResourceByKey", () => {
 
       const result = await run.abortable(sharedResourceByKey.acquire("a"));
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBeInstanceOf(Error);
-      expect((result.error.reason.defect as Error).message).toBe(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertInstanceOf(result.error.reason.defect, Error);
+      assertEqual(
+        result.error.reason.defect.message,
         "Cannot use a disposed object.",
       );
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("throwing create factory panics the Run tree", async () => {
+    it("throwing create factory panics the Run tree", async () => {
       await using run = testCreateRun();
       const defect = new Error("create failed");
 
@@ -2254,14 +2279,14 @@ describe("SharedResourceByKey", () => {
 
       const result = await run.abortable(sharedResourceByKey.acquire("a"));
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBe(defect);
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertSame(result.error.reason.defect, defect);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("throwing lookup panics the Run tree", async () => {
+    it("throwing lookup panics the Run tree", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const defect = new Error("lookup failed");
@@ -2276,14 +2301,14 @@ describe("SharedResourceByKey", () => {
 
       const result = await run.abortable(sharedResourceByKey.acquire("a"));
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBe(defect);
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertSame(result.error.reason.defect, defect);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("throwing onDisposed panics the Run tree", async () => {
+    it("throwing onDisposed panics the Run tree", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const defect = new Error("onDisposed failed");
@@ -2302,17 +2327,15 @@ describe("SharedResourceByKey", () => {
       // Disposal runs on a fire-and-forget Fiber, so the defect is observable
       // only via panic reporting.
       const abortError = await run.deps.reportDefect.next();
-      assert(AbortError.is(abortError));
-      assert(abortError.reason.type === "PanicAbortReason");
-      expect(abortError.reason.defect).toBe(defect);
-      expect(sharedResourceByKey.snapshot().resourcesByKey.has("a")).toBe(
-        false,
-      );
+      assertType(AbortError, abortError);
+      assertSame(abortError.reason.type, "PanicAbortReason");
+      assertSame(abortError.reason.defect, defect);
+      assertFalse(sharedResourceByKey.snapshot().resourcesByKey.has("a"));
     });
   });
 
   describe("types", () => {
-    test("acquire does not require captured deps", () => {
+    it("acquire does not require captured deps", () => {
       interface TestDb extends Disposable {
         readonly query: () => string;
       }
@@ -2320,23 +2343,32 @@ describe("SharedResourceByKey", () => {
         readonly value: string;
       }
 
-      expectTypeOf<
-        SharedResourceByKey<string, TestDb>["acquire"]
-      >().toEqualTypeOf<(key: string) => Task<Lease<TestDb>>>();
+      assertType<
+        SharedResourceByKey<string, TestDb>["acquire"],
+        (key: string) => Task<Lease<TestDb>>
+      >();
 
       const create = ((_key: string) => () =>
         ok({ [Symbol.dispose]: constVoid })) as (
         key: string,
       ) => Task<Disposable, never, TestDep>;
 
-      expectTypeOf(createSharedResourceByKey(create)).toEqualTypeOf<
-        Task<SharedResourceByKey<string, Disposable>, never, TestDep>
-      >();
-      expectTypeOf(
-        createSharedResourceByKey(create, { lookup: (key) => key }),
-      ).toEqualTypeOf<
-        Task<SharedResourceByKey<string, Disposable>, never, TestDep>
-      >();
+      {
+        const actual = createSharedResourceByKey(create);
+        assertType<
+          typeof actual,
+          Task<SharedResourceByKey<string, Disposable>, never, TestDep>
+        >();
+      }
+      {
+        const actual = createSharedResourceByKey(create, {
+          lookup: (key) => key,
+        });
+        assertType<
+          typeof actual,
+          Task<SharedResourceByKey<string, Disposable>, never, TestDep>
+        >();
+      }
 
       const failingCreate = (_key: string) => () =>
         err({ type: "CreateError" });
@@ -2345,7 +2377,7 @@ describe("SharedResourceByKey", () => {
       createSharedResourceByKey(failingCreate);
     });
 
-    test("keyed acquireCurrent and use preserve their Task types", async () => {
+    it("keyed acquireCurrent and use preserve their Task types", async () => {
       await using run = testCreateRun();
 
       interface TestDb extends Disposable {
@@ -2367,7 +2399,8 @@ describe("SharedResourceByKey", () => {
         createSharedResourceByKey(create),
       );
 
-      expectTypeOf(sharedResourceByKey.acquireCurrent).toEqualTypeOf<
+      assertType<
+        typeof sharedResourceByKey.acquireCurrent,
         (key: string) => Task<Lease<TestDb> | undefined>
       >();
 
@@ -2376,18 +2409,17 @@ describe("SharedResourceByKey", () => {
         (): Task<"used", TestError, TestDep> => () =>
           err({ type: "TestError" }),
       );
-      expectTypeOf(use).toEqualTypeOf<Task<"used", TestError, TestDep>>();
+      assertType<typeof use, Task<"used", TestError, TestDep>>();
     });
   });
 });
 
 describe("SharedResourceByKeyWithClaims", () => {
   describe("types", () => {
-    test("types expose claim as a non-failing Task returning ClaimLease", () => {
-      expectTypeOf<ClaimLease>().toExtend<Disposable>();
-      expectTypeOf<
-        SharedResourceByKeyWithClaims<string, number, Disposable>["claim"]
-      >().toEqualTypeOf<
+    it("types expose claim as a non-failing Task returning ClaimLease", () => {
+      assertType<ClaimLease extends Disposable ? true : false, true>();
+      assertType<
+        SharedResourceByKeyWithClaims<string, number, Disposable>["claim"],
         (
           claim: number,
           resourceKeys: NonEmptyReadonlyArray<string>,
@@ -2401,10 +2433,9 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
     });
 
-    test("types expose scoped use with borrowed resources and callback Task errors and dependencies", () => {
-      expectTypeOf<
-        SharedResourceByKeyWithClaims<string, number, Disposable>["use"]
-      >().toEqualTypeOf<
+    it("types expose scoped use with borrowed resources and callback Task errors and dependencies", () => {
+      assertType<
+        SharedResourceByKeyWithClaims<string, number, Disposable>["use"],
         <R, E, D>(
           claim: number,
           resourceKeys: NonEmptyReadonlyArray<string>,
@@ -2417,7 +2448,7 @@ describe("SharedResourceByKeyWithClaims", () => {
       >();
     });
 
-    test("types reject empty claim and use resource keys", () => {
+    it("types reject empty claim and use resource keys", () => {
       type Claims = SharedResourceByKeyWithClaims<string, number, Disposable>;
 
       // @ts-expect-error - a claim must retain at least one resource.
@@ -2426,13 +2457,20 @@ describe("SharedResourceByKeyWithClaims", () => {
       const _invalidUseResourceKeys: Parameters<Claims["use"]>[1] = [];
     });
 
-    test("types do not expose command-based removeClaim", () => {
-      expectTypeOf<
-        SharedResourceByKeyWithClaims<string, number, Disposable>
-      >().not.toHaveProperty("removeClaim");
+    it("types do not expose command-based removeClaim", () => {
+      assertType<
+        "removeClaim" extends keyof SharedResourceByKeyWithClaims<
+          string,
+          number,
+          Disposable
+        >
+          ? true
+          : false,
+        false
+      >();
     });
 
-    test("types accept interface-shaped keys and claims with lookup functions", () => {
+    it("types accept interface-shaped keys and claims with lookup functions", () => {
       interface ResourceKey {
         readonly id: string;
       }
@@ -2451,14 +2489,15 @@ describe("SharedResourceByKeyWithClaims", () => {
         },
       );
 
-      expectTypeOf(task).toEqualTypeOf<
+      assertType<
+        typeof task,
         Task<SharedResourceByKeyWithClaims<ResourceKey, Claim, Disposable>>
       >();
     });
   });
 
   describe("use", () => {
-    test("provides only its resources in input order and releases them after the callback settles", async () => {
+    it("provides only its resources in input order and releases them after the callback settles", async () => {
       await using run = testCreateRun();
       const callbackStarted = Promise.withResolvers<void>();
       const continueCallback = createGate();
@@ -2499,7 +2538,7 @@ describe("SharedResourceByKeyWithClaims", () => {
             await run.ok(continueCallback.wait);
             return ok(
               resources.map(([resource, resourceKey]) => {
-                expect(resource.isDisposed()).toBe(false);
+                assertFalse(resource.isDisposed());
                 return [resource.key, resourceKey] as const;
               }),
             );
@@ -2508,24 +2547,26 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
       await callbackStarted.promise;
 
-      expect(disposedKeys).toEqual(new Set());
-      expect(
+      assertEqual(disposedKeys, new Set());
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set(["existing", "b", "a"]));
+        new Set(["existing", "b", "a"]),
+      );
 
       continueCallback.open();
 
-      expect(await use).toEqual([
+      assertEqual(await use, [
         ["b", "b"],
         ["a", "a"],
       ]);
       await scopedResourcesDisposed.promise;
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set(["existing"]));
+        new Set(["existing"]),
+      );
     });
 
-    test("releases its ClaimLease when the callback Task aborts", async () => {
+    it("releases its ClaimLease when the callback Task aborts", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const callbackStarted = Promise.withResolvers<void>();
@@ -2549,27 +2590,29 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
       await callbackStarted.promise;
 
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set(["resource"]));
+        new Set(["resource"]),
+      );
 
       fiber.abort(testAbortReason);
       const result = await fiber;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(testAbortReason);
-      expect(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, testAbortReason);
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set());
+        new Set(),
+      );
 
       await disposed;
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
   });
 
   describe("claim lifecycle", () => {
-    test("claim lazily creates and retains every keyed resource until its claim lease is released", async () => {
+    it("claim lazily creates and retains every keyed resource until its claim lease is released", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -2577,23 +2620,23 @@ describe("SharedResourceByKeyWithClaims", () => {
         createSharedResourceByKeyWithClaims((_key: string) => resources.create),
       );
 
-      expect(resources.getCreateCount()).toBe(0);
+      assertEqual(resources.getCreateCount(), 0);
 
       const claimLease = await run.ok(
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      expect(resources.getCreateCount()).toBe(1);
-      expect(resources.getDisposeCount()).toBe(0);
+      assertEqual(resources.getCreateCount(), 1);
+      assertEqual(resources.getDisposeCount(), 0);
 
       const disposed = resources.nextDisposed();
-      expect(claimLease.release()).toBe(true);
+      assertTrue(claimLease.release());
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("claim lease release is idempotent", async () => {
+    it("claim lease release is idempotent", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -2605,14 +2648,14 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
 
       const disposed = resources.nextDisposed();
-      expect(claimLease.release()).toBe(true);
-      expect(claimLease.release()).toBe(false);
+      assertTrue(claimLease.release());
+      assertFalse(claimLease.release());
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("claim lease Symbol.dispose releases it", async () => {
+    it("claim lease Symbol.dispose releases it", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -2627,10 +2670,10 @@ describe("SharedResourceByKeyWithClaims", () => {
       claimLease[Symbol.dispose]();
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("repeated claims for the same logical pair retain independently without duplicating the relation", async () => {
+    it("repeated claims for the same logical pair retain independently without duplicating the relation", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -2654,18 +2697,18 @@ describe("SharedResourceByKeyWithClaims", () => {
         ]),
       );
 
-      expect(resources.getCreateCount()).toBe(1);
+      assertEqual(resources.getCreateCount(), 1);
 
       const disposed = resources.nextDisposed();
-      expect(first.release()).toBe(true);
-      expect(resources.getDisposeCount()).toBe(0);
-      expect(second.release()).toBe(true);
+      assertTrue(first.release());
+      assertEqual(resources.getDisposeCount(), 0);
+      assertTrue(second.release());
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("multiple claims share one keyed resource until the last claim lease is released", async () => {
+    it("multiple claims share one keyed resource until the last claim lease is released", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -2679,18 +2722,18 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("second", ["resource"]),
       );
 
-      expect(resources.getCreateCount()).toBe(1);
+      assertEqual(resources.getCreateCount(), 1);
 
       const disposed = resources.nextDisposed();
-      expect(first.release()).toBe(true);
-      expect(resources.getDisposeCount()).toBe(0);
-      expect(second.release()).toBe(true);
+      assertTrue(first.release());
+      assertEqual(resources.getDisposeCount(), 0);
+      assertTrue(second.release());
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("one claim lease retains and releases multiple resource keys together", async () => {
+    it("one claim lease retains and releases multiple resource keys together", async () => {
       await using run = testCreateRun();
       const createdKeys: Array<string> = [];
       const disposedKeys: Array<string> = [];
@@ -2714,15 +2757,15 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["a", "b"]),
       );
 
-      expect(createdKeys).toEqual(["a", "b"]);
+      assertEqual(createdKeys, ["a", "b"]);
 
-      expect(claimLease.release()).toBe(true);
+      assertTrue(claimLease.release());
       await allDisposed.promise;
 
-      expect(new Set(disposedKeys)).toEqual(new Set(["a", "b"]));
+      assertEqual(new Set(disposedKeys), new Set(["a", "b"]));
     });
 
-    test("claim rejects lookup-duplicate resource keys as a programmer defect", async () => {
+    it("claim rejects lookup-duplicate resource keys as a programmer defect", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -2740,18 +2783,19 @@ describe("SharedResourceByKeyWithClaims", () => {
         ]),
       );
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBeInstanceOf(Error);
-      expect((result.error.reason.defect as Error).message).toBe(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertInstanceOf(result.error.reason.defect, Error);
+      assertEqual(
+        result.error.reason.defect.message,
         "resourceKeys must not contain lookup duplicates.",
       );
-      expect(resources.getCreateCount()).toBe(0);
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertEqual(resources.getCreateCount(), 0);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("claim snapshots resource keys before awaiting acquisition", async () => {
+    it("claim snapshots resource keys before awaiting acquisition", async () => {
       await using run = testCreateRun();
       const createStarted = Promise.withResolvers<void>();
       const continueCreate = Promise.withResolvers<void>();
@@ -2780,13 +2824,14 @@ describe("SharedResourceByKeyWithClaims", () => {
       continueCreate.resolve();
       using _claimLease = await claim;
 
-      expect(createdKeys).toEqual(["a"]);
-      expect(
+      assertEqual(createdKeys, ["a"]);
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set(["a"]));
+        new Set(["a"]),
+      );
     });
 
-    test("later claim deps do not replace deps captured for resource creation", async () => {
+    it("later claim deps do not replace deps captured for resource creation", async () => {
       await using run = testCreateRun();
 
       interface TestDep {
@@ -2811,12 +2856,12 @@ describe("SharedResourceByKeyWithClaims", () => {
         { value: "replacement" },
       );
 
-      expect(createValues).toEqual(["captured"]);
+      assertEqual(createValues, ["captured"]);
     });
   });
 
   describe("relations", () => {
-    test("gets unique canonical claims retaining a resource key", async () => {
+    it("gets unique canonical claims retaining a resource key", async () => {
       await using run = testCreateRun();
 
       interface ResourceKey {
@@ -2855,25 +2900,27 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim(secondClaim, [resourceKey]),
       );
 
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource({
           id: "resource",
           label: "query",
         }),
-      ).toEqual(new Set([firstClaim, secondClaim]));
+        new Set([firstClaim, secondClaim]),
+      );
 
       const snapshot = sharedResourceByKeyWithClaims.snapshot();
-      expect([...snapshot.retainCountsByResourceKeyByClaim.keys()][0]).toBe(
+      assertSame(
+        [...snapshot.retainCountsByResourceKeyByClaim.keys()][0],
         firstClaim,
       );
       const firstClaimRetainCounts =
         snapshot.retainCountsByResourceKeyByClaim.get(firstClaim);
-      assert(firstClaimRetainCounts);
-      expect([...firstClaimRetainCounts.keys()][0]).toBe(resourceKey);
-      expect([...snapshot.resourcesByKey.keys()][0]).toBe(resourceKey);
+      assertNotUndefined(firstClaimRetainCounts);
+      assertSame([...firstClaimRetainCounts.keys()][0], resourceKey);
+      assertSame([...snapshot.resourcesByKey.keys()][0], resourceKey);
     });
 
-    test("gets unique canonical resource keys retained by a claim", async () => {
+    it("gets unique canonical resource keys retained by a claim", async () => {
       await using run = testCreateRun();
 
       interface ResourceKey {
@@ -2909,15 +2956,16 @@ describe("SharedResourceByKeyWithClaims", () => {
         ),
       );
 
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim({
           id: "claim",
           label: "query",
         }),
-      ).toEqual(new Set([firstResourceKey, secondResourceKey]));
+        new Set([firstResourceKey, secondResourceKey]),
+      );
     });
 
-    test("keeps canonical representatives until their logical relations end", async () => {
+    it("keeps canonical representatives until their logical relations end", async () => {
       await using run = testCreateRun();
 
       interface ResourceKey {
@@ -2962,30 +3010,34 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       firstClaimLease.release();
 
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource(
           equivalentResourceKey,
         ),
-      ).toEqual(new Set([firstClaim]));
-      expect(
+        new Set([firstClaim]),
+      );
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim(equivalentClaim),
-      ).toEqual(new Set([firstResourceKey]));
+        new Set([firstResourceKey]),
+      );
 
       const snapshot = sharedResourceByKeyWithClaims.snapshot();
-      expect([...snapshot.retainCountsByResourceKeyByClaim.keys()]).toEqual([
-        firstClaim,
-      ]);
-      expect([
-        ...snapshot.retainCountsByResourceKeyByClaim.get(firstClaim)!.keys(),
-      ]).toEqual([firstResourceKey]);
-      expect([...snapshot.resourcesByKey.keys()]).toEqual([firstResourceKey]);
+      assertEqual(
+        [...snapshot.retainCountsByResourceKeyByClaim.keys()],
+        [firstClaim],
+      );
+      assertEqual(
+        [...snapshot.retainCountsByResourceKeyByClaim.get(firstClaim)!.keys()],
+        [firstResourceKey],
+      );
+      assertEqual([...snapshot.resourcesByKey.keys()], [firstResourceKey]);
 
       equivalentClaimLease.release();
 
-      expect(lastClaimRemoved).toEqual([[firstClaim, firstResourceKey]]);
+      assertEqual(lastClaimRemoved, [[firstClaim, firstResourceKey]]);
     });
 
-    test("iterates current resources for a claim while pair leases keep them alive", async () => {
+    it("iterates current resources for a claim while pair leases keep them alive", async () => {
       await using run = testCreateRun();
 
       interface TestResource extends Disposable {
@@ -3023,21 +3075,21 @@ describe("SharedResourceByKeyWithClaims", () => {
       sharedResourceByKeyWithClaims.forEachResourceForClaim(
         { id: "claim" },
         (resource, resourceKey) => {
-          expect(resource.isDisposed()).toBe(false);
+          assertFalse(resource.isDisposed());
           visited.push([resource.id, resourceKey.id]);
         },
       );
 
-      expect(visited).toEqual([
+      assertEqual(visited, [
         ["a", "a"],
         ["b", "b"],
       ]);
-      expect(disposedIds.size).toBe(0);
+      assertEqual(disposedIds.size, 0);
 
       claimLease.release();
     });
 
-    test("relation queries are empty after the final claim lease is released", async () => {
+    it("relation queries are empty after the final claim lease is released", async () => {
       await using run = testCreateRun();
 
       await using sharedResourceByKeyWithClaims = await run.ok(
@@ -3049,30 +3101,34 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource("resource"),
-      ).toEqual(new Set(["claim"]));
-      expect(
+        new Set(["claim"]),
+      );
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set(["resource"]));
+        new Set(["resource"]),
+      );
 
       claimLease.release();
 
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource("resource"),
-      ).toEqual(new Set());
-      expect(
+        new Set(),
+      );
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set());
+        new Set(),
+      );
 
       const visited: Array<string> = [];
       sharedResourceByKeyWithClaims.forEachResourceForClaim("claim", () => {
         visited.push("visited");
       });
-      expect(visited).toEqual([]);
+      assertEqual(visited, []);
     });
 
-    test("iteration is stable when a callback releases the claim lease", async () => {
+    it("iteration is stable when a callback releases the claim lease", async () => {
       await using run = testCreateRun();
       const disposedKeys = new Set<string>();
       const allDisposed = Promise.withResolvers<void>();
@@ -3102,22 +3158,22 @@ describe("SharedResourceByKeyWithClaims", () => {
       sharedResourceByKeyWithClaims.forEachResourceForClaim(
         "claim",
         (resource, resourceKey) => {
-          expect(resource.isDisposed()).toBe(false);
+          assertFalse(resource.isDisposed());
           visited.push(resourceKey);
-          if (resourceKey === "a") expect(claimLease.release()).toBe(true);
+          if (resourceKey === "a") assertTrue(claimLease.release());
         },
       );
 
-      expect(visited).toEqual(["a", "b"]);
-      expect(disposedKeys.size).toBe(0);
+      assertEqual(visited, ["a", "b"]);
+      assertEqual(disposedKeys.size, 0);
       await allDisposed.promise;
-      expect(disposedKeys).toEqual(new Set(["a", "b"]));
-      expect(claimLease.release()).toBe(false);
+      assertEqual(disposedKeys, new Set(["a", "b"]));
+      assertFalse(claimLease.release());
     });
   });
 
   describe("transitions", () => {
-    test("calls onFirstClaimAdded for each claim-resource pair's first retain", async () => {
+    it("calls onFirstClaimAdded for each claim-resource pair's first retain", async () => {
       await using run = testCreateRun();
       const calls: Array<readonly [string, string, string]> = [];
 
@@ -3145,13 +3201,13 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("second", ["resource"]),
       );
 
-      expect(calls).toEqual([
+      assertEqual(calls, [
         ["first", "resource", "resource"],
         ["second", "resource", "resource"],
       ]);
     });
 
-    test("onFirstClaimAdded can iterate all resources retained by the claim", async () => {
+    it("onFirstClaimAdded can iterate all resources retained by the claim", async () => {
       await using run = testCreateRun();
       const visitedKeys: Array<string> = [];
       let forEachResourceForClaim = (
@@ -3185,10 +3241,10 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["a", "b"]),
       );
 
-      expect(visitedKeys).toEqual(["a", "b"]);
+      assertEqual(visitedKeys, ["a", "b"]);
     });
 
-    test("calls onLastClaimRemoved before a key loses its final lease", async () => {
+    it("calls onLastClaimRemoved before a key loses its final lease", async () => {
       await using run = testCreateRun();
       let resourceDisposed = false;
       let callbackState:
@@ -3225,14 +3281,14 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       claimLease.release();
 
-      expect(callbackState).toEqual({
+      assertEqual(callbackState, {
         claim: "claim",
         key: "resource",
         disposed: false,
       });
     });
 
-    test("onLastClaimRemoved observes the current pair removed and later lease keys retained", async () => {
+    it("onLastClaimRemoved observes the current pair removed and later lease keys retained", async () => {
       await using run = testCreateRun();
       const relationStates: Array<
         readonly [string, ReadonlySet<string>, ReadonlySet<string>]
@@ -3271,13 +3327,13 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       claimLease.release();
 
-      expect(relationStates).toEqual([
+      assertEqual(relationStates, [
         ["a", new Set(["other"]), new Set(["b"])],
         ["b", new Set(), new Set()],
       ]);
     });
 
-    test("calls onLastClaimRemoved for each claim-resource pair's final release", async () => {
+    it("calls onLastClaimRemoved for each claim-resource pair's final release", async () => {
       await using run = testCreateRun();
       const calls: Array<string> = [];
 
@@ -3299,13 +3355,13 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
 
       first.release();
-      expect(calls).toEqual(["first"]);
+      assertEqual(calls, ["first"]);
 
       second.release();
-      expect(calls).toEqual(["first", "second"]);
+      assertEqual(calls, ["first", "second"]);
     });
 
-    test("pair transitions ignore intermediate retains and releases", async () => {
+    it("pair transitions ignore intermediate retains and releases", async () => {
       await using run = testCreateRun();
       const firstCalls: Array<string> = [];
       const lastCalls: Array<string> = [];
@@ -3330,16 +3386,16 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      expect(firstCalls).toEqual(["claim"]);
+      assertEqual(firstCalls, ["claim"]);
 
       first.release();
-      expect(lastCalls).toEqual([]);
+      assertEqual(lastCalls, []);
 
       second.release();
-      expect(lastCalls).toEqual(["claim"]);
+      assertEqual(lastCalls, ["claim"]);
     });
 
-    test("calls onFirstClaimAdded again after zero claims is reached while the resource idles", async () => {
+    it("calls onFirstClaimAdded again after zero claims is reached while the resource idles", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const resourcesAtFirstClaim: Array<object> = [];
@@ -3364,12 +3420,12 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("second", ["resource"]),
       );
 
-      expect(resources.getCreateCount()).toBe(1);
-      expect(resourcesAtFirstClaim).toHaveLength(2);
-      expect(resourcesAtFirstClaim[1]).toBe(resourcesAtFirstClaim[0]);
+      assertEqual(resources.getCreateCount(), 1);
+      assertLength(resourcesAtFirstClaim, 2);
+      assertSame(resourcesAtFirstClaim[1], resourcesAtFirstClaim[0]);
     });
 
-    test("registry disposal drains claims without calling transition callbacks because disposal is not semantic claim removal", async () => {
+    it("registry disposal drains claims without calling transition callbacks because disposal is not semantic claim removal", async () => {
       await using run = testCreateRun();
       const lastClaimRemoved: Array<string> = [];
 
@@ -3387,10 +3443,10 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await sharedResourceByKeyWithClaims[Symbol.asyncDispose]();
 
-      expect(lastClaimRemoved).toEqual([]);
+      assertEqual(lastClaimRemoved, []);
     });
 
-    test("onFirstClaimAdded defects compensate completed transitions in reverse order and clean up resources", async () => {
+    it("onFirstClaimAdded defects compensate completed transitions in reverse order and clean up resources", async () => {
       await using run = testCreateRun();
       const defect = new Error("onFirstClaimAdded failed");
       const firstTransitions: Array<string> = [];
@@ -3429,27 +3485,28 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["a", "b", "c"]),
       );
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBe(defect);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertSame(result.error.reason.defect, defect);
       await allDisposed.promise;
-      expect(firstTransitions).toEqual(["a", "b"]);
-      expect(lastTransitions).toEqual(["b", "a"]);
-      expect(resourceKeysDuringTransitions).toEqual([
+      assertEqual(firstTransitions, ["a", "b"]);
+      assertEqual(lastTransitions, ["b", "a"]);
+      assertEqual(resourceKeysDuringTransitions, [
         new Set(["a", "b", "c"]),
         new Set(["a", "b", "c"]),
         new Set(["a", "b", "c"]),
         new Set(["a", "b", "c"]),
         new Set(["a", "b", "c"]),
       ]);
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set());
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+        new Set(),
+      );
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("compensation callback defects also panic while cleanup completes", async () => {
+    it("compensation callback defects also panic while cleanup completes", async () => {
       await using run = testCreateRun();
       const firstDefect = new Error("onFirstClaimAdded failed");
       const compensationDefect = new Error("compensation failed");
@@ -3480,24 +3537,26 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["a", "b"]),
       );
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBe(firstDefect);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertSame(result.error.reason.defect, firstDefect);
       await allDisposed.promise;
-      expect(
+      assertEqual(
         run.deps.reportDefect.getDefectsSnapshot().map((reported) => {
-          assert(AbortError.is(reported));
-          assert(reported.reason.type === "PanicAbortReason");
+          assertType(AbortError, reported);
+          assertSame(reported.reason.type, "PanicAbortReason");
           return reported.reason.defect;
         }),
-      ).toEqual([compensationDefect, firstDefect]);
-      expect(
+        [compensationDefect, firstDefect],
+      );
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set());
+        new Set(),
+      );
     });
 
-    test("onLastClaimRemoved defects panic the owner Run and resources are cleaned up", async () => {
+    it("onLastClaimRemoved defects panic the owner Run and resources are cleaned up", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const defect = new Error("onLastClaimRemoved failed");
@@ -3517,22 +3576,23 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
       const disposed = resources.nextDisposed();
 
-      expect(claimLease.release()).toBe(true);
+      assertTrue(claimLease.release());
 
       const abortError = await run.deps.reportDefect.next();
-      assert(AbortError.is(abortError));
-      assert(abortError.reason.type === "PanicAbortReason");
-      expect(abortError.reason.defect).toBe(defect);
+      assertType(AbortError, abortError);
+      assertSame(abortError.reason.type, "PanicAbortReason");
+      assertSame(abortError.reason.defect, defect);
       await disposed;
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(
+      assertEqual(resources.getDisposeCount(), 1);
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource("resource"),
-      ).toEqual(new Set());
+        new Set(),
+      );
     });
   });
 
   describe("idle disposal", () => {
-    test("the final claim release keeps the resource alive until idleDisposeAfter elapses", async () => {
+    it("the final claim release keeps the resource alive until idleDisposeAfter elapses", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -3546,22 +3606,23 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      expect(claimLease.release()).toBe(true);
+      assertTrue(claimLease.release());
       run.deps.time.advance("2s");
 
-      expect(resources.getDisposeCount()).toBe(0);
-      expect(
+      assertEqual(resources.getDisposeCount(), 0);
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource("resource"),
-      ).toEqual(new Set());
+        new Set(),
+      );
 
       const disposed = resources.nextDisposed();
       run.deps.time.advance("1s");
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
 
-    test("a claim acquired during idle delay reuses the current resource", async () => {
+    it("a claim acquired during idle delay reuses the current resource", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const resourcesAtFirstClaim: Array<object> = [];
@@ -3587,15 +3648,15 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("second", ["resource"]),
       );
 
-      expect(resources.getCreateCount()).toBe(1);
-      expect(resourcesAtFirstClaim).toHaveLength(2);
-      expect(resourcesAtFirstClaim[1]).toBe(resourcesAtFirstClaim[0]);
+      assertEqual(resources.getCreateCount(), 1);
+      assertLength(resourcesAtFirstClaim, 2);
+      assertSame(resourcesAtFirstClaim[1], resourcesAtFirstClaim[0]);
 
       run.deps.time.advance("1s");
-      expect(resources.getDisposeCount()).toBe(0);
+      assertEqual(resources.getDisposeCount(), 0);
     });
 
-    test("a claim acquired after disposal starts creates a fresh resource generation", async () => {
+    it("a claim acquired after disposal starts creates a fresh resource generation", async () => {
       await using run = testCreateRun();
       const firstDisposalStarted = Promise.withResolvers<void>();
       const continueFirstDisposal = Promise.withResolvers<void>();
@@ -3638,14 +3699,15 @@ describe("SharedResourceByKeyWithClaims", () => {
       continueFirstDisposal.resolve();
       using _second = await second;
 
-      expect(createCountWhileDisposing).toBe(1);
-      expect(createCount).toBe(2);
-      expect(resourcesAtFirstClaim.map((resource) => resource.id)).toEqual([
-        1, 2,
-      ]);
+      assertEqual(createCountWhileDisposing, 1);
+      assertEqual(createCount, 2);
+      assertEqual(
+        resourcesAtFirstClaim.map((resource) => resource.id),
+        [1, 2],
+      );
     });
 
-    test("a stale disposal callback does not hide a reacquired resource", async () => {
+    it("a stale disposal callback does not hide a reacquired resource", async () => {
       await using run = testCreateRun();
       const firstDisposalStarted = Promise.withResolvers<void>();
       const continueFirstDisposal = Promise.withResolvers<void>();
@@ -3683,13 +3745,14 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("third", ["resource"]),
       );
 
-      expect(createCount).toBe(2);
-      expect(
+      assertEqual(createCount, 2);
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource("resource"),
-      ).toEqual(new Set(["second", "third"]));
+        new Set(["second", "third"]),
+      );
     });
 
-    test("reacquisition and release restart the idle disposal delay", async () => {
+    it("reacquisition and release restart the idle disposal delay", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -3711,18 +3774,18 @@ describe("SharedResourceByKeyWithClaims", () => {
       second.release();
       run.deps.time.advance("1s");
 
-      expect(resources.getDisposeCount()).toBe(0);
+      assertEqual(resources.getDisposeCount(), 0);
 
       const disposed = resources.nextDisposed();
       run.deps.time.advance("2s");
       await disposed;
 
-      expect(resources.getDisposeCount()).toBe(1);
+      assertEqual(resources.getDisposeCount(), 1);
     });
   });
 
   describe("concurrency and abort", () => {
-    test("concurrent first claims for one key share one resource creation", async () => {
+    it("concurrent first claims for one key share one resource creation", async () => {
       await using run = testCreateRun();
       const createStarted = Promise.withResolvers<void>();
       const continueCreate = createGate();
@@ -3752,13 +3815,14 @@ describe("SharedResourceByKeyWithClaims", () => {
       using _first = await first;
       using _second = await second;
 
-      expect(createCount).toBe(1);
-      expect(
+      assertEqual(createCount, 1);
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource("resource"),
-      ).toEqual(new Set(["first", "second"]));
+        new Set(["first", "second"]),
+      );
     });
 
-    test("claim completes despite caller abort once acquisition starts", async () => {
+    it("claim completes despite caller abort once acquisition starts", async () => {
       await using run = testCreateRun();
       const createStarted = Promise.withResolvers<void>();
       const continueCreate = createGate();
@@ -3783,14 +3847,15 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       const result = await claim;
 
-      assert(result.ok);
+      assertOk(result);
       using _claimLease = result.value;
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set(["resource"]));
+        new Set(["resource"]),
+      );
     });
 
-    test("overlapping claims acquired in different key orders complete without deadlock", async () => {
+    it("overlapping claims acquired in different key orders complete without deadlock", async () => {
       await using run = testCreateRun();
       const bothCreatesStarted = createGate();
       const startedKeys = new Set<string>();
@@ -3817,10 +3882,10 @@ describe("SharedResourceByKeyWithClaims", () => {
       using _first = await first;
       using _second = await second;
 
-      expect(startedKeys).toEqual(new Set(["a", "b"]));
+      assertEqual(startedKeys, new Set(["a", "b"]));
     });
 
-    test("a claim waiting for one key does not block claims for disjoint keys", async () => {
+    it("a claim waiting for one key does not block claims for disjoint keys", async () => {
       await using run = testCreateRun();
       const blockedCreateStarted = Promise.withResolvers<void>();
       const continueBlockedCreate = createGate();
@@ -3846,15 +3911,16 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("disjoint", ["disjoint"]),
       );
 
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("disjoint"),
-      ).toEqual(new Set(["disjoint"]));
+        new Set(["disjoint"]),
+      );
 
       continueBlockedCreate.open();
       using _blocked = await blocked;
     });
 
-    test("claim re-inserts a resource generation pinned before another claim removes its relation", async () => {
+    it("claim re-inserts a resource generation pinned before another claim removes its relation", async () => {
       await using run = testCreateRun();
       const trailingCreateStarted = Promise.withResolvers<void>();
       const continueTrailingCreate = createGate();
@@ -3894,9 +3960,10 @@ describe("SharedResourceByKeyWithClaims", () => {
       await trailingCreateStarted.promise;
 
       firstClaimLease.release();
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource("shared"),
-      ).toEqual(new Set());
+        new Set(),
+      );
 
       continueTrailingCreate.open();
       using _secondClaimLease = await secondClaim;
@@ -3908,11 +3975,11 @@ describe("SharedResourceByKeyWithClaims", () => {
           if (resourceKey === "shared") secondResource = resource;
         },
       );
-      expect(secondResource).toBe(firstResource);
-      expect(createCountsByKey.get("shared")).toBe(1);
+      assertSame(secondResource, firstResource);
+      assertEqual(createCountsByKey.get("shared"), 1);
     });
 
-    test("registry disposal before claim transfer aborts acquisition and releases partial leases", async () => {
+    it("registry disposal before claim transfer aborts acquisition and releases partial leases", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const secondCreateStarted = Promise.withResolvers<void>();
@@ -3940,17 +4007,18 @@ describe("SharedResourceByKeyWithClaims", () => {
       const result = await claim;
       await disposal;
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      expect(result.error.reason).toBe(runDisposedAbortReason);
-      expect(resources.getCreateCount()).toBe(2);
-      expect(resources.getDisposeCount()).toBe(2);
-      expect(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason, runDisposedAbortReason);
+      assertEqual(resources.getCreateCount(), 2);
+      assertEqual(resources.getDisposeCount(), 2);
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set());
+        new Set(),
+      );
     });
 
-    test("registry disposal after claim transfer can drain the lease before the caller awaits it", async () => {
+    it("registry disposal after claim transfer can drain the lease before the caller awaits it", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const claimTransferred = Promise.withResolvers<void>();
@@ -3966,23 +4034,25 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
 
       await claimTransferred.promise;
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set(["resource"]));
+        new Set(["resource"]),
+      );
       await sharedResourceByKeyWithClaims[Symbol.asyncDispose]();
 
       const claimLease = await claim;
 
-      expect(claimLease.release()).toBe(false);
-      expect(resources.getDisposeCount()).toBe(1);
-      expect(
+      assertFalse(claimLease.release());
+      assertEqual(resources.getDisposeCount(), 1);
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set());
+        new Set(),
+      );
     });
   });
 
   describe("disposal", () => {
-    test("disposal drains claim leases, claim indexes, and keyed resources", async () => {
+    it("disposal drains claim leases, claim indexes, and keyed resources", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
 
@@ -3998,22 +4068,25 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await sharedResourceByKeyWithClaims[Symbol.asyncDispose]();
 
-      expect(first.release()).toBe(false);
-      expect(second.release()).toBe(false);
-      expect(resources.getDisposeCount()).toBe(2);
-      expect(sharedResourceByKeyWithClaims.getClaimsForResource("a")).toEqual(
+      assertFalse(first.release());
+      assertFalse(second.release());
+      assertEqual(resources.getDisposeCount(), 2);
+      assertEqual(
+        sharedResourceByKeyWithClaims.getClaimsForResource("a"),
         new Set(),
       );
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set());
-      expect(
+        new Set(),
+      );
+      assertEqual(
         run.deps.leakDetector.getTrackedCount({ name: "ClaimLease" }),
-      ).toBe(0);
-      expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([]);
+        0,
+      );
+      assertEqual(run.deps.reportDefect.getDefectsSnapshot(), []);
     });
 
-    test("disposal continues draining claim leases after one release defects", async () => {
+    it("disposal continues draining claim leases after one release defects", async () => {
       await using run = testCreateRun();
       const resources = createTestResources();
       const defect = new Error("claim lookup failed during drain");
@@ -4038,36 +4111,39 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
 
       throwForFirst = true;
-      let disposalError: unknown;
-      try {
-        await sharedResourceByKeyWithClaims[Symbol.asyncDispose]();
-      } catch (error) {
-        disposalError = error;
-      }
+      await assertRejects(
+        sharedResourceByKeyWithClaims[Symbol.asyncDispose](),
+        (disposalError) => {
+          assertType(AbortError, disposalError);
+          assertSame(disposalError.reason.type, "PanicAbortReason");
+          assertSame(disposalError.reason.defect, defect);
+        },
+      );
       throwForFirst = false;
-
-      expect(disposalError).toBeDefined();
-      expect(first.release()).toBe(false);
-      expect(second.release()).toBe(false);
-      expect(resources.getDisposeCount()).toBe(2);
-      expect(sharedResourceByKeyWithClaims.getClaimsForResource("a")).toEqual(
+      assertFalse(first.release());
+      assertFalse(second.release());
+      assertEqual(resources.getDisposeCount(), 2);
+      assertEqual(
+        sharedResourceByKeyWithClaims.getClaimsForResource("a"),
         new Set(),
       );
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("second"),
-      ).toEqual(new Set());
-      expect(
+        new Set(),
+      );
+      assertEqual(
         run.deps.leakDetector.getTrackedCount({ name: "ClaimLease" }),
-      ).toBe(0);
+        0,
+      );
       const reportedDefects = run.deps.reportDefect.getDefectsSnapshot();
-      expect(reportedDefects).toHaveLength(1);
+      assertLength(reportedDefects, 1);
       const reportedDefect = reportedDefects[0];
-      assert(AbortError.is(reportedDefect));
-      assert(reportedDefect.reason.type === "PanicAbortReason");
-      expect(reportedDefect.reason.defect).toBe(defect);
+      assertType(AbortError, reportedDefect);
+      assertSame(reportedDefect.reason.type, "PanicAbortReason");
+      assertSame(reportedDefect.reason.defect, defect);
     });
 
-    test("a claim lease reports false after the registry drains it", async () => {
+    it("a claim lease reports false after the registry drains it", async () => {
       await using run = testCreateRun();
 
       const sharedResourceByKeyWithClaims = await run.ok(
@@ -4081,10 +4157,10 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await sharedResourceByKeyWithClaims[Symbol.asyncDispose]();
 
-      expect(claimLease.release()).toBe(false);
+      assertFalse(claimLease.release());
     });
 
-    test("claim lease release remains safe after root Run disposal", async () => {
+    it("claim lease release remains safe after root Run disposal", async () => {
       const run = testCreateRun();
 
       const sharedResourceByKeyWithClaims = await run.ok(
@@ -4098,13 +4174,13 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await run[Symbol.asyncDispose]();
 
-      expect(claimLease.release()).toBe(false);
-      expect(claimLease.release()).toBe(false);
+      assertFalse(claimLease.release());
+      assertFalse(claimLease.release());
       run.deps.leakDetector.collect();
-      expect(run.deps.console.getEntriesSnapshot()).toEqual([]);
+      assertEqual(run.deps.console.getEntriesSnapshot(), []);
     });
 
-    test("relation queries are empty after root Run disposal", async () => {
+    it("relation queries are empty after root Run disposal", async () => {
       const run = testCreateRun();
 
       const sharedResourceByKeyWithClaims = await run.ok(
@@ -4116,12 +4192,14 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await run[Symbol.asyncDispose]();
 
-      expect(
+      assertEqual(
         sharedResourceByKeyWithClaims.getClaimsForResource("resource"),
-      ).toEqual(new Set());
-      expect(
+        new Set(),
+      );
+      assertEqual(
         sharedResourceByKeyWithClaims.getResourceKeysForClaim("claim"),
-      ).toEqual(new Set());
+        new Set(),
+      );
       const visited: Array<string> = [];
       sharedResourceByKeyWithClaims.forEachResourceForClaim(
         "claim",
@@ -4129,10 +4207,10 @@ describe("SharedResourceByKeyWithClaims", () => {
           visited.push(resourceKey);
         },
       );
-      expect(visited).toEqual([]);
+      assertEqual(visited, []);
     });
 
-    test("late claim lease release during registry disposal is a safe no-op", async () => {
+    it("late claim lease release during registry disposal is a safe no-op", async () => {
       await using run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -4159,19 +4237,19 @@ describe("SharedResourceByKeyWithClaims", () => {
 
         // Resource disposal starts only after the metadata drain releases the
         // final inner lease, so the ClaimLease is already drained here.
-        expect(claimLease.release()).toBe(false);
+        assertFalse(claimLease.release());
 
         continueDisposal.resolve();
         await disposal;
 
-        expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([]);
+        assertEqual(run.deps.reportDefect.getDefectsSnapshot(), []);
       } finally {
         continueDisposal.resolve();
         await disposal;
       }
     });
 
-    test("root Run disposal awaits keyed resource disposal", async () => {
+    it("root Run disposal awaits keyed resource disposal", async () => {
       const run = testCreateRun();
       const disposalStarted = Promise.withResolvers<void>();
       const continueDisposal = Promise.withResolvers<void>();
@@ -4202,13 +4280,13 @@ describe("SharedResourceByKeyWithClaims", () => {
           rootDisposal.then(() => "rootDisposalSettled"),
         ]);
 
-        expect(firstSettled).toBe("resourceDisposalStarted");
-        expect(rootDisposalSettled).toBe(false);
+        assertEqual(firstSettled, "resourceDisposalStarted");
+        assertFalse(rootDisposalSettled);
 
         continueDisposal.resolve();
         await rootDisposal;
 
-        expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([]);
+        assertEqual(run.deps.reportDefect.getDefectsSnapshot(), []);
       } finally {
         continueDisposal.resolve();
         claimLease.release();
@@ -4217,7 +4295,7 @@ describe("SharedResourceByKeyWithClaims", () => {
       }
     });
 
-    test("claiming after registry disposal is a programmer error", async () => {
+    it("claiming after registry disposal is a programmer error", async () => {
       await using run = testCreateRun();
 
       const sharedResourceByKeyWithClaims = await run.ok(
@@ -4231,17 +4309,18 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBeInstanceOf(Error);
-      expect((result.error.reason.defect as Error).message).toBe(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertInstanceOf(result.error.reason.defect, Error);
+      assertEqual(
+        result.error.reason.defect.message,
         "Cannot use a disposed object.",
       );
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("claiming after root Run disposal is a programmer error", async () => {
+    it("claiming after root Run disposal is a programmer error", async () => {
       const ownerRun = testCreateRun();
       const sharedResourceByKeyWithClaims = await ownerRun.ok(
         createSharedResourceByKeyWithClaims(
@@ -4255,19 +4334,20 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBeInstanceOf(Error);
-      expect((result.error.reason.defect as Error).message).toBe(
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertInstanceOf(result.error.reason.defect, Error);
+      assertEqual(
+        result.error.reason.defect.message,
         "Cannot use a disposed object.",
       );
-      expect(await callerRun.deps.reportDefect.next()).toBe(result.error);
+      assertSame(await callerRun.deps.reportDefect.next(), result.error);
     });
   });
 
   describe("leak detection", () => {
-    test("warns when an undisposed claims registry is garbage-collected", async () => {
+    it("warns when an undisposed claims registry is garbage-collected", async () => {
       await using run = testCreateRun();
 
       await run.ok(
@@ -4276,25 +4356,30 @@ describe("SharedResourceByKeyWithClaims", () => {
         ),
       );
 
-      expect(
+      assertEqual(
         run.deps.leakDetector.getTrackedCount({
           name: "SharedResourceByKeyWithClaims",
         }),
-      ).toBe(1);
+        1,
+      );
 
       run.deps.leakDetector.collect();
 
-      expect(run.deps.console.getEntriesSnapshot()).toContainEqual(
-        expect.objectContaining({
-          method: "warn",
-          args: expect.arrayContaining([
-            "SharedResourceByKeyWithClaims was garbage-collected without cleanup. Tracked at:",
-          ]),
-        }),
+      assert(
+        run.deps.console
+          .getEntriesSnapshot()
+          .some(
+            (entry) =>
+              entry.method === "warn" &&
+              entry.args.includes(
+                "SharedResourceByKeyWithClaims was garbage-collected without cleanup. Tracked at:",
+              ),
+          ),
+        "Expected an undisposed claims registry warning.",
       );
     });
 
-    test("warns when a leaked claim lease is garbage-collected", async () => {
+    it("warns when a leaked claim lease is garbage-collected", async () => {
       await using run = testCreateRun();
 
       await using sharedResourceByKeyWithClaims = await run.ok(
@@ -4305,23 +4390,28 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       await run.ok(sharedResourceByKeyWithClaims.claim("claim", ["resource"]));
 
-      expect(
+      assertEqual(
         run.deps.leakDetector.getTrackedCount({ name: "ClaimLease" }),
-      ).toBe(1);
+        1,
+      );
 
       run.deps.leakDetector.collect();
 
-      expect(run.deps.console.getEntriesSnapshot()).toContainEqual(
-        expect.objectContaining({
-          method: "warn",
-          args: expect.arrayContaining([
-            "ClaimLease was garbage-collected without cleanup. Tracked at:",
-          ]),
-        }),
+      assert(
+        run.deps.console
+          .getEntriesSnapshot()
+          .some(
+            (entry) =>
+              entry.method === "warn" &&
+              entry.args.includes(
+                "ClaimLease was garbage-collected without cleanup. Tracked at:",
+              ),
+          ),
+        "Expected a leaked claim lease warning.",
       );
     });
 
-    test("claim lease release untracks it", async () => {
+    it("claim lease release untracks it", async () => {
       await using run = testCreateRun();
 
       await using sharedResourceByKeyWithClaims = await run.ok(
@@ -4333,18 +4423,20 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      expect(
+      assertEqual(
         run.deps.leakDetector.getTrackedCount({ name: "ClaimLease" }),
-      ).toBe(1);
+        1,
+      );
 
       claimLease.release();
 
-      expect(
+      assertEqual(
         run.deps.leakDetector.getTrackedCount({ name: "ClaimLease" }),
-      ).toBe(0);
+        0,
+      );
     });
 
-    test("registry disposal untracks held claim leases", async () => {
+    it("registry disposal untracks held claim leases", async () => {
       await using run = testCreateRun();
 
       const sharedResourceByKeyWithClaims = await run.ok(
@@ -4354,21 +4446,23 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
       await run.ok(sharedResourceByKeyWithClaims.claim("claim", ["resource"]));
 
-      expect(
+      assertEqual(
         run.deps.leakDetector.getTrackedCount({ name: "ClaimLease" }),
-      ).toBe(1);
+        1,
+      );
 
       await sharedResourceByKeyWithClaims[Symbol.asyncDispose]();
 
-      expect(
+      assertEqual(
         run.deps.leakDetector.getTrackedCount({ name: "ClaimLease" }),
-      ).toBe(0);
-      expect(run.deps.console.getEntriesSnapshot()).toEqual([]);
+        0,
+      );
+      assertEqual(run.deps.console.getEntriesSnapshot(), []);
     });
   });
 
   describe("defects", () => {
-    test("throwing create Task panics the owner Run", async () => {
+    it("throwing create Task panics the owner Run", async () => {
       await using run = testCreateRun();
       const defect = new Error("create failed");
 
@@ -4382,14 +4476,14 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBe(defect);
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertSame(result.error.reason.defect, defect);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("throwing resource lookup panics the owner Run", async () => {
+    it("throwing resource lookup panics the owner Run", async () => {
       await using run = testCreateRun();
       const defect = new Error("resource lookup failed");
 
@@ -4408,14 +4502,14 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBe(defect);
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertSame(result.error.reason.defect, defect);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
 
-    test("throwing claim lookup panics the owner Run", async () => {
+    it("throwing claim lookup panics the owner Run", async () => {
       await using run = testCreateRun();
       const defect = new Error("claim lookup failed");
 
@@ -4434,16 +4528,16 @@ describe("SharedResourceByKeyWithClaims", () => {
         sharedResourceByKeyWithClaims.claim("claim", ["resource"]),
       );
 
-      assert(!result.ok);
-      assert(AbortError.is(result.error));
-      assert(result.error.reason.type === "PanicAbortReason");
-      expect(result.error.reason.defect).toBe(defect);
-      expect(await run.deps.reportDefect.next()).toBe(result.error);
+      assertErr(result);
+      assertType(AbortError, result.error);
+      assertSame(result.error.reason.type, "PanicAbortReason");
+      assertSame(result.error.reason.defect, defect);
+      assertSame(await run.deps.reportDefect.next(), result.error);
     });
   });
 
   describe("snapshot", () => {
-    test("snapshot exposes pair retain counts and keyed resource states", async () => {
+    it("snapshot exposes pair retain counts and keyed resource states", async () => {
       await using run = testCreateRun();
 
       const sharedResourceByKeyWithClaims = await run.ok(
@@ -4452,7 +4546,7 @@ describe("SharedResourceByKeyWithClaims", () => {
         ),
       );
 
-      expect(sharedResourceByKeyWithClaims.snapshot()).toEqual({
+      assertEqual(sharedResourceByKeyWithClaims.snapshot(), {
         claimLeaseCount: 0,
         retainCountsByResourceKeyByClaim: new Map(),
         resourcesByKey: new Map(),
@@ -4469,7 +4563,7 @@ describe("SharedResourceByKeyWithClaims", () => {
       );
 
       const snapshot = sharedResourceByKeyWithClaims.snapshot();
-      expect(snapshot).toEqual({
+      assertEqual(snapshot, {
         claimLeaseCount: 3,
         retainCountsByResourceKeyByClaim: new Map([
           [
@@ -4505,27 +4599,29 @@ describe("SharedResourceByKeyWithClaims", () => {
         ]),
       });
 
-      expect(second.release()).toBe(true);
-      expect(
+      assertTrue(second.release());
+      assertEqual(
         snapshot.retainCountsByResourceKeyByClaim.get("claim")?.get("a"),
-      ).toBe(2);
-      expect(
+        2,
+      );
+      assertEqual(
         sharedResourceByKeyWithClaims
           .snapshot()
           .retainCountsByResourceKeyByClaim.get("claim")
           ?.get("a"),
-      ).toBe(1);
+        1,
+      );
 
       await sharedResourceByKeyWithClaims[Symbol.asyncDispose]();
 
-      expect(sharedResourceByKeyWithClaims.snapshot()).toEqual({
+      assertEqual(sharedResourceByKeyWithClaims.snapshot(), {
         claimLeaseCount: 0,
         retainCountsByResourceKeyByClaim: new Map(),
         resourcesByKey: new Map(),
       });
-      expect(first.release()).toBe(false);
-      expect(second.release()).toBe(false);
-      expect(other.release()).toBe(false);
+      assertFalse(first.release());
+      assertFalse(second.release());
+      assertFalse(other.release());
     });
   });
 });

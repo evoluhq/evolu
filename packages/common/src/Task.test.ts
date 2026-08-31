@@ -1,36 +1,36 @@
-import { expectErr, expectOk } from "@evolu/vitest";
-import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
+import { describe, it, mock } from "node:test";
 import {
-  emptyArray,
-  type NonEmptyReadonlyArray,
-} from "../../../../packages/common/src/Array.ts";
-import { emptyRecord } from "../../../../packages/common/src/Object.ts";
-import type { Int1To100OrPositiveInt } from "../../../../packages/common/src/Number.ts";
+  assertEqual,
+  assertErr,
+  assertFalse,
+  assertInstanceOf,
+  assertLength,
+  assertNotUndefined,
+  assertOk,
+  assertRejects,
+  assertRejectsInstanceOf,
+  assertRejectsSame,
+  assertSame,
+  assertThrows,
+  assertThrowsInstanceOf,
+  assertThrowsSame,
+  assertTrue,
+} from "./Assert.ts";
+
+import { emptyArray, type NonEmptyReadonlyArray } from "./Array.ts";
+import { emptyRecord } from "./Object.ts";
+import type { Int1To100OrPositiveInt } from "./Number.ts";
+import { none, some, type Option } from "./Option.ts";
 import {
-  none,
-  some,
-  type Option,
-} from "../../../../packages/common/src/Option.ts";
-import { isDev } from "../../../../packages/common/src/Platform.ts";
-import type {
-  Random,
-  RandomDep,
-  RandomNumber,
-} from "../../../../packages/common/src/Random.ts";
-import { createRef } from "../../../../packages/common/src/Ref.ts";
-import {
-  done,
-  err,
-  ok,
-  type Done,
-  type Result,
-} from "../../../../packages/common/src/Result.ts";
-import {
-  fixed,
-  spaced,
-  take,
-  type Schedule,
-} from "../../../../packages/common/src/Schedule.ts";
+  isDev,
+  testGlobalUncaughtErrors,
+  testGlobalUnhandledRejections,
+} from "./Platform.ts";
+import { installPolyfills } from "./Polyfills.ts";
+import type { Random, RandomDep, RandomNumber } from "./Random.ts";
+import { createRef } from "./Ref.ts";
+import { done, err, ok, type Done, type Result } from "./Result.ts";
+import { fixed, spaced, take, type Schedule } from "./Schedule.ts";
 import {
   daemon,
   AbortError,
@@ -99,40 +99,60 @@ import {
   type TestReportDefectDep,
   type TestRunDefaultDeps,
   type TimeoutError,
-} from "../../../../packages/common/src/Task.ts";
+} from "./Task.ts";
+import { testStubGlobal } from "./Test.ts";
+import { Millis, testCreateTime, type Time } from "./Time.ts";
 import {
-  Millis,
-  testCreateTime,
-  type Time,
-} from "../../../../packages/common/src/Time.ts";
-import {
+  assertType,
   maxPositiveInt,
   onePositiveInt,
   PositiveInt,
   type DateIso,
   type Id,
-} from "../../../../packages/common/src/Type.ts";
-import type { AvailableParallelism } from "../../../../packages/nodejs/src/Platform.ts";
-import {
-  testGlobalUncaughtErrors,
-  testGlobalUnhandledRejections,
-} from "./_vitest.ts";
+} from "./Type.ts";
+
+installPolyfills();
 
 const panic = (defect: unknown): AbortError =>
   createAbortError({ type: "PanicAbortReason", defect });
 
-const availableParallelism: AvailableParallelism = () => PositiveInt.orThrow(2);
+const availableParallelism = (): PositiveInt => PositiveInt.orThrow(2);
 
-const expectPanicAbortError: (
+const assertPanicAbortError: (
   error: unknown,
   defect: unknown,
 ) => asserts error is AbortError = (error, defect) => {
-  assert(AbortError.is(error));
-  expect(error.reason).toMatchObject({ type: "PanicAbortReason" });
-  expect(error.reason.defect).toBe(defect);
+  assertType(AbortError, error);
+  assertSame(error.reason.type, "PanicAbortReason");
+  assertSame(error.reason.defect, defect);
 };
 
-const expectReportedDefectOnly =
+const assertPanicAbortErrorMessage: (
+  error: unknown,
+  message: string,
+) => asserts error is AbortError = (error, message) => {
+  assertType(AbortError, error);
+  assertSame(error.reason.type, "PanicAbortReason");
+  assertInstanceOf(error.reason.defect, Error);
+  assertEqual(error.reason.defect.message, message);
+};
+
+const assertRejectsPanicAbortErrorMessage = async (
+  promise: PromiseLike<unknown>,
+  message: string,
+): Promise<AbortError> => {
+  let rejection: AbortError | undefined;
+
+  await assertRejects(promise, (reason) => {
+    assertPanicAbortErrorMessage(reason, message);
+    rejection = reason;
+  });
+
+  assertNotUndefined(rejection);
+  return rejection;
+};
+
+const assertReportedDefectOnly =
   <T, E, D = unknown>(
     expectedDefect: unknown,
     task: Task<T, E, D>,
@@ -143,9 +163,9 @@ const expectReportedDefectOnly =
 
     const result = await run(task);
 
-    expect(await run.deps.reportDefect.next()).toEqual(expectedDefect);
-    expect(uncaughtErrors.errors).toEqual([]);
-    expect(unhandledRejections.errors).toEqual([]);
+    assertEqual(await run.deps.reportDefect.next(), expectedDefect);
+    assertEqual(uncaughtErrors.errors, []);
+    assertEqual(unhandledRejections.errors, []);
 
     return result;
   };
@@ -175,7 +195,7 @@ const eventsEnabled: RunConfigDep = {
 };
 
 describe("Task type utilities", () => {
-  test("extract Task and Fiber type parameters", () => {
+  it("extract Task and Fiber type parameters", () => {
     interface UserError {
       readonly type: "UserError";
     }
@@ -184,31 +204,33 @@ describe("Task type utilities", () => {
     type LoadUserFiber = Fiber<string, UserError, DbDep>;
     type AbortableLoadUserFiber = AbortableFiber<string, UserError, DbDep>;
 
-    expectTypeOf<InferTaskOk<LoadUserTask>>().toEqualTypeOf<string>();
-    expectTypeOf<InferTaskErr<LoadUserTask>>().toEqualTypeOf<UserError>();
-    expectTypeOf<InferTaskDeps<LoadUserTask>>().toEqualTypeOf<DbDep>();
-    expectTypeOf<InferFiberOk<LoadUserFiber>>().toEqualTypeOf<string>();
-    expectTypeOf<InferFiberErr<LoadUserFiber>>().toEqualTypeOf<UserError>();
-    expectTypeOf<InferFiberDeps<LoadUserFiber>>().toEqualTypeOf<DbDep>();
-    expectTypeOf<InferFiberErr<AbortableLoadUserFiber>>().toEqualTypeOf<
-      UserError | AbortError
-    >();
+    assertType<InferTaskOk<LoadUserTask>, string>();
+    assertType<InferTaskErr<LoadUserTask>, UserError>();
+    assertType<InferTaskDeps<LoadUserTask>, DbDep>();
+    assertType<InferFiberOk<LoadUserFiber>, string>();
+    assertType<InferFiberErr<LoadUserFiber>, UserError>();
+    assertType<InferFiberDeps<LoadUserFiber>, DbDep>();
+    assertType<InferFiberErr<AbortableLoadUserFiber>, UserError | AbortError>();
   });
 
-  test("abort reasons preserve their sentinel types", () => {
+  it("abort reasons preserve their sentinel types", () => {
     const panicAbortReason = createPanicAbortReason(new Error("boom"));
 
-    expectTypeOf(runDisposedAbortReason).toExtend<AbortReason>();
-    expectTypeOf(
-      runDisposedAbortReason.type,
-    ).toEqualTypeOf<"RunDisposedAbortReason">();
-    expectTypeOf(panicAbortReason).toExtend<AbortReason>();
-    expectTypeOf(panicAbortReason.type).toEqualTypeOf<"PanicAbortReason">();
+    assertType<
+      typeof runDisposedAbortReason extends AbortReason ? true : false,
+      true
+    >();
+    assertType<typeof runDisposedAbortReason.type, "RunDisposedAbortReason">();
+    assertType<
+      typeof panicAbortReason extends AbortReason ? true : false,
+      true
+    >();
+    assertType<typeof panicAbortReason.type, "PanicAbortReason">();
   });
 });
 
 describe("Task", () => {
-  test("an explicit worklist is stack-safe for deeply nested input", async () => {
+  it("an explicit worklist is stack-safe for deeply nested input", async () => {
     interface TreeNode {
       readonly value: number;
       readonly children: ReadonlyArray<TreeNode>;
@@ -227,7 +249,7 @@ describe("Task", () => {
 
         while (remaining.length > 0) {
           const node = remaining.pop();
-          assert(node);
+          assertNotUndefined(node);
           sum += node.value;
           remaining.push(...node.children);
         }
@@ -237,29 +259,27 @@ describe("Task", () => {
 
     await using run = createRun();
 
-    expect(await run(sumTree(root))).toEqual(ok(5_000_050_000));
+    assertEqual(await run(sumTree(root)), ok(5_000_050_000));
   });
 });
 
 describe("NextTask", () => {
-  test("models value, done, and error results", async () => {
+  it("models value, done, and error results", async () => {
     interface PullError {
       readonly type: "PullError";
     }
 
     type PullTask = NextTask<number, PullError, string, DbDep>;
 
-    expectTypeOf<InferTaskDone<PullTask>>().toEqualTypeOf<string>();
-    expectTypeOf<InferTaskDeps<PullTask>>().toEqualTypeOf<DbDep>();
-    expectTypeOf<InferTaskDone<NextTask<number>>>().toEqualTypeOf<void>();
-    expectTypeOf<
-      InferTaskDone<Task<number, PullError>>
-    >().toEqualTypeOf<never>();
+    assertType<InferTaskDone<PullTask>, string>();
+    assertType<InferTaskDeps<PullTask>, DbDep>();
+    assertType<InferTaskDone<NextTask<number>>, void>();
+    assertType<InferTaskDone<Task<number, PullError>>, never>();
 
     await using run = createRun(dbDep);
 
     const valueTask: PullTask = ({ deps }) => {
-      expect(deps.db).toBe(dbDep.db);
+      assertSame(deps.db, dbDep.db);
       return ok(42);
     };
     const doneTask: NextTask<number, PullError> = () => err(done());
@@ -270,18 +290,18 @@ describe("NextTask", () => {
     const doneResult = await run(doneTask);
     const errorResult = await run(errorTask);
 
-    expect(valueResult).toEqual(ok(42));
-    expect(doneResult).toEqual(err(done()));
-    expect(errorResult).toEqual(err({ type: "PullError" }));
+    assertEqual(valueResult, ok(42));
+    assertEqual(doneResult, err(done()));
+    assertEqual(errorResult, err({ type: "PullError" }));
 
     if (!doneResult.ok) {
-      expectTypeOf(doneResult.error).toEqualTypeOf<PullError | Done<void>>();
+      assertType<typeof doneResult.error, PullError | Done<void>>();
     }
   });
 });
 
 describe("createRun", () => {
-  test("creates async disposable Run to run Tasks", async () => {
+  it("creates async disposable Run to run Tasks", async () => {
     await using run = createRun();
     let taskStarted = false;
 
@@ -292,181 +312,206 @@ describe("createRun", () => {
 
     const promise = run(loadUser);
 
-    expect(taskStarted).toBe(true);
-    expect(await promise).toEqual(ok("Ada"));
+    assertTrue(taskStarted);
+    assertEqual(await promise, ok("Ada"));
   });
 });
 
 describe("testCreateDeps", () => {
-  test("nativeFetch requires a test double", () => {
-    expect(() => testCreateDeps().nativeFetch("https://example.com")).toThrow(
-      "Provide a nativeFetch test double",
+  it("nativeFetch requires a test double", () => {
+    const error = assertThrowsInstanceOf(
+      () => testCreateDeps().nativeFetch("https://example.com"),
+      Error,
     );
+    assertTrue(error.message.includes("Provide a nativeFetch test double"));
   });
 
-  test("creates fresh deterministic baseline deps", () => {
+  it("creates fresh deterministic baseline deps", () => {
     const first = testCreateDeps();
     const second = testCreateDeps();
 
-    expect(first).not.toBe(second);
-    expect(first.console).not.toBe(second.console);
-    expect(first.random.next()).toBe(second.random.next());
-    expect(first.randomLib.int(0, 1000)).toBe(second.randomLib.int(0, 1000));
-    expect(Array.from(first.randomBytes.create(8))).toEqual(
+    assertFalse(globalThis.Object.is(first, second));
+    assertFalse(globalThis.Object.is(first.console, second.console));
+    assertEqual(first.random.next(), second.random.next());
+    assertEqual(first.randomLib.int(0, 1000), second.randomLib.int(0, 1000));
+    assertEqual(
+      Array.from(first.randomBytes.create(8)),
       Array.from(second.randomBytes.create(8)),
     );
 
-    expect(first.time.now()).toBe(0);
+    assertEqual(first.time.now(), 0);
     first.time.advance("1s");
-    expect(first.time.now()).toBe(1000);
-    expect(second.time.now()).toBe(0);
+    assertEqual(first.time.now(), 1000);
+    assertEqual(second.time.now(), 0);
   });
 
-  test("uses custom seed when provided", () => {
+  it("uses custom seed when provided", () => {
     const first = testCreateDeps({ seed: "custom-seed" });
     const second = testCreateDeps({ seed: "custom-seed" });
 
-    expect(first.random.next()).toBe(second.random.next());
-    expect(first.randomLib.int(0, 1000)).toBe(second.randomLib.int(0, 1000));
-    expect(Array.from(first.randomBytes.create(8))).toEqual(
+    assertEqual(first.random.next(), second.random.next());
+    assertEqual(first.randomLib.int(0, 1000), second.randomLib.int(0, 1000));
+    assertEqual(
+      Array.from(first.randomBytes.create(8)),
       Array.from(second.randomBytes.create(8)),
     );
   });
 
-  test("reportDefect getDefects returns a copy", () => {
+  it("reportDefect getDefects returns a copy", () => {
     const deps = testCreateDeps();
 
     deps.reportDefect("defect");
     const defects = deps.reportDefect.getDefects();
-    expect(defects).toEqual(["defect"]);
+    assertEqual(defects, ["defect"]);
 
     (defects as Array<unknown>).push("mutation");
-    expect(deps.reportDefect.getDefects()).toEqual(["defect"]);
+    assertEqual(deps.reportDefect.getDefects(), ["defect"]);
 
     deps.reportDefect.clearDefects();
 
-    expect(deps.reportDefect.getDefects()).toEqual([]);
-    expect(deps.reportDefect.getDefectsSnapshot()).toEqual([]);
+    assertEqual(deps.reportDefect.getDefects(), []);
+    assertEqual(deps.reportDefect.getDefectsSnapshot(), []);
   });
 
-  test("reportDefect clearDefects throws with pending next waiters", async () => {
+  it("reportDefect clearDefects throws with pending next waiters", async () => {
     const deps = testCreateDeps();
     const nextDefect = deps.reportDefect.next();
 
-    expect(() => deps.reportDefect.clearDefects()).toThrow(
-      "clearDefects must not be called while reportDefect.next() is pending",
+    const error = assertThrowsInstanceOf(
+      () => deps.reportDefect.clearDefects(),
+      Error,
+    );
+    assertTrue(
+      error.message.includes(
+        "clearDefects must not be called while reportDefect.next() is pending",
+      ),
     );
 
     deps.reportDefect("defect");
-    await expect(nextDefect).resolves.toBe("defect");
+    assertEqual(await nextDefect, "defect");
   });
 
-  test("reportDefect getDefectsSnapshot throws with pending next waiters", async () => {
+  it("reportDefect getDefectsSnapshot throws with pending next waiters", async () => {
     const deps = testCreateDeps();
     const nextDefect = deps.reportDefect.next();
 
-    expect(() => deps.reportDefect.getDefectsSnapshot()).toThrow(
-      "getDefectsSnapshot must not be called while reportDefect.next() is pending",
+    const error = assertThrowsInstanceOf(
+      () => deps.reportDefect.getDefectsSnapshot(),
+      Error,
+    );
+    assertTrue(
+      error.message.includes(
+        "getDefectsSnapshot must not be called while reportDefect.next() is pending",
+      ),
     );
 
     deps.reportDefect("defect");
-    await expect(nextDefect).resolves.toBe("defect");
+    assertEqual(await nextDefect, "defect");
   });
 });
 
 describe("testCreateRun", () => {
-  test("creates Task Run with deterministic deps", async () => {
+  it("creates Task Run with deterministic deps", async () => {
     await using run = testCreateRun();
 
-    expectTypeOf(run).toEqualTypeOf<DisposableRun<TestRunDefaultDeps>>();
-    expect(run.deps.time.now()).toBe(0);
+    assertType<typeof run, DisposableRun<TestRunDefaultDeps>>();
+    assertEqual(run.deps.time.now(), 0);
 
     run.deps.console.info("hello");
-    expect(run.deps.console.getEntriesSnapshot()).toEqual([
+    assertEqual(run.deps.console.getEntriesSnapshot(), [
       { method: "info", path: [], args: ["hello"] },
     ]);
 
-    await expect(run(() => ok(run.deps.time.now()))).resolves.toEqual(ok(0));
+    assertEqual(await run(() => ok(run.deps.time.now())), ok(0));
   });
 
-  test("accepts seeded test deps", async () => {
+  it("accepts seeded test deps", async () => {
     await using first = testCreateRun(testCreateDeps({ seed: "custom-seed" }));
     await using second = testCreateRun(testCreateDeps({ seed: "custom-seed" }));
     await using defaultSeed = testCreateRun();
 
-    expect({
-      customSeed: {
-        random: first.deps.random.next(),
-        randomLib: first.deps.randomLib.int(0, 1000),
-        randomBytes: Array.from(first.deps.randomBytes.create(8)),
+    assertEqual(
+      {
+        customSeed: {
+          random: first.deps.random.next(),
+          randomLib: first.deps.randomLib.int(0, 1000),
+          randomBytes: Array.from(first.deps.randomBytes.create(8)),
+        },
+        repeatedCustomSeed: {
+          random: second.deps.random.next(),
+          randomLib: second.deps.randomLib.int(0, 1000),
+          randomBytes: Array.from(second.deps.randomBytes.create(8)),
+        },
+        defaultSeed: {
+          random: defaultSeed.deps.random.next(),
+          randomLib: defaultSeed.deps.randomLib.int(0, 1000),
+          randomBytes: Array.from(defaultSeed.deps.randomBytes.create(8)),
+        },
       },
-      repeatedCustomSeed: {
-        random: second.deps.random.next(),
-        randomLib: second.deps.randomLib.int(0, 1000),
-        randomBytes: Array.from(second.deps.randomBytes.create(8)),
+      {
+        customSeed: {
+          random: 0.12083238029952814,
+          randomBytes: [53, 205, 232, 45, 93, 200, 245, 107],
+          randomLib: 149,
+        },
+        defaultSeed: {
+          random: 0.6133348181104821,
+          randomBytes: [246, 87, 195, 248, 64, 124, 159, 31],
+          randomLib: 633,
+        },
+        repeatedCustomSeed: {
+          random: 0.12083238029952814,
+          randomBytes: [53, 205, 232, 45, 93, 200, 245, 107],
+          randomLib: 149,
+        },
       },
-      defaultSeed: {
-        random: defaultSeed.deps.random.next(),
-        randomLib: defaultSeed.deps.randomLib.int(0, 1000),
-        randomBytes: Array.from(defaultSeed.deps.randomBytes.create(8)),
-      },
-    }).toEqual({
-      customSeed: {
-        random: 0.12083238029952814,
-        randomBytes: [53, 205, 232, 45, 93, 200, 245, 107],
-        randomLib: 149,
-      },
-      defaultSeed: {
-        random: 0.6133348181104821,
-        randomBytes: [246, 87, 195, 248, 64, 124, 159, 31],
-        randomLib: 633,
-      },
-      repeatedCustomSeed: {
-        random: 0.12083238029952814,
-        randomBytes: [53, 205, 232, 45, 93, 200, 245, 107],
-        randomLib: 149,
-      },
-    });
+    );
   });
 
-  test("merges custom deps", async () => {
+  it("merges custom deps", async () => {
     const db = { query: (sql: string) => `result:${sql}` };
     await using run = testCreateRun({ db });
 
-    expect(run.deps.db).toBe(db);
-    await expect(
-      run((run) => ok(run.deps.db.query("select 1"))),
-    ).resolves.toEqual(ok("result:select 1"));
+    assertSame(run.deps.db, db);
+    assertEqual(
+      await run((run) => ok(run.deps.db.query("select 1"))),
+      ok("result:select 1"),
+    );
   });
 
-  test("accepts custom deps with optional compatible default deps", async () => {
+  it("accepts custom deps with optional compatible default deps", async () => {
     const deps: DbDep & Partial<RunConfigDep> = dbDep;
     await using run = testCreateRun(deps);
 
-    expectTypeOf(run).toEqualTypeOf<
-      DisposableRun<TestRunDefaultDeps & typeof deps>
-    >();
-    expect(run.deps.db).toBe(dbDep.db);
+    assertType<typeof run, DisposableRun<TestRunDefaultDeps & typeof deps>>();
+    assertSame(run.deps.db, dbDep.db);
   });
 });
 
 describe("AbortError", () => {
-  test("is detected structurally", () => {
-    expect(AbortError.is(createAbortError(testAbortReason))).toBe(true);
-    expect(AbortError.is(testAbortError)).toBe(true);
-    expect(AbortError.is({ type: "AbortError" })).toBe(false);
+  it("is detected structurally", () => {
+    assertTrue(AbortError.is(createAbortError(testAbortReason)));
+    assertType(AbortError, testAbortError);
+    assertFalse(AbortError.is({ type: "AbortError" }));
   });
 });
 
 describe("Run", () => {
   describe("calling a Task", () => {
-    test("creates child Run, passes it to Task, and returns Fiber exposing it", async () => {
+    it("creates child Run, passes it to Task, and returns Fiber exposing it", async () => {
       await using run = createRun();
       let childRun: Run | undefined;
 
       const loadUser: Task<string> = (run) => {
-        expectTypeOf(run).toEqualTypeOf<Run>();
-        expectTypeOf(run).not.toEqualTypeOf<DisposableRun>();
+        assertType<typeof run, Run>();
+        assertType<
+          [typeof run] extends [DisposableRun]
+            ? [DisposableRun] extends [typeof run]
+              ? true
+              : false
+            : false,
+          false
+        >();
         // @ts-expect-error - Task Runs cannot panic manually.
         void run.panic;
         childRun = run;
@@ -475,19 +520,24 @@ describe("Run", () => {
 
       const userFiber = run(loadUser);
 
-      expectTypeOf(userFiber).toEqualTypeOf<Fiber<string, never>>();
+      assertType<typeof userFiber, Fiber<string, never>>();
       const compileTimeAssertions = () => {
         // oxlint-disable-next-line typescript/no-floating-promises -- Verifies that a Fiber must be handled or explicitly discarded with void.
         run(loadUser);
       };
-      expectTypeOf(compileTimeAssertions).toBeFunction();
-      expect(childRun).toBeDefined();
-      expect(childRun).not.toBe(run);
-      expect(userFiber.run).toBe(childRun);
-      expect(await userFiber).toEqual(ok("Ada"));
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
+      assertNotUndefined(childRun);
+      assertFalse(globalThis.Object.is(childRun, run));
+      assertSame(userFiber.run, childRun);
+      assertEqual(await userFiber, ok("Ada"));
     });
 
-    test("can start nested child Tasks", async () => {
+    it("can start nested child Tasks", async () => {
       await using run = createRun();
       let nestedTaskStarted = false;
 
@@ -498,59 +548,58 @@ describe("Run", () => {
         }),
       );
 
-      expect(nestedTaskStarted).toBe(true);
-      expect(await parentFiber).toEqual(ok("Ada"));
+      assertTrue(nestedTaskStarted);
+      assertEqual(await parentFiber, ok("Ada"));
     });
 
-    test("id matches Run passed to Task", async () => {
+    it("id matches Run passed to Task", async () => {
       await using run = createRun();
       let parentRunId: Id | undefined;
       let childRunId: Id | undefined;
       let childFiber: Fiber<void> | undefined;
 
-      expectTypeOf(run.id).toEqualTypeOf<Id>();
+      assertType<typeof run.id, Id>();
 
       const parentFiber = run(async (run) => {
         parentRunId = run.id;
 
         childFiber = run(({ id }) => {
           childRunId = id;
-          expectTypeOf(id).toEqualTypeOf<Id>();
+          assertType<typeof id, Id>();
           return ok();
         });
 
         return childFiber;
       });
 
-      expect(await parentFiber).toEqual(ok());
+      assertEqual(await parentFiber, ok());
 
-      assert(childFiber);
-      expect(parentRunId).toBe(parentFiber.run.id);
-      expect(childRunId).toBe(childFiber.run.id);
-      expect(run.id).not.toBe(parentFiber.run.id);
-      expect(parentRunId).not.toBe(childRunId);
+      assertNotUndefined(childFiber);
+      assertSame(parentRunId, parentFiber.run.id);
+      assertSame(childRunId, childFiber.run.id);
+      assertFalse(globalThis.Object.is(run.id, parentFiber.run.id));
+      assertFalse(globalThis.Object.is(parentRunId, childRunId));
     });
   });
 
   describe("orThrow", () => {
-    test("unwraps Ok values and throws Result errors", async () => {
+    it("unwraps Ok values and throws Result errors", async () => {
       await using run = createRun();
       const userError = { type: "UserError", message: "Missing user" };
       const loadUser: Task<string, typeof userError> = () => ok("Ada");
 
-      expect(await run.orThrow(loadUser)).toBe("Ada");
+      assertEqual(await run.orThrow(loadUser), "Ada");
 
       const failUser: Task<string, typeof userError> = () => err(userError);
 
-      await expect(run.orThrow(failUser)).rejects.toMatchObject({
-        message: "getOrThrow",
-        cause: userError,
-      });
+      const error = await assertRejectsInstanceOf(run.orThrow(failUser), Error);
+      assertEqual(error.message, "getOrThrow");
+      assertSame(error.cause, userError);
 
       const queryDb: Task<string, typeof userError, DbDep> = ({ deps }) =>
         ok(deps.db.query("select 1"));
 
-      expect(await run.orThrow(queryDb, dbDep)).toBe("result:select 1");
+      assertEqual(await run.orThrow(queryDb, dbDep), "result:select 1");
 
       const loadCurrentUser: Task<string> = () => ok("Ada");
 
@@ -564,15 +613,16 @@ describe("Run", () => {
   });
 
   describe("ok", () => {
-    test("unwraps Tasks with no Result error", async () => {
+    it("unwraps Tasks with no Result error", async () => {
       await using run = createRun();
       const loadUser: Task<string> = () => ok("Ada");
 
-      expect(await run.ok(loadUser)).toBe("Ada");
+      assertEqual(await run.ok(loadUser), "Ada");
 
-      expect(
+      assertEqual(
         await run.ok(({ deps }) => ok(deps.db.query("select 1")), dbDep),
-      ).toBe("result:select 1");
+        "result:select 1",
+      );
 
       const userError = { type: "UserError", message: "Missing user" };
       const failUser: Task<string, typeof userError> = () => err(userError);
@@ -587,47 +637,50 @@ describe("Run", () => {
   });
 
   describe("Result errors versus defects", () => {
-    test("distinguishes Result errors and defects", async () => {
+    it("distinguishes Result errors and defects", async () => {
       await using run = createRun();
       const userError = { type: "UserError" } as const;
 
-      expect(await run(() => err(userError))).toEqual(err(userError));
+      assertEqual(await run(() => err(userError)), err(userError));
 
       const defectRun = testCreateRun();
       const defect = new Error("boom");
       try {
-        await expect(
+        await assertRejects(
           defectRun(() => {
             throw defect;
           }),
-        ).rejects.toEqual(panic(defect));
-        expect(await defectRun.deps.reportDefect.next()).toEqual(panic(defect));
+          panic(defect),
+        );
+        assertEqual(await defectRun.deps.reportDefect.next(), panic(defect));
       } finally {
         await defectRun[Symbol.asyncDispose]();
       }
     });
 
-    test.runIf(isDev)("panics when a Task returns a non-Result", async () => {
-      await using run = testCreateRun();
-      const malformedTask = (() => "not a Result") as unknown as Task<unknown>;
+    it(
+      "panics when a Task returns a non-Result",
+      { skip: !isDev },
+      async () => {
+        await using run = testCreateRun();
+        const malformedTask = (() =>
+          "not a Result") as unknown as Task<unknown>;
 
-      const fiber = run(malformedTask);
+        const fiber = run(malformedTask);
 
-      await expect(fiber).rejects.toMatchObject({
-        reason: { type: "PanicAbortReason" },
-      });
-      const panicAbortError = await run.deps.reportDefect.next();
-      assert(AbortError.is(panicAbortError));
-      assert(panicAbortError.reason.type === "PanicAbortReason");
-      const { defect } = panicAbortError.reason;
-      assert(defect instanceof Error);
-      expect(defect.message).toBe("Task must return Result.");
-      expect(panicAbortError).toBe(run.signal.reason);
-    });
+        const rejection = await assertRejectsPanicAbortErrorMessage(
+          fiber,
+          "Task must return Result.",
+        );
+        const panicAbortError = await run.deps.reportDefect.next();
+        assertSame(panicAbortError, rejection);
+        assertSame(panicAbortError, run.signal.reason);
+      },
+    );
   });
 
   describe("lifecycle", () => {
-    test("aborts Task Run after Task settles", async () => {
+    it("aborts Task Run after Task settles", async () => {
       await using run = createRun();
       let childRun: Run | undefined;
 
@@ -636,16 +689,16 @@ describe("Run", () => {
         return ok();
       });
 
-      expect(await fiber).toEqual(ok());
-      assert(childRun);
-      expect(childRun.signal.aborted).toBe(true);
-      expect(childRun.signal.reason).toEqual({
+      assertEqual(await fiber, ok());
+      assertNotUndefined(childRun);
+      assertTrue(childRun.signal.aborted);
+      assertEqual(childRun.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
     });
 
-    test("aborts owned child Tasks and waits before Fiber resolves", async () => {
+    it("aborts owned child Tasks and waits before Fiber resolves", async () => {
       await using run = createRun();
       const childAborted = Promise.withResolvers<AbortSignal>();
       const completeChild = Promise.withResolvers<void>();
@@ -672,20 +725,20 @@ describe("Run", () => {
 
       const childSignal = await childAborted.promise;
 
-      expect(childSignal.aborted).toBe(true);
-      expect(childSignal.reason).toEqual({
+      assertTrue(childSignal.aborted);
+      assertEqual(childSignal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
-      expect(parentSettled).toBe(false);
+      assertFalse(parentSettled);
 
       completeChild.resolve();
 
-      expect(await parentFiber).toEqual(ok("parent"));
-      expect(parentSettled).toBe(true);
+      assertEqual(await parentFiber, ok("parent"));
+      assertTrue(parentSettled);
     });
 
-    test("settles Fiber continuations after parent Run records Aborted", async () => {
+    it("settles Fiber continuations after parent Run records Aborted", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
 
@@ -694,7 +747,7 @@ describe("Run", () => {
         return ok();
       });
       const childFiberContinuation = childFiber.then((result) => {
-        expect(run.getState()).toEqual({
+        assertEqual(run.getState(), {
           type: "Aborted",
           abort: {
             request: runDisposedAbortReason,
@@ -708,14 +761,14 @@ describe("Run", () => {
 
       completeChild.resolve();
 
-      expect(await childFiberContinuation).toEqual(ok());
+      assertEqual(await childFiberContinuation, ok());
 
       await disposePromise;
     });
   });
 
   describe("abortable", () => {
-    test("returns AbortableFiber that catches abort as Result error", async () => {
+    it("returns AbortableFiber that catches abort as Result error", async () => {
       await using run = createRun();
       const checkAbort = Promise.withResolvers<void>();
 
@@ -724,16 +777,16 @@ describe("Run", () => {
         signal.throwIfAborted();
         return ok("Ada");
       });
-      expectTypeOf(fiber).toEqualTypeOf<AbortableFiber<string, never>>();
+      assertType<typeof fiber, AbortableFiber<string, never>>();
 
       fiber.abort(testAbortReason);
       checkAbort.resolve();
       const result = await fiber;
 
-      expectErr(result, testAbortError);
+      assertErr(result, testAbortError);
     });
 
-    test("returns panic abort for defects and reports panic abort", async () => {
+    it("returns panic abort for defects and reports panic abort", async () => {
       await using run = testCreateRun();
       const error = new Error("boom");
 
@@ -741,11 +794,11 @@ describe("Run", () => {
         throw error;
       });
 
-      await expect(fiber).resolves.toEqual(err(panic(error)));
-      expect(await run.deps.reportDefect.next()).toEqual(panic(error));
+      assertEqual(await fiber, err(panic(error)));
+      assertEqual(await run.deps.reportDefect.next(), panic(error));
     });
 
-    test("aborts with explicit AbortReason by default", async () => {
+    it("aborts with explicit AbortReason by default", async () => {
       await using run = createRun();
       const checkAbort = Promise.withResolvers<void>();
 
@@ -759,22 +812,22 @@ describe("Run", () => {
       checkAbort.resolve();
       const result = await fiber;
 
-      assert(!result.ok);
-      expect(result.error).toEqual({
+      assertErr(result);
+      assertEqual(result.error, {
         type: "AbortError",
         reason: explicitAbortReason,
       });
     });
 
-    test("settles abort before Run disposal observes it", async () => {
+    it("settles abort before Run disposal observes it", async () => {
       const run = createRun();
       const continueTask = Promise.withResolvers<void>();
 
       const fiber = run.abortable(async ({ signal }) => {
         await continueTask.promise;
 
-        expect(signal.aborted).toBe(true);
-        expect(signal.reason).toEqual(testAbortError);
+        assertTrue(signal.aborted);
+        assertEqual(signal.reason, testAbortError);
 
         signal.throwIfAborted();
         return ok("Ada");
@@ -785,13 +838,13 @@ describe("Run", () => {
 
       continueTask.resolve();
 
-      expect(await fiber).toEqual(err(testAbortError));
+      assertEqual(await fiber, err(testAbortError));
       await disposePromise;
     });
   });
 
   describe("abort propagation", () => {
-    test("does not start nested child Tasks after parent aborts", async () => {
+    it("does not start nested child Tasks after parent aborts", async () => {
       await using run = createRun();
       const completeParentTask = Promise.withResolvers<void>();
 
@@ -808,15 +861,15 @@ describe("Run", () => {
         return ok("Ada");
       });
 
-      expect(nestedTaskStarted).toBe(false);
-      await expect(childFiber).rejects.toEqual(testAbortError);
+      assertFalse(nestedTaskStarted);
+      await assertRejects(childFiber, testAbortError);
 
       completeParentTask.resolve();
 
-      expect(await parentFiber).toEqual(ok());
+      assertEqual(await parentFiber, ok());
     });
 
-    test("does not start child Tasks created by abort listeners", async () => {
+    it("does not start child Tasks created by abort listeners", async () => {
       await using run = createRun();
       const completeParentTask = Promise.withResolvers<void>();
       let nestedTaskStarted = false;
@@ -839,16 +892,16 @@ describe("Run", () => {
 
       parentFiber.abort(testAbortReason);
 
-      assert(nestedFiber);
+      assertNotUndefined(nestedFiber);
       completeParentTask.resolve();
 
-      expect(nestedTaskStarted).toBe(false);
-      await expect(nestedFiber).rejects.toEqual(testAbortError);
+      assertFalse(nestedTaskStarted);
+      await assertRejects(nestedFiber, testAbortError);
 
-      expect(await parentFiber).toEqual(ok());
+      assertEqual(await parentFiber, ok());
     });
 
-    test("propagates parent abort to descendant Runs", async () => {
+    it("propagates parent abort to descendant Runs", async () => {
       await using run = createRun();
       const continueGrandchild = Promise.withResolvers<void>();
       let grandchildRun: Run | undefined;
@@ -868,7 +921,7 @@ describe("Run", () => {
         return child;
       });
 
-      assert(grandchildRun);
+      assertNotUndefined(grandchildRun);
 
       fiber.abort(testAbortReason);
 
@@ -877,14 +930,14 @@ describe("Run", () => {
 
       continueGrandchild.resolve();
 
-      expect(await fiber).toEqual(err(testAbortError));
-      expect(grandchildAborted).toBe(true);
-      expect(grandchildAbortReason).toEqual(testAbortError);
+      assertEqual(await fiber, err(testAbortError));
+      assertTrue(grandchildAborted);
+      assertEqual(grandchildAbortReason, testAbortError);
     });
   });
 
   describe("onAbort", () => {
-    test("calls abort callbacks for future and already-observed aborts", async () => {
+    it("calls abort callbacks for future and already-observed aborts", async () => {
       await using run = createRun();
       const events: Array<string> = [];
       let callbackError: AbortError | undefined;
@@ -901,14 +954,14 @@ describe("Run", () => {
       });
 
       await disposePromise;
-      expect(events).toEqual(["abort", "late"]);
-      expect(callbackError).toEqual({
+      assertEqual(events, ["abort", "late"]);
+      assertEqual(callbackError, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
     });
 
-    test("disposes abort callback registration", async () => {
+    it("disposes abort callback registration", async () => {
       await using run = createRun();
       let callbackCalled = false;
 
@@ -919,10 +972,10 @@ describe("Run", () => {
       }
 
       await run[Symbol.asyncDispose]();
-      expect(callbackCalled).toBe(false);
+      assertFalse(callbackCalled);
     });
 
-    test("does not call abort callback while abort is masked", async () => {
+    it("does not call abort callback while abort is masked", async () => {
       await using run = createRun();
       const continueTask = Promise.withResolvers<void>();
       let callbackCalled = false;
@@ -939,23 +992,23 @@ describe("Run", () => {
 
       fiber.abort();
 
-      expect(callbackCalled).toBe(false);
+      assertFalse(callbackCalled);
 
       continueTask.resolve();
 
-      expect(await fiber).toEqual(ok());
+      assertEqual(await fiber, ok());
     });
   });
 
   describe("daemon", () => {
-    test("outlives the current Task", async () => {
+    it("outlives the current Task", async () => {
       await using run = createRun();
       const completeDaemon = Promise.withResolvers<void>();
       let taskRun: Run | undefined;
       let daemonFiber: AbortableFiber<void> | undefined;
 
       const taskFiber = run((run) => {
-        expectTypeOf(run.daemon).toEqualTypeOf<Run["daemon"]>();
+        assertType<typeof run.daemon, Run["daemon"]>();
         taskRun = run;
         daemonFiber = run.daemon(async () => {
           await completeDaemon.promise;
@@ -964,24 +1017,24 @@ describe("Run", () => {
         return ok();
       });
 
-      expect(await taskFiber).toEqual(ok());
+      assertEqual(await taskFiber, ok());
 
-      assert(taskRun);
-      assert(daemonFiber);
-      expectTypeOf(daemonFiber).toEqualTypeOf<AbortableFiber<void>>();
-      expect(taskRun.signal.aborted).toBe(true);
-      expect(taskRun.signal.reason).toEqual({
+      assertNotUndefined(taskRun);
+      assertNotUndefined(daemonFiber);
+      assertType<typeof daemonFiber, AbortableFiber<void>>();
+      assertTrue(taskRun.signal.aborted);
+      assertEqual(taskRun.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
-      expect(daemonFiber.run.signal.aborted).toBe(false);
+      assertFalse(daemonFiber.run.signal.aborted);
 
       completeDaemon.resolve();
 
-      expect(await daemonFiber).toEqual(ok());
+      assertEqual(await daemonFiber, ok());
     });
 
-    test("abort on the daemon Fiber aborts the daemon Task", async () => {
+    it("abort on the daemon Fiber aborts the daemon Task", async () => {
       await using run = createRun();
       const checkAbort = Promise.withResolvers<void>();
 
@@ -993,18 +1046,18 @@ describe("Run", () => {
 
       daemonFiber.abort();
 
-      expect(daemonFiber.run.signal.aborted).toBe(true);
-      expect(daemonFiber.run.signal.reason).toEqual({
+      assertTrue(daemonFiber.run.signal.aborted);
+      assertEqual(daemonFiber.run.signal.reason, {
         type: "AbortError",
         reason: explicitAbortReason,
       });
 
       checkAbort.resolve();
 
-      expect(await daemonFiber).toEqual(err(daemonFiber.run.signal.reason));
+      assertEqual(await daemonFiber, err(daemonFiber.run.signal.reason));
     });
 
-    test("throws when current Task was aborted before daemon starts", async () => {
+    it("throws when current Task was aborted before daemon starts", async () => {
       await using run = createRun();
       const continueTask = Promise.withResolvers<void>();
       let daemonStarted = false;
@@ -1024,19 +1077,18 @@ describe("Run", () => {
       continueTask.resolve();
 
       const result = await fiber;
-      assert(!result.ok);
-      expect(result.error).toEqual({
+      assertErr(result);
+      assertEqual(result.error, {
         type: "AbortError",
         reason: explicitAbortReason,
       });
-      expect(daemonStarted).toBe(false);
+      assertFalse(daemonStarted);
     });
 
-    test("throws inside unabortable mask after abort request", async () => {
+    it("throws inside unabortable mask after abort request", async () => {
       await using run = createRun();
       const continueTask = Promise.withResolvers<void>();
       let daemonStarted = false;
-      let daemonThrew: unknown;
 
       // The mask keeps in-flight work running, but detached work attaches to
       // the root and would outlive the scope, so daemon checks the raw abort
@@ -1045,16 +1097,14 @@ describe("Run", () => {
         unabortable(async (run) => {
           await continueTask.promise;
 
-          expect(run.signal.aborted).toBe(false);
+          assertFalse(run.signal.aborted);
 
-          try {
+          assertThrows(() => {
             void run.daemon(() => {
               daemonStarted = true;
               return ok();
             });
-          } catch (error) {
-            daemonThrew = error;
-          }
+          }, testAbortError);
 
           return ok("done");
         }),
@@ -1063,12 +1113,11 @@ describe("Run", () => {
       fiber.abort(testAbortReason);
       continueTask.resolve();
 
-      expect(await fiber).toEqual(ok("done"));
-      expect(daemonStarted).toBe(false);
-      expect(daemonThrew).toEqual(testAbortError);
+      assertEqual(await fiber, ok("done"));
+      assertFalse(daemonStarted);
     });
 
-    test("does not inherit the caller's abort mask", async () => {
+    it("does not inherit the caller's abort mask", async () => {
       await using run = createRun();
       const checkAbort = Promise.withResolvers<void>();
       let daemonFiber: AbortableFiber<void> | undefined;
@@ -1087,21 +1136,21 @@ describe("Run", () => {
         }),
       );
 
-      expect(maskedResult).toEqual(ok());
-      assert(daemonFiber);
-      expect(daemonFiber.run.snapshot().abortMask).toBe(0);
+      assertEqual(maskedResult, ok());
+      assertNotUndefined(daemonFiber);
+      assertEqual(daemonFiber.run.snapshot().abortMask, 0);
 
       daemonFiber.abort(testAbortReason);
 
-      expect(daemonFiber.run.signal.aborted).toBe(true);
-      expect(daemonFiber.run.signal.reason).toEqual(testAbortError);
+      assertTrue(daemonFiber.run.signal.aborted);
+      assertEqual(daemonFiber.run.signal.reason, testAbortError);
 
       checkAbort.resolve();
 
-      expect(await daemonFiber).toEqual(err(daemonFiber.run.signal.reason));
+      assertEqual(await daemonFiber, err(daemonFiber.run.signal.reason));
     });
 
-    test("aborts and waits for daemon Tasks when root Run disposes", async () => {
+    it("aborts and waits for daemon Tasks when root Run disposes", async () => {
       const run = createRun();
       const completeDaemon = Promise.withResolvers<void>();
       let disposeFinished = false;
@@ -1110,7 +1159,7 @@ describe("Run", () => {
         await completeDaemon.promise;
         if (signal.aborted) {
           const abortError = signal.reason;
-          expect(abortError).toEqual({
+          assertEqual(abortError, {
             type: "AbortError",
             reason: runDisposedAbortReason,
           });
@@ -1123,23 +1172,23 @@ describe("Run", () => {
         disposeFinished = true;
       });
 
-      expect(daemonFiber.run.signal.aborted).toBe(true);
-      expect(daemonFiber.run.signal.reason).toEqual({
+      assertTrue(daemonFiber.run.signal.aborted);
+      assertEqual(daemonFiber.run.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
-      expect(disposeFinished).toBe(false);
+      assertFalse(disposeFinished);
 
       completeDaemon.resolve();
 
-      expect(await daemonFiber).toEqual(err(daemonFiber.run.signal.reason));
+      assertEqual(await daemonFiber, err(daemonFiber.run.signal.reason));
       await disposePromise;
-      expect(disposeFinished).toBe(true);
+      assertTrue(disposeFinished);
     });
   });
 
   describe("create", () => {
-    test("creates DisposableRun that outlives the current Task", async () => {
+    it("creates DisposableRun that outlives the current Task", async () => {
       await using run = createRun();
       const completeCreatedTask = Promise.withResolvers<void>();
       let taskRun: Run | undefined;
@@ -1157,44 +1206,52 @@ describe("Run", () => {
         return ok("task");
       });
 
-      expect(await taskFiber).toEqual(ok("task"));
+      assertEqual(await taskFiber, ok("task"));
 
-      assert(taskRun);
-      assert(createdRun);
-      assert(createdFiber);
-      expectTypeOf(createdRun).toEqualTypeOf<DisposableRun>();
-      expect(taskRun.signal.aborted).toBe(true);
-      expect(taskRun.signal.reason).toEqual({
+      assertNotUndefined(taskRun);
+      assertNotUndefined(createdRun);
+      assertNotUndefined(createdFiber);
+      assertType<typeof createdRun, DisposableRun>();
+      assertTrue(taskRun.signal.aborted);
+      assertEqual(taskRun.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
-      expect(createdRun.signal.aborted).toBe(false);
+      assertFalse(createdRun.signal.aborted);
 
       completeCreatedTask.resolve();
 
-      expect(await createdFiber).toEqual(ok("created"));
+      assertEqual(await createdFiber, ok("created"));
     });
 
-    test("created Run runs multiple Tasks and rejects later starts after disposal", async () => {
+    it("created Run runs multiple Tasks and rejects later starts after disposal", async () => {
       const run = createRun();
       const createdRun = run.create();
 
-      expect(await createdRun(() => ok("a"))).toEqual(ok("a"));
-      expect(await createdRun(() => ok("b"))).toEqual(ok("b"));
+      assertEqual(await createdRun(() => ok("a")), ok("a"));
+      assertEqual(await createdRun(() => ok("b")), ok("b"));
 
       createdRun[Symbol.dispose]();
-      expect(() => createdRun(() => ok("later"))).toThrow(
-        "Cannot use a disposed object.",
+      const createdRunError = assertThrowsInstanceOf(
+        () => createdRun(() => ok("later")),
+        Error,
+      );
+      assertTrue(
+        createdRunError.message.includes("Cannot use a disposed object."),
       );
 
       const rootDisposedRun = run.create();
       await run[Symbol.asyncDispose]();
-      expect(() => rootDisposedRun(() => ok("later"))).toThrow(
-        "Cannot use a disposed object.",
+      const rootRunError = assertThrowsInstanceOf(
+        () => rootDisposedRun(() => ok("later")),
+        Error,
+      );
+      assertTrue(
+        rootRunError.message.includes("Cannot use a disposed object."),
       );
     });
 
-    test("aborts and waits for child Tasks when created Run disposes", async () => {
+    it("aborts and waits for child Tasks when created Run disposes", async () => {
       await using run = createRun();
       const createdRun = run.create();
       const completeChild = Promise.withResolvers<void>();
@@ -1207,7 +1264,7 @@ describe("Run", () => {
 
         if (signal.aborted) {
           const abortError = signal.reason;
-          expect(abortError).toEqual({
+          assertEqual(abortError, {
             type: "AbortError",
             reason: runDisposedAbortReason,
           });
@@ -1217,29 +1274,28 @@ describe("Run", () => {
         return ok();
       });
 
-      assert(childSignal);
+      assertNotUndefined(childSignal);
       const disposePromise = createdRun[Symbol.asyncDispose]().then(() => {
         disposeFinished = true;
       });
 
-      expect(childSignal.aborted).toBe(true);
-      expect(childSignal.reason).toEqual({
+      assertTrue(childSignal.aborted);
+      assertEqual(childSignal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
-      expect(disposeFinished).toBe(false);
+      assertFalse(disposeFinished);
 
       completeChild.resolve();
 
-      expect(await childFiber).toEqual(err(childSignal.reason));
+      assertEqual(await childFiber, err(childSignal.reason));
       await disposePromise;
-      expect(disposeFinished).toBe(true);
-      expect(() => createdRun(() => ok())).toThrow(
-        "Cannot use a disposed object.",
-      );
+      assertTrue(disposeFinished);
+      const error = assertThrowsInstanceOf(() => createdRun(() => ok()), Error);
+      assertTrue(error.message.includes("Cannot use a disposed object."));
     });
 
-    test("aborts and waits for created Run when root Run disposes", async () => {
+    it("aborts and waits for created Run when root Run disposes", async () => {
       const run = createRun();
       const createdRun = run.create();
       const completeChild = Promise.withResolvers<void>();
@@ -1252,7 +1308,7 @@ describe("Run", () => {
 
         if (signal.aborted) {
           const abortError = signal.reason;
-          expect(abortError).toEqual({
+          assertEqual(abortError, {
             type: "AbortError",
             reason: runDisposedAbortReason,
           });
@@ -1262,37 +1318,37 @@ describe("Run", () => {
         return ok();
       });
 
-      assert(childSignal);
+      assertNotUndefined(childSignal);
       const disposePromise = run[Symbol.asyncDispose]().then(() => {
         disposeFinished = true;
       });
 
-      expect(createdRun.signal.aborted).toBe(true);
-      expect(createdRun.signal.reason).toEqual({
+      assertTrue(createdRun.signal.aborted);
+      assertEqual(createdRun.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
-      expect(childSignal.aborted).toBe(true);
-      expect(childSignal.reason).toEqual({
+      assertTrue(childSignal.aborted);
+      assertEqual(childSignal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
-      expect(disposeFinished).toBe(false);
+      assertFalse(disposeFinished);
 
       completeChild.resolve();
 
-      expect(await childFiber).toEqual(err(childSignal.reason));
+      assertEqual(await childFiber, err(childSignal.reason));
       await disposePromise;
-      expect(disposeFinished).toBe(true);
+      assertTrue(disposeFinished);
     });
 
-    test("created Run has Settled state after root disposal", async () => {
+    it("created Run has Settled state after root disposal", async () => {
       const run = createRun();
       const createdRun = run.create();
 
       await run[Symbol.asyncDispose]();
 
-      expect(createdRun.getState()).toEqual({
+      assertEqual(createdRun.getState(), {
         type: "Settled",
         abort: {
           request: runDisposedAbortReason,
@@ -1302,14 +1358,14 @@ describe("Run", () => {
       });
     });
 
-    test("created Run abort has custom abort in Settled state", async () => {
+    it("created Run abort has custom abort in Settled state", async () => {
       await using root = createRun();
       const createdRun = root.create();
 
       createdRun.abort(testAbortReason);
       await createdRun[Symbol.asyncDispose]();
 
-      expect(createdRun.getState()).toEqual({
+      assertEqual(createdRun.getState(), {
         type: "Settled",
         abort: {
           request: testAbortReason,
@@ -1321,7 +1377,7 @@ describe("Run", () => {
   });
 
   describe("disposed Task Run", () => {
-    test("prevents Run APIs after automatic Task Run disposal", async () => {
+    it("prevents Run APIs after automatic Task Run disposal", async () => {
       await using run = createRun();
       let childRun: Run | undefined;
 
@@ -1330,195 +1386,205 @@ describe("Run", () => {
         return ok();
       });
 
-      expect(await fiber).toEqual(ok());
+      assertEqual(await fiber, ok());
 
-      assert(childRun);
+      assertNotUndefined(childRun);
       const disposedChildRun = childRun;
-      expect(() => disposedChildRun(() => ok())).toThrow(
-        "Cannot use a disposed object.",
+      const runError = assertThrowsInstanceOf(
+        () => disposedChildRun(() => ok()),
+        Error,
       );
-      expect(() => disposedChildRun.abortable(() => ok())).toThrow(
-        "Cannot use a disposed object.",
+      assertTrue(runError.message.includes("Cannot use a disposed object."));
+      const abortableError = assertThrowsInstanceOf(
+        () => disposedChildRun.abortable(() => ok()),
+        Error,
       );
-      expect(() => disposedChildRun.daemon(() => ok())).toThrow(
-        "Cannot use a disposed object.",
+      assertTrue(
+        abortableError.message.includes("Cannot use a disposed object."),
       );
-      expect(() => disposedChildRun.create()).toThrow(
-        "Cannot use a disposed object.",
+      const daemonError = assertThrowsInstanceOf(
+        () => disposedChildRun.daemon(() => ok()),
+        Error,
       );
+      assertTrue(daemonError.message.includes("Cannot use a disposed object."));
+      const createError = assertThrowsInstanceOf(
+        () => disposedChildRun.create(),
+        Error,
+      );
+      assertTrue(createError.message.includes("Cannot use a disposed object."));
     });
   });
 
   describe("dependency injection", () => {
-    test("provides default deps from createRun", async () => {
+    it("provides default deps from createRun", async () => {
       await using run = createRun();
 
-      expectTypeOf(run.deps).toEqualTypeOf<RunDefaultDeps>();
+      assertType<typeof run.deps, RunDefaultDeps>();
 
       const fiber = run(({ deps }) => {
-        expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps>();
-        expect(deps).toBe(run.deps);
+        assertType<typeof deps, RunDefaultDeps>();
+        assertSame(deps, run.deps);
         return ok();
       });
 
-      expect(await fiber).toEqual(ok());
+      assertEqual(await fiber, ok());
     });
 
-    test("creates independent default consoles", async () => {
+    it("creates independent default consoles", async () => {
       await using firstRun = createRun();
       await using secondRun = createRun();
       const secondRunLevel = secondRun.deps.console.getLevel();
 
       firstRun.deps.console.setLevel("silent");
 
-      expect(secondRun.deps.console.getLevel()).toBe(secondRunLevel);
+      assertSame(secondRun.deps.console.getLevel(), secondRunLevel);
     });
 
-    test("lets custom deps override defaults in createRun", async () => {
+    it("lets custom deps override defaults in createRun", async () => {
       await using run = createRun({ random });
 
-      expect(run.deps.random).toBe(random);
+      assertSame(run.deps.random, random);
     });
 
-    test("merges custom deps and lets child Tasks inherit them", async () => {
+    it("merges custom deps and lets child Tasks inherit them", async () => {
       await using run = createRun(dbDep);
 
-      expectTypeOf(run).toEqualTypeOf<DisposableRun<DbDep>>();
-      expectTypeOf(run.deps).toEqualTypeOf<RunDefaultDeps & DbDep>();
-      expect(run.deps.db).toBe(dbDep.db);
+      assertType<typeof run, DisposableRun<DbDep>>();
+      assertType<typeof run.deps, RunDefaultDeps & DbDep>();
+      assertSame(run.deps.db, dbDep.db);
 
       const fiber = run(({ deps }) => {
-        expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps & DbDep>();
-        expect(deps.db).toBe(dbDep.db);
+        assertType<typeof deps, RunDefaultDeps & DbDep>();
+        assertSame(deps.db, dbDep.db);
         return ok();
       });
 
-      expectTypeOf(fiber.run.deps.db).toEqualTypeOf<Db>();
-      expect(await fiber).toEqual(ok());
+      assertType<typeof fiber.run.deps.db, Db>();
+      assertEqual(await fiber, ok());
     });
 
     describe("replaces custom deps and preserves overridden defaults", () => {
-      test("for run(task, deps)", async () => {
+      it("for run(task, deps)", async () => {
         await using run = createRun({ ...dbDep, random });
 
         const fiber = run((run) => {
-          expect(run.deps.db).toBe(dbDep.db);
-          expect(run.deps.random).toBe(random);
+          assertSame(run.deps.db, dbDep.db);
+          assertSame(run.deps.random, random);
 
           return run(({ deps }) => {
-            expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps & SessionDep>();
-            expect("db" in deps).toBe(false);
-            expect(deps.random).toBe(random);
-            expect(deps.session).toBe(sessionDep.session);
+            assertType<typeof deps, RunDefaultDeps & SessionDep>();
+            assertFalse("db" in deps);
+            assertSame(deps.random, random);
+            assertSame(deps.session, sessionDep.session);
             return ok();
           }, sessionDep);
         });
 
-        expect(await fiber).toEqual(ok());
+        assertEqual(await fiber, ok());
       });
 
-      test("for run.abortable(task, deps)", async () => {
+      it("for run.abortable(task, deps)", async () => {
         await using run = createRun({ ...dbDep, random });
 
         const result = await run.abortable(({ deps }) => {
-          expect("db" in deps).toBe(false);
-          expect(deps.random).toBe(random);
-          expect(deps.session).toBe(sessionDep.session);
-          expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps & SessionDep>();
+          assertFalse("db" in deps);
+          assertSame(deps.random, random);
+          assertSame(deps.session, sessionDep.session);
+          assertType<typeof deps, RunDefaultDeps & SessionDep>();
           return ok(deps.session.userId);
         }, sessionDep);
 
-        expectOk(result, "ada");
+        assertOk(result, "ada");
       });
 
-      test("for run.daemon(task, deps)", async () => {
+      it("for run.daemon(task, deps)", async () => {
         await using run = createRun({ ...dbDep, random });
 
         const taskFiber = run(async ({ daemon }) => {
           const daemonResult = await daemon(({ deps }) => {
-            expect("db" in deps).toBe(false);
-            expect(deps.random).toBe(random);
-            expect(deps.session).toBe(sessionDep.session);
-            expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps & SessionDep>();
+            assertFalse("db" in deps);
+            assertSame(deps.random, random);
+            assertSame(deps.session, sessionDep.session);
+            assertType<typeof deps, RunDefaultDeps & SessionDep>();
             return ok(deps.session.userId);
           }, sessionDep);
 
-          assert(daemonResult.ok);
+          assertOk(daemonResult);
           return ok(daemonResult.value);
         });
 
-        expect(await taskFiber).toEqual(ok("ada"));
+        assertEqual(await taskFiber, ok("ada"));
       });
 
-      test("for run.create(deps)", async () => {
+      it("for run.create(deps)", async () => {
         await using run = createRun({ ...dbDep, random });
 
         const taskFiber = run(async (run) => {
           await using createdRun = run.create(sessionDep);
-          expectTypeOf(createdRun).toEqualTypeOf<DisposableRun<SessionDep>>();
+          assertType<typeof createdRun, DisposableRun<SessionDep>>();
 
           return await createdRun(({ deps }) => {
-            expect("db" in deps).toBe(false);
-            expect(deps.random).toBe(random);
-            expect(deps.session).toBe(sessionDep.session);
-            expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps & SessionDep>();
+            assertFalse("db" in deps);
+            assertSame(deps.random, random);
+            assertSame(deps.session, sessionDep.session);
+            assertType<typeof deps, RunDefaultDeps & SessionDep>();
             return ok(deps.session.userId);
           });
         });
 
-        expect(await taskFiber).toEqual(ok("ada"));
+        assertEqual(await taskFiber, ok("ada"));
       });
     });
 
     describe("inherits current deps", () => {
-      test("for run.daemon(task, deps)", async () => {
+      it("for run.daemon(task, deps)", async () => {
         await using run = createRun(dbDep);
 
         const taskFiber = run(async (run) => {
           const childResult = await run(async ({ daemon }) => {
             const daemonResult = await daemon(({ deps }) => {
-              expect("db" in deps).toBe(false);
-              expect(deps.session).toBe(sessionDep.session);
-              expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps & SessionDep>();
+              assertFalse("db" in deps);
+              assertSame(deps.session, sessionDep.session);
+              assertType<typeof deps, RunDefaultDeps & SessionDep>();
               return ok(deps.session.userId);
             });
 
-            assert(daemonResult.ok);
+            assertOk(daemonResult);
             return ok(daemonResult.value);
           }, sessionDep);
 
-          assert(childResult.ok);
+          assertOk(childResult);
           return ok(childResult.value);
         });
 
-        expect(await taskFiber).toEqual(ok("ada"));
+        assertEqual(await taskFiber, ok("ada"));
       });
 
-      test("for run.create() by default", async () => {
+      it("for run.create() by default", async () => {
         await using run = createRun(dbDep);
 
         const taskFiber = run(async (run) => {
           await using createdRun = run.create();
-          expectTypeOf(createdRun).toEqualTypeOf<DisposableRun<DbDep>>();
+          assertType<typeof createdRun, DisposableRun<DbDep>>();
 
           return await createdRun(({ deps }) => {
-            expect(deps.db).toBe(dbDep.db);
-            expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps & DbDep>();
+            assertSame(deps.db, dbDep.db);
+            assertType<typeof deps, RunDefaultDeps & DbDep>();
             return ok(deps.db.query("select"));
           });
         });
 
-        expect(await taskFiber).toEqual(ok("result:select"));
+        assertEqual(await taskFiber, ok("result:select"));
       });
     });
 
     describe("rejects incompatible default dependency overrides", () => {
-      test("in createRun", () => {
+      it("in createRun", () => {
         // @ts-expect-error - Overlapping default deps must be compatible.
         void createRun({ random: "not random" });
       });
 
-      test("for run(task, deps)", () => {
+      it("for run(task, deps)", () => {
         const run = createRun();
         const task: Task<void, never, RandomDep> = () => ok();
 
@@ -1526,7 +1592,7 @@ describe("Run", () => {
         void run(task, { random: "not random" });
       });
 
-      test("for run.abortable(task, deps)", () => {
+      it("for run.abortable(task, deps)", () => {
         const run = createRun();
         const task: Task<void, never, RandomDep> = () => ok();
 
@@ -1534,7 +1600,7 @@ describe("Run", () => {
         void run.abortable(task, { random: "not random" });
       });
 
-      test("for run.daemon(task, deps)", () => {
+      it("for run.daemon(task, deps)", () => {
         const run = createRun();
         const task: Task<void, never, RandomDep> = () => ok();
 
@@ -1542,7 +1608,7 @@ describe("Run", () => {
         void run.daemon(task, { random: "not random" });
       });
 
-      test("for run.create(deps)", async () => {
+      it("for run.create(deps)", async () => {
         const run = createRun();
 
         const assertCreateDepsTypes = () => {
@@ -1557,7 +1623,7 @@ describe("Run", () => {
     });
 
     describe("requires object deps", () => {
-      test("for run.create(deps)", async () => {
+      it("for run.create(deps)", async () => {
         const run = createRun();
 
         const assertCreateDepsTypes = () => {
@@ -1575,7 +1641,7 @@ describe("Run", () => {
         await run[Symbol.asyncDispose]();
       });
 
-      test("for Task deps overloads", () => {
+      it("for Task deps overloads", () => {
         const run = createRun();
         const task: Task<void, never, SessionDep> = () => ok();
 
@@ -1607,13 +1673,13 @@ describe("Run", () => {
   });
 
   describe("state", () => {
-    test("new Run starts in Running state", async () => {
+    it("new Run starts in Running state", async () => {
       await using run = createRun();
 
-      expect(run.getState()).toEqual({ type: "Running" });
+      assertEqual(run.getState(), { type: "Running" });
     });
 
-    test("pending Task Run stays in Running state", async () => {
+    it("pending Task Run stays in Running state", async () => {
       await using run = createRun();
       const completeTask = Promise.withResolvers<void>();
       let childRun: Run | undefined;
@@ -1624,15 +1690,15 @@ describe("Run", () => {
         return ok();
       });
 
-      assert(childRun);
-      expect(childRun.getState()).toEqual({ type: "Running" });
+      assertNotUndefined(childRun);
+      assertEqual(childRun.getState(), { type: "Running" });
 
       completeTask.resolve();
 
-      expect(await fiber).toEqual(ok());
+      assertEqual(await fiber, ok());
     });
 
-    test("async disposal records Aborted before child Tasks finish", async () => {
+    it("async disposal records Aborted before child Tasks finish", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
 
@@ -1642,7 +1708,7 @@ describe("Run", () => {
       });
 
       const disposePromise = run[Symbol.asyncDispose]();
-      expect(run.getState()).toEqual({
+      assertEqual(run.getState(), {
         type: "Aborted",
         abort: {
           request: runDisposedAbortReason,
@@ -1652,16 +1718,16 @@ describe("Run", () => {
 
       completeChild.resolve();
 
-      expect(await childFiber).toEqual(ok());
+      assertEqual(await childFiber, ok());
       await disposePromise;
     });
 
-    test("created Run async disposal records Aborted before Settled", async () => {
+    it("created Run async disposal records Aborted before Settled", async () => {
       await using run = createRun();
       const createdRun = run.create();
 
       const disposePromise = createdRun[Symbol.asyncDispose]();
-      expect(createdRun.getState()).toEqual({
+      assertEqual(createdRun.getState(), {
         type: "Aborted",
         abort: {
           request: runDisposedAbortReason,
@@ -1670,7 +1736,7 @@ describe("Run", () => {
       });
 
       await disposePromise;
-      expect(createdRun.getState()).toEqual({
+      assertEqual(createdRun.getState(), {
         type: "Settled",
         abort: {
           request: runDisposedAbortReason,
@@ -1680,12 +1746,12 @@ describe("Run", () => {
       });
     });
 
-    test("async disposal has successful Settled state", async () => {
+    it("async disposal has successful Settled state", async () => {
       const run = createRun();
 
       await run[Symbol.asyncDispose]();
 
-      expect(run.getState()).toEqual({
+      assertEqual(run.getState(), {
         type: "Settled",
         abort: {
           request: runDisposedAbortReason,
@@ -1695,7 +1761,7 @@ describe("Run", () => {
       });
     });
 
-    test("Task Run has Task Result in Settled state", async () => {
+    it("Task Run has Task Result in Settled state", async () => {
       await using run = createRun();
       const notFoundError = { type: "NotFound" } as const;
       let okRun: Run | undefined;
@@ -1710,11 +1776,11 @@ describe("Run", () => {
         return err(notFoundError);
       });
 
-      expect(await okFiber).toEqual(ok("Ada"));
-      expect(await errFiber).toEqual(err(notFoundError));
+      assertEqual(await okFiber, ok("Ada"));
+      assertEqual(await errFiber, err(notFoundError));
 
-      assert(okRun);
-      expect(okRun.getState()).toEqual({
+      assertNotUndefined(okRun);
+      assertEqual(okRun.getState(), {
         type: "Settled",
         abort: {
           request: runDisposedAbortReason,
@@ -1722,8 +1788,8 @@ describe("Run", () => {
         },
         exit: ok(ok("Ada")),
       });
-      assert(errRun);
-      expect(errRun.getState()).toEqual({
+      assertNotUndefined(errRun);
+      assertEqual(errRun.getState(), {
         type: "Settled",
         abort: {
           request: runDisposedAbortReason,
@@ -1733,7 +1799,7 @@ describe("Run", () => {
       });
     });
 
-    test("Task Run has observed abort in Settled state", async () => {
+    it("Task Run has observed abort in Settled state", async () => {
       await using run = createRun();
       const checkAbort = Promise.withResolvers<void>();
       let childRun: Run | undefined;
@@ -1748,10 +1814,10 @@ describe("Run", () => {
       fiber.abort(testAbortReason);
       checkAbort.resolve();
 
-      expect(await fiber).toEqual(err(testAbortError));
+      assertEqual(await fiber, err(testAbortError));
 
-      assert(childRun);
-      expect(childRun.getState()).toEqual({
+      assertNotUndefined(childRun);
+      assertEqual(childRun.getState(), {
         type: "Settled",
         abort: {
           request: testAbortReason,
@@ -1763,11 +1829,11 @@ describe("Run", () => {
   });
 
   describe("snapshot", () => {
-    test("returns current state and child snapshots", async () => {
+    it("returns current state and child snapshots", async () => {
       await using run = createRun();
       const completeChild = Promise.withResolvers<void>();
 
-      expect(run.snapshot()).toEqual({
+      assertEqual(run.snapshot(), {
         id: run.id,
         state: { type: "Running" },
         children: [],
@@ -1779,7 +1845,7 @@ describe("Run", () => {
         return ok("child");
       });
 
-      expect(run.snapshot()).toEqual({
+      assertEqual(run.snapshot(), {
         id: run.id,
         state: { type: "Running" },
         children: [
@@ -1795,8 +1861,8 @@ describe("Run", () => {
 
       completeChild.resolve();
 
-      expect(await childFiber).toEqual(ok("child"));
-      expect(run.snapshot()).toEqual({
+      assertEqual(await childFiber, ok("child"));
+      assertEqual(run.snapshot(), {
         id: run.id,
         state: { type: "Running" },
         children: [],
@@ -1804,7 +1870,7 @@ describe("Run", () => {
       });
     });
 
-    test("includes abort mask depth and requested versus observed aborts", async () => {
+    it("includes abort mask depth and requested versus observed aborts", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
 
@@ -1816,43 +1882,38 @@ describe("Run", () => {
       );
 
       try {
-        expect(run.snapshot()).toMatchObject({
-          abortMask: 0,
-          children: [{ abortMask: 1 }],
-        });
+        const runningSnapshot = run.snapshot();
+        assertEqual(runningSnapshot.abortMask, 0);
+        assertLength(runningSnapshot.children, 1);
+        assertEqual(runningSnapshot.children[0].abortMask, 1);
 
         const disposePromise = run[Symbol.asyncDispose]();
         const snapshot = run.snapshot();
         const state = snapshot.state;
-        assert(state.type === "Aborted");
-        expect(state.abort.request).toBe(runDisposedAbortReason);
-        expect(state.abort.observed).toBe(state.abort.request);
+        assertSame(state.type, "Aborted");
+        assertSame(state.abort.request, runDisposedAbortReason);
+        assertSame(state.abort.observed, state.abort.request);
 
-        expect(snapshot).toMatchObject({
-          children: [
-            {
-              state: {
-                type: "Aborted",
-                abort: { request: state.abort.request, observed: null },
-              },
-            },
-          ],
-        });
+        assertLength(snapshot.children, 1);
+        const childState = snapshot.children[0].state;
+        assertSame(childState.type, "Aborted");
+        assertSame(childState.abort.request, state.abort.request);
+        assertSame(childState.abort.observed, null);
 
         completeChild.resolve();
         await disposePromise;
       } finally {
         completeChild.resolve();
-        expect(await childFiber).toEqual(ok());
+        assertEqual(await childFiber, ok());
       }
     });
 
-    test("snapshot reuses unchanged snapshot objects", async () => {
+    it("snapshot reuses unchanged snapshot objects", async () => {
       await using run = createRun();
 
       const emptySnapshot = run.snapshot();
 
-      expect(run.snapshot()).toBe(emptySnapshot);
+      assertSame(run.snapshot(), emptySnapshot);
 
       const completeChild = Promise.withResolvers<void>();
       const childFiber = run(async () => {
@@ -1862,31 +1923,31 @@ describe("Run", () => {
 
       const snapshotWithChild = run.snapshot();
       const childSnapshot = snapshotWithChild.children.at(0);
-      assert(childSnapshot);
+      assertNotUndefined(childSnapshot);
 
       try {
         const repeatedSnapshotWithChild = run.snapshot();
 
-        expect(repeatedSnapshotWithChild).toBe(snapshotWithChild);
-        expect(repeatedSnapshotWithChild.children[0]).toBe(childSnapshot);
+        assertSame(repeatedSnapshotWithChild, snapshotWithChild);
+        assertSame(repeatedSnapshotWithChild.children[0], childSnapshot);
       } finally {
         completeChild.resolve();
-        expect(await childFiber).toEqual(ok());
+        assertEqual(await childFiber, ok());
       }
 
-      expect(run.snapshot()).not.toBe(snapshotWithChild);
+      assertFalse(globalThis.Object.is(run.snapshot(), snapshotWithChild));
     });
 
-    test("snapshot reuses unchanged aborted snapshot objects", () => {
+    it("snapshot reuses unchanged aborted snapshot objects", () => {
       using run = createRun();
 
       run.abort({ type: "TestAbort" });
       const snapshot = run.snapshot();
 
-      expect(run.snapshot()).toBe(snapshot);
+      assertSame(run.snapshot(), snapshot);
     });
 
-    test("includes a starting child observed from its Task synchronous prefix", async () => {
+    it("includes a starting child observed from its Task synchronous prefix", async () => {
       await using run = createRun();
       let childrenDuringStart: ReadonlyArray<RunSnapshot> | undefined;
 
@@ -1898,15 +1959,15 @@ describe("Run", () => {
         return ok("child");
       });
 
-      expect(await childFiber).toEqual(ok("child"));
-      expect(childrenDuringStart).toEqual([
-        expect.objectContaining({ id: childFiber.run.id }),
-      ]);
+      assertEqual(await childFiber, ok("child"));
+      assertNotUndefined(childrenDuringStart);
+      assertLength(childrenDuringStart, 1);
+      assertSame(childrenDuringStart[0].id, childFiber.run.id);
     });
   });
 
   describe("event reporting", () => {
-    test("emits Run events only while eventsEnabled is true", async () => {
+    it("emits Run events only while eventsEnabled is true", async () => {
       const eventsEnabled = createRef(false);
       await using run = testCreateRun({ runConfig: { eventsEnabled } });
       const events: Array<RunEvent> = [];
@@ -1915,15 +1976,15 @@ describe("Run", () => {
         events.push(event);
       };
 
-      expect(await run(() => ok("disabled"))).toEqual(ok("disabled"));
-      expect(events).toEqual([]);
+      assertEqual(await run(() => ok("disabled")), ok("disabled"));
+      assertEqual(events, []);
 
       eventsEnabled.set(true);
 
       const fiber = run(() => ok("enabled"));
 
-      expect(await fiber).toEqual(ok("enabled"));
-      expect(events).toEqual([
+      assertEqual(await fiber, ok("enabled"));
+      assertEqual(events, [
         {
           data: { childId: "in2khoBFZNo9ESZlzuacxA", type: "ChildAdded" },
           id: "ncqMQ1uwd5-zf5YKUbT3VA",
@@ -1966,7 +2027,7 @@ describe("Run", () => {
       ]);
     });
 
-    test("preserves eventsEnabled when replacing custom deps", async () => {
+    it("preserves eventsEnabled when replacing custom deps", async () => {
       await using run = testCreateRun({ ...eventsEnabled, ...dbDep });
       const events: Array<RunEvent> = [];
 
@@ -1974,21 +2035,20 @@ describe("Run", () => {
         events.push(event);
       };
 
-      expect(
+      assertEqual(
         await run(({ deps }) => ok(deps.session.userId), sessionDep),
-      ).toEqual(ok("ada"));
+        ok("ada"),
+      );
 
       // Replacing custom deps must keep runConfig, so events are still
       // emitted. The full event shape is covered by the snapshot above.
-      expect(events.map((event) => event.data.type)).toEqual([
-        "ChildAdded",
-        "StateChanged",
-        "StateChanged",
-        "ChildRemoved",
-      ]);
+      assertEqual(
+        events.map((event) => event.data.type),
+        ["ChildAdded", "StateChanged", "StateChanged", "ChildRemoved"],
+      );
     });
 
-    test("uses root time for child Run event timestamps when child replaces time", async () => {
+    it("uses root time for child Run event timestamps when child replaces time", async () => {
       await using run = testCreateRun(eventsEnabled);
       const events: Array<RunEvent> = [];
       const childTime = testCreateTime({ startAt: Millis.orThrow(1000) });
@@ -1997,17 +2057,21 @@ describe("Run", () => {
         events.push(event);
       };
 
-      expect(
+      assertEqual(
         await run(() => ok("child"), {
           runConfig: { eventsEnabled: createRef(true) },
           time: childTime,
         }),
-      ).toEqual(ok("child"));
+        ok("child"),
+      );
 
-      expect(events.map((event) => event.timestamp)).toEqual([0, 0, 0, 0]);
+      assertEqual(
+        events.map((event) => event.timestamp),
+        [0, 0, 0, 0],
+      );
     });
 
-    test("explicit runConfig override silences child events for ancestors", async () => {
+    it("explicit runConfig override silences child events for ancestors", async () => {
       await using run = testCreateRun(eventsEnabled);
       const events: Array<RunEvent> = [];
 
@@ -2022,17 +2086,20 @@ describe("Run", () => {
         runConfig: { eventsEnabled: createRef(false) },
       });
 
-      expect(await silencedFiber).toEqual(ok("grandchild"));
-      expect(events.map((event) => event.data.type)).toEqual([
-        "ChildAdded",
-        "ChildRemoved",
-      ]);
+      assertEqual(await silencedFiber, ok("grandchild"));
+      assertEqual(
+        events.map((event) => event.data.type),
+        ["ChildAdded", "ChildRemoved"],
+      );
       // Both events come from the parent Run; the silenced child and its
       // descendants emitted nothing.
-      expect(events.map((event) => event.id)).toEqual([run.id, run.id]);
+      assertEqual(
+        events.map((event) => event.id),
+        [run.id, run.id],
+      );
     });
 
-    test("sets parent and bubbles Run events", async () => {
+    it("sets parent and bubbles Run events", async () => {
       await using run = testCreateRun(eventsEnabled);
       const events: Array<RunEvent> = [];
 
@@ -2040,32 +2107,31 @@ describe("Run", () => {
         events.push(event);
       };
 
-      expect(run.parent).toBe(null);
+      assertSame(run.parent, null);
 
       const fiber = run((childRun) => {
-        expect(childRun.parent).toBe(run);
+        assertSame(childRun.parent, run);
         return ok("Ada");
       });
 
-      expect(fiber.run.parent).toBe(run);
+      assertSame(fiber.run.parent, run);
 
-      expect(await fiber).toEqual(ok("Ada"));
-      expect(events.map((event) => event.data.type)).toEqual([
-        "ChildAdded",
-        "StateChanged",
-        "StateChanged",
-        "ChildRemoved",
-      ]);
+      assertEqual(await fiber, ok("Ada"));
+      assertEqual(
+        events.map((event) => event.data.type),
+        ["ChildAdded", "StateChanged", "StateChanged", "ChildRemoved"],
+      );
       // The StateChanged events are emitted by the child Run and bubble to
       // the parent handler.
-      expect(
+      assertEqual(
         events
           .filter((event) => event.data.type === "StateChanged")
           .map((event) => event.id),
-      ).toEqual([fiber.run.id, fiber.run.id]);
+        [fiber.run.id, fiber.run.id],
+      );
     });
 
-    test("does not delay ChildRemoved for Fiber settlement reactions", async () => {
+    it("does not delay ChildRemoved for Fiber settlement reactions", async () => {
       await using run = testCreateRun(eventsEnabled);
       const childRemovedDelayedForFiberSettlement =
         Promise.withResolvers<boolean>();
@@ -2084,11 +2150,11 @@ describe("Run", () => {
         fiberSettled = true;
       });
 
-      expect(await childRemovedDelayedForFiberSettlement.promise).toBe(false);
-      expect(await fiber).toEqual(ok("Ada"));
+      assertFalse(await childRemovedDelayedForFiberSettlement.promise);
+      assertEqual(await fiber, ok("Ada"));
     });
 
-    test("bubbles StateChanged after child snapshot records observed abort", async () => {
+    it("bubbles StateChanged after child snapshot records observed abort", async () => {
       await using run = createRun(eventsEnabled);
       let abortedRunId: Id | undefined;
       let abortedSnapshot: ReturnType<Run["snapshot"]> | undefined;
@@ -2106,23 +2172,23 @@ describe("Run", () => {
 
       const fiber = run(() => ok());
 
-      expect(await fiber).toEqual(ok());
+      assertEqual(await fiber, ok());
 
-      assert(abortedRunId);
-      assert(abortedSnapshot);
+      assertNotUndefined(abortedRunId);
+      assertNotUndefined(abortedSnapshot);
       const childSnapshot = abortedSnapshot.children.find(
         (child) => child.id === abortedRunId,
       );
-      assert(childSnapshot);
-      assert(abortReason);
-      expect(abortReason).toBe(runDisposedAbortReason);
-      expect(childSnapshot.state).toEqual({
+      assertNotUndefined(childSnapshot);
+      assertNotUndefined(abortReason);
+      assertSame(abortReason, runDisposedAbortReason);
+      assertEqual(childSnapshot.state, {
         type: "Aborted",
         abort: { request: abortReason, observed: abortReason },
       });
     });
 
-    test("reports Run event handler defects", async () => {
+    it("reports Run event handler defects", async () => {
       await using run = testCreateRun(eventsEnabled);
       const error = new Error("event handler failed");
       let eventHandlerDefected = false;
@@ -2136,10 +2202,10 @@ describe("Run", () => {
         return ok();
       });
 
-      expect(await run.deps.reportDefect.next()).toBe(error);
+      assertSame(await run.deps.reportDefect.next(), error);
     });
 
-    test("routes Run event handler defects through custom reportDefect", async () => {
+    it("routes Run event handler defects through custom reportDefect", async () => {
       const error = new Error("event handler failed");
       const reportedError = Promise.withResolvers<unknown>();
       await using run = testCreateRun({
@@ -2157,10 +2223,10 @@ describe("Run", () => {
         return ok();
       });
 
-      expect(await reportedError.promise).toBe(error);
+      assertSame(await reportedError.promise, error);
     });
 
-    test("continues bubbling current Run event after handler defects", async () => {
+    it("continues bubbling current Run event after handler defects", async () => {
       await using run = testCreateRun(eventsEnabled);
       const error = new Error("event handler failed");
       const events: Array<RunEvent> = [];
@@ -2179,18 +2245,16 @@ describe("Run", () => {
         return ok("Ada");
       });
 
-      expect(await fiber).toEqual(ok("Ada"));
-      expect(await run.deps.reportDefect.next()).toBe(error);
+      assertEqual(await fiber, ok("Ada"));
+      assertSame(await run.deps.reportDefect.next(), error);
       // The defecting child handler did not stop delivery to the parent.
-      expect(events.map((event) => event.data.type)).toEqual([
-        "ChildAdded",
-        "StateChanged",
-        "StateChanged",
-        "ChildRemoved",
-      ]);
+      assertEqual(
+        events.map((event) => event.data.type),
+        ["ChildAdded", "StateChanged", "StateChanged", "ChildRemoved"],
+      );
     });
 
-    test("reports Run event emission defects without interrupting Task settlement", async () => {
+    it("reports Run event emission defects without interrupting Task settlement", async () => {
       const error = new Error("event emission failed");
       let nowDefected = false;
       function now(): Millis;
@@ -2217,14 +2281,14 @@ describe("Run", () => {
 
       const fiber = run(() => ok("Ada"));
 
-      expect(await fiber).toEqual(ok("Ada"));
-      expect(await run.deps.reportDefect.next()).toBe(error);
+      assertEqual(await fiber, ok("Ada"));
+      assertSame(await run.deps.reportDefect.next(), error);
     });
   });
 
   describe("panic", () => {
     describe("from Task defects", () => {
-      test("has Task Run Settled state and aborts root with PanicAbortReason", async () => {
+      it("has Task Run Settled state and aborts root with PanicAbortReason", async () => {
         await using run = testCreateRun();
         const error = new Error("boom");
         let rootAbortObservedAfterDefect: unknown;
@@ -2239,17 +2303,17 @@ describe("Run", () => {
           throw error;
         });
 
-        await expect(observedFiber).rejects.toEqual(panic(error));
-        assert(rootStateAfterDefect);
-        expectPanicAbortError(rootAbortObservedAfterDefect, error);
-        expect(rootStateAfterDefect).toEqual({
+        await assertRejects(observedFiber, panic(error));
+        assertNotUndefined(rootStateAfterDefect);
+        assertPanicAbortError(rootAbortObservedAfterDefect, error);
+        assertEqual(rootStateAfterDefect, {
           type: "Aborted",
           abort: {
             request: rootAbortObservedAfterDefect.reason,
             observed: rootAbortObservedAfterDefect.reason,
           },
         });
-        expect(fiber.run.getState()).toEqual({
+        assertEqual(fiber.run.getState(), {
           type: "Settled",
           abort: {
             request: rootAbortObservedAfterDefect.reason,
@@ -2258,18 +2322,18 @@ describe("Run", () => {
           exit: err(rootAbortObservedAfterDefect),
         });
 
-        expect(run.signal.aborted).toBe(true);
+        assertTrue(run.signal.aborted);
         const panicAbortError: unknown = run.signal.reason;
-        assert(AbortError.is(panicAbortError));
-        expect(panicAbortError.reason).toEqual({
+        assertType(AbortError, panicAbortError);
+        assertEqual(panicAbortError.reason, {
           type: "PanicAbortReason",
           defect: error,
         });
-        expect(await run.deps.reportDefect.next()).toBe(panicAbortError);
+        assertSame(await run.deps.reportDefect.next(), panicAbortError);
 
         await run[Symbol.asyncDispose]();
 
-        expect(run.getState()).toEqual({
+        assertEqual(run.getState(), {
           type: "Settled",
           abort: {
             request: panicAbortError.reason,
@@ -2279,7 +2343,7 @@ describe("Run", () => {
         });
       });
 
-      test("aborts child Tasks of defecting Task and reports panic abort", async () => {
+      it("aborts child Tasks of defecting Task and reports panic abort", async () => {
         const run = testCreateRun();
         const error = new Error("boom");
         const childAborted = Promise.withResolvers<AbortSignal>();
@@ -2303,23 +2367,23 @@ describe("Run", () => {
 
         const childSignal = await childAborted.promise;
         const panicAbortError: unknown = run.signal.reason;
-        assert(AbortError.is(panicAbortError));
-        expect(panicAbortError.reason).toEqual({
+        assertType(AbortError, panicAbortError);
+        assertEqual(panicAbortError.reason, {
           type: "PanicAbortReason",
           defect: error,
         });
-        expect(childSignal.aborted).toBe(true);
-        assert(AbortError.is(childSignal.reason));
-        expect(childSignal.reason.reason).toBe(panicAbortError.reason);
-        expect(await run.deps.reportDefect.next()).toBe(panicAbortError);
+        assertTrue(childSignal.aborted);
+        assertType(AbortError, childSignal.reason);
+        assertSame(childSignal.reason.reason, panicAbortError.reason);
+        assertSame(await run.deps.reportDefect.next(), panicAbortError);
 
         completeChild.resolve();
 
-        await expect(defectFiber).rejects.toEqual(panic(error));
+        await assertRejects(defectFiber, panic(error));
         await run[Symbol.asyncDispose]();
       });
 
-      test("preserves parent Ok when an unjoined child defects during cleanup", async () => {
+      it("preserves parent Ok when an unjoined child defects during cleanup", async () => {
         const run = testCreateRun();
         const error = new Error("boom");
         const defectChild = Promise.withResolvers<void>();
@@ -2337,12 +2401,12 @@ describe("Run", () => {
         defectChild.resolve();
 
         const panicAbortError = await run.deps.reportDefect.next();
-        expectPanicAbortError(panicAbortError, error);
-        expect(await parentFiber).toEqual(ok("parent"));
+        assertPanicAbortError(panicAbortError, error);
+        assertEqual(await parentFiber, ok("parent"));
         await run[Symbol.asyncDispose]();
       });
 
-      test("aborts running sibling Task, waits for it, and reports panic abort", async () => {
+      it("aborts running sibling Task, waits for it, and reports panic abort", async () => {
         const run = testCreateRun();
         const error = new Error("boom");
         const siblingAborted = Promise.withResolvers<AbortSignal>();
@@ -2364,33 +2428,33 @@ describe("Run", () => {
           throw error;
         });
 
-        await expect(defectFiber).rejects.toEqual(panic(error));
+        await assertRejects(defectFiber, panic(error));
 
         const panicAbortError: unknown = run.signal.reason;
-        assert(AbortError.is(panicAbortError));
-        expect(panicAbortError.reason).toEqual({
+        assertType(AbortError, panicAbortError);
+        assertEqual(panicAbortError.reason, {
           type: "PanicAbortReason",
           defect: error,
         });
 
         const siblingSignal = await siblingAborted.promise;
-        expect(siblingSignal.aborted).toBe(true);
-        assert(AbortError.is(siblingSignal.reason));
-        expect(siblingSignal.reason.reason).toBe(panicAbortError.reason);
-        expect(run.getState()).toEqual({
+        assertTrue(siblingSignal.aborted);
+        assertType(AbortError, siblingSignal.reason);
+        assertSame(siblingSignal.reason.reason, panicAbortError.reason);
+        assertEqual(run.getState(), {
           type: "Aborted",
           abort: {
             request: panicAbortError.reason,
             observed: panicAbortError.reason,
           },
         });
-        expect(await run.deps.reportDefect.next()).toBe(panicAbortError);
+        assertSame(await run.deps.reportDefect.next(), panicAbortError);
 
         completeSibling.resolve();
 
-        expect(await siblingFiber).toEqual(ok("sibling"));
+        assertEqual(await siblingFiber, ok("sibling"));
         await run[Symbol.asyncDispose]();
-        expect(run.getState()).toEqual({
+        assertEqual(run.getState(), {
           type: "Settled",
           abort: {
             request: panicAbortError.reason,
@@ -2400,7 +2464,7 @@ describe("Run", () => {
         });
       });
 
-      test("prevents new Tasks from panic abort callbacks and reports panic abort", async () => {
+      it("prevents new Tasks from panic abort callbacks and reports panic abort", async () => {
         await using run = testCreateRun();
         const error = new Error("boom");
         let panicAbortCallbackCalled = false;
@@ -2409,27 +2473,28 @@ describe("Run", () => {
         using _ = run.onAbort(() => {
           panicAbortCallbackCalled = true;
 
-          expect(() => {
+          const error = assertThrowsInstanceOf(() => {
             const childFiber = run(() => {
               childTaskStarted = true;
               return ok();
             });
             void childFiber.catch(() => undefined);
-          }).toThrow("Cannot use a disposed object.");
+          }, Error);
+          assertTrue(error.message.includes("Cannot use a disposed object."));
         });
 
         const fiber = run(() => {
           throw error;
         });
 
-        await expect(fiber).rejects.toEqual(panic(error));
+        await assertRejects(fiber, panic(error));
 
-        expect(panicAbortCallbackCalled).toBe(true);
-        expect(childTaskStarted).toBe(false);
-        expect(await run.deps.reportDefect.next()).toEqual(panic(error));
+        assertTrue(panicAbortCallbackCalled);
+        assertFalse(childTaskStarted);
+        assertEqual(await run.deps.reportDefect.next(), panic(error));
       });
 
-      test("stores reported panic exit during root disposal", async () => {
+      it("stores reported panic exit during root disposal", async () => {
         const run = testCreateRun();
         const defectTask = Promise.withResolvers<void>();
         const error = new Error("boom");
@@ -2442,7 +2507,7 @@ describe("Run", () => {
         const disposePromise = run[Symbol.asyncDispose]();
         const disposalAbortError = run.signal.reason;
         const disposalAbortReason = runDisposedAbortReason;
-        expect(disposalAbortError).toEqual({
+        assertEqual(disposalAbortError, {
           type: "AbortError",
           reason: runDisposedAbortReason,
         });
@@ -2451,9 +2516,9 @@ describe("Run", () => {
           defectTask.resolve();
 
           const panicAbortError = await run.deps.reportDefect.next();
-          await expect(fiber).rejects.toBe(panicAbortError);
+          await assertRejectsSame(fiber, panicAbortError);
           await disposePromise;
-          expect(run.getState()).toEqual({
+          assertEqual(run.getState(), {
             type: "Settled",
             abort: {
               request: disposalAbortReason,
@@ -2461,22 +2526,20 @@ describe("Run", () => {
             },
             exit: err(panicAbortError),
           });
-          expect(run.snapshot()).toMatchObject({
-            state: {
-              type: "Settled",
-              abort: {
-                request: disposalAbortReason,
-                observed: disposalAbortReason,
-              },
-              exit: err(panicAbortError),
+          assertEqual(run.snapshot().state, {
+            type: "Settled",
+            abort: {
+              request: disposalAbortReason,
+              observed: disposalAbortReason,
             },
+            exit: err(panicAbortError),
           });
         } finally {
           await disposePromise;
         }
       });
 
-      test("keeps first panic exit and reports every Fiber defect", async () => {
+      it("keeps first panic exit and reports every Fiber defect", async () => {
         const run = testCreateRun();
         const defectFirstTask = Promise.withResolvers<void>();
         const defectSecondTask = Promise.withResolvers<void>();
@@ -2496,9 +2559,9 @@ describe("Run", () => {
           defectFirstTask.resolve();
 
           const panicAbortError = await run.deps.reportDefect.next();
-          assert(AbortError.is(panicAbortError));
-          await expect(firstFiber).rejects.toBe(panicAbortError);
-          expect(panicAbortError.reason).toEqual({
+          assertType(AbortError, panicAbortError);
+          await assertRejectsSame(firstFiber, panicAbortError);
+          assertEqual(panicAbortError.reason, {
             type: "PanicAbortReason",
             defect: firstError,
           });
@@ -2506,10 +2569,10 @@ describe("Run", () => {
           defectSecondTask.resolve();
 
           const secondPanicAbortError = await run.deps.reportDefect.next();
-          await expect(secondFiber).rejects.toBe(secondPanicAbortError);
-          expect(secondPanicAbortError).toEqual(panic(secondError));
+          await assertRejectsSame(secondFiber, secondPanicAbortError);
+          assertEqual(secondPanicAbortError, panic(secondError));
           await run[Symbol.asyncDispose]();
-          expect(run.getState()).toEqual({
+          assertEqual(run.getState(), {
             type: "Settled",
             abort: {
               request: panicAbortError.reason,
@@ -2524,7 +2587,7 @@ describe("Run", () => {
         }
       });
 
-      test("panics root and reports Task helper user code defects", async () => {
+      it("panics root and reports Task helper user code defects", async () => {
         await using run = testCreateRun();
         const completeSibling = Promise.withResolvers<void>();
         const siblingAborted = Promise.withResolvers<unknown>();
@@ -2551,25 +2614,25 @@ describe("Run", () => {
           }),
         );
 
-        expect(await siblingAborted.promise).toEqual({
+        assertEqual(await siblingAborted.promise, {
           type: "PanicAbortReason",
           defect,
         });
         const panicAbortError = run.signal.reason;
-        expect(await run.deps.reportDefect.next()).toBe(panicAbortError);
-        await expect(defectFiber).rejects.toEqual(panic(defect));
-        expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([
+        assertSame(await run.deps.reportDefect.next(), panicAbortError);
+        await assertRejects(defectFiber, panic(defect));
+        assertEqual(run.deps.reportDefect.getDefectsSnapshot(), [
           panicAbortError,
         ]);
 
         completeSibling.resolve();
 
-        expect(await siblingFiber).toEqual(ok("sibling"));
+        assertEqual(await siblingFiber, ok("sibling"));
       });
     });
 
     describe("from abort callback defects", () => {
-      test("panics root synchronously and reports abort callback defects", async () => {
+      it("panics root synchronously and reports abort callback defects", async () => {
         const run = testCreateRun();
         const createdRun = run.create();
         const error = new Error("abort callback failed");
@@ -2580,12 +2643,12 @@ describe("Run", () => {
 
         const disposePromise = createdRun[Symbol.asyncDispose]();
         const panicAbortError: unknown = run.signal.reason;
-        assert(AbortError.is(panicAbortError));
-        expect(panicAbortError.reason).toEqual({
+        assertType(AbortError, panicAbortError);
+        assertEqual(panicAbortError.reason, {
           type: "PanicAbortReason",
           defect: error,
         });
-        expect(run.getState()).toEqual({
+        assertEqual(run.getState(), {
           type: "Aborted",
           abort: {
             request: panicAbortError.reason,
@@ -2594,10 +2657,10 @@ describe("Run", () => {
         });
 
         try {
-          expect(await run.deps.reportDefect.next()).toBe(panicAbortError);
+          assertSame(await run.deps.reportDefect.next(), panicAbortError);
           await disposePromise;
           await run[Symbol.asyncDispose]();
-          expect(run.getState()).toEqual({
+          assertEqual(run.getState(), {
             type: "Settled",
             abort: {
               request: panicAbortError.reason,
@@ -2611,7 +2674,7 @@ describe("Run", () => {
         }
       });
 
-      test("keeps first panic abort and reports repeated panics", async () => {
+      it("keeps first panic abort and reports repeated panics", async () => {
         const run = testCreateRun();
         const firstError = new Error("first boom");
         const secondError = new Error("second boom");
@@ -2620,16 +2683,16 @@ describe("Run", () => {
         run.panic(secondError);
 
         const panicAbortError: unknown = run.signal.reason;
-        assert(AbortError.is(panicAbortError));
-        expect(panicAbortError.reason).toEqual({
+        assertType(AbortError, panicAbortError);
+        assertEqual(panicAbortError.reason, {
           type: "PanicAbortReason",
           defect: firstError,
         });
-        expect(await run.deps.reportDefect.next()).toBe(panicAbortError);
-        expect(await run.deps.reportDefect.next()).toEqual(panic(secondError));
+        assertSame(await run.deps.reportDefect.next(), panicAbortError);
+        assertEqual(await run.deps.reportDefect.next(), panic(secondError));
 
         await run[Symbol.asyncDispose]();
-        expect(run.getState()).toEqual({
+        assertEqual(run.getState(), {
           type: "Settled",
           abort: {
             request: panicAbortError.reason,
@@ -2644,7 +2707,7 @@ describe("Run", () => {
 
 describe("DisposableRun", () => {
   describe("defer", () => {
-    test("runs finalizers LIFO after child Tasks settle and awaits them", async () => {
+    it("runs finalizers LIFO after child Tasks settle and awaits them", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
       const finalizerStarted = Promise.withResolvers<void>();
@@ -2672,23 +2735,23 @@ describe("DisposableRun", () => {
       });
 
       try {
-        expect(events).toEqual([]);
+        assertEqual(events, []);
 
         completeChild.resolve();
         await finalizerStarted.promise;
 
-        expect(events).toEqual(["child settled", "second finalizer"]);
-        expect(disposalSettled).toBe(false);
+        assertEqual(events, ["child settled", "second finalizer"]);
+        assertFalse(disposalSettled);
 
         continueFinalizer.resolve();
         await disposal;
 
-        expect(events).toEqual([
+        assertEqual(events, [
           "child settled",
           "second finalizer",
           "first finalizer",
         ]);
-        expect(await childFiber).toEqual(ok());
+        assertEqual(await childFiber, ok());
       } finally {
         completeChild.resolve();
         continueFinalizer.resolve();
@@ -2696,7 +2759,7 @@ describe("DisposableRun", () => {
       }
     });
 
-    test("reports a finalizer defect once and async disposal rejects with the same AbortError", async () => {
+    it("reports a finalizer defect once and async disposal rejects with the same AbortError", async () => {
       const run = testCreateRun();
       const defect = new Error("finalizer failed");
 
@@ -2704,32 +2767,29 @@ describe("DisposableRun", () => {
         throw defect;
       });
 
-      let disposalError: unknown;
-      try {
-        await run[Symbol.asyncDispose]();
-      } catch (error) {
-        disposalError = error;
-      }
-
-      expectPanicAbortError(disposalError, defect);
-      expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([
-        disposalError,
-      ]);
+      await assertRejects(run[Symbol.asyncDispose](), (disposalError) => {
+        assertPanicAbortError(disposalError, defect);
+        assertEqual(run.deps.reportDefect.getDefectsSnapshot(), [
+          disposalError,
+        ]);
+      });
     });
 
-    test("after disposal starts throws", async () => {
+    it("after disposal starts throws", async () => {
       const run = createRun();
 
       run[Symbol.dispose]();
 
-      expect(() => run.defer(() => undefined)).toThrow(
-        "Cannot use a disposed object.",
+      const error = assertThrowsInstanceOf(
+        () => run.defer(() => undefined),
+        Error,
       );
+      assertTrue(error.message.includes("Cannot use a disposed object."));
 
       await run[Symbol.asyncDispose]();
     });
 
-    test("reports multiple finalizer defects as SuppressedError", async () => {
+    it("reports multiple finalizer defects as SuppressedError", async () => {
       const run = testCreateRun();
       const firstDefect = new Error("first finalizer failed");
       const secondDefect = new Error("second finalizer failed");
@@ -2741,27 +2801,22 @@ describe("DisposableRun", () => {
         throw secondDefect;
       });
 
-      let disposalError: unknown;
-      try {
-        await run[Symbol.asyncDispose]();
-      } catch (error) {
-        disposalError = error;
-      }
-
-      assert(AbortError.is(disposalError));
-      assert(disposalError.reason.type === "PanicAbortReason");
-      const defect = disposalError.reason.defect;
-      assert(defect instanceof SuppressedError);
-      expect(defect.error).toBe(firstDefect);
-      expect(defect.suppressed).toBe(secondDefect);
-      expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([
-        disposalError,
-      ]);
+      await assertRejects(run[Symbol.asyncDispose](), (disposalError) => {
+        assertType(AbortError, disposalError);
+        assertSame(disposalError.reason.type, "PanicAbortReason");
+        const defect = disposalError.reason.defect;
+        assertInstanceOf(defect, SuppressedError);
+        assertSame(defect.error, firstDefect);
+        assertSame(defect.suppressed, secondDefect);
+        assertEqual(run.deps.reportDefect.getDefectsSnapshot(), [
+          disposalError,
+        ]);
+      });
     });
   });
 
   describe("abort", () => {
-    test("aborts with custom reason without waiting for child Tasks", async () => {
+    it("aborts with custom reason without waiting for child Tasks", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
       let childRun: Run | undefined;
@@ -2774,26 +2829,26 @@ describe("DisposableRun", () => {
         run.signal.throwIfAborted();
         return ok();
       });
-      assert(childRun);
+      assertNotUndefined(childRun);
 
       run.abort(testAbortReason);
 
-      expect(run.getState()).toEqual({
+      assertEqual(run.getState(), {
         type: "Aborted",
         abort: {
           request: testAbortReason,
           observed: testAbortReason,
         },
       });
-      expect(childRun.signal.aborted).toBe(true);
-      expect(childRun.signal.reason).toEqual(testAbortError);
-      expect(childContinued).toBe(false);
+      assertTrue(childRun.signal.aborted);
+      assertEqual(childRun.signal.reason, testAbortError);
+      assertFalse(childContinued);
 
       completeChild.resolve();
 
-      await expect(childFiber).rejects.toEqual(testAbortError);
+      await assertRejects(childFiber, testAbortError);
       await run[Symbol.asyncDispose]();
-      expect(run.getState()).toEqual({
+      assertEqual(run.getState(), {
         type: "Settled",
         abort: {
           request: testAbortReason,
@@ -2803,19 +2858,19 @@ describe("DisposableRun", () => {
       });
     });
 
-    test("does nothing after disposal starts", async () => {
+    it("does nothing after disposal starts", async () => {
       const run = createRun();
 
       run[Symbol.dispose]();
       run.abort(testAbortReason);
 
-      expect(run.signal.reason).toEqual({
+      assertEqual(run.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
 
       await run[Symbol.asyncDispose]();
-      expect(run.getState()).toEqual({
+      assertEqual(run.getState(), {
         type: "Settled",
         abort: {
           request: runDisposedAbortReason,
@@ -2827,32 +2882,35 @@ describe("DisposableRun", () => {
   });
 
   describe("dispose", () => {
-    test("prevents new Tasks immediately when dispose runs", async () => {
+    it("prevents new Tasks immediately when dispose runs", async () => {
       const run = createRun();
       let taskStarted = false;
 
       run[Symbol.dispose]();
 
-      expect(() =>
-        run(() => {
-          taskStarted = true;
-          return ok("Ada");
-        }),
-      ).toThrow("Cannot use a disposed object.");
-      expect(taskStarted).toBe(false);
+      const error = assertThrowsInstanceOf(
+        () =>
+          run(() => {
+            taskStarted = true;
+            return ok("Ada");
+          }),
+        Error,
+      );
+      assertTrue(error.message.includes("Cannot use a disposed object."));
+      assertFalse(taskStarted);
 
       await run[Symbol.asyncDispose]();
     });
 
-    test("aborts self immediately", async () => {
+    it("aborts self immediately", async () => {
       const run = createRun();
 
-      expect(run.signal.aborted).toBe(false);
+      assertFalse(run.signal.aborted);
 
       run[Symbol.dispose]();
 
-      expect(run.signal.aborted).toBe(true);
-      expect(run.signal.reason).toEqual({
+      assertTrue(run.signal.aborted);
+      assertEqual(run.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
@@ -2860,12 +2918,12 @@ describe("DisposableRun", () => {
       await run[Symbol.asyncDispose]();
     });
 
-    test("settles on next microtask after sync dispose", async () => {
+    it("settles on next microtask after sync dispose", async () => {
       const run = createRun();
 
       run[Symbol.dispose]();
 
-      expect(run.getState()).toEqual({
+      assertEqual(run.getState(), {
         type: "Aborted",
         abort: {
           request: runDisposedAbortReason,
@@ -2875,7 +2933,7 @@ describe("DisposableRun", () => {
 
       await Promise.resolve();
 
-      expect(run.getState()).toEqual({
+      assertEqual(run.getState(), {
         type: "Settled",
         abort: {
           request: runDisposedAbortReason,
@@ -2885,7 +2943,7 @@ describe("DisposableRun", () => {
       });
     });
 
-    test("aborts already-running child Runs immediately", async () => {
+    it("aborts already-running child Runs immediately", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
       let childRun: Run | undefined;
@@ -2895,14 +2953,14 @@ describe("DisposableRun", () => {
         await completeChild.promise;
         return ok();
       });
-      assert(childRun);
+      assertNotUndefined(childRun);
 
-      expect(childRun.signal.aborted).toBe(false);
+      assertFalse(childRun.signal.aborted);
 
       run[Symbol.dispose]();
 
-      expect(childRun.signal.aborted).toBe(true);
-      expect(childRun.signal.reason).toEqual({
+      assertTrue(childRun.signal.aborted);
+      assertEqual(childRun.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
@@ -2912,7 +2970,7 @@ describe("DisposableRun", () => {
       await run[Symbol.asyncDispose]();
     });
 
-    test("dispose returns before already-running child Tasks settle", async () => {
+    it("dispose returns before already-running child Tasks settle", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
       let childSettled = false;
@@ -2925,42 +2983,45 @@ describe("DisposableRun", () => {
 
       run[Symbol.dispose]();
 
-      expect(childSettled).toBe(false);
+      assertFalse(childSettled);
 
       completeChild.resolve();
 
-      expect(await childFiber).toEqual(ok());
+      assertEqual(await childFiber, ok());
       await run[Symbol.asyncDispose]();
     });
   });
 
   describe("asyncDispose", () => {
-    test("prevents new Tasks immediately when asyncDispose starts", async () => {
+    it("prevents new Tasks immediately when asyncDispose starts", async () => {
       const run = createRun();
       let taskStarted = false;
 
       const disposePromise = run[Symbol.asyncDispose]();
 
-      expect(() =>
-        run(() => {
-          taskStarted = true;
-          return ok("Ada");
-        }),
-      ).toThrow("Cannot use a disposed object.");
-      expect(taskStarted).toBe(false);
+      const error = assertThrowsInstanceOf(
+        () =>
+          run(() => {
+            taskStarted = true;
+            return ok("Ada");
+          }),
+        Error,
+      );
+      assertTrue(error.message.includes("Cannot use a disposed object."));
+      assertFalse(taskStarted);
 
       await disposePromise;
     });
 
-    test("aborts self immediately", async () => {
+    it("aborts self immediately", async () => {
       const run = createRun();
 
-      expect(run.signal.aborted).toBe(false);
+      assertFalse(run.signal.aborted);
 
       const disposePromise = run[Symbol.asyncDispose]();
 
-      expect(run.signal.aborted).toBe(true);
-      expect(run.signal.reason).toEqual({
+      assertTrue(run.signal.aborted);
+      assertEqual(run.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
@@ -2968,7 +3029,7 @@ describe("DisposableRun", () => {
       await disposePromise;
     });
 
-    test("aborts self before waiting for child Tasks", async () => {
+    it("aborts self before waiting for child Tasks", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
       let disposeFinished = false;
@@ -2982,16 +3043,16 @@ describe("DisposableRun", () => {
         disposeFinished = true;
       });
 
-      expect(run.signal.aborted).toBe(true);
-      expect(disposeFinished).toBe(false);
+      assertTrue(run.signal.aborted);
+      assertFalse(disposeFinished);
 
       completeChild.resolve();
 
-      expect(await childFiber).toEqual(ok());
+      assertEqual(await childFiber, ok());
       await disposePromise;
     });
 
-    test("waits for child Task that disposes Run while starting", async () => {
+    it("waits for child Task that disposes Run while starting", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
       let disposePromise: PromiseLike<void> | undefined;
@@ -3006,19 +3067,19 @@ describe("DisposableRun", () => {
         return ok();
       });
 
-      assert(disposePromise);
+      assertNotUndefined(disposePromise);
 
       const disposeFinishedWhileChildRunning = disposeFinished;
 
       completeChild.resolve();
 
-      expect(await childFiber).toEqual(ok());
+      assertEqual(await childFiber, ok());
       await disposePromise;
-      expect(disposeFinishedWhileChildRunning).toBe(false);
-      expect(disposeFinished).toBe(true);
+      assertFalse(disposeFinishedWhileChildRunning);
+      assertTrue(disposeFinished);
     });
 
-    test("aborts already-running child Runs immediately", async () => {
+    it("aborts already-running child Runs immediately", async () => {
       const run = createRun();
       const completeChild = Promise.withResolvers<void>();
       let childRun: Run | undefined;
@@ -3028,27 +3089,27 @@ describe("DisposableRun", () => {
         await completeChild.promise;
         return ok();
       });
-      assert(childRun);
+      assertNotUndefined(childRun);
       let disposeFinished = false;
 
-      expect(childRun.signal.aborted).toBe(false);
+      assertFalse(childRun.signal.aborted);
       const disposePromise = run[Symbol.asyncDispose]().then(() => {
         disposeFinished = true;
       });
-      expect(childRun.signal.aborted).toBe(true);
-      expect(childRun.signal.reason).toEqual({
+      assertTrue(childRun.signal.aborted);
+      assertEqual(childRun.signal.reason, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
-      expect(disposeFinished).toBe(false);
+      assertFalse(disposeFinished);
 
       completeChild.resolve();
 
       await disposePromise;
-      expect(disposeFinished).toBe(true);
+      assertTrue(disposeFinished);
     });
 
-    test("waits for already-running child Tasks to settle", async () => {
+    it("waits for already-running child Tasks to settle", async () => {
       const run = createRun();
       const completeFirstChild = Promise.withResolvers<void>();
       const completeSecondChild = Promise.withResolvers<void>();
@@ -3072,18 +3133,18 @@ describe("DisposableRun", () => {
       completeFirstChild.resolve();
       completeSecondChild.resolve();
 
-      expect(await firstChildFiber).toEqual(ok("first"));
-      expect(await secondChildFiber).toEqual(ok("second"));
+      assertEqual(await firstChildFiber, ok("first"));
+      assertEqual(await secondChildFiber, ok("second"));
       await disposePromise;
 
-      expect(disposeFinishedWhileChildrenRunning).toBe(false);
-      expect(disposeFinished).toBe(true);
+      assertFalse(disposeFinishedWhileChildrenRunning);
+      assertTrue(disposeFinished);
     });
   });
 });
 
 describe("AbortableFiber", () => {
-  test("asyncDispose aborts and waits for Task settlement", async () => {
+  it("asyncDispose aborts and waits for Task settlement", async () => {
     await using run = createRun();
     const continueTask = Promise.withResolvers<void>();
     let disposeFinished = false;
@@ -3096,24 +3157,24 @@ describe("AbortableFiber", () => {
       return ok();
     });
 
-    assert(signal);
+    assertNotUndefined(signal);
     const disposePromise = fiber[Symbol.asyncDispose]().then(() => {
       disposeFinished = true;
     });
 
-    expect(signal.aborted).toBe(true);
-    expect(signal.reason).toEqual({
+    assertTrue(signal.aborted);
+    assertEqual(signal.reason, {
       type: "AbortError",
       reason: explicitAbortReason,
     });
 
-    expect(disposeFinished).toBe(false);
+    assertFalse(disposeFinished);
 
     continueTask.resolve();
 
-    expect(await fiber).toEqual(err(signal.reason));
+    assertEqual(await fiber, err(signal.reason));
     await disposePromise;
-    expect(disposeFinished).toBe(true);
+    assertTrue(disposeFinished);
   });
 });
 
@@ -3215,19 +3276,21 @@ describe("collection helpers", () => {
 
       describe(helper.name, () => {
         describe("returns", () => {
-          test("Ok with empty collections", async () => {
+          it("Ok with empty collections", async () => {
             await using run = createRun();
 
-            expect(await run(helper.fromArray(emptyArray))).toEqual(
+            assertEqual(
+              await run(helper.fromArray(emptyArray)),
               ok(expectedArrayValue(emptyArray)),
             );
-            expect(await run(helper.fromRecord({}))).toEqual(
+            assertEqual(
+              await run(helper.fromRecord({})),
               ok(expectedRecordValue(emptyRecord)),
             );
           });
 
           if (helper.resultMode === "values") {
-            test(`Ok with all values when all ${taskNoun} return Ok`, async () => {
+            it(`Ok with all values when all ${taskNoun} return Ok`, async () => {
               await using run = createRun();
 
               const tasks: ReadonlyArray<AnyTask> = [
@@ -3236,12 +3299,13 @@ describe("collection helpers", () => {
                 () => ok(true),
               ];
 
-              expect(await run(helper.fromArray(tasks))).toEqual(
+              assertEqual(
+                await run(helper.fromArray(tasks)),
                 ok(["Ada", 37, true]),
               );
             });
           } else if (helper.resultMode === "results") {
-            test(`Ok with all Results when ${taskNoun} return Ok or Err`, async () => {
+            it(`Ok with all Results when ${taskNoun} return Ok or Err`, async () => {
               const taskError = { type: "TaskError" } as const;
 
               await using run = createRun();
@@ -3252,12 +3316,13 @@ describe("collection helpers", () => {
                 () => ok(true),
               ];
 
-              expect(await run(helper.fromArray(tasks))).toEqual(
+              assertEqual(
+                await run(helper.fromArray(tasks)),
                 ok([ok("Ada"), err(taskError), ok(true)]),
               );
             });
           } else {
-            test(`Ok with void when all ${taskNoun} return Ok`, async () => {
+            it(`Ok with void when all ${taskNoun} return Ok`, async () => {
               await using run = createRun();
 
               const tasks: ReadonlyArray<AnyTask> = [
@@ -3266,11 +3331,11 @@ describe("collection helpers", () => {
                 () => ok(true),
               ];
 
-              expect(await run(helper.fromArray(tasks))).toEqual(ok());
+              assertEqual(await run(helper.fromArray(tasks)), ok());
             });
           }
 
-          test(
+          it(
             helper.resultMode === "void"
               ? `Ok with void when all record ${taskNoun} return Ok`
               : `preserves record keys when ${taskNoun} return Ok`,
@@ -3283,7 +3348,8 @@ describe("collection helpers", () => {
                 active: () => ok(true),
               };
 
-              expect(await run(helper.fromRecord(tasks))).toEqual(
+              assertEqual(
+                await run(helper.fromRecord(tasks)),
                 ok(
                   expectedRecordValue({
                     name: "Ada",
@@ -3296,7 +3362,7 @@ describe("collection helpers", () => {
           );
 
           if (helper.errorMode === "failFast") {
-            test(`the first Err when a ${taskSingular} returns Err`, async () => {
+            it(`the first Err when a ${taskSingular} returns Err`, async () => {
               await using run = createRun();
               const firstError = { type: "FirstError" } as const;
               const secondError = { type: "SecondError" } as const;
@@ -3306,14 +3372,15 @@ describe("collection helpers", () => {
               const second: Task<string, typeof secondError> = () =>
                 err(secondError);
 
-              expect(await run(helper.fromArray([first, second]))).toEqual(
+              assertEqual(
+                await run(helper.fromArray([first, second])),
                 err(firstError),
               );
             });
           }
 
           if (helper.mapsValues) {
-            test("maps values to Tasks", async () => {
+            it("maps values to Tasks", async () => {
               interface Deps {
                 readonly prefix: string;
               }
@@ -3337,12 +3404,13 @@ describe("collection helpers", () => {
                     ? all([1, 2, 3], mapper, { collect: false })
                     : all([1, 2, 3], mapper);
 
-                expect(calls).toEqual([
+                assertEqual(calls, [
                   [1, 0],
                   [2, 1],
                   [3, 2],
                 ]);
-                expect(await run(task)).toEqual(
+                assertEqual(
+                  await run(task),
                   helper.resultMode === "void" ? ok() : ok(["#1", "#2", "#3"]),
                 );
               } else {
@@ -3359,24 +3427,25 @@ describe("collection helpers", () => {
                 };
                 const task = allSettled([1, 2, 3], mapper);
 
-                expect(calls).toEqual([
+                assertEqual(calls, [
                   [1, 0],
                   [2, 1],
                   [3, 2],
                 ]);
-                expect(await run(task)).toEqual(
+                assertEqual(
+                  await run(task),
                   ok([ok("#1"), err(taskError), ok("#3")]),
                 );
               }
 
-              expect(calls).toEqual([
+              assertEqual(calls, [
                 [1, 0],
                 [2, 1],
                 [3, 2],
               ]);
             });
 
-            test("maps record values to Tasks", async () => {
+            it("maps record values to Tasks", async () => {
               interface Deps {
                 readonly prefix: string;
               }
@@ -3402,12 +3471,13 @@ describe("collection helpers", () => {
                     ? all(values, mapper, { collect: false })
                     : all(values, mapper);
 
-                expect(calls).toEqual([
+                assertEqual(calls, [
                   [1, "one"],
                   [2, "two"],
                   [3, "three"],
                 ]);
-                expect(await run(task)).toEqual(
+                assertEqual(
+                  await run(task),
                   helper.resultMode === "void"
                     ? ok()
                     : ok({ one: "#1", two: "#2", three: "#3" }),
@@ -3426,12 +3496,13 @@ describe("collection helpers", () => {
                 };
                 const task = allSettled(values, mapper);
 
-                expect(calls).toEqual([
+                assertEqual(calls, [
                   [1, "one"],
                   [2, "two"],
                   [3, "three"],
                 ]);
-                expect(await run(task)).toEqual(
+                assertEqual(
+                  await run(task),
                   ok({
                     one: ok("#1"),
                     two: err(taskError),
@@ -3440,17 +3511,17 @@ describe("collection helpers", () => {
                 );
               }
 
-              expect(calls).toEqual([
+              assertEqual(calls, [
                 [1, "one"],
                 [2, "two"],
                 [3, "three"],
               ]);
             });
 
-            test("mapped Task output with metadata applied", async () => {
+            it("mapped Task output with metadata applied", async () => {
               const priorities: Array<TaskPriority | undefined> = [];
 
-              vi.stubGlobal("scheduler", {
+              using _scheduler = testStubGlobal("scheduler", {
                 postTask: async <T>(
                   callback: () => T | PromiseLike<T>,
                   options?: { readonly priority?: TaskPriority },
@@ -3460,22 +3531,18 @@ describe("collection helpers", () => {
                 },
               });
 
-              try {
-                await using run = createRun();
-                const task = helper.fromArray([
-                  prioritized("background", () => ok(1)),
-                ]);
+              await using run = createRun();
+              const task = helper.fromArray([
+                prioritized("background", () => ok(1)),
+              ]);
 
-                expect(await run(task)).toEqual(ok(expectedArrayValue([1])));
-                expect(priorities).toEqual(["background"]);
-              } finally {
-                vi.unstubAllGlobals();
-              }
+              assertEqual(await run(task), ok(expectedArrayValue([1])));
+              assertEqual(priorities, ["background"]);
             });
           }
 
           if (helper.resultMode !== "void") {
-            test(`preserves input order when ${taskNoun} settle out of order`, async () => {
+            it(`preserves input order when ${taskNoun} settle out of order`, async () => {
               await using run = createRun();
               const completeFirst = Promise.withResolvers<void>();
               const completeSecond = Promise.withResolvers<void>();
@@ -3496,7 +3563,8 @@ describe("collection helpers", () => {
               completeSecond.resolve();
               completeFirst.resolve();
 
-              expect(await fiber).toEqual(
+              assertEqual(
+                await fiber,
                 ok(expectedArrayValue(["first", "second"])),
               );
             });
@@ -3504,7 +3572,7 @@ describe("collection helpers", () => {
         });
 
         describe("by default", () => {
-          test(`runs ${taskNoun} sequentially`, async () => {
+          it(`runs ${taskNoun} sequentially`, async () => {
             await using run = createRun();
             const completeFirst = Promise.withResolvers<void>();
             const events: Array<string> = [];
@@ -3522,22 +3590,19 @@ describe("collection helpers", () => {
 
             const fiber = run(helper.fromArray([first, second]));
 
-            expect(events).toEqual(["first start"]);
+            assertEqual(events, ["first start"]);
 
             completeFirst.resolve();
 
-            expect(await fiber).toEqual(
+            assertEqual(
+              await fiber,
               ok(expectedArrayValue(["first", "second"])),
             );
-            expect(events).toEqual([
-              "first start",
-              "first end",
-              "second start",
-            ]);
+            assertEqual(events, ["first start", "first end", "second start"]);
           });
 
           if (helper.errorMode === "failFast") {
-            test(`does not run later ${taskNoun} after the first Err`, async () => {
+            it(`does not run later ${taskNoun} after the first Err`, async () => {
               await using run = createRun();
               const taskError = { type: "TaskError" } as const;
               let laterStarted = false;
@@ -3549,13 +3614,14 @@ describe("collection helpers", () => {
                 return ok("later");
               };
 
-              expect(await run(helper.fromArray([failing, later]))).toEqual(
+              assertEqual(
+                await run(helper.fromArray([failing, later])),
                 err(taskError),
               );
-              expect(laterStarted).toBe(false);
+              assertFalse(laterStarted);
             });
           } else {
-            test(`runs later ${taskNoun} after an Err`, async () => {
+            it(`runs later ${taskNoun} after an Err`, async () => {
               await using run = createRun();
               const taskError = { type: "TaskError" } as const;
               let laterStarted = false;
@@ -3567,14 +3633,15 @@ describe("collection helpers", () => {
                 return ok("later");
               };
 
-              expect(await run(helper.fromArray([failing, later]))).toEqual(
+              assertEqual(
+                await run(helper.fromArray([failing, later])),
                 ok([err(taskError), ok("later")]),
               );
-              expect(laterStarted).toBe(true);
+              assertTrue(laterStarted);
             });
           }
 
-          test(`aborts running ${taskNoun} when aborted`, async () => {
+          it(`aborts running ${taskNoun} when aborted`, async () => {
             await using run = createRun();
             const completeTask = Promise.withResolvers<void>();
             let taskSignal: AbortSignal | undefined;
@@ -3587,19 +3654,19 @@ describe("collection helpers", () => {
             };
 
             const fiber = run.abortable(helper.fromArray([task]));
-            assert(taskSignal);
+            assertNotUndefined(taskSignal);
 
             fiber.abort(testAbortReason);
             completeTask.resolve();
 
-            expect(taskSignal.aborted).toBe(true);
-            expect(taskSignal.reason).toEqual(testAbortError);
-            expect(await fiber).toEqual(err(testAbortError));
+            assertTrue(taskSignal.aborted);
+            assertEqual(taskSignal.reason, testAbortError);
+            assertEqual(await fiber, err(testAbortError));
           });
         });
 
         describe("with concurrency", () => {
-          test(`runs ${taskNoun} concurrently`, async () => {
+          it(`runs ${taskNoun} concurrently`, async () => {
             await using run = createRun();
             const completeTasks = Promise.withResolvers<void>();
             const events: Array<string> = [];
@@ -3620,12 +3687,12 @@ describe("collection helpers", () => {
             );
 
             try {
-              expect(events).toEqual(["start 1", "start 2"]);
+              assertEqual(events, ["start 1", "start 2"]);
 
               completeTasks.resolve();
 
-              expect(await fiber).toEqual(ok(expectedArrayValue([1, 2, 3])));
-              expect(events).toEqual([
+              assertEqual(await fiber, ok(expectedArrayValue([1, 2, 3])));
+              assertEqual(events, [
                 "start 1",
                 "start 2",
                 "end 1",
@@ -3639,7 +3706,7 @@ describe("collection helpers", () => {
           });
 
           if (helper.errorMode === "failFast") {
-            test(`waits for running ${taskNoun} and does not start queued ${taskNoun} after the first Err`, async () => {
+            it(`waits for running ${taskNoun} and does not start queued ${taskNoun} after the first Err`, async () => {
               await using run = createRun();
               const completeSlow = Promise.withResolvers<void>();
               const slowAborted = Promise.withResolvers<unknown>();
@@ -3671,39 +3738,38 @@ describe("collection helpers", () => {
               });
 
               try {
-                expect(await slowAborted.promise).toBe(runDisposedAbortReason);
-                expect(helperFiberSettled).toBe(false);
+                assertSame(await slowAborted.promise, runDisposedAbortReason);
+                assertFalse(helperFiberSettled);
 
                 const snapshot = helperFiber.run.snapshot();
-                expect(snapshot.state).toEqual({ type: "Running" });
+                assertEqual(snapshot.state, { type: "Running" });
 
                 const childSnapshot = snapshot.children.at(0);
-                assert(childSnapshot);
-                assert(childSnapshot.state.type === "Aborted");
+                assertNotUndefined(childSnapshot);
+                assertSame(childSnapshot.state.type, "Aborted");
                 const abortReason = childSnapshot.state.abort.request;
-                expect(abortReason).toBe(runDisposedAbortReason);
-                expect(childSnapshot.state.abort.observed).toBe(abortReason);
+                assertSame(abortReason, runDisposedAbortReason);
+                assertSame(childSnapshot.state.abort.observed, abortReason);
 
                 const grandchildSnapshot = childSnapshot.children.at(0);
-                assert(grandchildSnapshot);
-                assert(grandchildSnapshot.state.type === "Aborted");
-                expect(grandchildSnapshot.state.abort.request).toBe(
-                  abortReason,
-                );
-                expect(grandchildSnapshot.state.abort.observed).toBe(
+                assertNotUndefined(grandchildSnapshot);
+                assertSame(grandchildSnapshot.state.type, "Aborted");
+                assertSame(grandchildSnapshot.state.abort.request, abortReason);
+                assertSame(
+                  grandchildSnapshot.state.abort.observed,
                   abortReason,
                 );
               } finally {
                 completeSlow.resolve();
               }
 
-              expect(await helperFiber).toEqual(err(taskError));
-              expect(slowSettled).toBe(true);
-              expect(laterStarted).toBe(false);
+              assertEqual(await helperFiber, err(taskError));
+              assertTrue(slowSettled);
+              assertFalse(laterStarted);
             });
 
             if (helper.name === "all") {
-              test("aborts an already-started slow Task after sync Err", async () => {
+              it("aborts an already-started slow Task after sync Err", async () => {
                 await using run = createRun();
                 const taskError = { type: "TaskError" } as const;
                 const slowAborted = Promise.withResolvers<void>();
@@ -3723,19 +3789,20 @@ describe("collection helpers", () => {
                   return ok("slow");
                 };
 
-                expect(
+                assertEqual(
                   await run(
                     helper.fromArray([syncOk, syncErr, slow], {
                       concurrency: 2,
                     }),
                   ),
-                ).toEqual(err(taskError));
-                expect(slowStarted).toBe(true);
-                expect(slowSettled).toBe(true);
+                  err(taskError),
+                );
+                assertTrue(slowStarted);
+                assertTrue(slowSettled);
               });
             }
           } else {
-            test(`waits for running ${taskNoun} after an Err`, async () => {
+            it(`waits for running ${taskNoun} after an Err`, async () => {
               await using run = createRun();
               const completeSlow = Promise.withResolvers<void>();
               const taskError = { type: "TaskError" } as const;
@@ -3753,16 +3820,16 @@ describe("collection helpers", () => {
                 helper.fromArray([slow, failing], { concurrency: 2 }),
               );
 
-              expect(slowSettled).toBe(false);
+              assertFalse(slowSettled);
 
               completeSlow.resolve();
 
-              expect(await fiber).toEqual(ok([ok("slow"), err(taskError)]));
-              expect(slowSettled).toBe(true);
+              assertEqual(await fiber, ok([ok("slow"), err(taskError)]));
+              assertTrue(slowSettled);
             });
           }
 
-          test(`rejects with panic abort and aborts running ${taskNoun} when a ${taskSingular} defects`, async () => {
+          it(`rejects with panic abort and aborts running ${taskNoun} when a ${taskSingular} defects`, async () => {
             await using run = testCreateRun();
             const completeSlow = Promise.withResolvers<void>();
             const slowAborted = Promise.withResolvers<unknown>();
@@ -3783,20 +3850,20 @@ describe("collection helpers", () => {
               helper.fromArray([slow, defecting], { concurrency: 2 }),
             );
 
-            expect(await slowAborted.promise).toEqual({
+            assertEqual(await slowAborted.promise, {
               type: "PanicAbortReason",
               defect,
             });
 
             completeSlow.resolve();
 
-            await expect(fiber).rejects.toEqual(panic(defect));
+            await assertRejects(fiber, panic(defect));
           });
         });
       });
     }
 
-    test("nested collections resolve concurrency independently", async () => {
+    it("nested collections resolve concurrency independently", async () => {
       await using run = createRun();
       const completeInnerFirst = Promise.withResolvers<void>();
       const events: Array<string> = [];
@@ -3820,14 +3887,15 @@ describe("collection helpers", () => {
 
       const fiber = run(all([nested, sibling], { concurrency: 2 }));
 
-      expect(events).toEqual(["inner first start", "outer sibling start"]);
+      assertEqual(events, ["inner first start", "outer sibling start"]);
 
       completeInnerFirst.resolve();
 
-      expect(await fiber).toEqual(
+      assertEqual(
+        await fiber,
         ok([["inner first", "inner second"], "outer sibling"]),
       );
-      expect(events).toEqual([
+      assertEqual(events, [
         "inner first start",
         "outer sibling start",
         "inner first end",
@@ -3835,25 +3903,27 @@ describe("collection helpers", () => {
       ]);
     });
 
-    test("collection mapping overloads throw when mapper defects", () => {
+    it("collection mapping overloads throw when mapper defects", () => {
       const defect = new Error("boom");
       const defectingMapper = (): Task<string> => {
         throw defect;
       };
 
-      expect(() => all([1], defectingMapper)).toThrow(defect);
-      expect(() => all([1], defectingMapper, { collect: false })).toThrow(
+      assertThrowsSame(() => all([1], defectingMapper), defect);
+      assertThrowsSame(
+        () => all([1], defectingMapper, { collect: false }),
         defect,
       );
-      expect(() =>
-        all({ one: 1 }, defectingMapper, { collect: false }),
-      ).toThrow(defect);
-      expect(() => allSettled([1], defectingMapper)).toThrow(defect);
+      assertThrowsSame(
+        () => all({ one: 1 }, defectingMapper, { collect: false }),
+        defect,
+      );
+      assertThrowsSame(() => allSettled([1], defectingMapper), defect);
     });
   });
 
   describe("types", () => {
-    test("Task helpers infer dependency intersections", () => {
+    it("Task helpers infer dependency intersections", () => {
       interface FirstDep {
         readonly first: unknown;
       }
@@ -3875,27 +3945,15 @@ describe("collection helpers", () => {
       type Error = FirstError | SecondError;
       type Value = string | number | boolean;
 
-      expectTypeOf<
-        InferTaskDeps<ReturnType<typeof each<Tasks>>>
-      >().toEqualTypeOf<Deps>();
-      expectTypeOf<
-        InferTaskDeps<ReturnType<typeof race<Tasks>>>
-      >().toEqualTypeOf<Deps>();
-      expectTypeOf<
-        InferTaskDeps<ReturnType<typeof any<Tasks>>>
-      >().toEqualTypeOf<Deps>();
-      expectTypeOf<InferTasksResult<Tasks>>().toEqualTypeOf<
-        Result<Value, Error>
-      >();
-      expectTypeOf<ReturnType<typeof race<Tasks>>>().toEqualTypeOf<
-        Task<Value, Error, Deps>
-      >();
-      expectTypeOf<ReturnType<typeof any<Tasks>>>().toEqualTypeOf<
-        Task<Value, Error, Deps>
-      >();
+      assertType<InferTaskDeps<ReturnType<typeof each<Tasks>>>, Deps>();
+      assertType<InferTaskDeps<ReturnType<typeof race<Tasks>>>, Deps>();
+      assertType<InferTaskDeps<ReturnType<typeof any<Tasks>>>, Deps>();
+      assertType<InferTasksResult<Tasks>, Result<Value, Error>>();
+      assertType<ReturnType<typeof race<Tasks>>, Task<Value, Error, Deps>>();
+      assertType<ReturnType<typeof any<Tasks>>, Task<Value, Error, Deps>>();
     });
 
-    test("Task helpers infer widened task array dependency intersections", () => {
+    it("Task helpers infer widened task array dependency intersections", () => {
       interface FirstDep {
         readonly first: unknown;
       }
@@ -3909,27 +3967,15 @@ describe("collection helpers", () => {
       type Deps = FirstDep & SecondDep;
       type Value = string | number;
 
-      expectTypeOf<
-        InferTaskDeps<ReturnType<typeof each<Tasks>>>
-      >().toEqualTypeOf<Deps>();
-      expectTypeOf<
-        InferTaskDeps<ReturnType<typeof race<Tasks>>>
-      >().toEqualTypeOf<Deps>();
-      expectTypeOf<
-        InferTaskDeps<ReturnType<typeof any<Tasks>>>
-      >().toEqualTypeOf<Deps>();
-      expectTypeOf<ReturnType<typeof each<Tasks>>>().toEqualTypeOf<
-        Task<void, never, Deps>
-      >();
-      expectTypeOf<ReturnType<typeof race<Tasks>>>().toEqualTypeOf<
-        Task<Value, never, Deps>
-      >();
-      expectTypeOf<ReturnType<typeof any<Tasks>>>().toEqualTypeOf<
-        Task<Value, never, Deps>
-      >();
+      assertType<InferTaskDeps<ReturnType<typeof each<Tasks>>>, Deps>();
+      assertType<InferTaskDeps<ReturnType<typeof race<Tasks>>>, Deps>();
+      assertType<InferTaskDeps<ReturnType<typeof any<Tasks>>>, Deps>();
+      assertType<ReturnType<typeof each<Tasks>>, Task<void, never, Deps>>();
+      assertType<ReturnType<typeof race<Tasks>>, Task<Value, never, Deps>>();
+      assertType<ReturnType<typeof any<Tasks>>, Task<Value, never, Deps>>();
     });
 
-    test("collection concurrency options preserve overload types", () => {
+    it("collection concurrency options preserve overload types", () => {
       const stringTask: Task<string, "TaskError", DbDep> = ({ deps }) =>
         ok(deps.db.query("value"));
       const numberTask: Task<number, never, SessionDep> = ({ deps }) =>
@@ -3944,106 +3990,158 @@ describe("collection helpers", () => {
         ({ deps }) =>
           ok(deps.db.query(String(value)));
 
-      expectTypeOf(all(tasks, { concurrency: 1 })).toEqualTypeOf<
-        Task<ReadonlyArray<string>, "TaskError", DbDep>
-      >();
-      expectTypeOf(all(tuple, { concurrency: 100 })).toEqualTypeOf<
-        Task<readonly [string, number], "TaskError", DbDep & SessionDep>
-      >();
-      expectTypeOf(
-        all(record, { concurrency: PositiveInt.orThrow(101) }),
-      ).toEqualTypeOf<
-        Task<
-          { readonly string: string; readonly number: number },
-          "TaskError",
-          DbDep & SessionDep
-        >
-      >();
-      expectTypeOf(
-        all(values, toTask, { concurrency: availableParallelism() }),
-      ).toEqualTypeOf<Task<ReadonlyArray<string>, "TaskError", DbDep>>();
-      expectTypeOf(
-        all(valuesByKey, toTask, { concurrency: maxPositiveInt }),
-      ).toEqualTypeOf<
-        Task<
-          { readonly first: string; readonly second: string },
-          "TaskError",
-          DbDep
-        >
-      >();
+      {
+        const actual = all(tasks, { concurrency: 1 });
+        assertType<
+          typeof actual,
+          Task<ReadonlyArray<string>, "TaskError", DbDep>
+        >();
+      }
+      {
+        const actual = all(tuple, { concurrency: 100 });
+        assertType<
+          typeof actual,
+          Task<readonly [string, number], "TaskError", DbDep & SessionDep>
+        >();
+      }
+      {
+        const actual = all(record, { concurrency: PositiveInt.orThrow(101) });
+        assertType<
+          typeof actual,
+          Task<
+            { readonly string: string; readonly number: number },
+            "TaskError",
+            DbDep & SessionDep
+          >
+        >();
+      }
+      {
+        const actual = all(values, toTask, {
+          concurrency: availableParallelism(),
+        });
+        assertType<
+          typeof actual,
+          Task<ReadonlyArray<string>, "TaskError", DbDep>
+        >();
+      }
+      {
+        const actual = all(valuesByKey, toTask, {
+          concurrency: maxPositiveInt,
+        });
+        assertType<
+          typeof actual,
+          Task<
+            { readonly first: string; readonly second: string },
+            "TaskError",
+            DbDep
+          >
+        >();
+      }
 
       const allOptions: AllOptions = {
         collect: false,
         concurrency: 2,
       };
-      expectTypeOf(all(tasks, allOptions)).toEqualTypeOf<
-        Task<void, "TaskError", DbDep>
-      >();
-      expectTypeOf(
-        all(tasks, { collect: false, concurrency: 2 }),
-      ).toEqualTypeOf<Task<void, "TaskError", DbDep>>();
-      expectTypeOf(
-        all(record, { collect: false, concurrency: 2 }),
-      ).toEqualTypeOf<Task<void, "TaskError", DbDep & SessionDep>>();
-      expectTypeOf(
-        all(values, toTask, { collect: false, concurrency: 2 }),
-      ).toEqualTypeOf<Task<void, "TaskError", DbDep>>();
-      expectTypeOf(
-        all(valuesByKey, toTask, { collect: false, concurrency: 2 }),
-      ).toEqualTypeOf<Task<void, "TaskError", DbDep>>();
+      {
+        const actual = all(tasks, allOptions);
+        assertType<typeof actual, Task<void, "TaskError", DbDep>>();
+      }
+      {
+        const actual = all(tasks, { collect: false, concurrency: 2 });
+        assertType<typeof actual, Task<void, "TaskError", DbDep>>();
+      }
+      {
+        const actual = all(record, { collect: false, concurrency: 2 });
+        assertType<
+          typeof actual,
+          Task<void, "TaskError", DbDep & SessionDep>
+        >();
+      }
+      {
+        const actual = all(values, toTask, { collect: false, concurrency: 2 });
+        assertType<typeof actual, Task<void, "TaskError", DbDep>>();
+      }
+      {
+        const actual = all(valuesByKey, toTask, {
+          collect: false,
+          concurrency: 2,
+        });
+        assertType<typeof actual, Task<void, "TaskError", DbDep>>();
+      }
 
-      expectTypeOf(allSettled(tasks, { concurrency: 2 })).toEqualTypeOf<
-        Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
-      >();
-      expectTypeOf(allSettled(tuple, { concurrency: 2 })).toEqualTypeOf<
-        Task<
-          readonly [Result<string, "TaskError">, Result<number>],
-          never,
-          DbDep & SessionDep
-        >
-      >();
-      expectTypeOf(allSettled(record, { concurrency: 2 })).toEqualTypeOf<
-        Task<
-          {
-            readonly string: Result<string, "TaskError">;
-            readonly number: Result<number>;
-          },
-          never,
-          DbDep & SessionDep
-        >
-      >();
-      expectTypeOf(
-        allSettled(values, toTask, { concurrency: 2 }),
-      ).toEqualTypeOf<
-        Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
-      >();
-      expectTypeOf(
-        allSettled(valuesByKey, toTask, { concurrency: 2 }),
-      ).toEqualTypeOf<
-        Task<
-          {
-            readonly first: Result<string, "TaskError">;
-            readonly second: Result<string, "TaskError">;
-          },
-          never,
-          DbDep
-        >
-      >();
+      {
+        const actual = allSettled(tasks, { concurrency: 2 });
+        assertType<
+          typeof actual,
+          Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
+        >();
+      }
+      {
+        const actual = allSettled(tuple, { concurrency: 2 });
+        assertType<
+          typeof actual,
+          Task<
+            readonly [Result<string, "TaskError">, Result<number>],
+            never,
+            DbDep & SessionDep
+          >
+        >();
+      }
+      {
+        const actual = allSettled(record, { concurrency: 2 });
+        assertType<
+          typeof actual,
+          Task<
+            {
+              readonly string: Result<string, "TaskError">;
+              readonly number: Result<number>;
+            },
+            never,
+            DbDep & SessionDep
+          >
+        >();
+      }
+      {
+        const actual = allSettled(values, toTask, { concurrency: 2 });
+        assertType<
+          typeof actual,
+          Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
+        >();
+      }
+      {
+        const actual = allSettled(valuesByKey, toTask, { concurrency: 2 });
+        assertType<
+          typeof actual,
+          Task<
+            {
+              readonly first: Result<string, "TaskError">;
+              readonly second: Result<string, "TaskError">;
+            },
+            never,
+            DbDep
+          >
+        >();
+      }
 
-      expectTypeOf(any([stringTask], { concurrency: 2 })).toEqualTypeOf<
-        Task<string, "TaskError", DbDep>
-      >();
-      expectTypeOf(firstN([stringTask], 1, { concurrency: 2 })).toEqualTypeOf<
-        Task<ReadonlyArray<string>, never, DbDep>
-      >();
-      expectTypeOf(
-        firstNSettled([stringTask], 1, { concurrency: 2 }),
-      ).toEqualTypeOf<
-        Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
-      >();
-      expectTypeOf(
-        each([stringTask], () => "continue", { concurrency: 2 }),
-      ).toEqualTypeOf<Task<void, never, DbDep>>();
+      {
+        const actual = any([stringTask], { concurrency: 2 });
+        assertType<typeof actual, Task<string, "TaskError", DbDep>>();
+      }
+      {
+        const actual = firstN([stringTask], 1, { concurrency: 2 });
+        assertType<typeof actual, Task<ReadonlyArray<string>, never, DbDep>>();
+      }
+      {
+        const actual = firstNSettled([stringTask], 1, { concurrency: 2 });
+        assertType<
+          typeof actual,
+          Task<ReadonlyArray<Result<string, "TaskError">>, never, DbDep>
+        >();
+      }
+      {
+        const actual = each([stringTask], () => "continue", { concurrency: 2 });
+        assertType<typeof actual, Task<void, never, DbDep>>();
+      }
 
       const assertRejectedConcurrencyTypes = () => {
         // @ts-expect-error - concurrency must be positive.
@@ -4069,7 +4167,7 @@ describe("collection helpers", () => {
       void assertRejectedConcurrencyTypes;
     });
 
-    test("InferTasksOk maps Task arrays and records to Ok values", () => {
+    it("InferTasksOk maps Task arrays and records to Ok values", () => {
       interface MyError {
         readonly type: "MyError";
       }
@@ -4080,38 +4178,42 @@ describe("collection helpers", () => {
         readonly age: Task<number, MyError>;
       }
 
-      expectTypeOf<InferTasksOk<Tasks>>().toEqualTypeOf<
-        readonly [string, number]
-      >();
-      expectTypeOf<InferTasksOk<ReadonlyArray<Task<string>>>>().toEqualTypeOf<
+      assertType<InferTasksOk<Tasks>, readonly [string, number]>();
+      assertType<
+        InferTasksOk<ReadonlyArray<Task<string>>>,
         ReadonlyArray<string>
       >();
-      expectTypeOf<
-        InferTasksOk<NonEmptyReadonlyArray<Task<string>>>
-      >().toEqualTypeOf<NonEmptyReadonlyArray<string>>();
-      expectTypeOf<InferTasksOk<TasksRecord>>().toEqualTypeOf<{
-        readonly name: string;
-        readonly age: number;
-      }>();
-      expectTypeOf<InferTasksOk<{ readonly notTask: string }>>().toEqualTypeOf<{
-        readonly notTask: never;
-      }>();
+      assertType<
+        InferTasksOk<NonEmptyReadonlyArray<Task<string>>>,
+        NonEmptyReadonlyArray<string>
+      >();
+      assertType<
+        InferTasksOk<TasksRecord>,
+        {
+          readonly name: string;
+          readonly age: number;
+        }
+      >();
+      assertType<
+        InferTasksOk<{ readonly notTask: string }>,
+        {
+          readonly notTask: never;
+        }
+      >();
     });
 
     describe("all", () => {
       describe("returns", () => {
-        test("tuple values", () => {
+        it("tuple values", () => {
           const name: Task<string> = () => ok("Ada");
           const age: Task<number> = () => ok(37);
           const active: Task<boolean> = () => ok(true);
           const task = all([name, age, active]);
 
-          expectTypeOf(task).toEqualTypeOf<
-            Task<readonly [string, number, boolean]>
-          >();
+          assertType<typeof task, Task<readonly [string, number, boolean]>>();
         });
 
-        test("error union", () => {
+        it("error union", () => {
           const firstError = { type: "FirstError" } as const;
           const secondError = { type: "SecondError" } as const;
           const first: Task<string, typeof firstError> = () => err(firstError);
@@ -4119,7 +4221,8 @@ describe("collection helpers", () => {
             err(secondError);
           const task = all([first, second]);
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               readonly [string, string],
               typeof firstError | typeof secondError
@@ -4127,14 +4230,15 @@ describe("collection helpers", () => {
           >();
         });
 
-        test("record dependency intersection", () => {
+        it("record dependency intersection", () => {
           const name: Task<string, never, DbDep> = ({ deps }) =>
             ok(deps.db.query("name"));
           const userId: Task<string, never, SessionDep> = ({ deps }) =>
             ok(deps.session.userId);
           const task = all({ name, userId });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               { readonly name: string; readonly userId: string },
               never,
@@ -4143,7 +4247,7 @@ describe("collection helpers", () => {
           >();
         });
 
-        test("void without collecting tuple values", () => {
+        it("void without collecting tuple values", () => {
           interface FirstError {
             readonly type: "FirstError";
           }
@@ -4156,12 +4260,13 @@ describe("collection helpers", () => {
             ok(deps.session.userId.length);
           const task = all([first, second], { collect: false });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<void, FirstError | SecondError, DbDep & SessionDep>
           >();
         });
 
-        test("void without collecting record values", () => {
+        it("void without collecting record values", () => {
           interface FirstError {
             readonly type: "FirstError";
           }
@@ -4174,64 +4279,64 @@ describe("collection helpers", () => {
             ok(deps.session.userId.length);
           const task = all({ first, second }, { collect: false });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<void, FirstError | SecondError, DbDep & SessionDep>
           >();
         });
       });
 
       describe("accepts", () => {
-        test("an empty array", () => {
+        it("an empty array", () => {
           const tasks: ReadonlyArray<Task<string>> = emptyArray;
           const task = all(tasks);
 
-          expectTypeOf(task).toEqualTypeOf<Task<ReadonlyArray<string>>>();
+          assertType<typeof task, Task<ReadonlyArray<string>>>();
         });
 
-        test("an array", () => {
+        it("an array", () => {
           const tasks: ReadonlyArray<Task<string>> = [
             () => ok("Ada"),
             () => ok("Grace"),
           ];
           const task = all(tasks);
 
-          expectTypeOf(task).toEqualTypeOf<Task<ReadonlyArray<string>>>();
+          assertType<typeof task, Task<ReadonlyArray<string>>>();
         });
 
-        test("a non-empty array", () => {
+        it("a non-empty array", () => {
           const tasks: NonEmptyReadonlyArray<Task<string>> = [() => ok("Ada")];
           const task = all(tasks);
 
-          expectTypeOf(task).toEqualTypeOf<
-            Task<NonEmptyReadonlyArray<string>>
-          >();
+          assertType<typeof task, Task<NonEmptyReadonlyArray<string>>>();
         });
 
-        test("an empty tuple", () => {
+        it("an empty tuple", () => {
           const task = all([]);
 
-          expectTypeOf(task).toEqualTypeOf<Task<readonly []>>();
+          assertType<typeof task, Task<readonly []>>();
         });
 
-        test("a tuple", () => {
+        it("a tuple", () => {
           const task = all([() => ok("Ada"), () => ok(37)]);
 
-          expectTypeOf(task).toEqualTypeOf<Task<readonly [string, number]>>();
+          assertType<typeof task, Task<readonly [string, number]>>();
         });
 
-        test("an empty record", () => {
+        it("an empty record", () => {
           const task = all({});
 
-          expectTypeOf(task).toEqualTypeOf<Task<Record<never, never>>>();
+          assertType<typeof task, Task<Record<never, never>>>();
         });
 
-        test("a record", () => {
+        it("a record", () => {
           const name: Task<string> = () => ok("Ada");
           const age: Task<number> = () => ok(37);
           const active: Task<boolean> = () => ok(true);
           const task = all({ name, age, active });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<{
               readonly name: string;
               readonly age: number;
@@ -4242,7 +4347,7 @@ describe("collection helpers", () => {
       });
     });
 
-    test("InferTasksSettled maps Task arrays and records to Results", () => {
+    it("InferTasksSettled maps Task arrays and records to Results", () => {
       interface MyError {
         readonly type: "MyError";
       }
@@ -4253,25 +4358,30 @@ describe("collection helpers", () => {
         readonly age: Task<number, MyError>;
       }
 
-      expectTypeOf<InferTasksSettled<Tasks>>().toEqualTypeOf<
+      assertType<
+        InferTasksSettled<Tasks>,
         readonly [Result<string>, Result<number, MyError>]
       >();
-      expectTypeOf<InferTasksSettled<TasksRecord>>().toEqualTypeOf<{
-        readonly name: Result<string>;
-        readonly age: Result<number, MyError>;
-      }>();
+      assertType<
+        InferTasksSettled<TasksRecord>,
+        {
+          readonly name: Result<string>;
+          readonly age: Result<number, MyError>;
+        }
+      >();
     });
 
     describe("allSettled", () => {
       describe("returns", () => {
-        test("result tuple", () => {
+        it("result tuple", () => {
           const taskError = { type: "TaskError" } as const;
           const name: Task<string> = () => ok("Ada");
           const age: Task<number, typeof taskError> = () => err(taskError);
           const active: Task<boolean> = () => ok(true);
           const task = allSettled([name, age, active]);
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               readonly [
                 Result<string>,
@@ -4282,14 +4392,15 @@ describe("collection helpers", () => {
           >();
         });
 
-        test("record dependency intersection", () => {
+        it("record dependency intersection", () => {
           const name: Task<string, never, DbDep> = ({ deps }) =>
             ok(deps.db.query("name"));
           const userId: Task<string, never, SessionDep> = ({ deps }) =>
             ok(deps.session.userId);
           const task = allSettled({ name, userId });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               {
                 readonly name: Result<string>;
@@ -4303,16 +4414,14 @@ describe("collection helpers", () => {
       });
 
       describe("accepts", () => {
-        test("an empty array", () => {
+        it("an empty array", () => {
           const tasks: ReadonlyArray<Task<string>> = emptyArray;
           const task = allSettled(tasks);
 
-          expectTypeOf(task).toEqualTypeOf<
-            Task<ReadonlyArray<Result<string>>>
-          >();
+          assertType<typeof task, Task<ReadonlyArray<Result<string>>>>();
         });
 
-        test("an array", () => {
+        it("an array", () => {
           const taskError = { type: "TaskError" } as const;
           const tasks: ReadonlyArray<Task<string, typeof taskError>> = [
             () => ok("Ada"),
@@ -4320,54 +4429,58 @@ describe("collection helpers", () => {
           ];
           const task = allSettled(tasks);
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<ReadonlyArray<Result<string, typeof taskError>>>
           >();
         });
 
-        test("a non-empty array", () => {
+        it("a non-empty array", () => {
           const taskError = { type: "TaskError" } as const;
           const tasks: NonEmptyReadonlyArray<Task<string, typeof taskError>> = [
             () => err(taskError),
           ];
           const task = allSettled(tasks);
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<NonEmptyReadonlyArray<Result<string, typeof taskError>>>
           >();
         });
 
-        test("an empty tuple", () => {
+        it("an empty tuple", () => {
           const task = allSettled([]);
 
-          expectTypeOf(task).toEqualTypeOf<Task<readonly []>>();
+          assertType<typeof task, Task<readonly []>>();
         });
 
-        test("a tuple", () => {
+        it("a tuple", () => {
           const taskError = { type: "TaskError" } as const;
           const name: Task<string> = () => ok("Ada");
           const age: Task<number, typeof taskError> = () => err(taskError);
           const task = allSettled([name, age]);
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<readonly [Result<string>, Result<number, typeof taskError>]>
           >();
         });
 
-        test("an empty record", () => {
+        it("an empty record", () => {
           const task = allSettled({});
 
-          expectTypeOf(task).toEqualTypeOf<Task<Record<never, never>>>();
+          assertType<typeof task, Task<Record<never, never>>>();
         });
 
-        test("a record", () => {
+        it("a record", () => {
           const taskError = { type: "TaskError" } as const;
           const name: Task<string> = () => ok("Ada");
           const age: Task<number, typeof taskError> = () => err(taskError);
           const active: Task<boolean> = () => ok(true);
           const task = allSettled({ name, age, active });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<{
               readonly name: Result<string>;
               readonly age: Result<number, typeof taskError>;
@@ -4380,7 +4493,7 @@ describe("collection helpers", () => {
 
     describe("all mapping overload", () => {
       describe("returns", () => {
-        test("mapped tuple values", () => {
+        it("mapped tuple values", () => {
           interface Deps {
             readonly prefix: string;
           }
@@ -4395,12 +4508,13 @@ describe("collection helpers", () => {
                 ok(`${run.deps.prefix}${value}`),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<readonly [string, string, string], TaskError, Deps>
           >();
         });
 
-        test("error union", () => {
+        it("error union", () => {
           const taskError = { type: "TaskError" } as const;
           const task = all(
             [1, 2],
@@ -4409,12 +4523,13 @@ describe("collection helpers", () => {
                 value === 1 ? err(taskError) : ok(String(value)),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<readonly [string, string], typeof taskError>
           >();
         });
 
-        test("heterogeneous array mapper dependency intersection", () => {
+        it("heterogeneous array mapper dependency intersection", () => {
           interface FirstError {
             readonly type: "FirstError";
           }
@@ -4435,19 +4550,21 @@ describe("collection helpers", () => {
           const task = all(values, toTask);
           const taskWithoutValues = all(values, toTask, { collect: false });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               readonly [string | number, string | number],
               FirstError | SecondError,
               DbDep & SessionDep
             >
           >();
-          expectTypeOf(taskWithoutValues).toEqualTypeOf<
+          assertType<
+            typeof taskWithoutValues,
             Task<void, FirstError | SecondError, DbDep & SessionDep>
           >();
         });
 
-        test("heterogeneous record mapper dependency intersection", () => {
+        it("heterogeneous record mapper dependency intersection", () => {
           interface FirstError {
             readonly type: "FirstError";
           }
@@ -4469,7 +4586,8 @@ describe("collection helpers", () => {
           const task = all(values, toTask);
           const taskWithoutValues = all(values, toTask, { collect: false });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               {
                 readonly first: string | number;
@@ -4479,12 +4597,13 @@ describe("collection helpers", () => {
               DbDep & SessionDep
             >
           >();
-          expectTypeOf(taskWithoutValues).toEqualTypeOf<
+          assertType<
+            typeof taskWithoutValues,
             Task<void, FirstError | SecondError, DbDep & SessionDep>
           >();
         });
 
-        test("void without collecting mapped array values", () => {
+        it("void without collecting mapped array values", () => {
           interface TaskError {
             readonly type: "TaskError";
           }
@@ -4496,10 +4615,10 @@ describe("collection helpers", () => {
             { collect: false },
           );
 
-          expectTypeOf(task).toEqualTypeOf<Task<void, TaskError, DbDep>>();
+          assertType<typeof task, Task<void, TaskError, DbDep>>();
         });
 
-        test("void without collecting mapped record values", () => {
+        it("void without collecting mapped record values", () => {
           interface TaskError {
             readonly type: "TaskError";
           }
@@ -4507,77 +4626,76 @@ describe("collection helpers", () => {
           const task = all(
             values,
             (value, key): Task<string, TaskError, DbDep> => {
-              expectTypeOf(value).toEqualTypeOf<1 | 2>();
-              expectTypeOf(key).toEqualTypeOf<"first" | "second">();
+              assertType<typeof value, 1 | 2>();
+              assertType<typeof key, "first" | "second">();
               return ({ deps }) => ok(deps.db.query(String(value)));
             },
             { collect: false },
           );
 
-          expectTypeOf(task).toEqualTypeOf<Task<void, TaskError, DbDep>>();
+          assertType<typeof task, Task<void, TaskError, DbDep>>();
         });
       });
 
       describe("accepts", () => {
-        test("an empty array", () => {
+        it("an empty array", () => {
           const values: ReadonlyArray<number> = emptyArray;
           const task = all(values, (value) => () => ok(String(value)));
 
-          expectTypeOf(task).toEqualTypeOf<Task<ReadonlyArray<string>>>();
+          assertType<typeof task, Task<ReadonlyArray<string>>>();
         });
 
-        test("an array", () => {
+        it("an array", () => {
           const values: ReadonlyArray<number> = [1, 2];
           const task = all(values, (value) => () => ok(String(value)));
 
-          expectTypeOf(task).toEqualTypeOf<Task<ReadonlyArray<string>>>();
+          assertType<typeof task, Task<ReadonlyArray<string>>>();
         });
 
-        test("an array mapper with indexes", () => {
+        it("an array mapper with indexes", () => {
           const values = ["Ada", "Grace"] as const;
           const task = all(values, (value, index) => {
-            expectTypeOf(value).toEqualTypeOf<"Ada" | "Grace">();
-            expectTypeOf(index).toEqualTypeOf<number>();
+            assertType<typeof value, "Ada" | "Grace">();
+            assertType<typeof index, number>();
             return () => ok(`${index}:${value}`);
           });
 
-          expectTypeOf(task).toEqualTypeOf<Task<readonly [string, string]>>();
+          assertType<typeof task, Task<readonly [string, string]>>();
         });
 
-        test("a non-empty array", () => {
+        it("a non-empty array", () => {
           const values: NonEmptyReadonlyArray<number> = [1];
           const task = all(values, (value) => () => ok(String(value)));
 
-          expectTypeOf(task).toEqualTypeOf<
-            Task<NonEmptyReadonlyArray<string>>
-          >();
+          assertType<typeof task, Task<NonEmptyReadonlyArray<string>>>();
         });
 
-        test("an empty tuple", () => {
+        it("an empty tuple", () => {
           const task = all([], () => () => ok("unused"));
 
-          expectTypeOf(task).toEqualTypeOf<Task<readonly []>>();
+          assertType<typeof task, Task<readonly []>>();
         });
 
-        test("a tuple", () => {
+        it("a tuple", () => {
           const task = all(["Ada", 37], (value) => () => ok(String(value)));
 
-          expectTypeOf(task).toEqualTypeOf<Task<readonly [string, string]>>();
+          assertType<typeof task, Task<readonly [string, string]>>();
         });
 
-        test("an empty record", () => {
+        it("an empty record", () => {
           const task = all({}, () => () => ok("unused"));
 
-          expectTypeOf(task).toEqualTypeOf<Task<Record<never, never>>>();
+          assertType<typeof task, Task<Record<never, never>>>();
         });
 
-        test("a record", () => {
+        it("a record", () => {
           const task = all(
             { name: "Ada", age: 37, active: true },
             (value) => () => ok(String(value)),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<{
               readonly name: string;
               readonly age: string;
@@ -4586,15 +4704,16 @@ describe("collection helpers", () => {
           >();
         });
 
-        test("a record mapper with keys", () => {
+        it("a record mapper with keys", () => {
           const values = { name: "Ada", age: 37 } as const;
           const task = all(values, (value, key) => {
-            expectTypeOf(value).toEqualTypeOf<"Ada" | 37>();
-            expectTypeOf(key).toEqualTypeOf<"name" | "age">();
+            assertType<typeof value, "Ada" | 37>();
+            assertType<typeof key, "name" | "age">();
             return () => ok(`${key}:${value}`);
           });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<{ readonly name: string; readonly age: string }>
           >();
         });
@@ -4603,13 +4722,14 @@ describe("collection helpers", () => {
 
     describe("allSettled mapping overload", () => {
       describe("returns", () => {
-        test("result tuple", () => {
+        it("result tuple", () => {
           const taskError = { type: "TaskError" } as const;
           const task = allSettled([1, 2, 3], (value) =>
             value === 2 ? () => err(taskError) : () => ok(String(value)),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               readonly [
                 Result<string, typeof taskError>,
@@ -4620,7 +4740,7 @@ describe("collection helpers", () => {
           >();
         });
 
-        test("mapped Task dependencies", () => {
+        it("mapped Task dependencies", () => {
           const task = allSettled(
             [1, 2],
             (value): Task<string, never, DbDep> =>
@@ -4628,12 +4748,13 @@ describe("collection helpers", () => {
                 ok(deps.db.query(String(value))),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<readonly [Result<string>, Result<string>], never, DbDep>
           >();
         });
 
-        test("heterogeneous array mapper dependency intersection", () => {
+        it("heterogeneous array mapper dependency intersection", () => {
           interface FirstError {
             readonly type: "FirstError";
           }
@@ -4652,7 +4773,8 @@ describe("collection helpers", () => {
           ): FirstTask | SecondTask => (value === "first" ? first : second);
           const task = allSettled(values, toTask);
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               readonly [
                 Result<string | number, FirstError | SecondError>,
@@ -4664,7 +4786,7 @@ describe("collection helpers", () => {
           >();
         });
 
-        test("heterogeneous record mapper dependency intersection", () => {
+        it("heterogeneous record mapper dependency intersection", () => {
           interface FirstError {
             readonly type: "FirstError";
           }
@@ -4684,7 +4806,8 @@ describe("collection helpers", () => {
           ): FirstTask | SecondTask => (key === "first" ? first : second);
           const task = allSettled(values, toTask);
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<
               {
                 readonly first: Result<
@@ -4704,16 +4827,14 @@ describe("collection helpers", () => {
       });
 
       describe("accepts", () => {
-        test("an empty array", () => {
+        it("an empty array", () => {
           const values: ReadonlyArray<number> = emptyArray;
           const task = allSettled(values, (value) => () => ok(String(value)));
 
-          expectTypeOf(task).toEqualTypeOf<
-            Task<ReadonlyArray<Result<string>>>
-          >();
+          assertType<typeof task, Task<ReadonlyArray<Result<string>>>>();
         });
 
-        test("an array", () => {
+        it("an array", () => {
           const taskError = { type: "TaskError" } as const;
           const values: ReadonlyArray<number> = [1, 2];
           const task = allSettled(
@@ -4722,24 +4843,26 @@ describe("collection helpers", () => {
               value === 1 ? () => ok(String(value)) : () => err(taskError),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<ReadonlyArray<Result<string, typeof taskError>>>
           >();
         });
 
-        test("an array mapper with indexes", () => {
+        it("an array mapper with indexes", () => {
           const task = allSettled(["Ada", "Grace"] as const, (value, index) => {
-            expectTypeOf(value).toEqualTypeOf<"Ada" | "Grace">();
-            expectTypeOf(index).toEqualTypeOf<number>();
+            assertType<typeof value, "Ada" | "Grace">();
+            assertType<typeof index, number>();
             return () => ok(`${index}:${value}`);
           });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<readonly [Result<string>, Result<string>]>
           >();
         });
 
-        test("a non-empty array", () => {
+        it("a non-empty array", () => {
           const taskError = { type: "TaskError" } as const;
           const values: NonEmptyReadonlyArray<number> = [1];
           const task = allSettled(
@@ -4747,41 +4870,44 @@ describe("collection helpers", () => {
             (): Task<string, typeof taskError> => () => err(taskError),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<NonEmptyReadonlyArray<Result<string, typeof taskError>>>
           >();
         });
 
-        test("an empty tuple", () => {
+        it("an empty tuple", () => {
           const task = allSettled([], () => () => ok("unused"));
 
-          expectTypeOf(task).toEqualTypeOf<Task<readonly []>>();
+          assertType<typeof task, Task<readonly []>>();
         });
 
-        test("a tuple", () => {
+        it("a tuple", () => {
           const task = allSettled(
             ["Ada", 37],
             (value) => () => ok(String(value)),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<readonly [Result<string>, Result<string>]>
           >();
         });
 
-        test("an empty record", () => {
+        it("an empty record", () => {
           const task = allSettled({}, () => () => ok("unused"));
 
-          expectTypeOf(task).toEqualTypeOf<Task<Record<never, never>>>();
+          assertType<typeof task, Task<Record<never, never>>>();
         });
 
-        test("a record", () => {
+        it("a record", () => {
           const task = allSettled(
             { name: "Ada", age: 37, active: true },
             (value) => () => ok(String(value)),
           );
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<{
               readonly name: Result<string>;
               readonly age: Result<string>;
@@ -4790,15 +4916,16 @@ describe("collection helpers", () => {
           >();
         });
 
-        test("a record mapper with keys", () => {
+        it("a record mapper with keys", () => {
           const values = { name: "Ada", age: 37 } as const;
           const task = allSettled(values, (value, key) => {
-            expectTypeOf(value).toEqualTypeOf<"Ada" | 37>();
-            expectTypeOf(key).toEqualTypeOf<"name" | "age">();
+            assertType<typeof value, "Ada" | 37>();
+            assertType<typeof key, "name" | "age">();
             return () => ok(`${key}:${value}`);
           });
 
-          expectTypeOf(task).toEqualTypeOf<
+          assertType<
+            typeof task,
             Task<{
               readonly name: Result<string>;
               readonly age: Result<string>;
@@ -4811,17 +4938,17 @@ describe("collection helpers", () => {
 });
 
 describe("callback", () => {
-  test("resolve accepts ok Result", async () => {
+  it("resolve accepts ok Result", async () => {
     await using run = createRun();
 
     const task = callback<string>(({ resolve }) => {
       resolve(ok("hello"));
     });
 
-    expect(await run(task)).toEqual(ok("hello"));
+    assertEqual(await run(task), ok("hello"));
   });
 
-  test("resolve accepts err Result", async () => {
+  it("resolve accepts err Result", async () => {
     await using run = createRun();
     const myError = { type: "MyError" } as const;
 
@@ -4829,10 +4956,10 @@ describe("callback", () => {
       resolve(err(myError));
     });
 
-    expect(await run(task)).toEqual(err(myError));
+    assertEqual(await run(task), err(myError));
   });
 
-  test("reject panics the Run tree", async () => {
+  it("reject panics the Run tree", async () => {
     await using run = testCreateRun();
     const defect = new Error("boom");
 
@@ -4840,18 +4967,18 @@ describe("callback", () => {
       reject(defect);
     });
 
-    await expect(run(task)).rejects.toEqual(panic(defect));
+    await assertRejects(run(task), panic(defect));
 
     const panicAbortError: unknown = run.signal.reason;
-    assert(AbortError.is(panicAbortError));
-    expect(panicAbortError.reason).toEqual({
+    assertType(AbortError, panicAbortError);
+    assertEqual(panicAbortError.reason, {
       type: "PanicAbortReason",
       defect,
     });
-    expect(await run.deps.reportDefect.next()).toBe(panicAbortError);
+    assertSame(await run.deps.reportDefect.next(), panicAbortError);
   });
 
-  test("setup defect panics the Run tree", async () => {
+  it("setup defect panics the Run tree", async () => {
     await using run = testCreateRun();
     const defect = new Error("boom");
 
@@ -4859,18 +4986,18 @@ describe("callback", () => {
       throw defect;
     });
 
-    await expect(run(task)).rejects.toEqual(panic(defect));
+    await assertRejects(run(task), panic(defect));
 
     const panicAbortError: unknown = run.signal.reason;
-    assert(AbortError.is(panicAbortError));
-    expect(panicAbortError.reason).toEqual({
+    assertType(AbortError, panicAbortError);
+    assertEqual(panicAbortError.reason, {
       type: "PanicAbortReason",
       defect,
     });
-    expect(await run.deps.reportDefect.next()).toBe(panicAbortError);
+    assertSame(await run.deps.reportDefect.next(), panicAbortError);
   });
 
-  test("setup defect after resolve still panics the Run tree", async () => {
+  it("setup defect after resolve still panics the Run tree", async () => {
     await using run = testCreateRun();
     const defect = new Error("boom");
 
@@ -4879,12 +5006,12 @@ describe("callback", () => {
       throw defect;
     });
 
-    await expect(run(task)).rejects.toEqual(panic(defect));
-    expect(run.signal.reason).toEqual(panic(defect));
-    expect(run.deps.reportDefect.getDefectsSnapshot()).toEqual([panic(defect)]);
+    await assertRejects(run(task), panic(defect));
+    assertEqual(run.signal.reason, panic(defect));
+    assertEqual(run.deps.reportDefect.getDefectsSnapshot(), [panic(defect)]);
   });
 
-  test("releases partially acquired resources when setup defects", async () => {
+  it("releases partially acquired resources when setup defects", async () => {
     await using run = testCreateRun();
     const defect = new Error("setup failed");
     const cleanupLog: Array<string> = [];
@@ -4905,8 +5032,8 @@ describe("callback", () => {
       throw defect;
     });
 
-    await expect(run(task)).rejects.toEqual(panic(defect));
-    expect(cleanupLog).toEqual([
+    await assertRejects(run(task), panic(defect));
+    assertEqual(cleanupLog, [
       "acquire first",
       "acquire second",
       "release second",
@@ -4914,7 +5041,7 @@ describe("callback", () => {
     ]);
   });
 
-  test("callback receives current Run signal", async () => {
+  it("callback receives current Run signal", async () => {
     await using run = createRun();
     let callbackSignal: AbortSignal | undefined;
 
@@ -4925,11 +5052,11 @@ describe("callback", () => {
 
     const fiber = run(task);
 
-    expect(await fiber).toEqual(ok("hello"));
-    expect(callbackSignal).toBe(fiber.run.signal);
+    assertEqual(await fiber, ok("hello"));
+    assertSame(callbackSignal, fiber.run.signal);
   });
 
-  test("callback receives current Run deps", async () => {
+  it("callback receives current Run deps", async () => {
     await using run = createRun(dbDep);
     let callbackDb: Db | undefined;
 
@@ -4938,11 +5065,11 @@ describe("callback", () => {
       resolve(ok("hello"));
     });
 
-    expect(await run(task)).toEqual(ok("hello"));
-    expect(callbackDb).toBe(dbDep.db);
+    assertEqual(await run(task), ok("hello"));
+    assertSame(callbackDb, dbDep.db);
   });
 
-  test("runs cleanup after resolving", async () => {
+  it("runs cleanup after resolving", async () => {
     await using run = createRun();
     let cleanupCalled = false;
 
@@ -4955,12 +5082,12 @@ describe("callback", () => {
 
     const fiber = run(task);
 
-    expect(cleanupCalled).toBe(false);
-    expect(await fiber).toEqual(ok("hello"));
-    expect(cleanupCalled).toBe(true);
+    assertFalse(cleanupCalled);
+    assertEqual(await fiber, ok("hello"));
+    assertTrue(cleanupCalled);
   });
 
-  test("runs cleanup when aborted", async () => {
+  it("runs cleanup when aborted", async () => {
     await using run = createRun();
     let cleanupCalled = false;
 
@@ -4972,11 +5099,11 @@ describe("callback", () => {
 
     fiber.abort(testAbortReason);
 
-    expect(cleanupCalled).toBe(true);
-    expect(await fiber).toEqual(err(testAbortError));
+    assertTrue(cleanupCalled);
+    assertEqual(await fiber, err(testAbortError));
   });
 
-  test("abort settles a callback Task that never resolves", async () => {
+  it("abort settles a callback Task that never resolves", async () => {
     await using run = createRun();
 
     const task = callback<void>(() => undefined);
@@ -4985,10 +5112,10 @@ describe("callback", () => {
 
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(err(testAbortError));
+    assertEqual(await fiber, err(testAbortError));
   });
 
-  test("runs cleanup when called with an already-aborted Run", async () => {
+  it("runs cleanup when called with an already-aborted Run", async () => {
     await using run = createRun();
     const continueParent = Promise.withResolvers<void>();
     let cleanupCalled = false;
@@ -5005,11 +5132,11 @@ describe("callback", () => {
     fiber.abort(testAbortReason);
     continueParent.resolve();
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(cleanupCalled).toBe(true);
+    assertEqual(await fiber, err(testAbortError));
+    assertTrue(cleanupCalled);
   });
 
-  test("aborts when Run aborts during callback setup", async () => {
+  it("aborts when Run aborts during callback setup", async () => {
     const run = createRun();
     let resolveCallback: (() => void) | undefined;
     let cleanupCalled = false;
@@ -5025,22 +5152,22 @@ describe("callback", () => {
         }),
       );
       const abortError = run.signal.reason;
-      expect(abortError).toEqual({
+      assertEqual(abortError, {
         type: "AbortError",
         reason: runDisposedAbortReason,
       });
 
       resolveCallback?.();
 
-      expect(cleanupCalled).toBe(true);
-      expect(await fiber).toEqual(err(abortError));
+      assertTrue(cleanupCalled);
+      assertEqual(await fiber, err(abortError));
     } finally {
       resolveCallback?.();
       await run[Symbol.asyncDispose]();
     }
   });
 
-  test("keeps callback result when aborted after resolving", async () => {
+  it("keeps callback result when aborted after resolving", async () => {
     await using run = createRun();
 
     const task = callback<string>(({ resolve }) => {
@@ -5051,10 +5178,10 @@ describe("callback", () => {
 
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(ok("hello"));
+    assertEqual(await fiber, ok("hello"));
   });
 
-  test("preserves abort and reports panic abort when cleanup defects", async () => {
+  it("preserves abort and reports panic abort when cleanup defects", async () => {
     await using run = testCreateRun();
     const cleanupError = new Error("cleanup failed");
     const panicAbortError = createAbortError({
@@ -5067,39 +5194,39 @@ describe("callback", () => {
     });
 
     const result = await run(
-      expectReportedDefectOnly(panicAbortError, async (run) => {
+      assertReportedDefectOnly(panicAbortError, async (run) => {
         const fiber = run.abortable(task);
 
         fiber.abort(testAbortReason);
 
-        expect(await fiber).toEqual(err(testAbortError));
+        assertEqual(await fiber, err(testAbortError));
 
         return ok();
       }),
     );
 
-    expectOk(result, undefined);
+    assertOk(result, undefined);
   });
 });
 
 describe("sleep", () => {
-  test("requires a positive duration", () => {
+  it("requires a positive duration", () => {
     sleep("1ms");
     // @ts-expect-error - Zero Millis is not a positive duration.
     sleep(0 as Millis);
   });
 
-  test("completes after duration", async () => {
+  it("completes after duration", async () => {
     await using run = testCreateRun();
 
     const fiber = run(sleep("100ms"));
 
     run.deps.time.advance("100ms");
 
-    expect(await fiber).toEqual(ok());
+    assertEqual(await fiber, ok());
   });
 
-  test("clears timeout when aborted", async () => {
+  it("clears timeout when aborted", async () => {
     const timeoutId = 1 as unknown as ReturnType<Time["setTimeout"]>;
     let clearedTimeoutId: ReturnType<Time["setTimeout"]> | undefined;
     function now(): Millis;
@@ -5126,13 +5253,13 @@ describe("sleep", () => {
 
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(clearedTimeoutId).toBe(timeoutId);
+    assertEqual(await fiber, err(testAbortError));
+    assertSame(clearedTimeoutId, timeoutId);
   });
 });
 
 describe("timeout", () => {
-  test("requires a positive duration", () => {
+  it("requires a positive duration", () => {
     const task: Task<void> = () => ok();
 
     timeout(task, "1ms");
@@ -5140,7 +5267,7 @@ describe("timeout", () => {
     timeout(task, 0 as Millis);
   });
 
-  test("returns the Task Result when it settles within the duration", async () => {
+  it("returns the Task Result when it settles within the duration", async () => {
     await using run = testCreateRun();
 
     const task: Task<string> = async (run) => {
@@ -5152,10 +5279,10 @@ describe("timeout", () => {
 
     run.deps.time.advance("50ms");
 
-    expect(await fiber).toEqual(ok("value"));
+    assertEqual(await fiber, ok("value"));
   });
 
-  test("returns TimeoutError when the duration elapses first", async () => {
+  it("returns TimeoutError when the duration elapses first", async () => {
     await using run = testCreateRun();
 
     const task: Task<string> = async (run) => {
@@ -5167,10 +5294,10 @@ describe("timeout", () => {
 
     run.deps.time.advance("50ms");
 
-    expect(await fiber).toEqual(err(timeoutError));
+    assertEqual(await fiber, err(timeoutError));
   });
 
-  test("waits for the losing Task to settle", async () => {
+  it("waits for the losing Task to settle", async () => {
     await using run = testCreateRun();
     const completeTask = Promise.withResolvers<void>();
     const taskAborted = Promise.withResolvers<void>();
@@ -5195,42 +5322,42 @@ describe("timeout", () => {
 
     try {
       await taskAborted.promise;
-      expect(timeoutFiberSettled).toBe(false);
-      expect(timeoutFiber.run.getState()).toEqual({ type: "Running" });
+      assertFalse(timeoutFiberSettled);
+      assertEqual(timeoutFiber.run.getState(), { type: "Running" });
 
       const snapshot = timeoutFiber.run.snapshot();
-      expect(snapshot.state).toEqual({ type: "Running" });
+      assertEqual(snapshot.state, { type: "Running" });
 
       const childSnapshot = snapshot.children.at(0);
-      assert(childSnapshot);
-      assert(childSnapshot.state.type === "Aborted");
+      assertNotUndefined(childSnapshot);
+      assertSame(childSnapshot.state.type, "Aborted");
       const abortReason = childSnapshot.state.abort.request;
-      expect(abortReason).toBe(runDisposedAbortReason);
-      expect(childSnapshot.state.abort.observed).toBe(abortReason);
+      assertSame(abortReason, runDisposedAbortReason);
+      assertSame(childSnapshot.state.abort.observed, abortReason);
 
       const grandchildSnapshot = childSnapshot.children.at(0);
-      assert(grandchildSnapshot);
-      assert(grandchildSnapshot.state.type === "Aborted");
-      expect(grandchildSnapshot.state.abort.request).toBe(abortReason);
-      expect(grandchildSnapshot.state.abort.observed).toBe(abortReason);
+      assertNotUndefined(grandchildSnapshot);
+      assertSame(grandchildSnapshot.state.type, "Aborted");
+      assertSame(grandchildSnapshot.state.abort.request, abortReason);
+      assertSame(grandchildSnapshot.state.abort.observed, abortReason);
     } finally {
       completeTask.resolve();
     }
 
-    expect(await timeoutFiber).toEqual(err(timeoutError));
-    expect(taskSettled).toBe(true);
+    assertEqual(await timeoutFiber, err(timeoutError));
+    assertTrue(taskSettled);
   });
 });
 
 describe("retry", () => {
-  test("returns Ok from the first attempt", async () => {
+  it("returns Ok from the first attempt", async () => {
     await using run = createRun();
 
     interface MyError {
       readonly type: "MyError";
     }
 
-    const step = vi.fn((_: MyError) => ok([1, 1 as Millis] as const));
+    const step = mock.fn((_: MyError) => ok([1, 1 as Millis] as const));
     const schedule: Schedule<number, MyError> = () => step;
 
     let attempts = 0;
@@ -5241,12 +5368,12 @@ describe("retry", () => {
 
     const result = await run(retry(task, schedule));
 
-    expectOk(result, undefined);
-    expect(attempts).toBe(1);
-    expect(step).not.toHaveBeenCalled();
+    assertOk(result, undefined);
+    assertEqual(attempts, 1);
+    assertEqual(step.mock.callCount(), 0);
   });
 
-  test("retries errors until the Task returns Ok", async () => {
+  it("retries errors until the Task returns Ok", async () => {
     await using run = createRun();
 
     interface MyError {
@@ -5262,11 +5389,11 @@ describe("retry", () => {
 
     const result = await run(retry(task, take(3)(spaced("1ms"))));
 
-    expectOk(result, undefined);
-    expect(attempts).toBe(3);
+    assertOk(result, undefined);
+    assertEqual(attempts, 3);
   });
 
-  test("returns RetryError when the schedule is exhausted", async () => {
+  it("returns RetryError when the schedule is exhausted", async () => {
     await using run = createRun();
 
     interface MyError {
@@ -5281,15 +5408,15 @@ describe("retry", () => {
 
     const result = await run(retry(task, take(2)(spaced("1ms"))));
 
-    expectErr(result, {
+    assertErr(result, {
       type: "RetryError",
       lastError: { type: "MyError" },
       attempts: PositiveInt.orThrow(3),
     });
-    expect(attempts).toBe(3);
+    assertEqual(attempts, 3);
   });
 
-  test("calls onRetry before each retry", async () => {
+  it("calls onRetry before each retry", async () => {
     await using run = createRun();
 
     interface MyError {
@@ -5312,7 +5439,7 @@ describe("retry", () => {
       }),
     );
 
-    expect(retryLog).toEqual([
+    assertEqual(retryLog, [
       {
         error: { type: "MyError" },
         attempt: onePositiveInt,
@@ -5328,7 +5455,7 @@ describe("retry", () => {
     ]);
   });
 
-  test("stops when shouldRetry returns false", async () => {
+  it("stops when shouldRetry returns false", async () => {
     await using run = createRun();
 
     interface RetryableError {
@@ -5352,15 +5479,15 @@ describe("retry", () => {
       }),
     );
 
-    expectErr(result, {
+    assertErr(result, {
       type: "RetryError",
       lastError: { type: "NonRetryableError" },
       attempts: PositiveInt.orThrow(2),
     });
-    expect(attempts).toBe(2);
+    assertEqual(attempts, 2);
   });
 
-  test("stops when shouldRetry returns false on the first error", async () => {
+  it("stops when shouldRetry returns false on the first error", async () => {
     await using run = createRun();
 
     interface MyError {
@@ -5377,15 +5504,15 @@ describe("retry", () => {
       retry(task, take(3)(spaced("1ms")), { shouldRetry: () => false }),
     );
 
-    expectErr(result, {
+    assertErr(result, {
       type: "RetryError",
       lastError: { type: "MyError" },
       attempts: onePositiveInt,
     });
-    expect(attempts).toBe(1);
+    assertEqual(attempts, 1);
   });
 
-  test("stops when the Task aborts", async () => {
+  it("stops when the Task aborts", async () => {
     await using run = createRun();
 
     interface MyError {
@@ -5402,11 +5529,11 @@ describe("retry", () => {
     const fiber = run.abortable(retry(task, take(3)(spaced("1ms"))));
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(attempts).toBe(1);
+    assertEqual(await fiber, err(testAbortError));
+    assertEqual(attempts, 1);
   });
 
-  test("passes through AbortError results without retrying", async () => {
+  it("passes through AbortError results without retrying", async () => {
     await using run = createRun();
 
     interface MyError {
@@ -5414,9 +5541,9 @@ describe("retry", () => {
     }
 
     const abortError = createAbortError({ type: "TestAbort" });
-    const step = vi.fn((_: MyError) => ok([1, 1 as Millis] as const));
+    const step = mock.fn((_: MyError) => ok([1, 1 as Millis] as const));
     const schedule: Schedule<number, MyError> = () => step;
-    const onRetry = vi.fn<() => void>();
+    const onRetry = mock.fn<() => void>();
 
     let attempts = 0;
     const task: Task<void, MyError | AbortError> = () => {
@@ -5426,13 +5553,13 @@ describe("retry", () => {
 
     const result = await run(retry(task, schedule, { onRetry }));
 
-    expectErr(result, abortError);
-    expect(attempts).toBe(1);
-    expect(step).not.toHaveBeenCalled();
-    expect(onRetry).not.toHaveBeenCalled();
+    assertErr(result, abortError);
+    assertEqual(attempts, 1);
+    assertEqual(step.mock.callCount(), 0);
+    assertEqual(onRetry.mock.callCount(), 0);
   });
 
-  test("aborts during retry sleep without starting another attempt", async () => {
+  it("aborts during retry sleep without starting another attempt", async () => {
     await using run = testCreateRun();
 
     interface MyError {
@@ -5440,7 +5567,7 @@ describe("retry", () => {
     }
 
     const retryStarted = Promise.withResolvers<void>();
-    const onRetry = vi.fn(() => {
+    const onRetry = mock.fn(() => {
       retryStarted.resolve();
     });
 
@@ -5455,18 +5582,18 @@ describe("retry", () => {
     );
 
     await retryStarted.promise;
-    expect(onRetry).toHaveBeenCalledTimes(1);
+    assertEqual(onRetry.mock.callCount(), 1);
 
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(attempts).toBe(1);
+    assertEqual(await fiber, err(testAbortError));
+    assertEqual(attempts, 1);
   });
 
-  test("rejects panic abort without retrying and reports panic abort", async () => {
+  it("rejects panic abort without retrying and reports panic abort", async () => {
     await using run = testCreateRun();
     const error = new Error("boom");
-    const onRetry = vi.fn<() => void>();
+    const onRetry = mock.fn<() => void>();
 
     let attempts = 0;
     const task: Task<void> = () => {
@@ -5474,35 +5601,36 @@ describe("retry", () => {
       throw error;
     };
 
-    await expect(
+    await assertRejects(
       run(retry(task, take(3)(spaced("1ms")), { onRetry })),
-    ).rejects.toEqual(panic(error));
+      panic(error),
+    );
 
-    expect(attempts).toBe(1);
-    expect(onRetry).not.toHaveBeenCalled();
-    expect(await run.deps.reportDefect.next()).toEqual(panic(error));
+    assertEqual(attempts, 1);
+    assertEqual(onRetry.mock.callCount(), 0);
+    assertEqual(await run.deps.reportDefect.next(), panic(error));
   });
 
   describe("types", () => {
-    test("RetryTaskError wraps domain errors and preserves AbortError", () => {
+    it("RetryTaskError wraps domain errors and preserves AbortError", () => {
       interface MyError {
         readonly type: "MyError";
       }
 
-      expectTypeOf<RetryTaskError<MyError>>().toEqualTypeOf<
-        RetryError<MyError>
-      >();
-      expectTypeOf<RetryTaskError<MyError | AbortError>>().toEqualTypeOf<
+      assertType<RetryTaskError<MyError>, RetryError<MyError>>();
+      assertType<
+        RetryTaskError<MyError | AbortError>,
         RetryError<MyError> | AbortError
       >();
-      expectTypeOf<RetryTaskError<MyError | TimeoutError>>().toEqualTypeOf<
+      assertType<
+        RetryTaskError<MyError | TimeoutError>,
         RetryError<MyError | TimeoutError>
       >();
-      expectTypeOf<RetryTaskError<AbortError>>().toEqualTypeOf<AbortError>();
-      expectTypeOf<RetryTaskError<never>>().toEqualTypeOf<never>();
+      assertType<RetryTaskError<AbortError>, AbortError>();
+      assertType<RetryTaskError<never>, never>();
     });
 
-    test("keeps AbortError outside RetryError", () => {
+    it("keeps AbortError outside RetryError", () => {
       interface MyError {
         readonly type: "MyError";
       }
@@ -5513,27 +5641,30 @@ describe("retry", () => {
       // keep cancellation as AbortError, not report it as retry exhaustion.
       const retried = retry(daemon(task), take(3)(spaced("1ms")));
 
-      expectTypeOf(retried).toEqualTypeOf<
+      assertType<
+        typeof retried,
         Task<string, RetryError<MyError> | AbortError, DbDep>
       >();
     });
 
-    test("does not add RetryError without domain errors", () => {
+    it("does not add RetryError without domain errors", () => {
       const task: Task<string> = () => ok("done");
       const abortTask: Task<string, AbortError> = () => ok("done");
 
-      expectTypeOf(retry(task, take(3)(spaced("1ms")))).toEqualTypeOf<
-        Task<string>
-      >();
-      expectTypeOf(retry(abortTask, take(3)(spaced("1ms")))).toEqualTypeOf<
-        Task<string, AbortError>
-      >();
+      {
+        const actual = retry(task, take(3)(spaced("1ms")));
+        assertType<typeof actual, Task<string>>();
+      }
+      {
+        const actual = retry(abortTask, take(3)(spaced("1ms")));
+        assertType<typeof actual, Task<string, AbortError>>();
+      }
     });
   });
 });
 
 describe("repeat", () => {
-  test("runs a Task n + 1 times with take(n)", async () => {
+  it("runs a Task n + 1 times with take(n)", async () => {
     await using run = createRun();
 
     let count = 0;
@@ -5544,11 +5675,11 @@ describe("repeat", () => {
 
     const result = await run(repeat(task, take(3)(spaced("1ms"))));
 
-    expectOk(result, 4);
-    expect(count).toBe(4);
+    assertOk(result, 4);
+    assertEqual(count, 4);
   });
 
-  test("returns last successful value when schedule is exhausted", async () => {
+  it("returns last successful value when schedule is exhausted", async () => {
     await using run = createRun();
 
     const values = ["first", "second", "third", "fourth"];
@@ -5557,10 +5688,10 @@ describe("repeat", () => {
 
     const result = await run(repeat(task, take(3)(fixed("1ms"))));
 
-    expectOk(result, "fourth");
+    assertOk(result, "fourth");
   });
 
-  test("stops when the Task returns Err", async () => {
+  it("stops when the Task returns Err", async () => {
     await using run = createRun();
 
     interface MyError {
@@ -5572,19 +5703,19 @@ describe("repeat", () => {
       count += 1;
       return err({ type: "MyError" });
     };
-    const onRepeat = vi.fn<() => void>();
-    const step = vi.fn((_: number) => ok([1, 1 as Millis] as const));
+    const onRepeat = mock.fn<() => void>();
+    const step = mock.fn((_: number) => ok([1, 1 as Millis] as const));
     const schedule: Schedule<number, number> = () => step;
 
     const result = await run(repeat(task, schedule, { onRepeat }));
 
-    expectErr(result, { type: "MyError" });
-    expect(count).toBe(1);
-    expect(step).not.toHaveBeenCalled();
-    expect(onRepeat).not.toHaveBeenCalled();
+    assertErr(result, { type: "MyError" });
+    assertEqual(count, 1);
+    assertEqual(step.mock.callCount(), 0);
+    assertEqual(onRepeat.mock.callCount(), 0);
   });
 
-  test("stops when shouldRepeat returns false", async () => {
+  it("stops when shouldRepeat returns false", async () => {
     await using run = createRun();
 
     let count = 0;
@@ -5592,19 +5723,19 @@ describe("repeat", () => {
       count += 1;
       return ok(count);
     };
-    const step = vi.fn((_: number) => ok([1, 1 as Millis] as const));
+    const step = mock.fn((_: number) => ok([1, 1 as Millis] as const));
     const schedule: Schedule<number, number> = () => step;
 
     const result = await run(
       repeat(task, schedule, { shouldRepeat: (value) => value < 1 }),
     );
 
-    expectOk(result, 1);
-    expect(count).toBe(1);
-    expect(step).not.toHaveBeenCalled();
+    assertOk(result, 1);
+    assertEqual(count, 1);
+    assertEqual(step.mock.callCount(), 0);
   });
 
-  test("calls onRepeat before each repeat", async () => {
+  it("calls onRepeat before each repeat", async () => {
     await using run = createRun();
 
     const repeatLog: Array<unknown> = [];
@@ -5622,7 +5753,7 @@ describe("repeat", () => {
       }),
     );
 
-    expect(repeatLog).toEqual([
+    assertEqual(repeatLog, [
       {
         value: 1,
         attempt: onePositiveInt,
@@ -5638,11 +5769,11 @@ describe("repeat", () => {
     ]);
   });
 
-  test("aborts during repeat sleep without starting another attempt", async () => {
+  it("aborts during repeat sleep without starting another attempt", async () => {
     await using run = testCreateRun();
 
     const repeatStarted = Promise.withResolvers<void>();
-    const onRepeat = vi.fn(() => {
+    const onRepeat = mock.fn(() => {
       repeatStarted.resolve();
     });
 
@@ -5657,18 +5788,18 @@ describe("repeat", () => {
     );
 
     await repeatStarted.promise;
-    expect(onRepeat).toHaveBeenCalledTimes(1);
+    assertEqual(onRepeat.mock.callCount(), 1);
 
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(count).toBe(1);
+    assertEqual(await fiber, err(testAbortError));
+    assertEqual(count, 1);
   });
 
-  test("aborts while Task is running without scheduling a repeat", async () => {
+  it("aborts while Task is running without scheduling a repeat", async () => {
     await using run = testCreateRun();
 
-    const onRepeat = vi.fn<() => void>();
+    const onRepeat = mock.fn<() => void>();
 
     let count = 0;
     const task: Task<number> = async (run) => {
@@ -5681,19 +5812,19 @@ describe("repeat", () => {
       repeat(task, take(3)(spaced("1ms")), { onRepeat }),
     );
 
-    expect(count).toBe(1);
+    assertEqual(count, 1);
 
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(count).toBe(1);
-    expect(onRepeat).not.toHaveBeenCalled();
+    assertEqual(await fiber, err(testAbortError));
+    assertEqual(count, 1);
+    assertEqual(onRepeat.mock.callCount(), 0);
   });
 
-  test("rejects panic abort without repeating and reports panic abort", async () => {
+  it("rejects panic abort without repeating and reports panic abort", async () => {
     await using run = testCreateRun();
     const error = new Error("boom");
-    const onRepeat = vi.fn<() => void>();
+    const onRepeat = mock.fn<() => void>();
 
     let count = 0;
     const task: Task<void> = () => {
@@ -5701,16 +5832,17 @@ describe("repeat", () => {
       throw error;
     };
 
-    await expect(
+    await assertRejects(
       run(repeat(task, take(3)(spaced("1ms")), { onRepeat })),
-    ).rejects.toEqual(panic(error));
+      panic(error),
+    );
 
-    expect(count).toBe(1);
-    expect(onRepeat).not.toHaveBeenCalled();
-    expect(await run.deps.reportDefect.next()).toEqual(panic(error));
+    assertEqual(count, 1);
+    assertEqual(onRepeat.mock.callCount(), 0);
+    assertEqual(await run.deps.reportDefect.next(), panic(error));
   });
 
-  test("stops when NextTask returns Done", async () => {
+  it("stops when NextTask returns Done", async () => {
     await using run = createRun();
 
     let count = 0;
@@ -5722,39 +5854,44 @@ describe("repeat", () => {
 
     const result = await run(repeat(next, spaced(0 as Millis)));
 
-    expectErr(result, done());
-    expect(count).toBe(3);
+    assertErr(result, done());
+    assertEqual(count, 3);
   });
 
   describe("types", () => {
-    test("preserves Task error and dependency types", () => {
+    it("preserves Task error and dependency types", () => {
       interface MyError {
         readonly type: "MyError";
       }
 
       const task: Task<string, MyError, DbDep> = () => ok("done");
 
-      expectTypeOf(repeat(task, take(3)(spaced("1ms")))).toEqualTypeOf<
-        Task<string, MyError, DbDep>
-      >();
+      {
+        const actual = repeat(task, take(3)(spaced("1ms")));
+        assertType<typeof actual, Task<string, MyError, DbDep>>();
+      }
     });
 
-    test("preserves Done from NextTask", () => {
+    it("preserves Done from NextTask", () => {
       interface MyError {
         readonly type: "MyError";
       }
 
       const next: NextTask<string, MyError, "done", DbDep> = () => ok("done");
 
-      expectTypeOf(repeat(next, spaced("1ms"))).toEqualTypeOf<
-        Task<string, MyError | Done<"done">, DbDep>
-      >();
+      {
+        const actual = repeat(next, spaced("1ms"));
+        assertType<
+          typeof actual,
+          Task<string, MyError | Done<"done">, DbDep>
+        >();
+      }
     });
   });
 });
 
 describe("any", () => {
-  test("infers result and dependency intersections", () => {
+  it("infers result and dependency intersections", () => {
     interface FirstError {
       readonly type: "FirstError";
     }
@@ -5767,7 +5904,8 @@ describe("any", () => {
 
     const task = any([first, second]);
 
-    expectTypeOf(task).toEqualTypeOf<
+    assertType<
+      typeof task,
       Task<string | number, FirstError | SecondError, DbDep & SessionDep>
     >();
 
@@ -5779,7 +5917,7 @@ describe("any", () => {
     void assertAnyTypes;
   });
 
-  test("runs sequentially by default and returns the first Ok result", async () => {
+  it("runs sequentially by default and returns the first Ok result", async () => {
     await using run = createRun();
     const completeFast = Promise.withResolvers<void>();
     const fastError = { type: "FastError" } as const;
@@ -5796,25 +5934,25 @@ describe("any", () => {
 
     const resultPromise = run(any([fast, slow]));
 
-    expect(fallbackStarted).toBe(false);
+    assertFalse(fallbackStarted);
 
     completeFast.resolve();
 
-    expect(await resultPromise).toEqual(ok("slow"));
-    expect(fallbackStarted).toBe(true);
+    assertEqual(await resultPromise, ok("slow"));
+    assertTrue(fallbackStarted);
   });
 
-  test("returns sync Ok after sync Err", async () => {
+  it("returns sync Ok after sync Err", async () => {
     await using run = createRun();
     const taskError = { type: "TaskError" } as const;
 
     const first: Task<string, typeof taskError> = () => err(taskError);
     const second: Task<string, typeof taskError> = () => ok("second");
 
-    expect(await run(any([first, second]))).toEqual(ok("second"));
+    assertEqual(await run(any([first, second])), ok("second"));
   });
 
-  test("returns last Err result by input order when Errs settle out of order", async () => {
+  it("returns last Err result by input order when Errs settle out of order", async () => {
     await using run = createRun();
     const completeFirst = Promise.withResolvers<void>();
     const firstError = { type: "FirstError" } as const;
@@ -5836,10 +5974,10 @@ describe("any", () => {
 
     completeFirst.resolve();
 
-    expect(await resultPromise).toEqual(err(secondError));
+    assertEqual(await resultPromise, err(secondError));
   });
 
-  test("returns last Err result by input order when run sequentially", async () => {
+  it("returns last Err result by input order when run sequentially", async () => {
     await using run = createRun();
     const firstError = { type: "FirstError" } as const;
     const secondError = { type: "SecondError" } as const;
@@ -5868,13 +6006,14 @@ describe("any", () => {
       return err(thirdError);
     };
 
-    expect(await run(any([first, second, third], { concurrency: 1 }))).toEqual(
+    assertEqual(
+      await run(any([first, second, third], { concurrency: 1 })),
       err(thirdError),
     );
-    expect(events).toEqual(["first", "second", "third"]);
+    assertEqual(events, ["first", "second", "third"]);
   });
 
-  test("uses local concurrency and refills worker slots", async () => {
+  it("uses local concurrency and refills worker slots", async () => {
     await using run = createRun();
     const completeTasks = Promise.withResolvers<void>();
     const taskError = { type: "TaskError" } as const;
@@ -5894,17 +6033,17 @@ describe("any", () => {
     );
 
     try {
-      expect(events).toEqual(["start 1", "start 2"]);
+      assertEqual(events, ["start 1", "start 2"]);
 
       completeTasks.resolve();
 
-      expect(await fiber).toEqual(ok("third"));
+      assertEqual(await fiber, ok("third"));
     } finally {
       completeTasks.resolve();
     }
   });
 
-  test("waits for aborted losers to settle", async () => {
+  it("waits for aborted losers to settle", async () => {
     await using run = createRun();
     const completeSlow = Promise.withResolvers<void>();
     const slowAborted = Promise.withResolvers<unknown>();
@@ -5927,36 +6066,36 @@ describe("any", () => {
     });
 
     try {
-      expect(await slowAborted.promise).toBe(runDisposedAbortReason);
-      expect(anyFiberSettled).toBe(false);
+      assertSame(await slowAborted.promise, runDisposedAbortReason);
+      assertFalse(anyFiberSettled);
 
       const snapshot = anyFiber.run.snapshot();
-      expect(snapshot.state).toEqual({ type: "Running" });
+      assertEqual(snapshot.state, { type: "Running" });
 
       const childSnapshot = snapshot.children.at(0);
-      assert(childSnapshot);
-      assert(childSnapshot.state.type === "Aborted");
+      assertNotUndefined(childSnapshot);
+      assertSame(childSnapshot.state.type, "Aborted");
       const abortReason = childSnapshot.state.abort.request;
-      expect(abortReason).toBe(runDisposedAbortReason);
-      expect(childSnapshot.state.abort.observed).toBe(abortReason);
+      assertSame(abortReason, runDisposedAbortReason);
+      assertSame(childSnapshot.state.abort.observed, abortReason);
 
       const grandchildSnapshot = childSnapshot.children.at(0);
-      assert(grandchildSnapshot);
-      assert(grandchildSnapshot.state.type === "Aborted");
-      expect(grandchildSnapshot.state.abort.request).toBe(abortReason);
-      expect(grandchildSnapshot.state.abort.observed).toBe(abortReason);
+      assertNotUndefined(grandchildSnapshot);
+      assertSame(grandchildSnapshot.state.type, "Aborted");
+      assertSame(grandchildSnapshot.state.abort.request, abortReason);
+      assertSame(grandchildSnapshot.state.abort.observed, abortReason);
     } finally {
       completeSlow.resolve();
     }
 
-    expect(await anyFiber).toEqual(ok("fast"));
-    expect(slowSettled).toBe(true);
+    assertEqual(await anyFiber, ok("fast"));
+    assertTrue(slowSettled);
   });
 
-  test("does not start queued Tasks after the first Ok", async () => {
+  it("does not start queued Tasks after the first Ok", async () => {
     await using run = createRun();
     const slowAborted = Promise.withResolvers<void>();
-    const later = vi.fn(() => ok("later"));
+    const later = mock.fn(() => ok("later"));
 
     const slow: Task<string> = async (run) => {
       using _ = run.onAbort(() => slowAborted.resolve());
@@ -5965,13 +6104,14 @@ describe("any", () => {
     };
     const fast: Task<string> = () => ok("fast");
 
-    expect(await run(any([slow, fast, later], { concurrency: 2 }))).toEqual(
+    assertEqual(
+      await run(any([slow, fast, later], { concurrency: 2 })),
       ok("fast"),
     );
-    expect(later).not.toHaveBeenCalled();
+    assertEqual(later.mock.callCount(), 0);
   });
 
-  test("aborts running Tasks when aborted", async () => {
+  it("aborts running Tasks when aborted", async () => {
     await using run = createRun();
     const completeTask = Promise.withResolvers<void>();
     let taskSignal: AbortSignal | undefined;
@@ -5984,20 +6124,20 @@ describe("any", () => {
     };
 
     const fiber = run.abortable(any([task]));
-    assert(taskSignal);
+    assertNotUndefined(taskSignal);
 
     fiber.abort(testAbortReason);
     completeTask.resolve();
 
-    expect(taskSignal.aborted).toBe(true);
-    expect(taskSignal.reason).toEqual(testAbortError);
+    assertTrue(taskSignal.aborted);
+    assertEqual(taskSignal.reason, testAbortError);
 
-    expect(await fiber).toEqual(err(testAbortError));
+    assertEqual(await fiber, err(testAbortError));
   });
 });
 
 describe("race", () => {
-  test("infers result and dependency intersections", () => {
+  it("infers result and dependency intersections", () => {
     interface FirstError {
       readonly type: "FirstError";
     }
@@ -6010,7 +6150,8 @@ describe("race", () => {
 
     const task = race([first, second]);
 
-    expectTypeOf(task).toEqualTypeOf<
+    assertType<
+      typeof task,
       Task<string | number, FirstError | SecondError, DbDep & SessionDep>
     >();
 
@@ -6022,21 +6163,18 @@ describe("race", () => {
     void assertRaceTypes;
   });
 
-  test("asserts a non-empty Task array at runtime", async () => {
+  it("asserts a non-empty Task array at runtime", async () => {
     await using run = testCreateRun();
     const tasks: ReadonlyArray<Task<string>> = [];
-    const defect = expect.objectContaining({
-      message: "Expected a non-empty readonly array.",
-    });
-
-    await expect(
-      // @ts-expect-error - Exercise the runtime assertion for plain JS callers.
+    const rejection = await assertRejectsPanicAbortErrorMessage(
+      // @ts-expect-error A plain JavaScript caller can pass an empty array.
       run(race(tasks)),
-    ).rejects.toEqual(panic(defect));
-    expect(await run.deps.reportDefect.next()).toEqual(panic(defect));
+      "Expected a non-empty readonly array.",
+    );
+    assertSame(await run.deps.reportDefect.next(), rejection);
   });
 
-  test("returns first Ok result", async () => {
+  it("returns first Ok result", async () => {
     await using run = createRun();
     const completeSlow = Promise.withResolvers<void>();
 
@@ -6049,10 +6187,10 @@ describe("race", () => {
     };
     const fast: Task<string> = () => ok("fast");
 
-    expect(await run(race([slow, fast]))).toEqual(ok("fast"));
+    assertEqual(await run(race([slow, fast])), ok("fast"));
   });
 
-  test("returns sync Ok and aborts a pending loser", async () => {
+  it("returns sync Ok and aborts a pending loser", async () => {
     await using run = createRun();
     const pendingAborted = Promise.withResolvers<void>();
     let pendingSettled = false;
@@ -6067,11 +6205,11 @@ describe("race", () => {
       return ok("pending");
     };
 
-    expect(await run(race([syncOk, pending]))).toEqual(ok("sync"));
-    expect(pendingSettled).toBe(true);
+    assertEqual(await run(race([syncOk, pending])), ok("sync"));
+    assertTrue(pendingSettled);
   });
 
-  test("returns first Err result", async () => {
+  it("returns first Err result", async () => {
     await using run = createRun();
     const completeSlow = Promise.withResolvers<void>();
     const fastError = { type: "FastError" } as const;
@@ -6085,10 +6223,10 @@ describe("race", () => {
     };
     const fast: Task<string, typeof fastError> = () => err(fastError);
 
-    expect(await run(race([slow, fast]))).toEqual(err(fastError));
+    assertEqual(await run(race([slow, fast])), err(fastError));
   });
 
-  test("aborts running Tasks when aborted", async () => {
+  it("aborts running Tasks when aborted", async () => {
     await using run = createRun();
     const completeTask = Promise.withResolvers<void>();
     let taskSignal: AbortSignal | undefined;
@@ -6101,18 +6239,18 @@ describe("race", () => {
     };
 
     const fiber = run.abortable(race([task]));
-    assert(taskSignal);
+    assertNotUndefined(taskSignal);
 
     fiber.abort(testAbortReason);
     completeTask.resolve();
 
-    expect(taskSignal.aborted).toBe(true);
-    expect(taskSignal.reason).toEqual(testAbortError);
+    assertTrue(taskSignal.aborted);
+    assertEqual(taskSignal.reason, testAbortError);
 
-    expect(await fiber).toEqual(err(testAbortError));
+    assertEqual(await fiber, err(testAbortError));
   });
 
-  test("waits for aborted losers to settle", async () => {
+  it("waits for aborted losers to settle", async () => {
     await using run = createRun();
     const completeSlow = Promise.withResolvers<void>();
     const slowAborted = Promise.withResolvers<unknown>();
@@ -6135,35 +6273,35 @@ describe("race", () => {
     });
 
     try {
-      expect(await slowAborted.promise).toBe(runDisposedAbortReason);
-      expect(raceFiberSettled).toBe(false);
+      assertSame(await slowAborted.promise, runDisposedAbortReason);
+      assertFalse(raceFiberSettled);
 
       const snapshot = raceFiber.run.snapshot();
-      expect(snapshot.state).toEqual({ type: "Running" });
+      assertEqual(snapshot.state, { type: "Running" });
 
       const childSnapshot = snapshot.children.at(0);
-      assert(childSnapshot);
-      assert(childSnapshot.state.type === "Aborted");
+      assertNotUndefined(childSnapshot);
+      assertSame(childSnapshot.state.type, "Aborted");
       const abortReason = childSnapshot.state.abort.request;
-      expect(abortReason).toBe(runDisposedAbortReason);
-      expect(childSnapshot.state.abort.observed).toBe(abortReason);
+      assertSame(abortReason, runDisposedAbortReason);
+      assertSame(childSnapshot.state.abort.observed, abortReason);
 
       const grandchildSnapshot = childSnapshot.children.at(0);
-      assert(grandchildSnapshot);
-      assert(grandchildSnapshot.state.type === "Aborted");
-      expect(grandchildSnapshot.state.abort.request).toBe(abortReason);
-      expect(grandchildSnapshot.state.abort.observed).toBe(abortReason);
+      assertNotUndefined(grandchildSnapshot);
+      assertSame(grandchildSnapshot.state.type, "Aborted");
+      assertSame(grandchildSnapshot.state.abort.request, abortReason);
+      assertSame(grandchildSnapshot.state.abort.observed, abortReason);
     } finally {
       completeSlow.resolve();
     }
 
-    expect(await raceFiber).toEqual(ok("fast"));
-    expect(slowSettled).toBe(true);
+    assertEqual(await raceFiber, ok("fast"));
+    assertTrue(slowSettled);
   });
 });
 
 describe("firstN", () => {
-  test("infers readonly Ok array and dependency intersections", () => {
+  it("infers readonly Ok array and dependency intersections", () => {
     interface FirstError {
       readonly type: "FirstError";
     }
@@ -6176,7 +6314,8 @@ describe("firstN", () => {
 
     const task = firstN([first, second], 2);
 
-    expectTypeOf(task).toEqualTypeOf<
+    assertType<
+      typeof task,
       Task<ReadonlyArray<string | number>, never, DbDep & SessionDep>
     >();
 
@@ -6191,7 +6330,7 @@ describe("firstN", () => {
     void assertFirstNTypes;
   });
 
-  test("returns Ok values in settlement order and ignores Errs", async () => {
+  it("returns Ok values in settlement order and ignores Errs", async () => {
     await using run = createRun();
     const completeSlow = Promise.withResolvers<void>();
     const taskError = { type: "TaskError" } as const;
@@ -6207,13 +6346,13 @@ describe("firstN", () => {
 
     completeSlow.resolve();
 
-    expect(await fiber).toEqual(ok(["fast", "slow"]));
+    assertEqual(await fiber, ok(["fast", "slow"]));
   });
 
-  test("runs sequentially by default", async () => {
+  it("runs sequentially by default", async () => {
     await using run = createRun();
     const completeFirst = Promise.withResolvers<void>();
-    const second = vi.fn(() => ok("second"));
+    const second = mock.fn(() => ok("second"));
     const first: Task<string> = async () => {
       await completeFirst.promise;
       return ok("first");
@@ -6221,23 +6360,24 @@ describe("firstN", () => {
 
     const fiber = run(firstN([first, second], 2));
 
-    expect(second).not.toHaveBeenCalled();
+    assertEqual(second.mock.callCount(), 0);
     completeFirst.resolve();
 
-    expect(await fiber).toEqual(ok(["first", "second"]));
-    expect(second).toHaveBeenCalledOnce();
+    assertEqual(await fiber, ok(["first", "second"]));
+    assertEqual(second.mock.callCount(), 1);
   });
 
-  test("returns available Ok values when fewer than count Tasks succeed", async () => {
+  it("returns available Ok values when fewer than count Tasks succeed", async () => {
     await using run = createRun();
     const taskError = { type: "TaskError" } as const;
 
-    expect(
+    assertEqual(
       await run(firstN([() => ok("value"), () => err(taskError)], 2)),
-    ).toEqual(ok(["value"]));
+      ok(["value"]),
+    );
   });
 
-  test("stops after count Ok values and aborts running Tasks", async () => {
+  it("stops after count Ok values and aborts running Tasks", async () => {
     await using run = createRun();
     const completeSlow = Promise.withResolvers<void>();
     const slowAborted = Promise.withResolvers<unknown>();
@@ -6252,37 +6392,25 @@ describe("firstN", () => {
       return ok("slow");
     };
     const fast: Task<string> = () => ok("fast");
-    const later = vi.fn(() => ok("later"));
+    const later = mock.fn(() => ok("later"));
 
     const fiber = run(firstN([slow, fast, later], 1, { concurrency: 2 }));
 
     try {
-      expect(await slowAborted.promise).toBe(runDisposedAbortReason);
-      expect(slowSettled).toBe(false);
+      assertSame(await slowAborted.promise, runDisposedAbortReason);
+      assertFalse(slowSettled);
     } finally {
       completeSlow.resolve();
     }
 
-    expect(await fiber).toEqual(ok(["fast"]));
-    expect(slowSettled).toBe(true);
-    expect(later).not.toHaveBeenCalled();
-  });
-
-  test("asserts positive count at runtime", async () => {
-    await using run = testCreateRun();
-    const count = 0 as unknown as Int1To100OrPositiveInt;
-
-    const result = await run.abortable(firstN([() => ok("value")], count));
-
-    assert(!result.ok);
-    assert(AbortError.is(result.error));
-    assert(result.error.reason.type === "PanicAbortReason");
-    expect(await run.deps.reportDefect.next()).toEqual(result.error);
+    assertEqual(await fiber, ok(["fast"]));
+    assertTrue(slowSettled);
+    assertEqual(later.mock.callCount(), 0);
   });
 });
 
 describe("firstNSettled", () => {
-  test("infers readonly Result array and dependency intersections", () => {
+  it("infers readonly Result array and dependency intersections", () => {
     interface FirstError {
       readonly type: "FirstError";
     }
@@ -6295,7 +6423,8 @@ describe("firstNSettled", () => {
 
     const task = firstNSettled([first, second], 2);
 
-    expectTypeOf(task).toEqualTypeOf<
+    assertType<
+      typeof task,
       Task<
         ReadonlyArray<Result<string | number, FirstError | SecondError>>,
         never,
@@ -6314,7 +6443,7 @@ describe("firstNSettled", () => {
     void assertFirstNSettledTypes;
   });
 
-  test("returns Results in settlement order", async () => {
+  it("returns Results in settlement order", async () => {
     await using run = createRun();
     const completeSlow = Promise.withResolvers<void>();
     const slowAborted = Promise.withResolvers<void>();
@@ -6338,13 +6467,13 @@ describe("firstNSettled", () => {
       completeSlow.resolve();
     }
 
-    expect(await fiber).toEqual(ok([err(taskError), ok("fast")]));
+    assertEqual(await fiber, ok([err(taskError), ok("fast")]));
   });
 
-  test("runs sequentially by default", async () => {
+  it("runs sequentially by default", async () => {
     await using run = createRun();
     const completeFirst = Promise.withResolvers<void>();
-    const second = vi.fn(() => ok("second"));
+    const second = mock.fn(() => ok("second"));
     const first: Task<string> = async () => {
       await completeFirst.promise;
       return ok("first");
@@ -6352,17 +6481,17 @@ describe("firstNSettled", () => {
 
     const fiber = run(firstNSettled([first, second], 2));
 
-    expect(second).not.toHaveBeenCalled();
+    assertEqual(second.mock.callCount(), 0);
     completeFirst.resolve();
 
-    expect(await fiber).toEqual(ok([ok("first"), ok("second")]));
-    expect(second).toHaveBeenCalledOnce();
+    assertEqual(await fiber, ok([ok("first"), ok("second")]));
+    assertEqual(second.mock.callCount(), 1);
   });
 
-  test("stops at the threshold and does not start queued Tasks", async () => {
+  it("stops at the threshold and does not start queued Tasks", async () => {
     await using run = createRun();
     const slowAborted = Promise.withResolvers<void>();
-    const later = vi.fn(() => ok("later"));
+    const later = mock.fn(() => ok("later"));
     const slow: Task<string> = async (run) => {
       using _ = run.onAbort(() => slowAborted.resolve());
       await slowAborted.promise;
@@ -6370,40 +6499,28 @@ describe("firstNSettled", () => {
     };
     const fast: Task<string> = () => ok("fast");
 
-    expect(
+    assertEqual(
       await run(firstNSettled([slow, fast, later], 1, { concurrency: 2 })),
-    ).toEqual(ok([ok("fast")]));
-    expect(later).not.toHaveBeenCalled();
+      ok([ok("fast")]),
+    );
+    assertEqual(later.mock.callCount(), 0);
   });
 
-  test("returns all Results when count exceeds Task count", async () => {
+  it("returns all Results when count exceeds Task count", async () => {
     await using run = createRun();
     const taskError = { type: "TaskError" } as const;
 
-    expect(
+    assertEqual(
       await run(firstNSettled([() => ok("value"), () => err(taskError)], 3)),
-    ).toEqual(ok([ok("value"), err(taskError)]));
-  });
-
-  test("asserts positive count at runtime", async () => {
-    await using run = testCreateRun();
-    const count = 0 as unknown as Int1To100OrPositiveInt;
-
-    const result = await run.abortable(
-      firstNSettled([() => ok("value")], count),
+      ok([ok("value"), err(taskError)]),
     );
-
-    assert(!result.ok);
-    assert(AbortError.is(result.error));
-    assert(result.error.reason.type === "PanicAbortReason");
-    expect(await run.deps.reportDefect.next()).toEqual(result.error);
   });
 });
 
 describe("concurrency", () => {
   describe("each", () => {
     describe("input", () => {
-      test("requires at least one Task", () => {
+      it("requires at least one Task", () => {
         const assertBatchTypes = () => {
           // @ts-expect-error - each requires at least one Task.
           void each([], () => "continue");
@@ -6412,22 +6529,23 @@ describe("concurrency", () => {
         void assertBatchTypes;
       });
 
-      test("asserts non-empty Task array at runtime instead of hanging", async () => {
+      it("asserts non-empty Task array at runtime instead of hanging", async () => {
         await using run = testCreateRun();
 
         // The non-empty tuple type is compile-time only; plain JS can still pass
         // an empty array, which must assert, not await forever.
         const tasks: ReadonlyArray<Task<string>> = [];
 
-        await expect(
+        await assertRejectsPanicAbortErrorMessage(
           // @ts-expect-error - Exercise the runtime assertion for plain JS callers.
           run(each(tasks, () => "continue")),
-        ).rejects.toThrow();
+          "Expected a non-empty readonly array.",
+        );
       });
     });
 
     describe("queue processing", () => {
-      test("runs one Task at a time when concurrency is 1", async () => {
+      it("runs one Task at a time when concurrency is 1", async () => {
         await using run = createRun();
         const completeFirst = Promise.withResolvers<void>();
         const events: Array<string> = [];
@@ -6445,15 +6563,15 @@ describe("concurrency", () => {
 
         const fiber = run(each([first, second], () => "continue"));
 
-        expect(events).toEqual(["first start"]);
+        assertEqual(events, ["first start"]);
 
         completeFirst.resolve();
 
-        expect(await fiber).toEqual(ok());
-        expect(events).toEqual(["first start", "first end", "second start"]);
+        assertEqual(await fiber, ok());
+        assertEqual(events, ["first start", "first end", "second start"]);
       });
 
-      test("uses local concurrency and refills worker slots", async () => {
+      it("uses local concurrency and refills worker slots", async () => {
         await using run = createRun();
         const completeTasks = Promise.withResolvers<void>();
         const startedIds: Array<number> = [];
@@ -6477,18 +6595,18 @@ describe("concurrency", () => {
         );
 
         try {
-          expect(startedIds).toEqual([1, 2]);
+          assertEqual(startedIds, [1, 2]);
 
           completeTasks.resolve();
 
-          expect(await fiber).toEqual(ok());
-          expect(startedIds).toEqual([1, 2, 3]);
+          assertEqual(await fiber, ok());
+          assertEqual(startedIds, [1, 2, 3]);
         } finally {
           completeTasks.resolve();
         }
       });
 
-      test("calls onResult with results and indexes", async () => {
+      it("calls onResult with results and indexes", async () => {
         await using run = createRun();
         const results: Array<readonly [unknown, number]> = [];
 
@@ -6502,14 +6620,14 @@ describe("concurrency", () => {
           }),
         );
 
-        expectOk(result, undefined);
-        expect(results).toEqual([
+        assertOk(result, undefined);
+        assertEqual(results, [
           [ok("first"), 0],
           [ok("second"), 1],
         ]);
       });
 
-      test("waits for already-started Tasks after no queued Tasks remain", async () => {
+      it("waits for already-started Tasks after no queued Tasks remain", async () => {
         await using run = createRun();
         const completeSlow = Promise.withResolvers<void>();
         const fastReported = Promise.withResolvers<void>();
@@ -6537,15 +6655,15 @@ describe("concurrency", () => {
 
         await fastReported.promise;
 
-        expect(settled).toBe(false);
+        assertFalse(settled);
 
         completeSlow.resolve();
 
-        expect(await fiber).toEqual(ok());
-        expect(settled).toBe(true);
+        assertEqual(await fiber, ok());
+        assertTrue(settled);
       });
 
-      test("starts a queued Task after the running Task frees capacity", async () => {
+      it("starts a queued Task after the running Task frees capacity", async () => {
         await using run = createRun();
         const completeFirst = Promise.withResolvers<void>();
         const results: Array<string> = [];
@@ -6565,13 +6683,13 @@ describe("concurrency", () => {
 
         completeFirst.resolve();
 
-        expect(await fiber).toEqual(ok());
-        expect(results).toEqual(["first", "second"]);
+        assertEqual(await fiber, ok());
+        assertEqual(results, ["first", "second"]);
       });
     });
 
     describe("stop decision", () => {
-      test("records Aborted and waits for running Tasks after stop", async () => {
+      it("records Aborted and waits for running Tasks after stop", async () => {
         await using run = createRun();
         const completeSlow = Promise.withResolvers<void>();
         const slowAborted = Promise.withResolvers<unknown>();
@@ -6584,15 +6702,15 @@ describe("concurrency", () => {
           return ok("slow");
         };
         const fast: Task<string> = () => ok("fast");
-        const later = vi.fn(() => ok("later"));
+        const later = mock.fn(() => ok("later"));
 
         const fiber = run(
           each([slow, fast, later], () => "stop", { concurrency: 2 }),
         );
 
         try {
-          expect(await slowAborted.promise).toBe(runDisposedAbortReason);
-          expect(fiber.run.getState()).toEqual({
+          assertSame(await slowAborted.promise, runDisposedAbortReason);
+          assertEqual(fiber.run.getState(), {
             type: "Aborted",
             abort: {
               request: runDisposedAbortReason,
@@ -6603,8 +6721,8 @@ describe("concurrency", () => {
           completeSlow.resolve();
         }
 
-        expect(await fiber).toEqual(ok());
-        expect(fiber.run.getState()).toEqual({
+        assertEqual(await fiber, ok());
+        assertEqual(fiber.run.getState(), {
           type: "Settled",
           abort: {
             request: runDisposedAbortReason,
@@ -6612,15 +6730,15 @@ describe("concurrency", () => {
           },
           exit: ok(ok()),
         });
-        expect(later).not.toHaveBeenCalled();
+        assertEqual(later.mock.callCount(), 0);
       });
     });
 
     describe("caller abort", () => {
-      test("does not start queued Tasks after abort", async () => {
+      it("does not start queued Tasks after abort", async () => {
         await using run = createRun();
         const first: Task<string> = () => ok("first");
-        const second = vi.fn(() => ok("second"));
+        const second = mock.fn(() => ok("second"));
 
         const fiber = run.abortable(
           each([first, second], () => {
@@ -6629,11 +6747,11 @@ describe("concurrency", () => {
           }),
         );
 
-        expect(await fiber).toEqual(err(testAbortError));
-        expect(second).not.toHaveBeenCalled();
+        assertEqual(await fiber, err(testAbortError));
+        assertEqual(second.mock.callCount(), 0);
       });
 
-      test("keeps abort result when onResult also stops", async () => {
+      it("keeps abort result when onResult also stops", async () => {
         await using run = createRun();
 
         const fiber = run.abortable(
@@ -6643,13 +6761,13 @@ describe("concurrency", () => {
           }),
         );
 
-        expect(await fiber).toEqual(err(testAbortError));
+        assertEqual(await fiber, err(testAbortError));
       });
 
-      test("does not call onResult after caller abort", async () => {
+      it("does not call onResult after caller abort", async () => {
         await using run = createRun();
         const completeFirst = Promise.withResolvers<void>();
-        const onResult = vi.fn(() => "stop" as const);
+        const onResult = mock.fn(() => "stop" as const);
 
         const first: Task<string> = async () => {
           await completeFirst.promise;
@@ -6661,20 +6779,20 @@ describe("concurrency", () => {
         fiber.abort(testAbortReason);
         completeFirst.resolve();
 
-        expect(await fiber).toEqual(err(testAbortError));
-        expect(onResult).not.toHaveBeenCalled();
+        assertEqual(await fiber, err(testAbortError));
+        assertEqual(onResult.mock.callCount(), 0);
       });
 
-      test("keeps caller abort when a masked Task settles after abort", async () => {
+      it("keeps caller abort when a masked Task settles after abort", async () => {
         await using run = createRun();
         const taskStarted = Promise.withResolvers<void>();
         const completeTask = Promise.withResolvers<void>();
-        const onResult = vi.fn(() => "continue" as const);
+        const onResult = mock.fn(() => "continue" as const);
 
         const masked: Task<string> = unabortable(async (run) => {
           taskStarted.resolve();
           await completeTask.promise;
-          expect(run.signal.aborted).toBe(false);
+          assertFalse(run.signal.aborted);
           return ok("masked");
         });
 
@@ -6684,11 +6802,11 @@ describe("concurrency", () => {
         fiber.abort(testAbortReason);
         completeTask.resolve();
 
-        expect(await fiber).toEqual(err(testAbortError));
-        expect(onResult).not.toHaveBeenCalled();
+        assertEqual(await fiber, err(testAbortError));
+        assertEqual(onResult.mock.callCount(), 0);
       });
 
-      test("does not start queued Tasks after caller abort before result", async () => {
+      it("does not start queued Tasks after caller abort before result", async () => {
         await using run = createRun();
         const completeFirst = Promise.withResolvers<void>();
 
@@ -6696,20 +6814,20 @@ describe("concurrency", () => {
           await completeFirst.promise;
           return ok("first");
         };
-        const second = vi.fn(() => ok("second"));
+        const second = mock.fn(() => ok("second"));
 
         const fiber = run.abortable(each([first, second], () => "continue"));
 
         fiber.abort(testAbortReason);
         completeFirst.resolve();
 
-        expect(await fiber).toEqual(err(testAbortError));
-        expect(second).not.toHaveBeenCalled();
+        assertEqual(await fiber, err(testAbortError));
+        assertEqual(second.mock.callCount(), 0);
       });
     });
 
     describe("child Fiber rejection", () => {
-      test("propagates child Fiber AbortError rejection", async () => {
+      it("propagates child Fiber AbortError rejection", async () => {
         await using run = createRun();
         const completeSlow = Promise.withResolvers<void>();
         const abortError = createAbortError({ type: "TestAbort" });
@@ -6728,10 +6846,10 @@ describe("concurrency", () => {
 
         completeSlow.resolve();
 
-        expect(await fiber).toEqual(err(abortError));
+        assertEqual(await fiber, err(abortError));
       });
 
-      test("propagates child Fiber AbortError rejection while sibling is pending", async () => {
+      it("propagates child Fiber AbortError rejection while sibling is pending", async () => {
         await using run = createRun();
         const abortError = createAbortError({ type: "TestAbort" });
         const slowAborted = Promise.withResolvers<void>();
@@ -6749,14 +6867,14 @@ describe("concurrency", () => {
           each([slow, aborting], () => "continue", { concurrency: 2 }),
         );
 
-        expect(await fiber).toEqual(err(abortError));
+        assertEqual(await fiber, err(abortError));
         await slowAborted.promise;
       });
 
-      test("does not call onResult after child Fiber AbortError rejection", async () => {
+      it("does not call onResult after child Fiber AbortError rejection", async () => {
         await using run = createRun();
         const abortError = createAbortError({ type: "TestAbort" });
-        const onResult = vi.fn(() => "continue" as const);
+        const onResult = mock.fn(() => "continue" as const);
 
         const aborting: Task<string> = callback<string>(({ reject }) => {
           reject(abortError);
@@ -6767,13 +6885,13 @@ describe("concurrency", () => {
           each([aborting, succeeding], onResult, { concurrency: 2 }),
         );
 
-        expect(await fiber).toEqual(err(abortError));
-        expect(onResult).not.toHaveBeenCalled();
+        assertEqual(await fiber, err(abortError));
+        assertEqual(onResult.mock.callCount(), 0);
       });
     });
 
     describe("defects", () => {
-      test("rejects when onResult throws for a sync-settling Task", async () => {
+      it("rejects when onResult throws for a sync-settling Task", async () => {
         await using run = testCreateRun();
         const defect = new Error("boom");
 
@@ -6784,11 +6902,11 @@ describe("concurrency", () => {
         );
 
         const panicAbortError = await run.deps.reportDefect.next();
-        expectPanicAbortError(panicAbortError, defect);
-        await expect(fiber).rejects.toBe(panicAbortError);
+        assertPanicAbortError(panicAbortError, defect);
+        await assertRejectsSame(fiber, panicAbortError);
       });
 
-      test("rejects with panic abort and aborts running Tasks when onResult defects", async () => {
+      it("rejects with panic abort and aborts running Tasks when onResult defects", async () => {
         await using run = testCreateRun();
         const completeSlow = Promise.withResolvers<void>();
         const slowAborted = Promise.withResolvers<unknown>();
@@ -6814,15 +6932,15 @@ describe("concurrency", () => {
         );
 
         const panicAbortError = await run.deps.reportDefect.next();
-        expectPanicAbortError(panicAbortError, defect);
-        expect(await slowAborted.promise).toBe(panicAbortError.reason);
+        assertPanicAbortError(panicAbortError, defect);
+        assertSame(await slowAborted.promise, panicAbortError.reason);
 
         completeSlow.resolve();
 
-        await expect(fiber).rejects.toEqual(panic(defect));
+        await assertRejects(fiber, panic(defect));
       });
 
-      test("rejects with panic abort and aborts running Tasks when an each Task defects", async () => {
+      it("rejects with panic abort and aborts running Tasks when an each Task defects", async () => {
         await using run = testCreateRun();
         const completeSlow = Promise.withResolvers<void>();
         const slowAborted = Promise.withResolvers<unknown>();
@@ -6844,15 +6962,15 @@ describe("concurrency", () => {
         );
 
         const panicAbortError = await run.deps.reportDefect.next();
-        expectPanicAbortError(panicAbortError, defect);
-        expect(await slowAborted.promise).toBe(panicAbortError.reason);
+        assertPanicAbortError(panicAbortError, defect);
+        assertSame(await slowAborted.promise, panicAbortError.reason);
 
         completeSlow.resolve();
 
-        await expect(fiber).rejects.toEqual(panic(defect));
+        await assertRejects(fiber, panic(defect));
       });
 
-      test("does not start queued Tasks after sibling defect", async () => {
+      it("does not start queued Tasks after sibling defect", async () => {
         await using run = testCreateRun();
         const completeFirst = Promise.withResolvers<void>();
         const defect = new Error("boom");
@@ -6861,7 +6979,7 @@ describe("concurrency", () => {
           await completeFirst.promise;
           return ok("first");
         };
-        const second = vi.fn(() => ok("second"));
+        const second = mock.fn(() => ok("second"));
 
         const fiber = run(async (run) => {
           const eachFiber = run(
@@ -6876,77 +6994,75 @@ describe("concurrency", () => {
           return eachFiber;
         });
 
-        await expect(fiber).rejects.toEqual({
+        await assertRejects(fiber, {
           type: "AbortError",
           reason: { type: "PanicAbortReason", defect },
         });
-        expect(second).not.toHaveBeenCalled();
+        assertEqual(second.mock.callCount(), 0);
       });
 
-      test("does not call onResult after synchronous child scheduling defect", async () => {
+      it("does not call onResult after synchronous child scheduling defect", async () => {
         await using run = testCreateRun();
         const completeFirst = Promise.withResolvers<void>();
         let restoreFromCompletedMask:
           (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
-        expect(
+        assertEqual(
           await run(
             unabortableMask((restore) => {
               restoreFromCompletedMask = restore;
               return () => ok();
             }),
           ),
-        ).toEqual(ok());
+          ok(),
+        );
 
         const restore = restoreFromCompletedMask;
-        assert(restore);
+        assertNotUndefined(restore);
 
         const first: Task<string> = async () => {
           await completeFirst.promise;
           return ok("first");
         };
         const staleRestore = restore(() => ok("second"));
-        const onResult = vi.fn(() => "continue" as const);
+        const onResult = mock.fn(() => "continue" as const);
 
         const fiber = run(
           each([first, staleRestore], onResult, { concurrency: 2 }),
         );
 
         const panicAbortError = await run.deps.reportDefect.next();
-        assert(AbortError.is(panicAbortError));
-        expect(panicAbortError.reason).toMatchObject({
-          type: "PanicAbortReason",
-          defect: expect.objectContaining({
-            message:
-              "restore is only valid inside the unabortableMask that created it",
-          }),
-        });
+        assertPanicAbortErrorMessage(
+          panicAbortError,
+          "restore is only valid inside the unabortableMask that created it",
+        );
 
         completeFirst.resolve();
 
-        await expect(fiber).rejects.toBe(panicAbortError);
-        expect(onResult).not.toHaveBeenCalled();
+        await assertRejectsSame(fiber, panicAbortError);
+        assertEqual(onResult.mock.callCount(), 0);
       });
 
-      test("does not start later Tasks after synchronous child scheduling defect", async () => {
+      it("does not start later Tasks after synchronous child scheduling defect", async () => {
         await using run = testCreateRun();
         let restoreFromCompletedMask:
           (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
-        expect(
+        assertEqual(
           await run(
             unabortableMask((restore) => {
               restoreFromCompletedMask = restore;
               return () => ok();
             }),
           ),
-        ).toEqual(ok());
+          ok(),
+        );
 
         const restore = restoreFromCompletedMask;
-        assert(restore);
+        assertNotUndefined(restore);
 
         const staleRestore = restore(() => ok("bad"));
-        const later = vi.fn(() => ok("later"));
+        const later = mock.fn(() => ok("later"));
 
         const fiber = run(
           each([staleRestore, later], () => "continue", { concurrency: 3 }),
@@ -6954,11 +7070,11 @@ describe("concurrency", () => {
 
         const panicAbortError = await run.deps.reportDefect.next();
 
-        await expect(fiber).rejects.toBe(panicAbortError);
-        expect(later).not.toHaveBeenCalled();
+        await assertRejectsSame(fiber, panicAbortError);
+        assertEqual(later.mock.callCount(), 0);
       });
 
-      test("reports running Task panic after stop", async () => {
+      it("reports running Task panic after stop", async () => {
         await using run = testCreateRun();
         const completeSlow = Promise.withResolvers<void>();
         const slowAborted = Promise.withResolvers<unknown>();
@@ -6975,22 +7091,22 @@ describe("concurrency", () => {
 
         const fiber = run(each([slow, fast], () => "stop", { concurrency: 2 }));
 
-        expect(await slowAborted.promise).toBe(runDisposedAbortReason);
+        assertSame(await slowAborted.promise, runDisposedAbortReason);
 
         completeSlow.resolve();
 
-        expect(await fiber).toEqual(ok());
-        expect(await run.deps.reportDefect.next()).toEqual(panic(defect));
+        assertEqual(await fiber, ok());
+        assertEqual(await run.deps.reportDefect.next(), panic(defect));
       });
     });
   });
 });
 
 describe("prioritized", () => {
-  test("uses native priorities", async () => {
+  it("uses native priorities", async () => {
     const priorities: Array<TaskPriority | undefined> = [];
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       postTask: async <T>(
         callback: () => T | PromiseLike<T>,
         options?: { readonly priority?: TaskPriority },
@@ -7000,33 +7116,28 @@ describe("prioritized", () => {
       },
     });
 
-    try {
-      await using run = createRun();
+    await using run = createRun();
 
-      expect(
-        await run(prioritized("user-blocking", () => ok("blocking"))),
-      ).toEqual(ok("blocking"));
-      expect(
-        await run(prioritized("user-visible", () => ok("visible"))),
-      ).toEqual(ok("visible"));
-      expect(
-        await run(prioritized("background", () => ok("background"))),
-      ).toEqual(ok("background"));
+    assertEqual(
+      await run(prioritized("user-blocking", () => ok("blocking"))),
+      ok("blocking"),
+    );
+    assertEqual(
+      await run(prioritized("user-visible", () => ok("visible"))),
+      ok("visible"),
+    );
+    assertEqual(
+      await run(prioritized("background", () => ok("background"))),
+      ok("background"),
+    );
 
-      expect(priorities).toEqual([
-        "user-blocking",
-        "user-visible",
-        "background",
-      ]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(priorities, ["user-blocking", "user-visible", "background"]);
   });
 
-  test("uses the outer priority wrapper", async () => {
+  it("uses the outer priority wrapper", async () => {
     const priorities: Array<TaskPriority | undefined> = [];
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       postTask: async <T>(
         callback: () => T | PromiseLike<T>,
         options?: { readonly priority?: TaskPriority },
@@ -7036,28 +7147,25 @@ describe("prioritized", () => {
       },
     });
 
-    try {
-      await using run = createRun();
+    await using run = createRun();
 
-      expect(
-        await run(
-          prioritized(
-            "user-blocking",
-            prioritized("background", () => ok("done")),
-          ),
+    assertEqual(
+      await run(
+        prioritized(
+          "user-blocking",
+          prioritized("background", () => ok("done")),
         ),
-      ).toEqual(ok("done"));
+      ),
+      ok("done"),
+    );
 
-      expect(priorities).toEqual(["user-blocking"]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(priorities, ["user-blocking"]);
   });
 
-  test("composes with abort behavior", async () => {
+  it("composes with abort behavior", async () => {
     const priorities: Array<TaskPriority | undefined> = [];
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       postTask: async <T>(
         callback: () => T | PromiseLike<T>,
         options?: { readonly priority?: TaskPriority },
@@ -7067,31 +7175,29 @@ describe("prioritized", () => {
       },
     });
 
-    try {
-      await using run = createRun();
+    await using run = createRun();
 
-      expect(
-        await run(unabortable(prioritized("background", () => ok("first")))),
-      ).toEqual(ok("first"));
-      expect(
-        await run(
-          prioritized(
-            "background",
-            unabortable(() => ok("second")),
-          ),
+    assertEqual(
+      await run(unabortable(prioritized("background", () => ok("first")))),
+      ok("first"),
+    );
+    assertEqual(
+      await run(
+        prioritized(
+          "background",
+          unabortable(() => ok("second")),
         ),
-      ).toEqual(ok("second"));
+      ),
+      ok("second"),
+    );
 
-      expect(priorities).toEqual(["background", "background"]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(priorities, ["background", "background"]);
   });
 
-  test("composes through unabortableMask returned body Task", async () => {
+  it("composes through unabortableMask returned body Task", async () => {
     const priorities: Array<TaskPriority | undefined> = [];
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       postTask: async <T>(
         callback: () => T | PromiseLike<T>,
         options?: { readonly priority?: TaskPriority },
@@ -7101,26 +7207,23 @@ describe("prioritized", () => {
       },
     });
 
-    try {
-      await using run = createRun();
+    await using run = createRun();
 
-      expect(
-        await run(
-          unabortableMask(() => prioritized("user-blocking", () => ok("body"))),
-        ),
-      ).toEqual(ok("body"));
+    assertEqual(
+      await run(
+        unabortableMask(() => prioritized("user-blocking", () => ok("body"))),
+      ),
+      ok("body"),
+    );
 
-      expect(priorities).toEqual(["user-blocking"]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(priorities, ["user-blocking"]);
   });
 
-  test("cancels queued postTask when scheduler rejects with signal.reason", async () => {
+  it("cancels queued postTask when scheduler rejects with signal.reason", async () => {
     const postTaskNotAborted = new Error("postTask was not aborted");
     let taskStarted = false;
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       postTask: <T>(
         callback: () => T | PromiseLike<T>,
         options?: {
@@ -7139,8 +7242,8 @@ describe("prioritized", () => {
           };
           const abort = (): void => {
             const reason = options?.signal?.reason;
-            assert(AbortError.is(reason));
-            expect(reason).toEqual(testAbortError);
+            assertType(AbortError, reason);
+            assertEqual(reason, testAbortError);
             rejectUnknown(reason);
           };
 
@@ -7150,30 +7253,26 @@ describe("prioritized", () => {
       },
     });
 
-    try {
-      await using run = testCreateRun();
-      const fiber = run.abortable(
-        prioritized("background", () => {
-          taskStarted = true;
-          return ok("started");
-        }),
-      );
+    await using run = testCreateRun();
+    const fiber = run.abortable(
+      prioritized("background", () => {
+        taskStarted = true;
+        return ok("started");
+      }),
+    );
 
-      fiber.abort(testAbortReason);
+    fiber.abort(testAbortReason);
 
-      expect(await fiber).toEqual(err(testAbortError));
-      expect(taskStarted).toBe(false);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(await fiber, err(testAbortError));
+    assertFalse(taskStarted);
   });
 
-  test("treats queued postTask abort-like rejections as defects", async () => {
+  it("treats queued postTask abort-like rejections as defects", async () => {
     const hostAbortError = { name: "AbortError", message: "aborted" };
     const postTaskNotAborted = new Error("postTask was not aborted");
     let taskStarted = false;
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       postTask: <T>(
         callback: () => T | PromiseLike<T>,
         options?: {
@@ -7184,7 +7283,7 @@ describe("prioritized", () => {
         void callback;
 
         return new Promise<T>((_resolve, reject) => {
-          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- Host APIs can reject with non-Error abort values.
+          // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Host APIs can reject with non-Error abort values.
           const abort = (): void => reject(hostAbortError);
 
           options?.signal?.addEventListener("abort", abort, { once: true });
@@ -7193,30 +7292,26 @@ describe("prioritized", () => {
       },
     });
 
-    try {
-      await using run = testCreateRun();
-      const fiber = run.abortable(
-        prioritized("background", () => {
-          taskStarted = true;
-          return ok("started");
-        }),
-      );
+    await using run = testCreateRun();
+    const fiber = run.abortable(
+      prioritized("background", () => {
+        taskStarted = true;
+        return ok("started");
+      }),
+    );
 
-      fiber.abort(testAbortReason);
+    fiber.abort(testAbortReason);
 
-      await expect(fiber).resolves.toEqual(err(panic(hostAbortError)));
-      expect(taskStarted).toBe(false);
-      expect(await run.deps.reportDefect.next()).toEqual(panic(hostAbortError));
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(await fiber, err(panic(hostAbortError)));
+    assertFalse(taskStarted);
+    assertEqual(await run.deps.reportDefect.next(), panic(hostAbortError));
   });
 
-  test("observes abort after postTask callback starts", async () => {
+  it("observes abort after postTask callback starts", async () => {
     const continueTask = Promise.withResolvers<void>();
     let taskStarted = false;
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       postTask: async <T>(callback: () => T | PromiseLike<T>): Promise<T> =>
         callback(),
     });
@@ -7232,84 +7327,77 @@ describe("prioritized", () => {
         }),
       );
 
-      expect(taskStarted).toBe(true);
+      assertTrue(taskStarted);
       fiber.abort(testAbortReason);
       continueTask.resolve();
 
-      expect(await fiber).toEqual(err(testAbortError));
+      assertEqual(await fiber, err(testAbortError));
     } finally {
       continueTask.resolve();
-      vi.unstubAllGlobals();
     }
   });
 });
 
 describe("yieldNow", () => {
-  test("uses native yield", async () => {
+  it("uses native yield", async () => {
     const calls: Array<string> = [];
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       yield: (): Promise<void> => {
         calls.push("yield");
         return Promise.resolve();
       },
     });
 
-    try {
-      await using run = createRun();
+    await using run = createRun();
 
-      expect(await run(yieldNow)).toEqual(ok());
-      expect(calls).toEqual(["yield"]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(await run(yieldNow), ok());
+    assertEqual(calls, ["yield"]);
   });
 
-  test("uses setImmediate fallback", async () => {
+  it("uses setImmediate fallback", async () => {
     const calls: Array<string> = [];
 
-    vi.stubGlobal("scheduler", undefined);
-    vi.stubGlobal("setImmediate", (callback: () => void): number => {
-      calls.push("setImmediate");
-      callback();
-      return 0;
-    });
+    using _scheduler = testStubGlobal("scheduler", undefined);
+    using _setImmediate = testStubGlobal(
+      "setImmediate",
+      (callback: () => void): number => {
+        calls.push("setImmediate");
+        callback();
+        return 0;
+      },
+    );
 
-    try {
-      await using run = createRun();
+    await using run = createRun();
 
-      expect(await run(yieldNow)).toEqual(ok());
-      expect(calls).toEqual(["setImmediate"]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(await run(yieldNow), ok());
+    assertEqual(calls, ["setImmediate"]);
   });
 
-  test("uses setTimeout fallback", async () => {
+  it("uses setTimeout fallback", async () => {
     const calls: Array<string> = [];
 
-    vi.stubGlobal("scheduler", undefined);
-    vi.stubGlobal("setImmediate", undefined);
-    vi.stubGlobal("setTimeout", (callback: () => void): number => {
-      calls.push("setTimeout");
-      callback();
-      return 0;
-    });
+    using _scheduler = testStubGlobal("scheduler", undefined);
+    using _setImmediate = testStubGlobal("setImmediate", undefined);
+    using _setTimeout = testStubGlobal(
+      "setTimeout",
+      (callback: () => void): number => {
+        calls.push("setTimeout");
+        callback();
+        return 0;
+      },
+    );
 
-    try {
-      await using run = createRun();
+    await using run = createRun();
 
-      expect(await run(yieldNow)).toEqual(ok());
-      expect(calls).toEqual(["setTimeout"]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(await run(yieldNow), ok());
+    assertEqual(calls, ["setTimeout"]);
   });
 
-  test("yields during a long-running loop", async () => {
+  it("yields during a long-running loop", async () => {
     let yields = 0;
 
-    vi.stubGlobal("scheduler", {
+    using _scheduler = testStubGlobal("scheduler", {
       yield: (): Promise<void> => {
         yields++;
         return Promise.resolve();
@@ -7333,15 +7421,11 @@ describe("yieldNow", () => {
 
     const count = 5000;
 
-    try {
-      expect(await run(sumTo(count))).toEqual(ok((count * (count - 1)) / 2));
-      expect(yields).toBe(4);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(await run(sumTo(count)), ok((count * (count - 1)) / 2));
+    assertEqual(yields, 4);
   });
 
-  test("yields as monitored child Task", async () => {
+  it("yields as monitored child Task", async () => {
     await using run = testCreateRun(eventsEnabled);
     const eventTypes: Array<string> = [];
 
@@ -7354,14 +7438,18 @@ describe("yieldNow", () => {
       return ok("done");
     });
 
-    expectOk(result, "done");
-    expect(eventTypes.filter((type) => type === "ChildAdded")).toHaveLength(2);
-    expect(eventTypes.filter((type) => type === "ChildRemoved")).toHaveLength(
+    assertOk(result, "done");
+    assertLength(
+      eventTypes.filter((type) => type === "ChildAdded"),
+      2,
+    );
+    assertLength(
+      eventTypes.filter((type) => type === "ChildRemoved"),
       2,
     );
   });
 
-  test("observes abort after yielding", async () => {
+  it("observes abort after yielding", async () => {
     await using run = createRun();
 
     const fiber = run.abortable(async (run) => {
@@ -7371,46 +7459,48 @@ describe("yieldNow", () => {
 
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(err(testAbortError));
+    assertEqual(await fiber, err(testAbortError));
   });
 });
 
 describe("waitForAbort", () => {
-  test("waits until the Run aborts", async () => {
+  it("waits until the Run aborts", async () => {
     await using run = createRun();
 
     const fiber = run(waitForAbort);
 
-    expect(fiber.run.getState()).toEqual({ type: "Running" });
+    assertEqual(fiber.run.getState(), { type: "Running" });
 
     run.abort(testAbortReason);
 
-    await expect(fiber).rejects.toEqual(testAbortError);
+    await assertRejects(fiber, testAbortError);
   });
 });
 
 describe("daemon", () => {
-  test("passes through the Result when not aborted", async () => {
+  it("passes through the Result when not aborted", async () => {
     await using run = createRun();
 
     const okResult = await run(daemon(() => ok(42)));
     const errResult = await run(daemon(() => err({ type: "MyError" })));
 
-    expect(okResult).toEqual(ok(42));
-    expect(errResult).toEqual(err({ type: "MyError" }));
+    assertEqual(okResult, ok(42));
+    assertEqual(errResult, err({ type: "MyError" }));
   });
 
-  test("rethrows non-AbortError from daemon start", async () => {
+  it("rethrows non-AbortError from daemon start", async () => {
     await using run = createRun();
     const childRun = run.create();
     await childRun[Symbol.asyncDispose]();
 
-    await expect(daemon(() => ok("done"))(childRun)).rejects.toThrow(
-      "Cannot use a disposed object.",
+    const error = await assertRejectsInstanceOf(
+      Promise.resolve(daemon(() => ok("done"))(childRun)),
+      Error,
     );
+    assertTrue(error.message.includes("Cannot use a disposed object."));
   });
 
-  test("settles and reports panic abort when the wrapped Task defects", async () => {
+  it("settles and reports panic abort when the wrapped Task defects", async () => {
     await using run = testCreateRun();
     const defect = new Error("boom");
     const panicAbortError = createAbortError({
@@ -7419,7 +7509,7 @@ describe("daemon", () => {
     });
 
     const result = await run(
-      expectReportedDefectOnly(
+      assertReportedDefectOnly(
         panicAbortError,
         daemon(() => {
           throw defect;
@@ -7427,10 +7517,10 @@ describe("daemon", () => {
       ),
     );
 
-    expectErr(result, panicAbortError);
+    assertErr(result, panicAbortError);
   });
 
-  test("settles with AbortError without waiting for the Task", async () => {
+  it("settles with AbortError without waiting for the Task", async () => {
     await using run = createRun();
     const completeTask = Promise.withResolvers<void>();
     let taskSettled = false;
@@ -7447,14 +7537,14 @@ describe("daemon", () => {
     fiber.abort(testAbortReason);
 
     try {
-      expect(await fiber).toEqual(err(testAbortError));
-      expect(taskSettled).toBe(false);
+      assertEqual(await fiber, err(testAbortError));
+      assertFalse(taskSettled);
     } finally {
       completeTask.resolve();
     }
   });
 
-  test("root disposal waits for an abandoned daemon Task", async () => {
+  it("root disposal waits for an abandoned daemon Task", async () => {
     const run = createRun();
     const completeTask = Promise.withResolvers<void>();
     let rootDisposed = false;
@@ -7469,26 +7559,26 @@ describe("daemon", () => {
     fiber.abort(testAbortReason);
 
     try {
-      expect(await fiber).toEqual(err(testAbortError));
+      assertEqual(await fiber, err(testAbortError));
 
       const disposePromise = run[Symbol.asyncDispose]().then(() => {
         rootDisposed = true;
       });
 
       await Promise.resolve();
-      expect(rootDisposed).toBe(false);
+      assertFalse(rootDisposed);
 
       completeTask.resolve();
 
       await disposePromise;
-      expect(rootDisposed).toBe(true);
+      assertTrue(rootDisposed);
     } finally {
       completeTask.resolve();
       await run[Symbol.asyncDispose]();
     }
   });
 
-  test("requests abort for the abandoned Task", async () => {
+  it("requests abort for the abandoned Task", async () => {
     await using run = createRun();
     const completeTask = Promise.withResolvers<void>();
     let taskAbortError: AbortError | undefined;
@@ -7506,14 +7596,14 @@ describe("daemon", () => {
     fiber.abort(testAbortReason);
 
     try {
-      expect(await fiber).toEqual(err(testAbortError));
-      expect(taskAbortError).toEqual(testAbortError);
+      assertEqual(await fiber, err(testAbortError));
+      assertEqual(taskAbortError, testAbortError);
     } finally {
       completeTask.resolve();
     }
   });
 
-  test("settles with AbortError and does not start the Task when the Run is already aborted", async () => {
+  it("settles with AbortError and does not start the Task when the Run is already aborted", async () => {
     await using run = createRun();
     const continueParent = Promise.withResolvers<void>();
     let taskStarted = false;
@@ -7531,11 +7621,11 @@ describe("daemon", () => {
     fiber.abort(testAbortReason);
     continueParent.resolve();
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(taskStarted).toBe(false);
+    assertEqual(await fiber, err(testAbortError));
+    assertFalse(taskStarted);
   });
 
-  test("settles with AbortError and does not start the Task inside a masked Run with a recorded abort request", async () => {
+  it("settles with AbortError and does not start the Task inside a masked Run with a recorded abort request", async () => {
     await using run = createRun();
     const continueParent = Promise.withResolvers<void>();
     let taskStarted = false;
@@ -7553,7 +7643,7 @@ describe("daemon", () => {
       unabortable(async (run) => {
         await continueParent.promise;
 
-        expect(run.signal.aborted).toBe(false);
+        assertFalse(run.signal.aborted);
 
         return run(daemon(task));
       }),
@@ -7562,11 +7652,11 @@ describe("daemon", () => {
     fiber.abort(testAbortReason);
     continueParent.resolve();
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(taskStarted).toBe(false);
+    assertEqual(await fiber, err(testAbortError));
+    assertFalse(taskStarted);
   });
 
-  test("returns caller abort and reports later abandoned Task defects as panic aborts", async () => {
+  it("returns caller abort and reports later abandoned Task defects as panic aborts", async () => {
     await using run = testCreateRun();
     const releaseAbandonedTask = Promise.withResolvers<void>();
     const callerAbortReason = { type: "TestAbort" } as const;
@@ -7582,12 +7672,13 @@ describe("daemon", () => {
     };
 
     const result = await run(
-      expectReportedDefectOnly(panicAbortError, async (run) => {
+      assertReportedDefectOnly(panicAbortError, async (run) => {
         const fiber = run.abortable(daemon(defectAfterRelease));
 
         fiber.abort(callerAbortReason);
 
-        expect(await fiber).toEqual(
+        assertEqual(
+          await fiber,
           err({ type: "AbortError", reason: callerAbortReason }),
         );
 
@@ -7597,10 +7688,10 @@ describe("daemon", () => {
       }),
     );
 
-    expectOk(result, undefined);
+    assertOk(result, undefined);
   });
 
-  test("infers result with AbortError and preserves deps", () => {
+  it("infers result with AbortError and preserves deps", () => {
     interface MyError {
       readonly type: "MyError";
     }
@@ -7609,12 +7700,10 @@ describe("daemon", () => {
 
     const wrapped = daemon(task);
 
-    expectTypeOf(wrapped).toEqualTypeOf<
-      Task<string, MyError | AbortError, DbDep>
-    >();
+    assertType<typeof wrapped, Task<string, MyError | AbortError, DbDep>>();
   });
 
-  test("returns AbortError when daemon start is prevented by a masked abort request", async () => {
+  it("returns AbortError when daemon start is prevented by a masked abort request", async () => {
     await using run = createRun();
     const continueTask = Promise.withResolvers<void>();
     let taskStarted = false;
@@ -7647,26 +7736,26 @@ describe("daemon", () => {
     fiber.abort(testAbortReason);
     continueTask.resolve();
 
-    expect(await fiber).toEqual(ok());
-    expect(rejection).toBeUndefined();
-    assert(result);
-    expectErr(result, testAbortError);
-    expect(taskStarted).toBe(false);
+    assertEqual(await fiber, ok());
+    assertSame(rejection, undefined);
+    assertNotUndefined(result);
+    assertErr(result, testAbortError);
+    assertFalse(taskStarted);
   });
 });
 
 describe("unabortable", () => {
-  test("passes through Ok and Err Results", async () => {
+  it("passes through Ok and Err Results", async () => {
     await using run = createRun();
 
     const okResult = await run(unabortable(() => ok(42)));
     const errResult = await run(unabortable(() => err({ type: "MyError" })));
 
-    expect(okResult).toEqual(ok(42));
-    expect(errResult).toEqual(err({ type: "MyError" }));
+    assertEqual(okResult, ok(42));
+    assertEqual(errResult, err({ type: "MyError" }));
   });
 
-  test("masks abort after Task starts when used with run.abortable", async () => {
+  it("masks abort after Task starts when used with run.abortable", async () => {
     await using run = createRun();
     const completeTask = Promise.withResolvers<void>();
     let signalAbortedAtStart = true;
@@ -7684,12 +7773,12 @@ describe("unabortable", () => {
     fiber.abort();
     completeTask.resolve();
 
-    expect(await fiber).toEqual(ok("done"));
-    expect(signalAbortedAtStart).toBe(false);
-    expect(signalAbortedAfterAbort).toBe(false);
+    assertEqual(await fiber, ok("done"));
+    assertFalse(signalAbortedAtStart);
+    assertFalse(signalAbortedAfterAbort);
   });
 
-  test("records requested abort and disposal observed reasons for masked Task", async () => {
+  it("records requested abort and disposal observed reasons for masked Task", async () => {
     await using run = createRun();
     const completeTask = Promise.withResolvers<void>();
 
@@ -7703,8 +7792,8 @@ describe("unabortable", () => {
     fiber.abort(testAbortReason);
     completeTask.resolve();
 
-    expect(await fiber).toEqual(ok("done"));
-    expect(fiber.run.getState()).toEqual({
+    assertEqual(await fiber, ok("done"));
+    assertEqual(fiber.run.getState(), {
       type: "Settled",
       abort: {
         request: testAbortReason,
@@ -7714,7 +7803,7 @@ describe("unabortable", () => {
     });
   });
 
-  test("does not start after parent abort request when used with run.abortable", async () => {
+  it("does not start after parent abort request when used with run.abortable", async () => {
     await using run = createRun();
     const continueTask = Promise.withResolvers<void>();
     let parentSignalAborted = false;
@@ -7727,7 +7816,7 @@ describe("unabortable", () => {
       return run(
         unabortable(({ signal }) => {
           childTaskRan = true;
-          expect(signal.aborted).toBe(false);
+          assertFalse(signal.aborted);
           return ok("child");
         }),
       );
@@ -7736,12 +7825,12 @@ describe("unabortable", () => {
     fiber.abort(testAbortReason);
     continueTask.resolve();
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(parentSignalAborted).toBe(true);
-    expect(childTaskRan).toBe(false);
+    assertEqual(await fiber, err(testAbortError));
+    assertTrue(parentSignalAborted);
+    assertFalse(childTaskRan);
   });
 
-  test("lets daemon Tasks finish naturally after abort request", async () => {
+  it("lets daemon Tasks finish naturally after abort request", async () => {
     await using run = createRun();
     const abortRequested = Promise.withResolvers<void>();
     const checkedAbort = Promise.withResolvers<void>();
@@ -7749,7 +7838,7 @@ describe("unabortable", () => {
     const fiber = run.daemon(
       unabortable(async ({ signal }) => {
         await abortRequested.promise;
-        expect(signal.aborted).toBe(false);
+        assertFalse(signal.aborted);
         checkedAbort.resolve();
         return ok();
       }),
@@ -7759,10 +7848,10 @@ describe("unabortable", () => {
     abortRequested.resolve();
 
     await checkedAbort.promise;
-    expect(await fiber).toEqual(ok());
+    assertEqual(await fiber, ok());
   });
 
-  test("lets created Run disposal wait for child Tasks", async () => {
+  it("lets created Run disposal wait for child Tasks", async () => {
     await using run = createRun();
     const createdRun = run.create();
     const completeChild = Promise.withResolvers<void>();
@@ -7773,27 +7862,27 @@ describe("unabortable", () => {
       unabortable(async ({ signal }) => {
         childSignal = signal;
         await completeChild.promise;
-        expect(signal.aborted).toBe(false);
+        assertFalse(signal.aborted);
         return ok("child");
       }),
     );
 
-    assert(childSignal);
+    assertNotUndefined(childSignal);
     const disposePromise = createdRun[Symbol.asyncDispose]().then(() => {
       disposeFinished = true;
     });
 
-    expect(childSignal.aborted).toBe(false);
-    expect(disposeFinished).toBe(false);
+    assertFalse(childSignal.aborted);
+    assertFalse(disposeFinished);
 
     completeChild.resolve();
 
-    expect(await childFiber).toEqual(ok("child"));
+    assertEqual(await childFiber, ok("child"));
     await disposePromise;
-    expect(disposeFinished).toBe(true);
+    assertTrue(disposeFinished);
   });
 
-  test("passes Fiber run to wrapped Task", async () => {
+  it("passes Fiber run to wrapped Task", async () => {
     await using run = createRun();
     let taskRun: Run | undefined;
 
@@ -7804,14 +7893,14 @@ describe("unabortable", () => {
       }),
     );
 
-    expect(taskRun).toBeDefined();
-    expect(fiber.run).toBe(taskRun);
-    expect(await fiber).toEqual(ok("done"));
+    assertNotUndefined(taskRun);
+    assertSame(fiber.run, taskRun);
+    assertEqual(await fiber, ok("done"));
   });
 });
 
 describe("unabortableMask", () => {
-  test("restores abortability for selected child Tasks when used with run.abortable", async () => {
+  it("restores abortability for selected child Tasks when used with run.abortable", async () => {
     await using run = createRun();
     const continueTask = Promise.withResolvers<void>();
     const events: Array<string> = [];
@@ -7832,8 +7921,8 @@ describe("unabortableMask", () => {
             return ok();
           }),
         );
-        assert(!restoredResult.ok);
-        expect(restoredResult.error).toEqual({
+        assertErr(restoredResult);
+        assertEqual(restoredResult.error, {
           type: "AbortError",
           reason: explicitAbortReason,
         });
@@ -7846,12 +7935,13 @@ describe("unabortableMask", () => {
     fiber.abort();
     continueTask.resolve();
 
-    expect(await fiber).toEqual(
+    assertEqual(
+      await fiber,
       ok(["acquire", "masked child aborted=false", "release"]),
     );
   });
 
-  test("does not start after parent abort request when used with run.abortable", async () => {
+  it("does not start after parent abort request when used with run.abortable", async () => {
     await using run = createRun();
     const continueParent = Promise.withResolvers<void>();
     let maskBodyRan = false;
@@ -7870,11 +7960,11 @@ describe("unabortableMask", () => {
     fiber.abort(testAbortReason);
     continueParent.resolve();
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(maskBodyRan).toBe(false);
+    assertEqual(await fiber, err(testAbortError));
+    assertFalse(maskBodyRan);
   });
 
-  test("restore works from a descendant Run in the same mask scope", async () => {
+  it("restore works from a descendant Run in the same mask scope", async () => {
     await using run = createRun();
     const continueUse = Promise.withResolvers<void>();
     const events: Array<string> = [];
@@ -7893,8 +7983,8 @@ describe("unabortableMask", () => {
             return ok();
           }),
         );
-        assert(!useResult.ok);
-        expect(useResult.error).toEqual({
+        assertErr(useResult);
+        assertEqual(useResult.error, {
           type: "AbortError",
           reason: explicitAbortReason,
         });
@@ -7910,8 +8000,8 @@ describe("unabortableMask", () => {
     fiber.abort();
     continueUse.resolve();
 
-    expect(await fiber).toEqual(ok());
-    expect(events).toEqual([
+    assertEqual(await fiber, ok());
+    assertEqual(events, [
       "helper acquire aborted=false",
       "helper use started aborted=false",
       "helper use aborted=true",
@@ -7919,15 +8009,15 @@ describe("unabortableMask", () => {
     ]);
   });
 
-  test("restore supports child Tasks with replacement deps", async () => {
+  it("restore supports child Tasks with replacement deps", async () => {
     await using run = createRun(dbDep);
 
     const task: Task<string, never, DbDep> = unabortableMask(
       (restore) => async (run) => {
         const useSession: Task<string, never, SessionDep> = ({ deps }) => {
-          expectTypeOf(deps).toEqualTypeOf<RunDefaultDeps & SessionDep>();
-          expect("db" in deps).toBe(false);
-          expect(deps.session).toBe(sessionDep.session);
+          assertType<typeof deps, RunDefaultDeps & SessionDep>();
+          assertFalse("db" in deps);
+          assertSame(deps.session, sessionDep.session);
           return ok(deps.session.userId);
         };
 
@@ -7935,42 +8025,40 @@ describe("unabortableMask", () => {
       },
     );
 
-    expect(await run(task)).toEqual(ok("ada"));
+    assertEqual(await run(task), ok("ada"));
   });
 
-  test("throws when abort behavior helpers wrap the same Task", async () => {
+  it("throws when abort behavior helpers wrap the same Task", async () => {
     const task: Task<void> = () => ok();
 
-    expect(() => unabortable(unabortable(task))).toThrow(
-      "abort behavior helpers cannot wrap the same Task",
+    const error = assertThrowsInstanceOf(
+      () => unabortable(unabortable(task)),
+      Error,
+    );
+    assertTrue(
+      error.message.includes(
+        "abort behavior helpers cannot wrap the same Task",
+      ),
     );
 
     await using run = testCreateRun();
 
-    await expect(
+    const rejection = await assertRejectsPanicAbortErrorMessage(
       run(unabortableMask((restore) => restore(unabortable(task)))),
-    ).rejects.toEqual(
-      panic(
-        expect.objectContaining({
-          message: "abort behavior helpers cannot wrap the same Task",
-        }),
-      ),
+      "abort behavior helpers cannot wrap the same Task",
     );
-    expect(await run.deps.reportDefect.next()).toEqual(
-      panic(
-        expect.objectContaining({
-          message: "abort behavior helpers cannot wrap the same Task",
-        }),
-      ),
-    );
+    assertSame(await run.deps.reportDefect.next(), rejection);
   });
 
-  test("throws when called directly", async () => {
+  it("throws when called directly", async () => {
     await using run = createRun();
     const task = unabortableMask(() => () => ok());
 
-    expect(() => task(run)).toThrow(
-      "unabortableMask requires a masked Run; use run(task), not a direct call",
+    const error = assertThrowsInstanceOf(() => task(run), Error);
+    assertTrue(
+      error.message.includes(
+        "unabortableMask requires a masked Run; use run(task), not a direct call",
+      ),
     );
   });
 
@@ -7980,7 +8068,7 @@ describe("unabortableMask", () => {
     const restoreScopeError =
       "restore is only valid inside the unabortableMask that created it";
 
-    test("captured from a completed inner mask", async () => {
+    it("captured from a completed inner mask", async () => {
       await using run = createRun();
       let restoreFromInner:
         (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
@@ -7994,37 +8082,46 @@ describe("unabortableMask", () => {
         );
 
         const restore = restoreFromInner;
-        assert(restore);
+        assertNotUndefined(restore);
 
-        expect(() => run(restore(() => ok()))).toThrow(restoreScopeError);
+        const error = assertThrowsInstanceOf(
+          () => run(restore(() => ok())),
+          Error,
+        );
+        assertEqual(error.message, restoreScopeError);
 
         return ok();
       });
 
-      expect(await run(task)).toEqual(ok());
+      assertEqual(await run(task), ok());
     });
 
-    test("after its mask settles", async () => {
+    it("after its mask settles", async () => {
       await using run = createRun();
       let restoreFromOuter:
         (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
 
-      expect(
+      assertEqual(
         await run(
           unabortableMask((restore) => {
             restoreFromOuter = restore;
             return () => ok();
           }),
         ),
-      ).toEqual(ok());
+        ok(),
+      );
 
       const restore = restoreFromOuter;
-      assert(restore);
+      assertNotUndefined(restore);
 
-      expect(() => run(restore(() => ok()))).toThrow(restoreScopeError);
+      const error = assertThrowsInstanceOf(
+        () => run(restore(() => ok())),
+        Error,
+      );
+      assertEqual(error.message, restoreScopeError);
     });
 
-    test("inside sibling mask", async () => {
+    it("inside sibling mask", async () => {
       await using run = testCreateRun();
       let restoreFromFirst:
         (<T, E>(task: Task<T, E>) => Task<T, E>) | undefined;
@@ -8038,23 +8135,17 @@ describe("unabortableMask", () => {
         );
 
         const restore = restoreFromFirst;
-        assert(restore);
+        assertNotUndefined(restore);
 
         return run(unabortableMask(() => (run) => run(restore(() => ok()))));
       });
 
-      await expect(run(task)).rejects.toEqual(
-        panic(expect.objectContaining({ message: restoreScopeError })),
-      );
+      await assertRejectsPanicAbortErrorMessage(run(task), restoreScopeError);
       const panicAbortError = await run.deps.reportDefect.next();
-      assert(AbortError.is(panicAbortError));
-      expect(panicAbortError.reason).toMatchObject({
-        type: "PanicAbortReason",
-        defect: expect.objectContaining({ message: restoreScopeError }),
-      });
+      assertPanicAbortErrorMessage(panicAbortError, restoreScopeError);
     });
 
-    test("from daemon Run", async () => {
+    it("from daemon Run", async () => {
       await using run = testCreateRun();
       const continueDaemon = Promise.withResolvers<void>();
 
@@ -8068,43 +8159,42 @@ describe("unabortableMask", () => {
 
           continueDaemon.resolve();
 
-          await expect(daemonFiber).resolves.toEqual(
-            err(panic(expect.objectContaining({ message: restoreScopeError }))),
-          );
+          const daemonResult = await daemonFiber;
+          assertErr(daemonResult);
+          assertPanicAbortErrorMessage(daemonResult.error, restoreScopeError);
 
           return ok();
         }),
       );
 
-      expect(await fiber).toEqual(ok());
+      assertEqual(await fiber, ok());
       const panicAbortError = await run.deps.reportDefect.next();
-      assert(AbortError.is(panicAbortError));
-      expect(panicAbortError.reason).toMatchObject({
-        type: "PanicAbortReason",
-        defect: expect.objectContaining({ message: restoreScopeError }),
-      });
+      assertPanicAbortErrorMessage(panicAbortError, restoreScopeError);
     });
 
-    test("from created Run", async () => {
+    it("from created Run", async () => {
       await using run = createRun();
 
-      expect(
+      assertEqual(
         await run(
           unabortableMask((restore) => async (run) => {
             await using createdRun = run.create();
 
-            expect(() => createdRun(restore(() => ok()))).toThrow(
-              restoreScopeError,
+            const error = assertThrowsInstanceOf(
+              () => createdRun(restore(() => ok())),
+              Error,
             );
+            assertEqual(error.message, restoreScopeError);
 
             return ok();
           }),
         ),
-      ).toEqual(ok());
+        ok(),
+      );
     });
   });
 
-  test("nested masks restore active outer scope from descendant Runs", async () => {
+  it("nested masks restore active outer scope from descendant Runs", async () => {
     await using run = createRun();
     const continueUse = Promise.withResolvers<void>();
     const events: Array<string> = [];
@@ -8138,10 +8228,10 @@ describe("unabortableMask", () => {
                   }),
                 );
 
-                expect(await innerUse).toEqual(ok());
+                assertEqual(await innerUse, ok());
                 const outerUseResult = await outerUse;
-                assert(!outerUseResult.ok);
-                expect(outerUseResult.error).toEqual({
+                assertErr(outerUseResult);
+                assertEqual(outerUseResult.error, {
                   type: "AbortError",
                   reason: explicitAbortReason,
                 });
@@ -8163,7 +8253,8 @@ describe("unabortableMask", () => {
     fiber.abort();
     continueUse.resolve();
 
-    expect(await fiber).toEqual(
+    assertEqual(
+      await fiber,
       ok([
         "outer acquire aborted=false",
         "inner acquire aborted=false",
@@ -8177,7 +8268,7 @@ describe("unabortableMask", () => {
     );
   });
 
-  test("supports unabortable acquire and release with abortable use", async () => {
+  it("supports unabortable acquire and release with abortable use", async () => {
     await using run = createRun();
     const useStarted = Promise.withResolvers<void>();
     const continueUse = Promise.withResolvers<void>();
@@ -8224,12 +8315,12 @@ describe("unabortableMask", () => {
     continueUse.resolve();
 
     const result = await fiber;
-    assert(!result.ok);
-    expect(result.error).toEqual({
+    assertErr(result);
+    assertEqual(result.error, {
       type: "AbortError",
       reason: explicitAbortReason,
     });
-    expect(events).toEqual([
+    assertEqual(events, [
       "acquire aborted=false",
       "use resource started aborted=false",
       "use resource aborted=true",
@@ -8237,7 +8328,7 @@ describe("unabortableMask", () => {
     ]);
   });
 
-  test("does not enter nested unabortableMask after abort request", async () => {
+  it("does not enter nested unabortableMask after abort request", async () => {
     await using run = createRun();
     const useStarted = Promise.withResolvers<void>();
     const continueUse = Promise.withResolvers<void>();
@@ -8275,17 +8366,17 @@ describe("unabortableMask", () => {
     continueUse.resolve();
 
     const result = await fiber;
-    assert(!result.ok);
-    expect(result.error).toEqual({
+    assertErr(result);
+    assertEqual(result.error, {
       type: "AbortError",
       reason: explicitAbortReason,
     });
-    expect(events).toEqual(["use started aborted=false", "use aborted=true"]);
+    assertEqual(events, ["use started aborted=false", "use aborted=true"]);
   });
 });
 
 describe("acquireUseRelease", () => {
-  test("masks acquire and release while restoring use", async () => {
+  it("masks acquire and release while restoring use", async () => {
     await using run = createRun();
     const useStarted = Promise.withResolvers<void>();
     const continueUse = Promise.withResolvers<void>();
@@ -8322,12 +8413,12 @@ describe("acquireUseRelease", () => {
     continueUse.resolve();
 
     const result = await fiber;
-    assert(!result.ok);
-    expect(result.error).toEqual({
+    assertErr(result);
+    assertEqual(result.error, {
       type: "AbortError",
       reason: explicitAbortReason,
     });
-    expect(events).toEqual([
+    assertEqual(events, [
       "acquire aborted=false",
       "use resource started aborted=false",
       "use resource aborted=true",
@@ -8335,7 +8426,7 @@ describe("acquireUseRelease", () => {
     ]);
   });
 
-  test("skips release when acquire fails", async () => {
+  it("skips release when acquire fails", async () => {
     await using run = createRun();
     const acquireError = { type: "AcquireError" } as const;
     let useRan = false;
@@ -8355,12 +8446,12 @@ describe("acquireUseRelease", () => {
       ),
     );
 
-    expectErr(result, acquireError);
-    expect(useRan).toBe(false);
-    expect(releaseRan).toBe(false);
+    assertErr(result, acquireError);
+    assertFalse(useRan);
+    assertFalse(releaseRan);
   });
 
-  test("runs release when use returns Err", async () => {
+  it("runs release when use returns Err", async () => {
     await using run = createRun();
     const useError = { type: "UseError" } as const;
     let released = false;
@@ -8376,16 +8467,16 @@ describe("acquireUseRelease", () => {
       ),
     );
 
-    expectErr(result, useError);
-    expect(released).toBe(true);
+    assertErr(result, useError);
+    assertTrue(released);
   });
 
-  test("runs release when use defects", async () => {
+  it("runs release when use defects", async () => {
     await using run = testCreateRun();
     const defect = new Error("boom");
     let released = false;
 
-    await expect(
+    await assertRejects(
       run(
         acquireUseRelease(
           () => ok("resource"),
@@ -8398,18 +8489,19 @@ describe("acquireUseRelease", () => {
           },
         ),
       ),
-    ).rejects.toEqual(panic(defect));
+      panic(defect),
+    );
 
-    expect(released).toBe(true);
-    expect(await run.deps.reportDefect.next()).toEqual(panic(defect));
+    assertTrue(released);
+    assertEqual(await run.deps.reportDefect.next(), panic(defect));
   });
 
-  test("release defect overrides use result", async () => {
+  it("release defect overrides use result", async () => {
     await using run = testCreateRun();
     const useError = { type: "UseError" } as const;
     const releaseDefect = new Error("release failed");
 
-    await expect(
+    await assertRejects(
       run(
         acquireUseRelease(
           () => ok("resource"),
@@ -8419,11 +8511,12 @@ describe("acquireUseRelease", () => {
           },
         ),
       ),
-    ).rejects.toEqual(panic(releaseDefect));
-    expect(await run.deps.reportDefect.next()).toEqual(panic(releaseDefect));
+      panic(releaseDefect),
+    );
+    assertEqual(await run.deps.reportDefect.next(), panic(releaseDefect));
   });
 
-  test("does not start acquireUseRelease after parent abort request", async () => {
+  it("does not start acquireUseRelease after parent abort request", async () => {
     await using run = createRun();
     const continueParent = Promise.withResolvers<void>();
     let acquired = false;
@@ -8446,27 +8539,27 @@ describe("acquireUseRelease", () => {
     fiber.abort(testAbortReason);
     continueParent.resolve();
 
-    expect(await fiber).toEqual(err(testAbortError));
-    expect(acquired).toBe(false);
+    assertEqual(await fiber, err(testAbortError));
+    assertFalse(acquired);
   });
 });
 
 describe("Deferred", () => {
-  test("resolves a waiting Task with Ok", async () => {
+  it("resolves a waiting Task with Ok", async () => {
     await using run = createRun();
 
     const deferred = createDeferred<string>();
 
     const fiber = run(deferred.task);
 
-    expect(fiber.run.getState()).toEqual({ type: "Running" });
+    assertEqual(fiber.run.getState(), { type: "Running" });
 
     deferred.resolve(ok("value"));
 
-    expect(await fiber).toEqual(ok("value"));
+    assertEqual(await fiber, ok("value"));
   });
 
-  test("resolves all waiting Tasks", async () => {
+  it("resolves all waiting Tasks", async () => {
     await using run = createRun();
 
     const deferred = createDeferred<string>();
@@ -8475,61 +8568,61 @@ describe("Deferred", () => {
 
     deferred.resolve(ok("value"));
 
-    expect(await first).toEqual(ok("value"));
-    expect(await second).toEqual(ok("value"));
+    assertEqual(await first, ok("value"));
+    assertEqual(await second, ok("value"));
   });
 
-  test("resolves a waiting Task with Err", async () => {
+  it("resolves a waiting Task with Err", async () => {
     await using run = createRun();
 
     const myError = { type: "MyError" } as const;
     const deferred = createDeferred<string, typeof myError>();
     const fiber = run(deferred.task);
 
-    expect(fiber.run.getState()).toEqual({ type: "Running" });
+    assertEqual(fiber.run.getState(), { type: "Running" });
 
     deferred.resolve(err(myError));
 
-    expect(await fiber).toEqual(err(myError));
+    assertEqual(await fiber, err(myError));
   });
 
-  test("can still resolve after a waiter aborts", async () => {
+  it("can still resolve after a waiter aborts", async () => {
     await using run = createRun();
 
     const deferred = createDeferred<string>();
     const fiber = run.abortable(deferred.task);
 
-    expect(fiber.run.getState()).toEqual({ type: "Running" });
+    assertEqual(fiber.run.getState(), { type: "Running" });
 
     fiber.abort(testAbortReason);
 
-    expect(await fiber).toEqual(err(testAbortError));
+    assertEqual(await fiber, err(testAbortError));
 
     deferred.resolve(ok("value"));
 
-    expect(await run(deferred.task)).toEqual(ok("value"));
+    assertEqual(await run(deferred.task), ok("value"));
   });
 
-  test("resolves a Task started after resolving", async () => {
+  it("resolves a Task started after resolving", async () => {
     await using run = createRun();
 
     const deferred = createDeferred<string>();
     deferred.resolve(ok("value"));
 
-    expect(await run(deferred.task)).toEqual(ok("value"));
+    assertEqual(await run(deferred.task), ok("value"));
   });
 
-  test("ignores resolving after already resolved", async () => {
+  it("ignores resolving after already resolved", async () => {
     await using run = createRun();
 
     const deferred = createDeferred<string>();
-    expect(deferred.resolve(ok("value"))).toBe(true);
-    expect(deferred.resolve(ok("later"))).toBe(false);
+    assertTrue(deferred.resolve(ok("value")));
+    assertFalse(deferred.resolve(ok("later")));
 
-    expect(await run(deferred.task)).toEqual(ok("value"));
+    assertEqual(await run(deferred.task), ok("value"));
   });
 
-  test("aborting one waiter does not affect other waiters", async () => {
+  it("aborting one waiter does not affect other waiters", async () => {
     await using run = createRun();
 
     const deferred = createDeferred<string>();
@@ -8537,18 +8630,18 @@ describe("Deferred", () => {
     const second = run.abortable(deferred.task);
 
     first.abort(testAbortReason);
-    expect(await first).toEqual(err(testAbortError));
-    expect(second.run.getState()).toEqual({ type: "Running" });
+    assertEqual(await first, err(testAbortError));
+    assertEqual(second.run.getState(), { type: "Running" });
 
     deferred.resolve(ok("value"));
 
-    expect(await second).toEqual(ok("value"));
+    assertEqual(await second, ok("value"));
   });
 });
 
 describe("Gate", () => {
   describe("wait", () => {
-    test("blocks until gate opens", async () => {
+    it("blocks until gate opens", async () => {
       await using run = createRun();
 
       const gate = createGate();
@@ -8561,17 +8654,17 @@ describe("Gate", () => {
         return ok();
       });
 
-      expect(events).toEqual(["waiting"]);
-      expect(gate.isOpen()).toBe(false);
+      assertEqual(events, ["waiting"]);
+      assertFalse(gate.isOpen());
 
       gate.open();
 
-      expect(await fiber).toEqual(ok());
-      expect(events).toEqual(["waiting", "passed"]);
-      expect(gate.isOpen()).toBe(true);
+      assertEqual(await fiber, ok());
+      assertEqual(events, ["waiting", "passed"]);
+      assertTrue(gate.isOpen());
     });
 
-    test("returns immediately when gate is already open", async () => {
+    it("returns immediately when gate is already open", async () => {
       await using run = createRun();
 
       const gate = createGate();
@@ -8581,19 +8674,19 @@ describe("Gate", () => {
       await run.ok(gate.wait);
     });
 
-    test("returns immediately when gate is created open", async () => {
+    it("returns immediately when gate is created open", async () => {
       await using run = createRun();
 
       const gate = createGate({ isOpen: true });
 
-      expect(gate.isOpen()).toBe(true);
+      assertTrue(gate.isOpen());
 
       await run.ok(gate.wait);
     });
   });
 
   describe("open", () => {
-    test("resolves all waiting Tasks", async () => {
+    it("resolves all waiting Tasks", async () => {
       await using run = createRun();
 
       const gate = createGate();
@@ -8613,15 +8706,12 @@ describe("Gate", () => {
         return ok();
       });
 
-      expect(events).toEqual(["first waiting", "second waiting"]);
+      assertEqual(events, ["first waiting", "second waiting"]);
 
       gate.open();
 
-      expect(await Promise.all([firstFiber, secondFiber])).toEqual([
-        ok(),
-        ok(),
-      ]);
-      expect(events).toEqual([
+      assertEqual(await Promise.all([firstFiber, secondFiber]), [ok(), ok()]);
+      assertEqual(events, [
         "first waiting",
         "second waiting",
         "first passed",
@@ -8631,7 +8721,7 @@ describe("Gate", () => {
   });
 
   describe("close", () => {
-    test("makes future Tasks wait", async () => {
+    it("makes future Tasks wait", async () => {
       await using run = createRun();
 
       const gate = createGate();
@@ -8648,16 +8738,16 @@ describe("Gate", () => {
         return ok();
       });
 
-      expect(events).toEqual(["waiting"]);
-      expect(gate.isOpen()).toBe(false);
+      assertEqual(events, ["waiting"]);
+      assertFalse(gate.isOpen());
 
       gate.open();
 
-      expect(await fiber).toEqual(ok());
-      expect(events).toEqual(["waiting", "passed"]);
+      assertEqual(await fiber, ok());
+      assertEqual(events, ["waiting", "passed"]);
     });
 
-    test("keeps future waiters blocked until open", async () => {
+    it("keeps future waiters blocked until open", async () => {
       await using run = createRun();
       const continueParent = Promise.withResolvers<void>();
 
@@ -8674,16 +8764,16 @@ describe("Gate", () => {
       fiber.abort(testAbortReason);
       continueParent.resolve();
 
-      expect(await fiber).toEqual(err(testAbortError));
+      assertEqual(await fiber, err(testAbortError));
 
       gate.open();
 
-      expect(await run(gate.wait)).toEqual(ok());
+      assertEqual(await run(gate.wait), ok());
     });
   });
 
   describe("release", () => {
-    test("resolves current waiters without opening gate", async () => {
+    it("resolves current waiters without opening gate", async () => {
       await using run = createRun();
       const continueFuture = Promise.withResolvers<void>();
 
@@ -8704,21 +8794,18 @@ describe("Gate", () => {
         return ok();
       });
 
-      expect(events).toEqual(["first waiting", "second waiting"]);
+      assertEqual(events, ["first waiting", "second waiting"]);
 
-      expect(gate.release()).toBe(true);
+      assertTrue(gate.release());
 
-      expect(await Promise.all([firstFiber, secondFiber])).toEqual([
-        ok(),
-        ok(),
-      ]);
-      expect(events).toEqual([
+      assertEqual(await Promise.all([firstFiber, secondFiber]), [ok(), ok()]);
+      assertEqual(events, [
         "first waiting",
         "second waiting",
         "first passed",
         "second passed",
       ]);
-      expect(gate.isOpen()).toBe(false);
+      assertFalse(gate.isOpen());
 
       const futureFiber = run.abortable(async (run) => {
         events.push("future waiting");
@@ -8726,7 +8813,7 @@ describe("Gate", () => {
         return run(gate.wait);
       });
 
-      expect(events).toEqual([
+      assertEqual(events, [
         "first waiting",
         "second waiting",
         "first passed",
@@ -8737,42 +8824,42 @@ describe("Gate", () => {
       futureFiber.abort(testAbortReason);
       continueFuture.resolve();
 
-      expect(await futureFiber).toEqual(err(testAbortError));
+      assertEqual(await futureFiber, err(testAbortError));
     });
 
-    test("reports false when gate is open", () => {
+    it("reports false when gate is open", () => {
       const gate = createGate();
 
       gate.open();
 
-      expect(gate.release()).toBe(false);
-      expect(gate.isOpen()).toBe(true);
+      assertFalse(gate.release());
+      assertTrue(gate.isOpen());
     });
 
-    test("reports true for a closed gate without waiters", () => {
+    it("reports true for a closed gate without waiters", () => {
       const gate = createGate();
 
-      expect(gate.release()).toBe(true);
-      expect(gate.isOpen()).toBe(false);
+      assertTrue(gate.release());
+      assertFalse(gate.isOpen());
     });
   });
 
   describe("state changes", () => {
-    test("open and close report whether state changed", () => {
+    it("open and close report whether state changed", () => {
       const gate = createGate();
 
-      expect(gate.open()).toBe(true);
-      expect(gate.open()).toBe(false);
+      assertTrue(gate.open());
+      assertFalse(gate.open());
 
-      expect(gate.close()).toBe(true);
-      expect(gate.close()).toBe(false);
+      assertTrue(gate.close());
+      assertFalse(gate.close());
     });
   });
 });
 
 describe("Semaphore", () => {
   describe("withPermit", () => {
-    test("holds one permit while the Task runs", async () => {
+    it("holds one permit while the Task runs", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -8780,9 +8867,13 @@ describe("Semaphore", () => {
 
       const fiber = run(
         semaphore.withPermit(async () => {
-          expect(semaphore.snapshot()).toMatchObject({
+          assertEqual(semaphore.snapshot(), {
+            policy: "fifo",
+            permits: 1,
             taken: 1,
+            waiters: [],
             available: 0,
+            isIdle: false,
           });
 
           await completeTask.promise;
@@ -8792,13 +8883,20 @@ describe("Semaphore", () => {
 
       completeTask.resolve();
 
-      expect(await fiber).toEqual(ok("value"));
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertEqual(await fiber, ok("value"));
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
     });
   });
 
   describe("withPermits", () => {
-    test("returns a Task preserving error and dependency types", () => {
+    it("returns a Task preserving error and dependency types", () => {
       interface MyError {
         readonly type: "MyError";
       }
@@ -8806,30 +8904,35 @@ describe("Semaphore", () => {
       const semaphore = createSemaphore(1);
       const task: Task<string, MyError, DbDep> = () => ok("value");
 
-      expectTypeOf(semaphore.withPermits(1)(task)).toEqualTypeOf<
-        Task<string, MyError, DbDep>
-      >();
+      {
+        const actual = semaphore.withPermits(1)(task);
+        assertType<typeof actual, Task<string, MyError, DbDep>>();
+      }
     });
 
-    test("runs a Task while holding permits", async () => {
+    it("runs a Task while holding permits", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(3);
 
       const result = await run(
         semaphore.withPermits(2)(() => {
-          expect(semaphore.snapshot()).toMatchObject({
+          assertEqual(semaphore.snapshot(), {
+            policy: "fifo",
+            permits: 3,
             taken: 2,
+            waiters: [],
             available: 1,
+            isIdle: false,
           });
           return ok("value");
         }),
       );
 
-      expectOk(result, "value");
+      assertOk(result, "value");
     });
 
-    test("waits until enough permits are released", async () => {
+    it("waits until enough permits are released", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
@@ -8856,25 +8959,36 @@ describe("Semaphore", () => {
         }),
       );
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 2,
         taken: 2,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
-      expect(events).toEqual(["first acquired"]);
+      assertEqual(events, ["first acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, [
         "first acquired",
         "first completed",
         "second acquired",
       ]);
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, waiters: [] });
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 2,
+        taken: 0,
+        waiters: [],
+        available: 2,
+        isIdle: true,
+      });
     });
 
-    test("removes queued waiter when aborted before acquisition", async () => {
+    it("removes queued waiter when aborted before acquisition", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -8889,53 +9003,82 @@ describe("Semaphore", () => {
         }),
       );
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
 
       fiber.abort(testAbortReason);
       await Promise.resolve();
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [],
+        available: 0,
+        isIdle: false,
       });
-      expect(taskStarted).toBe(false);
+      assertFalse(taskStarted);
 
       held.release();
 
-      expect(await fiber).toEqual(err(testAbortError));
+      assertEqual(await fiber, err(testAbortError));
     });
 
-    test("releases permits after Ok", async () => {
+    it("releases permits after Ok", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
 
       const result = await run(semaphore.withPermits(2)(() => ok("value")));
 
-      expectOk(result, "value");
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertOk(result, "value");
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 2,
+        taken: 0,
+        waiters: [],
+        available: 2,
+        isIdle: true,
+      });
     });
 
-    test("releases permits after Err", async () => {
+    it("releases permits after Err", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
 
       const result = await run(
         semaphore.withPermits(2)(() => {
-          expect(semaphore.snapshot()).toMatchObject({ taken: 2 });
+          assertEqual(semaphore.snapshot(), {
+            policy: "fifo",
+            permits: 2,
+            taken: 2,
+            waiters: [],
+            available: 0,
+            isIdle: false,
+          });
           return err("error");
         }),
       );
 
-      expectErr(result, "error");
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertErr(result, "error");
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 2,
+        taken: 0,
+        waiters: [],
+        available: 2,
+        isIdle: true,
+      });
     });
 
-    test("releases permits after abort", async () => {
+    it("releases permits after abort", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
@@ -8943,11 +9086,18 @@ describe("Semaphore", () => {
 
       const fiber = run.abortable(
         semaphore.withPermits(2)(async (run) => {
-          expect(semaphore.snapshot()).toMatchObject({ taken: 2 });
+          assertEqual(semaphore.snapshot(), {
+            policy: "fifo",
+            permits: 2,
+            taken: 2,
+            waiters: [],
+            available: 0,
+            isIdle: false,
+          });
           taskStarted.resolve();
           await run.ok(
             callback(({ run: { signal } }) => {
-              expect(signal.aborted).toBe(false);
+              assertFalse(signal.aborted);
             }),
           );
           return ok();
@@ -8957,13 +9107,20 @@ describe("Semaphore", () => {
       await taskStarted.promise;
       fiber.abort(testAbortReason);
 
-      expect(await fiber).toEqual(err(testAbortError));
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertEqual(await fiber, err(testAbortError));
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 2,
+        taken: 0,
+        waiters: [],
+        available: 2,
+        isIdle: true,
+      });
     });
   });
 
   describe("withPermitsIfAvailable", () => {
-    test("returns a Task of Option and preserves error and dependency types", () => {
+    it("returns a Task of Option and preserves error and dependency types", () => {
       interface MyError {
         readonly type: "MyError";
       }
@@ -8971,28 +9128,43 @@ describe("Semaphore", () => {
       const semaphore = createSemaphore(1);
       const task: Task<string, MyError, DbDep> = () => ok("value");
 
-      expectTypeOf(semaphore.withPermitsIfAvailable(1)(task)).toEqualTypeOf<
-        Task<Option<string>, MyError, DbDep>
-      >();
+      {
+        const actual = semaphore.withPermitsIfAvailable(1)(task);
+        assertType<typeof actual, Task<Option<string>, MyError, DbDep>>();
+      }
     });
 
-    test("returns Some after running the Task while holding permits", async () => {
+    it("returns Some after running the Task while holding permits", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
 
       const result = await run(
         semaphore.withPermitsIfAvailable(2)(() => {
-          expect(semaphore.snapshot()).toMatchObject({ taken: 2 });
+          assertEqual(semaphore.snapshot(), {
+            policy: "fifo",
+            permits: 2,
+            taken: 2,
+            waiters: [],
+            available: 0,
+            isIdle: false,
+          });
           return ok("value");
         }),
       );
 
-      expectOk(result, some("value"));
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertOk(result, some("value"));
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 2,
+        taken: 0,
+        waiters: [],
+        available: 2,
+        isIdle: true,
+      });
     });
 
-    test("returns None without queueing when permits are unavailable", async () => {
+    it("returns None without queueing when permits are unavailable", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -9005,12 +9177,19 @@ describe("Semaphore", () => {
         }),
       );
 
-      expectOk(result, none);
-      expect(taskStarted).toBe(false);
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, waiters: [] });
+      assertOk(result, none);
+      assertFalse(taskStarted);
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
     });
 
-    test("returns None in FIFO when waiters exist", async () => {
+    it("returns None in FIFO when waiters exist", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(3);
@@ -9020,10 +9199,13 @@ describe("Semaphore", () => {
 
       const waitingFiber = run.abortable(semaphore.take(2));
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 3,
         taken: 2,
         waiters: [{ permits: 2 }],
         available: 0,
+        isIdle: false,
       });
 
       const result = await run(
@@ -9033,15 +9215,15 @@ describe("Semaphore", () => {
         }),
       );
 
-      expectOk(result, none);
-      expect(taskStarted).toBe(false);
+      assertOk(result, none);
+      assertFalse(taskStarted);
 
       waitingFiber.abort(testAbortReason);
-      expect(await waitingFiber).toEqual(err(testAbortError));
+      assertEqual(await waitingFiber, err(testAbortError));
       firstPermit.release();
     });
 
-    test("bypasses waiters in greedy policy", async () => {
+    it("bypasses waiters in greedy policy", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(3, { policy: "greedy" });
@@ -9050,24 +9232,27 @@ describe("Semaphore", () => {
 
       const waitingFiber = run.abortable(semaphore.take(2));
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "greedy",
+        permits: 3,
         taken: 2,
         waiters: [{ permits: 2 }],
         available: 1,
+        isIdle: false,
       });
 
       const result = await run(
         semaphore.withPermitsIfAvailable(1)(() => ok("value")),
       );
 
-      expectOk(result, some("value"));
+      assertOk(result, some("value"));
 
       waitingFiber.abort(testAbortReason);
-      expect(await waitingFiber).toEqual(err(testAbortError));
+      assertEqual(await waitingFiber, err(testAbortError));
       firstPermit.release();
     });
 
-    test("releases permits after Err", async () => {
+    it("releases permits after Err", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -9076,11 +9261,18 @@ describe("Semaphore", () => {
         semaphore.withPermitsIfAvailable(1)(() => err("error")),
       );
 
-      expectErr(result, "error");
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertErr(result, "error");
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
     });
 
-    test("releases permits after abort", async () => {
+    it("releases permits after abort", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -9088,11 +9280,18 @@ describe("Semaphore", () => {
 
       const fiber = run.abortable(
         semaphore.withPermitsIfAvailable(1)(async (run) => {
-          expect(semaphore.snapshot()).toMatchObject({ taken: 1 });
+          assertEqual(semaphore.snapshot(), {
+            policy: "fifo",
+            permits: 1,
+            taken: 1,
+            waiters: [],
+            available: 0,
+            isIdle: false,
+          });
           taskStarted.resolve();
           await run.ok(
             callback(({ run: { signal } }) => {
-              expect(signal.aborted).toBe(false);
+              assertFalse(signal.aborted);
             }),
           );
           return ok("value");
@@ -9102,32 +9301,39 @@ describe("Semaphore", () => {
       await taskStarted.promise;
       fiber.abort(testAbortReason);
 
-      expect(await fiber).toEqual(err(testAbortError));
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertEqual(await fiber, err(testAbortError));
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
     });
   });
 
   describe("take", () => {
-    test("reports a leaked permit", async () => {
+    it("reports a leaked permit", async () => {
       await using run = testCreateRun();
 
       const semaphore = createSemaphore(1);
       await run.ok(semaphore.take(1));
 
-      expect(run.deps.leakDetector.collect()).toBe(1);
+      assertEqual(run.deps.leakDetector.collect(), 1);
     });
 
-    test("returns a permit when enough permits are available", async () => {
+    it("returns a permit when enough permits are available", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
 
       using permit = await run.ok(semaphore.take(1));
 
-      expect(permit.permits).toBe(1);
+      assertEqual(permit.permits, 1);
     });
 
-    test("waits until enough permits are released", async () => {
+    it("waits until enough permits are released", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -9142,19 +9348,23 @@ describe("Semaphore", () => {
         return ok();
       });
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
-      expect(events).toEqual(["waiting"]);
+      assertEqual(events, ["waiting"]);
 
       firstPermit.release();
 
-      expect(await secondFiber).toEqual(ok());
-      expect(events).toEqual(["waiting", "acquired 1"]);
+      assertEqual(await secondFiber, ok());
+      assertEqual(events, ["waiting", "acquired 1"]);
     });
 
-    test("serves waiters in FIFO order by default", async () => {
+    it("serves waiters in FIFO order by default", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(3);
@@ -9169,9 +9379,13 @@ describe("Semaphore", () => {
         return ok();
       });
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 3,
         taken: 2,
         waiters: [{ permits: 2 }],
+        available: 0,
+        isIdle: false,
       });
 
       const smallerFiber = run(async (run) => {
@@ -9181,26 +9395,34 @@ describe("Semaphore", () => {
         return ok();
       });
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 3,
         taken: 2,
         waiters: [{ permits: 2 }, { permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
-      expect(events).toEqual(["larger requesting", "smaller requesting"]);
+      assertEqual(events, ["larger requesting", "smaller requesting"]);
 
       // Re-drive the queue without changing capacity; FIFO must still not let
       // the smaller waiter bypass the older larger waiter.
       semaphore.resize(3);
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 3,
         taken: 2,
         waiters: [{ permits: 2 }, { permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
 
       firstPermit.release();
 
-      expect(await largerFiber).toEqual(ok());
-      expect(await smallerFiber).toEqual(ok());
-      expect(events).toEqual([
+      assertEqual(await largerFiber, ok());
+      assertEqual(await smallerFiber, ok());
+      assertEqual(events, [
         "larger requesting",
         "smaller requesting",
         "larger acquired 2",
@@ -9208,7 +9430,7 @@ describe("Semaphore", () => {
       ]);
     });
 
-    test("greedy policy grants compatible waiters before earlier blocked waiters", async () => {
+    it("greedy policy grants compatible waiters before earlier blocked waiters", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(3, { policy: "greedy" });
@@ -9223,9 +9445,13 @@ describe("Semaphore", () => {
         return ok();
       });
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "greedy",
+        permits: 3,
         taken: 2,
         waiters: [{ permits: 2 }],
+        available: 1,
+        isIdle: false,
       });
 
       const smallerFiber = run(async (run) => {
@@ -9235,8 +9461,8 @@ describe("Semaphore", () => {
         return ok();
       });
 
-      expect(await smallerFiber).toEqual(ok());
-      expect(events).toEqual([
+      assertEqual(await smallerFiber, ok());
+      assertEqual(events, [
         "larger requesting",
         "smaller requesting",
         "smaller acquired 1",
@@ -9244,8 +9470,8 @@ describe("Semaphore", () => {
 
       firstPermit.release();
 
-      expect(await largerFiber).toEqual(ok());
-      expect(events).toEqual([
+      assertEqual(await largerFiber, ok());
+      assertEqual(events, [
         "larger requesting",
         "smaller requesting",
         "smaller acquired 1",
@@ -9253,7 +9479,7 @@ describe("Semaphore", () => {
       ]);
     });
 
-    test("greedy release grants later compatible queued waiter", async () => {
+    it("greedy release grants later compatible queued waiter", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(3, { policy: "greedy" });
@@ -9276,28 +9502,36 @@ describe("Semaphore", () => {
         return ok();
       });
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "greedy",
+        permits: 3,
         taken: 3,
         waiters: [{ permits: 2 }, { permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
 
       secondPermit.release();
 
-      expect(await smallerFiber).toEqual(ok());
-      expect(events).toEqual([
+      assertEqual(await smallerFiber, ok());
+      assertEqual(events, [
         "larger requesting",
         "smaller requesting",
         "smaller acquired 1",
       ]);
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "greedy",
+        permits: 3,
         taken: 2,
         waiters: [{ permits: 2 }],
+        available: 1,
+        isIdle: false,
       });
 
       firstPermit.release();
 
-      expect(await largerFiber).toEqual(ok());
-      expect(events).toEqual([
+      assertEqual(await largerFiber, ok());
+      assertEqual(events, [
         "larger requesting",
         "smaller requesting",
         "smaller acquired 1",
@@ -9305,31 +9539,52 @@ describe("Semaphore", () => {
       ]);
     });
 
-    test("disposing a permit releases its permits", async () => {
+    it("disposing a permit releases its permits", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
 
       {
         using _permit = await run.ok(semaphore.take(2));
-        expect(semaphore.snapshot()).toMatchObject({ taken: 2, isIdle: false });
+        assertEqual(semaphore.snapshot(), {
+          policy: "fifo",
+          permits: 2,
+          taken: 2,
+          waiters: [],
+          available: 0,
+          isIdle: false,
+        });
       }
 
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 2,
+        taken: 0,
+        waiters: [],
+        available: 2,
+        isIdle: true,
+      });
     });
 
-    test("permit release is idempotent", async () => {
+    it("permit release is idempotent", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
       const permit = await run.ok(semaphore.take(1));
 
-      expect(permit.release()).toBe(true);
-      expect(permit.release()).toBe(false);
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertTrue(permit.release());
+      assertFalse(permit.release());
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
     });
 
-    test("aborting a waiter removes it from the queue", async () => {
+    it("aborting a waiter removes it from the queue", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -9338,18 +9593,29 @@ describe("Semaphore", () => {
 
       const waiterFiber = run.abortable(semaphore.take(1));
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
 
       waiterFiber.abort(testAbortReason);
 
-      expect(await waiterFiber).toEqual(err(testAbortError));
-      expect(semaphore.snapshot()).toMatchObject({ taken: 1, waiters: [] });
+      assertEqual(await waiterFiber, err(testAbortError));
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 1,
+        waiters: [],
+        available: 0,
+        isIdle: false,
+      });
     });
 
-    test("aborting FIFO head releases later compatible waiter", async () => {
+    it("aborting FIFO head releases later compatible waiter", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(3);
@@ -9362,21 +9628,32 @@ describe("Semaphore", () => {
         return ok(permit.permits);
       });
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 3,
         taken: 2,
         waiters: [{ permits: 2 }, { permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
 
       largerFiber.abort(testAbortReason);
 
-      expect(await largerFiber).toEqual(err(testAbortError));
-      expect(await smallerFiber).toEqual(ok(1));
-      expect(semaphore.snapshot()).toMatchObject({ taken: 2, waiters: [] });
+      assertEqual(await largerFiber, err(testAbortError));
+      assertEqual(await smallerFiber, ok(1));
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 3,
+        taken: 2,
+        waiters: [],
+        available: 1,
+        isIdle: false,
+      });
 
       firstPermit.release();
     });
 
-    test("aborting one waiter does not affect other waiters", async () => {
+    it("aborting one waiter does not affect other waiters", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -9389,35 +9666,50 @@ describe("Semaphore", () => {
         return ok(permit.permits);
       });
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }, { permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
 
       firstWaiterFiber.abort(testAbortReason);
 
-      expect(await firstWaiterFiber).toEqual(err(testAbortError));
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(await firstWaiterFiber, err(testAbortError));
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
 
       firstPermit.release();
 
-      expect(await secondWaiterFiber).toEqual(ok(1));
-      expect(semaphore.snapshot()).toMatchObject({ taken: 0, waiters: [] });
+      assertEqual(await secondWaiterFiber, ok(1));
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
     });
   });
 
   describe("resize", () => {
-    test("asserts positive permit count at runtime", () => {
+    it("asserts positive permit count at runtime", () => {
       const semaphore = createSemaphore(1);
       const permits = 0 as unknown as Int1To100OrPositiveInt;
 
-      expect(() => semaphore.resize(permits)).toThrow();
+      assertThrowsInstanceOf(() => semaphore.resize(permits), Error);
     });
 
-    test("resize increases capacity and releases waiting Tasks", async () => {
+    it("resize increases capacity and releases waiting Tasks", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
@@ -9430,23 +9722,31 @@ describe("Semaphore", () => {
         return ok();
       });
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
         waiters: [{ permits: 2 }],
+        available: 0,
+        isIdle: false,
       });
-      expect(events).toEqual(["waiting"]);
+      assertEqual(events, ["waiting"]);
 
       semaphore.resize(2);
 
-      expect(await fiber).toEqual(ok());
-      expect(events).toEqual(["waiting", "acquired 2"]);
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(await fiber, ok());
+      assertEqual(events, ["waiting", "acquired 2"]);
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
         permits: 2,
         taken: 0,
+        waiters: [],
+        available: 2,
         isIdle: true,
       });
     });
 
-    test("resize decreases capacity without releasing held permits", async () => {
+    it("resize decreases capacity without releasing held permits", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
@@ -9455,18 +9755,22 @@ describe("Semaphore", () => {
 
       semaphore.resize(1);
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
         permits: 1,
         taken: 2,
+        waiters: [],
         available: 0,
         isIdle: false,
       });
 
       permit.release();
 
-      expect(semaphore.snapshot()).toMatchObject({
+      assertEqual(semaphore.snapshot(), {
+        policy: "fifo",
         permits: 1,
         taken: 0,
+        waiters: [],
         available: 1,
         isIdle: true,
       });
@@ -9474,12 +9778,12 @@ describe("Semaphore", () => {
   });
 
   describe("snapshot", () => {
-    test("reports available, taken, waiters, and idle state", async () => {
+    it("reports available, taken, waiters, and idle state", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(2);
 
-      expect(semaphore.snapshot()).toEqual({
+      assertEqual(semaphore.snapshot(), {
         policy: "fifo",
         permits: 2,
         taken: 0,
@@ -9494,7 +9798,7 @@ describe("Semaphore", () => {
         return ok();
       });
 
-      expect(semaphore.snapshot()).toEqual({
+      assertEqual(semaphore.snapshot(), {
         policy: "fifo",
         permits: 2,
         taken: 1,
@@ -9505,8 +9809,8 @@ describe("Semaphore", () => {
 
       firstPermit.release();
 
-      expect(await waiterFiber).toEqual(ok());
-      expect(semaphore.snapshot()).toEqual({
+      assertEqual(await waiterFiber, ok());
+      assertEqual(semaphore.snapshot(), {
         policy: "fifo",
         permits: 2,
         taken: 0,
@@ -9518,32 +9822,32 @@ describe("Semaphore", () => {
   });
 
   describe("isIdle", () => {
-    test("reports whether no permits are held and no requests are queued", async () => {
+    it("reports whether no permits are held and no requests are queued", async () => {
       await using run = createRun();
 
       const semaphore = createSemaphore(1);
 
-      expect(semaphore.isIdle()).toBe(true);
+      assertTrue(semaphore.isIdle());
 
       const firstPermit = await run.ok(semaphore.take(1));
       const waiterFiber = run.abortable(semaphore.take(1));
 
-      expect(semaphore.isIdle()).toBe(false);
+      assertFalse(semaphore.isIdle());
 
       waiterFiber.abort(testAbortReason);
-      expect(await waiterFiber).toEqual(err(testAbortError));
-      expect(semaphore.isIdle()).toBe(false);
+      assertEqual(await waiterFiber, err(testAbortError));
+      assertFalse(semaphore.isIdle());
 
       firstPermit.release();
 
-      expect(semaphore.isIdle()).toBe(true);
+      assertTrue(semaphore.isIdle());
     });
   });
 });
 
 describe("Mutex", () => {
   describe("withLock", () => {
-    test("returns a Task preserving error and dependency types", () => {
+    it("returns a Task preserving error and dependency types", () => {
       interface MyError {
         readonly type: "MyError";
       }
@@ -9551,12 +9855,13 @@ describe("Mutex", () => {
       const mutex = createMutex();
       const task: Task<string, MyError, DbDep> = () => ok("value");
 
-      expectTypeOf(mutex.withLock(task)).toEqualTypeOf<
-        Task<string, MyError, DbDep>
-      >();
+      {
+        const actual = mutex.withLock(task);
+        assertType<typeof actual, Task<string, MyError, DbDep>>();
+      }
     });
 
-    test("runs one Task at a time", async () => {
+    it("runs one Task at a time", async () => {
       await using run = createRun();
 
       const mutex = createMutex();
@@ -9583,42 +9888,67 @@ describe("Mutex", () => {
         }),
       );
 
-      expect(mutex.snapshot()).toMatchObject({
+      assertEqual(mutex.snapshot(), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
-      expect(events).toEqual(["first acquired"]);
+      assertEqual(events, ["first acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, [
         "first acquired",
         "first completed",
         "second acquired",
       ]);
-      expect(mutex.snapshot()).toMatchObject({ taken: 0, isIdle: true });
+      assertEqual(mutex.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
     });
 
-    test("releases the lock after Err", async () => {
+    it("releases the lock after Err", async () => {
       await using run = createRun();
 
       const mutex = createMutex();
 
       const result = await run(
         mutex.withLock(() => {
-          expect(mutex.snapshot()).toMatchObject({ taken: 1 });
+          assertEqual(mutex.snapshot(), {
+            policy: "fifo",
+            permits: 1,
+            taken: 1,
+            waiters: [],
+            available: 0,
+            isIdle: false,
+          });
           return err("error");
         }),
       );
 
-      expectErr(result, "error");
-      expect(mutex.snapshot()).toMatchObject({ taken: 0, isIdle: true });
-      expect(await run(mutex.withLock(() => ok("next")))).toEqual(ok("next"));
+      assertErr(result, "error");
+      assertEqual(mutex.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
+      assertEqual(await run(mutex.withLock(() => ok("next"))), ok("next"));
     });
 
-    test("releases the lock after abort", async () => {
+    it("releases the lock after abort", async () => {
       await using run = createRun();
 
       const mutex = createMutex();
@@ -9626,11 +9956,18 @@ describe("Mutex", () => {
 
       const fiber = run.abortable(
         mutex.withLock(async (run) => {
-          expect(mutex.snapshot()).toMatchObject({ taken: 1 });
+          assertEqual(mutex.snapshot(), {
+            policy: "fifo",
+            permits: 1,
+            taken: 1,
+            waiters: [],
+            available: 0,
+            isIdle: false,
+          });
           taskStarted.resolve();
           await run.ok(
             callback(({ run: { signal } }) => {
-              expect(signal.aborted).toBe(false);
+              assertFalse(signal.aborted);
             }),
           );
           return ok();
@@ -9640,19 +9977,26 @@ describe("Mutex", () => {
       await taskStarted.promise;
       fiber.abort(testAbortReason);
 
-      expect(await fiber).toEqual(err(testAbortError));
-      expect(mutex.snapshot()).toMatchObject({ taken: 0, isIdle: true });
-      expect(await run(mutex.withLock(() => ok("next")))).toEqual(ok("next"));
+      assertEqual(await fiber, err(testAbortError));
+      assertEqual(mutex.snapshot(), {
+        policy: "fifo",
+        permits: 1,
+        taken: 0,
+        waiters: [],
+        available: 1,
+        isIdle: true,
+      });
+      assertEqual(await run(mutex.withLock(() => ok("next"))), ok("next"));
     });
   });
 
   describe("snapshot", () => {
-    test("reports the underlying semaphore state", async () => {
+    it("reports the underlying semaphore state", async () => {
       await using run = createRun();
 
       const mutex = createMutex();
 
-      expect(mutex.snapshot()).toEqual({
+      assertEqual(mutex.snapshot(), {
         policy: "fifo",
         permits: 1,
         taken: 0,
@@ -9676,7 +10020,7 @@ describe("Mutex", () => {
 
       const secondFiber = run(mutex.withLock(() => ok("second")));
 
-      expect(mutex.snapshot()).toEqual({
+      assertEqual(mutex.snapshot(), {
         policy: "fifo",
         permits: 1,
         taken: 1,
@@ -9687,9 +10031,9 @@ describe("Mutex", () => {
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(mutex.snapshot()).toEqual({
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(mutex.snapshot(), {
         policy: "fifo",
         permits: 1,
         taken: 0,
@@ -9702,13 +10046,13 @@ describe("Mutex", () => {
 });
 
 describe("SemaphoreByKey", () => {
-  test("createSemaphoreByKey requires initial permits", () => {
+  it("createSemaphoreByKey requires initial permits", () => {
     // @ts-expect-error - initial permits are required.
     createSemaphoreByKey<string>();
   });
 
   describe("withPermit", () => {
-    test("serializes Tasks with the same key", async () => {
+    it("serializes Tasks with the same key", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(1);
@@ -9735,20 +10079,20 @@ describe("SemaphoreByKey", () => {
         }),
       );
 
-      expect(events).toEqual(["first acquired"]);
+      assertEqual(events, ["first acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, [
         "first acquired",
         "first completed",
         "second acquired",
       ]);
     });
 
-    test("uses lookup to share permits for logically equal keys", async () => {
+    it("uses lookup to share permits for logically equal keys", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<{ readonly id: string }>(1, {
@@ -9777,24 +10121,28 @@ describe("SemaphoreByKey", () => {
         }),
       );
 
-      expect(semaphoreByKey.snapshot({ id: "shared" })).toMatchObject({
+      assertEqual(semaphoreByKey.snapshot({ id: "shared" }), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
-      expect(events).toEqual(["first acquired"]);
+      assertEqual(events, ["first acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, [
         "first acquired",
         "first completed",
         "second acquired",
       ]);
     });
 
-    test("does not block Tasks with different keys", async () => {
+    it("does not block Tasks with different keys", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(1);
@@ -9821,13 +10169,13 @@ describe("SemaphoreByKey", () => {
         }),
       );
 
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual(["first acquired", "second acquired"]);
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, ["first acquired", "second acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(events, [
         "first acquired",
         "second acquired",
         "first completed",
@@ -9836,7 +10184,7 @@ describe("SemaphoreByKey", () => {
   });
 
   describe("withPermits", () => {
-    test("runs the Task directly under the keyed wrapper Run", async () => {
+    it("runs the Task directly under the keyed wrapper Run", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(1);
@@ -9847,10 +10195,10 @@ describe("SemaphoreByKey", () => {
 
       const result = await fiber;
 
-      expect(result.ok && result.value).toBe(fiber.run);
+      assertSame(result.ok && result.value, fiber.run);
     });
 
-    test("withPermits uses the requested permits for the key", async () => {
+    it("withPermits uses the requested permits for the key", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(2);
@@ -9880,13 +10228,13 @@ describe("SemaphoreByKey", () => {
         }),
       );
 
-      expect(events).toEqual(["first acquired"]);
+      assertEqual(events, ["first acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, [
         "first acquired",
         "first completed",
         "second acquired",
@@ -9894,14 +10242,14 @@ describe("SemaphoreByKey", () => {
     });
   });
 
-  test("SemaphoreByKey isIdle reports whether a key has active permits or waiters", async () => {
+  it("SemaphoreByKey isIdle reports whether a key has active permits or waiters", async () => {
     await using run = createRun();
 
     const semaphoreByKey = createSemaphoreByKey<string>(1);
     const firstTaskStarted = Promise.withResolvers<void>();
     const completeFirstTask = Promise.withResolvers<void>();
 
-    expect(semaphoreByKey.isIdle("key")).toBe(true);
+    assertTrue(semaphoreByKey.isIdle("key"));
 
     const firstFiber = run(
       semaphoreByKey.withPermit("key", async () => {
@@ -9917,17 +10265,17 @@ describe("SemaphoreByKey", () => {
       semaphoreByKey.withPermit("key", () => ok("second")),
     );
 
-    expect(semaphoreByKey.isIdle("key")).toBe(false);
+    assertFalse(semaphoreByKey.isIdle("key"));
 
     completeFirstTask.resolve();
 
-    expect(await firstFiber).toEqual(ok("first"));
-    expect(await secondFiber).toEqual(ok("second"));
-    expect(semaphoreByKey.isIdle("key")).toBe(true);
+    assertEqual(await firstFiber, ok("first"));
+    assertEqual(await secondFiber, ok("second"));
+    assertTrue(semaphoreByKey.isIdle("key"));
   });
 
   describe("snapshot", () => {
-    test("returns state for an active key and null after it becomes idle", async () => {
+    it("returns state for an active key and null after it becomes idle", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(1);
@@ -9944,19 +10292,22 @@ describe("SemaphoreByKey", () => {
 
       await taskStarted.promise;
 
-      expect(semaphoreByKey.snapshot("key")).toMatchObject({
+      assertEqual(semaphoreByKey.snapshot("key"), {
+        policy: "fifo",
         permits: 1,
         taken: 1,
+        waiters: [],
+        available: 0,
         isIdle: false,
       });
 
       completeTask.resolve();
 
-      expect(await fiber).toEqual(ok("value"));
-      expect(semaphoreByKey.snapshot("key")).toBeNull();
+      assertEqual(await fiber, ok("value"));
+      assertSame(semaphoreByKey.snapshot("key"), null);
     });
 
-    test("removes key after Err", async () => {
+    it("removes key after Err", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(1);
@@ -9965,29 +10316,30 @@ describe("SemaphoreByKey", () => {
         semaphoreByKey.withPermit("key", () => err("error")),
       );
 
-      expectErr(result, "error");
-      expect(semaphoreByKey.snapshot("key")).toBeNull();
+      assertErr(result, "error");
+      assertSame(semaphoreByKey.snapshot("key"), null);
     });
 
-    test("removes key after defect", async () => {
+    it("removes key after defect", async () => {
       await using run = testCreateRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(1);
       const defect = new Error("boom");
 
-      await expect(
+      await assertRejects(
         run(
           semaphoreByKey.withPermit("key", () => {
             throw defect;
           }),
         ),
-      ).rejects.toEqual(panic(defect));
+        panic(defect),
+      );
 
-      expect(semaphoreByKey.snapshot("key")).toBeNull();
-      expect(await run.deps.reportDefect.next()).toEqual(panic(defect));
+      assertSame(semaphoreByKey.snapshot("key"), null);
+      assertEqual(await run.deps.reportDefect.next(), panic(defect));
     });
 
-    test("removes key after abort while holding permit", async () => {
+    it("removes key after abort while holding permit", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(1);
@@ -10004,11 +10356,11 @@ describe("SemaphoreByKey", () => {
       await taskStarted.promise;
       fiber.abort(testAbortReason);
 
-      expect(await fiber).toEqual(err(testAbortError));
-      expect(semaphoreByKey.snapshot("key")).toBeNull();
+      assertEqual(await fiber, err(testAbortError));
+      assertSame(semaphoreByKey.snapshot("key"), null);
     });
 
-    test("removes key after queued waiter is aborted", async () => {
+    it("removes key after queued waiter is aborted", async () => {
       await using run = createRun();
 
       const semaphoreByKey = createSemaphoreByKey<string>(1);
@@ -10033,30 +10385,38 @@ describe("SemaphoreByKey", () => {
         }),
       );
 
-      expect(semaphoreByKey.snapshot("key")).toMatchObject({
+      assertEqual(semaphoreByKey.snapshot("key"), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
 
       secondFiber.abort(testAbortReason);
-      expect(await secondFiber).toEqual(err(testAbortError));
-      expect(secondTaskStarted).toBe(false);
-      expect(semaphoreByKey.snapshot("key")).toMatchObject({
+      assertEqual(await secondFiber, err(testAbortError));
+      assertFalse(secondTaskStarted);
+      assertEqual(semaphoreByKey.snapshot("key"), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [],
+        available: 0,
+        isIdle: false,
       });
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(semaphoreByKey.snapshot("key")).toBeNull();
+      assertEqual(await firstFiber, ok("first"));
+      assertSame(semaphoreByKey.snapshot("key"), null);
     });
   });
 });
 
 describe("MutexByKey", () => {
   describe("withLock", () => {
-    test("serializes Tasks with the same key", async () => {
+    it("serializes Tasks with the same key", async () => {
       await using run = createRun();
 
       const mutexByKey = createMutexByKey<string>();
@@ -10083,20 +10443,20 @@ describe("MutexByKey", () => {
         }),
       );
 
-      expect(events).toEqual(["first acquired"]);
+      assertEqual(events, ["first acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, [
         "first acquired",
         "first completed",
         "second acquired",
       ]);
     });
 
-    test("uses lookup to share locks for logically equal keys", async () => {
+    it("uses lookup to share locks for logically equal keys", async () => {
       await using run = createRun();
 
       const mutexByKey = createMutexByKey<{ readonly id: string }>({
@@ -10125,24 +10485,28 @@ describe("MutexByKey", () => {
         }),
       );
 
-      expect(mutexByKey.snapshot({ id: "shared" })).toMatchObject({
+      assertEqual(mutexByKey.snapshot({ id: "shared" }), {
+        policy: "fifo",
+        permits: 1,
         taken: 1,
         waiters: [{ permits: 1 }],
+        available: 0,
+        isIdle: false,
       });
-      expect(events).toEqual(["first acquired"]);
+      assertEqual(events, ["first acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, [
         "first acquired",
         "first completed",
         "second acquired",
       ]);
     });
 
-    test("does not block Tasks with different keys", async () => {
+    it("does not block Tasks with different keys", async () => {
       await using run = createRun();
 
       const mutexByKey = createMutexByKey<string>();
@@ -10169,13 +10533,13 @@ describe("MutexByKey", () => {
         }),
       );
 
-      expect(await secondFiber).toEqual(ok("second"));
-      expect(events).toEqual(["first acquired", "second acquired"]);
+      assertEqual(await secondFiber, ok("second"));
+      assertEqual(events, ["first acquired", "second acquired"]);
 
       completeFirstTask.resolve();
 
-      expect(await firstFiber).toEqual(ok("first"));
-      expect(events).toEqual([
+      assertEqual(await firstFiber, ok("first"));
+      assertEqual(events, [
         "first acquired",
         "second acquired",
         "first completed",
@@ -10183,14 +10547,14 @@ describe("MutexByKey", () => {
     });
   });
 
-  test("isIdle reports whether a key is locked or queued", async () => {
+  it("isIdle reports whether a key is locked or queued", async () => {
     await using run = createRun();
 
     const mutexByKey = createMutexByKey<string>();
     const firstTaskStarted = Promise.withResolvers<void>();
     const completeFirstTask = Promise.withResolvers<void>();
 
-    expect(mutexByKey.isIdle("key")).toBe(true);
+    assertTrue(mutexByKey.isIdle("key"));
 
     const firstFiber = run(
       mutexByKey.withLock("key", async () => {
@@ -10204,17 +10568,17 @@ describe("MutexByKey", () => {
 
     const secondFiber = run(mutexByKey.withLock("key", () => ok("second")));
 
-    expect(mutexByKey.isIdle("key")).toBe(false);
+    assertFalse(mutexByKey.isIdle("key"));
 
     completeFirstTask.resolve();
 
-    expect(await firstFiber).toEqual(ok("first"));
-    expect(await secondFiber).toEqual(ok("second"));
-    expect(mutexByKey.isIdle("key")).toBe(true);
+    assertEqual(await firstFiber, ok("first"));
+    assertEqual(await secondFiber, ok("second"));
+    assertTrue(mutexByKey.isIdle("key"));
   });
 
   describe("snapshot", () => {
-    test("returns state for an active key and null after it becomes idle", async () => {
+    it("returns state for an active key and null after it becomes idle", async () => {
       await using run = createRun();
 
       const mutexByKey = createMutexByKey<string>();
@@ -10231,79 +10595,82 @@ describe("MutexByKey", () => {
 
       await taskStarted.promise;
 
-      expect(mutexByKey.snapshot("key")).toMatchObject({
+      assertEqual(mutexByKey.snapshot("key"), {
+        policy: "fifo",
         permits: 1,
         taken: 1,
+        waiters: [],
+        available: 0,
         isIdle: false,
       });
 
       completeTask.resolve();
 
-      expect(await fiber).toEqual(ok("value"));
-      expect(mutexByKey.snapshot("key")).toBeNull();
+      assertEqual(await fiber, ok("value"));
+      assertSame(mutexByKey.snapshot("key"), null);
     });
   });
 });
 
 describe("MutexRef", () => {
-  test("get returns the current value", async () => {
+  it("get returns the current value", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(42);
 
-    expect(await run.ok(ref.get)).toBe(42);
+    assertEqual(await run.ok(ref.get), 42);
   });
 
-  test("set updates the value", async () => {
+  it("set updates the value", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(0);
 
     await run.ok(ref.set(1));
 
-    expect(await run.ok(ref.get)).toBe(1);
+    assertEqual(await run.ok(ref.get), 1);
   });
 
-  test("getAndSet returns the previous value and updates the value", async () => {
+  it("getAndSet returns the previous value and updates the value", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(1);
 
-    expect(await run.ok(ref.getAndSet(2))).toBe(1);
-    expect(await run.ok(ref.get)).toBe(2);
+    assertEqual(await run.ok(ref.getAndSet(2)), 1);
+    assertEqual(await run.ok(ref.get), 2);
   });
 
-  test("setAndGet returns the updated value", async () => {
+  it("setAndGet returns the updated value", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(1);
 
-    expect(await run.ok(ref.setAndGet(2))).toBe(2);
-    expect(await run.ok(ref.get)).toBe(2);
+    assertEqual(await run.ok(ref.setAndGet(2)), 2);
+    assertEqual(await run.ok(ref.get), 2);
   });
 
-  test("update applies a Task updater", async () => {
+  it("update applies a Task updater", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(1);
 
     await run.ok(ref.update((n) => () => ok(n + 1)));
 
-    expect(await run.ok(ref.get)).toBe(2);
+    assertEqual(await run.ok(ref.get), 2);
   });
 
-  test("getAndUpdate returns the previous value and updates the value", async () => {
+  it("getAndUpdate returns the previous value and updates the value", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(1);
 
-    expect(await run.ok(ref.getAndUpdate((n) => () => ok(n + 1)))).toBe(1);
-    expect(await run.ok(ref.get)).toBe(2);
+    assertEqual(await run.ok(ref.getAndUpdate((n) => () => ok(n + 1))), 1);
+    assertEqual(await run.ok(ref.get), 2);
   });
 
-  test("updateAndGet returns the updated value", async () => {
+  it("updateAndGet returns the updated value", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(1);
 
-    expect(await run.ok(ref.updateAndGet((n) => () => ok(n + 1)))).toBe(2);
-    expect(await run.ok(ref.get)).toBe(2);
+    assertEqual(await run.ok(ref.updateAndGet((n) => () => ok(n + 1))), 2);
+    assertEqual(await run.ok(ref.get), 2);
   });
 
-  test("modify returns a computed result and updates the value", async () => {
+  it("modify returns a computed result and updates the value", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(0);
 
@@ -10311,11 +10678,11 @@ describe("MutexRef", () => {
       ref.modify((n) => () => ok([`was:${n}`, n + 1] as const)),
     );
 
-    expect(result).toBe("was:0");
-    expect(await run.ok(ref.get)).toBe(1);
+    assertEqual(result, "was:0");
+    assertEqual(await run.ok(ref.get), 1);
   });
 
-  test("serializes concurrent updates", async () => {
+  it("serializes concurrent updates", async () => {
     await using run = testCreateRun();
     const gate = createGate();
     const ref = createMutexRef(0);
@@ -10332,29 +10699,29 @@ describe("MutexRef", () => {
     const second = run(slowIncrement);
     gate.open();
 
-    expect(await first).toEqual(ok());
-    expect(await second).toEqual(ok());
+    assertEqual(await first, ok());
+    assertEqual(await second, ok());
 
     // A lost update would read [0, 0]; the mutex serializes the transitions.
-    expect(reads).toEqual([0, 1]);
-    expect(await run.ok(ref.get)).toBe(2);
+    assertEqual(reads, [0, 1]);
+    assertEqual(await run.ok(ref.get), 2);
   });
 
-  test("a failed updater preserves the previous value", async () => {
+  it("a failed updater preserves the previous value", async () => {
     await using run = testCreateRun();
     const ref = createMutexRef(1);
     const testError = { type: "TestError" } as const;
     const fail = () => () => err(testError);
 
-    expect(await run(ref.update(fail))).toEqual(err(testError));
-    expect(await run(ref.getAndUpdate(fail))).toEqual(err(testError));
-    expect(await run(ref.updateAndGet(fail))).toEqual(err(testError));
-    expect(await run(ref.modify(fail))).toEqual(err(testError));
+    assertEqual(await run(ref.update(fail)), err(testError));
+    assertEqual(await run(ref.getAndUpdate(fail)), err(testError));
+    assertEqual(await run(ref.updateAndGet(fail)), err(testError));
+    assertEqual(await run(ref.modify(fail)), err(testError));
 
-    expect(await run.ok(ref.get)).toBe(1);
+    assertEqual(await run.ok(ref.get), 1);
   });
 
-  test("an aborted updater preserves the previous value", async () => {
+  it("an aborted updater preserves the previous value", async () => {
     await using run = testCreateRun();
     const gate = createGate();
     const ref = createMutexRef(0);
@@ -10370,17 +10737,17 @@ describe("MutexRef", () => {
 
     const result = await fiber;
 
-    assert(!result.ok);
-    expect(await run.ok(ref.get)).toBe(0);
+    assertErr(result);
+    assertEqual(await run.ok(ref.get), 0);
   });
 
-  test("snapshot reports lock state", async () => {
+  it("snapshot reports lock state", async () => {
     await using run = testCreateRun();
     const gate = createGate();
     const ref = createMutexRef(0);
     const started = Promise.withResolvers<void>();
 
-    expect(ref.snapshot().isIdle).toBe(true);
+    assertTrue(ref.snapshot().isIdle);
 
     const fiber = run(
       ref.update((current) => async (run) => {
@@ -10392,15 +10759,22 @@ describe("MutexRef", () => {
     );
     await started.promise;
 
-    expect(ref.snapshot()).toMatchObject({ taken: 1, isIdle: false });
+    assertEqual(ref.snapshot(), {
+      policy: "fifo",
+      permits: 1,
+      taken: 1,
+      waiters: [],
+      available: 0,
+      isIdle: false,
+    });
 
     gate.open();
 
-    expect(await fiber).toEqual(ok());
-    expect(ref.snapshot().isIdle).toBe(true);
+    assertEqual(await fiber, ok());
+    assertTrue(ref.snapshot().isIdle);
   });
 
-  test("types: operations infer error and deps from the updater", () => {
+  it("types: operations infer error and deps from the updater", () => {
     interface TestDep {
       readonly value: string;
     }
@@ -10410,24 +10784,37 @@ describe("MutexRef", () => {
 
     const ref = createMutexRef(0);
 
-    expectTypeOf(ref.get).toEqualTypeOf<Task<number>>();
-    expectTypeOf(ref.set(1)).toEqualTypeOf<Task<void>>();
-    expectTypeOf(ref.getAndSet(1)).toEqualTypeOf<Task<number>>();
-    expectTypeOf(ref.setAndGet(1)).toEqualTypeOf<Task<number>>();
+    assertType<typeof ref.get, Task<number>>();
+    {
+      const actual = ref.set(1);
+      assertType<typeof actual, Task<void>>();
+    }
+    {
+      const actual = ref.getAndSet(1);
+      assertType<typeof actual, Task<number>>();
+    }
+    {
+      const actual = ref.setAndGet(1);
+      assertType<typeof actual, Task<number>>();
+    }
 
-    expectTypeOf(
-      ref.update((n) => (() => ok(n)) as Task<number, TestError, TestDep>),
-    ).toEqualTypeOf<Task<void, TestError, TestDep>>();
+    {
+      const actual = ref.update(
+        (n) => (() => ok(n)) as Task<number, TestError, TestDep>,
+      );
+      assertType<typeof actual, Task<void, TestError, TestDep>>();
+    }
 
-    expectTypeOf(
-      ref.modify(
+    {
+      const actual = ref.modify(
         (n) =>
           (() => ok(["r", n] as const)) as Task<
             readonly [string, number],
             TestError,
             TestDep
           >,
-      ),
-    ).toEqualTypeOf<Task<string, TestError, TestDep>>();
+      );
+      assertType<typeof actual, Task<string, TestError, TestDep>>();
+    }
   });
 });

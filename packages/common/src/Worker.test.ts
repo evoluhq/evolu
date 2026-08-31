@@ -1,7 +1,16 @@
-import { describe, expect, test } from "vitest";
-import { assertNonNullable } from "../../../../packages/common/src/Assert.ts";
-import { constVoid } from "../../../../packages/common/src/Function.ts";
-import type { NativeMessagePort } from "../../../../packages/common/src/Worker.ts";
+import { describe, it } from "node:test";
+
+import {
+  assertEqual,
+  assertFalse,
+  assertNonNullable,
+  assertNotNull,
+  assertSame,
+  assertThrowsInstanceOf,
+  assertTrue,
+} from "./Assert.ts";
+import { constVoid } from "./Function.ts";
+import type { NativeMessagePort } from "./Worker.ts";
 import {
   createWorker,
   createSharedWorker,
@@ -12,18 +21,18 @@ import {
   testCreateMessagePort,
   testCreateBroadcastChannel,
   testWaitForWorkerMessage,
-} from "../../../../packages/common/src/Worker.ts";
+} from "./Worker.ts";
 
 const expectArrayAfterWorkerMessage = async <T>(
   actual: ReadonlyArray<T>,
   expected: ReadonlyArray<T>,
 ): Promise<void> => {
   await testWaitForWorkerMessage();
-  expect(actual).toEqual(expected);
+  assertEqual(actual, expected);
 };
 
 describe("createWorker", () => {
-  test("messages are queued and delivered asynchronously after worker self onMessage is assigned", async () => {
+  it("messages are queued and delivered asynchronously after worker self onMessage is assigned", async () => {
     let self!: { onMessage: ((message: string) => void) | null };
 
     const worker = createWorker<string>((nextSelf) => {
@@ -42,7 +51,7 @@ describe("createWorker", () => {
 });
 
 describe("createSharedWorker", () => {
-  test("messages are queued and delivered asynchronously after worker-side port onMessage is assigned", async () => {
+  it("messages are queued and delivered asynchronously after worker-side port onMessage is assigned", async () => {
     let workerPort!: { onMessage: ((message: string) => void) | null };
 
     const worker = createSharedWorker<string>((self) => {
@@ -63,15 +72,15 @@ describe("createSharedWorker", () => {
 });
 
 describe("testCreateMessageChannel", () => {
-  test("native ports are object tokens for WeakMap compatibility", () => {
+  it("native ports are object tokens for WeakMap compatibility", () => {
     const channel = testCreateMessageChannel<string, number>();
-    expect(typeof channel.port1.native).toBe("object");
-    expect(channel.port1.native).not.toBeNull();
-    expect(typeof channel.port2.native).toBe("object");
-    expect(channel.port2.native).not.toBeNull();
+    assertEqual(typeof channel.port1.native, "object");
+    assertNotNull(channel.port1.native);
+    assertEqual(typeof channel.port2.native, "object");
+    assertNotNull(channel.port2.native);
   });
 
-  test("port1 postMessage delivers to port2 onMessage asynchronously", async () => {
+  it("port1 postMessage delivers to port2 onMessage asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const received: Array<string> = [];
     channel.port2.onMessage = (msg) => {
@@ -82,7 +91,7 @@ describe("testCreateMessageChannel", () => {
     await expectArrayAfterWorkerMessage(received, ["hello"]);
   });
 
-  test("port2 postMessage delivers to port1 onMessage asynchronously", async () => {
+  it("port2 postMessage delivers to port1 onMessage asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const received: Array<number> = [];
     channel.port1.onMessage = (msg) => {
@@ -93,7 +102,7 @@ describe("testCreateMessageChannel", () => {
     await expectArrayAfterWorkerMessage(received, [42]);
   });
 
-  test("messages are queued until onMessage is assigned and then flushed asynchronously", async () => {
+  it("messages are queued until onMessage is assigned and then flushed asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     channel.port1.postMessage("a");
     channel.port1.postMessage("b");
@@ -105,7 +114,7 @@ describe("testCreateMessageChannel", () => {
     await expectArrayAfterWorkerMessage(received, ["a", "b"]);
   });
 
-  test("messages remain queued when dispatch runs before onMessage is assigned", async () => {
+  it("messages remain queued when dispatch runs before onMessage is assigned", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
 
@@ -118,7 +127,7 @@ describe("testCreateMessageChannel", () => {
     await expectArrayAfterWorkerMessage(received, ["buffered"]);
   });
 
-  test("messages sent after onMessage is assigned are delivered asynchronously", async () => {
+  it("messages sent after onMessage is assigned are delivered asynchronously", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
     channel.port2.onMessage = (msg) => {
@@ -130,7 +139,7 @@ describe("testCreateMessageChannel", () => {
     await expectArrayAfterWorkerMessage(received, ["first", "second"]);
   });
 
-  test("setting onMessage to null stops future asynchronous delivery", async () => {
+  it("setting onMessage to null stops future asynchronous delivery", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
     channel.port2.onMessage = (msg) => {
@@ -143,21 +152,21 @@ describe("testCreateMessageChannel", () => {
     channel.port1.postMessage("queued");
     await testWaitForWorkerMessage();
 
-    expect(received).toEqual(["delivered"]);
+    assertEqual(received, ["delivered"]);
   });
 
-  test("dispose nulls out handlers", () => {
+  it("dispose nulls out handlers", () => {
     const channel = testCreateMessageChannel<string>();
     channel.port1.onMessage = constVoid;
     channel.port2.onMessage = constVoid;
-    expect(channel.port1.onMessage).not.toBeNull();
-    expect(channel.port2.onMessage).not.toBeNull();
+    assertNotNull(channel.port1.onMessage);
+    assertNotNull(channel.port2.onMessage);
     channel[Symbol.dispose]();
-    expect(channel.port1.onMessage).toBeNull();
-    expect(channel.port2.onMessage).toBeNull();
+    assertSame(channel.port1.onMessage, null);
+    assertSame(channel.port2.onMessage, null);
   });
 
-  test("dispose before scheduled flush drops queued messages", async () => {
+  it("dispose before scheduled flush drops queued messages", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
     const clearTimeout = globalThis.clearTimeout;
@@ -173,13 +182,13 @@ describe("testCreateMessageChannel", () => {
 
       await testWaitForWorkerMessage();
 
-      expect(received).toEqual([]);
+      assertEqual(received, []);
     } finally {
       globalThis.clearTimeout = clearTimeout;
     }
   });
 
-  test("dispose during flush stops remaining queued messages", async () => {
+  it("dispose during flush stops remaining queued messages", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
 
@@ -194,22 +203,26 @@ describe("testCreateMessageChannel", () => {
     await expectArrayAfterWorkerMessage(received, ["first"]);
   });
 
-  test("isDisposed reflects disposal state", () => {
+  it("isDisposed reflects disposal state", () => {
     const channel = testCreateMessageChannel<string>();
 
-    expect(channel.isDisposed()).toBe(false);
+    assertFalse(channel.isDisposed());
     channel[Symbol.dispose]();
-    expect(channel.isDisposed()).toBe(true);
+    assertTrue(channel.isDisposed());
   });
 
-  test("each channel creates independent ports", () => {
+  it("each channel creates independent ports", () => {
     const channel1 = testCreateMessageChannel<string>();
     const channel2 = testCreateMessageChannel<string>();
-    expect(channel1.port1.native).not.toBe(channel2.port1.native);
-    expect(channel1.port2.native).not.toBe(channel2.port2.native);
+    assertFalse(
+      globalThis.Object.is(channel1.port1.native, channel2.port1.native),
+    );
+    assertFalse(
+      globalThis.Object.is(channel1.port2.native, channel2.port2.native),
+    );
   });
 
-  test("bidirectional communication works asynchronously", async () => {
+  it("bidirectional communication works asynchronously", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const strings: Array<string> = [];
     const numbers: Array<number> = [];
@@ -225,20 +238,20 @@ describe("testCreateMessageChannel", () => {
     channel.port2.postMessage(42);
 
     await expectArrayAfterWorkerMessage(strings, ["hello"]);
-    expect(numbers).toEqual([42]);
+    assertEqual(numbers, [42]);
   });
 
-  test("disposed port ignores onMessage reassignment and repeated dispose", () => {
+  it("disposed port ignores onMessage reassignment and repeated dispose", () => {
     const channel = testCreateMessageChannel<string>();
 
     channel.port2[Symbol.dispose]();
     channel.port2.onMessage = constVoid;
     channel.port2[Symbol.dispose]();
 
-    expect(channel.port2.onMessage).toBeNull();
+    assertSame(channel.port2.onMessage, null);
   });
 
-  test("sending to a disposed peer is ignored", async () => {
+  it("sending to a disposed peer is ignored", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
 
@@ -250,10 +263,10 @@ describe("testCreateMessageChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
   });
 
-  test("non-port transferables are ignored", async () => {
+  it("non-port transferables are ignored", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
 
@@ -266,7 +279,7 @@ describe("testCreateMessageChannel", () => {
     await expectArrayAfterWorkerMessage(received, ["hello", "world"]);
   });
 
-  test("transferred native ports can be wrapped after transfer", async () => {
+  it("transferred native ports can be wrapped after transfer", async () => {
     const channel =
       testCreateMessageChannel<NativeMessagePort<never, string>>();
     const transferredChannel = testCreateMessageChannel<never, string>();
@@ -298,19 +311,19 @@ describe("testCreateMessageChannel", () => {
 });
 
 describe("testCreateMessagePort", () => {
-  test("looks up port by native token from channel", () => {
+  it("looks up port by native token from channel", () => {
     const channel = testCreateMessageChannel<string, number>();
     const port = testCreateMessagePort<string, number>(channel.port1.native);
-    expect(port.native).toBe(channel.port1.native);
+    assertSame(port.native, channel.port1.native);
   });
 
-  test("looks up port2 by native token", () => {
+  it("looks up port2 by native token", () => {
     const channel = testCreateMessageChannel<string, number>();
     const port = testCreateMessagePort<number, string>(channel.port2.native);
-    expect(port.native).toBe(channel.port2.native);
+    assertSame(port.native, channel.port2.native);
   });
 
-  test("transferred ports remain usable after original channel dispose", async () => {
+  it("transferred ports remain usable after original channel dispose", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const transferredPort1 = testCreateMessagePort<string, number>(
       channel.port1.native,
@@ -330,7 +343,7 @@ describe("testCreateMessagePort", () => {
     await expectArrayAfterWorkerMessage(received, ["hello"]);
   });
 
-  test("disposed wrapper postMessage is ignored", async () => {
+  it("disposed wrapper postMessage is ignored", async () => {
     const channel = testCreateMessageChannel<string, number>();
     const transferredPort1 = testCreateMessagePort<string, number>(
       channel.port1.native,
@@ -351,25 +364,31 @@ describe("testCreateMessagePort", () => {
     await expectArrayAfterWorkerMessage(received, ["delivered"]);
   });
 
-  test("throws for disposed native port", () => {
+  it("throws for disposed native port", () => {
     const channel = testCreateMessageChannel<string>();
     const native = channel.port1.native;
 
     channel.port1[Symbol.dispose]();
 
-    expect(() => testCreateMessagePort(native)).toThrow("Unknown native port");
+    const error = assertThrowsInstanceOf(
+      () => testCreateMessagePort(native),
+      Error,
+    );
+    assertTrue(error.message.includes("Unknown native port"));
   });
 
-  test("throws for unknown native port", () => {
+  it("throws for unknown native port", () => {
     const unknownNative = {} as NativeMessagePort;
-    expect(() => testCreateMessagePort(unknownNative)).toThrow(
-      "Unknown native port",
+    const error = assertThrowsInstanceOf(
+      () => testCreateMessagePort(unknownNative),
+      Error,
     );
+    assertTrue(error.message.includes("Unknown native port"));
   });
 });
 
 describe("createBroadcastChannel", () => {
-  test("postMessage delivers to other channels with the same name asynchronously", async () => {
+  it("postMessage delivers to other channels with the same name asynchronously", async () => {
     using channel1 = createBroadcastChannel<string>("test-channel");
     using channel2 = createBroadcastChannel<string>("test-channel");
     const received: Array<string> = [];
@@ -379,11 +398,11 @@ describe("createBroadcastChannel", () => {
     };
     channel1.postMessage("hello");
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
     await expectArrayAfterWorkerMessage(received, ["hello"]);
   });
 
-  test("postMessage does not deliver to the sending channel", async () => {
+  it("postMessage does not deliver to the sending channel", async () => {
     using channel = createBroadcastChannel<string>("test-channel-self");
     const received: Array<string> = [];
 
@@ -394,10 +413,10 @@ describe("createBroadcastChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
   });
 
-  test("postMessage fans out to all other channels with the same name", async () => {
+  it("postMessage fans out to all other channels with the same name", async () => {
     using channel1 = createBroadcastChannel<string>("test-channel-fanout");
     using channel2 = createBroadcastChannel<string>("test-channel-fanout");
     using channel3 = createBroadcastChannel<string>("test-channel-fanout");
@@ -414,11 +433,11 @@ describe("createBroadcastChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(received2).toEqual(["hello"]);
-    expect(received3).toEqual(["hello"]);
+    assertEqual(received2, ["hello"]);
+    assertEqual(received3, ["hello"]);
   });
 
-  test("channels with different names are isolated", async () => {
+  it("channels with different names are isolated", async () => {
     using channel1 = createBroadcastChannel<string>("test-channel-a");
     using channel2 = createBroadcastChannel<string>("test-channel-b");
     const received: Array<string> = [];
@@ -430,10 +449,10 @@ describe("createBroadcastChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
   });
 
-  test("messages posted before onMessage is assigned are delivered if assigned before dispatch", async () => {
+  it("messages posted before onMessage is assigned are delivered if assigned before dispatch", async () => {
     using channel1 = createBroadcastChannel<string>("test-channel-queued");
     using channel2 = createBroadcastChannel<string>("test-channel-queued");
     const received: Array<string> = [];
@@ -446,7 +465,7 @@ describe("createBroadcastChannel", () => {
     await expectArrayAfterWorkerMessage(received, ["queued"]);
   });
 
-  test("messages are dropped when no onMessage is assigned at dispatch", async () => {
+  it("messages are dropped when no onMessage is assigned at dispatch", async () => {
     using channel1 = createBroadcastChannel<string>("test-channel-drop");
     using channel2 = createBroadcastChannel<string>("test-channel-drop");
     const received: Array<string> = [];
@@ -459,10 +478,10 @@ describe("createBroadcastChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
   });
 
-  test("setting onMessage to null before dispatch drops the message", async () => {
+  it("setting onMessage to null before dispatch drops the message", async () => {
     using channel1 = createBroadcastChannel<string>("test-channel-null");
     using channel2 = createBroadcastChannel<string>("test-channel-null");
     const received: Array<string> = [];
@@ -475,10 +494,10 @@ describe("createBroadcastChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
   });
 
-  test("dispose removes channel from future delivery", async () => {
+  it("dispose removes channel from future delivery", async () => {
     using channel1 = createBroadcastChannel<string>("test-channel-dispose");
     const channel2 = createBroadcastChannel<string>("test-channel-dispose");
     const received: Array<string> = [];
@@ -491,10 +510,10 @@ describe("createBroadcastChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
   });
 
-  test("dispose before scheduled dispatch drops the message", async () => {
+  it("dispose before scheduled dispatch drops the message", async () => {
     using channel1 = createBroadcastChannel<string>(
       "test-channel-dispose-queued",
     );
@@ -511,22 +530,24 @@ describe("createBroadcastChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
   });
 
-  test("disposed channel postMessage asserts not disposed", () => {
+  it("disposed channel postMessage asserts not disposed", () => {
     const channel = createBroadcastChannel<string>(
       "test-channel-disposed-send",
     );
 
     channel[Symbol.dispose]();
 
-    expect(() => channel.postMessage("ignored")).toThrow(
-      "Cannot use a disposed object.",
+    const error = assertThrowsInstanceOf(
+      () => channel.postMessage("ignored"),
+      Error,
     );
+    assertTrue(error.message.includes("Cannot use a disposed object."));
   });
 
-  test("disposed channel ignores onMessage reassignment", async () => {
+  it("disposed channel ignores onMessage reassignment", async () => {
     using channel1 = createBroadcastChannel<string>(
       "test-channel-disposed-send",
     );
@@ -546,13 +567,13 @@ describe("createBroadcastChannel", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(channel1.onMessage).toBeNull();
-    expect(received).toEqual([]);
+    assertSame(channel1.onMessage, null);
+    assertEqual(received, []);
   });
 });
 
 describe("testCreateWorker", () => {
-  test("worker and self communicate through ports asynchronously", async () => {
+  it("worker and self communicate through ports asynchronously", async () => {
     const worker = testCreateWorker<string, number>();
     const workerReceived: Array<number> = [];
     const selfReceived: Array<string> = [];
@@ -569,11 +590,11 @@ describe("testCreateWorker", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(selfReceived).toEqual(["to-self"]);
-    expect(workerReceived).toEqual([123]);
+    assertEqual(selfReceived, ["to-self"]);
+    assertEqual(workerReceived, [123]);
   });
 
-  test("messages are queued until onMessage is assigned and then flushed asynchronously", async () => {
+  it("messages are queued until onMessage is assigned and then flushed asynchronously", async () => {
     const worker = testCreateWorker<string>();
     worker.postMessage("queued");
 
@@ -585,46 +606,49 @@ describe("testCreateWorker", () => {
     await expectArrayAfterWorkerMessage(received, ["queued"]);
   });
 
-  test("worker dispose clears handlers", () => {
+  it("worker dispose clears handlers", () => {
     const worker = testCreateWorker<string>();
     worker.onMessage = constVoid;
     worker.self.onMessage = constVoid;
 
     worker[Symbol.dispose]();
 
-    expect(worker.onMessage).toBeNull();
-    expect(worker.self.onMessage).toBeNull();
+    assertSame(worker.onMessage, null);
+    assertSame(worker.self.onMessage, null);
   });
 
-  test("self dispose clears self handler", () => {
+  it("self dispose clears self handler", () => {
     const worker = testCreateWorker<string>();
     worker.self.onMessage = constVoid;
 
     worker.self[Symbol.dispose]();
 
-    expect(worker.self.onMessage).toBeNull();
+    assertSame(worker.self.onMessage, null);
   });
 });
 
 describe("testCreateSharedWorker", () => {
-  test("connect triggers onConnect with worker port", () => {
+  it("connect triggers onConnect with worker port", () => {
     const worker = testCreateSharedWorker<string>();
     let connected = false;
     worker.self.onConnect = () => {
       connected = true;
     };
     worker.connect();
-    expect(connected).toBe(true);
+    assertTrue(connected);
   });
 
-  test("connect throws when onConnect is null", () => {
+  it("connect throws when onConnect is null", () => {
     const worker = testCreateSharedWorker<string>();
-    expect(() => worker.connect()).toThrow(
-      "onConnect must be set before receiving connections",
+    const error = assertThrowsInstanceOf(() => worker.connect(), Error);
+    assertTrue(
+      error.message.includes(
+        "onConnect must be set before receiving connections",
+      ),
     );
   });
 
-  test("worker and self communicate through ports asynchronously", async () => {
+  it("worker and self communicate through ports asynchronously", async () => {
     const worker = testCreateSharedWorker<string, number>();
     const workerReceived: Array<string> = [];
     const clientReceived: Array<number> = [];
@@ -645,11 +669,11 @@ describe("testCreateSharedWorker", () => {
 
     await testWaitForWorkerMessage();
 
-    expect(workerReceived).toEqual(["hello"]);
-    expect(clientReceived).toEqual([99]);
+    assertEqual(workerReceived, ["hello"]);
+    assertEqual(clientReceived, [99]);
   });
 
-  test("messages sent before connect are queued and delivered asynchronously", async () => {
+  it("messages sent before connect are queued and delivered asynchronously", async () => {
     const worker = testCreateSharedWorker<string>();
     worker.port.postMessage("before-connect");
 
@@ -664,25 +688,25 @@ describe("testCreateSharedWorker", () => {
     await expectArrayAfterWorkerMessage(received, ["before-connect"]);
   });
 
-  test("worker dispose disposes channel", () => {
+  it("worker dispose disposes channel", () => {
     const worker = testCreateSharedWorker<string>();
     worker.port.onMessage = constVoid;
-    expect(worker.port.onMessage).not.toBeNull();
+    assertNotNull(worker.port.onMessage);
     worker[Symbol.dispose]();
-    expect(worker.port.onMessage).toBeNull();
+    assertSame(worker.port.onMessage, null);
   });
 
-  test("self dispose nulls onConnect", () => {
+  it("self dispose nulls onConnect", () => {
     const worker = testCreateSharedWorker<string>();
     worker.self.onConnect = constVoid;
-    expect(worker.self.onConnect).not.toBeNull();
+    assertNotNull(worker.self.onConnect);
     worker.self[Symbol.dispose]();
-    expect(worker.self.onConnect).toBeNull();
+    assertSame(worker.self.onConnect, null);
   });
 });
 
 describe("testCreateBroadcastChannel", () => {
-  test("forwards postMessage and onMessage to the underlying channel", async () => {
+  it("forwards postMessage and onMessage to the underlying channel", async () => {
     using channel1 = testCreateBroadcastChannel<string>("test-channel-helper");
     using channel2 = testCreateBroadcastChannel<string>("test-channel-helper");
     const received: Array<string> = [];
@@ -694,20 +718,20 @@ describe("testCreateBroadcastChannel", () => {
 
     await expectArrayAfterWorkerMessage(received, ["hello"]);
 
-    expect(channel2.onMessage).not.toBeNull();
+    assertNotNull(channel2.onMessage);
   });
 
-  test("isDisposed reflects disposal state", () => {
+  it("isDisposed reflects disposal state", () => {
     const channel = testCreateBroadcastChannel<string>("test-channel-state");
 
-    expect(channel.isDisposed()).toBe(false);
+    assertFalse(channel.isDisposed());
     channel[Symbol.dispose]();
-    expect(channel.isDisposed()).toBe(true);
+    assertTrue(channel.isDisposed());
   });
 });
 
 describe("testWaitForWorkerMessage", () => {
-  test("waits for scheduled worker message delivery", async () => {
+  it("waits for scheduled worker message delivery", async () => {
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
     channel.port2.onMessage = (message) => {
@@ -715,12 +739,12 @@ describe("testWaitForWorkerMessage", () => {
     };
     channel.port1.postMessage("delivered");
 
-    expect(received).toEqual([]);
+    assertEqual(received, []);
     await testWaitForWorkerMessage();
-    expect(received).toEqual(["delivered"]);
+    assertEqual(received, ["delivered"]);
   });
 
-  test("waits for delivery scheduled during the idle checkpoint", async () => {
+  it("waits for delivery scheduled during the idle checkpoint", async () => {
     const idle = testWaitForWorkerMessage();
     const channel = testCreateMessageChannel<string>();
     const received: Array<string> = [];
@@ -730,6 +754,6 @@ describe("testWaitForWorkerMessage", () => {
     channel.port1.postMessage("delivered");
 
     await idle;
-    expect(received).toEqual(["delivered"]);
+    assertEqual(received, ["delivered"]);
   });
 });

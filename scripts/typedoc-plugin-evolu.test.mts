@@ -1,6 +1,7 @@
+import { assertEqual, assertFalse, assertTrue } from "@evolu/common";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "node:test";
 
 import { stripPureAnnotations } from "./typedoc-plugin-evolu.mts";
 
@@ -18,15 +19,16 @@ const docsPath = join(
 
 describe("stripPureAnnotations", () => {
   it("removes nested pure annotations from displayed source", () => {
-    expect(
+    assertEqual(
       stripPureAnnotations(`brand(
   "Age",
   /*#__PURE__*/ lessThan(200)(NonNegativeInt),
 )`),
-    ).toBe(`brand(
+      `brand(
   "Age",
   lessThan(200)(NonNegativeInt),
-)`);
+)`,
+    );
   });
 });
 
@@ -41,9 +43,9 @@ describe.skip("typedoc-plugin-evolu-type", () => {
         "utf-8",
       );
       // Interface should have the const's comment (HLC documentation)
-      expect(content).toContain("Hybrid Logical Clock timestamp");
+      assertTrue(content.includes("Hybrid Logical Clock timestamp"));
       // Should NOT have InferType's generic JSDoc
-      expect(content).not.toContain("Extracts the Output of a Type");
+      assertFalse(content.includes("Extracts the Output of a Type"));
     });
   });
 
@@ -57,7 +59,7 @@ describe.skip("typedoc-plugin-evolu-type", () => {
         "utf-8",
       );
       // Type alias should have the const's comment
-      expect(content).toContain("A NodeId uniquely identifies");
+      assertTrue(content.includes("A NodeId uniquely identifies"));
     });
 
     it("resolves the type instead of showing typeof X.Output", () => {
@@ -69,8 +71,8 @@ describe.skip("typedoc-plugin-evolu-type", () => {
         "utf-8",
       );
       // Should show the resolved branded type, not "typeof NodeId.Output"
-      expect(content).not.toContain("typeof NodeId.Output");
-      expect(content).toContain('Brand<"NodeId">');
+      assertFalse(content.includes("typeof NodeId.Output"));
+      assertTrue(content.includes('Brand<"NodeId">'));
     });
   });
 
@@ -84,11 +86,11 @@ describe.skip("typedoc-plugin-evolu-type", () => {
         "utf-8",
       );
       // Should show the factory call, not the expanded ObjectType<...>
-      expect(content).toContain("object({");
-      expect(content).toContain("millis: Millis");
-      expect(content).toContain("counter: Counter");
-      expect(content).toContain("nodeId: NodeId");
-      expect(content).not.toContain("ObjectType<");
+      assertTrue(content.includes("object({"));
+      assertTrue(content.includes("millis: Millis"));
+      assertTrue(content.includes("counter: Counter"));
+      assertTrue(content.includes("nodeId: NodeId"));
+      assertFalse(content.includes("ObjectType<"));
     });
 
     it("shows source instead of expanded type for regex()", () => {
@@ -100,8 +102,8 @@ describe.skip("typedoc-plugin-evolu-type", () => {
         "utf-8",
       );
       // Should show regex(...), not BrandType<...>
-      expect(content).toContain('regex("NodeId"');
-      expect(content).not.toContain("BrandType<");
+      assertTrue(content.includes('regex("NodeId"'));
+      assertFalse(content.includes("BrandType<"));
     });
 
     it("shows source instead of expanded type for curried factories", () => {
@@ -110,8 +112,8 @@ describe.skip("typedoc-plugin-evolu-type", () => {
         "utf-8",
       );
       // Should show length(64)(Entropy), not BrandType<...>
-      expect(content).toContain("length(64)(Entropy)");
-      expect(content).not.toContain("BrandType<");
+      assertTrue(content.includes("length(64)(Entropy)"));
+      assertFalse(content.includes("BrandType<"));
     });
   });
 });

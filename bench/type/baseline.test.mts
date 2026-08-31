@@ -1,5 +1,13 @@
-import { getOrThrow, objectFrom } from "@evolu/common";
-import { describe, expect, test } from "vitest";
+import {
+  assertEqual,
+  assertFalse,
+  assertLength,
+  assertThrowsInstanceOf,
+  assertTrue,
+  getOrThrow,
+  objectFrom,
+} from "@evolu/common";
+import { describe, it } from "node:test";
 import {
   compareTypeBenchmarkMeasurements,
   deterministicMetricNames,
@@ -25,65 +33,67 @@ const baseline: TypeBenchmarkBaseline = {
 };
 
 describe("Type benchmark baselines", () => {
-  test("matches complete workload names and individual fixtures", () => {
-    expect(matchesTypeBenchmarkFilter("nested-object-all-32", [])).toBe(true);
-    expect(
-      matchesTypeBenchmarkFilter("nested-object-all-32", [
-        "nested-object-all",
-      ]),
-    ).toBe(true);
-    expect(
+  it("matches complete workload names and individual fixtures", () => {
+    assertTrue(matchesTypeBenchmarkFilter("nested-object-all-32", []));
+    assertTrue(
+      matchesTypeBenchmarkFilter("nested-object-all-32", ["nested-object-all"]),
+    );
+    assertTrue(
       matchesTypeBenchmarkFilter("nested-object-all-32", [
         "nested-object-all-32",
       ]),
-    ).toBe(true);
-    expect(
-      matchesTypeBenchmarkFilter("object-union-all-32", [
-        "nested-object-all",
-      ]),
-    ).toBe(false);
+    );
+    assertFalse(
+      matchesTypeBenchmarkFilter("object-union-all-32", ["nested-object-all"]),
+    );
   });
 
-  test("parses and finds a compatible baseline", () => {
+  it("parses and finds a compatible baseline", () => {
     const baselines = getOrThrow(
       TypeBenchmarkBaselines.fromUnknown({ baselines: [baseline] }),
     );
-    expect(findTypeBenchmarkBaseline(baselines, baseline)).toEqual(baseline);
-    expect(
+    assertEqual(findTypeBenchmarkBaseline(baselines, baseline), baseline);
+    assertEqual(
       findTypeBenchmarkBaseline(baselines, {
         ...baseline,
         typescriptVersion: "7.1.0",
       }),
-    ).toBeUndefined();
+      undefined,
+    );
   });
 
-  test("rejects a malformed deterministic metric", () => {
-    expect(() =>
-      getOrThrow(
-        TypeBenchmarkBaselines.fromUnknown({
-          baselines: [
-            {
-              ...baseline,
-              measurements: {
-                "factory-output-01": { ...diagnostics, types: 1.5 },
-              },
-            },
-          ],
-        }),
-      ),
-    ).toThrow("getOrThrow");
+  it("rejects a malformed deterministic metric", () => {
+    assertTrue(
+      assertThrowsInstanceOf(
+        () =>
+          getOrThrow(
+            TypeBenchmarkBaselines.fromUnknown({
+              baselines: [
+                {
+                  ...baseline,
+                  measurements: {
+                    "factory-output-01": { ...diagnostics, types: 1.5 },
+                  },
+                },
+              ],
+            }),
+          ),
+        Error,
+      ).message.includes("getOrThrow"),
+    );
   });
 
-  test("subtracts the shared compiler baseline", () => {
-    expect(
+  it("subtracts the shared compiler baseline", () => {
+    assertEqual(
       subtractDeterministicDiagnostics(
         { ...diagnostics, instantiations: 20 },
         { ...diagnostics, instantiations: 7 },
       ).instantiations,
-    ).toBe(13);
+      13,
+    );
   });
 
-  test("classifies regressions, improvements, and workload changes", () => {
+  it("classifies regressions, improvements, and workload changes", () => {
     const comparison = compareTypeBenchmarkMeasurements(
       {
         "factory-output-01": {
@@ -96,32 +106,36 @@ describe("Type benchmark baselines", () => {
       },
       baseline.measurements,
     );
-    expect(comparison.regressions.map((change) => change.metric)).toEqual([
-      "instantiations",
-    ]);
-    expect(comparison.workloadChanges.map((change) => change.metric)).toEqual([
-      "files",
-    ]);
-    expect(comparison.changes).toHaveLength(4);
-    expect(comparison.fixtureChanges).toEqual([]);
+    assertEqual(
+      comparison.regressions.map((change) => change.metric),
+      ["instantiations"],
+    );
+    assertEqual(
+      comparison.workloadChanges.map((change) => change.metric),
+      ["files"],
+    );
+    assertLength(comparison.changes, 4);
+    assertEqual(comparison.fixtureChanges, []);
   });
 
-  test("reports fixture-set changes", () => {
-    expect(
+  it("reports fixture-set changes", () => {
+    assertEqual(
       compareTypeBenchmarkMeasurements({}, baseline.measurements)
         .fixtureChanges,
-    ).toEqual(["removed factory-output-01"]);
+      ["removed factory-output-01"],
+    );
   });
 
-  test("adds and replaces compatible baselines", () => {
+  it("adds and replaces compatible baselines", () => {
     const added = upsertTypeBenchmarkBaseline({ baselines: [] }, baseline);
-    expect(added.baselines).toEqual([baseline]);
+    assertEqual(added.baselines, [baseline]);
 
-    expect(
+    assertEqual(
       upsertTypeBenchmarkBaseline(added, {
         ...baseline,
         measurements: {},
       }).baselines,
-    ).toEqual([{ ...baseline, measurements: {} }]);
+      [{ ...baseline, measurements: {} }],
+    );
   });
 });

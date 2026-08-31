@@ -1,27 +1,28 @@
-import { expect, test } from "vitest";
+import { test } from "node:test";
 import {
   clampBigInt,
   decrementBigInt,
   incrementBigInt,
   isBetweenBigInt,
-} from "../../../../packages/common/src/BigInt.ts";
+} from "./BigInt.ts";
+import { assertEqual, assertFalse, assertTrue } from "./Assert.ts";
 
 test("incrementBigInt", () => {
-  expect(incrementBigInt(1n)).toEqual(2n);
+  assertEqual(incrementBigInt(1n), 2n);
 });
 
 test("decrementBigInt", () => {
-  expect(decrementBigInt(1n)).toEqual(0n);
+  assertEqual(decrementBigInt(1n), 0n);
 });
 
 test("clampBigInt", () => {
-  expect(clampBigInt(0n, 2n)(1n)).toEqual(1n);
-  expect(clampBigInt(0n, 2n)(3n)).toEqual(2n);
-  expect(clampBigInt(0n, 2n)(-1n)).toEqual(0n);
+  assertEqual(clampBigInt(0n, 2n)(1n), 1n);
+  assertEqual(clampBigInt(0n, 2n)(3n), 2n);
+  assertEqual(clampBigInt(0n, 2n)(-1n), 0n);
 });
 
 test("isBetweenBigInt", () => {
-  expect(isBetweenBigInt(0n, 2n)(1n)).toEqual(true);
-  expect(isBetweenBigInt(0n, 2n)(3n)).toEqual(false);
-  expect(isBetweenBigInt(0n, 2n)(-1n)).toEqual(false);
+  assertTrue(isBetweenBigInt(0n, 2n)(1n));
+  assertFalse(isBetweenBigInt(0n, 2n)(3n));
+  assertFalse(isBetweenBigInt(0n, 2n)(-1n));
 });

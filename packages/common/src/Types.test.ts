@@ -1,4 +1,7 @@
-import { expect, expectTypeOf, test } from "vitest";
+import { test } from "node:test";
+import { assertFalse, assertTrue } from "./Assert.ts";
+import { assertType } from "./Type.ts";
+
 import {
   type Callback,
   type CallbackWithTeardown,
@@ -24,24 +27,26 @@ import {
   type UnionToIntersection,
   type ParameterIntersection,
   type DistributiveOmit,
-} from "../../../../packages/common/src/Types.ts";
+} from "./Types.ts";
 
 test("Callback", () => {
-  expectTypeOf<Callback<string>>().toEqualTypeOf<(value: string) => void>();
+  assertType<Callback<string>, (value: string) => void>();
 });
 
 test("CallbackWithTeardown", () => {
-  expectTypeOf<CallbackWithTeardown<string>>().toEqualTypeOf<
+  assertType<
+    CallbackWithTeardown<string>,
     (value: string) => void | (() => void)
   >();
 });
 
 test("Predicate", () => {
-  expectTypeOf<Predicate<string>>().toEqualTypeOf<(value: string) => boolean>();
+  assertType<Predicate<string>, (value: string) => boolean>();
 });
 
 test("PredicateWithIndex", () => {
-  expectTypeOf<PredicateWithIndex<string>>().toEqualTypeOf<
+  assertType<
+    PredicateWithIndex<string>,
     (value: string, index: number) => boolean
   >();
 });
@@ -54,9 +59,7 @@ test("Refinement", () => {
     readonly breed: string;
   }
 
-  expectTypeOf<Refinement<Animal, Dog>>().toEqualTypeOf<
-    (value: Animal) => value is Dog
-  >();
+  assertType<Refinement<Animal, Dog>, (value: Animal) => value is Dog>();
 });
 
 test("RefinementWithIndex", () => {
@@ -67,7 +70,8 @@ test("RefinementWithIndex", () => {
     readonly breed: string;
   }
 
-  expectTypeOf<RefinementWithIndex<Animal, Dog>>().toEqualTypeOf<
+  assertType<
+    RefinementWithIndex<Animal, Dog>,
     (value: Animal, index: number) => value is Dog
   >();
 });
@@ -83,18 +87,26 @@ test("Instance", () => {
   };
   const isFoo = isInstance<Foo>("Foo");
 
-  expectTypeOf(instance("Foo")).toEqualTypeOf<Instance<"Foo">>();
-  expect(Object.keys(foo)).toContain("~evolu/instance");
-  expect(isFoo(foo)).toBe(true);
+  {
+    const actual = instance("Foo");
+    assertType<typeof actual, Instance<"Foo">>();
+  }
+  assertTrue(Object.keys(foo).includes("~evolu/instance"));
+  assertTrue(isFoo(foo));
 
   const value: unknown = foo;
-  if (isFoo(value)) expectTypeOf(value).toEqualTypeOf<Foo>();
+  if (isFoo(value)) assertType<typeof value, Foo>();
 
   const compileTimeAssertions = () => {
     // @ts-expect-error The runtime name must match the interface name.
     isInstance<Foo>("Bar");
   };
-  expectTypeOf(compileTimeAssertions).toBeFunction();
+  assertType<
+    typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+      ? true
+      : false,
+    true
+  >();
 });
 
 test("isInstance checks its own marker", () => {
@@ -104,64 +116,65 @@ test("isInstance checks its own marker", () => {
     instance("Foo"),
   );
 
-  expect(isFoo(nullPrototype)).toBe(true);
-  expect(isFoo(null)).toBe(false);
-  expect(isFoo("Foo")).toBe(false);
-  expect(isFoo({})).toBe(false);
-  expect(isFoo(instance("Bar"))).toBe(false);
-  expect(isFoo(globalThis.Object.create(instance("Foo")))).toBe(false);
+  assertTrue(isFoo(nullPrototype));
+  assertFalse(isFoo(null));
+  assertFalse(isFoo("Foo"));
+  assertFalse(isFoo({}));
+  assertFalse(isFoo(instance("Bar")));
+  assertFalse(isFoo(globalThis.Object.create(instance("Foo"))));
 });
 
 test("NullablePartial", () => {
-  expectTypeOf<
+  assertType<
     NullablePartial<{
       readonly required: string;
       readonly nullable: string | null;
       readonly nullOnly: null;
       readonly existingOptional?: number;
-    }>
-  >().toEqualTypeOf<{
-    readonly required: string;
-    readonly nullable?: string | null;
-    readonly nullOnly?: null;
-    readonly existingOptional?: number;
-  }>();
-});
-
-test("Literal", () => {
-  expectTypeOf<Literal>().toEqualTypeOf<
-    string | number | bigint | boolean | undefined | null
+    }>,
+    {
+      readonly required: string;
+      readonly nullable?: string | null;
+      readonly nullOnly?: null;
+      readonly existingOptional?: number;
+    }
   >();
 });
 
+test("Literal", () => {
+  assertType<Literal, string | number | bigint | boolean | undefined | null>();
+});
+
 test("WidenLiteral", () => {
-  expectTypeOf<WidenLiteral<"foo">>().toEqualTypeOf<string>();
-  expectTypeOf<WidenLiteral<42>>().toEqualTypeOf<number>();
-  expectTypeOf<WidenLiteral<42n>>().toEqualTypeOf<bigint>();
-  expectTypeOf<WidenLiteral<true>>().toEqualTypeOf<boolean>();
-  expectTypeOf<WidenLiteral<undefined>>().toEqualTypeOf<undefined>();
-  expectTypeOf<WidenLiteral<null>>().toEqualTypeOf<null>();
+  assertType<WidenLiteral<"foo">, string>();
+  assertType<WidenLiteral<42>, number>();
+  assertType<WidenLiteral<42n>, bigint>();
+  assertType<WidenLiteral<true>, boolean>();
+  assertType<WidenLiteral<undefined>, undefined>();
+  assertType<WidenLiteral<null>, null>();
 });
 
 test("Writable", () => {
-  expectTypeOf<
+  assertType<
     Writable<{
       readonly value: string;
       readonly nested: { readonly value: number };
-    }>
-  >().toEqualTypeOf<{
-    value: string;
-    nested: { readonly value: number };
-  }>();
+    }>,
+    {
+      value: string;
+      nested: { readonly value: number };
+    }
+  >();
 });
 
 test("Simplify", () => {
-  expectTypeOf<
-    Simplify<{ readonly text: string } & { readonly count: number }>
-  >().toEqualTypeOf<{
-    readonly text: string;
-    readonly count: number;
-  }>();
+  assertType<
+    Simplify<{ readonly text: string } & { readonly count: number }>,
+    {
+      readonly text: string;
+      readonly count: number;
+    }
+  >();
 });
 
 test("PartialProp", () => {
@@ -174,105 +187,111 @@ test("PartialProp", () => {
     readonly optional?: number;
   }
 
-  expectTypeOf<Actual>().toExtend<Expected>();
-  expectTypeOf<Expected>().toExtend<Actual>();
+  assertType<Actual extends Expected ? true : false, true>();
+  assertType<Expected extends Actual ? true : false, true>();
 });
 
 test("Awaitable", () => {
-  expectTypeOf<Awaitable<string>>().toEqualTypeOf<
-    string | PromiseLike<string>
-  >();
+  assertType<Awaitable<string>, string | PromiseLike<string>>();
 });
 
 test("isPromiseLike", () => {
-  expect(isPromiseLike(Promise.resolve("value"))).toBe(true);
+  assertTrue(isPromiseLike(Promise.resolve("value")));
   // oxlint-disable-next-line unicorn/no-thenable -- Intentionally tests a thenable object.
-  expect(isPromiseLike({ then: () => undefined })).toBe(true);
+  assertTrue(isPromiseLike({ then: () => undefined }));
   // oxlint-disable-next-line unicorn/no-thenable -- Intentionally tests a non-callable then property.
-  expect(isPromiseLike({ then: "not a function" })).toBe(false);
-  expect(isPromiseLike(null)).toBe(false);
-  expect(isPromiseLike(undefined)).toBe(false);
-  expect(isPromiseLike("value")).toBe(false);
+  assertFalse(isPromiseLike({ then: "not a function" }));
+  assertFalse(isPromiseLike(null));
+  assertFalse(isPromiseLike(undefined));
+  assertFalse(isPromiseLike("value"));
 
   const narrow = (value: Awaitable<string>) => {
     if (isPromiseLike(value)) {
-      expectTypeOf(value).toEqualTypeOf<PromiseLike<string>>();
+      assertType<typeof value, PromiseLike<string>>();
     } else {
-      expectTypeOf(value).toEqualTypeOf<string>();
+      assertType<typeof value, string>();
     }
   };
-  expectTypeOf(narrow).toBeFunction();
+  assertType<
+    typeof narrow extends (...args: Array<never>) => unknown ? true : false,
+    true
+  >();
 });
 
 test("CompileTimeError", () => {
-  expectTypeOf<
-    CompileTimeError<"Type", "Something went wrong">
-  >().toEqualTypeOf<"⛔ Type error: Something went wrong">();
+  assertType<
+    CompileTimeError<"Type", "Something went wrong">,
+    "⛔ Type error: Something went wrong"
+  >();
 });
 
 test("IsSameType", () => {
-  expectTypeOf<IsSameType<string, string>>().toEqualTypeOf<true>();
-  expectTypeOf<IsSameType<"value", string>>().toEqualTypeOf<false>();
-  expectTypeOf<IsSameType<any, unknown>>().toEqualTypeOf<false>();
-  expectTypeOf<IsSameType<unknown, unknown>>().toEqualTypeOf<true>();
-  expectTypeOf<IsSameType<never, never>>().toEqualTypeOf<true>();
-  expectTypeOf<IsSameType<never, unknown>>().toEqualTypeOf<false>();
-  expectTypeOf<
-    IsSameType<{ readonly value: string }, { value: string }>
-  >().toEqualTypeOf<false>();
-  expectTypeOf<
+  assertType<IsSameType<string, string>, true>();
+  assertType<IsSameType<"value", string>, false>();
+  assertType<IsSameType<any, unknown>, false>();
+  assertType<IsSameType<unknown, unknown>, true>();
+  assertType<IsSameType<never, never>, true>();
+  assertType<IsSameType<never, unknown>, false>();
+  assertType<
+    IsSameType<{ readonly value: string }, { value: string }>,
+    false
+  >();
+  assertType<
     IsSameType<
       { readonly value?: string },
       { readonly value: string | undefined }
-    >
-  >().toEqualTypeOf<false>();
-  expectTypeOf<
+    >,
+    false
+  >();
+  assertType<
     IsSameType<
       { readonly first: 1 } & { readonly second: 2 },
       { readonly first: 1; readonly second: 2 }
-    >
-  >().toEqualTypeOf<false>();
-  expectTypeOf<
+    >,
+    false
+  >();
+  assertType<
     IsSameType<
       Simplify<{ readonly first: 1 } & { readonly second: 2 }>,
       { readonly first: 1; readonly second: 2 }
-    >
-  >().toEqualTypeOf<true>();
+    >,
+    true
+  >();
 });
 
 test("IsUnion", () => {
-  expectTypeOf<IsUnion<string>>().toEqualTypeOf<false>();
-  expectTypeOf<IsUnion<string | number>>().toEqualTypeOf<true>();
-  expectTypeOf<IsUnion<never>>().toEqualTypeOf<false>();
-  expectTypeOf<IsUnion<any>>().toEqualTypeOf<false>();
-  expectTypeOf<IsUnion<unknown>>().toEqualTypeOf<false>();
-  expectTypeOf<IsUnion<boolean>>().toEqualTypeOf<true>();
-  expectTypeOf<IsUnion<"a" | "b">>().toEqualTypeOf<true>();
+  assertType<IsUnion<string>, false>();
+  assertType<IsUnion<string | number>, true>();
+  assertType<IsUnion<never>, false>();
+  assertType<IsUnion<any>, false>();
+  assertType<IsUnion<unknown>, false>();
+  assertType<IsUnion<boolean>, true>();
+  assertType<IsUnion<"a" | "b">, true>();
   // oxlint-disable-next-line typescript/no-redundant-type-constituents -- Verifies IsUnion after TypeScript normalizes a string literal into string.
-  expectTypeOf<IsUnion<string | "a">>().toEqualTypeOf<false>();
+  assertType<IsUnion<string | "a">, false>();
   // oxlint-disable-next-line typescript/no-redundant-type-constituents -- Verifies IsUnion after TypeScript removes never from a union.
-  expectTypeOf<IsUnion<string | never>>().toEqualTypeOf<false>();
-  expectTypeOf<
-    IsUnion<{ readonly a: string } | { readonly b: number }>
-  >().toEqualTypeOf<true>();
-  expectTypeOf<IsUnion<[string | number]>>().toEqualTypeOf<false>();
+  assertType<IsUnion<string | never>, false>();
+  assertType<IsUnion<{ readonly a: string } | { readonly b: number }>, true>();
+  assertType<IsUnion<[string | number]>, false>();
 });
 
 test("KeysOfUnion", () => {
-  expectTypeOf<
+  assertType<
     KeysOfUnion<
       | { readonly id: string; readonly name: string }
       | { readonly id: string; readonly count: number }
-    >
-  >().toEqualTypeOf<"id" | "name" | "count">();
+    >,
+    "id" | "name" | "count"
+  >();
 });
 
 test("UnionToIntersection", () => {
-  expectTypeOf<
+  assertType<
     UnionToIntersection<
       { readonly first: string } | { readonly second: number }
-    >
-  >().toEqualTypeOf<{ readonly first: string } & { readonly second: number }>();
+    >,
+    { readonly first: string } & { readonly second: number }
+  >();
 });
 
 test("ParameterIntersection", () => {
@@ -280,10 +299,12 @@ test("ParameterIntersection", () => {
   type Second = (value: { readonly second: number }) => void;
   type Unknown = (value: unknown) => void;
 
-  expectTypeOf<ParameterIntersection<First | Second>>().toEqualTypeOf<
+  assertType<
+    ParameterIntersection<First | Second>,
     { readonly first: string } & { readonly second: number }
   >();
-  expectTypeOf<ParameterIntersection<First | Second | Unknown>>().toEqualTypeOf<
+  assertType<
+    ParameterIntersection<First | Second | Unknown>,
     { readonly first: string } & { readonly second: number }
   >();
 });
@@ -295,7 +316,8 @@ test("DistributiveOmit", () => {
 
   type Payload = DistributiveOmit<Event, "shared">;
 
-  expectTypeOf<Payload>().toEqualTypeOf<
+  assertType<
+    Payload,
     | { readonly type: "a"; readonly a: string }
     | { readonly type: "b"; readonly b: number }
   >();

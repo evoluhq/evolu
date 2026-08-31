@@ -1,5 +1,13 @@
-import type { MessagePort, NativeMessagePort } from "@evolu/common";
-import { describe, expect, test, vi } from "vitest";
+import {
+  assertEqual,
+  assertNonNullable,
+  assertSame,
+  assertThrowsInstanceOf,
+  testStubGlobal,
+  type MessagePort,
+  type NativeMessagePort,
+} from "@evolu/common";
+import { describe, it, mock, test } from "node:test";
 import {
   createBroadcastChannel,
   createOneTabSharedWorkerSelfPolyfill,
@@ -11,22 +19,16 @@ import {
   createWorkerDeps,
   createWorkerSelf,
   installOneTabSharedWorkerPolyfill,
-} from "../src/Worker.ts";
-
-interface WorkerInput {
-  readonly type: "echo";
-  readonly value: string;
-}
-
-type WorkerOutput =
-  | { readonly type: "ready" }
-  | { readonly type: "echo"; readonly value: string };
+} from "./Worker.ts";
 
 test("createWorker wraps a native worker and disposes via terminate", () => {
   const nativeWorker = {
     onmessage: null as ((event: MessageEvent<string>) => void) | null,
-    postMessage: vi.fn(),
-    terminate: vi.fn(),
+    postMessage:
+      mock.fn<
+        (message: unknown, transfer?: ReadonlyArray<Transferable>) => void
+      >(),
+    terminate: mock.fn(),
   };
   const worker = createWorker<string, string>(
     nativeWorker as unknown as globalThis.Worker,
@@ -40,46 +42,53 @@ test("createWorker wraps a native worker and disposes via terminate", () => {
   worker.postMessage("request");
   worker[Symbol.dispose]();
 
-  expect(received).toEqual(["response"]);
-  expect(worker.native).toBe(nativeWorker);
-  expect(nativeWorker.postMessage).toHaveBeenCalledWith("request");
-  expect(nativeWorker.terminate).toHaveBeenCalledOnce();
-  expect(nativeWorker.onmessage).toBeNull();
+  assertEqual(received, ["response"]);
+  assertSame(worker.native, nativeWorker);
+  assertEqual(
+    nativeWorker.postMessage.mock.calls.map(({ arguments: args }) => args),
+    [["request"]],
+  );
+  assertEqual(nativeWorker.terminate.mock.callCount(), 1);
+  assertEqual(nativeWorker.onmessage, null);
 });
 
 test("createMessageChannel queues messages until onMessage is assigned", async () => {
   using channel = createMessageChannel<string>();
   const received: Array<string> = [];
+  const delivered = Promise.withResolvers<void>();
 
   channel.port1.postMessage("queued");
   channel.port2.onMessage = (message) => {
     received.push(message);
+    delivered.resolve();
   };
 
-  await vi.waitFor(() => {
-    expect(received).toEqual(["queued"]);
-  });
+  await delivered.promise;
+  assertEqual(received, ["queued"]);
 });
 
 test("createMessageChannel supports bidirectional communication and disposal", async () => {
   using channel = createMessageChannel<string, number>();
   const strings: Array<string> = [];
   const numbers: Array<number> = [];
+  const stringDelivered = Promise.withResolvers<void>();
+  const numberDelivered = Promise.withResolvers<void>();
 
   channel.port2.onMessage = (message) => {
     strings.push(message);
+    stringDelivered.resolve();
   };
   channel.port1.onMessage = (message) => {
     numbers.push(message);
+    numberDelivered.resolve();
   };
 
   channel.port1.postMessage("hello");
   channel.port2.postMessage(42);
 
-  await vi.waitFor(() => {
-    expect(strings).toEqual(["hello"]);
-    expect(numbers).toEqual([42]);
-  });
+  await Promise.all([stringDelivered.promise, numberDelivered.promise]);
+  assertEqual(strings, ["hello"]);
+  assertEqual(numbers, [42]);
 });
 
 test("createMessagePort wraps a native port received from MessageChannel", async () => {
@@ -94,15 +103,16 @@ test("createMessagePort wraps a native port received from MessageChannel", async
     ),
   );
   const received: Array<string> = [];
+  const delivered = Promise.withResolvers<void>();
 
   wrappedPort.onMessage = (message) => {
     received.push(message);
+    delivered.resolve();
   };
   nativeChannel.port2.postMessage("hello");
 
-  await vi.waitFor(() => {
-    expect(received).toEqual(["hello"]);
-  });
+  await delivered.promise;
+  assertEqual(received, ["hello"]);
 
   const nativeReceived = new Promise<number>((resolve) => {
     // oxlint-disable-next-line unicorn/prefer-add-event-listener -- Assigning onmessage also starts this MessagePort automatically.
@@ -113,7 +123,7 @@ test("createMessagePort wraps a native port received from MessageChannel", async
 
   wrappedPort.postMessage(42);
 
-  expect(await nativeReceived).toBe(42);
+  assertEqual(await nativeReceived, 42);
 });
 
 test("createMessagePort assigns and clears the native onmessage handler", () => {
@@ -132,13 +142,13 @@ test("createMessagePort assigns and clears the native onmessage handler", () => 
   wrappedPort.postMessage("with transfer", [transferable]);
   wrappedPort.onMessage = null;
 
-  expect(received).toEqual(["response"]);
-  expect(nativePort.onmessage).toBeNull();
-  expect(wrappedPort.onMessage).toBeNull();
-  expect(nativePort.postMessage).toHaveBeenNthCalledWith(1, "without transfer");
-  expect(nativePort.postMessage).toHaveBeenNthCalledWith(2, "with transfer", [
-    transferable,
-  ]);
+  assertEqual(received, ["response"]);
+  assertEqual(nativePort.onmessage, null);
+  assertEqual(wrappedPort.onMessage, null);
+  assertEqual(
+    nativePort.postMessage.mock.calls.map(({ arguments: args }) => args),
+    [["without transfer"], ["with transfer", [transferable]]],
+  );
 });
 
 test("createBroadcastChannel wraps native BroadcastChannel", async () => {
@@ -146,6 +156,7 @@ test("createBroadcastChannel wraps native BroadcastChannel", async () => {
   const channel1 = createBroadcastChannel<string>(channelName);
   const received1: Array<string> = [];
   const received2: Array<string> = [];
+  const delivered = Promise.withResolvers<void>();
 
   {
     using _channel1 = channel1;
@@ -157,36 +168,41 @@ test("createBroadcastChannel wraps native BroadcastChannel", async () => {
     channel2.onMessage = (message) => {
       received2.push(message);
     };
-    expect(channel2.onMessage).not.toBeNull();
+    assertNonNullable(channel2.onMessage);
     channel2.onMessage = null;
-    expect(channel2.onMessage).toBeNull();
+    assertEqual(channel2.onMessage, null);
     channel2.onMessage = (message) => {
       received2.push(message);
+      delivered.resolve();
     };
 
     channel1.postMessage("hello");
 
-    await vi.waitFor(() => {
-      expect(received2).toEqual(["hello"]);
-    });
+    await delivered.promise;
+    assertEqual(received2, ["hello"]);
 
-    expect(received1).toEqual([]);
+    assertEqual(received1, []);
   }
 
   channel1.onMessage = (message) => {
     received1.push(message);
   };
-  expect(channel1.onMessage).toBeNull();
-  expect(() => channel1.postMessage("closed")).toThrow(
-    "Cannot use a disposed object.",
+  assertEqual(channel1.onMessage, null);
+  const error = assertThrowsInstanceOf(
+    () => channel1.postMessage("closed"),
+    Error,
   );
+  assertEqual(error.message, "Cannot use a disposed object.");
 });
 
 test("createMessagePort dispose uses terminate when available", () => {
   const nativePort = {
     onmessage: null as ((event: MessageEvent<string>) => void) | null,
-    postMessage: vi.fn(),
-    terminate: vi.fn(),
+    postMessage:
+      mock.fn<
+        (message: unknown, transfer?: ReadonlyArray<Transferable>) => void
+      >(),
+    terminate: mock.fn(),
   };
 
   const wrappedPort = createMessagePort(
@@ -195,8 +211,8 @@ test("createMessagePort dispose uses terminate when available", () => {
 
   wrappedPort[Symbol.dispose]();
 
-  expect(nativePort.onmessage).toBeNull();
-  expect(nativePort.terminate).toHaveBeenCalledOnce();
+  assertEqual(nativePort.onmessage, null);
+  assertEqual(nativePort.terminate.mock.callCount(), 1);
 });
 
 test("createSharedWorker wraps a shared worker port and disposes via close", () => {
@@ -214,15 +230,18 @@ test("createSharedWorker wraps a shared worker port and disposes via close", () 
   worker.port.postMessage("request");
   worker[Symbol.dispose]();
 
-  expect(received).toEqual(["response"]);
-  expect(worker.port.native).toBe(nativePort);
-  expect(nativePort.postMessage).toHaveBeenCalledWith("request");
-  expect(nativePort.close).toHaveBeenCalledOnce();
-  expect(nativePort.onmessage).toBeNull();
+  assertEqual(received, ["response"]);
+  assertSame(worker.port.native, nativePort);
+  assertEqual(
+    nativePort.postMessage.mock.calls.map(({ arguments: args }) => args),
+    [["request"]],
+  );
+  assertEqual(nativePort.close.mock.callCount(), 1);
+  assertEqual(nativePort.onmessage, null);
 });
 
 describe("one-tab SharedWorker polyfill", () => {
-  test("installOneTabSharedWorkerPolyfill installs a Worker-backed SharedWorker", () => {
+  it("installOneTabSharedWorkerPolyfill installs a Worker-backed SharedWorker", () => {
     const nativeWorker = createClosableNativePort<string>();
     const calls: Array<{
       readonly scriptURL: string | URL;
@@ -235,37 +254,29 @@ describe("one-tab SharedWorker polyfill", () => {
     const scriptURL = new URL("https://example.com/Shared.worker.js");
     const options = { type: "module" } as const;
 
-    vi.stubGlobal("SharedWorker", undefined);
-    vi.stubGlobal("Worker", Worker);
+    using _sharedWorker = testStubGlobal("SharedWorker", undefined);
+    using _worker = testStubGlobal("Worker", Worker);
 
-    try {
-      installOneTabSharedWorkerPolyfill();
-      const nativeSharedWorker = new SharedWorker(scriptURL, options);
+    installOneTabSharedWorkerPolyfill();
+    const nativeSharedWorker = new SharedWorker(scriptURL, options);
 
-      expect(calls).toEqual([{ scriptURL, options }]);
-      expect(nativeSharedWorker.port).toBe(nativeWorker);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(calls, [{ scriptURL, options }]);
+    assertSame(nativeSharedWorker.port, nativeWorker);
   });
 
-  test("installOneTabSharedWorkerPolyfill keeps native SharedWorker", () => {
+  it("installOneTabSharedWorkerPolyfill keeps native SharedWorker", () => {
     const nativePort = createClosableNativePort<string>();
     const NativeSharedWorker = class {
       readonly port = nativePort;
     } as unknown as typeof globalThis.SharedWorker;
 
-    vi.stubGlobal("SharedWorker", NativeSharedWorker);
+    using _sharedWorker = testStubGlobal("SharedWorker", NativeSharedWorker);
 
-    try {
-      installOneTabSharedWorkerPolyfill();
-      expect(globalThis.SharedWorker).toBe(NativeSharedWorker);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    installOneTabSharedWorkerPolyfill();
+    assertSame(globalThis.SharedWorker, NativeSharedWorker);
   });
 
-  test("createOneTabSharedWorkerSelfPolyfill creates one queued synthetic connection", () => {
+  it("createOneTabSharedWorkerSelfPolyfill creates one queued synthetic connection", () => {
     const nativeSelf = createClosableNativePort<string>();
     const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
       nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
@@ -273,22 +284,22 @@ describe("one-tab SharedWorker polyfill", () => {
     const received: Array<string> = [];
     let connectedPort!: MessagePort<string, string>;
 
-    expect(workerSelf.onConnect).toBeNull();
+    assertEqual(workerSelf.onConnect, null);
     workerSelf.onConnect = null;
     workerSelf.onConnect = (port) => {
       connectedPort = port;
     };
-    expect(workerSelf.onConnect).not.toBeNull();
+    assertNonNullable(workerSelf.onConnect);
 
     nativeSelf.onmessage?.({ data: "queued" } as MessageEvent<string>);
     connectedPort.onMessage = (message) => {
       received.push(message);
     };
-    expect(connectedPort.onMessage).not.toBeNull();
+    assertNonNullable(connectedPort.onMessage);
 
     nativeSelf.onmessage?.({ data: "immediate" } as MessageEvent<string>);
     connectedPort.onMessage = null;
-    expect(connectedPort.onMessage).toBeNull();
+    assertEqual(connectedPort.onMessage, null);
     connectedPort.onMessage = (message) => {
       received.push(message);
     };
@@ -306,20 +317,18 @@ describe("one-tab SharedWorker polyfill", () => {
     };
     workerSelf[Symbol.dispose]();
 
-    expect(received).toEqual(["queued", "immediate"]);
-    expect(connectedPort.native).toBe(nativeSelf);
-    expect(connectedPort.onMessage).toBeNull();
-    expect(nativeSelf.postMessage).toHaveBeenNthCalledWith(1, "response");
-    expect(nativeSelf.postMessage).toHaveBeenNthCalledWith(
-      2,
-      "response with transfer",
-      [transferable],
+    assertEqual(received, ["queued", "immediate"]);
+    assertSame(connectedPort.native, nativeSelf);
+    assertEqual(connectedPort.onMessage, null);
+    assertEqual(
+      nativeSelf.postMessage.mock.calls.map(({ arguments: args }) => args),
+      [["response"], ["response with transfer", [transferable]]],
     );
-    expect(nativeSelf.close).toHaveBeenCalledOnce();
-    expect(nativeSelf.onmessage).toBeNull();
+    assertEqual(nativeSelf.close.mock.callCount(), 1);
+    assertEqual(nativeSelf.onmessage, null);
   });
 
-  test("createOneTabSharedWorkerSelfPolyfill stops flushing when onMessage is cleared", () => {
+  it("createOneTabSharedWorkerSelfPolyfill stops flushing when onMessage is cleared", () => {
     const nativeSelf = createClosableNativePort<string>();
     const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
       nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
@@ -338,10 +347,10 @@ describe("one-tab SharedWorker polyfill", () => {
     };
     workerSelf[Symbol.dispose]();
 
-    expect(received).toEqual(["first"]);
+    assertEqual(received, ["first"]);
   });
 
-  test("createOneTabSharedWorkerSelfPolyfill disposes from connected port", () => {
+  it("createOneTabSharedWorkerSelfPolyfill disposes from connected port", () => {
     const nativeSelf = createClosableNativePort<string>();
     const workerSelf = createOneTabSharedWorkerSelfPolyfill<string, string>(
       nativeSelf as unknown as globalThis.DedicatedWorkerGlobalScope,
@@ -357,39 +366,10 @@ describe("one-tab SharedWorker polyfill", () => {
       throw new Error("Disposed worker self must ignore onConnect setter.");
     };
 
-    expect(workerSelf.onConnect).toBeNull();
-    expect(connectedPort.onMessage).toBeNull();
-    expect(nativeSelf.close).toHaveBeenCalledOnce();
-    expect(nativeSelf.onmessage).toBeNull();
-  });
-});
-
-test("createWorker communicates with createWorkerSelf through a native worker", async () => {
-  const nativeWorker = new Worker(
-    new URL("./workers/dedicated-worker.ts", import.meta.url),
-    { type: "module" },
-  );
-  using worker = createWorker<WorkerInput, WorkerOutput>(nativeWorker);
-
-  const ready = new Promise<void>((resolve) => {
-    worker.onMessage = (message) => {
-      if (message.type === "ready") resolve();
-    };
-  });
-
-  await ready;
-
-  const received = new Promise<WorkerOutput>((resolve) => {
-    worker.onMessage = (message) => {
-      if (message.type === "echo") resolve(message);
-    };
-  });
-
-  worker.postMessage({ type: "echo", value: "hello" });
-
-  await expect(received).resolves.toEqual({
-    type: "echo",
-    value: "hello",
+    assertEqual(workerSelf.onConnect, null);
+    assertEqual(connectedPort.onMessage, null);
+    assertEqual(nativeSelf.close.mock.callCount(), 1);
+    assertEqual(nativeSelf.onmessage, null);
   });
 });
 
@@ -407,42 +387,18 @@ test("createWorkerSelf wraps dedicated worker self and disposes via close", () =
   workerSelf.postMessage("response");
   workerSelf[Symbol.dispose]();
 
-  expect(received).toEqual(["request"]);
-  expect(nativeSelf.postMessage).toHaveBeenCalledWith("response");
-  expect(nativeSelf.close).toHaveBeenCalledOnce();
-});
-
-test("createSharedWorker communicates with createSharedWorkerSelf through a native shared worker", async () => {
-  const nativeSharedWorker = new SharedWorker(
-    new URL("./workers/shared-worker.ts", import.meta.url),
-    {
-      name: `worker-${crypto.randomUUID()}`,
-      type: "module",
-    },
+  assertEqual(received, ["request"]);
+  assertEqual(
+    nativeSelf.postMessage.mock.calls.map(({ arguments: args }) => args),
+    [["response"]],
   );
-  const worker = createSharedWorker<WorkerInput, WorkerOutput>(
-    nativeSharedWorker,
-  );
-  using _worker = worker;
-
-  const received = new Promise<WorkerOutput>((resolve) => {
-    worker.port.onMessage = (message) => {
-      if (message.type === "echo") resolve(message);
-    };
-  });
-
-  worker.port.postMessage({ type: "echo", value: "queued" });
-
-  await expect(received).resolves.toEqual({
-    type: "echo",
-    value: "queued",
-  });
+  assertEqual(nativeSelf.close.mock.callCount(), 1);
 });
 
 test("createSharedWorkerSelf wraps connected ports and disposes the worker scope", () => {
   const nativePort = createClosableNativePort<string>();
   const nativeSelf = {
-    close: vi.fn(),
+    close: mock.fn(),
     onconnect: null as ((event: MessageEvent) => void) | null,
   };
   const workerSelf = createSharedWorkerSelf<string, string>(
@@ -464,17 +420,20 @@ test("createSharedWorkerSelf wraps connected ports and disposes the worker scope
   connectedPort[Symbol.dispose]();
   workerSelf[Symbol.dispose]();
 
-  expect(received).toEqual(["request"]);
-  expect(connectedPort.native).toBe(nativePort);
-  expect(nativePort.postMessage).toHaveBeenCalledWith("response");
-  expect(nativePort.close).toHaveBeenCalledOnce();
-  expect(nativeSelf.onconnect).toBeNull();
-  expect(nativeSelf.close).toHaveBeenCalledOnce();
+  assertEqual(received, ["request"]);
+  assertSame(connectedPort.native, nativePort);
+  assertEqual(
+    nativePort.postMessage.mock.calls.map(({ arguments: args }) => args),
+    [["response"]],
+  );
+  assertEqual(nativePort.close.mock.callCount(), 1);
+  assertEqual(nativeSelf.onconnect, null);
+  assertEqual(nativeSelf.close.mock.callCount(), 1);
 });
 
 test("createSharedWorkerSelf asserts when a connection arrives before onConnect is set", () => {
   const nativeSelf = {
-    close: vi.fn(),
+    close: mock.fn(),
     onconnect: null as ((event: MessageEvent) => void) | null,
   };
 
@@ -482,9 +441,13 @@ test("createSharedWorkerSelf asserts when a connection arrives before onConnect 
     nativeSelf as unknown as globalThis.SharedWorkerGlobalScope,
   );
 
-  expect(() => {
+  const error = assertThrowsInstanceOf(() => {
     nativeSelf.onconnect?.({ ports: [] } as unknown as MessageEvent);
-  }).toThrow("onConnect must be set before receiving connections");
+  }, Error);
+  assertEqual(
+    error.message,
+    "onConnect must be set before receiving connections",
+  );
 });
 
 test("createWorkerDeps stores console output entries and exposes createMessagePort", () => {
@@ -492,8 +455,8 @@ test("createWorkerDeps stores console output entries and exposes createMessagePo
 
   deps.console.warn("worker-warning");
 
-  expect(deps.createMessagePort).toBe(createMessagePort);
-  expect(deps.consoleStoreOutputEntry.get()).toMatchObject({
+  assertSame(deps.createMessagePort, createMessagePort);
+  assertEqual(deps.consoleStoreOutputEntry.get(), {
     args: ["worker-warning"],
     method: "warn",
     path: [],
@@ -501,7 +464,10 @@ test("createWorkerDeps stores console output entries and exposes createMessagePo
 });
 
 const createClosableNativePort = <Output = never>() => ({
-  close: vi.fn(),
+  close: mock.fn(),
   onmessage: null as ((event: MessageEvent<Output>) => void) | null,
-  postMessage: vi.fn(),
+  postMessage:
+    mock.fn<
+      (message: unknown, transfer?: ReadonlyArray<Transferable>) => void
+    >(),
 });

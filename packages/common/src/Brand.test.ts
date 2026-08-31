@@ -1,19 +1,18 @@
-import { expectTypeOf, test } from "vitest";
-import type {
-  Brand,
-  IsBranded,
-} from "../../../../packages/common/src/Brand.ts";
-import { constVoid } from "../../../../packages/common/src/Function.ts";
+import { test } from "node:test";
+
+import type { Brand, IsBranded } from "./Brand.ts";
+import { constVoid } from "./Function.ts";
+import { assertType } from "./Type.ts";
 
 test("Brand", () => {
   type UserId = string & Brand<"UserId">;
   type ProductId = number & Brand<"ProductId">;
 
   const validUserId: UserId = "user123" as UserId;
-  expectTypeOf(validUserId).toEqualTypeOf<string & Brand<"UserId">>();
+  assertType<typeof validUserId, string & Brand<"UserId">>();
 
   const validProductId: ProductId = 42 as ProductId;
-  expectTypeOf(validProductId).toEqualTypeOf<number & Brand<"ProductId">>();
+  assertType<typeof validProductId, number & Brand<"ProductId">>();
 
   // Invalid assignment (string to ProductId)
   // @ts-expect-error - Should not allow a string to be assigned to ProductId
@@ -61,10 +60,10 @@ test("IsBranded", () => {
   type BrandedNumber = number & Brand<"ProductId">;
   type DoubleBranded = string & Brand<"Min"> & Brand<"Max">;
 
-  expectTypeOf<IsBranded<UnbrandedString>>().toEqualTypeOf<false>();
-  expectTypeOf<IsBranded<BrandedString>>().toEqualTypeOf<true>();
-  expectTypeOf<IsBranded<BrandedNumber>>().toEqualTypeOf<true>();
-  expectTypeOf<IsBranded<DoubleBranded>>().toEqualTypeOf<true>();
+  assertType<IsBranded<UnbrandedString>, false>();
+  assertType<IsBranded<BrandedString>, true>();
+  assertType<IsBranded<BrandedNumber>, true>();
+  assertType<IsBranded<DoubleBranded>, true>();
 });
 
 test("Brand - standalone (nominal type)", () => {
@@ -87,5 +86,5 @@ test("Brand - standalone (nominal type)", () => {
   // @ts-expect-error: null cannot be passed
   requiresNativePort(null);
 
-  expectTypeOf<IsBranded<NativePort>>().toEqualTypeOf<true>();
+  assertType<IsBranded<NativePort>, true>();
 });

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://nodejs.org/dist/latest-v24.x/docs/node-config-schema.json",
+  "nodeOptions": {
+    "disable-warning": ["ExperimentalWarning"]
+  },
+  "test": {
+    "experimental-test-coverage": true,
+    "experimental-test-module-mocks": true,
+    "test": true,
+    "test-coverage-exclude": [
+      "**/*.test.{ts,mts}",
+      "packages/*/src/**/index.ts",
+      "packages/common/src/intl/**/*.ts"
+    ],
+    "test-isolation": "process",
+    "test-timeout": 30000
+  }
+}

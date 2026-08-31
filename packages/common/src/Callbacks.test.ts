@@ -1,6 +1,8 @@
-import { expect, test } from "vitest";
-import { createCallbacks } from "../../../../packages/common/src/Callbacks.ts";
-import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
+import { test } from "node:test";
+import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
+
+import { createCallbacks } from "./Callbacks.ts";
+import { testCreateDeps } from "./Task.ts";
 
 test("Callbacks with no argument", () => {
   const deps = testCreateDeps();
@@ -12,11 +14,11 @@ test("Callbacks with no argument", () => {
   });
 
   callbacks.execute(id);
-  expect(called).toBe(true);
+  assertTrue(called);
 
   called = false;
   callbacks.execute(id);
-  expect(called).toBe(false);
+  assertFalse(called);
 });
 
 test("Callbacks with string type", () => {
@@ -29,14 +31,14 @@ test("Callbacks with string type", () => {
   });
 
   callbacks.execute(id, "test value");
-  expect(receivedValue).toBe("test value");
+  assertEqual(receivedValue, "test value");
 
   receivedValue = null;
   callbacks.execute(id, "should not execute");
-  expect(receivedValue).toBe(null);
+  assertSame(receivedValue, null);
 });
 
-test("Callbacks with Promise.withResolvers pattern", () => {
+test("Callbacks with Promise.withResolvers pattern", async () => {
   const deps = testCreateDeps();
   const callbacks = createCallbacks<string>(deps);
 
@@ -45,7 +47,7 @@ test("Callbacks with Promise.withResolvers pattern", () => {
 
   callbacks.execute(id, "resolved value");
 
-  return expect(promise).resolves.toBe("resolved value");
+  assertEqual(await promise, "resolved value");
 });
 
 test("Callbacks dispose clears pending callbacks", () => {
@@ -60,5 +62,5 @@ test("Callbacks dispose clears pending callbacks", () => {
   callbacks[Symbol.dispose]();
   callbacks.execute(id, "ignored");
 
-  expect(called).toBe(false);
+  assertFalse(called);
 });

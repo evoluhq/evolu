@@ -1,9 +1,8 @@
-import { expect, test } from "vitest";
-import { createLruCache } from "../../../../packages/common/src/Cache.ts";
-import {
-  onePositiveInt,
-  PositiveInt,
-} from "../../../../packages/common/src/Type.ts";
+import { test } from "node:test";
+import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
+
+import { createLruCache } from "./Cache.ts";
+import { onePositiveInt, PositiveInt } from "./Type.ts";
 
 test("LRU cache - basic set and get", () => {
   const cache = createLruCache<string, number>(PositiveInt.orThrow(3));
@@ -12,10 +11,10 @@ test("LRU cache - basic set and get", () => {
   cache.set("b", 2);
   cache.set("c", 3);
 
-  expect(cache.get("a")).toBe(1);
-  expect(cache.get("b")).toBe(2);
-  expect(cache.get("c")).toBe(3);
-  expect(cache.get("d")).toBeUndefined();
+  assertEqual(cache.get("a"), 1);
+  assertEqual(cache.get("b"), 2);
+  assertEqual(cache.get("c"), 3);
+  assertSame(cache.get("d"), undefined);
 });
 
 test("LRU cache - has method", () => {
@@ -24,9 +23,9 @@ test("LRU cache - has method", () => {
   cache.set("a", 1);
   cache.set("b", 2);
 
-  expect(cache.has("a")).toBe(true);
-  expect(cache.has("b")).toBe(true);
-  expect(cache.has("c")).toBe(false);
+  assertTrue(cache.has("a"));
+  assertTrue(cache.has("b"));
+  assertFalse(cache.has("c"));
 });
 
 test("LRU cache - delete method", () => {
@@ -35,10 +34,10 @@ test("LRU cache - delete method", () => {
   cache.set("a", 1);
   cache.set("b", 2);
 
-  expect(cache.has("a")).toBe(true);
+  assertTrue(cache.has("a"));
   cache.delete("a");
-  expect(cache.has("a")).toBe(false);
-  expect(cache.get("a")).toBeUndefined();
+  assertFalse(cache.has("a"));
+  assertSame(cache.get("a"), undefined);
 });
 
 test("LRU cache - evicts least recently used on capacity", () => {
@@ -49,9 +48,9 @@ test("LRU cache - evicts least recently used on capacity", () => {
   // Should evict "a"
   cache.set("c", 3);
 
-  expect(cache.has("a")).toBe(false);
-  expect(cache.has("b")).toBe(true);
-  expect(cache.has("c")).toBe(true);
+  assertFalse(cache.has("a"));
+  assertTrue(cache.has("b"));
+  assertTrue(cache.has("c"));
 });
 
 test("LRU cache - get updates access order", () => {
@@ -64,9 +63,9 @@ test("LRU cache - get updates access order", () => {
   // Should evict "b", not "a"
   cache.set("c", 3);
 
-  expect(cache.has("a")).toBe(true);
-  expect(cache.has("b")).toBe(false);
-  expect(cache.has("c")).toBe(true);
+  assertTrue(cache.has("a"));
+  assertFalse(cache.has("b"));
+  assertTrue(cache.has("c"));
 });
 
 test("LRU cache - set updates access order for existing key", () => {
@@ -79,9 +78,9 @@ test("LRU cache - set updates access order for existing key", () => {
   // Should evict "b", not "a"
   cache.set("c", 3);
 
-  expect(cache.get("a")).toBe(10);
-  expect(cache.has("b")).toBe(false);
-  expect(cache.has("c")).toBe(true);
+  assertEqual(cache.get("a"), 10);
+  assertFalse(cache.has("b"));
+  assertTrue(cache.has("c"));
 });
 
 test("LRU cache - readonly map view", () => {
@@ -91,29 +90,29 @@ test("LRU cache - readonly map view", () => {
   cache.set("b", 2);
   cache.set("c", 3);
 
-  expect(cache.map.size).toBe(3);
-  expect(cache.map.get("a")).toBe(1);
-  expect(cache.map.get("b")).toBe(2);
-  expect(cache.map.get("c")).toBe(3);
-  expect(cache.map.has("a")).toBe(true);
-  expect(cache.map.has("d")).toBe(false);
+  assertEqual(cache.map.size, 3);
+  assertEqual(cache.map.get("a"), 1);
+  assertEqual(cache.map.get("b"), 2);
+  assertEqual(cache.map.get("c"), 3);
+  assertTrue(cache.map.has("a"));
+  assertFalse(cache.map.has("d"));
 });
 
 test("LRU cache - map view reflects cache changes", () => {
   const cache = createLruCache<string, number>(PositiveInt.orThrow(2));
 
   cache.set("a", 1);
-  expect(cache.map.size).toBe(1);
+  assertEqual(cache.map.size, 1);
 
   cache.set("b", 2);
-  expect(cache.map.size).toBe(2);
+  assertEqual(cache.map.size, 2);
 
   // Evicts "a"
   cache.set("c", 3);
-  expect(cache.map.size).toBe(2);
-  expect(cache.map.has("a")).toBe(false);
-  expect(cache.map.has("b")).toBe(true);
-  expect(cache.map.has("c")).toBe(true);
+  assertEqual(cache.map.size, 2);
+  assertFalse(cache.map.has("a"));
+  assertTrue(cache.map.has("b"));
+  assertTrue(cache.map.has("c"));
 });
 
 test("LRU cache - iteration over map", () => {
@@ -124,17 +123,17 @@ test("LRU cache - iteration over map", () => {
   cache.set("c", 3);
 
   const entries = Array.from(cache.map.entries());
-  expect(entries).toEqual([
+  assertEqual(entries, [
     ["a", 1],
     ["b", 2],
     ["c", 3],
   ]);
 
   const keys = Array.from(cache.map.keys());
-  expect(keys).toEqual(["a", "b", "c"]);
+  assertEqual(keys, ["a", "b", "c"]);
 
   const values = Array.from(cache.map.values());
-  expect(values).toEqual([1, 2, 3]);
+  assertEqual(values, [1, 2, 3]);
 });
 
 test("LRU cache - forEach on map", () => {
@@ -149,7 +148,7 @@ test("LRU cache - forEach on map", () => {
     collected.push([key, value]);
   });
 
-  expect(collected).toEqual([
+  assertEqual(collected, [
     ["a", 1],
     ["b", 2],
     ["c", 3],
@@ -166,19 +165,19 @@ test("LRU cache - reference-based key comparison", () => {
   cache.set(key1, 100);
   cache.set(key2, 200);
 
-  expect(cache.get(key1)).toBe(100);
-  expect(cache.get(key2)).toBe(200);
-  expect(cache.has(key1)).toBe(true);
-  expect(cache.has(key2)).toBe(true);
+  assertEqual(cache.get(key1), 100);
+  assertEqual(cache.get(key2), 200);
+  assertTrue(cache.has(key1));
+  assertTrue(cache.has(key2));
 });
 
 test("LRU cache - capacity of 1", () => {
   const cache = createLruCache<string, number>(onePositiveInt);
 
   cache.set("a", 1);
-  expect(cache.has("a")).toBe(true);
+  assertTrue(cache.has("a"));
 
   cache.set("b", 2);
-  expect(cache.has("a")).toBe(false);
-  expect(cache.has("b")).toBe(true);
+  assertFalse(cache.has("a"));
+  assertTrue(cache.has("b"));
 });

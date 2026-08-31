@@ -1,8 +1,15 @@
-import { describe, expect, test } from "vitest";
-import type { RandomNumber } from "../../../../packages/common/src/Random.ts";
-import type { NextResult } from "../../../../packages/common/src/Result.ts";
-import { done, err, ok } from "../../../../packages/common/src/Result.ts";
-import type { Schedule } from "../../../../packages/common/src/Schedule.ts";
+import { describe, it } from "node:test";
+import {
+  assertEqual,
+  assertOk,
+  assertThrowsInstanceOf,
+  assertTrue,
+} from "./Assert.ts";
+
+import type { RandomNumber } from "./Random.ts";
+import type { NextResult } from "./Result.ts";
+import { done, err, ok } from "./Result.ts";
+import type { Schedule } from "./Schedule.ts";
 import {
   addDelay,
   always,
@@ -48,20 +55,16 @@ import {
   whileScheduleInput,
   whileScheduleOutput,
   windowed,
-} from "../../../../packages/common/src/Schedule.ts";
-import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
+} from "./Schedule.ts";
+import { testCreateDeps } from "./Task.ts";
 import {
   maxMillis,
   Millis,
   minMillis,
   PositiveMillis,
   testCreateTime,
-} from "../../../../packages/common/src/Time.ts";
-import {
-  type DateIso,
-  NonNegativeInt,
-  Ratio,
-} from "../../../../packages/common/src/Type.ts";
+} from "./Time.ts";
+import { type DateIso, NonNegativeInt, Ratio } from "./Type.ts";
 
 // Helper to create scheduleDeps with controllable time
 const createScheduleDeps = (startAt = 0) => {
@@ -98,18 +101,18 @@ const expectOk = (
   result: NextResult<readonly [unknown, Millis]>,
   [output, delay]: readonly [unknown, number],
 ): void => {
-  expect(result.ok).toBe(true);
+  assertOk(result);
   if (!result.ok) return;
-  expect(result.value[0]).toStrictEqual(output);
-  expect(result.value[1]).toStrictEqual(Millis.orThrow(delay));
+  assertEqual(result.value[0], output);
+  assertEqual(result.value[1], Millis.orThrow(delay));
 };
 
 const expectDone = (result: NextResult<readonly [unknown, Millis]>): void => {
-  expect(result).toStrictEqual(err(done()));
+  assertEqual(result, err(done()));
 };
 
 describe("Schedule", () => {
-  test("Output is covariant (out)", () => {
+  it("Output is covariant (out)", () => {
     const deps = createScheduleDeps();
     // Substitutability by output: a schedule producing more info can be used where
     // less info is required.
@@ -144,8 +147,8 @@ describe("Schedule", () => {
       return step(undefined);
     };
     const result = useSchedule(detailedSchedule);
-    expect(result.ok).toBe(true);
-    expect(result.ok ? result.value[0].attempt : null).toBe(1);
+    assertOk(result);
+    assertEqual(result.ok ? result.value[0].attempt : null, 1);
 
     // ✗ Not assignable in the other direction (output is missing fields).
     // This is a structural type error; that's the expected mechanism.
@@ -153,7 +156,7 @@ describe("Schedule", () => {
     const _invalid: Schedule<RetryInfo> = lessDetailedSchedule;
   });
 
-  test("Input is contravariant (in)", () => {
+  it("Input is contravariant (in)", () => {
     const deps = createScheduleDeps();
     // Substitutability by input: a schedule that accepts broader inputs can be
     // used where narrower inputs are provided.
@@ -184,8 +187,8 @@ describe("Schedule", () => {
       retryAfter: 60,
     };
     const result = retryWithSchedule(error, genericSchedule);
-    expect(result.ok).toBe(true);
-    expect(result.ok ? result.value[1] : null).toBe(1000);
+    assertOk(result);
+    assertEqual(result.ok ? result.value[1] : null, 1000);
 
     // ✗ Not assignable in the other direction (schedule expects RateLimitError).
     const specificSchedule: Schedule<Millis, RateLimitError> = whenInput<
@@ -201,7 +204,7 @@ describe("Schedule", () => {
 });
 
 describe("forever", () => {
-  test("returns attempt count and 0 delay", () => {
+  it("returns attempt count and 0 delay", () => {
     const deps = createScheduleDeps();
     const step = forever(deps);
     expectOk(step(undefined), [0, 0]);
@@ -211,7 +214,7 @@ describe("forever", () => {
 });
 
 describe("once", () => {
-  test("runs exactly once", () => {
+  it("runs exactly once", () => {
     const deps = createScheduleDeps();
     const step = once(deps);
     expectOk(step(undefined), [0, 0]);
@@ -220,7 +223,7 @@ describe("once", () => {
 });
 
 describe("recurs", () => {
-  test("limits repetitions", () => {
+  it("limits repetitions", () => {
     const deps = createScheduleDeps();
     const step = recurs(3)(deps);
     expectOk(step(undefined), [0, 0]);
@@ -231,7 +234,7 @@ describe("recurs", () => {
 });
 
 describe("spaced", () => {
-  test("returns constant delay", () => {
+  it("returns constant delay", () => {
     const deps = createScheduleDeps();
     const step = spaced("100ms")(deps);
     expectOk(step(undefined), [100, 100]);
@@ -241,7 +244,7 @@ describe("spaced", () => {
 });
 
 describe("exponential", () => {
-  test("grows by factor", () => {
+  it("grows by factor", () => {
     const deps = createScheduleDeps();
     const step = exponential("100ms")(deps);
     expectOk(step(undefined), [100, 100]);
@@ -250,7 +253,7 @@ describe("exponential", () => {
     expectOk(step(undefined), [800, 800]);
   });
 
-  test("with custom factor", () => {
+  it("with custom factor", () => {
     const deps = createScheduleDeps();
     const step = exponential("100ms", 3)(deps);
     expectOk(step(undefined), [100, 100]);
@@ -258,7 +261,7 @@ describe("exponential", () => {
     expectOk(step(undefined), [900, 900]);
   });
 
-  test("with fractional factor rounds to millis", () => {
+  it("with fractional factor rounds to millis", () => {
     const deps = createScheduleDeps();
     const step = exponential("100ms", 1.5)(deps);
     expectOk(step(undefined), [100, 100]);
@@ -267,7 +270,7 @@ describe("exponential", () => {
     expectOk(step(undefined), [338, 338]);
   });
 
-  test("states are independent (stateful)", () => {
+  it("states are independent (stateful)", () => {
     const deps = createScheduleDeps();
     const schedule = exponential("100ms");
 
@@ -286,34 +289,42 @@ describe("exponential", () => {
     expectOk(step1(undefined), [400, 400]);
   });
 
-  test("saturates at maxMillis instead of throwing on overflow", () => {
+  it("saturates at maxMillis instead of throwing on overflow", () => {
     const deps = createScheduleDeps();
     const step = exponential("100ms")(deps);
     // Advance to attempt 43 where 100 * 2^42 > maxMillis
     for (let i = 0; i < 42; i++) step(undefined);
-    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
-    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+    assertEqual(step(undefined), ok([maxMillis, maxMillis]));
+    assertEqual(step(undefined), ok([maxMillis, maxMillis]));
   });
 
-  test("keeps a zero base at zero after the power overflows", () => {
+  it("keeps a zero base at zero after the power overflows", () => {
     const step = exponential(minMillis)(createScheduleDeps());
     for (let i = 0; i < 1025; i++) step(undefined);
-    expect(step(undefined)).toEqual(ok([minMillis, minMillis]));
+    assertEqual(step(undefined), ok([minMillis, minMillis]));
   });
 
-  test("throws for invalid factor", () => {
-    expect(() => exponential("100ms", Number.NaN)).toThrow(
-      "Expected NonNegative.",
+  it("throws for invalid factor", () => {
+    const nanError = assertThrowsInstanceOf(
+      () => exponential("100ms", Number.NaN),
+      Error,
     );
-    expect(() => exponential("100ms", Number.POSITIVE_INFINITY)).toThrow(
-      "Expected NonNegative.",
+    assertTrue(nanError.message.includes("Expected NonNegative."));
+    const infinityError = assertThrowsInstanceOf(
+      () => exponential("100ms", Number.POSITIVE_INFINITY),
+      Error,
     );
-    expect(() => exponential("100ms", -1)).toThrow("Expected NonNegative.");
+    assertTrue(infinityError.message.includes("Expected NonNegative."));
+    const negativeError = assertThrowsInstanceOf(
+      () => exponential("100ms", -1),
+      Error,
+    );
+    assertTrue(negativeError.message.includes("Expected NonNegative."));
   });
 });
 
 describe("linear", () => {
-  test("grows linearly", () => {
+  it("grows linearly", () => {
     const deps = createScheduleDeps();
     const step = linear("100ms")(deps);
     expectOk(step(undefined), [100, 100]);
@@ -322,16 +333,16 @@ describe("linear", () => {
     expectOk(step(undefined), [400, 400]);
   });
 
-  test("saturates at maxMillis instead of throwing on overflow", () => {
+  it("saturates at maxMillis instead of throwing on overflow", () => {
     const deps = createScheduleDeps();
     const step = linear(maxMillis)(deps);
-    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
-    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+    assertEqual(step(undefined), ok([maxMillis, maxMillis]));
+    assertEqual(step(undefined), ok([maxMillis, maxMillis]));
   });
 });
 
 describe("fibonacci", () => {
-  test("grows by fibonacci sequence", () => {
+  it("grows by fibonacci sequence", () => {
     const deps = createScheduleDeps();
     const step = fibonacci("100ms")(deps);
     // F(1)=1, F(2)=1, F(3)=2, F(4)=3, F(5)=5, F(6)=8
@@ -349,17 +360,17 @@ describe("fibonacci", () => {
     expectOk(step(undefined), [800, 800]);
   });
 
-  test("saturates at maxMillis instead of throwing after max Fibonacci index", () => {
+  it("saturates at maxMillis instead of throwing after max Fibonacci index", () => {
     const deps = createScheduleDeps();
     const step = fibonacci("1ms")(deps);
     for (let i = 0; i < 78; i++) step(undefined);
-    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
-    expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+    assertEqual(step(undefined), ok([maxMillis, maxMillis]));
+    assertEqual(step(undefined), ok([maxMillis, maxMillis]));
   });
 });
 
 describe("fixed", () => {
-  test("aligns to window boundaries", () => {
+  it("aligns to window boundaries", () => {
     const deps = createScheduleDeps();
     const step = fixed("10s")(deps);
 
@@ -384,7 +395,7 @@ describe("fixed", () => {
     expectOk(step(undefined), [3, 5000]);
   });
 
-  test("handles running behind (execution > interval)", () => {
+  it("handles running behind (execution > interval)", () => {
     const deps = createScheduleDeps();
     const step = fixed("10s")(deps);
 
@@ -401,7 +412,7 @@ describe("fixed", () => {
     expectOk(step(undefined), [2, 2000]);
   });
 
-  test("catches up missed recurrences before realigning", () => {
+  it("catches up missed recurrences before realigning", () => {
     const deps = createScheduleDeps();
     const step = fixed("10s")(deps);
 
@@ -414,7 +425,7 @@ describe("fixed", () => {
     expectOk(step(undefined), [5, 5000]);
   });
 
-  test("with zero interval", () => {
+  it("with zero interval", () => {
     const deps = createScheduleDeps();
     const step = fixed(minMillis)(deps);
     expectOk(step(undefined), [0, 0]);
@@ -426,7 +437,7 @@ describe("fixed", () => {
 });
 
 describe("windowed", () => {
-  test("skips missed recurrences before realigning", () => {
+  it("skips missed recurrences before realigning", () => {
     const deps = createScheduleDeps();
     const step = windowed("10s")(deps);
 
@@ -435,7 +446,7 @@ describe("windowed", () => {
     expectOk(step(undefined), [1, 5000]);
   });
 
-  test("waits until the next interval at an exact boundary", () => {
+  it("waits until the next interval at an exact boundary", () => {
     const deps = createScheduleDeps();
     const step = windowed("100ms")(deps);
 
@@ -444,7 +455,7 @@ describe("windowed", () => {
     expectOk(step(undefined), [1, 100]);
   });
 
-  test("with zero interval", () => {
+  it("with zero interval", () => {
     const deps = createScheduleDeps();
     const step = windowed(minMillis)(deps);
     expectOk(step(undefined), [0, 0]);
@@ -454,7 +465,7 @@ describe("windowed", () => {
     expectOk(step(undefined), [2, 0]);
   });
 
-  test("aligns to window boundaries", () => {
+  it("aligns to window boundaries", () => {
     const schedule = windowed("100ms");
     const deps = createScheduleDeps();
 
@@ -471,7 +482,7 @@ describe("windowed", () => {
 });
 
 describe("fromDelay", () => {
-  test("creates single-delay schedule", () => {
+  it("creates single-delay schedule", () => {
     const deps = createScheduleDeps();
     const schedule = fromDelay("500ms");
     const step = schedule(deps);
@@ -482,7 +493,7 @@ describe("fromDelay", () => {
 });
 
 describe("fromDelays", () => {
-  test("creates sequence of delays", () => {
+  it("creates sequence of delays", () => {
     const deps = createScheduleDeps();
     const schedule = fromDelays("100ms", "500ms", "2s");
     const step = schedule(deps);
@@ -493,7 +504,7 @@ describe("fromDelays", () => {
     expectDone(step(undefined));
   });
 
-  test("stops immediately with no delays", () => {
+  it("stops immediately with no delays", () => {
     const step = fromDelays()(createScheduleDeps());
 
     expectDone(step(undefined));
@@ -501,7 +512,7 @@ describe("fromDelays", () => {
 });
 
 describe("elapsed", () => {
-  test("outputs total elapsed time", () => {
+  it("outputs total elapsed time", () => {
     const deps = createScheduleDeps();
     const step = elapsed(deps);
 
@@ -514,7 +525,7 @@ describe("elapsed", () => {
     expectOk(step(undefined), [1000, 0]);
   });
 
-  test("returns zero elapsed time when time moves backwards", () => {
+  it("returns zero elapsed time when time moves backwards", () => {
     const deps = createScheduleDepsWithNow(100, 50);
     const step = elapsed(deps);
 
@@ -522,30 +533,30 @@ describe("elapsed", () => {
     expectOk(step(undefined), [0, 0]);
   });
 
-  test("combined with other schedule", () => {
+  it("combined with other schedule", () => {
     const deps = createScheduleDeps();
     const step = intersectSchedules(take(3)(spaced("100ms")), elapsed)(deps);
 
     const result1 = step(undefined);
-    expect(result1.ok).toBe(true);
+    assertOk(result1);
     // spaced output
-    expect(result1.ok ? result1.value[0][0] : null).toBe(100);
+    assertEqual(result1.ok ? result1.value[0][0] : null, 100);
     // elapsed output
-    expect(result1.ok ? result1.value[0][1] : null).toBe(0);
+    assertEqual(result1.ok ? result1.value[0][1] : null, 0);
     // max delay
-    expect(result1.ok ? result1.value[1] : null).toBe(100);
+    assertEqual(result1.ok ? result1.value[1] : null, 100);
 
     deps.time.advance("150ms");
     const result2 = step(undefined);
-    expect(result2.ok).toBe(true);
-    expect(result2.ok ? result2.value[0][0] : null).toBe(100);
-    expect(result2.ok ? result2.value[0][1] : null).toBe(150);
+    assertOk(result2);
+    assertEqual(result2.ok ? result2.value[0][0] : null, 100);
+    assertEqual(result2.ok ? result2.value[0][1] : null, 150);
 
     deps.time.advance("150ms");
     const result3 = step(undefined);
-    expect(result3.ok).toBe(true);
-    expect(result3.ok ? result3.value[0][0] : null).toBe(100);
-    expect(result3.ok ? result3.value[0][1] : null).toBe(300);
+    assertOk(result3);
+    assertEqual(result3.ok ? result3.value[0][0] : null, 100);
+    assertEqual(result3.ok ? result3.value[0][1] : null, 300);
 
     deps.time.advance("100ms");
     // take(3) exhausted
@@ -554,7 +565,7 @@ describe("elapsed", () => {
 });
 
 describe("during", () => {
-  test("runs for specified duration then stops", () => {
+  it("runs for specified duration then stops", () => {
     const schedule = during("100ms");
     const deps = createScheduleDeps();
     const step = schedule(deps);
@@ -572,7 +583,7 @@ describe("during", () => {
 });
 
 describe("always", () => {
-  test("always outputs constant value", () => {
+  it("always outputs constant value", () => {
     const deps = createScheduleDeps();
     const step = take(3)(always("retry"))(deps);
     expectOk(step(undefined), ["retry", 0]);
@@ -583,7 +594,7 @@ describe("always", () => {
 });
 
 describe("unfoldSchedule", () => {
-  test("creates schedule from state function", () => {
+  it("creates schedule from state function", () => {
     const deps = createScheduleDeps();
     // Simple counter
     const step = take(4)(unfoldSchedule(0, (n) => n + 1))(deps);
@@ -595,7 +606,7 @@ describe("unfoldSchedule", () => {
     expectDone(step(undefined));
   });
 
-  test("with custom state transformation", () => {
+  it("with custom state transformation", () => {
     const deps = createScheduleDeps();
     // Multiply by 2 each time
     const step = take(4)(unfoldSchedule(1, (n) => n * 2))(deps);
@@ -606,7 +617,7 @@ describe("unfoldSchedule", () => {
     expectOk(step(undefined), [8, 0]);
   });
 
-  test("with object state", () => {
+  it("with object state", () => {
     const deps = createScheduleDeps();
     interface Phase {
       readonly name: string;
@@ -630,7 +641,7 @@ describe("unfoldSchedule", () => {
 });
 
 describe("take", () => {
-  test("limits attempts", () => {
+  it("limits attempts", () => {
     const deps = createScheduleDeps();
     const step = take(3)(exponential("100ms"))(deps);
     expectOk(step(undefined), [100, 100]);
@@ -639,13 +650,13 @@ describe("take", () => {
     expectDone(step(undefined));
   });
 
-  test("accepts literals from 0 to 100 or a validated NonNegativeInt", () => {
+  it("accepts literals from 0 to 100 or a validated NonNegativeInt", () => {
     take(0);
     take(100);
     take(NonNegativeInt.orThrow(101));
   });
 
-  test("requires validation for other numbers", () => {
+  it("requires validation for other numbers", () => {
     // @ts-expect-error - Dynamic numbers require validation.
     take(Math.random());
     // @ts-expect-error - Literals above 100 require validation.
@@ -658,7 +669,7 @@ describe("take", () => {
 });
 
 describe("maxElapsed", () => {
-  test("stops after duration", () => {
+  it("stops after duration", () => {
     const deps = createScheduleDeps();
     const step = maxElapsed("250ms")(exponential("100ms"))(deps);
     expectOk(step(undefined), [100, 100]);
@@ -670,7 +681,7 @@ describe("maxElapsed", () => {
     expectDone(step(undefined));
   });
 
-  test("keeps terminal done when time moves backwards", () => {
+  it("keeps terminal done when time moves backwards", () => {
     const step = maxElapsed("250ms")(exponential("100ms"))(
       createScheduleDepsWithNow(0, 250, 0),
     );
@@ -682,7 +693,7 @@ describe("maxElapsed", () => {
 });
 
 describe("maxDelay", () => {
-  test("caps delay", () => {
+  it("caps delay", () => {
     const deps = createScheduleDeps();
     const step = maxDelay("300ms")(exponential("100ms"))(deps);
     expectOk(step(undefined), [100, 100]);
@@ -693,7 +704,7 @@ describe("maxDelay", () => {
     expectOk(step(undefined), [800, 300]);
   });
 
-  test("maxDelay preserves done", () => {
+  it("maxDelay preserves done", () => {
     const deps = createScheduleDeps();
     const step = maxDelay("300ms")(once)(deps);
     expectOk(step(undefined), [0, 0]);
@@ -702,19 +713,19 @@ describe("maxDelay", () => {
 });
 
 describe("jitter", () => {
-  test("0% preserves delay", () => {
+  it("0% preserves delay", () => {
     const deps = createScheduleDeps();
     const step = jitter("0%")(spaced("100ms"))(deps);
 
     expectOk(step(undefined), [100, 100]);
   });
 
-  test("accepts Ratio", () => {
-    expect(() => jitter(Ratio.orThrow(1))).not.toThrow();
+  it("accepts Ratio", () => {
+    jitter(Ratio.orThrow(1));
   });
 
   describe("below", () => {
-    test("defaults to 50% below jitter", () => {
+    it("defaults to 50% below jitter", () => {
       const result = jitter()(spaced("100ms"))(
         createScheduleDepsWithRandom(0.5 as RandomNumber),
       )(undefined);
@@ -722,11 +733,11 @@ describe("jitter", () => {
         createScheduleDepsWithRandom(0.5 as RandomNumber),
       )(undefined);
 
-      expect(result).toEqual(explicitResult);
+      assertEqual(result, explicitResult);
       expectOk(result, [100, 75]);
     });
 
-    test("50% applies equal jitter", () => {
+    it("50% applies equal jitter", () => {
       expectOk(
         jitter("50%")(spaced("100ms"))(
           createScheduleDepsWithRandom(0 as RandomNumber),
@@ -747,7 +758,7 @@ describe("jitter", () => {
       );
     });
 
-    test("100% applies full jitter", () => {
+    it("100% applies full jitter", () => {
       expectOk(
         jitter("100%")(spaced("100ms"))(
           createScheduleDepsWithRandom(0 as RandomNumber),
@@ -770,7 +781,7 @@ describe("jitter", () => {
   });
 
   describe("around", () => {
-    test("randomizes around the original delay", () => {
+    it("randomizes around the original delay", () => {
       expectOk(
         jitter("50%", "around")(spaced("100ms"))(
           createScheduleDepsWithRandom(0 as RandomNumber),
@@ -791,15 +802,15 @@ describe("jitter", () => {
       );
     });
 
-    test("saturates at maxMillis instead of throwing on overflow", () => {
+    it("saturates at maxMillis instead of throwing on overflow", () => {
       const step = jitter("100%", "around")(spaced(maxMillis))(
         createScheduleDepsWithRandom(0.999999999 as RandomNumber),
       );
-      expect(step(undefined)).toEqual(ok([maxMillis, maxMillis]));
+      assertEqual(step(undefined), ok([maxMillis, maxMillis]));
     });
   });
 
-  test("jitter preserves done", () => {
+  it("jitter preserves done", () => {
     const deps = createScheduleDeps();
     const step = jitter("50%")(once)(deps);
     expectOk(step(undefined), [0, 0]);
@@ -808,7 +819,7 @@ describe("jitter", () => {
 });
 
 describe("delayed", () => {
-  test("replaces the first delay", () => {
+  it("replaces the first delay", () => {
     const deps = createScheduleDeps();
     const step = delayed("500ms")(exponential("100ms"))(deps);
     // Initial delay
@@ -818,7 +829,7 @@ describe("delayed", () => {
     expectOk(step(undefined), [400, 400]);
   });
 
-  test("does not override termination", () => {
+  it("does not override termination", () => {
     const deps = createScheduleDeps();
     const step = delayed("500ms")(take(0)(forever))(deps);
     expectDone(step(undefined));
@@ -826,30 +837,30 @@ describe("delayed", () => {
 });
 
 describe("addDelay", () => {
-  test("adds fixed delay to schedule", () => {
+  it("adds fixed delay to schedule", () => {
     const deps = createScheduleDeps();
     const schedule = addDelay("500ms")(exponential("100ms"));
     const step = schedule(deps);
 
     const result1 = step(undefined);
-    expect(result1.ok).toBe(true);
+    assertOk(result1);
     // 100 + 500
-    expect(result1.ok ? result1.value[1] : null).toBe(600);
+    assertEqual(result1.ok ? result1.value[1] : null, 600);
 
     const result2 = step(undefined);
-    expect(result2.ok).toBe(true);
+    assertOk(result2);
     // 200 + 500
-    expect(result2.ok ? result2.value[1] : null).toBe(700);
+    assertEqual(result2.ok ? result2.value[1] : null, 700);
 
     const result3 = step(undefined);
-    expect(result3.ok).toBe(true);
+    assertOk(result3);
     // 400 + 500
-    expect(result3.ok ? result3.value[1] : null).toBe(900);
+    assertEqual(result3.ok ? result3.value[1] : null, 900);
   });
 });
 
 describe("modifyDelay", () => {
-  test("transforms delays", () => {
+  it("transforms delays", () => {
     const deps = createScheduleDeps();
     // Double all delays
     const step = modifyDelay((d) => d * 2)(exponential("100ms"))(deps);
@@ -858,27 +869,28 @@ describe("modifyDelay", () => {
     expectOk(step(undefined), [400, 800]);
   });
 
-  test("passes through termination", () => {
+  it("passes through termination", () => {
     const deps = createScheduleDeps();
     const step = modifyDelay(() => 123)(take(1)(forever))(deps);
     expectOk(step(undefined), [0, 123]);
     expectDone(step(undefined));
   });
 
-  test("saturates at maxMillis instead of throwing on overflow", () => {
+  it("saturates at maxMillis instead of throwing on overflow", () => {
     const deps = createScheduleDeps();
     const step = modifyDelay(() => maxMillis + 1)(once)(deps);
-    expect(step(undefined)).toEqual(ok([0, maxMillis]));
+    assertEqual(step(undefined), ok([0, maxMillis]));
   });
 
-  test("throws when the transform returns NaN", () => {
+  it("throws when the transform returns NaN", () => {
     const step = modifyDelay(() => Number.NaN)(once)(createScheduleDeps());
-    expect(() => step(undefined)).toThrow("Expected NonNaN.");
+    const error = assertThrowsInstanceOf(() => step(undefined), Error);
+    assertTrue(error.message.includes("Expected NonNaN."));
   });
 });
 
 describe("compensate", () => {
-  test("subtracts execution time, not previous sleep", () => {
+  it("subtracts execution time, not previous sleep", () => {
     const deps = createScheduleDeps();
     const step = compensate(spaced("1s"))(deps);
 
@@ -889,7 +901,7 @@ describe("compensate", () => {
     expectOk(step(undefined), [1000, 800]);
   });
 
-  test("keeps full delay until previous delay elapses", () => {
+  it("keeps full delay until previous delay elapses", () => {
     const deps = createScheduleDeps();
     const step = compensate(spaced("1s"))(deps);
     // First attempt at T=0, no previous → full delay
@@ -899,14 +911,14 @@ describe("compensate", () => {
     expectOk(step(undefined), [1000, 1000]);
   });
 
-  test("passes through termination", () => {
+  it("passes through termination", () => {
     const deps = createScheduleDeps();
     const step = compensate(take(1)(spaced("1s")))(deps);
     expectOk(step(undefined), [1000, 1000]);
     expectDone(step(undefined));
   });
 
-  test("keeps full delay when time moves backwards", () => {
+  it("keeps full delay when time moves backwards", () => {
     const deps = createScheduleDepsWithNow(100, 50);
     const step = compensate(spaced("1s"))(deps);
 
@@ -916,7 +928,7 @@ describe("compensate", () => {
 });
 
 describe("whileScheduleInput", () => {
-  test("continues while predicate is true", () => {
+  it("continues while predicate is true", () => {
     const deps = createScheduleDeps();
     interface Error {
       readonly type: "Transient" | "Fatal";
@@ -931,7 +943,7 @@ describe("whileScheduleInput", () => {
     expectDone(step({ type: "Fatal" }));
   });
 
-  test("remains done after predicate fails", () => {
+  it("remains done after predicate fails", () => {
     const deps = createScheduleDeps();
     const step = whileScheduleInput((n: number) => n > 0)(forever)(deps);
 
@@ -942,7 +954,7 @@ describe("whileScheduleInput", () => {
 });
 
 describe("untilScheduleInput", () => {
-  test("stops when predicate becomes true", () => {
+  it("stops when predicate becomes true", () => {
     const deps = createScheduleDeps();
 
     interface Error {
@@ -960,7 +972,7 @@ describe("untilScheduleInput", () => {
 });
 
 describe("whileScheduleOutput", () => {
-  test("continues while predicate is true", () => {
+  it("continues while predicate is true", () => {
     const deps = createScheduleDeps();
     // Stop when delay exceeds 300ms
     const step = whileScheduleOutput((delay: Millis) => delay <= 300)(
@@ -972,7 +984,7 @@ describe("whileScheduleOutput", () => {
     expectDone(step(undefined));
   });
 
-  test("passes through termination", () => {
+  it("passes through termination", () => {
     const deps = createScheduleDeps();
     const step = whileScheduleOutput(() => true)(take(1)(forever))(deps);
     expectOk(step(undefined), [0, 0]);
@@ -981,7 +993,7 @@ describe("whileScheduleOutput", () => {
 });
 
 describe("untilScheduleOutput", () => {
-  test("stops when predicate becomes true", () => {
+  it("stops when predicate becomes true", () => {
     const deps = createScheduleDeps();
     // Stop when delay reaches 400ms
     const step = untilScheduleOutput((delay: Millis) => delay >= 400)(
@@ -993,7 +1005,7 @@ describe("untilScheduleOutput", () => {
     expectDone(step(undefined));
   });
 
-  test("passes through termination", () => {
+  it("passes through termination", () => {
     const deps = createScheduleDeps();
     const step = untilScheduleOutput(() => false)(take(1)(forever))(deps);
     expectOk(step(undefined), [0, 0]);
@@ -1002,7 +1014,7 @@ describe("untilScheduleOutput", () => {
 });
 
 describe("predicate filters", () => {
-  test("other predicate stops are sticky", () => {
+  it("other predicate stops are sticky", () => {
     const inputUntilStep = untilScheduleInput((n: number) => n <= 0)(forever)(
       createScheduleDeps(),
     );
@@ -1027,14 +1039,14 @@ describe("predicate filters", () => {
 });
 
 describe("resetScheduleAfter", () => {
-  test("requires a positive millis duration", () => {
+  it("requires a positive millis duration", () => {
     resetScheduleAfter("1ms");
     resetScheduleAfter(PositiveMillis.orThrow(1));
     // @ts-expect-error - Zero Millis is not a positive duration.
     resetScheduleAfter(minMillis);
   });
 
-  test("resets a running schedule after inactivity", () => {
+  it("resets a running schedule after inactivity", () => {
     const deps = createScheduleDeps();
     const step = resetScheduleAfter("1s")(exponential("100ms"))(deps);
 
@@ -1047,7 +1059,7 @@ describe("resetScheduleAfter", () => {
     expectOk(step(undefined), [200, 200]);
   });
 
-  test("keeps terminal done after inactivity", () => {
+  it("keeps terminal done after inactivity", () => {
     const deps = createScheduleDeps();
     const step = resetScheduleAfter("1s")(take(1)(spaced("100ms")))(deps);
 
@@ -1059,7 +1071,7 @@ describe("resetScheduleAfter", () => {
 });
 
 describe("mapSchedule", () => {
-  test("transforms output", () => {
+  it("transforms output", () => {
     const deps = createScheduleDeps();
     const schedule = mapSchedule((delay: Millis) => ({
       delay,
@@ -1068,24 +1080,24 @@ describe("mapSchedule", () => {
     const step = schedule(deps);
 
     const result1 = step(undefined);
-    expect(result1.ok).toBe(true);
-    expect(result1.ok ? result1.value[0] : null).toEqual({
+    assertOk(result1);
+    assertEqual(result1.ok ? result1.value[0] : null, {
       delay: 100,
       doubled: 200,
     });
     // delay unchanged
-    expect(result1.ok ? result1.value[1] : null).toBe(100);
+    assertEqual(result1.ok ? result1.value[1] : null, 100);
 
     const result2 = step(undefined);
-    expect(result2.ok).toBe(true);
-    expect(result2.ok ? result2.value[0] : null).toEqual({
+    assertOk(result2);
+    assertEqual(result2.ok ? result2.value[0] : null, {
       delay: 200,
       doubled: 400,
     });
-    expect(result2.ok ? result2.value[1] : null).toBe(200);
+    assertEqual(result2.ok ? result2.value[1] : null, 200);
   });
 
-  test("passes through termination", () => {
+  it("passes through termination", () => {
     const deps = createScheduleDeps();
     const step = mapSchedule((n: number) => n + 1)(take(1)(forever))(deps);
     expectOk(step(undefined), [1, 0]);
@@ -1094,7 +1106,7 @@ describe("mapSchedule", () => {
 });
 
 describe("passthrough", () => {
-  test("as constructor outputs input directly", () => {
+  it("as constructor outputs input directly", () => {
     const deps = createScheduleDeps();
 
     interface MyError {
@@ -1113,7 +1125,7 @@ describe("passthrough", () => {
     expectOk(result2, [error2, 0]);
   });
 
-  test("as combinator preserves timing, replaces output", () => {
+  it("as combinator preserves timing, replaces output", () => {
     const deps = createScheduleDeps();
 
     interface MyError {
@@ -1135,7 +1147,7 @@ describe("passthrough", () => {
     expectOk(result3, [{ code: 503 }, 400]);
   });
 
-  test("combinator respects schedule termination", () => {
+  it("combinator respects schedule termination", () => {
     const deps = createScheduleDeps();
     const step = passthrough(take(2)(spaced("100ms")))(deps);
 
@@ -1147,7 +1159,7 @@ describe("passthrough", () => {
 });
 
 describe("foldSchedule", () => {
-  test("accumulates state across iterations", () => {
+  it("accumulates state across iterations", () => {
     const deps = createScheduleDeps();
 
     // Track cumulative delay
@@ -1170,7 +1182,7 @@ describe("foldSchedule", () => {
 });
 
 describe("repetitions", () => {
-  test("outputs count instead of original output", () => {
+  it("outputs count instead of original output", () => {
     const deps = createScheduleDeps();
 
     const schedule = repetitions(exponential("100ms"));
@@ -1183,7 +1195,7 @@ describe("repetitions", () => {
 });
 
 describe("delays", () => {
-  test("outputs the delay instead of original output", () => {
+  it("outputs the delay instead of original output", () => {
     const deps = createScheduleDeps();
 
     const schedule = delays(exponential("100ms"));
@@ -1194,7 +1206,7 @@ describe("delays", () => {
     expectOk(step(undefined), [400, 400]);
   });
 
-  test("passes through termination", () => {
+  it("passes through termination", () => {
     const deps = createScheduleDeps();
     const step = delays(take(1)(spaced("100ms")))(deps);
     expectOk(step(undefined), [100, 100]);
@@ -1203,7 +1215,7 @@ describe("delays", () => {
 });
 
 describe("collectAllScheduleOutputs", () => {
-  test("accumulates outputs into array", () => {
+  it("accumulates outputs into array", () => {
     const deps = createScheduleDeps();
     const schedule = collectAllScheduleOutputs(take(3)(spaced("100ms")));
     const step = schedule(deps);
@@ -1214,7 +1226,7 @@ describe("collectAllScheduleOutputs", () => {
     expectDone(step(undefined));
   });
 
-  test("returns a new snapshot without changing previous outputs", () => {
+  it("returns a new snapshot without changing previous outputs", () => {
     const step = collectAllScheduleOutputs(take(2)(spaced("100ms")))(
       createScheduleDeps(),
     );
@@ -1227,7 +1239,7 @@ describe("collectAllScheduleOutputs", () => {
 });
 
 describe("collectScheduleInputs", () => {
-  test("accumulates inputs into array", () => {
+  it("accumulates inputs into array", () => {
     const deps = createScheduleDeps();
     const schedule = collectScheduleInputs(take(3)(spaced("100ms")));
     const step = schedule(deps);
@@ -1240,7 +1252,7 @@ describe("collectScheduleInputs", () => {
 });
 
 describe("collectWhileScheduleOutput", () => {
-  test("collects outputs while predicate is true", () => {
+  it("collects outputs while predicate is true", () => {
     const deps = createScheduleDeps();
     const schedule = collectWhileScheduleOutput((delay: Millis) => delay < 400)(
       exponential("100ms"),
@@ -1255,7 +1267,7 @@ describe("collectWhileScheduleOutput", () => {
 });
 
 describe("collectUntilScheduleOutput", () => {
-  test("collects outputs until predicate becomes true", () => {
+  it("collects outputs until predicate becomes true", () => {
     const deps = createScheduleDeps();
     const schedule = collectUntilScheduleOutput(
       (delay: Millis) => delay >= 400,
@@ -1270,7 +1282,7 @@ describe("collectUntilScheduleOutput", () => {
 });
 
 describe("sequenceSchedules", () => {
-  test("runs schedules in order", () => {
+  it("runs schedules in order", () => {
     const deps = createScheduleDeps();
 
     const step = sequenceSchedules(
@@ -1289,7 +1301,7 @@ describe("sequenceSchedules", () => {
     expectDone(step(undefined));
   });
 
-  test("handles three schedules", () => {
+  it("handles three schedules", () => {
     const deps = createScheduleDeps();
 
     const step = sequenceSchedules(
@@ -1304,7 +1316,7 @@ describe("sequenceSchedules", () => {
     expectDone(step(undefined));
   });
 
-  test("stops immediately for empty list", () => {
+  it("stops immediately for empty list", () => {
     const deps = createScheduleDeps();
     const step = sequenceSchedules()(deps);
     expectDone(step(undefined));
@@ -1312,7 +1324,7 @@ describe("sequenceSchedules", () => {
 });
 
 describe("intersectSchedules", () => {
-  test("continues while both want to continue", () => {
+  it("continues while both want to continue", () => {
     const deps = createScheduleDeps();
 
     const a = take(2)(spaced("100ms"));
@@ -1327,7 +1339,7 @@ describe("intersectSchedules", () => {
     expectDone(step(undefined));
   });
 
-  test("does not step children after the intersection stops", () => {
+  it("does not step children after the intersection stops", () => {
     let aCalls = 0;
     let bCalls = 0;
     const step = intersectSchedules(
@@ -1342,12 +1354,12 @@ describe("intersectSchedules", () => {
     expectOk(step(undefined), [[100, 200], 200]);
     expectDone(step(undefined));
     expectDone(step(undefined));
-    expect([aCalls, bCalls]).toEqual([2, 2]);
+    assertEqual([aCalls, bCalls], [2, 2]);
   });
 });
 
 describe("unionSchedules", () => {
-  test("continues while either wants to continue", () => {
+  it("continues while either wants to continue", () => {
     const deps = createScheduleDeps();
 
     const a = take(2)(spaced("100ms"));
@@ -1365,7 +1377,7 @@ describe("unionSchedules", () => {
     expectDone(step(undefined));
   });
 
-  test("continues when second schedule stops first", () => {
+  it("continues when second schedule stops first", () => {
     const deps = createScheduleDeps();
 
     const a = take(2)(spaced("200ms"));
@@ -1377,7 +1389,7 @@ describe("unionSchedules", () => {
     expectDone(step(undefined));
   });
 
-  test("returns output from the shorter delay", () => {
+  it("returns output from the shorter delay", () => {
     const deps = createScheduleDeps();
 
     const a = mapSchedule(() => "a")(spaced("200ms"));
@@ -1387,7 +1399,7 @@ describe("unionSchedules", () => {
     expectOk(step(undefined), ["b", 100]);
   });
 
-  test("does not step completed children", () => {
+  it("does not step completed children", () => {
     let aCalls = 0;
     let bCalls = 0;
     const step = unionSchedules(
@@ -1402,15 +1414,15 @@ describe("unionSchedules", () => {
     expectOk(step(undefined), [100, 100]);
     expectOk(step(undefined), [200, 200]);
     expectOk(step(undefined), [200, 200]);
-    expect([aCalls, bCalls]).toEqual([2, 3]);
+    assertEqual([aCalls, bCalls], [2, 3]);
     expectDone(step(undefined));
     expectDone(step(undefined));
-    expect([aCalls, bCalls]).toEqual([2, 4]);
+    assertEqual([aCalls, bCalls], [2, 4]);
   });
 });
 
 describe("whenInput", () => {
-  test("maintains independent branch state", () => {
+  it("maintains independent branch state", () => {
     const step = whenInput(
       (useAlt: boolean) => useAlt,
       exponential("1s"),
@@ -1422,7 +1434,7 @@ describe("whenInput", () => {
     expectOk(step(true), [2000, 2000]);
   });
 
-  test("shares an outer attempt limit across branches", () => {
+  it("shares an outer attempt limit across branches", () => {
     const step = take(3)(
       whenInput(
         (useAlt: boolean) => useAlt,
@@ -1436,7 +1448,7 @@ describe("whenInput", () => {
     expectDone(step(true));
   });
 
-  test("passes through termination from alt schedule", () => {
+  it("passes through termination from alt schedule", () => {
     const deps = createScheduleDeps();
 
     const step = whenInput(() => true, take(1)(spaced("1s")))(spaced("100ms"))(
@@ -1447,7 +1459,7 @@ describe("whenInput", () => {
     expectDone(step(undefined));
   });
 
-  test("keeps terminal done when the selected branch changes", () => {
+  it("keeps terminal done when the selected branch changes", () => {
     const step = whenInput(
       (useAlt: boolean) => useAlt,
       take(1)(spaced("1s")),
@@ -1462,7 +1474,7 @@ describe("whenInput", () => {
 });
 
 describe("tapScheduleOutput", () => {
-  test("executes side effect without altering schedule", () => {
+  it("executes side effect without altering schedule", () => {
     const deps = createScheduleDeps();
 
     const outputs: Array<Millis> = [];
@@ -1475,10 +1487,10 @@ describe("tapScheduleOutput", () => {
     expectOk(step(undefined), [400, 400]);
     expectDone(step(undefined));
 
-    expect(outputs).toEqual([100, 200, 400]);
+    assertEqual(outputs, [100, 200, 400]);
   });
 
-  test("does not call effect when schedule stops", () => {
+  it("does not call effect when schedule stops", () => {
     const deps = createScheduleDeps();
 
     const outputs: Array<number> = [];
@@ -1491,12 +1503,12 @@ describe("tapScheduleOutput", () => {
     // Err(Done<void>)
     step(undefined);
 
-    expect(outputs).toEqual([0, 1]);
+    assertEqual(outputs, [0, 1]);
   });
 });
 
 describe("tapScheduleInput", () => {
-  test("executes side effect on input without altering schedule", () => {
+  it("executes side effect on input without altering schedule", () => {
     const deps = createScheduleDeps();
 
     const inputs: Array<string> = [];
@@ -1509,10 +1521,10 @@ describe("tapScheduleInput", () => {
     expectOk(step("error3"), [100, 100]);
     expectDone(step("error4"));
 
-    expect(inputs).toEqual(["error1", "error2", "error3", "error4"]);
+    assertEqual(inputs, ["error1", "error2", "error3", "error4"]);
   });
 
-  test("is called even when schedule stops", () => {
+  it("is called even when schedule stops", () => {
     const deps = createScheduleDeps();
 
     const inputs: Array<string> = [];
@@ -1524,12 +1536,12 @@ describe("tapScheduleInput", () => {
     // Err(Done<void>) but tap still runs
     step("second");
 
-    expect(inputs).toEqual(["first", "second"]);
+    assertEqual(inputs, ["first", "second"]);
   });
 });
 
 describe("retryStrategyAws", () => {
-  test("uses AWS 2.1 ordinary-failure timing", () => {
+  it("uses AWS 2.1 ordinary-failure timing", () => {
     // RandomNumber is below 1; millisecond rounding reaches the 50ms upper bound.
     const step = retryStrategyAws(
       createScheduleDepsWithRandom(0.999999999 as RandomNumber),

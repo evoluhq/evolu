@@ -1,4 +1,6 @@
-import { expect, test } from "vitest";
+import { test } from "node:test";
+import { assertEqual } from "./Assert.ts";
+
 import {
   createOrder,
   orderBigInt,
@@ -6,35 +8,35 @@ import {
   orderString,
   orderUint8Array,
   reverseOrder,
-} from "../../../../packages/common/src/Order.ts";
+} from "./Order.ts";
 
 test("createOrder", () => {
   const orderNumber = createOrder<number>((x, y) => x < y);
-  expect(orderNumber(1, 2)).toBe(-1);
-  expect(orderNumber(2, 1)).toBe(1);
-  expect(orderNumber(1, 1)).toBe(0);
+  assertEqual(orderNumber(1, 2), -1);
+  assertEqual(orderNumber(2, 1), 1);
+  assertEqual(orderNumber(1, 1), 0);
 
   const orderString = createOrder<string>((x, y) => x.localeCompare(y) < 0);
-  expect(orderString("a", "b")).toBe(-1);
-  expect(orderString("b", "a")).toBe(1);
-  expect(orderString("a", "a")).toBe(0);
+  assertEqual(orderString("a", "b"), -1);
+  assertEqual(orderString("b", "a"), 1);
+  assertEqual(orderString("a", "a"), 0);
 });
 
 test("reverseOrder", () => {
   const orderNumberDesc = reverseOrder(orderNumber);
-  expect([2, 1, 3].toSorted(orderNumberDesc)).toEqual([3, 2, 1]);
+  assertEqual([2, 1, 3].toSorted(orderNumberDesc), [3, 2, 1]);
 });
 
 test("orderString", () => {
-  expect(["b", "a", "c"].toSorted(orderString)).toEqual(["a", "b", "c"]);
+  assertEqual(["b", "a", "c"].toSorted(orderString), ["a", "b", "c"]);
 });
 
 test("orderNumber", () => {
-  expect([2, 1, 3].toSorted(orderNumber)).toEqual([1, 2, 3]);
+  assertEqual([2, 1, 3].toSorted(orderNumber), [1, 2, 3]);
 });
 
 test("orderBigInt", () => {
-  expect([2n, 1n, 3n].toSorted(orderBigInt)).toEqual([1n, 2n, 3n]);
+  assertEqual([2n, 1n, 3n].toSorted(orderBigInt), [1n, 2n, 3n]);
 });
 
 test("orderUint8Array", () => {
@@ -46,9 +48,9 @@ test("orderUint8Array", () => {
   // longer
   const e = new Uint8Array([0x01, 0x02, 0x03, 0x00]);
 
-  expect(orderUint8Array(a, b)).toBe(-1);
-  expect(orderUint8Array(b, a)).toBe(1);
-  expect(orderUint8Array(a, c)).toBe(0);
-  expect(orderUint8Array(a, d)).toBe(1);
-  expect(orderUint8Array(a, e)).toBe(-1);
+  assertEqual(orderUint8Array(a, b), -1);
+  assertEqual(orderUint8Array(b, a), 1);
+  assertEqual(orderUint8Array(a, c), 0);
+  assertEqual(orderUint8Array(a, d), 1);
+  assertEqual(orderUint8Array(a, e), -1);
 });

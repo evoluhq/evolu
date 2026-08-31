@@ -2,7 +2,8 @@
   "extends": "@evolu/typescript-config/library-react.json",
   "compilerOptions": {
     "module": "esnext",
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "types": ["node"]
   },
   "references": [{ "path": "../common" }, { "path": "../react" }]
 }

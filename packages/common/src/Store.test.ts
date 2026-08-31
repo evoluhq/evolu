@@ -1,181 +1,198 @@
-import { describe, expect, test, vi } from "vitest";
-import { createStore } from "../../../../packages/common/src/Store.ts";
+import { describe, it, mock } from "node:test";
+import { assertEqual } from "./Assert.ts";
+
+import { createStore } from "./Store.ts";
 
 describe("get", () => {
-  test("get returns initial state", () => {
+  it("get returns initial state", () => {
     const store = createStore(42);
-    expect(store.get()).toBe(42);
+    assertEqual(store.get(), 42);
   });
 });
 
 describe("set", () => {
-  test("updates state", () => {
+  it("updates state", () => {
     const store = createStore(0);
     store.set(1);
-    expect(store.get()).toBe(1);
+    assertEqual(store.get(), 1);
   });
 
-  test("notifies listeners when state changes", () => {
+  it("notifies listeners when state changes", () => {
     const store = createStore(0);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     store.set(1);
 
-    expect(listener).toHaveBeenCalledTimes(1);
+    assertEqual(listener.mock.callCount(), 1);
   });
 
-  test("does not notify listeners when state is equal", () => {
+  it("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     store.set(1);
 
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(listener.mock.callCount(), 0);
   });
 
-  test("does not notify listeners when repeated state is NaN", () => {
+  it("does not notify listeners when repeated state is NaN", () => {
     const store = createStore(NaN);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     store.set(NaN);
 
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(listener.mock.callCount(), 0);
   });
 });
 
 describe("getAndSet", () => {
-  test("returns previous state and updates state", () => {
+  it("returns previous state and updates state", () => {
     const store = createStore(1);
 
-    expect(store.getAndSet(2)).toBe(1);
-    expect(store.get()).toBe(2);
+    assertEqual(store.getAndSet(2), 1);
+    assertEqual(store.get(), 2);
   });
 
-  test("notifies listeners when state changes", () => {
+  it("notifies listeners when state changes", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
-    expect(store.getAndSet(2)).toBe(1);
-    expect(listener).toHaveBeenCalledTimes(1);
+    assertEqual(store.getAndSet(2), 1);
+    assertEqual(listener.mock.callCount(), 1);
   });
 
-  test("does not notify listeners when state is equal", () => {
+  it("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
-    expect(store.getAndSet(1)).toBe(1);
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(store.getAndSet(1), 1);
+    assertEqual(listener.mock.callCount(), 0);
   });
 });
 
 describe("setAndGet", () => {
-  test("returns updated state", () => {
+  it("returns updated state", () => {
     const store = createStore(1);
 
-    expect(store.setAndGet(2)).toBe(2);
-    expect(store.get()).toBe(2);
+    assertEqual(store.setAndGet(2), 2);
+    assertEqual(store.get(), 2);
   });
 
-  test("does not notify listeners when state is equal", () => {
+  it("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
-    expect(store.setAndGet(1)).toBe(1);
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(store.setAndGet(1), 1);
+    assertEqual(listener.mock.callCount(), 0);
   });
 });
 
 describe("update", () => {
-  test("updates state", () => {
+  it("updates state", () => {
     const store = createStore(1);
 
     store.update((n) => n + 1);
 
-    expect(store.get()).toBe(2);
+    assertEqual(store.get(), 2);
   });
 
-  test("notifies listeners when state changes", () => {
+  it("notifies listeners when state changes", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     store.update((n) => n + 1);
 
-    expect(listener).toHaveBeenCalledTimes(1);
+    assertEqual(listener.mock.callCount(), 1);
   });
 
-  test("does not notify listeners when state is equal", () => {
+  it("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     store.update((n) => n);
 
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(listener.mock.callCount(), 0);
   });
 });
 
 describe("getAndUpdate", () => {
-  test("returns previous state and updates state", () => {
+  it("returns previous state and updates state", () => {
     const store = createStore(1);
 
-    expect(store.getAndUpdate((n: number) => n + 1)).toBe(1);
-    expect(store.get()).toBe(2);
+    assertEqual(
+      store.getAndUpdate((n: number) => n + 1),
+      1,
+    );
+    assertEqual(store.get(), 2);
   });
 
-  test("notifies listeners when state changes", () => {
+  it("notifies listeners when state changes", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
-    expect(store.getAndUpdate((n: number) => n + 1)).toBe(1);
-    expect(listener).toHaveBeenCalledTimes(1);
+    assertEqual(
+      store.getAndUpdate((n: number) => n + 1),
+      1,
+    );
+    assertEqual(listener.mock.callCount(), 1);
   });
 
-  test("does not notify listeners when state is equal", () => {
+  it("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
-    expect(store.getAndUpdate((n) => n)).toBe(1);
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(
+      store.getAndUpdate((n) => n),
+      1,
+    );
+    assertEqual(listener.mock.callCount(), 0);
   });
 });
 
 describe("updateAndGet", () => {
-  test("returns updated state", () => {
+  it("returns updated state", () => {
     const store = createStore(1);
 
-    expect(store.updateAndGet((n: number) => n + 1)).toBe(2);
-    expect(store.get()).toBe(2);
+    assertEqual(
+      store.updateAndGet((n: number) => n + 1),
+      2,
+    );
+    assertEqual(store.get(), 2);
   });
 
-  test("does not notify listeners when state is equal", () => {
+  it("does not notify listeners when state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
-    expect(store.updateAndGet((n) => n)).toBe(1);
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(
+      store.updateAndGet((n) => n),
+      1,
+    );
+    assertEqual(listener.mock.callCount(), 0);
   });
 });
 
 describe("modify", () => {
-  test("returns a computed result and updates state", () => {
+  it("returns a computed result and updates state", () => {
     const store = createStore(0);
     const result = store.modify((current) => [current, current + 1]);
 
-    expect(result).toBe(0);
-    expect(store.get()).toBe(1);
+    assertEqual(result, 0);
+    assertEqual(store.get(), 1);
   });
 
-  test("returns computed result and updates state", () => {
+  it("returns computed result and updates state", () => {
     const store = createStore(1);
 
     const result = store.modify((current: number) => [
@@ -183,89 +200,89 @@ describe("modify", () => {
       current + 1,
     ]);
 
-    expect(result).toBe("previous:1");
-    expect(store.get()).toBe(2);
+    assertEqual(result, "previous:1");
+    assertEqual(store.get(), 2);
   });
 
-  test("notifies listeners when state changes", () => {
+  it("notifies listeners when state changes", () => {
     const store = createStore(0);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     const result = store.modify((current: number) => [current, current + 1]);
 
-    expect(result).toBe(0);
-    expect(listener).toHaveBeenCalledTimes(1);
+    assertEqual(result, 0);
+    assertEqual(listener.mock.callCount(), 1);
   });
 
-  test("does not notify listeners when next state is equal", () => {
+  it("does not notify listeners when next state is equal", () => {
     const store = createStore(1);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     const result = store.modify((current) => [current, current]);
 
-    expect(result).toBe(1);
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(result, 1);
+    assertEqual(listener.mock.callCount(), 0);
   });
 });
 
 describe("subscribe", () => {
-  test("returns unsubscribe function", () => {
+  it("returns unsubscribe function", () => {
     const store = createStore(0);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     const unsubscribe = store.subscribe(listener);
 
     store.set(1);
-    expect(listener).toHaveBeenCalledTimes(1);
+    assertEqual(listener.mock.callCount(), 1);
 
     unsubscribe();
     store.set(2);
-    expect(listener).toHaveBeenCalledTimes(1);
+    assertEqual(listener.mock.callCount(), 1);
   });
 
-  test("supports multiple listeners", () => {
+  it("supports multiple listeners", () => {
     const store = createStore(0);
-    const listener1 = vi.fn<() => void>();
-    const listener2 = vi.fn<() => void>();
+    const listener1 = mock.fn<() => void>();
+    const listener2 = mock.fn<() => void>();
 
     store.subscribe(listener1);
     store.subscribe(listener2);
 
     store.set(1);
 
-    expect(listener1).toHaveBeenCalledTimes(1);
-    expect(listener2).toHaveBeenCalledTimes(1);
+    assertEqual(listener1.mock.callCount(), 1);
+    assertEqual(listener2.mock.callCount(), 1);
   });
 });
 
 describe("dispose", () => {
-  test("clears all listeners", () => {
+  it("clears all listeners", () => {
     const store = createStore(0);
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     store[Symbol.dispose]();
     store.set(1);
 
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(listener.mock.callCount(), 0);
   });
 });
 
 describe("custom eq", () => {
-  test("suppresses notifications for equal states under the provided equality", () => {
+  it("suppresses notifications for equal states under the provided equality", () => {
     const eqModulo10 = (a: number, b: number) => a % 10 === b % 10;
     const store = createStore<number>(5, eqModulo10);
 
-    const listener = vi.fn<() => void>();
+    const listener = mock.fn<() => void>();
     store.subscribe(listener);
 
     store.set(15);
-    expect(store.get()).toBe(15);
-    expect(listener).not.toHaveBeenCalled();
+    assertEqual(store.get(), 15);
+    assertEqual(listener.mock.callCount(), 0);
 
     store.set(16);
-    expect(store.get()).toBe(16);
-    expect(listener).toHaveBeenCalledTimes(1);
+    assertEqual(store.get(), 16);
+    assertEqual(listener.mock.callCount(), 1);
   });
 });

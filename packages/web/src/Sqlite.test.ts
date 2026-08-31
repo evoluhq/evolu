@@ -1,7 +1,15 @@
-import { EncryptionKey, Name, sql, testCreateRun } from "@evolu/common";
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import {
+  assertEqual,
+  assertEqualBytes,
+  assertTrue,
+  EncryptionKey,
+  Name,
+  sql,
+  testCreateRun,
+} from "@evolu/common";
+import { describe, it, mock } from "node:test";
 
-const sqliteMock = vi.hoisted(() => {
+const sqliteMock = (() => {
   class PreparedStatement {
     finalized = false;
     resetCount = 0;
@@ -72,21 +80,21 @@ const sqliteMock = vi.hoisted(() => {
 
   let poolPaused = false;
   const pool = {
-    isPaused: vi.fn(() => poolPaused),
+    isPaused: mock.fn(() => poolPaused),
     OpfsSAHPoolDb: Database,
-    pauseVfs: vi.fn(() => {
+    pauseVfs: mock.fn(() => {
       poolPaused = true;
       state.pausedVfsNames.push(pool.vfsName);
       state.events.push(`pause:${pool.vfsName}`);
       return pool;
     }),
-    unpauseVfs: vi.fn(() => {
+    unpauseVfs: mock.fn(() => {
       poolPaused = false;
       state.unpausedVfsNames.push(pool.vfsName);
       state.events.push(`unpause:${pool.vfsName}`);
       return Promise.resolve(pool);
     }),
-    unlink: vi.fn((filename: string) => {
+    unlink: mock.fn((filename: string) => {
       state.deletedFilenames.push(filename);
       state.events.push(`unlink:${filename}`);
       return true;
@@ -96,15 +104,15 @@ const sqliteMock = vi.hoisted(() => {
 
   const sqlite3 = {
     capi: {
-      sqlite3_js_db_export: vi.fn(() => new Uint8Array([1, 2, 3])),
-      sqlite3mc_vfs_create: vi.fn(),
+      sqlite3_js_db_export: mock.fn(() => new Uint8Array([1, 2, 3])),
+      sqlite3mc_vfs_create: mock.fn(),
     },
-    installOpfsSAHPoolVfs: vi.fn(() => Promise.resolve(pool)),
+    installOpfsSAHPoolVfs: mock.fn(() => Promise.resolve(pool)),
     oo1: { DB: Database },
   };
 
   return {
-    consoleWarn: vi.fn<typeof console.warn>(),
+    consoleWarn: mock.fn<typeof console.warn>(),
     pool,
     reset: () => {
       state.closedDatabases.length = 0;
@@ -115,47 +123,49 @@ const sqliteMock = vi.hoisted(() => {
       state.preparedStatements.length = 0;
       state.unpausedVfsNames.length = 0;
       poolPaused = false;
-      pool.isPaused.mockClear();
-      pool.pauseVfs.mockClear();
-      pool.unpauseVfs.mockClear();
-      pool.unlink.mockClear();
-      sqlite3.capi.sqlite3_js_db_export.mockClear();
-      sqlite3.capi.sqlite3mc_vfs_create.mockClear();
-      sqlite3.installOpfsSAHPoolVfs.mockClear();
+      pool.isPaused.mock.resetCalls();
+      pool.pauseVfs.mock.resetCalls();
+      pool.unpauseVfs.mock.resetCalls();
+      pool.unlink.mock.resetCalls();
+      sqlite3.capi.sqlite3_js_db_export.mock.resetCalls();
+      sqlite3.capi.sqlite3mc_vfs_create.mock.resetCalls();
+      sqlite3.installOpfsSAHPoolVfs.mock.resetCalls();
     },
     sqlite3,
     state,
   };
+})();
+
+mock.module("@evolu/sqlite-wasm", {
+  // @ts-expect-error -- Node.js 24.20 replaces the deprecated defaultExport option with exports, which @types/node 24.13 does not declare yet.
+  exports: {
+    default: mock.fn(() => {
+      const config = (
+        globalThis as {
+          readonly sqlite3ApiConfig?: {
+            readonly warn?: (arg: unknown) => void;
+          };
+        }
+      ).sqlite3ApiConfig;
+      config?.warn?.("Ignoring inability to install OPFS sqlite3_vfs");
+      config?.warn?.("kept warning");
+      return Promise.resolve(sqliteMock.sqlite3);
+    }),
+  },
 });
 
-vi.mock("@evolu/sqlite-wasm", () => ({
-  default: vi.fn(() => {
-    const config = (
-      globalThis as {
-        readonly sqlite3ApiConfig?: { readonly warn?: (arg: unknown) => void };
-      }
-    ).sqlite3ApiConfig;
-    config?.warn?.("Ignoring inability to install OPFS sqlite3_vfs");
-    config?.warn?.("kept warning");
-    return Promise.resolve(sqliteMock.sqlite3);
-  }),
-}));
-
-let createWasmSqliteDriver: typeof import("../src/Sqlite.ts").createWasmSqliteDriver;
-
-beforeAll(async () => {
-  vi.spyOn(console, "warn").mockImplementation(sqliteMock.consoleWarn);
-  ({ createWasmSqliteDriver } = await import("../src/Sqlite.ts"));
-});
+mock.method(console, "warn", sqliteMock.consoleWarn);
+const { createWasmSqliteDriver } = await import("./Sqlite.ts");
 
 describe("createWasmSqliteDriver coverage helpers", () => {
-  test("filters sqlite init warnings", () => {
-    expect(sqliteMock.consoleWarn).toHaveBeenCalledExactlyOnceWith(
-      "kept warning",
+  it("filters sqlite init warnings", () => {
+    assertEqual(
+      sqliteMock.consoleWarn.mock.calls.map(({ arguments: args }) => args),
+      [["kept warning"]],
     );
   });
 
-  test("opens plain OPFS SAH-pool database", async () => {
+  it("opens plain OPFS SAH-pool database", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -163,15 +173,19 @@ describe("createWasmSqliteDriver coverage helpers", () => {
       createWasmSqliteDriver(Name.orThrow("MockPlain")),
     );
 
-    expect(sqliteMock.sqlite3.installOpfsSAHPoolVfs).toHaveBeenCalledWith({
-      name: "MockPlain",
-    });
-    expect(sqliteMock.state.createdDatabases[0]?.filename).toBe(
+    assertEqual(
+      sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.calls.map(
+        ({ arguments: args }) => args,
+      ),
+      [[{ name: "MockPlain" }]],
+    );
+    assertEqual(
+      sqliteMock.state.createdDatabases[0]?.filename,
       "file:evolu1.db",
     );
   });
 
-  test("opens memory database", async () => {
+  it("opens memory database", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -179,11 +193,11 @@ describe("createWasmSqliteDriver coverage helpers", () => {
       createWasmSqliteDriver(Name.orThrow("MockMemory"), { mode: "memory" }),
     );
 
-    expect(sqliteMock.sqlite3.installOpfsSAHPoolVfs).not.toHaveBeenCalled();
-    expect(sqliteMock.state.createdDatabases[0]?.filename).toBe(":memory:");
+    assertEqual(sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.callCount(), 0);
+    assertEqual(sqliteMock.state.createdDatabases[0]?.filename, ":memory:");
   });
 
-  test("executes non-prepared query and exports database", async () => {
+  it("executes non-prepared query and exports database", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -194,11 +208,11 @@ describe("createWasmSqliteDriver coverage helpers", () => {
     const result = driver.exec(sql`select ${"row"};`);
     const exported = driver.export();
 
-    expect(result).toEqual({ rows: [{ data: "row" }], changes: 1 });
-    expect(exported).toEqual(new Uint8Array([1, 2, 3]));
+    assertEqual(result, { rows: [{ data: "row" }], changes: 1 });
+    assertEqualBytes(exported, [1, 2, 3]);
   });
 
-  test("executes prepared query and finalizes statement on dispose", async () => {
+  it("executes prepared query and finalizes statement on dispose", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -212,21 +226,19 @@ describe("createWasmSqliteDriver coverage helpers", () => {
         options: { prepare: true },
       });
 
-      expect(result).toEqual({ rows: [{ data: "prepared" }], changes: 1 });
+      assertEqual(result, { rows: [{ data: "prepared" }], changes: 1 });
 
       driver.exec({ ...sql`select 1;`, options: { prepare: true } });
     }
 
-    expect(sqliteMock.state.preparedStatements[0]?.bound).toEqual([
-      ["prepared"],
-    ]);
-    expect(sqliteMock.state.preparedStatements[0]?.resetCount).toBe(1);
-    expect(sqliteMock.state.preparedStatements[0]?.finalized).toBe(true);
-    expect(sqliteMock.state.preparedStatements[1]?.bound).toEqual([]);
-    expect(sqliteMock.state.preparedStatements[1]?.finalized).toBe(true);
+    assertEqual(sqliteMock.state.preparedStatements[0]?.bound, [["prepared"]]);
+    assertEqual(sqliteMock.state.preparedStatements[0]?.resetCount, 1);
+    assertEqual(sqliteMock.state.preparedStatements[0]?.finalized, true);
+    assertEqual(sqliteMock.state.preparedStatements[1]?.bound, []);
+    assertEqual(sqliteMock.state.preparedStatements[1]?.finalized, true);
   });
 
-  test("closes OPFS database on dispose", async () => {
+  it("closes OPFS database on dispose", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -236,12 +248,12 @@ describe("createWasmSqliteDriver coverage helpers", () => {
       );
     }
 
-    expect(sqliteMock.state.closedDatabases).toEqual(["file:evolu1.db"]);
-    expect(sqliteMock.state.pausedVfsNames).toEqual(["mock-sahpool"]);
-    expect(sqliteMock.pool.unlink).not.toHaveBeenCalled();
+    assertEqual(sqliteMock.state.closedDatabases, ["file:evolu1.db"]);
+    assertEqual(sqliteMock.state.pausedVfsNames, ["mock-sahpool"]);
+    assertEqual(sqliteMock.pool.unlink.mock.callCount(), 0);
   });
 
-  test("unpauses OPFS SAH-pool database on reopen", async () => {
+  it("unpauses OPFS SAH-pool database on reopen", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -255,10 +267,10 @@ describe("createWasmSqliteDriver coverage helpers", () => {
       createWasmSqliteDriver(Name.orThrow("MockPlain")),
     );
 
-    expect(sqliteMock.state.unpausedVfsNames).toEqual(["mock-sahpool"]);
+    assertEqual(sqliteMock.state.unpausedVfsNames, ["mock-sahpool"]);
   });
 
-  test("deletes plain OPFS database file", async () => {
+  it("deletes plain OPFS database file", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -268,16 +280,16 @@ describe("createWasmSqliteDriver coverage helpers", () => {
 
     driver.deleteDatabase();
 
-    expect(sqliteMock.state.closedDatabases).toEqual(["file:evolu1.db"]);
-    expect(sqliteMock.state.deletedFilenames).toEqual(["/evolu1.db"]);
-    expect(sqliteMock.state.events).toEqual([
+    assertEqual(sqliteMock.state.closedDatabases, ["file:evolu1.db"]);
+    assertEqual(sqliteMock.state.deletedFilenames, ["/evolu1.db"]);
+    assertEqual(sqliteMock.state.events, [
       "close:file:evolu1.db",
       "unlink:/evolu1.db",
       "pause:mock-sahpool",
     ]);
   });
 
-  test("deletes memory database", async () => {
+  it("deletes memory database", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -287,12 +299,12 @@ describe("createWasmSqliteDriver coverage helpers", () => {
 
     driver.deleteDatabase();
 
-    expect(sqliteMock.state.events).toEqual(["close::memory:"]);
-    expect(sqliteMock.pool.unlink).not.toHaveBeenCalled();
-    expect(sqliteMock.pool.pauseVfs).not.toHaveBeenCalled();
+    assertEqual(sqliteMock.state.events, ["close::memory:"]);
+    assertEqual(sqliteMock.pool.unlink.mock.callCount(), 0);
+    assertEqual(sqliteMock.pool.pauseVfs.mock.callCount(), 0);
   });
 
-  test("deletes encrypted OPFS database file", async () => {
+  it("deletes encrypted OPFS database file", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -305,18 +317,18 @@ describe("createWasmSqliteDriver coverage helpers", () => {
 
     driver.deleteDatabase();
 
-    expect(sqliteMock.state.closedDatabases).toEqual([
+    assertEqual(sqliteMock.state.closedDatabases, [
       "file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
     ]);
-    expect(sqliteMock.state.deletedFilenames).toEqual(["/evolu1.db"]);
-    expect(sqliteMock.state.events).toEqual([
+    assertEqual(sqliteMock.state.deletedFilenames, ["/evolu1.db"]);
+    assertEqual(sqliteMock.state.events, [
       "close:file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
       "unlink:/evolu1.db",
       "pause:mock-sahpool",
     ]);
   });
 
-  test("configures encrypted OPFS database", async () => {
+  it("configures encrypted OPFS database", async () => {
     sqliteMock.reset();
 
     await using run = testCreateRun();
@@ -327,14 +339,20 @@ describe("createWasmSqliteDriver coverage helpers", () => {
       }),
     );
 
-    expect(sqliteMock.sqlite3.installOpfsSAHPoolVfs).toHaveBeenCalledWith({
-      directory: ".MockEncrypted",
-    });
-    expect(sqliteMock.state.createdDatabases[0]?.filename).toBe(
+    assertEqual(
+      sqliteMock.sqlite3.installOpfsSAHPoolVfs.mock.calls.map(
+        ({ arguments: args }) => args,
+      ),
+      [[{ directory: ".MockEncrypted" }]],
+    );
+    assertEqual(
+      sqliteMock.state.createdDatabases[0]?.filename,
       "file:evolu1.db?vfs=multipleciphers-opfs-sahpool",
     );
-    expect(sqliteMock.state.createdDatabases[0]?.execSql[0]).toContain(
-      "PRAGMA cipher = 'sqlcipher';",
+    assertTrue(
+      sqliteMock.state.createdDatabases[0]?.execSql[0]?.includes(
+        "PRAGMA cipher = 'sqlcipher';",
+      ),
     );
   });
 });

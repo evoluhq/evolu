@@ -1,4 +1,6 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, it, test } from "node:test";
+import { assert, assertEqual, assertSame, assertTrue } from "./Assert.ts";
+
 import {
   fromNullable,
   type InferOption,
@@ -9,82 +11,77 @@ import {
   type Option,
   some,
   type Some,
-} from "../../../../packages/common/src/Option.ts";
+} from "./Option.ts";
+import { assertType } from "./Type.ts";
 
 test("some creates Some", () => {
-  const option = some(42);
-  expect(isSome(option)).toBe(true);
-  if (isSome(option)) {
-    expect(option.value).toBe(42);
-    expectTypeOf(option).toEqualTypeOf<Some<number>>();
-  }
+  assertEqual(some(42), { type: "Some", value: 42 });
 });
 
 test("none is None", () => {
-  expect(isNone(none)).toBe(true);
-  expectTypeOf(none).toEqualTypeOf<None>();
+  assertEqual(none, { type: "None" });
 });
 
 test("isSome narrows type", () => {
   const option: Option<string> = some("test");
   if (isSome(option)) {
-    expectTypeOf(option).toEqualTypeOf<Some<string>>();
-    expectTypeOf(option.value).toEqualTypeOf<string>();
+    assertType<typeof option, Some<string>>();
+    assertType<typeof option.value, string>();
   }
 });
 
 test("isNone narrows type", () => {
   const option: Option<string> = none;
   if (isNone(option)) {
-    expectTypeOf(option).toEqualTypeOf<None>();
+    assertType<typeof option, None>();
   }
 });
 
 test("fromNullable maps null and undefined to none", () => {
-  expect(isNone(fromNullable(null))).toBe(true);
-  expect(isNone(fromNullable(undefined))).toBe(true);
-  expectTypeOf(fromNullable(null)).toEqualTypeOf<Option<never>>();
+  assertTrue(isNone(fromNullable(null)));
+  assertTrue(isNone(fromNullable(undefined)));
+  {
+    const actual = fromNullable(null);
+    assertType<typeof actual, Option<never>>();
+  }
 });
 
 test("fromNullable maps values to some", () => {
   const option = fromNullable("value");
-  expect(isSome(option)).toBe(true);
-  if (isSome(option)) {
-    expect(option.value).toBe("value");
-  }
-  expectTypeOf(option).toEqualTypeOf<Option<string>>();
+
+  assertEqual(option, some("value"));
 });
 
 test("fromNullable strips null and undefined from type", () => {
   const value: string | null | undefined = "test";
   const option = fromNullable(value);
-  expectTypeOf(option).toEqualTypeOf<Option<string>>();
+  assertType<typeof option, Option<string>>();
 });
 
 describe("InferOption", () => {
-  test("extracts value type from Option", () => {
+  it("extracts value type from Option", () => {
     type MyOption = Option<string>;
-    expectTypeOf<InferOption<MyOption>>().toEqualTypeOf<string>();
+    assertType<InferOption<MyOption>, string>();
   });
 
-  test("extracts value type from Some", () => {
+  it("extracts value type from Some", () => {
     type MySome = Some<number>;
-    expectTypeOf<InferOption<MySome>>().toEqualTypeOf<number>();
+    assertType<InferOption<MySome>, number>();
   });
 
-  test("returns never for None", () => {
-    expectTypeOf<InferOption<None>>().toEqualTypeOf<never>();
+  it("returns never for None", () => {
+    assertType<InferOption<None>, never>();
   });
 
-  test("works at runtime", () => {
+  it("works at runtime", () => {
     type MyOption = Option<string>;
     const value: InferOption<MyOption> = "hello";
-    expect(value).toBe("hello");
+    assertEqual(value, "hello");
   });
 });
 
 describe("examples", () => {
-  test("cache that can store null and undefined", () => {
+  it("cache that can store null and undefined", () => {
     const cache = new Map<string, Option<unknown>>();
 
     const get = (key: string): Option<unknown> => cache.get(key) ?? none;
@@ -92,17 +89,16 @@ describe("examples", () => {
     cache.set("a", some(null));
     cache.set("b", some(undefined));
 
-    expect(isSome(get("a"))).toBe(true);
-    expect(isSome(get("b"))).toBe(true);
-    expect(isNone(get("c"))).toBe(true);
+    assertTrue(isSome(get("a")));
+    assertTrue(isSome(get("b")));
+    assertTrue(isNone(get("c")));
 
     const a = get("a");
-    if (isSome(a)) {
-      expect(a.value).toBe(null);
-    }
+    assert(isSome(a), 'Expected cache entry "a" to be Some.');
+    assertSame(a.value, null);
+
     const b = get("b");
-    if (isSome(b)) {
-      expect(b.value).toBe(undefined);
-    }
+    assert(isSome(b), 'Expected cache entry "b" to be Some.');
+    assertSame(b.value, undefined);
   });
 });

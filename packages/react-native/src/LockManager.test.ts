@@ -1,35 +1,48 @@
-import { testName } from "@evolu/common";
-import { describe, expect, test } from "vitest";
-import { lockManager } from "../src/LockManager.ts";
+import {
+  assertEqual,
+  assertRejectsInstanceOf,
+  assertRejectsSame,
+  testName,
+} from "@evolu/common";
+import { describe, it } from "node:test";
+import { lockManager } from "./LockManager.ts";
+
+const assertRejectsWithName = async (
+  promise: PromiseLike<unknown>,
+  name: string,
+): Promise<void> => {
+  const error = await assertRejectsInstanceOf(promise, Error);
+  assertEqual(error.name, name);
+};
 
 describe("lockManager", () => {
   describe("request", () => {
-    test("holds an exclusive lock until the callback settles", async () => {
+    it("holds an exclusive lock until the callback settles", async () => {
       const first = Promise.withResolvers<void>();
 
       let secondStarted = false;
 
       const firstRequest = lockManager.request(testName, async (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         await first.promise;
         return "first";
       });
 
       const secondRequest = lockManager.request(testName, (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         secondStarted = true;
         return "second";
       });
 
-      expect(secondStarted).toBe(false);
+      assertEqual(secondStarted, false);
 
       first.resolve();
 
-      await expect(firstRequest).resolves.toBe("first");
-      await expect(secondRequest).resolves.toBe("second");
+      assertEqual(await firstRequest, "first");
+      assertEqual(await secondRequest, "second");
     });
 
-    test("grants compatible shared requests before a queued exclusive request", async () => {
+    it("grants compatible shared requests before a queued exclusive request", async () => {
       const releaseShared = Promise.withResolvers<void>();
       const steps: Array<string> = [];
 
@@ -37,7 +50,7 @@ describe("lockManager", () => {
         testName,
         { mode: "shared" },
         async (lock) => {
-          expect(lock).toEqual({ mode: "shared", name: testName });
+          assertEqual(lock, { mode: "shared", name: testName });
           steps.push("shared-1-start");
           await releaseShared.promise;
           steps.push("shared-1-end");
@@ -46,7 +59,7 @@ describe("lockManager", () => {
       );
 
       const exclusiveRequest = lockManager.request(testName, (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         steps.push("exclusive-start");
         return "exclusive";
       });
@@ -55,7 +68,7 @@ describe("lockManager", () => {
         testName,
         { mode: "shared" },
         (lock) => {
-          expect(lock).toEqual({ mode: "shared", name: testName });
+          assertEqual(lock, { mode: "shared", name: testName });
           steps.push("shared-2-start");
           return "shared-2";
         },
@@ -63,14 +76,14 @@ describe("lockManager", () => {
 
       await Promise.resolve();
 
-      expect(steps).toEqual(["shared-1-start"]);
+      assertEqual(steps, ["shared-1-start"]);
 
       releaseShared.resolve();
 
-      await expect(firstSharedRequest).resolves.toBe("shared-1");
-      await expect(exclusiveRequest).resolves.toBe("exclusive");
-      await expect(secondSharedRequest).resolves.toBe("shared-2");
-      expect(steps).toEqual([
+      assertEqual(await firstSharedRequest, "shared-1");
+      assertEqual(await exclusiveRequest, "exclusive");
+      assertEqual(await secondSharedRequest, "shared-2");
+      assertEqual(steps, [
         "shared-1-start",
         "shared-1-end",
         "exclusive-start",
@@ -78,7 +91,7 @@ describe("lockManager", () => {
       ]);
     });
 
-    test("grants compatible shared requests together when no exclusive request blocks them", async () => {
+    it("grants compatible shared requests together when no exclusive request blocks them", async () => {
       const releaseShared = Promise.withResolvers<void>();
       const steps: Array<string> = [];
 
@@ -86,7 +99,7 @@ describe("lockManager", () => {
         testName,
         { mode: "shared" },
         async (lock) => {
-          expect(lock).toEqual({ mode: "shared", name: testName });
+          assertEqual(lock, { mode: "shared", name: testName });
           steps.push("shared-1-start");
           await releaseShared.promise;
           return "shared-1";
@@ -97,7 +110,7 @@ describe("lockManager", () => {
         testName,
         { mode: "shared" },
         async (lock) => {
-          expect(lock).toEqual({ mode: "shared", name: testName });
+          assertEqual(lock, { mode: "shared", name: testName });
           steps.push("shared-2-start");
           await releaseShared.promise;
           return "shared-2";
@@ -106,20 +119,20 @@ describe("lockManager", () => {
 
       await Promise.resolve();
 
-      expect(steps).toEqual(["shared-1-start", "shared-2-start"]);
+      assertEqual(steps, ["shared-1-start", "shared-2-start"]);
 
       releaseShared.resolve();
 
-      await expect(firstSharedRequest).resolves.toBe("shared-1");
-      await expect(secondSharedRequest).resolves.toBe("shared-2");
+      assertEqual(await firstSharedRequest, "shared-1");
+      assertEqual(await secondSharedRequest, "shared-2");
     });
 
-    test("invokes the callback with null asynchronously when ifAvailable cannot grant immediately", async () => {
+    it("invokes the callback with null asynchronously when ifAvailable cannot grant immediately", async () => {
       const first = Promise.withResolvers<void>();
       let secondCallbackCalled = false;
 
       const firstRequest = lockManager.request(testName, async (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         await first.promise;
         return "first";
       });
@@ -129,39 +142,40 @@ describe("lockManager", () => {
         { ifAvailable: true },
         (lock) => {
           secondCallbackCalled = true;
-          expect(lock).toBeNull();
+          assertEqual(lock, null);
           return "unavailable";
         },
       );
 
-      expect(secondCallbackCalled).toBe(false);
+      assertEqual(secondCallbackCalled, false);
 
-      await expect(secondRequest).resolves.toBe("unavailable");
+      assertEqual(await secondRequest, "unavailable");
 
       first.resolve();
-      await expect(firstRequest).resolves.toBe("first");
+      assertEqual(await firstRequest, "first");
     });
 
-    test("grants an exclusive ifAvailable request immediately when the name is free", async () => {
-      await expect(
-        lockManager.request(testName, { ifAvailable: true }, (lock) => {
-          expect(lock).toEqual({ mode: "exclusive", name: testName });
+    it("grants an exclusive ifAvailable request immediately when the name is free", async () => {
+      assertEqual(
+        await lockManager.request(testName, { ifAvailable: true }, (lock) => {
+          assertEqual(lock, { mode: "exclusive", name: testName });
           return "granted";
         }),
-      ).resolves.toBe("granted");
+        "granted",
+      );
     });
 
-    test("invokes the callback with null when ifAvailable sees a queued request", async () => {
+    it("invokes the callback with null when ifAvailable sees a queued request", async () => {
       const releaseFirst = Promise.withResolvers<void>();
 
       const firstRequest = lockManager.request(testName, async (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         await releaseFirst.promise;
         return "first";
       });
 
       const queuedRequest = lockManager.request(testName, (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         return "queued";
       });
 
@@ -169,26 +183,26 @@ describe("lockManager", () => {
         testName,
         { ifAvailable: true },
         (lock) => {
-          expect(lock).toBeNull();
+          assertEqual(lock, null);
           return "unavailable";
         },
       );
 
-      expect(ifAvailableResult).toBe("unavailable");
+      assertEqual(ifAvailableResult, "unavailable");
 
       releaseFirst.resolve();
-      await expect(firstRequest).resolves.toBe("first");
-      await expect(queuedRequest).resolves.toBe("queued");
+      assertEqual(await firstRequest, "first");
+      assertEqual(await queuedRequest, "queued");
     });
 
-    test("grants a shared ifAvailable request when shared locks already hold the name", async () => {
+    it("grants a shared ifAvailable request when shared locks already hold the name", async () => {
       const releaseShared = Promise.withResolvers<void>();
 
       const firstSharedRequest = lockManager.request(
         testName,
         { mode: "shared" },
         async (lock) => {
-          expect(lock).toEqual({ mode: "shared", name: testName });
+          assertEqual(lock, { mode: "shared", name: testName });
           await releaseShared.promise;
           return "shared-1";
         },
@@ -198,38 +212,39 @@ describe("lockManager", () => {
         testName,
         { ifAvailable: true, mode: "shared" },
         (lock) => {
-          expect(lock).toEqual({ mode: "shared", name: testName });
+          assertEqual(lock, { mode: "shared", name: testName });
           return "shared-2";
         },
       );
 
-      expect(secondSharedResult).toBe("shared-2");
+      assertEqual(secondSharedResult, "shared-2");
 
       releaseShared.resolve();
-      await expect(firstSharedRequest).resolves.toBe("shared-1");
+      assertEqual(await firstSharedRequest, "shared-1");
     });
 
-    test("rejects with the abort reason when the signal is already aborted", async () => {
+    it("rejects with the abort reason when the signal is already aborted", async () => {
       const controller = new AbortController();
       controller.abort(
         new DOMException("The request was aborted.", "AbortError"),
       );
 
-      await expect(
+      await assertRejectsWithName(
         lockManager.request(
           testName,
           { signal: controller.signal },
           () => "unreachable",
         ),
-      ).rejects.toMatchObject({ name: "AbortError" });
+        "AbortError",
+      );
     });
 
-    test("rejects a queued request when its signal aborts before grant", async () => {
+    it("rejects a queued request when its signal aborts before grant", async () => {
       const releaseFirst = Promise.withResolvers<void>();
       const controller = new AbortController();
 
       const firstRequest = lockManager.request(testName, async (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         await releaseFirst.promise;
         return "first";
       });
@@ -244,17 +259,17 @@ describe("lockManager", () => {
         new DOMException("The request was aborted.", "AbortError"),
       );
 
-      await expect(secondRequest).rejects.toMatchObject({ name: "AbortError" });
+      await assertRejectsWithName(secondRequest, "AbortError");
 
       releaseFirst.resolve();
-      await expect(firstRequest).resolves.toBe("first");
-      await expect(lockManager.query()).resolves.toEqual({
+      assertEqual(await firstRequest, "first");
+      assertEqual(await lockManager.query(), {
         held: [],
         pending: [],
       });
     });
 
-    test("does not invoke the callback when the signal aborts after grant but before callback starts", async () => {
+    it("does not invoke the callback when the signal aborts after grant but before callback starts", async () => {
       const controller = new AbortController();
       let callbackCalled = false;
 
@@ -263,7 +278,7 @@ describe("lockManager", () => {
         { signal: controller.signal },
         (lock) => {
           callbackCalled = true;
-          expect(lock).toEqual({ mode: "exclusive", name: testName });
+          assertEqual(lock, { mode: "exclusive", name: testName });
           return "granted";
         },
       );
@@ -272,25 +287,26 @@ describe("lockManager", () => {
         new DOMException("The request was aborted.", "AbortError"),
       );
 
-      await expect(request).rejects.toMatchObject({ name: "AbortError" });
-      expect(callbackCalled).toBe(false);
+      await assertRejectsWithName(request, "AbortError");
+      assertEqual(callbackCalled, false);
 
-      await expect(
-        lockManager.request(testName, (lock) => {
-          expect(lock).toEqual({ mode: "exclusive", name: testName });
+      assertEqual(
+        await lockManager.request(testName, (lock) => {
+          assertEqual(lock, { mode: "exclusive", name: testName });
           return "next";
         }),
-      ).resolves.toBe("next");
+        "next",
+      );
     });
 
-    test("ignores signal aborts after the lock has been granted", async () => {
+    it("ignores signal aborts after the lock has been granted", async () => {
       const controller = new AbortController();
 
       const result = await lockManager.request(
         testName,
         { signal: controller.signal },
         (lock) => {
-          expect(lock).toEqual({ mode: "exclusive", name: testName });
+          assertEqual(lock, { mode: "exclusive", name: testName });
           controller.abort(
             new DOMException("The request was aborted.", "AbortError"),
           );
@@ -298,10 +314,10 @@ describe("lockManager", () => {
         },
       );
 
-      expect(result).toBe("granted");
+      assertEqual(result, "granted");
     });
 
-    test("releases the lock when the callback throws", async () => {
+    it("releases the lock when the callback throws", async () => {
       const error = new Error("boom");
 
       const firstRequest = lockManager.request(testName, () => {
@@ -309,70 +325,75 @@ describe("lockManager", () => {
       });
 
       const secondRequest = lockManager.request(testName, (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         return "second";
       });
 
-      await expect(firstRequest).rejects.toBe(error);
-      await expect(secondRequest).resolves.toBe("second");
+      await assertRejectsSame(firstRequest, error);
+      assertEqual(await secondRequest, "second");
     });
 
-    test("rejects names starting with a hyphen", async () => {
-      await expect(
+    it("rejects names starting with a hyphen", async () => {
+      await assertRejectsWithName(
         lockManager.request("-reserved", () => "unreachable"),
-      ).rejects.toMatchObject({ name: "NotSupportedError" });
+        "NotSupportedError",
+      );
     });
 
-    test("rejects using ifAvailable together with steal", async () => {
-      await expect(
+    it("rejects using ifAvailable together with steal", async () => {
+      await assertRejectsWithName(
         lockManager.request(
           testName,
           { ifAvailable: true, steal: true },
           () => "unreachable",
         ),
-      ).rejects.toMatchObject({ name: "NotSupportedError" });
+        "NotSupportedError",
+      );
     });
 
-    test("rejects using steal with shared mode", async () => {
-      await expect(
+    it("rejects using steal with shared mode", async () => {
+      await assertRejectsWithName(
         lockManager.request(
           testName,
           { mode: "shared", steal: true },
           () => "unreachable",
         ),
-      ).rejects.toMatchObject({ name: "NotSupportedError" });
+        "NotSupportedError",
+      );
     });
 
-    test("rejects using signal with ifAvailable", async () => {
+    it("rejects using signal with ifAvailable", async () => {
       const controller = new AbortController();
 
-      await expect(
+      await assertRejectsWithName(
         lockManager.request(
           testName,
           { ifAvailable: true, signal: controller.signal },
           () => "unreachable",
         ),
-      ).rejects.toMatchObject({ name: "NotSupportedError" });
+        "NotSupportedError",
+      );
     });
 
-    test("rejects using signal with steal", async () => {
+    it("rejects using signal with steal", async () => {
       const controller = new AbortController();
 
-      await expect(
+      await assertRejectsWithName(
         lockManager.request(
           testName,
           { signal: controller.signal, steal: true },
           () => "unreachable",
         ),
-      ).rejects.toMatchObject({ name: "NotSupportedError" });
+        "NotSupportedError",
+      );
     });
 
-    test("steal preempts held and queued requests for the same name", async () => {
+    it("steal preempts held and queued requests for the same name", async () => {
       const releaseFirst = Promise.withResolvers<void>();
       const steps: Array<string> = [];
 
       const firstRequest = lockManager.request(testName, async (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         steps.push("first-start");
         await releaseFirst.promise;
         steps.push("first-end");
@@ -388,21 +409,21 @@ describe("lockManager", () => {
         testName,
         { steal: true },
         (lock) => {
-          expect(lock).toEqual({ mode: "exclusive", name: testName });
+          assertEqual(lock, { mode: "exclusive", name: testName });
           steps.push("steal-start");
           return "steal";
         },
       );
 
-      await expect(firstRequest).rejects.toMatchObject({ name: "AbortError" });
-      await expect(stolenRequest).resolves.toBe("steal");
+      await assertRejectsWithName(firstRequest, "AbortError");
+      assertEqual(await stolenRequest, "steal");
 
-      expect(steps).toEqual(["first-start", "steal-start", "queued-start"]);
+      assertEqual(steps, ["first-start", "steal-start", "queued-start"]);
 
       releaseFirst.resolve();
 
-      await expect(queuedRequest).resolves.toBe("queued");
-      expect(steps).toEqual([
+      assertEqual(await queuedRequest, "queued");
+      assertEqual(steps, [
         "first-start",
         "steal-start",
         "queued-start",
@@ -410,22 +431,23 @@ describe("lockManager", () => {
       ]);
     });
 
-    test("steal behaves like a normal exclusive request when nothing is held", async () => {
-      await expect(
-        lockManager.request(testName, { steal: true }, (lock) => {
-          expect(lock).toEqual({ mode: "exclusive", name: testName });
+    it("steal behaves like a normal exclusive request when nothing is held", async () => {
+      assertEqual(
+        await lockManager.request(testName, { steal: true }, (lock) => {
+          assertEqual(lock, { mode: "exclusive", name: testName });
           return "steal";
         }),
-      ).resolves.toBe("steal");
+        "steal",
+      );
     });
   });
 
   describe("query", () => {
-    test("returns held and pending arrays in the snapshot", async () => {
+    it("returns held and pending arrays in the snapshot", async () => {
       const releaseLock = Promise.withResolvers<void>();
 
       const firstRequest = lockManager.request(testName, async (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         await releaseLock.promise;
       });
 
@@ -433,7 +455,7 @@ describe("lockManager", () => {
 
       await Promise.resolve();
 
-      await expect(lockManager.query()).resolves.toEqual({
+      assertEqual(await lockManager.query(), {
         held: [
           {
             clientId: "react-native-main-thread",
@@ -454,17 +476,17 @@ describe("lockManager", () => {
       await firstRequest;
       await secondRequest;
 
-      await expect(lockManager.query()).resolves.toEqual({
+      assertEqual(await lockManager.query(), {
         held: [],
         pending: [],
       });
     });
 
-    test("preserves pending request order for the same resource", async () => {
+    it("preserves pending request order for the same resource", async () => {
       const releaseLock = Promise.withResolvers<void>();
 
       const firstRequest = lockManager.request(testName, async (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         await releaseLock.promise;
       });
 
@@ -472,19 +494,19 @@ describe("lockManager", () => {
         testName,
         { mode: "shared" },
         (lock) => {
-          expect(lock).toEqual({ mode: "shared", name: testName });
+          assertEqual(lock, { mode: "shared", name: testName });
           return "second";
         },
       );
 
       const thirdRequest = lockManager.request(testName, (lock) => {
-        expect(lock).toEqual({ mode: "exclusive", name: testName });
+        assertEqual(lock, { mode: "exclusive", name: testName });
         return "third";
       });
 
       await Promise.resolve();
 
-      await expect(lockManager.query()).resolves.toEqual({
+      assertEqual(await lockManager.query(), {
         held: [
           {
             clientId: "react-native-main-thread",
@@ -507,9 +529,9 @@ describe("lockManager", () => {
       });
 
       releaseLock.resolve();
-      await expect(firstRequest).resolves.toBeUndefined();
-      await expect(secondRequest).resolves.toBe("second");
-      await expect(thirdRequest).resolves.toBe("third");
+      assertEqual(await firstRequest, undefined);
+      assertEqual(await secondRequest, "second");
+      assertEqual(await thirdRequest, "third");
     });
   });
 });

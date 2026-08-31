@@ -1,4 +1,12 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, it, mock } from "node:test";
+import {
+  assertEqual,
+  assertFalse,
+  assertLength,
+  assertSame,
+  assertTrue,
+} from "./Assert.ts";
+
 import {
   createConsole,
   createConsoleArrayOutput,
@@ -9,11 +17,9 @@ import {
   testCreateConsole,
   type ConsoleEntry,
   type ConsoleOutput,
-} from "../../../../packages/common/src/Console.ts";
-import {
-  testCreateTime,
-  type Millis,
-} from "../../../../packages/common/src/Time.ts";
+} from "./Console.ts";
+import { testCreateTime, type Millis } from "./Time.ts";
+import { assertType, String } from "./Type.ts";
 
 const createTimeDep = (startAt?: Millis) => ({
   time: testCreateTime(startAt != null ? { startAt } : undefined),
@@ -41,7 +47,7 @@ const createTestOutput = (): ConsoleOutput & {
 };
 
 describe("createConsole", () => {
-  test("logs at default level (log)", () => {
+  it("logs at default level (log)", () => {
     const output = createTestOutput();
     const console = createConsole({ output });
 
@@ -52,15 +58,13 @@ describe("createConsole", () => {
     console.warn("warn");
     console.error("error");
 
-    expect(output.entries.map((e) => e.entry.method)).toEqual([
-      "log",
-      "info",
-      "warn",
-      "error",
-    ]);
+    assertEqual(
+      output.entries.map((e) => e.entry.method),
+      ["log", "info", "warn", "error"],
+    );
   });
 
-  test("respects level filtering", () => {
+  it("respects level filtering", () => {
     const output = createTestOutput();
     const console = createConsole({
       output,
@@ -73,13 +77,13 @@ describe("createConsole", () => {
     console.warn("warn");
     console.error("error");
 
-    expect(output.entries.map((e) => e.entry.method)).toEqual([
-      "warn",
-      "error",
-    ]);
+    assertEqual(
+      output.entries.map((e) => e.entry.method),
+      ["warn", "error"],
+    );
   });
 
-  test("silent level disables all logging", () => {
+  it("silent level disables all logging", () => {
     const output = createTestOutput();
     const console = createConsole({
       output,
@@ -93,10 +97,10 @@ describe("createConsole", () => {
     console.warn("warn");
     console.error("error");
 
-    expect(output.entries).toHaveLength(0);
+    assertLength(output.entries, 0);
   });
 
-  test("level can be changed at runtime", () => {
+  it("level can be changed at runtime", () => {
     const output = createTestOutput();
     const console = createConsole({ output });
 
@@ -104,10 +108,13 @@ describe("createConsole", () => {
     console.setLevel("debug");
     console.debug("after");
 
-    expect(output.entries.map((e) => e.entry.args[0])).toEqual(["after"]);
+    assertEqual(
+      output.entries.map((e) => e.entry.args[0]),
+      ["after"],
+    );
   });
 
-  test("child inherits level at creation (static)", () => {
+  it("child inherits level at creation (static)", () => {
     const output = createTestOutput();
     const console = createConsole({ output, level: "info" });
     const child = console.child("relay");
@@ -120,10 +127,13 @@ describe("createConsole", () => {
     console.setLevel("debug");
     child.debug("still ignored");
 
-    expect(output.entries.map((e) => e.entry.args[0])).toEqual(["logged"]);
+    assertEqual(
+      output.entries.map((e) => e.entry.args[0]),
+      ["logged"],
+    );
   });
 
-  test("child can override level independently", () => {
+  it("child can override level independently", () => {
     const output = createTestOutput();
     const console = createConsole({ output, level: "info" });
     const child = console.child("relay");
@@ -133,33 +143,36 @@ describe("createConsole", () => {
     // parent still at "info"
     console.debug("ignored");
 
-    expect(output.entries.map((e) => e.entry.args[0])).toEqual(["logged"]);
+    assertEqual(
+      output.entries.map((e) => e.entry.args[0]),
+      ["logged"],
+    );
   });
 
-  test("setLevel(null) reverts to inherited level", () => {
+  it("setLevel(null) reverts to inherited level", () => {
     const output = createTestOutput();
     const console = createConsole({ output, level: "info" });
     const child = console.child("relay");
 
     child.setLevel("debug");
-    expect(child.hasOwnLevel()).toBe(true);
+    assertTrue(child.hasOwnLevel());
 
     child.setLevel(null);
-    expect(child.hasOwnLevel()).toBe(false);
-    expect(child.getLevel()).toBe("info");
+    assertFalse(child.hasOwnLevel());
+    assertEqual(child.getLevel(), "info");
   });
 
-  test("child adds path", () => {
+  it("child adds path", () => {
     const output = createTestOutput();
     const console = createConsole({ output });
     const child = console.child("relay").child("db");
 
     child.info("message");
 
-    expect(output.entries[0].entry.path).toEqual(["relay", "db"]);
+    assertEqual(output.entries[0].entry.path, ["relay", "db"]);
   });
 
-  test("child inherits formatter", () => {
+  it("child inherits formatter", () => {
     const output = createTestOutput();
     const formatter = (entry: ConsoleEntry) => ["prefix", ...entry.args];
     const console = createConsole({
@@ -170,10 +183,10 @@ describe("createConsole", () => {
 
     child.info("message");
 
-    expect(output.entries[0].formattedArgs).toEqual(["prefix", "message"]);
+    assertEqual(output.entries[0].formattedArgs, ["prefix", "message"]);
   });
 
-  test("debug-level methods use debug level", () => {
+  it("debug-level methods use debug level", () => {
     const output = createTestOutput();
     const console = createConsole({
       output,
@@ -188,19 +201,22 @@ describe("createConsole", () => {
     console.count("counter");
     console.countReset("counter");
 
-    expect(output.entries).toHaveLength(0);
+    assertLength(output.entries, 0);
 
     console.setLevel("debug");
 
     console.time("timer");
     console.dir({ foo: 1 });
 
-    expect(output.entries.map((e) => e.entry.method)).toEqual(["time", "dir"]);
+    assertEqual(
+      output.entries.map((e) => e.entry.method),
+      ["time", "dir"],
+    );
   });
 
-  test("debug-level methods skip formatter", () => {
+  it("debug-level methods skip formatter", () => {
     const output = createTestOutput();
-    const formatter = vi.fn((entry: ConsoleEntry) => [
+    const formatter = mock.fn((entry: ConsoleEntry) => [
       "formatted",
       ...entry.args,
     ]);
@@ -213,35 +229,32 @@ describe("createConsole", () => {
     console.info("info message");
     console.dir({ foo: 1 });
 
-    expect(output.entries[0].formattedArgs).toEqual([
-      "formatted",
-      "info message",
-    ]);
-    expect(output.entries[1].formattedArgs).toEqual([{ foo: 1 }]);
+    assertEqual(output.entries[0].formattedArgs, ["formatted", "info message"]);
+    assertEqual(output.entries[1].formattedArgs, [{ foo: 1 }]);
   });
 
-  test("children tracking", () => {
+  it("children tracking", () => {
     const console = createConsole();
     const child1 = console.child("a");
     const child2 = console.child("b");
     const grandchild = child1.child("c");
 
-    expect(console.children.size).toBe(2);
-    expect(console.children.has(child1)).toBe(true);
-    expect(console.children.has(child2)).toBe(true);
-    expect(child1.children.size).toBe(1);
-    expect(child1.children.has(grandchild)).toBe(true);
+    assertEqual(console.children.size, 2);
+    assertTrue(console.children.has(child1));
+    assertTrue(console.children.has(child2));
+    assertEqual(child1.children.size, 1);
+    assertTrue(child1.children.has(grandchild));
   });
 
-  test("name property", () => {
+  it("name property", () => {
     const console = createConsole({ name: "root" });
     const child = console.child("relay");
 
-    expect(console.name).toBe("root");
-    expect(child.name).toBe("relay");
+    assertEqual(console.name, "root");
+    assertEqual(child.name, "relay");
   });
 
-  test("write bypasses level filtering", () => {
+  it("write bypasses level filtering", () => {
     const output = createTestOutput();
     const console = createConsole({ output, level: "silent" });
 
@@ -252,11 +265,11 @@ describe("createConsole", () => {
     };
     console.write(entry);
 
-    expect(output.entries).toHaveLength(1);
-    expect(output.entries[0].entry).toEqual(entry);
+    assertLength(output.entries, 1);
+    assertEqual(output.entries[0].entry, entry);
   });
 
-  test("write passes formatter to output", () => {
+  it("write passes formatter to output", () => {
     const output = createTestOutput();
     const formatter = (entry: ConsoleEntry) => ["fmt", ...entry.args];
     const console = createConsole({ output, formatter });
@@ -268,15 +281,13 @@ describe("createConsole", () => {
     };
     console.write(entry);
 
-    expect(output.entries[0].formattedArgs).toEqual(["fmt", "msg"]);
+    assertEqual(output.entries[0].formattedArgs, ["fmt", "msg"]);
   });
 });
 
 describe("createNativeConsoleOutput", () => {
-  test("calls the native console method with its console receiver", () => {
-    const logSpy = vi
-      .spyOn(globalThis.console, "info")
-      .mockImplementation(() => undefined);
+  it("calls the native console method with its console receiver", (t) => {
+    const logSpy = t.mock.method(globalThis.console, "info", () => undefined);
     const output = createNativeConsoleOutput();
 
     output.write({
@@ -285,15 +296,12 @@ describe("createNativeConsoleOutput", () => {
       args: ["hello", "world"],
     });
 
-    expect(logSpy).toHaveBeenCalledWith("hello", "world");
-    expect(logSpy.mock.contexts[0]).toBe(globalThis.console);
-    logSpy.mockRestore();
+    assertEqual(logSpy.mock.calls[0].arguments, ["hello", "world"]);
+    assertSame(logSpy.mock.calls[0].this, globalThis.console);
   });
 
-  test("applies formatter", () => {
-    const logSpy = vi
-      .spyOn(globalThis.console, "info")
-      .mockImplementation(() => undefined);
+  it("applies formatter", (t) => {
+    const logSpy = t.mock.method(globalThis.console, "info", () => undefined);
     const output = createNativeConsoleOutput();
     const formatter = (entry: ConsoleEntry) => ["prefix", ...entry.args];
 
@@ -306,13 +314,12 @@ describe("createNativeConsoleOutput", () => {
       formatter,
     );
 
-    expect(logSpy).toHaveBeenCalledWith("prefix", "message");
-    logSpy.mockRestore();
+    assertEqual(logSpy.mock.calls[0].arguments, ["prefix", "message"]);
   });
 });
 
 describe("createConsoleFormatter", () => {
-  test("uses default time dep when not provided", () => {
+  it("uses default time dep when not provided", () => {
     const formatter = createConsoleFormatter()({
       timestampFormat: "relative",
     });
@@ -325,12 +332,13 @@ describe("createConsoleFormatter", () => {
     const result = formatter(entry);
 
     // Should have a relative timestamp prefix
-    expect(result).toHaveLength(2);
-    expect(result[0]).toMatch(/^\+\d+\.\d{3}s$/u);
-    expect(result[1]).toBe("message");
+    assertLength(result, 2);
+    assertType(String, result[0]);
+    assertTrue(/^\+\d+\.\d{3}s$/u.test(result[0]));
+    assertEqual(result[1], "message");
   });
 
-  test("formats path", () => {
+  it("formats path", () => {
     const formatter = createConsoleFormatter(createTimeDep())();
     const entry: ConsoleEntry = {
       method: "info",
@@ -340,10 +348,10 @@ describe("createConsoleFormatter", () => {
 
     const result = formatter(entry);
 
-    expect(result).toEqual(["[relay] [db]", "message"]);
+    assertEqual(result, ["[relay] [db]", "message"]);
   });
 
-  test("with no path returns args unchanged", () => {
+  it("with no path returns args unchanged", () => {
     const formatter = createConsoleFormatter(createTimeDep())();
     const entry: ConsoleEntry = {
       method: "info",
@@ -353,10 +361,10 @@ describe("createConsoleFormatter", () => {
 
     const result = formatter(entry);
 
-    expect(result).toEqual(["message", 123]);
+    assertEqual(result, ["message", 123]);
   });
 
-  test("relative timestamp", () => {
+  it("relative timestamp", () => {
     const time = testCreateTime({ startAt: 1000 as Millis });
     const formatter = createConsoleFormatter({ time })({
       timestampFormat: "relative",
@@ -372,21 +380,11 @@ describe("createConsoleFormatter", () => {
     time.advance("1.5s");
     const result2 = formatter({ ...entry, args: ["second"] });
 
-    expect(result1).toMatchInlineSnapshot(`
-      [
-        "+0.000s",
-        "first",
-      ]
-    `);
-    expect(result2).toMatchInlineSnapshot(`
-      [
-        "+1.500s",
-        "second",
-      ]
-    `);
+    assertEqual(result1, ["+0.000s", "first"]);
+    assertEqual(result2, ["+1.500s", "second"]);
   });
 
-  test("relative timestamp with custom start time", () => {
+  it("relative timestamp with custom start time", () => {
     const time = testCreateTime({ startAt: 1500 as Millis });
     const formatter = createConsoleFormatter({ time })({
       timestampFormat: "relative",
@@ -401,15 +399,10 @@ describe("createConsoleFormatter", () => {
 
     const result = formatter(entry);
 
-    expect(result).toMatchInlineSnapshot(`
-      [
-        "+1.000s",
-        "message",
-      ]
-    `);
+    assertEqual(result, ["+1.000s", "message"]);
   });
 
-  test("iso timestamp", () => {
+  it("iso timestamp", () => {
     const time = testCreateTime({
       startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 123) as Millis,
     });
@@ -425,10 +418,10 @@ describe("createConsoleFormatter", () => {
 
     const result = formatter(entry);
 
-    expect(result).toEqual(["2026-01-28T14:30:00.123Z", "message"]);
+    assertEqual(result, ["2026-01-28T14:30:00.123Z", "message"]);
   });
 
-  test("absolute timestamp", () => {
+  it("absolute timestamp", () => {
     const time = testCreateTime({
       startAt: Date.UTC(2026, 0, 28, 14, 30, 15, 123) as Millis,
     });
@@ -445,12 +438,13 @@ describe("createConsoleFormatter", () => {
     const result = formatter(entry);
 
     // Result includes local time formatted as HH:MM:SS.mmm
-    expect(result).toHaveLength(2);
-    expect(result[0]).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3}$/u);
-    expect(result[1]).toBe("message");
+    assertLength(result, 2);
+    assertType(String, result[0]);
+    assertTrue(/^\d{2}:\d{2}:\d{2}\.\d{3}$/u.test(result[0]));
+    assertEqual(result[1], "message");
   });
 
-  test("combines timestamp and path", () => {
+  it("combines timestamp and path", () => {
     const formatter = createConsoleFormatter(createTimeDep())({
       timestampFormat: "relative",
     });
@@ -463,15 +457,10 @@ describe("createConsoleFormatter", () => {
 
     const result = formatter(entry);
 
-    expect(result).toMatchInlineSnapshot(`
-      [
-        "+0.000s [relay]",
-        "message",
-      ]
-    `);
+    assertEqual(result, ["+0.000s [relay]", "message"]);
   });
 
-  test("createConsoleFormatter example", () => {
+  it("createConsoleFormatter example", () => {
     const time = testCreateTime({ startAt: 0 as Millis });
     const output = createTestOutput();
 
@@ -488,29 +477,22 @@ describe("createConsoleFormatter", () => {
     time.advance("1.5s");
     relay.log("synced");
 
-    expect(output.entries.map((e) => e.formattedArgs)).toMatchInlineSnapshot(`
+    assertEqual(
+      output.entries.map((entry) => entry.formattedArgs),
       [
-        [
-          "+0.000s [relay]",
-          "connected",
-        ],
-        [
-          "+1.500s [relay]",
-          "synced",
-        ],
-      ]
-    `);
+        ["+0.000s [relay]", "connected"],
+        ["+1.500s [relay]", "synced"],
+      ],
+    );
 
     // Nested children
     const db = relay.child("db");
     db.log("opened");
 
-    expect(output.entries[2].formattedArgs).toMatchInlineSnapshot(`
-      [
-        "+1.500s [relay] [db]",
-        "opened",
-      ]
-    `);
+    assertEqual(output.entries[2].formattedArgs, [
+      "+1.500s [relay] [db]",
+      "opened",
+    ]);
 
     // Absolute timestamps (local clock time HH:MM:SS.mmm)
     const absoluteOutput = createTestOutput();
@@ -528,29 +510,30 @@ describe("createConsoleFormatter", () => {
     absoluteRelay.log("connected");
 
     const [timestamp, message] = absoluteOutput.entries[0].formattedArgs;
-    expect(timestamp).toMatch(/^\d{2}:\d{2}:\d{2}\.\d{3} \[relay\]$/u);
-    expect(message).toBe("connected");
+    assertType(String, timestamp);
+    assertTrue(/^\d{2}:\d{2}:\d{2}\.\d{3} \[relay\]$/u.test(timestamp));
+    assertEqual(message, "connected");
   });
 });
 
 describe("createConsoleStoreOutput", () => {
-  test("entry starts as null", () => {
+  it("entry starts as null", () => {
     const output = createConsoleStoreOutput();
-    expect(output.entry.get()).toBeNull();
+    assertSame(output.entry.get(), null);
   });
 
-  test("entry updates on write", () => {
+  it("entry updates on write", () => {
     const output = createConsoleStoreOutput();
     const console = createConsole({ output });
     console.info("hello");
-    expect(output.entry.get()).toEqual({
+    assertEqual(output.entry.get(), {
       method: "info",
       path: [],
       args: ["hello"],
     });
   });
 
-  test("entry notifies subscribers", () => {
+  it("entry notifies subscribers", () => {
     const output = createConsoleStoreOutput();
     const console = createConsole({ output });
     const received: Array<ConsoleEntry | null> = [];
@@ -561,13 +544,13 @@ describe("createConsoleStoreOutput", () => {
     console.warn("one");
     console.error("two");
 
-    expect(received).toEqual([
+    assertEqual(received, [
       { method: "warn", path: [], args: ["one"] },
       { method: "error", path: [], args: ["two"] },
     ]);
   });
 
-  test("captures child entries", () => {
+  it("captures child entries", () => {
     const output = createConsoleStoreOutput();
     const console = createConsole({ output });
     const child = console.child("db");
@@ -578,23 +561,23 @@ describe("createConsoleStoreOutput", () => {
 
     child.info("from child");
 
-    expect(received).toEqual([
+    assertEqual(received, [
       { method: "info", path: ["db"], args: ["from child"] },
     ]);
   });
 
-  test("skips filtered entries", () => {
+  it("skips filtered entries", () => {
     const output = createConsoleStoreOutput();
     const console = createConsole({ output, level: "warn" });
     console.debug("ignored");
-    expect(output.entry.get()).toBeNull();
+    assertSame(output.entry.get(), null);
     console.warn("logged");
-    expect(output.entry.get()?.method).toBe("warn");
+    assertEqual(output.entry.get()?.method, "warn");
   });
 });
 
 describe("createConsoleArrayOutput", () => {
-  test("captures entries to array", () => {
+  it("captures entries to array", () => {
     const entries: Array<ConsoleEntry> = [];
     const output = createConsoleArrayOutput(entries);
 
@@ -604,7 +587,7 @@ describe("createConsoleArrayOutput", () => {
       args: ["message", 123],
     });
 
-    expect(entries).toEqual([
+    assertEqual(entries, [
       {
         method: "info",
         path: ["relay"],
@@ -613,7 +596,7 @@ describe("createConsoleArrayOutput", () => {
     ]);
   });
 
-  test("works with createConsole", () => {
+  it("works with createConsole", () => {
     const entries: Array<ConsoleEntry> = [];
     const output = createConsoleArrayOutput(entries);
     const console = createConsole({ output });
@@ -621,13 +604,19 @@ describe("createConsoleArrayOutput", () => {
     console.info("hello");
     console.warn("world");
 
-    expect(entries.map((e) => e.method)).toEqual(["info", "warn"]);
-    expect(entries.map((e) => e.args[0])).toEqual(["hello", "world"]);
+    assertEqual(
+      entries.map((e) => e.method),
+      ["info", "warn"],
+    );
+    assertEqual(
+      entries.map((e) => e.args[0]),
+      ["hello", "world"],
+    );
   });
 });
 
 describe("createMultiOutput", () => {
-  test("writes to all outputs", () => {
+  it("writes to all outputs", () => {
     const entries1: Array<ConsoleEntry> = [];
     const entries2: Array<ConsoleEntry> = [];
     const output = createMultiOutput([
@@ -638,12 +627,12 @@ describe("createMultiOutput", () => {
 
     console.info("hello");
 
-    expect(entries1).toHaveLength(1);
-    expect(entries2).toHaveLength(1);
-    expect(entries1[0]).toEqual(entries2[0]);
+    assertLength(entries1, 1);
+    assertLength(entries2, 1);
+    assertEqual(entries1[0], entries2[0]);
   });
 
-  test("combines native and store outputs", () => {
+  it("combines native and store outputs", () => {
     const storeOutput = createConsoleStoreOutput();
     const entries: Array<ConsoleEntry> = [];
     const output = createMultiOutput([
@@ -654,39 +643,25 @@ describe("createMultiOutput", () => {
 
     console.error("fail");
 
-    expect(entries).toHaveLength(1);
-    expect(storeOutput.entry.get()?.args).toEqual(["fail"]);
+    assertLength(entries, 1);
+    assertEqual(storeOutput.entry.get()?.args, ["fail"]);
   });
 });
 
 describe("testCreateConsole", () => {
-  test("captures entries", () => {
+  it("captures entries", () => {
     const console = testCreateConsole();
 
     console.info("first");
     console.info("second");
 
-    expect(console.getEntriesSnapshot()).toMatchInlineSnapshot(`
-      [
-        {
-          "args": [
-            "first",
-          ],
-          "method": "info",
-          "path": [],
-        },
-        {
-          "args": [
-            "second",
-          ],
-          "method": "info",
-          "path": [],
-        },
-      ]
-    `);
+    assertEqual(console.getEntriesSnapshot(), [
+      { method: "info", path: [], args: ["first"] },
+      { method: "info", path: [], args: ["second"] },
+    ]);
   });
 
-  test("defaults to trace level (logs everything)", () => {
+  it("defaults to trace level (logs everything)", () => {
     const console = testCreateConsole();
 
     console.trace("trace");
@@ -696,17 +671,13 @@ describe("testCreateConsole", () => {
     console.warn("warn");
     console.error("error");
 
-    expect(console.getEntriesSnapshot().map((e) => e.method)).toEqual([
-      "trace",
-      "debug",
-      "log",
-      "info",
-      "warn",
-      "error",
-    ]);
+    assertEqual(
+      console.getEntriesSnapshot().map((e) => e.method),
+      ["trace", "debug", "log", "info", "warn", "error"],
+    );
   });
 
-  test("respects configured level", () => {
+  it("respects configured level", () => {
     const console = testCreateConsole({ level: "warn" });
 
     console.debug("ignored");
@@ -714,39 +685,39 @@ describe("testCreateConsole", () => {
     console.warn("logged");
     console.error("logged");
 
-    expect(console.getEntriesSnapshot().map((e) => e.method)).toEqual([
-      "warn",
-      "error",
-    ]);
+    assertEqual(
+      console.getEntriesSnapshot().map((e) => e.method),
+      ["warn", "error"],
+    );
   });
 
-  test("getEntriesSnapshot clears entries", () => {
+  it("getEntriesSnapshot clears entries", () => {
     const console = testCreateConsole();
 
     console.info("first");
-    expect(console.getEntriesSnapshot()).toHaveLength(1);
-    expect(console.getEntriesSnapshot()).toHaveLength(0);
+    assertLength(console.getEntriesSnapshot(), 1);
+    assertLength(console.getEntriesSnapshot(), 0);
   });
 
-  test("clearEntries clears without returning", () => {
+  it("clearEntries clears without returning", () => {
     const console = testCreateConsole();
 
     console.info("message");
     console.clearEntries();
 
-    expect(console.getEntriesSnapshot()).toHaveLength(0);
+    assertLength(console.getEntriesSnapshot(), 0);
   });
 
-  test("child adds path", () => {
+  it("child adds path", () => {
     const console = testCreateConsole();
     const child = console.child("relay").child("db");
 
     child.info("message");
 
-    expect(console.getEntriesSnapshot()[0].path).toEqual(["relay", "db"]);
+    assertEqual(console.getEntriesSnapshot()[0].path, ["relay", "db"]);
   });
 
-  test("child inherits level at creation (static)", () => {
+  it("child inherits level at creation (static)", () => {
     const console = testCreateConsole({ level: "info" });
     const child = console.child("relay");
 
@@ -758,36 +729,38 @@ describe("testCreateConsole", () => {
     console.setLevel("debug");
     child.debug("still ignored");
 
-    expect(console.getEntriesSnapshot().map((e) => e.args[0])).toEqual([
-      "logged",
-    ]);
+    assertEqual(
+      console.getEntriesSnapshot().map((e) => e.args[0]),
+      ["logged"],
+    );
   });
 
-  test("child can override level independently", () => {
+  it("child can override level independently", () => {
     const console = testCreateConsole({ level: "info" });
     const child = console.child("relay");
 
     child.setLevel("debug");
     child.debug("logged");
 
-    expect(console.getEntriesSnapshot().map((e) => e.args[0])).toEqual([
-      "logged",
-    ]);
+    assertEqual(
+      console.getEntriesSnapshot().map((e) => e.args[0]),
+      ["logged"],
+    );
   });
 
-  test("hasOwnLevel tracks level override", () => {
+  it("hasOwnLevel tracks level override", () => {
     const console = testCreateConsole({ level: "info" });
 
-    expect(console.hasOwnLevel()).toBe(false);
+    assertFalse(console.hasOwnLevel());
 
     console.setLevel("debug");
-    expect(console.hasOwnLevel()).toBe(true);
+    assertTrue(console.hasOwnLevel());
 
     console.setLevel(null);
-    expect(console.hasOwnLevel()).toBe(false);
+    assertFalse(console.hasOwnLevel());
   });
 
-  test("debug-level methods use debug level", () => {
+  it("debug-level methods use debug level", () => {
     const console = testCreateConsole({ level: "log" });
 
     console.time("timer");
@@ -795,7 +768,7 @@ describe("testCreateConsole", () => {
     console.table([1, 2]);
     console.count("counter");
 
-    expect(console.getEntriesSnapshot()).toHaveLength(0);
+    assertLength(console.getEntriesSnapshot(), 0);
 
     console.setLevel("debug");
 
@@ -807,32 +780,27 @@ describe("testCreateConsole", () => {
     console.count("counter");
     console.countReset("counter");
 
-    expect(console.getEntriesSnapshot().map((e) => e.method)).toEqual([
-      "time",
-      "timeLog",
-      "timeEnd",
-      "dir",
-      "table",
-      "count",
-      "countReset",
-    ]);
+    assertEqual(
+      console.getEntriesSnapshot().map((e) => e.method),
+      ["time", "timeLog", "timeEnd", "dir", "table", "count", "countReset"],
+    );
   });
 
-  test("children tracking", () => {
+  it("children tracking", () => {
     const console = testCreateConsole();
     const child1 = console.child("a");
     const child2 = console.child("b");
 
-    expect(console.children.size).toBe(2);
-    expect(console.children.has(child1)).toBe(true);
-    expect(console.children.has(child2)).toBe(true);
+    assertEqual(console.children.size, 2);
+    assertTrue(console.children.has(child1));
+    assertTrue(console.children.has(child2));
   });
 
-  test("name property", () => {
+  it("name property", () => {
     const console = testCreateConsole();
     const child = console.child("relay");
 
-    expect(console.name).toBe("");
-    expect(child.name).toBe("relay");
+    assertEqual(console.name, "");
+    assertEqual(child.name, "relay");
   });
 });

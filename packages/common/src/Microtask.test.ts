@@ -1,8 +1,10 @@
-import { describe, expect, test } from "vitest";
-import { createMicrotaskBatch } from "../../../../packages/common/src/Microtask.ts";
+import { describe, it } from "node:test";
+import { assertEqual, assertThrowsInstanceOf, assertTrue } from "./Assert.ts";
+
+import { createMicrotaskBatch } from "./Microtask.ts";
 
 describe("createMicrotaskBatch", () => {
-  test("coalesces multiple pushes in one tick into one flush", async () => {
+  it("coalesces multiple pushes in one tick into one flush", async () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
@@ -11,14 +13,14 @@ describe("createMicrotaskBatch", () => {
     batch.push(1);
     batch.push(2);
 
-    expect(flushed).toEqual([]);
+    assertEqual(flushed, []);
 
     await Promise.resolve();
 
-    expect(flushed).toEqual([[1, 2]]);
+    assertEqual(flushed, [[1, 2]]);
   });
 
-  test("flushNow flushes immediately and pending microtask becomes no-op", async () => {
+  it("flushNow flushes immediately and pending microtask becomes no-op", async () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
@@ -27,19 +29,19 @@ describe("createMicrotaskBatch", () => {
     batch.push(1);
     batch.flushNow();
 
-    expect(flushed).toEqual([[1]]);
+    assertEqual(flushed, [[1]]);
 
     await Promise.resolve();
 
-    expect(flushed).toEqual([[1]]);
+    assertEqual(flushed, [[1]]);
 
     batch.push(2);
     await Promise.resolve();
 
-    expect(flushed).toEqual([[1], [2]]);
+    assertEqual(flushed, [[1], [2]]);
   });
 
-  test("flushNow on empty queue does nothing", () => {
+  it("flushNow on empty queue does nothing", () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
@@ -47,10 +49,10 @@ describe("createMicrotaskBatch", () => {
 
     batch.flushNow();
 
-    expect(flushed).toEqual([]);
+    assertEqual(flushed, []);
   });
 
-  test("passes snapshot so previous flushed arrays stay unchanged", async () => {
+  it("passes snapshot so previous flushed arrays stay unchanged", async () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
@@ -63,11 +65,11 @@ describe("createMicrotaskBatch", () => {
     batch.push(3);
     await Promise.resolve();
 
-    expect(flushed[0]).toEqual([1, 2]);
-    expect(flushed[1]).toEqual([3]);
+    assertEqual(flushed[0], [1, 2]);
+    assertEqual(flushed[1], [3]);
   });
 
-  test("reentrant push during onFlush is processed in next microtask", async () => {
+  it("reentrant push during onFlush is processed in next microtask", async () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
@@ -81,10 +83,10 @@ describe("createMicrotaskBatch", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(flushed).toEqual([[1], [2]]);
+    assertEqual(flushed, [[1], [2]]);
   });
 
-  test("dispose cancels queued flush", async () => {
+  it("dispose cancels queued flush", async () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
@@ -95,10 +97,10 @@ describe("createMicrotaskBatch", () => {
 
     await Promise.resolve();
 
-    expect(flushed).toEqual([]);
+    assertEqual(flushed, []);
   });
 
-  test("push and flushNow throw after dispose", async () => {
+  it("push and flushNow throw after dispose", async () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
@@ -106,20 +108,22 @@ describe("createMicrotaskBatch", () => {
 
     batch[Symbol.dispose]();
 
-    expect(() => {
+    const pushError = assertThrowsInstanceOf(() => {
       batch.push(1);
-    }).toThrow("Cannot use a disposed object.");
+    }, Error);
+    assertTrue(pushError.message.includes("Cannot use a disposed object."));
 
-    expect(() => {
+    const flushNowError = assertThrowsInstanceOf(() => {
       batch.flushNow();
-    }).toThrow("Cannot use a disposed object.");
+    }, Error);
+    assertTrue(flushNowError.message.includes("Cannot use a disposed object."));
 
     await Promise.resolve();
 
-    expect(flushed).toEqual([]);
+    assertEqual(flushed, []);
   });
 
-  test("dispose is idempotent", async () => {
+  it("dispose is idempotent", async () => {
     const flushed: Array<ReadonlyArray<number>> = [];
     const batch = createMicrotaskBatch<number>((items) => {
       flushed.push(items);
@@ -131,6 +135,6 @@ describe("createMicrotaskBatch", () => {
 
     await Promise.resolve();
 
-    expect(flushed).toEqual([]);
+    assertEqual(flushed, []);
   });
 });

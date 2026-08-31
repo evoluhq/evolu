@@ -1,9 +1,15 @@
+import { test } from "node:test";
+import {
+  assertEqual,
+  assertLength,
+  assertNotUndefined,
+  assertSame,
+  assertThrowsInstanceOf,
+  assertTrue,
+} from "../Assert.ts";
 import { ColumnNode, type SelectQueryNode } from "kysely";
-import { expect, expectTypeOf, test } from "vitest";
-import type {
-  Query,
-  Row,
-} from "../../../../../packages/common/src/local-first/Query.ts";
+
+import type { Query, Row } from "./Query.ts";
 import {
   applyPatches,
   evoluJsonArrayFrom,
@@ -13,13 +19,10 @@ import {
   kyselyJsonIdentifier,
   kyselySql,
   makePatches,
-} from "../../../../../packages/common/src/local-first/Query.ts";
-import { createQueryBuilder } from "../../../../../packages/common/src/local-first/Schema.ts";
-import { sqliteQueryStringToSqliteQuery } from "../../../../../packages/common/src/Sqlite.ts";
-import {
-  id,
-  NonEmptyTrimmedString100,
-} from "../../../../../packages/common/src/Type.ts";
+} from "./Query.ts";
+import { createQueryBuilder } from "./Schema.ts";
+import { sqliteQueryStringToSqliteQuery } from "../Sqlite.ts";
+import { assertType, id, NonEmptyTrimmedString100 } from "../Type.ts";
 
 const PersonId = id("Person");
 const PetId = id("Pet");
@@ -63,7 +66,10 @@ test("Query", () => {
   // @ts-expect-error - query2 should not be assignable to query1
   const shouldAlsoError: typeof query1 = query2;
 
-  expectTypeOf(query1).toExtend<Query<typeof QuerySchema>>();
+  assertType<
+    typeof query1 extends Query<typeof QuerySchema> ? true : false,
+    true
+  >();
 });
 
 test("evoluJsonArrayFrom compiles a prefixed SQLite JSON array query", () => {
@@ -83,11 +89,11 @@ test("evoluJsonArrayFrom compiles a prefixed SQLite JSON array query", () => {
 
   const sqlQuery = sqliteQueryStringToSqliteQuery(query);
 
-  expect(sqlQuery.sql).toContain("json_group_array(json_object(");
-  expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);
-  expect(sqlQuery.sql).toContain('"agg"."petId"');
-  expect(sqlQuery.sql).toContain('"agg"."name"');
-  expect(sqlQuery.sql).toContain('"agg"."ownerId"');
+  assertTrue(sqlQuery.sql.includes("json_group_array(json_object("));
+  assertTrue(sqlQuery.sql.includes(kyselyJsonIdentifier));
+  assertTrue(sqlQuery.sql.includes('"agg"."petId"'));
+  assertTrue(sqlQuery.sql.includes('"agg"."name"'));
+  assertTrue(sqlQuery.sql.includes('"agg"."ownerId"'));
 });
 
 test("evoluJsonObjectFrom compiles a prefixed SQLite JSON object query", () => {
@@ -107,10 +113,10 @@ test("evoluJsonObjectFrom compiles a prefixed SQLite JSON object query", () => {
 
   const sqlQuery = sqliteQueryStringToSqliteQuery(query);
 
-  expect(sqlQuery.sql).toContain("json_object(");
-  expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);
-  expect(sqlQuery.sql).toContain('"obj"."petId"');
-  expect(sqlQuery.sql).toContain('"obj"."name"');
+  assertTrue(sqlQuery.sql.includes("json_object("));
+  assertTrue(sqlQuery.sql.includes(kyselyJsonIdentifier));
+  assertTrue(sqlQuery.sql.includes('"obj"."petId"'));
+  assertTrue(sqlQuery.sql.includes('"obj"."name"'));
 });
 
 test("evoluJsonBuildObject compiles a prefixed SQLite json_object expression", () => {
@@ -125,10 +131,10 @@ test("evoluJsonBuildObject compiles a prefixed SQLite json_object expression", (
 
   const sqlQuery = sqliteQueryStringToSqliteQuery(query);
 
-  expect(sqlQuery.sql).toContain("json_object(");
-  expect(sqlQuery.sql).toContain(kyselyJsonIdentifier);
-  expect(sqlQuery.sql).toContain("'first'");
-  expect(sqlQuery.sql).toContain("'full'");
+  assertTrue(sqlQuery.sql.includes("json_object("));
+  assertTrue(sqlQuery.sql.includes(kyselyJsonIdentifier));
+  assertTrue(sqlQuery.sql.includes("'first'"));
+  assertTrue(sqlQuery.sql.includes("'full'"));
 });
 
 test("getJsonObjectArgs handles alias, column, and reference selections", () => {
@@ -143,12 +149,11 @@ test("getJsonObjectArgs handles alias, column, and reference selections", () => 
     return db.selectFrom("pet").select(["pet.id"]);
   });
 
-  expect(operationNode).toBeDefined();
-  if (!operationNode) throw new Error("Expected operation node");
+  assertNotUndefined(operationNode);
 
   const args = getJsonObjectArgs(operationNode, "agg");
 
-  expect(args).toHaveLength(6);
+  assertLength(args, 6);
 });
 
 test("getJsonObjectArgs handles unqualified column selections", () => {
@@ -158,7 +163,7 @@ test("getJsonObjectArgs handles unqualified column selections", () => {
 
   const args = getJsonObjectArgs(operationNode, "agg");
 
-  expect(args).toHaveLength(2);
+  assertLength(args, 2);
 });
 
 test("getJsonObjectArgs rejects selections it cannot map to json_object", () => {
@@ -170,12 +175,14 @@ test("getJsonObjectArgs rejects selections it cannot map to json_object", () => 
     return db.selectFrom("pet").select(["pet.id"]);
   });
 
-  expect(operationNode).toBeDefined();
-  if (!operationNode) throw new Error("Expected operation node");
+  assertNotUndefined(operationNode);
   const node = operationNode;
 
-  expect(() => getJsonObjectArgs(node, "agg")).toThrow(
-    "can't extract column names from the select query node",
+  assertTrue(
+    assertThrowsInstanceOf(
+      () => getJsonObjectArgs(node, "agg"),
+      Error,
+    ).message.includes("can't extract column names from the select query node"),
   );
 });
 
@@ -187,23 +194,26 @@ test("getJsonObjectArgs returns empty array for nodes without selections", () =>
     return db.selectFrom("pet").select(["pet.id"]);
   });
 
-  expect(operationNode).toBeDefined();
-  if (!operationNode) throw new Error("Expected operation node");
+  assertNotUndefined(operationNode);
 
-  expect(getJsonObjectArgs(operationNode, "agg")).toEqual([]);
+  assertEqual(getJsonObjectArgs(operationNode, "agg"), []);
 });
 
 test("evoluJsonArrayFrom rejects selectAll subqueries", () => {
-  expect(() =>
-    createQuery((db) =>
-      db
-        .selectFrom("person")
-        .select((eb) => [
-          evoluJsonArrayFrom(eb.selectFrom("pet").selectAll()).as("pets"),
-        ]),
+  assertTrue(
+    assertThrowsInstanceOf(
+      () =>
+        createQuery((db) =>
+          db
+            .selectFrom("person")
+            .select((eb) => [
+              evoluJsonArrayFrom(eb.selectFrom("pet").selectAll()).as("pets"),
+            ]),
+        ),
+      Error,
+    ).message.includes(
+      "SQLite evoluJsonArrayFrom and evoluJsonObjectFrom can only handle explicit selections due to limitations of the json_object function. selectAll() is not allowed in the subquery.",
     ),
-  ).toThrow(
-    "SQLite evoluJsonArrayFrom and evoluJsonObjectFrom can only handle explicit selections due to limitations of the json_object function. selectAll() is not allowed in the subquery.",
   );
 });
 
@@ -211,46 +221,52 @@ test("makePatches", () => {
   const row: Row = { a: 1 };
   const rows: ReadonlyArray<Row> = [row];
 
-  expect(makePatches([], []).length).toBe(0);
+  assertLength(makePatches([], []), 0);
   const p0 = [{ op: "replaceAll", value: [] }];
-  expect(makePatches(rows, [])).toEqual(p0);
+  assertEqual(makePatches(rows, []), p0);
 
   const p1 = makePatches([], rows);
-  expect(p1).toEqual([{ op: "replaceAll", value: rows }]);
-  if (p1[0].op === "replaceAll") expect(p1[0].value).toBe(rows);
+  assertEqual(p1, [{ op: "replaceAll", value: rows }]);
+  if (p1[0].op === "replaceAll") assertSame(p1[0].value, rows);
 
-  expect(makePatches(rows, rows).length).toBe(0);
+  assertLength(makePatches(rows, rows), 0);
 
-  expect(makePatches(rows, [{ a: 2 }])).toMatchSnapshot();
+  assertEqual(makePatches(rows, [{ a: 2 }]), [
+    { op: "replaceAll", value: [{ a: 2 }] },
+  ]);
 
-  expect(makePatches([row, { b: 2 }], [row, { b: 3 }])).toMatchSnapshot();
+  assertEqual(makePatches([row, { b: 2 }], [row, { b: 3 }]), [
+    { op: "replaceAt", index: 1, value: { b: 3 } },
+  ]);
 
-  expect(
+  assertEqual(
     makePatches([{ a: 1 }, row, { c: 4 }], [{ a: 0 }, row, { c: 1 }]),
-  ).toMatchSnapshot();
+    [
+      { op: "replaceAt", index: 0, value: { a: 0 } },
+      { op: "replaceAt", index: 2, value: { c: 1 } },
+    ],
+  );
 
-  expect(
-    makePatches([{ a: new Uint8Array([1]) }], [{ a: new Uint8Array([1]) }])
-      .length,
-  ).toBe(0);
+  assertLength(
+    makePatches([{ a: new Uint8Array([1]) }], [{ a: new Uint8Array([1]) }]),
+    0,
+  );
 });
 
 test("makePatches handles undefined previous rows", () => {
   const rows: ReadonlyArray<Row> = [{ a: 1 }];
   const patches = makePatches(undefined, rows);
 
-  expect(patches).toEqual([{ op: "replaceAll", value: rows }]);
-  if (patches[0].op === "replaceAll") expect(patches[0].value).toBe(rows);
+  assertEqual(patches, [{ op: "replaceAll", value: rows }]);
+  if (patches[0].op === "replaceAll") assertSame(patches[0].value, rows);
 });
 
 test("applyPatches", () => {
   const current: ReadonlyArray<Row> = [];
-  expect(applyPatches([], current)).toBe(current);
+  assertSame(applyPatches([], current), current);
 
   const value: ReadonlyArray<Row> = [];
-  expect(applyPatches([{ op: "replaceAll", value }], current)).toStrictEqual(
-    value,
-  );
+  assertEqual(applyPatches([{ op: "replaceAll", value }], current), value);
 
   const replaceUntouched = { b: 2 };
   const replaceAtResult = applyPatches(
@@ -260,8 +276,8 @@ test("applyPatches", () => {
     ],
     [{ a: 1 }, replaceUntouched, { c: 3 }],
   );
-  expect(replaceAtResult).toEqual([{ a: 2 }, { b: 2 }, { c: 4 }]);
-  expect(replaceAtResult[1]).toBe(replaceUntouched);
+  assertEqual(replaceAtResult, [{ a: 2 }, { b: 2 }, { c: 4 }]);
+  assertSame(replaceAtResult[1], replaceUntouched);
 });
 
 test("applyPatches parses prefixed JSON in strings, arrays, and objects", () => {
@@ -285,7 +301,7 @@ test("applyPatches parses prefixed JSON in strings, arrays, and objects", () => 
     [],
   );
 
-  expect(result).toEqual([
+  assertEqual(result, [
     {
       plain: "no-json",
       objectValue: { x: 1 },
@@ -319,7 +335,7 @@ test("applyPatches recursively parses prefixed JSON inside decoded JSON", () => 
     [],
   );
 
-  expect(result).toEqual([
+  assertEqual(result, [
     {
       nestedObject: {
         items: [

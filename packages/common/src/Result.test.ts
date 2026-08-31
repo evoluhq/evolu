@@ -1,6 +1,18 @@
-import { expectErr, expectOk } from "@evolu/vitest";
-import { assert, describe, expect, expectTypeOf, it, test } from "vitest";
-import type { NonEmptyReadonlyArray } from "../../../../packages/common/src/Array.ts";
+import { describe, it, test } from "node:test";
+import {
+  assertEqual,
+  assertErr,
+  assertFalse,
+  assertInstanceOf,
+  assertOk,
+  assertRejectsSame,
+  assertSame,
+  assertThrowsInstanceOf,
+  assertThrowsSame,
+  assertTrue,
+} from "./Assert.ts";
+
+import type { NonEmptyReadonlyArray } from "./Array.ts";
 import type {
   Done,
   Err,
@@ -11,7 +23,7 @@ import type {
   NextResult,
   OnlyDone,
   Result,
-} from "../../../../packages/common/src/Result.ts";
+} from "./Result.ts";
 import {
   allResult,
   anyResult,
@@ -26,13 +38,14 @@ import {
   ok,
   tryAsync,
   trySync,
-} from "../../../../packages/common/src/Result.ts";
-import { parseStackTrace } from "../../../../packages/common/src/StackTrace.ts";
+} from "./Result.ts";
+import { parseStackTrace } from "./StackTrace.ts";
+import { assertType } from "./Type.ts";
 
 describe("InferOk and InferErr", () => {
   it("infers Ok type", () => {
     type MyResult = Result<string, { type: "MyError"; code: number }>;
-    expectTypeOf<InferOk<MyResult>>().toEqualTypeOf<string>();
+    assertType<InferOk<MyResult>, string>();
   });
 
   it("infers Err type", () => {
@@ -41,13 +54,13 @@ describe("InferOk and InferErr", () => {
       readonly code: number;
     }
     type MyResult = Result<string, MyError>;
-    expectTypeOf<InferErr<MyResult>>().toEqualTypeOf<MyError>();
+    assertType<InferErr<MyResult>, MyError>();
   });
 
   it("handles void Result", () => {
     type VoidResult = Result<void, Error>;
-    expectTypeOf<InferOk<VoidResult>>().toEqualTypeOf<void>();
-    expectTypeOf<InferErr<VoidResult>>().toEqualTypeOf<Error>();
+    assertType<InferOk<VoidResult>, void>();
+    assertType<InferErr<VoidResult>, Error>();
   });
 
   it("works at runtime", () => {
@@ -60,23 +73,23 @@ describe("InferOk and InferErr", () => {
     const okValue: InferOk<MyResult> = "hello";
     const errValue: InferErr<MyResult> = { type: "MyError", code: 404 };
 
-    expect(okValue).toBe("hello");
-    expect(errValue).toEqual({ type: "MyError", code: 404 });
+    assertEqual(okValue, "hello");
+    assertEqual(errValue, { type: "MyError", code: 404 });
   });
 });
 
 describe("ok", () => {
   it("creates Ok with a value", () => {
-    expect(ok(42)).toStrictEqual({ ok: true, value: 42 });
+    assertEqual(ok(42), { ok: true, value: 42 });
   });
 
   it("creates Ok<void> without arguments", () => {
-    expect(ok()).toStrictEqual({ ok: true, value: undefined });
+    assertEqual(ok(), { ok: true, value: undefined });
   });
 
   it("caches ok() and ok(undefined)", () => {
-    expect(ok()).toBe(ok());
-    expect(ok(undefined)).toBe(ok());
+    assertSame(ok(), ok());
+    assertSame(ok(undefined), ok());
   });
 
   it("rejects Ok<void> when Result expects a value", () => {
@@ -86,7 +99,7 @@ describe("ok", () => {
 
   it("returns Result<T, never> for correct type inference", () => {
     const result = ok(42);
-    expectTypeOf(result).toEqualTypeOf<Result<number>>();
+    assertType<typeof result, Result<number>>();
   });
 
   it("infers never for E when combining with err", () => {
@@ -99,105 +112,112 @@ describe("ok", () => {
       return ok(42);
     };
 
-    expectTypeOf(example(false)).toEqualTypeOf<Result<number, MyError>>();
+    {
+      const actual = example(false);
+      assertType<typeof actual, Result<number, MyError>>();
+    }
   });
 });
 
 describe("err", () => {
   it("creates Err with an error", () => {
-    expect(err("error")).toStrictEqual({ ok: false, error: "error" });
+    assertEqual(err("error"), { ok: false, error: "error" });
   });
 
   it("returns Result<never, E> for correct type inference", () => {
     const result = err("oops");
-    expectTypeOf(result).toEqualTypeOf<Result<never, string>>();
+    assertType<typeof result, Result<never, string>>();
   });
 });
 
 describe("isOk and isErr", () => {
   it("identifies Ok result", () => {
     const result = ok(123);
-    expect(isOk(result)).toBe(true);
-    expect(isErr(result)).toBe(false);
+
+    assertTrue(isOk(result));
+    assertFalse(isErr(result));
+  });
+
+  it("isOk narrows an Ok result", () => {
+    const result = ok(123);
 
     if (isOk(result)) {
-      expectTypeOf(result.value).toEqualTypeOf<number>();
+      assertType<typeof result.value, number>();
     }
   });
 
   it("identifies Err result", () => {
     const result = err({ type: "TestError" as const });
-    expect(isOk(result)).toBe(false);
-    expect(isErr(result)).toBe(true);
+
+    assertFalse(isOk(result));
+    assertTrue(isErr(result));
+  });
+
+  it("isErr narrows an Err result", () => {
+    const result = err({ type: "TestError" as const });
 
     if (isErr(result)) {
-      expectTypeOf(result.error).toEqualTypeOf({ type: "TestError" as const });
+      assertType<
+        typeof result.error extends { readonly type: "TestError" }
+          ? true
+          : false,
+        true
+      >();
     }
   });
 });
 
 describe("getOrThrow", () => {
   it("returns value for Ok", () => {
-    expect(getOrThrow(ok(42))).toBe(42);
+    assertEqual(getOrThrow(ok(42)), 42);
   });
 
   it("throws for Err", () => {
-    expect(() => getOrThrow(err("error"))).toThrowErrorMatchingInlineSnapshot(
-      `[Error: getOrThrow]`,
-    );
+    const error = assertThrowsInstanceOf(() => getOrThrow(err("error")), Error);
+    assertTrue(error.message.includes("getOrThrow"));
   });
 
   it("includes primitive error as cause", () => {
-    let thrown: unknown;
-    try {
-      getOrThrow(err("error"));
-    } catch (e) {
-      thrown = e;
-    }
-    const error = thrown as Error & { cause?: unknown };
-    expect(error.cause).toBe("error");
+    const error = assertThrowsInstanceOf(() => getOrThrow(err("error")), Error);
+    assertEqual(error.cause, "error");
   });
 
   it("includes Error instance as cause", () => {
     const original = new TypeError("boom");
-    let thrown: unknown;
-    try {
-      getOrThrow(err(original));
-    } catch (e) {
-      thrown = e;
-    }
-    const error = thrown as Error & { cause?: unknown };
-    expect(error.cause).toBe(original);
+    const error = assertThrowsInstanceOf(
+      () => getOrThrow(err(original)),
+      Error,
+    );
+    assertSame(error.cause, original);
   });
 });
 
 describe("getOrNull", () => {
   it("returns value for Ok", () => {
-    expect(getOrNull(ok(42))).toBe(42);
+    assertEqual(getOrNull(ok(42)), 42);
   });
 
   it("returns null for Err", () => {
-    expect(getOrNull(err("error"))).toBeNull();
+    assertSame(getOrNull(err("error")), null);
   });
 });
 
 describe("getOk", () => {
   it("extracts value from Result with never error", () => {
     const result = ok(42);
-    expect(getOk(result)).toBe(42);
+    assertEqual(getOk(result), 42);
   });
 
   it("rejects Result with possible error type", () => {
     type IsAssignable =
       Result<number, string> extends Result<number> ? true : false;
-    expectTypeOf<IsAssignable>().toEqualTypeOf<false>();
+    assertType<IsAssignable, false>();
   });
 
   it("throws when invariant is violated at runtime", () => {
     const invalid = err("fail") as unknown as Result<number>;
-    expect(() => getOk(invalid)).toThrowErrorMatchingInlineSnapshot(
-      `[Error: Expected Ok result.]`,
-    );
+    const error = assertThrowsInstanceOf(() => getOk(invalid), Error);
+    assertTrue(error.message.includes("Expected Ok result."));
   });
 });
 
@@ -213,7 +233,7 @@ describe("trySync", () => {
       (error): ParseError => ({ type: "ParseError", message: String(error) }),
     );
 
-    expect(result).toStrictEqual({
+    assertEqual(result, {
       ok: true,
       value: { key: "value" },
     });
@@ -225,12 +245,12 @@ describe("trySync", () => {
       (error): ParseError => ({ type: "ParseError", message: String(error) }),
     );
 
-    expect(result).toStrictEqual({
+    assertErr(result);
+    const { message } = result.error;
+    assertTrue(message.includes("SyntaxError"));
+    assertEqual(result, {
       ok: false,
-      error: {
-        type: "ParseError",
-        message: expect.stringContaining("SyntaxError"),
-      },
+      error: { type: "ParseError", message },
     });
   });
 
@@ -240,29 +260,26 @@ describe("trySync", () => {
       throw failure;
     });
 
-    expectTypeOf(result).toEqualTypeOf<Result<never, unknown>>();
-    expect(result).toStrictEqual(err(failure));
+    assertType<typeof result, Result<never, unknown>>();
+    assertEqual(result, err(failure));
   });
 
   it("mapError may throw to escalate a failure", () => {
     const failure = new Error("Something went wrong");
     const escalated = new Error("Escalated");
 
-    let thrown: unknown;
-    try {
-      trySync(
-        () => {
-          throw failure;
-        },
-        () => {
-          throw escalated;
-        },
-      );
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBe(escalated);
+    assertThrowsSame(
+      () =>
+        trySync(
+          () => {
+            throw failure;
+          },
+          () => {
+            throw escalated;
+          },
+        ),
+      escalated,
+    );
   });
 });
 
@@ -273,19 +290,20 @@ describe("tryAsync", () => {
       (error) => ({ type: "TestError", message: String(error) }),
     );
 
-    expect(result).toStrictEqual(ok());
+    assertEqual(result, ok());
   });
 
   it("returns Err on rejected promise", async () => {
     const result = await tryAsync(
-      // eslint-disable-next-line @typescript-eslint/require-await
+      // oxlint-disable-next-line typescript/require-await
       async () => {
         throw new Error("Something went wrong");
       },
       (error) => ({ type: "TestError", message: String(error) }),
     );
 
-    expect(result).toStrictEqual(
+    assertEqual(
+      result,
       err({
         type: "TestError",
         message: "Error: Something went wrong",
@@ -296,19 +314,19 @@ describe("tryAsync", () => {
   it("returns Err with the rejection when mapError is omitted", async () => {
     const failure = new Error("Something went wrong");
     const result = await tryAsync(
-      // eslint-disable-next-line @typescript-eslint/require-await
+      // oxlint-disable-next-line typescript/require-await
       async () => {
         throw failure;
       },
     );
 
-    expectTypeOf(result).toEqualTypeOf<Result<never, unknown>>();
-    expect(result).toStrictEqual(err(failure));
+    assertType<typeof result, Result<never, unknown>>();
+    assertEqual(result, err(failure));
   });
 
   it("maps custom error properties", async () => {
     const result = await tryAsync(
-      // eslint-disable-next-line @typescript-eslint/require-await
+      // oxlint-disable-next-line typescript/require-await
       async () => {
         throw new TypeError("Invalid type");
       },
@@ -319,7 +337,8 @@ describe("tryAsync", () => {
       }),
     );
 
-    expect(result).toStrictEqual(
+    assertEqual(
+      result,
       err({
         type: "CustomError",
         name: "TypeError",
@@ -332,14 +351,15 @@ describe("tryAsync", () => {
     const failure = new Error("Something went wrong");
     const escalated = new Error("Escalated");
 
-    await expect(
+    await assertRejectsSame(
       tryAsync(
         () => Promise.reject(failure),
         () => {
           throw escalated;
         },
       ),
-    ).rejects.toBe(escalated);
+      escalated,
+    );
   });
 
   it("catches synchronous throws", async () => {
@@ -350,7 +370,8 @@ describe("tryAsync", () => {
       (error) => ({ type: "TestError", message: String(error) }),
     );
 
-    expect(result).toStrictEqual(
+    assertEqual(
+      result,
       err({
         type: "TestError",
         message: "Error: Sync throw before promise",
@@ -364,10 +385,10 @@ describe("tryAsync", () => {
       throw new Error("Something went wrong");
     });
 
-    expectErr(result, expect.any(Error));
-    assert(result.error instanceof Error);
+    assertErr(result);
+    assertInstanceOf(result.error, Error);
 
-    expect(parseStackTrace(result.error.stack).files).toContain("Result.ts");
+    assertTrue(parseStackTrace(result.error.stack).files.includes("Result.ts"));
   });
 });
 
@@ -379,43 +400,47 @@ describe("NextResult", () => {
     const b: NextResult<number, E, string> = err(done("finished"));
     const c: NextResult<number, E, string> = err<E>("E");
 
-    expectTypeOf(a).toEqualTypeOf<NextResult<number, E, string>>();
-    expect(b.ok).toBe(false);
-    expect(c.ok).toBe(false);
+    assertType<typeof a, NextResult<number, E, string>>();
+    assertFalse(b.ok);
+    assertFalse(c.ok);
   });
 
   it("extracts all type parameters", () => {
     type MyNextResult = NextResult<number, string, { summary: string }>;
 
-    expectTypeOf<InferOk<MyNextResult>>().toEqualTypeOf<number>();
-    expectTypeOf<InferErr<MyNextResult>>().toEqualTypeOf<
-      string | Done<{ summary: string }>
+    assertType<InferOk<MyNextResult>, number>();
+    assertType<InferErr<MyNextResult>, string | Done<{ summary: string }>>();
+    assertType<
+      InferDone<MyNextResult>,
+      {
+        summary: string;
+      }
     >();
-    expectTypeOf<InferDone<MyNextResult>>().toEqualTypeOf<{
-      summary: string;
-    }>();
   });
 
   describe("done", () => {
     it("creates Done with done value", () => {
-      expect(done("finished")).toStrictEqual({
+      assertEqual(done("finished"), {
         type: "Done",
         done: "finished",
       });
     });
 
     it("creates Done<void> without arguments", () => {
-      expect(done()).toStrictEqual({
+      assertEqual(done(), {
         type: "Done",
         done: undefined,
       });
-      expectTypeOf(done()).toEqualTypeOf<Done<void>>();
+      {
+        const actual = done();
+        assertType<typeof actual, Done<void>>();
+      }
     });
 
     it("preserves done type", () => {
       const value = done({ count: 1 });
-      expectTypeOf(value).toEqualTypeOf<Done<{ count: number }>>();
-      expectTypeOf(value.done).toEqualTypeOf<{ count: number }>();
+      assertType<typeof value, Done<{ count: number }>>();
+      assertType<typeof value.done, { count: number }>();
     });
   });
 
@@ -425,7 +450,7 @@ describe("NextResult", () => {
         readonly type: "MyError";
       }
       type E = MyError | Done<void>;
-      expectTypeOf<ExcludeDone<E>>().toEqualTypeOf<MyError>();
+      assertType<ExcludeDone<E>, MyError>();
     });
 
     it("OnlyDone keeps only Done from a union", () => {
@@ -433,19 +458,19 @@ describe("NextResult", () => {
         readonly type: "MyError";
       }
       type E = MyError | Done<"done">;
-      expectTypeOf<OnlyDone<E>>().toEqualTypeOf<Done<"done">>();
+      assertType<OnlyDone<E>, Done<"done">>();
     });
 
     it("OnlyDone returns never when there is no Done", () => {
       type E = "E";
-      expectTypeOf<OnlyDone<E>>().toEqualTypeOf<never>();
+      assertType<OnlyDone<E>, never>();
     });
   });
 
   describe("InferDone", () => {
     it("extracts Done type from NextResult with void done", () => {
       type R = NextResult<number, string>;
-      expectTypeOf<InferDone<R>>().toEqualTypeOf<void>();
+      assertType<InferDone<R>, void>();
     });
 
     it("extracts Done type from NextResult with complex done", () => {
@@ -454,15 +479,18 @@ describe("NextResult", () => {
         string,
         { count: number; items: Array<string> }
       >;
-      expectTypeOf<InferDone<R>>().toEqualTypeOf<{
-        count: number;
-        items: Array<string>;
-      }>();
+      assertType<
+        InferDone<R>,
+        {
+          count: number;
+          items: Array<string>;
+        }
+      >();
     });
 
     it("returns never for Result without Done", () => {
       type R = Result<number, string>;
-      expectTypeOf<InferDone<R>>().toEqualTypeOf<never>();
+      assertType<InferDone<R>, never>();
     });
 
     it("works with union errors containing Done", () => {
@@ -470,7 +498,7 @@ describe("NextResult", () => {
         readonly type: "MyError";
       }
       type R = Result<number, MyError | Done<string>>;
-      expectTypeOf<InferDone<R>>().toEqualTypeOf<string>();
+      assertType<InferDone<R>, string>();
     });
   });
 });
@@ -479,8 +507,8 @@ describe("flatMapResult", () => {
   it("composes an Ok with another Result-returning operation", () => {
     const result = flatMapResult(ok(21), (value) => ok(value * 2));
 
-    expect(result).toStrictEqual(ok(42));
-    expectTypeOf(result).toEqualTypeOf<Result<number>>();
+    assertEqual(result, ok(42));
+    assertType<typeof result, Result<number>>();
   });
 
   it("returns the existing Err without calling the operation", () => {
@@ -499,34 +527,37 @@ describe("flatMapResult", () => {
       return err({ type: "SecondError" });
     });
 
-    expect(result).toStrictEqual(err({ type: "FirstError" }));
-    expect(called).toBe(false);
-    expectTypeOf(result).toEqualTypeOf<
-      Result<string, FirstError | SecondError>
+    assertEqual(result, err({ type: "FirstError" }));
+    assertFalse(called);
+    assertType<
+      typeof result extends Result<string, FirstError | SecondError>
+        ? true
+        : false,
+      true
     >();
   });
 
   it("returns an error from the next operation", () => {
     const result = flatMapResult(ok(42), () => err("fail"));
 
-    expect(result).toStrictEqual(err("fail"));
+    assertEqual(result, err("fail"));
   });
 });
 
 describe("allResult", () => {
   it("returns emptyArray for empty array", () => {
     const result = allResult([]);
-    expect(result).toStrictEqual(ok([]));
+    assertEqual(result, ok([]));
   });
 
   it("returns emptyRecord for empty record", () => {
     const result = allResult({});
-    expectOk(result, {});
+    assertOk(result, {});
   });
 
   it("extracts all values from array of Ok results", () => {
     const results = [ok(1), ok(2), ok(3)];
-    expect(allResult(results)).toStrictEqual(ok([1, 2, 3]));
+    assertEqual(allResult(results), ok([1, 2, 3]));
   });
 
   it("returns first error from array", () => {
@@ -541,55 +572,70 @@ describe("allResult", () => {
       err({ type: "E1" }),
       err({ type: "E2" }),
     ];
-    expect(allResult(results)).toStrictEqual(err({ type: "E1" }));
+    assertEqual(allResult(results), err({ type: "E1" }));
   });
 
   it("extracts all values from struct", () => {
     const result = allResult({ a: ok(1), b: ok("two") });
-    expectOk(result, { a: 1, b: "two" });
+    assertOk(result, { a: 1, b: "two" });
   });
 
   it("returns first error from struct", () => {
     const result = allResult({ a: ok(1), b: err("fail"), c: ok(3) });
-    expect(result).toStrictEqual(err("fail"));
+    assertEqual(result, err("fail"));
   });
 
   it("tuple preserves types", () => {
     const result = allResult([ok(1), ok("two"), ok(true)]);
     if (result.ok) {
-      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
-      expectTypeOf(result.value[1]).toEqualTypeOf<string>();
-      expectTypeOf(result.value[2]).toEqualTypeOf<boolean>();
+      {
+        const actual = result.value[0];
+        assertType<typeof actual, number>();
+      }
+      {
+        const actual = result.value[1];
+        assertType<typeof actual, string>();
+      }
+      {
+        const actual = result.value[2];
+        assertType<typeof actual, boolean>();
+      }
     }
   });
 
   it("struct preserves types", () => {
     const result = allResult({ a: ok(1), b: ok("two") });
     if (result.ok) {
-      expectTypeOf(result.value).toEqualTypeOf<{ a: number; b: string }>();
+      assertType<typeof result.value, { a: number; b: string }>();
     }
   });
 
   it("non-empty arrays preserve types", () => {
     const result = allResult([ok(1), ok(2)]);
     if (result.ok) {
-      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
-      expectTypeOf(result.value[1]).toEqualTypeOf<number>();
+      {
+        const actual = result.value[0];
+        assertType<typeof actual, number>();
+      }
+      {
+        const actual = result.value[1];
+        assertType<typeof actual, number>();
+      }
     }
   });
 
   it("works with Iterable", () => {
     const set = new Set([ok(1), ok(2), ok(3)]);
     const result = allResult(set);
-    expect(result).toStrictEqual(ok([1, 2, 3]));
+    assertEqual(result, ok([1, 2, 3]));
   });
 
   it("returns an empty array for an empty non-array Iterable", () => {
     const results = new Set<Result<number>>();
     const result = allResult(results);
 
-    expectTypeOf(result).toEqualTypeOf<Result<ReadonlyArray<number>>>();
-    expect(result).toStrictEqual(ok([]));
+    assertType<typeof result, Result<ReadonlyArray<number>>>();
+    assertEqual(result, ok([]));
   });
 
   it("stops consuming an Iterable on the first error", () => {
@@ -605,8 +651,8 @@ describe("allResult", () => {
 
     const result = allResult(createResults());
 
-    expectErr(result, "fail");
-    expect(consumedValues).toEqual([1, 2]);
+    assertErr(result, "fail");
+    assertEqual(consumedValues, [1, 2]);
   });
 
   it("ignores inherited record properties", () => {
@@ -620,7 +666,7 @@ describe("allResult", () => {
 
     const result = allResult(results);
 
-    expectOk(result, { own: 1 });
+    assertOk(result, { own: 1 });
   });
 
   it("does not collect Ok values", () => {
@@ -636,10 +682,8 @@ describe("allResult", () => {
 
     const result = allResult([first, second], { collect: false });
 
-    expectTypeOf(result).toEqualTypeOf<
-      Result<void, FirstError | SecondError>
-    >();
-    expectOk(result, undefined);
+    assertType<typeof result, Result<void, FirstError | SecondError>>();
+    assertOk(result, undefined);
   });
 
   it("returns the first Err without collecting Ok values", () => {
@@ -647,7 +691,7 @@ describe("allResult", () => {
       collect: false,
     });
 
-    expectErr(result, "first");
+    assertErr(result, "first");
   });
 
   it("does not collect Ok values from a record", () => {
@@ -656,32 +700,32 @@ describe("allResult", () => {
       { collect: false },
     );
 
-    expectTypeOf(result).toEqualTypeOf<Result<void, string>>();
-    expectErr(result, "fail");
+    assertType<typeof result, Result<void, string>>();
+    assertErr(result, "fail");
   });
 });
 
 describe("allResult mapping overload", () => {
   it("returns emptyArray for empty array", () => {
     const result = allResult([], (x: number) => ok(x * 2));
-    expect(result).toStrictEqual(ok([]));
+    assertEqual(result, ok([]));
   });
 
   it("returns emptyRecord for empty record", () => {
     const result = allResult({}, (x: number) => ok(x * 2));
-    expectOk(result, {});
+    assertOk(result, {});
   });
 
   it("maps items and collects results", () => {
     const result = allResult([1, 2, 3], (x) => ok(x * 2));
-    expect(result).toStrictEqual(ok([2, 4, 6]));
+    assertEqual(result, ok([2, 4, 6]));
   });
 
   it("returns first error", () => {
     const result = allResult([1, 2, 3], (x) =>
       x === 2 ? err("fail") : ok(x * 2),
     );
-    expect(result).toStrictEqual(err("fail"));
+    assertEqual(result, err("fail"));
   });
 
   it("does not map values after the first error", () => {
@@ -691,8 +735,8 @@ describe("allResult mapping overload", () => {
       return value === 2 ? err("fail") : ok(value * 2);
     });
 
-    expect(result).toStrictEqual(err("fail"));
-    expect(mappedValues).toEqual([1, 2]);
+    assertEqual(result, err("fail"));
+    assertEqual(mappedValues, [1, 2]);
   });
 
   it("infers heterogeneous mapper errors", () => {
@@ -708,10 +752,11 @@ describe("allResult mapping overload", () => {
       err({ type: "SecondError" });
     const result = allResult([first, second], (operation) => operation());
 
-    expectTypeOf(result).toEqualTypeOf<
+    assertType<
+      typeof result,
       Result<readonly [void, void], FirstError | SecondError>
     >();
-    expectErr(result, { type: "SecondError" });
+    assertErr(result, { type: "SecondError" });
   });
 
   it("does not collect mapped Ok values", () => {
@@ -719,8 +764,8 @@ describe("allResult mapping overload", () => {
       collect: false,
     });
 
-    expectTypeOf(result).toEqualTypeOf<Result<void>>();
-    expectOk(result, undefined);
+    assertType<typeof result, Result<void>>();
+    assertOk(result, undefined);
   });
 
   it("stops mapping without collecting on the first Err", () => {
@@ -744,16 +789,14 @@ describe("allResult mapping overload", () => {
       collect: false,
     });
 
-    expectTypeOf(result).toEqualTypeOf<
-      Result<void, FirstError | SecondError>
-    >();
-    expectErr(result, { type: "SecondError" });
-    expect(calls).toEqual(["first", "second"]);
+    assertType<typeof result, Result<void, FirstError | SecondError>>();
+    assertErr(result, { type: "SecondError" });
+    assertEqual(calls, ["first", "second"]);
   });
 
   it("maps struct and collects results", () => {
     const result = allResult({ a: 1, b: 2 }, (x) => ok(x * 2));
-    expectOk(result, { a: 2, b: 4 });
+    assertOk(result, { a: 2, b: 4 });
   });
 
   it("maps a record without collecting Ok values", () => {
@@ -761,59 +804,66 @@ describe("allResult mapping overload", () => {
       collect: false,
     });
 
-    expectTypeOf(result).toEqualTypeOf<Result<void>>();
-    expectOk(result, undefined);
+    assertType<typeof result, Result<void>>();
+    assertOk(result, undefined);
   });
 
   it("returns first error from struct", () => {
     const result = allResult({ a: 1, b: 2, c: 3 }, (x) =>
       x === 2 ? err("fail") : ok(x * 2),
     );
-    expect(result).toStrictEqual(err("fail"));
+    assertEqual(result, err("fail"));
   });
 
   it("struct preserves types", () => {
     const result = allResult({ a: 1, b: 2 }, (x) => ok(String(x)));
     if (result.ok) {
-      expectTypeOf(result.value).toEqualTypeOf<
-        Readonly<Record<"a" | "b", string>>
-      >();
+      assertType<typeof result.value, Readonly<Record<"a" | "b", string>>>();
     }
   });
 
   it("non-empty arrays preserve types", () => {
     const result = allResult([1, 2, 3], (x) => ok(x * 2));
     if (result.ok) {
-      expectTypeOf(result.value[0]).toEqualTypeOf<number>();
-      expectTypeOf(result.value[1]).toEqualTypeOf<number>();
-      expectTypeOf(result.value[2]).toEqualTypeOf<number>();
+      {
+        const actual = result.value[0];
+        assertType<typeof actual, number>();
+      }
+      {
+        const actual = result.value[1];
+        assertType<typeof actual, number>();
+      }
+      {
+        const actual = result.value[2];
+        assertType<typeof actual, number>();
+      }
     }
   });
 
   it("works with Iterable", () => {
     const set = new Set([1, 2, 3]);
     const result = allResult(set, (x) => ok(x * 2));
-    expect(result).toStrictEqual(ok([2, 4, 6]));
+    assertEqual(result, ok([2, 4, 6]));
   });
 });
 
 describe("anyResult", () => {
   it("returns first success", () => {
-    expect(anyResult([err("a"), ok(42), err("b")])).toStrictEqual(ok(42));
+    assertEqual(anyResult([err("a"), ok(42), err("b")]), ok(42));
   });
 
   it("returns last error when all fail", () => {
-    expect(anyResult([err("a"), err("b"), err("c")])).toStrictEqual(err("c"));
+    assertEqual(anyResult([err("a"), err("b"), err("c")]), err("c"));
   });
 
   it("returns first Ok even if it's first", () => {
-    expect(anyResult([ok(1), ok(2), ok(3)])).toStrictEqual(ok(1));
+    assertEqual(anyResult([ok(1), ok(2), ok(3)]), ok(1));
   });
 
   it("preserves types", () => {
     const result = anyResult([err({ type: "E1" as const }), ok(42)]);
     if (result.ok) {
-      expectTypeOf(result.value).toEqualTypeOf<number>();
+      assertType<typeof result.value, number>();
     }
   });
 });
@@ -834,9 +884,9 @@ test("example: parseJson with early return", () => {
 
   const json = parseJson('{"key": "value"}');
 
-  if (!json.ok) return json;
+  if (!json.ok) return undefined;
 
-  expectTypeOf(json.value).toBeUnknown();
+  assertType<typeof json.value, unknown>();
   return undefined;
 });
 
@@ -924,10 +974,10 @@ describe("Result with Resource management", () => {
 
       {
         using _ = resource.value;
-        expect(resource.value.isDisposed()).toBe(false);
+        assertFalse(resource.value.isDisposed());
       }
 
-      expect(resource.value.isDisposed()).toBe(true);
+      assertTrue(resource.value.isDisposed());
     });
 
     it("disposes on early return", () => {
@@ -944,11 +994,11 @@ describe("Result with Resource management", () => {
       };
 
       const result = process();
-      expectErr(result, {
+      assertErr(result, {
         type: "CreateResourceError",
         reason: "other failure",
       });
-      expect(resource?.isDisposed()).toBe(true);
+      assertTrue(resource?.isDisposed());
     });
 
     it("disposes on throw", () => {
@@ -964,10 +1014,11 @@ describe("Result with Resource management", () => {
         throw new Error("Unexpected!");
       };
 
-      expect(() => {
+      const error = assertThrowsInstanceOf(() => {
         process();
-      }).toThrow("Unexpected!");
-      expect(resource?.isDisposed()).toBe(true);
+      }, Error);
+      assertTrue(error.message.includes("Unexpected!"));
+      assertTrue(resource?.isDisposed());
     });
 
     // Block scopes control resource lifetime (RAII pattern).
@@ -1002,7 +1053,7 @@ describe("Result with Resource management", () => {
       };
 
       process();
-      expect(log).toEqual([
+      assertEqual(log, [
         "start",
         "critical-section-a",
         "unlock:a",
@@ -1039,8 +1090,8 @@ describe("Result with Resource management", () => {
       };
 
       const result = processResources();
-      expectOk(result, "processed");
-      expect(disposed).toEqual(["file", "db"]);
+      assertOk(result, "processed");
+      assertEqual(disposed, ["file", "db"]);
     });
 
     it("disposes created resources when later creation fails", () => {
@@ -1068,11 +1119,11 @@ describe("Result with Resource management", () => {
       };
 
       const result = processResources();
-      expectErr(result, {
+      assertErr(result, {
         type: "CreateResourceError",
         reason: "Failed to create file",
       });
-      expect(disposed).toEqual(["db"]);
+      assertEqual(disposed, ["db"]);
     });
 
     it("disposes nothing when first creation fails", () => {
@@ -1092,11 +1143,11 @@ describe("Result with Resource management", () => {
       };
 
       const result = processResources();
-      expectErr(result, {
+      assertErr(result, {
         type: "CreateResourceError",
         reason: "Failed to create db",
       });
-      expect(disposed).toEqual([]);
+      assertEqual(disposed, []);
     });
 
     it("works with adopt for non-disposable values", () => {
@@ -1136,8 +1187,8 @@ describe("Result with Resource management", () => {
       };
 
       const result = queryDatabase();
-      expectOk(result, ["result for: SELECT * FROM users"]);
-      expect(connectionClosed).toBe(true);
+      assertOk(result, ["result for: SELECT * FROM users"]);
+      assertTrue(connectionClosed);
     });
 
     it("handles multiple resources with mixed success/failure", () => {
@@ -1180,8 +1231,8 @@ describe("Result with Resource management", () => {
       };
 
       const result = process();
-      expectErr(result, { type: "ProcessingError", step: "step2" });
-      expect(log).toEqual(["work:step1", "cleanup:cache", "cleanup:db"]);
+      assertErr(result, { type: "ProcessingError", step: "step2" });
+      assertEqual(log, ["work:step1", "cleanup:cache", "cleanup:db"]);
     });
 
     it("disposes resources even when unexpected error is thrown", () => {
@@ -1205,8 +1256,9 @@ describe("Result with Resource management", () => {
       };
 
       // The unexpected error propagates, but disposal still happens
-      expect(() => processResources()).toThrow("Unexpected bug!");
-      expect(disposed).toEqual(["db"]);
+      const error = assertThrowsInstanceOf(() => processResources(), Error);
+      assertTrue(error.message.includes("Unexpected bug!"));
+      assertEqual(disposed, ["db"]);
     });
 
     it("transfers ownership with move()", () => {
@@ -1254,8 +1306,8 @@ describe("Result with Resource management", () => {
       };
 
       const result = useResources();
-      expectOk(result, undefined);
-      expect(disposed).toEqual(["work", "b", "a"]);
+      assertOk(result, undefined);
+      assertEqual(disposed, ["work", "b", "a"]);
     });
   });
 
@@ -1288,8 +1340,8 @@ describe("Result with Resource management", () => {
       };
 
       const result = await processResources();
-      expectOk(result, "processed");
-      expect(disposed).toEqual(["file", "db"]);
+      assertOk(result, "processed");
+      assertEqual(disposed, ["file", "db"]);
     });
 
     it("disposes created async resources when later creation fails", async () => {
@@ -1320,11 +1372,11 @@ describe("Result with Resource management", () => {
       };
 
       const result = await processResources();
-      expectErr(result, {
+      assertErr(result, {
         type: "CreateResourceError",
         reason: "Failed to create file",
       });
-      expect(disposed).toEqual(["db"]);
+      assertEqual(disposed, ["db"]);
     });
 
     it("can mix sync and async resources", async () => {
@@ -1354,8 +1406,8 @@ describe("Result with Resource management", () => {
       };
 
       const result = await processResources();
-      expectOk(result, "mixed");
-      expect(disposed).toEqual(["async", "sync"]);
+      assertOk(result, "mixed");
+      assertEqual(disposed, ["async", "sync"]);
     });
   });
 });
@@ -1405,7 +1457,7 @@ describe("design decisions", () => {
      *
      * @yields {Err<E>} Err if the result is an error
      */
-    // eslint-disable-next-line func-style -- generators require function keyword
+    // oxlint-disable-next-line eslint/func-style -- Generators require the function keyword.
     function* gen<T, E>(result: Result<T, E>): Gen<T, E> {
       if (result.ok) {
         return result.value;
@@ -1449,15 +1501,15 @@ describe("design decisions", () => {
 
       // Success case
       const success = runGen(program("21"));
-      expect(success).toStrictEqual(ok(42));
+      assertEqual(success, ok(42));
 
       // Parse error
       const parseErr = runGen(program("not a number"));
-      expect(parseErr).toStrictEqual(err({ type: "ParseError" }));
+      assertEqual(parseErr, err({ type: "ParseError" }));
 
       // Validation error
       const validationErr = runGen(program("-5"));
-      expect(validationErr).toStrictEqual(err({ type: "ValidationError" }));
+      assertEqual(validationErr, err({ type: "ValidationError" }));
     });
 
     it("is equivalent to imperative pattern", () => {
@@ -1494,9 +1546,9 @@ describe("design decisions", () => {
       };
 
       // Both produce identical results
-      expect(withGenerator("21")).toStrictEqual(imperative("21"));
-      expect(withGenerator("abc")).toStrictEqual(imperative("abc"));
-      expect(withGenerator("-5")).toStrictEqual(imperative("-5"));
+      assertEqual(withGenerator("21"), imperative("21"));
+      assertEqual(withGenerator("abc"), imperative("abc"));
+      assertEqual(withGenerator("-5"), imperative("-5"));
     });
 
     it("shows type inference works correctly", () => {
@@ -1508,12 +1560,10 @@ describe("design decisions", () => {
 
       const result = runGen(program());
 
-      expectTypeOf(result).toEqualTypeOf<
-        Result<number, ParseError | ValidationError>
-      >();
+      assertType<typeof result, Result<number, ParseError | ValidationError>>();
     });
 
-    test.skip("generator vs imperative performance", () => {
+    it.skip("generator vs imperative performance", () => {
       const ITERATIONS = 500_000;
 
       const withGenerator = (input: string): Result<number, ParseError> =>
@@ -1541,7 +1591,7 @@ describe("design decisions", () => {
       const iterableOk = <T, E = never>(value: T): IterableResult<T, E> => ({
         ok: true,
         value,
-        // eslint-disable-next-line require-yield
+        // oxlint-disable-next-line eslint/require-yield
         *[Symbol.iterator]() {
           return value;
         },
@@ -1621,32 +1671,27 @@ describe("design decisions", () => {
       }
       const imperativeTime = performance.now() - imperativeStart;
 
-      // eslint-disable-next-line no-console
+      /* oxlint-disable eslint/no-console -- This benchmark reports each measured implementation. */
       console.log(`Generator (wrapper): ${generatorTime.toFixed(2)} ms`);
-      // eslint-disable-next-line no-console
       console.log(`Iterable (inline): ${iterableTime.toFixed(2)} ms`);
-      // eslint-disable-next-line no-console
       console.log(`Iterable (hoisted): ${iterableHoistedTime.toFixed(2)} ms`);
-      // eslint-disable-next-line no-console
       console.log(`Imperative: ${imperativeTime.toFixed(2)} ms`);
-      // eslint-disable-next-line no-console
       console.log(
         `Generator wrapper is ${(generatorTime / imperativeTime).toFixed(1)}x slower`,
       );
-      // eslint-disable-next-line no-console
       console.log(
         `Iterable inline is ${(iterableTime / imperativeTime).toFixed(1)}x slower`,
       );
-      // eslint-disable-next-line no-console
       console.log(
         `Iterable hoisted is ${(iterableHoistedTime / imperativeTime).toFixed(1)}x slower`,
       );
+      /* oxlint-enable eslint/no-console */
     });
 
     it("does not run a lazy generator called without yield*", () => {
       let operationRun = false;
 
-      // eslint-disable-next-line require-yield -- generator bodies are lazy even without yield
+      // oxlint-disable-next-line eslint/require-yield -- Generator bodies are lazy even without yield.
       const lazyOperation = function* (): Gen<number, never> {
         operationRun = true;
         return 1;
@@ -1657,8 +1702,8 @@ describe("design decisions", () => {
         return yield* gen(ok());
       };
 
-      expectOk(runGen(program()), undefined);
-      expect(operationRun).toBe(false);
+      assertOk(runGen(program()), undefined);
+      assertFalse(operationRun);
     });
 
     it("disposes resources when generator exits early on error", () => {
@@ -1695,9 +1740,9 @@ describe("design decisions", () => {
 
       const result = runGen(program());
 
-      expectErr(result, { type: "ParseError" });
+      assertErr(result, { type: "ParseError" });
       // Resources ARE disposed because runGen calls gen.return() on error
-      expect(disposed).toEqual(["db"]);
+      assertEqual(disposed, ["db"]);
     });
 
     it("disposes resources when generator completes successfully", () => {
@@ -1724,9 +1769,9 @@ describe("design decisions", () => {
 
       const result = runGen(program());
 
-      expectOk(result, "done");
+      assertOk(result, "done");
       // Resources ARE disposed on successful completion
-      expect(disposed).toEqual(["file", "db"]);
+      assertEqual(disposed, ["file", "db"]);
     });
 
     it("supports direct yield* with the iterator protocol", () => {
@@ -1745,7 +1790,7 @@ describe("design decisions", () => {
       const iterableOk = <T, E = never>(value: T): IterableResult<T, E> => ({
         ok: true,
         value,
-        // eslint-disable-next-line require-yield
+        // oxlint-disable-next-line eslint/require-yield
         *[Symbol.iterator]() {
           return value;
         },
@@ -1776,11 +1821,9 @@ describe("design decisions", () => {
         return validated * 2;
       };
 
-      expect(runGen(program("21"))).toStrictEqual(ok(42));
-      expect(runGen(program("abc"))).toStrictEqual(err({ type: "ParseError" }));
-      expect(runGen(program("-5"))).toStrictEqual(
-        err({ type: "ValidationError" }),
-      );
+      assertEqual(runGen(program("21")), ok(42));
+      assertEqual(runGen(program("abc")), err({ type: "ParseError" }));
+      assertEqual(runGen(program("-5")), err({ type: "ValidationError" }));
     });
   });
 });

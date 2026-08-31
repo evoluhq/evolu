@@ -1,6 +1,4 @@
-const allBrowserNames = ["chromium", "firefox", "webkit"] as const;
-
-type BrowserName = (typeof allBrowserNames)[number];
+type BrowserName = "chromium" | "firefox" | "webkit";
 
 interface BrowserInstance {
   readonly browser: BrowserName;
@@ -8,10 +6,15 @@ interface BrowserInstance {
 
 // V8 coverage only works with Chromium.
 const chromiumBrowserNames: ReadonlyArray<BrowserName> = ["chromium"];
+const compatibilityBrowserNames: ReadonlyArray<BrowserName> = [
+  "firefox",
+  "webkit",
+];
 
 const browserNamesByMode: Readonly<
   Record<string, ReadonlyArray<BrowserName> | undefined>
 > = {
+  chromium: ["chromium"],
   firefox: ["firefox"],
   webkit: ["webkit"],
   "firefox-webkit": ["firefox", "webkit"],
@@ -26,5 +29,5 @@ export const createBrowserInstances = ({
 }): Array<BrowserInstance> =>
   (coverage
     ? chromiumBrowserNames
-    : (browserNamesByMode[mode] ?? allBrowserNames)
+    : (browserNamesByMode[mode] ?? compatibilityBrowserNames)
   ).map((browser) => ({ browser }));

@@ -1,4 +1,6 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, it } from "node:test";
+import { assertEqual, assertFalse, assertTrue } from "./Assert.ts";
+
 import {
   addToSet,
   createSet,
@@ -9,261 +11,268 @@ import {
   isNonEmptySet,
   mapSet,
   type NonEmptyReadonlySet,
-} from "../../../../packages/common/src/Set.ts";
+} from "./Set.ts";
+import { assertType } from "./Type.ts";
 
 describe("Constants", () => {
   describe("emptySet", () => {
-    test("is empty", () => {
-      expect(emptySet.size).toBe(0);
+    it("is empty", () => {
+      assertEqual(emptySet.size, 0);
     });
 
-    test("is assignable to any ReadonlySet<T>", () => {
+    it("is assignable to any ReadonlySet<T>", () => {
       const numbers: ReadonlySet<number> = emptySet;
       const objects: ReadonlySet<{ id: number }> = emptySet;
 
-      expectTypeOf(numbers).toEqualTypeOf<ReadonlySet<number>>();
-      expectTypeOf(objects).toEqualTypeOf<ReadonlySet<{ id: number }>>();
+      assertType<typeof numbers, ReadonlySet<number>>();
+      assertType<typeof objects, ReadonlySet<{ id: number }>>();
 
-      expect(numbers.size).toBe(0);
-      expect(objects.size).toBe(0);
+      assertEqual(numbers.size, 0);
+      assertEqual(objects.size, 0);
     });
 
-    test("enables fast empty check via reference equality", () => {
+    it("enables fast empty check via reference equality", () => {
       const children: ReadonlySet<number> = emptySet;
-      expect(children === emptySet).toBe(true);
+      assertTrue(children === emptySet);
 
       const nonEmpty = addToSet(emptySet, 1);
-      expect((nonEmpty as ReadonlySet<number>) === emptySet).toBe(false);
+      assertFalse((nonEmpty as ReadonlySet<number>) === emptySet);
     });
   });
 });
 
 describe("Type guards", () => {
   describe("isNonEmptySet", () => {
-    test("returns true for non-empty set", () => {
+    it("returns true for non-empty set", () => {
       const set = new Set([1, 2, 3]);
-      expect(isNonEmptySet(set)).toBe(true);
+      assertTrue(isNonEmptySet(set));
     });
 
-    test("returns false for empty set", () => {
+    it("returns false for empty set", () => {
       const set = new Set<number>();
-      expect(isNonEmptySet(set)).toBe(false);
+      assertFalse(isNonEmptySet(set));
     });
 
-    test("returns true for single element set", () => {
+    it("returns true for single element set", () => {
       const set = new Set([1]);
-      expect(isNonEmptySet(set)).toBe(true);
+      assertTrue(isNonEmptySet(set));
     });
 
-    test("narrows mutable set to NonEmptyReadonlySet", () => {
+    it("narrows mutable set to NonEmptyReadonlySet", () => {
       const set = new Set<number>([1, 2, 3]);
       if (isNonEmptySet(set)) {
         // Mutable set intersected with branded readonly type
-        expectTypeOf(set).toExtend<NonEmptyReadonlySet<number>>();
+        assertType<
+          typeof set extends NonEmptyReadonlySet<number> ? true : false,
+          true
+        >();
       }
     });
 
-    test("narrows readonly set to NonEmptyReadonlySet", () => {
+    it("narrows readonly set to NonEmptyReadonlySet", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       if (isNonEmptySet(set)) {
-        expectTypeOf(set).toEqualTypeOf<NonEmptyReadonlySet<number>>();
+        assertType<typeof set, NonEmptyReadonlySet<number>>();
       }
     });
 
-    test("returns false for empty readonly set", () => {
+    it("returns false for empty readonly set", () => {
       const set: ReadonlySet<number> = new Set();
-      expect(isNonEmptySet(set)).toBe(false);
+      assertFalse(isNonEmptySet(set));
     });
   });
 });
 
 describe("Transformations", () => {
   describe("createSet", () => {
-    test("creates empty set from empty array", () => {
+    it("creates empty set from empty array", () => {
       const result = createSet([] as ReadonlyArray<number>);
-      expect(result).toEqual(new Set());
-      expectTypeOf(result).toEqualTypeOf<ReadonlySet<number>>();
+      assertEqual(result, new Set());
+      assertType<
+        typeof result extends ReadonlySet<number> ? true : false,
+        true
+      >();
     });
 
-    test("creates non-empty set from non-empty array", () => {
+    it("creates non-empty set from non-empty array", () => {
       const result = createSet([1, 2, 3] as const);
-      expect(result).toEqual(new Set([1, 2, 3]));
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlySet<1 | 2 | 3>>();
+      assertEqual(result, new Set([1, 2, 3]));
+      assertType<typeof result, NonEmptyReadonlySet<1 | 2 | 3>>();
     });
 
-    test("deduplicates duplicate values", () => {
+    it("deduplicates duplicate values", () => {
       const result = createSet([1, 1, 2, 2, 3]);
-      expect(result).toEqual(new Set([1, 2, 3]));
+      assertEqual(result, new Set([1, 2, 3]));
     });
 
-    test("returns new set instance each call", () => {
+    it("returns new set instance each call", () => {
       const a = createSet([1, 2, 3]);
       const b = createSet([1, 2, 3]);
-      expect(a).not.toBe(b);
+      assertFalse(globalThis.Object.is(a, b));
     });
   });
 
   describe("addToSet", () => {
-    test("adds item to empty set", () => {
+    it("adds item to empty set", () => {
       const set: ReadonlySet<number> = new Set();
       const result = addToSet(set, 1);
-      expect(result).toEqual(new Set([1]));
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlySet<number>>();
+      assertEqual(result, new Set([1]));
+      assertType<typeof result, NonEmptyReadonlySet<number>>();
     });
 
-    test("adds item to non-empty set", () => {
+    it("adds item to non-empty set", () => {
       const set: ReadonlySet<number> = new Set([1, 2]);
       const result = addToSet(set, 3);
-      expect(result).toEqual(new Set([1, 2, 3]));
+      assertEqual(result, new Set([1, 2, 3]));
     });
 
-    test("does not mutate original set", () => {
+    it("does not mutate original set", () => {
       const set: ReadonlySet<number> = new Set([1, 2]);
       addToSet(set, 3);
-      expect(set).toEqual(new Set([1, 2]));
+      assertEqual(set, new Set([1, 2]));
     });
 
-    test("returns new reference even when item already exists", () => {
+    it("returns new reference even when item already exists", () => {
       const set: ReadonlySet<number> = new Set([1, 2]);
       const result = addToSet(set, 2);
-      expect(result).toEqual(new Set([1, 2]));
-      expect(result).not.toBe(set);
+      assertEqual(result, new Set([1, 2]));
+      assertFalse(globalThis.Object.is(result, set));
     });
 
-    test("accepts mutable set and returns readonly", () => {
+    it("accepts mutable set and returns readonly", () => {
       const mutableSet = new Set<number>([1, 2]);
       const result = addToSet(mutableSet, 3);
-      expect(result).toEqual(new Set([1, 2, 3]));
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlySet<number>>();
-      expect(mutableSet).toEqual(new Set([1, 2]));
+      assertEqual(result, new Set([1, 2, 3]));
+      assertType<typeof result, NonEmptyReadonlySet<number>>();
+      assertEqual(mutableSet, new Set([1, 2]));
     });
   });
 
   describe("deleteFromSet", () => {
-    test("removes item from set", () => {
+    it("removes item from set", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       const result = deleteFromSet(set, 2);
-      expect(result).toEqual(new Set([1, 3]));
-      expectTypeOf(result).toEqualTypeOf<ReadonlySet<number>>();
+      assertEqual(result, new Set([1, 3]));
+      assertType<typeof result, ReadonlySet<number>>();
     });
 
-    test("does not mutate original set", () => {
+    it("does not mutate original set", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       deleteFromSet(set, 2);
-      expect(set).toEqual(new Set([1, 2, 3]));
+      assertEqual(set, new Set([1, 2, 3]));
     });
 
-    test("returns new reference even when item does not exist", () => {
+    it("returns new reference even when item does not exist", () => {
       const set: ReadonlySet<number> = new Set([1, 2]);
       const result = deleteFromSet(set, 5);
-      expect(result).toEqual(new Set([1, 2]));
-      expect(result).not.toBe(set);
+      assertEqual(result, new Set([1, 2]));
+      assertFalse(globalThis.Object.is(result, set));
     });
 
-    test("can delete to empty set", () => {
+    it("can delete to empty set", () => {
       const set: ReadonlySet<number> = new Set([1]);
       const result = deleteFromSet(set, 1);
-      expect(result.size).toBe(0);
+      assertEqual(result.size, 0);
     });
 
-    test("accepts mutable set and returns readonly", () => {
+    it("accepts mutable set and returns readonly", () => {
       const mutableSet = new Set<number>([1, 2, 3]);
       const result = deleteFromSet(mutableSet, 2);
-      expect(result).toEqual(new Set([1, 3]));
-      expectTypeOf(result).toEqualTypeOf<ReadonlySet<number>>();
-      expect(mutableSet).toEqual(new Set([1, 2, 3]));
+      assertEqual(result, new Set([1, 3]));
+      assertType<typeof result, ReadonlySet<number>>();
+      assertEqual(mutableSet, new Set([1, 2, 3]));
     });
   });
 
   describe("mapSet", () => {
-    test("maps set values", () => {
+    it("maps set values", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       const result = mapSet(set, (item) => item * 2);
-      expect(result).toEqual(new Set([2, 4, 6]));
-      expectTypeOf(result).toEqualTypeOf<ReadonlySet<number>>();
+      assertEqual(result, new Set([2, 4, 6]));
+      assertType<typeof result, ReadonlySet<number>>();
     });
 
-    test("deduplicates mapped duplicates", () => {
+    it("deduplicates mapped duplicates", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       const result = mapSet(set, (item) => item % 2);
-      expect(result).toEqual(new Set([1, 0]));
+      assertEqual(result, new Set([1, 0]));
     });
 
-    test("preserves non-empty type for non-empty input", () => {
+    it("preserves non-empty type for non-empty input", () => {
       const set = addToSet(emptySet, 1);
       const result = mapSet(set, (item) => item.toString());
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlySet<string>>();
-      expect(result).toEqual(new Set(["1"]));
+      assertType<typeof result, NonEmptyReadonlySet<string>>();
+      assertEqual(result, new Set(["1"]));
     });
 
-    test("does not mutate original set", () => {
+    it("does not mutate original set", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       mapSet(set, (item) => item + 1);
-      expect(set).toEqual(new Set([1, 2, 3]));
+      assertEqual(set, new Set([1, 2, 3]));
     });
   });
 
   describe("filterSet", () => {
-    test("filters set values with predicate", () => {
+    it("filters set values with predicate", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3, 4]);
       const result = filterSet(set, (item) => item % 2 === 0);
-      expect(result).toEqual(new Set([2, 4]));
-      expectTypeOf(result).toEqualTypeOf<ReadonlySet<number>>();
+      assertEqual(result, new Set([2, 4]));
+      assertType<typeof result, ReadonlySet<number>>();
     });
 
-    test("passes index to predicate", () => {
+    it("passes index to predicate", () => {
       const set: ReadonlySet<number> = new Set([10, 20, 30]);
       const result = filterSet(set, (_item, index) => index % 2 === 0);
-      expect(result).toEqual(new Set([10, 30]));
+      assertEqual(result, new Set([10, 30]));
     });
 
-    test("supports refinement predicates", () => {
+    it("supports refinement predicates", () => {
       const set: ReadonlySet<string | number> = new Set([1, "a", 2, "b"]);
       const result = filterSet(
         set,
         (item): item is string => typeof item === "string",
       );
-      expect(result).toEqual(new Set(["a", "b"]));
-      expectTypeOf(result).toEqualTypeOf<ReadonlySet<string>>();
+      assertEqual(result, new Set(["a", "b"]));
+      assertType<typeof result, ReadonlySet<string>>();
     });
 
-    test("does not mutate original set", () => {
+    it("does not mutate original set", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       filterSet(set, (item) => item > 1);
-      expect(set).toEqual(new Set([1, 2, 3]));
+      assertEqual(set, new Set([1, 2, 3]));
     });
   });
 });
 
 describe("Accessors", () => {
   describe("firstInSet", () => {
-    test("requires NonEmptyReadonlySet (branded type prevents unguarded access)", () => {
+    it("requires NonEmptyReadonlySet (branded type prevents unguarded access)", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       // @ts-expect-error - ReadonlySet is not assignable to NonEmptyReadonlySet
       firstInSet(set);
     });
 
-    test("returns first element by insertion order", () => {
+    it("returns first element by insertion order", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       if (isNonEmptySet(set)) {
         const result = firstInSet(set);
-        expect(result).toBe(1);
-        expectTypeOf(result).toEqualTypeOf<number>();
+        assertEqual(result, 1);
+        assertType<typeof result, number>();
       }
     });
 
-    test("returns only element from single element set", () => {
+    it("returns only element from single element set", () => {
       const set: ReadonlySet<string> = new Set(["only"]);
       if (isNonEmptySet(set)) {
-        expect(firstInSet(set)).toBe("only");
+        assertEqual(firstInSet(set), "only");
       }
     });
 
-    test("does not mutate original set", () => {
+    it("does not mutate original set", () => {
       const set: ReadonlySet<number> = new Set([1, 2, 3]);
       if (isNonEmptySet(set)) {
         firstInSet(set);
-        expect(set).toEqual(new Set([1, 2, 3]));
+        assertEqual(set, new Set([1, 2, 3]));
       }
     });
   });

@@ -1,75 +1,89 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
-import {
-  createRandom,
-  createRandomLib,
-  testCreateRandom,
-  testCreateRandomLib,
-} from "../../../../packages/common/src/Random.ts";
+import { afterEach, describe, it, mock } from "node:test";
+import { assertEqual } from "./Assert.ts";
 
-const { randomLibConstructor, randomLibNext } = vi.hoisted(() => ({
-  randomLibConstructor: vi.fn(),
-  randomLibNext: vi.fn(),
-}));
+const randomLibConstructor = mock.fn<(seed?: string) => void>();
+const randomLibNext = mock.fn<() => number>();
 
-vi.mock("random", () => ({
-  Random: class {
-    constructor(seed?: string) {
-      if (seed === undefined) randomLibConstructor();
-      else randomLibConstructor(seed);
-    }
+mock.module("random", {
+  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
+  exports: {
+    Random: class {
+      next = randomLibNext;
 
-    next = randomLibNext;
+      constructor(seed?: string) {
+        if (seed === undefined) randomLibConstructor();
+        else randomLibConstructor(seed);
+      }
+    },
   },
-}));
+});
+
+const { createRandom, createRandomLib, testCreateRandom, testCreateRandomLib } =
+  await import("./Random.ts");
 
 describe("Random", () => {
   afterEach(() => {
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
+    mock.restoreAll();
+    randomLibConstructor.mock.resetCalls();
+    randomLibNext.mock.resetCalls();
   });
 
-  test("createRandom delegates to Math.random", () => {
-    const mathRandom = vi.spyOn(Math, "random").mockReturnValue(0.25);
+  it("createRandom delegates to Math.random", () => {
+    const mathRandom = mock.method(Math, "random", () => 0.25);
 
-    expect(createRandom().next()).toBe(0.25);
-    expect(mathRandom).toHaveBeenCalledOnce();
+    assertEqual(createRandom().next(), 0.25);
+    assertEqual(mathRandom.mock.callCount(), 1);
   });
 
-  test("testCreateRandom constructs RandomLib with the default seed", () => {
+  it("testCreateRandom constructs RandomLib with the default seed", () => {
     testCreateRandom();
 
-    expect(randomLibConstructor).toHaveBeenCalledExactlyOnceWith("evolu");
+    assertEqual(
+      randomLibConstructor.mock.calls.map(({ arguments: args }) => args),
+      [["evolu"]],
+    );
   });
 
-  test("testCreateRandom constructs RandomLib with a custom seed", () => {
+  it("testCreateRandom constructs RandomLib with a custom seed", () => {
     testCreateRandom("test");
 
-    expect(randomLibConstructor).toHaveBeenCalledExactlyOnceWith("test");
+    assertEqual(
+      randomLibConstructor.mock.calls.map(({ arguments: args }) => args),
+      [["test"]],
+    );
   });
 
-  test("testCreateRandom delegates next to RandomLib", () => {
-    randomLibNext.mockReturnValue(0.25);
+  it("testCreateRandom delegates next to RandomLib", () => {
+    randomLibNext.mock.mockImplementation(() => 0.25);
 
-    expect(testCreateRandom().next()).toBe(0.25);
-    expect(randomLibNext).toHaveBeenCalledOnce();
+    assertEqual(testCreateRandom().next(), 0.25);
+    assertEqual(randomLibNext.mock.callCount(), 1);
   });
 
-  test("createRandomLib constructs RandomLib without a seed", () => {
+  it("createRandomLib constructs RandomLib without a seed", () => {
     createRandomLib();
 
-    expect(randomLibConstructor).toHaveBeenCalledOnce();
-    expect(randomLibConstructor).toHaveBeenCalledWith();
+    assertEqual(
+      randomLibConstructor.mock.calls.map(({ arguments: args }) => args),
+      [[]],
+    );
   });
 
-  test("testCreateRandomLib constructs RandomLib with the default seed", () => {
+  it("testCreateRandomLib constructs RandomLib with the default seed", () => {
     testCreateRandomLib();
 
-    expect(randomLibConstructor).toHaveBeenCalledExactlyOnceWith("evolu");
+    assertEqual(
+      randomLibConstructor.mock.calls.map(({ arguments: args }) => args),
+      [["evolu"]],
+    );
   });
 
-  test("testCreateRandomLib constructs RandomLib with a custom seed", () => {
+  it("testCreateRandomLib constructs RandomLib with a custom seed", () => {
     testCreateRandomLib("test");
 
-    expect(randomLibConstructor).toHaveBeenCalledExactlyOnceWith("test");
+    assertEqual(
+      randomLibConstructor.mock.calls.map(({ arguments: args }) => args),
+      [["test"]],
+    );
   });
 });

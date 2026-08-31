@@ -1,4 +1,7 @@
-import { expect, test } from "vitest";
+import { eqData } from "../Eq.ts";
+import { test } from "node:test";
+import { assertEqual, assertFalse, assertNotUndefined } from "../Assert.ts";
+
 import {
   createAppOwner,
   createOwnerSecret,
@@ -7,17 +10,16 @@ import {
   ownerIdBytesToOwnerId,
   ownerIdToOwnerIdBytes,
   ownerSecretToMnemonic,
-} from "../../../../../packages/common/src/index.ts";
-import { testCreateDeps } from "../../../../../packages/common/src/Task.ts";
-import {
   testAppOwner,
-  testAppOwnerSecret,
-  testAppOwner2Secret,
-} from "./_fixtures.ts";
+  testOwnerSecret,
+} from "./Owner.ts";
+import { testCreateDeps } from "../Task.ts";
+
+const testOwnerSecret2 = createOwnerSecret(testCreateDeps({ seed: "owner-2" }));
 
 test("ownerIdToOwnerIdBytes/ownerIdBytesToOwnerId", () => {
   const id = testAppOwner.id;
-  expect(ownerIdBytesToOwnerId(ownerIdToOwnerIdBytes(id))).toStrictEqual(id);
+  assertEqual(ownerIdBytesToOwnerId(ownerIdToOwnerIdBytes(id)), id);
 });
 
 test("ownerSecretToMnemonic and mnemonicToOwnerSecret are inverses", () => {
@@ -26,56 +28,56 @@ test("ownerSecretToMnemonic and mnemonicToOwnerSecret are inverses", () => {
   const mnemonic = ownerSecretToMnemonic(secret);
   const backToSecret = mnemonicToOwnerSecret(mnemonic);
 
-  expect(backToSecret).toEqual(secret);
+  assertEqual(backToSecret, secret);
 });
 
 test("createAppOwner is deterministic", () => {
-  const owner1 = createAppOwner(testAppOwnerSecret);
-  const owner2 = createAppOwner(testAppOwnerSecret);
+  const owner1 = createAppOwner(testOwnerSecret);
+  const owner2 = createAppOwner(testOwnerSecret);
 
-  expect(owner1).toEqual(owner2);
-  expect(owner1.type).toBe("AppOwner");
-  expect(owner1.mnemonic).toBeDefined();
+  assertEqual(owner1, owner2);
+  assertEqual(owner1.type, "AppOwner");
+  assertNotUndefined(owner1.mnemonic);
 });
 
 test("deriveShardOwner is deterministic", () => {
-  const appOwner = createAppOwner(testAppOwnerSecret);
+  const appOwner = createAppOwner(testOwnerSecret);
 
   const shard1 = deriveShardOwner(appOwner, ["contacts"]);
   const shard2 = deriveShardOwner(appOwner, ["contacts"]);
 
-  expect(shard1).toEqual(shard2);
-  expect(shard1.type).toBe("ShardOwner");
+  assertEqual(shard1, shard2);
+  assertEqual(shard1.type, "ShardOwner");
 });
 
 test("deriveShardOwner with different paths produces different owners", () => {
-  const appOwner = createAppOwner(testAppOwnerSecret);
+  const appOwner = createAppOwner(testOwnerSecret);
 
   const contacts = deriveShardOwner(appOwner, ["contacts"]);
   const photos = deriveShardOwner(appOwner, ["photos"]);
 
-  expect(contacts.id).not.toBe(photos.id);
-  expect(contacts.encryptionKey).not.toEqual(photos.encryptionKey);
-  expect(contacts.writeKey).not.toEqual(photos.writeKey);
+  assertFalse(globalThis.Object.is(contacts.id, photos.id));
+  assertFalse(eqData(contacts.encryptionKey, photos.encryptionKey));
+  assertFalse(eqData(contacts.writeKey, photos.writeKey));
 });
 
 test("deriveShardOwner with nested paths", () => {
-  const appOwner = createAppOwner(testAppOwnerSecret);
+  const appOwner = createAppOwner(testOwnerSecret);
 
   const project1 = deriveShardOwner(appOwner, ["projects", "project-1"]);
   const project2 = deriveShardOwner(appOwner, ["projects", "project-2"]);
 
-  expect(project1.id).not.toBe(project2.id);
-  expect(project1.type).toBe("ShardOwner");
-  expect(project2.type).toBe("ShardOwner");
+  assertFalse(globalThis.Object.is(project1.id, project2.id));
+  assertEqual(project1.type, "ShardOwner");
+  assertEqual(project2.type, "ShardOwner");
 });
 
 test("different app owners produce different shard owners", () => {
-  const appOwner1 = createAppOwner(testAppOwnerSecret);
-  const appOwner2 = createAppOwner(testAppOwner2Secret);
+  const appOwner1 = createAppOwner(testOwnerSecret);
+  const appOwner2 = createAppOwner(testOwnerSecret2);
 
   const shard1 = deriveShardOwner(appOwner1, ["contacts"]);
   const shard2 = deriveShardOwner(appOwner2, ["contacts"]);
 
-  expect(shard1.id).not.toBe(shard2.id);
+  assertFalse(globalThis.Object.is(shard1.id, shard2.id));
 });

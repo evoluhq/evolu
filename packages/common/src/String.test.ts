@@ -1,40 +1,42 @@
-import { expect, test } from "vitest";
-import {
-  escapeRegExp,
-  safelyStringifyUnknownValue,
-} from "../../../../packages/common/src/String.ts";
+import { test } from "node:test";
+import { assertEqual, assertSame, assertTrue } from "./Assert.ts";
+
+import { escapeRegExp, safelyStringifyUnknownValue } from "./String.ts";
 
 test("escapeRegExp", () => {
   const value = "value.*+?^${}()|[]\\end";
 
-  expect(escapeRegExp(value)).toBe(
+  assertEqual(
+    escapeRegExp(value),
     "value\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\]\\\\end",
   );
-  expect(new RegExp(`^${escapeRegExp(value)}$`, "u").test(value)).toBe(true);
+  assertTrue(new RegExp(`^${escapeRegExp(value)}$`, "u").test(value));
 });
 
 test("safelyStringifyUnknownValue", () => {
-  expect(safelyStringifyUnknownValue('line 1\n"line 2"')).toBe(
+  assertEqual(
+    safelyStringifyUnknownValue('line 1\n"line 2"'),
     '"line 1\\n\\"line 2\\""',
   );
-  expect(safelyStringifyUnknownValue(undefined)).toBe("undefined");
-  expect(safelyStringifyUnknownValue(null)).toBe("null");
-  expect(safelyStringifyUnknownValue(true)).toBe("true");
-  expect(safelyStringifyUnknownValue(NaN)).toBe("NaN");
-  expect(safelyStringifyUnknownValue(Infinity)).toBe("Infinity");
-  expect(safelyStringifyUnknownValue(42n)).toBe("42");
-  expect(safelyStringifyUnknownValue(Symbol("id"))).toBe("Symbol(id)");
+  assertEqual(safelyStringifyUnknownValue(undefined), "undefined");
+  assertEqual(safelyStringifyUnknownValue(null), "null");
+  assertEqual(safelyStringifyUnknownValue(true), "true");
+  assertEqual(safelyStringifyUnknownValue(NaN), "NaN");
+  assertEqual(safelyStringifyUnknownValue(Infinity), "Infinity");
+  assertEqual(safelyStringifyUnknownValue(42n), "42");
+  assertEqual(safelyStringifyUnknownValue(Symbol("id")), "Symbol(id)");
 
   const fn = (): undefined => undefined;
-  expect(safelyStringifyUnknownValue(fn)).toBe(globalThis.String(fn));
-  expect(safelyStringifyUnknownValue({ answer: 42 })).toBe('{"answer":42}');
-  expect(safelyStringifyUnknownValue({ toJSON: () => undefined })).toBe(
+  assertSame(safelyStringifyUnknownValue(fn), globalThis.String(fn));
+  assertEqual(safelyStringifyUnknownValue({ answer: 42 }), '{"answer":42}');
+  assertEqual(
+    safelyStringifyUnknownValue({ toJSON: () => undefined }),
     "[object Object]",
   );
 
   const circularValue: { circular?: unknown } = {};
   circularValue.circular = circularValue;
-  expect(safelyStringifyUnknownValue(circularValue)).toBe("[object Object]");
+  assertEqual(safelyStringifyUnknownValue(circularValue), "[object Object]");
 
   const unserializableValue: {
     self?: unknown;
@@ -45,7 +47,8 @@ test("safelyStringifyUnknownValue", () => {
     },
   };
   unserializableValue.self = unserializableValue;
-  expect(safelyStringifyUnknownValue(unserializableValue)).toBe(
+  assertEqual(
+    safelyStringifyUnknownValue(unserializableValue),
     "[Unserializable value]",
   );
 });

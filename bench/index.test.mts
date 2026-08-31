@@ -1,61 +1,87 @@
-import { describe, expect, test } from "vitest";
+import { assertEqual, assertThrowsInstanceOf } from "@evolu/common";
+import { describe, it } from "node:test";
 import { parseBenchmarkMode } from "./index.mts";
 
 describe("parseBenchmarkMode", () => {
-  test("parseBenchmarkMode defaults to default", () => {
-    expect(
+  it("parseBenchmarkMode defaults to default", () => {
+    assertEqual(
       parseBenchmarkMode({
         args: [],
         benchmarkName: "Storage",
       }),
-    ).toBe("default");
+      "default",
+    );
   });
 
-  test.each(["default", "update-baseline", "force-update-baseline"] as const)(
-    "parseBenchmarkMode parses %s",
-    (mode) => {
-      expect(
+  for (const mode of [
+    "default",
+    "update-baseline",
+    "force-update-baseline",
+  ] as const) {
+    it(`parseBenchmarkMode parses ${mode}`, () => {
+      assertEqual(
         parseBenchmarkMode({
           args: [`--mode=${mode}`],
           benchmarkName: "Storage",
         }),
-      ).toBe(mode);
-    },
-  );
+        mode,
+      );
+    });
+  }
 
-  test("parseBenchmarkMode rejects unknown mode", () => {
-    expect(() =>
-      parseBenchmarkMode({
-        args: ["--mode=check"],
-        benchmarkName: "Storage",
-      }),
-    ).toThrow("Unknown Storage benchmark mode: check");
+  it("parseBenchmarkMode rejects unknown mode", () => {
+    assertEqual(
+      assertThrowsInstanceOf(
+        () =>
+          parseBenchmarkMode({
+            args: ["--mode=check"],
+            benchmarkName: "Storage",
+          }),
+        Error,
+      ).message,
+      "Unknown Storage benchmark mode: check",
+    );
   });
 
-  test("parseBenchmarkMode rejects removed quick mode", () => {
-    expect(() =>
-      parseBenchmarkMode({
-        args: ["--mode=quick"],
-        benchmarkName: "Storage",
-      }),
-    ).toThrow("Unknown Storage benchmark mode: quick");
+  it("parseBenchmarkMode rejects removed quick mode", () => {
+    assertEqual(
+      assertThrowsInstanceOf(
+        () =>
+          parseBenchmarkMode({
+            args: ["--mode=quick"],
+            benchmarkName: "Storage",
+          }),
+        Error,
+      ).message,
+      "Unknown Storage benchmark mode: quick",
+    );
   });
 
-  test("parseBenchmarkMode rejects renamed full mode", () => {
-    expect(() =>
-      parseBenchmarkMode({
-        args: ["--mode=full"],
-        benchmarkName: "Storage",
-      }),
-    ).toThrow("Unknown Storage benchmark mode: full");
+  it("parseBenchmarkMode rejects renamed full mode", () => {
+    assertEqual(
+      assertThrowsInstanceOf(
+        () =>
+          parseBenchmarkMode({
+            args: ["--mode=full"],
+            benchmarkName: "Storage",
+          }),
+        Error,
+      ).message,
+      "Unknown Storage benchmark mode: full",
+    );
   });
 
-  test("parseBenchmarkMode rejects duplicate modes", () => {
-    expect(() =>
-      parseBenchmarkMode({
-        args: ["--mode=default", "--mode=update-baseline"],
-        benchmarkName: "Storage",
-      }),
-    ).toThrow("The Storage benchmark accepts only one mode.");
+  it("parseBenchmarkMode rejects duplicate modes", () => {
+    assertEqual(
+      assertThrowsInstanceOf(
+        () =>
+          parseBenchmarkMode({
+            args: ["--mode=default", "--mode=update-baseline"],
+            benchmarkName: "Storage",
+          }),
+        Error,
+      ).message,
+      "The Storage benchmark accepts only one mode.",
+    );
   });
 });

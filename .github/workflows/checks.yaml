@@ -20,14 +20,17 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup-node-pnpm-install
 
+      - name: Format
+        run: pnpm format:check
+
       - name: Typecheck
         run: pnpm typecheck
 
       - name: Monorepo lint
-        run: pnpm lint-monorepo
+        run: pnpm lint:sherif
 
       - name: Oxlint
-        run: pnpm lint
+        run: pnpm lint:oxlint
 
   packages:
     name: Packages
@@ -66,9 +69,6 @@ jobs:
       - name: Build docs
         run: pnpm build:docs
 
-      - name: Test docs app
-        run: pnpm --dir apps/web test
-
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
@@ -88,8 +88,12 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Test coverage
-        run: pnpm test:coverage
+      - name: Test
+        run: |
+          pnpm test:unit
+          pnpm test:integration:nodejs
+          pnpm exec vitest run --coverage --mode=chromium --project='browser-*'
+          pnpm test:bundle
 
   browser-compatibility:
     name: Browser compatibility (${{ matrix.browser }})
@@ -117,4 +121,4 @@ jobs:
         run: pnpm build
 
       - name: Test ${{ matrix.browser }}
-        run: pnpm test:browsers --mode=${{ matrix.browser }}
+        run: pnpm exec vitest run --mode=${{ matrix.browser }} --project='browser-*'

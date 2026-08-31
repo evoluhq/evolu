@@ -1,51 +1,26 @@
 import { defineConfig } from "vitest/config";
-import webBrowser from "./packages/web/vitest.config.ts";
-import commonIntegrationBrowser from "./test/integration/vitest/vitest.browser.config.ts";
-import integrationNode from "./test/integration/vitest/vitest.node.config.ts";
-import commonUnitBrowser from "./test/unit/vitest/vitest.browser.config.ts";
-import unitNode from "./test/unit/vitest/vitest.node.config.ts";
+import commonIntegrationBrowser from "./test/integration/browsers/vitest.config.ts";
+import webBrowser from "./test/integration/browsers/web/vitest.config.ts";
+import integrationNode from "./test/integration/nodejs/vitest.config.ts";
 
-const nodeProjects = [
-  unitNode,
-  integrationNode,
-  "packages/react",
-  "packages/react-native",
-  "packages/oxlint-config",
-  {
-    test: {
-      name: "node-scripts",
-      include: ["scripts/**/*.test.mts"],
-    },
-  },
-  {
-    test: {
-      name: "node-bench",
-      include: ["bench/**/*.test.mts"],
-    },
-  },
+const nodeProjects = [integrationNode];
+
+const browserProjects = [commonIntegrationBrowser, webBrowser];
+
+const browserCoverageInclude = [
+  "packages/common/src/{LockManager,Platform,Polyfills,StackTrace,Task,WebSocket}.ts",
+  "packages/web/src/{Sqlite,Worker}.ts",
 ];
 
-const browserProjects = [
-  commonUnitBrowser,
-  commonIntegrationBrowser,
-  webBrowser,
-];
-
-const bundleProject = {
+export default defineConfig(({ mode }) => ({
   test: {
-    include: ["test/integration/vitest/{Bundle,TestBundle}/*.test.ts"],
-    name: "bundle",
-    environment: "node",
-    setupFiles: ["./test/unit/vitest/common/_setup.ts"],
-  },
-};
-
-export default defineConfig({
-  test: {
-    projects: [...nodeProjects, ...browserProjects, bundleProject],
+    projects: [...nodeProjects, ...browserProjects],
     coverage: {
       provider: "v8",
-      include: ["packages/*/src/**/*.ts"],
+      include:
+        mode === "chromium"
+          ? browserCoverageInclude
+          : ["packages/*/src/**/*.ts"],
       exclude: [
         "packages/*/src/**/index.ts",
         "packages/common/src/intl/**/*.ts",
@@ -54,4 +29,4 @@ export default defineConfig({
       // TODO: Enforce 100% coverage thresholds for every package.
     },
   },
-});
+}));

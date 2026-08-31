@@ -1,14 +1,19 @@
-import type { NativeMessagePort } from "@evolu/common";
-import { describe, expect, test, vi } from "vitest";
-import { createEvoluDeps } from "../src/local-first/Evolu.ts";
+import {
+  assertEqual,
+  assertNonNullable,
+  testStubGlobal,
+  type NativeMessagePort,
+} from "@evolu/common";
+import { describe, it, mock } from "node:test";
+import { createEvoluDeps } from "./Evolu.ts";
 
 describe("createEvoluDeps", () => {
-  test("createEvoluDeps calls callback when one-tab SharedWorker polyfill is already open", () => {
+  it("createEvoluDeps calls callback when one-tab SharedWorker polyfill is already open", () => {
     const nativeSharedWorkerPort = createClosableNativePort<unknown>();
     const nativeDbWorker = createClosableNativePort();
-    const onSharedWorkerUnsupported = vi.fn<() => void>();
+    const onSharedWorkerUnsupported = mock.fn<() => void>();
 
-    vi.stubGlobal(
+    using _sharedWorker = testStubGlobal(
       "SharedWorker",
       class {
         readonly port = nativeSharedWorkerPort as unknown as NativeMessagePort<
@@ -17,33 +22,29 @@ describe("createEvoluDeps", () => {
         >;
       },
     );
-    const Worker = vi.fn(function () {
+    const Worker = mock.fn(function () {
       return nativeDbWorker;
     });
-    vi.stubGlobal("Worker", Worker);
+    using _worker = testStubGlobal("Worker", Worker);
 
-    try {
-      using deps = createEvoluDeps({
-        onSharedWorkerUnsupported,
-      });
+    using deps = createEvoluDeps({
+      onSharedWorkerUnsupported,
+    });
 
-      nativeSharedWorkerPort.onmessage?.(
-        new MessageEvent("message", {
-          data: { type: "SharedWorkerUnsupported" },
-        }),
-      );
+    nativeSharedWorkerPort.onmessage?.(
+      new MessageEvent("message", {
+        data: { type: "SharedWorkerUnsupported" },
+      }),
+    );
 
-      expect(onSharedWorkerUnsupported).toHaveBeenCalledOnce();
-      expect(Worker).not.toHaveBeenCalled();
-      expect(deps).toBeDefined();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    assertEqual(onSharedWorkerUnsupported.mock.callCount(), 1);
+    assertEqual(Worker.mock.callCount(), 0);
+    assertNonNullable(deps);
   });
 });
 
 const createClosableNativePort = <Output = never>() => ({
-  close: vi.fn(),
+  close: mock.fn(),
   onmessage: null as ((event: MessageEvent<Output>) => void) | null,
-  postMessage: vi.fn(),
+  postMessage: mock.fn(),
 });

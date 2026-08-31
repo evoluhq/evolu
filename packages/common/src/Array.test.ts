@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, it } from "node:test";
 import {
   appendToArray,
   arrayFrom,
@@ -22,107 +22,111 @@ import {
   type AtLeastTwoReadonlyArray,
   type NonEmptyArray,
   type NonEmptyReadonlyArray,
-} from "../../../../packages/common/src/Array.ts";
-import { identity } from "../../../../packages/common/src/Function.ts";
-import { err, ok } from "../../../../packages/common/src/Result.ts";
+} from "./Array.ts";
 import {
-  NonEmptyTrimmedString,
-  PositiveInt,
-} from "../../../../packages/common/src/Type.ts";
+  assertEqual,
+  assertFalse,
+  assertLength,
+  assertSame,
+  assertTrue,
+} from "./Assert.ts";
+import { identity } from "./Function.ts";
+import { err, ok } from "./Result.ts";
+import { assertType, NonEmptyTrimmedString, PositiveInt } from "./Type.ts";
 
 describe("Types", () => {
-  test("NonEmptyArray requires at least one element", () => {
-    // @ts-expect-error - empty array is not a valid NonEmptyArray
+  it("NonEmptyArray requires at least one element", () => {
+    // @ts-expect-error An empty array is not assignable to NonEmptyArray.
     const _invalid: NonEmptyArray<number> = [];
   });
 
-  test("NonEmptyReadonlyArray requires at least one element", () => {
-    // @ts-expect-error - empty array is not a valid NonEmptyReadonlyArray
+  it("NonEmptyReadonlyArray requires at least one element", () => {
+    // @ts-expect-error An empty array is not assignable to NonEmptyReadonlyArray.
     const _invalid: NonEmptyReadonlyArray<string> = [];
   });
 
-  test("AtLeastTwoReadonlyArray requires at least two elements", () => {
-    // @ts-expect-error - empty array is not a valid AtLeastTwoReadonlyArray
+  it("AtLeastTwoReadonlyArray requires at least two elements", () => {
+    // @ts-expect-error An empty array is not assignable to AtLeastTwoReadonlyArray.
     const _empty: AtLeastTwoReadonlyArray<string> = [];
-    // @ts-expect-error - one element is not a valid AtLeastTwoReadonlyArray
+    // @ts-expect-error A single-element array is not assignable to AtLeastTwoReadonlyArray.
     const _single: AtLeastTwoReadonlyArray<string> = ["a"];
   });
 });
 
 describe("Constants", () => {
   describe("emptyArray", () => {
-    test("is an empty array", () => {
-      expect(emptyArray).toEqual([]);
-      expect(emptyArray.length).toBe(0);
+    it("is an empty array", () => {
+      assertEqual(emptyArray, []);
+      assertLength(emptyArray, 0);
     });
 
-    test("is assignable to any ReadonlyArray<T>", () => {
+    it("is assignable to any ReadonlyArray<T>", () => {
       const numbers: ReadonlyArray<number> = emptyArray;
       const strings: ReadonlyArray<string> = emptyArray;
       const objects: ReadonlyArray<{ id: number }> = emptyArray;
 
-      expectTypeOf(numbers).toEqualTypeOf<ReadonlyArray<number>>();
-      expectTypeOf(strings).toEqualTypeOf<ReadonlyArray<string>>();
-      expectTypeOf(objects).toEqualTypeOf<ReadonlyArray<{ id: number }>>();
+      assertType<typeof numbers, ReadonlyArray<number>>();
+      assertType<typeof strings, ReadonlyArray<string>>();
+      assertType<typeof objects, ReadonlyArray<{ id: number }>>();
     });
 
-    test("enables reference equality checks", () => {
+    it("enables reference equality checks", () => {
       let items: ReadonlyArray<number> = emptyArray;
-      expect(items === emptyArray).toBe(true);
+      assertSame(items, emptyArray);
 
       items = [1, 2, 3];
-      expect(items === emptyArray).toBe(false);
+      assertFalse(items === emptyArray);
     });
   });
 });
 
 describe("Constructors", () => {
   describe("createMutableArray", () => {
-    test("creates a mutable sparse Array", () => {
+    it("creates a mutable sparse Array", () => {
       const result = createMutableArray<number>(3);
 
-      expectTypeOf(result).toEqualTypeOf<Array<number>>();
-      expect(result).toHaveLength(3);
-      expect(0 in result).toBe(false);
+      assertType<typeof result, Array<number>>();
+      assertLength(result, 3);
+      assertFalse(0 in result);
 
       result[0] = 1;
       result[1] = 2;
       result[2] = 3;
 
-      expect(result).toEqual([1, 2, 3]);
+      assertEqual(result, [1, 2, 3]);
     });
   });
 
   describe("arrayFrom", () => {
-    test("creates array from iterable", () => {
+    it("creates array from iterable", () => {
       const result = arrayFrom(new Set([1, 2, 3]));
-      expect(result).toEqual([1, 2, 3]);
+      assertEqual(result, [1, 2, 3]);
     });
 
-    test("returns input unchanged if already an array", () => {
+    it("returns input unchanged if already an array", () => {
       const input = [1, 2, 3];
       const result = arrayFrom(input);
-      expect(result).toBe(input);
+      assertSame(result, input);
     });
 
-    test("creates array with specified length", () => {
+    it("creates array with specified length", () => {
       const result = arrayFrom(3, identity);
-      expect(result).toEqual([0, 1, 2]);
+      assertEqual(result, [0, 1, 2]);
     });
 
-    test("returns readonly array", () => {
+    it("returns readonly array", () => {
       const result = arrayFrom(2, () => "x");
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<string>>();
+      assertType<typeof result, ReadonlyArray<string>>();
     });
 
-    test("passes index to callback", () => {
+    it("passes index to callback", () => {
       const result = arrayFrom(4, (i) => i * 10);
-      expect(result).toEqual([0, 10, 20, 30]);
+      assertEqual(result, [0, 10, 20, 30]);
     });
   });
 
   describe("arrayFromAsync", () => {
-    test("creates array from async iterable", async () => {
+    it("creates array from async iterable", async () => {
       const asyncIterable = {
         async *[Symbol.asyncIterator]() {
           yield await Promise.resolve(1);
@@ -132,170 +136,167 @@ describe("Constructors", () => {
       };
 
       const result = await arrayFromAsync(asyncIterable);
-      expect(result).toEqual([1, 2, 3]);
+      assertEqual(result, [1, 2, 3]);
     });
 
-    test("awaits promised values from sync iterable", async () => {
+    it("awaits promised values from sync iterable", async () => {
       const result = await arrayFromAsync([
         Promise.resolve(1),
         Promise.resolve(2),
         Promise.resolve(3),
       ]);
 
-      expect(result).toEqual([1, 2, 3]);
+      assertEqual(result, [1, 2, 3]);
     });
 
-    test("returns readonly array", async () => {
+    it("returns readonly array", async () => {
       const result = await arrayFromAsync([Promise.resolve("x")]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<string>>();
+      assertType<typeof result, ReadonlyArray<string>>();
     });
   });
 });
 
 describe("Type guards", () => {
   describe("isNonEmptyArray", () => {
-    test("returns true for non-empty array", () => {
+    it("returns true for non-empty array", () => {
       const arr = [1, 2, 3];
-      expect(isNonEmptyArray(arr)).toBe(true);
-      if (isNonEmptyArray(arr)) {
-        expectTypeOf(arr).toEqualTypeOf<NonEmptyArray<number>>();
-      }
+
+      assertTrue(isNonEmptyArray(arr));
     });
 
-    test("returns false for empty array", () => {
+    it("returns false for empty array", () => {
       const arr: Array<number> = [];
-      expect(isNonEmptyArray(arr)).toBe(false);
+      assertFalse(isNonEmptyArray(arr));
     });
 
-    test("returns true for single element array", () => {
+    it("returns true for single element array", () => {
       const arr = [1];
-      expect(isNonEmptyArray(arr)).toBe(true);
+      assertTrue(isNonEmptyArray(arr));
     });
 
-    test("narrows mutable array to NonEmptyArray", () => {
+    it("narrows mutable array to NonEmptyArray", () => {
       const arr: Array<number> = [1, 2, 3];
       if (isNonEmptyArray(arr)) {
-        expectTypeOf(arr).toEqualTypeOf<NonEmptyArray<number>>();
+        assertType<typeof arr, NonEmptyArray<number>>();
         firstInArray(arr);
       }
     });
 
-    test("narrows readonly array to NonEmptyReadonlyArray", () => {
+    it("narrows readonly array to NonEmptyReadonlyArray", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3];
-      expect(isNonEmptyArray(arr)).toBe(true);
       if (isNonEmptyArray(arr)) {
-        expectTypeOf(arr).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+        assertType<typeof arr, NonEmptyReadonlyArray<number>>();
         // Should work with accessor functions
         firstInArray(arr);
       }
     });
 
-    test("returns false for empty readonly array", () => {
+    it("returns false for empty readonly array", () => {
       const arr: ReadonlyArray<number> = [];
-      expect(isNonEmptyArray(arr)).toBe(false);
+      assertFalse(isNonEmptyArray(arr));
     });
   });
 });
 
 describe("Transformations", () => {
   describe("appendToArray", () => {
-    test("appends item to empty array", () => {
+    it("appends item to empty array", () => {
       const arr: ReadonlyArray<number> = [];
       const result = appendToArray(arr, 1);
-      expect(result).toEqual([1]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("appends item to non-empty array", () => {
+    it("appends item to non-empty array", () => {
       const arr: ReadonlyArray<number> = [1, 2];
       const result = appendToArray(arr, 3);
-      expect(result).toEqual([1, 2, 3]);
+      assertEqual(result, [1, 2, 3]);
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: ReadonlyArray<number> = [1, 2];
       appendToArray(arr, 3);
-      expect(arr).toEqual([1, 2]);
+      assertEqual(arr, [1, 2]);
     });
 
-    test("accepts mutable array and returns readonly", () => {
+    it("accepts mutable array and returns readonly", () => {
       const mutableArr: Array<number> = [1, 2];
       const result = appendToArray(mutableArr, 3);
-      expect(result).toEqual([1, 2, 3]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
       // Original mutable array is not mutated
-      expect(mutableArr).toEqual([1, 2]);
+      assertEqual(mutableArr, [1, 2]);
     });
   });
 
   describe("prependToArray", () => {
-    test("prepends item to empty array", () => {
+    it("prepends item to empty array", () => {
       const arr: ReadonlyArray<number> = [];
       const result = prependToArray(arr, 1);
-      expect(result).toEqual([1]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("prepends item to non-empty array", () => {
+    it("prepends item to non-empty array", () => {
       const arr: ReadonlyArray<number> = [2, 3];
       const result = prependToArray(arr, 1);
-      expect(result).toEqual([1, 2, 3]);
+      assertEqual(result, [1, 2, 3]);
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: ReadonlyArray<number> = [2, 3];
       prependToArray(arr, 1);
-      expect(arr).toEqual([2, 3]);
+      assertEqual(arr, [2, 3]);
     });
 
-    test("accepts mutable array and returns readonly", () => {
+    it("accepts mutable array and returns readonly", () => {
       const mutableArr: Array<number> = [2, 3];
       const result = prependToArray(mutableArr, 1);
-      expect(result).toEqual([1, 2, 3]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
       // Original mutable array is not mutated
-      expect(mutableArr).toEqual([2, 3]);
+      assertEqual(mutableArr, [2, 3]);
     });
   });
 
   describe("mapArray", () => {
-    test("preserves non-empty type when mapping non-empty array", () => {
+    it("preserves non-empty type when mapping non-empty array", () => {
       const nonEmpty: NonEmptyReadonlyArray<number> = [1, 2, 3];
       const result = mapArray(nonEmpty, (x) => x * 2);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("returns readonly array when mapping regular array", () => {
+    it("returns readonly array when mapping regular array", () => {
       const regular: ReadonlyArray<number> = [1, 2, 3];
       const result = mapArray(regular, (x) => x * 2);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("accepts mutable non-empty array and returns readonly", () => {
+    it("accepts mutable non-empty array and returns readonly", () => {
       const mutableArr: NonEmptyArray<number> = [1, 2, 3];
       const result = mapArray(mutableArr, (x) => x * 2);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("accepts mutable regular array and returns readonly", () => {
+    it("accepts mutable regular array and returns readonly", () => {
       const mutableArr: Array<number> = [1, 2, 3];
       const result = mapArray(mutableArr, (x) => x * 2);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("passes the source array to the mapper", () => {
+    it("passes the source array to the mapper", () => {
       const array: ReadonlyArray<number> = [1, 2, 3];
       const sourceArrays: Array<ReadonlyArray<number>> = [];
 
       mapArray(array, (_value, _index, sourceArray) => {
-        expectTypeOf(sourceArray).toEqualTypeOf<ReadonlyArray<number>>();
+        assertType<typeof sourceArray, ReadonlyArray<number>>();
         sourceArrays.push(sourceArray);
       });
 
-      expect(sourceArrays).toEqual([array, array, array]);
+      assertEqual(sourceArrays, [array, array, array]);
     });
 
-    test("skips and preserves holes in sparse arrays", () => {
+    it("skips and preserves holes in sparse arrays", () => {
       const sparse = createMutableArray<number>(3);
       sparse[1] = 1;
       const visitedIndices: Array<number> = [];
@@ -305,75 +306,75 @@ describe("Transformations", () => {
         return value * 2;
       });
 
-      expect(visitedIndices).toEqual([1]);
-      expect(result.length).toBe(3);
-      expect(0 in result).toBe(false);
-      expect(result[1]).toBe(2);
-      expect(2 in result).toBe(false);
+      assertEqual(visitedIndices, [1]);
+      assertLength(result, 3);
+      assertFalse(0 in result);
+      assertEqual(result[1], 2);
+      assertFalse(2 in result);
     });
   });
 
   describe("flatMapArray", () => {
-    test("flattens mapped arrays", () => {
+    it("flattens mapped arrays", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3];
       const result = flatMapArray(arr, (x) => [x, x * 10]);
-      expect(result).toEqual([1, 10, 2, 20, 3, 30]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [1, 10, 2, 20, 3, 30]);
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("flattens nested arrays without mapper", () => {
+    it("flattens nested arrays without mapper", () => {
       const arr: ReadonlyArray<ReadonlyArray<number>> = [
         [1, 2],
         [3, 4],
       ];
       const result = flatMapArray(arr);
-      expect(result).toEqual([1, 2, 3, 4]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3, 4]);
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("flattens non-empty nested arrays without mapper", () => {
+    it("flattens non-empty nested arrays without mapper", () => {
       const arr: NonEmptyReadonlyArray<NonEmptyReadonlyArray<number>> = [
         [1, 2],
         [3, 4],
       ];
       const result = flatMapArray(arr);
-      expect(result).toEqual([1, 2, 3, 4]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3, 4]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("preserves non-empty type when mapper returns non-empty", () => {
+    it("preserves non-empty type when mapper returns non-empty", () => {
       const nonEmpty: NonEmptyReadonlyArray<number> = [1, 2, 3];
       const result = flatMapArray(nonEmpty, (x) => [x, x * 10]);
-      expect(result).toEqual([1, 10, 2, 20, 3, 30]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1, 10, 2, 20, 3, 30]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("returns readonly array for regular array input", () => {
+    it("returns readonly array for regular array input", () => {
       const arr: ReadonlyArray<number> = [1, 2];
       const result = flatMapArray(arr, (x) => [x]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3];
       flatMapArray(arr, (x) => [x, x]);
-      expect(arr).toEqual([1, 2, 3]);
+      assertEqual(arr, [1, 2, 3]);
     });
 
-    test("passes index and source array to mapper", () => {
+    it("passes index and source array to mapper", () => {
       const arr: ReadonlyArray<string> = ["a", "b"];
       const sourceArrays: Array<ReadonlyArray<string>> = [];
       const result = flatMapArray(arr, (x, i, sourceArray) => {
-        expectTypeOf(sourceArray).toEqualTypeOf<ReadonlyArray<string>>();
+        assertType<typeof sourceArray, ReadonlyArray<string>>();
         sourceArrays.push(sourceArray);
         return [x, String(i)];
       });
 
-      expect(result).toEqual(["a", "0", "b", "1"]);
-      expect(sourceArrays).toEqual([arr, arr]);
+      assertEqual(result, ["a", "0", "b", "1"]);
+      assertEqual(sourceArrays, [arr, arr]);
     });
 
-    test("filters and maps in one pass using [] and [value] pattern", () => {
+    it("filters and maps in one pass using [] and [value] pattern", () => {
       const validate = (n: number) =>
         n > 0 ? ok(n) : err(`${n} is not positive`);
 
@@ -383,93 +384,93 @@ describe("Transformations", () => {
         return result.ok ? [] : [result.error];
       });
 
-      expect(errors).toEqual(["-2 is not positive", "-4 is not positive"]);
-      expectTypeOf(errors).toEqualTypeOf<ReadonlyArray<string>>();
+      assertEqual(errors, ["-2 is not positive", "-4 is not positive"]);
+      assertType<typeof errors, ReadonlyArray<string>>();
     });
   });
 
   describe("concatArrays", () => {
-    test("concatenates two arrays", () => {
+    it("concatenates two arrays", () => {
       const first: ReadonlyArray<number> = [1, 2];
       const second: ReadonlyArray<number> = [3, 4];
       const result = concatArrays(first, second);
-      expect(result).toEqual([1, 2, 3, 4]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3, 4]);
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("returns non-empty when first is non-empty", () => {
+    it("returns non-empty when first is non-empty", () => {
       const first: NonEmptyReadonlyArray<number> = [1, 2];
       const second: ReadonlyArray<number> = [];
       const result = concatArrays(first, second);
-      expect(result).toEqual([1, 2]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1, 2]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("returns non-empty when second is non-empty", () => {
+    it("returns non-empty when second is non-empty", () => {
       const first: ReadonlyArray<number> = [];
       const second: NonEmptyReadonlyArray<number> = [3, 4];
       const result = concatArrays(first, second);
-      expect(result).toEqual([3, 4]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [3, 4]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("returns non-empty when both are non-empty", () => {
+    it("returns non-empty when both are non-empty", () => {
       const first: NonEmptyReadonlyArray<number> = [1];
       const second: NonEmptyReadonlyArray<number> = [2];
       const result = concatArrays(first, second);
-      expect(result).toEqual([1, 2]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1, 2]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("does not mutate original arrays", () => {
+    it("does not mutate original arrays", () => {
       const first: ReadonlyArray<number> = [1, 2];
       const second: ReadonlyArray<number> = [3, 4];
       concatArrays(first, second);
-      expect(first).toEqual([1, 2]);
-      expect(second).toEqual([3, 4]);
+      assertEqual(first, [1, 2]);
+      assertEqual(second, [3, 4]);
     });
 
-    test("accepts mutable arrays and returns readonly", () => {
+    it("accepts mutable arrays and returns readonly", () => {
       const first: Array<number> = [1, 2];
       const second: Array<number> = [3, 4];
       const result = concatArrays(first, second);
-      expect(result).toEqual([1, 2, 3, 4]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3, 4]);
+      assertType<typeof result, ReadonlyArray<number>>();
     });
   });
 
   describe("filterArray", () => {
-    test("filters array and returns readonly", () => {
+    it("filters array and returns readonly", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3, 4, 5];
       const result = filterArray(arr, (x) => x % 2 === 0);
-      expect(result).toEqual([2, 4]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [2, 4]);
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3, 4, 5];
       filterArray(arr, (x) => x % 2 === 0);
-      expect(arr).toEqual([1, 2, 3, 4, 5]);
+      assertEqual(arr, [1, 2, 3, 4, 5]);
     });
 
-    test("passes index and source array to predicate", () => {
+    it("passes index and source array to predicate", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3];
       const calls: Array<readonly [number, number, ReadonlyArray<number>]> = [];
 
       filterArray(arr, (value, index, sourceArray) => {
-        expectTypeOf(sourceArray).toEqualTypeOf<ReadonlyArray<number>>();
+        assertType<typeof sourceArray, ReadonlyArray<number>>();
         calls.push([value, index, sourceArray]);
         return true;
       });
 
-      expect(calls).toEqual([
+      assertEqual(calls, [
         [1, 0, arr],
         [2, 1, arr],
         [3, 2, arr],
       ]);
     });
 
-    test("works with refinements", () => {
+    it("works with refinements", () => {
       const mixed: ReadonlyArray<NonEmptyTrimmedString | PositiveInt> = [
         NonEmptyTrimmedString.orThrow("hello"),
         PositiveInt.orThrow(42),
@@ -480,101 +481,100 @@ describe("Transformations", () => {
       const positiveInts = filterArray(mixed, PositiveInt.is);
 
       // Type narrowing: positiveInts should be ReadonlyArray<PositiveInt>
-      expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
+      assertType<typeof positiveInts, ReadonlyArray<PositiveInt>>();
 
-      expect(positiveInts.length).toBe(2);
-      expect(positiveInts).toEqual([42, 100]);
+      assertLength(positiveInts, 2);
+      assertEqual(positiveInts, [42, 100]);
     });
   });
 
   describe("dedupeArray", () => {
-    test("deduplicates primitives without callback and returns readonly", () => {
+    it("deduplicates primitives without callback and returns readonly", () => {
       const arr: ReadonlyArray<number> = [1, 2, 1, 3, 2];
       const result = dedupeArray(arr);
-      expect(result).toEqual([1, 2, 3]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3]);
+      assertType<typeof result, ReadonlyArray<number>>();
       // original not mutated
-      expect(arr).toEqual([1, 2, 1, 3, 2]);
+      assertEqual(arr, [1, 2, 1, 3, 2]);
     });
 
-    test("deduplicates objects by callback and preserves first occurrence", () => {
+    it("deduplicates objects by callback and preserves first occurrence", () => {
       const arr = [
         { id: 1, value: "a" },
         { id: 2, value: "b" },
         { id: 1, value: "c" },
       ];
       const result = dedupeArray(arr, (x) => x.id);
-      expect(result).toEqual([
+      assertEqual(result, [
         { id: 1, value: "a" },
         { id: 2, value: "b" },
       ]);
-      expectTypeOf(result).toEqualTypeOf<
-        ReadonlyArray<{ id: number; value: string }>
-      >();
+      assertType<typeof result, ReadonlyArray<{ id: number; value: string }>>();
     });
 
-    test("preserves non-empty type when deduping non-empty array", () => {
+    it("preserves non-empty type when deduping non-empty array", () => {
       const nonEmpty: NonEmptyReadonlyArray<number> = [1, 2, 1, 3, 2];
       const result = dedupeArray(nonEmpty);
-      expect(result).toEqual([1, 2, 3]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("preserves non-empty type with callback on non-empty array", () => {
+    it("preserves non-empty type with callback on non-empty array", () => {
       const nonEmpty: NonEmptyReadonlyArray<{ id: number; value: string }> = [
         { id: 1, value: "a" },
         { id: 2, value: "b" },
         { id: 1, value: "c" },
       ];
       const result = dedupeArray(nonEmpty, (x) => x.id);
-      expect(result).toEqual([
+      assertEqual(result, [
         { id: 1, value: "a" },
         { id: 2, value: "b" },
       ]);
-      expectTypeOf(result).toEqualTypeOf<
+      assertType<
+        typeof result,
         NonEmptyReadonlyArray<{ id: number; value: string }>
       >();
     });
   });
 
   describe("partitionArray", () => {
-    test("partitions array by predicate", () => {
+    it("partitions array by predicate", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3, 4, 5];
       const [evens, odds] = partitionArray(arr, (x) => x % 2 === 0);
-      expect(evens).toEqual([2, 4]);
-      expect(odds).toEqual([1, 3, 5]);
-      expectTypeOf(evens).toEqualTypeOf<ReadonlyArray<number>>();
-      expectTypeOf(odds).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(evens, [2, 4]);
+      assertEqual(odds, [1, 3, 5]);
+      assertType<typeof evens, ReadonlyArray<number>>();
+      assertType<typeof odds, ReadonlyArray<number>>();
     });
 
-    test("accepts mutable array and returns readonly", () => {
+    it("accepts mutable array and returns readonly", () => {
       const mutableArr: Array<number> = [1, 2, 3, 4];
       const [trueArr, falseArr] = partitionArray(mutableArr, (x) => x > 2);
-      expect(trueArr).toEqual([3, 4]);
-      expect(falseArr).toEqual([1, 2]);
-      expectTypeOf(trueArr).toEqualTypeOf<ReadonlyArray<number>>();
-      expectTypeOf(falseArr).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(trueArr, [3, 4]);
+      assertEqual(falseArr, [1, 2]);
+      assertType<typeof trueArr, ReadonlyArray<number>>();
+      assertType<typeof falseArr, ReadonlyArray<number>>();
       // Original mutable array is not mutated
-      expect(mutableArr).toEqual([1, 2, 3, 4]);
+      assertEqual(mutableArr, [1, 2, 3, 4]);
     });
 
-    test("passes index and source array to predicate", () => {
+    it("passes index and source array to predicate", () => {
       const arr: ReadonlyArray<string> = ["a", "b", "c"];
       const sourceArrays: Array<ReadonlyArray<string>> = [];
       const [evenIndices, oddIndices] = partitionArray(
         arr,
         (_, i, sourceArray) => {
-          expectTypeOf(sourceArray).toEqualTypeOf<ReadonlyArray<string>>();
+          assertType<typeof sourceArray, ReadonlyArray<string>>();
           sourceArrays.push(sourceArray);
           return i % 2 === 0;
         },
       );
-      expect(evenIndices).toEqual(["a", "c"]);
-      expect(oddIndices).toEqual(["b"]);
-      expect(sourceArrays).toEqual([arr, arr, arr]);
+      assertEqual(evenIndices, ["a", "c"]);
+      assertEqual(oddIndices, ["b"]);
+      assertEqual(sourceArrays, [arr, arr, arr]);
     });
 
-    test("works with refinements and type narrowing", () => {
+    it("works with refinements and type narrowing", () => {
       // Using PositiveInt.is as a type guard with partitionArray
       // With actual Evolu types: NonEmptyTrimmedString | PositiveInt
       const mixed: ReadonlyArray<NonEmptyTrimmedString | PositiveInt> = [
@@ -588,224 +588,222 @@ describe("Transformations", () => {
       const [positiveInts, strings] = partitionArray(mixed, PositiveInt.is);
 
       // Type narrowing with Exclude: positiveInts is PositiveInt, strings is NonEmptyTrimmedString
-      expectTypeOf(positiveInts).toEqualTypeOf<ReadonlyArray<PositiveInt>>();
-      expectTypeOf(strings).toEqualTypeOf<
-        ReadonlyArray<NonEmptyTrimmedString>
-      >();
+      assertType<typeof positiveInts, ReadonlyArray<PositiveInt>>();
+      assertType<typeof strings, ReadonlyArray<NonEmptyTrimmedString>>();
 
       // PositiveInt values are separated from NonEmptyTrimmedString values
-      expect(positiveInts.length).toBe(2);
-      expect(strings.length).toBe(2);
+      assertLength(positiveInts, 2);
+      assertLength(strings, 2);
 
       // All values that pass PositiveInt.is are positive integers
       for (const value of positiveInts) {
-        expect(PositiveInt.is(value)).toBe(true);
+        assertTrue(PositiveInt.is(value));
       }
 
       // All values that don't pass PositiveInt.is are strings (NonEmptyTrimmedString)
       for (const value of strings) {
-        expect(NonEmptyTrimmedString.is(value)).toBe(true);
+        assertTrue(NonEmptyTrimmedString.is(value));
       }
     });
   });
 
   describe("sortArray", () => {
-    test("sorts array with compareFn", () => {
+    it("sorts array with compareFn", () => {
       const arr: ReadonlyArray<number> = [3, 1, 2];
       const result = sortArray(arr, (a, b) => a - b);
-      expect(result).toEqual([1, 2, 3]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3]);
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("preserves non-empty type", () => {
+    it("preserves non-empty type", () => {
       const arr: NonEmptyReadonlyArray<number> = [3, 1, 2];
       const result = sortArray(arr, (a, b) => a - b);
-      expect(result).toEqual([1, 2, 3]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [1, 2, 3]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: ReadonlyArray<number> = [3, 1, 2];
       sortArray(arr, (a, b) => a - b);
-      expect(arr).toEqual([3, 1, 2]);
+      assertEqual(arr, [3, 1, 2]);
     });
   });
 
   describe("reverseArray", () => {
-    test("reverses array", () => {
+    it("reverses array", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3];
       const result = reverseArray(arr);
-      expect(result).toEqual([3, 2, 1]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [3, 2, 1]);
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("preserves non-empty type", () => {
+    it("preserves non-empty type", () => {
       const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
       const result = reverseArray(arr);
-      expect(result).toEqual([3, 2, 1]);
-      expectTypeOf(result).toEqualTypeOf<NonEmptyReadonlyArray<number>>();
+      assertEqual(result, [3, 2, 1]);
+      assertType<typeof result, NonEmptyReadonlyArray<number>>();
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3];
       reverseArray(arr);
-      expect(arr).toEqual([1, 2, 3]);
+      assertEqual(arr, [1, 2, 3]);
     });
   });
 
   describe("spliceArray", () => {
-    test("removes elements", () => {
+    it("removes elements", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3, 4];
       const result = spliceArray(arr, 1, 2);
-      expect(result).toEqual([1, 4]);
-      expectTypeOf(result).toEqualTypeOf<ReadonlyArray<number>>();
+      assertEqual(result, [1, 4]);
+      assertType<typeof result, ReadonlyArray<number>>();
     });
 
-    test("removes and inserts elements", () => {
+    it("removes and inserts elements", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3];
       const result = spliceArray(arr, 1, 1, 10, 11);
-      expect(result).toEqual([1, 10, 11, 3]);
+      assertEqual(result, [1, 10, 11, 3]);
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: ReadonlyArray<number> = [1, 2, 3, 4];
       spliceArray(arr, 1, 2);
-      expect(arr).toEqual([1, 2, 3, 4]);
+      assertEqual(arr, [1, 2, 3, 4]);
     });
   });
 
   describe("zipArray", () => {
-    test("combines arrays into tuples", () => {
+    it("combines arrays into tuples", () => {
       const result = zipArray([
         [1, 2, 3],
         ["a", "b", "c"],
       ]);
-      expect(result).toEqual([
+      assertEqual(result, [
         [1, "a"],
         [2, "b"],
         [3, "c"],
       ]);
 
-      expectTypeOf(result).toEqualTypeOf<
+      assertType<
+        typeof result,
         NonEmptyReadonlyArray<Readonly<[number, string]>>
       >();
     });
 
-    test("combines three arrays into tuples", () => {
+    it("combines three arrays into tuples", () => {
       const result = zipArray([
         [1, 2],
         ["a", "b"],
         [true, false],
       ]);
-      expect(result).toEqual([
+      assertEqual(result, [
         [1, "a", true],
         [2, "b", false],
       ]);
     });
 
-    test("stops at shortest array", () => {
+    it("stops at shortest array", () => {
       const result = zipArray([
         [1, 2],
         ["a", "b", "c", "d"],
       ]);
-      expect(result).toEqual([
+      assertEqual(result, [
         [1, "a"],
         [2, "b"],
       ]);
     });
 
-    test("returns empty array when any input is empty", () => {
+    it("returns empty array when any input is empty", () => {
       const result = zipArray([[1, 2, 3], []]);
-      expect(result).toEqual([]);
+      assertEqual(result, []);
     });
 
-    test("returns empty array for empty outer array", () => {
+    it("returns empty array for empty outer array", () => {
       const result = zipArray([]);
-      expect(result).toEqual([]);
+      assertEqual(result, []);
     });
 
-    test("handles single array", () => {
+    it("handles single array", () => {
       const result = zipArray([[1, 2, 3]]);
-      expect(result).toEqual([[1], [2], [3]]);
+      assertEqual(result, [[1], [2], [3]]);
     });
 
-    test("preserves non-empty type when all inputs are non-empty", () => {
+    it("preserves non-empty type when all inputs are non-empty", () => {
       const numbers: NonEmptyReadonlyArray<number> = [1, 2, 3];
       const strings: NonEmptyReadonlyArray<string> = ["a", "b", "c"];
       const result = zipArray([numbers, strings]);
 
-      expectTypeOf(result).toEqualTypeOf<
+      assertType<
+        typeof result,
         NonEmptyReadonlyArray<Readonly<[number, string]>>
       >();
 
       const first = firstInArray(result);
-      expect(first).toEqual([1, "a"]);
+      assertEqual(first, [1, "a"]);
     });
 
-    test("returns possibly empty tuples when any input is possibly empty", () => {
+    it("returns possibly empty tuples when any input is possibly empty", () => {
       const numbers: NonEmptyReadonlyArray<number> = [1, 2, 3];
       const strings: ReadonlyArray<string> = ["a", "b", "c"];
       const result = zipArray([numbers, strings]);
 
-      expectTypeOf(result).toEqualTypeOf<
-        ReadonlyArray<Readonly<[number, string]>>
-      >();
+      assertType<typeof result, ReadonlyArray<Readonly<[number, string]>>>();
     });
   });
 });
 
 describe("Accessors", () => {
   describe("firstInArray", () => {
-    test("returns first element from non-empty array", () => {
+    it("returns first element from non-empty array", () => {
       const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
       const result = firstInArray(arr);
-      expect(result).toBe(1);
-      expectTypeOf(result).toEqualTypeOf<number>();
+      assertEqual(result, 1);
+      assertType<typeof result, number>();
     });
 
-    test("returns first element from single element array", () => {
+    it("returns first element from single element array", () => {
       const arr: NonEmptyReadonlyArray<string> = ["only"];
       const result = firstInArray(arr);
-      expect(result).toBe("only");
+      assertEqual(result, "only");
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
       firstInArray(arr);
-      expect(arr).toEqual([1, 2, 3]);
+      assertEqual(arr, [1, 2, 3]);
     });
 
-    test("works with mutable non-empty arrays", () => {
+    it("works with mutable non-empty arrays", () => {
       const arr: NonEmptyArray<number> = [10, 20, 30];
       const result = firstInArray(arr);
-      expect(result).toBe(10);
+      assertEqual(result, 10);
     });
   });
 
   describe("lastInArray", () => {
-    test("returns last element from non-empty array", () => {
+    it("returns last element from non-empty array", () => {
       const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
       const result = lastInArray(arr);
-      expect(result).toBe(3);
-      expectTypeOf(result).toEqualTypeOf<number>();
+      assertEqual(result, 3);
+      assertType<typeof result, number>();
     });
 
-    test("returns last element from single element array", () => {
+    it("returns last element from single element array", () => {
       const arr: NonEmptyReadonlyArray<string> = ["only"];
       const result = lastInArray(arr);
-      expect(result).toBe("only");
+      assertEqual(result, "only");
     });
 
-    test("does not mutate original array", () => {
+    it("does not mutate original array", () => {
       const arr: NonEmptyReadonlyArray<number> = [1, 2, 3];
       lastInArray(arr);
-      expect(arr).toEqual([1, 2, 3]);
+      assertEqual(arr, [1, 2, 3]);
     });
 
-    test("works with mutable non-empty arrays", () => {
+    it("works with mutable non-empty arrays", () => {
       const arr: NonEmptyArray<number> = [10, 20, 30];
       const result = lastInArray(arr);
-      expect(result).toBe(30);
+      assertEqual(result, 30);
     });
   });
 });

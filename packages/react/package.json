@@ -39,6 +39,7 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
+    "@types/node": "^24.10.9",
     "@types/react": "catalog:react19",
     "@types/react-dom": "catalog:react19",
     "@typescript/native": "npm:typescript@^7.0.2",

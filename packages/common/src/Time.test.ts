@@ -1,11 +1,21 @@
-import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
+import { afterEach, describe, it, mock } from "node:test";
+import {
+  assertEqual,
+  assertFalse,
+  assertLength,
+  assertSame,
+  assertThrowsInstanceOf,
+  assertThrowsSame,
+  assertTrue,
+} from "./Assert.ts";
+
 import type {
   Duration,
   PerformanceDuration,
   PerformanceTime,
   PerformanceTimeOrigin,
   PositiveDuration,
-} from "../../../../packages/common/src/Time.ts";
+} from "./Time.ts";
 import {
   createTime,
   DurationLiteral,
@@ -26,138 +36,153 @@ import {
   PositiveMillis,
   saturateMillis,
   testCreateTime,
-} from "../../../../packages/common/src/Time.ts";
-import {
-  type DateIso,
-  NonNaNNumber,
-} from "../../../../packages/common/src/Type.ts";
+} from "./Time.ts";
+import { assertType, type DateIso, NonNaNNumber } from "./Type.ts";
 
 const negativeMillisCause = {
   type: "NonNegative",
   value: -1,
 };
 
+const assertThrowsWithCause = (run: () => unknown, cause: unknown): void => {
+  const error = assertThrowsInstanceOf(run, Error);
+  assertEqual(error.message, "getOrThrow");
+  assertEqual(error.cause, cause);
+};
+
 describe("Time", () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restoreAll();
   });
 
   describe("createTime", () => {
-    test("now returns current time", () => {
-      vi.spyOn(globalThis.Date, "now").mockReturnValue(123);
+    it("now returns current time", () => {
+      mock.method(globalThis.Date, "now", () => 123);
 
-      expect(createTime().now()).toBe(123);
+      assertEqual(createTime().now(), 123);
     });
 
-    test('now with "DateIso" returns current time as ISO string', () => {
+    it('now with "DateIso" returns current time as ISO string', () => {
       const time = createTime();
       const result: DateIso = time.now("DateIso");
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
+      assertTrue(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(result));
       const parsed = Date.parse(result);
-      expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
-      expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
+      assertTrue(parsed >= Date.now() - 100);
+      assertTrue(parsed <= Date.now() + 100);
     });
 
-    test("performance exposes the native clock", () => {
-      vi.spyOn(globalThis.performance, "now").mockReturnValue(123.456);
+    it("performance exposes the native clock", () => {
+      mock.method(globalThis.performance, "now", () => 123.456);
 
       const time = createTime();
       const now: PerformanceTime = time.performance.now();
       const timeOrigin: PerformanceTimeOrigin = time.performance.timeOrigin;
 
-      expect(now).toBe(123.456);
-      expect(timeOrigin).toBe(globalThis.performance.timeOrigin);
+      assertEqual(now, 123.456);
+      assertEqual(timeOrigin, globalThis.performance.timeOrigin);
     });
 
     describe("setTimeout", () => {
-      test("fires after the delay", () => {
+      it("fires after the delay", () => {
         let now = 1000;
         const callbacks: Array<() => void> = [];
-        const setTimeout = vi
-          .spyOn(globalThis, "setTimeout")
-          .mockImplementation((callback) => {
+        const setTimeout = mock.method(
+          globalThis,
+          "setTimeout",
+          (callback: () => void) => {
             callbacks.push(callback);
             return callbacks.length as unknown as ReturnType<
               typeof globalThis.setTimeout
             >;
-          });
-        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
-        const callback = vi.fn<() => void>();
+          },
+        );
+        mock.method(globalThis.Date, "now", () => now);
+        const callback = mock.fn<() => void>();
 
         createTime().setTimeout(callback, "10ms");
 
-        expect(setTimeout).toHaveBeenCalledWith(callbacks[0], 10);
-        expect(callback).not.toHaveBeenCalled();
+        assertLength(setTimeout.mock.calls, 1);
+        assertSame(setTimeout.mock.calls[0].arguments[0], callbacks[0]);
+        assertEqual(setTimeout.mock.calls[0].arguments[1], 10);
+        assertEqual(callback.mock.callCount(), 0);
 
         now += 10;
         callbacks[0]();
 
-        expect(callback).toHaveBeenCalledOnce();
+        assertEqual(callback.mock.callCount(), 1);
       });
 
-      test("native-range timeout ignores wall-clock changes", () => {
+      it("native-range timeout ignores wall-clock changes", () => {
         let now = 1000;
         const callbacks: Array<() => void> = [];
-        const setTimeout = vi
-          .spyOn(globalThis, "setTimeout")
-          .mockImplementation((scheduledCallback) => {
+        const setTimeout = mock.method(
+          globalThis,
+          "setTimeout",
+          (scheduledCallback: () => void) => {
             callbacks.push(scheduledCallback);
             return callbacks.length as unknown as ReturnType<
               typeof globalThis.setTimeout
             >;
-          });
-        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
-        const callback = vi.fn<() => void>();
+          },
+        );
+        mock.method(globalThis.Date, "now", () => now);
+        const callback = mock.fn<() => void>();
 
         createTime().setTimeout(callback, "10ms");
         now -= 1000;
         callbacks[0]();
 
-        expect(setTimeout).toHaveBeenCalledOnce();
-        expect(callback).toHaveBeenCalledOnce();
+        assertEqual(setTimeout.mock.callCount(), 1);
+        assertEqual(callback.mock.callCount(), 1);
       });
 
-      test("maximum native delay uses one native timer", () => {
+      it("maximum native delay uses one native timer", () => {
         const maxNativeTimeoutMillis = 2 ** 31 - 1;
         const callbacks: Array<() => void> = [];
-        const setTimeout = vi
-          .spyOn(globalThis, "setTimeout")
-          .mockImplementation((scheduledCallback) => {
+        const setTimeout = mock.method(
+          globalThis,
+          "setTimeout",
+          (scheduledCallback: () => void) => {
             callbacks.push(scheduledCallback);
             return callbacks.length as unknown as ReturnType<
               typeof globalThis.setTimeout
             >;
-          });
-        const dateNow = vi.spyOn(globalThis.Date, "now");
-        const callback = vi.fn<() => void>();
+          },
+        );
+        const dateNow = mock.method(globalThis.Date, "now");
+        const callback = mock.fn<() => void>();
 
         createTime().setTimeout(
           callback,
           PositiveMillis.orThrow(maxNativeTimeoutMillis),
         );
 
-        expect(setTimeout).toHaveBeenCalledWith(
-          callbacks[0],
+        assertLength(setTimeout.mock.calls, 1);
+        assertSame(setTimeout.mock.calls[0].arguments[0], callbacks[0]);
+        assertEqual(
+          setTimeout.mock.calls[0].arguments[1],
           maxNativeTimeoutMillis,
         );
-        expect(dateNow).not.toHaveBeenCalled();
+        assertEqual(dateNow.mock.callCount(), 0);
 
         callbacks[0]();
 
-        expect(setTimeout).toHaveBeenCalledOnce();
-        expect(callback).toHaveBeenCalledOnce();
+        assertEqual(setTimeout.mock.callCount(), 1);
+        assertEqual(callback.mock.callCount(), 1);
       });
 
-      test("accounts for elapsed time while a long timeout is suspended", () => {
+      it("accounts for elapsed time while a long timeout is suspended", () => {
         const maxNativeTimeoutMillis = 2 ** 31 - 1;
         let now = 1000;
         const callbacks: Array<() => void> = [];
         const delays: Array<number | undefined> = [];
-        const callback = vi.fn<() => void>();
+        const callback = mock.fn<() => void>();
 
-        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
-        vi.spyOn(globalThis, "setTimeout").mockImplementation(
-          (scheduledCallback, delay) => {
+        mock.method(globalThis.Date, "now", () => now);
+        mock.method(
+          globalThis,
+          "setTimeout",
+          (scheduledCallback: () => void, delay?: number) => {
             callbacks.push(scheduledCallback);
             delays.push(delay);
             return callbacks.length as unknown as ReturnType<
@@ -171,50 +196,49 @@ describe("Time", () => {
           PositiveMillis.orThrow(maxNativeTimeoutMillis + 100),
         );
 
-        expect(delays).toEqual([maxNativeTimeoutMillis]);
+        assertEqual(delays, [maxNativeTimeoutMillis]);
 
         // Simulate the native timer firing 50ms late after event-loop suspension.
         now += maxNativeTimeoutMillis + 50;
         callbacks[0]();
 
         // Only 50ms remains; do not add the elapsed 50ms again.
-        expect(delays).toEqual([maxNativeTimeoutMillis, 50]);
-        expect(callback).not.toHaveBeenCalled();
+        assertEqual(delays, [maxNativeTimeoutMillis, 50]);
+        assertEqual(callback.mock.callCount(), 0);
 
         now += 50;
         callbacks[1]();
 
-        expect(callback).toHaveBeenCalledOnce();
+        assertEqual(callback.mock.callCount(), 1);
       });
 
-      test("rejects an invalid clock when scheduling a long timeout", () => {
-        const setTimeout = vi
-          .spyOn(globalThis, "setTimeout")
-          .mockReturnValue(
-            1 as unknown as ReturnType<typeof globalThis.setTimeout>,
-          );
-        vi.spyOn(globalThis.Date, "now").mockReturnValue(-1);
-
-        expect(() =>
-          createTime().setTimeout(
-            () => undefined,
-            PositiveMillis.orThrow(2 ** 31),
-          ),
-        ).toThrow(
-          expect.objectContaining({
-            message: "getOrThrow",
-            cause: negativeMillisCause,
-          }),
+      it("rejects an invalid clock when scheduling a long timeout", () => {
+        const setTimeout = mock.method(
+          globalThis,
+          "setTimeout",
+          () => 1 as unknown as ReturnType<typeof globalThis.setTimeout>,
         );
-        expect(setTimeout).not.toHaveBeenCalled();
+        mock.method(globalThis.Date, "now", () => -1);
+
+        assertThrowsWithCause(
+          () =>
+            createTime().setTimeout(
+              () => undefined,
+              PositiveMillis.orThrow(2 ** 31),
+            ),
+          negativeMillisCause,
+        );
+        assertEqual(setTimeout.mock.callCount(), 0);
       });
 
-      test("rejects an invalid clock while processing a long timeout", () => {
+      it("rejects an invalid clock while processing a long timeout", () => {
         const callbacks: Array<() => void> = [];
         let now = 1000;
-        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
-        vi.spyOn(globalThis, "setTimeout").mockImplementation(
-          (scheduledCallback) => {
+        mock.method(globalThis.Date, "now", () => now);
+        mock.method(
+          globalThis,
+          "setTimeout",
+          (scheduledCallback: () => void) => {
             callbacks.push(scheduledCallback);
             return callbacks.length as unknown as ReturnType<
               typeof globalThis.setTimeout
@@ -227,27 +251,26 @@ describe("Time", () => {
         );
         now = -1;
 
-        expect(() => callbacks[0]()).toThrow(
-          expect.objectContaining({
-            message: "getOrThrow",
-            cause: negativeMillisCause,
-          }),
-        );
-        expect(callbacks).toHaveLength(1);
+        assertThrowsWithCause(() => callbacks[0](), negativeMillisCause);
+        assertLength(callbacks, 1);
       });
 
-      test("clearTimeout cancels the active chunk of a long delay", () => {
+      it("clearTimeout cancels the active chunk of a long delay", () => {
         const maxNativeTimeoutMillis = 2 ** 31 - 1;
         let now = 1000;
         const callbacks: Array<() => void> = [];
-        const callback = vi.fn<() => void>();
-        const clearTimeout = vi
-          .spyOn(globalThis, "clearTimeout")
-          .mockImplementation(() => undefined);
+        const callback = mock.fn<() => void>();
+        const clearTimeout = mock.method(
+          globalThis,
+          "clearTimeout",
+          () => undefined,
+        );
 
-        vi.spyOn(globalThis.Date, "now").mockImplementation(() => now);
-        vi.spyOn(globalThis, "setTimeout").mockImplementation(
-          (scheduledCallback) => {
+        mock.method(globalThis.Date, "now", () => now);
+        mock.method(
+          globalThis,
+          "setTimeout",
+          (scheduledCallback: () => void) => {
             callbacks.push(scheduledCallback);
             return callbacks.length as unknown as ReturnType<
               typeof globalThis.setTimeout
@@ -266,19 +289,24 @@ describe("Time", () => {
         time.clearTimeout(id);
         callbacks[1]();
 
-        expect(clearTimeout).toHaveBeenCalledWith(2);
-        expect(callback).not.toHaveBeenCalled();
+        assertLength(clearTimeout.mock.calls, 1);
+        assertEqual(clearTimeout.mock.calls[0].arguments[0], 2);
+        assertEqual(callback.mock.callCount(), 0);
       });
 
-      test("clearTimeout cancels a single native timeout", () => {
+      it("clearTimeout cancels a single native timeout", () => {
         const callbacks: Array<() => void> = [];
-        const callback = vi.fn<() => void>();
-        const clearTimeout = vi
-          .spyOn(globalThis, "clearTimeout")
-          .mockImplementation(() => undefined);
+        const callback = mock.fn<() => void>();
+        const clearTimeout = mock.method(
+          globalThis,
+          "clearTimeout",
+          () => undefined,
+        );
 
-        vi.spyOn(globalThis, "setTimeout").mockImplementation(
-          (scheduledCallback) => {
+        mock.method(
+          globalThis,
+          "setTimeout",
+          (scheduledCallback: () => void) => {
             callbacks.push(scheduledCallback);
             return callbacks.length as unknown as ReturnType<
               typeof globalThis.setTimeout
@@ -292,44 +320,53 @@ describe("Time", () => {
         time.clearTimeout(id);
         callbacks[0]();
 
-        expect(clearTimeout).toHaveBeenCalledWith(1);
-        expect(callback).not.toHaveBeenCalled();
+        assertLength(clearTimeout.mock.calls, 1);
+        assertEqual(clearTimeout.mock.calls[0].arguments[0], 1);
+        assertEqual(callback.mock.callCount(), 0);
       });
 
-      test("clearTimeout rejects an id created by another Time instance", () => {
-        vi.spyOn(globalThis, "setTimeout").mockReturnValue(
-          1 as unknown as ReturnType<typeof globalThis.setTimeout>,
+      it("clearTimeout rejects an id created by another Time instance", () => {
+        mock.method(
+          globalThis,
+          "setTimeout",
+          () => 1 as unknown as ReturnType<typeof globalThis.setTimeout>,
         );
         const firstTime = createTime();
         const secondTime = createTime();
         const id = firstTime.setTimeout(() => undefined, "10ms");
 
-        expect(() => secondTime.clearTimeout(id)).toThrow(
-          "TimeoutId was created by another Time instance",
+        const error = assertThrowsInstanceOf(
+          () => secondTime.clearTimeout(id),
+          Error,
+        );
+        assertTrue(
+          error.message.includes(
+            "TimeoutId was created by another Time instance",
+          ),
         );
       });
     });
   });
 
   describe("testCreateTime", () => {
-    test("advances time only when advance() is called", () => {
+    it("advances time only when advance() is called", () => {
       const time = testCreateTime();
 
-      expect(time.now()).toBe(0);
+      assertEqual(time.now(), 0);
       // Still 0, no auto-increment
-      expect(time.now()).toBe(0);
+      assertEqual(time.now(), 0);
 
       time.advance("1ms");
-      expect(time.now()).toBe(1);
+      assertEqual(time.now(), 1);
 
       time.advance("100ms");
-      expect(time.now()).toBe(101);
+      assertEqual(time.now(), 101);
 
       time.advance("1s");
-      expect(time.now()).toBe(1101);
+      assertEqual(time.now(), 1101);
     });
 
-    test("with autoIncrement returns monotonically increasing values", async () => {
+    it("with autoIncrement returns monotonically increasing values", async () => {
       const time = testCreateTime({ autoIncrement: "microtask" });
       const first = time.now();
 
@@ -341,21 +378,21 @@ describe("Time", () => {
 
       const third = time.now();
 
-      expect(first).toBe(0);
-      expect(second).toBe(1);
-      expect(third).toBe(2);
+      assertEqual(first, 0);
+      assertEqual(second, 1);
+      assertEqual(third, 2);
     });
 
-    test("with sync autoIncrement increments within the same turn", () => {
+    it("with sync autoIncrement increments within the same turn", () => {
       const time = testCreateTime({ autoIncrement: "sync" });
 
-      expect(time.now()).toBe(0);
-      expect(time.now()).toBe(1);
-      expect(time.now("DateIso")).toBe("1970-01-01T00:00:00.002Z");
-      expect(time.now()).toBe(3);
+      assertEqual(time.now(), 0);
+      assertEqual(time.now(), 1);
+      assertEqual(time.now("DateIso"), "1970-01-01T00:00:00.002Z");
+      assertEqual(time.now(), 3);
     });
 
-    test('now with "DateIso" respects autoIncrement', async () => {
+    it('now with "DateIso" respects autoIncrement', async () => {
       const time = testCreateTime({
         autoIncrement: "microtask",
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
@@ -367,36 +404,36 @@ describe("Time", () => {
 
       const second = time.now("DateIso");
 
-      expect(first).toBe("2026-01-28T14:30:00.000Z");
-      expect(second).toBe("2026-01-28T14:30:00.001Z");
+      assertEqual(first, "2026-01-28T14:30:00.000Z");
+      assertEqual(second, "2026-01-28T14:30:00.001Z");
     });
 
-    test('now with "DateIso" returns ISO string for current time', () => {
+    it('now with "DateIso" returns ISO string for current time', () => {
       const time = testCreateTime({
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
       });
-      expect(time.now("DateIso")).toBe("2026-01-28T14:30:00.000Z");
+      assertEqual(time.now("DateIso"), "2026-01-28T14:30:00.000Z");
     });
 
-    test("performance starts at its time origin and advances with time", () => {
+    it("performance starts at its time origin and advances with time", () => {
       const time = testCreateTime({ startAt: Millis.orThrow(1000) });
 
-      expect(time.performance.timeOrigin).toBe(1000);
-      expect(time.performance.now()).toBe(0);
+      assertEqual(time.performance.timeOrigin, 1000);
+      assertEqual(time.performance.now(), 0);
 
       time.advance("100ms");
 
-      expect(time.performance.now()).toBe(100);
+      assertEqual(time.performance.now(), 100);
     });
 
-    test("performance respects sync autoIncrement", () => {
+    it("performance respects sync autoIncrement", () => {
       const time = testCreateTime({ autoIncrement: "sync" });
 
-      expect(time.performance.now()).toBe(0);
-      expect(time.now()).toBe(1);
+      assertEqual(time.performance.now(), 0);
+      assertEqual(time.now(), 1);
     });
 
-    test("setTimeout fires callback when time is advanced past deadline", () => {
+    it("setTimeout fires callback when time is advanced past deadline", () => {
       const time = testCreateTime();
       let called = false;
 
@@ -404,31 +441,26 @@ describe("Time", () => {
         called = true;
       }, "100ms");
 
-      expect(called).toBe(false);
+      assertFalse(called);
 
       time.advance("50ms");
-      expect(called).toBe(false);
+      assertFalse(called);
 
       time.advance("50ms");
-      expect(called).toBe(true);
+      assertTrue(called);
     });
 
-    test("setTimeout rejects a deadline after maxMillis", () => {
+    it("setTimeout rejects a deadline after maxMillis", () => {
       const time = testCreateTime({ startAt: maxMillis });
 
-      expect(() => time.setTimeout(() => undefined, "1ms")).toThrow(
-        expect.objectContaining({
-          message: "getOrThrow",
-          cause: {
-            type: "LessThan281474976710655",
-            value: maxMillis + 1,
-            max: maxMillis + 1,
-          },
-        }),
-      );
+      assertThrowsWithCause(() => time.setTimeout(() => undefined, "1ms"), {
+        type: "LessThan281474976710655",
+        value: maxMillis + 1,
+        max: maxMillis + 1,
+      });
     });
 
-    test("clearTimeout cancels pending timeout", () => {
+    it("clearTimeout cancels pending timeout", () => {
       const time = testCreateTime();
       let called = false;
 
@@ -439,25 +471,31 @@ describe("Time", () => {
       time.clearTimeout(id);
       time.advance("200ms");
 
-      expect(called).toBe(false);
+      assertFalse(called);
     });
 
-    test("clearTimeout rejects an id created by another Time instance", () => {
+    it("clearTimeout rejects an id created by another Time instance", () => {
       const firstTime = testCreateTime();
       const secondTime = testCreateTime();
-      const secondCallback = vi.fn<() => void>();
+      const secondCallback = mock.fn<() => void>();
       const id = firstTime.setTimeout(() => undefined, "100ms");
       secondTime.setTimeout(secondCallback, "100ms");
 
-      expect(() => secondTime.clearTimeout(id)).toThrow(
-        "TimeoutId was created by another Time instance",
+      const error = assertThrowsInstanceOf(
+        () => secondTime.clearTimeout(id),
+        Error,
+      );
+      assertTrue(
+        error.message.includes(
+          "TimeoutId was created by another Time instance",
+        ),
       );
 
       secondTime.advance("100ms");
-      expect(secondCallback).toHaveBeenCalledOnce();
+      assertEqual(secondCallback.mock.callCount(), 1);
     });
 
-    test("multiple timeouts fire in deadline order", () => {
+    it("multiple timeouts fire in deadline order", () => {
       const time = testCreateTime();
       const order: Array<number> = [];
 
@@ -473,10 +511,10 @@ describe("Time", () => {
 
       time.advance("200ms");
 
-      expect(order).toEqual([2, 1, 3]);
+      assertEqual(order, [2, 1, 3]);
     });
 
-    test("timeouts with identical deadlines fire in scheduling order", () => {
+    it("timeouts with identical deadlines fire in scheduling order", () => {
       const time = testCreateTime();
       const order: Array<number> = [];
 
@@ -492,10 +530,10 @@ describe("Time", () => {
 
       time.advance("50ms");
 
-      expect(order).toEqual([1, 2, 3]);
+      assertEqual(order, [1, 2, 3]);
     });
 
-    test("timeout callbacks observe their deadlines", () => {
+    it("timeout callbacks observe their deadlines", () => {
       const time = testCreateTime();
       const observedTimes: Array<Millis> = [];
 
@@ -508,11 +546,11 @@ describe("Time", () => {
 
       time.advance("200ms");
 
-      expect(observedTimes).toEqual([50, 100]);
-      expect(time.now()).toBe(200);
+      assertEqual(observedTimes, [50, 100]);
+      assertEqual(time.now(), 200);
     });
 
-    test("advance fires timeouts scheduled by callbacks within its target", () => {
+    it("advance fires timeouts scheduled by callbacks within its target", () => {
       const time = testCreateTime();
       const observedTimes: Array<Millis> = [];
 
@@ -525,56 +563,59 @@ describe("Time", () => {
 
       time.advance("200ms");
 
-      expect(observedTimes).toEqual([50, 100]);
-      expect(time.now()).toBe(200);
+      assertEqual(observedTimes, [50, 100]);
+      assertEqual(time.now(), 200);
     });
 
-    test("an earlier timeout can cancel a later timeout", () => {
+    it("an earlier timeout can cancel a later timeout", () => {
       const time = testCreateTime();
-      const callback = vi.fn<() => void>();
+      const callback = mock.fn<() => void>();
       const laterId = time.setTimeout(callback, "100ms");
       time.setTimeout(() => time.clearTimeout(laterId), "50ms");
 
       time.advance("200ms");
 
-      expect(callback).not.toHaveBeenCalled();
+      assertEqual(callback.mock.callCount(), 0);
     });
 
-    test("a throwing callback aborts advance at its deadline", () => {
+    it("a throwing callback aborts advance at its deadline", () => {
       const time = testCreateTime();
       const error = new Error("callback failed");
-      const laterCallback = vi.fn<() => void>();
+      const laterCallback = mock.fn<() => void>();
 
       time.setTimeout(() => {
         throw error;
       }, "50ms");
       time.setTimeout(laterCallback, "100ms");
 
-      expect(() => time.advance("200ms")).toThrow(error);
-      expect(time.now()).toBe(50);
-      expect(laterCallback).not.toHaveBeenCalled();
+      assertThrowsSame(() => time.advance("200ms"), error);
+      assertEqual(time.now(), 50);
+      assertEqual(laterCallback.mock.callCount(), 0);
 
       time.advance("150ms");
 
-      expect(laterCallback).toHaveBeenCalledOnce();
-      expect(time.now()).toBe(200);
+      assertEqual(laterCallback.mock.callCount(), 1);
+      assertEqual(time.now(), 200);
     });
 
-    test("advance rejects reentrant calls", () => {
+    it("advance rejects reentrant calls", () => {
       const time = testCreateTime();
 
       time.setTimeout(() => {
-        expect(() => time.advance("1ms")).toThrow(
-          "TestTime.advance cannot be called while advancing",
+        const error = assertThrowsInstanceOf(() => time.advance("1ms"), Error);
+        assertTrue(
+          error.message.includes(
+            "TestTime.advance cannot be called while advancing",
+          ),
         );
       }, "50ms");
 
       time.advance("100ms");
 
-      expect(time.now()).toBe(100);
+      assertEqual(time.now(), 100);
     });
 
-    test("advance preserves auto-incremented time", () => {
+    it("advance preserves auto-incremented time", () => {
       const time = testCreateTime({ autoIncrement: "sync" });
       const observedTimes: Array<Millis> = [];
 
@@ -587,93 +628,103 @@ describe("Time", () => {
 
       time.advance("50ms");
 
-      expect(observedTimes).toEqual([50, 51]);
-      expect(time.now()).toBe(52);
+      assertEqual(observedTimes, [50, 51]);
+      assertEqual(time.now(), 52);
     });
   });
 
   describe("PositiveMillis", () => {
-    test("accepts only positive millis", () => {
+    it("accepts only positive millis", () => {
       const millis: Millis = PositiveMillis.orThrow(1);
-      expectTypeOf(millis).toEqualTypeOf<Millis>();
-      expect(PositiveMillis.is(1)).toBe(true);
-      expect(PositiveMillis.is(maxMillis)).toBe(true);
-      expect(PositiveMillis.is(0)).toBe(false);
+      assertType<typeof millis, Millis>();
+      assertTrue(PositiveMillis.is(1));
+      assertTrue(PositiveMillis.is(maxMillis));
+      assertFalse(PositiveMillis.is(0));
     });
   });
 
   describe("saturateMillis", () => {
-    test("requires NonNaNNumber", () => {
+    it("requires NonNaNNumber", () => {
       saturateMillis(NonNaNNumber.orThrow(1));
       // @ts-expect-error - Numbers require validation.
       saturateMillis(1);
     });
 
-    test("rounds to the nearest millisecond", () => {
-      expect(saturateMillis(NonNaNNumber.orThrow(1.4))).toBe(1);
-      expect(saturateMillis(NonNaNNumber.orThrow(1.5))).toBe(2);
+    it("rounds to the nearest millisecond", () => {
+      assertEqual(saturateMillis(NonNaNNumber.orThrow(1.4)), 1);
+      assertEqual(saturateMillis(NonNaNNumber.orThrow(1.5)), 2);
     });
 
-    test("saturates negative values at min millis", () => {
-      expect(saturateMillis(NonNaNNumber.orThrow(-1))).toBe(0);
-      expect(
+    it("saturates negative values at min millis", () => {
+      assertEqual(saturateMillis(NonNaNNumber.orThrow(-1)), 0);
+      assertEqual(
         saturateMillis(NonNaNNumber.orThrow(Number.NEGATIVE_INFINITY)),
-      ).toBe(0);
+        0,
+      );
     });
 
-    test("saturates overflow at maxMillis", () => {
-      expect(saturateMillis(NonNaNNumber.orThrow(maxMillis + 1))).toBe(
+    it("saturates overflow at maxMillis", () => {
+      assertEqual(
+        saturateMillis(NonNaNNumber.orThrow(maxMillis + 1)),
         maxMillis,
       );
-      expect(
+      assertEqual(
         saturateMillis(NonNaNNumber.orThrow(Number.POSITIVE_INFINITY)),
-      ).toBe(maxMillis);
+        maxMillis,
+      );
     });
   });
 
   describe("millisToDateIso", () => {
-    test("millisToDateIso returns current time as ISO string", () => {
+    it("millisToDateIso returns current time as ISO string", () => {
       const time = createTime();
       const result = millisToDateIso(time.now());
       // Verify it's a valid ISO string
-      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
+      assertTrue(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(result));
       // And it's close to now
       const parsed = Date.parse(result);
-      expect(parsed).toBeGreaterThanOrEqual(Date.now() - 100);
-      expect(parsed).toBeLessThanOrEqual(Date.now() + 100);
+      assertTrue(parsed >= Date.now() - 100);
+      assertTrue(parsed <= Date.now() + 100);
     });
 
-    test("millisToDateIso returns ISO string for current time", () => {
+    it("millisToDateIso returns ISO string for current time", () => {
       const time = testCreateTime({
         startAt: Date.UTC(2026, 0, 28, 14, 30, 0, 0) as Millis,
       });
-      expect(millisToDateIso(time.now())).toBe("2026-01-28T14:30:00.000Z");
+      assertEqual(millisToDateIso(time.now()), "2026-01-28T14:30:00.000Z");
     });
   });
 
   describe("performanceDurationBetween", () => {
-    test("preserves fractional milliseconds", () => {
+    it("preserves fractional milliseconds", () => {
       const result = performanceDurationBetween(
         100.125 as PerformanceTime,
         100.375 as PerformanceTime,
       );
 
-      expectTypeOf(result).toEqualTypeOf<PerformanceDuration>();
-      expect(result).toBe(0.25);
+      assertType<typeof result, PerformanceDuration>();
+      assertEqual(result, 0.25);
     });
 
-    test("rejects an end time before the start time", () => {
-      expect(() =>
-        performanceDurationBetween(
-          100.375 as PerformanceTime,
-          100.125 as PerformanceTime,
+    it("rejects an end time before the start time", () => {
+      const error = assertThrowsInstanceOf(
+        () =>
+          performanceDurationBetween(
+            100.375 as PerformanceTime,
+            100.125 as PerformanceTime,
+          ),
+        Error,
+      );
+      assertTrue(
+        error.message.includes(
+          "Performance end time must not precede start time",
         ),
-      ).toThrow("Performance end time must not precede start time");
+      );
     });
   });
 
   describe("PositiveDuration", () => {
-    test("accepts only positive durations", () => {
+    it("accepts only positive durations", () => {
       const time = testCreateTime();
       const duration: PositiveDuration = PositiveMillis.orThrow(1);
 
@@ -684,156 +735,166 @@ describe("Time", () => {
   });
 
   describe("DurationLiteral", () => {
-    test("valid durations", () => {
+    it("valid durations", () => {
       // Milliseconds
-      expectTypeOf<"1ms">().toExtend<DurationLiteral>();
-      expectTypeOf<"500ms">().toExtend<DurationLiteral>();
-      expectTypeOf<"999ms">().toExtend<DurationLiteral>();
+      assertType<"1ms" extends DurationLiteral ? true : false, true>();
+      assertType<"500ms" extends DurationLiteral ? true : false, true>();
+      assertType<"999ms" extends DurationLiteral ? true : false, true>();
       // Seconds (integer and decimal)
-      expectTypeOf<"1s">().toExtend<DurationLiteral>();
-      expectTypeOf<"59s">().toExtend<DurationLiteral>();
-      expectTypeOf<"1.5s">().toExtend<DurationLiteral>();
-      expectTypeOf<"59.9s">().toExtend<DurationLiteral>();
+      assertType<"1s" extends DurationLiteral ? true : false, true>();
+      assertType<"59s" extends DurationLiteral ? true : false, true>();
+      assertType<"1.5s" extends DurationLiteral ? true : false, true>();
+      assertType<"59.9s" extends DurationLiteral ? true : false, true>();
       // Minutes (integer and decimal)
-      expectTypeOf<"1m">().toExtend<DurationLiteral>();
-      expectTypeOf<"59m">().toExtend<DurationLiteral>();
-      expectTypeOf<"1.5m">().toExtend<DurationLiteral>();
+      assertType<"1m" extends DurationLiteral ? true : false, true>();
+      assertType<"59m" extends DurationLiteral ? true : false, true>();
+      assertType<"1.5m" extends DurationLiteral ? true : false, true>();
       // Hours (integer and decimal)
-      expectTypeOf<"1h">().toExtend<DurationLiteral>();
-      expectTypeOf<"23h">().toExtend<DurationLiteral>();
-      expectTypeOf<"1.5h">().toExtend<DurationLiteral>();
+      assertType<"1h" extends DurationLiteral ? true : false, true>();
+      assertType<"23h" extends DurationLiteral ? true : false, true>();
+      assertType<"1.5h" extends DurationLiteral ? true : false, true>();
       // Days (integer and decimal, max 6)
-      expectTypeOf<"1d">().toExtend<DurationLiteral>();
-      expectTypeOf<"6d">().toExtend<DurationLiteral>();
-      expectTypeOf<"1.5d">().toExtend<DurationLiteral>();
+      assertType<"1d" extends DurationLiteral ? true : false, true>();
+      assertType<"6d" extends DurationLiteral ? true : false, true>();
+      assertType<"1.5d" extends DurationLiteral ? true : false, true>();
       // Weeks (integer and decimal)
-      expectTypeOf<"1w">().toExtend<DurationLiteral>();
-      expectTypeOf<"51w">().toExtend<DurationLiteral>();
-      expectTypeOf<"1.5w">().toExtend<DurationLiteral>();
+      assertType<"1w" extends DurationLiteral ? true : false, true>();
+      assertType<"51w" extends DurationLiteral ? true : false, true>();
+      assertType<"1.5w" extends DurationLiteral ? true : false, true>();
       // Years (integer and decimal)
-      expectTypeOf<"1y">().toExtend<DurationLiteral>();
-      expectTypeOf<"99y">().toExtend<DurationLiteral>();
-      expectTypeOf<"1.5y">().toExtend<DurationLiteral>();
+      assertType<"1y" extends DurationLiteral ? true : false, true>();
+      assertType<"99y" extends DurationLiteral ? true : false, true>();
+      assertType<"1.5y" extends DurationLiteral ? true : false, true>();
     });
 
-    test("invalid durations", () => {
-      expectTypeOf<"invalid">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"-1s">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"0ms">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"0s">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"0.5s">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"01d">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"60s">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"60m">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"24h">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"7d">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"52w">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"100y">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"1000ms">().not.toExtend<DurationLiteral>();
-      expectTypeOf<"1.0s">().not.toExtend<DurationLiteral>();
+    it("invalid durations", () => {
+      assertType<"invalid" extends DurationLiteral ? true : false, false>();
+      assertType<"-1s" extends DurationLiteral ? true : false, false>();
+      assertType<"0ms" extends DurationLiteral ? true : false, false>();
+      assertType<"0s" extends DurationLiteral ? true : false, false>();
+      assertType<"0.5s" extends DurationLiteral ? true : false, false>();
+      assertType<"01d" extends DurationLiteral ? true : false, false>();
+      assertType<"60s" extends DurationLiteral ? true : false, false>();
+      assertType<"60m" extends DurationLiteral ? true : false, false>();
+      assertType<"24h" extends DurationLiteral ? true : false, false>();
+      assertType<"7d" extends DurationLiteral ? true : false, false>();
+      assertType<"52w" extends DurationLiteral ? true : false, false>();
+      assertType<"100y" extends DurationLiteral ? true : false, false>();
+      assertType<"1000ms" extends DurationLiteral ? true : false, false>();
+      assertType<"1.0s" extends DurationLiteral ? true : false, false>();
     });
 
-    test("validates durations at runtime", () => {
-      expect(DurationLiteralMilliseconds.is("999ms")).toBe(true);
-      expect(DurationLiteralMilliseconds.is("1000ms")).toBe(false);
-      expect(DurationLiteralSeconds.is("59.9s")).toBe(true);
-      expect(DurationLiteralSeconds.is("60s")).toBe(false);
-      expect(DurationLiteralMinutes.is("59.9m")).toBe(true);
-      expect(DurationLiteralMinutes.is("60m")).toBe(false);
-      expect(DurationLiteralHours.is("23.9h")).toBe(true);
-      expect(DurationLiteralHours.is("24h")).toBe(false);
-      expect(DurationLiteralDays.is("6.9d")).toBe(true);
-      expect(DurationLiteralDays.is("7d")).toBe(false);
-      expect(DurationLiteralWeeks.is("51.9w")).toBe(true);
-      expect(DurationLiteralWeeks.is("52w")).toBe(false);
-      expect(DurationLiteralYears.is("99.9y")).toBe(true);
-      expect(DurationLiteralYears.is("100y")).toBe(false);
-      expect(DurationLiteral.is("1.5s")).toBe(true);
-      expect(DurationLiteral.is("0.5s")).toBe(false);
+    it("validates durations at runtime", () => {
+      assertTrue(DurationLiteralMilliseconds.is("999ms"));
+      assertFalse(DurationLiteralMilliseconds.is("1000ms"));
+      assertTrue(DurationLiteralSeconds.is("59.9s"));
+      assertFalse(DurationLiteralSeconds.is("60s"));
+      assertTrue(DurationLiteralMinutes.is("59.9m"));
+      assertFalse(DurationLiteralMinutes.is("60m"));
+      assertTrue(DurationLiteralHours.is("23.9h"));
+      assertFalse(DurationLiteralHours.is("24h"));
+      assertTrue(DurationLiteralDays.is("6.9d"));
+      assertFalse(DurationLiteralDays.is("7d"));
+      assertTrue(DurationLiteralWeeks.is("51.9w"));
+      assertFalse(DurationLiteralWeeks.is("52w"));
+      assertTrue(DurationLiteralYears.is("99.9y"));
+      assertFalse(DurationLiteralYears.is("100y"));
+      assertTrue(DurationLiteral.is("1.5s"));
+      assertFalse(DurationLiteral.is("0.5s"));
     });
   });
 
   describe("durationToMillis", () => {
-    test("preserves positive duration type", () => {
-      expectTypeOf(durationToMillis("1ms")).toEqualTypeOf<PositiveMillis>();
-      expectTypeOf(
-        durationToMillis(PositiveMillis.orThrow(1)),
-      ).toEqualTypeOf<PositiveMillis>();
+    it("preserves positive duration type", () => {
+      {
+        const actual = durationToMillis("1ms");
+        assertType<typeof actual, PositiveMillis>();
+      }
+      {
+        const actual = durationToMillis(PositiveMillis.orThrow(1));
+        assertType<typeof actual, PositiveMillis>();
+      }
 
       const duration: Duration = 0 as Millis;
-      expectTypeOf(durationToMillis(duration)).toEqualTypeOf<Millis>();
+      {
+        const actual = durationToMillis(duration);
+        assertType<typeof actual, Millis>();
+      }
     });
 
-    test("converts DurationLiteral to milliseconds", () => {
+    it("converts DurationLiteral to milliseconds", () => {
       // Milliseconds
-      expect(durationToMillis("1ms")).toBe(1);
-      expect(durationToMillis("500ms")).toBe(500);
-      expect(durationToMillis("999ms")).toBe(999);
+      assertEqual(durationToMillis("1ms"), 1);
+      assertEqual(durationToMillis("500ms"), 500);
+      assertEqual(durationToMillis("999ms"), 999);
       // Seconds (integer and decimal)
-      expect(durationToMillis("1s")).toBe(1000);
-      expect(durationToMillis("30s")).toBe(30000);
-      expect(durationToMillis("59s")).toBe(59000);
-      expect(durationToMillis("1.5s")).toBe(1500);
+      assertEqual(durationToMillis("1s"), 1000);
+      assertEqual(durationToMillis("30s"), 30000);
+      assertEqual(durationToMillis("59s"), 59000);
+      assertEqual(durationToMillis("1.5s"), 1500);
       // Minutes (integer and decimal)
-      expect(durationToMillis("1m")).toBe(60000);
-      expect(durationToMillis("30m")).toBe(30 * 60000);
-      expect(durationToMillis("1.5m")).toBe(90000);
+      assertEqual(durationToMillis("1m"), 60000);
+      assertEqual(durationToMillis("30m"), 30 * 60000);
+      assertEqual(durationToMillis("1.5m"), 90000);
       // Hours (integer and decimal)
-      expect(durationToMillis("1h")).toBe(3600000);
-      expect(durationToMillis("23h")).toBe(23 * 3600000);
-      expect(durationToMillis("1.5h")).toBe(5400000);
+      assertEqual(durationToMillis("1h"), 3600000);
+      assertEqual(durationToMillis("23h"), 23 * 3600000);
+      assertEqual(durationToMillis("1.5h"), 5400000);
       // Days (integer and decimal, max 6)
-      expect(durationToMillis("1d")).toBe(86400000);
-      expect(durationToMillis("6d")).toBe(6 * 86400000);
-      expect(durationToMillis("1.5d")).toBe(129600000);
+      assertEqual(durationToMillis("1d"), 86400000);
+      assertEqual(durationToMillis("6d"), 6 * 86400000);
+      assertEqual(durationToMillis("1.5d"), 129600000);
       // Weeks (integer and decimal)
-      expect(durationToMillis("1w")).toBe(604800000);
-      expect(durationToMillis("51w")).toBe(51 * 604800000);
-      expect(durationToMillis("1.5w")).toBe(907200000);
+      assertEqual(durationToMillis("1w"), 604800000);
+      assertEqual(durationToMillis("51w"), 51 * 604800000);
+      assertEqual(durationToMillis("1.5w"), 907200000);
       // Years (integer and decimal)
-      expect(durationToMillis("1y")).toBe(31536000000);
-      expect(durationToMillis("99y")).toBe(99 * 31536000000);
-      expect(durationToMillis("1.5y")).toBe(47304000000);
+      assertEqual(durationToMillis("1y"), 31536000000);
+      assertEqual(durationToMillis("99y"), 99 * 31536000000);
+      assertEqual(durationToMillis("1.5y"), 47304000000);
     });
 
-    test("passes through Millis unchanged", () => {
-      expect(durationToMillis(0 as Millis)).toBe(0);
-      expect(durationToMillis(5000 as Millis)).toBe(5000);
+    it("passes through Millis unchanged", () => {
+      assertEqual(durationToMillis(0 as Millis), 0);
+      assertEqual(durationToMillis(5000 as Millis), 5000);
     });
   });
 
   describe("formatMillisAsDuration", () => {
-    test("formats sub-minute durations", () => {
-      expect(formatMillisAsDuration(0 as Millis)).toBe("0.000s");
-      expect(formatMillisAsDuration(1 as Millis)).toBe("0.001s");
-      expect(formatMillisAsDuration(1234 as Millis)).toBe("1.234s");
-      expect(formatMillisAsDuration(59999 as Millis)).toBe("59.999s");
+    it("formats sub-minute durations", () => {
+      assertEqual(formatMillisAsDuration(0 as Millis), "0.000s");
+      assertEqual(formatMillisAsDuration(1 as Millis), "0.001s");
+      assertEqual(formatMillisAsDuration(1234 as Millis), "1.234s");
+      assertEqual(formatMillisAsDuration(59999 as Millis), "59.999s");
     });
 
-    test("formats minute-range durations", () => {
-      expect(formatMillisAsDuration(60000 as Millis)).toBe("1m0.000s");
-      expect(formatMillisAsDuration(90000 as Millis)).toBe("1m30.000s");
-      expect(formatMillisAsDuration(3599999 as Millis)).toBe("59m59.999s");
+    it("formats minute-range durations", () => {
+      assertEqual(formatMillisAsDuration(60000 as Millis), "1m0.000s");
+      assertEqual(formatMillisAsDuration(90000 as Millis), "1m30.000s");
+      assertEqual(formatMillisAsDuration(3599999 as Millis), "59m59.999s");
     });
 
-    test("formats hour-range durations", () => {
-      expect(formatMillisAsDuration(3600000 as Millis)).toBe("1h0m0.000s");
-      expect(formatMillisAsDuration(3661000 as Millis)).toBe("1h1m1.000s");
-      expect(formatMillisAsDuration(5400000 as Millis)).toBe("1h30m0.000s");
-      expect(formatMillisAsDuration(86399999 as Millis)).toBe("23h59m59.999s");
+    it("formats hour-range durations", () => {
+      assertEqual(formatMillisAsDuration(3600000 as Millis), "1h0m0.000s");
+      assertEqual(formatMillisAsDuration(3661000 as Millis), "1h1m1.000s");
+      assertEqual(formatMillisAsDuration(5400000 as Millis), "1h30m0.000s");
+      assertEqual(formatMillisAsDuration(86399999 as Millis), "23h59m59.999s");
     });
 
-    test("formats day, week, and year durations", () => {
-      expect(formatMillisAsDuration(durationToMillis("1d"))).toBe(
+    it("formats day, week, and year durations", () => {
+      assertEqual(
+        formatMillisAsDuration(durationToMillis("1d")),
         "1d0h0m0.000s",
       );
-      expect(formatMillisAsDuration(durationToMillis("1w"))).toBe(
+      assertEqual(
+        formatMillisAsDuration(durationToMillis("1w")),
         "1w0d0h0m0.000s",
       );
-      expect(formatMillisAsDuration(durationToMillis("1y"))).toBe(
+      assertEqual(
+        formatMillisAsDuration(durationToMillis("1y")),
         "1y0w0d0h0m0.000s",
       );
-      expect(
+      assertEqual(
         formatMillisAsDuration(
           Millis.orThrow(
             durationToMillis("1y") +
@@ -844,12 +905,13 @@ describe("Time", () => {
               durationToMillis("6s"),
           ),
         ),
-      ).toBe("1y2w3d4h5m6.000s");
+        "1y2w3d4h5m6.000s",
+      );
     });
   });
 
   describe("formatMillisAsClockTime", () => {
-    test("formats local time as HH:MM:SS.mmm", () => {
+    it("formats local time as HH:MM:SS.mmm", () => {
       const timestamp = new Date(
         2026,
         0,
@@ -860,13 +922,13 @@ describe("Time", () => {
         234,
       ).getTime() as Millis;
 
-      expect(formatMillisAsClockTime(timestamp)).toBe("14:32:15.234");
+      assertEqual(formatMillisAsClockTime(timestamp), "14:32:15.234");
     });
 
-    test("pads single digits", () => {
+    it("pads single digits", () => {
       const timestamp = new Date(2026, 0, 1, 0, 1, 2, 3).getTime() as Millis;
 
-      expect(formatMillisAsClockTime(timestamp)).toBe("00:01:02.003");
+      assertEqual(formatMillisAsClockTime(timestamp), "00:01:02.003");
     });
   });
 });

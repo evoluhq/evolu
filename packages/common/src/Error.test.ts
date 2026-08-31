@@ -1,78 +1,81 @@
-import { describe, expect, test } from "vitest";
-import {
-  UnknownError,
-  createUnknownError,
-} from "../../../../packages/common/src/Error.ts";
+import { describe, it } from "node:test";
+import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
+
+import { UnknownError, createUnknownError } from "./Error.ts";
+import { assertType, Object, String } from "./Type.ts";
 
 describe("createUnknownError", () => {
-  test("UnknownError validates unknown error values", () => {
+  it("UnknownError validates unknown error values", () => {
     const result = createUnknownError("boom");
 
-    expect(UnknownError.is(result)).toBe(true);
-    expect(UnknownError.is({ type: "OtherError", error: "boom" })).toBe(false);
+    assertTrue(UnknownError.is(result));
+    assertFalse(UnknownError.is({ type: "OtherError", error: "boom" }));
   });
 
-  test("handles plain error", () => {
+  it("handles plain error", () => {
     const error = new Error("Test error");
     const result = createUnknownError(error);
 
-    expect(result.type).toBe("UnknownError");
+    assertEqual(result.type, "UnknownError");
 
-    expect(result.error).toMatchObject({
-      message: "Test error",
-      stack: expect.any(String),
-    });
+    assertType(Object, result.error);
+    const details = result.error;
+    assertEqual(details.message, "Test error");
+    assertType(String, details.stack);
   });
 
-  test("handles error with cause", () => {
+  it("handles error with cause", () => {
     const innerError = new Error("Inner error");
     const error = new Error("Outer error", { cause: innerError });
     const result = createUnknownError(error);
 
-    expect(result.type).toBe("UnknownError");
-    expect(result.error).toMatchObject({
-      message: "Outer error",
-      stack: expect.any(String),
-      cause: {
-        message: "Inner error",
-        stack: expect.any(String),
-      },
-    });
+    assertEqual(result.type, "UnknownError");
+    assertType(Object, result.error);
+    const details = result.error;
+    assertEqual(details.message, "Outer error");
+    assertType(String, details.stack);
+    assertType(Object, details.cause);
+    const cause = details.cause;
+    assertEqual(cause.message, "Inner error");
+    assertType(String, cause.stack);
   });
 
-  test("handles inherited stack getter", () => {
-    const prototype: object = Object.create(Error.prototype, {
+  it("handles inherited stack getter", () => {
+    const prototype: object = globalThis.Object.create(Error.prototype, {
       stack: { get: () => "Inherited stack" },
     });
-    const error = Object.create(prototype) as Error;
-    Object.defineProperty(error, "message", { value: "Test error" });
+    const error = globalThis.Object.create(prototype) as Error;
+    globalThis.Object.defineProperty(error, "message", {
+      value: "Test error",
+    });
     const result = createUnknownError(error);
 
-    expect(result.error).toMatchObject({
-      message: "Test error",
-      stack: "Inherited stack",
-    });
+    assertType(Object, result.error);
+    const details = result.error;
+    assertEqual(details.message, "Test error");
+    assertEqual(details.stack, "Inherited stack");
   });
 
-  test("excludes non-clonable error properties", () => {
-    const error = Object.assign(new Error("Test error"), {
+  it("excludes non-clonable error properties", () => {
+    const error = globalThis.Object.assign(new Error("Test error"), {
       nonClonable: () => undefined,
     });
     const result = createUnknownError(error);
 
-    expect(result.type).toBe("UnknownError");
-    expect(result.error).not.toHaveProperty("nonClonable");
+    assertEqual(result.type, "UnknownError");
+    assertType(Object, result.error);
+    assertFalse("nonClonable" in result.error);
   });
 
-  test("handles structured cloneable objects", () => {
+  it("handles structured cloneable objects", () => {
     const error = { key: "value" };
     const result = createUnknownError(error);
 
-    expect(result.type).toBe("UnknownError");
-    expect(result.error).toEqual({ key: "value" });
+    assertEqual(result.type, "UnknownError");
+    assertEqual(result.error, { key: "value" });
   });
 
-  test("handles non-cloneable objects", () => {
+  it("handles non-cloneable objects", () => {
     const error = {
       toString: () => {
         throw new Error("Cannot stringify");
@@ -80,26 +83,26 @@ describe("createUnknownError", () => {
     };
     const result = createUnknownError(error);
 
-    expect(result.type).toBe("UnknownError");
-    expect(result.error).toBe("[Unserializable Object]");
+    assertEqual(result.type, "UnknownError");
+    assertEqual(result.error, "[Unserializable Object]");
   });
 
-  test("handles primitive values", () => {
+  it("handles primitive values", () => {
     const error = "A simple string";
     const result = createUnknownError(error);
 
-    expect(result.type).toBe("UnknownError");
-    expect(result.error).toBe("A simple string");
+    assertEqual(result.type, "UnknownError");
+    assertEqual(result.error, "A simple string");
   });
 
-  test("handles null values", () => {
+  it("handles null values", () => {
     const result = createUnknownError(null);
 
-    expect(result.type).toBe("UnknownError");
-    expect(result.error).toBe(null);
+    assertEqual(result.type, "UnknownError");
+    assertSame(result.error, null);
   });
 
-  test("handles circular references", () => {
+  it("handles circular references", () => {
     interface Circular {
       self?: Circular;
     }
@@ -108,11 +111,8 @@ describe("createUnknownError", () => {
     error.self = error;
     const result = createUnknownError(error);
 
-    expect(result.type).toBe("UnknownError");
-    expect(result.error).toMatchInlineSnapshot(`
-      {
-        "self": [Circular],
-      }
-    `);
+    assertEqual(result.type, "UnknownError");
+    const actual = result.error as Circular;
+    assertSame(actual.self, actual);
   });
 });

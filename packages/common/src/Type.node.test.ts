@@ -1,6 +1,6 @@
-import { expectOk } from "@evolu/vitest";
 import { runInNewContext } from "node:vm";
-import { expect, test } from "vitest";
+import { test } from "node:test";
+import { assertFalse, assertOk, assertSame, assertTrue } from "./Assert.ts";
 import {
   ArrayBuffer,
   array,
@@ -17,7 +17,7 @@ import {
   tuple,
   typed,
   Uint8Array,
-} from "../../../../packages/common/src/Type.ts";
+} from "./Type.ts";
 
 test("accepts legitimate structured values from another realm by identity", () => {
   const Model = object({ name: String });
@@ -47,13 +47,13 @@ test("accepts legitimate structured values from another realm by identity", () =
     tupleValue: ["Ada", "Lovelace"],
   })`);
 
-  expect(values.objectValue).not.toBeInstanceOf(globalThis.Object);
-  expect(values.arrayValue).not.toBeInstanceOf(globalThis.Array);
-  expect(values.tupleValue).not.toBeInstanceOf(globalThis.Array);
-  expect(values.setValue).not.toBeInstanceOf(globalThis.Set);
-  expect(values.eventValue).not.toBeInstanceOf(globalThis.Object);
-  expect(values.jsonValue).not.toBeInstanceOf(globalThis.Object);
-  expect(values.mapValue).not.toBeInstanceOf(globalThis.Map);
+  assertFalse(values.objectValue instanceof globalThis.Object);
+  assertFalse(values.arrayValue instanceof globalThis.Array);
+  assertFalse(values.tupleValue instanceof globalThis.Array);
+  assertFalse(values.setValue instanceof globalThis.Set);
+  assertFalse(values.eventValue instanceof globalThis.Object);
+  assertFalse(values.jsonValue instanceof globalThis.Object);
+  assertFalse(values.mapValue instanceof globalThis.Map);
 
   const modelResult = Model.fromUnknown(values.objectValue);
   const objectResult = Object.fromUnknown(values.objectValue);
@@ -65,35 +65,35 @@ test("accepts legitimate structured values from another realm by identity", () =
   const jsonResult = JsonValue.fromUnknown(values.jsonValue);
   const mapResult = ValuesByName.fromUnknown(values.mapValue);
 
-  expectOk(modelResult, values.objectValue);
-  expectOk(objectResult, values.objectValue);
-  expectOk(namesResult, values.arrayValue);
-  expectOk(nameResult, values.tupleValue);
-  expectOk(valuesResult, values.objectValue);
-  expectOk(setResult, values.setValue);
-  expectOk(eventResult, values.eventValue);
-  expectOk(jsonResult, values.jsonValue);
-  expectOk(mapResult, values.mapValue);
+  assertOk(modelResult);
+  assertOk(objectResult);
+  assertOk(namesResult);
+  assertOk(nameResult);
+  assertOk(valuesResult);
+  assertOk(setResult);
+  assertOk(eventResult);
+  assertOk(jsonResult);
+  assertOk(mapResult);
 
-  expect(modelResult.value).toBe(values.objectValue);
-  expect(objectResult.value).toBe(values.objectValue);
-  expect(namesResult.value).toBe(values.arrayValue);
-  expect(nameResult.value).toBe(values.tupleValue);
-  expect(valuesResult.value).toBe(values.objectValue);
-  expect(setResult.value).toBe(values.setValue);
-  expect(eventResult.value).toBe(values.eventValue);
-  expect(jsonResult.value).toBe(values.jsonValue);
-  expect(mapResult.value).toBe(values.mapValue);
+  assertSame(modelResult.value, values.objectValue);
+  assertSame(objectResult.value, values.objectValue);
+  assertSame(namesResult.value, values.arrayValue);
+  assertSame(nameResult.value, values.tupleValue);
+  assertSame(valuesResult.value, values.objectValue);
+  assertSame(setResult.value, values.setValue);
+  assertSame(eventResult.value, values.eventValue);
+  assertSame(jsonResult.value, values.jsonValue);
+  assertSame(mapResult.value, values.mapValue);
 
-  expect(Model.is(values.objectValue)).toBe(true);
-  expect(Object.is(values.objectValue)).toBe(true);
-  expect(Names.is(values.arrayValue)).toBe(true);
-  expect(Name.is(values.tupleValue)).toBe(true);
-  expect(Values.is(values.objectValue)).toBe(true);
-  expect(StringSet.is(values.setValue)).toBe(true);
-  expect(Event.is(values.eventValue)).toBe(true);
-  expect(JsonValue.is(values.jsonValue)).toBe(true);
-  expect(ValuesByName.is(values.mapValue)).toBe(true);
+  assertTrue(Model.is(values.objectValue));
+  assertTrue(Object.is(values.objectValue));
+  assertTrue(Names.is(values.arrayValue));
+  assertTrue(Name.is(values.tupleValue));
+  assertTrue(Values.is(values.objectValue));
+  assertTrue(StringSet.is(values.setValue));
+  assertTrue(Event.is(values.eventValue));
+  assertTrue(JsonValue.is(values.jsonValue));
+  assertTrue(ValuesByName.is(values.mapValue));
 });
 
 test("accepts foreign-realm Object schema property maps", () => {
@@ -105,9 +105,9 @@ test("accepts foreign-realm Object schema property maps", () => {
   const value: unknown = runInNewContext("({ name: 'Ada' })");
   const result = Model.fromUnknown(value);
 
-  expect(props).not.toBeInstanceOf(globalThis.Object);
-  expectOk(result, value);
-  expect(result.value).toBe(value);
+  assertFalse(props instanceof globalThis.Object);
+  assertOk(result);
+  assertSame(result.value, value);
 });
 
 test("accepts foreign null-prototype objects because they have no realm identity", () => {
@@ -117,20 +117,20 @@ test("accepts foreign null-prototype objects because they have no realm identity
 
   const result = Object.fromUnknown(value);
 
-  expect(globalThis.Object.getPrototypeOf(value)).toBeNull();
-  expectOk(result, value);
-  expect(result.value).toBe(value);
-  expect(Object.is(value)).toBe(true);
+  assertSame(globalThis.Object.getPrototypeOf(value), null);
+  assertOk(result);
+  assertSame(result.value, value);
+  assertTrue(Object.is(value));
 });
 
 test("Data accepts a valid Uint8Array from another realm", () => {
   const value: unknown = runInNewContext("new Uint8Array([1, 2, 3])");
   const result = Data.fromUnknown(value);
 
-  expect(value).not.toBeInstanceOf(globalThis.Uint8Array);
-  expectOk(result, value);
-  expect(result.value).toBe(value);
-  expect(Data.is(value)).toBe(true);
+  assertFalse(value instanceof globalThis.Uint8Array);
+  assertOk(result);
+  assertSame(result.value, value);
+  assertTrue(Data.is(value));
 });
 
 test("accepts built-in instances from another realm by identity", () => {
@@ -153,11 +153,11 @@ test("accepts built-in instances from another realm by identity", () => {
   ] as const;
 
   for (const { constructor, type, value } of values) {
-    expect(value).not.toBeInstanceOf(constructor);
+    assertFalse(value instanceof constructor);
     const result = type.fromUnknown(value);
 
-    expectOk(result, value);
-    expect(result.value).toBe(value);
-    expect(type.is(value)).toBe(true);
+    assertOk(result);
+    assertSame(result.value, value);
+    assertTrue(type.is(value));
   }
 });

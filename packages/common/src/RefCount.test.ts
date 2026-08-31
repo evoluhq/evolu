@@ -1,118 +1,160 @@
-import { describe, expect, test } from "vitest";
+import { describe, it } from "node:test";
 import {
-  createRefCount,
-  createRefCountByKey,
-} from "../../../../packages/common/src/RefCount.ts";
+  assertEqual,
+  assertFalse,
+  assertThrowsInstanceOf,
+  assertTrue,
+} from "./Assert.ts";
+
+import { installPolyfills } from "./Polyfills.ts";
+import { createRefCount, createRefCountByKey } from "./RefCount.ts";
+
+installPolyfills();
 
 describe("createRefCount", () => {
-  test("increments and decrements the count", () => {
+  it("increments and decrements the count", () => {
     const refCount = createRefCount();
 
-    expect(refCount.getCount()).toBe(0);
-    expect(refCount.increment()).toBe(1);
-    expect(refCount.increment()).toBe(2);
-    expect(refCount.getCount()).toBe(2);
-    expect(refCount.decrement()).toBe(1);
-    expect(refCount.decrement()).toBe(0);
-    expect(refCount.getCount()).toBe(0);
+    assertEqual(refCount.getCount(), 0);
+    assertEqual(refCount.increment(), 1);
+    assertEqual(refCount.increment(), 2);
+    assertEqual(refCount.getCount(), 2);
+    assertEqual(refCount.decrement(), 1);
+    assertEqual(refCount.decrement(), 0);
+    assertEqual(refCount.getCount(), 0);
   });
 
-  test("decrement throws on underflow", () => {
+  it("decrement throws on underflow", () => {
     const refCount = createRefCount();
 
-    expect(() => refCount.decrement()).toThrow(
-      "RefCount must not be decremented below zero.",
+    const error = assertThrowsInstanceOf(() => refCount.decrement(), Error);
+    assertTrue(
+      error.message.includes("RefCount must not be decremented below zero."),
     );
   });
 
-  test("dispose invalidates the helper", () => {
+  it("dispose invalidates the helper", () => {
     const refCount = createRefCount();
 
     refCount.increment();
     refCount.increment();
     refCount[Symbol.dispose]();
 
-    expect(() => refCount.increment()).toThrow("Cannot use a disposed object.");
-    expect(() => refCount.decrement()).toThrow("Cannot use a disposed object.");
-    expect(() => refCount.getCount()).toThrow("Cannot use a disposed object.");
+    const incrementError = assertThrowsInstanceOf(
+      () => refCount.increment(),
+      Error,
+    );
+    assertTrue(
+      incrementError.message.includes("Cannot use a disposed object."),
+    );
+    const decrementError = assertThrowsInstanceOf(
+      () => refCount.decrement(),
+      Error,
+    );
+    assertTrue(
+      decrementError.message.includes("Cannot use a disposed object."),
+    );
+    const getCountError = assertThrowsInstanceOf(
+      () => refCount.getCount(),
+      Error,
+    );
+    assertTrue(getCountError.message.includes("Cannot use a disposed object."));
   });
 });
 
 describe("createRefCountByKey", () => {
-  test("tracks counts per key", () => {
+  it("tracks counts per key", () => {
     const refCount = createRefCountByKey<string>();
 
-    expect(refCount.increment("a")).toBe(1);
-    expect(refCount.increment("a")).toBe(2);
-    expect(refCount.increment("b")).toBe(1);
-    expect(refCount.getCount("a")).toBe(2);
-    expect(refCount.getCount("b")).toBe(1);
-    expect(refCount.keys()).toEqual(new Set(["a", "b"]));
+    assertEqual(refCount.increment("a"), 1);
+    assertEqual(refCount.increment("a"), 2);
+    assertEqual(refCount.increment("b"), 1);
+    assertEqual(refCount.getCount("a"), 2);
+    assertEqual(refCount.getCount("b"), 1);
+    assertEqual(refCount.keys(), new Set(["a", "b"]));
   });
 
-  test("decrement removes key at zero", () => {
+  it("decrement removes key at zero", () => {
     const refCount = createRefCountByKey<string>();
 
     refCount.increment("a");
 
-    expect(refCount.decrement("a")).toBe(0);
-    expect(refCount.getCount("a")).toBe(0);
-    expect(refCount.has("a")).toBe(false);
-    expect(refCount.keys()).toEqual(new Set());
+    assertEqual(refCount.decrement("a"), 0);
+    assertEqual(refCount.getCount("a"), 0);
+    assertFalse(refCount.has("a"));
+    assertEqual(refCount.keys(), new Set());
   });
 
-  test("decrement throws on missing key", () => {
+  it("decrement throws on missing key", () => {
     const refCount = createRefCountByKey<string>();
 
-    expect(() => refCount.decrement("missing")).toThrow(
-      "RefCount must not be decremented for an untracked key.",
+    const error = assertThrowsInstanceOf(
+      () => refCount.decrement("missing"),
+      Error,
     );
-    expect(refCount.has("missing")).toBe(false);
-    expect(refCount.keys()).toEqual(new Set());
+    assertTrue(
+      error.message.includes(
+        "RefCount must not be decremented for an untracked key.",
+      ),
+    );
+    assertFalse(refCount.has("missing"));
+    assertEqual(refCount.keys(), new Set());
   });
 
-  test("decrement keeps key while count stays positive", () => {
+  it("decrement keeps key while count stays positive", () => {
     const refCount = createRefCountByKey<string>();
 
     refCount.increment("a");
     refCount.increment("a");
 
-    expect(refCount.decrement("a")).toBe(1);
-    expect(refCount.getCount("a")).toBe(1);
-    expect(refCount.has("a")).toBe(true);
+    assertEqual(refCount.decrement("a"), 1);
+    assertEqual(refCount.getCount("a"), 1);
+    assertTrue(refCount.has("a"));
   });
 
-  test("keys returns a snapshot set", () => {
+  it("keys returns a snapshot set", () => {
     const refCount = createRefCountByKey<string>();
     refCount.increment("a");
 
     const keys = refCount.keys();
     refCount.increment("b");
 
-    expect(keys).toEqual(new Set(["a"]));
+    assertEqual(keys, new Set(["a"]));
   });
 
-  test("dispose invalidates the helper", () => {
+  it("dispose invalidates the helper", () => {
     const refCount = createRefCountByKey<string>();
 
     refCount.increment("a");
     refCount.increment("b");
     refCount[Symbol.dispose]();
 
-    expect(() => refCount.increment("c")).toThrow(
-      "Cannot use a disposed object.",
+    const incrementError = assertThrowsInstanceOf(
+      () => refCount.increment("c"),
+      Error,
     );
-    expect(() => refCount.decrement("a")).toThrow(
-      "Cannot use a disposed object.",
+    assertTrue(
+      incrementError.message.includes("Cannot use a disposed object."),
     );
-    expect(() => refCount.getCount("a")).toThrow(
-      "Cannot use a disposed object.",
+    const decrementError = assertThrowsInstanceOf(
+      () => refCount.decrement("a"),
+      Error,
     );
-    expect(() => refCount.has("a")).toThrow("Cannot use a disposed object.");
-    expect(() => refCount.keys()).toThrow("Cannot use a disposed object.");
+    assertTrue(
+      decrementError.message.includes("Cannot use a disposed object."),
+    );
+    const getCountError = assertThrowsInstanceOf(
+      () => refCount.getCount("a"),
+      Error,
+    );
+    assertTrue(getCountError.message.includes("Cannot use a disposed object."));
+    const hasError = assertThrowsInstanceOf(() => refCount.has("a"), Error);
+    assertTrue(hasError.message.includes("Cannot use a disposed object."));
+    const keysError = assertThrowsInstanceOf(() => refCount.keys(), Error);
+    assertTrue(keysError.message.includes("Cannot use a disposed object."));
   });
 
-  test("uses reference identity for object keys", () => {
+  it("uses reference identity for object keys", () => {
     const refCount = createRefCountByKey<{ readonly id: string }>();
     const keyA = { id: "same" };
     const keyB = { id: "same" };
@@ -120,23 +162,23 @@ describe("createRefCountByKey", () => {
     refCount.increment(keyA);
     refCount.increment(keyB);
 
-    expect(refCount.getCount(keyA)).toBe(1);
-    expect(refCount.getCount(keyB)).toBe(1);
-    expect(refCount.keys().size).toBe(2);
+    assertEqual(refCount.getCount(keyA), 1);
+    assertEqual(refCount.getCount(keyB), 1);
+    assertEqual(refCount.keys().size, 2);
   });
 
-  test("uses lookup for logical key equality", () => {
+  it("uses lookup for logical key equality", () => {
     const refCount = createRefCountByKey<{ readonly id: string }, string>({
       lookup: (key) => key.id,
     });
 
-    expect(refCount.increment({ id: "same" })).toBe(1);
-    expect(refCount.increment({ id: "same" })).toBe(2);
-    expect(refCount.getCount({ id: "same" })).toBe(2);
-    expect(refCount.keys().size).toBe(1);
+    assertEqual(refCount.increment({ id: "same" }), 1);
+    assertEqual(refCount.increment({ id: "same" }), 2);
+    assertEqual(refCount.getCount({ id: "same" }), 2);
+    assertEqual(refCount.keys().size, 1);
 
-    expect(refCount.decrement({ id: "same" })).toBe(1);
-    expect(refCount.decrement({ id: "same" })).toBe(0);
-    expect(refCount.has({ id: "same" })).toBe(false);
+    assertEqual(refCount.decrement({ id: "same" }), 1);
+    assertEqual(refCount.decrement({ id: "same" }), 0);
+    assertFalse(refCount.has({ id: "same" }));
   });
 });

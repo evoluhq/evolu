@@ -1,7 +1,7 @@
 {
   "extends": "@evolu/typescript-config/library.json",
   "compilerOptions": {
-    "types": ["user-agent-data-types"]
+    "types": ["node", "user-agent-data-types"]
   },
-  "references": [{ "path": "../common" }, { "path": "../vitest" }]
+  "references": [{ "path": "../common" }]
 }

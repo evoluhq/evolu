@@ -1,5 +1,7 @@
+import { test } from "node:test";
+import { assertEqual, assertErr, assertSame } from "./Assert.ts";
 import { bytesToHex, utf8ToBytes } from "@noble/ciphers/utils.js";
-import { assert, expect, test } from "vitest";
+
 import {
   createPadmePaddedLength,
   createPadmePadding,
@@ -8,15 +10,12 @@ import {
   decryptWithXChaCha20Poly1305,
   encryptWithXChaCha20Poly1305,
   XChaCha20Poly1305Ciphertext,
-} from "../../../../packages/common/src/Crypto.ts";
-import { mnemonicToOwnerSecret } from "../../../../packages/common/src/index.ts";
-import { ok } from "../../../../packages/common/src/Result.ts";
-import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
-import {
-  Mnemonic,
-  NonNegativeInt,
-} from "../../../../packages/common/src/Type.ts";
-import { testAppOwner } from "./local-first/_fixtures.ts";
+} from "./Crypto.ts";
+import { mnemonicToOwnerSecret } from "./index.ts";
+import { ok } from "./Result.ts";
+import { testCreateDeps } from "./Task.ts";
+import { Mnemonic, NonNegativeInt } from "./Type.ts";
+import { testAppOwner } from "./local-first/Owner.ts";
 
 test("encryptWithXChaCha20Poly1305 / decryptWithXChaCha20Poly1305", () => {
   const deps = testCreateDeps();
@@ -28,17 +27,18 @@ test("encryptWithXChaCha20Poly1305 / decryptWithXChaCha20Poly1305", () => {
     encryptionKey,
   );
 
-  expect(
+  assertEqual(
     decryptWithXChaCha20Poly1305(ciphertext, nonce, encryptionKey),
-  ).toEqual(ok(plaintext));
+    ok(plaintext),
+  );
 
   const result = decryptWithXChaCha20Poly1305(
     XChaCha20Poly1305Ciphertext.orThrow(new Uint8Array([1, 2, 3])),
     nonce,
     encryptionKey,
   );
-  assert(!result.ok);
-  expect(result.error.type).toBe("DecryptWithXChaCha20Poly1305Error");
+  assertErr(result);
+  assertEqual(result.error.type, "DecryptWithXChaCha20Poly1305Error");
 });
 
 test("createPadmePaddedLength", () => {
@@ -74,8 +74,9 @@ test("createPadmePaddedLength", () => {
     [100000, 100352],
     [1048576, 1048576],
   ].forEach(([input, expected]) => {
-    expect(createPadmePaddedLength(input as NonNegativeInt)).toBe(expected);
-    expect(createPadmePadding(input as NonNegativeInt).length).toBe(
+    assertSame(createPadmePaddedLength(input as NonNegativeInt), expected);
+    assertSame(
+      createPadmePadding(input as NonNegativeInt).length,
       expected - input,
     );
   });
@@ -88,13 +89,15 @@ test("createSlip21", () => {
   const ownerSecret = mnemonicToOwnerSecret(mnemonic);
 
   const ownerId = createSlip21(ownerSecret, ["Evolu", "Owner Id"]);
-  expect(bytesToHex(ownerId)).toMatchInlineSnapshot(
-    `"bce9b26dad1a3364c105eb65e7aef032fdffd53816819ac4664442c4a915327f"`,
+  assertEqual(
+    bytesToHex(ownerId),
+    "bce9b26dad1a3364c105eb65e7aef032fdffd53816819ac4664442c4a915327f",
   );
 
   const encryptionKey = createSlip21(ownerSecret, ["Evolu", "Encryption Key"]);
-  expect(bytesToHex(encryptionKey)).toMatchInlineSnapshot(
-    `"abf2095887bc74adda889a572e29a407a457a39bfdd4202d34ee6eac5c28effc"`,
+  assertEqual(
+    bytesToHex(encryptionKey),
+    "abf2095887bc74adda889a572e29a407a457a39bfdd4202d34ee6eac5c28effc",
   );
 });
 
@@ -107,7 +110,7 @@ test("createSlip21 normalizes numeric path elements", () => {
   const withNumber = createSlip21(ownerSecret, ["Evolu", 0]);
   const withString = createSlip21(ownerSecret, ["Evolu", "0"]);
 
-  expect(bytesToHex(withNumber)).toBe(bytesToHex(withString));
+  assertSame(bytesToHex(withNumber), bytesToHex(withString));
 });
 
 /**
@@ -126,10 +129,10 @@ test.skip("createRandomBytes generates unique values", () => {
   const end = performance.now();
 
   // ~14ms on Apple M1
-  // eslint-disable-next-line no-console
+  // oxlint-disable-next-line eslint/no-console
   console.log(
     `createRandomBytes: ${iterations} in ${(end - start).toFixed(2)}ms`,
   );
 
-  expect(values.size).toBe(iterations);
+  assertSame(values.size, iterations);
 });

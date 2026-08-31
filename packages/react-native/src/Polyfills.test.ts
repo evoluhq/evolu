@@ -1,5 +1,13 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { installPolyfills } from "../src/Polyfills.ts";
+import {
+  assertEqual,
+  assertFalse,
+  assertInstanceOf,
+  assertRejectsSame,
+  assertSame,
+  assertTrue,
+} from "@evolu/common";
+import { afterEach, beforeEach, describe, it } from "node:test";
+import { installPolyfills } from "./Polyfills.ts";
 
 interface GlobalAbort {
   readonly AbortController: typeof globalThis.AbortController | undefined;
@@ -166,45 +174,45 @@ describe("installPolyfills", () => {
     }
   });
 
-  test("polyfills Array.fromAsync", async () => {
+  it("polyfills Array.fromAsync", async () => {
     delete (Array as ArrayConstructorWithFromAsync).fromAsync;
 
     installPolyfills();
 
-    expect(await Array.fromAsync(new Set([1, 2, 3]))).toEqual([1, 2, 3]);
+    assertEqual(await Array.fromAsync(new Set([1, 2, 3])), [1, 2, 3]);
   });
 
-  test("polyfills Promise.withResolvers", async () => {
+  it("polyfills Promise.withResolvers", async () => {
     delete (Promise as PromiseStatics).withResolvers;
 
     installPolyfills();
 
     const PromiseStatic = Promise as PromiseStatics;
-    expect(typeof PromiseStatic.withResolvers).toBe("function");
+    assertEqual(typeof PromiseStatic.withResolvers, "function");
 
     const { promise, resolve } = PromiseStatic.withResolvers!();
     resolve("ok");
 
-    await expect(promise).resolves.toBe("ok");
+    assertEqual(await promise, "ok");
   });
 
-  test("polyfills Promise.try and forwards arguments", async () => {
+  it("polyfills Promise.try and forwards arguments", async () => {
     delete (Promise as PromiseStatics).try;
 
     installPolyfills();
 
     const PromiseStatic = Promise as PromiseStatics;
-    expect(typeof PromiseStatic.try).toBe("function");
+    assertEqual(typeof PromiseStatic.try, "function");
 
     const result = await PromiseStatic.try!(
       (a, b) => `${String(a)}-${String(b)}`,
       "a",
       1,
     );
-    expect(result).toBe("a-1");
+    assertEqual(result, "a-1");
   });
 
-  test("Promise.try rejects when callback throws", async () => {
+  it("Promise.try rejects when callback throws", async () => {
     delete (Promise as PromiseStatics).try;
 
     installPolyfills();
@@ -212,14 +220,15 @@ describe("installPolyfills", () => {
     const PromiseStatic = Promise as PromiseStatics;
     const error = new Error("boom");
 
-    await expect(
+    await assertRejectsSame(
       PromiseStatic.try!(() => {
         throw error;
       }),
-    ).rejects.toBe(error);
+      error,
+    );
   });
 
-  test("does not override existing Promise static methods", () => {
+  it("does not override existing Promise static methods", () => {
     const withResolvers = () => {
       const promise = Promise.resolve("existing");
       return {
@@ -236,11 +245,11 @@ describe("installPolyfills", () => {
     installPolyfills();
 
     const PromiseStatic = Promise as PromiseStatics;
-    expect(PromiseStatic.withResolvers).toBe(withResolvers);
-    expect(PromiseStatic.try).toBe(promiseTry);
+    assertSame(PromiseStatic.withResolvers, withResolvers);
+    assertSame(PromiseStatic.try, promiseTry);
   });
 
-  test("polyfills reason propagation", () => {
+  it("polyfills reason propagation", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -250,12 +259,13 @@ describe("installPolyfills", () => {
     const reason = new Error("stop");
     controller.abort(reason);
 
-    expect((controller.signal as { readonly reason: unknown }).reason).toBe(
+    assertSame(
+      (controller.signal as { readonly reason: unknown }).reason,
       reason,
     );
   });
 
-  test("creates AbortError reason when none is provided", () => {
+  it("creates AbortError reason when none is provided", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: undefined });
 
@@ -265,18 +275,18 @@ describe("installPolyfills", () => {
     controller.abort();
 
     const reason = (controller.signal as { readonly reason: Error }).reason;
-    expect(reason.name).toBe("AbortError");
-    expect(reason.message).toBe("This operation was aborted");
+    assertEqual(reason.name, "AbortError");
+    assertEqual(reason.message, "This operation was aborted");
   });
 
-  test("polyfills AbortSignal.throwIfAborted", () => {
+  it("polyfills AbortSignal.throwIfAborted", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
     installPolyfills();
 
     const controller = new globalThis.AbortController();
-    expect(() => controller.signal.throwIfAborted()).not.toThrow();
+    controller.signal.throwIfAborted();
 
     const reason = new Error("stop");
     controller.abort(reason);
@@ -288,10 +298,10 @@ describe("installPolyfills", () => {
       thrown = error;
     }
 
-    expect(thrown).toBe(reason);
+    assertSame(thrown, reason);
   });
 
-  test("does not override AbortSignal.throwIfAborted", () => {
+  it("does not override AbortSignal.throwIfAborted", () => {
     const runtime = createFakeAbortRuntime();
     let called = false;
     const throwIfAborted = () => {
@@ -306,10 +316,10 @@ describe("installPolyfills", () => {
 
     new globalThis.AbortController().signal.throwIfAborted();
 
-    expect(called).toBe(true);
+    assertTrue(called);
   });
 
-  test("polyfills AbortSignal.abort", () => {
+  it("polyfills AbortSignal.abort", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -321,11 +331,11 @@ describe("installPolyfills", () => {
       }
     ).abort("manual");
 
-    expect(signal.aborted).toBe(true);
-    expect((signal as { readonly reason: unknown }).reason).toBe("manual");
+    assertTrue(signal.aborted);
+    assertEqual((signal as { readonly reason: unknown }).reason, "manual");
   });
 
-  test("polyfills AbortSignal.timeout without DOMException", async () => {
+  it("polyfills AbortSignal.timeout without DOMException", async () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: undefined });
 
@@ -342,11 +352,11 @@ describe("installPolyfills", () => {
     });
 
     const reason = (signal as { readonly reason: Error }).reason;
-    expect(signal.aborted).toBe(true);
-    expect(reason.name).toBe("TimeoutError");
+    assertTrue(signal.aborted);
+    assertEqual(reason.name, "TimeoutError");
   });
 
-  test("polyfills AbortSignal.any with first aborted reason", () => {
+  it("polyfills AbortSignal.any with first aborted reason", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -363,11 +373,11 @@ describe("installPolyfills", () => {
     const reason = new Error("cancelled");
     controller2.abort(reason);
 
-    expect(signal.aborted).toBe(true);
-    expect((signal as { readonly reason: unknown }).reason).toBe(reason);
+    assertTrue(signal.aborted);
+    assertSame((signal as { readonly reason: unknown }).reason, reason);
   });
 
-  test("is idempotent and does not re-patch abort", () => {
+  it("is idempotent and does not re-patch abort", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -377,10 +387,10 @@ describe("installPolyfills", () => {
     const controller = new globalThis.AbortController();
     controller.abort(new Error("stop"));
 
-    expect(runtime.getAbortCallCount()).toBe(1);
+    assertEqual(runtime.getAbortCallCount(), 1);
   });
 
-  test("does not override existing AbortSignal static methods", () => {
+  it("does not override existing AbortSignal static methods", () => {
     const runtime = createFakeAbortRuntime();
     const abort = () => ({ aborted: true }) as AbortSignal;
     const timeout = () => ({ aborted: false }) as AbortSignal;
@@ -398,12 +408,12 @@ describe("installPolyfills", () => {
     };
 
     const descriptors = Object.getOwnPropertyDescriptors(AbortSignalStatic);
-    expect(descriptors.abort.value).toBe(abort);
-    expect(descriptors.timeout.value).toBe(timeout);
-    expect(descriptors.any.value).toBe(any);
+    assertSame(descriptors.abort.value, abort);
+    assertSame(descriptors.timeout.value, timeout);
+    assertSame(descriptors.any.value, any);
   });
 
-  test("AbortSignal.any handles empty input", () => {
+  it("AbortSignal.any handles empty input", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -415,10 +425,10 @@ describe("installPolyfills", () => {
       }
     ).any([]);
 
-    expect(signal.aborted).toBe(false);
+    assertFalse(signal.aborted);
   });
 
-  test("AbortSignal.any dedupes duplicate source signals", () => {
+  it("AbortSignal.any dedupes duplicate source signals", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -437,16 +447,16 @@ describe("installPolyfills", () => {
       sourceController.signal,
     ]);
 
-    expect(sourceSignal.getListenerCount()).toBeLessThanOrEqual(1);
+    assertTrue(sourceSignal.getListenerCount() <= 1);
 
     const reason = new Error("duplicate-source");
     sourceController.abort(reason);
 
-    expect(signal.aborted).toBe(true);
-    expect((signal as { readonly reason: unknown }).reason).toBe(reason);
+    assertTrue(signal.aborted);
+    assertSame((signal as { readonly reason: unknown }).reason, reason);
   });
 
-  test("AbortSignal.any uses first already-aborted signal in input order", () => {
+  it("AbortSignal.any uses first already-aborted signal in input order", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -466,11 +476,11 @@ describe("installPolyfills", () => {
       }
     ).any([firstController.signal, secondController.signal]);
 
-    expect(signal.aborted).toBe(true);
-    expect((signal as { readonly reason: unknown }).reason).toBe(firstReason);
+    assertTrue(signal.aborted);
+    assertSame((signal as { readonly reason: unknown }).reason, firstReason);
   });
 
-  test("AbortSignal.any uses AbortError when aborted signal has no reason", () => {
+  it("AbortSignal.any uses AbortError when aborted signal has no reason", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: undefined });
 
@@ -489,10 +499,10 @@ describe("installPolyfills", () => {
     ).any([signalWithoutReason]);
 
     const reason = (signal as { readonly reason: Error }).reason;
-    expect(reason.name).toBe("AbortError");
+    assertEqual(reason.name, "AbortError");
   });
 
-  test("falls back to Error when DOMException constructor throws", async () => {
+  it("falls back to Error when DOMException constructor throws", async () => {
     const runtime = createFakeAbortRuntime();
     const throwingDomException = function () {
       throw new Error("broken DOMException");
@@ -513,11 +523,11 @@ describe("installPolyfills", () => {
     });
 
     const reason = (signal as { readonly reason: Error }).reason;
-    expect(reason).toBeInstanceOf(Error);
-    expect(reason.name).toBe("TimeoutError");
+    assertInstanceOf(reason, Error);
+    assertEqual(reason.name, "TimeoutError");
   });
 
-  test("AbortSignal.any does not add unbounded listeners to a long-lived source", () => {
+  it("AbortSignal.any does not add unbounded listeners to a long-lived source", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -534,10 +544,10 @@ describe("installPolyfills", () => {
       AbortSignalStatic.any([sourceController.signal]);
     }
 
-    expect(sourceSignal.getListenerCount()).toBeLessThanOrEqual(1);
+    assertTrue(sourceSignal.getListenerCount() <= 1);
   });
 
-  test("AbortSignal.any tolerates stale aborted references", () => {
+  it("AbortSignal.any tolerates stale aborted references", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -569,13 +579,13 @@ describe("installPolyfills", () => {
         }
       ).any([sourceController.signal]);
 
-      expect(() => sourceController.abort("ignored")).not.toThrow();
+      sourceController.abort("ignored");
     } finally {
       (globalThis as { WeakRef?: unknown }).WeakRef = originalWeakRef;
     }
   });
 
-  test("AbortSignal.any tolerates cleared weak refs", () => {
+  it("AbortSignal.any tolerates cleared weak refs", () => {
     const runtime = createFakeAbortRuntime();
     setAbortGlobals({ ...runtime, DOMException: globalThis.DOMException });
 
@@ -605,7 +615,7 @@ describe("installPolyfills", () => {
         }
       ).any([sourceController.signal]);
 
-      expect(() => sourceController.abort("ignored")).not.toThrow();
+      sourceController.abort("ignored");
     } finally {
       (globalThis as { WeakRef?: unknown }).WeakRef = originalWeakRef;
     }

@@ -1,27 +1,32 @@
-import { PositiveInt } from "@evolu/common";
-import { expect, expectTypeOf, test, vi } from "vitest";
 import {
-  availableParallelism,
-  type AvailableParallelism,
-  type AvailableParallelismDep,
-} from "../../../../packages/nodejs/src/Platform.ts";
+  assertEqual,
+  assertSame,
+  assertType,
+  PositiveInt,
+} from "@evolu/common";
+import { mock, test } from "node:test";
+import type {
+  AvailableParallelism,
+  AvailableParallelismDep,
+} from "./Platform.ts";
 
-const { nodeAvailableParallelism } = vi.hoisted(() => ({
-  nodeAvailableParallelism: vi.fn(),
-}));
+const nodeAvailableParallelism = mock.fn<() => number>();
 
-vi.mock("node:os", () => ({
-  availableParallelism: nodeAvailableParallelism,
-}));
+mock.module("node:os", {
+  // @ts-expect-error -- Node.js 24.20 replaces the deprecated namedExports option with exports, which @types/node 24.13 does not declare yet.
+  exports: { availableParallelism: nodeAvailableParallelism },
+});
+
+const { availableParallelism } = await import("./Platform.ts");
 
 test("availableParallelism returns the validated Node.js value", () => {
-  nodeAvailableParallelism.mockReturnValue(128);
+  nodeAvailableParallelism.mock.mockImplementation(() => 128);
 
   const parallelism = availableParallelism();
   const deps = { availableParallelism } satisfies AvailableParallelismDep;
 
-  expectTypeOf(availableParallelism).toEqualTypeOf<AvailableParallelism>();
-  expectTypeOf(parallelism).toEqualTypeOf<PositiveInt>();
-  expect(deps.availableParallelism).toBe(availableParallelism);
-  expect(parallelism).toBe(128);
+  assertType<typeof availableParallelism, AvailableParallelism>();
+  assertType<typeof parallelism, PositiveInt>();
+  assertSame(deps.availableParallelism, availableParallelism);
+  assertEqual(parallelism, 128);
 });

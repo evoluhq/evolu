@@ -1,67 +1,85 @@
-import { testGlobalUncaughtErrors } from "@evolu/common";
-import { afterEach, assert, describe, expect, test, vi } from "vitest";
-import { createRun } from "../src/Task.ts";
+import {
+  assertEqual,
+  assertLength,
+  assertNonNullable,
+  assertThrows,
+  assertTrue,
+  testStubGlobal,
+} from "@evolu/common";
+import { describe, it, mock } from "node:test";
+import { createRun } from "./Task.ts";
 
 describe("createRun", () => {
-  afterEach(() => {
-    globalThis.ErrorUtils = undefined;
-  });
-
-  test("createRun reports defects with ErrorUtils.reportError", async () => {
-    const reportError = vi.fn<(error: unknown) => void>();
-    globalThis.ErrorUtils = {
+  it("createRun reports defects with ErrorUtils.reportError", async () => {
+    const reportError = mock.fn<(error: unknown) => void>();
+    using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
       setGlobalHandler:
-        vi.fn<NonNullable<typeof globalThis.ErrorUtils>["setGlobalHandler"]>(),
+        mock.fn<
+          NonNullable<typeof globalThis.ErrorUtils>["setGlobalHandler"]
+        >(),
       reportError,
-    };
+    });
     await using run = createRun();
     const defect = new Error("boom");
 
     run.panic(defect);
 
-    expect(reportError).toHaveBeenCalledOnce();
-    const reported = reportError.mock.calls[0]?.[0];
-    assert(
-      typeof reported === "object" && reported !== null && "reason" in reported,
-    );
-    expect(reported.reason).toEqual({ type: "PanicAbortReason", defect });
+    assertEqual(reportError.mock.callCount(), 1);
+    const reported = reportError.mock.calls[0]?.arguments[0];
+    assertNonNullable(reported);
+    assertTrue(typeof reported === "object");
+    assertEqual(Reflect.get(reported, "reason"), {
+      type: "PanicAbortReason",
+      defect,
+    });
   });
 
-  test("createRun preserves a custom reportDefect", async () => {
+  it("createRun preserves a custom reportDefect", async () => {
     const reportError =
-      vi.fn<NonNullable<typeof globalThis.ErrorUtils>["reportError"]>();
-    const reportDefect = vi.fn();
-    globalThis.ErrorUtils = {
+      mock.fn<NonNullable<typeof globalThis.ErrorUtils>["reportError"]>();
+    const reportDefect = mock.fn();
+    using _errorUtils = testStubGlobal("ErrorUtils", {
       getGlobalHandler: () => null,
       setGlobalHandler:
-        vi.fn<NonNullable<typeof globalThis.ErrorUtils>["setGlobalHandler"]>(),
+        mock.fn<
+          NonNullable<typeof globalThis.ErrorUtils>["setGlobalHandler"]
+        >(),
       reportError,
-    };
+    });
     await using run = createRun({ reportDefect });
 
     run.panic(new Error("boom"));
 
-    expect(reportDefect).toHaveBeenCalledOnce();
-    expect(reportError).not.toHaveBeenCalled();
+    assertEqual(reportDefect.mock.callCount(), 1);
+    assertEqual(reportError.mock.callCount(), 0);
   });
 
-  test("createRun falls back when ErrorUtils is unavailable", async () => {
-    globalThis.ErrorUtils = undefined;
-    using uncaughtErrors = testGlobalUncaughtErrors();
+  it("createRun falls back when ErrorUtils is unavailable", async (t) => {
+    using _errorUtils = testStubGlobal("ErrorUtils", undefined);
+    const callbacks: Array<() => void> = [];
+    t.mock.method(globalThis, "queueMicrotask", (callback: () => void) => {
+      callbacks.push(callback);
+    });
     await using run = createRun();
 
     run.panic(new Error("boom"));
 
-    const reported = await uncaughtErrors.next();
-    assert(typeof reported === "object" && reported && "reason" in reported);
-    expect(reported.reason).toMatchObject({ type: "PanicAbortReason" });
+    assertLength(callbacks, 1);
+    assertThrows(callbacks[0], (reported) => {
+      assertNonNullable(reported);
+      assertTrue(typeof reported === "object");
+      const reason = Reflect.get(reported, "reason");
+      assertNonNullable(reason);
+      assertTrue(typeof reason === "object");
+      assertEqual(Reflect.get(reason, "type"), "PanicAbortReason");
+    });
   });
 
-  test("creates a run", async () => {
+  it("creates a run", async () => {
     await using run = createRun();
 
-    expect(run).toBeDefined();
-    expect(run.deps).toBeDefined();
+    assertNonNullable(run);
+    assertNonNullable(run.deps);
   });
 });

@@ -1,4 +1,12 @@
-import { expect, expectTypeOf, test } from "vitest";
+import { test } from "node:test";
+import {
+  assertEqual,
+  assertFalse,
+  assertOk,
+  assertSame,
+  assertTrue,
+} from "./Assert.ts";
+
 import {
   clamp,
   computeBalancedBuckets,
@@ -16,118 +24,122 @@ import {
   type Percentage,
   PercentageLiteral,
   percentageToRatio,
-} from "../../../../packages/common/src/Number.ts";
-import { err, ok } from "../../../../packages/common/src/Result.ts";
-import {
-  NonNegativeInt,
-  PositiveInt,
-  Ratio,
-} from "../../../../packages/common/src/Type.ts";
+} from "./Number.ts";
+import { err, ok } from "./Result.ts";
+import { assertType, NonNegativeInt, PositiveInt, Ratio } from "./Type.ts";
 
 test("bounded integer literal types", () => {
-  expectTypeOf<1>().toExtend<Int1To99>();
-  expectTypeOf<50>().toExtend<Int1To99>();
-  expectTypeOf<99>().toExtend<Int1To99>();
-  expectTypeOf<0>().not.toExtend<Int1To99>();
-  expectTypeOf<100>().not.toExtend<Int1To99>();
-  expectTypeOf<"1">().not.toExtend<Int1To99>();
+  assertType<1 extends Int1To99 ? true : false, true>();
+  assertType<50 extends Int1To99 ? true : false, true>();
+  assertType<99 extends Int1To99 ? true : false, true>();
+  assertType<0 extends Int1To99 ? true : false, false>();
+  assertType<100 extends Int1To99 ? true : false, false>();
+  assertType<"1" extends Int1To99 ? true : false, false>();
 
-  expectTypeOf<1>().toExtend<Int1To100>();
-  expectTypeOf<100>().toExtend<Int1To100>();
-  expectTypeOf<0>().not.toExtend<Int1To100>();
-  expectTypeOf<101>().not.toExtend<Int1To100>();
+  assertType<1 extends Int1To100 ? true : false, true>();
+  assertType<100 extends Int1To100 ? true : false, true>();
+  assertType<0 extends Int1To100 ? true : false, false>();
+  assertType<101 extends Int1To100 ? true : false, false>();
 
-  expectTypeOf<0>().toExtend<Int0To100OrNonNegativeInt>();
-  expectTypeOf<100>().toExtend<Int0To100OrNonNegativeInt>();
-  expectTypeOf<NonNegativeInt>().toExtend<Int0To100OrNonNegativeInt>();
+  assertType<0 extends Int0To100OrNonNegativeInt ? true : false, true>();
+  assertType<100 extends Int0To100OrNonNegativeInt ? true : false, true>();
+  assertType<
+    NonNegativeInt extends Int0To100OrNonNegativeInt ? true : false,
+    true
+  >();
 
-  expectTypeOf<1>().toExtend<Int1To100OrPositiveInt>();
-  expectTypeOf<100>().toExtend<Int1To100OrPositiveInt>();
-  expectTypeOf<PositiveInt>().toExtend<Int1To100OrPositiveInt>();
+  assertType<1 extends Int1To100OrPositiveInt ? true : false, true>();
+  assertType<100 extends Int1To100OrPositiveInt ? true : false, true>();
+  assertType<PositiveInt extends Int1To100OrPositiveInt ? true : false, true>();
 });
 
 test("Percentage accepts canonical literals or Ratio", () => {
-  expectTypeOf<"0%">().toExtend<PercentageLiteral>();
-  expectTypeOf<"25%">().toExtend<PercentageLiteral>();
-  expectTypeOf<"12.5%">().toExtend<PercentageLiteral>();
-  expectTypeOf<"100%">().toExtend<PercentageLiteral>();
-  expectTypeOf<"01%">().not.toExtend<PercentageLiteral>();
-  expectTypeOf<"10.0%">().not.toExtend<PercentageLiteral>();
-  expectTypeOf<"100.1%">().not.toExtend<PercentageLiteral>();
-  expectTypeOf<Ratio>().toExtend<Percentage>();
-  expect(PercentageLiteral.is("0%")).toBe(true);
-  expect(PercentageLiteral.is("25%")).toBe(true);
-  expect(PercentageLiteral.is("12.5%")).toBe(true);
-  expect(PercentageLiteral.is("100%")).toBe(true);
-  expect(PercentageLiteral.is("01%")).toBe(false);
-  expect(PercentageLiteral.is("10.0%")).toBe(false);
-  expect(PercentageLiteral.is("100.1%")).toBe(false);
+  assertType<"0%" extends PercentageLiteral ? true : false, true>();
+  assertType<"25%" extends PercentageLiteral ? true : false, true>();
+  assertType<"12.5%" extends PercentageLiteral ? true : false, true>();
+  assertType<"100%" extends PercentageLiteral ? true : false, true>();
+  assertType<"01%" extends PercentageLiteral ? true : false, false>();
+  assertType<"10.0%" extends PercentageLiteral ? true : false, false>();
+  assertType<"100.1%" extends PercentageLiteral ? true : false, false>();
+  assertType<Ratio extends Percentage ? true : false, true>();
+  assertTrue(PercentageLiteral.is("0%"));
+  assertTrue(PercentageLiteral.is("25%"));
+  assertTrue(PercentageLiteral.is("12.5%"));
+  assertTrue(PercentageLiteral.is("100%"));
+  assertFalse(PercentageLiteral.is("01%"));
+  assertFalse(PercentageLiteral.is("10.0%"));
+  assertFalse(PercentageLiteral.is("100.1%"));
 });
 
 test("percentageToRatio converts percentage literals and preserves Ratio", () => {
-  expect(percentageToRatio("0%")).toBe(0);
-  expect(percentageToRatio("12.5%")).toBe(0.125);
-  expect(percentageToRatio("100%")).toBe(1);
+  assertEqual(percentageToRatio("0%"), 0);
+  assertEqual(percentageToRatio("12.5%"), 0.125);
+  assertEqual(percentageToRatio("100%"), 1);
 
   const ratio = Ratio.orThrow(0.123456);
-  expect(percentageToRatio(ratio)).toBe(ratio);
+  assertSame(percentageToRatio(ratio), ratio);
 });
 
 test("increment", () => {
-  expect(increment(1)).toEqual(2);
+  assertEqual(increment(1), 2);
 });
 
 test("decrement", () => {
-  expect(decrement(1)).toEqual(0);
+  assertEqual(decrement(1), 0);
 });
 
 test("clamp", () => {
-  expect(clamp(0, 2)(1)).toEqual(1);
-  expect(clamp(0, 2)(3)).toEqual(2);
-  expect(clamp(0, 10)(5)).toEqual(5);
+  assertEqual(clamp(0, 2)(1), 1);
+  assertEqual(clamp(0, 2)(3), 2);
+  assertEqual(clamp(0, 10)(5), 5);
 });
 
 test("isBetween", () => {
   const isBetween10And20 = isBetween(10, 20);
 
-  expect(isBetween10And20(10)).toBe(true);
-  expect(isBetween10And20(15)).toBe(true);
-  expect(isBetween10And20(20)).toBe(true);
+  assertTrue(isBetween10And20(10));
+  assertTrue(isBetween10And20(15));
+  assertTrue(isBetween10And20(20));
 
-  expect(isBetween10And20(9)).toBe(false);
-  expect(isBetween10And20(21)).toBe(false);
+  assertFalse(isBetween10And20(9));
+  assertFalse(isBetween10And20(21));
 });
 
 test("computeBalancedBuckets", () => {
-  expect(computeBalancedBuckets(32 as NonNegativeInt)).toEqual(
+  assertEqual(
+    computeBalancedBuckets(32 as NonNegativeInt),
     ok([2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]),
   );
 
-  expect(computeBalancedBuckets(31 as NonNegativeInt)).toEqual(err(32));
-  expect(computeBalancedBuckets(0 as NonNegativeInt)).toEqual(err(32));
-  expect(
+  assertEqual(computeBalancedBuckets(31 as NonNegativeInt), err(32));
+  assertEqual(computeBalancedBuckets(0 as NonNegativeInt), err(32));
+  assertEqual(
     computeBalancedBuckets(10 as NonNegativeInt, 3 as PositiveInt),
-  ).toEqual(ok([4, 7, 10]));
+    ok([4, 7, 10]),
+  );
 
-  expect(computeBalancedBuckets(5 as NonNegativeInt, 1 as PositiveInt)).toEqual(
+  assertEqual(
+    computeBalancedBuckets(5 as NonNegativeInt, 1 as PositiveInt),
     ok([5]),
   );
 
-  expect(
+  assertEqual(
     computeBalancedBuckets(
       6 as NonNegativeInt,
       3 as PositiveInt,
       2 as PositiveInt,
     ),
-  ).toEqual(ok([2, 4, 6]));
+    ok([2, 4, 6]),
+  );
 
-  expect(
+  assertEqual(
     computeBalancedBuckets(
       5 as NonNegativeInt,
       3 as PositiveInt,
       2 as PositiveInt,
     ),
-  ).toEqual(err(6));
+    err(6),
+  );
 });
 
 test("min", () => {
@@ -136,19 +148,19 @@ test("min", () => {
   const c = 7 as PositiveInt;
 
   const result = min(a, b, c);
-  expect(result).toBe(b);
-  expectTypeOf<typeof result>().toEqualTypeOf<PositiveInt>();
+  assertSame(result, b);
+  assertType<typeof result, PositiveInt>();
 
   const result2 = min(5, 3, 7);
-  expect(result2).toBe(3);
-  expectTypeOf<typeof result2>().toEqualTypeOf<number>();
+  assertEqual(result2, 3);
+  assertType<typeof result2, number>();
 
   const e = 1 as PositiveInt;
   const f = 4 as NonNegativeInt;
 
   const result3 = min(e, f);
-  expect(result3).toBe(1);
-  expectTypeOf<typeof result3>().toEqualTypeOf<NonNegativeInt>();
+  assertEqual(result3, 1);
+  assertType<typeof result3, NonNegativeInt>();
 });
 
 test("max", () => {
@@ -157,47 +169,50 @@ test("max", () => {
   const c = 7 as PositiveInt;
 
   const result = max(a, b, c);
-  expect(result).toBe(c);
-  expectTypeOf<typeof result>().toEqualTypeOf<PositiveInt>();
+  assertSame(result, c);
+  assertType<typeof result, PositiveInt>();
 
   const result2 = max(5, 3, 7);
-  expect(result2).toBe(7);
-  expectTypeOf<typeof result2>().toEqualTypeOf<number>();
+  assertEqual(result2, 7);
+  assertType<typeof result2, number>();
 
   const e = 1 as PositiveInt;
   const f = 4 as NonNegativeInt;
 
   const result3 = max(e, f);
-  expect(result3).toBe(4);
-  expectTypeOf<typeof result3>().toEqualTypeOf<NonNegativeInt>();
+  assertEqual(result3, 4);
+  assertType<typeof result3, NonNegativeInt>();
 });
 
 test("FibonacciIndex", () => {
-  expect(FibonacciIndex.fromUnknown(1).ok).toBe(true);
-  expect(FibonacciIndex.fromUnknown(78).ok).toBe(true);
-  expect(FibonacciIndex.fromUnknown(79).ok).toBe(false);
-  expect(FibonacciIndex.fromUnknown(0).ok).toBe(false);
-  expect(FibonacciIndex.fromUnknown(-1).ok).toBe(false);
+  assertOk(FibonacciIndex.fromUnknown(1));
+  assertOk(FibonacciIndex.fromUnknown(78));
+  assertFalse(FibonacciIndex.fromUnknown(79).ok);
+  assertFalse(FibonacciIndex.fromUnknown(0).ok);
+  assertFalse(FibonacciIndex.fromUnknown(-1).ok);
 });
 
 test("fibonacciAt", () => {
   const at = (n: number) => fibonacciAt(FibonacciIndex.orThrow(n));
 
   // First 10 Fibonacci numbers (1-indexed)
-  expect(at(1)).toBe(1);
-  expect(at(2)).toBe(1);
-  expect(at(3)).toBe(2);
-  expect(at(4)).toBe(3);
-  expect(at(5)).toBe(5);
-  expect(at(6)).toBe(8);
-  expect(at(7)).toBe(13);
-  expect(at(8)).toBe(21);
-  expect(at(9)).toBe(34);
-  expect(at(10)).toBe(55);
+  assertEqual(at(1), 1);
+  assertEqual(at(2), 1);
+  assertEqual(at(3), 2);
+  assertEqual(at(4), 3);
+  assertEqual(at(5), 5);
+  assertEqual(at(6), 8);
+  assertEqual(at(7), 13);
+  assertEqual(at(8), 21);
+  assertEqual(at(9), 34);
+  assertEqual(at(10), 55);
 
   // F(78) is the largest Fibonacci within MAX_SAFE_INTEGER
-  expect(at(78)).toBeLessThan(Number.MAX_SAFE_INTEGER);
+  assertTrue(at(78) < Number.MAX_SAFE_INTEGER);
 
   // Return type is PositiveInt
-  expectTypeOf(at(1)).toEqualTypeOf<PositiveInt>();
+  {
+    const actual = at(1);
+    assertType<typeof actual, PositiveInt>();
+  }
 });

@@ -1,4 +1,12 @@
-import { describe, expect, expectTypeOf, test } from "vitest";
+import { describe, it, test } from "node:test";
+import {
+  assertEqual,
+  assertFalse,
+  assertSame,
+  assertThrowsInstanceOf,
+  assertTrue,
+} from "./Assert.ts";
+
 import {
   constFalse,
   constNull,
@@ -12,34 +20,39 @@ import {
   identity,
   type Thunk,
   todo,
-} from "../../../../packages/common/src/Function.ts";
+} from "./Function.ts";
+import { assertType } from "./Type.ts";
 
 describe("exhaustiveCheck", () => {
-  test("throws error for unhandled case", () => {
-    expect(() => exhaustiveCheck("unexpected" as never)).toThrow(
-      'exhaustiveCheck unhandled case: "unexpected"',
+  it("throws error for unhandled case", () => {
+    const error = assertThrowsInstanceOf(
+      () => exhaustiveCheck("unexpected" as never),
+      Error,
+    );
+    assertTrue(
+      error.message.includes('exhaustiveCheck unhandled case: "unexpected"'),
     );
   });
 });
 
 describe("identity", () => {
-  test("returns the same value", () => {
-    expect(identity(42)).toBe(42);
-    expect(identity("hello")).toBe("hello");
-    expect(identity(null)).toBe(null);
+  it("returns the same value", () => {
+    assertEqual(identity(42), 42);
+    assertEqual(identity("hello"), "hello");
+    assertSame(identity(null), null);
   });
 
-  test("preserves object reference", () => {
+  it("preserves object reference", () => {
     const obj = { a: 1 };
-    expect(identity(obj)).toBe(obj);
+    assertSame(identity(obj), obj);
   });
 
-  test("preserves type", () => {
+  it("preserves type", () => {
     const num = identity(42);
-    expectTypeOf(num).toEqualTypeOf<number>();
+    assertType<typeof num, 42>();
 
     const str = identity("hello");
-    expectTypeOf(str).toEqualTypeOf<string>();
+    assertType<typeof str, "hello">();
   });
 });
 
@@ -57,9 +70,10 @@ test("disposable", async () => {
     },
   });
 
-  expect(value.increment()).toBe(1);
+  assertEqual(value.increment(), 1);
   value[Symbol.dispose]();
-  expect(() => value.increment()).toThrow("Cannot use a disposed object.");
+  const disposedError = assertThrowsInstanceOf(() => value.increment(), Error);
+  assertTrue(disposedError.message.includes("Cannot use a disposed object."));
 
   disposable<Counter>({
     // @ts-expect-error - extra properties are not part of Counter.
@@ -79,13 +93,17 @@ test("disposable", async () => {
     disposer,
   );
 
-  expect(disposer.disposed).toBe(true);
-  expect(valueWithDisposer.increment()).toBe(1);
-  expect(disposedCount).toBe(0);
+  assertTrue(disposer.disposed);
+  assertEqual(valueWithDisposer.increment(), 1);
+  assertEqual(disposedCount, 0);
   valueWithDisposer[Symbol.dispose]();
-  expect(disposedCount).toBe(1);
-  expect(() => valueWithDisposer.increment()).toThrow(
-    "Cannot use a disposed object.",
+  assertEqual(disposedCount, 1);
+  const disposedWithDisposerError = assertThrowsInstanceOf(
+    () => valueWithDisposer.increment(),
+    Error,
+  );
+  assertTrue(
+    disposedWithDisposerError.message.includes("Cannot use a disposed object."),
   );
 
   interface AsyncCounter extends AsyncDisposable {
@@ -109,73 +127,78 @@ test("disposable", async () => {
     asyncDisposer,
   );
 
-  expect(asyncDisposer.disposed).toBe(true);
-  expect(asyncValue.increment()).toBe(1);
-  expect(asyncDisposed).toBe(false);
+  assertTrue(asyncDisposer.disposed);
+  assertEqual(asyncValue.increment(), 1);
+  assertFalse(asyncDisposed);
   await asyncValue[Symbol.asyncDispose]();
-  expect(asyncDisposed).toBe(true);
-  expect(() => asyncValue.increment()).toThrow("Cannot use a disposed object.");
+  assertTrue(asyncDisposed);
+  const asyncDisposedError = assertThrowsInstanceOf(
+    () => asyncValue.increment(),
+    Error,
+  );
+  assertTrue(
+    asyncDisposedError.message.includes("Cannot use a disposed object."),
+  );
 });
 
 describe("isDisposable", () => {
-  test("recognizes synchronous and asynchronous disposable objects", () => {
-    expect(isDisposable({ [Symbol.dispose]: constVoid })).toBe(true);
-    expect(
+  it("recognizes synchronous and asynchronous disposable objects", () => {
+    assertTrue(isDisposable({ [Symbol.dispose]: constVoid }));
+    assertTrue(
       isDisposable({ [Symbol.asyncDispose]: () => Promise.resolve() }),
-    ).toBe(true);
+    );
   });
 
-  test("rejects non-disposable values", () => {
-    expect(isDisposable(undefined)).toBe(false);
-    expect(isDisposable(null)).toBe(false);
-    expect(isDisposable({})).toBe(false);
+  it("rejects non-disposable values", () => {
+    assertFalse(isDisposable(undefined));
+    assertFalse(isDisposable(null));
+    assertFalse(isDisposable({}));
   });
 });
 
 describe("constant", () => {
-  test("creates a Thunk returning the same value", () => {
+  it("creates a Thunk returning the same value", () => {
     const value = { id: 1 };
     const getValue = constant(value);
 
-    expectTypeOf(getValue).toEqualTypeOf<Thunk<typeof value>>();
-    expect(getValue()).toBe(value);
+    assertType<typeof getValue, Thunk<typeof value>>();
+    assertSame(getValue(), value);
   });
 
-  test("constVoid returns void", () => {
-    expectTypeOf<ReturnType<typeof constVoid>>().toEqualTypeOf<void>();
+  it("constVoid returns void", () => {
+    assertType<ReturnType<typeof constVoid>, void>();
   });
 
-  test("constUndefined returns undefined", () => {
-    expectTypeOf<
-      ReturnType<typeof constUndefined>
-    >().toEqualTypeOf<undefined>();
+  it("constUndefined returns undefined", () => {
+    assertType<ReturnType<typeof constUndefined>, undefined>();
   });
 
-  test("constNull returns null", () => {
-    expect(constNull()).toBe(null);
+  it("constNull returns null", () => {
+    assertSame(constNull(), null);
   });
 
-  test("constTrue returns true", () => {
-    expect(constTrue()).toBe(true);
+  it("constTrue returns true", () => {
+    assertTrue(constTrue());
   });
 
-  test("constFalse returns false", () => {
-    expect(constFalse()).toBe(false);
+  it("constFalse returns false", () => {
+    assertFalse(constFalse());
   });
 });
 
 describe("todo", () => {
-  test("throws", () => {
-    expect(() => todo()).toThrow("not yet implemented");
+  it("throws", () => {
+    const error = assertThrowsInstanceOf(() => todo(), Error);
+    assertTrue(error.message.includes("not yet implemented"));
   });
 
-  test("infers type from return type annotation", () => {
+  it("infers type from return type annotation", () => {
     const fn = (): number => todo();
-    expectTypeOf(fn).returns.toEqualTypeOf<number>();
+    assertType<ReturnType<typeof fn>, number>();
   });
 
-  test("accepts explicit generic when no return type", () => {
+  it("accepts explicit generic when no return type", () => {
     const fn = () => todo<string>();
-    expectTypeOf(fn).returns.toEqualTypeOf<string>();
+    assertType<ReturnType<typeof fn>, string>();
   });
 });

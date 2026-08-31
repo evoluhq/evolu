@@ -1,7 +1,7 @@
 {
   "extends": "../packages/typescript-config/base.json",
   "compilerOptions": {
-    "lib": ["dom", "esnext"],
+    "lib": ["dom", "esnext", "webworker"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,

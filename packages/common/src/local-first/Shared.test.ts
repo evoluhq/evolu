@@ -1,9 +1,30 @@
-import { describe, expect, test } from "vitest";
-import { assert } from "../../../../../packages/common/src/Assert.ts";
-import type { ConsoleEntry } from "../../../../../packages/common/src/Console.ts";
-import { createOwnerWebSocketTransport } from "../../../../../packages/common/src/local-first/Owner.ts";
-import { createProtocolMessageForUnsubscribe } from "../../../../../packages/common/src/local-first/Protocol.ts";
-import type { MutationChange } from "../../../../../packages/common/src/local-first/Schema.ts";
+import { describe, it } from "node:test";
+import { sql as kyselySql } from "kysely";
+
+import {
+  assert,
+  assertEqual,
+  assertFalse,
+  assertInstanceOf,
+  assertLength,
+  assertNonNullable,
+  assertNotUndefined,
+  assertSame,
+  assertTrue,
+} from "../Assert.ts";
+import type { ConsoleEntry } from "../Console.ts";
+import {
+  createAppOwner,
+  createOwnerSecret,
+  createOwnerWebSocketTransport,
+  testAppOwner,
+} from "./Owner.ts";
+import { createProtocolMessageForUnsubscribe } from "./Protocol.ts";
+import {
+  createQueryBuilder,
+  type EvoluSchema,
+  type MutationChange,
+} from "./Schema.ts";
 import {
   consoleEntryOrErrorBroadcastChannelName,
   type EvoluInstanceId,
@@ -15,27 +36,25 @@ import {
   type EvoluOutput,
   type SharedWorkerInput,
   type SharedWorkerOutput,
-} from "../../../../../packages/common/src/local-first/Shared.ts";
-import { testCreateCrdtMessage } from "../../../../../packages/common/src/local-first/Storage.ts";
+} from "./Shared.ts";
+import { testCreateCrdtMessage } from "./Storage.ts";
+import { acquireLeaderLock, testCreateLockManager } from "../LockManager.ts";
+import { installPolyfills } from "../Polyfills.ts";
+import { createSet } from "../Set.ts";
+import type { SqliteSchema } from "../Sqlite.ts";
+import { createStore } from "../Store.ts";
+import { AbortError, testCreateDeps, testCreateRun } from "../Task.ts";
+import { testCreateId } from "../Test.ts";
 import {
-  acquireLeaderLock,
-  testCreateLockManager,
-} from "../../../../../packages/common/src/LockManager.ts";
-import { createSet } from "../../../../../packages/common/src/Set.ts";
-import type { SqliteSchema } from "../../../../../packages/common/src/Sqlite.ts";
-import { createStore } from "../../../../../packages/common/src/Store.ts";
-import { testCreateRun } from "../../../../../packages/common/src/Task.ts";
-import { testCreateId } from "../../../../../packages/common/src/Test.ts";
-import {
+  assertType,
   createId,
+  id,
+  String,
   testName,
   type Id,
   type Name,
-} from "../../../../../packages/common/src/Type.ts";
-import {
-  testCreateWebSocket,
-  type CreateWebSocket,
-} from "../../../../../packages/common/src/WebSocket.ts";
+} from "../Type.ts";
+import { testCreateWebSocket, type CreateWebSocket } from "../WebSocket.ts";
 import {
   testCreateBroadcastChannel,
   testCreateMessageChannel,
@@ -43,8 +62,28 @@ import {
   testCreateSharedWorker,
   testWaitForWorkerMessage,
   type TestMessageChannel,
-} from "../../../../../packages/common/src/Worker.ts";
-import { testAppOwner, testAppOwner2, testQuery } from "./_fixtures.ts";
+} from "../Worker.ts";
+
+installPolyfills();
+
+const testAppOwner2 = createAppOwner(
+  createOwnerSecret(testCreateDeps({ seed: "shared-owner-2" })),
+);
+
+const TestRowId = id("TestRow");
+
+const testEvoluSchema = {
+  test: {
+    id: TestRowId,
+    value: String,
+  },
+} satisfies EvoluSchema;
+
+const createTestQuery = createQueryBuilder(testEvoluSchema);
+
+const testQuery = createTestQuery((db) =>
+  db.selectFrom("test").select(() => [kyselySql<string>`"test"`.as("query")]),
+);
 
 const testSqliteSchema: SqliteSchema = {
   tables: {
@@ -163,8 +202,7 @@ const setupSharedWorker = async ({
     await output;
 
     const initDbWorker = sharedWorkerOutputs.at(outputCount);
-    expect(initDbWorker).toBeDefined();
-    assert(initDbWorker, "Expected DbWorker init output");
+    assertNotUndefined(initDbWorker);
 
     const dbWorkerPort = instanceDisposables.use(
       testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(initDbWorker.port),
@@ -246,7 +284,7 @@ const setupSharedWorker = async ({
 
 describe("AnnounceTabLeader", () => {
   describe("console output", () => {
-    test("drops console entry logged before the first connected tab", async () => {
+    it("drops console entry logged before the first connected tab", async () => {
       await using setup = await setupSharedWorker();
       const { consoleStoreOutputEntry, announceTabLeader } = setup;
 
@@ -260,10 +298,10 @@ describe("AnnounceTabLeader", () => {
 
       const { outputs } = await announceTabLeader();
 
-      expect(outputs).toEqual([]);
+      assertEqual(outputs, []);
     });
 
-    test("delivers live console entry after a tab connects", async () => {
+    it("delivers live console entry after a tab connects", async () => {
       await using setup = await setupSharedWorker();
       const { consoleStoreOutputEntry, announceTabLeader } = setup;
       const { outputs } = await announceTabLeader();
@@ -278,10 +316,10 @@ describe("AnnounceTabLeader", () => {
 
       await testWaitForWorkerMessage();
 
-      expect(outputs).toEqual([{ type: "ConsoleEntry", entry }]);
+      assertEqual(outputs, [{ type: "ConsoleEntry", entry }]);
     });
 
-    test("ignores null console store updates", async () => {
+    it("ignores null console store updates", async () => {
       await using setup = await setupSharedWorker();
       const { consoleStoreOutputEntry, announceTabLeader } = setup;
       const { outputs } = await announceTabLeader();
@@ -297,11 +335,11 @@ describe("AnnounceTabLeader", () => {
 
       await testWaitForWorkerMessage();
 
-      expect(outputs).toEqual([{ type: "ConsoleEntry", entry }]);
+      assertEqual(outputs, [{ type: "ConsoleEntry", entry }]);
     });
   });
 
-  test("logs unknown shared worker inputs", async () => {
+  it("logs unknown shared worker inputs", async () => {
     await using setup = await setupSharedWorker();
     const { run, worker } = setup;
     const { console } = run.deps;
@@ -309,19 +347,17 @@ describe("AnnounceTabLeader", () => {
     worker.port.postMessage({ type: "UnknownInput" } as never);
     await testWaitForWorkerMessage();
 
-    expect(console.getEntriesSnapshot()).toContainEqual(
-      expect.objectContaining({
-        path: ["SharedWorker"],
-        method: "error",
-        args: ["Unknown shared worker input", { type: "UnknownInput" }],
-      }),
-    );
+    assertEqual(console.getEntriesSnapshot().at(-1), {
+      path: ["SharedWorker"],
+      method: "error",
+      args: ["Unknown shared worker input", { type: "UnknownInput" }],
+    });
   });
 });
 
 describe("with one evolu instance", () => {
   describe("queue processing", () => {
-    test("does not send queued requests before leader is acquired", async () => {
+    it("does not send queued requests before leader is acquired", async () => {
       await using setup = await setupSharedWorker();
       const { createEvoluBeforeDbWorkerLeader, run } = setup;
       const { time } = run.deps;
@@ -337,7 +373,7 @@ describe("with one evolu instance", () => {
       time.advance("10s");
       await testWaitForWorkerMessage();
 
-      expect(dbInputs).toEqual([]);
+      assertEqual(dbInputs, []);
 
       await acquireDbWorkerLeader();
       await testWaitForWorkerMessage();
@@ -346,10 +382,12 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
       await testWaitForWorkerMessage();
 
-      expect(dbInputs.length).toBeGreaterThan(0);
-      expect(dbInputs[0]).toEqual({
+      const firstInput = dbInputs[0];
+      assertNotUndefined(firstInput);
+      assertEqual(typeof firstInput.callbackId, "string");
+      assertEqual(firstInput, {
         type: "Request",
-        callbackId: expect.any(String),
+        callbackId: firstInput.callbackId,
         request: {
           type: "ForEvolu",
           id,
@@ -361,7 +399,7 @@ describe("with one evolu instance", () => {
       });
     });
 
-    test("starts the next queued request after the first response arrives", async () => {
+    it("starts the next queued request after the first response arrives", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;
       const { time } = run.deps;
@@ -381,8 +419,8 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const firstInput = dbInputs[0];
-      expect(firstInput).toBeDefined();
-      expect(firstInput.request).toEqual({
+      assertNotUndefined(firstInput);
+      assertEqual(firstInput.request, {
         type: "ForEvolu",
         id,
         message: {
@@ -405,8 +443,10 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(dbInputs).toHaveLength(2);
-      expect(dbInputs[1]?.request).toEqual({
+      assertLength(dbInputs, 2);
+      const secondInput = dbInputs[1];
+      assertNotUndefined(secondInput);
+      assertEqual(secondInput.request, {
         type: "ForEvolu",
         id,
         message: {
@@ -414,12 +454,14 @@ describe("with one evolu instance", () => {
           queries: createSet([testQuery]),
         },
       });
-      expect(dbInputs[1]?.callbackId).not.toBe(firstInput.callbackId);
+      assertFalse(
+        globalThis.Object.is(secondInput.callbackId, firstInput.callbackId),
+      );
     });
   });
 
   describe("queued responses", () => {
-    test("handles mutate and query responses with correct onCompleteIds", async () => {
+    it("handles mutate and query responses with correct onCompleteIds", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;
       const { time } = run.deps;
@@ -441,8 +483,8 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const mutateInput = dbInputs.at(-1);
-      assert(mutateInput, "Expected mutate input");
-      expect(mutateInput.request).toEqual({
+      assertNotUndefined(mutateInput);
+      assertEqual(mutateInput.request, {
         type: "ForEvolu",
         id,
         message: {
@@ -476,8 +518,8 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const queryInput = dbInputs.at(-1);
-      assert(queryInput, "Expected query input");
-      expect(queryInput.request).toEqual({
+      assertNotUndefined(queryInput);
+      assertEqual(queryInput.request, {
         type: "ForEvolu",
         id,
         message: {
@@ -502,28 +544,22 @@ describe("with one evolu instance", () => {
 
       const mutateOutput = outputs[0];
       const queryOutput = outputs[1];
-      assert(
-        mutateOutput.type === "OnPatchesByQuery",
-        "Expected mutate patches output",
-      );
-      assert(
-        queryOutput.type === "OnPatchesByQuery",
-        "Expected query patches output",
-      );
+      assertSame(mutateOutput.type, "OnPatchesByQuery");
+      assertSame(queryOutput.type, "OnPatchesByQuery");
 
-      expect(mutateOutput.onCompleteIds).toEqual([mutateOnCompleteId]);
-      expect(queryOutput.onCompleteIds).toEqual([]);
-      expect(mutateOutput.patchesByQuery.get(testQuery)?.[0]).toEqual({
+      assertEqual(mutateOutput.onCompleteIds, [mutateOnCompleteId]);
+      assertEqual(queryOutput.onCompleteIds, []);
+      assertEqual(mutateOutput.patchesByQuery.get(testQuery)?.[0], {
         op: "replaceAll",
         value: [{ value: 1 }],
       });
-      expect(queryOutput.patchesByQuery.get(testQuery)?.[0]).toEqual({
+      assertEqual(queryOutput.patchesByQuery.get(testQuery)?.[0], {
         op: "replaceAll",
         value: [{ value: 2 }],
       });
     });
 
-    test("refreshes sibling instances after mutate responses", async () => {
+    it("refreshes sibling instances after mutate responses", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run, worker } = setup;
       const { time } = run.deps;
@@ -563,8 +599,8 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const secondQueryInput = first.dbInputs.at(-1);
-      assert(secondQueryInput, "Expected second instance query input");
-      expect(secondQueryInput.request).toEqual({
+      assertNotUndefined(secondQueryInput);
+      assertEqual(secondQueryInput.request, {
         type: "ForEvolu",
         id: secondId,
         message: {
@@ -597,8 +633,8 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const mutateInput = first.dbInputs.at(-1);
-      assert(mutateInput, "Expected mutate input");
-      expect(mutateInput.request).toEqual({
+      assertNotUndefined(mutateInput);
+      assertEqual(mutateInput.request, {
         type: "ForEvolu",
         id: first.id,
         message: {
@@ -624,13 +660,17 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(firstOutputs).toContainEqual(
-        expect.objectContaining({ type: "OnPatchesByQuery" }),
+      assert(
+        firstOutputs.some((output) => output.type === "OnPatchesByQuery"),
+        "Expected patches for the first Evolu instance.",
       );
-      expect(secondOutputs).toContainEqual({ type: "RefreshQueries" });
+      assert(
+        secondOutputs.some((output) => output.type === "RefreshQueries"),
+        "Expected a query refresh for the second Evolu instance.",
+      );
     });
 
-    test("drops CreateEvolu when shared worker stops during tenant startup", async () => {
+    it("drops CreateEvolu when shared worker stops during tenant startup", async () => {
       await using setup = await setupSharedWorker();
       const { announceTabLeader, run, sharedWorkerOutputs, worker } = setup;
       const id: EvoluInstanceId = createId(run.deps);
@@ -658,7 +698,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const initDbWorker = sharedWorkerOutputs[outputCount];
-      expect(initDbWorker).toBeDefined();
+      assertNotUndefined(initDbWorker);
 
       using dbWorkerPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
         initDbWorker.port,
@@ -678,11 +718,11 @@ describe("with one evolu instance", () => {
       await disposePromise;
       await testWaitForWorkerMessage();
 
-      expect(dbDisposeInputs).toEqual([{ type: "Dispose" }]);
-      expect(evoluOutputs).toEqual([]);
+      assertEqual(dbDisposeInputs, [{ type: "Dispose" }]);
+      assertEqual(evoluOutputs, []);
     });
 
-    test("forwards export responses back to the evolu port", async () => {
+    it("forwards export responses back to the evolu port", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;
       const { time } = run.deps;
@@ -697,8 +737,8 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const exportInput = dbInputs.at(-1);
-      assert(exportInput, "Expected export input");
-      expect(exportInput.request).toEqual({
+      assertNotUndefined(exportInput);
+      assertEqual(exportInput.request, {
         type: "ForEvolu",
         id,
         message: { type: "Export" },
@@ -720,11 +760,11 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const output = outputs[0];
-      assert(output.type === "OnExport", "Expected export output");
-      expect(Array.from(output.file)).toEqual([1, 2, 3]);
+      assertSame(output.type, "OnExport");
+      assertEqual(Array.from(output.file), [1, 2, 3]);
     });
 
-    test("ignores queued evolu responses for missing instances", async () => {
+    it("ignores queued evolu responses for missing instances", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;
       const { time } = run.deps;
@@ -742,7 +782,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const queryInput = dbInputs.at(-1);
-      assert(queryInput, "Expected query input");
+      assertNotUndefined(queryInput);
 
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
@@ -758,12 +798,12 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(outputs).toEqual([]);
+      assertEqual(outputs, []);
     });
   });
 
   describe("sync behavior", () => {
-    test("sends protocol messages only for writable used owners", async () => {
+    it("sends protocol messages only for writable used owners", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu, run } = setup;
@@ -798,8 +838,8 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const createSyncInput = dbInputs.at(-1);
-      assert(createSyncInput, "Expected create sync input");
-      expect(createSyncInput.request).toEqual({
+      assertNotUndefined(createSyncInput);
+      assertEqual(createSyncInput.request, {
         type: "ForSharedWorker",
         message: {
           type: "CreateSyncMessages",
@@ -830,8 +870,9 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const mutateInput = dbInputs.at(-1);
-      assert(mutateInput, "Expected mutate input");
-      expect(mutateInput.request).toMatchObject({ type: "ForEvolu", id });
+      assertNotUndefined(mutateInput);
+      assertSame(mutateInput.request.type, "ForEvolu");
+      assertSame(mutateInput.request.id, id);
 
       const messages = [
         testCreateCrdtMessage(createId(run.deps), 1, "hello"),
@@ -855,12 +896,12 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toHaveLength(1);
-      expect(createWebSocket.sentMessages[0]?.url).toBe(writableTransport.url);
-      expect(createWebSocket.sentMessages[0]?.data).toBeInstanceOf(Uint8Array);
+      assertLength(createWebSocket.sentMessages, 1);
+      assertSame(createWebSocket.sentMessages[0]?.url, writableTransport.url);
+      assertInstanceOf(createWebSocket.sentMessages[0]?.data, Uint8Array);
     });
 
-    test("ignores non-binary and invalid transport messages", async () => {
+    it("ignores non-binary and invalid transport messages", async () => {
       const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu } = setup;
@@ -885,10 +926,10 @@ describe("with one evolu instance", () => {
       createWebSocket.message(transport.url, new Uint8Array([1]).buffer);
       await testWaitForWorkerMessage();
 
-      expect(dbInputs).toEqual([]);
+      assertEqual(dbInputs, []);
     });
 
-    test("requests sync messages when a claimed transport opens later", async () => {
+    it("requests sync messages when a claimed transport opens later", async () => {
       const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu } = setup;
@@ -909,12 +950,12 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(dbInputs).toEqual([]);
+      assertEqual(dbInputs, []);
 
       createWebSocket.open(transport.url);
       await testWaitForWorkerMessage();
 
-      expect(dbInputs.at(-1)?.request).toEqual({
+      assertEqual(dbInputs.at(-1)?.request, {
         type: "ForSharedWorker",
         message: {
           type: "CreateSyncMessages",
@@ -923,7 +964,7 @@ describe("with one evolu instance", () => {
       });
     });
 
-    test("sends unsubscribe when the last transport claim is removed", async () => {
+    it("sends unsubscribe when the last transport claim is removed", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu } = setup;
@@ -955,13 +996,13 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toContainEqual({
+      assertEqual(createWebSocket.sentMessages.at(-1), {
         url: transport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner.id),
       });
     });
 
-    test("keeps a repeated owner transport claimed until every use is removed", async () => {
+    it("keeps a repeated owner transport claimed until every use is removed", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu } = setup;
@@ -990,7 +1031,7 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toEqual([]);
+      assertEqual(createWebSocket.sentMessages, []);
 
       evoluChannel.port2.postMessage({
         type: "UseOwner",
@@ -998,13 +1039,13 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toContainEqual({
+      assertEqual(createWebSocket.sentMessages.at(-1), {
         url: transport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner.id),
       });
     });
 
-    test("releases the matching transport set when owner uses are removed out of order", async () => {
+    it("releases the matching transport set when owner uses are removed out of order", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu } = setup;
@@ -1041,7 +1082,7 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toEqual([
+      assertEqual(createWebSocket.sentMessages, [
         {
           url: firstTransport.url,
           data: createProtocolMessageForUnsubscribe(testAppOwner.id),
@@ -1054,13 +1095,13 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toContainEqual({
+      assertEqual(createWebSocket.sentMessages.at(-1), {
         url: secondTransport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner.id),
       });
     });
 
-    test("reports a transport creation defect without leaving a pending owner use", async () => {
+    it("reports a transport creation defect without leaving a pending owner use", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, run } = setup;
       const { evoluChannel } = await createEvolu();
@@ -1080,17 +1121,17 @@ describe("with one evolu instance", () => {
         ],
       });
 
-      await expect(reported).resolves.toMatchObject({
-        reason: {
-          type: "PanicAbortReason",
-          defect: expect.objectContaining({
-            message: "testCreateWebSocket is configured to throw on create",
-          }),
-        },
-      });
+      const error = await reported;
+      assertType(AbortError, error);
+      assertSame(error.reason.type, "PanicAbortReason");
+      assertInstanceOf(error.reason.defect, Error);
+      assertEqual(
+        error.reason.defect.message,
+        "testCreateWebSocket is configured to throw on create",
+      );
     });
 
-    test("handles apply sync responses for errors, refreshes, and response messages", async () => {
+    it("handles apply sync responses for errors, refreshes, and response messages", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu, run } = setup;
@@ -1126,7 +1167,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const createSyncInput = dbInputs.at(-1);
-      assert(createSyncInput, "Expected create sync input");
+      assertNotUndefined(createSyncInput);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
         callbackId: createSyncInput.callbackId,
@@ -1151,15 +1192,10 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const firstApplyInput = dbInputs.at(-1);
-      assert(firstApplyInput, "Expected apply sync input");
-      assert(
-        firstApplyInput.request.type === "ForSharedWorker",
-        "Expected shared worker request",
-      );
-      expect(firstApplyInput.request.message).toMatchObject({
-        type: "ApplySyncMessage",
-        owner: testAppOwner,
-      });
+      assertNotUndefined(firstApplyInput);
+      assertSame(firstApplyInput.request.type, "ForSharedWorker");
+      assertSame(firstApplyInput.request.message.type, "ApplySyncMessage");
+      assertEqual(firstApplyInput.request.message.owner, testAppOwner);
 
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
@@ -1183,8 +1219,11 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(evoluOutputs).toContainEqual({ type: "RefreshQueries" });
-      expect(consoleEntryOrErrors).toContainEqual({
+      assert(
+        evoluOutputs.some((output) => output.type === "RefreshQueries"),
+        "Expected a query refresh.",
+      );
+      assertEqual(consoleEntryOrErrors.at(-1), {
         type: "Error",
         error: {
           type: "ProtocolInvalidDataError",
@@ -1203,7 +1242,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const responseApplyInput = dbInputs.at(-1);
-      assert(responseApplyInput, "Expected response apply input");
+      assertNotUndefined(responseApplyInput);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
         callbackId: responseApplyInput.callbackId,
@@ -1225,13 +1264,13 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toContainEqual({
+      assertEqual(createWebSocket.sentMessages.at(-1), {
         url: transport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner.id),
       });
     });
 
-    test("ignores abort, broadcast, and no-response apply sync results", async () => {
+    it("ignores abort, broadcast, and no-response apply sync results", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu, run } = setup;
@@ -1263,7 +1302,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const createSyncInput = dbInputs.at(-1);
-      assert(createSyncInput, "Expected create sync input");
+      assertNotUndefined(createSyncInput);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
         callbackId: createSyncInput.callbackId,
@@ -1294,7 +1333,7 @@ describe("with one evolu instance", () => {
         await testWaitForWorkerMessage();
 
         const applyInput = dbInputs.at(-1);
-        assert(applyInput, "Expected apply sync input");
+        assertNotUndefined(applyInput);
         dbWorkerPort.postMessage({
           type: "OnQueuedResponse",
           callbackId: applyInput.callbackId,
@@ -1331,11 +1370,11 @@ describe("with one evolu instance", () => {
         result: { ok: true, value: { type: "NoResponse" } },
       });
 
-      expect(consoleEntryOrErrors).toEqual([]);
-      expect(createWebSocket.sentMessages).toHaveLength(sentMessageCount);
+      assertEqual(consoleEntryOrErrors, []);
+      assertLength(createWebSocket.sentMessages, sentMessageCount);
     });
 
-    test("ignores sync creation and apply when no writable owner is active", async () => {
+    it("ignores sync creation and apply when no writable owner is active", async () => {
       const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu, run } = setup;
@@ -1363,7 +1402,7 @@ describe("with one evolu instance", () => {
 
       createWebSocket.open(readonlyTransport.url);
       await testWaitForWorkerMessage();
-      expect(dbInputs).toEqual([]);
+      assertEqual(dbInputs, []);
 
       const writableTransport = createOwnerWebSocketTransport({
         url: "wss://removed-owner.example",
@@ -1401,10 +1440,10 @@ describe("with one evolu instance", () => {
       time.advance("10s");
       await testWaitForWorkerMessage();
 
-      expect(dbInputs).toEqual([]);
+      assertEqual(dbInputs, []);
     });
 
-    test("ignores protocol sends through closed transports", async () => {
+    it("ignores protocol sends through closed transports", async () => {
       const createWebSocket = testCreateWebSocket({ isOpen: false });
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu, run } = setup;
@@ -1439,7 +1478,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const mutateInput = dbInputs.at(-1);
-      assert(mutateInput, "Expected mutate input");
+      assertNotUndefined(mutateInput);
       dbWorkerPort.postMessage({
         type: "OnQueuedResponse",
         callbackId: mutateInput.callbackId,
@@ -1460,17 +1499,17 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(outputs).toContainEqual({
+      assertEqual(outputs.at(-1), {
         type: "OnPatchesByQuery",
         patchesByQuery: new Map([
           [testQuery, [{ op: "replaceAll", value: [{ value: 2 }] }]],
         ]),
         onCompleteIds: [],
       });
-      expect(createWebSocket.sentMessages).toEqual([]);
+      assertEqual(createWebSocket.sentMessages, []);
     });
 
-    test("serializes overlapping UseOwner add and remove across multiple transports", async () => {
+    it("serializes overlapping UseOwner add and remove across multiple transports", async () => {
       const createWebSocket = testCreateWebSocket();
       const firstCreateStarted = Promise.withResolvers<void>();
       const allowFirstCreateToFinish = Promise.withResolvers<void>();
@@ -1533,20 +1572,25 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toHaveLength(2);
-      expect(createWebSocket.sentMessages).toContainEqual({
-        url: transportA.url,
-        data: createProtocolMessageForUnsubscribe(testAppOwner.id),
-      });
-      expect(createWebSocket.sentMessages).toContainEqual({
-        url: transportB.url,
-        data: createProtocolMessageForUnsubscribe(testAppOwner.id),
-      });
+      assertLength(createWebSocket.sentMessages, 2);
+      assertEqual(
+        new Set(createWebSocket.sentMessages),
+        new Set([
+          {
+            url: transportA.url,
+            data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+          },
+          {
+            url: transportB.url,
+            data: createProtocolMessageForUnsubscribe(testAppOwner.id),
+          },
+        ]),
+      );
     });
   });
 
   describe("tab leader changes", () => {
-    test("starts a new DbWorker when tab leader changes", async () => {
+    it("starts a new DbWorker when tab leader changes", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, worker } = setup;
       const { dbDisposeInputs, releaseDbWorkerLeader } = await createEvolu({
@@ -1564,7 +1608,7 @@ describe("with one evolu instance", () => {
         tabLeaderOutputs.push(output);
       };
 
-      assert(worker.self.onConnect, "Expected SharedWorker connect handler");
+      assertNonNullable(worker.self.onConnect);
       worker.self.onConnect(tabLeaderChannel.port2);
       tabLeaderChannel.port1.postMessage({
         type: "AnnounceTabLeader",
@@ -1573,14 +1617,13 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
       await testWaitForWorkerMessage();
 
-      expect(dbDisposeInputs).toEqual([]);
-      expect(tabLeaderOutputs[0]).toMatchObject({
-        type: "DbWorkerInit",
-        name: testName,
-      });
+      assertEqual(dbDisposeInputs, []);
+      const initDbWorker = tabLeaderOutputs[0];
+      assertSame(initDbWorker?.type, "DbWorkerInit");
+      assertSame(initDbWorker.name, testName);
     });
 
-    test("retries in-flight request when new DbWorker leader is acquired", async () => {
+    it("retries in-flight request when new DbWorker leader is acquired", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu, worker } = setup;
       const {
@@ -1605,7 +1648,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const firstInput = dbInputs[0];
-      expect(firstInput).toBeDefined();
+      assertNotUndefined(firstInput);
 
       await releaseDbWorkerLeader();
 
@@ -1618,7 +1661,7 @@ describe("with one evolu instance", () => {
         tabLeaderOutputs.push(output);
       };
 
-      assert(worker.self.onConnect, "Expected SharedWorker connect handler");
+      assertNonNullable(worker.self.onConnect);
       worker.self.onConnect(tabLeaderChannel.port2);
       tabLeaderChannel.port1.postMessage({
         type: "AnnounceTabLeader",
@@ -1628,8 +1671,7 @@ describe("with one evolu instance", () => {
       await testWaitForWorkerMessage();
 
       const initDbWorker = tabLeaderOutputs.at(0);
-      expect(initDbWorker).toBeDefined();
-      assert(initDbWorker, "Expected DbWorker init output");
+      assertNotUndefined(initDbWorker);
 
       using dbWorkerPort = testCreateMessagePort<DbWorkerOutput, DbWorkerInput>(
         initDbWorker.port,
@@ -1646,21 +1688,23 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(nextDbInputs).toEqual([
-        {
-          type: "Request",
-          callbackId: expect.any(String),
-          request: {
-            type: "ForEvolu",
-            id,
-            message: {
-              type: "Query",
-              queries: createSet([testQuery]),
-            },
+      assertLength(nextDbInputs, 1);
+      const [nextInput] = nextDbInputs;
+      assertEqual(nextInput, {
+        type: "Request",
+        callbackId: nextInput.callbackId,
+        request: {
+          type: "ForEvolu",
+          id,
+          message: {
+            type: "Query",
+            queries: createSet([testQuery]),
           },
         },
-      ]);
-      expect(nextDbInputs[0]?.callbackId).not.toBe(firstInput.callbackId);
+      });
+      assertFalse(
+        globalThis.Object.is(nextInput.callbackId, firstInput.callbackId),
+      );
 
       oldDbWorkerPort.postMessage({
         type: "OnQueuedResponse",
@@ -1676,12 +1720,12 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(evoluOutputs).toEqual([]);
+      assertEqual(evoluOutputs, []);
     });
   });
 
   describe("disposal", () => {
-    test("removes owner claims when tenant is disposed with a live instance", async () => {
+    it("removes owner claims when tenant is disposed with a live instance", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu } = setup;
@@ -1704,18 +1748,18 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.createdUrls).toEqual([transport.url]);
+      assertEqual(createWebSocket.createdUrls, [transport.url]);
 
       await setup[Symbol.asyncDispose]();
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.sentMessages).toContainEqual({
+      assertEqual(createWebSocket.sentMessages.at(-1), {
         url: transport.url,
         data: createProtocolMessageForUnsubscribe(testAppOwner.id),
       });
     });
 
-    test("waits for DbWorker leader lock during tenant disposal", async () => {
+    it("waits for DbWorker leader lock during tenant disposal", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu } = setup;
       const { dbDisposeInputs, releaseDbWorkerLeader } = await createEvolu({
@@ -1730,16 +1774,16 @@ describe("with one evolu instance", () => {
 
       await testWaitForWorkerMessage();
 
-      expect(dbDisposeInputs).toEqual([{ type: "Dispose" }]);
-      expect(disposed).toBe(false);
+      assertEqual(dbDisposeInputs, [{ type: "Dispose" }]);
+      assertFalse(disposed);
 
       await releaseDbWorkerLeader();
       await disposing;
 
-      expect(disposed).toBe(true);
+      assertTrue(disposed);
     });
 
-    test("drops UseOwner messages posted after instance disposal starts", async () => {
+    it("drops UseOwner messages posted after instance disposal starts", async () => {
       const createWebSocket = testCreateWebSocket();
       await using setup = await setupSharedWorker({ createWebSocket });
       const { createEvolu } = setup;
@@ -1765,10 +1809,10 @@ describe("with one evolu instance", () => {
       await disposed;
       await testWaitForWorkerMessage();
 
-      expect(createWebSocket.createdUrls).toEqual([]);
+      assertEqual(createWebSocket.createdUrls, []);
     });
 
-    test("releases pending instance lock if tenant disposal wins the acquisition race", async () => {
+    it("releases pending instance lock if tenant disposal wins the acquisition race", async () => {
       await using setup = await setupSharedWorker();
       const { createEvolu } = setup;
       const { [Symbol.asyncDispose]: disposeInstance } = await createEvolu({
@@ -1784,9 +1828,9 @@ describe("with one evolu instance", () => {
 });
 
 describe("with multiple evolu instances", () => {
-  test.todo("coordinates shared tenant state across instances");
+  it.todo("coordinates shared tenant state across instances");
 });
 
 describe("with multiple tabs", () => {
-  test.todo("coordinates tab leader changes across connected tabs");
+  it.todo("coordinates tab leader changes across connected tabs");
 });

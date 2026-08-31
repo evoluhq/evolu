@@ -42,7 +42,6 @@
   "devDependencies": {
     "@evolu/common": "workspace:*",
     "@evolu/typescript-config": "workspace:*",
-    "@evolu/vitest": "workspace:*",
     "@types/node": "^24.10.9",
     "@types/sharedworker": "^0.0.229",
     "@types/web-locks-api": "^0.0.5",

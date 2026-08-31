@@ -1,32 +1,33 @@
-import { describe, expect, test } from "vitest";
-import { testCreateConsole } from "../../../../packages/common/src/Console.ts";
+import { describe, it } from "node:test";
+import { assertEqual, assertLength, assertSame, assertTrue } from "./Assert.ts";
+
+import { testCreateConsole } from "./Console.ts";
 import {
   createLeakDetector,
   noopLeakDetector,
   testCreateLeakDetector,
-} from "../../../../packages/common/src/LeakDetector.ts";
+} from "./LeakDetector.ts";
+import { assertType, String } from "./Type.ts";
 
 describe("createLeakDetector", () => {
-  test("accepts track and untrack calls", () => {
+  it("accepts track and untrack calls", () => {
     const console = testCreateConsole();
     const leakDetector = createLeakDetector({ console });
     const target = {};
     const unregisterToken = {};
 
-    expect(() => {
-      leakDetector.track(
-        target,
-        { name: "Lease", isLeaked: () => true },
-        unregisterToken,
-      );
-      leakDetector.untrack(unregisterToken);
-    }).not.toThrow();
+    leakDetector.track(
+      target,
+      { name: "Lease", isLeaked: () => true },
+      unregisterToken,
+    );
+    leakDetector.untrack(unregisterToken);
 
-    expect(console.getEntriesSnapshot()).toEqual([]);
+    assertEqual(console.getEntriesSnapshot(), []);
   });
 
-  test("returns the no-op detector without FinalizationRegistry", () => {
-    const descriptor = Object.getOwnPropertyDescriptor(
+  it("returns the no-op detector without FinalizationRegistry", () => {
+    const descriptor = globalThis.Object.getOwnPropertyDescriptor(
       globalThis,
       "FinalizationRegistry",
     );
@@ -35,77 +36,83 @@ describe("createLeakDetector", () => {
     ).FinalizationRegistry;
 
     try {
-      expect(createLeakDetector({ console: testCreateConsole() })).toBe(
+      assertSame(
+        createLeakDetector({ console: testCreateConsole() }),
         noopLeakDetector,
       );
     } finally {
       if (descriptor)
-        Object.defineProperty(globalThis, "FinalizationRegistry", descriptor);
+        globalThis.Object.defineProperty(
+          globalThis,
+          "FinalizationRegistry",
+          descriptor,
+        );
     }
   });
 });
 
 describe("noopLeakDetector", () => {
-  test("ignores track and untrack", () => {
+  it("ignores track and untrack", () => {
     const unregisterToken = {};
 
-    expect(() => {
-      noopLeakDetector.track(
-        {},
-        { name: "Lease", isLeaked: () => true },
-        unregisterToken,
-      );
-      noopLeakDetector.untrack(unregisterToken);
-    }).not.toThrow();
+    noopLeakDetector.track(
+      {},
+      { name: "Lease", isLeaked: () => true },
+      unregisterToken,
+    );
+    noopLeakDetector.untrack(unregisterToken);
   });
 });
 
 describe("testCreateLeakDetector", () => {
-  test("collect reports tracked handles that are still held", () => {
+  it("collect reports tracked handles that are still held", () => {
     const console = testCreateConsole();
     const leakDetector = testCreateLeakDetector({ console });
 
     leakDetector.track({}, { name: "Lease", isLeaked: () => true }, {});
 
-    expect(leakDetector.getTrackedCount()).toBe(1);
-    expect(leakDetector.collect()).toBe(1);
-    expect(leakDetector.getTrackedCount()).toBe(0);
+    assertEqual(leakDetector.getTrackedCount(), 1);
+    assertEqual(leakDetector.collect(), 1);
+    assertEqual(leakDetector.getTrackedCount(), 0);
 
     const entries = console.getEntriesSnapshot();
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.method).toBe("warn");
-    expect(entries[0]?.args[0]).toBe(
+    assertLength(entries, 1);
+    assertEqual(entries[0]?.method, "warn");
+    assertEqual(
+      entries[0]?.args[0],
       "Lease was garbage-collected without cleanup. Tracked at:",
     );
-    expect(entries[0]?.args[1]).toContain("LeakDetector.test");
+    const stack = entries[0]?.args[1];
+    assertType(String, stack);
+    assertTrue(stack.includes("LeakDetector.test"));
 
     // Collected targets are no longer tracked.
-    expect(leakDetector.collect()).toBe(0);
+    assertEqual(leakDetector.collect(), 0);
   });
 
-  test("collect does not report handles that are no longer held", () => {
+  it("collect does not report handles that are no longer held", () => {
     const console = testCreateConsole();
     const leakDetector = testCreateLeakDetector({ console });
 
     leakDetector.track({}, { name: "Lease", isLeaked: () => false }, {});
 
-    expect(leakDetector.collect()).toBe(0);
-    expect(console.getEntriesSnapshot()).toEqual([]);
+    assertEqual(leakDetector.collect(), 0);
+    assertEqual(console.getEntriesSnapshot(), []);
   });
 
-  test("collect counts only leaked handles and clears all", () => {
+  it("collect counts only leaked handles and clears all", () => {
     const console = testCreateConsole();
     const leakDetector = testCreateLeakDetector({ console });
 
     leakDetector.track({}, { name: "Lease", isLeaked: () => true }, {});
     leakDetector.track({}, { name: "Lease", isLeaked: () => false }, {});
 
-    expect(leakDetector.collect()).toBe(1);
-    expect(console.getEntriesSnapshot()).toHaveLength(1);
-    expect(leakDetector.getTrackedCount()).toBe(0);
+    assertEqual(leakDetector.collect(), 1);
+    assertLength(console.getEntriesSnapshot(), 1);
+    assertEqual(leakDetector.getTrackedCount(), 0);
   });
 
-  test("collect counts the same leak decision it reports", () => {
+  it("collect counts the same leak decision it reports", () => {
     const console = testCreateConsole();
     const leakDetector = testCreateLeakDetector({ console });
     let isLeaked = true;
@@ -123,11 +130,11 @@ describe("testCreateLeakDetector", () => {
       {},
     );
 
-    expect(leakDetector.collect()).toBe(1);
-    expect(console.getEntriesSnapshot()).toHaveLength(1);
+    assertEqual(leakDetector.collect(), 1);
+    assertLength(console.getEntriesSnapshot(), 1);
   });
 
-  test("untrack stops tracking", () => {
+  it("untrack stops tracking", () => {
     const console = testCreateConsole();
     const leakDetector = testCreateLeakDetector({ console });
     const unregisterToken = {};
@@ -139,12 +146,12 @@ describe("testCreateLeakDetector", () => {
     );
     leakDetector.untrack(unregisterToken);
 
-    expect(leakDetector.getTrackedCount()).toBe(0);
-    expect(leakDetector.collect()).toBe(0);
-    expect(console.getEntriesSnapshot()).toEqual([]);
+    assertEqual(leakDetector.getTrackedCount(), 0);
+    assertEqual(leakDetector.collect(), 0);
+    assertEqual(console.getEntriesSnapshot(), []);
   });
 
-  test("untrack removes all registrations for duplicate tokens", () => {
+  it("untrack removes all registrations for duplicate tokens", () => {
     const console = testCreateConsole();
     const leakDetector = testCreateLeakDetector({ console });
     const unregisterToken = {};
@@ -160,16 +167,16 @@ describe("testCreateLeakDetector", () => {
       unregisterToken,
     );
 
-    expect(leakDetector.getTrackedCount()).toBe(2);
+    assertEqual(leakDetector.getTrackedCount(), 2);
 
     leakDetector.untrack(unregisterToken);
 
-    expect(leakDetector.getTrackedCount()).toBe(0);
-    expect(leakDetector.collect()).toBe(0);
-    expect(console.getEntriesSnapshot()).toEqual([]);
+    assertEqual(leakDetector.getTrackedCount(), 0);
+    assertEqual(leakDetector.collect(), 0);
+    assertEqual(console.getEntriesSnapshot(), []);
   });
 
-  test("collect reports every registration under a duplicate token", () => {
+  it("collect reports every registration under a duplicate token", () => {
     const console = testCreateConsole();
     const leakDetector = testCreateLeakDetector({ console });
     const unregisterToken = {};
@@ -185,11 +192,11 @@ describe("testCreateLeakDetector", () => {
       unregisterToken,
     );
 
-    expect(leakDetector.collect()).toBe(2);
-    expect(console.getEntriesSnapshot()).toHaveLength(2);
+    assertEqual(leakDetector.collect(), 2);
+    assertLength(console.getEntriesSnapshot(), 2);
   });
 
-  test("getTrackedCount filters by leak name", () => {
+  it("getTrackedCount filters by leak name", () => {
     const console = testCreateConsole();
     const leakDetector = testCreateLeakDetector({ console });
 
@@ -200,8 +207,8 @@ describe("testCreateLeakDetector", () => {
       {},
     );
 
-    expect(leakDetector.getTrackedCount()).toBe(2);
-    expect(leakDetector.getTrackedCount({ name: "Lease" })).toBe(1);
-    expect(leakDetector.getTrackedCount({ name: "SemaphorePermit" })).toBe(1);
+    assertEqual(leakDetector.getTrackedCount(), 2);
+    assertEqual(leakDetector.getTrackedCount({ name: "Lease" }), 1);
+    assertEqual(leakDetector.getTrackedCount({ name: "SemaphorePermit" }), 1);
   });
 });

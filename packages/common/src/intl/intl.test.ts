@@ -1,3 +1,5 @@
+import { describe, test } from "node:test";
+import { assertEqual, assertLength, assertNotUndefined } from "../Assert.ts";
 import {
   ar,
   bn,
@@ -44,9 +46,8 @@ import {
   zhTW,
 } from "@evolu/common/intl";
 
-import * as Type from "../../../../../packages/common/src/Type.ts";
-import { ok } from "../../../../../packages/common/src/Result.ts";
-import { describe, expect, test } from "vitest";
+import * as Type from "../Type.ts";
+import { ok } from "../Result.ts";
 
 const Created = Type.typed("Created", { value: Type.String });
 const Deleted = Type.typed("Deleted", { value: Type.String });
@@ -3045,14 +3046,14 @@ const typesByLocale = Type.localizeTypes(
 
 describe("Type localization", () => {
   test("defines localized types", () => {
-    expect(typesByLocale).toBeDefined();
-    expect(Object.keys(typesByLocale)).toHaveLength(43);
+    assertNotUndefined(typesByLocale);
+    assertLength(Object.keys(typesByLocale), 43);
   });
 
   test("formats Czech symbol property errors", () => {
     const key = globalThis.Symbol("key");
 
-    expect(
+    assertEqual(
       cs.formatObjectError({
         type: "Object",
         reason: {
@@ -3060,19 +3061,19 @@ describe("Type localization", () => {
           errors: { [key]: { type: "ObjectExcessProperty" } },
         },
       }),
-    ).toBe(
       "Klíč vlastnosti typu Object musí být text. Odstraňte symbolovou vlastnost nebo použijte jiný Type.",
     );
   });
 
   test("formats Czech Map errors", () => {
-    expect(
+    assertEqual(
       cs.formatMapError({
         type: "Map",
         reason: { kind: "NotMap", value: null },
       }),
-    ).toBe("Hodnota null není Map.");
-    expect(
+      "Hodnota null není Map.",
+    );
+    assertEqual(
       cs.formatMapError({
         type: "Map",
         reason: {
@@ -3080,8 +3081,9 @@ describe("Type localization", () => {
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
       }),
-    ).toBe('Map obsahuje nepovolenou vlastní vlastnost "metadata".');
-    expect(
+      'Map obsahuje nepovolenou vlastní vlastnost "metadata".',
+    );
+    assertEqual(
       cs.formatMapError({
         type: "Map",
         reason: {
@@ -3098,6 +3100,7 @@ describe("Type localization", () => {
           ],
         },
       }),
-    ).toBe('Klíče Mapu "A" a "a" se dekódují na stejný klíč "a".');
+      'Klíče Mapu "A" a "a" se dekódují na stejný klíč "a".',
+    );
   });
 });
