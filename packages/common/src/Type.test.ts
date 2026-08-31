@@ -3,7 +3,6 @@ import { describe, it, mock } from "node:test";
 import { createMutableArray, type NonEmptyReadonlyArray } from "./Array.ts";
 import type { Brand } from "./Brand.ts";
 import {
-  assert,
   assertEqual,
   assertEqualBytes,
   assertErr,
@@ -2461,7 +2460,7 @@ describe("localizeTypes", () => {
       }).test;
 
     const StringTypes = localize({ String });
-    assert("String" in StringTypes, "Expected localized String Types.");
+    assertTrue("String" in StringTypes);
     const stringResult = StringTypes.String.fromUnknown(1);
     assertErr(stringResult);
     assertEqual(
@@ -2470,7 +2469,7 @@ describe("localizeTypes", () => {
     );
 
     const NumberTypes = localize({ Number });
-    assert("Number" in NumberTypes, "Expected localized Number Types.");
+    assertTrue("Number" in NumberTypes);
     const numberResult = NumberTypes.Number.fromUnknown("1");
     assertErr(numberResult);
     assertEqual(
@@ -3146,7 +3145,7 @@ describe("transform", () => {
     const NumberFromString = setupNumberFromString();
     const value: unknown = 42;
 
-    assert(NumberFromString.is(value), "Expected NumberFromString.");
+    assertTrue(NumberFromString.is(value));
     assertFalse(NumberFromString.is("42"));
     assertType<typeof value, number>();
   });
@@ -4341,7 +4340,7 @@ describe("literal", () => {
   it("narrows values and validates convenience operations", () => {
     const value: unknown = "Hello";
 
-    assert(Hello.is(value), "Expected Hello.");
+    assertTrue(Hello.is(value));
     assertFalse(Hello.is("World"));
     assertType<typeof value, "Hello">();
 
@@ -6177,10 +6176,7 @@ describe("templateLiteralParser", () => {
     assertType<SupportedLocale, readonly ["en" | "cs", "US" | "CZ"]>();
     assertType<typeof SupportedLocale.CanonicalInput, SupportedLocaleLiteral>();
 
-    assert(
-      SupportedLocale.parent.is(input),
-      "Expected SupportedLocale.parent.",
-    );
+    assertTrue(SupportedLocale.parent.is(input));
     assertType<typeof input, SupportedLocaleLiteral>();
     assertFalse(SupportedLocale.parent.is("fr-CZ"));
     assertOk(SupportedLocale.parent.fromUnknown("cs-CZ"), "cs-CZ");
@@ -6772,7 +6768,7 @@ describe("brand", () => {
       const { Label, validations } = setupLabel();
       const value: unknown = "value";
 
-      assert(Label.is(value), "Expected value to be a Label.");
+      assertTrue(Label.is(value));
 
       assertType<typeof value, typeof Label.Output>();
       assertEqual(validations, [
@@ -9867,7 +9863,7 @@ describe("array", () => {
       const { UserIds } = setupUserIds();
       const value: unknown = [1, 2];
 
-      assert(UserIds.is(value), "Expected value to be UserIds.");
+      assertTrue(UserIds.is(value));
 
       assertType<typeof value, typeof UserIds.Output>();
       assertFalse(UserIds.is([0]));

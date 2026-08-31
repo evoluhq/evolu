@@ -1,5 +1,5 @@
 import { describe, it, test } from "node:test";
-import { assert, assertEqual, assertSame, assertTrue } from "./Assert.ts";
+import { assertEqual, assertSame, assertTrue } from "./Assert.ts";
 
 import {
   fromNullable,
@@ -94,11 +94,11 @@ describe("examples", () => {
     assertTrue(isNone(get("c")));
 
     const a = get("a");
-    assert(isSome(a), 'Expected cache entry "a" to be Some.');
+    assertTrue(isSome(a));
     assertSame(a.value, null);
 
     const b = get("b");
-    assert(isSome(b), 'Expected cache entry "b" to be Some.');
+    assertTrue(isSome(b));
     assertSame(b.value, undefined);
   });
 });

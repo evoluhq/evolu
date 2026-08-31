@@ -113,7 +113,7 @@ export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
  * ### Narrowing a value
  *
  * ```ts
- * import { assert, assertEqual, type Refinement } from "@evolu/common";
+ * import { assertEqual, assertTrue, type Refinement } from "@evolu/common";
  *
  * interface Animal {
  *   readonly name: string;
@@ -126,7 +126,7 @@ export type PredicateWithIndex<T> = (value: T, index: number) => boolean;
  *   "breed" in animal;
  * const dog: Dog = { name: "Dog", breed: "Beagle" };
  * const animal: Animal = dog;
- * assert(isDog(animal), "Expected a dog.");
+ * assertTrue(isDog(animal));
  *
  * assertEqual(animal.breed, "Beagle");
  * ```

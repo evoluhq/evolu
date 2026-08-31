@@ -1,11 +1,5 @@
 import { test } from "node:test";
-import {
-  assert,
-  assertEqual,
-  assertFalse,
-  assertSame,
-  assertTrue,
-} from "./Assert.ts";
+import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
 
 import type { Brand } from "./Brand.ts";
 import type { ReadonlyRecord } from "./Object.ts";
@@ -116,7 +110,7 @@ test("isFunction", () => {
   const constructable: unknown = class Example {
     readonly value = 1;
   };
-  assert(isFunction(constructable), "Expected the class to be a function.");
+  assertTrue(isFunction(constructable));
   // oxlint-disable-next-line evolu/no-unnecessary-global-this -- @evolu/common also exports an Evolu Function Type, while isFunction recognizes JavaScript function objects.
   assertType<typeof constructable, globalThis.Function>();
 

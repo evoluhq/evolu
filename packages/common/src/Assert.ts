@@ -155,33 +155,49 @@ export const assert: (
 const NodeAssert = globalThis.process?.getBuiltinModule?.("node:assert/strict");
 
 /**
- * Asserts that a value is exactly `true` and narrows it to `true`.
+ * Asserts that a value is exactly `true`.
  *
- * Unlike {@link assert}, this checks an exact boolean value instead of
- * truthiness and does not require a custom message.
+ * Boolean conditions preserve their control-flow narrowing, including named
+ * type guards. Unknown values narrow to the literal `true`. Unlike
+ * {@link assert}, this checks an exact boolean value instead of truthiness and
+ * does not require a custom message.
  *
  * ### Example
  *
  * ```ts
  * import { assertTrue, assertType } from "@evolu/common";
  *
- * const value: unknown = true;
- * assertTrue(value);
- * assertType<typeof value, true>();
+ * interface User {
+ *   readonly name: string;
+ * }
+ *
+ * const isUser = (value: unknown): value is User =>
+ *   typeof value === "object" &&
+ *   value !== null &&
+ *   "name" in value &&
+ *   typeof value.name === "string";
+ *
+ * const value: unknown = { name: "Ada" };
+ * assertTrue(isUser(value));
+ * assertType<typeof value, User>();
+ *
+ * const condition: unknown = true;
+ * assertTrue(condition);
+ * assertType<typeof condition, true>();
  * ```
  *
  * @group Assertions
  */
-export const assertTrue: (value: unknown) => asserts value is true = (
-  value,
-) => {
+export function assertTrue(condition: boolean): asserts condition;
+export function assertTrue(value: unknown): asserts value is true;
+export function assertTrue(value: unknown): void {
   assert(value === true, "Expected true.", {
     actual: value,
     expected: true,
     operator: "strictEqual",
     stackStartFn: assertTrue,
   });
-};
+}
 
 /**
  * Asserts that a value is exactly `false` and narrows it to `false`.

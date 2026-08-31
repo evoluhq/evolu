@@ -194,6 +194,27 @@ test("assertTrue", () => {
   nodeAssert.throws(() => assertTrue(1), /Expected true\./u);
 });
 
+test("assertTrue narrows named type guard conditions", () => {
+  interface Value {
+    readonly type: "Value";
+    readonly value: number;
+  }
+
+  const isValue = (value: unknown): value is Value =>
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "Value" &&
+    "value" in value &&
+    typeof value.value === "number";
+  const value: unknown = { type: "Value", value: 42 };
+
+  assertTrue(isValue(value));
+
+  assertType<typeof value, Value>();
+  assertEqual(value.value, 42);
+});
+
 test("assertFalse", () => {
   const value: unknown = false;
 

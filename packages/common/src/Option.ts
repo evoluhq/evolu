@@ -10,7 +10,6 @@
  *
  * ```ts
  * import {
- *   assert,
  *   assertSame,
  *   assertTrue,
  *   isNone,
@@ -28,7 +27,7 @@
  * cache.set("b", some(undefined));
  *
  * const a = get("a");
- * assert(isSome(a), "Expected Some.");
+ * assertTrue(isSome(a));
  * assertSame(a.value, null);
  * assertTrue(isSome(get("b")));
  * assertTrue(isNone(get("c")));
