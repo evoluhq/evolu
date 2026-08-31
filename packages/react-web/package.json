@@ -28,6 +28,7 @@
   "types": "./dist/src/index.d.ts",
   "files": [
     "dist/src/**",
+    "!dist/**/*.test.*",
     "src/**",
     "README.md"
   ],

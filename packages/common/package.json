@@ -54,6 +54,8 @@
   },
   "files": [
     "dist/src/**",
+    "!dist/**/*.test.*",
+    "!dist/**/_test.*",
     "src/**",
     "README.md"
   ],

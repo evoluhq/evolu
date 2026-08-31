@@ -6,7 +6,13 @@
   "exclude": ["packages/oxlint-config", "packages/typescript-config"],
   "packageOptions": {
     "entryPoints": ["src/**/*.ts"],
-    "exclude": ["src/**/index.ts", "src/intl/*.ts"]
+    "exclude": [
+      "src/**/index.ts",
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "src/**/_test.ts",
+      "src/intl/*.ts"
+    ]
   },
   "plugin": ["typedoc-plugin-markdown", "./scripts/typedoc-plugin-evolu.mts"],
   "publicPath": "/docs/api-reference",
