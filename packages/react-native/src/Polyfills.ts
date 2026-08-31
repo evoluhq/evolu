@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* oxlint-disable typescript/no-unsafe-call, typescript/no-unsafe-member-access */
 
 import { installPolyfills as installCommonPolyfills } from "@evolu/common/polyfills";
 // @ts-expect-error Runtime polyfill package has no TypeScript declarations.

@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+/* oxlint-disable eslint/no-console */
 import {
   allSettled,
   assertNonNullable,

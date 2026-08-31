@@ -221,7 +221,7 @@ try {
   await rm(temporaryDirectory, { recursive: true });
 }
 
-// eslint-disable-next-line no-console -- Report successful CLI completion.
+// oxlint-disable-next-line eslint/no-console -- Report successful CLI completion.
 console.log(
   "Workspace source and static exports, declaration types, and packed packages are valid.",
 );

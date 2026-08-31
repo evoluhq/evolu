@@ -21,7 +21,7 @@ globalThis.sqlite3ApiConfig = {
       arg.startsWith("Ignoring inability to install OPFS sqlite3_vfs")
     )
       return;
-    // eslint-disable-next-line no-console
+    // oxlint-disable-next-line eslint/no-console
     console.warn(arg);
   },
 };
@@ -65,7 +65,7 @@ export const createWasmSqliteDriver: CreateSqliteDriver =
       case "encrypted": {
         // MultipleCiphers encryption requires its VFS wrapper for OPFS SAH-pool.
         // @ts-expect-error Missing types (update @evolu/sqlite-wasm types)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        // oxlint-disable-next-line typescript/no-unsafe-call
         sqlite3.capi.sqlite3mc_vfs_create("opfs", 1);
         const pool = await createOpfsSAHPoolVfs({
           directory: `.${name}`,

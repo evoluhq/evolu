@@ -102,7 +102,7 @@ const toggleAllExamples = (targetMode: Mode): void => {
 
   execSync("pnpm clean", { stdio: "inherit" });
   execSync("pnpm i", { stdio: "inherit" });
-  // eslint-disable-next-line no-console
+  // oxlint-disable-next-line eslint/no-console
   console.log(`All examples switched to ${targetMode} mode.`);
 };
 
@@ -143,7 +143,7 @@ const askForModeInteractive = async (): Promise<Mode> => {
       rl.close();
       return mode;
     }
-    // eslint-disable-next-line no-console
+    // oxlint-disable-next-line eslint/no-console
     console.log(
       "Invalid option — please reply with 1 or 2 (or 'development'/'production').",
     );
@@ -156,6 +156,6 @@ const main = async () => {
 };
 
 main().catch((error: unknown) => {
-  // eslint-disable-next-line no-console
+  // oxlint-disable-next-line eslint/no-console
   console.error("Error:", error);
 });

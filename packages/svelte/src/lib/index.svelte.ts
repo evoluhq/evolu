@@ -17,7 +17,7 @@ import { createEvoluDeps } from "@evolu/web";
 
 // Svelte's declaration generation loses createEvoluDeps' return type here.
 // Keep the explicit public type so consumers do not receive any.
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+// oxlint-disable-next-line typescript/no-unsafe-assignment
 export const evoluSvelteDeps: EvoluDeps = /*#__PURE__*/ createEvoluDeps();
 
 /**

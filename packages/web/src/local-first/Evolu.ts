@@ -18,7 +18,6 @@ import {
 } from "../Worker.ts";
 
 // // TODO: Redesign.
-// // eslint-disable-next-line evolu/require-pure-annotation
 // export const localAuth = createLocalAuth({
 //   randomBytes: createRandomBytes(),
 //   secureStorage: createWebAuthnStore({ randomBytes: createRandomBytes() }),
