@@ -51,6 +51,6 @@ void describe("web development server", () => {
     assert.equal(spawnedFile, process.execPath);
     assert.equal(path.basename(spawnedArgs[0]), "next");
     assert.deepEqual(spawnedArgs.slice(1), ["dev"]);
-    assert.equal(spawnedCwd, path.resolve(import.meta.dirname, ".."));
+    assert.equal(spawnedCwd, path.resolve(import.meta.dirname, "../.."));
   });
 });

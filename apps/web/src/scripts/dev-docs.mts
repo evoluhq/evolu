@@ -8,19 +8,19 @@ import {
   publishApiReference,
 } from "./fix-api-reference.mts";
 
-const defaultRepositoryDir = path.resolve(import.meta.dirname, "../../..");
+const defaultRepositoryDir = path.resolve(import.meta.dirname, "../../../..");
 const defaultStagedReferenceDir = path.join(
   defaultRepositoryDir,
   "tmp/api-reference",
 );
 const defaultReferenceDir = path.join(
   import.meta.dirname,
-  "../src/app/(docs)/docs/api-reference",
+  "../app/(docs)/docs/api-reference",
 );
-const defaultDocsDir = path.join(import.meta.dirname, "../src/app/(docs)");
+const defaultDocsDir = path.join(import.meta.dirname, "../app/(docs)");
 const defaultSectionsPath = path.join(
   import.meta.dirname,
-  "../src/data/sections.json",
+  "../data/sections.json",
 );
 const defaultTypedocPath = path.join(
   defaultRepositoryDir,

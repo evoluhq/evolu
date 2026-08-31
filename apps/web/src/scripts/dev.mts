@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createApiReferenceWatcher, type SubscribeDep } from "./dev-docs.mts";
 import { generateSearchIndex } from "./generate-search-index.mts";
 
-const appDir = path.resolve(import.meta.dirname, "..");
+const appDir = path.resolve(import.meta.dirname, "../..");
 const nextPath = fileURLToPath(import.meta.resolve("next/dist/bin/next"));
 
 export interface CreateApiReferenceWatcherDep {

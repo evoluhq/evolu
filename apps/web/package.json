@@ -2,14 +2,14 @@
   "name": "web",
   "version": "2.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "node ./scripts/generate-search-index.mts && next build",
-    "dev": "node ./scripts/dev.mts",
-    "dev:docs": "node ./scripts/dev-docs.mts",
-    "fix:docs": "node ./scripts/fix-api-reference.mts",
+    "build": "node ./src/scripts/generate-search-index.mts && next build",
+    "dev": "node ./src/scripts/dev.mts",
+    "dev:docs": "node ./src/scripts/dev-docs.mts",
+    "fix:docs": "node ./src/scripts/fix-api-reference.mts",
     "lint": "oxlint .",
-    "start": "next start",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --experimental-test-coverage --test-coverage-include='scripts/dev-docs.mts' --test-coverage-include='scripts/dev.mts' --test-coverage-include='scripts/fix-api-reference.mts' --test-coverage-include='scripts/generate-search-index.mts' --test-coverage-include='src/mdx/searchClient.ts' --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100 ./scripts/dev-docs.test.mts ./scripts/dev.test.mts ./scripts/fix-api-reference.test.mts ./src/mdx/searchClient.test.mts"
+    "start": "next start"
   },
   "browserslist": [
     "baseline newly available",

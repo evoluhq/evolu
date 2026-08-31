@@ -1,21 +1,21 @@
-/* eslint-disable no-console */
+/* oxlint-disable eslint/no-console */
 import { compile } from "@mdx-js/mdx";
 import { assertNonNullable } from "@evolu/common";
 import glob from "fast-glob";
 import fs from "node:fs";
 import path from "node:path";
 
-import { rehypePlugins } from "../src/mdx/rehype.mjs";
-import { remarkPlugins } from "../src/mdx/remark.mjs";
+import { rehypePlugins } from "../mdx/rehype.mjs";
+import { remarkPlugins } from "../mdx/remark.mjs";
 
 const defaultReferenceDir = path.join(
   import.meta.dirname,
-  "../src/app/(docs)/docs/api-reference",
+  "../app/(docs)/docs/api-reference",
 );
-const defaultDocsDir = path.join(import.meta.dirname, "../src/app/(docs)");
+const defaultDocsDir = path.join(import.meta.dirname, "../app/(docs)");
 const defaultSectionsPath = path.join(
   import.meta.dirname,
-  "../src/data/sections.json",
+  "../data/sections.json",
 );
 
 export interface PublishApiReferenceResult {

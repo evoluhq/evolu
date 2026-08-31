@@ -1,5 +1,5 @@
 import fs from "fs";
-import { navigation } from "./navigation";
+import { navigation } from "./navigation.ts";
 
 /**
  * Cleans MDX content by removing imports, exports, JSX components, and
@@ -163,8 +163,7 @@ export const loadMdxContent = async (
     const title =
       module.metadata?.title ??
       module.title ??
-      path.split("/").pop() ??
-      "Untitled";
+      path.slice(path.lastIndexOf("/") + 1);
 
     return {
       path,
@@ -174,11 +173,11 @@ export const loadMdxContent = async (
     };
   } catch (error) {
     // Log error but continue processing other files
-    // eslint-disable-next-line no-console
+    // oxlint-disable-next-line eslint/no-console
     console.error(`Error loading ${relativePath}:`, error);
     return {
       path: `/(docs)/docs/${relativePath.replace(/page\.mdx$/u, "")}`,
-      title: relativePath.split("/").pop() ?? "Error",
+      title: relativePath.slice(relativePath.lastIndexOf("/") + 1),
       sections: [],
       content: "",
     };

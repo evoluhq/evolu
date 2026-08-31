@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+/* oxlint-disable eslint/no-console */
 import { slugifyWithCounter } from "@sindresorhus/slugify";
 import { assertNonNullable } from "@evolu/common";
 import glob from "fast-glob";
@@ -15,8 +15,8 @@ import { filter } from "unist-util-filter";
 import { SKIP, visit } from "unist-util-visit";
 
 export const generateSearchIndex = async ({
-  sourceDir = path.join(import.meta.dirname, "../src/app"),
-  targetPath = path.join(import.meta.dirname, "../src/data/searchIndex.json"),
+  sourceDir = path.join(import.meta.dirname, "../app"),
+  targetPath = path.join(import.meta.dirname, "../data/searchIndex.json"),
 }: {
   readonly sourceDir?: string;
   readonly targetPath?: string;
