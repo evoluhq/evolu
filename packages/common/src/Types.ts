@@ -166,7 +166,7 @@ export type Refinement<in A, out B extends A> = (a: A) => a is B;
  * ];
  * const [numbers, others] = partitionArray(items, isNumberItem);
  *
- * assertType<ReadonlyArray<NumberItem>, typeof numbers>();
+ * assertType<typeof numbers, ReadonlyArray<NumberItem>>();
  * assertTrue(numbers[0]?.value === 2);
  * assertTrue(others[0]?.value === 1);
  * ```
@@ -268,11 +268,11 @@ export const isInstance =
  * };
  *
  * assertType<
+ *   NullablePartial<Example>,
  *   {
  *     required: string;
  *     optionalWithNull?: string | null;
- *   },
- *   NullablePartial<Example>
+ *   }
  * >();
  * ```
  */
@@ -336,11 +336,11 @@ export type Writable<T> = {
  * type B = Simplify<A>;
  *
  * assertType<
+ *   B,
  *   {
  *     a: string;
  *     b: number;
- *   },
- *   B
+ *   }
  * >();
  * ```
  */
@@ -434,10 +434,10 @@ export type CompileTimeError<
  * import { assertType, type IsSameType } from "@evolu/common";
  *
  * assertType<
- *   true,
- *   IsSameType<{ readonly id: string }, { readonly id: string }>
+ *   IsSameType<{ readonly id: string }, { readonly id: string }>,
+ *   true
  * >();
- * assertType<false, IsSameType<"ready", string>>();
+ * assertType<IsSameType<"ready", string>, false>();
  * ```
  */
 export type IsSameType<A, B> =
@@ -496,8 +496,8 @@ export type ParameterIntersection<T> = [T] extends [(value: infer I) => void]
  * type Payload = DistributiveOmit<Event, "shared">;
  *
  * assertType<
- *   { type: "a"; a: string } | { type: "b"; b: number },
- *   Payload
+ *   Payload,
+ *   { type: "a"; a: string } | { type: "b"; b: number }
  * >();
  * ```
  */

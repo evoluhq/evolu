@@ -466,7 +466,7 @@ export const createConsole = ({
  *
  * const output = createNativeConsoleOutput();
  *
- * assertType<ConsoleOutput, typeof output>();
+ * assertType<typeof output, ConsoleOutput>();
  * assertEqual(typeof output.write, "function");
  * ```
  */

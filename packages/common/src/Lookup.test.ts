@@ -1,13 +1,24 @@
-import { describe, expect, test } from "vitest";
-import { createMutableArray } from "../../../../packages/common/src/Array.ts";
+import { describe, it } from "node:test";
+import {
+  assertEqual,
+  assertFalse,
+  assertSame,
+  assertThrowsInstanceOf,
+  assertTrue,
+} from "./Assert.ts";
+
+import { createMutableArray } from "./Array.ts";
 import {
   createLookupMap,
   createLookupSet,
   structuralLookup,
-} from "../../../../packages/common/src/Lookup.ts";
+} from "./Lookup.ts";
+import { installPolyfills } from "./Polyfills.ts";
+
+installPolyfills();
 
 describe("createLookupMap", () => {
-  test("LookupMap is not assignable to native Map", () => {
+  it("LookupMap is not assignable to native Map", () => {
     const lookupMap = createLookupMap<string, number, string>({
       lookup: (key) => key,
     });
@@ -20,7 +31,7 @@ describe("createLookupMap", () => {
     takesNativeMap(lookupMap);
   });
 
-  test("uses natural ids for logical equality", () => {
+  it("uses natural ids for logical equality", () => {
     interface Person {
       readonly id: string;
       readonly name: string;
@@ -32,14 +43,14 @@ describe("createLookupMap", () => {
 
     map.set({ id: "1", name: "Ada" }, "person");
 
-    expect(map.get({ id: "1", name: "Grace" })).toBe("person");
-    expect(map.getKey({ id: "1", name: "Grace" })).toEqual({
+    assertEqual(map.get({ id: "1", name: "Grace" }), "person");
+    assertEqual(map.getKey({ id: "1", name: "Grace" }), {
       id: "1",
       name: "Ada",
     });
   });
 
-  test("initializes from entries and preserves the first representative", () => {
+  it("initializes from entries and preserves the first representative", () => {
     const key1 = { id: "a", name: "Ada" } as const;
     const key2 = { id: "a", name: "Grace" } as const;
     const key3 = { id: "b", name: "Linus" } as const;
@@ -57,20 +68,26 @@ describe("createLookupMap", () => {
       ],
     });
 
-    expect(map.size).toBe(2);
-    expect(map.has(key2)).toBe(true);
-    expect(map.get(key2)).toBe(2);
-    expect(map.getKey(key2)).toBe(key1);
-    expect([...map.keys()]).toEqual([key1, key3]);
-    expect([...map.values()]).toEqual([2, 3]);
-    expect([...map.entries()]).toEqual([
-      [key1, 2],
-      [key3, 3],
-    ]);
-    expect([...map]).toEqual([
-      [key1, 2],
-      [key3, 3],
-    ]);
+    assertEqual(map.size, 2);
+    assertTrue(map.has(key2));
+    assertEqual(map.get(key2), 2);
+    assertSame(map.getKey(key2), key1);
+    assertEqual([...map.keys()], [key1, key3]);
+    assertEqual([...map.values()], [2, 3]);
+    assertEqual(
+      [...map.entries()],
+      [
+        [key1, 2],
+        [key3, 3],
+      ],
+    );
+    assertEqual(
+      [...map],
+      [
+        [key1, 2],
+        [key3, 3],
+      ],
+    );
 
     const seen: Array<
       readonly [{ readonly id: string; readonly name: string }, number]
@@ -78,19 +95,19 @@ describe("createLookupMap", () => {
     map.forEach((value, key) => {
       seen.push([key, value]);
     });
-    expect(seen).toEqual([
+    assertEqual(seen, [
       [key1, 2],
       [key3, 3],
     ]);
 
-    expect(map.delete({ id: "missing", name: "x" })).toBe(false);
-    expect(map.delete(key2)).toBe(true);
-    expect(map.size).toBe(1);
+    assertFalse(map.delete({ id: "missing", name: "x" }));
+    assertTrue(map.delete(key2));
+    assertEqual(map.size, 1);
     map.clear();
-    expect(map.size).toBe(0);
+    assertEqual(map.size, 0);
   });
 
-  test("getOrInsert uses lookup equality and preserves the first representative", () => {
+  it("getOrInsert uses lookup equality and preserves the first representative", () => {
     interface Person {
       readonly id: string;
       readonly name: string;
@@ -103,14 +120,14 @@ describe("createLookupMap", () => {
       lookup: (key) => key.id,
     });
 
-    expect(map.getOrInsert(ada, 1)).toBe(1);
-    expect(map.getOrInsert(grace, 2)).toBe(1);
-    expect(map.size).toBe(1);
-    expect(map.get(grace)).toBe(1);
-    expect(map.getKey(grace)).toBe(ada);
+    assertEqual(map.getOrInsert(ada, 1), 1);
+    assertEqual(map.getOrInsert(grace, 2), 1);
+    assertEqual(map.size, 1);
+    assertEqual(map.get(grace), 1);
+    assertSame(map.getKey(grace), ada);
   });
 
-  test("getOrInsertComputed computes only for missing logical keys", () => {
+  it("getOrInsertComputed computes only for missing logical keys", () => {
     interface Person {
       readonly id: string;
       readonly name: string;
@@ -126,36 +143,39 @@ describe("createLookupMap", () => {
 
     const computedForKeys: Array<string> = [];
 
-    expect(
+    assertEqual(
       map.getOrInsertComputed(ada, (key) => {
         computedForKeys.push(key.name);
         return 1;
       }),
-    ).toBe(1);
+      1,
+    );
 
-    expect(
+    assertEqual(
       map.getOrInsertComputed(grace, (key) => {
         computedForKeys.push(key.name);
         return 2;
       }),
-    ).toBe(1);
+      1,
+    );
 
-    expect(
+    assertEqual(
       map.getOrInsertComputed(linus, (key) => {
         computedForKeys.push(key.name);
         return 3;
       }),
-    ).toBe(3);
+      3,
+    );
 
-    expect(computedForKeys).toEqual(["Ada", "Linus"]);
-    expect(map.getKey(grace)).toBe(ada);
-    expect(map.get(grace)).toBe(1);
-    expect(map.get(linus)).toBe(3);
+    assertEqual(computedForKeys, ["Ada", "Linus"]);
+    assertSame(map.getKey(grace), ada);
+    assertEqual(map.get(grace), 1);
+    assertEqual(map.get(linus), 3);
   });
 });
 
 describe("createLookupSet", () => {
-  test("LookupSet is not assignable to native Set", () => {
+  it("LookupSet is not assignable to native Set", () => {
     const lookupSet = createLookupSet<string, string>({
       lookup: (key) => key,
     });
@@ -168,7 +188,7 @@ describe("createLookupSet", () => {
     takesNativeSet(lookupSet);
   });
 
-  test("uses natural ids and supports iteration helpers", () => {
+  it("uses natural ids and supports iteration helpers", () => {
     const key1 = { id: "a", name: "Ada" } as const;
     const key2 = { id: "a", name: "Grace" } as const;
     const key3 = { id: "b", name: "Linus" } as const;
@@ -181,16 +201,19 @@ describe("createLookupSet", () => {
       values: [key1, key2, key3],
     });
 
-    expect(set.size).toBe(2);
-    expect(set.has(key2)).toBe(true);
-    expect(set.get(key2)).toBe(key1);
-    expect([...set.keys()]).toEqual([key1, key3]);
-    expect([...set.values()]).toEqual([key1, key3]);
-    expect([...set.entries()]).toEqual([
-      [key1, key1],
-      [key3, key3],
-    ]);
-    expect([...set]).toEqual([key1, key3]);
+    assertEqual(set.size, 2);
+    assertTrue(set.has(key2));
+    assertSame(set.get(key2), key1);
+    assertEqual([...set.keys()], [key1, key3]);
+    assertEqual([...set.values()], [key1, key3]);
+    assertEqual(
+      [...set.entries()],
+      [
+        [key1, key1],
+        [key3, key3],
+      ],
+    );
+    assertEqual([...set], [key1, key3]);
 
     const seen: Array<
       readonly [
@@ -201,48 +224,64 @@ describe("createLookupSet", () => {
     set.forEach((value, key) => {
       seen.push([key, value]);
     });
-    expect(seen).toEqual([
+    assertEqual(seen, [
       [key1, key1],
       [key3, key3],
     ]);
 
-    expect(set.delete({ id: "missing", name: "x" })).toBe(false);
-    expect(set.delete(key2)).toBe(true);
-    expect(set.size).toBe(1);
+    assertFalse(set.delete({ id: "missing", name: "x" }));
+    assertTrue(set.delete(key2));
+    assertEqual(set.size, 1);
     set.clear();
-    expect(set.size).toBe(0);
+    assertEqual(set.size, 0);
   });
 });
 
 describe("structuralLookup", () => {
-  test("serializes primitives with tagged JSON-like semantics", () => {
-    expect(structuralLookup("a")).toBe('s:"a"');
-    expect(structuralLookup(1)).toBe("n:1");
-    expect(structuralLookup(-0)).toBe("n:0");
-    expect(structuralLookup(NaN)).toBe("n:NaN");
-    expect(structuralLookup(Number.POSITIVE_INFINITY)).toBe("n:Infinity");
-    expect(structuralLookup(Number.NEGATIVE_INFINITY)).toBe("n:-Infinity");
-    expect(structuralLookup(true)).toBe("b:true");
-    expect(structuralLookup(false)).toBe("b:false");
-    expect(structuralLookup(null)).toBe("l:null");
+  it("serializes primitives with tagged JSON-like semantics", () => {
+    assertEqual(structuralLookup("a"), 's:"a"');
+    assertEqual(structuralLookup(1), "n:1");
+    assertEqual(structuralLookup(0), "n:0");
+    assertEqual(structuralLookup(-0), "n:-0");
+    assertEqual(structuralLookup(NaN), "n:NaN");
+    assertEqual(structuralLookup(Number.POSITIVE_INFINITY), "n:Infinity");
+    assertEqual(structuralLookup(Number.NEGATIVE_INFINITY), "n:-Infinity");
+    assertEqual(structuralLookup(true), "b:true");
+    assertEqual(structuralLookup(false), "b:false");
+    assertEqual(structuralLookup(null), "l:null");
   });
 
-  test("serializes arrays, objects, Uint8Array, and null-prototype objects", () => {
-    expect(structuralLookup(["a", { count: 1 }])).toBe(
+  it("distinguishes signed zero through a Map-backed lookup", () => {
+    const map = createLookupMap<number, string, string>({
+      lookup: structuralLookup,
+    });
+
+    map.set(0, "positive");
+    map.set(-0, "negative");
+
+    assertEqual(map.size, 2);
+    assertEqual(map.get(0), "positive");
+    assertEqual(map.get(-0), "negative");
+  });
+
+  it("serializes arrays, objects, Uint8Array, and null-prototype objects", () => {
+    assertEqual(
+      structuralLookup(["a", { count: 1 }]),
       'a:[s:"a",o:{"count":n:1}]',
     );
-    expect(structuralLookup({ nested: { enabled: true }, id: "a" })).toBe(
+    assertEqual(
+      structuralLookup({ nested: { enabled: true }, id: "a" }),
       'o:{"id":s:"a","nested":o:{"enabled":b:true}}',
     );
-    expect(structuralLookup(new Uint8Array([1, 2, 3]))).toBe("u:AQID");
+    assertEqual(structuralLookup(new Uint8Array([1, 2, 3])), "u:AQID");
 
     const nullPrototype = Object.assign(Object.create(null), { id: "a" }) as {
       readonly id: string;
     };
-    expect(structuralLookup(nullPrototype)).toBe('o:{"id":s:"a"}');
+    assertEqual(structuralLookup(nullPrototype), 'o:{"id":s:"a"}');
   });
 
-  test("memoizes by object identity", () => {
+  it("memoizes by object identity", () => {
     let accessCount = 0;
     const key = Object.defineProperty({}, "id", {
       enumerable: true,
@@ -252,12 +291,12 @@ describe("structuralLookup", () => {
       },
     }) as { readonly id: string };
 
-    expect(structuralLookup(key)).toBe('o:{"id":s:"a"}');
-    expect(structuralLookup(key)).toBe('o:{"id":s:"a"}');
-    expect(accessCount).toBe(1);
+    assertEqual(structuralLookup(key), 'o:{"id":s:"a"}');
+    assertEqual(structuralLookup(key), 'o:{"id":s:"a"}');
+    assertEqual(accessCount, 1);
   });
 
-  test("rejects symbol-keyed properties at compile time", () => {
+  it("rejects symbol-keyed properties at compile time", () => {
     const symbolKey = Symbol("meta");
     const key = { id: "a", [symbolKey]: "x" };
 
@@ -265,7 +304,7 @@ describe("structuralLookup", () => {
     structuralLookup(key);
   });
 
-  test("rejects unsupported values and cycles", () => {
+  it("rejects unsupported values and cycles", () => {
     class Example {
       readonly id = "a";
     }
@@ -276,38 +315,104 @@ describe("structuralLookup", () => {
     const cyclicArray: Array<unknown> = [];
     cyclicArray.push(cyclicArray);
 
-    expect(() => structuralLookup(undefined as never)).toThrow(
-      "Structural lookup keys must be JSON-like values or Uint8Array.",
+    const undefinedError = assertThrowsInstanceOf(
+      () => structuralLookup(undefined as never),
+      Error,
     );
-    expect(() => structuralLookup((() => undefined) as never)).toThrow(
-      "Structural lookup keys must be JSON-like values or Uint8Array.",
+    assertTrue(
+      undefinedError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
     );
-    expect(() => structuralLookup(Symbol("x") as never)).toThrow(
-      "Structural lookup keys must be JSON-like values or Uint8Array.",
+    const functionError = assertThrowsInstanceOf(
+      () => structuralLookup((() => undefined) as never),
+      Error,
     );
-    expect(() => structuralLookup(10n as never)).toThrow(
-      "Structural lookup keys must be JSON-like values or Uint8Array.",
+    assertTrue(
+      functionError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
     );
-    expect(() => structuralLookup(new Date() as never)).toThrow(
-      "Structural lookup keys must be JSON-like values or Uint8Array.",
+    const symbolError = assertThrowsInstanceOf(
+      () => structuralLookup(Symbol("x") as never),
+      Error,
     );
-    expect(() => structuralLookup(new Example() as never)).toThrow(
-      "Structural lookup keys must be JSON-like values or Uint8Array.",
+    assertTrue(
+      symbolError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
     );
-    expect(() => structuralLookup(["a", undefined] as never)).toThrow(
-      "Structural lookup keys must be JSON-like values or Uint8Array.",
+    const bigintError = assertThrowsInstanceOf(
+      () => structuralLookup(10n as never),
+      Error,
     );
-    expect(() => structuralLookup(createMutableArray(1) as never)).toThrow(
-      "Structural lookup keys must be JSON-like values or Uint8Array.",
+    assertTrue(
+      bigintError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
     );
-    expect(() =>
-      structuralLookup({ id: "a", optional: undefined } as never),
-    ).toThrow("Structural lookup keys must be JSON-like values or Uint8Array.");
-    expect(() => structuralLookup(cyclicObject as never)).toThrow(
-      "Structural lookup keys must not contain cycles.",
+    const dateError = assertThrowsInstanceOf(
+      () => structuralLookup(new Date() as never),
+      Error,
     );
-    expect(() => structuralLookup(cyclicArray as never)).toThrow(
-      "Structural lookup keys must not contain cycles.",
+    assertTrue(
+      dateError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
+    );
+    const instanceError = assertThrowsInstanceOf(
+      () => structuralLookup(new Example() as never),
+      Error,
+    );
+    assertTrue(
+      instanceError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
+    );
+    const arrayError = assertThrowsInstanceOf(
+      () => structuralLookup(["a", undefined] as never),
+      Error,
+    );
+    assertTrue(
+      arrayError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
+    );
+    const mutableArrayError = assertThrowsInstanceOf(
+      () => structuralLookup(createMutableArray(1) as never),
+      Error,
+    );
+    assertTrue(
+      mutableArrayError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
+    );
+    const objectError = assertThrowsInstanceOf(
+      () => structuralLookup({ id: "a", optional: undefined } as never),
+      Error,
+    );
+    assertTrue(
+      objectError.message.includes(
+        "Structural lookup keys must be JSON-like values or Uint8Array.",
+      ),
+    );
+    const cyclicObjectError = assertThrowsInstanceOf(
+      () => structuralLookup(cyclicObject as never),
+      Error,
+    );
+    assertTrue(
+      cyclicObjectError.message.includes(
+        "Structural lookup keys must not contain cycles.",
+      ),
+    );
+    const cyclicArrayError = assertThrowsInstanceOf(
+      () => structuralLookup(cyclicArray as never),
+      Error,
+    );
+    assertTrue(
+      cyclicArrayError.message.includes(
+        "Structural lookup keys must not contain cycles.",
+      ),
     );
   });
 });

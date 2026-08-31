@@ -93,7 +93,7 @@ export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
  * const readableJitter = jitter("50%");
  * const computedJitter = jitter(Ratio.orThrow(0.5));
  *
- * assertType<typeof computedJitter, typeof readableJitter>();
+ * assertType<typeof readableJitter, typeof computedJitter>();
  * ```
  */
 export type Percentage = PercentageLiteral | Ratio;

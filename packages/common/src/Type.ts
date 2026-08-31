@@ -14,9 +14,8 @@
  * - Predefined constraints add a {@link Brand} to their Output.
  * - Invalid declarations produce readable {@link CompileTimeError} types when the
  *   compiler can detect them.
- * - Evolu Type uses runtime {@link assert | assertions} to detect developer errors
- *   that TypeScript cannot express, such as excess properties and sparse
- *   arrays.
+ * - Evolu Type uses runtime {@link assert | assertions} to detect bugs that
+ *   TypeScript cannot prevent, such as excess properties and sparse arrays.
  * - Typed `from` boundaries allow connecting value producers to domain fields
  *   through their exact TypeScript types, so incompatible contract changes are
  *   compile-time errors rather than runtime validation errors.
@@ -77,14 +76,14 @@
  * type Age = typeof Age.Output;
  *
  * assertType<
+ *   Age,
  *   number &
  *     Brand<"NonNaN"> &
  *     Brand<"Finite"> &
  *     Brand<"Int"> &
  *     Brand<"NonNegative"> &
  *     Brand<"LessThan200"> &
- *     Brand<"Age">,
- *   Age
+ *     Brand<"Age">
  * >();
  *
  * const User = object({
@@ -97,13 +96,13 @@
  * const user = User.fromUnknown(value);
  *
  * assertOk(user, { name: "Ada", age: 37 });
- * assertType<typeof User.Output, typeof user.value>();
+ * assertType<typeof user.value, typeof User.Output>();
  *
  * const invalidUser = User.fromUnknown({ name: "Ada", age: 37.5 });
  *
  * assertErr(invalidUser);
  * // InferErrors includes every structured error User.fromUnknown can return.
- * assertType<InferErrors<typeof User>, typeof invalidUser.error>();
+ * assertType<typeof invalidUser.error, InferErrors<typeof User>>();
  * assertType(Data, invalidUser.error);
  * assertEqual(invalidUser.error, {
  *   type: "Object",
@@ -185,11 +184,11 @@
  *
  * // No "not a string" or "not trimmed" errors: the input guarantees both.
  * assertType<
+ *   typeof validatedTitle,
  *   Result<
  *     NonEmptyTrimmedString100,
  *     MaxLengthError<100> | MinLengthError<1>
- *   >,
- *   typeof validatedTitle
+ *   >
  * >();
  * assertOk(validatedTitle, "Buy milk");
  * ```
@@ -214,9 +213,8 @@
  * Defending against it would add complexity without creating a meaningful
  * security boundary.
  *
- * Runtime assertions still detect accidental developer errors that TypeScript
- * cannot express. They are correctness checks, not defenses against malicious
- * code.
+ * Runtime assertions still detect bugs that TypeScript cannot prevent. They are
+ * correctness checks, not defenses against malicious code.
  *
  * Evolu does not support subclassing native JavaScript objects. Such subclasses
  * can be classified as their reported built-in representation, but their
@@ -350,9 +348,10 @@
  * Consequently, structural representation errors such as sparse Arrays,
  * accessors, and excess properties normally do not enter user-facing validation
  * in typed application flows. They violate the producer's declared contract and
- * throw as developer errors. At a genuinely unknown boundary, such as a
- * schema-authoring tool, import, or external protocol, the same issues are
- * legitimate typed validation errors and their formatter messages are useful.
+ * therefore throw instead of becoming validation errors. At a genuinely unknown
+ * boundary, such as a schema-authoring tool, import, or external protocol, the
+ * same issues are legitimate typed validation errors and their formatter
+ * messages are useful.
  *
  * This distinction applies to data failures. Any Type operation, including
  * `fromUnknown`, can throw when trusted Type-declaration code, such as a
@@ -666,7 +665,7 @@ export interface Type<
    * const values: ReadonlyArray<unknown> = [42n, "42", null];
    * const integers = values.filter(Int64FromInt64String.is);
    *
-   * assertType<Array<Int64>, typeof integers>();
+   * assertType<typeof integers, Array<Int64>>();
    * assertTrue(Int64FromInt64String.is(42n));
    * assertFalse(Int64FromInt64String.is("42"));
    * ```
@@ -681,10 +680,10 @@ export interface Type<
    * Type toward the root. The deepest suffix accepts the root Output.
    *
    * Every entry point asserts its selected boundary before running the
-   * remaining pipeline. Assertion failures throw because they indicate a
-   * developer error. The Error message identifies the expected boundary Type,
-   * and its cause preserves the structured validation error. Only failures
-   * introduced after that boundary are returned through `Result`.
+   * remaining pipeline. Assertion failures throw because they indicate a bug
+   * that must be fixed. The Error message identifies the expected boundary
+   * Type, and its cause preserves the structured validation error. Only
+   * failures introduced after that boundary are returned through `Result`.
    *
    * ### Example
    *
@@ -729,8 +728,8 @@ export interface Type<
    * const result = saveTodo(title, note);
    *
    * assertType<
-   *   Result<typeof Todo.Output, MaxLengthError<100> | MinLengthError<1>>,
-   *   typeof result
+   *   typeof result,
+   *   Result<typeof Todo.Output, MaxLengthError<100> | MinLengthError<1>>
    * >();
    * assertOk(result, { title, note });
    * ```
@@ -772,7 +771,7 @@ export interface Type<
    * `from` operation, which accepts this Type's `Input`.
    *
    * The typed `Input` boundary is asserted before the remaining pipeline runs.
-   * A boundary violation throws a developer error directly; `getOrThrow` maps
+   * A boundary violation is a bug, so it throws directly; `getOrThrow` maps
    * only a validation error returned after that boundary.
    *
    * `Type.orThrow.parent(value)` does not exist. To throw after starting from a
@@ -811,8 +810,8 @@ export interface Type<
    * `from` operation, which accepts this Type's `Input`.
    *
    * The typed `Input` boundary is asserted before the remaining pipeline runs.
-   * A boundary violation throws a developer error directly; `getOrNull` maps
-   * only a validation error returned after that boundary to `null`.
+   * A boundary violation is a bug, so it throws directly; `getOrNull` maps only
+   * a validation error returned after that boundary to `null`.
    *
    * `Type.orNull.parent(value)` does not exist. To return `null` after starting
    * from a typed boundary, call `getOrNull` with the corresponding `from`
@@ -1035,18 +1034,18 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
   issue.formatError(issue.error);
 
 /**
- * Asserts exact compile-time type equality or that a value belongs to a
- * {@link Type} Output domain.
+ * Asserts type equality or validates a value with a {@link Type}.
  *
- * - `assertType<Expected, Actual>()` requires compiler-identical types without
- *   evaluating a value.
+ * - `assertType<Actual, Expected>()` requires compiler-identical types without
+ *   evaluating a value. It is Evolu's platform-agnostic equivalent of Vitest's
+ *   `expectTypeOf(...).toEqualTypeOf<...>()` and does not require a test
+ *   runner.
  * - `assertType(type, value)` validates and narrows a runtime value to the Type's
  *   Output.
  *
- * Use the runtime form for internal invariants, not external input. Validate
- * external input with `Type.fromUnknown` so validation failures remain typed
- * values. A failed runtime assertion uses the Type name for its message and
- * preserves the exact Output validation error as the thrown Error's cause.
+ * Use the runtime form for code-correctness invariants, not expected validation
+ * failures. Validate external input with `Type.fromUnknown` so validation
+ * failures remain typed values.
  *
  * ### Example
  *
@@ -1060,23 +1059,20 @@ const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
  * const value: unknown = "Evolu";
  * assertType(NonEmptyTrimmedString100, value);
  * assertType<
- *   string &
- *     Brand<"Trimmed"> &
- *     Brand<"MinLength1"> &
- *     Brand<"MaxLength100">,
- *   typeof value
+ *   typeof value,
+ *   string & Brand<"Trimmed"> & Brand<"MinLength1"> & Brand<"MaxLength100">
  * >();
  * ```
  *
  * @group Core
  */
-export function assertType<Expected, Actual>(
-  ...error: IsSameType<Expected, Actual> extends true
+export function assertType<Actual, Expected>(
+  ...error: IsSameType<Actual, Expected> extends true
     ? []
     : [
         error: CompileTimeError<
           "assertType",
-          "Expected and actual types must be identical"
+          "Actual and expected types must be identical"
         >,
       ]
 ): void;
@@ -1090,15 +1086,15 @@ export function assertType<T extends TypeNode>(
 ): void {
   if (type === undefined) return;
 
-  // TODO: Make assert prepend "Expected " and accept an optional third cause
-  // argument. Then use it here and migrate every other assertion to pass an
-  // expectation fragment.
   const runtimeType = type as unknown as RuntimeTypeNode;
   const result = runtimeType[outputValidationSymbol](value);
 
-  if (!result.ok) {
-    throw new Error(`Expected ${runtimeType.name}.`, { cause: result.error });
-  }
+  if (result.ok) return;
+
+  assert(false, `Expected ${runtimeType.name}.`, {
+    cause: result.error,
+    stackStartFn: assertType,
+  });
 }
 
 const assertTypeOutput = <Error extends TypeError>(
@@ -1116,7 +1112,7 @@ const assertTypeOutput = <Error extends TypeError>(
   const result = validateOutput(value, options);
   const error = (result as { readonly ok: false; readonly error: Error }).error;
 
-  throw new Error(`Expected ${name}.`, { cause: error });
+  assert(false, `Expected ${name}.`, { cause: error });
 };
 
 /**
@@ -1174,7 +1170,7 @@ const assertTypeOutput = <Error extends TypeError>(
  *   },
  * );
  *
- * assertType<typeof Label, typeof typesByLocale.cs.Label>();
+ * assertType<typeof typesByLocale.cs.Label, typeof Label>();
  *
  * const result = typesByLocale.cs.Label.fromUnknown("");
  * assertErr(result);
@@ -1597,7 +1593,7 @@ declare const identityEncodingSymbol: unique symbol;
  *
  * const user = User.orThrow({ name: "Ada", age: 37 });
  *
- * assertType<typeof User.Output, typeof user>();
+ * assertType<typeof user, typeof User.Output>();
  * assertEqual(user.name, "Ada");
  * ```
  *
@@ -2230,11 +2226,10 @@ const createChildType = <
  * not lose distinctions present in the Output domain.
  *
  * Transformation callbacks are Type construction code. Their successful results
- * are asserted against the declared boundary so a broken callback fails as a
- * developer error rather than becoming a validation error. Like all
- * Type-construction callbacks, they are trusted to follow their declared
- * TypeScript types. A `Result<_, never>` callback is therefore trusted never to
- * return an `Err`.
+ * are asserted against the declared boundary, so a broken callback throws
+ * instead of becoming a validation error. Like all Type-construction callbacks,
+ * they are trusted to follow their declared TypeScript types. A `Result<_,
+ * never>` callback is therefore trusted never to return an `Err`.
  *
  * Errors from the parent and the forward callback remain unchanged. A forward
  * callback error must use the transformation name as its type. Errors from the
@@ -2870,7 +2865,7 @@ export interface TypeOfError<
  * const WireValue100 = maxLength(100)(String);
  * type WireValue100 = typeof WireValue100.Output;
  *
- * assertType<string & Brand<"MaxLength100">, WireValue100>();
+ * assertType<WireValue100, string & Brand<"MaxLength100">>();
  * assertOk(WireValue100.fromUnknown(""), "");
  * assertOk(WireValue100.fromUnknown(" value "), " value ");
  * ```
@@ -2914,34 +2909,34 @@ export const String = /*#__PURE__*/ createTypeOfType("String");
  * } from "@evolu/common";
  *
  * // Note how every additional constraint accumulates its Brand.
- * assertType<number, typeof Number.Output>();
- * assertType<number & Brand<"NonNaN">, typeof NonNaNNumber.Output>();
+ * assertType<typeof Number.Output, number>();
+ * assertType<typeof NonNaNNumber.Output, number & Brand<"NonNaN">>();
  * assertType<
- *   number & Brand<"NonNaN"> & Brand<"Finite">,
- *   typeof FiniteNumber.Output
+ *   typeof FiniteNumber.Output,
+ *   number & Brand<"NonNaN"> & Brand<"Finite">
  * >();
  * assertType<
- *   number & Brand<"NonNaN"> & Brand<"Finite"> & Brand<"Int">,
- *   typeof Int.Output
+ *   typeof Int.Output,
+ *   number & Brand<"NonNaN"> & Brand<"Finite"> & Brand<"Int">
  * >();
  * assertType<
+ *   typeof NonNegativeInt.Output,
  *   number &
  *     Brand<"NonNaN"> &
  *     Brand<"Finite"> &
  *     Brand<"Int"> &
- *     Brand<"NonNegative">,
- *   typeof NonNegativeInt.Output
+ *     Brand<"NonNegative">
  * >();
  *
  * assertType<
+ *   typeof Age.Output,
  *   number &
  *     Brand<"NonNaN"> &
  *     Brand<"Finite"> &
  *     Brand<"Int"> &
  *     Brand<"NonNegative"> &
  *     Brand<"LessThan200"> &
- *     Brand<"Age">,
- *   typeof Age.Output
+ *     Brand<"Age">
  * >();
  *
  * assertOk(Age.fromUnknown(122), 122);
@@ -3153,8 +3148,8 @@ export function objectTag<Name extends keyof ObjectTagOutputByName>(
  * assertOk(result);
  * assertSame(result.value, value);
  * assertType<
- *   true,
- *   typeof result.value extends TaggedValue ? true : false
+ *   typeof result.value extends TaggedValue ? true : false,
+ *   true
  * >();
  * assertEqual(TaggedValueType.expected, "TaggedValue");
  * ```
@@ -3375,7 +3370,7 @@ type InstanceConstructorCompileTimeError = CompileTimeError<
  *
  * const Ready = literal("ready");
  *
- * assertType<"ready", typeof Ready.Output>();
+ * assertType<typeof Ready.Output, "ready">();
  * assertOk(Ready.fromUnknown("ready"), "ready");
  * const invalid = Ready.fromUnknown("pending");
  * assertErr(invalid);
@@ -4015,20 +4010,20 @@ interface UnionErrorValue<
  *
  * // Output is the decoded language and region.
  * type SupportedLocale = typeof SupportedLocale.Output;
- * assertType<readonly ["en" | "cs", "US" | "CZ"], SupportedLocale>();
+ * assertType<SupportedLocale, readonly ["en" | "cs", "US" | "CZ"]>();
  *
  * // The parent Output is the canonical locale string.
  * type SupportedLocaleLiteral = typeof SupportedLocale.parent.Output;
  * assertType<
- *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ",
- *   SupportedLocaleLiteral
+ *   SupportedLocaleLiteral,
+ *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ"
  * >();
  *
  * // Parse an unknown string into structured data.
  * const result = SupportedLocale.fromUnknown("cs-CZ");
  * assertOk(result, ["cs", "CZ"]);
  * const locale = result.value;
- * assertType<SupportedLocale, typeof locale>();
+ * assertType<typeof locale, SupportedLocale>();
  * const invalid = SupportedLocale.fromUnknown("cs/CZ");
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -4040,13 +4035,13 @@ interface UnionErrorValue<
  *
  * // Encode structured data into its canonical string.
  * const localeLiteral = SupportedLocale.to(locale);
- * assertType<SupportedLocaleLiteral, typeof localeLiteral>();
+ * assertType<typeof localeLiteral, SupportedLocaleLiteral>();
  * assertEqual(localeLiteral, "cs-CZ");
  *
  * // Validate a string configuration value.
  * const configValue: unknown = "cs-CZ";
  * assertType(SupportedLocale.parent, configValue);
- * assertType<SupportedLocaleLiteral, typeof configValue>();
+ * assertType<typeof configValue, SupportedLocaleLiteral>();
  * assertFalse(SupportedLocale.parent.is("fr-CZ"));
  * ```
  *
@@ -4098,11 +4093,11 @@ interface UnionErrorValue<
  * const result = ItemId.fromUnknown("item-42");
  * assertOk(result, [42n]);
  * const itemId = result.value;
- * assertType<ItemId, typeof itemId>();
+ * assertType<typeof itemId, ItemId>();
  *
  * // Encode the structured data into its canonical string.
  * const itemIdLiteral = ItemId.to(itemId);
- * assertType<ItemIdLiteral, typeof itemIdLiteral>();
+ * assertType<typeof itemIdLiteral, ItemIdLiteral>();
  * assertEqual(itemIdLiteral, "item-42");
  *
  * // TypeScript cannot prove from the literal alone that "42" is a valid Int64 encoding.
@@ -4319,7 +4314,7 @@ const createTemplateLiteralParserType = <
     String.from(value);
     const result = decodeString(value, options);
     if (!result.ok || encodeCaptures(result.value) !== value) {
-      throw new Error("Expected TemplateLiteral.", {
+      assert(false, "Expected TemplateLiteral.", {
         cause: result.ok
           ? ({
               type: "TemplateLiteral",
@@ -4430,8 +4425,8 @@ export interface TemplateLiteralType<
  * const Locale = templateLiteral(Language, "-", Region);
  *
  * assertType<
- *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ",
- *   typeof Locale.Output
+ *   typeof Locale.Output,
+ *   "en-US" | "en-CZ" | "cs-US" | "cs-CZ"
  * >();
  * assertOk(Locale.fromUnknown("cs-CZ"), "cs-CZ");
  * assertFalse(Locale.is("fr-CZ"));
@@ -4890,7 +4885,7 @@ const getTemplateLiteralPartFraming = (
  * type Int64 = typeof Int64.Output;
  *
  * // Note the Brand.
- * assertType<bigint & Brand<"Int64">, Int64>();
+ * assertType<Int64, bigint & Brand<"Int64">>();
  *
  * interface Int64Error extends TypeError<"Int64"> {
  *   readonly value: bigint;
@@ -5162,7 +5157,7 @@ export interface UInt64Error extends TypeError<"UInt64"> {
  * const TrimmedString = trimmed(String);
  * type TrimmedString = typeof TrimmedString.Output;
  *
- * assertType<string & Brand<"Trimmed">, TrimmedString>();
+ * assertType<TrimmedString, string & Brand<"Trimmed">>();
  *
  * interface TrimmedError extends TypeError<"Trimmed"> {
  *   readonly value: string;
@@ -5236,8 +5231,8 @@ export type BrandFactory<
  * const LessThan100 = lessThan(100)(Number);
  * type LessThan100 = typeof LessThan100.Output;
  *
- * assertType<"LessThan100", typeof LessThan100.name>();
- * assertType<number & Brand<"LessThan100">, LessThan100>();
+ * assertType<typeof LessThan100.name, "LessThan100">();
+ * assertType<LessThan100, number & Brand<"LessThan100">>();
  *
  * interface LessThanError<
  *   Max extends number,
@@ -5286,7 +5281,7 @@ type BrandFactoryNumberError = CompileTimeError<
  * const CapitalizedString = capitalized(String);
  * type CapitalizedString = typeof CapitalizedString.Output;
  *
- * assertType<string & Brand<"Capitalized">, CapitalizedString>();
+ * assertType<CapitalizedString, string & Brand<"Capitalized">>();
  *
  * assertOk(CapitalizedString.fromUnknown("Evolu"), "Evolu");
  * const invalid = CapitalizedString.fromUnknown("evolu");
@@ -5613,7 +5608,7 @@ export interface LengthError<
  * )(String);
  * type UrlSafeString = typeof UrlSafeString.Output;
  *
- * assertType<string & Brand<"UrlSafeString">, UrlSafeString>();
+ * assertType<UrlSafeString, string & Brand<"UrlSafeString">>();
  *
  * assertOk(UrlSafeString.fromUnknown("abc-123_DEF"), "abc-123_DEF");
  * const invalid = UrlSafeString.fromUnknown("not safe");
@@ -5931,7 +5926,7 @@ export interface IdError extends TypeError<"Id"> {
  * const userId = createId<"User">({ randomBytes: createRandomBytes() });
  *
  * assertTrue(Id.is(userId));
- * assertType<Id & Brand<"User">, typeof userId>();
+ * assertType<typeof userId, Id & Brand<"User">>();
  * ```
  *
  * @group String
@@ -5965,7 +5960,7 @@ export const createId = <B extends string = never>(
  * const todoId = createIdFromString<"Todo">("external-todo-456");
  *
  * assertEqual(first, second);
- * assertType<Id & Brand<"Todo">, typeof todoId>();
+ * assertType<typeof todoId, Id & Brand<"Todo">>();
  * ```
  *
  * @group String
@@ -6045,7 +6040,7 @@ export const createIdAsUuidv7 = <B extends string = never>(
  * const TodoId = id("Todo");
  * const todoId = TodoId.orThrow(createIdFromString("todo"));
  *
- * assertType<Id & Brand<"Todo">, typeof todoId>();
+ * assertType<typeof todoId, Id & Brand<"Todo">>();
  * ```
  *
  * @group String
@@ -6593,7 +6588,7 @@ export type PositiveFiniteNumber = typeof PositiveFiniteNumber.Output;
  * const Int = int(Number);
  * type Int = typeof Int.Output;
  *
- * assertType<number & Brand<"Int">, Int>();
+ * assertType<Int, number & Brand<"Int">>();
  *
  * assertOk(Int.fromUnknown(42), 42);
  * const invalid = Int.fromUnknown(1.5);
@@ -7246,8 +7241,8 @@ export type NegativeDecimalString = typeof NegativeDecimalString.Output;
  * const Tenths = multipleOf("0.1")(FiniteNumber);
  *
  * assertType<
- *   FiniteNumber & Brand<"MultipleOf0.1">,
- *   typeof Tenths.Output
+ *   typeof Tenths.Output,
+ *   FiniteNumber & Brand<"MultipleOf0.1">
  * >();
  *
  * assertOk(Tenths.fromUnknown(0.3), 0.3);
@@ -7482,8 +7477,8 @@ export interface BetweenError<
  * const result = UserIds.from.parent(["ada", "grace"]);
  *
  * assertType<
- *   Result<ReadonlyArray<string & Brand<"UserId">>>,
- *   typeof result
+ *   typeof result,
+ *   Result<ReadonlyArray<string & Brand<"UserId">>>
  * >();
  * assertOk(result, ["ada", "grace"]);
  * assertOk(UserIds.fromUnknown(["ada", "grace"]), ["ada", "grace"]);
@@ -9623,8 +9618,8 @@ export { _Object as Object };
  *
  * assertOk(scoresFromInput, { ada: 10n, grace: 20n });
  * assertType<
- *   Readonly<Partial<Record<string, Int64>>>,
- *   typeof scoresFromInput.value
+ *   typeof scoresFromInput.value,
+ *   Readonly<Partial<Record<string, Int64>>>
  * >();
  * ```
  *
@@ -10394,7 +10389,7 @@ type ObjectProperty = ObjectProps[string];
  * const userFromInput = User.from.parent(userInput.value);
  *
  * assertOk(userFromInput, { name: "Ada", loginCount: 42n });
- * assertType<typeof User.Output, typeof userFromInput.value>();
+ * assertType<typeof userFromInput.value, typeof User.Output>();
  * ```
  *
  * Note that TypeScript does not model an object's runtime prototype. This can
@@ -10505,7 +10500,7 @@ export function object<const Props extends ObjectProps>(
  *   authorization: "Bearer token",
  *   "x-request-id": "request-1",
  * });
- * assertType<string | undefined, (typeof result.value)["x-request-id"]>();
+ * assertType<(typeof result.value)["x-request-id"], string | undefined>();
  * ```
  */
 export function object<
@@ -11826,10 +11821,10 @@ export type UnknownResult = typeof UnknownResult.Output;
  * });
  * assertFalse(Loading.is({ type: "Loading", progress: 1 }));
  * assertType<
- *   true,
  *   typeof Loading.Output extends { readonly type: "Loading" }
  *     ? true
- *     : false
+ *     : false,
+ *   true
  * >();
  * ```
  *
@@ -11894,7 +11889,7 @@ export function typed<
  *   label: "Ready",
  *   note: "Connected",
  * });
- * assertType<string | undefined, typeof result.value.note>();
+ * assertType<typeof result.value.note, string | undefined>();
  * ```
  */
 export function typed<
@@ -12011,7 +12006,7 @@ export interface Typed<Tag extends TypeName> {
  *
  * type CreateMessage = ExtractTyped<Message, "Create">;
  *
- * assertType<typeof Create.Output, CreateMessage>();
+ * assertType<CreateMessage, typeof Create.Output>();
  *
  * // @ts-expect-error "Cretae" is not a Message type.
  * type _Typo = ExtractTyped<Message, "Cretae">;
@@ -12874,7 +12869,7 @@ type RuntimeDiscriminatedUnionMember = RuntimeObjectTypeNode & {
  *   value: "root",
  *   children: [{ value: "leaf", children: [] }],
  * });
- * assertType<Tree, typeof result.value>();
+ * assertType<typeof result.value, Tree>();
  * ```
  *
  * @group Recursive
@@ -12904,7 +12899,7 @@ export function lazy(getType: Thunk<TypeNode>): TypeNode {
           false,
           "A Lazy Type definition must not resolve itself while it is being created.",
         );
-      // eslint-disable-next-line no-fallthrough
+      // oxlint-disable-next-line eslint/no-fallthrough
       case "unresolved": {
         resolution = { state: "resolving" };
 
@@ -13105,7 +13100,7 @@ const assertLazyReferencesAreGuarded = (type: RuntimeTypeNode): void => {
  *
  * assertOk(result);
  * assertSame(result.value, value);
- * assertType<Data, typeof result.value>();
+ * assertType<typeof result.value, Data>();
  * ```
  *
  * @group Base
@@ -13149,8 +13144,8 @@ export type Data =
  *   readonly run: () => void;
  * }
  *
- * assertType<true, IsData<User>>();
- * assertType<false, IsData<Service>>();
+ * assertType<IsData<User>, true>();
+ * assertType<IsData<Service>, false>();
  * ```
  *
  * @group Base
@@ -14196,7 +14191,7 @@ const stringifyJsonValue = (value: JsonValue): Json => {
  * const result = JsonValue.fromUnknown(input);
  *
  * assertOk(result, input);
- * assertType<JsonValue, typeof result.value>();
+ * assertType<typeof result.value, JsonValue>();
  * ```
  *
  * @group JSON
@@ -14355,8 +14350,8 @@ export const JsonValueFromJson = /*#__PURE__*/ transform(
  * const userJson = userToUserJson(user);
  *
  * assertType<
- *   string & Brand<"Json"> & Brand<"UserJson">,
- *   typeof userJson
+ *   typeof userJson,
+ *   string & Brand<"Json"> & Brand<"UserJson">
  * >();
  * assertEqual(userJson, '{"name":"Ada","age":37}');
  * assertEqual(UserJson.orThrow(userJson), userJson);
@@ -14448,7 +14443,7 @@ export const json = <T extends ConcreteTypeNode, Name extends TypeName>(
     const result = jsonStringToBrandedJson(value, options);
 
     if (!result.ok && result.error.type === "Json") {
-      throw new Error("Expected Json.", { cause: result.error });
+      assert(false, "Expected Json.", { cause: result.error });
     }
     return result;
   };

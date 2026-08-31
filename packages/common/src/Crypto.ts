@@ -63,10 +63,10 @@ export interface RandomBytes {
    * const seed = randomBytes.create(64);
    * const custom = randomBytes.create(48);
    *
-   * assertType<Entropy16, typeof nonce16>();
-   * assertType<Entropy24, typeof nonce24>();
-   * assertType<Entropy32, typeof key>();
-   * assertType<Entropy64, typeof seed>();
+   * assertType<typeof nonce16, Entropy16>();
+   * assertType<typeof nonce24, Entropy24>();
+   * assertType<typeof key, Entropy32>();
+   * assertType<typeof seed, Entropy64>();
    * assertEqual(custom.length, 48);
    * ```
    */
@@ -192,7 +192,7 @@ export type XChaCha20Poly1305Ciphertext =
  *   randomBytes: createRandomBytes(),
  * })(plaintext, encryptionKey);
  *
- * assertType<XChaCha20Poly1305Ciphertext, typeof ciphertext>();
+ * assertType<typeof ciphertext, XChaCha20Poly1305Ciphertext>();
  * assertEqual(nonce.length, 24);
  * ```
  *

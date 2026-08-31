@@ -111,8 +111,8 @@ export interface RelayConfig extends StorageConfig {
    *   },
    * );
    * assertType<
-   *   true,
-   *   typeof createTodoEvolu extends AnyTask ? true : false
+   *   typeof createTodoEvolu extends AnyTask ? true : false,
+   *   true
    * >();
    *
    * // Relay: accept owners allowed by the app's access policy.

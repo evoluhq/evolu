@@ -331,8 +331,9 @@ export type StructuralFunction = (...args: ReadonlyArray<unknown>) => unknown;
  *
  * Structural lookup keys are derived from JSON-like values plus `Uint8Array`.
  * Equal structures produce the same lookup key even when they are different
- * JavaScript instances. `undefined` values and sparse array holes are rejected
- * rather than skipped.
+ * JavaScript instances. Primitive values use SameValue (`Object.is`), so `NaN`
+ * equals itself while `0` and `-0` produce different keys. `undefined` values
+ * and sparse array holes are rejected rather than skipped.
  *
  * The derived key is memoized by non-null object identity in a module-scoped
  * `WeakMap` shared by all callers, so keys must be immutable.
@@ -394,7 +395,7 @@ const structuralLookupInternal = (
       if (Number.isNaN(value)) return "n:NaN";
       if (value === Number.POSITIVE_INFINITY) return "n:Infinity";
       if (value === Number.NEGATIVE_INFINITY) return "n:-Infinity";
-      return Object.is(value, -0) ? "n:0" : `n:${value}`;
+      return Object.is(value, -0) ? "n:-0" : `n:${value}`;
     case "boolean":
       return value ? "b:true" : "b:false";
     case "object": {

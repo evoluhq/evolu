@@ -1,11 +1,21 @@
-import { expectErr, expectOk } from "@evolu/vitest";
-import { assert, describe, expect, expectTypeOf, test, vi } from "vitest";
+import nodeAssert from "node:assert/strict";
+import { describe, it, mock } from "node:test";
+import { createMutableArray, type NonEmptyReadonlyArray } from "./Array.ts";
+import type { Brand } from "./Brand.ts";
 import {
-  createMutableArray,
-  type NonEmptyReadonlyArray,
-} from "../../../../packages/common/src/Array.ts";
-import type { Brand } from "../../../../packages/common/src/Brand.ts";
-import * as cs from "../../../../packages/common/src/intl/cs.ts";
+  assert,
+  assertEqual,
+  assertEqualBytes,
+  assertErr,
+  assertFalse,
+  assertInstanceOf,
+  assertLength,
+  assertOk,
+  assertSame,
+  assertThrowsInstanceOf,
+  assertTrue,
+} from "./Assert.ts";
+import * as cs from "./intl/cs.ts";
 import {
   allResult,
   err,
@@ -13,8 +23,8 @@ import {
   getOrThrow,
   ok,
   type Result,
-} from "../../../../packages/common/src/Result.ts";
-import { testCreateDeps } from "../../../../packages/common/src/Task.ts";
+} from "./Result.ts";
+import { testCreateDeps } from "./Task.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   Age,
@@ -285,7 +295,10 @@ import {
   type UnionMemberError,
   type UnionType,
   type ValidationOptions,
-} from "../../../../packages/common/src/Type.ts";
+} from "./Type.ts";
+
+const createNullRecord = <T extends object>(entries: T): T =>
+  globalThis.Object.assign(globalThis.Object.create(null) as T, entries);
 
 const formatTestTypeError: TypeErrorFormatter<TypeError> = (error) =>
   error.type;
@@ -375,35 +388,27 @@ const setupUnexpectedPrototypeValues = (): ReadonlyArray<
   ];
 };
 
-const expectAssertionError = (
+const assertAssertionError = (
   operation: () => unknown,
   message: string,
   cause: unknown,
 ): void => {
-  let thrown: unknown;
-
-  try {
-    operation();
-  } catch (error) {
-    thrown = error;
-  }
-
-  assert(thrown instanceof Error, "Expected an Error.");
-  expect(thrown.message).toBe(message);
-  expect(thrown.cause).toEqual(cause);
+  const error = assertThrowsInstanceOf(operation, Error);
+  assertEqual(error.message, message);
+  assertEqual(error.cause, cause);
 };
 
 describe("Type", () => {
-  test("extracts an object Output for an interface", () => {
+  it("extracts an object Output for an interface", () => {
     const User = object({ name: String });
     interface User extends InferType<typeof User> {}
 
-    expectTypeOf<User>().toExtend<typeof User.Output>();
-    expectTypeOf<typeof User.Output>().toExtend<User>();
+    assertType<User extends typeof User.Output ? true : false, true>();
+    assertType<typeof User.Output extends User ? true : false, true>();
   });
 
-  test("exposes every non-Lazy Type name through introspection", () => {
-    type TypeModule = typeof import("../../../../packages/common/src/Type.ts");
+  it("exposes every non-Lazy Type name through introspection", () => {
+    type TypeModule = typeof import("./Type.ts");
     type ExportedTypeKey = {
       readonly [Key in keyof TypeModule]: TypeModule[Key] extends TypeNode
         ? Key
@@ -573,7 +578,7 @@ describe("Type", () => {
       IntrospectionA,
       discriminatedUnion(IntrospectionA, IntrospectionB),
       NumberFromString,
-      // eslint-disable-next-line @typescript-eslint/no-extraneous-class
+      // oxlint-disable-next-line typescript/no-extraneous-class
       instanceOf(class IntrospectionInstance {}),
     );
     const allTypes = [
@@ -661,9 +666,10 @@ describe("Type", () => {
       "UrlSafeString",
     ] as const;
 
-    expectTypeOf<
-      IntrospectedTypeNames<(typeof allTypes)[number]>
-    >().toEqualTypeOf<(typeof expectedNames)[number]>();
+    assertType<
+      IntrospectedTypeNames<(typeof allTypes)[number]>,
+      (typeof expectedNames)[number]
+    >();
 
     interface RuntimeIntrospection extends TypeNode {
       readonly element?: TypeNode;
@@ -707,61 +713,72 @@ describe("Type", () => {
 
     for (const type of allTypes) visit(type);
 
-    expect([...names].toSorted()).toEqual(expectedNames);
+    assertEqual([...names].toSorted(), expectedNames);
   });
 
-  test("is nominal", () => {
+  it("is nominal", () => {
     const Answer = literal(42);
     // The private symbol makes TypeNode nominal.
     type StructuralAnswer = Omit<typeof Answer, symbol>;
 
-    expectTypeOf(Answer).toExtend<TypeNode>();
-    expectTypeOf<StructuralAnswer>().not.toExtend<TypeNode>();
+    assertType<typeof Answer extends TypeNode ? true : false, true>();
+    assertType<StructuralAnswer extends TypeNode ? true : false, false>();
   });
 
-  test("exposes its typed default error formatter", () => {
-    expect(
+  it("exposes its typed default error formatter", () => {
+    assertEqual(
       String.formatError({ type: "TypeOf", expected: "String", value: 42 }),
-    ).toBe("A value 42 is not a string.");
-    expectTypeOf(String.formatError)
-      .parameter(0)
-      .toEqualTypeOf<TypeOfError<"String">>();
+      "A value 42 is not a string.",
+    );
+    assertType<
+      Parameters<typeof String.formatError>[0],
+      TypeOfError<"String">
+    >();
   });
 
-  test("does not expose error formatting through TypeNode", () => {
-    expectTypeOf<"formatError">().not.toExtend<keyof TypeNode>();
+  it("does not expose error formatting through TypeNode", () => {
+    assertType<"formatError" extends keyof TypeNode ? true : false, false>();
   });
 
-  test("does not expose encoding through TypeNode", () => {
-    expectTypeOf<"to">().not.toExtend<keyof TypeNode>();
+  it("does not expose encoding through TypeNode", () => {
+    assertType<"to" extends keyof TypeNode ? true : false, false>();
   });
 
-  test("encodes validation-only Types without changing their values", () => {
+  it("encodes validation-only Types without changing their values", () => {
     const dateIso = getOrThrow(DateIso.from.parent("2024-01-01T00:00:00.000Z"));
 
-    expect(String.to("value")).toBe("value");
-    expect(DateIso.to(dateIso)).toBe("2024-01-01T00:00:00.000Z");
-    expectTypeOf(DateIso.to(dateIso)).toEqualTypeOf<DateIso>();
+    assertEqual(String.to("value"), "value");
+    assertEqual(DateIso.to(dateIso), "2024-01-01T00:00:00.000Z");
+    {
+      const actual = DateIso.to(dateIso);
+      assertType<typeof actual, DateIso>();
+    }
   });
 
-  test("exposes partial encoding operations for every parent boundary", () => {
+  it("exposes partial encoding operations for every parent boundary", () => {
     const A = brand("OperationA", String);
     const B = brand("OperationB", A);
     const value = B.orThrow("value");
     const bToParent = B.to.parent;
 
-    expect(B.to(value)).toBe("value");
-    expect(B.to.parent(value)).toBe("value");
-    expect(B.to.parent.parent(value)).toBe("value");
-    expectTypeOf(B.to.parent(value)).toEqualTypeOf<typeof A.Output>();
-    expectTypeOf(B.to.parent.parent(value)).toEqualTypeOf<string>();
-    expect("parent" in B.to.parent.parent).toBe(false);
+    assertEqual(B.to(value), "value");
+    assertEqual(B.to.parent(value), "value");
+    assertEqual(B.to.parent.parent(value), "value");
+    {
+      const actual = B.to.parent(value);
+      assertType<typeof actual, typeof A.Output>();
+    }
+    {
+      const actual = B.to.parent.parent(value);
+      assertType<typeof actual, string>();
+    }
+    assertFalse("parent" in B.to.parent.parent);
 
     brand("OperationC", B);
 
-    expect(B.to.parent).toBe(bToParent);
-    expect("parent" in B.to.parent.parent).toBe(false);
-    expect("parent" in String.to).toBe(false);
+    assertSame(B.to.parent, bToParent);
+    assertFalse("parent" in B.to.parent.parent);
+    assertFalse("parent" in String.to);
   });
 
   describe("variance", () => {
@@ -837,28 +854,34 @@ describe("Type", () => {
       BroadParent
     >;
 
-    test("makes Name and Error covariant", () => {
-      expectTypeOf<NarrowName>().toExtend<BroadName>();
-      expectTypeOf<BroadName>().not.toExtend<NarrowName>();
-      expectTypeOf<NarrowOwnError>().toExtend<BroadOwnError>();
-      expectTypeOf<BroadOwnError>().not.toExtend<NarrowOwnError>();
+    it("makes Name and Error covariant", () => {
+      assertType<NarrowName extends BroadName ? true : false, true>();
+      assertType<BroadName extends NarrowName ? true : false, false>();
+      assertType<NarrowOwnError extends BroadOwnError ? true : false, true>();
+      assertType<BroadOwnError extends NarrowOwnError ? true : false, false>();
     });
 
-    test("makes Input, Output, Parent, and Errors invariant", () => {
-      expectTypeOf<NarrowInput>().not.toExtend<BroadInput>();
-      expectTypeOf<BroadInput>().not.toExtend<NarrowInput>();
-      expectTypeOf<NarrowOutput>().not.toExtend<BroadOutput>();
-      expectTypeOf<BroadOutput>().not.toExtend<NarrowOutput>();
-      expectTypeOf<NarrowErrors>().not.toExtend<BroadErrors>();
-      expectTypeOf<BroadErrors>().not.toExtend<NarrowErrors>();
-      expectTypeOf<WithNarrowParent>().not.toExtend<WithBroadParent>();
-      expectTypeOf<WithBroadParent>().not.toExtend<WithNarrowParent>();
+    it("makes Input, Output, Parent, and Errors invariant", () => {
+      assertType<NarrowInput extends BroadInput ? true : false, false>();
+      assertType<BroadInput extends NarrowInput ? true : false, false>();
+      assertType<NarrowOutput extends BroadOutput ? true : false, false>();
+      assertType<BroadOutput extends NarrowOutput ? true : false, false>();
+      assertType<NarrowErrors extends BroadErrors ? true : false, false>();
+      assertType<BroadErrors extends NarrowErrors ? true : false, false>();
+      assertType<
+        WithNarrowParent extends WithBroadParent ? true : false,
+        false
+      >();
+      assertType<
+        WithBroadParent extends WithNarrowParent ? true : false,
+        false
+      >();
     });
   });
 });
 
 describe("Type operations", () => {
-  test("assert each selected boundary with its name and structured error", () => {
+  it("assert each selected boundary with its name and structured error", () => {
     const positiveError = { type: "Positive", value: 0 } as const;
     const nonNegativeError = { type: "NonNegative", value: -1 } as const;
     const numberError = {
@@ -899,39 +922,38 @@ describe("Type operations", () => {
         numberError,
       ],
     ] as const) {
-      expectAssertionError(operation, message, cause);
+      assertAssertionError(operation, message, cause);
     }
   });
 
-  test("map only errors returned after the typed Input boundary", () => {
+  it("map only errors returned after the typed Input boundary", () => {
     const error = { type: "Positive", value: 0 } as const;
 
-    expectAssertionError(() => PositiveNumber.orThrow(0), "getOrThrow", error);
-    expect(PositiveNumber.orNull(0)).toBeNull();
+    assertAssertionError(() => PositiveNumber.orThrow(0), "getOrThrow", error);
+    assertSame(PositiveNumber.orNull(0), null);
   });
 });
 
 describe("Standard Schema", () => {
-  test("infers the exact Input and Output", () => {
+  it("infers the exact Input and Output", () => {
     const _NumberFromString = setupNumberFromString();
 
-    expectTypeOf<
-      StandardSchemaV1.InferInput<typeof _NumberFromString>
-    >().toEqualTypeOf<string>();
-    expectTypeOf<
-      StandardSchemaV1.InferOutput<typeof _NumberFromString>
-    >().toEqualTypeOf<number>();
+    assertType<StandardSchemaV1.InferInput<typeof _NumberFromString>, string>();
+    assertType<
+      StandardSchemaV1.InferOutput<typeof _NumberFromString>,
+      number
+    >();
   });
 
-  test("decodes synchronously through transformations", async () => {
+  it("decodes synchronously through transformations", async () => {
     const NumberFromString = setupNumberFromString();
     const result = NumberFromString["~standard"].validate("42");
 
-    expect(result).not.toBeInstanceOf(Promise);
-    expect(await result).toEqual({ value: 42 });
+    assertFalse(result instanceof Promise);
+    assertEqual(await result, { value: 42 });
   });
 
-  test("returns every nested Object and Array issue with its path", async () => {
+  it("returns every nested Object and Array issue with its path", async () => {
     const Model = object({
       labels: array(String),
       count: Number,
@@ -943,7 +965,7 @@ describe("Standard Schema", () => {
       excess: true,
     });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         { message: "A value 1 is not a string.", path: ["labels", 0] },
         { message: "A value 2 is not a string.", path: ["labels", 1] },
@@ -961,7 +983,7 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("locates Array holes, accessors, and excess properties", async () => {
+  it("locates Array holes, accessors, and excess properties", async () => {
     const symbol = globalThis.Symbol("metadata");
     const value = createMutableArray<unknown>(3);
     globalThis.Object.defineProperty(value, 0, {
@@ -980,7 +1002,7 @@ describe("Standard Schema", () => {
 
     const result = await array(String)["~standard"].validate(value);
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message:
@@ -1004,10 +1026,10 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("locates Tuple issues", async () => {
+  it("locates Tuple issues", async () => {
     const result = await tuple(String, Number)["~standard"].validate([1, "2"]);
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         { message: "A value 1 is not a string.", path: [0] },
         { message: 'A value "2" is not a number.', path: [1] },
@@ -1015,7 +1037,7 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("locates Tuple structural issues", async () => {
+  it("locates Tuple structural issues", async () => {
     const value = ["value", 1];
     globalThis.Object.defineProperty(value, 0, {
       enumerable: true,
@@ -1028,7 +1050,7 @@ describe("Standard Schema", () => {
 
     const result = await tuple(String, Number)["~standard"].validate(value);
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message:
@@ -1043,7 +1065,7 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("locates Record key, value, and structural issues", async () => {
+  it("locates Record key, value, and structural issues", async () => {
     const Values = record(regex("RecordKey", /^value/u)(String), Number);
     const input = { invalid: 1, value: "1" };
     globalThis.Object.defineProperty(input, "hidden", {
@@ -1052,7 +1074,7 @@ describe("Standard Schema", () => {
     });
     const result = await Values["~standard"].validate(input);
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message: 'The value "invalid" does not match /^value/u.',
@@ -1071,15 +1093,15 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("locates Map key, value, and structural issues", async () => {
+  it("locates Map key, value, and structural issues", async () => {
     const Values = map(String, Number);
-    const input = new globalThis.Map<unknown, unknown>([[1, "1"]]);
+    const input = new Map<unknown, unknown>([[1, "1"]]);
     globalThis.Object.defineProperty(input, "metadata", {
       enumerable: true,
       value: true,
     });
 
-    expect(await Values["~standard"].validate(input)).toEqual({
+    assertEqual(await Values["~standard"].validate(input), {
       issues: [
         {
           message: 'An excess Map property "metadata" is not allowed.',
@@ -1091,24 +1113,25 @@ describe("Standard Schema", () => {
     });
 
     const NumberFromString = setupNumberFromString();
-    expect(
+    assertEqual(
       await map(NumberFromString, Number)["~standard"].validate(
         new globalThis.Map([
           ["01", 1],
           ["1", 2],
         ]),
       ),
-    ).toEqual({
-      issues: [
-        {
-          message: "Map keys at indexes 0 and 1 decode to the same key 1.",
-          path: [1],
-        },
-      ],
-    });
+      {
+        issues: [
+          {
+            message: "Map keys at indexes 0 and 1 decode to the same key 1.",
+            path: [1],
+          },
+        ],
+      },
+    );
   });
 
-  test("does not duplicate Object Record property paths", async () => {
+  it("does not duplicate Object Record property paths", async () => {
     const Model = object(
       { fixed: array(Number) },
       record(String, array(Number)),
@@ -1118,18 +1141,18 @@ describe("Standard Schema", () => {
       values: ["1"],
     });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         { message: 'A value "1" is not a number.', path: ["values", 0] },
       ],
     });
   });
 
-  test("returns one Union issue at the current path", async () => {
+  it("returns one Union issue at the current path", async () => {
     const Model = object({ value: union(String, Number) });
     const result = await Model["~standard"].validate({ value: null });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message: "A value does not match any allowed variant.",
@@ -1139,12 +1162,12 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("locates DiscriminatedUnion routing and member issues", async () => {
+  it("locates DiscriminatedUnion routing and member issues", async () => {
     const Created = typed("Created", { value: String });
     const Deleted = typed("Deleted", { reason: Number });
     const Event = discriminatedUnion(Created, Deleted);
 
-    expect(await Event["~standard"].validate({ type: "Unknown" })).toEqual({
+    assertEqual(await Event["~standard"].validate({ type: "Unknown" }), {
       issues: [
         {
           message:
@@ -1153,14 +1176,15 @@ describe("Standard Schema", () => {
         },
       ],
     });
-    expect(
+    assertEqual(
       await Event["~standard"].validate({ type: "Created", value: 1 }),
-    ).toEqual({
-      issues: [{ message: "A value 1 is not a string.", path: ["value"] }],
-    });
+      {
+        issues: [{ message: "A value 1 is not a string.", path: ["value"] }],
+      },
+    );
   });
 
-  test("locates transformation output issues", async () => {
+  it("locates transformation output issues", async () => {
     const PositiveFromString = transform(
       "PositiveFromString",
       String,
@@ -1173,7 +1197,7 @@ describe("Standard Schema", () => {
     const Model = object({ value: PositiveFromString });
     const result = await Model["~standard"].validate({ value: "0" });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message: "The value 0 must be positive (> 0).",
@@ -1183,7 +1207,7 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("locates directly recursive Lazy issues", async () => {
+  it("locates directly recursive Lazy issues", async () => {
     interface Tree {
       readonly value: string;
       readonly children: ReadonlyArray<Tree>;
@@ -1200,7 +1224,7 @@ describe("Standard Schema", () => {
       children: [{ value: 1, children: [] }],
     });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message: "A value 1 is not a string.",
@@ -1210,7 +1234,7 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("locates mutually recursive Lazy issues", async () => {
+  it("locates mutually recursive Lazy issues", async () => {
     interface Left {
       readonly label: string;
       readonly right?: Right;
@@ -1238,7 +1262,7 @@ describe("Standard Schema", () => {
       right: { count: 1, left: { label: 1 } },
     });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message: "A value 1 is not a string.",
@@ -1248,7 +1272,7 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("uses localized messages without changing paths", async () => {
+  it("uses localized messages without changing paths", async () => {
     const Label = minLength(1)(String);
     const Model = object({ labels: array(Label) });
     const LocalizedModel = localizeTypes(
@@ -1266,7 +1290,7 @@ describe("Standard Schema", () => {
       labels: [1, ""],
     });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         { message: "Hodnota 1 musí být text.", path: ["labels", 0] },
         { message: "Text nesmí být prázdný.", path: ["labels", 1] },
@@ -1274,12 +1298,12 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("uses JsonValue issue paths", async () => {
+  it("uses JsonValue issue paths", async () => {
     const result = await JsonValue["~standard"].validate({
       values: [1, globalThis.Number.POSITIVE_INFINITY],
     });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message: "A JSON number must be finite.",
@@ -1289,13 +1313,13 @@ describe("Standard Schema", () => {
     });
   });
 
-  test("uses Data issue paths", async () => {
+  it("uses Data issue paths", async () => {
     const result = await Data["~standard"].validate({
       first: /first/u,
       second: /second/u,
     });
 
-    expect(result).toEqual({
+    assertEqual(result, {
       issues: [
         {
           message: "A Data Object has an unexpected prototype.",
@@ -1311,67 +1335,88 @@ describe("Standard Schema", () => {
 });
 
 describe("assertType", () => {
-  test("asserts compiler-identical types", () => {
+  it("asserts compiler-identical types", () => {
     assertType<string, string>();
     assertType<unknown, unknown>();
     assertType<never, never>();
     assertType<{ readonly value?: string }, { readonly value?: string }>();
 
     const compileTimeAssertions = () => {
-      // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
-      assertType<string, "value">();
-      // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
-      assertType<unknown, any>();
-      // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
-      assertType<{ value: string }, { readonly value: string }>();
-      // @ts-expect-error ⛔ assertType error: Expected and actual types must be identical
+      // @ts-expect-error ⛔ assertType error: Actual and expected types must be identical
+      assertType<"value", string>();
+      // @ts-expect-error ⛔ assertType error: Actual and expected types must be identical
+      assertType<any, unknown>();
+      // @ts-expect-error ⛔ assertType error: Actual and expected types must be identical
+      assertType<{ readonly value: string }, { value: string }>();
+      // @ts-expect-error ⛔ assertType error: Actual and expected types must be identical
       assertType<
-        { readonly value: string | undefined },
-        { readonly value?: string }
+        { readonly value?: string },
+        { readonly value: string | undefined }
       >();
     };
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("narrows values that satisfy a Type Output", () => {
+  it("narrows values that satisfy a Type Output", () => {
     const value: unknown = 42;
 
     assertType(Number, value);
 
-    expectTypeOf(value).toEqualTypeOf<number>();
+    assertType<typeof value, number>();
   });
 
-  test("rejects values that satisfy only a transformed Type Input", () => {
-    const NumberFromString = setupNumberFromString();
-
-    expectAssertionError(
-      () => assertType(NumberFromString, "42"),
-      "Expected NumberFromString.",
-      {
-        type: "NumberFromString",
-        outputError: {
-          type: "TypeOf",
-          expected: "Number",
-          value: "42",
-        },
+  it("rejects values that satisfy only a transformed Type Input", () => {
+    nodeAssert.throws(
+      () => {
+        assertType(Int64FromInt64String, "42");
+      },
+      (error: unknown) => {
+        nodeAssert.ok(error instanceof nodeAssert.AssertionError);
+        nodeAssert.equal(error.message, "Expected Int64FromInt64String.");
+        nodeAssert.deepEqual(error.cause, {
+          type: "Int64FromInt64String",
+          outputError: {
+            type: "TypeOf",
+            expected: "BigInt",
+            value: "42",
+          },
+        });
+        return true;
       },
     );
+  });
+
+  it("validates a Type Output exactly once", () => {
+    let calls = 0;
+    const Flaky = createType(
+      "Flaky",
+      (value) => (++calls === 1 ? err({ type: "Flaky" }) : ok(value)),
+      () => "flaky",
+    );
+
+    nodeAssert.throws(() => assertType(Flaky, 42));
+    assertEqual(calls, 1);
   });
 });
 
 describe("localizeTypes", () => {
-  test("creates localized Type collections for every locale", () => {
+  it("creates localized Type collections for every locale", () => {
     const Label = minLength(1)(String);
     const typesByLocale = localizeTypes(
       { Label },
       {
         cs: {
           MinLength1: (error) => {
-            expectTypeOf(error).toEqualTypeOf<MinLengthError<1>>();
+            assertType<typeof error, MinLengthError<1>>();
             return "Text nesmí být prázdný.";
           },
           String: (error) => {
-            expectTypeOf(error).toEqualTypeOf<TypeOfError<"String">>();
+            assertType<typeof error, TypeOfError<"String">>();
             return "Hodnota musí být text.";
           },
         },
@@ -1382,30 +1427,34 @@ describe("localizeTypes", () => {
       },
     );
 
-    expectTypeOf<keyof typeof typesByLocale>().toEqualTypeOf<"cs" | "en">();
-    expectTypeOf(typesByLocale.cs.Label).toEqualTypeOf(Label);
-    expect(typesByLocale.cs.Label).not.toBe(Label);
+    assertType<keyof typeof typesByLocale, "cs" | "en">();
+    assertType<typeof typesByLocale.cs.Label, typeof Label>();
+    assertFalse(globalThis.Object.is(typesByLocale.cs.Label, Label));
 
     const invalidType = typesByLocale.cs.Label.fromUnknown(1);
-    assert(!invalidType.ok);
-    expect(typesByLocale.cs.Label.formatError(invalidType.error)).toBe(
+    assertErr(invalidType);
+    assertEqual(
+      typesByLocale.cs.Label.formatError(invalidType.error),
       "Hodnota musí být text.",
     );
 
     const invalidLength = typesByLocale.cs.Label.fromUnknown("");
-    assert(!invalidLength.ok);
-    expect(typesByLocale.cs.Label.formatError(invalidLength.error)).toBe(
+    assertErr(invalidLength);
+    assertEqual(
+      typesByLocale.cs.Label.formatError(invalidLength.error),
       "Text nesmí být prázdný.",
     );
-    expect(typesByLocale.en.Label.formatError(invalidLength.error)).toBe(
+    assertEqual(
+      typesByLocale.en.Label.formatError(invalidLength.error),
       "Text must not be empty.",
     );
-    expect(Label.formatError(invalidLength.error)).toBe(
+    assertEqual(
+      Label.formatError(invalidLength.error),
       'The value "" does not meet the minimum length of 1.',
     );
   });
 
-  test("shares a locale registry across composed Types", () => {
+  it("shares a locale registry across composed Types", () => {
     const Label = minLength(1)(String);
     const Labels = array(Label);
     const Model = object({ labels: Labels });
@@ -1421,7 +1470,7 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    expect(types.Label.parent).toBe(types.String);
+    assertSame(types.Label.parent, types.String);
 
     for (const [value, message] of [
       [null, "Localized Object."],
@@ -1430,22 +1479,24 @@ describe("localizeTypes", () => {
       [{ labels: [""] }, "Localized MinLength1."],
     ] as const) {
       const result = types.Model.fromUnknown(value);
-      assert(!result.ok);
-      expect(types.Model.formatError(result.error)).toBe(message);
+      assertErr(result);
+      assertSame(types.Model.formatError(result.error), message);
     }
 
     const labelResult = types.Label.fromUnknown(1);
-    assert(!labelResult.ok);
-    assert(labelResult.error.type === "TypeOf");
-    expect(types.Label.formatError(labelResult.error)).toBe(
+    assertErr(labelResult);
+    assertSame(labelResult.error.type, "TypeOf");
+    assertEqual(
+      types.Label.formatError(labelResult.error),
       "Localized String.",
     );
-    expect(types.Label.parent.formatError(labelResult.error)).toBe(
+    assertEqual(
+      types.Label.parent.formatError(labelResult.error),
       "Localized String.",
     );
   });
 
-  test("localizes reflected Type graphs", () => {
+  it("localizes reflected Type graphs", () => {
     const NumberFromString = setupNumberFromString();
     const Pair = tuple(String, Number);
     const StringSet = set(String);
@@ -1482,28 +1533,29 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    expect(types.NumberFromString.parent).toBe(types.String);
-    expect(types.NumberFromString.output).toBe(types.Number);
-    expect(types.Pair.elements).toEqual([types.String, types.Number]);
-    expect(types.StringSet.element).toBe(types.String);
-    expect(types.Strings.element).toBe(types.String);
-    expect(types.User.props.name).toBe(types.String);
-    expect(types.User.props.nickname.type).toBe(types.String);
-    expect(types.User.record).toBe(types.Values);
-    expect(types.Value.members).toEqual([types.String, types.Number]);
-    expect(types.Values.key).toBe(types.String);
-    expect(types.Values.value).toBe(types.String);
+    assertSame(types.NumberFromString.parent, types.String);
+    assertSame(types.NumberFromString.output, types.Number);
+    assertEqual(types.Pair.elements, [types.String, types.Number]);
+    assertSame(types.StringSet.element, types.String);
+    assertSame(types.Strings.element, types.String);
+    assertSame(types.User.props.name, types.String);
+    assertSame(types.User.props.nickname.type, types.String);
+    assertSame(types.User.record, types.Values);
+    assertEqual(types.Value.members, [types.String, types.Number]);
+    assertSame(types.Values.key, types.String);
+    assertSame(types.Values.value, types.String);
 
     const ReflectedStrings = array(types.User.props.name);
     const result = ReflectedStrings.fromUnknown([1]);
 
-    assert(!result.ok);
-    expect(ReflectedStrings.formatError(result.error)).toBe(
+    assertErr(result);
+    assertEqual(
+      ReflectedStrings.formatError(result.error),
       "Localized String.",
     );
   });
 
-  test("preserves localized child errors when composed afterward", async () => {
+  it("preserves localized child errors when composed afterward", async () => {
     const LocalizedString = localizeTypes(
       { String },
       { test: { String: () => "Localized String." } },
@@ -1514,24 +1566,23 @@ describe("localizeTypes", () => {
     const stringsResult = Strings.fromUnknown([1]);
     const nonEmptyStringResult = NonEmptyString.fromUnknown(1);
 
-    assert(!stringsResult.ok);
-    expect(Strings.formatError(stringsResult.error)).toBe("Localized String.");
-    expect(await Strings["~standard"].validate([1])).toEqual({
+    assertErr(stringsResult);
+    assertEqual(Strings.formatError(stringsResult.error), "Localized String.");
+    assertEqual(await Strings["~standard"].validate([1]), {
       issues: [{ message: "Localized String.", path: [0] }],
     });
-    expectOk(Prefixed.fromUnknown("prefix-value"), ["value"]);
-    expectTypeOf<typeof Prefixed.Output>().toEqualTypeOf<readonly [string]>();
-    expectTypeOf<
-      typeof Prefixed.CanonicalInput
-    >().toEqualTypeOf<`prefix-${string}`>();
+    assertOk(Prefixed.fromUnknown("prefix-value"), ["value"]);
+    assertType<typeof Prefixed.Output, readonly [string]>();
+    assertType<typeof Prefixed.CanonicalInput, `prefix-${string}`>();
 
-    assert(!nonEmptyStringResult.ok);
-    expect(NonEmptyString.formatError(nonEmptyStringResult.error)).toBe(
+    assertErr(nonEmptyStringResult);
+    assertEqual(
+      NonEmptyString.formatError(nonEmptyStringResult.error),
       "Localized String.",
     );
   });
 
-  test("does not depend on selected Type or formatter order", async () => {
+  it("does not depend on selected Type or formatter order", async () => {
     const Label = minLength(1)(String);
     const labelFirstTypes = localizeTypes(
       { Label, Int64, String },
@@ -1557,42 +1608,46 @@ describe("localizeTypes", () => {
     ).test;
 
     for (const types of [labelFirstTypes, stringFirstTypes]) {
-      expect(types.Label.parent).toBe(types.String);
+      assertSame(types.Label.parent, types.String);
 
       const labelTypeResult = types.Label.fromUnknown(1);
-      assert(!labelTypeResult.ok);
-      expect(types.Label.formatError(labelTypeResult.error)).toBe(
+      assertErr(labelTypeResult);
+      assertEqual(
+        types.Label.formatError(labelTypeResult.error),
         "Localized String.",
       );
 
       const labelLengthResult = types.Label.fromUnknown("");
-      assert(!labelLengthResult.ok);
-      expect(types.Label.formatError(labelLengthResult.error)).toBe(
+      assertErr(labelLengthResult);
+      assertEqual(
+        types.Label.formatError(labelLengthResult.error),
         "Localized MinLength1.",
       );
 
       const int64TypeResult = types.Int64.fromUnknown(1);
-      assert(!int64TypeResult.ok);
-      expect(types.Int64.formatError(int64TypeResult.error)).toBe(
+      assertErr(int64TypeResult);
+      assertEqual(
+        types.Int64.formatError(int64TypeResult.error),
         "Localized BigInt.",
       );
 
       const int64RangeResult = types.Int64.fromUnknown(1n << 63n);
-      assert(!int64RangeResult.ok);
-      expect(types.Int64.formatError(int64RangeResult.error)).toBe(
+      assertErr(int64RangeResult);
+      assertEqual(
+        types.Int64.formatError(int64RangeResult.error),
         "Localized Int64.",
       );
 
-      expect(await types.Label["~standard"].validate(1)).toEqual({
+      assertEqual(await types.Label["~standard"].validate(1), {
         issues: [{ message: "Localized String.", path: [] }],
       });
-      expect(await types.Int64["~standard"].validate(1n << 63n)).toEqual({
+      assertEqual(await types.Int64["~standard"].validate(1n << 63n), {
         issues: [{ message: "Localized Int64.", path: [] }],
       });
     }
   });
 
-  test("requires only the Object formatter for the predefined Object", async () => {
+  it("requires only the Object formatter for the predefined Object", async () => {
     const LocalizedObject = localizeTypes(
       { Object },
       { test: { Object: () => "Localized Object." } },
@@ -1600,16 +1655,17 @@ describe("localizeTypes", () => {
     const symbol = globalThis.Symbol("metadata");
     const result = LocalizedObject.fromUnknown({ [symbol]: true });
 
-    assert(!result.ok);
-    expect(LocalizedObject.formatError(result.error)).toBe("Localized Object.");
-    expect(
+    assertErr(result);
+    assertEqual(LocalizedObject.formatError(result.error), "Localized Object.");
+    assertEqual(
       await LocalizedObject["~standard"].validate({ [symbol]: true }),
-    ).toEqual({
-      issues: [{ message: "Localized Object.", path: [symbol] }],
-    });
+      {
+        issues: [{ message: "Localized Object.", path: [symbol] }],
+      },
+    );
   });
 
-  test("preserves Type APIs without localizing typed boundary assertions", () => {
+  it("preserves Type APIs without localizing typed boundary assertions", () => {
     const Strings = array(String);
     const types = localizeTypes(
       { PositiveNumber, String, Strings },
@@ -1624,16 +1680,16 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    expectTypeOf(types.Strings).toEqualTypeOf(Strings);
-    expect(types.Strings.element).toBe(types.String);
-    expect(types.Strings.to(["Evolu"])).toEqual(["Evolu"]);
+    assertType<typeof types.Strings, typeof Strings>();
+    assertSame(types.Strings.element, types.String);
+    assertEqual(types.Strings.to(["Evolu"]), ["Evolu"]);
 
     const positiveError = { type: "Positive", value: 0 } as const;
     for (const operation of [
       () => types.PositiveNumber.from(0 as PositiveNumber),
       () => types.PositiveNumber.to(0 as PositiveNumber),
     ]) {
-      expectAssertionError(operation, "Expected Positive.", positiveError);
+      assertAssertionError(operation, "Expected Positive.", positiveError);
     }
 
     const numberError = {
@@ -1646,11 +1702,11 @@ describe("localizeTypes", () => {
       () => types.PositiveNumber.orThrow("1" as unknown as number),
       () => types.PositiveNumber.orNull("1" as unknown as number),
     ]) {
-      expectAssertionError(operation, "Expected Number.", numberError);
+      assertAssertionError(operation, "Expected Number.", numberError);
     }
   });
 
-  test("routes Tuple and Record child errors", () => {
+  it("routes Tuple and Record child errors", () => {
     const Pair = tuple(String, Number);
     const Values = record(String, Number);
     const KeyedValues = record(regex("RecordKey", /^value$/u)(String), Number);
@@ -1670,28 +1726,31 @@ describe("localizeTypes", () => {
     ).test;
 
     const notTuple = types.Pair.fromUnknown(null);
-    assert(!notTuple.ok);
-    expect(types.Pair.formatError(notTuple.error)).toBe("Localized Tuple.");
+    assertErr(notTuple);
+    assertEqual(types.Pair.formatError(notTuple.error), "Localized Tuple.");
 
     const invalidTupleElement = types.Pair.fromUnknown(["value", false]);
-    assert(!invalidTupleElement.ok);
-    expect(types.Pair.formatError(invalidTupleElement.error)).toBe(
+    assertErr(invalidTupleElement);
+    assertEqual(
+      types.Pair.formatError(invalidTupleElement.error),
       "Localized Number.",
     );
 
     const notRecord = types.Values.fromUnknown(null);
-    assert(!notRecord.ok);
-    expect(types.Values.formatError(notRecord.error)).toBe("Localized Record.");
+    assertErr(notRecord);
+    assertEqual(types.Values.formatError(notRecord.error), "Localized Record.");
 
     const invalidRecordValue = types.Values.fromUnknown({ value: false });
-    assert(!invalidRecordValue.ok);
-    expect(types.Values.formatError(invalidRecordValue.error)).toBe(
+    assertErr(invalidRecordValue);
+    assertEqual(
+      types.Values.formatError(invalidRecordValue.error),
       "Localized Number.",
     );
 
     const invalidRecordKey = types.KeyedValues.fromUnknown({ invalid: 1 });
-    assert(!invalidRecordKey.ok);
-    expect(types.KeyedValues.formatError(invalidRecordKey.error)).toBe(
+    assertErr(invalidRecordKey);
+    assertEqual(
+      types.KeyedValues.formatError(invalidRecordKey.error),
       "Localized RecordKey.",
     );
 
@@ -1699,13 +1758,14 @@ describe("localizeTypes", () => {
       fixed: "fixed",
       value: false,
     });
-    assert(!invalidObjectRest.ok);
-    expect(types.Model.formatError(invalidObjectRest.error)).toBe(
+    assertErr(invalidObjectRest);
+    assertEqual(
+      types.Model.formatError(invalidObjectRest.error),
       "Localized String.",
     );
   });
 
-  test("routes Set child errors and requires both formatters", () => {
+  it("routes Set child errors and requires both formatters", () => {
     const Strings = set(String);
     const types = localizeTypes(
       { Strings },
@@ -1718,12 +1778,13 @@ describe("localizeTypes", () => {
     ).test;
 
     const notSet = types.Strings.fromUnknown(null);
-    assert(!notSet.ok);
-    expect(types.Strings.formatError(notSet.error)).toBe("Localized Set.");
+    assertErr(notSet);
+    assertEqual(types.Strings.formatError(notSet.error), "Localized Set.");
 
     const invalidElement = types.Strings.fromUnknown(new globalThis.Set([1]));
-    assert(!invalidElement.ok);
-    expect(types.Strings.formatError(invalidElement.error)).toBe(
+    assertErr(invalidElement);
+    assertEqual(
+      types.Strings.formatError(invalidElement.error),
       "Localized String.",
     );
 
@@ -1744,10 +1805,15 @@ describe("localizeTypes", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("lets a Union own its complete failure and localizes its members", () => {
+  it("lets a Union own its complete failure and localizes its members", () => {
     const Value = union(String, Number);
     const types = localizeTypes(
       { Value },
@@ -1762,12 +1828,13 @@ describe("localizeTypes", () => {
     const result = types.Value.fromUnknown(null);
     const stringResult = types.Value.members[0].fromUnknown(1);
 
-    assert(!result.ok);
-    expect(types.Value.formatError(result.error)).toBe("Localized Union.");
-    expect(types.Value.members[0]).not.toBe(String);
-    expect(types.Value.members[1]).not.toBe(Number);
-    assert(!stringResult.ok);
-    expect(types.Value.members[0].formatError(stringResult.error)).toBe(
+    assertErr(result);
+    assertEqual(types.Value.formatError(result.error), "Localized Union.");
+    assertFalse(globalThis.Object.is(types.Value.members[0], String));
+    assertFalse(globalThis.Object.is(types.Value.members[1], Number));
+    assertErr(stringResult);
+    assertEqual(
+      types.Value.members[0].formatError(stringResult.error),
       "Localized String.",
     );
 
@@ -1781,10 +1848,15 @@ describe("localizeTypes", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("localizes TemplateLiteral captures and their reflected Tuple", () => {
+  it("localizes TemplateLiteral captures and their reflected Tuple", () => {
     const Part = literal("a");
     const Value = templateLiteralParser(Part);
     const types = localizeTypes(
@@ -1800,12 +1872,13 @@ describe("localizeTypes", () => {
     ).test;
     const result = types.Value.parts[0].fromUnknown("b");
 
-    expect(types.Value.parts[0]).not.toBe(Part);
-    expect(types.Value.output.elements[0]).toBe(types.Value.parts[0]);
-    expect(types.Value.parent.output).toBe(types.Value.output);
-    expect(types.Value.parent.parts[0]).toBe(types.Value.parts[0]);
-    assert(!result.ok);
-    expect(types.Value.parts[0].formatError(result.error)).toBe(
+    assertFalse(globalThis.Object.is(types.Value.parts[0], Part));
+    assertSame(types.Value.output.elements[0], types.Value.parts[0]);
+    assertSame(types.Value.parent.output, types.Value.output);
+    assertSame(types.Value.parent.parts[0], types.Value.parts[0]);
+    assertErr(result);
+    assertEqual(
+      types.Value.parts[0].formatError(result.error),
       "Localized Literal.",
     );
 
@@ -1823,10 +1896,15 @@ describe("localizeTypes", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("localizes fallible members of an infallible Union", () => {
+  it("localizes fallible members of an infallible Union", () => {
     const Value = union(String, Unknown);
     const types = localizeTypes(
       { Value },
@@ -1834,11 +1912,12 @@ describe("localizeTypes", () => {
     ).test;
     const result = types.Value.members[0].fromUnknown(1);
 
-    expectTypeOf(types.Value.Error).toEqualTypeOf<never>();
-    expect(types.Value.members[0]).not.toBe(String);
-    expect(types.Value.members[1]).not.toBe(Unknown);
-    assert(!result.ok);
-    expect(types.Value.members[0].formatError(result.error)).toBe(
+    assertType<typeof types.Value.Error, never>();
+    assertFalse(globalThis.Object.is(types.Value.members[0], String));
+    assertFalse(globalThis.Object.is(types.Value.members[1], Unknown));
+    assertErr(result);
+    assertEqual(
+      types.Value.members[0].formatError(result.error),
       "Localized String.",
     );
 
@@ -1852,10 +1931,15 @@ describe("localizeTypes", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires fallible Types reachable only through reflection", () => {
+  it("requires fallible Types reachable only through reflection", () => {
     const Value = union(String, Unknown);
     const Values = array(Value);
     const NonEmptyValues = minLength(1)(Values);
@@ -1875,14 +1959,16 @@ describe("localizeTypes", () => {
       },
     ).test;
 
-    expect(types.Model.props.value).toBe(types.NonEmptyValues.parent.element);
-    expect(types.Model.props.optionalValue.type).toBe(
+    assertSame(types.Model.props.value, types.NonEmptyValues.parent.element);
+    assertSame(
+      types.Model.props.optionalValue.type,
       types.NonEmptyValues.parent.element,
     );
 
     const result = types.Model.props.value.members[0].fromUnknown(1);
-    assert(!result.ok);
-    expect(types.Model.props.value.members[0].formatError(result.error)).toBe(
+    assertErr(result);
+    assertEqual(
+      types.Model.props.value.members[0].formatError(result.error),
       "Localized String.",
     );
 
@@ -1900,10 +1986,15 @@ describe("localizeTypes", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("routes DiscriminatedUnion member errors", () => {
+  it("routes DiscriminatedUnion member errors", () => {
     const Created = typed("Created", { value: String });
     const Deleted = typed("Deleted", { reason: Number });
     const Event = discriminatedUnion(Created, Deleted);
@@ -1927,12 +2018,12 @@ describe("localizeTypes", () => {
       [{ type: "Deleted", reason: false }, "Localized Number."],
     ] as const) {
       const result = types.Event.fromUnknown(value);
-      assert(!result.ok);
-      expect(types.Event.formatError(result.error)).toBe(message);
+      assertErr(result);
+      assertSame(types.Event.formatError(result.error), message);
     }
   });
 
-  test("uses a custom root error type as its formatter key", () => {
+  it("uses a custom root error type as its formatter key", () => {
     interface RootError extends TypeError<"RootError"> {
       readonly value: unknown;
     }
@@ -1950,11 +2041,11 @@ describe("localizeTypes", () => {
     ).test;
     const result = types.Root.fromUnknown(1);
 
-    assert(!result.ok);
-    expect(types.Root.formatError(result.error)).toBe("Localized RootError.");
+    assertErr(result);
+    assertEqual(types.Root.formatError(result.error), "Localized RootError.");
   });
 
-  test("does not treat an arbitrary outputError property as transparent", async () => {
+  it("does not treat an arbitrary outputError property as transparent", async () => {
     interface RefinedError extends TypeError<"Refined"> {
       readonly outputError: TypeOfError<"String">;
     }
@@ -1972,7 +2063,7 @@ describe("localizeTypes", () => {
       {
         test: {
           Refined: (error) => {
-            expectTypeOf(error).toEqualTypeOf<RefinedError>();
+            assertType<typeof error, RefinedError>();
             return "Localized Refined.";
           },
         },
@@ -1989,17 +2080,23 @@ describe("localizeTypes", () => {
       );
     };
 
-    assert(!result.ok);
-    expect(LocalizedRefined.formatError(result.error)).toBe(
+    assertErr(result);
+    assertEqual(
+      LocalizedRefined.formatError(result.error),
       "Localized Refined.",
     );
-    expect(await LocalizedRefined["~standard"].validate("value")).toEqual({
+    assertEqual(await LocalizedRefined["~standard"].validate("value"), {
       issues: [{ message: "Localized Refined.", path: [] }],
     });
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("routes custom root TypeOf errors by their expected Types", async () => {
+  it("routes custom root TypeOf errors by their expected Types", async () => {
     const Text = createType(
       "Text",
       (value): Result<string, TypeOfError<"String">> =>
@@ -2013,7 +2110,7 @@ describe("localizeTypes", () => {
       {
         test: {
           String: (error) => {
-            expectTypeOf(error).toEqualTypeOf<TypeOfError<"String">>();
+            assertType<typeof error, TypeOfError<"String">>();
             return "Localized String.";
           },
         },
@@ -2032,7 +2129,7 @@ describe("localizeTypes", () => {
       {
         test: {
           BigInt: (error) => {
-            expectTypeOf(error).toEqualTypeOf<TypeOfError<"BigInt">>();
+            assertType<typeof error, TypeOfError<"BigInt">>();
             return "Localized BigInt.";
           },
         },
@@ -2041,23 +2138,25 @@ describe("localizeTypes", () => {
     const textResult = LocalizedText.fromUnknown(1);
     const bigIntegerResult = LocalizedBigInteger.fromUnknown(1);
 
-    assert(!textResult.ok);
-    expect(LocalizedText.formatError(textResult.error)).toBe(
+    assertErr(textResult);
+    assertEqual(
+      LocalizedText.formatError(textResult.error),
       "Localized String.",
     );
-    expect(await LocalizedText["~standard"].validate(1)).toEqual({
+    assertEqual(await LocalizedText["~standard"].validate(1), {
       issues: [{ message: "Localized String.", path: [] }],
     });
-    assert(!bigIntegerResult.ok);
-    expect(LocalizedBigInteger.formatError(bigIntegerResult.error)).toBe(
+    assertErr(bigIntegerResult);
+    assertEqual(
+      LocalizedBigInteger.formatError(bigIntegerResult.error),
       "Localized BigInt.",
     );
-    expect(await LocalizedBigInteger["~standard"].validate(1)).toEqual({
+    assertEqual(await LocalizedBigInteger["~standard"].validate(1), {
       issues: [{ message: "Localized BigInt.", path: [] }],
     });
   });
 
-  test("routes parent, own, and output transformation errors", async () => {
+  it("routes parent, own, and output transformation errors", async () => {
     const NumberFromString = setupNumberFromString();
     const PositiveFromString = transform(
       "PositiveFromString",
@@ -2085,21 +2184,22 @@ describe("localizeTypes", () => {
       ["invalid", "Localized NumberFromString."],
     ] as const) {
       const result = types.NumberFromString.fromUnknown(value);
-      assert(!result.ok);
-      expect(types.NumberFromString.formatError(result.error)).toBe(message);
+      assertErr(result);
+      assertSame(types.NumberFromString.formatError(result.error), message);
     }
 
     const invalidOutput = types.PositiveFromString.fromUnknown("0");
-    assert(!invalidOutput.ok);
-    expect(types.PositiveFromString.formatError(invalidOutput.error)).toBe(
+    assertErr(invalidOutput);
+    assertEqual(
+      types.PositiveFromString.formatError(invalidOutput.error),
       "Localized Positive.",
     );
-    expect(await types.PositiveFromString["~standard"].validate("0")).toEqual({
+    assertEqual(await types.PositiveFromString["~standard"].validate("0"), {
       issues: [{ message: "Localized Positive.", path: [] }],
     });
   });
 
-  test("infers formatters through directly recursive Lazy errors", () => {
+  it("infers formatters through directly recursive Lazy errors", () => {
     interface Tree {
       readonly value: string;
       readonly children: ReadonlyArray<Tree>;
@@ -2126,20 +2226,21 @@ describe("localizeTypes", () => {
       children: [{ value: 1, children: [] }],
     });
 
-    assert(!result.ok);
-    expect(types.Tree.formatError(result.error)).toBe("Localized String.");
+    assertErr(result);
+    assertEqual(types.Tree.formatError(result.error), "Localized String.");
 
     const inputResult = inputTypes.TreeInput.fromUnknown({
       value: 1,
       children: [],
     });
-    assert(!inputResult.ok);
-    expect(inputTypes.TreeInput.formatError(inputResult.error)).toBe(
+    assertErr(inputResult);
+    assertEqual(
+      inputTypes.TreeInput.formatError(inputResult.error),
       "Localized String.",
     );
   });
 
-  test("infers formatters through mutually recursive Lazy errors", () => {
+  it("infers formatters through mutually recursive Lazy errors", () => {
     interface Left {
       readonly label: string;
       readonly right?: Right;
@@ -2177,11 +2278,11 @@ describe("localizeTypes", () => {
       right: { count: "invalid" },
     });
 
-    assert(!result.ok);
-    expect(types.Left.formatError(result.error)).toBe("Localized Number.");
+    assertErr(result);
+    assertEqual(types.Left.formatError(result.error), "Localized Number.");
   });
 
-  test("snapshots each locale formatter set", () => {
+  it("snapshots each locale formatter set", () => {
     const formatters = { String: () => "First formatter." };
     const types = localizeTypes(
       { String, Text: String },
@@ -2191,12 +2292,12 @@ describe("localizeTypes", () => {
     formatters.String = () => "Replacement formatter.";
 
     const result = types.String.fromUnknown(1);
-    assert(!result.ok);
-    expect(types.String.formatError(result.error)).toBe("First formatter.");
-    expect(types.Text).toBe(types.String);
+    assertErr(result);
+    assertEqual(types.String.formatError(result.error), "First formatter.");
+    assertSame(types.Text, types.String);
   });
 
-  test("requires plain string-keyed maps", () => {
+  it("requires plain string-keyed maps", () => {
     const selected = globalThis.Symbol("selected");
     const locale = globalThis.Symbol("locale");
     const compileTimeAssertions = () => {
@@ -2215,12 +2316,17 @@ describe("localizeTypes", () => {
     const selectedByName = { [selected]: String } as unknown as {
       readonly String: typeof String;
     };
-    expect(() =>
-      localizeTypes(selectedByName, {
-        en: { String: () => "String." },
-      }),
-    ).toThrow(
-      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    const selectedMapError = assertThrowsInstanceOf(
+      () =>
+        localizeTypes(selectedByName, {
+          en: { String: () => "String." },
+        }),
+      Error,
+    );
+    assertTrue(
+      selectedMapError.message.includes(
+        "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+      ),
     );
 
     const formatters = { String: () => "String." };
@@ -2228,8 +2334,14 @@ describe("localizeTypes", () => {
       value: formatters,
       enumerable: false,
     }) as { readonly en: typeof formatters };
-    expect(() => localizeTypes({ String }, formattersByLocale)).toThrow(
-      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    const localeMapError = assertThrowsInstanceOf(
+      () => localizeTypes({ String }, formattersByLocale),
+      Error,
+    );
+    assertTrue(
+      localeMapError.message.includes(
+        "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+      ),
     );
 
     let reads = 0;
@@ -2240,20 +2352,30 @@ describe("localizeTypes", () => {
         return () => "String.";
       },
     }) as { readonly String: () => string };
-    expect(() => localizeTypes({ String }, { en: accessorFormatters })).toThrow(
-      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    const accessorMapError = assertThrowsInstanceOf(
+      () => localizeTypes({ String }, { en: accessorFormatters }),
+      Error,
     );
-    expect(reads).toBe(0);
+    assertTrue(
+      accessorMapError.message.includes(
+        "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+      ),
+    );
+    assertEqual(reads, 0);
 
     class EnglishFormatters {
       String(): string {
         return "String.";
       }
     }
-    expect(() =>
-      localizeTypes({ String }, { en: new EnglishFormatters() }),
-    ).toThrow(
-      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    const prototypeMapError = assertThrowsInstanceOf(
+      () => localizeTypes({ String }, { en: new EnglishFormatters() }),
+      Error,
+    );
+    assertTrue(
+      prototypeMapError.message.includes(
+        "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+      ),
     );
 
     const customRoot = globalThis.Object.create(null) as object;
@@ -2261,16 +2383,25 @@ describe("localizeTypes", () => {
       globalThis.Object.create(customRoot) as object,
       { String: () => "String." },
     ) as { readonly String: () => string };
-    expect(() =>
-      localizeTypes({ String }, { en: customPrototypeFormatters }),
-    ).toThrow(
-      "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+    const customPrototypeMapError = assertThrowsInstanceOf(
+      () => localizeTypes({ String }, { en: customPrototypeFormatters }),
+      Error,
+    );
+    assertTrue(
+      customPrototypeMapError.message.includes(
+        "localizeTypes maps must be plain objects with own enumerable string-keyed data properties.",
+      ),
     );
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires exactly the reachable formatters", () => {
+  it("requires exactly the reachable formatters", () => {
     const Label = minLength(1)(String);
     // A stored map bypasses TypeScript's object-literal excess-property check.
     const formatters = {
@@ -2310,10 +2441,15 @@ describe("localizeTypes", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires formatters for every union-typed selection branch", () => {
+  it("requires formatters for every union-typed selection branch", () => {
     type Selected =
       { readonly String: typeof String } | { readonly Number: typeof Number };
     const localize = (selected: Selected) =>
@@ -2325,18 +2461,20 @@ describe("localizeTypes", () => {
       }).test;
 
     const StringTypes = localize({ String });
-    assert("String" in StringTypes);
+    assert("String" in StringTypes, "Expected localized String Types.");
     const stringResult = StringTypes.String.fromUnknown(1);
-    assert(!stringResult.ok);
-    expect(StringTypes.String.formatError(stringResult.error)).toBe(
+    assertErr(stringResult);
+    assertEqual(
+      StringTypes.String.formatError(stringResult.error),
       "Localized String.",
     );
 
     const NumberTypes = localize({ Number });
-    assert("Number" in NumberTypes);
+    assert("Number" in NumberTypes, "Expected localized Number Types.");
     const numberResult = NumberTypes.Number.fromUnknown("1");
-    assert(!numberResult.ok);
-    expect(NumberTypes.Number.formatError(numberResult.error)).toBe(
+    assertErr(numberResult);
+    assertEqual(
+      NumberTypes.Number.formatError(numberResult.error),
       "Localized Number.",
     );
 
@@ -2347,12 +2485,17 @@ describe("localizeTypes", () => {
       });
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 });
 
 describe("createType", () => {
-  test("creates a root Type", () => {
+  it("creates a root Type", () => {
     interface AnswerError extends TypeError<"Answer"> {
       readonly value: unknown;
     }
@@ -2367,9 +2510,10 @@ describe("createType", () => {
 
     const answer: Answer = 42;
 
-    expect(Answer.fromUnknown(answer)).toEqual(ok(42));
-    expect(Answer.fromUnknown(41)).toEqual(err({ type: "Answer", value: 41 }));
-    expect(Answer.formatError({ type: "Answer", value: 41 })).toBe(
+    assertEqual(Answer.fromUnknown(answer), ok(42));
+    assertEqual(Answer.fromUnknown(41), err({ type: "Answer", value: 41 }));
+    assertEqual(
+      Answer.formatError({ type: "Answer", value: 41 }),
       "The answer must be 42.",
     );
 
@@ -2382,18 +2526,18 @@ describe("createType", () => {
       () => Answer.orThrow(invalid),
       () => Answer.orNull(invalid),
     ]) {
-      expectAssertionError(operation, "Expected Answer.", cause);
+      assertAssertionError(operation, "Expected Answer.", cause);
     }
   });
 
-  test("creates a child Type with inherited errors", () => {
+  it("creates a child Type with inherited errors", () => {
     const NonEmptyString = createType(
       "NonEmptyString",
       String,
       (value): Result<string, NonEmptyStringError> =>
         value.length > 0 ? ok(value) : err({ type: "NonEmptyString", value }),
       (error) => {
-        expectTypeOf(error).toEqualTypeOf<NonEmptyStringError>();
+        assertType<typeof error, NonEmptyStringError>();
         return "Enter some text.";
       },
     );
@@ -2402,37 +2546,40 @@ describe("createType", () => {
       readonly value: string;
     }
 
-    expect(NonEmptyString.parent).toBe(String);
-    expectTypeOf(NonEmptyString.parent).toEqualTypeOf<typeof String>();
-    expectTypeOf<typeof NonEmptyString.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof NonEmptyString.Output>().toEqualTypeOf<string>();
-    expectTypeOf<
-      typeof NonEmptyString.Error
-    >().toEqualTypeOf<NonEmptyStringError>();
+    assertSame(NonEmptyString.parent, String);
+    assertType<typeof NonEmptyString.parent, typeof String>();
+    assertType<typeof NonEmptyString.Input, string>();
+    assertType<typeof NonEmptyString.Output, string>();
+    assertType<typeof NonEmptyString.Error, NonEmptyStringError>();
 
-    expect(NonEmptyString.fromUnknown("Evolu")).toEqual(ok("Evolu"));
-    expect(NonEmptyString.fromUnknown(42)).toEqual(
+    assertEqual(NonEmptyString.fromUnknown("Evolu"), ok("Evolu"));
+    assertEqual(
+      NonEmptyString.fromUnknown(42),
       err({ type: "TypeOf", expected: "String", value: 42 }),
     );
-    expect(NonEmptyString.fromUnknown("")).toEqual(
+    assertEqual(
+      NonEmptyString.fromUnknown(""),
       err({ type: "NonEmptyString", value: "" }),
     );
-    expect(NonEmptyString.from.parent("")).toEqual(
+    assertEqual(
+      NonEmptyString.from.parent(""),
       err({ type: "NonEmptyString", value: "" }),
     );
-    expect(
+    assertEqual(
       NonEmptyString.formatError({
         type: "TypeOf",
         expected: "String",
         value: 42,
       }),
-    ).toBe("A value 42 is not a string.");
-    expect(
+      "A value 42 is not a string.",
+    );
+    assertEqual(
       NonEmptyString.formatError({ type: "NonEmptyString", value: "" }),
-    ).toBe("Enter some text.");
+      "Enter some text.",
+    );
   });
 
-  test("asserts that validation callbacks preserve identity", () => {
+  it("asserts that validation callbacks preserve identity", () => {
     const Model = object({ value: Number });
     const Invalid = createType("InvalidRefinement", Model, (value) =>
       ok({ ...value }),
@@ -2444,18 +2591,32 @@ describe("createType", () => {
     );
     const value = { value: 1 };
 
-    expect(() => InvalidRoot.fromUnknown(value)).toThrow(
-      "A Type refinement must return its input.",
+    const rootError = assertThrowsInstanceOf(
+      () => InvalidRoot.fromUnknown(value),
+      Error,
     );
-    expect(() => Invalid.fromUnknown(value)).toThrow(
-      "A Type refinement must return its input.",
+    assertTrue(
+      rootError.message.includes("A Type refinement must return its input."),
     );
-    expect(() => Invalid.from.parent(value)).toThrow(
-      "A Type refinement must return its input.",
+    const fromUnknownError = assertThrowsInstanceOf(
+      () => Invalid.fromUnknown(value),
+      Error,
+    );
+    assertTrue(
+      fromUnknownError.message.includes(
+        "A Type refinement must return its input.",
+      ),
+    );
+    const parentError = assertThrowsInstanceOf(
+      () => Invalid.from.parent(value),
+      Error,
+    );
+    assertTrue(
+      parentError.message.includes("A Type refinement must return its input."),
     );
   });
 
-  test("requires a child Output to narrow its parent Output", () => {
+  it("requires a child Output to narrow its parent Output", () => {
     interface FortyTwoError extends TypeError<"FortyTwo"> {
       readonly value: number;
     }
@@ -2472,8 +2633,8 @@ describe("createType", () => {
       () => "Enter 42.",
     );
 
-    expect(FortyTwo.from(42)).toEqual(ok(42));
-    expectTypeOf<typeof FortyTwo.Output>().toEqualTypeOf<42>();
+    assertEqual(FortyTwo.from(42), ok(42));
+    assertType<typeof FortyTwo.Output, 42>();
 
     const compileTimeAssertions = () => {
       createType(
@@ -2501,10 +2662,15 @@ describe("createType", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires a formatter for root and fallible child Types", () => {
+  it("requires a formatter for root and fallible child Types", () => {
     interface ChildWithoutFormatterError extends TypeError<"ChildWithoutFormatter"> {
       readonly value: string;
     }
@@ -2523,23 +2689,27 @@ describe("createType", () => {
       createType("ChildWithoutFormatter", String, fromChildWithoutFormatter);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("inherits the parent formatter when a child is infallible", () => {
+  it("inherits the parent formatter when a child is infallible", () => {
     const IdentityString = createType("IdentityString", String, ok);
 
-    expectTypeOf<typeof IdentityString.Error>().toEqualTypeOf<never>();
-    expectTypeOf<InferErrors<typeof IdentityString>>().toEqualTypeOf<
+    assertType<typeof IdentityString.Error, never>();
+    assertType<InferErrors<typeof IdentityString>, TypeOfError<"String">>();
+    assertSame(IdentityString.formatError, String.formatError);
+    assertType<
+      Parameters<typeof IdentityString.formatError>[0],
       TypeOfError<"String">
     >();
-    expect(IdentityString.formatError).toBe(String.formatError);
-    expectTypeOf(IdentityString.formatError)
-      .parameter(0)
-      .toEqualTypeOf<TypeOfError<"String">>();
   });
 
-  test("does not widen its error from a broad formatter", () => {
+  it("does not widen its error from a broad formatter", () => {
     interface RefinedStringError extends TypeError<"RefinedString"> {
       readonly value: string;
     }
@@ -2552,25 +2722,26 @@ describe("createType", () => {
       formatTestTypeError,
     );
 
-    expectTypeOf<
-      typeof RefinedString.Error
-    >().toEqualTypeOf<RefinedStringError>();
-    expectTypeOf<InferErrors<typeof RefinedString>>().toEqualTypeOf<
+    assertType<typeof RefinedString.Error, RefinedStringError>();
+    assertType<
+      InferErrors<typeof RefinedString>,
       TypeOfError<"String"> | RefinedStringError
     >();
-    expect(
+    assertEqual(
       RefinedString.formatError({
         type: "TypeOf",
         expected: "String",
         value: 42,
       }),
-    ).toBe("A value 42 is not a string.");
-    expect(
+      "A value 42 is not a string.",
+    );
+    assertEqual(
       RefinedString.formatError({ type: "RefinedString", value: "value" }),
-    ).toBe("RefinedString");
+      "RefinedString",
+    );
   });
 
-  test("rejects an error type inherited from the parent Type", () => {
+  it("rejects an error type inherited from the parent Type", () => {
     interface DuplicateTypeOfError extends TypeError<"TypeOf"> {
       readonly value: string;
     }
@@ -2586,10 +2757,15 @@ describe("createType", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires one concrete name for a fallible child Type", () => {
+  it("requires one concrete name for a fallible child Type", () => {
     interface AError extends TypeError<"A"> {
       readonly value: string;
     }
@@ -2610,10 +2786,15 @@ describe("createType", () => {
       createType(patternedName, String, from, formatError);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires one concrete name for root and infallible child Types", () => {
+  it("requires one concrete name for root and infallible child Types", () => {
     const unionName = "A" as "A" | "B";
     const broadName = "A" as Capitalize<string>;
     const patternedName = "A" as `A${string}`;
@@ -2641,11 +2822,23 @@ describe("createType", () => {
       createType(patternedName, String, ok);
     };
 
-    expectTypeOf(genericCompileTimeAssertion).toBeFunction();
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof genericCompileTimeAssertion extends (
+        ...args: Array<never>
+      ) => unknown
+        ? true
+        : false,
+      true
+    >();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("rejects a parent with erased concrete Type information", () => {
+  it("rejects a parent with erased concrete Type information", () => {
     const erased: FormattableTypeNode = brand("ErasedParent", String);
 
     const compileTimeAssertions = <
@@ -2660,10 +2853,15 @@ describe("createType", () => {
       return parent;
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires a child error type matching the child name", () => {
+  it("requires a child error type matching the child name", () => {
     interface DifferentNameError extends TypeError<"DifferentName"> {
       readonly value: string;
     }
@@ -2679,21 +2877,26 @@ describe("createType", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
   describe("Type", () => {
     describe("Unknown", () => {
-      test("has the expected root Type definition", () => {
-        expect(Unknown.name).toBe("Unknown");
-        expectTypeOf(Unknown.name).toEqualTypeOf<"Unknown">();
-        expectTypeOf<typeof Unknown.Input>().toEqualTypeOf<unknown>();
-        expectTypeOf<typeof Unknown.Output>().toEqualTypeOf<unknown>();
-        expectTypeOf<typeof Unknown.Error>().toEqualTypeOf<never>();
-        expectTypeOf(Unknown.parent).toEqualTypeOf<null>();
+      it("has the expected root Type definition", () => {
+        assertEqual(Unknown.name, "Unknown");
+        assertType<typeof Unknown.name, "Unknown">();
+        assertType<typeof Unknown.Input, unknown>();
+        assertType<typeof Unknown.Output, unknown>();
+        assertType<typeof Unknown.Error, never>();
+        assertType<typeof Unknown.parent, null>();
       });
 
-      test("accepts every value without changing it", () => {
+      it("accepts every value without changing it", () => {
         const values: ReadonlyArray<unknown> = [
           undefined,
           null,
@@ -2709,30 +2912,32 @@ describe("createType", () => {
         for (const value of values) {
           const result = Unknown.fromUnknown(value);
 
-          expectOk(result, value);
-          expect(result.value).toBe(value);
-          expect(Unknown.is(value)).toBe(true);
+          assertOk(result);
+          assertSame(result.value, value);
+          assertTrue(Unknown.is(value));
         }
       });
 
-      test("cannot return a validation error", () => {
-        expectTypeOf<ReturnType<typeof Unknown.fromUnknown>>().toEqualTypeOf<
-          Result<unknown>
-        >();
-        expectTypeOf(Unknown.formatError).parameter(0).toEqualTypeOf<never>();
+      it("cannot return a validation error", () => {
+        assertType<ReturnType<typeof Unknown.fromUnknown>, Result<unknown>>();
+        assertType<Parameters<typeof Unknown.formatError>[0], never>();
       });
     });
 
     describe("EvoluType", () => {
-      test("has the expected root Type definition", () => {
-        expect(EvoluType.name).toBe("EvoluType");
-        expectTypeOf(EvoluType).toEqualTypeOf<
+      it("has the expected root Type definition", () => {
+        assertEqual(EvoluType.name, "EvoluType");
+        assertType<
+          typeof EvoluType,
           Type<"EvoluType", AnyType, AnyType, EvoluTypeError>
         >();
-        expectTypeOf<EvoluTypeError>().toExtend<TypeValueError<"EvoluType">>();
+        assertType<
+          EvoluTypeError extends TypeValueError<"EvoluType"> ? true : false,
+          true
+        >();
       });
 
-      test("recognizes root, composed, and localized Types", () => {
+      it("recognizes root, composed, and localized Types", () => {
         const LocalizedString = localizeTypes(
           { String },
           { test: { String: () => "Localized String." } },
@@ -2747,12 +2952,12 @@ describe("createType", () => {
         ];
 
         for (const type of types) {
-          expect(EvoluType.is(type)).toBe(true);
-          expect(EvoluType.fromUnknown(type)).toEqual(ok(type));
+          assertTrue(EvoluType.is(type));
+          assertEqual(EvoluType.fromUnknown(type), ok(type));
         }
       });
 
-      test("rejects values without the Type instance identity", () => {
+      it("rejects values without the Type instance identity", () => {
         const values: ReadonlyArray<unknown> = [
           undefined,
           null,
@@ -2763,42 +2968,47 @@ describe("createType", () => {
         ];
 
         for (const value of values) {
-          expect(EvoluType.is(value)).toBe(false);
-          expect(EvoluType.fromUnknown(value)).toEqual(
+          assertFalse(EvoluType.is(value));
+          assertEqual(
+            EvoluType.fromUnknown(value),
             err({ type: "EvoluType", value }),
           );
         }
       });
 
-      test("formats its validation error", () => {
-        expect(
+      it("formats its validation error", () => {
+        assertEqual(
           EvoluType.formatError({ type: "EvoluType", value: "Type" }),
-        ).toBe('A value "Type" is not an Evolu Type.');
+          'A value "Type" is not an Evolu Type.',
+        );
       });
 
-      test("asserts an unknown value as a composable Type", () => {
+      it("asserts an unknown value as a composable Type", () => {
         const value: unknown = String;
 
         assertType(EvoluType, value);
-        expectTypeOf(value).toEqualTypeOf<AnyType>();
+        assertType<typeof value, AnyType>();
 
         const Values = array(value);
-        expect(Values.fromUnknown(["value"])).toEqual(ok(["value"]));
+        assertEqual(Values.fromUnknown(["value"]), ok(["value"]));
       });
     });
 
     describe("Never", () => {
-      test("has the expected root Type definition", () => {
-        expect(Never.name).toBe("Never");
-        expectTypeOf(Never.name).toEqualTypeOf<"Never">();
-        expectTypeOf<typeof Never.Input>().toEqualTypeOf<never>();
-        expectTypeOf<typeof Never.Output>().toEqualTypeOf<never>();
-        expectTypeOf<typeof Never.Error>().toEqualTypeOf<NeverError>();
-        expectTypeOf<NeverError>().toExtend<TypeValueError<"Never">>();
-        expectTypeOf(Never.parent).toEqualTypeOf<null>();
+      it("has the expected root Type definition", () => {
+        assertEqual(Never.name, "Never");
+        assertType<typeof Never.name, "Never">();
+        assertType<typeof Never.Input, never>();
+        assertType<typeof Never.Output, never>();
+        assertType<typeof Never.Error, NeverError>();
+        assertType<
+          NeverError extends TypeValueError<"Never"> ? true : false,
+          true
+        >();
+        assertType<typeof Never.parent, null>();
       });
 
-      test("rejects every value with a Never error containing the rejected value", () => {
+      it("rejects every value with a Never error containing the rejected value", () => {
         const values: ReadonlyArray<unknown> = [
           undefined,
           null,
@@ -2812,21 +3022,21 @@ describe("createType", () => {
         ];
 
         for (const value of values) {
-          expect(Never.fromUnknown(value)).toEqual(
-            err({ type: "Never", value }),
-          );
-          expect(Never.is(value)).toBe(false);
+          assertEqual(Never.fromUnknown(value), err({ type: "Never", value }));
+          assertFalse(Never.is(value));
         }
       });
 
-      test("cannot return a validated value", () => {
-        expectTypeOf<ReturnType<typeof Never.fromUnknown>>().toEqualTypeOf<
+      it("cannot return a validated value", () => {
+        assertType<
+          ReturnType<typeof Never.fromUnknown>,
           Result<never, NeverError>
         >();
       });
 
-      test("formats its validation error", () => {
-        expect(Never.formatError({ type: "Never", value: 42 })).toBe(
+      it("formats its validation error", () => {
+        assertEqual(
+          Never.formatError({ type: "Never", value: 42 }),
           "A value 42 is not valid for type Never.",
         );
       });
@@ -2835,12 +3045,13 @@ describe("createType", () => {
 });
 
 describe("transform", () => {
-  test("creates a Type between encoded and output Types", () => {
+  it("creates a Type between encoded and output Types", () => {
     const NumberFromString = setupNumberFromString();
 
-    expect(NumberFromString.parent).toBe(String);
-    expect(NumberFromString.output).toBe(Number);
-    expectTypeOf(NumberFromString).toEqualTypeOf<
+    assertSame(NumberFromString.parent, String);
+    assertSame(NumberFromString.output, Number);
+    assertType<
+      typeof NumberFromString,
       TransformType<
         typeof String,
         typeof Number,
@@ -2848,26 +3059,30 @@ describe("transform", () => {
         NumberFromStringError
       >
     >();
-    expectTypeOf<typeof NumberFromString.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof NumberFromString.Output>().toEqualTypeOf<number>();
-    expectTypeOf<typeof NumberFromString.Error>().toEqualTypeOf<
+    assertType<typeof NumberFromString.Input, string>();
+    assertType<typeof NumberFromString.Output, number>();
+    assertType<
+      typeof NumberFromString.Error,
       TransformError<"NumberFromString", NumberFromStringError, never>
     >();
-    expectTypeOf<InferErrors<typeof NumberFromString>>().toEqualTypeOf<
+    assertType<
+      InferErrors<typeof NumberFromString>,
       | TypeOfError<"String">
       | TransformError<"NumberFromString", NumberFromStringError, never>
     >();
   });
 
-  test("transforms from its parent Output to its own Output", () => {
+  it("transforms from its parent Output to its own Output", () => {
     const NumberFromString = setupNumberFromString();
 
-    expect(NumberFromString.fromUnknown("42")).toEqual(ok(42));
-    expect(NumberFromString.from.parent("42")).toEqual(ok(42));
-    expect(NumberFromString.fromUnknown(42)).toEqual(
+    assertEqual(NumberFromString.fromUnknown("42"), ok(42));
+    assertEqual(NumberFromString.from.parent("42"), ok(42));
+    assertEqual(
+      NumberFromString.fromUnknown(42),
       err({ type: "TypeOf", expected: "String", value: 42 }),
     );
-    expect(NumberFromString.from.parent("not a number")).toEqual(
+    assertEqual(
+      NumberFromString.from.parent("not a number"),
       err({
         type: "NumberFromString",
         value: "not a number",
@@ -2875,7 +3090,7 @@ describe("transform", () => {
     );
   });
 
-  test("satisfies Output round-tripping and stable Input normalization", () => {
+  it("satisfies Output round-tripping and stable Input normalization", () => {
     const NumberFromString = setupNumberFromString();
     const outputs = [
       1.5,
@@ -2889,21 +3104,25 @@ describe("transform", () => {
       const encoded = NumberFromString.to(output);
       const decoded = getOrThrow(NumberFromString.from.parent(encoded));
 
-      expect(globalThis.Object.is(decoded, output)).toBe(true);
+      assertSame(decoded, output);
     }
 
     const normalized = NumberFromString.to(
       getOrThrow(NumberFromString.from.parent("01")),
     );
 
-    expect(normalized).toBe("1");
-    expect(
+    assertEqual(normalized, "1");
+    assertSame(
       NumberFromString.to(getOrThrow(NumberFromString.from.parent(normalized))),
-    ).toBe(normalized);
-    expectTypeOf(NumberFromString.to(42)).toEqualTypeOf<string>();
+      normalized,
+    );
+    {
+      const actual = NumberFromString.to(42);
+      assertType<typeof actual, string>();
+    }
   });
 
-  test("round-trips Boolean and yes/no representations", () => {
+  it("round-trips Boolean and yes/no representations", () => {
     const YesOrNo = union(literal("yes"), literal("no"));
     const YesOrNoFromBoolean = transform(
       "YesOrNoFromBoolean",
@@ -2915,28 +3134,24 @@ describe("transform", () => {
       },
     );
 
-    expect(YesOrNoFromBoolean.fromUnknown(true)).toEqual(ok("yes"));
-    expect(YesOrNoFromBoolean.fromUnknown(false)).toEqual(ok("no"));
-    expect(YesOrNoFromBoolean.to("yes")).toBe(true);
-    expect(YesOrNoFromBoolean.to("no")).toBe(false);
-    expectTypeOf<typeof YesOrNoFromBoolean.Input>().toEqualTypeOf<boolean>();
-    expectTypeOf<typeof YesOrNoFromBoolean.Output>().toEqualTypeOf<
-      "yes" | "no"
-    >();
+    assertEqual(YesOrNoFromBoolean.fromUnknown(true), ok("yes"));
+    assertEqual(YesOrNoFromBoolean.fromUnknown(false), ok("no"));
+    assertTrue(YesOrNoFromBoolean.to("yes"));
+    assertFalse(YesOrNoFromBoolean.to("no"));
+    assertType<typeof YesOrNoFromBoolean.Input, boolean>();
+    assertType<typeof YesOrNoFromBoolean.Output, "yes" | "no">();
   });
 
-  test("narrows unknown values on the output side", () => {
+  it("narrows unknown values on the output side", () => {
     const NumberFromString = setupNumberFromString();
     const value: unknown = 42;
 
-    expect(NumberFromString.is(value)).toBe(true);
-    expect(NumberFromString.is("42")).toBe(false);
-    if (NumberFromString.is(value)) {
-      expectTypeOf(value).toEqualTypeOf<number>();
-    }
+    assert(NumberFromString.is(value), "Expected NumberFromString.");
+    assertFalse(NumberFromString.is("42"));
+    assertType<typeof value, number>();
   });
 
-  test("runs and formats the complete output Type pipeline", () => {
+  it("runs and formats the complete output Type pipeline", () => {
     interface PositiveNumberError extends TypeError<"PositiveNumber"> {
       readonly value: number;
     }
@@ -2970,7 +3185,8 @@ describe("transform", () => {
       () => "Enter a number.",
     );
 
-    expectTypeOf<typeof PositiveNumberFromString.Error>().toEqualTypeOf<
+    assertType<
+      typeof PositiveNumberFromString.Error,
       TransformError<
         "PositiveNumberFromString",
         PositiveNumberFromStringError,
@@ -2978,23 +3194,25 @@ describe("transform", () => {
       >
     >();
 
-    expect(PositiveNumberFromString.from.parent("-1")).toEqual(
+    assertEqual(
+      PositiveNumberFromString.from.parent("-1"),
       err({
         type: "PositiveNumberFromString",
         outputError: { type: "PositiveNumber", value: -1 },
       }),
     );
-    expect(
+    assertEqual(
       PositiveNumberFromString.formatError({
         type: "PositiveNumberFromString",
         outputError: { type: "PositiveNumber", value: -1 },
       }),
-    ).toBe("Enter a positive number.");
-    expect(PositiveNumberFromString.is(1)).toBe(true);
-    expect(PositiveNumberFromString.is(-1)).toBe(false);
+      "Enter a positive number.",
+    );
+    assertTrue(PositiveNumberFromString.is(1));
+    assertFalse(PositiveNumberFromString.is(-1));
   });
 
-  test("composes Object parent and output pipelines", () => {
+  it("composes Object parent and output pipelines", () => {
     const NumberFromString = setupNumberFromString();
     const Positive = brand(
       "Positive",
@@ -3026,24 +3244,23 @@ describe("transform", () => {
     const orThrowResult = PositiveModelFromStrings.orThrow(encoded);
     const orNullResult = PositiveModelFromStrings.orNull(encoded);
 
-    expectOk(result, output);
-    expect(result.value).not.toBe(encoded);
-    expect(orThrowResult).toEqual(output);
-    expect(orNullResult).toEqual(output);
-    expect(PositiveModelFromStrings.orNull({ value: "-1" })).toBeNull();
-    expectTypeOf(PositiveModelFromStrings.orThrow)
-      .parameter(0)
-      .toEqualTypeOf<typeof PositiveModelFromStrings.Input>();
-    expectTypeOf(orThrowResult).toEqualTypeOf<
-      typeof PositiveModelFromStrings.Output
+    assertOk(result, output);
+    assertFalse(globalThis.Object.is(result.value, encoded));
+    assertEqual(orThrowResult, output);
+    assertEqual(orNullResult, output);
+    assertSame(PositiveModelFromStrings.orNull({ value: "-1" }), null);
+    assertType<
+      Parameters<typeof PositiveModelFromStrings.orThrow>[0],
+      typeof PositiveModelFromStrings.Input
     >();
-    expectTypeOf(orNullResult).toEqualTypeOf<
+    assertType<typeof orThrowResult, typeof PositiveModelFromStrings.Output>();
+    assertType<
+      typeof orNullResult,
       typeof PositiveModelFromStrings.Output | null
     >();
-    expect(PositiveModelFromStrings.to(output)).toEqual(encoded);
-    expect(
+    assertEqual(PositiveModelFromStrings.to(output), encoded);
+    assertEqual(
       PositiveModelFromStrings.from.parent.parent({ value: "no" }),
-    ).toEqual(
       err({
         type: "Object",
         reason: {
@@ -3058,7 +3275,8 @@ describe("transform", () => {
       value: "-1",
     });
 
-    expect(outputResult).toEqual(
+    assertEqual(
+      outputResult,
       err({
         type: "PositiveModelFromStrings",
         outputError: {
@@ -3072,13 +3290,15 @@ describe("transform", () => {
         },
       }),
     );
-    expectTypeOf(outputResult).toEqualTypeOf<
+    assertType<
+      typeof outputResult,
       Result<
         typeof PositiveModelFromStrings.Output,
         typeof EncodedModel.Error | typeof PositiveModelFromStrings.Error
       >
     >();
-    expectTypeOf<typeof PositiveModelFromStrings.Error>().toEqualTypeOf<
+    assertType<
+      typeof PositiveModelFromStrings.Error,
       TransformError<
         "PositiveModelFromStrings",
         never,
@@ -3087,7 +3307,7 @@ describe("transform", () => {
     >();
   });
 
-  test("composes total encoding through its output Type", () => {
+  it("composes total encoding through its output Type", () => {
     const NumberFromString = setupNumberFromString();
     const ReencodedNumber = transform(
       "ReencodedNumber",
@@ -3096,11 +3316,11 @@ describe("transform", () => {
       { from: ok, to: (value) => value },
     );
 
-    expect(ReencodedNumber.from.parent("42")).toEqual(ok(42));
-    expect(ReencodedNumber.to(1.5)).toBe("1.5");
+    assertEqual(ReencodedNumber.from.parent("42"), ok(42));
+    assertEqual(ReencodedNumber.to(1.5), "1.5");
   });
 
-  test("stops encoding at each typed parent boundary", () => {
+  it("stops encoding at each typed parent boundary", () => {
     const NumberFromString = setupNumberFromString();
     const BooleanFromNumberString = transform(
       "BooleanFromNumberString",
@@ -3112,50 +3332,56 @@ describe("transform", () => {
       },
     );
 
-    expect(BooleanFromNumberString.to(true)).toBe("1");
-    expect(BooleanFromNumberString.to.parent(true)).toBe(1);
-    expect(BooleanFromNumberString.to.parent.parent(true)).toBe("1");
-    expectTypeOf(BooleanFromNumberString.to.parent(true)).toEqualTypeOf<
-      typeof NumberFromString.Output
-    >();
-    expectTypeOf(
-      BooleanFromNumberString.to.parent.parent(true),
-    ).toEqualTypeOf<string>();
-    expect("parent" in BooleanFromNumberString.to.parent.parent).toBe(false);
+    assertEqual(BooleanFromNumberString.to(true), "1");
+    assertEqual(BooleanFromNumberString.to.parent(true), 1);
+    assertEqual(BooleanFromNumberString.to.parent.parent(true), "1");
+    {
+      const actual = BooleanFromNumberString.to.parent(true);
+      assertType<typeof actual, typeof NumberFromString.Output>();
+    }
+    {
+      const actual = BooleanFromNumberString.to.parent.parent(true);
+      assertType<typeof actual, string>();
+    }
+    assertFalse("parent" in BooleanFromNumberString.to.parent.parent);
 
     const Values = array(BooleanFromNumberString);
     const values = [true, false];
 
-    expect(Values.to(values)).toEqual(["1", "0"]);
-    expect(Values.to.parent(values)).toEqual([1, 0]);
-    expect(Values.to.parent.parent(values)).toEqual(["1", "0"]);
-    expectTypeOf(Values.to.parent(values)).toEqualTypeOf<
-      ReadonlyArray<number>
-    >();
-    expectTypeOf(Values.to.parent.parent(values)).toEqualTypeOf<
-      ReadonlyArray<string>
-    >();
+    assertEqual(Values.to(values), ["1", "0"]);
+    assertEqual(Values.to.parent(values), [1, 0]);
+    assertEqual(Values.to.parent.parent(values), ["1", "0"]);
+    {
+      const actual = Values.to.parent(values);
+      assertType<typeof actual, ReadonlyArray<number>>();
+    }
+    {
+      const actual = Values.to.parent.parent(values);
+      assertType<typeof actual, ReadonlyArray<string>>();
+    }
   });
 
-  test("formats inherited and own transformation errors", () => {
+  it("formats inherited and own transformation errors", () => {
     const NumberFromString = setupNumberFromString();
 
-    expect(
+    assertEqual(
       NumberFromString.formatError({
         type: "TypeOf",
         expected: "String",
         value: 42,
       }),
-    ).toBe("A value 42 is not a string.");
-    expect(
+      "A value 42 is not a string.",
+    );
+    assertEqual(
       NumberFromString.formatError({
         type: "NumberFromString",
         value: "no",
       }),
-    ).toBe("The value no is not a number.");
+      "The value no is not a number.",
+    );
   });
 
-  test("preserves callback errors containing an Output-shaped reason", () => {
+  it("preserves callback errors containing an Output-shaped reason", () => {
     interface DecodeReason extends TypeError<"DecodeReason"> {
       readonly kind: "Output";
       readonly message: string;
@@ -3190,11 +3416,11 @@ describe("transform", () => {
       },
     };
 
-    expect(NumberFromText.from.parent("no")).toEqual(err(error));
-    expect(NumberFromText.formatError(error)).toBe("Enter a number.");
+    assertEqual(NumberFromText.from.parent("no"), err(error));
+    assertEqual(NumberFromText.formatError(error), "Enter a number.");
   });
 
-  test("composes total encoding through refinements", () => {
+  it("composes total encoding through refinements", () => {
     const NumberFromString = setupNumberFromString();
     const PositiveNumber = brand(
       "PositiveNumber",
@@ -3208,11 +3434,11 @@ describe("transform", () => {
       PositiveNumber.from.parent.parent("1.5"),
     );
 
-    expect(PositiveNumber.to(positive)).toBe("42");
-    expect(PositiveNumber.to(positiveNonInteger)).toBe("1.5");
+    assertEqual(PositiveNumber.to(positive), "42");
+    assertEqual(PositiveNumber.to(positiveNonInteger), "1.5");
   });
 
-  test("composes decoding and encoding transformations", () => {
+  it("composes decoding and encoding transformations", () => {
     const NumberFromString = setupNumberFromString();
     const BooleanFromNumberString = transform(
       "BooleanFromNumberString",
@@ -3224,12 +3450,12 @@ describe("transform", () => {
       },
     );
 
-    expect(BooleanFromNumberString.from.parent.parent("1")).toEqual(ok(true));
-    expect(BooleanFromNumberString.from.parent(0)).toEqual(ok(false));
-    expect(BooleanFromNumberString.to(true)).toBe("1");
+    assertEqual(BooleanFromNumberString.from.parent.parent("1"), ok(true));
+    assertEqual(BooleanFromNumberString.from.parent(0), ok(false));
+    assertEqual(BooleanFromNumberString.to(true), "1");
   });
 
-  test("requires a formatter exactly when decoding adds an own error", () => {
+  it("requires a formatter exactly when decoding adds an own error", () => {
     const compileTimeAssertions = () => {
       interface MissingFormatterError extends TypeError<"MissingFormatter"> {
         readonly value: string;
@@ -3254,10 +3480,15 @@ describe("transform", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires callbacks to return their declared boundary types", () => {
+  it("requires callbacks to return their declared boundary types", () => {
     const compileTimeAssertions = () => {
       transform("InvalidOutput", String, Number, {
         // @ts-expect-error A callback must return the output Type Input.
@@ -3271,10 +3502,15 @@ describe("transform", () => {
       });
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("asserts successful decoding callback results", () => {
+  it("asserts successful decoding callback results", () => {
     const Invalid = transform("InvalidTransformFrom", String, Number, {
       from: () => ok("not a number" as unknown as number),
       to: globalThis.String,
@@ -3286,27 +3522,27 @@ describe("transform", () => {
       value: "not a number",
     } as const;
 
-    expectAssertionError(
+    assertAssertionError(
       () => Invalid.fromUnknown("value"),
       "Expected Number.",
       cause,
     );
-    expectAssertionError(
+    assertAssertionError(
       () => Invalid.from.parent("value"),
       "Expected Number.",
       cause,
     );
   });
 
-  test("asserts encoding inputs and callback results", () => {
+  it("asserts encoding inputs and callback results", () => {
     const NumberFromString = setupNumberFromString();
     const Invalid = transform("InvalidTransformTo", String, Number, {
       from: () => ok(42),
       to: () => 42 as unknown as string,
     });
 
-    expect(NumberFromString.fromUnknown("42")).toEqual(ok(42));
-    expectAssertionError(
+    assertEqual(NumberFromString.fromUnknown("42"), ok(42));
+    assertAssertionError(
       () => NumberFromString.to("42" as unknown as number),
       "Expected NumberFromString.",
       {
@@ -3318,7 +3554,7 @@ describe("transform", () => {
         },
       },
     );
-    expectAssertionError(
+    assertAssertionError(
       () => NumberFromString.to.parent("42" as unknown as number),
       "Expected NumberFromString.",
       {
@@ -3330,19 +3566,19 @@ describe("transform", () => {
         },
       },
     );
-    expectAssertionError(() => Invalid.to(42), "Expected String.", {
+    assertAssertionError(() => Invalid.to(42), "Expected String.", {
       type: "TypeOf",
       expected: "String",
       value: 42,
     });
-    expectAssertionError(() => Invalid.to.parent(42), "Expected String.", {
+    assertAssertionError(() => Invalid.to.parent(42), "Expected String.", {
       type: "TypeOf",
       expected: "String",
       value: 42,
     });
   });
 
-  test("rejects fallible parent and output Types with erased concrete information", () => {
+  it("rejects fallible parent and output Types with erased concrete information", () => {
     const PositiveNumber = brand(
       "PositiveNumber",
       Number,
@@ -3364,10 +3600,15 @@ describe("transform", () => {
       });
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("rejects unresolved generic parent and output Types", () => {
+  it("rejects unresolved generic parent and output Types", () => {
     const _A = literal("a");
     const _B = literal("b");
 
@@ -3391,10 +3632,15 @@ describe("transform", () => {
       return [parent, output];
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires an own error to use the transformation name", () => {
+  it("requires an own error to use the transformation name", () => {
     interface OtherError extends TypeError<"Other"> {
       readonly value: string;
     }
@@ -3414,10 +3660,15 @@ describe("transform", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("reserves outputError for errors from the output Type", () => {
+  it("reserves outputError for errors from the output Type", () => {
     interface InvalidError extends TypeError<"NumberFromString"> {
       readonly outputError: TypeOfError<"Number">;
     }
@@ -3444,10 +3695,15 @@ describe("transform", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("does not widen its own errors from a broad formatter", () => {
+  it("does not widen its own errors from a broad formatter", () => {
     const _NumberFromString = transform(
       "NumberFromString",
       String,
@@ -3460,7 +3716,8 @@ describe("transform", () => {
       formatTestTypeError,
     );
 
-    expectTypeOf<typeof _NumberFromString.Error>().toEqualTypeOf<
+    assertType<
+      typeof _NumberFromString.Error,
       TransformError<"NumberFromString", NumberFromStringError, never>
     >();
   });
@@ -3469,23 +3726,29 @@ describe("transform", () => {
 describe("TypeOf", () => {
   const types = [String, Number, BigInt, Boolean, Symbol, Function] as const;
 
-  test("Types have the expected root definitions", () => {
-    expectTypeOf(String).toEqualTypeOf<
+  it("Types have the expected root definitions", () => {
+    assertType<
+      typeof String,
       Type<"String", string, string, TypeOfError<"String">>
     >();
-    expectTypeOf(Number).toEqualTypeOf<
+    assertType<
+      typeof Number,
       Type<"Number", number, number, TypeOfError<"Number">>
     >();
-    expectTypeOf(BigInt).toEqualTypeOf<
+    assertType<
+      typeof BigInt,
       Type<"BigInt", bigint, bigint, TypeOfError<"BigInt">>
     >();
-    expectTypeOf(Boolean).toEqualTypeOf<
+    assertType<
+      typeof Boolean,
       Type<"Boolean", boolean, boolean, TypeOfError<"Boolean">>
     >();
-    expectTypeOf(Symbol).toEqualTypeOf<
+    assertType<
+      typeof Symbol,
       Type<"Symbol", symbol, symbol, TypeOfError<"Symbol">>
     >();
-    expectTypeOf(Function).toEqualTypeOf<
+    assertType<
+      typeof Function,
       Type<
         "Function",
         globalThis.Function,
@@ -3493,8 +3756,11 @@ describe("TypeOf", () => {
         TypeOfError<"Function">
       >
     >();
-    expectTypeOf<TypeOfError<"String">>().toExtend<TypeValueError<"TypeOf">>();
-    expectTypeOf<TypeOfError<"String">["expected"]>().toEqualTypeOf<"String">();
+    assertType<
+      TypeOfError<"String"> extends TypeValueError<"TypeOf"> ? true : false,
+      true
+    >();
+    assertType<TypeOfError<"String">["expected"], "String">();
   });
 
   describe("Type", () => {
@@ -3502,18 +3768,19 @@ describe("TypeOf", () => {
       const name = type.name;
 
       describe(name, () => {
-        test("preserves matching values", () => {
+        it("preserves matching values", () => {
           const value = globalThis[name](0);
           const result = type.fromUnknown(value);
 
-          expectOk(result, value);
-          expect(result.value).toBe(value);
+          assertOk(result);
+          assertSame(result.value, value);
         });
 
-        test("reports the expected Type and rejected value", () => {
+        it("reports the expected Type and rejected value", () => {
           const value: unknown = null;
 
-          expect(type.fromUnknown(value)).toEqual(
+          assertEqual(
+            type.fromUnknown(value),
             err({
               type: "TypeOf",
               expected: name,
@@ -3546,14 +3813,17 @@ describe("objectTag", () => {
     },
   ] as const;
 
-  test("creates the predefined built-in Types", () => {
-    expectTypeOf(DateFromFactory).toEqualTypeOf<
+  it("creates the predefined built-in Types", () => {
+    assertType<
+      typeof DateFromFactory,
       Type<"Date", globalThis.Date, globalThis.Date, ObjectTagError<"Date">>
     >();
-    expectTypeOf(Date).toEqualTypeOf<
+    assertType<
+      typeof Date,
       Type<"Date", globalThis.Date, globalThis.Date, ObjectTagError<"Date">>
     >();
-    expectTypeOf(Uint8Array).toEqualTypeOf<
+    assertType<
+      typeof Uint8Array,
       Type<
         "Uint8Array",
         globalThis.Uint8Array,
@@ -3561,7 +3831,8 @@ describe("objectTag", () => {
         ObjectTagError<"Uint8Array">
       >
     >();
-    expectTypeOf(ArrayBuffer).toEqualTypeOf<
+    assertType<
+      typeof ArrayBuffer,
       Type<
         "ArrayBuffer",
         globalThis.ArrayBuffer,
@@ -3569,33 +3840,44 @@ describe("objectTag", () => {
         ObjectTagError<"ArrayBuffer">
       >
     >();
-    expectTypeOf<
-      globalThis.Uint8Array<globalThis.SharedArrayBuffer>
-    >().toExtend<typeof Uint8Array.Output>();
+    assertType<
+      globalThis.Uint8Array<globalThis.SharedArrayBuffer> extends typeof Uint8Array.Output
+        ? true
+        : false,
+      true
+    >();
 
     for (const { name, type, value } of builtInTypes) {
-      expect(type.name).toBe(name);
-      expect(type.parent).toBeNull();
-      expectOk(type.fromUnknown(value), value);
-      expect(type.is(value)).toBe(true);
-      expect(type.to(value as never)).toBe(value);
+      assertSame(type.name, name);
+      assertSame(type.parent, null);
+      const result = type.fromUnknown(value);
+      assertOk(result);
+      assertSame(result.value, value);
+      assertTrue(type.is(value));
+      assertSame(type.to(value as never), value);
     }
   });
 
-  test("trusts reported object tags without verifying native internal slots", () => {
+  it("trusts reported object tags without verifying native internal slots", () => {
     const forgedDate = { [globalThis.Symbol.toStringTag]: "Date" };
     const sabotagedSet = globalThis.Object.create(
       globalThis.Set.prototype,
     ) as ReadonlySet<string>;
 
-    expectOk(Date.fromUnknown(forgedDate), forgedDate);
-    expect(() => globalThis.Date.prototype.getTime.call(forgedDate)).toThrow(
+    const result = Date.fromUnknown(forgedDate);
+    assertOk(result);
+    assertSame(result.value, forgedDate);
+    assertThrowsInstanceOf(
+      () => globalThis.Date.prototype.getTime.call(forgedDate),
       TypeError,
     );
-    expect(() => set(String).fromUnknown(sabotagedSet)).toThrow(TypeError);
+    assertThrowsInstanceOf(
+      () => set(String).fromUnknown(sabotagedSet),
+      TypeError,
+    );
   });
 
-  test("refines a supplied Type with nominal object-tag evidence", () => {
+  it("refines a supplied Type with nominal object-tag evidence", () => {
     class TaggedValue {
       readonly tag: string;
 
@@ -3630,26 +3912,27 @@ describe("objectTag", () => {
       Tagged.to(value);
     };
 
-    expectTypeOf(Tagged).toEqualTypeOf<
+    assertType<
+      typeof Tagged,
       ObjectTagType<"Tagged", typeof TaggedValueInstance>
     >();
-    expectTypeOf<typeof Tagged.Output>().toEqualTypeOf<
+    assertType<typeof Tagged.Output, TaggedValue & ObjectTag<"Tagged">>();
+    assertEqual(Tagged.name, "ObjectTag");
+    assertEqual(Tagged.expected, "Tagged");
+    assertSame(Tagged.parent, TaggedValueInstance);
+    assertOk(result, value);
+    assertOk(fromParentResult, value);
+    assertSame(Tagged.to(result.value), value);
+    assertType<typeof TaggedFromString.Input, string>();
+    assertType<
+      typeof TaggedFromString.Output,
       TaggedValue & ObjectTag<"Tagged">
     >();
-    expect(Tagged.name).toBe("ObjectTag");
-    expect(Tagged.expected).toBe("Tagged");
-    expect(Tagged.parent).toBe(TaggedValueInstance);
-    expectOk(result, value);
-    expectOk(fromParentResult, value);
-    expect(Tagged.to(result.value)).toBe(value);
-    expectTypeOf<typeof TaggedFromString.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof TaggedFromString.Output>().toEqualTypeOf<
-      TaggedValue & ObjectTag<"Tagged">
-    >();
-    assert(transformedResult.ok);
-    expect(transformedResult.value).toBeInstanceOf(TaggedValue);
-    expect(TaggedFromString.to(transformedResult.value)).toBe("Tagged");
-    expect(Tagged.fromUnknown(wrongTag)).toEqual(
+    assertOk(transformedResult);
+    assertInstanceOf(transformedResult.value, TaggedValue);
+    assertEqual(TaggedFromString.to(transformedResult.value), "Tagged");
+    assertEqual(
+      Tagged.fromUnknown(wrongTag),
       err<ObjectTagError<"Tagged">>({
         type: "ObjectTag",
         expected: "Tagged",
@@ -3657,26 +3940,31 @@ describe("objectTag", () => {
       }),
     );
     const forgedTag = { [globalThis.Symbol.toStringTag]: "Tagged" };
-    expect(Tagged.fromUnknown(forgedTag)).toEqual(
+    assertEqual(
+      Tagged.fromUnknown(forgedTag),
       err<InstanceOfError>({
         type: "InstanceOf",
         constructorName: "TaggedValue",
         value: forgedTag,
       }),
     );
-    expect(
+    assertEqual(
       Tagged.formatError({
         type: "ObjectTag",
         expected: "Tagged",
         value: wrongTag,
       }),
-    ).toBe(
       'A value {"tag":"Other"} does not have the expected object tag "Tagged".',
     );
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires one concrete tag name and a Type for custom tags", () => {
+  it("requires one concrete tag name and a Type for custom tags", () => {
     class TaggedValue {
       readonly [globalThis.Symbol.toStringTag] = "Tagged";
     }
@@ -3729,12 +4017,27 @@ describe("objectTag", () => {
       objectTag("Tagged", erasedOutputType);
     };
 
-    expectTypeOf(genericNameAssertion).toBeFunction();
-    expectTypeOf(genericOutputAssertion).toBeFunction();
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof genericNameAssertion extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
+    assertType<
+      typeof genericOutputAssertion extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("rejects an ObjectTag error inherited from the output Type", () => {
+  it("rejects an ObjectTag error inherited from the output Type", () => {
     class TaggedValue {
       readonly [globalThis.Symbol.toStringTag] = "Tagged";
     }
@@ -3748,16 +4051,21 @@ describe("objectTag", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("infers ObjectTag localization", () => {
+  it("infers ObjectTag localization", () => {
     const types = localizeTypes(
       { Date },
       {
         test: {
           ObjectTag: (error) => {
-            expectTypeOf(error).toEqualTypeOf<ObjectTagError<"Date">>();
+            assertType<typeof error, ObjectTagError<"Date">>();
             return "Localized ObjectTag.";
           },
         },
@@ -3765,8 +4073,8 @@ describe("objectTag", () => {
     ).test;
     const result = types.Date.fromUnknown({});
 
-    assert(!result.ok);
-    expect(types.Date.formatError(result.error)).toBe("Localized ObjectTag.");
+    assertErr(result);
+    assertEqual(types.Date.formatError(result.error), "Localized ObjectTag.");
   });
 });
 
@@ -3790,20 +4098,26 @@ describe("instanceOf", () => {
   };
 
   const UserInstance = instanceOf(User);
-  test("creates the expected root Type", () => {
-    expectTypeOf(User).toExtend<InstanceConstructor<User>>();
-    expectTypeOf(UserInstance).toEqualTypeOf<InstanceOfType<typeof User>>();
-    expectTypeOf<typeof UserInstance.Input>().toEqualTypeOf<User>();
-    expectTypeOf<typeof UserInstance.Output>().toEqualTypeOf<User>();
-    expectTypeOf<typeof UserInstance.Error>().toEqualTypeOf<InstanceOfError>();
-    expectTypeOf<InstanceOfError>().toExtend<TypeValueError<"InstanceOf">>();
-    expectTypeOf(UserInstance.parent).toEqualTypeOf<null>();
-    expect(UserInstance.name).toBe("InstanceOf");
-    expect(UserInstance.constructor).toBe(User);
-    expect(UserInstance.parent).toBeNull();
+  it("creates the expected root Type", () => {
+    assertType<
+      typeof User extends InstanceConstructor<User> ? true : false,
+      true
+    >();
+    assertType<typeof UserInstance, InstanceOfType<typeof User>>();
+    assertType<typeof UserInstance.Input, User>();
+    assertType<typeof UserInstance.Output, User>();
+    assertType<typeof UserInstance.Error, InstanceOfError>();
+    assertType<
+      InstanceOfError extends TypeValueError<"InstanceOf"> ? true : false,
+      true
+    >();
+    assertType<typeof UserInstance.parent, null>();
+    assertEqual(UserInstance.name, "InstanceOf");
+    assertSame(UserInstance.constructor, User);
+    assertSame(UserInstance.parent, null);
   });
 
-  test("requires one concrete constructor", () => {
+  it("requires one concrete constructor", () => {
     class _Session {
       readonly id = "session";
     }
@@ -3831,15 +4145,36 @@ describe("instanceOf", () => {
       return constructor;
     };
 
-    expectTypeOf<Constructor>().not.toExtend<ConstructorParameter>();
-    expectTypeOf<ErasedConstructor>().not.toExtend<ErasedConstructorParameter>();
-    expectTypeOf<ConstructorParameter>().toEqualTypeOf<"⛔ Type error: Constructor must preserve one concrete constructor. Create a Union Type from separate Instance Types instead of passing a union or erased constructor.">();
-    expectTypeOf<ErasedConstructorParameter>().toEqualTypeOf<ConstructorParameter>();
-    expectTypeOf(compileTimeAssertions).toBeFunction();
-    expectTypeOf(genericCompileTimeAssertion).toBeFunction();
+    assertType<
+      Constructor extends ConstructorParameter ? true : false,
+      false
+    >();
+    assertType<
+      ErasedConstructor extends ErasedConstructorParameter ? true : false,
+      false
+    >();
+    assertType<
+      ConstructorParameter,
+      "⛔ Type error: Constructor must preserve one concrete constructor. Create a Union Type from separate Instance Types instead of passing a union or erased constructor."
+    >();
+    assertType<ErasedConstructorParameter, ConstructorParameter>();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
+    assertType<
+      typeof genericCompileTimeAssertion extends (
+        ...args: Array<never>
+      ) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("composes multiple constructors through one Union Type", () => {
+  it("composes multiple constructors through one Union Type", () => {
     class Session {
       readonly id = "session";
     }
@@ -3848,31 +4183,34 @@ describe("instanceOf", () => {
     const user = new User("Ada");
     const session = new Session();
 
-    expect(Instance.fromUnknown(user)).toEqual(ok(user));
-    expect(Instance.fromUnknown(session)).toEqual(ok(session));
-    expectTypeOf<typeof Instance.Output>().toEqualTypeOf<User | Session>();
+    assertEqual(Instance.fromUnknown(user), ok(user));
+    assertEqual(Instance.fromUnknown(session), ok(session));
+    assertType<typeof Instance.Output, User | Session>();
   });
 
-  test("preserves instances accepted by the constructor", () => {
+  it("preserves instances accepted by the constructor", () => {
     const user = new User("Ada");
     const admin = new Admin("Grace");
 
     for (const value of [user, admin]) {
       const result = UserInstance.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(UserInstance.is(value)).toBe(true);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertTrue(UserInstance.is(value));
     }
 
-    expect(UserInstance.from(user)).toEqual(ok(user));
-    expectTypeOf(UserInstance.from(user)).toEqualTypeOf<Result<User>>();
-    expect(UserInstance.to(user)).toBe(user);
-    expect(UserInstance.orThrow(user)).toBe(user);
-    expect(UserInstance.orNull(user)).toBe(user);
+    assertEqual(UserInstance.from(user), ok(user));
+    {
+      const actual = UserInstance.from(user);
+      assertType<typeof actual, Result<User>>();
+    }
+    assertSame(UserInstance.to(user), user);
+    assertSame(UserInstance.orThrow(user), user);
+    assertSame(UserInstance.orNull(user), user);
   });
 
-  test("ignores overridden Symbol.hasInstance", () => {
+  it("ignores overridden Symbol.hasInstance", () => {
     class Overridden {
       readonly kind = "Overridden";
 
@@ -3884,21 +4222,22 @@ describe("instanceOf", () => {
     const OverriddenInstance = instanceOf(Overridden);
     const instance = new Overridden();
 
-    expect(Overridden[globalThis.Symbol.hasInstance](42)).toBe(true);
-    expect(instance instanceof Overridden).toBe(false);
-    expect(OverriddenInstance.fromUnknown(42)).toEqual(
+    assertTrue(Overridden[globalThis.Symbol.hasInstance](42));
+    assertFalse(instance instanceof Overridden);
+    assertEqual(
+      OverriddenInstance.fromUnknown(42),
       err({
         type: "InstanceOf",
         constructorName: "Overridden",
         value: 42,
       }),
     );
-    expect(OverriddenInstance.is(42)).toBe(false);
-    expectOk(OverriddenInstance.fromUnknown(instance), instance);
-    expect(OverriddenInstance.is(instance)).toBe(true);
+    assertFalse(OverriddenInstance.is(42));
+    assertOk(OverriddenInstance.fromUnknown(instance), instance);
+    assertTrue(OverriddenInstance.is(instance));
   });
 
-  test("asserts structurally typed values that are not instances", () => {
+  it("asserts structurally typed values that are not instances", () => {
     const value: User = { name: "Ada" };
     const error = {
       type: "InstanceOf",
@@ -3913,150 +4252,172 @@ describe("instanceOf", () => {
     ];
 
     for (const operation of operations) {
-      expectAssertionError(operation, "Expected InstanceOf.", error);
+      assertAssertionError(operation, "Expected InstanceOf.", error);
     }
   });
 
-  test("rejects structurally equivalent values with different constructor identities", () => {
+  it("rejects structurally equivalent values with different constructor identities", () => {
     const plain: unknown = { name: "Ada" };
     const sameName: unknown = new SameName("Ada");
 
     for (const value of [plain, sameName]) {
-      expect(UserInstance.fromUnknown(value)).toEqual(
+      assertEqual(
+        UserInstance.fromUnknown(value),
         err({
           type: "InstanceOf",
           constructorName: "User",
           value,
         }),
       );
-      expect(UserInstance.is(value)).toBe(false);
+      assertFalse(UserInstance.is(value));
     }
   });
 
-  test("formats the rejected value and expected constructor", () => {
-    expect(
+  it("formats the rejected value and expected constructor", () => {
+    assertEqual(
       UserInstance.formatError({
         type: "InstanceOf",
         constructorName: "User",
         value: {},
       }),
-    ).toBe("A value {} is not an instance of User.");
+      "A value {} is not an instance of User.",
+    );
   });
 });
 
 describe("literal", () => {
   const Hello = literal("Hello");
 
-  test("creates a Literal Type with its primitive Type as parent", () => {
-    expect(Hello.name).toBe("Literal");
-    expect(Hello.expected).toBe("Hello");
-    expect(Hello.parent).toBe(String);
-    expectTypeOf(Hello).toEqualTypeOf<LiteralType<"Hello">>();
-    expectTypeOf<typeof Hello.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof Hello.Output>().toEqualTypeOf<"Hello">();
-    expectTypeOf<typeof Hello.Error>().toEqualTypeOf<LiteralError<"Hello">>();
-    expectTypeOf<LiteralError<"Hello">>().toExtend<TypeValueError<"Literal">>();
-    expectTypeOf(Hello.parent).toEqualTypeOf<typeof String>();
-    expect("parent" in Hello.from).toBe(true);
-    expectTypeOf<"parent">().toExtend<keyof typeof Hello.from>();
+  it("creates a Literal Type with its primitive Type as parent", () => {
+    assertEqual(Hello.name, "Literal");
+    assertEqual(Hello.expected, "Hello");
+    assertSame(Hello.parent, String);
+    assertType<typeof Hello, LiteralType<"Hello">>();
+    assertType<typeof Hello.Input, string>();
+    assertType<typeof Hello.Output, "Hello">();
+    assertType<typeof Hello.Error, LiteralError<"Hello">>();
+    assertType<
+      LiteralError<"Hello"> extends TypeValueError<"Literal"> ? true : false,
+      true
+    >();
+    assertType<typeof Hello.parent, typeof String>();
+    assertTrue("parent" in Hello.from);
+    assertType<"parent" extends keyof typeof Hello.from ? true : false, true>();
   });
 
-  test("validates unknown and widened input at their respective boundaries", () => {
+  it("validates unknown and widened input at their respective boundaries", () => {
     const expectedError = err({
       type: "Literal",
       expected: "Hello",
       value: "World",
     });
 
-    expect(Hello.fromUnknown("Hello")).toEqual(ok("Hello"));
-    expect(Hello.fromUnknown("World")).toEqual(expectedError);
-    expect(Hello.fromUnknown(42)).toEqual(
+    assertEqual(Hello.fromUnknown("Hello"), ok("Hello"));
+    assertEqual(Hello.fromUnknown("World"), expectedError);
+    assertEqual(
+      Hello.fromUnknown(42),
       err({ type: "TypeOf", expected: "String", value: 42 }),
     );
-    expect(Hello.from("Hello")).toEqual(ok("Hello"));
-    expect(Hello.from.parent("World")).toEqual(expectedError);
-    expectTypeOf(Hello.fromUnknown("Hello")).toEqualTypeOf<
-      Result<"Hello", TypeOfError<"String"> | LiteralError<"Hello">>
-    >();
-    expectTypeOf(Hello.from).parameter(0).toEqualTypeOf<"Hello">();
-    expectTypeOf(Hello.from("Hello")).toEqualTypeOf<Result<"Hello">>();
-    expectTypeOf(Hello.from.parent("Hello")).toEqualTypeOf<
-      Result<"Hello", LiteralError<"Hello">>
-    >();
+    assertEqual(Hello.from("Hello"), ok("Hello"));
+    assertEqual(Hello.from.parent("World"), expectedError);
+    {
+      const actual = Hello.fromUnknown("Hello");
+      assertType<
+        typeof actual,
+        Result<"Hello", TypeOfError<"String"> | LiteralError<"Hello">>
+      >();
+    }
+    assertType<Parameters<typeof Hello.from>[0], "Hello">();
+    {
+      const actual = Hello.from("Hello");
+      assertType<typeof actual, Result<"Hello">>();
+    }
+    {
+      const actual = Hello.from.parent("Hello");
+      assertType<typeof actual, Result<"Hello", LiteralError<"Hello">>>();
+    }
   });
 
-  test("narrows values and validates convenience operations", () => {
+  it("narrows values and validates convenience operations", () => {
     const value: unknown = "Hello";
 
-    expect(Hello.is(value)).toBe(true);
-    expect(Hello.is("World")).toBe(false);
-    if (Hello.is(value)) expectTypeOf(value).toEqualTypeOf<"Hello">();
+    assert(Hello.is(value), "Expected Hello.");
+    assertFalse(Hello.is("World"));
+    assertType<typeof value, "Hello">();
 
-    expect(Hello.orThrow("Hello")).toBe("Hello");
-    expect(() => Hello.orThrow("World")).toThrow("getOrThrow");
-    expect(Hello.orNull("Hello")).toBe("Hello");
-    expect(Hello.orNull("World")).toBeNull();
+    assertEqual(Hello.orThrow("Hello"), "Hello");
+    const error = assertThrowsInstanceOf(() => Hello.orThrow("World"), Error);
+    assertTrue(error.message.includes("getOrThrow"));
+    assertEqual(Hello.orNull("Hello"), "Hello");
+    assertSame(Hello.orNull("World"), null);
   });
 
-  test("supports every literal primitive", () => {
+  it("supports every literal primitive", () => {
     const FortyTwo = literal(42);
     const FortyTwoBigInt = literal(42n);
     const True = literal(true);
 
-    expect(FortyTwo.parent).toBe(Number);
-    expect(FortyTwoBigInt.parent).toBe(BigInt);
-    expect(True.parent).toBe(Boolean);
-    expect(FortyTwo.from(42)).toEqual(ok(42));
-    expect(FortyTwoBigInt.from(42n)).toEqual(ok(42n));
-    expect(True.from(true)).toEqual(ok(true));
-    expect(literal(undefined).from(undefined)).toEqual(ok(undefined));
-    expect(literal(null).from(null)).toEqual(ok(null));
+    assertSame(FortyTwo.parent, Number);
+    assertSame(FortyTwoBigInt.parent, BigInt);
+    assertSame(True.parent, Boolean);
+    assertEqual(FortyTwo.from(42), ok(42));
+    assertEqual(FortyTwoBigInt.from(42n), ok(42n));
+    assertEqual(True.from(true), ok(true));
+    assertEqual(literal(undefined).from(undefined), ok(undefined));
+    assertEqual(literal(null).from(null), ok(null));
   });
 
-  test("distinguishes primitive type errors from Literal value errors", () => {
+  it("distinguishes primitive type errors from Literal value errors", () => {
     const FortyTwo = literal(42);
 
-    expect(FortyTwo.fromUnknown("42")).toEqual(
+    assertEqual(
+      FortyTwo.fromUnknown("42"),
       err({ type: "TypeOf", expected: "Number", value: "42" }),
     );
-    expect(FortyTwo.fromUnknown(43)).toEqual(
+    assertEqual(
+      FortyTwo.fromUnknown(43),
       err({ type: "Literal", expected: 42, value: 43 }),
     );
-    expectTypeOf(FortyTwo.fromUnknown(42)).toEqualTypeOf<
-      Result<42, TypeOfError<"Number"> | LiteralError<42>>
-    >();
+    {
+      const actual = FortyTwo.fromUnknown(42);
+      assertType<
+        typeof actual,
+        Result<42, TypeOfError<"Number"> | LiteralError<42>>
+      >();
+    }
   });
 
-  test("formats its own and inherited errors", () => {
-    expect(
+  it("formats its own and inherited errors", () => {
+    assertEqual(
       Hello.formatError({
         type: "Literal",
         expected: "Hello",
         value: "World",
       }),
-    ).toBe(
       'The value "World" is not strictly equal to the expected literal: Hello.',
     );
-    expect(
+    assertEqual(
       Hello.formatError({
         type: "TypeOf",
         expected: "String",
         value: 42,
       }),
-    ).toBe("A value 42 is not a string.");
-    expectTypeOf(Hello.formatError)
-      .parameter(0)
-      .toEqualTypeOf<TypeOfError<"String"> | LiteralError<"Hello">>();
+      "A value 42 is not a string.",
+    );
+    assertType<
+      Parameters<typeof Hello.formatError>[0],
+      TypeOfError<"String"> | LiteralError<"Hello">
+    >();
   });
 
-  test("uses JavaScript strict equality without replacing the accepted value", () => {
+  it("uses JavaScript strict equality without replacing the accepted value", () => {
     const result = literal(0).from.parent(-0);
 
-    expectOk(result, -0);
-    expect(globalThis.Object.is(result.value, -0)).toBe(true);
+    assertOk(result, -0);
+    assertSame(result.value, -0);
   });
 
-  test("rejects values without one exact literal type", () => {
+  it("rejects values without one exact literal type", () => {
     const stringValue = "Hello" as string;
     const numberValue = 42 as number;
     const bigintValue = 42n as bigint;
@@ -4090,41 +4451,52 @@ describe("literal", () => {
       // @ts-expect-error NaN has the widened `number` type.
       literal(globalThis.Number.NaN);
     };
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
   describe("Type", () => {
     describe("Undefined", () => {
-      test("is the Literal Type for undefined", () => {
-        expect(Undefined.name).toBe("Literal");
-        expect(Undefined.expected).toBeUndefined();
-        expect(Undefined.parent).toBeNull();
-        expectTypeOf(Undefined).toEqualTypeOf<LiteralType<undefined>>();
-        expectTypeOf(Undefined.from(undefined)).toEqualTypeOf<
-          Result<undefined>
-        >();
+      it("is the Literal Type for undefined", () => {
+        assertEqual(Undefined.name, "Literal");
+        assertSame(Undefined.expected, undefined);
+        assertSame(Undefined.parent, null);
+        assertType<typeof Undefined, LiteralType<undefined>>();
+        {
+          const actual = Undefined.from(undefined);
+          assertType<typeof actual, Result<undefined>>();
+        }
       });
 
-      test("accepts undefined and rejects other values", () => {
-        expect(Undefined.fromUnknown(undefined)).toEqual(ok(undefined));
-        expect(Undefined.fromUnknown(null)).toEqual(
+      it("accepts undefined and rejects other values", () => {
+        assertEqual(Undefined.fromUnknown(undefined), ok(undefined));
+        assertEqual(
+          Undefined.fromUnknown(null),
           err({ type: "Literal", expected: undefined, value: null }),
         );
       });
     });
 
     describe("Null", () => {
-      test("is the Literal Type for null", () => {
-        expect(Null.name).toBe("Literal");
-        expect(Null.expected).toBeNull();
-        expect(Null.parent).toBeNull();
-        expectTypeOf(Null).toEqualTypeOf<LiteralType<null>>();
-        expectTypeOf(Null.from(null)).toEqualTypeOf<Result<null>>();
+      it("is the Literal Type for null", () => {
+        assertEqual(Null.name, "Literal");
+        assertSame(Null.expected, null);
+        assertSame(Null.parent, null);
+        assertType<typeof Null, LiteralType<null>>();
+        {
+          const actual = Null.from(null);
+          assertType<typeof actual, Result<null>>();
+        }
       });
 
-      test("accepts null and rejects other values", () => {
-        expect(Null.fromUnknown(null)).toEqual(ok(null));
-        expect(Null.fromUnknown(undefined)).toEqual(
+      it("accepts null and rejects other values", () => {
+        assertEqual(Null.fromUnknown(null), ok(null));
+        assertEqual(
+          Null.fromUnknown(undefined),
           err({ type: "Literal", expected: null, value: undefined }),
         );
       });
@@ -4141,44 +4513,42 @@ describe("union", () => {
     | UnionMemberError<TypeOfError<"Number">, 1>
   >;
 
-  test("creates a root boundary for its encoded member Inputs", () => {
-    expect(StringOrNumber.name).toBe("Union");
-    expect(StringOrNumber.parent.name).toBe("Union");
-    expect(StringOrNumber.parent.parent).toBeNull();
-    expect(StringOrNumber.members).toEqual([String, Number]);
-    expect(StringOrNumber.members[0]).toBe(String);
-    expect(StringOrNumber.members[1]).toBe(Number);
-    expectTypeOf(StringOrNumber).toEqualTypeOf<
+  it("creates a root boundary for its encoded member Inputs", () => {
+    assertEqual(StringOrNumber.name, "Union");
+    assertEqual(StringOrNumber.parent.name, "Union");
+    assertSame(StringOrNumber.parent.parent, null);
+    assertEqual(StringOrNumber.members, [String, Number]);
+    assertSame(StringOrNumber.members[0], String);
+    assertSame(StringOrNumber.members[1], Number);
+    assertType<
+      typeof StringOrNumber,
       UnionType<readonly [typeof String, typeof Number]>
     >();
-    expectTypeOf(StringOrNumber.parent).toEqualTypeOf<
+    assertType<
+      typeof StringOrNumber.parent,
       UnionInputType<string | number, StringOrNumberError>
     >();
-    expectTypeOf<typeof StringOrNumber.Input>().toEqualTypeOf<
-      string | number
-    >();
-    expectTypeOf<typeof StringOrNumber.Output>().toEqualTypeOf<
-      string | number
-    >();
-    expectTypeOf<
-      typeof StringOrNumber.Error
-    >().toEqualTypeOf<StringOrNumberError>();
-    expectTypeOf<
-      InferErrors<typeof StringOrNumber>
-    >().toEqualTypeOf<StringOrNumberError>();
-    expectTypeOf<typeof StringOrNumber.parent.Input>().toEqualTypeOf<
+    assertType<typeof StringOrNumber.Input, string | number>();
+    assertType<typeof StringOrNumber.Output, string | number>();
+    assertType<typeof StringOrNumber.Error, StringOrNumberError>();
+    assertType<InferErrors<typeof StringOrNumber>, StringOrNumberError>();
+    assertType<
+      typeof StringOrNumber.parent.Input,
       typeof StringOrNumber.Input
     >();
-    expectTypeOf<typeof StringOrNumber.parent.Output>().toEqualTypeOf<
+    assertType<
+      typeof StringOrNumber.parent.Output,
       typeof StringOrNumber.Input
     >();
-    expectTypeOf<
-      typeof StringOrNumber.parent.Error
-    >().toEqualTypeOf<StringOrNumberError>();
-    expectTypeOf<StringOrNumberError>().not.toExtend<TypeValueError>();
-    expect(StringOrNumber.parent.fromUnknown("value")).toEqual(ok("value"));
-    expect(StringOrNumber.parent.fromUnknown(42)).toEqual(ok(42));
-    expect(StringOrNumber.parent.fromUnknown(true)).toEqual(
+    assertType<typeof StringOrNumber.parent.Error, StringOrNumberError>();
+    assertType<
+      StringOrNumberError extends TypeValueError ? true : false,
+      false
+    >();
+    assertEqual(StringOrNumber.parent.fromUnknown("value"), ok("value"));
+    assertEqual(StringOrNumber.parent.fromUnknown(42), ok(42));
+    assertEqual(
+      StringOrNumber.parent.fromUnknown(true),
       err({
         type: "Union",
         errors: [
@@ -4189,11 +4559,14 @@ describe("union", () => {
         ],
       }),
     );
-    expect("parent" in StringOrNumber.from).toBe(true);
-    expectTypeOf<"parent">().toExtend<keyof typeof StringOrNumber.from>();
+    assertTrue("parent" in StringOrNumber.from);
+    assertType<
+      "parent" extends keyof typeof StringOrNumber.from ? true : false,
+      true
+    >();
   });
 
-  test("asserts exact member Outputs at both Union boundaries", () => {
+  it("asserts exact member Outputs at both Union boundaries", () => {
     const invalid = true as unknown as typeof StringOrNumber.Output;
     const cause = {
       type: "Union",
@@ -4205,48 +4578,48 @@ describe("union", () => {
       ],
     } as const;
 
-    expectAssertionError(
+    assertAssertionError(
       () => StringOrNumber.from(invalid),
       "Expected Union.",
       cause,
     );
-    expectAssertionError(
+    assertAssertionError(
       () => StringOrNumber.from.parent(invalid),
       "Expected Union.",
       cause,
     );
   });
 
-  test("accepts ordinary root Record members through typed operations", () => {
+  it("accepts ordinary root Record members through typed operations", () => {
     const Value = union(record(String, Number), String);
     const input = { count: 1 };
     const fromUnknownResult = Value.parent.fromUnknown(input);
 
-    expectOk(fromUnknownResult, input);
-    expect(fromUnknownResult.value).toBe(input);
-    expect(Value.parent.is(input)).toBe(true);
+    assertOk(fromUnknownResult, input);
+    assertSame(fromUnknownResult.value, input);
+    assertTrue(Value.parent.is(input));
 
     const fromResult = Value.from.parent(input);
-    expectOk(fromResult, input);
-    expect(fromResult.value).toBe(input);
-    expect(Value.is(fromResult.value)).toBe(true);
-    expect(Value.orThrow(input)).toBe(input);
-    expect(Value.orNull(input)).toBe(input);
+    assertOk(fromResult, input);
+    assertSame(fromResult.value, input);
+    assertTrue(Value.is(fromResult.value));
+    assertSame(Value.orThrow(input), input);
+    assertSame(Value.orNull(input), input);
   });
 
-  test("accepts ordinary root Union members through Array", () => {
+  it("accepts ordinary root Union members through Array", () => {
     const Value = union(record(String, Number), String);
     const Values = array(Value);
     const input = [{ count: 1 }];
     const result = Values.from.parent(input);
 
-    expectOk(result, input);
-    expect(result.value).toBe(input);
-    expect(result.value[0]).toBe(input[0]);
-    expect(Values.parent.is(result.value)).toBe(true);
+    assertOk(result, input);
+    assertSame(result.value, input);
+    assertSame(result.value[0], input[0]);
+    assertTrue(Values.parent.is(result.value));
   });
 
-  test("does not select a root that can only decode the typed value", () => {
+  it("does not select a root that can only decode the typed value", () => {
     class Input {
       readonly count = 1;
     }
@@ -4277,10 +4650,11 @@ describe("union", () => {
     const Value = union(Values, RejectedObject);
     const input = new Input();
 
-    expect(Values.is(input)).toBe(false);
-    expect(Value.parent.is(input)).toBe(true);
+    assertFalse(Values.is(input));
+    assertTrue(Value.parent.is(input));
 
-    expect(Value.from.parent(input, { errors: "all" })).toEqual(
+    assertEqual(
+      Value.from.parent(input, { errors: "all" }),
       err({
         type: "Union",
         errors: [
@@ -4291,22 +4665,22 @@ describe("union", () => {
         ],
       }),
     );
-    expect(rootDecodings).toBe(0);
+    assertEqual(rootDecodings, 0);
   });
 
-  test("normalizes literal-only members behind a Union input boundary", () => {
-    expect(DraftOrPublished.parent.name).toBe("Union");
-    expect(DraftOrPublished.parent.parent).toBeNull();
-    expect(DraftOrPublished.parent).not.toBe(String);
-    expect(DraftOrPublished.members[0].expected).toBe("draft");
-    expect(DraftOrPublished.members[1].expected).toBe("published");
-    expectTypeOf(DraftOrPublished).toEqualTypeOf<
+  it("normalizes literal-only members behind a Union input boundary", () => {
+    assertEqual(DraftOrPublished.parent.name, "Union");
+    assertSame(DraftOrPublished.parent.parent, null);
+    assertFalse(globalThis.Object.is(DraftOrPublished.parent, String));
+    assertEqual(DraftOrPublished.members[0].expected, "draft");
+    assertEqual(DraftOrPublished.members[1].expected, "published");
+    assertType<
+      typeof DraftOrPublished,
       UnionType<readonly [LiteralType<"draft">, LiteralType<"published">]>
     >();
-    expectTypeOf<typeof DraftOrPublished.Output>().toEqualTypeOf<
-      "draft" | "published"
-    >();
-    expectTypeOf<typeof DraftOrPublished.Error>().toEqualTypeOf<
+    assertType<typeof DraftOrPublished.Output, "draft" | "published">();
+    assertType<
+      typeof DraftOrPublished.Error,
       UnionError<
         | TypeOfError<"String">
         | LiteralError<"draft">
@@ -4315,14 +4689,14 @@ describe("union", () => {
         | UnionMemberError<TypeOfError<"String"> | LiteralError<"published">, 1>
       >
     >();
-    expectTypeOf<
-      typeof DraftOrPublished.parent.Output
-    >().toEqualTypeOf<string>();
-    expectTypeOf(DraftOrPublished.parent).toEqualTypeOf<
+    assertType<typeof DraftOrPublished.parent.Output, string>();
+    assertType<
+      typeof DraftOrPublished.parent,
       UnionInputType<string, UnionError<TypeOfError<"String">>>
     >();
-    expect(DraftOrPublished.parent.fromUnknown("other")).toEqual(ok("other"));
-    expect(DraftOrPublished.parent.fromUnknown(42)).toEqual(
+    assertEqual(DraftOrPublished.parent.fromUnknown("other"), ok("other"));
+    assertEqual(
+      DraftOrPublished.parent.fromUnknown(42),
       err({
         type: "Union",
         errors: [
@@ -4335,32 +4709,36 @@ describe("union", () => {
     );
   });
 
-  test("accepts an explicit Union Type as one concrete member", () => {
+  it("accepts an explicit Union Type as one concrete member", () => {
     const AOrOne = union(literal("a"), literal(1));
     const AOrOneOrBoolean = union(AOrOne, Boolean);
     const BOrAOrOne = union("b", AOrOne);
 
-    expect(AOrOneOrBoolean.members[0]).toBe(AOrOne);
-    expect(BOrAOrOne.members[1]).toBe(AOrOne);
-    expectTypeOf(AOrOneOrBoolean).toEqualTypeOf<
+    assertSame(AOrOneOrBoolean.members[0], AOrOne);
+    assertSame(BOrAOrOne.members[1], AOrOne);
+    assertType<
+      typeof AOrOneOrBoolean,
       UnionType<readonly [typeof AOrOne, typeof Boolean]>
     >();
-    expectTypeOf(BOrAOrOne).toEqualTypeOf<
+    assertType<
+      typeof BOrAOrOne,
       UnionType<readonly [LiteralType<"b">, typeof AOrOne]>
     >();
-    expect(AOrOneOrBoolean.fromUnknown(1)).toEqual(ok(1));
-    expect(BOrAOrOne.fromUnknown("a")).toEqual(ok("a"));
+    assertEqual(AOrOneOrBoolean.fromUnknown(1), ok(1));
+    assertEqual(BOrAOrOne.fromUnknown("a"), ok("a"));
   });
 
-  test("keeps a Union input boundary for repeated parentless Literal Types", () => {
+  it("keeps a Union input boundary for repeated parentless Literal Types", () => {
     const Value = union(Null, Null);
 
-    expectTypeOf(Value.parent).toEqualTypeOf<
+    assertType<
+      typeof Value.parent,
       UnionInputType<null, UnionError<LiteralError<null>>>
     >();
-    expect(Value.parent.name).toBe("Union");
-    expect(Value.parent.parent).toBeNull();
-    expect(Value.parent.fromUnknown(undefined)).toEqual(
+    assertEqual(Value.parent.name, "Union");
+    assertSame(Value.parent.parent, null);
+    assertEqual(
+      Value.parent.fromUnknown(undefined),
       err({
         type: "Union",
         errors: [
@@ -4377,32 +4755,35 @@ describe("union", () => {
     );
   });
 
-  test("normalizes mixed literal and Type members in any position", () => {
+  it("normalizes mixed literal and Type members in any position", () => {
     const DraftOrNumber = union("draft", Number);
     const NumberOrDraft = union(Number, "draft");
 
-    expect(DraftOrNumber.members[0].expected).toBe("draft");
-    expect(DraftOrNumber.members[1]).toBe(Number);
-    expect(NumberOrDraft.members[0]).toBe(Number);
-    expect(NumberOrDraft.members[1].expected).toBe("draft");
-    expectTypeOf(DraftOrNumber).toEqualTypeOf<
+    assertEqual(DraftOrNumber.members[0].expected, "draft");
+    assertSame(DraftOrNumber.members[1], Number);
+    assertSame(NumberOrDraft.members[0], Number);
+    assertEqual(NumberOrDraft.members[1].expected, "draft");
+    assertType<
+      typeof DraftOrNumber,
       UnionType<readonly [LiteralType<"draft">, typeof Number]>
     >();
-    expectTypeOf(NumberOrDraft).toEqualTypeOf<
+    assertType<
+      typeof NumberOrDraft,
       UnionType<readonly [typeof Number, LiteralType<"draft">]>
     >();
-    expect(DraftOrNumber.fromUnknown("draft")).toEqual(ok("draft"));
-    expect(DraftOrNumber.fromUnknown(42)).toEqual(ok(42));
-    expect(NumberOrDraft.fromUnknown("draft")).toEqual(ok("draft"));
+    assertEqual(DraftOrNumber.fromUnknown("draft"), ok("draft"));
+    assertEqual(DraftOrNumber.fromUnknown(42), ok(42));
+    assertEqual(NumberOrDraft.fromUnknown("draft"), ok("draft"));
   });
 
-  test("validates literal values with the same Union behavior", () => {
+  it("validates literal values with the same Union behavior", () => {
     const value: unknown = "published";
     const result = DraftOrPublished.fromUnknown(value);
 
-    expectOk(result, value);
-    expect(result.value).toBe(value);
-    expect(DraftOrPublished.fromUnknown("other")).toEqual(
+    assertOk(result, value);
+    assertSame(result.value, value);
+    assertEqual(
+      DraftOrPublished.fromUnknown("other"),
       err({
         type: "Union",
         errors: [
@@ -4417,7 +4798,8 @@ describe("union", () => {
         ],
       }),
     );
-    expect(DraftOrPublished.fromUnknown("other", { errors: "all" })).toEqual(
+    assertEqual(
+      DraftOrPublished.fromUnknown("other", { errors: "all" }),
       err({
         type: "Union",
         errors: [
@@ -4442,35 +4824,33 @@ describe("union", () => {
     );
   });
 
-  test("supports every literal primitive", () => {
+  it("supports every literal primitive", () => {
     const Values = union("value", 42, 42n, true, null, undefined);
 
-    expect(Values.members.map((member) => member.expected)).toEqual([
-      "value",
-      42,
-      42n,
-      true,
-      null,
-      undefined,
-    ]);
-    expectTypeOf<typeof Values.Output>().toEqualTypeOf<
+    assertEqual(
+      Values.members.map((member) => member.expected),
+      ["value", 42, 42n, true, null, undefined],
+    );
+    assertType<
+      typeof Values.Output,
       "value" | 42 | 42n | true | null | undefined
     >();
   });
 
-  test("returns the original value from the first successful member", () => {
+  it("returns the original value from the first successful member", () => {
     const DateOrUint8Array = union(Date, Uint8Array);
     const value: unknown = new globalThis.Uint8Array([1, 2]);
     const result = DateOrUint8Array.fromUnknown(value);
 
-    expectOk(result, value);
-    expect(result.value).toBe(value);
-    expectTypeOf(result.value).toEqualTypeOf<
+    assertOk(result, value);
+    assertSame(result.value, value);
+    assertType<
+      typeof result.value,
       typeof Date.Output | typeof Uint8Array.Output
     >();
   });
 
-  test("tries later members after a member fails and stops after success", () => {
+  it("tries later members after a member fails and stops after success", () => {
     const validations: Array<string> = [];
     const First = createType(
       "First",
@@ -4507,14 +4887,15 @@ describe("union", () => {
     }
     const Type = union(First, Second, Third);
 
-    expect(Type.fromUnknown("value")).toEqual(ok("value"));
-    expect(validations).toEqual(["First", "Second"]);
+    assertEqual(Type.fromUnknown("value"), ok("value"));
+    assertEqual(validations, ["First", "Second"]);
   });
 
-  test("retains the first member error by default", () => {
+  it("retains the first member error by default", () => {
     const result = StringOrNumber.fromUnknown(true);
 
-    expect(result).toEqual(
+    assertEqual(
+      result,
       err({
         type: "Union",
         errors: [
@@ -4525,15 +4906,13 @@ describe("union", () => {
         ],
       }),
     );
-    expectTypeOf(result).toEqualTypeOf<
-      Result<string | number, StringOrNumberError>
-    >();
+    assertType<typeof result, Result<string | number, StringOrNumberError>>();
   });
 
-  test("retains every member error in all-errors mode", () => {
+  it("retains every member error in all-errors mode", () => {
     const result = StringOrNumber.fromUnknown(true, { errors: "all" });
 
-    expectErr(result, {
+    assertErr(result, {
       type: "Union",
       errors: [
         {
@@ -4548,7 +4927,8 @@ describe("union", () => {
     });
     const memberError = result.error.errors[0];
 
-    expectTypeOf(memberError).toEqualTypeOf<
+    assertType<
+      typeof memberError,
       | {
           readonly index: 0;
           readonly error: TypeOfError<"String">;
@@ -4560,17 +4940,17 @@ describe("union", () => {
     >();
 
     if (memberError.index === 0) {
-      expectTypeOf(memberError.error).toEqualTypeOf<TypeOfError<"String">>();
+      assertType<typeof memberError.error, TypeOfError<"String">>();
     } else {
-      expectTypeOf(memberError.index).toEqualTypeOf<1>();
-      expectTypeOf(memberError.error).toEqualTypeOf<TypeOfError<"Number">>();
+      assertType<typeof memberError.index, 1>();
+      assertType<typeof memberError.error, TypeOfError<"Number">>();
     }
   });
 
-  test("formats one message without enumerating member errors", () => {
+  it("formats one message without enumerating member errors", () => {
     const result = StringOrNumber.fromUnknown(true, { errors: "all" });
 
-    expectErr(result, {
+    assertErr(result, {
       type: "Union",
       errors: [
         {
@@ -4584,27 +4964,29 @@ describe("union", () => {
       ],
     });
 
-    expect(StringOrNumber.formatError(result.error)).toBe(
+    assertEqual(
+      StringOrNumber.formatError(result.error),
       "A value does not match any allowed variant.",
     );
-    expectTypeOf(StringOrNumber.formatError)
-      .parameter(0)
-      .toEqualTypeOf<StringOrNumberError>();
+    assertType<
+      Parameters<typeof StringOrNumber.formatError>[0],
+      StringOrNumberError
+    >();
   });
 
-  test("cannot fail when one member is infallible", () => {
+  it("cannot fail when one member is infallible", () => {
     const StringOrUnknown = union(String, Unknown);
     const result = StringOrUnknown.fromUnknown(true);
 
-    expectTypeOf<typeof StringOrUnknown.Error>().toEqualTypeOf<never>();
-    expectTypeOf<typeof StringOrUnknown.parent.Error>().toEqualTypeOf<never>();
-    expectTypeOf<InferErrors<typeof StringOrUnknown>>().toEqualTypeOf<never>();
-    expectTypeOf(result).toEqualTypeOf<Result<unknown>>();
-    expectOk(result, true);
-    expectOk(StringOrUnknown.parent.fromUnknown(true), true);
+    assertType<typeof StringOrUnknown.Error, never>();
+    assertType<typeof StringOrUnknown.parent.Error, never>();
+    assertType<InferErrors<typeof StringOrUnknown>, never>();
+    assertType<typeof result, Result<unknown>>();
+    assertOk(result, true);
+    assertOk(StringOrUnknown.parent.fromUnknown(true), true);
   });
 
-  test("requires every member slot to preserve one concrete Type", () => {
+  it("requires every member slot to preserve one concrete Type", () => {
     const uncertain = String as typeof String | typeof Number;
     const possiblyInfallible = String as typeof String | typeof Unknown;
     const erased: FormattableTypeNode = String;
@@ -4621,15 +5003,19 @@ describe("union", () => {
       union(possiblyInfallible, Number).to(true);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("forwards all-errors mode to member Types", () => {
+  it("forwards all-errors mode to member Types", () => {
     const StringArrayOrNumberArray = union(array(String), array(Number));
 
-    expect(
+    assertEqual(
       StringArrayOrNumberArray.fromUnknown([true, false], { errors: "all" }),
-    ).toEqual(
       err({
         type: "Union",
         errors: [
@@ -4696,7 +5082,7 @@ describe("union", () => {
     );
   });
 
-  test("transforms the first successful member while decoding", () => {
+  it("transforms the first successful member while decoding", () => {
     interface BooleanFromStringError extends TypeError<"BooleanFromString"> {
       readonly value: string;
     }
@@ -4719,22 +5105,23 @@ describe("union", () => {
     );
     const Value = union(NumberFromString, BooleanFromString);
 
-    expect(Value.from.parent("42")).toEqual(ok(42));
-    expect(Value.from.parent("true")).toEqual(ok(true));
-    expect(Value.to(42)).toBe("42");
-    expect(Value.to(true)).toBe("true");
-    expect(Value.is(42)).toBe(true);
-    expect(Value.is(true)).toBe(true);
-    expect(Value.is("42")).toBe(false);
-    expectTypeOf<typeof Value.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<number | boolean>();
-    expectTypeOf<typeof Value.parent.Output>().toEqualTypeOf<string>();
-    expect(Value.parent.fromUnknown("not a number or boolean")).toEqual(
+    assertEqual(Value.from.parent("42"), ok(42));
+    assertEqual(Value.from.parent("true"), ok(true));
+    assertEqual(Value.to(42), "42");
+    assertEqual(Value.to(true), "true");
+    assertTrue(Value.is(42));
+    assertTrue(Value.is(true));
+    assertFalse(Value.is("42"));
+    assertType<typeof Value.Input, string>();
+    assertType<typeof Value.Output, number | boolean>();
+    assertType<typeof Value.parent.Output, string>();
+    assertEqual(
+      Value.parent.fromUnknown("not a number or boolean"),
       ok("not a number or boolean"),
     );
   });
 
-  test("encodes with the first member matching the Output", () => {
+  it("encodes with the first member matching the Output", () => {
     const attempts: Array<"First" | "Second"> = [];
     const First = transform("FirstNumberFromString", String, Number, {
       from: (value) => ok(globalThis.Number(value)),
@@ -4752,11 +5139,11 @@ describe("union", () => {
     });
     const Value = union(First, Second);
 
-    expect(Value.to(42)).toBe("42");
-    expect(attempts).toEqual(["First"]);
+    assertEqual(Value.to(42), "42");
+    assertEqual(attempts, ["First"]);
   });
 
-  test("encodes ordinary Record Outputs through direct and nested members", () => {
+  it("encodes ordinary Record Outputs through direct and nested members", () => {
     const Values = record(String, Number);
     const Direct = union(Values, String);
     const List = union(array(Values), String);
@@ -4765,9 +5152,9 @@ describe("union", () => {
     const list = [direct];
     const model = { values: direct };
 
-    expect(Direct.to(direct)).toBe(direct);
-    expect(List.to(list)).toBe(list);
-    expect(Model.to(model)).toBe(model);
+    assertSame(Direct.to(direct), direct);
+    assertSame(List.to(list), list);
+    assertSame(Model.to(model), model);
 
     const canonical = globalThis.Object.assign(
       globalThis.Object.create(null) as Record<string, number>,
@@ -4776,12 +5163,12 @@ describe("union", () => {
     const canonicalList = [canonical];
     const canonicalModel = { values: canonical };
 
-    expect(Direct.to(canonical)).toBe(canonical);
-    expect(List.to(canonicalList)).toBe(canonicalList);
-    expect(Model.to(canonicalModel)).toBe(canonicalModel);
+    assertSame(Direct.to(canonical), canonical);
+    assertSame(List.to(canonicalList), canonicalList);
+    assertSame(Model.to(canonicalModel), canonicalModel);
   });
 
-  test("can be unlawful when encoded member representations overlap", () => {
+  it("can be unlawful when encoded member representations overlap", () => {
     interface BooleanFromStringError extends TypeError<"BooleanFromString"> {
       readonly value: string;
     }
@@ -4808,26 +5195,26 @@ describe("union", () => {
 
     // The Number member encodes 1 as "1", but the earlier Boolean member
     // captures that representation while decoding it.
-    expect(encodedNumber).toBe("1");
-    expect(decodedAgain).toEqual(ok(true));
+    assertEqual(encodedNumber, "1");
+    assertEqual(decodedAgain, ok(true));
   });
 
-  test("accepts its own member Outputs through from", () => {
-    expect(StringOrNumber.from("value")).toEqual(ok("value"));
-    expect(StringOrNumber.from(42)).toEqual(ok(42));
-    expectTypeOf(StringOrNumber.from)
-      .parameter(0)
-      .toEqualTypeOf<string | number>();
-    expectTypeOf(StringOrNumber.from).returns.toEqualTypeOf<
+  it("accepts its own member Outputs through from", () => {
+    assertEqual(StringOrNumber.from("value"), ok("value"));
+    assertEqual(StringOrNumber.from(42), ok(42));
+    assertType<Parameters<typeof StringOrNumber.from>[0], string | number>();
+    assertType<
+      ReturnType<typeof StringOrNumber.from>,
       Result<string | number>
     >();
   });
 
-  test("runs only matching roots when selecting through from.parent", () => {
+  it("runs only matching roots when selecting through from.parent", () => {
     const Value = union(literal("Hello"), Number);
     const input: typeof Value.parent.Output = "World";
 
-    expect(Value.from.parent(input, { errors: "all" })).toEqual(
+    assertEqual(
+      Value.from.parent(input, { errors: "all" }),
       err({
         type: "Union",
         errors: [
@@ -4842,11 +5229,12 @@ describe("union", () => {
         ],
       }),
     );
-    expect(Value.orNull(input)).toBeNull();
-    expect(() => Value.orThrow(input)).toThrow("getOrThrow");
+    assertSame(Value.orNull(input), null);
+    const error = assertThrowsInstanceOf(() => Value.orThrow(input), Error);
+    assertTrue(error.message.includes("getOrThrow"));
   });
 
-  test("validates only the remaining Type after a validated Union through from.parent", () => {
+  it("validates only the remaining Type after a validated Union through from.parent", () => {
     const HelloOrNumber = union(literal("Hello"), Number);
     const validations: Array<unknown> = [];
     const Value = brand("Value", HelloOrNumber, (value) => {
@@ -4855,32 +5243,34 @@ describe("union", () => {
     });
     const value = getOrThrow(HelloOrNumber.fromUnknown(42));
 
-    expect(Value.from.parent(value)).toEqual(ok(42));
-    expect(validations).toEqual([42]);
-    expectTypeOf(Value.from.parent(value)).toEqualTypeOf<
-      Result<typeof Value.Output>
-    >();
+    assertEqual(Value.from.parent(value), ok(42));
+    assertEqual(validations, [42]);
+    {
+      const actual = Value.from.parent(value);
+      assertType<typeof actual, Result<typeof Value.Output>>();
+    }
   });
 
-  test("composes with Array validation and nested error collection", () => {
+  it("composes with Array validation and nested error collection", () => {
     const HelloOrNumber = union(literal("Hello"), Number);
     const Values = array(HelloOrNumber);
     const value: ReadonlyArray<string | number> = ["Hello", 42];
     const result = Values.from.parent(value);
 
-    expect(Values.parent).toBe(array(HelloOrNumber.parent));
-    expectTypeOf<typeof Values.parent.Output>().toEqualTypeOf<
-      typeof Values.Input
-    >();
-    expect(Values.parent.fromUnknown(["World", "No"])).toEqual(
+    assertSame(Values.parent, array(HelloOrNumber.parent));
+    assertType<typeof Values.parent.Output, typeof Values.Input>();
+    assertEqual(
+      Values.parent.fromUnknown(["World", "No"]),
       ok(["World", "No"]),
     );
-    expectTypeOf(result).toEqualTypeOf<
+    assertType<
+      typeof result,
       Result<typeof Values.Output, typeof Values.Error>
     >();
-    expectOk(result, value);
-    expect(result.value).toBe(value);
-    expect(Values.fromUnknown(["World", "No"], { errors: "all" })).toEqual(
+    assertOk(result, value);
+    assertSame(result.value, value);
+    assertEqual(
+      Values.fromUnknown(["World", "No"], { errors: "all" }),
       err({
         type: "Array",
         reason: {
@@ -4942,7 +5332,7 @@ describe("union", () => {
     );
   });
 
-  test("composes discriminated Object members with transformed and optional properties", () => {
+  it("composes discriminated Object members with transformed and optional properties", () => {
     const NumberFromString = setupNumberFromString();
     const Count = object({
       kind: literal("count"),
@@ -4958,10 +5348,10 @@ describe("union", () => {
     const output = { kind: "count" as const, value: 42 };
     const result = Value.fromUnknown(encoded);
 
-    expectOk(result, output);
-    expect(result.value).not.toBe(encoded);
-    expect(Value.to(output)).toEqual(encoded);
-    expect(Value.to({ kind: "label", value: "answer" })).toEqual({
+    assertOk(result, output);
+    assertFalse(globalThis.Object.is(result.value, encoded));
+    assertEqual(Value.to(output), encoded);
+    assertEqual(Value.to({ kind: "label", value: "answer" }), {
       kind: "label",
       value: "answer",
     });
@@ -4970,10 +5360,12 @@ describe("union", () => {
       { errors: "all" },
     );
 
-    expectTypeOf(invalidResult).toEqualTypeOf<
+    assertType<
+      typeof invalidResult,
       Result<typeof Value.Output, typeof Value.Error>
     >();
-    expect(invalidResult).toEqual(
+    assertEqual(
+      invalidResult,
       err({
         type: "Union",
         errors: [
@@ -5010,7 +5402,7 @@ describe("union", () => {
     );
   });
 
-  test("requires at least two members and concrete shorthand literals", () => {
+  it("requires at least two members and concrete shorthand literals", () => {
     const stringValue = "draft" as string;
     const unionValue = "draft" as "draft" | "published";
 
@@ -5031,25 +5423,30 @@ describe("union", () => {
       union(Number, unionValue);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 });
 
 describe("undefinedOr", () => {
-  test("creates a Union with the supplied Type before Undefined", () => {
+  it("creates a Union with the supplied Type before Undefined", () => {
     const UndefinedOrString = undefinedOr(String);
     const StringOrNumber = union(String, Number);
     const UndefinedOrStringOrNumber = undefinedOr(StringOrNumber);
 
-    expect(UndefinedOrString.members).toEqual([String, Undefined]);
-    expect(UndefinedOrStringOrNumber.members[0]).toBe(StringOrNumber);
-    expectTypeOf(UndefinedOrString).toEqualTypeOf<
+    assertEqual(UndefinedOrString.members, [String, Undefined]);
+    assertSame(UndefinedOrStringOrNumber.members[0], StringOrNumber);
+    assertType<
+      typeof UndefinedOrString,
       UnionType<readonly [typeof String, typeof Undefined]>
     >();
-    expectTypeOf<typeof UndefinedOrString.Output>().toEqualTypeOf<
-      string | undefined
-    >();
-    expect(UndefinedOrString.fromUnknown(42)).toEqual(
+    assertType<typeof UndefinedOrString.Output, string | undefined>();
+    assertEqual(
+      UndefinedOrString.fromUnknown(42),
       err({
         type: "Union",
         errors: [
@@ -5062,7 +5459,7 @@ describe("undefinedOr", () => {
     );
   });
 
-  test("rejects an uncertain supplied Type", () => {
+  it("rejects an uncertain supplied Type", () => {
     type Value = typeof String | typeof Number;
     const value = String as Value;
     const erased: FormattableTypeNode = String;
@@ -5073,25 +5470,31 @@ describe("undefinedOr", () => {
       undefinedOr(erased);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 });
 
 describe("nullOr", () => {
-  test("creates a Union with the supplied Type before Null", () => {
+  it("creates a Union with the supplied Type before Null", () => {
     const NullOrString = nullOr(String);
     const StringOrNumber = union(String, Number);
     const NullOrStringOrNumber = nullOr(StringOrNumber);
 
-    expect(NullOrString.members).toEqual([String, Null]);
-    expect(NullOrStringOrNumber.members[0]).toBe(StringOrNumber);
-    expectTypeOf(NullOrString).toEqualTypeOf<
+    assertEqual(NullOrString.members, [String, Null]);
+    assertSame(NullOrStringOrNumber.members[0], StringOrNumber);
+    assertType<
+      typeof NullOrString,
       UnionType<readonly [typeof String, typeof Null]>
     >();
-    expectTypeOf<typeof NullOrString.Output>().toEqualTypeOf<string | null>();
+    assertType<typeof NullOrString.Output, string | null>();
   });
 
-  test("rejects an uncertain supplied Type", () => {
+  it("rejects an uncertain supplied Type", () => {
     type Value = typeof String | typeof Number;
     const value = String as Value;
     const erased: FormattableTypeNode = String;
@@ -5102,27 +5505,31 @@ describe("nullOr", () => {
       nullOr(erased);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 });
 
 describe("nullishOr", () => {
-  test("creates a Union with the supplied Type before Null and Undefined", () => {
+  it("creates a Union with the supplied Type before Null and Undefined", () => {
     const NullishOrString = nullishOr(String);
     const StringOrNumber = union(String, Number);
     const NullishOrStringOrNumber = nullishOr(StringOrNumber);
 
-    expect(NullishOrString.members).toEqual([String, Null, Undefined]);
-    expect(NullishOrStringOrNumber.members[0]).toBe(StringOrNumber);
-    expectTypeOf(NullishOrString).toEqualTypeOf<
+    assertEqual(NullishOrString.members, [String, Null, Undefined]);
+    assertSame(NullishOrStringOrNumber.members[0], StringOrNumber);
+    assertType<
+      typeof NullishOrString,
       UnionType<readonly [typeof String, typeof Null, typeof Undefined]>
     >();
-    expectTypeOf<typeof NullishOrString.Output>().toEqualTypeOf<
-      string | null | undefined
-    >();
+    assertType<typeof NullishOrString.Output, string | null | undefined>();
   });
 
-  test("rejects an uncertain supplied Type", () => {
+  it("rejects an uncertain supplied Type", () => {
     type Value = typeof String | typeof Number;
     const value = String as Value;
     const erased: FormattableTypeNode = String;
@@ -5133,12 +5540,17 @@ describe("nullishOr", () => {
       nullishOr(erased);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 });
 
 describe("templateLiteralParser", () => {
-  test("accepts opaque root Types canonically encoded as strings", () => {
+  it("accepts opaque root Types canonically encoded as strings", () => {
     interface TextError extends TypeError<"Text"> {
       readonly value: unknown;
     }
@@ -5151,16 +5563,14 @@ describe("templateLiteralParser", () => {
     const Value = templateLiteralParser("x:", Text);
     const _UnframedValue = templateLiteralParser(Text);
 
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<readonly [string]>();
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<`x:${string}`>();
-    expectTypeOf<InferErrors<typeof _UnframedValue>>().toEqualTypeOf<
-      TypeOfError<"String">
-    >();
-    expectOk(Value.fromUnknown("x:value"), ["value"]);
-    expect(Value.to(["value"])).toBe("x:value");
+    assertType<typeof Value.Output, readonly [string]>();
+    assertType<typeof Value.CanonicalInput, `x:${string}`>();
+    assertType<InferErrors<typeof _UnframedValue>, TypeOfError<"String">>();
+    assertOk(Value.fromUnknown("x:value"), ["value"]);
+    assertEqual(Value.to(["value"]), "x:value");
   });
 
-  test("returns opaque root capture errors from untrusted substrings", () => {
+  it("returns opaque root capture errors from untrusted substrings", () => {
     interface AError extends TypeError<"A"> {
       readonly value: unknown;
     }
@@ -5173,14 +5583,15 @@ describe("templateLiteralParser", () => {
     const Value = templateLiteralParser(A);
     const result = Value.fromUnknown("b");
 
-    expectTypeOf(result).toEqualTypeOf<
+    assertType<
+      typeof result,
       Result<
         readonly ["a"],
         | TypeOfError<"String">
         | TransformOutputError<"TemplateLiteral", TupleElementsError<AError>>
       >
     >();
-    expectErr(result, {
+    assertErr(result, {
       type: "TemplateLiteral",
       outputError: {
         type: "Tuple",
@@ -5198,12 +5609,13 @@ describe("templateLiteralParser", () => {
     });
   });
 
-  test("keeps String-rooted capture errors staged", () => {
+  it("keeps String-rooted capture errors staged", () => {
     const A = literal("a");
     const Value = templateLiteralParser(A);
     const result = Value.fromUnknown("b");
 
-    expectTypeOf(result).toEqualTypeOf<
+    assertType<
+      typeof result,
       Result<
         readonly ["a"],
         | TypeOfError<"String">
@@ -5214,7 +5626,7 @@ describe("templateLiteralParser", () => {
           >
       >
     >();
-    expectErr(result, {
+    assertErr(result, {
       type: "TemplateLiteral",
       outputError: {
         type: "Tuple",
@@ -5232,7 +5644,7 @@ describe("templateLiteralParser", () => {
     });
   });
 
-  test("treats opaque Type names independently of built-in framing", () => {
+  it("treats opaque Type names independently of built-in framing", () => {
     interface OpaqueLiteralError extends TypeError<"Literal"> {
       readonly value: unknown;
     }
@@ -5249,11 +5661,11 @@ describe("templateLiteralParser", () => {
     );
     const Value = templateLiteralParser(OpaqueLiteral);
 
-    expectOk(Value.fromUnknown("value"), ["value"]);
-    expect(Value.to(["value"])).toBe("value");
+    assertOk(Value.fromUnknown("value"), ["value"]);
+    assertEqual(Value.to(["value"]), "value");
   });
 
-  test("does not infer built-in framing from custom child reflection", () => {
+  it("does not infer built-in framing from custom child reflection", () => {
     const CustomLiteral = globalThis.Object.assign(
       createType("Literal", String, ok),
       { expected: "a" as const },
@@ -5261,106 +5673,93 @@ describe("templateLiteralParser", () => {
     const Value = templateLiteralParser(CustomLiteral);
     const encoded = Value.to(["long"]);
 
-    expectTypeOf<InferErrors<typeof Value>>().toEqualTypeOf<
-      TypeOfError<"String">
-    >();
-    expect(encoded).toBe("long");
-    expectOk(Value.fromUnknown(encoded), ["long"]);
+    assertType<InferErrors<typeof Value>, TypeOfError<"String">>();
+    assertEqual(encoded, "long");
+    assertOk(Value.fromUnknown(encoded), ["long"]);
   });
 
-  test("omits impossible framing errors", () => {
+  it("omits impossible framing errors", () => {
     const Value = templateLiteralParser(String);
 
-    expectTypeOf<InferErrors<typeof Value>>().toEqualTypeOf<
-      TypeOfError<"String">
-    >();
-    expectOk(Value.fromUnknown("anything"), ["anything"]);
+    assertType<InferErrors<typeof Value>, TypeOfError<"String">>();
+    assertOk(Value.fromUnknown("anything"), ["anything"]);
   });
 
-  test("creates a transforming Type with an exact canonical template string", () => {
+  it("creates a transforming Type with an exact canonical template string", () => {
     const B = literal("b");
     const Value = templateLiteralParser("a", B, "c");
 
-    expect(Value.name).toBe("TemplateLiteral");
-    expect(Value.parent.name).toBe("TemplateLiteral");
-    expect(Value.parent.parent).toBe(String);
-    expect(Value.parts).toEqual(["a", B, "c"]);
-    expectTypeOf(Value).toEqualTypeOf<
+    assertEqual(Value.name, "TemplateLiteral");
+    assertEqual(Value.parent.name, "TemplateLiteral");
+    assertSame(Value.parent.parent, String);
+    assertEqual(Value.parts, ["a", B, "c"]);
+    assertType<
+      typeof Value,
       TemplateLiteralParserType<readonly ["a", typeof B, "c"]>
     >();
-    expectTypeOf<typeof Value.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"abc">();
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<readonly ["b"]>();
-    expectOk(Value.fromUnknown("abc"), ["b"]);
-    expectOk(Value.from.parent("abc"), ["b"]);
-    expectOk(Value.from(["b"]), ["b"]);
-    expect(Value.is(["b"])).toBe(true);
-    expect(Value.is("abc")).toBe(false);
-    expect(Value.to(["b"])).toBe("abc");
+    assertType<typeof Value.Input, string>();
+    assertType<typeof Value.CanonicalInput, "abc">();
+    assertType<typeof Value.Output, readonly ["b"]>();
+    assertOk(Value.fromUnknown("abc"), ["b"]);
+    assertOk(Value.from.parent("abc"), ["b"]);
+    assertOk(Value.from(["b"]), ["b"]);
+    assertTrue(Value.is(["b"]));
+    assertFalse(Value.is("abc"));
+    assertEqual(Value.to(["b"]), "abc");
   });
 
-  test("infers the capture Tuple and exact canonical template string", () => {
+  it("infers the capture Tuple and exact canonical template string", () => {
     const Digit = union("0", "1", "2");
     const Value = templateLiteralParser("user-", Digit);
 
-    expect(Value.parts).toEqual(["user-", Digit]);
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<
-      readonly ["0" | "1" | "2"]
-    >();
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<
-      "user-0" | "user-1" | "user-2"
-    >();
-    expectOk(Value.fromUnknown("user-1"), ["1"]);
-    expect(Value.to(["2"])).toBe("user-2");
+    assertEqual(Value.parts, ["user-", Digit]);
+    assertType<typeof Value.Output, readonly ["0" | "1" | "2"]>();
+    assertType<typeof Value.CanonicalInput, "user-0" | "user-1" | "user-2">();
+    assertOk(Value.fromUnknown("user-1"), ["1"]);
+    assertEqual(Value.to(["2"]), "user-2");
   });
 
-  test("omits raw framing strings from the capture Tuple", () => {
+  it("omits raw framing strings from the capture Tuple", () => {
     const A = literal("a");
     const One = literal("1");
     const Value = templateLiteralParser("(", A, ":", One, ")");
 
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<readonly ["a", "1"]>();
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"(a:1)">();
-    expectOk(Value.fromUnknown("(a:1)"), ["a", "1"]);
-    expect(Value.to(["a", "1"])).toBe("(a:1)");
+    assertType<typeof Value.Output, readonly ["a", "1"]>();
+    assertType<typeof Value.CanonicalInput, "(a:1)">();
+    assertOk(Value.fromUnknown("(a:1)"), ["a", "1"]);
+    assertEqual(Value.to(["a", "1"]), "(a:1)");
   });
 
-  test("distributes fixed-width capture unions in CanonicalInput", () => {
+  it("distributes fixed-width capture unions in CanonicalInput", () => {
     const Letter = union("a", "b");
     const Digit = union("1", "2");
     const Value = templateLiteralParser(Letter, Digit);
 
-    expect(Value.parts).toEqual([Letter, Digit]);
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<
-      readonly ["a" | "b", "1" | "2"]
-    >();
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<
-      "a1" | "a2" | "b1" | "b2"
-    >();
-    expectOk(Value.fromUnknown("b2"), ["b", "2"]);
-    expect(Value.to(["a", "1"])).toBe("a1");
+    assertEqual(Value.parts, [Letter, Digit]);
+    assertType<typeof Value.Output, readonly ["a" | "b", "1" | "2"]>();
+    assertType<typeof Value.CanonicalInput, "a1" | "a2" | "b1" | "b2">();
+    assertOk(Value.fromUnknown("b2"), ["b", "2"]);
+    assertEqual(Value.to(["a", "1"]), "a1");
   });
 
-  test("frames variable-width and fixed-width Unicode captures", () => {
+  it("frames variable-width and fixed-width Unicode captures", () => {
     const Unicode = templateLiteralParser("🙂", String, "✓");
     const Fixed = templateLiteralParser(literal("🙂"), literal("✓"));
 
-    expectTypeOf<typeof Unicode.Output>().toEqualTypeOf<readonly [string]>();
-    expectTypeOf<
-      typeof Unicode.CanonicalInput
-    >().toEqualTypeOf<`🙂${string}✓`>();
-    expectOk(Unicode.fromUnknown("🙂value✓"), ["value"]);
-    expectOk(Unicode.fromUnknown("🙂✓"), [""]);
-    expect(Unicode.to(["🙂value"])).toBe("🙂🙂value✓");
-    expectOk(Fixed.fromUnknown("🙂✓"), ["🙂", "✓"]);
-    expect(Fixed.to(["🙂", "✓"])).toBe("🙂✓");
-    expectErr(Unicode.fromUnknown("🙂value"), {
+    assertType<typeof Unicode.Output, readonly [string]>();
+    assertType<typeof Unicode.CanonicalInput, `🙂${string}✓`>();
+    assertOk(Unicode.fromUnknown("🙂value✓"), ["value"]);
+    assertOk(Unicode.fromUnknown("🙂✓"), [""]);
+    assertEqual(Unicode.to(["🙂value"]), "🙂🙂value✓");
+    assertOk(Fixed.fromUnknown("🙂✓"), ["🙂", "✓"]);
+    assertEqual(Fixed.to(["🙂", "✓"]), "🙂✓");
+    assertErr(Unicode.fromUnknown("🙂value"), {
       type: "TemplateLiteral",
       value: "🙂value",
     });
   });
 
-  test("uses Unicode code-point widths consistently", () => {
+  it("uses Unicode code-point widths consistently", () => {
     const FixedWidth = union("🙂", "a");
     const VariableWidth = union("🙂", "ab");
     const Value = templateLiteralParser(FixedWidth, String);
@@ -5369,12 +5768,12 @@ describe("templateLiteralParser", () => {
       templateLiteralParser(VariableWidth, String);
     };
 
-    expectOk(Value.fromUnknown("🙂value"), ["🙂", "value"]);
-    expectOk(Value.fromUnknown("avalue"), ["a", "value"]);
+    assertOk(Value.fromUnknown("🙂value"), ["🙂", "value"]);
+    assertOk(Value.fromUnknown("avalue"), ["a", "value"]);
     void compileTimeAssertions;
   });
 
-  test("rejects surrogate pairs formed across part boundaries", () => {
+  it("rejects surrogate pairs formed across part boundaries", () => {
     const HighSurrogate = literal("\uD83D");
     const LowSurrogate = literal("\uDE42");
     const HighSurrogateOrEmoji = union("\uD83D", "🙂");
@@ -5393,13 +5792,16 @@ describe("templateLiteralParser", () => {
       createAcrossEmptyCapture,
       createFromCaptureLanguages,
     ]) {
-      expect(create).toThrow(
-        "A TemplateLiteral cannot form a Unicode surrogate pair across part boundaries.",
+      const error = assertThrowsInstanceOf(create, Error);
+      assertTrue(
+        error.message.includes(
+          "A TemplateLiteral cannot form a Unicode surrogate pair across part boundaries.",
+        ),
       );
     }
   });
 
-  test("does not interpret custom Type names as built-in framing", () => {
+  it("does not interpret custom Type names as built-in framing", () => {
     const LiteralName = brand("Literal", String);
     const UnionName = brand("Union", String);
     const TemplateLiteralName = brand("TemplateLiteral", String);
@@ -5409,13 +5811,13 @@ describe("templateLiteralParser", () => {
     const TemplateLiteralValue = templateLiteralParser(TemplateLiteralName);
     const StringValue = templateLiteralParser(StringName, String);
 
-    expectOk(LiteralValue.fromUnknown("value"), ["value"]);
-    expectOk(UnionValue.fromUnknown("value"), ["value"]);
-    expectOk(TemplateLiteralValue.fromUnknown("value"), ["value"]);
-    expectOk(StringValue.fromUnknown("avalue"), ["a", "value"]);
+    assertOk(LiteralValue.fromUnknown("value"), ["value"]);
+    assertOk(UnionValue.fromUnknown("value"), ["value"]);
+    assertOk(TemplateLiteralValue.fromUnknown("value"), ["value"]);
+    assertOk(StringValue.fromUnknown("avalue"), ["a", "value"]);
   });
 
-  test("preserves built-in framing metadata through localization", () => {
+  it("preserves built-in framing metadata through localization", () => {
     const A = literal("a");
     const LocalizedA = localizeTypes(
       { A },
@@ -5428,10 +5830,10 @@ describe("templateLiteralParser", () => {
     ).test.A;
     const Value = templateLiteralParser(LocalizedA, String);
 
-    expectOk(Value.fromUnknown("avalue"), ["a", "value"]);
+    assertOk(Value.fromUnknown("avalue"), ["a", "value"]);
   });
 
-  test("decodes and encodes a branded string capture", () => {
+  it("decodes and encodes a branded string capture", () => {
     const DecimalText = templateLiteralParser(
       "decimal:",
       NonNegativeDecimalString,
@@ -5441,34 +5843,33 @@ describe("templateLiteralParser", () => {
     const value = NonNegativeDecimalString.orThrow("10.5");
     const encoded = DecimalText.to([value]);
 
-    expectTypeOf<typeof DecimalText.Output>().toEqualTypeOf<
+    assertType<
+      typeof DecimalText.Output,
       readonly [NonNegativeDecimalString]
     >();
-    expectTypeOf<DecimalLiteral>().toEqualTypeOf<`decimal:${NonNegativeDecimalString}`>();
-    expectTypeOf(encoded).toEqualTypeOf<DecimalLiteral>();
-    expectOk(DecimalText.fromUnknown("decimal:0"), [zero]);
-    expectOk(DecimalText.fromUnknown("decimal:10.5"), [value]);
-    expect(encoded).toBe("decimal:10.5");
+    assertType<DecimalLiteral, `decimal:${NonNegativeDecimalString}`>();
+    assertType<typeof encoded, DecimalLiteral>();
+    assertOk(DecimalText.fromUnknown("decimal:0"), [zero]);
+    assertOk(DecimalText.fromUnknown("decimal:10.5"), [value]);
+    assertEqual(encoded, "decimal:10.5");
   });
 
-  test("decodes transformations and encodes their canonical strings", () => {
+  it("decodes transformations and encodes their canonical strings", () => {
     const NumberFromString = setupNumberFromString();
     const NumberValue = templateLiteralParser("number:", NumberFromString);
     type NumberLiteral = typeof NumberValue.parent.Output;
     type NumberShape = `number:${string}`;
     const encoded = NumberValue.to([42]);
 
-    expectTypeOf<typeof NumberValue.Output>().toEqualTypeOf<
-      readonly [number]
-    >();
-    expectTypeOf<NumberLiteral>().toExtend<NumberShape>();
-    expectTypeOf<NumberShape>().not.toExtend<NumberLiteral>();
-    expectTypeOf(encoded).toEqualTypeOf<NumberLiteral>();
-    expectOk(NumberValue.fromUnknown("number:42"), [42]);
-    expect(encoded).toBe("number:42");
-    expect(NumberValue.parent.is(encoded)).toBe(true);
-    expect(NumberValue.parent.is("number:not-a-number")).toBe(false);
-    expectOk(NumberValue.from.parent(encoded), [42]);
+    assertType<typeof NumberValue.Output, readonly [number]>();
+    assertType<NumberLiteral extends NumberShape ? true : false, true>();
+    assertType<NumberShape extends NumberLiteral ? true : false, false>();
+    assertType<typeof encoded, NumberLiteral>();
+    assertOk(NumberValue.fromUnknown("number:42"), [42]);
+    assertEqual(encoded, "number:42");
+    assertTrue(NumberValue.parent.is(encoded));
+    assertFalse(NumberValue.parent.is("number:not-a-number"));
+    assertOk(NumberValue.from.parent(encoded), [42]);
 
     const compileTimeAssertions = () => {
       // @ts-expect-error A matching string is not necessarily canonical.
@@ -5480,7 +5881,7 @@ describe("templateLiteralParser", () => {
     void compileTimeAssertions;
   });
 
-  test("distinguishes transforming templates with the same string shape", () => {
+  it("distinguishes transforming templates with the same string shape", () => {
     const NumberFromString = setupNumberFromString();
     const BooleanFromString = transform(
       "BooleanFromString",
@@ -5505,38 +5906,38 @@ describe("templateLiteralParser", () => {
     const numberLiteral = NumberValue.to([1.5]);
     const booleanLiteral = BooleanValue.to([true]);
 
-    expectTypeOf<NumberLiteral>().toExtend<`value:${string}`>();
-    expectTypeOf<BooleanLiteral>().toExtend<`value:${string}`>();
-    expectTypeOf<NumberLiteral>().not.toExtend<BooleanLiteral>();
-    expectTypeOf<BooleanLiteral>().not.toExtend<NumberLiteral>();
-    expect(numberLiteral).toBe("value:1.5");
-    expect(booleanLiteral).toBe("value:true");
-    expectOk(NumberValue.fromUnknown(numberLiteral), [1.5]);
-    expectOk(BooleanValue.fromUnknown(booleanLiteral), [true]);
+    assertType<NumberLiteral extends `value:${string}` ? true : false, true>();
+    assertType<BooleanLiteral extends `value:${string}` ? true : false, true>();
+    assertType<NumberLiteral extends BooleanLiteral ? true : false, false>();
+    assertType<BooleanLiteral extends NumberLiteral ? true : false, false>();
+    assertEqual(numberLiteral, "value:1.5");
+    assertEqual(booleanLiteral, "value:true");
+    assertOk(NumberValue.fromUnknown(numberLiteral), [1.5]);
+    assertOk(BooleanValue.fromUnknown(booleanLiteral), [true]);
   });
 
-  test("normalizes a capture once and encodes its canonical value", () => {
+  it("normalizes a capture once and encodes its canonical value", () => {
     const { Lowercase, LowercaseFromString } = setupLowercaseFromString();
     const Value = templateLiteralParser("tag:", LowercaseFromString);
     type ValueLiteral = typeof Value.parent.Output;
     const lowercase = Lowercase.orThrow("evolu");
     const encoded = Value.to([lowercase]);
 
-    expectTypeOf<ValueLiteral>().toExtend<`tag:${string}`>();
-    expectTypeOf<`tag:${string}`>().not.toExtend<ValueLiteral>();
-    expectOk(Value.fromUnknown("tag:EVOLU"), [lowercase]);
-    expectTypeOf(encoded).toEqualTypeOf<ValueLiteral>();
-    expect(encoded).toBe("tag:evolu");
+    assertType<ValueLiteral extends `tag:${string}` ? true : false, true>();
+    assertType<`tag:${string}` extends ValueLiteral ? true : false, false>();
+    assertOk(Value.fromUnknown("tag:EVOLU"), [lowercase]);
+    assertType<typeof encoded, ValueLiteral>();
+    assertEqual(encoded, "tag:evolu");
   });
 
-  test("uses the final framing position without delimiter backtracking", () => {
+  it("uses the final framing position without delimiter backtracking", () => {
     const Value = templateLiteralParser(String, "::");
 
-    expectOk(Value.fromUnknown("a::::"), ["a::"]);
-    expect(Value.to(["a::"])).toBe("a::::");
+    assertOk(Value.fromUnknown("a::::"), ["a::"]);
+    assertEqual(Value.to(["a::"]), "a::::");
   });
 
-  test("rejects ambiguous variable-width captures statically", () => {
+  it("rejects ambiguous variable-width captures statically", () => {
     const VariableUnion = union("a", "bb");
     const Inner = templateLiteralParser("<", String, ">");
     const compileTimeAssertions = () => {
@@ -5551,7 +5952,7 @@ describe("templateLiteralParser", () => {
     void compileTimeAssertions;
   });
 
-  test("requires a capture and canonically string-encoded concrete parts", () => {
+  it("requires a capture and canonically string-encoded concrete parts", () => {
     const widened = "value" as string;
     const uncertain = String as typeof String | typeof Number;
     const parts: ReadonlyArray<typeof String> = [String];
@@ -5575,7 +5976,7 @@ describe("templateLiteralParser", () => {
     void compileTimeAssertions;
   });
 
-  test("decodes every capture exactly once", () => {
+  it("decodes every capture exactly once", () => {
     let calls = 0;
     const Capture = brand("TemplateLiteralCapture", String, () => {
       calls++;
@@ -5583,53 +5984,55 @@ describe("templateLiteralParser", () => {
     });
     const Value = templateLiteralParser("<", Capture, ">");
 
-    expectOk(Value.fromUnknown("<value>"), ["value"]);
-    expect(calls).toBe(1);
+    assertOk(Value.fromUnknown("<value>"), ["value"]);
+    assertEqual(calls, 1);
   });
 
-  test("composes nested transforming TemplateLiteral captures", () => {
+  it("composes nested transforming TemplateLiteral captures", () => {
     const Inner = templateLiteralParser("a", literal("b"));
     const Value = templateLiteralParser("<", Inner, ">");
     type ValueLiteral = typeof Value.parent.Output;
     const encoded = Value.to([["b"]]);
 
-    expectTypeOf<typeof Inner.Output>().toEqualTypeOf<readonly ["b"]>();
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<
-      readonly [readonly ["b"]]
-    >();
-    expectTypeOf<ValueLiteral>().toExtend<"<ab>">();
-    expectTypeOf<"<ab>">().not.toExtend<ValueLiteral>();
-    expectTypeOf(encoded).toEqualTypeOf<ValueLiteral>();
-    expectOk(Value.fromUnknown("<ab>"), [["b"]]);
-    expect(encoded).toBe("<ab>");
+    assertType<typeof Inner.Output, readonly ["b"]>();
+    assertType<typeof Value.Output, readonly [readonly ["b"]]>();
+    assertType<ValueLiteral extends "<ab>" ? true : false, true>();
+    assertType<"<ab>" extends ValueLiteral ? true : false, false>();
+    assertType<typeof encoded, ValueLiteral>();
+    assertOk(Value.fromUnknown("<ab>"), [["b"]]);
+    assertEqual(encoded, "<ab>");
   });
 
-  test("composes canonical literal parents as fixed-width captures", () => {
+  it("composes canonical literal parents as fixed-width captures", () => {
     const A = templateLiteralParser(literal("a")).parent;
     const B = templateLiteralParser(literal("b")).parent;
     const Value = templateLiteralParser(A, B);
 
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<readonly ["a", "b"]>();
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"ab">();
-    expectOk(Value.fromUnknown("ab"), ["a", "b"]);
-    expect(Value.to(["a", "b"])).toBe("ab");
+    assertType<typeof Value.Output, readonly ["a", "b"]>();
+    assertType<typeof Value.CanonicalInput, "ab">();
+    assertOk(Value.fromUnknown("ab"), ["a", "b"]);
+    assertEqual(Value.to(["a", "b"]), "ab");
   });
 
-  test("distinguishes input, framing, and capture errors", () => {
+  it("distinguishes input, framing, and capture errors", () => {
     const Value = templateLiteralParser("<", PositiveDecimalString, ">");
     const inputResult = Value.fromUnknown(1);
     const captureResult = Value.fromUnknown("<0>");
 
-    expect(inputResult).toEqual(
+    assertEqual(
+      inputResult,
       err({ type: "TypeOf", expected: "String", value: 1 }),
     );
-    expect(Value.fromUnknown("10")).toEqual(
+    assertEqual(
+      Value.fromUnknown("10"),
       err({ type: "TemplateLiteral", value: "10" }),
     );
-    expect(Value.fromUnknown("")).toEqual(
+    assertEqual(
+      Value.fromUnknown(""),
       err({ type: "TemplateLiteral", value: "" }),
     );
-    expect(captureResult).toEqual(
+    assertEqual(
+      captureResult,
       err({
         type: "TemplateLiteral",
         outputError: {
@@ -5647,20 +6050,26 @@ describe("templateLiteralParser", () => {
         },
       }),
     );
-    assert(!inputResult.ok);
-    expect(Value.formatError(inputResult.error)).toBe(
+    assertErr(inputResult);
+    assertEqual(
+      Value.formatError(inputResult.error),
       "A value 1 is not a string.",
     );
-    assert(!captureResult.ok);
-    expect(Value.formatError(captureResult.error)).toBe(
+    assertErr(captureResult);
+    assertEqual(
+      Value.formatError(captureResult.error),
       'The value "0" must be a positive decimal string.',
     );
-    expectTypeOf(Value.fromUnknown("<1>")).toEqualTypeOf<
-      Result<typeof Value.Output, InferErrors<typeof Value>>
-    >();
+    {
+      const actual = Value.fromUnknown("<1>");
+      assertType<
+        typeof actual,
+        Result<typeof Value.Output, InferErrors<typeof Value>>
+      >();
+    }
   });
 
-  test("formats and localizes TemplateLiteral errors", () => {
+  it("formats and localizes TemplateLiteral errors", () => {
     const Value = templateLiteralParser("a", literal("b"));
     const Localized = localizeTypes(
       { Value },
@@ -5674,24 +6083,28 @@ describe("templateLiteralParser", () => {
       },
     ).cs.Value;
 
-    expect(Value.formatError({ type: "TemplateLiteral", value: "b" })).toBe(
+    assertEqual(
+      Value.formatError({ type: "TemplateLiteral", value: "b" }),
       'The value "b" does not match the template literal.',
     );
-    expect(Localized.formatError({ type: "TemplateLiteral", value: "b" })).toBe(
+    assertEqual(
+      Localized.formatError({ type: "TemplateLiteral", value: "b" }),
       'Hodnota "b" neodpovídá šablonovému řetězci.',
     );
-    expect(
+    assertEqual(
       Localized.parent.formatError({ type: "TemplateLiteral", value: "b" }),
-    ).toBe('Hodnota "b" neodpovídá šablonovému řetězci.');
+      'Hodnota "b" neodpovídá šablonovému řetězci.',
+    );
   });
 
-  test("keeps fixed-width union combinations symbolic at runtime", () => {
+  it("keeps fixed-width union combinations symbolic at runtime", () => {
     const Bit = union("0", "1");
     const Value = templateLiteralParser(Bit, Bit, Bit, Bit);
 
-    expect(Value.parts).toEqual([Bit, Bit, Bit, Bit]);
-    expectOk(Value.fromUnknown("0101"), ["0", "1", "0", "1"]);
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<
+    assertEqual(Value.parts, [Bit, Bit, Bit, Bit]);
+    assertOk(Value.fromUnknown("0101"), ["0", "1", "0", "1"]);
+    assertType<
+      typeof Value.CanonicalInput,
       | "0000"
       | "0001"
       | "0010"
@@ -5711,24 +6124,20 @@ describe("templateLiteralParser", () => {
     >();
   });
 
-  test("models the Percentage capture and canonical string directly", () => {
+  it("models the Percentage capture and canonical string directly", () => {
     const Digit1To99 = union("1", "9", "10", "99");
     const Percentage = templateLiteralParser(Digit1To99, "%");
     type PercentageLiteral = typeof Percentage.parent.Output;
     const percentage: PercentageLiteral = "10%";
 
-    expectTypeOf<typeof Percentage.Output>().toEqualTypeOf<
-      readonly ["1" | "9" | "10" | "99"]
-    >();
-    expectTypeOf<PercentageLiteral>().toEqualTypeOf<
-      "1%" | "9%" | "10%" | "99%"
-    >();
-    expect(percentage).toBe("10%");
-    expectOk(Percentage.fromUnknown("99%"), ["99"]);
-    expect(Percentage.to(["10"])).toBe("10%");
+    assertType<typeof Percentage.Output, readonly ["1" | "9" | "10" | "99"]>();
+    assertType<PercentageLiteral, "1%" | "9%" | "10%" | "99%">();
+    assertEqual(percentage, "10%");
+    assertOk(Percentage.fromUnknown("99%"), ["99"]);
+    assertEqual(Percentage.to(["10"]), "10%");
   });
 
-  test("preserves exact syntax through an outer application transform", () => {
+  it("preserves exact syntax through an outer application transform", () => {
     const PixelDigits = union("0", "1", "2");
     const PixelsSyntax = templateLiteralParser(PixelDigits, "px");
     const PixelsValue = brand("Pixels", union(0, 1, 2));
@@ -5741,13 +6150,13 @@ describe("templateLiteralParser", () => {
     const literal: PixelsLiteral = "2px";
     const two = PixelsValue.orThrow(2);
 
-    expectTypeOf<Pixels>().toEqualTypeOf<typeof PixelsValue.Output>();
-    expectTypeOf<PixelsLiteral>().toEqualTypeOf<"0px" | "1px" | "2px">();
-    expectOk(Pixels.fromUnknown(literal), two);
-    expect(Pixels.to(two)).toBe("2px");
+    assertType<Pixels, typeof PixelsValue.Output>();
+    assertType<PixelsLiteral, "0px" | "1px" | "2px">();
+    assertOk(Pixels.fromUnknown(literal), two);
+    assertEqual(Pixels.to(two), "2px");
   });
 
-  test("stages canonical string validation before capture parsing", () => {
+  it("stages canonical string validation before capture parsing", () => {
     const Language = union("en", "cs");
     const Region = union("US", "CZ");
     const SupportedLocale = templateLiteralParser(Language, "-", Region);
@@ -5756,42 +6165,69 @@ describe("templateLiteralParser", () => {
     const locale: SupportedLocale = ["cs", "CZ"];
     const input: unknown = "cs-CZ";
 
-    expect(SupportedLocale.name).toBe("TemplateLiteral");
-    expect(SupportedLocale.parent.name).toBe("TemplateLiteral");
-    expect(SupportedLocale.parent.parent).toBe(String);
-    expectTypeOf(SupportedLocale).toEqualTypeOf<
+    assertEqual(SupportedLocale.name, "TemplateLiteral");
+    assertEqual(SupportedLocale.parent.name, "TemplateLiteral");
+    assertSame(SupportedLocale.parent.parent, String);
+    assertType<
+      typeof SupportedLocale,
       TemplateLiteralParserType<readonly [typeof Language, "-", typeof Region]>
     >();
-    expectTypeOf<typeof SupportedLocale.Input>().toEqualTypeOf<string>();
-    expectTypeOf<SupportedLocaleLiteral>().toEqualTypeOf<
-      "en-US" | "en-CZ" | "cs-US" | "cs-CZ"
-    >();
-    expectTypeOf<SupportedLocale>().toEqualTypeOf<
-      readonly ["en" | "cs", "US" | "CZ"]
-    >();
-    expectTypeOf<
-      typeof SupportedLocale.CanonicalInput
-    >().toEqualTypeOf<SupportedLocaleLiteral>();
+    assertType<typeof SupportedLocale.Input, string>();
+    assertType<SupportedLocaleLiteral, "en-US" | "en-CZ" | "cs-US" | "cs-CZ">();
+    assertType<SupportedLocale, readonly ["en" | "cs", "US" | "CZ"]>();
+    assertType<typeof SupportedLocale.CanonicalInput, SupportedLocaleLiteral>();
 
-    assert(SupportedLocale.parent.is(input));
-    expectTypeOf(input).toEqualTypeOf<SupportedLocaleLiteral>();
-    expect(SupportedLocale.parent.is("fr-CZ")).toBe(false);
-    expectOk(SupportedLocale.parent.fromUnknown("cs-CZ"), "cs-CZ");
-    expectErr(SupportedLocale.fromUnknown(null), {
+    assert(
+      SupportedLocale.parent.is(input),
+      "Expected SupportedLocale.parent.",
+    );
+    assertType<typeof input, SupportedLocaleLiteral>();
+    assertFalse(SupportedLocale.parent.is("fr-CZ"));
+    assertOk(SupportedLocale.parent.fromUnknown("cs-CZ"), "cs-CZ");
+    assertErr(SupportedLocale.fromUnknown(null), {
       type: "TypeOf",
       expected: "String",
       value: null,
     });
-    expectOk(SupportedLocale.fromUnknown("cs-CZ"), locale);
-    expectOk(SupportedLocale.from.parent("cs-CZ"), locale);
-    expectOk(SupportedLocale.from.parent.parent("cs-CZ"), locale);
+    assertOk(SupportedLocale.fromUnknown("cs-CZ"), locale);
+    assertOk(SupportedLocale.from.parent("cs-CZ"), locale);
+    assertOk(SupportedLocale.from.parent.parent("cs-CZ"), locale);
     const invalidResult = SupportedLocale.from.parent.parent("fr-CZ");
-    assert(!invalidResult.ok);
-    expect(invalidResult.error.type).toBe("TemplateLiteral");
-    expect(() =>
-      SupportedLocale.from.parent("fr-CZ" as SupportedLocaleLiteral),
-    ).toThrow("Expected TemplateLiteral.");
-    expect(SupportedLocale.to(["en", "US"])).toBe("en-US");
+    assertErr(invalidResult);
+    assertEqual(invalidResult.error.type, "TemplateLiteral");
+    assertAssertionError(
+      () => SupportedLocale.from.parent("fr-CZ" as SupportedLocaleLiteral),
+      "Expected TemplateLiteral.",
+      {
+        type: "TemplateLiteral",
+        outputError: {
+          type: "Tuple",
+          reason: {
+            kind: "Items",
+            issues: [
+              {
+                kind: "Element",
+                index: 0,
+                error: {
+                  type: "Union",
+                  errors: [
+                    {
+                      index: 0,
+                      error: {
+                        type: "Literal",
+                        expected: "en",
+                        value: "fr",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    );
+    assertEqual(SupportedLocale.to(["en", "US"]), "en-US");
 
     const compileTimeAssertions = () => {
       const supported: SupportedLocaleLiteral = "cs-CZ";
@@ -5802,30 +6238,30 @@ describe("templateLiteralParser", () => {
     void compileTimeAssertions;
   });
 
-  test("normalizes broader capture input into a canonical literal", () => {
+  it("normalizes broader capture input into a canonical literal", () => {
     const { Lowercase, LowercaseFromString } = setupLowercaseFromString();
     const Tag = templateLiteralParser("tag:", LowercaseFromString);
     type TagLiteral = typeof Tag.parent.Output;
     const lowercase = Lowercase.orThrow("evolu");
 
-    expectTypeOf<typeof Tag.Output>().toEqualTypeOf<
-      readonly [string & Brand<"Lowercase">]
-    >();
-    expect(Tag.parent.is(null)).toBe(false);
-    expect(Tag.parent.is("tag:evolu")).toBe(true);
-    expect(Tag.parent.is("tag:EVOLU")).toBe(false);
-    expectErr(Tag.parent.fromUnknown(null), {
+    assertType<typeof Tag.Output, readonly [string & Brand<"Lowercase">]>();
+    assertFalse(Tag.parent.is(null));
+    assertTrue(Tag.parent.is("tag:evolu"));
+    assertFalse(Tag.parent.is("tag:EVOLU"));
+    assertErr(Tag.parent.fromUnknown(null), {
       type: "TypeOf",
       expected: "String",
       value: null,
     });
-    expectOk(Tag.parent.fromUnknown("tag:EVOLU"), "tag:evolu");
-    expectOk(Tag.fromUnknown("tag:EVOLU"), [lowercase]);
-    expectOk(Tag.from.parent.parent("tag:EVOLU"), [lowercase]);
-    expect(() => Tag.from.parent("tag:EVOLU" as TagLiteral)).toThrow(
+    assertOk(Tag.parent.fromUnknown("tag:EVOLU"), "tag:evolu");
+    assertOk(Tag.fromUnknown("tag:EVOLU"), [lowercase]);
+    assertOk(Tag.from.parent.parent("tag:EVOLU"), [lowercase]);
+    assertAssertionError(
+      () => Tag.from.parent("tag:EVOLU" as TagLiteral),
       "Expected TemplateLiteral.",
+      { type: "TemplateLiteral", value: "tag:EVOLU" },
     );
-    expect(Tag.to([lowercase])).toBe("tag:evolu");
+    assertEqual(Tag.to([lowercase]), "tag:evolu");
 
     const compileTimeAssertions = () => {
       // @ts-expect-error Encoding requires a lowercase branded Output.
@@ -5834,20 +6270,20 @@ describe("templateLiteralParser", () => {
     void compileTimeAssertions;
   });
 
-  test("exposes canonical and parsed Standard Schema stages", async () => {
+  it("exposes canonical and parsed Standard Schema stages", async () => {
     const { Lowercase, LowercaseFromString } = setupLowercaseFromString();
     const Tag = templateLiteralParser("tag:", LowercaseFromString);
     const lowercase = Lowercase.orThrow("evolu");
 
-    expect(await Tag.parent["~standard"].validate("tag:EVOLU")).toEqual({
+    assertEqual(await Tag.parent["~standard"].validate("tag:EVOLU"), {
       value: "tag:evolu",
     });
-    expect(await Tag["~standard"].validate("tag:EVOLU")).toEqual({
+    assertEqual(await Tag["~standard"].validate("tag:EVOLU"), {
       value: [lowercase],
     });
   });
 
-  test("runs only the capture operations required at each boundary", () => {
+  it("runs only the capture operations required at each boundary", () => {
     let decodeCalls = 0;
     let encodeCalls = 0;
     const Capture = transform("TemplateLiteralCapture", String, String, {
@@ -5862,57 +6298,58 @@ describe("templateLiteralParser", () => {
     });
     const Value = templateLiteralParser("<", Capture, ">");
 
-    expectOk(Value.fromUnknown("<value>"), ["value"]);
-    expect(decodeCalls).toBe(1);
-    expect(encodeCalls).toBe(0);
+    assertOk(Value.fromUnknown("<value>"), ["value"]);
+    assertEqual(decodeCalls, 1);
+    assertEqual(encodeCalls, 0);
 
     decodeCalls = 0;
     encodeCalls = 0;
     const canonical = Value.parent.orThrow("<value>");
-    expect(decodeCalls).toBe(1);
-    expect(encodeCalls).toBe(1);
+    assertEqual(decodeCalls, 1);
+    assertEqual(encodeCalls, 1);
 
     decodeCalls = 0;
     encodeCalls = 0;
-    expectOk(Value.from.parent(canonical), ["value"]);
-    expect(decodeCalls).toBe(1);
-    expect(encodeCalls).toBe(1);
+    assertOk(Value.from.parent(canonical), ["value"]);
+    assertEqual(decodeCalls, 1);
+    assertEqual(encodeCalls, 1);
 
     decodeCalls = 0;
     encodeCalls = 0;
-    expectOk(Value.from.parent.parent("<value>"), ["value"]);
-    expect(decodeCalls).toBe(1);
-    expect(encodeCalls).toBe(0);
+    assertOk(Value.from.parent.parent("<value>"), ["value"]);
+    assertEqual(decodeCalls, 1);
+    assertEqual(encodeCalls, 0);
 
     decodeCalls = 0;
     encodeCalls = 0;
-    expect(Value.to(["value"])).toBe("<value>");
-    expect(decodeCalls).toBe(0);
-    expect(encodeCalls).toBe(1);
+    assertEqual(Value.to(["value"]), "<value>");
+    assertEqual(decodeCalls, 0);
+    assertEqual(encodeCalls, 1);
   });
 });
 
 describe("templateLiteral", () => {
-  test("creates the canonical string Type directly", () => {
+  it("creates the canonical string Type directly", () => {
     const B = literal("b");
     const Value = templateLiteral("a", B, "c");
 
-    expect(Value.name).toBe("TemplateLiteral");
-    expect(Value.parent).toBe(String);
-    expect(Value.parts).toEqual(["a", B, "c"]);
-    expectTypeOf(Value).toEqualTypeOf<
+    assertEqual(Value.name, "TemplateLiteral");
+    assertSame(Value.parent, String);
+    assertEqual(Value.parts, ["a", B, "c"]);
+    assertType<
+      typeof Value,
       TemplateLiteralType<readonly ["a", typeof B, "c"]>
     >();
-    expectTypeOf<typeof Value.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof Value.CanonicalInput>().toEqualTypeOf<"abc">();
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<"abc">();
-    expectOk(Value.fromUnknown("abc"), "abc");
-    expect(Value.is("abc")).toBe(true);
-    expect(Value.is("adc")).toBe(false);
-    expect(Value.is(["b"])).toBe(false);
+    assertType<typeof Value.Input, string>();
+    assertType<typeof Value.CanonicalInput, "abc">();
+    assertType<typeof Value.Output, "abc">();
+    assertOk(Value.fromUnknown("abc"), "abc");
+    assertTrue(Value.is("abc"));
+    assertFalse(Value.is("adc"));
+    assertFalse(Value.is(["b"]));
   });
 
-  test("uses the same reversible framing rules as templateLiteralParser", () => {
+  it("uses the same reversible framing rules as templateLiteralParser", () => {
     const Value = templateLiteral(String, "::");
     const Parser = templateLiteralParser(String, "::");
     const compileTimeAssertions = () => {
@@ -5920,8 +6357,8 @@ describe("templateLiteral", () => {
       templateLiteral(String, ":", String);
     };
 
-    expectOk(Value.fromUnknown("a::::"), "a::::");
-    expect(Value.is("a::::")).toBe(Parser.parent.is("a::::"));
+    assertOk(Value.fromUnknown("a::::"), "a::::");
+    assertSame(Value.is("a::::"), Parser.parent.is("a::::"));
     void compileTimeAssertions;
   });
 });
@@ -5987,28 +6424,27 @@ describe("brand", () => {
     };
   };
 
-  test("adds a semantic brand without adding a refinement error", () => {
+  it("adds a semantic brand without adding a refinement error", () => {
     const UserId = brand("UserId", String);
     const result = UserId.from.parent("id");
 
-    expect(UserId.name).toBe("UserId");
-    expectTypeOf(UserId.name).toEqualTypeOf<"UserId">();
-    expect(UserId.parent).toBe(String);
-    expectTypeOf(UserId).toEqualTypeOf<
-      BrandType<typeof String, "UserId", never>
+    assertEqual(UserId.name, "UserId");
+    assertType<typeof UserId.name, "UserId">();
+    assertSame(UserId.parent, String);
+    assertType<typeof UserId, BrandType<typeof String, "UserId", never>>();
+    assertType<typeof UserId.Input, string>();
+    assertType<typeof UserId.Error, never>();
+    assertType<typeof UserId.parent, typeof String>();
+    assertType<typeof result, Result<typeof UserId.Output>>();
+    assertOk(result, "id");
+    assertSame(UserId.formatError, String.formatError);
+    assertType<
+      Parameters<typeof UserId.formatError>[0],
+      TypeOfError<"String">
     >();
-    expectTypeOf<typeof UserId.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof UserId.Error>().toEqualTypeOf<never>();
-    expectTypeOf(UserId.parent).toEqualTypeOf<typeof String>();
-    expectTypeOf(result).toEqualTypeOf<Result<typeof UserId.Output>>();
-    expectOk(result, "id");
-    expect(UserId.formatError).toBe(String.formatError);
-    expectTypeOf(UserId.formatError)
-      .parameter(0)
-      .toEqualTypeOf<TypeOfError<"String">>();
   });
 
-  test("rejects an unresolved generic infallible name", () => {
+  it("rejects an unresolved generic infallible name", () => {
     const compileTimeAssertions = <Name extends "A" | "B">(
       name: Name,
     ): Name => {
@@ -6017,20 +6453,28 @@ describe("brand", () => {
       return name;
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("rejects a union of parent Types", () => {
+  it("rejects a union of parent Types", () => {
     type Parent = typeof String | typeof Number;
     type ParentParameter = Parameters<
       typeof brand<"StringOrNumber", Parent>
     >[1];
 
-    expectTypeOf<Parent>().not.toExtend<ParentParameter>();
-    expectTypeOf<ParentParameter>().toEqualTypeOf<"⛔ Type error: Parent must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.">();
+    assertType<Parent extends ParentParameter ? true : false, false>();
+    assertType<
+      ParentParameter,
+      "⛔ Type error: Parent must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
+    >();
   });
 
-  test("rejects a parent with erased concrete Type information", () => {
+  it("rejects a parent with erased concrete Type information", () => {
     const erased: FormattableTypeNode = brand("Erased", String);
 
     const compileTimeAssertions = () => {
@@ -6038,17 +6482,22 @@ describe("brand", () => {
       brand("Wrapped", erased);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("inherits the parent formatter when validation is infallible", () => {
+  it("inherits the parent formatter when validation is infallible", () => {
     const Validated = brand("Validated", String, () => ok());
 
-    expect(Validated.formatError).toBe(String.formatError);
-    expectTypeOf<typeof Validated.Error>().toEqualTypeOf<never>();
+    assertSame(Validated.formatError, String.formatError);
+    assertType<typeof Validated.Error, never>();
   });
 
-  test("requires a formatter when a brand adds a validation error", () => {
+  it("requires a formatter when a brand adds a validation error", () => {
     interface ValidatedWithoutFormatterError extends TypeError<"ValidatedWithoutFormatter"> {
       readonly value: string;
     }
@@ -6063,10 +6512,15 @@ describe("brand", () => {
       brand("ValidatedWithoutFormatter", String, validateWithoutFormatter);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires one concrete name when validation is fallible", () => {
+  it("requires one concrete name when validation is fallible", () => {
     interface AError extends TypeError<"A"> {
       readonly value: string;
     }
@@ -6087,10 +6541,15 @@ describe("brand", () => {
       brand(patternedName, String, validate, formatError);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("rejects an error type inherited from the parent Type", () => {
+  it("rejects an error type inherited from the parent Type", () => {
     interface DuplicateTypeOfError extends TypeError<"TypeOf"> {
       readonly value: string;
     }
@@ -6106,10 +6565,15 @@ describe("brand", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires a brand error type matching the brand name", () => {
+  it("requires a brand error type matching the brand name", () => {
     interface DifferentNameError extends TypeError<"DifferentName"> {
       readonly value: string;
     }
@@ -6125,10 +6589,15 @@ describe("brand", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("requires validation to report success without replacing the parent value", () => {
+  it("requires validation to report success without replacing the parent value", () => {
     const compileTimeAssertions = () => {
       brand(
         "Lowercase",
@@ -6139,34 +6608,43 @@ describe("brand", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("validates only the brand after a validated Literal parent through from.parent", () => {
+  it("validates only the brand after a validated Literal parent through from.parent", () => {
     const Hello = literal("Hello");
     const Greeting = brand("Greeting", Hello);
     const hello = getOrThrow(Hello.from("Hello"));
     const greeting = getOrThrow(Greeting.from.parent(hello));
 
-    expect(Greeting.parent).toBe(Hello);
-    expect(Greeting.parent.parent).toBe(String);
-    expect(Greeting.from(greeting)).toEqual(ok("Hello"));
-    expect(Greeting.from.parent.parent("World")).toEqual(
+    assertSame(Greeting.parent, Hello);
+    assertSame(Greeting.parent.parent, String);
+    assertEqual(Greeting.from(greeting), ok("Hello"));
+    assertEqual(
+      Greeting.from.parent.parent("World"),
       err({ type: "Literal", expected: "Hello", value: "World" }),
     );
-    expect(Greeting.from.parent(hello)).toEqual(ok("Hello"));
-    expectTypeOf(Greeting.from(greeting)).toEqualTypeOf<
-      Result<typeof Greeting.Output>
-    >();
-    expectTypeOf(Greeting.from.parent(hello)).toEqualTypeOf<
-      Result<typeof Greeting.Output>
-    >();
+    assertEqual(Greeting.from.parent(hello), ok("Hello"));
+    {
+      const actual = Greeting.from(greeting);
+      assertType<typeof actual, Result<typeof Greeting.Output>>();
+    }
+    {
+      const actual = Greeting.from.parent(hello);
+      assertType<typeof actual, Result<typeof Greeting.Output>>();
+    }
   });
 
-  test("accumulates every brand in its Output type", () => {
+  it("accumulates every brand in its Output type", () => {
     const { Label: _Label } = setupLabel();
 
-    expectTypeOf<typeof _Label.Output>().toEqualTypeOf<
+    assertType<
+      typeof _Label.Output,
       string &
         Brand<"TrimmedString"> &
         Brand<"NonEmptyString"> &
@@ -6175,17 +6653,17 @@ describe("brand", () => {
     >();
   });
 
-  test("exposes every preceding Type through parent", () => {
+  it("exposes every preceding Type through parent", () => {
     const { Label, MaxLengthString, NonEmptyString, TrimmedString } =
       setupLabel();
 
-    expect(Label.parent).toBe(MaxLengthString);
-    expect(Label.parent.parent).toBe(NonEmptyString);
-    expect(Label.parent.parent.parent).toBe(TrimmedString);
-    expect(Label.parent.parent.parent.parent).toBe(String);
+    assertSame(Label.parent, MaxLengthString);
+    assertSame(Label.parent.parent, NonEmptyString);
+    assertSame(Label.parent.parent.parent, TrimmedString);
+    assertSame(Label.parent.parent.parent.parent, String);
   });
 
-  test("moves the output target toward the root through Type.parent", () => {
+  it("moves the output target toward the root through Type.parent", () => {
     const {
       Label,
       MaxLengthString: _MaxLengthString,
@@ -6195,11 +6673,9 @@ describe("brand", () => {
     validations.length = 0;
     const result = Label.parent.from(value);
 
-    expectTypeOf(result).toEqualTypeOf<
-      Result<typeof _MaxLengthString.Output>
-    >();
-    expectOk(result, "value");
-    expect(validations).toEqual([
+    assertType<typeof result, Result<typeof _MaxLengthString.Output>>();
+    assertOk(result, "value");
+    assertEqual(validations, [
       "TrimmedString",
       "NonEmptyString",
       "MaxLengthString",
@@ -6207,58 +6683,62 @@ describe("brand", () => {
   });
 
   describe("fromUnknown", () => {
-    test("validates every Type and returns the final branded value", () => {
+    it("validates every Type and returns the final branded value", () => {
       const { Label, validations } = setupLabel();
       const result = Label.fromUnknown("value");
 
-      expectOk(result, "value");
-      expectTypeOf(result.value).toEqualTypeOf<typeof Label.Output>();
-      expect(validations).toEqual([
+      assertOk(result, "value");
+      assertType<typeof result.value, typeof Label.Output>();
+      assertEqual(validations, [
         "TrimmedString",
         "NonEmptyString",
         "MaxLengthString",
       ]);
     });
 
-    test("returns the first failing Type error", () => {
+    it("returns the first failing Type error", () => {
       {
         const { Label, validations } = setupLabel();
 
-        expect(Label.fromUnknown(42)).toEqual(
+        assertEqual(
+          Label.fromUnknown(42),
           err({ type: "TypeOf", expected: "String", value: 42 }),
         );
-        expect(validations).toEqual([]);
+        assertEqual(validations, []);
       }
 
       {
         const { Label, validations } = setupLabel();
 
-        expect(Label.fromUnknown(" value ")).toEqual(
+        assertEqual(
+          Label.fromUnknown(" value "),
           err({ type: "TrimmedString", value: " value " }),
         );
-        expect(validations).toEqual(["TrimmedString"]);
+        assertEqual(validations, ["TrimmedString"]);
       }
 
       {
         const { Label, validations } = setupLabel();
 
-        expect(Label.fromUnknown("")).toEqual(
+        assertEqual(
+          Label.fromUnknown(""),
           err({ type: "NonEmptyString", value: "" }),
         );
-        expect(validations).toEqual(["TrimmedString", "NonEmptyString"]);
+        assertEqual(validations, ["TrimmedString", "NonEmptyString"]);
       }
 
       {
         const { Label, validations } = setupLabel();
 
-        expect(Label.fromUnknown("longer")).toEqual(
+        assertEqual(
+          Label.fromUnknown("longer"),
           err({
             type: "MaxLengthString",
             maxLength: 5,
             value: "longer",
           }),
         );
-        expect(validations).toEqual([
+        assertEqual(validations, [
           "TrimmedString",
           "NonEmptyString",
           "MaxLengthString",
@@ -6266,7 +6746,7 @@ describe("brand", () => {
       }
     });
 
-    test("infers every reachable validation error", () => {
+    it("infers every reachable validation error", () => {
       const {
         Label,
         MaxLengthString: _MaxLengthString,
@@ -6279,73 +6759,71 @@ describe("brand", () => {
         | typeof _NonEmptyString.Error
         | typeof _MaxLengthString.Error;
 
-      expectTypeOf(Label.fromUnknown("value")).toEqualTypeOf<
-        Result<typeof Label.Output, Errors>
-      >();
-      expectTypeOf<InferErrors<typeof Label>>().toEqualTypeOf<Errors>();
+      {
+        const actual = Label.fromUnknown("value");
+        assertType<typeof actual, Result<typeof Label.Output, Errors>>();
+      }
+      assertType<InferErrors<typeof Label>, Errors>();
     });
   });
 
   describe("is", () => {
-    test("a type guard that validates the whole chain and narrows to the final Output", () => {
+    it("a type guard that validates the whole chain and narrows to the final Output", () => {
       const { Label, validations } = setupLabel();
       const value: unknown = "value";
 
       assert(Label.is(value), "Expected value to be a Label.");
 
-      expectTypeOf(value).toEqualTypeOf<typeof Label.Output>();
-      expect(validations).toEqual([
+      assertType<typeof value, typeof Label.Output>();
+      assertEqual(validations, [
         "TrimmedString",
         "NonEmptyString",
         "MaxLengthString",
       ]);
 
       const invalid = setupLabel();
-      expect(invalid.Label.is(" value ")).toBe(false);
-      expect(invalid.validations).toEqual(["TrimmedString"]);
+      assertFalse(invalid.Label.is(" value "));
+      assertEqual(invalid.validations, ["TrimmedString"]);
     });
   });
 
   describe("from", () => {
-    test("asserts its own Output", () => {
+    it("asserts its own Output", () => {
       const { Label, validations } = setupLabel();
       const value = Label.orThrow("value");
       validations.length = 0;
 
-      expect(Label.from(value)).toEqual(ok("value"));
-      expectTypeOf(Label.from)
-        .parameter(0)
-        .toEqualTypeOf<typeof Label.Output>();
-      expect(validations).toEqual([
+      assertEqual(Label.from(value), ok("value"));
+      assertType<Parameters<typeof Label.from>[0], typeof Label.Output>();
+      assertEqual(validations, [
         "TrimmedString",
         "NonEmptyString",
         "MaxLengthString",
       ]);
     });
 
-    test("cannot return a validation error", () => {
+    it("cannot return a validation error", () => {
       const { Label } = setupLabel();
 
-      expectTypeOf(Label.from).returns.toEqualTypeOf<
-        Result<typeof Label.Output>
-      >();
+      assertType<ReturnType<typeof Label.from>, Result<typeof Label.Output>>();
     });
   });
 
   describe("from.parent", () => {
-    test("accepts the parent Output and preserves the final output target", () => {
+    it("accepts the parent Output and preserves the final output target", () => {
       const { Label, MaxLengthString } = setupLabel();
       const value = MaxLengthString.orThrow("value");
       const result = Label.from.parent(value);
 
-      expect(result).toEqual(ok("value"));
-      expectTypeOf(Label.from.parent)
-        .parameter(0)
-        .toEqualTypeOf<typeof MaxLengthString.Output>();
-      expectTypeOf(result).toEqualTypeOf<Result<typeof Label.Output>>();
+      assertEqual(result, ok("value"));
+      assertType<
+        Parameters<typeof Label.from.parent>[0],
+        typeof MaxLengthString.Output
+      >();
+      assertType<typeof result, Result<typeof Label.Output>>();
     });
 
-    test("infers only errors after the selected input boundary", () => {
+    it("infers only errors after the selected input boundary", () => {
       const {
         Label,
         MaxLengthString: _MaxLengthString,
@@ -6353,21 +6831,23 @@ describe("brand", () => {
         TrimmedString: _TrimmedString,
       } = setupLabel();
 
-      expectTypeOf(Label.from.parent).returns.toEqualTypeOf<
+      assertType<
+        ReturnType<typeof Label.from.parent>,
         Result<typeof Label.Output>
       >();
-      expectTypeOf(Label.from.parent.parent).returns.toEqualTypeOf<
+      assertType<
+        ReturnType<typeof Label.from.parent.parent>,
         Result<typeof Label.Output, typeof _MaxLengthString.Error>
       >();
-      expectTypeOf(Label.from.parent.parent.parent).returns.toEqualTypeOf<
+      assertType<
+        ReturnType<typeof Label.from.parent.parent.parent>,
         Result<
           typeof Label.Output,
           typeof _NonEmptyString.Error | typeof _MaxLengthString.Error
         >
       >();
-      expectTypeOf(
-        Label.from.parent.parent.parent.parent,
-      ).returns.toEqualTypeOf<
+      assertType<
+        ReturnType<typeof Label.from.parent.parent.parent.parent>,
         Result<
           typeof Label.Output,
           | typeof _TrimmedString.Error
@@ -6375,21 +6855,25 @@ describe("brand", () => {
           | typeof _MaxLengthString.Error
         >
       >();
-      expectTypeOf(Label.from.parent)
-        .parameter(0)
-        .toEqualTypeOf<typeof _MaxLengthString.Output>();
-      expectTypeOf(Label.from.parent.parent)
-        .parameter(0)
-        .toEqualTypeOf<typeof _NonEmptyString.Output>();
-      expectTypeOf(Label.from.parent.parent.parent)
-        .parameter(0)
-        .toEqualTypeOf<typeof _TrimmedString.Output>();
-      expectTypeOf(Label.from.parent.parent.parent.parent)
-        .parameter(0)
-        .toEqualTypeOf<typeof String.Output>();
+      assertType<
+        Parameters<typeof Label.from.parent>[0],
+        typeof _MaxLengthString.Output
+      >();
+      assertType<
+        Parameters<typeof Label.from.parent.parent>[0],
+        typeof _NonEmptyString.Output
+      >();
+      assertType<
+        Parameters<typeof Label.from.parent.parent.parent>[0],
+        typeof _TrimmedString.Output
+      >();
+      assertType<
+        Parameters<typeof Label.from.parent.parent.parent.parent>[0],
+        typeof String.Output
+      >();
     });
 
-    test("asserts the selected boundary and validates the remaining Types", () => {
+    it("asserts the selected boundary and validates the remaining Types", () => {
       const {
         Label,
         MaxLengthString,
@@ -6400,8 +6884,8 @@ describe("brand", () => {
 
       const maxLength = MaxLengthString.orThrow("value");
       validations.length = 0;
-      expect(Label.from.parent(maxLength)).toEqual(ok("value"));
-      expect(validations).toEqual([
+      assertEqual(Label.from.parent(maxLength), ok("value"));
+      assertEqual(validations, [
         "TrimmedString",
         "NonEmptyString",
         "MaxLengthString",
@@ -6409,8 +6893,8 @@ describe("brand", () => {
 
       const nonEmpty = NonEmptyString.orThrow("value");
       validations.length = 0;
-      expect(Label.from.parent.parent(nonEmpty)).toEqual(ok("value"));
-      expect(validations).toEqual([
+      assertEqual(Label.from.parent.parent(nonEmpty), ok("value"));
+      assertEqual(validations, [
         "TrimmedString",
         "NonEmptyString",
         "MaxLengthString",
@@ -6418,94 +6902,96 @@ describe("brand", () => {
 
       const trimmed = TrimmedString.orThrow("value");
       validations.length = 0;
-      expect(Label.from.parent.parent.parent(trimmed)).toEqual(ok("value"));
-      expect(validations).toEqual([
+      assertEqual(Label.from.parent.parent.parent(trimmed), ok("value"));
+      assertEqual(validations, [
         "TrimmedString",
         "NonEmptyString",
         "MaxLengthString",
       ]);
 
       validations.length = 0;
-      expect(Label.from.parent.parent.parent.parent("value")).toEqual(
-        ok("value"),
-      );
-      expect(validations).toEqual([
+      assertEqual(Label.from.parent.parent.parent.parent("value"), ok("value"));
+      assertEqual(validations, [
         "TrimmedString",
         "NonEmptyString",
         "MaxLengthString",
       ]);
     });
 
-    test("ends when the input boundary reaches the root", () => {
+    it("ends when the input boundary reaches the root", () => {
       const { Label } = setupLabel();
       const deepest = Label.from.parent.parent.parent.parent;
 
-      expect("parent" in deepest).toBe(false);
-      expectTypeOf<"parent">().not.toExtend<keyof typeof deepest>();
+      assertFalse("parent" in deepest);
+      assertType<"parent" extends keyof typeof deepest ? true : false, false>();
     });
   });
 
   describe("orThrow", () => {
-    test("converts a typed Input or throws the first failing Type error", () => {
+    it("converts a typed Input or throws the first failing Type error", () => {
       const { Label, validations } = setupLabel();
       const value = Label.orThrow("value");
 
-      expect(value).toBe("value");
-      expectTypeOf(value).toEqualTypeOf<typeof Label.Output>();
-      expectTypeOf(Label.orThrow)
-        .parameter(0)
-        .toEqualTypeOf<typeof Label.Input>();
+      assertEqual(value, "value");
+      assertType<typeof value, typeof Label.Output>();
+      assertType<Parameters<typeof Label.orThrow>[0], typeof Label.Input>();
       validations.length = 0;
-      expectAssertionError(() => Label.orThrow(" value "), "getOrThrow", {
+      assertAssertionError(() => Label.orThrow(" value "), "getOrThrow", {
         type: "TrimmedString",
         value: " value ",
       });
-      expect(validations).toEqual(["TrimmedString"]);
+      assertEqual(validations, ["TrimmedString"]);
     });
   });
 
   describe("orNull", () => {
-    test("converts a typed Input or returns null for the first failing Type", () => {
+    it("converts a typed Input or returns null for the first failing Type", () => {
       const { Label, validations } = setupLabel();
       const value = Label.orNull("value");
 
-      expect(value).toBe("value");
-      expectTypeOf(value).toEqualTypeOf<typeof Label.Output | null>();
-      expectTypeOf(Label.orNull)
-        .parameter(0)
-        .toEqualTypeOf<typeof Label.Input>();
+      assertEqual(value, "value");
+      assertType<typeof value, typeof Label.Output | null>();
+      assertType<Parameters<typeof Label.orNull>[0], typeof Label.Input>();
       validations.length = 0;
-      expect(Label.orNull(" value ")).toBeNull();
-      expect(validations).toEqual(["TrimmedString"]);
+      assertSame(Label.orNull(" value "), null);
+      assertEqual(validations, ["TrimmedString"]);
     });
   });
 
-  test("does not expose parent input boundaries through convenience operations", () => {
+  it("does not expose parent input boundaries through convenience operations", () => {
     const { Label } = setupLabel();
 
-    expect("parent" in Label.orThrow).toBe(false);
-    expectTypeOf<"parent">().not.toExtend<keyof typeof Label.orThrow>();
-    expect("parent" in Label.orNull).toBe(false);
-    expectTypeOf<"parent">().not.toExtend<keyof typeof Label.orNull>();
+    assertFalse("parent" in Label.orThrow);
+    assertType<
+      "parent" extends keyof typeof Label.orThrow ? true : false,
+      false
+    >();
+    assertFalse("parent" in Label.orNull);
+    assertType<
+      "parent" extends keyof typeof Label.orNull ? true : false,
+      false
+    >();
   });
 
   describe("Type", () => {
     describe("DateIso", () => {
-      test("is branded from String", () => {
-        expect(DateIso.name).toBe("DateIso");
-        expect(DateIso.parent).toBe(String);
-        expectTypeOf(DateIso).toEqualTypeOf<
+      it("is branded from String", () => {
+        assertEqual(DateIso.name, "DateIso");
+        assertSame(DateIso.parent, String);
+        assertType<
+          typeof DateIso,
           BrandType<typeof String, "DateIso", DateIsoError>
         >();
-        expectTypeOf<typeof DateIso.Input>().toEqualTypeOf<string>();
-        expectTypeOf<typeof DateIso.Output>().toEqualTypeOf<
-          string & Brand<"DateIso">
+        assertType<typeof DateIso.Input, string>();
+        assertType<typeof DateIso.Output, string & Brand<"DateIso">>();
+        assertType<typeof DateIso.Error, DateIsoError>();
+        assertType<
+          DateIsoError extends TypeValueError<"DateIso"> ? true : false,
+          true
         >();
-        expectTypeOf<typeof DateIso.Error>().toEqualTypeOf<DateIsoError>();
-        expectTypeOf<DateIsoError>().toExtend<TypeValueError<"DateIso">>();
       });
 
-      test("accepts canonical ISO 8601 date-time strings", () => {
+      it("accepts canonical ISO 8601 date-time strings", () => {
         const values = [
           "0000-01-01T00:00:00.000Z",
           "2023-01-01T12:00:00.000Z",
@@ -6513,11 +6999,11 @@ describe("brand", () => {
         ];
 
         for (const value of values) {
-          expect(DateIso.from.parent(value)).toEqual(ok(value));
+          assertEqual(DateIso.from.parent(value), ok(value));
         }
       });
 
-      test("returns a DateIso error for invalid or non-canonical date-time strings", () => {
+      it("returns a DateIso error for invalid or non-canonical date-time strings", () => {
         const values = [
           "",
           "2023-01-01",
@@ -6529,41 +7015,44 @@ describe("brand", () => {
         ];
 
         for (const value of values) {
-          expect(DateIso.from.parent(value)).toEqual(
+          assertEqual(
+            DateIso.from.parent(value),
             err({ type: "DateIso", value }),
           );
         }
       });
 
-      test("returns the parent TypeOf error for a non-string unknown value", () => {
+      it("returns the parent TypeOf error for a non-string unknown value", () => {
         const value: unknown = 42;
 
-        expect(DateIso.fromUnknown(value)).toEqual(
+        assertEqual(
+          DateIso.fromUnknown(value),
           err({ type: "TypeOf", expected: "String", value }),
         );
       });
 
-      test("formats its own and inherited errors", () => {
-        expect(
+      it("formats its own and inherited errors", () => {
+        assertEqual(
           DateIso.formatError({ type: "DateIso", value: "2023-01-01" }),
-        ).toBe(
           'The value "2023-01-01" is not a canonical ISO date-time string.',
         );
-        expect(
+        assertEqual(
           DateIso.formatError({
             type: "TypeOf",
             expected: "String",
             value: 42,
           }),
-        ).toBe("A value 42 is not a string.");
-        expectTypeOf(DateIso.formatError)
-          .parameter(0)
-          .toEqualTypeOf<TypeOfError<"String"> | DateIsoError>();
+          "A value 42 is not a string.",
+        );
+        assertType<
+          Parameters<typeof DateIso.formatError>[0],
+          TypeOfError<"String"> | DateIsoError
+        >();
       });
     });
 
     describe("DateIsoFromDate", () => {
-      test("safely transforms a Date to DateIso and back", () => {
+      it("safely transforms a Date to DateIso and back", () => {
         const value = new globalThis.Date("2023-01-01T12:00:00.000Z");
         const result = DateIsoFromDate.from.parent(value);
 
@@ -6572,29 +7061,33 @@ describe("brand", () => {
           | DateIsoFromDateError
           | TransformOutputError<"DateIsoFromDate", DateIsoError>
         >;
-        expectTypeOf(result).toEqualTypeOf<ExpectedResult>();
-        expectOk(result, "2023-01-01T12:00:00.000Z");
-        expect(DateIsoFromDate.to(result.value)).toEqual(value);
-        expectTypeOf(
-          DateIsoFromDate.to(result.value),
-        ).toEqualTypeOf<globalThis.Date>();
+        assertType<typeof result, ExpectedResult>();
+        assertOk(result, "2023-01-01T12:00:00.000Z");
+        assertEqual(DateIsoFromDate.to(result.value), value);
+        {
+          const actual = DateIsoFromDate.to(result.value);
+          assertType<typeof actual, globalThis.Date>();
+        }
       });
 
-      test("maps a thrown toISOString error", () => {
+      it("maps a thrown toISOString error", () => {
         const value = new globalThis.Date(globalThis.Number.NaN);
 
-        expect(DateIsoFromDate.from.parent(value)).toEqual(
+        assertEqual(
+          DateIsoFromDate.from.parent(value),
           err({ type: "DateIsoFromDate", value }),
         );
-        expect(
+        assertEqual(
           DateIsoFromDate.formatError({ type: "DateIsoFromDate", value }),
-        ).toBe("The Date cannot be represented as DateIso.");
+          "The Date cannot be represented as DateIso.",
+        );
       });
 
-      test("rejects a Date whose ISO text is not canonical DateIso", () => {
+      it("rejects a Date whose ISO text is not canonical DateIso", () => {
         const value = new globalThis.Date("+010000-01-01T00:00:00.000Z");
 
-        expect(DateIsoFromDate.from.parent(value)).toEqual(
+        assertEqual(
+          DateIsoFromDate.from.parent(value),
           err({
             type: "DateIsoFromDate",
             outputError: {
@@ -6607,109 +7100,114 @@ describe("brand", () => {
     });
 
     describe("Int64", () => {
-      test("is branded from BigInt", () => {
-        expect(Int64.name).toBe("Int64");
-        expect(Int64.parent).toBe(BigInt);
-        expectTypeOf(Int64).toEqualTypeOf<
+      it("is branded from BigInt", () => {
+        assertEqual(Int64.name, "Int64");
+        assertSame(Int64.parent, BigInt);
+        assertType<
+          typeof Int64,
           BrandType<typeof BigInt, "Int64", Int64Error>
         >();
-        expectTypeOf<typeof Int64.Input>().toEqualTypeOf<bigint>();
-        expectTypeOf<typeof Int64.Output>().toEqualTypeOf<
-          bigint & Brand<"Int64">
+        assertType<typeof Int64.Input, bigint>();
+        assertType<typeof Int64.Output, bigint & Brand<"Int64">>();
+        assertType<typeof Int64.Error, Int64Error>();
+        assertType<
+          Int64Error extends TypeValueError<"Int64"> ? true : false,
+          true
         >();
-        expectTypeOf<typeof Int64.Error>().toEqualTypeOf<Int64Error>();
-        expectTypeOf<Int64Error>().toExtend<TypeValueError<"Int64">>();
       });
 
-      test("accepts signed 64-bit boundary values", () => {
+      it("accepts signed 64-bit boundary values", () => {
         const values = [-9223372036854775808n, 0n, 9223372036854775807n];
 
         for (const value of values) {
-          expect(Int64.from.parent(value)).toEqual(ok(value));
+          assertEqual(Int64.from.parent(value), ok(value));
         }
       });
 
-      test("returns an Int64 error for bigint values outside the signed 64-bit range", () => {
+      it("returns an Int64 error for bigint values outside the signed 64-bit range", () => {
         const values = [-9223372036854775809n, 9223372036854775808n];
 
         for (const value of values) {
-          expect(Int64.from.parent(value)).toEqual(
-            err({ type: "Int64", value }),
-          );
+          assertEqual(Int64.from.parent(value), err({ type: "Int64", value }));
         }
       });
 
-      test("formats its own and inherited errors", () => {
-        expect(
+      it("formats its own and inherited errors", () => {
+        assertEqual(
           Int64.formatError({ type: "Int64", value: 9223372036854775808n }),
-        ).toBe(
           "The value 9223372036854775808 is not a valid signed 64-bit integer (Int64).",
         );
-        expect(
+        assertEqual(
           Int64.formatError({
             type: "TypeOf",
             expected: "BigInt",
             value: 42,
           }),
-        ).toBe("A value 42 is not a bigint.");
-        expectTypeOf(Int64.formatError)
-          .parameter(0)
-          .toEqualTypeOf<TypeOfError<"BigInt"> | Int64Error>();
+          "A value 42 is not a bigint.",
+        );
+        assertType<
+          Parameters<typeof Int64.formatError>[0],
+          TypeOfError<"BigInt"> | Int64Error
+        >();
       });
     });
 
     describe("UInt64", () => {
-      test("is branded from BigInt", () => {
-        expect(UInt64.name).toBe("UInt64");
-        expect(UInt64.parent).toBe(BigInt);
-        expectTypeOf(UInt64).toEqualTypeOf<
+      it("is branded from BigInt", () => {
+        assertEqual(UInt64.name, "UInt64");
+        assertSame(UInt64.parent, BigInt);
+        assertType<
+          typeof UInt64,
           BrandType<typeof BigInt, "UInt64", UInt64Error>
         >();
-        expectTypeOf<typeof UInt64.Input>().toEqualTypeOf<bigint>();
-        expectTypeOf<typeof UInt64.Output>().toEqualTypeOf<
-          bigint & Brand<"UInt64">
+        assertType<typeof UInt64.Input, bigint>();
+        assertType<typeof UInt64.Output, bigint & Brand<"UInt64">>();
+        assertType<typeof UInt64.Error, UInt64Error>();
+        assertType<
+          UInt64Error extends TypeValueError<"UInt64"> ? true : false,
+          true
         >();
-        expectTypeOf<typeof UInt64.Error>().toEqualTypeOf<UInt64Error>();
-        expectTypeOf<UInt64Error>().toExtend<TypeValueError<"UInt64">>();
       });
 
-      test("accepts unsigned 64-bit boundary values", () => {
+      it("accepts unsigned 64-bit boundary values", () => {
         const values = [0n, 18_446_744_073_709_551_615n];
 
         for (const value of values) {
-          expect(UInt64.from.parent(value)).toEqual(ok(value));
+          assertEqual(UInt64.from.parent(value), ok(value));
         }
       });
 
-      test("returns a UInt64 error for bigint values outside the unsigned 64-bit range", () => {
+      it("returns a UInt64 error for bigint values outside the unsigned 64-bit range", () => {
         const values = [-1n, 18_446_744_073_709_551_616n];
 
         for (const value of values) {
-          expect(UInt64.from.parent(value)).toEqual(
+          assertEqual(
+            UInt64.from.parent(value),
             err({ type: "UInt64", value }),
           );
         }
       });
 
-      test("formats its own and inherited errors", () => {
-        expect(
+      it("formats its own and inherited errors", () => {
+        assertEqual(
           UInt64.formatError({
             type: "UInt64",
             value: 18_446_744_073_709_551_616n,
           }),
-        ).toBe(
           "The value 18446744073709551616 is not a valid unsigned 64-bit integer (UInt64).",
         );
-        expect(
+        assertEqual(
           UInt64.formatError({
             type: "TypeOf",
             expected: "BigInt",
             value: 42,
           }),
-        ).toBe("A value 42 is not a bigint.");
-        expectTypeOf(UInt64.formatError)
-          .parameter(0)
-          .toEqualTypeOf<TypeOfError<"BigInt"> | UInt64Error>();
+          "A value 42 is not a bigint.",
+        );
+        assertType<
+          Parameters<typeof UInt64.formatError>[0],
+          TypeOfError<"BigInt"> | UInt64Error
+        >();
       });
     });
   });
@@ -6741,52 +7239,58 @@ describe("BrandFactory", () => {
     return { nonEmpty, validations };
   };
 
-  test("infers a reusable factory and preserves the exact parent Type", () => {
+  it("infers a reusable factory and preserves the exact parent Type", () => {
     const { nonEmpty } = createNonEmpty();
     const NonEmptyTrimmedString = nonEmpty(TrimmedString);
 
-    expectTypeOf(nonEmpty).toEqualTypeOf<
+    assertType<
+      typeof nonEmpty,
       BrandFactory<
         "NonEmpty",
         { readonly length: number },
         typeof NonEmptyTrimmedString.Error
       >
     >();
-    expectTypeOf(NonEmptyTrimmedString).toEqualTypeOf<
+    assertType<
+      typeof NonEmptyTrimmedString,
       BrandType<
         typeof TrimmedString,
         "NonEmpty",
         typeof NonEmptyTrimmedString.Error
       >
     >();
-    expectTypeOf<typeof NonEmptyTrimmedString.Output>().toEqualTypeOf<
+    assertType<
+      typeof NonEmptyTrimmedString.Output,
       string & Brand<"Trimmed"> & Brand<"NonEmpty">
     >();
-    expect(NonEmptyTrimmedString.parent).toBe(TrimmedString);
+    assertSame(NonEmptyTrimmedString.parent, TrimmedString);
   });
 
-  test("validates values and routes own and inherited errors", () => {
+  it("validates values and routes own and inherited errors", () => {
     const { nonEmpty, validations } = createNonEmpty();
     const NonEmptyString = nonEmpty(String);
 
-    expect(NonEmptyString.from.parent("value")).toEqual(ok("value"));
-    expect(NonEmptyString.from.parent("")).toEqual(
+    assertEqual(NonEmptyString.from.parent("value"), ok("value"));
+    assertEqual(
+      NonEmptyString.from.parent(""),
       err({ type: "NonEmpty", value: "" }),
     );
-    expect(validations).toEqual(["value", ""]);
-    expect(NonEmptyString.formatError({ type: "NonEmpty", value: "" })).toBe(
+    assertEqual(validations, ["value", ""]);
+    assertEqual(
+      NonEmptyString.formatError({ type: "NonEmpty", value: "" }),
       "The value must not be empty.",
     );
-    expect(
+    assertEqual(
       NonEmptyString.formatError({
         type: "TypeOf",
         expected: "String",
         value: 1,
       }),
-    ).toBe("A value 1 is not a string.");
+      "A value 1 is not a string.",
+    );
   });
 
-  test("preserves typed input boundaries", () => {
+  it("preserves typed input boundaries", () => {
     const { nonEmpty, validations } = createNonEmpty();
     const NonEmptyTrimmedString = nonEmpty(TrimmedString);
     const trimmedString = TrimmedString.orThrow("Ada");
@@ -6794,30 +7298,32 @@ describe("BrandFactory", () => {
     validations.length = 0;
     const result = NonEmptyTrimmedString.from.parent(trimmedString);
 
-    expectTypeOf(result).toEqualTypeOf<
+    assertType<
+      typeof result,
       Result<
         typeof NonEmptyTrimmedString.Output,
         typeof NonEmptyTrimmedString.Error
       >
     >();
-    expectOk(result, "Ada");
-    expect(validations).toEqual(["Ada"]);
-    expectTypeOf(NonEmptyTrimmedString.from.parent)
-      .parameter(0)
-      .toEqualTypeOf<typeof TrimmedString.Output>();
+    assertOk(result, "Ada");
+    assertEqual(validations, ["Ada"]);
+    assertType<
+      Parameters<typeof NonEmptyTrimmedString.from.parent>[0],
+      typeof TrimmedString.Output
+    >();
   });
 
-  test("returns the original parent value after successful validation", () => {
+  it("returns the original parent value after successful validation", () => {
     const { nonEmpty } = createNonEmpty();
     const NonEmptyNumbers = nonEmpty(array(Number));
     const values: ReadonlyArray<number> = [1, 2];
     const result = NonEmptyNumbers.from.parent(values);
 
-    expectOk(result, values);
-    expect(result.value).toBe(values);
+    assertOk(result, values);
+    assertSame(result.value, values);
   });
 
-  test("supports factory creators with literal parameters", () => {
+  it("supports factory creators with literal parameters", () => {
     interface MaxLengthError<
       Max extends number,
     > extends TypeError<`MaxLength${Max}`> {
@@ -6852,28 +7358,25 @@ describe("BrandFactory", () => {
     const maxLength2 = createMaxLengthFactory(2);
     const MaxLength2String = maxLength2(String);
 
-    expectTypeOf<typeof MaxLength2String.Output>().toEqualTypeOf<
-      string & Brand<"MaxLength2">
-    >();
-    expectTypeOf<typeof MaxLength2String.Error>().toEqualTypeOf<
-      MaxLengthError<2>
-    >();
-    expect(MaxLength2String.from.parent("ab")).toEqual(ok("ab"));
-    expect(MaxLength2String.from.parent("abc")).toEqual(
+    assertType<typeof MaxLength2String.Output, string & Brand<"MaxLength2">>();
+    assertType<typeof MaxLength2String.Error, MaxLengthError<2>>();
+    assertEqual(MaxLength2String.from.parent("ab"), ok("ab"));
+    assertEqual(
+      MaxLength2String.from.parent("abc"),
       err({ type: "MaxLength2", max: 2, value: "abc" }),
     );
   });
 
-  test("accepts one Union Type node as a parent", () => {
+  it("accepts one Union Type node as a parent", () => {
     const OneOrTwo = union(literal(1), literal(2));
     const PositiveOneOrTwo = positive(OneOrTwo);
 
-    expect(PositiveOneOrTwo.fromUnknown(1)).toEqual(ok(1));
-    expect(PositiveOneOrTwo.fromUnknown(2)).toEqual(ok(2));
-    expectTypeOf(PositiveOneOrTwo.parent).toEqualTypeOf<typeof OneOrTwo>();
+    assertEqual(PositiveOneOrTwo.fromUnknown(1), ok(1));
+    assertEqual(PositiveOneOrTwo.fromUnknown(2), ok(2));
+    assertType<typeof PositiveOneOrTwo.parent, typeof OneOrTwo>();
   });
 
-  test("rejects a union of parent Types with compatible Outputs", () => {
+  it("rejects a union of parent Types with compatible Outputs", () => {
     const _NumberFromString = setupNumberFromString();
     const _NumberFromBoolean = transform("NumberFromBoolean", Boolean, Number, {
       from: (value) => ok(value ? 1 : 0),
@@ -6887,11 +7390,16 @@ describe("BrandFactory", () => {
       positive(parent);
     };
 
-    expectTypeOf<Parent>().not.toExtend<ParentParameter>();
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<Parent extends ParentParameter ? true : false, false>();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("rejects incompatible and erased parents", () => {
+  it("rejects incompatible and erased parents", () => {
     const { nonEmpty } = createNonEmpty();
     const erased: FormattableTypeNode = String;
 
@@ -6902,10 +7410,15 @@ describe("BrandFactory", () => {
       nonEmpty(erased);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("rejects a parent that already exposes the factory error type", () => {
+  it("rejects a parent that already exposes the factory error type", () => {
     const { nonEmpty } = createNonEmpty();
     const NonEmptyString = nonEmpty(String);
 
@@ -6914,11 +7427,16 @@ describe("BrandFactory", () => {
       nonEmpty(NonEmptyString);
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
   describe("ValidateBrandFactoryNumber", () => {
-    test("rejects widened, union, and branded numeric parameters", () => {
+    it("rejects widened, union, and branded numeric parameters", () => {
       const value = globalThis.Number(1);
       const unionValue = 1 as 1 | 2;
       const nonNegativeInt = NonNegativeInt.orThrow(1);
@@ -6941,36 +7459,46 @@ describe("BrandFactory", () => {
         maxLength(nonNegativeInt);
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 
   describe("Type Factory", () => {
     describe("capitalized", () => {
-      test("is a reusable Brand Factory", () => {
-        expectTypeOf(capitalized).toEqualTypeOf<
+      it("is a reusable Brand Factory", () => {
+        assertType<
+          typeof capitalized,
           BrandFactory<"Capitalized", string, CapitalizedError>
         >();
       });
 
       describe("Type", () => {
         describe("CapitalizedString", () => {
-          test("accepts only capitalized strings", () => {
-            expect(CapitalizedString.from.parent("Evolu")).toEqual(ok("Evolu"));
-            expect(CapitalizedString.from.parent("evolu")).toEqual(
+          it("accepts only capitalized strings", () => {
+            assertEqual(CapitalizedString.from.parent("Evolu"), ok("Evolu"));
+            assertEqual(
+              CapitalizedString.from.parent("evolu"),
               err({ type: "Capitalized", value: "evolu" }),
             );
-            expect(CapitalizedString.from.parent("𐐀x")).toEqual(ok("𐐀x"));
-            expect(CapitalizedString.from.parent("𐐨x")).toEqual(
+            assertEqual(CapitalizedString.from.parent("𐐀x"), ok("𐐀x"));
+            assertEqual(
+              CapitalizedString.from.parent("𐐨x"),
               err({ type: "Capitalized", value: "𐐨x" }),
             );
-            expect(
+            assertEqual(
               CapitalizedString.formatError({
                 type: "Capitalized",
                 value: "evolu",
               }),
-            ).toBe('The value "evolu" must be capitalized.');
-            expectTypeOf<typeof CapitalizedString.Output>().toEqualTypeOf<
+              'The value "evolu" must be capitalized.',
+            );
+            assertType<
+              typeof CapitalizedString.Output,
               string & Brand<"Capitalized">
             >();
           });
@@ -6979,26 +7507,30 @@ describe("BrandFactory", () => {
     });
 
     describe("trimmed", () => {
-      test("is a reusable Brand Factory", () => {
-        expectTypeOf(trimmed).toEqualTypeOf<
+      it("is a reusable Brand Factory", () => {
+        assertType<
+          typeof trimmed,
           BrandFactory<"Trimmed", string, TrimmedError>
         >();
       });
 
       describe("Type", () => {
         describe("TrimmedString", () => {
-          test("accepts only strings without surrounding whitespace", () => {
-            expect(TrimmedString.from.parent("Evolu")).toEqual(ok("Evolu"));
-            expect(TrimmedString.from.parent(" Evolu ")).toEqual(
+          it("accepts only strings without surrounding whitespace", () => {
+            assertEqual(TrimmedString.from.parent("Evolu"), ok("Evolu"));
+            assertEqual(
+              TrimmedString.from.parent(" Evolu "),
               err({ type: "Trimmed", value: " Evolu " }),
             );
-            expect(
+            assertEqual(
               TrimmedString.formatError({
                 type: "Trimmed",
                 value: " Evolu ",
               }),
-            ).toBe('The value " Evolu " must be trimmed.');
-            expectTypeOf<typeof TrimmedString.Output>().toEqualTypeOf<
+              'The value " Evolu " must be trimmed.',
+            );
+            assertType<
+              typeof TrimmedString.Output,
               string & Brand<"Trimmed">
             >();
           });
@@ -7007,64 +7539,75 @@ describe("BrandFactory", () => {
     });
 
     describe("trim", () => {
-      test("returns a TrimmedString", () => {
+      it("returns a TrimmedString", () => {
         const value = trim(" Evolu ");
 
-        expect(value).toBe("Evolu");
-        expectTypeOf(value).toEqualTypeOf<TrimmedString>();
+        assertEqual(value, "Evolu");
+        assertType<typeof value, TrimmedString>();
       });
     });
 
     describe("minLength", () => {
-      test("creates a Brand Factory requiring a minimum length", () => {
+      it("creates a Brand Factory requiring a minimum length", () => {
         const min = 2;
         const MinLength2 = minLength(min)(TrimmedString);
 
-        expect(MinLength2.from.parent.parent("ab")).toEqual(ok("ab"));
-        expect(MinLength2.from.parent.parent("a")).toEqual(
+        assertEqual(MinLength2.from.parent.parent("ab"), ok("ab"));
+        assertEqual(
+          MinLength2.from.parent.parent("a"),
           err({ type: "MinLength2", value: "a", min: 2 }),
         );
-        expect(MinLength2.from.parent.parent(" a")).toEqual(
+        assertEqual(
+          MinLength2.from.parent.parent(" a"),
           err({ type: "Trimmed", value: " a" }),
         );
-        expect(
+        assertEqual(
           MinLength2.formatError({ type: "MinLength2", value: "a", min: 2 }),
-        ).toBe('The value "a" does not meet the minimum length of 2.');
-        expectTypeOf<typeof MinLength2.Output>().toEqualTypeOf<
+          'The value "a" does not meet the minimum length of 2.',
+        );
+        assertType<
+          typeof MinLength2.Output,
           string & Brand<"Trimmed"> & Brand<"MinLength2">
         >();
-        expectTypeOf<typeof MinLength2.Error>().toEqualTypeOf<
-          MinLengthError<2>
-        >();
+        assertType<typeof MinLength2.Error, MinLengthError<2>>();
       });
 
-      test("returns a Brand Factory that accepts the parent separately", () => {
+      it("returns a Brand Factory that accepts the parent separately", () => {
         const compileTimeAssertions = () => {
           // @ts-expect-error Parameterized Brand Factories accept their parent separately.
           minLength(1, String);
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
 
       describe("Type", () => {
-        test("does not predefine NonEmptyString", () => {
-          type TypeExports =
-            keyof typeof import("../../../../packages/common/src/Type.ts");
+        it("does not predefine NonEmptyString", () => {
+          type TypeExports = keyof typeof import("./Type.ts");
           type RemovedStringExports = Extract<TypeExports, "NonEmptyString">;
 
-          expectTypeOf<RemovedStringExports>().toEqualTypeOf<never>();
+          assertType<RemovedStringExports, never>();
         });
 
         describe("NonEmptyTrimmedString", () => {
-          test("requires a non-empty TrimmedString", () => {
-            expect(NonEmptyTrimmedString.from.parent.parent("Evolu")).toEqual(
+          it("requires a non-empty TrimmedString", () => {
+            assertEqual(
+              NonEmptyTrimmedString.from.parent.parent("Evolu"),
               ok("Evolu"),
             );
-            expect(NonEmptyTrimmedString.from.parent.parent(" Evolu ")).toEqual(
+            assertEqual(
+              NonEmptyTrimmedString.from.parent.parent(" Evolu "),
               err({ type: "Trimmed", value: " Evolu " }),
             );
-            expect(NonEmptyTrimmedString.from.parent.parent("")).toEqual(
+            assertEqual(
+              NonEmptyTrimmedString.from.parent.parent(""),
               err({ type: "MinLength1", value: "", min: 1 }),
             );
           });
@@ -7073,41 +7616,50 @@ describe("BrandFactory", () => {
     });
 
     describe("maxLength", () => {
-      test("creates a Brand Factory requiring a maximum length", () => {
+      it("creates a Brand Factory requiring a maximum length", () => {
         const MaxLength2 = maxLength(2)(array(Number));
         const numbers = [1, 2] as const;
         const result = MaxLength2.from.parent(numbers);
 
-        expectOk(result, numbers);
-        expect(result.value).toBe(numbers);
-        expect(MaxLength2.from.parent([1, 2, 3])).toEqual(
+        assertOk(result, numbers);
+        assertSame(result.value, numbers);
+        assertEqual(
+          MaxLength2.from.parent([1, 2, 3]),
           err({ type: "MaxLength2", value: [1, 2, 3], max: 2 }),
         );
-        expect(
+        assertEqual(
           MaxLength2.formatError({
             type: "MaxLength2",
             value: [1, 2, 3],
             max: 2,
           }),
-        ).toBe("The value [1,2,3] exceeds the maximum length of 2.");
-        expectTypeOf<typeof MaxLength2.Output>().toEqualTypeOf<
+          "The value [1,2,3] exceeds the maximum length of 2.",
+        );
+        assertType<
+          typeof MaxLength2.Output,
           ReadonlyArray<number> & Brand<"MaxLength2">
         >();
       });
 
-      test("requires a parent value with a length", () => {
+      it("requires a parent value with a length", () => {
         const compileTimeAssertions = () => {
           // @ts-expect-error Length constraints require a value with a length.
           maxLength(1)(Number);
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
 
       describe("Type", () => {
-        test("exports only the recommended bounded String Types", () => {
-          type TypeExports =
-            keyof typeof import("../../../../packages/common/src/Type.ts");
+        it("exports only the recommended bounded String Types", () => {
+          type TypeExports = keyof typeof import("./Type.ts");
           type RemovedBoundedStringExports = Extract<
             TypeExports,
             | "String100"
@@ -7118,30 +7670,33 @@ describe("BrandFactory", () => {
             | "TrimmedString1000"
           >;
 
-          expectTypeOf<RemovedBoundedStringExports>().toEqualTypeOf<never>();
+          assertType<RemovedBoundedStringExports, never>();
         });
 
         describe("NonEmptyTrimmedString100", () => {
-          test("validates maximum length after NonEmptyTrimmedString", () => {
+          it("validates maximum length after NonEmptyTrimmedString", () => {
             const value = NonEmptyTrimmedString.orThrow("a".repeat(101));
 
-            expect(NonEmptyTrimmedString100.from.parent(value)).toEqual(
+            assertEqual(
+              NonEmptyTrimmedString100.from.parent(value),
               err({ type: "MaxLength100", value, max: 100 }),
             );
-            expect(NonEmptyTrimmedString100.name).toBe("MaxLength100");
-            expect(NonEmptyTrimmedString100.parent).toBe(NonEmptyTrimmedString);
-            expectTypeOf(NonEmptyTrimmedString100.parent).toEqualTypeOf<
+            assertEqual(NonEmptyTrimmedString100.name, "MaxLength100");
+            assertSame(NonEmptyTrimmedString100.parent, NonEmptyTrimmedString);
+            assertType<
+              typeof NonEmptyTrimmedString100.parent,
               typeof NonEmptyTrimmedString
             >();
-            expectTypeOf<typeof NonEmptyTrimmedString100.Error>().toEqualTypeOf<
+            assertType<
+              typeof NonEmptyTrimmedString100.Error,
               MaxLengthError<100>
             >();
-            expectTypeOf(NonEmptyTrimmedString100.from.parent)
-              .parameter(0)
-              .toEqualTypeOf<typeof NonEmptyTrimmedString.Output>();
-            expectTypeOf<
-              typeof NonEmptyTrimmedString100.Output
-            >().toEqualTypeOf<
+            assertType<
+              Parameters<typeof NonEmptyTrimmedString100.from.parent>[0],
+              typeof NonEmptyTrimmedString.Output
+            >();
+            assertType<
+              typeof NonEmptyTrimmedString100.Output,
               string &
                 Brand<"Trimmed"> &
                 Brand<"MinLength1"> &
@@ -7151,28 +7706,29 @@ describe("BrandFactory", () => {
         });
 
         describe("NonEmptyTrimmedString1000", () => {
-          test("validates maximum length after NonEmptyTrimmedString", () => {
+          it("validates maximum length after NonEmptyTrimmedString", () => {
             const value = NonEmptyTrimmedString.orThrow("a".repeat(1001));
 
-            expect(NonEmptyTrimmedString1000.from.parent(value)).toEqual(
+            assertEqual(
+              NonEmptyTrimmedString1000.from.parent(value),
               err({ type: "MaxLength1000", value, max: 1000 }),
             );
-            expect(NonEmptyTrimmedString1000.name).toBe("MaxLength1000");
-            expect(NonEmptyTrimmedString1000.parent).toBe(
-              NonEmptyTrimmedString,
-            );
-            expectTypeOf(NonEmptyTrimmedString1000.parent).toEqualTypeOf<
+            assertEqual(NonEmptyTrimmedString1000.name, "MaxLength1000");
+            assertSame(NonEmptyTrimmedString1000.parent, NonEmptyTrimmedString);
+            assertType<
+              typeof NonEmptyTrimmedString1000.parent,
               typeof NonEmptyTrimmedString
             >();
-            expectTypeOf<
-              typeof NonEmptyTrimmedString1000.Error
-            >().toEqualTypeOf<MaxLengthError<1000>>();
-            expectTypeOf(NonEmptyTrimmedString1000.from.parent)
-              .parameter(0)
-              .toEqualTypeOf<typeof NonEmptyTrimmedString.Output>();
-            expectTypeOf<
-              typeof NonEmptyTrimmedString1000.Output
-            >().toEqualTypeOf<
+            assertType<
+              typeof NonEmptyTrimmedString1000.Error,
+              MaxLengthError<1000>
+            >();
+            assertType<
+              Parameters<typeof NonEmptyTrimmedString1000.from.parent>[0],
+              typeof NonEmptyTrimmedString.Output
+            >();
+            assertType<
+              typeof NonEmptyTrimmedString1000.Output,
               string &
                 Brand<"Trimmed"> &
                 Brand<"MinLength1"> &
@@ -7184,34 +7740,41 @@ describe("BrandFactory", () => {
     });
 
     describe("length", () => {
-      test("creates a Brand Factory requiring an exact length", () => {
+      it("creates a Brand Factory requiring an exact length", () => {
         const Length2 = length(2)(String);
 
-        expect(Length2.from.parent("ab")).toEqual(ok("ab"));
-        expect(Length2.from.parent("abc")).toEqual(
+        assertEqual(Length2.from.parent("ab"), ok("ab"));
+        assertEqual(
+          Length2.from.parent("abc"),
           err({ type: "Length2", value: "abc", exact: 2 }),
         );
-        expect(
+        assertEqual(
           Length2.formatError({ type: "Length2", value: "abc", exact: 2 }),
-        ).toBe('The value "abc" does not have the required length of 2.');
-        expectTypeOf<typeof Length2.Output>().toEqualTypeOf<
-          string & Brand<"Length2">
-        >();
+          'The value "abc" does not have the required length of 2.',
+        );
+        assertType<typeof Length2.Output, string & Brand<"Length2">>();
       });
 
-      test("requires one concrete parent Type", () => {
+      it("requires one concrete parent Type", () => {
         const parent = String as typeof String | typeof Number;
         const compileTimeAssertions = () => {
           // @ts-expect-error A constraint requires one concrete parent Type.
           length(1)(parent);
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
     });
 
     describe("regex", () => {
-      test("requires one concrete name", () => {
+      it("requires one concrete name", () => {
         const unionName = "Pattern" as "Pattern" | "Other";
         const broadName = "Pattern" as TypeName;
         const patternedName = "Pattern" as `Pattern${string}`;
@@ -7224,29 +7787,37 @@ describe("BrandFactory", () => {
           regex(patternedName, /./u);
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
 
-      test("keeps stateful matching private and returns immutable pattern data", () => {
+      it("keeps stateful matching private and returns immutable pattern data", () => {
         const RepeatedA = regex("RepeatedA", /a+/gu)(String);
         const failure = RepeatedA.from.parent("bbb");
 
-        expectErr(failure, {
+        assertErr(failure, {
           type: "RepeatedA",
           value: "bbb",
           source: "a+",
           flags: "gu",
         });
 
-        expect(RepeatedA.from.parent("aaa")).toEqual(ok("aaa"));
-        expect(RepeatedA.from.parent("aaa")).toEqual(ok("aaa"));
-        expect(failure.error).toEqual({
+        assertEqual(RepeatedA.from.parent("aaa"), ok("aaa"));
+        assertEqual(RepeatedA.from.parent("aaa"), ok("aaa"));
+        assertEqual(failure.error, {
           type: "RepeatedA",
           value: "bbb",
           source: "a+",
           flags: "gu",
         });
-        expect(RepeatedA.from.parent("bbb")).toEqual(
+        assertEqual(
+          RepeatedA.from.parent("bbb"),
           err({
             type: "RepeatedA",
             value: "bbb",
@@ -7254,45 +7825,60 @@ describe("BrandFactory", () => {
             flags: "gu",
           }),
         );
-        expect(
+        assertEqual(
           RepeatedA.formatError({
             type: "RepeatedA",
             value: "bbb",
             source: "a+",
             flags: "gu",
           }),
-        ).toBe('The value "bbb" does not match /a+/gu.');
-        expectTypeOf(failure.error.source).toEqualTypeOf<string>();
-        expectTypeOf(failure.error.flags).toEqualTypeOf<string>();
+          'The value "bbb" does not match /a+/gu.',
+        );
+        assertType<typeof failure.error.source, string>();
+        assertType<typeof failure.error.flags, string>();
 
         const compileTimeAssertions = () => {
-          // oxlint-disable typescript/no-unsafe-member-access -- The unavailable matcher access is intentionally rejected below.
           // @ts-expect-error Regex errors do not expose the live matcher.
-          failure.error.pattern.test = () => true;
-          // oxlint-enable typescript/no-unsafe-member-access
+          failure.error.pattern.test = () => true; // oxlint-disable-line typescript/no-unsafe-member-access -- The unavailable matcher access is intentionally rejected above.
           // @ts-expect-error Pattern data is readonly.
           failure.error.source = ".*";
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
 
-      test("requires a string parent Output", () => {
+      it("requires a string parent Output", () => {
         const compileTimeAssertions = () => {
           // @ts-expect-error Regex constraints require string Outputs.
           regex("NumberPattern", /1/u)(Number);
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
 
       describe("Type", () => {
         describe("UrlSafeString", () => {
-          test("accepts only non-empty URL-safe strings", () => {
-            expect(UrlSafeString.from.parent("abc-123_DEF")).toEqual(
+          it("accepts only non-empty URL-safe strings", () => {
+            assertEqual(
+              UrlSafeString.from.parent("abc-123_DEF"),
               ok("abc-123_DEF"),
             );
-            expect(UrlSafeString.from.parent("not safe")).toEqual(
+            assertEqual(
+              UrlSafeString.from.parent("not safe"),
               err({
                 type: "UrlSafeString",
                 value: "not safe",
@@ -7300,7 +7886,8 @@ describe("BrandFactory", () => {
                 flags: "u",
               }),
             );
-            expectTypeOf<typeof UrlSafeString.Output>().toEqualTypeOf<
+            assertType<
+              typeof UrlSafeString.Output,
               string & Brand<"UrlSafeString">
             >();
           });
@@ -7310,7 +7897,7 @@ describe("BrandFactory", () => {
 
     describe("Domain Types", () => {
       describe("Base64Url", () => {
-        test("validates canonical unpadded text and converts bytes losslessly", () => {
+        it("validates canonical unpadded text and converts bytes losslessly", () => {
           const values = [
             new globalThis.Uint8Array(),
             new globalThis.Uint8Array([0]),
@@ -7321,142 +7908,99 @@ describe("BrandFactory", () => {
           for (const value of values) {
             const encoded = uint8ArrayToBase64Url(value);
 
-            expect(Base64Url.from.parent(encoded)).toEqual(ok(encoded));
-            expect(base64UrlToUint8Array(encoded)).toEqual(value);
+            assertEqual(Base64Url.from.parent(encoded), ok(encoded));
+            assertEqualBytes(base64UrlToUint8Array(encoded), value);
           }
-          expect(uint8ArrayToBase64Url(values[3])).toBe("SGVsbG8");
-          expectTypeOf(
-            uint8ArrayToBase64Url(values[0]),
-          ).toEqualTypeOf<Base64Url>();
-          expectTypeOf(
-            base64UrlToUint8Array(Base64Url.orThrow("")),
-          ).toEqualTypeOf<globalThis.Uint8Array>();
-        });
-
-        test("falls back to browser Base64 primitives", () => {
-          if (typeof document === "undefined") return;
-
-          const toBase64Descriptor = globalThis.Object.getOwnPropertyDescriptor(
-            globalThis.Uint8Array.prototype,
-            "toBase64",
-          );
-          const fromBase64Descriptor =
-            globalThis.Object.getOwnPropertyDescriptor(
-              globalThis.Uint8Array,
-              "fromBase64",
-            );
-
-          try {
-            expect(
-              Reflect.deleteProperty(
-                globalThis.Uint8Array.prototype,
-                "toBase64",
-              ),
-            ).toBe(true);
-            expect(
-              Reflect.deleteProperty(globalThis.Uint8Array, "fromBase64"),
-            ).toBe(true);
-
-            const encoded = uint8ArrayToBase64Url(
-              new globalThis.Uint8Array([251, 255]),
-            );
-
-            expect(encoded).toBe("-_8");
-            expect(base64UrlToUint8Array(Base64Url.orThrow(encoded))).toEqual(
-              new globalThis.Uint8Array([251, 255]),
-            );
-          } finally {
-            if (toBase64Descriptor) {
-              globalThis.Object.defineProperty(
-                globalThis.Uint8Array.prototype,
-                "toBase64",
-                toBase64Descriptor,
-              );
-            }
-            if (fromBase64Descriptor) {
-              globalThis.Object.defineProperty(
-                globalThis.Uint8Array,
-                "fromBase64",
-                fromBase64Descriptor,
-              );
-            }
+          assertEqual(uint8ArrayToBase64Url(values[3]), "SGVsbG8");
+          {
+            const actual = uint8ArrayToBase64Url(values[0]);
+            assertType<typeof actual, Base64Url>();
+          }
+          {
+            const actual = base64UrlToUint8Array(Base64Url.orThrow(""));
+            assertType<typeof actual, globalThis.Uint8Array>();
           }
         });
 
-        test("rejects non-canonical text", () => {
+        it("rejects non-canonical text", () => {
           for (const value of ["A", "AB", "AAz", "*"]) {
-            expect(Base64Url.from.parent(value)).toEqual(
+            assertEqual(
+              Base64Url.from.parent(value),
               err({ type: "Base64Url", value }),
             );
           }
-          expect(Base64Url.formatError({ type: "Base64Url", value: "*" })).toBe(
+          assertEqual(
+            Base64Url.formatError({ type: "Base64Url", value: "*" }),
             'The value "*" is not a valid Base64Url string.',
           );
-          expectTypeOf<
-            typeof Base64Url.Error
-          >().toEqualTypeOf<Base64UrlError>();
+          assertType<typeof Base64Url.Error, Base64UrlError>();
         });
       });
 
       describe("Name", () => {
-        test("accepts bounded URL-safe names", () => {
-          expect(Name.fromUnknown("valid_name-1")).toEqual(ok("valid_name-1"));
-          expect(Name.fromUnknown("not valid").ok).toBe(false);
+        it("accepts bounded URL-safe names", () => {
+          assertEqual(Name.fromUnknown("valid_name-1"), ok("valid_name-1"));
+          assertFalse(Name.fromUnknown("not valid").ok);
 
           const value = "a".repeat(65);
-          expect(Name.fromUnknown(value)).toEqual(err({ type: "Name", value }));
-          expect(Name.formatError({ type: "Name", value })).toBe(
+          assertEqual(Name.fromUnknown(value), err({ type: "Name", value }));
+          assertSame(
+            Name.formatError({ type: "Name", value }),
             `The value "${value}" is not a valid Name.`,
           );
-          expect(testName).toBe("Name");
-          expectTypeOf<typeof Name.Error>().toEqualTypeOf<NameError>();
+          assertEqual(testName, "Name");
+          assertType<typeof Name.Error, NameError>();
         });
       });
 
       describe("SimplePassword", () => {
-        test("requires trimmed text containing between 8 and 64 characters", () => {
-          expect(SimplePassword.fromUnknown("validPass123")).toEqual(
+        it("requires trimmed text containing between 8 and 64 characters", () => {
+          assertEqual(
+            SimplePassword.fromUnknown("validPass123"),
             ok("validPass123"),
           );
-          expect(SimplePassword.fromUnknown("short")).toEqual(
+          assertEqual(
+            SimplePassword.fromUnknown("short"),
             err({ type: "MinLength8", value: "short", min: 8 }),
           );
           const long = "a".repeat(65);
-          expect(SimplePassword.fromUnknown(long)).toEqual(
+          assertEqual(
+            SimplePassword.fromUnknown(long),
             err({ type: "MaxLength64", value: long, max: 64 }),
           );
-          expect(SimplePassword.fromUnknown(" validPass123 ")).toEqual(
+          assertEqual(
+            SimplePassword.fromUnknown(" validPass123 "),
             err({ type: "Trimmed", value: " validPass123 " }),
           );
         });
       });
 
       describe("Mnemonic", () => {
-        test("validates English BIP39 mnemonics", () => {
+        it("validates English BIP39 mnemonics", () => {
           const value =
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
-          expect(Mnemonic.fromUnknown(value)).toEqual(ok(value));
-          expect(Mnemonic.fromUnknown("abandon abandon abandon")).toEqual(
+          assertEqual(Mnemonic.fromUnknown(value), ok(value));
+          assertEqual(
+            Mnemonic.fromUnknown("abandon abandon abandon"),
             err({
               type: "Mnemonic",
               value: "abandon abandon abandon",
             }),
           );
-          expect(
+          assertEqual(
             Mnemonic.formatError({
               type: "Mnemonic",
               value: "abandon abandon abandon",
             }),
-          ).toBe(
             'The value "abandon abandon abandon" is not a valid English BIP39 mnemonic.',
           );
-          expectTypeOf<typeof Mnemonic.Error>().toEqualTypeOf<MnemonicError>();
+          assertType<typeof Mnemonic.Error, MnemonicError>();
         });
       });
 
       describe("Id", () => {
-        test("creates random, deterministic, and UUID v7-layout Ids", () => {
+        it("creates random, deterministic, and UUID v7-layout Ids", () => {
           const deps = testCreateDeps();
           const random = createId(deps);
           const deterministic = createIdFromString("external-id");
@@ -7474,18 +8018,18 @@ describe("BrandFactory", () => {
             todoDeterministic,
             todoUuidv7,
           ]) {
-            expect(Id.is(value)).toBe(true);
-            expect(value).toHaveLength(22);
+            assertTrue(Id.is(value));
+            assertLength(value, 22);
           }
-          expect(deterministic).toBe(sameDeterministic);
-          expect(idToIdBytes(uuidv7)[6] >> 4).toBe(0x7);
-          expect(idToIdBytes(uuidv7)[8] & 0xc0).toBe(0x80);
-          expectTypeOf(random).toEqualTypeOf<Id>();
-          expectTypeOf(deterministic).toEqualTypeOf<Id>();
-          expectTypeOf(uuidv7).toEqualTypeOf<Id>();
-          expectTypeOf(todoRandom).toEqualTypeOf<Id & Brand<"Todo">>();
-          expectTypeOf(todoDeterministic).toEqualTypeOf<Id & Brand<"Todo">>();
-          expectTypeOf(todoUuidv7).toEqualTypeOf<Id & Brand<"Todo">>();
+          assertSame(deterministic, sameDeterministic);
+          assertEqual(idToIdBytes(uuidv7)[6] >> 4, 0x7);
+          assertEqual(idToIdBytes(uuidv7)[8] & 0xc0, 0x80);
+          assertType<typeof random, Id>();
+          assertType<typeof deterministic, Id>();
+          assertType<typeof uuidv7, Id>();
+          assertType<typeof todoRandom, Id & Brand<"Todo">>();
+          assertType<typeof todoDeterministic, Id & Brand<"Todo">>();
+          assertType<typeof todoUuidv7, Id & Brand<"Todo">>();
 
           const _unionBrand = "Todo" as "Todo" | "User";
           const _broadBrand = "Todo" as string;
@@ -7515,61 +8059,83 @@ describe("BrandFactory", () => {
             const _userId: Id & Brand<"User"> = todoRandom;
           };
 
-          expectTypeOf(genericBrandAssertion).toBeFunction();
-          expectTypeOf(compileTimeAssertions).toBeFunction();
+          assertType<
+            typeof genericBrandAssertion extends (
+              ...args: Array<never>
+            ) => unknown
+              ? true
+              : false,
+            true
+          >();
+          assertType<
+            typeof compileTimeAssertions extends (
+              ...args: Array<never>
+            ) => unknown
+              ? true
+              : false,
+            true
+          >();
         });
 
-        test("validates the encoded representation", () => {
+        it("validates the encoded representation", () => {
           const valid = createIdFromString("valid");
 
-          expect(Id.fromUnknown(valid)).toEqual(ok(valid));
-          expect(Id.fromUnknown("short")).toEqual(
+          assertEqual(Id.fromUnknown(valid), ok(valid));
+          assertEqual(
+            Id.fromUnknown("short"),
             err({ type: "Id", value: "short" }),
           );
           const invalid = "*".repeat(22);
-          expect(Id.fromUnknown(invalid)).toEqual(
+          assertEqual(
+            Id.fromUnknown(invalid),
             err({ type: "Id", value: invalid }),
           );
-          expect(Id.formatError({ type: "Id", value: "short" })).toBe(
+          assertEqual(
+            Id.formatError({ type: "Id", value: "short" }),
             'The value "short" is not a valid Id.',
           );
-          expectTypeOf<typeof Id.Error>().toEqualTypeOf<IdError>();
+          assertType<typeof Id.Error, IdError>();
         });
 
-        test("creates table-specific Id Types", () => {
+        it("creates table-specific Id Types", () => {
           const TodoId = id("Todo");
           const rawValue = createIdFromString("todo");
           const value = TodoId.orThrow(rawValue);
 
-          expect(TodoId.fromUnknown(rawValue)).toEqual(ok(value));
-          expect(TodoId.fromUnknown("invalid")).toEqual(
+          assertEqual(TodoId.fromUnknown(rawValue), ok(value));
+          assertEqual(
+            TodoId.fromUnknown("invalid"),
             err({ type: "TableId", table: "Todo", value: "invalid" }),
           );
-          expect(
+          assertEqual(
             TodoId.formatError({
               type: "TableId",
               table: "Todo",
               value: "invalid",
             }),
-          ).toBe('The value "invalid" is not a valid Id for table Todo.');
-          expect(TodoId.table).toBe("Todo");
-          expectTypeOf<typeof TodoId.Output>().toEqualTypeOf<
-            Id & Brand<"Todo">
-          >();
-          expectTypeOf<typeof TodoId.Error>().toEqualTypeOf<
-            TableIdError<"Todo">
-          >();
-          expectTypeOf(value).toEqualTypeOf<Id & Brand<"Todo">>();
+            'The value "invalid" is not a valid Id for table Todo.',
+          );
+          assertEqual(TodoId.table, "Todo");
+          assertType<typeof TodoId.Output, Id & Brand<"Todo">>();
+          assertType<typeof TodoId.Error, TableIdError<"Todo">>();
+          assertType<typeof value, Id & Brand<"Todo">>();
 
           const compileTimeAssertions = () => {
             // @ts-expect-error A Todo Id must not satisfy a User Id API.
             const _userId: Id & Brand<"User"> = value;
           };
 
-          expectTypeOf(compileTimeAssertions).toBeFunction();
+          assertType<
+            typeof compileTimeAssertions extends (
+              ...args: Array<never>
+            ) => unknown
+              ? true
+              : false,
+            true
+          >();
         });
 
-        test("requires one concrete table name", () => {
+        it("requires one concrete table name", () => {
           const unionTable = "Todo" as "Todo" | "User";
           const broadTable = "Todo" as TypeName;
           const patternedTable = "Todo" as `Todo${string}`;
@@ -7589,23 +8155,37 @@ describe("BrandFactory", () => {
             id(patternedTable);
           };
 
-          expectTypeOf(genericTableAssertion).toBeFunction();
-          expectTypeOf(compileTimeAssertions).toBeFunction();
+          assertType<
+            typeof genericTableAssertion extends (
+              ...args: Array<never>
+            ) => unknown
+              ? true
+              : false,
+            true
+          >();
+          assertType<
+            typeof compileTimeAssertions extends (
+              ...args: Array<never>
+            ) => unknown
+              ? true
+              : false,
+            true
+          >();
         });
 
-        test("converts to and from its 16-byte representation", () => {
+        it("converts to and from its 16-byte representation", () => {
           const value = createIdFromString("bytes");
           const bytes = idToIdBytes(value);
 
-          expect(IdBytes.is(bytes)).toBe(true);
-          expect(bytes).toHaveLength(16);
-          expect(idBytesTypeValueLength).toBe(16);
-          expect(idBytesToId(bytes)).toBe(value);
+          assertTrue(IdBytes.is(bytes));
+          assertLength(bytes, 16);
+          assertEqual(idBytesTypeValueLength, 16);
+          assertSame(idBytesToId(bytes), value);
         });
       });
 
       describe("Int64String", () => {
-        test("accepts only canonical decimal strings in the signed 64-bit range", () => {
+        it("accepts only canonical decimal strings in the signed 64-bit range", () => {
           for (const value of [
             "-9223372036854775808",
             "-1",
@@ -7613,7 +8193,7 @@ describe("BrandFactory", () => {
             "1",
             "9223372036854775807",
           ]) {
-            expect(Int64String.fromUnknown(value)).toEqual(ok(value));
+            assertEqual(Int64String.fromUnknown(value), ok(value));
           }
           for (const value of [
             "-9223372036854775809",
@@ -7624,49 +8204,49 @@ describe("BrandFactory", () => {
             "-0",
             "not-a-number",
           ]) {
-            expect(Int64String.fromUnknown(value)).toEqual(
+            assertEqual(
+              Int64String.fromUnknown(value),
               err({ type: "Int64String", value }),
             );
           }
-          expect(
+          assertEqual(
             Int64String.formatError({
               type: "Int64String",
               value: "not-a-number",
             }),
-          ).toBe('The value "not-a-number" is not a valid Int64 string.');
-          expectTypeOf<
-            typeof Int64String.Error
-          >().toEqualTypeOf<Int64StringError>();
+            'The value "not-a-number" is not a valid Int64 string.',
+          );
+          assertType<typeof Int64String.Error, Int64StringError>();
         });
 
-        test("rejects excessive decimal strings before parsing them as BigInt", () => {
+        it("rejects excessive decimal strings before parsing them as BigInt", () => {
           const value = "9".repeat(1000);
-          const bigInt = vi
-            .spyOn(globalThis, "BigInt")
-            .mockImplementation(() => {
-              throw new Error("BigInt must not be called.");
-            });
+          const bigInt = mock.method(globalThis, "BigInt", () => {
+            throw new Error("BigInt must not be called.");
+          });
 
           try {
-            expect(Int64String.fromUnknown(value)).toEqual(
+            assertEqual(
+              Int64String.fromUnknown(value),
               err({ type: "Int64String", value }),
             );
-            expect(bigInt).not.toHaveBeenCalled();
+            assertEqual(bigInt.mock.callCount(), 0);
           } finally {
-            bigInt.mockRestore();
+            bigInt.mock.restore();
           }
         });
       });
 
       describe("Int64FromInt64String", () => {
-        test("transforms canonical decimal strings to Int64 and back", () => {
+        it("transforms canonical decimal strings to Int64 and back", () => {
           const values = [
             ["-9223372036854775808", -9223372036854775808n],
             ["0", 0n],
             ["9223372036854775807", 9223372036854775807n],
           ] as const;
 
-          expectTypeOf(Int64FromInt64String).toEqualTypeOf<
+          assertType<
+            typeof Int64FromInt64String,
             TransformType<
               typeof Int64String,
               typeof Int64,
@@ -7679,177 +8259,190 @@ describe("BrandFactory", () => {
             const input = Int64String.orThrow(string);
             const output = Int64.orThrow(bigint);
 
-            expect(Int64FromInt64String.from.parent(input)).toEqual(ok(output));
-            expect(Int64FromInt64String.to(output)).toBe(input);
-            expectTypeOf(
-              Int64FromInt64String.to(output),
-            ).toEqualTypeOf<Int64String>();
+            assertEqual(Int64FromInt64String.from.parent(input), ok(output));
+            assertSame(Int64FromInt64String.to(output), input);
+            {
+              const actual = Int64FromInt64String.to(output);
+              assertType<typeof actual, Int64String>();
+            }
           }
         });
       });
     });
 
     describe("nonNegative", () => {
-      test("creates a reusable Brand Factory accepting zero and positive numbers", () => {
+      it("creates a reusable Brand Factory accepting zero and positive numbers", () => {
         const NonNegative = nonNegative(Number);
 
-        expect(NonNegative.from.parent(0)).toEqual(ok(0));
-        expect(NonNegative.from.parent(-1)).toEqual(
+        assertEqual(NonNegative.from.parent(0), ok(0));
+        assertEqual(
+          NonNegative.from.parent(-1),
           err({ type: "NonNegative", value: -1 }),
         );
-        expect(
+        assertEqual(
           NonNegative.formatError({ type: "NonNegative", value: -1 }),
-        ).toBe("The value -1 must be non-negative (>= 0).");
-        expectTypeOf(nonNegative).toEqualTypeOf<
+          "The value -1 must be non-negative (>= 0).",
+        );
+        assertType<
+          typeof nonNegative,
           BrandFactory<"NonNegative", number, NonNegativeError>
         >();
       });
 
       describe("Type", () => {
         describe("NonNegativeNumber", () => {
-          test("accepts zero", () => {
-            expect(NonNegativeNumber.from.parent(0)).toEqual(ok(0));
+          it("accepts zero", () => {
+            assertEqual(NonNegativeNumber.from.parent(0), ok(0));
           });
         });
       });
     });
 
     describe("positive", () => {
-      test("creates a reusable Brand Factory accepting positive numbers", () => {
+      it("creates a reusable Brand Factory accepting positive numbers", () => {
         const Positive = positive(Number);
 
-        expect(Positive.from.parent(1)).toEqual(ok(1));
-        expect(Positive.from.parent(0)).toEqual(
+        assertEqual(Positive.from.parent(1), ok(1));
+        assertEqual(
+          Positive.from.parent(0),
           err({ type: "Positive", value: 0 }),
         );
-        expect(Positive.formatError({ type: "Positive", value: 0 })).toBe(
+        assertEqual(
+          Positive.formatError({ type: "Positive", value: 0 }),
           "The value 0 must be positive (> 0).",
         );
-        expectTypeOf(positive).toEqualTypeOf<
+        assertType<
+          typeof positive,
           BrandFactory<"Positive", number, PositiveError>
         >();
       });
 
       describe("Type", () => {
         describe("PositiveNumber", () => {
-          test("accepts positive numbers", () => {
-            expect(PositiveNumber.from.parent.parent(1)).toEqual(ok(1));
+          it("accepts positive numbers", () => {
+            assertEqual(PositiveNumber.from.parent.parent(1), ok(1));
           });
         });
       });
     });
 
     describe("nonPositive", () => {
-      test("creates a reusable Brand Factory accepting zero and negative numbers", () => {
+      it("creates a reusable Brand Factory accepting zero and negative numbers", () => {
         const NonPositive = nonPositive(Number);
 
-        expect(NonPositive.from.parent(0)).toEqual(ok(0));
-        expect(NonPositive.from.parent(1)).toEqual(
+        assertEqual(NonPositive.from.parent(0), ok(0));
+        assertEqual(
+          NonPositive.from.parent(1),
           err({ type: "NonPositive", value: 1 }),
         );
-        expect(NonPositive.formatError({ type: "NonPositive", value: 1 })).toBe(
+        assertEqual(
+          NonPositive.formatError({ type: "NonPositive", value: 1 }),
           "The value 1 must be non-positive (<= 0).",
         );
-        expectTypeOf(nonPositive).toEqualTypeOf<
+        assertType<
+          typeof nonPositive,
           BrandFactory<"NonPositive", number, NonPositiveError>
         >();
       });
 
       describe("Type", () => {
         describe("NonPositiveNumber", () => {
-          test("accepts zero", () => {
-            expect(NonPositiveNumber.from.parent(0)).toEqual(ok(0));
+          it("accepts zero", () => {
+            assertEqual(NonPositiveNumber.from.parent(0), ok(0));
           });
         });
       });
     });
 
     describe("negative", () => {
-      test("creates a reusable Brand Factory accepting negative numbers", () => {
+      it("creates a reusable Brand Factory accepting negative numbers", () => {
         const Negative = negative(Number);
 
-        expect(Negative.from.parent(-1)).toEqual(ok(-1));
-        expect(Negative.from.parent(0)).toEqual(
+        assertEqual(Negative.from.parent(-1), ok(-1));
+        assertEqual(
+          Negative.from.parent(0),
           err({ type: "Negative", value: 0 }),
         );
-        expect(Negative.formatError({ type: "Negative", value: 0 })).toBe(
+        assertEqual(
+          Negative.formatError({ type: "Negative", value: 0 }),
           "The value 0 must be negative (< 0).",
         );
-        expectTypeOf(negative).toEqualTypeOf<
+        assertType<
+          typeof negative,
           BrandFactory<"Negative", number, NegativeError>
         >();
       });
 
       describe("Type", () => {
         describe("NegativeNumber", () => {
-          test("accepts negative numbers", () => {
-            expect(NegativeNumber.from.parent.parent(-1)).toEqual(ok(-1));
+          it("accepts negative numbers", () => {
+            assertEqual(NegativeNumber.from.parent.parent(-1), ok(-1));
           });
         });
       });
     });
 
     describe("int", () => {
-      test("creates a reusable Brand Factory accepting only safe integers", () => {
+      it("creates a reusable Brand Factory accepting only safe integers", () => {
         const SafeInt = int(Number);
 
-        expect(SafeInt.from.parent(42)).toEqual(ok(42));
-        expect(SafeInt.from.parent(1.5)).toEqual(
-          err({ type: "Int", value: 1.5 }),
-        );
-        expect(SafeInt.formatError({ type: "Int", value: 1.5 })).toBe(
+        assertEqual(SafeInt.from.parent(42), ok(42));
+        assertEqual(SafeInt.from.parent(1.5), err({ type: "Int", value: 1.5 }));
+        assertEqual(
+          SafeInt.formatError({ type: "Int", value: 1.5 }),
           "The value 1.5 must be a safe integer.",
         );
-        expectTypeOf(int).toEqualTypeOf<
-          BrandFactory<"Int", number, IntError>
-        >();
+        assertType<typeof int, BrandFactory<"Int", number, IntError>>();
       });
 
       describe("Type", () => {
         describe("Int", () => {
-          test("accepts only safe integers", () => {
-            expect(Int.fromUnknown(globalThis.Number.NaN)).toEqual(
+          it("accepts only safe integers", () => {
+            assertEqual(
+              Int.fromUnknown(globalThis.Number.NaN),
               err({ type: "NonNaN", value: globalThis.Number.NaN }),
             );
-            expect(
+            assertEqual(
               Int.fromUnknown(globalThis.Number.POSITIVE_INFINITY),
-            ).toEqual(
               err({
                 type: "Finite",
                 value: globalThis.Number.POSITIVE_INFINITY,
               }),
             );
-            expect(Int.fromUnknown(1.5)).toEqual(
-              err({ type: "Int", value: 1.5 }),
-            );
-            expectTypeOf<typeof Int.Output>().toEqualTypeOf<
+            assertEqual(Int.fromUnknown(1.5), err({ type: "Int", value: 1.5 }));
+            assertType<
+              typeof Int.Output,
               number & Brand<"NonNaN"> & Brand<"Finite"> & Brand<"Int">
             >();
 
-            expect(Int.from.parent.parent.parent(42)).toEqual(ok(42));
-            expect(Int.from.parent.parent.parent(1.5)).toEqual(
+            assertEqual(Int.from.parent.parent.parent(42), ok(42));
+            assertEqual(
+              Int.from.parent.parent.parent(1.5),
               err({ type: "Int", value: 1.5 }),
             );
           });
         });
 
         describe("NonNegativeInt", () => {
-          test("accepts zero and provides its minimum value", () => {
-            expect(NonNegativeInt.from.parent.parent.parent.parent(0)).toEqual(
+          it("accepts zero and provides its minimum value", () => {
+            assertEqual(
+              NonNegativeInt.from.parent.parent.parent.parent(0),
               ok(0),
             );
-            expect(zeroNonNegativeInt).toBe(0);
+            assertEqual(zeroNonNegativeInt, 0);
           });
         });
 
         describe("PositiveInt", () => {
-          test("has the expected brands and boundary values", () => {
-            expect(
+          it("has the expected brands and boundary values", () => {
+            assertEqual(
               PositiveInt.from.parent.parent.parent.parent.parent(1),
-            ).toEqual(ok(1));
-            expect(onePositiveInt).toBe(1);
-            expect(maxPositiveInt).toBe(globalThis.Number.MAX_SAFE_INTEGER);
-            expectTypeOf<typeof PositiveInt.Output>().toEqualTypeOf<
+              ok(1),
+            );
+            assertEqual(onePositiveInt, 1);
+            assertSame(maxPositiveInt, globalThis.Number.MAX_SAFE_INTEGER);
+            assertType<
+              typeof PositiveInt.Output,
               number &
                 Brand<"NonNaN"> &
                 Brand<"Finite"> &
@@ -7861,129 +8454,148 @@ describe("BrandFactory", () => {
         });
 
         describe("NonPositiveInt", () => {
-          test("accepts zero", () => {
-            expect(NonPositiveInt.from.parent.parent.parent.parent(0)).toEqual(
+          it("accepts zero", () => {
+            assertEqual(
+              NonPositiveInt.from.parent.parent.parent.parent(0),
               ok(0),
             );
           });
         });
 
         describe("NegativeInt", () => {
-          test("accepts negative integers", () => {
-            expect(
+          it("accepts negative integers", () => {
+            assertEqual(
               NegativeInt.from.parent.parent.parent.parent.parent(-1),
-            ).toEqual(ok(-1));
+              ok(-1),
+            );
           });
         });
       });
     });
 
     describe("greaterThan", () => {
-      test("creates a Brand Factory requiring a number greater than its minimum", () => {
+      it("creates a Brand Factory requiring a number greater than its minimum", () => {
         const GreaterThan5 = greaterThan(5)(Number);
 
-        expect(GreaterThan5.from.parent(6)).toEqual(ok(6));
-        expect(GreaterThan5.from.parent(5)).toEqual(
+        assertEqual(GreaterThan5.from.parent(6), ok(6));
+        assertEqual(
+          GreaterThan5.from.parent(5),
           err({ type: "GreaterThan5", value: 5, min: 5 }),
         );
-        expect(
+        assertEqual(
           GreaterThan5.formatError({
             type: "GreaterThan5",
             value: 5,
             min: 5,
           }),
-        ).toBe("The value 5 must be greater than 5.");
-        expectTypeOf<typeof GreaterThan5.Error>().toEqualTypeOf<
-          GreaterThanError<5>
-        >();
+          "The value 5 must be greater than 5.",
+        );
+        assertType<typeof GreaterThan5.Error, GreaterThanError<5>>();
       });
     });
 
     describe("greaterThanOrEqualTo", () => {
-      test("creates a Brand Factory requiring a number at or above its minimum", () => {
+      it("creates a Brand Factory requiring a number at or above its minimum", () => {
         const AtLeast5 = greaterThanOrEqualTo(5)(Number);
 
-        expect(AtLeast5.from.parent(5)).toEqual(ok(5));
-        expect(AtLeast5.from.parent(4)).toEqual(
+        assertEqual(AtLeast5.from.parent(5), ok(5));
+        assertEqual(
+          AtLeast5.from.parent(4),
           err({ type: "GreaterThanOrEqualTo5", value: 4, min: 5 }),
         );
-        expect(
+        assertEqual(
           AtLeast5.formatError({
             type: "GreaterThanOrEqualTo5",
             value: 4,
             min: 5,
           }),
-        ).toBe("The value 4 must be greater than or equal to 5.");
+          "The value 4 must be greater than or equal to 5.",
+        );
       });
     });
 
     describe("lessThan", () => {
-      test("creates a Brand Factory requiring a number less than its maximum", () => {
+      it("creates a Brand Factory requiring a number less than its maximum", () => {
         const max = 5;
         const LessThan5 = lessThan(max)(Number);
 
-        expect(LessThan5.from.parent(4)).toEqual(ok(4));
-        expect(LessThan5.from.parent(5)).toEqual(
+        assertEqual(LessThan5.from.parent(4), ok(4));
+        assertEqual(
+          LessThan5.from.parent(5),
           err({ type: "LessThan5", value: 5, max: 5 }),
         );
-        expect(
+        assertEqual(
           LessThan5.formatError({ type: "LessThan5", value: 5, max: 5 }),
-        ).toBe("The value 5 must be less than 5.");
+          "The value 5 must be less than 5.",
+        );
       });
 
-      test("requires a number parent Output", () => {
+      it("requires a number parent Output", () => {
         const compileTimeAssertions = () => {
           // @ts-expect-error Numeric constraints require number Outputs.
           lessThan(1)(String);
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
     });
 
     describe("lessThanOrEqualTo", () => {
-      test("creates a Brand Factory requiring a number at or below its maximum", () => {
+      it("creates a Brand Factory requiring a number at or below its maximum", () => {
         const AtMost5 = lessThanOrEqualTo(5)(Number);
 
-        expect(AtMost5.from.parent(5)).toEqual(ok(5));
-        expect(AtMost5.from.parent(6)).toEqual(
+        assertEqual(AtMost5.from.parent(5), ok(5));
+        assertEqual(
+          AtMost5.from.parent(6),
           err({ type: "LessThanOrEqualTo5", value: 6, max: 5 }),
         );
-        expect(
+        assertEqual(
           AtMost5.formatError({
             type: "LessThanOrEqualTo5",
             value: 6,
             max: 5,
           }),
-        ).toBe("The value 6 must be less than or equal to 5.");
-        expectTypeOf<typeof AtMost5.Output>().toEqualTypeOf<
+          "The value 6 must be less than or equal to 5.",
+        );
+        assertType<
+          typeof AtMost5.Output,
           number & Brand<"LessThanOrEqualTo5">
         >();
       });
 
-      test("composes with PositiveInt into a branded Score", () => {
+      it("composes with PositiveInt into a branded Score", () => {
         const Score = brand("Score", lessThanOrEqualTo(99)(PositiveInt));
         type Score = typeof Score.Output;
         const positiveInt = PositiveInt.orThrow(42);
         const result = Score.from.parent.parent(positiveInt);
 
-        expect(
+        assertEqual(
           Score.from.parent.parent.parent.parent.parent.parent.parent(1),
-        ).toEqual(ok(1));
-        expect(
+          ok(1),
+        );
+        assertEqual(
           Score.from.parent.parent.parent.parent.parent.parent.parent(99),
-        ).toEqual(ok(99));
-        expect(
+          ok(99),
+        );
+        assertEqual(
           Score.from.parent.parent.parent.parent.parent.parent.parent(0),
-        ).toEqual(err({ type: "Positive", value: 0 }));
-        expect(
+          err({ type: "Positive", value: 0 }),
+        );
+        assertEqual(
           Score.from.parent.parent.parent.parent.parent.parent.parent(100),
-        ).toEqual(err({ type: "LessThanOrEqualTo99", value: 100, max: 99 }));
-        expectTypeOf(result).toEqualTypeOf<
-          Result<Score, LessThanOrEqualToError<99>>
-        >();
-        expectOk(result, 42);
-        expectTypeOf<Score>().toEqualTypeOf<
+          err({ type: "LessThanOrEqualTo99", value: 100, max: 99 }),
+        );
+        assertType<typeof result, Result<Score, LessThanOrEqualToError<99>>>();
+        assertOk(result, 42);
+        assertType<
+          Score,
           number &
             Brand<"NonNaN"> &
             Brand<"Finite"> &
@@ -7997,75 +8609,83 @@ describe("BrandFactory", () => {
     });
 
     describe("nonNaN", () => {
-      test("is a reusable Brand Factory", () => {
-        expectTypeOf(nonNaN).toEqualTypeOf<
+      it("is a reusable Brand Factory", () => {
+        assertType<
+          typeof nonNaN,
           BrandFactory<"NonNaN", number, NonNaNError>
         >();
       });
 
       describe("Type", () => {
         describe("NonNaNNumber", () => {
-          test("rejects NaN", () => {
-            expect(NonNaNNumber.from.parent(globalThis.Number.NaN)).toEqual(
+          it("rejects NaN", () => {
+            assertEqual(
+              NonNaNNumber.from.parent(globalThis.Number.NaN),
               err({ type: "NonNaN", value: globalThis.Number.NaN }),
             );
-            expect(
+            assertEqual(
               NonNaNNumber.formatError({
                 type: "NonNaN",
                 value: globalThis.Number.NaN,
               }),
-            ).toBe("The value must not be NaN.");
+              "The value must not be NaN.",
+            );
           });
         });
       });
     });
 
     describe("finite", () => {
-      test("is a reusable Brand Factory", () => {
-        expectTypeOf(finite).toEqualTypeOf<
+      it("is a reusable Brand Factory", () => {
+        assertType<
+          typeof finite,
           BrandFactory<"Finite", number, FiniteError>
         >();
       });
 
       describe("Type", () => {
         describe("FiniteNumber", () => {
-          test("rejects infinities", () => {
-            expect(
+          it("rejects infinities", () => {
+            assertEqual(
               FiniteNumber.from.parent.parent(
                 globalThis.Number.POSITIVE_INFINITY,
               ),
-            ).toEqual(
               err({
                 type: "Finite",
                 value: globalThis.Number.POSITIVE_INFINITY,
               }),
             );
-            expect(
+            assertEqual(
               FiniteNumber.formatError({
                 type: "Finite",
                 value: globalThis.Number.POSITIVE_INFINITY,
               }),
-            ).toBe("The value Infinity must be finite.");
+              "The value Infinity must be finite.",
+            );
           });
         });
 
         describe("NonNegativeFiniteNumber", () => {
-          test("accepts zero", () => {
-            expect(
+          it("accepts zero", () => {
+            assertEqual(
               NonNegativeFiniteNumber.from.parent.parent.parent(0),
-            ).toEqual(ok(0));
+              ok(0),
+            );
           });
         });
 
         describe("PositiveFiniteNumber", () => {
-          test("accepts positive finite numbers", () => {
-            expect(
+          it("accepts positive finite numbers", () => {
+            assertEqual(
               PositiveFiniteNumber.from.parent.parent.parent.parent(0.1),
-            ).toEqual(ok(0.1));
-            expect(
+              ok(0.1),
+            );
+            assertEqual(
               PositiveFiniteNumber.from.parent.parent.parent.parent(0),
-            ).toEqual(err({ type: "Positive", value: 0 }));
-            expectTypeOf<typeof PositiveFiniteNumber.Output>().toEqualTypeOf<
+              err({ type: "Positive", value: 0 }),
+            );
+            assertType<
+              typeof PositiveFiniteNumber.Output,
               number &
                 Brand<"NonNaN"> &
                 Brand<"Finite"> &
@@ -8079,20 +8699,21 @@ describe("BrandFactory", () => {
 
     describe("Domain Types", () => {
       describe("Age", () => {
-        test("accepts non-negative safe integers below 200", () => {
-          expect(Age.fromUnknown(0)).toEqual(ok(0));
-          expect(Age.fromUnknown(122)).toEqual(ok(122));
-          expect(Age.fromUnknown(199)).toEqual(ok(199));
-          expect(Age.fromUnknown(-1)).toEqual(
+        it("accepts non-negative safe integers below 200", () => {
+          assertEqual(Age.fromUnknown(0), ok(0));
+          assertEqual(Age.fromUnknown(122), ok(122));
+          assertEqual(Age.fromUnknown(199), ok(199));
+          assertEqual(
+            Age.fromUnknown(-1),
             err({ type: "NonNegative", value: -1 }),
           );
-          expect(Age.fromUnknown(1.5)).toEqual(
-            err({ type: "Int", value: 1.5 }),
-          );
-          expect(Age.fromUnknown(200)).toEqual(
+          assertEqual(Age.fromUnknown(1.5), err({ type: "Int", value: 1.5 }));
+          assertEqual(
+            Age.fromUnknown(200),
             err({ type: "LessThan200", value: 200, max: 200 }),
           );
-          expectTypeOf<typeof Age.Output>().toEqualTypeOf<
+          assertType<
+            typeof Age.Output,
             number &
               Brand<"NonNaN"> &
               Brand<"Finite"> &
@@ -8105,24 +8726,22 @@ describe("BrandFactory", () => {
       });
 
       describe("Ratio", () => {
-        test("accepts finite numbers from zero to one", () => {
-          expect(Ratio.from.parent.parent.parent.parent.parent(0)).toEqual(
-            ok(0),
-          );
-          expect(Ratio.from.parent.parent.parent.parent.parent(1)).toEqual(
-            ok(1),
-          );
-          expect(Ratio.from.parent.parent.parent.parent.parent(1.1)).toEqual(
+        it("accepts finite numbers from zero to one", () => {
+          assertEqual(Ratio.from.parent.parent.parent.parent.parent(0), ok(0));
+          assertEqual(Ratio.from.parent.parent.parent.parent.parent(1), ok(1));
+          assertEqual(
+            Ratio.from.parent.parent.parent.parent.parent(1.1),
             err({ type: "LessThanOrEqualTo1", value: 1.1, max: 1 }),
           );
-          expect(Ratio.from.parent.parent.parent.parent.parent(-0.1)).toEqual(
+          assertEqual(
+            Ratio.from.parent.parent.parent.parent.parent(-0.1),
             err({ type: "NonNegative", value: -0.1 }),
           );
         });
       });
 
       describe("DecimalString", () => {
-        test("accepts one canonical spelling of every signed decimal", () => {
+        it("accepts one canonical spelling of every signed decimal", () => {
           for (const value of [
             "-25",
             "-10.25",
@@ -8134,11 +8753,11 @@ describe("BrandFactory", () => {
             "10.25",
             "25",
           ]) {
-            expect(DecimalString.from.parent(value)).toEqual(ok(value));
+            assertEqual(DecimalString.from.parent(value), ok(value));
           }
         });
 
-        test("rejects non-canonical decimal spellings", () => {
+        it("rejects non-canonical decimal spellings", () => {
           for (const value of [
             "",
             "-0",
@@ -8153,51 +8772,59 @@ describe("BrandFactory", () => {
             "-00.3",
             "3e-1",
           ]) {
-            expect(DecimalString.from.parent(value)).toEqual(
+            assertEqual(
+              DecimalString.from.parent(value),
               err({ type: "DecimalString", value }),
             );
           }
         });
 
-        test("is branded from String", () => {
-          expect(DecimalString.name).toBe("DecimalString");
-          expect(DecimalString.parent).toBe(String);
-          expectTypeOf(DecimalString).toEqualTypeOf<
+        it("is branded from String", () => {
+          assertEqual(DecimalString.name, "DecimalString");
+          assertSame(DecimalString.parent, String);
+          assertType<
+            typeof DecimalString,
             BrandType<typeof String, "DecimalString", DecimalStringError>
           >();
-          expectTypeOf<typeof DecimalString.Output>().toEqualTypeOf<
+          assertType<
+            typeof DecimalString.Output,
             string & Brand<"DecimalString">
           >();
         });
 
-        test("formats its validation error", () => {
-          expect(
+        it("formats its validation error", () => {
+          assertEqual(
             DecimalString.formatError({
               type: "DecimalString",
               value: "0.30",
             }),
-          ).toBe('The value "0.30" must be a canonical decimal string.');
+            'The value "0.30" must be a canonical decimal string.',
+          );
         });
       });
 
       describe("nonNegativeDecimalString", () => {
-        test("creates a reusable Brand Factory", () => {
+        it("creates a reusable Brand Factory", () => {
           const NonNegative = nonNegativeDecimalString(DecimalString);
           const negativeValue = DecimalString.orThrow("-0.1");
 
-          expect(NonNegative.from.parent(DecimalString.orThrow("0"))).toEqual(
+          assertEqual(
+            NonNegative.from.parent(DecimalString.orThrow("0")),
             ok("0"),
           );
-          expect(NonNegative.from.parent(negativeValue)).toEqual(
+          assertEqual(
+            NonNegative.from.parent(negativeValue),
             err({ type: "NonNegativeDecimalString", value: "-0.1" }),
           );
-          expect(
+          assertEqual(
             NonNegative.formatError({
               type: "NonNegativeDecimalString",
               value: "-0.1",
             }),
-          ).toBe('The value "-0.1" must be a non-negative decimal string.');
-          expectTypeOf(nonNegativeDecimalString).toEqualTypeOf<
+            'The value "-0.1" must be a non-negative decimal string.',
+          );
+          assertType<
+            typeof nonNegativeDecimalString,
             BrandFactory<
               "NonNegativeDecimalString",
               DecimalString,
@@ -8206,44 +8833,57 @@ describe("BrandFactory", () => {
           >();
         });
 
-        test("requires a DecimalString parent", () => {
+        it("requires a DecimalString parent", () => {
           const compileTimeAssertions = () => {
             // @ts-expect-error The parent must output DecimalString.
             nonNegativeDecimalString(String);
           };
 
-          expectTypeOf(compileTimeAssertions).toBeFunction();
+          assertType<
+            typeof compileTimeAssertions extends (
+              ...args: Array<never>
+            ) => unknown
+              ? true
+              : false,
+            true
+          >();
         });
 
         describe("Type", () => {
           describe("NonNegativeDecimalString", () => {
-            test("is branded from DecimalString", () => {
-              expect(NonNegativeDecimalString.parent).toBe(DecimalString);
-              expectTypeOf(NonNegativeDecimalString).toEqualTypeOf<
+            it("is branded from DecimalString", () => {
+              assertSame(NonNegativeDecimalString.parent, DecimalString);
+              assertType<
+                typeof NonNegativeDecimalString,
                 BrandType<
                   typeof DecimalString,
                   "NonNegativeDecimalString",
                   NonNegativeDecimalStringError
                 >
               >();
-              expectTypeOf<
-                typeof NonNegativeDecimalString.Output
-              >().toEqualTypeOf<
+              assertType<
+                typeof NonNegativeDecimalString.Output,
                 string &
                   Brand<"DecimalString"> &
                   Brand<"NonNegativeDecimalString">
               >();
-              expectTypeOf<NonNegativeDecimalString>().toExtend<DecimalString>();
+              assertType<
+                NonNegativeDecimalString extends DecimalString ? true : false,
+                true
+              >();
             });
 
-            test("inherits canonical syntax and rejects negative decimals", () => {
-              expect(NonNegativeDecimalString.fromUnknown("0.3")).toEqual(
+            it("inherits canonical syntax and rejects negative decimals", () => {
+              assertEqual(
+                NonNegativeDecimalString.fromUnknown("0.3"),
                 ok("0.3"),
               );
-              expect(NonNegativeDecimalString.fromUnknown("-0.3")).toEqual(
+              assertEqual(
+                NonNegativeDecimalString.fromUnknown("-0.3"),
                 err({ type: "NonNegativeDecimalString", value: "-0.3" }),
               );
-              expect(NonNegativeDecimalString.fromUnknown("0.30")).toEqual(
+              assertEqual(
+                NonNegativeDecimalString.fromUnknown("0.30"),
                 err({ type: "DecimalString", value: "0.30" }),
               );
             });
@@ -8252,19 +8892,22 @@ describe("BrandFactory", () => {
       });
 
       describe("positiveDecimalString", () => {
-        test("creates a reusable Brand Factory", () => {
+        it("creates a reusable Brand Factory", () => {
           const Positive = positiveDecimalString(DecimalString);
 
-          expect(Positive.from.parent(DecimalString.orThrow("-0.1"))).toEqual(
+          assertEqual(
+            Positive.from.parent(DecimalString.orThrow("-0.1")),
             err({ type: "PositiveDecimalString", value: "-0.1" }),
           );
-          expect(
+          assertEqual(
             Positive.formatError({
               type: "PositiveDecimalString",
               value: "0",
             }),
-          ).toBe('The value "0" must be a positive decimal string.');
-          expectTypeOf(positiveDecimalString).toEqualTypeOf<
+            'The value "0" must be a positive decimal string.',
+          );
+          assertType<
+            typeof positiveDecimalString,
             BrandFactory<
               "PositiveDecimalString",
               DecimalString,
@@ -8275,24 +8918,30 @@ describe("BrandFactory", () => {
 
         describe("Type", () => {
           describe("PositiveDecimalString", () => {
-            test("also satisfies NonNegativeDecimalString", () => {
-              expect(PositiveDecimalString.parent).toBe(
+            it("also satisfies NonNegativeDecimalString", () => {
+              assertSame(
+                PositiveDecimalString.parent,
                 NonNegativeDecimalString,
               );
-              expectTypeOf<typeof PositiveDecimalString.Output>().toEqualTypeOf<
+              assertType<
+                typeof PositiveDecimalString.Output,
                 string &
                   Brand<"DecimalString"> &
                   Brand<"NonNegativeDecimalString"> &
                   Brand<"PositiveDecimalString">
               >();
-              expectTypeOf<PositiveDecimalString>().toExtend<NonNegativeDecimalString>();
+              assertType<
+                PositiveDecimalString extends NonNegativeDecimalString
+                  ? true
+                  : false,
+                true
+              >();
             });
 
-            test("accepts positive decimals and rejects zero", () => {
-              expect(PositiveDecimalString.fromUnknown("0.3")).toEqual(
-                ok("0.3"),
-              );
-              expect(PositiveDecimalString.fromUnknown("0")).toEqual(
+            it("accepts positive decimals and rejects zero", () => {
+              assertEqual(PositiveDecimalString.fromUnknown("0.3"), ok("0.3"));
+              assertEqual(
+                PositiveDecimalString.fromUnknown("0"),
                 err({ type: "PositiveDecimalString", value: "0" }),
               );
             });
@@ -8301,14 +8950,16 @@ describe("BrandFactory", () => {
       });
 
       describe("nonPositiveDecimalString", () => {
-        test("creates a reusable Brand Factory", () => {
-          expect(
+        it("creates a reusable Brand Factory", () => {
+          assertEqual(
             NonPositiveDecimalString.formatError({
               type: "NonPositiveDecimalString",
               value: "0.1",
             }),
-          ).toBe('The value "0.1" must be a non-positive decimal string.');
-          expectTypeOf(nonPositiveDecimalString).toEqualTypeOf<
+            'The value "0.1" must be a non-positive decimal string.',
+          );
+          assertType<
+            typeof nonPositiveDecimalString,
             BrandFactory<
               "NonPositiveDecimalString",
               DecimalString,
@@ -8319,31 +8970,36 @@ describe("BrandFactory", () => {
 
         describe("Type", () => {
           describe("NonPositiveDecimalString", () => {
-            test("accepts negative decimals and zero", () => {
-              expect(NonPositiveDecimalString.fromUnknown("-0.3")).toEqual(
+            it("accepts negative decimals and zero", () => {
+              assertEqual(
+                NonPositiveDecimalString.fromUnknown("-0.3"),
                 ok("-0.3"),
               );
-              expect(NonPositiveDecimalString.fromUnknown("0")).toEqual(
-                ok("0"),
-              );
-              expect(NonPositiveDecimalString.fromUnknown("0.3")).toEqual(
+              assertEqual(NonPositiveDecimalString.fromUnknown("0"), ok("0"));
+              assertEqual(
+                NonPositiveDecimalString.fromUnknown("0.3"),
                 err({ type: "NonPositiveDecimalString", value: "0.3" }),
               );
-              expectTypeOf<NonPositiveDecimalString>().toExtend<DecimalString>();
+              assertType<
+                NonPositiveDecimalString extends DecimalString ? true : false,
+                true
+              >();
             });
           });
         });
       });
 
       describe("negativeDecimalString", () => {
-        test("creates a reusable Brand Factory", () => {
-          expect(
+        it("creates a reusable Brand Factory", () => {
+          assertEqual(
             NegativeDecimalString.formatError({
               type: "NegativeDecimalString",
               value: "0",
             }),
-          ).toBe('The value "0" must be a negative decimal string.');
-          expectTypeOf(negativeDecimalString).toEqualTypeOf<
+            'The value "0" must be a negative decimal string.',
+          );
+          assertType<
+            typeof negativeDecimalString,
             BrandFactory<
               "NegativeDecimalString",
               DecimalString,
@@ -8354,24 +9010,33 @@ describe("BrandFactory", () => {
 
         describe("Type", () => {
           describe("NegativeDecimalString", () => {
-            test("also satisfies NonPositiveDecimalString", () => {
-              expect(NegativeDecimalString.parent).toBe(
+            it("also satisfies NonPositiveDecimalString", () => {
+              assertSame(
+                NegativeDecimalString.parent,
                 NonPositiveDecimalString,
               );
-              expectTypeOf<typeof NegativeDecimalString.Output>().toEqualTypeOf<
+              assertType<
+                typeof NegativeDecimalString.Output,
                 string &
                   Brand<"DecimalString"> &
                   Brand<"NonPositiveDecimalString"> &
                   Brand<"NegativeDecimalString">
               >();
-              expectTypeOf<NegativeDecimalString>().toExtend<NonPositiveDecimalString>();
+              assertType<
+                NegativeDecimalString extends NonPositiveDecimalString
+                  ? true
+                  : false,
+                true
+              >();
             });
 
-            test("accepts negative decimals and rejects zero", () => {
-              expect(NegativeDecimalString.fromUnknown("-0.3")).toEqual(
+            it("accepts negative decimals and rejects zero", () => {
+              assertEqual(
+                NegativeDecimalString.fromUnknown("-0.3"),
                 ok("-0.3"),
               );
-              expect(NegativeDecimalString.fromUnknown("0")).toEqual(
+              assertEqual(
+                NegativeDecimalString.fromUnknown("0"),
                 err({ type: "NegativeDecimalString", value: "0" }),
               );
             });
@@ -8381,19 +9046,20 @@ describe("BrandFactory", () => {
     });
 
     describe("multipleOf", () => {
-      test("accepts a canonical positive decimal string literal", () => {
+      it("accepts a canonical positive decimal string literal", () => {
         const MultipleOf3 = multipleOf("3")(Number);
         const Tenths = multipleOf("0.1")(Number);
 
-        expectTypeOf(MultipleOf3.name).toEqualTypeOf<"MultipleOf3">();
-        expectTypeOf(Tenths.name).toEqualTypeOf<"MultipleOf0.1">();
-        expect(Tenths.from.parent(0.3)).toEqual(ok(0.3));
-        expect(Tenths.from.parent(0.31)).toEqual(
+        assertType<typeof MultipleOf3.name, "MultipleOf3">();
+        assertType<typeof Tenths.name, "MultipleOf0.1">();
+        assertEqual(Tenths.from.parent(0.3), ok(0.3));
+        assertEqual(
+          Tenths.from.parent(0.31),
           err({ type: "MultipleOf0.1", value: 0.31, divisor: "0.1" }),
         );
       });
 
-      test("rejects non-canonical and non-literal divisors at compile time", () => {
+      it("rejects non-canonical and non-literal divisors at compile time", () => {
         const value = globalThis.String("0.1");
         const unionValue = "0.1" as "0.1" | "0.2";
         const positiveDecimalString = PositiveDecimalString.orThrow("0.1");
@@ -8418,26 +9084,35 @@ describe("BrandFactory", () => {
           multipleOf(positiveDecimalString);
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
 
-      test("creates a Brand Factory requiring an exact multiple", () => {
+      it("creates a Brand Factory requiring an exact multiple", () => {
         const MultipleOf3 = multipleOf("3")(Number);
 
-        expect(MultipleOf3.from.parent(6)).toEqual(ok(6));
-        expect(MultipleOf3.from.parent(5)).toEqual(
+        assertEqual(MultipleOf3.from.parent(6), ok(6));
+        assertEqual(
+          MultipleOf3.from.parent(5),
           err({ type: "MultipleOf3", value: 5, divisor: "3" }),
         );
-        expect(
+        assertEqual(
           MultipleOf3.formatError({
             type: "MultipleOf3",
             value: 5,
             divisor: "3",
           }),
-        ).toBe("The value 5 must be a multiple of 3.");
+          "The value 5 must be a multiple of 3.",
+        );
       });
 
-      test("uses exact base-10 semantics for decimal multiples", () => {
+      it("uses exact base-10 semantics for decimal multiples", () => {
         const Tenths = multipleOf("0.1")(Number);
         const Fifths = multipleOf("0.2")(Number);
         const Thirds = multipleOf("0.3")(Number);
@@ -8447,48 +9122,56 @@ describe("BrandFactory", () => {
         const Thousands = multipleOf("1000")(Number);
 
         for (const value of [0, -0, 0.3, -0.3, 1.5]) {
-          expect(Tenths.from.parent(value)).toEqual(ok(value));
+          assertEqual(Tenths.from.parent(value), ok(value));
         }
-        expect(Tenths.from.parent(0.31)).toEqual(
+        assertEqual(
+          Tenths.from.parent(0.31),
           err({ type: "MultipleOf0.1", value: 0.31, divisor: "0.1" }),
         );
-        expect(Tenths.from.parent(0.1 + 0.2)).toEqual(
+        assertEqual(
+          Tenths.from.parent(0.1 + 0.2),
           err({
             type: "MultipleOf0.1",
             value: 0.1 + 0.2,
             divisor: "0.1",
           }),
         );
-        expect(Fifths.from.parent(1)).toEqual(ok(1));
-        expect(Thirds.from.parent(1)).toEqual(
+        assertEqual(Fifths.from.parent(1), ok(1));
+        assertEqual(
+          Thirds.from.parent(1),
           err({ type: "MultipleOf0.3", value: 1, divisor: "0.3" }),
         );
-        expect(TwoFifths.from.parent(1)).toEqual(
+        assertEqual(
+          TwoFifths.from.parent(1),
           err({ type: "MultipleOf0.4", value: 1, divisor: "0.4" }),
         );
-        expect(Quarters.from.parent(0.1)).toEqual(
+        assertEqual(
+          Quarters.from.parent(0.1),
           err({ type: "MultipleOf0.25", value: 0.1, divisor: "0.25" }),
         );
-        expect(Quarters.from.parent(0.5)).toEqual(ok(0.5));
-        expect(TenMillionths.from.parent(3e-7)).toEqual(ok(3e-7));
-        expect(TenMillionths.from.parent(3.1e-7)).toEqual(
+        assertEqual(Quarters.from.parent(0.5), ok(0.5));
+        assertEqual(TenMillionths.from.parent(3e-7), ok(3e-7));
+        assertEqual(
+          TenMillionths.from.parent(3.1e-7),
           err({
             type: "MultipleOf0.0000001",
             value: 3.1e-7,
             divisor: "0.0000001",
           }),
         );
-        expect(Thousands.from.parent(1e21)).toEqual(ok(1e21));
-        expect(Thousands.from.parent(1)).toEqual(
+        assertEqual(Thousands.from.parent(1e21), ok(1e21));
+        assertEqual(
+          Thousands.from.parent(1),
           err({ type: "MultipleOf1000", value: 1, divisor: "1000" }),
         );
       });
 
-      test("rejects non-finite numbers", () => {
+      it("rejects non-finite numbers", () => {
         const MultipleOf1 = multipleOf("1")(Number);
 
         for (const value of [globalThis.Number.NaN, Infinity, -Infinity]) {
-          expect(MultipleOf1.from.parent(value)).toEqual(
+          assertEqual(
+            MultipleOf1.from.parent(value),
             err({ type: "MultipleOf1", value, divisor: "1" }),
           );
         }
@@ -8496,33 +9179,43 @@ describe("BrandFactory", () => {
     });
 
     describe("between", () => {
-      test("creates a Brand Factory requiring an inclusive range", () => {
+      it("creates a Brand Factory requiring an inclusive range", () => {
         const Between1And3 = between(1, 3)(Number);
 
-        expect(Between1And3.from.parent(2)).toEqual(ok(2));
-        expect(Between1And3.from.parent(0)).toEqual(
+        assertEqual(Between1And3.from.parent(2), ok(2));
+        assertEqual(
+          Between1And3.from.parent(0),
           err({ type: "Between1-3", value: 0, min: 1, max: 3 }),
         );
-        expect(Between1And3.from.parent(4)).toEqual(
+        assertEqual(
+          Between1And3.from.parent(4),
           err({ type: "Between1-3", value: 4, min: 1, max: 3 }),
         );
-        expect(
+        assertEqual(
           Between1And3.formatError({
             type: "Between1-3",
             value: 4,
             min: 1,
             max: 3,
           }),
-        ).toBe("The value 4 must be between 1 and 3, inclusive.");
+          "The value 4 must be between 1 and 3, inclusive.",
+        );
       });
 
-      test("returns a Brand Factory that accepts the parent separately", () => {
+      it("returns a Brand Factory that accepts the parent separately", () => {
         const compileTimeAssertions = () => {
           // @ts-expect-error Parameterized Brand Factories accept their parent separately.
           between(1, 2, Number);
         };
 
-        expectTypeOf(compileTimeAssertions).toBeFunction();
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
       });
     });
   });
@@ -8587,69 +9280,73 @@ describe("array", () => {
   };
 
   describe("construction", () => {
-    test("mirrors its element Type chain", () => {
+    it("mirrors its element Type chain", () => {
       const { PositiveInt, UserId, UserIds } = setupUserIds();
 
-      expect(UserIds.name).toBe("Array");
-      expect(UserIds.element).toBe(UserId);
-      expect(UserIds.element.parent).toBe(PositiveInt);
-      expect(UserIds.parent.element).toBe(PositiveInt);
-      expect(UserIds.parent.element).toBe(UserIds.element.parent);
-      expect(UserIds.parent.parent.element).toBe(Number);
-      expect(UserIds.parent.parent.parent).toBeNull();
-      expectTypeOf(UserIds).toEqualTypeOf<ArrayType<typeof UserId>>();
-      expectTypeOf<typeof UserIds.Input>().toEqualTypeOf<
-        ReadonlyArray<number>
-      >();
-      expectTypeOf<typeof UserIds.Output>().toEqualTypeOf<
-        ReadonlyArray<typeof UserId.Output>
-      >();
-      expectTypeOf<typeof UserIds.Error>().toEqualTypeOf<never>();
-      expectTypeOf<InferErrors<typeof UserIds>>().toEqualTypeOf<
+      assertEqual(UserIds.name, "Array");
+      assertSame(UserIds.element, UserId);
+      assertSame(UserIds.element.parent, PositiveInt);
+      assertSame(UserIds.parent.element, PositiveInt);
+      assertSame(UserIds.parent.element, UserIds.element.parent);
+      assertSame(UserIds.parent.parent.element, Number);
+      assertSame(UserIds.parent.parent.parent, null);
+      assertType<typeof UserIds, ArrayType<typeof UserId>>();
+      assertType<typeof UserIds.Input, ReadonlyArray<number>>();
+      assertType<typeof UserIds.Output, ReadonlyArray<typeof UserId.Output>>();
+      assertType<typeof UserIds.Error, never>();
+      assertType<
+        InferErrors<typeof UserIds>,
         ArrayError<TypeOfError<"Number"> | typeof PositiveInt.Error>
       >();
-      expectTypeOf<
-        InferErrors<typeof UserIds>
-      >().not.toExtend<TypeValueError>();
-      expectTypeOf<
+      assertType<
+        InferErrors<typeof UserIds> extends TypeValueError ? true : false,
+        false
+      >();
+      assertType<
         ArrayItemsError<
           TypeOfError<"Number"> | typeof PositiveInt.Error
-        >["reason"]["issues"][number]
-      >().toEqualTypeOf<
+        >["reason"]["issues"][number],
         ArrayIssue<TypeOfError<"Number"> | typeof PositiveInt.Error>
       >();
-      expectTypeOf<
+      assertType<
         ArrayElementsError<
           TypeOfError<"Number"> | typeof PositiveInt.Error
-        >["reason"]["issues"][number]
-      >().toEqualTypeOf<
+        >["reason"]["issues"][number],
         | ArrayElementIssue<TypeOfError<"Number">>
         | ArrayElementIssue<typeof PositiveInt.Error>
       >();
-      expectTypeOf<ArrayElementIssue<never>>().toEqualTypeOf<never>();
-      expectTypeOf<ArrayExcessPropertyIssue>().toExtend<
-        ArrayItemsError<TypeOfError<"Number">>["reason"]["issues"][number]
+      assertType<ArrayElementIssue<never>, never>();
+      assertType<
+        ArrayExcessPropertyIssue extends ArrayItemsError<
+          TypeOfError<"Number">
+        >["reason"]["issues"][number]
+          ? true
+          : false,
+        true
       >();
-      expectTypeOf<ArrayExcessPropertyIssue>().not.toExtend<
-        ArrayElementsError<TypeOfError<"Number">>["reason"]["issues"][number]
+      assertType<
+        ArrayExcessPropertyIssue extends ArrayElementsError<
+          TypeOfError<"Number">
+        >["reason"]["issues"][number]
+          ? true
+          : false,
+        false
       >();
-      expectTypeOf<ArrayExcessPropertyIssue["key"]>().toEqualTypeOf<
-        string | symbol
-      >();
+      assertType<ArrayExcessPropertyIssue["key"], string | symbol>();
     });
 
-    test("reuses an Array Type by element Type identity", () => {
+    it("reuses an Array Type by element Type identity", () => {
       const { PositiveInt, UserId, UserIds } = setupUserIds();
       const OtherUserId = brand("UserId", PositiveInt);
 
-      expect(array(UserId)).toBe(UserIds);
-      expect(UserIds.parent).toBe(array(PositiveInt));
-      expect(UserIds.parent.parent).toBe(array(Number));
-      expect(array(OtherUserId)).not.toBe(UserIds);
-      expect(array(array(Number))).toBe(array(array(Number)));
+      assertSame(array(UserId), UserIds);
+      assertSame(UserIds.parent, array(PositiveInt));
+      assertSame(UserIds.parent.parent, array(Number));
+      assertFalse(globalThis.Object.is(array(OtherUserId), UserIds));
+      assertSame(array(array(Number)), array(array(Number)));
     });
 
-    test("allows heterogeneous element issues in one error", () => {
+    it("allows heterogeneous element issues in one error", () => {
       interface AError extends TypeError<"A"> {
         readonly value: number;
       }
@@ -8677,21 +9374,24 @@ describe("array", () => {
         },
       };
 
-      expect(mixed.reason.issues).toEqual([
+      assertEqual(mixed.reason.issues, [
         { kind: "Element", index: 0, error: { type: "A", value: 1 } },
         { kind: "Element", index: 1, error: { type: "B", value: "x" } },
       ]);
     });
 
-    test("rejects a union of element Types", () => {
+    it("rejects a union of element Types", () => {
       type Element = typeof String | typeof Number;
       type ElementParameter = Parameters<typeof array<Element>>[0];
 
-      expectTypeOf<Element>().not.toExtend<ElementParameter>();
-      expectTypeOf<ElementParameter>().toEqualTypeOf<"⛔ Type error: Element must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.">();
+      assertType<Element extends ElementParameter ? true : false, false>();
+      assertType<
+        ElementParameter,
+        "⛔ Type error: Element must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
+      >();
     });
 
-    test("rejects an unresolved generic element Type", () => {
+    it("rejects an unresolved generic element Type", () => {
       const compileTimeAssertions = <
         Element extends typeof String | typeof Number,
       >(
@@ -8702,10 +9402,15 @@ describe("array", () => {
         return element;
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("rejects an element with erased concrete Type information", () => {
+    it("rejects an element with erased concrete Type information", () => {
       const erased: FormattableTypeNode = brand("Erased", String);
 
       const compileTimeAssertions = () => {
@@ -8713,21 +9418,27 @@ describe("array", () => {
         array(erased);
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 
   describe("formatError", () => {
-    test("formats its own error or the first nested error without a path", () => {
+    it("formats its own error or the first nested error without a path", () => {
       const Strings = array(String);
 
-      expect(
+      assertEqual(
         Strings.formatError({
           type: "Array",
           reason: { kind: "NotArray", value: null },
         }),
-      ).toBe("A value null is not an array.");
-      expect(
+        "A value null is not an array.",
+      );
+      assertEqual(
         Strings.formatError({
           type: "Array",
           reason: {
@@ -8746,8 +9457,9 @@ describe("array", () => {
             ],
           },
         }),
-      ).toBe("A value 42 is not a string.");
-      expect(
+        "A value 42 is not a string.",
+      );
+      assertEqual(
         Strings.formatError({
           type: "Array",
           reason: {
@@ -8755,8 +9467,9 @@ describe("array", () => {
             issues: [{ kind: "Hole", index: 2 }],
           },
         }),
-      ).toBe("An array element at index 2 is missing.");
-      expect(
+        "An array element at index 2 is missing.",
+      );
+      assertEqual(
         Strings.formatError({
           type: "Array",
           reason: {
@@ -8764,8 +9477,9 @@ describe("array", () => {
             issues: [{ kind: "Accessor", index: 2 }],
           },
         }),
-      ).toBe("An array element at index 2 must be a data property.");
-      expect(
+        "An array element at index 2 must be a data property.",
+      );
+      assertEqual(
         Strings.formatError({
           type: "Array",
           reason: {
@@ -8773,17 +9487,17 @@ describe("array", () => {
             issues: [{ kind: "ExcessProperty", key: "metadata" }],
           },
         }),
-      ).toBe(
         "An excess Array property is not allowed. Remove it or use a different Type.",
       );
-      expectTypeOf(Strings.formatError)
-        .parameter(0)
-        .toEqualTypeOf<ArrayError<TypeOfError<"String">>>();
+      assertType<
+        Parameters<typeof Strings.formatError>[0],
+        ArrayError<TypeOfError<"String">>
+      >();
     });
   });
 
   describe("composition", () => {
-    test("decodes and encodes elements", () => {
+    it("decodes and encodes elements", () => {
       const NumberFromString = setupNumberFromString();
       const Numbers = array(NumberFromString);
       const encoded = ["1", "2"] as const;
@@ -8792,21 +9506,17 @@ describe("array", () => {
       const fromResult = Numbers.from.parent(encoded);
       const toResult = Numbers.to(output);
 
-      expectOk(fromResult, [1, 2]);
-      expect(fromResult.value).not.toBe(encoded);
-      expect(toResult).toEqual(["1", "2"]);
-      expect(toResult).not.toBe(output);
-      expect(Numbers.is([1, 2])).toBe(true);
-      expect(Numbers.is(["1", "2"])).toBe(false);
-      expectTypeOf<typeof Numbers.Input>().toEqualTypeOf<
-        ReadonlyArray<string>
-      >();
-      expectTypeOf<typeof Numbers.Output>().toEqualTypeOf<
-        ReadonlyArray<number>
-      >();
+      assertOk(fromResult, [1, 2]);
+      assertFalse(globalThis.Object.is(fromResult.value, encoded));
+      assertEqual(toResult, ["1", "2"]);
+      assertFalse(globalThis.Object.is(toResult, output));
+      assertTrue(Numbers.is([1, 2]));
+      assertFalse(Numbers.is(["1", "2"]));
+      assertType<typeof Numbers.Input, ReadonlyArray<string>>();
+      assertType<typeof Numbers.Output, ReadonlyArray<number>>();
     });
 
-    test("rejects excess properties instead of discarding them during transformations", () => {
+    it("rejects excess properties instead of discarding them during transformations", () => {
       const NumberFromString = setupNumberFromString();
       const Numbers = array(NumberFromString);
       const input = globalThis.Object.assign(["1"], {
@@ -8822,17 +9532,17 @@ describe("array", () => {
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
       } as const;
-      expect(Numbers.is(output)).toBe(false);
-      expect(Numbers.fromUnknown(input)).toEqual(err(cause));
-      expectAssertionError(
+      assertFalse(Numbers.is(output));
+      assertEqual(Numbers.fromUnknown(input), err(cause));
+      assertAssertionError(
         () => Numbers.from.parent(input),
         "Expected Array.",
         cause,
       );
-      expectAssertionError(() => Numbers.to(output), "Expected Array.", cause);
+      assertAssertionError(() => Numbers.to(output), "Expected Array.", cause);
     });
 
-    test("rejects excess properties even when element encoding is identity", () => {
+    it("rejects excess properties even when element encoding is identity", () => {
       const Numbers = array(Number);
       const value = globalThis.Object.assign([1], {
         metadata: "important",
@@ -8844,13 +9554,13 @@ describe("array", () => {
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
       } as const;
-      expect(Numbers.is(value)).toBe(false);
-      expect(Numbers.fromUnknown(value)).toEqual(err(cause));
-      expectAssertionError(() => Numbers.from(value), "Expected Array.", cause);
-      expectAssertionError(() => Numbers.to(value), "Expected Array.", cause);
+      assertFalse(Numbers.is(value));
+      assertEqual(Numbers.fromUnknown(value), err(cause));
+      assertAssertionError(() => Numbers.from(value), "Expected Array.", cause);
+      assertAssertionError(() => Numbers.to(value), "Expected Array.", cause);
     });
 
-    test("rejects non-enumerable and symbol properties without reading them", () => {
+    it("rejects non-enumerable and symbol properties without reading them", () => {
       const Numbers = array(Number);
       const symbol = globalThis.Symbol("metadata");
       let reads = 0;
@@ -8867,8 +9577,9 @@ describe("array", () => {
         },
       });
 
-      expect(Numbers.is(value)).toBe(false);
-      expect(Numbers.fromUnknown(value, { errors: "all" })).toEqual(
+      assertFalse(Numbers.is(value));
+      assertEqual(
+        Numbers.fromUnknown(value, { errors: "all" }),
         err({
           type: "Array",
           reason: {
@@ -8880,28 +9591,28 @@ describe("array", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("accepts ordinary Record elements through typed operations", () => {
+    it("accepts ordinary Record elements through typed operations", () => {
       const Values = array(record(String, Number));
       const input = [{ value: 1 }];
       const fromUnknownResult = Values.fromUnknown(input);
 
-      expectOk(fromUnknownResult, input);
+      assertOk(fromUnknownResult, input);
       const output = fromUnknownResult.value;
-      expect(Values.parent).toBeNull();
-      expect("parent" in Values.from).toBe(false);
-      expect(Values.is(input)).toBe(true);
-      expect(output).toBe(input);
-      expect(Values.is(output)).toBe(true);
-      expect(Values.from(input)).toEqual(ok(input));
-      expect(Values.to(input)).toBe(input);
-      expect(Values.orThrow(input)).toBe(input);
-      expect(Values.orNull(input)).toBe(input);
+      assertSame(Values.parent, null);
+      assertFalse("parent" in Values.from);
+      assertTrue(Values.is(input));
+      assertSame(output, input);
+      assertTrue(Values.is(output));
+      assertEqual(Values.from(input), ok(input));
+      assertSame(Values.to(input), input);
+      assertSame(Values.orThrow(input), input);
+      assertSame(Values.orNull(input), input);
     });
 
-    test("rejects holes independently of the element Type", () => {
+    it("rejects holes independently of the element Type", () => {
       const Strings = array(String);
       const Undefineds = array(Undefined);
       const Unknowns = array(Unknown);
@@ -8914,18 +9625,22 @@ describe("array", () => {
         },
       });
 
-      expect(Strings.is(sparse)).toBe(false);
-      expect(Strings.fromUnknown(sparse)).toEqual(error);
-      expect(Undefineds.is(sparse)).toBe(false);
-      expect(Undefineds.fromUnknown(sparse)).toEqual(error);
-      expect(Unknowns.is(sparse)).toBe(false);
-      expect(Unknowns.fromUnknown(sparse)).toEqual(error);
-      expectTypeOf(Unknowns.fromUnknown(sparse)).toEqualTypeOf<
-        Result<ReadonlyArray<unknown>, ArrayError<never>>
-      >();
+      assertFalse(Strings.is(sparse));
+      assertEqual(Strings.fromUnknown(sparse), error);
+      assertFalse(Undefineds.is(sparse));
+      assertEqual(Undefineds.fromUnknown(sparse), error);
+      assertFalse(Unknowns.is(sparse));
+      assertEqual(Unknowns.fromUnknown(sparse), error);
+      {
+        const actual = Unknowns.fromUnknown(sparse);
+        assertType<
+          typeof actual,
+          Result<ReadonlyArray<unknown>, ArrayError<never>>
+        >();
+      }
     });
 
-    test("reports inherited elements as holes without reading them", () => {
+    it("reports inherited elements as holes without reading them", () => {
       const Strings = array(String);
       let reads = 0;
       const prototype = globalThis.Object.create(null) as object;
@@ -8938,8 +9653,9 @@ describe("array", () => {
       const sparseStrings = createMutableArray<string>(1);
       globalThis.Object.setPrototypeOf(sparseStrings, prototype);
 
-      expect(Strings.is(sparseStrings)).toBe(false);
-      expect(Strings.fromUnknown(sparseStrings)).toEqual(
+      assertFalse(Strings.is(sparseStrings));
+      assertEqual(
+        Strings.fromUnknown(sparseStrings),
         err({
           type: "Array",
           reason: {
@@ -8948,14 +9664,15 @@ describe("array", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("locates decoding transformation errors by element", () => {
+    it("locates decoding transformation errors by element", () => {
       const NumberFromString = setupNumberFromString();
       const Numbers = array(NumberFromString);
 
-      expect(Numbers.from.parent(["1", "no"])).toEqual(
+      assertEqual(
+        Numbers.from.parent(["1", "no"]),
         err({
           type: "Array",
           reason: {
@@ -8975,16 +9692,18 @@ describe("array", () => {
       );
     });
 
-    test("validates Literal elements through from.parent", () => {
+    it("validates Literal elements through from.parent", () => {
       const Hello = literal("Hello");
       const Hellos = array(Hello);
 
-      expect(Hellos.parent).toBe(array(String));
-      expect(Hellos.parent.parent).toBeNull();
-      expect(Hellos.from.parent(["Hello", "Hello"])).toEqual(
+      assertSame(Hellos.parent, array(String));
+      assertSame(Hellos.parent.parent, null);
+      assertEqual(
+        Hellos.from.parent(["Hello", "Hello"]),
         ok(["Hello", "Hello"]),
       );
-      expect(Hellos.from.parent(["Hello", "World"])).toEqual(
+      assertEqual(
+        Hellos.from.parent(["Hello", "World"]),
         err({
           type: "Array",
           reason: {
@@ -9003,15 +9722,19 @@ describe("array", () => {
           },
         }),
       );
-      expectTypeOf(Hellos.from.parent(["Hello"])).toEqualTypeOf<
-        Result<
-          ReadonlyArray<"Hello">,
-          ArrayElementsError<LiteralError<"Hello">>
-        >
-      >();
+      {
+        const actual = Hellos.from.parent(["Hello"]);
+        assertType<
+          typeof actual,
+          Result<
+            ReadonlyArray<"Hello">,
+            ArrayElementsError<LiteralError<"Hello">>
+          >
+        >();
+      }
     });
 
-    test("validates only the remaining element Types through from.parent", () => {
+    it("validates only the remaining element Types through from.parent", () => {
       const Hello = literal("Hello");
       const validations: Array<string> = [];
       const Greeting = brand("Greeting", Hello, (value) => {
@@ -9021,14 +9744,18 @@ describe("array", () => {
       const Greetings = array(Greeting);
       const hello = getOrThrow(Hello.from("Hello"));
 
-      expect(Greetings.from.parent([hello])).toEqual(ok(["Hello"]));
-      expect(validations).toEqual(["Hello"]);
-      expectTypeOf(Greetings.from.parent([hello])).toEqualTypeOf<
-        Result<ReadonlyArray<typeof Greeting.Output>>
-      >();
+      assertEqual(Greetings.from.parent([hello]), ok(["Hello"]));
+      assertEqual(validations, ["Hello"]);
+      {
+        const actual = Greetings.from.parent([hello]);
+        assertType<
+          typeof actual,
+          Result<ReadonlyArray<typeof Greeting.Output>>
+        >();
+      }
     });
 
-    test("composes Object elements with transformed and optional properties", () => {
+    it("composes Object elements with transformed and optional properties", () => {
       const NumberFromString = setupNumberFromString();
       const Item = object({
         value: NumberFromString,
@@ -9039,12 +9766,11 @@ describe("array", () => {
       const output = [{ value: 1 }, { value: 2, note: "two" }];
       const result = Items.from.parent(encoded);
 
-      expectOk(result, output);
-      expect(result.value).not.toBe(encoded);
-      expect(Items.to(output)).toEqual(encoded);
-      expect(
+      assertOk(result, output);
+      assertFalse(globalThis.Object.is(result.value, encoded));
+      assertEqual(Items.to(output), encoded);
+      assertEqual(
         Items.from.parent([{ value: "1" }, { value: "no" }], { errors: "all" }),
-      ).toEqual(
         err({
           type: "Array",
           reason: {
@@ -9067,7 +9793,8 @@ describe("array", () => {
           },
         }),
       );
-      expectTypeOf<typeof Items.Input>().toEqualTypeOf<
+      assertType<
+        typeof Items.Input,
         ReadonlyArray<
           ExpectedStrictObject<
             { readonly value: string },
@@ -9075,7 +9802,8 @@ describe("array", () => {
           >
         >
       >();
-      expectTypeOf<typeof Items.Output>().toEqualTypeOf<
+      assertType<
+        typeof Items.Output,
         ReadonlyArray<
           ExpectedStrictObject<
             { readonly value: number },
@@ -9085,38 +9813,40 @@ describe("array", () => {
       >();
     });
 
-    test("preserves ordinary root Record properties through Object elements", () => {
+    it("preserves ordinary root Record properties through Object elements", () => {
       const Items = array(object({ values: record(String, Number) }));
       const input = [{ values: { one: 1 } }];
       const result = Items.fromUnknown(input);
 
-      expectOk(result, input);
-      expect(result.value).toBe(input);
-      expect(result.value[0]).toBe(input[0]);
-      expect(result.value[0].values).toBe(input[0].values);
-      expect(Items.is(result.value)).toBe(true);
+      assertOk(result, input);
+      assertSame(result.value, input);
+      assertSame(result.value[0], input[0]);
+      assertSame(result.value[0].values, input[0].values);
+      assertTrue(Items.is(result.value));
     });
   });
 
-  test("exposes error collection options only on operations that preserve errors", () => {
+  it("exposes error collection options only on operations that preserve errors", () => {
     const { UserIds } = setupUserIds();
 
-    expectTypeOf<Parameters<typeof UserIds.fromUnknown>[1]>().toEqualTypeOf<
+    assertType<
+      Parameters<typeof UserIds.fromUnknown>[1],
       ValidationOptions | undefined
     >();
-    expectTypeOf<Parameters<typeof UserIds.from>[1]>().toEqualTypeOf<
+    assertType<
+      Parameters<typeof UserIds.from>[1],
       ValidationOptions | undefined
     >();
-    expectTypeOf<Parameters<typeof UserIds.from.parent>[1]>().toEqualTypeOf<
+    assertType<
+      Parameters<typeof UserIds.from.parent>[1],
       ValidationOptions | undefined
     >();
-    expectTypeOf<Parameters<typeof UserIds.orThrow>[1]>().toEqualTypeOf<
+    assertType<
+      Parameters<typeof UserIds.orThrow>[1],
       ValidationOptions | undefined
     >();
-    expectTypeOf<Parameters<typeof UserIds.is>>().toEqualTypeOf<[unknown]>();
-    expectTypeOf<Parameters<typeof UserIds.orNull>>().toEqualTypeOf<
-      [ReadonlyArray<number>]
-    >();
+    assertType<Parameters<typeof UserIds.is>, [unknown]>();
+    assertType<Parameters<typeof UserIds.orNull>, [ReadonlyArray<number>]>();
 
     const compileTimeAssertions = () => {
       // @ts-expect-error Error collection is not observable through `is`.
@@ -9124,22 +9854,27 @@ describe("array", () => {
       // @ts-expect-error Error collection is not observable through `orNull`.
       UserIds.orNull([], { errors: "all" });
     };
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
   describe("is", () => {
-    test("a type guard that narrows unknown values", () => {
+    it("a type guard that narrows unknown values", () => {
       const { UserIds } = setupUserIds();
       const value: unknown = [1, 2];
 
       assert(UserIds.is(value), "Expected value to be UserIds.");
 
-      expectTypeOf(value).toEqualTypeOf<typeof UserIds.Output>();
-      expect(UserIds.is([0])).toBe(false);
-      expect(UserIds.is(null)).toBe(false);
+      assertType<typeof value, typeof UserIds.Output>();
+      assertFalse(UserIds.is([0]));
+      assertFalse(UserIds.is(null));
     });
 
-    test("rejects accessor elements without invoking them", () => {
+    it("rejects accessor elements without invoking them", () => {
       const Strings = array(String);
       let reads = 0;
       const value: Array<unknown> = [];
@@ -9151,37 +9886,37 @@ describe("array", () => {
         },
       });
 
-      expect(Strings.is(value)).toBe(false);
-      expect(reads).toBe(0);
+      assertFalse(Strings.is(value));
+      assertEqual(reads, 0);
     });
   });
 
   describe("fromUnknown", () => {
-    test("accepts an empty array in both error collection modes", () => {
+    it("accepts an empty array in both error collection modes", () => {
       const { UserIds, validations } = setupUserIds();
       const value: unknown = [];
       const first = UserIds.fromUnknown(value);
       const all = UserIds.fromUnknown(value, { errors: "all" });
 
-      expectOk(first, value);
-      expect(first.value).toBe(value);
-      expectOk(all, value);
-      expect(all.value).toBe(value);
-      expect(validations).toEqual([]);
+      assertOk(first, value);
+      assertSame(first.value, value);
+      assertOk(all, value);
+      assertSame(all.value, value);
+      assertEqual(validations, []);
     });
 
-    test("validates every element without changing the array", () => {
+    it("validates every element without changing the array", () => {
       const { UserIds, validations } = setupUserIds();
       const value: unknown = [1, 2];
       const result = UserIds.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(validations).toEqual([1, 2]);
-      expectTypeOf(result.value).toEqualTypeOf<typeof UserIds.Output>();
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertEqual(validations, [1, 2]);
+      assertType<typeof result.value, typeof UserIds.Output>();
     });
 
-    test("rejects accessor elements without invoking them", () => {
+    it("rejects accessor elements without invoking them", () => {
       const Strings = array(String);
       let reads = 0;
       const value: Array<unknown> = [];
@@ -9195,7 +9930,8 @@ describe("array", () => {
 
       const result = Strings.fromUnknown(value);
 
-      expect(result).toEqual(
+      assertEqual(
+        result,
         err({
           type: "Array",
           reason: {
@@ -9204,15 +9940,16 @@ describe("array", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("wraps a primitive parent error for an invalid Literal element", () => {
+    it("wraps a primitive parent error for an invalid Literal element", () => {
       const Hello = literal("Hello");
       const Hellos = array(Hello);
       const value: unknown = [42];
 
-      expect(Hellos.fromUnknown(value)).toEqual(
+      assertEqual(
+        Hellos.fromUnknown(value),
         err({
           type: "Array",
           reason: {
@@ -9227,15 +9964,19 @@ describe("array", () => {
           },
         }),
       );
-      expectTypeOf(Hellos.fromUnknown(value)).toEqualTypeOf<
-        Result<
-          ReadonlyArray<"Hello">,
-          ArrayError<TypeOfError<"String"> | LiteralError<"Hello">>
-        >
-      >();
+      {
+        const actual = Hellos.fromUnknown(value);
+        assertType<
+          typeof actual,
+          Result<
+            ReadonlyArray<"Hello">,
+            ArrayError<TypeOfError<"String"> | LiteralError<"Hello">>
+          >
+        >();
+      }
     });
 
-    test("returns a NotArray error regardless of error collection mode", () => {
+    it("returns a NotArray error regardless of error collection mode", () => {
       const { PositiveInt: _PositiveInt, UserIds } = setupUserIds();
       const value: unknown = null;
       const expected = err({
@@ -9243,20 +9984,25 @@ describe("array", () => {
         reason: { kind: "NotArray", value },
       });
 
-      expect(UserIds.fromUnknown(value)).toEqual(expected);
-      expect(UserIds.fromUnknown(value, { errors: "all" })).toEqual(expected);
-      expectTypeOf(UserIds.fromUnknown(value)).toEqualTypeOf<
-        Result<
-          typeof UserIds.Output,
-          ArrayError<TypeOfError<"Number"> | typeof _PositiveInt.Error>
-        >
-      >();
+      assertEqual(UserIds.fromUnknown(value), expected);
+      assertEqual(UserIds.fromUnknown(value, { errors: "all" }), expected);
+      {
+        const actual = UserIds.fromUnknown(value);
+        assertType<
+          typeof actual,
+          Result<
+            typeof UserIds.Output,
+            ArrayError<TypeOfError<"Number"> | typeof _PositiveInt.Error>
+          >
+        >();
+      }
     });
 
-    test("returns only the first failing element error by default", () => {
+    it("returns only the first failing element error by default", () => {
       const { UserIds } = setupUserIds();
 
-      expect(UserIds.fromUnknown([1, "2", 3])).toEqual(
+      assertEqual(
+        UserIds.fromUnknown([1, "2", 3]),
         err({
           type: "Array",
           reason: {
@@ -9271,7 +10017,8 @@ describe("array", () => {
           },
         }),
       );
-      expect(UserIds.fromUnknown([1, -2, 3])).toEqual(
+      assertEqual(
+        UserIds.fromUnknown([1, -2, 3]),
         err({
           type: "Array",
           reason: {
@@ -9288,10 +10035,11 @@ describe("array", () => {
       );
     });
 
-    test("returns the first invalid element across validation levels", () => {
+    it("returns the first invalid element across validation levels", () => {
       const { UserIds } = setupUserIds();
 
-      expect(UserIds.fromUnknown([-1, "x"])).toEqual(
+      assertEqual(
+        UserIds.fromUnknown([-1, "x"]),
         err({
           type: "Array",
           reason: {
@@ -9308,10 +10056,11 @@ describe("array", () => {
       );
     });
 
-    test("supports explicit first-error collection", () => {
+    it("supports explicit first-error collection", () => {
       const { MaxTenValues, validations } = setupValidatedNumbers();
 
-      expect(MaxTenValues.fromUnknown([1, -2], { errors: "first" })).toEqual(
+      assertEqual(
+        MaxTenValues.fromUnknown([1, -2], { errors: "first" }),
         err({
           type: "Array",
           reason: {
@@ -9322,18 +10071,17 @@ describe("array", () => {
           },
         }),
       );
-      expect(validations).toEqual([
+      assertEqual(validations, [
         ["Positive", 1],
         ["Even", 1],
       ]);
     });
 
-    test("collects one error from every invalid element in index order", () => {
+    it("collects one error from every invalid element in index order", () => {
       const { MaxTenValues, validations } = setupValidatedNumbers();
 
-      expect(
+      assertEqual(
         MaxTenValues.fromUnknown([1, "x", -2, 12], { errors: "all" }),
-      ).toEqual(
         err({
           type: "Array",
           reason: {
@@ -9359,7 +10107,7 @@ describe("array", () => {
           },
         }),
       );
-      expect(validations).toEqual([
+      assertEqual(validations, [
         ["Positive", 1],
         ["Even", 1],
         ["Positive", -2],
@@ -9369,7 +10117,7 @@ describe("array", () => {
       ]);
     });
 
-    test("collects structural and invalid element issues in index order", () => {
+    it("collects structural and invalid element issues in index order", () => {
       const Strings = array(String);
       let reads = 0;
       const value = createMutableArray<unknown>(5);
@@ -9383,7 +10131,8 @@ describe("array", () => {
       });
       value[3] = false;
 
-      expect(Strings.fromUnknown(value, { errors: "all" })).toEqual(
+      assertEqual(
+        Strings.fromUnknown(value, { errors: "all" }),
         err({
           type: "Array",
           reason: {
@@ -9410,16 +10159,17 @@ describe("array", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("does not construct transformed output after collecting an issue", () => {
+    it("does not construct transformed output after collecting an issue", () => {
       const NumberFromString = setupNumberFromString();
       const Numbers = array(NumberFromString);
       const value = createMutableArray<unknown>(2);
       value[1] = "1";
 
-      expect(Numbers.fromUnknown(value, { errors: "all" })).toEqual(
+      assertEqual(
+        Numbers.fromUnknown(value, { errors: "all" }),
         err({
           type: "Array",
           reason: {
@@ -9430,7 +10180,7 @@ describe("array", () => {
       );
     });
 
-    test("composes with another Array Type", () => {
+    it("composes with another Array Type", () => {
       const Matrix = array(array(Number));
       const value: unknown = [
         [1, 2],
@@ -9438,12 +10188,11 @@ describe("array", () => {
       ];
       const result = Matrix.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expectTypeOf(result.value).toEqualTypeOf<
-        ReadonlyArray<ReadonlyArray<number>>
-      >();
-      expect(Matrix.fromUnknown([[1, "2"]])).toEqual(
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertType<typeof result.value, ReadonlyArray<ReadonlyArray<number>>>();
+      assertEqual(
+        Matrix.fromUnknown([[1, "2"]]),
         err({
           type: "Array",
           reason: {
@@ -9476,10 +10225,10 @@ describe("array", () => {
       );
     });
 
-    test("collects nested Array errors recursively", () => {
+    it("collects nested Array errors recursively", () => {
       const Matrix = array(array(Number));
 
-      expect(
+      assertEqual(
         Matrix.fromUnknown(
           [
             ["a", "b"],
@@ -9488,7 +10237,6 @@ describe("array", () => {
           ],
           { errors: "all" },
         ),
-      ).toEqual(
         err({
           type: "Array",
           reason: {
@@ -9551,11 +10299,12 @@ describe("array", () => {
       );
     });
 
-    test("forwards error collection through a child of an Array Type", () => {
+    it("forwards error collection through a child of an Array Type", () => {
       const { UserIds } = setupUserIds();
       const ImportedUserIds = brand("ImportedUserIds", UserIds);
 
-      expect(ImportedUserIds.fromUnknown([0, -1], { errors: "all" })).toEqual(
+      assertEqual(
+        ImportedUserIds.fromUnknown([0, -1], { errors: "all" }),
         err({
           type: "Array",
           reason: {
@@ -9579,11 +10328,11 @@ describe("array", () => {
   });
 
   describe("to", () => {
-    test("asserts its own Output", () => {
+    it("asserts its own Output", () => {
       const Values = array(Number);
       const sparse = createMutableArray<number>(1);
 
-      expectAssertionError(() => Values.to(sparse), "Expected Array.", {
+      assertAssertionError(() => Values.to(sparse), "Expected Array.", {
         type: "Array",
         reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
       });
@@ -9591,32 +10340,30 @@ describe("array", () => {
   });
 
   describe("from", () => {
-    test("asserts its own Output", () => {
+    it("asserts its own Output", () => {
       const Values = array(Number);
       const sparse = createMutableArray<number>(1);
 
-      expectAssertionError(() => Values.from(sparse), "Expected Array.", {
+      assertAssertionError(() => Values.from(sparse), "Expected Array.", {
         type: "Array",
         reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
       });
     });
 
-    test("asserts its own Output elements", () => {
+    it("asserts its own Output elements", () => {
       const { UserIds, validations } = setupUserIds();
       const value = UserIds.orThrow([1, 2]);
       validations.length = 0;
       const result = UserIds.from(value);
 
-      expectTypeOf(result).toEqualTypeOf<Result<typeof UserIds.Output>>();
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(validations).toEqual([1, 2]);
-      expectTypeOf(UserIds.from)
-        .parameter(0)
-        .toEqualTypeOf<typeof UserIds.Output>();
+      assertType<typeof result, Result<typeof UserIds.Output>>();
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertEqual(validations, [1, 2]);
+      assertType<Parameters<typeof UserIds.from>[0], typeof UserIds.Output>();
     });
 
-    test("validates root element Outputs at the deepest boundary", () => {
+    it("validates root element Outputs at the deepest boundary", () => {
       const {
         PositiveInt: _PositiveInt,
         UserIds,
@@ -9625,24 +10372,27 @@ describe("array", () => {
       const value: ReadonlyArray<number> = [1, 2];
       const result = UserIds.from.parent.parent(value);
 
-      expectTypeOf(result).toEqualTypeOf<
+      assertType<
+        typeof result,
         Result<
           typeof UserIds.Output,
           ArrayElementsError<typeof _PositiveInt.Error>
         >
       >();
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(validations).toEqual([1, 2]);
-      expectTypeOf(UserIds.from.parent.parent)
-        .parameter(0)
-        .toEqualTypeOf<ReadonlyArray<number>>();
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertEqual(validations, [1, 2]);
+      assertType<
+        Parameters<typeof UserIds.from.parent.parent>[0],
+        ReadonlyArray<number>
+      >();
     });
 
-    test("returns the first failing element index and refinement error", () => {
+    it("returns the first failing element index and refinement error", () => {
       const { UserIds } = setupUserIds();
 
-      expect(UserIds.from.parent.parent([1, -2, 3])).toEqual(
+      assertEqual(
+        UserIds.from.parent.parent([1, -2, 3]),
         err({
           type: "Array",
           reason: {
@@ -9659,10 +10409,11 @@ describe("array", () => {
       );
     });
 
-    test("returns the first invalid element across remaining validation levels", () => {
+    it("returns the first invalid element across remaining validation levels", () => {
       const { MaxTenValues } = setupValidatedNumbers();
 
-      expect(MaxTenValues.from.parent.parent.parent([1, -2])).toEqual(
+      assertEqual(
+        MaxTenValues.from.parent.parent.parent([1, -2]),
         err({
           type: "Array",
           reason: {
@@ -9675,14 +10426,13 @@ describe("array", () => {
       );
     });
 
-    test("collects mixed remaining validation errors from every invalid element", () => {
+    it("collects mixed remaining validation errors from every invalid element", () => {
       const { MaxTenValues, validations } = setupValidatedNumbers();
 
-      expect(
+      assertEqual(
         MaxTenValues.from.parent.parent.parent([1, -2, 12, 4], {
           errors: "all",
         }),
-      ).toEqual(
         err({
           type: "Array",
           reason: {
@@ -9703,7 +10453,7 @@ describe("array", () => {
           },
         }),
       );
-      expect(validations).toEqual([
+      assertEqual(validations, [
         ["Positive", 1],
         ["Even", 1],
         ["Positive", -2],
@@ -9716,15 +10466,14 @@ describe("array", () => {
       ]);
     });
 
-    test("forwards error collection through a child of an Array Type", () => {
+    it("forwards error collection through a child of an Array Type", () => {
       const { UserIds } = setupUserIds();
       const ImportedUserIds = brand("ImportedUserIds", UserIds);
 
-      expect(
+      assertEqual(
         ImportedUserIds.from.parent.parent.parent([0, -1], {
           errors: "all",
         }),
-      ).toEqual(
         err({
           type: "Array",
           reason: {
@@ -9746,7 +10495,7 @@ describe("array", () => {
       );
     });
 
-    test("preserves heterogeneous errors through a child of an Array Type", () => {
+    it("preserves heterogeneous errors through a child of an Array Type", () => {
       const {
         Positive: _Positive,
         Even: _Even,
@@ -9767,18 +10516,17 @@ describe("array", () => {
         | typeof MaxTenValues.element.Error
       >;
 
-      expectTypeOf(result).toEqualTypeOf<
-        Result<typeof Imported.Output, Error>
-      >();
-      expectTypeOf(reimportedResult).toEqualTypeOf<
+      assertType<typeof result, Result<typeof Imported.Output, Error>>();
+      assertType<
+        typeof reimportedResult,
         Result<typeof Reimported.Output, Error>
       >();
-      expectTypeOf<ReturnType<typeof Imported.from.parent>>().toEqualTypeOf<
+      assertType<
+        ReturnType<typeof Imported.from.parent>,
         Result<typeof Imported.Output>
       >();
-      expectTypeOf<
-        ReturnType<typeof Imported.from.parent.parent>
-      >().toEqualTypeOf<
+      assertType<
+        ReturnType<typeof Imported.from.parent.parent>,
         Result<typeof Imported.Output, typeof MaxTenValues.Error>
       >();
       const expected = err({
@@ -9801,11 +10549,11 @@ describe("array", () => {
         },
       });
 
-      expect(result).toEqual(expected);
-      expect(reimportedResult).toEqual(expected);
+      assertEqual(result, expected);
+      assertEqual(reimportedResult, expected);
     });
 
-    test("preserves heterogeneous errors through createType and transform children", () => {
+    it("preserves heterogeneous errors through createType and transform children", () => {
       const {
         Positive: _Positive,
         Even: _Even,
@@ -9830,10 +10578,12 @@ describe("array", () => {
         | typeof MaxTenValues.element.Error;
       type ParentError = ArrayElementsError<ElementError>;
 
-      expectTypeOf(importedResult).toEqualTypeOf<
+      assertType<
+        typeof importedResult,
         Result<typeof Imported.Output, ParentError>
       >();
-      expectTypeOf(revalidatedResult).toEqualTypeOf<
+      assertType<
+        typeof revalidatedResult,
         Result<
           typeof Revalidated.Output,
           ParentError | TransformError<"Revalidated", never, ParentError>
@@ -9860,11 +10610,11 @@ describe("array", () => {
         },
       });
 
-      expect(importedResult).toEqual(expected);
-      expect(revalidatedResult).toEqual(expected);
+      assertEqual(importedResult, expected);
+      assertEqual(revalidatedResult, expected);
     });
 
-    test("keeps a fallible createType child error outside inherited Array errors", () => {
+    it("keeps a fallible createType child error outside inherited Array errors", () => {
       const {
         Positive: _Positive,
         Even: _Even,
@@ -9900,13 +10650,16 @@ describe("array", () => {
             | typeof MaxTenValues.element.Error
           >;
 
-      expectTypeOf(inheritedResult).toEqualTypeOf<
+      assertType<
+        typeof inheritedResult,
         Result<typeof AtLeastFourValues.Output, Error>
       >();
-      expectTypeOf(ownResult).toEqualTypeOf<
+      assertType<
+        typeof ownResult,
         Result<typeof AtLeastFourValues.Output, Error>
       >();
-      expect(inheritedResult).toEqual(
+      assertEqual(
+        inheritedResult,
         err({
           type: "Array",
           reason: {
@@ -9927,18 +10680,16 @@ describe("array", () => {
           },
         }),
       );
-      expect(ownResult).toEqual(
-        err({ type: "AtLeastFourValues", value: [2, 4] }),
-      );
+      assertEqual(ownResult, err({ type: "AtLeastFourValues", value: [2, 4] }));
     });
   });
 
   describe("from.parent", () => {
-    test("asserts the selected parent Output", () => {
+    it("asserts the selected parent Output", () => {
       const Values = array(literal(1));
       const sparse = createMutableArray<number>(1);
 
-      expectAssertionError(
+      assertAssertionError(
         () => Values.from.parent(sparse),
         "Expected Array.",
         {
@@ -9948,48 +10699,50 @@ describe("array", () => {
       );
     });
 
-    test("consumes the Output produced by the parent Array Type", () => {
+    it("consumes the Output produced by the parent Array Type", () => {
       const { UserIds, validations } = setupUserIds();
       const value: unknown = [1, 2];
       const parentResult = UserIds.parent.fromUnknown(value);
 
-      expectOk(parentResult, value);
-      expect(parentResult.value).toBe(value);
-      expect(validations).toEqual([1, 2]);
+      assertOk(parentResult, value);
+      assertSame(parentResult.value, value);
+      assertEqual(validations, [1, 2]);
 
       validations.length = 0;
       const result = UserIds.from.parent(parentResult.value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(validations).toEqual([1, 2]);
-      expectTypeOf(UserIds.from.parent)
-        .parameter(0)
-        .toEqualTypeOf<typeof UserIds.parent.Output>();
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertEqual(validations, [1, 2]);
+      assertType<
+        Parameters<typeof UserIds.from.parent>[0],
+        typeof UserIds.parent.Output
+      >();
     });
 
-    test("preserves unchanged elements before the first converted element", () => {
+    it("preserves unchanged elements before the first converted element", () => {
       const NumberFromString = setupNumberFromString();
       const Values = array(union(Number, NumberFromString));
       const input: typeof Values.parent.Output = [1, "2"];
       const result = Values.from.parent(input);
 
-      expectOk(result, [1, 2]);
-      expect(result.value).not.toBe(input);
+      assertOk(result, [1, 2]);
+      assertFalse(globalThis.Object.is(result.value, input));
     });
 
-    test("asserts parent element Outputs and validates later Types", () => {
+    it("asserts parent element Outputs and validates later Types", () => {
       const { Even, MaxTenValues, validations } = setupValidatedNumbers();
       const values = [Even.orThrow(2), Even.orThrow(4)];
       validations.length = 0;
       const result = MaxTenValues.from.parent(values);
 
-      expectTypeOf(result).toEqualTypeOf<
+      assertType<
+        typeof result,
         Result<typeof MaxTenValues.Output, typeof MaxTenValues.Error>
       >();
-      expectOk(result, values);
-      expect(result.value).toBe(values);
-      expect(validations).toEqual([
+      assertOk(result, values);
+      assertSame(result.value, values);
+      assertEqual(validations, [
         ["Positive", 2],
         ["Even", 2],
         ["Positive", 4],
@@ -9997,17 +10750,19 @@ describe("array", () => {
         ["MaxTen", 2],
         ["MaxTen", 4],
       ]);
-      expectTypeOf(MaxTenValues.from.parent)
-        .parameter(0)
-        .toEqualTypeOf<ReadonlyArray<typeof Even.Output>>();
+      assertType<
+        Parameters<typeof MaxTenValues.from.parent>[0],
+        ReadonlyArray<typeof Even.Output>
+      >();
     });
 
-    test("collects errors from every invalid immediate-parent Output", () => {
+    it("collects errors from every invalid immediate-parent Output", () => {
       const { Even, MaxTenValues, validations } = setupValidatedNumbers();
       const values = [Even.orThrow(12), Even.orThrow(14)];
       validations.length = 0;
 
-      expect(MaxTenValues.from.parent(values, { errors: "all" })).toEqual(
+      assertEqual(
+        MaxTenValues.from.parent(values, { errors: "all" }),
         err({
           type: "Array",
           reason: {
@@ -10027,7 +10782,7 @@ describe("array", () => {
           },
         }),
       );
-      expect(validations).toEqual([
+      assertEqual(validations, [
         ["Positive", 12],
         ["Even", 12],
         ["Positive", 14],
@@ -10037,15 +10792,15 @@ describe("array", () => {
       ]);
     });
 
-    test("ends when the input boundary reaches the root Array Type", () => {
+    it("ends when the input boundary reaches the root Array Type", () => {
       const { UserIds } = setupUserIds();
       const deepest = UserIds.from.parent.parent;
 
-      expect("parent" in deepest).toBe(false);
-      expectTypeOf<"parent">().not.toExtend<keyof typeof deepest>();
+      assertFalse("parent" in deepest);
+      assertType<"parent" extends keyof typeof deepest ? true : false, false>();
     });
 
-    test("supports deeper input boundaries and remaining validation levels", () => {
+    it("supports deeper input boundaries and remaining validation levels", () => {
       const {
         Positive,
         Even: _Even,
@@ -10056,7 +10811,8 @@ describe("array", () => {
       validations.length = 0;
       const result = MaxTenValues.from.parent.parent(values);
 
-      expect(result).toEqual(
+      assertEqual(
+        result,
         err({
           type: "Array",
           reason: {
@@ -10071,7 +10827,7 @@ describe("array", () => {
           },
         }),
       );
-      expect(validations).toEqual([
+      assertEqual(validations, [
         ["Positive", 2],
         ["Positive", 12],
         ["Even", 2],
@@ -10079,7 +10835,8 @@ describe("array", () => {
         ["Even", 12],
         ["MaxTen", 12],
       ]);
-      expectTypeOf(result).toEqualTypeOf<
+      assertType<
+        typeof result,
         Result<
           typeof MaxTenValues.Output,
           ArrayElementsError<
@@ -10087,12 +10844,13 @@ describe("array", () => {
           >
         >
       >();
-      expectTypeOf(MaxTenValues.from.parent.parent)
-        .parameter(0)
-        .toEqualTypeOf<ReadonlyArray<typeof Positive.Output>>();
+      assertType<
+        Parameters<typeof MaxTenValues.from.parent.parent>[0],
+        ReadonlyArray<typeof Positive.Output>
+      >();
     });
 
-    test("collects mixed errors across a deeper input boundary", () => {
+    it("collects mixed errors across a deeper input boundary", () => {
       const { Positive, MaxTenValues, validations } = setupValidatedNumbers();
       const values = [
         Positive.orThrow(1),
@@ -10102,9 +10860,8 @@ describe("array", () => {
       ];
       validations.length = 0;
 
-      expect(
+      assertEqual(
         MaxTenValues.from.parent.parent(values, { errors: "all" }),
-      ).toEqual(
         err({
           type: "Array",
           reason: {
@@ -10121,7 +10878,7 @@ describe("array", () => {
           },
         }),
       );
-      expect(validations).toEqual([
+      assertEqual(validations, [
         ["Positive", 1],
         ["Positive", 12],
         ["Positive", 4],
@@ -10137,22 +10894,22 @@ describe("array", () => {
   });
 
   describe("orThrow", () => {
-    test("asserts its typed Input boundary", () => {
+    it("asserts its typed Input boundary", () => {
       const Values = array(literal(1));
       const sparse = createMutableArray<number>(1);
 
-      expectAssertionError(() => Values.orThrow(sparse), "Expected Array.", {
+      assertAssertionError(() => Values.orThrow(sparse), "Expected Array.", {
         type: "Array",
         reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
       });
     });
 
-    test("returns the same array or throws the first failing element error", () => {
+    it("returns the same array or throws the first failing element error", () => {
       const { UserIds } = setupUserIds();
       const value: ReadonlyArray<number> = [1, 2];
 
-      expect(UserIds.orThrow(value)).toBe(value);
-      expectAssertionError(() => UserIds.orThrow([1, -2, 3]), "getOrThrow", {
+      assertSame(UserIds.orThrow(value), value);
+      assertAssertionError(() => UserIds.orThrow([1, -2, 3]), "getOrThrow", {
         type: "Array",
         reason: {
           kind: "Items",
@@ -10167,9 +10924,9 @@ describe("array", () => {
       });
     });
 
-    test("throws every collected element error", () => {
+    it("throws every collected element error", () => {
       const { UserIds } = setupUserIds();
-      expectAssertionError(
+      assertAssertionError(
         () => UserIds.orThrow([0, -1], { errors: "all" }),
         "getOrThrow",
         {
@@ -10195,35 +10952,35 @@ describe("array", () => {
   });
 
   describe("orNull", () => {
-    test("does not convert a typed Input assertion into null", () => {
+    it("does not convert a typed Input assertion into null", () => {
       const Values = array(literal(1));
       const sparse = createMutableArray<number>(1);
 
-      expectAssertionError(() => Values.orNull(sparse), "Expected Array.", {
+      assertAssertionError(() => Values.orNull(sparse), "Expected Array.", {
         type: "Array",
         reason: { kind: "Items", issues: [{ kind: "Hole", index: 0 }] },
       });
     });
 
-    test("returns the same array or null for a failing element", () => {
+    it("returns the same array or null for a failing element", () => {
       const { UserIds } = setupUserIds();
       const value: ReadonlyArray<number> = [1, 2];
 
-      expect(UserIds.orNull(value)).toBe(value);
-      expect(UserIds.orNull([0])).toBeNull();
+      assertSame(UserIds.orNull(value), value);
+      assertSame(UserIds.orNull([0]), null);
     });
   });
 });
 
 describe("set", () => {
-  test("constructs and caches a Set Type", () => {
+  it("constructs and caches a Set Type", () => {
     const Strings = set(String);
 
-    expect(Strings.name).toBe("Set");
-    expect(Strings.element).toBe(String);
-    expect(set(String)).toBe(Strings);
-    expectTypeOf<typeof Strings.Output>().toEqualTypeOf<ReadonlySet<string>>();
-    expectTypeOf<typeof Strings.Input>().toEqualTypeOf<ReadonlySet<string>>();
+    assertEqual(Strings.name, "Set");
+    assertSame(Strings.element, String);
+    assertSame(set(String), Strings);
+    assertType<typeof Strings.Output, ReadonlySet<string>>();
+    assertType<typeof Strings.Input, ReadonlySet<string>>();
 
     const uncertain = Math.random() ? String : Number;
     const erased: FormattableTypeNode = String;
@@ -10233,17 +10990,23 @@ describe("set", () => {
       // @ts-expect-error An element must preserve its concrete Type.
       set(erased);
     };
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("validates the Set boundary and elements", () => {
+  it("validates the Set boundary and elements", () => {
     const Strings = set(String);
     const value = new globalThis.Set(["a", "b"]);
     const result = Strings.fromUnknown(value);
 
-    expectOk(result, value);
-    expect(result.value).toBe(value);
-    expect(Strings.fromUnknown(["a", "b"])).toEqual(
+    assertOk(result, value);
+    assertSame(result.value, value);
+    assertEqual(
+      Strings.fromUnknown(["a", "b"]),
       err({ type: "Set", reason: { kind: "NotSet", value: ["a", "b"] } }),
     );
 
@@ -10251,7 +11014,8 @@ describe("set", () => {
       new globalThis.Set<unknown>([1]),
       { metadata: true },
     );
-    expect(Strings.fromUnknown(withProperty, { errors: "all" })).toEqual(
+    assertEqual(
+      Strings.fromUnknown(withProperty, { errors: "all" }),
       err<SetItemsError<TypeOfError<"String">>>({
         type: "Set",
         reason: {
@@ -10267,7 +11031,8 @@ describe("set", () => {
         },
       }),
     );
-    expect(Strings.fromUnknown(withProperty)).toEqual(
+    assertEqual(
+      Strings.fromUnknown(withProperty),
       err<SetItemsError<TypeOfError<"String">>>({
         type: "Set",
         reason: {
@@ -10278,30 +11043,31 @@ describe("set", () => {
     );
   });
 
-  test("supports element decoding, parent operations, and encoding", () => {
+  it("supports element decoding, parent operations, and encoding", () => {
     const NumbersFromStrings = set(setupNumberFromString());
     const input = new globalThis.Set(["1", "2"]);
     const output = new globalThis.Set([1, 2]);
 
-    expectOk(NumbersFromStrings.fromUnknown(input), output);
-    expect(NumbersFromStrings.to(output)).toEqual(input);
-    expect(NumbersFromStrings.is(output)).toBe(true);
-    expect(NumbersFromStrings.is(input)).toBe(false);
+    assertOk(NumbersFromStrings.fromUnknown(input), output);
+    assertEqual(NumbersFromStrings.to(output), input);
+    assertTrue(NumbersFromStrings.is(output));
+    assertFalse(NumbersFromStrings.is(input));
 
     const NumbersOrNumbersFromStrings = set(
       union(Number, setupNumberFromString()),
     );
     const unchanged = new globalThis.Set([1, 2]);
-    expect(NumbersOrNumbersFromStrings.to(unchanged)).toBe(unchanged);
+    assertSame(NumbersOrNumbersFromStrings.to(unchanged), unchanged);
 
     const LongStrings = set(minLength(2)(String));
     const valid = new globalThis.Set(["ok"]);
     const invalid = new globalThis.Set(["x"]);
     const validResult = LongStrings.from.parent(valid);
 
-    expectOk(validResult, valid);
-    expect(validResult.value).toBe(valid);
-    expect(LongStrings.from.parent(invalid)).toEqual(
+    assertOk(validResult, valid);
+    assertSame(validResult.value, valid);
+    assertEqual(
+      LongStrings.from.parent(invalid),
       err<SetElementsError<MinLengthError<2>>>({
         type: "Set",
         reason: {
@@ -10316,35 +11082,34 @@ describe("set", () => {
         },
       }),
     );
-    expectTypeOf(LongStrings).toEqualTypeOf<
-      SetType<typeof LongStrings.element>
-    >();
+    assertType<typeof LongStrings, SetType<typeof LongStrings.element>>();
   });
 
-  test("checks exact Output representation", () => {
+  it("checks exact Output representation", () => {
     const Strings = set(String);
     const value = new globalThis.Set(["a"]);
     const withProperty = globalThis.Object.assign(new globalThis.Set(["a"]), {
       metadata: true,
     });
 
-    expect(Strings.is(value)).toBe(true);
-    expect(Strings.is("a")).toBe(false);
-    expect(Strings.is(withProperty)).toBe(false);
-    expect(Strings.is(new globalThis.Set([1]))).toBe(false);
-    expect(Strings.to(value)).toBe(value);
+    assertTrue(Strings.is(value));
+    assertFalse(Strings.is("a"));
+    assertFalse(Strings.is(withProperty));
+    assertFalse(Strings.is(new globalThis.Set([1])));
+    assertSame(Strings.to(value), value);
   });
 
-  test("formats structural and nested errors", () => {
+  it("formats structural and nested errors", () => {
     const Strings = set(String);
 
-    expect(
+    assertEqual(
       Strings.formatError({
         type: "Set",
         reason: { kind: "NotSet", value: null },
       }),
-    ).toBe("A value null is not a Set.");
-    expect(
+      "A value null is not a Set.",
+    );
+    assertEqual(
       Strings.formatError({
         type: "Set",
         reason: {
@@ -10352,8 +11117,9 @@ describe("set", () => {
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
       }),
-    ).toBe('An excess Set property "metadata" is not allowed.');
-    expect(
+      'An excess Set property "metadata" is not allowed.',
+    );
+    assertEqual(
       Strings.formatError({
         type: "Set",
         reason: {
@@ -10367,41 +11133,47 @@ describe("set", () => {
           ],
         },
       }),
-    ).toBe("A value 1 is not a string.");
+      "A value 1 is not a string.",
+    );
 
-    expectTypeOf<SetError<TypeOfError<"String">>>().toEqualTypeOf<
+    assertType<
+      SetError<TypeOfError<"String">>,
       SetNotSetError | SetItemsError<TypeOfError<"String">>
     >();
-    expectTypeOf<SetElementIssue<TypeOfError<"String">>>().toEqualTypeOf<{
-      readonly kind: "Element";
-      readonly index: number;
-      readonly error: TypeOfError<"String">;
-    }>();
-    expectTypeOf<SetExcessPropertyIssue>().toEqualTypeOf<{
-      readonly kind: "ExcessProperty";
-      readonly key: string | symbol;
-    }>();
+    assertType<
+      SetElementIssue<TypeOfError<"String">>,
+      {
+        readonly kind: "Element";
+        readonly index: number;
+        readonly error: TypeOfError<"String">;
+      }
+    >();
+    assertType<
+      SetExcessPropertyIssue,
+      {
+        readonly kind: "ExcessProperty";
+        readonly key: string | symbol;
+      }
+    >();
   });
 });
 
 describe("map", () => {
-  test("constructs and caches a Map Type", () => {
+  it("constructs and caches a Map Type", () => {
     const Scores = map(String, Number);
 
-    expect(Scores.name).toBe("Map");
-    expect(Scores.key).toBe(String);
-    expect(Scores.value).toBe(Number);
-    expect(map(String, Number)).toBe(Scores);
-    expectTypeOf<typeof Scores.Output>().toEqualTypeOf<
-      ReadonlyMap<string, number>
-    >();
-    expectTypeOf<typeof Scores.Input>().toEqualTypeOf<
-      ReadonlyMap<string, number>
-    >();
-    expectTypeOf<typeof Scores.Error>().toEqualTypeOf<
+    assertEqual(Scores.name, "Map");
+    assertSame(Scores.key, String);
+    assertSame(Scores.value, Number);
+    assertSame(map(String, Number), Scores);
+    assertType<typeof Scores.Output, ReadonlyMap<string, number>>();
+    assertType<typeof Scores.Input, ReadonlyMap<string, number>>();
+    assertType<
+      typeof Scores.Error,
       MapError<TypeOfError<"String">, TypeOfError<"Number">, never>
     >();
-    expectTypeOf(Scores.from).toEqualTypeOf<
+    assertType<
+      typeof Scores.from,
       (
         value: ReadonlyMap<string, number>,
         options?: ValidationOptions,
@@ -10420,10 +11192,15 @@ describe("map", () => {
       // @ts-expect-error A value must preserve its concrete Type.
       map(String, erased);
     };
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("validates the Map boundary, structure, keys, and values", () => {
+  it("validates the Map boundary, structure, keys, and values", () => {
     const Scores = map(String, Number);
     const value = new globalThis.Map<string, number>([
       ["Ada", 10],
@@ -10431,9 +11208,10 @@ describe("map", () => {
     ]);
     const result = Scores.fromUnknown(value);
 
-    expectOk(result, value);
-    expect(result.value).toBe(value);
-    expect(Scores.fromUnknown({ Ada: 10 })).toEqual(
+    assertOk(result, value);
+    assertSame(result.value, value);
+    assertEqual(
+      Scores.fromUnknown({ Ada: 10 }),
       err({ type: "Map", reason: { kind: "NotMap", value: { Ada: 10 } } }),
     );
 
@@ -10441,7 +11219,8 @@ describe("map", () => {
       new globalThis.Map<unknown, unknown>([[1, "bad"]]),
       { metadata: true },
     );
-    expect(Scores.fromUnknown(withProperty, { errors: "all" })).toEqual(
+    assertEqual(
+      Scores.fromUnknown(withProperty, { errors: "all" }),
       err({
         type: "Map",
         reason: {
@@ -10468,7 +11247,8 @@ describe("map", () => {
         },
       }),
     );
-    expect(Scores.fromUnknown(withProperty)).toEqual(
+    assertEqual(
+      Scores.fromUnknown(withProperty),
       err({
         type: "Map",
         reason: {
@@ -10477,7 +11257,8 @@ describe("map", () => {
         },
       }),
     );
-    expect(Scores.fromUnknown(new globalThis.Map([[1, 10]]))).toEqual(
+    assertEqual(
+      Scores.fromUnknown(new globalThis.Map([[1, 10]])),
       err({
         type: "Map",
         reason: {
@@ -10493,7 +11274,8 @@ describe("map", () => {
         },
       }),
     );
-    expect(Scores.fromUnknown(new globalThis.Map([["Ada", "bad"]]))).toEqual(
+    assertEqual(
+      Scores.fromUnknown(new globalThis.Map([["Ada", "bad"]])),
       err({
         type: "Map",
         reason: {
@@ -10513,7 +11295,7 @@ describe("map", () => {
         },
       }),
     );
-    expect(
+    assertEqual(
       Scores.fromUnknown(
         new globalThis.Map<unknown, unknown>([
           ["Ada", "bad"],
@@ -10521,7 +11303,6 @@ describe("map", () => {
         ]),
         { errors: "all" },
       ),
-    ).toEqual(
       err({
         type: "Map",
         reason: {
@@ -10543,33 +11324,32 @@ describe("map", () => {
     );
   });
 
-  test("supports key and value decoding, parent operations, and encoding", () => {
+  it("supports key and value decoding, parent operations, and encoding", () => {
     const NumberFromString = setupNumberFromString();
     const Counts = map(NumberFromString, NumberFromString);
     const input = new globalThis.Map([["1", "2"]]);
     const output = new globalThis.Map([[1, 2]]);
 
-    expectOk(Counts.fromUnknown(input), output);
-    expect(Counts.to(output)).toEqual(input);
-    expect(Counts.is(output)).toBe(true);
-    expect(Counts.is(input)).toBe(false);
-    expect(Counts.parent).toBe(map(String, String));
-    expectOk(Counts.from.parent(input), output);
-    expectTypeOf(Counts).toEqualTypeOf<
+    assertOk(Counts.fromUnknown(input), output);
+    assertEqual(Counts.to(output), input);
+    assertTrue(Counts.is(output));
+    assertFalse(Counts.is(input));
+    assertSame(Counts.parent, map(String, String));
+    assertOk(Counts.from.parent(input), output);
+    assertType<
+      typeof Counts,
       MapType<typeof Counts.key, typeof Counts.value>
     >();
-    expectTypeOf<typeof Counts.Input>().toEqualTypeOf<
-      ReadonlyMap<string, string>
-    >();
-    expectTypeOf<typeof Counts.Output>().toEqualTypeOf<
-      ReadonlyMap<number, number>
-    >();
-    expectTypeOf<typeof Counts.Error>().toEqualTypeOf<
+    assertType<typeof Counts.Input, ReadonlyMap<string, string>>();
+    assertType<typeof Counts.Output, ReadonlyMap<number, number>>();
+    assertType<
+      typeof Counts.Error,
       MapEntriesError<NumberFromStringError, NumberFromStringError>
     >();
 
     const Values = map(String, NumberFromString);
-    expect(Values.to(new globalThis.Map([["one", 1]]))).toEqual(
+    assertEqual(
+      Values.to(new globalThis.Map([["one", 1]])),
       new globalThis.Map([["one", "1"]]),
     );
 
@@ -10578,10 +11358,10 @@ describe("map", () => {
       to: (value) => value,
     });
     const unchanged = new globalThis.Map([["one", 1]]);
-    expect(map(String, TransparentNumber).to(unchanged)).toBe(unchanged);
+    assertSame(map(String, TransparentNumber).to(unchanged), unchanged);
   });
 
-  test("rejects decoded key collisions and invalid encoding collisions", () => {
+  it("rejects decoded key collisions and invalid encoding collisions", () => {
     const NumberFromString = setupNumberFromString();
     const Counts = map(NumberFromString, Number);
     const input = new globalThis.Map<string, number>([
@@ -10589,7 +11369,8 @@ describe("map", () => {
       ["1", 2],
     ]);
 
-    expect(Counts.fromUnknown(input)).toEqual(
+    assertEqual(
+      Counts.fromUnknown(input),
       err({
         type: "Map",
         reason: {
@@ -10607,7 +11388,8 @@ describe("map", () => {
         },
       }),
     );
-    expect(Counts.fromUnknown(input, { errors: "all" })).toEqual(
+    assertEqual(
+      Counts.fromUnknown(input, { errors: "all" }),
       err({
         type: "Map",
         reason: {
@@ -10632,17 +11414,24 @@ describe("map", () => {
     });
     const InvalidMap = map(InvalidKeyEncoding, String);
 
-    expect(() =>
-      InvalidMap.to(
-        new globalThis.Map([
-          [1, "one"],
-          [2, "two"],
-        ]),
+    const error = assertThrowsInstanceOf(
+      () =>
+        InvalidMap.to(
+          new globalThis.Map([
+            [1, "one"],
+            [2, "two"],
+          ]),
+        ),
+      Error,
+    );
+    assertTrue(
+      error.message.includes(
+        "Map key Type encoding must not produce duplicate keys.",
       ),
-    ).toThrow("Map key Type encoding must not produce duplicate keys.");
+    );
   });
 
-  test("checks exact Output representation", () => {
+  it("checks exact Output representation", () => {
     const Scores = map(String, Number);
     const value = new globalThis.Map([["Ada", 10]]);
     const withProperty = globalThis.Object.assign(
@@ -10650,13 +11439,13 @@ describe("map", () => {
       { metadata: true },
     );
 
-    expect(Scores.is(value)).toBe(true);
-    expect(Scores.is({ Ada: 10 })).toBe(false);
-    expect(Scores.is(withProperty)).toBe(false);
-    expect(Scores.is(new globalThis.Map([[1, 10]]))).toBe(false);
-    expect(Scores.is(new globalThis.Map([["Ada", "10"]]))).toBe(false);
-    expect(Scores.to(value)).toBe(value);
-    expectAssertionError(
+    assertTrue(Scores.is(value));
+    assertFalse(Scores.is({ Ada: 10 }));
+    assertFalse(Scores.is(withProperty));
+    assertFalse(Scores.is(new globalThis.Map([[1, 10]])));
+    assertFalse(Scores.is(new globalThis.Map([["Ada", "10"]])));
+    assertSame(Scores.to(value), value);
+    assertAssertionError(
       () =>
         Scores.from(
           new globalThis.Map([[1, 10]]) as unknown as ReadonlyMap<
@@ -10682,16 +11471,17 @@ describe("map", () => {
     );
   });
 
-  test("formats structural and nested errors", () => {
+  it("formats structural and nested errors", () => {
     const Scores = map(String, Number);
 
-    expect(
+    assertEqual(
       Scores.formatError({
         type: "Map",
         reason: { kind: "NotMap", value: null },
       }),
-    ).toBe("A value null is not a Map.");
-    expect(
+      "A value null is not a Map.",
+    );
+    assertEqual(
       Scores.formatError({
         type: "Map",
         reason: {
@@ -10699,8 +11489,9 @@ describe("map", () => {
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
       }),
-    ).toBe('An excess Map property "metadata" is not allowed.');
-    expect(
+      'An excess Map property "metadata" is not allowed.',
+    );
+    assertEqual(
       Scores.formatError({
         type: "Map",
         reason: {
@@ -10715,8 +11506,9 @@ describe("map", () => {
           ],
         },
       }),
-    ).toBe("A value 1 is not a string.");
-    expect(
+      "A value 1 is not a string.",
+    );
+    assertEqual(
       Scores.formatError({
         type: "Map",
         reason: {
@@ -10731,8 +11523,9 @@ describe("map", () => {
           ],
         },
       }),
-    ).toBe('A value "10" is not a number.');
-    expect(
+      'A value "10" is not a number.',
+    );
+    assertEqual(
       map(setupNumberFromString(), Number).formatError({
         type: "Map",
         reason: {
@@ -10749,11 +11542,11 @@ describe("map", () => {
           ],
         },
       }),
-    ).toBe("Map keys at indexes 0 and 1 decode to the same key 1.");
+      "Map keys at indexes 0 and 1 decode to the same key 1.",
+    );
 
-    expectTypeOf<
-      MapError<TypeOfError<"String">, TypeOfError<"Number">>
-    >().toEqualTypeOf<
+    assertType<
+      MapError<TypeOfError<"String">, TypeOfError<"Number">>,
       | MapNotMapError
       | MapEntriesError<
           TypeOfError<"String">,
@@ -10761,16 +11554,15 @@ describe("map", () => {
           MapKeyCollisionIssue | MapExcessPropertyIssue
         >
     >();
-    expectTypeOf<
-      MapIssue<TypeOfError<"String">, TypeOfError<"Number">>
-    >().toEqualTypeOf<
+    assertType<
+      MapIssue<TypeOfError<"String">, TypeOfError<"Number">>,
       | MapKeyIssue<TypeOfError<"String">>
       | MapValueIssue<TypeOfError<"Number">>
       | MapKeyCollisionIssue
     >();
   });
 
-  test("localizes structural, key, and value errors", () => {
+  it("localizes structural, key, and value errors", () => {
     const Scores = map(String, Number);
     const LocalizedScores = localizeTypes(
       { Scores },
@@ -10784,17 +11576,19 @@ describe("map", () => {
     ).test.Scores;
     const formatError = (value: unknown): string => {
       const result = LocalizedScores.fromUnknown(value);
-      assert(!result.ok);
+      assertErr(result);
       return LocalizedScores.formatError(result.error);
     };
 
-    expect(formatError(new globalThis.Map([[1, 10]]))).toBe(
+    assertEqual(
+      formatError(new globalThis.Map([[1, 10]])),
       "Localized String.",
     );
-    expect(formatError(new globalThis.Map([["Ada", "bad"]]))).toBe(
+    assertEqual(
+      formatError(new globalThis.Map([["Ada", "bad"]])),
       "Localized Number.",
     );
-    expect(formatError(null)).toBe("Localized Map.");
+    assertEqual(formatError(null), "Localized Map.");
 
     const compileTimeAssertions = () => {
       localizeTypes(
@@ -10829,7 +11623,12 @@ describe("map", () => {
       );
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 });
 
@@ -10854,28 +11653,30 @@ describe("tuple", () => {
   };
 
   describe("construction", () => {
-    test("creates a fixed heterogeneous Type and collapses element roots into one parent", () => {
+    it("creates a fixed heterogeneous Type and collapses element roots into one parent", () => {
       const { Entry, NumberFromString, Positive } = setupEntry();
 
-      expect(Entry.name).toBe("Tuple");
-      expect(Entry.elements).toEqual([String, NumberFromString, Positive]);
-      expect(Entry.parent.elements).toEqual([String, String, Number]);
-      expect(Entry.parent.parent).toBeNull();
-      expectTypeOf(Entry).toEqualTypeOf<
+      assertEqual(Entry.name, "Tuple");
+      assertEqual(Entry.elements, [String, NumberFromString, Positive]);
+      assertEqual(Entry.parent.elements, [String, String, Number]);
+      assertSame(Entry.parent.parent, null);
+      assertType<
+        typeof Entry,
         TupleType<
           readonly [typeof String, typeof NumberFromString, typeof Positive]
         >
       >();
-      expectTypeOf<typeof Entry.Input>().toEqualTypeOf<
-        readonly [string, string, number]
-      >();
-      expectTypeOf<typeof Entry.Output>().toEqualTypeOf<
+      assertType<typeof Entry.Input, readonly [string, string, number]>();
+      assertType<
+        typeof Entry.Output,
         readonly [string, number, typeof Positive.Output]
       >();
-      expectTypeOf<typeof Entry.Error>().toEqualTypeOf<
+      assertType<
+        typeof Entry.Error,
         TupleElementsError<NumberFromStringError | typeof Positive.Error>
       >();
-      expectTypeOf<InferErrors<typeof Entry>>().toEqualTypeOf<
+      assertType<
+        InferErrors<typeof Entry>,
         TupleError<
           | TypeOfError<"String">
           | TypeOfError<"Number">
@@ -10885,14 +11686,16 @@ describe("tuple", () => {
       >();
     });
 
-    test("creates a root Tuple without a parent", () => {
+    it("creates a root Tuple without a parent", () => {
       const Pair = tuple(String, Number);
 
-      expect(Pair.parent).toBeNull();
-      expectTypeOf<typeof Pair.Error>().toEqualTypeOf<
+      assertSame(Pair.parent, null);
+      assertType<
+        typeof Pair.Error,
         TupleError<TypeOfError<"String"> | TypeOfError<"Number">>
       >();
-      expectTypeOf(Pair.from).toEqualTypeOf<
+      assertType<
+        typeof Pair.from,
         (
           value: readonly [string, number],
           options?: ValidationOptions,
@@ -10900,31 +11703,35 @@ describe("tuple", () => {
       >();
     });
 
-    test("exposes exact structural and typed element issue types", () => {
+    it("exposes exact structural and typed element issue types", () => {
       type ElementError = TypeOfError<"String"> | TypeOfError<"Number">;
 
-      expectTypeOf<
-        TupleItemsError<ElementError>["reason"]["issues"][number]
-      >().toEqualTypeOf<TupleIssue<ElementError>>();
-      expectTypeOf<
-        TupleElementsError<ElementError>["reason"]["issues"][number]
-      >().toEqualTypeOf<
+      assertType<
+        TupleItemsError<ElementError>["reason"]["issues"][number],
+        TupleIssue<ElementError>
+      >();
+      assertType<
+        TupleElementsError<ElementError>["reason"]["issues"][number],
         | TupleElementIssue<TypeOfError<"String">>
         | TupleElementIssue<TypeOfError<"Number">>
       >();
-      expectTypeOf<TupleElementIssue<never>>().toEqualTypeOf<never>();
-      expectTypeOf<TupleExcessPropertyIssue>().toExtend<
-        TupleItemsError<ElementError>["reason"]["issues"][number]
+      assertType<TupleElementIssue<never>, never>();
+      assertType<
+        TupleExcessPropertyIssue extends TupleItemsError<ElementError>["reason"]["issues"][number]
+          ? true
+          : false,
+        true
       >();
-      expectTypeOf<TupleExcessPropertyIssue>().not.toExtend<
-        TupleElementsError<ElementError>["reason"]["issues"][number]
+      assertType<
+        TupleExcessPropertyIssue extends TupleElementsError<ElementError>["reason"]["issues"][number]
+          ? true
+          : false,
+        false
       >();
-      expectTypeOf<TupleExcessPropertyIssue["key"]>().toEqualTypeOf<
-        string | symbol
-      >();
+      assertType<TupleExcessPropertyIssue["key"], string | symbol>();
     });
 
-    test("requires one concrete finite non-empty tuple of concrete Types", () => {
+    it("requires one concrete finite non-empty tuple of concrete Types", () => {
       const uncertain: FormattableTypeNode = String;
       const widened: NonEmptyReadonlyArray<typeof String> = [String];
 
@@ -10957,31 +11764,46 @@ describe("tuple", () => {
         tuple(...widened);
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
-      expectTypeOf(validateUnionElement).toBeFunction();
-      expectTypeOf(validateTupleSchema).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
+      assertType<
+        typeof validateUnionElement extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
+      assertType<
+        typeof validateTupleSchema extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 
   describe("formatError", () => {
-    test("formats structural errors and the first nested element error", () => {
+    it("formats structural errors and the first nested element error", () => {
       const Pair = tuple(String, Number);
 
-      expect(
+      assertEqual(
         Pair.formatError({
           type: "Tuple",
           reason: { kind: "NotArray", value: null },
         }),
-      ).toBe("A value null is not a tuple.");
-      expect(
+        "A value null is not a tuple.",
+      );
+      assertEqual(
         Pair.formatError({
           type: "Tuple",
           reason: { kind: "InvalidLength", expected: 2, actual: 1 },
         }),
-      ).toBe(
         "A Tuple must contain exactly 2 elements, but the value contains 1.",
       );
-      expect(
+      assertEqual(
         Pair.formatError({
           type: "Tuple",
           reason: {
@@ -10989,8 +11811,9 @@ describe("tuple", () => {
             issues: [{ kind: "Hole", index: 0 }],
           },
         }),
-      ).toBe("A Tuple element at index 0 is missing.");
-      expect(
+        "A Tuple element at index 0 is missing.",
+      );
+      assertEqual(
         Pair.formatError({
           type: "Tuple",
           reason: {
@@ -10998,8 +11821,9 @@ describe("tuple", () => {
             issues: [{ kind: "Accessor", index: 0 }],
           },
         }),
-      ).toBe("A Tuple element at index 0 must be a data property.");
-      expect(
+        "A Tuple element at index 0 must be a data property.",
+      );
+      assertEqual(
         Pair.formatError({
           type: "Tuple",
           reason: {
@@ -11007,10 +11831,9 @@ describe("tuple", () => {
             issues: [{ kind: "ExcessProperty", key: "metadata" }],
           },
         }),
-      ).toBe(
         "An excess Tuple property is not allowed. Remove it or use a different Type.",
       );
-      expect(
+      assertEqual(
         Pair.formatError({
           type: "Tuple",
           reason: {
@@ -11024,12 +11847,13 @@ describe("tuple", () => {
             ],
           },
         }),
-      ).toBe('A value "1" is not a number.');
+        'A value "1" is not a number.',
+      );
     });
   });
 
   describe("fromUnknown", () => {
-    test("preserves a valid root Tuple and materializes transformed elements only when necessary", () => {
+    it("preserves a valid root Tuple and materializes transformed elements only when necessary", () => {
       const Pair = tuple(String, Number);
       const rootValue = ["count", 1] as const;
       const { Entry, Positive } = setupEntry();
@@ -11038,38 +11862,41 @@ describe("tuple", () => {
       const rootResult = Pair.fromUnknown(rootValue);
       const result = Entry.fromUnknown(input);
 
-      expectOk(rootResult, rootValue);
-      expect(rootResult.value).toBe(rootValue);
-      expectOk(result, ["count", 1, Positive.orThrow(2)]);
-      expect(result.value).not.toBe(input);
-      expect(result.value[0]).toBe(input[0]);
-      expect(Entry.is(result.value)).toBe(true);
+      assertOk(rootResult, rootValue);
+      assertSame(rootResult.value, rootValue);
+      assertOk(result, ["count", 1, Positive.orThrow(2)]);
+      assertFalse(globalThis.Object.is(result.value, input));
+      assertSame(result.value[0], input[0]);
+      assertTrue(Entry.is(result.value));
     });
 
-    test("rejects non-arrays and wrong lengths", () => {
+    it("rejects non-arrays and wrong lengths", () => {
       const Pair = tuple(String, Number);
 
-      expect(Pair.fromUnknown(null)).toEqual(
+      assertEqual(
+        Pair.fromUnknown(null),
         err({
           type: "Tuple",
           reason: { kind: "NotArray", value: null },
         }),
       );
-      expect(Pair.fromUnknown(["count"])).toEqual(
+      assertEqual(
+        Pair.fromUnknown(["count"]),
         err({
           type: "Tuple",
           reason: { kind: "InvalidLength", expected: 2, actual: 1 },
         }),
       );
-      expect(Pair.is(null)).toBe(false);
-      expect(Pair.is(["count"])).toBe(false);
+      assertFalse(Pair.is(null));
+      assertFalse(Pair.is(["count"]));
     });
 
-    test("returns the first element error by default and every error on request", () => {
+    it("returns the first element error by default and every error on request", () => {
       const Pair = tuple(String, Number);
       const value = [42, "1"];
 
-      expect(Pair.fromUnknown(value)).toEqual(
+      assertEqual(
+        Pair.fromUnknown(value),
         err({
           type: "Tuple",
           reason: {
@@ -11084,7 +11911,8 @@ describe("tuple", () => {
           },
         }),
       );
-      expect(Pair.fromUnknown(value, { errors: "all" })).toEqual(
+      assertEqual(
+        Pair.fromUnknown(value, { errors: "all" }),
         err({
           type: "Tuple",
           reason: {
@@ -11106,7 +11934,7 @@ describe("tuple", () => {
       );
     });
 
-    test("rejects holes and accessors without invoking them", () => {
+    it("rejects holes and accessors without invoking them", () => {
       const Pair = tuple(String, Number);
       const value = createMutableArray<unknown>(2);
       let reads = 0;
@@ -11118,7 +11946,8 @@ describe("tuple", () => {
         },
       });
 
-      expect(Pair.fromUnknown(value, { errors: "all" })).toEqual(
+      assertEqual(
+        Pair.fromUnknown(value, { errors: "all" }),
         err({
           type: "Tuple",
           reason: {
@@ -11130,7 +11959,8 @@ describe("tuple", () => {
           },
         }),
       );
-      expect(Pair.fromUnknown(createMutableArray<unknown>(2))).toEqual(
+      assertEqual(
+        Pair.fromUnknown(createMutableArray<unknown>(2)),
         err({
           type: "Tuple",
           reason: {
@@ -11139,11 +11969,11 @@ describe("tuple", () => {
           },
         }),
       );
-      expect(Pair.is(value)).toBe(false);
-      expect(reads).toBe(0);
+      assertFalse(Pair.is(value));
+      assertEqual(reads, 0);
     });
 
-    test("rejects named, non-enumerable, and symbol properties without reading them", () => {
+    it("rejects named, non-enumerable, and symbol properties without reading them", () => {
       const Pair = tuple(String, Number);
       const symbol = globalThis.Symbol("metadata");
       const value: Array<unknown> = ["count", 1];
@@ -11160,7 +11990,8 @@ describe("tuple", () => {
         },
       });
 
-      expect(Pair.fromUnknown(value, { errors: "all" })).toEqual(
+      assertEqual(
+        Pair.fromUnknown(value, { errors: "all" }),
         err({
           type: "Tuple",
           reason: {
@@ -11172,39 +12003,43 @@ describe("tuple", () => {
           },
         }),
       );
-      expect(Pair.is(value)).toBe(false);
-      expect(reads).toBe(0);
+      assertFalse(Pair.is(value));
+      assertEqual(reads, 0);
     });
   });
 
   describe("typed operations", () => {
-    test("runs every remaining element pipeline from the collapsed root parent", () => {
+    it("runs every remaining element pipeline from the collapsed root parent", () => {
       const { NumberFromString, Positive } = setupEntryElements();
       const Entry = tuple(NumberFromString, Positive);
       const input = ["1", 2] as const;
       const result = Entry.from.parent(input);
 
-      expectTypeOf(result).toEqualTypeOf<
+      assertType<
+        typeof result,
         Result<
           typeof Entry.Output,
           TupleElementsError<NumberFromStringError | typeof Positive.Error>
         >
       >();
-      expectTypeOf(Entry.from.parent)
-        .parameter(0)
-        .toEqualTypeOf<readonly [string, number]>();
-      expectTypeOf<"parent">().not.toExtend<keyof typeof Entry.from.parent>();
-      expectOk(result, [1, Positive.orThrow(2)]);
-      expect(result.value).not.toBe(input);
+      assertType<
+        Parameters<typeof Entry.from.parent>[0],
+        readonly [string, number]
+      >();
+      assertType<
+        "parent" extends keyof typeof Entry.from.parent ? true : false,
+        false
+      >();
+      assertOk(result, [1, Positive.orThrow(2)]);
+      assertFalse(globalThis.Object.is(result.value, input));
     });
 
-    test("collects errors from different element pipelines", () => {
+    it("collects errors from different element pipelines", () => {
       const { NumberFromString, Positive } = setupEntryElements();
       const Entry = tuple(NumberFromString, Positive);
 
-      expect(
+      assertEqual(
         Entry.from.parent(["not a number", -1], { errors: "all" }),
-      ).toEqual(
         err({
           type: "Tuple",
           reason: {
@@ -11229,7 +12064,7 @@ describe("tuple", () => {
       );
     });
 
-    test("encodes every element and preserves identity when all encoders do", () => {
+    it("encodes every element and preserves identity when all encoders do", () => {
       const NumberFromString = setupNumberFromString();
       const Encoded = tuple(String, NumberFromString);
       const output = ["count", 1] as const;
@@ -11239,14 +12074,14 @@ describe("tuple", () => {
       const StringOrNumberFromString = tuple(union(String, NumberFromString));
       const unchanged = ["count"] as const;
 
-      expect(encoded).toEqual(["count", "1"]);
-      expect(encoded).not.toBe(output);
-      expect(Encoded.parent.is(encoded)).toBe(true);
-      expect(Pair.to(rootOutput)).toBe(rootOutput);
-      expect(StringOrNumberFromString.to(unchanged)).toBe(unchanged);
+      assertEqual(encoded, ["count", "1"]);
+      assertFalse(globalThis.Object.is(encoded, output));
+      assertTrue(Encoded.parent.is(encoded));
+      assertSame(Pair.to(rootOutput), rootOutput);
+      assertSame(StringOrNumberFromString.to(unchanged), unchanged);
     });
 
-    test("asserts structural developer errors at from and to boundaries", () => {
+    it("asserts structural contract violations at from and to boundaries", () => {
       const Pair = tuple(String, Number);
       const excess: typeof Pair.Output = ["count", 1];
       const invalidElement: typeof Pair.Output = ["count", 1];
@@ -11260,14 +12095,14 @@ describe("tuple", () => {
       const excessResult = Pair.fromUnknown(excess);
       const invalidElementResult = Pair.fromUnknown(invalidElement);
 
-      expectErr(excessResult, {
+      assertErr(excessResult, {
         type: "Tuple",
         reason: {
           kind: "Items",
           issues: [{ kind: "ExcessProperty", key: "metadata" }],
         },
       });
-      expectErr(invalidElementResult, {
+      assertErr(invalidElementResult, {
         type: "Tuple",
         reason: {
           kind: "Items",
@@ -11280,24 +12115,24 @@ describe("tuple", () => {
           ],
         },
       });
-      expectAssertionError(
+      assertAssertionError(
         () => Pair.from(excess),
         "Expected Tuple.",
         excessResult.error,
       );
-      expectAssertionError(
+      assertAssertionError(
         () => Pair.to(excess),
         "Expected Tuple.",
         excessResult.error,
       );
-      expectAssertionError(
+      assertAssertionError(
         () => Pair.from(invalidElement),
         "Expected Tuple.",
         invalidElementResult.error,
       );
     });
 
-    test("asserts the root parent representation before reading elements", () => {
+    it("asserts the root parent representation before reading elements", () => {
       const NumberFromString = setupNumberFromString();
       const Entry = tuple(NumberFromString, Number);
       const input: typeof Entry.parent.Output = ["1", 2];
@@ -11312,24 +12147,24 @@ describe("tuple", () => {
 
       const result = Entry.parent.fromUnknown(input);
 
-      expectErr(result, {
+      assertErr(result, {
         type: "Tuple",
         reason: {
           kind: "Items",
           issues: [{ kind: "Accessor", index: 0 }],
         },
       });
-      expectAssertionError(
+      assertAssertionError(
         () => Entry.from.parent(input),
         "Expected Tuple.",
         result.error,
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
   });
 
   describe("composition", () => {
-    test("composes as an Array element Type", () => {
+    it("composes as an Array element Type", () => {
       const NumberFromString = setupNumberFromString();
       const Entries = array(tuple(String, NumberFromString));
       const input = [
@@ -11337,19 +12172,19 @@ describe("tuple", () => {
         ["second", "2"],
       ] as const;
 
-      expectOk(Entries.fromUnknown(input), [
+      assertOk(Entries.fromUnknown(input), [
         ["first", 1],
         ["second", 2],
       ]);
-      expect(
+      assertTrue(
         Entries.is([
           ["first", 1],
           ["second", 2],
         ]),
-      ).toBe(true);
+      );
     });
 
-    test("guards recursive Lazy validation by consuming one Tuple element", () => {
+    it("guards recursive Lazy validation by consuming one Tuple element", () => {
       interface StringListNode extends Readonly<[string, StringList]> {}
       type StringList = StringListNode | null;
       type StringListTupleError = TupleError<
@@ -11371,9 +12206,10 @@ describe("tuple", () => {
       > = lazy(() => union(tuple(String, StringList), Null));
       const value: StringList = ["first", ["second", null]];
 
-      expect(StringList.fromUnknown(value)).toEqual(ok(value));
-      expect(StringList.is(value)).toBe(true);
-      expect(StringList.fromUnknown(["first", [42, null]])).toEqual(
+      assertEqual(StringList.fromUnknown(value), ok(value));
+      assertTrue(StringList.is(value));
+      assertEqual(
+        StringList.fromUnknown(["first", [42, null]]),
         err({
           type: "Union",
           errors: [
@@ -11425,88 +12261,89 @@ describe("tuple", () => {
 });
 
 describe("digit Types", () => {
-  test("Digit", () => {
-    expectTypeOf<typeof Digit.Output>().toEqualTypeOf<
+  it("Digit", () => {
+    assertType<
+      typeof Digit.Output,
       "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
     >();
-    expect(Digit.is("0")).toBe(true);
-    expect(Digit.is("10")).toBe(false);
+    assertTrue(Digit.is("0"));
+    assertFalse(Digit.is("10"));
   });
 
-  test("Digit1To9", () => {
-    expectTypeOf<typeof Digit1To9.Output>().toEqualTypeOf<
+  it("Digit1To9", () => {
+    assertType<
+      typeof Digit1To9.Output,
       "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
     >();
-    expect(Digit1To9.is("1")).toBe(true);
-    expect(Digit1To9.is("0")).toBe(false);
+    assertTrue(Digit1To9.is("1"));
+    assertFalse(Digit1To9.is("0"));
   });
 
-  test("Digit1To6", () => {
-    expectTypeOf<typeof Digit1To6.Output>().toEqualTypeOf<
-      "1" | "2" | "3" | "4" | "5" | "6"
-    >();
-    expect(Digit1To6.is("6")).toBe(true);
-    expect(Digit1To6.is("7")).toBe(false);
+  it("Digit1To6", () => {
+    assertType<typeof Digit1To6.Output, "1" | "2" | "3" | "4" | "5" | "6">();
+    assertTrue(Digit1To6.is("6"));
+    assertFalse(Digit1To6.is("7"));
   });
 
-  test("Digit1To23", () => {
-    expectTypeOf<"1">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"9">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"10">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"19">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"20">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"23">().toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"0">().not.toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"24">().not.toExtend<typeof Digit1To23.Output>();
-    expectTypeOf<"01">().not.toExtend<typeof Digit1To23.Output>();
-    expect(Digit1To23.is("23")).toBe(true);
-    expect(Digit1To23.is("24")).toBe(false);
+  it("Digit1To23", () => {
+    assertType<"1" extends typeof Digit1To23.Output ? true : false, true>();
+    assertType<"9" extends typeof Digit1To23.Output ? true : false, true>();
+    assertType<"10" extends typeof Digit1To23.Output ? true : false, true>();
+    assertType<"19" extends typeof Digit1To23.Output ? true : false, true>();
+    assertType<"20" extends typeof Digit1To23.Output ? true : false, true>();
+    assertType<"23" extends typeof Digit1To23.Output ? true : false, true>();
+    assertType<"0" extends typeof Digit1To23.Output ? true : false, false>();
+    assertType<"24" extends typeof Digit1To23.Output ? true : false, false>();
+    assertType<"01" extends typeof Digit1To23.Output ? true : false, false>();
+    assertTrue(Digit1To23.is("23"));
+    assertFalse(Digit1To23.is("24"));
   });
 
-  test("Digit1To51", () => {
-    expectTypeOf<"1">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"9">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"10">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"49">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"50">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"51">().toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"0">().not.toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"52">().not.toExtend<typeof Digit1To51.Output>();
-    expectTypeOf<"01">().not.toExtend<typeof Digit1To51.Output>();
-    expect(Digit1To51.is("51")).toBe(true);
-    expect(Digit1To51.is("52")).toBe(false);
+  it("Digit1To51", () => {
+    assertType<"1" extends typeof Digit1To51.Output ? true : false, true>();
+    assertType<"9" extends typeof Digit1To51.Output ? true : false, true>();
+    assertType<"10" extends typeof Digit1To51.Output ? true : false, true>();
+    assertType<"49" extends typeof Digit1To51.Output ? true : false, true>();
+    assertType<"50" extends typeof Digit1To51.Output ? true : false, true>();
+    assertType<"51" extends typeof Digit1To51.Output ? true : false, true>();
+    assertType<"0" extends typeof Digit1To51.Output ? true : false, false>();
+    assertType<"52" extends typeof Digit1To51.Output ? true : false, false>();
+    assertType<"01" extends typeof Digit1To51.Output ? true : false, false>();
+    assertTrue(Digit1To51.is("51"));
+    assertFalse(Digit1To51.is("52"));
   });
 
-  test("Digit1To99", () => {
-    expectTypeOf<"1">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"9">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"10">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"50">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"99">().toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"0">().not.toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"100">().not.toExtend<typeof Digit1To99.Output>();
-    expectTypeOf<"01">().not.toExtend<typeof Digit1To99.Output>();
-    expect(Digit1To99.is("99")).toBe(true);
-    expect(Digit1To99.is("100")).toBe(false);
+  it("Digit1To99", () => {
+    assertType<"1" extends typeof Digit1To99.Output ? true : false, true>();
+    assertType<"9" extends typeof Digit1To99.Output ? true : false, true>();
+    assertType<"10" extends typeof Digit1To99.Output ? true : false, true>();
+    assertType<"50" extends typeof Digit1To99.Output ? true : false, true>();
+    assertType<"99" extends typeof Digit1To99.Output ? true : false, true>();
+    assertType<"0" extends typeof Digit1To99.Output ? true : false, false>();
+    assertType<"100" extends typeof Digit1To99.Output ? true : false, false>();
+    assertType<"01" extends typeof Digit1To99.Output ? true : false, false>();
+    assertTrue(Digit1To99.is("99"));
+    assertFalse(Digit1To99.is("100"));
   });
 
-  test("Digit1To59", () => {
-    expectTypeOf<"1">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"9">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"10">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"50">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"59">().toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"0">().not.toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"60">().not.toExtend<typeof Digit1To59.Output>();
-    expectTypeOf<"99">().not.toExtend<typeof Digit1To59.Output>();
-    expect(Digit1To59.is("59")).toBe(true);
-    expect(Digit1To59.is("60")).toBe(false);
+  it("Digit1To59", () => {
+    assertType<"1" extends typeof Digit1To59.Output ? true : false, true>();
+    assertType<"9" extends typeof Digit1To59.Output ? true : false, true>();
+    assertType<"10" extends typeof Digit1To59.Output ? true : false, true>();
+    assertType<"50" extends typeof Digit1To59.Output ? true : false, true>();
+    assertType<"59" extends typeof Digit1To59.Output ? true : false, true>();
+    assertType<"0" extends typeof Digit1To59.Output ? true : false, false>();
+    assertType<"60" extends typeof Digit1To59.Output ? true : false, false>();
+    assertType<"99" extends typeof Digit1To59.Output ? true : false, false>();
+    assertTrue(Digit1To59.is("59"));
+    assertFalse(Digit1To59.is("60"));
   });
 });
 
 describe("Object", () => {
-  test("has the expected root definition", () => {
-    expectTypeOf(Object).toEqualTypeOf<
+  it("has the expected root definition", () => {
+    assertType<
+      typeof Object,
       Type<
         "Object",
         Readonly<Record<string, unknown>>,
@@ -11517,10 +12354,10 @@ describe("Object", () => {
         >
       >
     >();
-    expect(Object.parent).toBeNull();
+    assertSame(Object.parent, null);
   });
 
-  test("accepts ordinary and null prototypes without copying", () => {
+  it("accepts ordinary and null prototypes without copying", () => {
     const ordinary: unknown = { name: "Ada" };
     const nullPrototype: unknown = globalThis.Object.assign(
       globalThis.Object.create(null) as Record<string, unknown>,
@@ -11529,26 +12366,27 @@ describe("Object", () => {
     for (const value of [ordinary, nullPrototype]) {
       const result = Object.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(Object.is(value)).toBe(true);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertTrue(Object.is(value));
     }
 
     const typed: typeof Object.Output = { name: "Ada" };
-    expect(Object.from(typed)).toEqual(ok(typed));
-    expect(Object.to(typed)).toBe(typed);
+    assertEqual(Object.from(typed), ok(typed));
+    assertSame(Object.to(typed), typed);
   });
 
-  test("rejects non-objects, instances, and custom prototype chains", () => {
+  it("rejects non-objects, instances, and custom prototype chains", () => {
     class Example {
       readonly value = 1;
     }
 
     for (const value of [null, 42, "value", () => undefined]) {
-      expect(Object.fromUnknown(value)).toEqual(
+      assertEqual(
+        Object.fromUnknown(value),
         err({ type: "Object", reason: { kind: "NotObject", value } }),
       );
-      expect(Object.is(value)).toBe(false);
+      assertFalse(Object.is(value));
     }
 
     for (const value of [
@@ -11557,17 +12395,18 @@ describe("Object", () => {
       new Example(),
       ...setupUnexpectedPrototypeValues(),
     ]) {
-      expect(Object.fromUnknown(value)).toEqual(
+      assertEqual(
+        Object.fromUnknown(value),
         err({
           type: "Object",
           reason: { kind: "UnexpectedPrototype", value },
         }),
       );
-      expect(Object.is(value)).toBe(false);
+      assertFalse(Object.is(value));
     }
   });
 
-  test("rejects accessors, non-enumerable properties, and symbol keys without reading values", () => {
+  it("rejects accessors, non-enumerable properties, and symbol keys without reading values", () => {
     let reads = 0;
     const symbol = globalThis.Symbol("metadata");
     const value = globalThis.Object.defineProperties(
@@ -11591,32 +12430,29 @@ describe("Object", () => {
       },
     );
 
-    expect(Object.fromUnknown(value, { errors: "all" })).toEqual(
-      err({
-        type: "Object",
-        reason: {
-          kind: "Properties",
-          errors: {
-            accessor: {
-              type: "ObjectPropertyAccess",
-              reason: "Accessor",
-            },
-            hidden: {
-              type: "ObjectPropertyAccess",
-              reason: "NonEnumerable",
-            },
-            [symbol]: {
-              type: "ObjectExcessProperty",
-            },
-          },
-        },
-      }),
-    );
-    expect(Object.is(value)).toBe(false);
-    expect(reads).toBe(0);
+    const result = Object.fromUnknown(value, { errors: "all" });
+    assertErr(result);
+    assertSame(result.error.reason.kind, "Properties");
+    const { errors } = result.error.reason;
+    assertEqual(globalThis.Reflect.ownKeys(errors), [
+      "accessor",
+      "hidden",
+      symbol,
+    ]);
+    assertEqual(errors.accessor, {
+      type: "ObjectPropertyAccess",
+      reason: "Accessor",
+    });
+    assertEqual(errors.hidden, {
+      type: "ObjectPropertyAccess",
+      reason: "NonEnumerable",
+    });
+    assertEqual(errors[symbol], { type: "ObjectExcessProperty" });
+    assertFalse(Object.is(value));
+    assertEqual(reads, 0);
   });
 
-  test("does not read Symbol.toStringTag", () => {
+  it("does not read Symbol.toStringTag", () => {
     let reads = 0;
     const value = globalThis.Object.defineProperty(
       {},
@@ -11630,30 +12466,27 @@ describe("Object", () => {
       },
     );
 
-    expect(Object.fromUnknown(value)).toEqual(
-      err({
-        type: "Object",
-        reason: {
-          kind: "Properties",
-          errors: {
-            [globalThis.Symbol.toStringTag]: {
-              type: "ObjectExcessProperty",
-            },
-          },
-        },
-      }),
-    );
-    expect(reads).toBe(0);
+    const result = Object.fromUnknown(value);
+    assertErr(result);
+    assertSame(result.error.reason.kind, "Properties");
+    assertEqual(globalThis.Reflect.ownKeys(result.error.reason.errors), [
+      globalThis.Symbol.toStringTag,
+    ]);
+    assertEqual(result.error.reason.errors[globalThis.Symbol.toStringTag], {
+      type: "ObjectExcessProperty",
+    });
+    assertEqual(reads, 0);
   });
 
-  test("formats structural failures with developer guidance", () => {
-    expect(
+  it("formats structural failures with developer guidance", () => {
+    assertEqual(
       Object.formatError({
         type: "Object",
         reason: { kind: "NotObject", value: null },
       }),
-    ).toBe("A value null is not an object.");
-    expect(
+      "A value null is not an object.",
+    );
+    assertEqual(
       Object.formatError({
         type: "Object",
         reason: {
@@ -11663,10 +12496,9 @@ describe("Object", () => {
           },
         },
       }),
-    ).toBe(
       "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.",
     );
-    expect(
+    assertEqual(
       Object.formatError({
         type: "Object",
         reason: {
@@ -11679,10 +12511,9 @@ describe("Object", () => {
           },
         },
       }),
-    ).toBe(
       "An Object property must be enumerable. Make it enumerable or use a different Type.",
     );
-    expect(
+    assertEqual(
       Object.formatError({
         type: "Object",
         reason: {
@@ -11694,19 +12525,18 @@ describe("Object", () => {
           },
         },
       }),
-    ).toBe(
       "An Object property key must be a string. Remove the symbol property or use a different Type.",
     );
   });
 
-  test("asserts invalid typed representations with the same structured error", () => {
+  it("asserts invalid typed representations with the same structured error", () => {
     const value = globalThis.Object.defineProperty({}, "name", {
       enumerable: true,
       get: () => "Ada",
     });
     const result = Object.fromUnknown(value);
 
-    expectErr(result, {
+    assertErr(result, {
       type: "Object",
       reason: {
         kind: "Properties",
@@ -11720,19 +12550,19 @@ describe("Object", () => {
     });
 
     const typed = value as typeof Object.Output;
-    expectAssertionError(
+    assertAssertionError(
       () => Object.from(typed),
       "Expected Object.",
       result.error,
     );
-    expectAssertionError(
+    assertAssertionError(
       () => Object.to(typed),
       "Expected Object.",
       result.error,
     );
   });
 
-  test("retains every invalid typed representation error when requested", () => {
+  it("retains every invalid typed representation error when requested", () => {
     const value = globalThis.Object.defineProperties(
       {},
       {
@@ -11748,7 +12578,7 @@ describe("Object", () => {
     );
     const result = Object.fromUnknown(value, { errors: "all" });
 
-    expectErr(result, {
+    assertErr(result, {
       type: "Object",
       reason: {
         kind: "Properties",
@@ -11766,12 +12596,12 @@ describe("Object", () => {
     });
 
     const typed = value as typeof Object.Output;
-    expectAssertionError(
+    assertAssertionError(
       () => Object.from(typed, { errors: "all" }),
       "Expected Object.",
       result.error,
     );
-    expectAssertionError(
+    assertAssertionError(
       () => Object.orThrow(typed, { errors: "all" }),
       "Expected Object.",
       result.error,
@@ -11780,14 +12610,6 @@ describe("Object", () => {
 });
 
 describe("record", () => {
-  const createNullRecord = <Value>(
-    entries: Readonly<Record<string, Value>>,
-  ): Record<string, Value> =>
-    globalThis.Object.assign(
-      globalThis.Object.create(null) as Record<string, Value>,
-      entries,
-    );
-
   const setupTransformedRecord = () => {
     const Lowercase = brand(
       "Lowercase",
@@ -11814,52 +12636,68 @@ describe("record", () => {
   };
 
   describe("construction", () => {
-    test("derives partial readonly shapes, errors, and one root parent", () => {
+    it("derives partial readonly shapes, errors, and one root parent", () => {
       const Values = record(String, Number);
       const _Allowed = record(literal("allowed"), Number);
       const transformed = setupTransformedRecord();
 
-      expect(Values.name).toBe("Record");
-      expect(Values.key).toBe(String);
-      expect(Values.value).toBe(Number);
-      expect(Values.parent).toBeNull();
-      expect(transformed.Values.parent.key).toBe(String);
-      expect(transformed.Values.parent.value).toBe(String);
-      expect(transformed.Values.parent.parent).toBeNull();
-      expect("parent" in transformed.Values.from).toBe(true);
-      expectTypeOf<"parent">().toExtend<keyof typeof transformed.Values.from>();
+      assertEqual(Values.name, "Record");
+      assertSame(Values.key, String);
+      assertSame(Values.value, Number);
+      assertSame(Values.parent, null);
+      assertSame(transformed.Values.parent.key, String);
+      assertSame(transformed.Values.parent.value, String);
+      assertSame(transformed.Values.parent.parent, null);
+      assertTrue("parent" in transformed.Values.from);
+      assertType<
+        "parent" extends keyof typeof transformed.Values.from ? true : false,
+        true
+      >();
 
-      expectTypeOf(Values).toExtend<RecordType<typeof String, typeof Number>>();
-      expectTypeOf<typeof Values.Input>().toEqualTypeOf<
+      assertType<
+        typeof Values extends RecordType<typeof String, typeof Number>
+          ? true
+          : false,
+        true
+      >();
+      assertType<
+        typeof Values.Input,
         Readonly<Partial<Record<string, number>>>
       >();
-      expectTypeOf<typeof Values.Output>().toEqualTypeOf<
+      assertType<
+        typeof Values.Output,
         Readonly<Partial<Record<string, number>>>
       >();
-      expectTypeOf<typeof Values.Error>().toEqualTypeOf<
+      assertType<
+        typeof Values.Error,
         RecordError<TypeOfError<"String">, TypeOfError<"Number">, never>
       >();
-      expectTypeOf<InferErrors<typeof Values>>().toEqualTypeOf<
+      assertType<
+        InferErrors<typeof Values>,
         RecordError<TypeOfError<"String">, TypeOfError<"Number">, never>
       >();
-      expectTypeOf<typeof _Allowed.Input>().toEqualTypeOf<
+      assertType<
+        typeof _Allowed.Input,
         Readonly<Partial<Record<string, number>>>
       >();
-      expectTypeOf<typeof _Allowed.Output>().toEqualTypeOf<{
-        readonly allowed?: number;
-      }>();
-      expectTypeOf<RecordIssue<never, never, never>>().toEqualTypeOf<never>();
-      expectTypeOf<
+      assertType<
+        typeof _Allowed.Output,
+        {
+          readonly allowed?: number;
+        }
+      >();
+      assertType<RecordIssue<never, never, never>, never>();
+      assertType<
         RecordIssue<
           never,
           never,
           RecordAccessorIssue | RecordNonEnumerableIssue
-        >
-      >().toEqualTypeOf<RecordAccessorIssue | RecordNonEnumerableIssue>();
-      expectTypeOf<
-        RecordEntriesError<never, never, never>
-      >().toEqualTypeOf<never>();
-      expectTypeOf<RecordError<never, never, never>>().toEqualTypeOf<
+        >,
+        RecordAccessorIssue | RecordNonEnumerableIssue
+      >();
+      assertType<RecordEntriesError<never, never, never>, never>();
+      assertType<
+        RecordError<never, never, never>,
         | RecordNotRecordError
         | RecordNotPlainRecordError
         | RecordEntriesError<
@@ -11870,7 +12708,7 @@ describe("record", () => {
       >();
     });
 
-    test("rejects every key in an empty key domain", () => {
+    it("rejects every key in an empty key domain", () => {
       const Values = record(Never, Number);
       const symbol = globalThis.Symbol();
       const value = { anything: 1 };
@@ -11889,15 +12727,17 @@ describe("record", () => {
         Values.to(value);
       };
 
-      expectTypeOf<typeof Values.Input>().toEqualTypeOf<
-        Readonly<Record<string, never>>
+      assertType<typeof Values.Input, Readonly<Record<string, never>>>();
+      assertType<typeof Values.Output, Readonly<Record<string, never>>>();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
       >();
-      expectTypeOf<typeof Values.Output>().toEqualTypeOf<
-        Readonly<Record<string, never>>
-      >();
-      expectTypeOf(compileTimeAssertions).toBeFunction();
-      expect(Values.fromUnknown({})).toEqual(ok(createNullRecord({})));
-      expect(Values.fromUnknown(value)).toEqual(
+      assertEqual(Values.fromUnknown({}), ok(createNullRecord({})));
+      assertEqual(
+        Values.fromUnknown(value),
         err({
           type: "Record",
           reason: {
@@ -11912,11 +12752,11 @@ describe("record", () => {
           },
         }),
       );
-      expect(Values.is(createNullRecord({}))).toBe(true);
-      expect(Values.is(createNullRecord(value))).toBe(false);
+      assertTrue(Values.is(createNullRecord({})));
+      assertFalse(Values.is(createNullRecord(value)));
     });
 
-    test("computes an empty key domain independently at each boundary", () => {
+    it("computes an empty key domain independently at each boundary", () => {
       interface NeverFromStringError extends TypeError<"NeverFromString"> {
         readonly value: string;
       }
@@ -11933,15 +12773,14 @@ describe("record", () => {
       );
       const _Values = record(NeverFromString, Number);
 
-      expectTypeOf<typeof _Values.Input>().toEqualTypeOf<
+      assertType<
+        typeof _Values.Input,
         Readonly<Partial<Record<string, number>>>
       >();
-      expectTypeOf<typeof _Values.Output>().toEqualTypeOf<
-        Readonly<Record<string, never>>
-      >();
+      assertType<typeof _Values.Output, Readonly<Record<string, never>>>();
     });
 
-    test("requires concrete string key and concrete value Types", () => {
+    it("requires concrete string key and concrete value Types", () => {
       type Key = typeof String | typeof Number;
       type Value = typeof String | typeof Number;
       const key = String as Key;
@@ -11958,10 +12797,15 @@ describe("record", () => {
         record(String, union(String, Number));
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("distributes key and value errors inside one issue container", () => {
+    it("distributes key and value errors inside one issue container", () => {
       interface AError extends TypeError<"A"> {
         readonly value: number;
       }
@@ -11988,7 +12832,8 @@ describe("record", () => {
         },
       };
 
-      expectTypeOf(error.reason.issues).toEqualTypeOf<
+      assertType<
+        typeof error.reason.issues,
         NonEmptyReadonlyArray<
           | RecordKeyIssue<AError | BError>
           | RecordValueIssue<AError | BError>
@@ -11999,43 +12844,44 @@ describe("record", () => {
   });
 
   describe("validation", () => {
-    test("accepts and preserves ordinary objects", () => {
+    it("accepts and preserves ordinary objects", () => {
       const Values = record(String, Number);
       const input: unknown = { first: 1, second: 2 };
       const result = Values.fromUnknown(input);
 
-      expectOk(result, { first: 1, second: 2 });
-      expect(result.value).toBe(input);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBe(
+      assertOk(result, { first: 1, second: 2 });
+      assertSame(result.value, input);
+      assertSame(
+        globalThis.Object.getPrototypeOf(result.value),
         globalThis.Object.prototype,
       );
-      expect(Values.is(input)).toBe(true);
-      expect(Values.is(result.value)).toBe(true);
-      expect(Values.from(result.value)).toEqual(ok(result.value));
-      expect(Values.to(result.value)).toBe(result.value);
+      assertTrue(Values.is(input));
+      assertTrue(Values.is(result.value));
+      assertEqual(Values.from(result.value), ok(result.value));
+      assertSame(Values.to(result.value), result.value);
 
       const first: number | undefined = result.value.first;
-      expect(first).toBe(1);
+      assertEqual(first, 1);
     });
 
-    test("ignores inherited properties", () => {
+    it("ignores inherited properties", () => {
       const Values = record(literal("toString"), Number);
       const input = {};
       const result = Values.fromUnknown(input);
 
-      expectOk(result, input);
-      expect(result.value).toBe(input);
-      expect(globalThis.Object.hasOwn(result.value, "toString")).toBe(false);
-      expect(Values.is(input)).toBe(true);
-      expectOk(Values.from(result.value), input);
-      expect(Values.to(result.value)).toBe(input);
+      assertOk(result, input);
+      assertSame(result.value, input);
+      assertFalse(globalThis.Object.hasOwn(result.value, "toString"));
+      assertTrue(Values.is(input));
+      assertOk(Values.from(result.value), input);
+      assertSame(Values.to(result.value), input);
 
       const value: number | undefined = result.value.toString;
-      expectTypeOf(value).toEqualTypeOf<number | undefined>();
-      expect(typeof value).toBe("function");
+      assertType<typeof value, number | undefined>();
+      assertEqual(typeof value, "function");
     });
 
-    test("rejects class instances and custom prototypes", () => {
+    it("rejects class instances and custom prototypes", () => {
       const Values = record(String, Number);
       class ValueRecord {
         readonly [key: string]: number;
@@ -12054,65 +12900,67 @@ describe("record", () => {
       );
 
       for (const input of [instance, customPrototype]) {
-        expect(Values.is(input)).toBe(false);
+        assertFalse(Values.is(input));
         const result = Values.fromUnknown(input);
-        expectErr(result, {
+        assertErr(result, {
           type: "Record",
           reason: { kind: "NotPlainRecord", value: input },
         });
-        expectAssertionError(
+        assertAssertionError(
           () => Values.from(input),
           "Expected Record.",
           result.error,
         );
-        expectAssertionError(
+        assertAssertionError(
           () => Values.to(input),
           "Expected Record.",
           result.error,
         );
       }
-      expect(inheritedReads).toBe(0);
+      assertEqual(inheritedReads, 0);
     });
 
-    test("rejects custom prototype chains rooted in Object or null", () => {
+    it("rejects custom prototype chains rooted in Object or null", () => {
       const Values = record(String, String);
 
       for (const value of setupUnexpectedPrototypeValues()) {
-        expect(Values.fromUnknown(value)).toEqual(
+        assertEqual(
+          Values.fromUnknown(value),
           err({
             type: "Record",
             reason: { kind: "NotPlainRecord", value },
           }),
         );
-        expect(Values.is(value)).toBe(false);
+        assertFalse(Values.is(value));
       }
     });
 
-    test("preserves an unchanged null-prototype record", () => {
+    it("preserves an unchanged null-prototype record", () => {
       const Values = record(String, Number);
       const input = createNullRecord({ first: 1 });
       const result = Values.fromUnknown(input);
 
-      expectOk(result, input);
-      expect(result.value).toBe(input);
-      expect(Values.is(input)).toBe(true);
+      assertOk(result, input);
+      assertSame(result.value, input);
+      assertTrue(Values.is(input));
     });
 
-    test("accepts an Output after ordinary object spread", () => {
+    it("accepts an Output after ordinary object spread", () => {
       const Values = record(literal("toString"), Number);
       const output = getOrThrow(Values.fromUnknown(createNullRecord({})));
       const spread = { ...output };
 
-      expect(globalThis.Object.getPrototypeOf(spread)).toBe(
+      assertSame(
+        globalThis.Object.getPrototypeOf(spread),
         globalThis.Object.prototype,
       );
-      expect(globalThis.Object.hasOwn(spread, "toString")).toBe(false);
-      expect(Values.is(spread)).toBe(true);
-      expectOk(Values.from(spread), spread);
-      expect(Values.to(spread)).toBe(spread);
+      assertFalse(globalThis.Object.hasOwn(spread, "toString"));
+      assertTrue(Values.is(spread));
+      assertOk(Values.from(spread), spread);
+      assertSame(Values.to(spread), spread);
     });
 
-    test("rejects non-enumerable properties from unknown", () => {
+    it("rejects non-enumerable properties from unknown", () => {
       const Values = record(String, Number);
       const input = globalThis.Object.defineProperty(
         globalThis.Object.create(null) as Record<string, number>,
@@ -12121,27 +12969,27 @@ describe("record", () => {
       );
       const result = Values.fromUnknown(input);
 
-      expectErr(result, {
+      assertErr(result, {
         type: "Record",
         reason: {
           kind: "Entries",
           issues: [{ kind: "NonEnumerable", key: "value" }],
         },
       });
-      expect(Values.is(input)).toBe(false);
-      expectAssertionError(
+      assertFalse(Values.is(input));
+      assertAssertionError(
         () => Values.from(input),
         "Expected Record.",
         result.error,
       );
-      expectAssertionError(
+      assertAssertionError(
         () => Values.to(input),
         "Expected Record.",
         result.error,
       );
     });
 
-    test("rejects non-plain values and accessors without reading them", () => {
+    it("rejects non-plain values and accessors without reading them", () => {
       const Values = record(String, Number);
       let reads = 0;
       const accessor = globalThis.Object.defineProperty(
@@ -12156,14 +13004,16 @@ describe("record", () => {
         },
       );
 
-      expect(Values.fromUnknown(null)).toEqual(
+      assertEqual(
+        Values.fromUnknown(null),
         err({
           type: "Record",
           reason: { kind: "NotRecord", value: null },
         }),
       );
-      expect(Values.is(null)).toBe(false);
-      expect(Values.fromUnknown([])).toEqual(
+      assertFalse(Values.is(null));
+      assertEqual(
+        Values.fromUnknown([]),
         err({
           type: "Record",
           reason: { kind: "NotPlainRecord", value: [] },
@@ -12171,24 +13021,24 @@ describe("record", () => {
       );
       const result = Values.fromUnknown(accessor);
 
-      expectErr(result, {
+      assertErr(result, {
         type: "Record",
         reason: {
           kind: "Entries",
           issues: [{ kind: "Accessor", key: "value" }],
         },
       });
-      expect(reads).toBe(0);
-      expect(Values.is(accessor)).toBe(false);
-      expectAssertionError(
+      assertEqual(reads, 0);
+      assertFalse(Values.is(accessor));
+      assertAssertionError(
         () => Values.to(accessor as Record<string, number>),
         "Expected Record.",
         result.error,
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("collects structural and value issues without reading accessors", () => {
+    it("collects structural and value issues without reading accessors", () => {
       const Values = record(String, Number);
       const accessError = new Error("Access failed.");
       const input: Record<string, unknown> = {};
@@ -12210,7 +13060,8 @@ describe("record", () => {
         key: "first",
       } satisfies RecordAccessorIssue;
 
-      expect(Values.fromUnknown(input)).toEqual(
+      assertEqual(
+        Values.fromUnknown(input),
         err({
           type: "Record",
           reason: {
@@ -12241,16 +13092,15 @@ describe("record", () => {
           ] as const,
         },
       };
-      expect(Values.fromUnknown(input, { errors: "all" })).toEqual(
-        err(allErrors),
-      );
-      expect(Values.formatError(allErrors)).toBe(
+      assertEqual(Values.fromUnknown(input, { errors: "all" }), err(allErrors));
+      assertEqual(
+        Values.formatError(allErrors),
         'A Record property "first" must be a data property.',
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("does not read Symbol.toStringTag while rejecting the symbol key", () => {
+    it("does not read Symbol.toStringTag while rejecting the symbol key", () => {
       const Values = record(String, Number);
       let reads = 0;
       const value = globalThis.Object.defineProperty(
@@ -12266,7 +13116,8 @@ describe("record", () => {
 
       const result = Values.fromUnknown(value);
 
-      expect(result).toEqual(
+      assertEqual(
+        result,
         err({
           type: "Record",
           reason: {
@@ -12285,11 +13136,11 @@ describe("record", () => {
           },
         }),
       );
-      expect(Values.is(value)).toBe(false);
-      expect(reads).toBe(0);
+      assertFalse(Values.is(value));
+      assertEqual(reads, 0);
     });
 
-    test("rejects symbol keys as key validation failures", () => {
+    it("rejects symbol keys as key validation failures", () => {
       const Values = record(String, Number);
       const key = globalThis.Symbol("key");
       let reads = 0;
@@ -12300,7 +13151,8 @@ describe("record", () => {
         },
       });
 
-      expect(Values.fromUnknown(input)).toEqual(
+      assertEqual(
+        Values.fromUnknown(input),
         err({
           type: "Record",
           reason: {
@@ -12319,9 +13171,10 @@ describe("record", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
 
-      expect(Values.fromUnknown(input, { errors: "all" })).toEqual(
+      assertEqual(
+        Values.fromUnknown(input, { errors: "all" }),
         err({
           type: "Record",
           reason: {
@@ -12344,23 +13197,23 @@ describe("record", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
 
       const canonical = createNullRecord({ value: 1 });
       globalThis.Reflect.set(canonical, key, 2);
-      expect(Values.is(canonical)).toBe(false);
-      expect(Values.is(input)).toBe(false);
-      expect(reads).toBe(0);
-      expect(Values.is(createNullRecord({ value: "wrong" }))).toBe(false);
-      expect(
+      assertFalse(Values.is(canonical));
+      assertFalse(Values.is(input));
+      assertEqual(reads, 0);
+      assertFalse(Values.is(createNullRecord({ value: "wrong" })));
+      assertFalse(
         record(literal("allowed"), Number).is(createNullRecord({ wrong: 1 })),
-      ).toBe(false);
+      );
 
       const output = createNullRecord({ value: 1 });
       globalThis.Reflect.set(output, key, 2);
       const result = Values.fromUnknown(output);
 
-      expectErr(result, {
+      assertErr(result, {
         type: "Record",
         reason: {
           kind: "Entries",
@@ -12377,18 +13230,19 @@ describe("record", () => {
           ],
         },
       });
-      expectAssertionError(
+      assertAssertionError(
         () => Values.to(output),
         "Expected Record.",
         result.error,
       );
     });
 
-    test("collects key and value issues in own-key order", () => {
+    it("collects key and value issues in own-key order", () => {
       const Values = record(literal("allowed"), Number);
       const input = { wrong: "x", allowed: "y" };
 
-      expect(Values.fromUnknown(input)).toEqual(
+      assertEqual(
+        Values.fromUnknown(input),
         err({
           type: "Record",
           reason: {
@@ -12407,7 +13261,8 @@ describe("record", () => {
           },
         }),
       );
-      expect(Values.fromUnknown(input, { errors: "all" })).toEqual(
+      assertEqual(
+        Values.fromUnknown(input, { errors: "all" }),
         err({
           type: "Record",
           reason: {
@@ -12444,7 +13299,8 @@ describe("record", () => {
           },
         }),
       );
-      expect(record(String, Number).fromUnknown({ value: "wrong" })).toEqual(
+      assertEqual(
+        record(String, Number).fromUnknown({ value: "wrong" }),
         err({
           type: "Record",
           reason: {
@@ -12465,7 +13321,7 @@ describe("record", () => {
       );
     });
 
-    test("handles __proto__ as an ordinary data key", () => {
+    it("handles __proto__ as an ordinary data key", () => {
       const Values = record(String, Number);
       const input = globalThis.Object.defineProperty({}, "__proto__", {
         enumerable: true,
@@ -12475,39 +13331,40 @@ describe("record", () => {
       });
       const result = Values.fromUnknown(input);
 
-      expectOk(result, input);
-      expect(result.value).toBe(input);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBe(
+      assertOk(result, input);
+      assertSame(result.value, input);
+      assertSame(
+        globalThis.Object.getPrototypeOf(result.value),
         globalThis.Object.prototype,
       );
-      expect(globalThis.Object.hasOwn(result.value, "__proto__")).toBe(true);
-      expect(result.value.__proto__).toBe(1);
+      assertTrue(globalThis.Object.hasOwn(result.value, "__proto__"));
+      assertEqual(result.value.__proto__, 1);
     });
   });
 
   describe("transformations and composition", () => {
-    test("transforms keys and values into a canonical record", () => {
+    it("transforms keys and values into a canonical record", () => {
       const { Values } = setupTransformedRecord();
       const result = Values.fromUnknown({ FIRST: "1", Second: "2" });
 
-      expectOk(result, { first: 1, second: 2 });
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
-      expect(Values.is(result.value)).toBe(true);
+      assertOk(result, { first: 1, second: 2 });
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+      assertTrue(Values.is(result.value));
 
       const encoded = Values.to(result.value);
-      expect(encoded).toEqual({ first: "1", second: "2" });
-      expect(globalThis.Object.getPrototypeOf(encoded)).toBeNull();
-      expect(Values.from.parent(encoded)).toEqual(ok(result.value));
+      assertEqual(encoded, { first: "1", second: "2" });
+      assertSame(globalThis.Object.getPrototypeOf(encoded), null);
+      assertEqual(Values.from.parent(encoded), ok(result.value));
     });
 
-    test("preserves a record when composed encoders preserve every entry", () => {
+    it("preserves a record when composed encoders preserve every entry", () => {
       const Values = record(String, union(Number, String));
       const value = createNullRecord({ answer: 42 });
 
-      expect(Values.to(value)).toBe(value);
+      assertSame(Values.to(value), value);
     });
 
-    test("reports decoded-key collisions without overwriting entries", () => {
+    it("reports decoded-key collisions without overwriting entries", () => {
       const { Values } = setupTransformedRecord();
       const input = { A: "1", a: "2" };
       const expected = err({
@@ -12525,12 +13382,11 @@ describe("record", () => {
         },
       });
 
-      expect(Values.fromUnknown(input)).toEqual(expected);
+      assertEqual(Values.fromUnknown(input), expected);
       const typedInput = createNullRecord(input);
-      expect(Values.from.parent(typedInput)).toEqual(expected);
-      expect(
+      assertEqual(Values.from.parent(typedInput), expected);
+      assertEqual(
         Values.fromUnknown({ A: "wrong", a: "2" }, { errors: "all" }),
-      ).toEqual(
         err({
           type: "Record",
           reason: {
@@ -12562,7 +13418,8 @@ describe("record", () => {
         },
       });
       accessorInput.a = "2";
-      expect(Values.fromUnknown(accessorInput, { errors: "all" })).toEqual(
+      assertEqual(
+        Values.fromUnknown(accessorInput, { errors: "all" }),
         err({
           type: "Record",
           reason: {
@@ -12582,19 +13439,24 @@ describe("record", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
-      expectTypeOf(Values.from.parent(typedInput)).toEqualTypeOf<
-        Result<typeof Values.Output, typeof Values.Error>
-      >();
+      assertEqual(reads, 0);
+      {
+        const actual = Values.from.parent(typedInput);
+        assertType<
+          typeof actual,
+          Result<typeof Values.Output, typeof Values.Error>
+        >();
+      }
     });
 
-    test("preserves Record errors through child Types", () => {
+    it("preserves Record errors through child Types", () => {
       const { Values } = setupTransformedRecord();
       const Imported = brand("ImportedRecord", Values);
       const input = createNullRecord({ A: "1", a: "2" });
       const result = Imported.from.parent.parent(input);
 
-      expect(result).toEqual(
+      assertEqual(
+        result,
         err({
           type: "Record",
           reason: {
@@ -12610,32 +13472,34 @@ describe("record", () => {
           },
         }),
       );
-      expectTypeOf(result).toEqualTypeOf<
+      assertType<
+        typeof result,
         Result<typeof Imported.Output, typeof Values.Error>
       >();
 
       const decoded = Values.orThrow(createNullRecord({ one: "1" }));
-      expectOk(Imported.from.parent(decoded), decoded);
-      expectTypeOf(Imported.from.parent(decoded)).toEqualTypeOf<
-        Result<typeof Imported.Output>
-      >();
+      assertOk(Imported.from.parent(decoded), decoded);
+      {
+        const actual = Imported.from.parent(decoded);
+        assertType<typeof actual, Result<typeof Imported.Output>>();
+      }
     });
 
-    test("accepts ordinary Records at typed boundaries", () => {
+    it("accepts ordinary Records at typed boundaries", () => {
       const Values = record(String, Number);
       const input: typeof Values.Output = { value: 1 };
 
-      expect(Values.from(input)).toEqual(ok(input));
-      expect(Values.to(input)).toBe(input);
-      expect(Values.orThrow(input)).toBe(input);
-      expect(Values.orNull(input)).toBe(input);
+      assertEqual(Values.from(input), ok(input));
+      assertSame(Values.to(input), input);
+      assertSame(Values.orThrow(input), input);
+      assertSame(Values.orNull(input), input);
 
       const decoded = Values.fromUnknown(input);
-      expectOk(decoded, input);
-      expect(decoded.value).toBe(input);
+      assertOk(decoded, input);
+      assertSame(decoded.value, input);
     });
 
-    test("asserts own data properties before typed operations", () => {
+    it("asserts own data properties before typed operations", () => {
       const Values = record(String, Number);
       const accessError = new Error("Access failed.");
       const value = globalThis.Object.defineProperty(
@@ -12651,7 +13515,7 @@ describe("record", () => {
 
       const result = Values.fromUnknown(value);
 
-      expectErr(result, {
+      assertErr(result, {
         type: "Record",
         reason: {
           kind: "Entries",
@@ -12664,31 +13528,31 @@ describe("record", () => {
         () => Values.orNull(value),
         () => Values.to(value),
       ]) {
-        expectAssertionError(operation, "Expected Record.", result.error);
+        assertAssertionError(operation, "Expected Record.", result.error);
       }
-      expect(accessError).toBeInstanceOf(Error);
+      assertInstanceOf(accessError, Error);
     });
   });
 
-  test("formats record, key, value, and collision errors", () => {
+  it("formats record, key, value, and collision errors", () => {
     const Values = record(literal("allowed"), Number);
     const Transformed = setupTransformedRecord().Values;
 
-    expect(
+    assertEqual(
       Values.formatError({
         type: "Record",
         reason: { kind: "NotRecord", value: 1 },
       }),
-    ).toBe("A value 1 is not a Record.");
-    expect(
+      "A value 1 is not a Record.",
+    );
+    assertEqual(
       Values.formatError({
         type: "Record",
         reason: { kind: "NotPlainRecord", value: [] },
       }),
-    ).toBe(
       "The value is an object, but a Record Output must be a plain object or have a null prototype.",
     );
-    expect(
+    assertEqual(
       Values.formatError({
         type: "Record",
         reason: {
@@ -12706,10 +13570,9 @@ describe("record", () => {
           ],
         },
       }),
-    ).toBe(
       'The value "wrong" is not strictly equal to the expected literal: allowed.',
     );
-    expect(
+    assertEqual(
       Values.formatError({
         type: "Record",
         reason: {
@@ -12723,8 +13586,9 @@ describe("record", () => {
           ],
         },
       }),
-    ).toBe('A value "x" is not a number.');
-    expect(
+      'A value "x" is not a number.',
+    );
+    assertEqual(
       Values.formatError({
         type: "Record",
         reason: {
@@ -12732,8 +13596,9 @@ describe("record", () => {
           issues: [{ kind: "Accessor", key: "allowed" }],
         },
       }),
-    ).toBe('A Record property "allowed" must be a data property.');
-    expect(
+      'A Record property "allowed" must be a data property.',
+    );
+    assertEqual(
       Values.formatError({
         type: "Record",
         reason: {
@@ -12741,8 +13606,9 @@ describe("record", () => {
           issues: [{ kind: "NonEnumerable", key: "allowed" }],
         },
       }),
-    ).toBe('A Record property "allowed" must be enumerable.');
-    expect(
+      'A Record property "allowed" must be enumerable.',
+    );
+    assertEqual(
       Transformed.formatError({
         type: "Record",
         reason: {
@@ -12757,16 +13623,17 @@ describe("record", () => {
           ],
         },
       }),
-    ).toBe('Record keys "A" and "a" decode to the same key "a".');
+      'Record keys "A" and "a" decode to the same key "a".',
+    );
   });
 });
 
 describe("optional", () => {
-  test("creates a property descriptor that is not a Type", () => {
+  it("creates a property descriptor that is not a Type", () => {
     const property = optional(String);
 
-    expect(property.type).toBe(String);
-    expectTypeOf(property).not.toExtend<TypeNode>();
+    assertSame(property.type, String);
+    assertType<typeof property extends TypeNode ? true : false, false>();
   });
 });
 
@@ -12814,7 +13681,7 @@ describe("object", () => {
   };
 
   describe("construction", () => {
-    test("includes non-enumerable schema properties", () => {
+    it("includes non-enumerable schema properties", () => {
       const props = { name: String };
       globalThis.Object.defineProperty(props, "name", {
         value: String,
@@ -12822,8 +13689,9 @@ describe("object", () => {
       });
       const Model = object(props);
 
-      expect(Model.is({})).toBe(false);
-      expect(Model.fromUnknown({})).toEqual(
+      assertFalse(Model.is({}));
+      assertEqual(
+        Model.fromUnknown({}),
         err({
           type: "Object",
           reason: {
@@ -12832,23 +13700,23 @@ describe("object", () => {
           },
         }),
       );
-      expect(Model.fromUnknown({ name: "Ada" })).toEqual(ok({ name: "Ada" }));
-      expect(Model.props.name).toBe(String);
+      assertEqual(Model.fromUnknown({ name: "Ada" }), ok({ name: "Ada" }));
+      assertSame(Model.props.name, String);
     });
 
-    test("snapshots schema properties", () => {
+    it("snapshots schema properties", () => {
       const props = { value: String };
       const Model = object(props);
 
       globalThis.Reflect.set(props, "value", Number);
 
-      expect(Model.props).not.toBe(props);
-      expect(Model.props.value).toBe(String);
-      expect(Model.is({ value: "text" })).toBe(true);
-      expect(Model.is({ value: 1 })).toBe(false);
+      assertFalse(globalThis.Object.is(Model.props, props));
+      assertSame(Model.props.value, String);
+      assertTrue(Model.is({ value: "text" }));
+      assertFalse(Model.is({ value: 1 }));
     });
 
-    test("rejects schema accessors without invoking them", () => {
+    it("rejects schema accessors without invoking them", () => {
       let reads = 0;
       const props = {
         get value() {
@@ -12857,13 +13725,16 @@ describe("object", () => {
         },
       };
 
-      expect(() => object(props)).toThrow(
-        "Object schema properties must be own string-keyed data properties.",
+      const error = assertThrowsInstanceOf(() => object(props), Error);
+      assertTrue(
+        error.message.includes(
+          "Object schema properties must be own string-keyed data properties.",
+        ),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("rejects inherited schema properties without invoking them", () => {
+    it("rejects inherited schema properties without invoking them", () => {
       // TypeScript sees inherited properties through structural typing, but
       // Object schema reflection snapshots only own data properties. Accepting
       // this schema would infer a required `value` while constructing an empty
@@ -12882,13 +13753,16 @@ describe("object", () => {
 
       const props: { readonly value: typeof String } = new Props();
 
-      expect(() => object(props)).toThrow(
-        "Object schema properties must be own string-keyed data properties.",
+      const error = assertThrowsInstanceOf(() => object(props), Error);
+      assertTrue(
+        error.message.includes(
+          "Object schema properties must be own string-keyed data properties.",
+        ),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("rejects schema properties with custom prototype chains", () => {
+    it("rejects schema properties with custom prototype chains", () => {
       for (const value of setupUnexpectedPrototypeValues()) {
         const prototype = globalThis.Object.getPrototypeOf(value) as object;
         const props: { readonly name: typeof String } =
@@ -12896,13 +13770,16 @@ describe("object", () => {
             name: String,
           });
 
-        expect(() => object(props)).toThrow(
-          "Object schema properties must be own string-keyed data properties.",
+        const error = assertThrowsInstanceOf(() => object(props), Error);
+        assertTrue(
+          error.message.includes(
+            "Object schema properties must be own string-keyed data properties.",
+          ),
         );
       }
     });
 
-    test("rejects symbol schema properties without invoking them", () => {
+    it("rejects symbol schema properties without invoking them", () => {
       const key = globalThis.Symbol("value");
       let reads = 0;
       const props = globalThis.Object.defineProperty({ value: String }, key, {
@@ -12912,24 +13789,25 @@ describe("object", () => {
         },
       });
 
-      expect(() => object(props)).toThrow(
-        "Object schema properties must be own string-keyed data properties.",
+      const error = assertThrowsInstanceOf(() => object(props), Error);
+      assertTrue(
+        error.message.includes(
+          "Object schema properties must be own string-keyed data properties.",
+        ),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("accepts null-prototype schema properties", () => {
+    it("accepts null-prototype schema properties", () => {
       const props = { value: String };
       globalThis.Object.setPrototypeOf(props, null);
       const Model = object(props);
 
-      expect(Model.props.value).toBe(String);
-      expect(Model.fromUnknown({ value: "text" })).toEqual(
-        ok({ value: "text" }),
-      );
+      assertSame(Model.props.value, String);
+      assertEqual(Model.fromUnknown({ value: "text" }), ok({ value: "text" }));
     });
 
-    test("derives its properties, shapes, errors, and single root parent", () => {
+    it("derives its properties, shapes, errors, and single root parent", () => {
       const {
         Model,
         NonEmpty: _NonEmpty,
@@ -12937,30 +13815,38 @@ describe("object", () => {
         Short,
       } = setupValidatedObject();
 
-      expect(Model.name).toBe("Object");
-      expect(Model.props.title).toBe(Short);
-      expect(Model.props.count).toBe(Positive);
-      expect(Model.props.note.type).toBe(String);
-      expect(Model.parent.props.title).toBe(String);
-      expect(Model.parent.props.count).toBe(Number);
-      expect(Model.parent.props.note.type).toBe(String);
-      expect(Model.parent.parent).toBeNull();
-      expect("parent" in Model.from).toBe(true);
-      expectTypeOf<"parent">().toExtend<keyof typeof Model.from>();
-      expectTypeOf(Model).toExtend<
-        ObjectType<{
+      assertEqual(Model.name, "Object");
+      assertSame(Model.props.title, Short);
+      assertSame(Model.props.count, Positive);
+      assertSame(Model.props.note.type, String);
+      assertSame(Model.parent.props.title, String);
+      assertSame(Model.parent.props.count, Number);
+      assertSame(Model.parent.props.note.type, String);
+      assertSame(Model.parent.parent, null);
+      assertTrue("parent" in Model.from);
+      assertType<
+        "parent" extends keyof typeof Model.from ? true : false,
+        true
+      >();
+      assertType<
+        typeof Model extends ObjectType<{
           readonly title: typeof Short;
           readonly count: typeof Positive;
           readonly note: OptionalProperty<typeof String>;
         }>
+          ? true
+          : false,
+        true
       >();
-      expectTypeOf<typeof Model.Input>().toEqualTypeOf<
+      assertType<
+        typeof Model.Input,
         ExpectedStrictObject<
           { readonly title: string; readonly count: number },
           { readonly note: string }
         >
       >();
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<
+      assertType<
+        typeof Model.Output,
         ExpectedStrictObject<
           {
             readonly title: typeof Short.Output;
@@ -12969,10 +13855,9 @@ describe("object", () => {
           { readonly note: string }
         >
       >();
-      expectTypeOf<typeof Model.parent.Output>().toEqualTypeOf<
-        typeof Model.Input
-      >();
-      expectTypeOf<typeof Model.Error>().toEqualTypeOf<
+      assertType<typeof Model.parent.Output, typeof Model.Input>();
+      assertType<
+        typeof Model.Error,
         ObjectPropertiesError<{
           readonly title: typeof _NonEmpty.Error | typeof Short.Error;
           readonly count: typeof Positive.Error;
@@ -12986,51 +13871,64 @@ describe("object", () => {
       >;
       type Errors = PropertiesReason["errors"];
 
-      expectTypeOf<NonNullable<Errors["title"]>>().toEqualTypeOf<
+      assertType<
+        NonNullable<Errors["title"]>,
         | ObjectMissingPropertyError
         | ObjectPropertyAccessError
         | TypeOfError<"String">
         | typeof _NonEmpty.Error
         | typeof Short.Error
       >();
-      expectTypeOf<NonNullable<Errors["count"]>>().toEqualTypeOf<
+      assertType<
+        NonNullable<Errors["count"]>,
         | ObjectMissingPropertyError
         | ObjectPropertyAccessError
         | TypeOfError<"Number">
         | typeof Positive.Error
       >();
-      expectTypeOf<NonNullable<Errors["note"]>>().toEqualTypeOf<
+      assertType<
+        NonNullable<Errors["note"]>,
         ObjectPropertyAccessError | TypeOfError<"String">
       >();
-      expectTypeOf<ObjectExcessPropertyError>().not.toExtend<
-        NonNullable<Errors["title"]>
+      assertType<
+        ObjectExcessPropertyError extends NonNullable<Errors["title"]>
+          ? true
+          : false,
+        false
       >();
 
-      expectTypeOf<{
-        readonly type: "Object";
-        readonly reason: {
-          readonly kind: "Properties";
-          readonly errors: {
-            readonly unknown: ObjectExcessPropertyError;
+      assertType<
+        {
+          readonly type: "Object";
+          readonly reason: {
+            readonly kind: "Properties";
+            readonly errors: {
+              readonly unknown: ObjectExcessPropertyError;
+            };
           };
-        };
-      }>().toExtend<InferErrors<typeof Model>>();
+        } extends InferErrors<typeof Model>
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("creates a parent for optional-only refinements", () => {
+    it("creates a parent for optional-only refinements", () => {
       const Value = literal("value");
       const Model = object({ value: optional(Value) });
       const absent = {};
 
-      expect(Model.parent.props.value.type).toBe(String);
-      expect(Model.parent.parent).toBeNull();
-      expectTypeOf<typeof Model.Error>().toEqualTypeOf<
+      assertSame(Model.parent.props.value.type, String);
+      assertSame(Model.parent.parent, null);
+      assertType<
+        typeof Model.Error,
         ObjectPropertiesError<{
           readonly value: LiteralError<"value">;
         }>
       >();
-      expectOk(Model.from(absent), absent);
-      expect(Model.from.parent({ value: "other" })).toEqual(
+      assertOk(Model.from(absent), absent);
+      assertEqual(
+        Model.from.parent({ value: "other" }),
         err({
           type: "Object",
           reason: {
@@ -13043,7 +13941,7 @@ describe("object", () => {
       );
     });
 
-    test("exposes readonly properties", () => {
+    it("exposes readonly properties", () => {
       const props = { value: String, note: optional(Number) };
       const Model = object(props);
       const compileTimeAssertions = () => {
@@ -13055,11 +13953,16 @@ describe("object", () => {
         Model.props.note.type = Number;
       };
 
-      expectTypeOf(Model.props).toEqualTypeOf<Readonly<typeof props>>();
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<typeof Model.props, Readonly<typeof props>>();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("composes declared properties with a Record", () => {
+    it("composes declared properties with a Record", () => {
       const Values = record(String, Number);
       const Model = object({ count: Number }, Values);
       const _Open = object({}, Values);
@@ -13134,24 +14037,36 @@ describe("object", () => {
         readonly count: TypeOfError<"Number">;
       }
 
-      expect(Model.record).toBe(Values);
-      expectTypeOf(genericRecordAssertion).toBeFunction();
-      expect(Model.parent).toBeNull();
-      expectTypeOf(Model).toExtend<
-        ObjectType<{ readonly count: typeof Number }, typeof Values>
+      assertSame(Model.record, Values);
+      assertType<
+        typeof genericRecordAssertion extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
       >();
-      expectTypeOf<(typeof Model.Input)["count"]>().toEqualTypeOf<number>();
-      expectTypeOf<(typeof Model.Input)["other"]>().toEqualTypeOf<
-        number | undefined
+      assertSame(Model.parent, null);
+      assertType<
+        typeof Model extends ObjectType<
+          { readonly count: typeof Number },
+          typeof Values
+        >
+          ? true
+          : false,
+        true
       >();
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<typeof Model.Input>();
-      expectTypeOf<typeof _Open.Output>().toEqualTypeOf<
+      assertType<(typeof Model.Input)["count"], number>();
+      assertType<(typeof Model.Input)["other"], number | undefined>();
+      assertType<typeof Model.Output, typeof Model.Input>();
+      assertType<
+        typeof _Open.Output,
         Readonly<Partial<Record<string, number>>>
       >();
-      expect(
+      assertEqual(
         CompatibleModel.to(CompatibleModel.orThrow({ fixed: "input" })),
-      ).toEqual({ fixed: "a" });
-      expectTypeOf<typeof Model.Error>().toEqualTypeOf<
+        { fixed: "a" },
+      );
+      assertType<
+        typeof Model.Error,
         ObjectError<
           Errors,
           | ObjectPropertyAccessError
@@ -13162,13 +14077,21 @@ describe("object", () => {
             >
         >
       >();
-      expectTypeOf<ObjectExcessPropertyError>().not.toExtend<
-        InferErrors<typeof Model>
+      assertType<
+        ObjectExcessPropertyError extends InferErrors<typeof Model>
+          ? true
+          : false,
+        false
       >();
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("rejects every property in an empty schema", () => {
+    it("rejects every property in an empty schema", () => {
       const Model = object({});
       const symbol = globalThis.Symbol();
       const value = { anything: 1 };
@@ -13181,20 +14104,24 @@ describe("object", () => {
         Model.from(value);
       };
 
-      expectTypeOf<typeof Model.Input>().toEqualTypeOf<
-        Readonly<Record<string, never>>
-      >();
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<
-        Readonly<Record<string, never>>
-      >();
-      expectTypeOf<typeof Model.Error>().toEqualTypeOf<
+      assertType<typeof Model.Input, Readonly<Record<string, never>>>();
+      assertType<typeof Model.Output, Readonly<Record<string, never>>>();
+      assertType<
+        typeof Model.Error,
         ObjectError<Readonly<Record<never, never>>>
       >();
-      expectTypeOf<InferErrors<typeof Model>>().toEqualTypeOf<
+      assertType<
+        InferErrors<typeof Model>,
         ObjectError<Readonly<Record<never, never>>>
       >();
-      expectTypeOf(compileTimeAssertions).toBeFunction();
-      expect(Model.fromUnknown(value)).toEqual(
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
+      assertEqual(
+        Model.fromUnknown(value),
         err({
           type: "Object",
           reason: {
@@ -13203,36 +14130,35 @@ describe("object", () => {
           },
         }),
       );
-      expect(Model.is(value)).toBe(false);
-      expect(Model.is({})).toBe(true);
+      assertFalse(Model.is(value));
+      assertTrue(Model.is({}));
 
       const empty = {};
       const result = Model.from(empty);
-      expectOk(result, empty);
-      expect(result.value).toBe(empty);
+      assertOk(result, empty);
+      assertSame(result.value, empty);
     });
 
-    test("creates a parent that validates only structural property inputs", () => {
+    it("creates a parent that validates only structural property inputs", () => {
       const { Model, validations } = setupValidatedObject();
       const value = { title: "", count: 0 };
       const result = Model.parent.fromUnknown(value, { errors: "all" });
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(validations).toEqual([]);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertEqual(validations, []);
     });
 
-    test("uses Union input boundaries in its parent", () => {
+    it("uses Union input boundaries in its parent", () => {
       const Value = union(literal("value"), Number);
       const Model = object({ value: Value });
       const encoded = { value: "other" };
 
-      expect(Model.parent.props.value).toBe(Value.parent);
-      expectTypeOf<typeof Model.parent.Output>().toEqualTypeOf<
-        typeof Model.Input
-      >();
-      expectOk(Model.parent.fromUnknown(encoded), encoded);
-      expect(Model.parent.fromUnknown({ value: true })).toEqual(
+      assertSame(Model.parent.props.value, Value.parent);
+      assertType<typeof Model.parent.Output, typeof Model.Input>();
+      assertOk(Model.parent.fromUnknown(encoded), encoded);
+      assertEqual(
+        Model.parent.fromUnknown({ value: true }),
         err({
           type: "Object",
           reason: {
@@ -13255,7 +14181,8 @@ describe("object", () => {
           },
         }),
       );
-      expect(Model.fromUnknown(encoded)).toEqual(
+      assertEqual(
+        Model.fromUnknown(encoded),
         err({
           type: "Object",
           reason: {
@@ -13280,7 +14207,7 @@ describe("object", () => {
       );
     });
 
-    test("rejects a union of property Types", () => {
+    it("rejects a union of property Types", () => {
       type Property = typeof String | typeof Number;
       type OptionalParameter = Parameters<typeof optional<Property>>[0];
       const property = String as Property;
@@ -13309,12 +14236,24 @@ describe("object", () => {
         object({ value: requiredOrOptional });
       };
 
-      expectTypeOf<Property>().not.toExtend<OptionalParameter>();
-      expectTypeOf(genericCompileTimeAssertion).toBeFunction();
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<Property extends OptionalParameter ? true : false, false>();
+      assertType<
+        typeof genericCompileTimeAssertion extends (
+          ...args: Array<never>
+        ) => unknown
+          ? true
+          : false,
+        true
+      >();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("rejects erased property Types and a union of schemas", () => {
+    it("rejects erased property Types and a union of schemas", () => {
       const type: FormattableTypeNode = String;
       const props =
         globalThis.Math.random() > 0.5
@@ -13336,10 +14275,15 @@ describe("object", () => {
         object(subsumedProps);
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("rejects reserved structural error tags in property Types", () => {
+    it("rejects reserved structural error tags in property Types", () => {
       interface MissingError extends TypeError<"ObjectMissingProperty"> {
         readonly value: string;
       }
@@ -13390,10 +14334,15 @@ describe("object", () => {
         object({ value: optional(ExcessChild) });
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("requires a fixed set of string property names", () => {
+    it("requires a fixed set of string property names", () => {
       const broad: Record<string, typeof String> = { value: String };
       const pattern = { "value-test": String } as Record<
         `value-${string}`,
@@ -13422,12 +14371,17 @@ describe("object", () => {
         object(proto);
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 
   describe("composition", () => {
-    test("decodes and encodes declared properties at typed boundaries", () => {
+    it("decodes and encodes declared properties at typed boundaries", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({ age: NumberFromString });
       const encoded = { age: "42" };
@@ -13436,40 +14390,42 @@ describe("object", () => {
       const fromResult = Model.from.parent(encoded);
       const toResult = Model.to(output);
 
-      expectOk(fromResult, output);
-      expect(fromResult.value).not.toBe(encoded);
-      expect(toResult).toEqual(encoded);
-      expect(toResult).not.toBe(output);
-      expect(Model.is({ age: 42 })).toBe(true);
-      expect(Model.is({ age: "42" })).toBe(false);
-      expectTypeOf<typeof Model.Input>().toEqualTypeOf<
+      assertOk(fromResult, output);
+      assertFalse(globalThis.Object.is(fromResult.value, encoded));
+      assertEqual(toResult, encoded);
+      assertFalse(globalThis.Object.is(toResult, output));
+      assertTrue(Model.is({ age: 42 }));
+      assertFalse(Model.is({ age: "42" }));
+      assertType<
+        typeof Model.Input,
         ExpectedStrictObject<{ readonly age: string }>
       >();
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<
+      assertType<
+        typeof Model.Output,
         ExpectedStrictObject<{ readonly age: number }>
       >();
     });
 
-    test("accepts ordinary Record properties through typed operations", () => {
+    it("accepts ordinary Record properties through typed operations", () => {
       const Model = object({ values: record(String, Number) });
       const input = { values: { one: 1 } };
       const fromUnknownResult = Model.fromUnknown(input);
 
-      expectOk(fromUnknownResult, input);
+      assertOk(fromUnknownResult, input);
       const output = fromUnknownResult.value;
-      expect(Model.parent).toBeNull();
-      expect("parent" in Model.from).toBe(false);
-      expect(Model.is(input)).toBe(true);
-      expect(output).toBe(input);
-      expect(output.values).toBe(input.values);
-      expect(Model.is(output)).toBe(true);
-      expect(Model.from(input)).toEqual(ok(input));
-      expect(Model.to(input)).toBe(input);
-      expect(Model.orThrow(input)).toBe(input);
-      expect(Model.orNull(input)).toBe(input);
+      assertSame(Model.parent, null);
+      assertFalse("parent" in Model.from);
+      assertTrue(Model.is(input));
+      assertSame(output, input);
+      assertSame(output.values, input.values);
+      assertTrue(Model.is(output));
+      assertEqual(Model.from(input), ok(input));
+      assertSame(Model.to(input), input);
+      assertSame(Model.orThrow(input), input);
+      assertSame(Model.orNull(input), input);
     });
 
-    test("transforms Record properties across Object and child operations", () => {
+    it("transforms Record properties across Object and child operations", () => {
       const NumberFromString = setupNumberFromString();
       const Values = record(String, NumberFromString);
       const Model = object({ count: NumberFromString }, Values);
@@ -13477,23 +14433,25 @@ describe("object", () => {
       const encoded = { count: "2", score: "1" };
       const output = { count: 2, score: 1 };
 
-      expect(Model.fromUnknown(encoded)).toEqual(ok(output));
-      expect(Model.from.parent(encoded)).toEqual(ok(output));
-      expect(Model.orThrow(encoded)).toEqual(output);
-      expect(Model.orNull(encoded)).toEqual(output);
-      expect(Model.to(output)).toEqual(encoded);
-      expect(Model.parent.fromUnknown(encoded)).toEqual(ok(encoded));
-      expect(Imported.from.parent.parent(encoded)).toEqual(ok(output));
-      expect(Model.is(output)).toBe(true);
-      expect(Model.is(encoded)).toBe(false);
-      expect(Model.record).toBe(Values);
-      expect(Model.parent.record).toBe(Values.parent);
-      expectTypeOf<(typeof Model.Output)["count"]>().toEqualTypeOf<number>();
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<
+      assertEqual(Model.fromUnknown(encoded), ok(output));
+      assertEqual(Model.from.parent(encoded), ok(output));
+      assertEqual(Model.orThrow(encoded), output);
+      assertEqual(Model.orNull(encoded), output);
+      assertEqual(Model.to(output), encoded);
+      assertEqual(Model.parent.fromUnknown(encoded), ok(encoded));
+      assertEqual(Imported.from.parent.parent(encoded), ok(output));
+      assertTrue(Model.is(output));
+      assertFalse(Model.is(encoded));
+      assertSame(Model.record, Values);
+      assertSame(Model.parent.record, Values.parent);
+      assertType<(typeof Model.Output)["count"], number>();
+      assertType<
+        typeof Model.Output,
         { readonly count: number } & Readonly<Partial<Record<string, number>>>
       >();
 
-      expect(Model.from.parent({ count: "2", score: "no" })).toEqual(
+      assertEqual(
+        Model.from.parent({ count: "2", score: "no" }),
         err({
           type: "Object",
           reason: {
@@ -13516,9 +14474,8 @@ describe("object", () => {
           },
         }),
       );
-      expect(
+      assertEqual(
         Model.from.parent({ count: "no", score: "also no" }, { errors: "all" }),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -13547,29 +14504,29 @@ describe("object", () => {
       );
     });
 
-    test("preserves dynamic values when composed operations are identities", () => {
+    it("preserves dynamic values when composed operations are identities", () => {
       const Model = object({}, record(String, union(Number, String)));
       const value = { answer: 42 };
 
       const result = Model.from.parent(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(Model.to(value)).toBe(value);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertSame(Model.to(value), value);
     });
 
-    test("preserves ordinary root Record values accepted by a Record", () => {
+    it("preserves ordinary root Record values accepted by a Record", () => {
       const Model = object({}, record(String, record(String, Number)));
       const input = { values: { one: 1 } };
       const result = Model.fromUnknown(input);
 
-      expectOk(result, input);
-      expect(result.value).toBe(input);
-      expect(result.value.values).toBe(input.values);
-      expect(Model.is(result.value)).toBe(true);
+      assertOk(result, input);
+      assertSame(result.value, input);
+      assertSame(result.value.values, input.values);
+      assertTrue(Model.is(result.value));
     });
 
-    test("constructs null-prototype decoded and encoded objects", () => {
+    it("constructs null-prototype decoded and encoded objects", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({
         name: String,
@@ -13593,51 +14550,55 @@ describe("object", () => {
 
       const result = Model.fromUnknown(encoded);
 
-      expectOk(result, { name: "Ada", age: 42 });
-      expect(result.value).not.toBe(encoded);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
-      expect(
+      assertOk(result, { name: "Ada", age: 42 });
+      assertFalse(globalThis.Object.is(result.value, encoded));
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+      assertEqual(
         globalThis.Object.getOwnPropertyDescriptor(result.value, "name"),
-      ).toEqual({
-        configurable: true,
-        enumerable: true,
-        value: "Ada",
-        writable: true,
-      });
-      expect(
+        {
+          configurable: true,
+          enumerable: true,
+          value: "Ada",
+          writable: true,
+        },
+      );
+      assertEqual(
         globalThis.Object.getOwnPropertyDescriptor(result.value, "age"),
-      ).toEqual({
-        configurable: true,
-        enumerable: true,
-        value: 42,
-        writable: true,
-      });
-      expect(Model.is(result.value)).toBe(true);
+        {
+          configurable: true,
+          enumerable: true,
+          value: 42,
+          writable: true,
+        },
+      );
+      assertTrue(Model.is(result.value));
 
       const reencoded = Model.to(result.value);
 
-      expect(reencoded).not.toBe(result.value);
-      expect(globalThis.Object.getPrototypeOf(reencoded)).toBeNull();
-      expect(
+      assertFalse(globalThis.Object.is(reencoded, result.value));
+      assertSame(globalThis.Object.getPrototypeOf(reencoded), null);
+      assertEqual(
         globalThis.Object.getOwnPropertyDescriptor(reencoded, "name"),
-      ).toEqual({
-        configurable: true,
-        enumerable: true,
-        value: "Ada",
-        writable: true,
-      });
-      expect(
+        {
+          configurable: true,
+          enumerable: true,
+          value: "Ada",
+          writable: true,
+        },
+      );
+      assertEqual(
         globalThis.Object.getOwnPropertyDescriptor(reencoded, "age"),
-      ).toEqual({
-        configurable: true,
-        enumerable: true,
-        value: "42",
-        writable: true,
-      });
-      expect(Model.parent.is(reencoded)).toBe(true);
+        {
+          configurable: true,
+          enumerable: true,
+          value: "42",
+          writable: true,
+        },
+      );
+      assertTrue(Model.parent.is(reencoded));
     });
 
-    test("does not reread validated descriptors while constructing a decoded object", () => {
+    it("does not reread validated descriptors while constructing a decoded object", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({
         name: String,
@@ -13665,14 +14626,14 @@ describe("object", () => {
 
       const result = Model.fromUnknown(input);
 
-      expectOk(result, { name: "Ada", age: 42 });
-      expect(nameDescriptorReads).toBe(1);
-      expect(result.value).not.toBe(input);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
-      expect(Model.is(result.value)).toBe(true);
+      assertOk(result, { name: "Ada", age: 42 });
+      assertEqual(nameDescriptorReads, 1);
+      assertFalse(globalThis.Object.is(result.value, input));
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+      assertTrue(Model.is(result.value));
     });
 
-    test("rejects class instances instead of stripping their prototype", () => {
+    it("rejects class instances instead of stripping their prototype", () => {
       class User {
         readonly #secret = "secret";
         readonly age = "42";
@@ -13687,31 +14648,33 @@ describe("object", () => {
       const user = new User();
       const result = Model.fromUnknown(user);
 
-      expect(user.getSecret()).toBe("secret");
-      expect(result).toEqual(
+      assertEqual(user.getSecret(), "secret");
+      assertEqual(
+        result,
         err({
           type: "Object",
           reason: { kind: "UnexpectedPrototype", value: user },
         }),
       );
-      expect(Model.is(user)).toBe(false);
+      assertFalse(Model.is(user));
     });
 
-    test("rejects custom prototype chains", () => {
+    it("rejects custom prototype chains", () => {
       const Model = object({ type: literal("Created"), name: String });
 
       for (const value of setupUnexpectedPrototypeValues()) {
-        expect(Model.fromUnknown(value)).toEqual(
+        assertEqual(
+          Model.fromUnknown(value),
           err({
             type: "Object",
             reason: { kind: "UnexpectedPrototype", value },
           }),
         );
-        expect(Model.is(value)).toBe(false);
+        assertFalse(Model.is(value));
       }
     });
 
-    test("rejects declared accessors without reading them", () => {
+    it("rejects declared accessors without reading them", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({ age: NumberFromString });
       let reads = 0;
@@ -13723,7 +14686,8 @@ describe("object", () => {
 
       const result = Model.fromUnknown(encoded);
 
-      expect(result).toEqual(
+      assertEqual(
+        result,
         err({
           type: "Object",
           reason: {
@@ -13734,14 +14698,15 @@ describe("object", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("locates decoding transformation errors by property", () => {
+    it("locates decoding transformation errors by property", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({ age: NumberFromString });
 
-      expect(Model.from.parent({ age: "no" })).toEqual(
+      assertEqual(
+        Model.from.parent({ age: "no" }),
         err({
           type: "Object",
           reason: {
@@ -13757,7 +14722,7 @@ describe("object", () => {
       );
     });
 
-    test("decodes and encodes an optional transformed property", () => {
+    it("decodes and encodes an optional transformed property", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({ value: optional(NumberFromString) });
       const absent = {};
@@ -13767,14 +14732,15 @@ describe("object", () => {
       const result = Model.from.parent(encoded);
       const reencoded = Model.to(output);
 
-      expectOk(absentResult, absent);
-      expect(absentResult.value).toBe(absent);
-      expectOk(result, output);
-      expect(result.value).not.toBe(encoded);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
-      expect(reencoded).toEqual(encoded);
-      expect(globalThis.Object.getPrototypeOf(reencoded)).toBeNull();
-      expect(Model.from.parent({ value: "no" })).toEqual(
+      assertOk(absentResult, absent);
+      assertSame(absentResult.value, absent);
+      assertOk(result, output);
+      assertFalse(globalThis.Object.is(result.value, encoded));
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+      assertEqual(reencoded, encoded);
+      assertSame(globalThis.Object.getPrototypeOf(reencoded), null);
+      assertEqual(
+        Model.from.parent({ value: "no" }),
         err({
           type: "Object",
           reason: {
@@ -13785,13 +14751,15 @@ describe("object", () => {
           },
         }),
       );
-      expectTypeOf<typeof Model.Input>().toEqualTypeOf<
+      assertType<
+        typeof Model.Input,
         ExpectedStrictObject<
           Readonly<Record<never, never>>,
           { readonly value: string }
         >
       >();
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<
+      assertType<
+        typeof Model.Output,
         ExpectedStrictObject<
           Readonly<Record<never, never>>,
           { readonly value: number }
@@ -13799,7 +14767,7 @@ describe("object", () => {
       >();
     });
 
-    test("keeps an earlier absent optional property absent while decoding a later property", () => {
+    it("keeps an earlier absent optional property absent while decoding a later property", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({
         note: optional(String),
@@ -13808,12 +14776,12 @@ describe("object", () => {
 
       const result = Model.fromUnknown({ value: "42" });
 
-      expectOk(result, { value: 42 });
-      expect(globalThis.Object.hasOwn(result.value, "note")).toBe(false);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
+      assertOk(result, { value: 42 });
+      assertFalse(globalThis.Object.hasOwn(result.value, "note"));
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
     });
 
-    test("preserves a null prototype while transforming typed values", () => {
+    it("preserves a null prototype while transforming typed values", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({
         toString: optional(String),
@@ -13829,24 +14797,25 @@ describe("object", () => {
 
       const result = Model.from.parent(input);
 
-      expectOk(result, { value: 42 });
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
-      expect(Model.is(result.value)).toBe(true);
+      assertOk(result, { value: 42 });
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+      assertTrue(Model.is(result.value));
 
       const encoded = Model.to(result.value);
 
-      expect(encoded).toEqual(input);
-      expect(globalThis.Object.getPrototypeOf(encoded)).toBeNull();
-      expect(Model.parent.is(encoded)).toBe(true);
+      assertEqual(encoded, input);
+      assertSame(globalThis.Object.getPrototypeOf(encoded), null);
+      assertTrue(Model.parent.is(encoded));
     });
 
-    test("accepts a Union Type as a property Type", () => {
+    it("accepts a Union Type as a property Type", () => {
       const Value = union(String, Number);
       const Model = object({ value: Value, optionalValue: optional(Value) });
 
-      expect(Model.props.value).toBe(Value);
-      expect(Model.props.optionalValue.type).toBe(Value);
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<
+      assertSame(Model.props.value, Value);
+      assertSame(Model.props.optionalValue.type, Value);
+      assertType<
+        typeof Model.Output,
         ExpectedStrictObject<
           { readonly value: string | number },
           { readonly optionalValue: string | number }
@@ -13854,13 +14823,14 @@ describe("object", () => {
       >();
     });
 
-    test("accepts an Object Type as a property Type", () => {
+    it("accepts an Object Type as a property Type", () => {
       const Profile = object({ name: String });
       const Model = object({ profile: Profile });
       const value = { profile: { name: "Ada" } };
 
-      expectOk(Model.fromUnknown(value), value);
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<
+      assertOk(Model.fromUnknown(value), value);
+      assertType<
+        typeof Model.Output,
         ExpectedStrictObject<{
           readonly profile: ExpectedStrictObject<{
             readonly name: string;
@@ -13869,7 +14839,7 @@ describe("object", () => {
       >();
     });
 
-    test("forwards property errors through a child Type", () => {
+    it("forwards property errors through a child Type", () => {
       const {
         Model,
         NonEmpty: _NonEmpty,
@@ -13883,7 +14853,7 @@ describe("object", () => {
         { errors: "all" },
       );
 
-      expectErr(result, {
+      assertErr(result, {
         type: "Object",
         reason: {
           kind: "Properties",
@@ -13895,15 +14865,14 @@ describe("object", () => {
       });
       type Errors = typeof result.error.reason.errors;
 
-      expectTypeOf<NonNullable<Errors["title"]>>().toEqualTypeOf<
+      assertType<
+        NonNullable<Errors["title"]>,
         typeof _NonEmpty.Error | typeof _Short.Error
       >();
-      expectTypeOf<NonNullable<Errors["count"]>>().toEqualTypeOf<
-        typeof _Positive.Error
-      >();
+      assertType<NonNullable<Errors["count"]>, typeof _Positive.Error>();
     });
 
-    test("keeps a fallible child error outside inherited Object errors", () => {
+    it("keeps a fallible child error outside inherited Object errors", () => {
       const {
         Model,
         NonEmpty: _NonEmpty,
@@ -13938,21 +14907,24 @@ describe("object", () => {
       }>;
       type Error = ImportedModelError | ParentError;
 
-      expectTypeOf(inheritedResult).toEqualTypeOf<
+      assertType<
+        typeof inheritedResult,
         Result<typeof ReimportedModel.Output, Error>
       >();
-      expectTypeOf(ownResult).toEqualTypeOf<
+      assertType<
+        typeof ownResult,
         Result<typeof ReimportedModel.Output, Error>
       >();
-      expectTypeOf<
-        ReturnType<typeof ReimportedModel.from.parent>
-      >().toEqualTypeOf<Result<typeof ReimportedModel.Output>>();
-      expectTypeOf<
-        ReturnType<typeof ReimportedModel.from.parent.parent>
-      >().toEqualTypeOf<
+      assertType<
+        ReturnType<typeof ReimportedModel.from.parent>,
+        Result<typeof ReimportedModel.Output>
+      >();
+      assertType<
+        ReturnType<typeof ReimportedModel.from.parent.parent>,
         Result<typeof ReimportedModel.Output, ImportedModelError>
       >();
-      expect(inheritedResult).toEqual(
+      assertEqual(
+        inheritedResult,
         err({
           type: "Object",
           reason: {
@@ -13964,7 +14936,8 @@ describe("object", () => {
           },
         }),
       );
-      expect(ownResult).toEqual(
+      assertEqual(
+        ownResult,
         err({
           type: "ImportedModel",
           value: { title: "value", count: 1 },
@@ -13974,18 +14947,19 @@ describe("object", () => {
   });
 
   describe("formatError", () => {
-    test("formats root or first property errors without a path", () => {
+    it("formats root or first property errors without a path", () => {
       const Model = object({ name: String, age: optional(Number) });
       const NestedModel = object({ values: array(Number) });
       const RecordModel = object({ score: Number }, record(String, Number));
 
-      expect(
+      assertEqual(
         Model.formatError({
           type: "Object",
           reason: { kind: "NotObject", value: null },
         }),
-      ).toBe("A value null is not an object.");
-      expect(
+        "A value null is not an object.",
+      );
+      assertEqual(
         Model.formatError({
           type: "Object",
           reason: {
@@ -13993,10 +14967,9 @@ describe("object", () => {
             value: new globalThis.Date(),
           },
         }),
-      ).toBe(
         "The value is an object, but an Object Output must be a plain object or have a null prototype.",
       );
-      expect(
+      assertEqual(
         Model.formatError({
           type: "Object",
           reason: {
@@ -14004,10 +14977,9 @@ describe("object", () => {
             errors: { role: { type: "ObjectExcessProperty" } },
           },
         }),
-      ).toBe(
         'The property "role" is not allowed. Remove it or use a different Type.',
       );
-      expect(
+      assertEqual(
         Model.formatError({
           type: "Object",
           reason: {
@@ -14015,8 +14987,9 @@ describe("object", () => {
             errors: { name: { type: "ObjectMissingProperty" } },
           },
         }),
-      ).toBe('The required property "name" is missing.');
-      expect(
+        'The required property "name" is missing.',
+      );
+      assertEqual(
         Model.formatError({
           type: "Object",
           reason: {
@@ -14026,10 +14999,9 @@ describe("object", () => {
             },
           },
         }),
-      ).toBe(
         "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.",
       );
-      expect(
+      assertEqual(
         Model.formatError({
           type: "Object",
           reason: {
@@ -14042,10 +15014,9 @@ describe("object", () => {
             },
           },
         }),
-      ).toBe(
         "An Object property must be enumerable. Make it enumerable or use a different Type.",
       );
-      expect(
+      assertEqual(
         Model.formatError({
           type: "Object",
           reason: {
@@ -14055,8 +15026,9 @@ describe("object", () => {
             },
           },
         }),
-      ).toBe('A value "42" is not a number.');
-      expect(
+        'A value "42" is not a number.',
+      );
+      assertEqual(
         NestedModel.formatError({
           type: "Object",
           reason: {
@@ -14082,8 +15054,9 @@ describe("object", () => {
             },
           },
         }),
-      ).toBe('A value "2" is not a number.');
-      expect(
+        'A value "2" is not a number.',
+      );
+      assertEqual(
         RecordModel.formatError({
           type: "Object",
           reason: {
@@ -14109,8 +15082,10 @@ describe("object", () => {
             },
           },
         }),
-      ).toBe('A value "wrong" is not a number.');
-      expectTypeOf(Model.formatError).parameter(0).toEqualTypeOf<
+        'A value "wrong" is not a number.',
+      );
+      assertType<
+        Parameters<typeof Model.formatError>[0],
         ObjectError<{
           readonly name: TypeOfError<"String">;
           readonly age?: TypeOfError<"Number">;
@@ -14118,38 +15093,41 @@ describe("object", () => {
       >();
     });
 
-    test("throws for an empty Properties error", () => {
+    it("throws for an empty Properties error", () => {
       const Model = object({ name: String });
 
-      expect(() =>
-        Model.formatError({
-          type: "Object",
-          reason: { kind: "Properties", errors: {} },
-        }),
-      ).toThrow("Expected value to be non-nullable.");
+      const error = assertThrowsInstanceOf(
+        () =>
+          Model.formatError({
+            type: "Object",
+            reason: { kind: "Properties", errors: {} },
+          }),
+        Error,
+      );
+      assertTrue(error.message.includes("Expected value to be non-nullable."));
     });
   });
 
   describe("is", () => {
-    test("ignores inherited optional properties in Outputs", () => {
+    it("ignores inherited optional properties in Outputs", () => {
       const Matching = object({ constructor: optional(Function) });
       const Invalid = object({ toString: optional(String) });
 
-      expect(Matching.is({})).toBe(true);
-      expect(Invalid.is({})).toBe(true);
+      assertTrue(Matching.is({}));
+      assertTrue(Invalid.is({}));
     });
 
-    test("accepts ordinary and null-prototype plain objects", () => {
+    it("accepts ordinary and null-prototype plain objects", () => {
       const Model = object({ name: String });
       const value = globalThis.Object.assign(globalThis.Object.create(null), {
         name: "Ada",
       });
 
-      expect(Model.is({ name: "Ada" })).toBe(true);
-      expect(Model.is(value)).toBe(true);
+      assertTrue(Model.is({ name: "Ada" }));
+      assertTrue(Model.is(value));
     });
 
-    test("requires own enumerable data properties", () => {
+    it("requires own enumerable data properties", () => {
       const Model = object({ name: String });
       let reads = 0;
       const accessor = globalThis.Object.defineProperty({}, "name", {
@@ -14163,30 +15141,30 @@ describe("object", () => {
         value: "Ada",
       });
 
-      expect(Model.is(accessor)).toBe(false);
-      expect(reads).toBe(0);
-      expect(Model.is(nonEnumerable)).toBe(false);
-      expect(Model.is(globalThis.Object.freeze({ name: "Ada" }))).toBe(true);
+      assertFalse(Model.is(accessor));
+      assertEqual(reads, 0);
+      assertFalse(Model.is(nonEnumerable));
+      assertTrue(Model.is(globalThis.Object.freeze({ name: "Ada" })));
     });
 
-    test("requires dynamic properties to be enumerable data properties", () => {
+    it("requires dynamic properties to be enumerable data properties", () => {
       const Model = object({}, record(String, Number));
       const value = globalThis.Object.defineProperty({}, "score", {
         value: 1,
       });
 
-      expect(Model.is(value)).toBe(false);
+      assertFalse(Model.is(value));
     });
 
-    test("rejects invalid open-object shapes", () => {
+    it("rejects invalid open-object shapes", () => {
       const Model = object({}, record(String, Number));
 
-      expect(Model.is(null)).toBe(false);
-      expect(Model.is(1)).toBe(false);
-      expect(Model.is({ score: "wrong" })).toBe(false);
+      assertFalse(Model.is(null));
+      assertFalse(Model.is(1));
+      assertFalse(Model.is({ score: "wrong" }));
     });
 
-    test("does not read Symbol.toStringTag", () => {
+    it("does not read Symbol.toStringTag", () => {
       const Model = object({ name: String });
       let reads = 0;
       const value = globalThis.Object.defineProperty(
@@ -14200,13 +15178,13 @@ describe("object", () => {
         },
       );
 
-      expect(Model.is(value)).toBe(false);
-      expect(reads).toBe(0);
+      assertFalse(Model.is(value));
+      assertEqual(reads, 0);
     });
   });
 
   describe("fromUnknown", () => {
-    test("distinguishes required, optional, and undefined-accepting properties", () => {
+    it("distinguishes required, optional, and undefined-accepting properties", () => {
       const Model = object({
         required: String,
         requiredUndefined: undefinedOr(String),
@@ -14219,12 +15197,13 @@ describe("object", () => {
         optionalUndefined: undefined,
       };
 
-      expectOk(Model.fromUnknown(valid), valid);
-      expectOk(
+      assertOk(Model.fromUnknown(valid), valid);
+      assertOk(
         Model.fromUnknown(validWithOptionalUndefined),
         validWithOptionalUndefined,
       );
-      expect(Model.fromUnknown({ required: "value" })).toEqual(
+      assertEqual(
+        Model.fromUnknown({ required: "value" }),
         err({
           type: "Object",
           reason: {
@@ -14235,12 +15214,11 @@ describe("object", () => {
           },
         }),
       );
-      expect(
+      assertEqual(
         Model.fromUnknown({
           ...valid,
           optional: undefined,
         }),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -14257,12 +15235,13 @@ describe("object", () => {
       );
     });
 
-    test("treats an inherited required property as missing", () => {
+    it("treats an inherited required property as missing", () => {
       const Model = object({ constructor: Function });
       const value = {};
       const result = Model.fromUnknown(value);
 
-      expect(result).toEqual(
+      assertEqual(
+        result,
         err({
           type: "Object",
           reason: {
@@ -14275,43 +15254,43 @@ describe("object", () => {
       );
     });
 
-    test("ignores inherited optional properties", () => {
+    it("ignores inherited optional properties", () => {
       const Matching = object({ constructor: optional(Function) });
       const Invalid = object({ toString: optional(String) });
       const value = {};
       const matchingResult = Matching.fromUnknown(value);
       const invalidResult = Invalid.fromUnknown(value);
 
-      expectOk(matchingResult, value);
-      expectOk(invalidResult, value);
-      expect(matchingResult.value).toBe(value);
-      expect(invalidResult.value).toBe(value);
+      assertOk(matchingResult, value);
+      assertOk(invalidResult, value);
+      assertSame(matchingResult.value, value);
+      assertSame(invalidResult.value, value);
     });
 
-    test("preserves absent optional properties on null-prototype objects", () => {
+    it("preserves absent optional properties on null-prototype objects", () => {
       const Model = object({ note: optional(String) });
       const value = globalThis.Object.create(null) as Record<string, unknown>;
       const result = Model.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
-      expect(Model.is(value)).toBe(true);
-      expect(Model.is(result.value)).toBe(true);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+      assertTrue(Model.is(value));
+      assertTrue(Model.is(result.value));
     });
 
-    test("keeps an absent optional Object.prototype name absent", () => {
+    it("keeps an absent optional Object.prototype name absent", () => {
       const Model = object({ toString: optional(String) });
       const value = globalThis.Object.create(null) as Record<string, unknown>;
       const result = Model.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
-      expect("toString" in result.value).toBe(false);
-      expect(Model.is(result.value)).toBe(true);
+      assertOk(result, value);
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
+      assertFalse("toString" in result.value);
+      assertTrue(Model.is(result.value));
     });
 
-    test("rejects accepted accessors without invoking them", () => {
+    it("rejects accepted accessors without invoking them", () => {
       const Declared = object({ value: String });
       const Rest = object({}, record(String, String));
       const accessError = new Error("Access failed.");
@@ -14337,16 +15316,17 @@ describe("object", () => {
       };
       const error = err(propertyError);
 
-      expect(Declared.fromUnknown(value)).toEqual(error);
-      expect(Rest.fromUnknown(value)).toEqual(error);
-      expect(Rest.formatError(propertyError)).toBe(
+      assertEqual(Declared.fromUnknown(value), error);
+      assertEqual(Rest.fromUnknown(value), error);
+      assertEqual(
+        Rest.formatError(propertyError),
         "An Object property must be a data property. Materialize accessor values into plain data before using this Type or use a different Type.",
       );
-      expect(reads).toBe(0);
-      expect(accessError).toBeInstanceOf(Error);
+      assertEqual(reads, 0);
+      assertInstanceOf(accessError, Error);
     });
 
-    test("continues after structural property errors when collecting all errors", () => {
+    it("continues after structural property errors when collecting all errors", () => {
       const Model = object({ first: String, second: Number });
       const accessError = new Error("Access failed.");
       let reads = 0;
@@ -14362,7 +15342,8 @@ describe("object", () => {
         },
       );
 
-      expect(Model.fromUnknown(value, { errors: "all" })).toEqual(
+      assertEqual(
+        Model.fromUnknown(value, { errors: "all" }),
         err({
           type: "Object",
           reason: {
@@ -14381,11 +15362,11 @@ describe("object", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
-      expect(accessError).toBeInstanceOf(Error);
+      assertEqual(reads, 0);
+      assertInstanceOf(accessError, Error);
     });
 
-    test("does not read excess accessors", () => {
+    it("does not read excess accessors", () => {
       const Model = object({ name: String });
       let ownReads = 0;
       const value = globalThis.Object.defineProperty({ name: "Ada" }, "own", {
@@ -14396,7 +15377,8 @@ describe("object", () => {
         },
       });
 
-      expect(Model.fromUnknown(value, { errors: "all" })).toEqual(
+      assertEqual(
+        Model.fromUnknown(value, { errors: "all" }),
         err({
           type: "Object",
           reason: {
@@ -14407,14 +15389,15 @@ describe("object", () => {
           },
         }),
       );
-      expect(ownReads).toBe(0);
+      assertEqual(ownReads, 0);
     });
 
-    test("rejects excess properties", () => {
+    it("rejects excess properties", () => {
       const Model = object({ name: String });
       const value: unknown = { name: "Ada", role: "admin" };
 
-      expect(Model.fromUnknown(value)).toEqual(
+      assertEqual(
+        Model.fromUnknown(value),
         err({
           type: "Object",
           reason: {
@@ -14423,11 +15406,11 @@ describe("object", () => {
           },
         }),
       );
-      expect(Model.is(value)).toBe(false);
-      expect(Model.is({ name: "Ada" })).toBe(true);
+      assertFalse(Model.is(value));
+      assertTrue(Model.is({ name: "Ada" }));
     });
 
-    test("rejects non-enumerable and symbol excess properties", () => {
+    it("rejects non-enumerable and symbol excess properties", () => {
       const Model = object({ name: String });
       const symbol = globalThis.Symbol("excess");
       const value = globalThis.Object.defineProperty(
@@ -14435,19 +15418,21 @@ describe("object", () => {
         "hidden",
         { value: true },
       );
-      const errors = {
+      const errors = createNullRecord({
         hidden: { type: "ObjectExcessProperty" as const },
         [symbol]: { type: "ObjectExcessProperty" as const },
-      };
+      });
 
-      expect(Model.fromUnknown(value, { errors: "all" })).toEqual(
-        err({ type: "Object", reason: { kind: "Properties", errors } }),
-      );
-      expect(Model.is(value)).toBe(false);
-      expect(globalThis.Reflect.ownKeys(errors)).toEqual(["hidden", symbol]);
+      const result = Model.fromUnknown(value, { errors: "all" });
+      assertErr(result);
+      assertSame(result.error.reason.kind, "Properties");
+      assertEqual(result.error.reason.errors.hidden, errors.hidden);
+      assertEqual(result.error.reason.errors[symbol], errors[symbol]);
+      assertFalse(Model.is(value));
+      assertEqual(globalThis.Reflect.ownKeys(errors), ["hidden", symbol]);
     });
 
-    test("rejects exotic declared and Record properties without reading them", () => {
+    it("rejects exotic declared and Record properties without reading them", () => {
       const Model = object({ count: Number }, record(String, Number));
       let reads = 0;
       const value = globalThis.Object.create(null) as Record<
@@ -14479,9 +15464,10 @@ describe("object", () => {
 
       const result = Model.fromUnknown(value);
 
-      expect(reads).toBe(0);
-      expect(Model.is(value)).toBe(false);
-      expect(result).toEqual(
+      assertEqual(reads, 0);
+      assertFalse(Model.is(value));
+      assertEqual(
+        result,
         err({
           type: "Object",
           reason: {
@@ -14495,7 +15481,8 @@ describe("object", () => {
           },
         }),
       );
-      expect(Model.fromUnknown(value, { errors: "all" })).toEqual(
+      assertEqual(
+        Model.fromUnknown(value, { errors: "all" }),
         err({
           type: "Object",
           reason: {
@@ -14517,21 +15504,20 @@ describe("object", () => {
           },
         }),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("collects declared and Record property errors", () => {
+    it("collects declared and Record property errors", () => {
       const Model = object(
         { count: Number, age: Number },
         record(String, Number),
       );
 
-      expect(
+      assertEqual(
         Model.fromUnknown(
           { count: "2", age: "42", wrong: "value" },
           { errors: "all" },
         ),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -14562,7 +15548,7 @@ describe("object", () => {
       );
     });
 
-    test("reports symbol Record keys", () => {
+    it("reports symbol Record keys", () => {
       const Model = object({}, record(String, Number));
       const key = globalThis.Symbol("key");
       let reads = 0;
@@ -14573,76 +15559,46 @@ describe("object", () => {
         },
       });
 
-      expect(Model.fromUnknown(value)).toEqual(
-        err({
-          type: "Object",
+      for (const result of [
+        Model.fromUnknown(value),
+        Model.fromUnknown(value, { errors: "all" }),
+      ]) {
+        assertErr(result);
+        assertSame(result.error.reason.kind, "Properties");
+        assertEqual(globalThis.Reflect.ownKeys(result.error.reason.errors), [
+          key,
+        ]);
+        assertEqual(result.error.reason.errors[key], {
+          type: "Record",
           reason: {
-            kind: "Properties",
-            errors: {
-              [key]: {
-                type: "Record",
-                reason: {
-                  kind: "Entries",
-                  issues: [
-                    {
-                      kind: "Key",
-                      key,
-                      error: {
-                        type: "TypeOf",
-                        expected: "String",
-                        value: key,
-                      },
-                    },
-                  ],
+            kind: "Entries",
+            issues: [
+              {
+                kind: "Key",
+                key,
+                error: {
+                  type: "TypeOf",
+                  expected: "String",
+                  value: key,
                 },
               },
-            },
+            ],
           },
-        }),
-      );
-      expect(reads).toBe(0);
-
-      expect(Model.fromUnknown(value, { errors: "all" })).toEqual(
-        err({
-          type: "Object",
-          reason: {
-            kind: "Properties",
-            errors: {
-              [key]: {
-                type: "Record",
-                reason: {
-                  kind: "Entries",
-                  issues: [
-                    {
-                      kind: "Key",
-                      key,
-                      error: {
-                        type: "TypeOf",
-                        expected: "String",
-                        value: key,
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-          },
-        }),
-      );
-      expect(reads).toBe(0);
-      expect(Model.is(value)).toBe(false);
-      expect(reads).toBe(0);
+        });
+      }
+      assertEqual(reads, 0);
+      assertFalse(Model.is(value));
+      assertEqual(reads, 0);
     });
 
-    test("collects declared and excess property errors", () => {
+    it("collects declared and excess property errors", () => {
       const Model = object({ name: String, age: Number });
 
-      expect(
+      assertEqual(
         Model.fromUnknown(
           { name: 42, age: "42", role: "admin" },
           { errors: "all" },
         ),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -14657,7 +15613,7 @@ describe("object", () => {
       );
     });
 
-    test("returns root structural errors without reading Symbol.toStringTag", () => {
+    it("returns root structural errors without reading Symbol.toStringTag", () => {
       const Model = object({ name: String });
       let reads = 0;
       const unreadableTag = globalThis.Object.defineProperty(
@@ -14671,44 +15627,41 @@ describe("object", () => {
         },
       );
 
-      expect(Model.fromUnknown(null)).toEqual(
+      assertEqual(
+        Model.fromUnknown(null),
         err({
           type: "Object",
           reason: { kind: "NotObject", value: null },
         }),
       );
-      expect(Model.fromUnknown([])).toEqual(
+      assertEqual(
+        Model.fromUnknown([]),
         err({
           type: "Object",
           reason: { kind: "UnexpectedPrototype", value: [] },
         }),
       );
-      expect(Model.fromUnknown(unreadableTag)).toEqual(
-        err({
-          type: "Object",
-          reason: {
-            kind: "Properties",
-            errors: {
-              [globalThis.Symbol.toStringTag]: {
-                type: "ObjectExcessProperty",
-              },
-            },
-          },
-        }),
-      );
-      expect(reads).toBe(0);
+      const result = Model.fromUnknown(unreadableTag);
+      assertErr(result);
+      assertSame(result.error.reason.kind, "Properties");
+      assertEqual(globalThis.Reflect.ownKeys(result.error.reason.errors), [
+        globalThis.Symbol.toStringTag,
+      ]);
+      assertEqual(result.error.reason.errors[globalThis.Symbol.toStringTag], {
+        type: "ObjectExcessProperty",
+      });
+      assertEqual(reads, 0);
     });
 
-    test("returns only the first property error by default", () => {
+    it("returns only the first property error by default", () => {
       const Model = object({
         name: String,
         age: Number,
         active: optional(Boolean),
       });
 
-      expect(
+      assertEqual(
         Model.fromUnknown({ age: "42", active: "yes", role: "admin" }),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -14719,19 +15672,18 @@ describe("object", () => {
       );
     });
 
-    test("collects one error from every invalid property", () => {
+    it("collects one error from every invalid property", () => {
       const Model = object({
         name: String,
         age: Number,
         active: optional(Boolean),
       });
 
-      expect(
+      assertEqual(
         Model.fromUnknown(
           { name: 42, age: "42", active: "yes" },
           { errors: "all" },
         ),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -14750,14 +15702,15 @@ describe("object", () => {
       );
     });
 
-    test("collects structural, invalid, and missing property errors", () => {
+    it("collects structural, invalid, and missing property errors", () => {
       const Model = object({
         toString: optional(String),
         name: String,
         age: Number,
       });
 
-      expect(Model.fromUnknown({ name: 42 }, { errors: "all" })).toEqual(
+      assertEqual(
+        Model.fromUnknown({ name: 42 }, { errors: "all" }),
         err({
           type: "Object",
           reason: {
@@ -14771,12 +15724,11 @@ describe("object", () => {
       );
     });
 
-    test("collects root and refinement errors from different properties", () => {
+    it("collects root and refinement errors from different properties", () => {
       const { Model, validations } = setupValidatedObject();
 
-      expect(
+      assertEqual(
         Model.fromUnknown({ title: 42, count: 0 }, { errors: "all" }),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -14788,15 +15740,16 @@ describe("object", () => {
           },
         }),
       );
-      expect(validations).toEqual([["Positive", 0]]);
+      assertEqual(validations, [["Positive", 0]]);
     });
 
-    test("returns nested Array errors", () => {
+    it("returns nested Array errors", () => {
       const Model = object({ values: array(Number) });
 
       const result = Model.fromUnknown({ values: [1, "2"] });
 
-      expect(result).toEqual(
+      assertEqual(
+        result,
         err({
           type: "Object",
           reason: {
@@ -14827,23 +15780,23 @@ describe("object", () => {
   });
 
   describe("from", () => {
-    test("accepts its own Output", () => {
+    it("accepts its own Output", () => {
       const { Model, validations } = setupValidatedObject();
       const value = Model.orThrow({ title: "value", count: 1 });
       validations.length = 0;
       const result = Model.from(value);
 
-      expectTypeOf(result).toEqualTypeOf<Result<typeof Model.Output>>();
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(validations).toEqual([
+      assertType<typeof result, Result<typeof Model.Output>>();
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertEqual(validations, [
         ["NonEmpty", "value"],
         ["Short", "value"],
         ["Positive", 1],
       ]);
     });
 
-    test("accepts closed and open Outputs after ordinary object spread", () => {
+    it("accepts closed and open Outputs after ordinary object spread", () => {
       const Closed = object({ toString: optional(String) });
       const Open = object(
         { toString: optional(String) },
@@ -14856,18 +15809,19 @@ describe("object", () => {
       const openSpread = { ...open };
 
       for (const spread of [closedSpread, openSpread]) {
-        expect(globalThis.Object.getPrototypeOf(spread)).toBe(
+        assertSame(
+          globalThis.Object.getPrototypeOf(spread),
           globalThis.Object.prototype,
         );
-        expect(globalThis.Object.hasOwn(spread, "toString")).toBe(false);
+        assertFalse(globalThis.Object.hasOwn(spread, "toString"));
       }
-      expectOk(Closed.from(closedSpread), closedSpread);
-      expectOk(Open.from(openSpread), openSpread);
-      expect(Closed.to(closedSpread)).toBe(closedSpread);
-      expect(Open.to(openSpread)).toBe(openSpread);
+      assertOk(Closed.from(closedSpread), closedSpread);
+      assertOk(Open.from(openSpread), openSpread);
+      assertSame(Closed.to(closedSpread), closedSpread);
+      assertSame(Open.to(openSpread), openSpread);
     });
 
-    test("asserts exact own properties", () => {
+    it("asserts exact own properties", () => {
       const Model = object({ name: String });
       const value = { name: "Ada", searchWords: ["ada"] };
       const ownToString = globalThis.Object.defineProperty(
@@ -14879,7 +15833,7 @@ describe("object", () => {
       const result = Model.fromUnknown(value);
       const ownToStringResult = Model.fromUnknown(ownToString);
 
-      expectErr(result, {
+      assertErr(result, {
         type: "Object",
         reason: {
           kind: "Properties",
@@ -14888,7 +15842,7 @@ describe("object", () => {
           },
         },
       });
-      expectErr(ownToStringResult, {
+      const ownToStringError = {
         type: "Object",
         reason: {
           kind: "Properties",
@@ -14896,23 +15850,25 @@ describe("object", () => {
             toString: { type: "ObjectExcessProperty" },
           },
         },
-      });
+      } as const;
+      assertErr(ownToStringResult);
+      assertEqual(ownToStringResult.error, ownToStringError);
       for (const operation of [
         () => Model.from(value),
         () => Model.to(value),
         () => Model.orThrow(value),
         () => Model.orNull(value),
       ]) {
-        expectAssertionError(operation, "Expected Object.", result.error);
+        assertAssertionError(operation, "Expected Object.", result.error);
       }
-      expectAssertionError(
+      assertAssertionError(
         () => Model.to(ownToString),
         "Expected Object.",
         ownToStringResult.error,
       );
     });
 
-    test("validates nested exact Outputs without decoding them", () => {
+    it("validates nested exact Outputs without decoding them", () => {
       const NumberFromString = setupNumberFromString();
       const Nested = object({ count: NumberFromString });
       const Model = object({ nested: Nested, label: String });
@@ -14921,7 +15877,7 @@ describe("object", () => {
         label: 42,
       } as unknown as typeof Model.Output;
 
-      expectAssertionError(() => Model.from(invalid), "Expected Object.", {
+      assertAssertionError(() => Model.from(invalid), "Expected Object.", {
         type: "Object",
         reason: {
           kind: "Properties",
@@ -14932,7 +15888,7 @@ describe("object", () => {
       });
     });
 
-    test("validates every property chain from its parent in declaration order", () => {
+    it("validates every property chain from its parent in declaration order", () => {
       const {
         Model,
         Positive: _Positive,
@@ -14945,29 +15901,27 @@ describe("object", () => {
       if (!result.ok) {
         type Errors = typeof result.error.reason.errors;
 
-        expectTypeOf<NonNullable<Errors["title"]>>().toEqualTypeOf<
+        assertType<
+          NonNullable<Errors["title"]>,
           typeof _Short.Error | typeof Model.props.title.parent.Error
         >();
-        expectTypeOf<NonNullable<Errors["count"]>>().toEqualTypeOf<
-          typeof _Positive.Error
-        >();
-        expectTypeOf<NonNullable<Errors["note"]>>().toEqualTypeOf<never>();
+        assertType<NonNullable<Errors["count"]>, typeof _Positive.Error>();
+        assertType<NonNullable<Errors["note"]>, never>();
       }
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(validations).toEqual([
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertEqual(validations, [
         ["NonEmpty", "value"],
         ["Short", "value"],
         ["Positive", 1],
       ]);
     });
 
-    test("collects remaining errors by property", () => {
+    it("collects remaining errors by property", () => {
       const { Model } = setupValidatedObject();
 
-      expect(
+      assertEqual(
         Model.from.parent({ title: "too long", count: 0 }, { errors: "all" }),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -14981,32 +15935,32 @@ describe("object", () => {
       );
     });
 
-    test("ignores inherited optional properties at typed boundaries", () => {
+    it("ignores inherited optional properties at typed boundaries", () => {
       const Model = object({ constructor: optional(literal("value")) });
       const input = {} as typeof Model.Output;
 
-      expectOk(Model.from(input), input);
-      expect(Model.orThrow(input)).toBe(input);
-      expect(Model.orNull(input)).toBe(input);
-      expect(Model.to(input)).toBe(input);
+      assertOk(Model.from(input), input);
+      assertSame(Model.orThrow(input), input);
+      assertSame(Model.orNull(input), input);
+      assertSame(Model.to(input), input);
     });
   });
 
   describe("root operations", () => {
-    test("return the original valid object", () => {
+    it("return the original valid object", () => {
       const Model = object({ name: String });
       const value = { name: "Ada" };
       const result = Model.from(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(Model.to(value)).toBe(value);
-      expect(Model.parent).toBeNull();
-      expect(Model.orThrow(value)).toBe(value);
-      expect(Model.orNull(value)).toBe(value);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertSame(Model.to(value), value);
+      assertSame(Model.parent, null);
+      assertSame(Model.orThrow(value), value);
+      assertSame(Model.orNull(value), value);
     });
 
-    test("use ordinary structural Input and Output types", () => {
+    it("use ordinary structural Input and Output types", () => {
       const Model = object({ name: String });
       const symbol = globalThis.Symbol();
       const value = { name: "Ada", [symbol]: true };
@@ -15015,61 +15969,81 @@ describe("object", () => {
         Model.to(value);
       };
 
-      expectTypeOf<typeof Model.Input>().toExtend<{
-        readonly name: string;
-      }>();
-      expectTypeOf<{ readonly name: string }>().toExtend<typeof Model.Input>();
-      expectTypeOf<typeof Model.Output>().toExtend<{
-        readonly name: string;
-      }>();
-      expectTypeOf<{ readonly name: string }>().toExtend<typeof Model.Output>();
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof Model.Input extends {
+          readonly name: string;
+        }
+          ? true
+          : false,
+        true
+      >();
+      assertType<
+        { readonly name: string } extends typeof Model.Input ? true : false,
+        true
+      >();
+      assertType<
+        typeof Model.Output extends {
+          readonly name: string;
+        }
+          ? true
+          : false,
+        true
+      >();
+      assertType<
+        { readonly name: string } extends typeof Model.Output ? true : false,
+        true
+      >();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("return valid Object and Record values", () => {
+    it("return valid Object and Record values", () => {
       const Model = object({ count: Number }, record(String, Number));
       const value = { count: 0, score: 1 };
 
       const result = Model.from(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(Model.to(value)).toBe(value);
-      expect(Model.orThrow(value)).toBe(value);
-      expect(Model.orNull(value)).toBe(value);
-      expect(Model.parent).toBeNull();
-      expect(Model.is(value)).toBe(true);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertSame(Model.to(value), value);
+      assertSame(Model.orThrow(value), value);
+      assertSame(Model.orNull(value), value);
+      assertSame(Model.parent, null);
+      assertTrue(Model.is(value));
     });
 
-    test("accept arbitrary string properties through a Record", () => {
+    it("accept arbitrary string properties through a Record", () => {
       const Model = object({}, record(String, Unknown));
       const value = { anything: 1 };
 
-      expectOk(Model.fromUnknown(value), value);
-      expect(Model.is(value)).toBe(true);
-      expectTypeOf<typeof Model.Output>().toEqualTypeOf<
+      assertOk(Model.fromUnknown(value), value);
+      assertTrue(Model.is(value));
+      assertType<
+        typeof Model.Output,
         Readonly<Partial<Record<string, unknown>>>
       >();
     });
   });
 
   describe("schema helpers", () => {
-    test("partial makes required properties optional and preserves optional properties", () => {
+    it("partial makes required properties optional and preserves optional properties", () => {
       const nickname = optional(String);
       const props = { name: String, nickname };
       const Model = partial(props);
 
-      expect(Model.props.name.type).toBe(String);
-      expect(Model.props.nickname).toBe(nickname);
-      expectOk(Model.fromUnknown({}), {});
-      expectOk(Model.fromUnknown({ name: "Ada" }), { name: "Ada" });
-      expect(Model.fromUnknown({ name: 1 }).ok).toBe(false);
-      expectTypeOf(Model).toEqualTypeOf<
-        ObjectType<PartialObjectProps<typeof props>>
-      >();
+      assertSame(Model.props.name.type, String);
+      assertSame(Model.props.nickname, nickname);
+      assertOk(Model.fromUnknown({}), {});
+      assertOk(Model.fromUnknown({ name: "Ada" }), { name: "Ada" });
+      assertFalse(Model.fromUnknown({ name: 1 }).ok);
+      assertType<typeof Model, ObjectType<PartialObjectProps<typeof props>>>();
     });
 
-    test("nullableToOptional makes only nullable Union properties optional", () => {
+    it("nullableToOptional makes only nullable Union properties optional", () => {
       const nickname = optional(String);
       const props = {
         name: nullOr(String),
@@ -15078,31 +16052,32 @@ describe("object", () => {
       };
       const Model = nullableToOptional(props);
 
-      expect(Model.props.name.type).toBe(props.name);
-      expect(Model.props.count).toBe(Number);
-      expect(Model.props.nickname).toBe(nickname);
-      expectOk(Model.fromUnknown({ count: 1 }), { count: 1 });
-      expectOk(Model.fromUnknown({ name: null, count: 1 }), {
+      assertSame(Model.props.name.type, props.name);
+      assertSame(Model.props.count, Number);
+      assertSame(Model.props.nickname, nickname);
+      assertOk(Model.fromUnknown({ count: 1 }), { count: 1 });
+      assertOk(Model.fromUnknown({ name: null, count: 1 }), {
         name: null,
         count: 1,
       });
-      expect(Model.fromUnknown({ name: "Ada" }).ok).toBe(false);
-      expectTypeOf(Model).toEqualTypeOf<
+      assertFalse(Model.fromUnknown({ name: "Ada" }).ok);
+      assertType<
+        typeof Model,
         ObjectType<NullableToOptionalProps<typeof props>>
       >();
     });
 
-    test("nullableToOptional recognizes literal null semantically", () => {
+    it("nullableToOptional recognizes literal null semantically", () => {
       const Value = union(null, String);
       const Model = nullableToOptional({ value: Value });
       const output: typeof Model.Output = {};
 
-      expect(Model.props.value.type).toBe(Value);
-      expectOk(Model.fromUnknown({}), {});
-      expectOk(Model.from(output), output);
+      assertSame(Model.props.value.type, Value);
+      assertOk(Model.fromUnknown({}), {});
+      assertOk(Model.from(output), output);
     });
 
-    test("preserves Object schema validation", () => {
+    it("preserves Object schema validation", () => {
       const dynamic: Readonly<Record<string, typeof String>> = {
         name: String,
       };
@@ -15118,27 +16093,33 @@ describe("object", () => {
         nullableToOptional({ value: uncertain });
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("omit removes declared properties and preserves an Object Record", () => {
+    it("omit removes declared properties and preserves an Object Record", () => {
       const User = object({ name: String, age: Number });
       const WithoutAge = omit(User, "age");
       const WithoutNameAndAge = omit(User, "name", "age");
       const keys = ["name", "age"] as const;
       const Empty = omit(User, ...keys);
 
-      expect(WithoutAge.props).toEqual({ name: String });
-      expectOk(WithoutAge.fromUnknown({ name: "Ada" }), { name: "Ada" });
-      expect(WithoutAge.fromUnknown({ name: "Ada", age: 1 }).ok).toBe(false);
-      expectTypeOf(WithoutAge).toEqualTypeOf<
+      assertEqual(WithoutAge.props, { name: String });
+      assertOk(WithoutAge.fromUnknown({ name: "Ada" }), { name: "Ada" });
+      assertFalse(WithoutAge.fromUnknown({ name: "Ada", age: 1 }).ok);
+      assertType<
+        typeof WithoutAge,
         ObjectType<{ readonly name: typeof String }>
       >();
-      expect(WithoutNameAndAge.props).toEqual({});
-      expectOk(WithoutNameAndAge.fromUnknown({}), {});
-      expectTypeOf(WithoutNameAndAge).toEqualTypeOf<ObjectType<{}>>();
-      expect(Empty.props).toEqual({});
-      expectTypeOf(Empty).toEqualTypeOf<ObjectType<{}>>();
+      assertEqual(WithoutNameAndAge.props, {});
+      assertOk(WithoutNameAndAge.fromUnknown({}), {});
+      assertType<typeof WithoutNameAndAge, ObjectType<{}>>();
+      assertEqual(Empty.props, {});
+      assertType<typeof Empty, ObjectType<{}>>();
 
       const compileTimeAssertions = (
         key: "name" | "age",
@@ -15156,24 +16137,30 @@ describe("object", () => {
       );
       const MetadataWithoutAge = omit(Metadata, "age");
 
-      expect(MetadataWithoutAge.record).toBe(Metadata.record);
-      expectTypeOf(MetadataWithoutAge).toEqualTypeOf<
+      assertSame(MetadataWithoutAge.record, Metadata.record);
+      assertType<
+        typeof MetadataWithoutAge,
         ObjectType<
           { readonly name: typeof String },
           RecordType<typeof String, typeof Unknown>
         >
       >();
-      expectOk(
+      assertOk(
         MetadataWithoutAge.fromUnknown({ name: "Ada", age: "unknown" }),
         { name: "Ada", age: "unknown" },
       );
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 });
 
 describe("result", () => {
-  test("validates Ok and Err values", async () => {
+  it("validates Ok and Err values", async () => {
     const StringResult = result(String, Number);
     const UndefinedResult = result(Undefined, Undefined);
     const Pair = tuple(String, Number);
@@ -15184,9 +16171,10 @@ describe("result", () => {
       StringResult.from({ ok: false, value: "value" });
     };
 
-    expect(StringResult.name).toBe("DiscriminatedUnion");
-    expect(StringResult.key).toBe("ok");
-    expectTypeOf(StringResult).toEqualTypeOf<
+    assertEqual(StringResult.name, "DiscriminatedUnion");
+    assertEqual(StringResult.key, "ok");
+    assertType<
+      typeof StringResult,
       DiscriminatedUnionType<
         "ok",
         readonly [
@@ -15201,16 +16189,21 @@ describe("result", () => {
         ]
       >
     >();
-    expectTypeOf(compileTimeAssertions).toBeFunction();
-    expectOk(StringResult.fromUnknown({ ok: true, value: "value" }), {
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
+    assertOk(StringResult.fromUnknown({ ok: true, value: "value" }), {
       ok: true,
       value: "value",
     });
-    expectOk(StringResult.fromUnknown({ ok: false, error: 1 }), {
+    assertOk(StringResult.fromUnknown({ ok: false, error: 1 }), {
       ok: false,
       error: 1,
     });
-    expect(StringResult.fromUnknown({ ok: true, value: 1 }).ok).toBe(false);
+    assertFalse(StringResult.fromUnknown({ ok: true, value: 1 }).ok);
     const missingValue = StringResult.fromUnknown({ ok: true });
     const notObject = StringResult.fromUnknown(null);
     const memberNotObject = StringResult.members[0].fromUnknown(null);
@@ -15219,61 +16212,63 @@ describe("result", () => {
       value: "value",
       extra: true,
     });
-    assert(!missingValue.ok);
-    assert(!notObject.ok);
-    assert(!memberNotObject.ok);
-    assert(!excessProperty.ok);
-    expect(StringResult.formatError(missingValue.error)).toBe(
+    assertErr(missingValue);
+    assertErr(notObject);
+    assertErr(memberNotObject);
+    assertErr(excessProperty);
+    assertEqual(
+      StringResult.formatError(missingValue.error),
       'The required property "value" is missing.',
     );
-    expect(StringResult.formatError(notObject.error)).toBe(
+    assertEqual(
+      StringResult.formatError(notObject.error),
       "A value null is not an object.",
     );
-    expect(StringResult.members[0].formatError(memberNotObject.error)).toBe(
+    assertEqual(
+      StringResult.members[0].formatError(memberNotObject.error),
       "A value null is not an object.",
     );
-    expect(StringResult.formatError(excessProperty.error)).toBe(
+    assertEqual(
+      StringResult.formatError(excessProperty.error),
       'The property "extra" is not allowed. Remove it or use a different Type.',
     );
-    expect(
+    assertEqual(
       await StringResult["~standard"].validate({ ok: true, extra: true }),
-    ).toEqual({
-      issues: [
-        {
-          message: 'The required property "value" is missing.',
-          path: ["value"],
-        },
-        {
-          message:
-            'The property "extra" is not allowed. Remove it or use a different Type.',
-          path: ["extra"],
-        },
-      ],
-    });
-    expectOk(UndefinedResult.fromUnknown({ ok: true, value: undefined }), {
+      {
+        issues: [
+          {
+            message: 'The required property "value" is missing.',
+            path: ["value"],
+          },
+          {
+            message:
+              'The property "extra" is not allowed. Remove it or use a different Type.',
+            path: ["extra"],
+          },
+        ],
+      },
+    );
+    assertOk(UndefinedResult.fromUnknown({ ok: true, value: undefined }), {
       ok: true,
       value: undefined,
     });
-    expectOk(UndefinedResult.fromUnknown({ ok: false, error: undefined }), {
+    assertOk(UndefinedResult.fromUnknown({ ok: false, error: undefined }), {
       ok: false,
       error: undefined,
     });
-    expectOk(PairResult.fromUnknown({ ok: true, value: ["value", 1] }), {
+    assertOk(PairResult.fromUnknown({ ok: true, value: ["value", 1] }), {
       ok: true,
       value: ["value", 1],
     });
-    expectOk(PairResult.fromUnknown({ ok: false, error: ["error", 2] }), {
+    assertOk(PairResult.fromUnknown({ ok: false, error: ["error", 2] }), {
       ok: false,
       error: ["error", 2],
     });
-    expect(NeverResult.fromUnknown({ ok: true, value: undefined }).ok).toBe(
-      false,
-    );
-    expect(NeverResult.fromUnknown({ ok: false, error: undefined }).ok).toBe(
-      false,
-    );
+    assertFalse(NeverResult.fromUnknown({ ok: true, value: undefined }).ok);
+    assertFalse(NeverResult.fromUnknown({ ok: false, error: undefined }).ok);
 
-    expectTypeOf(UnknownResult).toEqualTypeOf<
+    assertType<
+      typeof UnknownResult,
       DiscriminatedUnionType<
         "ok",
         readonly [
@@ -15288,15 +16283,15 @@ describe("result", () => {
         ]
       >
     >();
-    expect(UnknownResult.is({ ok: true, value: undefined })).toBe(true);
-    expect(UnknownResult.is({ ok: false, error: undefined })).toBe(true);
-    expect(UnknownResult.is({ ok: true })).toBe(false);
+    assertTrue(UnknownResult.is({ ok: true, value: undefined }));
+    assertTrue(UnknownResult.is({ ok: false, error: undefined }));
+    assertFalse(UnknownResult.is({ ok: true }));
   });
 });
 
 describe("typed", () => {
   describe("construction", () => {
-    test("ExtractTyped selects only existing Typed union members", () => {
+    it("ExtractTyped selects only existing Typed union members", () => {
       const Create = typed("Create", { id: String });
       const Delete = typed("Delete", { id: String });
       const Message = discriminatedUnion(Create, Delete);
@@ -15305,48 +16300,63 @@ describe("typed", () => {
       const compileTimeAssertions = () => {
         // @ts-expect-error The selected type must exist in the Output union.
         type Typo = ExtractTyped<Message, "Cretae">;
-        expectTypeOf<Typo>().toBeNever();
+        assertType<Typo, never>();
       };
 
-      expectTypeOf<CreateMessage>().toEqualTypeOf<typeof Create.Output>();
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<CreateMessage, typeof Create.Output>();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("creates a strict Object with only a literal type property", () => {
+    it("creates a strict Object with only a literal type property", () => {
       const Empty = typed("Empty");
 
-      expect(Empty.name).toBe("Object");
-      expect(Empty.props.type.name).toBe("Literal");
-      expect(Empty.props.type.expected).toBe("Empty");
-      expect(Empty.parent.props.type).toBe(String);
-      expect(Empty.parent.parent).toBeNull();
-      expect("parent" in Empty.from).toBe(true);
-      expectTypeOf(Empty).toEqualTypeOf<TypedType<"Empty">>();
-      expectTypeOf<typeof Empty.Input>().toEqualTypeOf<
+      assertEqual(Empty.name, "Object");
+      assertEqual(Empty.props.type.name, "Literal");
+      assertEqual(Empty.props.type.expected, "Empty");
+      assertSame(Empty.parent.props.type, String);
+      assertSame(Empty.parent.parent, null);
+      assertTrue("parent" in Empty.from);
+      assertType<typeof Empty, TypedType<"Empty">>();
+      assertType<
+        typeof Empty.Input,
         ExpectedStrictObject<{ readonly type: string }>
       >();
-      expectTypeOf<typeof Empty.Output>().toEqualTypeOf<
+      assertType<
+        typeof Empty.Output,
         ExpectedStrictObject<{ readonly type: "Empty" }>
       >();
-      expectTypeOf<typeof Empty.Output>().toExtend<Typed<"Empty">>();
-      expectTypeOf<typeof Empty.Error>().toEqualTypeOf<
+      assertType<
+        typeof Empty.Output extends Typed<"Empty"> ? true : false,
+        true
+      >();
+      assertType<
+        typeof Empty.Error,
         ObjectPropertiesError<{ readonly type: LiteralError<"Empty"> }>
       >();
-      expectTypeOf<typeof Empty.parent.Error>().toEqualTypeOf<
+      assertType<
+        typeof Empty.parent.Error,
         ObjectError<{
           readonly type: TypeOfError<"String">;
         }>
       >();
-      expectTypeOf<InferErrors<typeof Empty>>().toEqualTypeOf<
+      assertType<
+        InferErrors<typeof Empty>,
         ObjectError<{
           readonly type: TypeOfError<"String"> | LiteralError<"Empty">;
         }>
       >();
 
-      expect(Empty.parent.fromUnknown({ type: "Other" })).toEqual(
+      assertEqual(
+        Empty.parent.fromUnknown({ type: "Other" }),
         ok({ type: "Other" }),
       );
-      expect(Empty.from.parent({ type: "Other" })).toEqual(
+      assertEqual(
+        Empty.from.parent({ type: "Other" }),
         err({
           type: "Object",
           reason: {
@@ -15357,12 +16367,10 @@ describe("typed", () => {
           },
         }),
       );
-      expect(Empty.fromUnknown({ type: "Empty" })).toEqual(
-        ok({ type: "Empty" }),
-      );
+      assertEqual(Empty.fromUnknown({ type: "Empty" }), ok({ type: "Empty" }));
     });
 
-    test("includes non-enumerable schema properties", () => {
+    it("includes non-enumerable schema properties", () => {
       const props = { value: String };
       globalThis.Object.defineProperty(props, "value", {
         value: String,
@@ -15370,8 +16378,9 @@ describe("typed", () => {
       });
       const Model = typed("Model", props);
 
-      expect(Model.is({ type: "Model" })).toBe(false);
-      expect(Model.fromUnknown({ type: "Model" })).toEqual(
+      assertFalse(Model.is({ type: "Model" }));
+      assertEqual(
+        Model.fromUnknown({ type: "Model" }),
         err({
           type: "Object",
           reason: {
@@ -15380,25 +16389,26 @@ describe("typed", () => {
           },
         }),
       );
-      expect(Model.fromUnknown({ type: "Model", value: "text" })).toEqual(
+      assertEqual(
+        Model.fromUnknown({ type: "Model", value: "text" }),
         ok({ type: "Model", value: "text" }),
       );
-      expect(Model.props.value).toBe(String);
+      assertSame(Model.props.value, String);
     });
 
-    test("snapshots schema properties", () => {
+    it("snapshots schema properties", () => {
       const props = { value: String };
       const Model = typed("Model", props);
 
       globalThis.Reflect.set(props, "value", Number);
 
-      expect(Model.props).not.toBe(props);
-      expect(Model.props.value).toBe(String);
-      expect(Model.is({ type: "Model", value: "text" })).toBe(true);
-      expect(Model.is({ type: "Model", value: 1 })).toBe(false);
+      assertFalse(globalThis.Object.is(Model.props, props));
+      assertSame(Model.props.value, String);
+      assertTrue(Model.is({ type: "Model", value: "text" }));
+      assertFalse(Model.is({ type: "Model", value: 1 }));
     });
 
-    test("rejects schema accessors without invoking them", () => {
+    it("rejects schema accessors without invoking them", () => {
       let reads = 0;
       const props = {
         get value() {
@@ -15407,13 +16417,16 @@ describe("typed", () => {
         },
       };
 
-      expect(() => typed("Model", props)).toThrow(
-        "Object schema properties must be own string-keyed data properties.",
+      const error = assertThrowsInstanceOf(() => typed("Model", props), Error);
+      assertTrue(
+        error.message.includes(
+          "Object schema properties must be own string-keyed data properties.",
+        ),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("rejects inherited schema properties without invoking them", () => {
+    it("rejects inherited schema properties without invoking them", () => {
       let reads = 0;
 
       class Props {
@@ -15425,13 +16438,16 @@ describe("typed", () => {
 
       const props: { readonly value: typeof String } = new Props();
 
-      expect(() => typed("Model", props)).toThrow(
-        "Object schema properties must be own string-keyed data properties.",
+      const error = assertThrowsInstanceOf(() => typed("Model", props), Error);
+      assertTrue(
+        error.message.includes(
+          "Object schema properties must be own string-keyed data properties.",
+        ),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("rejects symbol schema properties without invoking them", () => {
+    it("rejects symbol schema properties without invoking them", () => {
       const key = globalThis.Symbol("value");
       let reads = 0;
       const props = globalThis.Object.defineProperty({ value: String }, key, {
@@ -15441,13 +16457,16 @@ describe("typed", () => {
         },
       });
 
-      expect(() => typed("Model", props)).toThrow(
-        "Object schema properties must be own string-keyed data properties.",
+      const error = assertThrowsInstanceOf(() => typed("Model", props), Error);
+      assertTrue(
+        error.message.includes(
+          "Object schema properties must be own string-keyed data properties.",
+        ),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("rejects a hidden own type schema property", () => {
+    it("rejects a hidden own type schema property", () => {
       const props = globalThis.Object.defineProperty(
         { value: String },
         "type",
@@ -15457,12 +16476,15 @@ describe("typed", () => {
         },
       );
 
-      expect(() => typed("Model", props)).toThrow(
-        'The "type" schema property is reserved by typed.',
+      const error = assertThrowsInstanceOf(() => typed("Model", props), Error);
+      assertTrue(
+        error.message.includes(
+          'The "type" schema property is reserved by typed.',
+        ),
       );
     });
 
-    test("rejects a hidden own type schema accessor without invoking it", () => {
+    it("rejects a hidden own type schema accessor without invoking it", () => {
       let reads = 0;
       const props = globalThis.Object.defineProperty(
         { value: String },
@@ -15476,13 +16498,16 @@ describe("typed", () => {
         },
       );
 
-      expect(() => typed("Model", props)).toThrow(
-        'The "type" schema property is reserved by typed.',
+      const error = assertThrowsInstanceOf(() => typed("Model", props), Error);
+      assertTrue(
+        error.message.includes(
+          'The "type" schema property is reserved by typed.',
+        ),
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("composes additional properties through Object and Literal", () => {
+    it("composes additional properties through Object and Literal", () => {
       const NumberFromString = setupNumberFromString();
       const Pending = typed("Pending", {
         label: NumberFromString,
@@ -15491,15 +16516,16 @@ describe("typed", () => {
       const input = { type: "Pending", label: "42" } as const;
       const output = { type: "Pending", label: 42 } as const;
 
-      expect(Pending.name).toBe("Object");
-      expect(Pending.props.type.expected).toBe("Pending");
-      expect(Pending.props.label).toBe(NumberFromString);
-      expect(Pending.props.note.type).toBe(String);
-      expect(Pending.parent.props.type).toBe(String);
-      expect(Pending.parent.props.label).toBe(String);
-      expect(Pending.parent.props.note.type).toBe(String);
-      expect(Pending.parent.parent).toBeNull();
-      expectTypeOf(Pending).toEqualTypeOf<
+      assertEqual(Pending.name, "Object");
+      assertEqual(Pending.props.type.expected, "Pending");
+      assertSame(Pending.props.label, NumberFromString);
+      assertSame(Pending.props.note.type, String);
+      assertSame(Pending.parent.props.type, String);
+      assertSame(Pending.parent.props.label, String);
+      assertSame(Pending.parent.props.note.type, String);
+      assertSame(Pending.parent.parent, null);
+      assertType<
+        typeof Pending,
         TypedType<
           "Pending",
           {
@@ -15508,19 +16534,22 @@ describe("typed", () => {
           }
         >
       >();
-      expectTypeOf<typeof Pending.Input>().toEqualTypeOf<
+      assertType<
+        typeof Pending.Input,
         ExpectedStrictObject<
           { readonly type: string; readonly label: string },
           { readonly note: string }
         >
       >();
-      expectTypeOf<typeof Pending.Output>().toEqualTypeOf<
+      assertType<
+        typeof Pending.Output,
         ExpectedStrictObject<
           { readonly type: "Pending"; readonly label: number },
           { readonly note: string }
         >
       >();
-      expectTypeOf<typeof Pending.Error>().toEqualTypeOf<
+      assertType<
+        typeof Pending.Error,
         ObjectPropertiesError<{
           readonly type: LiteralError<"Pending">;
           readonly label: typeof NumberFromString.Error;
@@ -15528,14 +16557,13 @@ describe("typed", () => {
         }>
       >();
 
-      expect(Pending.from.parent(input)).toEqual(ok(output));
-      expect(Pending.to(output)).toEqual(input);
-      expect(Pending.is(output)).toBe(true);
-      expect(Pending.is(input)).toBe(false);
-      expect(Pending.is({ type: "Other", label: 42 })).toBe(false);
-      expect(
+      assertEqual(Pending.from.parent(input), ok(output));
+      assertEqual(Pending.to(output), input);
+      assertTrue(Pending.is(output));
+      assertFalse(Pending.is(input));
+      assertFalse(Pending.is({ type: "Other", label: 42 }));
+      assertEqual(
         Pending.fromUnknown({ type: "Other", label: "not a number" }),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -15548,7 +16576,7 @@ describe("typed", () => {
       );
     });
 
-    test("composes additional properties through a Record", () => {
+    it("composes additional properties through a Record", () => {
       const Values = record(String, String);
       const Open = typed("Open", { label: String }, Values);
       const A = literal("a");
@@ -15579,28 +16607,33 @@ describe("typed", () => {
         typed("Open", { fixed: AFromString }, ValuesWithTag);
       };
 
-      expect(Open.record).toBe(Values);
-      expectTypeOf(Open).toEqualTypeOf<
+      assertSame(Open.record, Values);
+      assertType<
+        typeof Open,
         TypedType<"Open", { readonly label: typeof String }, typeof Values>
       >();
-      expectTypeOf<typeof Open.Input>().toEqualTypeOf<
+      assertType<
+        typeof Open.Input,
         {
           readonly type: string;
           readonly label: string;
         } & Readonly<Partial<Record<string, string>>>
       >();
-      expectTypeOf<typeof Open.Output>().toEqualTypeOf<
+      assertType<
+        typeof Open.Output,
         {
           readonly type: "Open";
           readonly label: string;
         } & Readonly<Partial<Record<string, string>>>
       >();
-      expect(
+      assertEqual(
         Compatible.to(Compatible.orThrow({ type: "Open", fixed: "x" })),
-      ).toEqual({ type: "Open", fixed: "a" });
-      expectOk(Open.fromUnknown(value), value);
-      expect(Open.is(value)).toBe(true);
-      expect(Open.fromUnknown({ ...value, score: 1 })).toEqual(
+        { type: "Open", fixed: "a" },
+      );
+      assertOk(Open.fromUnknown(value), value);
+      assertTrue(Open.is(value));
+      assertEqual(
+        Open.fromUnknown({ ...value, score: 1 }),
         err({
           type: "Object",
           reason: {
@@ -15627,10 +16660,15 @@ describe("typed", () => {
           },
         }),
       );
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("requires one concrete Type name and reserves the type property", () => {
+    it("requires one concrete Type name and reserves the type property", () => {
       const unionTag = "One" as "One" | "Two";
       const broadTag: TypeName = "One";
       const patternedTag = "One" as `One${string}`;
@@ -15683,13 +16721,23 @@ describe("typed", () => {
         typed("One", { value: Number }, Values);
       };
 
-      expectTypeOf(genericTagAssertion).toBeFunction();
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof genericTagAssertion extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 
   describe("validation", () => {
-    test("rejects missing, mismatched, and excess properties", () => {
+    it("rejects missing, mismatched, and excess properties", () => {
       const Empty = typed("Empty");
       const valueWithExcessProperty = { type: "Empty", extra: true } as const;
       const compileTimeAssertions = () => {
@@ -15697,7 +16745,8 @@ describe("typed", () => {
         Empty.from({ type: "Empty", extra: true });
       };
 
-      expect(Empty.fromUnknown({})).toEqual(
+      assertEqual(
+        Empty.fromUnknown({}),
         err({
           type: "Object",
           reason: {
@@ -15706,8 +16755,9 @@ describe("typed", () => {
           },
         }),
       );
-      expect(Empty.fromUnknown({ type: "Other" }).ok).toBe(false);
-      expect(Empty.fromUnknown(valueWithExcessProperty)).toEqual(
+      assertFalse(Empty.fromUnknown({ type: "Other" }).ok);
+      assertEqual(
+        Empty.fromUnknown(valueWithExcessProperty),
         err({
           type: "Object",
           reason: {
@@ -15716,13 +16766,18 @@ describe("typed", () => {
           },
         }),
       );
-      expect(Empty.is(valueWithExcessProperty)).toBe(false);
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertFalse(Empty.is(valueWithExcessProperty));
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 
   describe("composition", () => {
-    test("forms a total discriminated Union", () => {
+    it("forms a total discriminated Union", () => {
       const NumberFromString = setupNumberFromString();
       const Created = typed("Created", { id: NumberFromString });
       const Deleted = typed("Deleted", { id: String });
@@ -15731,14 +16786,15 @@ describe("typed", () => {
       const createdOutput = { type: "Created", id: 42 } as const;
       const deleted = { type: "Deleted", id: "42" } as const;
 
-      expect(Event.fromUnknown(createdInput)).toEqual(ok(createdOutput));
-      expect(Event.fromUnknown(deleted)).toEqual(ok(deleted));
-      expect(Event.to(createdOutput)).toEqual(createdInput);
-      expect(Event.to(deleted)).toEqual(deleted);
-      expect(
+      assertEqual(Event.fromUnknown(createdInput), ok(createdOutput));
+      assertEqual(Event.fromUnknown(deleted), ok(deleted));
+      assertEqual(Event.to(createdOutput), createdInput);
+      assertEqual(Event.to(deleted), deleted);
+      assertFalse(
         Event.fromUnknown({ type: "Created", id: "42", extra: true }).ok,
-      ).toBe(false);
-      expectTypeOf<typeof Event.Output>().toEqualTypeOf<
+      );
+      assertType<
+        typeof Event.Output,
         | ExpectedStrictObject<{
             readonly type: "Created";
             readonly id: number;
@@ -15750,26 +16806,27 @@ describe("typed", () => {
       >();
 
       const result = Event.fromUnknown(createdInput);
-      expectOk(result, createdOutput);
+      assertOk(result, createdOutput);
       if (result.value.type === "Created") {
-        expectTypeOf(result.value.id).toEqualTypeOf<number>();
+        assertType<typeof result.value.id, number>();
       } else {
-        expectTypeOf(result.value.id).toEqualTypeOf<string>();
+        assertType<typeof result.value.id, string>();
       }
     });
   });
 });
 
 describe("nextResult", () => {
-  test("validates value, error, and done outcomes", () => {
+  it("validates value, error, and done outcomes", () => {
     const StringNextResult = nextResult(String, Number, Boolean);
     const Pair = tuple(String, Number);
     const AnyComponentNextResult = nextResult(Undefined, Pair, Never);
     const PairDoneNextResult = nextResult(String, Undefined, Pair);
 
-    expect(StringNextResult.name).toBe("DiscriminatedUnion");
-    expect(StringNextResult.key).toBe("ok");
-    expectTypeOf(StringNextResult).toEqualTypeOf<
+    assertEqual(StringNextResult.name, "DiscriminatedUnion");
+    assertEqual(StringNextResult.key, "ok");
+    assertType<
+      typeof StringNextResult,
       DiscriminatedUnionType<
         "ok",
         readonly [
@@ -15789,30 +16846,30 @@ describe("nextResult", () => {
         ]
       >
     >();
-    expectOk(StringNextResult.fromUnknown({ ok: true, value: "value" }), {
+    assertOk(StringNextResult.fromUnknown({ ok: true, value: "value" }), {
       ok: true,
       value: "value",
     });
-    expectOk(StringNextResult.fromUnknown({ ok: false, error: 1 }), {
+    assertOk(StringNextResult.fromUnknown({ ok: false, error: 1 }), {
       ok: false,
       error: 1,
     });
-    expectOk(
+    assertOk(
       StringNextResult.fromUnknown({
         ok: false,
         error: { type: "Done", done: true },
       }),
       { ok: false, error: { type: "Done", done: true } },
     );
-    expectOk(
+    assertOk(
       AnyComponentNextResult.fromUnknown({ ok: true, value: undefined }),
       { ok: true, value: undefined },
     );
-    expectOk(
+    assertOk(
       AnyComponentNextResult.fromUnknown({ ok: false, error: ["error", 1] }),
       { ok: false, error: ["error", 1] },
     );
-    expectOk(
+    assertOk(
       PairDoneNextResult.fromUnknown({
         ok: false,
         error: { type: "Done", done: ["done", 2] },
@@ -15820,7 +16877,8 @@ describe("nextResult", () => {
       { ok: false, error: { type: "Done", done: ["done", 2] } },
     );
 
-    expectTypeOf(UnknownNextResult).toEqualTypeOf<
+    assertType<
+      typeof UnknownNextResult,
       DiscriminatedUnionType<
         "ok",
         readonly [
@@ -15840,41 +16898,41 @@ describe("nextResult", () => {
         ]
       >
     >();
-    expect(UnknownNextResult.is({ ok: true, value: undefined })).toBe(true);
-    expect(UnknownNextResult.is({ ok: false, error: undefined })).toBe(true);
+    assertTrue(UnknownNextResult.is({ ok: true, value: undefined }));
+    assertTrue(UnknownNextResult.is({ ok: false, error: undefined }));
   });
 });
 
 describe("discriminatedUnion", () => {
   describe("construction", () => {
-    test("creates a routed Type with exact discriminated Inputs", () => {
+    it("creates a routed Type with exact discriminated Inputs", () => {
       const NumberFromString = setupNumberFromString();
       const Created = typed("Created", { id: NumberFromString });
       const Deleted = typed("Deleted", { reason: String });
       const Event = discriminatedUnion(Created, Deleted);
 
-      expect(Event.name).toBe("DiscriminatedUnion");
-      expect(Event.key).toBe("type");
-      expect(Event.members).toEqual([Created, Deleted]);
-      expect(Event.members[0]).toBe(Created);
-      expect(Event.members[1]).toBe(Deleted);
-      expect(Event.parent.name).toBe("DiscriminatedUnion");
-      expect(Event.parent.parent).toBeNull();
-      expectTypeOf(Event).toEqualTypeOf<
+      assertEqual(Event.name, "DiscriminatedUnion");
+      assertEqual(Event.key, "type");
+      assertEqual(Event.members, [Created, Deleted]);
+      assertSame(Event.members[0], Created);
+      assertSame(Event.members[1], Deleted);
+      assertEqual(Event.parent.name, "DiscriminatedUnion");
+      assertSame(Event.parent.parent, null);
+      assertType<
+        typeof Event,
         DiscriminatedUnionType<
           "type",
           readonly [typeof Created, typeof Deleted]
         >
       >();
-      expectTypeOf<typeof Event.parent.Input>().toEqualTypeOf<
+      assertType<
+        typeof Event.parent.Input,
         | (typeof Created.Input & { readonly type: "Created" })
         | (typeof Deleted.Input & { readonly type: "Deleted" })
       >();
-      expectTypeOf<typeof Event.parent.Output>().toEqualTypeOf<
-        typeof Event.parent.Input
-      >();
-      expectTypeOf<typeof Event.parent.Error>().toExtend<
-        DiscriminatedUnionError<
+      assertType<typeof Event.parent.Output, typeof Event.parent.Input>();
+      assertType<
+        typeof Event.parent.Error extends DiscriminatedUnionError<
           "type",
           "Created" | "Deleted",
           | DiscriminatedUnionMemberIssue<
@@ -15886,22 +16944,28 @@ describe("discriminatedUnion", () => {
               InferErrors<typeof Deleted.parent>
             >
         >
+          ? true
+          : false,
+        true
       >();
-      expectTypeOf<typeof Event.Input>().toEqualTypeOf<
+      assertType<
+        typeof Event.Input,
         | (typeof Created.Input & { readonly type: "Created" })
         | (typeof Deleted.Input & { readonly type: "Deleted" })
       >();
-      expectTypeOf<typeof Event.Output>().toEqualTypeOf<
+      assertType<
+        typeof Event.Output,
         typeof Created.Output | typeof Deleted.Output
       >();
-      expectTypeOf<typeof Event.Error>().toEqualTypeOf<
+      assertType<
+        typeof Event.Error,
         DiscriminatedUnionMemberError<
           | DiscriminatedUnionMemberIssue<"Created", typeof Created.Error>
           | DiscriminatedUnionMemberIssue<"Deleted", typeof Deleted.Error>
         >
       >();
-      expectTypeOf<InferErrors<typeof Event>>().toExtend<
-        DiscriminatedUnionError<
+      assertType<
+        InferErrors<typeof Event> extends DiscriminatedUnionError<
           "type",
           "Created" | "Deleted",
           | DiscriminatedUnionMemberIssue<
@@ -15913,30 +16977,36 @@ describe("discriminatedUnion", () => {
               InferErrors<typeof Deleted>
             >
         >
+          ? true
+          : false,
+        true
       >();
-      expect("parent" in Event.from).toBe(true);
+      assertTrue("parent" in Event.from);
     });
 
-    test("supports an explicit discriminator key", () => {
+    it("supports an explicit discriminator key", () => {
       const Added = object({ kind: literal("added"), value: String });
       const Removed = object({ kind: literal("removed"), id: Number });
       const Event = discriminatedUnion("kind", Added, Removed);
 
-      expect(Event.key).toBe("kind");
-      expect(Event.members).toEqual([Added, Removed]);
-      expectTypeOf<typeof Event.Input>().toEqualTypeOf<
+      assertEqual(Event.key, "kind");
+      assertEqual(Event.members, [Added, Removed]);
+      assertType<
+        typeof Event.Input,
         | (typeof Added.Input & { readonly kind: "added" })
         | (typeof Removed.Input & { readonly kind: "removed" })
       >();
-      expect(Event.fromUnknown({ kind: "added", value: "value" })).toEqual(
+      assertEqual(
+        Event.fromUnknown({ kind: "added", value: "value" }),
         ok({ kind: "added", value: "value" }),
       );
-      expect(Event.fromUnknown({ kind: "removed", id: 1 })).toEqual(
+      assertEqual(
+        Event.fromUnknown({ kind: "removed", id: 1 }),
         ok({ kind: "removed", id: 1 }),
       );
     });
 
-    test("supports string, number, bigint, and boolean discriminators", () => {
+    it("supports string, number, bigint, and boolean discriminators", () => {
       const Text = object({ kind: literal("text") });
       const Count = object({ kind: literal(1) });
       const BigCount = object({ kind: literal(1n) });
@@ -15944,12 +17014,12 @@ describe("discriminatedUnion", () => {
       const Event = discriminatedUnion("kind", Text, Count, BigCount, Enabled);
 
       for (const kind of ["text", 1, 1n, true] as const) {
-        expectOk(Event.fromUnknown({ kind }), { kind });
-        expectOk(Event.parent.fromUnknown({ kind }), { kind });
+        assertOk(Event.fromUnknown({ kind }), { kind });
+        assertOk(Event.parent.fromUnknown({ kind }), { kind });
       }
     });
 
-    test("requires a concrete key and unique required Literal props", () => {
+    it("requires a concrete key and unique required Literal props", () => {
       const Valid = typed("Valid");
       const Duplicate = typed("Valid");
       const Missing = object({ value: String });
@@ -15991,10 +17061,15 @@ describe("discriminatedUnion", () => {
         discriminatedUnion(patternedKey, Valid, typed("Other"));
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("requires one concrete finite member tuple", () => {
+    it("requires one concrete finite member tuple", () => {
       const OneWithString = typed("One", { value: String });
       const TwoWithString = typed("Two", { value: String });
       const OneWithNumber = typed("One", { value: Number });
@@ -16029,12 +17104,17 @@ describe("discriminatedUnion", () => {
         discriminatedUnion(OneWithString, TwoWithString, uncertainThird);
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 
   describe("validation", () => {
-    test("routes only the selected member through every operation", () => {
+    it("routes only the selected member through every operation", () => {
       let createdFromCount = 0;
       let createdToCount = 0;
       let deletedFromCount = 0;
@@ -16065,22 +17145,22 @@ describe("discriminatedUnion", () => {
       const input = { type: "Created", id: "42" } as const;
       const output = { type: "Created", id: 42 } as const;
 
-      expect(Event.fromUnknown(input)).toEqual(ok(output));
-      expect([createdFromCount, deletedFromCount]).toEqual([1, 0]);
+      assertEqual(Event.fromUnknown(input), ok(output));
+      assertEqual([createdFromCount, deletedFromCount], [1, 0]);
 
       createdFromCount = deletedFromCount = 0;
-      expect(Event.from.parent(input)).toEqual(ok(output));
-      expect([createdFromCount, deletedFromCount]).toEqual([1, 0]);
+      assertEqual(Event.from.parent(input), ok(output));
+      assertEqual([createdFromCount, deletedFromCount], [1, 0]);
 
-      expect(Event.to(output)).toEqual(input);
-      expect([createdToCount, deletedToCount]).toEqual([1, 0]);
-      expect(Event.is(output)).toBe(true);
-      expect(Event.is(input)).toBe(false);
-      expect(Event.is(null)).toBe(false);
-      expect(Event.parent.is(null)).toBe(false);
+      assertEqual(Event.to(output), input);
+      assertEqual([createdToCount, deletedToCount], [1, 0]);
+      assertTrue(Event.is(output));
+      assertFalse(Event.is(input));
+      assertFalse(Event.is(null));
+      assertFalse(Event.parent.is(null));
     });
 
-    test("routes its encoded parent boundary before member transformations", () => {
+    it("routes its encoded parent boundary before member transformations", () => {
       const NumberFromString = setupNumberFromString();
       const Created = typed("Created", { id: NumberFromString });
       const Deleted = typed("Deleted", { id: String });
@@ -16088,21 +17168,22 @@ describe("discriminatedUnion", () => {
       const input = { type: "Created", id: "42" } as const;
       const output = { type: "Created", id: 42 } as const;
 
-      expect(Event.parent.fromUnknown(input)).toEqual(ok(input));
-      expect(Event.parent.from(input)).toEqual(ok(input));
-      expect(Event.parent.to(input)).toEqual(input);
-      expect(Event.to.parent(output)).toEqual(input);
-      expectTypeOf(Event.to.parent(output)).toEqualTypeOf<
-        typeof Event.parent.Output
-      >();
-      expect("parent" in Event.to.parent).toBe(false);
-      expect(Event.parent.is(input)).toBe(true);
-      expect(Event.is(input)).toBe(false);
-      expect(Event.orThrow(input)).toEqual(output);
-      expect(Event.orNull(input)).toEqual(output);
+      assertEqual(Event.parent.fromUnknown(input), ok(input));
+      assertEqual(Event.parent.from(input), ok(input));
+      assertEqual(Event.parent.to(input), input);
+      assertEqual(Event.to.parent(output), input);
+      {
+        const actual = Event.to.parent(output);
+        assertType<typeof actual, typeof Event.parent.Output>();
+      }
+      assertFalse("parent" in Event.to.parent);
+      assertTrue(Event.parent.is(input));
+      assertFalse(Event.is(input));
+      assertEqual(Event.orThrow(input), output);
+      assertEqual(Event.orNull(input), output);
     });
 
-    test("asserts exact routed Outputs at both boundaries", () => {
+    it("asserts exact routed Outputs at both boundaries", () => {
       const Created = typed("Created", { id: Number });
       const Deleted = typed("Deleted", { reason: String });
       const Event = discriminatedUnion(Created, Deleted);
@@ -16127,19 +17208,19 @@ describe("discriminatedUnion", () => {
         },
       } as const;
 
-      expectAssertionError(
+      assertAssertionError(
         () => Event.from(invalid),
         "Expected DiscriminatedUnion.",
         cause,
       );
-      expectAssertionError(
+      assertAssertionError(
         () => Event.from.parent(invalid),
         "Expected DiscriminatedUnion.",
         cause,
       );
     });
 
-    test("uses the immediate Object parent for a transformed Record member", () => {
+    it("uses the immediate Object parent for a transformed Record member", () => {
       const NumberFromString = setupNumberFromString();
       const Added = object(
         { kind: literal("added") },
@@ -16153,16 +17234,16 @@ describe("discriminatedUnion", () => {
       // The Literal property and transformed Record both have parent chains.
       // Object collapses them into one terminal parent, which routing uses as
       // the encoded boundary without walking the chain again.
-      expect(Added.parent.parent).toBeNull();
-      expect(Event.parent.fromUnknown(input)).toEqual(ok(input));
-      expect(Event.parent.from(input)).toEqual(ok(input));
-      expect(Event.parent.to(input)).toEqual(input);
-      expect(Event.parent.is(input)).toBe(true);
-      expect(Event.fromUnknown(input)).toEqual(ok(output));
-      expect(Event.to(output)).toEqual(input);
+      assertSame(Added.parent.parent, null);
+      assertEqual(Event.parent.fromUnknown(input), ok(input));
+      assertEqual(Event.parent.from(input), ok(input));
+      assertEqual(Event.parent.to(input), input);
+      assertTrue(Event.parent.is(input));
+      assertEqual(Event.fromUnknown(input), ok(output));
+      assertEqual(Event.to(output), input);
     });
 
-    test("rejects an uncorrelated Input instead of trusting the selected shape", () => {
+    it("rejects an uncorrelated Input instead of trusting the selected shape", () => {
       const Created = typed("Created", { name: String });
       const Deleted = typed("Deleted", { reason: String });
       const Event = discriminatedUnion(Created, Deleted);
@@ -16172,8 +17253,12 @@ describe("discriminatedUnion", () => {
         Event.from(uncorrelated);
       };
 
-      expectTypeOf(uncorrelated).not.toExtend<typeof Event.Input>();
-      expect(Event.fromUnknown(uncorrelated, { errors: "all" })).toEqual(
+      assertType<
+        typeof uncorrelated extends typeof Event.Input ? true : false,
+        false
+      >();
+      assertEqual(
+        Event.fromUnknown(uncorrelated, { errors: "all" }),
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16192,10 +17277,15 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("returns routed discriminator, access, and member errors", () => {
+    it("returns routed discriminator, access, and member errors", () => {
       const Created = typed("Created", { name: String, email: String });
       const Deleted = typed("Deleted", { reason: String });
       const Event = discriminatedUnion(Created, Deleted);
@@ -16210,7 +17300,8 @@ describe("discriminatedUnion", () => {
         value: "Created",
       });
 
-      expect(Event.fromUnknown(null)).toEqual(
+      assertEqual(
+        Event.fromUnknown(null),
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16222,7 +17313,8 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      expect(Event.fromUnknown({ type: "Updated" })).toEqual(
+      assertEqual(
+        Event.fromUnknown({ type: "Updated" }),
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16233,7 +17325,8 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      expect(Event.fromUnknown({ type: 1 })).toEqual(
+      assertEqual(
+        Event.fromUnknown({ type: 1 }),
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16244,7 +17337,8 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      expect(Event.fromUnknown({})).toEqual(
+      assertEqual(
+        Event.fromUnknown({}),
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16255,7 +17349,8 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      expect(Event.fromUnknown(throwing)).toEqual(
+      assertEqual(
+        Event.fromUnknown(throwing),
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16265,7 +17360,8 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      expect(Event.fromUnknown(nonEnumerable)).toEqual(
+      assertEqual(
+        Event.fromUnknown(nonEnumerable),
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16275,13 +17371,12 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      expect(accessError).toBeInstanceOf(Error);
-      expect(
+      assertInstanceOf(accessError, Error);
+      assertEqual(
         Event.fromUnknown(
           { type: "Created", name: 1, email: 2 },
           { errors: "all" },
         ),
-      ).toEqual(
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16302,7 +17397,7 @@ describe("discriminatedUnion", () => {
       );
     });
 
-    test("formats routing errors and delegates selected member errors", () => {
+    it("formats routing errors and delegates selected member errors", () => {
       const Created = typed("Created", { name: String });
       const Deleted = typed("Deleted", { reason: String });
       const Event = discriminatedUnion(Created, Deleted);
@@ -16317,7 +17412,7 @@ describe("discriminatedUnion", () => {
         }),
       );
 
-      expectErr(objectResult, {
+      assertErr(objectResult, {
         type: "DiscriminatedUnion",
         reason: {
           kind: "Object",
@@ -16327,7 +17422,7 @@ describe("discriminatedUnion", () => {
           },
         },
       });
-      expectErr(discriminatorResult, {
+      assertErr(discriminatorResult, {
         type: "DiscriminatedUnion",
         reason: {
           kind: "Discriminator",
@@ -16336,7 +17431,7 @@ describe("discriminatedUnion", () => {
           expected: ["Created", "Deleted"],
         },
       });
-      expectErr(memberResult, {
+      assertErr(memberResult, {
         type: "DiscriminatedUnion",
         reason: {
           kind: "Member",
@@ -16350,7 +17445,7 @@ describe("discriminatedUnion", () => {
           },
         },
       });
-      expectErr(accessResult, {
+      assertErr(accessResult, {
         type: "DiscriminatedUnion",
         reason: {
           kind: "PropertyAccess",
@@ -16359,19 +17454,23 @@ describe("discriminatedUnion", () => {
         },
       });
 
-      expect(Event.formatError(objectResult.error)).toBe(
+      assertEqual(
+        Event.formatError(objectResult.error),
         "A value null is not an object.",
       );
-      expect(Event.formatError(discriminatorResult.error)).toBe(
+      assertEqual(
+        Event.formatError(discriminatorResult.error),
         'The discriminator property "type" has an unexpected value "Other".',
       );
-      expect(Event.formatError(memberResult.error)).toBe(
+      assertEqual(
+        Event.formatError(memberResult.error),
         'The required property "name" is missing.',
       );
-      expect(Event.formatError(accessResult.error)).toBe(
+      assertEqual(
+        Event.formatError(accessResult.error),
         'The discriminator property "type" must be a data property.',
       );
-      expect(
+      assertEqual(
         Event.formatError({
           type: "DiscriminatedUnion",
           reason: {
@@ -16380,8 +17479,9 @@ describe("discriminatedUnion", () => {
             reason: "Inherited",
           },
         }),
-      ).toBe('The discriminator property "type" must be an own property.');
-      expect(
+        'The discriminator property "type" must be an own property.',
+      );
+      assertEqual(
         Event.formatError({
           type: "DiscriminatedUnion",
           reason: {
@@ -16390,10 +17490,11 @@ describe("discriminatedUnion", () => {
             reason: "NonEnumerable",
           },
         }),
-      ).toBe('The discriminator property "type" must be enumerable.');
+        'The discriminator property "type" must be enumerable.',
+      );
     });
 
-    test("rejects class instances and inherited discriminator accessors without invoking them", () => {
+    it("rejects class instances and inherited discriminator accessors without invoking them", () => {
       const Created = typed("Created", { value: String });
       const Deleted = typed("Deleted", { value: String });
       const Event = discriminatedUnion(Created, Deleted);
@@ -16408,7 +17509,8 @@ describe("discriminatedUnion", () => {
       }
       const input = new CreatedInput();
 
-      expect(Event.fromUnknown(input)).toEqual(
+      assertEqual(
+        Event.fromUnknown(input),
         err({
           type: "DiscriminatedUnion",
           reason: {
@@ -16420,8 +17522,8 @@ describe("discriminatedUnion", () => {
           },
         }),
       );
-      expect(Event.is(input)).toBe(false);
-      expect(reads).toBe(0);
+      assertFalse(Event.is(input));
+      assertEqual(reads, 0);
 
       const originalTypeDescriptor = globalThis.Object.getOwnPropertyDescriptor(
         globalThis.Object.prototype,
@@ -16435,7 +17537,8 @@ describe("discriminatedUnion", () => {
         },
       });
       try {
-        expect(Event.fromUnknown({ value: "value" })).toEqual(
+        assertEqual(
+          Event.fromUnknown({ value: "value" }),
           err({
             type: "DiscriminatedUnion",
             reason: {
@@ -16459,7 +17562,7 @@ describe("discriminatedUnion", () => {
           );
         }
       }
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
 
       const nullPrototypeInput = globalThis.Object.assign(
         globalThis.Object.create(null),
@@ -16467,18 +17570,19 @@ describe("discriminatedUnion", () => {
       );
       const result = Event.fromUnknown(nullPrototypeInput);
 
-      expectOk(result, { type: "Deleted", value: "value" });
-      expect(result.value).toBe(nullPrototypeInput);
-      expect(globalThis.Object.getPrototypeOf(result.value)).toBeNull();
+      assertOk(result, { type: "Deleted", value: "value" });
+      assertSame(result.value, nullPrototypeInput);
+      assertSame(globalThis.Object.getPrototypeOf(result.value), null);
     });
 
-    test("rejects custom prototype chains", () => {
+    it("rejects custom prototype chains", () => {
       const Created = typed("Created", { name: String });
       const Deleted = typed("Deleted", { name: String });
       const Event = discriminatedUnion(Created, Deleted);
 
       for (const value of setupUnexpectedPrototypeValues()) {
-        expect(Event.fromUnknown(value)).toEqual(
+        assertEqual(
+          Event.fromUnknown(value),
           err({
             type: "DiscriminatedUnion",
             reason: {
@@ -16490,13 +17594,13 @@ describe("discriminatedUnion", () => {
             },
           }),
         );
-        expect(Event.is(value)).toBe(false);
+        assertFalse(Event.is(value));
       }
     });
   });
 
   describe("composition", () => {
-    test("composes transformed members through Array and reverse operations", () => {
+    it("composes transformed members through Array and reverse operations", () => {
       const NumberFromString = setupNumberFromString();
       const Created = typed("Created", { id: NumberFromString });
       const Deleted = typed("Deleted", { id: String });
@@ -16510,14 +17614,13 @@ describe("discriminatedUnion", () => {
         { type: "Deleted", id: "42" },
       ] as const;
 
-      expect(Events.fromUnknown(input)).toEqual(ok(output));
-      expect(Events.to(output)).toEqual(input);
-      expect(
+      assertEqual(Events.fromUnknown(input), ok(output));
+      assertEqual(Events.to(output), input);
+      assertEqual(
         Events.fromUnknown([
           { type: "Deleted", id: "ok" },
           { type: "Created", id: "no" },
         ]),
-      ).toEqual(
         err({
           type: "Array",
           reason: {
@@ -16552,7 +17655,7 @@ describe("discriminatedUnion", () => {
 });
 
 describe("lazy", () => {
-  test("requires its definition to return one concrete Type node", () => {
+  it("requires its definition to return one concrete Type node", () => {
     const chooseTarget = (useString: boolean) => (useString ? String : Number);
     type Target = ReturnType<typeof chooseTarget>;
     type Definition = Parameters<typeof lazy<Target>>[0];
@@ -16565,12 +17668,20 @@ describe("lazy", () => {
       lazy(() => chooseTarget(true));
     };
 
-    expectTypeOf<Target>().not.toExtend<DefinitionOutput>();
-    expectTypeOf<DefinitionOutput>().toEqualTypeOf<"⛔ Type error: Lazy Type definition must return one concrete Type node. Pass a Union Type node instead of a union of Type nodes.">();
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<Target extends DefinitionOutput ? true : false, false>();
+    assertType<
+      DefinitionOutput,
+      "⛔ Type error: Lazy Type definition must return one concrete Type node. Pass a Union Type node instead of a union of Type nodes."
+    >();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("rejects an unresolved generic definition", () => {
+  it("rejects an unresolved generic definition", () => {
     const compileTimeAssertions = <
       Target extends typeof String | typeof Number,
     >(
@@ -16581,26 +17692,31 @@ describe("lazy", () => {
       return target;
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("accepts one Union Type node as its definition", () => {
+  it("accepts one Union Type node as its definition", () => {
     const Target = union(String, Number);
     const Value = lazy(() => Target);
 
-    expectOk(Value.fromUnknown("value"), "value");
-    expectOk(Value.fromUnknown(1), 1);
-    expectTypeOf<typeof Value.Input>().toEqualTypeOf<string | number>();
-    expectTypeOf<typeof Value.Output>().toEqualTypeOf<string | number>();
+    assertOk(Value.fromUnknown("value"), "value");
+    assertOk(Value.fromUnknown(1), 1);
+    assertType<typeof Value.Input, string | number>();
+    assertType<typeof Value.Output, string | number>();
   });
 
-  test("asserts exact resolved Outputs at both Lazy boundaries", () => {
+  it("asserts exact resolved Outputs at both Lazy boundaries", () => {
     const Value = lazy(() => String);
     const invalid = 1 as unknown as string;
     const cause = { type: "TypeOf", expected: "String", value: 1 } as const;
 
-    expectAssertionError(() => Value.from(invalid), "Expected Lazy.", cause);
-    expectAssertionError(
+    assertAssertionError(() => Value.from(invalid), "Expected Lazy.", cause);
+    assertAssertionError(
       () => Value.from.parent(invalid),
       "Expected Lazy.",
       cause,
@@ -16608,7 +17724,7 @@ describe("lazy", () => {
   });
 
   describe("direct recursion", () => {
-    test("accepts Map as a recursive structural boundary", () => {
+    it("accepts Map as a recursive structural boundary", () => {
       interface RecursiveStringMap extends ReadonlyMap<
         string,
         RecursiveStringMap
@@ -16637,18 +17753,18 @@ describe("lazy", () => {
       const leaf: RecursiveStringMap = new globalThis.Map();
       const value: RecursiveStringMap = new globalThis.Map([["nested", leaf]]);
 
-      expect(RecursiveStringMap.fromUnknown(value)).toEqual(ok(value));
-      expect(RecursiveStringMap.is(value)).toBe(true);
-      expect(
+      assertEqual(RecursiveStringMap.fromUnknown(value), ok(value));
+      assertTrue(RecursiveStringMap.is(value));
+      assertFalse(
         RecursiveStringMap.fromUnknown(
           new globalThis.Map([
             ["nested", new globalThis.Map([[1, new globalThis.Map()]])],
           ]),
         ).ok,
-      ).toBe(false);
+      );
     });
 
-    test("validates a recursively declared pure Object", () => {
+    it("validates a recursively declared pure Object", () => {
       interface StringTree {
         readonly value: string;
         readonly children: ReadonlyArray<StringTree>;
@@ -16670,15 +17786,16 @@ describe("lazy", () => {
         children: [{ value: "leaf", children: [] }],
       };
 
-      expect(StringTree.name).toBe("Lazy");
-      expect(StringTree.parent.name).toBe("Lazy");
-      expect(StringTree.parent.parent).toBeNull();
-      expect("parent" in StringTree.from).toBe(true);
-      expect(StringTree.fromUnknown(value)).toEqual(ok(value));
-      expect(StringTree.from(value)).toEqual(ok(value));
-      expect(StringTree.to(value)).toEqual(value);
-      expect(StringTree.is(value)).toBe(true);
-      expectTypeOf(StringTree).toEqualTypeOf<
+      assertEqual(StringTree.name, "Lazy");
+      assertEqual(StringTree.parent.name, "Lazy");
+      assertSame(StringTree.parent.parent, null);
+      assertTrue("parent" in StringTree.from);
+      assertEqual(StringTree.fromUnknown(value), ok(value));
+      assertEqual(StringTree.from(value), ok(value));
+      assertEqual(StringTree.to(value), value);
+      assertTrue(StringTree.is(value));
+      assertType<
+        typeof StringTree,
         LazyType<
           StringTree,
           StringTree,
@@ -16687,20 +17804,18 @@ describe("lazy", () => {
           StringTreeError
         >
       >();
-      expectTypeOf(StringTree.from(value)).toEqualTypeOf<Result<StringTree>>();
-      expectTypeOf<
-        typeof StringTree.parent.Error
-      >().toEqualTypeOf<StringTreeError>();
-      expectTypeOf<
-        InferErrors<typeof StringTree>
-      >().toEqualTypeOf<StringTreeError>();
+      {
+        const actual = StringTree.from(value);
+        assertType<typeof actual, Result<StringTree>>();
+      }
+      assertType<typeof StringTree.parent.Error, StringTreeError>();
+      assertType<InferErrors<typeof StringTree>, StringTreeError>();
 
-      expect(
+      assertEqual(
         StringTree.fromUnknown({
           value: "root",
           children: [{ value: 42, children: [] }],
         }),
-      ).toEqual(
         err({
           type: "Object",
           reason: {
@@ -16737,7 +17852,7 @@ describe("lazy", () => {
       );
     });
 
-    test("preserves recursive input, conversion, and complete error channels", () => {
+    it("preserves recursive input, conversion, and complete error channels", () => {
       const NumberFromString = setupNumberFromString();
       interface TreeInput {
         readonly value: string;
@@ -16780,25 +17895,28 @@ describe("lazy", () => {
         children: [{ value: 2, children: [] }],
       };
 
-      expect(Tree.parent.fromUnknown(input)).toEqual(ok(input));
-      expect(Tree.parent.from(input)).toEqual(ok(input));
-      expect(Tree.parent.to(input)).toEqual(input);
-      expect(Tree.parent.is(input)).toBe(true);
-      expect(Tree.fromUnknown(input)).toEqual(ok(output));
-      expect(Tree.from.parent(input)).toEqual(ok(output));
-      expect(Tree.to(output)).toEqual(input);
-      expect(Tree.orThrow(input)).toEqual(output);
-      expect(Tree.is(output)).toBe(true);
-      expect(Tree.is(input)).toBe(false);
-      expectTypeOf(Tree.from.parent(input)).toEqualTypeOf<
-        Result<TreeOutput, TreeFromError>
-      >();
-      expectTypeOf(Tree.parent.fromUnknown(input)).toEqualTypeOf<
-        Result<TreeInput, TreeInputError>
-      >();
-      expectTypeOf(Tree.fromUnknown(input)).toEqualTypeOf<
-        Result<TreeOutput, TreeError>
-      >();
+      assertEqual(Tree.parent.fromUnknown(input), ok(input));
+      assertEqual(Tree.parent.from(input), ok(input));
+      assertEqual(Tree.parent.to(input), input);
+      assertTrue(Tree.parent.is(input));
+      assertEqual(Tree.fromUnknown(input), ok(output));
+      assertEqual(Tree.from.parent(input), ok(output));
+      assertEqual(Tree.to(output), input);
+      assertEqual(Tree.orThrow(input), output);
+      assertTrue(Tree.is(output));
+      assertFalse(Tree.is(input));
+      {
+        const actual = Tree.from.parent(input);
+        assertType<typeof actual, Result<TreeOutput, TreeFromError>>();
+      }
+      {
+        const actual = Tree.parent.fromUnknown(input);
+        assertType<typeof actual, Result<TreeInput, TreeInputError>>();
+      }
+      {
+        const actual = Tree.fromUnknown(input);
+        assertType<typeof actual, Result<TreeOutput, TreeError>>();
+      }
 
       const invalid: TreeInput = {
         value: "no",
@@ -16841,16 +17959,18 @@ describe("lazy", () => {
         },
       } as const;
 
-      expectErr(result, expectedError);
-      expect(Tree.formatError(result.error)).toBe(
+      assertErr(result, expectedError);
+      assertEqual(
+        Tree.formatError(result.error),
         "The value no is not a number.",
       );
-      expectErr(completeResult, expectedError);
-      expect(Tree.formatError(completeResult.error)).toBe(
+      assertErr(completeResult, expectedError);
+      assertEqual(
+        Tree.formatError(completeResult.error),
         "The value no is not a number.",
       );
-      expect(Tree.orNull(invalid)).toBeNull();
-      expectErr(inputResult, {
+      assertSame(Tree.orNull(invalid), null);
+      assertErr(inputResult, {
         type: "Object",
         reason: {
           kind: "Properties",
@@ -16859,14 +17979,15 @@ describe("lazy", () => {
           },
         },
       });
-      expect(Tree.parent.formatError(inputResult.error)).toBe(
+      assertEqual(
+        Tree.parent.formatError(inputResult.error),
         "A value 1 is not a string.",
       );
     });
   });
 
   describe("resolution", () => {
-    test("defers and caches mutually recursive definitions independently", () => {
+    it("defers and caches mutually recursive definitions independently", () => {
       interface Left {
         readonly label: string;
         readonly right?: Right;
@@ -16898,25 +18019,23 @@ describe("lazy", () => {
         },
       );
 
-      expect([leftResolutions, rightResolutions]).toEqual([0, 0]);
-      expect(Left.fromUnknown({ label: "left" })).toEqual(
-        ok({ label: "left" }),
-      );
-      expect([leftResolutions, rightResolutions]).toEqual([1, 0]);
+      assertEqual([leftResolutions, rightResolutions], [0, 0]);
+      assertEqual(Left.fromUnknown({ label: "left" }), ok({ label: "left" }));
+      assertEqual([leftResolutions, rightResolutions], [1, 0]);
 
       const value: Left = {
         label: "left",
         right: { count: 1, left: { label: "nested" } },
       };
 
-      expect(Left.fromUnknown(value)).toEqual(ok(value));
-      expect([leftResolutions, rightResolutions]).toEqual([1, 1]);
-      expect(Left.is(value)).toBe(true);
-      expect(Right.to(value.right!)).toEqual(value.right);
-      expect([leftResolutions, rightResolutions]).toEqual([1, 1]);
+      assertEqual(Left.fromUnknown(value), ok(value));
+      assertEqual([leftResolutions, rightResolutions], [1, 1]);
+      assertTrue(Left.is(value));
+      assertEqual(Right.to(value.right!), value.right);
+      assertEqual([leftResolutions, rightResolutions], [1, 1]);
     });
 
-    test("rejects reentrant definition resolution and caches the failure", () => {
+    it("rejects reentrant definition resolution and caches the failure", () => {
       let resolutions = 0;
       const Reentrant: LazyType<
         string,
@@ -16933,12 +18052,20 @@ describe("lazy", () => {
       const message =
         "A Lazy Type definition must not resolve itself while it is being created.";
 
-      expect(() => Reentrant.fromUnknown("value")).toThrow(message);
-      expect(() => Reentrant.fromUnknown("value")).toThrow(message);
-      expect(resolutions).toBe(1);
+      const firstError = assertThrowsInstanceOf(
+        () => Reentrant.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(firstError.message.includes(message));
+      const secondError = assertThrowsInstanceOf(
+        () => Reentrant.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(secondError.message.includes(message));
+      assertEqual(resolutions, 1);
     });
 
-    test("rejects a Lazy Type returned as another Lazy definition", () => {
+    it("rejects a Lazy Type returned as another Lazy definition", () => {
       let targetResolutions = 0;
       const Target = lazy(() => {
         targetResolutions++;
@@ -16946,13 +18073,19 @@ describe("lazy", () => {
       });
       const Alias = lazy(() => Target);
 
-      expect(() => Alias.fromUnknown("value")).toThrow(
-        "A Lazy Type definition must return a non-Lazy Type.",
+      const error = assertThrowsInstanceOf(
+        () => Alias.fromUnknown("value"),
+        Error,
       );
-      expect(targetResolutions).toBe(0);
+      assertTrue(
+        error.message.includes(
+          "A Lazy Type definition must return a non-Lazy Type.",
+        ),
+      );
+      assertEqual(targetResolutions, 0);
     });
 
-    test("rejects a localized Lazy Type returned as another Lazy definition", () => {
+    it("rejects a localized Lazy Type returned as another Lazy definition", () => {
       let targetResolutions = 0;
       const Target = lazy(() => {
         targetResolutions++;
@@ -16964,13 +18097,19 @@ describe("lazy", () => {
       ).test.Target;
       const Alias = lazy(() => LocalizedTarget);
 
-      expect(() => Alias.fromUnknown("value")).toThrow(
-        "A Lazy Type definition must return a non-Lazy Type.",
+      const error = assertThrowsInstanceOf(
+        () => Alias.fromUnknown("value"),
+        Error,
       );
-      expect(targetResolutions).toBe(0);
+      assertTrue(
+        error.message.includes(
+          "A Lazy Type definition must return a non-Lazy Type.",
+        ),
+      );
+      assertEqual(targetResolutions, 0);
     });
 
-    test("rejects a Lazy Type in its definition parent chain", () => {
+    it("rejects a Lazy Type in its definition parent chain", () => {
       const ParentCycle: LazyType<
         string,
         string,
@@ -16981,12 +18120,18 @@ describe("lazy", () => {
         false
       > = lazy(() => createType("ParentCycle", ParentCycle, ok));
 
-      expect(() => ParentCycle.fromUnknown("value")).toThrow(
-        "A Lazy Type definition must not use a Lazy Type in its parent chain.",
+      const error = assertThrowsInstanceOf(
+        () => ParentCycle.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(
+        error.message.includes(
+          "A Lazy Type definition must not use a Lazy Type in its parent chain.",
+        ),
       );
     });
 
-    test("rejects a localized Lazy Type in its definition parent chain", () => {
+    it("rejects a localized Lazy Type in its definition parent chain", () => {
       let targetResolutions = 0;
       const Target = lazy(() => {
         targetResolutions++;
@@ -17000,13 +18145,19 @@ describe("lazy", () => {
         createType("LocalizedParentCycle", LocalizedTarget.parent, ok),
       );
 
-      expect(() => Alias.fromUnknown("value")).toThrow(
-        "A Lazy Type definition must not use a Lazy Type in its parent chain.",
+      const error = assertThrowsInstanceOf(
+        () => Alias.fromUnknown("value"),
+        Error,
       );
-      expect(targetResolutions).toBe(0);
+      assertTrue(
+        error.message.includes(
+          "A Lazy Type definition must not use a Lazy Type in its parent chain.",
+        ),
+      );
+      assertEqual(targetResolutions, 0);
     });
 
-    test("rejects an unguarded self-reference as the first Union member", () => {
+    it("rejects an unguarded self-reference as the first Union member", () => {
       interface SelfError extends TypeError<"Union"> {
         readonly errors: NonEmptyReadonlyArray<
           | UnionMemberError<SelfError, 0>
@@ -17022,12 +18173,20 @@ describe("lazy", () => {
       const message =
         "A Lazy Type definition must place every Lazy Type behind a structural boundary.";
 
-      expect(() => Self.fromUnknown("value")).toThrow(message);
-      expect(() => Self.fromUnknown("value")).toThrow(message);
-      expect(resolutions).toBe(1);
+      const firstError = assertThrowsInstanceOf(
+        () => Self.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(firstError.message.includes(message));
+      const secondError = assertThrowsInstanceOf(
+        () => Self.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(secondError.message.includes(message));
+      assertEqual(resolutions, 1);
     });
 
-    test("rejects an unguarded self-reference as the second Union member", () => {
+    it("rejects an unguarded self-reference as the second Union member", () => {
       interface SelfError extends TypeError<"Union"> {
         readonly errors: NonEmptyReadonlyArray<
           | UnionMemberError<TypeOfError<"String">, 0>
@@ -17043,12 +18202,20 @@ describe("lazy", () => {
       const message =
         "A Lazy Type definition must place every Lazy Type behind a structural boundary.";
 
-      expect(() => Self.fromUnknown("value")).toThrow(message);
-      expect(() => Self.fromUnknown("value")).toThrow(message);
-      expect(resolutions).toBe(1);
+      const firstError = assertThrowsInstanceOf(
+        () => Self.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(firstError.message.includes(message));
+      const secondError = assertThrowsInstanceOf(
+        () => Self.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(secondError.message.includes(message));
+      assertEqual(resolutions, 1);
     });
 
-    test("rejects an unguarded self-reference through Transform output", () => {
+    it("rejects an unguarded self-reference through Transform output", () => {
       let resolutions = 0;
       const Self: LazyType<
         string,
@@ -17068,20 +18235,28 @@ describe("lazy", () => {
       const message =
         "A Lazy Type definition must place every Lazy Type behind a structural boundary.";
 
-      expect(() => Self.fromUnknown("value")).toThrow(message);
-      expect(() => Self.fromUnknown("value")).toThrow(message);
-      expect(resolutions).toBe(1);
+      const firstError = assertThrowsInstanceOf(
+        () => Self.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(firstError.message.includes(message));
+      const secondError = assertThrowsInstanceOf(
+        () => Self.fromUnknown("value"),
+        Error,
+      );
+      assertTrue(secondError.message.includes(message));
+      assertEqual(resolutions, 1);
     });
   });
 });
 
 describe("Data", () => {
-  test("exposes its exact recursive contract", () => {
-    expectTypeOf(Data).toEqualTypeOf<DataType>();
-    expectTypeOf<typeof Data.Input>().toEqualTypeOf<Data>();
-    expectTypeOf<typeof Data.Output>().toEqualTypeOf<Data>();
-    expectTypeOf<typeof Data.Error>().toEqualTypeOf<DataError>();
-    expectTypeOf(Data.parent).toEqualTypeOf<null>();
+  it("exposes its exact recursive contract", () => {
+    assertType<typeof Data, DataType>();
+    assertType<typeof Data.Input, Data>();
+    assertType<typeof Data.Output, Data>();
+    assertType<typeof Data.Error, DataError>();
+    assertType<typeof Data.parent, null>();
 
     interface User {
       readonly name: string;
@@ -17096,31 +18271,25 @@ describe("Data", () => {
       readonly run: () => void;
     }
 
-    expectTypeOf<User>().not.toExtend<Data>();
-    expectTypeOf<IsData<User>>().toEqualTypeOf<true>();
-    expectTypeOf<IsData<Node>>().toEqualTypeOf<true>();
-    expectTypeOf<IsData<InvalidNode>>().toEqualTypeOf<false>();
-    expectTypeOf<
-      IsData<string | ReadonlyArray<number>>
-    >().toEqualTypeOf<true>();
-    expectTypeOf<IsData<string | (() => void)>>().toEqualTypeOf<false>();
-    expectTypeOf<IsData<symbol>>().toEqualTypeOf<false>();
-    expectTypeOf<
-      IsData<{ readonly [key: symbol]: string }>
-    >().toEqualTypeOf<false>();
-    expectTypeOf<IsData<any>>().toEqualTypeOf<false>();
-    expectTypeOf<IsData<unknown>>().toEqualTypeOf<false>();
-    expectTypeOf<IsData<object>>().toEqualTypeOf<false>();
-    expectTypeOf<IsData<NonNullable<unknown>>>().toEqualTypeOf<false>();
-    expectTypeOf<
-      IsData<Readonly<Record<never, never>>>
-    >().toEqualTypeOf<false>();
-    expectTypeOf<IsData<globalThis.ArrayBuffer>>().toEqualTypeOf<false>();
-    expectTypeOf<IsData<never>>().toEqualTypeOf<true>();
-    expectTypeOf<IsData<void>>().toEqualTypeOf<true>();
+    assertType<User extends Data ? true : false, false>();
+    assertType<IsData<User>, true>();
+    assertType<IsData<Node>, true>();
+    assertType<IsData<InvalidNode>, false>();
+    assertType<IsData<string | ReadonlyArray<number>>, true>();
+    assertType<IsData<string | (() => void)>, false>();
+    assertType<IsData<symbol>, false>();
+    assertType<IsData<{ readonly [key: symbol]: string }>, false>();
+    assertType<IsData<any>, false>();
+    assertType<IsData<unknown>, false>();
+    assertType<IsData<object>, false>();
+    assertType<IsData<NonNullable<unknown>>, false>();
+    assertType<IsData<Readonly<Record<never, never>>>, false>();
+    assertType<IsData<globalThis.ArrayBuffer>, false>();
+    assertType<IsData<never>, true>();
+    assertType<IsData<void>, true>();
   });
 
-  test("accepts supported Data without changing identity", () => {
+  it("accepts supported Data without changing identity", () => {
     const nullPrototype = globalThis.Object.assign(
       globalThis.Object.create(null) as { value?: Data },
       { value: 1 },
@@ -17154,15 +18323,15 @@ describe("Data", () => {
     for (const value of values) {
       const result = Data.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(Data.is(result.value)).toBe(true);
-      expect(Data.to(result.value)).toBe(value);
-      expect(() => globalThis.structuredClone(value)).not.toThrow();
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertTrue(Data.is(result.value));
+      assertSame(Data.to(result.value), value);
+      globalThis.structuredClone(value);
     }
   });
 
-  test("accepts cyclic and shared data graphs", () => {
+  it("accepts cyclic and shared data graphs", () => {
     const object: { self?: Data } = {};
     const array: Array<Data> = [];
     const set = new globalThis.Set<Data>();
@@ -17175,12 +18344,12 @@ describe("Data", () => {
     const shared = { value: 1 };
     const value = { object, array, set, map, first: shared, second: shared };
 
-    expectOk(Data.fromUnknown(value), value);
-    expect(Data.is(value)).toBe(true);
-    expect(Data.to(value)).toBe(value);
+    assertOk(Data.fromUnknown(value), value);
+    assertTrue(Data.is(value));
+    assertSame(Data.to(value), value);
   });
 
-  test("reports invalid leaves with their paths", () => {
+  it("reports invalid leaves with their paths", () => {
     const symbol = globalThis.Symbol("symbol");
     const value = {
       array: [() => undefined],
@@ -17188,7 +18357,8 @@ describe("Data", () => {
       map: new globalThis.Map<unknown, unknown>([[() => undefined, /value/u]]),
     };
 
-    expect(Data.fromUnknown(value, { errors: "all" })).toEqual(
+    assertEqual(
+      Data.fromUnknown(value, { errors: "all" }),
       err({
         type: "Data",
         reason: {
@@ -17217,7 +18387,8 @@ describe("Data", () => {
       }),
     );
 
-    expect(Data.fromUnknown(symbol)).toEqual(
+    assertEqual(
+      Data.fromUnknown(symbol),
       err({
         type: "Data",
         reason: {
@@ -17234,12 +18405,12 @@ describe("Data", () => {
       /regexp/u,
       new globalThis.ArrayBuffer(),
     ]) {
-      expect(Data.fromUnknown(invalid).ok).toBe(false);
-      expect(Data.is(invalid)).toBe(false);
+      assertFalse(Data.fromUnknown(invalid).ok);
+      assertFalse(Data.is(invalid));
     }
   });
 
-  test("rejects detached and out-of-bounds Uint8Arrays", () => {
+  it("rejects detached and out-of-bounds Uint8Arrays", () => {
     const detachedBuffer = new globalThis.ArrayBuffer(1);
     const detached = new globalThis.Uint8Array(detachedBuffer);
     globalThis.structuredClone(detachedBuffer, {
@@ -17255,19 +18426,22 @@ describe("Data", () => {
     for (const value of [detached, outOfBounds]) {
       const result = Data.fromUnknown(value);
 
-      assert(!result.ok);
-      expect(result.error.reason.issues).toHaveLength(1);
+      assertErr(result);
+      assertLength(result.error.reason.issues, 1);
       const issue = result.error.reason.issues[0];
-      assert(issue.kind === "InvalidUint8Array");
-      expect(issue.path).toEqual([]);
-      expect(issue.value).toBe(value);
-      expect(Data.is(value)).toBe(false);
-      expect(Data.fromUnknown(value, { errors: "all" }).ok).toBe(false);
-      expect(() => globalThis.structuredClone(value)).toThrow();
+      assertSame(issue.kind, "InvalidUint8Array");
+      assertEqual(issue.path, []);
+      assertSame(issue.value, value);
+      assertFalse(Data.is(value));
+      assertFalse(Data.fromUnknown(value, { errors: "all" }).ok);
+      assertThrowsInstanceOf(
+        () => globalThis.structuredClone(value),
+        globalThis.DOMException,
+      );
     }
   });
 
-  test("rejects behavioral and hidden Object properties without reading them", () => {
+  it("rejects behavioral and hidden Object properties without reading them", () => {
     let reads = 0;
     const symbol = globalThis.Symbol("symbol");
     const value = globalThis.Object.defineProperties(
@@ -17284,7 +18458,8 @@ describe("Data", () => {
       },
     );
 
-    expect(Data.fromUnknown(value, { errors: "all" })).toEqual(
+    assertEqual(
+      Data.fromUnknown(value, { errors: "all" }),
       err({
         type: "Data",
         reason: {
@@ -17297,8 +18472,9 @@ describe("Data", () => {
         },
       }),
     );
-    expect(reads).toBe(0);
-    expect(Data.fromUnknown(value)).toEqual(
+    assertEqual(reads, 0);
+    assertEqual(
+      Data.fromUnknown(value),
       err({
         type: "Data",
         reason: {
@@ -17307,11 +18483,10 @@ describe("Data", () => {
         },
       }),
     );
-    expect(
+    assertEqual(
       Data.fromUnknown(
         globalThis.Object.defineProperty({}, "hidden", { value: 1 }),
       ),
-    ).toEqual(
       err({
         type: "Data",
         reason: {
@@ -17331,7 +18506,8 @@ describe("Data", () => {
         },
       },
     );
-    expect(Data.fromUnknown(tagged)).toEqual(
+    assertEqual(
+      Data.fromUnknown(tagged),
       err({
         type: "Data",
         reason: {
@@ -17342,14 +18518,15 @@ describe("Data", () => {
         },
       }),
     );
-    expect(reads).toBe(0);
+    assertEqual(reads, 0);
 
     class Model {
       readonly value = 1;
     }
 
     const model = new Model();
-    expect(Data.fromUnknown(model)).toEqual(
+    assertEqual(
+      Data.fromUnknown(model),
       err({
         type: "Data",
         reason: {
@@ -17369,7 +18546,8 @@ describe("Data", () => {
     class NullBase extends null {}
 
     const nullBase = globalThis.Object.create(NullBase.prototype) as NullBase;
-    expect(Data.fromUnknown(nullBase)).toEqual(
+    assertEqual(
+      Data.fromUnknown(nullBase),
       err({
         type: "Data",
         reason: {
@@ -17387,9 +18565,10 @@ describe("Data", () => {
     );
   });
 
-  test("rejects non-data Array representations", () => {
+  it("rejects non-data Array representations", () => {
     const sparse = createMutableArray<Data>(1);
-    expect(Data.fromUnknown(sparse)).toEqual(
+    assertEqual(
+      Data.fromUnknown(sparse),
       err({
         type: "Data",
         reason: {
@@ -17398,7 +18577,7 @@ describe("Data", () => {
         },
       }),
     );
-    expect(Data.fromUnknown(sparse, { errors: "all" }).ok).toBe(false);
+    assertFalse(Data.fromUnknown(sparse, { errors: "all" }).ok);
 
     let reads = 0;
     const accessor = createMutableArray<Data>(1);
@@ -17409,7 +18588,8 @@ describe("Data", () => {
         return 1;
       },
     });
-    expect(Data.fromUnknown(accessor)).toEqual(
+    assertEqual(
+      Data.fromUnknown(accessor),
       err({
         type: "Data",
         reason: {
@@ -17418,14 +18598,15 @@ describe("Data", () => {
         },
       }),
     );
-    expect(Data.fromUnknown(accessor, { errors: "all" }).ok).toBe(false);
-    expect(reads).toBe(0);
+    assertFalse(Data.fromUnknown(accessor, { errors: "all" }).ok);
+    assertEqual(reads, 0);
 
     const symbol = globalThis.Symbol("symbol");
     const excess = globalThis.Object.assign([1], { metadata: "important" });
     globalThis.Object.defineProperty(excess, symbol, { value: true });
-    expect(Data.fromUnknown(excess).ok).toBe(false);
-    expect(Data.fromUnknown(excess, { errors: "all" })).toEqual(
+    assertFalse(Data.fromUnknown(excess).ok);
+    assertEqual(
+      Data.fromUnknown(excess, { errors: "all" }),
       err({
         type: "Data",
         reason: {
@@ -17447,7 +18628,7 @@ describe("Data", () => {
     );
   });
 
-  test("rejects Set and Map own properties", () => {
+  it("rejects Set and Map own properties", () => {
     const set = globalThis.Object.assign(new globalThis.Set<Data>(), {
       metadata: true,
     });
@@ -17458,7 +18639,8 @@ describe("Data", () => {
       [set, "Set"],
       [map, "Map"],
     ] as const) {
-      expect(Data.fromUnknown(value)).toEqual(
+      assertEqual(
+        Data.fromUnknown(value),
         err({
           type: "Data",
           reason: {
@@ -17476,16 +18658,16 @@ describe("Data", () => {
     }
   });
 
-  test("validates deeply nested values without recursive calls", () => {
+  it("validates deeply nested values without recursive calls", () => {
     let value: Data = null;
 
     for (let depth = 0; depth < 20_000; depth++) value = [value];
 
-    expectOk(Data.fromUnknown(value), value);
-    expect(Data.is(value)).toBe(true);
+    assertOk(Data.fromUnknown(value), value);
+    assertTrue(Data.is(value));
   });
 
-  test("formats every issue", () => {
+  it("formats every issue", () => {
     const invalid = () => undefined;
     const issues: ReadonlyArray<readonly [DataIssue, string]> = [
       [
@@ -17529,33 +18711,35 @@ describe("Data", () => {
     ];
 
     for (const [issue, message] of issues) {
-      expect(
+      assertSame(
         Data.formatError({
           type: "Data",
           reason: { kind: "Issues", issues: [issue] },
         }),
-      ).toBe(message);
+        message,
+      );
     }
   });
 });
 
 describe("JsonValue", () => {
-  test("exposes exact recursive data contracts", () => {
-    expectTypeOf(JsonValue).toEqualTypeOf<JsonValueType>();
-    expectTypeOf<typeof JsonValue.Input>().toEqualTypeOf<JsonValue>();
-    expectTypeOf<typeof JsonValue.Output>().toEqualTypeOf<JsonValue>();
-    expectTypeOf<typeof JsonValue.Error>().toEqualTypeOf<JsonValueError>();
-    expectTypeOf(JsonValue.parent).toEqualTypeOf<null>();
+  it("exposes exact recursive data contracts", () => {
+    assertType<typeof JsonValue, JsonValueType>();
+    assertType<typeof JsonValue.Input, JsonValue>();
+    assertType<typeof JsonValue.Output, JsonValue>();
+    assertType<typeof JsonValue.Error, JsonValueError>();
+    assertType<typeof JsonValue.parent, null>();
 
-    expectTypeOf<JsonValueInput>().toEqualTypeOf<
+    assertType<
+      JsonValueInput,
       string | number | boolean | null | JsonArrayInput | JsonObjectInput
     >();
-    expectTypeOf<typeof JsonArray.Output>().toEqualTypeOf<JsonArray>();
-    expectTypeOf<typeof JsonObject.Output>().toEqualTypeOf<JsonObject>();
-    expectTypeOf(JsonObject).toEqualTypeOf<JsonObjectType>();
+    assertType<typeof JsonArray.Output, JsonArray>();
+    assertType<typeof JsonObject.Output, JsonObject>();
+    assertType<typeof JsonObject, JsonObjectType>();
   });
 
-  test("accepts exact JSON data without changing identity", () => {
+  it("accepts exact JSON data without changing identity", () => {
     const nullPrototype = globalThis.Object.assign(
       globalThis.Object.create(null) as JsonObjectInput,
       { value: 1 },
@@ -17578,48 +18762,51 @@ describe("JsonValue", () => {
     for (const value of values) {
       const result = JsonValue.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(JsonValue.is(result.value)).toBe(true);
-      expect(JsonValue.to(result.value)).toBe(result.value);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertTrue(JsonValue.is(result.value));
+      assertSame(JsonValue.to(result.value), result.value);
     }
   });
 
-  test("provides exact top-level Array and Object Types", () => {
+  it("provides exact top-level Array and Object Types", () => {
     const arrayValue: JsonArrayInput = [1, { nested: true }];
     const objectValue: JsonObjectInput = { value: [1, false, null] };
     const arrayResult = JsonArray.fromUnknown(arrayValue);
     const objectResult = JsonObject.fromUnknown(objectValue);
 
-    expectOk(arrayResult, arrayValue);
-    expectOk(objectResult, objectValue);
-    expect(JsonArray.is(arrayResult.value)).toBe(true);
-    expect(JsonObject.is(objectResult.value)).toBe(true);
-    expect(JsonArray.to(arrayResult.value)).toBe(arrayValue);
-    expect(JsonObject.to(objectResult.value)).toBe(objectValue);
+    assertOk(arrayResult, arrayValue);
+    assertOk(objectResult, objectValue);
+    assertTrue(JsonArray.is(arrayResult.value));
+    assertTrue(JsonObject.is(objectResult.value));
+    assertSame(JsonArray.to(arrayResult.value), arrayValue);
+    assertSame(JsonObject.to(objectResult.value), objectValue);
 
-    expect(JsonArray.fromUnknown({})).toEqual(
+    assertEqual(
+      JsonArray.fromUnknown({}),
       err({
         type: "Array",
         reason: { kind: "NotArray", value: {} },
       }),
     );
-    expect(JsonObject.fromUnknown([])).toEqual(
+    assertEqual(
+      JsonObject.fromUnknown([]),
       err({
         type: "Record",
         reason: { kind: "NotPlainRecord", value: [] },
       }),
     );
-    expect(JsonObject.fromUnknown({ value: undefined }).ok).toBe(false);
+    assertFalse(JsonObject.fromUnknown({ value: undefined }).ok);
   });
 
-  test("reports invalid leaves with their paths", () => {
+  it("reports invalid leaves with their paths", () => {
     const value = {
       nested: [1, globalThis.Number.POSITIVE_INFINITY],
       missing: undefined,
     };
 
-    expect(JsonValue.fromUnknown(value, { errors: "all" })).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(value, { errors: "all" }),
       err({
         type: "JsonValue",
         reason: {
@@ -17648,12 +18835,12 @@ describe("JsonValue", () => {
       globalThis.Number.NaN,
       globalThis.Number.NEGATIVE_INFINITY,
     ]) {
-      expect(JsonValue.fromUnknown(invalid).ok).toBe(false);
-      expect(JsonValue.is(invalid)).toBe(false);
+      assertFalse(JsonValue.fromUnknown(invalid).ok);
+      assertFalse(JsonValue.is(invalid));
     }
   });
 
-  test("rejects behavioral and hidden Object properties without reading them", () => {
+  it("rejects behavioral and hidden Object properties without reading them", () => {
     let reads = 0;
     const symbol = globalThis.Symbol("symbol");
     const value = globalThis.Object.defineProperties(
@@ -17670,7 +18857,8 @@ describe("JsonValue", () => {
       },
     );
 
-    expect(JsonValue.fromUnknown(value, { errors: "all" })).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(value, { errors: "all" }),
       err({
         type: "JsonValue",
         reason: {
@@ -17683,9 +18871,10 @@ describe("JsonValue", () => {
         },
       }),
     );
-    expect(reads).toBe(0);
+    assertEqual(reads, 0);
 
-    expect(JsonValue.fromUnknown(value)).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(value),
       err({
         type: "JsonValue",
         reason: {
@@ -17694,14 +18883,13 @@ describe("JsonValue", () => {
         },
       }),
     );
-    expect(
+    assertEqual(
       JsonValue.fromUnknown(
         globalThis.Object.defineProperty({}, "hidden", {
           enumerable: false,
           value: 1,
         }),
       ),
-    ).toEqual(
       err({
         type: "JsonValue",
         reason: {
@@ -17710,7 +18898,8 @@ describe("JsonValue", () => {
         },
       }),
     );
-    expect(JsonValue.fromUnknown({ [symbol]: 1 })).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown({ [symbol]: 1 }),
       err({
         type: "JsonValue",
         reason: {
@@ -17724,7 +18913,10 @@ describe("JsonValue", () => {
       readonly value = 1;
     }
 
-    expect(JsonValue.fromUnknown(new Model(), { errors: "all" })).toEqual(
+    const model = new Model();
+
+    assertEqual(
+      JsonValue.fromUnknown(model, { errors: "all" }),
       err({
         type: "JsonValue",
         reason: {
@@ -17734,7 +18926,7 @@ describe("JsonValue", () => {
               kind: "UnexpectedPrototype",
               path: [],
               container: "Object",
-              value: new Model(),
+              value: model,
             },
           ],
         },
@@ -17742,7 +18934,8 @@ describe("JsonValue", () => {
     );
 
     for (const value of setupUnexpectedPrototypeValues()) {
-      expect(JsonValue.fromUnknown(value)).toEqual(
+      assertEqual(
+        JsonValue.fromUnknown(value),
         err({
           type: "JsonValue",
           reason: {
@@ -17758,13 +18951,14 @@ describe("JsonValue", () => {
           },
         }),
       );
-      expect(JsonValue.is(value)).toBe(false);
+      assertFalse(JsonValue.is(value));
     }
   });
 
-  test("rejects non-data Array representations", () => {
+  it("rejects non-data Array representations", () => {
     const sparse = createMutableArray<JsonValueInput>(1);
-    expect(JsonValue.fromUnknown(sparse)).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(sparse),
       err({
         type: "JsonValue",
         reason: {
@@ -17783,7 +18977,8 @@ describe("JsonValue", () => {
         return 1;
       },
     });
-    expect(JsonValue.fromUnknown(accessor)).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(accessor),
       err({
         type: "JsonValue",
         reason: {
@@ -17792,7 +18987,7 @@ describe("JsonValue", () => {
         },
       }),
     );
-    expect(reads).toBe(0);
+    assertEqual(reads, 0);
 
     const symbol = globalThis.Symbol("symbol");
     const allIssues = createMutableArray<JsonValueInput>(3);
@@ -17802,7 +18997,8 @@ describe("JsonValue", () => {
       metadata: { enumerable: true, value: "important" },
       [symbol]: { enumerable: true, value: "important" },
     });
-    expect(JsonValue.fromUnknown(allIssues, { errors: "all" })).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(allIssues, { errors: "all" }),
       err({
         type: "JsonValue",
         reason: {
@@ -17819,7 +19015,8 @@ describe("JsonValue", () => {
     );
 
     const excess = globalThis.Object.assign([1], { metadata: "important" });
-    expect(JsonValue.fromUnknown(excess)).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(excess),
       err({
         type: "JsonValue",
         reason: {
@@ -17834,15 +19031,16 @@ describe("JsonValue", () => {
     const customPrototypeResult = JsonValue.fromUnknown(customPrototype, {
       errors: "all",
     });
-    expectOk(customPrototypeResult, customPrototype);
-    expect(customPrototypeResult.value).toBe(customPrototype);
-    expect(JsonValue.is(customPrototype)).toBe(true);
+    assertOk(customPrototypeResult, customPrototype);
+    assertSame(customPrototypeResult.value, customPrototype);
+    assertTrue(JsonValue.is(customPrototype));
   });
 
-  test("rejects circular references but allows shared subtrees", () => {
+  it("rejects circular references but allows shared subtrees", () => {
     const circularObject: { self?: JsonValueInput } = {};
     circularObject.self = circularObject;
-    expect(JsonValue.fromUnknown(circularObject)).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(circularObject),
       err({
         type: "JsonValue",
         reason: {
@@ -17860,7 +19058,8 @@ describe("JsonValue", () => {
 
     const circularArray: Array<JsonValueInput> = [];
     circularArray.push(circularArray);
-    expect(JsonValue.fromUnknown(circularArray)).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(circularArray),
       err({
         type: "JsonValue",
         reason: {
@@ -17875,7 +19074,8 @@ describe("JsonValue", () => {
         },
       }),
     );
-    expect(JsonValue.fromUnknown(circularArray, { errors: "all" })).toEqual(
+    assertEqual(
+      JsonValue.fromUnknown(circularArray, { errors: "all" }),
       err({
         type: "JsonValue",
         reason: {
@@ -17893,20 +19093,20 @@ describe("JsonValue", () => {
 
     const shared = { value: 1 };
     const value = { first: shared, second: shared };
-    expectOk(JsonValue.fromUnknown(value), value);
+    assertOk(JsonValue.fromUnknown(value), value);
   });
 
-  test("validates deeply nested values without recursive calls", () => {
+  it("validates deeply nested values without recursive calls", () => {
     let value: JsonValueInput = null;
 
     for (let depth = 0; depth < 20_000; depth++) value = [value];
 
     const result = JsonValue.fromUnknown(value);
-    expect(result.ok).toBe(true);
-    expect(JsonValue.is(value)).toBe(true);
+    assertOk(result);
+    assertTrue(JsonValue.is(value));
   });
 
-  test("asserts circular typed values as developer errors", () => {
+  it("asserts circular typed values as contract violations", () => {
     const value: Array<JsonValue> = [];
     value.push(value);
     const error: JsonValueError = {
@@ -17923,14 +19123,14 @@ describe("JsonValue", () => {
       },
     };
 
-    expectAssertionError(
+    assertAssertionError(
       () => JsonValue.to(value),
       "Expected JsonValue.",
       error,
     );
   });
 
-  test("formats every issue", () => {
+  it("formats every issue", () => {
     const issues: ReadonlyArray<readonly [JsonValueIssue, string]> = [
       [
         { kind: "InvalidType", path: [], value: undefined },
@@ -17973,18 +19173,19 @@ describe("JsonValue", () => {
     ];
 
     for (const [issue, message] of issues) {
-      expect(
+      assertSame(
         JsonValue.formatError({
           type: "JsonValue",
           reason: { kind: "Issues", issues: [issue] },
         }),
-      ).toBe(message);
+        message,
+      );
     }
   });
 });
 
 describe("Json", () => {
-  test("proves and preserves exact valid JSON text", () => {
+  it("proves and preserves exact valid JSON text", () => {
     for (const value of [
       "null",
       "true",
@@ -17998,63 +19199,67 @@ describe("Json", () => {
     ]) {
       const result = Json.fromUnknown(value);
 
-      expectOk(result, value);
-      expect(result.value).toBe(value);
-      expect(Json.is(result.value)).toBe(true);
+      assertOk(result, value);
+      assertSame(result.value, value);
+      assertTrue(Json.is(result.value));
     }
 
-    expect(Json.fromUnknown("{ invalid }")).toEqual(
+    assertEqual(
+      Json.fromUnknown("{ invalid }"),
       err({ type: "Json", value: "{ invalid }" }),
     );
-    expect(Json.fromUnknown("1e400")).toEqual(
+    assertEqual(
+      Json.fromUnknown("1e400"),
       err({ type: "Json", value: "1e400" }),
     );
-    expect(Json.fromUnknown(1)).toEqual(
+    assertEqual(
+      Json.fromUnknown(1),
       err({ type: "TypeOf", expected: "String", value: 1 }),
     );
-    expect(Json.formatError({ type: "Json", value: "invalid" })).toBe(
+    assertEqual(
+      Json.formatError({ type: "Json", value: "invalid" }),
       'The value "invalid" cannot be parsed into a JsonValue.',
     );
 
-    expectTypeOf<typeof Json.Input>().toEqualTypeOf<string>();
-    expectTypeOf<typeof Json.Output>().toEqualTypeOf<Json>();
-    expectTypeOf<typeof Json.Error>().toEqualTypeOf<JsonError>();
-    expect(Json.parent).toBe(String);
+    assertType<typeof Json.Input, string>();
+    assertType<typeof Json.Output, Json>();
+    assertType<typeof Json.Error, JsonError>();
+    assertSame(Json.parent, String);
   });
 
-  test("converts totally between proven text and exact data", () => {
+  it("converts totally between proven text and exact data", () => {
     const json = Json.orThrow(' { "value": 1 } ');
     const value = jsonToJsonValue(json);
 
-    expect(value).toEqual({ value: 1 });
-    expect(JsonValue.is(value)).toBe(true);
-    expectTypeOf(value).toEqualTypeOf<JsonValue>();
+    assertEqual(value, { value: 1 });
+    assertTrue(JsonValue.is(value));
+    assertType<typeof value, JsonValue>();
 
     const encoded = jsonValueToJson(value);
-    expect(encoded).toBe('{"value":1}');
-    expectTypeOf(encoded).toEqualTypeOf<Json>();
+    assertEqual(encoded, '{"value":1}');
+    assertType<typeof encoded, Json>();
   });
 });
 
 describe("JsonValueFromJson", () => {
-  test("decodes unknown strings and the proven Json boundary", () => {
+  it("decodes unknown strings and the proven Json boundary", () => {
     const fromUnknown = JsonValueFromJson.fromUnknown(
       ' { "value": [1, true, null] } ',
     );
-    expectOk(fromUnknown, { value: [1, true, null] });
-    expect(JsonValue.is(fromUnknown.value)).toBe(true);
+    assertOk(fromUnknown, { value: [1, true, null] });
+    assertTrue(JsonValue.is(fromUnknown.value));
 
     const json = Json.orThrow("1.000");
     const fromJson = JsonValueFromJson.from.parent(json);
-    expectTypeOf(fromJson).toEqualTypeOf<Result<JsonValue>>();
-    expectOk(fromJson, 1);
+    assertType<typeof fromJson, Result<JsonValue>>();
+    assertOk(fromJson, 1);
 
     const fromString = JsonValueFromJson.from.parent.parent("invalid");
-    expectTypeOf(fromString).toEqualTypeOf<Result<JsonValue, JsonError>>();
-    expect(fromString).toEqual(err({ type: "Json", value: "invalid" }));
+    assertType<typeof fromString, Result<JsonValue, JsonError>>();
+    assertEqual(fromString, err({ type: "Json", value: "invalid" }));
   });
 
-  test("canonically encodes JsonValue Outputs", () => {
+  it("canonically encodes JsonValue Outputs", () => {
     const value = jsonToJsonValue(Json.orThrow(' { "value": 1.000 } '));
     const values = getOrThrow(
       JsonValue.fromUnknown({
@@ -18064,45 +19269,47 @@ describe("JsonValueFromJson", () => {
       }),
     );
 
-    expect(JsonValueFromJson.to(value)).toBe('{"value":1}');
-    expectTypeOf(JsonValueFromJson.to(value)).toEqualTypeOf<Json>();
-    expect(jsonValueToJson(value)).toBe('{"value":1}');
-    expect(jsonValueToJson(values)).toBe(
+    assertEqual(JsonValueFromJson.to(value), '{"value":1}');
+    {
+      const actual = JsonValueFromJson.to(value);
+      assertType<typeof actual, Json>();
+    }
+    assertEqual(jsonValueToJson(value), '{"value":1}');
+    assertEqual(
+      jsonValueToJson(values),
       '{"escaped\\"key":[null,true,false,"line\\nbreak",1.5],"emptyArray":[],"emptyObject":{}}',
     );
   });
 
-  test("round-trips negative zero at every depth", () => {
+  it("round-trips negative zero at every depth", () => {
     const negativeZero = FiniteNumber.orThrow(-0);
     const value = getOrThrow(JsonValue.fromUnknown([-0, { value: -0 }]));
 
-    expect(jsonValueToJson(negativeZero)).toBe("-0");
-    expect(JsonValueFromJson.to(negativeZero)).toBe("-0");
-    expect(
-      globalThis.Object.is(JsonValueFromJson.orThrow("-0"), negativeZero),
-    ).toBe(true);
+    assertEqual(jsonValueToJson(negativeZero), "-0");
+    assertEqual(JsonValueFromJson.to(negativeZero), "-0");
+    assertSame(JsonValueFromJson.orThrow("-0"), negativeZero);
 
     const encoded = JsonValueFromJson.to(value);
-    expect(encoded).toBe('[-0,{"value":-0}]');
+    assertEqual(encoded, '[-0,{"value":-0}]');
 
     const decoded = getOrThrow(
       JsonArray.fromUnknown(JsonValueFromJson.orThrow(encoded)),
     );
-    expect(globalThis.Object.is(decoded[0], -0)).toBe(true);
+    assertTrue(globalThis.Object.is(decoded[0], -0));
     const object = getOrThrow(JsonObject.fromUnknown(decoded[1]));
-    expect(globalThis.Object.is(object.value, -0)).toBe(true);
+    assertSame(object.value, -0);
 
     const normalized = JsonValueFromJson.to(JsonValueFromJson.orThrow("-0E0"));
-    expect(normalized).toBe("-0");
+    assertEqual(normalized, "-0");
   });
 
-  test("encodes deeply nested Outputs without recursive calls", () => {
+  it("encodes deeply nested Outputs without recursive calls", () => {
     let value: JsonValue = null;
 
     for (let depth = 0; depth < 20_000; depth++) value = [value];
 
     const encoded = JsonValueFromJson.to(value);
-    expect(encoded.length).toBe(40_004);
+    assertLength(encoded, 40_004);
 
     let decoded = JsonValueFromJson.orThrow(encoded);
     let depth = 0;
@@ -18111,13 +19318,13 @@ describe("JsonValueFromJson", () => {
       decoded = decoded[0];
     }
 
-    expect(depth).toBe(20_000);
-    expect(decoded).toBe(null);
+    assertEqual(depth, 20_000);
+    assertSame(decoded, null);
   });
 });
 
 describe("json", () => {
-  test("tracks the statically known CanonicalInput", () => {
+  it("tracks the statically known CanonicalInput", () => {
     const _One = literal(1);
     const Key = brand("Key", String);
     const _Values = record(Key, String);
@@ -18150,35 +19357,33 @@ describe("json", () => {
       sequence: Int64FromInt64String,
     });
 
-    expectTypeOf<typeof Number.CanonicalInput>().toEqualTypeOf<number>();
-    expectTypeOf<
-      typeof NonNaNNumber.CanonicalInput
-    >().toEqualTypeOf<NonNaNNumber>();
-    expectTypeOf<
-      typeof FiniteNumber.CanonicalInput
-    >().toEqualTypeOf<FiniteNumber>();
-    expectTypeOf<typeof Age.CanonicalInput>().toEqualTypeOf<Age>();
-    expectTypeOf<
-      typeof Int64FromInt64String.CanonicalInput
-    >().toEqualTypeOf<Int64String>();
-    expectTypeOf<
-      typeof FiniteThroughTransform.CanonicalInput
-    >().toEqualTypeOf<FiniteNumber>();
-    expectTypeOf<
-      typeof _RefinedFiniteThroughTransform.CanonicalInput
-    >().toEqualTypeOf<FiniteNumber>();
-    expectTypeOf<
-      typeof _FiniteAfterNumberTransform.CanonicalInput
-    >().toEqualTypeOf<number>();
-    expectTypeOf<typeof _One.CanonicalInput>().toEqualTypeOf<1>();
-    expectTypeOf<typeof _Values.CanonicalInput>().toExtend<
-      typeof _Values.Input
+    assertType<typeof Number.CanonicalInput, number>();
+    assertType<typeof NonNaNNumber.CanonicalInput, NonNaNNumber>();
+    assertType<typeof FiniteNumber.CanonicalInput, FiniteNumber>();
+    assertType<typeof Age.CanonicalInput, Age>();
+    assertType<typeof Int64FromInt64String.CanonicalInput, Int64String>();
+    assertType<typeof FiniteThroughTransform.CanonicalInput, FiniteNumber>();
+    assertType<
+      typeof _RefinedFiniteThroughTransform.CanonicalInput,
+      FiniteNumber
     >();
-    expectTypeOf<typeof FiniteNumber.CanonicalInput>().toExtend<
-      typeof FiniteNumber.Input
+    assertType<typeof _FiniteAfterNumberTransform.CanonicalInput, number>();
+    assertType<typeof _One.CanonicalInput, 1>();
+    assertType<
+      typeof _Values.CanonicalInput extends typeof _Values.Input ? true : false,
+      true
     >();
-    expectTypeOf<typeof Int64FromInt64String.CanonicalInput>().toExtend<
-      typeof Int64FromInt64String.Input
+    assertType<
+      typeof FiniteNumber.CanonicalInput extends typeof FiniteNumber.Input
+        ? true
+        : false,
+      true
+    >();
+    assertType<
+      typeof Int64FromInt64String.CanonicalInput extends typeof Int64FromInt64String.Input
+        ? true
+        : false,
+      true
     >();
     interface PersonCanonicalInput {
       readonly name: string;
@@ -18186,18 +19391,19 @@ describe("json", () => {
       readonly sequence: Int64String;
     }
 
-    expectTypeOf<
-      typeof Person.CanonicalInput
-    >().toExtend<PersonCanonicalInput>();
-    expectTypeOf<PersonCanonicalInput>().toExtend<
-      typeof Person.CanonicalInput
+    assertType<
+      typeof Person.CanonicalInput extends PersonCanonicalInput ? true : false,
+      true
     >();
-    expectTypeOf<typeof Person.CanonicalInput>().toExtend<
-      typeof Person.Input
+    assertType<
+      PersonCanonicalInput extends typeof Person.CanonicalInput ? true : false,
+      true
     >();
-    expectTypeOf(Person.to).returns.toEqualTypeOf<
-      typeof Person.CanonicalInput
+    assertType<
+      typeof Person.CanonicalInput extends typeof Person.Input ? true : false,
+      true
     >();
+    assertType<ReturnType<typeof Person.to>, typeof Person.CanonicalInput>();
 
     const compileTimeAssertions = () => {
       type InvalidCanonicalInput = Type<
@@ -18212,17 +19418,22 @@ describe("json", () => {
         number
       >;
 
-      expectTypeOf<InvalidCanonicalInput>().toBeObject();
+      assertType<InvalidCanonicalInput extends object ? true : false, true>();
 
       // The encoder's actual image is finite, but CanonicalInput is number.
       // @ts-expect-error Type CanonicalInput must be JSON-compatible.
       json(_FiniteAfterNumberTransform, "FiniteAfterNumberTransformJson");
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("creates a branded Json Type and total typed conversions", () => {
+  it("creates a branded Json Type and total typed conversions", () => {
     const Person = object({
       name: String,
       age: Age,
@@ -18236,77 +19447,73 @@ describe("json", () => {
     type PersonJson = typeof PersonJson.Output;
     const person = Person.orThrow({ name: "Ada", age: 42, sequence: "1" });
 
-    expectTypeOf<typeof PersonJson.Input>().toEqualTypeOf<string>();
-    expectTypeOf<PersonJson>().toEqualTypeOf<Json & Brand<"PersonJson">>();
-    expectTypeOf(personToPersonJson).toEqualTypeOf<
-      (value: Person) => PersonJson
-    >();
-    expectTypeOf(personJsonToPerson).toEqualTypeOf<
-      (value: PersonJson) => Person
-    >();
-    expectTypeOf(person.sequence).toEqualTypeOf<Int64>();
+    assertType<typeof PersonJson.Input, string>();
+    assertType<PersonJson, Json & Brand<"PersonJson">>();
+    assertType<typeof personToPersonJson, (value: Person) => PersonJson>();
+    assertType<typeof personJsonToPerson, (value: PersonJson) => Person>();
+    assertType<typeof person.sequence, Int64>();
 
     const personJson = personToPersonJson(person);
 
-    expectTypeOf(personJson).toEqualTypeOf<PersonJson>();
-    expect(personJson).toBe('{"name":"Ada","age":42,"sequence":"1"}');
-    expect(personJsonToPerson(personJson)).toEqual(person);
-    expectTypeOf(personJsonToPerson(personJson)).toEqualTypeOf<Person>();
-    expectOk(PersonJson.fromUnknown(personJson), personJson);
-    expect(PersonJson.is(personJson)).toBe(true);
+    assertType<typeof personJson, PersonJson>();
+    assertEqual(personJson, '{"name":"Ada","age":42,"sequence":"1"}');
+    assertEqual(personJsonToPerson(personJson), person);
+    {
+      const actual = personJsonToPerson(personJson);
+      assertType<typeof actual, Person>();
+    }
+    assertOk(PersonJson.fromUnknown(personJson), personJson);
+    assertTrue(PersonJson.is(personJson));
 
     const invalidJson = '{"name":"Ada","age":200,"sequence":"1"}';
     const invalid = PersonJson.fromUnknown(invalidJson);
 
-    assert(!invalid.ok);
-    expect(PersonJson.is(invalidJson)).toBe(false);
-    expect(PersonJson.is("{ invalid }")).toBe(false);
-    expect(invalid.error).toMatchObject({
-      type: "PersonJson",
-      error: { type: "Object" },
-    });
-    expect(PersonJson.formatError(invalid.error)).toBe(
+    assertErr(invalid);
+    assertFalse(PersonJson.is(invalidJson));
+    assertFalse(PersonJson.is("{ invalid }"));
+    assertSame(invalid.error.type, "PersonJson");
+    assertEqual(invalid.error.error.type, "Object");
+    assertEqual(
+      PersonJson.formatError(invalid.error),
       "The value 200 must be less than 200.",
     );
   });
 
-  test("preserves the Json and String from boundaries", () => {
+  it("preserves the Json and String from boundaries", () => {
     const Value = object({ count: Int });
     const [ValueJson] = json(Value, "ValueJson");
     const invalidValue = Json.orThrow('{"count":1.5}');
     const invalidValueResult = ValueJson.from.parent(invalidValue);
 
-    expect(invalidValueResult).toMatchObject({
-      ok: false,
-      error: {
-        type: "ValueJson",
-        error: { type: "Object" },
-      },
-    });
-    expect(ValueJson.from.parent.parent("{ invalid }")).toEqual(
+    assertErr(invalidValueResult);
+    assertSame(invalidValueResult.error.type, "ValueJson");
+    assertEqual(invalidValueResult.error.error.type, "Object");
+    assertEqual(
+      ValueJson.from.parent.parent("{ invalid }"),
       err({ type: "Json", value: "{ invalid }" }),
     );
-    expect(ValueJson.fromUnknown(1)).toEqual(
+    assertEqual(
+      ValueJson.fromUnknown(1),
       err({ type: "TypeOf", expected: "String", value: 1 }),
     );
-    expectAssertionError(
+    assertAssertionError(
       () => ValueJson.from.parent("{ invalid }" as Json),
       "Expected Json.",
       { type: "Json", value: "{ invalid }" },
     );
-    expectAssertionError(
+    assertAssertionError(
       () => ValueJson.from.parent(1 as unknown as Json),
       "Expected Json.",
       { type: "TypeOf", expected: "String", value: 1 },
     );
-    expectAssertionError(
+    assertAssertionError(
       () => ValueJson.from.parent.parent(1 as unknown as string),
       "Expected String.",
       { type: "TypeOf", expected: "String", value: 1 },
     );
   });
 
-  test("parses once before validating the represented Type", async () => {
+  it("parses once before validating the represented Type", async () => {
     const Value = object({ count: Int });
     const [ValueJson, valueToValueJson, valueJsonToValue] = json(
       Value,
@@ -18330,87 +19537,88 @@ describe("json", () => {
       first: encodedForComposition,
       second: encodedForComposition,
     });
-    const parse = vi.spyOn(globalThis.JSON, "parse");
+    const parse = mock.method(globalThis.JSON, "parse");
 
     try {
       const encoded = valueToValueJson(value);
-      expect(parse).toHaveBeenCalledTimes(1);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expectOk(ValueJson.fromUnknown(encoded), encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertOk(ValueJson.fromUnknown(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expect(ValueJson.is(encoded)).toBe(true);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertTrue(ValueJson.is(encoded));
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expect(await ValueJson["~standard"].validate(encoded)).toEqual({
+      parse.mock.resetCalls();
+      assertEqual(await ValueJson["~standard"].validate(encoded), {
         value: encoded,
       });
-      expect(parse).toHaveBeenCalledTimes(1);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expectOk(ValueJson.from(encoded), encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertOk(ValueJson.from(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expectOk(ValueJson.from.parent(encoded), encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertOk(ValueJson.from.parent(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expectOk(ValueJson.from.parent.parent(encoded), encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertOk(ValueJson.from.parent.parent(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expect(ValueJson.orThrow(encoded)).toBe(encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertSame(ValueJson.orThrow(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expect(ValueJson.orNull(encoded)).toBe(encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertSame(ValueJson.orNull(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expect(ValueJson.to(encoded)).toBe(encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertSame(ValueJson.to(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expect(ChildValueJson.orThrow(encoded)).toBe(encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertSame(ChildValueJson.orThrow(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
-      expect(Container.orThrow(container)).toEqual(container);
-      expect(parse).toHaveBeenCalledTimes(2);
+      parse.mock.resetCalls();
+      assertEqual(Container.orThrow(container), container);
+      assertEqual(parse.mock.callCount(), 2);
 
-      parse.mockClear();
-      expect(Container.orNull(container)).toEqual(container);
-      expect(parse).toHaveBeenCalledTimes(2);
+      parse.mock.resetCalls();
+      assertEqual(Container.orNull(container), container);
+      assertEqual(parse.mock.callCount(), 2);
 
-      parse.mockClear();
-      expect(ContainerJson.orThrow(containerJson)).toBe(containerJson);
-      expect(parse).toHaveBeenCalledTimes(3);
+      parse.mock.resetCalls();
+      assertSame(ContainerJson.orThrow(containerJson), containerJson);
+      assertEqual(parse.mock.callCount(), 3);
 
-      parse.mockClear();
-      expect(ContainerJson.orThrow(duplicateContainerJson)).toBe(
+      parse.mock.resetCalls();
+      assertSame(
+        ContainerJson.orThrow(duplicateContainerJson),
         duplicateContainerJson,
       );
-      expect(parse).toHaveBeenCalledTimes(3);
+      assertEqual(parse.mock.callCount(), 3);
 
-      parse.mockClear();
-      expect(valueJsonToValue(encoded)).toEqual(value);
-      expect(parse).toHaveBeenCalledTimes(1);
+      parse.mock.resetCalls();
+      assertEqual(valueJsonToValue(encoded), value);
+      assertEqual(parse.mock.callCount(), 1);
 
-      parse.mockClear();
+      parse.mock.resetCalls();
       const firstParsed = jsonToJsonValue(encoded);
       const secondParsed = jsonToJsonValue(encoded);
-      expect(firstParsed).not.toBe(secondParsed);
-      expect(parse).toHaveBeenCalledTimes(2);
+      assertFalse(globalThis.Object.is(firstParsed, secondParsed));
+      assertEqual(parse.mock.callCount(), 2);
     } finally {
-      parse.mockRestore();
+      parse.mock.restore();
     }
   });
 
-  test("preserves one-parse Json parent validation after localization", () => {
+  it("preserves one-parse Json parent validation after localization", () => {
     const [ValueJson] = json(String, "ValueJson");
     const LocalizedValueJson = localizeTypes(
       { ValueJson },
@@ -18422,17 +19630,17 @@ describe("json", () => {
       },
     ).test.ValueJson;
     const encoded = Json.orThrow('"value"');
-    const parse = vi.spyOn(globalThis.JSON, "parse");
+    const parse = mock.method(globalThis.JSON, "parse");
 
     try {
-      expectOk(LocalizedValueJson.from.parent(encoded), encoded);
-      expect(parse).toHaveBeenCalledTimes(1);
+      assertOk(LocalizedValueJson.from.parent(encoded), encoded);
+      assertEqual(parse.mock.callCount(), 1);
     } finally {
-      parse.mockRestore();
+      parse.mock.restore();
     }
   });
 
-  test("accepts only Types with a JSON-compatible canonical Input", () => {
+  it("accepts only Types with a JSON-compatible canonical Input", () => {
     const compileTimeAssertions = () => {
       interface StringTree {
         readonly value: string;
@@ -18792,10 +20000,15 @@ describe("json", () => {
       json(NonCanonicalArrayIndex, "NonCanonicalArrayIndexJson");
     };
 
-    expectTypeOf(compileTimeAssertions).toBeFunction();
+    assertType<
+      typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+        ? true
+        : false,
+      true
+    >();
   });
 
-  test("forwards ValidationOptions to the represented Type", () => {
+  it("forwards ValidationOptions to the represented Type", () => {
     const Model = object({ name: String, age: FiniteNumber });
     const [ModelJson] = json(Model, "ModelJson");
     const value = Json.orThrow('{"name":1,"age":"wrong"}');
@@ -18821,26 +20034,27 @@ describe("json", () => {
       },
     });
 
-    expect(ModelJson.fromUnknown(value, { errors: "all" })).toEqual(expected);
-    expect(ModelJson.from.parent(value, { errors: "all" })).toEqual(expected);
+    assertEqual(ModelJson.fromUnknown(value, { errors: "all" }), expected);
+    assertEqual(ModelJson.from.parent(value, { errors: "all" }), expected);
   });
 
-  test("reports every represented Type issue through Standard Schema", async () => {
+  it("reports every represented Type issue through Standard Schema", async () => {
     const Model = object({ name: String, age: FiniteNumber });
     const [ModelJson] = json(Model, "ModelJson");
 
-    expect(
+    assertEqual(
       await ModelJson["~standard"].validate('{"name":1,"age":"wrong"}'),
-    ).toEqual({
-      issues: [
-        { message: "A value 1 is not a string.", path: ["name"] },
-        {
-          message: 'A value "wrong" is not a number.',
-          path: ["age"],
-        },
-      ],
-    });
-    expect(await ModelJson["~standard"].validate("{ invalid }")).toEqual({
+      {
+        issues: [
+          { message: "A value 1 is not a string.", path: ["name"] },
+          {
+            message: 'A value "wrong" is not a number.',
+            path: ["age"],
+          },
+        ],
+      },
+    );
+    assertEqual(await ModelJson["~standard"].validate("{ invalid }"), {
       issues: [
         {
           message: 'The value "{ invalid }" cannot be parsed into a JsonValue.',
@@ -18850,7 +20064,7 @@ describe("json", () => {
     });
   });
 
-  test("localizes represented Type issues transparently", async () => {
+  it("localizes represented Type issues transparently", async () => {
     const Model = object({ name: String, active: Boolean });
     const [ModelJson] = json(Model, "ModelJson");
     const LocalizedModelJson = localizeTypes(
@@ -18858,43 +20072,42 @@ describe("json", () => {
       {
         test: {
           Boolean: (error) => {
-            expectTypeOf(error).toEqualTypeOf<TypeOfError<"Boolean">>();
+            assertType<typeof error, TypeOfError<"Boolean">>();
             return "Localized Boolean.";
           },
           Json: (error) => {
-            expectTypeOf(error).toEqualTypeOf<JsonError>();
+            assertType<typeof error, JsonError>();
             return "Localized Json.";
           },
           Object: () => "Localized Object.",
           String: (error) => {
-            expectTypeOf(error).toEqualTypeOf<TypeOfError<"String">>();
+            assertType<typeof error, TypeOfError<"String">>();
             return "Localized String.";
           },
         },
       },
     ).test.ModelJson;
 
-    expect(
+    assertEqual(
       await LocalizedModelJson["~standard"].validate(
         '{"name":1,"active":"wrong"}',
       ),
-    ).toEqual({
-      issues: [
-        { message: "Localized String.", path: ["name"] },
-        { message: "Localized Boolean.", path: ["active"] },
-      ],
-    });
-    expect(await LocalizedModelJson["~standard"].validate("[]")).toEqual({
+      {
+        issues: [
+          { message: "Localized String.", path: ["name"] },
+          { message: "Localized Boolean.", path: ["active"] },
+        ],
+      },
+    );
+    assertEqual(await LocalizedModelJson["~standard"].validate("[]"), {
       issues: [{ message: "Localized Object.", path: [] }],
     });
-    expect(
-      await LocalizedModelJson["~standard"].validate("{ invalid }"),
-    ).toEqual({
+    assertEqual(await LocalizedModelJson["~standard"].validate("{ invalid }"), {
       issues: [{ message: "Localized Json.", path: [] }],
     });
   });
 
-  test("asserts the encoded Json still decodes through the Type", () => {
+  it("asserts the encoded Json still decodes through the Type", () => {
     interface FrozenJsonObjectError extends TypeError<"FrozenJsonObject"> {
       readonly value: JsonObject;
     }
@@ -18922,8 +20135,8 @@ describe("json", () => {
     const encoded = jsonValueToJson(FrozenJsonObject.to(value));
     const result = FrozenJson.fromUnknown(encoded);
 
-    assert(!result.ok);
-    expectAssertionError(
+    assertErr(result);
+    assertAssertionError(
       () => frozenJsonObjectToFrozenJson(value),
       "Expected FrozenJson.",
       result.error,
@@ -18933,7 +20146,7 @@ describe("json", () => {
 
 describe("design decisions", () => {
   describe("typed inputs", () => {
-    test("protect append-only fields from incompatible component changes", () => {
+    it("protect append-only fields from incompatible component changes", () => {
       const compileTimeAssertions = () => {
         const Todo = object({ title: NonEmptyTrimmedString100 });
 
@@ -18964,10 +20177,15 @@ describe("design decisions", () => {
         return { inputOnChange, longerInputOnChange };
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("compose one weaker component output", () => {
+    it("compose one weaker component output", () => {
       const compileTimeAssertions = () => {
         const Todo = object({
           title: NonEmptyTrimmedString100,
@@ -18989,7 +20207,8 @@ describe("design decisions", () => {
             Todo.props.note.from.parent.parent(note),
             (note) => Todo.from({ title, note }),
           );
-          expectTypeOf(todo).toEqualTypeOf<
+          assertType<
+            typeof todo,
             Result<typeof Todo.Output, MaxLengthError<100> | MinLengthError<1>>
           >();
 
@@ -18999,10 +20218,15 @@ describe("design decisions", () => {
         return saveTodo;
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
 
-    test("compose trim-only component outputs", () => {
+    it("compose trim-only component outputs", () => {
       const compileTimeAssertions = () => {
         const Todo = object({
           title: NonEmptyTrimmedString100,
@@ -19019,27 +20243,33 @@ describe("design decisions", () => {
             (todo) => Todo.from(todo),
           );
 
-        expectTypeOf<ReturnType<typeof saveTodo>>().toEqualTypeOf<
+        assertType<
+          ReturnType<typeof saveTodo>,
           Result<typeof Todo.Output, MaxLengthError<100> | MinLengthError<1>>
         >();
 
         return saveTodo;
       };
 
-      expectTypeOf(compileTimeAssertions).toBeFunction();
+      assertType<
+        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
+          ? true
+          : false,
+        true
+      >();
     });
   });
 
   describe("assertions", () => {
-    test("separates explicit decoding from exact Output membership", () => {
+    it("separates explicit decoding from exact Output membership", () => {
       const NumberFromString = setupNumberFromString();
       const Model = object({ count: NumberFromString });
       const decoded = Model.fromUnknown({ count: "1" });
 
-      expectOk(decoded, { count: 1 });
-      expect(Model.is({ count: "1" })).toBe(false);
-      expect(Model.is(decoded.value)).toBe(true);
-      expect(Model.to({ count: 1 })).toEqual({ count: "1" });
+      assertOk(decoded, { count: 1 });
+      assertFalse(Model.is({ count: "1" }));
+      assertTrue(Model.is(decoded.value));
+      assertEqual(Model.to({ count: 1 }), { count: "1" });
 
       let reads = 0;
       const exotic: typeof Model.Output = globalThis.Object.defineProperty(
@@ -19055,7 +20285,7 @@ describe("design decisions", () => {
       );
 
       const result = Model.fromUnknown(exotic);
-      expectErr(result, {
+      assertErr(result, {
         type: "Object",
         reason: {
           kind: "Properties",
@@ -19067,27 +20297,27 @@ describe("design decisions", () => {
           },
         },
       });
-      expect(Model.is(exotic)).toBe(false);
-      expectAssertionError(
+      assertFalse(Model.is(exotic));
+      assertAssertionError(
         () => Model.to(exotic),
         "Expected Object.",
         result.error,
       );
-      expect(reads).toBe(0);
+      assertEqual(reads, 0);
     });
 
-    test("treat external invalidity as data and typed violations as bugs", () => {
+    it("treat external invalidity as data and typed violations as bugs", () => {
       const Todo = object({ title: NonEmptyTrimmedString100 });
 
       // Invalid external data is expected and remains a typed Result error.
-      expect(Todo.fromUnknown({ title: "" }).ok).toBe(false);
+      assertFalse(Todo.fromUnknown({ title: "" }).ok);
 
       const todo = {
         title: NonEmptyTrimmedString100.orThrow("Buy milk"),
       };
       const encodeTodoForStorage = (todo: typeof Todo.Output) => Todo.to(todo);
 
-      expect(encodeTodoForStorage(todo)).toBe(todo);
+      assertSame(encodeTodoForStorage(todo), todo);
 
       // TypeScript allows a widened object with extra properties. A developer
       // can therefore add derived data and reasonably believe it is stored.
@@ -19095,12 +20325,15 @@ describe("design decisions", () => {
         ...todo,
         titleSearchWords: todo.title.toLowerCase().split(" "),
       };
-      expectTypeOf(todoWithSearchWords).toExtend<typeof Todo.Output>();
+      assertType<
+        typeof todoWithSearchWords extends typeof Todo.Output ? true : false,
+        true
+      >();
 
       // Evolu does not silently discard code and data that the schema cannot
       // represent. The assertion exposes the broken application contract.
       const result = Todo.fromUnknown(todoWithSearchWords);
-      expectErr(result, {
+      assertErr(result, {
         type: "Object",
         reason: {
           kind: "Properties",
@@ -19109,7 +20342,7 @@ describe("design decisions", () => {
           },
         },
       });
-      expectAssertionError(
+      assertAssertionError(
         () => encodeTodoForStorage(todoWithSearchWords),
         "Expected Object.",
         result.error,

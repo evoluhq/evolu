@@ -80,7 +80,7 @@ export interface MessagePort<Input, Output = never> extends Disposable {
    *   port: consoleChannel.port1.native,
    * };
    *
-   * assertType<NativeMessagePort<ConsoleMessage>, typeof init.port>();
+   * assertType<typeof init.port, NativeMessagePort<ConsoleMessage>>();
    * ```
    */
   readonly native: NativeMessagePort<Input, Output>;

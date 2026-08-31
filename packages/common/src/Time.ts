@@ -394,7 +394,7 @@ export const performanceDurationBetween = (
  * const readableSchedule = spaced("1s");
  * const validatedSchedule = spaced(Millis.orThrow(1000));
  *
- * assertType<typeof validatedSchedule, typeof readableSchedule>();
+ * assertType<typeof readableSchedule, typeof validatedSchedule>();
  * ```
  */
 export type Duration = DurationLiteral | Millis;
@@ -413,7 +413,7 @@ export type Duration = DurationLiteral | Millis;
  * const readableSleep = sleep("1s");
  * const validatedSleep = sleep(PositiveMillis.orThrow(1000));
  *
- * assertType<typeof validatedSleep, typeof readableSleep>();
+ * assertType<typeof readableSleep, typeof validatedSleep>();
  * ```
  */
 export type PositiveDuration = DurationLiteral | PositiveMillis;

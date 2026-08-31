@@ -69,8 +69,8 @@ export const emptySet: ReadonlySet<never> = /*#__PURE__*/ new Set();
  * const values = createSet([1, 2, 3]);
  * const empty = createSet([] as ReadonlyArray<number>);
  *
- * assertType<NonEmptyReadonlySet<number>, typeof values>();
- * assertType<ReadonlySet<number>, typeof empty>();
+ * assertType<typeof values, NonEmptyReadonlySet<number>>();
+ * assertType<typeof empty, ReadonlySet<number>>();
  * assertEqual(values, new Set([1, 2, 3]));
  * ```
  *
@@ -124,7 +124,7 @@ export type NonEmptyReadonlySet<T> = ReadonlySet<T> & Brand<"NonEmpty">;
  * const set: ReadonlySet<number> = new Set([1, 2, 3]);
  * if (!isNonEmptySet(set)) throw new Error("Expected a non-empty set");
  *
- * assertType<NonEmptyReadonlySet<number>, typeof set>();
+ * assertType<typeof set, NonEmptyReadonlySet<number>>();
  * assertEqual(set.size, 3);
  * ```
  *
@@ -155,7 +155,7 @@ export const isNonEmptySet = <T>(
  * const added = addToSet(original, 3);
  * const unchanged = addToSet(original, 2);
  *
- * assertType<NonEmptyReadonlySet<number>, typeof added>();
+ * assertType<typeof added, NonEmptyReadonlySet<number>>();
  * assertEqual(added, new Set([1, 2, 3]));
  * assertTrue(unchanged !== original);
  * ```
@@ -221,7 +221,7 @@ export const deleteFromSet = <T>(
  * const doubled = mapSet(original, (x) => x * 2);
  * const parity = mapSet(original, (x) => x % 2);
  *
- * assertType<NonEmptyReadonlySet<number>, typeof doubled>();
+ * assertType<typeof doubled, NonEmptyReadonlySet<number>>();
  * assertEqual(doubled, new Set([2, 4, 6]));
  * assertEqual(parity, new Set([1, 0]));
  * ```
@@ -268,7 +268,7 @@ export function mapSet<T, U>(
  *   mixed,
  *   (value): value is string => typeof value === "string",
  * );
- * assertType<ReadonlySet<string>, typeof strings>();
+ * assertType<typeof strings, ReadonlySet<string>>();
  * assertEqual(strings, new Set(["a", "b"]));
  * ```
  *

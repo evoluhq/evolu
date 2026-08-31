@@ -76,7 +76,7 @@
  * });
  *
  * const result = await run(getUser(user.id));
- * assertType<Result<User, UserNotFoundError>, typeof result>();
+ * assertType<typeof result, Result<User, UserNotFoundError>>();
  * assertOk(result, user);
  * ```
  *
@@ -181,11 +181,11 @@
  * await using run = createRun();
  * const result = await run(getUserWithProfile("user-1"));
  * assertType<
+ *   typeof result,
  *   Result<
  *     { readonly user: User; readonly profile: Profile },
  *     UserNotFoundError | ProfileNotFoundError
- *   >,
- *   typeof result
+ *   >
  * >();
  * assertOk(result, {
  *   user: { id: "user-1", profileId: "profile-1" },
@@ -228,8 +228,8 @@
  *   );
  *
  * assertType<
- *   Task<string, RetryTaskError<FetchError | TimeoutError>>,
- *   ReturnType<typeof fetchWithRetry>
+ *   ReturnType<typeof fetchWithRetry>,
+ *   Task<string, RetryTaskError<FetchError | TimeoutError>>
  * >();
  * ```
  *
@@ -685,7 +685,7 @@ import {
   type RandomBytes,
   type RandomBytesDep,
 } from "./Crypto.ts";
-import { eqArrayStrict } from "./Eq.ts";
+import { eqArraySameValue } from "./Eq.ts";
 import { constTrue, constVoid, identity } from "./Function.ts";
 import type { fetch, NativeFetch, NativeFetchDep } from "./Http.ts";
 import {
@@ -742,7 +742,6 @@ import {
   type TestTimeDep,
 } from "./Time.ts";
 import {
-  assertType,
   createId,
   type InferType,
   maxPositiveInt,
@@ -1177,7 +1176,7 @@ export interface Run<D = unknown> {
    *
    * await using run = createRun();
    * const fiber = run.abortable(loadUser, { db });
-   * assertType<AbortableFiber<string, never, DbDep>, typeof fiber>();
+   * assertType<typeof fiber, AbortableFiber<string, never, DbDep>>();
    * fiber.abort();
    * const userResult = await fiber;
    * assertFalse(userResult.ok);
@@ -1629,7 +1628,7 @@ export interface DisposableRun<D = unknown>
  * const userResult = await fiber;
  * const snapshot = fiber.run.snapshot();
  *
- * assertType<Fiber<string, never>, typeof fiber>();
+ * assertType<typeof fiber, Fiber<string, never>>();
  * assertOk(userResult, "Ada");
  * assertEqual(snapshot.id, fiber.run.id);
  * ```
@@ -1710,7 +1709,7 @@ export type InferFiberDeps<TFiber extends AnyFiber> =
  * };
  *
  * const fiber = run.abortable<string, never>(fetchData);
- * assertType<AbortableFiber<string, never>, typeof fiber>();
+ * assertType<typeof fiber, AbortableFiber<string, never>>();
  * fiber.abort();
  * const result = await fiber;
  * assertFalse(result.ok);
@@ -2721,7 +2720,7 @@ const createRunInternal = <D extends object>(
       // concern. Attach this late so V8 captures the defect stack before any
       // catch observes the Fiber.
       void fiber.catch(constVoid);
-      // eslint-disable-next-line @typescript-eslint/only-throw-error -- AbortError is Task abort control flow; aborts intentionally carry no stack.
+      // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow; aborts intentionally carry no stack.
       throw taskExit.error;
     };
 
@@ -2743,13 +2742,13 @@ const createRunInternal = <D extends object>(
 
   const root = rootRun ?? run;
 
-  /* eslint-disable @typescript-eslint/no-unsafe-return -- Internal overload assignments implement public generics via TaskInternal. */
+  /* oxlint-disable typescript/no-unsafe-return -- Internal overload assignments implement public generics via TaskInternal. */
   run.orThrow = (async (task: TaskInternal, taskDeps?: object) =>
     getOrThrow(await run(task, taskDeps))) as Run<D>["orThrow"];
 
   run.ok = (async (task: TaskInternal, taskDeps?: object) =>
     getOk((await run(task, taskDeps)) as Result<any>)) as Run<D>["ok"];
-  /* eslint-enable @typescript-eslint/no-unsafe-return */
+  /* oxlint-enable typescript/no-unsafe-return */
 
   run.abortable = ((task: TaskInternal, deps?: object) =>
     run(task, deps, { abortable: true })) as Run<D>["abortable"];
@@ -2812,7 +2811,7 @@ const createRunInternal = <D extends object>(
 
     if (
       snapshot?.state !== state ||
-      !eqArrayStrict(snapshot.children, childSnapshots)
+      !eqArraySameValue(snapshot.children, childSnapshots)
     ) {
       snapshot = {
         id: run.id,
@@ -2855,7 +2854,7 @@ const createRunInternal = <D extends object>(
 
   run[Symbol.asyncDispose] = async (): Promise<void> => {
     await dispose();
-    // eslint-disable-next-line @typescript-eslint/only-throw-error -- AbortError is Task abort control flow; rethrowing it avoids reporting the finalizer defect twice in Task code.
+    // oxlint-disable-next-line typescript/only-throw-error -- AbortError is Task abort control flow; rethrowing it avoids reporting the finalizer defect twice in Task code.
     if (finalizerAbortError) throw finalizerAbortError;
   };
 
@@ -3017,7 +3016,7 @@ export type InferTasksOk<TTasks> = {
  *     collect: false,
  *   }),
  * );
- * assertType<Result<void, SaveUserFailedError>, typeof saveResult>();
+ * assertType<typeof saveResult, Result<void, SaveUserFailedError>>();
  * assertErr(saveResult, {
  *   type: "SaveUserFailed",
  *   userId: "missing",
@@ -3069,8 +3068,8 @@ export function all<const TTasks extends TaskRecord>(
  * await using run = createRun();
  * const dashboard = await run(all([fetchUser, fetchPosts]));
  * assertType<
- *   Result<readonly [User, ReadonlyArray<Post>]>,
- *   typeof dashboard
+ *   typeof dashboard,
+ *   Result<readonly [User, ReadonlyArray<Post>]>
  * >();
  * assertOk(dashboard, [{ id: "user-1" }, [{ id: "post-1" }]]);
  * ```
@@ -3116,8 +3115,8 @@ export function all<const TTasks extends ReadonlyArray<AnyTask>>(
  * const result = await run(all({ user: fetchUser, posts: fetchPosts }));
  *
  * assertType<
- *   Result<{ readonly user: User; readonly posts: ReadonlyArray<Post> }>,
- *   typeof result
+ *   typeof result,
+ *   Result<{ readonly user: User; readonly posts: ReadonlyArray<Post> }>
  * >();
  * assertOk(result, {
  *   user: { id: "user-1" },
@@ -3194,7 +3193,7 @@ export function all<
  *
  * await using run = createRun();
  * const result = await run(loadUsers);
- * assertType<Result<readonly [User, User]>, typeof result>();
+ * assertType<typeof result, Result<readonly [User, User]>>();
  * assertOk(result, [{ id: "user-1" }, { id: "user-2" }]);
  * ```
  */
@@ -3253,8 +3252,8 @@ export function all<
  * await using run = createRun();
  * const result = await run(loadUsersByRole);
  * assertType<
- *   Result<{ readonly admin: User; readonly reviewer: User }>,
- *   typeof result
+ *   typeof result,
+ *   Result<{ readonly admin: User; readonly reviewer: User }>
  * >();
  * assertOk(result, {
  *   admin: { id: "user-1" },
@@ -3362,13 +3361,13 @@ export type InferTasksSettled<TTasks> = {
  * await using run = createRun();
  * const results = await run(allSettled([loadProfile, loadActivity]));
  * assertType<
+ *   typeof results,
  *   Result<
  *     readonly [
  *       Result<string, ProfileNotFoundError>,
  *       Result<ReadonlyArray<string>>,
  *     ]
- *   >,
- *   typeof results
+ *   >
  * >();
  * assertOk(results, [
  *   { ok: false, error: { type: "ProfileNotFound" } },
@@ -3419,11 +3418,11 @@ export function allSettled<const TTasks extends ReadonlyArray<AnyTask>>(
  * );
  *
  * assertType<
+ *   typeof results,
  *   Result<{
  *     readonly user: Result<User>;
  *     readonly profile: Result<string, ProfileNotFoundError>;
- *   }>,
- *   typeof results
+ *   }>
  * >();
  * assertOk(results, {
  *   user: { ok: true, value: { id: "user-1" } },
@@ -3479,13 +3478,13 @@ export function allSettled<const TTasks extends TaskRecord>(
  * await using run = createRun();
  * const results = await run(loadUsers);
  * assertType<
+ *   typeof results,
  *   Result<
  *     readonly [
  *       Result<User, UserNotFoundError>,
  *       Result<User, UserNotFoundError>,
  *     ]
- *   >,
- *   typeof results
+ *   >
  * >();
  * assertOk(results, [
  *   { ok: true, value: { id: "user-1" } },
@@ -3554,11 +3553,11 @@ export function allSettled<
  * await using run = createRun();
  * const results = await run(loadUsersByRole);
  * assertType<
+ *   typeof results,
  *   Result<{
  *     readonly admin: Result<User, UserNotFoundError>;
  *     readonly reviewer: Result<User, UserNotFoundError>;
- *   }>,
- *   typeof results
+ *   }>
  * >();
  * assertOk(results, {
  *   admin: { ok: true, value: { id: "user-1" } },
@@ -3806,7 +3805,7 @@ export const sleep = (duration: PositiveDuration): Task<void> =>
  * await using run = createRun();
  *
  * const result = await run(timeout(waitForAbort, "1ms"));
- * assertType<Result<never, TimeoutError>, typeof result>();
+ * assertType<typeof result, Result<never, TimeoutError>>();
  * assertErr(result, timeoutError);
  * ```
  *
@@ -3928,8 +3927,8 @@ export interface RetryAttempt<E, Output> extends ScheduleStep<Output> {
  * await using run = createRun();
  * const result = await run(fetchWithRetry);
  * assertType<
- *   Result<string, RetryTaskError<ServiceUnavailableError>>,
- *   typeof result
+ *   typeof result,
+ *   Result<string, RetryTaskError<ServiceUnavailableError>>
  * >();
  * assertErr(result, {
  *   type: "RetryError",
@@ -4238,7 +4237,7 @@ export type InferTasksResult<TTasks extends NonEmptyReadonlyArray<AnyTask>> =
  * await using run = createRun();
  * const result = await run(any([unavailable, fallback]));
  *
- * assertType<Result<string, ServiceUnavailableError>, typeof result>();
+ * assertType<typeof result, Result<string, ServiceUnavailableError>>();
  * assertOk(result, "fallback");
  * assertTrue(fallbackStarted);
  * ```
@@ -4355,7 +4354,7 @@ export const any =
  * // Input order does not matter: the first settled Result wins, and the
  * // still-running loser is aborted.
  * const result = await run(race([slow, fast]));
- * assertType<Result<string>, typeof result>();
+ * assertType<typeof result, Result<string>>();
  * assertOk(result, "fast");
  * assertFalse(slowCompleted);
  * ```
@@ -4455,8 +4454,6 @@ export const firstN =
     InferTasksDeps<TTasks>
   > =>
   async (run) => {
-    assertType(PositiveInt, count);
-
     const values: Array<InferTaskOk<TTasks[number]>> = [];
     await run(
       each(
@@ -4534,8 +4531,6 @@ export const firstNSettled =
     InferTasksDeps<TTasks>
   > =>
   async (run) => {
-    assertType(PositiveInt, count);
-
     const results: Array<InferTasksResult<TTasks>> = [];
     await run(
       each(
@@ -4885,7 +4880,7 @@ export const yieldNow: Task<void> = async (run) => {
  *   return await run(waitForAbort);
  * };
  *
- * assertType<Task<never, never, ServerDep>, ReturnType<typeof serve>>();
+ * assertType<ReturnType<typeof serve>, Task<never, never, ServerDep>>();
  *
  * await using run = createRun();
  * const fiber = run.abortable(serve(), { port: 3000 });
@@ -5028,7 +5023,7 @@ export const waitForAbort: Task<never> = async (run) => {
  * const task: Task<ResultValue> = () => promise;
  *
  * assertTrue(promiseStarted);
- * assertType<Task<ResultValue>, typeof task>();
+ * assertType<typeof task, Task<ResultValue>>();
  * ```
  *
  * @group Lifetime
@@ -5358,7 +5353,7 @@ export interface Deferred<T, E = never> {
  * assertTrue(deferred.resolve(ok("ready")));
  *
  * const result = await fiber;
- * assertType<Result<string>, typeof result>();
+ * assertType<typeof result, Result<string>>();
  * assertOk(result, "ready");
  *
  * // A Deferred is one-shot: later resolutions are ignored, and future

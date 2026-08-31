@@ -62,7 +62,7 @@
  *
  * const leaderboard = sortScores([3, 1, 2]);
  * assertEqual(leaderboard, [1, 2, 3]);
- * assertType<NonEmptyReadonlyArray<number>, typeof leaderboard>();
+ * assertType<typeof leaderboard, NonEmptyReadonlyArray<number>>();
  * ```
  *
  * Sorting an empty array isn't expensive, but functions can have side effects
@@ -209,7 +209,7 @@ export const emptyArray: ReadonlyArray<never> = [];
  * }
  *
  * assertEqual(values, [0, 10, 20]);
- * assertType<Array<number>, typeof values>();
+ * assertType<typeof values, Array<number>>();
  * ```
  *
  * @group Constructors
@@ -238,7 +238,7 @@ export const createMutableArray = <T>(length: number): Array<T> =>
  *
  * const fromSet = arrayFrom(new Set([1, 2, 3]));
  * assertEqual(fromSet, [1, 2, 3]);
- * assertType<ReadonlyArray<number>, typeof fromSet>();
+ * assertType<typeof fromSet, ReadonlyArray<number>>();
  *
  * assertEqual(
  *   arrayFrom(3, (i) => i * 10),
@@ -302,7 +302,7 @@ export function arrayFrom<T>(
  *   })(),
  * );
  * assertEqual(fromAsyncIterable, [1, 2]);
- * assertType<ReadonlyArray<number>, typeof fromAsyncIterable>();
+ * assertType<typeof fromAsyncIterable, ReadonlyArray<number>>();
  * ```
  *
  * Unlike `Array.fromAsync`, there's no map parameter — map the result with
@@ -342,8 +342,8 @@ export const arrayFromAsync = async <T>(
  *   throw new Error("Expected values");
  * }
  *
- * assertType<NonEmptyArray<number>, typeof mutable>();
- * assertType<NonEmptyReadonlyArray<number>, typeof readonly>();
+ * assertType<typeof mutable, NonEmptyArray<number>>();
+ * assertType<typeof readonly, NonEmptyReadonlyArray<number>>();
  * assertEqual(firstInArray(readonly), 1);
  * ```
  *
@@ -375,7 +375,7 @@ export function isNonEmptyArray<T>(
  *
  * const values = appendToArray([1, 2, 3], 4);
  * assertEqual(values, [1, 2, 3, 4]);
- * assertType<NonEmptyReadonlyArray<number>, typeof values>();
+ * assertType<typeof values, NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -403,7 +403,7 @@ export const appendToArray = <T>(
  *
  * const values = prependToArray([2, 3], 1);
  * assertEqual(values, [1, 2, 3]);
- * assertType<NonEmptyReadonlyArray<number>, typeof values>();
+ * assertType<typeof values, NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -431,11 +431,11 @@ export const prependToArray = <T>(
  * const values: ReadonlyArray<number> = [1, 2, 3];
  * const indexed = mapArray(values, (value, index) => value + index);
  * assertEqual(indexed, [1, 3, 5]);
- * assertType<ReadonlyArray<number>, typeof indexed>();
+ * assertType<typeof indexed, ReadonlyArray<number>>();
  *
  * const nonEmpty: NonEmptyReadonlyArray<number> = [1, 2, 3];
  * const doubled = mapArray(nonEmpty, (x) => x * 2);
- * assertType<NonEmptyReadonlyArray<number>, typeof doubled>();
+ * assertType<typeof doubled, NonEmptyReadonlyArray<number>>();
  * ```
  *
  * The mapper receives `(item, index, array)`, matching native `Array.map`.
@@ -485,7 +485,7 @@ export function mapArray<T, U>(
  *   (value, index): NonEmptyReadonlyArray<number> => [value, index],
  * );
  * assertEqual(flattened, [1, 2, 3, 4]);
- * assertType<NonEmptyReadonlyArray<number>, typeof expanded>();
+ * assertType<typeof expanded, NonEmptyReadonlyArray<number>>();
  * assertEqual(expanded, [1, 0, 2, 1, 3, 2]);
  * ```
  *
@@ -567,8 +567,8 @@ export function flatMapArray<T, U>(
  * const fromRight = concatArrays([], nonEmpty);
  *
  * assertEqual(joined, [1, 2, 3, 4]);
- * assertType<NonEmptyReadonlyArray<number>, typeof fromLeft>();
- * assertType<NonEmptyReadonlyArray<number>, typeof fromRight>();
+ * assertType<typeof fromLeft, NonEmptyReadonlyArray<number>>();
+ * assertType<typeof fromRight, NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -628,7 +628,7 @@ export function concatArrays<T>(
  * ];
  * const positiveInts = filterArray(mixed, PositiveInt.is);
  * assertEqual(positiveInts, [42]);
- * assertType<ReadonlyArray<PositiveInt>, typeof positiveInts>();
+ * assertType<typeof positiveInts, ReadonlyArray<PositiveInt>>();
  * ```
  *
  * The predicate receives `(item, index, array)`, matching native
@@ -678,7 +678,7 @@ export function filterArray<T>(
  *   ],
  *   (item) => item.id,
  * );
- * assertType<NonEmptyReadonlyArray<number>, typeof numbers>();
+ * assertType<typeof numbers, NonEmptyReadonlyArray<number>>();
  * assertEqual(numbers, [1, 2, 3]);
  * assertEqual(people, [
  *   { id: 1, name: "Alice" },
@@ -755,8 +755,8 @@ export function dedupeArray<T>(
  * ];
  * const [positiveInts, strings] = partitionArray(mixed, PositiveInt.is);
  * assertEqual(positiveInts, [42]);
- * assertType<ReadonlyArray<PositiveInt>, typeof positiveInts>();
- * assertType<ReadonlyArray<NonEmptyTrimmedString>, typeof strings>();
+ * assertType<typeof positiveInts, ReadonlyArray<PositiveInt>>();
+ * assertType<typeof strings, ReadonlyArray<NonEmptyTrimmedString>>();
  * ```
  *
  * The predicate receives `(item, index, array)`.
@@ -808,7 +808,7 @@ export function partitionArray<T>(
  * const values: NonEmptyReadonlyArray<number> = [3, 1, 2];
  * const sorted = sortArray(values, (a, b) => a - b);
  * assertEqual(sorted, [1, 2, 3]);
- * assertType<NonEmptyReadonlyArray<number>, typeof sorted>();
+ * assertType<typeof sorted, NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -847,7 +847,7 @@ export function sortArray<T>(
  * const values: NonEmptyReadonlyArray<number> = [1, 2, 3];
  * const reversed = reverseArray(values);
  * assertEqual(reversed, [3, 2, 1]);
- * assertType<NonEmptyReadonlyArray<number>, typeof reversed>();
+ * assertType<typeof reversed, NonEmptyReadonlyArray<number>>();
  * ```
  *
  * @group Transformations
@@ -934,8 +934,8 @@ export type ZipArrayResult<T extends ReadonlyArray<ReadonlyArray<unknown>>> = {
  *   ],
  * );
  * assertType<
- *   NonEmptyReadonlyArray<Readonly<[number, string]>>,
- *   typeof pairs
+ *   typeof pairs,
+ *   NonEmptyReadonlyArray<Readonly<[number, string]>>
  * >();
  * ```
  *

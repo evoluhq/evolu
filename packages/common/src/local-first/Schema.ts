@@ -98,7 +98,7 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  * const ZodFiniteNumber = z
  *   .number()
  *   .transform((value): FiniteNumber => value as FiniteNumber);
- * assertType<FiniteNumber, z.output<typeof ZodFiniteNumber>>();
+ * assertType<z.output<typeof ZodFiniteNumber>, FiniteNumber>();
  *
  * const ZodSchema = {
  *   todo: {
@@ -492,12 +492,12 @@ export const evoluSchemaToSqliteSchema = <S extends EvoluSchema>(
  * );
  *
  * assertType<
+ *   typeof todosQuery.Row,
  *   {
  *     id: TodoId;
  *     title: NonEmptyTrimmedString100 | null;
  *     isCompleted: SqliteBoolean | null;
- *   },
- *   typeof todosQuery.Row
+ *   }
  * >();
  * ```
  */

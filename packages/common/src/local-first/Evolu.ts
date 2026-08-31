@@ -371,11 +371,11 @@ export interface Evolu<
    *   ).id;
    *
    * assertType<
-   *   [TodoId, TodoId],
    *   [
    *     ReturnType<typeof insertTodo>,
    *     ReturnType<typeof insertTodoAndNotify>,
-   *   ]
+   *   ],
+   *   [TodoId, TodoId]
    * >();
    * ```
    *
@@ -415,8 +415,8 @@ export interface Evolu<
    *   evolu.update("todo", { id: todoId, isDeleted: sqliteTrue }).id;
    *
    * assertType<
-   *   [TodoId, TodoId],
-   *   [ReturnType<typeof renameTodo>, ReturnType<typeof softDeleteTodo>]
+   *   [ReturnType<typeof renameTodo>, ReturnType<typeof softDeleteTodo>],
+   *   [TodoId, TodoId]
    * >();
    * ```
    *
@@ -459,7 +459,7 @@ export interface Evolu<
    *     title: NonEmptyTrimmedString100.orThrow("Learn Evolu"),
    *   }).id;
    *
-   * assertType<TodoId, ReturnType<typeof upsertTodo>>();
+   * assertType<ReturnType<typeof upsertTodo>, TodoId>();
    * ```
    *
    * @see {@link Mutation}
@@ -506,8 +506,8 @@ export interface Evolu<
    * };
    *
    * assertType<
-   *   Promise<QueryRows<typeof allTodos.Row>>,
-   *   ReturnType<typeof loadTodos>
+   *   ReturnType<typeof loadTodos>,
+   *   Promise<QueryRows<typeof allTodos.Row>>
    * >();
    * ```
    */
@@ -553,11 +553,11 @@ export interface Evolu<
    *   evolu.loadQueries([allTodos, firstTodo]);
    *
    * assertType<
+   *   ReturnType<typeof loadTodoQueries>,
    *   [
    *     Promise<QueryRows<typeof allTodos.Row>>,
    *     Promise<QueryRows<typeof firstTodo.Row>>,
-   *   ],
-   *   ReturnType<typeof loadTodoQueries>
+   *   ]
    * >();
    * ```
    */
@@ -596,7 +596,7 @@ export interface Evolu<
    *     onRows(evolu.getQueryRows(allTodos));
    *   });
    *
-   * assertType<Unsubscribe, ReturnType<typeof subscribeToTodos>>();
+   * assertType<ReturnType<typeof subscribeToTodos>, Unsubscribe>();
    * ```
    */
   readonly subscribeQuery: (
@@ -629,8 +629,8 @@ export interface Evolu<
    *   evolu.getQueryRows(allTodos);
    *
    * assertType<
-   *   QueryRows<typeof allTodos.Row>,
-   *   ReturnType<typeof getTodos>
+   *   ReturnType<typeof getTodos>,
+   *   QueryRows<typeof allTodos.Row>
    * >();
    * ```
    */

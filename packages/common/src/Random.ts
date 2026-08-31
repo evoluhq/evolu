@@ -34,7 +34,7 @@ export type RandomNumber = number & Brand<"RandomNumber">;
  * // For apps, use the Math.random-backed implementation.
  * const random = createRandom();
  * const value = random.next();
- * assertType<RandomNumber, typeof value>();
+ * assertType<typeof value, RandomNumber>();
  * assertTrue(value >= 0);
  * assertTrue(value < 1);
  *

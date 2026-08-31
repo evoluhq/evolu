@@ -28,7 +28,7 @@
  * try {
  *   throw new Error("Not found");
  * } catch (error) {
- *   assertType<unknown, typeof error>();
+ *   assertType<typeof error, unknown>();
  * }
  *
  * // With Result, errors are part of the return type.
@@ -130,8 +130,8 @@
  *
  * const profile = getCurrentProfile();
  * assertType<
- *   Result<Profile, UserNotFoundError | ProfileNotFoundError>,
- *   typeof profile
+ *   typeof profile,
+ *   Result<Profile, UserNotFoundError | ProfileNotFoundError>
  * >();
  * assertOk(profile, { userId: "user-1" });
  * ```
@@ -241,8 +241,8 @@ export type AnyResult = Result<any, any>;
  * const result = ok();
  * const count = ok(42);
  *
- * assertType<Result<void>, typeof result>();
- * assertType<Result<number>, typeof count>();
+ * assertType<typeof result, Result<void>>();
+ * assertType<typeof count, Result<number>>();
  * assertOk(result, undefined);
  * assertOk(count, 42);
  * ```
@@ -366,7 +366,7 @@ export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
  *
  * const count = getCount();
  * if (isOk(count)) {
- *   assertType<Ok<number>, typeof count>();
+ *   assertType<typeof count, Ok<number>>();
  *   assertEqual(count.value, 2);
  * }
  * ```
@@ -398,7 +398,7 @@ export const isOk = <T, E>(result: Result<T, E>): result is Ok<T> => result.ok;
  *
  * const count = getCount();
  * if (isErr(count)) {
- *   assertType<Err<CountUnavailableError>, typeof count>();
+ *   assertType<typeof count, Err<CountUnavailableError>>();
  *   assertErr(count, { type: "CountUnavailable" });
  * }
  * ```
@@ -452,7 +452,7 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
  *
  * // At app startup, crash if the config is invalid.
  * const config = getOrThrow(loadConfig());
- * assertType<Config, typeof config>();
+ * assertType<typeof config, Config>();
  * assertEqual(config.port, 3000);
  *
  * const thrown = trySync(() => getOrThrow(err({ type: "InvalidConfig" })));
@@ -515,7 +515,7 @@ export const getOrThrow = <T, E>(result: Result<T, E>): T => {
  * const user = getOrNull(findUser("user-1"));
  * const missingUser = getOrNull(findUser("missing"));
  *
- * assertType<User | null, typeof user>();
+ * assertType<typeof user, User | null>();
  * assertEqual(user, { id: "user-1" });
  * assertEqual(missingUser, null);
  * ```
@@ -545,7 +545,7 @@ export const getOrNull = <T, E>(result: Result<T, E>): T | null =>
  *
  * const getCount = (): Result<number> => ok(2);
  * const count = getOk(getCount());
- * assertType<number, typeof count>();
+ * assertType<typeof count, number>();
  * assertEqual(count, 2);
  * ```
  *
@@ -604,7 +604,7 @@ export const getOk = <T>(result: Result<T>): T => {
  * }
  *
  * const result = reserveSeat("B2");
- * assertType<Result<void, SeatUnavailableError>, typeof result>();
+ * assertType<typeof result, Result<void, SeatUnavailableError>>();
  * assertOk(result, undefined);
  * assertErr(reserveSeat("A1"), { type: "SeatUnavailable", seat: "A1" });
  * const databaseError = trySync(() => reserveSeat("B1"));
@@ -686,7 +686,7 @@ export function trySync<T, E>(
  * }
  *
  * const result = await reserveSeat("B2");
- * assertType<Result<void, SeatUnavailableError>, typeof result>();
+ * assertType<typeof result, Result<void, SeatUnavailableError>>();
  * assertOk(result, undefined);
  * assertErr(await reserveSeat("A1"), {
  *   type: "SeatUnavailable",
@@ -757,7 +757,7 @@ export async function tryAsync<T, E>(
  * interface ReadFailedError extends Typed<"ReadFailed"> {}
  *
  * const value = next(0);
- * assertType<NextResult<string, ReadFailedError, number>, typeof value>();
+ * assertType<typeof value, NextResult<string, ReadFailedError, number>>();
  * assertOk(value, "first");
  * assertErr(next(1), { type: "ReadFailed" });
  * assertErr(next(2), { type: "Done", done: 2 });
@@ -783,8 +783,8 @@ export type NextResult<A, E = never, D = void> = Result<A, E | Done<D>>;
  *
  * const withoutValue = done();
  * const withValue = done(42);
- * assertType<Done<void>, typeof withoutValue>();
- * assertType<Done<number>, typeof withValue>();
+ * assertType<typeof withoutValue, Done<void>>();
+ * assertType<typeof withValue, Done<number>>();
  * assertEqual(withoutValue, { type: "Done", done: undefined });
  * assertEqual(withValue, { type: "Done", done: 42 });
  * ```
@@ -833,7 +833,7 @@ export function done<D>(value?: D): Done<D> {
  *
  * interface ReadFailedError extends Typed<"ReadFailed"> {}
  *
- * assertType<ReadFailedError, ExcludeDone<Errors>>();
+ * assertType<ExcludeDone<Errors>, ReadFailedError>();
  * ```
  *
  * @group Pull
@@ -860,7 +860,7 @@ export type ExcludeDone<E> = Exclude<E, Done<any>>;
  *
  * interface ReadFailedError extends Typed<"ReadFailed"> {}
  *
- * assertType<Done<number>, OnlyDone<Errors>>();
+ * assertType<OnlyDone<Errors>, Done<number>>();
  * ```
  *
  * @group Pull
@@ -884,7 +884,7 @@ export type OnlyDone<E> = Extract<E, Done<any>>;
  *
  * interface ReadFailedError extends Typed<"ReadFailed"> {}
  *
- * assertType<number, InferDone<ReadResult>>();
+ * assertType<InferDone<ReadResult>, number>();
  * ```
  *
  * @group Pull
@@ -936,8 +936,8 @@ export type InferDone<R extends Result<any, any>> =
  * const user: Result<User, UserNotFoundError> = ok({ id: "user-1" });
  * const profile = flatMapResult(user, ({ id }) => getProfile(id));
  * assertType<
- *   Result<Profile, UserNotFoundError | ProfileNotFoundError>,
- *   typeof profile
+ *   typeof profile,
+ *   Result<Profile, UserNotFoundError | ProfileNotFoundError>
  * >();
  * assertOk(profile, { userId: "user-1" });
  * ```
@@ -981,11 +981,11 @@ export const flatMapResult = <T, E, U, F>(
  *
  * const values = allResult([getCount(), getLabel()]);
  * assertType<
+ *   typeof values,
  *   Result<
  *     readonly [number, string],
  *     CountUnavailableError | LabelUnavailableError
- *   >,
- *   typeof values
+ *   >
  * >();
  * assertOk(values, [2, "books"]);
  * ```
@@ -1013,8 +1013,8 @@ export function allResult<
  * const resultsByName = { a: ok(1), b: ok(2) } as const;
  * const valuesByName = allResult(resultsByName);
  * assertType<
- *   Result<{ readonly a: number; readonly b: number }>,
- *   typeof valuesByName
+ *   typeof valuesByName,
+ *   Result<{ readonly a: number; readonly b: number }>
  * >();
  * assertOk(valuesByName, { a: 1, b: 2 });
  * ```
@@ -1042,7 +1042,7 @@ export function allResult<T extends Readonly<Record<string, AnyResult>>>(
  *
  * const results: ReadonlyArray<Result<number>> = [ok(1), ok(2)];
  * const numbers = allResult(results);
- * assertType<Result<ReadonlyArray<number>>, typeof numbers>();
+ * assertType<typeof numbers, Result<ReadonlyArray<number>>>();
  * assertOk(numbers, [1, 2]);
  * ```
  */
@@ -1067,7 +1067,7 @@ export function allResult<T, E>(
  *
  * const results: NonEmptyReadonlyArray<Result<number>> = [ok(1), ok(2)];
  * const numbers = allResult(results);
- * assertType<Result<NonEmptyReadonlyArray<number>>, typeof numbers>();
+ * assertType<typeof numbers, Result<NonEmptyReadonlyArray<number>>>();
  * assertOk(numbers, [1, 2]);
  * ```
  */
@@ -1090,7 +1090,7 @@ export function allResult<T, E>(
  * } from "@evolu/common";
  *
  * const result = allResult({ a: ok(1), b: ok(2) }, { collect: false });
- * assertType<Result<void>, typeof result>();
+ * assertType<typeof result, Result<void>>();
  * assertOk(result, undefined);
  * ```
  */
@@ -1118,7 +1118,7 @@ export function allResult<T extends Readonly<Record<string, AnyResult>>>(
  *
  * const results: ReadonlyArray<Result<number>> = [ok(1), ok(2)];
  * const result = allResult(results, { collect: false });
- * assertType<Result<void>, typeof result>();
+ * assertType<typeof result, Result<void>>();
  * assertOk(result, undefined);
  * ```
  */
@@ -1144,11 +1144,11 @@ export function allResult<R extends AnyResult>(
  *
  * const numbers: NonEmptyReadonlyArray<number> = [1, 2];
  * const doubled = allResult(numbers, (number) => ok(number * 2));
- * assertType<Result<NonEmptyReadonlyArray<number>>, typeof doubled>();
+ * assertType<typeof doubled, Result<NonEmptyReadonlyArray<number>>>();
  * assertOk(doubled, [2, 4]);
  *
  * const tuple = allResult([1, 2] as const, (number) => ok(number * 2));
- * assertType<Result<readonly [number, number]>, typeof tuple>();
+ * assertType<typeof tuple, Result<readonly [number, number]>>();
  * assertOk(tuple, [2, 4]);
  * ```
  */
@@ -1176,7 +1176,7 @@ export function allResult<
  *
  * const numbers: Iterable<number> = new Set([1, 2]);
  * const doubled = allResult(numbers, (number) => ok(number * 2));
- * assertType<Result<ReadonlyArray<number>>, typeof doubled>();
+ * assertType<typeof doubled, Result<ReadonlyArray<number>>>();
  * assertOk(doubled, [2, 4]);
  * ```
  */
@@ -1208,8 +1208,8 @@ export function allResult<A, R extends AnyResult>(
  * const userIdsByRole = { owner: "user-1", reviewer: "user-2" } as const;
  * const usersByRole = allResult(userIdsByRole, toUser);
  * assertType<
- *   Result<Readonly<Record<"owner" | "reviewer", User>>>,
- *   typeof usersByRole
+ *   typeof usersByRole,
+ *   Result<Readonly<Record<"owner" | "reviewer", User>>>
  * >();
  * assertOk(usersByRole, {
  *   owner: { id: "user-1" },
@@ -1251,7 +1251,7 @@ export function allResult<A, R extends AnyResult, K extends string>(
  *     collect: false,
  *   },
  * );
- * assertType<Result<void>, typeof result>();
+ * assertType<typeof result, Result<void>>();
  * assertOk(result, undefined);
  * assertEqual(visited, [1, 2]);
  * ```
@@ -1279,7 +1279,7 @@ export function allResult<A, R extends AnyResult>(
  * const result = allResult({ a: 1, b: 2 }, (number) => ok(number * 2), {
  *   collect: false,
  * });
- * assertType<Result<void>, typeof result>();
+ * assertType<typeof result, Result<void>>();
  * assertOk(result, undefined);
  * ```
  */
@@ -1382,7 +1382,7 @@ export function allResult(
  * interface CacheMissError extends Typed<"CacheMiss"> {}
  *
  * const number = anyResult([getCachedPrice(), ok(42)]);
- * assertType<Result<number, CacheMissError>, typeof number>();
+ * assertType<typeof number, Result<number, CacheMissError>>();
  * assertOk(number, 42);
  * ```
  *

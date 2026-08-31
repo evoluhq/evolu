@@ -1,92 +1,85 @@
-import { expect, expectTypeOf, test } from "vitest";
+import { test } from "node:test";
+import { assertEqual, assertFalse, assertSame, assertTrue } from "./Assert.ts";
+
 import {
   createEqArrayLike,
   createEqObject,
   eqArrayNumber,
-  eqArrayStrict,
+  eqArraySameValue,
   eqData,
   eqFromOrder,
-  eqJsonValue,
-  eqJsonValueInput,
   eqNumber,
+  eqSameValue,
   eqSameValueZero,
-  eqStrict,
   eqUint8Array,
   type Eq,
-} from "../../../../packages/common/src/Eq.ts";
-import { orderNumber } from "../../../../packages/common/src/Order.ts";
-import type {
-  Data,
-  JsonValue,
-  JsonValueInput,
-} from "../../../../packages/common/src/Type.ts";
+} from "./Eq.ts";
+import { orderNumber } from "./Order.ts";
+import { assertType, type Data } from "./Type.ts";
 
-test("eqStrict", () => {
-  expect(eqStrict(1, 1)).toBe(true);
-  expect(eqStrict(NaN, NaN)).toBe(true);
-  expect(eqStrict(0, -0)).toBe(false);
+test("eqSameValue", () => {
+  assertTrue(eqSameValue(1, 1));
+  assertTrue(eqSameValue(NaN, NaN));
+  assertFalse(eqSameValue(0, -0));
 
   const object = {};
-  expect(eqStrict(object, object)).toBe(true);
-  expect(eqStrict({}, {})).toBe(false);
+  assertTrue(eqSameValue(object, object));
+  assertFalse(eqSameValue({}, {}));
 });
 
 test("eqSameValueZero", () => {
-  expect(eqSameValueZero(NaN, NaN)).toBe(true);
-  expect(eqSameValueZero(0, -0)).toBe(true);
-  expect(eqSameValueZero(1, 2)).toBe(false);
+  assertTrue(eqSameValueZero(NaN, NaN));
+  assertTrue(eqSameValueZero(0, -0));
+  assertFalse(eqSameValueZero(1, 2));
 
   const object = {};
-  expect(eqSameValueZero(object, object)).toBe(true);
-  expect(eqSameValueZero({}, {})).toBe(false);
+  assertTrue(eqSameValueZero(object, object));
+  assertFalse(eqSameValueZero({}, {}));
 });
 
 test("eqNumber", () => {
-  expect(eqNumber(NaN, NaN)).toBe(true);
+  assertTrue(eqNumber(NaN, NaN));
+  assertFalse(eqNumber(0, -0));
 });
 
 test("eqFromOrder", () => {
   const eqNumberFromOrder = eqFromOrder(orderNumber);
-  expect(eqNumberFromOrder(1, 1)).toBe(true);
-  expect(eqNumberFromOrder(1, 2)).toBe(false);
+  assertTrue(eqNumberFromOrder(1, 1));
+  assertFalse(eqNumberFromOrder(1, 2));
 });
 
 test("createEqArrayLike", () => {
   const eqArrayNumberFromEq = createEqArrayLike(eqNumber);
   const array = [1, 2, 3];
-  expect(eqArrayNumberFromEq(array, array)).toBe(true);
-  expect(eqArrayNumberFromEq([1, 2, 3], [1, 2])).toBe(false);
-  expect(eqArrayNumberFromEq([1, 2, 3], [1, 2, 3])).toBe(true);
-  expect(eqArrayNumberFromEq([1, 2, 3], [1, 2, 4])).toBe(false);
+  assertTrue(eqArrayNumberFromEq(array, array));
+  assertFalse(eqArrayNumberFromEq([1, 2, 3], [1, 2]));
+  assertTrue(eqArrayNumberFromEq([1, 2, 3], [1, 2, 3]));
+  assertFalse(eqArrayNumberFromEq([1, 2, 3], [1, 2, 4]));
 });
 
-test("eqArrayStrict", () => {
-  expect(eqArrayStrict([NaN], [NaN])).toBe(true);
-  expect(eqArrayStrict([0], [-0])).toBe(false);
+test("eqArraySameValue", () => {
+  assertTrue(eqArraySameValue([NaN], [NaN]));
+  assertFalse(eqArraySameValue([0], [-0]));
 
   const object = {};
-  expect(eqArrayStrict([object], [object])).toBe(true);
-  expect(eqArrayStrict([{}], [{}])).toBe(false);
+  assertTrue(eqArraySameValue([object], [object]));
+  assertFalse(eqArraySameValue([{}], [{}]));
 });
 
 test("eqUint8Array", () => {
-  expectTypeOf(eqUint8Array).toEqualTypeOf<Eq<Uint8Array>>();
-  expect(eqUint8Array).toBe(eqArrayNumber);
-  expect(eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 2]))).toBe(
-    true,
-  );
-  expect(eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 3]))).toBe(
-    false,
-  );
-  expect(eqUint8Array(new Uint8Array([1]), new Uint8Array([1, 2]))).toBe(false);
+  assertType<typeof eqUint8Array, Eq<Uint8Array>>();
+  assertSame(eqUint8Array, eqArrayNumber);
+  assertTrue(eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 2])));
+  assertFalse(eqUint8Array(new Uint8Array([1, 2]), new Uint8Array([1, 3])));
+  assertFalse(eqUint8Array(new Uint8Array([1]), new Uint8Array([1, 2])));
 });
 
 test("createEqObject", () => {
   const eqObjectNumber = createEqObject({ a: eqNumber });
   const object = { a: 1 };
-  expect(eqObjectNumber(object, object)).toBe(true);
-  expect(eqObjectNumber({ a: 1 }, { a: 1 })).toBe(true);
-  expect(eqObjectNumber({ a: 1 }, { a: 2 })).toBe(false);
+  assertTrue(eqObjectNumber(object, object));
+  assertTrue(eqObjectNumber({ a: 1 }, { a: 1 }));
+  assertFalse(eqObjectNumber({ a: 1 }, { a: 2 }));
 });
 
 test("eqData", () => {
@@ -96,64 +89,65 @@ test("eqData", () => {
   ) => boolean;
   const emptyData: Data = {};
 
-  expect(eqData(NaN, NaN)).toBe(true);
-  expect(eqData(0, -0)).toBe(true);
-  expect(eqData(1, 2)).toBe(false);
-  expect(eqData(1, "1")).toBe(false);
-  expect(eqData(null, emptyData)).toBe(false);
-  expect(eqData(1n, 1n)).toBe(true);
+  assertTrue(eqData(NaN, NaN));
+  assertFalse(eqData(0, -0));
+  assertFalse(eqData({ value: 0 }, { value: -0 }));
+  assertFalse(eqData(1, 2));
+  assertFalse(eqData(1, "1"));
+  assertFalse(eqData(null, emptyData));
+  assertTrue(eqData(1n, 1n));
 
   const sameReference = { value: 1 };
-  expect(eqData(sameReference, sameReference)).toBe(true);
-  expect(eqData({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
-  expect(eqData({ a: 1 }, { a: 2 })).toBe(false);
-  expect(eqData({ a: 1 }, { b: 1 })).toBe(false);
-  expect(eqData(emptyData, { value: undefined })).toBe(false);
+  assertTrue(eqData(sameReference, sameReference));
+  assertTrue(eqData({ a: 1, b: 2 }, { b: 2, a: 1 }));
+  assertFalse(eqData({ a: 1 }, { a: 2 }));
+  assertFalse(eqData({ a: 1 }, { b: 1 }));
+  assertFalse(eqData(emptyData, { value: undefined }));
 
   const nullPrototype = Object.assign(Object.create(null) as object, {
     value: 1,
   });
-  expect(eqData({ value: 1 }, nullPrototype)).toBe(true);
+  assertTrue(eqData({ value: 1 }, nullPrototype));
 
-  expect(eqData([1, 2], [1, 2])).toBe(true);
-  expect(eqData([1, 2], [2, 1])).toBe(false);
-  expect(eqData([1], [1, 2])).toBe(false);
-  expect(eqData([1], { 0: 1 })).toBe(false);
+  assertTrue(eqData([1, 2], [1, 2]));
+  assertFalse(eqData([1, 2], [2, 1]));
+  assertFalse(eqData([1], [1, 2]));
+  assertFalse(eqData([1], { 0: 1 }));
 
-  expect(eqData(new Date(0), new Date(0))).toBe(true);
-  expect(eqData(new Date(0), new Date(1))).toBe(false);
-  expect(eqData(new Date(0), emptyData)).toBe(false);
+  assertTrue(eqData(new Date(0), new Date(0)));
+  assertFalse(eqData(new Date(0), new Date(1)));
+  assertFalse(eqData(new Date(0), emptyData));
 
-  expect(eqData(new Uint8Array([1, 2]), new Uint8Array([1, 2]))).toBe(true);
-  expect(eqData(new Uint8Array([1, 2]), new Uint8Array([1, 3]))).toBe(false);
-  expect(eqData(new Uint8Array([1]), new Uint8Array([1, 2]))).toBe(false);
+  assertTrue(eqData(new Uint8Array([1, 2]), new Uint8Array([1, 2])));
+  assertFalse(eqData(new Uint8Array([1, 2]), new Uint8Array([1, 3])));
+  assertFalse(eqData(new Uint8Array([1]), new Uint8Array([1, 2])));
 
-  expect(unsafeEqData(new ArrayBuffer(1), new ArrayBuffer(1))).toBe(false);
+  assertFalse(unsafeEqData(new ArrayBuffer(1), new ArrayBuffer(1)));
 
-  expect(eqData(new Set([1, 2]), new Set([2, 1]))).toBe(true);
-  expect(
+  assertTrue(eqData(new Set([1, 2]), new Set([2, 1])));
+  assertTrue(
     eqData(
       new Set([{ value: 1 }, { value: 2 }]),
       new Set([{ value: 2 }, { value: 1 }]),
     ),
-  ).toBe(true);
-  expect(eqData(new Set([{ value: 1 }]), new Set([{ value: 2 }]))).toBe(false);
-  expect(eqData(new Set([1]), new Set([1, 2]))).toBe(false);
+  );
+  assertFalse(eqData(new Set([{ value: 1 }]), new Set([{ value: 2 }])));
+  assertFalse(eqData(new Set([1]), new Set([1, 2])));
 
-  expect(
+  assertFalse(
     unsafeEqData(
       Object.assign(new Set([1]), { metadata: true }),
       Object.assign(new Set([1]), { metadata: true }),
     ),
-  ).toBe(false);
+  );
 
-  expect(
+  assertTrue(
     eqData(
       new Map<Data, Data>([[{ id: 1 }, { name: "Ada" }]]),
       new Map<Data, Data>([[{ id: 1 }, { name: "Ada" }]]),
     ),
-  ).toBe(true);
-  expect(
+  );
+  assertTrue(
     eqData(
       new Map<Data, Data>([
         [1, "one"],
@@ -164,11 +158,11 @@ test("eqData", () => {
         [1, "one"],
       ]),
     ),
-  ).toBe(true);
-  expect(eqData(new Map([[1, "one"]]), new Map([[1, "two"]]))).toBe(false);
-  expect(eqData(new Map([[1, "one"]]), new Map([[2, "one"]]))).toBe(false);
-  expect(eqData(new Map([[1, "one"]]), new Map<number, string>())).toBe(false);
-  expect(
+  );
+  assertFalse(eqData(new Map([[1, "one"]]), new Map([[1, "two"]])));
+  assertFalse(eqData(new Map([[1, "one"]]), new Map([[2, "one"]])));
+  assertFalse(eqData(new Map([[1, "one"]]), new Map<number, string>()));
+  assertTrue(
     eqData(
       new Map<Data, Data>([
         [{ id: 1 }, "one"],
@@ -179,18 +173,18 @@ test("eqData", () => {
         [{ id: 1 }, "one"],
       ]),
     ),
-  ).toBe(true);
+  );
 
-  expect(
+  assertFalse(
     unsafeEqData(
       Object.assign(new Map([[1, "one"]]), { metadata: true }),
       Object.assign(new Map([[1, "one"]]), { metadata: true }),
     ),
-  ).toBe(false);
+  );
 
   const sparse: Array<undefined> = [];
   sparse.length = 1;
-  expect(unsafeEqData(sparse, [undefined])).toBe(false);
+  assertFalse(unsafeEqData(sparse, [undefined]));
 
   const arrayAccessor: Array<number> = [];
   Object.defineProperty(arrayAccessor, 0, {
@@ -198,7 +192,7 @@ test("eqData", () => {
     get: () => 1,
   });
   arrayAccessor.length = 1;
-  expect(unsafeEqData(arrayAccessor, [1])).toBe(false);
+  assertFalse(unsafeEqData(arrayAccessor, [1]));
 
   let reads = 0;
   const accessor = Object.defineProperty({}, "value", {
@@ -208,31 +202,31 @@ test("eqData", () => {
       return 1;
     },
   });
-  expect(unsafeEqData(accessor, { value: 1 })).toBe(false);
-  expect(reads).toBe(0);
-  expect(
+  assertFalse(unsafeEqData(accessor, { value: 1 }));
+  assertEqual(reads, 0);
+  assertFalse(
     unsafeEqData(
       Object.defineProperty({}, "hidden", { value: 1 }),
       Object.defineProperty({}, "hidden", { value: 1 }),
     ),
-  ).toBe(false);
+  );
   const symbolKey = Symbol("value");
-  expect(unsafeEqData({ [symbolKey]: 1 }, { [symbolKey]: 1 })).toBe(false);
-  expect(unsafeEqData([1], Object.assign([1], { extra: true }))).toBe(false);
+  assertFalse(unsafeEqData({ [symbolKey]: 1 }, { [symbolKey]: 1 }));
+  assertFalse(unsafeEqData([1], Object.assign([1], { extra: true })));
 
   class Model {
     readonly value = 1;
   }
-  expect(unsafeEqData(new Model(), new Model())).toBe(false);
+  assertFalse(unsafeEqData(new Model(), new Model()));
   class NullBase extends null {}
   const nullBasePrototype = NullBase.prototype;
-  expect(
+  assertFalse(
     unsafeEqData(
       Object.create(nullBasePrototype),
       Object.create(nullBasePrototype),
     ),
-  ).toBe(false);
-  expect(unsafeEqData(/value/u, /value/u)).toBe(false);
+  );
+  assertFalse(unsafeEqData(/value/u, /value/u));
 
   interface CircularData {
     readonly value: number;
@@ -242,17 +236,17 @@ test("eqData", () => {
   circularOne.self = circularOne;
   const circularTwo: CircularData = { value: 1 };
   circularTwo.self = circularTwo;
-  expect(eqData(circularOne, circularTwo)).toBe(true);
+  assertTrue(eqData(circularOne, circularTwo));
 
   const circularDifferent: CircularData = { value: 2 };
   circularDifferent.self = circularDifferent;
-  expect(eqData(circularOne, circularDifferent)).toBe(false);
+  assertFalse(eqData(circularOne, circularDifferent));
 
   const circularSetOne = new Set<Data>();
   circularSetOne.add(circularSetOne);
   const circularSetTwo = new Set<Data>();
   circularSetTwo.add(circularSetTwo);
-  expect(eqData(circularSetOne, circularSetTwo)).toBe(true);
+  assertTrue(eqData(circularSetOne, circularSetTwo));
 
   const backtrackingSetOne = new Set<Data>();
   backtrackingSetOne.add(backtrackingSetOne);
@@ -260,22 +254,22 @@ test("eqData", () => {
   const backtrackingSetTwo = new Set<Data>();
   backtrackingSetTwo.add({ value: 1 });
   backtrackingSetTwo.add(backtrackingSetTwo);
-  expect(eqData(backtrackingSetOne, backtrackingSetTwo)).toBe(true);
+  assertTrue(eqData(backtrackingSetOne, backtrackingSetTwo));
 
   const circularMapOne = new Map<Data, Data>();
   circularMapOne.set(circularMapOne, circularSetOne);
   const circularMapTwo = new Map<Data, Data>();
   circularMapTwo.set(circularMapTwo, circularSetTwo);
-  expect(eqData(circularMapOne, circularMapTwo)).toBe(true);
+  assertTrue(eqData(circularMapOne, circularMapTwo));
 
   const shared: { readonly value?: number } = {};
   const otherEmptyData: Data = {};
-  expect(
+  assertTrue(
     eqData(
       { first: shared, second: shared },
       { first: emptyData, second: otherEmptyData },
     ),
-  ).toBe(true);
+  );
 
   interface DeepData {
     next?: DeepData;
@@ -292,7 +286,7 @@ test("eqData", () => {
     currentOne = nextOne;
     currentTwo = nextTwo;
   }
-  expect(eqData(deepOne, deepTwo)).toBe(true);
+  assertTrue(eqData(deepOne, deepTwo));
 
   interface Service {
     readonly run: () => void;
@@ -305,7 +299,7 @@ test("eqData", () => {
     // @ts-expect-error ⛔ eqData error: Actual and expected values must consist only of Data.
     eqData(broadObject, broadObject);
   };
-  expect(compileTimeAssertions).toBeTypeOf("function");
+  assertEqual(typeof compileTimeAssertions, "function");
 });
 
 test("eqData compares deeply nested Set and Map data", () => {
@@ -333,21 +327,7 @@ test("eqData compares deeply nested Set and Map data", () => {
   for (const shape of ["Set", "MapKey", "MapValue", "Mixed"] as const) {
     const actual = setupNestedData(shape, 0);
 
-    expect(eqData(actual, setupNestedData(shape, 0))).toBe(true);
-    expect(eqData(actual, setupNestedData(shape, 1))).toBe(false);
+    assertTrue(eqData(actual, setupNestedData(shape, 0)));
+    assertFalse(eqData(actual, setupNestedData(shape, 1)));
   }
-});
-
-test("JSON equality", () => {
-  expect(eqJsonValue).toBe(eqData);
-  expect(eqJsonValueInput).toBe(eqData);
-
-  const first: JsonValue = { profile: { name: "Ada" } };
-  const second: JsonValue = { profile: { name: "Ada" } };
-  const different: JsonValue = { profile: { name: "Grace" } };
-  expect(eqJsonValue(first, second)).toBe(true);
-  expect(eqJsonValue(first, different)).toBe(false);
-
-  const input: JsonValueInput = { value: Number.NaN };
-  expect(eqJsonValueInput(input, { value: Number.NaN })).toBe(true);
 });

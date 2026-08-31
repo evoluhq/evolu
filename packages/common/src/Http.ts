@@ -357,8 +357,8 @@ export type FetchConsume<T, E = never> = (
  *   }),
  * );
  * assertType<
- *   Task<{ status: number; cache: string | null }, FetchTransportError>,
- *   typeof metadata
+ *   typeof metadata,
+ *   Task<{ status: number; cache: string | null }, FetchTransportError>
  * >();
  * assertOk(user);
  * assertType(Data, user.value);

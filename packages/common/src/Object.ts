@@ -147,7 +147,7 @@ export const isIterable = (value: unknown): value is Iterable<unknown> =>
  * const users: ReadonlyRecord<UserId, string> = { [userId]: "Alice" };
  * const entries = objectToEntries(users);
  *
- * assertType<ReadonlyArray<[UserId, string]>, typeof entries>();
+ * assertType<typeof entries, ReadonlyArray<[UserId, string]>>();
  * assertEqual(entries, [[userId, "Alice"]]);
  * ```
  */
@@ -182,7 +182,7 @@ type StringKeyOf<T> = Extract<keyof T, string>;
  * ];
  * const users = objectFromEntries(entries);
  *
- * assertType<ReadonlyRecord<UserId, string>, typeof users>();
+ * assertType<typeof users, ReadonlyRecord<UserId, string>>();
  * assertEqual(users, { u1: "Alice" });
  * ```
  */
@@ -211,7 +211,7 @@ export const objectFromEntries = <K extends string, V>(
  *   (locale): string => `Hello in ${locale}`,
  * );
  *
- * assertType<ReadonlyRecord<"en" | "fr", string>, typeof translations>();
+ * assertType<typeof translations, ReadonlyRecord<"en" | "fr", string>>();
  * assertEqual(translations, {
  *   en: "Hello in en",
  *   fr: "Hello in fr",
@@ -395,7 +395,7 @@ export const emptyRecord: Readonly<Record<string, never>> =
  * };
  * const user = getOwnProp(users, "bob");
  *
- * assertType<User | undefined, typeof user>();
+ * assertType<typeof user, User | undefined>();
  * assertEqual(user, undefined);
  * assertEqual(getOwnProp(users, "toString"), undefined);
  * ```

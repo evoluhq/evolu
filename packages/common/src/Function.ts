@@ -326,8 +326,8 @@ export const constVoid: Thunk<void> = constUndefined;
  * const getConfig = () => todo<Config>();
  *
  * assertType<
- *   [number, Config],
- *   [ReturnType<typeof getCount>, ReturnType<typeof getConfig>]
+ *   [ReturnType<typeof getCount>, ReturnType<typeof getConfig>],
+ *   [number, Config]
  * >();
  * const result = trySync(getCount);
  * assertErr(result);
@@ -338,7 +338,7 @@ export const constVoid: Thunk<void> = constUndefined;
  * );
  * ```
  */
-// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
 export const todo = <T>(): T => {
   throw new Error("not yet implemented");
 };

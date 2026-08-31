@@ -6,7 +6,7 @@
 
 import type { Order } from "./Order.ts";
 import { getObjectKind } from "./Object.ts";
-import type { Data, IsData, JsonValue, JsonValueInput } from "./Type.ts";
+import type { Data, IsData } from "./Type.ts";
 import type { CompileTimeError } from "./Types.ts";
 
 /**
@@ -20,6 +20,13 @@ import type { CompileTimeError } from "./Types.ts";
  * - **Symmetric**: `eq(a, b)` equals `eq(b, a)`.
  * - **Transitive**: if `eq(a, b)` and `eq(b, c)` are `true`, then `eq(a, c)` is
  *   `true`.
+ *
+ * Evolu does not provide `eqStrict`: JavaScript strict equality (`===`) is not
+ * reflexive because `NaN === NaN` is `false`, so it cannot define an
+ * `Eq<number>`. Use `===` directly when that behavior is required. See [MDN's
+ * equality comparisons and sameness
+ * guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Equality_comparisons_and_sameness)
+ * for how JavaScript's equality algorithms differ.
  *
  * Use {@link eqFromOrder} to derive equality from an {@link Order}.
  *
@@ -50,13 +57,13 @@ export type Eq<in A> = (x: A, y: A) => boolean;
  * ### Example
  *
  * ```ts
- * import { assertFalse, assertTrue, eqStrict } from "@evolu/common";
+ * import { assertFalse, assertTrue, eqSameValue } from "@evolu/common";
  *
- * assertTrue(eqStrict(NaN, NaN));
- * assertFalse(eqStrict(0, -0));
+ * assertTrue(eqSameValue(NaN, NaN));
+ * assertFalse(eqSameValue(0, -0));
  * ```
  */
-export const eqStrict = <A>(x: A, y: A): boolean => Object.is(x, y);
+export const eqSameValue = <A>(x: A, y: A): boolean => Object.is(x, y);
 
 /**
  * Compares two values using SameValueZero equality.
@@ -78,23 +85,23 @@ export const eqStrict = <A>(x: A, y: A): boolean => Object.is(x, y);
 export const eqSameValueZero = <A>(x: A, y: A): boolean =>
   x === y || Object.is(x, y);
 
-/** An {@link Eq} for strings using {@link eqStrict}. */
-export const eqString: Eq<string> = eqStrict;
+/** An {@link Eq} for strings using {@link eqSameValue}. */
+export const eqString: Eq<string> = eqSameValue;
 
-/** An {@link Eq} for numbers using {@link eqSameValueZero}. */
-export const eqNumber: Eq<number> = eqSameValueZero;
+/** An {@link Eq} for numbers using {@link eqSameValue}. */
+export const eqNumber: Eq<number> = eqSameValue;
 
-/** An {@link Eq} for bigints using {@link eqStrict}. */
-export const eqBigInt: Eq<bigint> = eqStrict;
+/** An {@link Eq} for bigints using {@link eqSameValue}. */
+export const eqBigInt: Eq<bigint> = eqSameValue;
 
-/** An {@link Eq} for booleans using {@link eqStrict}. */
-export const eqBoolean: Eq<boolean> = eqStrict;
+/** An {@link Eq} for booleans using {@link eqSameValue}. */
+export const eqBoolean: Eq<boolean> = eqSameValue;
 
 /** An {@link Eq} for `undefined`. */
-export const eqUndefined: Eq<undefined> = eqStrict;
+export const eqUndefined: Eq<undefined> = eqSameValue;
 
 /** An {@link Eq} for `null`. */
-export const eqNull: Eq<null> = eqStrict;
+export const eqNull: Eq<null> = eqSameValue;
 
 /** Derives an {@link Eq} from an {@link Order}. */
 export const eqFromOrder =
@@ -139,7 +146,8 @@ export const createEqArrayLike =
   };
 
 /**
- * Compares two array-like structures element by element using {@link eqStrict}.
+ * Compares two array-like structures element by element using
+ * {@link eqSameValue}.
  *
  * Useful for structural sharing checks where objects are compared by reference
  * identity. `NaN` elements are equal, while `0` and `-0` elements differ.
@@ -147,15 +155,19 @@ export const createEqArrayLike =
  * ### Example
  *
  * ```ts
- * import { assertFalse, assertTrue, eqArrayStrict } from "@evolu/common";
+ * import {
+ *   assertFalse,
+ *   assertTrue,
+ *   eqArraySameValue,
+ * } from "@evolu/common";
  *
  * const a = { x: 1 };
  * const b = { x: 1 };
- * assertTrue(eqArrayStrict([a, a], [a, a]));
- * assertFalse(eqArrayStrict([a], [b]));
+ * assertTrue(eqArraySameValue([a, a], [a, a]));
+ * assertFalse(eqArraySameValue([a], [b]));
  * ```
  */
-export const eqArrayStrict = /*#__PURE__*/ createEqArrayLike(eqStrict);
+export const eqArraySameValue = /*#__PURE__*/ createEqArrayLike(eqSameValue);
 
 /**
  * Compares two array-like structures of numbers for equality.
@@ -221,17 +233,17 @@ export const createEqObject =
   };
 
 /**
- * Compares two {@link Data} values.
+ * Deeply compares two {@link Data} values using platform-independent structural
+ * equality.
  *
- * Primitive values use SameValueZero, so `NaN` equals itself and `0` equals
- * `-0`. Arrays and Object properties are ordered and keyed respectively. Sets
- * and Maps compare their elements and entries without regard to insertion
- * order. Dates compare their time values, while Uint8Arrays compare their
- * bytes. Cyclic and shared data graphs are supported.
+ * Primitive values use `Object.is`. Arrays are ordered; plain Objects compare
+ * their own string-keyed properties regardless of property order or prototype;
+ * Sets and Maps ignore insertion order; Dates compare their time values; and
+ * Uint8Arrays compare their bytes. Cyclic and shared data graphs are
+ * supported.
  *
- * The compile-time validation recursively accepts ordinary interfaces whose
- * properties consist only of Data. Runtime representation details are trusted;
- * use the {@link Data} Type at an unknown boundary.
+ * Arguments are restricted to Data at compile time. Use the {@link Data} Type at
+ * an unknown boundary.
  *
  * ### Example
  *
@@ -258,115 +270,14 @@ export function eqData<Actual, Expected>(
   ...dataError: EqDataError<Actual | Expected>
 ): boolean;
 export function eqData(actual: Data, expected: Data): boolean {
-  return eqDataInternal(actual, expected, {
-    pairs: [],
-    rightsByLeft: new Map(),
-  });
-}
-
-/**
- * Compares two {@link JsonValue} values using {@link eqData}.
- *
- * ### Example
- *
- * ```ts
- * import { assertTrue, eqJsonValue, type JsonValue } from "@evolu/common";
- *
- * const first: JsonValue = { profile: { name: "Ada" } };
- * const second: JsonValue = { profile: { name: "Ada" } };
- *
- * assertTrue(eqJsonValue(first, second));
- * ```
- */
-export const eqJsonValue: Eq<JsonValue> = eqData;
-
-/** Compares two {@link JsonValueInput} values using {@link eqData}. */
-export const eqJsonValueInput: Eq<JsonValueInput> = eqData;
-
-type EqDataError<Value> =
-  IsData<Value> extends true
-    ? []
-    : [
-        error: CompileTimeError<
-          "eqData",
-          "Actual and expected values must consist only of Data."
-        >,
-      ];
-
-interface EqDataContext {
-  readonly pairs: Array<readonly [object, object]>;
-  readonly rightsByLeft: Map<object, Set<object>>;
-}
-
-interface EqDataCompareFrame {
-  readonly kind: "Compare";
-  readonly actual: Data;
-  readonly expected: Data;
-}
-
-interface EqDataSetFrame {
-  readonly kind: "Set";
-  readonly actual: ReadonlyArray<Data>;
-  readonly actualIndex: number;
-  readonly unmatched: Array<Data>;
-  readonly candidateIndex: number;
-}
-
-interface EqDataMapFrame {
-  readonly kind: "Map";
-  readonly actual: ReadonlyArray<readonly [Data, Data]>;
-  readonly actualIndex: number;
-  readonly unmatched: Array<readonly [Data, Data]>;
-  readonly candidateIndex: number;
-}
-
-interface EqDataCommitSetFrame {
-  readonly kind: "CommitSet";
-  readonly match: EqDataSetFrame;
-}
-
-interface EqDataCommitMapFrame {
-  readonly kind: "CommitMap";
-  readonly match: EqDataMapFrame;
-}
-
-interface EqDataFailFrame {
-  readonly kind: "Fail";
-}
-
-type EqDataFrame =
-  | EqDataCompareFrame
-  | EqDataSetFrame
-  | EqDataMapFrame
-  | EqDataCommitSetFrame
-  | EqDataCommitMapFrame
-  | EqDataFailFrame;
-
-type EqDataCollectionFrame = EqDataSetFrame | EqDataMapFrame;
-
-interface EqDataCandidateAttempt {
-  readonly contextCheckpoint: number;
-  readonly frameCheckpoint: number;
-  readonly retry: EqDataCollectionFrame;
-}
-
-const eqDataInternal = (
-  actual: Data,
-  expected: Data,
-  context: EqDataContext,
-): boolean => {
+  const pairs: Array<readonly [object, object]> = [];
+  const rightsByLeft = new Map<object, Set<object>>();
   const frames: Array<EqDataFrame> = [{ kind: "Compare", actual, expected }];
-  const attempts: Array<EqDataCandidateAttempt> = [];
-
-  const retryFailedCandidate = (_frame: EqDataFailFrame): boolean => {
-    const attempt = attempts.pop();
-    if (attempt === undefined) return false;
-
-    rollbackEqDataContext(context, attempt.contextCheckpoint);
-    frames.length = attempt.frameCheckpoint;
-    frames.push(attempt.retry);
-    return true;
-  };
+  const attempts: Array<{
+    readonly pairsCheckpoint: number;
+    readonly frameCheckpoint: number;
+    readonly retry: EqDataCollectionFrame;
+  }> = [];
 
   while (frames.length > 0) {
     const frame = frames.pop()!;
@@ -375,7 +286,7 @@ const eqDataInternal = (
       const x = frame.actual;
       const y = frame.expected;
 
-      if (eqSameValueZero(x, y)) continue;
+      if (eqSameValue(x, y)) continue;
       if (typeof x !== typeof y) {
         frames.push({ kind: "Fail" });
         continue;
@@ -390,14 +301,14 @@ const eqDataInternal = (
         continue;
       }
 
-      const rights = context.rightsByLeft.get(x);
+      const rights = rightsByLeft.get(x);
       if (rights?.has(y)) continue;
       if (rights === undefined) {
-        context.rightsByLeft.set(x, new Set([y]));
+        rightsByLeft.set(x, new Set([y]));
       } else {
         rights.add(y);
       }
-      context.pairs.push([x, y]);
+      pairs.push([x, y]);
 
       const xKind = getObjectKind(x);
       const yKind = getObjectKind(y);
@@ -546,13 +457,12 @@ const eqDataInternal = (
         continue;
       }
 
-      const attempt: EqDataCandidateAttempt = {
-        contextCheckpoint: context.pairs.length,
+      attempts.push({
+        pairsCheckpoint: pairs.length,
         frameCheckpoint: frames.length,
         retry: { ...frame, candidateIndex: frame.candidateIndex + 1 },
-      };
-      attempts.push(attempt);
-      frames.push({ kind: "CommitSet", match: frame });
+      });
+      frames.push({ kind: "Commit", match: frame });
       frames.push({
         kind: "Compare",
         actual: frame.actual[frame.actualIndex],
@@ -571,13 +481,12 @@ const eqDataInternal = (
       const [actualKey, actualValue] = frame.actual[frame.actualIndex];
       const [expectedKey, expectedValue] =
         frame.unmatched[frame.candidateIndex];
-      const attempt: EqDataCandidateAttempt = {
-        contextCheckpoint: context.pairs.length,
+      attempts.push({
+        pairsCheckpoint: pairs.length,
         frameCheckpoint: frames.length,
         retry: { ...frame, candidateIndex: frame.candidateIndex + 1 },
-      };
-      attempts.push(attempt);
-      frames.push({ kind: "CommitMap", match: frame });
+      });
+      frames.push({ kind: "Commit", match: frame });
       frames.push({
         kind: "Compare",
         actual: actualValue,
@@ -591,7 +500,7 @@ const eqDataInternal = (
       continue;
     }
 
-    if (frame.kind === "CommitSet") {
+    if (frame.kind === "Commit") {
       attempts.pop();
       frame.match.unmatched.splice(frame.match.candidateIndex, 1);
       frames.push({
@@ -602,31 +511,56 @@ const eqDataInternal = (
       continue;
     }
 
-    if (frame.kind === "CommitMap") {
-      attempts.pop();
-      frame.match.unmatched.splice(frame.match.candidateIndex, 1);
-      frames.push({
-        ...frame.match,
-        actualIndex: frame.match.actualIndex + 1,
-        candidateIndex: 0,
-      });
-      continue;
-    }
+    const attempt = attempts.pop();
+    if (attempt === undefined) return false;
 
-    if (!retryFailedCandidate(frame)) return false;
+    while (pairs.length > attempt.pairsCheckpoint) {
+      const [left, right] = pairs.pop()!;
+      const rights = rightsByLeft.get(left)!;
+      rights.delete(right);
+      if (rights.size === 0) rightsByLeft.delete(left);
+    }
+    frames.length = attempt.frameCheckpoint;
+    frames.push(attempt.retry);
   }
 
   return true;
-};
+}
 
-const rollbackEqDataContext = (
-  context: EqDataContext,
-  checkpoint: number,
-): void => {
-  while (context.pairs.length > checkpoint) {
-    const [left, right] = context.pairs.pop()!;
-    const rights = context.rightsByLeft.get(left)!;
-    rights.delete(right);
-    if (rights.size === 0) context.rightsByLeft.delete(left);
-  }
-};
+type EqDataError<Value> =
+  IsData<Value> extends true
+    ? []
+    : [
+        error: CompileTimeError<
+          "eqData",
+          "Actual and expected values must consist only of Data."
+        >,
+      ];
+
+interface EqDataSetFrame {
+  readonly kind: "Set";
+  readonly actual: ReadonlyArray<Data>;
+  readonly actualIndex: number;
+  readonly unmatched: Array<Data>;
+  readonly candidateIndex: number;
+}
+
+interface EqDataMapFrame {
+  readonly kind: "Map";
+  readonly actual: ReadonlyArray<readonly [Data, Data]>;
+  readonly actualIndex: number;
+  readonly unmatched: Array<readonly [Data, Data]>;
+  readonly candidateIndex: number;
+}
+
+type EqDataCollectionFrame = EqDataSetFrame | EqDataMapFrame;
+
+type EqDataFrame =
+  | {
+      readonly kind: "Compare";
+      readonly actual: Data;
+      readonly expected: Data;
+    }
+  | EqDataCollectionFrame
+  | { readonly kind: "Commit"; readonly match: EqDataCollectionFrame }
+  | { readonly kind: "Fail" };

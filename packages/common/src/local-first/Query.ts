@@ -58,11 +58,11 @@ export type { NotNull as KyselyNotNull } from "kysely";
  *
  * type AllTodosRow = typeof allTodos.Row;
  * assertType<
- *   true,
- *   typeof allTodos extends Query<typeof Schema> ? true : false
+ *   typeof allTodos extends Query<typeof Schema> ? true : false,
+ *   true
  * >();
- * assertType<TodoId, AllTodosRow["id"]>();
- * assertType<NonEmptyTrimmedString100 | null, AllTodosRow["title"]>();
+ * assertType<AllTodosRow["id"], TodoId>();
+ * assertType<AllTodosRow["title"], NonEmptyTrimmedString100 | null>();
  * ```
  */
 export type Query<
@@ -96,7 +96,7 @@ export type Query<
      * );
      *
      * type AllTodosRow = typeof allTodos.Row;
-     * assertType<InferRow<typeof allTodos>, AllTodosRow>();
+     * assertType<AllTodosRow, InferRow<typeof allTodos>>();
      * ```
      */
     Row: R;
@@ -160,11 +160,11 @@ export interface Row {
  * );
  *
  * assertType<
+ *   (typeof people.Row.pets)[number],
  *   {
  *     petId: typeof Schema.pet.id.Output;
  *     name: NonEmptyTrimmedString100 | null;
- *   },
- *   (typeof people.Row.pets)[number]
+ *   }
  * >();
  * ```
  */
@@ -225,11 +225,11 @@ export const evoluJsonArrayFrom = <O>(
  * );
  *
  * assertType<
+ *   typeof people.Row.favoritePet,
  *   {
  *     petId: typeof Schema.pet.id.Output;
  *     name: NonEmptyTrimmedString100 | null;
- *   } | null,
- *   typeof people.Row.favoritePet
+ *   } | null
  * >();
  * ```
  */
@@ -285,12 +285,12 @@ export const evoluJsonObjectFrom = <O>(
  * );
  *
  * assertType<
+ *   typeof people.Row.name,
  *   {
  *     first: NonEmptyTrimmedString100 | null;
  *     last: NonEmptyTrimmedString100 | null;
  *     full: string;
- *   },
- *   typeof people.Row.name
+ *   }
  * >();
  * ```
  */
