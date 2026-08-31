@@ -1,4 +1,4 @@
 {
   "extends": "@evolu/typescript-config/script.json",
-  "include": ["plugin.d.mts", "*.test.mts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.mts"]
 }

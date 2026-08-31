@@ -21,15 +21,15 @@
   "exports": {
     "./config.jsonc": "./config.jsonc",
     "./plugin": {
-      "types": "./plugin.d.mts",
-      "default": "./plugin.mjs"
+      "types": "./src/plugin.d.mts",
+      "default": "./src/plugin.mjs"
     }
   },
   "files": [
+    "THIRD_PARTY_NOTICES.md",
     "config.jsonc",
-    "plugin.d.mts",
-    "plugin.mjs",
-    "README.md"
+    "README.md",
+    "src/**"
   ],
   "dependencies": {
     "eslint-plugin-jsdoc": "^64.2.1"
@@ -37,8 +37,7 @@
   "devDependencies": {
     "@evolu/typescript-config": "workspace:*",
     "oxlint": "^1.79.0",
-    "oxlint-tsgolint": "7.0.2001",
-    "vitest": "^4.1.11"
+    "oxlint-tsgolint": "7.0.2001"
   },
   "peerDependencies": {
     "oxlint": "^1.79.0",
@@ -49,8 +48,8 @@
     "exports": {
       "./config.jsonc": "./config.jsonc",
       "./plugin": {
-        "types": "./plugin.d.mts",
-        "default": "./plugin.mjs"
+        "types": "./src/plugin.d.mts",
+        "default": "./src/plugin.mjs"
       }
     }
   },
