@@ -26,6 +26,10 @@
     "./TestJSDoc": {
       "types": "./dist/src/TestJSDoc.d.ts",
       "default": "./src/TestJSDoc.ts"
+    },
+    "./TestOverviewReporter": {
+      "types": "./dist/src/TestOverviewReporter.d.ts",
+      "default": "./src/TestOverviewReporter.ts"
     }
   },
   "typesVersions": {
@@ -35,11 +39,15 @@
       ],
       "TestJSDoc": [
         "./dist/src/TestJSDoc.d.ts"
+      ],
+      "TestOverviewReporter": [
+        "./dist/src/TestOverviewReporter.d.ts"
       ]
     }
   },
   "files": [
     "dist/src/**",
+    "!dist/**/*.test.*",
     "src/**",
     "README.md"
   ],
@@ -119,6 +127,11 @@
         "types": "./dist/src/TestJSDoc.d.ts",
         "import": "./dist/src/TestJSDoc.js",
         "default": "./dist/src/TestJSDoc.js"
+      },
+      "./TestOverviewReporter": {
+        "types": "./dist/src/TestOverviewReporter.d.ts",
+        "import": "./dist/src/TestOverviewReporter.js",
+        "default": "./dist/src/TestOverviewReporter.js"
       }
     }
   }

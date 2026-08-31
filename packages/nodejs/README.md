@@ -6,6 +6,15 @@ This package provides Evolu for [Node.js](https://nodejs.org) 24.20+.
 
 For detailed information and usage examples, please visit [evolu.dev](https://www.evolu.dev).
 
+## Test overview reporter
+
+`@evolu/nodejs/TestOverviewReporter` lists Node.js test files slowest-first while
+preserving native failure diagnostics, run totals, and coverage output:
+
+```sh
+node --test --test-reporter=@evolu/nodejs/TestOverviewReporter
+```
+
 ## Community
 
 The Evolu community is on [GitHub Discussions](https://github.com/evoluhq/evolu/discussions), where you can ask questions and voice ideas.
