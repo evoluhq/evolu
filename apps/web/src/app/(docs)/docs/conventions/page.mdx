@@ -224,8 +224,13 @@ function createUser(data: UserData): User {
 
 Why arrow functions?
 
-- **Consistency** - One way to define functions means less cognitive overhead
-- **Currying** - Arrow functions make currying natural for [dependency injection](/docs/dependency-injection)
+- **Consistency** - Functions and readonly function-valued interface properties
+  use the same concise syntax
+- **No dynamic `this`** - Functions can be passed around as ordinary values
+  without changing their behavior
+- **Conciseness** - Callbacks, small functions, and currying need little syntax
+- **Dependency injection** - Currying keeps dependencies explicit; see
+  [dependency injection](/docs/dependency-injection)
 
 **Exception: function overloads.** While overloading with arrow functions is possible (using a type with multiple call signatures), it can be hard to type properly because the implementation must satisfy all overloads at once, which TypeScript often can't verify without assertions. Use the `function` keyword instead:
 
@@ -245,7 +250,9 @@ function mapArray<T, U>(
   return array.map(mapper) as ReadonlyArray<U>;
 }
 
-**In interfaces too.** Use arrow function syntax for interface methods—otherwise ESLint won't allow passing them as references due to JavaScript's `this` binding issues.
+**In interfaces too.** Use readonly function-valued properties rather than
+method syntax. This matches implementations and avoids implicit method `this`
+semantics when functions are passed as values.
 
 ```ts
 // Use arrow function syntax
