@@ -8,7 +8,7 @@ declare module "@/data/sections.json" {
 }
 
 declare module "*data/searchIndex.json" {
-  const searchPages: ReadonlyArray<import("@/mdx/searchClient").SearchPage>;
+  const searchPages: ReadonlyArray<import("@/mdx/createSearch").SearchPage>;
 
   export default searchPages;
 }
