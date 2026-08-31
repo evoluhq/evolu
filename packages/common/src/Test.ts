@@ -1,8 +1,9 @@
 /**
  * Cross-module test utilities for deterministic testing.
  *
- * Test helpers are usually colocated with the code they test. Helpers that
- * cannot be colocated because they would create dependency cycles belong here.
+ * Test helpers are usually colocated with the code they test. General helpers
+ * shared across unrelated modules, or helpers whose colocation would create
+ * dependency cycles, belong here.
  *
  * @module
  */
@@ -11,6 +12,51 @@ import type { Brand } from "./Brand.ts";
 import { testCreateRandomBytes } from "./Crypto.ts";
 import { testCreateRandomLib } from "./Random.ts";
 import { createId, type Id } from "./Type.ts";
+
+/**
+ * Temporarily replaces a global property for a test scope.
+ *
+ * Node.js can mock existing globals with `t.mock.property`, but it rejects a
+ * property that does not exist. That catches misspelled mock targets, but it
+ * cannot model optional platform globals whose presence varies. Use this helper
+ * to provide such a global, for example `scheduler`, or replace a global with
+ * `undefined` to exercise a fallback.
+ *
+ * The original property descriptor is restored on disposal. A property that did
+ * not exist is deleted. Prefer dependency injection when available because
+ * global properties are shared by concurrently running tests.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertFalse, testStubGlobal } from "@evolu/common";
+ *
+ * const key = Symbol("test global");
+ * {
+ *   using _stub = testStubGlobal(key, 42);
+ *   assertEqual(Reflect.get(globalThis, key), 42);
+ * }
+ * assertFalse(Reflect.has(globalThis, key));
+ * ```
+ */
+export const testStubGlobal = (
+  key: PropertyKey,
+  value: unknown,
+): Disposable => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+
+  const disposer = new DisposableStack();
+  disposer.defer(() => {
+    if (descriptor === undefined) Reflect.deleteProperty(globalThis, key);
+    else Object.defineProperty(globalThis, key, descriptor);
+  });
+  return disposer;
+};
 
 export type TestCreateId = <B extends string = never>() => [B] extends [never]
   ? Id
@@ -48,7 +94,7 @@ export type TestCreateId = <B extends string = never>() => [B] extends [never]
  *
  * const replayCreateId = testCreateId();
  * assertEqual(replayCreateId(), callbackId);
- * assertType<Id & Brand<"Todo">, typeof todoId>();
+ * assertType<typeof todoId, Id & Brand<"Todo">>();
  * ```
  */
 export const testCreateId = (): TestCreateId => {
