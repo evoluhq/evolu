@@ -10,7 +10,11 @@ import {
   isNonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
-import { assert } from "../Assert.ts";
+import {
+  assertNonNullable,
+  assertNotSame,
+  assertNotUndefined,
+} from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import { createCallbacks } from "../Callbacks.ts";
 import type { ConsoleEntry, ConsoleLevel } from "../Console.ts";
@@ -495,7 +499,7 @@ const createEvoluTenant =
 
     const initDbWorker = (): void => {
       const tabLeaderPort = deps.tabLeaderPortStore.get();
-      assert(tabLeaderPort, "Expected tab leader port.");
+      assertNonNullable(tabLeaderPort);
 
       const dbWorkerChannel = deps.createMessageChannel<
         DbWorkerOutput,
@@ -506,10 +510,7 @@ const createEvoluTenant =
       currentDbWorkerPort.onMessage = (message) => {
         switch (message.type) {
           case "LeaderAcquired": {
-            assert(
-              dbWorkerPort !== currentDbWorkerPort,
-              "Expected a new DbWorker port.",
-            );
+            assertNotSame(dbWorkerPort, currentDbWorkerPort);
             dbWorkerPort?.[Symbol.dispose]();
             dbWorkerPort = currentDbWorkerPort;
             queueRequestInFlight = false;
@@ -775,9 +776,9 @@ const createEvoluTenant =
         } else {
           instance.usedSyncOwners.decrement(syncOwner);
           const claimLeases = instance.claimLeasesBySyncOwner.get(syncOwner);
-          assert(claimLeases, "Expected a ClaimLease for the used owner.");
+          assertNotUndefined(claimLeases);
           const claimLease = claimLeases.pop();
-          assert(claimLease, "Expected a ClaimLease for the used owner.");
+          assertNotUndefined(claimLease);
           claimLease.release();
           if (claimLeases.length === 0) {
             instance.claimLeasesBySyncOwner.delete(syncOwner);

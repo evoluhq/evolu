@@ -55,9 +55,9 @@ export class BufferError extends Error {
  *
  * ```ts
  * import {
- *   assert,
  *   assertEqual,
  *   assertErr,
+ *   assertInstanceOf,
  *   createBuffer,
  *   createIdFromString,
  *   IdBytes,
@@ -83,11 +83,8 @@ export class BufferError extends Error {
  * assertEqual(decodedId, id);
  * const result = trySync(() => decodeNonNegativeInt(decoder));
  * assertErr(result);
- * assert(
- *   result.error instanceof Error &&
- *     result.error.message === "Buffer parse ended prematurely",
- *   "Expected the premature-buffer-end error.",
- * );
+ * assertInstanceOf(result.error, Error);
+ * assertEqual(result.error.message, "Buffer parse ended prematurely");
  * ```
  *
  * For more on exponential growth, see:

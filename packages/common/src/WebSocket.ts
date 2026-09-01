@@ -53,10 +53,10 @@ import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
  *
  * ```ts
  * import {
- *   assert,
  *   assertEqual,
+ *   assertLength,
  *   assertOk,
- *   assertTrue,
+ *   assertSame,
  *   createRun,
  *   createWebSocket,
  *   testCreateWebSocket,
@@ -83,12 +83,9 @@ import { ArrayBuffer, String, Uint8Array, type Typed } from "./Type.ts";
  * await using run = createRun();
  *
  * assertOk(await run(connectAndSend(socketFactory)), undefined);
- * assertTrue(socketFactory.sentMessages.length === 1);
+ * assertLength(socketFactory.sentMessages, 1);
  * const message = socketFactory.sentMessages[0];
- * assert(
- *   message !== undefined && typeof message.data === "string",
- *   "Expected a text message.",
- * );
+ * assertSame(typeof message.data, "string");
  * assertEqual(
  *   { url: message.url, data: message.data },
  *   { url: "wss://example.com", data: "Hello" },

@@ -1,6 +1,5 @@
 import { describe, it } from "node:test";
 import {
-  assert,
   assertConditionAfterMicrotasks,
   assertEqual,
   assertErr,
@@ -1125,7 +1124,7 @@ describe("SharedResource", () => {
 
       const entries = run.deps.console.getEntriesSnapshot();
       assertLength(entries, 2);
-      assert(
+      assertTrue(
         entries.some(
           (entry) =>
             entry.method === "warn" &&
@@ -1133,7 +1132,6 @@ describe("SharedResource", () => {
               "Lease was garbage-collected without cleanup. Tracked at:",
             ),
         ),
-        "Expected a leaked lease warning.",
       );
     });
 
@@ -4365,7 +4363,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       run.deps.leakDetector.collect();
 
-      assert(
+      assertTrue(
         run.deps.console
           .getEntriesSnapshot()
           .some(
@@ -4375,7 +4373,6 @@ describe("SharedResourceByKeyWithClaims", () => {
                 "SharedResourceByKeyWithClaims was garbage-collected without cleanup. Tracked at:",
               ),
           ),
-        "Expected an undisposed claims registry warning.",
       );
     });
 
@@ -4397,7 +4394,7 @@ describe("SharedResourceByKeyWithClaims", () => {
 
       run.deps.leakDetector.collect();
 
-      assert(
+      assertTrue(
         run.deps.console
           .getEntriesSnapshot()
           .some(
@@ -4407,7 +4404,6 @@ describe("SharedResourceByKeyWithClaims", () => {
                 "ClaimLease was garbage-collected without cleanup. Tracked at:",
               ),
           ),
-        "Expected a leaked claim lease warning.",
       );
     });
 

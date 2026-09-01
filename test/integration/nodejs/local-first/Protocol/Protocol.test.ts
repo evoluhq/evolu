@@ -1,10 +1,10 @@
 import { compress, init } from "@bokuweb/zstd-wasm";
 import { before, describe, it, test } from "node:test";
 import {
-  assert,
   assertEqual,
   assertEqualBytes,
   assertNonEmptyArray,
+  assertSame,
 } from "../../../../../packages/common/src/Assert.ts";
 import {
   ownerIdToOwnerIdBytes,
@@ -308,10 +308,7 @@ describe("E2E sync", { timeout: 15_000 }, () => {
       }
 
       if (!result.ok || result.value.type === "NoResponse") break;
-      assert(
-        result.value.type !== "Broadcast",
-        "Expected a response instead of a broadcast.",
-      );
+      assertSame(result.value.type, "Response");
       message = result.value.message;
 
       turn = turn === "relay" ? "client" : "relay";

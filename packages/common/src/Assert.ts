@@ -686,8 +686,8 @@ export const assertNonNullable: <T>(
  * ```ts
  * import {
  *   assertEqual,
- *   assert,
  *   assertErr,
+ *   assertInstanceOf,
  *   assertNotNull,
  *   assertType,
  *   trySync,
@@ -701,7 +701,7 @@ export const assertNonNullable: <T>(
  *
  * const result = trySync(() => assertNotNull(null));
  * assertErr(result);
- * assert(result.error instanceof Error, "Expected an Error.");
+ * assertInstanceOf(result.error, Error);
  * assertEqual(result.error.message, "Expected value not to be null.");
  * ```
  *
@@ -730,8 +730,8 @@ export const assertNotNull: <T>(
  * ```ts
  * import {
  *   assertEqual,
- *   assert,
  *   assertErr,
+ *   assertInstanceOf,
  *   assertNotUndefined,
  *   assertType,
  *   trySync,
@@ -743,7 +743,7 @@ export const assertNotNull: <T>(
  * assertEqual(value, null);
  * const result = trySync(() => assertNotUndefined(undefined));
  * assertErr(result);
- * assert(result.error instanceof Error, "Expected an Error.");
+ * assertInstanceOf(result.error, Error);
  * assertEqual(result.error.message, "Expected value not to be undefined.");
  * ```
  *
@@ -890,9 +890,9 @@ export const assertNonEmptyReadonlyArray: <T>(
  *
  * ```ts
  * import {
- *   assert,
  *   assertEqual,
  *   assertErr,
+ *   assertInstanceOf,
  *   assertNotDisposed,
  *   trySync,
  * } from "@evolu/common";
@@ -902,7 +902,7 @@ export const assertNonEmptyReadonlyArray: <T>(
  * await disposer.disposeAsync();
  * const result = trySync(() => assertNotDisposed(disposer));
  * assertErr(result);
- * assert(result.error instanceof Error, "Expected an Error.");
+ * assertInstanceOf(result.error, Error);
  * assertEqual(result.error.message, "Cannot use a disposed object.");
  * ```
  *

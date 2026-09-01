@@ -7,7 +7,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import type { NonEmptyReadonlyArray } from "../Array.ts";
 import { firstInArray, isNonEmptyArray } from "../Array.ts";
-import { assert } from "../Assert.ts";
+import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import { concatBytes } from "../Buffer.ts";
 import { decrement } from "../Number.ts";
@@ -1602,8 +1602,8 @@ export const readOwnerUsageOrDefault =
     }
 
     const row = firstInArray(result.rows);
-    assert(row.firstTimestamp, "not null");
-    assert(row.lastTimestamp, "not null");
+    assertNonNullable(row.firstTimestamp);
+    assertNonNullable(row.lastTimestamp);
 
     return {
       storedBytes: row.storedBytes,

@@ -374,7 +374,8 @@ export type FetchConsume<T, E = never> = (
  *
  * ```ts
  * import {
- *   assert,
+ *   assertErr,
+ *   assertType,
  *   AbortError,
  *   createRun,
  *   fetch,
@@ -396,10 +397,8 @@ export type FetchConsume<T, E = never> = (
  * fiber.abort();
  * const result = await fiber;
  *
- * assert(
- *   !result.ok && AbortError.is(result.error),
- *   "Expected an AbortError.",
- * );
+ * assertErr(result);
+ * assertType(AbortError, result.error);
  * ```
  *
  * @group Fetch

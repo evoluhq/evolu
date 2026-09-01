@@ -5,6 +5,7 @@ import {
   assertFalse,
   assertLength,
   assertNonNullable,
+  assertNotNull,
   assertNotSame,
   assertNotUndefined,
   assertRejects,
@@ -315,7 +316,7 @@ describe("Evolu", () => {
       });
 
       await testWaitForWorkerMessage();
-      assert(sharedWorkerPort.value, "Expected shared worker port");
+      assertNotNull(sharedWorkerPort.value);
 
       sharedWorkerPort.value.postMessage(
         {
@@ -522,7 +523,7 @@ describe("Evolu", () => {
       });
 
       const onMessage = consoleEntryOrErrorBroadcastChannel.value?.onMessage;
-      assert(onMessage, "Expected tab output handler");
+      assertNonNullable(onMessage);
 
       assertThrowsInstanceOf(() => {
         onMessage({ type: "Unknown" } as never);
@@ -1305,7 +1306,7 @@ describe("Evolu", () => {
       await run.ok(testCreateEvolu);
 
       const evoluChannel = channels.find((channel) => channel.port1.onMessage);
-      assert(evoluChannel?.port1.onMessage, "Expected evolu channel handler");
+      assertNonNullable(evoluChannel?.port1.onMessage);
 
       assertThrowsInstanceOf(() => {
         evoluChannel.port1.onMessage?.({ type: "Unknown" } as never);
@@ -1758,7 +1759,7 @@ describe("Evolu", () => {
       await testWaitForWorkerMessage();
 
       const input = evoluInputs[0];
-      assert(input?.type === "Mutate", "Expected Mutate input");
+      assertSame(input?.type, "Mutate");
       const onCompleteId = input.onCompleteIds[0];
       assertNotUndefined(onCompleteId);
       assertEqual(evoluInputs, [
@@ -1800,7 +1801,7 @@ describe("Evolu", () => {
       await run.ok(testCreateEvolu);
 
       const evoluChannel = channels.find((channel) => channel.port1.onMessage);
-      assert(evoluChannel?.port1.onMessage, "Expected evolu channel handler");
+      assertNonNullable(evoluChannel?.port1.onMessage);
 
       assertEqual(
         assertThrowsInstanceOf(() => {

@@ -4,7 +4,7 @@
  * @module
  */
 
-import { assert } from "./Assert.ts";
+import { assert, assertNotUndefined } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import type { ConsoleDep, ConsoleStoreOutputEntryDep } from "./Console.ts";
 import { disposable } from "./Function.ts";
@@ -434,7 +434,7 @@ export const createBroadcastChannel: CreateBroadcastChannel = <
     {
       postMessage: (message) => {
         const dispatches = broadcastChannelDispatchesByName.get(name);
-        assert(dispatches, "Expected broadcast channel dispatches");
+        assertNotUndefined(dispatches);
 
         for (const otherDispatch of dispatches) {
           if (otherDispatch === dispatch) continue;

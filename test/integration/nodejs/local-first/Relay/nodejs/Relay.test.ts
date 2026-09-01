@@ -1,8 +1,9 @@
 import {
-  assert,
   assertEqual,
   assertFalse,
   assertInstanceOf,
+  assertNotNull,
+  assertNotUndefined,
   assertSame,
   assertTrue,
   constFalse,
@@ -79,7 +80,7 @@ const startTestRelay = async (config: Partial<NodeJsRelayConfig> = {}) => {
     ),
   );
 
-  assert(driver, "Expected relay SQLite driver");
+  assertNotUndefined(driver);
 
   const disposables = disposer.move();
 
@@ -269,7 +270,7 @@ describe("createRelay", () => {
       `ws://127.0.0.1:${setup.relay.port}/?ownerId=${testAppOwner.id}`,
     );
 
-    assert(signal, "Expected owner authorization signal");
+    assertNotUndefined(signal);
   });
 
   it("aborts pending owner authorization when relay is disposed", async () => {
@@ -359,7 +360,7 @@ describe("createRelay", () => {
 
     await authorizationStarted.promise;
     const socket = req.socket;
-    assert(socket, "Expected upgrade request socket");
+    assertNotNull(socket);
     const socketClosed = new Promise<void>((resolve) => {
       socket.once("close", () => resolve());
     });
@@ -404,7 +405,7 @@ describe("createRelay", () => {
     const entry = setup.console
       .getEntriesSnapshot()
       .find((entry) => entry.method === "error");
-    assert(entry, "Expected an error console entry");
+    assertNotUndefined(entry);
     assertEqual(entry.path, ["relay"]);
     assertEqual(entry.args.length, 1);
     assertSame(entry.args[0], error);

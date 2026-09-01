@@ -429,9 +429,10 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
  *
  * ```ts
  * import {
- *   assert,
- *   assertErr,
  *   assertEqual,
+ *   assertErr,
+ *   assertInstanceOf,
+ *   assertSame,
  *   assertType,
  *   err,
  *   getOrThrow,
@@ -455,18 +456,12 @@ export const isErr = <T, E>(result: Result<T, E>): result is Err<E> =>
  * assertType<typeof config, Config>();
  * assertEqual(config.port, 3000);
  *
- * const thrown = trySync(() => getOrThrow(err({ type: "InvalidConfig" })));
+ * const invalidConfigError: InvalidConfigError = { type: "InvalidConfig" };
+ * const thrown = trySync(() => getOrThrow(err(invalidConfigError)));
  * assertErr(thrown);
- * assert(thrown.error instanceof Error, "Expected an Error.");
+ * assertInstanceOf(thrown.error, Error);
  * assertEqual(thrown.error.message, "getOrThrow");
- * const cause = thrown.error.cause;
- * assert(
- *   typeof cause === "object" &&
- *     cause !== null &&
- *     "type" in cause &&
- *     cause.type === "InvalidConfig",
- *   "Expected InvalidConfig cause.",
- * );
+ * assertSame(thrown.error.cause, invalidConfigError);
  * ```
  *
  * Throws: `Error` with the original error attached as `cause`.
@@ -571,9 +566,9 @@ export const getOk = <T>(result: Result<T>): T => {
  *
  * ```ts
  * import {
- *   assert,
- *   assertErr,
  *   assertEqual,
+ *   assertErr,
+ *   assertInstanceOf,
  *   assertOk,
  *   assertType,
  *   trySync,
@@ -609,7 +604,7 @@ export const getOk = <T>(result: Result<T>): T => {
  * assertErr(reserveSeat("A1"), { type: "SeatUnavailable", seat: "A1" });
  * const databaseError = trySync(() => reserveSeat("B1"));
  * assertErr(databaseError);
- * assert(databaseError.error instanceof Error, "Expected an Error.");
+ * assertInstanceOf(databaseError.error, Error);
  * assertEqual(databaseError.error.message, "Database error");
  * ```
  *
@@ -648,9 +643,9 @@ export function trySync<T, E>(
  *
  * ```ts
  * import {
- *   assert,
- *   assertErr,
  *   assertEqual,
+ *   assertErr,
+ *   assertInstanceOf,
  *   assertOk,
  *   assertType,
  *   tryAsync,
@@ -694,7 +689,7 @@ export function trySync<T, E>(
  * });
  * const databaseError = await tryAsync(() => reserveSeat("B1"));
  * assertErr(databaseError);
- * assert(databaseError.error instanceof Error, "Expected an Error.");
+ * assertInstanceOf(databaseError.error, Error);
  * assertEqual(databaseError.error.message, "Database error");
  * ```
  *

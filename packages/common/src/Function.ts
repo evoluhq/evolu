@@ -144,9 +144,9 @@ export const identity = <A>(a: A): A => a;
  *
  * ```ts
  * import {
- *   assert,
  *   assertEqual,
  *   assertErr,
+ *   assertInstanceOf,
  *   assertTrue,
  *   disposable,
  *   trySync,
@@ -168,11 +168,8 @@ export const identity = <A>(a: A): A => a;
  * assertTrue(cleaned);
  * const result = trySync(() => resource.read());
  * assertErr(result);
- * assert(
- *   result.error instanceof Error &&
- *     result.error.message === "Cannot use a disposed object.",
- *   "Expected the disposed-object error.",
- * );
+ * assertInstanceOf(result.error, Error);
+ * assertEqual(result.error.message, "Cannot use a disposed object.");
  * ```
  */
 export function disposable<T extends object>(
@@ -311,8 +308,9 @@ export const constVoid: Thunk<void> = constUndefined;
  *
  * ```ts
  * import {
- *   assert,
+ *   assertEqual,
  *   assertErr,
+ *   assertInstanceOf,
  *   assertType,
  *   todo,
  *   trySync,
@@ -331,11 +329,8 @@ export const constVoid: Thunk<void> = constUndefined;
  * >();
  * const result = trySync(getCount);
  * assertErr(result);
- * assert(
- *   result.error instanceof Error &&
- *     result.error.message === "not yet implemented",
- *   "Expected the not-yet-implemented error.",
- * );
+ * assertInstanceOf(result.error, Error);
+ * assertEqual(result.error.message, "not yet implemented");
  * ```
  */
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters

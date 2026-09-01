@@ -14,18 +14,21 @@
 import {
   allSettled,
   assert,
+  assertLength,
+  assertNotUndefined,
+  assertSame,
   assertType,
   instanceOf,
   createRun,
   durationToMillis,
   escapeRegExp,
-  filterArray,
   isErr,
   mapArray,
   type NonEmptyReadonlyArray,
   type PositiveDuration,
   type ReadonlyRecord,
   type Result,
+  partitionArray,
   safelyStringifyUnknownValue,
   String as StringType,
   type Task,
@@ -301,7 +304,7 @@ export const testBundle = async ({
     ),
   );
 
-  const failures = filterArray(results, isErr);
+  const [failures, successes] = partitionArray(results, isErr);
   if (failures.length > 0) {
     const errors = mapArray(
       failures,
@@ -331,8 +334,7 @@ export const testBundle = async ({
   >();
   for (const [caseName] of caseEntries) bundleEntriesByCase.set(caseName, []);
 
-  for (const result of results) {
-    assert(result.ok, "Expected every bundle test to succeed.");
+  for (const result of successes) {
     const { caseName, bundle } = result.value;
     const entries = bundleEntriesByCase.get(caseName);
     assert(entries, `Missing bundle test case "${caseName}".`);
@@ -438,16 +440,13 @@ const testViteBundler: TestBundler = {
     >;
     assert(Array.isArray(output), "Vite did not return build outputs.");
     const outputs: ReadonlyArray<ViteOutput> = output;
-    assert(outputs.length === 1, "Vite did not return one build output.");
+    assertLength(outputs, 1);
     const viteOutput = outputs.at(0);
-    assert(viteOutput, "Vite did not return a build output.");
-    assert(
-      viteOutput.output.length === 1,
-      "Vite did not emit one JavaScript chunk.",
-    );
+    assertNotUndefined(viteOutput);
+    assertLength(viteOutput.output, 1);
     const chunk = viteOutput.output.at(0);
-    assert(chunk, "Vite did not emit a JavaScript chunk.");
-    assert(chunk.type === "chunk", "Vite did not emit a JavaScript chunk.");
+    assertNotUndefined(chunk);
+    assertSame(chunk.type, "chunk");
     assertType(StringType, chunk.code);
 
     return {

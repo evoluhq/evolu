@@ -1,5 +1,4 @@
 import {
-  assert,
   assertEqual,
   assertFalse,
   assertInstanceOf,
@@ -179,7 +178,7 @@ const createBroadcastProtocolMessage = async (
   );
 
   const broadcastMessage = broadcastMessages.at(0);
-  assert(broadcastMessage, "Expected relay broadcast message");
+  assertNotUndefined(broadcastMessage);
   return broadcastMessage;
 };
 
@@ -388,17 +387,14 @@ const getQueuedSharedWorkerMessage = <
   type: TType,
 ): ExtractTyped<SharedWorkerResponseMessage, TType> => {
   const firstOutput = outputs.at(0);
-  assert(firstOutput, "Expected queued response");
-  assert(firstOutput.type === "OnQueuedResponse", "Expected queued response");
+  assertNotUndefined(firstOutput);
+  assertSame(firstOutput.type, "OnQueuedResponse");
 
   const response = firstOutput.response;
-  assert(
-    response.type === "ForSharedWorker",
-    "Expected shared worker response",
-  );
+  assertSame(response.type, "ForSharedWorker");
 
   const message = response.message;
-  assert(message.type === type, `Expected ${type} message`);
+  assertSame(message.type, type);
 
   return message as ExtractTyped<SharedWorkerResponseMessage, TType>;
 };
@@ -1478,12 +1474,9 @@ describe("query and mutation flow", () => {
 
     assertLength(exportOutputs, 1);
     const exportOutput = exportOutputs[0];
-    assert(
-      exportOutput.type === "OnQueuedResponse" &&
-        exportOutput.response.type === "ForEvolu" &&
-        exportOutput.response.message.type === "Export",
-      "Expected export response",
-    );
+    assertSame(exportOutput.type, "OnQueuedResponse");
+    assertSame(exportOutput.response.type, "ForEvolu");
+    assertSame(exportOutput.response.message.type, "Export");
     const file = exportOutput.response.message.file;
     assertEqual(file.byteLength, setup.sqlite.export().byteLength);
     assertEqual(exportOutputs, [
@@ -2557,10 +2550,10 @@ describe("sync message flow", () => {
 
     assertLength(setup.consoleEntryOrErrors, 1);
     const consoleEntryOrError = setup.consoleEntryOrErrors[0];
-    assert(
-      consoleEntryOrError.type === "Error" &&
-        consoleEntryOrError.error.type === "DecryptWithXChaCha20Poly1305Error",
-      "Expected decryption error",
+    assertSame(consoleEntryOrError.type, "Error");
+    assertSame(
+      consoleEntryOrError.error.type,
+      "DecryptWithXChaCha20Poly1305Error",
     );
     assertInstanceOf(consoleEntryOrError.error.error, Error);
     assertEqual(outputs, [
@@ -2817,15 +2810,15 @@ describe("sync message flow", () => {
         )
       ).at(0);
 
-      assert(output, "Expected query response");
-      assert(output.type === "OnQueuedResponse", "Expected queued response");
+      assertNotUndefined(output);
+      assertSame(output.type, "OnQueuedResponse");
 
       const response = output.response;
-      assert(response.type === "ForEvolu", "Expected Evolu response");
-      assert(response.message.type === "Query", "Expected query response");
+      assertSame(response.type, "ForEvolu");
+      assertSame(response.message.type, "Query");
 
       const rows = response.message.rowsByQuery.get(query);
-      assert(rows, "Expected query rows");
+      assertNotUndefined(rows);
       return rows;
     };
 
@@ -3328,7 +3321,7 @@ describe("sync message flow", () => {
       syncResponses,
       "CreateSyncMessages",
     ).protocolMessagesByOwnerId.get(testAppOwner.id);
-    assert(protocolMessage, "Expected sync protocol message");
+    assertNotUndefined(protocolMessage);
 
     await using relay = await setupSqliteAndRelayStorage();
 
@@ -3407,7 +3400,7 @@ describe("sync message flow", () => {
       applySyncMessage.result.value.type === "Response"
         ? applySyncMessage.result.value.message
         : null;
-    assert(clientFollowUpMessage, "Expected client follow-up sync response");
+    assertNotNull(clientFollowUpMessage);
 
     await relay.run.orThrow(applyProtocolMessageAsRelay(clientFollowUpMessage));
 
@@ -4404,13 +4397,10 @@ describe("quarantine replay", () => {
         )
       ).at(0);
 
-      assert(output, "Expected query response");
-      assert(output.type === "OnQueuedResponse", "Expected queued response");
-      assert(output.response.type === "ForEvolu", "Expected Evolu response");
-      assert(
-        output.response.message.type === "Query",
-        "Expected query message",
-      );
+      assertNotUndefined(output);
+      assertSame(output.type, "OnQueuedResponse");
+      assertSame(output.response.type, "ForEvolu");
+      assertSame(output.response.message.type, "Query");
 
       assertEqual(
         output.response.message.rowsByQuery.get(testTableWithNoteQuery),

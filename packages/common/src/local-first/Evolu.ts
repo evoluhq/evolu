@@ -10,7 +10,11 @@ import {
   mapArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
-import { assert, assertNonEmptyReadonlyArray } from "../Assert.ts";
+import {
+  assert,
+  assertNonEmptyReadonlyArray,
+  assertNotUndefined,
+} from "../Assert.ts";
 import { createCallbacks } from "../Callbacks.ts";
 import type { ConsoleDep } from "../Console.ts";
 import { createConsole } from "../Console.ts";
@@ -1056,7 +1060,7 @@ export const createEvolu =
               if (!loadingPromise) continue;
 
               const rows = nextRowsByQueryMap.get(query);
-              assert(rows, "Expected patched query rows to exist.");
+              assertNotUndefined(rows);
 
               fulfillLoadingPromise(loadingPromise, rows);
 

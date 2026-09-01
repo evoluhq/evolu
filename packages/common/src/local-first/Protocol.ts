@@ -180,7 +180,12 @@ import {
   isNonEmptyArray,
   type NonEmptyReadonlyArray,
 } from "../Array.ts";
-import { assert, assertNonNullable, assertNotUndefined } from "../Assert.ts";
+import {
+  assert,
+  assertNonNullable,
+  assertNotUndefined,
+  assertSame,
+} from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
 import {
   type Buffer,
@@ -1099,7 +1104,7 @@ export const applyProtocolMessageAsRelay =
       }
 
       const messageType = input.shift() as MessageType;
-      assert(messageType === MessageType.Request, "Invalid MessageType");
+      assertSame(messageType, MessageType.Request);
 
       const hasWriteKey = input.shift();
       let writeKey: OwnerWriteKey | undefined;

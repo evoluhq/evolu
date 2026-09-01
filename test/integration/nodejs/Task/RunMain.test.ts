@@ -1,8 +1,8 @@
 import {
-  assert,
   assertEqual,
   assertFalse,
   assertLength,
+  assertNotUndefined,
   assertThrowsSame,
   assertTrue,
   assertType,
@@ -414,7 +414,7 @@ describe("runMain", () => {
 
     await runMain({ console })((run) => {
       const rootRun = run.parent?.parent;
-      assert(rootRun, "Expected root Run");
+      assertNotUndefined(rootRun);
       (rootRun as DisposableRun).defer(() => {
         throw defect;
       });

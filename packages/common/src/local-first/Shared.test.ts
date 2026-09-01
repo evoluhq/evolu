@@ -2,7 +2,6 @@ import { describe, it } from "node:test";
 import { sql as kyselySql } from "kysely";
 
 import {
-  assert,
   assertEqual,
   assertFalse,
   assertInstanceOf,
@@ -658,13 +657,11 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      assert(
+      assertTrue(
         firstOutputs.some((output) => output.type === "OnPatchesByQuery"),
-        "Expected patches for the first Evolu instance.",
       );
-      assert(
+      assertTrue(
         secondOutputs.some((output) => output.type === "RefreshQueries"),
-        "Expected a query refresh for the second Evolu instance.",
       );
     });
 
@@ -1217,9 +1214,8 @@ describe("with one evolu instance", () => {
       });
       await testWaitForWorkerMessage();
 
-      assert(
+      assertTrue(
         evoluOutputs.some((output) => output.type === "RefreshQueries"),
-        "Expected a query refresh.",
       );
       assertEqual(consoleEntryOrErrors.at(-1), {
         type: "Error",

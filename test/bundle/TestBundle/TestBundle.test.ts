@@ -3,7 +3,6 @@ import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { before, describe, it } from "node:test";
 import {
-  assert,
   assertEqual,
   assertFalse,
   assertInstanceOf,
@@ -261,12 +260,9 @@ const assertTestBundleFailure = async (
   const error = await assertRejectsInstanceOf(promise, AggregateError);
   const failures = error.errors.map((failure) => {
     assertInstanceOf(failure, Error);
-    assert("caseName" in failure, "Expected a bundle failure case name.");
-    assert("bundler" in failure, "Expected a bundle failure bundler.");
-    assert(
-      failure.bundler === "webpack" || failure.bundler === "vite",
-      "Expected a supported bundle failure bundler.",
-    );
+    assertTrue("caseName" in failure);
+    assertTrue("bundler" in failure);
+    assertTrue(failure.bundler === "webpack" || failure.bundler === "vite");
     return {
       caseName: failure.caseName,
       bundler: failure.bundler,
