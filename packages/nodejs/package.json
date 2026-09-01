@@ -1,6 +1,6 @@
 {
   "name": "@evolu/nodejs",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Evolu for Node.js",
   "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
   "license": "MIT",
@@ -75,7 +75,7 @@
   },
   "peerDependencies": {
     "@evolu/common": "^8.0.0",
-    "@evolu/oxlint-config": "^0.1.0",
+    "@evolu/oxlint-config": "^0.2.0",
     "@evolu/typescript-config": "^0.1.0",
     "oxlint": "^1.79.0",
     "oxlint-tsgolint": "7.0.2001",

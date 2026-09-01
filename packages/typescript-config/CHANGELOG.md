@@ -1,5 +1,17 @@
 # @evolu/typescript-config
 
+## 0.1.1
+
+### Patch Changes
+
+- 037c390: Required Node.js 24.20 or newer
+
+  Evolu packages now require Node.js 24.20 or newer, matching the repository's tested LTS baseline.
+
+- f0aa036: Stopped including separate library test directories
+
+  The library configuration now includes only `src`. Projects with tests or a Vitest configuration outside `src` must add those paths to their own TypeScript configuration.
+
 ## 0.1.0
 
 ### Minor Changes
