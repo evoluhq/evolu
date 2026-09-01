@@ -1,4 +1,5 @@
 import { assert, describe, expect, test, vi } from "vitest";
+import { assertContinuationAfterMicrotasks } from "../../../../packages/common/src/Assert.ts";
 import { isServer } from "../../../../packages/common/src/Platform.ts";
 import { err, ok } from "../../../../packages/common/src/Result.ts";
 import { parseStackTrace } from "../../../../packages/common/src/StackTrace.ts";
@@ -12,7 +13,6 @@ import {
   type Task,
 } from "../../../../packages/common/src/Task.ts";
 import {
-  assertContinuationAfterMicrotasks,
   testGlobalUncaughtErrors,
   testGlobalUnhandledRejections,
 } from "../_vitest.ts";

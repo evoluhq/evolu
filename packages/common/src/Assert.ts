@@ -252,10 +252,17 @@ export const assertFalse: (value: unknown) => asserts value is false = (
  *
  * @group Assertions
  */
-export const assertConditionAfterMicrotasks = async (
+export function assertConditionAfterMicrotasks(
   condition: () => boolean,
   expectedMicrotaskCount: number,
-): Promise<void> => {
+): Promise<void>;
+export async function assertConditionAfterMicrotasks(
+  condition: () => boolean,
+  expectedMicrotaskCount: number,
+  stackStartFn: (
+    ...args: Array<never>
+  ) => unknown = assertConditionAfterMicrotasks,
+): Promise<void> {
   for (
     let microtaskCount = 0;
     microtaskCount < expectedMicrotaskCount;
@@ -269,7 +276,7 @@ export const assertConditionAfterMicrotasks = async (
         actual,
         expected: false,
         operator: "strictEqual",
-        stackStartFn: assertConditionAfterMicrotasks,
+        stackStartFn,
       },
     );
     await Promise.resolve();
@@ -283,10 +290,55 @@ export const assertConditionAfterMicrotasks = async (
       actual,
       expected: true,
       operator: "strictEqual",
-      stackStartFn: assertConditionAfterMicrotasks,
+      stackStartFn,
     },
   );
+}
+
+/**
+ * Asserts that a Promise continuation runs after exactly the specified number
+ * of microtasks.
+ *
+ * Both fulfillment and rejection count as running the continuation. Use this in
+ * tests that intentionally specify async scheduling behavior. Application code
+ * must not depend on exact microtask counts. Maintainers should review count
+ * changes because they indicate that an async pipeline changed.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertContinuationAfterMicrotasks } from "@evolu/common";
+ *
+ * await assertContinuationAfterMicrotasks(Promise.resolve("ready"), 1);
+ * ```
+ *
+ * @group Assertions
+ */
+export const assertContinuationAfterMicrotasks = async (
+  promise: Promise<unknown>,
+  expectedMicrotaskCount: number,
+): Promise<void> => {
+  let continuationCalled = false;
+
+  const markContinuationCalled = (): void => {
+    continuationCalled = true;
+  };
+
+  void promise.then(markContinuationCalled, markContinuationCalled);
+
+  await assertConditionAfterMicrotasksWithStackStartFn(
+    () => continuationCalled,
+    expectedMicrotaskCount,
+    assertContinuationAfterMicrotasks,
+  );
 };
+
+const assertConditionAfterMicrotasksWithStackStartFn =
+  assertConditionAfterMicrotasks as (
+    condition: () => boolean,
+    expectedMicrotaskCount: number,
+    stackStartFn: (...args: Array<never>) => unknown,
+  ) => Promise<void>;
 
 /**
  * Asserts that a function throws the expected value.

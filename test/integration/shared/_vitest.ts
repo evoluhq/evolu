@@ -1,4 +1,3 @@
-import { assertConditionAfterMicrotasks } from "../../../packages/common/src/Assert.ts";
 import { constVoid } from "../../../packages/common/src/Function.ts";
 import {
   isHermes,
@@ -41,30 +40,4 @@ const withDisabledConsoleError = (
       disposables.dispose();
     },
   };
-};
-
-/**
- * Expects a Promise continuation to run after exactly the specified number of
- * microtasks.
- *
- * Application code must not depend on exact microtask counts. Maintainers
- * should review count changes because they indicate that an async pipeline
- * changed.
- */
-export const assertContinuationAfterMicrotasks = async (
-  promise: Promise<unknown>,
-  expectedMicrotaskCount: number,
-): Promise<void> => {
-  let continuationCalled = false;
-
-  const markContinuationCalled = (): void => {
-    continuationCalled = true;
-  };
-
-  void promise.then(markContinuationCalled, markContinuationCalled);
-
-  await assertConditionAfterMicrotasks(
-    () => continuationCalled,
-    expectedMicrotaskCount,
-  );
 };

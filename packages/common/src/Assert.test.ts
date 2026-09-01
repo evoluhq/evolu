@@ -5,6 +5,7 @@ import type { NonEmptyArray, NonEmptyReadonlyArray } from "./Array.ts";
 import {
   assert,
   assertConditionAfterMicrotasks,
+  assertContinuationAfterMicrotasks,
   assertEqual,
   assertEqualBytes,
   assertErr,
@@ -233,6 +234,13 @@ describe("assertConditionAfterMicrotasks", () => {
     nodeAssert.equal(callCount, 3);
   });
 
+  it("resolves without adding another microtask", async () => {
+    await assertContinuationAfterMicrotasks(
+      assertConditionAfterMicrotasks(() => true, 0),
+      1,
+    );
+  });
+
   it("rejects when the condition becomes true too early", async () => {
     await nodeAssert.rejects(
       assertConditionAfterMicrotasks(() => true, 1),
@@ -244,6 +252,49 @@ describe("assertConditionAfterMicrotasks", () => {
     await nodeAssert.rejects(
       assertConditionAfterMicrotasks(() => false, 0),
       /Expected condition to be true after exactly 0 microtasks\./u,
+    );
+  });
+});
+
+describe("assertContinuationAfterMicrotasks", () => {
+  it("resolves when a fulfillment continuation runs after the exact count", async () => {
+    await assertContinuationAfterMicrotasks(Promise.resolve("done"), 1);
+  });
+
+  it("resolves when a rejection continuation runs after the exact count", async () => {
+    await assertContinuationAfterMicrotasks(
+      Promise.reject(new Error("failure")),
+      1,
+    );
+  });
+
+  it("rejects when the continuation runs too early", async () => {
+    await nodeAssert.rejects(
+      assertContinuationAfterMicrotasks(Promise.resolve("done"), 2),
+      (error: unknown) => {
+        nodeAssert.ok(error instanceof nodeAssert.AssertionError);
+        nodeAssert.match(
+          error.message,
+          /Expected condition to be false after 1 microtasks\./u,
+        );
+        nodeAssert.ok(error.stack);
+        nodeAssert.equal(
+          error.stack.includes("at assertContinuationAfterMicrotasks "),
+          false,
+        );
+        return true;
+      },
+    );
+  });
+
+  it("rejects when the continuation has not run after the exact count", async () => {
+    const promise = new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+
+    await nodeAssert.rejects(
+      assertContinuationAfterMicrotasks(promise, 1),
+      /Expected condition to be true after exactly 1 microtasks\./u,
     );
   });
 });
