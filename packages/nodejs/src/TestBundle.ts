@@ -15,7 +15,6 @@ import {
   allSettled,
   assert,
   assertLength,
-  assertNotUndefined,
   assertSame,
   assertType,
   instanceOf,
@@ -441,11 +440,9 @@ const testViteBundler: TestBundler = {
     assert(Array.isArray(output), "Vite did not return build outputs.");
     const outputs: ReadonlyArray<ViteOutput> = output;
     assertLength(outputs, 1);
-    const viteOutput = outputs.at(0);
-    assertNotUndefined(viteOutput);
+    const viteOutput = outputs[0];
     assertLength(viteOutput.output, 1);
-    const chunk = viteOutput.output.at(0);
-    assertNotUndefined(chunk);
+    const chunk = viteOutput.output[0];
     assertSame(chunk.type, "chunk");
     assertType(StringType, chunk.code);
 

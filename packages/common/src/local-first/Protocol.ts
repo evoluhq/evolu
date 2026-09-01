@@ -225,6 +225,7 @@ import type { SqliteValue } from "../Sqlite.ts";
 import { AbortError, type Task } from "../Task.ts";
 import { Millis } from "../Time.ts";
 import {
+  assertType,
   Base64Url,
   base64UrlToUint8Array,
   between,
@@ -857,7 +858,7 @@ export const createTimestampsBuffer = (): TimestampsBuffer => {
   return {
     add: (timestamp) => {
       const delta = timestamp.millis - previousMillis;
-      assert(NonNegativeInt.is(delta), "The delta must be NonNegativeInt");
+      assertType(NonNegativeInt, delta);
 
       count++;
       syncCount();
