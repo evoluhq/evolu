@@ -20,9 +20,10 @@ npm install @evolu/common
 
 ## Polyfills
 
-Evolu uses [JavaScript explicit resource management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management),
-which Safari does not support yet, so call `installPolyfills` during app
-startup before using Evolu.
+Evolu uses modern JavaScript APIs that are not available in every supported
+runtime. Call
+[`installPolyfills`](/docs/api-reference/common/Polyfills/functions/installPolyfills)
+during app startup before using Evolu.
 
 ```ts
 import { installPolyfills } from "@evolu/common/polyfills";

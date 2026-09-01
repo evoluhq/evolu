@@ -35,6 +35,7 @@ export const navigation: Array<NavGroup> = [
       },
       { title: "Conventions", href: "/docs/conventions" },
       { title: "Testing", href: "/docs/testing" },
+      { title: "Assert", href: "/docs/api-reference/common/Assert" },
     ],
   },
   {

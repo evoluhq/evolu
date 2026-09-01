@@ -16,6 +16,12 @@
  *   `Map.prototype.getOrInsertComputed`, `WeakMap.prototype.getOrInsert`, and
  *   `WeakMap.prototype.getOrInsertComputed`) for Node 24 and React Native
  *
+ * The polyfills are implemented directly in the Evolu Library instead of being
+ * third-party runtime dependencies. We audit their behavior against
+ * specifications, conformance tests, and native implementations, and fix issues
+ * when necessary. This lets Evolu understand and control every line of this
+ * runtime code.
+ *
  * `@evolu/react-native` has its own `Polyfills` module and its
  * `installPolyfills` calls this function first, then installs React Native
  * specific polyfills.

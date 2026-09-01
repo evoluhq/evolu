@@ -66,6 +66,10 @@ narrowing such as `assertOk` and `assertErr`. Use `node:assert/strict` only when
 a test needs exact Node.js assertion semantics or an assertion Evolu does not
 provide.
 
+The [`Assert` module](/docs/api-reference/common/Assert) documents the available
+helpers, their equality semantics, and how to use assertions in production code,
+examples, and tests.
+
 Runtime tests do not replace type-checking. Keep TypeScript contracts beside the
 runtime tests. Use `assertType<Actual, Expected>()` for exact inference,
 `satisfies` for one-way assignability, and a precise `@ts-expect-error` for a

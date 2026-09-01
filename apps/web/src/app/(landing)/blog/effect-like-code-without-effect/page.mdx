@@ -16,6 +16,21 @@ export const metadata = {
 
 export default (props) => <ArticleLayout article={article} {...props} />;
 
+<Note>
+  **Update:** Since this article was published, the [Evolu
+  Library](/docs/library) has grown significantly. It now provides
+  [`Task`](/docs/api-reference/common/Task) for structured concurrency and
+  resource management, with built-in dependency injection. The article still
+  explains the ideas behind the library, but it no longer reflects its full
+  capabilities.
+
+We built our own standard library because we need to understand every line of
+code and every design decision. We also have strict requirements for
+correctness and our own, inevitably subjective, view of the best developer
+experience, so we can’t—and don’t want to—build Evolu on Effect.
+
+</Note>
+
 Effect is a vast ecosystem that embraces proven patterns like structured concurrency, tracing, resource safety, and dependency injection. But if you don’t want to—or can’t—use the full Effect, you can still write Effect-like code (to some extent). This post explores how to apply some of its core ideas using simple, focused TypeScript utilities, without committing to the full framework.
 
 Writing exact Effect code without Effect is obviously not possible—Effect is a sophisticated runtime that runs your code. I previously used fp-ts, then Effect, but for Evolu, I chose a different path for reasons I’ve explained elsewhere. I wanted to keep some of the patterns without relying on Effect. You don’t even need to use the Evolu library—you can simply copy-paste a few files and follow the Evolu conventions.
