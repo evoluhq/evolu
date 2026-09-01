@@ -1,6 +1,6 @@
 {
   "name": "@evolu/typescript-config",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Strict TypeScript configurations for Evolu projects",
   "keywords": [
     "evolu",

@@ -1,5 +1,169 @@
 # @evolu/common
 
+## 8.8.0
+
+### Minor Changes
+
+- 91ff2c9: Improved boolean assertion narrowing
+
+  `assertTrue` now preserves TypeScript control-flow narrowing when passed a
+  boolean condition. Type guards therefore narrow their original value after the
+  assertion, while unknown values continue to be checked against exact `true`.
+
+  ```ts
+  import { assertEqual, assertTrue, assertType } from "@evolu/common";
+
+  const value: unknown = "Evolu";
+  const isString = (value: unknown): value is string =>
+    typeof value === "string";
+
+  assertTrue(isString(value));
+  assertType<typeof value, string>();
+  assertEqual(value.toUpperCase(), "EVOLU");
+  ```
+
+- 468b824: Expanded platform-agnostic assertions
+
+  Added `assertEqualBytes`, `assertConditionAfterMicrotasks`, `assertInstanceOf`,
+  `assertLength`, `assertNotSame`, `assertNotEqual`, `assertThrows`,
+  `assertThrowsSame`, `assertThrowsInstanceOf`, `assertRejects`,
+  `assertRejectsSame`, and `assertRejectsInstanceOf` for portable invariants,
+  examples, and tests. `assertEqualBytes` compares a `Uint8Array` with expected
+  bytes from any numeric array-like representation.
+  `assertThrows` and `assertRejects` require either an expected value, compared
+  using Evolu equality, or an assertion function for custom verification. The
+  `Same` variants verify exact propagation, while the `InstanceOf` variants
+  return the narrowed failure for further inspection.
+
+  `assertEqual` and `assertNotEqual` now accept unknown values. Data
+  representations use Evolu's deep equality semantics, while unsupported values
+  are opaque and compare by identity. The default comparisons in `assertOk` and
+  `assertErr` use the same behavior.
+
+  Evolu assertions now throw `AssertionError`-compatible errors with structured
+  failure details. Node.js uses its native `AssertionError`, including diffs for
+  comparison assertions, while browsers and React Native use a compatible
+  fallback. `assert` also accepts optional structured diagnostics, including an
+  underlying error's cause.
+
+  ```ts
+  import {
+    assert,
+    assertEqual,
+    assertEqualBytes,
+    assertErr,
+    assertInstanceOf,
+    assertLength,
+    assertNotEqual,
+    assertRejectsInstanceOf,
+    assertSame,
+    assertThrows,
+    trySync,
+  } from "@evolu/common";
+
+  const actual: unknown = { name: "Ada" };
+  assertNotEqual(actual, { name: "Grace" });
+  assertLength(["Ada", "Grace"], 2);
+  assertEqualBytes(new Uint8Array([1, 2, 3]), [1, 2, 3]);
+
+  const cause = new Error("Unexpected value.");
+  assertThrows(() => {
+    throw cause;
+  }, cause);
+
+  const rejection = await assertRejectsInstanceOf(
+    Promise.reject(new TypeError("Unavailable.")),
+    TypeError,
+  );
+  assertEqual(rejection.message, "Unavailable.");
+
+  const result = trySync(() => assert(false, "Expected true.", { cause }));
+
+  assertErr(result);
+  assertInstanceOf(result.error, Error);
+  assertSame(result.error.cause, cause);
+  ```
+
+- 57217a0: Added disposable global test stubs
+
+  Added `testStubGlobal` for temporarily replacing a global property and restoring
+  its original descriptor with `using`.
+
+  ```ts
+  import { assertEqual, assertFalse, testStubGlobal } from "@evolu/common";
+
+  const key = Symbol("test global");
+  {
+    using _stub = testStubGlobal(key, 42);
+    assertEqual(Reflect.get(globalThis, key), 42);
+  }
+  assertFalse(Reflect.has(globalThis, key));
+  ```
+
+- 0be94d0: Exposed binary codec helpers
+
+  Added public Buffer helpers for encoding numbers, flags, non-negative integers,
+  lengths, strings, and run-length encoded values.
+
+  ```ts
+  import {
+    assertEqual,
+    createBuffer,
+    decodeString,
+    encodeString,
+  } from "@evolu/common";
+
+  const buffer = createBuffer();
+  encodeString(buffer, "Evolu");
+
+  assertEqual(decodeString(createBuffer(buffer.unwrap())), "Evolu");
+  ```
+
+### Patch Changes
+
+- 037c390: Required Node.js 24.20 or newer
+
+  Evolu packages now require Node.js 24.20 or newer, matching the repository's tested LTS baseline.
+
+- 468b824: Distinguished positive and negative zero in equality
+
+  `eqNumber` and `eqData` now compare primitive values with `Object.is`,
+  JavaScript's SameValue algorithm. Therefore number and Data equality,
+  `assertEqual`, and the default comparisons in `assertOk` and `assertErr`
+  distinguish `0` from `-0` while still considering `NaN` equal to itself.
+  Structural lookup keys also preserve the distinction between `0` and `-0`.
+
+  ```ts
+  import {
+    assertFalse,
+    eqData,
+    eqNumber,
+    structuralLookup,
+  } from "@evolu/common";
+
+  assertFalse(eqNumber(0, -0));
+  assertFalse(eqData({ value: 0 }, { value: -0 }));
+  assertFalse(structuralLookup(0) === structuralLookup(-0));
+  ```
+
+- 468b824: Corrected SameValue equality helper names
+
+  Renamed `eqStrict` to `eqSameValue` and `eqArrayStrict` to `eqArraySameValue`.
+  Their SameValue behavior through `Object.is` is unchanged.
+
+  ```ts
+  import {
+    assertFalse,
+    assertTrue,
+    eqArraySameValue,
+    eqSameValue,
+  } from "@evolu/common";
+
+  assertTrue(eqSameValue(NaN, NaN));
+  assertFalse(eqSameValue(0, -0));
+  assertFalse(eqArraySameValue([{}], [{}]));
+  ```
+
 ## 8.7.0
 
 ### Minor Changes

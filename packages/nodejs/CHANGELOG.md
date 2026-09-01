@@ -1,5 +1,30 @@
 # @evolu/nodejs
 
+## 3.2.0
+
+### Minor Changes
+
+- a6335c5: Added a Node.js test overview reporter
+
+  The new `@evolu/nodejs/TestOverviewReporter` entry point lists test files slowest-first while preserving Node.js failure diagnostics, run totals, and coverage output. Durations longer than 300 ms are highlighted when terminal colors are supported.
+
+  Use it directly with Node.js:
+
+  ```sh
+  node --test --test-reporter=@evolu/nodejs/TestOverviewReporter
+  ```
+
+### Patch Changes
+
+- 037c390: Required Node.js 24.20 or newer
+
+  Evolu packages now require Node.js 24.20 or newer, matching the repository's tested LTS baseline.
+
+- Updated dependencies [037c390]
+- Updated dependencies [638dd22]
+- Updated dependencies [4769956]
+  - @evolu/oxlint-config@0.2.0
+
 ## 3.1.0
 
 ### Minor Changes
