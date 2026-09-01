@@ -34,5 +34,9 @@
       "fileMatch": ["turbo.json"],
       "url": "https://turborepo.dev/schema.json"
     }
-  ]
+  ],
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.ts": "${capture}.test.ts, ${capture}.*.test.ts"
+  }
 }

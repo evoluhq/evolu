@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { assertEqualBytes, assertEqual, assertTrue } from "./Assert.ts";
 
+// Keep this coverage in a separate test file. Per-file process isolation gives
+// it a fresh module cache and globals, so Type.ts is first loaded after
+// Platform.ts is mocked and temporary Uint8Array mutations cannot affect
+// Type.test.ts.
 const toBase64Descriptor = Object.getOwnPropertyDescriptor(
   Uint8Array.prototype,
   "toBase64",
