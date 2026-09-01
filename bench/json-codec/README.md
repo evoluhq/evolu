@@ -1,7 +1,7 @@
 # JSON binary codec benchmark
 
 This benchmark guards the `JsonValue` MessagePack codec in
-[`Buffer.ts`](../../packages/common/src/Buffer.ts) against accidental
+[`Binary.ts`](../../packages/common/src/Binary.ts) against accidental
 performance regressions. It compares Evolu with msgpackr 2.0.5, configured like
 the previous Protocol implementation with `variableMapSize: true` and
 `useRecords: false`. Native acceleration is disabled so both codecs run in

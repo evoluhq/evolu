@@ -8,7 +8,7 @@ import {
   test,
   vi,
 } from "vitest";
-import { utf8ToBytes } from "../../../../packages/common/src/Buffer.ts";
+import { utf8ToBytes } from "../../../../packages/common/src/Binary.ts";
 import { isServer } from "../../../../packages/common/src/Platform.ts";
 import type { RandomNumber } from "../../../../packages/common/src/Random.ts";
 import { ok } from "../../../../packages/common/src/Result.ts";

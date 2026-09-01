@@ -5,7 +5,7 @@
  */
 
 import type { Brand } from "./Brand.ts";
-import { bytesToHex, hexToBytes } from "./Buffer.ts";
+import { bytesToHex, hexToBytes } from "./Binary.ts";
 import type { EncryptionKey } from "./Crypto.ts";
 import type { Eq } from "./Eq.ts";
 import { createEqObject, eqString, eqUint8Array } from "./Eq.ts";

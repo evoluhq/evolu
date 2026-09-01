@@ -25,7 +25,7 @@ import {
   encodeNonNegativeInt,
   encodeNumber,
   encodeString,
-} from "./Buffer.ts";
+} from "./Binary.ts";
 import {
   assertType,
   FiniteNumber,

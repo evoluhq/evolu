@@ -12,7 +12,7 @@ import {
   assertThrowsInstanceOf,
   assertTrue,
 } from "../Assert.ts";
-import { createBuffer, encodeNonNegativeInt } from "../Buffer.ts";
+import { createBuffer, encodeNonNegativeInt } from "../Binary.ts";
 import { EncryptionKey } from "../Crypto.ts";
 import { constFalse, constTrue } from "../Function.ts";
 import { SqliteValue } from "../Sqlite.ts";

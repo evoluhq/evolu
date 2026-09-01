@@ -9,7 +9,7 @@ import type { NonEmptyReadonlyArray } from "../Array.ts";
 import { firstInArray, isNonEmptyArray } from "../Array.ts";
 import { assert, assertNonNullable } from "../Assert.ts";
 import type { Brand } from "../Brand.ts";
-import { concatBytes } from "../Buffer.ts";
+import { concatBytes } from "../Binary.ts";
 import { decrement } from "../Number.ts";
 import type { RandomDep } from "../Random.ts";
 import { err, ok } from "../Result.ts";
