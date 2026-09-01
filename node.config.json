@@ -13,6 +13,7 @@
       "packages/common/src/intl/**/*.ts"
     ],
     "test-isolation": "process",
+    "test-randomize": true,
     "test-timeout": 30000
   }
 }

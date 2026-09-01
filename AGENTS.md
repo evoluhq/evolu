@@ -35,8 +35,7 @@ The repository uses the latest Node.js LTS release selected by `.nvmrc` and pnpm
   shared configuration from `node.config.json`. Quote globs so Node expands them
   consistently across shells.
 - `pnpm test` — run unit, integration, bundle, and documentation-example tests.
-- `pnpm test:unit` — run all unit tests with coverage.
-- `pnpm test:unit-overview` — run all unit tests with test-file durations sorted
+- `pnpm test:unit` — run all unit tests with test-file durations sorted
   slowest-first and the per-source-file coverage table.
 - `pnpm test:integration` — run Node.js and browser integration tests.
 - `pnpm test:integration:nodejs` — run Node.js integration tests without source

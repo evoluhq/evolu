@@ -90,13 +90,17 @@ Testing
 - `pnpm playwright:install` - Install browsers required by Playwright-based Vitest projects
 - `pnpm test` - Run all unit, integration, bundle, and documentation-example tests
 - `pnpm test:node "<test-file-or-glob>"` - Run selected native Node tests with coverage
-- `pnpm test:unit` - Run all unit tests with coverage
-- `pnpm test:unit-overview` - Run all unit tests with test-file durations and the per-source-file coverage table
+- `pnpm test:unit` - Run all unit tests with test-file durations and coverage
 - `pnpm test:integration` - Run Node.js and browser integration tests
 - `pnpm test:integration:nodejs` - Run Node.js integration tests without source coverage
 - `pnpm test:integration:browsers` - Run browser integrations in Chromium with coverage and in Firefox and WebKit for compatibility
 - `pnpm test:bundle` - Run production bundle and tree-shaking tests
 - `pnpm test:jsdoc` - Compile and run documentation examples
+
+Unit, integration, and bundle test suites randomize execution order and print a
+seed that reproduces the same ordering. See
+[Randomized test order](test/README.md#randomized-test-order) for the rationale
+and replay commands.
 
 See the [testing convention](https://www.evolu.dev/docs/testing) for test
 placement, runner, and assertion guidance.

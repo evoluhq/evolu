@@ -49,10 +49,8 @@ pnpm test:node "packages/common/src/Array.test.ts"
 Use an exact path when running one test file. Node expands quoted globs
 consistently across shells when intentionally selecting multiple files.
 
-Use `pnpm test:unit-overview` to rerun the complete unit suite with test-file
-durations sorted slowest-first, per-source-file coverage percentages, and
-uncovered lines. This is an audit view and is not part of `pnpm test`, which
-already runs the unit suite.
+The unit report lists test files slowest-first, followed by run totals,
+duration, per-source-file coverage percentages, and uncovered lines.
 Node.js 24 reports only source files loaded by the unit suite; integration and
 browser coverage is reported separately.
 
@@ -68,6 +66,33 @@ examples use Evolu's strict compiler settings without a project layout. Unused
 declarations are checked by Oxlint instead of TypeScript so an `_` prefix can
 explicitly mark them as intentional. Its end-to-end behavior is covered by
 Node.js integration tests.
+
+## Randomized test order
+
+Native Node.js and Vitest suites randomize queued test order on every run.
+Node.js also randomizes discovered test files. Vitest keeps file order stable
+and shuffles tests within files across its Node.js and browser projects.
+
+Randomized order acts as a test-order fuzzer. It exposes hidden coupling where
+a test only passes because another test happened to initialize or clean up
+shared state, advance a random generator, populate a cache, or reset a mock.
+Tests should create fresh dependencies and resources so their result does not
+depend on which test ran first.
+
+Every randomized run prints its seed. Replay a native Node.js test order with:
+
+```sh
+pnpm test:node --test-random-seed=123 "packages/common/src/Array.test.ts"
+```
+
+Replay a Vitest order by passing the seed with the intended project and mode:
+
+```sh
+pnpm exec vitest run --sequence.seed=123 --project=node-integration
+```
+
+Replaying a fixed seed turns an occasional order-dependent failure into a
+deterministic local reproduction.
 
 ## Integration tests
 

@@ -127,26 +127,26 @@ describe("testBundle", { timeout: 30_000 }, () => {
   });
 
   for (const [failure, scenario, message] of [
-    ["evaluation error", "evaluation-error", "evaluation failed"],
-    ["rejected return value", "rejected-return-value", "return rejected"],
-    ["unhandled rejection", "unhandled-rejection", "unhandled rejection"],
+    ["an evaluation error", "evaluation-error", "evaluation failed"],
+    ["a rejected return value", "rejected-return-value", "return rejected"],
+    ["an unhandled rejection", "unhandled-rejection", "unhandled rejection"],
     [
-      "uncaught asynchronous error",
+      "an uncaught asynchronous error",
       "uncaught-asynchronous-error",
       "uncaught error",
     ],
     [
-      "non-cloneable return value",
+      "a non-cloneable return value",
       "non-cloneable-return-value",
       "could not be cloned",
     ],
     [
-      "early worker exit",
+      "an early worker exit",
       "early-worker-exit",
       "Bundle worker exited with code 0 before returning a value.",
     ],
   ] as const) {
-    it(`rejects a bundle with an ${failure}`, async () => {
+    it(`rejects a bundle with ${failure}`, async () => {
       using _scenario = setupTestBundleScenario(scenario);
 
       await assertTestBundleFailure(

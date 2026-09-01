@@ -15,6 +15,7 @@ const browserCoverageInclude = [
 export default defineConfig(({ mode }) => ({
   test: {
     projects: [...nodeProjects, ...browserProjects],
+    sequence: { shuffle: { files: false, tests: true } },
     coverage: {
       provider: "v8",
       include:
