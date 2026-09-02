@@ -1,0 +1,269 @@
+import { ArticleLayout } from "@/components/ArticleLayout";
+
+export const article = {
+  author: "Daniel Steigerwald",
+  date: "2026-09-01",
+  title: "Evolu 8 is released",
+  description:
+    "Evolu 8 makes Evolu Library a complete foundation for straightforward TypeScript and rebuilds the storage, synchronization, schema, and ownership architecture behind Evolu local-first.",
+};
+
+export const metadata = {
+  title: article.title,
+  description: article.description,
+};
+
+export default (props) => <ArticleLayout article={article} {...props} />;
+
+Evolu 8 is released. We published the first stable 8.0 packages in August and
+continued refining Evolu after that release. This post is an overview of the
+whole release: what changed since the last Evolu 7 release, why we made those
+changes, and where Evolu is going next.
+
+Evolu now has two closely related parts. **[Evolu Library](/docs/library)** is the
+TypeScript foundation we use to build reliable software. **Evolu local-first**
+is the SQLite-based platform for apps in which users own their data. Evolu 8
+advances both considerably.
+
+Before getting into the details, there is one important compatibility note:
+
+> **Evolu 8 cannot yet migrate local-first data created by Evolu 7.** If an
+> existing app contains Evolu 7 user data, keep it on Evolu 7 for now. Automatic
+> migration is planned.
+
+## Evolu Library
+
+Evolu Library grew out of a practical question: how do we keep the ideas we
+value from functional programming—typed errors, dependency injection,
+immutability, composability, and managed resources—without requiring a runtime
+or making ordinary TypeScript difficult to read?
+
+Our answer is deliberately unremarkable TypeScript. Data is represented by
+plain values. Dependencies are passed explicitly. Domain failures use
+[`Result`](/docs/api-reference/common/Result/type-aliases/Result). Functions are
+small, named, and tree-shakeable. Imperative control flow is welcome when it is
+the clearest way to express logic.
+
+Evolu 8 makes this approach much more complete.
+
+### Structured concurrency without a new language
+
+The new Task and Resource APIs manage asynchronous work and ownership using
+JavaScript's existing concepts: functions, promises, `AbortSignal`,
+`DisposableStack`, and `AsyncDisposableStack`.
+
+A `Run` owns every Task started through it. It propagates cancellation, waits
+for cleanup, reports unexpected defects, and provides dependencies. Resources
+can be shared safely through disposable leases and are disposed after the final
+lease is released. Scheduling, retries, timeouts, races, bounded concurrency,
+HTTP requests, callbacks, and concurrency primitives all use the same lifetime
+model.
+
+The distinction between expected failures and defects is intentional. A domain
+failure that callers can handle belongs in `Result`. A broken in-process SQLite
+connection is not a recoverable domain outcome, so it is reported as a defect
+instead of being wrapped in an error type that every caller must pass through.
+This keeps error channels meaningful.
+
+The goal is not to recreate Effect. It is to make the important guarantees of
+structured concurrency fit normal TypeScript. The same principle guides Evolu's
+[dependency injection](/docs/dependency-injection) and
+[resource-management](/docs/resource-management) conventions.
+
+### Type became a lawful codec
+
+[Evolu Type](/docs/api-reference/common/Type) was rewritten around explicit
+decoding and encoding boundaries. A Type now distinguishes:
+
+- the values it can attempt to decode;
+- the semantic value an application works with;
+- the canonical representation produced when that value is encoded.
+
+That distinction matters for values such as dates, 64-bit integers, JSON, and
+branded domain types. Validation alone is not enough when the same value must
+also cross a database, configuration, worker, or network boundary.
+
+Transformations are now first-class: they decode an input representation into a
+semantic value and encode that value back into its canonical representation.
+Recursive validation and canonical JSON encoding are stack-safe. Errors remain
+structured data and can be localized with tree-shakeable formatter modules.
+Standard Schema support makes the same contracts usable by other tools without
+giving up Evolu's input and output types.
+
+The releases following 8.0 extended this foundation with canonical decimal
+strings, exact `multipleOf` declarations, template-literal parsers, richer
+numeric Types, localized errors, and clearer documentation. The common idea is
+to make boundaries precise once and then compose them, instead of scattering
+casts and ad hoc validation through application code.
+
+### Portable building blocks
+
+Evolu 8 also fills in the smaller pieces needed by real applications:
+
+- `Option`, improved `Result` composition, immutable Array and Set helpers, and
+  structural lookup utilities;
+- structured Console output, testable clocks, composable schedules, and
+  Task-aware HTTP;
+- explicit equality for JavaScript's SameValue semantics and structural
+  `Data`;
+- platform-independent assertions with consistent narrowing and diagnostics;
+- typed, disposable Worker, SharedWorker, MessagePort, and MessageChannel
+  abstractions;
+- compact binary helpers and a purpose-built JSON codec used by Evolu's
+  protocol.
+
+Evolu Library is deliberately selective. It builds on native JavaScript APIs and
+adds abstractions only when they provide a stronger contract: immutability, type
+narrowing, explicit ownership, portability, or deterministic testing. Otherwise,
+it uses the native API directly.
+
+The packages now require Node.js 24.20 or newer. We raised the minimum supported
+version so Evolu can use Node.js's built-in test runner for its unit tests. Those
+tests are published alongside the source, giving developers and coding agents
+concrete examples of how each module behaves. Evolu's TypeScript, Oxlint, and
+test configurations are also published as reusable packages, and documentation
+code is compiled and executed as part of the test suite. The documentation is
+meant to be code you can trust, not pseudocode that happens to look plausible.
+
+## Evolu local-first
+
+Evolu 8 also substantially rebuilds the local-first runtime. The high-level ideas
+described in
+[Scaling local-first software](/blog/scaling-local-first-software)—SQLite,
+range-based set reconciliation, owner-scoped encryption, and replaceable relays—were
+already taking shape in Evolu 7. In Evolu 8, they form one storage,
+synchronization, and lifecycle architecture.
+
+The architecture behind Evolu 8 has already been running in production for
+months as part of [Trezor Suite](https://github.com/trezor/trezor-suite).
+SatoshiLabs integrates Evolu with custom local authentication backed by Trezor
+hardware. That experience has tested the core in a real application, but it is
+not the same as offering a complete path for other developers.
+
+We are not yet recommending Evolu local-first to a general audience. Before we
+do, we want to complete the examples, provide passkey-backed local
+authentication, finish workflows using multiple Owners—including coordinated
+deletion—and close the remaining gaps in the end-to-end developer experience.
+This section describes the foundation we built, not a finished public launch.
+
+### Ownership is an explicit boundary
+
+An `AppOwner` must now be created or restored before creating an Evolu instance.
+It controls access to the encrypted local SQLite database, and Evolu derives the
+database identity from both the app and its owner. Multiple accounts therefore
+have explicit, independent local databases instead of relying on hidden owner
+initialization inside the database worker.
+
+Every change belongs to an Owner and is encrypted with that Owner's encryption
+key. Evolu 8 makes the different ownership roles explicit. `AppOwner`
+coordinates synchronization and persists for the lifetime of the app identity.
+`ShardOwner` partitions data into independent synchronization and future deletion
+boundaries. `SharedOwner` and `SharedReadonlyOwner` define collaborative
+read-write and read-only boundaries.
+
+This is also Evolu's design for real deletion. An append-only distributed history
+cannot simply forget an individual event: another offline device could send it
+back later. An entire Owner can instead become the coordinated deletion unit
+across devices and relays. The end-to-end deletion workflow is not implemented
+yet, but choosing an Owner is already a decision about data lifetime, sharing,
+and synchronization—not just an authorization detail.
+
+The new ownership and database layout is the reason Evolu 7 local-first data is
+not directly compatible with Evolu 8. We chose to establish the correct
+long-term boundary rather than preserve a layout that would limit deletion,
+sharding, and multiple-account support. Automatic migration is planned.
+
+### Schema-first application code
+
+Queries are no longer created through an Evolu instance. The standalone
+`createQueryBuilder(Schema)` creates them directly from the application schema,
+so query definitions do not depend on a running database and can be organized
+alongside the domain they describe. The same schema is passed to `createEvolu`
+for mutations and local SQLite initialization.
+
+Every schema column is defined by a Standard Schema-compatible validator. The
+validator can come from Evolu Type or any other validation library implementing
+Standard Schema, allowing applications to keep their preferred validation
+library while Evolu infers mutation and query types from the same contracts.
+
+Evolu schemas are versionless and append-only. Local-first applications cannot
+assume that every device updates at the same time, so coordinated migration
+scripts are the wrong abstraction. Released tables and columns remain stable;
+new versions extend the schema.
+
+When a device receives changes for a table or column it does not know yet,
+Evolu stores them in a quarantine table. The data remains encrypted, continues
+syncing, and stays out of application queries. After the app is updated with a
+compatible schema, Evolu applies the quarantined changes automatically. This
+lets old and new application versions coexist without throwing away future
+data.
+
+Queries also model local-first reality more honestly. Changes can arrive out of
+order, so application-defined columns are nullable when read even if current
+mutations require them. The query must select and narrow the shape the current
+UI can actually handle.
+
+### Scalable, bounded synchronization
+
+Evolu Protocol uses range-based set reconciliation to compare histories by
+fingerprint and narrow synchronization to the ranges that differ. SQLite stores
+and computes the fingerprints close to the data, avoiding repeated round trips
+through JavaScript. The work grows with the differences and the indexed range
+structure rather than requiring a complete history scan.
+
+Protocol messages are binary and strictly bounded in size. They carry end-to-end
+encrypted application changes alongside the visible synchronization metadata
+relays need, including Owner IDs, timestamps, and reconciliation ranges. The
+encoding is designed around Evolu's actual data because encrypted changes do not
+benefit much from generic text compression. Large synchronizations continue over
+multiple rounds instead of creating unbounded messages.
+
+Synchronization is scoped per Owner. Write keys prove permission to publish
+changes. Evolu 8 establishes this protocol boundary and the infrastructure for
+multiple Owners, but complete read-only synchronization and broader public Owner
+workflows still need work. Protocol errors, quota checks, subscriptions, and
+version negotiation all preserve the Owner boundary.
+
+Relays remain deliberately blind and replaceable. They store and forward
+encrypted changes without understanding an application's schema. An app can use
+multiple independent relays, and clients eventually reconcile them by syncing
+with each one. Authentication policy belongs to the application around the
+relay, not inside a global Evolu account system. That separation is what makes
+self-hosting and credible exit possible.
+
+### One lifecycle across platforms
+
+Evolu 8 introduced typed, platform-independent Worker and MessagePort contracts.
+Web and React Native use those contracts through platform-specific
+implementations. On the web, tabs share one local-first runtime. React Native
+provides the missing Worker, MessageChannel, and Web Locks behavior behind the
+same interfaces.
+
+Task, Resource, and JavaScript disposal give those pieces one lifecycle. The
+runtime can also use an in-memory database or export SQLite bytes.
+
+Much of this work sits below a hello-world example. Local-first code often runs
+across tabs, workers, devices, relays, reconnects, and application upgrades.
+Evolu 8 puts those lifetimes and boundaries into the architecture instead of
+asking every application to rediscover them through production bugs.
+
+## What comes next
+
+Evolu 8 brings a straightforward TypeScript library and a local-first
+architecture together through the same explicit ideas about errors,
+dependencies, ownership, and boundaries. The two parts are at different stages.
+Evolu Library is ready to use today, while the local-first core has been tested
+in production through a custom integration and still needs a complete public
+developer experience.
+
+For local-first, the next work includes complete examples, passkey-backed local
+authentication, practical multi-Owner workflows, coordinated deletion, and
+automatic migration from Evolu 7. When that end-to-end experience is ready, we
+will announce Evolu local-first separately for general use.
+
+There are many individual API changes, fixes, and migration details that do not
+fit an overview. You can find all of them in the
+[package changelog](https://github.com/evoluhq/evolu/blob/main/packages/common/CHANGELOG.md).
+This post explains the larger change: Evolu Library and Evolu local-first now
+share one coherent architecture. The next local-first announcement will be about
+making that architecture accessible without a custom integration.
