@@ -6,52 +6,51 @@ export const metadata = {
 
 For automatic cleanup of resources
 
-Resources like database connections, file handles, and locks need cleanup. Traditional approaches are error-prone:
+Resources like database connections, file handles, and locks need cleanup. Manual cleanup is easy to forget, and `try`/`finally` is verbose and does not compose. JavaScript now has [explicit resource management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management): the [`using`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using) declaration disposes a resource when it goes out of scope, on every exit path.
 
-```ts
-// 🚨 Manual cleanup is easy to forget
-const conn = openConnection();
-doWork(conn);
-conn.close(); // What if doWork throws?
-```
-
-```ts
-// 🚨 try/finally is verbose and doesn't compose
-const conn = openConnection();
-try {
-  doWork(conn);
-} finally {
-  conn.close();
-}
-```
-
-The [`using`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using) declaration is a new JavaScript feature that automatically disposes resources when they go out of scope:
-
-```ts
-const process = () => {
-  using conn = openConnection();
-  doWork(conn);
-}; // conn is automatically disposed here
-```
-
-This works even if `doWork` throws—disposal is guaranteed.
+This page introduces that feature and then shows how the Evolu Library builds on it: the [`disposable`](/docs/api-reference/common/Function/functions/disposable) helper for objects, [Task](/docs/api-reference/common/Task) and Run for asynchronous ownership, and [shared resources](/docs/api-reference/common/Resource) with leases. Safari and React Native still need Evolu's [polyfills](/docs/library#polyfills) for the runtime globals used below.
 
 ## Disposable resources
 
-A resource is disposable if it has a `[Symbol.dispose]` method:
+A resource is disposable when it has a `[Symbol.dispose]` method. Bind it with `using`, and it is disposed when the block exits, even when the block throws:
 
 ```ts
-interface Disposable {
-  [Symbol.dispose](): void;
-}
+import { assertErr, assertTrue, trySync } from "@evolu/common";
+
+let closed = false;
+const openConnection = (): Disposable => ({
+  [Symbol.dispose]: () => {
+    closed = true;
+  },
+});
+
+const work = () => {
+  using _connection = openConnection();
+  // _connection is disposed when work exits, even though it throws.
+  throw new Error("doWork failed");
+};
+
+assertErr(trySync(work));
+assertTrue(closed);
 ```
 
-For async cleanup, use `[Symbol.asyncDispose]` with `await using`:
+For asynchronous cleanup, implement `[Symbol.asyncDispose]` and bind the resource with `await using`:
 
 ```ts
-interface AsyncDisposable {
-  [Symbol.asyncDispose](): PromiseLike<void>;
+import { assertTrue } from "@evolu/common";
+
+let closed = false;
+const openConnection = (): AsyncDisposable => ({
+  [Symbol.asyncDispose]: async () => {
+    await Promise.resolve();
+    closed = true;
+  },
+});
+
+{
+  await using _connection = openConnection();
 }
+assertTrue(closed);
 ```
 
 ## Block scopes
@@ -59,93 +58,176 @@ interface AsyncDisposable {
 Use block scopes to control exactly when resources are disposed:
 
 ```ts
+import { assertEqual } from "@evolu/common";
+
+const log: Array<string> = [];
 const createLock = (name: string): Disposable => ({
   [Symbol.dispose]: () => {
-    console.log(`unlock:${name}`);
+    log.push(`unlock:${name}`);
   },
 });
 
-const process = () => {
-  console.log("start");
+log.push("start");
 
-  {
-    using lock = createLock("a");
-    console.log("critical-section-a");
-  } // lock "a" released here
+{
+  using _lock = createLock("a");
+  log.push("critical-section-a");
+  // lock "a" is released when this block exits
+}
 
-  console.log("between");
+log.push("between");
 
-  {
-    using lock = createLock("b");
-    console.log("critical-section-b");
-  } // lock "b" released here
+{
+  using _lock = createLock("b");
+  log.push("critical-section-b");
+  // lock "b" is released when this block exits
+}
 
-  console.log("end");
-};
+log.push("end");
 
-// Output:
-// "start"
-// "critical-section-a"
-// "unlock:a"
-// "between"
-// "critical-section-b"
-// "unlock:b"
-// "end"
+assertEqual(log, [
+  "start",
+  "critical-section-a",
+  "unlock:a",
+  "between",
+  "critical-section-b",
+  "unlock:b",
+  "end",
+]);
 ```
-
-## Combining with Result
-
-`Result` and `Disposable` are orthogonal:
-
-- **Result** answers: "Did the operation succeed?"
-- **Disposable** answers: "When do we clean up resources?"
-
-Early returns from `Result` checks don't bypass `using`—disposal is guaranteed on any exit path (see below).
 
 ## DisposableStack
 
-When acquiring multiple resources, use [`DisposableStack`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack) to ensure all are cleaned up:
+When a function acquires several resources, use [`DisposableStack`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack) to own all of them. It disposes its resources in reverse order and keeps going when one of them fails.
+
+`Result` and `Disposable` are orthogonal: `Result` answers "Did the operation succeed?", `Disposable` answers "When do we clean up?". An early `return` on an `Err` is just another scope exit, so the stack disposes whatever has been acquired so far:
 
 ```ts
-const processResources = (): Result<string, CreateResourceError> => {
+import {
+  assertEqual,
+  assertErr,
+  assertOk,
+  err,
+  ok,
+  type Result,
+  type Typed,
+} from "@evolu/common";
+
+const log: Array<string> = [];
+const createResource = (
+  name: string,
+  shouldFail = false,
+): Result<Disposable, CreateResourceError> => {
+  if (shouldFail) return err({ type: "CreateResourceError", name });
+  log.push(`create:${name}`);
+  return ok({
+    [Symbol.dispose]: () => {
+      log.push(`dispose:${name}`);
+    },
+  });
+};
+
+interface CreateResourceError extends Typed<"CreateResourceError"> {
+  readonly name: string;
+}
+
+const processResources = (
+  failFile: boolean,
+): Result<string, CreateResourceError> => {
   using disposer = new DisposableStack();
 
   const db = createResource("db");
-  if (!db.ok) return db; // disposer disposes nothing yet
-
+  if (!db.ok) return db;
   disposer.use(db.value);
 
-  const file = createResource("file");
-  if (!file.ok) return file; // disposer disposes db
-
+  const file = createResource("file", failFile);
+  // On error, disposer disposes db.
+  if (!file.ok) return file;
   disposer.use(file.value);
 
+  // On success, disposer disposes file, then db.
   return ok("processed");
-}; // disposer disposes file, then db (reverse order)
+};
+
+assertOk(processResources(false), "processed");
+assertEqual(log, ["create:db", "create:file", "dispose:file", "dispose:db"]);
+
+log.length = 0;
+assertErr(processResources(true), {
+  type: "CreateResourceError",
+  name: "file",
+});
+assertEqual(log, ["create:db", "dispose:db"]);
 ```
 
-The pattern is simple:
-
-1. Create a `DisposableStack` with `using`
-2. Try to create a resource (returns `Result`)
-3. If failed, return early—the disposer disposes what's been acquired
-4. If succeeded, add to the disposer with `disposer.use()`
-5. Repeat for additional resources
-
-For async resources, use [`AsyncDisposableStack`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack) with `await using`.
+For asynchronous resources, use [`AsyncDisposableStack`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack) with `await using`.
 
 API overview:
 
-- `disposer.use(resource)` — adds a disposable resource
-- `disposer.defer(fn)` — adds a cleanup function (like Go's `defer`)
-- `disposer.adopt(value, cleanup)` — wraps a non-disposable value with cleanup
-- `disposer.move()` — transfers ownership to caller
+- `disposer.use(resource)` adds a disposable resource and returns it.
+- `disposer.defer(fn)` adds a cleanup function, like Go's `defer`.
+- `disposer.adopt(value, cleanup)` wraps a non-disposable value with cleanup.
+- `disposer.move()` transfers ownership to a new stack.
+
+Disposal continues even when one dispose throws. The remaining resources are still disposed, and the failure is rethrown afterwards. A hand-written loop over resources would stop at the first throw:
+
+```ts
+import { assertEqual, assertThrowsInstanceOf } from "@evolu/common";
+
+const log: Array<string> = [];
+const createResource = (name: string, failDispose = false): Disposable => ({
+  [Symbol.dispose]: () => {
+    if (failDispose) throw new Error(`dispose:${name}`);
+    log.push(`dispose:${name}`);
+  },
+});
+
+// Disposes "c", fails on "b", still disposes "a", then rethrows.
+const error = assertThrowsInstanceOf(() => {
+  using disposer = new DisposableStack();
+  disposer.use(createResource("a"));
+  disposer.use(createResource("b", true));
+  disposer.use(createResource("c"));
+}, Error);
+assertEqual(error.message, "dispose:b");
+assertEqual(log, ["dispose:c", "dispose:a"]);
+```
 
 ## Ownership transfer
 
-When a factory function creates resources for use elsewhere, use `move()` to transfer ownership:
+When a factory creates resources for use elsewhere, `move()` transfers ownership out of the factory. Without it, the stack would dispose the resources when the factory returns, even on success:
 
 ```ts
+import {
+  assertEqual,
+  assertErr,
+  assertOk,
+  err,
+  ok,
+  type Result,
+  type Typed,
+} from "@evolu/common";
+
+interface FileHandle extends Disposable {
+  readonly path: string;
+}
+
+const log: Array<string> = [];
+const open = (path: string): Result<FileHandle, OpenFileError> => {
+  if (path.startsWith("missing")) return err({ type: "OpenFileError", path });
+  log.push(`open:${path}`);
+  return ok({
+    path,
+    [Symbol.dispose]: () => {
+      log.push(`close:${path}`);
+    },
+  });
+};
+
+interface OpenFileError extends Typed<"OpenFileError"> {
+  readonly path: string;
+}
+
 interface OpenFiles extends Disposable {
   readonly handles: ReadonlyArray<FileHandle>;
 }
@@ -158,143 +240,222 @@ const openFiles = (
   const handles: Array<FileHandle> = [];
   for (const path of paths) {
     const file = open(path);
-    if (!file.ok) return file; // Error: disposer cleans up opened files
-
-    disposer.use(file.value);
-    handles.push(file.value);
+    // On error, disposer closes the files opened so far.
+    if (!file.ok) return file;
+    handles.push(disposer.use(file.value));
   }
 
-  // Success: transfer ownership to caller
+  // Success: transfer ownership to the caller
   const disposables = disposer.move();
-  return ok({
-    handles,
-    [Symbol.dispose]: () => disposables.dispose(),
-  });
+  return ok({ handles, [Symbol.dispose]: () => disposables.dispose() });
 };
 
-const processFiles = (): Result<void, MyError> => {
-  const result = openFiles(["a.txt", "b.txt", "c.txt"]);
-  if (!result.ok) return result;
+assertErr(openFiles(["a.txt", "missing.txt"]), {
+  type: "OpenFileError",
+  path: "missing.txt",
+});
+assertEqual(log, ["open:a.txt", "close:a.txt"]);
 
+log.length = 0;
+{
+  const result = openFiles(["a.txt", "b.txt"]);
+  assertOk(result);
   using files = result.value;
-
-  // ... use files.handles ...
-
-  return ok();
-}; // files cleaned up here
-```
-
-Without `move()`, the disposer would dispose files when `openFiles` returns, even on success.
-
-This naming mirrors the two roles:
-
-- `disposer` while you are still registering resources
-- `disposables` after ownership has been moved to the returned object
-
-## Lifetime guards
-
-Not every `DisposableStack` usage owns an external resource such as a file handle or connection.
-
-Some helpers use a stack only to model lifetime and make `assertNotDisposed` available for synchronous methods that must fail fast after disposal.
-
-This mirrors what C# does by default with [`ObjectDisposedException`](https://learn.microsoft.com/en-us/dotnet/api/system.objectdisposedexception?view=net-10.0): using a disposed object is a programmer error and should fail fast. In Evolu we enforce that correctness constraint by convention with explicit `assertNotDisposed` guards.
-
-The same rule applies to `AsyncDisposable` helpers that also expose synchronous methods: guard those synchronous methods with `assertNotDisposed` on the moved `AsyncDisposableStack`.
-
-Async methods are different. For reusable async resources, create one internal `Run` with `run.create()` and use that `Run` for the resource's async operations. Disposing the resource then disposes that internal `Run`, which aborts in-flight child tasks, waits for them to settle, and rejects later calls through it.
-
-If aborting one of those async operations would indicate a lifecycle bug rather than ordinary control flow, assert that explicitly with [`assertNotAborted`](/docs/api-reference/common/Assert/functions/assertNotAborted).
-
-```ts
-interface RefCount extends Disposable {
-  readonly increment: () => number;
-  readonly getCount: () => number;
+  assertEqual(
+    files.handles.map((handle) => handle.path),
+    ["a.txt", "b.txt"],
+  );
+  // files are closed when this block exits, in reverse order
 }
-
-const createRefCount = (): RefCount => {
-  using disposer = new DisposableStack();
-  let count = 0;
-  const disposables = disposer.move();
-
-  return {
-    increment: () => {
-      assertNotDisposed(disposables);
-      count += 1;
-      return count;
-    },
-
-    getCount: () => {
-      assertNotDisposed(disposables);
-      return count;
-    },
-
-    [Symbol.dispose]: () => disposables.dispose(),
-  };
-};
+assertEqual(log, ["open:a.txt", "open:b.txt", "close:b.txt", "close:a.txt"]);
 ```
 
-This pattern is useful when the helper owns mutable state rather than an external resource, but use-after-dispose is still a programmer error.
+The naming mirrors the two roles: `disposer` while the factory is still registering resources, `disposables` after ownership has moved to the returned object.
 
-## Anti-patterns
+## Disposable objects in Evolu
 
-Avoid writing disposal logic by hand when a stack can own it for you.
+Evolu creates objects with `createX` factories instead of classes, and it creates disposable objects with [`disposable`](/docs/api-reference/common/Function/functions/disposable). The helper adds the disposal method and wraps the object's function-valued properties with a guard, so calling a disposed object throws immediately instead of operating on disposed state. This is the JavaScript equivalent of .NET's [`ObjectDisposedException`](https://learn.microsoft.com/en-us/dotnet/api/system.objectdisposedexception): use after disposal is a programmer error, and it should fail fast.
 
-### Manual disposed flags
+Pass a `DisposableStack` or `AsyncDisposableStack` when the object owns cleanup resources. The helper moves the stack into the returned object, so the `move()` and `[Symbol.dispose]` boilerplate from the Ownership transfer section disappears:
 
 ```ts
-// Avoid
+import {
+  assertEqual,
+  assertThrowsInstanceOf,
+  assertTrue,
+  disposable,
+} from "@evolu/common";
+
 interface Counter extends Disposable {
   readonly next: () => number;
 }
 
+let flushed = false;
 const createCounter = (): Counter => {
-  let isDisposed = false;
   let value = 0;
 
-  return {
-    next: () => {
-      if (isDisposed) throw new Error("disposed");
-      value += 1;
-      return value;
+  using disposer = new DisposableStack();
+  disposer.defer(() => {
+    flushed = true;
+  });
+
+  return disposable<Counter>(
+    {
+      next: () => {
+        value += 1;
+        return value;
+      },
     },
-    [Symbol.dispose]: () => {
-      if (isDisposed) return;
-      isDisposed = true;
-    },
-  };
+    disposer,
+  );
 };
+
+const counter = createCounter();
+assertEqual(counter.next(), 1);
+assertEqual(counter.next(), 2);
+
+counter[Symbol.dispose]();
+assertTrue(flushed);
+
+const error = assertThrowsInstanceOf(() => counter.next(), Error);
+assertEqual(error.message, "Cannot use a disposed object.");
 ```
 
-Prefer a stack plus `assertNotDisposed`.
+Omit the stack when the object has no cleanup resources but must still become unusable after disposal. Evolu's [`RefCount`](/docs/api-reference/common/RefCount) does this: disposal enforces correct ownership tracking rather than releasing anything.
 
-### Manual disposal arrays or loops
+Do not hand-write `isDisposed` flags or `assertNotDisposed` guards in every method. That is the pattern `disposable` replaces, and it is easy to forget in one method. The [`assertNotDisposed`](/docs/api-reference/common/Assert/functions/assertNotDisposed) assertion is what the guard uses internally. Call it directly only for what `disposable` cannot wrap, such as an accessor property.
+
+## Asynchronous ownership with Task and Run
+
+The rest of this page builds on [Task](/docs/api-reference/common/Task). If Task is new to you, skim these sections now and return after the Task step of the learning path.
+
+`using` covers resources reachable from a stack frame. Asynchronous code has a second kind of resource: in-flight operations. Evolu models that with Task and Run. A composition root creates a root Run with `createRun` and binds it with `await using`. Async disposal of a Run aborts its child Tasks, waits for them to settle, and runs the finalizers registered with `run.defer`. Sync disposal starts the same shutdown without waiting.
+
+Choose the ownership primitive by where the resource is reachable:
+
+- Synchronous stack frame: `using` or `DisposableStack`.
+- Asynchronous Task stack frame: `await using` or `AsyncDisposableStack`.
+- Closure-held state bounded by a reusable Run: [`run.defer`](/docs/api-reference/common/Task/interfaces/DisposableRun#defer).
+
+An object that exposes several asynchronous operations creates one internal Run with `run.create()` and runs all of them through it. Disposing the object disposes that Run, which aborts in-flight operations, and the `disposable` guard makes later calls throw synchronously:
 
 ```ts
-// Avoid
-for (const resource of resources) {
-  resource[Symbol.dispose]();
+import {
+  AbortError,
+  assertEqual,
+  assertErr,
+  assertThrowsInstanceOf,
+  assertTrue,
+  createRun,
+  disposable,
+  ok,
+  sleep,
+  tryAsync,
+  type Task,
+} from "@evolu/common";
+
+interface Client extends AsyncDisposable {
+  readonly load: (id: string) => Promise<string>;
 }
+
+const loadUser =
+  (id: string): Task<string> =>
+  async (run) => {
+    await run.ok(sleep("1s"));
+    return ok(`user:${id}`);
+  };
+
+const createClient: Task<Client> = async (run) => {
+  await using disposer = new AsyncDisposableStack();
+  // One internal Run owns every asynchronous operation of the object.
+  const clientRun = disposer.use(run.create());
+
+  return ok(
+    disposable<Client>({ load: (id) => clientRun.ok(loadUser(id)) }, disposer),
+  );
+};
+
+await using run = createRun();
+const client = await run.ok(createClient);
+
+const pending = client.load("ada");
+await client[Symbol.asyncDispose]();
+
+// Disposal aborted the in-flight operation...
+const aborted = await tryAsync(() => pending);
+assertErr(aborted);
+assertTrue(AbortError.is(aborted.error));
+
+// ...and later calls throw before starting anything.
+const error = assertThrowsInstanceOf(() => client.load("grace"), Error);
+assertEqual(error.message, "Cannot use a disposed object.");
 ```
 
-If one dispose throws, later resources are skipped. A `DisposableStack` preserves reverse-order disposal and continues cleanup even when an earlier dispose fails.
+A Task that returns a resource transfers ownership of a live resource to its caller, as `createClient` does above. Use [`run.ok`](/docs/api-reference/common/Task/interfaces/Run#ok) with `await using` to bind such a value. Use [`acquireUseRelease`](/docs/api-reference/common/Task/functions/acquireUseRelease) when acquisition must be balanced with a separate release step that is not a disposable value, such as unlocking or logging out. See [Resource management in the Task module](/docs/api-reference/common/Task#resource-management) for the full rules.
+
+## Shared resources
+
+Some resources are expensive and used by many independent callers: a database connection, a WebSocket, a worker. The [`Resource`](/docs/api-reference/common/Resource) module splits ownership in two. A [`SharedResource`](/docs/api-reference/common/Resource/interfaces/SharedResource) owns the resource. Callers hold a [`Lease`](/docs/api-reference/common/Resource/interfaces/Lease), which they release with `using`. The resource is created lazily on the first acquire. Releasing the last lease starts its disposal, optionally after an idle delay. Release itself never waits for disposal to finish, so the example observes completion through the `onDisposed` callback:
 
 ```ts
-// Use
-using disposer = new DisposableStack();
-for (const resource of resources) {
-  disposer.use(resource);
+import {
+  assertEqual,
+  assertFalse,
+  assertTrue,
+  createRun,
+  createSharedResource,
+  disposable,
+  ok,
+  type Task,
+} from "@evolu/common";
+
+interface Connection extends Disposable {
+  readonly send: (message: string) => void;
 }
+
+const log: Array<string> = [];
+const createConnection: Task<Connection> = () => {
+  using disposer = new DisposableStack();
+  disposer.defer(() => {
+    log.push("close");
+  });
+  log.push("open");
+  return ok(
+    disposable<Connection>(
+      {
+        send: (message) => {
+          log.push(`send:${message}`);
+        },
+      },
+      disposer,
+    ),
+  );
+};
+
+const disposed = Promise.withResolvers<void>();
+
+await using run = createRun();
+await using sharedConnection = await run.ok(
+  createSharedResource(createConnection, { onDisposed: disposed.resolve }),
+);
+
+// Nothing is open until the first acquire.
+assertEqual(log, []);
+
+{
+  using lease = await run.ok(sharedConnection.acquire);
+  assertTrue(lease.created);
+  lease.resource.send("first");
+
+  // A second lease shares the same connection.
+  using otherLease = await run.ok(sharedConnection.acquire);
+  assertFalse(otherLease.created);
+  otherLease.resource.send("second");
+  // Releasing the last lease starts disposal; onDisposed signals completion.
+}
+
+await disposed.promise;
+assertEqual(log, ["open", "send:first", "send:second", "close"]);
 ```
 
-## Ready to use
-
-[TypeScript 5.2+](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management) implements the `using` keyword, and Evolu polyfills runtime resource management for environments that still need it (Safari and React Native), see [polyfills setup](/docs/library#polyfills).
-
-## Learn more
-
-- [MDN: Resource management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Resource_management)
-- [MDN: using statement](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/using)
-- [MDN: DisposableStack](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DisposableStack)
-- [MDN: AsyncDisposableStack](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncDisposableStack)
-- [`Result.test.ts`](https://github.com/evoluhq/evolu/blob/main/packages/common/src/Result.test.ts) for comprehensive usage patterns
-- [Resources](/docs/api-reference/common/Resources) for reference-counted shared resources with delayed disposal
+A lease exposes the resource as a [`BorrowedResource`](/docs/api-reference/common/Resource/type-aliases/BorrowedResource), which removes the disposal methods from its type. The caller can use the connection but cannot dispose what it does not own. Nothing in JavaScript enforces that a lease is released, but a leaked lease never outlives its owner: disposing the `SharedResource` or its Run drains outstanding leases and disposes the resource.

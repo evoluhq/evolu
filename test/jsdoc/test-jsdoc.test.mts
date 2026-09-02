@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   changesetSourcePattern,
   jsdocSourcePattern,
+  resourceManagementSourcePattern,
   schemaSourcePattern,
   selectJSDocIncludes,
   testingSourcePattern,
@@ -13,6 +14,7 @@ describe("selectJSDocIncludes", () => {
     assertEqual(selectJSDocIncludes([]), [
       jsdocSourcePattern,
       changesetSourcePattern,
+      resourceManagementSourcePattern,
       schemaSourcePattern,
       testingSourcePattern,
     ]);

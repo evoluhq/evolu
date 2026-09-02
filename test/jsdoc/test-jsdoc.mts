@@ -6,6 +6,8 @@ const repositoryDirectory = resolve(import.meta.dirname, "../..");
 
 export const jsdocSourcePattern = "packages/common/src/**/*.ts";
 export const changesetSourcePattern = ".changeset/*.md";
+export const resourceManagementSourcePattern =
+  "apps/web/src/app/(docs)/docs/resource-management/page.mdx";
 export const schemaSourcePattern =
   "apps/web/src/app/(docs)/docs/schema/page.mdx";
 export const testingSourcePattern =
@@ -16,6 +18,7 @@ export const testingSourcePattern =
 export const documentationSourcePatterns = [
   jsdocSourcePattern,
   changesetSourcePattern,
+  resourceManagementSourcePattern,
   schemaSourcePattern,
   testingSourcePattern,
 ] as const;
