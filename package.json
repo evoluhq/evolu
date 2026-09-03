@@ -2,12 +2,12 @@
   "private": true,
   "name": "@evolu/monorepo",
   "scripts": {
-    "dev": "turbo run dev --filter=relay --filter=web",
-    "relay": "turbo --filter relay dev",
-    "build": "pnpm clean:ts && turbo --filter \"@evolu/*\" --filter relay build",
-    "build:web": "pnpm build && pnpm build:docs && turbo --filter web build",
+    "dev": "pnpm --filter \"relay...\" --filter \"web...\" -r run dev",
+    "relay": "pnpm --filter \"relay...\" -r run dev",
+    "build": "pnpm clean:ts && pnpm --filter \"./packages/*\" --filter relay -r run build",
+    "build:web": "pnpm build && pnpm build:docs && pnpm --filter web run build",
     "build:docs": "typedoc && pnpm --dir apps/web fix:docs",
-    "build:expo": "turbo --filter @example/react-expo build",
+    "build:expo": "pnpm --filter \"@example/react-expo^...\" -r run build",
     "typecheck": "tsc --build tsconfig.typecheck.json && tsc --project packages/oxlint-config/tsconfig.json --noEmit && tsc --project scripts/tsconfig.json && tsc --project bench/tsconfig.json --noEmit && tsc --project test/tsconfig.json --noEmit",
     "test": "pnpm test:unit && pnpm test:integration && pnpm test:bundle && pnpm test:jsdoc",
     "test:node": "node --experimental-default-config-file",
@@ -22,7 +22,7 @@
     "bench:storage": "node bench/storage/benchmark.mts",
     "bench:type": "node bench/type/benchmark.mts",
     "check:packages": "node scripts/check-packages.mts",
-    "start": "turbo start",
+    "start": "pnpm --filter relay --filter web -r --parallel run start",
     "lint": "pnpm lint:oxlint && pnpm lint:sherif",
     "lint:oxlint": "oxlint .",
     "lint:sherif": "sherif --ignore-dependency react@19.2.0",
@@ -38,11 +38,11 @@
     "ios": "pnpm --dir examples/react-expo ios",
     "android": "pnpm --dir examples/react-expo android",
     "examples:toggle-deps": "node ./scripts/toggle-examples-deps.mts",
-    "examples:build": "turbo --filter \"@example/*\" build",
-    "examples:react-nextjs:dev": "turbo --filter @example/react-nextjs dev",
-    "examples:react-vite-pwa:dev": "turbo --filter @example/react-vite-pwa dev",
-    "examples:svelte-vite-pwa:dev": "turbo --filter @example/svelte-vite-pwa dev",
-    "examples:vue-vite-pwa:dev": "turbo --filter @example/vue-vite-pwa dev"
+    "examples:build": "pnpm --filter \"@example/*...\" -r run build",
+    "examples:react-nextjs:dev": "pnpm --filter \"@example/react-nextjs...\" -r run dev",
+    "examples:react-vite-pwa:dev": "pnpm --filter \"@example/react-vite-pwa...\" -r run dev",
+    "examples:svelte-vite-pwa:dev": "pnpm --filter \"@example/svelte-vite-pwa...\" -r run dev",
+    "examples:vue-vite-pwa:dev": "pnpm --filter \"@example/vue-vite-pwa...\" -r run dev"
   },
   "devDependencies": {
     "@bokuweb/zstd-wasm": "0.0.27",
@@ -72,7 +72,6 @@
     "prettier-plugin-sql-cst": "^0.22.1",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "sherif": "1.13.0",
-    "turbo": "^2.10.11",
     "typedoc": "^0.28.18",
     "typedoc-plugin-markdown": "^4.11.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
@@ -84,5 +83,5 @@
   "engines": {
     "node": ">=24.20.0"
   },
-  "packageManager": "pnpm@11.24.0+sha512.bd27e345e976dcb0be0b7a1228217b049a817e21b1f355c90dbe7dc46671895a8bc1e6d06c24554505ea93ea0b45f489a27ec1bfbc8de6a9659fca0f16fa0000"
+  "packageManager": "pnpm@11.25.0+sha512.5cde925b4f075f725eb71fbae18a42ffe784524789f19b61c731cb8721ec28aaee160e01a8d5af4fedb2a42cdbf300efe23db356b0d4a17b4d63e11f8ab7c956"
 }

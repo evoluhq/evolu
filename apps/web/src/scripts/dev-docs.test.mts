@@ -135,7 +135,6 @@ void describe("API reference watcher", () => {
 
     assert.deepEqual(subscription.getOptions()?.ignore, [
       ".git",
-      ".turbo",
       "apps",
       "bench",
       "examples",

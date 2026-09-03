@@ -2,7 +2,7 @@
 
 ## Repository
 
-Evolu is a TypeScript monorepo using pnpm workspaces and Turborepo. Platform and
+Evolu is a TypeScript monorepo using pnpm workspaces. Platform and
 framework packages depend on `@evolu/common`.
 
 - `packages/common/src/` — platform-independent source code.

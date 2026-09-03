@@ -88,7 +88,6 @@ export const createApiReferenceWatcher =
       {
         ignore: [
           ".git",
-          ".turbo",
           "apps",
           "bench",
           "examples",

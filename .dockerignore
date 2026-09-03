@@ -1,6 +1,5 @@
 node_modules
 npm-debug.log
-.turbo
 dist
 .next
 .git
@@ -10,4 +9,4 @@ coverage
 .nyc_output
 .DS_Store
 .vscode
-.idea 
+.idea

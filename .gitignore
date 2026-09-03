@@ -2,7 +2,6 @@ __screenshots__
 .DS_Store
 .eslintcache
 .next
-.turbo
 .vite
 *.tsbuildinfo
 coverage
