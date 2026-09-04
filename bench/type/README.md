@@ -48,7 +48,7 @@ depend on it.
 The Type suite contains twenty-six isolated depth-scaling workloads at depths
 1, 2, 4, 8, 16, and 32, six width-scaling workloads at widths 2, 4, 8, 16,
 and 32, one TemplateLiteral scaling workload at 4, 8, 12, and 16 binary
-positions, plus nineteen standalone workloads:
+positions, plus twenty-one standalone workloads:
 
 - `factory-output` forces only the final output of a factory-created chain.
 - `factory-errors` forces only the complete error union of a factory-created chain.
@@ -95,6 +95,14 @@ positions, plus nineteen standalone workloads:
   with Array Type composition.
 - `template-literal-canonical-input` forces exact TemplateLiteral CanonicalInput
   expansion across repeated binary Union captures.
+- `byte-size-literal-all` forces the output, errors, and `fromUnknown` of
+  `ByteSizeLiteral`, whose TemplateLiteral output expands to about five thousand
+  string literal members, together with `ByteLengthFromString` and the literal
+  assignability a call site pays when it passes `"10MiB"` as a `ByteSize`.
+- `duration-literal-all` forces the same channels for `DurationLiteral` and
+  `Duration`. Time.ts is already part of the shared root chain, so its delta
+  isolates what a call site pays for literal assignability, while
+  `byte-size-literal-all` also carries the declaration cost of Bytes.ts.
 - `union-all` forces output, errors, `fromUnknown`, `from`, members, and parent
   across a widening flat Union.
 - `literal-union-all` forces the same channels through the literal-value Union

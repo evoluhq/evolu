@@ -85,6 +85,8 @@ const standaloneFixtureKinds = [
   "brand-factory-all",
   "constraints-all",
   "literal-all",
+  "byte-size-literal-all",
+  "duration-literal-all",
   "transform-all",
   "union-array-all",
   "array-child-all",
@@ -121,6 +123,8 @@ const typecheckFixtures = [
   "brand-factory-all.mts",
   "constraints-all.mts",
   "literal-all.mts",
+  "byte-size-literal-all.mts",
+  "duration-literal-all.mts",
   "union-all-32.mts",
   "literal-union-all-32.mts",
   "mixed-union-all-32.mts",
@@ -554,8 +558,8 @@ await runMain(
     } else {
       const comparedBaselineMeasurements = filteredBenchmark
         ? objectFrom(
-            Object.keys(existingBaseline.measurements).filter(
-              (fixture) => matchesTypeBenchmarkFilter(fixture, fixtureFilters),
+            Object.keys(existingBaseline.measurements).filter((fixture) =>
+              matchesTypeBenchmarkFilter(fixture, fixtureFilters),
             ),
             (fixture) => {
               const measurement = existingBaseline.measurements[fixture];

@@ -1,6 +1,15 @@
 /**
  * Time representations, durations, and scheduling utilities.
  *
+ * Durations follow a pattern that other quantities in Evolu repeat, such as
+ * sizes in Bytes.ts:
+ *
+ * - {@link Millis} is the canonical unit, a validated number of milliseconds.
+ * - {@link DurationLiteral} is the human-readable form, such as `"1.5s"`,
+ *   validated at compile time and runtime.
+ * - {@link Duration} is what APIs accept: `DurationLiteral | Millis`.
+ * - {@link durationToMillis} normalizes a `Duration` to `Millis`.
+ *
  * @module
  */
 

@@ -2,7 +2,10 @@ import { describe, it, mock } from "node:test";
 import {
   assertEqual,
   assertEqualBytes,
+  assertErr,
+  assertFalse,
   assertInstanceOf,
+  assertOk,
   assertSame,
   assertThrowsInstanceOf,
   assertTrue,
@@ -10,6 +13,16 @@ import {
 
 import {
   BufferError,
+  ByteLength,
+  ByteLengthFromString,
+  ByteSizeLiteral,
+  ByteSizeLiteralBytes,
+  ByteSizeLiteralGiB,
+  ByteSizeLiteralKiB,
+  ByteSizeLiteralMiB,
+  ByteSizeLiteralTiB,
+  byteSizeToByteLength,
+  type ByteSize,
   createBuffer,
   createRunLengthEncoder,
   decodeFlags,
@@ -1124,5 +1137,193 @@ describe("JSON binary codec", () => {
       Error,
     );
     assertTrue(error.message.includes("Invalid MessagePack data"));
+  });
+});
+
+describe("ByteLength", () => {
+  it("accepts non-negative safe integers", () => {
+    assertOk(ByteLength.fromUnknown(0), 0);
+    assertOk(ByteLength.fromUnknown(1024), 1024);
+
+    const negativeZero = ByteLength.fromUnknown(-0);
+    assertErr(negativeZero, { type: "ByteLength", value: -0 });
+    assertEqual(
+      ByteLength.formatError(negativeZero.error),
+      "The value -0 is not a byte length. Use 0 instead.",
+    );
+    assertFalse(ByteLength.is(-0));
+
+    assertErr(ByteLength.fromUnknown(-1));
+    assertErr(ByteLength.fromUnknown(1.5));
+    assertErr(ByteLength.fromUnknown("1024"));
+  });
+});
+
+describe("ByteSizeLiteral", () => {
+  it("accepts each unit within its bounds", () => {
+    for (const value of [
+      "0B",
+      "9B",
+      "10B",
+      "999B",
+      "1000B",
+      "1019B",
+      "1020B",
+      "1023B",
+    ])
+      assertOk(ByteSizeLiteralBytes.fromUnknown(value), value);
+
+    const units = [
+      ["KiB", ByteSizeLiteralKiB],
+      ["MiB", ByteSizeLiteralMiB],
+      ["GiB", ByteSizeLiteralGiB],
+      ["TiB", ByteSizeLiteralTiB],
+    ] as const;
+
+    for (const [unit, Type] of units) {
+      for (const number of [
+        "1",
+        "99",
+        "999",
+        "1000",
+        "1019",
+        "1020",
+        "1023",
+        "1.5",
+        "99.5",
+        "1023.5",
+      ]) {
+        assertOk(Type.fromUnknown(`${number}${unit}`), `${number}${unit}`);
+        assertTrue(ByteSizeLiteral.is(`${number}${unit}`));
+      }
+      for (const number of ["0", "0.5", "1.1", "1.0", "1024", "1024.5", "01"])
+        assertFalse(ByteSizeLiteral.is(`${number}${unit}`));
+    }
+  });
+
+  it("rejects other units, spacing, letter case, and redundant forms", () => {
+    for (const value of [
+      "1MB",
+      "1kib",
+      "1 KiB",
+      "1KiB ",
+      "1024B",
+      "0.5B",
+      "-1B",
+      "1",
+      "",
+    ])
+      assertFalse(ByteSizeLiteral.is(value));
+  });
+
+  it("is checked at compile time", () => {
+    const literal: ByteSizeLiteral = "1023TiB";
+    assertEqual(literal, "1023TiB");
+    assertType<
+      Extract<ByteSizeLiteral, "1023TiB" | "1000B" | "0B">,
+      "1023TiB" | "1000B" | "0B"
+    >();
+    assertType<Extract<ByteSizeLiteral, "1MB" | "1.1KiB" | "1024KiB">, never>();
+
+    // @ts-expect-error Type '"1MB"' is not assignable to type 'ByteSizeLiteral'.
+    const _decimalUnit: ByteSizeLiteral = "1MB";
+    // @ts-expect-error Type '"1.1KiB"' is not assignable to type 'ByteSizeLiteral'.
+    const _fraction: ByteSizeLiteral = "1.1KiB";
+    // @ts-expect-error Type '"1024KiB"' is not assignable to type 'ByteSizeLiteral'.
+    const _redundantUnit: ByteSizeLiteral = "1024KiB";
+    // @ts-expect-error Type 'number' is not assignable to type 'ByteSize'.
+    const _unbranded: ByteSize = 1024;
+  });
+});
+
+describe("byteSizeToByteLength", () => {
+  it("converts exactly and passes a ByteLength through", () => {
+    const cases: ReadonlyArray<readonly [ByteSizeLiteral, number]> = [
+      ["0B", 0],
+      ["1023B", 1023],
+      ["1KiB", 1024],
+      ["1.5KiB", 1536],
+      ["1023.5KiB", 1048064],
+      ["1000KiB", 1024000],
+      ["1023KiB", 1047552],
+      ["1MiB", 1048576],
+      ["1023MiB", 1072693248],
+      ["1GiB", 1073741824],
+      ["1.5GiB", 1610612736],
+      ["1023GiB", 1098437885952],
+      ["1TiB", 1099511627776],
+      ["1023TiB", 1124800395214848],
+    ];
+    for (const [literal, bytes] of cases)
+      assertEqual(byteSizeToByteLength(literal), bytes);
+
+    const result = byteSizeToByteLength("1MiB");
+    assertType<typeof result, ByteLength>();
+
+    const validated = ByteLength.orThrow(1000);
+    assertSame(byteSizeToByteLength(validated), validated);
+  });
+
+  it("asserts that a literal has a supported unit", () => {
+    const error = assertThrowsInstanceOf(
+      () => byteSizeToByteLength("1PiB" as ByteSize),
+      Error,
+    );
+    assertEqual(error.message, "Unknown byte length unit: PiB");
+  });
+});
+
+describe("ByteLengthFromString", () => {
+  it("parses a number of bytes or a literal", () => {
+    assertOk(ByteLengthFromString.fromUnknown("0"), 0);
+    assertOk(ByteLengthFromString.fromUnknown("1048576"), 1048576);
+    assertOk(ByteLengthFromString.fromUnknown("007"), 7);
+    assertOk(
+      ByteLengthFromString.fromUnknown("9007199254740991"),
+      Number.MAX_SAFE_INTEGER,
+    );
+    assertOk(ByteLengthFromString.fromUnknown("10MiB"), 10485760);
+    assertOk(ByteLengthFromString.fromUnknown("1023MiB"), 1072693248);
+    assertOk(ByteLengthFromString.fromUnknown("0B"), 0);
+    assertEqual(
+      ByteLengthFromString.to(ByteLengthFromString.orThrow("1KiB")),
+      "1024",
+    );
+    assertSame(
+      ByteLengthFromString.orThrow(
+        ByteLengthFromString.to(ByteLength.orThrow(0)),
+      ),
+      0,
+    );
+  });
+
+  it("rejects other text and unsafe numbers", () => {
+    for (const value of [
+      "",
+      "10MB",
+      "1.1KiB",
+      "1024KiB",
+      "-0",
+      "-1",
+      "1.5",
+      "1e3",
+      " 1",
+      "1KiB ",
+      "9007199254740992",
+      "9007199254740993",
+      "9".repeat(309),
+    ]) {
+      const invalid = ByteLengthFromString.fromUnknown(value);
+      assertErr(invalid, { type: "ByteLengthFromString", value });
+      assertEqual(
+        ByteLengthFromString.formatError(invalid.error),
+        `The value ${JSON.stringify(value)} is not a byte length. Use a number of bytes or a literal such as 10MiB.`,
+      );
+    }
+    assertErr(ByteLengthFromString.fromUnknown(1024), {
+      type: "TypeOf",
+      expected: "String",
+      value: 1024,
+    });
   });
 });

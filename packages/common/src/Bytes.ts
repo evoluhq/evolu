@@ -1,5 +1,14 @@
 /**
- * Bytes: `Uint8Array` helpers and the {@link Buffer} codec.
+ * Bytes: `Uint8Array` helpers, the {@link Buffer} codec, and byte sizes.
+ *
+ * Sizes follow the same pattern as durations in Time.ts:
+ *
+ * - {@link ByteLength} is the canonical unit, a validated number of bytes.
+ * - {@link ByteSizeLiteral} is the human-readable form, such as `"10MiB"`,
+ *   validated at compile time and runtime.
+ * - {@link ByteSize} is what APIs accept: `ByteSizeLiteral | ByteLength`.
+ * - {@link byteSizeToByteLength} normalizes a `ByteSize` to a `ByteLength`.
+ * - {@link ByteLengthFromString} parses either form from text.
  *
  * Buffer-based decoding functions throw instead of returning {@link Result}.
  * Result is not slow, but every successful decode would allocate one, and a
@@ -12,12 +21,22 @@
  */
 
 import { bytesToUtf8, utf8ToBytes } from "@noble/ciphers/utils.js";
-import type { Result } from "./Result.ts";
-import type {
-  FiniteNumber,
-  JsonValue,
+import { assert } from "./Assert.ts";
+import { err, ok, type Result } from "./Result.ts";
+import { safelyStringifyUnknownValue } from "./String.ts";
+import {
+  brand,
+  Digit,
+  Digit1To9,
+  type FiniteNumber,
+  type JsonValue,
   NonNegativeInt,
-  PositiveInt,
+  type PositiveInt,
+  String,
+  templateLiteral,
+  transform,
+  type TypeError,
+  union,
 } from "./Type.ts";
 export { bytesToHex, concatBytes, hexToBytes } from "@noble/ciphers/utils.js";
 export { bytesToUtf8, utf8ToBytes };
@@ -489,7 +508,7 @@ let jsonDecoderSource: Uint8Array = emptyJsonDecoderSource;
 let jsonDecoderView: DataView = emptyJsonDecoderView;
 let jsonDecoderPosition = 0;
 let jsonDecoderDepth = 0;
-const jsonStringFromCharCode = String.fromCharCode;
+const jsonStringFromCharCode = globalThis.String.fromCharCode;
 // Cache only short keys and use a fixed table to bound retained memory.
 const jsonKeyCache: Array<JsonKeyCacheEntry | undefined> = Array.from(
   { length: jsonKeyCacheSize },
@@ -1375,3 +1394,303 @@ const assertBufferHasRemainingBytes = (
     throw new BufferError("Buffer parse ended prematurely");
   }
 };
+
+/**
+ * Non-negative safe integer number of bytes.
+ *
+ * The canonical unit for sizes, as milliseconds are for time. APIs accept
+ * {@link ByteSize} and normalize it with {@link byteSizeToByteLength}. Parse text
+ * such as an environment variable with {@link ByteLengthFromString}. Negative
+ * zero is rejected so zero has one canonical representation.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, ByteLength } from "@evolu/common";
+ *
+ * assertOk(ByteLength.fromUnknown(0), 0);
+ * assertOk(ByteLength.fromUnknown(1024), 1024);
+ * assertErr(ByteLength.fromUnknown(-0));
+ * assertErr(ByteLength.fromUnknown(-1));
+ * assertErr(ByteLength.fromUnknown(1.5));
+ * ```
+ */
+export const ByteLength = /*#__PURE__*/ brand(
+  "ByteLength",
+  NonNegativeInt,
+  (value) =>
+    Object.is(value, -0)
+      ? err<ByteLengthError>({ type: "ByteLength", value })
+      : ok(),
+  () => "The value -0 is not a byte length. Use 0 instead.",
+);
+export type ByteLength = typeof ByteLength.Output;
+
+/** Error returned when {@link ByteLength} rejects negative zero. */
+export interface ByteLengthError extends TypeError<"ByteLength"> {
+  readonly value: number;
+}
+
+const Digit0To1 = /*#__PURE__*/ union("0", "1");
+const Digit0To3 = /*#__PURE__*/ union("0", "1", "2", "3");
+
+/** Bytes: `"0B"` to `"1023B"`. See {@link ByteSizeLiteral}. */
+export const ByteSizeLiteralBytes = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit, "B"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "B"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "B"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, "B"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, "B"),
+);
+export type ByteSizeLiteralBytes = typeof ByteSizeLiteralBytes.Output;
+
+/**
+ * KiB: `"1KiB"` to `"1023KiB"` or `"1.5KiB"` to `"1023.5KiB"`. See
+ * {@link ByteSizeLiteral}.
+ */
+export const ByteSizeLiteralKiB = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To9, "KiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "KiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "KiB"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, "KiB"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, "KiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, ".5KiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, ".5KiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, ".5KiB"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, ".5KiB"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, ".5KiB"),
+);
+export type ByteSizeLiteralKiB = typeof ByteSizeLiteralKiB.Output;
+
+/**
+ * MiB: `"1MiB"` to `"1023MiB"` or `"1.5MiB"` to `"1023.5MiB"`. See
+ * {@link ByteSizeLiteral}.
+ */
+export const ByteSizeLiteralMiB = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To9, "MiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "MiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "MiB"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, "MiB"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, "MiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, ".5MiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, ".5MiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, ".5MiB"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, ".5MiB"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, ".5MiB"),
+);
+export type ByteSizeLiteralMiB = typeof ByteSizeLiteralMiB.Output;
+
+/**
+ * GiB: `"1GiB"` to `"1023GiB"` or `"1.5GiB"` to `"1023.5GiB"`. See
+ * {@link ByteSizeLiteral}.
+ */
+export const ByteSizeLiteralGiB = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To9, "GiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "GiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "GiB"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, "GiB"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, "GiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, ".5GiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, ".5GiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, ".5GiB"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, ".5GiB"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, ".5GiB"),
+);
+export type ByteSizeLiteralGiB = typeof ByteSizeLiteralGiB.Output;
+
+/**
+ * TiB: `"1TiB"` to `"1023TiB"` or `"1.5TiB"` to `"1023.5TiB"`. See
+ * {@link ByteSizeLiteral}.
+ */
+export const ByteSizeLiteralTiB = /*#__PURE__*/ union(
+  /*#__PURE__*/ templateLiteral(Digit1To9, "TiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "TiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "TiB"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, "TiB"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, "TiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, ".5TiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, ".5TiB"),
+  /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, ".5TiB"),
+  /*#__PURE__*/ templateLiteral("10", Digit0To1, Digit, ".5TiB"),
+  /*#__PURE__*/ templateLiteral("102", Digit0To3, ".5TiB"),
+);
+export type ByteSizeLiteralTiB = typeof ByteSizeLiteralTiB.Output;
+
+/**
+ * Byte length literal Type with compile-time and runtime validation.
+ *
+ * Supported formats:
+ *
+ * - Bytes: `0B` to `1023B`
+ * - KiB: `1KiB` to `1023KiB` or `1.5KiB` to `1023.5KiB`
+ * - MiB: `1MiB` to `1023MiB` or `1.5MiB` to `1023.5MiB`
+ * - GiB: `1GiB` to `1023GiB` or `1.5GiB` to `1023.5GiB`
+ * - TiB: `1TiB` to `1023TiB` or `1.5TiB` to `1023.5TiB`
+ *
+ * Units are the binary ones defined by IEC, named kibibyte (`KiB`, 1024 bytes),
+ * mebibyte (`MiB`), gibibyte (`GiB`), and tebibyte (`TiB`), each 1024 times the
+ * previous. Memory, storage quotas, and caches are measured in them. The
+ * familiar `MB` is ambiguous: SI defines it as a million bytes, storage vendors
+ * use that meaning, and most software uses 1048576 instead, which is why a "1
+ * TB" drive shows as 931 "GB". `MiB` has only one meaning, so a literal never
+ * depends on a convention.
+ *
+ * Each unit is bounded below 1024, so equivalent representations are avoided:
+ * `1024KiB` must be written as `"1MiB"`. A half is the only decimal allowed,
+ * because it is the only single decimal digit that is exact in every binary
+ * unit; `1.1KiB` would be 1126.4 bytes. For other exact values, use
+ * {@link ByteLength} directly.
+ *
+ * See {@link ByteSize} for a type that also accepts {@link ByteLength}. Use
+ * {@link byteSizeToByteLength} to convert.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertFalse,
+ *   assertOk,
+ *   assertType,
+ *   ByteSizeLiteral,
+ * } from "@evolu/common";
+ *
+ * // The TypeScript type accepts valid spellings and rejects the rest.
+ * const literal: ByteSizeLiteral = "1023MiB";
+ * assertType<
+ *   Extract<ByteSizeLiteral, "1024KiB" | "1.1KiB" | "1MB">,
+ *   never
+ * >();
+ *
+ * // The runtime Type validates the same grammar.
+ * assertOk(ByteSizeLiteral.fromUnknown(literal), "1023MiB");
+ * assertFalse(ByteSizeLiteral.is("1024KiB"));
+ * ```
+ */
+export const ByteSizeLiteral = /*#__PURE__*/ union(
+  ByteSizeLiteralBytes,
+  ByteSizeLiteralKiB,
+  ByteSizeLiteralMiB,
+  ByteSizeLiteralGiB,
+  ByteSizeLiteralTiB,
+);
+export type ByteSizeLiteral = typeof ByteSizeLiteral.Output;
+
+/**
+ * {@link ByteSizeLiteral} or {@link ByteLength}.
+ *
+ * Convenience input accepting a human-readable {@link ByteSizeLiteral} or a
+ * validated {@link ByteLength} for values that no literal expresses. APIs
+ * normalize it with {@link byteSizeToByteLength}.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   ByteLength,
+ *   byteSizeToByteLength,
+ *   type ByteSize,
+ * } from "@evolu/common";
+ *
+ * const literal: ByteSize = "1MiB";
+ * const validated: ByteSize = ByteLength.orThrow(1000000);
+ *
+ * assertEqual(byteSizeToByteLength(literal), 1048576);
+ * assertEqual(byteSizeToByteLength(validated), 1000000);
+ * ```
+ */
+export type ByteSize = ByteSizeLiteral | ByteLength;
+
+const bytesByByteLengthUnit = {
+  B: 1,
+  KiB: 1024,
+  MiB: 1024 ** 2,
+  GiB: 1024 ** 3,
+  TiB: 1024 ** 4,
+};
+
+/**
+ * Converts a {@link ByteSize} to a {@link ByteLength}. A {@link ByteLength} is
+ * returned unchanged.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, byteSizeToByteLength } from "@evolu/common";
+ *
+ * assertEqual(byteSizeToByteLength("0B"), 0);
+ * assertEqual(byteSizeToByteLength("2KiB"), 2048);
+ * assertEqual(byteSizeToByteLength("1GiB"), 1073741824);
+ * ```
+ */
+export const byteSizeToByteLength = (value: ByteSize): ByteLength => {
+  if (typeof value === "number") return value;
+
+  const unit = value.endsWith("iB") ? value.slice(-3) : "B";
+  assert(unit in bytesByByteLengthUnit, `Unknown byte length unit: ${unit}`);
+
+  return ByteLength.orThrow(
+    Number.parseFloat(value) *
+      bytesByByteLengthUnit[unit as keyof typeof bytesByByteLengthUnit],
+  );
+};
+
+/**
+ * Error returned when a string is neither a number of bytes nor a
+ * {@link ByteSizeLiteral}.
+ */
+export interface ByteLengthFromStringError extends TypeError<"ByteLengthFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms a number of bytes or a {@link ByteSizeLiteral} in text into a
+ * {@link ByteLength}.
+ *
+ * This is useful for inputs that carry sizes as text, such as environment
+ * variables and configuration files, where `"10MiB"` reads better than
+ * `"10485760"`. Encoding produces the number of bytes.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   ByteLengthFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(ByteLengthFromString.fromUnknown("10MiB"), 10485760);
+ * assertOk(ByteLengthFromString.fromUnknown("1048576"), 1048576);
+ * assertEqual(
+ *   ByteLengthFromString.to(ByteLengthFromString.orThrow("1KiB")),
+ *   "1024",
+ * );
+ *
+ * const invalid = ByteLengthFromString.fromUnknown("10MB");
+ * assertErr(invalid, { type: "ByteLengthFromString", value: "10MB" });
+ * assertEqual(
+ *   ByteLengthFromString.formatError(invalid.error),
+ *   'The value "10MB" is not a byte length. Use a number of bytes or a literal such as 10MiB.',
+ * );
+ * ```
+ */
+export const ByteLengthFromString = /*#__PURE__*/ transform(
+  "ByteLengthFromString",
+  String,
+  ByteLength,
+  {
+    from: (value): Result<number, ByteLengthFromStringError> => {
+      if (ByteSizeLiteral.is(value)) return ok(byteSizeToByteLength(value));
+      if (/^\d+$/u.test(value)) {
+        const number = Number(value);
+        if (Number.isSafeInteger(number)) return ok(number);
+      }
+      return err({ type: "ByteLengthFromString", value });
+    },
+    to: (value) => globalThis.String(value),
+  },
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a byte length. Use a number of bytes or a literal such as 10MiB.`,
+);
