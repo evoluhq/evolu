@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formats a Boolean TypeOfError in Indonesian. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formats a BooleanFromStringError in Indonesian. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan boolean. Gunakan true atau false.`;
 
 /** Formats a Symbol TypeOfError in Indonesian. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formats an IntError in Indonesian. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} harus berupa bilangan bulat aman.`;
+
+/** Formats an IntFromStringError in Indonesian. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan bilangan bulat desimal.`;
 
 /** Formats a GreaterThanError in Indonesian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

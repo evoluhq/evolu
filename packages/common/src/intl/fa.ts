@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Boolean TypeOfError را به فارسی قالب‌بندی می‌کند. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** BooleanFromStringError را به فارسی قالب‌بندی می‌کند. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار بولی نیست. از true یا false استفاده کنید.`;
 
 /** Symbol TypeOfError را به فارسی قالب‌بندی می‌کند. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** IntError را به فارسی قالب‌بندی می‌کند. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید یک عدد صحیح امن باشد.`;
+
+/** IntFromStringError را به فارسی قالب‌بندی می‌کند. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک عدد صحیح دهدهی نیست.`;
 
 /** GreaterThanError را به فارسی قالب‌بندی می‌کند. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

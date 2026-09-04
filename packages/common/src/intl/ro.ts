@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formatează un Boolean TypeOfError în română. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formatează un BooleanFromStringError în română. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este o valoare booleană. Folosiți true sau false.`;
 
 /** Formatează un Symbol TypeOfError în română. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -272,6 +280,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formatează un IntError în română. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie un număr întreg sigur.`;
+
+/** Formatează un IntFromStringError în română. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un întreg zecimal.`;
 
 /** Formatează un GreaterThanError în română. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

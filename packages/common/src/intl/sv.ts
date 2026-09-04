@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formaterar ett Boolean TypeOfError på svenska. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formaterar ett BooleanFromStringError på svenska. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett booleskt värde. Använd true eller false.`;
 
 /** Formaterar ett Symbol TypeOfError på svenska. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -272,6 +280,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formaterar ett IntError på svenska. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} måste vara ett säkert heltal.`;
+
+/** Formaterar ett IntFromStringError på svenska. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte ett decimalt heltal.`;
 
 /** Formaterar ett GreaterThanError på svenska. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

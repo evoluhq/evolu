@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** จัดรูปแบบ Boolean TypeOfError เป็นภาษาไทย */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** จัดรูปแบบ BooleanFromStringError เป็นภาษาไทย */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ค่าบูลีน ใช้ true หรือ false`;
 
 /** จัดรูปแบบ Symbol TypeOfError เป็นภาษาไทย */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -269,6 +277,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** จัดรูปแบบ IntError เป็นภาษาไทย */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องเป็นจำนวนเต็มปลอดภัย`;
+
+/** จัดรูปแบบ IntFromStringError เป็นภาษาไทย */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่จำนวนเต็มฐานสิบ`;
 
 /** จัดรูปแบบ GreaterThanError เป็นภาษาไทย */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

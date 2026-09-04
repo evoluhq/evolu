@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Boolean TypeOfError를 한국어로 포맷합니다. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** BooleanFromStringError를 한국어로 포맷합니다. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 불리언이 아닙니다. true 또는 false를 사용하세요.`;
 
 /** Symbol TypeOfError를 한국어로 포맷합니다. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** IntError를 한국어로 포맷합니다. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 안전한 정수여야 합니다.`;
+
+/** IntFromStringError를 한국어로 포맷합니다. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} 값은 10진 정수가 아닙니다.`;
 
 /** GreaterThanError를 한국어로 포맷합니다. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

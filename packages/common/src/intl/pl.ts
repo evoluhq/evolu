@@ -52,6 +52,12 @@ export const formatBooleanError: Type.TypeErrorFormatter<
   Type.TypeOfError<"Boolean">
 > = (error) => formatValueMustBe(error.value, "wartością logiczną");
 
+/** Formats a BooleanFromStringError in Polish. */
+export const formatBooleanFromStringError: Type.TypeErrorFormatter<
+  Type.BooleanFromStringError
+> = (error) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest wartością logiczną. Użyj true lub false.`;
+
 /** Formats a Symbol TypeOfError in Polish. */
 export const formatSymbolError: Type.TypeErrorFormatter<
   Type.TypeOfError<"Symbol">
@@ -240,6 +246,12 @@ export const formatNegativeDecimalStringError: Type.TypeErrorFormatter<
 /** Formats an IntError in Polish. */
 export const formatIntError: Type.TypeErrorFormatter<Type.IntError> = (error) =>
   `Wartość ${safelyStringifyUnknownValue(error.value)} musi być bezpieczną liczbą całkowitą.`;
+
+/** Formats an IntFromStringError in Polish. */
+export const formatIntFromStringError: Type.TypeErrorFormatter<
+  Type.IntFromStringError
+> = (error) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} nie jest dziesiętną liczbą całkowitą.`;
 
 /** Formats a GreaterThanError in Polish. */
 export const formatGreaterThanError: Type.TypeErrorFormatter<

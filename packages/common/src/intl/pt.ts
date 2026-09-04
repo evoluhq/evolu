@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -113,6 +115,12 @@ export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
 /** Formata um TypeOfError de Function em português. */
 export const formatFunctionError: TypeErrorFormatter<TypeOfError<"Function">> =
   formatTypeOfError;
+
+/** Formata um BooleanFromStringError em português. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um booleano. Utilize true ou false.`;
 
 /** Formata um EvoluTypeError em português. */
 export const formatEvoluTypeError: TypeErrorFormatter<EvoluTypeError> = (
@@ -270,6 +278,12 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 /** Formata um BetweenError em português. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} tem de estar entre ${error.min} e ${error.max}, inclusive.`;
+
+/** Formata um IntFromStringError em português. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não é um inteiro decimal.`;
 
 /** Formata um ArrayError em português. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {

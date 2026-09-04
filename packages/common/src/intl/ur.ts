@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -264,6 +266,18 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 /** BetweenError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} ${error.min} اور ${error.max} کے درمیان، دونوں شامل، ہونی چاہیے۔`;
+
+/** BooleanFromStringError کو اردو میں فارمیٹ کرتا ہے۔ */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} بولین نہیں ہے۔ true یا false استعمال کریں۔`;
+
+/** IntFromStringError کو اردو میں فارمیٹ کرتا ہے۔ */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} اعشاری عددِ صحیح نہیں ہے۔`;
 
 /** ArrayError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {

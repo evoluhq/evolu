@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Boolean TypeOfErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** BooleanFromStringErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} boolean కాదు. true లేదా false ఉపయోగించండి.`;
 
 /** Symbol TypeOfErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** IntErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} సురక్షితమైన integer అయి ఉండాలి.`;
+
+/** IntFromStringErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} దశాంశ పూర్ణాంకం కాదు.`;
 
 /** GreaterThanErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

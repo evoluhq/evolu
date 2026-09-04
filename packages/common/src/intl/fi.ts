@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Muotoilee Boolean TypeOfError -virheen suomeksi. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Muotoilee BooleanFromStringError-virheen suomeksi. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole totuusarvo. Käytä arvoa true tai false.`;
 
 /** Muotoilee Symbol TypeOfError -virheen suomeksi. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Muotoilee IntError-virheen suomeksi. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava turvallinen kokonaisluku.`;
+
+/** Muotoilee IntFromStringError-virheen suomeksi. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole desimaalimuotoinen kokonaisluku.`;
 
 /** Muotoilee GreaterThanError-virheen suomeksi. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

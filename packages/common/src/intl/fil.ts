@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Fino-format ang Boolean TypeOfError sa Filipino. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Fino-format ang BooleanFromStringError sa Filipino. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi boolean. Gamitin ang true o false.`;
 
 /** Fino-format ang Symbol TypeOfError sa Filipino. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -272,6 +280,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Fino-format ang IntError sa Filipino. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat safe integer.`;
+
+/** Fino-format ang IntFromStringError sa Filipino. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi decimal integer.`;
 
 /** Fino-format ang GreaterThanError sa Filipino. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

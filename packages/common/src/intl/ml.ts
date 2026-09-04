@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Boolean TypeOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** BooleanFromStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു boolean അല്ല. true അല്ലെങ്കിൽ false ഉപയോഗിക്കുക.`;
 
 /** Symbol TypeOfError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** IntError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} safe integer ആയിരിക്കണം.`;
+
+/** IntFromStringError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ഒരു ദശാംശ പൂർണ്ണസംഖ്യയല്ല.`;
 
 /** GreaterThanError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

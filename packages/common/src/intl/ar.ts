@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -264,6 +266,18 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 /** Formats a BetweenError in Arabic. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} بين ${error.min} و${error.max}، شاملةً.`;
+
+/** Formats a BooleanFromStringError in Arabic. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست قيمة منطقية. استخدم true أو false.`;
+
+/** Formats an IntFromStringError in Arabic. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست عددًا صحيحًا عشريًا.`;
 
 /** Formats an ArrayError in Arabic. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {

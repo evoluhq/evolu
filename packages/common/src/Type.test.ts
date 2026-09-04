@@ -36,6 +36,7 @@ import {
   between,
   BigInt,
   Boolean,
+  BooleanFromString,
   brand,
   capitalized,
   CapitalizedString,
@@ -66,6 +67,7 @@ import {
   greaterThanOrEqualTo,
   int,
   Int,
+  IntFromString,
   Int64,
   Int64FromInt64String,
   Int64String,
@@ -463,6 +465,7 @@ describe("Type", () => {
       Base64Url,
       BigInt,
       Boolean,
+      BooleanFromString,
       CapitalizedString,
       Data,
       Date,
@@ -482,6 +485,7 @@ describe("Type", () => {
       Id,
       IdBytes,
       Int,
+      IntFromString,
       Int64,
       Int64FromInt64String,
       Int64String,
@@ -593,6 +597,7 @@ describe("Type", () => {
       "Between6-7",
       "BigInt",
       "Boolean",
+      "BooleanFromString",
       "Capitalized",
       "Data",
       "Date",
@@ -612,6 +617,7 @@ describe("Type", () => {
       "Int64",
       "Int64FromInt64String",
       "Int64String",
+      "IntFromString",
       "IntrospectionChild",
       "IntrospectionKey",
       "IntrospectionRegex",
@@ -20461,5 +20467,114 @@ describe("design decisions", () => {
         result.error,
       );
     });
+  });
+});
+
+describe("BooleanFromString", () => {
+  it("parses exactly true and false", () => {
+    assertOk(BooleanFromString.fromUnknown("true"), true);
+    assertOk(BooleanFromString.fromUnknown("false"), false);
+
+    assertEqual(BooleanFromString.to(true), "true");
+    assertEqual(BooleanFromString.to(false), "false");
+  });
+
+  it("rejects other strings and non-strings", () => {
+    for (const value of [
+      "TRUE",
+      "False",
+      "1",
+      "0",
+      "yes",
+      "no",
+      "on",
+      "off",
+      " true",
+      "",
+    ]) {
+      const invalid = BooleanFromString.fromUnknown(value);
+      assertErr(invalid, { type: "BooleanFromString", value });
+      assertEqual(
+        BooleanFromString.formatError(invalid.error),
+        `The value ${JSON.stringify(value)} is not a boolean. Use true or false.`,
+      );
+    }
+
+    assertErr(BooleanFromString.fromUnknown(true), {
+      type: "TypeOf",
+      expected: "String",
+      value: true,
+    });
+  });
+});
+
+describe("IntFromString", () => {
+  it("parses decimal integers", () => {
+    assertOk(IntFromString.fromUnknown("4000"), 4000);
+    assertOk(IntFromString.fromUnknown("-1"), -1);
+    assertOk(IntFromString.fromUnknown("007"), 7);
+    assertOk(
+      IntFromString.fromUnknown("9007199254740991"),
+      globalThis.Number.MAX_SAFE_INTEGER,
+    );
+    assertOk(
+      IntFromString.fromUnknown("-9007199254740991"),
+      globalThis.Number.MIN_SAFE_INTEGER,
+    );
+    assertEqual(IntFromString.to(IntFromString.orThrow("42")), "42");
+
+    const negativeZero = IntFromString.orThrow("-0");
+    assertSame(negativeZero, -0);
+    assertEqual(IntFromString.to(negativeZero), "-0");
+
+    {
+      const value = IntFromString.orThrow("1");
+      assertType<typeof value, Int>();
+    }
+  });
+
+  it("rejects non-integer text", () => {
+    for (const value of ["", " 1", "1 ", "+1", "1.5", "1e3", "0x10", "NaN"]) {
+      const invalid = IntFromString.fromUnknown(value);
+      assertErr(invalid, { type: "IntFromString", value });
+      assertEqual(
+        IntFromString.formatError(invalid.error),
+        `The value ${JSON.stringify(value)} is not a decimal integer.`,
+      );
+    }
+  });
+
+  it("validates parsed numbers with Int", () => {
+    for (const value of [
+      "9007199254740992",
+      "9007199254740993",
+      "-9007199254740992",
+      "-9007199254740993",
+    ]) {
+      const number = globalThis.Number(value);
+      const invalid = IntFromString.fromUnknown(value);
+      assertErr(invalid, {
+        type: "IntFromString",
+        outputError: { type: "Int", value: number },
+      });
+      assertEqual(
+        IntFromString.formatError(invalid.error),
+        `The value ${number} must be a safe integer.`,
+      );
+    }
+
+    const value = "9".repeat(309);
+    const invalid = IntFromString.fromUnknown(value);
+    assertErr(invalid, {
+      type: "IntFromString",
+      outputError: {
+        type: "Finite",
+        value: globalThis.Number.POSITIVE_INFINITY,
+      },
+    });
+    assertEqual(
+      IntFromString.formatError(invalid.error),
+      "The value Infinity must be finite.",
+    );
   });
 });

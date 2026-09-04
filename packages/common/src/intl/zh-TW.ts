@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** 以繁體中文格式化 Boolean TypeOfError。 */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** 以繁體中文格式化 BooleanFromStringError。 */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是布林值。請使用 true 或 false。`;
 
 /** 以繁體中文格式化 Symbol TypeOfError。 */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -267,6 +275,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** 以繁體中文格式化 IntError。 */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 必須是安全整數。`;
+
+/** 以繁體中文格式化 IntFromStringError。 */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是十進位整數。`;
 
 /** 以繁體中文格式化 GreaterThanError。 */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

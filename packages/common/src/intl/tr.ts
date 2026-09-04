@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -106,6 +108,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> = (
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> = (
   error,
 ) => formatValueMustBe(error.value, "bir mantıksal değer");
+
+/** Formats a BooleanFromStringError in Turkish. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Değer ${safelyStringifyUnknownValue(error.value)} bir mantıksal değer değildir. true veya false kullanın.`;
 
 /** Formats a Symbol TypeOfError in Turkish. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> = (
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formats an IntError in Turkish. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Değer ${safelyStringifyUnknownValue(error.value)} güvenli bir tamsayı olmalıdır.`;
+
+/** Formats an IntFromStringError in Turkish. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Değer ${safelyStringifyUnknownValue(error.value)} ondalık bir tam sayı değildir.`;
 
 /** Formats a GreaterThanError in Turkish. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

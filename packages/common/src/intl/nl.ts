@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formatteert een Boolean TypeOfError in het Nederlands. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formatteert een BooleanFromStringError in het Nederlands. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen booleaanse waarde. Gebruik true of false.`;
 
 /** Formatteert een Symbol TypeOfError in het Nederlands. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -272,6 +280,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formatteert een IntError in het Nederlands. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} moet een veilig geheel getal zijn.`;
+
+/** Formatteert een IntFromStringError in het Nederlands. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} is geen decimaal geheel getal.`;
 
 /** Formatteert een GreaterThanError in het Nederlands. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

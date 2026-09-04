@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -264,6 +266,18 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 /** Formats a BetweenError in Malay. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} mestilah antara ${error.min} dan ${error.max}, termasuk kedua-dua had.`;
+
+/** Formats a BooleanFromStringError in Malay. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan boolean. Gunakan true atau false.`;
+
+/** Formats an IntFromStringError in Malay. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan integer perpuluhan.`;
 
 /** Formats an ArrayError in Malay. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {

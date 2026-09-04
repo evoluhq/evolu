@@ -182,6 +182,16 @@ export const formatBetweenError: T.TypeErrorFormatter<T.BetweenError> = (
 ) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe kati ya ${error.min} na ${error.max}, ikijumuisha mipaka.`;
 
+export const formatBooleanFromStringError: T.TypeErrorFormatter<
+  T.BooleanFromStringError
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si thamani ya boolean. Tumia true au false.`;
+
+export const formatIntFromStringError: T.TypeErrorFormatter<
+  T.IntFromStringError
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si nambari kamili ya desimali.`;
+
 export const formatArrayError: T.TypeErrorFormatter<T.ArrayError> = (error) => {
   if (error.reason.kind === "NotArray")
     return `Thamani ${safelyStringifyUnknownValue(error.reason.value)} si array.`;

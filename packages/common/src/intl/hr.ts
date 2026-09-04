@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -116,6 +118,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formats a Boolean TypeOfError in Croatian. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formats a BooleanFromStringError in Croatian. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije logička vrijednost. Upotrijebite true ili false.`;
 
 /** Formats a Symbol TypeOfError in Croatian. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -278,6 +286,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formats an IntError in Croatian. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti siguran cijeli broj.`;
+
+/** Formats an IntFromStringError in Croatian. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} nije decimalni cijeli broj.`;
 
 /** Formats a GreaterThanError in Croatian. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

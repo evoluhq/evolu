@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** מעצב שגיאת Boolean TypeOfError בעברית. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** מעצב שגיאת BooleanFromStringError בעברית. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו ערך בוליאני. השתמשו ב-true או ב-false.`;
 
 /** מעצב שגיאת Symbol TypeOfError בעברית. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -270,6 +278,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** מעצב שגיאת IntError בעברית. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות מספר שלם בטוח.`;
+
+/** מעצב שגיאת IntFromStringError בעברית. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו מספר שלם עשרוני.`;
 
 /** מעצב שגיאת GreaterThanError בעברית. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

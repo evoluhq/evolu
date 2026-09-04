@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Boolean TypeOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** BooleanFromStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਬੂਲੀਅਨ ਨਹੀਂ ਹੈ। true ਜਾਂ false ਵਰਤੋ।`;
 
 /** Symbol TypeOfError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** IntError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਇੱਕ safe integer ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।`;
+
+/** IntFromStringError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `ਮੁੱਲ ${safelyStringifyUnknownValue(error.value)} ਦਸ਼ਮਲਵ ਪੂਰਨ ਅੰਕ ਨਹੀਂ ਹੈ।`;
 
 /** GreaterThanError ਨੂੰ ਪੰਜਾਬੀ ਵਿੱਚ format ਕਰਦਾ ਹੈ। */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

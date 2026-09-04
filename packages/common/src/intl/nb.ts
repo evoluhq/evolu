@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -219,6 +221,16 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `Verdien ${safelyStringifyUnknownValue(error.value)} må være et multiplum av ${error.divisor}.`;
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} må være mellom ${error.min} og ${error.max}, inkludert.`;
+
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke en boolsk verdi. Bruk true eller false.`;
+
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} er ikke et desimalt heltall.`;
 
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray")

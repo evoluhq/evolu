@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -116,6 +118,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formats a Boolean TypeOfError in Greek. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formats a BooleanFromStringError in Greek. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι λογική τιμή. Χρησιμοποιήστε true ή false.`;
 
 /** Formats a Symbol TypeOfError in Greek. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -278,6 +286,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formats an IntError in Greek. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι ασφαλής ακέραιος.`;
+
+/** Formats an IntFromStringError in Greek. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν είναι δεκαδικός ακέραιος.`;
 
 /** Formats a GreaterThanError in Greek. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

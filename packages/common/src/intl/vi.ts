@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -265,6 +267,18 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 /** Định dạng BetweenError bằng tiếng Việt. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} phải nằm trong khoảng từ ${error.min} đến ${error.max}, kể cả hai đầu.`;
+
+/** Định dạng BooleanFromStringError bằng tiếng Việt. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là giá trị boolean. Hãy dùng true hoặc false.`;
+
+/** Định dạng IntFromStringError bằng tiếng Việt. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là số nguyên thập phân.`;
 
 /** Định dạng ArrayError bằng tiếng Việt. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {

@@ -2969,6 +2969,64 @@ export const BigInt = /*#__PURE__*/ createTypeOfType("BigInt");
 export const Boolean = /*#__PURE__*/ createTypeOfType("Boolean");
 
 /**
+ * Error returned when a string is neither `true` nor `false`.
+ *
+ * @group Base
+ */
+export interface BooleanFromStringError extends TypeError<"BooleanFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms a boolean spelled as text into a {@link Boolean}.
+ *
+ * This is useful for inputs that carry booleans as text, such as environment
+ * variables, URL query parameters, and form fields. Exactly `true` and `false`
+ * are accepted, the spellings JSON and JavaScript use, so a boolean has one
+ * representation in every source.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   BooleanFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(BooleanFromString.fromUnknown("true"), true);
+ * assertOk(BooleanFromString.fromUnknown("false"), false);
+ * assertEqual(BooleanFromString.to(true), "true");
+ *
+ * const invalid = BooleanFromString.fromUnknown("yes");
+ * assertErr(invalid, { type: "BooleanFromString", value: "yes" });
+ * assertEqual(
+ *   BooleanFromString.formatError(invalid.error),
+ *   'The value "yes" is not a boolean. Use true or false.',
+ * );
+ * ```
+ *
+ * @group Base
+ */
+export const BooleanFromString = /*#__PURE__*/ transform(
+  "BooleanFromString",
+  String,
+  Boolean,
+  {
+    from: (value): Result<boolean, BooleanFromStringError> =>
+      value === "true"
+        ? ok(true)
+        : value === "false"
+          ? ok(false)
+          : err({ type: "BooleanFromString", value }),
+    to: (value) => (value ? "true" : "false"),
+  },
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a boolean. Use true or false.`,
+);
+
+/**
  * A JavaScript symbol {@link Type}.
  *
  * @group Base
@@ -6656,6 +6714,67 @@ export const zeroNonNegativeInt = /*#__PURE__*/ NonNegativeInt.orThrow(0);
  */
 export const PositiveInt = /*#__PURE__*/ positive(NonNegativeInt);
 export type PositiveInt = typeof PositiveInt.Output;
+
+/**
+ * Error returned when a string is not a decimal integer.
+ *
+ * @group Number
+ */
+export interface IntFromStringError extends TypeError<"IntFromString"> {
+  readonly value: string;
+}
+
+/**
+ * Transforms a decimal integer string into an {@link Int}.
+ *
+ * This is useful for inputs that carry numbers as text, such as environment
+ * variables, URL query parameters, and form fields. The string must consist of
+ * an optional minus sign and digits; the {@link Int} constraint then rejects
+ * values outside the safe integer range.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   assertSame,
+ *   IntFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(IntFromString.fromUnknown("4000"), 4000);
+ * assertOk(IntFromString.fromUnknown("-1"), -1);
+ * assertEqual(IntFromString.to(IntFromString.orThrow("42")), "42");
+ * const negativeZero = IntFromString.orThrow("-0");
+ * assertSame(negativeZero, -0);
+ * assertEqual(IntFromString.to(negativeZero), "-0");
+ *
+ * const invalid = IntFromString.fromUnknown("4000.5");
+ * assertErr(invalid, { type: "IntFromString", value: "4000.5" });
+ * assertEqual(
+ *   IntFromString.formatError(invalid.error),
+ *   'The value "4000.5" is not a decimal integer.',
+ * );
+ * ```
+ *
+ * @group Number
+ */
+export const IntFromString = /*#__PURE__*/ transform(
+  "IntFromString",
+  String,
+  Int,
+  {
+    from: (value): Result<number, IntFromStringError> =>
+      /^-?\d+$/u.test(value)
+        ? ok(globalThis.Number(value))
+        : err({ type: "IntFromString", value }),
+    to: (value) =>
+      globalThis.Object.is(value, -0) ? "-0" : globalThis.String(value),
+  },
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a decimal integer.`,
+);
 
 /**
  * Minimum {@link PositiveInt} value.

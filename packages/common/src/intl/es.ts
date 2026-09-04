@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formatea Boolean TypeOfError en español. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formatea BooleanFromStringError en español. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no es un booleano. Use true o false.`;
 
 /** Formatea Symbol TypeOfError en español. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -272,6 +280,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formatea IntError en español. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `El valor ${safelyStringifyUnknownValue(error.value)} debe ser un entero seguro.`;
+
+/** Formatea IntFromStringError en español. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `El valor ${safelyStringifyUnknownValue(error.value)} no es un entero decimal.`;
 
 /** Formatea GreaterThanError en español. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

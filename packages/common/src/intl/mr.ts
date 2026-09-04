@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formats a Boolean TypeOfError in Marathi. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formats a BooleanFromStringError in Marathi. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे boolean नाही. true किंवा false वापरा.`;
 
 /** Formats a Symbol TypeOfError in Marathi. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formats an IntError in Marathi. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `मूल्य ${safelyStringifyUnknownValue(error.value)} हा safe integer असला पाहिजे.`;
+
+/** Formats an IntFromStringError in Marathi. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `मूल्य ${safelyStringifyUnknownValue(error.value)} हे दशांश पूर्णांक नाही.`;
 
 /** Formats a GreaterThanError in Marathi. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

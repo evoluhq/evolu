@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formats a Boolean TypeOfError in Slovene. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formats a BooleanFromStringError in Slovene. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni logična vrednost. Uporabite true ali false.`;
 
 /** Formats a Symbol TypeOfError in Slovene. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formats an IntError in Slovene. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} mora biti varno celo število.`;
+
+/** Formats an IntFromStringError in Slovene. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni decimalno celo število.`;
 
 /** Formats a GreaterThanError in Slovene. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

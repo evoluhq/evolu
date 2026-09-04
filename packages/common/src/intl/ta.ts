@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Boolean TypeOfError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** BooleanFromStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} boolean அல்ல. true அல்லது false ஐப் பயன்படுத்தவும்.`;
 
 /** Symbol TypeOfError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** IntError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} ஒரு பாதுகாப்பான integer ஆக இருக்க வேண்டும்.`;
+
+/** IntFromStringError-ஐ தமிழில் வடிவமைக்கிறது. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} தசம முழு எண் அல்ல.`;
 
 /** GreaterThanError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

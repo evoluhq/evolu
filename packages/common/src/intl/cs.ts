@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -106,6 +108,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> = (
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> = (
   error,
 ) => formatValueMustBe(error.value, "logická hodnota");
+
+/** Formats a BooleanFromStringError in Czech. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být true nebo false.`;
 
 /** Formats a Symbol TypeOfError in Czech. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> = (
@@ -271,6 +279,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formats an IntError in Czech. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být bezpečné celé číslo.`;
+
+/** Formats an IntFromStringError in Czech. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být celé číslo v desítkovém zápisu.`;
 
 /** Formats a GreaterThanError in Czech. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (

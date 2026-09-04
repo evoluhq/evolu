@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -266,6 +268,18 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
 /** Formats a BetweenError in Slovak. */
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť v rozsahu od ${error.min} do ${error.max} vrátane.`;
+
+/** Formats a BooleanFromStringError in Slovak. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť true alebo false.`;
+
+/** Formats an IntFromStringError in Slovak. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť celé číslo v desiatkovom zápise.`;
 
 /** Formats an ArrayError in Slovak. */
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {

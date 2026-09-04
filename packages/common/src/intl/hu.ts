@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -219,6 +221,16 @@ export const formatMultipleOfError: TypeErrorFormatter<MultipleOfError> = (
   `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek ${error.divisor} többszörösének kell lennie.`;
 export const formatBetweenError: TypeErrorFormatter<BetweenError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek ${error.min} és ${error.max} között kell lennie, a határokat is beleértve.`;
+
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem logikai érték. Használja a true vagy false értéket.`;
+
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem decimális egész szám.`;
 
 export const formatArrayError: TypeErrorFormatter<ArrayError> = (error) => {
   if (error.reason.kind === "NotArray") {

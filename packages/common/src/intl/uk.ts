@@ -9,6 +9,7 @@ import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
   ArrayError,
   Base64UrlError,
+  BooleanFromStringError,
   BetweenError,
   CapitalizedError,
   DateIsoError,
@@ -23,6 +24,7 @@ import type {
   Int64Error,
   Int64StringError,
   IntError,
+  IntFromStringError,
   IdError,
   JsonError,
   JsonValueError,
@@ -109,6 +111,12 @@ export const formatBigIntError: TypeErrorFormatter<TypeOfError<"BigInt">> =
 /** Formats a Boolean TypeOfError in English. */
 export const formatBooleanError: TypeErrorFormatter<TypeOfError<"Boolean">> =
   formatTypeOfError;
+
+/** Formats a BooleanFromStringError in Ukrainian. */
+export const formatBooleanFromStringError: TypeErrorFormatter<
+  BooleanFromStringError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є логічним значенням. Використовуйте true або false.`;
 
 /** Formats a Symbol TypeOfError in English. */
 export const formatSymbolError: TypeErrorFormatter<TypeOfError<"Symbol">> =
@@ -272,6 +280,12 @@ export const formatNegativeDecimalStringError: TypeErrorFormatter<
 /** Formats an IntError in English. */
 export const formatIntError: TypeErrorFormatter<IntError> = (error) =>
   `The value ${safelyStringifyUnknownValue(error.value)} must be a safe integer.`;
+
+/** Formats an IntFromStringError in Ukrainian. */
+export const formatIntFromStringError: TypeErrorFormatter<
+  IntFromStringError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є десятковим цілим числом.`;
 
 /** Formats a GreaterThanError in English. */
 export const formatGreaterThanError: TypeErrorFormatter<GreaterThanError> = (
