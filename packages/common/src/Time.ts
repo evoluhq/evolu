@@ -523,6 +523,25 @@ export type DurationLiteralYears = typeof DurationLiteralYears.Output;
  *
  * See {@link Duration} for a type that also accepts {@link Millis}. Use
  * {@link durationToMillis} to convert to milliseconds.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertFalse,
+ *   assertOk,
+ *   assertType,
+ *   DurationLiteral,
+ * } from "@evolu/common";
+ *
+ * // The TypeScript type accepts valid spellings and rejects the rest.
+ * const literal: DurationLiteral = "1.5s";
+ * assertType<Extract<DurationLiteral, "1000ms" | "60s" | "0s">, never>();
+ *
+ * // The runtime Type validates the same grammar.
+ * assertOk(DurationLiteral.fromUnknown(literal), "1.5s");
+ * assertFalse(DurationLiteral.is("1000ms"));
+ * ```
  */
 export const DurationLiteral = /*#__PURE__*/ union(
   DurationLiteralMilliseconds,

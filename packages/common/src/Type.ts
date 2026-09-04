@@ -9357,7 +9357,7 @@ const validateTupleItems = (
   );
 
 /**
- * Decimal digit from `"0"` to `"9"`.
+ * Decimal integer string from `"0"` to `"9"`.
  *
  * @group String
  */
@@ -9376,7 +9376,7 @@ export const Digit = /*#__PURE__*/ union(
 export type Digit = typeof Digit.Output;
 
 /**
- * Decimal digit from `"1"` to `"9"`.
+ * Decimal integer string from `"1"` to `"9"`.
  *
  * @group String
  */
@@ -9394,7 +9394,7 @@ export const Digit1To9 = /*#__PURE__*/ union(
 export type Digit1To9 = typeof Digit1To9.Output;
 
 /**
- * Decimal string from `"1"` to `"6"`.
+ * Decimal integer string from `"1"` to `"6"`.
  *
  * @group String
  */
@@ -9402,7 +9402,7 @@ export const Digit1To6 = /*#__PURE__*/ union("1", "2", "3", "4", "5", "6");
 export type Digit1To6 = typeof Digit1To6.Output;
 
 /**
- * Decimal string from `"1"` to `"23"`.
+ * Decimal integer string from `"1"` to `"23"`, without a leading zero.
  *
  * @group String
  */
@@ -9414,7 +9414,7 @@ export const Digit1To23 = /*#__PURE__*/ union(
 export type Digit1To23 = typeof Digit1To23.Output;
 
 /**
- * Decimal string from `"1"` to `"51"`.
+ * Decimal integer string from `"1"` to `"51"`, without a leading zero.
  *
  * @group String
  */
@@ -9426,7 +9426,7 @@ export const Digit1To51 = /*#__PURE__*/ union(
 export type Digit1To51 = typeof Digit1To51.Output;
 
 /**
- * Decimal string from `"1"` to `"99"`.
+ * Decimal integer string from `"1"` to `"99"`, without a leading zero.
  *
  * @group String
  */
@@ -9437,7 +9437,7 @@ export const Digit1To99 = /*#__PURE__*/ union(
 export type Digit1To99 = typeof Digit1To99.Output;
 
 /**
- * Decimal string from `"1"` to `"59"`.
+ * Decimal integer string from `"1"` to `"59"`, without a leading zero.
  *
  * @group String
  */

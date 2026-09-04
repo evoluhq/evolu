@@ -99,10 +99,41 @@ export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
 export type Percentage = PercentageLiteral | Ratio;
 
 /**
- * Percentage literal from `"0%"` to `"100%"`.
+ * Percentage literal Type with compile-time and runtime validation.
  *
- * Decimal literals support one decimal place. Use {@link Ratio} for computed
- * values or greater precision.
+ * Supported formats:
+ *
+ * - Integers: `0%`, `50%`, `100%` (0-100)
+ * - One decimal place: `0.1%`, `12.5%`, `99.9%` (0.1-99.9)
+ *
+ * The decimal digit is never zero, so `12.0%` must be written as `"12%"`, and
+ * `100%` has no decimal form. For computed values or more precision, use
+ * {@link Ratio} directly.
+ *
+ * See {@link Percentage} for a type that also accepts {@link Ratio}. Use
+ * {@link percentageToRatio} to convert.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertFalse,
+ *   assertOk,
+ *   assertType,
+ *   PercentageLiteral,
+ * } from "@evolu/common";
+ *
+ * // The TypeScript type accepts valid spellings and rejects the rest.
+ * const literal: PercentageLiteral = "12.5%";
+ * assertType<
+ *   Extract<PercentageLiteral, "101%" | "12.0%" | "12.55%">,
+ *   never
+ * >();
+ *
+ * // The runtime Type validates the same grammar.
+ * assertOk(PercentageLiteral.fromUnknown(literal), "12.5%");
+ * assertFalse(PercentageLiteral.is("101%"));
+ * ```
  */
 export const PercentageLiteral = /*#__PURE__*/ union(
   "0%",
