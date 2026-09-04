@@ -3138,6 +3138,30 @@ describe("Type localization", () => {
     assertLength(Object.keys(typesByLocale), 43);
   });
 
+  test("formats Ukrainian errors in Ukrainian", () => {
+    assertEqual(
+      uk.formatStringError({ type: "TypeOf", expected: "String", value: 1 }),
+      "Значення 1 не є рядком.",
+    );
+    assertEqual(
+      uk.formatBooleanFromStringError({
+        type: "BooleanFromString",
+        value: "yes",
+      }),
+      'Значення "yes" не є логічним значенням. Використовуйте true або false.',
+    );
+    assertEqual(
+      uk.formatObjectError({
+        type: "Object",
+        reason: {
+          kind: "Properties",
+          errors: { name: { type: "ObjectMissingProperty" } },
+        },
+      }),
+      'Обов’язкова властивість "name" відсутня.',
+    );
+  });
+
   test("formats Czech symbol property errors", () => {
     const key = Symbol("key");
 
