@@ -204,7 +204,7 @@ import {
   encodeNonNegativeInt,
   encodeNumber,
   encodeString,
-} from "../Binary.ts";
+} from "../Bytes.ts";
 import type { ConsoleDep } from "../Console.ts";
 import {
   createPadmePadding,

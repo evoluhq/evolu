@@ -4,7 +4,7 @@
  * @module
  */
 
-import { bytesToHex, hexToBytes } from "../Binary.ts";
+import { bytesToHex, hexToBytes } from "../Bytes.ts";
 import type { RandomBytesDep } from "../Crypto.ts";
 import { createEqObject, eqNumber, eqString } from "../Eq.ts";
 import { increment } from "../Number.ts";

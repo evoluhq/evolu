@@ -8,7 +8,7 @@ export * from "./Array.ts";
 export * from "./Assert.ts";
 export * from "./BigInt.ts";
 export * from "./Brand.ts";
-export * from "./Binary.ts";
+export * from "./Bytes.ts";
 export * from "./Cache.ts";
 export * from "./Callbacks.ts";
 export * from "./Console.ts";

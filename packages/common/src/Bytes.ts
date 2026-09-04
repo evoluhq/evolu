@@ -1,12 +1,12 @@
 /**
- * Binary data handling and byte array utilities.
+ * Bytes: `Uint8Array` helpers and the {@link Buffer} codec.
  *
- * Buffer-based decoding functions intentionally throw errors instead of
- * returning {@link Result}. This is a deliberate micro-optimization for Evolu
- * Protocol's hot paths: Result is inexpensive, but returning decoded values
- * directly avoids its success-case allocation, and using `Error` objects
- * preserves stack traces. In the future, we will try returning `Error` objects
- * in `Result` values to measure the real-world performance impact.
+ * Buffer-based decoding functions throw instead of returning {@link Result}.
+ * Result is not slow, but every successful decode would allocate one, and a
+ * protocol message decodes many values. Throwing is the safe bet for that hot
+ * path until benchmarks cover the alternatives. Callers convert a thrown error
+ * into a Result once, at the boundary, as `parseProtocolHeader` in Protocol.ts
+ * does.
  *
  * @module
  */

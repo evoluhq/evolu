@@ -25,7 +25,7 @@ import {
   encodeNonNegativeInt,
   encodeNumber,
   encodeString,
-} from "./Binary.ts";
+} from "./Bytes.ts";
 import {
   assertType,
   FiniteNumber,
