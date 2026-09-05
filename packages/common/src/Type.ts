@@ -7018,6 +7018,65 @@ export interface LessThanOrEqualToError<
 }
 
 /**
+ * A TCP or UDP port as an integer from zero through 65535, inclusive.
+ *
+ * When binding a server, zero requests an automatically assigned port. Use
+ * {@link PortFromString} for configuration values supplied as text.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, Port } from "@evolu/common";
+ *
+ * assertOk(Port.fromUnknown(0), 0);
+ * assertOk(Port.fromUnknown(4000), 4000);
+ * assertOk(Port.fromUnknown(65535), 65535);
+ * assertErr(Port.fromUnknown(-1));
+ * assertErr(Port.fromUnknown(65536));
+ * assertErr(Port.fromUnknown(4000.5));
+ * ```
+ *
+ * @group Number
+ */
+export const Port = /*#__PURE__*/ brand(
+  "Port",
+  /*#__PURE__*/ lessThanOrEqualTo(65535)(NonNegativeInt),
+);
+export type Port = typeof Port.Output;
+
+/**
+ * Parses a decimal integer string and validates it as a {@link Port}.
+ *
+ * Uses {@link IntFromString} for decimal parsing, including its rejection of
+ * whitespace, plus signs, fractions, and exponent notation.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   PortFromString,
+ * } from "@evolu/common";
+ *
+ * assertOk(PortFromString.fromUnknown("0"), 0);
+ * assertOk(PortFromString.fromUnknown("4000"), 4000);
+ * assertErr(PortFromString.fromUnknown("65536"));
+ * assertErr(PortFromString.fromUnknown("http"));
+ * assertEqual(PortFromString.to(PortFromString.orThrow("04000")), "4000");
+ * ```
+ *
+ * @group Number
+ */
+export const PortFromString = /*#__PURE__*/ transform(
+  "PortFromString",
+  IntFromString,
+  Port,
+  { from: ok, to: identity },
+);
+
+/**
  * Finite {@link Number} from zero to one, inclusive.
  *
  * Ratios are the numeric representation of percentages: `0.25` represents 25%.

@@ -137,6 +137,8 @@ import {
   PositiveFiniteNumber,
   PositiveInt,
   PositiveNumber,
+  Port,
+  PortFromString,
   Ratio,
   record,
   regex,
@@ -518,6 +520,8 @@ describe("Type", () => {
       PositiveFiniteNumber,
       PositiveInt,
       PositiveNumber,
+      Port,
+      PortFromString,
       Ratio,
       SimplePassword,
       String,
@@ -631,6 +635,7 @@ describe("Type", () => {
       "LessThan3",
       "LessThanOrEqualTo1",
       "LessThanOrEqualTo4",
+      "LessThanOrEqualTo65535",
       "Literal",
       "Map",
       "MaxLength100",
@@ -654,6 +659,8 @@ describe("Type", () => {
       "Number",
       "NumberFromString",
       "Object",
+      "Port",
+      "PortFromString",
       "Positive",
       "PositiveDecimalString",
       "Ratio",
@@ -8872,6 +8879,97 @@ describe("BrandFactory", () => {
               Brand<"LessThan200"> &
               Brand<"Age">
           >();
+        });
+      });
+
+      describe("Port", () => {
+        it("accepts integer ports including zero and both range boundaries", () => {
+          for (const value of [0, 1, 4000, 65535]) {
+            assertOk(Port.fromUnknown(value), value);
+            const port = Port.orThrow(value);
+            assertType<typeof port, Port>();
+            assertSame(Port.to(port), value);
+          }
+          assertSame(Port.orThrow(-0), -0);
+          assertType<
+            Port,
+            NonNegativeInt & Brand<"LessThanOrEqualTo65535"> & Brand<"Port">
+          >();
+          // @ts-expect-error A number does not carry the Port brand.
+          const _port: Port = 4000;
+        });
+
+        it("rejects values outside the port domain", () => {
+          assertErr(Port.fromUnknown(-1), { type: "NonNegative", value: -1 });
+          assertErr(Port.fromUnknown(65536), {
+            type: "LessThanOrEqualTo65535",
+            value: 65536,
+            max: 65535,
+          });
+          assertErr(Port.fromUnknown(4000.5), { type: "Int", value: 4000.5 });
+          for (const value of ["4000", null, NaN, Infinity, -Infinity]) {
+            assertErr(Port.fromUnknown(value));
+          }
+        });
+      });
+
+      describe("PortFromString", () => {
+        it("reuses decimal integer parsing and encodes validated ports", () => {
+          for (const [input, output] of [
+            ["0", 0],
+            ["04000", 4000],
+            ["65535", 65535],
+          ] as const) {
+            assertOk(PortFromString.fromUnknown(input), output);
+            const port = PortFromString.orThrow(input);
+            assertType<typeof port, Port>();
+            assertEqual(PortFromString.to(port), globalThis.String(output));
+          }
+          assertOk(PortFromString.from.parent(Int.orThrow(4000)), 4000);
+          assertEqual(PortFromString.to(Port.orThrow(4000)), "4000");
+          assertSame(PortFromString.orThrow("-0"), -0);
+          assertEqual(PortFromString.to(Port.orThrow(-0)), "-0");
+        });
+
+        it("preserves parsing errors and formats port range errors", () => {
+          for (const value of [
+            "",
+            "http",
+            " 4000",
+            "+4000",
+            "4000.5",
+            "4e3",
+            "0x10",
+          ]) {
+            assertErr(PortFromString.fromUnknown(value), {
+              type: "IntFromString",
+              value,
+            });
+          }
+          assertErr(PortFromString.fromUnknown(4000));
+          assertErr(PortFromString.fromUnknown("9007199254740992"));
+          const negative = PortFromString.fromUnknown("-1");
+          assertErr(negative, {
+            type: "PortFromString",
+            outputError: { type: "NonNegative", value: -1 },
+          });
+          assertEqual(
+            PortFromString.formatError(negative.error),
+            "The value -1 must be non-negative (>= 0).",
+          );
+          const tooLarge = PortFromString.fromUnknown("65536");
+          assertErr(tooLarge, {
+            type: "PortFromString",
+            outputError: {
+              type: "LessThanOrEqualTo65535",
+              value: 65536,
+              max: 65535,
+            },
+          });
+          assertEqual(
+            PortFromString.formatError(tooLarge.error),
+            "The value 65536 must be less than or equal to 65535.",
+          );
         });
       });
 
