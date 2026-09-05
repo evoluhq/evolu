@@ -15,6 +15,7 @@ export * from "./Console.ts";
 export * from "./Crypto.ts";
 export * from "./Eq.ts";
 export * from "./Error.ts";
+export * from "./Fs.ts";
 export * from "./Function.ts";
 export * from "./Http.ts";
 export * from "./Identicon.ts";

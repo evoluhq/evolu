@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 const repositoryDirectory = resolve(import.meta.dirname, "../..");
 
 export const jsdocSourcePattern = "packages/common/src/**/*.ts";
+export const nodeFsSourcePattern = "packages/nodejs/src/Fs.ts";
 export const changesetSourcePattern = ".changeset/*.md";
 export const resourceManagementSourcePattern =
   "apps/web/src/app/(docs)/docs/resource-management/page.mdx";
@@ -17,6 +18,7 @@ export const testingSourcePattern =
 // already injects into every generated example.
 export const documentationSourcePatterns = [
   jsdocSourcePattern,
+  nodeFsSourcePattern,
   changesetSourcePattern,
   resourceManagementSourcePattern,
   schemaSourcePattern,
@@ -46,6 +48,10 @@ export const testEvoluJSDocExamples = async (
       "@evolu/common/intl": join(
         repositoryDirectory,
         "packages/common/src/intl/index.ts",
+      ),
+      "@evolu/nodejs": join(
+        repositoryDirectory,
+        "packages/nodejs/src/index.ts",
       ),
       "@evolu/common/local-first": join(
         repositoryDirectory,

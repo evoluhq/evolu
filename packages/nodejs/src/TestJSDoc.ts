@@ -31,7 +31,10 @@ import { stripVTControlCharacters } from "node:util";
 export interface TestJSDocExamplesOptions {
   /** Source files or glob patterns resolved from `cwd`. */
   readonly include: string | ReadonlyArray<string>;
-  /** Package imports redirected to absolute TypeScript entry paths. */
+  /**
+   * Package imports redirected to absolute TypeScript entry paths. Type
+   * checking also applies these aliases to imports within those modules.
+   */
   readonly aliases?: ReadonlyRecord<string, string>;
   /** Directory used for globbing and package resolution. */
   readonly cwd?: string;
@@ -219,6 +222,9 @@ export const testJSDocExamples = async ({
           noEmit: true,
           noUnusedLocals: false,
           noUnusedParameters: false,
+          paths: Object.fromEntries(
+            Object.entries(aliases).map(([name, target]) => [name, [target]]),
+          ),
           target: "es2022",
           types: ["node"],
         },

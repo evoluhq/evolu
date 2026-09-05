@@ -490,7 +490,14 @@ test("testJSDocExamples supports package subpath aliases", async () => {
     const featurePath = join(temporaryDirectory, "Feature.mts");
     const unscopedPath = join(temporaryDirectory, "Unscoped.mts");
     const examplePath = join(temporaryDirectory, "Example.ts");
-    writeFileSync(rootPath, 'export const root = "root";\n');
+    writeFileSync(
+      rootPath,
+      [
+        'import type { NonNegativeInt } from "@evolu/common";',
+        'export const root = "root";',
+        "export const identity = (value: NonNegativeInt): NonNegativeInt => value;",
+      ].join("\n"),
+    );
     writeFileSync(featurePath, 'export const feature = "feature";\n');
     writeFileSync(unscopedPath, 'export const unscoped = "unscoped";\n');
     writeFileSync(
@@ -498,12 +505,13 @@ test("testJSDocExamples supports package subpath aliases", async () => {
       [
         "/**",
         " * ```ts",
-        ' * import { assertEqual } from "@evolu/common";',
-        ' * import { root } from "@example/package";',
+        ' * import { assertEqual, NonNegativeInt } from "@evolu/common";',
+        ' * import { identity, root } from "@example/package";',
         ' * import { feature } from "@example/package/feature";',
         ' * import { unscoped } from "example-package";',
         " *",
         ' * assertEqual(root, "root");',
+        " * assertEqual(identity(NonNegativeInt.orThrow(1)), 1);",
         ' * assertEqual(feature, "feature");',
         ' * assertEqual(unscoped, "unscoped");',
         " * ```",
@@ -514,6 +522,10 @@ test("testJSDocExamples supports package subpath aliases", async () => {
 
     await testJSDocExamples({
       aliases: {
+        "@evolu/common": join(
+          repositoryDirectory,
+          "packages/common/src/index.ts",
+        ),
         "@example/package": rootPath,
         "@example/package/feature": featurePath,
         "example-package": unscopedPath,

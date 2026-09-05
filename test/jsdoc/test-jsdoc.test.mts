@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   changesetSourcePattern,
   jsdocSourcePattern,
+  nodeFsSourcePattern,
   resourceManagementSourcePattern,
   schemaSourcePattern,
   selectJSDocIncludes,
@@ -13,6 +14,7 @@ describe("selectJSDocIncludes", () => {
   it("selects all documentation examples by default", () => {
     assertEqual(selectJSDocIncludes([]), [
       jsdocSourcePattern,
+      nodeFsSourcePattern,
       changesetSourcePattern,
       resourceManagementSourcePattern,
       schemaSourcePattern,

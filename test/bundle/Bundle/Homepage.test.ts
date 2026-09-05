@@ -40,8 +40,8 @@ describe("Homepage bundle sizes", () => {
     assertEqual(results, {
       Task: {
         "vite@8.2.2": {
-          brotliSizeInBytes: 8690,
-          rawSizeInBytes: 26809,
+          brotliSizeInBytes: 8687,
+          rawSizeInBytes: 26810,
         },
         "webpack@5.109.2": {
           brotliSizeInBytes: 9396,
