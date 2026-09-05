@@ -7,6 +7,7 @@
 import {
   createConsole,
   createRun,
+  getOrThrow,
   isDisposable,
   ok,
   waitForAbort,
@@ -68,6 +69,10 @@ export interface RunMainOptions {
  * ownership of a live resource that must remain valid after its creating Task
  * settles.
  *
+ * A main Task may return a typed error. An error reaching `runMain` is fatal:
+ * {@link getOrThrow} preserves it in `Error.cause`, and the Run reports the
+ * failure, finishes cleanup, and sets `process.exitCode` to 1.
+ *
  * Service mode treats graceful signal shutdown as successful. Command mode
  * preserves conventional signal exit statuses. Every defect reported through
  * `reportDefect`, including an observer defect that does not abort the Run,
@@ -103,21 +108,23 @@ export interface RunMainOptions {
  *
  * @group Node.js Task
  */
-export function runMain<T extends void | Resource>(
-  main: Task<T>,
+export function runMain<T extends void | Resource, E = never>(
+  main: Task<T, E>,
   options?: RunMainOptions,
 ): Promise<void>;
 /** With custom dependencies. */
 export function runMain<D extends object>(
   deps: RunCustomDeps<D>,
   options?: RunMainOptions,
-): <T extends void | Resource>(main: Task<T, never, D>) => Promise<void>;
-export function runMain<T extends void | Resource, D extends object>(
-  mainOrDeps: Task<T> | RunCustomDeps<D>,
+): <T extends void | Resource, E = never>(main: Task<T, E, D>) => Promise<void>;
+export function runMain<T extends void | Resource, E, D extends object>(
+  mainOrDeps: Task<T, E> | RunCustomDeps<D>,
   { mode = "service" }: RunMainOptions = {},
 ):
   | Promise<void>
-  | (<R extends void | Resource>(main: Task<R, never, D>) => Promise<void>) {
+  | (<R extends void | Resource, E = never>(
+      main: Task<R, E, D>,
+    ) => Promise<void>) {
   return typeof mainOrDeps === "function"
     ? runMainInternal(mainOrDeps, {}, mode)
     : (main) => runMainInternal(main, mainOrDeps, mode);
@@ -129,8 +136,8 @@ const commandExitCodeBySignal: Readonly<Record<NodeSignal, number>> = {
   SIGBREAK: 149,
 };
 
-const runMainInternal = async <T extends void | Resource, D extends object>(
-  main: Task<T, never, D>,
+const runMainInternal = async <T extends void | Resource, E, D extends object>(
+  main: Task<T, E, D>,
   deps: RunCustomDeps<D> & Partial<ConsoleDep & ReportDefectDep>,
   mode: RunMainMode,
 ): Promise<void> => {
@@ -175,7 +182,7 @@ const runMainInternal = async <T extends void | Resource, D extends object>(
 
   try {
     await run(async (run) => {
-      const resource = await run.ok(main);
+      const resource = getOrThrow(await run(main));
       if (!isDisposable(resource)) return ok();
 
       await using _resource = resource;

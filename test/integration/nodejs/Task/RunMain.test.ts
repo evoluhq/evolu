@@ -1,11 +1,15 @@
 import {
+  AbortError,
   assertEqual,
   assertFalse,
+  assertInstanceOf,
   assertLength,
   assertNotUndefined,
+  assertSame,
   assertThrowsSame,
   assertTrue,
   assertType,
+  err,
   ok,
   testCreateConsole,
   testCreateReportDefect,
@@ -33,10 +37,11 @@ describe("runMain", () => {
   it("runs the main Task and disposes its root Run after completion", async () => {
     let mainRun: Run | undefined;
 
-    const done = runMain((run) => {
+    const main: Task<void, { readonly type: "StartupError" }> = (run) => {
       mainRun = run;
       return ok();
-    });
+    };
+    const done = runMain(main);
     assertType<typeof done, Promise<void>>();
     await done;
 
@@ -92,8 +97,8 @@ describe("runMain", () => {
     const runMainWithDeps = runMain(customDep, { mode: "service" });
     assertType<
       typeof runMainWithDeps,
-      <T extends void | Resource>(
-        main: Task<T, never, typeof customDep>,
+      <T extends void | Resource, E = never>(
+        main: Task<T, E, typeof customDep>,
       ) => Promise<void>
     >();
 
@@ -352,6 +357,40 @@ describe("runMain", () => {
       initialSignalListenerCounts.SIGBREAK,
     );
   });
+
+  for (const kind of ["sync", "async"] as const) {
+    it(`reports a returned ${kind} error with its cause and finishes cleanup`, async () => {
+      const reportDefect = testCreateReportDefect();
+      const startupError = { type: "StartupError", message: "Startup failed" };
+      const initialListeners = process.listenerCount("SIGTERM");
+      let cleanedUp = false;
+
+      await runMain(
+        { reportDefect, startupError },
+        { mode: "command" },
+      )((run) => {
+        const rootRun = run.parent?.parent;
+        assertNotUndefined(rootRun);
+        (rootRun as DisposableRun).defer(async () => {
+          await Promise.resolve();
+          cleanedUp = true;
+        });
+        const result = err(run.deps.startupError);
+        return kind === "sync" ? result : Promise.resolve(result);
+      });
+
+      const defects = reportDefect.getDefectsSnapshot();
+      assertLength(defects, 1);
+      const reported = defects[0];
+      assertType(AbortError, reported);
+      assertEqual(reported.reason.type, "PanicAbortReason");
+      assertInstanceOf(reported.reason.defect, Error);
+      assertSame(reported.reason.defect.cause, startupError);
+      assertTrue(cleanedUp);
+      assertEqual(process.listenerCount("SIGTERM"), initialListeners);
+      assertEqual(process.exitCode, 1);
+    });
+  }
 
   it("shutdown defect takes precedence over command signal exit code", async () => {
     const console = testCreateConsole();
