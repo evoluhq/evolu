@@ -15,6 +15,12 @@ import {
   assertThrowsInstanceOf,
   assertTrue,
 } from "./Assert.ts";
+import {
+  formatCapitalizedError,
+  formatUncapitalizedError,
+  formatUppercasedError,
+  formatLowercasedError,
+} from "./intl/_en.ts";
 import * as cs from "./intl/cs.ts";
 import {
   allResult,
@@ -38,8 +44,18 @@ import {
   Boolean,
   BooleanFromString,
   brand,
+  capitalize,
   capitalized,
+  uncapitalize,
+  uncapitalized,
+  uppercase,
+  uppercased,
+  lowercase,
+  lowercased,
   CapitalizedString,
+  UncapitalizedString,
+  UppercasedString,
+  LowercasedString,
   instanceOf,
   objectTag,
   createId,
@@ -179,7 +195,6 @@ import {
   type BrandFactory,
   type BrandType,
   type Base64UrlError,
-  type CapitalizedError,
   type DataError,
   type DataIssue,
   type DataType,
@@ -469,6 +484,9 @@ describe("Type", () => {
       Boolean,
       BooleanFromString,
       CapitalizedString,
+      UncapitalizedString,
+      UppercasedString,
+      LowercasedString,
       Data,
       Date,
       DateIso,
@@ -637,6 +655,7 @@ describe("Type", () => {
       "LessThanOrEqualTo4",
       "LessThanOrEqualTo65535",
       "Literal",
+      "Lowercased",
       "Map",
       "MaxLength100",
       "MaxLength1000",
@@ -674,8 +693,10 @@ describe("Type", () => {
       "Tuple",
       "UInt64",
       "Uint8Array",
+      "Uncapitalized",
       "Union",
       "Unknown",
+      "Uppercased",
       "UrlSafeString",
     ] as const;
 
@@ -7370,6 +7391,285 @@ describe("brand", () => {
   });
 });
 
+describe("Text casing", () => {
+  const cases = [
+    {
+      type: CapitalizedString,
+      convert: capitalize,
+      input: "hello WORLD",
+      expected: "Hello WORLD",
+      description: "capitalized",
+    },
+    {
+      type: UncapitalizedString,
+      convert: uncapitalize,
+      input: "Hello WORLD",
+      expected: "hello WORLD",
+      description: "uncapitalized",
+    },
+    {
+      type: UppercasedString,
+      convert: uppercase,
+      input: "hello World",
+      expected: "HELLO WORLD",
+      description: "uppercased",
+    },
+    {
+      type: LowercasedString,
+      convert: lowercase,
+      input: "Hello WORLD",
+      expected: "hello world",
+      description: "lowercased",
+    },
+  ] as const;
+
+  for (const { type, convert, input, expected, description } of cases) {
+    it(`validates ${description} text without changing it`, () => {
+      assertOk(type.fromUnknown(expected), expected);
+      assertOk(type.from.parent(expected), expected);
+      assertEqual(type.to("123"), "123");
+      assertErr(type.fromUnknown(input), { type: type.name, value: input });
+      assertErr(type.fromUnknown(123), {
+        type: "TypeOf",
+        expected: "String",
+        value: 123,
+      });
+      for (const value of ["", "123", "😀", " ", "\uD800", "\uDC00"]) {
+        assertOk(type.fromUnknown(value), value);
+        assertEqual(convert(value), value);
+      }
+      assertEqual(convert(input), expected);
+      assertEqual(convert(expected), expected);
+    });
+  }
+
+  it("uses intrinsic types and accepts known literals directly", () => {
+    assertType<CapitalizedString, Capitalize<string>>();
+    assertType<UncapitalizedString, Uncapitalize<string>>();
+    assertType<UppercasedString, Uppercase<string>>();
+    assertType<LowercasedString, Lowercase<string>>();
+    assertType<ReturnType<typeof capitalize>, Capitalize<string>>();
+    assertType<ReturnType<typeof uncapitalize>, Uncapitalize<string>>();
+    assertType<ReturnType<typeof uppercase>, Uppercase<string>>();
+    assertType<ReturnType<typeof lowercase>, Lowercase<string>>();
+    const title: CapitalizedString = "Hello world";
+    const sentence: UncapitalizedString = "hello WORLD";
+    const shout: UppercasedString = "HELLO WORLD";
+    const quiet: LowercasedString = "hello world";
+    assertOk(CapitalizedString.fromUnknown(title), title);
+    assertOk(UncapitalizedString.fromUnknown(sentence), sentence);
+    assertOk(UppercasedString.fromUnknown(shout), shout);
+    assertOk(LowercasedString.fromUnknown(quiet), quiet);
+    // @ts-expect-error A lowercase initial does not satisfy Capitalize<string>.
+    const _title: CapitalizedString = "hello";
+    // @ts-expect-error An uppercase initial does not satisfy Uncapitalize<string>.
+    const _sentence: UncapitalizedString = "Hello";
+    // @ts-expect-error A lowercase character does not satisfy Uppercase<string>.
+    const _shout: UppercasedString = "HELLo";
+    // @ts-expect-error An uppercase character does not satisfy Lowercase<string>.
+    const _quiet: LowercasedString = "hellO";
+  });
+
+  it("infers converted literals, unions, and runtime strings", () => {
+    const capital = capitalize("hello");
+    const uncapital = uncapitalize("Hello");
+    const upper = uppercase("hello");
+    const lower = lowercase("HELLO");
+    assertType<typeof capital, "Hello">();
+    assertType<typeof uncapital, "hello">();
+    assertType<typeof upper, "HELLO">();
+    assertType<typeof lower, "hello">();
+    assertEqual(
+      [capital, uncapital, upper, lower],
+      ["Hello", "hello", "HELLO", "hello"],
+    );
+
+    for (const value of ["hello", "WORLD"] as const) {
+      const capital = capitalize(value);
+      const uncapital = uncapitalize(value);
+      const upper = uppercase(value);
+      const lower = lowercase(value);
+      assertType<typeof capital, "Hello" | "WORLD">();
+      assertType<typeof uncapital, "hello" | "wORLD">();
+      assertType<typeof upper, "HELLO" | "WORLD">();
+      assertType<typeof lower, "hello" | "world">();
+    }
+
+    const value = String.orThrow("Hello");
+    const runtimeCapital = capitalize(value);
+    const runtimeUncapital = uncapitalize(value);
+    const runtimeUpper = uppercase(value);
+    const runtimeLower = lowercase(value);
+    assertType<typeof runtimeCapital, Capitalize<string>>();
+    assertType<typeof runtimeUncapital, Uncapitalize<string>>();
+    assertType<typeof runtimeUpper, Uppercase<string>>();
+    assertType<typeof runtimeLower, Lowercase<string>>();
+
+    const astralCapital = capitalize("𐐨x");
+    const astralUncapital = uncapitalize("𐐀X");
+    const expandedUpper = uppercase("ß");
+    const expandedLower = lowercase("İ");
+    assertType<typeof astralCapital, "𐐀x">();
+    assertType<typeof astralUncapital, "𐐨X">();
+    assertType<typeof expandedUpper, "SS">();
+    assertType<typeof expandedLower, "i\u0307">();
+    assertEqual(
+      [astralCapital, astralUncapital, expandedUpper, expandedLower],
+      ["𐐀x", "𐐨X", "SS", "i\u0307"],
+    );
+  });
+
+  it("matches TS7 Unicode mappings and handles expansions and uncased initials", () => {
+    assertType<Capitalize<"𐐨x">, "𐐀x">();
+    assertType<Uncapitalize<"𐐀X">, "𐐨X">();
+    assertType<Uppercase<"ß">, "SS">();
+    assertType<Lowercase<"İ">, "i\u0307">();
+    // @ts-expect-error A lowercase astral initial does not satisfy Capitalize<string>.
+    const _lowerAstral: CapitalizedString = "𐐨x";
+    // @ts-expect-error An uppercase astral initial does not satisfy Uncapitalize<string>.
+    const _upperAstral: UncapitalizedString = "𐐀x";
+    assertEqual(capitalize("𐐨x"), "𐐀x");
+    assertEqual(uncapitalize("𐐀X"), "𐐨X");
+    assertEqual(capitalize("ßabc"), "SSabc");
+    assertEqual(uncapitalize("İABC"), "i\u0307ABC");
+    assertEqual(uppercase("Straße"), "STRASSE");
+    assertEqual(lowercase("ΟΣ"), "ος");
+    assertEqual(capitalize("e\u0301clair"), "E\u0301clair");
+    assertEqual(uncapitalize("E\u0301CLAIR"), "e\u0301CLAIR");
+    for (const { type, convert } of cases) {
+      for (const input of [
+        "𐐨𐐀",
+        "ßİ",
+        "ﬃle",
+        "ǅuro",
+        "ΟΣ",
+        "😀hello",
+        " hello",
+        "1ABC",
+        "\uD800x",
+        "\uDC00X",
+      ]) {
+        const output = convert(input);
+        assertTrue(type.is(output));
+        assertEqual(convert(output), output);
+      }
+    }
+    assertOk(CapitalizedString.fromUnknown("😀hello"), "😀hello");
+    assertOk(UncapitalizedString.fromUnknown("😀HELLO"), "😀HELLO");
+    assertErr(CapitalizedString.fromUnknown("𐐨x"));
+    assertErr(UncapitalizedString.fromUnknown("𐐀x"));
+  });
+
+  it("preserves parent constraints during validation and drops them during conversion", () => {
+    const Short = maxLength(1)(String);
+    const Capitalized = capitalized(Short);
+    const Uncapitalized = uncapitalized(Short);
+    const Uppercased = uppercased(Short);
+    const Lowercased = lowercased(Short);
+    assertType<
+      typeof Capitalized.Output,
+      string & Brand<"MaxLength1"> & Capitalize<string>
+    >();
+    assertType<
+      typeof Uncapitalized.Output,
+      string & Brand<"MaxLength1"> & Uncapitalize<string>
+    >();
+    assertType<
+      typeof Uppercased.Output,
+      string & Brand<"MaxLength1"> & Uppercase<string>
+    >();
+    assertType<
+      typeof Lowercased.Output,
+      string & Brand<"MaxLength1"> & Lowercase<string>
+    >();
+    assertType<
+      InferErrors<typeof Capitalized>,
+      typeof Short.Error | typeof String.Error | typeof Capitalized.Error
+    >();
+    for (const [type, valid] of [
+      [Capitalized, "A"],
+      [Uncapitalized, "a"],
+      [Uppercased, "A"],
+      [Lowercased, "a"],
+    ] as const) {
+      assertSame(type.parent, Short);
+      assertOk(type.fromUnknown(valid), valid);
+      assertErr(type.fromUnknown(valid.repeat(2)), {
+        type: "MaxLength1",
+        value: valid.repeat(2),
+        max: 1,
+      });
+    }
+    const sharpS = Short.orThrow("ß");
+    const dottedI = Short.orThrow("İ");
+    const capital = capitalize(sharpS);
+    const uncapital = uncapitalize(dottedI);
+    const upper = uppercase(sharpS);
+    const lower = lowercase(dottedI);
+    assertEqual(capital, "SS");
+    assertEqual(uncapital, "i\u0307");
+    assertEqual(upper, "SS");
+    assertEqual(lower, "i\u0307");
+    // @ts-expect-error Capitalization does not retain the MaxLength1 brand.
+    const _capital: typeof sharpS = capital;
+    // @ts-expect-error Uncapitalization does not retain the MaxLength1 brand.
+    const _uncapital: typeof dottedI = uncapital;
+    // @ts-expect-error Uppercasing does not retain the MaxLength1 brand.
+    const _upper: typeof sharpS = upper;
+    // @ts-expect-error Lowercasing does not retain the MaxLength1 brand.
+    const _lower: typeof dottedI = lower;
+  });
+
+  it("preserves a parent's decoding and encoding", () => {
+    const PrefixedString = transform("PrefixedString", String, String, {
+      from: (value) => ok(value.slice(1)),
+      to: (value) => `!${value}`,
+    });
+    for (const [type, value] of [
+      [capitalized(PrefixedString), "Hello"],
+      [uncapitalized(PrefixedString), "hello"],
+      [uppercased(PrefixedString), "HELLO"],
+      [lowercased(PrefixedString), "hello"],
+    ] as const) {
+      const result = type.fromUnknown(`!${value}`);
+      assertOk(result);
+      assertEqual(result.value, value);
+      assertEqual(type.to("123"), "!123");
+      assertErr(type.fromUnknown(null));
+    }
+  });
+
+  it("formats casing errors and matches the default English messages", () => {
+    assertEqual(
+      formatUncapitalizedError({ type: "Uncapitalized", value: "Hello" }),
+      'The value "Hello" must not start with an uppercase letter.',
+    );
+    assertEqual(
+      cs.formatUncapitalizedError({ type: "Uncapitalized", value: "Hello" }),
+      'Hodnota "Hello" nesmí začínat velkým písmenem.',
+    );
+    assertEqual(
+      formatCapitalizedError({ type: "Capitalized", value: "hello" }),
+      CapitalizedString.formatError({ type: "Capitalized", value: "hello" }),
+    );
+    assertEqual(
+      formatUncapitalizedError({ type: "Uncapitalized", value: "Hello" }),
+      UncapitalizedString.formatError({
+        type: "Uncapitalized",
+        value: "Hello",
+      }),
+    );
+    assertEqual(
+      formatUppercasedError({ type: "Uppercased", value: "Hello" }),
+      UppercasedString.formatError({ type: "Uppercased", value: "Hello" }),
+    );
+    assertEqual(
+      formatLowercasedError({ type: "Lowercased", value: "Hello" }),
+      LowercasedString.formatError({ type: "Lowercased", value: "Hello" }),
+    );
+  });
+});
+
 describe("BrandFactory", () => {
   interface NonEmptyError extends TypeError<"NonEmpty"> {
     readonly value: { readonly length: number };
@@ -7626,43 +7926,6 @@ describe("BrandFactory", () => {
   });
 
   describe("Type Factory", () => {
-    describe("capitalized", () => {
-      it("is a reusable Brand Factory", () => {
-        assertType<
-          typeof capitalized,
-          BrandFactory<"Capitalized", string, CapitalizedError>
-        >();
-      });
-
-      describe("Type", () => {
-        describe("CapitalizedString", () => {
-          it("accepts only capitalized strings", () => {
-            assertEqual(CapitalizedString.from.parent("Evolu"), ok("Evolu"));
-            assertEqual(
-              CapitalizedString.from.parent("evolu"),
-              err({ type: "Capitalized", value: "evolu" }),
-            );
-            assertEqual(CapitalizedString.from.parent("𐐀x"), ok("𐐀x"));
-            assertEqual(
-              CapitalizedString.from.parent("𐐨x"),
-              err({ type: "Capitalized", value: "𐐨x" }),
-            );
-            assertEqual(
-              CapitalizedString.formatError({
-                type: "Capitalized",
-                value: "evolu",
-              }),
-              'The value "evolu" must be capitalized.',
-            );
-            assertType<
-              typeof CapitalizedString.Output,
-              string & Brand<"Capitalized">
-            >();
-          });
-        });
-      });
-    });
-
     describe("trimmed", () => {
       it("is a reusable Brand Factory", () => {
         assertType<

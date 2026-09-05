@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -159,6 +162,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `يجب أن تبدأ القيمة ${safelyStringifyUnknownValue(error.value)} بحرف كبير.`;
+
+/** Formats an UncapitalizedError in Arabic. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `يجب ألا تبدأ القيمة ${safelyStringifyUnknownValue(error.value)} بحرف كبير.`;
+
+/** Formats an UppercasedError in Arabic. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} بأحرف كبيرة.`;
+
+/** Formats a LowercasedError in Arabic. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `يجب أن تكون القيمة ${safelyStringifyUnknownValue(error.value)} بأحرف صغيرة.`;
 /** Formats a TrimmedError in Arabic. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `يجب إزالة المسافات من بداية القيمة ${safelyStringifyUnknownValue(error.value)} ونهايتها.`;

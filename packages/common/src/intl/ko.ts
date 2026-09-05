@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,22 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} 값은 첫 글자가 대문자여야 합니다.`;
+
+/** Formats an UncapitalizedError in Korean. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `값 ${safelyStringifyUnknownValue(error.value)}은(는) 대문자로 시작해서는 안 됩니다.`;
+
+/** Formats an UppercasedError in Korean. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) => `값 ${safelyStringifyUnknownValue(error.value)}은(는) 대문자여야 합니다.`;
+
+/** Formats a LowercasedError in Korean. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) => `값 ${safelyStringifyUnknownValue(error.value)}은(는) 소문자여야 합니다.`;
 
 /** TrimmedError를 한국어로 포맷합니다. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

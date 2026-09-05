@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -186,6 +189,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să înceapă cu literă mare.`;
+
+/** Formats an UncapitalizedError in Romanian. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu trebuie să înceapă cu o literă mare.`;
+
+/** Formats an UppercasedError in Romanian. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie scrisă cu majuscule.`;
+
+/** Formats a LowercasedError in Romanian. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} trebuie să fie scrisă cu minuscule.`;
 
 /** Formatează un TrimmedError în română. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

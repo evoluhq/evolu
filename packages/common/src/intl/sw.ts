@@ -87,6 +87,24 @@ export const formatCapitalizedError: T.TypeErrorFormatter<
   T.CapitalizedError
 > = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} lazima ianze kwa herufi kubwa.`;
+
+/** Formats an UncapitalizedError in Swahili. */
+export const formatUncapitalizedError: T.TypeErrorFormatter<
+  T.UncapitalizedError
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} haipaswi kuanza kwa herufi kubwa.`;
+
+/** Formats an UppercasedError in Swahili. */
+export const formatUppercasedError: T.TypeErrorFormatter<T.UppercasedError> = (
+  error,
+) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe katika herufi kubwa.`;
+
+/** Formats a LowercasedError in Swahili. */
+export const formatLowercasedError: T.TypeErrorFormatter<T.LowercasedError> = (
+  error,
+) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} lazima iwe katika herufi ndogo.`;
 export const formatTrimmedError: T.TypeErrorFormatter<T.TrimmedError> = (
   error,
 ) =>

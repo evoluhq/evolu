@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -141,6 +144,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} må begynne med stor bokstav.`;
+
+/** Formats an UncapitalizedError in Norwegian Bokmål. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må ikke begynne med en stor bokstav.`;
+
+/** Formats an UppercasedError in Norwegian Bokmål. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være skrevet med store bokstaver.`;
+
+/** Formats a LowercasedError in Norwegian Bokmål. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Verdien ${safelyStringifyUnknownValue(error.value)} må være skrevet med små bokstaver.`;
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Verdien ${safelyStringifyUnknownValue(error.value)} må være trimmet.`;
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

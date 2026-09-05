@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -159,6 +162,23 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کا پہلا حرف بڑا ہونا چاہیے۔`;
+
+/** Formats an UncapitalizedError in Urdu. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} بڑے حرف سے شروع نہیں ہونی چاہیے۔`;
+
+/** Formats an UppercasedError in Urdu. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) => `قدر ${safelyStringifyUnknownValue(error.value)} بڑے حروف میں ہونی چاہیے۔`;
+
+/** Formats a LowercasedError in Urdu. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} چھوٹے حروف میں ہونی چاہیے۔`;
 /** TrimmedError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کے شروع یا آخر میں خالی جگہ نہیں ہونی چاہیے۔`;

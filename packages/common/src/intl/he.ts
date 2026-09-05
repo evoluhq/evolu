@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -184,6 +187,24 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) => `הערך ${safelyStringifyUnknownValue(error.value)} חייב להתחיל באות גדולה.`;
+
+/** Formats an UncapitalizedError in Hebrew. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} לא יכול להתחיל באות גדולה.`;
+
+/** Formats an UppercasedError in Hebrew. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות באותיות גדולות.`;
+
+/** Formats a LowercasedError in Hebrew. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} חייב להיות באותיות קטנות.`;
 
 /** מעצב שגיאת TrimmedError בעברית. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,22 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องขึ้นต้นด้วยอักษรตัวพิมพ์ใหญ่`;
+
+/** Formats an UncapitalizedError in Thai. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องไม่ขึ้นต้นด้วยตัวอักษรพิมพ์ใหญ่`;
+
+/** Formats an UppercasedError in Thai. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) => `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องเป็นตัวพิมพ์ใหญ่`;
+
+/** Formats a LowercasedError in Thai. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) => `ค่า ${safelyStringifyUnknownValue(error.value)} ต้องเป็นตัวพิมพ์เล็ก`;
 
 /** จัดรูปแบบ TrimmedError เป็นภาษาไทย */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

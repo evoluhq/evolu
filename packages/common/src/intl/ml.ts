@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)} capitalized ആയിരിക്കണം.`;
+
+/** Formats an UncapitalizedError in Malayalam. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} വലിയ അക്ഷരത്തിൽ ആരംഭിക്കരുത്.`;
+
+/** Formats an UppercasedError in Malayalam. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} വലിയ അക്ഷരങ്ങളിൽ ആയിരിക്കണം.`;
+
+/** Formats a LowercasedError in Malayalam. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ചെറിയ അക്ഷരങ്ങളിൽ ആയിരിക്കണം.`;
 
 /** TrimmedError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

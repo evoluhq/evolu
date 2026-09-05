@@ -5318,56 +5318,54 @@ type BrandFactoryNumberError = CompileTimeError<
 >;
 
 /**
- * Capitalized {@link Brand}.
+ * Adds capitalized text validation to an existing string Type.
  *
- * Requires the first character of a string to be uppercase.
+ * Narrows the output to TypeScript's `Capitalize<string>` while preserving the
+ * parent Type's constraints. Validation leaves the text unchanged. Use
+ * {@link capitalize} to change its casing.
  *
  * ### Example
  *
  * ```ts
  * import {
- *   assertEqual,
  *   assertErr,
  *   assertOk,
- *   assertType,
- *   Data,
- *   String,
  *   capitalized,
- *   type Brand,
+ *   maxLength,
+ *   String,
  * } from "@evolu/common";
  *
- * const CapitalizedString = capitalized(String);
- * type CapitalizedString = typeof CapitalizedString.Output;
- *
- * assertType<CapitalizedString, string & Brand<"Capitalized">>();
- *
- * assertOk(CapitalizedString.fromUnknown("Evolu"), "Evolu");
- * const invalid = CapitalizedString.fromUnknown("evolu");
- * assertErr(invalid);
- * assertType(Data, invalid.error);
- * assertEqual(invalid.error, {
- *   type: "Capitalized",
- *   value: "evolu",
- * });
+ * const Label = capitalized(maxLength(50)(String));
+ * assertOk(Label.fromUnknown("Hello world"), "Hello world");
+ * assertErr(Label.fromUnknown("hello world"));
  * ```
  *
  * @group String
  */
-export const capitalized: BrandFactory<
-  "Capitalized",
-  string,
-  CapitalizedError
-> = (parent) =>
-  brand(
+export const capitalized = <
+  ParentType extends ConcreteTypeNode & { readonly Output: string },
+>(
+  parent: ValidateBrandParent<"Capitalized", ParentType>,
+): ReturnType<
+  typeof createType<
+    "Capitalized",
+    ParentType,
+    ParentType["Output"] & Capitalize<string>,
+    CapitalizedError
+  >
+> =>
+  createType<
+    "Capitalized",
+    ParentType,
+    ParentType["Output"] & Capitalize<string>,
+    CapitalizedError
+  >(
     "Capitalized",
     parent,
-    (value) => {
-      const [first = ""] = value;
-
-      return value === first.toUpperCase() + value.slice(first.length)
-        ? ok()
-        : err<CapitalizedError>({ type: "Capitalized", value });
-    },
+    (value) =>
+      value === capitalize(value)
+        ? ok(value as ParentType["Output"] & Capitalize<string>)
+        : err({ type: "Capitalized", value }),
     (error) =>
       `The value ${safelyStringifyUnknownValue(error.value)} must be capitalized.`,
   );
@@ -5382,12 +5380,385 @@ export interface CapitalizedError extends TypeError<"Capitalized"> {
 }
 
 /**
- * Capitalized {@link String}.
+ * Validates capitalized text as TypeScript's `Capitalize<string>`.
+ *
+ * The rest of the text can use any casing. Empty strings and text starting with
+ * an uncased character, such as a digit or emoji, are valid. Use
+ * {@link capitalize} to produce a capitalized value from any string.
+ *
+ * Capitalization applies to general text, including spaces and punctuation.
+ * Both `hello` and `Hello` become `Hello`, so the original initial casing
+ * cannot be recovered. Capitalization does not identify words or turn text into
+ * an identifier.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, CapitalizedString } from "@evolu/common";
+ *
+ * const text: CapitalizedString = "Hello world";
+ * assertOk(CapitalizedString.fromUnknown(text), text);
+ * assertErr(CapitalizedString.fromUnknown("hello world"));
+ * assertOk(CapitalizedString.fromUnknown(""), "");
+ * ```
  *
  * @group String
  */
 export const CapitalizedString = /*#__PURE__*/ capitalized(String);
 export type CapitalizedString = typeof CapitalizedString.Output;
+
+/**
+ * Uppercases the first Unicode code point and returns a
+ * {@link CapitalizedString}.
+ *
+ * Preserves the remainder of the string and leaves an empty string unchanged.
+ * Uses JavaScript's default Unicode casing without locale-specific rules.
+ * Changing case can change the length, so input brands are not retained.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertType, capitalize } from "@evolu/common";
+ *
+ * const text = capitalize("hello world");
+ * assertEqual(text, "Hello world");
+ * assertType<typeof text, "Hello world">();
+ * assertEqual(capitalize(text), text);
+ * ```
+ *
+ * @group String
+ */
+export const capitalize = <S extends string>(value: S): Capitalize<S> => {
+  const [first = ""] = value;
+  return (first.toUpperCase() + value.slice(first.length)) as Capitalize<S>;
+};
+
+/**
+ * Adds uncapitalized text validation to an existing string Type.
+ *
+ * Narrows the output to TypeScript's `Uncapitalize<string>` while preserving
+ * the parent Type's constraints. Validation leaves the text unchanged. Use
+ * {@link uncapitalize} to change its casing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   uncapitalized,
+ *   maxLength,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const Label = uncapitalized(maxLength(50)(String));
+ * assertOk(Label.fromUnknown("hello WORLD"), "hello WORLD");
+ * assertErr(Label.fromUnknown("Hello WORLD"));
+ * ```
+ *
+ * @group String
+ */
+export const uncapitalized = <
+  ParentType extends ConcreteTypeNode & { readonly Output: string },
+>(
+  parent: ValidateBrandParent<"Uncapitalized", ParentType>,
+): ReturnType<
+  typeof createType<
+    "Uncapitalized",
+    ParentType,
+    ParentType["Output"] & Uncapitalize<string>,
+    UncapitalizedError
+  >
+> =>
+  createType<
+    "Uncapitalized",
+    ParentType,
+    ParentType["Output"] & Uncapitalize<string>,
+    UncapitalizedError
+  >(
+    "Uncapitalized",
+    parent,
+    (value) =>
+      value === uncapitalize(value)
+        ? ok(value as ParentType["Output"] & Uncapitalize<string>)
+        : err({ type: "Uncapitalized", value }),
+    (error) =>
+      `The value ${safelyStringifyUnknownValue(error.value)} must not start with an uppercase letter.`,
+  );
+
+/**
+ * Error returned when {@link uncapitalized} rejects a string.
+ *
+ * @group String
+ */
+export interface UncapitalizedError extends TypeError<"Uncapitalized"> {
+  readonly value: string;
+}
+
+/**
+ * Validates uncapitalized text as TypeScript's `Uncapitalize<string>`.
+ *
+ * The rest of the text can use any casing. Empty strings and text starting with
+ * an uncased character, such as a digit or emoji, are valid. Use
+ * {@link uncapitalize} to produce an uncapitalized value from any string.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, UncapitalizedString } from "@evolu/common";
+ *
+ * const text: UncapitalizedString = "hello WORLD";
+ * assertOk(UncapitalizedString.fromUnknown(text), text);
+ * assertErr(UncapitalizedString.fromUnknown("Hello WORLD"));
+ * assertOk(UncapitalizedString.fromUnknown(""), "");
+ * ```
+ *
+ * @group String
+ */
+export const UncapitalizedString = /*#__PURE__*/ uncapitalized(String);
+export type UncapitalizedString = typeof UncapitalizedString.Output;
+
+/**
+ * Lowercases the first Unicode code point and returns a
+ * {@link UncapitalizedString}.
+ *
+ * Preserves the remainder of the string and leaves an empty string unchanged.
+ * Uses JavaScript's default Unicode casing without locale-specific rules.
+ * Changing case can change the length, so input brands are not retained.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertType, uncapitalize } from "@evolu/common";
+ *
+ * const text = uncapitalize("Hello WORLD");
+ * assertEqual(text, "hello WORLD");
+ * assertType<typeof text, "hello WORLD">();
+ * assertEqual(uncapitalize(text), text);
+ * ```
+ *
+ * @group String
+ */
+export const uncapitalize = <S extends string>(value: S): Uncapitalize<S> => {
+  const [first = ""] = value;
+  return (first.toLowerCase() + value.slice(first.length)) as Uncapitalize<S>;
+};
+
+/**
+ * Adds uppercased text validation to an existing string Type.
+ *
+ * Narrows the output to TypeScript's `Uppercase<string>` while preserving the
+ * parent Type's constraints. Validation leaves the text unchanged. Use
+ * {@link uppercase} to change its casing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   uppercased,
+ *   maxLength,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const Label = uppercased(maxLength(50)(String));
+ * assertOk(Label.fromUnknown("HELLO WORLD"), "HELLO WORLD");
+ * assertErr(Label.fromUnknown("Hello world"));
+ * ```
+ *
+ * @group String
+ */
+export const uppercased = <
+  ParentType extends ConcreteTypeNode & { readonly Output: string },
+>(
+  parent: ValidateBrandParent<"Uppercased", ParentType>,
+): ReturnType<
+  typeof createType<
+    "Uppercased",
+    ParentType,
+    ParentType["Output"] & Uppercase<string>,
+    UppercasedError
+  >
+> =>
+  createType<
+    "Uppercased",
+    ParentType,
+    ParentType["Output"] & Uppercase<string>,
+    UppercasedError
+  >(
+    "Uppercased",
+    parent,
+    (value) =>
+      value === uppercase(value)
+        ? ok(value as ParentType["Output"] & Uppercase<string>)
+        : err({ type: "Uppercased", value }),
+    (error) =>
+      `The value ${safelyStringifyUnknownValue(error.value)} must be uppercased.`,
+  );
+
+/**
+ * Error returned when {@link uppercased} rejects a string.
+ *
+ * @group String
+ */
+export interface UppercasedError extends TypeError<"Uppercased"> {
+  readonly value: string;
+}
+
+/**
+ * Validates uppercased text as TypeScript's `Uppercase<string>`.
+ *
+ * Checks the whole string using JavaScript's Unicode uppercase mapping. Empty
+ * strings and uncased characters, such as digits and emoji, are valid. Use
+ * {@link uppercase} to produce an uppercased value from any string.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, UppercasedString } from "@evolu/common";
+ *
+ * const text: UppercasedString = "HELLO WORLD";
+ * assertOk(UppercasedString.fromUnknown(text), text);
+ * assertErr(UppercasedString.fromUnknown("Hello world"));
+ * assertOk(UppercasedString.fromUnknown(""), "");
+ * ```
+ *
+ * @group String
+ */
+export const UppercasedString = /*#__PURE__*/ uppercased(String);
+export type UppercasedString = typeof UppercasedString.Output;
+
+/**
+ * Uppercases the whole string and returns a {@link UppercasedString}.
+ *
+ * Leaves an empty string unchanged. Uses JavaScript's default Unicode casing
+ * without locale-specific rules. Changing case can change the length, so input
+ * brands are not retained.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertType, uppercase } from "@evolu/common";
+ *
+ * const text = uppercase("Hello world");
+ * assertEqual(text, "HELLO WORLD");
+ * assertType<typeof text, "HELLO WORLD">();
+ * assertEqual(uppercase(text), text);
+ * ```
+ *
+ * @group String
+ */
+export const uppercase = <S extends string>(value: S): Uppercase<S> =>
+  value.toUpperCase() as Uppercase<S>;
+
+/**
+ * Adds lowercased text validation to an existing string Type.
+ *
+ * Narrows the output to TypeScript's `Lowercase<string>` while preserving the
+ * parent Type's constraints. Validation leaves the text unchanged. Use
+ * {@link lowercase} to change its casing.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertErr,
+ *   assertOk,
+ *   lowercased,
+ *   maxLength,
+ *   String,
+ * } from "@evolu/common";
+ *
+ * const Label = lowercased(maxLength(50)(String));
+ * assertOk(Label.fromUnknown("hello world"), "hello world");
+ * assertErr(Label.fromUnknown("Hello WORLD"));
+ * ```
+ *
+ * @group String
+ */
+export const lowercased = <
+  ParentType extends ConcreteTypeNode & { readonly Output: string },
+>(
+  parent: ValidateBrandParent<"Lowercased", ParentType>,
+): ReturnType<
+  typeof createType<
+    "Lowercased",
+    ParentType,
+    ParentType["Output"] & Lowercase<string>,
+    LowercasedError
+  >
+> =>
+  createType<
+    "Lowercased",
+    ParentType,
+    ParentType["Output"] & Lowercase<string>,
+    LowercasedError
+  >(
+    "Lowercased",
+    parent,
+    (value) =>
+      value === lowercase(value)
+        ? ok(value as ParentType["Output"] & Lowercase<string>)
+        : err({ type: "Lowercased", value }),
+    (error) =>
+      `The value ${safelyStringifyUnknownValue(error.value)} must be lowercased.`,
+  );
+
+/**
+ * Error returned when {@link lowercased} rejects a string.
+ *
+ * @group String
+ */
+export interface LowercasedError extends TypeError<"Lowercased"> {
+  readonly value: string;
+}
+
+/**
+ * Validates lowercased text as TypeScript's `Lowercase<string>`.
+ *
+ * Checks the whole string using JavaScript's Unicode lowercase mapping. Empty
+ * strings and uncased characters, such as digits and emoji, are valid. Use
+ * {@link lowercase} to produce a lowercased value from any string.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertErr, assertOk, LowercasedString } from "@evolu/common";
+ *
+ * const text: LowercasedString = "hello world";
+ * assertOk(LowercasedString.fromUnknown(text), text);
+ * assertErr(LowercasedString.fromUnknown("Hello WORLD"));
+ * assertOk(LowercasedString.fromUnknown(""), "");
+ * ```
+ *
+ * @group String
+ */
+export const LowercasedString = /*#__PURE__*/ lowercased(String);
+export type LowercasedString = typeof LowercasedString.Output;
+
+/**
+ * Lowercases the whole string and returns a {@link LowercasedString}.
+ *
+ * Leaves an empty string unchanged. Uses JavaScript's default Unicode casing
+ * without locale-specific rules. Changing case can change the length, so input
+ * brands are not retained.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import { assertEqual, assertType, lowercase } from "@evolu/common";
+ *
+ * const text = lowercase("Hello WORLD");
+ * assertEqual(text, "hello world");
+ * assertType<typeof text, "hello world">();
+ * assertEqual(lowercase(text), text);
+ * ```
+ *
+ * @group String
+ */
+export const lowercase = <S extends string>(value: S): Lowercase<S> =>
+  value.toLowerCase() as Lowercase<S>;
 
 /**
  * String {@link Brand} without surrounding whitespace.

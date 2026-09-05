@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `O valor ${safelyStringifyUnknownValue(error.value)} deve começar com letra maiúscula.`;
+
+/** Formats an UncapitalizedError in Brazilian Portuguese. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} não deve começar com uma letra maiúscula.`;
+
+/** Formats an UppercasedError in Brazilian Portuguese. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} deve estar em letras maiúsculas.`;
+
+/** Formats a LowercasedError in Brazilian Portuguese. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `O valor ${safelyStringifyUnknownValue(error.value)} deve estar em letras minúsculas.`;
 
 /** Formata um TrimmedError em português brasileiro. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

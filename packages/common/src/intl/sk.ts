@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -159,6 +162,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Reťazec ${safelyStringifyUnknownValue(error.value)} musí začínať veľkým písmenom.`;
+
+/** Formats an UncapitalizedError in Slovak. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nesmie začínať veľkým písmenom.`;
+
+/** Formats an UppercasedError in Slovak. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť napísaná veľkými písmenami.`;
+
+/** Formats a LowercasedError in Slovak. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí byť napísaná malými písmenami.`;
 /** Formats a TrimmedError in Slovak. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Reťazec ${safelyStringifyUnknownValue(error.value)} nesmie obsahovať medzery na začiatku ani na konci.`;

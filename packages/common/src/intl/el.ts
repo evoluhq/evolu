@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -192,6 +195,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να αρχίζει με κεφαλαίο γράμμα.`;
+
+/** Formats an UncapitalizedError in Greek. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} δεν πρέπει να αρχίζει με κεφαλαίο γράμμα.`;
+
+/** Formats an UppercasedError in Greek. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι με κεφαλαία γράμματα.`;
+
+/** Formats a LowercasedError in Greek. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Η τιμή ${safelyStringifyUnknownValue(error.value)} πρέπει να είναι με πεζά γράμματα.`;
 
 /** Formats a TrimmedError in Greek. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

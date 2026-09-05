@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -186,6 +189,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `De waarde ${safelyStringifyUnknownValue(error.value)} moet met een hoofdletter beginnen.`;
+
+/** Formats an UncapitalizedError in Dutch. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} mag niet met een hoofdletter beginnen.`;
+
+/** Formats an UppercasedError in Dutch. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} moet in hoofdletters staan.`;
+
+/** Formats a LowercasedError in Dutch. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `De waarde ${safelyStringifyUnknownValue(error.value)} moet in kleine letters staan.`;
 
 /** Formatteert een TrimmedError in het Nederlands. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

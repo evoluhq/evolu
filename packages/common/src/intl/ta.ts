@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)} capitalized ஆக இருக்க வேண்டும்.`;
+
+/** Formats an UncapitalizedError in Tamil. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பேரெழுத்தில் தொடங்கக்கூடாது.`;
+
+/** Formats an UppercasedError in Tamil. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பேரெழுத்துகளில் இருக்க வேண்டும்.`;
+
+/** Formats a LowercasedError in Tamil. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சிற்றெழுத்துகளில் இருக்க வேண்டும்.`;
 
 /** TrimmedError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

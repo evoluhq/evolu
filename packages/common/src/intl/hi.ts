@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `मान ${safelyStringifyUnknownValue(error.value)} का पहला अक्षर बड़ा होना चाहिए।`;
+
+/** Formats an UncapitalizedError in Hindi. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} बड़े अक्षर से शुरू नहीं होना चाहिए।`;
+
+/** Formats an UppercasedError in Hindi. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} बड़े अक्षरों में होना चाहिए।`;
+
+/** Formats a LowercasedError in Hindi. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} छोटे अक्षरों में होना चाहिए।`;
 
 /** TrimmedError को हिंदी में format करता है। */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

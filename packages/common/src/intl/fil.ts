@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -186,6 +189,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat naka-capitalize.`;
+
+/** Formats an UncapitalizedError in Filipino. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi dapat magsimula sa malaking titik.`;
+
+/** Formats an UppercasedError in Filipino. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat nakasulat sa malalaking titik.`;
+
+/** Formats a LowercasedError in Filipino. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay dapat nakasulat sa maliliit na titik.`;
 
 /** Fino-format ang TrimmedError sa Filipino. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

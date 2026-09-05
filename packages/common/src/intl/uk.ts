@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -189,6 +192,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} має починатися з великої літери.`;
+
+/** Formats an UncapitalizedError in Ukrainian. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не повинно починатися з великої літери.`;
+
+/** Formats an UppercasedError in Ukrainian. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути записане великими літерами.`;
+
+/** Formats a LowercasedError in Ukrainian. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} має бути записане малими літерами.`;
 
 /** Форматує TrimmedError українською. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

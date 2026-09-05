@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -183,6 +186,24 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) => `Text ${safelyStringifyUnknownValue(error.value)} musí být kapitalizován.`;
+
+/** Formats an UncapitalizedError in Czech. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} nesmí začínat velkým písmenem.`;
+
+/** Formats an UppercasedError in Czech. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být velkými písmeny.`;
+
+/** Formats a LowercasedError in Czech. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} musí být malými písmeny.`;
 
 /** Formats a TrimmedError in Czech. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

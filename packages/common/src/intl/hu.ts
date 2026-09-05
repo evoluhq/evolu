@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -141,6 +144,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek nagybetűvel kell kezdődnie.`;
+
+/** Formats an UncapitalizedError in Hungarian. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem kezdődhet nagybetűvel.`;
+
+/** Formats an UppercasedError in Hungarian. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek nagybetűsnek kell lennie.`;
+
+/** Formats a LowercasedError in Hungarian. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek kisbetűsnek kell lennie.`;
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} értéknek nem lehetnek kezdő vagy záró szóközei.`;
 export const formatMinLengthError: TypeErrorFormatter<MinLengthError> = (

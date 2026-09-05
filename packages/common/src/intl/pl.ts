@@ -137,6 +137,24 @@ export const formatCapitalizedError: Type.TypeErrorFormatter<
 > = (error) =>
   `Tekst ${safelyStringifyUnknownValue(error.value)} musi zaczynać się wielką literą.`;
 
+/** Formats an UncapitalizedError in Polish. */
+export const formatUncapitalizedError: Type.TypeErrorFormatter<
+  Type.UncapitalizedError
+> = (error) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} nie może zaczynać się wielką literą.`;
+
+/** Formats an UppercasedError in Polish. */
+export const formatUppercasedError: Type.TypeErrorFormatter<
+  Type.UppercasedError
+> = (error) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} musi być zapisana wielkimi literami.`;
+
+/** Formats a LowercasedError in Polish. */
+export const formatLowercasedError: Type.TypeErrorFormatter<
+  Type.LowercasedError
+> = (error) =>
+  `Wartość ${safelyStringifyUnknownValue(error.value)} musi być zapisana małymi literami.`;
+
 /** Formats a TrimmedError in Polish. */
 export const formatTrimmedError: Type.TypeErrorFormatter<Type.TrimmedError> = (
   error,

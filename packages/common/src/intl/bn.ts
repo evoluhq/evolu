@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -184,6 +187,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `${safelyStringifyUnknownValue(error.value)} মানটির প্রথম অক্ষর বড় হাতের হতে হবে।`;
+
+/** Formats an UncapitalizedError in Bengali. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `মান ${safelyStringifyUnknownValue(error.value)} বড় হাতের অক্ষর দিয়ে শুরু হওয়া চলবে না।`;
+
+/** Formats an UppercasedError in Bengali. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `মান ${safelyStringifyUnknownValue(error.value)} অবশ্যই বড় হাতের অক্ষরে লেখা হতে হবে।`;
+
+/** Formats a LowercasedError in Bengali. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `মান ${safelyStringifyUnknownValue(error.value)} অবশ্যই ছোট হাতের অক্ষরে লেখা হতে হবে।`;
 
 /** Formats a TrimmedError in Bengali. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

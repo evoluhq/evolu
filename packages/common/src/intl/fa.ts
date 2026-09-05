@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} باید با حرف بزرگ آغاز شود.`;
+
+/** Formats an UncapitalizedError in Persian. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} نباید با حرف بزرگ شروع شود.`;
+
+/** Formats an UppercasedError in Persian. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید با حروف بزرگ باشد.`;
+
+/** Formats a LowercasedError in Persian. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} باید با حروف کوچک باشد.`;
 
 /** TrimmedError را به فارسی قالب‌بندی می‌کند. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

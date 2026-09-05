@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} పెద్ద అక్షరంతో ప్రారంభం కావాలి.`;
+
+/** Formats an UncapitalizedError in Telugu. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} పెద్ద అక్షరంతో ప్రారంభం కాకూడదు.`;
+
+/** Formats an UppercasedError in Telugu. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} పెద్ద అక్షరాలలో ఉండాలి.`;
+
+/** Formats a LowercasedError in Telugu. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} చిన్న అక్షరాలలో ఉండాలి.`;
 
 /** TrimmedErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

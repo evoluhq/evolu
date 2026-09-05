@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -160,6 +163,23 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} phải viết hoa chữ cái đầu.`;
+
+/** Formats an UncapitalizedError in Vietnamese. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không được bắt đầu bằng chữ hoa.`;
+
+/** Formats an UppercasedError in Vietnamese. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) => `Giá trị ${safelyStringifyUnknownValue(error.value)} phải được viết hoa.`;
+
+/** Formats a LowercasedError in Vietnamese. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} phải được viết thường.`;
 /** Định dạng TrimmedError bằng tiếng Việt. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} phải được cắt khoảng trắng đầu và cuối.`;

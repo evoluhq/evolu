@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Metin ${safelyStringifyUnknownValue(error.value)} büyük harfle başlamalıdır.`;
+
+/** Formats an UncapitalizedError in Turkish. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri büyük harfle başlamamalıdır.`;
+
+/** Formats an UppercasedError in Turkish. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri büyük harflerle yazılmalıdır.`;
+
+/** Formats a LowercasedError in Turkish. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri küçük harflerle yazılmalıdır.`;
 
 /** Formats a TrimmedError in Turkish. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} harus menggunakan huruf kapital di awal.`;
+
+/** Formats an UncapitalizedError in Indonesian. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh diawali dengan huruf besar.`;
+
+/** Formats an UppercasedError in Indonesian. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus menggunakan huruf besar.`;
+
+/** Formats a LowercasedError in Indonesian. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} harus menggunakan huruf kecil.`;
 
 /** Formats a TrimmedError in Indonesian. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

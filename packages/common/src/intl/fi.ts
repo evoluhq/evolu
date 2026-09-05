@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Arvon ${safelyStringifyUnknownValue(error.value)} on alettava isolla kirjaimella.`;
+
+/** Formats an UncapitalizedError in Finnish. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei saa alkaa isolla kirjaimella.`;
+
+/** Formats an UppercasedError in Finnish. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava isoilla kirjaimilla.`;
+
+/** Formats a LowercasedError in Finnish. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Arvon ${safelyStringifyUnknownValue(error.value)} on oltava pienillä kirjaimilla.`;
 
 /** Muotoilee TrimmedError-virheen suomeksi. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -192,6 +195,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora počinjati velikim slovom.`;
+
+/** Formats an UncapitalizedError in Croatian. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} ne smije počinjati velikim slovom.`;
+
+/** Formats an UppercasedError in Croatian. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti napisana velikim slovima.`;
+
+/** Formats a LowercasedError in Croatian. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Vrijednost ${safelyStringifyUnknownValue(error.value)} mora biti napisana malim slovima.`;
 
 /** Formats a TrimmedError in Croatian. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

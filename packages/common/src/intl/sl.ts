@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -185,6 +188,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `Vrednost ${safelyStringifyUnknownValue(error.value)} se mora začeti z veliko začetnico.`;
+
+/** Formats an UncapitalizedError in Slovenian. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} se ne sme začeti z veliko črko.`;
+
+/** Formats an UppercasedError in Slovenian. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} mora biti zapisana z velikimi črkami.`;
+
+/** Formats a LowercasedError in Slovenian. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} mora biti zapisana z malimi črkami.`;
 
 /** Formats a TrimmedError in Slovene. */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

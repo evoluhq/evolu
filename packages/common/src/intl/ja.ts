@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -186,6 +189,24 @@ export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) =>
   `値 ${safelyStringifyUnknownValue(error.value)} は先頭が大文字である必要があります。`;
+
+/** Formats an UncapitalizedError in Japanese. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は大文字で始まってはいけません。`;
+
+/** Formats an UppercasedError in Japanese. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は大文字である必要があります。`;
+
+/** Formats a LowercasedError in Japanese. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は小文字である必要があります。`;
 
 /** TrimmedError を日本語でフォーマットします。 */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>

@@ -12,6 +12,9 @@ import type {
   BooleanFromStringError,
   BetweenError,
   CapitalizedError,
+  UncapitalizedError,
+  UppercasedError,
+  LowercasedError,
   DateIsoError,
   DateIsoFromDateError,
   DecimalStringError,
@@ -183,6 +186,22 @@ export const formatInt64StringError: TypeErrorFormatter<Int64StringError> = (
 export const formatCapitalizedError: TypeErrorFormatter<CapitalizedError> = (
   error,
 ) => `值 ${safelyStringifyUnknownValue(error.value)} 必須以大寫字母開頭。`;
+
+/** Formats an UncapitalizedError in Traditional Chinese. */
+export const formatUncapitalizedError: TypeErrorFormatter<
+  UncapitalizedError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不得以大寫字母開頭。`;
+
+/** Formats an UppercasedError in Traditional Chinese. */
+export const formatUppercasedError: TypeErrorFormatter<UppercasedError> = (
+  error,
+) => `值 ${safelyStringifyUnknownValue(error.value)} 必須為大寫。`;
+
+/** Formats a LowercasedError in Traditional Chinese. */
+export const formatLowercasedError: TypeErrorFormatter<LowercasedError> = (
+  error,
+) => `值 ${safelyStringifyUnknownValue(error.value)} 必須為小寫。`;
 
 /** 以繁體中文格式化 TrimmedError。 */
 export const formatTrimmedError: TypeErrorFormatter<TrimmedError> = (error) =>
