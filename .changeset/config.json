@@ -8,8 +8,5 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": ["web", "@example/*"],
-  "privatePackages": { "version": true, "tag": false },
-  "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
-    "onlyUpdatePeerDependentsWhenOutOfRange": true
-  }
+  "privatePackages": { "version": true, "tag": false }
 }

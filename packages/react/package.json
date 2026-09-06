@@ -46,7 +46,7 @@
     "react": "catalog:react19"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.0.0",
+    "@evolu/common": "^8.9.0",
     "react": ">=19"
   },
   "publishConfig": {
