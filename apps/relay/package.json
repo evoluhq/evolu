@@ -1,15 +1,34 @@
 {
-  "name": "relay",
+  "name": "@evolu/relay",
   "version": "3.0.14",
-  "private": true,
+  "description": "Evolu Relay server",
+  "keywords": [
+    "evolu",
+    "local-first",
+    "relay",
+    "sync"
+  ],
+  "author": "Daniel Steigerwald <daniel@steigerwald.cz>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evoluhq/evolu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/evoluhq/evolu/issues"
+  },
+  "homepage": "https://evolu.dev",
   "type": "module",
+  "bin": {
+    "evolu-relay": "./dist/src/index.js"
+  },
   "scripts": {
     "dev": "node --watch --watch-preserve-output src/index.ts",
     "build": "tsc --build tsconfig.json",
     "start": "node dist/src/index.js"
   },
   "files": [
-    "dist",
+    "dist/src/**",
     "README.md"
   ],
   "dependencies": {
@@ -23,5 +42,8 @@
   },
   "engines": {
     "node": ">=24.20.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

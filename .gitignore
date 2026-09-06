@@ -14,6 +14,7 @@ test-identicons
 tmp
 
 # apps/relay
+apps/relay/*.tgz
 apps/relay/data/*
 !apps/relay/data/.gitkeep
 

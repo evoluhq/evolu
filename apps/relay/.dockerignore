@@ -1,15 +1,2 @@
-node_modules
-dist
-*.log
-.env
-.env.local
-.DS_Store
-coverage
-.nyc_output
-*.db
-*.sqlite
-.git
-.gitignore
-README.md
-CHANGELOG.md 
-examples
+*
+!*.tgz

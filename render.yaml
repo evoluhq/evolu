@@ -12,18 +12,15 @@ services:
       url: evoluhq/relay:latest
     # Note: set to "commit" for no checks, "off" for manual deploys
     autoDeployTrigger: checksPass
-    envVars:
-      - key: RELAY_PORT
-        value: 4000
-      - key: NODE_ENV
-        value: production
-      - key: LOG_LEVEL
-        value: info
+    # Render supplies PORT. Optional per-owner storage quota:
+    # envVars:
+    #   - key: EVOLU_RELAY_MAX_OWNER_BYTES
+    #     value: 10MiB
 
     # Note: for persisting sqlite data (requires paid plan)
     # disk:
     #   name: evolu-relay-data
-    #   mountPath: /app/apps/relay/data
+    #   mountPath: /app/data
     #   sizeGB: 10
 
     # Note: for auto-scaling (requires paid plan)

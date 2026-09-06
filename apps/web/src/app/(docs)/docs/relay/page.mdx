@@ -15,11 +15,30 @@ For details on privacy, check the [privacy](/docs/privacy) docs.
 
 ## Hosting Evolu Relay
 
-The Evolu Relay source code, along with the Docker files, can be found at [github.com/evoluhq/evolu/tree/main/apps/relay](https://github.com/evoluhq/evolu/tree/main/apps/relay).
+The reference relay is published as the [`@evolu/relay`](https://www.npmjs.com/package/@evolu/relay) npm package and the [`evoluhq/relay`](https://hub.docker.com/r/evoluhq/relay) Docker image. Its source code can be found at [github.com/evoluhq/evolu/tree/main/apps/relay](https://github.com/evoluhq/evolu/tree/main/apps/relay).
 
 <Note>
   We provide a free `free.evoluhq.com` relay for testing, but no hosting because
   it's not Evolu's mission to compete with established clouds (yet). Our plan
   for Evolu is different: We will sell Evolu apps, Evolu HW devices, and provide
-  paid support.
+  paid support. Testing relay data may be deleted; do not rely on it as your
+  only backup.
 </Note>
+
+## Configuring Evolu Relay
+
+The relay reads its listening port from `PORT`, defaulting to `4000`, and its
+optional per-owner storage quota from `EVOLU_RELAY_MAX_OWNER_BYTES`.
+No per-owner storage limit is imposed when this variable is unset. Set a quota
+appropriate for your deployment; it does not limit total disk usage.
+Quota values must be size literals such as `512KiB` or `10MiB`, rather than
+bare byte counts such as `1048576`.
+`PORT` also supports hosting platforms that supply the listening port;
+`EVOLU_RELAY_PORT` is not supported. Invalid supplied values and unknown
+`EVOLU_RELAY_*` variables stop the relay with a validation message.
+See the [package README](https://github.com/evoluhq/evolu/tree/main/apps/relay#configure)
+for the full list.
+
+```bash
+PORT=4001 EVOLU_RELAY_MAX_OWNER_BYTES=10MiB npx @evolu/relay
+```

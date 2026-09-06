@@ -1,130 +1,196 @@
-name: DockerHub
+name: Docker
 
 on:
+  workflow_call:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - apps/relay/package.json
-  #     - .github/workflows/docker.yaml
+
+permissions: {}
+
+concurrency:
+  group: relay-docker
+  cancel-in-progress: false
 
 env:
-  REGISTRY: docker.io
-  IMAGE_NAME: evoluhq/relay
+  IMAGE: docker.io/evoluhq/relay
 
 jobs:
-  push_to_registry:
-    name: Push Docker image to Docker Hub
+  version:
+    name: Relay version
+    if: github.repository == 'evoluhq/evolu' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      packages: write
       contents: read
-      attestations: write
-      id-token: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Check out the repo
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
-      - name: Check if version already published
+      - name: Read the relay version
         id: version
-        shell: bash
         run: |
-          set -euo pipefail
           version=$(jq -r .version apps/relay/package.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-          # Check if this version already exists in Docker Hub
-          if docker manifest inspect docker.io/evoluhq/relay:$version >/dev/null 2>&1; then
-            echo "Version $version already published"
-            changed="false"
-          else
-            echo "Version $version not yet published"
-            changed="true"
-          fi
+  push:
+    name: Push relay image
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      # Recheck on every attempt, including reruns of only this failed job.
+      - name: Check Docker Hub for the relay version
+        id: image
+        run: |
+          response=$(mktemp)
+          trap 'rm -f "$response"' EXIT
+          status=$(curl --silent --show-error --retry 3 --max-time 30 \
+            --output "$response" --write-out '%{http_code}' \
+            "https://hub.docker.com/v2/namespaces/evoluhq/repositories/relay/tags/$VERSION")
+          case "$status" in
+            200)
+              digest=$(jq -er '.digest | select(type == "string") | select(test("^sha256:[0-9a-f]{64}$"))' "$response")
+              echo "$IMAGE:$VERSION already exists at $digest"
+              echo "published=true" >> "$GITHUB_OUTPUT"
+              echo "digest=$digest" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo "published=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Docker Hub lookup failed with HTTP $status" >&2
+              exit 1
+              ;;
+          esac
 
-          echo "new=$version" >> "$GITHUB_OUTPUT"
-          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+      - name: Wait for npm to serve @evolu/relay@${{ env.VERSION }}
+        if: steps.image.outputs.published == 'false'
+        run: |
+          for _ in $(seq 1 30); do
+            if [ "$(npm view "@evolu/relay@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "@evolu/relay@$VERSION is not on npm"
+          exit 1
 
-      - name: Set up QEMU
-        if: ${{ steps.version.outputs.changed == 'true' }}
-        uses: docker/setup-qemu-action@v3
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
-      - name: Set up Docker Buildx
-        if: ${{ steps.version.outputs.changed == 'true' }}
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+        if: steps.image.outputs.published == 'false'
 
-      - name: Log in to Docker Hub
-        if: ${{ github.repository == 'evoluhq/evolu' && steps.version.outputs.changed == 'true' }}
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        if: ${{ steps.version.outputs.changed == 'true' }}
-        id: meta
-        uses: docker/metadata-action@v5
+      - name: Build amd64 image for the smoke test
+        if: steps.image.outputs.published == 'false'
+        uses: docker/build-push-action@v7
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: |
-            latest=true
-          tags: |
-            # Always push the full (possibly prerelease) version tag
-            type=semver,pattern={{version}},value=${{ steps.version.outputs.new }}
-            # Only push major.minor for stable (no hyphen)
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.new }},enable=${{ !contains(steps.version.outputs.new, '-') }}
+          context: apps/relay
+          build-args: RELAY_PACKAGE=@evolu/relay@${{ env.VERSION }}
+          load: true
+          tags: evolu/relay:smoke
+          cache-from: type=gha,scope=relay
+          cache-to: type=gha,scope=relay,mode=max
 
-      - name: Build and push Docker image
-        if: ${{ github.repository == 'evoluhq/evolu' && steps.version.outputs.changed == 'true' }}
-        id: push
-        uses: docker/build-push-action@v6
+      - name: Smoke test on a custom port
+        if: steps.image.outputs.published == 'false'
+        run: |
+          container=$(docker run --detach \
+            --env PORT=4001 \
+            --health-interval=1s --health-start-period=1s --health-retries=20 \
+            evolu/relay:smoke)
+          trap 'docker rm --force --volumes "$container" >/dev/null' EXIT
+          for _ in $(seq 1 30); do
+            case "$(docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' "$container")" in
+              "running healthy")
+                docker exec "$container" test -s /app/data/evolu-relay.db
+                exit 0
+                ;;
+              "running starting")
+                sleep 1
+                ;;
+              *)
+                break
+                ;;
+            esac
+          done
+          docker logs "$container"
+          exit 1
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v6
         with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.VERSION }}
+            type=semver,pattern={{major}},value=${{ env.VERSION }}
+            type=raw,value=latest,enable=${{ !contains(env.VERSION, '-') }}
+
+      - name: Push multi-arch image
+        id: push
+        if: steps.image.outputs.published == 'false'
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/relay
+          build-args: RELAY_PACKAGE=@evolu/relay@${{ env.VERSION }}
           platforms: linux/amd64,linux/arm64
-          context: .
-          file: ./apps/relay/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha,scope=relay/${{ github.ref_name }}
-          cache-to: |
-            type=gha,scope=relay/${{ github.ref_name }},mode=min
+          cache-from: type=gha,scope=relay
           provenance: true
           sbom: true
 
-      - name: Generate artifact attestation
-        if: ${{ github.repository == 'evoluhq/evolu' && steps.version.outputs.changed == 'true' }}
-        uses: actions/attest-build-provenance@v1
+      - uses: actions/attest@v4
+        if: steps.push.outputs.digest != ''
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      - name: Publish summary (tags and digest)
-        if: ${{ github.repository == 'evoluhq/evolu' && steps.version.outputs.changed == 'true' }}
-        shell: bash
+      - name: Reconcile image tags
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.image.outputs.digest || steps.push.outputs.digest }}
+        run: |
+          # A rerun of an older release must not move stable aliases backwards.
+          git fetch --no-tags --depth=1 origin main
+          current_version=$(git show FETCH_HEAD:apps/relay/package.json | jq -er .version)
+          args=()
+          while IFS= read -r tag; do
+            if [ "$current_version" != "$VERSION" ] && [ "$tag" != "$IMAGE:$VERSION" ]; then continue; fi
+            if [ -n "$tag" ]; then args+=(--tag "$tag"); fi
+          done <<< "$TAGS"
+          docker buildx imagetools create --prefer-index=false \
+            "${args[@]}" "$IMAGE@$DIGEST"
+
+      - name: Summary
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.image.outputs.digest || steps.push.outputs.digest }}
         run: |
           {
-            echo '### Docker Image'
-            echo ''
-            echo '**Tags:**'
-            echo '${{ steps.meta.outputs.tags }}' | sed 's/^/- /'
-            echo ''
-            echo '**Digest:**'
-            echo '\`${{ steps.push.outputs.digest }}\`'
-            echo ''
-            echo '#### Deploy by digest'
-            echo ''
-            echo '```bash'
-            echo 'docker pull docker.io/evoluhq/relay@${{ steps.push.outputs.digest }}'
-            echo 'docker run --rm -p 4000:4000 docker.io/evoluhq/relay@${{ steps.push.outputs.digest }}'
-            echo '```'
+            echo "### Relay image"
+            echo
+            for tag in $TAGS; do echo "- $tag"; done
+            echo
+            echo "Digest: \`$DIGEST\`"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Skip build (fork repository)
-        if: ${{ steps.version.outputs.changed == 'true' && github.repository != 'evoluhq/evolu' }}
-        run: echo "Version changed but repository is a fork; skipping Docker login/push/attestation"
-
-      - name: Skip build (version unchanged)
-        if: ${{ steps.version.outputs.changed != 'true' }}
-        run: echo "apps/relay/package.json version unchanged; skipping Docker build"
