@@ -58,6 +58,14 @@ import {
 } from "@evolu/common/intl";
 
 import * as Type from "../Type.ts";
+import { DurationLiteral } from "../Time.ts";
+import { PercentageLiteral } from "../Number.ts";
+import {
+  formatDurationLiteralError as formatEnglishDurationLiteralError,
+  formatPercentageLiteralError as formatEnglishPercentageLiteralError,
+} from "./_en.ts";
+import { ByteSizeLiteral } from "../Bytes.ts";
+import { formatByteSizeLiteralError as formatEnglishByteSizeLiteralError } from "./_en.ts";
 import { ok } from "../Result.ts";
 import { objectToEntries } from "../Object.ts";
 
@@ -3587,6 +3595,108 @@ const typesByLocale = Type.localizeTypes(
 );
 
 describe("Type localization", () => {
+  test("localizes domain literal errors in every locale without expanding their causes", () => {
+    const value = 'invalid"\\\\';
+    const result = ByteSizeLiteral.fromUnknown(value);
+    assertErr(result);
+    const duration = DurationLiteral.fromUnknown(value);
+    const percentage = PercentageLiteral.fromUnknown(value);
+    assertErr(duration);
+    assertErr(percentage);
+    assertEqual(
+      formatEnglishDurationLiteralError(duration.error),
+      DurationLiteral.formatError(duration.error),
+    );
+    assertEqual(
+      formatEnglishPercentageLiteralError(percentage.error),
+      PercentageLiteral.formatError(percentage.error),
+    );
+    const english = ByteSizeLiteral.formatError(result.error);
+    assertEqual(formatEnglishByteSizeLiteralError(result.error), english);
+    for (const locale of [
+      ar,
+      bn,
+      ca,
+      cs,
+      da,
+      de,
+      el,
+      es,
+      fa,
+      fi,
+      fil,
+      fr,
+      he,
+      hi,
+      hr,
+      hu,
+      id,
+      it,
+      ja,
+      ko,
+      ml,
+      mr,
+      ms,
+      nb,
+      nl,
+      pa,
+      pl,
+      pt,
+      ptBR,
+      ro,
+      sk,
+      sl,
+      sv,
+      sw,
+      ta,
+      te,
+      th,
+      tr,
+      uk,
+      ur,
+      vi,
+      zhCN,
+      zhTW,
+    ]) {
+      const { localized: types } = Type.localizeTypes(
+        { ByteSizeLiteral, DurationLiteral, PercentageLiteral },
+        {
+          localized: {
+            ByteSizeLiteral: locale.formatByteSizeLiteralError,
+            DurationLiteral: locale.formatDurationLiteralError,
+            PercentageLiteral: locale.formatPercentageLiteralError,
+          },
+        },
+      );
+      for (const [message, original, examples] of [
+        [
+          types.DurationLiteral.formatError(duration.error),
+          DurationLiteral.formatError(duration.error),
+          ['"500ms"', '"1.5s"'],
+        ],
+        [
+          types.PercentageLiteral.formatError(percentage.error),
+          PercentageLiteral.formatError(percentage.error),
+          ['"50%"', '"12.5%"'],
+        ],
+      ] as const) {
+        assertTrue(message !== original);
+        assertTrue(message.includes(JSON.stringify(value)));
+        for (const example of examples) assertTrue(message.includes(example));
+        assertTrue(!message.includes("\n"));
+      }
+      const message = types.ByteSizeLiteral.formatError(result.error);
+      assertTrue(message !== english);
+      assertTrue(message.includes(JSON.stringify(value)));
+      assertTrue(message.includes('"512KiB"'));
+      assertTrue(message.includes('"1MiB"'));
+      assertTrue(!message.includes("\n"));
+      assertEqual(Type.typeErrorToIssues(types.ByteSizeLiteral, result.error), [
+        { path: [], message },
+      ]);
+    }
+  });
+
   test("includes localized Union member failures in every locale", () => {
     for (const [, types] of objectToEntries(typesByLocale)) {
       const result = types.Union.fromUnknown(false, { errors: "all" });

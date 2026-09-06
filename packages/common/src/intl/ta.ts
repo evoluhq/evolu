@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** JsonError-ஐ தமிழில் வடிவமைக்கிறது. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `மதிப்பு ${safelyStringifyUnknownValue(error.value)}-ஐ JsonValue-ஆக parse செய்ய முடியாது.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} பைட் அளவுக்கான லிட்டரல் அல்ல. "512KiB" அல்லது "1MiB" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} கால அளவுக்கான லிட்டரல் அல்ல. "500ms" அல்லது "1.5s" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `மதிப்பு ${safelyStringifyUnknownValue(error.value)} சதவீத லிட்டரல் அல்ல. "50%" அல்லது "12.5%" போன்ற மதிப்பைப் பயன்படுத்தவும்.`;

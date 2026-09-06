@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -550,3 +553,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Fino-format ang JsonError sa Filipino. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Hindi ma-parse ang halagang ${safelyStringifyUnknownValue(error.value)} bilang JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang literal ng laki sa byte. Gumamit ng halagang tulad ng "512KiB" o "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang literal ng tagal. Gumamit ng halagang tulad ng "500ms" o "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Ang halagang ${safelyStringifyUnknownValue(error.value)} ay hindi isang literal ng porsiyento. Gumamit ng halagang tulad ng "50%" o "12.5%".`;

@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -498,3 +501,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Định dạng JsonError bằng tiếng Việt. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Giá trị ${safelyStringifyUnknownValue(error.value)} không thể được phân tích thành JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là hằng kích thước byte. Hãy dùng giá trị như "512KiB" hoặc "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là hằng khoảng thời gian. Hãy dùng giá trị như "500ms" hoặc "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Giá trị ${safelyStringifyUnknownValue(error.value)} không phải là hằng phần trăm. Hãy dùng giá trị như "50%" hoặc "12.5%".`;

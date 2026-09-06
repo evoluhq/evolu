@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -548,3 +551,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Formats a JsonError in Bengali. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} মানটিকে JsonValue হিসেবে parse করা যায় না।`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `মান ${safelyStringifyUnknownValue(error.value)} বাইট আকারের লিটারাল নয়। "512KiB" বা "1MiB"-এর মতো একটি মান ব্যবহার করুন।`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `মান ${safelyStringifyUnknownValue(error.value)} সময়কালের লিটারাল নয়। "500ms" বা "1.5s"-এর মতো একটি মান ব্যবহার করুন।`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `মান ${safelyStringifyUnknownValue(error.value)} শতাংশের লিটারাল নয়। "50%" বা "12.5%"-এর মতো একটি মান ব্যবহার করুন।`;

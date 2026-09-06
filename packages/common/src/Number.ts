@@ -7,10 +7,15 @@
 import type { NonEmptyReadonlyArray } from "./Array.ts";
 import { assertNonEmptyReadonlyArray } from "./Assert.ts";
 import type { IsBranded } from "./Brand.ts";
+import { safelyStringifyUnknownValue } from "./String.ts";
 import type { Result } from "./Result.ts";
 import { err, ok } from "./Result.ts";
 import {
   brand,
+  createTypeWithError,
+  type Type,
+  type TypeError,
+  type UnionError,
   Digit1To9,
   Digit1To99,
   lessThanOrEqualTo,
@@ -98,6 +103,21 @@ export type Int1To100OrPositiveInt = Int1To100 | PositiveInt;
  */
 export type Percentage = PercentageLiteral | Ratio;
 
+export type PercentageLiteral =
+  "0%" | "100%" | `${Digit1To99}%` | `${"0" | Digit1To99}.${Digit1To9}%`;
+
+const percentageLiteralSyntax = /*#__PURE__*/ union(
+  "0%",
+  "100%",
+  /*#__PURE__*/ templateLiteral(Digit1To99, "%"),
+  /*#__PURE__*/ templateLiteral(
+    /*#__PURE__*/ union("0", Digit1To99),
+    ".",
+    Digit1To9,
+    "%",
+  ),
+);
+
 /**
  * Percentage literal Type with compile-time and runtime validation.
  *
@@ -112,6 +132,8 @@ export type Percentage = PercentageLiteral | Ratio;
  *
  * See {@link Percentage} for a type that also accepts {@link Ratio}. Use
  * {@link percentageToRatio} to convert.
+ *
+ * Invalid values produce a {@link PercentageLiteralError}.
  *
  * ### Example
  *
@@ -135,18 +157,33 @@ export type Percentage = PercentageLiteral | Ratio;
  * assertFalse(PercentageLiteral.is("101%"));
  * ```
  */
-export const PercentageLiteral = /*#__PURE__*/ union(
-  "0%",
-  "100%",
-  /*#__PURE__*/ templateLiteral(Digit1To99, "%"),
-  /*#__PURE__*/ templateLiteral(
-    /*#__PURE__*/ union("0", Digit1To99),
-    ".",
-    Digit1To9,
-    "%",
-  ),
+export const PercentageLiteral: Type<
+  "PercentageLiteral",
+  PercentageLiteral,
+  PercentageLiteral,
+  PercentageLiteralError
+> = /*#__PURE__*/ createTypeWithError(
+  "PercentageLiteral",
+  percentageLiteralSyntax,
+  (cause, value): PercentageLiteralError => ({
+    type: "PercentageLiteral",
+    value,
+    cause,
+  }),
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a percentage literal. Use a value such as "50%" or "12.5%".`,
 );
-export type PercentageLiteral = typeof PercentageLiteral.Output;
+
+/** Error returned when {@link PercentageLiteral} rejects a value. */
+export interface PercentageLiteralError extends TypeError<"PercentageLiteral"> {
+  readonly value: unknown;
+  /**
+   * The underlying union failure, retained for diagnostics.
+   *
+   * With `{ errors: "all" }`, includes every failed alternative.
+   */
+  readonly cause: UnionError;
+}
 
 /** Converts a {@link Percentage} to its numeric {@link Ratio}. */
 export const percentageToRatio = (percentage: Percentage): Ratio =>

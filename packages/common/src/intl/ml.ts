@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** JsonError മലയാളത്തിൽ ഫോർമാറ്റ് ചെയ്യുന്നു. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `മൂല്യം ${safelyStringifyUnknownValue(error.value)}-നെ JsonValue-ലേക്ക് parse ചെയ്യാൻ കഴിയില്ല.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ബൈറ്റ് വലുപ്പത്തിന്റെ ലിറ്ററൽ അല്ല. "512KiB" അല്ലെങ്കിൽ "1MiB" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} സമയദൈർഘ്യത്തിന്റെ ലിറ്ററൽ അല്ല. "500ms" അല്ലെങ്കിൽ "1.5s" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `മൂല്യം ${safelyStringifyUnknownValue(error.value)} ശതമാനത്തിന്റെ ലിറ്ററൽ അല്ല. "50%" അല്ലെങ്കിൽ "12.5%" പോലുള്ള ഒരു മൂല്യം ഉപയോഗിക്കുക.`;

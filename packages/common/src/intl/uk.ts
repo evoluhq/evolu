@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -553,3 +556,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Форматує JsonError українською. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Значення ${safelyStringifyUnknownValue(error.value)} неможливо розібрати як JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є літералом розміру в байтах. Використовуйте значення на кшталт "512KiB" або "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є літералом тривалості. Використовуйте значення на кшталт "500ms" або "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Значення ${safelyStringifyUnknownValue(error.value)} не є відсотковим літералом. Використовуйте значення на кшталт "50%" або "12.5%".`;

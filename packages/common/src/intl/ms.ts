@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -473,3 +476,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Formats a JsonError in Malay. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Nilai ${safelyStringifyUnknownValue(error.value)} tidak boleh dihuraikan menjadi JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal saiz bait. Gunakan nilai seperti "512KiB" atau "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal tempoh. Gunakan nilai seperti "500ms" atau "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Nilai ${safelyStringifyUnknownValue(error.value)} bukan literal peratusan. Gunakan nilai seperti "50%" atau "12.5%".`;

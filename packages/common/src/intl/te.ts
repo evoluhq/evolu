@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** JsonErrorను తెలుగులో ఫార్మాట్ చేస్తుంది. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `విలువ ${safelyStringifyUnknownValue(error.value)} ను JsonValue గా parse చేయలేము.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} బైట్ పరిమాణ లిటరల్ కాదు. "512KiB" లేదా "1MiB" వంటి విలువను ఉపయోగించండి.`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} వ్యవధి లిటరల్ కాదు. "500ms" లేదా "1.5s" వంటి విలువను ఉపయోగించండి.`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `విలువ ${safelyStringifyUnknownValue(error.value)} శాతం లిటరల్ కాదు. "50%" లేదా "12.5%" వంటి విలువను ఉపయోగించండి.`;

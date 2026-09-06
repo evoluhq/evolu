@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Formats a JsonError in Turkish. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Değer ${safelyStringifyUnknownValue(error.value)} bir JsonValue olarak ayrıştırılamaz.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri bir bayt boyutu sabiti değildir. "512KiB" veya "1MiB" gibi bir değer kullanın.`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri bir süre sabiti değildir. "500ms" veya "1.5s" gibi bir değer kullanın.`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `${safelyStringifyUnknownValue(error.value)} değeri bir yüzde sabiti değildir. "50%" veya "12.5%" gibi bir değer kullanın.`;

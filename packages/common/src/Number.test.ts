@@ -1,6 +1,7 @@
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import {
   assertEqual,
+  assertErr,
   assertFalse,
   assertOk,
   assertSame,
@@ -26,7 +27,16 @@ import {
   percentageToRatio,
 } from "./Number.ts";
 import { err, ok } from "./Result.ts";
-import { assertType, NonNegativeInt, PositiveInt, Ratio } from "./Type.ts";
+import {
+  localizeTypes,
+  object,
+  typeErrorToIssues,
+  type InferErrors,
+  assertType,
+  NonNegativeInt,
+  PositiveInt,
+  Ratio,
+} from "./Type.ts";
 
 test("bounded integer literal types", () => {
   assertType<1 extends Int1To99 ? true : false, true>();
@@ -53,22 +63,76 @@ test("bounded integer literal types", () => {
   assertType<PositiveInt extends Int1To100OrPositiveInt ? true : false, true>();
 });
 
-test("Percentage accepts canonical literals or Ratio", () => {
-  assertType<"0%" extends PercentageLiteral ? true : false, true>();
-  assertType<"25%" extends PercentageLiteral ? true : false, true>();
-  assertType<"12.5%" extends PercentageLiteral ? true : false, true>();
-  assertType<"100%" extends PercentageLiteral ? true : false, true>();
-  assertType<"01%" extends PercentageLiteral ? true : false, false>();
-  assertType<"10.0%" extends PercentageLiteral ? true : false, false>();
-  assertType<"100.1%" extends PercentageLiteral ? true : false, false>();
-  assertType<Ratio extends Percentage ? true : false, true>();
-  assertTrue(PercentageLiteral.is("0%"));
-  assertTrue(PercentageLiteral.is("25%"));
-  assertTrue(PercentageLiteral.is("12.5%"));
-  assertTrue(PercentageLiteral.is("100%"));
-  assertFalse(PercentageLiteral.is("01%"));
-  assertFalse(PercentageLiteral.is("10.0%"));
-  assertFalse(PercentageLiteral.is("100.1%"));
+describe("PercentageLiteral", () => {
+  test("reports a dedicated error with the original validation failure", () => {
+    for (const value of ["101%", "", 1, null, undefined]) {
+      const result = PercentageLiteral.fromUnknown(value);
+      assertErr(result);
+      assertType<typeof result.error.type, "PercentageLiteral">();
+      assertSame(result.error.value, value);
+      assertEqual(result.error.cause.type, "Union");
+      assertEqual(result.error.cause.errors.length, 1);
+    }
+    const result = PercentageLiteral.fromUnknown("101%", { errors: "all" });
+    assertErr(result);
+    assertEqual(result.error.cause.errors.length, 4);
+    assertEqual(
+      PercentageLiteral.formatError(result.error),
+      'The value "101%" is not a percentage literal. Use a value such as "50%" or "12.5%".',
+    );
+    assertType<
+      InferErrors<typeof PercentageLiteral>["type"],
+      "PercentageLiteral"
+    >();
+    assertOk(PercentageLiteral.from("12.5%"), "12.5%");
+    assertEqual(PercentageLiteral.to("12.5%"), "12.5%");
+    // @ts-expect-error PercentageLiteral Input rejects "101%".
+    const _invalidInput: typeof PercentageLiteral.Input = "101%";
+  });
+
+  test("localizes the named error after composition and preserves its path", async () => {
+    const { first } = localizeTypes(
+      { Value: PercentageLiteral },
+      { first: { PercentageLiteral: () => "First message." } },
+    );
+    const { second } = localizeTypes(
+      { Settings: object({ value: first.Value }) },
+      {
+        second: {
+          Object: () => "Object.",
+          PercentageLiteral: () => "Second message.",
+        },
+      },
+    );
+    const result = second.Settings.fromUnknown({ value: "101%" });
+    assertErr(result);
+    assertEqual(second.Settings.formatError(result.error), "Second message.");
+    assertEqual(typeErrorToIssues(second.Settings, result.error), [
+      { path: ["value"], message: "Second message." },
+    ]);
+    assertEqual(
+      await second.Settings["~standard"].validate({ value: "101%" }),
+      { issues: [{ path: ["value"], message: "Second message." }] },
+    );
+  });
+
+  test("accepts canonical literals or Ratio", () => {
+    assertType<"0%" extends PercentageLiteral ? true : false, true>();
+    assertType<"25%" extends PercentageLiteral ? true : false, true>();
+    assertType<"12.5%" extends PercentageLiteral ? true : false, true>();
+    assertType<"100%" extends PercentageLiteral ? true : false, true>();
+    assertType<"01%" extends PercentageLiteral ? true : false, false>();
+    assertType<"10.0%" extends PercentageLiteral ? true : false, false>();
+    assertType<"100.1%" extends PercentageLiteral ? true : false, false>();
+    assertType<Ratio extends Percentage ? true : false, true>();
+    assertTrue(PercentageLiteral.is("0%"));
+    assertTrue(PercentageLiteral.is("25%"));
+    assertTrue(PercentageLiteral.is("12.5%"));
+    assertTrue(PercentageLiteral.is("100%"));
+    assertFalse(PercentageLiteral.is("01%"));
+    assertFalse(PercentageLiteral.is("10.0%"));
+    assertFalse(PercentageLiteral.is("100.1%"));
+  });
 });
 
 test("percentageToRatio converts percentage literals and preserves Ratio", () => {

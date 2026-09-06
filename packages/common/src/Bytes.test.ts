@@ -47,7 +47,19 @@ import {
   Object,
   PositiveInt,
   zeroNonNegativeInt,
+  localizeTypes,
+  optional,
+  typeErrorToIssues,
+  withDefault,
+  type InferErrors,
 } from "./Type.ts";
+import { env } from "./Config.ts";
+import {
+  formatByteSizeLiteralError,
+  formatObjectError,
+  formatStringError,
+  formatIdentifierError,
+} from "./intl/cs.ts";
 
 const encodeJson = (value: unknown): Uint8Array => {
   const result = JsonValue.fromUnknown(value);
@@ -1160,6 +1172,78 @@ describe("ByteLength", () => {
 });
 
 describe("ByteSizeLiteral", () => {
+  it("reports its own error and retains the underlying union failure", () => {
+    for (const value of ["1MB", "", "1024KiB", 1024, null, undefined]) {
+      const result = ByteSizeLiteral.fromUnknown(value);
+      assertErr(result);
+      assertType<typeof result.error, InferErrors<typeof ByteSizeLiteral>>();
+      assertEqual(result.error.type, "ByteSizeLiteral");
+      assertSame(result.error.value, value);
+      assertEqual(result.error.cause.type, "Union");
+      assertEqual(result.error.cause.errors.length, 1);
+      assertEqual(result.error.cause.errors[0].index, 0);
+      assertEqual(result.error.cause.errors[0].error.type, "Union");
+    }
+
+    const result = ByteSizeLiteral.fromUnknown("1MB", { errors: "all" });
+    assertErr(result);
+    assertEqual(result.error.cause.errors.length, 5);
+    const message =
+      'The value "1MB" is not a byte-size literal. Use a value such as "512KiB" or "1MiB".';
+    assertEqual(ByteSizeLiteral.formatError(result.error), message);
+    assertEqual(typeErrorToIssues(ByteSizeLiteral, result.error), [
+      { path: [], message },
+    ]);
+  });
+
+  it("preserves literal types and identity encoding", () => {
+    // @ts-expect-error ByteSizeLiteral Input accepts binary-unit literals, not "1MB".
+    const _invalidInput: typeof ByteSizeLiteral.Input = "1MB";
+    assertType<
+      InferErrors<typeof ByteSizeLiteral>["type"],
+      "ByteSizeLiteral"
+    >();
+    assertEqual(ByteSizeLiteral.name, "ByteSizeLiteral");
+    assertOk(ByteSizeLiteral.from("512KiB"), "512KiB");
+    assertEqual(ByteSizeLiteral.to("512KiB"), "512KiB");
+  });
+
+  it("preserves localized messages and ENV paths through composition", async () => {
+    const { custom } = localizeTypes(
+      { Size: ByteSizeLiteral },
+      { custom: { ByteSizeLiteral: () => "Custom byte size." } },
+    );
+    const Env = env({
+      APP: { quota: withDefault(optional(custom.Size), "1MiB") },
+    });
+    const { cs } = localizeTypes(
+      { Env },
+      {
+        cs: {
+          ByteSizeLiteral: formatByteSizeLiteralError,
+          Object: formatObjectError,
+          String: formatStringError,
+          CamelCaseIdentifier: formatIdentifierError,
+        },
+      },
+    );
+    assertEqual(cs.Env.orThrow({}).quota, "1MiB");
+    const supplied = cs.Env.orThrow({ APP_QUOTA: "512KiB" });
+    assertEqual({ ...cs.Env.to(supplied) }, { APP_QUOTA: "512KiB" });
+    const result = cs.Env.fromUnknown({ APP_QUOTA: "1MB" });
+    assertErr(result);
+    const message =
+      'Hodnota "1MB" není literál velikosti v bajtech. Použijte hodnotu jako "512KiB" nebo "1MiB".';
+    assertEqual(cs.Env.formatError(result.error), message);
+    assertEqual(typeErrorToIssues(cs.Env, result.error), [
+      { path: ["APP_QUOTA"], message },
+    ]);
+    assertEqual(await cs.Env["~standard"].validate({ APP_QUOTA: "1MB" }), {
+      issues: [{ path: ["APP_QUOTA"], message }],
+    });
+    assertEqual(Env.formatError(result.error), "Custom byte size.");
+  });
+
   it("accepts each unit within its bounds", () => {
     for (const value of [
       "0B",

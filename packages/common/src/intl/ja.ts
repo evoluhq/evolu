@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -550,3 +553,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** JsonError を日本語でフォーマットします。 */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `値 ${safelyStringifyUnknownValue(error.value)} を JsonValue として解析できません。`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} はバイトサイズのリテラルではありません。"512KiB" または "1MiB" のような値を使用してください。`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} は期間のリテラルではありません。"500ms" または "1.5s" のような値を使用してください。`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `値 ${safelyStringifyUnknownValue(error.value)} はパーセントのリテラルではありません。"50%" または "12.5%" のような値を使用してください。`;

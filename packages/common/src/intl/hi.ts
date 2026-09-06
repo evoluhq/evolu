@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** JsonError को हिंदी में format करता है। */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `मान ${safelyStringifyUnknownValue(error.value)} को JsonValue में parse नहीं किया जा सकता।`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} बाइट आकार का लिटरल नहीं है। "512KiB" या "1MiB" जैसे मान का उपयोग करें।`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} अवधि का लिटरल नहीं है। "500ms" या "1.5s" जैसे मान का उपयोग करें।`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `मान ${safelyStringifyUnknownValue(error.value)} प्रतिशत का लिटरल नहीं है। "50%" या "12.5%" जैसे मान का उपयोग करें।`;

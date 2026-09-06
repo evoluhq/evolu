@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -550,3 +553,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Formaterar ett JsonError på svenska. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Värdet ${safelyStringifyUnknownValue(error.value)} kan inte tolkas som ett JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en literal för en storlek i byte. Använd ett värde som "512KiB" eller "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en varaktighetsliteral. Använd ett värde som "500ms" eller "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Värdet ${safelyStringifyUnknownValue(error.value)} är inte en procentliteral. Använd ett värde som "50%" eller "12.5%".`;

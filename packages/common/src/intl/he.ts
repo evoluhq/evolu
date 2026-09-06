@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -548,3 +551,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** מעצב שגיאת JsonError בעברית. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `לא ניתן לנתח את הערך ${safelyStringifyUnknownValue(error.value)} ל-JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו ליטרל של גודל בבתים. יש להשתמש בערך כגון "512KiB" או "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו ליטרל של משך זמן. יש להשתמש בערך כגון "500ms" או "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `הערך ${safelyStringifyUnknownValue(error.value)} אינו ליטרל של אחוזים. יש להשתמש בערך כגון "50%" או "12.5%".`;

@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -480,3 +483,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Formats a JsonError in Arabic. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `لا يمكن تحليل القيمة ${safelyStringifyUnknownValue(error.value)} إلى JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست قيمة حرفية لحجم بالبايت. استخدم قيمة مثل "512KiB" أو "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست قيمة حرفية لمدة زمنية. استخدم قيمة مثل "500ms" أو "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `القيمة ${safelyStringifyUnknownValue(error.value)} ليست قيمة حرفية لنسبة مئوية. استخدم قيمة مثل "50%" أو "12.5%".`;

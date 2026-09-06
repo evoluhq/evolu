@@ -1,6 +1,8 @@
 import { afterEach, describe, it, mock } from "node:test";
 import {
   assertEqual,
+  assertErr,
+  assertOk,
   assertFalse,
   assertLength,
   assertSame,
@@ -37,7 +39,15 @@ import {
   saturateMillis,
   testCreateTime,
 } from "./Time.ts";
-import { assertType, type DateIso, NonNaNNumber } from "./Type.ts";
+import {
+  localizeTypes,
+  object,
+  typeErrorToIssues,
+  type InferErrors,
+  assertType,
+  type DateIso,
+  NonNaNNumber,
+} from "./Type.ts";
 
 const negativeMillisCause = {
   type: "NonNegative",
@@ -736,6 +746,58 @@ describe("Time", () => {
   });
 
   describe("DurationLiteral", () => {
+    it("reports a dedicated error with the original validation failure", () => {
+      for (const value of ["60s", "", 1, null, undefined]) {
+        const result = DurationLiteral.fromUnknown(value);
+        assertErr(result);
+        assertType<typeof result.error.type, "DurationLiteral">();
+        assertSame(result.error.value, value);
+        assertEqual(result.error.cause.type, "Union");
+        assertEqual(result.error.cause.errors.length, 1);
+      }
+      const result = DurationLiteral.fromUnknown("60s", { errors: "all" });
+      assertErr(result);
+      assertEqual(result.error.cause.errors.length, 7);
+      assertEqual(
+        DurationLiteral.formatError(result.error),
+        'The value "60s" is not a duration literal. Use a value such as "500ms" or "1.5s".',
+      );
+      assertType<
+        InferErrors<typeof DurationLiteral>["type"],
+        "DurationLiteral"
+      >();
+      assertOk(DurationLiteral.from("1.5s"), "1.5s");
+      assertEqual(DurationLiteral.to("1.5s"), "1.5s");
+      // @ts-expect-error DurationLiteral Input rejects "60s".
+      const _invalidInput: typeof DurationLiteral.Input = "60s";
+    });
+
+    it("localizes the named error after composition and preserves its path", async () => {
+      const { first } = localizeTypes(
+        { Value: DurationLiteral },
+        { first: { DurationLiteral: () => "First message." } },
+      );
+      const { second } = localizeTypes(
+        { Settings: object({ value: first.Value }) },
+        {
+          second: {
+            Object: () => "Object.",
+            DurationLiteral: () => "Second message.",
+          },
+        },
+      );
+      const result = second.Settings.fromUnknown({ value: "60s" });
+      assertErr(result);
+      assertEqual(second.Settings.formatError(result.error), "Second message.");
+      assertEqual(typeErrorToIssues(second.Settings, result.error), [
+        { path: ["value"], message: "Second message." },
+      ]);
+      assertEqual(
+        await second.Settings["~standard"].validate({ value: "60s" }),
+        { issues: [{ path: ["value"], message: "Second message." }] },
+      );
+    });
+
     it("valid durations", () => {
       // Milliseconds
       assertType<"1ms" extends DurationLiteral ? true : false, true>();

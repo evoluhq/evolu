@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Muotoilee JsonError-virheen suomeksi. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Arvoa ${safelyStringifyUnknownValue(error.value)} ei voida jäsentää JsonValue-arvoksi.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole tavukoon literaali. Käytä arvoa kuten "512KiB" tai "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole keston literaali. Käytä arvoa kuten "500ms" tai "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Arvo ${safelyStringifyUnknownValue(error.value)} ei ole prosenttiliteraali. Käytä arvoa kuten "50%" tai "12.5%".`;

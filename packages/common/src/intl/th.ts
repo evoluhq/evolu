@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -544,3 +547,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** จัดรูปแบบ JsonError เป็นภาษาไทย */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `ไม่สามารถแยกวิเคราะห์ค่า ${safelyStringifyUnknownValue(error.value)} เป็น JsonValue ได้`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ลิเทอรัลขนาดไบต์ ใช้ค่าเช่น "512KiB" หรือ "1MiB"`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ลิเทอรัลระยะเวลา ใช้ค่าเช่น "500ms" หรือ "1.5s"`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `ค่า ${safelyStringifyUnknownValue(error.value)} ไม่ใช่ลิเทอรัลเปอร์เซ็นต์ ใช้ค่าเช่น "50%" หรือ "12.5%"`;

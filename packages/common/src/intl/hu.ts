@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -447,3 +450,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem elemezhető JsonValue-vá.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem bájtméret-literál. Használjon például "512KiB" vagy "1MiB" értéket.`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem időtartam-literál. Használjon például "500ms" vagy "1.5s" értéket.`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `A(z) ${safelyStringifyUnknownValue(error.value)} érték nem százalékliterál. Használjon például "50%" vagy "12.5%" értéket.`;

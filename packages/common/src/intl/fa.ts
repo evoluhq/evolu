@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** JsonError را به فارسی قالب‌بندی می‌کند. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `مقدار ${safelyStringifyUnknownValue(error.value)} را نمی‌توان به JsonValue parse کرد.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار لفظی اندازه بر حسب بایت نیست. از مقداری مانند "512KiB" یا "1MiB" استفاده کنید.`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار لفظی مدت زمان نیست. از مقداری مانند "500ms" یا "1.5s" استفاده کنید.`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `مقدار ${safelyStringifyUnknownValue(error.value)} یک مقدار لفظی درصد نیست. از مقداری مانند "50%" یا "12.5%" استفاده کنید.`;

@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -547,3 +550,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** JsonError를 한국어로 포맷합니다. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `${safelyStringifyUnknownValue(error.value)} 값을 JsonValue로 파싱할 수 없습니다.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `값 ${safelyStringifyUnknownValue(error.value)}은(는) 바이트 크기 리터럴이 아닙니다. "512KiB" 또는 "1MiB" 같은 값을 사용하세요.`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `값 ${safelyStringifyUnknownValue(error.value)}은(는) 기간 리터럴이 아닙니다. "500ms" 또는 "1.5s" 같은 값을 사용하세요.`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `값 ${safelyStringifyUnknownValue(error.value)}은(는) 백분율 리터럴이 아닙니다. "50%" 또는 "12.5%" 같은 값을 사용하세요.`;

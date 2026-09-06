@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -472,3 +475,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** JsonError کو اردو میں فارمیٹ کرتا ہے۔ */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `قدر ${safelyStringifyUnknownValue(error.value)} کو JsonValue میں parse نہیں کیا جا سکتا۔`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} بائٹ کے حجم کا لٹرل نہیں ہے۔ "512KiB" یا "1MiB" جیسی قدر استعمال کریں۔`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} دورانیے کا لٹرل نہیں ہے۔ "500ms" یا "1.5s" جیسی قدر استعمال کریں۔`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `قدر ${safelyStringifyUnknownValue(error.value)} فیصد کا لٹرل نہیں ہے۔ "50%" یا "12.5%" جیسی قدر استعمال کریں۔`;

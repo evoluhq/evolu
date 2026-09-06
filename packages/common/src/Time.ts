@@ -13,12 +13,19 @@
  * @module
  */
 
+import { safelyStringifyUnknownValue } from "./String.ts";
 import { assert } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import { exhaustiveCheck } from "./Function.ts";
 import type { yieldNow } from "./Task.ts";
 import {
   brand,
+  createTypeWithError,
+  type Type,
+  type TypeError,
+  type UnionError,
+  type UnionType,
+  type TemplateLiteralType,
   type DateIso,
   Digit,
   Digit1To23,
@@ -427,8 +434,18 @@ export type Duration = DurationLiteral | Millis;
  */
 export type PositiveDuration = DurationLiteral | PositiveMillis;
 
+// Keep these annotations concrete. Generic unit wrappers add thousands of
+// compiler instantiations to pnpm bench:type.
 /** Milliseconds duration: `"1ms"` to `"999ms"`. See {@link DurationLiteral}. */
-export const DurationLiteralMilliseconds = /*#__PURE__*/ union(
+export const DurationLiteralMilliseconds: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To9, "ms"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, "ms"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, "ms"]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To9, "ms"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "ms"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "ms"),
@@ -440,7 +457,14 @@ export type DurationLiteralMilliseconds =
  * Seconds duration: `"1s"` to `"59s"` or `"1.1s"` to `"59.9s"`. See
  * {@link DurationLiteral}.
  */
-export const DurationLiteralSeconds = /*#__PURE__*/ union(
+export const DurationLiteralSeconds: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To59, "s"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To59, ".", typeof Digit1To9, "s"]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To59, "s"),
   /*#__PURE__*/ templateLiteral(Digit1To59, ".", Digit1To9, "s"),
 );
@@ -450,7 +474,14 @@ export type DurationLiteralSeconds = typeof DurationLiteralSeconds.Output;
  * Minutes duration: `"1m"` to `"59m"` or `"1.1m"` to `"59.9m"`. See
  * {@link DurationLiteral}.
  */
-export const DurationLiteralMinutes = /*#__PURE__*/ union(
+export const DurationLiteralMinutes: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To59, "m"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To59, ".", typeof Digit1To9, "m"]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To59, "m"),
   /*#__PURE__*/ templateLiteral(Digit1To59, ".", Digit1To9, "m"),
 );
@@ -460,7 +491,14 @@ export type DurationLiteralMinutes = typeof DurationLiteralMinutes.Output;
  * Hours duration: `"1h"` to `"23h"` or `"1.1h"` to `"23.9h"`. See
  * {@link DurationLiteral}.
  */
-export const DurationLiteralHours = /*#__PURE__*/ union(
+export const DurationLiteralHours: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To23, "h"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To23, ".", typeof Digit1To9, "h"]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To23, "h"),
   /*#__PURE__*/ templateLiteral(Digit1To23, ".", Digit1To9, "h"),
 );
@@ -470,7 +508,14 @@ export type DurationLiteralHours = typeof DurationLiteralHours.Output;
  * Days duration: `"1d"` to `"6d"` or `"1.1d"` to `"6.9d"`. See
  * {@link DurationLiteral}.
  */
-export const DurationLiteralDays = /*#__PURE__*/ union(
+export const DurationLiteralDays: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To6, "d"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To6, ".", typeof Digit1To9, "d"]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To6, "d"),
   /*#__PURE__*/ templateLiteral(Digit1To6, ".", Digit1To9, "d"),
 );
@@ -480,7 +525,14 @@ export type DurationLiteralDays = typeof DurationLiteralDays.Output;
  * Weeks duration: `"1w"` to `"51w"` or `"1.1w"` to `"51.9w"`. See
  * {@link DurationLiteral}.
  */
-export const DurationLiteralWeeks = /*#__PURE__*/ union(
+export const DurationLiteralWeeks: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To51, "w"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To51, ".", typeof Digit1To9, "w"]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To51, "w"),
   /*#__PURE__*/ templateLiteral(Digit1To51, ".", Digit1To9, "w"),
 );
@@ -490,11 +542,37 @@ export type DurationLiteralWeeks = typeof DurationLiteralWeeks.Output;
  * Years duration: `"1y"` to `"99y"` or `"1.1y"` to `"99.9y"`. See
  * {@link DurationLiteral}.
  */
-export const DurationLiteralYears = /*#__PURE__*/ union(
+export const DurationLiteralYears: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To99, "y"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To99, ".", typeof Digit1To9, "y"]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To99, "y"),
   /*#__PURE__*/ templateLiteral(Digit1To99, ".", Digit1To9, "y"),
 );
 export type DurationLiteralYears = typeof DurationLiteralYears.Output;
+
+export type DurationLiteral =
+  | DurationLiteralMilliseconds
+  | DurationLiteralSeconds
+  | DurationLiteralMinutes
+  | DurationLiteralHours
+  | DurationLiteralDays
+  | DurationLiteralWeeks
+  | DurationLiteralYears;
+
+const durationLiteralSyntax = /*#__PURE__*/ union(
+  DurationLiteralMilliseconds,
+  DurationLiteralSeconds,
+  DurationLiteralMinutes,
+  DurationLiteralHours,
+  DurationLiteralDays,
+  DurationLiteralWeeks,
+  DurationLiteralYears,
+);
 
 /**
  * Duration literal Type with compile-time and runtime validation.
@@ -524,6 +602,8 @@ export type DurationLiteralYears = typeof DurationLiteralYears.Output;
  * See {@link Duration} for a type that also accepts {@link Millis}. Use
  * {@link durationToMillis} to convert to milliseconds.
  *
+ * Invalid values produce a {@link DurationLiteralError}.
+ *
  * ### Example
  *
  * ```ts
@@ -543,16 +623,33 @@ export type DurationLiteralYears = typeof DurationLiteralYears.Output;
  * assertFalse(DurationLiteral.is("1000ms"));
  * ```
  */
-export const DurationLiteral = /*#__PURE__*/ union(
-  DurationLiteralMilliseconds,
-  DurationLiteralSeconds,
-  DurationLiteralMinutes,
-  DurationLiteralHours,
-  DurationLiteralDays,
-  DurationLiteralWeeks,
-  DurationLiteralYears,
+export const DurationLiteral: Type<
+  "DurationLiteral",
+  DurationLiteral,
+  DurationLiteral,
+  DurationLiteralError
+> = /*#__PURE__*/ createTypeWithError(
+  "DurationLiteral",
+  durationLiteralSyntax,
+  (cause, value): DurationLiteralError => ({
+    type: "DurationLiteral",
+    value,
+    cause,
+  }),
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a duration literal. Use a value such as "500ms" or "1.5s".`,
 );
-export type DurationLiteral = typeof DurationLiteral.Output;
+
+/** Error returned when {@link DurationLiteral} rejects a value. */
+export interface DurationLiteralError extends TypeError<"DurationLiteral"> {
+  readonly value: unknown;
+  /**
+   * The underlying union failure, retained for diagnostics.
+   *
+   * With `{ errors: "all" }`, includes every failed alternative.
+   */
+  readonly cause: UnionError;
+}
 
 /**
  * Converts a duration to milliseconds.

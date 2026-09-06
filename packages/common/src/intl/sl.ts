@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Formats a JsonError in Slovene. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Vrednosti ${safelyStringifyUnknownValue(error.value)} ni mogoče razčleniti v JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni literal velikosti v bajtih. Uporabite vrednost, kot je "512KiB" ali "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni literal trajanja. Uporabite vrednost, kot je "500ms" ali "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Vrednost ${safelyStringifyUnknownValue(error.value)} ni odstotni literal. Uporabite vrednost, kot je "50%" ali "12.5%".`;

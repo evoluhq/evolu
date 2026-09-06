@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -542,3 +545,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** 以简体中文格式化 JsonError。 */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `值 ${safelyStringifyUnknownValue(error.value)} 无法解析为 JsonValue。`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是字节大小字面量。请使用 "512KiB" 或 "1MiB" 这样的值。`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是时长字面量。请使用 "500ms" 或 "1.5s" 这样的值。`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `值 ${safelyStringifyUnknownValue(error.value)} 不是百分比字面量。请使用 "50%" 或 "12.5%" 这样的值。`;

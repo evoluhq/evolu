@@ -10780,7 +10780,25 @@ export type Digit1To6 = typeof Digit1To6.Output;
  *
  * @group String
  */
-export const Digit1To23 = /*#__PURE__*/ union(
+export const Digit1To23: UnionType<
+  readonly [
+    typeof Digit1To9,
+    TemplateLiteralType<readonly ["1", typeof Digit]>,
+    TemplateLiteralType<
+      readonly [
+        "2",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+      ]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   Digit1To9,
   /*#__PURE__*/ templateLiteral("1", Digit),
   /*#__PURE__*/ templateLiteral("2", /*#__PURE__*/ union("0", "1", "2", "3")),
@@ -10792,7 +10810,27 @@ export type Digit1To23 = typeof Digit1To23.Output;
  *
  * @group String
  */
-export const Digit1To51 = /*#__PURE__*/ union(
+export const Digit1To51: UnionType<
+  readonly [
+    typeof Digit1To9,
+    TemplateLiteralType<
+      readonly [
+        UnionType<
+          readonly [
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+            LiteralType<"4">,
+          ]
+        >,
+        typeof Digit,
+      ]
+    >,
+    TemplateLiteralType<
+      readonly ["5", UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   Digit1To9,
   /*#__PURE__*/ templateLiteral(/*#__PURE__*/ union("1", "2", "3", "4"), Digit),
   /*#__PURE__*/ templateLiteral("5", /*#__PURE__*/ union("0", "1")),
@@ -10804,7 +10842,12 @@ export type Digit1To51 = typeof Digit1To51.Output;
  *
  * @group String
  */
-export const Digit1To99 = /*#__PURE__*/ union(
+export const Digit1To99: UnionType<
+  readonly [
+    typeof Digit1To9,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit]>,
+  ]
+> = /*#__PURE__*/ union(
   Digit1To9,
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit),
 );
@@ -10815,7 +10858,25 @@ export type Digit1To99 = typeof Digit1To99.Output;
  *
  * @group String
  */
-export const Digit1To59 = /*#__PURE__*/ union(
+export const Digit1To59: UnionType<
+  readonly [
+    typeof Digit1To9,
+    TemplateLiteralType<
+      readonly [
+        UnionType<
+          readonly [
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+            LiteralType<"4">,
+            LiteralType<"5">,
+          ]
+        >,
+        typeof Digit,
+      ]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   Digit1To9,
   /*#__PURE__*/ templateLiteral(
     /*#__PURE__*/ union("1", "2", "3", "4", "5"),

@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -550,3 +553,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Formatează un JsonError în română. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Valoarea ${safelyStringifyUnknownValue(error.value)} nu poate fi analizată ca JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un literal de dimensiune în octeți. Folosiți o valoare precum "512KiB" sau "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un literal de durată. Folosiți o valoare precum "500ms" sau "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Valoarea ${safelyStringifyUnknownValue(error.value)} nu este un literal de procentaj. Folosiți o valoare precum "50%" sau "12.5%".`;

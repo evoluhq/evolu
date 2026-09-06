@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type {
@@ -549,3 +552,21 @@ export const formatJsonValueError: TypeErrorFormatter<JsonValueError> = (
 /** Formats a JsonError in Czech. */
 export const formatJsonError: TypeErrorFormatter<JsonError> = (error) =>
   `Hodnotu ${safelyStringifyUnknownValue(error.value)} nelze parsovat jako JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} není literál velikosti v bajtech. Použijte hodnotu jako "512KiB" nebo "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} není literál délky trvání. Použijte hodnotu jako "500ms" nebo "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Hodnota ${safelyStringifyUnknownValue(error.value)} není procentní literál. Použijte hodnotu jako "50%" nebo "12.5%".`;

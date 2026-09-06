@@ -4,6 +4,9 @@
  * @module
  */
 
+import type { DurationLiteralError } from "../Time.ts";
+import type { PercentageLiteralError } from "../Number.ts";
+import type { ByteSizeLiteralError } from "../Bytes.ts";
 import { assertNonNullable } from "../Assert.ts";
 import { safelyStringifyUnknownValue } from "../String.ts";
 import type * as T from "../Type.ts";
@@ -376,3 +379,21 @@ export const formatJsonValueError: T.TypeErrorFormatter<T.JsonValueError> = (
 };
 export const formatJsonError: T.TypeErrorFormatter<T.JsonError> = (error) =>
   `Thamani ${safelyStringifyUnknownValue(error.value)} haiwezi kuchanganuliwa kuwa JsonValue.`;
+
+/** Formats a {@link ByteSizeLiteralError}. */
+export const formatByteSizeLiteralError: T.TypeErrorFormatter<
+  ByteSizeLiteralError
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si literali ya ukubwa kwa baiti. Tumia thamani kama "512KiB" au "1MiB".`;
+
+/** Formats a {@link DurationLiteralError}. */
+export const formatDurationLiteralError: T.TypeErrorFormatter<
+  DurationLiteralError
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si literali ya muda. Tumia thamani kama "500ms" au "1.5s".`;
+
+/** Formats a {@link PercentageLiteralError}. */
+export const formatPercentageLiteralError: T.TypeErrorFormatter<
+  PercentageLiteralError
+> = (error) =>
+  `Thamani ${safelyStringifyUnknownValue(error.value)} si literali ya asilimia. Tumia thamani kama "50%" au "12.5%".`;

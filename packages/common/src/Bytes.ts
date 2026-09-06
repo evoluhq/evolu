@@ -26,6 +26,7 @@ import { err, ok, type Result } from "./Result.ts";
 import { safelyStringifyUnknownValue } from "./String.ts";
 import {
   brand,
+  createTypeWithError,
   Digit,
   Digit1To9,
   type FiniteNumber,
@@ -34,9 +35,14 @@ import {
   type PositiveInt,
   String,
   templateLiteral,
+  type TemplateLiteralType,
+  type LiteralType,
+  type UnionType,
   transform,
+  type Type,
   type TypeError,
   union,
+  type UnionError,
 } from "./Type.ts";
 export { bytesToHex, concatBytes, hexToBytes } from "@noble/ciphers/utils.js";
 export { bytesToUtf8, utf8ToBytes };
@@ -162,7 +168,7 @@ export const createBuffer = (
   arrayLike?: Uint8Array | ArrayLike<number>,
 ): Buffer => {
   const initialLength = arrayLike?.length ?? 0;
-  assertNonNegativeInt(initialLength, "arrayLike.length");
+  assertBufferNonNegativeInt(initialLength, "arrayLike.length");
 
   let value = arrayLike ? new Uint8Array(arrayLike) : new Uint8Array(512);
   let length = initialLength;
@@ -174,10 +180,10 @@ export const createBuffer = (
 
     extend: (arg) => {
       const argLength = arg.length;
-      assertNonNegativeInt(argLength, "arg.length");
+      assertBufferNonNegativeInt(argLength, "arg.length");
 
       const targetSize = length + argLength;
-      assertNonNegativeInt(targetSize, "Buffer length");
+      assertBufferNonNegativeInt(targetSize, "Buffer length");
 
       if (value.length < targetSize) {
         const oldValue = value;
@@ -360,7 +366,7 @@ export const decodeNonNegativeInt = (buffer: Buffer): NonNegativeInt => {
   }
 
   const value = Number(result);
-  assertNonNegativeInt(value, "Decoded integer");
+  assertBufferNonNegativeInt(value, "Decoded integer");
   return value;
 };
 
@@ -369,7 +375,7 @@ export const encodeLength = (
   buffer: Buffer,
   value: ArrayLike<unknown>,
 ): void => {
-  assertNonNegativeInt(value.length, "Array-like length");
+  assertBufferNonNegativeInt(value.length, "Array-like length");
   encodeNonNegativeInt(buffer, value.length);
 };
 
@@ -835,12 +841,12 @@ const writeJsonEncoderByte = (value: number): void => {
 
 const ensureJsonEncoderCapacity = (additionalLength: number): void => {
   const requiredLength = jsonEncoderPosition + additionalLength;
-  assertNonNegativeInt(requiredLength, "Encoded JSON value length");
+  assertBufferNonNegativeInt(requiredLength, "Encoded JSON value length");
 
   if (requiredLength <= jsonEncoderTarget.length) return;
 
   const newCapacity = Math.max(jsonEncoderTarget.length * 2, requiredLength);
-  assertNonNegativeInt(newCapacity, "JSON encoder capacity");
+  assertBufferNonNegativeInt(newCapacity, "JSON encoder capacity");
 
   const oldTarget = jsonEncoderTarget;
   jsonEncoderTarget = new Uint8Array(newCapacity);
@@ -1377,7 +1383,7 @@ const assertJsonDecoderHasRemainingBytes = (requiredBytes: number): void => {
   }
 };
 
-const assertNonNegativeInt: (
+const assertBufferNonNegativeInt: (
   value: number,
   name: string,
 ) => asserts value is NonNegativeInt = (value, name) => {
@@ -1434,8 +1440,40 @@ export interface ByteLengthError extends TypeError<"ByteLength"> {
 const Digit0To1 = /*#__PURE__*/ union("0", "1");
 const Digit0To3 = /*#__PURE__*/ union("0", "1", "2", "3");
 
+// Keep these annotations concrete. Generic unit wrappers add thousands of
+// compiler instantiations to pnpm bench:type.
 /** Bytes: `"0B"` to `"1023B"`. See {@link ByteSizeLiteral}. */
-export const ByteSizeLiteralBytes = /*#__PURE__*/ union(
+export const ByteSizeLiteralBytes: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit, "B"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, "B"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, "B"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        "B",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        "B",
+      ]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit, "B"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "B"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "B"),
@@ -1448,7 +1486,64 @@ export type ByteSizeLiteralBytes = typeof ByteSizeLiteralBytes.Output;
  * KiB: `"1KiB"` to `"1023KiB"` or `"1.5KiB"` to `"1023.5KiB"`. See
  * {@link ByteSizeLiteral}.
  */
-export const ByteSizeLiteralKiB = /*#__PURE__*/ union(
+export const ByteSizeLiteralKiB: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To9, "KiB"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, "KiB"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, "KiB"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        "KiB",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        "KiB",
+      ]
+    >,
+    TemplateLiteralType<readonly [typeof Digit1To9, ".5KiB"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, ".5KiB"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, ".5KiB"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        ".5KiB",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        ".5KiB",
+      ]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To9, "KiB"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "KiB"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "KiB"),
@@ -1466,7 +1561,64 @@ export type ByteSizeLiteralKiB = typeof ByteSizeLiteralKiB.Output;
  * MiB: `"1MiB"` to `"1023MiB"` or `"1.5MiB"` to `"1023.5MiB"`. See
  * {@link ByteSizeLiteral}.
  */
-export const ByteSizeLiteralMiB = /*#__PURE__*/ union(
+export const ByteSizeLiteralMiB: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To9, "MiB"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, "MiB"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, "MiB"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        "MiB",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        "MiB",
+      ]
+    >,
+    TemplateLiteralType<readonly [typeof Digit1To9, ".5MiB"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, ".5MiB"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, ".5MiB"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        ".5MiB",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        ".5MiB",
+      ]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To9, "MiB"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "MiB"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "MiB"),
@@ -1484,7 +1636,64 @@ export type ByteSizeLiteralMiB = typeof ByteSizeLiteralMiB.Output;
  * GiB: `"1GiB"` to `"1023GiB"` or `"1.5GiB"` to `"1023.5GiB"`. See
  * {@link ByteSizeLiteral}.
  */
-export const ByteSizeLiteralGiB = /*#__PURE__*/ union(
+export const ByteSizeLiteralGiB: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To9, "GiB"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, "GiB"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, "GiB"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        "GiB",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        "GiB",
+      ]
+    >,
+    TemplateLiteralType<readonly [typeof Digit1To9, ".5GiB"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, ".5GiB"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, ".5GiB"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        ".5GiB",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        ".5GiB",
+      ]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To9, "GiB"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "GiB"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "GiB"),
@@ -1502,7 +1711,64 @@ export type ByteSizeLiteralGiB = typeof ByteSizeLiteralGiB.Output;
  * TiB: `"1TiB"` to `"1023TiB"` or `"1.5TiB"` to `"1023.5TiB"`. See
  * {@link ByteSizeLiteral}.
  */
-export const ByteSizeLiteralTiB = /*#__PURE__*/ union(
+export const ByteSizeLiteralTiB: UnionType<
+  readonly [
+    TemplateLiteralType<readonly [typeof Digit1To9, "TiB"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, "TiB"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, "TiB"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        "TiB",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        "TiB",
+      ]
+    >,
+    TemplateLiteralType<readonly [typeof Digit1To9, ".5TiB"]>,
+    TemplateLiteralType<readonly [typeof Digit1To9, typeof Digit, ".5TiB"]>,
+    TemplateLiteralType<
+      readonly [typeof Digit1To9, typeof Digit, typeof Digit, ".5TiB"]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "10",
+        UnionType<readonly [LiteralType<"0">, LiteralType<"1">]>,
+        typeof Digit,
+        ".5TiB",
+      ]
+    >,
+    TemplateLiteralType<
+      readonly [
+        "102",
+        UnionType<
+          readonly [
+            LiteralType<"0">,
+            LiteralType<"1">,
+            LiteralType<"2">,
+            LiteralType<"3">,
+          ]
+        >,
+        ".5TiB",
+      ]
+    >,
+  ]
+> = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral(Digit1To9, "TiB"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, "TiB"),
   /*#__PURE__*/ templateLiteral(Digit1To9, Digit, Digit, "TiB"),
@@ -1515,6 +1781,21 @@ export const ByteSizeLiteralTiB = /*#__PURE__*/ union(
   /*#__PURE__*/ templateLiteral("102", Digit0To3, ".5TiB"),
 );
 export type ByteSizeLiteralTiB = typeof ByteSizeLiteralTiB.Output;
+
+export type ByteSizeLiteral =
+  | ByteSizeLiteralBytes
+  | ByteSizeLiteralKiB
+  | ByteSizeLiteralMiB
+  | ByteSizeLiteralGiB
+  | ByteSizeLiteralTiB;
+
+const byteSizeLiteralSyntax = /*#__PURE__*/ union(
+  ByteSizeLiteralBytes,
+  ByteSizeLiteralKiB,
+  ByteSizeLiteralMiB,
+  ByteSizeLiteralGiB,
+  ByteSizeLiteralTiB,
+);
 
 /**
  * Byte length literal Type with compile-time and runtime validation.
@@ -1544,10 +1825,14 @@ export type ByteSizeLiteralTiB = typeof ByteSizeLiteralTiB.Output;
  * See {@link ByteSize} for a type that also accepts {@link ByteLength}. Use
  * {@link byteSizeToByteLength} to convert.
  *
+ * Invalid values produce a {@link ByteSizeLiteralError}.
+ *
  * ### Example
  *
  * ```ts
  * import {
+ *   assertEqual,
+ *   assertErr,
  *   assertFalse,
  *   assertOk,
  *   assertType,
@@ -1564,16 +1849,43 @@ export type ByteSizeLiteralTiB = typeof ByteSizeLiteralTiB.Output;
  * // The runtime Type validates the same grammar.
  * assertOk(ByteSizeLiteral.fromUnknown(literal), "1023MiB");
  * assertFalse(ByteSizeLiteral.is("1024KiB"));
+ *
+ * const invalid = ByteSizeLiteral.fromUnknown("1MB");
+ * assertErr(invalid);
+ * assertEqual(invalid.error.type, "ByteSizeLiteral");
+ * assertEqual(
+ *   ByteSizeLiteral.formatError(invalid.error),
+ *   'The value "1MB" is not a byte-size literal. Use a value such as "512KiB" or "1MiB".',
+ * );
  * ```
  */
-export const ByteSizeLiteral = /*#__PURE__*/ union(
-  ByteSizeLiteralBytes,
-  ByteSizeLiteralKiB,
-  ByteSizeLiteralMiB,
-  ByteSizeLiteralGiB,
-  ByteSizeLiteralTiB,
+export const ByteSizeLiteral: Type<
+  "ByteSizeLiteral",
+  ByteSizeLiteral,
+  ByteSizeLiteral,
+  ByteSizeLiteralError
+> = /*#__PURE__*/ createTypeWithError(
+  "ByteSizeLiteral",
+  byteSizeLiteralSyntax,
+  (cause, value): ByteSizeLiteralError => ({
+    type: "ByteSizeLiteral",
+    value,
+    cause,
+  }),
+  (error) =>
+    `The value ${safelyStringifyUnknownValue(error.value)} is not a byte-size literal. Use a value such as "512KiB" or "1MiB".`,
 );
-export type ByteSizeLiteral = typeof ByteSizeLiteral.Output;
+
+/** Error returned when {@link ByteSizeLiteral} rejects a value. */
+export interface ByteSizeLiteralError extends TypeError<"ByteSizeLiteral"> {
+  readonly value: unknown;
+  /**
+   * The underlying union failure, retained for diagnostics.
+   *
+   * With `{ errors: "all" }`, includes every failed alternative.
+   */
+  readonly cause: UnionError;
+}
 
 /**
  * {@link ByteSizeLiteral} or {@link ByteLength}.
