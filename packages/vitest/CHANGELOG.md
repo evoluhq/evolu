@@ -1,5 +1,36 @@
 # @evolu/vitest
 
+## 2.0.2
+
+### Patch Changes
+
+- 9fc736f: Updated internal Evolu peer dependency requirements
+
+  Aligned internal peer dependency minimums with the current workspace releases. Upgrade the Evolu packages together when updating an adapter or framework integration.
+
+- Updated dependencies [532feaa]
+- Updated dependencies [6bd0a36]
+- Updated dependencies [f4d9ad7]
+- Updated dependencies [3d84543]
+- Updated dependencies [6bd0a36]
+- Updated dependencies [76554bd]
+- Updated dependencies [918d77b]
+- Updated dependencies [f4d9ad7]
+- Updated dependencies [6bd0a36]
+- Updated dependencies [ad85bdb]
+- Updated dependencies [f4d9ad7]
+- Updated dependencies [91ff875]
+- Updated dependencies [ad85bdb]
+- Updated dependencies [6bd0a36]
+- Updated dependencies [140c4cf]
+- Updated dependencies [3d84543]
+- Updated dependencies [3d84543]
+- Updated dependencies [f3b5829]
+- Updated dependencies [ad85bdb]
+- Updated dependencies [f4d9ad7]
+- Updated dependencies [9ee6f15]
+  - @evolu/common@8.10.0
+
 ## 2.0.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@evolu/vitest",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Vitest assertions for Evolu",
   "keywords": [
     "evolu",
@@ -46,7 +46,7 @@
     "vitest": "^4.1.11"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.9.0",
+    "@evolu/common": "^8.10.0",
     "vitest": "^4.1.2"
   },
   "publishConfig": {
