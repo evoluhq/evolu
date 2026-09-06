@@ -35,6 +35,7 @@ import {
   object,
   type ObjectType,
   type UnionType,
+  type withDefault,
 } from "../Type.ts";
 import type { CompileTimeError, Simplify } from "../Types.ts";
 import type { AppOwner } from "./Owner.ts";
@@ -64,6 +65,16 @@ export type AnyStandardSchemaV1 = StandardSchemaV1<any, any>;
  *
  * Table schema defines columns that are required for table rows. For optional
  * columns, use a schema whose output type includes `null`.
+ *
+ * Prefer applying defaults when reading or displaying data. A nullable column
+ * can preserve the distinction between "not specified" and an explicitly chosen
+ * value. For example, `null` can mean no notification preference, while an
+ * explicit false value means notifications were disabled.
+ *
+ * Use {@link withDefault} only when replacing absence is intentional. Storing
+ * defaulted values can add unnecessary data to database rows and erase that
+ * distinction. Store a value when it represents a user's decision or another
+ * fact your application needs to retain.
  *
  * ### Example
  *

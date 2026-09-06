@@ -426,6 +426,8 @@ describe("Type tree shaking", { timeout: 60_000 }, () => {
               assertEqual(value, fixture.expected);
               for (const fragment of [
                 ...base64CapabilityFragments,
+                "A preserved default must equal",
+                "withDefault value must be",
                 ...fixture.excludedCodeFragments,
               ]) {
                 assertFalse(bundle.code.includes(fragment));

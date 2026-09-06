@@ -167,6 +167,8 @@ import {
   Null,
   nullishOr,
   nullOr,
+  withDefault,
+  type Defaulted,
   nullableToOptional,
   Number,
   Object,
@@ -1884,6 +1886,158 @@ describe("localizeTypes", () => {
       ReflectedStrings.formatError(result.error),
       "Localized String.",
     );
+  });
+
+  it("preserves configured defaults while localizing their Types", () => {
+    const defaultValue = { enabled: true };
+    const Selected = createType(
+      "Selected",
+      (value): Result<typeof defaultValue, TypeError<"Selected">> =>
+        value === defaultValue ? ok(defaultValue) : err({ type: "Selected" }),
+      () => "Expected the selected object.",
+    );
+    const Model = object({
+      replaced: withDefault(optional(Selected), defaultValue),
+      preserved: withDefault(optional(Selected), defaultValue, {
+        strategy: "preserve",
+      }),
+    });
+    const formatters = {
+      test: {
+        Object: () => "Localized Object.",
+        Selected: () => "Localized Selected.",
+      },
+    };
+    const localized = localizeTypes({ Model, Selected }, formatters).test;
+
+    for (const types of [
+      localized,
+      localizeTypes(localized, formatters).test,
+    ]) {
+      for (const property of [
+        types.Model.props.replaced,
+        types.Model.props.preserved,
+      ]) {
+        assertSame(property.value, defaultValue);
+        assertSame(property.type, types.Selected);
+        assertTrue(property.type.is(property.value));
+      }
+
+      const Reconstructed = object(types.Model.props);
+      const decoded = Reconstructed.orThrow({});
+      assertSame(decoded.replaced, defaultValue);
+      assertSame(decoded.preserved.value, defaultValue);
+      assertEqual(Reconstructed.to(decoded), { replaced: defaultValue });
+
+      const invalid = Reconstructed.fromUnknown({ replaced: {} });
+      assertErr(invalid);
+      assertEqual(
+        Reconstructed.formatError(invalid.error),
+        "Localized Selected.",
+      );
+    }
+  });
+
+  it("keeps configured default data opaque", () => {
+    const cyclicObject: { self?: unknown } = {};
+    cyclicObject.self = cyclicObject;
+    const cyclicArray: Array<unknown> = [];
+    cyclicArray.push(cyclicArray);
+    const accessor = globalThis.Object.defineProperty({}, "value", {
+      enumerable: true,
+      get: () => {
+        throw new Error("A default getter must not be read.");
+      },
+    });
+
+    for (const defaultValue of [
+      cyclicObject,
+      cyclicArray,
+      accessor,
+      String,
+      { "~evolu/instance": "Type" },
+    ]) {
+      const Model = object({
+        replaced: withDefault(optional(Unknown), defaultValue),
+        preserved: withDefault(optional(Unknown), defaultValue, {
+          strategy: "preserve",
+        }),
+      });
+      const localized = localizeTypes(
+        { Model },
+        { test: { Object: () => "Localized Object." } },
+      ).test.Model;
+
+      assertSame(localized.props.replaced.value, defaultValue);
+      assertSame(localized.props.preserved.value, defaultValue);
+      const decoded = localized.orThrow({});
+      assertSame(decoded.replaced, defaultValue);
+      assertSame(decoded.preserved.value, defaultValue);
+      const encoded = localized.to(decoded);
+      assertSame(encoded.replaced, defaultValue);
+      assertFalse(globalThis.Object.hasOwn(encoded, "preserved"));
+    }
+  });
+
+  it("retains localized errors when making defaulted properties partial", () => {
+    const Model = object({
+      replaced: withDefault(optional(Boolean), true),
+      preserved: withDefault(optional(Boolean), true, {
+        strategy: "preserve",
+      }),
+      ordinary: optional(Boolean),
+    });
+    const first = localizeTypes(
+      { Model },
+      {
+        test: {
+          Boolean: () => "First Boolean.",
+          Object: () => "First Object.",
+        },
+      },
+    ).test.Model;
+    const second = localizeTypes(
+      { Model: first },
+      {
+        test: {
+          Boolean: () => "Second Boolean.",
+          Object: () => "Second Object.",
+        },
+      },
+    ).test.Model;
+
+    for (const [model, message] of [
+      [first, "First Boolean."],
+      [second, "Second Boolean."],
+    ] as const) {
+      const Partial = partial(model.props);
+      const input = { replaced: "bad", preserved: "bad", ordinary: "bad" };
+      const result = Partial.fromUnknown(input, { errors: "all" });
+      assertErr(result);
+      const issues = ["replaced", "preserved", "ordinary"].map((key) => ({
+        path: [key],
+        message,
+      }));
+      assertEqual(typeErrorToIssues(Partial, result.error), issues);
+      assertEqual(Partial.formatError(result.error), message);
+      assertEqual(Partial["~standard"].validate(input), { issues });
+      assertSame(Partial.props.replaced.type.parent, model.props.replaced.type);
+      assertSame(
+        Partial.props.preserved.type.parent,
+        model.props.preserved.type,
+      );
+
+      assertOk(Partial.fromUnknown({}), {});
+      assertEqual(Partial.to({}), {});
+      const supplied = { replaced: false, preserved: false, ordinary: false };
+      const decoded = Partial.orThrow(supplied);
+      assertEqual(decoded, {
+        replaced: false,
+        preserved: { value: false, defaultUsed: false },
+        ordinary: false,
+      });
+      assertEqual(Partial.to(decoded), supplied);
+    }
   });
 
   it("preserves localized child errors when composed afterward", async () => {
@@ -5639,6 +5793,24 @@ describe("union", () => {
           "- 0: PortFromString: The value 65536 must be less than or equal to 65535.",
         ].join("\n"),
       );
+    });
+
+    it("preserves specific failures through nullish defaults", () => {
+      for (const Value of [
+        withDefault(nullOr(PortFromString), Port.orThrow(4000)),
+        withDefault(undefinedOr(PortFromString), Port.orThrow(4000)),
+        withDefault(nullishOr(PortFromString), Port.orThrow(4000)),
+      ]) {
+        const error = assertThrowsInstanceOf(
+          () => Value.orThrow("65536"),
+          Error,
+        );
+        assertTrue(
+          error.message.includes(
+            "The value 65536 must be less than or equal to 65535.",
+          ),
+        );
+      }
     });
   });
 
@@ -15618,6 +15790,521 @@ describe("record", () => {
   });
 });
 
+describe("withDefault", () => {
+  it("accepts nullish defaults when they belong to the wrapped Output", () => {
+    const Nullable = withDefault(nullOr(Boolean), null);
+    assertType<typeof Nullable.Output, boolean | null>();
+    assertOk(Nullable.fromUnknown(null), null);
+    assertEqual(Nullable.to(null), null);
+    assertOk(Nullable.fromUnknown(Nullable.to(false)), false);
+
+    const UndefinedDefault = withDefault(undefinedOr(Boolean), undefined, {
+      strategy: "preserve",
+    });
+    assertType<
+      typeof UndefinedDefault.Output,
+      Defaulted<boolean, undefined, "undefined">
+    >();
+    const decoded = UndefinedDefault.fromUnknown(undefined);
+    assertOk(decoded, {
+      value: undefined,
+      defaultUsed: true,
+      original: "undefined",
+    });
+    assertSame(UndefinedDefault.to(decoded.value), undefined);
+    assertOk(
+      UndefinedDefault.fromUnknown(UndefinedDefault.to(decoded.value)),
+      decoded.value,
+    );
+
+    const Model = object({
+      value: withDefault(optional(nullOr(Boolean)), null, {
+        strategy: "preserve",
+      }),
+    });
+    const missing = Model.fromUnknown({});
+    assertOk(missing, {
+      value: { value: null, defaultUsed: true, original: "missing" },
+    });
+    assertEqual(Model.to(missing.value), {});
+    assertOk(Model.fromUnknown({ value: null }), {
+      value: { value: null, defaultUsed: true, original: "null" },
+    });
+  });
+
+  it("reuses configured object defaults by reference", () => {
+    const defaultValue = { enabled: true };
+    const Value = nullOr(object({ enabled: Boolean }));
+    const Replaced = withDefault(Value, defaultValue);
+    const Preserved = withDefault(Value, defaultValue, {
+      strategy: "preserve",
+    });
+
+    assertSame(Replaced.orThrow(null), defaultValue);
+    assertSame(Replaced.orThrow(null), defaultValue);
+    assertSame(Preserved.orThrow(null).value, defaultValue);
+    assertSame(Preserved.orThrow(null).value, defaultValue);
+  });
+
+  describe("replace", () => {
+    it("accepts object defaults directly, including objects with a value property", () => {
+      const Value = withDefault(nullOr(object({ value: Boolean })), {
+        value: true,
+      });
+
+      assertType<typeof Value.Output.value, boolean>();
+      assertOk(Value.fromUnknown(null), { value: true });
+      assertOk(Value.fromUnknown({ value: false }), { value: false });
+      assertEqual(Value.to({ value: true }), { value: true });
+    });
+
+    it("defaults only decoded absence and emits supplied canonical data", () => {
+      const Value = withDefault(nullishOr(BooleanFromString), true);
+
+      assertType<typeof Value.Output, boolean>();
+      assertType<typeof Value.Input, string | null | undefined>();
+      for (const input of [null, undefined, "true"]) {
+        assertOk(Value.fromUnknown(input), true);
+      }
+      assertOk(Value.fromUnknown("false"), false);
+      assertErr(Value.fromUnknown("wrong"));
+      assertEqual(Value.to(true), "true");
+      assertEqual(Value.to(false), "false");
+      assertOk(Value.fromUnknown(Value.to(false)), false);
+      assertOk(Value.from.parent(null), true);
+      assertEqual(Value.to.parent(true), true);
+      assertFalse(Value.is(null));
+      assertThrowsInstanceOf(() => Value.to(null as never), Error);
+    });
+
+    it("makes optional input required in the output without accepting undefined", () => {
+      const Model = object({
+        enabled: withDefault(optional(Boolean), true),
+      });
+
+      assertType<typeof Model.Input.enabled, boolean | undefined>();
+      assertType<typeof Model.Output.enabled, boolean>();
+      assertOk(Model.fromUnknown({}), { enabled: true });
+      assertOk(Model.from.parent({}), { enabled: true });
+      assertOk(Model.parent.fromUnknown({}), {});
+      assertErr(Model.fromUnknown({ enabled: undefined }));
+      assertErr(Model.fromUnknown({ enabled: null }));
+      assertFalse(Model.is({}));
+      assertTrue(Model.is({ enabled: false }));
+      assertEqual(Model.to({ enabled: true }), { enabled: true });
+      assertOk(Model.fromUnknown(Model.to({ enabled: false })), {
+        enabled: false,
+      });
+    });
+  });
+
+  describe("preserve", () => {
+    it("distinguishes all absence states and explicit values equal to the default", () => {
+      const Model = object({
+        enabled: withDefault(optional(nullishOr(BooleanFromString)), true, {
+          strategy: "preserve",
+        }),
+      });
+      assertType<typeof Model.Output.enabled, Defaulted<boolean, true>>();
+      const cases = [
+        [{}, { value: true, defaultUsed: true, original: "missing" }],
+        [
+          { enabled: null },
+          { value: true, defaultUsed: true, original: "null" },
+        ],
+        [
+          { enabled: undefined },
+          { value: true, defaultUsed: true, original: "undefined" },
+        ],
+        [{ enabled: "true" }, { value: true, defaultUsed: false }],
+        [{ enabled: "false" }, { value: false, defaultUsed: false }],
+      ] as const;
+
+      for (const [input, enabled] of cases) {
+        const result = Model.fromUnknown(input);
+        assertOk(result, { enabled });
+        assertTrue(Model.is(result.value));
+        const encoded = Model.to(result.value);
+        assertEqual(encoded, input);
+        assertOk(Model.fromUnknown(encoded), result.value);
+        assertEqual(
+          globalThis.Object.hasOwn(encoded, "enabled"),
+          globalThis.Object.hasOwn(input, "enabled"),
+        );
+      }
+      assertOk(Model.from.parent({ enabled: "false" }), {
+        enabled: { value: false, defaultUsed: false },
+      });
+    });
+
+    it("narrows original states and rejects impossible output shapes", () => {
+      const Value = withDefault(nullOr(Boolean), true, {
+        strategy: "preserve",
+      });
+      assertType<typeof Value.Output, Defaulted<boolean, true, "null">>();
+      assertOk(Value.fromUnknown(null), {
+        value: true,
+        defaultUsed: true,
+        original: "null",
+      });
+      assertEqual(
+        Value.to({ value: true, defaultUsed: true, original: "null" }),
+        null,
+      );
+      assertFalse(
+        Value.is({ value: false, defaultUsed: true, original: "null" }),
+      );
+      assertFalse(
+        Value.is({ value: true, defaultUsed: true, original: "undefined" }),
+      );
+      assertFalse(
+        Value.is({ value: true, defaultUsed: true, original: "missing" }),
+      );
+      assertFalse(Value.is({ value: null, defaultUsed: false }));
+      assertFalse(
+        Value.is({ value: true, defaultUsed: false, original: "null" }),
+      );
+      const error = assertThrowsInstanceOf(
+        () =>
+          Value.to({
+            value: false,
+            defaultUsed: true,
+            original: "null",
+          } as never),
+        Error,
+      );
+      assertTrue(error.message.length > 0);
+      assertEqual(
+        Value.formatError(error.cause as never),
+        "A preserved default must equal the configured default value.",
+      );
+      for (const [output, message] of [
+        [
+          { value: null, defaultUsed: false },
+          "The value must be a non-nullish Output of its Type or, in replacement mode, the configured default.",
+        ],
+        [
+          { value: true, defaultUsed: true, original: "missing" },
+          "The original absence must be handled by this default declaration.",
+        ],
+      ] as const) {
+        const invalid = assertThrowsInstanceOf(
+          () => Value.to(output as never),
+          Error,
+        );
+        assertEqual(Value.formatError(invalid.cause as never), message);
+      }
+    });
+
+    it("compares structured defaults by value", () => {
+      const Value = withDefault(
+        nullOr(object({ enabled: Boolean })),
+        { enabled: true },
+        { strategy: "preserve" },
+      );
+      const output = {
+        value: { enabled: true },
+        defaultUsed: true,
+        original: "null",
+      } as const;
+      assertTrue(Value.is(output));
+      assertEqual(Value.to(output), null);
+      assertOk(Value.fromUnknown(null), output);
+      assertFalse(Value.is({ ...output, value: { enabled: false } }));
+    });
+
+    it("also validates preserved default values against the wrapped Type", () => {
+      const selected = { enabled: true };
+      const Selected = createType(
+        "Selected",
+        (value): Result<typeof selected, TypeError<"Selected">> =>
+          value === selected ? ok(selected) : err({ type: "Selected" }),
+        () => "Expected the selected object.",
+      );
+      const Value = withDefault(nullOr(Selected), selected, {
+        strategy: "preserve",
+      });
+      assertTrue(
+        Value.is({ value: selected, defaultUsed: true, original: "null" }),
+      );
+      assertFalse(
+        Value.is({
+          value: { ...selected },
+          defaultUsed: true,
+          original: "null",
+        }),
+      );
+    });
+
+    it("uses decoded absence rather than raw input spelling", () => {
+      const Input = transform("AbsentString", String, nullOr(Boolean), {
+        from: (value) => ok(value === "absent" ? null : value === "true"),
+        to: (value) => (value === null ? "absent" : value ? "true" : "false"),
+      });
+      const Value = withDefault(Input, false, { strategy: "preserve" });
+      const decoded = Value.fromUnknown("absent");
+      assertOk(decoded, { value: false, defaultUsed: true, original: "null" });
+      assertEqual(Value.to(decoded.value), "absent");
+      assertOk(Value.fromUnknown("other"), {
+        value: false,
+        defaultUsed: false,
+      });
+    });
+  });
+
+  describe("composition", () => {
+    it("round-trips through arrays and JSON", () => {
+      const Values = array(
+        withDefault(undefinedOr(BooleanFromString), false, {
+          strategy: "preserve",
+        }),
+      );
+      const values = Values.fromUnknown([undefined, "true"]);
+      assertOk(values, [
+        { value: false, defaultUsed: true, original: "undefined" },
+        { value: true, defaultUsed: false },
+      ]);
+      assertEqual(Values.to(values.value), [undefined, "true"]);
+      assertOk(Values.from.parent([undefined, true]), values.value);
+
+      const Model = object({
+        enabled: withDefault(optional(Boolean), true, { strategy: "preserve" }),
+      });
+      const [ModelJson, modelToJson, jsonToModel] = json(
+        Model,
+        "DefaultSettingsJson",
+      );
+      const missing = jsonToModel(ModelJson.orThrow("{}"));
+      assertEqual(missing, {
+        enabled: { value: true, defaultUsed: true, original: "missing" },
+      });
+      assertEqual(modelToJson(missing), "{}");
+      assertEqual(jsonToModel(modelToJson(missing)), missing);
+      assertFalse(
+        Model.is({
+          enabled: { value: false, defaultUsed: true, original: "missing" },
+        }),
+      );
+    });
+
+    it("composes nested objects, ordinary optional fields, and rest records", () => {
+      const Model = object({
+        inner: object({
+          enabled: withDefault(optional(BooleanFromString), true, {
+            strategy: "preserve",
+          }),
+          count: Int64FromInt64String,
+          note: optional(String),
+        }),
+      });
+      const decoded = Model.fromUnknown({ inner: { count: "42" } });
+      assertOk(decoded, {
+        inner: {
+          enabled: { value: true, defaultUsed: true, original: "missing" },
+          count: 42n,
+        },
+      });
+      assertEqual(Model.to(decoded.value), { inner: { count: "42" } });
+
+      const Open = object(
+        {
+          enabled: withDefault(optional(Boolean), true),
+        },
+        record(String, Boolean),
+      );
+      assertOk(Open.fromUnknown({ other: false }), {
+        enabled: true,
+        other: false,
+      });
+      assertEqual(Open.to({ enabled: true, other: false }), {
+        enabled: true,
+        other: false,
+      });
+      assertErr(Open.fromUnknown({ other: "false" }));
+    });
+
+    it("partial disables missing defaults for non-nullish Types in both strategies", () => {
+      const Replaced = partial({
+        enabled: withDefault(optional(Boolean), true),
+      });
+      const Preserved = partial({
+        enabled: withDefault(optional(Boolean), true, { strategy: "preserve" }),
+      });
+
+      assertType<typeof Replaced.Output.enabled, boolean | undefined>();
+      assertType<
+        typeof Preserved.Output.enabled,
+        Defaulted<boolean, true, never> | undefined
+      >();
+      assertOk(Replaced.fromUnknown({}), {});
+      assertOk(Preserved.fromUnknown({}), {});
+      assertOk(Replaced.fromUnknown({ enabled: false }), { enabled: false });
+      const supplied = Preserved.orThrow({ enabled: false });
+      assertEqual(supplied, { enabled: { value: false, defaultUsed: false } });
+      assertEqual(Preserved.to(supplied), { enabled: false });
+      assertEqual(Replaced.to({}), {});
+      assertEqual(Preserved.to({}), {});
+      assertErr(Replaced.fromUnknown({ enabled: undefined }));
+      assertErr(Preserved.fromUnknown({ enabled: null }));
+    });
+
+    it("partial makes missing outputs optional and retains defaults for present null", () => {
+      const Model = partial({
+        enabled: withDefault(optional(nullOr(Boolean)), true, {
+          strategy: "preserve",
+        }),
+      });
+      assertType<
+        typeof Model.Output.enabled,
+        Defaulted<boolean, true, "null"> | undefined
+      >();
+      assertOk(Model.fromUnknown({}), {});
+      const decoded = Model.fromUnknown({ enabled: null });
+      assertOk(decoded, {
+        enabled: { value: true, defaultUsed: true, original: "null" },
+      });
+      assertEqual(Model.to(decoded.value), { enabled: null });
+    });
+
+    it("partial retains replacement defaults for present null", () => {
+      const Model = partial({
+        enabled: withDefault(optional(nullOr(Boolean)), true),
+      });
+
+      assertType<typeof Model.Output.enabled, boolean | undefined>();
+      assertOk(Model.fromUnknown({}), {});
+      assertOk(Model.fromUnknown({ enabled: null }), { enabled: true });
+      assertOk(Model.fromUnknown({ enabled: false }), { enabled: false });
+      assertEqual(Model.to({ enabled: true }), { enabled: true });
+      assertEqual(Model.to({}), {});
+    });
+
+    it("retains error paths, all errors, and never reads accessors", () => {
+      const Model = object({
+        enabled: withDefault(optional(BooleanFromString), true, {
+          strategy: "preserve",
+        }),
+        count: Int64FromInt64String,
+      });
+      const failed = Model.fromUnknown(
+        { enabled: "bad", count: "bad" },
+        { errors: "all" },
+      );
+      assertErr(failed);
+      const issues = typeErrorToIssues(Model, failed.error);
+      assertEqual(
+        issues.map((issue) => issue.path),
+        [["enabled"], ["count"]],
+      );
+      assertTrue(Model.formatError(failed.error).length > 0);
+      const invalidUnion = withDefault(nullOr(BooleanFromString), true, {
+        strategy: "preserve",
+      });
+      const result = invalidUnion.fromUnknown("bad");
+      assertErr(result);
+      assertTrue(invalidUnion.formatError(result.error).length > 0);
+
+      let reads = 0;
+      const input = {
+        get enabled() {
+          reads++;
+          return "true";
+        },
+        count: "42",
+      };
+      assertErr(Model.fromUnknown(input));
+      assertEqual(reads, 0);
+      assertErr(Model.fromUnknown({ extra: 1, count: "42" }));
+      assertErr(Model.fromUnknown(null));
+      assertErr(Model.fromUnknown([]));
+      assertThrowsInstanceOf(
+        () =>
+          Model.to({
+            enabled: { value: true, defaultUsed: false },
+            count: 0 as never,
+          }),
+        Error,
+      );
+    });
+  });
+
+  it("rejects invalid declarations and explicit replacement strategies", () => {
+    assertThrowsInstanceOf(
+      () => withDefault(optional(Boolean), null as never),
+      Error,
+    );
+    assertThrowsInstanceOf(
+      () => withDefault(nullOr(Boolean), "true" as never),
+      Error,
+    );
+    for (const strategy of ["replace", "other"]) {
+      for (const property of [Boolean, optional(Boolean)]) {
+        const error = assertThrowsInstanceOf(
+          () =>
+            withDefault(property as never, true, {
+              strategy: strategy as never,
+            }),
+          Error,
+        );
+        assertEqual(
+          error.message,
+          'withDefault strategy must be omitted or "preserve".',
+        );
+      }
+    }
+    if (false as boolean) {
+      // @ts-expect-error withDefault requires an optional property or a Type whose Output includes null or undefined.
+      withDefault(Boolean, true);
+      // @ts-expect-error withDefault requires an optional property or a Type whose Output includes null or undefined.
+      withDefault(Boolean, true, { strategy: "preserve" });
+      // @ts-expect-error A Boolean default must be a decoded boolean.
+      withDefault(nullOr(BooleanFromString), "true");
+      // @ts-expect-error A Boolean default cannot be null.
+      withDefault(optional(Boolean), null);
+      // @ts-expect-error The default value is required.
+      withDefault(optional(Boolean));
+      // @ts-expect-error A Boolean default must be passed directly, not wrapped in options.
+      withDefault(optional(Boolean), { value: true });
+      // @ts-expect-error The third argument must explicitly request preservation.
+      withDefault(optional(Boolean), true, {});
+      // @ts-expect-error Explicit replacement strategies are not accepted.
+      withDefault(optional(Boolean), true, { strategy: "replace" });
+      // @ts-expect-error Explicit replacement strategies are not accepted.
+      withDefault(nullOr(Boolean), true, { strategy: "replace" });
+      const replacement = { strategy: "replace" } as const;
+      // @ts-expect-error Explicit replacement strategies are not accepted, including in variables.
+      withDefault(optional(Boolean), true, replacement);
+      // @ts-expect-error Explicit replacement strategies are not accepted, including in variables.
+      withDefault(nullOr(Boolean), true, replacement);
+      const uncertain = optional(Boolean) as OptionalProperty<
+        typeof Boolean | typeof String
+      >;
+      // @ts-expect-error Property must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+      withDefault(uncertain, true);
+      const erased = optional(Boolean) as OptionalProperty<TypeNode>;
+      // @ts-expect-error Property must use one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+      withDefault(erased, true);
+      const Conflicting = createType(
+        "WithDefault",
+        (_value): Result<boolean, TypeError<"WithDefault">> =>
+          err({ type: "WithDefault" }),
+        () => "Invalid flag.",
+      );
+      // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+      withDefault(Conflicting, true);
+      // @ts-expect-error Error type must not duplicate an error inherited from the parent Type.
+      withDefault(optional(Conflicting), true, { strategy: "preserve" });
+      // @ts-expect-error Output properties with defaults are required.
+      const invalid: typeof objectWithDefault.Output = {};
+      void invalid;
+    }
+    const objectWithDefault = object({
+      value: withDefault(optional(Boolean), true),
+    });
+    assertOk(objectWithDefault.fromUnknown({}), { value: true });
+  });
+});
+
 describe("optional", () => {
   it("creates a property descriptor that is not a Type", () => {
     const property = optional(String);
@@ -18087,60 +18774,126 @@ describe("object", () => {
       >();
     });
 
-    it("omit removes declared properties and preserves an Object Record", () => {
-      const User = object({ name: String, age: Number });
-      const WithoutAge = omit(User, "age");
-      const WithoutNameAndAge = omit(User, "name", "age");
-      const keys = ["name", "age"] as const;
-      const Empty = omit(User, ...keys);
+    describe("omit", () => {
+      it("removes declared properties and preserves an Object Record", () => {
+        const User = object({ name: String, age: Number });
+        const WithoutAge = omit(User, "age");
+        const WithoutNameAndAge = omit(User, "name", "age");
+        const keys = ["name", "age"] as const;
+        const Empty = omit(User, ...keys);
 
-      assertEqual(WithoutAge.props, { name: String });
-      assertOk(WithoutAge.fromUnknown({ name: "Ada" }), { name: "Ada" });
-      assertFalse(WithoutAge.fromUnknown({ name: "Ada", age: 1 }).ok);
-      assertType<
-        typeof WithoutAge,
-        ObjectType<{ readonly name: typeof String }>
-      >();
-      assertEqual(WithoutNameAndAge.props, {});
-      assertOk(WithoutNameAndAge.fromUnknown({}), {});
-      assertType<typeof WithoutNameAndAge, ObjectType<{}>>();
-      assertEqual(Empty.props, {});
-      assertType<typeof Empty, ObjectType<{}>>();
+        assertEqual(WithoutAge.props, { name: String });
+        assertOk(WithoutAge.fromUnknown({ name: "Ada" }), { name: "Ada" });
+        assertFalse(WithoutAge.fromUnknown({ name: "Ada", age: 1 }).ok);
+        assertType<
+          typeof WithoutAge,
+          ObjectType<{ readonly name: typeof String }>
+        >();
+        assertEqual(WithoutNameAndAge.props, {});
+        assertOk(WithoutNameAndAge.fromUnknown({}), {});
+        assertType<typeof WithoutNameAndAge, ObjectType<{}>>();
+        assertEqual(Empty.props, {});
+        assertType<typeof Empty, ObjectType<{}>>();
 
-      const compileTimeAssertions = (
-        key: "name" | "age",
-        keys: ReadonlyArray<"name" | "age">,
-      ) => {
-        // @ts-expect-error A runtime key must identify one statically known property.
-        omit(User, key);
-        // @ts-expect-error A runtime array does not guarantee which properties are omitted.
-        omit(User, ...keys);
-      };
+        const compileTimeAssertions = (
+          key: "name" | "age",
+          keys: ReadonlyArray<"name" | "age">,
+        ) => {
+          // @ts-expect-error A runtime key must identify one statically known property.
+          omit(User, key);
+          // @ts-expect-error A runtime array does not guarantee which properties are omitted.
+          omit(User, ...keys);
+        };
 
-      const Metadata = object(
-        { name: String, age: Number },
-        record(String, Unknown),
-      );
-      const MetadataWithoutAge = omit(Metadata, "age");
+        const Metadata = object(
+          { name: String, age: Number },
+          record(String, Unknown),
+        );
+        const MetadataWithoutAge = omit(Metadata, "age");
 
-      assertSame(MetadataWithoutAge.record, Metadata.record);
-      assertType<
-        typeof MetadataWithoutAge,
-        ObjectType<
-          { readonly name: typeof String },
-          RecordType<typeof String, typeof Unknown>
-        >
-      >();
-      assertOk(
-        MetadataWithoutAge.fromUnknown({ name: "Ada", age: "unknown" }),
-        { name: "Ada", age: "unknown" },
-      );
-      assertType<
-        typeof compileTimeAssertions extends (...args: Array<never>) => unknown
-          ? true
-          : false,
-        true
-      >();
+        assertSame(MetadataWithoutAge.record, Metadata.record);
+        assertType<
+          typeof MetadataWithoutAge,
+          ObjectType<
+            { readonly name: typeof String },
+            RecordType<typeof String, typeof Unknown>
+          >
+        >();
+        assertOk(
+          MetadataWithoutAge.fromUnknown({ name: "Ada", age: "unknown" }),
+          { name: "Ada", age: "unknown" },
+        );
+        assertType<
+          typeof compileTimeAssertions extends (
+            ...args: Array<never>
+          ) => unknown
+            ? true
+            : false,
+          true
+        >();
+      });
+
+      it("retains defaulted fields and can remove every default", () => {
+        const Model = object({
+          enabled: withDefault(optional(Boolean), true),
+          tracked: withDefault(optional(Boolean), false, {
+            strategy: "preserve",
+          }),
+          name: String,
+        });
+        const Defaults = omit(Model, "name");
+        assertType<typeof Defaults.Output.enabled, boolean>();
+        assertType<
+          typeof Defaults.Output.tracked,
+          Defaulted<boolean, false, "missing">
+        >();
+        const decoded = Defaults.orThrow({});
+        assertEqual(decoded, {
+          enabled: true,
+          tracked: { value: false, defaultUsed: true, original: "missing" },
+        });
+        assertEqual(Defaults.to(decoded), { enabled: true });
+        const Named = omit(Model, "enabled", "tracked");
+        assertType<
+          typeof Named,
+          ObjectType<{ readonly name: typeof String }>
+        >();
+        assertOk(Named.fromUnknown({ name: "Ada" }), { name: "Ada" });
+        assertErr(Named.fromUnknown({ name: "Ada", enabled: true }));
+        const Empty = omit(Model, "enabled", "tracked", "name");
+        assertType<typeof Empty, ObjectType<{}>>();
+        assertOk(Empty.fromUnknown({}), {});
+      });
+
+      it("preserves rest record inference when retaining or removing a default", () => {
+        const Model = object(
+          {
+            enabled: withDefault(optional(Boolean), true),
+            name: String,
+          },
+          record(String, Unknown),
+        );
+        const Defaults = omit(Model, "name");
+        assertSame(Defaults.record, Model.record);
+        assertType<typeof Defaults.Output.enabled, boolean>();
+        assertOk(Defaults.fromUnknown({ other: "value" }), {
+          enabled: true,
+          other: "value",
+        });
+        const Named = omit(Model, "enabled");
+        assertType<
+          typeof Named,
+          ObjectType<
+            { readonly name: typeof String },
+            RecordType<typeof String, typeof Unknown>
+          >
+        >();
+        assertSame(Named.record, Model.record);
+        assertOk(Named.fromUnknown({ name: "Ada", enabled: "rest" }), {
+          name: "Ada",
+          enabled: "rest",
+        });
+      });
     });
   });
 });

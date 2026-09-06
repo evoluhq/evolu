@@ -147,6 +147,19 @@ Run standalone TypeScript scripts directly with Node.js, for example
   `export interface X extends InferType<typeof X> {}`.
 - Use `Brand<"Name">` for opaque handles and values that share a runtime type but
   must not be interchangeable.
+- Symbols used as keys in exported types must retain their unique identity in
+  emitted declarations. `globalThis.Symbol()` can infer `symbol` instead of
+  `unique symbol`, causing computed properties to disappear from emitted
+  declarations and erase type distinctions. Follow the explicit unique-symbol
+  declaration pattern in `Type.ts` and verify the emitted declarations.
+- Define shared symbol keys at module scope so objects and the code reading them
+  use the same runtime key. Creating a key with `Symbol()` inside a function gives
+  each call a different symbol, but TypeScript associates its unique type with
+  the declaration. It can therefore accept an object from another call and allow
+  reading a required property that is actually missing at runtime. Sharing one
+  module-level key prevents this separate mismatch.
+- Runtime-only symbols used as sentinels or identity tokens do not need unique
+  types.
 
 ## Dependency injection and Tasks
 

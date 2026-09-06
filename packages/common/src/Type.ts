@@ -461,6 +461,7 @@ import {
 import { assert, assertNonNullable } from "./Assert.ts";
 import type { Brand } from "./Brand.ts";
 import type { RandomBytesDep } from "./Crypto.ts";
+import { eqData } from "./Eq.ts";
 import { identity, type Thunk } from "./Function.ts";
 import {
   createMutableRecord,
@@ -1528,11 +1529,12 @@ const localizeTypeReflection = (
   ) as Record<string | symbol, unknown>;
 
   for (const key of Reflect.ownKeys(value)) {
-    localized[key] = localizeTypeReflection(
-      (value as Record<string | symbol, unknown>)[key],
-      formatIssue,
-      localizedTypeBySource,
-    );
+    const property = (value as Record<string | symbol, unknown>)[key];
+    // Configured defaults are opaque data whose identity must be preserved.
+    localized[key] =
+      key === "value" && globalThis.Object.hasOwn(value, defaultPropertySymbol)
+        ? property
+        : localizeTypeReflection(property, formatIssue, localizedTypeBySource);
   }
 
   return localized;
@@ -1810,7 +1812,8 @@ type ReflectedTypes<T extends TypeNode> =
           readonly props: infer Props extends ObjectProps;
           readonly record?: infer Rest;
         }
-      ? ObjectPropertyType<Props[keyof Props]> | Extract<Rest, TypeNode>
+      ? | DefaultableObjectPropertyType<Props[keyof Props]>
+        | Extract<Rest, TypeNode>
       : never;
 
 type RootType<T extends TypeNode> = T extends {
@@ -11788,7 +11791,9 @@ export const optional = <T extends TypeNode>(
   type: ValidateOptionalPropertyType<T>,
 ): OptionalProperty<T> => createOptionalProperty(type as T);
 
-const optionalPropertySymbol = /*#__PURE__*/ globalThis.Symbol();
+declare const optionalPropertySymbolType: unique symbol;
+const optionalPropertySymbol: typeof optionalPropertySymbolType =
+  /*#__PURE__*/ globalThis.Symbol() as typeof optionalPropertySymbolType;
 
 const createOptionalProperty = <T extends TypeNode>(
   type: T,
@@ -11806,11 +11811,379 @@ type ValidateOptionalPropertyType<T extends TypeNode> =
     : ObjectPropertyTypeError;
 
 /**
+ * A value decoded by {@link withDefault} with the `preserve` strategy.
+ *
+ * `defaultUsed` distinguishes supplied values from defaults, even when their
+ * values are equal. `original` records the decoded absence, not the raw input
+ * before other transformations.
+ *
+ * @group Construction
+ */
+export type Defaulted<
+  Value,
+  Default = Value,
+  Original extends "missing" | "null" | "undefined" =
+    "missing" | "null" | "undefined",
+> =
+  | { readonly value: Value; readonly defaultUsed: false }
+  | {
+      readonly value: Default;
+      readonly defaultUsed: true;
+      readonly original: Original;
+    };
+
+/**
+ * The value Type returned by {@link withDefault}.
+ *
+ * @group Construction
+ */
+export interface WithDefaultType<
+  T extends TypeNode,
+  Value,
+  Strategy extends "replace" | "preserve",
+> extends Type<
+  "WithDefault",
+  T["Input"],
+  WithDefaultOutput<T, Value, Strategy>,
+  never,
+  T,
+  InferErrors<T>,
+  ChildCustomFrom<T, WithDefaultOutput<T, Value, Strategy>, never>,
+  T["CanonicalInput"],
+  false
+> {}
+
+/**
+ * An optional input property made required in the Output by {@link withDefault}.
+ *
+ * @group Objects
+ */
+export interface WithDefaultProperty<
+  T extends TypeNode,
+  Value,
+  Strategy extends "replace" | "preserve",
+> {
+  readonly type: T;
+  readonly value: Value;
+  readonly strategy: Strategy;
+  /** @ignore */
+  readonly [errorsSymbol]: InferErrors<T>;
+  /** @ignore */
+  readonly [defaultPropertySymbol]: RuntimeDefaultOperations;
+}
+
+/**
+ * Supplies a decoded default for absence accepted by another {@link Type}.
+ *
+ * You might not need this: use `??` where a value is consumed if the default
+ * does not need to become part of the decoded data. By default, replacement
+ * loses the distinction between absence and an explicitly supplied value. Set
+ * `strategy: "preserve"` to retain it.
+ *
+ * Defaults apply after decoding, to `null` and `undefined` accepted by the
+ * wrapped Type, and to missing properties when wrapping {@link optional}. Types
+ * whose Output excludes both `null` and `undefined` require `optional`;
+ * otherwise there is no accepted absence to default. Invalid supplied values
+ * still fail. An optional property does not accept an explicit `undefined`
+ * unless its Type does. The default must be an Output of the wrapped Type; it
+ * is checked when constructing the declaration. It may itself be `null` or
+ * `undefined` when the wrapped Output accepts that value.
+ *
+ * Omitting `strategy` returns the effective value and encodes it as supplied
+ * data. `strategy: "preserve"` returns {@link Defaulted} and restores absence
+ * when encoding. A supplied value equal to the default still has `defaultUsed:
+ * false`. Preserved defaults must equal the configured value: {@link Data}
+ * values use structural equality, and other values use reference identity.
+ * Every decoded absence reuses the configured default by reference; defaults
+ * are not cloned. Treat default values as immutable, like other Type
+ * declarations.
+ *
+ * Pass the default value as the second argument. Add `{ strategy: "preserve" }`
+ * as the third argument to retain supplied-input evidence. Explicit `strategy:
+ * "replace"` is not accepted.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   assertOk,
+ *   Boolean,
+ *   nullOr,
+ *   object,
+ *   optional,
+ *   withDefault,
+ * } from "@evolu/common";
+ *
+ * const Settings = object({
+ *   enabled: withDefault(optional(Boolean), true, {
+ *     strategy: "preserve",
+ *   }),
+ * });
+ *
+ * const missing = Settings.fromUnknown({});
+ * assertOk(missing, {
+ *   enabled: { value: true, defaultUsed: true, original: "missing" },
+ * });
+ * assertEqual(Settings.to(missing.value), {});
+ *
+ * assertOk(Settings.fromUnknown({ enabled: true }), {
+ *   enabled: { value: true, defaultUsed: false },
+ * });
+ * assertErr(Settings.fromUnknown({ enabled: undefined }));
+ *
+ * const Enabled = withDefault(nullOr(Boolean), true);
+ *
+ * assertOk(Enabled.fromUnknown(null), true);
+ * assertEqual(Enabled.to(true), true);
+ * ```
+ *
+ * @group Construction
+ */
+export function withDefault<
+  T extends TypeNode,
+  const Value extends NoInfer<T["Output"]>,
+>(
+  property: OptionalProperty<T> & {
+    readonly type: ValidateDefaultType<T, true>;
+  },
+  value: Value,
+): WithDefaultProperty<T, Value, "replace">;
+export function withDefault<
+  T extends TypeNode,
+  const Value extends NoInfer<T["Output"]>,
+>(
+  property: OptionalProperty<T> & {
+    readonly type: ValidateDefaultType<T, true>;
+  },
+  value: Value,
+  options: { readonly strategy: "preserve" },
+): WithDefaultProperty<T, Value, "preserve">;
+export function withDefault<
+  T extends TypeNode,
+  const Value extends NoInfer<T["Output"]>,
+>(
+  type: T & ValidateDefaultType<T>,
+  value: Value,
+): WithDefaultType<T, Value, "replace">;
+export function withDefault<
+  T extends TypeNode,
+  const Value extends NoInfer<T["Output"]>,
+>(
+  type: T & ValidateDefaultType<T>,
+  value: Value,
+  options: { readonly strategy: "preserve" },
+): WithDefaultType<T, Value, "preserve">;
+export function withDefault(
+  property: TypeNode | OptionalProperty<TypeNode>,
+  value: unknown,
+  { strategy }: { readonly strategy?: string } = {},
+): TypeNode | WithDefaultProperty<TypeNode, unknown, "replace" | "preserve"> {
+  assert(
+    strategy === undefined || strategy === "preserve",
+    'withDefault strategy must be omitted or "preserve".',
+  );
+  const optionalInput = optionalPropertySymbol in property;
+  const type = (optionalInput ? property.type : property) as RuntimeTypeNode;
+  assert(
+    type.is(value),
+    `withDefault value must be an Output of ${type.name}.`,
+  );
+  const originals = new Set([
+    ...(optionalInput ? ["missing"] : []),
+    ...(type.is(null) ? ["null"] : []),
+    ...(type.is(undefined) ? ["undefined"] : []),
+  ]);
+  const supplied = createRootType(
+    "DefaultSupplied",
+    (candidate): Result<unknown, TypeError<"DefaultValue">> =>
+      (strategy === undefined && globalThis.Object.is(candidate, value)) ||
+      (candidate !== null && candidate !== undefined && type.is(candidate))
+        ? ok(candidate)
+        : err({ type: "DefaultValue" }),
+    () =>
+      "The value must be a non-nullish Output of its Type or, in replacement mode, the configured default.",
+  );
+  const defaultValue = createRootType(
+    "DefaultValue",
+    (candidate): Result<unknown, TypeError<"DefaultValue">> =>
+      type.is(candidate) &&
+      (globalThis.Object.is(candidate, value) ||
+        (Data.is(value) && Data.is(candidate) && eqData(candidate, value)))
+        ? ok(candidate)
+        : err({ type: "DefaultValue" }),
+    () => "A preserved default must equal the configured default value.",
+  );
+  const output = (strategy === undefined
+    ? supplied
+    : discriminatedUnion(
+        "defaultUsed",
+        object({ value: supplied, defaultUsed: literal(false) }),
+        object({
+          value: defaultValue,
+          defaultUsed: literal(true),
+          original: createRootType(
+            "DefaultOriginal",
+            (candidate): Result<string, TypeError<"DefaultOriginal">> =>
+              typeof candidate === "string" && originals.has(candidate)
+                ? ok(candidate)
+                : err({ type: "DefaultOriginal" }),
+            () =>
+              "The original absence must be handled by this default declaration.",
+          ),
+        }),
+      )) as unknown as RuntimeTypeNode;
+  const ownGetTypeIssues = output[getRuntimeTypeIssuesSymbol];
+  const outputWithIssues: RuntimeTypeNode = {
+    ...output,
+    [outputValidationSymbol]: (value: unknown, options?: ValidationOptions) => {
+      const result = output[outputValidationSymbol](value, options);
+      return result.ok
+        ? result
+        : err({ type: "WithDefault", outputError: result.error });
+    },
+    [getRuntimeTypeIssuesSymbol]: (error, mode) =>
+      error.type === "WithDefault" && "outputError" in error
+        ? ownGetTypeIssues(error.outputError as TypeError, mode)
+        : type[getRuntimeTypeIssuesSymbol](error, mode),
+  };
+
+  const operations: RuntimeDefaultOperations = {
+    output: outputWithIssues,
+    createObject: createDefaultObjectType,
+    partial: (type) =>
+      createOptionalProperty(
+        strategy === "preserve"
+          ? withDefault(type as unknown as typeof Unknown, value, {
+              strategy,
+            })
+          : withDefault(type as unknown as typeof Unknown, value),
+      ),
+    decode: (candidate) => {
+      const original =
+        candidate === missingDefaultValue
+          ? "missing"
+          : candidate === null
+            ? "null"
+            : candidate === undefined
+              ? "undefined"
+              : undefined;
+      const effective = original === undefined ? candidate : value;
+      return strategy === undefined
+        ? effective
+        : original === undefined
+          ? { value: effective, defaultUsed: false }
+          : { value: effective, defaultUsed: true, original };
+    },
+    encode: (candidate: unknown) => {
+      if (strategy === undefined) return candidate;
+      const preserved = candidate as Defaulted<unknown>;
+      if (!preserved.defaultUsed) return preserved.value;
+      switch (preserved.original) {
+        case "missing":
+          return missingDefaultValue;
+        case "null":
+          return null;
+        case "undefined":
+          return undefined;
+      }
+    },
+  };
+
+  if (optionalInput) {
+    return {
+      type,
+      value,
+      strategy: strategy ?? "replace",
+      [defaultPropertySymbol]: operations,
+    } as unknown as WithDefaultProperty<
+      TypeNode,
+      unknown,
+      "replace" | "preserve"
+    >;
+  }
+
+  const fromOwn = (value: unknown) => ok(operations.decode(value));
+  const fromParent = mapRuntimeOperations(
+    type[fromSymbol],
+    (operation) => (value: never, options) =>
+      flatMapResult(operation(value, options), fromOwn),
+  );
+
+  return createTypeNode(
+    "WithDefault",
+    type,
+    (value, options) =>
+      flatMapResult(type.fromUnknown(value, options), fromOwn),
+    operations.output.is,
+    operations.output[outputValidationSymbol],
+    createFromOperation(fromParent),
+    operations.encode,
+    operations.output[getRuntimeTypeIssuesSymbol],
+  );
+}
+
+type ValidateDefaultType<
+  T extends TypeNode,
+  Optional extends boolean = false,
+> = ValidateOptionalPropertyType<T> &
+  ([ChildTypeNameValidationError<"WithDefault", T>] extends [never]
+    ? unknown
+    : ChildTypeNameValidationError<"WithDefault", T>) &
+  (Optional extends true
+    ? unknown
+    : [DefaultOriginal<T>] extends [never]
+      ? CompileTimeError<
+          "Type",
+          "withDefault requires an optional property or a Type whose Output includes null or undefined."
+        >
+      : unknown);
+
+type DefaultOriginal<T extends TypeNode> =
+  | (null extends T["Output"] ? "null" : never)
+  | (undefined extends T["Output"] ? "undefined" : never);
+
+type WithDefaultOutput<
+  T extends TypeNode,
+  Value,
+  Strategy extends "replace" | "preserve",
+  Original extends "missing" | "null" | "undefined" = DefaultOriginal<T>,
+> = Strategy extends "replace"
+  ? NonNullable<T["Output"]> | Value
+  : Defaulted<NonNullable<T["Output"]>, Value, Original>;
+
+declare const defaultPropertySymbolType: unique symbol;
+const defaultPropertySymbol: typeof defaultPropertySymbolType =
+  /*#__PURE__*/ globalThis.Symbol() as typeof defaultPropertySymbolType;
+const missingDefaultValue = /*#__PURE__*/ globalThis.Symbol();
+
+interface RuntimeDefaultOperations {
+  readonly output: RuntimeTypeNode;
+  readonly decode: (value: unknown) => unknown;
+  readonly encode: (value: never) => unknown;
+  readonly createObject: (
+    props: ObjectProps,
+    record: RuntimeRecordTypeNode | undefined,
+  ) => ObjectTypeNode;
+  readonly partial: (type: RuntimeTypeNode) => OptionalProperty<TypeNode>;
+}
+
+/**
  * Properties used to construct an {@link object} Type.
  *
  * @group Objects
  */
 export type ObjectProps = Readonly<
+  Record<
+    string,
+    | TypeNode
+    | OptionalProperty<TypeNode>
+    | WithDefaultProperty<TypeNode, unknown, "replace" | "preserve">
+  >
+>;
+
+type ObjectValueProps = Readonly<
   Record<string, TypeNode | OptionalProperty<TypeNode>>
 >;
 
@@ -11822,7 +12195,10 @@ type ObjectProperty = ObjectProps[string];
  * Use `object(props)` for objects with fixed property names. Properties are
  * required unless wrapped with {@link optional}. An optional property may be
  * absent, but a present value is still validated and does not implicitly accept
- * `undefined`.
+ * `undefined`. Wrapping an optional property with {@link withDefault} keeps the
+ * input optional and makes the decoded output required. A default for a
+ * nullable or undefined-accepting Type alone does not make the property
+ * optional.
  *
  * Without a second argument, `fromUnknown` rejects additional properties. Pass
  * a {@link record} with the predefined {@link String} key Type to validate and
@@ -11910,6 +12286,7 @@ type ObjectProperty = ObjectProps[string];
  * const valueType = typeof value;
  *
  * assertEqual(valueType, "function");
+ *
  * const called = trySync(
  *   () => {
  *     if (value !== undefined) value.toFixed(0);
@@ -11945,6 +12322,7 @@ type ObjectProperty = ObjectProps[string];
  * const valueType = typeof value;
  *
  * assertEqual(valueType, "function");
+ *
  * const called = trySync(
  *   () => {
  *     if (value !== undefined) value.toFixed(0);
@@ -11960,7 +12338,7 @@ type ObjectProperty = ObjectProps[string];
  *
  * @group Objects
  */
-export function object<const Props extends ObjectProps>(
+export function object<const Props extends ObjectValueProps>(
   props: Props,
   ...validation: [ObjectValidationError<Props>] extends [never]
     ? []
@@ -11985,6 +12363,7 @@ export function object<const Props extends ObjectProps>(
  *   { authorization: String },
  *   record(String, String),
  * );
+ *
  * const result = RequestHeaders.fromUnknown({
  *   authorization: "Bearer token",
  *   "x-request-id": "request-1",
@@ -11998,7 +12377,7 @@ export function object<const Props extends ObjectProps>(
  * ```
  */
 export function object<
-  const Props extends ObjectProps,
+  const Props extends ObjectValueProps,
   const Rest extends RecordTypeNode & ConcreteTypeNode,
 >(
   props: Props,
@@ -12017,6 +12396,34 @@ export function object<
   Props,
   Rest extends ObjectRecordTypeNode ? Rest : never
 >;
+/** Creates an Object Type with explicit defaults for optional inputs. */
+export function object<const Props extends ObjectProps>(
+  props: Props,
+  ...validation: [ObjectValidationError<Props>] extends [never]
+    ? []
+    : [ValidationFailure<ObjectValidationError<Props>>]
+): ObjectType<Props>;
+/**
+ * Creates an Object Type with explicit defaults and additional record
+ * properties.
+ */
+export function object<
+  const Props extends ObjectProps,
+  const Rest extends ObjectRecordTypeNode & ConcreteTypeNode,
+>(
+  props: Props,
+  record: Rest,
+  ...validation: [
+    ObjectValidationError<Props> | ObjectRecordValidationError<Props, Rest>,
+  ] extends [never]
+    ? []
+    : [
+        ValidationFailure<
+          | ObjectValidationError<Props>
+          | ObjectRecordValidationError<Props, Rest>
+        >,
+      ]
+): ObjectType<Props, Rest>;
 export function object(props: ObjectProps, recordType?: unknown): TypeNode {
   return createObjectType(
     snapshotObjectProps(props),
@@ -12029,6 +12436,14 @@ const createObjectType = (
   recordType?: RuntimeRecordTypeNode,
 ): ObjectTypeNode => {
   const runtimeProps = props as Readonly<Record<string, RuntimeObjectProperty>>;
+  const defaultProperty =
+    globalThis.Object.values(runtimeProps).find(isDefaultProperty);
+  if (defaultProperty) {
+    return defaultProperty[defaultPropertySymbol].createObject(
+      props,
+      recordType,
+    );
+  }
   const keys = globalThis.Object.keys(runtimeProps);
 
   const validate = (
@@ -12425,6 +12840,100 @@ const createObjectType = (
   );
 };
 
+const createDefaultObjectType = (
+  props: ObjectProps,
+  recordType: RuntimeRecordTypeNode | undefined,
+): ObjectTypeNode => {
+  const inputProps = createMutableRecord<string, ObjectProperty>();
+  const outputProps = createMutableRecord<string, ObjectProperty>();
+  const defaults = new Map<string, RuntimeDefaultOperations>();
+
+  for (const [key, property] of globalThis.Object.entries(props)) {
+    if (isDefaultProperty(property as RuntimeObjectProperty)) {
+      const defaultProperty = property as WithDefaultProperty<
+        TypeNode,
+        unknown,
+        "replace" | "preserve"
+      >;
+      inputProps[key] = createOptionalProperty(defaultProperty.type);
+      outputProps[key] = defaultProperty[defaultPropertySymbol].output;
+      defaults.set(key, defaultProperty[defaultPropertySymbol]);
+    } else {
+      inputProps[key] = property;
+      const type = objectPropertyToType(property as RuntimeObjectProperty);
+      const output = createRootType(
+        type.name,
+        type[outputValidationSymbol],
+        type.formatError,
+        type[getRuntimeTypeIssuesSymbol],
+      );
+      outputProps[key] =
+        optionalPropertySymbol in property
+          ? createOptionalProperty(output)
+          : output;
+    }
+  }
+
+  const source = createObjectType(
+    inputProps,
+    recordType,
+  ) as unknown as RuntimeTypeNode;
+  // The object parent validates only its input structure and root value Types.
+  const parent = getTerminalRuntimeNode(source);
+  const output = createObjectType(
+    outputProps,
+    recordType,
+  ) as unknown as RuntimeTypeNode;
+  const finish = (value: unknown): Result<unknown> => {
+    const result = createMutableRecord(
+      value as Readonly<Record<string, unknown>>,
+    );
+    for (const [key, operations] of defaults) {
+      result[key] = operations.decode(
+        globalThis.Object.hasOwn(result, key)
+          ? result[key]
+          : missingDefaultValue,
+      );
+    }
+    return ok(result);
+  };
+  const fromInput = getTerminalRuntimeNode(source[fromSymbol]);
+  const fromParent: RuntimeOperation<Result<unknown, TypeError>> = (
+    value: never,
+    options,
+  ) => flatMapResult(fromInput(value, options), finish);
+  const to = (value: never): unknown => {
+    const result = createMutableRecord(
+      value as Readonly<Record<string, unknown>>,
+    );
+    for (const [key, operations] of defaults) {
+      const original = operations.encode(result[key] as never);
+      if (original === missingDefaultValue) delete result[key];
+      else result[key] = original;
+    }
+    return source[encoderSymbol](result as never);
+  };
+
+  return createTypeNode<ObjectTypeNode>(
+    "Object",
+    parent,
+    (value, options) =>
+      flatMapResult(source.fromUnknown(value, options), finish),
+    output.is,
+    output[outputValidationSymbol],
+    createFromOperation(fromParent),
+    to,
+    createObjectRuntimeTypeIssues(
+      source.formatError,
+      props as Readonly<Record<string, RuntimeObjectProperty>>,
+      recordType,
+    ),
+    recordType
+      ? { props, record: recordType as unknown as RecordTypeNode }
+      : { props },
+  );
+};
+
 // Read descriptors instead of spreading so accessors are not invoked,
 // non-enumerable declarations are retained, and later mutations are isolated.
 const snapshotObjectProps = (
@@ -12484,9 +12993,9 @@ type ObjectRecordPropertyValidationError<
   Props extends ObjectProps,
   ValueType extends TypeNode,
 > = [
-  ObjectPropertyType<Props[keyof Props]>["Input"],
-  ObjectPropertyType<Props[keyof Props]>["Output"],
-  ObjectPropertyType<Props[keyof Props]>["CanonicalInput"],
+  DefaultableObjectPropertyType<Props[keyof Props]>["Input"],
+  DefaultableObjectPropertyType<Props[keyof Props]>["Output"],
+  DefaultableObjectPropertyType<Props[keyof Props]>["CanonicalInput"],
 ] extends [ValueType["Input"], ValueType["Output"], ValueType["CanonicalInput"]]
   ? never
   : ObjectRecordPropertyTypeError<Props, ValueType>;
@@ -12494,10 +13003,10 @@ type ObjectRecordPropertyValidationError<
 type ObjectRecordPropertyTypeError<
   Props extends ObjectProps,
   ValueType extends TypeNode,
-> = [ObjectPropertyType<Props[keyof Props]>["Input"]] extends [
+> = [DefaultableObjectPropertyType<Props[keyof Props]>["Input"]] extends [
   ValueType["Input"],
 ]
-  ? [ObjectPropertyType<Props[keyof Props]>["Output"]] extends [
+  ? [DefaultableObjectPropertyType<Props[keyof Props]>["Output"]] extends [
       ValueType["Output"],
     ]
     ? ObjectRecordCanonicalInputTypeError
@@ -12506,10 +13015,10 @@ type ObjectRecordPropertyTypeError<
 
 type ObjectPropertyValidationError<Property extends ObjectProperty> =
   IsUnion<Property> extends false
-    ? Property extends OptionalProperty<infer T extends TypeNode>
-      ? ObjectPropertyTypeValidationError<T>
-      : Property extends TypeNode
-        ? ObjectPropertyTypeValidationError<Property>
+    ? Property extends TypeNode
+      ? ObjectPropertyTypeValidationError<Property>
+      : Property extends { readonly type: infer T extends TypeNode }
+        ? ObjectPropertyTypeValidationError<T>
         : ObjectPropertyTypeError
     : ObjectPropertyTypeError;
 
@@ -12601,15 +13110,83 @@ type ObjectRecordCanonicalInputTypeError = CompileTimeError<
 export type ObjectType<
   Props extends ObjectProps,
   Rest extends ObjectRecordTypeNode | undefined = undefined,
+> = Props extends ObjectValueProps
+  ? Rest extends ObjectRecordTypeNode
+    ? ObjectWithRecordType<Props, Rest>
+    : StrictObjectType<Props>
+  : DefaultObjectType<Props, Rest>;
+
+type ObjectValueType<
+  Props extends ObjectValueProps,
+  Rest extends ObjectRecordTypeNode | undefined,
 > = Rest extends ObjectRecordTypeNode
   ? ObjectWithRecordType<Props, Rest>
   : StrictObjectType<Props>;
+
+type DefaultableObjectPropertyType<Property extends ObjectProperty> =
+  Property extends WithDefaultProperty<infer T, infer Value, infer Strategy>
+    ? Type<
+        "WithDefault",
+        T["Input"],
+        WithDefaultOutput<T, Value, Strategy, "missing" | DefaultOriginal<T>>,
+        never,
+        T,
+        InferErrors<T>,
+        never,
+        T["CanonicalInput"],
+        false
+      >
+    : Property extends TypeNode | OptionalProperty<TypeNode>
+      ? ObjectPropertyType<Property>
+      : never;
+
+type DefaultInputProps<Props extends ObjectProps> = {
+  readonly [Key in keyof Props]: Props[Key] extends WithDefaultProperty<
+    infer T,
+    unknown,
+    "replace" | "preserve"
+  >
+    ? OptionalProperty<T>
+    : Extract<Props[Key], TypeNode | OptionalProperty<TypeNode>>;
+};
+
+type DefaultOutputProps<Props extends ObjectProps> = {
+  readonly [Key in keyof Props]: Props[Key] extends WithDefaultProperty<
+    infer T,
+    infer Value,
+    infer Strategy
+  >
+    ? Type<
+        "DefaultValue",
+        WithDefaultOutput<T, Value, Strategy, "missing" | DefaultOriginal<T>>,
+        WithDefaultOutput<T, Value, Strategy, "missing" | DefaultOriginal<T>>,
+        never
+      >
+    : Extract<Props[Key], TypeNode | OptionalProperty<TypeNode>>;
+};
+
+type DefaultObjectType<
+  Props extends ObjectProps,
+  Rest extends ObjectRecordTypeNode | undefined,
+> = Type<
+  "Object",
+  ObjectValueType<DefaultInputProps<Props>, Rest>["Input"],
+  ObjectValueType<DefaultOutputProps<Props>, Rest>["Output"],
+  TypeFromError<ObjectValueType<DefaultInputProps<Props>, Rest>>,
+  RootType<ObjectValueType<DefaultInputProps<Props>, Rest>>,
+  InferErrors<ObjectValueType<DefaultInputProps<Props>, Rest>>,
+  never,
+  ObjectValueType<DefaultInputProps<Props>, Rest>["CanonicalInput"],
+  false
+> & { readonly props: Readonly<Props> } & (Rest extends ObjectRecordTypeNode
+    ? { readonly record: Rest }
+    : {});
 
 // `fromUnknown` can report Object root errors plus declared-property child,
 // missing, access, and excess/Record-rest errors. When Object has a parent, its
 // own `Error` contains only the child and rest errors remaining after that
 // parent validated the Object structure.
-type StrictObjectType<Props extends ObjectProps> = Type<
+type StrictObjectType<Props extends ObjectValueProps> = Type<
   "Object",
   StrictObjectShape<Props, "Input">,
   StrictObjectShape<Props, "Output">,
@@ -12628,7 +13205,7 @@ type StrictObjectType<Props extends ObjectProps> = Type<
 };
 
 type ObjectWithRecordType<
-  Props extends ObjectProps,
+  Props extends ObjectValueProps,
   Rest extends ObjectRecordTypeNode,
 > = Type<
   "Object",
@@ -12651,7 +13228,7 @@ type ObjectWithRecordType<
   ObjectWithRecordReflection<Props, Rest>;
 
 type StrictObjectShape<
-  Props extends ObjectProps,
+  Props extends ObjectValueProps,
   Field extends "Input" | "Output" | "CanonicalInput",
 > = keyof Props extends never
   ? Readonly<Record<string, never>>
@@ -12668,7 +13245,7 @@ type StrictObjectShape<
     };
 
 type ObjectWithRecordShape<
-  Props extends ObjectProps,
+  Props extends ObjectValueProps,
   Rest extends ObjectRecordTypeNode,
   Field extends "Input" | "Output" | "CanonicalInput",
 > = keyof Props extends never
@@ -12676,7 +13253,7 @@ type ObjectWithRecordShape<
   : ObjectDeclaredShape<Props, Field> & ObjectRestShape<Rest, Field>;
 
 type ObjectDeclaredShape<
-  Props extends ObjectProps,
+  Props extends ObjectValueProps,
   Field extends "Input" | "Output" | "CanonicalInput",
 > = Simplify<
   {
@@ -12702,25 +13279,25 @@ type ObjectTypeField<
   Field extends "Input" | "Output" | "CanonicalInput",
 > = Field extends "CanonicalInput" ? CanonicalInputOf<T> : T[Field];
 
-type RequiredObjectKeys<Props extends ObjectProps> = Exclude<
+type RequiredObjectKeys<Props extends ObjectValueProps> = Exclude<
   keyof Props,
   OptionalObjectKeys<Props>
 >;
 
-type OptionalObjectKeys<Props extends ObjectProps> = {
+type OptionalObjectKeys<Props extends ObjectValueProps> = {
   readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
     ? Key
     : never;
 }[keyof Props];
 
-type ObjectPropertyType<Property extends ObjectProperty> =
+type ObjectPropertyType<Property extends ObjectValueProps[string]> =
   Property extends OptionalProperty<infer T> ? T : Property;
 
-type ObjectFromParentPropertyErrors<Props extends ObjectProps> = {
+type ObjectFromParentPropertyErrors<Props extends ObjectValueProps> = {
   readonly [Key in keyof Props]: TypeFromError<ObjectPropertyType<Props[Key]>>;
 };
 
-type StrictRootObjectType<Props extends ObjectProps> = Type<
+type StrictRootObjectType<Props extends ObjectValueProps> = Type<
   "Object",
   StrictObjectShape<Props, "Input">,
   StrictObjectShape<Props, "Output">,
@@ -12735,7 +13312,7 @@ type StrictRootObjectType<Props extends ObjectProps> = Type<
 };
 
 type RootObjectWithRecordType<
-  Props extends ObjectProps,
+  Props extends ObjectValueProps,
   Rest extends ObjectRecordTypeNode,
 > = Type<
   "Object",
@@ -12750,16 +13327,16 @@ type RootObjectWithRecordType<
 > &
   ObjectWithRecordReflection<Props, Rest>;
 
-type StrictObjectParents<Props extends ObjectProps> = ObjectPropertyType<
+type StrictObjectParents<Props extends ObjectValueProps> = ObjectPropertyType<
   Props[keyof Props]
 >["parent"];
 
 type ObjectWithRecordParents<
-  Props extends ObjectProps,
+  Props extends ObjectValueProps,
   Rest extends ObjectRecordTypeNode,
 > = ObjectPropertyType<Props[keyof Props]>["parent"] | Rest["parent"];
 
-type RootObjectProps<Props extends ObjectProps> = {
+type RootObjectProps<Props extends ObjectValueProps> = {
   readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<infer T>
     ? OptionalProperty<RootType<T>>
     : Props[Key] extends TypeNode
@@ -12773,20 +13350,20 @@ type RootObjectRecord<Rest extends ObjectRecordTypeNode> = RecordType<
 >;
 
 interface ObjectWithRecordReflection<
-  Props extends ObjectProps,
+  Props extends ObjectValueProps,
   Rest extends ObjectRecordTypeNode,
 > {
   readonly props: Readonly<Props>;
   readonly record: Rest;
 }
 
-type ObjectDeclaredErrors<Props extends ObjectProps> = {
+type ObjectDeclaredErrors<Props extends ObjectValueProps> = {
   readonly [Key in RequiredObjectKeys<Props>]: Props[Key][typeof errorsSymbol];
 } & {
   readonly [Key in OptionalObjectKeys<Props>]?: Props[Key][typeof errorsSymbol];
 };
 
-type StrictObjectFromUnknownPropertyErrors<Props extends ObjectProps> = {
+type StrictObjectFromUnknownPropertyErrors<Props extends ObjectValueProps> = {
   readonly [Key in RequiredObjectKeys<Props>]:
     | Props[Key][typeof errorsSymbol]
     | ObjectMissingPropertyError
@@ -12966,16 +13543,31 @@ type ObjectRestFromParentError<Rest extends ObjectRecordTypeNode | undefined> =
     : never;
 
 type RuntimeObjectProperty =
-  RuntimeTypeNode | OptionalProperty<RuntimeTypeNode>;
+  | RuntimeTypeNode
+  | OptionalProperty<RuntimeTypeNode>
+  | WithDefaultProperty<RuntimeTypeNode, unknown, "replace" | "preserve">;
 
 const isOptionalProperty = (
   property: RuntimeObjectProperty,
 ): property is OptionalProperty<RuntimeTypeNode> =>
   optionalPropertySymbol in property;
 
+const isDefaultProperty = (
+  property: RuntimeObjectProperty,
+): property is WithDefaultProperty<
+  RuntimeTypeNode,
+  unknown,
+  "replace" | "preserve"
+> => defaultPropertySymbol in property;
+
 const objectPropertyToType = (
   property: RuntimeObjectProperty,
-): RuntimeTypeNode => (isOptionalProperty(property) ? property.type : property);
+): RuntimeTypeNode =>
+  isDefaultProperty(property)
+    ? property[defaultPropertySymbol].output
+    : isOptionalProperty(property)
+      ? property.type
+      : property;
 
 interface RuntimeObjectPropertyErrors {
   [key: string]: TypeError;
@@ -12993,7 +13585,8 @@ const createRecordPropertyError = <Error extends TypeError>(
  * Object {@link Type} with every property optional.
  *
  * No property is required, but every present property must still satisfy its
- * Type.
+ * Type. For {@link withDefault} properties, this disables the missing-property
+ * default; defaults for present `null` or `undefined` values still apply.
  *
  * ### Example
  *
@@ -13027,9 +13620,11 @@ export const partial = <const Props extends ObjectProps>(
 
   for (const key of globalThis.Object.keys(source)) {
     const property = source[key] as RuntimeObjectProperty;
-    partialProps[key] = isOptionalProperty(property)
-      ? property
-      : createOptionalProperty(property);
+    partialProps[key] = isDefaultProperty(property)
+      ? property[defaultPropertySymbol].partial(property.type)
+      : isOptionalProperty(property)
+        ? property
+        : createOptionalProperty(property);
   }
 
   return createObjectType(partialProps) as unknown as ObjectType<
@@ -13043,11 +13638,17 @@ export const partial = <const Props extends ObjectProps>(
  * @group Objects
  */
 export type PartialObjectProps<Props extends ObjectProps> = {
-  readonly [Key in keyof Props]: Props[Key] extends OptionalProperty<TypeNode>
-    ? Props[Key]
-    : Props[Key] extends TypeNode
-      ? OptionalProperty<Props[Key]>
-      : never;
+  readonly [Key in keyof Props]: Props[Key] extends WithDefaultProperty<
+    infer T,
+    infer Value,
+    infer Strategy
+  >
+    ? OptionalProperty<WithDefaultType<T, Value, Strategy>>
+    : Props[Key] extends OptionalProperty<TypeNode>
+      ? Props[Key]
+      : Props[Key] extends TypeNode
+        ? OptionalProperty<Props[Key]>
+        : never;
 };
 
 /**
@@ -13094,7 +13695,7 @@ export const nullableToOptional = <const Props extends ObjectProps>(
   for (const key of globalThis.Object.keys(source)) {
     const property = source[key] as RuntimeObjectProperty;
 
-    if (isOptionalProperty(property)) {
+    if (isOptionalProperty(property) || isDefaultProperty(property)) {
       optionalProps[key] = property;
       continue;
     }
@@ -13153,7 +13754,10 @@ export const omit = <
   const Keys extends ReadonlyArray<keyof Props>,
   Rest extends ObjectRecordTypeNode | undefined = undefined,
 >(
-  objectType: ObjectType<Props, Rest>,
+  objectType: {
+    readonly props: Props;
+    readonly record?: Rest;
+  } & NoInfer<ObjectType<Props, Rest>>,
   ...keys: Keys &
     ([ValidateOmitKeys<Keys>] extends [never]
       ? unknown

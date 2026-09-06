@@ -72,6 +72,8 @@
     "CorrelatedDiscriminatedUnionNodeIssueFor",
     "CreatedId",
     "CustomFromOperation",
+    "DefaultObjectType",
+    "DefaultOriginal",
     "DiscriminatedUnionCompleteError",
     "DiscriminatedUnionMemberInput",
     "DiscriminatedUnionMembers",
@@ -144,6 +146,7 @@
     "ValidateBrandParent",
     "ValidateChildTypeName",
     "ValidateConcreteTypeName",
+    "ValidateDefaultType",
     "ValidateDiscriminatedUnionKey",
     "ValidateElement",
     "ValidateInstanceConstructor",
@@ -162,6 +165,7 @@
     "ValidateUnionMember",
     "ValidateUnionTypeMember",
     "ValidationFailure",
+    "WithDefaultOutput",
     "errorsSymbol"
   ]
 }

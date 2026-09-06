@@ -110,6 +110,16 @@ assertType<
 
 Evolu does not rely on changes being delivered in timestamp order. An update can arrive before the corresponding insertion, leaving the row incomplete until the older change arrives. Evolu still resolves the final value of each column independently by timestamp. By explicitly filtering for the shape the current app expects, only usable rows are selected.
 
+## Default values
+
+Prefer applying defaults in the view instead of storing them in the database. Keep a column nullable and use `??` when reading or displaying its value if the default only determines how the app presents missing data.
+
+Absence can carry meaning. For a notification preference, `null` can mean the user has not made a decision, while an explicit false value means notifications were disabled. Both may look the same in the UI, but keeping them distinct lets the user clear their preference by setting it back to `null`.
+
+Use [withDefault](/docs/api-reference/common/Type/functions/withDefault), or another validator's defaulting API, in a database schema only when storing the default is necessary. Replacing absence and storing the result can add unnecessary data to database rows and erase the distinction between a default and a user decision. Store a value when it represents a user's decision or another fact your application needs to retain.
+
+Declaring a default does not make Evolu fill omitted mutation values: mutations accept already validated values. Defaulting happens when you decode data with the validator before passing the result to Evolu.
+
 ## Standard Schema
 
 Evolu app schemas are not tied to [Type](/docs/api-reference/common/Type). You can define columns with Zod, Valibot, ArkType, or any other library implementing Standard Schema V1.
