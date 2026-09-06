@@ -8,6 +8,7 @@ import {
   Name,
   ok,
   OwnerId,
+  Port,
   type RandomDep,
   type Task,
   type TimingSafeEqualDep,
@@ -33,8 +34,11 @@ import { createTimingSafeEqual } from "../Crypto.ts";
 import { createBetterSqliteDriver } from "../Sqlite.ts";
 
 export interface NodeJsRelayConfig extends RelayConfig {
-  /** The port number for the HTTP server. */
-  readonly port?: number;
+  /**
+   * The HTTP server's {@link Port}. Zero requests an automatically assigned
+   * port.
+   */
+  readonly port?: Port;
 }
 
 export type RelayDeps = CreateSqliteDriverDep & RandomDep & TimingSafeEqualDep;
@@ -55,37 +59,22 @@ export const createRelayDeps = (): RelayDeps => ({
  * ### Example
  *
  * ```ts
- * // Ensure the database is created in a predictable location for Docker.
- * mkdirSync("data", { recursive: true });
- * process.chdir("data");
+ * import { assertType, Port, type Task } from "@evolu/common";
+ * import type { Relay } from "@evolu/common/local-first";
+ * import { createRelay, type RelayDeps } from "@evolu/nodejs";
  *
- * const console = createConsole({
- *   // level: "debug",
- *   formatter: createConsoleFormatter()({
- *     timestampFormat: "relative",
- *   }),
+ * const main = createRelay({
+ *   port: Port.orThrow(4000),
+ *   isOwnerWithinQuota: (_ownerId, requiredBytes) =>
+ *     requiredBytes <= 1024 * 1024,
  * });
  *
- * const deps = { ...createRelayDeps(), console };
- *
- * await runMain(deps)(
- *   createRelay({
- *     port: 4000,
- *
- *     // Note: Relay requires URL in format ws://host:port?ownerId=<ownerId>
- *     // isOwnerAllowed: (_ownerId, { signal: _signal }) => true,
- *
- *     isOwnerWithinQuota: (_ownerId, requiredBytes) => {
- *       const maxBytes = 1024 * 1024; // 1MB
- *       return requiredBytes <= maxBytes;
- *     },
- *   }),
- * );
+ * assertType<typeof main, Task<Relay, never, RelayDeps>>();
  * ```
  */
 export const createRelay =
   ({
-    port = 443,
+    port = Port.orThrow(443),
     name = Name.orThrow("evolu-relay"),
     isOwnerAllowed,
     isOwnerWithinQuota,

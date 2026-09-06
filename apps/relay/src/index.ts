@@ -1,4 +1,4 @@
-import { createConsole, createConsoleFormatter } from "@evolu/common";
+import { Port, createConsole, createConsoleFormatter } from "@evolu/common";
 import { installPolyfills } from "@evolu/common/polyfills";
 import { createRelay, createRelayDeps, runMain } from "@evolu/nodejs";
 import { mkdirSync } from "fs";
@@ -18,7 +18,7 @@ const console = createConsole({
 
 await runMain({ ...createRelayDeps(), console })(
   createRelay({
-    port: 4000,
+    port: Port.orThrow(4000),
 
     // Note: Relay requires URL in format ws://host:port/<ownerId>
     // isOwnerAllowed: (_ownerId) => true,

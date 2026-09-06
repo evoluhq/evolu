@@ -19,6 +19,7 @@ import {
   type Task,
   type Typed,
 } from "@evolu/common";
+import type { createRelay } from "./local-first/Relay.ts";
 
 /**
  * An abort requested by a Node.js termination signal.
@@ -41,8 +42,8 @@ export interface RunMainOptions {
    * How termination signals affect the process exit status.
    *
    * Services treat a gracefully handled signal as a successful shutdown.
-   * Commands use the conventional `128 + signal number` exit status unless a
-   * reported defect has already set a failure status.
+   * Commands use the conventional `128 + signal number` exit status unless
+   * `process.exitCode` is already set.
    *
    * @default "service"
    */
@@ -50,60 +51,69 @@ export interface RunMainOptions {
 }
 
 /**
- * Runs the main Task as the Node.js program lifecycle.
+ * Runs the main {@link Task} of a Node.js command or service.
  *
- * Creates one root {@link Run} and aborts it on:
+ * A command does a finite job, such as importing data. A service handles
+ * ongoing work, such as accepting connections. Choose a mode for how the
+ * program reports an interruption:
  *
- * - `SIGINT`: Ctrl-C on all platforms.
- * - `SIGTERM`: OS, service, Docker, or Kubernetes termination on Unix.
- * - `SIGBREAK`: Ctrl-Break on Windows.
+ * - `"command"`: A termination signal means the job was interrupted. After
+ *   cleanup, use the conventional signal exit status, such as 130 for Ctrl-C,
+ *   unless `process.exitCode` is already set.
+ * - `"service"` (default): A termination signal is an expected way to stop the
+ *   service. Graceful shutdown does not set a failure exit status.
  *
- * The first signal logs shutdown progress, aborts the root Run, and waits for
- * the main Task and structured cleanup to finish. A subsequent signal exits
- * immediately with its conventional signal status, abandoning cleanup. A signal
- * received during final cleanup still applies signal shutdown behavior.
+ * Both modes create one root {@link Run} and wait for cleanup. The mode controls
+ * signal exit status; the main Task controls how long `runMain` waits.
  *
- * A main Task returning {@link Resource} keeps the program running until a
- * termination signal and is disposed during shutdown. A main Task returning
- * `void` completes the program immediately. A Resource result transfers
- * ownership of a live resource that must remain valid after its creating Task
- * settles.
+ * ### Lifetime
  *
- * A main Task may return a typed error. An error reaching `runMain` is fatal:
- * {@link getOrThrow} preserves it in `Error.cause`, and the Run reports the
- * failure, finishes cleanup, and sets `process.exitCode` to 1.
+ * When the main Task returns `void`, `runMain` finishes after the Task and root
+ * Run cleanup. It does not force the Node.js process to exit.
  *
- * Service mode treats graceful signal shutdown as successful. Command mode
- * preserves conventional signal exit statuses. Every defect reported through
- * `reportDefect`, including an observer defect that does not abort the Run,
- * sets `process.exitCode` to 1. The default reporter logs to the configured
+ * A service can return a live {@link Resource}, such as the relay created by
+ * {@link createRelay}. This transfers ownership to `runMain`, which waits for
+ * shutdown and then disposes the Resource. It must remain usable after the
+ * creating Task finishes; do not dispose it before returning it.
+ *
+ * Alternatively, the main Task can own its resources with `using` or `await
+ * using` while awaiting {@link waitForAbort} with `run(waitForAbort)`. Waiting
+ * for abort does not itself keep Node.js running: the service needs active
+ * work, such as a listening server.
+ *
+ * ### Shutdown and errors
+ *
+ * Handles `SIGINT` (Ctrl-C), `SIGTERM` (termination by the OS or a service
+ * host), and `SIGBREAK` (Ctrl-Break on Windows). The first signal logs shutdown
+ * progress, aborts the root Run, and waits for cleanup. A second signal exits
+ * immediately with its conventional signal status, abandoning cleanup. Signals
+ * are still handled during final cleanup.
+ *
+ * An error returned by the main Task is fatal. {@link getOrThrow} preserves it
+ * in `Error.cause`; the Run reports the failure and finishes cleanup. Every
+ * reported defect sets `process.exitCode` to 1, including an observer defect
+ * that does not abort the Run. The default reporter logs to the configured
  * Evolu console.
  *
  * Escaped uncaught exceptions and unhandled rejections remain under Node.js
  * native reporting and termination.
  *
- * ### Service Example
+ * ### Example
+ *
+ * A command finishes when its main Task completes:
  *
  * ```ts
- * const deps = { ...createRelayDeps(), console: createConsole() };
+ * import { assertTrue, ok, type Task } from "@evolu/common";
+ * import { runMain } from "@evolu/nodejs";
  *
- * await runMain(deps)(createRelay({ port: 4000 }));
- * ```
+ * let completed = false;
+ * const command: Task<void> = () => {
+ *   completed = true;
+ *   return ok();
+ * };
  *
- * A Task returning `void` can keep a service alive explicitly when no Resource
- * owns its lifetime:
- *
- * ```ts
- * await runMain(deps)(async (run) => {
- *   void run(processMessages);
- *   return await run(waitForAbort);
- * });
- * ```
- *
- * ### Command Example
- *
- * ```ts
  * await runMain(command, { mode: "command" });
+ * assertTrue(completed);
  * ```
  *
  * @group Node.js Task

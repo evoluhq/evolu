@@ -6,8 +6,10 @@ import {
   assertNotUndefined,
   assertSame,
   assertTrue,
+  assertType,
   constFalse,
   constTrue,
+  Port,
   sql,
   testCreateConsole,
   testCreateDeps,
@@ -72,7 +74,7 @@ const startTestRelay = async (config: Partial<NodeJsRelayConfig> = {}) => {
   const relay = disposer.use(
     await run.ok(
       createRelay({
-        port: 0,
+        port: Port.orThrow(0),
         name: testName,
         isOwnerWithinQuota: () => true,
         ...config,
@@ -81,6 +83,9 @@ const startTestRelay = async (config: Partial<NodeJsRelayConfig> = {}) => {
   );
 
   assertNotUndefined(driver);
+  assertTrue(relay.port > 0);
+  assertTrue(Port.is(relay.port));
+  assertType<NonNullable<NodeJsRelayConfig["port"]>, Port>();
 
   const disposables = disposer.move();
 
@@ -820,7 +825,7 @@ describe("createRelay", () => {
     });
     await using _relay = await run.ok(
       relayModule.createRelay({
-        port: 0,
+        port: Port.orThrow(0),
         name: testName,
         isOwnerAllowed: constTrue,
         isOwnerWithinQuota: () => true,
@@ -860,7 +865,7 @@ describe("createRelay", () => {
     });
     await using _relay = await run.ok(
       relayModule.createRelay({
-        port: 0,
+        port: Port.orThrow(0),
         name: testName,
         isOwnerAllowed: constTrue,
         isOwnerWithinQuota: () => true,
@@ -895,7 +900,7 @@ describe("createRelay", () => {
     });
     await using _relay = await run.ok(
       relayModule.createRelay({
-        port: 0,
+        port: Port.orThrow(0),
         name: testName,
         isOwnerWithinQuota: () => true,
       }),
@@ -930,7 +935,7 @@ describe("createRelay", () => {
     });
     await using _relay = await run.ok(
       relayModule.createRelay({
-        port: 0,
+        port: Port.orThrow(0),
         name: testName,
         isOwnerWithinQuota,
       }),
