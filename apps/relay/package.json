@@ -1,6 +1,6 @@
 {
   "name": "@evolu/relay",
-  "version": "3.0.14",
+  "version": "4.0.0",
   "description": "Evolu Relay server",
   "keywords": [
     "evolu",

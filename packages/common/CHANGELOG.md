@@ -1,5 +1,971 @@
 # @evolu/common
 
+## 8.10.0
+
+### Minor Changes
+
+- 532feaa: Added `ByteLength` with human-readable literals
+
+  `ByteLength` is the canonical non-negative safe integer number of bytes, as
+  `Millis` is for time. It rejects JavaScript's negative zero so zero has one
+  canonical representation. `ByteSizeLiteral` validates sizes such as
+  `"1023MiB"` or `"1.5GiB"` at compile time and runtime using the binary units
+  `B`, `KiB`, `MiB`, `GiB`, and `TiB`. Each unit stays below 1024, so
+  `1024KiB` is written as `"1MiB"`, and a half is the only decimal because it
+  is the only one that is exact in every binary unit. APIs can accept `ByteSize` and normalize it with
+  `byteSizeToByteLength`, and `ByteLengthFromString` parses either a number of
+  bytes or a literal from text such as an environment variable.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    ByteLength,
+    ByteLengthFromString,
+    byteSizeToByteLength,
+    type ByteSize,
+  } from "@evolu/common";
+
+  const quota: ByteSize = "1MiB";
+  assertEqual(byteSizeToByteLength(quota), 1048576);
+  assertEqual(byteSizeToByteLength(ByteLength.orThrow(1000)), 1000);
+  assertErr(ByteLength.fromUnknown(-0));
+  assertOk(ByteLengthFromString.fromUnknown("10MiB"), 10485760);
+  ```
+
+- 6bd0a36: Added strict environment configuration codecs
+
+  Use `env({ ... })` to decode CONSTANT_CASE environment variables into typed
+  camelCase settings. Declare fields directly for unprefixed variables such as
+  `PORT`, and put related fields in one-level CONSTANT_CASE namespace groups
+  such as `APP`. The decoded output stays flat. Duplicate output fields and
+  external names fail during construction.
+
+  TypeScript rejects fields declared as namespace groups and groups declared as
+  fields. Full identifier spelling and name lengths are checked during construction.
+
+  Field codecs validate values and encode them back to canonical strings. Field
+  Types can use `withDefault` for explicit defaults. Resolve source precedence
+  before replacing absence, or use the `preserve` strategy when later composition
+  needs supplied-input evidence. Environment access and source merging remain
+  application code.
+
+  Unprefixed fields select exact names. Namespace groups select all names with
+  their prefix and an underscore separator, ignoring casing during selection.
+  Incorrectly cased or unknown selected names fail validation. Unrelated variables
+  are ignored; misspelled unprefixed names or namespace prefixes may therefore
+  still look absent. Namespaces must omit the trailing underscore.
+
+  Optional fields may be absent; explicit `undefined` values are rejected.
+  Empty strings remain present and must satisfy the field Type.
+  Malformed and unknown selected names fail instead of silently using defaults.
+  Errors retain the original environment names. Non-object inputs fail with
+  standard object errors. Names follow `EnvName`: a
+  CONSTANT_CASE identifier of at most 255 characters including the prefix.
+
+  Matching own string properties are read from any non-null object, including
+  arrays and `process.env`. Prototypes and internal contents, such as Map
+  entries, are ignored. Missing required settings still fail validation.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    ByteLengthFromString,
+    env,
+    optional,
+    PortFromString,
+    typeErrorToIssues,
+  } from "@evolu/common";
+
+  const AppEnv = env({
+    port: optional(PortFromString),
+    APP: {
+      maxOwnerBytes: optional(ByteLengthFromString),
+    },
+  });
+  const config = AppEnv.fromUnknown({
+    PORT: "04000",
+    APP_MAX_OWNER_BYTES: "1MiB",
+    HOME: "/home/evolu",
+  });
+  assertOk(config, { port: 4000, maxOwnerBytes: 1048576 });
+  assertEqual(AppEnv.to(config.value), {
+    PORT: "4000",
+    APP_MAX_OWNER_BYTES: "1048576",
+  });
+
+  const invalid = AppEnv.fromUnknown({ APP_POTR: "4000" });
+  assertErr(invalid);
+  assertEqual(typeErrorToIssues(AppEnv, invalid.error)[0]?.path, ["APP_POTR"]);
+  assertErr(AppEnv.fromUnknown({ PORT: "" }));
+  assertErr(AppEnv.fromUnknown({ PORT: undefined }));
+  assertOk(AppEnv.fromUnknown([]), {});
+  ```
+
+- f4d9ad7: Added custom error wrappers for validation Types
+
+  `createTypeWithError` creates a root Type from an existing validator, an error
+  mapper, and a formatter. It forwards error-collection options automatically.
+  The source must use identity encoding; the wrapper preserves its valid values
+  and exposes its Output as Input.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    createTypeWithError,
+    Number,
+    String,
+    union,
+    type TypeError,
+    type UnionError,
+  } from "@evolu/common";
+
+  interface ValueError extends TypeError<"Value"> {
+    readonly cause: UnionError;
+  }
+
+  const Value = createTypeWithError(
+    "Value",
+    union(String, Number),
+    (cause): ValueError => ({ type: "Value", cause }),
+    () => "Enter text or a number.",
+  );
+
+  const result = Value.fromUnknown(false, { errors: "all" });
+  assertErr(result);
+  assertEqual(result.error.cause.errors.length, 2);
+  assertEqual(Value.formatError(result.error), "Enter text or a number.");
+  ```
+
+- 3d84543: Added a prefixed string codec
+
+  Use `prefixed(prefix)(Type)` to remove an exact, case-sensitive prefix when
+  decoding and restore it when encoding. The wrapped Type validates the suffix
+  and preserves its decoded output, including brands. Encoding uses its
+  canonical string representation.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    assertType,
+    ConstantCaseIdentifier,
+    prefixed,
+    PortFromString,
+    type Port,
+  } from "@evolu/common";
+
+  const EnvName = prefixed("APP_")(ConstantCaseIdentifier);
+  const name = EnvName.fromUnknown("APP_PORT");
+  assertOk(name, "PORT");
+  assertType<typeof name.value, ConstantCaseIdentifier>();
+  assertEqual(EnvName.to(name.value), "APP_PORT");
+  assertErr(EnvName.fromUnknown("OTHER_PORT"));
+  assertErr(EnvName.fromUnknown("APP_port"));
+
+  const PortSetting = prefixed("port:")(PortFromString);
+  const port = PortSetting.fromUnknown("port:04000");
+  assertOk(port, 4000);
+  assertType<typeof port.value, Port>();
+  assertEqual(PortSetting.to(port.value), "port:4000");
+  ```
+
+  The prefix must be a concrete string literal. The wrapped Type must accept a
+  string Input and encode to strings. An empty prefix leaves its representation
+  unchanged; an empty suffix is validated by the wrapped Type.
+
+- 6bd0a36: Added reversible object key codecs
+
+  `objectKeys(keyType)(objectType)` gives a strict object's fields external
+  names using the key Type's canonical encoding. Field Types, optionality, and
+  semantic Output are preserved. Decoding accepts exact canonical names and
+  reports errors at those names. Invalid schema keys and conflicting encodings
+  fail during construction.
+
+  Typed property errors include missing required properties and unexpected input
+  keys.
+
+  `CamelCaseIdentifierFromConstantCaseIdentifier` converts between the two
+  identifier conventions without losing word boundaries. Compose it with
+  `prefixed` to adapt namespaced keys.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    CamelCaseIdentifierFromConstantCaseIdentifier,
+    object,
+    objectKeys,
+    PortFromString,
+    prefixed,
+  } from "@evolu/common";
+
+  const Key = prefixed("APP_")(CamelCaseIdentifierFromConstantCaseIdentifier);
+  const Settings = objectKeys(Key)(object({ http2Port: PortFromString }));
+  const result = Settings.fromUnknown({ APP_HTTP2_PORT: "04000" });
+  assertOk(result, { http2Port: 4000 });
+  assertEqual(Settings.to(result.value), { APP_HTTP2_PORT: "4000" });
+  assertErr(Settings.fromUnknown({ APP_HTTP_2_PORT: "4000" }));
+  ```
+
+- 76554bd: Added explicit defaults
+
+  Use `withDefault(type, value)` to fill missing optional properties or accepted
+  `null` and `undefined` values. Invalid supplied values still fail validation.
+
+  Pass `{ strategy: "preserve" }` as the third argument to track whether the
+  default was used and restore the original absence when encoding. An explicitly
+  supplied value remains distinguishable even when it equals the default.
+
+  Configured defaults are reused by reference, including when Types are localized
+  with `localizeTypes`. `partial` retains localized field errors while disabling
+  defaults for missing properties.
+
+  **Prefer defaults in the view over defaults in your database schema.** Use
+  nullable columns and apply `??` when reading or displaying values unless the
+  default needs to be stored. Replacing `null` can enlarge rows unnecessarily and
+  erase the distinction between "not specified" and an explicit user decision.
+
+  ```ts
+  import {
+    assertEqual,
+    assertOk,
+    Boolean,
+    nullOr,
+    object,
+    optional,
+    withDefault,
+  } from "@evolu/common";
+
+  const Enabled = withDefault(nullOr(Boolean), true);
+
+  assertOk(Enabled.fromUnknown(null), true);
+  assertEqual(Enabled.to(true), true);
+
+  const Settings = object({
+    enabled: withDefault(optional(Boolean), true, { strategy: "preserve" }),
+  });
+
+  const missing = Settings.fromUnknown({});
+  assertOk(missing, {
+    enabled: { value: true, defaultUsed: true, original: "missing" },
+  });
+  assertEqual(Settings.to(missing.value), {});
+
+  assertOk(Settings.fromUnknown({ enabled: true }), {
+    enabled: { value: true, defaultUsed: false },
+  });
+  ```
+
+- 918d77b: Added file system operations for Tasks
+
+  `Fs` provides `readFile`, `writeFile`, `readDirectory`, `createDirectory`, `copy`,
+  `copyFile`, `rename`, `remove`, `getMetadata`, `exists`, and `createTempDirectory`.
+  Each operation returns a Task.
+
+  Tasks can sequence file operations without synchronous I/O. Node.js's synchronous
+  methods are intentionally omitted to avoid accidentally blocking the event loop.
+
+  Inject `createNodeFs()` through `runMain` or `createRun`. Tasks declare `FsDep`
+  and access the file system through `run.deps.fs`.
+
+  On Node.js, `readFile` and `writeFile` pass the Run's abort signal to the native
+  operation. If it rejects after cancellation, the Task propagates the Run's abort
+  reason. Cancellation can leave a write partially completed. Successful operations
+  return their values even if an abort was requested. Other operations run to
+  completion and return their results once started.
+
+  File system errors include a reason such as `NotFound` or `IsDirectory`, a
+  diagnostic message, and the operation's path. URL paths are represented by `href`.
+  Copy and rename errors also include the destination. `exists` returns `false`
+  for `NotFound` and preserves other errors, including permission failures.
+
+  `getMetadata` returns data with a `type` field such as `"File"` or `"Directory"`.
+  `readDirectory` lists relative entry names and supports recursive listing.
+  On Node.js, `copy` delegates to recursive `node:fs/promises.cp`. By default it
+  merges directories and replaces files. Its options are Node's `force`,
+  `errorOnExist`, and `preserveTimestamps`: `force: false` skips existing files,
+  and adding `errorOnExist: true` rejects existing files and directories.
+  Symbolic links retain Node's behavior and may still be replaced with both of
+  those options set. Tree copying provides no exclusive-creation or atomicity
+  guarantee, and a failure can leave a partial copy.
+
+  `copyFile` copies a single file and fails with `AlreadyExists` if the destination
+  exists, unless `overwrite: true` is set. Its default exclusive creation also
+  protects against competing copies. File contents are not published atomically.
+  `rename` uses the platform's rename semantics and can replace an existing file.
+
+  `createTempDirectory()` uses the system temporary directory by default. Its
+  `directory` option selects an existing parent directory, and `prefix` sets a
+  prefix for the generated directory name. The returned directory supports cleanup
+  with `await using`. Once creation starts, it returns its result even if the Run
+  aborts, so the caller can dispose the directory.
+  On Node.js, the parent is resolved through the file system before creation, so
+  symbolic links followed by `..` retain their file system meaning. The returned
+  path is absolute, so cleanup still removes the created directory if the process
+  changes its working directory before disposal. Resolution errors identify the
+  supplied parent; creation errors identify the resolved parent and name prefix.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    ok,
+    type FsDep,
+    type FsError,
+    type Task,
+  } from "@evolu/common";
+  import { createNodeFs, runMain } from "@evolu/nodejs";
+  import { join } from "node:path";
+
+  const main: Task<void, FsError, FsDep> = async (run) => {
+    const { fs } = run.deps;
+    const temp = await run(fs.createTempDirectory({ prefix: "evolu-fs-" }));
+    if (!temp.ok) return temp;
+
+    await using directory = temp.value;
+    const path = join(directory.path, "message.txt");
+
+    const result = await run(fs.writeFile(path, "hello"));
+    if (!result.ok) return result;
+
+    const text = await run(fs.readFile(path, "utf8"));
+    if (!text.ok) return text;
+    assertEqual(text.value, "hello");
+
+    const metadata = await run(fs.getMetadata(path));
+    if (!metadata.ok) return metadata;
+    assertEqual(metadata.value.type, "File");
+
+    const copyPath = join(directory.path, "copy.txt");
+    const copied = await run(fs.copy(path, copyPath));
+    if (!copied.ok) return copied;
+    const copyConflict = await run(
+      fs.copy(path, copyPath, { force: false, errorOnExist: true }),
+    );
+    assertErr(copyConflict);
+    assertEqual(copyConflict.error.reason, "AlreadyExists");
+
+    const conflict = await run(fs.copyFile(path, copyPath));
+    assertErr(conflict);
+    assertEqual(conflict.error.reason, "AlreadyExists");
+
+    return ok();
+  };
+
+  await runMain({ fs: createNodeFs() }, { mode: "command" })(main);
+  ```
+
+  Use `testCreateFs(overrides)` to supply file system behavior in application tests.
+  Unconfigured operations throw a defect naming the method when their Task runs.
+
+  ```ts
+  import {
+    assertErr,
+    testCreateFs,
+    testCreateRun,
+    err,
+    type FsError,
+  } from "@evolu/common";
+
+  const error: FsError = {
+    type: "FsError",
+    reason: "PermissionDenied",
+    path: "protected.txt",
+    syscall: "open",
+    message: "Permission denied",
+  };
+
+  await using run = testCreateRun({
+    fs: testCreateFs({ readFile: () => () => err(error) }),
+  });
+
+  assertErr(await run(run.deps.fs.readFile("protected.txt", "utf8")), error);
+  ```
+
+- f4d9ad7: Included member failures in union validation messages
+
+  Union messages now include the retained member failures below the summary.
+  This makes errors from Types such as `undefinedOr(PortFromString)` actionable
+  without inspecting an Error's `cause`. Validation, encoding, and structured
+  errors are unchanged. A Union still produces one issue at its enclosing path;
+  member indexes and nested paths appear only in the message.
+
+  **Custom `Union` formatters now provide the summary, not the complete message.**
+  Remove any member-error enumeration from those formatters: Evolu appends the
+  details using the member formatters in the selected locale. Update exact
+  message assertions and allow multiline messages wherever validation errors are
+  displayed. Calling a locale's `formatUnionError` directly still returns only
+  the summary; use the Type's `formatError` to format the complete failure.
+
+  Only failures retained during decoding can be reported. The default keeps the
+  first member failure; `{ errors: "all" }` retains every failed alternative.
+  Formatting does not run validation again.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    PortFromString,
+    typeErrorToIssues,
+    undefinedOr,
+  } from "@evolu/common";
+
+  const Port = undefinedOr(PortFromString);
+  const result = Port.fromUnknown("65536");
+  assertErr(result);
+
+  const message = [
+    "A value does not match any allowed variant.",
+    "- 0: PortFromString: The value 65536 must be less than or equal to 65535.",
+  ].join("\n");
+
+  assertEqual(Port.formatError(result.error), message);
+  assertEqual(typeErrorToIssues(Port, result.error), [{ path: [], message }]);
+  ```
+
+- 6bd0a36: Added descriptor-preserving object key filtering
+
+  Use `filterObjectKeys` to select own string-keyed properties without reading
+  their values or invoking getters. It preserves property descriptors, including
+  non-enumerable properties, and ignores inherited and symbol properties. The
+  result is a new ordinary object whose declared properties are optional and readonly.
+
+  ```ts
+  import { assertEqual, assertType, filterObjectKeys } from "@evolu/common";
+
+  const selected = filterObjectKeys(
+    { APP_PORT: "4000", HOME: "/home/evolu" },
+    (key) => key.startsWith("APP_"),
+  );
+  assertEqual(selected, { APP_PORT: "4000" });
+  assertType<
+    typeof selected,
+    { readonly APP_PORT?: string; readonly HOME?: string }
+  >();
+  ```
+
+- ad85bdb: Gave duration and percentage literals dedicated validation errors
+
+  `DurationLiteral` and `PercentageLiteral` now report `DurationLiteralError` and
+  `PercentageLiteralError` instead of generic union errors. Each error retains
+  the rejected `value` and the underlying union failure in `cause`, while its
+  default message gives examples of the expected format.
+
+  Validation options still apply to the underlying unions: `{ errors: "all" }`
+  retains every alternative in `cause`, while formatting remains concise.
+
+  Every locale exports `formatDurationLiteralError` and
+  `formatPercentageLiteralError`. Use the matching `DurationLiteral` and
+  `PercentageLiteral` keys when localizing these Types or enclosing schemas.
+
+  These are now named Types rather than exposed unions, so they no longer expose
+  `.members`. Duration unit Types still expose their members. Use `fromUnknown`
+  for dynamic input; the typed `from`, `to`, and `orThrow` methods require a valid
+  literal.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    DurationLiteral,
+    PercentageLiteral,
+    localizeTypes,
+    object,
+  } from "@evolu/common";
+  import { cs } from "@evolu/common/intl";
+
+  const duration = DurationLiteral.fromUnknown("60s", { errors: "all" });
+  assertErr(duration);
+
+  // @ts-expect-error DurationLiteral errors have type "DurationLiteral", not "Union".
+  const _oldDurationTag: "Union" = duration.error.type;
+  assertEqual(duration.error.type, "DurationLiteral");
+  assertEqual(duration.error.cause.type, "Union");
+  assertEqual(duration.error.cause.errors.length, 7);
+
+  const percentage = PercentageLiteral.fromUnknown("101%", { errors: "all" });
+  assertErr(percentage);
+
+  // @ts-expect-error PercentageLiteral errors have type "PercentageLiteral", not "Union".
+  const _oldPercentageTag: "Union" = percentage.error.type;
+  assertEqual(percentage.error.type, "PercentageLiteral");
+  assertEqual(percentage.error.cause.type, "Union");
+  assertEqual(percentage.error.cause.errors.length, 4);
+
+  const { czech } = localizeTypes(
+    { Settings: object({ delay: DurationLiteral, jitter: PercentageLiteral }) },
+    {
+      czech: {
+        Object: cs.formatObjectError,
+        DurationLiteral: cs.formatDurationLiteralError,
+        PercentageLiteral: cs.formatPercentageLiteralError,
+      },
+    },
+  );
+  const invalid = czech.Settings.fromUnknown({ delay: "60s", jitter: "50%" });
+  assertErr(invalid);
+  assertEqual(
+    czech.Settings.formatError(invalid.error),
+    'Hodnota "60s" není literál délky trvání. Použijte hodnotu jako "500ms" nebo "1.5s".',
+  );
+  ```
+
+- f4d9ad7: Added validation issues with paths
+
+  Use `typeErrorToIssues(type, error)` to convert a Type validation error into a
+  non-empty array of `TypeIssue` values. Each issue contains a `path` from the
+  root value and a formatted `message`. Nested and localized formatters are
+  preserved; root errors have an empty path.
+
+  Pass the Type that produced the error. The helper does not validate again, so
+  decode with `{ errors: "all" }` to collect every issue.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertType,
+    BooleanFromString,
+    object,
+    PortFromString,
+    typeErrorToIssues,
+    type NonEmptyReadonlyArray,
+    type TypeIssue,
+  } from "@evolu/common";
+
+  const Settings = object({
+    server: object({ port: PortFromString }),
+    enabled: BooleanFromString,
+  });
+  const result = Settings.fromUnknown(
+    { server: { port: "65536" }, enabled: "maybe" },
+    { errors: "all" },
+  );
+  assertErr(result);
+
+  const issues = typeErrorToIssues(Settings, result.error);
+  assertType<typeof issues, NonEmptyReadonlyArray<TypeIssue>>();
+  assertEqual(issues, [
+    {
+      path: ["server", "port"],
+      message: "The value 65536 must be less than or equal to 65535.",
+    },
+    {
+      path: ["enabled"],
+      message: 'The value "maybe" is not a boolean. Use true or false.',
+    },
+  ]);
+  ```
+
+- 91ff875: Added Port and PortFromString
+
+  Added `Port` for integer ports from 0 through 65535 and `PortFromString` for
+  decimal text. Zero remains valid for requesting an automatically assigned
+  listening port. `PortFromString` uses the same decimal syntax as
+  `IntFromString` and returns a validated `Port`.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    assertType,
+    Port,
+    PortFromString,
+  } from "@evolu/common";
+
+  const port = Port.orThrow(4000);
+  assertType<typeof port, Port>();
+  assertErr(Port.fromUnknown(4000.5));
+
+  assertOk(PortFromString.fromUnknown("0"), 0);
+  assertOk(PortFromString.fromUnknown("65535"), 65535);
+  assertErr(PortFromString.fromUnknown("-1"));
+  assertErr(PortFromString.fromUnknown("65536"));
+  assertEqual(PortFromString.to(port), "4000");
+  ```
+
+- 6bd0a36: Exposed reusable Type factory declarations
+
+  `ValidateLiteral` is now exported for factories that require one concrete
+  literal parameter. It preserves exact literals and rejects widened, union,
+  branded, and open template literal types at compile time.
+
+  `ValidateOutput` is also exported for factories that require one concrete Type
+  node. It rejects TypeScript unions of Type nodes while accepting a `union` Type.
+
+  `EnvType<Props>` names the configuration codec returned by `env`, including
+  its flat output and grouped field declarations.
+
+  ```ts
+  import {
+    assertEqual,
+    assertType,
+    env,
+    object,
+    PortFromString,
+    type AnyType,
+    type EnvType,
+    type ValidateLiteral,
+    type ValidateOutput,
+  } from "@evolu/common";
+
+  const definePrefix = <Prefix extends string>(
+    prefix: Prefix & ValidateLiteral<Prefix>,
+  ): Prefix => prefix;
+
+  const prefix = definePrefix("APP");
+  assertType<typeof prefix, "APP">();
+  const widened: string = "APP";
+  // @ts-expect-error Expected must be one concrete literal value.
+  definePrefix(widened);
+
+  const Settings = object({ port: PortFromString });
+  const defineOutput = <T extends AnyType>(type: T & ValidateOutput<T>): T =>
+    type;
+  const Output = defineOutput(Settings);
+  assertType<typeof Output, typeof Settings>();
+  const uncertain = Settings as typeof Settings | typeof PortFromString;
+  // @ts-expect-error Output Type must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+  defineOutput(uncertain);
+
+  const Env = env({ [prefix]: Output.props });
+  assertType<typeof Env, EnvType<{ readonly APP: typeof Settings.props }>>();
+  assertEqual(Env.orThrow({ APP_PORT: "4000" }), { port: 4000 });
+  ```
+
+- 140c4cf: Added `IntFromString` and `BooleanFromString`
+
+  Both Types parse text inputs such as environment variables, URL query
+  parameters, and form fields. `IntFromString` accepts an optional minus sign
+  and digits within the safe integer range and preserves JavaScript's negative
+  zero. `BooleanFromString` accepts exactly `true` and `false`, so a boolean
+  has one spelling in every source. Both errors have localized messages in
+  every `@evolu/common/intl` locale.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    assertSame,
+    BooleanFromString,
+    IntFromString,
+  } from "@evolu/common";
+
+  assertOk(IntFromString.fromUnknown("4000"), 4000);
+  assertErr(IntFromString.fromUnknown("4000.5"), {
+    type: "IntFromString",
+    value: "4000.5",
+  });
+  const negativeZero = IntFromString.orThrow("-0");
+  assertSame(negativeZero, -0);
+  assertEqual(IntFromString.to(negativeZero), "-0");
+  assertOk(BooleanFromString.fromUnknown("true"), true);
+  assertErr(BooleanFromString.fromUnknown("yes"), {
+    type: "BooleanFromString",
+    value: "yes",
+  });
+  ```
+
+- 3d84543: Added a startsWith string Brand factory
+
+  Use `startsWith(prefix)(String)` to require an exact, case-sensitive prefix
+  without changing the string. Compose it with other string Types to preserve
+  their constraints. Each literal prefix produces a distinct brand; an empty
+  prefix accepts every string allowed by the parent Type.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    assertType,
+    maxLength,
+    startsWith,
+    String,
+    type Brand,
+  } from "@evolu/common";
+
+  const EnvName = startsWith("APP_")(maxLength(64)(String));
+  const result = EnvName.fromUnknown("APP_PORT");
+  assertOk(result, "APP_PORT");
+  assertType<
+    typeof result.value,
+    string & Brand<"MaxLength64"> & Brand<"StartsWithAPP_">
+  >();
+  assertEqual(EnvName.to(result.value), "APP_PORT");
+  assertErr(EnvName.fromUnknown("app_PORT"));
+
+  const prefix = globalThis.String("APP_");
+  // @ts-expect-error Expected must be one concrete literal value.
+  startsWith(prefix);
+  ```
+
+  All 43 locales export `formatStartsWithError` for use with `localizeTypes`.
+  Messages include the value and required prefix, with quotes and control
+  characters escaped.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    localizeTypes,
+    startsWith,
+    String,
+  } from "@evolu/common";
+  import { cs } from "@evolu/common/intl";
+
+  const EnvName = startsWith("APP_")(String);
+  const localized = localizeTypes(
+    { EnvName },
+    {
+      cs: {
+        [EnvName.name]: cs.formatStartsWithError,
+        String: cs.formatStringError,
+      },
+    },
+  );
+  const result = localized.cs.EnvName.fromUnknown("PORT");
+  assertErr(result);
+  assertEqual(
+    localized.cs.EnvName.formatError(result.error),
+    'Hodnota "PORT" musí začínat na "APP_".',
+  );
+  ```
+
+- 3d84543: Added identifier Types and casing conversions
+
+  Validate identifiers with `CamelCaseIdentifier`, `PascalCaseIdentifier`,
+  `SnakeCaseIdentifier`, `KebabCaseIdentifier`, or `ConstantCaseIdentifier`, and
+  convert between them with functions such as `constantCaseToCamelCase`, which
+  turns `HTTP2_PORT` into `http2Port`. Conversions preserve word boundaries, so
+  converting back restores the original spelling.
+
+  An identifier is one or more ASCII words, each starting with a letter and
+  continuing with letters or digits. Every uppercase letter in camelCase and
+  PascalCase starts a word: `httpUrl` corresponds to `HTTP_URL`, while `httpURL`
+  corresponds to `HTTP_U_R_L`. Words never start with a digit, because camelCase
+  cannot mark a word boundary before one. Join an abbreviation such as `2FA` to
+  the previous word, as in `MAX2FA_ATTEMPTS` and `max2faAttempts`, or spell the
+  number out, as in `TWO_FACTOR_SECRET`.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    assertType,
+    camelCaseToConstantCase,
+    constantCaseToCamelCase,
+    CamelCaseIdentifier,
+    ConstantCaseIdentifier,
+  } from "@evolu/common";
+
+  const input = ConstantCaseIdentifier.fromUnknown("HTTP2_PORT");
+  assertOk(input);
+  const camel = constantCaseToCamelCase(input.value);
+  assertEqual(camel, "http2Port");
+  assertType<typeof camel, CamelCaseIdentifier>();
+
+  const constant = camelCaseToConstantCase(camel);
+  assertEqual(constant, input.value);
+  assertType<typeof constant, ConstantCaseIdentifier>();
+
+  assertErr(ConstantCaseIdentifier.fromUnknown("HTTP_2_PORT"));
+  assertErr(CamelCaseIdentifier.fromUnknown("http_port"));
+
+  assertErr(ConstantCaseIdentifier.fromUnknown("MAX_2FA_ATTEMPTS"));
+  const attempts = ConstantCaseIdentifier.orThrow("MAX2FA_ATTEMPTS");
+  assertEqual(constantCaseToCamelCase(attempts), "max2faAttempts");
+  assertErr(ConstantCaseIdentifier.fromUnknown("2FA_SECRET"));
+  const secret = ConstantCaseIdentifier.orThrow("TWO_FACTOR_SECRET");
+  assertEqual(constantCaseToCamelCase(secret), "twoFactorSecret");
+  ```
+
+  Use the `identifier` Brand factory to add these rules to an existing string
+  Type, for example `identifier("CONSTANT_CASE")(maxLength(64)(String))`.
+  Conversions return only the destination brand, since changing the spelling can
+  invalidate other constraints such as length. `formatIdentifierError` is
+  available in every supported locale.
+
+- f3b5829: Added text casing Types and conversion functions
+
+  Check and change text casing with Types that work directly with TypeScript's
+  built-in string casing types. Use `CapitalizedString`, `UncapitalizedString`,
+  `UppercasedString`, and `LowercasedString` to validate input without changing it.
+  Use `capitalize`, `uncapitalize`, `uppercase`, and `lowercase` to create a value
+  with the desired casing from any string. When the input is a string literal,
+  TypeScript infers the exact converted value.
+
+  Capitalization changes the first Unicode code point and keeps the rest of the
+  text intact. Uppercasing and lowercasing apply to the whole string. Empty strings
+  stay empty, and characters without casing, such as digits and emoji, are allowed.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertOk,
+    assertType,
+    capitalize,
+    CapitalizedString,
+    lowercase,
+    LowercasedString,
+    uncapitalize,
+    UncapitalizedString,
+    uppercase,
+    UppercasedString,
+  } from "@evolu/common";
+
+  const title: CapitalizedString = "Hello world";
+  assertOk(CapitalizedString.fromUnknown(title), title);
+  assertErr(CapitalizedString.fromUnknown("hello world"));
+  const greeting = capitalize("hello world");
+  assertType<typeof greeting, "Hello world">();
+  assertEqual(greeting, title);
+  assertEqual(uncapitalize("Hello WORLD"), "hello WORLD");
+  assertEqual(uppercase("Hello world"), "HELLO WORLD");
+  assertEqual(lowercase("Hello WORLD"), "hello world");
+
+  assertType<CapitalizedString, Capitalize<string>>();
+  assertType<UncapitalizedString, Uncapitalize<string>>();
+  assertType<UppercasedString, Uppercase<string>>();
+  assertType<LowercasedString, Lowercase<string>>();
+
+  assertEqual(capitalize("𐐨x"), "𐐀x");
+  assertEqual(uppercase("Straße"), "STRASSE");
+  assertEqual(lowercase(""), "");
+  ```
+
+  Apply `capitalized`, `uncapitalized`, `uppercased`, or `lowercased` to an existing
+  string Type to retain its constraints during validation. The conversion
+  functions return the corresponding intrinsic type without retaining input
+  brands: Unicode casing can change the length, as `ß` becomes `SS`.
+
+  Error formatters for the new Types are available in every supported locale.
+
+- ad85bdb: Gave byte-size literals a dedicated validation error
+
+  `ByteSizeLiteral` now reports `ByteSizeLiteralError` instead of `UnionError`.
+  Its message explains the expected format without expanding every union
+  alternative. The rejected value is in `value`, and `cause` retains the
+  underlying union failure for diagnostics. Accepted literals and encoding are
+  unchanged.
+
+  Validation options still apply to the underlying union: `{ errors: "all" }`
+  retains every alternative in `cause`, while formatting remains concise.
+
+  Use the `ByteSizeLiteral` localization key and `formatByteSizeLiteralError`,
+  available in every locale. Localizing an enclosing Type now selects this
+  formatter independently of generic union messages.
+
+  Code inspecting the old error must use the new tag and read union diagnostics
+  from `cause`. `ByteSizeLiteral` is now a named Type rather than an exposed union;
+  the unit-specific Types remain available separately.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    ByteSizeLiteral,
+    localizeTypes,
+    object,
+  } from "@evolu/common";
+  import { cs } from "@evolu/common/intl";
+
+  const invalid = ByteSizeLiteral.fromUnknown("1MB", { errors: "all" });
+  assertErr(invalid);
+
+  // @ts-expect-error ByteSizeLiteral errors have type "ByteSizeLiteral", not "Union".
+  const _oldTag: "Union" = invalid.error.type;
+  assertEqual(invalid.error.type, "ByteSizeLiteral");
+  assertEqual(invalid.error.cause.type, "Union");
+  assertEqual(invalid.error.cause.errors.length, 5);
+
+  const { czech } = localizeTypes(
+    { Settings: object({ quota: ByteSizeLiteral }) },
+    {
+      czech: {
+        Object: cs.formatObjectError,
+        ByteSizeLiteral: cs.formatByteSizeLiteralError,
+      },
+    },
+  );
+  const result = czech.Settings.fromUnknown({ quota: "1MB" });
+  assertErr(result);
+  assertEqual(
+    czech.Settings.formatError(result.error),
+    'Hodnota "1MB" není literál velikosti v bajtech. Použijte hodnotu jako "512KiB" nebo "1MiB".',
+  );
+  ```
+
+### Patch Changes
+
+- ad85bdb: Reduced generated declarations for literal Types
+
+  Byte-size, duration, percentage, and digit-range declarations now preserve
+  references to shared Types instead of repeatedly expanding their definitions.
+  Accepted values and the unit Types' member and template-part APIs are preserved.
+
+  ```ts
+  import {
+    assertSame,
+    assertType,
+    ByteSizeLiteralKiB,
+    Digit1To9,
+    Digit1To59,
+    DurationLiteralSeconds,
+  } from "@evolu/common";
+
+  assertSame(ByteSizeLiteralKiB.members[0].parts[0], Digit1To9);
+  assertType<(typeof ByteSizeLiteralKiB.members)[5]["parts"][1], ".5KiB">();
+  assertSame(DurationLiteralSeconds.members[0].parts[0], Digit1To59);
+  ```
+
+- f4d9ad7: Improved Type.orThrow validation messages
+
+  `Type.orThrow` now throws an `Error` whose message comes from the Type's
+  `formatError`, including localized formatters. The original validation error
+  remains available in `cause`. With `{ errors: "all" }`, the cause retains all
+  collected errors while the message describes the first issue.
+
+  Typed-input assertion failures retain their existing messages. The generic
+  `getOrThrow` function is unchanged.
+
+  ```ts
+  import {
+    assertEqual,
+    assertErr,
+    assertInstanceOf,
+    PortFromString,
+    trySync,
+  } from "@evolu/common";
+
+  assertEqual(PortFromString.orThrow("4000"), 4000);
+
+  const failed = trySync(() => PortFromString.orThrow("http"));
+  assertErr(failed);
+  assertInstanceOf(failed.error, Error);
+  assertEqual(
+    failed.error.message,
+    'The value "http" is not a decimal integer.',
+  );
+  assertEqual(failed.error.cause, { type: "IntFromString", value: "http" });
+  ```
+
+- 9ee6f15: Translated the Ukrainian error messages
+
+  The `uk` locale in `@evolu/common/intl` formatted every Type error in
+  English. All messages are now in Ukrainian.
+
 ## 8.9.0
 
 ### Minor Changes

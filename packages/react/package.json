@@ -1,6 +1,6 @@
 {
   "name": "@evolu/react",
-  "version": "11.0.2",
+  "version": "11.0.3",
   "description": "Evolu for React",
   "keywords": [
     "evolu",
@@ -46,7 +46,7 @@
     "react": "catalog:react19"
   },
   "peerDependencies": {
-    "@evolu/common": "^8.9.0",
+    "@evolu/common": "^8.10.0",
     "react": ">=19"
   },
   "publishConfig": {
