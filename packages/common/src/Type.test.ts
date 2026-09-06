@@ -62,6 +62,7 @@ import {
   createIdAsUuidv7,
   createIdFromString,
   createType,
+  createTypeWithError,
   Data,
   Date,
   DateIso,
@@ -211,6 +212,8 @@ import {
   type GreaterThanError,
   type InferErrors,
   type InferType,
+  type TypeIssue,
+  typeErrorToIssues,
   type InstanceConstructor,
   type IsData,
   type InstanceOfError,
@@ -1110,8 +1113,105 @@ describe("Type operations", () => {
   it("map only errors returned after the typed Input boundary", () => {
     const error = { type: "Positive", value: 0 } as const;
 
-    assertAssertionError(() => PositiveNumber.orThrow(0), "getOrThrow", error);
+    assertAssertionError(
+      () => PositiveNumber.orThrow(0),
+      PositiveNumber.formatError(error),
+      error,
+    );
     assertSame(PositiveNumber.orNull(0), null);
+  });
+});
+
+describe("Type.orThrow", () => {
+  it("formats a returned validation error once and preserves its identity", () => {
+    const cause = { type: "Text", value: "invalid" } as const;
+    const decode = mock.fn(() => err(cause));
+    const format = mock.fn(
+      (_error: typeof cause) => "Expected configured text.",
+    );
+    const Text = transform(
+      "Text",
+      String,
+      String,
+      {
+        from: decode,
+        to: (value) => value,
+      },
+      format,
+    );
+
+    const thrown = assertThrowsInstanceOf(() => Text.orThrow("invalid"), Error);
+
+    assertEqual(thrown.message, "Expected configured text.");
+    assertSame(thrown.cause, cause);
+    assertEqual(decode.mock.callCount(), 1);
+    assertEqual(format.mock.callCount(), 1);
+    assertSame(format.mock.calls[0]?.arguments[0], cause);
+  });
+});
+
+describe("typeErrorToIssues", () => {
+  it("formats collected errors without decoding again", () => {
+    const decode = mock.fn((value: string) => ok(value));
+    const Text = transform("Text", String, String, {
+      from: decode,
+      to: (value) => value,
+    });
+    const Model = object({ text: Text, counts: array(IntFromString) });
+    const result = Model.fromUnknown(
+      { text: "ok", counts: ["bad", "worse"] },
+      { errors: "all" },
+    );
+    assertErr(result);
+    assertEqual(typeErrorToIssues(Model, result.error), [
+      {
+        path: ["counts", 0],
+        message: 'The value "bad" is not a decimal integer.',
+      },
+      {
+        path: ["counts", 1],
+        message: 'The value "worse" is not a decimal integer.',
+      },
+    ]);
+    assertEqual(decode.mock.callCount(), 1);
+  });
+
+  it("retains root paths and only the errors collected during decoding", () => {
+    const root = String.fromUnknown(1);
+    assertErr(root);
+    const issues = typeErrorToIssues(String, root.error);
+    assertType<typeof issues, NonEmptyReadonlyArray<TypeIssue>>();
+    assertEqual(issues, [{ path: [], message: "A value 1 is not a string." }]);
+    const Values = array(IntFromString);
+    const result = Values.fromUnknown(["bad", "worse"]);
+    assertErr(result);
+    assertEqual(typeErrorToIssues(Values, result.error), [
+      { path: [0], message: 'The value "bad" is not a decimal integer.' },
+    ]);
+  });
+
+  it("uses localized messages for nested issues", () => {
+    const Model = object({ labels: array(minLength(1)(String)) });
+    const LocalizedModel = localizeTypes(
+      { Model },
+      {
+        cs: {
+          Array: cs.formatArrayError,
+          MinLength1: cs.formatMinLengthError,
+          Object: cs.formatObjectError,
+          String: cs.formatStringError,
+        },
+      },
+    ).cs.Model;
+    const result = LocalizedModel.fromUnknown(
+      { labels: [1, ""] },
+      { errors: "all" },
+    );
+    assertErr(result);
+    assertEqual(typeErrorToIssues(LocalizedModel, result.error), [
+      { path: ["labels", 0], message: "Hodnota 1 musí být text." },
+      { path: ["labels", 1], message: "Text nesmí být prázdný." },
+    ]);
   });
 });
 
@@ -1336,7 +1436,11 @@ describe("Standard Schema", () => {
     assertEqual(result, {
       issues: [
         {
-          message: "A value does not match any allowed variant.",
+          message: [
+            "A value does not match any allowed variant.",
+            "- 0: String: A value null is not a string.",
+            "- 1: Number: A value null is not a number.",
+          ].join("\n"),
           path: ["value"],
         },
       ],
@@ -1866,6 +1970,11 @@ describe("localizeTypes", () => {
     assertEqual(types.Strings.to(["Evolu"]), ["Evolu"]);
 
     const positiveError = { type: "Positive", value: 0 } as const;
+    assertAssertionError(
+      () => types.PositiveNumber.orThrow(0),
+      "Localized Positive.",
+      positiveError,
+    );
     for (const operation of [
       () => types.PositiveNumber.from(0 as PositiveNumber),
       () => types.PositiveNumber.to(0 as PositiveNumber),
@@ -1994,7 +2103,7 @@ describe("localizeTypes", () => {
     >();
   });
 
-  it("lets a Union own its complete failure and localizes its members", () => {
+  it("localizes a Union summary and its retained member failures", () => {
     const Value = union(String, Number);
     const types = localizeTypes(
       { Value },
@@ -2010,7 +2119,10 @@ describe("localizeTypes", () => {
     const stringResult = types.Value.members[0].fromUnknown(1);
 
     assertErr(result);
-    assertEqual(types.Value.formatError(result.error), "Localized Union.");
+    assertEqual(
+      types.Value.formatError(result.error),
+      "Localized Union.\n- 0: String: Localized String.",
+    );
     assertFalse(globalThis.Object.is(types.Value.members[0], String));
     assertFalse(globalThis.Object.is(types.Value.members[1], Number));
     assertErr(stringResult);
@@ -2035,6 +2147,49 @@ describe("localizeTypes", () => {
         : false,
       true
     >();
+  });
+
+  it("localizes nested Union details and can localize the result again", async () => {
+    const Value = object({
+      field: union(object({ count: union(String, Number) }), Null),
+    });
+    const localized = localizeTypes(
+      { Value },
+      {
+        first: {
+          Object: () => "Object one.",
+          String: () => "String one.",
+          Number: () => "Number one.",
+          Literal: () => "Literal one.",
+          Union: () => "Union one.",
+        },
+      },
+    ).first;
+    const second = localizeTypes(localized, {
+      second: {
+        Object: () => "Object two.",
+        String: () => "String two.",
+        Number: () => "Number two.",
+        Literal: () => "Literal two.",
+        Union: () => "Union two.",
+      },
+    }).second;
+    const input = { field: { count: false } };
+    const result = second.Value.fromUnknown(input, { errors: "all" });
+    assertErr(result);
+    const message = [
+      "Union two.",
+      '- 0: Object["count"]: Union two.',
+      "  - 0: String: String two.",
+      "  - 1: Number: Number two.",
+      "- 1: Literal: Literal two.",
+    ].join("\n");
+    const issues = [{ path: ["field"], message }];
+    assertEqual(second.Value.formatError(result.error), message);
+    assertEqual(typeErrorToIssues(second.Value, result.error), issues);
+    assertEqual(await second.Value["~standard"].validate(input), { issues });
+    assertFalse(localized.Value.formatError(result.error).includes("two."));
+    assertFalse(Value.formatError(result.error).includes("two."));
   });
 
   it("localizes TemplateLiteral captures and their reflected Tuple", () => {
@@ -3222,6 +3377,149 @@ describe("createType", () => {
         );
       });
     });
+  });
+});
+
+describe("createTypeWithError", () => {
+  it("delegates validation and error collection without callback options", () => {
+    const Syntax = object({ name: String, count: Number });
+    interface ModelError extends TypeError<"Model"> {
+      readonly cause: InferErrors<typeof Syntax>;
+      readonly value: unknown;
+    }
+    const mapError = mock.fn(
+      (cause: InferErrors<typeof Syntax>, value: unknown): ModelError => ({
+        type: "Model",
+        cause,
+        value,
+      }),
+    );
+    const Model = createTypeWithError("Model", Syntax, mapError, (error) => {
+      assertType<typeof error, ModelError>();
+      return "Invalid model.";
+    });
+    assertType<typeof Model.Input, typeof Syntax.Output>();
+    assertType<typeof Model.Output, typeof Syntax.Output>();
+    assertType<typeof Model.CanonicalInput, typeof Syntax.Output>();
+    assertType<InferErrors<typeof Model>, ModelError>();
+    assertType<typeof Model.parent, null>();
+    assertSame(Model.parent, null);
+
+    const valid = { name: "Evolu", count: 1 };
+    for (const result of [Model.fromUnknown(valid), Model.from(valid)]) {
+      assertOk(result);
+      assertSame(result.value, valid);
+    }
+    assertSame(Model.to(valid), valid);
+    assertSame(Model.orThrow(valid), valid);
+    assertSame(Model.orNull(valid), valid);
+    assertTrue(Model.is(valid));
+    assertType(Model, valid);
+    assertEqual(Model["~standard"].validate(valid), { value: valid });
+    assertSame(mapError.mock.callCount(), 0);
+
+    const invalid = { name: 1, count: "bad" };
+    for (const options of [
+      undefined,
+      { errors: "first" },
+      { errors: "all" },
+    ] as const) {
+      const result = Model.fromUnknown(invalid, options);
+      const source = Syntax.fromUnknown(invalid, options);
+      assertErr(result);
+      assertErr(source);
+      assertEqual(result.error, {
+        type: "Model",
+        cause: source.error,
+        value: invalid,
+      });
+      assertSame(result.error.value, invalid);
+      assertEqual(Model.formatError(result.error), "Invalid model.");
+      assertEqual(typeErrorToIssues(Model, result.error), [
+        { path: [], message: "Invalid model." },
+      ]);
+    }
+    assertFalse(Model.is(invalid));
+    const standard = Model["~standard"].validate(invalid);
+    assertEqual(standard, {
+      issues: [{ path: [], message: "Invalid model." }],
+    });
+    const collected = mapError.mock.calls.at(-1)!.arguments[0];
+    assertEqual(collected, {
+      type: "Object",
+      reason: {
+        kind: "Properties",
+        errors: {
+          name: { type: "TypeOf", expected: "String", value: 1 },
+          count: { type: "TypeOf", expected: "Number", value: "bad" },
+        },
+      },
+    });
+    assertAssertionError(
+      () =>
+        Model.from(invalid as unknown as typeof Model.Output, {
+          errors: "all",
+        }),
+      "Expected Model.",
+      { type: "Model", cause: collected, value: invalid },
+    );
+  });
+
+  it("preserves all alternatives inside localized structural Types", () => {
+    const Value = createTypeWithError(
+      "Value",
+      union(String, Number),
+      (cause) => ({ type: "Value" as const, cause }),
+      () => "Invalid value.",
+    );
+    const { custom } = localizeTypes(
+      { Settings: object({ value: Value }) },
+      { custom: { Object: () => "Object.", Value: () => "Custom value." } },
+    );
+    const result = custom.Settings.fromUnknown(
+      { value: false },
+      { errors: "all" },
+    );
+    assertErr(result);
+    assertTrue(result.error.reason.kind === "Properties");
+    const error = result.error.reason.errors.value;
+    assertTrue(error?.type === "Value");
+    assertEqual(error.cause.errors.length, 2);
+    assertEqual(typeErrorToIssues(custom.Settings, result.error), [
+      { path: ["value"], message: "Custom value." },
+    ]);
+  });
+
+  it("rejects transforming sources and incompatible error names", () => {
+    const compileTimeAssertions = (
+      uncertain: typeof String | typeof Number,
+    ) => {
+      createTypeWithError(
+        "Value",
+        // @ts-expect-error Source Type must use identity encoding.
+        BooleanFromString,
+        (cause) => ({ type: "Value" as const, cause }),
+        () => "Invalid value.",
+      );
+      createTypeWithError(
+        "Value",
+        // @ts-expect-error Output Type must be one concrete Type node. Pass a Union Type node instead of a union of Type nodes.
+        uncertain,
+        (cause) => ({ type: "Value" as const, cause }),
+        () => "Invalid value.",
+      );
+      createTypeWithError(
+        "Value",
+        String,
+        // @ts-expect-error The mapped error discriminant must match the Type name "Value".
+        () => ({ type: "Other" as const }),
+        () => "Invalid value.",
+      );
+    };
+    assertType<
+      typeof compileTimeAssertions,
+      (uncertain: typeof String | typeof Number) => void
+    >();
   });
 });
 
@@ -4528,7 +4826,10 @@ describe("literal", () => {
 
     assertEqual(Hello.orThrow("Hello"), "Hello");
     const error = assertThrowsInstanceOf(() => Hello.orThrow("World"), Error);
-    assertTrue(error.message.includes("getOrThrow"));
+    assertEqual(
+      error.message,
+      Hello.formatError({ type: "Literal", expected: "Hello", value: "World" }),
+    );
     assertEqual(Hello.orNull("Hello"), "Hello");
     assertSame(Hello.orNull("World"), null);
   });
@@ -5128,7 +5429,7 @@ describe("union", () => {
     }
   });
 
-  it("formats one message without enumerating member errors", () => {
+  it("formats retained member errors in one message", () => {
     const result = StringOrNumber.fromUnknown(true, { errors: "all" });
 
     assertErr(result, {
@@ -5147,12 +5448,112 @@ describe("union", () => {
 
     assertEqual(
       StringOrNumber.formatError(result.error),
-      "A value does not match any allowed variant.",
+      [
+        "A value does not match any allowed variant.",
+        "- 0: String: A value true is not a string.",
+        "- 1: Number: A value true is not a number.",
+      ].join("\n"),
     );
     assertType<
       Parameters<typeof StringOrNumber.formatError>[0],
       StringOrNumberError
     >();
+  });
+
+  describe("error reporting", () => {
+    it("formats only retained failures without validating again", () => {
+      let calls = 0;
+      const Counted = brand(
+        "Counted",
+        String,
+        (): Result<void, TypeError<"Counted">> => {
+          calls++;
+          return err({ type: "Counted" });
+        },
+        () => "Counted failure.",
+      );
+      const Value = undefinedOr(Counted);
+      const result = Value.fromUnknown("invalid");
+      assertErr(result);
+      const expected =
+        "A value does not match any allowed variant.\n- 0: Counted: Counted failure.";
+
+      assertEqual(Value.formatError(result.error), expected);
+      assertEqual(typeErrorToIssues(Value, result.error), [
+        { path: [], message: expected },
+      ]);
+      assertEqual(calls, 1);
+
+      const thrown = assertThrowsInstanceOf(
+        () => Value.orThrow("invalid"),
+        Error,
+      );
+      assertEqual(thrown.message, expected);
+      assertEqual(thrown.cause, result.error);
+      assertEqual(calls, 2);
+    });
+
+    it("keeps nested alternatives inside one issue at the enclosing path", async () => {
+      const Value = object({
+        config: union(
+          object({ ports: array(undefinedOr(PortFromString)) }),
+          Null,
+        ),
+      });
+      const input = { config: { ports: ["65536"] } };
+      const result = Value.fromUnknown(input, { errors: "all" });
+      assertErr(result);
+      const issues = typeErrorToIssues(Value, result.error);
+      assertLength(issues, 1);
+      assertEqual(issues[0].path, ["config"]);
+      assertTrue(
+        issues[0].message.includes(
+          '- 0: Object["ports"][0]: A value does not match any allowed variant.\n  - 0: PortFromString:',
+        ),
+      );
+      assertTrue(
+        issues[0].message.includes(
+          "The value 65536 must be less than or equal to 65535.",
+        ),
+      );
+      assertEqual(Value.formatError(result.error), issues[0].message);
+      assertEqual(await Value["~standard"].validate(input), { issues });
+    });
+
+    it("renders symbol member paths without adding them to the union path", () => {
+      const Value = union(object({}), Null);
+      const result = Value.fromUnknown({
+        [globalThis.Symbol.for("setting")]: "bad",
+      });
+      assertErr(result);
+      const issues = typeErrorToIssues(Value, result.error);
+      assertLength(issues, 1);
+      assertEqual(issues[0].path, []);
+      assertTrue(issues[0].message.includes("- 0: Object[Symbol(setting)]:"));
+    });
+
+    it("uses the correct member pipeline at parent boundaries", () => {
+      const Value = undefinedOr(PortFromString);
+      const input = Value.parent.fromUnknown(42);
+      assertErr(input);
+      assertEqual(
+        Value.parent.formatError(input.error),
+        [
+          "A value does not match any allowed variant.",
+          "- 0: String: A value 42 is not a string.",
+        ].join("\n"),
+      );
+
+      const remaining = Value.from.parent("65536", { errors: "all" });
+      assertErr(remaining);
+      assertEqual(
+        Value.formatError(remaining.error),
+        [
+          "A value does not match any allowed variant.",
+          "- 0: PortFromString: The value 65536 must be less than or equal to 65535.",
+        ].join("\n"),
+      );
+    });
   });
 
   it("cannot fail when one member is infallible", () => {
@@ -5412,7 +5813,13 @@ describe("union", () => {
     );
     assertSame(Value.orNull(input), null);
     const error = assertThrowsInstanceOf(() => Value.orThrow(input), Error);
-    assertTrue(error.message.includes("getOrThrow"));
+    assertEqual(
+      error.message,
+      [
+        "A value does not match any allowed variant.",
+        '- 0: Literal: The value "World" is not strictly equal to the expected literal: Hello.',
+      ].join("\n"),
+    );
   });
 
   it("validates only the remaining Type after a validated Union through from.parent", () => {
@@ -7114,7 +7521,7 @@ describe("brand", () => {
       assertType<typeof value, typeof Label.Output>();
       assertType<Parameters<typeof Label.orThrow>[0], typeof Label.Input>();
       validations.length = 0;
-      assertAssertionError(() => Label.orThrow(" value "), "getOrThrow", {
+      assertAssertionError(() => Label.orThrow(" value "), "TrimmedString", {
         type: "TrimmedString",
         value: " value ",
       });
@@ -11420,7 +11827,7 @@ describe("array", () => {
       const value: ReadonlyArray<number> = [1, 2];
 
       assertSame(UserIds.orThrow(value), value);
-      assertAssertionError(() => UserIds.orThrow([1, -2, 3]), "getOrThrow", {
+      assertAssertionError(() => UserIds.orThrow([1, -2, 3]), "PositiveInt", {
         type: "Array",
         reason: {
           kind: "Items",
@@ -11439,7 +11846,7 @@ describe("array", () => {
       const { UserIds } = setupUserIds();
       assertAssertionError(
         () => UserIds.orThrow([0, -1], { errors: "all" }),
-        "getOrThrow",
+        "PositiveInt",
         {
           type: "Array",
           reason: {
@@ -20117,6 +20524,39 @@ describe("json", () => {
       assertEqual(parse.mock.callCount(), 1);
     } finally {
       parse.mock.restore();
+    }
+  });
+
+  it("formats plain and localized orThrow failures without parsing twice", () => {
+    const [ValueJson] = json(String, "ValueJson");
+    const LocalizedValueJson = localizeTypes(
+      { ValueJson },
+      {
+        test: {
+          Json: () => "Localized Json.",
+          String: () => "Localized String.",
+        },
+      },
+    ).test.ValueJson;
+
+    for (const type of [ValueJson, LocalizedValueJson]) {
+      for (const input of ["1", "{"]) {
+        const result = type.fromUnknown(input);
+        assertErr(result);
+        const message = type.formatError(result.error);
+        const parse = mock.method(JSON, "parse");
+
+        try {
+          assertAssertionError(
+            () => type.orThrow(input),
+            message,
+            result.error,
+          );
+          assertEqual(parse.mock.callCount(), 1);
+        } finally {
+          parse.mock.restore();
+        }
+      }
     }
   });
 

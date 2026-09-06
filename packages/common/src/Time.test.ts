@@ -44,12 +44,6 @@ const negativeMillisCause = {
   value: -1,
 };
 
-const assertThrowsWithCause = (run: () => unknown, cause: unknown): void => {
-  const error = assertThrowsInstanceOf(run, Error);
-  assertEqual(error.message, "getOrThrow");
-  assertEqual(error.cause, cause);
-};
-
 describe("Time", () => {
   afterEach(() => {
     mock.restoreAll();
@@ -218,14 +212,17 @@ describe("Time", () => {
         );
         mock.method(Date, "now", () => -1);
 
-        assertThrowsWithCause(
+        const error = assertThrowsInstanceOf(
           () =>
             createTime().setTimeout(
               () => undefined,
               PositiveMillis.orThrow(2 ** 31),
             ),
-          negativeMillisCause,
+          Error,
         );
+
+        assertEqual(error.message, "The value -1 must be non-negative (>= 0).");
+        assertEqual(error.cause, negativeMillisCause);
         assertEqual(setTimeout.mock.callCount(), 0);
       });
 
@@ -247,7 +244,10 @@ describe("Time", () => {
         );
         now = -1;
 
-        assertThrowsWithCause(() => callbacks[0](), negativeMillisCause);
+        const error = assertThrowsInstanceOf(() => callbacks[0](), Error);
+
+        assertEqual(error.message, "The value -1 must be non-negative (>= 0).");
+        assertEqual(error.cause, negativeMillisCause);
         assertLength(callbacks, 1);
       });
 
@@ -445,7 +445,16 @@ describe("Time", () => {
     it("setTimeout rejects a deadline after maxMillis", () => {
       const time = testCreateTime({ startAt: maxMillis });
 
-      assertThrowsWithCause(() => time.setTimeout(() => undefined, "1ms"), {
+      const error = assertThrowsInstanceOf(
+        () => time.setTimeout(() => undefined, "1ms"),
+        Error,
+      );
+
+      assertEqual(
+        error.message,
+        "The value 281474976710655 must be less than 281474976710655.",
+      );
+      assertEqual(error.cause, {
         type: "LessThan281474976710655",
         value: maxMillis + 1,
         max: maxMillis + 1,

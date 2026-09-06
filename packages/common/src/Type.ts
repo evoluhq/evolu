@@ -341,9 +341,9 @@
  * parameter type. If application code claims an accessor-backed object or an
  * object with excess properties is an Object Output, the assertion throws
  * because the application contract is broken. `orThrow` and `orNull` preserve
- * the assertion at their typed `Input` boundary, then apply {@link getOrThrow}
- * or {@link getOrNull} only to validation failures returned by the remaining
- * pipeline.
+ * the assertion at their typed `Input` boundary. After that boundary, `orThrow`
+ * throws returned validation errors with a formatted message and the original
+ * error as `cause`, while `orNull` maps them to `null`.
  *
  * Consequently, structural representation errors such as sparse Arrays,
  * accessors, and excess properties normally do not enter user-facing validation
@@ -469,9 +469,9 @@ import {
   flatMapResult,
   getOk,
   getOrNull,
-  getOrThrow,
   ok,
   trySync,
+  type getOrThrow,
   type Result,
 } from "./Result.ts";
 import { safelyStringifyUnknownValue } from "./String.ts";
@@ -767,15 +767,22 @@ export interface Type<
     : (value: Output) => CanonicalInput;
 
   /**
-   * Shorthand for calling {@link getOrThrow} with the result of the deepest
-   * `from` operation, which accepts this Type's `Input`.
+   * Runs the deepest `from` operation, which accepts this Type's `Input`, and
+   * returns its decoded value or throws an Error.
+   *
+   * Returned validation errors use this Type's {@link Type.formatError} as the
+   * Error message and preserve the original validation error as `cause`. With
+   * `{ errors: "all" }`, the cause retains all collected errors; the message
+   * still follows `formatError`, which describes the first issue.
    *
    * The typed `Input` boundary is asserted before the remaining pipeline runs.
-   * A boundary violation is a bug, so it throws directly; `getOrThrow` maps
-   * only a validation error returned after that boundary.
+   * A boundary violation is a bug, so it throws directly with its assertion
+   * message instead of formatting a returned validation error.
    *
    * `Type.orThrow.parent(value)` does not exist. To throw after starting from a
-   * typed boundary, call `getOrThrow` with the corresponding `from` operation.
+   * typed boundary, call {@link getOrThrow} with the corresponding `from`
+   * operation. Its generic Error message differs from this operation's
+   * message.
    *
    * Use `orThrow` for startup and configuration, module constants, test
    * fixtures, and internal invariants where failure must stop the current flow.
@@ -787,20 +794,31 @@ export interface Type<
    * ```ts
    * import {
    *   assertEqual,
-   *   getOrThrow,
+   *   assertInstanceOf,
+   *   assertErr,
    *   minLength,
    *   String,
+   *   trySync,
    * } from "@evolu/common";
    *
    * const NonEmptyString = minLength(1)(String);
    *
    * const value = NonEmptyString.orThrow("Evolu");
    *
-   * // Equivalent because `from.parent` is this Type's deepest `from` operation:
-   * const sameValue = getOrThrow(NonEmptyString.from.parent("Evolu"));
-   *
    * assertEqual(value, "Evolu");
-   * assertEqual(sameValue, value);
+   *
+   * const failed = trySync(() => NonEmptyString.orThrow(""));
+   * assertErr(failed);
+   * assertInstanceOf(failed.error, Error);
+   * assertEqual(
+   *   failed.error.message,
+   *   'The value "" does not meet the minimum length of 1.',
+   * );
+   * assertEqual(failed.error.cause, {
+   *   type: "MinLength1",
+   *   value: "",
+   *   min: 1,
+   * });
    * ```
    */
   readonly orThrow: TypeOperationFn<"orThrow", Input, Output, never>;
@@ -901,6 +919,61 @@ export type TypeErrorFormatter<Error extends TypeError> = (
 ) => string;
 
 /**
+ * A formatted validation issue located by its path from the root value.
+ *
+ * @group Core
+ */
+export interface TypeIssue {
+  readonly path: ReadonlyArray<PropertyKey>;
+  readonly message: string;
+}
+
+/**
+ * Converts an error from a {@link Type} into formatted issues with paths.
+ *
+ * Pass the Type that produced the error. This uses its nested and localized
+ * formatters without validating the input again. To retain every issue, decode
+ * with `{ errors: "all" }`; this function cannot recover errors omitted during
+ * validation. A root issue has an empty path.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   IntFromString,
+ *   object,
+ *   typeErrorToIssues,
+ * } from "@evolu/common";
+ *
+ * const Settings = object({ port: IntFromString });
+ *
+ * const result = Settings.fromUnknown({ port: "http" }, { errors: "all" });
+ * assertErr(result);
+ *
+ * assertEqual(typeErrorToIssues(Settings, result.error), [
+ *   {
+ *     path: ["port"],
+ *     message: 'The value "http" is not a decimal integer.',
+ *   },
+ * ]);
+ * ```
+ *
+ * @group Core
+ */
+export const typeErrorToIssues = <T extends TypeNode>(
+  type: T,
+  error: InferErrors<NoInfer<T>>,
+): NonEmptyReadonlyArray<TypeIssue> => {
+  const runtimeType = type as unknown as RuntimeTypeNode;
+  return runtimeType[getRuntimeTypeIssuesSymbol](error, "all").map((issue) => ({
+    path: issue.path,
+    message: formatRuntimeTypeIssue(issue),
+  })) as unknown as NonEmptyReadonlyArray<TypeIssue>;
+};
+
+/**
  * The common structural shape of every {@link Type}, with its specific type
  * parameters erased.
  *
@@ -950,6 +1023,11 @@ interface RuntimeTypeIssue {
   readonly error: TypeError;
   readonly path: ReadonlyArray<PropertyKey>;
   readonly formatError: TypeErrorFormatter<TypeError>;
+  readonly alternatives?: ReadonlyArray<{
+    readonly index: number;
+    readonly name: TypeName;
+    readonly issues: NonEmptyReadonlyArray<RuntimeTypeIssue>;
+  }>;
 }
 
 type RuntimeGetTypeIssues = (
@@ -1032,6 +1110,34 @@ const createCollectionRuntimeTypeIssues =
 
 const formatDefaultRuntimeTypeIssue: RuntimeFormatTypeIssue = (issue) =>
   issue.formatError(issue.error);
+
+const formatRuntimeTypeIssue = (
+  issue: RuntimeTypeIssue,
+  formatIssue: RuntimeFormatTypeIssue = formatDefaultRuntimeTypeIssue,
+): string => {
+  const summary = formatIssue(issue);
+  if (issue.alternatives === undefined) return summary;
+
+  return [
+    summary,
+    ...issue.alternatives.flatMap(({ index, name, issues }) =>
+      issues.map((issue) => {
+        const path = issue.path
+          .map((key) =>
+            typeof key === "string"
+              ? `[${JSON.stringify(key)}]`
+              : `[${globalThis.String(key)}]`,
+          )
+          .join("");
+        const message = formatRuntimeTypeIssue(issue, formatIssue).replaceAll(
+          "\n",
+          "\n  ",
+        );
+        return `- ${index}: ${name}${path}: ${message}`;
+      }),
+    ),
+  ].join("\n");
+};
 
 /**
  * Asserts type equality or validates a value with a {@link Type}.
@@ -1133,6 +1239,11 @@ const assertTypeOutput = <Error extends TypeError>(
  * Structural Types retain error paths and delegate nested messages to the Type
  * that produced them. Different localized Type sets can coexist in separate
  * application or dependency-injection scopes.
+ *
+ * A Union formatter supplies the summary of the failure. Retained member
+ * failures are appended using their own localized formatters, with member
+ * indexes, Type names, and paths identifying each alternative. The Union still
+ * produces one issue at its enclosing path.
  *
  * Localization is scoped to the selected Types instead of a package-wide
  * translation registry. Static imports give bundlers an explicit dependency
@@ -1319,11 +1430,24 @@ const withFormatError = (
         localizedTypeBySource,
       )
     : null;
+  const localizeIssue = (issue: RuntimeTypeIssue): RuntimeTypeIssue => ({
+    ...issue,
+    formatError: () => formatIssue(issue),
+    ...(issue.alternatives === undefined
+      ? {}
+      : {
+          alternatives: issue.alternatives.map((alternative) => ({
+            ...alternative,
+            issues: alternative.issues.map(
+              localizeIssue,
+            ) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>,
+          })),
+        }),
+  });
   const getTypeIssues: RuntimeGetTypeIssues = (error, mode) =>
-    source[getRuntimeTypeIssuesSymbol](error, mode).map((issue) => ({
-      ...issue,
-      formatError: () => formatIssue(issue),
-    })) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
+    source[getRuntimeTypeIssuesSymbol](error, mode).map(
+      localizeIssue,
+    ) as unknown as NonEmptyReadonlyArray<RuntimeTypeIssue>;
   const derived = createTypeNode<RuntimeTypeNode>(
     source.name,
     parent,
@@ -1342,7 +1466,10 @@ const withFormatError = (
   // boundary. Private operation chains on derived still support composition.
   globalThis.Object.assign(derived, {
     from: source.from,
-    orThrow: source.orThrow,
+    orThrow: createRuntimeOrThrow(
+      getTerminalRuntimeNode(source.from),
+      derived.formatError,
+    ),
     orNull: source.orNull,
   });
 
@@ -1927,6 +2054,8 @@ type ConcreteChildTypeNameError = CompileTimeError<
  * its error's `type` must equal that name and must not duplicate an inherited
  * error type. An infallible child has no own error to format.
  *
+ * Use {@link createTypeWithError} to wrap an existing validator's errors.
+ *
  * ### Example
  *
  * A root Type for a custom external value category:
@@ -1957,6 +2086,7 @@ type ConcreteChildTypeNameError = CompileTimeError<
  * );
  *
  * assertOk(Text.fromUnknown("Evolu"), "Evolu");
+ *
  * const invalid = Text.fromUnknown(42);
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -2051,10 +2181,8 @@ export function createType(
 }
 
 const assertRefinementIdentity =
-  (
-    refinement: (value: unknown) => Result<unknown, TypeError>,
-  ): ((value: unknown) => Result<unknown, TypeError>) =>
-  (value) => {
+  (refinement: (value: unknown) => Result<unknown, TypeError>) =>
+  (value: unknown): Result<unknown, TypeError> => {
     const result = refinement(value);
     if (result.ok) {
       assert(
@@ -2064,6 +2192,70 @@ const assertRefinementIdentity =
     }
     return result;
   };
+
+/**
+ * Creates a root {@link Type} with a custom error for an existing validator.
+ *
+ * The source must use identity encoding. The new Type accepts its Output as
+ * Input and hides its parent boundaries. Validation and error collection are
+ * delegated automatically; the mapper receives the failure and original value.
+ * The formatter presents the mapped error as one issue.
+ *
+ * ### Example
+ *
+ * ```ts
+ * import {
+ *   assertEqual,
+ *   assertErr,
+ *   createTypeWithError,
+ *   Number,
+ *   String,
+ *   union,
+ *   type TypeError,
+ *   type UnionError,
+ * } from "@evolu/common";
+ *
+ * interface ValueError extends TypeError<"Value"> {
+ *   readonly cause: UnionError;
+ * }
+ *
+ * const Value = createTypeWithError(
+ *   "Value",
+ *   union(String, Number),
+ *   (cause): ValueError => ({ type: "Value", cause }),
+ *   () => "Enter text or a number.",
+ * );
+ *
+ * const result = Value.fromUnknown(false, { errors: "all" });
+ * assertErr(result);
+ * assertEqual(result.error.cause.errors.length, 2);
+ * assertEqual(Value.formatError(result.error), "Enter text or a number.");
+ * ```
+ *
+ * @group Construction
+ */
+export const createTypeWithError = <
+  Name extends TypeName,
+  T extends ConcreteTypeNode,
+  Error extends TypeError<Name>,
+>(
+  name: Name & ValidateConcreteTypeName<Name>,
+  type: T &
+    ValidateOutput<T> &
+    (IdentityEncodingOf<T> extends true
+      ? unknown
+      : CompileTimeError<"Type", "Source Type must use identity encoding.">),
+  mapError: (error: InferErrors<T>, value: unknown) => Error,
+  formatError: TypeErrorFormatter<NoInfer<Error>>,
+): Type<Name, T["Output"], T["Output"], Error> =>
+  createRootType<Name, T["Output"], Error>(
+    name,
+    (value, options) => {
+      const result = type.fromUnknown(value, options);
+      return result.ok ? result : err(mapError(result.error, value));
+    },
+    formatError,
+  );
 
 const createRootType = <Name extends TypeName, Output, Error extends TypeError>(
   name: Name,
@@ -2581,6 +2773,16 @@ const mapRuntimeResult =
   (value: never, options = firstValidationOptions) =>
     map(operation(value, options), options);
 
+const createRuntimeOrThrow = (
+  fromInput: RuntimeOperation<Result<unknown, TypeError>>,
+  formatError: TypeErrorFormatter<TypeError>,
+): RuntimeOperation<unknown> =>
+  mapRuntimeResult(fromInput, (result) => {
+    if (result.ok) return result.value;
+
+    throw new Error(formatError(result.error), { cause: result.error });
+  });
+
 // `map` must return a fresh operation because this function can attach `.parent`.
 const mapRuntimeOperations = <Input, Output>(
   operation: RuntimeOperation<Input>,
@@ -2666,7 +2868,8 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
   const runtimeFormatError: TypeErrorFormatter<TypeError> =
     runtimeParent?.[getRuntimeTypeIssuesSymbol] === getTypeIssues
       ? runtimeParent.formatError
-      : (error) => formatIssue(getTypeIssues(error, "first")[0]);
+      : (error) =>
+          formatRuntimeTypeIssue(getTypeIssues(error, "first")[0], formatIssue);
   const typedFrom = addRuntimeAssertions(
     name,
     is,
@@ -2690,7 +2893,7 @@ const createTypeNode = <Node extends TypeNode = TypeNode>(
     is,
     from: typedFrom,
     to: typedTo,
-    orThrow: mapRuntimeResult(fromInput, getOrThrow),
+    orThrow: createRuntimeOrThrow(fromInput, runtimeFormatError),
     orNull: mapRuntimeResult(fromInput, getOrNull),
     "~standard": createStandardSchemaProps(
       fromUnknown,
@@ -2724,7 +2927,7 @@ const createStandardSchemaProps = (
       ? { value: result.value }
       : {
           issues: getTypeIssues(result.error, "all").map((issue) => ({
-            message: formatIssue(issue),
+            message: formatRuntimeTypeIssue(issue, formatIssue),
             path: issue.path,
           })),
         };
@@ -2940,6 +3143,7 @@ export const String = /*#__PURE__*/ createTypeOfType("String");
  * >();
  *
  * assertOk(Age.fromUnknown(122), 122);
+ *
  * const invalid = Age.fromUnknown(200);
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -3200,6 +3404,7 @@ export function objectTag<Name extends keyof ObjectTagOutputByName>(
  *   "TaggedValue",
  *   instanceOf(TaggedValue),
  * );
+ *
  * const value = new TaggedValue();
  * const result = TaggedValueType.fromUnknown(value);
  *
@@ -3430,6 +3635,7 @@ type InstanceConstructorCompileTimeError = CompileTimeError<
  *
  * assertType<typeof Ready.Output, "ready">();
  * assertOk(Ready.fromUnknown("ready"), "ready");
+ *
  * const invalid = Ready.fromUnknown("pending");
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -3581,6 +3787,11 @@ export const Null = /*#__PURE__*/ literal(null);
  * errors: "all" }` to retain every member failure and collect nested errors
  * within each member.
  *
+ * Formatting keeps one Union issue at the enclosing path and appends the
+ * retained failures below its summary. Member indexes identify alternatives,
+ * not positions in the input. Nested member paths appear in the message.
+ * Formatting never retries validation or recovers discarded failures.
+ *
  * Member order matters when multiple members accept the same value: validation
  * and encoding use the first matching member. When member Inputs overlap,
  * decoding the value emitted by the first member selected for an Output must
@@ -3669,10 +3880,7 @@ export function union(
     inputMembers,
     (member, value, options) => member[outputValidationSymbol](value, options),
   );
-  const defaultFormatter = (() =>
-    "A value does not match any allowed variant.") as TypeErrorFormatter<TypeError>;
-  const getTypeIssues: RuntimeGetTypeIssues = (error) =>
-    singleRuntimeTypeIssue("Union", error, defaultFormatter);
+  const getTypeIssues = createUnionRuntimeTypeIssues(members);
   const input = createTypeNode<
     UnionInputType<unknown, UnionErrorValue<TypeError>>
   >(
@@ -3683,7 +3891,7 @@ export function union(
     inputValidateOutput,
     ok,
     identity,
-    getTypeIssues,
+    createUnionRuntimeTypeIssues(inputMembers),
   );
   const fromUnknown = createUnionValidation(members, (member, value, options) =>
     member.fromUnknown(value, options),
@@ -3724,6 +3932,24 @@ export function union(
     { members, [templateLiteralSyntaxSymbol]: true },
   );
 }
+
+const createUnionRuntimeTypeIssues =
+  (members: ReadonlyArray<RuntimeTypeNode>): RuntimeGetTypeIssues =>
+  (error) => [
+    {
+      name: "Union",
+      error,
+      path: [],
+      formatError: () => "A value does not match any allowed variant.",
+      alternatives: (error as UnionErrorValue<TypeError>).errors.map(
+        ({ index, error }) => ({
+          index,
+          name: members[index].name,
+          issues: members[index][getRuntimeTypeIssuesSymbol](error, "all"),
+        }),
+      ),
+    },
+  ];
 
 const createUnionValidation =
   (
@@ -4082,6 +4308,7 @@ interface UnionErrorValue<
  * assertOk(result, ["cs", "CZ"]);
  * const locale = result.value;
  * assertType<typeof locale, SupportedLocale>();
+ *
  * const invalid = SupportedLocale.fromUnknown("cs/CZ");
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -4950,6 +5177,7 @@ const getTemplateLiteralPartFraming = (
  * }
  *
  * assertOk(Int64.fromUnknown(42n), 42n);
+ *
  * const invalid = Int64.fromUnknown(2n ** 63n);
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -5048,6 +5276,7 @@ export interface BrandType<
  *
  * const value = "2023-01-01T12:00:00.000Z";
  * assertOk(DateIso.fromUnknown(value), value);
+ *
  * const invalid = DateIso.fromUnknown("2023-01-01");
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -5222,6 +5451,7 @@ export interface UInt64Error extends TypeError<"UInt64"> {
  * }
  *
  * assertOk(TrimmedString.fromUnknown("Evolu"), "Evolu");
+ *
  * const invalid = TrimmedString.fromUnknown(" Evolu");
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -7022,6 +7252,7 @@ export type PositiveFiniteNumber = typeof PositiveFiniteNumber.Output;
  * assertType<Int, number & Brand<"Int">>();
  *
  * assertOk(Int.fromUnknown(42), 42);
+ *
  * const invalid = Int.fromUnknown(1.5);
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -7117,6 +7348,7 @@ export interface IntFromStringError extends TypeError<"IntFromString"> {
  * assertOk(IntFromString.fromUnknown("4000"), 4000);
  * assertOk(IntFromString.fromUnknown("-1"), -1);
  * assertEqual(IntFromString.to(IntFromString.orThrow("42")), "42");
+ *
  * const negativeZero = IntFromString.orThrow("-0");
  * assertSame(negativeZero, -0);
  * assertEqual(IntFromString.to(negativeZero), "-0");
@@ -7797,6 +8029,7 @@ export type NegativeDecimalString = typeof NegativeDecimalString.Output;
  * >();
  *
  * assertOk(Tenths.fromUnknown(0.3), 0.3);
+ *
  * const invalid = Tenths.fromUnknown(0.31);
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -8025,6 +8258,7 @@ export interface BetweenError<
  *
  * const UserId = brand("UserId", String);
  * const UserIds = array(UserId);
+ *
  * const result = UserIds.from.parent(["ada", "grace"]);
  *
  * assertType<
@@ -8033,6 +8267,7 @@ export interface BetweenError<
  * >();
  * assertOk(result, ["ada", "grace"]);
  * assertOk(UserIds.fromUnknown(["ada", "grace"]), ["ada", "grace"]);
+ *
  * const invalid = UserIds.fromUnknown("ada");
  * assertErr(invalid);
  * assertType(Data, invalid.error);
@@ -10194,6 +10429,7 @@ export { _Object as Object };
  * const valueType = typeof value;
  *
  * assertEqual(valueType, "function");
+ *
  * const called = trySync(
  *   () => {
  *     if (value !== undefined) value.toFixed(0);
@@ -10229,6 +10465,7 @@ export { _Object as Object };
  * const valueType = typeof value;
  *
  * assertEqual(valueType, "function");
+ *
  * const called = trySync(
  *   () => {
  *     if (value !== undefined) value.toFixed(0);
@@ -12370,7 +12607,9 @@ export type UnknownResult = typeof UnknownResult.Output;
  *   type: "Loaded",
  *   value: "Evolu",
  * });
+ *
  * assertFalse(Loading.is({ type: "Loading", progress: 1 }));
+ *
  * assertType<
  *   typeof Loading.Output extends { readonly type: "Loading" }
  *     ? true
@@ -12429,6 +12668,7 @@ export function typed<
  * } from "@evolu/common";
  *
  * const Open = typed("Open", { label: String }, record(String, String));
+ *
  * const result = Open.fromUnknown({
  *   type: "Open",
  *   label: "Ready",
@@ -12637,6 +12877,7 @@ type TypedTypePropertyError = CompileTimeError<
  * };
  *
  * assertEqual(describeNext({ ok: true, value: "item" }), "Value: item");
+ *
  * assertEqual(
  *   describeNext({
  *     ok: false,
@@ -12644,6 +12885,7 @@ type TypedTypePropertyError = CompileTimeError<
  *   }),
  *   "Done: complete",
  * );
+ *
  * assertEqual(
  *   describeNext({
  *     ok: false,
@@ -15029,7 +15271,10 @@ export const json = <T extends ConcreteTypeNode, Name extends TypeName>(
   const BrandedJson = {
     ...typeNode,
     from,
-    orThrow: mapRuntimeResult(fromInput, getOrThrow),
+    orThrow: createRuntimeOrThrow(
+      fromInput,
+      (typeNode as unknown as RuntimeTypeNode).formatError,
+    ),
     orNull: mapRuntimeResult(fromInput, getOrNull),
   } as BrandType<typeof Json, Name, JsonTypeError>;
 

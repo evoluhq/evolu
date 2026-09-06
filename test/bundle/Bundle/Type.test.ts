@@ -234,7 +234,10 @@ const fixtures: ReadonlyArray<{
   {
     name: "Union(String, Number)",
     fileName: "StringOrNumber.ts",
-    expected: ["A value does not match any allowed variant.", "value"],
+    expected: [
+      "A value does not match any allowed variant.\n- 0: String: A value true is not a string.",
+      "value",
+    ],
     excludedCodeFragments: [
       '"Never"',
       "not valid for type Never",

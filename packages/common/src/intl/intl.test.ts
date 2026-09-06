@@ -1,5 +1,11 @@
 import { describe, test } from "node:test";
-import { assertEqual, assertLength, assertNotUndefined } from "../Assert.ts";
+import {
+  assertEqual,
+  assertErr,
+  assertLength,
+  assertNotUndefined,
+  assertTrue,
+} from "../Assert.ts";
 import {
   ar,
   bn,
@@ -48,6 +54,7 @@ import {
 
 import * as Type from "../Type.ts";
 import { ok } from "../Result.ts";
+import { objectToEntries } from "../Object.ts";
 
 const Created = Type.typed("Created", { value: Type.String });
 const Deleted = Type.typed("Deleted", { value: Type.String });
@@ -3265,6 +3272,31 @@ const typesByLocale = Type.localizeTypes(
 );
 
 describe("Type localization", () => {
+  test("includes localized Union member failures in every locale", () => {
+    for (const [, types] of objectToEntries(typesByLocale)) {
+      const result = types.Union.fromUnknown(false, { errors: "all" });
+      const stringResult = types.Union.members[0].fromUnknown(false);
+      const numberResult = types.Union.members[1].fromUnknown(false);
+      assertErr(result);
+      assertErr(stringResult);
+      assertErr(numberResult);
+      const message = types.Union.formatError(result.error);
+      assertTrue(
+        message.includes(
+          `- 0: String: ${types.Union.members[0].formatError(stringResult.error)}`,
+        ),
+      );
+      assertTrue(
+        message.includes(
+          `- 1: Number: ${types.Union.members[1].formatError(numberResult.error)}`,
+        ),
+      );
+      assertEqual(Type.typeErrorToIssues(types.Union, result.error), [
+        { path: [], message },
+      ]);
+    }
+  });
+
   test("defines localized types", () => {
     assertNotUndefined(typesByLocale);
     assertLength(Object.keys(typesByLocale), 43);
