@@ -87,6 +87,7 @@ import type {
   PositiveIntOutput,
   TrimmedStringOutput,
 } from "./fixtures/constraints-all.mts";
+import type { Output as CommonBarrelOutput } from "./fixtures/common-barrel-all.mts";
 import type {
   ArrayElementsError,
   ArrayError,
@@ -701,6 +702,11 @@ type ExpectedUnionErrors = UnionError<
   TypeOfError<"String"> | ExpectedUnionMemberErrors,
   ExpectedCorrelatedUnionMemberErrors
 >;
+
+// The common source barrel preserves the selected Type output.
+{
+  assertType<CommonBarrelOutput, string>();
+}
 
 // The depth-32 fixture preserves its semantics.
 {
@@ -1895,3 +1901,16 @@ type ExpectedUnionErrors = UnionError<
   assertType<LocalizedMutualCzechLeft["Output"], LocalizedMutualLeft>();
   assertType<LocalizedMutualCzechRight["Output"], LocalizedMutualRight>();
 }
+
+// Percentage literals preserve their value grammar and dedicated errors.
+import type {
+  LiteralOutput as PercentageLiteralOutput,
+  LiteralErrors as PercentageLiteralErrors,
+  LiteralFromUnknownResult as PercentageLiteralResult,
+} from "./fixtures/percentage-literal-all.mts";
+assertType<
+  Extract<PercentageLiteralOutput, "12.5%" | "101%" | "0%" | "100%">,
+  "12.5%" | "0%" | "100%"
+>();
+assertType<PercentageLiteralErrors["type"], "PercentageLiteral">();
+assertType<InferErr<PercentageLiteralResult>, PercentageLiteralErrors>();

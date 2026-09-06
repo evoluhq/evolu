@@ -48,9 +48,11 @@ depend on it.
 The Type suite contains twenty-six isolated depth-scaling workloads at depths
 1, 2, 4, 8, 16, and 32, six width-scaling workloads at widths 2, 4, 8, 16,
 and 32, one TemplateLiteral scaling workload at 4, 8, 12, and 16 binary
-positions, plus twenty-one standalone workloads:
+positions, plus twenty-four standalone workloads:
 
 - `factory-output` forces only the final output of a factory-created chain.
+- `with-default-all` forces required decoded outputs, optional inputs, preserved
+  absence, errors, and encoding for replacement and preservation of defaults.
 - `factory-errors` forces only the complete error union of a factory-created chain.
 - `factory-from-unknown` forces the public unknown-input validation operation.
 - `factory-deepest` forces only the deepest callable `from.parent` suffix.
@@ -93,16 +95,23 @@ positions, plus twenty-one standalone workloads:
   `from.parent` boundaries.
 - `literal-all` forces string and number Literal Type outputs and errors together
   with Array Type composition.
+- `common-barrel-all` imports a small Type through the complete common source
+  barrel, exposing the ambient compiler cost paid by source-barrel consumers.
+- `config-env-all` forces the input, output, canonical encoding, errors, and
+  operations of `env` with an unprefixed port and namespaced byte-quota field, including
+  its object-key and identifier codecs.
 - `template-literal-canonical-input` forces exact TemplateLiteral CanonicalInput
   expansion across repeated binary Union captures.
 - `byte-size-literal-all` forces the output, errors, and `fromUnknown` of
-  `ByteSizeLiteral`, whose TemplateLiteral output expands to about five thousand
+  `ByteSizeLiteral`, whose TemplateLiteral output expands to 9,208
   string literal members, together with `ByteLengthFromString` and the literal
   assignability a call site pays when it passes `"10MiB"` as a `ByteSize`.
 - `duration-literal-all` forces the same channels for `DurationLiteral` and
   `Duration`. Time.ts is already part of the shared root chain, so its delta
   isolates what a call site pays for literal assignability, while
   `byte-size-literal-all` also carries the declaration cost of Bytes.ts.
+- `percentage-literal-all` checks the same projections and call-site
+  assignability for `PercentageLiteral` and `Percentage`.
 - `union-all` forces output, errors, `fromUnknown`, `from`, members, and parent
   across a widening flat Union.
 - `literal-union-all` forces the same channels through the literal-value Union
@@ -190,8 +199,16 @@ Development should extend the benchmark together with the Type API:
    shape are stable. Use stress fixtures to find compiler limits only when a
    scaling curve or real API composition indicates that the limit matters.
 
-TODO: Add consumer fixtures that import Type through `@evolu/common` so the
-benchmark also measures the published declaration and export surface.
+`common-barrel-all` measures the workspace source entrypoint. A published-package
+consumer benchmark remains separate because it must first build and resolve
+fresh generated declarations through `@evolu/common`, then compare them against
+its own declaration baseline.
+
+`test/bundle/Declarations.test.ts` also checks generated literal declarations.
+It compiles a package consumer and limits declaration size without counting
+documentation. These checks catch repeated expansion of shared Types, which
+source compiler metrics alone do not measure. Run them after `pnpm build` with
+`pnpm test:node --no-experimental-test-coverage test/bundle/Declarations.test.ts`.
 
 ## Metrics
 
